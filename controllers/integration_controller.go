@@ -18,6 +18,8 @@ package controllers
 
 import (
 	"context"
+	"github.com/redhat-appstudio/integration-service/tekton"
+	tektonv1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -55,7 +57,7 @@ func (r *IntegrationReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 // SetupWithManager sets up the controller with the Manager.
 func (r *IntegrationReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		// Uncomment the following line adding a pointer to an instance of the controlled resource as an argument
-		// For().
+		For(&tektonv1beta1.PipelineRun{}).
+		WithEventFilter(tekton.BuildPipelineRunSucceededPredicate()).
 		Complete(r)
 }
