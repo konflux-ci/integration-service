@@ -33,6 +33,7 @@ import (
 
 	appstudiov1alpha1 "github.com/redhat-appstudio/integration-service/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/controllers"
+	tektonv1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -45,6 +46,7 @@ func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 
 	utilruntime.Must(appstudiov1alpha1.AddToScheme(scheme))
+	utilruntime.Must(tektonv1beta1.AddToScheme(scheme))
 	//+kubebuilder:scaffold:scheme
 }
 
