@@ -15,4 +15,9 @@ resources:
   kind: IntegrationScenario
   path: github.com/redhat-appstudio/integration-service/api/v1alpha1
   version: v1alpha1
+- controller: true
+  domain: redhat.com
+  group: appstudio
+  kind: Integration
+  version: v1alpha1
 version: "3"
