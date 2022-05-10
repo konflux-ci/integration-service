@@ -1,0 +1,24 @@
+# permissions for end users to edit integrationscenarios.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: integrationscenario-editor-role
+rules:
+- apiGroups:
+  - appstudio.redhat.com
+  resources:
+  - integrationscenarios
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - appstudio.redhat.com
+  resources:
+  - integrationscenarios/status
+  verbs:
+  - get
