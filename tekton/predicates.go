@@ -19,7 +19,7 @@ func BuildPipelineRunSucceededPredicate() predicate.Predicate {
 			return false
 		},
 		UpdateFunc: func(e event.UpdateEvent) bool {
-			return isBuildPipelineRun(e.ObjectNew) &&
+			return IsBuildPipelineRun(e.ObjectNew) &&
 				hasPipelineSucceeded(e.ObjectOld, e.ObjectNew)
 		},
 	}
