@@ -101,7 +101,7 @@ func (r *IntegrationReconciler) getComponent(ctx context.Context, pipelineRun *t
 		return component, nil
 	}
 
-	return nil, fmt.Errorf("The pipeline has no component associated with it")
+	return nil, fmt.Errorf("the pipeline has no component associated with it")
 }
 
 // getApplication loads from the cluster the Application referenced in the given Component. If the Component doesn't

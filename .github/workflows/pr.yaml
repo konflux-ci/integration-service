@@ -1,0 +1,104 @@
+name: Go Test on Pull Requests
+on:
+  pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+
+jobs:
+
+  go:
+    name: Check sources
+    runs-on: ubuntu-20.04
+    container: fedora:35
+    env:
+      OPERATOR_SDK_VERSION: v1.18.0
+    steps:
+      - name: Set up Go 1.x
+        uses: actions/setup-go@v2
+        with:
+          go-version: 1.17
+      - name: Check out code into the Go module directory
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - name: Download fedora environment dependencies # Would be nice to cache this somehow
+        run: sudo dnf -y install diffutils findutils gcc wget
+      - name: Cache Operator SDK ${{ env.OPERATOR_SDK_VERSION }}
+        uses: actions/cache@v2
+        id: cache-operator-sdk
+        with:
+          path: ~/cache
+          key: operator-sdk-${{ env.OPERATOR_SDK_VERSION }}
+      - name: Download Operator SDK ${{ env.OPERATOR_SDK_VERSION }}
+        if: steps.cache-operator-sdk.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p ~/cache
+          wget https://github.com/operator-framework/operator-sdk/releases/download/${OPERATOR_SDK_VERSION}/operator-sdk_linux_amd64 -O ~/cache/operator-sdk-${OPERATOR_SDK_VERSION} > /dev/null -O ~/cache/operator-sdk-${OPERATOR_SDK_VERSION} > /dev/null
+          chmod +x ~/cache/operator-sdk-${OPERATOR_SDK_VERSION}
+      - name: Install Operator SDK ${{ env.OPERATOR_SDK_VERSION }}
+        run: |
+          mkdir -p ~/bin
+          cp ~/cache/operator-sdk-${OPERATOR_SDK_VERSION} ~/bin/operator-sdk
+          echo "$HOME/bin" >> $GITHUB_PATH
+      - name: Cache go modules
+        id: cache-mod
+        uses: actions/cache@v2
+        with:
+          path: ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+      - name: Download dependencies
+        run: go mod download
+        if: steps.cache-mod.outputs.cache-hit != 'true'
+      - name: Check go mod status
+        run: |
+          time_before=$(date "+%F %T")
+          go mod tidy
+          if [[ $(find . -type f -newermt "$time_before") ]]
+          then
+            echo "Go mod state is not clean:"
+            find . -type f -newermt "$time_before"
+            exit 1
+          fi
+      - name: Check format
+        run: |
+          time_before=$(date "+%F %T")
+          make fmt
+          if [[ $(find . -type f -newermt "$time_before") ]]
+          then
+            echo "Some files are not properly formatted."
+            echo "Please run `go fmt` and amend your commit."
+            find . -type f -newermt "$time_before"
+            exit 1
+          fi
+      - uses: dominikh/staticcheck-action@v1.1.0
+        with:
+          version: "2021.1.2"
+          install-go: false
+      - name: Check manifests # make generate manifests touches files even for no changes
+        run: |
+          cp -rp ../integration-service/ /tmp/integration-service/
+          make generate manifests
+          if [[ $(diff -r ../integration-service /tmp/integration-service) ]]
+          then
+            echo "generated sources are not up to date:"
+            diff -r ../integration-service /tmp/integration-service
+            exit 1
+          fi
+      - name: Run Go Tests
+        run: |
+          make test
+      
+  docker:
+    name: Check docker build
+    runs-on: ubuntu-20.04
+    steps:
+      - name: Check out code into the Go module directory
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - name: Check if dockerimage build is working
+        run: docker build -f ./Dockerfile .
