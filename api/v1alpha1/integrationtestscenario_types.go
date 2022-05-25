@@ -20,8 +20,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// IntegrationScenarioSpec defines the desired state of IntegrationScenario
-type IntegrationScenarioSpec struct {
+// IntegrationTestScenarioSpec defines the desired state of IntegrationTestScenario
+type IntegrationTestScenarioSpec struct {
 	// Release Tekton Pipeline to execute
 	Pipeline string `json:"pipeline"`
 	// Tekton Bundle where to find the pipeline
@@ -30,8 +30,8 @@ type IntegrationScenarioSpec struct {
 	Params []PipelineParameter `json:"params,omitempty"`
 }
 
-// IntegrationScenarioStatus defines the observed state of IntegrationScenario
-type IntegrationScenarioStatus struct {
+// IntegrationTestScenarioStatus defines the observed state of IntegrationTestScenario
+type IntegrationTestScenarioStatus struct {
 }
 
 // PipelineParameter contains the name and values of a Tekton Pipeline parameter
@@ -43,24 +43,24 @@ type PipelineParameter struct {
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
 
-// IntegrationScenario is the Schema for the integrationscenarios API
-type IntegrationScenario struct {
+// IntegrationTestScenario is the Schema for the integrationtestscenarios API
+type IntegrationTestScenario struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   IntegrationScenarioSpec   `json:"spec,omitempty"`
-	Status IntegrationScenarioStatus `json:"status,omitempty"`
+	Spec   IntegrationTestScenarioSpec   `json:"spec,omitempty"`
+	Status IntegrationTestScenarioStatus `json:"status,omitempty"`
 }
 
 //+kubebuilder:object:root=true
 
-// IntegrationScenarioList contains a list of IntegrationScenario
-type IntegrationScenarioList struct {
+// IntegrationTestScenarioList contains a list of IntegrationTestScenario
+type IntegrationTestScenarioList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []IntegrationScenario `json:"items"`
+	Items           []IntegrationTestScenario `json:"items"`
 }
 
 func init() {
-	SchemeBuilder.Register(&IntegrationScenario{}, &IntegrationScenarioList{})
+	SchemeBuilder.Register(&IntegrationTestScenario{}, &IntegrationTestScenarioList{})
 }
