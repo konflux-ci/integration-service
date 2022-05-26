@@ -1,6 +1,7 @@
 package tekton
 
 import (
+	"fmt"
 	"github.com/redhat-appstudio/integration-service/helpers"
 	tektonv1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 	"knative.dev/pkg/apis"
@@ -30,4 +31,16 @@ func hasPipelineSucceeded(objectOld, objectNew client.Object) bool {
 	}
 
 	return false
+}
+
+// GetOutputImage returns a string containing the output-image parameter value for a given PipelineRun.
+func GetOutputImage(object client.Object) (string, error) {
+	if pipelineRun, ok := object.(*tektonv1beta1.PipelineRun); ok {
+		for _, param := range pipelineRun.Spec.Params {
+			if param.Name == "output-image" {
+				return param.Value.StringVal, nil
+			}
+		}
+	}
+	return "", fmt.Errorf("couldn't find the output-image PipelineRun param")
 }
