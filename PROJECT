@@ -12,7 +12,7 @@ resources:
     namespaced: true
   domain: redhat.com
   group: appstudio
-  kind: IntegrationScenario
+  kind: IntegrationTestScenario
   path: github.com/redhat-appstudio/integration-service/api/v1alpha1
   version: v1alpha1
 - controller: true
