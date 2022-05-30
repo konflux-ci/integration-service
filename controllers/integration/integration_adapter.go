@@ -22,11 +22,12 @@ import (
 	"github.com/go-logr/logr"
 	hasv1alpha1 "github.com/redhat-appstudio/application-service/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/controllers/results"
-	"github.com/redhat-appstudio/integration-service/release"
 	"github.com/redhat-appstudio/integration-service/tekton"
 	releasev1alpha1 "github.com/redhat-appstudio/release-service/api/v1alpha1"
 	tektonv1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"time"
 )
 
 // Adapter holds the objects needed to reconcile a Release.
@@ -38,9 +39,6 @@ type Adapter struct {
 	client      client.Client
 	context     context.Context
 }
-
-// finalizerName is the finalizer name to be added to the Releases
-const finalizerName string = "appstudio.redhat.com/integration-finalizer"
 
 // NewAdapter creates and returns an Adapter instance.
 func NewAdapter(pipelineRun *tektonv1beta1.PipelineRun, component *hasv1alpha1.Component, application *hasv1alpha1.Application, logger logr.Logger, client client.Client,
@@ -63,29 +61,54 @@ func (a *Adapter) EnsureApplicationSnapshotExists() (results.OperationResult, er
 		return results.RequeueWithError(err)
 	}
 
-	if existingApplicationSnapshot == nil {
-		newApplicationSnapshot, err := a.createApplicationSnapshotForPipelineRun()
-		if err != nil {
-			a.logger.Error(err, "Failed to create ApplicationSnapshot",
-				"Application.Name", a.application.Name, "Application.Namespace", a.application.Namespace)
-			return results.RequeueOnErrorOrStop(a.updateStatus())
-		}
-		err = a.client.Create(a.context, newApplicationSnapshot)
-		if err != nil {
-			a.logger.Error(err, "Failed to create ApplicationSnapshot",
-				"Application.Name", a.application.Name, "Application.Namespace", a.application.Namespace)
-			return results.RequeueOnErrorOrStop(a.updateStatus())
-		}
-		a.logger.Info("Created new ApplicationSnapshot",
-			"Application.Name", a.application.Name,
-			"ApplicationSnapshot.Name", newApplicationSnapshot.Name,
-			"ApplicationSnapshot.Spec.Images", newApplicationSnapshot.Spec.Images)
-
-	} else {
+	if existingApplicationSnapshot != nil {
 		a.logger.Info("Found existing ApplicationSnapshot",
 			"Application.Name", a.application.Name,
 			"ApplicationSnapshot.Name", existingApplicationSnapshot.Name,
 			"ApplicationSnapshot.Spec.Images", existingApplicationSnapshot.Spec.Images)
+		return results.ContinueProcessing()
+	}
+
+	newApplicationSnapshot, err := a.createApplicationSnapshotForPipelineRun(a.pipelineRun, a.component, a.application)
+	if err != nil {
+		a.logger.Error(err, "Failed to create ApplicationSnapshot",
+			"Application.Name", a.application.Name, "Application.Namespace", a.application.Namespace)
+		return results.RequeueOnErrorOrStop(a.updateStatus())
+	}
+
+	a.logger.Info("Created new ApplicationSnapshot",
+		"Application.Name", a.application.Name,
+		"ApplicationSnapshot.Name", newApplicationSnapshot.Name,
+		"ApplicationSnapshot.Spec.Images", newApplicationSnapshot.Spec.Images)
+
+	return results.ContinueProcessing()
+}
+
+// EnsureAllReleasesExist is an operation that will ensure that all integration Releases associated
+// to the ApplicationSnapshot and the Application's ReleaseLinks exist.
+// Otherwise, it will create new Releases for each ReleaseLink.
+func (a *Adapter) EnsureAllReleasesExist() (results.OperationResult, error) {
+	existingApplicationSnapshot, err := a.findMatchingApplicationSnapshot()
+	if err != nil {
+		return results.RequeueWithError(err)
+	} else if existingApplicationSnapshot == nil {
+		return results.RequeueAfter(time.Second*5, err)
+	}
+
+	releaseLinks, err := a.getAllApplicationReleaseLinks(a.application)
+	if err != nil {
+		a.logger.Error(err, "Failed to get all ReleaseLinks",
+			"Application.Name", a.application.Name,
+			"Application.Namespace", a.application.Namespace)
+		return results.RequeueOnErrorOrStop(a.updateStatus())
+	}
+
+	err = a.createMissingReleasesForReleaseLinks(releaseLinks, existingApplicationSnapshot)
+	if err != nil {
+		a.logger.Error(err, "Failed to create new Releases for",
+			"ApplicationSnapshot.Name", existingApplicationSnapshot.Name,
+			"ApplicationSnapshot.Namespace", existingApplicationSnapshot.Namespace)
+		return results.RequeueOnErrorOrStop(a.updateStatus())
 	}
 
 	return results.ContinueProcessing()
@@ -97,7 +120,7 @@ func (a *Adapter) getAllApplicationSnapshots() (*[]releasev1alpha1.ApplicationSn
 	applicationSnapshots := &releasev1alpha1.ApplicationSnapshotList{}
 	opts := []client.ListOption{
 		client.InNamespace(a.application.Namespace),
-		//client.MatchingFields{"spec.application": a.application.Name},  TODO: Add the application to the spec
+		client.MatchingFields{"spec.application": a.application.Name},
 	}
 
 	err := a.client.List(a.context, applicationSnapshots, opts...)
@@ -108,8 +131,10 @@ func (a *Adapter) getAllApplicationSnapshots() (*[]releasev1alpha1.ApplicationSn
 	return &applicationSnapshots.Items, nil
 }
 
-// compareApplicationSnapshots compares two ApplicationSnapshots and returns boolean true if their images match exactly
+// compareApplicationSnapshots compares two ApplicationSnapshots and returns boolean true if their images match exactly.
 func (a *Adapter) compareApplicationSnapshots(expectedApplicationSnapshot *releasev1alpha1.ApplicationSnapshot, foundApplicationSnapshot *releasev1alpha1.ApplicationSnapshot) bool {
+	snapshotsHaveSameNumberOfImages :=
+		len(expectedApplicationSnapshot.Spec.Images) == len(foundApplicationSnapshot.Spec.Images)
 	allImagesMatch := true
 	for _, image1 := range expectedApplicationSnapshot.Spec.Images {
 		foundImage := false
@@ -123,13 +148,13 @@ func (a *Adapter) compareApplicationSnapshots(expectedApplicationSnapshot *relea
 		}
 
 	}
-	return allImagesMatch
+	return snapshotsHaveSameNumberOfImages && allImagesMatch
 }
 
-// findMatchingApplicationSnapshot tries to find the expected ApplicationSnapshot with the same set of images
+// findMatchingApplicationSnapshot tries to find the expected ApplicationSnapshot with the same set of images.
 func (a *Adapter) findMatchingApplicationSnapshot() (*releasev1alpha1.ApplicationSnapshot, error) {
 	var allApplicationSnapshots *[]releasev1alpha1.ApplicationSnapshot
-	expectedApplicationSnapshot, err := a.createApplicationSnapshotForPipelineRun()
+	expectedApplicationSnapshot, err := a.prepareApplicationSnapshotForPipelineRun(a.pipelineRun, a.component, a.application)
 	if err != nil {
 		return nil, err
 	}
@@ -164,14 +189,14 @@ func (a *Adapter) getAllApplicationComponents(application *hasv1alpha1.Applicati
 
 // getAllApplicationReleaseLinks returns the ReleaseLinks used by the application being processed. If matching
 // ReleaseLinks are not found, an error will be returned.
-func (a *Adapter) getAllApplicationReleaseLinks(ctx context.Context, application *hasv1alpha1.Application) (*[]releasev1alpha1.ReleaseLink, error) {
+func (a *Adapter) getAllApplicationReleaseLinks(application *hasv1alpha1.Application) (*[]releasev1alpha1.ReleaseLink, error) {
 	releaseLinks := &releasev1alpha1.ReleaseLinkList{}
 	opts := []client.ListOption{
 		client.InNamespace(application.Namespace),
 		client.MatchingFields{"spec.application": application.Name},
 	}
 
-	err := a.client.List(ctx, releaseLinks, opts...)
+	err := a.client.List(a.context, releaseLinks, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -179,9 +204,28 @@ func (a *Adapter) getAllApplicationReleaseLinks(ctx context.Context, application
 	return &releaseLinks.Items, nil
 }
 
-// createApplicationSnapshotForPipelineRun creates the ApplicationSnapshot for a given PipelineRun
-func (a *Adapter) createApplicationSnapshotForPipelineRun() (*releasev1alpha1.ApplicationSnapshot, error) {
-	applicationComponents, err := a.getAllApplicationComponents(a.application)
+// getApplicationSnapshot returns the all ApplicationSnapshots in the Application's namespace nil if it's not found.
+// In the case the List operation fails, an error will be returned.
+func (a *Adapter) getReleasesWithApplicationSnapshot(applicationSnapshot *releasev1alpha1.ApplicationSnapshot) (*[]releasev1alpha1.Release, error) {
+	releases := &releasev1alpha1.ReleaseList{}
+	opts := []client.ListOption{
+		client.InNamespace(applicationSnapshot.Namespace),
+		client.MatchingFields{"spec.applicationSnapshot": applicationSnapshot.Name},
+	}
+
+	err := a.client.List(a.context, releases, opts...)
+	if err != nil {
+		return nil, err
+	}
+
+	return &releases.Items, nil
+}
+
+// prepareApplicationSnapshotForPipelineRun prepares the ApplicationSnapshot for a given PipelineRun,
+// component and application. In case the ApplicationSnapshot can't be created, an error will be returned.
+func (a *Adapter) prepareApplicationSnapshotForPipelineRun(pipelineRun *tektonv1beta1.PipelineRun,
+	component *hasv1alpha1.Component, application *hasv1alpha1.Application) (*releasev1alpha1.ApplicationSnapshot, error) {
+	applicationComponents, err := a.getAllApplicationComponents(application)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get all Application Components for Application %s", a.application.Name)
 	}
@@ -189,52 +233,102 @@ func (a *Adapter) createApplicationSnapshotForPipelineRun() (*releasev1alpha1.Ap
 
 	for _, applicationComponent := range *applicationComponents {
 		pullSpec := applicationComponent.Status.ContainerImage
-		if applicationComponent.Name == a.component.Name {
+		if applicationComponent.Name == component.Name {
 			var err error
-			pullSpec, err = tekton.GetOutputImage(a.pipelineRun)
+			pullSpec, err = tekton.GetOutputImage(pipelineRun)
 			if err != nil {
 				return nil, err
 			}
 		}
-		image := releasev1alpha1.Image{
+		images = append(images, releasev1alpha1.Image{
 			Component: applicationComponent.Name,
 			PullSpec:  pullSpec,
-		}
-		images = append(images, image)
+		})
 	}
 
-	applicationSnapshot, err := release.CreateApplicationSnapshot(a.application, &images)
+	applicationSnapshot := &releasev1alpha1.ApplicationSnapshot{
+		ObjectMeta: metav1.ObjectMeta{
+			GenerateName: application.Name + "-",
+			Namespace:    application.Namespace,
+		},
+		Spec: releasev1alpha1.ApplicationSnapshotSpec{
+			Application: application.Name,
+			Images:      images,
+		},
+	}
+	return applicationSnapshot, nil
+}
+
+// createApplicationSnapshotForPipelineRun creates the ApplicationSnapshot for a given PipelineRun
+// In case the ApplicationSnapshot can't be created, an error will be returned.
+func (a *Adapter) createApplicationSnapshotForPipelineRun(pipelineRun *tektonv1beta1.PipelineRun,
+	component *hasv1alpha1.Component, application *hasv1alpha1.Application) (*releasev1alpha1.ApplicationSnapshot, error) {
+	applicationSnapshot, err := a.prepareApplicationSnapshotForPipelineRun(pipelineRun, component, application)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create an ApplicationSnapshot for Application %s and pipelineRun %s: %v",
-			a.application.Name, a.pipelineRun.Name, err)
+		return nil, err
+	}
+
+	err = a.client.Create(a.context, applicationSnapshot)
+	if err != nil {
+		return nil, err
 	}
 
 	return applicationSnapshot, nil
 }
 
-// createReleasesForApplicationSnapshot creates Releases for a given Application and ApplicationSnapshot
-// If ReleaseLinks are not found, an error will be returned.
-func (a *Adapter) createReleasesForApplicationSnapshot(applicationSnapshot *releasev1alpha1.ApplicationSnapshot) (*[]releasev1alpha1.Release, error) {
-	var releases []releasev1alpha1.Release
-	releaseLinks, err := a.getAllApplicationReleaseLinks(a.context, a.application)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get all ReleaseLinks for Application %s", a.application.Name)
+// createReleaseForReleaseLink creates the Release for a given ReleaseLink.
+// In case the Release can't be created, an error will be returned.
+func (a *Adapter) createReleaseForReleaseLink(releaseLink *releasev1alpha1.ReleaseLink, applicationSnapshot *releasev1alpha1.ApplicationSnapshot) (*releasev1alpha1.Release, error) {
+	newRelease := &releasev1alpha1.Release{
+		ObjectMeta: metav1.ObjectMeta{
+			GenerateName: applicationSnapshot.Name + "-",
+			Namespace:    applicationSnapshot.Namespace,
+		},
+		Spec: releasev1alpha1.ReleaseSpec{
+			ApplicationSnapshot: applicationSnapshot.Name,
+			ReleaseLink:         releaseLink.Name,
+		},
 	}
-	for _, releaseLink := range *releaseLinks {
-		appRelease, err := release.CreateRelease(applicationSnapshot, &releaseLink)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create a Release for Application %s and ReleaseLink %s: %v",
-				a.application.Name, releaseLink.Name, err)
-		}
-		err = a.client.Create(a.context, appRelease)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create a Release for Application %s and ReleaseLink %s: %v",
-				a.application.Name, releaseLink.Name, err)
-		}
-		releases = append(releases, *appRelease)
+	err := a.client.Create(a.context, newRelease)
+	if err != nil {
+		return nil, err
 	}
 
-	return &releases, nil
+	return newRelease, nil
+}
+
+// createReleaseForReleaseLink checks if there's existing Releases for a given list of ReleaseLinks and creates new ones
+// if they are missing. In case the Releases can't be created, an error will be returned.
+func (a *Adapter) createMissingReleasesForReleaseLinks(releaseLinks *[]releasev1alpha1.ReleaseLink, applicationSnapshot *releasev1alpha1.ApplicationSnapshot) error {
+	releases, err := a.getReleasesWithApplicationSnapshot(applicationSnapshot)
+	if err != nil {
+		return err
+	}
+
+	for _, releaseLink := range *releaseLinks {
+		var existingRelease *releasev1alpha1.Release = nil
+		for _, snapshotRelease := range *releases {
+			if snapshotRelease.Spec.ReleaseLink == releaseLink.Name {
+				existingRelease = &snapshotRelease
+			}
+		}
+		if existingRelease != nil {
+			a.logger.Info("Found existing Release",
+				"ApplicationSnapshot.Name", applicationSnapshot.Name,
+				"ReleaseLink.Name", releaseLink.Name,
+				"Release.Name", existingRelease.Name)
+		} else {
+			newRelease, err := a.createReleaseForReleaseLink(&releaseLink, applicationSnapshot)
+			if err != nil {
+				return err
+			}
+			a.logger.Info("Created new Release",
+				"Application.Name", a.application.Name,
+				"ReleaseLink.Name", releaseLink.Name,
+				"Release.Name", newRelease.Name)
+		}
+	}
+	return nil
 }
 
 // updateStatus updates the status of the PipelineRun being processed.
