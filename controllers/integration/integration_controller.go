@@ -20,20 +20,17 @@ import (
 	"context"
 	"fmt"
 	"github.com/go-logr/logr"
-	libhandler "github.com/operator-framework/operator-lib/handler"
 	hasv1alpha1 "github.com/redhat-appstudio/application-service/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/controllers/results"
 	"github.com/redhat-appstudio/integration-service/tekton"
-	"github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
+	releasev1alpha1 "github.com/redhat-appstudio/release-service/api/v1alpha1"
 	tektonv1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/source"
 )
 
 // Reconciler reconciles a build PipelineRun object
@@ -129,6 +126,7 @@ func (r *Reconciler) getApplicationFromComponent(context context.Context, compon
 // AdapterInterface is an interface defining all the operations that should be defined in an Integration adapter.
 type AdapterInterface interface {
 	EnsureApplicationSnapshotExists() (results.OperationResult, error)
+	EnsureAllReleasesExist() (results.OperationResult, error)
 }
 
 // ReconcileOperation defines the syntax of functions invoked by the ReconcileHandler
@@ -139,6 +137,7 @@ type ReconcileOperation func() (results.OperationResult, error)
 func (r *Reconciler) ReconcileHandler(adapter AdapterInterface) (ctrl.Result, error) {
 	operations := []ReconcileOperation{
 		adapter.EnsureApplicationSnapshotExists,
+		adapter.EnsureAllReleasesExist,
 	}
 
 	for _, operation := range operations {
@@ -161,12 +160,42 @@ func SetupController(manager ctrl.Manager, log *logr.Logger) error {
 
 // setupApplicationComponentCache adds a new index field to be able to search Components by application.
 func setupApplicationComponentCache(mgr ctrl.Manager) error {
-	applicationComponentTargetIndexFunc := func(obj client.Object) []string {
+	applicationComponentIndexFunc := func(obj client.Object) []string {
 		return []string{obj.(*hasv1alpha1.Component).Spec.Application}
 	}
 
 	return mgr.GetCache().IndexField(context.Background(), &hasv1alpha1.Component{},
-		"spec.application", applicationComponentTargetIndexFunc)
+		"spec.application", applicationComponentIndexFunc)
+}
+
+// setupReleaseLinkCache adds a new index field to be able to search ReleaseLinks by application.
+func setupReleaseLinkCache(mgr ctrl.Manager) error {
+	releaseLinkIndexFunc := func(obj client.Object) []string {
+		return []string{obj.(*releasev1alpha1.ReleaseLink).Spec.Application}
+	}
+
+	return mgr.GetCache().IndexField(context.Background(), &releasev1alpha1.ReleaseLink{},
+		"spec.application", releaseLinkIndexFunc)
+}
+
+// setupReleaseCache adds a new index field to be able to search Releases by ApplicationSnapshot.
+func setupReleaseCache(mgr ctrl.Manager) error {
+	releaseIndexFunc := func(obj client.Object) []string {
+		return []string{obj.(*releasev1alpha1.Release).Spec.ApplicationSnapshot}
+	}
+
+	return mgr.GetCache().IndexField(context.Background(), &releasev1alpha1.Release{},
+		"spec.applicationSnapshot", releaseIndexFunc)
+}
+
+// setupApplicationSnapshotCache adds a new index field to be able to search ApplicationSnapshots by Application.
+func setupApplicationSnapshotCache(mgr ctrl.Manager) error {
+	applicationSnapshotIndexFunc := func(obj client.Object) []string {
+		return []string{obj.(*releasev1alpha1.ApplicationSnapshot).Spec.Application}
+	}
+
+	return mgr.GetCache().IndexField(context.Background(), &releasev1alpha1.ApplicationSnapshot{},
+		"spec.application", applicationSnapshotIndexFunc)
 }
 
 // setupControllerWithManager sets up the controller with the Manager which monitors new build PipelineRuns and filters
@@ -176,14 +205,20 @@ func setupControllerWithManager(manager ctrl.Manager, reconciler *Reconciler) er
 	if err != nil {
 		return err
 	}
+	err = setupReleaseLinkCache(manager)
+	if err != nil {
+		return err
+	}
+	err = setupReleaseCache(manager)
+	if err != nil {
+		return err
+	}
+	err = setupApplicationSnapshotCache(manager)
+	if err != nil {
+		return err
+	}
 
 	return ctrl.NewControllerManagedBy(manager).
 		For(&tektonv1beta1.PipelineRun{}, builder.WithPredicates(tekton.BuildPipelineRunSucceededPredicate())).
-		Watches(&source.Kind{Type: &v1beta1.PipelineRun{}}, &libhandler.EnqueueRequestForAnnotation{
-			Type: schema.GroupKind{
-				Kind:  "Integration",
-				Group: "appstudio.redhat.com",
-			},
-		}).
 		Complete(reconciler)
 }
