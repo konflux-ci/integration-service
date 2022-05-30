@@ -18,6 +18,7 @@ package main
 
 import (
 	"flag"
+	"github.com/redhat-appstudio/integration-service/controllers"
 	"os"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
@@ -33,7 +34,6 @@ import (
 
 	hasv1alpha1 "github.com/redhat-appstudio/application-service/api/v1alpha1"
 	appstudiov1alpha1 "github.com/redhat-appstudio/integration-service/api/v1alpha1"
-	"github.com/redhat-appstudio/integration-service/controllers"
 	releasev1alpha1 "github.com/redhat-appstudio/release-service/api/v1alpha1"
 	tektonv1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 	//+kubebuilder:scaffold:imports
@@ -83,11 +83,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err = (&controllers.IntegrationReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
-	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "Integration")
+	err = controllers.SetupControllers(mgr)
+	if err != nil {
+		setupLog.Error(err, "unable to setup controllers")
 		os.Exit(1)
 	}
 	//+kubebuilder:scaffold:builder
