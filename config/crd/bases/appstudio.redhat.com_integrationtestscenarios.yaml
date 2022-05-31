@@ -15,7 +15,11 @@ spec:
     singular: integrationtestscenario
   scope: Namespaced
   versions:
-  - name: v1alpha1
+  - additionalPrinterColumns:
+    - jsonPath: .spec.application
+      name: Application
+      type: string
+    name: v1alpha1
     schema:
       openAPIV3Schema:
         description: IntegrationTestScenario is the Schema for the integrationtestscenarios
@@ -35,11 +39,45 @@ spec:
             type: object
           spec:
             description: IntegrationTestScenarioSpec defines the desired state of
-              IntegrationTestScenario
+              IntegrationScenario
             properties:
+              application:
+                description: Application that's associated with the IntegrationTestScenario
+                pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                type: string
               bundle:
                 description: Tekton Bundle where to find the pipeline
                 type: string
+              contexts:
+                description: Contexts where this IntegrationTestScenario can be applied
+                items:
+                  description: TestContext contains the name and values of a Test
+                    context
+                  properties:
+                    description:
+                      type: string
+                    name:
+                      type: string
+                  required:
+                  - name
+                  type: object
+                type: array
+              environment:
+                description: Environment that will be utilized by the test pipeline
+                properties:
+                  name:
+                    type: string
+                  params:
+                    items:
+                      type: string
+                    type: array
+                  type:
+                    type: string
+                required:
+                - name
+                - params
+                - type
+                type: object
               params:
                 description: Params to pass to the pipeline
                 items:
@@ -61,6 +99,8 @@ spec:
                 description: Release Tekton Pipeline to execute
                 type: string
             required:
+            - application
+            - bundle
             - pipeline
             type: object
           status:
