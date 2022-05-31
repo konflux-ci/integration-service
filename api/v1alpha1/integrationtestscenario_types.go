@@ -20,14 +20,24 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// IntegrationTestScenarioSpec defines the desired state of IntegrationTestScenario
+// IntegrationTestScenarioSpec defines the desired state of IntegrationScenario
 type IntegrationTestScenarioSpec struct {
+	// Application that's associated with the IntegrationTestScenario
+	// +kubebuilder:validation:Pattern=^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+	// +required
+	Application string `json:"application"`
 	// Release Tekton Pipeline to execute
+	// +required
 	Pipeline string `json:"pipeline"`
 	// Tekton Bundle where to find the pipeline
-	Bundle string `json:"bundle,omitempty"`
+	// +required
+	Bundle string `json:"bundle"`
 	// Params to pass to the pipeline
 	Params []PipelineParameter `json:"params,omitempty"`
+	// Environment that will be utilized by the test pipeline
+	Environment TestEnvironment `json:"environment,omitempty"`
+	// Contexts where this IntegrationTestScenario can be applied
+	Contexts []TestContext `json:"contexts,omitempty"`
 }
 
 // IntegrationTestScenarioStatus defines the observed state of IntegrationTestScenario
@@ -40,8 +50,22 @@ type PipelineParameter struct {
 	Value []string `json:"value"`
 }
 
-//+kubebuilder:object:root=true
-//+kubebuilder:subresource:status
+// TestEnvironment contains the name and values of a Test environment
+type TestEnvironment struct {
+	Name   string   `json:"name"`
+	Type   string   `json:"type"`
+	Params []string `json:"params"`
+}
+
+// TestContext contains the name and values of a Test context
+type TestContext struct {
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+}
+
+// +kubebuilder:object:root=true
+// +kubebuilder:subresource:status
+// +kubebuilder:printcolumn:name="Application",type=string,JSONPath=`.spec.application`
 
 // IntegrationTestScenario is the Schema for the integrationtestscenarios API
 type IntegrationTestScenario struct {
@@ -52,7 +76,7 @@ type IntegrationTestScenario struct {
 	Status IntegrationTestScenarioStatus `json:"status,omitempty"`
 }
 
-//+kubebuilder:object:root=true
+// +kubebuilder:object:root=true
 
 // IntegrationTestScenarioList contains a list of IntegrationTestScenario
 type IntegrationTestScenarioList struct {
