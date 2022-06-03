@@ -27,6 +27,7 @@ import (
 	tektonv1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"strings"
 	"time"
 )
 
@@ -221,6 +222,21 @@ func (a *Adapter) getReleasesWithApplicationSnapshot(applicationSnapshot *releas
 	return &releases.Items, nil
 }
 
+// getImagePullSpecFromPipelineRun gets the full image pullspec from the given build PipelineRun,
+// In case the Image pullspec can't be can't be composed, an error will be returned.
+func (a *Adapter) getImagePullSpecFromPipelineRun(pipelineRun *tektonv1beta1.PipelineRun) (string, error) {
+	var err error
+	outputImage, err := tekton.GetOutputImage(pipelineRun)
+	if err != nil {
+		return "", err
+	}
+	imageDigest, err := tekton.GetOutputImageDigest(pipelineRun)
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%s@%s", strings.Split(outputImage, ":")[0], imageDigest), nil
+}
+
 // prepareApplicationSnapshotForPipelineRun prepares the ApplicationSnapshot for a given PipelineRun,
 // component and application. In case the ApplicationSnapshot can't be created, an error will be returned.
 func (a *Adapter) prepareApplicationSnapshotForPipelineRun(pipelineRun *tektonv1beta1.PipelineRun,
@@ -234,8 +250,7 @@ func (a *Adapter) prepareApplicationSnapshotForPipelineRun(pipelineRun *tektonv1
 	for _, applicationComponent := range *applicationComponents {
 		pullSpec := applicationComponent.Status.ContainerImage
 		if applicationComponent.Name == component.Name {
-			var err error
-			pullSpec, err = tekton.GetOutputImage(pipelineRun)
+			pullSpec, err = a.getImagePullSpecFromPipelineRun(pipelineRun)
 			if err != nil {
 				return nil, err
 			}
