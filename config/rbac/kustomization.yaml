@@ -16,3 +16,20 @@ resources:
 - auth_proxy_role.yaml
 - auth_proxy_role_binding.yaml
 - auth_proxy_client_clusterrole.yaml
+
+# Application service
+- application_viewer_role.yaml
+- application_role_binding.yaml
+- component_editor_role.yaml
+- component_role_binding.yaml
+# Release service
+- applicationsnapshot_editor_role.yaml
+- applicationsnapshot_role_binding.yaml
+- applicationsnapshot_viewer_role.yaml
+- release_editor_role.yaml
+- release_role_binding.yaml
+- releaselink_viewer_role.yaml
+- releaselink_role_binding.yaml
+# Tekton
+- tekton_editor_role.yaml
+- tekton_role_binding.yaml
