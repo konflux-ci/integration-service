@@ -19,6 +19,9 @@ package integration
 import (
 	"context"
 	"fmt"
+	"strings"
+	"time"
+
 	"github.com/go-logr/logr"
 	hasv1alpha1 "github.com/redhat-appstudio/application-service/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/controllers/results"
@@ -26,9 +29,10 @@ import (
 	releasev1alpha1 "github.com/redhat-appstudio/release-service/api/v1alpha1"
 	tektonv1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/fields"
+	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/selection"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"strings"
-	"time"
 )
 
 // Adapter holds the objects needed to reconcile a Release.
@@ -96,7 +100,7 @@ func (a *Adapter) EnsureAllReleasesExist() (results.OperationResult, error) {
 		return results.RequeueAfter(time.Second*5, err)
 	}
 
-	releaseLinks, err := a.getAllApplicationReleaseLinks(a.application)
+	releaseLinks, err := a.getAutoReleaseLinksForApplication(a.application)
 	if err != nil {
 		a.logger.Error(err, "Failed to get all ReleaseLinks",
 			"Application.Name", a.application.Name,
@@ -189,15 +193,24 @@ func (a *Adapter) getAllApplicationComponents(application *hasv1alpha1.Applicati
 }
 
 // getAllApplicationReleaseLinks returns the ReleaseLinks used by the application being processed. If matching
-// ReleaseLinks are not found, an error will be returned.
-func (a *Adapter) getAllApplicationReleaseLinks(application *hasv1alpha1.Application) (*[]releasev1alpha1.ReleaseLink, error) {
+// ReleaseLinks are not found, an error will be returned. A ReleaseLink will only be returned if it has the
+// release.appstudio.openshift.io/auto-release label set to true or if it is missing the label entirely.
+func (a *Adapter) getAutoReleaseLinksForApplication(application *hasv1alpha1.Application) (*[]releasev1alpha1.ReleaseLink, error) {
 	releaseLinks := &releasev1alpha1.ReleaseLinkList{}
-	opts := []client.ListOption{
-		client.InNamespace(application.Namespace),
-		client.MatchingFields{"spec.application": application.Name},
+	labelSelector := labels.NewSelector()
+	labelRequirement, err := labels.NewRequirement("release.appstudio.openshift.io/auto-release", selection.NotIn, []string{"false"})
+	if err != nil {
+		return nil, err
+	}
+	labelSelector = labelSelector.Add(*labelRequirement)
+
+	opts := &client.ListOptions{
+		Namespace:     application.Namespace,
+		FieldSelector: fields.OneTermEqualSelector("spec.application", application.Name),
+		LabelSelector: labelSelector,
 	}
 
-	err := a.client.List(a.context, releaseLinks, opts...)
+	err = a.client.List(a.context, releaseLinks, opts)
 	if err != nil {
 		return nil, err
 	}
