@@ -23,6 +23,7 @@ import (
 	hasv1alpha1 "github.com/redhat-appstudio/application-service/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/controllers/results"
 	"github.com/redhat-appstudio/integration-service/tekton"
+	appstudioshared "github.com/redhat-appstudio/managed-gitops/appstudio-shared/apis/appstudio.redhat.com/v1alpha1"
 	releasev1alpha1 "github.com/redhat-appstudio/release-service/api/v1alpha1"
 	tektonv1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -191,10 +192,10 @@ func setupReleaseCache(mgr ctrl.Manager) error {
 // setupApplicationSnapshotCache adds a new index field to be able to search ApplicationSnapshots by Application.
 func setupApplicationSnapshotCache(mgr ctrl.Manager) error {
 	applicationSnapshotIndexFunc := func(obj client.Object) []string {
-		return []string{obj.(*releasev1alpha1.ApplicationSnapshot).Spec.Application}
+		return []string{obj.(*appstudioshared.ApplicationSnapshot).Spec.Application}
 	}
 
-	return mgr.GetCache().IndexField(context.Background(), &releasev1alpha1.ApplicationSnapshot{},
+	return mgr.GetCache().IndexField(context.Background(), &appstudioshared.ApplicationSnapshot{},
 		"spec.application", applicationSnapshotIndexFunc)
 }
 
