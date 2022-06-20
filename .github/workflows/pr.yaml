@@ -24,7 +24,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: Download fedora environment dependencies # Would be nice to cache this somehow
-        run: sudo dnf -y install diffutils findutils gcc wget
+        run: sudo dnf -y install diffutils findutils gcc wget git
       - name: Cache Operator SDK ${{ env.OPERATOR_SDK_VERSION }}
         uses: actions/cache@v2
         id: cache-operator-sdk
