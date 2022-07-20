@@ -121,7 +121,7 @@ func (a *Adapter) EnsureApplicationSnapshotPassedAllTests() (results.OperationRe
 
 	// Get all integrationTestScenarios for the Application and then find the latest Succeeded Integration PipelineRuns
 	// for the ApplicationSnapshot
-	integrationTestScenarios, err := a.getIntegrationTestScenariosForApplication(a.application)
+	integrationTestScenarios, err := a.getRequiredIntegrationTestScenariosForApplication(a.application)
 	if err != nil {
 		return results.RequeueWithError(err)
 	}
@@ -243,23 +243,6 @@ func (a *Adapter) getApplicationSnapshotFromPipelineRun(pipelineRun *tektonv1bet
 	return nil, fmt.Errorf("the pipeline has no snapshot associated with it")
 }
 
-// getIntegrationTestScenariosForApplication loads from the cluster all IntegrationTestScenarios associated with the given Application.
-// If the Application doesn't have any IntegrationTestScenarios or this is not found in the cluster, an error will be returned.
-func (a *Adapter) getIntegrationTestScenariosForApplication(application *hasv1alpha1.Application) (*[]v1alpha1.IntegrationTestScenario, error) {
-	integrationTestScenarios := &v1alpha1.IntegrationTestScenarioList{}
-	opts := []client.ListOption{
-		client.InNamespace(application.Namespace),
-		client.MatchingFields{"spec.application": application.Name},
-	}
-
-	err := a.client.List(a.context, integrationTestScenarios, opts...)
-	if err != nil {
-		return nil, err
-	}
-
-	return &integrationTestScenarios.Items, nil
-}
-
 // determineIfAllIntegrationPipelinesFinished checks all Integration pipelines passed all of their test tasks.
 // Returns an error if it can't get the PipelineRun outcomes
 func (a *Adapter) determineIfAllIntegrationPipelinesPassed(integrationPipelineRuns *[]tektonv1beta1.PipelineRun) (bool, error) {
@@ -375,7 +358,12 @@ func (a *Adapter) calculateIntegrationPipelineRunOutcome(pipelineRun *tektonv1be
 // updateApplicationSnapshotResults updates the result label for the ApplicationSnapshot
 // If the update command fails, an error will be returned
 func (a *Adapter) updateApplicationSnapshotResults(applicationSnapshot *appstudioshared.ApplicationSnapshot, stage string) (*appstudioshared.ApplicationSnapshot, error) {
-	applicationSnapshot.Labels["test.appstudio.openshift.io/result"] = stage
+	if applicationSnapshot.Labels != nil {
+		applicationSnapshot.Labels["test.appstudio.openshift.io/result"] = stage
+	} else {
+		applicationSnapshot.Labels = map[string]string{}
+		applicationSnapshot.Labels["test.appstudio.openshift.io/result"] = stage
+	}
 	err := a.client.Update(a.context, applicationSnapshot)
 	if err != nil {
 		return nil, err
@@ -742,6 +730,32 @@ func (a *Adapter) createMissingReleasesForReleaseLinks(releaseLinks *[]releasev1
 		}
 	}
 	return nil
+}
+
+// getRequiredIntegrationTestScenariosForApplication returns the IntegrationTestScenarios used by the application being processed.
+// A IntegrationTestScenarios will only be returned if it has the
+// release.appstudio.openshift.io/optional label set to true or if it is missing the label entirely.
+func (a *Adapter) getRequiredIntegrationTestScenariosForApplication(application *hasv1alpha1.Application) (*[]v1alpha1.IntegrationTestScenario, error) {
+	labelSelector := labels.NewSelector()
+	integrationList := &v1alpha1.IntegrationTestScenarioList{}
+	labelRequirement, err := labels.NewRequirement("test.appstudio.openshift.io/optional", selection.NotIn, []string{"false"})
+	if err != nil {
+		return nil, err
+	}
+	labelSelector = labelSelector.Add(*labelRequirement)
+
+	opts := &client.ListOptions{
+		Namespace:     application.Namespace,
+		FieldSelector: fields.OneTermEqualSelector("spec.application", application.Name),
+		LabelSelector: labelSelector,
+	}
+
+	err = a.client.List(a.context, integrationList, opts)
+	if err != nil {
+		return nil, err
+	}
+
+	return &integrationList.Items, nil
 }
 
 // updateStatus updates the status of the PipelineRun being processed.
