@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"github.com/go-logr/logr"
 	hasv1alpha1 "github.com/redhat-appstudio/application-service/api/v1alpha1"
+	"github.com/redhat-appstudio/integration-service/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/controllers/results"
 	"github.com/redhat-appstudio/integration-service/tekton"
 	appstudioshared "github.com/redhat-appstudio/managed-gitops/appstudio-shared/apis/appstudio.redhat.com/v1alpha1"
@@ -69,7 +70,13 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{}, err
 	}
 
-	component, err := r.getComponentFromPipelineRun(ctx, pipelineRun)
+	pipelineType, err := tekton.GetTypeFromPipelineRun(pipelineRun)
+	if err != nil {
+		logger.Error(err, "Failed to get pipeline Type for",
+			"PipelineRun.Name", pipelineRun.Name, "PipelineRun.Namespace", pipelineRun.Namespace)
+		return ctrl.Result{}, err
+	}
+	component, err := r.getComponentFromPipelineRun(ctx, pipelineRun, pipelineType)
 	if err != nil {
 		logger.Error(err, "Failed to get Component for",
 			"PipelineRun.Name", pipelineRun.Name, "PipelineRun.Namespace", pipelineRun.Namespace)
@@ -90,8 +97,9 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 
 // getComponentFromPipelineRun loads from the cluster the Component referenced in the given PipelineRun. If the PipelineRun doesn't
 // specify a Component or this is not found in the cluster, an error will be returned.
-func (r *Reconciler) getComponentFromPipelineRun(context context.Context, pipelineRun *tektonv1beta1.PipelineRun) (*hasv1alpha1.Component, error) {
-	if componentName, found := pipelineRun.Labels["build.appstudio.openshift.io/component"]; found {
+func (r *Reconciler) getComponentFromPipelineRun(context context.Context, pipelineRun *tektonv1beta1.PipelineRun, pipelineType string) (*hasv1alpha1.Component, error) {
+	componentLabel := fmt.Sprintf("%s.appstudio.openshift.io/component", pipelineType)
+	if componentName, found := pipelineRun.Labels[componentLabel]; found {
 		component := &hasv1alpha1.Component{}
 		err := r.Get(context, types.NamespacedName{
 			Namespace: pipelineRun.Namespace,
@@ -127,6 +135,7 @@ func (r *Reconciler) getApplicationFromComponent(context context.Context, compon
 // AdapterInterface is an interface defining all the operations that should be defined in an Integration adapter.
 type AdapterInterface interface {
 	EnsureApplicationSnapshotExists() (results.OperationResult, error)
+	EnsureApplicationSnapshotPassedAllTests() (results.OperationResult, error)
 	EnsureAllReleasesExist() (results.OperationResult, error)
 	EnsureApplicationSnapshotEnvironmentBindingExist() (results.OperationResult, error)
 }
@@ -139,6 +148,7 @@ type ReconcileOperation func() (results.OperationResult, error)
 func (r *Reconciler) ReconcileHandler(adapter AdapterInterface) (ctrl.Result, error) {
 	operations := []ReconcileOperation{
 		adapter.EnsureApplicationSnapshotExists,
+		adapter.EnsureApplicationSnapshotPassedAllTests,
 		adapter.EnsureAllReleasesExist,
 		adapter.EnsureApplicationSnapshotEnvironmentBindingExist,
 	}
@@ -221,6 +231,16 @@ func setupApplicationCache(mgr ctrl.Manager) error {
 		"spec.environment", applicationIndexFunc)
 }
 
+// setupIntegrationTestScenarioCache adds a new index field to be able to search IntegrationTestScenarios by Application.
+func setupIntegrationTestScenarioCache(mgr ctrl.Manager) error {
+	integrationTestScenariosIndexFunc := func(obj client.Object) []string {
+		return []string{obj.(*v1alpha1.IntegrationTestScenario).Spec.Application}
+	}
+
+	return mgr.GetCache().IndexField(context.Background(), &v1alpha1.IntegrationTestScenario{},
+		"spec.application", integrationTestScenariosIndexFunc)
+}
+
 // setupControllerWithManager sets up the controller with the Manager which monitors new build PipelineRuns and filters
 // out status updates.
 func setupControllerWithManager(manager ctrl.Manager, reconciler *Reconciler) error {
@@ -248,8 +268,12 @@ func setupControllerWithManager(manager ctrl.Manager, reconciler *Reconciler) er
 	if err != nil {
 		return err
 	}
+	err = setupIntegrationTestScenarioCache(manager)
+	if err != nil {
+		return err
+	}
 
 	return ctrl.NewControllerManagedBy(manager).
-		For(&tektonv1beta1.PipelineRun{}, builder.WithPredicates(tekton.BuildPipelineRunSucceededPredicate())).
+		For(&tektonv1beta1.PipelineRun{}, builder.WithPredicates(tekton.IntegrationOrBuildPipelineRunSucceededPredicate())).
 		Complete(reconciler)
 }
