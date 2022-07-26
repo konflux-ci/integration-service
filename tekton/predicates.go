@@ -24,3 +24,23 @@ func BuildPipelineRunSucceededPredicate() predicate.Predicate {
 		},
 	}
 }
+
+// IntegrationOrBuildPipelineRunSucceededPredicate returns a predicate which filters out all objects except
+// Integration PipelineRuns which have just succeeded.
+func IntegrationOrBuildPipelineRunSucceededPredicate() predicate.Predicate {
+	return predicate.Funcs{
+		CreateFunc: func(createEvent event.CreateEvent) bool {
+			return false
+		},
+		DeleteFunc: func(deleteEvent event.DeleteEvent) bool {
+			return false
+		},
+		GenericFunc: func(genericEvent event.GenericEvent) bool {
+			return false
+		},
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			return (IsIntegrationPipelineRun(e.ObjectNew) || IsBuildPipelineRun(e.ObjectNew)) &&
+				hasPipelineSucceeded(e.ObjectOld, e.ObjectNew)
+		},
+	}
+}
