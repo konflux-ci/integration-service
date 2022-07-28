@@ -24,7 +24,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: Download fedora environment dependencies # Would be nice to cache this somehow
-        run: sudo dnf -y install diffutils findutils gcc wget
+        run: sudo dnf -y install diffutils findutils gcc wget which jq
       - name: Cache Operator SDK ${{ env.OPERATOR_SDK_VERSION }}
         uses: actions/cache@v2
         id: cache-operator-sdk
@@ -42,6 +42,16 @@ jobs:
           mkdir -p ~/bin
           cp ~/cache/operator-sdk-${OPERATOR_SDK_VERSION} ~/bin/operator-sdk
           echo "$HOME/bin" >> $GITHUB_PATH
+      - name: Regenerate executables with current environment packages
+        run: |
+          rm -f bin/kustomize bin/controller-gen
+          make kustomize controller-gen
+      - name: Install kcp tooling
+        run: |
+          sudo dnf -y install git
+          git clone https://github.com/kcp-dev/kcp ~/kcp
+          cd ~/kcp
+          WHAT=./cmd/kubectl-kcp make install
       - name: Cache go modules
         id: cache-mod
         uses: actions/cache@v2
@@ -86,6 +96,24 @@ jobs:
           then
             echo "generated sources are not up to date:"
             diff -r ../integration-service /tmp/integration-service
+            exit 1
+          fi
+      - name: Check kcp manifests
+        run: |
+          CONTROL_PLANE=kcp make generate manifests
+          if [[ ! -z $(git status ':(exclude)bin/kustomize' ':(exclude)bin/controller-gen' -s) ]]
+          then
+            echo "generated kcp sources are not up to date:"
+            git --no-pager diff ':(exclude)bin/kustomize' ':(exclude)bin/controller-gen'
+            exit 1
+          fi
+      - name: Check kubernetes manifests
+        run: |
+          CONTROL_PLANE=kubernetes make generate manifests
+          if [[ ! -z $(git status ':(exclude)bin/kustomize' ':(exclude)bin/controller-gen' -s) ]]
+          then
+            echo "generated k8s sources are not up to date:"
+            git --no-pager diff ':(exclude)bin/kustomize' ':(exclude)bin/controller-gen'
             exit 1
           fi
       - name: Run Go Tests
