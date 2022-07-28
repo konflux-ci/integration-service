@@ -23,9 +23,6 @@ resources:
 - component_editor_role.yaml
 - component_role_binding.yaml
 # Release service
-- applicationsnapshot_editor_role.yaml
-- applicationsnapshot_role_binding.yaml
-- applicationsnapshot_viewer_role.yaml
 - release_editor_role.yaml
 - release_role_binding.yaml
 - releaselink_viewer_role.yaml
@@ -33,3 +30,11 @@ resources:
 # Tekton
 - tekton_editor_role.yaml
 - tekton_role_binding.yaml
+# GitOps
+- applicationsnapshot_editor_role.yaml
+- applicationsnapshot_role_binding.yaml
+- applicationsnapshot_viewer_role.yaml
+- applicationsnapshotenvironmentbinding_editor_role.yaml
+- applicationsnapshotenvironmentbinding_role_binding.yaml
+- environment_editor_role.yaml
+- environment_role_binding.yaml
