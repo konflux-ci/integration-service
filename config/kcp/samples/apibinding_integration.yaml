@@ -1,0 +1,9 @@
+apiVersion: apis.kcp.dev/v1alpha1
+kind: APIBinding
+metadata:
+  name: defaul
+spec:
+  reference:
+    workspace:
+      path: root:users:xr:vd:rh-sso-hongweiliu:hongliu-dev-6
+      exportName: kubernetes

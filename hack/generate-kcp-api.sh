@@ -49,7 +49,7 @@ cat << EOF > ${KCP_API_EXPORT_FILE}
 apiVersion: apis.kcp.dev/v1alpha1
 kind: APIExport
 metadata:
-  name: inetegration
+  name: integration
 spec:
   latestResourceSchemas:
 EOF

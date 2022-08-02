@@ -1,0 +1,13 @@
+apiVersion: apis.kcp.dev/v1alpha1
+kind: APIExport
+metadata:
+  name: kubernetes
+spec:
+  latestResourceSchemas:
+    - rev-2154209.applications.appstudio.redhat.com
+    - rev-2154219.pipelineruns.tekton.dev
+    - rev-2154229.applicationsnapshots.appstudio.redhat.com
+    - rev-2154239.integrationtestscenarios.appstudio.redhat.com
+    - rev-2154259.applicationsnapshotenvironmentbindings.appstudio.redhat.com
+    - rev-2154278.components.appstudio.redhat.com
+    - rev-2154299.deployments.apps

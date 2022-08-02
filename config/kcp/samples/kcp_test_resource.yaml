@@ -1,0 +1,59 @@
+# ---
+# apiVersion: v1
+# kind: Namespace
+# metadata:
+#   name: integration
+---
+apiVersion: appstudio.redhat.com/v1alpha1
+kind: Application
+metadata:
+  annotations:
+  name: application-sample
+  namespace: default
+spec:
+  description: application definition for petclinic-app
+  displayName: petclinic
+  origin:
+    namespace: default
+    workspace: root:users:xr:vd:rh-sso-hongweiliu:hongliu-dev-6
+---
+apiVersion: appstudio.redhat.com/v1alpha1
+kind: IntegrationTestScenario
+metadata:
+  namespace: default
+  name: scenario-sample
+spec:
+  application: application-sample
+  bundle: 'quay.io/kpavic/test-bundle:component-pipeline-pass'
+  pipeline: component-pipeline-pass
+  origin:
+    namespace: default
+    workspace: root:users:xr:vd:rh-sso-hongweiliu:hongliu-dev-6
+---
+apiVersion: appstudio.redhat.com/v1alpha1
+kind: Component
+metadata:
+  name: component-sample
+  namespace: default
+spec:
+  componentName: sample-component
+  application: application-sample
+  source:
+    git:
+      url: https://github.com/devfile-samples/devfile-sample-code-with-quarkus
+  containerImage: quay.io/hongweiliu/foobar:dev-code-with-quarkus
+  origin:
+    namespace: default
+    workspace: root:users:xr:vd:rh-sso-hongweiliu:hongliu-dev-6
+---
+apiVersion: appstudio.redhat.com/v1alpha1
+kind: ApplicationSnapshot
+metadata:
+  name: snapshot-sample
+  namespace: default
+spec:
+  application: application-sample
+  displayname: application-sample
+  displaydescription: application-sample
+  Components:
+    - component-sample
