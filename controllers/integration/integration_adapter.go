@@ -407,7 +407,6 @@ func (a *Adapter) findExistingApplicationSnapshotEnvironmentBinding(environmentN
 	applicationSnapshotEnvironmentBindingList := &appstudioshared.ApplicationSnapshotEnvironmentBindingList{}
 	opts := []client.ListOption{
 		client.InNamespace(a.application.Namespace),
-		client.MatchingFields{"spec.application": a.application.Name},
 		client.MatchingFields{"spec.environment": environmentName},
 	}
 
@@ -416,7 +415,13 @@ func (a *Adapter) findExistingApplicationSnapshotEnvironmentBinding(environmentN
 		return nil, err
 	}
 
-	return &applicationSnapshotEnvironmentBindingList.Items[0], nil
+	for _, binding := range applicationSnapshotEnvironmentBindingList.Items {
+		if binding.Spec.Application == a.application.Name {
+			return &binding, nil
+		}
+	}
+
+	return nil, nil
 }
 
 func (a *Adapter) EnsureApplicationSnapshotEnvironmentBindingExist() (results.OperationResult, error) {
@@ -448,13 +453,13 @@ func (a *Adapter) EnsureApplicationSnapshotEnvironmentBindingExist() (results.Op
 			err := a.client.Update(a.context, applicationSnapshotEnvironmentBinding)
 			if err != nil {
 				a.logger.Error(err, "Failed to update ApplicationSnapshotEnvironmentBinding",
-					"ApplicationSnapshotEnvironmentBindingName.Application", applicationSnapshotEnvironmentBinding.Spec.Application,
-					"ApplicationSnapshotEnvironmentBindingName.Environment", applicationSnapshotEnvironmentBinding.Spec.Environment,
-					"ApplicationSnapshotEnvironmentBindingName.Snapshot", applicationSnapshotEnvironmentBinding.Spec.Snapshot)
+					"ApplicationSnapshotEnvironmentBinding.Application", applicationSnapshotEnvironmentBinding.Spec.Application,
+					"ApplicationSnapshotEnvironmentBinding.Environment", applicationSnapshotEnvironmentBinding.Spec.Environment,
+					"ApplicationSnapshotEnvironmentBinding.Snapshot", applicationSnapshotEnvironmentBinding.Spec.Snapshot)
 				return results.RequeueOnErrorOrStop(a.updateStatus())
 			}
 		} else {
-			applicationSnapshotEnvironmentBinding, err := a.CreateApplicationSnapshotEnvironmentBinding(
+			applicationSnapshotEnvironmentBinding, err = a.CreateApplicationSnapshotEnvironmentBinding(
 				bindingName, a.application.Namespace, a.application.Name,
 				availableEnvironment.Name,
 				applicationSnapshot, *components)
@@ -494,8 +499,8 @@ func (a *Adapter) CreateApplicationSnapshotEnvironmentBinding(bindingName string
 
 	applicationSnapshotEnvironmentBinding := &appstudioshared.ApplicationSnapshotEnvironmentBinding{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      bindingName,
-			Namespace: namespace,
+			GenerateName: bindingName + "-",
+			Namespace:    namespace,
 		},
 		Spec: appstudioshared.ApplicationSnapshotEnvironmentBindingSpec{
 			Application: applicationName,
