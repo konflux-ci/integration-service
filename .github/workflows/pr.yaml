@@ -24,7 +24,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: Download fedora environment dependencies # Would be nice to cache this somehow
-        run: sudo dnf -y install diffutils findutils gcc wget which jq
+        run: sudo dnf -y install diffutils findutils gcc wget which jq git
       - name: Cache Operator SDK ${{ env.OPERATOR_SDK_VERSION }}
         uses: actions/cache@v2
         id: cache-operator-sdk
@@ -84,9 +84,9 @@ jobs:
             find . -type f -newermt "$time_before"
             exit 1
           fi
-      - uses: dominikh/staticcheck-action@v1.1.0
+      - uses: dominikh/staticcheck-action@v1.2.0
         with:
-          version: "2021.1.2"
+          version: "2022.1.1"
           install-go: false
       - name: Check manifests # make generate manifests touches files even for no changes
         run: |
