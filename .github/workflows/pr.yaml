@@ -85,9 +85,9 @@ jobs:
             find . -type f -newermt "$time_before"
             exit 1
           fi
-      - uses: dominikh/staticcheck-action@v1.2.0
+      - uses: dominikh/staticcheck-action@v1.1.0
         with:
-          version: "2022.1.1"
+          version: "2021.1.2"
           install-go: false
       - name: Check manifests # make generate manifests touches files even for no changes
         run: |
