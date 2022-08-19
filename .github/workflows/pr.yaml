@@ -51,6 +51,7 @@ jobs:
           sudo dnf -y install git
           git clone https://github.com/kcp-dev/kcp ~/kcp
           cd ~/kcp
+          git checkout v0.7.1
           WHAT=./cmd/kubectl-kcp make install
       - name: Cache go modules
         id: cache-mod
