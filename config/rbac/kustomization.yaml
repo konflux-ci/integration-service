@@ -25,8 +25,8 @@ resources:
 # Release service
 - release_editor_role.yaml
 - release_role_binding.yaml
-- releaselink_viewer_role.yaml
-- releaselink_role_binding.yaml
+- releaseplan_viewer_role.yaml
+- releaseplan_role_binding.yaml
 # Tekton
 - tekton_editor_role.yaml
 - tekton_role_binding.yaml
