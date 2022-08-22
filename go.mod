@@ -8,7 +8,7 @@ require (
 	github.com/onsi/gomega v1.19.0
 	github.com/redhat-appstudio/application-service v0.0.0-20220509201208-86571e38f52e
 	github.com/redhat-appstudio/managed-gitops/appstudio-shared v0.0.0-20220616131733-1638c00a7583
-	github.com/redhat-appstudio/release-service v0.0.0-20220620143459-53c2f4bcc510
+	github.com/redhat-appstudio/release-service v0.0.0-20220823131312-0a1aab14a78d
 	github.com/tektoncd/pipeline v0.35.0
 	k8s.io/apimachinery v0.24.2
 	k8s.io/client-go v0.24.2
@@ -69,6 +69,7 @@ require (
 	github.com/prometheus/procfs v0.7.3 // indirect
 	github.com/prometheus/statsd_exporter v0.21.0 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
+	github.com/stretchr/testify v1.7.1 // indirect
 	go.opencensus.io v0.23.0 // indirect
 	go.uber.org/atomic v1.9.0 // indirect
 	go.uber.org/multierr v1.7.0 // indirect
@@ -81,6 +82,7 @@ require (
 	golang.org/x/term v0.0.0-20220526004731-065cf7ba2467 // indirect
 	golang.org/x/text v0.3.7 // indirect
 	golang.org/x/time v0.0.0-20220609170525-579cf78fd858 // indirect
+	golang.org/x/tools v0.1.10 // indirect
 	gomodules.xyz/jsonpatch/v2 v2.2.0 // indirect
 	google.golang.org/api v0.70.0 // indirect
 	google.golang.org/appengine v1.6.7 // indirect

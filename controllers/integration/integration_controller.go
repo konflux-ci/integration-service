@@ -181,14 +181,14 @@ func setupApplicationComponentCache(mgr ctrl.Manager) error {
 		"spec.application", applicationComponentIndexFunc)
 }
 
-// setupReleaseLinkCache adds a new index field to be able to search ReleaseLinks by application.
-func setupReleaseLinkCache(mgr ctrl.Manager) error {
-	releaseLinkIndexFunc := func(obj client.Object) []string {
-		return []string{obj.(*releasev1alpha1.ReleaseLink).Spec.Application}
+// setupReleasePlanCache adds a new index field to be able to search ReleasePlans by application.
+func setupReleasePlanCache(mgr ctrl.Manager) error {
+	releasePlanIndexFunc := func(obj client.Object) []string {
+		return []string{obj.(*releasev1alpha1.ReleasePlan).Spec.Application}
 	}
 
-	return mgr.GetCache().IndexField(context.Background(), &releasev1alpha1.ReleaseLink{},
-		"spec.application", releaseLinkIndexFunc)
+	return mgr.GetCache().IndexField(context.Background(), &releasev1alpha1.ReleasePlan{},
+		"spec.application", releasePlanIndexFunc)
 }
 
 // setupReleaseCache adds a new index field to be able to search Releases by ApplicationSnapshot.
@@ -248,7 +248,7 @@ func setupControllerWithManager(manager ctrl.Manager, reconciler *Reconciler) er
 	if err != nil {
 		return err
 	}
-	err = setupReleaseLinkCache(manager)
+	err = setupReleasePlanCache(manager)
 	if err != nil {
 		return err
 	}
