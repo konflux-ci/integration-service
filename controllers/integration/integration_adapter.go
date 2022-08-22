@@ -173,8 +173,8 @@ func (a *Adapter) EnsureApplicationSnapshotPassedAllTests() (results.OperationRe
 }
 
 // EnsureAllReleasesExist is an operation that will ensure that all integration Releases associated
-// to the ApplicationSnapshot and the Application's ReleaseLinks exist.
-// Otherwise, it will create new Releases for each ReleaseLink.
+// to the ApplicationSnapshot and the Application's ReleasePlans exist.
+// Otherwise, it will create new Releases for each ReleasePlan.
 func (a *Adapter) EnsureAllReleasesExist() (results.OperationResult, error) {
 	if !tekton.IsBuildPipelineRun(a.pipelineRun) {
 		return results.ContinueProcessing()
@@ -186,15 +186,15 @@ func (a *Adapter) EnsureAllReleasesExist() (results.OperationResult, error) {
 		return results.RequeueAfter(time.Second*5, err)
 	}
 
-	releaseLinks, err := a.getAutoReleaseLinksForApplication(a.application)
+	releasePlans, err := a.getAutoReleasePlansForApplication(a.application)
 	if err != nil {
-		a.logger.Error(err, "Failed to get all ReleaseLinks",
+		a.logger.Error(err, "Failed to get all ReleasePlans",
 			"Application.Name", a.application.Name,
 			"Application.Namespace", a.application.Namespace)
 		return results.RequeueOnErrorOrStop(a.updateStatus())
 	}
 
-	err = a.createMissingReleasesForReleaseLinks(releaseLinks, existingApplicationSnapshot)
+	err = a.createMissingReleasesForReleasePlans(releasePlans, existingApplicationSnapshot)
 	if err != nil {
 		a.logger.Error(err, "Failed to create new Releases for",
 			"ApplicationSnapshot.Name", existingApplicationSnapshot.Name,
@@ -570,11 +570,11 @@ func (a *Adapter) getAllApplicationComponents(application *hasv1alpha1.Applicati
 	return &applicationComponents.Items, nil
 }
 
-// getAllApplicationReleaseLinks returns the ReleaseLinks used by the application being processed. If matching
-// ReleaseLinks are not found, an error will be returned. A ReleaseLink will only be returned if it has the
+// getAllApplicationReleasePlans returns the ReleasePlans used by the application being processed. If matching
+// ReleasePlans are not found, an error will be returned. A ReleasePlan will only be returned if it has the
 // release.appstudio.openshift.io/auto-release label set to true or if it is missing the label entirely.
-func (a *Adapter) getAutoReleaseLinksForApplication(application *hasv1alpha1.Application) (*[]releasev1alpha1.ReleaseLink, error) {
-	releaseLinks := &releasev1alpha1.ReleaseLinkList{}
+func (a *Adapter) getAutoReleasePlansForApplication(application *hasv1alpha1.Application) (*[]releasev1alpha1.ReleasePlan, error) {
+	releasePlans := &releasev1alpha1.ReleasePlanList{}
 	labelSelector := labels.NewSelector()
 	labelRequirement, err := labels.NewRequirement("release.appstudio.openshift.io/auto-release", selection.NotIn, []string{"false"})
 	if err != nil {
@@ -588,12 +588,12 @@ func (a *Adapter) getAutoReleaseLinksForApplication(application *hasv1alpha1.App
 		LabelSelector: labelSelector,
 	}
 
-	err = a.client.List(a.context, releaseLinks, opts)
+	err = a.client.List(a.context, releasePlans, opts)
 	if err != nil {
 		return nil, err
 	}
 
-	return &releaseLinks.Items, nil
+	return &releasePlans.Items, nil
 }
 
 // getApplicationSnapshot returns the all ApplicationSnapshots in the Application's namespace nil if it's not found.
@@ -682,9 +682,9 @@ func (a *Adapter) createApplicationSnapshotForPipelineRun(pipelineRun *tektonv1b
 	return applicationSnapshot, nil
 }
 
-// createReleaseForReleaseLink creates the Release for a given ReleaseLink.
+// createReleaseForReleasePlan creates the Release for a given ReleasePlan.
 // In case the Release can't be created, an error will be returned.
-func (a *Adapter) createReleaseForReleaseLink(releaseLink *releasev1alpha1.ReleaseLink, applicationSnapshot *appstudioshared.ApplicationSnapshot) (*releasev1alpha1.Release, error) {
+func (a *Adapter) createReleaseForReleasePlan(releasePlan *releasev1alpha1.ReleasePlan, applicationSnapshot *appstudioshared.ApplicationSnapshot) (*releasev1alpha1.Release, error) {
 	newRelease := &releasev1alpha1.Release{
 		ObjectMeta: metav1.ObjectMeta{
 			GenerateName: applicationSnapshot.Name + "-",
@@ -692,7 +692,7 @@ func (a *Adapter) createReleaseForReleaseLink(releaseLink *releasev1alpha1.Relea
 		},
 		Spec: releasev1alpha1.ReleaseSpec{
 			ApplicationSnapshot: applicationSnapshot.Name,
-			ReleaseLink:         releaseLink.Name,
+			ReleasePlan:         releasePlan.Name,
 		},
 	}
 	err := a.client.Create(a.context, newRelease)
@@ -703,34 +703,34 @@ func (a *Adapter) createReleaseForReleaseLink(releaseLink *releasev1alpha1.Relea
 	return newRelease, nil
 }
 
-// createReleaseForReleaseLink checks if there's existing Releases for a given list of ReleaseLinks and creates new ones
+// createReleaseForReleasePlan checks if there's existing Releases for a given list of ReleasePlans and creates new ones
 // if they are missing. In case the Releases can't be created, an error will be returned.
-func (a *Adapter) createMissingReleasesForReleaseLinks(releaseLinks *[]releasev1alpha1.ReleaseLink, applicationSnapshot *appstudioshared.ApplicationSnapshot) error {
+func (a *Adapter) createMissingReleasesForReleasePlans(releasePlans *[]releasev1alpha1.ReleasePlan, applicationSnapshot *appstudioshared.ApplicationSnapshot) error {
 	releases, err := a.getReleasesWithApplicationSnapshot(applicationSnapshot)
 	if err != nil {
 		return err
 	}
 
-	for _, releaseLink := range *releaseLinks {
+	for _, releasePlan := range *releasePlans {
 		var existingRelease *releasev1alpha1.Release = nil
 		for _, snapshotRelease := range *releases {
-			if snapshotRelease.Spec.ReleaseLink == releaseLink.Name {
+			if snapshotRelease.Spec.ReleasePlan == releasePlan.Name {
 				existingRelease = &snapshotRelease
 			}
 		}
 		if existingRelease != nil {
 			a.logger.Info("Found existing Release",
 				"ApplicationSnapshot.Name", applicationSnapshot.Name,
-				"ReleaseLink.Name", releaseLink.Name,
+				"ReleasePlan.Name", releasePlan.Name,
 				"Release.Name", existingRelease.Name)
 		} else {
-			newRelease, err := a.createReleaseForReleaseLink(&releaseLink, applicationSnapshot)
+			newRelease, err := a.createReleaseForReleasePlan(&releasePlan, applicationSnapshot)
 			if err != nil {
 				return err
 			}
 			a.logger.Info("Created new Release",
 				"Application.Name", a.application.Name,
-				"ReleaseLink.Name", releaseLink.Name,
+				"ReleasePlan.Name", releasePlan.Name,
 				"Release.Name", newRelease.Name)
 		}
 	}

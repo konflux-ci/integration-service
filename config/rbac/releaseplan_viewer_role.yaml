@@ -1,13 +1,13 @@
-# permissions for end users to view releaselinks.
+# permissions for end users to view releaseplans.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: releaselink-viewer-role
+  name: releaseplan-viewer-role
 rules:
 - apiGroups:
   - appstudio.redhat.com
   resources:
-  - releaselinks
+  - releaseplans
   verbs:
   - get
   - list
@@ -15,6 +15,6 @@ rules:
 - apiGroups:
   - appstudio.redhat.com
   resources:
-  - releaselinks/status
+  - releaseplans/status
   verbs:
   - get
