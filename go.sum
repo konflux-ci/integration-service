@@ -1820,8 +1820,8 @@ github.com/redhat-appstudio/application-service v0.0.0-20220310134421-5864c77a3d
 github.com/redhat-appstudio/application-service v0.0.0-20220509201208-86571e38f52e h1:Vx7tzbgpkwr2vyLoAhPi7Qrv/Pul1b4z7i4cNqhkMuo=
 github.com/redhat-appstudio/application-service v0.0.0-20220509201208-86571e38f52e/go.mod h1:QzlBejIgkmnzM/tiKzJKK86IXil/6j8KxmxaDInqtmU=
 github.com/redhat-appstudio/managed-gitops/appstudio-shared v0.0.0-20220603115212-1fb4d804a8c2/go.mod h1:zI6l6177ZbAu4MNovCWinVq3Ii3qpD9svV7t9a58b/s=
-github.com/redhat-appstudio/managed-gitops/appstudio-shared v0.0.0-20220616131733-1638c00a7583 h1:KzIMBOX6pE1TkK1knxON1pvu0URSuwC33MBOTuiSz8A=
-github.com/redhat-appstudio/managed-gitops/appstudio-shared v0.0.0-20220616131733-1638c00a7583/go.mod h1:zI6l6177ZbAu4MNovCWinVq3Ii3qpD9svV7t9a58b/s=
+github.com/redhat-appstudio/managed-gitops/appstudio-shared v0.0.0-20220819141308-6fc9f6c02316 h1:awn9Mi6MvchaWfCB4ythYyMOZpM4aTieP59vrsmvNl8=
+github.com/redhat-appstudio/managed-gitops/appstudio-shared v0.0.0-20220819141308-6fc9f6c02316/go.mod h1:zI6l6177ZbAu4MNovCWinVq3Ii3qpD9svV7t9a58b/s=
 github.com/redhat-appstudio/release-service v0.0.0-20220823131312-0a1aab14a78d h1:yhGdL81Mc3G6rWKO6kkyZuA87RTkMEJMBAEcKhi5q+8=
 github.com/redhat-appstudio/release-service v0.0.0-20220823131312-0a1aab14a78d/go.mod h1:fYMUpGkho9j4Ua9BW06Ld7mmNmbsGVLnzPkrlWQ5uho=
 github.com/redhat-appstudio/service-provider-integration-operator v0.4.3/go.mod h1:S7NKaaZ0rhCrmHGqae9i21ROY23LurTtII3eMKqxjBQ=
