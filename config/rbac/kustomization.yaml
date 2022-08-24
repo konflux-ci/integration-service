@@ -17,6 +17,9 @@ resources:
 - auth_proxy_role_binding.yaml
 - auth_proxy_client_clusterrole.yaml
 
+# Integration service
+- integrationtestscenario_editor_role.yaml
+- integrationtestscenario_role_binding.yaml
 # Application service
 - application_viewer_role.yaml
 - application_role_binding.yaml
