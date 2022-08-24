@@ -8,7 +8,7 @@ require (
 	github.com/onsi/ginkgo/v2 v2.1.4
 	github.com/onsi/gomega v1.19.0
 	github.com/redhat-appstudio/application-service v0.0.0-20220509201208-86571e38f52e
-	github.com/redhat-appstudio/managed-gitops/appstudio-shared v0.0.0-20220616131733-1638c00a7583
+	github.com/redhat-appstudio/managed-gitops/appstudio-shared v0.0.0-20220819141308-6fc9f6c02316
 	github.com/redhat-appstudio/release-service v0.0.0-20220823131312-0a1aab14a78d
 	github.com/tektoncd/pipeline v0.35.0
 	k8s.io/apimachinery v0.24.2
