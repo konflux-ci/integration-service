@@ -18,12 +18,15 @@ package snapshot
 
 import (
 	"context"
+
 	"github.com/go-logr/logr"
 	hasv1alpha1 "github.com/redhat-appstudio/application-service/api/v1alpha1"
+	"github.com/redhat-appstudio/integration-service/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/controllers/results"
 	"github.com/redhat-appstudio/integration-service/gitops"
 	"github.com/redhat-appstudio/integration-service/helpers"
 	"github.com/redhat-appstudio/integration-service/release"
+	"github.com/redhat-appstudio/integration-service/tekton"
 	appstudioshared "github.com/redhat-appstudio/managed-gitops/appstudio-shared/apis/appstudio.redhat.com/v1alpha1"
 	releasev1alpha1 "github.com/redhat-appstudio/release-service/api/v1alpha1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -60,7 +63,40 @@ func (a *Adapter) EnsureAllIntegrationTestPipelinesExist() (results.OperationRes
 		a.logger.Info("The Snapshot has finished testing.")
 		return results.ContinueProcessing()
 	}
-	a.logger.Info("Placeholder for triggering all Integration pipelines (including optional ones)")
+
+	integrationTestScenarios, err := helpers.GetAllIntegrationTestScenariosForApplication(a.client, a.context, a.application)
+
+	if err != nil {
+		a.logger.Error(err, "Failed to get Integration test scenarios for following application",
+			"Application.Name", a.application.Name,
+			"Application.Namespace", a.application.Namespace)
+	}
+
+	for _, integrationTestScenario := range *integrationTestScenarios {
+		integrationTestScenario := integrationTestScenario //G601
+		integrationPipelineRun, err := helpers.GetLatestPipelineRunForApplicationSnapshotAndScenario(a.client, a.context, a.application, a.snapshot, &integrationTestScenario)
+		if err != nil {
+			a.logger.Error(err, "Failed to get latest pipelineRun for application snapshot and scenario",
+				"integrationPipelineRun:", integrationPipelineRun)
+			return results.RequeueOnErrorOrStop(err)
+		}
+		if integrationPipelineRun != nil {
+			a.logger.Info("Found existing integrationPipelineRun",
+				"IntegrationTestScenario.Name", integrationTestScenario.Name,
+				"integrationPipelineRun.Name", integrationPipelineRun.Name)
+		} else {
+			a.logger.Info("Creating new pipelinerun for integrationTestscenario",
+				"IntegrationTestScenario.Name", integrationTestScenario.Name,
+				"app name", a.application.Name,
+				"namespace", a.application.Namespace)
+			err := a.createIntegrationPipelineRun(a.application, &integrationTestScenario, a.snapshot)
+			if err != nil {
+				a.logger.Error(err, "Failed to create pipelineRun for application snapshot and scenario")
+				return results.RequeueOnErrorOrStop(err)
+			}
+		}
+
+	}
 
 	requiredIntegrationTestScenarios, err := helpers.GetRequiredIntegrationTestScenariosForApplication(a.client, a.context, a.application)
 	if err != nil {
@@ -285,4 +321,22 @@ func (a *Adapter) getAllApplicationComponents(application *hasv1alpha1.Applicati
 	}
 
 	return &applicationComponents.Items, nil
+}
+
+// createIntegrationPipelineRun creates and returns a new integration PipelineRun. The Pipeline information and the parameters to it
+// will be extracted from the given integrationScenario. The integration's ApplicationSnapshot will also be passed to the
+// integration PipelineRun.
+func (a *Adapter) createIntegrationPipelineRun(application *hasv1alpha1.Application, integrationTestScenario *v1alpha1.IntegrationTestScenario, applicationSnapshot *appstudioshared.ApplicationSnapshot) error {
+	pipelineRun := tekton.NewIntegrationPipelineRun(applicationSnapshot.Name, application.Namespace, *integrationTestScenario).
+		WithApplicationSnapshot(applicationSnapshot).
+		WithIntegrationLabels(integrationTestScenario).
+		WithApplicationAndComponent(a.application, a.component).
+		AsPipelineRun()
+
+	err := a.client.Create(a.context, pipelineRun)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }

@@ -17,19 +17,18 @@ limitations under the License.
 package snapshot
 
 import (
+	"context"
+
 	"github.com/go-logr/logr"
 	hasv1alpha1 "github.com/redhat-appstudio/application-service/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/controllers/results"
+	"github.com/redhat-appstudio/integration-service/gitops"
 	appstudioshared "github.com/redhat-appstudio/managed-gitops/appstudio-shared/apis/appstudio.redhat.com/v1alpha1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-)
-
-import (
-	"context"
 )
 
 // Reconciler reconciles an ApplicationSnapshot object
@@ -105,7 +104,7 @@ func (r *Reconciler) getApplicationFromSnapshot(context context.Context, snapsho
 // getComponentFromSnapshot loads from the cluster the Component referenced in the given ApplicationSnapshot.
 // If the ApplicationSnapshot doesn't specify an Application or this is not found in the cluster, an error will be returned.
 func (r *Reconciler) getComponentFromSnapshot(context context.Context, snapshot *appstudioshared.ApplicationSnapshot) (*hasv1alpha1.Component, error) {
-	if componentLabel, ok := snapshot.Labels["component"]; ok {
+	if componentLabel, ok := snapshot.Labels[gitops.ApplicationSnapshotComponentLabel]; ok {
 		component := &hasv1alpha1.Component{}
 		err := r.Get(context, types.NamespacedName{
 			Namespace: snapshot.Namespace,
