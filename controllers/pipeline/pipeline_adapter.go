@@ -102,6 +102,7 @@ func (a *Adapter) EnsureApplicationSnapshotPassedAllTests() (results.OperationRe
 	if !tekton.IsIntegrationPipelineRun(a.pipelineRun) {
 		return results.ContinueProcessing()
 	}
+
 	pipelineType, err := tekton.GetTypeFromPipelineRun(a.pipelineRun)
 	if err != nil {
 		return results.RequeueWithError(err)
@@ -165,11 +166,6 @@ func (a *Adapter) EnsureApplicationSnapshotPassedAllTests() (results.OperationRe
 		a.logger.Info("Some tests within Integration PipelineRuns failed, marking ApplicationSnapshot as failed",
 			"Application.Name", a.application.Name,
 			"ApplicationSnapshot.Name", existingApplicationSnapshot.Name)
-	}
-	a.markSnapshotAsTestFinished(existingApplicationSnapshot, "All HACBS Integration tests Finished")
-	if err != nil {
-		a.logger.Error(err, "Failed to Update ApplicationSnapshot HACBSTestFinished status")
-		return results.RequeueOnErrorOrStop(a.updateStatus())
 	}
 
 	return results.ContinueProcessing()
@@ -282,45 +278,6 @@ func (a *Adapter) getImagePullSpecFromPipelineRun(pipelineRun *tektonv1beta1.Pip
 		return "", err
 	}
 	return fmt.Sprintf("%s@%s", strings.Split(outputImage, ":")[0], imageDigest), nil
-}
-
-// getIntegrationTestScenariosForApplication loads from the cluster all IntegrationTestScenarios associated with the given Application.
-// If the Application doesn't have any IntegrationTestScenarios or this is not found in the cluster, an error will be returned.
-func (a *Adapter) getIntegrationTestScenariosForApplication(application *hasv1alpha1.Application) (*[]v1alpha1.IntegrationTestScenario, error) {
-	integrationTestScenarios := &v1alpha1.IntegrationTestScenarioList{}
-	opts := []client.ListOption{
-		client.InNamespace(application.Namespace),
-		client.MatchingFields{"spec.application": application.Name},
-	}
-
-	err := a.client.List(a.context, integrationTestScenarios, opts...)
-	if err != nil {
-		return nil, err
-	}
-
-	return &integrationTestScenarios.Items, nil
-}
-
-// getPipelineRunForApplicationSnapshotAndScenario returns all Integration PipelineRuns for the ApplicationSnapshot.
-// In the case the List operation fails, an error will be returned.
-func (a *Adapter) getPipelineRunForApplicationSnapshotAndScenario(applicationSnapshot *appstudioshared.ApplicationSnapshot, integrationTestScenario *v1alpha1.IntegrationTestScenario) (*tektonv1beta1.PipelineRun, error) {
-	integrationPipelineRuns := &tektonv1beta1.PipelineRunList{}
-	opts := []client.ListOption{
-		client.InNamespace(a.application.Namespace),
-		client.Limit(1),
-		client.MatchingLabels{
-			"pipelines.appstudio.openshift.io/type": "test",
-			"test.appstudio.openshift.io/snapshot":  applicationSnapshot.Name,
-			"test.appstudio.openshift.io/scenario":  integrationTestScenario.Name,
-		},
-	}
-
-	err := a.client.List(a.context, integrationPipelineRuns, opts...)
-	if err == nil && len(integrationPipelineRuns.Items) > 0 {
-		return &integrationPipelineRuns.Items[0], nil
-	}
-
-	return nil, err
 }
 
 // determineIfAllIntegrationPipelinesFinished checks all Integration pipelines passed all of their test tasks.
@@ -517,23 +474,6 @@ func (a *Adapter) markSnapshotAsFailed(applicationSnapshot *appstudioshared.Appl
 		Type:    "HACBSTestSucceeded",
 		Status:  metav1.ConditionFalse,
 		Reason:  "Failed",
-		Message: message,
-	})
-	err := a.client.Status().Patch(a.context, applicationSnapshot, patch)
-	if err != nil {
-		return nil, err
-	}
-	return applicationSnapshot, nil
-}
-
-// markSnapshotAsFailed updates the result label for the ApplicationSnapshot
-// If the update command fails, an error will be returned
-func (a *Adapter) markSnapshotAsTestFinished(applicationSnapshot *appstudioshared.ApplicationSnapshot, message string) (*appstudioshared.ApplicationSnapshot, error) {
-	patch := client.MergeFrom(applicationSnapshot.DeepCopy())
-	meta.SetStatusCondition(&applicationSnapshot.Status.Conditions, metav1.Condition{
-		Type:    "HACBSTestFinished",
-		Status:  metav1.ConditionTrue,
-		Reason:  "Finished",
 		Message: message,
 	})
 	err := a.client.Status().Patch(a.context, applicationSnapshot, patch)

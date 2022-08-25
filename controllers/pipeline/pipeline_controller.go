@@ -70,6 +70,11 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	}
 
 	pipelineType, err := tekton.GetTypeFromPipelineRun(pipelineRun)
+	if err != nil {
+		logger.Error(err, "Failed to get Pipeline Type for",
+			"PipelineRun.Name", pipelineRun.Name, "PipelineRun.Namespace", pipelineRun.Namespace)
+		return ctrl.Result{}, err
+	}
 	component, err := r.getComponentFromPipelineRun(ctx, pipelineRun, pipelineType)
 	if err != nil {
 		logger.Error(err, "Failed to get Component for",

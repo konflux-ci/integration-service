@@ -160,16 +160,6 @@ func SetupController(manager ctrl.Manager, log *logr.Logger) error {
 	return setupControllerWithManager(manager, NewSnapshotReconciler(manager.GetClient(), log, manager.GetScheme()))
 }
 
-// setupApplicationComponentCache adds a new index field to be able to search Components by application.
-func setupApplicationComponentCache(mgr ctrl.Manager) error {
-	applicationComponentIndexFunc := func(obj client.Object) []string {
-		return []string{obj.(*hasv1alpha1.Component).Spec.Application}
-	}
-
-	return mgr.GetCache().IndexField(context.Background(), &hasv1alpha1.Component{},
-		"spec.application", applicationComponentIndexFunc)
-}
-
 // setupReleasePlanCache adds a new index field to be able to search ReleasePlans by application.
 func setupReleasePlanCache(mgr ctrl.Manager) error {
 	releasePlanIndexFunc := func(obj client.Object) []string {
