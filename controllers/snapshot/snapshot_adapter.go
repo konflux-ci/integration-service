@@ -18,22 +18,18 @@ package snapshot
 
 import (
 	"context"
-	"fmt"
 	"github.com/go-logr/logr"
 	hasv1alpha1 "github.com/redhat-appstudio/application-service/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/controllers/results"
-	"github.com/redhat-appstudio/integration-service/tekton"
 	appstudioshared "github.com/redhat-appstudio/managed-gitops/appstudio-shared/apis/appstudio.redhat.com/v1alpha1"
 	releasev1alpha1 "github.com/redhat-appstudio/release-service/api/v1alpha1"
-	tektonv1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/selection"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"strings"
 )
 
 // Adapter holds the objects needed to reconcile a Release.
@@ -63,11 +59,32 @@ func NewAdapter(snapshot *appstudioshared.ApplicationSnapshot, application *hasv
 // associated with the ApplicationSnapshot and the Application's IntegrationTestScenarios exist.
 // Otherwise, it will create new Releases for each ReleasePlan.
 func (a *Adapter) EnsureAllIntegrationTestPipelinesExist() (results.OperationResult, error) {
-	if a.isSnapshotConditionMet(a.snapshot, "HACBSTestFinished") {
-		a.logger.Info("The Snapshot hasn't been marked as HACBSTestFinished")
+	if meta.FindStatusCondition(a.snapshot.Status.Conditions, "HACBSTestSucceeded") != nil {
+		a.logger.Info("The Snapshot has finished testing.")
 		return results.ContinueProcessing()
 	}
-	a.logger.Info("Placeholder for creating Integration PipelineRuns")
+	a.logger.Info("Placeholder for triggering all Integration pipelines (including optional ones)")
+
+	requiredIntegrationTestScenarios, err := a.getRequiredIntegrationTestScenariosForApplication(a.application)
+	if err != nil {
+		a.logger.Error(err, "Failed to get all IntegrationTestScenarios",
+			"Application.Name", a.application.Name,
+			"Application.Namespace", a.application.Namespace)
+		return results.RequeueOnErrorOrStop(a.updateStatus())
+	}
+	if len(*requiredIntegrationTestScenarios) == 0 {
+		updatedSnapshot, err := a.markSnapshotAsPassed(a.snapshot, "No required IntegrationTestScenarios found, skipped testing")
+		if err != nil {
+			a.logger.Error(err, "Failed to update Snapshot status",
+				"ApplicationSnapshot.Name", a.snapshot.Name,
+				"ApplicationSnapshot.Namespace", a.snapshot.Namespace)
+			return results.RequeueOnErrorOrStop(a.updateStatus())
+		}
+		a.logger.Info("No required IntegrationTestScenarios found, skipped testing and marked Snapshot as successful",
+			"ApplicationSnapshot.Name", updatedSnapshot.Name,
+			"ApplicationSnapshot.Namespace", updatedSnapshot.Namespace,
+			"ApplicationSnapshot.Status", updatedSnapshot.Status)
+	}
 
 	return results.ContinueProcessing()
 }
@@ -77,7 +94,7 @@ func (a *Adapter) EnsureAllIntegrationTestPipelinesExist() (results.OperationRes
 // Otherwise, it will create new Releases for each ReleasePlan.
 func (a *Adapter) EnsureAllReleasesExist() (results.OperationResult, error) {
 	if !a.isSnapshotConditionMet(a.snapshot, "HACBSTestSucceeded") {
-		a.logger.Info("The Snapshot hasn't been marked as HACBSTestSucceeded")
+		a.logger.Info("The Snapshot hasn't been marked as HACBSTestSucceeded, holding off on releasing.")
 		return results.ContinueProcessing()
 	}
 
@@ -102,7 +119,7 @@ func (a *Adapter) EnsureAllReleasesExist() (results.OperationResult, error) {
 
 func (a *Adapter) EnsureApplicationSnapshotEnvironmentBindingExist() (results.OperationResult, error) {
 	if !a.isSnapshotConditionMet(a.snapshot, "HACBSTestSucceeded") {
-		a.logger.Info("The Snapshot hasn't been marked as HACBSTestSucceeded")
+		a.logger.Info("The Snapshot hasn't been marked as HACBSTestSucceeded, holding off on deploying.")
 		return results.ContinueProcessing()
 	}
 
@@ -139,17 +156,17 @@ func (a *Adapter) EnsureApplicationSnapshotEnvironmentBindingExist() (results.Op
 
 			if err != nil {
 				a.logger.Error(err, "Failed to create ApplicationSnapshotEnvironmentBinding",
-					"ApplicationSnapshotEnvironmentBindingName.Application", applicationSnapshotEnvironmentBinding.Spec.Application,
-					"ApplicationSnapshotEnvironmentBindingName.Environment", applicationSnapshotEnvironmentBinding.Spec.Environment,
-					"ApplicationSnapshotEnvironmentBindingName.Snapshot", applicationSnapshotEnvironmentBinding.Spec.Snapshot)
+					"ApplicationSnapshotEnvironmentBinding.Application", applicationSnapshotEnvironmentBinding.Spec.Application,
+					"ApplicationSnapshotEnvironmentBinding.Environment", applicationSnapshotEnvironmentBinding.Spec.Environment,
+					"ApplicationSnapshotEnvironmentBinding.Snapshot", applicationSnapshotEnvironmentBinding.Spec.Snapshot)
 				return results.RequeueOnErrorOrStop(a.updateStatus())
 			}
 
 		}
 		a.logger.Info("Created/updated ApplicationSnapshotEnvironmentBinding",
-			"ApplicationSnapshotEnvironmentBindingName.Application", applicationSnapshotEnvironmentBinding.Spec.Application,
-			"ApplicationSnapshotEnvironmentBindingName.Environment", applicationSnapshotEnvironmentBinding.Spec.Environment,
-			"ApplicationSnapshotEnvironmentBindingName.Snapshot", applicationSnapshotEnvironmentBinding.Spec.Snapshot)
+			"ApplicationSnapshotEnvironmentBinding.Application", applicationSnapshotEnvironmentBinding.Spec.Application,
+			"ApplicationSnapshotEnvironmentBinding.Environment", applicationSnapshotEnvironmentBinding.Spec.Environment,
+			"ApplicationSnapshotEnvironmentBinding.Snapshot", applicationSnapshotEnvironmentBinding.Spec.Snapshot)
 	}
 	return results.ContinueProcessing()
 }
@@ -185,26 +202,6 @@ func (a *Adapter) CreateApplicationSnapshotEnvironmentBinding(bindingName string
 
 	err := a.client.Create(a.context, applicationSnapshotEnvironmentBinding)
 	return applicationSnapshotEnvironmentBinding, err
-}
-
-// compareApplicationSnapshots compares two ApplicationSnapshots and returns boolean true if their images match exactly.
-func (a *Adapter) compareApplicationSnapshots(expectedApplicationSnapshot *appstudioshared.ApplicationSnapshot, foundApplicationSnapshot *appstudioshared.ApplicationSnapshot) bool {
-	snapshotsHaveSameNumberOfImages :=
-		len(expectedApplicationSnapshot.Spec.Components) == len(foundApplicationSnapshot.Spec.Components)
-	allImagesMatch := true
-	for _, component1 := range expectedApplicationSnapshot.Spec.Components {
-		foundImage := false
-		for _, component2 := range foundApplicationSnapshot.Spec.Components {
-			if component2 == component1 {
-				foundImage = true
-			}
-		}
-		if !foundImage {
-			allImagesMatch = false
-		}
-
-	}
-	return snapshotsHaveSameNumberOfImages && allImagesMatch
 }
 
 // getAllApplicationReleasePlans returns the ReleasePlans used by the application being processed. If matching
@@ -248,21 +245,6 @@ func (a *Adapter) getReleasesWithApplicationSnapshot(applicationSnapshot *appstu
 	}
 
 	return &releases.Items, nil
-}
-
-// getImagePullSpecFromPipelineRun gets the full image pullspec from the given build PipelineRun,
-// In case the Image pullspec can't be can't be composed, an error will be returned.
-func (a *Adapter) getImagePullSpecFromPipelineRun(pipelineRun *tektonv1beta1.PipelineRun) (string, error) {
-	var err error
-	outputImage, err := tekton.GetOutputImage(pipelineRun)
-	if err != nil {
-		return "", err
-	}
-	imageDigest, err := tekton.GetOutputImageDigest(pipelineRun)
-	if err != nil {
-		return "", err
-	}
-	return fmt.Sprintf("%s@%s", strings.Split(outputImage, ":")[0], imageDigest), nil
 }
 
 // createReleaseForReleasePlan creates the Release for a given ReleasePlan.
@@ -320,31 +302,30 @@ func (a *Adapter) createMissingReleasesForReleasePlans(releasePlans *[]releasev1
 	return nil
 }
 
-// getIntegrationScenariosForTestContext get an IntegrationScenario for a given ApplicationSnapshot.
-func (a *Adapter) getIntegrationScenariosForTestContext(application *hasv1alpha1.Application, testContext string) ([]v1alpha1.IntegrationTestScenario, error) {
-	var integrationScenarios []v1alpha1.IntegrationTestScenario
-	allIntegrationScenarios := &v1alpha1.IntegrationTestScenarioList{}
-	err := a.client.List(a.context, allIntegrationScenarios)
-	for _, integrationScenario := range allIntegrationScenarios.Items {
-		if integrationScenario.Spec.Application == application.Name {
-			if len(integrationScenario.Spec.Contexts) != 0 {
-				for _, integrationScenarioContext := range integrationScenario.Spec.Contexts {
-					if integrationScenarioContext.Name == testContext {
-						integrationScenarios = append(integrationScenarios, integrationScenario)
-						continue
-					}
-				}
-			} else {
-				integrationScenarios = append(integrationScenarios, integrationScenario)
-			}
-		}
+// getRequiredIntegrationTestScenariosForApplication returns the IntegrationTestScenarios used by the application being processed.
+// A IntegrationTestScenarios will only be returned if it has the
+// release.appstudio.openshift.io/optional label set to true or if it is missing the label entirely.
+func (a *Adapter) getRequiredIntegrationTestScenariosForApplication(application *hasv1alpha1.Application) (*[]v1alpha1.IntegrationTestScenario, error) {
+	labelSelector := labels.NewSelector()
+	integrationList := &v1alpha1.IntegrationTestScenarioList{}
+	labelRequirement, err := labels.NewRequirement("test.appstudio.openshift.io/optional", selection.NotIn, []string{"true"})
+	if err != nil {
+		return nil, err
+	}
+	labelSelector = labelSelector.Add(*labelRequirement)
+
+	opts := &client.ListOptions{
+		Namespace:     application.Namespace,
+		FieldSelector: fields.OneTermEqualSelector("spec.application", application.Name),
+		LabelSelector: labelSelector,
 	}
 
+	err = a.client.List(a.context, integrationList, opts)
 	if err != nil {
 		return nil, err
 	}
 
-	return integrationScenarios, nil
+	return &integrationList.Items, nil
 }
 
 func (a *Adapter) getAllEnvironments() (*[]appstudioshared.Environment, error) {
@@ -380,7 +361,6 @@ func (a *Adapter) findExistingApplicationSnapshotEnvironmentBinding(environmentN
 	applicationSnapshotEnvironmentBindingList := &appstudioshared.ApplicationSnapshotEnvironmentBindingList{}
 	opts := []client.ListOption{
 		client.InNamespace(a.application.Namespace),
-		client.MatchingFields{"spec.application": a.application.Name},
 		client.MatchingFields{"spec.environment": environmentName},
 	}
 
@@ -389,7 +369,13 @@ func (a *Adapter) findExistingApplicationSnapshotEnvironmentBinding(environmentN
 		return nil, err
 	}
 
-	return &applicationSnapshotEnvironmentBindingList.Items[0], nil
+	for _, binding := range applicationSnapshotEnvironmentBindingList.Items {
+		if binding.Spec.Application == a.application.Name {
+			return &binding, nil
+		}
+	}
+
+	return nil, nil
 }
 
 // getAllApplicationComponents loads from the cluster all Components associated with the given Application.
@@ -409,13 +395,30 @@ func (a *Adapter) getAllApplicationComponents(application *hasv1alpha1.Applicati
 	return &applicationComponents.Items, nil
 }
 
-// snapshotHACBSTestSucceeded returns a boolean indicating whether the Snapshot's status indicates that HACBSTestSucceeded
-func (a *Adapter) isSnapshotConditionMet(snapshot *appstudioshared.ApplicationSnapshot, hacbsTestSucceededConditionType string) bool {
-	condition := meta.FindStatusCondition(snapshot.Status.Conditions, hacbsTestSucceededConditionType)
+// markSnapshotAsPassed updates the result label for the ApplicationSnapshot
+// If the update command fails, an error will be returned
+func (a *Adapter) markSnapshotAsPassed(applicationSnapshot *appstudioshared.ApplicationSnapshot, message string) (*appstudioshared.ApplicationSnapshot, error) {
+	patch := client.MergeFrom(applicationSnapshot.DeepCopy())
+	meta.SetStatusCondition(&applicationSnapshot.Status.Conditions, metav1.Condition{
+		Type:    "HACBSTestSucceeded",
+		Status:  metav1.ConditionTrue,
+		Reason:  "Passed",
+		Message: message,
+	})
+	err := a.client.Status().Patch(a.context, applicationSnapshot, patch)
+	//err := a.client.Status().Update(a.context, applicationSnapshot)
+	if err != nil {
+		return nil, err
+	}
+	return applicationSnapshot, nil
+}
+
+// isSnapshotConditionMet returns a boolean indicating whether the Snapshot's status has the conditionType set to true
+func (a *Adapter) isSnapshotConditionMet(snapshot *appstudioshared.ApplicationSnapshot, conditionType string) bool {
+	condition := meta.FindStatusCondition(snapshot.Status.Conditions, conditionType)
 	if condition != nil {
 		return condition.Status != metav1.ConditionUnknown
 	}
-
 	return false
 }
 
