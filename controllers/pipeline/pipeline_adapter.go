@@ -241,6 +241,7 @@ func (a *Adapter) findMatchingApplicationSnapshot() (*appstudioshared.Applicatio
 		return nil, err
 	}
 	for _, foundApplicationSnapshot := range *allApplicationSnapshots {
+		foundApplicationSnapshot := foundApplicationSnapshot
 		if a.compareApplicationSnapshots(expectedApplicationSnapshot, &foundApplicationSnapshot) {
 			return &foundApplicationSnapshot, nil
 		}
@@ -285,6 +286,7 @@ func (a *Adapter) getImagePullSpecFromPipelineRun(pipelineRun *tektonv1beta1.Pip
 func (a *Adapter) determineIfAllIntegrationPipelinesPassed(integrationPipelineRuns *[]tektonv1beta1.PipelineRun) (bool, error) {
 	allIntegrationPipelineRunsPassed := true
 	for _, integrationPipelineRun := range *integrationPipelineRuns {
+		integrationPipelineRun := integrationPipelineRun
 		pipelineRunOutcome, err := a.calculateIntegrationPipelineRunOutcome(&integrationPipelineRun)
 		if err != nil {
 			a.logger.Error(err, "Failed to get Integration PipelineRun outcome",
@@ -306,6 +308,7 @@ func (a *Adapter) determineIfAllIntegrationPipelinesPassed(integrationPipelineRu
 func (a *Adapter) getAllPipelineRunsForApplicationSnapshot(applicationSnapshot *appstudioshared.ApplicationSnapshot, integrationTestScenarios *[]v1alpha1.IntegrationTestScenario) (*[]tektonv1beta1.PipelineRun, error) {
 	var integrationPipelineRuns []tektonv1beta1.PipelineRun
 	for _, integrationTestScenario := range *integrationTestScenarios {
+		integrationTestScenario := integrationTestScenario
 		if a.pipelineRun.Labels["test.appstudio.openshift.io/scenario"] != integrationTestScenario.Name {
 			integrationPipelineRun, err := a.getLatestPipelineRunForApplicationSnapshotAndScenario(applicationSnapshot, &integrationTestScenario)
 			if err != nil {
@@ -350,6 +353,7 @@ func (a *Adapter) getLatestPipelineRunForApplicationSnapshotAndScenario(applicat
 
 	latestIntegrationPipelineRun = nil
 	for _, pipelineRun := range integrationPipelineRuns.Items {
+		pipelineRun := pipelineRun
 		if pipelineRun.Status.GetCondition(apis.ConditionSucceeded).IsTrue() {
 			if latestIntegrationPipelineRun == nil {
 				latestIntegrationPipelineRun = &pipelineRun
@@ -435,7 +439,10 @@ func (a *Adapter) calculateIntegrationPipelineRunOutcome(pipelineRun *tektonv1be
 		for _, taskRunResult := range taskRun.Status.TaskRunResults {
 			if taskRunResult.Name == "HACBS_TEST_OUTPUT" {
 				var testOutput map[string]interface{}
-				json.Unmarshal([]byte(taskRunResult.Value), &testOutput)
+				err := json.Unmarshal([]byte(taskRunResult.Value), &testOutput)
+				if err != nil {
+					return false, err
+				}
 				a.logger.Info("Found a task with HACBS_TEST_OUTPUT",
 					"taskRun.Name", taskRun.PipelineTaskName,
 					"taskRun Result", testOutput["result"])
