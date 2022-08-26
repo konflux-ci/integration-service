@@ -277,8 +277,10 @@ func (a *Adapter) createMissingReleasesForReleasePlans(releasePlans *[]releasev1
 	}
 
 	for _, releasePlan := range *releasePlans {
+		releasePlan := releasePlan
 		var existingRelease *releasev1alpha1.Release = nil
 		for _, snapshotRelease := range *releases {
+			snapshotRelease := snapshotRelease
 			if snapshotRelease.Spec.ReleasePlan == releasePlan.Name {
 				existingRelease = &snapshotRelease
 			}
