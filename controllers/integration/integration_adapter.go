@@ -125,6 +125,9 @@ func (a *Adapter) EnsureApplicationSnapshotPassedAllTests() (results.OperationRe
 	if err != nil {
 		return results.RequeueWithError(err)
 	}
+	a.logger.Info("Found IntegrationTestScenarios for application",
+		"ApplicationSnapshot.Name", existingApplicationSnapshot.Name,
+		"IntegrationTestScenarios", len(*integrationTestScenarios))
 	integrationPipelineRuns, err := a.getAllPipelineRunsForApplicationSnapshot(existingApplicationSnapshot, integrationTestScenarios)
 	if err != nil {
 		a.logger.Error(err, "Failed to get Integration PipelineRuns",
