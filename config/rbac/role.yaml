@@ -8,6 +8,32 @@ rules:
 - apiGroups:
   - appstudio.redhat.com
   resources:
+  - applicationSnapshots
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - appstudio.redhat.com
+  resources:
+  - applicationSnapshots/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - appstudio.redhat.com
+  resources:
+  - applicationSnapshots/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - appstudio.redhat.com
+  resources:
   - pipelineRuns
   verbs:
   - create

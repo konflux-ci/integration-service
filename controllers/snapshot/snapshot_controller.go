@@ -33,7 +33,7 @@ import (
 	"context"
 )
 
-// Reconciler reconciles a build PipelineRun object
+// Reconciler reconciles an ApplicationSnapshot object
 type Reconciler struct {
 	client.Client
 	Log    logr.Logger
@@ -44,14 +44,14 @@ type Reconciler struct {
 func NewSnapshotReconciler(client client.Client, logger *logr.Logger, scheme *runtime.Scheme) *Reconciler {
 	return &Reconciler{
 		Client: client,
-		Log:    logger.WithName("pipeline"),
+		Log:    logger.WithName("snapshot"),
 		Scheme: scheme,
 	}
 }
 
-//+kubebuilder:rbac:groups=appstudio.redhat.com,resources=pipelineRuns,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=appstudio.redhat.com,resources=pipelineRuns/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=appstudio.redhat.com,resources=pipelineRuns/finalizers,verbs=update
+//+kubebuilder:rbac:groups=appstudio.redhat.com,resources=applicationSnapshots,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=appstudio.redhat.com,resources=applicationSnapshots/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=appstudio.redhat.com,resources=applicationSnapshots/finalizers,verbs=update
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -200,8 +200,7 @@ func setupApplicationCache(mgr ctrl.Manager) error {
 		"spec.environment", applicationIndexFunc)
 }
 
-// setupControllerWithManager sets up the controller with the Manager which monitors new build PipelineRuns and filters
-// out status updates.
+// setupControllerWithManager sets up the controller with the Manager which monitors new ApplicationSnapshots
 func setupControllerWithManager(manager ctrl.Manager, reconciler *Reconciler) error {
 	err := setupReleasePlanCache(manager)
 	if err != nil {

@@ -34,7 +34,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-// Reconciler reconciles a build PipelineRun object
+// Reconciler reconciles a PipelineRun object
 type Reconciler struct {
 	client.Client
 	Log    logr.Logger
@@ -196,7 +196,7 @@ func setupIntegrationTestScenarioCache(mgr ctrl.Manager) error {
 		"spec.application", integrationTestScenariosIndexFunc)
 }
 
-// setupControllerWithManager sets up the controller with the Manager which monitors new build PipelineRuns and filters
+// setupControllerWithManager sets up the controller with the Manager which monitors new PipelineRuns and filters
 // out status updates.
 func setupControllerWithManager(manager ctrl.Manager, reconciler *Reconciler) error {
 	err := setupApplicationComponentCache(manager)

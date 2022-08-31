@@ -29,6 +29,7 @@ import (
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/selection"
+	"math"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -117,6 +118,9 @@ func (a *Adapter) EnsureAllReleasesExist() (results.OperationResult, error) {
 	return results.ContinueProcessing()
 }
 
+// EnsureApplicationSnapshotEnvironmentBindingExist is an operation that will ensure that all
+// ApplicationSnapshotEnvironmentBindings for non-ephemeral root environments point to the newly constructed snapshot.
+// If the bindings don't already exist, it will create new ones for each of the environments.
 func (a *Adapter) EnsureApplicationSnapshotEnvironmentBindingExist() (results.OperationResult, error) {
 	if !a.isSnapshotConditionMet(a.snapshot, "HACBSTestSucceeded") {
 		a.logger.Info("The Snapshot hasn't been marked as HACBSTestSucceeded, holding off on deploying.")
@@ -171,19 +175,22 @@ func (a *Adapter) EnsureApplicationSnapshotEnvironmentBindingExist() (results.Op
 	return results.ContinueProcessing()
 }
 
+// getApplicationSnapshotComponents gets all components from the ApplicationSnapshot and formats them to be used in the
+// ApplicationSnapshotEnvironmentBinding as BindingComponents.
 func (a *Adapter) getApplicationSnapshotComponents(components []hasv1alpha1.Component) *[]appstudioshared.BindingComponent {
 	bindingComponents := []appstudioshared.BindingComponent{}
 	for _, component := range components {
 		bindingComponents = append(bindingComponents, appstudioshared.BindingComponent{
 			Name: component.Spec.ComponentName,
 			Configuration: appstudioshared.BindingComponentConfiguration{
-				Replicas: component.Spec.Replicas,
+				Replicas: int(math.Max(1, float64(component.Spec.Replicas))),
 			},
 		})
 	}
 	return &bindingComponents
 }
 
+// CreateApplicationSnapshotEnvironmentBinding creates a new ApplicationSnapshotEnvironmentBinding using the provided info
 func (a *Adapter) CreateApplicationSnapshotEnvironmentBinding(bindingName string, namespace string, applicationName string, environmentName string, appSnapshot *appstudioshared.ApplicationSnapshot, components []hasv1alpha1.Component) (*appstudioshared.ApplicationSnapshotEnvironmentBinding, error) {
 	bindingComponents := a.getApplicationSnapshotComponents(components)
 
@@ -204,7 +211,7 @@ func (a *Adapter) CreateApplicationSnapshotEnvironmentBinding(bindingName string
 	return applicationSnapshotEnvironmentBinding, err
 }
 
-// getAllApplicationReleasePlans returns the ReleasePlans used by the application being processed. If matching
+// getAutoReleasePlansForApplication returns the ReleasePlans used by the application being processed. If matching
 // ReleasePlans are not found, an error will be returned. A ReleasePlan will only be returned if it has the
 // release.appstudio.openshift.io/auto-release label set to true or if it is missing the label entirely.
 func (a *Adapter) getAutoReleasePlansForApplication(application *hasv1alpha1.Application) (*[]releasev1alpha1.ReleasePlan, error) {
@@ -230,7 +237,7 @@ func (a *Adapter) getAutoReleasePlansForApplication(application *hasv1alpha1.App
 	return &releasePlans.Items, nil
 }
 
-// getApplicationSnapshot returns the all ApplicationSnapshots in the Application's namespace nil if it's not found.
+// getReleasesWithApplicationSnapshot returns all Releases associated with the given applicationSnapshot.
 // In the case the List operation fails, an error will be returned.
 func (a *Adapter) getReleasesWithApplicationSnapshot(applicationSnapshot *appstudioshared.ApplicationSnapshot) (*[]releasev1alpha1.Release, error) {
 	releases := &releasev1alpha1.ReleaseList{}
@@ -268,8 +275,8 @@ func (a *Adapter) createReleaseForReleasePlan(releasePlan *releasev1alpha1.Relea
 	return newRelease, nil
 }
 
-// createReleaseForReleasePlan checks if there's existing Releases for a given list of ReleasePlans and creates new ones
-// if they are missing. In case the Releases can't be created, an error will be returned.
+// createMissingReleasesForReleasePlans checks if there's existing Releases for a given list of ReleasePlans and creates
+// new ones if they are missing. In case the Releases can't be created, an error will be returned.
 func (a *Adapter) createMissingReleasesForReleasePlans(releasePlans *[]releasev1alpha1.ReleasePlan, applicationSnapshot *appstudioshared.ApplicationSnapshot) error {
 	releases, err := a.getReleasesWithApplicationSnapshot(applicationSnapshot)
 	if err != nil {
@@ -305,8 +312,8 @@ func (a *Adapter) createMissingReleasesForReleasePlans(releasePlans *[]releasev1
 }
 
 // getRequiredIntegrationTestScenariosForApplication returns the IntegrationTestScenarios used by the application being processed.
-// A IntegrationTestScenarios will only be returned if it has the
-// release.appstudio.openshift.io/optional label set to true or if it is missing the label entirely.
+// An IntegrationTestScenarios will only be returned if it has the release.appstudio.openshift.io/optional
+// label set to true or if it is missing the label entirely.
 func (a *Adapter) getRequiredIntegrationTestScenariosForApplication(application *hasv1alpha1.Application) (*[]v1alpha1.IntegrationTestScenario, error) {
 	labelSelector := labels.NewSelector()
 	integrationList := &v1alpha1.IntegrationTestScenarioList{}
@@ -340,6 +347,7 @@ func (a *Adapter) getAllEnvironments() (*[]appstudioshared.Environment, error) {
 	return &environmentList.Items, err
 }
 
+// findAvailableEnvironments gets all environments that don't have a ParentEnvironment and are not tagged as ephemeral
 func (a *Adapter) findAvailableEnvironments() (*[]appstudioshared.Environment, error) {
 	allEnvironments, err := a.getAllEnvironments()
 	if err != nil {
@@ -348,17 +356,23 @@ func (a *Adapter) findAvailableEnvironments() (*[]appstudioshared.Environment, e
 	availableEnvironments := []appstudioshared.Environment{}
 	for _, environment := range *allEnvironments {
 		if environment.Spec.ParentEnvironment == "" {
+			isEphemeral := false
 			for _, tag := range environment.Spec.Tags {
 				if tag == "ephemeral" {
+					isEphemeral = true
 					break
 				}
 			}
-			availableEnvironments = append(availableEnvironments, environment)
+			if !isEphemeral {
+				availableEnvironments = append(availableEnvironments, environment)
+			}
 		}
 	}
 	return &availableEnvironments, nil
 }
 
+// findExistingApplicationSnapshotEnvironmentBinding attempts to find an ApplicationSnapshotEnvironmentBinding that's
+// associated with the provided environmentName
 func (a *Adapter) findExistingApplicationSnapshotEnvironmentBinding(environmentName string) (*appstudioshared.ApplicationSnapshotEnvironmentBinding, error) {
 	applicationSnapshotEnvironmentBindingList := &appstudioshared.ApplicationSnapshotEnvironmentBindingList{}
 	opts := []client.ListOption{
@@ -408,20 +422,16 @@ func (a *Adapter) markSnapshotAsPassed(applicationSnapshot *appstudioshared.Appl
 		Message: message,
 	})
 	err := a.client.Status().Patch(a.context, applicationSnapshot, patch)
-	//err := a.client.Status().Update(a.context, applicationSnapshot)
 	if err != nil {
 		return nil, err
 	}
 	return applicationSnapshot, nil
 }
 
-// isSnapshotConditionMet returns a boolean indicating whether the Snapshot's status has the conditionType set to true
+// isSnapshotConditionMet returns a boolean indicating whether the Snapshot's status has the conditionType set to true.
 func (a *Adapter) isSnapshotConditionMet(snapshot *appstudioshared.ApplicationSnapshot, conditionType string) bool {
 	condition := meta.FindStatusCondition(snapshot.Status.Conditions, conditionType)
-	if condition != nil {
-		return condition.Status != metav1.ConditionUnknown
-	}
-	return false
+	return condition != nil && condition.Status != metav1.ConditionUnknown
 }
 
 // updateStatus updates the status of the PipelineRun being processed.

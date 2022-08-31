@@ -61,43 +61,43 @@ func NewAdapter(pipelineRun *tektonv1beta1.PipelineRun, component *hasv1alpha1.C
 	}
 }
 
-// EnsureApplicationSnapshotExists is an operation that will ensure that an pipeline ApplicationSnapshot associated
+// EnsureApplicationSnapshotExists is an operation that will ensure that a pipeline ApplicationSnapshot associated
 // to the PipelineRun being processed exists. Otherwise, it will create a new pipeline ApplicationSnapshot.
 func (a *Adapter) EnsureApplicationSnapshotExists() (results.OperationResult, error) {
 	if !tekton.IsBuildPipelineRun(a.pipelineRun) {
 		return results.ContinueProcessing()
-	} else {
-		existingApplicationSnapshot, err := a.findMatchingApplicationSnapshot()
-		if err != nil {
-			return results.RequeueWithError(err)
-		}
+	}
 
-		if existingApplicationSnapshot != nil {
-			a.logger.Info("Found existing ApplicationSnapshot",
-				"Application.Name", a.application.Name,
-				"ApplicationSnapshot.Name", existingApplicationSnapshot.Name,
-				"ApplicationSnapshot.Spec.Components", existingApplicationSnapshot.Spec.Components)
-			return results.ContinueProcessing()
-		}
+	existingApplicationSnapshot, err := a.findMatchingApplicationSnapshot()
+	if err != nil {
+		return results.RequeueWithError(err)
+	}
 
-		newApplicationSnapshot, err := a.createApplicationSnapshotForPipelineRun(a.pipelineRun, a.component, a.application)
-		if err != nil {
-			a.logger.Error(err, "Failed to create ApplicationSnapshot",
-				"Application.Name", a.application.Name, "Application.Namespace", a.application.Namespace)
-			return results.RequeueOnErrorOrStop(a.updateStatus())
-		}
-
-		a.logger.Info("Created new ApplicationSnapshot",
+	if existingApplicationSnapshot != nil {
+		a.logger.Info("Found existing ApplicationSnapshot",
 			"Application.Name", a.application.Name,
-			"ApplicationSnapshot.Name", newApplicationSnapshot.Name,
-			"ApplicationSnapshot.Spec.Components", newApplicationSnapshot.Spec.Components)
-
+			"ApplicationSnapshot.Name", existingApplicationSnapshot.Name,
+			"ApplicationSnapshot.Spec.Components", existingApplicationSnapshot.Spec.Components)
 		return results.ContinueProcessing()
 	}
+
+	newApplicationSnapshot, err := a.createApplicationSnapshotForPipelineRun(a.pipelineRun, a.component, a.application)
+	if err != nil {
+		a.logger.Error(err, "Failed to create ApplicationSnapshot",
+			"Application.Name", a.application.Name, "Application.Namespace", a.application.Namespace)
+		return results.RequeueOnErrorOrStop(a.updateStatus())
+	}
+
+	a.logger.Info("Created new ApplicationSnapshot",
+		"Application.Name", a.application.Name,
+		"ApplicationSnapshot.Name", newApplicationSnapshot.Name,
+		"ApplicationSnapshot.Spec.Components", newApplicationSnapshot.Spec.Components)
+
+	return results.ContinueProcessing()
 }
 
 // EnsureApplicationSnapshotPassedAllTests is an operation that will ensure that a pipeline ApplicationSnapshot
-// to the PipelineRun being processed passed all tests for all defined IntegrationTestScenarios.
+// to the PipelineRun being processed passed all tests for all defined non-optional IntegrationTestScenarios.
 func (a *Adapter) EnsureApplicationSnapshotPassedAllTests() (results.OperationResult, error) {
 	if !tekton.IsIntegrationPipelineRun(a.pipelineRun) {
 		return results.ContinueProcessing()
@@ -171,8 +171,8 @@ func (a *Adapter) EnsureApplicationSnapshotPassedAllTests() (results.OperationRe
 	return results.ContinueProcessing()
 }
 
-// getComponentFromPipelineRun loads from the cluster the Component referenced in the given PipelineRun. If the PipelineRun doesn't
-// specify a Component or this is not found in the cluster, an error will be returned.
+// getApplicationSnapshotFromPipelineRun loads from the cluster the ApplicationSnapshot referenced in the given PipelineRun.
+// If the PipelineRun doesn't specify an ApplicationSnapshot or this is not found in the cluster, an error will be returned.
 func (a *Adapter) getApplicationSnapshotFromPipelineRun(pipelineRun *tektonv1beta1.PipelineRun, pipelineType string) (*appstudioshared.ApplicationSnapshot, error) {
 	snapshotLabel := fmt.Sprintf("%s.appstudio.openshift.io/snapshot", pipelineType)
 	if snapshotName, found := pipelineRun.Labels[snapshotLabel]; found {
@@ -192,7 +192,7 @@ func (a *Adapter) getApplicationSnapshotFromPipelineRun(pipelineRun *tektonv1bet
 	return nil, fmt.Errorf("the pipeline has no snapshot associated with it")
 }
 
-// getApplicationSnapshot returns the all ApplicationSnapshots in the Application's namespace nil if it's not found.
+// getAllApplicationSnapshots returns all ApplicationSnapshots in the Application's namespace nil if it's not found.
 // In the case the List operation fails, an error will be returned.
 func (a *Adapter) getAllApplicationSnapshots() (*[]appstudioshared.ApplicationSnapshot, error) {
 	applicationSnapshots := &appstudioshared.ApplicationSnapshotList{}
@@ -211,35 +211,38 @@ func (a *Adapter) getAllApplicationSnapshots() (*[]appstudioshared.ApplicationSn
 
 // compareApplicationSnapshots compares two ApplicationSnapshots and returns boolean true if their images match exactly.
 func (a *Adapter) compareApplicationSnapshots(expectedApplicationSnapshot *appstudioshared.ApplicationSnapshot, foundApplicationSnapshot *appstudioshared.ApplicationSnapshot) bool {
-	snapshotsHaveSameNumberOfImages :=
-		len(expectedApplicationSnapshot.Spec.Components) == len(foundApplicationSnapshot.Spec.Components)
-	allImagesMatch := true
-	for _, component1 := range expectedApplicationSnapshot.Spec.Components {
+	if len(expectedApplicationSnapshot.Spec.Components) != len(foundApplicationSnapshot.Spec.Components) {
+		return false
+	}
+
+	for _, expectedSnapshotComponent := range expectedApplicationSnapshot.Spec.Components {
 		foundImage := false
-		for _, component2 := range foundApplicationSnapshot.Spec.Components {
-			if component2 == component1 {
+		for _, foundSnapshotComponent := range foundApplicationSnapshot.Spec.Components {
+			if expectedSnapshotComponent == foundSnapshotComponent {
 				foundImage = true
+				break
 			}
 		}
 		if !foundImage {
-			allImagesMatch = false
+			return false
 		}
-
 	}
-	return snapshotsHaveSameNumberOfImages && allImagesMatch
+
+	return true
 }
 
 // findMatchingApplicationSnapshot tries to find the expected ApplicationSnapshot with the same set of images.
 func (a *Adapter) findMatchingApplicationSnapshot() (*appstudioshared.ApplicationSnapshot, error) {
-	var allApplicationSnapshots *[]appstudioshared.ApplicationSnapshot
 	expectedApplicationSnapshot, err := a.prepareApplicationSnapshotForPipelineRun(a.pipelineRun, a.component, a.application)
 	if err != nil {
 		return nil, err
 	}
-	allApplicationSnapshots, err = a.getAllApplicationSnapshots()
+
+	allApplicationSnapshots, err := a.getAllApplicationSnapshots()
 	if err != nil {
 		return nil, err
 	}
+
 	for _, foundApplicationSnapshot := range *allApplicationSnapshots {
 		foundApplicationSnapshot := foundApplicationSnapshot
 		if a.compareApplicationSnapshots(expectedApplicationSnapshot, &foundApplicationSnapshot) {
@@ -269,7 +272,6 @@ func (a *Adapter) getAllApplicationComponents(application *hasv1alpha1.Applicati
 // getImagePullSpecFromPipelineRun gets the full image pullspec from the given build PipelineRun,
 // In case the Image pullspec can't be can't be composed, an error will be returned.
 func (a *Adapter) getImagePullSpecFromPipelineRun(pipelineRun *tektonv1beta1.PipelineRun) (string, error) {
-	var err error
 	outputImage, err := tekton.GetOutputImage(pipelineRun)
 	if err != nil {
 		return "", err
@@ -281,7 +283,7 @@ func (a *Adapter) getImagePullSpecFromPipelineRun(pipelineRun *tektonv1beta1.Pip
 	return fmt.Sprintf("%s@%s", strings.Split(outputImage, ":")[0], imageDigest), nil
 }
 
-// determineIfAllIntegrationPipelinesFinished checks all Integration pipelines passed all of their test tasks.
+// determineIfAllIntegrationPipelinesPassed checks all Integration pipelines passed all of their test tasks.
 // Returns an error if it can't get the PipelineRun outcomes
 func (a *Adapter) determineIfAllIntegrationPipelinesPassed(integrationPipelineRuns *[]tektonv1beta1.PipelineRun) (bool, error) {
 	allIntegrationPipelineRunsPassed := true
@@ -406,12 +408,9 @@ func (a *Adapter) prepareApplicationSnapshotForPipelineRun(pipelineRun *tektonv1
 		},
 	}
 	if applicationSnapshot.Labels == nil {
-		applicationSnapshot.Labels = map[string]string{
-			"component": a.component.Name,
-		}
-	} else {
-		applicationSnapshot.Labels["component"] = a.component.Name
+		applicationSnapshot.Labels = map[string]string{}
 	}
+	applicationSnapshot.Labels["component"] = a.component.Name
 
 	return applicationSnapshot, nil
 }
@@ -433,7 +432,7 @@ func (a *Adapter) createApplicationSnapshotForPipelineRun(pipelineRun *tektonv1b
 }
 
 // calculateIntegrationPipelineRunOutcome checks the tekton results for a given PipelineRun and calculates the overall outcome.
-// If any of the tasks with the HACBS_TEST_OUTPUT result don't have the `result` field set to SUCCESS, it returns false
+// If any of the tasks with the HACBS_TEST_OUTPUT result don't have the `result` field set to SUCCESS, it returns false.
 func (a *Adapter) calculateIntegrationPipelineRunOutcome(pipelineRun *tektonv1beta1.PipelineRun) (bool, error) {
 	for _, taskRun := range pipelineRun.Status.TaskRuns {
 		for _, taskRunResult := range taskRun.Status.TaskRunResults {
@@ -455,7 +454,7 @@ func (a *Adapter) calculateIntegrationPipelineRunOutcome(pipelineRun *tektonv1be
 	return true, nil
 }
 
-// markSnapshotAsPassed updates the result label for the ApplicationSnapshot
+// markSnapshotAsPassed updates the result label for the ApplicationSnapshot.
 // If the update command fails, an error will be returned
 func (a *Adapter) markSnapshotAsPassed(applicationSnapshot *appstudioshared.ApplicationSnapshot, message string) (*appstudioshared.ApplicationSnapshot, error) {
 	patch := client.MergeFrom(applicationSnapshot.DeepCopy())
@@ -466,15 +465,14 @@ func (a *Adapter) markSnapshotAsPassed(applicationSnapshot *appstudioshared.Appl
 		Message: message,
 	})
 	err := a.client.Status().Patch(a.context, applicationSnapshot, patch)
-	//err := a.client.Status().Update(a.context, applicationSnapshot)
 	if err != nil {
 		return nil, err
 	}
 	return applicationSnapshot, nil
 }
 
-// markSnapshotAsFailed updates the result label for the ApplicationSnapshot
-// If the update command fails, an error will be returned
+// markSnapshotAsFailed updates the result label for the ApplicationSnapshot.
+// If the update command fails, an error will be returned.
 func (a *Adapter) markSnapshotAsFailed(applicationSnapshot *appstudioshared.ApplicationSnapshot, message string) (*appstudioshared.ApplicationSnapshot, error) {
 	patch := client.MergeFrom(applicationSnapshot.DeepCopy())
 	meta.SetStatusCondition(&applicationSnapshot.Status.Conditions, metav1.Condition{
@@ -491,8 +489,8 @@ func (a *Adapter) markSnapshotAsFailed(applicationSnapshot *appstudioshared.Appl
 }
 
 // getRequiredIntegrationTestScenariosForApplication returns the IntegrationTestScenarios used by the application being processed.
-// A IntegrationTestScenarios will only be returned if it has the
-// release.appstudio.openshift.io/optional label set to true or if it is missing the label entirely.
+// An IntegrationTestScenarios will only be returned if it has the release.appstudio.openshift.io/optional
+// label set to true or if it is missing the label entirely.
 func (a *Adapter) getRequiredIntegrationTestScenariosForApplication(application *hasv1alpha1.Application) (*[]v1alpha1.IntegrationTestScenario, error) {
 	labelSelector := labels.NewSelector()
 	integrationList := &v1alpha1.IntegrationTestScenarioList{}
