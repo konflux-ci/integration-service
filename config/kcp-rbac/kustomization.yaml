@@ -12,7 +12,7 @@ resources:
 
 # Integration service
 - integrationtestscenario_editor_role.yaml
-- integrationtestscenario_viewer.yaml
+- integrationtestscenario_viewer_role.yaml
 - integrationtestscenario_role_binding.yaml
 
 # Application service
