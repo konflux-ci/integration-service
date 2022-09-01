@@ -18,20 +18,16 @@ package pipeline
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"github.com/go-logr/logr"
 	hasv1alpha1 "github.com/redhat-appstudio/application-service/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/controllers/results"
+	"github.com/redhat-appstudio/integration-service/gitops"
+	"github.com/redhat-appstudio/integration-service/helpers"
 	"github.com/redhat-appstudio/integration-service/tekton"
 	appstudioshared "github.com/redhat-appstudio/managed-gitops/appstudio-shared/apis/appstudio.redhat.com/v1alpha1"
 	tektonv1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
-	"k8s.io/apimachinery/pkg/api/meta"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/fields"
-	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/apimachinery/pkg/selection"
 	"k8s.io/apimachinery/pkg/types"
 	"knative.dev/pkg/apis"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -68,7 +64,11 @@ func (a *Adapter) EnsureApplicationSnapshotExists() (results.OperationResult, er
 		return results.ContinueProcessing()
 	}
 
-	existingApplicationSnapshot, err := a.findMatchingApplicationSnapshot()
+	expectedApplicationSnapshot, err := a.prepareApplicationSnapshotForPipelineRun(a.pipelineRun, a.component, a.application)
+	if err != nil {
+		return results.RequeueWithError(err)
+	}
+	existingApplicationSnapshot, err := gitops.FindMatchingApplicationSnapshot(a.client, a.context, a.application, expectedApplicationSnapshot)
 	if err != nil {
 		return results.RequeueWithError(err)
 	}
@@ -120,7 +120,7 @@ func (a *Adapter) EnsureApplicationSnapshotPassedAllTests() (results.OperationRe
 
 	// Get all integrationTestScenarios for the Application and then find the latest Succeeded Integration PipelineRuns
 	// for the ApplicationSnapshot
-	integrationTestScenarios, err := a.getRequiredIntegrationTestScenariosForApplication(a.application)
+	integrationTestScenarios, err := helpers.GetRequiredIntegrationTestScenariosForApplication(a.client, a.context, a.application)
 	if err != nil {
 		return results.RequeueWithError(err)
 	}
@@ -148,7 +148,7 @@ func (a *Adapter) EnsureApplicationSnapshotPassedAllTests() (results.OperationRe
 		return results.RequeueOnErrorOrStop(a.updateStatus())
 	}
 	if allIntegrationPipelineRunsPassed {
-		existingApplicationSnapshot, err = a.markSnapshotAsPassed(existingApplicationSnapshot, "All Integration Pipeline tests passed")
+		existingApplicationSnapshot, err = gitops.MarkSnapshotAsPassed(a.client, a.context, existingApplicationSnapshot, "All Integration Pipeline tests passed")
 		if err != nil {
 			a.logger.Error(err, "Failed to Update ApplicationSnapshot HACBSTestSucceeded status")
 			return results.RequeueOnErrorOrStop(a.updateStatus())
@@ -158,7 +158,7 @@ func (a *Adapter) EnsureApplicationSnapshotPassedAllTests() (results.OperationRe
 			"ApplicationSnapshot.Name", existingApplicationSnapshot.Name,
 			"ApplicationSnapshot Stage", existingApplicationSnapshot.Labels[""])
 	} else {
-		existingApplicationSnapshot, err = a.markSnapshotAsFailed(existingApplicationSnapshot, "Some Integration pipeline tests failed")
+		existingApplicationSnapshot, err = gitops.MarkSnapshotAsFailed(a.client, a.context, existingApplicationSnapshot, "Some Integration pipeline tests failed")
 		if err != nil {
 			a.logger.Error(err, "Failed to Update ApplicationSnapshot HACBSTestSucceeded status")
 			return results.RequeueOnErrorOrStop(a.updateStatus())
@@ -169,87 +169,6 @@ func (a *Adapter) EnsureApplicationSnapshotPassedAllTests() (results.OperationRe
 	}
 
 	return results.ContinueProcessing()
-}
-
-// getApplicationSnapshotFromPipelineRun loads from the cluster the ApplicationSnapshot referenced in the given PipelineRun.
-// If the PipelineRun doesn't specify an ApplicationSnapshot or this is not found in the cluster, an error will be returned.
-func (a *Adapter) getApplicationSnapshotFromPipelineRun(pipelineRun *tektonv1beta1.PipelineRun, pipelineType string) (*appstudioshared.ApplicationSnapshot, error) {
-	snapshotLabel := fmt.Sprintf("%s.appstudio.openshift.io/snapshot", pipelineType)
-	if snapshotName, found := pipelineRun.Labels[snapshotLabel]; found {
-		snapshot := &appstudioshared.ApplicationSnapshot{}
-		err := a.client.Get(a.context, types.NamespacedName{
-			Namespace: pipelineRun.Namespace,
-			Name:      snapshotName,
-		}, snapshot)
-
-		if err != nil {
-			return nil, err
-		}
-
-		return snapshot, nil
-	}
-
-	return nil, fmt.Errorf("the pipeline has no snapshot associated with it")
-}
-
-// getAllApplicationSnapshots returns all ApplicationSnapshots in the Application's namespace nil if it's not found.
-// In the case the List operation fails, an error will be returned.
-func (a *Adapter) getAllApplicationSnapshots() (*[]appstudioshared.ApplicationSnapshot, error) {
-	applicationSnapshots := &appstudioshared.ApplicationSnapshotList{}
-	opts := []client.ListOption{
-		client.InNamespace(a.application.Namespace),
-		client.MatchingFields{"spec.application": a.application.Name},
-	}
-
-	err := a.client.List(a.context, applicationSnapshots, opts...)
-	if err != nil {
-		return nil, err
-	}
-
-	return &applicationSnapshots.Items, nil
-}
-
-// compareApplicationSnapshots compares two ApplicationSnapshots and returns boolean true if their images match exactly.
-func (a *Adapter) compareApplicationSnapshots(expectedApplicationSnapshot *appstudioshared.ApplicationSnapshot, foundApplicationSnapshot *appstudioshared.ApplicationSnapshot) bool {
-	if len(expectedApplicationSnapshot.Spec.Components) != len(foundApplicationSnapshot.Spec.Components) {
-		return false
-	}
-
-	for _, expectedSnapshotComponent := range expectedApplicationSnapshot.Spec.Components {
-		foundImage := false
-		for _, foundSnapshotComponent := range foundApplicationSnapshot.Spec.Components {
-			if expectedSnapshotComponent == foundSnapshotComponent {
-				foundImage = true
-				break
-			}
-		}
-		if !foundImage {
-			return false
-		}
-	}
-
-	return true
-}
-
-// findMatchingApplicationSnapshot tries to find the expected ApplicationSnapshot with the same set of images.
-func (a *Adapter) findMatchingApplicationSnapshot() (*appstudioshared.ApplicationSnapshot, error) {
-	expectedApplicationSnapshot, err := a.prepareApplicationSnapshotForPipelineRun(a.pipelineRun, a.component, a.application)
-	if err != nil {
-		return nil, err
-	}
-
-	allApplicationSnapshots, err := a.getAllApplicationSnapshots()
-	if err != nil {
-		return nil, err
-	}
-
-	for _, foundApplicationSnapshot := range *allApplicationSnapshots {
-		foundApplicationSnapshot := foundApplicationSnapshot
-		if a.compareApplicationSnapshots(expectedApplicationSnapshot, &foundApplicationSnapshot) {
-			return &foundApplicationSnapshot, nil
-		}
-	}
-	return nil, nil
 }
 
 // getAllApplicationComponents loads from the cluster all Components associated with the given Application.
@@ -289,7 +208,7 @@ func (a *Adapter) determineIfAllIntegrationPipelinesPassed(integrationPipelineRu
 	allIntegrationPipelineRunsPassed := true
 	for _, integrationPipelineRun := range *integrationPipelineRuns {
 		integrationPipelineRun := integrationPipelineRun
-		pipelineRunOutcome, err := a.calculateIntegrationPipelineRunOutcome(&integrationPipelineRun)
+		pipelineRunOutcome, err := helpers.CalculateIntegrationPipelineRunOutcome(a.logger, &integrationPipelineRun)
 		if err != nil {
 			a.logger.Error(err, "Failed to get Integration PipelineRun outcome",
 				"PipelineRun.Name", integrationPipelineRun.Name, "PipelineRun.Namespace", integrationPipelineRun.Namespace)
@@ -302,6 +221,27 @@ func (a *Adapter) determineIfAllIntegrationPipelinesPassed(integrationPipelineRu
 		}
 	}
 	return allIntegrationPipelineRunsPassed, nil
+}
+
+// getApplicationSnapshotFromPipelineRun loads from the cluster the ApplicationSnapshot referenced in the given PipelineRun.
+// If the PipelineRun doesn't specify an ApplicationSnapshot or this is not found in the cluster, an error will be returned.
+func (a *Adapter) getApplicationSnapshotFromPipelineRun(pipelineRun *tektonv1beta1.PipelineRun, pipelineType string) (*appstudioshared.ApplicationSnapshot, error) {
+	snapshotLabel := fmt.Sprintf("%s.appstudio.openshift.io/snapshot", pipelineType)
+	if snapshotName, found := pipelineRun.Labels[snapshotLabel]; found {
+		snapshot := &appstudioshared.ApplicationSnapshot{}
+		err := a.client.Get(a.context, types.NamespacedName{
+			Namespace: pipelineRun.Namespace,
+			Name:      snapshotName,
+		}, snapshot)
+
+		if err != nil {
+			return nil, err
+		}
+
+		return snapshot, nil
+	}
+
+	return nil, fmt.Errorf("the pipeline has no snapshot associated with it")
 }
 
 // getAllPipelineRunsForApplicationSnapshot loads from the cluster all Integration PipelineRuns for each IntegrationTestScenario
@@ -381,8 +321,8 @@ func (a *Adapter) prepareApplicationSnapshotForPipelineRun(pipelineRun *tektonv1
 	if err != nil {
 		return nil, fmt.Errorf("failed to get all Application Components for Application %s", a.application.Name)
 	}
-	var components []appstudioshared.ApplicationSnapshotComponent
 
+	var components []appstudioshared.ApplicationSnapshotComponent
 	for _, applicationComponent := range *applicationComponents {
 		pullSpec := applicationComponent.Status.ContainerImage
 		if applicationComponent.Name == component.Name {
@@ -397,20 +337,11 @@ func (a *Adapter) prepareApplicationSnapshotForPipelineRun(pipelineRun *tektonv1
 		})
 	}
 
-	applicationSnapshot := &appstudioshared.ApplicationSnapshot{
-		ObjectMeta: metav1.ObjectMeta{
-			GenerateName: application.Name + "-",
-			Namespace:    application.Namespace,
-		},
-		Spec: appstudioshared.ApplicationSnapshotSpec{
-			Application: application.Name,
-			Components:  components,
-		},
-	}
+	applicationSnapshot := gitops.CreateApplicationSnapshot(application, &components)
 	if applicationSnapshot.Labels == nil {
 		applicationSnapshot.Labels = map[string]string{}
 	}
-	applicationSnapshot.Labels["component"] = a.component.Name
+	applicationSnapshot.Labels[gitops.ApplicationSnapshotComponentsLabel] = a.component.Name
 
 	return applicationSnapshot, nil
 }
@@ -429,89 +360,6 @@ func (a *Adapter) createApplicationSnapshotForPipelineRun(pipelineRun *tektonv1b
 	}
 
 	return applicationSnapshot, nil
-}
-
-// calculateIntegrationPipelineRunOutcome checks the tekton results for a given PipelineRun and calculates the overall outcome.
-// If any of the tasks with the HACBS_TEST_OUTPUT result don't have the `result` field set to SUCCESS, it returns false.
-func (a *Adapter) calculateIntegrationPipelineRunOutcome(pipelineRun *tektonv1beta1.PipelineRun) (bool, error) {
-	for _, taskRun := range pipelineRun.Status.TaskRuns {
-		for _, taskRunResult := range taskRun.Status.TaskRunResults {
-			if taskRunResult.Name == "HACBS_TEST_OUTPUT" {
-				var testOutput map[string]interface{}
-				err := json.Unmarshal([]byte(taskRunResult.Value), &testOutput)
-				if err != nil {
-					return false, err
-				}
-				a.logger.Info("Found a task with HACBS_TEST_OUTPUT",
-					"taskRun.Name", taskRun.PipelineTaskName,
-					"taskRun Result", testOutput["result"])
-				if testOutput["result"] != "SUCCESS" && testOutput["result"] != "SKIPPED" {
-					return false, nil
-				}
-			}
-		}
-	}
-	return true, nil
-}
-
-// markSnapshotAsPassed updates the result label for the ApplicationSnapshot.
-// If the update command fails, an error will be returned
-func (a *Adapter) markSnapshotAsPassed(applicationSnapshot *appstudioshared.ApplicationSnapshot, message string) (*appstudioshared.ApplicationSnapshot, error) {
-	patch := client.MergeFrom(applicationSnapshot.DeepCopy())
-	meta.SetStatusCondition(&applicationSnapshot.Status.Conditions, metav1.Condition{
-		Type:    "HACBSTestSucceeded",
-		Status:  metav1.ConditionTrue,
-		Reason:  "Passed",
-		Message: message,
-	})
-	err := a.client.Status().Patch(a.context, applicationSnapshot, patch)
-	if err != nil {
-		return nil, err
-	}
-	return applicationSnapshot, nil
-}
-
-// markSnapshotAsFailed updates the result label for the ApplicationSnapshot.
-// If the update command fails, an error will be returned.
-func (a *Adapter) markSnapshotAsFailed(applicationSnapshot *appstudioshared.ApplicationSnapshot, message string) (*appstudioshared.ApplicationSnapshot, error) {
-	patch := client.MergeFrom(applicationSnapshot.DeepCopy())
-	meta.SetStatusCondition(&applicationSnapshot.Status.Conditions, metav1.Condition{
-		Type:    "HACBSTestSucceeded",
-		Status:  metav1.ConditionFalse,
-		Reason:  "Failed",
-		Message: message,
-	})
-	err := a.client.Status().Patch(a.context, applicationSnapshot, patch)
-	if err != nil {
-		return nil, err
-	}
-	return applicationSnapshot, nil
-}
-
-// getRequiredIntegrationTestScenariosForApplication returns the IntegrationTestScenarios used by the application being processed.
-// An IntegrationTestScenarios will only be returned if it has the release.appstudio.openshift.io/optional
-// label set to true or if it is missing the label entirely.
-func (a *Adapter) getRequiredIntegrationTestScenariosForApplication(application *hasv1alpha1.Application) (*[]v1alpha1.IntegrationTestScenario, error) {
-	labelSelector := labels.NewSelector()
-	integrationList := &v1alpha1.IntegrationTestScenarioList{}
-	labelRequirement, err := labels.NewRequirement("test.appstudio.openshift.io/optional", selection.NotIn, []string{"false"})
-	if err != nil {
-		return nil, err
-	}
-	labelSelector = labelSelector.Add(*labelRequirement)
-
-	opts := &client.ListOptions{
-		Namespace:     application.Namespace,
-		FieldSelector: fields.OneTermEqualSelector("spec.application", application.Name),
-		LabelSelector: labelSelector,
-	}
-
-	err = a.client.List(a.context, integrationList, opts)
-	if err != nil {
-		return nil, err
-	}
-
-	return &integrationList.Items, nil
 }
 
 // updateStatus updates the status of the PipelineRun being processed.

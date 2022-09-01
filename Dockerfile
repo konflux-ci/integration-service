@@ -14,6 +14,8 @@ COPY api/ api/
 COPY controllers/ controllers/
 COPY tekton/ tekton/
 COPY helpers/ helpers/
+COPY gitops/ gitops/
+COPY release/ release/
 
 # Build
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -o manager main.go
