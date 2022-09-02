@@ -26,9 +26,6 @@ import (
 	"github.com/redhat-appstudio/integration-service/release"
 	appstudioshared "github.com/redhat-appstudio/managed-gitops/appstudio-shared/apis/appstudio.redhat.com/v1alpha1"
 	releasev1alpha1 "github.com/redhat-appstudio/release-service/api/v1alpha1"
-	"k8s.io/apimachinery/pkg/fields"
-	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/apimachinery/pkg/selection"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -67,10 +64,12 @@ func (a *Adapter) EnsureAllIntegrationTestPipelinesExist() (results.OperationRes
 
 	requiredIntegrationTestScenarios, err := helpers.GetRequiredIntegrationTestScenariosForApplication(a.client, a.context, a.application)
 	if err != nil {
-		a.logger.Error(err, "Failed to get all IntegrationTestScenarios",
+		a.logger.Error(err, "Failed to get all required IntegrationTestScenarios",
 			"Application.Name", a.application.Name,
 			"Application.Namespace", a.application.Namespace)
-		return results.RequeueOnErrorOrStop(a.updateStatus())
+		patch := client.MergeFrom(a.snapshot.DeepCopy())
+		gitops.SetSnapshotIntegrationStatusAsInvalid(a.snapshot, "Failed to get all required IntegrationTestScenarios")
+		return results.RequeueOnErrorOrStop(a.client.Status().Patch(a.context, a.snapshot, patch))
 	}
 	if len(*requiredIntegrationTestScenarios) == 0 {
 		updatedSnapshot, err := gitops.MarkSnapshotAsPassed(a.client, a.context, a.snapshot, "No required IntegrationTestScenarios found, skipped testing")
@@ -78,7 +77,7 @@ func (a *Adapter) EnsureAllIntegrationTestPipelinesExist() (results.OperationRes
 			a.logger.Error(err, "Failed to update Snapshot status",
 				"ApplicationSnapshot.Name", a.snapshot.Name,
 				"ApplicationSnapshot.Namespace", a.snapshot.Namespace)
-			return results.RequeueOnErrorOrStop(a.updateStatus())
+			return results.RequeueWithError(err)
 		}
 		a.logger.Info("No required IntegrationTestScenarios found, skipped testing and marked Snapshot as successful",
 			"ApplicationSnapshot.Name", updatedSnapshot.Name,
@@ -98,20 +97,24 @@ func (a *Adapter) EnsureAllReleasesExist() (results.OperationResult, error) {
 		return results.ContinueProcessing()
 	}
 
-	releasePlans, err := a.getAutoReleasePlansForApplication(a.application)
+	releasePlans, err := release.GetAutoReleasePlansForApplication(a.client, a.context, a.application)
 	if err != nil {
 		a.logger.Error(err, "Failed to get all ReleasePlans",
 			"Application.Name", a.application.Name,
 			"Application.Namespace", a.application.Namespace)
-		return results.RequeueOnErrorOrStop(a.updateStatus())
+		patch := client.MergeFrom(a.snapshot.DeepCopy())
+		gitops.SetSnapshotIntegrationStatusAsInvalid(a.snapshot, "Failed to get all ReleasePlans")
+		return results.RequeueOnErrorOrStop(a.client.Status().Patch(a.context, a.snapshot, patch))
 	}
 
 	err = a.createMissingReleasesForReleasePlans(releasePlans, a.snapshot)
 	if err != nil {
-		a.logger.Error(err, "Failed to create new Releases for",
+		a.logger.Error(err, "Failed to create new Releases",
 			"ApplicationSnapshot.Name", a.snapshot.Name,
 			"ApplicationSnapshot.Namespace", a.snapshot.Namespace)
-		return results.RequeueOnErrorOrStop(a.updateStatus())
+		patch := client.MergeFrom(a.snapshot.DeepCopy())
+		gitops.SetSnapshotIntegrationStatusAsInvalid(a.snapshot, "Failed to create new Releases")
+		return results.RequeueOnErrorOrStop(a.client.Status().Patch(a.context, a.snapshot, patch))
 	}
 
 	return results.ContinueProcessing()
@@ -154,7 +157,9 @@ func (a *Adapter) EnsureApplicationSnapshotEnvironmentBindingExist() (results.Op
 					"ApplicationSnapshotEnvironmentBinding.Application", applicationSnapshotEnvironmentBinding.Spec.Application,
 					"ApplicationSnapshotEnvironmentBinding.Environment", applicationSnapshotEnvironmentBinding.Spec.Environment,
 					"ApplicationSnapshotEnvironmentBinding.Snapshot", applicationSnapshotEnvironmentBinding.Spec.Snapshot)
-				return results.RequeueOnErrorOrStop(a.updateStatus())
+				patch := client.MergeFrom(a.snapshot.DeepCopy())
+				gitops.SetSnapshotIntegrationStatusAsInvalid(a.snapshot, "Failed to update ApplicationSnapshotEnvironmentBinding")
+				return results.RequeueOnErrorOrStop(a.client.Status().Patch(a.context, a.snapshot, patch))
 			}
 		} else {
 			applicationSnapshotEnvironmentBinding = gitops.CreateApplicationSnapshotEnvironmentBinding(
@@ -168,7 +173,9 @@ func (a *Adapter) EnsureApplicationSnapshotEnvironmentBindingExist() (results.Op
 					"ApplicationSnapshotEnvironmentBinding.Application", applicationSnapshotEnvironmentBinding.Spec.Application,
 					"ApplicationSnapshotEnvironmentBinding.Environment", applicationSnapshotEnvironmentBinding.Spec.Environment,
 					"ApplicationSnapshotEnvironmentBinding.Snapshot", applicationSnapshotEnvironmentBinding.Spec.Snapshot)
-				return results.RequeueOnErrorOrStop(a.updateStatus())
+				patch := client.MergeFrom(a.snapshot.DeepCopy())
+				gitops.SetSnapshotIntegrationStatusAsInvalid(a.snapshot, "Failed to create ApplicationSnapshotEnvironmentBinding")
+				return results.RequeueOnErrorOrStop(a.client.Status().Patch(a.context, a.snapshot, patch))
 			}
 
 		}
@@ -178,32 +185,6 @@ func (a *Adapter) EnsureApplicationSnapshotEnvironmentBindingExist() (results.Op
 			"ApplicationSnapshotEnvironmentBinding.Snapshot", applicationSnapshotEnvironmentBinding.Spec.Snapshot)
 	}
 	return results.ContinueProcessing()
-}
-
-// getAutoReleasePlansForApplication returns the ReleasePlans used by the application being processed. If matching
-// ReleasePlans are not found, an error will be returned. A ReleasePlan will only be returned if it has the
-// release.appstudio.openshift.io/auto-release label set to true or if it is missing the label entirely.
-func (a *Adapter) getAutoReleasePlansForApplication(application *hasv1alpha1.Application) (*[]releasev1alpha1.ReleasePlan, error) {
-	releasePlans := &releasev1alpha1.ReleasePlanList{}
-	labelSelector := labels.NewSelector()
-	labelRequirement, err := labels.NewRequirement("release.appstudio.openshift.io/auto-release", selection.NotIn, []string{"false"})
-	if err != nil {
-		return nil, err
-	}
-	labelSelector = labelSelector.Add(*labelRequirement)
-
-	opts := &client.ListOptions{
-		Namespace:     application.Namespace,
-		FieldSelector: fields.OneTermEqualSelector("spec.application", application.Name),
-		LabelSelector: labelSelector,
-	}
-
-	err = a.client.List(a.context, releasePlans, opts)
-	if err != nil {
-		return nil, err
-	}
-
-	return &releasePlans.Items, nil
 }
 
 // getReleasesWithApplicationSnapshot returns all Releases associated with the given applicationSnapshot.
@@ -304,9 +285,4 @@ func (a *Adapter) getAllApplicationComponents(application *hasv1alpha1.Applicati
 	}
 
 	return &applicationComponents.Items, nil
-}
-
-// updateStatus updates the status of the PipelineRun being processed.
-func (a *Adapter) updateStatus() error {
-	return a.client.Status().Update(a.context, a.snapshot)
 }

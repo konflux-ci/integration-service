@@ -85,7 +85,7 @@ func (a *Adapter) EnsureApplicationSnapshotExists() (results.OperationResult, er
 	if err != nil {
 		a.logger.Error(err, "Failed to create ApplicationSnapshot",
 			"Application.Name", a.application.Name, "Application.Namespace", a.application.Namespace)
-		return results.RequeueOnErrorOrStop(a.updateStatus())
+		return results.RequeueWithError(err)
 	}
 
 	a.logger.Info("Created new ApplicationSnapshot",
@@ -128,7 +128,7 @@ func (a *Adapter) EnsureApplicationSnapshotPassedAllTests() (results.OperationRe
 	if err != nil {
 		a.logger.Error(err, "Failed to get Integration PipelineRuns",
 			"ApplicationSnapshot.Name", existingApplicationSnapshot.Name)
-		return results.RequeueOnErrorOrStop(a.updateStatus())
+		return results.RequeueWithError(err)
 	}
 
 	// Skip doing anything if not all Integration PipelineRuns were found for all integrationTestScenarios
@@ -145,13 +145,13 @@ func (a *Adapter) EnsureApplicationSnapshotPassedAllTests() (results.OperationRe
 	if err != nil {
 		a.logger.Error(err, "Failed to determine outcomes for Integration PipelineRuns",
 			"ApplicationSnapshot.Name", existingApplicationSnapshot.Name)
-		return results.RequeueOnErrorOrStop(a.updateStatus())
+		return results.RequeueWithError(err)
 	}
 	if allIntegrationPipelineRunsPassed {
 		existingApplicationSnapshot, err = gitops.MarkSnapshotAsPassed(a.client, a.context, existingApplicationSnapshot, "All Integration Pipeline tests passed")
 		if err != nil {
 			a.logger.Error(err, "Failed to Update ApplicationSnapshot HACBSTestSucceeded status")
-			return results.RequeueOnErrorOrStop(a.updateStatus())
+			return results.RequeueWithError(err)
 		}
 		a.logger.Info("All Integration PipelineRuns succeeded, marking ApplicationSnapshot as succeeded",
 			"Application.Name", a.application.Name,
@@ -161,7 +161,7 @@ func (a *Adapter) EnsureApplicationSnapshotPassedAllTests() (results.OperationRe
 		existingApplicationSnapshot, err = gitops.MarkSnapshotAsFailed(a.client, a.context, existingApplicationSnapshot, "Some Integration pipeline tests failed")
 		if err != nil {
 			a.logger.Error(err, "Failed to Update ApplicationSnapshot HACBSTestSucceeded status")
-			return results.RequeueOnErrorOrStop(a.updateStatus())
+			return results.RequeueWithError(err)
 		}
 		a.logger.Info("Some tests within Integration PipelineRuns failed, marking ApplicationSnapshot as failed",
 			"Application.Name", a.application.Name,
@@ -226,7 +226,7 @@ func (a *Adapter) determineIfAllIntegrationPipelinesPassed(integrationPipelineRu
 // getApplicationSnapshotFromPipelineRun loads from the cluster the ApplicationSnapshot referenced in the given PipelineRun.
 // If the PipelineRun doesn't specify an ApplicationSnapshot or this is not found in the cluster, an error will be returned.
 func (a *Adapter) getApplicationSnapshotFromPipelineRun(pipelineRun *tektonv1beta1.PipelineRun, pipelineType string) (*appstudioshared.ApplicationSnapshot, error) {
-	snapshotLabel := fmt.Sprintf("%s.appstudio.openshift.io/snapshot", pipelineType)
+	snapshotLabel := fmt.Sprintf("%s.%s/snapshot", pipelineType, helpers.AppStudioLabelSuffix)
 	if snapshotName, found := pipelineRun.Labels[snapshotLabel]; found {
 		snapshot := &appstudioshared.ApplicationSnapshot{}
 		err := a.client.Get(a.context, types.NamespacedName{
@@ -341,7 +341,8 @@ func (a *Adapter) prepareApplicationSnapshotForPipelineRun(pipelineRun *tektonv1
 	if applicationSnapshot.Labels == nil {
 		applicationSnapshot.Labels = map[string]string{}
 	}
-	applicationSnapshot.Labels[gitops.ApplicationSnapshotComponentsLabel] = a.component.Name
+	applicationSnapshot.Labels[gitops.ApplicationSnapshotTypeLabel] = gitops.ApplicationSnapshotComponentType
+	applicationSnapshot.Labels[gitops.ApplicationSnapshotComponentLabel] = a.component.Name
 
 	return applicationSnapshot, nil
 }
@@ -360,9 +361,4 @@ func (a *Adapter) createApplicationSnapshotForPipelineRun(pipelineRun *tektonv1b
 	}
 
 	return applicationSnapshot, nil
-}
-
-// updateStatus updates the status of the PipelineRun being processed.
-func (a *Adapter) updateStatus() error {
-	return a.client.Status().Update(a.context, a.pipelineRun)
 }
