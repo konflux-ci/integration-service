@@ -21,7 +21,6 @@ import (
 	hasv1alpha1 "github.com/redhat-appstudio/application-service/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/controllers/results"
 	appstudioshared "github.com/redhat-appstudio/managed-gitops/appstudio-shared/apis/appstudio.redhat.com/v1alpha1"
-	releasev1alpha1 "github.com/redhat-appstudio/release-service/api/v1alpha1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -160,61 +159,27 @@ func SetupController(manager ctrl.Manager, log *logr.Logger) error {
 	return setupControllerWithManager(manager, NewSnapshotReconciler(manager.GetClient(), log, manager.GetScheme()))
 }
 
-// setupReleasePlanCache adds a new index field to be able to search ReleasePlans by application.
-func setupReleasePlanCache(mgr ctrl.Manager) error {
-	releasePlanIndexFunc := func(obj client.Object) []string {
-		return []string{obj.(*releasev1alpha1.ReleasePlan).Spec.Application}
+// setupCache indexes fields for each of the resources used in the release adapter in those cases where filtering by
+// field is required.
+func setupCache(mgr ctrl.Manager) error {
+	if err := SetupReleasePlanCache(mgr); err != nil {
+		return err
 	}
 
-	return mgr.GetCache().IndexField(context.Background(), &releasev1alpha1.ReleasePlan{},
-		"spec.application", releasePlanIndexFunc)
-}
-
-// setupReleaseCache adds a new index field to be able to search Releases by ApplicationSnapshot.
-func setupReleaseCache(mgr ctrl.Manager) error {
-	releaseIndexFunc := func(obj client.Object) []string {
-		return []string{obj.(*releasev1alpha1.Release).Spec.ApplicationSnapshot}
+	if err := SetupReleaseCache(mgr); err != nil {
+		return err
 	}
 
-	return mgr.GetCache().IndexField(context.Background(), &releasev1alpha1.Release{},
-		"spec.applicationSnapshot", releaseIndexFunc)
-}
-
-// setupEnvironmentCache adds a new index field to be able to search Environments by Application.
-func setupEnvironmentCache(mgr ctrl.Manager) error {
-	environmentIndexFunc := func(obj client.Object) []string {
-		return []string{obj.(*appstudioshared.ApplicationSnapshotEnvironmentBinding).Spec.Application}
+	if err := SetupApplicationCache(mgr); err != nil {
+		return err
 	}
 
-	return mgr.GetCache().IndexField(context.Background(), &appstudioshared.ApplicationSnapshotEnvironmentBinding{},
-		"spec.application", environmentIndexFunc)
-}
-
-// setupEnvironmentCache adds a new index field to be able to search Applications by Environment.
-func setupApplicationCache(mgr ctrl.Manager) error {
-	applicationIndexFunc := func(obj client.Object) []string {
-		return []string{obj.(*appstudioshared.ApplicationSnapshotEnvironmentBinding).Spec.Environment}
-	}
-
-	return mgr.GetCache().IndexField(context.Background(), &appstudioshared.ApplicationSnapshotEnvironmentBinding{},
-		"spec.environment", applicationIndexFunc)
+	return SetupEnvironmentCache(mgr)
 }
 
 // setupControllerWithManager sets up the controller with the Manager which monitors new ApplicationSnapshots
 func setupControllerWithManager(manager ctrl.Manager, reconciler *Reconciler) error {
-	err := setupReleasePlanCache(manager)
-	if err != nil {
-		return err
-	}
-	err = setupReleaseCache(manager)
-	if err != nil {
-		return err
-	}
-	err = setupEnvironmentCache(manager)
-	if err != nil {
-		return err
-	}
-	err = setupApplicationCache(manager)
+	err := setupCache(manager)
 	if err != nil {
 		return err
 	}
