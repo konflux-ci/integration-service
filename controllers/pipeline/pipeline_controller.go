@@ -21,10 +21,8 @@ import (
 	"fmt"
 	"github.com/go-logr/logr"
 	hasv1alpha1 "github.com/redhat-appstudio/application-service/api/v1alpha1"
-	"github.com/redhat-appstudio/integration-service/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/controllers/results"
 	"github.com/redhat-appstudio/integration-service/tekton"
-	appstudioshared "github.com/redhat-appstudio/managed-gitops/appstudio-shared/apis/appstudio.redhat.com/v1alpha1"
 	tektonv1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -166,48 +164,24 @@ func SetupController(manager ctrl.Manager, log *logr.Logger) error {
 	return setupControllerWithManager(manager, NewIntegrationReconciler(manager.GetClient(), log, manager.GetScheme()))
 }
 
-// setupApplicationComponentCache adds a new index field to be able to search Components by application.
-func setupApplicationComponentCache(mgr ctrl.Manager) error {
-	applicationComponentIndexFunc := func(obj client.Object) []string {
-		return []string{obj.(*hasv1alpha1.Component).Spec.Application}
+// setupCache indexes fields for each of the resources used in the release adapter in those cases where filtering by
+// field is required.
+func setupCache(mgr ctrl.Manager) error {
+	if err := SetupApplicationComponentCache(mgr); err != nil {
+		return err
 	}
 
-	return mgr.GetCache().IndexField(context.Background(), &hasv1alpha1.Component{},
-		"spec.application", applicationComponentIndexFunc)
-}
-
-// setupApplicationSnapshotCache adds a new index field to be able to search ApplicationSnapshots by Application.
-func setupApplicationSnapshotCache(mgr ctrl.Manager) error {
-	applicationSnapshotIndexFunc := func(obj client.Object) []string {
-		return []string{obj.(*appstudioshared.ApplicationSnapshot).Spec.Application}
+	if err := SetupApplicationSnapshotCache(mgr); err != nil {
+		return err
 	}
 
-	return mgr.GetCache().IndexField(context.Background(), &appstudioshared.ApplicationSnapshot{},
-		"spec.application", applicationSnapshotIndexFunc)
-}
-
-// setupIntegrationTestScenarioCache adds a new index field to be able to search IntegrationTestScenarios by Application.
-func setupIntegrationTestScenarioCache(mgr ctrl.Manager) error {
-	integrationTestScenariosIndexFunc := func(obj client.Object) []string {
-		return []string{obj.(*v1alpha1.IntegrationTestScenario).Spec.Application}
-	}
-
-	return mgr.GetCache().IndexField(context.Background(), &v1alpha1.IntegrationTestScenario{},
-		"spec.application", integrationTestScenariosIndexFunc)
+	return SetupIntegrationTestScenarioCache(mgr)
 }
 
 // setupControllerWithManager sets up the controller with the Manager which monitors new PipelineRuns and filters
 // out status updates.
 func setupControllerWithManager(manager ctrl.Manager, reconciler *Reconciler) error {
-	err := setupApplicationComponentCache(manager)
-	if err != nil {
-		return err
-	}
-	err = setupApplicationSnapshotCache(manager)
-	if err != nil {
-		return err
-	}
-	err = setupIntegrationTestScenarioCache(manager)
+	err := setupCache(manager)
 	if err != nil {
 		return err
 	}
