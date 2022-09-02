@@ -137,8 +137,12 @@ func (a *Adapter) EnsureApplicationSnapshotEnvironmentBindingExist() (results.Op
 	}
 
 	for _, availableEnvironment := range *availableEnvironments {
+		availableEnvironment := availableEnvironment // G601
 		bindingName := a.application.Name + "-" + availableEnvironment.Name + "-" + "binding"
-		applicationSnapshotEnvironmentBinding, _ := gitops.FindExistingApplicationSnapshotEnvironmentBinding(a.client, a.context, a.application, &availableEnvironment)
+		applicationSnapshotEnvironmentBinding, err := gitops.FindExistingApplicationSnapshotEnvironmentBinding(a.client, a.context, a.application, &availableEnvironment)
+		if err != nil {
+			return results.RequeueWithError(err)
+		}
 		if applicationSnapshotEnvironmentBinding != nil {
 			patch := client.MergeFrom(applicationSnapshotEnvironmentBinding.DeepCopy())
 			applicationSnapshotEnvironmentBinding.Spec.Snapshot = a.snapshot.Name
@@ -228,7 +232,7 @@ func (a *Adapter) createMissingReleasesForReleasePlans(releasePlans *[]releasev1
 	}
 
 	for _, releasePlan := range *releasePlans {
-		releasePlan := releasePlan
+		releasePlan := releasePlan // G601
 		existingRelease := release.FindMatchingReleaseWithReleasePlan(releases, releasePlan)
 		if existingRelease != nil {
 			a.logger.Info("Found existing Release",
