@@ -22,19 +22,21 @@ const (
 
 	// HACBSTestOutputSkipped is the result that's set when the HACBS test gets skipped.
 	HACBSTestOutputSkipped = "SKIPPED"
+
+	// AppStudioLabelSuffix is the suffix that's added to all HACBS label headings
+	AppStudioLabelSuffix = "appstudio.openshift.io"
 )
 
 // GetRequiredIntegrationTestScenariosForApplication returns the IntegrationTestScenarios used by the application being processed.
 // An IntegrationTestScenarios will only be returned if it has the release.appstudio.openshift.io/optional
 // label set to true or if it is missing the label entirely.
 func GetRequiredIntegrationTestScenariosForApplication(adapterClient client.Client, ctx context.Context, application *hasv1alpha1.Application) (*[]v1alpha1.IntegrationTestScenario, error) {
-	labelSelector := labels.NewSelector()
 	integrationList := &v1alpha1.IntegrationTestScenarioList{}
 	labelRequirement, err := labels.NewRequirement("test.appstudio.openshift.io/optional", selection.NotIn, []string{"true"})
 	if err != nil {
 		return nil, err
 	}
-	labelSelector = labelSelector.Add(*labelRequirement)
+	labelSelector := labels.NewSelector().Add(*labelRequirement)
 
 	opts := &client.ListOptions{
 		Namespace:     application.Namespace,

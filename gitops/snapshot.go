@@ -10,8 +10,20 @@ import (
 )
 
 const (
+	// ApplicationSnapshotTypeLabel contains the type of the ApplicationSnapshot.
+	ApplicationSnapshotTypeLabel = "test.appstudio.openshift.io/type"
+
+	// ApplicationSnapshotComponentLabel contains the name of the updated ApplicationSnapshot component.
+	ApplicationSnapshotComponentLabel = "test.appstudio.openshift.io/component"
+
+	// ApplicationSnapshotComponentType is the type of ApplicationSnapshot which was created for a single component build.
+	ApplicationSnapshotComponentType = "component"
+
 	//HACBSTestSuceededCondition is the condition for marking if the HACBS Tests succeeded for the ApplicationSnapshot.
 	HACBSTestSuceededCondition = "HACBSTestSucceeded"
+
+	// HACBSIntegrationStatusCondition is the condition for marking the HACBS integration status of the ApplicationSnapshot.
+	HACBSIntegrationStatusCondition = "HACBSIntegrationStatus"
 
 	// HACBSTestSuceededConditionPassed is the reason that's set when the HACBS tests succeed.
 	HACBSTestSuceededConditionPassed = "Passed"
@@ -19,12 +31,12 @@ const (
 	// HACBSTestSuceededConditionFailed is the reason that's set when the HACBS tests fail.
 	HACBSTestSuceededConditionFailed = "Failed"
 
-	// ApplicationSnapshotComponentsLabel contains a comma-separated list of ApplicationSnapshot components
-	ApplicationSnapshotComponentsLabel = "test.appstudio.openshift.io/components"
+	// HACBSIntegrationStatusInvalid is the reason that's set when the HACBS integration gets into an invalid state.
+	HACBSIntegrationStatusInvalid = "Invalid"
 )
 
-// MarkSnapshotAsPassed updates the HACBS Test succeeded condition for the ApplicationSnapshot.
-// If the update command fails, an error will be returned.
+// MarkSnapshotAsPassed updates the HACBS Test succeeded condition for the ApplicationSnapshot to passed.
+// If the patch command fails, an error will be returned.
 func MarkSnapshotAsPassed(adapterClient client.Client, ctx context.Context, applicationSnapshot *appstudioshared.ApplicationSnapshot, message string) (*appstudioshared.ApplicationSnapshot, error) {
 	patch := client.MergeFrom(applicationSnapshot.DeepCopy())
 	meta.SetStatusCondition(&applicationSnapshot.Status.Conditions, metav1.Condition{
@@ -40,8 +52,8 @@ func MarkSnapshotAsPassed(adapterClient client.Client, ctx context.Context, appl
 	return applicationSnapshot, nil
 }
 
-// MarkSnapshotAsFailed updates the HACBS Test succeeded condition for the ApplicationSnapshot.
-// If the update command fails, an error will be returned.
+// MarkSnapshotAsFailed updates the HACBS Test succeeded condition for the ApplicationSnapshot to failed.
+// If the patch command fails, an error will be returned.
 func MarkSnapshotAsFailed(adapterClient client.Client, ctx context.Context, applicationSnapshot *appstudioshared.ApplicationSnapshot, message string) (*appstudioshared.ApplicationSnapshot, error) {
 	patch := client.MergeFrom(applicationSnapshot.DeepCopy())
 	meta.SetStatusCondition(&applicationSnapshot.Status.Conditions, metav1.Condition{
@@ -55,6 +67,16 @@ func MarkSnapshotAsFailed(adapterClient client.Client, ctx context.Context, appl
 		return nil, err
 	}
 	return applicationSnapshot, nil
+}
+
+// SetSnapshotIntegrationStatusAsInvalid sets the HACBS integration status condition for the ApplicationSnapshot to invalid.
+func SetSnapshotIntegrationStatusAsInvalid(applicationSnapshot *appstudioshared.ApplicationSnapshot, message string) {
+	meta.SetStatusCondition(&applicationSnapshot.Status.Conditions, metav1.Condition{
+		Type:    HACBSIntegrationStatusCondition,
+		Status:  metav1.ConditionFalse,
+		Reason:  HACBSIntegrationStatusInvalid,
+		Message: message,
+	})
 }
 
 // HaveHACBSTestsFinished checks if the HACBS tests have finished by checking if the HACBS Test Succeeded condition is set.
