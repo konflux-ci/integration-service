@@ -324,7 +324,7 @@ func (a *Adapter) prepareApplicationSnapshotForPipelineRun(pipelineRun *tektonv1
 
 	var components []appstudioshared.ApplicationSnapshotComponent
 	for _, applicationComponent := range *applicationComponents {
-		pullSpec := applicationComponent.Status.ContainerImage
+		pullSpec := applicationComponent.Spec.ContainerImage
 		if applicationComponent.Name == component.Name {
 			pullSpec, err = a.getImagePullSpecFromPipelineRun(pipelineRun)
 			if err != nil {

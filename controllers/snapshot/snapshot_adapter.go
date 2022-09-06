@@ -88,6 +88,25 @@ func (a *Adapter) EnsureAllIntegrationTestPipelinesExist() (results.OperationRes
 	return results.ContinueProcessing()
 }
 
+// EnsureGlobalComponentImageUpdated is an operation that ensure the ContainerImage in the Global Candidate List
+// being updated when the ApplicationSnapshot passed all the integration tests
+func (a *Adapter) EnsureGlobalComponentImageUpdated() (results.OperationResult, error) {
+	if (a.component != nil) && gitops.HaveHACBSTestsSucceeded(a.snapshot) {
+		patch := client.MergeFrom(a.component.DeepCopy())
+		for _, component := range a.snapshot.Spec.Components {
+			if component.Name == a.component.Name {
+				a.component.Spec.ContainerImage = component.ContainerImage
+				err := a.client.Patch(a.context, a.component, patch)
+				if err != nil {
+					a.logger.Error(err, "Failed to update Global Candidate for the Component", a.component.Name)
+					return results.RequeueWithError(err)
+				}
+			}
+		}
+	}
+	return results.ContinueProcessing()
+}
+
 // EnsureAllReleasesExist is an operation that will ensure that all pipeline Releases associated
 // to the ApplicationSnapshot and the Application's ReleasePlans exist.
 // Otherwise, it will create new Releases for each ReleasePlan.
