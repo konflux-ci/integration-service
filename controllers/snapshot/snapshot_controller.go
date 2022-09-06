@@ -20,6 +20,7 @@ import (
 	"github.com/go-logr/logr"
 	hasv1alpha1 "github.com/redhat-appstudio/application-service/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/controllers/results"
+	"github.com/redhat-appstudio/integration-service/gitops"
 	appstudioshared "github.com/redhat-appstudio/managed-gitops/appstudio-shared/apis/appstudio.redhat.com/v1alpha1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -105,7 +106,7 @@ func (r *Reconciler) getApplicationFromSnapshot(context context.Context, snapsho
 // getComponentFromSnapshot loads from the cluster the Component referenced in the given ApplicationSnapshot.
 // If the ApplicationSnapshot doesn't specify an Application or this is not found in the cluster, an error will be returned.
 func (r *Reconciler) getComponentFromSnapshot(context context.Context, snapshot *appstudioshared.ApplicationSnapshot) (*hasv1alpha1.Component, error) {
-	if componentLabel, ok := snapshot.Labels["component"]; ok {
+	if componentLabel, ok := snapshot.Labels[gitops.ApplicationSnapshotComponentLabel]; ok {
 		component := &hasv1alpha1.Component{}
 		err := r.Get(context, types.NamespacedName{
 			Namespace: snapshot.Namespace,
@@ -125,6 +126,7 @@ func (r *Reconciler) getComponentFromSnapshot(context context.Context, snapshot 
 // AdapterInterface is an interface defining all the operations that should be defined in an Integration adapter.
 type AdapterInterface interface {
 	EnsureAllReleasesExist() (results.OperationResult, error)
+	EnsureGlobalComponentImageUpdated() (results.OperationResult, error)
 	EnsureApplicationSnapshotEnvironmentBindingExist() (results.OperationResult, error)
 	EnsureAllIntegrationTestPipelinesExist() (results.OperationResult, error)
 }
@@ -137,6 +139,7 @@ type ReconcileOperation func() (results.OperationResult, error)
 func (r *Reconciler) ReconcileHandler(adapter AdapterInterface) (ctrl.Result, error) {
 	operations := []ReconcileOperation{
 		adapter.EnsureAllReleasesExist,
+		adapter.EnsureGlobalComponentImageUpdated,
 		adapter.EnsureApplicationSnapshotEnvironmentBindingExist,
 		adapter.EnsureAllIntegrationTestPipelinesExist,
 	}
