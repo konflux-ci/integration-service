@@ -1,0 +1,9 @@
+apiVersion: apis.kcp.dev/v1alpha1
+kind: APIBinding
+metadata:
+  name: integration
+spec:
+  reference:
+    workspace:
+      path: root:users:xr:vd:rh-sso-<your_user_account>:test-workspace
+      exportName: integration
