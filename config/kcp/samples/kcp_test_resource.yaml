@@ -1,0 +1,78 @@
+apiVersion: appstudio.redhat.com/v1alpha1
+kind: Application
+metadata:
+  annotations:
+  name: application-sample
+  namespace: default
+spec:
+  description: application definition for petclinic-app
+  displayName: petclinic
+---
+apiVersion: appstudio.redhat.com/v1alpha1
+kind: IntegrationTestScenario
+metadata:
+  namespace: default
+  name: scenario-sample
+spec:
+  application: application-sample
+  bundle: 'quay.io/kpavic/test-bundle:component-pipeline-pass'
+  pipeline: component-pipeline-pass
+---
+apiVersion: appstudio.redhat.com/v1alpha1
+kind: Component
+metadata:
+  name: component-sample
+  namespace: default
+spec:
+  componentName: component-sample
+  application: application-sample
+  source:
+    git:
+      url: https://github.com/devfile-samples/devfile-sample-code-with-quarkus
+  containerImage: quay.io/hongweiliu/foobar:dev-code-with-quarkus
+---
+apiVersion: appstudio.redhat.com/v1alpha1
+kind: ApplicationSnapshot
+metadata:
+  name: snapshot-sample
+  namespace: default
+spec:
+  application: application-sample
+  displayname: snapshot-sample
+  components:
+    - name: component-sample
+      containerImage: quay.io/<your_user_account>/foobar:dev-code-with-quarkus
+---
+apiVersion: appstudio.redhat.com/v1alpha1
+kind: Release
+metadata:
+  name: release
+  namespace: default
+spec:
+  releasePlan: default
+  applicationSnapshot: snapshot-sample
+---
+apiVersion: appstudio.redhat.com/v1alpha1
+kind: ReleasePlan
+metadata:
+  name: releaseplan
+  namespace: default
+spec:
+  displayName: Users's ReleasePlan
+  application: app
+  target:
+    namespace: default
+    workspace: root:users:xr:vd:rh-sso-<your_user_account>:test-workspace
+---
+apiVersion: appstudio.redhat.com/v1alpha1
+kind: ReleasePlanAdmission
+metadata:
+  name: releaseplanadmission
+  namespace: default
+spec:
+  displayName: Managed Workspace's ReleasePlanAdmission
+  application: app
+  origin:
+    namespace: default
+    workspace: root:users:xr:vd:rh-sso-<your_user_account>:test-workspace
+  releaseStrategy: strategy

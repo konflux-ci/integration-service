@@ -3,7 +3,7 @@
 apiVersion: apis.kcp.dev/v1alpha1
 kind: APIExport
 metadata:
-  name: inetegration
+  name: integration
 spec:
   latestResourceSchemas:
     - v202207220324.integrationtestscenarios.appstudio.redhat.com

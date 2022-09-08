@@ -1,0 +1,17 @@
+apiVersion: apis.kcp.dev/v1alpha1
+kind: APIExport
+metadata:
+  name: integration
+spec:
+  latestResourceSchemas:
+    - rev-2318434.deployments.apps
+    - rev-2318443.components.appstudio.redhat.com
+    - rev-2318446.integrationtestscenarios.appstudio.redhat.com
+    - rev-2318450.applicationsnapshots.appstudio.redhat.com
+    - rev-2318455.applicationsnapshotenvironmentbindings.appstudio.redhat.com
+    - rev-2318461.applications.appstudio.redhat.com
+    - rev-2318466.pipelineruns.tekton.dev
+    - rev-2319275.releaseplanadmissions.appstudio.redhat.com
+    - rev-2319285.releases.appstudio.redhat.com
+    - rev-2319292.releasestrategies.appstudio.redhat.com
+    - rev-2319304.releaseplans.appstudio.redhat.com

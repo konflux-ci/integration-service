@@ -20,6 +20,7 @@ import (
 	"context"
 
 	"github.com/go-logr/logr"
+	"github.com/kcp-dev/logicalcluster"
 	hasv1alpha1 "github.com/redhat-appstudio/application-service/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/controllers/results"
 	"github.com/redhat-appstudio/integration-service/gitops"
@@ -54,7 +55,11 @@ func NewSnapshotReconciler(client client.Client, logger *logr.Logger, scheme *ru
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
 func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	logger := r.Log.WithValues("Integration", req.NamespacedName)
+	logger := r.Log.WithValues("Integration", req.NamespacedName).WithValues("clusterName", req.ClusterName)
+
+	if req.ClusterName != "" {
+		ctx = logicalcluster.WithCluster(ctx, logicalcluster.New(req.ClusterName))
+	}
 
 	snapshot := &appstudioshared.ApplicationSnapshot{}
 	err := r.Get(ctx, req.NamespacedName, snapshot)
