@@ -133,3 +133,17 @@ jobs:
           fetch-depth: 0
       - name: Check if dockerimage build is working
         run: docker build -f ./Dockerfile .
+
+  gitlint:
+    name: Run gitlint checks
+    runs-on: ubuntu-20.04
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+      - name: Install gitlint into container
+        run: python -m pip install gitlint
+      - name: Run gitlint check
+        run: gitlint --commits origin/${{ github.event.pull_request.base.ref }}..HEAD
