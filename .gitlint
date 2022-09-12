@@ -1,0 +1,14 @@
+[general]
+contrib=contrib-title-conventional-commits,CC1
+extra-path=.github/gitlint
+ignore=T5
+
+[title-max-length]
+line-length=72
+
+[body-max-line-length]
+line-length=72
+
+[body-first-line-empty]
+
+[contrib-title-conventional-commits]
