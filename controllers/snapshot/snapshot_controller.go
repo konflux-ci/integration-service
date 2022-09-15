@@ -17,6 +17,8 @@ limitations under the License.
 package snapshot
 
 import (
+	"context"
+
 	"github.com/go-logr/logr"
 	hasv1alpha1 "github.com/redhat-appstudio/application-service/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/controllers/results"
@@ -27,10 +29,6 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-)
-
-import (
-	"context"
 )
 
 // Reconciler reconciles an ApplicationSnapshot object

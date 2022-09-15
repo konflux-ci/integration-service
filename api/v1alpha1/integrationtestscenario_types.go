@@ -46,8 +46,9 @@ type IntegrationTestScenarioStatus struct {
 
 // PipelineParameter contains the name and values of a Tekton Pipeline parameter
 type PipelineParameter struct {
-	Name  string   `json:"name"`
-	Value []string `json:"value"`
+	Name   string   `json:"name"`
+	Value  string   `json:"value,omitempty"`
+	Values []string `json:"values,omitempty"`
 }
 
 // TestEnvironment contains the name and values of a Test environment

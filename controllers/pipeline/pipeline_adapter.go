@@ -19,6 +19,8 @@ package pipeline
 import (
 	"context"
 	"fmt"
+	"strings"
+
 	"github.com/go-logr/logr"
 	hasv1alpha1 "github.com/redhat-appstudio/application-service/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/api/v1alpha1"
@@ -29,9 +31,7 @@ import (
 	appstudioshared "github.com/redhat-appstudio/managed-gitops/appstudio-shared/apis/appstudio.redhat.com/v1alpha1"
 	tektonv1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 	"k8s.io/apimachinery/pkg/types"
-	"knative.dev/pkg/apis"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"strings"
 )
 
 // Adapter holds the objects needed to reconcile a Release.
@@ -252,7 +252,7 @@ func (a *Adapter) getAllPipelineRunsForApplicationSnapshot(applicationSnapshot *
 	for _, integrationTestScenario := range *integrationTestScenarios {
 		integrationTestScenario := integrationTestScenario // G601
 		if a.pipelineRun.Labels["test.appstudio.openshift.io/scenario"] != integrationTestScenario.Name {
-			integrationPipelineRun, err := a.getLatestPipelineRunForApplicationSnapshotAndScenario(applicationSnapshot, &integrationTestScenario)
+			integrationPipelineRun, err := helpers.GetLatestPipelineRunForApplicationSnapshotAndScenario(a.client, a.context, a.application, applicationSnapshot, &integrationTestScenario)
 			if err != nil {
 				return nil, err
 			}
@@ -271,46 +271,6 @@ func (a *Adapter) getAllPipelineRunsForApplicationSnapshot(applicationSnapshot *
 	}
 
 	return &integrationPipelineRuns, nil
-}
-
-// getLatestPipelineRunForApplicationSnapshotAndScenario returns the latest Integration PipelineRun for the
-// associated ApplicationSnapshot and IntegrationTestScenario. In the case the List operation fails,
-// an error will be returned.
-func (a *Adapter) getLatestPipelineRunForApplicationSnapshotAndScenario(applicationSnapshot *appstudioshared.ApplicationSnapshot, integrationTestScenario *v1alpha1.IntegrationTestScenario) (*tektonv1beta1.PipelineRun, error) {
-	integrationPipelineRuns := &tektonv1beta1.PipelineRunList{}
-	var latestIntegrationPipelineRun = &tektonv1beta1.PipelineRun{}
-	opts := []client.ListOption{
-		client.InNamespace(a.application.Namespace),
-		client.MatchingLabels{
-			"pipelines.appstudio.openshift.io/type": "test",
-			"test.appstudio.openshift.io/snapshot":  applicationSnapshot.Name,
-			"test.appstudio.openshift.io/scenario":  integrationTestScenario.Name,
-		},
-	}
-
-	err := a.client.List(a.context, integrationPipelineRuns, opts...)
-	if err != nil {
-		return nil, err
-	}
-
-	latestIntegrationPipelineRun = nil
-	for _, pipelineRun := range integrationPipelineRuns.Items {
-		pipelineRun := pipelineRun // G601
-		if pipelineRun.Status.GetCondition(apis.ConditionSucceeded).IsTrue() {
-			if latestIntegrationPipelineRun == nil {
-				latestIntegrationPipelineRun = &pipelineRun
-			} else {
-				if pipelineRun.Status.CompletionTime.Time.After(latestIntegrationPipelineRun.Status.CompletionTime.Time) {
-					latestIntegrationPipelineRun = &pipelineRun
-				}
-			}
-		}
-	}
-	if latestIntegrationPipelineRun != nil {
-		return latestIntegrationPipelineRun, nil
-	}
-
-	return nil, err
 }
 
 // prepareApplicationSnapshotForPipelineRun prepares the ApplicationSnapshot for a given PipelineRun,
