@@ -4,14 +4,14 @@ go 1.17
 
 require (
 	github.com/go-logr/logr v1.2.3
-	github.com/kcp-dev/kcp/pkg/apis v0.6.3
+	github.com/kcp-dev/kcp/pkg/apis v0.7.6
 	github.com/kcp-dev/logicalcluster v1.1.1-0.20220705215104-8e46328c24a5
 	github.com/onsi/ginkgo v1.16.5
 	github.com/onsi/ginkgo/v2 v2.1.4
 	github.com/onsi/gomega v1.19.0
 	github.com/redhat-appstudio/application-service v0.0.0-20220509201208-86571e38f52e
-	github.com/redhat-appstudio/managed-gitops/appstudio-shared v0.0.0-20220819141308-6fc9f6c02316
-	github.com/redhat-appstudio/release-service v0.0.0-20220823131312-0a1aab14a78d
+	github.com/redhat-appstudio/managed-gitops/appstudio-shared v0.0.0-20220826075641-33705d2bf7fa
+	github.com/redhat-appstudio/release-service v0.0.0-20220915124514-de955a2b3c7a
 	github.com/tektoncd/pipeline v0.35.0
 	k8s.io/apimachinery v0.24.3
 	k8s.io/client-go v0.24.3
@@ -98,8 +98,8 @@ require (
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	k8s.io/api v0.24.3 // indirect
-	k8s.io/apiextensions-apiserver v0.24.2 // indirect
-	k8s.io/component-base v0.24.2 // indirect
+	k8s.io/apiextensions-apiserver v0.24.3 // indirect
+	k8s.io/component-base v0.24.3 // indirect
 	k8s.io/kube-openapi v0.0.0-20220614142933-1062c7ade5f8 // indirect
 	k8s.io/utils v0.0.0-20220210201930-3a6ce19ff2f9 // indirect
 	sigs.k8s.io/json v0.0.0-20220525155127-227cbc7cc124 // indirect
