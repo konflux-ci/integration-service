@@ -19,6 +19,9 @@ const (
 	// ApplicationSnapshotComponentType is the type of ApplicationSnapshot which was created for a single component build.
 	ApplicationSnapshotComponentType = "component"
 
+	// ApplicationSnapshotCompositeType is the type of ApplicationSnapshot which was created for multiple components.
+	ApplicationSnapshotCompositeType = "composite"
+
 	//HACBSTestSuceededCondition is the condition for marking if the HACBS Tests succeeded for the ApplicationSnapshot.
 	HACBSTestSuceededCondition = "HACBSTestSucceeded"
 
@@ -90,7 +93,7 @@ func HaveHACBSTestsSucceeded(applicationSnapshot *appstudioshared.ApplicationSna
 }
 
 // CreateApplicationSnapshot creates a new applicationSnapshot based on the supplied application and components
-func CreateApplicationSnapshot(application *hasv1alpha1.Application, components *[]appstudioshared.ApplicationSnapshotComponent) *appstudioshared.ApplicationSnapshot {
+func CreateApplicationSnapshot(application *hasv1alpha1.Application, snapshotComponents *[]appstudioshared.ApplicationSnapshotComponent) *appstudioshared.ApplicationSnapshot {
 	applicationSnapshot := &appstudioshared.ApplicationSnapshot{
 		ObjectMeta: metav1.ObjectMeta{
 			GenerateName: application.Name + "-",
@@ -98,7 +101,7 @@ func CreateApplicationSnapshot(application *hasv1alpha1.Application, components 
 		},
 		Spec: appstudioshared.ApplicationSnapshotSpec{
 			Application: application.Name,
-			Components:  *components,
+			Components:  *snapshotComponents,
 		},
 	}
 	return applicationSnapshot
@@ -113,7 +116,7 @@ func FindMatchingApplicationSnapshot(adapterClient client.Client, ctx context.Co
 
 	for _, foundApplicationSnapshot := range *allApplicationSnapshots {
 		foundApplicationSnapshot := foundApplicationSnapshot
-		if compareApplicationSnapshots(expectedApplicationSnapshot, &foundApplicationSnapshot) {
+		if CompareApplicationSnapshots(expectedApplicationSnapshot, &foundApplicationSnapshot) {
 			return &foundApplicationSnapshot, nil
 		}
 	}
@@ -137,8 +140,8 @@ func GetAllApplicationSnapshots(adapterClient client.Client, ctx context.Context
 	return &applicationSnapshots.Items, nil
 }
 
-// compareApplicationSnapshots compares two ApplicationSnapshots and returns boolean true if their images match exactly.
-func compareApplicationSnapshots(expectedApplicationSnapshot *appstudioshared.ApplicationSnapshot, foundApplicationSnapshot *appstudioshared.ApplicationSnapshot) bool {
+// CompareApplicationSnapshots compares two ApplicationSnapshots and returns boolean true if their images match exactly.
+func CompareApplicationSnapshots(expectedApplicationSnapshot *appstudioshared.ApplicationSnapshot, foundApplicationSnapshot *appstudioshared.ApplicationSnapshot) bool {
 	// If the number of components doesn't match, we immediately know that the snapshots are not equal.
 	if len(expectedApplicationSnapshot.Spec.Components) != len(foundApplicationSnapshot.Spec.Components) {
 		return false

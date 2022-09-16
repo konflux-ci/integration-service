@@ -81,7 +81,7 @@ func (a *Adapter) EnsureApplicationSnapshotExists() (results.OperationResult, er
 		return results.ContinueProcessing()
 	}
 
-	newApplicationSnapshot, err := a.createApplicationSnapshotForPipelineRun(a.pipelineRun, a.component, a.application)
+	err = a.client.Create(a.context, expectedApplicationSnapshot)
 	if err != nil {
 		a.logger.Error(err, "Failed to create ApplicationSnapshot",
 			"Application.Name", a.application.Name, "Application.Namespace", a.application.Namespace)
@@ -90,8 +90,8 @@ func (a *Adapter) EnsureApplicationSnapshotExists() (results.OperationResult, er
 
 	a.logger.Info("Created new ApplicationSnapshot",
 		"Application.Name", a.application.Name,
-		"ApplicationSnapshot.Name", newApplicationSnapshot.Name,
-		"ApplicationSnapshot.Spec.Components", newApplicationSnapshot.Spec.Components)
+		"ApplicationSnapshot.Name", expectedApplicationSnapshot.Name,
+		"ApplicationSnapshot.Spec.Components", expectedApplicationSnapshot.Spec.Components)
 
 	return results.ContinueProcessing()
 }
@@ -147,6 +147,31 @@ func (a *Adapter) EnsureApplicationSnapshotPassedAllTests() (results.OperationRe
 			"ApplicationSnapshot.Name", existingApplicationSnapshot.Name)
 		return results.RequeueWithError(err)
 	}
+
+	// If the applicationSnapshot is a component type, check if the global component list changed in the meantime and
+	// create a composite snapshot if it did.
+	if existingApplicationSnapshot.Labels[gitops.ApplicationSnapshotTypeLabel] == gitops.ApplicationSnapshotComponentType {
+		compositeApplicationSnapshot, err := a.createCompositeSnapshotsIfConflictExists(a.application, a.component, existingApplicationSnapshot)
+		if err != nil {
+			a.logger.Error(err, "Failed to determine if a composite snapshot needs to be created because of a conflict",
+				"ApplicationSnapshot.Name", existingApplicationSnapshot.Name)
+			return results.RequeueWithError(err)
+		}
+		if compositeApplicationSnapshot != nil {
+			existingApplicationSnapshot, err := gitops.MarkSnapshotAsFailed(a.client, a.context, existingApplicationSnapshot,
+				"The global component list has changed in the meantime, superseding with a composite snapshot")
+			if err != nil {
+				a.logger.Error(err, "Failed to Update ApplicationSnapshot HACBSTestSucceeded status")
+				return results.RequeueWithError(err)
+			}
+			a.logger.Info("The global component list has changed in the meantime, marking snapshot as failed",
+				"Application.Name", a.application.Name,
+				"ApplicationSnapshot.Name", existingApplicationSnapshot.Name)
+			return results.ContinueProcessing()
+		}
+	}
+
+	// If all Integration Pipeline runs passed, mark the snapshot as succeeded, otherwise mark it as failed
 	if allIntegrationPipelineRunsPassed {
 		existingApplicationSnapshot, err = gitops.MarkSnapshotAsPassed(a.client, a.context, existingApplicationSnapshot, "All Integration Pipeline tests passed")
 		if err != nil {
@@ -155,8 +180,7 @@ func (a *Adapter) EnsureApplicationSnapshotPassedAllTests() (results.OperationRe
 		}
 		a.logger.Info("All Integration PipelineRuns succeeded, marking ApplicationSnapshot as succeeded",
 			"Application.Name", a.application.Name,
-			"ApplicationSnapshot.Name", existingApplicationSnapshot.Name,
-			"ApplicationSnapshot Stage", existingApplicationSnapshot.Labels[""])
+			"ApplicationSnapshot.Name", existingApplicationSnapshot.Name)
 	} else {
 		existingApplicationSnapshot, err = gitops.MarkSnapshotAsFailed(a.client, a.context, existingApplicationSnapshot, "Some Integration pipeline tests failed")
 		if err != nil {
@@ -200,6 +224,16 @@ func (a *Adapter) getImagePullSpecFromPipelineRun(pipelineRun *tektonv1beta1.Pip
 		return "", err
 	}
 	return fmt.Sprintf("%s@%s", strings.Split(outputImage, ":")[0], imageDigest), nil
+}
+
+// getImagePullSpecFromPipelineRun gets the full image pullspec from the given ApplicationSnapshot Component,
+func (a *Adapter) getImagePullSpecFromSnapshotComponent(applicationSnapshot *appstudioshared.ApplicationSnapshot, component *hasv1alpha1.Component) (string, error) {
+	for _, snapshotComponent := range applicationSnapshot.Spec.Components {
+		if snapshotComponent.Name == component.Name {
+			return snapshotComponent.ContainerImage, nil
+		}
+	}
+	return "", fmt.Errorf("couldn't find the requested component info in the given ApplicationSnapshot")
 }
 
 // determineIfAllIntegrationPipelinesPassed checks all Integration pipelines passed all of their test tasks.
@@ -273,31 +307,27 @@ func (a *Adapter) getAllPipelineRunsForApplicationSnapshot(applicationSnapshot *
 	return &integrationPipelineRuns, nil
 }
 
-// prepareApplicationSnapshotForPipelineRun prepares the ApplicationSnapshot for a given PipelineRun,
-// component and application. In case the ApplicationSnapshot can't be created, an error will be returned.
-func (a *Adapter) prepareApplicationSnapshotForPipelineRun(pipelineRun *tektonv1beta1.PipelineRun,
-	component *hasv1alpha1.Component, application *hasv1alpha1.Application) (*appstudioshared.ApplicationSnapshot, error) {
+// prepareApplicationSnapshot prepares the ApplicationSnapshot for a given application and the updated component (if any).
+// In case the ApplicationSnapshot can't be created, an error will be returned.
+func (a *Adapter) prepareApplicationSnapshot(application *hasv1alpha1.Application, component *hasv1alpha1.Component, newContainerImage string) (*appstudioshared.ApplicationSnapshot, error) {
 	applicationComponents, err := a.getAllApplicationComponents(application)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get all Application Components for Application %s", a.application.Name)
 	}
 
-	var components []appstudioshared.ApplicationSnapshotComponent
+	var snapshotComponents []appstudioshared.ApplicationSnapshotComponent
 	for _, applicationComponent := range *applicationComponents {
-		pullSpec := applicationComponent.Spec.ContainerImage
+		containerImage := applicationComponent.Spec.ContainerImage
 		if applicationComponent.Name == component.Name {
-			pullSpec, err = a.getImagePullSpecFromPipelineRun(pipelineRun)
-			if err != nil {
-				return nil, err
-			}
+			containerImage = newContainerImage
 		}
-		components = append(components, appstudioshared.ApplicationSnapshotComponent{
+		snapshotComponents = append(snapshotComponents, appstudioshared.ApplicationSnapshotComponent{
 			Name:           applicationComponent.Name,
-			ContainerImage: pullSpec,
+			ContainerImage: containerImage,
 		})
 	}
 
-	applicationSnapshot := gitops.CreateApplicationSnapshot(application, &components)
+	applicationSnapshot := gitops.CreateApplicationSnapshot(application, &snapshotComponents)
 	if applicationSnapshot.Labels == nil {
 		applicationSnapshot.Labels = map[string]string{}
 	}
@@ -307,18 +337,82 @@ func (a *Adapter) prepareApplicationSnapshotForPipelineRun(pipelineRun *tektonv1
 	return applicationSnapshot, nil
 }
 
-// createApplicationSnapshotForPipelineRun creates the ApplicationSnapshot for a given PipelineRun
-// In case the ApplicationSnapshot can't be created, an error will be returned.
-func (a *Adapter) createApplicationSnapshotForPipelineRun(pipelineRun *tektonv1beta1.PipelineRun,
-	component *hasv1alpha1.Component, application *hasv1alpha1.Application) (*appstudioshared.ApplicationSnapshot, error) {
-	applicationSnapshot, err := a.prepareApplicationSnapshotForPipelineRun(pipelineRun, component, application)
-	if err != nil {
-		return nil, err
-	}
-	err = a.client.Create(a.context, applicationSnapshot)
+// prepareApplicationSnapshotForPipelineRun prepares the ApplicationSnapshot for a given PipelineRun,
+// component and application. In case the ApplicationSnapshot can't be created, an error will be returned.
+func (a *Adapter) prepareApplicationSnapshotForPipelineRun(pipelineRun *tektonv1beta1.PipelineRun, component *hasv1alpha1.Component, application *hasv1alpha1.Application) (*appstudioshared.ApplicationSnapshot, error) {
+	newContainerImage, err := a.getImagePullSpecFromPipelineRun(pipelineRun)
 	if err != nil {
 		return nil, err
 	}
 
+	applicationSnapshot, err := a.prepareApplicationSnapshot(application, component, newContainerImage)
+	if err != nil {
+		return nil, err
+	}
+
+	if applicationSnapshot.Labels == nil {
+		applicationSnapshot.Labels = map[string]string{}
+	}
+	applicationSnapshot.Labels[gitops.ApplicationSnapshotTypeLabel] = gitops.ApplicationSnapshotComponentType
+	applicationSnapshot.Labels[gitops.ApplicationSnapshotComponentLabel] = a.component.Name
+
 	return applicationSnapshot, nil
+}
+
+// prepareApplicationSnapshotForPipelineRun prepares the ApplicationSnapshot for a given PipelineRun,
+// component and application. In case the ApplicationSnapshot can't be created, an error will be returned.
+func (a *Adapter) prepareCompositeApplicationSnapshot(application *hasv1alpha1.Application, component *hasv1alpha1.Component, newContainerImage string) (*appstudioshared.ApplicationSnapshot, error) {
+	applicationSnapshot, err := a.prepareApplicationSnapshot(application, component, newContainerImage)
+	if err != nil {
+		return nil, err
+	}
+
+	if applicationSnapshot.Labels == nil {
+		applicationSnapshot.Labels = map[string]string{}
+	}
+	applicationSnapshot.Labels[gitops.ApplicationSnapshotTypeLabel] = gitops.ApplicationSnapshotCompositeType
+
+	return applicationSnapshot, nil
+}
+
+// createCompositeSnapshotsIfConflictExists checks if the component ApplicationSnapshot is good to release by checking if any
+// of the other components containerImages changed in the meantime. If any of them changed, it creates a new composite snapshot.
+func (a *Adapter) createCompositeSnapshotsIfConflictExists(application *hasv1alpha1.Application, component *hasv1alpha1.Component, testedApplicationSnapshot *appstudioshared.ApplicationSnapshot) (*appstudioshared.ApplicationSnapshot, error) {
+	newContainerImage, err := a.getImagePullSpecFromSnapshotComponent(testedApplicationSnapshot, component)
+	if err != nil {
+		return nil, err
+	}
+
+	compositeApplicationSnapshot, err := a.prepareCompositeApplicationSnapshot(application, component, newContainerImage)
+	if err != nil {
+		return nil, err
+	}
+
+	// Mark tested snapshot as failed and create the new composite snapshot if it doesn't exist already
+	if !gitops.CompareApplicationSnapshots(compositeApplicationSnapshot, testedApplicationSnapshot) {
+		existingCompositeApplicationSnapshot, err := gitops.FindMatchingApplicationSnapshot(a.client, a.context, a.application, compositeApplicationSnapshot)
+		if err != nil {
+			return nil, err
+		}
+
+		if existingCompositeApplicationSnapshot != nil {
+			a.logger.Info("Found existing composite ApplicationSnapshot",
+				"Application.Name", a.application.Name,
+				"ApplicationSnapshot.Name", existingCompositeApplicationSnapshot.Name,
+				"ApplicationSnapshot.Spec.Components", existingCompositeApplicationSnapshot.Spec.Components)
+			return existingCompositeApplicationSnapshot, nil
+		} else {
+			err = a.client.Create(a.context, compositeApplicationSnapshot)
+			if err != nil {
+				return nil, err
+			}
+			a.logger.Info("Created a new composite ApplicationSnapshot",
+				"Application.Name", a.application.Name,
+				"ApplicationSnapshot.Name", compositeApplicationSnapshot.Name,
+				"ApplicationSnapshot.Spec.Components", compositeApplicationSnapshot.Spec.Components)
+			return compositeApplicationSnapshot, nil
+		}
+	}
+
+	return nil, nil
 }
