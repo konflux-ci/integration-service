@@ -1,0 +1,56 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kcp-syncer-mycluster-37gq7rur
+  namespace: kcp-syncer-mycluster-37gq7rur
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: kcp-syncer-mycluster-37gq7rur
+  template:
+    metadata:
+      labels:
+        app: kcp-syncer-mycluster-37gq7rur
+    spec:
+      containers:
+      - name: kcp-syncer
+        command:
+        - /ko-app/syncer
+        args:
+        - --from-kubeconfig=/kcp/kubeconfig
+        - --sync-target-name=mycluster
+        - --sync-target-uid=90c3d2d8-c1e5-485f-9a18-bbfa122bdf4d
+        - --from-cluster=root:users:xr:vd:rh-sso-<your_user_account>:test-workspace
+        - --resources=configmaps
+        - --resources=deployments.apps
+        - --resources=secrets
+        - --resources=serviceaccounts
+        - --resources=releases.appstudio.redhat.com
+        - --resources=releaseplans.appstudio.redhat.com
+        - --resources=releaseplanadmissions.appstudio.redhat.com
+        - --resources=releasestrategies.appstudio.redhat.com
+        - --resources=pipelineruns.tekton.dev
+        - --resources=applicationsnapshots.appstudio.redhat.com
+        - --resources=components.appstudio.redhat.com
+        - --resources=applications.appstudio.redhat.com
+        - --resources=integrationtestscenarios.appstudio.redhat.com
+        - --resources=applicationsnapshotenvironmentbindings.appstudio.redhat.com
+        - --qps=30
+        - --burst=20
+        image: ghcr.io/kcp-dev/kcp/syncer:v0.7.10
+        imagePullPolicy: IfNotPresent
+        terminationMessagePolicy: FallbackToLogsOnError
+        volumeMounts:
+        - name: kcp-config
+          mountPath: /kcp/
+          readOnly: true
+      serviceAccountName: kcp-syncer-mycluster-37gq7rur
+      volumes:
+        - name: kcp-config
+          secret:
+            secretName: kcp-syncer-mycluster-37gq7rur
+            optional: false
