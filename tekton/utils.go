@@ -8,13 +8,30 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
+const (
+	// PipelineRunTypeLabel contains the type of the PipelineRunTypeLabel.
+	PipelineRunTypeLabel = "pipelines.appstudio.openshift.io/type"
+
+	// PipelineRunBuildType is the type denoting a build PipelineRun.
+	PipelineRunBuildType = "build"
+
+	// PipelineRunTestType is the type denoting a test PipelineRun.
+	PipelineRunTestType = "test"
+
+	// PipelineRunComponentLabel is the label denoting the application.
+	PipelineRunComponentLabel = "appstudio.openshift.io/component"
+
+	// PipelineRunApplicationLabel is the label denoting the application.
+	PipelineRunApplicationLabel = "appstudio.openshift.io/application"
+)
+
 // IsBuildPipelineRun returns a boolean indicating whether the object passed is a PipelineRun from
 // the Build service or not.
 func IsBuildPipelineRun(object client.Object) bool {
 	if pipelineRun, ok := object.(*tektonv1beta1.PipelineRun); ok {
 		return helpers.HasLabelWithValue(pipelineRun,
-			"pipelines.appstudio.openshift.io/type",
-			"build")
+			PipelineRunTypeLabel,
+			PipelineRunBuildType)
 	}
 
 	return false
@@ -25,8 +42,8 @@ func IsBuildPipelineRun(object client.Object) bool {
 func IsIntegrationPipelineRun(object client.Object) bool {
 	if pipelineRun, ok := object.(*tektonv1beta1.PipelineRun); ok {
 		return helpers.HasLabelWithValue(pipelineRun,
-			"pipelines.appstudio.openshift.io/type",
-			"test")
+			PipelineRunTypeLabel,
+			PipelineRunTestType)
 	}
 
 	return false
@@ -48,7 +65,7 @@ func hasPipelineSucceeded(objectOld, objectNew client.Object) bool {
 // GetTypeFromPipelineRun extracts the pipeline type from the pipelineRun labels.
 func GetTypeFromPipelineRun(object client.Object) (string, error) {
 	if pipelineRun, ok := object.(*tektonv1beta1.PipelineRun); ok {
-		if pipelineType, found := pipelineRun.Labels["pipelines.appstudio.openshift.io/type"]; found {
+		if pipelineType, found := pipelineRun.Labels[PipelineRunTypeLabel]; found {
 			return pipelineType, nil
 		}
 	}
