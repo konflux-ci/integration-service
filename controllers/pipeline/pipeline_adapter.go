@@ -150,7 +150,7 @@ func (a *Adapter) EnsureApplicationSnapshotPassedAllTests() (results.OperationRe
 
 	// If the applicationSnapshot is a component type, check if the global component list changed in the meantime and
 	// create a composite snapshot if it did.
-	if existingApplicationSnapshot.Labels[gitops.ApplicationSnapshotTypeLabel] == gitops.ApplicationSnapshotComponentType {
+	if existingApplicationSnapshot.Labels != nil && existingApplicationSnapshot.Labels[gitops.ApplicationSnapshotTypeLabel] == gitops.ApplicationSnapshotComponentType {
 		compositeApplicationSnapshot, err := a.createCompositeSnapshotsIfConflictExists(a.application, a.component, existingApplicationSnapshot)
 		if err != nil {
 			a.logger.Error(err, "Failed to determine if a composite snapshot needs to be created because of a conflict",
@@ -226,7 +226,7 @@ func (a *Adapter) getImagePullSpecFromPipelineRun(pipelineRun *tektonv1beta1.Pip
 	return fmt.Sprintf("%s@%s", strings.Split(outputImage, ":")[0], imageDigest), nil
 }
 
-// getImagePullSpecFromPipelineRun gets the full image pullspec from the given ApplicationSnapshot Component,
+// getImagePullSpecFromSnapshotComponent gets the full image pullspec from the given ApplicationSnapshot Component,
 func (a *Adapter) getImagePullSpecFromSnapshotComponent(applicationSnapshot *appstudioshared.ApplicationSnapshot, component *hasv1alpha1.Component) (string, error) {
 	for _, snapshotComponent := range applicationSnapshot.Spec.Components {
 		if snapshotComponent.Name == component.Name {
@@ -328,11 +328,6 @@ func (a *Adapter) prepareApplicationSnapshot(application *hasv1alpha1.Applicatio
 	}
 
 	applicationSnapshot := gitops.CreateApplicationSnapshot(application, &snapshotComponents)
-	if applicationSnapshot.Labels == nil {
-		applicationSnapshot.Labels = map[string]string{}
-	}
-	applicationSnapshot.Labels[gitops.ApplicationSnapshotTypeLabel] = gitops.ApplicationSnapshotComponentType
-	applicationSnapshot.Labels[gitops.ApplicationSnapshotComponentLabel] = a.component.Name
 
 	return applicationSnapshot, nil
 }

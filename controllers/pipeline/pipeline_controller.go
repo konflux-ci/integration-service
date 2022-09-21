@@ -86,11 +86,21 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{}, err
 	}
 
-	application, err := r.getApplicationFromComponent(ctx, component)
-	if err != nil {
-		logger.Error(err, "Failed to get Application for ",
-			"Component.Name ", component.Name, "Component.Namespace ", component.Namespace)
-		return ctrl.Result{}, err
+	application := &hasv1alpha1.Application{}
+	if component != nil {
+		application, err = r.getApplicationFromComponent(ctx, component)
+		if err != nil {
+			logger.Error(err, "Failed to get Application for",
+				"Component.Name ", component.Name, "Component.Namespace ", component.Namespace)
+			return ctrl.Result{}, err
+		}
+	} else if pipelineType == tekton.PipelineRunTestType {
+		application, err = r.getApplicationFromPipelineRun(ctx, pipelineRun, pipelineType)
+		if err != nil {
+			logger.Error(err, "Failed to get Application for",
+				"PipelineRun.Name", pipelineRun.Name, "PipelineRun.Namespace", pipelineRun.Namespace)
+			return ctrl.Result{}, err
+		}
 	}
 
 	adapter := NewAdapter(pipelineRun, component, application, logger, r.Client, ctx)
@@ -101,7 +111,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 // getComponentFromPipelineRun loads from the cluster the Component referenced in the given PipelineRun. If the PipelineRun doesn't
 // specify a Component or this is not found in the cluster, an error will be returned.
 func (r *Reconciler) getComponentFromPipelineRun(context context.Context, pipelineRun *tektonv1beta1.PipelineRun, pipelineType string) (*hasv1alpha1.Component, error) {
-	componentLabel := fmt.Sprintf("%s.appstudio.openshift.io/component", pipelineType)
+	componentLabel := fmt.Sprintf("%s.%s", pipelineType, tekton.PipelineRunComponentLabel)
 	if componentName, found := pipelineRun.Labels[componentLabel]; found {
 		component := &hasv1alpha1.Component{}
 		err := r.Get(context, types.NamespacedName{
@@ -116,7 +126,28 @@ func (r *Reconciler) getComponentFromPipelineRun(context context.Context, pipeli
 		return component, nil
 	}
 
-	return nil, fmt.Errorf("the pipeline has no component associated with it")
+	return nil, nil
+}
+
+// getApplicationFromPipelineRun loads from the cluster the Component referenced in the given PipelineRun. If the PipelineRun doesn't
+// specify a Component or this is not found in the cluster, an error will be returned.
+func (r *Reconciler) getApplicationFromPipelineRun(context context.Context, pipelineRun *tektonv1beta1.PipelineRun, pipelineType string) (*hasv1alpha1.Application, error) {
+	applicationLabel := fmt.Sprintf("%s.%s", pipelineType, tekton.PipelineRunApplicationLabel)
+	if componentName, found := pipelineRun.Labels[applicationLabel]; found {
+		application := &hasv1alpha1.Application{}
+		err := r.Get(context, types.NamespacedName{
+			Namespace: pipelineRun.Namespace,
+			Name:      componentName,
+		}, application)
+
+		if err != nil {
+			return nil, err
+		}
+
+		return application, nil
+	}
+
+	return nil, nil
 }
 
 // getApplicationFromComponent loads from the cluster the Application referenced in the given Component. If the Component doesn't
