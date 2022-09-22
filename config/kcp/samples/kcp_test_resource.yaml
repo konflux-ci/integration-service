@@ -41,38 +41,4 @@ spec:
   displayname: snapshot-sample
   components:
     - name: component-sample
-      containerImage: quay.io/<your_user_account>/foobar:dev-code-with-quarkus
----
-apiVersion: appstudio.redhat.com/v1alpha1
-kind: Release
-metadata:
-  name: release
-  namespace: default
-spec:
-  releasePlan: default
-  applicationSnapshot: snapshot-sample
----
-apiVersion: appstudio.redhat.com/v1alpha1
-kind: ReleasePlan
-metadata:
-  name: releaseplan
-  namespace: default
-spec:
-  displayName: Users's ReleasePlan
-  application: app
-  target:
-    namespace: default
-    workspace: root:users:xr:vd:rh-sso-<your_user_account>:test-workspace
----
-apiVersion: appstudio.redhat.com/v1alpha1
-kind: ReleasePlanAdmission
-metadata:
-  name: releaseplanadmission
-  namespace: default
-spec:
-  displayName: Managed Workspace's ReleasePlanAdmission
-  application: app
-  origin:
-    namespace: default
-    workspace: root:users:xr:vd:rh-sso-<your_user_account>:test-workspace
-  releaseStrategy: strategy
+      containerImage: quay.io/hongweiliu/foobar:dev-code-with-quarkus

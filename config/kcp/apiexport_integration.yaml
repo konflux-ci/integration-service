@@ -3,7 +3,32 @@
 apiVersion: apis.kcp.dev/v1alpha1
 kind: APIExport
 metadata:
-  name: integration
+  name: integration-api
 spec:
   latestResourceSchemas:
-    - v202207220324.integrationtestscenarios.appstudio.redhat.com
+    - md5-bdbd79111419cb45ed5f46c858d8ff96.integrationtestscenarios.appstudio.redhat.com
+  permissionClaims:
+    - resource: "pipelineruns"
+      group: "tekton.dev"
+      identityHash: null
+    - resource: "applications"
+      group: "appstudio.redhat.com"
+      identityHash: "APPLICATION_API_IDENTITY_HASH_PLACEHOLDER" # application-api apiexport
+    - resource: "components"
+      group: "appstudio.redhat.com"
+      identityHash: "APPLICATION_API_IDENTITY_HASH_PLACEHOLDER" # application-api apiexport
+    - resource: "applicationsnapshots"
+      group: "appstudio.redhat.com"
+      identityHash: "APPLICATION_API_IDENTITY_HASH_PLACEHOLDER" # application-api apiexport
+    - resource: "environments"
+      group: "appstudio.redhat.com"
+      identityHash: "APPLICATION_API_IDENTITY_HASH_PLACEHOLDER" # application-api apiexport
+    - resource: "applicationsnapshotenvironmentbindings"
+      group: "appstudio.redhat.com"
+      identityHash: "APPLICATION_API_IDENTITY_HASH_PLACEHOLDER" # application-api apiexport
+    - resource: "release"
+      group: "appstudio.redhat.com"
+      identityHash: null # release apiexport
+    - resource: "releaseplan"
+      group: "appstudio.redhat.com"
+      identityHash: null # release apiexport
