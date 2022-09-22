@@ -1377,10 +1377,9 @@ github.com/kcp-dev/controller-runtime v0.12.2-0.20220808200255-4b60fd66e5de h1:I
 github.com/kcp-dev/controller-runtime v0.12.2-0.20220808200255-4b60fd66e5de/go.mod h1:OFkNQPsWPPz6qWrIY3FUjmSb0W7qKLK8aZC/xBIJwUE=
 github.com/kcp-dev/kcp/pkg/apis v0.7.6 h1:lmI06mJJzbN4EZtXX97mhN/g2n6vD1l92YoF61Tfte4=
 github.com/kcp-dev/kcp/pkg/apis v0.7.6/go.mod h1:jwvDdhVuswpwqCriyr7frT3Ak23OzuFoVRjqSvfFiRk=
-github.com/kcp-dev/logicalcluster v1.1.1-0.20220705215104-8e46328c24a5 h1:ygcM+nvb7QBB/o3HZVw5sYu6KH9aXcrZ+A+IjEDAabA=
-github.com/kcp-dev/logicalcluster v1.1.1-0.20220705215104-8e46328c24a5/go.mod h1:M0CBFkJTW29XtIP5XIkDfhYQ8LU6HrnseRb4zmgBltE=
-github.com/kcp-dev/logicalcluster/v2 v2.0.0-alpha.1 h1:6EMfOioekQNrpcHEK7k2ANBWogFMlf+3xTB3CC4k+2s=
 github.com/kcp-dev/logicalcluster/v2 v2.0.0-alpha.1/go.mod h1:lfWJL764jKFJxZWOGuFuT3PCCLPo6lV5Cl8P7u9T05g=
+github.com/kcp-dev/logicalcluster/v2 v2.0.0-alpha.3 h1:+DwIG/loh2nDB9c/FqNvLzFFq/YtBliLxAfw/uWNzyE=
+github.com/kcp-dev/logicalcluster/v2 v2.0.0-alpha.3/go.mod h1:lfWJL764jKFJxZWOGuFuT3PCCLPo6lV5Cl8P7u9T05g=
 github.com/kelseyhightower/envconfig v1.4.0 h1:Im6hONhd3pLkfDFsbRgu68RDNkGF1r3dvMUtDTo2cv8=
 github.com/kelseyhightower/envconfig v1.4.0/go.mod h1:cccZRl6mQpaq41TPp5QxidR+Sa3axMbJDNb//FQX6Gg=
 github.com/kevinburke/ssh_config v0.0.0-20190725054713-01f96b0aa0cd/go.mod h1:CT57kijsi8u/K/BOFA39wgDQJ9CxiF4nAY/ojJ6r6mM=

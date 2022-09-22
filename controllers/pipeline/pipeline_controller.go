@@ -21,7 +21,7 @@ import (
 	"fmt"
 
 	"github.com/go-logr/logr"
-	"github.com/kcp-dev/logicalcluster"
+	"github.com/kcp-dev/logicalcluster/v2"
 	hasv1alpha1 "github.com/redhat-appstudio/application-service/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/controllers/results"
 	"github.com/redhat-appstudio/integration-service/tekton"
@@ -66,6 +66,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	pipelineRun := &tektonv1beta1.PipelineRun{}
 	err := r.Get(ctx, req.NamespacedName, pipelineRun)
 	if err != nil {
+		logger.Error(err, "Failed to get pipelineRun for", "req", req.NamespacedName)
 		if errors.IsNotFound(err) {
 			return ctrl.Result{}, nil
 		}
