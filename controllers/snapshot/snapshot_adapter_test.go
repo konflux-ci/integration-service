@@ -120,11 +120,6 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		}
 		Expect(k8sClient.Create(ctx, &env)).Should(Succeed())
 
-	})
-
-	BeforeEach(func() {
-		sample_image = "quay.io/redhat-appstudio/sample-image"
-
 		hasComp = &appstudiov1alpha1.Component{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "component-sample",
@@ -144,6 +139,10 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			},
 		}
 		Expect(k8sClient.Create(ctx, hasComp)).Should(Succeed())
+	})
+
+	BeforeEach(func() {
+		sample_image = "quay.io/redhat-appstudio/sample-image"
 
 		hasSnapshot = &appstudioshared.ApplicationSnapshot{
 			ObjectMeta: metav1.ObjectMeta{
@@ -213,9 +212,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 	})
 
 	AfterEach(func() {
-		err := k8sClient.Delete(ctx, hasComp)
-		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
-		err = k8sClient.Delete(ctx, hasSnapshot)
+		err := k8sClient.Delete(ctx, hasSnapshot)
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 		err = k8sClient.Delete(ctx, testpipelineRun)
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
@@ -224,7 +221,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 	AfterAll(func() {
 		err := k8sClient.Delete(ctx, hasApp)
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
-		err = k8sClient.Delete(ctx, hasApp)
+		err = k8sClient.Delete(ctx, hasComp)
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 		err = k8sClient.Delete(ctx, integrationTestScenario)
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
@@ -265,9 +262,11 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 						"test.appstudio.openshift.io/scenario":  requiredIntegrationTestScenario.Name,
 					},
 				}
+				Eventually(func() bool {
+					err := k8sClient.List(ctx, integrationPipelineRuns, opts...)
+					return len(integrationPipelineRuns.Items) > 0 && err == nil
+				}, time.Second*10).Should(BeTrue())
 
-				err := k8sClient.List(ctx, integrationPipelineRuns, opts...)
-				Expect(integrationPipelineRuns != nil && err == nil).To(BeTrue())
 				klog.Infof("The integrationPipelineRun", integrationPipelineRuns.Items[0].Name)
 				Expect(k8sClient.Delete(ctx, &integrationPipelineRuns.Items[0])).Should(Succeed())
 			}
@@ -296,9 +295,10 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		gitops.MarkSnapshotAsPassed(k8sClient, ctx, hasSnapshot, "test passed")
 		Expect(gitops.HaveHACBSTestsSucceeded(hasSnapshot)).To(BeTrue())
 
-		result, err := adapter.EnsureGlobalComponentImageUpdated()
-		Expect(err).ShouldNot(HaveOccurred())
-		Expect(result.CancelRequest).To(BeFalse())
+		Eventually(func() bool {
+			result, err := adapter.EnsureGlobalComponentImageUpdated()
+			return !result.CancelRequest && err == nil
+		}, time.Second*10).Should(BeTrue())
 
 		Expect(hasComp.Spec.ContainerImage).To(Equal(sample_image))
 
@@ -323,14 +323,15 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 	It("ensures applicationsnapshot environmentBinding exist", func() {
 		gitops.MarkSnapshotAsPassed(k8sClient, ctx, hasSnapshot, "test passed")
 		Expect(gitops.HaveHACBSTestsSucceeded(hasSnapshot)).To(BeTrue())
-		result, err := adapter.EnsureApplicationSnapshotEnvironmentBindingExist()
-		Expect(err).ShouldNot(HaveOccurred())
-		Expect(result.CancelRequest).To(BeFalse())
-		applicationSnapshotEnvironmentBinding, err := gitops.FindExistingApplicationSnapshotEnvironmentBinding(k8sClient, ctx, hasApp, &env)
-		Expect(applicationSnapshotEnvironmentBinding != nil && err == nil).To(BeTrue())
-		if applicationSnapshotEnvironmentBinding != nil {
-			klog.Infof("applicationSnapshotEnvironmentBinding.Name:", applicationSnapshotEnvironmentBinding.Name)
-		}
+		Eventually(func() bool {
+			result, err := adapter.EnsureApplicationSnapshotEnvironmentBindingExist()
+			return !result.CancelRequest && err == nil
+		}, time.Second*10).Should(BeTrue())
+
+		Eventually(func() bool {
+			applicationSnapshotEnvironmentBinding, err := gitops.FindExistingApplicationSnapshotEnvironmentBinding(k8sClient, ctx, hasApp, &env)
+			return applicationSnapshotEnvironmentBinding != nil && err == nil
+		}, time.Second*10).Should(BeTrue())
 	})
 
 })
