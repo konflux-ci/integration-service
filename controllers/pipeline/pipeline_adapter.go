@@ -19,6 +19,7 @@ package pipeline
 import (
 	"context"
 	"fmt"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"strings"
 
 	"github.com/go-logr/logr"
@@ -328,6 +329,11 @@ func (a *Adapter) prepareApplicationSnapshot(application *hasv1alpha1.Applicatio
 	}
 
 	applicationSnapshot := gitops.CreateApplicationSnapshot(application, &snapshotComponents)
+
+	err = ctrl.SetControllerReference(application, applicationSnapshot, a.client.Scheme())
+	if err != nil {
+		return nil, err
+	}
 
 	return applicationSnapshot, nil
 }
