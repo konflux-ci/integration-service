@@ -18,6 +18,7 @@ package snapshot
 
 import (
 	"context"
+	ctrl "sigs.k8s.io/controller-runtime"
 
 	"github.com/go-logr/logr"
 	hasv1alpha1 "github.com/redhat-appstudio/application-service/api/v1alpha1"
@@ -134,7 +135,8 @@ func (a *Adapter) EnsureGlobalComponentImageUpdated() (results.OperationResult, 
 				a.component.Spec.ContainerImage = component.ContainerImage
 				err := a.client.Patch(a.context, a.component, patch)
 				if err != nil {
-					a.logger.Error(err, "Failed to update Global Candidate for the Component", a.component.Name)
+					a.logger.Error(err, "Failed to update Global Candidate for the Component",
+						"Component.Name", a.component.Name)
 					return results.RequeueWithError(err)
 				}
 			}
@@ -162,7 +164,7 @@ func (a *Adapter) EnsureAllReleasesExist() (results.OperationResult, error) {
 		return results.RequeueOnErrorOrStop(a.client.Status().Patch(a.context, a.snapshot, patch))
 	}
 
-	err = a.createMissingReleasesForReleasePlans(releasePlans, a.snapshot)
+	err = a.createMissingReleasesForReleasePlans(a.application, releasePlans, a.snapshot)
 	if err != nil {
 		a.logger.Error(err, "Failed to create new Releases",
 			"ApplicationSnapshot.Name", a.snapshot.Name,
@@ -196,17 +198,12 @@ func (a *Adapter) EnsureApplicationSnapshotEnvironmentBindingExist() (results.Op
 
 	for _, availableEnvironment := range *availableEnvironments {
 		availableEnvironment := availableEnvironment // G601
-		bindingName := a.application.Name + "-" + availableEnvironment.Name + "-" + "binding"
 		applicationSnapshotEnvironmentBinding, err := gitops.FindExistingApplicationSnapshotEnvironmentBinding(a.client, a.context, a.application, &availableEnvironment)
 		if err != nil {
 			return results.RequeueWithError(err)
 		}
 		if applicationSnapshotEnvironmentBinding != nil {
-			patch := client.MergeFrom(applicationSnapshotEnvironmentBinding.DeepCopy())
-			applicationSnapshotEnvironmentBinding.Spec.Snapshot = a.snapshot.Name
-			applicationSnapshotComponents := gitops.CreateBindingComponents(*components)
-			applicationSnapshotEnvironmentBinding.Spec.Components = *applicationSnapshotComponents
-			err := a.client.Patch(a.context, applicationSnapshotEnvironmentBinding, patch)
+			applicationSnapshotEnvironmentBinding, err = a.updateExistingApplicationSnapshotEnvironmentBindingWithSnapshot(applicationSnapshotEnvironmentBinding, a.snapshot, components)
 			if err != nil {
 				a.logger.Error(err, "Failed to update ApplicationSnapshotEnvironmentBinding",
 					"ApplicationSnapshotEnvironmentBinding.Application", applicationSnapshotEnvironmentBinding.Spec.Application,
@@ -217,12 +214,7 @@ func (a *Adapter) EnsureApplicationSnapshotEnvironmentBindingExist() (results.Op
 				return results.RequeueOnErrorOrStop(a.client.Status().Patch(a.context, a.snapshot, patch))
 			}
 		} else {
-			applicationSnapshotEnvironmentBinding = gitops.CreateApplicationSnapshotEnvironmentBinding(
-				bindingName, a.application.Namespace, a.application.Name,
-				availableEnvironment.Name,
-				a.snapshot, *components)
-
-			err = a.client.Create(a.context, applicationSnapshotEnvironmentBinding)
+			applicationSnapshotEnvironmentBinding, err = a.createApplicationSnapshotEnvironmentBindingForSnapshot(a.application, &availableEnvironment, a.snapshot, components)
 			if err != nil {
 				a.logger.Error(err, "Failed to create ApplicationSnapshotEnvironmentBinding",
 					"ApplicationSnapshotEnvironmentBinding.Application", applicationSnapshotEnvironmentBinding.Spec.Application,
@@ -261,7 +253,7 @@ func (a *Adapter) getReleasesWithApplicationSnapshot(applicationSnapshot *appstu
 
 // createMissingReleasesForReleasePlans checks if there's existing Releases for a given list of ReleasePlans and creates
 // new ones if they are missing. In case the Releases can't be created, an error will be returned.
-func (a *Adapter) createMissingReleasesForReleasePlans(releasePlans *[]releasev1alpha1.ReleasePlan, applicationSnapshot *appstudioshared.ApplicationSnapshot) error {
+func (a *Adapter) createMissingReleasesForReleasePlans(application *hasv1alpha1.Application, releasePlans *[]releasev1alpha1.ReleasePlan, applicationSnapshot *appstudioshared.ApplicationSnapshot) error {
 	releases, err := a.getReleasesWithApplicationSnapshot(applicationSnapshot)
 	if err != nil {
 		return err
@@ -277,6 +269,10 @@ func (a *Adapter) createMissingReleasesForReleasePlans(releasePlans *[]releasev1
 				"Release.Name", existingRelease.Name)
 		} else {
 			newRelease := release.CreateReleaseForReleasePlan(&releasePlan, applicationSnapshot)
+			err := ctrl.SetControllerReference(application, newRelease, a.client.Scheme())
+			if err != nil {
+				return err
+			}
 			err = a.client.Create(a.context, newRelease)
 			if err != nil {
 				return err
@@ -352,10 +348,61 @@ func (a *Adapter) createIntegrationPipelineRun(application *hasv1alpha1.Applicat
 		WithApplicationAndComponent(a.application, a.component).
 		AsPipelineRun()
 
-	err := a.client.Create(a.context, pipelineRun)
+	err := ctrl.SetControllerReference(applicationSnapshot, pipelineRun, a.client.Scheme())
+	if err != nil {
+		return err
+	}
+
+	err = a.client.Create(a.context, pipelineRun)
 	if err != nil {
 		return err
 	}
 
 	return nil
+}
+
+// createApplicationSnapshotEnvironmentBindingForSnapshot creates and returns a new applicationSnapshotEnvironmentBinding
+// for the given application, environment, applicationSnapshot, and components.
+// If it's not possible to create it and set the application as the owner, an error will be returned
+func (a *Adapter) createApplicationSnapshotEnvironmentBindingForSnapshot(application *hasv1alpha1.Application,
+	environment *appstudioshared.Environment, applicationSnapshot *appstudioshared.ApplicationSnapshot,
+	components *[]hasv1alpha1.Component) (*appstudioshared.ApplicationSnapshotEnvironmentBinding, error) {
+	bindingName := application.Name + "-" + environment.Name + "-" + "binding"
+
+	applicationSnapshotEnvironmentBinding := gitops.CreateApplicationSnapshotEnvironmentBinding(
+		bindingName, application.Namespace, application.Name,
+		environment.Name,
+		applicationSnapshot, *components)
+
+	err := ctrl.SetControllerReference(application, applicationSnapshotEnvironmentBinding, a.client.Scheme())
+	if err != nil {
+		return nil, err
+	}
+
+	err = a.client.Create(a.context, applicationSnapshotEnvironmentBinding)
+	if err != nil {
+		return nil, err
+	}
+
+	return applicationSnapshotEnvironmentBinding, nil
+}
+
+// updateExistingApplicationSnapshotEnvironmentBindingWithSnapshot updates and returns applicationSnapshotEnvironmentBinding
+// with the given snapshot and components. If it's not possible to patch, an error will be returned.
+func (a *Adapter) updateExistingApplicationSnapshotEnvironmentBindingWithSnapshot(applicationSnapshotEnvironmentBinding *appstudioshared.ApplicationSnapshotEnvironmentBinding,
+	snapshot *appstudioshared.ApplicationSnapshot,
+	components *[]hasv1alpha1.Component) (*appstudioshared.ApplicationSnapshotEnvironmentBinding, error) {
+
+	patch := client.MergeFrom(applicationSnapshotEnvironmentBinding.DeepCopy())
+
+	applicationSnapshotEnvironmentBinding.Spec.Snapshot = snapshot.Name
+	applicationSnapshotComponents := gitops.CreateBindingComponents(*components)
+	applicationSnapshotEnvironmentBinding.Spec.Components = *applicationSnapshotComponents
+
+	err := a.client.Patch(a.context, applicationSnapshotEnvironmentBinding, patch)
+	if err != nil {
+		return nil, err
+	}
+
+	return applicationSnapshotEnvironmentBinding, nil
 }
