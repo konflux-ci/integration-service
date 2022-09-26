@@ -19,6 +19,7 @@ package pipeline
 import (
 	"context"
 	"fmt"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"strings"
 
 	"github.com/go-logr/logr"
@@ -329,6 +330,11 @@ func (a *Adapter) prepareApplicationSnapshot(application *hasv1alpha1.Applicatio
 
 	applicationSnapshot := gitops.CreateApplicationSnapshot(application, &snapshotComponents)
 
+	err = ctrl.SetControllerReference(application, applicationSnapshot, a.client.Scheme())
+	if err != nil {
+		return nil, err
+	}
+
 	return applicationSnapshot, nil
 }
 
@@ -346,10 +352,28 @@ func (a *Adapter) prepareApplicationSnapshotForPipelineRun(pipelineRun *tektonv1
 	}
 
 	if applicationSnapshot.Labels == nil {
-		applicationSnapshot.Labels = map[string]string{}
+		applicationSnapshot.Labels = make(map[string]string)
 	}
 	applicationSnapshot.Labels[gitops.ApplicationSnapshotTypeLabel] = gitops.ApplicationSnapshotComponentType
 	applicationSnapshot.Labels[gitops.ApplicationSnapshotComponentLabel] = a.component.Name
+
+	// copy PipelineRun PAC annotations/labels from Build to applicationSnapshot
+	pipelinerunLabels := pipelineRun.GetLabels()
+	for key, value := range pipelinerunLabels {
+		if strings.Contains(key, "pipelinesascode.tekton.dev") {
+			applicationSnapshot.Labels[key] = value
+		}
+	}
+
+	if applicationSnapshot.Annotations == nil {
+		applicationSnapshot.Annotations = make(map[string]string)
+	}
+	pipelinerunAnnotations := pipelineRun.GetAnnotations()
+	for key, value := range pipelinerunAnnotations {
+		if strings.Contains(key, "pipelinesascode.tekton.dev") {
+			applicationSnapshot.Annotations[key] = value
+		}
+	}
 
 	return applicationSnapshot, nil
 }
