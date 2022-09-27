@@ -86,30 +86,6 @@ func NewIntegrationPipelineRun(prefix, namespace string, integrationTestScenario
 	return &IntegrationPipelineRun{pipelineRun}
 }
 
-// WithSpecialParams adds Pipeline reference, params to the PipelineRun.
-func (r *IntegrationPipelineRun) WithSpecialParams(integration *v1alpha1.IntegrationTestScenario) *IntegrationPipelineRun {
-	r.Spec.PipelineRef = &tektonv1beta1.PipelineRef{
-		Name:   integration.Spec.Pipeline,
-		Bundle: integration.Spec.Bundle,
-	}
-
-	valueType := tektonv1beta1.ParamTypeString
-
-	for _, param := range integration.Spec.Params {
-		if len(param.Value) > 0 {
-			valueType = tektonv1beta1.ParamTypeArray
-		}
-
-		r.WithExtraParam(param.Name, tektonv1beta1.ArrayOrString{
-			Type:      valueType,
-			StringVal: param.Value,
-			ArrayVal:  param.Values,
-		})
-	}
-
-	return r
-}
-
 // WithExtraParam adds an extra param to the Integration PipelineRun. If the parameter is not part of the Pipeline
 // definition, it will be silently ignored.
 func (r *IntegrationPipelineRun) WithExtraParam(name string, value tektonv1beta1.ArrayOrString) *IntegrationPipelineRun {
