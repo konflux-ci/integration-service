@@ -18,6 +18,8 @@ package snapshot
 
 import (
 	"context"
+	"strings"
+
 	ctrl "sigs.k8s.io/controller-runtime"
 
 	"github.com/go-logr/logr"
@@ -269,6 +271,27 @@ func (a *Adapter) createMissingReleasesForReleasePlans(application *hasv1alpha1.
 				"Release.Name", existingRelease.Name)
 		} else {
 			newRelease := release.CreateReleaseForReleasePlan(&releasePlan, applicationSnapshot)
+			// copy PipelineRun PAC annotations/labels from applicaitonSnapshot to Release
+			if applicationSnapshot.Annotations != nil {
+				if newRelease.ObjectMeta.Annotations == nil {
+					newRelease.ObjectMeta.Annotations = make(map[string]string)
+				}
+				for key, value := range applicationSnapshot.Annotations {
+					if strings.Contains(key, "pipelinesascode.tekton.dev") {
+						newRelease.ObjectMeta.Annotations[key] = value
+					}
+				}
+			}
+			if applicationSnapshot.Labels != nil {
+				if newRelease.ObjectMeta.Labels == nil {
+					newRelease.ObjectMeta.Labels = make(map[string]string)
+				}
+				for key, value := range applicationSnapshot.Labels {
+					if strings.Contains(key, "pipelinesascode.tekton.dev") {
+						newRelease.ObjectMeta.Labels[key] = value
+					}
+				}
+			}
 			err := ctrl.SetControllerReference(application, newRelease, a.client.Scheme())
 			if err != nil {
 				return err
@@ -347,12 +370,28 @@ func (a *Adapter) createIntegrationPipelineRun(application *hasv1alpha1.Applicat
 		WithIntegrationLabels(integrationTestScenario).
 		WithApplicationAndComponent(a.application, a.component).
 		AsPipelineRun()
-
+	// copy PipelineRun PAC annotations/labels from applicaitonSnapshot to integration test PipelineRuns
+	if applicationSnapshot.Annotations != nil {
+		if pipelineRun.ObjectMeta.Annotations == nil {
+			pipelineRun.ObjectMeta.Annotations = make(map[string]string)
+		}
+		for key, value := range applicationSnapshot.Annotations {
+			if strings.Contains(key, "pipelinesascode.tekton.dev") {
+				pipelineRun.ObjectMeta.Annotations[key] = value
+			}
+		}
+	}
+	if applicationSnapshot.Labels != nil {
+		for key, value := range applicationSnapshot.Labels {
+			if strings.Contains(key, "pipelinesascode.tekton.dev") {
+				pipelineRun.ObjectMeta.Labels[key] = value
+			}
+		}
+	}
 	err := ctrl.SetControllerReference(applicationSnapshot, pipelineRun, a.client.Scheme())
 	if err != nil {
 		return err
 	}
-
 	err = a.client.Create(a.context, pipelineRun)
 	if err != nil {
 		return err
