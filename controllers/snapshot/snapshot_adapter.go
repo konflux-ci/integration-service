@@ -271,7 +271,6 @@ func (a *Adapter) createMissingReleasesForReleasePlans(application *hasv1alpha1.
 				"Release.Name", existingRelease.Name)
 		} else {
 			newRelease := release.CreateReleaseForReleasePlan(&releasePlan, applicationSnapshot)
-
 			// copy PipelineRun PAC annotations/labels from applicaitonSnapshot to Release
 			if applicationSnapshot.Annotations != nil {
 				if newRelease.ObjectMeta.Annotations == nil {
@@ -293,12 +292,10 @@ func (a *Adapter) createMissingReleasesForReleasePlans(application *hasv1alpha1.
 					}
 				}
 			}
-
 			err := ctrl.SetControllerReference(application, newRelease, a.client.Scheme())
 			if err != nil {
 				return err
 			}
-
 			err = a.client.Create(a.context, newRelease)
 			if err != nil {
 				return err
@@ -373,7 +370,6 @@ func (a *Adapter) createIntegrationPipelineRun(application *hasv1alpha1.Applicat
 		WithIntegrationLabels(integrationTestScenario).
 		WithApplicationAndComponent(a.application, a.component).
 		AsPipelineRun()
-
 	// copy PipelineRun PAC annotations/labels from applicaitonSnapshot to integration test PipelineRuns
 	if applicationSnapshot.Annotations != nil {
 		if pipelineRun.ObjectMeta.Annotations == nil {
@@ -392,12 +388,10 @@ func (a *Adapter) createIntegrationPipelineRun(application *hasv1alpha1.Applicat
 			}
 		}
 	}
-
 	err := ctrl.SetControllerReference(applicationSnapshot, pipelineRun, a.client.Scheme())
 	if err != nil {
 		return err
 	}
-
 	err = a.client.Create(a.context, pipelineRun)
 	if err != nil {
 		return err
