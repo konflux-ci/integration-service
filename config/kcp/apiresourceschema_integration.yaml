@@ -1,10 +1,8 @@
-# This file is generated from CRDs by ./hack/generate-kcp-api.sh script.
-# Please do not modify!
 apiVersion: apis.kcp.dev/v1alpha1
 kind: APIResourceSchema
 metadata:
   creationTimestamp: null
-  name: v202207220324.integrationtestscenarios.appstudio.redhat.com
+  name: md5-bdbd79111419cb45ed5f46c858d8ff96.integrationtestscenarios.appstudio.redhat.com
 spec:
   group: appstudio.redhat.com
   names:
@@ -83,12 +81,13 @@ spec:
                   name:
                     type: string
                   value:
+                    type: string
+                  values:
                     items:
                       type: string
                     type: array
                 required:
                 - name
-                - value
                 type: object
               type: array
             pipeline:
