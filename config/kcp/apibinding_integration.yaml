@@ -1,0 +1,38 @@
+apiVersion: apis.kcp.dev/v1alpha1
+kind: APIBinding
+metadata:
+  name: integration-binding
+spec:
+  reference:
+    workspace:
+      path: ${kcp_workspace}
+      exportName: integration-api
+  permissionClaims:
+    - resource: "pipelineruns"
+      group: "tekton.dev"
+      identityHash: null
+      state: Accepted
+    - resource: "applications"
+      group: "appstudio.redhat.com"
+      identityHash: null # application-api apiexport
+      state: Accepted
+    - resource: "components"
+      group: "appstudio.redhat.com"
+      identityHash: null # application-api apiexport
+      state: Accepted
+    - resource: "applicationsnapshots"
+      group: "appstudio.redhat.com"
+      identityHash: null # application-api apiexport
+      state: Accepted
+    - resource: "environments"
+      group: "appstudio.redhat.com"
+      identityHash: null # application-api apiexport
+      state: Accepted
+    - resource: "applicationsnapshotenvironmentbindings"
+      group: "appstudio.redhat.com"
+      identityHash: null # application-api apiexport
+      state: Accepted
+    - resource: "releases"
+      group: "appstudio.redhat.com"
+      identityHash: null # release apiexport
+      state: Accepted

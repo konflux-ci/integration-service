@@ -96,7 +96,7 @@ help: ## Display this help.
 manifests: controller-gen ## Generate WebhookConfiguration, ClusterRole and CustomResourceDefinition objects.
 	$(CONTROLLER_GEN) rbac:roleName=manager-role crd webhook paths="./..." output:crd:artifacts:config=config/crd/bases
 ifeq ($(CONTROL_PLANE), kcp)
-	hack/generate-kcp-api.sh ## Generate KCP APIResourceSchema from CRDs
+	hack/generate-kcp-api.sh ## Generate KCP APIExport and APIResourceSchemas from CRDs
 endif
 
 .PHONY: generate
