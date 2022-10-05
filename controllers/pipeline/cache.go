@@ -18,9 +18,8 @@ package pipeline
 
 import (
 	"context"
-	hasv1alpha1 "github.com/redhat-appstudio/application-service/api/v1alpha1"
+	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/api/v1alpha1"
-	appstudioshared "github.com/redhat-appstudio/managed-gitops/appstudio-shared/apis/appstudio.redhat.com/v1alpha1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -28,20 +27,20 @@ import (
 // SetupApplicationComponentCache adds a new index field to be able to search Components by application.
 func SetupApplicationComponentCache(mgr ctrl.Manager) error {
 	applicationComponentIndexFunc := func(obj client.Object) []string {
-		return []string{obj.(*hasv1alpha1.Component).Spec.Application}
+		return []string{obj.(*applicationapiv1alpha1.Component).Spec.Application}
 	}
 
-	return mgr.GetCache().IndexField(context.Background(), &hasv1alpha1.Component{},
+	return mgr.GetCache().IndexField(context.Background(), &applicationapiv1alpha1.Component{},
 		"spec.application", applicationComponentIndexFunc)
 }
 
 // SetupApplicationSnapshotCache adds a new index field to be able to search ApplicationSnapshots by Application.
 func SetupApplicationSnapshotCache(mgr ctrl.Manager) error {
 	applicationSnapshotIndexFunc := func(obj client.Object) []string {
-		return []string{obj.(*appstudioshared.ApplicationSnapshot).Spec.Application}
+		return []string{obj.(*applicationapiv1alpha1.ApplicationSnapshot).Spec.Application}
 	}
 
-	return mgr.GetCache().IndexField(context.Background(), &appstudioshared.ApplicationSnapshot{},
+	return mgr.GetCache().IndexField(context.Background(), &applicationapiv1alpha1.ApplicationSnapshot{},
 		"spec.application", applicationSnapshotIndexFunc)
 }
 

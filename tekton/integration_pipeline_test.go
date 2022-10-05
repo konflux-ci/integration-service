@@ -4,11 +4,10 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	hasv1alpha1 "github.com/redhat-appstudio/application-service/api/v1alpha1"
+	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/gitops"
 	tekton "github.com/redhat-appstudio/integration-service/tekton"
-	appstudioshared "github.com/redhat-appstudio/managed-gitops/appstudio-shared/apis/appstudio.redhat.com/v1alpha1"
 	tektonv1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -28,9 +27,9 @@ var _ = Describe("Integration pipeline", func() {
 		SampleRepoLink          = "https://github.com/devfile-samples/devfile-sample-java-springboot-basic"
 	)
 	var (
-		hasApp                    *hasv1alpha1.Application
-		hasSnapshot               *appstudioshared.ApplicationSnapshot
-		hasComp                   *hasv1alpha1.Component
+		hasApp                    *applicationapiv1alpha1.Application
+		hasSnapshot               *applicationapiv1alpha1.ApplicationSnapshot
+		hasComp                   *applicationapiv1alpha1.Component
 		newIntegrationPipelineRun *tekton.IntegrationPipelineRun
 		integrationTestScenario   *v1alpha1.IntegrationTestScenario
 		extraParams               *ExtraParams
@@ -72,19 +71,19 @@ var _ = Describe("Integration pipeline", func() {
 		newIntegrationPipelineRun = tekton.NewIntegrationPipelineRun(prefix, namespace, *integrationTestScenario)
 		Expect(k8sClient.Create(ctx, newIntegrationPipelineRun.AsPipelineRun())).Should(Succeed())
 
-		hasApp = &hasv1alpha1.Application{
+		hasApp = &applicationapiv1alpha1.Application{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      applicationName,
 				Namespace: namespace,
 			},
-			Spec: hasv1alpha1.ApplicationSpec{
+			Spec: applicationapiv1alpha1.ApplicationSpec{
 				DisplayName: "application-sample",
 				Description: "This is an example application",
 			},
 		}
 		Expect(k8sClient.Create(ctx, hasApp)).Should(Succeed())
 
-		hasSnapshot = &appstudioshared.ApplicationSnapshot{
+		hasSnapshot = &applicationapiv1alpha1.ApplicationSnapshot{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "snapshot-sample",
 				Namespace: "default",
@@ -93,9 +92,9 @@ var _ = Describe("Integration pipeline", func() {
 					gitops.ApplicationSnapshotComponentLabel: "component-sample",
 				},
 			},
-			Spec: appstudioshared.ApplicationSnapshotSpec{
+			Spec: applicationapiv1alpha1.ApplicationSnapshotSpec{
 				Application: hasApp.Name,
-				Components: []appstudioshared.ApplicationSnapshotComponent{
+				Components: []applicationapiv1alpha1.ApplicationSnapshotComponent{
 					{
 						Name:           "component-sample",
 						ContainerImage: "testimage",
@@ -105,18 +104,18 @@ var _ = Describe("Integration pipeline", func() {
 		}
 		Expect(k8sClient.Create(ctx, hasSnapshot)).Should(Succeed())
 
-		hasComp = &hasv1alpha1.Component{
+		hasComp = &applicationapiv1alpha1.Component{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "component-sample",
 				Namespace: "default",
 			},
-			Spec: hasv1alpha1.ComponentSpec{
+			Spec: applicationapiv1alpha1.ComponentSpec{
 				ComponentName:  "component-sample",
 				Application:    "application-sample",
 				ContainerImage: "",
-				Source: hasv1alpha1.ComponentSource{
-					ComponentSourceUnion: hasv1alpha1.ComponentSourceUnion{
-						GitSource: &hasv1alpha1.GitSource{
+				Source: applicationapiv1alpha1.ComponentSource{
+					ComponentSourceUnion: applicationapiv1alpha1.ComponentSourceUnion{
+						GitSource: &applicationapiv1alpha1.GitSource{
 							URL: SampleRepoLink,
 						},
 					},

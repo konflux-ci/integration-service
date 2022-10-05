@@ -3,9 +3,9 @@ package gitops_test
 import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	appstudiov1alpha1 "github.com/redhat-appstudio/application-service/api/v1alpha1"
+
+	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/gitops"
-	appstudioshared "github.com/redhat-appstudio/managed-gitops/appstudio-shared/apis/appstudio.redhat.com/v1alpha1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/types"
@@ -17,9 +17,9 @@ import (
 var _ = Describe("Gitops functions for managing ApplicationSnapshots", Ordered, func() {
 
 	var (
-		hasApp      *appstudiov1alpha1.Application
-		hasComp     *appstudiov1alpha1.Component
-		hasSnapshot *appstudioshared.ApplicationSnapshot
+		hasApp      *applicationapiv1alpha1.Application
+		hasComp     *applicationapiv1alpha1.Component
+		hasSnapshot *applicationapiv1alpha1.ApplicationSnapshot
 		sampleImage string
 	)
 
@@ -32,29 +32,29 @@ var _ = Describe("Gitops functions for managing ApplicationSnapshots", Ordered, 
 	)
 
 	BeforeAll(func() {
-		hasApp = &appstudiov1alpha1.Application{
+		hasApp = &applicationapiv1alpha1.Application{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      applicationName,
 				Namespace: namespace,
 			},
-			Spec: appstudiov1alpha1.ApplicationSpec{
+			Spec: applicationapiv1alpha1.ApplicationSpec{
 				DisplayName: "application-sample",
 				Description: "This is an example application",
 			},
 		}
 		Expect(k8sClient.Create(ctx, hasApp)).Should(Succeed())
-		hasComp = &appstudiov1alpha1.Component{
+		hasComp = &applicationapiv1alpha1.Component{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      componentName,
 				Namespace: namespace,
 			},
-			Spec: appstudiov1alpha1.ComponentSpec{
+			Spec: applicationapiv1alpha1.ComponentSpec{
 				ComponentName:  componentName,
 				Application:    applicationName,
 				ContainerImage: "",
-				Source: appstudiov1alpha1.ComponentSource{
-					ComponentSourceUnion: appstudiov1alpha1.ComponentSourceUnion{
-						GitSource: &appstudiov1alpha1.GitSource{
+				Source: applicationapiv1alpha1.ComponentSource{
+					ComponentSourceUnion: applicationapiv1alpha1.ComponentSourceUnion{
+						GitSource: &applicationapiv1alpha1.GitSource{
 							URL: SampleRepoLink,
 						},
 					},
@@ -67,7 +67,7 @@ var _ = Describe("Gitops functions for managing ApplicationSnapshots", Ordered, 
 	BeforeEach(func() {
 		sampleImage = "quay.io/redhat-appstudio/sample-image:latest"
 
-		hasSnapshot = &appstudioshared.ApplicationSnapshot{
+		hasSnapshot = &applicationapiv1alpha1.ApplicationSnapshot{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      snapshotName,
 				Namespace: namespace,
@@ -76,9 +76,9 @@ var _ = Describe("Gitops functions for managing ApplicationSnapshots", Ordered, 
 					gitops.ApplicationSnapshotComponentLabel: componentName,
 				},
 			},
-			Spec: appstudioshared.ApplicationSnapshotSpec{
+			Spec: applicationapiv1alpha1.ApplicationSnapshotSpec{
 				Application: hasApp.Name,
-				Components: []appstudioshared.ApplicationSnapshotComponent{
+				Components: []applicationapiv1alpha1.ApplicationSnapshotComponent{
 					{
 						Name:           componentName,
 						ContainerImage: sampleImage,
@@ -143,7 +143,7 @@ var _ = Describe("Gitops functions for managing ApplicationSnapshots", Ordered, 
 	})
 
 	It("ensures that a new ApplicationSnapshots can be successfully created", func() {
-		snapshotComponents := []appstudioshared.ApplicationSnapshotComponent{}
+		snapshotComponents := []applicationapiv1alpha1.ApplicationSnapshotComponent{}
 		createdSnapshot := gitops.CreateApplicationSnapshot(hasApp, &snapshotComponents)
 		Expect(createdSnapshot != nil).To(BeTrue())
 	})
@@ -170,7 +170,7 @@ var _ = Describe("Gitops functions for managing ApplicationSnapshots", Ordered, 
 
 	It("ensures the different ApplicationSnapshots can be compared and the difference is detected", func() {
 		expectedSnapshot := hasSnapshot.DeepCopy()
-		newSnapshotComponent := appstudioshared.ApplicationSnapshotComponent{
+		newSnapshotComponent := applicationapiv1alpha1.ApplicationSnapshotComponent{
 			Name:           "temporaryComponent",
 			ContainerImage: sampleImage,
 		}

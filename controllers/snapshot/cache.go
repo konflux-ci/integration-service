@@ -18,7 +18,7 @@ package snapshot
 
 import (
 	"context"
-	appstudioshared "github.com/redhat-appstudio/managed-gitops/appstudio-shared/apis/appstudio.redhat.com/v1alpha1"
+	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	releasev1alpha1 "github.com/redhat-appstudio/release-service/api/v1alpha1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -47,19 +47,19 @@ func SetupReleaseCache(mgr ctrl.Manager) error {
 // SetupApplicationCache adds a new index field to be able to search Applications by Environment.
 func SetupApplicationCache(mgr ctrl.Manager) error {
 	applicationIndexFunc := func(obj client.Object) []string {
-		return []string{obj.(*appstudioshared.ApplicationSnapshotEnvironmentBinding).Spec.Environment}
+		return []string{obj.(*applicationapiv1alpha1.ApplicationSnapshotEnvironmentBinding).Spec.Environment}
 	}
 
-	return mgr.GetCache().IndexField(context.Background(), &appstudioshared.ApplicationSnapshotEnvironmentBinding{},
+	return mgr.GetCache().IndexField(context.Background(), &applicationapiv1alpha1.ApplicationSnapshotEnvironmentBinding{},
 		"spec.environment", applicationIndexFunc)
 }
 
 // SetupEnvironmentCache adds a new index field to be able to search Environments by Application.
 func SetupEnvironmentCache(mgr ctrl.Manager) error {
 	environmentIndexFunc := func(obj client.Object) []string {
-		return []string{obj.(*appstudioshared.ApplicationSnapshotEnvironmentBinding).Spec.Application}
+		return []string{obj.(*applicationapiv1alpha1.ApplicationSnapshotEnvironmentBinding).Spec.Application}
 	}
 
-	return mgr.GetCache().IndexField(context.Background(), &appstudioshared.ApplicationSnapshotEnvironmentBinding{},
+	return mgr.GetCache().IndexField(context.Background(), &applicationapiv1alpha1.ApplicationSnapshotEnvironmentBinding{},
 		"spec.application", environmentIndexFunc)
 }

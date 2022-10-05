@@ -10,10 +10,9 @@ import (
 
 	ctrl "sigs.k8s.io/controller-runtime"
 
-	appstudiov1alpha1 "github.com/redhat-appstudio/application-service/api/v1alpha1"
+	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	integrationv1alpha1 "github.com/redhat-appstudio/integration-service/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/gitops"
-	appstudioshared "github.com/redhat-appstudio/managed-gitops/appstudio-shared/apis/appstudio.redhat.com/v1alpha1"
 	releasev1alpha1 "github.com/redhat-appstudio/release-service/api/v1alpha1"
 	tektonv1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 
@@ -30,12 +29,12 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		adapter *Adapter
 
 		testReleasePlan         *releasev1alpha1.ReleasePlan
-		hasApp                  *appstudiov1alpha1.Application
-		hasComp                 *appstudiov1alpha1.Component
-		hasSnapshot             *appstudioshared.ApplicationSnapshot
+		hasApp                  *applicationapiv1alpha1.Application
+		hasComp                 *applicationapiv1alpha1.Component
+		hasSnapshot             *applicationapiv1alpha1.ApplicationSnapshot
 		testpipelineRun         *tektonv1beta1.PipelineRun
 		integrationTestScenario *integrationv1alpha1.IntegrationTestScenario
-		env                     appstudioshared.Environment
+		env                     applicationapiv1alpha1.Environment
 		sample_image            string
 	)
 	const (
@@ -44,12 +43,12 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 
 	BeforeAll(func() {
 
-		hasApp = &appstudiov1alpha1.Application{
+		hasApp = &applicationapiv1alpha1.Application{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "application-sample",
 				Namespace: "default",
 			},
-			Spec: appstudiov1alpha1.ApplicationSpec{
+			Spec: applicationapiv1alpha1.ApplicationSpec{
 				DisplayName: "application-sample",
 				Description: "This is an example application",
 			},
@@ -97,19 +96,19 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		}
 		Expect(k8sClient.Create(ctx, testReleasePlan)).Should(Succeed())
 
-		env = appstudioshared.Environment{
+		env = applicationapiv1alpha1.Environment{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "envname",
 				Namespace: "default",
 			},
-			Spec: appstudioshared.EnvironmentSpec{
+			Spec: applicationapiv1alpha1.EnvironmentSpec{
 				Type:               "POC",
 				DisplayName:        "my-environment",
-				DeploymentStrategy: appstudioshared.DeploymentStrategy_Manual,
+				DeploymentStrategy: applicationapiv1alpha1.DeploymentStrategy_Manual,
 				ParentEnvironment:  "",
 				Tags:               []string{},
-				Configuration: appstudioshared.EnvironmentConfiguration{
-					Env: []appstudioshared.EnvVarPair{
+				Configuration: applicationapiv1alpha1.EnvironmentConfiguration{
+					Env: []applicationapiv1alpha1.EnvVarPair{
 						{
 							Name:  "var_name",
 							Value: "test",
@@ -120,18 +119,18 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		}
 		Expect(k8sClient.Create(ctx, &env)).Should(Succeed())
 
-		hasComp = &appstudiov1alpha1.Component{
+		hasComp = &applicationapiv1alpha1.Component{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "component-sample",
 				Namespace: "default",
 			},
-			Spec: appstudiov1alpha1.ComponentSpec{
+			Spec: applicationapiv1alpha1.ComponentSpec{
 				ComponentName:  "component-sample",
 				Application:    "application-sample",
 				ContainerImage: "",
-				Source: appstudiov1alpha1.ComponentSource{
-					ComponentSourceUnion: appstudiov1alpha1.ComponentSourceUnion{
-						GitSource: &appstudiov1alpha1.GitSource{
+				Source: applicationapiv1alpha1.ComponentSource{
+					ComponentSourceUnion: applicationapiv1alpha1.ComponentSourceUnion{
+						GitSource: &applicationapiv1alpha1.GitSource{
 							URL: SampleRepoLink,
 						},
 					},
@@ -144,7 +143,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 	BeforeEach(func() {
 		sample_image = "quay.io/redhat-appstudio/sample-image"
 
-		hasSnapshot = &appstudioshared.ApplicationSnapshot{
+		hasSnapshot = &applicationapiv1alpha1.ApplicationSnapshot{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "snapshot-sample",
 				Namespace: "default",
@@ -153,9 +152,9 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 					gitops.ApplicationSnapshotComponentLabel: "component-sample",
 				},
 			},
-			Spec: appstudioshared.ApplicationSnapshotSpec{
+			Spec: applicationapiv1alpha1.ApplicationSnapshotSpec{
 				Application: hasApp.Name,
-				Components: []appstudioshared.ApplicationSnapshotComponent{
+				Components: []applicationapiv1alpha1.ApplicationSnapshotComponent{
 					{
 						Name:           "component-sample",
 						ContainerImage: sample_image,

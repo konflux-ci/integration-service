@@ -2,8 +2,7 @@ package gitops
 
 import (
 	"context"
-	hasv1alpha1 "github.com/redhat-appstudio/application-service/api/v1alpha1"
-	appstudioshared "github.com/redhat-appstudio/managed-gitops/appstudio-shared/apis/appstudio.redhat.com/v1alpha1"
+	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -40,7 +39,7 @@ const (
 
 // MarkSnapshotAsPassed updates the HACBS Test succeeded condition for the ApplicationSnapshot to passed.
 // If the patch command fails, an error will be returned.
-func MarkSnapshotAsPassed(adapterClient client.Client, ctx context.Context, applicationSnapshot *appstudioshared.ApplicationSnapshot, message string) (*appstudioshared.ApplicationSnapshot, error) {
+func MarkSnapshotAsPassed(adapterClient client.Client, ctx context.Context, applicationSnapshot *applicationapiv1alpha1.ApplicationSnapshot, message string) (*applicationapiv1alpha1.ApplicationSnapshot, error) {
 	patch := client.MergeFrom(applicationSnapshot.DeepCopy())
 	meta.SetStatusCondition(&applicationSnapshot.Status.Conditions, metav1.Condition{
 		Type:    HACBSTestSuceededCondition,
@@ -57,7 +56,7 @@ func MarkSnapshotAsPassed(adapterClient client.Client, ctx context.Context, appl
 
 // MarkSnapshotAsFailed updates the HACBS Test succeeded condition for the ApplicationSnapshot to failed.
 // If the patch command fails, an error will be returned.
-func MarkSnapshotAsFailed(adapterClient client.Client, ctx context.Context, applicationSnapshot *appstudioshared.ApplicationSnapshot, message string) (*appstudioshared.ApplicationSnapshot, error) {
+func MarkSnapshotAsFailed(adapterClient client.Client, ctx context.Context, applicationSnapshot *applicationapiv1alpha1.ApplicationSnapshot, message string) (*applicationapiv1alpha1.ApplicationSnapshot, error) {
 	patch := client.MergeFrom(applicationSnapshot.DeepCopy())
 	meta.SetStatusCondition(&applicationSnapshot.Status.Conditions, metav1.Condition{
 		Type:    HACBSTestSuceededCondition,
@@ -73,7 +72,7 @@ func MarkSnapshotAsFailed(adapterClient client.Client, ctx context.Context, appl
 }
 
 // SetSnapshotIntegrationStatusAsInvalid sets the HACBS integration status condition for the ApplicationSnapshot to invalid.
-func SetSnapshotIntegrationStatusAsInvalid(applicationSnapshot *appstudioshared.ApplicationSnapshot, message string) {
+func SetSnapshotIntegrationStatusAsInvalid(applicationSnapshot *applicationapiv1alpha1.ApplicationSnapshot, message string) {
 	meta.SetStatusCondition(&applicationSnapshot.Status.Conditions, metav1.Condition{
 		Type:    HACBSIntegrationStatusCondition,
 		Status:  metav1.ConditionFalse,
@@ -83,23 +82,23 @@ func SetSnapshotIntegrationStatusAsInvalid(applicationSnapshot *appstudioshared.
 }
 
 // HaveHACBSTestsFinished checks if the HACBS tests have finished by checking if the HACBS Test Succeeded condition is set.
-func HaveHACBSTestsFinished(applicationSnapshot *appstudioshared.ApplicationSnapshot) bool {
+func HaveHACBSTestsFinished(applicationSnapshot *applicationapiv1alpha1.ApplicationSnapshot) bool {
 	return meta.FindStatusCondition(applicationSnapshot.Status.Conditions, HACBSTestSuceededCondition) != nil
 }
 
 // HaveHACBSTestsSucceeded checks if the HACBS tests have finished by checking if the HACBS Test Succeeded condition is set.
-func HaveHACBSTestsSucceeded(applicationSnapshot *appstudioshared.ApplicationSnapshot) bool {
+func HaveHACBSTestsSucceeded(applicationSnapshot *applicationapiv1alpha1.ApplicationSnapshot) bool {
 	return meta.IsStatusConditionTrue(applicationSnapshot.Status.Conditions, HACBSTestSuceededCondition)
 }
 
 // CreateApplicationSnapshot creates a new applicationSnapshot based on the supplied application and components
-func CreateApplicationSnapshot(application *hasv1alpha1.Application, snapshotComponents *[]appstudioshared.ApplicationSnapshotComponent) *appstudioshared.ApplicationSnapshot {
-	applicationSnapshot := &appstudioshared.ApplicationSnapshot{
+func CreateApplicationSnapshot(application *applicationapiv1alpha1.Application, snapshotComponents *[]applicationapiv1alpha1.ApplicationSnapshotComponent) *applicationapiv1alpha1.ApplicationSnapshot {
+	applicationSnapshot := &applicationapiv1alpha1.ApplicationSnapshot{
 		ObjectMeta: metav1.ObjectMeta{
 			GenerateName: application.Name + "-",
 			Namespace:    application.Namespace,
 		},
-		Spec: appstudioshared.ApplicationSnapshotSpec{
+		Spec: applicationapiv1alpha1.ApplicationSnapshotSpec{
 			Application: application.Name,
 			Components:  *snapshotComponents,
 		},
@@ -108,7 +107,7 @@ func CreateApplicationSnapshot(application *hasv1alpha1.Application, snapshotCom
 }
 
 // FindMatchingApplicationSnapshot tries to find the expected ApplicationSnapshot with the same set of images.
-func FindMatchingApplicationSnapshot(adapterClient client.Client, ctx context.Context, application *hasv1alpha1.Application, expectedApplicationSnapshot *appstudioshared.ApplicationSnapshot) (*appstudioshared.ApplicationSnapshot, error) {
+func FindMatchingApplicationSnapshot(adapterClient client.Client, ctx context.Context, application *applicationapiv1alpha1.Application, expectedApplicationSnapshot *applicationapiv1alpha1.ApplicationSnapshot) (*applicationapiv1alpha1.ApplicationSnapshot, error) {
 	allApplicationSnapshots, err := GetAllApplicationSnapshots(adapterClient, ctx, application)
 	if err != nil {
 		return nil, err
@@ -125,8 +124,8 @@ func FindMatchingApplicationSnapshot(adapterClient client.Client, ctx context.Co
 
 // GetAllApplicationSnapshots returns all ApplicationSnapshots in the Application's namespace nil if it's not found.
 // In the case the List operation fails, an error will be returned.
-func GetAllApplicationSnapshots(adapterClient client.Client, ctx context.Context, application *hasv1alpha1.Application) (*[]appstudioshared.ApplicationSnapshot, error) {
-	applicationSnapshots := &appstudioshared.ApplicationSnapshotList{}
+func GetAllApplicationSnapshots(adapterClient client.Client, ctx context.Context, application *applicationapiv1alpha1.Application) (*[]applicationapiv1alpha1.ApplicationSnapshot, error) {
+	applicationSnapshots := &applicationapiv1alpha1.ApplicationSnapshotList{}
 	opts := []client.ListOption{
 		client.InNamespace(application.Namespace),
 		client.MatchingFields{"spec.application": application.Name},
@@ -141,7 +140,7 @@ func GetAllApplicationSnapshots(adapterClient client.Client, ctx context.Context
 }
 
 // CompareApplicationSnapshots compares two ApplicationSnapshots and returns boolean true if their images match exactly.
-func CompareApplicationSnapshots(expectedApplicationSnapshot *appstudioshared.ApplicationSnapshot, foundApplicationSnapshot *appstudioshared.ApplicationSnapshot) bool {
+func CompareApplicationSnapshots(expectedApplicationSnapshot *applicationapiv1alpha1.ApplicationSnapshot, foundApplicationSnapshot *applicationapiv1alpha1.ApplicationSnapshot) bool {
 	// If the number of components doesn't match, we immediately know that the snapshots are not equal.
 	if len(expectedApplicationSnapshot.Spec.Components) != len(foundApplicationSnapshot.Spec.Components) {
 		return false

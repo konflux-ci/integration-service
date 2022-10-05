@@ -23,13 +23,12 @@ import (
 	"strings"
 
 	"github.com/go-logr/logr"
-	hasv1alpha1 "github.com/redhat-appstudio/application-service/api/v1alpha1"
+	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/controllers/results"
 	"github.com/redhat-appstudio/integration-service/gitops"
 	"github.com/redhat-appstudio/integration-service/helpers"
 	"github.com/redhat-appstudio/integration-service/tekton"
-	appstudioshared "github.com/redhat-appstudio/managed-gitops/appstudio-shared/apis/appstudio.redhat.com/v1alpha1"
 	tektonv1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -38,15 +37,15 @@ import (
 // Adapter holds the objects needed to reconcile a Release.
 type Adapter struct {
 	pipelineRun *tektonv1beta1.PipelineRun
-	component   *hasv1alpha1.Component
-	application *hasv1alpha1.Application
+	component   *applicationapiv1alpha1.Component
+	application *applicationapiv1alpha1.Application
 	logger      logr.Logger
 	client      client.Client
 	context     context.Context
 }
 
 // NewAdapter creates and returns an Adapter instance.
-func NewAdapter(pipelineRun *tektonv1beta1.PipelineRun, component *hasv1alpha1.Component, application *hasv1alpha1.Application, logger logr.Logger, client client.Client,
+func NewAdapter(pipelineRun *tektonv1beta1.PipelineRun, component *applicationapiv1alpha1.Component, application *applicationapiv1alpha1.Application, logger logr.Logger, client client.Client,
 	context context.Context) *Adapter {
 	return &Adapter{
 		pipelineRun: pipelineRun,
@@ -198,8 +197,8 @@ func (a *Adapter) EnsureApplicationSnapshotPassedAllTests() (results.OperationRe
 
 // getAllApplicationComponents loads from the cluster all Components associated with the given Application.
 // If the Application doesn't have any Components or this is not found in the cluster, an error will be returned.
-func (a *Adapter) getAllApplicationComponents(application *hasv1alpha1.Application) (*[]hasv1alpha1.Component, error) {
-	applicationComponents := &hasv1alpha1.ComponentList{}
+func (a *Adapter) getAllApplicationComponents(application *applicationapiv1alpha1.Application) (*[]applicationapiv1alpha1.Component, error) {
+	applicationComponents := &applicationapiv1alpha1.ComponentList{}
 	opts := []client.ListOption{
 		client.InNamespace(application.Namespace),
 		client.MatchingFields{"spec.application": application.Name},
@@ -228,7 +227,7 @@ func (a *Adapter) getImagePullSpecFromPipelineRun(pipelineRun *tektonv1beta1.Pip
 }
 
 // getImagePullSpecFromSnapshotComponent gets the full image pullspec from the given ApplicationSnapshot Component,
-func (a *Adapter) getImagePullSpecFromSnapshotComponent(applicationSnapshot *appstudioshared.ApplicationSnapshot, component *hasv1alpha1.Component) (string, error) {
+func (a *Adapter) getImagePullSpecFromSnapshotComponent(applicationSnapshot *applicationapiv1alpha1.ApplicationSnapshot, component *applicationapiv1alpha1.Component) (string, error) {
 	for _, snapshotComponent := range applicationSnapshot.Spec.Components {
 		if snapshotComponent.Name == component.Name {
 			return snapshotComponent.ContainerImage, nil
@@ -260,10 +259,10 @@ func (a *Adapter) determineIfAllIntegrationPipelinesPassed(integrationPipelineRu
 
 // getApplicationSnapshotFromPipelineRun loads from the cluster the ApplicationSnapshot referenced in the given PipelineRun.
 // If the PipelineRun doesn't specify an ApplicationSnapshot or this is not found in the cluster, an error will be returned.
-func (a *Adapter) getApplicationSnapshotFromPipelineRun(pipelineRun *tektonv1beta1.PipelineRun, pipelineType string) (*appstudioshared.ApplicationSnapshot, error) {
+func (a *Adapter) getApplicationSnapshotFromPipelineRun(pipelineRun *tektonv1beta1.PipelineRun, pipelineType string) (*applicationapiv1alpha1.ApplicationSnapshot, error) {
 	snapshotLabel := fmt.Sprintf("%s.%s/snapshot", pipelineType, helpers.AppStudioLabelSuffix)
 	if snapshotName, found := pipelineRun.Labels[snapshotLabel]; found {
-		snapshot := &appstudioshared.ApplicationSnapshot{}
+		snapshot := &applicationapiv1alpha1.ApplicationSnapshot{}
 		err := a.client.Get(a.context, types.NamespacedName{
 			Namespace: pipelineRun.Namespace,
 			Name:      snapshotName,
@@ -282,7 +281,7 @@ func (a *Adapter) getApplicationSnapshotFromPipelineRun(pipelineRun *tektonv1bet
 // getAllPipelineRunsForApplicationSnapshot loads from the cluster all Integration PipelineRuns for each IntegrationTestScenario
 // associated with the ApplicationSnapshot. If the Application doesn't have any IntegrationTestScenarios associated with it,
 // an error will be returned.
-func (a *Adapter) getAllPipelineRunsForApplicationSnapshot(applicationSnapshot *appstudioshared.ApplicationSnapshot, integrationTestScenarios *[]v1alpha1.IntegrationTestScenario) (*[]tektonv1beta1.PipelineRun, error) {
+func (a *Adapter) getAllPipelineRunsForApplicationSnapshot(applicationSnapshot *applicationapiv1alpha1.ApplicationSnapshot, integrationTestScenarios *[]v1alpha1.IntegrationTestScenario) (*[]tektonv1beta1.PipelineRun, error) {
 	var integrationPipelineRuns []tektonv1beta1.PipelineRun
 	for _, integrationTestScenario := range *integrationTestScenarios {
 		integrationTestScenario := integrationTestScenario // G601
@@ -310,19 +309,19 @@ func (a *Adapter) getAllPipelineRunsForApplicationSnapshot(applicationSnapshot *
 
 // prepareApplicationSnapshot prepares the ApplicationSnapshot for a given application and the updated component (if any).
 // In case the ApplicationSnapshot can't be created, an error will be returned.
-func (a *Adapter) prepareApplicationSnapshot(application *hasv1alpha1.Application, component *hasv1alpha1.Component, newContainerImage string) (*appstudioshared.ApplicationSnapshot, error) {
+func (a *Adapter) prepareApplicationSnapshot(application *applicationapiv1alpha1.Application, component *applicationapiv1alpha1.Component, newContainerImage string) (*applicationapiv1alpha1.ApplicationSnapshot, error) {
 	applicationComponents, err := a.getAllApplicationComponents(application)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get all Application Components for Application %s", a.application.Name)
 	}
 
-	var snapshotComponents []appstudioshared.ApplicationSnapshotComponent
+	var snapshotComponents []applicationapiv1alpha1.ApplicationSnapshotComponent
 	for _, applicationComponent := range *applicationComponents {
 		containerImage := applicationComponent.Spec.ContainerImage
 		if applicationComponent.Name == component.Name {
 			containerImage = newContainerImage
 		}
-		snapshotComponents = append(snapshotComponents, appstudioshared.ApplicationSnapshotComponent{
+		snapshotComponents = append(snapshotComponents, applicationapiv1alpha1.ApplicationSnapshotComponent{
 			Name:           applicationComponent.Name,
 			ContainerImage: containerImage,
 		})
@@ -340,7 +339,7 @@ func (a *Adapter) prepareApplicationSnapshot(application *hasv1alpha1.Applicatio
 
 // prepareApplicationSnapshotForPipelineRun prepares the ApplicationSnapshot for a given PipelineRun,
 // component and application. In case the ApplicationSnapshot can't be created, an error will be returned.
-func (a *Adapter) prepareApplicationSnapshotForPipelineRun(pipelineRun *tektonv1beta1.PipelineRun, component *hasv1alpha1.Component, application *hasv1alpha1.Application) (*appstudioshared.ApplicationSnapshot, error) {
+func (a *Adapter) prepareApplicationSnapshotForPipelineRun(pipelineRun *tektonv1beta1.PipelineRun, component *applicationapiv1alpha1.Component, application *applicationapiv1alpha1.Application) (*applicationapiv1alpha1.ApplicationSnapshot, error) {
 	newContainerImage, err := a.getImagePullSpecFromPipelineRun(pipelineRun)
 	if err != nil {
 		return nil, err
@@ -380,7 +379,7 @@ func (a *Adapter) prepareApplicationSnapshotForPipelineRun(pipelineRun *tektonv1
 
 // prepareApplicationSnapshotForPipelineRun prepares the ApplicationSnapshot for a given PipelineRun,
 // component and application. In case the ApplicationSnapshot can't be created, an error will be returned.
-func (a *Adapter) prepareCompositeApplicationSnapshot(application *hasv1alpha1.Application, component *hasv1alpha1.Component, newContainerImage string) (*appstudioshared.ApplicationSnapshot, error) {
+func (a *Adapter) prepareCompositeApplicationSnapshot(application *applicationapiv1alpha1.Application, component *applicationapiv1alpha1.Component, newContainerImage string) (*applicationapiv1alpha1.ApplicationSnapshot, error) {
 	applicationSnapshot, err := a.prepareApplicationSnapshot(application, component, newContainerImage)
 	if err != nil {
 		return nil, err
@@ -396,7 +395,7 @@ func (a *Adapter) prepareCompositeApplicationSnapshot(application *hasv1alpha1.A
 
 // createCompositeSnapshotsIfConflictExists checks if the component ApplicationSnapshot is good to release by checking if any
 // of the other components containerImages changed in the meantime. If any of them changed, it creates a new composite snapshot.
-func (a *Adapter) createCompositeSnapshotsIfConflictExists(application *hasv1alpha1.Application, component *hasv1alpha1.Component, testedApplicationSnapshot *appstudioshared.ApplicationSnapshot) (*appstudioshared.ApplicationSnapshot, error) {
+func (a *Adapter) createCompositeSnapshotsIfConflictExists(application *applicationapiv1alpha1.Application, component *applicationapiv1alpha1.Component, testedApplicationSnapshot *applicationapiv1alpha1.ApplicationSnapshot) (*applicationapiv1alpha1.ApplicationSnapshot, error) {
 	newContainerImage, err := a.getImagePullSpecFromSnapshotComponent(testedApplicationSnapshot, component)
 	if err != nil {
 		return nil, err
