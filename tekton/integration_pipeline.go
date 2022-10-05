@@ -20,9 +20,8 @@ import (
 	"encoding/json"
 	"fmt"
 
-	hasv1alpha1 "github.com/redhat-appstudio/application-service/api/v1alpha1"
+	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/api/v1alpha1"
-	appstudioshared "github.com/redhat-appstudio/managed-gitops/appstudio-shared/apis/appstudio.redhat.com/v1alpha1"
 	tektonv1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -99,7 +98,7 @@ func (r *IntegrationPipelineRun) WithExtraParam(name string, value tektonv1beta1
 
 // WithApplicationSnapshot adds a param containing the ApplicationSnapshot as a json string
 // to the integration PipelineRun.
-func (r *IntegrationPipelineRun) WithApplicationSnapshot(snapshot *appstudioshared.ApplicationSnapshot) *IntegrationPipelineRun {
+func (r *IntegrationPipelineRun) WithApplicationSnapshot(snapshot *applicationapiv1alpha1.ApplicationSnapshot) *IntegrationPipelineRun {
 	// We ignore the error here because none should be raised when marshalling the spec of a CRD.
 	// If we end up deciding it is useful, we will need to pass the errors trough the chain and
 	// add something like a `Complete` function that returns the final object and error.
@@ -130,7 +129,7 @@ func (r *IntegrationPipelineRun) WithIntegrationLabels(integrationTestScenario *
 }
 
 // WithApplicationAndComponent adds the name of both application and component as lables to the Integration PipelineRun.
-func (r *IntegrationPipelineRun) WithApplicationAndComponent(application *hasv1alpha1.Application, component *hasv1alpha1.Component) *IntegrationPipelineRun {
+func (r *IntegrationPipelineRun) WithApplicationAndComponent(application *applicationapiv1alpha1.Application, component *applicationapiv1alpha1.Component) *IntegrationPipelineRun {
 	if r.ObjectMeta.Labels == nil {
 		r.ObjectMeta.Labels = map[string]string{}
 	}
