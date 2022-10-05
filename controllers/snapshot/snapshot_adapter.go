@@ -23,30 +23,29 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 
 	"github.com/go-logr/logr"
-	hasv1alpha1 "github.com/redhat-appstudio/application-service/api/v1alpha1"
+	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/controllers/results"
 	"github.com/redhat-appstudio/integration-service/gitops"
 	"github.com/redhat-appstudio/integration-service/helpers"
 	"github.com/redhat-appstudio/integration-service/release"
 	"github.com/redhat-appstudio/integration-service/tekton"
-	appstudioshared "github.com/redhat-appstudio/managed-gitops/appstudio-shared/apis/appstudio.redhat.com/v1alpha1"
 	releasev1alpha1 "github.com/redhat-appstudio/release-service/api/v1alpha1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 // Adapter holds the objects needed to reconcile a Release.
 type Adapter struct {
-	snapshot    *appstudioshared.ApplicationSnapshot
-	application *hasv1alpha1.Application
-	component   *hasv1alpha1.Component
+	snapshot    *applicationapiv1alpha1.ApplicationSnapshot
+	application *applicationapiv1alpha1.Application
+	component   *applicationapiv1alpha1.Component
 	logger      logr.Logger
 	client      client.Client
 	context     context.Context
 }
 
 // NewAdapter creates and returns an Adapter instance.
-func NewAdapter(snapshot *appstudioshared.ApplicationSnapshot, application *hasv1alpha1.Application, component *hasv1alpha1.Component, logger logr.Logger, client client.Client,
+func NewAdapter(snapshot *applicationapiv1alpha1.ApplicationSnapshot, application *applicationapiv1alpha1.Application, component *applicationapiv1alpha1.Component, logger logr.Logger, client client.Client,
 	context context.Context) *Adapter {
 	return &Adapter{
 		snapshot:    snapshot,
@@ -238,7 +237,7 @@ func (a *Adapter) EnsureApplicationSnapshotEnvironmentBindingExist() (results.Op
 
 // getReleasesWithApplicationSnapshot returns all Releases associated with the given applicationSnapshot.
 // In the case the List operation fails, an error will be returned.
-func (a *Adapter) getReleasesWithApplicationSnapshot(applicationSnapshot *appstudioshared.ApplicationSnapshot) (*[]releasev1alpha1.Release, error) {
+func (a *Adapter) getReleasesWithApplicationSnapshot(applicationSnapshot *applicationapiv1alpha1.ApplicationSnapshot) (*[]releasev1alpha1.Release, error) {
 	releases := &releasev1alpha1.ReleaseList{}
 	opts := []client.ListOption{
 		client.InNamespace(applicationSnapshot.Namespace),
@@ -255,7 +254,7 @@ func (a *Adapter) getReleasesWithApplicationSnapshot(applicationSnapshot *appstu
 
 // createMissingReleasesForReleasePlans checks if there's existing Releases for a given list of ReleasePlans and creates
 // new ones if they are missing. In case the Releases can't be created, an error will be returned.
-func (a *Adapter) createMissingReleasesForReleasePlans(application *hasv1alpha1.Application, releasePlans *[]releasev1alpha1.ReleasePlan, applicationSnapshot *appstudioshared.ApplicationSnapshot) error {
+func (a *Adapter) createMissingReleasesForReleasePlans(application *applicationapiv1alpha1.Application, releasePlans *[]releasev1alpha1.ReleasePlan, applicationSnapshot *applicationapiv1alpha1.ApplicationSnapshot) error {
 	releases, err := a.getReleasesWithApplicationSnapshot(applicationSnapshot)
 	if err != nil {
 		return err
@@ -310,9 +309,9 @@ func (a *Adapter) createMissingReleasesForReleasePlans(application *hasv1alpha1.
 }
 
 // getAllEnvironments gets all environments in the namespace
-func (a *Adapter) getAllEnvironments() (*[]appstudioshared.Environment, error) {
+func (a *Adapter) getAllEnvironments() (*[]applicationapiv1alpha1.Environment, error) {
 
-	environmentList := &appstudioshared.EnvironmentList{}
+	environmentList := &applicationapiv1alpha1.EnvironmentList{}
 	opts := []client.ListOption{
 		client.InNamespace(a.application.Namespace),
 	}
@@ -321,12 +320,12 @@ func (a *Adapter) getAllEnvironments() (*[]appstudioshared.Environment, error) {
 }
 
 // findAvailableEnvironments gets all environments that don't have a ParentEnvironment and are not tagged as ephemeral.
-func (a *Adapter) findAvailableEnvironments() (*[]appstudioshared.Environment, error) {
+func (a *Adapter) findAvailableEnvironments() (*[]applicationapiv1alpha1.Environment, error) {
 	allEnvironments, err := a.getAllEnvironments()
 	if err != nil {
 		return nil, err
 	}
-	availableEnvironments := []appstudioshared.Environment{}
+	availableEnvironments := []applicationapiv1alpha1.Environment{}
 	for _, environment := range *allEnvironments {
 		if environment.Spec.ParentEnvironment == "" {
 			isEphemeral := false
@@ -346,8 +345,8 @@ func (a *Adapter) findAvailableEnvironments() (*[]appstudioshared.Environment, e
 
 // getAllApplicationComponents loads from the cluster all Components associated with the given Application.
 // If the Application doesn't have any Components or this is not found in the cluster, an error will be returned.
-func (a *Adapter) getAllApplicationComponents(application *hasv1alpha1.Application) (*[]hasv1alpha1.Component, error) {
-	applicationComponents := &hasv1alpha1.ComponentList{}
+func (a *Adapter) getAllApplicationComponents(application *applicationapiv1alpha1.Application) (*[]applicationapiv1alpha1.Component, error) {
+	applicationComponents := &applicationapiv1alpha1.ComponentList{}
 	opts := []client.ListOption{
 		client.InNamespace(application.Namespace),
 		client.MatchingFields{"spec.application": application.Name},
@@ -364,7 +363,7 @@ func (a *Adapter) getAllApplicationComponents(application *hasv1alpha1.Applicati
 // createIntegrationPipelineRun creates and returns a new integration PipelineRun. The Pipeline information and the parameters to it
 // will be extracted from the given integrationScenario. The integration's ApplicationSnapshot will also be passed to the
 // integration PipelineRun.
-func (a *Adapter) createIntegrationPipelineRun(application *hasv1alpha1.Application, integrationTestScenario *v1alpha1.IntegrationTestScenario, applicationSnapshot *appstudioshared.ApplicationSnapshot) error {
+func (a *Adapter) createIntegrationPipelineRun(application *applicationapiv1alpha1.Application, integrationTestScenario *v1alpha1.IntegrationTestScenario, applicationSnapshot *applicationapiv1alpha1.ApplicationSnapshot) error {
 	pipelineRun := tekton.NewIntegrationPipelineRun(applicationSnapshot.Name, application.Namespace, *integrationTestScenario).
 		WithApplicationSnapshot(applicationSnapshot).
 		WithIntegrationLabels(integrationTestScenario).
@@ -403,9 +402,9 @@ func (a *Adapter) createIntegrationPipelineRun(application *hasv1alpha1.Applicat
 // createApplicationSnapshotEnvironmentBindingForSnapshot creates and returns a new applicationSnapshotEnvironmentBinding
 // for the given application, environment, applicationSnapshot, and components.
 // If it's not possible to create it and set the application as the owner, an error will be returned
-func (a *Adapter) createApplicationSnapshotEnvironmentBindingForSnapshot(application *hasv1alpha1.Application,
-	environment *appstudioshared.Environment, applicationSnapshot *appstudioshared.ApplicationSnapshot,
-	components *[]hasv1alpha1.Component) (*appstudioshared.ApplicationSnapshotEnvironmentBinding, error) {
+func (a *Adapter) createApplicationSnapshotEnvironmentBindingForSnapshot(application *applicationapiv1alpha1.Application,
+	environment *applicationapiv1alpha1.Environment, applicationSnapshot *applicationapiv1alpha1.ApplicationSnapshot,
+	components *[]applicationapiv1alpha1.Component) (*applicationapiv1alpha1.ApplicationSnapshotEnvironmentBinding, error) {
 	bindingName := application.Name + "-" + environment.Name + "-" + "binding"
 
 	applicationSnapshotEnvironmentBinding := gitops.CreateApplicationSnapshotEnvironmentBinding(
@@ -428,9 +427,9 @@ func (a *Adapter) createApplicationSnapshotEnvironmentBindingForSnapshot(applica
 
 // updateExistingApplicationSnapshotEnvironmentBindingWithSnapshot updates and returns applicationSnapshotEnvironmentBinding
 // with the given snapshot and components. If it's not possible to patch, an error will be returned.
-func (a *Adapter) updateExistingApplicationSnapshotEnvironmentBindingWithSnapshot(applicationSnapshotEnvironmentBinding *appstudioshared.ApplicationSnapshotEnvironmentBinding,
-	snapshot *appstudioshared.ApplicationSnapshot,
-	components *[]hasv1alpha1.Component) (*appstudioshared.ApplicationSnapshotEnvironmentBinding, error) {
+func (a *Adapter) updateExistingApplicationSnapshotEnvironmentBindingWithSnapshot(applicationSnapshotEnvironmentBinding *applicationapiv1alpha1.ApplicationSnapshotEnvironmentBinding,
+	snapshot *applicationapiv1alpha1.ApplicationSnapshot,
+	components *[]applicationapiv1alpha1.Component) (*applicationapiv1alpha1.ApplicationSnapshotEnvironmentBinding, error) {
 
 	patch := client.MergeFrom(applicationSnapshotEnvironmentBinding.DeepCopy())
 

@@ -11,9 +11,8 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	appstudiov1alpha1 "github.com/redhat-appstudio/application-service/api/v1alpha1"
+	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/gitops"
-	appstudioshared "github.com/redhat-appstudio/managed-gitops/appstudio-shared/apis/appstudio.redhat.com/v1alpha1"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -28,9 +27,9 @@ var _ = Describe("SnapshotController", func() {
 		reconciler  *Reconciler
 		scheme      runtime.Scheme
 		req         ctrl.Request
-		hasApp      *appstudiov1alpha1.Application
-		hasComp     *appstudiov1alpha1.Component
-		hasSnapshot *appstudioshared.ApplicationSnapshot
+		hasApp      *applicationapiv1alpha1.Application
+		hasComp     *applicationapiv1alpha1.Component
+		hasSnapshot *applicationapiv1alpha1.ApplicationSnapshot
 	)
 	const (
 		SampleRepoLink = "https://github.com/devfile-samples/devfile-sample-java-springboot-basic"
@@ -40,12 +39,12 @@ var _ = Describe("SnapshotController", func() {
 
 		applicationName := "application-sample"
 
-		hasApp = &appstudiov1alpha1.Application{
+		hasApp = &applicationapiv1alpha1.Application{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      applicationName,
 				Namespace: "default",
 			},
-			Spec: appstudiov1alpha1.ApplicationSpec{
+			Spec: applicationapiv1alpha1.ApplicationSpec{
 				DisplayName: "application-sample",
 				Description: "This is an example application",
 			},
@@ -53,17 +52,17 @@ var _ = Describe("SnapshotController", func() {
 
 		Expect(k8sClient.Create(ctx, hasApp)).Should(Succeed())
 
-		hasComp = &appstudiov1alpha1.Component{
+		hasComp = &applicationapiv1alpha1.Component{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "component-sample",
 				Namespace: "default",
 			},
-			Spec: appstudiov1alpha1.ComponentSpec{
+			Spec: applicationapiv1alpha1.ComponentSpec{
 				ComponentName: "component-sample",
 				Application:   applicationName,
-				Source: appstudiov1alpha1.ComponentSource{
-					ComponentSourceUnion: appstudiov1alpha1.ComponentSourceUnion{
-						GitSource: &appstudiov1alpha1.GitSource{
+				Source: applicationapiv1alpha1.ComponentSource{
+					ComponentSourceUnion: applicationapiv1alpha1.ComponentSourceUnion{
+						GitSource: &applicationapiv1alpha1.GitSource{
 							URL: SampleRepoLink,
 						},
 					},
@@ -71,7 +70,7 @@ var _ = Describe("SnapshotController", func() {
 			},
 		}
 		Expect(k8sClient.Create(ctx, hasComp)).Should(Succeed())
-		hasSnapshot = &appstudioshared.ApplicationSnapshot{
+		hasSnapshot = &applicationapiv1alpha1.ApplicationSnapshot{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "snapshot-sample",
 				Namespace: "default",
@@ -80,9 +79,9 @@ var _ = Describe("SnapshotController", func() {
 					gitops.ApplicationSnapshotComponentLabel: "component-sample",
 				},
 			},
-			Spec: appstudioshared.ApplicationSnapshotSpec{
+			Spec: applicationapiv1alpha1.ApplicationSnapshotSpec{
 				Application: hasApp.Name,
-				Components: []appstudioshared.ApplicationSnapshotComponent{
+				Components: []applicationapiv1alpha1.ApplicationSnapshotComponent{
 					{
 						Name:           "component-sample",
 						ContainerImage: "testimage",

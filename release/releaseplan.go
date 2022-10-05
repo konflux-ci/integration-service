@@ -18,8 +18,7 @@ package release
 
 import (
 	"context"
-	hasv1alpha1 "github.com/redhat-appstudio/application-service/api/v1alpha1"
-	appstudioshared "github.com/redhat-appstudio/managed-gitops/appstudio-shared/apis/appstudio.redhat.com/v1alpha1"
+	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	releasev1alpha1 "github.com/redhat-appstudio/release-service/api/v1alpha1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
@@ -29,7 +28,7 @@ import (
 )
 
 // CreateReleaseForReleasePlan creates the Release for a given ReleasePlan.
-func CreateReleaseForReleasePlan(releasePlan *releasev1alpha1.ReleasePlan, applicationSnapshot *appstudioshared.ApplicationSnapshot) *releasev1alpha1.Release {
+func CreateReleaseForReleasePlan(releasePlan *releasev1alpha1.ReleasePlan, applicationSnapshot *applicationapiv1alpha1.ApplicationSnapshot) *releasev1alpha1.Release {
 	newRelease := &releasev1alpha1.Release{
 		ObjectMeta: metav1.ObjectMeta{
 			GenerateName: applicationSnapshot.Name + "-",
@@ -57,7 +56,7 @@ func FindMatchingReleaseWithReleasePlan(releases *[]releasev1alpha1.Release, rel
 // GetAutoReleasePlansForApplication returns the ReleasePlans used by the application being processed. If matching
 // ReleasePlans are not found, an error will be returned. A ReleasePlan will only be returned if it has the
 // release.appstudio.openshift.io/auto-release label set to true or if it is missing the label entirely.
-func GetAutoReleasePlansForApplication(adapterClient client.Client, ctx context.Context, application *hasv1alpha1.Application) (*[]releasev1alpha1.ReleasePlan, error) {
+func GetAutoReleasePlansForApplication(adapterClient client.Client, ctx context.Context, application *applicationapiv1alpha1.Application) (*[]releasev1alpha1.ReleasePlan, error) {
 	releasePlans := &releasev1alpha1.ReleasePlanList{}
 	labelRequirement, err := labels.NewRequirement("release.appstudio.openshift.io/auto-release", selection.NotIn, []string{"false"})
 	if err != nil {

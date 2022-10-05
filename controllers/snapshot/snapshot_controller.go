@@ -21,10 +21,9 @@ import (
 
 	"github.com/go-logr/logr"
 	"github.com/kcp-dev/logicalcluster/v2"
-	hasv1alpha1 "github.com/redhat-appstudio/application-service/api/v1alpha1"
+	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/controllers/results"
 	"github.com/redhat-appstudio/integration-service/gitops"
-	appstudioshared "github.com/redhat-appstudio/managed-gitops/appstudio-shared/apis/appstudio.redhat.com/v1alpha1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -61,7 +60,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		ctx = logicalcluster.WithCluster(ctx, logicalcluster.New(req.ClusterName))
 	}
 
-	snapshot := &appstudioshared.ApplicationSnapshot{}
+	snapshot := &applicationapiv1alpha1.ApplicationSnapshot{}
 	err := r.Get(ctx, req.NamespacedName, snapshot)
 	if err != nil {
 		logger.Error(err, "Failed to get snapshot for", "req", req.NamespacedName)
@@ -93,8 +92,8 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 
 // getApplicationFromSnapshot loads from the cluster the Application referenced in the given ApplicationSnapshot.
 // If the ApplicationSnapshot doesn't specify an Component or this is not found in the cluster, an error will be returned.
-func (r *Reconciler) getApplicationFromSnapshot(context context.Context, snapshot *appstudioshared.ApplicationSnapshot) (*hasv1alpha1.Application, error) {
-	application := &hasv1alpha1.Application{}
+func (r *Reconciler) getApplicationFromSnapshot(context context.Context, snapshot *applicationapiv1alpha1.ApplicationSnapshot) (*applicationapiv1alpha1.Application, error) {
+	application := &applicationapiv1alpha1.Application{}
 	err := r.Get(context, types.NamespacedName{
 		Namespace: snapshot.Namespace,
 		Name:      snapshot.Spec.Application,
@@ -109,9 +108,9 @@ func (r *Reconciler) getApplicationFromSnapshot(context context.Context, snapsho
 
 // getComponentFromSnapshot loads from the cluster the Component referenced in the given ApplicationSnapshot.
 // If the ApplicationSnapshot doesn't specify an Application or this is not found in the cluster, an error will be returned.
-func (r *Reconciler) getComponentFromSnapshot(context context.Context, snapshot *appstudioshared.ApplicationSnapshot) (*hasv1alpha1.Component, error) {
+func (r *Reconciler) getComponentFromSnapshot(context context.Context, snapshot *applicationapiv1alpha1.ApplicationSnapshot) (*applicationapiv1alpha1.Component, error) {
 	if componentLabel, ok := snapshot.Labels[gitops.ApplicationSnapshotComponentLabel]; ok {
-		component := &hasv1alpha1.Component{}
+		component := &applicationapiv1alpha1.Component{}
 		err := r.Get(context, types.NamespacedName{
 			Namespace: snapshot.Namespace,
 			Name:      componentLabel,
@@ -192,6 +191,6 @@ func setupControllerWithManager(manager ctrl.Manager, reconciler *Reconciler) er
 	}
 
 	return ctrl.NewControllerManagedBy(manager).
-		For(&appstudioshared.ApplicationSnapshot{}).
+		For(&applicationapiv1alpha1.ApplicationSnapshot{}).
 		Complete(reconciler)
 }

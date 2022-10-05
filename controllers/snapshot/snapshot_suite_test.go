@@ -31,10 +31,9 @@ import (
 
 	ctrl "sigs.k8s.io/controller-runtime"
 
-	appstudiov1alpha1 "github.com/redhat-appstudio/application-service/api/v1alpha1"
+	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	integrationalpha1 "github.com/redhat-appstudio/integration-service/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/controllers/pipeline"
-	appstudioshared "github.com/redhat-appstudio/managed-gitops/appstudio-shared/apis/appstudio.redhat.com/v1alpha1"
 	releasev1alpha1 "github.com/redhat-appstudio/release-service/api/v1alpha1"
 	appstudiotest "github.com/redhat-appstudio/release-service/test"
 	tektonv1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
@@ -71,12 +70,8 @@ var _ = BeforeSuite(func() {
 			),
 			filepath.Join(
 				build.Default.GOPATH,
-				"pkg", "mod", appstudiotest.GetRelativeDependencyPath("managed-gitops"),
+				"pkg", "mod", appstudiotest.GetRelativeDependencyPath("application-api"),
 				"config", "crd", "bases",
-			),
-			filepath.Join(
-				build.Default.GOPATH,
-				"pkg", "mod", appstudiotest.GetRelativeDependencyPath("application-service"), "config", "crd", "bases",
 			),
 			filepath.Join(
 				build.Default.GOPATH,
@@ -91,9 +86,8 @@ var _ = BeforeSuite(func() {
 	Expect(err).NotTo(HaveOccurred())
 	Expect(cfg).NotTo(BeNil())
 
-	Expect(appstudiov1alpha1.AddToScheme(clientsetscheme.Scheme)).To(Succeed())
+	Expect(applicationapiv1alpha1.AddToScheme(clientsetscheme.Scheme)).To(Succeed())
 	Expect(tektonv1beta1.AddToScheme(clientsetscheme.Scheme)).To(Succeed())
-	Expect(appstudioshared.AddToScheme(clientsetscheme.Scheme)).To(Succeed())
 	Expect(releasev1alpha1.AddToScheme(clientsetscheme.Scheme)).To(Succeed())
 	Expect(integrationalpha1.AddToScheme(clientsetscheme.Scheme)).To(Succeed())
 

@@ -5,9 +5,8 @@ import (
 	"encoding/json"
 
 	"github.com/go-logr/logr"
-	hasv1alpha1 "github.com/redhat-appstudio/application-service/api/v1alpha1"
+	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/api/v1alpha1"
-	appstudioshared "github.com/redhat-appstudio/managed-gitops/appstudio-shared/apis/appstudio.redhat.com/v1alpha1"
 	tektonv1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/labels"
@@ -33,7 +32,7 @@ const (
 // GetRequiredIntegrationTestScenariosForApplication returns the IntegrationTestScenarios used by the application being processed.
 // An IntegrationTestScenarios will only be returned if it has the test.appstudio.openshift.io/optional
 // label set to true or if it is missing the label entirely.
-func GetRequiredIntegrationTestScenariosForApplication(adapterClient client.Client, ctx context.Context, application *hasv1alpha1.Application) (*[]v1alpha1.IntegrationTestScenario, error) {
+func GetRequiredIntegrationTestScenariosForApplication(adapterClient client.Client, ctx context.Context, application *applicationapiv1alpha1.Application) (*[]v1alpha1.IntegrationTestScenario, error) {
 	integrationList := &v1alpha1.IntegrationTestScenarioList{}
 	labelRequirement, err := labels.NewRequirement("test.appstudio.openshift.io/optional", selection.NotIn, []string{"true"})
 	if err != nil {
@@ -55,8 +54,8 @@ func GetRequiredIntegrationTestScenariosForApplication(adapterClient client.Clie
 	return &integrationList.Items, nil
 }
 
-// getAllIntegrationTestScenariosForApplication returns all IntegrationTestScenarios used by the application being processed.
-func GetAllIntegrationTestScenariosForApplication(adapterClient client.Client, ctx context.Context, application *hasv1alpha1.Application) (*[]v1alpha1.IntegrationTestScenario, error) {
+// GetAllIntegrationTestScenariosForApplication returns all IntegrationTestScenarios used by the application being processed.
+func GetAllIntegrationTestScenariosForApplication(adapterClient client.Client, ctx context.Context, application *applicationapiv1alpha1.Application) (*[]v1alpha1.IntegrationTestScenario, error) {
 	integrationList := &v1alpha1.IntegrationTestScenarioList{}
 
 	opts := &client.ListOptions{
@@ -96,10 +95,10 @@ func CalculateIntegrationPipelineRunOutcome(logger logr.Logger, pipelineRun *tek
 	return true, nil
 }
 
-// getLatestPipelineRunForApplicationSnapshotAndScenario returns the latest Integration PipelineRun for the
+// GetLatestPipelineRunForApplicationSnapshotAndScenario returns the latest Integration PipelineRun for the
 // associated ApplicationSnapshot and IntegrationTestScenario. In the case the List operation fails,
 // an error will be returned.
-func GetLatestPipelineRunForApplicationSnapshotAndScenario(adapterClient client.Client, ctx context.Context, application *hasv1alpha1.Application, applicationSnapshot *appstudioshared.ApplicationSnapshot, integrationTestScenario *v1alpha1.IntegrationTestScenario) (*tektonv1beta1.PipelineRun, error) {
+func GetLatestPipelineRunForApplicationSnapshotAndScenario(adapterClient client.Client, ctx context.Context, application *applicationapiv1alpha1.Application, applicationSnapshot *applicationapiv1alpha1.ApplicationSnapshot, integrationTestScenario *v1alpha1.IntegrationTestScenario) (*tektonv1beta1.PipelineRun, error) {
 	integrationPipelineRuns := &tektonv1beta1.PipelineRunList{}
 	var latestIntegrationPipelineRun = &tektonv1beta1.PipelineRun{}
 	opts := []client.ListOption{
