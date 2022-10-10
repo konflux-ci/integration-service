@@ -150,7 +150,7 @@ func (a *Adapter) EnsureApplicationSnapshotPassedAllTests() (results.OperationRe
 
 	// If the applicationSnapshot is a component type, check if the global component list changed in the meantime and
 	// create a composite snapshot if it did.
-	if existingApplicationSnapshot.Labels != nil && existingApplicationSnapshot.Labels[gitops.ApplicationSnapshotTypeLabel] == gitops.ApplicationSnapshotComponentType {
+	if existingApplicationSnapshot.Labels != nil && existingApplicationSnapshot.Labels[gitops.ApplicationSnapshotTypeLabel] == gitops.ApplicationSnapshotComponentType && gitops.IsSnapshotCreatedByPushEvent(existingApplicationSnapshot) {
 		compositeApplicationSnapshot, err := a.createCompositeSnapshotsIfConflictExists(a.application, a.component, existingApplicationSnapshot)
 		if err != nil {
 			a.logger.Error(err, "Failed to determine if a composite snapshot needs to be created because of a conflict",
