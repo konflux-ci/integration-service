@@ -8,6 +8,12 @@ rules:
 - apiGroups:
   - appstudio.redhat.com
   resources:
+  - applications/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - appstudio.redhat.com
+  resources:
   - pipelineRuns
   verbs:
   - create
