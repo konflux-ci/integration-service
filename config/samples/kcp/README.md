@@ -39,7 +39,7 @@ kubectl kcp workload sync mycluster --resources configmaps,deployments.apps,secr
 
 This commands will create a file `syncer710.yaml`.
 
-Add the CRDs you will use to `syncer710.yaml`, such as the examples I add in [syncer710.yaml](syncer710.yaml)
+Add the CRDs you will use to `syncer710.yaml`
 
 Go to physical cluster `mycluster`, apply them
 
@@ -55,7 +55,7 @@ Go to kcp workspace `test-workspace`, get apiresourceschema
 kubectl get apiresourceschema -o name -w
 ```
 
-add them to apiexport.yaml, example [apiexport_integration.yaml](../apiexport_integration.yaml)
+add them to apiexport.yaml, example [apiexport_integration.yaml](../../kcp/apiexport_integration.yaml)
 
 Apply `apiexport.yaml` to apiexport `integration`
 
