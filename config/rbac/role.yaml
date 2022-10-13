@@ -6,6 +6,20 @@ metadata:
   name: manager-role
 rules:
 - apiGroups:
+  - apis.kcp.dev
+  resources:
+  - apiexports
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - apis.kcp.dev
+  resources:
+  - apiexports/content
+  verbs:
+  - update
+- apiGroups:
   - appstudio.redhat.com
   resources:
   - applicationSnapshots

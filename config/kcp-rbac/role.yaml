@@ -37,3 +37,17 @@ rules:
   - get
   - patch
   - update
+- apiGroups:
+  - apis.kcp.dev
+  resources:
+  - apiexports
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - apis.kcp.dev
+  resources:
+  - apiexports/content
+  verbs:
+  - update

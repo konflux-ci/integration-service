@@ -6,33 +6,37 @@ spec:
   reference:
     workspace:
       path: ${kcp_workspace}
-      exportName: integration-api
+      exportName: integration-service
   permissionClaims:
-    - resource: "pipelineruns"
-      group: "tekton.dev"
-      identityHash: null
+    - resource: pipelineruns
+      group: tekton.dev
+      identityHash: pipeline-service
       state: Accepted
-    - resource: "applications"
-      group: "appstudio.redhat.com"
-      identityHash: null # application-api apiexport
+    - resource: applications
+      group: appstudio.redhat.com
+      identityHash: application-api
       state: Accepted
-    - resource: "components"
-      group: "appstudio.redhat.com"
-      identityHash: null # application-api apiexport
+    - resource: components
+      group: appstudio.redhat.com
+      identityHash: application-api
       state: Accepted
-    - resource: "applicationsnapshots"
-      group: "appstudio.redhat.com"
-      identityHash: null # application-api apiexport
+    - resource: applicationsnapshots
+      group: appstudio.redhat.com
+      identityHash: application-api
       state: Accepted
-    - resource: "environments"
-      group: "appstudio.redhat.com"
-      identityHash: null # application-api apiexport
+    - resource: environments
+      group: appstudio.redhat.com
+      identityHash: application-api
       state: Accepted
-    - resource: "applicationsnapshotenvironmentbindings"
-      group: "appstudio.redhat.com"
-      identityHash: null # application-api apiexport
+    - resource: applicationsnapshotenvironmentbindings
+      group: appstudio.redhat.com
+      identityHash: application-api
       state: Accepted
-    - resource: "releases"
-      group: "appstudio.redhat.com"
-      identityHash: null # release apiexport
+    - resource: releases
+      group: appstudio.redhat.com
+      identityHash: release-service
+      state: Accepted
+    - resource: releaseplans
+      group: appstudio.redhat.com
+      identityHash: release-service
       state: Accepted

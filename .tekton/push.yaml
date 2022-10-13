@@ -21,7 +21,8 @@ spec:
       value: Dockerfile
     - name: infra-deployment-update-script
       value: |
-        sed -i -e 's|\(https://github.com/redhat-appstudio/integration-service/config/default?ref=\)\(.*\)|\1{{ revision }}|' -e 's/\(newTag: \).*/\1{{ revision }}/' components/integration/kustomization.yaml
+        sed -i -e 's|\(https://github.com/redhat-appstudio/integration-service/.*?ref=\)\(.*\)|\1{{ revision }}|' -e 's/\(newTag: \).*/\1{{ revision }}/' components/hacbs/integration-service/base/kustomization.yaml
+        ./hack/generate-apiexport-overlays.sh components/hacbs/integration-service/
   pipelineRef:
     name: docker-build
     bundle: quay.io/redhat-appstudio/hacbs-core-service-templates-bundle:latest
