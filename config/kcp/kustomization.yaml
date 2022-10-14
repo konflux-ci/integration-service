@@ -1,32 +1,31 @@
 # Adds namespace to all resources.
-namespace: integration-service-system
+# namespace: integration-service-system
 
 # Value of this field is prepended to the
 # names of all resources, e.g. a deployment named
 # "wordpress" becomes "alices-wordpress".
 # Note that it should also match with the prefix (text before '-') of the namespace
 # field above.
-namePrefix: integration-service-
+# namePrefix: integration-service-
 
 # Labels to add to all resources and selectors.
 #commonLabels:
 #  someName: someValue
 
 bases:
-  - ../crd
   - ../manager
-  - ../rbac
+  - ../kcp-rbac
 
 resources:
   - apiexport_integration.yaml
   - apiresourceschema_integration.yaml
 
 patches:
-# Needs to use default service account name right now
+# Add APIExport flag to the operator arguments list
 - patch: |-
-    - op: replace
-      path: /spec/template/spec/serviceAccountName
-      value: default
+    - op: add
+      path: /spec/template/spec/containers/0/args/-
+      value: --api-export-name=integration-service
   target:
     kind: Deployment
-    name: controller-manager
+    name: integration-service-controller-manager
