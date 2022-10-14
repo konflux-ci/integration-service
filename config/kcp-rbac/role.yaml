@@ -50,4 +50,4 @@ rules:
   resources:
   - apiexports/content
   verbs:
-  - update
+  - '*'
