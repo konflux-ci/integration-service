@@ -144,10 +144,10 @@ type ReconcileOperation func() (results.OperationResult, error)
 // the queue based on the operations' results.
 func (r *Reconciler) ReconcileHandler(adapter AdapterInterface) (ctrl.Result, error) {
 	operations := []ReconcileOperation{
-		adapter.EnsureAllReleasesExist,
-		adapter.EnsureGlobalComponentImageUpdated,
-		adapter.EnsureApplicationSnapshotEnvironmentBindingExist,
 		adapter.EnsureAllIntegrationTestPipelinesExist,
+		adapter.EnsureGlobalComponentImageUpdated,
+		adapter.EnsureAllReleasesExist,
+		adapter.EnsureApplicationSnapshotEnvironmentBindingExist,
 	}
 
 	for _, operation := range operations {
