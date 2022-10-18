@@ -1,9 +1,10 @@
 package snapshot
 
 import (
-	"k8s.io/apimachinery/pkg/api/errors"
 	"reflect"
 	"time"
+
+	"k8s.io/apimachinery/pkg/api/errors"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -249,7 +250,6 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		Expect(requiredIntegrationTestScenarios != nil && err == nil).To(BeTrue())
 		if requiredIntegrationTestScenarios != nil {
 			for _, requiredIntegrationTestScenario := range *requiredIntegrationTestScenarios {
-				klog.Infof("requiredIntegrationTestScenario.Spec.Application:", requiredIntegrationTestScenario.Spec.Application)
 				requiredIntegrationTestScenario := requiredIntegrationTestScenario
 
 				integrationPipelineRuns := &tektonv1beta1.PipelineRunList{}
@@ -265,8 +265,6 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 					err := k8sClient.List(ctx, integrationPipelineRuns, opts...)
 					return len(integrationPipelineRuns.Items) > 0 && err == nil
 				}, time.Second*10).Should(BeTrue())
-
-				klog.Infof("The integrationPipelineRun", integrationPipelineRuns.Items[0].Name)
 				Expect(k8sClient.Delete(ctx, &integrationPipelineRuns.Items[0])).Should(Succeed())
 			}
 		}
