@@ -2,6 +2,7 @@ package tekton
 
 import (
 	"fmt"
+
 	"github.com/redhat-appstudio/integration-service/helpers"
 	tektonv1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 	"knative.dev/pkg/apis"
@@ -49,14 +50,37 @@ func IsIntegrationPipelineRun(object client.Object) bool {
 	return false
 }
 
-// hasPipelineSucceeded returns a boolean indicating whether the PipelineRun succeeded or not.
-// If the object passed to this function is not a PipelineRun, the function will return false.
-func hasPipelineSucceeded(objectOld, objectNew client.Object) bool {
+// hasPipelineRunStateChangedToSucceeded returns a boolean indicating whether the PipelineRun status changed to succeeded or not.
+// If the objects passed to this function are not PipelineRuns, the function will return false.
+func hasPipelineRunStateChangedToSucceeded(objectOld, objectNew client.Object) bool {
 	if oldPipelineRun, ok := objectOld.(*tektonv1beta1.PipelineRun); ok {
 		if newPipelineRun, ok := objectNew.(*tektonv1beta1.PipelineRun); ok {
 			return oldPipelineRun.Status.GetCondition(apis.ConditionSucceeded).IsUnknown() &&
 				newPipelineRun.Status.GetCondition(apis.ConditionSucceeded).IsTrue()
 		}
+	}
+
+	return false
+}
+
+// hasPipelineRunStateChangedToStarted returns a boolean indicating whether the PipelineRun just started.
+// If the objects passed to this function are not PipelineRuns, the function will return false.
+func hasPipelineRunStateChangedToStarted(objectOld, objectNew client.Object) bool {
+	if oldPipelineRun, ok := objectOld.(*tektonv1beta1.PipelineRun); ok {
+		if newPipelineRun, ok := objectNew.(*tektonv1beta1.PipelineRun); ok {
+			return (oldPipelineRun.Status.StartTime == nil || oldPipelineRun.Status.StartTime.IsZero()) &&
+				(newPipelineRun.Status.StartTime != nil && !newPipelineRun.Status.StartTime.IsZero())
+		}
+	}
+
+	return false
+}
+
+// HasPipelineRunSucceeded returns a boolean indicating whether the PipelineRun succeeded or not.
+// If the object passed to this function is not a PipelineRun, the function will return false.
+func HasPipelineRunSucceeded(object client.Object) bool {
+	if pr, ok := object.(*tektonv1beta1.PipelineRun); ok {
+		return pr.Status.GetCondition(apis.ConditionSucceeded).IsTrue()
 	}
 
 	return false

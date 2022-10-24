@@ -30,8 +30,8 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 )
 
 // Reconciler reconciles a PipelineRun object
@@ -54,6 +54,7 @@ func NewIntegrationReconciler(client client.Client, logger *logr.Logger, scheme 
 //+kubebuilder:rbac:groups=tekton.dev,resources=pipelineruns/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=tekton.dev,resources=pipelineruns/finalizers,verbs=update
 //+kubebuilder:rbac:groups=appstudio.redhat.com,resources=applications/finalizers,verbs=update
+//+kubebuilder:rbac:groups=appstudio.redhat.com,resources=secrets,verbs=get
 //+kubebuilder:rbac:groups=apis.kcp.dev,resources=apiexports,verbs=get;list;watch
 //+kubebuilder:rbac:groups=apis.kcp.dev,resources=apiexports/content,verbs=*
 
@@ -174,6 +175,7 @@ func (r *Reconciler) getApplicationFromComponent(context context.Context, compon
 type AdapterInterface interface {
 	EnsureApplicationSnapshotExists() (results.OperationResult, error)
 	EnsureApplicationSnapshotPassedAllTests() (results.OperationResult, error)
+	EnsureStatusReported() (results.OperationResult, error)
 }
 
 // ReconcileOperation defines the syntax of functions invoked by the ReconcileHandler
@@ -185,6 +187,7 @@ func (r *Reconciler) ReconcileHandler(adapter AdapterInterface) (ctrl.Result, er
 	operations := []ReconcileOperation{
 		adapter.EnsureApplicationSnapshotExists,
 		adapter.EnsureApplicationSnapshotPassedAllTests,
+		adapter.EnsureStatusReported,
 	}
 
 	for _, operation := range operations {
@@ -228,6 +231,9 @@ func setupControllerWithManager(manager ctrl.Manager, reconciler *Reconciler) er
 	}
 
 	return ctrl.NewControllerManagedBy(manager).
-		For(&tektonv1beta1.PipelineRun{}, builder.WithPredicates(tekton.IntegrationOrBuildPipelineRunSucceededPredicate())).
+		For(&tektonv1beta1.PipelineRun{}).
+		WithEventFilter(predicate.Or(
+			tekton.IntegrationPipelineRunStartedPredicate(),
+			tekton.IntegrationOrBuildPipelineRunSucceededPredicate())).
 		Complete(reconciler)
 }

@@ -77,3 +77,9 @@ rules:
   - get
   - patch
   - update
+- apiGroups:
+  - appstudio.redhat.com
+  resources:
+  - secrets
+  verbs:
+  - get

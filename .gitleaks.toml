@@ -1,0 +1,5 @@
+[allowlist]
+description = "global allow lists"
+files = [
+    "git/github/github_test.go"
+]

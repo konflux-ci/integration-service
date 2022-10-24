@@ -22,12 +22,33 @@ const (
 	// HACBSTestOutputSuccess is the result that's set when the HACBS test succeeds.
 	HACBSTestOutputSuccess = "SUCCESS"
 
+	// HACBSTestOutputFailure is the result that's set when the HACBS test fails.
+	HACBSTestOutputFailure = "FAILURE"
+
+	// HACBSTestOutputWarning is the result that's set when the HACBS test passes with a warning.
+	HACBSTestOutputWarning = "WARNING"
+
 	// HACBSTestOutputSkipped is the result that's set when the HACBS test gets skipped.
 	HACBSTestOutputSkipped = "SKIPPED"
+
+	// HACBSTestOutputError is the result that's set when the HACBS test produces an error.
+	HACBSTestOutputError = "ERROR"
 
 	// AppStudioLabelSuffix is the suffix that's added to all HACBS label headings
 	AppStudioLabelSuffix = "appstudio.openshift.io"
 )
+
+// HACBSTestResult matches HACBS TaskRun result contract
+type HACBSTestResult struct {
+	Result    string `json:"result"`
+	Namespace string `json:"namespace"`
+	Timestamp string `json:"timestamp"`
+	Note      string `json:"note"`
+	// Successes        int64  `json:"successes"`
+	// Failures         int64  `json:"failures"`
+	// Warnings         int64  `json:"warnings"`
+	PipelineTaskName string
+}
 
 // GetRequiredIntegrationTestScenariosForApplication returns the IntegrationTestScenarios used by the application being processed.
 // An IntegrationTestScenarios will only be returned if it has the test.appstudio.openshift.io/optional
@@ -74,22 +95,13 @@ func GetAllIntegrationTestScenariosForApplication(adapterClient client.Client, c
 // CalculateIntegrationPipelineRunOutcome checks the Tekton results for a given PipelineRun and calculates the overall outcome.
 // If any of the tasks with the HACBS_TEST_OUTPUT result don't have the `result` field set to SUCCESS or SKIPPED, it returns false.
 func CalculateIntegrationPipelineRunOutcome(logger logr.Logger, pipelineRun *tektonv1beta1.PipelineRun) (bool, error) {
-	for _, taskRun := range pipelineRun.Status.TaskRuns {
-		for _, taskRunResult := range taskRun.Status.TaskRunResults {
-			if taskRunResult.Name == HACBSTestOutputName {
-				var testOutput map[string]interface{}
-				err := json.Unmarshal([]byte(taskRunResult.Value), &testOutput)
-				if err != nil {
-					return false, err
-				}
-				logger.Info("Found a task with",
-					"HACBS Test ouput Tekton result", HACBSTestOutputName,
-					"taskRun.Name", taskRun.PipelineTaskName,
-					"taskRun Result", testOutput["result"])
-				if testOutput["result"] != HACBSTestOutputSuccess && testOutput["result"] != HACBSTestOutputSkipped {
-					return false, nil
-				}
-			}
+	results, err := GetHACBSTestResultsFromPipelineRun(logger, pipelineRun)
+	if err != nil {
+		return false, err
+	}
+	for _, result := range results {
+		if result.Result != HACBSTestOutputSuccess && result.Result != HACBSTestOutputSkipped {
+			return false, nil
 		}
 	}
 	return true, nil
@@ -133,4 +145,24 @@ func GetLatestPipelineRunForApplicationSnapshotAndScenario(adapterClient client.
 	}
 
 	return nil, err
+}
+
+// GetHACBSTestResultsFromPipelineRun finds all TaskRuns with a HACBS_TEST_OUTPUT result and returns the parsed data
+func GetHACBSTestResultsFromPipelineRun(logger logr.Logger, pipelineRun *tektonv1beta1.PipelineRun) ([]*HACBSTestResult, error) {
+	results := []*HACBSTestResult{}
+	for _, taskRun := range pipelineRun.Status.TaskRuns {
+		for _, taskRunResult := range taskRun.Status.TaskRunResults {
+			if taskRunResult.Name == HACBSTestOutputName {
+				var result HACBSTestResult
+				err := json.Unmarshal([]byte(taskRunResult.Value), &result)
+				if err != nil {
+					return nil, err
+				}
+				result.PipelineTaskName = taskRun.PipelineTaskName
+				results = append(results, &result)
+				logger.Info("Found a HACBS test result", "Result", result)
+			}
+		}
+	}
+	return results, nil
 }
