@@ -18,33 +18,33 @@ KCP_API_EXPORT_HEADER="$(cat << EOF
 apiVersion: apis.kcp.dev/v1alpha1
 kind: APIExport
 metadata:
-  name: integration-api
+  name: integration-service
 spec:
   permissionClaims:
-    - resource: "pipelineruns"
-      group: "tekton.dev"
-      identityHash: null
-    - resource: "applications"
-      group: "appstudio.redhat.com"
-      identityHash: null # application-api apiexport
-    - resource: "components"
-      group: "appstudio.redhat.com"
-      identityHash: null # application-api apiexport
-    - resource: "applicationsnapshots"
-      group: "appstudio.redhat.com"
-      identityHash: null # application-api apiexport
-    - resource: "environments"
-      group: "appstudio.redhat.com"
-      identityHash: null # application-api apiexport
-    - resource: "applicationsnapshotenvironmentbindings"
-      group: "appstudio.redhat.com"
-      identityHash: null # application-api apiexport
-    - resource: "releases"
-      group: "appstudio.redhat.com"
-      identityHash: null # release apiexport
-    - resource: "releaseplans"
-      group: "appstudio.redhat.com"
-      identityHash: null # release apiexport
+    - resource: pipelineruns
+      group: tekton.dev
+      identityHash: pipeline-service
+    - resource: applications
+      group: appstudio.redhat.com
+      identityHash: application-api
+    - resource: components
+      group: appstudio.redhat.com
+      identityHash: application-api
+    - resource: applicationsnapshots
+      group: appstudio.redhat.com
+      identityHash: application-api
+    - resource: environments
+      group: appstudio.redhat.com
+      identityHash: application-api
+    - resource: applicationsnapshotenvironmentbindings
+      group: appstudio.redhat.com
+      identityHash: application-api
+    - resource: releases
+      group: appstudio.redhat.com
+      identityHash: release-service
+    - resource: releaseplans
+      group: appstudio.redhat.com
+      identityHash: release-service
   latestResourceSchemas:
 EOF
 )"
