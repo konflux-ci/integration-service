@@ -17,6 +17,7 @@ limitations under the License.
 package v1alpha1
 
 import (
+	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -53,9 +54,9 @@ type PipelineParameter struct {
 
 // TestEnvironment contains the name and values of a Test environment
 type TestEnvironment struct {
-	Name   string   `json:"name"`
-	Type   string   `json:"type"`
-	Params []string `json:"params"`
+	Name          string                                          `json:"name"`
+	Type          applicationapiv1alpha1.EnvironmentType          `json:"type"`
+	Configuration applicationapiv1alpha1.EnvironmentConfiguration `json:"configuration,omitempty"`
 }
 
 // TestContext contains the name and values of a Test context

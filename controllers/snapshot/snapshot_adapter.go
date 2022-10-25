@@ -129,7 +129,7 @@ func (a *Adapter) EnsureAllIntegrationTestPipelinesExist() (results.OperationRes
 // EnsureGlobalComponentImageUpdated is an operation that ensure the ContainerImage in the Global Candidate List
 // being updated when the ApplicationSnapshot passed all the integration tests
 func (a *Adapter) EnsureGlobalComponentImageUpdated() (results.OperationResult, error) {
-	if (a.component != nil) && gitops.HaveHACBSTestsSucceeded(a.snapshot) {
+	if (a.component != nil) && gitops.HaveHACBSTestsSucceeded(a.snapshot) && gitops.IsSnapshotCreatedByPushEvent(a.snapshot) {
 		patch := client.MergeFrom(a.component.DeepCopy())
 		for _, component := range a.snapshot.Spec.Components {
 			if component.Name == a.component.Name {
@@ -152,6 +152,11 @@ func (a *Adapter) EnsureGlobalComponentImageUpdated() (results.OperationResult, 
 func (a *Adapter) EnsureAllReleasesExist() (results.OperationResult, error) {
 	if !gitops.HaveHACBSTestsSucceeded(a.snapshot) {
 		a.logger.Info("The Snapshot hasn't been marked as HACBSTestSucceeded, holding off on releasing.")
+		return results.ContinueProcessing()
+	}
+
+	if !gitops.IsSnapshotCreatedByPushEvent(a.snapshot) {
+		a.logger.Info("The Snapshot won't be released because it's not created by a push event.")
 		return results.ContinueProcessing()
 	}
 
@@ -184,6 +189,11 @@ func (a *Adapter) EnsureAllReleasesExist() (results.OperationResult, error) {
 func (a *Adapter) EnsureApplicationSnapshotEnvironmentBindingExist() (results.OperationResult, error) {
 	if !gitops.HaveHACBSTestsSucceeded(a.snapshot) {
 		a.logger.Info("The Snapshot hasn't been marked as HACBSTestSucceeded, holding off on deploying.")
+		return results.ContinueProcessing()
+	}
+
+	if !gitops.IsSnapshotCreatedByPushEvent(a.snapshot) {
+		a.logger.Info("The Snapshot won't be deployed because it's not created by a push event.")
 		return results.ContinueProcessing()
 	}
 

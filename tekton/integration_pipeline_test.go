@@ -59,9 +59,12 @@ var _ = Describe("Integration pipeline", func() {
 				Bundle:      "quay.io/kpavic/test-bundle:component-pipeline-pass",
 				Pipeline:    "component-pipeline-pass",
 				Environment: v1alpha1.TestEnvironment{
-					Name:   "envname",
-					Type:   "POC",
-					Params: []string{},
+					Name: "envname",
+					Type: "POC",
+					//Params: []string{},
+					Configuration: applicationapiv1alpha1.EnvironmentConfiguration{
+						Env: []applicationapiv1alpha1.EnvVarPair{},
+					},
 				},
 			},
 		}
