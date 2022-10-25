@@ -4,8 +4,6 @@ import (
 	"reflect"
 	"time"
 
-	"k8s.io/apimachinery/pkg/api/errors"
-
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
@@ -13,15 +11,16 @@ import (
 
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	integrationv1alpha1 "github.com/redhat-appstudio/integration-service/api/v1alpha1"
-	"github.com/redhat-appstudio/integration-service/gitops"
 	releasev1alpha1 "github.com/redhat-appstudio/release-service/api/v1alpha1"
 	tektonv1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	"github.com/redhat-appstudio/integration-service/gitops"
 	"github.com/redhat-appstudio/integration-service/helpers"
 	"github.com/redhat-appstudio/release-service/kcp"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
-	klog "k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -33,6 +32,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		hasApp                  *applicationapiv1alpha1.Application
 		hasComp                 *applicationapiv1alpha1.Component
 		hasSnapshot             *applicationapiv1alpha1.ApplicationSnapshot
+		hasSnapshotPR           *applicationapiv1alpha1.ApplicationSnapshot
 		testpipelineRun         *tektonv1beta1.PipelineRun
 		integrationTestScenario *integrationv1alpha1.IntegrationTestScenario
 		env                     applicationapiv1alpha1.Environment
@@ -71,9 +71,11 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 				Bundle:      "quay.io/kpavic/test-bundle:component-pipeline-pass",
 				Pipeline:    "component-pipeline-pass",
 				Environment: integrationv1alpha1.TestEnvironment{
-					Name:   "envname",
-					Type:   "POC",
-					Params: []string{},
+					Name: "envname",
+					Type: "POC",
+					Configuration: applicationapiv1alpha1.EnvironmentConfiguration{
+						Env: []applicationapiv1alpha1.EnvVarPair{},
+					},
 				},
 			},
 		}
@@ -151,6 +153,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 				Labels: map[string]string{
 					gitops.ApplicationSnapshotTypeLabel:      "component",
 					gitops.ApplicationSnapshotComponentLabel: "component-sample",
+					gitops.PipelineAsCodeEventTypeLabel:      "push",
 				},
 			},
 			Spec: applicationapiv1alpha1.ApplicationSnapshotSpec{
@@ -164,6 +167,28 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			},
 		}
 		Expect(k8sClient.Create(ctx, hasSnapshot)).Should(Succeed())
+
+		hasSnapshotPR = &applicationapiv1alpha1.ApplicationSnapshot{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "snapshotpr-sample",
+				Namespace: "default",
+				Labels: map[string]string{
+					gitops.ApplicationSnapshotTypeLabel:      "component",
+					gitops.ApplicationSnapshotComponentLabel: "component-sample",
+					gitops.PipelineAsCodeEventTypeLabel:      "pull_request",
+				},
+			},
+			Spec: applicationapiv1alpha1.ApplicationSnapshotSpec{
+				Application: hasApp.Name,
+				Components: []applicationapiv1alpha1.ApplicationSnapshotComponent{
+					{
+						Name:           "component-sample",
+						ContainerImage: sample_image,
+					},
+				},
+			},
+		}
+		Expect(k8sClient.Create(ctx, hasSnapshotPR)).Should(Succeed())
 
 		testpipelineRun = &tektonv1beta1.PipelineRun{
 			ObjectMeta: metav1.ObjectMeta{
@@ -213,6 +238,8 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 
 	AfterEach(func() {
 		err := k8sClient.Delete(ctx, hasSnapshot)
+		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
+		err = k8sClient.Delete(ctx, hasSnapshotPR)
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 		err = k8sClient.Delete(ctx, testpipelineRun)
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
@@ -265,6 +292,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 					err := k8sClient.List(ctx, integrationPipelineRuns, opts...)
 					return len(integrationPipelineRuns.Items) > 0 && err == nil
 				}, time.Second*10).Should(BeTrue())
+
 				Expect(k8sClient.Delete(ctx, &integrationPipelineRuns.Items[0])).Should(Succeed())
 			}
 		}
@@ -283,9 +311,21 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		Expect(err == nil).To(BeTrue())
 		Expect(releases != nil).To(BeTrue())
 		for _, release := range *releases {
-			klog.Infof("release.Name:", release.Name)
 			Expect(k8sClient.Delete(ctx, &release)).Should(Succeed())
 		}
+	})
+
+	It("ensures global Component Image will not be updated in the PR context", func() {
+
+		gitops.MarkSnapshotAsPassed(k8sClient, ctx, hasSnapshotPR, "test passed")
+		Expect(gitops.HaveHACBSTestsSucceeded(hasSnapshotPR)).To(BeTrue())
+
+		Eventually(func() bool {
+			result, err := adapter.EnsureGlobalComponentImageUpdated()
+			return !result.CancelRequest && err == nil
+		}, time.Second*10).Should(BeTrue())
+
+		Expect(hasComp.Spec.ContainerImage).To(Equal(""))
 	})
 
 	It("ensures global Component Image updated when HACBSTests succeeded", func() {
@@ -300,6 +340,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		Expect(hasComp.Spec.ContainerImage).To(Equal(sample_image))
 
 	})
+
 	It("no error from ensuring global Component Image updated when HACBSTests failed", func() {
 		gitops.MarkSnapshotAsFailed(k8sClient, ctx, hasSnapshot, "test failed")
 		Expect(gitops.HaveHACBSTestsSucceeded(hasSnapshot)).To(BeFalse())

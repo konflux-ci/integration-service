@@ -3,6 +3,7 @@ package gitops
 import (
 	"context"
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
+	"github.com/redhat-appstudio/integration-service/helpers"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -20,6 +21,15 @@ const (
 
 	// ApplicationSnapshotCompositeType is the type of ApplicationSnapshot which was created for multiple components.
 	ApplicationSnapshotCompositeType = "composite"
+
+	// PipelineAscodeEventType is the type of event which triggered the pipelinerun in build service
+	PipelineAsCodeEventTypeLabel = "pipelinesascode.tekton.dev/event-type"
+
+	// PipelineAscodePushType is the type of push event which triggered the pipelinerun in build service
+	PipelineAsCodePushType = "push"
+
+	// PipelineAscodePushType is the type of pull_request event which triggered the pipelinerun in build service
+	PipelineAsCodePullRequestType = "pull_request"
 
 	//HACBSTestSuceededCondition is the condition for marking if the HACBS Tests succeeded for the ApplicationSnapshot.
 	HACBSTestSuceededCondition = "HACBSTestSucceeded"
@@ -141,6 +151,10 @@ func GetAllApplicationSnapshots(adapterClient client.Client, ctx context.Context
 
 // CompareApplicationSnapshots compares two ApplicationSnapshots and returns boolean true if their images match exactly.
 func CompareApplicationSnapshots(expectedApplicationSnapshot *applicationapiv1alpha1.ApplicationSnapshot, foundApplicationSnapshot *applicationapiv1alpha1.ApplicationSnapshot) bool {
+	// Check if the snapshots are created by the same event type
+	if IsSnapshotCreatedByPushEvent(expectedApplicationSnapshot) != IsSnapshotCreatedByPushEvent(foundApplicationSnapshot) {
+		return false
+	}
 	// If the number of components doesn't match, we immediately know that the snapshots are not equal.
 	if len(expectedApplicationSnapshot.Spec.Components) != len(foundApplicationSnapshot.Spec.Components) {
 		return false
@@ -161,4 +175,9 @@ func CompareApplicationSnapshots(expectedApplicationSnapshot *applicationapiv1al
 	}
 
 	return true
+}
+
+// IsSnapshotCreatedByPushEvent checks if an applicationSnapshot has label PipelineAsCodeEventTypeLabel and with push value
+func IsSnapshotCreatedByPushEvent(applicationSnapshot *applicationapiv1alpha1.ApplicationSnapshot) bool {
+	return helpers.HasLabelWithValue(applicationSnapshot, PipelineAsCodeEventTypeLabel, PipelineAsCodePushType)
 }

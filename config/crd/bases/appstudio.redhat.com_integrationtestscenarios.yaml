@@ -65,17 +65,39 @@ spec:
               environment:
                 description: Environment that will be utilized by the test pipeline
                 properties:
+                  configuration:
+                    description: EnvironmentConfiguration contains Environment-specific
+                      configurations details, to be used when generating Component/Application
+                      GitOps repository resources.
+                    properties:
+                      env:
+                        description: Env is an array of standard environment vairables
+                        items:
+                          description: EnvVarPair describes environment variables
+                            to use for the component
+                          properties:
+                            name:
+                              description: Name is the environment variable name
+                              type: string
+                            value:
+                              description: Value is the environment variable value
+                              type: string
+                          required:
+                          - name
+                          - value
+                          type: object
+                        type: array
+                    required:
+                    - env
+                    type: object
                   name:
                     type: string
-                  params:
-                    items:
-                      type: string
-                    type: array
                   type:
+                    description: EnvironmentType currently indicates whether an environment
+                      is POC/Non-POC, see API doc for details.
                     type: string
                 required:
                 - name
-                - params
                 - type
                 type: object
               params:
