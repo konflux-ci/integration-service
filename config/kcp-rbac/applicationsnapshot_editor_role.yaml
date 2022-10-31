@@ -22,3 +22,5 @@ rules:
   - applicationsnapshots/status
   verbs:
   - get
+  - patch
+  - update
