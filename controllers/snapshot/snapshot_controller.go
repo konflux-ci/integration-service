@@ -47,9 +47,11 @@ func NewSnapshotReconciler(client client.Client, logger *logr.Logger, scheme *ru
 	}
 }
 
-//+kubebuilder:rbac:groups=appstudio.redhat.com,resources=applicationSnapshots,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=appstudio.redhat.com,resources=applicationSnapshots/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=appstudio.redhat.com,resources=applicationSnapshots/finalizers,verbs=update
+//+kubebuilder:rbac:groups=appstudio.redhat.com,resources=applicationsnapshots,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=appstudio.redhat.com,resources=applicationsnapshots/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=appstudio.redhat.com,resources=applicationsnapshots/finalizers,verbs=update
+//+kubebuilder:rbac:groups=tekton.dev,resources=pipelineruns,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=tekton.dev,resources=pipelineruns/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=appstudio.redhat.com,resources=applications/finalizers,verbs=update
 //+kubebuilder:rbac:groups=apis.kcp.dev,resources=apiexports,verbs=get;list;watch
 //+kubebuilder:rbac:groups=apis.kcp.dev,resources=apiexports/content,verbs=*
