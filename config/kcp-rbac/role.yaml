@@ -6,64 +6,6 @@ metadata:
   name: manager-role
 rules:
 - apiGroups:
-  - appstudio.redhat.com
-  resources:
-  - applicationSnapshots
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - appstudio.redhat.com
-  resources:
-  - applicationSnapshots/finalizers
-  verbs:
-  - update
-- apiGroups:
-  - appstudio.redhat.com
-  resources:
-  - applicationSnapshots/status
-  verbs:
-  - get
-  - patch
-  - update
-- apiGroups:
-  - appstudio.redhat.com
-  resources:
-  - applications/finalizers
-  verbs:
-  - update
-- apiGroups:
-  - appstudio.redhat.com
-  resources:
-  - pipelineRuns
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - appstudio.redhat.com
-  resources:
-  - pipelineRuns/finalizers
-  verbs:
-  - update
-- apiGroups:
-  - appstudio.redhat.com
-  resources:
-  - pipelineRuns/status
-  verbs:
-  - get
-  - patch
-  - update
-- apiGroups:
   - apis.kcp.dev
   resources:
   - apiexports
@@ -77,3 +19,61 @@ rules:
   - apiexports/content
   verbs:
   - '*'
+- apiGroups:
+  - appstudio.redhat.com
+  resources:
+  - applications/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - appstudio.redhat.com
+  resources:
+  - applicationsnapshots
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - appstudio.redhat.com
+  resources:
+  - applicationsnapshots/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - appstudio.redhat.com
+  resources:
+  - applicationsnapshots/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - tekton.dev
+  resources:
+  - pipelineruns
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - tekton.dev
+  resources:
+  - pipelineruns/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - tekton.dev
+  resources:
+  - pipelineruns/status
+  verbs:
+  - get
+  - patch
+  - update
