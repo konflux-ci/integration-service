@@ -17,6 +17,20 @@ rules:
       - tekton.dev
     resources:
       - pipelineruns
+  - verbs:
+      - get
+      - patch
+      - update
+    apiGroups:
+      - tekton.dev
+    resources:
+      - pipelineruns/status
+  - verbs:
+      - update
+    apiGroups:
+      - tekton.dev
+    resources:
+      - pipelineruns/finalizers
   - apiGroups:
       - triggers.tekton.dev
     resources:
