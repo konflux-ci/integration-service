@@ -4,8 +4,6 @@ import (
 	"reflect"
 	"time"
 
-	"k8s.io/apimachinery/pkg/api/errors"
-
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
@@ -13,13 +11,15 @@ import (
 
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	integrationv1alpha1 "github.com/redhat-appstudio/integration-service/api/v1alpha1"
-	"github.com/redhat-appstudio/integration-service/gitops"
 	releasev1alpha1 "github.com/redhat-appstudio/release-service/api/v1alpha1"
 	tektonv1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	"github.com/redhat-appstudio/integration-service/gitops"
 	"github.com/redhat-appstudio/integration-service/helpers"
 	"github.com/redhat-appstudio/release-service/kcp"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -71,9 +71,11 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 				Bundle:      "quay.io/kpavic/test-bundle:component-pipeline-pass",
 				Pipeline:    "component-pipeline-pass",
 				Environment: integrationv1alpha1.TestEnvironment{
-					Name:   "envname",
-					Type:   "POC",
-					Params: []string{},
+					Name: "envname",
+					Type: "POC",
+					Configuration: applicationapiv1alpha1.EnvironmentConfiguration{
+						Env: []applicationapiv1alpha1.EnvVarPair{},
+					},
 				},
 			},
 		}
