@@ -9,6 +9,7 @@ import (
 
 	"github.com/go-logr/logr"
 	"github.com/redhat-appstudio/integration-service/git/github"
+	"github.com/redhat-appstudio/integration-service/gitops"
 	"github.com/redhat-appstudio/integration-service/helpers"
 	tektonv1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 	v1 "k8s.io/api/core/v1"
@@ -59,8 +60,8 @@ func NewGitHubPipelineRunReporter(ctx context.Context, logger logr.Logger, k8sCl
 		return nil, err
 	}
 
-	if helpers.HasAnnotation(pipelineRun, InstallationIDAnnotation) {
-		reporter.installationID, err = strconv.ParseInt(pipelineRun.GetAnnotations()[InstallationIDAnnotation], 10, 64)
+	if helpers.HasAnnotation(pipelineRun, gitops.PipelineAsCodeInstallationIDAnnotation) {
+		reporter.installationID, err = strconv.ParseInt(pipelineRun.GetAnnotations()[gitops.PipelineAsCodeInstallationIDAnnotation], 10, 64)
 		if err != nil {
 			return nil, err
 		}
@@ -85,29 +86,29 @@ func NewGitHubPipelineRunReporter(ctx context.Context, logger logr.Logger, k8sCl
 }
 
 func (r *GitHubPipelineRunReporter) createCheckRunAdapter() (*github.CheckRunAdapter, error) {
-	scenario, found := r.pipelineRun.GetLabels()[TestScenarioLabel]
+	scenario, found := r.pipelineRun.GetLabels()[gitops.ApplicationSnapshotTestScenarioLabel]
 	if !found {
-		return nil, fmt.Errorf("PipelineRun label not found %q", TestScenarioLabel)
+		return nil, fmt.Errorf("PipelineRun label not found %q", gitops.ApplicationSnapshotTestScenarioLabel)
 	}
 
-	component, found := r.pipelineRun.GetLabels()[ComponentLabel]
+	component, found := r.pipelineRun.GetLabels()[gitops.ApplicationSnapshotComponentLabel]
 	if !found {
-		return nil, fmt.Errorf("PipelineRun label not found %q", ComponentLabel)
+		return nil, fmt.Errorf("PipelineRun label not found %q", gitops.ApplicationSnapshotComponentLabel)
 	}
 
-	owner, found := r.pipelineRun.Labels[OrgLabel]
+	owner, found := r.pipelineRun.Labels[gitops.PipelineAsCodeURLOrgLabel]
 	if !found {
-		return nil, fmt.Errorf("PipelineRun label not found %q", OrgLabel)
+		return nil, fmt.Errorf("PipelineRun label not found %q", gitops.PipelineAsCodeURLOrgLabel)
 	}
 
-	repo, found := r.pipelineRun.Labels[RepositoryLabel]
+	repo, found := r.pipelineRun.Labels[gitops.PipelineAsCodeURLRepositoryLabel]
 	if !found {
-		return nil, fmt.Errorf("PipelineRun label not found %q", RepositoryLabel)
+		return nil, fmt.Errorf("PipelineRun label not found %q", gitops.PipelineAsCodeURLRepositoryLabel)
 	}
 
-	SHA, found := r.pipelineRun.Labels[SHALabel]
+	SHA, found := r.pipelineRun.Labels[gitops.PipelineAsCodeSHALabel]
 	if !found {
-		return nil, fmt.Errorf("PipelineRun label not found %q", SHALabel)
+		return nil, fmt.Errorf("PipelineRun label not found %q", gitops.PipelineAsCodeSHALabel)
 	}
 
 	var title, conclusion string
@@ -164,7 +165,7 @@ func (r *GitHubPipelineRunReporter) createCheckRunAdapter() (*github.CheckRunAda
 
 // ReportStatus creates/updates CheckRuns when using GitHub App integration.
 func (r *GitHubPipelineRunReporter) ReportStatus(ctx context.Context) error {
-	if !helpers.HasLabelWithValue(r.pipelineRun, EventTypeLabel, PullRequestEventType) {
+	if !helpers.HasLabelWithValue(r.pipelineRun, gitops.PipelineAsCodeEventTypeLabel, gitops.PipelineAsCodePullRequestType) {
 		return nil
 	}
 

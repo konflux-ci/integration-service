@@ -4,27 +4,14 @@ import (
 	"context"
 
 	"github.com/go-logr/logr"
+	"github.com/redhat-appstudio/integration-service/gitops"
 	"github.com/redhat-appstudio/integration-service/helpers"
 	tektonv1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-const (
-	GitProviderLabel  = "pipelinesascode.tekton.dev/git-provider"
-	EventTypeLabel    = "pipelinesascode.tekton.dev/event-type"
-	SHALabel          = "pipelinesascode.tekton.dev/sha"
-	OrgLabel          = "pipelinesascode.tekton.dev/url-org"
-	RepositoryLabel   = "pipelinesascode.tekton.dev/url-repository"
-	TestScenarioLabel = "test.appstudio.openshift.io/scenario"
-	ComponentLabel    = "test.appstudio.openshift.io/component"
-
-	InstallationIDAnnotation = "pipelinesascode.tekton.dev/installation-id"
-
-	GitHubProvider       = "github"
-	PullRequestEventType = "pull_request"
-
-	NamePrefix = "HACBS Test"
-)
+// NamePrefix is a common name prefix for this service.
+const NamePrefix = "HACBS Test"
 
 // Reporter is a generic interface all status implementations must follow.
 type Reporter interface {
@@ -72,7 +59,7 @@ func NewAdapter(logger logr.Logger, k8sClient client.Reader, opts ...AdapterOpti
 func (a *Adapter) GetReporters(ctx context.Context, pipelineRun *tektonv1beta1.PipelineRun) ([]Reporter, error) {
 	var reporters []Reporter
 
-	if helpers.HasLabelWithValue(pipelineRun, GitProviderLabel, GitHubProvider) {
+	if helpers.HasLabelWithValue(pipelineRun, gitops.PipelineAsCodeGitProviderLabel, gitops.PipelineAsCodeGitHubProviderType) {
 		reporter, err := a.githubReporter(ctx, a.logger, a.k8sClient, pipelineRun)
 		if err != nil {
 			return nil, err
