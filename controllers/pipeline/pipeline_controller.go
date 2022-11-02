@@ -54,7 +54,7 @@ func NewIntegrationReconciler(client client.Client, logger *logr.Logger, scheme 
 //+kubebuilder:rbac:groups=tekton.dev,resources=pipelineruns/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=tekton.dev,resources=pipelineruns/finalizers,verbs=update
 //+kubebuilder:rbac:groups=appstudio.redhat.com,resources=applications/finalizers,verbs=update
-//+kubebuilder:rbac:groups=appstudio.redhat.com,resources=secrets,verbs=get
+//+kubebuilder:rbac:groups="",resources=secrets,verbs=get
 //+kubebuilder:rbac:groups=apis.kcp.dev,resources=apiexports,verbs=get;list;watch
 //+kubebuilder:rbac:groups=apis.kcp.dev,resources=apiexports/content,verbs=*
 
