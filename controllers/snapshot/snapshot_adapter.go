@@ -74,30 +74,31 @@ func (a *Adapter) EnsureAllIntegrationTestPipelinesExist() (results.OperationRes
 			"Application.Namespace", a.application.Namespace)
 	}
 
-	for _, integrationTestScenario := range *integrationTestScenarios {
-		integrationTestScenario := integrationTestScenario //G601
-		integrationPipelineRun, err := helpers.GetLatestPipelineRunForApplicationSnapshotAndScenario(a.client, a.context, a.application, a.snapshot, &integrationTestScenario)
-		if err != nil {
-			a.logger.Error(err, "Failed to get latest pipelineRun for application snapshot and scenario",
-				"integrationPipelineRun:", integrationPipelineRun)
-			return results.RequeueOnErrorOrStop(err)
-		}
-		if integrationPipelineRun != nil {
-			a.logger.Info("Found existing integrationPipelineRun",
-				"IntegrationTestScenario.Name", integrationTestScenario.Name,
-				"integrationPipelineRun.Name", integrationPipelineRun.Name)
-		} else {
-			a.logger.Info("Creating new pipelinerun for integrationTestscenario",
-				"IntegrationTestScenario.Name", integrationTestScenario.Name,
-				"app name", a.application.Name,
-				"namespace", a.application.Namespace)
-			err := a.createIntegrationPipelineRun(a.application, &integrationTestScenario, a.snapshot)
+	if integrationTestScenarios != nil {
+		for _, integrationTestScenario := range *integrationTestScenarios {
+			integrationTestScenario := integrationTestScenario //G601
+			integrationPipelineRun, err := helpers.GetLatestPipelineRunForApplicationSnapshotAndScenario(a.client, a.context, a.application, a.snapshot, &integrationTestScenario)
 			if err != nil {
-				a.logger.Error(err, "Failed to create pipelineRun for application snapshot and scenario")
+				a.logger.Error(err, "Failed to get latest pipelineRun for application snapshot and scenario",
+					"integrationPipelineRun:", integrationPipelineRun)
 				return results.RequeueOnErrorOrStop(err)
 			}
+			if integrationPipelineRun != nil {
+				a.logger.Info("Found existing integrationPipelineRun",
+					"IntegrationTestScenario.Name", integrationTestScenario.Name,
+					"integrationPipelineRun.Name", integrationPipelineRun.Name)
+			} else {
+				a.logger.Info("Creating new pipelinerun for integrationTestscenario",
+					"IntegrationTestScenario.Name", integrationTestScenario.Name,
+					"app name", a.application.Name,
+					"namespace", a.application.Namespace)
+				err := a.createIntegrationPipelineRun(a.application, &integrationTestScenario, a.snapshot)
+				if err != nil {
+					a.logger.Error(err, "Failed to create pipelineRun for application snapshot and scenario")
+					return results.RequeueOnErrorOrStop(err)
+				}
+			}
 		}
-
 	}
 
 	requiredIntegrationTestScenarios, err := helpers.GetRequiredIntegrationTestScenariosForApplication(a.client, a.context, a.application)
