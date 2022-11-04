@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
+	pacv1alpha1 "github.com/openshift-pipelines/pipelines-as-code/pkg/apis/pipelinesascode/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/git/github"
 	"github.com/redhat-appstudio/integration-service/gitops"
 	"github.com/redhat-appstudio/integration-service/helpers"
@@ -18,106 +19,159 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-// GitHubPipelineRunReporter reports status back to GitHub for a PipelineRun.
-type GitHubPipelineRunReporter struct {
-	logger           logr.Logger
-	pipelineRun      *tektonv1beta1.PipelineRun
-	installationID   int64
-	appID            int64
-	privateKey       []byte
-	appClientCreator github.AppClientCreator
+// GitHubReporter reports status back to GitHub for a PipelineRun.
+type GitHubReporter struct {
+	logger    logr.Logger
+	k8sClient client.Reader
+	client    github.ClientInterface
 }
 
-// GitHubPipelineRunReporterOption is used to extend GitHubPipelineRunReporter with optional parameters.
-type GitHubPipelineRunReporterOption = func(r *GitHubPipelineRunReporter)
+// GitHubReporterOption is used to extend GitHubReporter with optional parameters.
+type GitHubReporterOption = func(r *GitHubReporter)
 
-// GitHubPipelineRunReporterCreator is the signature of the GitHub PipelineRun reporter constructor function.
-type GitHubPipelineRunReporterCreator func(ctx context.Context, logger logr.Logger, k8sClient client.Reader, pipelineRun *tektonv1beta1.PipelineRun, opts ...GitHubPipelineRunReporterOption) (Reporter, error)
-
-// WithAppClientCreator is an option which allows the replacement of the github App client constructor function.
-func WithAppClientCreator(creator github.AppClientCreator) GitHubPipelineRunReporterOption {
-	return func(r *GitHubPipelineRunReporter) {
-		r.appClientCreator = creator
+func WithGitHubClient(client github.ClientInterface) GitHubReporterOption {
+	return func(r *GitHubReporter) {
+		r.client = client
 	}
 }
 
-// NewGitHubPipelineRunReporter returns a struct implementing the Reporter interface for GitHub
-func NewGitHubPipelineRunReporter(ctx context.Context, logger logr.Logger, k8sClient client.Reader, pipelineRun *tektonv1beta1.PipelineRun, opts ...GitHubPipelineRunReporterOption) (Reporter, error) {
-	var err error
-	reporter := GitHubPipelineRunReporter{
-		logger:           logger,
-		pipelineRun:      pipelineRun,
-		appClientCreator: github.NewAppClient,
+// NewGitHubReporter returns a struct implementing the Reporter interface for GitHub
+func NewGitHubReporter(logger logr.Logger, k8sClient client.Reader, opts ...GitHubReporterOption) *GitHubReporter {
+	reporter := GitHubReporter{
+		logger:    logger,
+		k8sClient: k8sClient,
+		client:    github.NewClient(logger),
 	}
 
 	for _, opt := range opts {
 		opt(&reporter)
 	}
 
-	pacSecret := v1.Secret{}
-	err = k8sClient.Get(ctx, types.NamespacedName{Namespace: "pipelines-as-code", Name: "pipelines-as-code-secret"}, &pacSecret)
+	return &reporter
+}
+
+type appCredentials struct {
+	AppID          int64
+	InstallationID int64
+	PrivateKey     []byte
+}
+
+func (r *GitHubReporter) getAppCredentials(ctx context.Context, pipelineRun *tektonv1beta1.PipelineRun) (*appCredentials, error) {
+	var err error
+	var found bool
+	appInfo := appCredentials{}
+
+	appInfo.InstallationID, err = strconv.ParseInt(pipelineRun.GetAnnotations()[gitops.PipelineAsCodeInstallationIDAnnotation], 10, 64)
 	if err != nil {
 		return nil, err
 	}
 
-	if helpers.HasAnnotation(pipelineRun, gitops.PipelineAsCodeInstallationIDAnnotation) {
-		reporter.installationID, err = strconv.ParseInt(pipelineRun.GetAnnotations()[gitops.PipelineAsCodeInstallationIDAnnotation], 10, 64)
-		if err != nil {
-			return nil, err
-		}
+	// Get the global pipelines as code secret
+	pacSecret := v1.Secret{}
+	err = r.k8sClient.Get(ctx, types.NamespacedName{Namespace: "pipelines-as-code", Name: "pipelines-as-code-secret"}, &pacSecret)
+	if err != nil {
+		return nil, err
+	}
 
-		ghAppIDBytes, found := pacSecret.Data["github-application-id"]
-		if !found {
-			return nil, errors.New("failed to find github-application-id secret key")
-		}
+	// Get the App ID from the secret
+	ghAppIDBytes, found := pacSecret.Data["github-application-id"]
+	if !found {
+		return nil, errors.New("failed to find github-application-id secret key")
+	}
 
-		reporter.appID, err = strconv.ParseInt(string(ghAppIDBytes), 10, 64)
-		if err != nil {
-			return nil, err
-		}
+	appInfo.AppID, err = strconv.ParseInt(string(ghAppIDBytes), 10, 64)
+	if err != nil {
+		return nil, err
+	}
 
-		reporter.privateKey, found = pacSecret.Data["github-private-key"]
-		if !found {
-			return nil, errors.New("failed to find github-private-key secret key")
+	// Get the App's private key from the secret
+	appInfo.PrivateKey, found = pacSecret.Data["github-private-key"]
+	if !found {
+		return nil, errors.New("failed to find github-private-key secret key")
+	}
+
+	return &appInfo, nil
+}
+
+func (r *GitHubReporter) getToken(ctx context.Context, pipelineRun *tektonv1beta1.PipelineRun) (string, error) {
+	var err error
+
+	// List all the Repository CRs in the PipelineRun's namespace
+	repos := pacv1alpha1.RepositoryList{}
+	if err = r.k8sClient.List(ctx, &repos, &client.ListOptions{Namespace: pipelineRun.Namespace}); err != nil {
+		return "", err
+	}
+
+	// Get the full repo URL
+	url, found := pipelineRun.GetAnnotations()[gitops.PipelineAsCodeRepoURLAnnotation]
+	if !found {
+		return "", fmt.Errorf("PipelineRun annotation not found %q", gitops.PipelineAsCodeRepoURLAnnotation)
+	}
+
+	// Find a Repository CR with a matching URL and get its secret details
+	var repoSecret *pacv1alpha1.Secret
+	for _, repo := range repos.Items {
+		if url == repo.Spec.URL {
+			repoSecret = repo.Spec.GitProvider.Secret
+			break
 		}
 	}
 
-	return &reporter, nil
+	if repoSecret == nil {
+		return "", fmt.Errorf("failed to find a Repository matching URL: %q", url)
+	}
+
+	// Get the pipelines as code secret from the PipelineRun's namespace
+	pacSecret := v1.Secret{}
+	err = r.k8sClient.Get(ctx, types.NamespacedName{Namespace: pipelineRun.Namespace, Name: repoSecret.Name}, &pacSecret)
+	if err != nil {
+		return "", err
+	}
+
+	// Get the personal access token from the secret
+	token, found := pacSecret.Data[repoSecret.Key]
+	if !found {
+		return "", fmt.Errorf("failed to find %s secret key", repoSecret.Key)
+	}
+
+	return string(token), nil
 }
 
-func (r *GitHubPipelineRunReporter) createCheckRunAdapter() (*github.CheckRunAdapter, error) {
-	scenario, found := r.pipelineRun.GetLabels()[gitops.ApplicationSnapshotTestScenarioLabel]
+func (r *GitHubReporter) createCheckRunAdapter(pipelineRun *tektonv1beta1.PipelineRun) (*github.CheckRunAdapter, error) {
+	labels := pipelineRun.GetLabels()
+
+	scenario, found := labels[gitops.ApplicationSnapshotTestScenarioLabel]
 	if !found {
 		return nil, fmt.Errorf("PipelineRun label not found %q", gitops.ApplicationSnapshotTestScenarioLabel)
 	}
 
-	component, found := r.pipelineRun.GetLabels()[gitops.ApplicationSnapshotComponentLabel]
+	component, found := labels[gitops.ApplicationSnapshotComponentLabel]
 	if !found {
 		return nil, fmt.Errorf("PipelineRun label not found %q", gitops.ApplicationSnapshotComponentLabel)
 	}
 
-	owner, found := r.pipelineRun.Labels[gitops.PipelineAsCodeURLOrgLabel]
+	owner, found := labels[gitops.PipelineAsCodeURLOrgLabel]
 	if !found {
 		return nil, fmt.Errorf("PipelineRun label not found %q", gitops.PipelineAsCodeURLOrgLabel)
 	}
 
-	repo, found := r.pipelineRun.Labels[gitops.PipelineAsCodeURLRepositoryLabel]
+	repo, found := labels[gitops.PipelineAsCodeURLRepositoryLabel]
 	if !found {
 		return nil, fmt.Errorf("PipelineRun label not found %q", gitops.PipelineAsCodeURLRepositoryLabel)
 	}
 
-	SHA, found := r.pipelineRun.Labels[gitops.PipelineAsCodeSHALabel]
+	SHA, found := labels[gitops.PipelineAsCodeSHALabel]
 	if !found {
 		return nil, fmt.Errorf("PipelineRun label not found %q", gitops.PipelineAsCodeSHALabel)
 	}
 
 	var title, conclusion string
-	succeeded := r.pipelineRun.Status.GetCondition(apis.ConditionSucceeded)
+	succeeded := pipelineRun.Status.GetCondition(apis.ConditionSucceeded)
 
 	if succeeded.IsUnknown() {
 		title = scenario + " has started"
 	} else {
-		outcome, err := helpers.CalculateIntegrationPipelineRunOutcome(r.logger, r.pipelineRun)
+		outcome, err := helpers.CalculateIntegrationPipelineRunOutcome(r.logger, pipelineRun)
 
 		if err != nil {
 			return nil, err
@@ -132,7 +186,7 @@ func (r *GitHubPipelineRunReporter) createCheckRunAdapter() (*github.CheckRunAda
 		}
 	}
 
-	results, err := helpers.GetHACBSTestResultsFromPipelineRun(r.logger, r.pipelineRun)
+	results, err := helpers.GetHACBSTestResultsFromPipelineRun(r.logger, pipelineRun)
 	if err != nil {
 		return nil, err
 	}
@@ -143,12 +197,12 @@ func (r *GitHubPipelineRunReporter) createCheckRunAdapter() (*github.CheckRunAda
 	}
 
 	startTime := time.Time{}
-	if start := r.pipelineRun.Status.StartTime; start != nil {
+	if start := pipelineRun.Status.StartTime; start != nil {
 		startTime = start.Time
 	}
 
 	completionTime := time.Time{}
-	if complete := r.pipelineRun.Status.CompletionTime; complete != nil {
+	if complete := pipelineRun.Status.CompletionTime; complete != nil {
 		completionTime = complete.Time
 	}
 
@@ -162,7 +216,7 @@ func (r *GitHubPipelineRunReporter) createCheckRunAdapter() (*github.CheckRunAda
 		Repository:     repo,
 		Name:           NamePrefix + " / " + component + " / " + scenario,
 		SHA:            SHA,
-		ExternalID:     r.pipelineRun.Name,
+		ExternalID:     pipelineRun.Name,
 		Conclusion:     conclusion,
 		Title:          title,
 		Summary:        summary,
@@ -172,37 +226,185 @@ func (r *GitHubPipelineRunReporter) createCheckRunAdapter() (*github.CheckRunAda
 	}, nil
 }
 
-// ReportStatus creates/updates CheckRuns when using GitHub App integration.
-func (r *GitHubPipelineRunReporter) ReportStatus(ctx context.Context) error {
-	if !helpers.HasLabelWithValue(r.pipelineRun, gitops.PipelineAsCodeEventTypeLabel, gitops.PipelineAsCodePullRequestType) {
+func (r *GitHubReporter) createCommitStatus(ctx context.Context, pipelineRun *tektonv1beta1.PipelineRun) error {
+	var (
+		state       string
+		description string
+	)
+
+	labels := pipelineRun.GetLabels()
+
+	scenario, found := labels[gitops.ApplicationSnapshotTestScenarioLabel]
+	if !found {
+		return fmt.Errorf("PipelineRun label not found %q", gitops.ApplicationSnapshotTestScenarioLabel)
+	}
+
+	component, found := labels[gitops.ApplicationSnapshotComponentLabel]
+	if !found {
+		return fmt.Errorf("PipelineRun label not found %q", gitops.ApplicationSnapshotComponentLabel)
+	}
+
+	owner, found := labels[gitops.PipelineAsCodeURLOrgLabel]
+	if !found {
+		return fmt.Errorf("PipelineRun label not found %q", gitops.PipelineAsCodeURLOrgLabel)
+	}
+
+	repo, found := labels[gitops.PipelineAsCodeURLRepositoryLabel]
+	if !found {
+		return fmt.Errorf("PipelineRun label not found %q", gitops.PipelineAsCodeURLRepositoryLabel)
+	}
+
+	SHA, found := labels[gitops.PipelineAsCodeSHALabel]
+	if !found {
+		return fmt.Errorf("PipelineRun label not found %q", gitops.PipelineAsCodeSHALabel)
+	}
+
+	statusContext := NamePrefix + " / " + component + " / " + scenario
+
+	succeeded := pipelineRun.Status.GetCondition(apis.ConditionSucceeded)
+
+	if succeeded.IsUnknown() {
+		state = "pending"
+		description = scenario + " has started"
+	} else {
+		outcome, err := helpers.CalculateIntegrationPipelineRunOutcome(r.logger, pipelineRun)
+		if err != nil {
+			return err
+		}
+
+		if outcome {
+			state = "success"
+			description = scenario + " has succeeded"
+		} else {
+			state = "failure"
+			description = scenario + " has failed"
+		}
+	}
+
+	_, err := r.client.CreateCommitStatus(ctx, owner, repo, SHA, state, description, statusContext)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (r *GitHubReporter) createComment(ctx context.Context, pipelineRun *tektonv1beta1.PipelineRun) error {
+	labels := pipelineRun.GetLabels()
+
+	succeeded := pipelineRun.Status.GetCondition(apis.ConditionSucceeded)
+	if succeeded.IsUnknown() {
 		return nil
 	}
 
-	if r.installationID > 0 {
-		checkRun, err := r.createCheckRunAdapter()
+	scenario, found := labels[gitops.ApplicationSnapshotTestScenarioLabel]
+	if !found {
+		return fmt.Errorf("PipelineRun label not found %q", gitops.ApplicationSnapshotTestScenarioLabel)
+	}
 
+	owner, found := labels[gitops.PipelineAsCodeURLOrgLabel]
+	if !found {
+		return fmt.Errorf("PipelineRun label not found %q", gitops.PipelineAsCodeURLOrgLabel)
+	}
+
+	repo, found := labels[gitops.PipelineAsCodeURLRepositoryLabel]
+	if !found {
+		return fmt.Errorf("PipelineRun label not found %q", gitops.PipelineAsCodeURLRepositoryLabel)
+	}
+
+	issueNumberStr, found := pipelineRun.GetAnnotations()[gitops.PipelineAsCodePullRequestAnnotation]
+	if !found {
+		return fmt.Errorf("PipelineRun label not found %q", gitops.PipelineAsCodeURLRepositoryLabel)
+	}
+
+	issueNumber, err := strconv.Atoi(issueNumberStr)
+	if err != nil {
+		return err
+	}
+
+	results, err := helpers.GetHACBSTestResultsFromPipelineRun(r.logger, pipelineRun)
+	if err != nil {
+		return err
+	}
+
+	outcome, err := helpers.CalculateIntegrationPipelineRunOutcome(r.logger, pipelineRun)
+	if err != nil {
+		return err
+	}
+
+	var title string
+	if outcome {
+		title = scenario + " has succeeded"
+	} else {
+		title = scenario + " has failed"
+	}
+
+	comment, err := FormatComment(title, results)
+	if err != nil {
+		return err
+	}
+
+	_, err = r.client.CreateComment(ctx, owner, repo, issueNumber, comment)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// ReportStatus creates/updates CheckRuns when using GitHub App integration.
+// When using GitHub webhook integration a commit status and, in some cases, a comment is created.
+func (r *GitHubReporter) ReportStatus(ctx context.Context, pipelineRun *tektonv1beta1.PipelineRun) error {
+	if !helpers.HasLabelWithValue(pipelineRun, gitops.PipelineAsCodeEventTypeLabel, gitops.PipelineAsCodePullRequestType) {
+		return nil
+	}
+
+	if helpers.HasAnnotation(pipelineRun, gitops.PipelineAsCodeInstallationIDAnnotation) {
+		creds, err := r.getAppCredentials(ctx, pipelineRun)
 		if err != nil {
 			return err
 		}
 
-		client, err := r.appClientCreator(ctx, r.logger, r.appID, r.installationID, r.privateKey)
-
+		token, err := r.client.CreateAppInstallationToken(ctx, creds.AppID, creds.InstallationID, creds.PrivateKey)
 		if err != nil {
 			return err
 		}
 
-		checkRunID, err := client.GetCheckRunID(ctx, checkRun.Owner, checkRun.Repository, checkRun.SHA, checkRun.ExternalID)
+		r.client.SetOAuthToken(ctx, token)
 
+		checkRun, err := r.createCheckRunAdapter(pipelineRun)
+		if err != nil {
+			return err
+		}
+
+		checkRunID, err := r.client.GetCheckRunID(ctx, checkRun.Owner, checkRun.Repository, checkRun.SHA, checkRun.ExternalID, creds.AppID)
 		if err != nil {
 			return err
 		}
 
 		if checkRunID == nil {
-			_, err = client.CreateCheckRun(ctx, checkRun)
+			_, err = r.client.CreateCheckRun(ctx, checkRun)
 		} else {
-			err = client.UpdateCheckRun(ctx, *checkRunID, checkRun)
+			err = r.client.UpdateCheckRun(ctx, *checkRunID, checkRun)
 		}
 
+		if err != nil {
+			return err
+		}
+	} else {
+		token, err := r.getToken(ctx, pipelineRun)
+		if err != nil {
+			return err
+		}
+
+		r.client.SetOAuthToken(ctx, token)
+
+		err = r.createCommitStatus(ctx, pipelineRun)
+		if err != nil {
+			return err
+		}
+
+		err = r.createComment(ctx, pipelineRun)
 		if err != nil {
 			return err
 		}

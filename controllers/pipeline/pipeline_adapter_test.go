@@ -46,7 +46,7 @@ type MockStatusReporter struct {
 	ReportStatusError error
 }
 
-func (r *MockStatusReporter) ReportStatus(context.Context) error {
+func (r *MockStatusReporter) ReportStatus(context.Context, *tektonv1beta1.PipelineRun) error {
 	r.Called = true
 	return r.ReportStatusError
 }
@@ -149,7 +149,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 								TaskRunResults: []tektonv1beta1.TaskRunResult{
 									{
 										Name:  "IMAGE_DIGEST",
-										Value: "image_digest_value",
+										Value: *tektonv1beta1.NewArrayOrString("image_digest_value"),
 									},
 								},
 							},

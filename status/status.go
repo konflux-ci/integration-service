@@ -15,7 +15,7 @@ const NamePrefix = "HACBS Test"
 
 // Reporter is a generic interface all status implementations must follow.
 type Reporter interface {
-	ReportStatus(context.Context) error
+	ReportStatus(context.Context, *tektonv1beta1.PipelineRun) error
 }
 
 // Status is the interface of the main status Adapter.
@@ -27,16 +27,16 @@ type Status interface {
 type Adapter struct {
 	logger         logr.Logger
 	k8sClient      client.Reader
-	githubReporter GitHubPipelineRunReporterCreator
+	githubReporter Reporter
 }
 
 // AdapterOption is used to extend Adapter with optional parameters.
 type AdapterOption = func(a *Adapter)
 
-// WithGitHubPipelineRunReporterCreator is an option which allows for replacement of the GitHub PipelineRun reporter.
-func WithGitHubPipelineRunReporterCreator(creator GitHubPipelineRunReporterCreator) AdapterOption {
+// WithGitHubReporter is an option which allows for replacement of the GitHub PipelineRun reporter.
+func WithGitHubReporter(reporter Reporter) AdapterOption {
 	return func(a *Adapter) {
-		a.githubReporter = creator
+		a.githubReporter = reporter
 	}
 }
 
@@ -45,7 +45,7 @@ func NewAdapter(logger logr.Logger, k8sClient client.Reader, opts ...AdapterOpti
 	adapter := Adapter{
 		logger:         logger,
 		k8sClient:      k8sClient,
-		githubReporter: NewGitHubPipelineRunReporter,
+		githubReporter: NewGitHubReporter(logger, k8sClient),
 	}
 
 	for _, opt := range opts {
@@ -61,11 +61,11 @@ func (a *Adapter) GetReporters(ctx context.Context, pipelineRun *tektonv1beta1.P
 	var reporters []Reporter
 
 	if helpers.HasLabelWithValue(pipelineRun, gitops.PipelineAsCodeGitProviderLabel, gitops.PipelineAsCodeGitHubProviderType) {
-		reporter, err := a.githubReporter(ctx, a.logger, a.k8sClient, pipelineRun)
+		err := a.githubReporter.ReportStatus(ctx, pipelineRun)
 		if err != nil {
 			return nil, err
 		}
-		reporters = append(reporters, reporter)
+		reporters = append(reporters, a.githubReporter)
 	}
 
 	return reporters, nil

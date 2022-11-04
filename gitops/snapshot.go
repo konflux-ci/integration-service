@@ -41,8 +41,14 @@ const (
 	// PipelineAsCodeURLRepositoryLabel is the git repository which triggered the pipelinerun in build service.
 	PipelineAsCodeURLRepositoryLabel = "pipelinesascode.tekton.dev/url-repository"
 
+	// PipelineAsCodeRepoURLAnnotation is the URL to the git repository which triggered the pipelinerun in build service.
+	PipelineAsCodeRepoURLAnnotation = "pipelinesascode.tekton.dev/repo-url"
+
 	// PipelineAsCodeInstallationIDAnnotation is the GitHub App installation ID for the git repo which triggered the pipelinerun in build service.
 	PipelineAsCodeInstallationIDAnnotation = "pipelinesascode.tekton.dev/installation-id"
+
+	// PipelineAsCodePullRequestAnnotation is the git repository's pull request identifier
+	PipelineAsCodePullRequestAnnotation = "pipelinesascode.tekton.dev/pull-request"
 
 	// PipelineAscodePushType is the type of push event which triggered the pipelinerun in build service
 	PipelineAsCodePushType = "push"

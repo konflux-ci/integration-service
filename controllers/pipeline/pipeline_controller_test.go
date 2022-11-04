@@ -130,7 +130,7 @@ var _ = Describe("PipelineController", func() {
 								TaskRunResults: []tektonv1beta1.TaskRunResult{
 									{
 										Name:  "IMAGE_DIGEST",
-										Value: "image_digest_value",
+										Value: *tektonv1beta1.NewArrayOrString("image_digest_value"),
 									},
 								},
 							},

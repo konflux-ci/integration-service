@@ -48,95 +48,146 @@ type ChecksService interface {
 	UpdateCheckRun(ctx context.Context, owner string, repo string, checkRunID int64, opts ghapi.UpdateCheckRunOptions) (*ghapi.CheckRun, *ghapi.Response, error)
 }
 
-// AppClientCreator is the signature of the constructor for GitHub App-based clients
-type AppClientCreator func(ctx context.Context, logger logr.Logger, appID int64, installationID int64, privateKey []byte, opts ...AppClientOption) (AppClientInterface, error)
-
-// AppClientInterface defines the methods that should be implemented by a GitHub App client
-type AppClientInterface interface {
-	CreateCheckRun(context.Context, *CheckRunAdapter) (*int64, error)
-	UpdateCheckRun(context.Context, int64, *CheckRunAdapter) error
-	GetCheckRunID(context.Context, string, string, string, string) (*int64, error)
+// IssuesService defines the methods used in the github Issues service.
+type IssuesService interface {
+	CreateComment(ctx context.Context, owner string, repo string, number int, comment *ghapi.IssueComment) (*ghapi.IssueComment, *ghapi.Response, error)
 }
 
-// AppClient is an abstraction around the github API client.
-type AppClient struct {
-	logger         logr.Logger
-	client         *ghapi.Client
-	appID          int64
-	installationID int64
-	apps           AppsService
-	checks         ChecksService
+// RepositoriesService defines the methods used in the github Repositories service.
+type RepositoriesService interface {
+	CreateStatus(ctx context.Context, owner string, repo string, ref string, status *ghapi.RepoStatus) (*ghapi.RepoStatus, *ghapi.Response, error)
 }
 
-// AppClientOption is used to extend AppClient with optional parameters.
-type AppClientOption = func(c *AppClient)
+// ClientInterface defines the methods that should be implemented by a GitHub client
+type ClientInterface interface {
+	CreateAppInstallationToken(ctx context.Context, appID int64, installationID int64, privateKey []byte) (string, error)
+	SetOAuthToken(ctx context.Context, token string)
+	CreateCheckRun(ctx context.Context, cra *CheckRunAdapter) (*int64, error)
+	UpdateCheckRun(ctx context.Context, checkRunID int64, cra *CheckRunAdapter) error
+	GetCheckRunID(ctx context.Context, owner string, repo string, SHA string, externalID string, appID int64) (*int64, error)
+	CreateComment(ctx context.Context, owner string, repo string, issueNumber int, body string) (int64, error)
+	CreateCommitStatus(ctx context.Context, owner string, repo string, SHA string, state string, description string, statusContext string) (int64, error)
+}
+
+// Client is an abstraction around the API client.
+type Client struct {
+	logger logr.Logger
+	gh     *ghapi.Client
+	apps   AppsService
+	checks ChecksService
+	issues IssuesService
+	repos  RepositoriesService
+}
+
+// GetAppsService returns either the default or custom Apps service.
+func (c *Client) GetAppsService() AppsService {
+	if c.apps == nil {
+		return c.gh.Apps
+	}
+	return c.apps
+}
+
+// GetAppsService returns either the default or custom Checks service.
+func (c *Client) GetChecksService() ChecksService {
+	if c.checks == nil {
+		return c.gh.Checks
+	}
+	return c.checks
+}
+
+// GetAppsService returns either the default or custom Issues service.
+func (c *Client) GetIssuesService() IssuesService {
+	if c.issues == nil {
+		return c.gh.Issues
+	}
+	return c.issues
+}
+
+// GetAppsService returns either the default or custom Repositories service.
+func (c *Client) GetRepositoriesService() RepositoriesService {
+	if c.repos == nil {
+		return c.gh.Repositories
+	}
+	return c.repos
+}
+
+// ClientOption is used to extend Client with optional parameters.
+type ClientOption = func(c *Client)
 
 // WithAppsService is an option which allows for overriding the github client's default Apps service.
-func WithAppsService(svc AppsService) AppClientOption {
-	return func(c *AppClient) {
+func WithAppsService(svc AppsService) ClientOption {
+	return func(c *Client) {
 		c.apps = svc
 	}
 }
 
 // WithChecksService is an option which allows for overriding the github client's default Checks service.
-func WithChecksService(svc ChecksService) AppClientOption {
-	return func(c *AppClient) {
+func WithChecksService(svc ChecksService) ClientOption {
+	return func(c *Client) {
 		c.checks = svc
 	}
 }
 
-// NewAppClient constructs a GitHub App client with valid session tokens.
-func NewAppClient(
-	ctx context.Context, logger logr.Logger, appID int64, installationID int64, privateKey []byte, opts ...AppClientOption,
-) (AppClientInterface, error) {
-	transport, err := ghinstallation.NewAppsTransport(http.DefaultTransport, appID, privateKey)
-	if err != nil {
-		return nil, err
+// WithIssuesService is an option which allows for overriding the github client's default Issues service.
+func WithIssuesService(svc IssuesService) ClientOption {
+	return func(c *Client) {
+		c.issues = svc
 	}
+}
 
-	client := ghapi.NewClient(&http.Client{Transport: transport})
+// WithRepositoriesService is an option which allows for overriding the github client's default Issues service.
+func WithRepositoriesService(svc RepositoriesService) ClientOption {
+	return func(c *Client) {
+		c.repos = svc
+	}
+}
 
-	appClient := AppClient{
-		logger:         logger,
-		appID:          appID,
-		installationID: installationID,
-		apps:           client.Apps,
-		checks:         client.Checks,
+// NewClient constructs a new Client.
+func NewClient(logger logr.Logger, opts ...ClientOption) *Client {
+	client := Client{
+		logger: logger,
 	}
 
 	for _, opt := range opts {
-		opt(&appClient)
+		opt(&client)
 	}
 
-	installToken, _, err := appClient.apps.CreateInstallationToken(
+	return &client
+}
+
+// CreateAppInstallationToken creates an installation token for a GitHub App.
+func (c *Client) CreateAppInstallationToken(ctx context.Context, appID int64, installationID int64, privateKey []byte) (string, error) {
+	transport, err := ghinstallation.NewAppsTransport(http.DefaultTransport, appID, privateKey)
+	if err != nil {
+		return "", err
+	}
+
+	c.gh = ghapi.NewClient(&http.Client{Transport: transport})
+
+	installToken, _, err := c.GetAppsService().CreateInstallationToken(
 		ctx,
 		installationID,
 		&ghapi.InstallationTokenOptions{},
 	)
 
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 
+	return installToken.GetToken(), nil
+}
+
+// SetOAuthToken configures the client with a GitHub OAuth token.
+func (c *Client) SetOAuthToken(ctx context.Context, token string) {
 	ts := oauth2.StaticTokenSource(
-		&oauth2.Token{AccessToken: installToken.GetToken()},
+		&oauth2.Token{AccessToken: token},
 	)
 
-	client = ghapi.NewClient(oauth2.NewClient(ctx, ts))
-	appClient.client = client
-
-	// Reapply options using the latest client's services as defaults
-	appClient.apps = client.Apps
-	appClient.checks = client.Checks
-	for _, opt := range opts {
-		opt(&appClient)
-	}
-
-	return &appClient, nil
+	c.gh = ghapi.NewClient(oauth2.NewClient(ctx, ts))
 }
 
 // CreateCheckRun creates a new CheckRun via the GitHub API.
-func (c *AppClient) CreateCheckRun(ctx context.Context, cra *CheckRunAdapter) (*int64, error) {
+func (c *Client) CreateCheckRun(ctx context.Context, cra *CheckRunAdapter) (*int64, error) {
 	status := cra.GetStatus()
 
 	options := ghapi.CreateCheckRunOptions{
@@ -163,7 +214,7 @@ func (c *AppClient) CreateCheckRun(ctx context.Context, cra *CheckRunAdapter) (*
 		options.CompletedAt = &ghapi.Timestamp{Time: cra.CompletionTime}
 	}
 
-	cr, _, err := c.checks.CreateCheckRun(ctx, cra.Owner, cra.Repository, options)
+	cr, _, err := c.GetChecksService().CreateCheckRun(ctx, cra.Owner, cra.Repository, options)
 
 	if err != nil {
 		return nil, err
@@ -179,8 +230,8 @@ func (c *AppClient) CreateCheckRun(ctx context.Context, cra *CheckRunAdapter) (*
 	return cr.ID, nil
 }
 
-// UpdateCheckRun updates and existing CheckRun via the GitHub API.
-func (c *AppClient) UpdateCheckRun(ctx context.Context, checkRunID int64, cra *CheckRunAdapter) error {
+// UpdateCheckRun updates an existing CheckRun via the GitHub API.
+func (c *Client) UpdateCheckRun(ctx context.Context, checkRunID int64, cra *CheckRunAdapter) error {
 	status := cra.GetStatus()
 
 	options := ghapi.UpdateCheckRunOptions{
@@ -201,7 +252,7 @@ func (c *AppClient) UpdateCheckRun(ctx context.Context, checkRunID int64, cra *C
 		options.CompletedAt = &ghapi.Timestamp{Time: cra.CompletionTime}
 	}
 
-	cr, _, err := c.checks.UpdateCheckRun(ctx, cra.Owner, cra.Repository, checkRunID, options)
+	cr, _, err := c.GetChecksService().UpdateCheckRun(ctx, cra.Owner, cra.Repository, checkRunID, options)
 
 	if err != nil {
 		return err
@@ -217,17 +268,17 @@ func (c *AppClient) UpdateCheckRun(ctx context.Context, checkRunID int64, cra *C
 
 }
 
-// GetCheckRunID returns an existing GitHub CheckRun ID if a match is found for the SHA and externalID
-func (c *AppClient) GetCheckRunID(ctx context.Context, owner string, repo string, SHA string, externalID string) (*int64, error) {
+// GetCheckRunID returns an existing GitHub CheckRun ID if a match is found for the SHA, externalID and appID.
+func (c *Client) GetCheckRunID(ctx context.Context, owner string, repo string, SHA string, externalID string, appID int64) (*int64, error) {
 	filter := "all"
 
-	res, _, err := c.checks.ListCheckRunsForRef(
+	res, _, err := c.GetChecksService().ListCheckRunsForRef(
 		ctx,
 		owner,
 		repo,
 		SHA,
 		&ghapi.ListCheckRunsOptions{
-			AppID:  &c.appID,
+			AppID:  &appID,
 			Filter: &filter,
 		},
 	)
@@ -249,4 +300,37 @@ func (c *AppClient) GetCheckRunID(ctx context.Context, owner string, repo string
 	c.logger.Info("Found no CheckRuns with a matching ExternalID", "ExternalID", externalID)
 
 	return nil, nil
+}
+
+// CreateComment creates a new issue comment via the GitHub API.
+func (c *Client) CreateComment(ctx context.Context, owner string, repo string, issueNumber int, body string) (int64, error) {
+	comment, _, err := c.GetIssuesService().CreateComment(ctx, owner, repo, issueNumber, &ghapi.IssueComment{Body: &body})
+	if err != nil {
+		return 0, err
+	}
+
+	c.logger.Info("Created comment",
+		"ID", comment.ID,
+		"Owner", owner,
+		"Repository", repo,
+		"IssueNumber", issueNumber,
+	)
+	return *comment.ID, nil
+}
+
+// CreateCommitStatus creates a repository commit status via the GitHub API.
+func (c *Client) CreateCommitStatus(ctx context.Context, owner string, repo string, SHA string, state string, description string, statusContext string) (int64, error) {
+	status, _, err := c.GetRepositoriesService().CreateStatus(ctx, owner, repo, SHA, &ghapi.RepoStatus{State: &state, Description: &description, Context: &statusContext})
+	if err != nil {
+		return 0, err
+	}
+
+	c.logger.Info("Created commit status",
+		"ID", status.ID,
+		"Owner", owner,
+		"Repository", repo,
+		"SHA", SHA,
+		"State", status.State,
+	)
+	return *status.ID, nil
 }

@@ -216,7 +216,7 @@ func (a *Adapter) EnsureStatusReported() (results.OperationResult, error) {
 	}
 
 	for _, reporter := range reporters {
-		if err := reporter.ReportStatus(a.context); err != nil {
+		if err := reporter.ReportStatus(a.context, a.pipelineRun); err != nil {
 			return results.RequeueWithError(err)
 		}
 	}
