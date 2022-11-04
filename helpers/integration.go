@@ -52,7 +52,7 @@ type HACBSTestResult struct {
 
 // GetRequiredIntegrationTestScenariosForApplication returns the IntegrationTestScenarios used by the application being processed.
 // An IntegrationTestScenarios will only be returned if it has the test.appstudio.openshift.io/optional
-// label set to true or if it is missing the label entirely.
+// label not set to true or if it is missing the label entirely.
 func GetRequiredIntegrationTestScenariosForApplication(adapterClient client.Client, ctx context.Context, application *applicationapiv1alpha1.Application) (*[]v1alpha1.IntegrationTestScenario, error) {
 	integrationList := &v1alpha1.IntegrationTestScenarioList{}
 	labelRequirement, err := labels.NewRequirement("test.appstudio.openshift.io/optional", selection.NotIn, []string{"true"})

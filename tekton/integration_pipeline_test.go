@@ -150,12 +150,14 @@ var _ = Describe("Integration pipeline", func() {
 				To(Equal(extraParams.Value.StringVal))
 		})
 
-		It("can append the scenario Name and Namespace to a IntegrationPipelineRun object and that these label key names match the correct label format", func() {
+		It("can append the scenario Name, optional flag and Namespace to a IntegrationPipelineRun object and that these label key names match the correct label format", func() {
 			newIntegrationPipelineRun.WithIntegrationLabels(integrationTestScenario)
 			Expect(newIntegrationPipelineRun.Labels["test.appstudio.openshift.io/scenario"]).
 				To(Equal(integrationTestScenario.Name))
 			Expect(newIntegrationPipelineRun.Labels["pipelines.appstudio.openshift.io/type"]).
 				To(Equal("test"))
+			Expect(newIntegrationPipelineRun.Labels["test.appstudio.openshift.io/optional"]).
+				To(Equal("false"))
 			Expect(newIntegrationPipelineRun.Namespace).
 				To(Equal(integrationTestScenario.Namespace))
 		})

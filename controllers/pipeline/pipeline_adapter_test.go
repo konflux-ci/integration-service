@@ -342,4 +342,23 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		}, time.Second*10).Should(BeTrue())
 	})
 
+	It("ensures status is not reported for integration PipelineRuns derived from optional IntegrationTestScenarios", func() {
+		adapter.pipelineRun = &tektonv1beta1.PipelineRun{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "pipelinerun-status-sample",
+				Namespace: "default",
+				Labels: map[string]string{
+					"test.appstudio.openshift.io/optional":  "true",
+					"pipelines.appstudio.openshift.io/type": "test",
+				},
+			},
+		}
+
+		Eventually(func() bool {
+			result, err := adapter.EnsureStatusReported()
+			return !result.CancelRequest && err == nil
+		}, time.Second*10).Should(BeTrue())
+		Expect(statusReporter.Called).To(BeFalse())
+	})
+
 })

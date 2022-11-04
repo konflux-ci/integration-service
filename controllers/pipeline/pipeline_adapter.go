@@ -205,6 +205,10 @@ func (a *Adapter) EnsureStatusReported() (results.OperationResult, error) {
 		return results.ContinueProcessing()
 	}
 
+	if helpers.HasLabelWithValue(a.pipelineRun, tekton.OptionalLabel, "true") {
+		return results.ContinueProcessing()
+	}
+
 	reporters, err := a.status.GetReporters(a.context, a.pipelineRun)
 
 	if err != nil {
