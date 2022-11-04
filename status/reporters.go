@@ -113,14 +113,23 @@ func (r *GitHubPipelineRunReporter) createCheckRunAdapter() (*github.CheckRunAda
 
 	var title, conclusion string
 	succeeded := r.pipelineRun.Status.GetCondition(apis.ConditionSucceeded)
-	if succeeded.IsTrue() {
-		title = scenario + " has succeeded"
-		conclusion = "success"
-	} else if succeeded.IsFalse() {
-		title = scenario + " has failed"
-		conclusion = "failure"
-	} else {
+
+	if succeeded.IsUnknown() {
 		title = scenario + " has started"
+	} else {
+		outcome, err := helpers.CalculateIntegrationPipelineRunOutcome(r.logger, r.pipelineRun)
+
+		if err != nil {
+			return nil, err
+		}
+
+		if outcome {
+			title = scenario + " has succeeded"
+			conclusion = "success"
+		} else {
+			title = scenario + " has failed"
+			conclusion = "failure"
+		}
 	}
 
 	results, err := helpers.GetHACBSTestResultsFromPipelineRun(r.logger, r.pipelineRun)

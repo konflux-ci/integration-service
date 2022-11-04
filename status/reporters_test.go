@@ -173,7 +173,39 @@ var _ = Describe("GitHubPipelineRunReporter", Ordered, func() {
 		Expect(client.CreateCheckRunResult.cra.Text).To(Equal(""))
 
 		// Update existing CheckRun w/success
-		pipelineRun.Status.CompletionTime = &metav1.Time{Time: time.Now()}
+		pipelineRun.Status = tektonv1beta1.PipelineRunStatus{
+			PipelineRunStatusFields: tektonv1beta1.PipelineRunStatusFields{
+				CompletionTime: &metav1.Time{Time: time.Now()},
+				TaskRuns: map[string]*tektonv1beta1.PipelineRunTaskRunStatus{
+					"task1": {
+						PipelineTaskName: "task-passed",
+						Status: &tektonv1beta1.TaskRunStatus{
+							TaskRunStatusFields: tektonv1beta1.TaskRunStatusFields{
+								TaskRunResults: []tektonv1beta1.TaskRunResult{
+									{
+										Name:  "HACBS_TEST_OUTPUT",
+										Value: "{\"result\":\"SUCCESS\"}",
+									},
+								},
+							},
+						},
+					},
+					"task2": {
+						PipelineTaskName: "task-skipped",
+						Status: &tektonv1beta1.TaskRunStatus{
+							TaskRunStatusFields: tektonv1beta1.TaskRunStatusFields{
+								TaskRunResults: []tektonv1beta1.TaskRunResult{
+									{
+										Name:  "HACBS_TEST_OUTPUT",
+										Value: "{\"result\":\"SKIPPED\"}",
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		}
 		pipelineRun.Status.SetCondition(&apis.Condition{
 			Type:    apis.ConditionSucceeded,
 			Message: "sample msg",
@@ -188,9 +220,29 @@ var _ = Describe("GitHubPipelineRunReporter", Ordered, func() {
 		Expect(client.UpdateCheckRunResult.cra.Text).To(Equal("sample msg"))
 
 		// Update existing CheckRun w/failure
+		pipelineRun.Status = tektonv1beta1.PipelineRunStatus{
+			PipelineRunStatusFields: tektonv1beta1.PipelineRunStatusFields{
+				CompletionTime: &metav1.Time{Time: time.Now()},
+				TaskRuns: map[string]*tektonv1beta1.PipelineRunTaskRunStatus{
+					"task1": {
+						PipelineTaskName: "task-passed",
+						Status: &tektonv1beta1.TaskRunStatus{
+							TaskRunStatusFields: tektonv1beta1.TaskRunStatusFields{
+								TaskRunResults: []tektonv1beta1.TaskRunResult{
+									{
+										Name:  "HACBS_TEST_OUTPUT",
+										Value: "{\"result\":\"FAILURE\"}",
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		}
 		pipelineRun.Status.SetCondition(&apis.Condition{
 			Type:   apis.ConditionSucceeded,
-			Status: "False",
+			Status: "True",
 		})
 		Expect(reporter.ReportStatus(context.TODO())).To(BeNil())
 		Expect(client.UpdateCheckRunResult.cra.Title).To(Equal("example-pass has failed"))
