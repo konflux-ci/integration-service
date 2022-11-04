@@ -55,7 +55,7 @@ var _ = Describe("Utils", func() {
 	It("can get output-image", func() {
 		image, _ := tekton.GetOutputImage(pipelineRun)
 		if image != "test-image" {
-			Fail(fmt.Sprintf("Expected image is test-image, bug got %s", image))
+			Fail(fmt.Sprintf("Expected image is test-image, but got %s", image))
 		}
 		klog.Infoln("Got expected image")
 	})
@@ -63,7 +63,7 @@ var _ = Describe("Utils", func() {
 	It("can get output-image-digest", func() {
 		image_digest, _ := tekton.GetOutputImageDigest(pipelineRun)
 		if image_digest != "image_digest_value" {
-			Fail(fmt.Sprintf("Expected image_digest is image_digest_value, bug got %s", image_digest))
+			Fail(fmt.Sprintf("Expected image_digest is image_digest_value, but got %s", image_digest))
 		}
 		klog.Infoln("Got expected image_digest")
 	})
