@@ -1,7 +1,7 @@
 apiVersion: appstudio.redhat.com/v1alpha1
 kind: Application
 metadata:
-  annotations:
+  annotations: {}
   name: application-sample
   namespace: default
 spec:
@@ -32,7 +32,7 @@ spec:
   containerImage: quay.io/hongweiliu/foobar:dev-code-with-quarkus
 ---
 apiVersion: appstudio.redhat.com/v1alpha1
-kind: ApplicationSnapshot
+kind: Snapshot
 metadata:
   name: snapshot-sample
   namespace: default

@@ -28,7 +28,7 @@ rules:
 - apiGroups:
   - appstudio.redhat.com
   resources:
-  - applicationsnapshots
+  - snapshots
   verbs:
   - create
   - delete
@@ -40,13 +40,13 @@ rules:
 - apiGroups:
   - appstudio.redhat.com
   resources:
-  - applicationsnapshots/finalizers
+  - snapshots/finalizers
   verbs:
   - update
 - apiGroups:
   - appstudio.redhat.com
   resources:
-  - applicationsnapshots/status
+  - snapshots/status
   verbs:
   - get
   - patch

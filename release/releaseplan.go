@@ -28,15 +28,15 @@ import (
 )
 
 // CreateReleaseForReleasePlan creates the Release for a given ReleasePlan.
-func CreateReleaseForReleasePlan(releasePlan *releasev1alpha1.ReleasePlan, applicationSnapshot *applicationapiv1alpha1.ApplicationSnapshot) *releasev1alpha1.Release {
+func CreateReleaseForReleasePlan(releasePlan *releasev1alpha1.ReleasePlan, snapshot *applicationapiv1alpha1.Snapshot) *releasev1alpha1.Release {
 	newRelease := &releasev1alpha1.Release{
 		ObjectMeta: metav1.ObjectMeta{
-			GenerateName: applicationSnapshot.Name + "-",
-			Namespace:    applicationSnapshot.Namespace,
+			GenerateName: snapshot.Name + "-",
+			Namespace:    snapshot.Namespace,
 		},
 		Spec: releasev1alpha1.ReleaseSpec{
-			ApplicationSnapshot: applicationSnapshot.Name,
-			ReleasePlan:         releasePlan.Name,
+			Snapshot:    snapshot.Name,
+			ReleasePlan: releasePlan.Name,
 		},
 	}
 	return newRelease

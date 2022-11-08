@@ -31,7 +31,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-// Reconciler reconciles an ApplicationSnapshot object
+// Reconciler reconciles an Snapshot object
 type Reconciler struct {
 	client.Client
 	Log    logr.Logger
@@ -47,9 +47,9 @@ func NewSnapshotReconciler(client client.Client, logger *logr.Logger, scheme *ru
 	}
 }
 
-//+kubebuilder:rbac:groups=appstudio.redhat.com,resources=applicationsnapshots,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=appstudio.redhat.com,resources=applicationsnapshots/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=appstudio.redhat.com,resources=applicationsnapshots/finalizers,verbs=update
+//+kubebuilder:rbac:groups=appstudio.redhat.com,resources=snapshots,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=appstudio.redhat.com,resources=snapshots/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=appstudio.redhat.com,resources=snapshots/finalizers,verbs=update
 //+kubebuilder:rbac:groups=tekton.dev,resources=pipelineruns,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=tekton.dev,resources=pipelineruns/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=appstudio.redhat.com,resources=applications/finalizers,verbs=update
@@ -65,7 +65,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		ctx = logicalcluster.WithCluster(ctx, logicalcluster.New(req.ClusterName))
 	}
 
-	snapshot := &applicationapiv1alpha1.ApplicationSnapshot{}
+	snapshot := &applicationapiv1alpha1.Snapshot{}
 	err := r.Get(ctx, req.NamespacedName, snapshot)
 	if err != nil {
 		logger.Error(err, "Failed to get snapshot for", "req", req.NamespacedName)
@@ -79,7 +79,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	application, err := r.getApplicationFromSnapshot(ctx, snapshot)
 	if err != nil {
 		logger.Error(err, "Failed to get Application for ",
-			"ApplicationSnapshot.Name ", snapshot.Name, "ApplicationSnapshot.Namespace ", snapshot.Namespace)
+			"Snapshot.Name ", snapshot.Name, "Snapshot.Namespace ", snapshot.Namespace)
 		return ctrl.Result{}, err
 	}
 
@@ -95,9 +95,9 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	return r.ReconcileHandler(adapter)
 }
 
-// getApplicationFromSnapshot loads from the cluster the Application referenced in the given ApplicationSnapshot.
-// If the ApplicationSnapshot doesn't specify an Component or this is not found in the cluster, an error will be returned.
-func (r *Reconciler) getApplicationFromSnapshot(context context.Context, snapshot *applicationapiv1alpha1.ApplicationSnapshot) (*applicationapiv1alpha1.Application, error) {
+// getApplicationFromSnapshot loads from the cluster the Application referenced in the given Snapshot.
+// If the Snapshot doesn't specify an Component or this is not found in the cluster, an error will be returned.
+func (r *Reconciler) getApplicationFromSnapshot(context context.Context, snapshot *applicationapiv1alpha1.Snapshot) (*applicationapiv1alpha1.Application, error) {
 	application := &applicationapiv1alpha1.Application{}
 	err := r.Get(context, types.NamespacedName{
 		Namespace: snapshot.Namespace,
@@ -111,10 +111,10 @@ func (r *Reconciler) getApplicationFromSnapshot(context context.Context, snapsho
 	return application, nil
 }
 
-// getComponentFromSnapshot loads from the cluster the Component referenced in the given ApplicationSnapshot.
-// If the ApplicationSnapshot doesn't specify an Application or this is not found in the cluster, an error will be returned.
-func (r *Reconciler) getComponentFromSnapshot(context context.Context, snapshot *applicationapiv1alpha1.ApplicationSnapshot) (*applicationapiv1alpha1.Component, error) {
-	if componentLabel, ok := snapshot.Labels[gitops.ApplicationSnapshotComponentLabel]; ok {
+// getComponentFromSnapshot loads from the cluster the Component referenced in the given Snapshot.
+// If the Snapshot doesn't specify an Application or this is not found in the cluster, an error will be returned.
+func (r *Reconciler) getComponentFromSnapshot(context context.Context, snapshot *applicationapiv1alpha1.Snapshot) (*applicationapiv1alpha1.Component, error) {
+	if componentLabel, ok := snapshot.Labels[gitops.SnapshotComponentLabel]; ok {
 		component := &applicationapiv1alpha1.Component{}
 		err := r.Get(context, types.NamespacedName{
 			Namespace: snapshot.Namespace,
@@ -136,7 +136,7 @@ type AdapterInterface interface {
 	EnsureAllReleasesExist() (results.OperationResult, error)
 	EnsureAllIntegrationTestPipelinesExist() (results.OperationResult, error)
 	EnsureGlobalComponentImageUpdated() (results.OperationResult, error)
-	EnsureApplicationSnapshotEnvironmentBindingExist() (results.OperationResult, error)
+	EnsureSnapshotEnvironmentBindingExist() (results.OperationResult, error)
 }
 
 // ReconcileOperation defines the syntax of functions invoked by the ReconcileHandler
@@ -148,7 +148,7 @@ func (r *Reconciler) ReconcileHandler(adapter AdapterInterface) (ctrl.Result, er
 	operations := []ReconcileOperation{
 		adapter.EnsureAllReleasesExist,
 		adapter.EnsureGlobalComponentImageUpdated,
-		adapter.EnsureApplicationSnapshotEnvironmentBindingExist,
+		adapter.EnsureSnapshotEnvironmentBindingExist,
 		adapter.EnsureAllIntegrationTestPipelinesExist,
 	}
 
@@ -188,7 +188,7 @@ func setupCache(mgr ctrl.Manager) error {
 	return SetupEnvironmentCache(mgr)
 }
 
-// setupControllerWithManager sets up the controller with the Manager which monitors new ApplicationSnapshots
+// setupControllerWithManager sets up the controller with the Manager which monitors new Snapshots
 func setupControllerWithManager(manager ctrl.Manager, reconciler *Reconciler) error {
 	err := setupCache(manager)
 	if err != nil {
@@ -196,6 +196,6 @@ func setupControllerWithManager(manager ctrl.Manager, reconciler *Reconciler) er
 	}
 
 	return ctrl.NewControllerManagedBy(manager).
-		For(&applicationapiv1alpha1.ApplicationSnapshot{}).
+		For(&applicationapiv1alpha1.Snapshot{}).
 		Complete(reconciler)
 }
