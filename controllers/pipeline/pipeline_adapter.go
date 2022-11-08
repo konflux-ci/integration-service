@@ -19,7 +19,6 @@ package pipeline
 import (
 	"context"
 	"fmt"
-	ctrl "sigs.k8s.io/controller-runtime"
 	"strings"
 
 	"github.com/go-logr/logr"
@@ -28,9 +27,11 @@ import (
 	"github.com/redhat-appstudio/integration-service/controllers/results"
 	"github.com/redhat-appstudio/integration-service/gitops"
 	"github.com/redhat-appstudio/integration-service/helpers"
+	"github.com/redhat-appstudio/integration-service/status"
 	"github.com/redhat-appstudio/integration-service/tekton"
 	tektonv1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 	"k8s.io/apimachinery/pkg/types"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -42,6 +43,7 @@ type Adapter struct {
 	logger      logr.Logger
 	client      client.Client
 	context     context.Context
+	status      status.Status
 }
 
 // NewAdapter creates and returns an Adapter instance.
@@ -54,13 +56,14 @@ func NewAdapter(pipelineRun *tektonv1beta1.PipelineRun, component *applicationap
 		logger:      logger,
 		client:      client,
 		context:     context,
+		status:      status.NewAdapter(logger, client),
 	}
 }
 
 // EnsureApplicationSnapshotExists is an operation that will ensure that a pipeline ApplicationSnapshot associated
 // to the PipelineRun being processed exists. Otherwise, it will create a new pipeline ApplicationSnapshot.
 func (a *Adapter) EnsureApplicationSnapshotExists() (results.OperationResult, error) {
-	if !tekton.IsBuildPipelineRun(a.pipelineRun) {
+	if !tekton.IsBuildPipelineRun(a.pipelineRun) || !tekton.HasPipelineRunSucceeded(a.pipelineRun) {
 		return results.ContinueProcessing()
 	}
 
@@ -99,7 +102,7 @@ func (a *Adapter) EnsureApplicationSnapshotExists() (results.OperationResult, er
 // EnsureApplicationSnapshotPassedAllTests is an operation that will ensure that a pipeline ApplicationSnapshot
 // to the PipelineRun being processed passed all tests for all defined non-optional IntegrationTestScenarios.
 func (a *Adapter) EnsureApplicationSnapshotPassedAllTests() (results.OperationResult, error) {
-	if !tekton.IsIntegrationPipelineRun(a.pipelineRun) {
+	if !tekton.IsIntegrationPipelineRun(a.pipelineRun) || !tekton.HasPipelineRunSucceeded(a.pipelineRun) {
 		return results.ContinueProcessing()
 	}
 
@@ -190,6 +193,32 @@ func (a *Adapter) EnsureApplicationSnapshotPassedAllTests() (results.OperationRe
 		a.logger.Info("Some tests within Integration PipelineRuns failed, marking ApplicationSnapshot as failed",
 			"Application.Name", a.application.Name,
 			"ApplicationSnapshot.Name", existingApplicationSnapshot.Name)
+	}
+
+	return results.ContinueProcessing()
+}
+
+// EnsureStatusReported will ensure that integration PipelineRun status is reported to the git provider
+// which (indirectly) triggered its execution.
+func (a *Adapter) EnsureStatusReported() (results.OperationResult, error) {
+	if !tekton.IsIntegrationPipelineRun(a.pipelineRun) {
+		return results.ContinueProcessing()
+	}
+
+	if helpers.HasLabelWithValue(a.pipelineRun, tekton.OptionalLabel, "true") {
+		return results.ContinueProcessing()
+	}
+
+	reporters, err := a.status.GetReporters(a.context, a.pipelineRun)
+
+	if err != nil {
+		return results.RequeueWithError(err)
+	}
+
+	for _, reporter := range reporters {
+		if err := reporter.ReportStatus(a.context); err != nil {
+			return results.RequeueWithError(err)
+		}
 	}
 
 	return results.ContinueProcessing()
