@@ -1,13 +1,13 @@
-# permissions for end users to edit applicationsnapshotenvironmentbindings.
+# permissions for end users to edit snapshots.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: applicationsnapshotenvironmentbinding-editor-role
+  name: snapshot-editor-role
 rules:
 - apiGroups:
   - appstudio.redhat.com
   resources:
-  - applicationsnapshotenvironmentbindings
+  - snapshots
   verbs:
   - create
   - delete
@@ -19,6 +19,8 @@ rules:
 - apiGroups:
   - appstudio.redhat.com
   resources:
-  - applicationsnapshotenvironmentbindings/status
+  - snapshots/status
   verbs:
   - get
+  - patch
+  - update

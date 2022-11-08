@@ -34,14 +34,14 @@ func SetupApplicationComponentCache(mgr ctrl.Manager) error {
 		"spec.application", applicationComponentIndexFunc)
 }
 
-// SetupApplicationSnapshotCache adds a new index field to be able to search ApplicationSnapshots by Application.
-func SetupApplicationSnapshotCache(mgr ctrl.Manager) error {
-	applicationSnapshotIndexFunc := func(obj client.Object) []string {
-		return []string{obj.(*applicationapiv1alpha1.ApplicationSnapshot).Spec.Application}
+// SetupSnapshotCache adds a new index field to be able to search Snapshots by Application.
+func SetupSnapshotCache(mgr ctrl.Manager) error {
+	snapshotIndexFunc := func(obj client.Object) []string {
+		return []string{obj.(*applicationapiv1alpha1.Snapshot).Spec.Application}
 	}
 
-	return mgr.GetCache().IndexField(context.Background(), &applicationapiv1alpha1.ApplicationSnapshot{},
-		"spec.application", applicationSnapshotIndexFunc)
+	return mgr.GetCache().IndexField(context.Background(), &applicationapiv1alpha1.Snapshot{},
+		"spec.application", snapshotIndexFunc)
 }
 
 // SetupIntegrationTestScenarioCache adds a new index field to be able to search IntegrationTestScenarios by Application.

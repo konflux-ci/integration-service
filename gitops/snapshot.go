@@ -11,22 +11,22 @@ import (
 )
 
 const (
-	// ApplicationSnapshotTypeLabel contains the type of the ApplicationSnapshot.
-	ApplicationSnapshotTypeLabel = "test.appstudio.openshift.io/type"
+	// SnapshotTypeLabel contains the type of the Snapshot.
+	SnapshotTypeLabel = "test.appstudio.openshift.io/type"
 
-	// ApplicationSnapshotComponentLabel contains the name of the updated ApplicationSnapshot component.
-	ApplicationSnapshotComponentLabel = "test.appstudio.openshift.io/component"
+	// SnapshotComponentLabel contains the name of the updated Snapshot component.
+	SnapshotComponentLabel = "test.appstudio.openshift.io/component"
 
-	// ApplicationSnapshotTestScenarioLabel contains the name of the ApplicationSnapshot test scenario.
-	ApplicationSnapshotTestScenarioLabel = "test.appstudio.openshift.io/scenario"
+	// SnapshotTestScenarioLabel contains the name of the Snapshot test scenario.
+	SnapshotTestScenarioLabel = "test.appstudio.openshift.io/scenario"
 
-	// ApplicationSnapshotComponentType is the type of ApplicationSnapshot which was created for a single component build.
-	ApplicationSnapshotComponentType = "component"
+	// SnapshotComponentType is the type of Snapshot which was created for a single component build.
+	SnapshotComponentType = "component"
 
-	// ApplicationSnapshotCompositeType is the type of ApplicationSnapshot which was created for multiple components.
-	ApplicationSnapshotCompositeType = "composite"
+	// SnapshotCompositeType is the type of Snapshot which was created for multiple components.
+	SnapshotCompositeType = "composite"
 
-	// PipelineAscodeEventType is the type of event which triggered the pipelinerun in build service
+	// PipelineAsCodeEventTypeLabel is the type of event which triggered the pipelinerun in build service
 	PipelineAsCodeEventTypeLabel = "pipelinesascode.tekton.dev/event-type"
 
 	// PipelineAsCodeGitProviderLabel is the git provider which triggered the pipelinerun in build service.
@@ -53,10 +53,10 @@ const (
 	// PipelineAsCodeGitHubProviderType is the git provider type for a GitHub event which triggered the pipelinerun in build service.
 	PipelineAsCodeGitHubProviderType = "github"
 
-	//HACBSTestSuceededCondition is the condition for marking if the HACBS Tests succeeded for the ApplicationSnapshot.
+	//HACBSTestSuceededCondition is the condition for marking if the HACBS Tests succeeded for the Snapshot.
 	HACBSTestSuceededCondition = "HACBSTestSucceeded"
 
-	// HACBSIntegrationStatusCondition is the condition for marking the HACBS integration status of the ApplicationSnapshot.
+	// HACBSIntegrationStatusCondition is the condition for marking the HACBS integration status of the Snapshot.
 	HACBSIntegrationStatusCondition = "HACBSIntegrationStatus"
 
 	// HACBSTestSuceededConditionPassed is the reason that's set when the HACBS tests succeed.
@@ -69,43 +69,43 @@ const (
 	HACBSIntegrationStatusInvalid = "Invalid"
 )
 
-// MarkSnapshotAsPassed updates the HACBS Test succeeded condition for the ApplicationSnapshot to passed.
+// MarkSnapshotAsPassed updates the HACBS Test succeeded condition for the Snapshot to passed.
 // If the patch command fails, an error will be returned.
-func MarkSnapshotAsPassed(adapterClient client.Client, ctx context.Context, applicationSnapshot *applicationapiv1alpha1.ApplicationSnapshot, message string) (*applicationapiv1alpha1.ApplicationSnapshot, error) {
-	patch := client.MergeFrom(applicationSnapshot.DeepCopy())
-	meta.SetStatusCondition(&applicationSnapshot.Status.Conditions, metav1.Condition{
+func MarkSnapshotAsPassed(adapterClient client.Client, ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot, message string) (*applicationapiv1alpha1.Snapshot, error) {
+	patch := client.MergeFrom(snapshot.DeepCopy())
+	meta.SetStatusCondition(&snapshot.Status.Conditions, metav1.Condition{
 		Type:    HACBSTestSuceededCondition,
 		Status:  metav1.ConditionTrue,
 		Reason:  HACBSTestSuceededConditionPassed,
 		Message: message,
 	})
-	err := adapterClient.Status().Patch(ctx, applicationSnapshot, patch)
+	err := adapterClient.Status().Patch(ctx, snapshot, patch)
 	if err != nil {
 		return nil, err
 	}
-	return applicationSnapshot, nil
+	return snapshot, nil
 }
 
-// MarkSnapshotAsFailed updates the HACBS Test succeeded condition for the ApplicationSnapshot to failed.
+// MarkSnapshotAsFailed updates the HACBS Test succeeded condition for the Snapshot to failed.
 // If the patch command fails, an error will be returned.
-func MarkSnapshotAsFailed(adapterClient client.Client, ctx context.Context, applicationSnapshot *applicationapiv1alpha1.ApplicationSnapshot, message string) (*applicationapiv1alpha1.ApplicationSnapshot, error) {
-	patch := client.MergeFrom(applicationSnapshot.DeepCopy())
-	meta.SetStatusCondition(&applicationSnapshot.Status.Conditions, metav1.Condition{
+func MarkSnapshotAsFailed(adapterClient client.Client, ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot, message string) (*applicationapiv1alpha1.Snapshot, error) {
+	patch := client.MergeFrom(snapshot.DeepCopy())
+	meta.SetStatusCondition(&snapshot.Status.Conditions, metav1.Condition{
 		Type:    HACBSTestSuceededCondition,
 		Status:  metav1.ConditionFalse,
 		Reason:  HACBSTestSuceededConditionFailed,
 		Message: message,
 	})
-	err := adapterClient.Status().Patch(ctx, applicationSnapshot, patch)
+	err := adapterClient.Status().Patch(ctx, snapshot, patch)
 	if err != nil {
 		return nil, err
 	}
-	return applicationSnapshot, nil
+	return snapshot, nil
 }
 
-// SetSnapshotIntegrationStatusAsInvalid sets the HACBS integration status condition for the ApplicationSnapshot to invalid.
-func SetSnapshotIntegrationStatusAsInvalid(applicationSnapshot *applicationapiv1alpha1.ApplicationSnapshot, message string) {
-	meta.SetStatusCondition(&applicationSnapshot.Status.Conditions, metav1.Condition{
+// SetSnapshotIntegrationStatusAsInvalid sets the HACBS integration status condition for the Snapshot to invalid.
+func SetSnapshotIntegrationStatusAsInvalid(snapshot *applicationapiv1alpha1.Snapshot, message string) {
+	meta.SetStatusCondition(&snapshot.Status.Conditions, metav1.Condition{
 		Type:    HACBSIntegrationStatusCondition,
 		Status:  metav1.ConditionFalse,
 		Reason:  HACBSIntegrationStatusInvalid,
@@ -114,78 +114,78 @@ func SetSnapshotIntegrationStatusAsInvalid(applicationSnapshot *applicationapiv1
 }
 
 // HaveHACBSTestsFinished checks if the HACBS tests have finished by checking if the HACBS Test Succeeded condition is set.
-func HaveHACBSTestsFinished(applicationSnapshot *applicationapiv1alpha1.ApplicationSnapshot) bool {
-	return meta.FindStatusCondition(applicationSnapshot.Status.Conditions, HACBSTestSuceededCondition) != nil
+func HaveHACBSTestsFinished(snapshot *applicationapiv1alpha1.Snapshot) bool {
+	return meta.FindStatusCondition(snapshot.Status.Conditions, HACBSTestSuceededCondition) != nil
 }
 
 // HaveHACBSTestsSucceeded checks if the HACBS tests have finished by checking if the HACBS Test Succeeded condition is set.
-func HaveHACBSTestsSucceeded(applicationSnapshot *applicationapiv1alpha1.ApplicationSnapshot) bool {
-	return meta.IsStatusConditionTrue(applicationSnapshot.Status.Conditions, HACBSTestSuceededCondition)
+func HaveHACBSTestsSucceeded(snapshot *applicationapiv1alpha1.Snapshot) bool {
+	return meta.IsStatusConditionTrue(snapshot.Status.Conditions, HACBSTestSuceededCondition)
 }
 
-// CreateApplicationSnapshot creates a new applicationSnapshot based on the supplied application and components
-func CreateApplicationSnapshot(application *applicationapiv1alpha1.Application, snapshotComponents *[]applicationapiv1alpha1.ApplicationSnapshotComponent) *applicationapiv1alpha1.ApplicationSnapshot {
-	applicationSnapshot := &applicationapiv1alpha1.ApplicationSnapshot{
+// CreateSnapshot creates a new snapshot based on the supplied application and components
+func CreateSnapshot(application *applicationapiv1alpha1.Application, snapshotComponents *[]applicationapiv1alpha1.SnapshotComponent) *applicationapiv1alpha1.Snapshot {
+	snapshot := &applicationapiv1alpha1.Snapshot{
 		ObjectMeta: metav1.ObjectMeta{
 			GenerateName: application.Name + "-",
 			Namespace:    application.Namespace,
 		},
-		Spec: applicationapiv1alpha1.ApplicationSnapshotSpec{
+		Spec: applicationapiv1alpha1.SnapshotSpec{
 			Application: application.Name,
 			Components:  *snapshotComponents,
 		},
 	}
-	return applicationSnapshot
+	return snapshot
 }
 
-// FindMatchingApplicationSnapshot tries to find the expected ApplicationSnapshot with the same set of images.
-func FindMatchingApplicationSnapshot(adapterClient client.Client, ctx context.Context, application *applicationapiv1alpha1.Application, expectedApplicationSnapshot *applicationapiv1alpha1.ApplicationSnapshot) (*applicationapiv1alpha1.ApplicationSnapshot, error) {
-	allApplicationSnapshots, err := GetAllApplicationSnapshots(adapterClient, ctx, application)
+// FindMatchingSnapshot tries to find the expected Snapshot with the same set of images.
+func FindMatchingSnapshot(adapterClient client.Client, ctx context.Context, application *applicationapiv1alpha1.Application, expectedSnapshot *applicationapiv1alpha1.Snapshot) (*applicationapiv1alpha1.Snapshot, error) {
+	allSnapshots, err := GetAllSnapshots(adapterClient, ctx, application)
 	if err != nil {
 		return nil, err
 	}
 
-	for _, foundApplicationSnapshot := range *allApplicationSnapshots {
-		foundApplicationSnapshot := foundApplicationSnapshot
-		if CompareApplicationSnapshots(expectedApplicationSnapshot, &foundApplicationSnapshot) {
-			return &foundApplicationSnapshot, nil
+	for _, foundSnapshot := range *allSnapshots {
+		foundSnapshot := foundSnapshot
+		if CompareSnapshots(expectedSnapshot, &foundSnapshot) {
+			return &foundSnapshot, nil
 		}
 	}
 	return nil, nil
 }
 
-// GetAllApplicationSnapshots returns all ApplicationSnapshots in the Application's namespace nil if it's not found.
+// GetAllSnapshots returns all Snapshots in the Application's namespace nil if it's not found.
 // In the case the List operation fails, an error will be returned.
-func GetAllApplicationSnapshots(adapterClient client.Client, ctx context.Context, application *applicationapiv1alpha1.Application) (*[]applicationapiv1alpha1.ApplicationSnapshot, error) {
-	applicationSnapshots := &applicationapiv1alpha1.ApplicationSnapshotList{}
+func GetAllSnapshots(adapterClient client.Client, ctx context.Context, application *applicationapiv1alpha1.Application) (*[]applicationapiv1alpha1.Snapshot, error) {
+	snapshots := &applicationapiv1alpha1.SnapshotList{}
 	opts := []client.ListOption{
 		client.InNamespace(application.Namespace),
 		client.MatchingFields{"spec.application": application.Name},
 	}
 
-	err := adapterClient.List(ctx, applicationSnapshots, opts...)
+	err := adapterClient.List(ctx, snapshots, opts...)
 	if err != nil {
 		return nil, err
 	}
 
-	return &applicationSnapshots.Items, nil
+	return &snapshots.Items, nil
 }
 
-// CompareApplicationSnapshots compares two ApplicationSnapshots and returns boolean true if their images match exactly.
-func CompareApplicationSnapshots(expectedApplicationSnapshot *applicationapiv1alpha1.ApplicationSnapshot, foundApplicationSnapshot *applicationapiv1alpha1.ApplicationSnapshot) bool {
+// CompareSnapshots compares two Snapshots and returns boolean true if their images match exactly.
+func CompareSnapshots(expectedSnapshot *applicationapiv1alpha1.Snapshot, foundSnapshot *applicationapiv1alpha1.Snapshot) bool {
 	// Check if the snapshots are created by the same event type
-	if IsSnapshotCreatedByPushEvent(expectedApplicationSnapshot) != IsSnapshotCreatedByPushEvent(foundApplicationSnapshot) {
+	if IsSnapshotCreatedByPushEvent(expectedSnapshot) != IsSnapshotCreatedByPushEvent(foundSnapshot) {
 		return false
 	}
 	// If the number of components doesn't match, we immediately know that the snapshots are not equal.
-	if len(expectedApplicationSnapshot.Spec.Components) != len(foundApplicationSnapshot.Spec.Components) {
+	if len(expectedSnapshot.Spec.Components) != len(foundSnapshot.Spec.Components) {
 		return false
 	}
 
 	// Check if all Component information matches, including the containerImage status field
-	for _, expectedSnapshotComponent := range expectedApplicationSnapshot.Spec.Components {
+	for _, expectedSnapshotComponent := range expectedSnapshot.Spec.Components {
 		foundImage := false
-		for _, foundSnapshotComponent := range foundApplicationSnapshot.Spec.Components {
+		for _, foundSnapshotComponent := range foundSnapshot.Spec.Components {
 			if expectedSnapshotComponent == foundSnapshotComponent {
 				foundImage = true
 				break
@@ -199,7 +199,7 @@ func CompareApplicationSnapshots(expectedApplicationSnapshot *applicationapiv1al
 	return true
 }
 
-// IsSnapshotCreatedByPushEvent checks if an applicationSnapshot has label PipelineAsCodeEventTypeLabel and with push value
-func IsSnapshotCreatedByPushEvent(applicationSnapshot *applicationapiv1alpha1.ApplicationSnapshot) bool {
-	return helpers.HasLabelWithValue(applicationSnapshot, PipelineAsCodeEventTypeLabel, PipelineAsCodePushType)
+// IsSnapshotCreatedByPushEvent checks if a snapshot has label PipelineAsCodeEventTypeLabel and with push value
+func IsSnapshotCreatedByPushEvent(snapshot *applicationapiv1alpha1.Snapshot) bool {
+	return helpers.HasLabelWithValue(snapshot, PipelineAsCodeEventTypeLabel, PipelineAsCodePushType)
 }

@@ -14,12 +14,12 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-var _ = Describe("Gitops functions for managing ApplicationSnapshots", Ordered, func() {
+var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 
 	var (
 		hasApp      *applicationapiv1alpha1.Application
 		hasComp     *applicationapiv1alpha1.Component
-		hasSnapshot *applicationapiv1alpha1.ApplicationSnapshot
+		hasSnapshot *applicationapiv1alpha1.Snapshot
 		sampleImage string
 	)
 
@@ -67,18 +67,18 @@ var _ = Describe("Gitops functions for managing ApplicationSnapshots", Ordered, 
 	BeforeEach(func() {
 		sampleImage = "quay.io/redhat-appstudio/sample-image:latest"
 
-		hasSnapshot = &applicationapiv1alpha1.ApplicationSnapshot{
+		hasSnapshot = &applicationapiv1alpha1.Snapshot{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      snapshotName,
 				Namespace: namespace,
 				Labels: map[string]string{
-					gitops.ApplicationSnapshotTypeLabel:      gitops.ApplicationSnapshotComponentType,
-					gitops.ApplicationSnapshotComponentLabel: componentName,
+					gitops.SnapshotTypeLabel:      gitops.SnapshotComponentType,
+					gitops.SnapshotComponentLabel: componentName,
 				},
 			},
-			Spec: applicationapiv1alpha1.ApplicationSnapshotSpec{
+			Spec: applicationapiv1alpha1.SnapshotSpec{
 				Application: hasApp.Name,
-				Components: []applicationapiv1alpha1.ApplicationSnapshotComponent{
+				Components: []applicationapiv1alpha1.SnapshotComponent{
 					{
 						Name:           componentName,
 						ContainerImage: sampleImage,
@@ -109,7 +109,7 @@ var _ = Describe("Gitops functions for managing ApplicationSnapshots", Ordered, 
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 	})
 
-	It("ensures the ApplicationSnapshots status can be marked as passed", func() {
+	It("ensures the Snapshots status can be marked as passed", func() {
 		updatedSnapshot, err := gitops.MarkSnapshotAsPassed(k8sClient, ctx, hasSnapshot, "Test message")
 		Expect(err == nil).To(BeTrue())
 		Expect(updatedSnapshot != nil).To(BeTrue())
@@ -117,7 +117,7 @@ var _ = Describe("Gitops functions for managing ApplicationSnapshots", Ordered, 
 		Expect(meta.IsStatusConditionTrue(updatedSnapshot.Status.Conditions, gitops.HACBSTestSuceededCondition)).To(BeTrue())
 	})
 
-	It("ensures the ApplicationSnapshots status can be marked as failed", func() {
+	It("ensures the Snapshots status can be marked as failed", func() {
 		updatedSnapshot, err := gitops.MarkSnapshotAsFailed(k8sClient, ctx, hasSnapshot, "Test message")
 		Expect(err == nil).To(BeTrue())
 		Expect(updatedSnapshot != nil).To(BeTrue())
@@ -125,57 +125,57 @@ var _ = Describe("Gitops functions for managing ApplicationSnapshots", Ordered, 
 		Expect(meta.IsStatusConditionTrue(updatedSnapshot.Status.Conditions, gitops.HACBSTestSuceededCondition)).To(BeFalse())
 	})
 
-	It("ensures the ApplicationSnapshots status can be marked as invalid", func() {
+	It("ensures the Snapshots status can be marked as invalid", func() {
 		gitops.SetSnapshotIntegrationStatusAsInvalid(hasSnapshot, "Test message")
 		Expect(hasSnapshot != nil).To(BeTrue())
 		Expect(hasSnapshot.Status.Conditions != nil).To(BeTrue())
 		Expect(meta.IsStatusConditionTrue(hasSnapshot.Status.Conditions, gitops.HACBSIntegrationStatusCondition)).To(BeFalse())
 	})
 
-	It("ensures the ApplicationSnapshots can be checked for the HACBSTestSuceededCondition", func() {
+	It("ensures the Snapshots can be checked for the HACBSTestSuceededCondition", func() {
 		checkResult := gitops.HaveHACBSTestsFinished(hasSnapshot)
 		Expect(checkResult).To(BeFalse())
 	})
 
-	It("ensures the ApplicationSnapshots can be checked for the HACBSTestSuceededCondition", func() {
+	It("ensures the Snapshots can be checked for the HACBSTestSuceededCondition", func() {
 		checkResult := gitops.HaveHACBSTestsSucceeded(hasSnapshot)
 		Expect(checkResult).To(BeFalse())
 	})
 
-	It("ensures that a new ApplicationSnapshots can be successfully created", func() {
-		snapshotComponents := []applicationapiv1alpha1.ApplicationSnapshotComponent{}
-		createdSnapshot := gitops.CreateApplicationSnapshot(hasApp, &snapshotComponents)
+	It("ensures that a new Snapshots can be successfully created", func() {
+		snapshotComponents := []applicationapiv1alpha1.SnapshotComponent{}
+		createdSnapshot := gitops.CreateSnapshot(hasApp, &snapshotComponents)
 		Expect(createdSnapshot != nil).To(BeTrue())
 	})
 
-	It("ensures a matching ApplicationSnapshot can be found", func() {
+	It("ensures a matching Snapshot can be found", func() {
 		expectedSnapshot := hasSnapshot.DeepCopy()
-		foundSnapshot, err := gitops.FindMatchingApplicationSnapshot(k8sClient, ctx, hasApp, expectedSnapshot)
+		foundSnapshot, err := gitops.FindMatchingSnapshot(k8sClient, ctx, hasApp, expectedSnapshot)
 		Expect(err == nil).To(BeTrue())
 		Expect(foundSnapshot != nil).To(BeTrue())
 		Expect(foundSnapshot.Name == hasSnapshot.Name).To(BeTrue())
 	})
 
-	It("ensures that all ApplicationSnapshots for a given application can be found", func() {
-		applicationSnapshots, err := gitops.GetAllApplicationSnapshots(k8sClient, ctx, hasApp)
+	It("ensures that all Snapshots for a given application can be found", func() {
+		snapshots, err := gitops.GetAllSnapshots(k8sClient, ctx, hasApp)
 		Expect(err == nil).To(BeTrue())
-		Expect(applicationSnapshots != nil).To(BeTrue())
+		Expect(snapshots != nil).To(BeTrue())
 	})
 
-	It("ensures the same ApplicationSnapshots can be successfully compared", func() {
+	It("ensures the same Snapshots can be successfully compared", func() {
 		expectedSnapshot := hasSnapshot.DeepCopy()
-		comparisonResult := gitops.CompareApplicationSnapshots(hasSnapshot, expectedSnapshot)
+		comparisonResult := gitops.CompareSnapshots(hasSnapshot, expectedSnapshot)
 		Expect(comparisonResult).To(BeTrue())
 	})
 
-	It("ensures the different ApplicationSnapshots can be compared and the difference is detected", func() {
+	It("ensures the different Snapshots can be compared and the difference is detected", func() {
 		expectedSnapshot := hasSnapshot.DeepCopy()
-		newSnapshotComponent := applicationapiv1alpha1.ApplicationSnapshotComponent{
+		newSnapshotComponent := applicationapiv1alpha1.SnapshotComponent{
 			Name:           "temporaryComponent",
 			ContainerImage: sampleImage,
 		}
 		expectedSnapshot.Spec.Components = append(expectedSnapshot.Spec.Components, newSnapshotComponent)
-		comparisonResult := gitops.CompareApplicationSnapshots(hasSnapshot, expectedSnapshot)
+		comparisonResult := gitops.CompareSnapshots(hasSnapshot, expectedSnapshot)
 		Expect(comparisonResult).To(BeFalse())
 	})
 

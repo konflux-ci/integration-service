@@ -173,8 +173,8 @@ func (r *Reconciler) getApplicationFromComponent(context context.Context, compon
 
 // AdapterInterface is an interface defining all the operations that should be defined in an Integration adapter.
 type AdapterInterface interface {
-	EnsureApplicationSnapshotExists() (results.OperationResult, error)
-	EnsureApplicationSnapshotPassedAllTests() (results.OperationResult, error)
+	EnsureSnapshotExists() (results.OperationResult, error)
+	EnsureSnapshotPassedAllTests() (results.OperationResult, error)
 	EnsureStatusReported() (results.OperationResult, error)
 }
 
@@ -185,8 +185,8 @@ type ReconcileOperation func() (results.OperationResult, error)
 // the queue based on the operations' results.
 func (r *Reconciler) ReconcileHandler(adapter AdapterInterface) (ctrl.Result, error) {
 	operations := []ReconcileOperation{
-		adapter.EnsureApplicationSnapshotExists,
-		adapter.EnsureApplicationSnapshotPassedAllTests,
+		adapter.EnsureSnapshotExists,
+		adapter.EnsureSnapshotPassedAllTests,
 		adapter.EnsureStatusReported,
 	}
 
@@ -215,7 +215,7 @@ func setupCache(mgr ctrl.Manager) error {
 		return err
 	}
 
-	if err := SetupApplicationSnapshotCache(mgr); err != nil {
+	if err := SetupSnapshotCache(mgr); err != nil {
 		return err
 	}
 

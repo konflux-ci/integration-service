@@ -15,7 +15,7 @@ import (
 var _ = Describe("Release functions for managing Releases", Ordered, func() {
 
 	var (
-		hasSnapshot *applicationapiv1alpha1.ApplicationSnapshot
+		hasSnapshot *applicationapiv1alpha1.Snapshot
 		hasApp      *applicationapiv1alpha1.Application
 		releasePlan *releasev1alpha1.ReleasePlan
 	)
@@ -37,14 +37,14 @@ var _ = Describe("Release functions for managing Releases", Ordered, func() {
 		}
 		Expect(k8sClient.Create(ctx, hasApp)).Should(Succeed())
 
-		hasSnapshot = &applicationapiv1alpha1.ApplicationSnapshot{
+		hasSnapshot = &applicationapiv1alpha1.Snapshot{
 			ObjectMeta: metav1.ObjectMeta{
 				GenerateName: "snapshot-sample-",
 				Namespace:    namespace,
 			},
-			Spec: applicationapiv1alpha1.ApplicationSnapshotSpec{
+			Spec: applicationapiv1alpha1.SnapshotSpec{
 				Application: "application-sample",
-				Components:  []applicationapiv1alpha1.ApplicationSnapshotComponent{},
+				Components:  []applicationapiv1alpha1.SnapshotComponent{},
 			},
 		}
 		Expect(k8sClient.Create(ctx, hasSnapshot)).Should(Succeed())
@@ -89,8 +89,8 @@ var _ = Describe("Release functions for managing Releases", Ordered, func() {
 					Namespace:    namespace,
 				},
 				Spec: releasev1alpha1.ReleaseSpec{
-					ApplicationSnapshot: hasSnapshot.GetName(),
-					ReleasePlan:         releasePlan.GetName(),
+					Snapshot:    hasSnapshot.GetName(),
+					ReleasePlan: releasePlan.GetName(),
 				},
 			},
 		}

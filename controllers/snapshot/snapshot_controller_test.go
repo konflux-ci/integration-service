@@ -29,7 +29,7 @@ var _ = Describe("SnapshotController", func() {
 		req         ctrl.Request
 		hasApp      *applicationapiv1alpha1.Application
 		hasComp     *applicationapiv1alpha1.Component
-		hasSnapshot *applicationapiv1alpha1.ApplicationSnapshot
+		hasSnapshot *applicationapiv1alpha1.Snapshot
 	)
 	const (
 		SampleRepoLink = "https://github.com/devfile-samples/devfile-sample-java-springboot-basic"
@@ -70,18 +70,18 @@ var _ = Describe("SnapshotController", func() {
 			},
 		}
 		Expect(k8sClient.Create(ctx, hasComp)).Should(Succeed())
-		hasSnapshot = &applicationapiv1alpha1.ApplicationSnapshot{
+		hasSnapshot = &applicationapiv1alpha1.Snapshot{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "snapshot-sample",
 				Namespace: "default",
 				Labels: map[string]string{
-					gitops.ApplicationSnapshotTypeLabel:      "component",
-					gitops.ApplicationSnapshotComponentLabel: "component-sample",
+					gitops.SnapshotTypeLabel:      "component",
+					gitops.SnapshotComponentLabel: "component-sample",
 				},
 			},
-			Spec: applicationapiv1alpha1.ApplicationSnapshotSpec{
+			Spec: applicationapiv1alpha1.SnapshotSpec{
 				Application: hasApp.Name,
-				Components: []applicationapiv1alpha1.ApplicationSnapshotComponent{
+				Components: []applicationapiv1alpha1.SnapshotComponent{
 					{
 						Name:           "component-sample",
 						ContainerImage: "testimage",

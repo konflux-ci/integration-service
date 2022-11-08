@@ -107,17 +107,17 @@ func CalculateIntegrationPipelineRunOutcome(logger logr.Logger, pipelineRun *tek
 	return true, nil
 }
 
-// GetLatestPipelineRunForApplicationSnapshotAndScenario returns the latest Integration PipelineRun for the
-// associated ApplicationSnapshot and IntegrationTestScenario. In the case the List operation fails,
+// GetLatestPipelineRunForSnapshotAndScenario returns the latest Integration PipelineRun for the
+// associated Snapshot and IntegrationTestScenario. In the case the List operation fails,
 // an error will be returned.
-func GetLatestPipelineRunForApplicationSnapshotAndScenario(adapterClient client.Client, ctx context.Context, application *applicationapiv1alpha1.Application, applicationSnapshot *applicationapiv1alpha1.ApplicationSnapshot, integrationTestScenario *v1alpha1.IntegrationTestScenario) (*tektonv1beta1.PipelineRun, error) {
+func GetLatestPipelineRunForSnapshotAndScenario(adapterClient client.Client, ctx context.Context, application *applicationapiv1alpha1.Application, snapshot *applicationapiv1alpha1.Snapshot, integrationTestScenario *v1alpha1.IntegrationTestScenario) (*tektonv1beta1.PipelineRun, error) {
 	integrationPipelineRuns := &tektonv1beta1.PipelineRunList{}
 	var latestIntegrationPipelineRun = &tektonv1beta1.PipelineRun{}
 	opts := []client.ListOption{
 		client.InNamespace(application.Namespace),
 		client.MatchingLabels{
 			"pipelines.appstudio.openshift.io/type": "test",
-			"test.appstudio.openshift.io/snapshot":  applicationSnapshot.Name,
+			"test.appstudio.openshift.io/snapshot":  snapshot.Name,
 			"test.appstudio.openshift.io/scenario":  integrationTestScenario.Name,
 		},
 	}
