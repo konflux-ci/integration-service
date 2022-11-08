@@ -61,10 +61,6 @@ func (a *Adapter) GetReporters(ctx context.Context, pipelineRun *tektonv1beta1.P
 	var reporters []Reporter
 
 	if helpers.HasLabelWithValue(pipelineRun, gitops.PipelineAsCodeGitProviderLabel, gitops.PipelineAsCodeGitHubProviderType) {
-		err := a.githubReporter.ReportStatus(ctx, pipelineRun)
-		if err != nil {
-			return nil, err
-		}
 		reporters = append(reporters, a.githubReporter)
 	}
 
