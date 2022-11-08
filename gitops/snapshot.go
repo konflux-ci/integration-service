@@ -2,6 +2,7 @@ package gitops
 
 import (
 	"context"
+
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/helpers"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -16,6 +17,9 @@ const (
 	// ApplicationSnapshotComponentLabel contains the name of the updated ApplicationSnapshot component.
 	ApplicationSnapshotComponentLabel = "test.appstudio.openshift.io/component"
 
+	// ApplicationSnapshotTestScenarioLabel contains the name of the ApplicationSnapshot test scenario.
+	ApplicationSnapshotTestScenarioLabel = "test.appstudio.openshift.io/scenario"
+
 	// ApplicationSnapshotComponentType is the type of ApplicationSnapshot which was created for a single component build.
 	ApplicationSnapshotComponentType = "component"
 
@@ -25,11 +29,29 @@ const (
 	// PipelineAscodeEventType is the type of event which triggered the pipelinerun in build service
 	PipelineAsCodeEventTypeLabel = "pipelinesascode.tekton.dev/event-type"
 
+	// PipelineAsCodeGitProviderLabel is the git provider which triggered the pipelinerun in build service.
+	PipelineAsCodeGitProviderLabel = "pipelinesascode.tekton.dev/git-provider"
+
+	// PipelineAsCodeSHALabel is the commit which triggered the pipelinerun in build service.
+	PipelineAsCodeSHALabel = "pipelinesascode.tekton.dev/sha"
+
+	// PipelineAsCodeURLOrgLabel is the organization for the git repo which triggered the pipelinerun in build service.
+	PipelineAsCodeURLOrgLabel = "pipelinesascode.tekton.dev/url-org"
+
+	// PipelineAsCodeURLRepositoryLabel is the git repository which triggered the pipelinerun in build service.
+	PipelineAsCodeURLRepositoryLabel = "pipelinesascode.tekton.dev/url-repository"
+
+	// PipelineAsCodeInstallationIDAnnotation is the GitHub App installation ID for the git repo which triggered the pipelinerun in build service.
+	PipelineAsCodeInstallationIDAnnotation = "pipelinesascode.tekton.dev/installation-id"
+
 	// PipelineAscodePushType is the type of push event which triggered the pipelinerun in build service
 	PipelineAsCodePushType = "push"
 
 	// PipelineAscodePushType is the type of pull_request event which triggered the pipelinerun in build service
 	PipelineAsCodePullRequestType = "pull_request"
+
+	// PipelineAsCodeGitHubProviderType is the git provider type for a GitHub event which triggered the pipelinerun in build service.
+	PipelineAsCodeGitHubProviderType = "github"
 
 	//HACBSTestSuceededCondition is the condition for marking if the HACBS Tests succeeded for the ApplicationSnapshot.
 	HACBSTestSuceededCondition = "HACBSTestSucceeded"

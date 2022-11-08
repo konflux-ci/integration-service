@@ -22,6 +22,7 @@ import (
 
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/api/v1alpha1"
+	"github.com/redhat-appstudio/integration-service/helpers"
 	tektonv1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -55,6 +56,9 @@ var (
 
 	// ComponentNameLabel is the label of specific the name of the component associated with PipelineRun
 	ComponentNameLabel = fmt.Sprintf("%s/%s", testLabelPrefix, "component")
+
+	// OptionalLabel is the label used to specify if an IntegrationTestScenario is allowed to fail
+	OptionalLabel = fmt.Sprintf("%s/%s", testLabelPrefix, "optional")
 )
 
 // IntegrationPipelineRun is a PipelineRun alias, so we can add new methods to it in this file.
@@ -117,13 +121,17 @@ func (r *IntegrationPipelineRun) WithApplicationSnapshot(snapshot *applicationap
 	return r
 }
 
-// WithIntegrationLabels adds the type and IntegrationTestScenario name as labels to the Integration PipelineRun.
+// WithIntegrationLabels adds the type, optional flag and IntegrationTestScenario name as labels to the Integration PipelineRun.
 func (r *IntegrationPipelineRun) WithIntegrationLabels(integrationTestScenario *v1alpha1.IntegrationTestScenario) *IntegrationPipelineRun {
 	if r.ObjectMeta.Labels == nil {
 		r.ObjectMeta.Labels = map[string]string{}
 	}
 	r.ObjectMeta.Labels[PipelinesTypeLabel] = pipelineTypeTest
 	r.ObjectMeta.Labels[ScenarioNameLabel] = integrationTestScenario.Name
+
+	if helpers.HasLabel(integrationTestScenario, OptionalLabel) {
+		r.ObjectMeta.Labels[OptionalLabel] = integrationTestScenario.Labels[OptionalLabel]
+	}
 
 	return r
 }

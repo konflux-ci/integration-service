@@ -14,11 +14,13 @@ limitations under the License.
 package pipeline
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"reflect"
 	"time"
 
-	"k8s.io/apimachinery/pkg/api/errors"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -28,14 +30,36 @@ import (
 
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/helpers"
+	"github.com/redhat-appstudio/integration-service/status"
 	tektonv1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+type MockStatusAdapter struct {
+	Reporter          *MockStatusReporter
+	GetReportersError error
+}
+
+type MockStatusReporter struct {
+	Called            bool
+	ReportStatusError error
+}
+
+func (r *MockStatusReporter) ReportStatus(context.Context) error {
+	r.Called = true
+	return r.ReportStatusError
+}
+
+func (a *MockStatusAdapter) GetReporters(ctx context.Context, pipelineRun *tektonv1beta1.PipelineRun) ([]status.Reporter, error) {
+	return []status.Reporter{a.Reporter}, a.GetReportersError
+}
+
 var _ = Describe("Pipeline Adapter", Ordered, func() {
 	var (
-		adapter *Adapter
+		adapter        *Adapter
+		statusAdapter  *MockStatusAdapter
+		statusReporter *MockStatusReporter
 
 		testpipelineRunBuild     *tektonv1beta1.PipelineRun
 		testpipelineRunComponent *tektonv1beta1.PipelineRun
@@ -145,20 +169,23 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		}, time.Second*10).Should(BeTrue())
 
 		adapter = NewAdapter(testpipelineRunBuild, hasComp, hasApp, ctrl.Log, k8sClient, ctx)
+		statusReporter = &MockStatusReporter{}
+		statusAdapter = &MockStatusAdapter{Reporter: statusReporter}
+		adapter.status = statusAdapter
 		Expect(reflect.TypeOf(adapter)).To(Equal(reflect.TypeOf(&Adapter{})))
 
 	})
 
 	AfterEach(func() {
 		err := k8sClient.Delete(ctx, testpipelineRunBuild)
-		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
+		Expect(err == nil || k8serrors.IsNotFound(err)).To(BeTrue())
 	})
 
 	AfterAll(func() {
 		err := k8sClient.Delete(ctx, hasApp)
-		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
+		Expect(err == nil || k8serrors.IsNotFound(err)).To(BeTrue())
 		err = k8sClient.Delete(ctx, hasComp)
-		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
+		Expect(err == nil || k8serrors.IsNotFound(err)).To(BeTrue())
 	})
 
 	It("can create a new Adapter instance", func() {
@@ -250,4 +277,88 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			return !result.CancelRequest && err == nil
 		}, time.Second*10).Should(BeTrue())
 	})
+
+	It("ensures status is reported for integration PipelineRuns", func() {
+		adapter.pipelineRun = &tektonv1beta1.PipelineRun{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "pipelinerun-status-sample",
+				Namespace: "default",
+				Labels: map[string]string{
+					"test.appstudio.openshift.io/application":    "test-application",
+					"test.appstudio.openshift.io/component":      "devfile-sample-go-basic",
+					"test.appstudio.openshift.io/snapshot":       "test-application-s8tnj",
+					"test.appstudio.openshift.io/scenario":       "example-pass",
+					"pipelinesascode.tekton.dev/state":           "started",
+					"pipelinesascode.tekton.dev/sender":          "foo",
+					"pipelinesascode.tekton.dev/check-run-id":    "9058825284",
+					"pipelinesascode.tekton.dev/branch":          "main",
+					"pipelinesascode.tekton.dev/url-org":         "devfile-sample",
+					"pipelinesascode.tekton.dev/original-prname": "devfile-sample-go-basic-on-pull-request",
+					"pipelinesascode.tekton.dev/url-repository":  "devfile-sample-go-basic",
+					"pipelinesascode.tekton.dev/repository":      "devfile-sample-go-basic",
+					"pipelinesascode.tekton.dev/sha":             "12a4a35ccd08194595179815e4646c3a6c08bb77",
+					"pipelinesascode.tekton.dev/git-provider":    "github",
+					"pipelinesascode.tekton.dev/event-type":      "pull_request",
+					"pipelines.appstudio.openshift.io/type":      "test",
+				},
+				Annotations: map[string]string{
+					"pipelinesascode.tekton.dev/on-target-branch": "[main,master]",
+					"pipelinesascode.tekton.dev/repo-url":         "https://github.com/devfile-samples/devfile-sample-go-basic",
+					"pipelinesascode.tekton.dev/sha-title":        "Appstudio update devfile-sample-go-basic",
+					"pipelinesascode.tekton.dev/git-auth-secret":  "pac-gitauth-zjib",
+					"pipelinesascode.tekton.dev/pull-request":     "16",
+					"pipelinesascode.tekton.dev/on-event":         "[pull_request]",
+					"pipelinesascode.tekton.dev/installation-id":  "30353543",
+				},
+			},
+			Spec: tektonv1beta1.PipelineRunSpec{
+				PipelineRef: &tektonv1beta1.PipelineRef{
+					Name:   "component-pipeline-pass",
+					Bundle: "quay.io/kpavic/test-bundle:component-pipeline-pass",
+				},
+			},
+		}
+
+		Eventually(func() bool {
+			result, err := adapter.EnsureStatusReported()
+			return !result.CancelRequest && err == nil
+		}, time.Second*10).Should(BeTrue())
+
+		Expect(statusReporter.Called).To(BeTrue())
+
+		statusAdapter.GetReportersError = errors.New("GetReportersError")
+
+		Eventually(func() bool {
+			result, err := adapter.EnsureStatusReported()
+			return result.RequeueRequest && err != nil && err.Error() == "GetReportersError"
+		}, time.Second*10).Should(BeTrue())
+
+		statusAdapter.GetReportersError = nil
+		statusReporter.ReportStatusError = errors.New("ReportStatusError")
+
+		Eventually(func() bool {
+			result, err := adapter.EnsureStatusReported()
+			return result.RequeueRequest && err != nil && err.Error() == "ReportStatusError"
+		}, time.Second*10).Should(BeTrue())
+	})
+
+	It("ensures status is not reported for integration PipelineRuns derived from optional IntegrationTestScenarios", func() {
+		adapter.pipelineRun = &tektonv1beta1.PipelineRun{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "pipelinerun-status-sample",
+				Namespace: "default",
+				Labels: map[string]string{
+					"test.appstudio.openshift.io/optional":  "true",
+					"pipelines.appstudio.openshift.io/type": "test",
+				},
+			},
+		}
+
+		Eventually(func() bool {
+			result, err := adapter.EnsureStatusReported()
+			return !result.CancelRequest && err == nil
+		}, time.Second*10).Should(BeTrue())
+		Expect(statusReporter.Called).To(BeFalse())
+	})
+
 })

@@ -5,9 +5,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 )
 
-// BuildPipelineRunSucceededPredicate returns a predicate which filters out all objects except
-// PipelineRuns from the Build service which have just succeeded.
-func BuildPipelineRunSucceededPredicate() predicate.Predicate {
+// IntegrationPipelineRunStartedPredicate returns a predicate which filters out all objects except
+// integration PipelineRuns that have just started.
+func IntegrationPipelineRunStartedPredicate() predicate.Predicate {
 	return predicate.Funcs{
 		CreateFunc: func(createEvent event.CreateEvent) bool {
 			return false
@@ -19,14 +19,14 @@ func BuildPipelineRunSucceededPredicate() predicate.Predicate {
 			return false
 		},
 		UpdateFunc: func(e event.UpdateEvent) bool {
-			return IsBuildPipelineRun(e.ObjectNew) &&
-				hasPipelineSucceeded(e.ObjectOld, e.ObjectNew)
+			return (IsIntegrationPipelineRun(e.ObjectNew) &&
+				hasPipelineRunStateChangedToStarted(e.ObjectOld, e.ObjectNew))
 		},
 	}
 }
 
 // IntegrationOrBuildPipelineRunSucceededPredicate returns a predicate which filters out all objects except
-// Integration PipelineRuns which have just succeeded.
+// Integration and Build PipelineRuns which have just succeeded.
 func IntegrationOrBuildPipelineRunSucceededPredicate() predicate.Predicate {
 	return predicate.Funcs{
 		CreateFunc: func(createEvent event.CreateEvent) bool {
@@ -40,7 +40,7 @@ func IntegrationOrBuildPipelineRunSucceededPredicate() predicate.Predicate {
 		},
 		UpdateFunc: func(e event.UpdateEvent) bool {
 			return (IsIntegrationPipelineRun(e.ObjectNew) || IsBuildPipelineRun(e.ObjectNew)) &&
-				hasPipelineSucceeded(e.ObjectOld, e.ObjectNew)
+				hasPipelineRunStateChangedToSucceeded(e.ObjectOld, e.ObjectNew)
 		},
 	}
 }
