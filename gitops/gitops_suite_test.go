@@ -96,7 +96,7 @@ var _ = BeforeSuite(func() {
 		defer GinkgoRecover()
 		Expect(snapshot.SetupApplicationCache(k8sManager)).To(Succeed())
 		Expect(snapshot.SetupEnvironmentCache(k8sManager)).To(Succeed())
-		Expect(pipeline.SetupApplicationSnapshotCache(k8sManager)).To(Succeed())
+		Expect(pipeline.SetupSnapshotCache(k8sManager)).To(Succeed())
 		Expect(k8sManager.Start(ctx)).To(Succeed())
 	}()
 })

@@ -33,10 +33,10 @@ resources:
 - tekton_editor_role.yaml
 - tekton_role_binding.yaml
 # GitOps
-- applicationsnapshot_editor_role.yaml
-- applicationsnapshot_role_binding.yaml
-- applicationsnapshot_viewer_role.yaml
-- applicationsnapshotenvironmentbinding_editor_role.yaml
-- applicationsnapshotenvironmentbinding_role_binding.yaml
+- snapshot_editor_role.yaml
+- snapshot_role_binding.yaml
+- snapshot_viewer_role.yaml
+- snapshotenvironmentbinding_editor_role.yaml
+- snapshotenvironmentbinding_role_binding.yaml
 - environment_editor_role.yaml
 - environment_role_binding.yaml

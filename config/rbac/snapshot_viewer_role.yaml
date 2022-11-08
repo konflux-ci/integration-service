@@ -1,26 +1,20 @@
-# permissions for end users to edit applicationsnapshots.
+# permissions for end users to view snapshots.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: applicationsnapshot-editor-role
+  name: snapshot-viewer-role
 rules:
 - apiGroups:
   - appstudio.redhat.com
   resources:
-  - applicationsnapshots
+  - snapshots
   verbs:
-  - create
-  - delete
   - get
   - list
-  - patch
-  - update
   - watch
 - apiGroups:
   - appstudio.redhat.com
   resources:
-  - applicationsnapshots/status
+  - snapshots/status
   verbs:
   - get
-  - patch
-  - update

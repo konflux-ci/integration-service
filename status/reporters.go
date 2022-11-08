@@ -86,14 +86,14 @@ func NewGitHubPipelineRunReporter(ctx context.Context, logger logr.Logger, k8sCl
 }
 
 func (r *GitHubPipelineRunReporter) createCheckRunAdapter() (*github.CheckRunAdapter, error) {
-	scenario, found := r.pipelineRun.GetLabels()[gitops.ApplicationSnapshotTestScenarioLabel]
+	scenario, found := r.pipelineRun.GetLabels()[gitops.SnapshotTestScenarioLabel]
 	if !found {
-		return nil, fmt.Errorf("PipelineRun label not found %q", gitops.ApplicationSnapshotTestScenarioLabel)
+		return nil, fmt.Errorf("PipelineRun label not found %q", gitops.SnapshotTestScenarioLabel)
 	}
 
-	component, found := r.pipelineRun.GetLabels()[gitops.ApplicationSnapshotComponentLabel]
+	component, found := r.pipelineRun.GetLabels()[gitops.SnapshotComponentLabel]
 	if !found {
-		return nil, fmt.Errorf("PipelineRun label not found %q", gitops.ApplicationSnapshotComponentLabel)
+		return nil, fmt.Errorf("PipelineRun label not found %q", gitops.SnapshotComponentLabel)
 	}
 
 	owner, found := r.pipelineRun.Labels[gitops.PipelineAsCodeURLOrgLabel]

@@ -28,7 +28,7 @@ var _ = Describe("Integration pipeline", func() {
 	)
 	var (
 		hasApp                    *applicationapiv1alpha1.Application
-		hasSnapshot               *applicationapiv1alpha1.ApplicationSnapshot
+		hasSnapshot               *applicationapiv1alpha1.Snapshot
 		hasComp                   *applicationapiv1alpha1.Component
 		newIntegrationPipelineRun *tekton.IntegrationPipelineRun
 		integrationTestScenario   *v1alpha1.IntegrationTestScenario
@@ -86,18 +86,18 @@ var _ = Describe("Integration pipeline", func() {
 		}
 		Expect(k8sClient.Create(ctx, hasApp)).Should(Succeed())
 
-		hasSnapshot = &applicationapiv1alpha1.ApplicationSnapshot{
+		hasSnapshot = &applicationapiv1alpha1.Snapshot{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "snapshot-sample",
 				Namespace: "default",
 				Labels: map[string]string{
-					gitops.ApplicationSnapshotTypeLabel:      "component",
-					gitops.ApplicationSnapshotComponentLabel: "component-sample",
+					gitops.SnapshotTypeLabel:      "component",
+					gitops.SnapshotComponentLabel: "component-sample",
 				},
 			},
-			Spec: applicationapiv1alpha1.ApplicationSnapshotSpec{
+			Spec: applicationapiv1alpha1.SnapshotSpec{
 				Application: hasApp.Name,
-				Components: []applicationapiv1alpha1.ApplicationSnapshotComponent{
+				Components: []applicationapiv1alpha1.SnapshotComponent{
 					{
 						Name:           "component-sample",
 						ContainerImage: "testimage",
@@ -162,8 +162,8 @@ var _ = Describe("Integration pipeline", func() {
 				To(Equal(integrationTestScenario.Namespace))
 		})
 
-		It("can append labels that comes from ApplicationSnapshot to IntegrationPipelineRun and make sure that label value matches the snapshot name", func() {
-			newIntegrationPipelineRun.WithApplicationSnapshot(hasSnapshot)
+		It("can append labels that comes from Snapshot to IntegrationPipelineRun and make sure that label value matches the snapshot name", func() {
+			newIntegrationPipelineRun.WithSnapshot(hasSnapshot)
 			Expect(newIntegrationPipelineRun.Labels["test.appstudio.openshift.io/snapshot"]).
 				To(Equal(hasSnapshot.Name))
 		})
