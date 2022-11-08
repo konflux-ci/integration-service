@@ -64,7 +64,7 @@ var _ = BeforeSuite(func() {
 			filepath.Join(
 				build.Default.GOPATH,
 				"pkg", "mod", "github.com", "tektoncd",
-				"pipeline@v0.35.0", "config",
+				"pipeline@v0.40.2", "config",
 			),
 			filepath.Join(
 				build.Default.GOPATH,
