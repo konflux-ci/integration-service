@@ -46,7 +46,7 @@ var (
 	cancel    context.CancelFunc
 )
 
-func TestControllerSnapshot(t *testing.T) {
+func TestTekton(t *testing.T) {
 	RegisterFailHandler(Fail)
 	RunSpecs(t, "Tekton Test Suite")
 }
