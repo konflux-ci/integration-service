@@ -7,7 +7,7 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-func TestHelpers(t *testing.T) {
+func TestGithub(t *testing.T) {
 	RegisterFailHandler(Fail)
 	RunSpecs(t, "GitHub Suite")
 }
