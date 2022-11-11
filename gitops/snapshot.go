@@ -26,29 +26,29 @@ const (
 	// SnapshotCompositeType is the type of Snapshot which was created for multiple components.
 	SnapshotCompositeType = "composite"
 
-	// PipelineAsCodeEventTypeLabel is the type of event which triggered the pipelinerun in build service
-	PipelineAsCodeEventTypeLabel = "pipelinesascode.tekton.dev/event-type"
+	// PipelineAsCodeEventType is the type of event which triggered the pipelinerun in build service
+	PipelineAsCodeEventTypeLabel = "test.appstudio.openshift.io/event-type"
 
 	// PipelineAsCodeGitProviderLabel is the git provider which triggered the pipelinerun in build service.
-	PipelineAsCodeGitProviderLabel = "pipelinesascode.tekton.dev/git-provider"
+	PipelineAsCodeGitProviderLabel = "test.appstudio.openshift.io/git-provider"
 
 	// PipelineAsCodeSHALabel is the commit which triggered the pipelinerun in build service.
-	PipelineAsCodeSHALabel = "pipelinesascode.tekton.dev/sha"
+	PipelineAsCodeSHALabel = "test.appstudio.openshift.io/sha"
 
 	// PipelineAsCodeURLOrgLabel is the organization for the git repo which triggered the pipelinerun in build service.
-	PipelineAsCodeURLOrgLabel = "pipelinesascode.tekton.dev/url-org"
+	PipelineAsCodeURLOrgLabel = "test.appstudio.openshift.io/url-org"
 
 	// PipelineAsCodeURLRepositoryLabel is the git repository which triggered the pipelinerun in build service.
-	PipelineAsCodeURLRepositoryLabel = "pipelinesascode.tekton.dev/url-repository"
+	PipelineAsCodeURLRepositoryLabel = "test.appstudio.openshift.io/url-repository"
 
 	// PipelineAsCodeRepoURLAnnotation is the URL to the git repository which triggered the pipelinerun in build service.
-	PipelineAsCodeRepoURLAnnotation = "pipelinesascode.tekton.dev/repo-url"
+	PipelineAsCodeRepoURLAnnotation = "test.appstudio.openshift.io/repo-url"
 
 	// PipelineAsCodeInstallationIDAnnotation is the GitHub App installation ID for the git repo which triggered the pipelinerun in build service.
-	PipelineAsCodeInstallationIDAnnotation = "pipelinesascode.tekton.dev/installation-id"
+	PipelineAsCodeInstallationIDAnnotation = "test.appstudio.openshift.io/installation-id"
 
 	// PipelineAsCodePullRequestAnnotation is the git repository's pull request identifier
-	PipelineAsCodePullRequestAnnotation = "pipelinesascode.tekton.dev/pull-request"
+	PipelineAsCodePullRequestAnnotation = "test.appstudio.openshift.io/pull-request"
 
 	// PipelineAscodePushType is the type of push event which triggered the pipelinerun in build service
 	PipelineAsCodePushType = "push"
