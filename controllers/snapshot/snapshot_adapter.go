@@ -281,13 +281,13 @@ func (a *Adapter) createMissingReleasesForReleasePlans(application *applicationa
 				"Release.Name", existingRelease.Name)
 		} else {
 			newRelease := release.CreateReleaseForReleasePlan(&releasePlan, snapshot)
-			// copy PipelineRun PAC annotations/labels from snapshot to Release
+			// Propagate annotations/labels from snapshot to Release
 			if snapshot.Annotations != nil {
 				if newRelease.ObjectMeta.Annotations == nil {
 					newRelease.ObjectMeta.Annotations = make(map[string]string)
 				}
 				for key, value := range snapshot.Annotations {
-					if strings.Contains(key, "pipelinesascode.tekton.dev") {
+					if strings.Contains(key, "test.appstudio.openshift.io/") {
 						newRelease.ObjectMeta.Annotations[key] = value
 					}
 				}
@@ -297,7 +297,7 @@ func (a *Adapter) createMissingReleasesForReleasePlans(application *applicationa
 					newRelease.ObjectMeta.Labels = make(map[string]string)
 				}
 				for key, value := range snapshot.Labels {
-					if strings.Contains(key, "pipelinesascode.tekton.dev") {
+					if strings.Contains(key, "test.appstudio.openshift.io/") {
 						newRelease.ObjectMeta.Labels[key] = value
 					}
 				}
@@ -385,14 +385,14 @@ func (a *Adapter) createIntegrationPipelineRun(application *applicationapiv1alph
 			pipelineRun.ObjectMeta.Annotations = make(map[string]string)
 		}
 		for key, value := range snapshot.Annotations {
-			if strings.Contains(key, "pipelinesascode.tekton.dev") {
+			if strings.Contains(key, "test.appstudio.openshift.io/") {
 				pipelineRun.ObjectMeta.Annotations[key] = value
 			}
 		}
 	}
 	if snapshot.Labels != nil {
 		for key, value := range snapshot.Labels {
-			if strings.Contains(key, "pipelinesascode.tekton.dev") {
+			if strings.Contains(key, "test.appstudio.openshift.io/") {
 				pipelineRun.ObjectMeta.Labels[key] = value
 			}
 		}
