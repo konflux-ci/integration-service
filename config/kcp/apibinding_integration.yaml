@@ -20,7 +20,7 @@ spec:
       group: appstudio.redhat.com
       identityHash: application-api
       state: Accepted
-    - resource: applicationsnapshots
+    - resource: snapshots
       group: appstudio.redhat.com
       identityHash: application-api
       state: Accepted
@@ -28,7 +28,7 @@ spec:
       group: appstudio.redhat.com
       identityHash: application-api
       state: Accepted
-    - resource: applicationsnapshotenvironmentbindings
+    - resource: snapshotenvironmentbindings
       group: appstudio.redhat.com
       identityHash: application-api
       state: Accepted

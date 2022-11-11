@@ -34,32 +34,32 @@ func SetupReleasePlanCache(mgr ctrl.Manager) error {
 		"spec.application", releasePlanIndexFunc)
 }
 
-// SetupReleaseCache adds a new index field to be able to search Releases by ApplicationSnapshot.
+// SetupReleaseCache adds a new index field to be able to search Releases by Snapshot.
 func SetupReleaseCache(mgr ctrl.Manager) error {
 	releaseIndexFunc := func(obj client.Object) []string {
-		return []string{obj.(*releasev1alpha1.Release).Spec.ApplicationSnapshot}
+		return []string{obj.(*releasev1alpha1.Release).Spec.Snapshot}
 	}
 
 	return mgr.GetCache().IndexField(context.Background(), &releasev1alpha1.Release{},
-		"spec.applicationSnapshot", releaseIndexFunc)
+		"spec.snapshot", releaseIndexFunc)
 }
 
-// SetupApplicationCache adds a new index field to be able to search Applications by Environment.
+// SetupApplicationCache adds a new index field to be able to search SnapshotEnvironmentBindings by Environment.
 func SetupApplicationCache(mgr ctrl.Manager) error {
 	applicationIndexFunc := func(obj client.Object) []string {
-		return []string{obj.(*applicationapiv1alpha1.ApplicationSnapshotEnvironmentBinding).Spec.Environment}
+		return []string{obj.(*applicationapiv1alpha1.SnapshotEnvironmentBinding).Spec.Environment}
 	}
 
-	return mgr.GetCache().IndexField(context.Background(), &applicationapiv1alpha1.ApplicationSnapshotEnvironmentBinding{},
+	return mgr.GetCache().IndexField(context.Background(), &applicationapiv1alpha1.SnapshotEnvironmentBinding{},
 		"spec.environment", applicationIndexFunc)
 }
 
-// SetupEnvironmentCache adds a new index field to be able to search Environments by Application.
+// SetupEnvironmentCache adds a new index field to be able to search SnapshotEnvironmentBindings by Application.
 func SetupEnvironmentCache(mgr ctrl.Manager) error {
 	environmentIndexFunc := func(obj client.Object) []string {
-		return []string{obj.(*applicationapiv1alpha1.ApplicationSnapshotEnvironmentBinding).Spec.Application}
+		return []string{obj.(*applicationapiv1alpha1.SnapshotEnvironmentBinding).Spec.Application}
 	}
 
-	return mgr.GetCache().IndexField(context.Background(), &applicationapiv1alpha1.ApplicationSnapshotEnvironmentBinding{},
+	return mgr.GetCache().IndexField(context.Background(), &applicationapiv1alpha1.SnapshotEnvironmentBinding{},
 		"spec.application", environmentIndexFunc)
 }

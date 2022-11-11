@@ -12,8 +12,8 @@ require (
 	github.com/onsi/ginkgo/v2 v2.1.4
 	github.com/onsi/gomega v1.20.1
 	github.com/openshift-pipelines/pipelines-as-code v0.13.0
-	github.com/redhat-appstudio/application-api v0.0.0-20220923190445-5c53addc1b7f
-	github.com/redhat-appstudio/release-service v0.0.0-20220915124514-de955a2b3c7a
+	github.com/redhat-appstudio/application-api v0.0.0-20221108172336-c9e003808d1f
+	github.com/redhat-appstudio/release-service v0.0.0-20221110145209-340cc8f6684a
 	github.com/tektoncd/pipeline v0.40.2
 	golang.org/x/oauth2 v0.0.0-20220909003341-f21342109be1
 	k8s.io/api v0.24.3
@@ -65,8 +65,7 @@ require (
 	github.com/imdario/mergo v0.3.13 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
-	github.com/kcp-dev/apimachinery v0.0.0-20220805180221-5b13097793e1 // indirect
-	github.com/kr/pretty v0.3.0 // indirect
+	github.com/kcp-dev/apimachinery v0.0.0-20220912132244-efe716c18e43 // indirect
 	github.com/mailru/easyjson v0.7.7 // indirect
 	github.com/matttproud/golang_protobuf_extensions v1.0.2-0.20181231171920-c182affec369 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
@@ -81,7 +80,7 @@ require (
 	github.com/prometheus/procfs v0.8.0 // indirect
 	github.com/prometheus/statsd_exporter v0.22.8 // indirect
 	github.com/rogpeppe/go-internal v1.6.2 // indirect
-	github.com/spf13/pflag v1.0.5 // indirect
+	github.com/spf13/pflag v1.0.6-0.20210604193023-d5e0c0615ace // indirect
 	go.opencensus.io v0.23.0 // indirect
 	go.uber.org/atomic v1.10.0 // indirect
 	go.uber.org/multierr v1.8.0 // indirect

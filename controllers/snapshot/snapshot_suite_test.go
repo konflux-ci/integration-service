@@ -103,7 +103,7 @@ var _ = BeforeSuite(func() {
 		Expect(setupCache(k8sManager)).To(Succeed())
 		Expect(pipeline.SetupApplicationComponentCache(k8sManager)).To(Succeed())
 		Expect(pipeline.SetupIntegrationTestScenarioCache(k8sManager)).To(Succeed())
-		Expect(pipeline.SetupApplicationSnapshotCache(k8sManager)).To(Succeed())
+		Expect(pipeline.SetupSnapshotCache(k8sManager)).To(Succeed())
 		Expect(k8sManager.Start(ctx)).To(Succeed())
 	}()
 })

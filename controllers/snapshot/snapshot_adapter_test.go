@@ -31,8 +31,8 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		testReleasePlan         *releasev1alpha1.ReleasePlan
 		hasApp                  *applicationapiv1alpha1.Application
 		hasComp                 *applicationapiv1alpha1.Component
-		hasSnapshot             *applicationapiv1alpha1.ApplicationSnapshot
-		hasSnapshotPR           *applicationapiv1alpha1.ApplicationSnapshot
+		hasSnapshot             *applicationapiv1alpha1.Snapshot
+		hasSnapshotPR           *applicationapiv1alpha1.Snapshot
 		testpipelineRun         *tektonv1beta1.PipelineRun
 		integrationTestScenario *integrationv1alpha1.IntegrationTestScenario
 		env                     applicationapiv1alpha1.Environment
@@ -146,19 +146,19 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 	BeforeEach(func() {
 		sample_image = "quay.io/redhat-appstudio/sample-image"
 
-		hasSnapshot = &applicationapiv1alpha1.ApplicationSnapshot{
+		hasSnapshot = &applicationapiv1alpha1.Snapshot{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "snapshot-sample",
 				Namespace: "default",
 				Labels: map[string]string{
-					gitops.ApplicationSnapshotTypeLabel:      "component",
-					gitops.ApplicationSnapshotComponentLabel: "component-sample",
-					gitops.PipelineAsCodeEventTypeLabel:      "push",
+					gitops.SnapshotTypeLabel:            "component",
+					gitops.SnapshotComponentLabel:       "component-sample",
+					gitops.PipelineAsCodeEventTypeLabel: "push",
 				},
 			},
-			Spec: applicationapiv1alpha1.ApplicationSnapshotSpec{
+			Spec: applicationapiv1alpha1.SnapshotSpec{
 				Application: hasApp.Name,
-				Components: []applicationapiv1alpha1.ApplicationSnapshotComponent{
+				Components: []applicationapiv1alpha1.SnapshotComponent{
 					{
 						Name:           "component-sample",
 						ContainerImage: sample_image,
@@ -168,19 +168,19 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		}
 		Expect(k8sClient.Create(ctx, hasSnapshot)).Should(Succeed())
 
-		hasSnapshotPR = &applicationapiv1alpha1.ApplicationSnapshot{
+		hasSnapshotPR = &applicationapiv1alpha1.Snapshot{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "snapshotpr-sample",
 				Namespace: "default",
 				Labels: map[string]string{
-					gitops.ApplicationSnapshotTypeLabel:      "component",
-					gitops.ApplicationSnapshotComponentLabel: "component-sample",
-					gitops.PipelineAsCodeEventTypeLabel:      "pull_request",
+					gitops.SnapshotTypeLabel:            "component",
+					gitops.SnapshotComponentLabel:       "component-sample",
+					gitops.PipelineAsCodeEventTypeLabel: "pull_request",
 				},
 			},
-			Spec: applicationapiv1alpha1.ApplicationSnapshotSpec{
+			Spec: applicationapiv1alpha1.SnapshotSpec{
 				Application: hasApp.Name,
-				Components: []applicationapiv1alpha1.ApplicationSnapshotComponent{
+				Components: []applicationapiv1alpha1.SnapshotComponent{
 					{
 						Name:           "component-sample",
 						ContainerImage: sample_image,
@@ -307,7 +307,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			return !result.CancelRequest && err == nil
 		}, time.Second*10).Should(BeTrue())
 
-		releases, err := adapter.getReleasesWithApplicationSnapshot(hasSnapshot)
+		releases, err := adapter.getReleasesWithSnapshot(hasSnapshot)
 		Expect(err == nil).To(BeTrue())
 		Expect(releases != nil).To(BeTrue())
 		for _, release := range *releases {
@@ -358,17 +358,17 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		}, time.Second*10).Should(BeTrue())
 	})
 
-	It("ensures applicationsnapshot environmentBinding exist", func() {
+	It("ensures snapshot environmentBinding exist", func() {
 		gitops.MarkSnapshotAsPassed(k8sClient, ctx, hasSnapshot, "test passed")
 		Expect(gitops.HaveHACBSTestsSucceeded(hasSnapshot)).To(BeTrue())
 		Eventually(func() bool {
-			result, err := adapter.EnsureApplicationSnapshotEnvironmentBindingExist()
+			result, err := adapter.EnsureSnapshotEnvironmentBindingExist()
 			return !result.CancelRequest && err == nil
 		}, time.Second*10).Should(BeTrue())
 
 		Eventually(func() bool {
-			applicationSnapshotEnvironmentBinding, err := gitops.FindExistingApplicationSnapshotEnvironmentBinding(k8sClient, ctx, hasApp, &env)
-			return applicationSnapshotEnvironmentBinding != nil && err == nil
+			snapshotEnvironmentBinding, err := gitops.FindExistingSnapshotEnvironmentBinding(k8sClient, ctx, hasApp, &env)
+			return snapshotEnvironmentBinding != nil && err == nil
 		}, time.Second*10).Should(BeTrue())
 	})
 

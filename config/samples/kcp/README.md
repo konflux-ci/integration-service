@@ -34,7 +34,7 @@ kubectl kcp workspce current
 ## Go to the created kcp workspace `test-workspace`, create a syncer
 
 ```shell
-kubectl kcp workload sync mycluster --resources configmaps,deployments.apps,secrets,serviceaccounts,releases.appstudio.redhat.com,releaseplans.appstudio.redhat.com,releaseplanadmissions.appstudio.redhat.com,releasestrategies.appstudio.redhat.com,pipelineruns.tekton.dev,applicationsnapshots.appstudio.redhat.com,components.appstudio.redhat.com,applications.appstudio.redhat.com,integrationtestscenarios.appstudio.redhat.com,applicationsnapshotenvironmentbindings.appstudio.redhat.com,environments.appstudio.redhat.com --syncer-image ghcr.io/kcp-dev/kcp/syncer:v0.7.10 --output-file=syncer710.yaml
+kubectl kcp workload sync mycluster --resources configmaps,deployments.apps,secrets,serviceaccounts,releases.appstudio.redhat.com,releaseplans.appstudio.redhat.com,releaseplanadmissions.appstudio.redhat.com,releasestrategies.appstudio.redhat.com,pipelineruns.tekton.dev,snapshots.appstudio.redhat.com,components.appstudio.redhat.com,applications.appstudio.redhat.com,integrationtestscenarios.appstudio.redhat.com,snapshotenvironmentbindings.appstudio.redhat.com,environments.appstudio.redhat.com --syncer-image ghcr.io/kcp-dev/kcp/syncer:v0.7.10 --output-file=syncer710.yaml
 ```
 
 This commands will create a file `syncer710.yaml`.

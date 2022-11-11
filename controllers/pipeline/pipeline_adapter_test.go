@@ -198,46 +198,46 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		Expect(applicationComponents != nil).To(BeTrue())
 	})
 
-	It("ensures the Imagepullspec from pipelinerun and prepare applicationSnapshot can be created", func() {
+	It("ensures the Imagepullspec from pipelinerun and prepare snapshot can be created", func() {
 		imageDigest, err := adapter.getImagePullSpecFromPipelineRun(testpipelineRunBuild)
 		Expect(err == nil).To(BeTrue())
 		Expect(imageDigest != "").To(BeTrue())
-		applicationSnapshot, err := adapter.prepareApplicationSnapshot(hasApp, hasComp, imageDigest)
+		snapshot, err := adapter.prepareSnapshot(hasApp, hasComp, imageDigest)
 		Expect(err == nil).To(BeTrue())
-		Expect(applicationSnapshot != nil).To(BeTrue())
+		Expect(snapshot != nil).To(BeTrue())
 	})
 
 	It("ensures the global component list unchanged and compositeSnapshot shouldn't be created ", func() {
-		expectedApplicationSnapshot, err := adapter.prepareApplicationSnapshotForPipelineRun(testpipelineRunBuild, hasComp, hasApp)
+		expectedSnapshot, err := adapter.prepareSnapshotForPipelineRun(testpipelineRunBuild, hasComp, hasApp)
 		Expect(err == nil).To(BeTrue())
-		Expect(expectedApplicationSnapshot != nil).To(BeTrue())
+		Expect(expectedSnapshot != nil).To(BeTrue())
 
 		integrationTestScenarios, err := helpers.GetRequiredIntegrationTestScenariosForApplication(k8sClient, ctx, hasApp)
 		Expect(err == nil).To(BeTrue())
 
-		integrationPipelineRuns, err := adapter.getAllPipelineRunsForApplicationSnapshot(expectedApplicationSnapshot, integrationTestScenarios)
+		integrationPipelineRuns, err := adapter.getAllPipelineRunsForSnapshot(expectedSnapshot, integrationTestScenarios)
 		Expect(err == nil).To(BeTrue())
-		Expect(expectedApplicationSnapshot != nil).To(BeTrue())
+		Expect(expectedSnapshot != nil).To(BeTrue())
 
 		allIntegrationPipelineRunsPassed, err := adapter.determineIfAllIntegrationPipelinesPassed(integrationPipelineRuns)
 		Expect(err == nil).To(BeTrue())
 		Expect(allIntegrationPipelineRunsPassed).To(BeTrue())
 
 		// check if the global component list changed in the meantime and create a composite snapshot if it did.
-		compositeApplicationSnapshot, err := adapter.createCompositeSnapshotsIfConflictExists(hasApp, hasComp, expectedApplicationSnapshot)
+		compositeSnapshot, err := adapter.createCompositeSnapshotsIfConflictExists(hasApp, hasComp, expectedSnapshot)
 		Expect(err == nil).To(BeTrue())
-		Expect(compositeApplicationSnapshot == nil).To(BeTrue())
+		Expect(compositeSnapshot == nil).To(BeTrue())
 	})
 
-	It("ensures allApplicationSnapshot exists and can be found ", func() {
+	It("ensures allSnapshot exists and can be found ", func() {
 		Eventually(func() bool {
-			result, err := adapter.EnsureApplicationSnapshotExists()
+			result, err := adapter.EnsureSnapshotExists()
 			fmt.Fprintf(GinkgoWriter, "Err: %v\n", err)
 			return !result.CancelRequest && err == nil
 		}, time.Second*10).Should(BeTrue())
 	})
 
-	It("ensures ApplicationSnapshot passed all tests", func() {
+	It("ensures Snapshot passed all tests", func() {
 		testpipelineRunComponent = &tektonv1beta1.PipelineRun{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "pipelinerun-component-sample",
@@ -273,7 +273,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		Expect(reflect.TypeOf(adapter)).To(Equal(reflect.TypeOf(&Adapter{})))
 
 		Eventually(func() bool {
-			result, err := adapter.EnsureApplicationSnapshotPassedAllTests()
+			result, err := adapter.EnsureSnapshotPassedAllTests()
 			return !result.CancelRequest && err == nil
 		}, time.Second*10).Should(BeTrue())
 	})

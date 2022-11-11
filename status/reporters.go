@@ -140,14 +140,14 @@ func (r *GitHubReporter) getToken(ctx context.Context, pipelineRun *tektonv1beta
 func (r *GitHubReporter) createCheckRunAdapter(pipelineRun *tektonv1beta1.PipelineRun) (*github.CheckRunAdapter, error) {
 	labels := pipelineRun.GetLabels()
 
-	scenario, found := labels[gitops.ApplicationSnapshotTestScenarioLabel]
+	scenario, found := labels[gitops.SnapshotTestScenarioLabel]
 	if !found {
-		return nil, fmt.Errorf("PipelineRun label not found %q", gitops.ApplicationSnapshotTestScenarioLabel)
+		return nil, fmt.Errorf("PipelineRun label not found %q", gitops.SnapshotTestScenarioLabel)
 	}
 
-	component, found := labels[gitops.ApplicationSnapshotComponentLabel]
+	component, found := labels[gitops.SnapshotComponentLabel]
 	if !found {
-		return nil, fmt.Errorf("PipelineRun label not found %q", gitops.ApplicationSnapshotComponentLabel)
+		return nil, fmt.Errorf("PipelineRun label not found %q", gitops.SnapshotComponentLabel)
 	}
 
 	owner, found := labels[gitops.PipelineAsCodeURLOrgLabel]
@@ -234,14 +234,14 @@ func (r *GitHubReporter) createCommitStatus(ctx context.Context, pipelineRun *te
 
 	labels := pipelineRun.GetLabels()
 
-	scenario, found := labels[gitops.ApplicationSnapshotTestScenarioLabel]
+	scenario, found := labels[gitops.SnapshotTestScenarioLabel]
 	if !found {
-		return fmt.Errorf("PipelineRun label not found %q", gitops.ApplicationSnapshotTestScenarioLabel)
+		return fmt.Errorf("PipelineRun label not found %q", gitops.SnapshotTestScenarioLabel)
 	}
 
-	component, found := labels[gitops.ApplicationSnapshotComponentLabel]
+	component, found := labels[gitops.SnapshotComponentLabel]
 	if !found {
-		return fmt.Errorf("PipelineRun label not found %q", gitops.ApplicationSnapshotComponentLabel)
+		return fmt.Errorf("PipelineRun label not found %q", gitops.SnapshotComponentLabel)
 	}
 
 	owner, found := labels[gitops.PipelineAsCodeURLOrgLabel]
@@ -297,9 +297,9 @@ func (r *GitHubReporter) createComment(ctx context.Context, pipelineRun *tektonv
 		return nil
 	}
 
-	scenario, found := labels[gitops.ApplicationSnapshotTestScenarioLabel]
+	scenario, found := labels[gitops.SnapshotTestScenarioLabel]
 	if !found {
-		return fmt.Errorf("PipelineRun label not found %q", gitops.ApplicationSnapshotTestScenarioLabel)
+		return fmt.Errorf("PipelineRun label not found %q", gitops.SnapshotTestScenarioLabel)
 	}
 
 	owner, found := labels[gitops.PipelineAsCodeURLOrgLabel]

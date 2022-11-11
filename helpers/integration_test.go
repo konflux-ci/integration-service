@@ -22,7 +22,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 	var (
 		testpipelineRun *tektonv1beta1.PipelineRun
 		hasApp          *applicationapiv1alpha1.Application
-		hasSnapshot     *applicationapiv1alpha1.ApplicationSnapshot
+		hasSnapshot     *applicationapiv1alpha1.Snapshot
 		logger          logr.Logger
 		sample_image    string
 	)
@@ -46,18 +46,18 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 	BeforeEach(func() {
 		sample_image = "quay.io/redhat-appstudio/sample-image"
 
-		hasSnapshot = &applicationapiv1alpha1.ApplicationSnapshot{
+		hasSnapshot = &applicationapiv1alpha1.Snapshot{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "snapshot-sample",
 				Namespace: "default",
 				Labels: map[string]string{
-					gitops.ApplicationSnapshotTypeLabel:      "component",
-					gitops.ApplicationSnapshotComponentLabel: "component-sample",
+					gitops.SnapshotTypeLabel:      "component",
+					gitops.SnapshotComponentLabel: "component-sample",
 				},
 			},
-			Spec: applicationapiv1alpha1.ApplicationSnapshotSpec{
+			Spec: applicationapiv1alpha1.SnapshotSpec{
 				Application: hasApp.Name,
-				Components: []applicationapiv1alpha1.ApplicationSnapshotComponent{
+				Components: []applicationapiv1alpha1.SnapshotComponent{
 					{
 						Name:           "component-sample",
 						ContainerImage: sample_image,
@@ -121,7 +121,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 
 		for _, integrationTestScenario := range *integrationTestScenarios {
 			integrationTestScenario := integrationTestScenario //G601
-			integrationPipelineRun, err := helpers.GetLatestPipelineRunForApplicationSnapshotAndScenario(k8sClient, ctx, hasApp, hasSnapshot, &integrationTestScenario)
+			integrationPipelineRun, err := helpers.GetLatestPipelineRunForSnapshotAndScenario(k8sClient, ctx, hasApp, hasSnapshot, &integrationTestScenario)
 			Expect(err != nil && integrationPipelineRun == nil)
 		}
 		pipelineRunOutcome, err := helpers.CalculateIntegrationPipelineRunOutcome(logger, testpipelineRun)
@@ -153,7 +153,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 					return len(integrationPipelineRuns.Items) > 0 && err == nil
 				}, time.Second*10).Should(BeTrue())
 
-				integrationPipelineRun, err := helpers.GetLatestPipelineRunForApplicationSnapshotAndScenario(k8sClient, ctx, hasApp, hasSnapshot, &requiredIntegrationTestScenario)
+				integrationPipelineRun, err := helpers.GetLatestPipelineRunForSnapshotAndScenario(k8sClient, ctx, hasApp, hasSnapshot, &requiredIntegrationTestScenario)
 				Expect(err != nil && integrationPipelineRun == nil)
 
 				pipelineRunOutcome, err := helpers.CalculateIntegrationPipelineRunOutcome(logger, integrationPipelineRun)

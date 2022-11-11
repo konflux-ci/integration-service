@@ -16,12 +16,12 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-var _ = Describe("Gitops functions for managing ApplicationSnapshots", Ordered, func() {
+var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 
 	var (
 		hasApp      *applicationapiv1alpha1.Application
 		hasComp     *applicationapiv1alpha1.Component
-		hasSnapshot *applicationapiv1alpha1.ApplicationSnapshot
+		hasSnapshot *applicationapiv1alpha1.Snapshot
 		env         applicationapiv1alpha1.Environment
 		sampleImage string
 	)
@@ -93,18 +93,18 @@ var _ = Describe("Gitops functions for managing ApplicationSnapshots", Ordered, 
 	BeforeEach(func() {
 		sampleImage = "quay.io/redhat-appstudio/sample-image:latest"
 
-		hasSnapshot = &applicationapiv1alpha1.ApplicationSnapshot{
+		hasSnapshot = &applicationapiv1alpha1.Snapshot{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      snapshotName,
 				Namespace: namespace,
 				Labels: map[string]string{
-					gitops.ApplicationSnapshotTypeLabel:      gitops.ApplicationSnapshotComponentType,
-					gitops.ApplicationSnapshotComponentLabel: componentName,
+					gitops.SnapshotTypeLabel:      gitops.SnapshotComponentType,
+					gitops.SnapshotComponentLabel: componentName,
 				},
 			},
-			Spec: applicationapiv1alpha1.ApplicationSnapshotSpec{
+			Spec: applicationapiv1alpha1.SnapshotSpec{
 				Application: hasApp.Name,
-				Components: []applicationapiv1alpha1.ApplicationSnapshotComponent{
+				Components: []applicationapiv1alpha1.SnapshotComponent{
 					{
 						Name:           componentName,
 						ContainerImage: sampleImage,
@@ -138,15 +138,15 @@ var _ = Describe("Gitops functions for managing ApplicationSnapshots", Ordered, 
 
 	})
 
-	It("ensures applicationsnapshot environmentBinding doesn't exist", func() {
+	It("ensures Snapshot Environment Binding doesn't exist", func() {
 		gitops.MarkSnapshotAsPassed(k8sClient, ctx, hasSnapshot, "test passed")
 		Expect(gitops.HaveHACBSTestsSucceeded(hasSnapshot)).To(BeTrue())
 
 		Eventually(func() bool {
-			applicationSnapshotEnvironmentBinding, err := gitops.FindExistingApplicationSnapshotEnvironmentBinding(k8sClient, ctx, hasApp, &env)
+			snapshotEnvironmentBinding, err := gitops.FindExistingSnapshotEnvironmentBinding(k8sClient, ctx, hasApp, &env)
 			fmt.Fprintf(GinkgoWriter, "Err: %v\n", err)
-			fmt.Fprintf(GinkgoWriter, "appenvbinding: %v\n", applicationSnapshotEnvironmentBinding)
-			return applicationSnapshotEnvironmentBinding == nil && err == nil
+			fmt.Fprintf(GinkgoWriter, "appenvbinding: %v\n", snapshotEnvironmentBinding)
+			return snapshotEnvironmentBinding == nil && err == nil
 		}, time.Second*10).Should(BeTrue())
 	})
 
@@ -157,17 +157,17 @@ var _ = Describe("Gitops functions for managing ApplicationSnapshots", Ordered, 
 		Expect(bindingComponents != nil).To(BeTrue())
 	})
 
-	It("ensures Application snapshot Environment Binding is created and exists", func() {
+	It("ensures Snapshot Environment Binding is created and exists", func() {
 		bindingName := hasApp.Name + "-" + env.Name + "-" + "binding"
-		applicationSnapshotEnvironmentBinding := gitops.CreateApplicationSnapshotEnvironmentBinding(
+		snapshotEnvironmentBinding := gitops.CreateSnapshotEnvironmentBinding(
 			bindingName, hasApp.Namespace, hasApp.Name,
 			env.Name, hasSnapshot, []applicationapiv1alpha1.Component{*hasComp})
-		Expect(applicationSnapshotEnvironmentBinding != nil).To(BeTrue())
-		Expect(k8sClient.Create(ctx, applicationSnapshotEnvironmentBinding)).Should(Succeed())
+		Expect(snapshotEnvironmentBinding != nil).To(BeTrue())
+		Expect(k8sClient.Create(ctx, snapshotEnvironmentBinding)).Should(Succeed())
 		Eventually(func() bool {
-			applicationSnapshotEnvironmentBinding, err := gitops.FindExistingApplicationSnapshotEnvironmentBinding(k8sClient, ctx, hasApp, &env)
-			return applicationSnapshotEnvironmentBinding != nil && err == nil
+			snapshotEnvironmentBinding, err := gitops.FindExistingSnapshotEnvironmentBinding(k8sClient, ctx, hasApp, &env)
+			return snapshotEnvironmentBinding != nil && err == nil
 		}, time.Second*10).Should(BeTrue())
-		Expect(k8sClient.Delete(ctx, applicationSnapshotEnvironmentBinding)).Should(Succeed())
+		Expect(k8sClient.Delete(ctx, snapshotEnvironmentBinding)).Should(Succeed())
 	})
 })
