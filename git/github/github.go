@@ -87,7 +87,7 @@ func (c *Client) GetAppsService() AppsService {
 	return c.apps
 }
 
-// GetAppsService returns either the default or custom Checks service.
+// GetChecksService returns either the default or custom Checks service.
 func (c *Client) GetChecksService() ChecksService {
 	if c.checks == nil {
 		return c.gh.Checks
@@ -95,7 +95,7 @@ func (c *Client) GetChecksService() ChecksService {
 	return c.checks
 }
 
-// GetAppsService returns either the default or custom Issues service.
+// GetIssuesService returns either the default or custom Issues service.
 func (c *Client) GetIssuesService() IssuesService {
 	if c.issues == nil {
 		return c.gh.Issues
@@ -103,7 +103,7 @@ func (c *Client) GetIssuesService() IssuesService {
 	return c.issues
 }
 
-// GetAppsService returns either the default or custom Repositories service.
+// GetRepositoriesService returns either the default or custom Repositories service.
 func (c *Client) GetRepositoriesService() RepositoriesService {
 	if c.repos == nil {
 		return c.gh.Repositories

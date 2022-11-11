@@ -51,7 +51,7 @@ func (r *MockStatusReporter) ReportStatus(context.Context, *tektonv1beta1.Pipeli
 	return r.ReportStatusError
 }
 
-func (a *MockStatusAdapter) GetReporters(ctx context.Context, pipelineRun *tektonv1beta1.PipelineRun) ([]status.Reporter, error) {
+func (a *MockStatusAdapter) GetReporters(pipelineRun *tektonv1beta1.PipelineRun) ([]status.Reporter, error) {
 	return []status.Reporter{a.Reporter}, a.GetReportersError
 }
 

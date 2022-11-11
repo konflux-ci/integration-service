@@ -34,7 +34,7 @@ var _ = Describe("Status Adapter", func() {
 
 	It("can get reporters from a PipelineRun", func() {
 		adapter := status.NewAdapter(logr.Discard(), nil, status.WithGitHubReporter(&MockReporter{}))
-		reporters, err := adapter.GetReporters(context.TODO(), pipelineRun)
+		reporters, err := adapter.GetReporters(pipelineRun)
 		Expect(err).To(BeNil())
 		Expect(len(reporters)).To(Equal(1))
 	})

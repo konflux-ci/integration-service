@@ -20,7 +20,7 @@ type Reporter interface {
 
 // Status is the interface of the main status Adapter.
 type Status interface {
-	GetReporters(context.Context, *tektonv1beta1.PipelineRun) ([]Reporter, error)
+	GetReporters(*tektonv1beta1.PipelineRun) ([]Reporter, error)
 }
 
 // Adapter is responsible for discovering supported Reporter implementations.
@@ -57,7 +57,7 @@ func NewAdapter(logger logr.Logger, k8sClient client.Reader, opts ...AdapterOpti
 
 // GetReporters returns a list of enabled/supported status reporters for a PipelineRun.
 // All potential reporters must be added to this function for them to be utilized.
-func (a *Adapter) GetReporters(ctx context.Context, pipelineRun *tektonv1beta1.PipelineRun) ([]Reporter, error) {
+func (a *Adapter) GetReporters(pipelineRun *tektonv1beta1.PipelineRun) ([]Reporter, error) {
 	var reporters []Reporter
 
 	if helpers.HasLabelWithValue(pipelineRun, gitops.PipelineAsCodeGitProviderLabel, gitops.PipelineAsCodeGitHubProviderType) {

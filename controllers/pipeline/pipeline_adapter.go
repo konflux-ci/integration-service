@@ -209,7 +209,7 @@ func (a *Adapter) EnsureStatusReported() (results.OperationResult, error) {
 		return results.ContinueProcessing()
 	}
 
-	reporters, err := a.status.GetReporters(a.context, a.pipelineRun)
+	reporters, err := a.status.GetReporters(a.pipelineRun)
 
 	if err != nil {
 		return results.RequeueWithError(err)
