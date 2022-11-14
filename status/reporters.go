@@ -359,6 +359,8 @@ func (r *GitHubReporter) ReportStatus(ctx context.Context, pipelineRun *tektonv1
 		return nil
 	}
 
+	// Existence of the Pipelines as Code installation ID annotation signals configuration using GitHub App integration.
+	// If it doesn't exist, GitHub webhook integration is configured.
 	if helpers.HasAnnotation(pipelineRun, gitops.PipelineAsCodeInstallationIDAnnotation) {
 		creds, err := r.getAppCredentials(ctx, pipelineRun)
 		if err != nil {
