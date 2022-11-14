@@ -27,28 +27,28 @@ const (
 	SnapshotCompositeType = "composite"
 
 	// PipelineAsCodeEventType is the type of event which triggered the pipelinerun in build service
-	PipelineAsCodeEventTypeLabel = "test.appstudio.openshift.io/event-type"
+	PipelineAsCodeEventTypeLabel = "pac.test.appstudio.openshift.io/event-type"
 
 	// PipelineAsCodeGitProviderLabel is the git provider which triggered the pipelinerun in build service.
-	PipelineAsCodeGitProviderLabel = "test.appstudio.openshift.io/git-provider"
+	PipelineAsCodeGitProviderLabel = "pac.test.appstudio.openshift.io/git-provider"
 
 	// PipelineAsCodeSHALabel is the commit which triggered the pipelinerun in build service.
-	PipelineAsCodeSHALabel = "test.appstudio.openshift.io/sha"
+	PipelineAsCodeSHALabel = "pac.test.appstudio.openshift.io/sha"
 
 	// PipelineAsCodeURLOrgLabel is the organization for the git repo which triggered the pipelinerun in build service.
-	PipelineAsCodeURLOrgLabel = "test.appstudio.openshift.io/url-org"
+	PipelineAsCodeURLOrgLabel = "pac.test.appstudio.openshift.io/url-org"
 
 	// PipelineAsCodeURLRepositoryLabel is the git repository which triggered the pipelinerun in build service.
-	PipelineAsCodeURLRepositoryLabel = "test.appstudio.openshift.io/url-repository"
+	PipelineAsCodeURLRepositoryLabel = "pac.test.appstudio.openshift.io/url-repository"
 
 	// PipelineAsCodeRepoURLAnnotation is the URL to the git repository which triggered the pipelinerun in build service.
-	PipelineAsCodeRepoURLAnnotation = "test.appstudio.openshift.io/repo-url"
+	PipelineAsCodeRepoURLAnnotation = "pac.test.appstudio.openshift.io/repo-url"
 
 	// PipelineAsCodeInstallationIDAnnotation is the GitHub App installation ID for the git repo which triggered the pipelinerun in build service.
-	PipelineAsCodeInstallationIDAnnotation = "test.appstudio.openshift.io/installation-id"
+	PipelineAsCodeInstallationIDAnnotation = "pac.test.appstudio.openshift.io/installation-id"
 
 	// PipelineAsCodePullRequestAnnotation is the git repository's pull request identifier
-	PipelineAsCodePullRequestAnnotation = "test.appstudio.openshift.io/pull-request"
+	PipelineAsCodePullRequestAnnotation = "pac.test.appstudio.openshift.io/pull-request"
 
 	// PipelineAscodePushType is the type of push event which triggered the pipelinerun in build service
 	PipelineAsCodePushType = "push"
