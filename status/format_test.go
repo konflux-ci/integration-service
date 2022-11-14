@@ -23,6 +23,20 @@ const expectedSummary = `<table>
 </table>`
 
 var _ = Describe("Formatters", func() {
+	It("can construct a comment", func() {
+		pass := helpers.HACBSTestResult{
+			Result:           "SUCCESS",
+			Namespace:        "example-namespace",
+			Timestamp:        "1640995200",
+			PipelineTaskName: "example-task",
+		}
+		results := []*helpers.HACBSTestResult{&pass}
+		comment, err := status.FormatComment("example-title", results)
+		Expect(err).To(BeNil())
+		Expect(comment).To(ContainSubstring("# example-title"))
+		Expect(comment).To(ContainSubstring("<td>:heavy_check_mark: SUCCESS</td>"))
+	})
+
 	It("can construct a summary", func() {
 		pass := helpers.HACBSTestResult{
 			Result:           "SUCCESS",

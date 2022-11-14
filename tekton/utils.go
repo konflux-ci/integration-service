@@ -115,7 +115,7 @@ func GetOutputImageDigest(object client.Object) (string, error) {
 			if taskRun.PipelineTaskName == "build-container" {
 				for _, taskRunResult := range taskRun.Status.TaskRunResults {
 					if taskRunResult.Name == "IMAGE_DIGEST" {
-						return taskRunResult.Value, nil
+						return taskRunResult.Value.StringVal, nil
 					}
 				}
 			}

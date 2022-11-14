@@ -175,7 +175,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 								TaskRunResults: []tektonv1beta1.TaskRunResult{
 									{
 										Name:  "HACBS_TEST_OUTPUT",
-										Value: "{\"result\":\"SKIPPED\",\"timestamp\":\"1665405318\",\"failures\":[],\"successes\":0}",
+										Value: *tektonv1beta1.NewArrayOrString("{\"result\":\"SKIPPED\",\"timestamp\":\"1665405318\",\"failures\":[],\"successes\":0}"),
 									},
 								},
 							},
@@ -188,7 +188,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 								TaskRunResults: []tektonv1beta1.TaskRunResult{
 									{
 										Name:  "HACBS_TEST_OUTPUT",
-										Value: "{\"result\":\"SUCCESS\",\"timestamp\":\"1665405318\",\"failures\":[],\"successes\":5}",
+										Value: *tektonv1beta1.NewArrayOrString("{\"result\":\"SUCCESS\",\"timestamp\":\"1665405318\",\"failures\":[],\"successes\":5}"),
 									},
 								},
 							},
@@ -201,7 +201,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 								TaskRunResults: []tektonv1beta1.TaskRunResult{
 									{
 										Name:  "HACBS_TEST_OUTPUT",
-										Value: "{\"result\":\"SUCCESS\",\"timestamp\":\"1665565318\",\"failures\":[],\"successes\":10}",
+										Value: *tektonv1beta1.NewArrayOrString("{\"result\":\"SUCCESS\",\"timestamp\":\"1665565318\",\"failures\":[],\"successes\":10}"),
 									},
 								},
 							},
@@ -230,7 +230,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 								TaskRunResults: []tektonv1beta1.TaskRunResult{
 									{
 										Name:  "HACBS_TEST_OUTPUT",
-										Value: "{\"result\":\"FAILURE\",\"timestamp\":\"1665405317\",\"failures\":1,\"successes\":0}",
+										Value: *tektonv1beta1.NewArrayOrString("{\"result\":\"FAILURE\",\"timestamp\":\"1665405317\",\"failures\":1,\"successes\":0}"),
 									},
 								},
 							},
@@ -261,7 +261,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 								TaskRunResults: []tektonv1beta1.TaskRunResult{
 									{
 										Name:  "TEST_OUTPUT",
-										Value: "TEST_VALUE",
+										Value: *tektonv1beta1.NewArrayOrString("TEST_VALUE"),
 									},
 								},
 							},
@@ -299,7 +299,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 								TaskRunResults: []tektonv1beta1.TaskRunResult{
 									{
 										Name:  "HACBS_TEST_OUTPUT",
-										Value: "invalid json",
+										Value: *tektonv1beta1.NewArrayOrString("invalid json"),
 									},
 								},
 							},
