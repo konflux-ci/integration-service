@@ -72,14 +72,14 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				Name:      "pipelinerun-component-sample",
 				Namespace: "default",
 				Labels: map[string]string{
-					"test.appstudio.openshift.io/url-org":         "redhat-appstudio",
-					"test.appstudio.openshift.io/original-prname": "build-service-on-push",
-					"test.appstudio.openshift.io/url-repository":  "build-service",
-					"test.appstudio.openshift.io/repository":      "build-service-pac",
-					"test.appstudio.openshift.io/snapshot":        "snapshot-sample",
+					"pac.test.appstudio.openshift.io/url-org":         "redhat-appstudio",
+					"pac.test.appstudio.openshift.io/original-prname": "build-service-on-push",
+					"pac.test.appstudio.openshift.io/url-repository":  "build-service",
+					"pac.test.appstudio.openshift.io/repository":      "build-service-pac",
+					"test.appstudio.openshift.io/snapshot":            "snapshot-sample",
 				},
 				Annotations: map[string]string{
-					"test.appstudio.openshift.io/on-target-branch": "[main]",
+					"pac.test.appstudio.openshift.io/on-target-branch": "[main]",
 				},
 			},
 			Spec: tektonv1beta1.PipelineRunSpec{

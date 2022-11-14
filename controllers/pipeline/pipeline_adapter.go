@@ -390,7 +390,7 @@ func (a *Adapter) prepareSnapshotForPipelineRun(pipelineRun *tektonv1beta1.Pipel
 	pipelinerunLabels := pipelineRun.GetLabels()
 	for key, value := range pipelinerunLabels {
 		if strings.Contains(key, "pipelinesascode.tekton.dev/") {
-			newKey := strings.ReplaceAll(key, "pipelinesascode.tekton.dev/", "test.appstudio.openshift.io/")
+			newKey := strings.ReplaceAll(key, "pipelinesascode.tekton.dev/", "pac.test.appstudio.openshift.io/")
 			snapshot.Labels[newKey] = value
 		}
 	}
@@ -401,7 +401,7 @@ func (a *Adapter) prepareSnapshotForPipelineRun(pipelineRun *tektonv1beta1.Pipel
 	pipelinerunAnnotations := pipelineRun.GetAnnotations()
 	for key, value := range pipelinerunAnnotations {
 		if strings.Contains(key, "pipelinesascode.tekton.dev/") {
-			newKey := strings.ReplaceAll(key, "pipelinesascode.tekton.dev/", "test.appstudio.openshift.io/")
+			newKey := strings.ReplaceAll(key, "pipelinesascode.tekton.dev/", "pac.test.appstudio.openshift.io/")
 			snapshot.Annotations[newKey] = value
 		}
 	}
