@@ -154,7 +154,7 @@ func GetHACBSTestResultsFromPipelineRun(logger logr.Logger, pipelineRun *tektonv
 		for _, taskRunResult := range taskRun.Status.TaskRunResults {
 			if taskRunResult.Name == HACBSTestOutputName {
 				var result HACBSTestResult
-				err := json.Unmarshal([]byte(taskRunResult.Value), &result)
+				err := json.Unmarshal([]byte(taskRunResult.Value.StringVal), &result)
 				if err != nil {
 					return nil, err
 				}

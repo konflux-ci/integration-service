@@ -9,6 +9,10 @@ import (
 	"github.com/redhat-appstudio/integration-service/helpers"
 )
 
+const commentTemplate = `# {{ .Title }}
+
+{{ .Summary }}`
+
 const summaryTemplate = `<table>
 	<tr>
 		<th>Status</th>
@@ -31,6 +35,12 @@ type SummaryTemplateData struct {
 	Results []*helpers.HACBSTestResult
 }
 
+// CommentTemplateData holds the data necessary to construct a PipelineRun comment.
+type CommentTemplateData struct {
+	Title   string
+	Summary string
+}
+
 // FormatSummary builds a markdown summary for a list of HACBS test results.
 func FormatSummary(results []*helpers.HACBSTestResult) (string, error) {
 	funcMap := template.FuncMap{
@@ -40,6 +50,22 @@ func FormatSummary(results []*helpers.HACBSTestResult) (string, error) {
 	buf := bytes.Buffer{}
 	data := SummaryTemplateData{Results: results}
 	t := template.Must(template.New("").Funcs(funcMap).Parse(summaryTemplate))
+	if err := t.Execute(&buf, data); err != nil {
+		return "", err
+	}
+	return buf.String(), nil
+}
+
+// FormatComment builds a markdown comment for a list of HACBS test results.
+func FormatComment(title string, results []*helpers.HACBSTestResult) (string, error) {
+	summary, err := FormatSummary(results)
+	if err != nil {
+		return "", err
+	}
+
+	buf := bytes.Buffer{}
+	data := CommentTemplateData{Title: title, Summary: summary}
+	t := template.Must(template.New("").Parse(commentTemplate))
 	if err := t.Execute(&buf, data); err != nil {
 		return "", err
 	}
