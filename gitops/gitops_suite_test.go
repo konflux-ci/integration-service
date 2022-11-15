@@ -49,7 +49,7 @@ var (
 	cancel    context.CancelFunc
 )
 
-func TestControllerSnapshot(t *testing.T) {
+func TestGitOps(t *testing.T) {
 	RegisterFailHandler(Fail)
 	RunSpecs(t, "Snapshot Controller Test Suite")
 }
