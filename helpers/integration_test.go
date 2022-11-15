@@ -168,40 +168,55 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		testpipelineRun.Status = tektonv1beta1.PipelineRunStatus{
 			PipelineRunStatusFields: tektonv1beta1.PipelineRunStatusFields{
 				TaskRuns: map[string]*tektonv1beta1.PipelineRunTaskRunStatus{
-					"task1": &tektonv1beta1.PipelineRunTaskRunStatus{
+					"task1": {
 						PipelineTaskName: "task-skipped",
 						Status: &tektonv1beta1.TaskRunStatus{
 							TaskRunStatusFields: tektonv1beta1.TaskRunStatusFields{
 								TaskRunResults: []tektonv1beta1.TaskRunResult{
 									{
-										Name:  "HACBS_TEST_OUTPUT",
-										Value: *tektonv1beta1.NewArrayOrString("{\"result\":\"SKIPPED\",\"timestamp\":\"1665405318\",\"failures\":[],\"successes\":0}"),
+										Name: "HACBS_TEST_OUTPUT",
+										Value: *tektonv1beta1.NewArrayOrString(`{
+											"result": "SKIPPED",
+											"timestamp": "1665405318",
+											"failures": 0,
+											"successes": 0
+										}`),
 									},
 								},
 							},
 						},
 					},
-					"task2": &tektonv1beta1.PipelineRunTaskRunStatus{
+					"task2": {
 						PipelineTaskName: "task-success",
 						Status: &tektonv1beta1.TaskRunStatus{
 							TaskRunStatusFields: tektonv1beta1.TaskRunStatusFields{
 								TaskRunResults: []tektonv1beta1.TaskRunResult{
 									{
-										Name:  "HACBS_TEST_OUTPUT",
-										Value: *tektonv1beta1.NewArrayOrString("{\"result\":\"SUCCESS\",\"timestamp\":\"1665405318\",\"failures\":[],\"successes\":5}"),
+										Name: "HACBS_TEST_OUTPUT",
+										Value: *tektonv1beta1.NewArrayOrString(`{
+											"result": "SUCCESS",
+											"timestamp": "1665405318",
+											"failures": 0,
+											"successes": 5
+										}`),
 									},
 								},
 							},
 						},
 					},
-					"task3": &tektonv1beta1.PipelineRunTaskRunStatus{
+					"task3": {
 						PipelineTaskName: "task-success",
 						Status: &tektonv1beta1.TaskRunStatus{
 							TaskRunStatusFields: tektonv1beta1.TaskRunStatusFields{
 								TaskRunResults: []tektonv1beta1.TaskRunResult{
 									{
-										Name:  "HACBS_TEST_OUTPUT",
-										Value: *tektonv1beta1.NewArrayOrString("{\"result\":\"SUCCESS\",\"timestamp\":\"1665565318\",\"failures\":[],\"successes\":10}"),
+										Name: "HACBS_TEST_OUTPUT",
+										Value: *tektonv1beta1.NewArrayOrString(`{
+											"result": "SUCCESS",
+											"timestamp": "1665405318",
+											"failures": 0,
+											"successes": 10
+										}`),
 									},
 								},
 							},
@@ -223,14 +238,19 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		testpipelineRun.Status = tektonv1beta1.PipelineRunStatus{
 			PipelineRunStatusFields: tektonv1beta1.PipelineRunStatusFields{
 				TaskRuns: map[string]*tektonv1beta1.PipelineRunTaskRunStatus{
-					"index1": &tektonv1beta1.PipelineRunTaskRunStatus{
+					"index1": {
 						PipelineTaskName: "task-failure",
 						Status: &tektonv1beta1.TaskRunStatus{
 							TaskRunStatusFields: tektonv1beta1.TaskRunStatusFields{
 								TaskRunResults: []tektonv1beta1.TaskRunResult{
 									{
-										Name:  "HACBS_TEST_OUTPUT",
-										Value: *tektonv1beta1.NewArrayOrString("{\"result\":\"FAILURE\",\"timestamp\":\"1665405317\",\"failures\":1,\"successes\":0}"),
+										Name: "HACBS_TEST_OUTPUT",
+										Value: *tektonv1beta1.NewArrayOrString(`{
+											"result": "FAILURE",
+											"timestamp": "1665405317",
+											"failures": 1,
+											"successes": 0
+										}`),
 									},
 								},
 							},
@@ -254,7 +274,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		testpipelineRun.Status = tektonv1beta1.PipelineRunStatus{
 			PipelineRunStatusFields: tektonv1beta1.PipelineRunStatusFields{
 				TaskRuns: map[string]*tektonv1beta1.PipelineRunTaskRunStatus{
-					"task1": &tektonv1beta1.PipelineRunTaskRunStatus{
+					"task1": {
 						PipelineTaskName: "no-task-1",
 						Status: &tektonv1beta1.TaskRunStatus{
 							TaskRunStatusFields: tektonv1beta1.TaskRunStatusFields{
@@ -267,7 +287,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 							},
 						},
 					},
-					"task2": &tektonv1beta1.PipelineRunTaskRunStatus{
+					"task2": {
 						PipelineTaskName: "no-task-2",
 						Status: &tektonv1beta1.TaskRunStatus{
 							TaskRunStatusFields: tektonv1beta1.TaskRunStatusFields{
@@ -313,5 +333,63 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		result, err := helpers.CalculateIntegrationPipelineRunOutcome(logr.Discard(), testpipelineRun)
 		Expect(err).ToNot(BeNil())
 		Expect(result).To(BeFalse())
+	})
+
+	It("can get all the TaskRuns for a PipelineRun", func() {
+		now := time.Now()
+		testpipelineRun.Status = tektonv1beta1.PipelineRunStatus{
+			PipelineRunStatusFields: tektonv1beta1.PipelineRunStatusFields{
+				TaskRuns: map[string]*tektonv1beta1.PipelineRunTaskRunStatus{
+					"task1": {
+						PipelineTaskName: "pipeline1-task1",
+						Status: &tektonv1beta1.TaskRunStatus{
+							TaskRunStatusFields: tektonv1beta1.TaskRunStatusFields{
+								StartTime:      &metav1.Time{Time: now},
+								CompletionTime: &metav1.Time{Time: now.Add(5 * time.Minute)},
+								TaskRunResults: []tektonv1beta1.TaskRunResult{
+									{
+										Name: "HACBS_TEST_OUTPUT",
+										Value: *tektonv1beta1.NewArrayOrString(`{
+											"result": "SUCCESS",
+											"successes": 1
+										}`),
+									},
+								},
+							},
+						},
+					},
+					"task2": {
+						PipelineTaskName: "pipeline1-task2",
+						Status: &tektonv1beta1.TaskRunStatus{
+							TaskRunStatusFields: tektonv1beta1.TaskRunStatusFields{},
+						},
+					},
+				},
+			},
+		}
+
+		taskRuns := helpers.GetTaskRunsFromPipelineRun(logr.Discard(), testpipelineRun)
+		Expect(len(taskRuns)).To(Equal(2))
+
+		tr1 := taskRuns[0]
+		Expect(tr1.GetPipelineTaskName()).To(Equal("pipeline1-task1"))
+		Expect(tr1.GetStartTime().Equal(now))
+		Expect(tr1.GetDuration().Minutes()).To(Equal(5.0))
+
+		result1, err := tr1.GetTestResult()
+		Expect(err).To(BeNil())
+		Expect(result1).ToNot(BeNil())
+		Expect(result1.Result).To(Equal("SUCCESS"))
+		Expect(result1.Successes).To(Equal(1))
+
+		result2, err := tr1.GetTestResult()
+		Expect(err).To(BeNil())
+		Expect(result1).To(Equal(result2))
+
+		tr2 := taskRuns[1]
+		Expect(tr2.GetPipelineTaskName()).To(Equal("pipeline1-task2"))
+		Expect(tr2.GetStartTime().Equal(time.Time{}))
+		Expect(tr2.GetDuration().Minutes()).To(Equal(0.0))
+
 	})
 })
