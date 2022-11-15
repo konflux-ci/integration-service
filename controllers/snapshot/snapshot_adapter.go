@@ -75,6 +75,9 @@ func (a *Adapter) EnsureAllIntegrationTestPipelinesExist() (results.OperationRes
 	}
 
 	if integrationTestScenarios != nil {
+		a.logger.Info("Found IntegrationTestScenarios for application",
+			"Application.Name", a.application.Name,
+			"IntegrationTestScenarios", len(*integrationTestScenarios))
 		for _, integrationTestScenario := range *integrationTestScenarios {
 			integrationTestScenario := integrationTestScenario //G601
 			integrationPipelineRun, err := helpers.GetLatestPipelineRunForSnapshotAndScenario(a.client, a.context, a.application, a.snapshot, &integrationTestScenario)
