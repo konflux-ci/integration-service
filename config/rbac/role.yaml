@@ -11,6 +11,8 @@ rules:
   - secrets
   verbs:
   - get
+  - list
+  - watch
 - apiGroups:
   - appstudio.redhat.com
   resources:
@@ -43,6 +45,14 @@ rules:
   - get
   - patch
   - update
+- apiGroups:
+  - pipelinesascode.tekton.dev
+  resources:
+  - repositories
+  verbs:
+  - get
+  - list
+  - watch
 - apiGroups:
   - tekton.dev
   resources:
