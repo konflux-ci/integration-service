@@ -3,7 +3,6 @@ package status
 import (
 	"bytes"
 	"fmt"
-	"sort"
 	"strings"
 	"text/template"
 
@@ -33,27 +32,8 @@ type CommentTemplateData struct {
 	Summary string
 }
 
-// startTimeSorter can sort TaskRuns by their start time. It implements sort.Interface.
-type SortTaskRunsByStartTime []*helpers.TaskRun
-
-// Len returns the length of the slice being sorted.
-func (s SortTaskRunsByStartTime) Len() int {
-	return len(s)
-}
-
-// Swap switches the position of two elements in the slice.
-func (s SortTaskRunsByStartTime) Swap(i int, j int) {
-	s[i], s[j] = s[j], s[i]
-}
-
-// Less determines if TaskRun in position i started before TaskRun in position j.
-func (s SortTaskRunsByStartTime) Less(i int, j int) bool {
-	return s[i].GetStartTime().Before(s[j].GetStartTime())
-}
-
 // FormatSummary builds a markdown summary for a list of integration TaskRuns.
 func FormatSummary(taskRuns []*helpers.TaskRun) (string, error) {
-	sort.Sort(SortTaskRunsByStartTime(taskRuns))
 	funcMap := template.FuncMap{
 		"formatTaskName":  FormatTaskName,
 		"formatNamespace": FormatNamespace,

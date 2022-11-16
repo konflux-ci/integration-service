@@ -3,6 +3,7 @@ package helpers
 import (
 	"context"
 	"encoding/json"
+	"sort"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -109,6 +110,24 @@ func (t *TaskRun) GetTestResult() (*HACBSTestResult, error) {
 		}
 	}
 	return nil, nil
+}
+
+// SortTaskRunsByStartTime can sort TaskRuns by their start time. It implements sort.Interface.
+type SortTaskRunsByStartTime []*TaskRun
+
+// Len returns the length of the slice being sorted.
+func (s SortTaskRunsByStartTime) Len() int {
+	return len(s)
+}
+
+// Swap switches the position of two elements in the slice.
+func (s SortTaskRunsByStartTime) Swap(i int, j int) {
+	s[i], s[j] = s[j], s[i]
+}
+
+// Less determines if TaskRun in position i started before TaskRun in position j.
+func (s SortTaskRunsByStartTime) Less(i int, j int) bool {
+	return s[i].GetStartTime().Before(s[j].GetStartTime())
 }
 
 // GetRequiredIntegrationTestScenariosForApplication returns the IntegrationTestScenarios used by the application being processed.
@@ -224,11 +243,12 @@ func GetHACBSTestResultsFromPipelineRun(logger logr.Logger, pipelineRun *tektonv
 	return results, nil
 }
 
-// GetTaskRunsFromPipelineRun returns integration TaskRun wrappers for all Tekton TaskRuns in a PipelineRun.
+// GetTaskRunsFromPipelineRun returns integration TaskRun wrappers for all Tekton TaskRuns in a PipelineRun sorted by start time.
 func GetTaskRunsFromPipelineRun(logger logr.Logger, pipelineRun *tektonv1beta1.PipelineRun) []*TaskRun {
 	taskRuns := []*TaskRun{}
 	for _, tr := range pipelineRun.Status.TaskRuns {
 		taskRuns = append(taskRuns, NewTaskRun(logger, tr))
 	}
+	sort.Sort(SortTaskRunsByStartTime(taskRuns))
 	return taskRuns
 }

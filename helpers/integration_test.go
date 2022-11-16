@@ -371,7 +371,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		taskRuns := helpers.GetTaskRunsFromPipelineRun(logr.Discard(), testpipelineRun)
 		Expect(len(taskRuns)).To(Equal(2))
 
-		tr1 := taskRuns[0]
+		tr1 := taskRuns[1]
 		Expect(tr1.GetPipelineTaskName()).To(Equal("pipeline1-task1"))
 		Expect(tr1.GetStartTime().Equal(now))
 		Expect(tr1.GetDuration().Minutes()).To(Equal(5.0))
@@ -386,7 +386,8 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		Expect(err).To(BeNil())
 		Expect(result1).To(Equal(result2))
 
-		tr2 := taskRuns[1]
+		// TaskRun order is determined by start time
+		tr2 := taskRuns[0]
 		Expect(tr2.GetPipelineTaskName()).To(Equal("pipeline1-task2"))
 		Expect(tr2.GetStartTime().Equal(time.Time{}))
 		Expect(tr2.GetDuration().Minutes()).To(Equal(0.0))

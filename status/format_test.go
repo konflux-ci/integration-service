@@ -14,11 +14,11 @@ import (
 
 const expectedSummary = `| Task | Duration | Test Suite | Status | Details |
 | --- | --- | --- | --- | --- |
-| example-task-5 | 5m0s | example-namespace-5 | :white_check_mark: SKIPPED |  |
-| example-task-2 | 2m0s |  |  |  |
 | example-task-1 | 5m30s | example-namespace-1 | :heavy_check_mark: SUCCESS | :heavy_check_mark: 2 success(es)<br>:warning: 1 warning(s) |
+| example-task-2 | 2m0s |  |  |  |
 | example-task-3[^example-task-3] | 1s | example-namespace-3 | :x: FAILURE | :x: 1 failure(s) |
 | example-task-4[^example-task-4] | 1s | example-namespace-4 | :warning: WARNING | :warning: 1 warning(s) |
+| example-task-5 | 5m0s | example-namespace-5 | :white_check_mark: SKIPPED |  |
 | example-task-6 | 1s | example-namespace-6 | :heavy_exclamation_mark: ERROR |  |
 | example-task-7 | 0s | example-namespace-7 | :question: UNEXPECTED |  |
 
