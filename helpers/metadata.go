@@ -1,6 +1,11 @@
 package helpers
 
-import "sigs.k8s.io/controller-runtime/pkg/client"
+import (
+	"strings"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+)
 
 // HasAnnotation checks if a given annotation exists
 func HasAnnotation(object client.Object, annotation string) bool {
@@ -32,4 +37,38 @@ func HasLabelWithValue(object client.Object, label, value string) bool {
 	}
 
 	return false
+}
+
+// CopyLabelsByPrefix copies all labels from a source object to a destination object where the key matches the specified prefix.
+// If replacementPrefix is different from prefix, the prefix will be replaced while performing the copy.
+func CopyLabelsByPrefix(src *metav1.ObjectMeta, dest *metav1.ObjectMeta, prefix string, replacementPrefix string) {
+	if dest.Labels == nil {
+		dest.Labels = make(map[string]string)
+	}
+	for key, value := range src.GetLabels() {
+		if strings.HasPrefix(key, prefix) {
+			newKey := key
+			if prefix != replacementPrefix {
+				newKey = strings.Replace(key, prefix, replacementPrefix, 1)
+			}
+			dest.Labels[newKey] = value
+		}
+	}
+}
+
+// CopyAnnotationsByPrefix copies all annotations from a source object to a destination object where the key matches the specified prefix.
+// If replacementPrefix is different from prefix, the prefix will be replaced while performing the copy.
+func CopyAnnotationsByPrefix(src *metav1.ObjectMeta, dest *metav1.ObjectMeta, prefix string, replacementPrefix string) {
+	if dest.Annotations == nil {
+		dest.Annotations = make(map[string]string)
+	}
+	for key, value := range src.GetAnnotations() {
+		if strings.HasPrefix(key, prefix) {
+			newKey := key
+			if prefix != replacementPrefix {
+				newKey = strings.Replace(key, prefix, replacementPrefix, 1)
+			}
+			dest.Annotations[newKey] = value
+		}
+	}
 }

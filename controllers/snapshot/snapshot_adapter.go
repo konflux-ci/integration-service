@@ -18,7 +18,6 @@ package snapshot
 
 import (
 	"context"
-	"strings"
 
 	ctrl "sigs.k8s.io/controller-runtime"
 
@@ -282,26 +281,9 @@ func (a *Adapter) createMissingReleasesForReleasePlans(application *applicationa
 		} else {
 			newRelease := release.CreateReleaseForReleasePlan(&releasePlan, snapshot)
 			// Propagate annotations/labels from snapshot to Release
-			if snapshot.Annotations != nil {
-				if newRelease.ObjectMeta.Annotations == nil {
-					newRelease.ObjectMeta.Annotations = make(map[string]string)
-				}
-				for key, value := range snapshot.Annotations {
-					if strings.Contains(key, "pac.test.appstudio.openshift.io/") {
-						newRelease.ObjectMeta.Annotations[key] = value
-					}
-				}
-			}
-			if snapshot.Labels != nil {
-				if newRelease.ObjectMeta.Labels == nil {
-					newRelease.ObjectMeta.Labels = make(map[string]string)
-				}
-				for key, value := range snapshot.Labels {
-					if strings.Contains(key, "pac.test.appstudio.openshift.io/") {
-						newRelease.ObjectMeta.Labels[key] = value
-					}
-				}
-			}
+			helpers.CopyAnnotationsByPrefix(&snapshot.ObjectMeta, &newRelease.ObjectMeta, gitops.PipelinesAsCodePrefix, gitops.PipelinesAsCodePrefix)
+			helpers.CopyLabelsByPrefix(&snapshot.ObjectMeta, &newRelease.ObjectMeta, gitops.PipelinesAsCodePrefix, gitops.PipelinesAsCodePrefix)
+
 			err := ctrl.SetControllerReference(application, newRelease, a.client.Scheme())
 			if err != nil {
 				return err
@@ -380,23 +362,8 @@ func (a *Adapter) createIntegrationPipelineRun(application *applicationapiv1alph
 		WithApplicationAndComponent(a.application, a.component).
 		AsPipelineRun()
 	// copy PipelineRun PAC annotations/labels from snapshot to integration test PipelineRuns
-	if snapshot.Annotations != nil {
-		if pipelineRun.ObjectMeta.Annotations == nil {
-			pipelineRun.ObjectMeta.Annotations = make(map[string]string)
-		}
-		for key, value := range snapshot.Annotations {
-			if strings.Contains(key, "pac.test.appstudio.openshift.io/") {
-				pipelineRun.ObjectMeta.Annotations[key] = value
-			}
-		}
-	}
-	if snapshot.Labels != nil {
-		for key, value := range snapshot.Labels {
-			if strings.Contains(key, "pac.test.appstudio.openshift.io/") {
-				pipelineRun.ObjectMeta.Labels[key] = value
-			}
-		}
-	}
+	helpers.CopyAnnotationsByPrefix(&snapshot.ObjectMeta, &pipelineRun.ObjectMeta, gitops.PipelinesAsCodePrefix, gitops.PipelinesAsCodePrefix)
+	helpers.CopyLabelsByPrefix(&snapshot.ObjectMeta, &pipelineRun.ObjectMeta, gitops.PipelinesAsCodePrefix, gitops.PipelinesAsCodePrefix)
 	err := ctrl.SetControllerReference(snapshot, pipelineRun, a.client.Scheme())
 	if err != nil {
 		return err
