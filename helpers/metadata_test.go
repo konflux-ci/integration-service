@@ -119,5 +119,41 @@ var _ = Describe("Helpers for labels and annotation", Ordered, func() {
 			Expect(helpers.HasAnnotationWithValue(testpipelineLabel, "", "integration")).
 				To(BeFalse())
 		})
+		It("CopyLabelsByPrefix with a replacement prefix", func() {
+			dest := &tektonv1beta1.PipelineRun{ObjectMeta: v1.ObjectMeta{}}
+			testpipelineLabel.ObjectMeta.Labels = map[string]string{
+				"test.prefix/foo":         "bar",
+				"another.test.prefix/baz": "qux",
+			}
+			helpers.CopyLabelsByPrefix(&testpipelineLabel.ObjectMeta, &dest.ObjectMeta, "test.prefix", "new.prefix")
+			Expect(helpers.HasLabelWithValue(dest, "new.prefix/foo", "bar")).To(BeTrue())
+			Expect(helpers.HasLabel(dest, "another.test.prefix/baz")).To(BeFalse())
+		})
+		It("CopyLabelsByPrefix without a replacement prefix", func() {
+			dest := &tektonv1beta1.PipelineRun{ObjectMeta: v1.ObjectMeta{}}
+			testpipelineLabel.ObjectMeta.Labels = map[string]string{
+				"test.prefix/foo": "bar",
+			}
+			helpers.CopyLabelsByPrefix(&testpipelineLabel.ObjectMeta, &dest.ObjectMeta, "test.prefix", "test.prefix")
+			Expect(helpers.HasLabelWithValue(dest, "test.prefix/foo", "bar")).To(BeTrue())
+		})
+		It("CopyAnnotationsByPrefix with a replacement prefix", func() {
+			dest := &tektonv1beta1.PipelineRun{ObjectMeta: v1.ObjectMeta{}}
+			testpipelineLabel.ObjectMeta.Annotations = map[string]string{
+				"test.prefix/foo":         "bar",
+				"another.test.prefix/baz": "qux",
+			}
+			helpers.CopyAnnotationsByPrefix(&testpipelineLabel.ObjectMeta, &dest.ObjectMeta, "test.prefix", "new.prefix")
+			Expect(helpers.HasAnnotationWithValue(dest, "new.prefix/foo", "bar")).To(BeTrue())
+			Expect(helpers.HasAnnotation(dest, "another.test.prefix/baz")).To(BeFalse())
+		})
+		It("CopyAnnotationsByPrefix without a replacement prefix", func() {
+			dest := &tektonv1beta1.PipelineRun{ObjectMeta: v1.ObjectMeta{}}
+			testpipelineLabel.ObjectMeta.Annotations = map[string]string{
+				"test.prefix/foo": "bar",
+			}
+			helpers.CopyAnnotationsByPrefix(&testpipelineLabel.ObjectMeta, &dest.ObjectMeta, "test.prefix", "test.prefix")
+			Expect(helpers.HasAnnotationWithValue(dest, "test.prefix/foo", "bar")).To(BeTrue())
+		})
 	})
 })

@@ -11,6 +11,9 @@ import (
 )
 
 const (
+	// PipelinesAsCodePrefix contains the prefix applied to labels and annotations copied from Pipelines as Code resources.
+	PipelinesAsCodePrefix = "pac.test.appstudio.openshift.io"
+
 	// SnapshotTypeLabel contains the type of the Snapshot.
 	SnapshotTypeLabel = "test.appstudio.openshift.io/type"
 
@@ -27,28 +30,28 @@ const (
 	SnapshotCompositeType = "composite"
 
 	// PipelineAsCodeEventType is the type of event which triggered the pipelinerun in build service
-	PipelineAsCodeEventTypeLabel = "pac.test.appstudio.openshift.io/event-type"
+	PipelineAsCodeEventTypeLabel = PipelinesAsCodePrefix + "/event-type"
 
 	// PipelineAsCodeGitProviderLabel is the git provider which triggered the pipelinerun in build service.
-	PipelineAsCodeGitProviderLabel = "pac.test.appstudio.openshift.io/git-provider"
+	PipelineAsCodeGitProviderLabel = PipelinesAsCodePrefix + "/git-provider"
 
 	// PipelineAsCodeSHALabel is the commit which triggered the pipelinerun in build service.
-	PipelineAsCodeSHALabel = "pac.test.appstudio.openshift.io/sha"
+	PipelineAsCodeSHALabel = PipelinesAsCodePrefix + "/sha"
 
 	// PipelineAsCodeURLOrgLabel is the organization for the git repo which triggered the pipelinerun in build service.
-	PipelineAsCodeURLOrgLabel = "pac.test.appstudio.openshift.io/url-org"
+	PipelineAsCodeURLOrgLabel = PipelinesAsCodePrefix + "/url-org"
 
 	// PipelineAsCodeURLRepositoryLabel is the git repository which triggered the pipelinerun in build service.
-	PipelineAsCodeURLRepositoryLabel = "pac.test.appstudio.openshift.io/url-repository"
+	PipelineAsCodeURLRepositoryLabel = PipelinesAsCodePrefix + "/url-repository"
 
 	// PipelineAsCodeRepoURLAnnotation is the URL to the git repository which triggered the pipelinerun in build service.
-	PipelineAsCodeRepoURLAnnotation = "pac.test.appstudio.openshift.io/repo-url"
+	PipelineAsCodeRepoURLAnnotation = PipelinesAsCodePrefix + "/repo-url"
 
 	// PipelineAsCodeInstallationIDAnnotation is the GitHub App installation ID for the git repo which triggered the pipelinerun in build service.
-	PipelineAsCodeInstallationIDAnnotation = "pac.test.appstudio.openshift.io/installation-id"
+	PipelineAsCodeInstallationIDAnnotation = PipelinesAsCodePrefix + "/installation-id"
 
 	// PipelineAsCodePullRequestAnnotation is the git repository's pull request identifier
-	PipelineAsCodePullRequestAnnotation = "pac.test.appstudio.openshift.io/pull-request"
+	PipelineAsCodePullRequestAnnotation = PipelinesAsCodePrefix + "/pull-request"
 
 	// PipelineAscodePushType is the type of push event which triggered the pipelinerun in build service
 	PipelineAsCodePushType = "push"

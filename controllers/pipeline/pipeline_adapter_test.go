@@ -121,6 +121,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				Annotations: map[string]string{
 					"appstudio.redhat.com/updateComponentOnSuccess": "false",
 					"pipelinesascode.tekton.dev/on-target-branch":   "[main,master]",
+					"foo": "bar",
 				},
 			},
 			Spec: tektonv1beta1.PipelineRunSpec{
@@ -241,6 +242,24 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		label, found := snapshot.GetLabels()["pac.test.appstudio.openshift.io/event-type"]
 		Expect(found).To(BeTrue())
 		Expect(label).To(Equal("pull_request"))
+	})
+
+	It("ensures non-pipelines as code labels and annotations are NOT propagated to the snapshot", func() {
+		snapshot, err := adapter.prepareSnapshotForPipelineRun(testpipelineRunBuild, hasComp, hasApp)
+		Expect(err).To(BeNil())
+		Expect(snapshot).ToNot(BeNil())
+
+		// non-PaC labels are not copied
+		_, found := testpipelineRunBuild.GetLabels()["pipelines.appstudio.openshift.io/type"]
+		Expect(found).To(BeTrue())
+		_, found = snapshot.GetLabels()["pipelines.appstudio.openshift.io/type"]
+		Expect(found).To(BeFalse())
+
+		// non-PaC annotations are not copied
+		_, found = testpipelineRunBuild.GetAnnotations()["foo"]
+		Expect(found).To(BeTrue())
+		_, found = snapshot.GetAnnotations()["foo"]
+		Expect(found).To(BeFalse())
 	})
 
 	It("ensures allSnapshot exists and can be found ", func() {
