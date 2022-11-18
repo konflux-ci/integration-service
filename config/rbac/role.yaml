@@ -12,20 +12,6 @@ rules:
   verbs:
   - get
 - apiGroups:
-  - apis.kcp.dev
-  resources:
-  - apiexports
-  verbs:
-  - get
-  - list
-  - watch
-- apiGroups:
-  - apis.kcp.dev
-  resources:
-  - apiexports/content
-  verbs:
-  - '*'
-- apiGroups:
   - appstudio.redhat.com
   resources:
   - applications/finalizers

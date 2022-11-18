@@ -20,7 +20,6 @@ import (
 	"context"
 
 	"github.com/go-logr/logr"
-	"github.com/kcp-dev/logicalcluster/v2"
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/controllers/results"
 	"github.com/redhat-appstudio/integration-service/gitops"
@@ -53,17 +52,11 @@ func NewSnapshotReconciler(client client.Client, logger *logr.Logger, scheme *ru
 //+kubebuilder:rbac:groups=tekton.dev,resources=pipelineruns,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=tekton.dev,resources=pipelineruns/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=appstudio.redhat.com,resources=applications/finalizers,verbs=update
-//+kubebuilder:rbac:groups=apis.kcp.dev,resources=apiexports,verbs=get;list;watch
-//+kubebuilder:rbac:groups=apis.kcp.dev,resources=apiexports/content,verbs=*
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
 func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	logger := r.Log.WithValues("Integration", req.NamespacedName).WithValues("clusterName", req.ClusterName)
-
-	if req.ClusterName != "" {
-		ctx = logicalcluster.WithCluster(ctx, logicalcluster.New(req.ClusterName))
-	}
+	logger := r.Log.WithValues("Integration", req.NamespacedName)
 
 	snapshot := &applicationapiv1alpha1.Snapshot{}
 	err := r.Get(ctx, req.NamespacedName, snapshot)

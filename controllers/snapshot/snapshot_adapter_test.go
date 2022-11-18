@@ -18,7 +18,6 @@ import (
 
 	"github.com/redhat-appstudio/integration-service/gitops"
 	"github.com/redhat-appstudio/integration-service/helpers"
-	"github.com/redhat-appstudio/release-service/kcp"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -91,10 +90,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			},
 			Spec: releasev1alpha1.ReleasePlanSpec{
 				Application: hasApp.Name,
-				Target: kcp.NamespaceReference{
-					Namespace: "default",
-					Workspace: "workspace-sample",
-				},
+				Target:      "default",
 			},
 		}
 		Expect(k8sClient.Create(ctx, testReleasePlan)).Should(Succeed())
