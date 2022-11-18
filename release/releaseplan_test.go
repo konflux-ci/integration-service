@@ -6,7 +6,6 @@ import (
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	integrationservicerelease "github.com/redhat-appstudio/integration-service/release"
 	releasev1alpha1 "github.com/redhat-appstudio/release-service/api/v1alpha1"
-	"github.com/redhat-appstudio/release-service/kcp"
 	"k8s.io/apimachinery/pkg/api/errors"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -59,9 +58,7 @@ var _ = Describe("Release functions for managing Releases", Ordered, func() {
 			},
 			Spec: releasev1alpha1.ReleasePlanSpec{
 				Application: "application-sample",
-				Target: kcp.NamespaceReference{
-					Namespace: namespace,
-				},
+				Target:      "default",
 			},
 		}
 		Expect(k8sClient.Create(ctx, releasePlan)).Should(Succeed())

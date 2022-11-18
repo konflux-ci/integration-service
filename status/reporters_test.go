@@ -110,7 +110,7 @@ func (c *MockK8sClient) List(ctx context.Context, list client.ObjectList, opts .
 	return c.err
 }
 
-func (c *MockK8sClient) Get(ctx context.Context, key types.NamespacedName, obj client.Object) error {
+func (c *MockK8sClient) Get(ctx context.Context, key types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
 	if c.getInterceptor != nil {
 		c.getInterceptor(obj)
 	}
