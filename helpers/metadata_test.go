@@ -137,6 +137,12 @@ var _ = Describe("Helpers for labels and annotation", Ordered, func() {
 			helpers.CopyLabelsByPrefix(&testpipelineLabel.ObjectMeta, &dest.ObjectMeta, "test.prefix", "test.prefix")
 			Expect(helpers.HasLabelWithValue(dest, "test.prefix/foo", "bar")).To(BeTrue())
 		})
+		It("CopyLabelsByPrefix with nil src labels", func() {
+			dest := &tektonv1beta1.PipelineRun{ObjectMeta: v1.ObjectMeta{}}
+			testpipelineLabel.ObjectMeta.Labels = nil
+			helpers.CopyLabelsByPrefix(&testpipelineLabel.ObjectMeta, &dest.ObjectMeta, "test.prefix", "new.prefix")
+			Expect(dest.Labels).To(BeNil())
+		})
 		It("CopyAnnotationsByPrefix with a replacement prefix", func() {
 			dest := &tektonv1beta1.PipelineRun{ObjectMeta: v1.ObjectMeta{}}
 			testpipelineLabel.ObjectMeta.Annotations = map[string]string{
@@ -154,6 +160,12 @@ var _ = Describe("Helpers for labels and annotation", Ordered, func() {
 			}
 			helpers.CopyAnnotationsByPrefix(&testpipelineLabel.ObjectMeta, &dest.ObjectMeta, "test.prefix", "test.prefix")
 			Expect(helpers.HasAnnotationWithValue(dest, "test.prefix/foo", "bar")).To(BeTrue())
+		})
+		It("CopyAnnotationsByPrefix with nil src annotations", func() {
+			dest := &tektonv1beta1.PipelineRun{ObjectMeta: v1.ObjectMeta{}}
+			testpipelineLabel.ObjectMeta.Annotations = nil
+			helpers.CopyAnnotationsByPrefix(&testpipelineLabel.ObjectMeta, &dest.ObjectMeta, "test.prefix", "new.prefix")
+			Expect(dest.Annotations).To(BeNil())
 		})
 	})
 })
