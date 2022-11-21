@@ -39,6 +39,20 @@ func HasLabelWithValue(object client.Object, label, value string) bool {
 	return false
 }
 
+// copyWithNewPrefix copies key/value pairs from a source map to a destination map where the key matches the specified prefix.
+// If replacementPrefix is different from prefix, the prefix will be replaced while performing the copy.
+func copyWithNewPrefix(src, dest map[string]string, prefix, replacementPrefix string) {
+	for key, value := range src {
+		if strings.HasPrefix(key, prefix) {
+			newKey := key
+			if prefix != replacementPrefix {
+				newKey = strings.Replace(key, prefix, replacementPrefix, 1)
+			}
+			dest[newKey] = value
+		}
+	}
+}
+
 // CopyLabelsByPrefix copies all labels from a source object to a destination object where the key matches the specified prefix.
 // If replacementPrefix is different from prefix, the prefix will be replaced while performing the copy.
 func CopyLabelsByPrefix(src, dest *metav1.ObjectMeta, prefix, replacementPrefix string) {
@@ -48,15 +62,7 @@ func CopyLabelsByPrefix(src, dest *metav1.ObjectMeta, prefix, replacementPrefix 
 	if dest.GetLabels() == nil {
 		dest.SetLabels(make(map[string]string))
 	}
-	for key, value := range src.GetLabels() {
-		if strings.HasPrefix(key, prefix) {
-			newKey := key
-			if prefix != replacementPrefix {
-				newKey = strings.Replace(key, prefix, replacementPrefix, 1)
-			}
-			dest.Labels[newKey] = value
-		}
-	}
+	copyWithNewPrefix(src.GetLabels(), dest.GetLabels(), prefix, replacementPrefix)
 }
 
 // CopyAnnotationsByPrefix copies all annotations from a source object to a destination object where the key matches the specified prefix.
@@ -68,13 +74,5 @@ func CopyAnnotationsByPrefix(src, dest *metav1.ObjectMeta, prefix, replacementPr
 	if dest.GetAnnotations() == nil {
 		dest.SetAnnotations(make(map[string]string))
 	}
-	for key, value := range src.GetAnnotations() {
-		if strings.HasPrefix(key, prefix) {
-			newKey := key
-			if prefix != replacementPrefix {
-				newKey = strings.Replace(key, prefix, replacementPrefix, 1)
-			}
-			dest.Annotations[newKey] = value
-		}
-	}
+	copyWithNewPrefix(src.GetAnnotations(), dest.GetAnnotations(), prefix, replacementPrefix)
 }
