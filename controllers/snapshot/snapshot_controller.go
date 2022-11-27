@@ -127,6 +127,7 @@ func (r *Reconciler) getComponentFromSnapshot(context context.Context, snapshot 
 // AdapterInterface is an interface defining all the operations that should be defined in an Integration adapter.
 type AdapterInterface interface {
 	EnsureAllReleasesExist() (results.OperationResult, error)
+	EnsureCreationOfEnvironment() (results.OperationResult, error)
 	EnsureAllIntegrationTestPipelinesExist() (results.OperationResult, error)
 	EnsureGlobalComponentImageUpdated() (results.OperationResult, error)
 	EnsureSnapshotEnvironmentBindingExist() (results.OperationResult, error)
@@ -142,6 +143,7 @@ func (r *Reconciler) ReconcileHandler(adapter AdapterInterface) (ctrl.Result, er
 		adapter.EnsureAllReleasesExist,
 		adapter.EnsureGlobalComponentImageUpdated,
 		adapter.EnsureSnapshotEnvironmentBindingExist,
+		adapter.EnsureCreationOfEnvironment,
 		adapter.EnsureAllIntegrationTestPipelinesExist,
 	}
 

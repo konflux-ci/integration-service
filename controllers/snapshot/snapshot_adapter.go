@@ -18,7 +18,9 @@ package snapshot
 
 import (
 	"context"
+	"reflect"
 
+	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 
 	"github.com/go-logr/logr"
@@ -79,6 +81,11 @@ func (a *Adapter) EnsureAllIntegrationTestPipelinesExist() (results.OperationRes
 			"IntegrationTestScenarios", len(*integrationTestScenarios))
 		for _, integrationTestScenario := range *integrationTestScenarios {
 			integrationTestScenario := integrationTestScenario //G601
+			if !reflect.ValueOf(integrationTestScenario.Spec.Environment).IsZero() {
+				//get the environmet according to environment name from integrationTestScenario
+				a.logger.Info("IntegrationTestScenario has environment defined, skipping creation of pipelinerun.", "IntegrationTestScenario: ", integrationTestScenario)
+				return results.ContinueProcessing()
+			}
 			integrationPipelineRun, err := helpers.GetLatestPipelineRunForSnapshotAndScenario(a.client, a.context, a.application, a.snapshot, &integrationTestScenario)
 			if err != nil {
 				a.logger.Error(err, "Failed to get latest pipelineRun for snapshot and scenario",
@@ -126,6 +133,82 @@ func (a *Adapter) EnsureAllIntegrationTestPipelinesExist() (results.OperationRes
 			"Snapshot.Status", updatedSnapshot.Status)
 	}
 
+	return results.ContinueProcessing()
+}
+
+// EnsureCreationOfEnvironment makes sure that all envrionemnts that were requested via
+// IntegrationTestScenarios get created, in case that environment is already created, provides
+// a message about this fact
+func (a *Adapter) EnsureCreationOfEnvironment() (results.OperationResult, error) {
+	environmentFound := false
+	if gitops.HaveHACBSTestsFinished(a.snapshot) {
+		a.logger.Info("The Snapshot has finished testing.")
+		return results.ContinueProcessing()
+	}
+
+	integrationTestScenarios, err := helpers.GetAllIntegrationTestScenariosForApplication(a.client, a.context, a.application)
+
+	if err != nil {
+		a.logger.Error(err, "Failed to get Integration test scenarios for following application",
+			"Application.Name", a.application.Name,
+			"Application.Namespace", a.application.Namespace)
+		return results.RequeueOnErrorOrStop(err)
+	}
+
+	allEnvironments, err := a.getAllEnvironments()
+	if err != nil {
+		a.logger.Error(err, "Failed to get all environments.",
+			"Application.Name", a.application.Name,
+			"Application.Namespace", a.application.Namespace)
+		return results.RequeueOnErrorOrStop(err)
+	}
+
+	if integrationTestScenarios != nil {
+		for _, integrationTestScenario := range *integrationTestScenarios {
+			integrationTestScenario := integrationTestScenario //G601
+			if reflect.ValueOf(integrationTestScenario.Spec.Environment).IsZero() {
+				continue
+			}
+			for _, environment := range *allEnvironments {
+				environment := environment //G601
+				//prevent creating already existing environments
+				if helpers.HasLabelWithValue(&environment, gitops.SnapshotLabel, a.snapshot.Name) && helpers.HasLabelWithValue(&environment, gitops.SnapshotTestScenarioLabel, integrationTestScenario.Name) {
+					a.logger.Info("Environment already exists and contains snapshot and scenario:",
+						"Environment.Name: ", environment.Name,
+						"Snapshot.Name: ", a.snapshot.Name,
+						"IntegrationScenario.Name: ", integrationTestScenario.Name)
+					environmentFound = true
+				}
+			}
+
+			if environmentFound {
+				environmentFound = false
+				continue
+			}
+			//get the environmet according to environment name from integrationTestScenario
+			existingEnv := a.getEnvironmentFromIntegrationTestScenario(&integrationTestScenario)
+
+			//copy existing environment
+			copyEnv, err := a.createCopyOfExistingEnvironment(existingEnv, a.snapshot.Namespace, &integrationTestScenario, a.snapshot, a.application)
+
+			if err != nil {
+				a.logger.Error(err, "Copying of environment failed.")
+				return results.RequeueOnErrorOrStop(err)
+			}
+
+			components, err := a.getAllApplicationComponents(a.application)
+			if err != nil {
+				return results.RequeueWithError(err)
+			}
+
+			binding, err := a.createSnapshotEnvironmentBindingForSnapshot(a.application, copyEnv, a.snapshot, components)
+			if err != nil {
+				a.logger.Error(err, "Failed to create snapshotEnvironmentbinding for snapshot.",
+					"Binding: ", binding,
+					"Snapshot.Spec.Components", a.snapshot.Spec.Components)
+			}
+		}
+	}
 	return results.ContinueProcessing()
 }
 
@@ -421,6 +504,48 @@ func (a *Adapter) updateExistingSnapshotEnvironmentBindingWithSnapshot(snapshotE
 	if err != nil {
 		return nil, err
 	}
-
 	return snapshotEnvironmentBinding, nil
+}
+
+// createCopyOfExistingEnvironment uses existing env as input, specifies namespace where the environment is situated,
+// integrationTestScenario contains information about existing environment
+// snapshot is mainly used for adding labels
+// returns copy of already existing environment with updated envVars
+func (a *Adapter) createCopyOfExistingEnvironment(existingEnvironment *applicationapiv1alpha1.Environment, namespace string, integrationTestScenario *v1alpha1.IntegrationTestScenario, snapshot *applicationapiv1alpha1.Snapshot, application *applicationapiv1alpha1.Application) (*applicationapiv1alpha1.Environment, error) {
+	environment := gitops.NewCopyOfExistingEnvironment(existingEnvironment, namespace, integrationTestScenario).
+		WithIntegrationLabels(integrationTestScenario).
+		WithSnapshot(snapshot).
+		AsEnvironment()
+
+	ref := ctrl.SetControllerReference(application, environment, a.client.Scheme())
+	if ref != nil {
+		a.logger.Error(ref, "Failed to set controller reference for environment!",
+			"application.Name: ", application.Name,
+			"environment.Name: ", environment.Name)
+	}
+
+	err := a.client.Create(a.context, environment)
+	if err != nil {
+		return environment, err
+	}
+	return environment, err
+}
+
+// getEnvironmentFromIntegrationTestScenario looks for already existing environment, if it exists it is returned, if not, nil is returned then together with
+// information about what went wrong
+func (a *Adapter) getEnvironmentFromIntegrationTestScenario(integrationTestScenario *v1alpha1.IntegrationTestScenario) *applicationapiv1alpha1.Environment {
+	existingEnv := &applicationapiv1alpha1.Environment{}
+
+	err := a.client.Get(a.context, types.NamespacedName{
+		Namespace: a.application.Namespace,
+		Name:      integrationTestScenario.Spec.Environment.Name,
+	}, existingEnv)
+
+	if err != nil {
+		a.logger.Info("Environment doesn't exist in same namespace as IntegrationTestScenario or at all.",
+			"integrationTestScenario:", integrationTestScenario.Name,
+			"environment:", integrationTestScenario.Spec.Environment.Name)
+		return nil
+	}
+	return existingEnv
 }
