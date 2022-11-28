@@ -145,7 +145,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		testpipelineRunBuild.Status = tektonv1beta1.PipelineRunStatus{
 			PipelineRunStatusFields: tektonv1beta1.PipelineRunStatusFields{
 				TaskRuns: map[string]*tektonv1beta1.PipelineRunTaskRunStatus{
-					"index1": &tektonv1beta1.PipelineRunTaskRunStatus{
+					"index1": {
 						PipelineTaskName: "build-container",
 						Status: &tektonv1beta1.TaskRunStatus{
 							TaskRunStatusFields: tektonv1beta1.TaskRunStatusFields{
@@ -374,24 +374,4 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			return result.RequeueRequest && err != nil && err.Error() == "ReportStatusError"
 		}, time.Second*10).Should(BeTrue())
 	})
-
-	It("ensures status is not reported for integration PipelineRuns derived from optional IntegrationTestScenarios", func() {
-		adapter.pipelineRun = &tektonv1beta1.PipelineRun{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "pipelinerun-status-sample",
-				Namespace: "default",
-				Labels: map[string]string{
-					"test.appstudio.openshift.io/optional":  "true",
-					"pipelines.appstudio.openshift.io/type": "test",
-				},
-			},
-		}
-
-		Eventually(func() bool {
-			result, err := adapter.EnsureStatusReported()
-			return !result.CancelRequest && err == nil
-		}, time.Second*10).Should(BeTrue())
-		Expect(statusReporter.Called).To(BeFalse())
-	})
-
 })

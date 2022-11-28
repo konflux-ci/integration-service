@@ -126,6 +126,8 @@ func setFailureStatus(pipelineRun *tektonv1beta1.PipelineRun) {
 					PipelineTaskName: "task-passed",
 					Status: &tektonv1beta1.TaskRunStatus{
 						TaskRunStatusFields: tektonv1beta1.TaskRunStatusFields{
+							StartTime:      &metav1.Time{Time: time.Now()},
+							CompletionTime: &metav1.Time{Time: time.Now()},
 							TaskRunResults: []tektonv1beta1.TaskRunResult{
 								{
 									Name:  "HACBS_TEST_OUTPUT",
@@ -251,6 +253,8 @@ var _ = Describe("GitHubReporter", func() {
 							PipelineTaskName: "task-passed",
 							Status: &tektonv1beta1.TaskRunStatus{
 								TaskRunStatusFields: tektonv1beta1.TaskRunStatusFields{
+									StartTime:      &metav1.Time{Time: time.Now()},
+									CompletionTime: &metav1.Time{Time: time.Now()},
 									TaskRunResults: []tektonv1beta1.TaskRunResult{
 										{
 											Name:  "HACBS_TEST_OUTPUT",
@@ -264,6 +268,8 @@ var _ = Describe("GitHubReporter", func() {
 							PipelineTaskName: "task-skipped",
 							Status: &tektonv1beta1.TaskRunStatus{
 								TaskRunStatusFields: tektonv1beta1.TaskRunStatusFields{
+									StartTime:      &metav1.Time{Time: time.Now()},
+									CompletionTime: &metav1.Time{Time: time.Now()},
 									TaskRunResults: []tektonv1beta1.TaskRunResult{
 										{
 											Name:  "HACBS_TEST_OUTPUT",
