@@ -156,16 +156,16 @@ var _ = Describe("GitHubReporter", func() {
 			ObjectMeta: metav1.ObjectMeta{
 				Name: "test-pipelinerun",
 				Labels: map[string]string{
-					"test.appstudio.openshift.io/component":     "devfile-sample-go-basic",
-					"test.appstudio.openshift.io/scenario":      "example-pass",
-					"pipelinesascode.tekton.dev/git-provider":   "github",
-					"pipelinesascode.tekton.dev/url-org":        "devfile-sample",
-					"pipelinesascode.tekton.dev/url-repository": "devfile-sample-go-basic",
-					"pipelinesascode.tekton.dev/sha":            "12a4a35ccd08194595179815e4646c3a6c08bb77",
-					"pipelinesascode.tekton.dev/event-type":     "pull_request",
+					"test.appstudio.openshift.io/component":          "devfile-sample-go-basic",
+					"test.appstudio.openshift.io/scenario":           "example-pass",
+					"pac.test.appstudio.openshift.io/git-provider":   "github",
+					"pac.test.appstudio.openshift.io/url-org":        "devfile-sample",
+					"pac.test.appstudio.openshift.io/url-repository": "devfile-sample-go-basic",
+					"pac.test.appstudio.openshift.io/sha":            "12a4a35ccd08194595179815e4646c3a6c08bb77",
+					"pac.test.appstudio.openshift.io/event-type":     "pull_request",
 				},
 				Annotations: map[string]string{
-					"pipelinesascode.tekton.dev/repo-url": "https://github.com/devfile-sample/devfile-sample-go-basic",
+					"pac.test.appstudio.openshift.io/repo-url": "https://github.com/devfile-sample/devfile-sample-go-basic",
 				},
 			},
 		}
@@ -178,7 +178,7 @@ var _ = Describe("GitHubReporter", func() {
 		var secretData map[string][]byte
 
 		BeforeEach(func() {
-			pipelineRun.Annotations["pipelinesascode.tekton.dev/installation-id"] = "123"
+			pipelineRun.Annotations["pac.test.appstudio.openshift.io/installation-id"] = "123"
 
 			secretData = map[string][]byte{
 				"github-application-id": []byte("456"),
@@ -199,16 +199,16 @@ var _ = Describe("GitHubReporter", func() {
 		})
 
 		It("doesn't report status for non-pull request events", func() {
-			delete(pipelineRun.Labels, "pipelinesascode.tekton.dev/event-type")
+			delete(pipelineRun.Labels, "pac.test.appstudio.openshift.io/event-type")
 			Expect(reporter.ReportStatus(context.TODO(), pipelineRun)).To(BeNil())
 		})
 
 		It("doesn't report status when the credentials are invalid/missing", func() {
 			// Invalid installation ID value
-			pipelineRun.Annotations["pipelinesascode.tekton.dev/installation-id"] = "bad-installation-id"
+			pipelineRun.Annotations["pac.test.appstudio.openshift.io/installation-id"] = "bad-installation-id"
 			err := reporter.ReportStatus(context.TODO(), pipelineRun)
 			Expect(err).ToNot(BeNil())
-			pipelineRun.Annotations["pipelinesascode.tekton.dev/installation-id"] = "123"
+			pipelineRun.Annotations["pac.test.appstudio.openshift.io/installation-id"] = "123"
 
 			// Invalid app ID value
 			secretData["github-application-id"] = []byte("bad-app-id")
@@ -303,7 +303,7 @@ var _ = Describe("GitHubReporter", func() {
 		var repo pacv1alpha1.Repository
 
 		BeforeEach(func() {
-			pipelineRun.Annotations["pipelinesascode.tekton.dev/pull-request"] = "999"
+			pipelineRun.Annotations["pac.test.appstudio.openshift.io/pull-request"] = "999"
 
 			repo = pacv1alpha1.Repository{
 				Spec: pacv1alpha1.RepositorySpec{
@@ -339,7 +339,7 @@ var _ = Describe("GitHubReporter", func() {
 		})
 
 		It("doesn't report status for non-pull request events", func() {
-			delete(pipelineRun.Labels, "pipelinesascode.tekton.dev/event-type")
+			delete(pipelineRun.Labels, "pac.test.appstudio.openshift.io/event-type")
 			Expect(reporter.ReportStatus(context.TODO(), pipelineRun)).To(BeNil())
 		})
 

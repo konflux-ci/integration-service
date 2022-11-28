@@ -1,6 +1,11 @@
 package helpers
 
-import "sigs.k8s.io/controller-runtime/pkg/client"
+import (
+	"strings"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+)
 
 // HasAnnotation checks if a given annotation exists
 func HasAnnotation(object client.Object, annotation string) bool {
@@ -32,4 +37,42 @@ func HasLabelWithValue(object client.Object, label, value string) bool {
 	}
 
 	return false
+}
+
+// copyWithNewPrefix copies key/value pairs from a source map to a destination map where the key matches the specified prefix.
+// If replacementPrefix is different from prefix, the prefix will be replaced while performing the copy.
+func copyWithNewPrefix(src, dest map[string]string, prefix, replacementPrefix string) {
+	for key, value := range src {
+		if strings.HasPrefix(key, prefix) {
+			newKey := key
+			if prefix != replacementPrefix {
+				newKey = strings.Replace(key, prefix, replacementPrefix, 1)
+			}
+			dest[newKey] = value
+		}
+	}
+}
+
+// CopyLabelsByPrefix copies all labels from a source object to a destination object where the key matches the specified prefix.
+// If replacementPrefix is different from prefix, the prefix will be replaced while performing the copy.
+func CopyLabelsByPrefix(src, dest *metav1.ObjectMeta, prefix, replacementPrefix string) {
+	if src.GetLabels() == nil {
+		return
+	}
+	if dest.GetLabels() == nil {
+		dest.SetLabels(make(map[string]string))
+	}
+	copyWithNewPrefix(src.GetLabels(), dest.GetLabels(), prefix, replacementPrefix)
+}
+
+// CopyAnnotationsByPrefix copies all annotations from a source object to a destination object where the key matches the specified prefix.
+// If replacementPrefix is different from prefix, the prefix will be replaced while performing the copy.
+func CopyAnnotationsByPrefix(src, dest *metav1.ObjectMeta, prefix, replacementPrefix string) {
+	if src.GetAnnotations() == nil {
+		return
+	}
+	if dest.GetAnnotations() == nil {
+		dest.SetAnnotations(make(map[string]string))
+	}
+	copyWithNewPrefix(src.GetAnnotations(), dest.GetAnnotations(), prefix, replacementPrefix)
 }

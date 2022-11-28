@@ -151,6 +151,9 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 					gitops.SnapshotComponentLabel:       "component-sample",
 					gitops.PipelineAsCodeEventTypeLabel: "push",
 				},
+				Annotations: map[string]string{
+					gitops.PipelineAsCodeInstallationIDAnnotation: "123",
+				},
 			},
 			Spec: applicationapiv1alpha1.SnapshotSpec{
 				Application: hasApp.Name,
@@ -172,6 +175,9 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 					gitops.SnapshotTypeLabel:            "component",
 					gitops.SnapshotComponentLabel:       "component-sample",
 					gitops.PipelineAsCodeEventTypeLabel: "pull_request",
+				},
+				Annotations: map[string]string{
+					gitops.PipelineAsCodeInstallationIDAnnotation: "123",
 				},
 			},
 			Spec: applicationapiv1alpha1.SnapshotSpec{
@@ -199,6 +205,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 				},
 				Annotations: map[string]string{
 					"appstudio.redhat.com/updateComponentOnSuccess": "false",
+					"pipelinesascode.tekton.dev/installation-id":    "123",
 				},
 			},
 			Spec: tektonv1beta1.PipelineRunSpec{
