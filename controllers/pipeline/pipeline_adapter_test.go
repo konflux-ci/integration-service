@@ -116,9 +116,12 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 					"pipelines.openshift.io/runtime":         "nodejs",
 					"pipelines.openshift.io/strategy":        "s2i",
 					"build.appstudio.openshift.io/component": "component-sample",
+					"pipelinesascode.tekton.dev/event-type":  "pull_request",
 				},
 				Annotations: map[string]string{
 					"appstudio.redhat.com/updateComponentOnSuccess": "false",
+					"pipelinesascode.tekton.dev/on-target-branch":   "[main,master]",
+					"foo": "bar",
 				},
 			},
 			Spec: tektonv1beta1.PipelineRunSpec{
@@ -229,6 +232,36 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		Expect(compositeSnapshot == nil).To(BeTrue())
 	})
 
+	It("ensures pipelines as code labels and annotations are propagated to the snapshot", func() {
+		snapshot, err := adapter.prepareSnapshotForPipelineRun(testpipelineRunBuild, hasComp, hasApp)
+		Expect(err).To(BeNil())
+		Expect(snapshot).ToNot(BeNil())
+		annotation, found := snapshot.GetAnnotations()["pac.test.appstudio.openshift.io/on-target-branch"]
+		Expect(found).To(BeTrue())
+		Expect(annotation).To(Equal("[main,master]"))
+		label, found := snapshot.GetLabels()["pac.test.appstudio.openshift.io/event-type"]
+		Expect(found).To(BeTrue())
+		Expect(label).To(Equal("pull_request"))
+	})
+
+	It("ensures non-pipelines as code labels and annotations are NOT propagated to the snapshot", func() {
+		snapshot, err := adapter.prepareSnapshotForPipelineRun(testpipelineRunBuild, hasComp, hasApp)
+		Expect(err).To(BeNil())
+		Expect(snapshot).ToNot(BeNil())
+
+		// non-PaC labels are not copied
+		_, found := testpipelineRunBuild.GetLabels()["pipelines.appstudio.openshift.io/type"]
+		Expect(found).To(BeTrue())
+		_, found = snapshot.GetLabels()["pipelines.appstudio.openshift.io/type"]
+		Expect(found).To(BeFalse())
+
+		// non-PaC annotations are not copied
+		_, found = testpipelineRunBuild.GetAnnotations()["foo"]
+		Expect(found).To(BeTrue())
+		_, found = snapshot.GetAnnotations()["foo"]
+		Expect(found).To(BeFalse())
+	})
+
 	It("ensures allSnapshot exists and can be found ", func() {
 		Eventually(func() bool {
 			result, err := adapter.EnsureSnapshotExists()
@@ -243,14 +276,14 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				Name:      "pipelinerun-component-sample",
 				Namespace: "default",
 				Labels: map[string]string{
-					"pipelinesascode.tekton.dev/url-org":         "redhat-appstudio",
-					"pipelinesascode.tekton.dev/original-prname": "build-service-on-push",
-					"pipelinesascode.tekton.dev/url-repository":  "build-service",
-					"pipelinesascode.tekton.dev/repository":      "build-service-pac",
-					"test.appstudio.openshift.io/snapshot":       "snapshot-sample",
+					"pac.test.appstudio.openshift.io/url-org":         "redhat-appstudio",
+					"pac.test.appstudio.openshift.io/original-prname": "build-service-on-push",
+					"pac.test.appstudio.openshift.io/url-repository":  "build-service",
+					"pac.test.appstudio.openshift.io/repository":      "build-service-pac",
+					"test.appstudio.openshift.io/snapshot":            "snapshot-sample",
 				},
 				Annotations: map[string]string{
-					"pipelinesascode.tekton.dev/on-target-branch": "[main]",
+					"pac.test.appstudio.openshift.io/on-target-branch": "[main]",
 				},
 			},
 			Spec: tektonv1beta1.PipelineRunSpec{
@@ -284,31 +317,31 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				Name:      "pipelinerun-status-sample",
 				Namespace: "default",
 				Labels: map[string]string{
-					"test.appstudio.openshift.io/application":    "test-application",
-					"test.appstudio.openshift.io/component":      "devfile-sample-go-basic",
-					"test.appstudio.openshift.io/snapshot":       "test-application-s8tnj",
-					"test.appstudio.openshift.io/scenario":       "example-pass",
-					"pipelinesascode.tekton.dev/state":           "started",
-					"pipelinesascode.tekton.dev/sender":          "foo",
-					"pipelinesascode.tekton.dev/check-run-id":    "9058825284",
-					"pipelinesascode.tekton.dev/branch":          "main",
-					"pipelinesascode.tekton.dev/url-org":         "devfile-sample",
-					"pipelinesascode.tekton.dev/original-prname": "devfile-sample-go-basic-on-pull-request",
-					"pipelinesascode.tekton.dev/url-repository":  "devfile-sample-go-basic",
-					"pipelinesascode.tekton.dev/repository":      "devfile-sample-go-basic",
-					"pipelinesascode.tekton.dev/sha":             "12a4a35ccd08194595179815e4646c3a6c08bb77",
-					"pipelinesascode.tekton.dev/git-provider":    "github",
-					"pipelinesascode.tekton.dev/event-type":      "pull_request",
-					"pipelines.appstudio.openshift.io/type":      "test",
+					"test.appstudio.openshift.io/application":         "test-application",
+					"test.appstudio.openshift.io/component":           "devfile-sample-go-basic",
+					"test.appstudio.openshift.io/snapshot":            "test-application-s8tnj",
+					"test.appstudio.openshift.io/scenario":            "example-pass",
+					"pac.test.appstudio.openshift.io/state":           "started",
+					"pac.test.appstudio.openshift.io/sender":          "foo",
+					"pac.test.appstudio.openshift.io/check-run-id":    "9058825284",
+					"pac.test.appstudio.openshift.io/branch":          "main",
+					"pac.test.appstudio.openshift.io/url-org":         "devfile-sample",
+					"pac.test.appstudio.openshift.io/original-prname": "devfile-sample-go-basic-on-pull-request",
+					"pac.test.appstudio.openshift.io/url-repository":  "devfile-sample-go-basic",
+					"pac.test.appstudio.openshift.io/repository":      "devfile-sample-go-basic",
+					"pac.test.appstudio.openshift.io/sha":             "12a4a35ccd08194595179815e4646c3a6c08bb77",
+					"pac.test.appstudio.openshift.io/git-provider":    "github",
+					"pac.test.appstudio.openshift.io/event-type":      "pull_request",
+					"pipelines.appstudio.openshift.io/type":           "test",
 				},
 				Annotations: map[string]string{
-					"pipelinesascode.tekton.dev/on-target-branch": "[main,master]",
-					"pipelinesascode.tekton.dev/repo-url":         "https://github.com/devfile-samples/devfile-sample-go-basic",
-					"pipelinesascode.tekton.dev/sha-title":        "Appstudio update devfile-sample-go-basic",
-					"pipelinesascode.tekton.dev/git-auth-secret":  "pac-gitauth-zjib",
-					"pipelinesascode.tekton.dev/pull-request":     "16",
-					"pipelinesascode.tekton.dev/on-event":         "[pull_request]",
-					"pipelinesascode.tekton.dev/installation-id":  "30353543",
+					"pac.test.appstudio.openshift.io/on-target-branch": "[main,master]",
+					"pac.test.appstudio.openshift.io/repo-url":         "https://github.com/devfile-samples/devfile-sample-go-basic",
+					"pac.test.appstudio.openshift.io/sha-title":        "Appstudio update devfile-sample-go-basic",
+					"pac.test.appstudio.openshift.io/git-auth-secret":  "pac-gitauth-zjib",
+					"pac.test.appstudio.openshift.io/pull-request":     "16",
+					"pac.test.appstudio.openshift.io/on-event":         "[pull_request]",
+					"pac.test.appstudio.openshift.io/installation-id":  "30353543",
 				},
 			},
 			Spec: tektonv1beta1.PipelineRunSpec{

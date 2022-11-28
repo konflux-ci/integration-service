@@ -26,7 +26,7 @@ var _ = Describe("Status Adapter", func() {
 		pipelineRun = &tektonv1beta1.PipelineRun{
 			ObjectMeta: metav1.ObjectMeta{
 				Labels: map[string]string{
-					"pipelinesascode.tekton.dev/git-provider": "github",
+					"pac.test.appstudio.openshift.io/git-provider": "github",
 				},
 			},
 		}

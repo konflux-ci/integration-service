@@ -385,23 +385,10 @@ func (a *Adapter) prepareSnapshotForPipelineRun(pipelineRun *tektonv1beta1.Pipel
 	snapshot.Labels[gitops.SnapshotTypeLabel] = gitops.SnapshotComponentType
 	snapshot.Labels[gitops.SnapshotComponentLabel] = a.component.Name
 
-	// copy PipelineRun PAC annotations/labels from Build to snapshot
-	pipelinerunLabels := pipelineRun.GetLabels()
-	for key, value := range pipelinerunLabels {
-		if strings.Contains(key, "pipelinesascode.tekton.dev") {
-			snapshot.Labels[key] = value
-		}
-	}
-
-	if snapshot.Annotations == nil {
-		snapshot.Annotations = make(map[string]string)
-	}
-	pipelinerunAnnotations := pipelineRun.GetAnnotations()
-	for key, value := range pipelinerunAnnotations {
-		if strings.Contains(key, "pipelinesascode.tekton.dev") {
-			snapshot.Annotations[key] = value
-		}
-	}
+	// Copy PipelineRun PAC annotations/labels from Build to snapshot.
+	// Modify the prefix so the PaC controller won't react to PipelineRuns generated from the snapshot.
+	helpers.CopyLabelsByPrefix(&pipelineRun.ObjectMeta, &snapshot.ObjectMeta, "pipelinesascode.tekton.dev", gitops.PipelinesAsCodePrefix)
+	helpers.CopyAnnotationsByPrefix(&pipelineRun.ObjectMeta, &snapshot.ObjectMeta, "pipelinesascode.tekton.dev", gitops.PipelinesAsCodePrefix)
 
 	return snapshot, nil
 }

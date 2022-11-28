@@ -11,6 +11,9 @@ import (
 )
 
 const (
+	// PipelinesAsCodePrefix contains the prefix applied to labels and annotations copied from Pipelines as Code resources.
+	PipelinesAsCodePrefix = "pac.test.appstudio.openshift.io"
+
 	// SnapshotTypeLabel contains the type of the Snapshot.
 	SnapshotTypeLabel = "test.appstudio.openshift.io/type"
 
@@ -26,29 +29,29 @@ const (
 	// SnapshotCompositeType is the type of Snapshot which was created for multiple components.
 	SnapshotCompositeType = "composite"
 
-	// PipelineAsCodeEventTypeLabel is the type of event which triggered the pipelinerun in build service
-	PipelineAsCodeEventTypeLabel = "pipelinesascode.tekton.dev/event-type"
+	// PipelineAsCodeEventType is the type of event which triggered the pipelinerun in build service
+	PipelineAsCodeEventTypeLabel = PipelinesAsCodePrefix + "/event-type"
 
 	// PipelineAsCodeGitProviderLabel is the git provider which triggered the pipelinerun in build service.
-	PipelineAsCodeGitProviderLabel = "pipelinesascode.tekton.dev/git-provider"
+	PipelineAsCodeGitProviderLabel = PipelinesAsCodePrefix + "/git-provider"
 
 	// PipelineAsCodeSHALabel is the commit which triggered the pipelinerun in build service.
-	PipelineAsCodeSHALabel = "pipelinesascode.tekton.dev/sha"
+	PipelineAsCodeSHALabel = PipelinesAsCodePrefix + "/sha"
 
 	// PipelineAsCodeURLOrgLabel is the organization for the git repo which triggered the pipelinerun in build service.
-	PipelineAsCodeURLOrgLabel = "pipelinesascode.tekton.dev/url-org"
+	PipelineAsCodeURLOrgLabel = PipelinesAsCodePrefix + "/url-org"
 
 	// PipelineAsCodeURLRepositoryLabel is the git repository which triggered the pipelinerun in build service.
-	PipelineAsCodeURLRepositoryLabel = "pipelinesascode.tekton.dev/url-repository"
+	PipelineAsCodeURLRepositoryLabel = PipelinesAsCodePrefix + "/url-repository"
 
 	// PipelineAsCodeRepoURLAnnotation is the URL to the git repository which triggered the pipelinerun in build service.
-	PipelineAsCodeRepoURLAnnotation = "pipelinesascode.tekton.dev/repo-url"
+	PipelineAsCodeRepoURLAnnotation = PipelinesAsCodePrefix + "/repo-url"
 
 	// PipelineAsCodeInstallationIDAnnotation is the GitHub App installation ID for the git repo which triggered the pipelinerun in build service.
-	PipelineAsCodeInstallationIDAnnotation = "pipelinesascode.tekton.dev/installation-id"
+	PipelineAsCodeInstallationIDAnnotation = PipelinesAsCodePrefix + "/installation-id"
 
 	// PipelineAsCodePullRequestAnnotation is the git repository's pull request identifier
-	PipelineAsCodePullRequestAnnotation = "pipelinesascode.tekton.dev/pull-request"
+	PipelineAsCodePullRequestAnnotation = PipelinesAsCodePrefix + "/pull-request"
 
 	// PipelineAscodePushType is the type of push event which triggered the pipelinerun in build service
 	PipelineAsCodePushType = "push"
