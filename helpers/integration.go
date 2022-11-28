@@ -3,6 +3,8 @@ package helpers
 import (
 	"context"
 	"encoding/json"
+	"sort"
+	"time"
 
 	"github.com/go-logr/logr"
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
@@ -44,10 +46,88 @@ type HACBSTestResult struct {
 	Namespace string `json:"namespace"`
 	Timestamp string `json:"timestamp"`
 	Note      string `json:"note"`
-	// Successes        int64  `json:"successes"`
-	// Failures         int64  `json:"failures"`
-	// Warnings         int64  `json:"warnings"`
-	PipelineTaskName string
+	Successes int    `json:"successes"`
+	Failures  int    `json:"failures"`
+	Warnings  int    `json:"warnings"`
+}
+
+// TaskRun is an integration specific wrapper around the status of a Tekton TaskRun.
+type TaskRun struct {
+	logger     logr.Logger
+	trStatus   *tektonv1beta1.PipelineRunTaskRunStatus
+	testResult *HACBSTestResult
+}
+
+// NewTaskRun creates and returns am integration TaskRun.
+func NewTaskRun(logger logr.Logger, status *tektonv1beta1.PipelineRunTaskRunStatus) *TaskRun {
+	return &TaskRun{logger: logger, trStatus: status}
+}
+
+// GetPipelinesTaskName returns the name of the PipelineTask.
+func (t *TaskRun) GetPipelineTaskName() string {
+	return t.trStatus.PipelineTaskName
+}
+
+// GetStartTime returns the start time of the TaskRun.
+// If the start time is unknown, the zero start time is returned.
+func (t *TaskRun) GetStartTime() time.Time {
+	if t.trStatus.Status.StartTime == nil {
+		return time.Time{}
+	}
+	return t.trStatus.Status.StartTime.Time
+}
+
+// GetDuration returns the time it took to execute the Task.
+// If the start or end times are unknown, a duration of 0 is returned.
+func (t *TaskRun) GetDuration() time.Duration {
+	var end time.Time
+	start := t.GetStartTime()
+	if t.trStatus.Status.CompletionTime != nil {
+		end = t.trStatus.Status.CompletionTime.Time
+	} else {
+		end = start
+	}
+	return end.Sub(start)
+}
+
+// GetTestResult returns a HACBSTestResult if the TaskRun produced the result. It will return nil otherwise.
+func (t *TaskRun) GetTestResult() (*HACBSTestResult, error) {
+	// Check for an already parsed result.
+	if t.testResult != nil {
+		return t.testResult, nil
+	}
+
+	for _, taskRunResult := range t.trStatus.Status.TaskRunResults {
+		if taskRunResult.Name == HACBSTestOutputName {
+			var result HACBSTestResult
+			err := json.Unmarshal([]byte(taskRunResult.Value.StringVal), &result)
+			if err != nil {
+				return nil, err
+			}
+			t.logger.Info("Found a HACBS test result", "Result", result)
+			t.testResult = &result
+			return &result, nil
+		}
+	}
+	return nil, nil
+}
+
+// SortTaskRunsByStartTime can sort TaskRuns by their start time. It implements sort.Interface.
+type SortTaskRunsByStartTime []*TaskRun
+
+// Len returns the length of the slice being sorted.
+func (s SortTaskRunsByStartTime) Len() int {
+	return len(s)
+}
+
+// Swap switches the position of two elements in the slice.
+func (s SortTaskRunsByStartTime) Swap(i int, j int) {
+	s[i], s[j] = s[j], s[i]
+}
+
+// Less determines if TaskRun in position i started before TaskRun in position j.
+func (s SortTaskRunsByStartTime) Less(i int, j int) bool {
+	return s[i].GetStartTime().Before(s[j].GetStartTime())
 }
 
 // GetRequiredIntegrationTestScenariosForApplication returns the IntegrationTestScenarios used by the application being processed.
@@ -149,20 +229,26 @@ func GetLatestPipelineRunForSnapshotAndScenario(adapterClient client.Client, ctx
 
 // GetHACBSTestResultsFromPipelineRun finds all TaskRuns with a HACBS_TEST_OUTPUT result and returns the parsed data
 func GetHACBSTestResultsFromPipelineRun(logger logr.Logger, pipelineRun *tektonv1beta1.PipelineRun) ([]*HACBSTestResult, error) {
+	taskRuns := GetTaskRunsFromPipelineRun(logger, pipelineRun)
 	results := []*HACBSTestResult{}
-	for _, taskRun := range pipelineRun.Status.TaskRuns {
-		for _, taskRunResult := range taskRun.Status.TaskRunResults {
-			if taskRunResult.Name == HACBSTestOutputName {
-				var result HACBSTestResult
-				err := json.Unmarshal([]byte(taskRunResult.Value.StringVal), &result)
-				if err != nil {
-					return nil, err
-				}
-				result.PipelineTaskName = taskRun.PipelineTaskName
-				results = append(results, &result)
-				logger.Info("Found a HACBS test result", "Result", result)
-			}
+	for _, tr := range taskRuns {
+		r, err := tr.GetTestResult()
+		if err != nil {
+			return nil, err
+		}
+		if r != nil {
+			results = append(results, r)
 		}
 	}
 	return results, nil
+}
+
+// GetTaskRunsFromPipelineRun returns integration TaskRun wrappers for all Tekton TaskRuns in a PipelineRun sorted by start time.
+func GetTaskRunsFromPipelineRun(logger logr.Logger, pipelineRun *tektonv1beta1.PipelineRun) []*TaskRun {
+	taskRuns := []*TaskRun{}
+	for _, tr := range pipelineRun.Status.TaskRuns {
+		taskRuns = append(taskRuns, NewTaskRun(logger, tr))
+	}
+	sort.Sort(SortTaskRunsByStartTime(taskRuns))
+	return taskRuns
 }

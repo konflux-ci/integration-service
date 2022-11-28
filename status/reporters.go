@@ -186,12 +186,8 @@ func (r *GitHubReporter) createCheckRunAdapter(pipelineRun *tektonv1beta1.Pipeli
 		}
 	}
 
-	results, err := helpers.GetHACBSTestResultsFromPipelineRun(r.logger, pipelineRun)
-	if err != nil {
-		return nil, err
-	}
-
-	summary, err := FormatSummary(results)
+	taskRuns := helpers.GetTaskRunsFromPipelineRun(r.logger, pipelineRun)
+	summary, err := FormatSummary(taskRuns)
 	if err != nil {
 		return nil, err
 	}
@@ -322,11 +318,6 @@ func (r *GitHubReporter) createComment(ctx context.Context, pipelineRun *tektonv
 		return err
 	}
 
-	results, err := helpers.GetHACBSTestResultsFromPipelineRun(r.logger, pipelineRun)
-	if err != nil {
-		return err
-	}
-
 	outcome, err := helpers.CalculateIntegrationPipelineRunOutcome(r.logger, pipelineRun)
 	if err != nil {
 		return err
@@ -339,7 +330,8 @@ func (r *GitHubReporter) createComment(ctx context.Context, pipelineRun *tektonv
 		title = scenario + " has failed"
 	}
 
-	comment, err := FormatComment(title, results)
+	taskRuns := helpers.GetTaskRunsFromPipelineRun(r.logger, pipelineRun)
+	comment, err := FormatComment(title, taskRuns)
 	if err != nil {
 		return err
 	}
