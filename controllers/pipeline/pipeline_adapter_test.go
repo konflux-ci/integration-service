@@ -17,6 +17,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	integrationv1alpha1 "github.com/redhat-appstudio/integration-service/api/v1alpha1"
+	"github.com/redhat-appstudio/integration-service/gitops"
+	"github.com/redhat-appstudio/integration-service/helpers"
+	"knative.dev/pkg/apis"
+	"knative.dev/pkg/apis/duck/v1beta1"
 	"reflect"
 	"time"
 
@@ -29,10 +34,8 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
-	"github.com/redhat-appstudio/integration-service/helpers"
 	"github.com/redhat-appstudio/integration-service/status"
 	tektonv1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
-
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -65,6 +68,8 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		testpipelineRunComponent *tektonv1beta1.PipelineRun
 		hasComp                  *applicationapiv1alpha1.Component
 		hasApp                   *applicationapiv1alpha1.Application
+		hasSnapshot              *applicationapiv1alpha1.Snapshot
+		integrationTestScenario  *integrationv1alpha1.IntegrationTestScenario
 	)
 	const (
 		SampleRepoLink = "https://github.com/devfile-samples/devfile-sample-java-springboot-basic"
@@ -103,6 +108,57 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			},
 		}
 		Expect(k8sClient.Create(ctx, hasComp)).Should(Succeed())
+
+		sampleImage := "quay.io/redhat-appstudio/sample-image"
+
+		hasSnapshot = &applicationapiv1alpha1.Snapshot{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "snapshot-sample",
+				Namespace: "default",
+				Labels: map[string]string{
+					gitops.SnapshotTypeLabel:            "component",
+					gitops.SnapshotComponentLabel:       hasComp.Name,
+					gitops.PipelineAsCodeEventTypeLabel: "push",
+				},
+				Annotations: map[string]string{
+					gitops.PipelineAsCodeInstallationIDAnnotation: "123",
+				},
+			},
+			Spec: applicationapiv1alpha1.SnapshotSpec{
+				Application: hasApp.Name,
+				Components: []applicationapiv1alpha1.SnapshotComponent{
+					{
+						Name:           hasComp.Name,
+						ContainerImage: sampleImage,
+					},
+				},
+			},
+		}
+		Expect(k8sClient.Create(ctx, hasSnapshot)).Should(Succeed())
+
+		integrationTestScenario = &integrationv1alpha1.IntegrationTestScenario{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "example-pass",
+				Namespace: "default",
+
+				Labels: map[string]string{
+					"test.appstudio.openshift.io/optional": "false",
+				},
+			},
+			Spec: integrationv1alpha1.IntegrationTestScenarioSpec{
+				Application: hasApp.Name,
+				Bundle:      "quay.io/redhat-appstudio/example-tekton-bundle:component-pipeline-pass",
+				Pipeline:    "component-pipeline-pass",
+				Environment: integrationv1alpha1.TestEnvironment{
+					Name: "envname",
+					Type: "POC",
+					Configuration: applicationapiv1alpha1.EnvironmentConfiguration{
+						Env: []applicationapiv1alpha1.EnvVarPair{},
+					},
+				},
+			},
+		}
+		Expect(k8sClient.Create(ctx, integrationTestScenario)).Should(Succeed())
 	})
 
 	BeforeEach(func() {
@@ -160,6 +216,15 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 					},
 				},
 			},
+			Status: v1beta1.Status{
+				Conditions: v1beta1.Conditions{
+					apis.Condition{
+						Reason: "Completed",
+						Status: "True",
+						Type:   apis.ConditionSucceeded,
+					},
+				},
+			},
 		}
 		Expect(k8sClient.Status().Update(ctx, testpipelineRunBuild)).Should(Succeed())
 
@@ -170,6 +235,70 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			}, testpipelineRunBuild)
 			return err == nil && len(testpipelineRunBuild.Status.TaskRuns) > 0
 		}, time.Second*10).Should(BeTrue())
+
+		testpipelineRunComponent = &tektonv1beta1.PipelineRun{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "pipelinerun-component-sample",
+				Namespace: "default",
+				Labels: map[string]string{
+					"pac.test.appstudio.openshift.io/url-org":         "redhat-appstudio",
+					"pac.test.appstudio.openshift.io/original-prname": "build-service-on-push",
+					"pac.test.appstudio.openshift.io/url-repository":  "build-service",
+					"pac.test.appstudio.openshift.io/repository":      "build-service-pac",
+					"test.appstudio.openshift.io/snapshot":            hasSnapshot.Name,
+					"test.appstudio.openshift.io/scenario":            integrationTestScenario.Name,
+				},
+				Annotations: map[string]string{
+					"pac.test.appstudio.openshift.io/on-target-branch": "[main]",
+				},
+			},
+			Spec: tektonv1beta1.PipelineRunSpec{
+				PipelineRef: &tektonv1beta1.PipelineRef{
+					Name:   "component-pipeline-pass",
+					Bundle: "quay.io/kpavic/test-bundle:component-pipeline-pass",
+				},
+			},
+		}
+
+		Expect(k8sClient.Create(ctx, testpipelineRunComponent)).Should(Succeed())
+
+		testpipelineRunComponent.Status = tektonv1beta1.PipelineRunStatus{
+			PipelineRunStatusFields: tektonv1beta1.PipelineRunStatusFields{
+				TaskRuns: map[string]*tektonv1beta1.PipelineRunTaskRunStatus{
+					"index1": &tektonv1beta1.PipelineRunTaskRunStatus{
+						PipelineTaskName: "task-failure",
+						Status: &tektonv1beta1.TaskRunStatus{
+							TaskRunStatusFields: tektonv1beta1.TaskRunStatusFields{
+								TaskRunResults: []tektonv1beta1.TaskRunResult{
+									{
+										Name:  "HACBS_TEST_OUTPUT",
+										Value: *tektonv1beta1.NewArrayOrString("{\"result\":\"SUCCESS\",\"timestamp\":\"1665405317\",\"failures\":0,\"successes\":1}"),
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			Status: v1beta1.Status{
+				Conditions: v1beta1.Conditions{
+					apis.Condition{
+						Reason: "Completed",
+						Status: "True",
+						Type:   apis.ConditionSucceeded,
+					},
+				},
+			},
+		}
+		Expect(k8sClient.Status().Update(ctx, testpipelineRunComponent)).Should(Succeed())
+
+		Eventually(func() error {
+			err := k8sClient.Get(ctx, types.NamespacedName{
+				Name:      testpipelineRunComponent.Name,
+				Namespace: "default",
+			}, testpipelineRunComponent)
+			return err
+		}, time.Second*10).ShouldNot(HaveOccurred())
 
 		adapter = NewAdapter(testpipelineRunBuild, hasComp, hasApp, ctrl.Log, k8sClient, ctx)
 		statusReporter = &MockStatusReporter{}
@@ -182,6 +311,8 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 	AfterEach(func() {
 		err := k8sClient.Delete(ctx, testpipelineRunBuild)
 		Expect(err == nil || k8serrors.IsNotFound(err)).To(BeTrue())
+		err = k8sClient.Delete(ctx, testpipelineRunComponent)
+		Expect(err == nil || k8serrors.IsNotFound(err)).To(BeTrue())
 	})
 
 	AfterAll(func() {
@@ -189,25 +320,35 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		Expect(err == nil || k8serrors.IsNotFound(err)).To(BeTrue())
 		err = k8sClient.Delete(ctx, hasComp)
 		Expect(err == nil || k8serrors.IsNotFound(err)).To(BeTrue())
+		err = k8sClient.Delete(ctx, hasSnapshot)
+		Expect(err == nil || k8serrors.IsNotFound(err)).To(BeTrue())
+		err = k8sClient.Delete(ctx, integrationTestScenario)
+		Expect(err == nil || k8serrors.IsNotFound(err)).To(BeTrue())
 	})
 
 	It("can create a new Adapter instance", func() {
 		Expect(reflect.TypeOf(NewAdapter(testpipelineRunBuild, hasComp, hasApp, ctrl.Log, k8sClient, ctx))).To(Equal(reflect.TypeOf(&Adapter{})))
 	})
 
-	It("ensures the Applicationcomponents can be found ", func() {
+	It("ensures the Application Components can be found ", func() {
 		applicationComponents, err := adapter.getAllApplicationComponents(hasApp)
 		Expect(err == nil).To(BeTrue())
 		Expect(applicationComponents != nil).To(BeTrue())
 	})
 
 	It("ensures the Imagepullspec from pipelinerun and prepare snapshot can be created", func() {
-		imageDigest, err := adapter.getImagePullSpecFromPipelineRun(testpipelineRunBuild)
+		imagePullSpec, err := adapter.getImagePullSpecFromPipelineRun(testpipelineRunBuild)
 		Expect(err == nil).To(BeTrue())
-		Expect(imageDigest != "").To(BeTrue())
-		snapshot, err := adapter.prepareSnapshot(hasApp, hasComp, imageDigest)
+		Expect(imagePullSpec != "").To(BeTrue())
+
+		snapshot, err := adapter.prepareSnapshot(hasApp, hasComp, imagePullSpec)
 		Expect(err == nil).To(BeTrue())
 		Expect(snapshot != nil).To(BeTrue())
+
+		fetchedPullSpec, err := adapter.getImagePullSpecFromSnapshotComponent(snapshot, hasComp)
+		Expect(err == nil).To(BeTrue())
+		Expect(fetchedPullSpec != "").To(BeTrue())
+		Expect(fetchedPullSpec == imagePullSpec).To(BeTrue())
 	})
 
 	It("ensures the global component list unchanged and compositeSnapshot shouldn't be created ", func() {
@@ -215,21 +356,62 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		Expect(err == nil).To(BeTrue())
 		Expect(expectedSnapshot != nil).To(BeTrue())
 
-		integrationTestScenarios, err := helpers.GetRequiredIntegrationTestScenariosForApplication(k8sClient, ctx, hasApp)
-		Expect(err == nil).To(BeTrue())
-
-		integrationPipelineRuns, err := adapter.getAllPipelineRunsForSnapshot(expectedSnapshot, integrationTestScenarios)
-		Expect(err == nil).To(BeTrue())
-		Expect(expectedSnapshot != nil).To(BeTrue())
-
-		allIntegrationPipelineRunsPassed, err := adapter.determineIfAllIntegrationPipelinesPassed(integrationPipelineRuns)
-		Expect(err == nil).To(BeTrue())
-		Expect(allIntegrationPipelineRunsPassed).To(BeTrue())
-
-		// check if the global component list changed in the meantime and create a composite snapshot if it did.
+		// Check if the global component list changed in the meantime and create a composite snapshot if it did.
 		compositeSnapshot, err := adapter.createCompositeSnapshotsIfConflictExists(hasApp, hasComp, expectedSnapshot)
 		Expect(err == nil).To(BeTrue())
 		Expect(compositeSnapshot == nil).To(BeTrue())
+	})
+
+	It("ensures the global component list is changed and compositeSnapshot should be created", func() {
+		createdSnapshot, err := adapter.getSnapshotFromPipelineRun(testpipelineRunComponent, "test")
+		Expect(err).To(BeNil())
+		Expect(createdSnapshot).ToNot(BeNil())
+
+		// A new component is added to the application in the meantime, changing the global component list.
+		hasCompNew := &applicationapiv1alpha1.Component{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "component-sample-2",
+				Namespace: "default",
+			},
+			Spec: applicationapiv1alpha1.ComponentSpec{
+				ComponentName:  "component-sample-2",
+				Application:    hasApp.Name,
+				ContainerImage: "quay.io/redhat-appstudio/sample-image:new-label",
+				Source: applicationapiv1alpha1.ComponentSource{
+					ComponentSourceUnion: applicationapiv1alpha1.ComponentSourceUnion{
+						GitSource: &applicationapiv1alpha1.GitSource{
+							URL: SampleRepoLink,
+						},
+					},
+				},
+			},
+		}
+		Expect(k8sClient.Create(ctx, hasCompNew)).Should(Succeed())
+
+		Eventually(func() bool {
+			applicationComponents, err := adapter.getAllApplicationComponents(hasApp)
+			return err == nil && len(*applicationComponents) > 1
+		}, time.Second*10).Should(BeTrue())
+
+		// Check if the global component list changed in the meantime and create a composite snapshot if it did.
+		compositeSnapshot, err := adapter.createCompositeSnapshotsIfConflictExists(hasApp, hasComp, createdSnapshot)
+		fmt.Fprintf(GinkgoWriter, "compositeSnapshot: %v\n", compositeSnapshot.Name)
+		Expect(err == nil).To(BeTrue())
+		Expect(compositeSnapshot != nil).To(BeTrue())
+
+		Eventually(func() error {
+			err := k8sClient.Get(ctx, types.NamespacedName{
+				Name:      compositeSnapshot.Name,
+				Namespace: compositeSnapshot.Namespace,
+			}, compositeSnapshot)
+			return err
+		}, time.Second*10).ShouldNot(HaveOccurred())
+
+		// Check if the composite snapshot that was already created above was correctly detected and returned.
+		existingCompositeSnapshot, err := adapter.createCompositeSnapshotsIfConflictExists(hasApp, hasComp, createdSnapshot)
+		Expect(err == nil).To(BeTrue())
+		Expect(existingCompositeSnapshot != nil).To(BeTrue())
+		Expect(existingCompositeSnapshot.Name == compositeSnapshot.Name).To(BeTrue())
 	})
 
 	It("ensures pipelines as code labels and annotations are propagated to the snapshot", func() {
@@ -262,7 +444,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		Expect(found).To(BeFalse())
 	})
 
-	It("ensures allSnapshot exists and can be found ", func() {
+	It("ensures Snapshot exists and can be found ", func() {
 		Eventually(func() bool {
 			result, err := adapter.EnsureSnapshotExists()
 			fmt.Fprintf(GinkgoWriter, "Err: %v\n", err)
@@ -270,38 +452,17 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		}, time.Second*10).Should(BeTrue())
 	})
 
-	It("ensures Snapshot passed all tests", func() {
-		testpipelineRunComponent = &tektonv1beta1.PipelineRun{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "pipelinerun-component-sample",
-				Namespace: "default",
-				Labels: map[string]string{
-					"pac.test.appstudio.openshift.io/url-org":         "redhat-appstudio",
-					"pac.test.appstudio.openshift.io/original-prname": "build-service-on-push",
-					"pac.test.appstudio.openshift.io/url-repository":  "build-service",
-					"pac.test.appstudio.openshift.io/repository":      "build-service-pac",
-					"test.appstudio.openshift.io/snapshot":            "snapshot-sample",
-				},
-				Annotations: map[string]string{
-					"pac.test.appstudio.openshift.io/on-target-branch": "[main]",
-				},
-			},
-			Spec: tektonv1beta1.PipelineRunSpec{
-				PipelineRef: &tektonv1beta1.PipelineRef{
-					Name:   "component-pipeline-pass",
-					Bundle: "quay.io/kpavic/test-bundle:component-pipeline-pass",
-				},
-			},
-		}
-		Expect(k8sClient.Create(ctx, testpipelineRunComponent)).Should(Succeed())
-		Eventually(func() error {
-			err := k8sClient.Get(ctx, types.NamespacedName{
-				Name:      testpipelineRunComponent.Name,
-				Namespace: "default",
-			}, testpipelineRunComponent)
-			return err
-		}, time.Second*10).ShouldNot(HaveOccurred())
+	It("ensures snapshot creation is skipped when there is no component defined ", func() {
+		adapter = NewAdapter(testpipelineRunBuild, nil, hasApp, ctrl.Log, k8sClient, ctx)
+		Expect(reflect.TypeOf(adapter)).To(Equal(reflect.TypeOf(&Adapter{})))
 
+		Eventually(func() bool {
+			result, err := adapter.EnsureSnapshotExists()
+			return !result.CancelRequest && err == nil
+		}, time.Second*10).Should(BeTrue())
+	})
+
+	It("ensures Snapshot passed all tests", func() {
 		adapter = NewAdapter(testpipelineRunComponent, hasComp, hasApp, ctrl.Log, k8sClient, ctx)
 		Expect(reflect.TypeOf(adapter)).To(Equal(reflect.TypeOf(&Adapter{})))
 
@@ -309,6 +470,18 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			result, err := adapter.EnsureSnapshotPassedAllTests()
 			return !result.CancelRequest && err == nil
 		}, time.Second*10).Should(BeTrue())
+
+		integrationTestScenarios, err := helpers.GetRequiredIntegrationTestScenariosForApplication(k8sClient, ctx, hasApp)
+		Expect(err == nil).To(BeTrue())
+		Expect(len(*integrationTestScenarios) > 0).To(BeTrue())
+
+		integrationPipelineRuns, err := adapter.getAllPipelineRunsForSnapshot(hasSnapshot, integrationTestScenarios)
+		Expect(err == nil).To(BeTrue())
+		Expect(len(*integrationPipelineRuns) > 0).To(BeTrue())
+
+		allIntegrationPipelineRunsPassed, err := adapter.determineIfAllIntegrationPipelinesPassed(integrationPipelineRuns)
+		Expect(err == nil).To(BeTrue())
+		Expect(allIntegrationPipelineRunsPassed).To(BeTrue())
 	})
 
 	It("ensures status is reported for integration PipelineRuns", func() {
