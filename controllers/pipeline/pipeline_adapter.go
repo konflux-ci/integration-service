@@ -67,6 +67,11 @@ func (a *Adapter) EnsureSnapshotExists() (results.OperationResult, error) {
 		return results.ContinueProcessing()
 	}
 
+	if a.component == nil {
+		a.logger.Info("The pipelineRun does not have any component associated with it, will not create a new Snapshot.")
+		return results.ContinueProcessing()
+	}
+
 	expectedSnapshot, err := a.prepareSnapshotForPipelineRun(a.pipelineRun, a.component, a.application)
 	if err != nil {
 		return results.RequeueWithError(err)
