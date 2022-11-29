@@ -8,9 +8,10 @@ require (
 	github.com/google/go-github/v45 v45.2.0
 	github.com/onsi/ginkgo v1.16.5
 	github.com/onsi/ginkgo/v2 v2.5.0
-	github.com/onsi/gomega v1.24.0
+	github.com/onsi/gomega v1.24.1
 	github.com/openshift-pipelines/pipelines-as-code v0.13.0
 	github.com/redhat-appstudio/application-api v0.0.0-20221114151952-77cba9006505
+	github.com/redhat-appstudio/operator-goodies v0.0.0-20221127150647-a39dc9da8d18
 	github.com/redhat-appstudio/release-service v0.0.0-20221116195308-308d82e909fa
 	github.com/tektoncd/pipeline v0.41.0
 	golang.org/x/oauth2 v0.1.0
@@ -81,10 +82,10 @@ require (
 	go.uber.org/multierr v1.8.0 // indirect
 	go.uber.org/zap v1.23.0 // indirect
 	golang.org/x/crypto v0.1.0 // indirect
-	golang.org/x/net v0.1.0 // indirect
+	golang.org/x/net v0.2.0 // indirect
 	golang.org/x/sync v0.1.0 // indirect
-	golang.org/x/sys v0.1.0 // indirect
-	golang.org/x/term v0.1.0 // indirect
+	golang.org/x/sys v0.2.0 // indirect
+	golang.org/x/term v0.2.0 // indirect
 	golang.org/x/text v0.4.0 // indirect
 	golang.org/x/time v0.0.0-20220922220347-f3bd1da661af // indirect
 	gomodules.xyz/jsonpatch/v2 v2.2.0 // indirect
