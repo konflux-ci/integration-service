@@ -18,7 +18,6 @@ package pipeline
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/go-logr/logr"
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
@@ -78,7 +77,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 			"PipelineRun.Name", pipelineRun.Name, "PipelineRun.Namespace", pipelineRun.Namespace)
 		return ctrl.Result{}, err
 	}
-	component, err := r.getComponentFromPipelineRun(ctx, pipelineRun, pipelineType)
+	component, err := r.getComponentFromPipelineRun(ctx, pipelineRun)
 	if err != nil {
 		logger.Error(err, "Failed to get Component for",
 			"PipelineRun.Name", pipelineRun.Name, "PipelineRun.Namespace", pipelineRun.Namespace)
@@ -94,7 +93,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 			return ctrl.Result{}, err
 		}
 	} else if pipelineType == tekton.PipelineRunTestType {
-		application, err = r.getApplicationFromPipelineRun(ctx, pipelineRun, pipelineType)
+		application, err = r.getApplicationFromPipelineRun(ctx, pipelineRun)
 		if err != nil {
 			logger.Error(err, "Failed to get Application for",
 				"PipelineRun.Name", pipelineRun.Name, "PipelineRun.Namespace", pipelineRun.Namespace)
@@ -109,9 +108,8 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 
 // getComponentFromPipelineRun loads from the cluster the Component referenced in the given PipelineRun. If the PipelineRun doesn't
 // specify a Component or this is not found in the cluster, an error will be returned.
-func (r *Reconciler) getComponentFromPipelineRun(context context.Context, pipelineRun *tektonv1beta1.PipelineRun, pipelineType string) (*applicationapiv1alpha1.Component, error) {
-	componentLabel := fmt.Sprintf("%s.%s", pipelineType, tekton.PipelineRunComponentLabel)
-	if componentName, found := pipelineRun.Labels[componentLabel]; found {
+func (r *Reconciler) getComponentFromPipelineRun(context context.Context, pipelineRun *tektonv1beta1.PipelineRun) (*applicationapiv1alpha1.Component, error) {
+	if componentName, found := pipelineRun.Labels[tekton.PipelineRunComponentLabel]; found {
 		component := &applicationapiv1alpha1.Component{}
 		err := r.Get(context, types.NamespacedName{
 			Namespace: pipelineRun.Namespace,
@@ -130,9 +128,8 @@ func (r *Reconciler) getComponentFromPipelineRun(context context.Context, pipeli
 
 // getApplicationFromPipelineRun loads from the cluster the Component referenced in the given PipelineRun. If the PipelineRun doesn't
 // specify a Component or this is not found in the cluster, an error will be returned.
-func (r *Reconciler) getApplicationFromPipelineRun(context context.Context, pipelineRun *tektonv1beta1.PipelineRun, pipelineType string) (*applicationapiv1alpha1.Application, error) {
-	applicationLabel := fmt.Sprintf("%s.%s", pipelineType, tekton.PipelineRunApplicationLabel)
-	if componentName, found := pipelineRun.Labels[applicationLabel]; found {
+func (r *Reconciler) getApplicationFromPipelineRun(context context.Context, pipelineRun *tektonv1beta1.PipelineRun) (*applicationapiv1alpha1.Application, error) {
+	if componentName, found := pipelineRun.Labels[tekton.PipelineRunApplicationLabel]; found {
 		application := &applicationapiv1alpha1.Application{}
 		err := r.Get(context, types.NamespacedName{
 			Namespace: pipelineRun.Namespace,

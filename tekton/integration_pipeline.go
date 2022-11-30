@@ -28,37 +28,40 @@ import (
 )
 
 const (
-	// pipelinesLabelPrefix is the prefix of the pipelines label
-	pipelinesLabelPrefix = "pipelines.appstudio.openshift.io"
+	// PipelinesLabelPrefix is the prefix of the pipelines label
+	PipelinesLabelPrefix = "pipelines.appstudio.openshift.io"
 
-	// testLabelPrefix is the prefix of the test labels
-	testLabelPrefix = "test.appstudio.openshift.io"
+	// TestLabelPrefix is the prefix of the test labels
+	TestLabelPrefix = "test.appstudio.openshift.io"
+
+	// resource labels for snapshot, application and component
+	ResourceLabelSuffix = "appstudio.openshift.io"
 
 	// PipelineTypeTest is the type for PipelineRuns created to run an integration Pipeline
-	pipelineTypeTest = "test"
+	PipelineTypeTest = "test"
 )
 
 var (
 	// PipelinesTypeLabel is the label used to describe the type of pipeline
-	PipelinesTypeLabel = fmt.Sprintf("%s/%s", pipelinesLabelPrefix, "type")
+	PipelinesTypeLabel = fmt.Sprintf("%s/%s", PipelinesLabelPrefix, "type")
 
 	// TestNameLabel is the label used to specify the name of the Test associated with the PipelineRun
-	TestNameLabel = fmt.Sprintf("%s/%s", testLabelPrefix, "name")
+	TestNameLabel = fmt.Sprintf("%s/%s", TestLabelPrefix, "name")
 
 	// ScenarioNameLabel is the label used to specify the name of the IntegrationTestScenario associated with the PipelineRun
-	ScenarioNameLabel = fmt.Sprintf("%s/%s", testLabelPrefix, "scenario")
+	ScenarioNameLabel = fmt.Sprintf("%s/%s", TestLabelPrefix, "scenario")
 
 	// SnapshotNameLabel is the label of specific the name of the snapshot associated with PipelineRun
-	SnapshotNameLabel = fmt.Sprintf("%s/%s", testLabelPrefix, "snapshot")
+	SnapshotNameLabel = fmt.Sprintf("%s/%s", ResourceLabelSuffix, "snapshot")
 
 	// ApplicationNameLabel is the label of specific the name of the Application associated with PipelineRun
-	ApplicationNameLabel = fmt.Sprintf("%s/%s", testLabelPrefix, "application")
+	ApplicationNameLabel = fmt.Sprintf("%s/%s", ResourceLabelSuffix, "application")
 
 	// ComponentNameLabel is the label of specific the name of the component associated with PipelineRun
-	ComponentNameLabel = fmt.Sprintf("%s/%s", testLabelPrefix, "component")
+	ComponentNameLabel = fmt.Sprintf("%s/%s", ResourceLabelSuffix, "component")
 
 	// OptionalLabel is the label used to specify if an IntegrationTestScenario is allowed to fail
-	OptionalLabel = fmt.Sprintf("%s/%s", testLabelPrefix, "optional")
+	OptionalLabel = fmt.Sprintf("%s/%s", TestLabelPrefix, "optional")
 )
 
 // IntegrationPipelineRun is a PipelineRun alias, so we can add new methods to it in this file.
@@ -126,7 +129,7 @@ func (r *IntegrationPipelineRun) WithIntegrationLabels(integrationTestScenario *
 	if r.ObjectMeta.Labels == nil {
 		r.ObjectMeta.Labels = map[string]string{}
 	}
-	r.ObjectMeta.Labels[PipelinesTypeLabel] = pipelineTypeTest
+	r.ObjectMeta.Labels[PipelinesTypeLabel] = PipelineTypeTest
 	r.ObjectMeta.Labels[ScenarioNameLabel] = integrationTestScenario.Name
 
 	if helpers.HasLabel(integrationTestScenario, OptionalLabel) {
