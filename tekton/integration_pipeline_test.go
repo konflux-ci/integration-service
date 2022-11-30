@@ -164,15 +164,15 @@ var _ = Describe("Integration pipeline", func() {
 
 		It("can append labels that comes from Snapshot to IntegrationPipelineRun and make sure that label value matches the snapshot name", func() {
 			newIntegrationPipelineRun.WithSnapshot(hasSnapshot)
-			Expect(newIntegrationPipelineRun.Labels["test.appstudio.openshift.io/snapshot"]).
+			Expect(newIntegrationPipelineRun.Labels["appstudio.openshift.io/snapshot"]).
 				To(Equal(hasSnapshot.Name))
 		})
 
 		It("can append labels comming from Application and Component to IntegrationPipelineRun and making sure that label values matches application and component names", func() {
 			newIntegrationPipelineRun.WithApplicationAndComponent(hasApp, hasComp)
-			Expect(newIntegrationPipelineRun.Labels["test.appstudio.openshift.io/component"]).
+			Expect(newIntegrationPipelineRun.Labels["appstudio.openshift.io/component"]).
 				To(Equal(hasComp.Name))
-			Expect(newIntegrationPipelineRun.Labels["test.appstudio.openshift.io/application"]).
+			Expect(newIntegrationPipelineRun.Labels["appstudio.openshift.io/application"]).
 				To(Equal(hasApp.Name))
 		})
 

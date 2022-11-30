@@ -92,11 +92,11 @@ var _ = Describe("PipelineController", func() {
 				Name:      "pipelinerun-sample",
 				Namespace: "default",
 				Labels: map[string]string{
-					"pipelines.appstudio.openshift.io/type":  "build",
-					"pipelines.openshift.io/used-by":         "build-cloud",
-					"pipelines.openshift.io/runtime":         "nodejs",
-					"pipelines.openshift.io/strategy":        "s2i",
-					"build.appstudio.openshift.io/component": "component-sample",
+					"pipelines.appstudio.openshift.io/type": "build",
+					"pipelines.openshift.io/used-by":        "build-cloud",
+					"pipelines.openshift.io/runtime":        "nodejs",
+					"pipelines.openshift.io/strategy":       "s2i",
+					"appstudio.openshift.io/component":      "component-sample",
 				},
 				Annotations: map[string]string{
 					"appstudio.redhat.com/updateComponentOnSuccess": "false",
