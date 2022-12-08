@@ -315,7 +315,7 @@ func (a *Adapter) getAllPipelineRunsForSnapshot(snapshot *applicationapiv1alpha1
 	var integrationPipelineRuns []tektonv1beta1.PipelineRun
 	for _, integrationTestScenario := range *integrationTestScenarios {
 		integrationTestScenario := integrationTestScenario // G601
-		if a.pipelineRun.Labels["test.appstudio.openshift.io/scenario"] != integrationTestScenario.Name {
+		if a.pipelineRun.Labels[tekton.ScenarioNameLabel] != integrationTestScenario.Name {
 			integrationPipelineRun, err := helpers.GetLatestPipelineRunForSnapshotAndScenario(a.client, a.context, a.application, snapshot, &integrationTestScenario)
 			if err != nil {
 				return nil, err

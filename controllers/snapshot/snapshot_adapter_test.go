@@ -197,11 +197,11 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 				GenerateName: "build-pipelinerun" + "-",
 				Namespace:    "default",
 				Labels: map[string]string{
-					"pipelines.appstudio.openshift.io/type":  "build",
-					"pipelines.openshift.io/used-by":         "build-cloud",
-					"pipelines.openshift.io/runtime":         "nodejs",
-					"pipelines.openshift.io/strategy":        "s2i",
-					"build.appstudio.openshift.io/component": "component-sample",
+					"pipelines.appstudio.openshift.io/type": "build",
+					"pipelines.openshift.io/used-by":        "build-cloud",
+					"pipelines.openshift.io/runtime":        "nodejs",
+					"pipelines.openshift.io/strategy":       "s2i",
+					"appstudio.openshift.io/component":      "component-sample",
 				},
 				Annotations: map[string]string{
 					"appstudio.redhat.com/updateComponentOnSuccess": "false",
@@ -287,7 +287,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 					client.InNamespace(hasApp.Namespace),
 					client.MatchingLabels{
 						"pipelines.appstudio.openshift.io/type": "test",
-						"test.appstudio.openshift.io/snapshot":  hasSnapshot.Name,
+						"appstudio.openshift.io/snapshot":       hasSnapshot.Name,
 						"test.appstudio.openshift.io/scenario":  requiredIntegrationTestScenario.Name,
 					},
 				}

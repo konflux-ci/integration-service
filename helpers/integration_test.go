@@ -76,7 +76,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 					"pac.test.appstudio.openshift.io/original-prname": "build-service-on-push",
 					"pac.test.appstudio.openshift.io/url-repository":  "build-service",
 					"pac.test.appstudio.openshift.io/repository":      "build-service-pac",
-					"test.appstudio.openshift.io/snapshot":            "snapshot-sample",
+					"appstudio.openshift.io/snapshot":                 "snapshot-sample",
 				},
 				Annotations: map[string]string{
 					"pac.test.appstudio.openshift.io/on-target-branch": "[main]",
@@ -144,7 +144,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 					client.InNamespace(hasApp.Namespace),
 					client.MatchingLabels{
 						"pipelines.appstudio.openshift.io/type": "test",
-						"test.appstudio.openshift.io/snapshot":  hasSnapshot.Name,
+						"appstudio.openshift.io/snapshot":       hasSnapshot.Name,
 						"test.appstudio.openshift.io/scenario":  requiredIntegrationTestScenario.Name,
 					},
 				}

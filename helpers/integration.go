@@ -197,7 +197,7 @@ func GetLatestPipelineRunForSnapshotAndScenario(adapterClient client.Client, ctx
 		client.InNamespace(application.Namespace),
 		client.MatchingLabels{
 			"pipelines.appstudio.openshift.io/type": "test",
-			"test.appstudio.openshift.io/snapshot":  snapshot.Name,
+			"appstudio.openshift.io/snapshot":       snapshot.Name,
 			"test.appstudio.openshift.io/scenario":  integrationTestScenario.Name,
 		},
 	}
