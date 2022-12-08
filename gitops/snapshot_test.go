@@ -144,7 +144,7 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 
 	It("ensures that a new Snapshots can be successfully created", func() {
 		snapshotComponents := []applicationapiv1alpha1.SnapshotComponent{}
-		createdSnapshot := gitops.CreateSnapshot(hasApp, &snapshotComponents)
+		createdSnapshot := gitops.NewSnapshot(hasApp, &snapshotComponents)
 		Expect(createdSnapshot != nil).To(BeTrue())
 	})
 

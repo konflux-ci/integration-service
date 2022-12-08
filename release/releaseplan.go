@@ -27,8 +27,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-// CreateReleaseForReleasePlan creates the Release for a given ReleasePlan.
-func CreateReleaseForReleasePlan(releasePlan *releasev1alpha1.ReleasePlan, snapshot *applicationapiv1alpha1.Snapshot) *releasev1alpha1.Release {
+// NewReleaseForReleasePlan creates the Release for a given ReleasePlan.
+func NewReleaseForReleasePlan(releasePlan *releasev1alpha1.ReleasePlan, snapshot *applicationapiv1alpha1.Snapshot) *releasev1alpha1.Release {
 	newRelease := &releasev1alpha1.Release{
 		ObjectMeta: metav1.ObjectMeta{
 			GenerateName: snapshot.Name + "-",

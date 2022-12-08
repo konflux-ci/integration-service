@@ -24,9 +24,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-// CreateSnapshotEnvironmentBinding creates a new SnapshotEnvironmentBinding using the provided info.
-func CreateSnapshotEnvironmentBinding(bindingName string, namespace string, applicationName string, environmentName string, snapshot *applicationapiv1alpha1.Snapshot, components []applicationapiv1alpha1.Component) *applicationapiv1alpha1.SnapshotEnvironmentBinding {
-	bindingComponents := CreateBindingComponents(components)
+// NewSnapshotEnvironmentBinding creates a new SnapshotEnvironmentBinding using the provided info.
+func NewSnapshotEnvironmentBinding(bindingName string, namespace string, applicationName string, environmentName string, snapshot *applicationapiv1alpha1.Snapshot, components []applicationapiv1alpha1.Component) *applicationapiv1alpha1.SnapshotEnvironmentBinding {
+	bindingComponents := NewBindingComponents(components)
 
 	snapshotEnvironmentBinding := &applicationapiv1alpha1.SnapshotEnvironmentBinding{
 		ObjectMeta: metav1.ObjectMeta{
@@ -44,9 +44,9 @@ func CreateSnapshotEnvironmentBinding(bindingName string, namespace string, appl
 	return snapshotEnvironmentBinding
 }
 
-// CreateBindingComponents gets all components from the Snapshot and formats them to be used in the
+// NewBindingComponents gets all components from the Snapshot and formats them to be used in the
 // SnapshotEnvironmentBinding as BindingComponents.
-func CreateBindingComponents(components []applicationapiv1alpha1.Component) *[]applicationapiv1alpha1.BindingComponent {
+func NewBindingComponents(components []applicationapiv1alpha1.Component) *[]applicationapiv1alpha1.BindingComponent {
 	bindingComponents := []applicationapiv1alpha1.BindingComponent{}
 	for _, component := range components {
 		bindingComponents = append(bindingComponents, applicationapiv1alpha1.BindingComponent{
