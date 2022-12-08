@@ -153,13 +153,13 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 	It("ensures Binding Component is created", func() {
 		gitops.MarkSnapshotAsPassed(k8sClient, ctx, hasSnapshot, "test passed")
 		Expect(gitops.HaveHACBSTestsSucceeded(hasSnapshot)).To(BeTrue())
-		bindingComponents := gitops.CreateBindingComponents([]applicationapiv1alpha1.Component{*hasComp})
+		bindingComponents := gitops.NewBindingComponents([]applicationapiv1alpha1.Component{*hasComp})
 		Expect(bindingComponents != nil).To(BeTrue())
 	})
 
 	It("ensures Snapshot Environment Binding is created and exists", func() {
 		bindingName := hasApp.Name + "-" + env.Name + "-" + "binding"
-		snapshotEnvironmentBinding := gitops.CreateSnapshotEnvironmentBinding(
+		snapshotEnvironmentBinding := gitops.NewSnapshotEnvironmentBinding(
 			bindingName, hasApp.Namespace, hasApp.Name,
 			env.Name, hasSnapshot, []applicationapiv1alpha1.Component{*hasComp})
 		Expect(snapshotEnvironmentBinding != nil).To(BeTrue())

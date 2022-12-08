@@ -132,8 +132,8 @@ func HaveHACBSTestsSucceeded(snapshot *applicationapiv1alpha1.Snapshot) bool {
 	return meta.IsStatusConditionTrue(snapshot.Status.Conditions, HACBSTestSuceededCondition)
 }
 
-// CreateSnapshot creates a new snapshot based on the supplied application and components
-func CreateSnapshot(application *applicationapiv1alpha1.Application, snapshotComponents *[]applicationapiv1alpha1.SnapshotComponent) *applicationapiv1alpha1.Snapshot {
+// NewSnapshot creates a new snapshot based on the supplied application and components
+func NewSnapshot(application *applicationapiv1alpha1.Application, snapshotComponents *[]applicationapiv1alpha1.SnapshotComponent) *applicationapiv1alpha1.Snapshot {
 	snapshot := &applicationapiv1alpha1.Snapshot{
 		ObjectMeta: metav1.ObjectMeta{
 			GenerateName: application.Name + "-",
