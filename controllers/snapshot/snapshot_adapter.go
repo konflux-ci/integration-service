@@ -365,7 +365,7 @@ func (a *Adapter) createMissingReleasesForReleasePlans(application *applicationa
 				"ReleasePlan.Name", releasePlan.Name,
 				"Release.Name", existingRelease.Name)
 		} else {
-			newRelease := release.CreateReleaseForReleasePlan(&releasePlan, snapshot)
+			newRelease := release.NewReleaseForReleasePlan(&releasePlan, snapshot)
 			// Propagate annotations/labels from snapshot to Release
 			helpers.CopyAnnotationsByPrefix(&snapshot.ObjectMeta, &newRelease.ObjectMeta, gitops.PipelinesAsCodePrefix, gitops.PipelinesAsCodePrefix)
 			helpers.CopyLabelsByPrefix(&snapshot.ObjectMeta, &newRelease.ObjectMeta, gitops.PipelinesAsCodePrefix, gitops.PipelinesAsCodePrefix)
@@ -470,7 +470,7 @@ func (a *Adapter) createSnapshotEnvironmentBindingForSnapshot(application *appli
 	components *[]applicationapiv1alpha1.Component) (*applicationapiv1alpha1.SnapshotEnvironmentBinding, error) {
 	bindingName := application.Name + "-" + environment.Name + "-" + "binding"
 
-	snapshotEnvironmentBinding := gitops.CreateSnapshotEnvironmentBinding(
+	snapshotEnvironmentBinding := gitops.NewSnapshotEnvironmentBinding(
 		bindingName, application.Namespace, application.Name,
 		environment.Name,
 		snapshot, *components)
@@ -497,7 +497,7 @@ func (a *Adapter) updateExistingSnapshotEnvironmentBindingWithSnapshot(snapshotE
 	patch := client.MergeFrom(snapshotEnvironmentBinding.DeepCopy())
 
 	snapshotEnvironmentBinding.Spec.Snapshot = snapshot.Name
-	snapshotComponents := gitops.CreateBindingComponents(*components)
+	snapshotComponents := gitops.NewBindingComponents(*components)
 	snapshotEnvironmentBinding.Spec.Components = *snapshotComponents
 
 	err := a.client.Patch(a.context, snapshotEnvironmentBinding, patch)

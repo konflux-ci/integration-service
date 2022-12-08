@@ -74,7 +74,7 @@ var _ = Describe("Release functions for managing Releases", Ordered, func() {
 	})
 
 	It("ensures the Release can be created for ReleasePlan", func() {
-		createdRelease := integrationservicerelease.CreateReleaseForReleasePlan(releasePlan, hasSnapshot)
+		createdRelease := integrationservicerelease.NewReleaseForReleasePlan(releasePlan, hasSnapshot)
 		Expect(createdRelease.Spec.ReleasePlan).To(Equal(releasePlan.Name))
 	})
 
