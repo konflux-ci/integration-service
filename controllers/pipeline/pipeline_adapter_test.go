@@ -17,13 +17,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
+	"time"
+
 	integrationv1alpha1 "github.com/redhat-appstudio/integration-service/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/gitops"
 	"github.com/redhat-appstudio/integration-service/helpers"
 	"knative.dev/pkg/apis"
 	"knative.dev/pkg/apis/duck/v1beta1"
-	"reflect"
-	"time"
 
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
@@ -167,12 +168,12 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				Name:      "pipelinerun-build-sample",
 				Namespace: "default",
 				Labels: map[string]string{
-					"pipelines.appstudio.openshift.io/type":  "build",
-					"pipelines.openshift.io/used-by":         "build-cloud",
-					"pipelines.openshift.io/runtime":         "nodejs",
-					"pipelines.openshift.io/strategy":        "s2i",
-					"build.appstudio.openshift.io/component": "component-sample",
-					"pipelinesascode.tekton.dev/event-type":  "pull_request",
+					"pipelines.appstudio.openshift.io/type": "build",
+					"pipelines.openshift.io/used-by":        "build-cloud",
+					"pipelines.openshift.io/runtime":        "nodejs",
+					"pipelines.openshift.io/strategy":       "s2i",
+					"appstudio.openshift.io/component":      "component-sample",
+					"pipelinesascode.tekton.dev/event-type": "pull_request",
 				},
 				Annotations: map[string]string{
 					"appstudio.redhat.com/updateComponentOnSuccess": "false",
@@ -490,9 +491,9 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				Name:      "pipelinerun-status-sample",
 				Namespace: "default",
 				Labels: map[string]string{
-					"test.appstudio.openshift.io/application":         "test-application",
-					"test.appstudio.openshift.io/component":           "devfile-sample-go-basic",
-					"test.appstudio.openshift.io/snapshot":            "test-application-s8tnj",
+					"appstudio.openshift.io/application":              "test-application",
+					"appstudio.openshift.io/component":                "devfile-sample-go-basic",
+					"appstudio.openshift.io/snapshot":                 "test-application-s8tnj",
 					"test.appstudio.openshift.io/scenario":            "example-pass",
 					"pac.test.appstudio.openshift.io/state":           "started",
 					"pac.test.appstudio.openshift.io/sender":          "foo",
