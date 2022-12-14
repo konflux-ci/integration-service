@@ -80,14 +80,14 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 
 	snapshot, err := r.getSnapshotFromSnapshotEnvironmentBinding(ctx, snapshotEnvironmentBinding)
 	if err != nil {
-		logger.Error(err, "Failed to get Application for ",
+		logger.Error(err, "Failed to get Snapshot for ",
 			"SnapshotEnvironmentBinding.Name ", snapshotEnvironmentBinding.Name, "SnapshotEnvironmentBinding.Namespace ", snapshotEnvironmentBinding.Namespace)
 		return ctrl.Result{}, err
 	}
 
 	environment, err := r.getEnvironmentFromSnapshotEnvironmentBinding(ctx, snapshotEnvironmentBinding)
 	if err != nil {
-		logger.Error(err, "Failed to get Application for ",
+		logger.Error(err, "Failed to get Environment for ",
 			"SnapshotEnvironmentBinding.Name ", snapshotEnvironmentBinding.Name, "SnapshotEnvironmentBinding.Namespace ", snapshotEnvironmentBinding.Namespace)
 		return ctrl.Result{}, err
 	}
@@ -142,7 +142,7 @@ func (r *Reconciler) getEnvironmentFromSnapshotEnvironmentBinding(context contex
 	environment := &applicationapiv1alpha1.Environment{}
 	err := r.Get(context, types.NamespacedName{
 		Namespace: snapshotEnvironmentBinding.Namespace,
-		Name:      snapshotEnvironmentBinding.Spec.Snapshot,
+		Name:      snapshotEnvironmentBinding.Spec.Environment,
 	}, environment)
 
 	if err != nil {

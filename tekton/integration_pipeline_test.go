@@ -20,16 +20,16 @@ type ExtraParams struct {
 var _ = Describe("Integration pipeline", func() {
 
 	const (
-		prefix                  = "testpipeline"
-		namespace               = "default"
-		PipelineTypeIntegration = "integration"
-		applicationName         = "application-sample"
-		SampleRepoLink          = "https://github.com/devfile-samples/devfile-sample-java-springboot-basic"
+		prefix          = "testpipeline"
+		namespace       = "default"
+		applicationName = "application-sample"
+		SampleRepoLink  = "https://github.com/devfile-samples/devfile-sample-java-springboot-basic"
 	)
 	var (
 		hasApp                    *applicationapiv1alpha1.Application
 		hasSnapshot               *applicationapiv1alpha1.Snapshot
 		hasComp                   *applicationapiv1alpha1.Component
+		hasEnv                    *applicationapiv1alpha1.Environment
 		newIntegrationPipelineRun *tekton.IntegrationPipelineRun
 		integrationTestScenario   *v1alpha1.IntegrationTestScenario
 		extraParams               *ExtraParams
@@ -86,6 +86,36 @@ var _ = Describe("Integration pipeline", func() {
 		}
 		Expect(k8sClient.Create(ctx, hasApp)).Should(Succeed())
 
+		hasEnv = &applicationapiv1alpha1.Environment{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "envname",
+				Namespace: "default",
+			},
+			Spec: applicationapiv1alpha1.EnvironmentSpec{
+				Type:               "POC",
+				DisplayName:        "my-environment",
+				DeploymentStrategy: applicationapiv1alpha1.DeploymentStrategy_Manual,
+				ParentEnvironment:  "",
+				Tags:               []string{},
+				Configuration: applicationapiv1alpha1.EnvironmentConfiguration{
+					Env: []applicationapiv1alpha1.EnvVarPair{
+						{
+							Name:  "var_name",
+							Value: "test",
+						},
+					},
+				},
+				UnstableConfigurationFields: &applicationapiv1alpha1.UnstableEnvironmentConfiguration{
+					KubernetesClusterCredentials: applicationapiv1alpha1.KubernetesClusterCredentials{
+						TargetNamespace:          "example-pass-9664d7b0-54f5-409d-9abf-de9a8bbde59f",
+						APIURL:                   "https://api.sample.lab.upshift.rdu2.redhat.com:6443",
+						ClusterCredentialsSecret: "example-managed-environment-secret",
+					},
+				},
+			},
+		}
+		Expect(k8sClient.Create(ctx, hasEnv)).Should(Succeed())
+
 		hasSnapshot = &applicationapiv1alpha1.Snapshot{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "snapshot-sample",
@@ -133,6 +163,7 @@ var _ = Describe("Integration pipeline", func() {
 		_ = k8sClient.Delete(ctx, hasApp)
 		_ = k8sClient.Delete(ctx, hasSnapshot)
 		_ = k8sClient.Delete(ctx, hasComp)
+		_ = k8sClient.Delete(ctx, hasEnv)
 		_ = k8sClient.Delete(ctx, newIntegrationPipelineRun.AsPipelineRun())
 	})
 
@@ -168,12 +199,27 @@ var _ = Describe("Integration pipeline", func() {
 				To(Equal(hasSnapshot.Name))
 		})
 
-		It("can append labels comming from Application and Component to IntegrationPipelineRun and making sure that label values matches application and component names", func() {
+		It("can append labels coming from Application and Component to IntegrationPipelineRun and making sure that label values matches application and component names", func() {
 			newIntegrationPipelineRun.WithApplicationAndComponent(hasApp, hasComp)
 			Expect(newIntegrationPipelineRun.Labels["appstudio.openshift.io/component"]).
 				To(Equal(hasComp.Name))
 			Expect(newIntegrationPipelineRun.Labels["appstudio.openshift.io/application"]).
 				To(Equal(hasApp.Name))
+		})
+
+		It("can append labels, workspaces and parameters that comes from Environment to IntegrationPipelineRun", func() {
+			newIntegrationPipelineRun.WithEnvironment(hasEnv)
+			Expect(newIntegrationPipelineRun.Labels["appstudio.openshift.io/environment"]).
+				To(Equal(hasEnv.Name))
+
+			Expect(newIntegrationPipelineRun.Spec.Workspaces != nil).To(BeTrue())
+			Expect(len(newIntegrationPipelineRun.Spec.Workspaces) > 0).To(BeTrue())
+			Expect(newIntegrationPipelineRun.Spec.Workspaces[0].Name).To(Equal("cluster-credentials"))
+
+			Expect(len(newIntegrationPipelineRun.Spec.Params) > 0).To(BeTrue())
+			Expect(newIntegrationPipelineRun.Spec.Params[0].Name).To(Equal("NAMESPACE"))
+			Expect(newIntegrationPipelineRun.Spec.Params[0].Value.StringVal).
+				To(Equal(hasEnv.Spec.UnstableConfigurationFields.TargetNamespace))
 		})
 
 	})

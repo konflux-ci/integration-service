@@ -178,7 +178,7 @@ func setupCache(mgr ctrl.Manager) error {
 		return err
 	}
 
-	return SetupEnvironmentCache(mgr)
+	return SetupSnapshotEnvironmentBindingCache(mgr)
 }
 
 // setupControllerWithManager sets up the controller with the Manager which monitors new Snapshots
