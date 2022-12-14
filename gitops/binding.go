@@ -19,15 +19,20 @@ package gitops
 import (
 	"context"
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"math"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+)
+const (
+	// BindingDeploymentStatusConditionType is the condition type to retrieve from the ComponentDeploymentConditions
+	// in the SnapshotEnvironmentBinding's status to copy into the Release status
+	BindingDeploymentStatusConditionType string = "AllComponentsDeployed"
 )
 
 // NewSnapshotEnvironmentBinding creates a new SnapshotEnvironmentBinding using the provided info.
 func NewSnapshotEnvironmentBinding(bindingName string, namespace string, applicationName string, environmentName string, snapshot *applicationapiv1alpha1.Snapshot, components []applicationapiv1alpha1.Component) *applicationapiv1alpha1.SnapshotEnvironmentBinding {
 	bindingComponents := NewBindingComponents(components)
-
 	snapshotEnvironmentBinding := &applicationapiv1alpha1.SnapshotEnvironmentBinding{
 		ObjectMeta: metav1.ObjectMeta{
 			GenerateName: bindingName + "-",
@@ -80,4 +85,26 @@ func FindExistingSnapshotEnvironmentBinding(adapterClient client.Client, ctx con
 	}
 
 	return nil, nil
+}
+
+// hasDeploymentFinished returns a boolean that is only true if the first passed object
+// is a SnapshotEnvironmentBinding with the componentDeployment status Unknown and the second
+// passed object is a SnapshotEnvironmentBinding with the componentDeployment status True/False.
+func hasDeploymentFinished(objectOld, objectNew client.Object) bool {
+	var oldCondition, newCondition *metav1.Condition
+
+	if oldBinding, ok := objectOld.(*applicationapiv1alpha1.SnapshotEnvironmentBinding); ok {
+		oldCondition = meta.FindStatusCondition(oldBinding.Status.ComponentDeploymentConditions, BindingDeploymentStatusConditionType)
+		if oldCondition == nil {
+			return false
+		}
+	}
+	if newBinding, ok := objectNew.(*applicationapiv1alpha1.SnapshotEnvironmentBinding); ok {
+		newCondition = meta.FindStatusCondition(newBinding.Status.ComponentDeploymentConditions, BindingDeploymentStatusConditionType)
+		if newCondition == nil {
+			return false
+		}
+	}
+
+	return oldCondition.Status == metav1.ConditionUnknown && newCondition.Status != metav1.ConditionUnknown
 }
