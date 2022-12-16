@@ -246,7 +246,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 					"pac.test.appstudio.openshift.io/original-prname": "build-service-on-push",
 					"pac.test.appstudio.openshift.io/url-repository":  "build-service",
 					"pac.test.appstudio.openshift.io/repository":      "build-service-pac",
-					"test.appstudio.openshift.io/snapshot":            hasSnapshot.Name,
+					"appstudio.openshift.io/snapshot":                 hasSnapshot.Name,
 					"test.appstudio.openshift.io/scenario":            integrationTestScenario.Name,
 				},
 				Annotations: map[string]string{
@@ -364,7 +364,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 	})
 
 	It("ensures the global component list is changed and compositeSnapshot should be created", func() {
-		createdSnapshot, err := adapter.getSnapshotFromPipelineRun(testpipelineRunComponent, "test")
+		createdSnapshot, err := adapter.getSnapshotFromPipelineRun(testpipelineRunComponent)
 		Expect(err).To(BeNil())
 		Expect(createdSnapshot).ToNot(BeNil())
 
