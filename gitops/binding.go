@@ -24,6 +24,7 @@ import (
 	"math"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
+
 const (
 	// BindingDeploymentStatusConditionType is the condition type to retrieve from the ComponentDeploymentConditions
 	// in the SnapshotEnvironmentBinding's status to copy into the Release status

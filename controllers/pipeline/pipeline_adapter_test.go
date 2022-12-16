@@ -70,6 +70,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		hasComp                  *applicationapiv1alpha1.Component
 		hasApp                   *applicationapiv1alpha1.Application
 		hasSnapshot              *applicationapiv1alpha1.Snapshot
+		hasEnv                   *applicationapiv1alpha1.Environment
 		integrationTestScenario  *integrationv1alpha1.IntegrationTestScenario
 	)
 	const (
@@ -163,6 +164,44 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 	})
 
 	BeforeEach(func() {
+		hasEnv = &applicationapiv1alpha1.Environment{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "test-env",
+				Namespace: "default",
+			},
+			Spec: applicationapiv1alpha1.EnvironmentSpec{
+				Type:               "POC",
+				DisplayName:        "my-environment",
+				DeploymentStrategy: applicationapiv1alpha1.DeploymentStrategy_Manual,
+				ParentEnvironment:  "",
+				Tags:               []string{"ephemeral"},
+				Configuration: applicationapiv1alpha1.EnvironmentConfiguration{
+					Env: []applicationapiv1alpha1.EnvVarPair{
+						{
+							Name:  "var_name",
+							Value: "test",
+						},
+					},
+				},
+				UnstableConfigurationFields: &applicationapiv1alpha1.UnstableEnvironmentConfiguration{
+					KubernetesClusterCredentials: applicationapiv1alpha1.KubernetesClusterCredentials{
+						TargetNamespace:          "example-pass-9664d7b0-54f5-409d-9abf-de9a8bbde59f",
+						APIURL:                   "https://api.sample.lab.upshift.rdu2.redhat.com:6443",
+						ClusterCredentialsSecret: "example-managed-environment-secret",
+					},
+				},
+			},
+		}
+		Expect(k8sClient.Create(ctx, hasEnv)).Should(Succeed())
+
+		Eventually(func() bool {
+			err := k8sClient.Get(ctx, types.NamespacedName{
+				Name:      hasEnv.Name,
+				Namespace: "default",
+			}, hasEnv)
+			return err == nil
+		}, time.Second*10).Should(BeTrue())
+
 		testpipelineRunBuild = &tektonv1beta1.PipelineRun{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "pipelinerun-build-sample",
@@ -246,8 +285,12 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 					"pac.test.appstudio.openshift.io/original-prname": "build-service-on-push",
 					"pac.test.appstudio.openshift.io/url-repository":  "build-service",
 					"pac.test.appstudio.openshift.io/repository":      "build-service-pac",
+					"pipelines.appstudio.openshift.io/type":           "test",
 					"appstudio.openshift.io/snapshot":                 hasSnapshot.Name,
 					"test.appstudio.openshift.io/scenario":            integrationTestScenario.Name,
+					"appstudio.openshift.io/environment":              hasEnv.Name,
+					"appstudio.openshift.io/application":              hasApp.Name,
+					"appstudio.openshift.io/component":                hasComp.Name,
 				},
 				Annotations: map[string]string{
 					"pac.test.appstudio.openshift.io/on-target-branch": "[main]",
@@ -313,6 +356,8 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		err := k8sClient.Delete(ctx, testpipelineRunBuild)
 		Expect(err == nil || k8serrors.IsNotFound(err)).To(BeTrue())
 		err = k8sClient.Delete(ctx, testpipelineRunComponent)
+		Expect(err == nil || k8serrors.IsNotFound(err)).To(BeTrue())
+		err = k8sClient.Delete(ctx, hasEnv)
 		Expect(err == nil || k8serrors.IsNotFound(err)).To(BeTrue())
 	})
 
@@ -413,6 +458,9 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		Expect(err == nil).To(BeTrue())
 		Expect(existingCompositeSnapshot != nil).To(BeTrue())
 		Expect(existingCompositeSnapshot.Name == compositeSnapshot.Name).To(BeTrue())
+
+		Expect(k8sClient.Delete(ctx, compositeSnapshot)).Should(Succeed())
+		Expect(k8sClient.Delete(ctx, hasCompNew)).Should(Succeed())
 	})
 
 	It("ensures pipelines as code labels and annotations are propagated to the snapshot", func() {
@@ -547,5 +595,23 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			result, err := adapter.EnsureStatusReported()
 			return result.RequeueRequest && err != nil && err.Error() == "ReportStatusError"
 		}, time.Second*10).Should(BeTrue())
+	})
+
+	It("ensures ephemeral environment is deleted for the given pipelineRun ", func() {
+		adapter = NewAdapter(testpipelineRunComponent, hasComp, hasApp, ctrl.Log, k8sClient, ctx)
+		Expect(reflect.TypeOf(adapter)).To(Equal(reflect.TypeOf(&Adapter{})))
+
+		Eventually(func() bool {
+			result, err := adapter.EnsureEphemeralEnvironmentsCleanedUp()
+			return !result.CancelRequest && err == nil
+		}, time.Second*20).Should(BeTrue())
+
+		Eventually(func() bool {
+			err := k8sClient.Get(ctx, types.NamespacedName{
+				Name:      hasEnv.Name,
+				Namespace: "default",
+			}, hasEnv)
+			return err != nil
+		}, time.Second*20).Should(BeTrue())
 	})
 })

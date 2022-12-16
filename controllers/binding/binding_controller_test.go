@@ -26,7 +26,7 @@ import (
 var _ = Describe("BindingController", func() {
 	var (
 		manager                 ctrl.Manager
-		reconciler              *Reconciler
+		bindingReconciler       *Reconciler
 		scheme                  runtime.Scheme
 		req                     ctrl.Request
 		hasApp                  *applicationapiv1alpha1.Application
@@ -200,7 +200,7 @@ var _ = Describe("BindingController", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(err).To(BeNil())
 
-		reconciler = NewBindingReconciler(k8sClient, &logf.Log, &scheme)
+		bindingReconciler = NewBindingReconciler(k8sClient, &logf.Log, &scheme)
 	})
 	AfterEach(func() {
 		err := k8sClient.Delete(ctx, hasApp)
@@ -218,21 +218,14 @@ var _ = Describe("BindingController", func() {
 	})
 
 	It("can create and return a new Reconciler object", func() {
-		Expect(reflect.TypeOf(reconciler)).To(Equal(reflect.TypeOf(&Reconciler{})))
+		Expect(reflect.TypeOf(bindingReconciler)).To(Equal(reflect.TypeOf(&Reconciler{})))
 		klog.Info("Test First Logic")
-	})
-
-	It("should reconcile using the ReconcileHandler", func() {
-		adapter := NewAdapter(hasBinding, hasSnapshot, hasEnv, hasApp, integrationTestScenario, ctrl.Log, k8sClient, ctx)
-		result, err := reconciler.ReconcileHandler(adapter)
-		Expect(reflect.TypeOf(result)).To(Equal(reflect.TypeOf(reconcile.Result{})))
-		Expect(err).To(BeNil())
 	})
 
 	It("can fail when Reconcile fails to prepare the adapter when SnapshotEnvironmentBinding is not found", func() {
 		Expect(k8sClient.Delete(ctx, hasBinding)).Should(Succeed())
 		Eventually(func() error {
-			_, err := reconciler.Reconcile(ctx, req)
+			_, err := bindingReconciler.Reconcile(ctx, req)
 			return err
 		}).Should(BeNil())
 	})
@@ -240,7 +233,7 @@ var _ = Describe("BindingController", func() {
 	It("can fail when Reconcile fails to prepare the adapter when Application is not found", func() {
 		Expect(k8sClient.Delete(ctx, hasApp)).Should(Succeed())
 		Eventually(func() error {
-			_, err := reconciler.Reconcile(ctx, req)
+			_, err := bindingReconciler.Reconcile(ctx, req)
 			return err
 		}).ShouldNot(BeNil())
 	})
@@ -248,7 +241,7 @@ var _ = Describe("BindingController", func() {
 	It("can fail when Reconcile fails to prepare the adapter when Snapshot is not found", func() {
 		Expect(k8sClient.Delete(ctx, hasSnapshot)).Should(Succeed())
 		Eventually(func() error {
-			_, err := reconciler.Reconcile(ctx, req)
+			_, err := bindingReconciler.Reconcile(ctx, req)
 			return err
 		}).ShouldNot(BeNil())
 	})
@@ -256,19 +249,19 @@ var _ = Describe("BindingController", func() {
 	It("can fail when Reconcile fails to prepare the adapter when Environment is not found", func() {
 		Expect(k8sClient.Delete(ctx, hasEnv)).Should(Succeed())
 		Eventually(func() error {
-			_, err := reconciler.Reconcile(ctx, req)
+			_, err := bindingReconciler.Reconcile(ctx, req)
 			return err
 		}).ShouldNot(BeNil())
 	})
 
 	It("can Reconcile function prepare the adapter and return the result of the reconcile handling operation", func() {
-		result, err := reconciler.Reconcile(ctx, req)
+		result, err := bindingReconciler.Reconcile(ctx, req)
 		Expect(reflect.TypeOf(result)).To(Equal(reflect.TypeOf(reconcile.Result{})))
 		Expect(err).To(BeNil())
 	})
 
 	It("can setup a new controller manager with the given reconciler", func() {
-		err := setupControllerWithManager(manager, reconciler)
+		err := setupControllerWithManager(manager, bindingReconciler)
 		Expect(err).NotTo(HaveOccurred())
 	})
 

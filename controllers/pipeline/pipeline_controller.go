@@ -167,6 +167,7 @@ type AdapterInterface interface {
 	EnsureSnapshotExists() (results.OperationResult, error)
 	EnsureSnapshotPassedAllTests() (results.OperationResult, error)
 	EnsureStatusReported() (results.OperationResult, error)
+	EnsureEphemeralEnvironmentsCleanedUp() (results.OperationResult, error)
 }
 
 // ReconcileOperation defines the syntax of functions invoked by the ReconcileHandler
@@ -179,6 +180,7 @@ func (r *Reconciler) ReconcileHandler(adapter AdapterInterface) (ctrl.Result, er
 		adapter.EnsureSnapshotExists,
 		adapter.EnsureSnapshotPassedAllTests,
 		adapter.EnsureStatusReported,
+		adapter.EnsureEphemeralEnvironmentsCleanedUp,
 	}
 
 	for _, operation := range operations {

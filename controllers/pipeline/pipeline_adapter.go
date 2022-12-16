@@ -221,6 +221,43 @@ func (a *Adapter) EnsureStatusReported() (results.OperationResult, error) {
 	return results.ContinueProcessing()
 }
 
+// EnsureEphemeralEnvironmentsCleanedUp will ensure that ephemeral environment(s) associated with the
+// integration PipelineRun are cleaned up.
+func (a *Adapter) EnsureEphemeralEnvironmentsCleanedUp() (results.OperationResult, error) {
+	if !tekton.IsIntegrationPipelineRun(a.pipelineRun) || !tekton.HasPipelineRunSucceeded(a.pipelineRun) {
+		return results.ContinueProcessing()
+	}
+
+	testEnvironment, err := a.getEnvironmentFromIntegrationPipelineRun(a.context, a.pipelineRun)
+	if err != nil {
+		a.logger.Error(err, "Failed to find the environment for the pipelineRun")
+		return results.RequeueWithError(err)
+	} else if testEnvironment == nil {
+		a.logger.Info("The pipelineRun does not have any test Environments associated with it, skipping cleanup.")
+		return results.ContinueProcessing()
+	}
+
+	isEphemeral := false
+	for _, tag := range testEnvironment.Spec.Tags {
+		if tag == "ephemeral" {
+			isEphemeral = true
+			break
+		}
+	}
+
+	if isEphemeral {
+		err = a.client.Delete(a.context, testEnvironment)
+		if err != nil {
+			a.logger.Error(err, "Failed to delete the test ephemeral environment!")
+			return results.RequeueWithError(err)
+		}
+	} else {
+		a.logger.Info("The pipelineRun test Environment is not ephemeral, skipping cleanup.")
+	}
+
+	return results.ContinueProcessing()
+}
+
 // getAllApplicationComponents loads from the cluster all Components associated with the given Application.
 // If the Application doesn't have any Components or this is not found in the cluster, an error will be returned.
 func (a *Adapter) getAllApplicationComponents(application *applicationapiv1alpha1.Application) (*[]applicationapiv1alpha1.Component, error) {
@@ -449,4 +486,24 @@ func (a *Adapter) createCompositeSnapshotsIfConflictExists(application *applicat
 	}
 
 	return nil, nil
+}
+
+// getEnvironmentFromIntegrationPipelineRun loads from the cluster the Environment referenced in the given PipelineRun.
+// If the PipelineRun doesn't specify an Environment or this is not found in the cluster, an error will be returned.
+func (a *Adapter) getEnvironmentFromIntegrationPipelineRun(context context.Context, pipelineRun *tektonv1beta1.PipelineRun) (*applicationapiv1alpha1.Environment, error) {
+	if environmentLabel, ok := pipelineRun.Labels[tekton.EnvironmentNameLabel]; ok {
+		environment := &applicationapiv1alpha1.Environment{}
+		err := a.client.Get(context, types.NamespacedName{
+			Namespace: pipelineRun.Namespace,
+			Name:      environmentLabel,
+		}, environment)
+
+		if err != nil {
+			return nil, err
+		}
+
+		return environment, nil
+	} else {
+		return nil, nil
+	}
 }
