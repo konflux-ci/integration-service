@@ -111,11 +111,7 @@ func (a *Adapter) EnsureSnapshotPassedAllTests() (results.OperationResult, error
 		return results.ContinueProcessing()
 	}
 
-	pipelineType, err := tekton.GetTypeFromPipelineRun(a.pipelineRun)
-	if err != nil {
-		return results.RequeueWithError(err)
-	}
-	existingSnapshot, err := a.getSnapshotFromPipelineRun(a.pipelineRun, pipelineType)
+	existingSnapshot, err := a.getSnapshotFromPipelineRun(a.pipelineRun)
 	if err != nil {
 		return results.RequeueWithError(err)
 	}
@@ -289,9 +285,8 @@ func (a *Adapter) determineIfAllIntegrationPipelinesPassed(integrationPipelineRu
 
 // getSnapshotFromPipelineRun loads from the cluster the Snapshot referenced in the given PipelineRun.
 // If the PipelineRun doesn't specify an Snapshot or this is not found in the cluster, an error will be returned.
-func (a *Adapter) getSnapshotFromPipelineRun(pipelineRun *tektonv1beta1.PipelineRun, pipelineType string) (*applicationapiv1alpha1.Snapshot, error) {
-	snapshotLabel := fmt.Sprintf("%s.%s/snapshot", pipelineType, helpers.AppStudioLabelSuffix)
-	if snapshotName, found := pipelineRun.Labels[snapshotLabel]; found {
+func (a *Adapter) getSnapshotFromPipelineRun(pipelineRun *tektonv1beta1.PipelineRun) (*applicationapiv1alpha1.Snapshot, error) {
+	if snapshotName, found := pipelineRun.Labels[tekton.SnapshotNameLabel]; found {
 		snapshot := &applicationapiv1alpha1.Snapshot{}
 		err := a.client.Get(a.context, types.NamespacedName{
 			Namespace: pipelineRun.Namespace,
