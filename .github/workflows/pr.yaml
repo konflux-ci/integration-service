@@ -101,6 +101,12 @@ jobs:
             git --no-pager diff ':(exclude)bin/kustomize' ':(exclude)bin/controller-gen'
             exit 1
           fi
+      - name: Check RBAC wildcards
+        run: |
+          if grep -rni "*" /tmp/integration-service/config/rbac/* ; then
+            echo "generated RBAC roles contains wildcards"
+            exit 1
+          fi
       - name: Run Go Tests
         run: |
           make test
