@@ -17,6 +17,9 @@ const (
 	// SnapshotTypeLabel contains the type of the Snapshot.
 	SnapshotTypeLabel = "test.appstudio.openshift.io/type"
 
+	// SnapshotLabel contains the name of the Snapshot within appstudio
+	SnapshotLabel = "appstudio.openshift.io/snapshot"
+
 	// SnapshotComponentLabel contains the name of the updated Snapshot component.
 	SnapshotComponentLabel = "test.appstudio.openshift.io/component"
 
