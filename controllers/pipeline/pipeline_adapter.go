@@ -352,7 +352,7 @@ func (a *Adapter) prepareSnapshot(application *applicationapiv1alpha1.Applicatio
 		})
 	}
 
-	snapshot := gitops.CreateSnapshot(application, &snapshotComponents)
+	snapshot := gitops.NewSnapshot(application, &snapshotComponents)
 
 	err = ctrl.SetControllerReference(application, snapshot, a.client.Scheme())
 	if err != nil {
