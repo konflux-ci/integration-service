@@ -154,7 +154,7 @@ func (a *Adapter) EnsureSnapshotPassedAllTests() (results.OperationResult, error
 
 	// If the snapshot is a component type, check if the global component list changed in the meantime and
 	// create a composite snapshot if it did.
-	if existingSnapshot.Labels != nil && existingSnapshot.Labels[gitops.SnapshotTypeLabel] == gitops.SnapshotComponentType && gitops.IsSnapshotCreatedByPushEvent(existingSnapshot) {
+	if existingSnapshot.Labels != nil && existingSnapshot.Labels[gitops.SnapshotTypeLabel] == gitops.SnapshotComponentType && !gitops.IsSnapshotCreatedByPACPullRequestEvent(existingSnapshot) {
 		compositeSnapshot, err := a.createCompositeSnapshotsIfConflictExists(a.application, a.component, existingSnapshot)
 		if err != nil {
 			a.logger.Error(err, "Failed to determine if a composite snapshot needs to be created because of a conflict",

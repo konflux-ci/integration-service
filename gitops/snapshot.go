@@ -183,7 +183,7 @@ func GetAllSnapshots(adapterClient client.Client, ctx context.Context, applicati
 // CompareSnapshots compares two Snapshots and returns boolean true if their images match exactly.
 func CompareSnapshots(expectedSnapshot *applicationapiv1alpha1.Snapshot, foundSnapshot *applicationapiv1alpha1.Snapshot) bool {
 	// Check if the snapshots are created by the same event type
-	if IsSnapshotCreatedByPushEvent(expectedSnapshot) != IsSnapshotCreatedByPushEvent(foundSnapshot) {
+	if IsSnapshotCreatedByPACPullRequestEvent(expectedSnapshot) != IsSnapshotCreatedByPACPullRequestEvent(foundSnapshot) {
 		return false
 	}
 	// If the number of components doesn't match, we immediately know that the snapshots are not equal.
@@ -208,7 +208,7 @@ func CompareSnapshots(expectedSnapshot *applicationapiv1alpha1.Snapshot, foundSn
 	return true
 }
 
-// IsSnapshotCreatedByPushEvent checks if a snapshot has label PipelineAsCodeEventTypeLabel and with push value
-func IsSnapshotCreatedByPushEvent(snapshot *applicationapiv1alpha1.Snapshot) bool {
-	return helpers.HasLabelWithValue(snapshot, PipelineAsCodeEventTypeLabel, PipelineAsCodePushType)
+// IsSnapshotCreatedByPACPullRequestEvent checks if a snapshot has label PipelineAsCodeEventTypeLabel and with push value
+func IsSnapshotCreatedByPACPullRequestEvent(snapshot *applicationapiv1alpha1.Snapshot) bool {
+	return helpers.HasLabelWithValue(snapshot, PipelineAsCodeEventTypeLabel, PipelineAsCodePullRequestType)
 }
