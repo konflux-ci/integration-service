@@ -147,9 +147,8 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 				Name:      "snapshot-sample",
 				Namespace: "default",
 				Labels: map[string]string{
-					gitops.SnapshotTypeLabel:            "component",
-					gitops.SnapshotComponentLabel:       "component-sample",
-					gitops.PipelineAsCodeEventTypeLabel: "push",
+					gitops.SnapshotTypeLabel:      "component",
+					gitops.SnapshotComponentLabel: "component-sample",
 				},
 				Annotations: map[string]string{
 					gitops.PipelineAsCodeInstallationIDAnnotation: "123",
