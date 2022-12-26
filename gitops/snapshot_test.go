@@ -132,6 +132,23 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 		Expect(meta.IsStatusConditionTrue(hasSnapshot.Status.Conditions, gitops.HACBSIntegrationStatusCondition)).To(BeFalse())
 	})
 
+	It("ensures the Snapshots status can be marked as finished", func() {
+		gitops.SetSnapshotIntegrationStatusAsFinished(hasSnapshot, "Test message")
+		Expect(hasSnapshot.Status.Conditions != nil).To(BeTrue())
+		Expect(meta.IsStatusConditionTrue(hasSnapshot.Status.Conditions, gitops.HACBSIntegrationStatusCondition)).To(BeTrue())
+		foundStatusCondition := meta.FindStatusCondition(hasSnapshot.Status.Conditions, gitops.HACBSIntegrationStatusCondition)
+		Expect(foundStatusCondition.Reason == gitops.HACBSIntegrationStatusFinished).To(BeTrue())
+	})
+
+	It("ensures the Snapshots status can be marked as in progress", func() {
+		updatedSnapshot, err := gitops.MarkSnapshotIntegrationStatusAsInProgress(k8sClient, ctx, hasSnapshot, "Test message")
+		Expect(err == nil).To(BeTrue())
+		Expect(updatedSnapshot != nil).To(BeTrue())
+		Expect(updatedSnapshot.Status.Conditions != nil).To(BeTrue())
+		foundStatusCondition := meta.FindStatusCondition(updatedSnapshot.Status.Conditions, gitops.HACBSIntegrationStatusCondition)
+		Expect(foundStatusCondition.Reason == gitops.HACBSIntegrationStatusInProgress).To(BeTrue())
+	})
+
 	It("ensures the Snapshots can be checked for the HACBSTestSuceededCondition", func() {
 		checkResult := gitops.HaveHACBSTestsFinished(hasSnapshot)
 		Expect(checkResult).To(BeFalse())
