@@ -158,7 +158,7 @@ var _ = Describe("GitHubReporter", func() {
 			ObjectMeta: metav1.ObjectMeta{
 				Name: "test-pipelinerun",
 				Labels: map[string]string{
-					"test.appstudio.openshift.io/component":          "devfile-sample-go-basic",
+					"appstudio.openshift.io/component":               "devfile-sample-go-basic",
 					"test.appstudio.openshift.io/scenario":           "example-pass",
 					"pac.test.appstudio.openshift.io/git-provider":   "github",
 					"pac.test.appstudio.openshift.io/url-org":        "devfile-sample",
