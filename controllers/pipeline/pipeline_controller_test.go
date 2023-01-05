@@ -40,13 +40,13 @@ import (
 
 var _ = Describe("PipelineController", func() {
 	var (
-		manager         ctrl.Manager
-		reconciler      *Reconciler
-		scheme          runtime.Scheme
-		req             ctrl.Request
-		testpipelineRun *tektonv1beta1.PipelineRun
-		hasApp          *applicationapiv1alpha1.Application
-		hasComp         *applicationapiv1alpha1.Component
+		manager            ctrl.Manager
+		pipelineReconciler *Reconciler
+		scheme             runtime.Scheme
+		req                ctrl.Request
+		testpipelineRun    *tektonv1beta1.PipelineRun
+		hasApp             *applicationapiv1alpha1.Application
+		hasComp            *applicationapiv1alpha1.Component
 	)
 	const (
 		SampleRepoLink = "https://github.com/devfile-samples/devfile-sample-java-springboot-basic"
@@ -166,7 +166,7 @@ var _ = Describe("PipelineController", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(err).To(BeNil())
 
-		reconciler = NewIntegrationReconciler(k8sClient, &logf.Log, &scheme)
+		pipelineReconciler = NewIntegrationReconciler(k8sClient, &logf.Log, &scheme)
 	})
 
 	AfterEach(func() {
@@ -179,27 +179,19 @@ var _ = Describe("PipelineController", func() {
 	})
 
 	It("can create and return a new Reconciler object", func() {
-		Expect(reflect.TypeOf(reconciler)).To(Equal(reflect.TypeOf(&Reconciler{})))
-		klog.Info("Test First Logic")
-	})
-
-	It("should reconcile using the ReconcileHandler", func() {
-		adapter := NewAdapter(testpipelineRun, hasComp, hasApp, ctrl.Log, k8sClient, ctx)
-		result, err := reconciler.ReconcileHandler(adapter)
-		Expect(reflect.TypeOf(result)).To(Equal(reflect.TypeOf(reconcile.Result{})))
-		Expect(err).To(BeNil())
+		Expect(reflect.TypeOf(pipelineReconciler)).To(Equal(reflect.TypeOf(&Reconciler{})))
 	})
 
 	It("can fail when Reconcile fails to prepare the adapter when pipeline is not found", func() {
 		Expect(k8sClient.Delete(ctx, testpipelineRun)).Should(Succeed())
 		Eventually(func() error {
-			_, err := reconciler.Reconcile(ctx, req)
+			_, err := pipelineReconciler.Reconcile(ctx, req)
 			return err
 		}).Should(BeNil())
 	})
 
 	It("can Reconcile function prepare the adapter and return the result of the reconcile handling operation", func() {
-		result, err := reconciler.Reconcile(ctx, req)
+		result, err := pipelineReconciler.Reconcile(ctx, req)
 		Expect(reflect.TypeOf(result)).To(Equal(reflect.TypeOf(reconcile.Result{})))
 		Expect(err).To(BeNil())
 	})
@@ -210,7 +202,7 @@ var _ = Describe("PipelineController", func() {
 	})
 
 	It("can setup a new controller manager with the given reconciler", func() {
-		err := setupControllerWithManager(manager, reconciler)
+		err := setupControllerWithManager(manager, pipelineReconciler)
 		Expect(err).NotTo(HaveOccurred())
 	})
 
