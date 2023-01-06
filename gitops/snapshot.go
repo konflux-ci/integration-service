@@ -76,6 +76,12 @@ const (
 
 	// HACBSIntegrationStatusInvalid is the reason that's set when the HACBS integration gets into an invalid state.
 	HACBSIntegrationStatusInvalid = "Invalid"
+
+	//HACBSIntegrationStatusInProgress is the reason that's set when the HACBS tests gets into an in progress state.
+	HACBSIntegrationStatusInProgress = "InProgress"
+
+	//HACBSIntegrationStatusFinished is the reason that's set when the HACBS tests finish.
+	HACBSIntegrationStatusFinished = "Finished"
 )
 
 // MarkSnapshotAsPassed updates the HACBS Test succeeded condition for the Snapshot to passed.
@@ -88,6 +94,7 @@ func MarkSnapshotAsPassed(adapterClient client.Client, ctx context.Context, snap
 		Reason:  HACBSTestSuceededConditionPassed,
 		Message: message,
 	})
+	SetSnapshotIntegrationStatusAsFinished(snapshot, "Marking snapshot integration status condition as finished since the testing is passed")
 	err := adapterClient.Status().Patch(ctx, snapshot, patch)
 	if err != nil {
 		return nil, err
@@ -105,6 +112,7 @@ func MarkSnapshotAsFailed(adapterClient client.Client, ctx context.Context, snap
 		Reason:  HACBSTestSuceededConditionFailed,
 		Message: message,
 	})
+	SetSnapshotIntegrationStatusAsFinished(snapshot, "Marking snapshot integration status condition as finished since the testing fails")
 	err := adapterClient.Status().Patch(ctx, snapshot, patch)
 	if err != nil {
 		return nil, err
@@ -118,6 +126,32 @@ func SetSnapshotIntegrationStatusAsInvalid(snapshot *applicationapiv1alpha1.Snap
 		Type:    HACBSIntegrationStatusCondition,
 		Status:  metav1.ConditionFalse,
 		Reason:  HACBSIntegrationStatusInvalid,
+		Message: message,
+	})
+}
+
+// MarkSnapshotIntegrationStatusAsInProgress sets the HACBS integration status condition for the Snapshot to In Progress.
+func MarkSnapshotIntegrationStatusAsInProgress(adapterClient client.Client, ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot, message string) (*applicationapiv1alpha1.Snapshot, error) {
+	patch := client.MergeFrom(snapshot.DeepCopy())
+	meta.SetStatusCondition(&snapshot.Status.Conditions, metav1.Condition{
+		Type:    HACBSIntegrationStatusCondition,
+		Status:  metav1.ConditionUnknown,
+		Reason:  HACBSIntegrationStatusInProgress,
+		Message: message,
+	})
+	err := adapterClient.Status().Patch(ctx, snapshot, patch)
+	if err != nil {
+		return nil, err
+	}
+	return snapshot, nil
+}
+
+// SetSnapshotIntegrationStatusAsFinished sets the HACBS integration status condition for the Snapshot to Finished.
+func SetSnapshotIntegrationStatusAsFinished(snapshot *applicationapiv1alpha1.Snapshot, message string) {
+	meta.SetStatusCondition(&snapshot.Status.Conditions, metav1.Condition{
+		Type:    HACBSIntegrationStatusCondition,
+		Status:  metav1.ConditionTrue,
+		Reason:  HACBSIntegrationStatusFinished,
 		Message: message,
 	})
 }
