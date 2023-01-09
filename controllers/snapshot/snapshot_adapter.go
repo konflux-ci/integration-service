@@ -79,16 +79,18 @@ func (a *Adapter) EnsureAllIntegrationTestPipelinesExist() (results.OperationRes
 			"IntegrationTestScenarios", len(*integrationTestScenarios))
 		for _, integrationTestScenario := range *integrationTestScenarios {
 			integrationTestScenario := integrationTestScenario //G601
-			integrationPipelineRun, err := helpers.GetLatestPipelineRunForSnapshotAndScenario(a.client, a.context, a.application, a.snapshot, &integrationTestScenario)
+			integrationPipelineRuns, err := helpers.GetAllPipelineRunsForSnapshotAndScenario(a.client, a.context, a.snapshot, &integrationTestScenario)
 			if err != nil {
-				a.logger.Error(err, "Failed to get latest pipelineRun for snapshot and scenario",
-					"integrationPipelineRun:", integrationPipelineRun)
+				a.logger.Error(err, "Failed to get pipelineRuns for snapshot and scenario",
+					"Snapshot.Name:", a.snapshot.Name,
+					"IntegrationTestScenario.Name", integrationTestScenario.Name)
 				return results.RequeueOnErrorOrStop(err)
 			}
-			if integrationPipelineRun != nil {
-				a.logger.Info("Found existing integrationPipelineRun",
+			if integrationPipelineRuns != nil && len(*integrationPipelineRuns) > 0 {
+				a.logger.Info("Found existing integrationPipelineRuns",
+					"Snapshot.Name", a.snapshot.Name,
 					"IntegrationTestScenario.Name", integrationTestScenario.Name,
-					"integrationPipelineRun.Name", integrationPipelineRun.Name)
+					"len(integrationPipelineRuns)", len(*integrationPipelineRuns))
 			} else {
 				a.logger.Info("Creating new pipelinerun for integrationTestscenario",
 					"IntegrationTestScenario.Name", integrationTestScenario.Name,

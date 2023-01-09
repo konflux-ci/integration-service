@@ -187,14 +187,13 @@ func CalculateIntegrationPipelineRunOutcome(logger logr.Logger, pipelineRun *tek
 	return true, nil
 }
 
-// GetLatestPipelineRunForSnapshotAndScenario returns the latest Integration PipelineRun for the
+// GetAllPipelineRunsForSnapshotAndScenario returns all Integration PipelineRun for the
 // associated Snapshot and IntegrationTestScenario. In the case the List operation fails,
 // an error will be returned.
-func GetLatestPipelineRunForSnapshotAndScenario(adapterClient client.Client, ctx context.Context, application *applicationapiv1alpha1.Application, snapshot *applicationapiv1alpha1.Snapshot, integrationTestScenario *v1alpha1.IntegrationTestScenario) (*tektonv1beta1.PipelineRun, error) {
+func GetAllPipelineRunsForSnapshotAndScenario(adapterClient client.Client, ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot, integrationTestScenario *v1alpha1.IntegrationTestScenario) (*[]tektonv1beta1.PipelineRun, error) {
 	integrationPipelineRuns := &tektonv1beta1.PipelineRunList{}
-	var latestIntegrationPipelineRun = &tektonv1beta1.PipelineRun{}
 	opts := []client.ListOption{
-		client.InNamespace(application.Namespace),
+		client.InNamespace(snapshot.Namespace),
 		client.MatchingLabels{
 			"pipelines.appstudio.openshift.io/type": "test",
 			"appstudio.openshift.io/snapshot":       snapshot.Name,
@@ -206,9 +205,21 @@ func GetLatestPipelineRunForSnapshotAndScenario(adapterClient client.Client, ctx
 	if err != nil {
 		return nil, err
 	}
+	return &integrationPipelineRuns.Items, nil
+}
+
+// GetLatestPipelineRunForSnapshotAndScenario returns the latest Integration PipelineRun for the
+// associated Snapshot and IntegrationTestScenario. In the case the List operation fails,
+// an error will be returned.
+func GetLatestPipelineRunForSnapshotAndScenario(adapterClient client.Client, ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot, integrationTestScenario *v1alpha1.IntegrationTestScenario) (*tektonv1beta1.PipelineRun, error) {
+	var latestIntegrationPipelineRun = &tektonv1beta1.PipelineRun{}
+	integrationPipelineRuns, err := GetAllPipelineRunsForSnapshotAndScenario(adapterClient, ctx, snapshot, integrationTestScenario)
+	if err != nil {
+		return nil, err
+	}
 
 	latestIntegrationPipelineRun = nil
-	for _, pipelineRun := range integrationPipelineRuns.Items {
+	for _, pipelineRun := range *integrationPipelineRuns {
 		pipelineRun := pipelineRun // G601
 		if pipelineRun.Status.GetCondition(apis.ConditionSucceeded).IsTrue() {
 			if latestIntegrationPipelineRun == nil {
