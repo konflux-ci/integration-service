@@ -117,9 +117,8 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				Name:      "snapshot-sample",
 				Namespace: "default",
 				Labels: map[string]string{
-					gitops.SnapshotTypeLabel:            "component",
-					gitops.SnapshotComponentLabel:       hasComp.Name,
-					gitops.PipelineAsCodeEventTypeLabel: "push",
+					gitops.SnapshotTypeLabel:      "component",
+					gitops.SnapshotComponentLabel: hasComp.Name,
 				},
 				Annotations: map[string]string{
 					gitops.PipelineAsCodeInstallationIDAnnotation: "123",
