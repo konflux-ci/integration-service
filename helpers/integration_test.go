@@ -121,7 +121,9 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 
 		for _, integrationTestScenario := range *integrationTestScenarios {
 			integrationTestScenario := integrationTestScenario //G601
-			integrationPipelineRun, err := helpers.GetLatestPipelineRunForSnapshotAndScenario(k8sClient, ctx, hasApp, hasSnapshot, &integrationTestScenario)
+			integrationPipelineRuns, err := helpers.GetAllPipelineRunsForSnapshotAndScenario(k8sClient, ctx, hasSnapshot, &integrationTestScenario)
+			Expect(err != nil && integrationPipelineRuns == nil)
+			integrationPipelineRun, err := helpers.GetLatestPipelineRunForSnapshotAndScenario(k8sClient, ctx, hasSnapshot, &integrationTestScenario)
 			Expect(err != nil && integrationPipelineRun == nil)
 		}
 		pipelineRunOutcome, err := helpers.CalculateIntegrationPipelineRunOutcome(logger, testpipelineRun)
@@ -153,7 +155,10 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 					return len(integrationPipelineRuns.Items) > 0 && err == nil
 				}, time.Second*10).Should(BeTrue())
 
-				integrationPipelineRun, err := helpers.GetLatestPipelineRunForSnapshotAndScenario(k8sClient, ctx, hasApp, hasSnapshot, &requiredIntegrationTestScenario)
+				allFoundIntegrationPipelineRuns, err := helpers.GetAllPipelineRunsForSnapshotAndScenario(k8sClient, ctx, hasSnapshot, &requiredIntegrationTestScenario)
+				Expect(err != nil && integrationPipelineRuns != nil && len(*allFoundIntegrationPipelineRuns) > 0)
+
+				integrationPipelineRun, err := helpers.GetLatestPipelineRunForSnapshotAndScenario(k8sClient, ctx, hasSnapshot, &requiredIntegrationTestScenario)
 				Expect(err != nil && integrationPipelineRun == nil)
 
 				pipelineRunOutcome, err := helpers.CalculateIntegrationPipelineRunOutcome(logger, integrationPipelineRun)
