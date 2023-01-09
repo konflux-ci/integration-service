@@ -311,7 +311,7 @@ func (a *Adapter) getAllPipelineRunsForSnapshot(snapshot *applicationapiv1alpha1
 	for _, integrationTestScenario := range *integrationTestScenarios {
 		integrationTestScenario := integrationTestScenario // G601
 		if a.pipelineRun.Labels[tekton.ScenarioNameLabel] != integrationTestScenario.Name {
-			integrationPipelineRun, err := helpers.GetLatestPipelineRunForSnapshotAndScenario(a.client, a.context, a.application, snapshot, &integrationTestScenario)
+			integrationPipelineRun, err := helpers.GetLatestPipelineRunForSnapshotAndScenario(a.client, a.context, snapshot, &integrationTestScenario)
 			if err != nil {
 				return nil, err
 			}
