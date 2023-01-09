@@ -18,7 +18,6 @@ package snapshot
 
 import (
 	"context"
-
 	ctrl "sigs.k8s.io/controller-runtime"
 
 	"github.com/go-logr/logr"
