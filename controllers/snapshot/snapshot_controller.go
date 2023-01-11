@@ -28,6 +28,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 )
 
 // Reconciler reconciles an Snapshot object
@@ -190,5 +191,7 @@ func setupControllerWithManager(manager ctrl.Manager, reconciler *Reconciler) er
 
 	return ctrl.NewControllerManagedBy(manager).
 		For(&applicationapiv1alpha1.Snapshot{}).
+		WithEventFilter(predicate.Or(
+			gitops.IntegrationSnapshotChangePredicate())).
 		Complete(reconciler)
 }
