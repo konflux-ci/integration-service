@@ -23,13 +23,13 @@ import (
 
 var _ = Describe("SnapshotController", func() {
 	var (
-		manager     ctrl.Manager
-		reconciler  *Reconciler
-		scheme      runtime.Scheme
-		req         ctrl.Request
-		hasApp      *applicationapiv1alpha1.Application
-		hasComp     *applicationapiv1alpha1.Component
-		hasSnapshot *applicationapiv1alpha1.Snapshot
+		manager            ctrl.Manager
+		snapshotReconciler *Reconciler
+		scheme             runtime.Scheme
+		req                ctrl.Request
+		hasApp             *applicationapiv1alpha1.Application
+		hasComp            *applicationapiv1alpha1.Component
+		hasSnapshot        *applicationapiv1alpha1.Snapshot
 	)
 	const (
 		SampleRepoLink = "https://github.com/devfile-samples/devfile-sample-java-springboot-basic"
@@ -116,7 +116,7 @@ var _ = Describe("SnapshotController", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(err).To(BeNil())
 
-		reconciler = NewSnapshotReconciler(k8sClient, &logf.Log, &scheme)
+		snapshotReconciler = NewSnapshotReconciler(k8sClient, &logf.Log, &scheme)
 	})
 	AfterEach(func() {
 		err := k8sClient.Delete(ctx, hasApp)
@@ -128,27 +128,19 @@ var _ = Describe("SnapshotController", func() {
 	})
 
 	It("can create and return a new Reconciler object", func() {
-		Expect(reflect.TypeOf(reconciler)).To(Equal(reflect.TypeOf(&Reconciler{})))
-		klog.Info("Test First Logic")
-	})
-
-	It("should reconcile using the ReconcileHandler", func() {
-		adapter := NewAdapter(hasSnapshot, hasApp, hasComp, ctrl.Log, k8sClient, ctx)
-		result, err := reconciler.ReconcileHandler(adapter)
-		Expect(reflect.TypeOf(result)).To(Equal(reflect.TypeOf(reconcile.Result{})))
-		Expect(err).To(BeNil())
+		Expect(reflect.TypeOf(snapshotReconciler)).To(Equal(reflect.TypeOf(&Reconciler{})))
 	})
 
 	It("can fail when Reconcile fails to prepare the adapter when snapshot is not found", func() {
 		Expect(k8sClient.Delete(ctx, hasSnapshot)).Should(Succeed())
 		Eventually(func() error {
-			_, err := reconciler.Reconcile(ctx, req)
+			_, err := snapshotReconciler.Reconcile(ctx, req)
 			return err
 		}).Should(BeNil())
 	})
 
 	It("can Reconcile function prepare the adapter and return the result of the reconcile handling operation", func() {
-		result, err := reconciler.Reconcile(ctx, req)
+		result, err := snapshotReconciler.Reconcile(ctx, req)
 		Expect(reflect.TypeOf(result)).To(Equal(reflect.TypeOf(reconcile.Result{})))
 		Expect(err).To(BeNil())
 	})
@@ -158,8 +150,8 @@ var _ = Describe("SnapshotController", func() {
 		Expect(err).ToNot(HaveOccurred())
 	})
 
-	It("can setup a new controller manager with the given reconciler", func() {
-		err := setupControllerWithManager(manager, reconciler)
+	It("can setup a new controller manager with the given snapshotReconciler", func() {
+		err := setupControllerWithManager(manager, snapshotReconciler)
 		Expect(err).NotTo(HaveOccurred())
 	})
 
