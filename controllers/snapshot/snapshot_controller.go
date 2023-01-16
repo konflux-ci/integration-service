@@ -21,8 +21,8 @@ import (
 
 	"github.com/go-logr/logr"
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
-	"github.com/redhat-appstudio/integration-service/controllers/results"
 	"github.com/redhat-appstudio/integration-service/gitops"
+	"github.com/redhat-appstudio/operator-goodies/reconciler"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -86,7 +86,12 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 
 	adapter := NewAdapter(snapshot, application, component, logger, r.Client, ctx)
 
-	return r.ReconcileHandler(adapter)
+	return reconciler.ReconcileHandler([]reconciler.ReconcileOperation{
+		adapter.EnsureAllReleasesExist,
+		adapter.EnsureGlobalComponentImageUpdated,
+		adapter.EnsureSnapshotEnvironmentBindingExist,
+		adapter.EnsureAllIntegrationTestPipelinesExist,
+	})
 }
 
 // getApplicationFromSnapshot loads from the cluster the Application referenced in the given Snapshot.
@@ -127,36 +132,10 @@ func (r *Reconciler) getComponentFromSnapshot(context context.Context, snapshot 
 
 // AdapterInterface is an interface defining all the operations that should be defined in an Integration adapter.
 type AdapterInterface interface {
-	EnsureAllReleasesExist() (results.OperationResult, error)
-	EnsureAllIntegrationTestPipelinesExist() (results.OperationResult, error)
-	EnsureGlobalComponentImageUpdated() (results.OperationResult, error)
-	EnsureSnapshotEnvironmentBindingExist() (results.OperationResult, error)
-}
-
-// ReconcileOperation defines the syntax of functions invoked by the ReconcileHandler
-type ReconcileOperation func() (results.OperationResult, error)
-
-// ReconcileHandler will invoke all the operations to be performed as part of an Integration reconcile, managing
-// the queue based on the operations' results.
-func (r *Reconciler) ReconcileHandler(adapter AdapterInterface) (ctrl.Result, error) {
-	operations := []ReconcileOperation{
-		adapter.EnsureAllReleasesExist,
-		adapter.EnsureGlobalComponentImageUpdated,
-		adapter.EnsureSnapshotEnvironmentBindingExist,
-		adapter.EnsureAllIntegrationTestPipelinesExist,
-	}
-
-	for _, operation := range operations {
-		result, err := operation()
-		if err != nil || result.RequeueRequest {
-			return ctrl.Result{RequeueAfter: result.RequeueDelay}, err
-		}
-		if result.CancelRequest {
-			return ctrl.Result{}, nil
-		}
-	}
-
-	return ctrl.Result{}, nil
+	EnsureAllReleasesExist() (reconciler.OperationResult, error)
+	EnsureAllIntegrationTestPipelinesExist() (reconciler.OperationResult, error)
+	EnsureGlobalComponentImageUpdated() (reconciler.OperationResult, error)
+	EnsureSnapshotEnvironmentBindingExist() (reconciler.OperationResult, error)
 }
 
 // SetupController creates a new Integration reconciler and adds it to the Manager.
