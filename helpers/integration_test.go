@@ -114,7 +114,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 	It("should return all IntegrationTestScenarios used by the application", func() {
 		updatedSnapshot, err := gitops.MarkSnapshotAsPassed(k8sClient, ctx, hasSnapshot, "test passed")
 		Expect(err == nil && updatedSnapshot != nil).To(BeTrue())
-		Expect(gitops.HaveHACBSTestsFinished(hasSnapshot)).To(BeTrue())
+		Expect(gitops.HaveStonesoupTestsFinished(hasSnapshot)).To(BeTrue())
 
 		integrationTestScenarios, err := helpers.GetAllIntegrationTestScenariosForApplication(k8sClient, ctx, hasApp)
 		Expect(err == nil && integrationTestScenarios != nil).To(BeTrue())
@@ -133,7 +133,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 	It("should return all the required IntegrationTestScenarios used by the application", func() {
 		updatedSnapshot, err := gitops.MarkSnapshotAsPassed(k8sClient, ctx, hasSnapshot, "test passed")
 		Expect(err == nil && updatedSnapshot != nil).To(BeTrue())
-		Expect(gitops.HaveHACBSTestsFinished(hasSnapshot)).To(BeTrue())
+		Expect(gitops.HaveStonesoupTestsFinished(hasSnapshot)).To(BeTrue())
 
 		requiredIntegrationTestScenarios, err := helpers.GetRequiredIntegrationTestScenariosForApplication(k8sClient, ctx, hasApp)
 		Expect(err == nil && requiredIntegrationTestScenarios != nil).To(BeTrue())
@@ -169,7 +169,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		}
 	})
 
-	It("ensures multiple task pipelinerun outcome when HACBSTests succeeded", func() {
+	It("ensures multiple task pipelinerun outcome when StonesoupTests succeeded", func() {
 		testpipelineRun.Status = tektonv1beta1.PipelineRunStatus{
 			PipelineRunStatusFields: tektonv1beta1.PipelineRunStatusFields{
 				TaskRuns: map[string]*tektonv1beta1.PipelineRunTaskRunStatus{
@@ -179,7 +179,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 							TaskRunStatusFields: tektonv1beta1.TaskRunStatusFields{
 								TaskRunResults: []tektonv1beta1.TaskRunResult{
 									{
-										Name: "HACBS_TEST_OUTPUT",
+										Name: "STONESOUP_TEST_OUTPUT",
 										Value: *tektonv1beta1.NewArrayOrString(`{
 											"result": "SKIPPED",
 											"timestamp": "1665405318",
@@ -197,7 +197,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 							TaskRunStatusFields: tektonv1beta1.TaskRunStatusFields{
 								TaskRunResults: []tektonv1beta1.TaskRunResult{
 									{
-										Name: "HACBS_TEST_OUTPUT",
+										Name: "STONESOUP_TEST_OUTPUT",
 										Value: *tektonv1beta1.NewArrayOrString(`{
 											"result": "SUCCESS",
 											"timestamp": "1665405318",
@@ -215,7 +215,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 							TaskRunStatusFields: tektonv1beta1.TaskRunStatusFields{
 								TaskRunResults: []tektonv1beta1.TaskRunResult{
 									{
-										Name: "HACBS_TEST_OUTPUT",
+										Name: "STONESOUP_TEST_OUTPUT",
 										Value: *tektonv1beta1.NewArrayOrString(`{
 											"result": "SUCCESS",
 											"timestamp": "1665405318",
@@ -236,10 +236,10 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		Expect(err == nil && pipelineRunOutcome).To(BeTrue())
 
 		gitops.MarkSnapshotAsPassed(k8sClient, ctx, hasSnapshot, "test passed")
-		Expect(gitops.HaveHACBSTestsSucceeded(hasSnapshot)).To(BeTrue())
+		Expect(gitops.HaveStonesoupTestsSucceeded(hasSnapshot)).To(BeTrue())
 	})
 
-	It("no error from pipelinrun when HACBSTests failed", func() {
+	It("no error from pipelinrun when StonesoupTests failed", func() {
 		testpipelineRun.Status = tektonv1beta1.PipelineRunStatus{
 			PipelineRunStatusFields: tektonv1beta1.PipelineRunStatusFields{
 				TaskRuns: map[string]*tektonv1beta1.PipelineRunTaskRunStatus{
@@ -249,7 +249,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 							TaskRunStatusFields: tektonv1beta1.TaskRunStatusFields{
 								TaskRunResults: []tektonv1beta1.TaskRunResult{
 									{
-										Name: "HACBS_TEST_OUTPUT",
+										Name: "STONESOUP_TEST_OUTPUT",
 										Value: *tektonv1beta1.NewArrayOrString(`{
 											"result": "FAILURE",
 											"timestamp": "1665405317",
@@ -271,10 +271,10 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		Expect(pipelineRunOutcome).To(BeFalse())
 
 		gitops.MarkSnapshotAsFailed(k8sClient, ctx, hasSnapshot, "test failed")
-		Expect(gitops.HaveHACBSTestsSucceeded(hasSnapshot)).To(BeFalse())
+		Expect(gitops.HaveStonesoupTestsSucceeded(hasSnapshot)).To(BeFalse())
 	})
 
-	It("ensure No Task pipelinerun passed when HACBSTests passed", func() {
+	It("ensure No Task pipelinerun passed when StonesoupTests passed", func() {
 
 		testpipelineRun.Status = tektonv1beta1.PipelineRunStatus{
 			PipelineRunStatusFields: tektonv1beta1.PipelineRunStatusFields{
@@ -310,10 +310,10 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		Expect(pipelineRunOutcome).To(BeTrue())
 
 		gitops.MarkSnapshotAsPassed(k8sClient, ctx, hasSnapshot, "test passed")
-		Expect(gitops.HaveHACBSTestsSucceeded(hasSnapshot)).To(BeTrue())
+		Expect(gitops.HaveStonesoupTestsSucceeded(hasSnapshot)).To(BeTrue())
 	})
 
-	It("can handle malformed HACBS_TEST_OUTPUT result", func() {
+	It("can handle malformed STONESOUP_TEST_OUTPUT result", func() {
 		testpipelineRun.Status = tektonv1beta1.PipelineRunStatus{
 			PipelineRunStatusFields: tektonv1beta1.PipelineRunStatusFields{
 				TaskRuns: map[string]*tektonv1beta1.PipelineRunTaskRunStatus{
@@ -323,7 +323,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 							TaskRunStatusFields: tektonv1beta1.TaskRunStatusFields{
 								TaskRunResults: []tektonv1beta1.TaskRunResult{
 									{
-										Name:  "HACBS_TEST_OUTPUT",
+										Name:  "STONESOUP_TEST_OUTPUT",
 										Value: *tektonv1beta1.NewArrayOrString("invalid json"),
 									},
 								},
@@ -353,7 +353,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 								CompletionTime: &metav1.Time{Time: now.Add(5 * time.Minute)},
 								TaskRunResults: []tektonv1beta1.TaskRunResult{
 									{
-										Name: "HACBS_TEST_OUTPUT",
+										Name: "STONESOUP_TEST_OUTPUT",
 										Value: *tektonv1beta1.NewArrayOrString(`{
 											"result": "SUCCESS",
 											"successes": 1

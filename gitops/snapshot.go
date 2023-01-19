@@ -59,26 +59,26 @@ const (
 	// PipelineAsCodeGitHubProviderType is the git provider type for a GitHub event which triggered the pipelinerun in build service.
 	PipelineAsCodeGitHubProviderType = "github"
 
-	//HACBSTestSuceededCondition is the condition for marking if the HACBS Tests succeeded for the Snapshot.
-	HACBSTestSuceededCondition = "HACBSTestSucceeded"
+	//StonesoupTestSuceededCondition is the condition for marking if the Stonesoup Tests succeeded for the Snapshot.
+	StonesoupTestSuceededCondition = "StonesoupTestSucceeded"
 
-	// HACBSIntegrationStatusCondition is the condition for marking the HACBS integration status of the Snapshot.
-	HACBSIntegrationStatusCondition = "HACBSIntegrationStatus"
+	// StonesoupIntegrationStatusCondition is the condition for marking the Stonesoup integration status of the Snapshot.
+	StonesoupIntegrationStatusCondition = "StonesoupIntegrationStatus"
 
-	// HACBSTestSuceededConditionPassed is the reason that's set when the HACBS tests succeed.
-	HACBSTestSuceededConditionPassed = "Passed"
+	// StonesoupTestSuceededConditionPassed is the reason that's set when the Stonesoup tests succeed.
+	StonesoupTestSuceededConditionPassed = "Passed"
 
-	// HACBSTestSuceededConditionFailed is the reason that's set when the HACBS tests fail.
-	HACBSTestSuceededConditionFailed = "Failed"
+	// StonesoupTestSuceededConditionFailed is the reason that's set when the Stonesoup tests fail.
+	StonesoupTestSuceededConditionFailed = "Failed"
 
-	// HACBSIntegrationStatusInvalid is the reason that's set when the HACBS integration gets into an invalid state.
-	HACBSIntegrationStatusInvalid = "Invalid"
+	// StonesoupIntegrationStatusInvalid is the reason that's set when the Stonesoup integration gets into an invalid state.
+	StonesoupIntegrationStatusInvalid = "Invalid"
 
-	//HACBSIntegrationStatusInProgress is the reason that's set when the HACBS tests gets into an in progress state.
-	HACBSIntegrationStatusInProgress = "InProgress"
+	//StonesoupIntegrationStatusInProgress is the reason that's set when the Stonesoup tests gets into an in progress state.
+	StonesoupIntegrationStatusInProgress = "InProgress"
 
-	//HACBSIntegrationStatusFinished is the reason that's set when the HACBS tests finish.
-	HACBSIntegrationStatusFinished = "Finished"
+	//StonesoupIntegrationStatusFinished is the reason that's set when the Stonesoup tests finish.
+	StonesoupIntegrationStatusFinished = "Finished"
 )
 
 var (
@@ -86,14 +86,14 @@ var (
 	SnapshotComponentLabel = tekton.ComponentNameLabel
 )
 
-// MarkSnapshotAsPassed updates the HACBS Test succeeded condition for the Snapshot to passed.
+// MarkSnapshotAsPassed updates the Stonesoup Test succeeded condition for the Snapshot to passed.
 // If the patch command fails, an error will be returned.
 func MarkSnapshotAsPassed(adapterClient client.Client, ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot, message string) (*applicationapiv1alpha1.Snapshot, error) {
 	patch := client.MergeFrom(snapshot.DeepCopy())
 	meta.SetStatusCondition(&snapshot.Status.Conditions, metav1.Condition{
-		Type:    HACBSTestSuceededCondition,
+		Type:    StonesoupTestSuceededCondition,
 		Status:  metav1.ConditionTrue,
-		Reason:  HACBSTestSuceededConditionPassed,
+		Reason:  StonesoupTestSuceededConditionPassed,
 		Message: message,
 	})
 	SetSnapshotIntegrationStatusAsFinished(snapshot, "Marking snapshot integration status condition as finished since the testing is passed")
@@ -104,14 +104,14 @@ func MarkSnapshotAsPassed(adapterClient client.Client, ctx context.Context, snap
 	return snapshot, nil
 }
 
-// MarkSnapshotAsFailed updates the HACBS Test succeeded condition for the Snapshot to failed.
+// MarkSnapshotAsFailed updates the Stonesoup Test succeeded condition for the Snapshot to failed.
 // If the patch command fails, an error will be returned.
 func MarkSnapshotAsFailed(adapterClient client.Client, ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot, message string) (*applicationapiv1alpha1.Snapshot, error) {
 	patch := client.MergeFrom(snapshot.DeepCopy())
 	meta.SetStatusCondition(&snapshot.Status.Conditions, metav1.Condition{
-		Type:    HACBSTestSuceededCondition,
+		Type:    StonesoupTestSuceededCondition,
 		Status:  metav1.ConditionFalse,
-		Reason:  HACBSTestSuceededConditionFailed,
+		Reason:  StonesoupTestSuceededConditionFailed,
 		Message: message,
 	})
 	SetSnapshotIntegrationStatusAsFinished(snapshot, "Marking snapshot integration status condition as finished since the testing fails")
@@ -122,23 +122,23 @@ func MarkSnapshotAsFailed(adapterClient client.Client, ctx context.Context, snap
 	return snapshot, nil
 }
 
-// SetSnapshotIntegrationStatusAsInvalid sets the HACBS integration status condition for the Snapshot to invalid.
+// SetSnapshotIntegrationStatusAsInvalid sets the Stonesoup integration status condition for the Snapshot to invalid.
 func SetSnapshotIntegrationStatusAsInvalid(snapshot *applicationapiv1alpha1.Snapshot, message string) {
 	meta.SetStatusCondition(&snapshot.Status.Conditions, metav1.Condition{
-		Type:    HACBSIntegrationStatusCondition,
+		Type:    StonesoupIntegrationStatusCondition,
 		Status:  metav1.ConditionFalse,
-		Reason:  HACBSIntegrationStatusInvalid,
+		Reason:  StonesoupIntegrationStatusInvalid,
 		Message: message,
 	})
 }
 
-// MarkSnapshotIntegrationStatusAsInProgress sets the HACBS integration status condition for the Snapshot to In Progress.
+// MarkSnapshotIntegrationStatusAsInProgress sets the Stonesoup integration status condition for the Snapshot to In Progress.
 func MarkSnapshotIntegrationStatusAsInProgress(adapterClient client.Client, ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot, message string) (*applicationapiv1alpha1.Snapshot, error) {
 	patch := client.MergeFrom(snapshot.DeepCopy())
 	meta.SetStatusCondition(&snapshot.Status.Conditions, metav1.Condition{
-		Type:    HACBSIntegrationStatusCondition,
+		Type:    StonesoupIntegrationStatusCondition,
 		Status:  metav1.ConditionUnknown,
-		Reason:  HACBSIntegrationStatusInProgress,
+		Reason:  StonesoupIntegrationStatusInProgress,
 		Message: message,
 	})
 	err := adapterClient.Status().Patch(ctx, snapshot, patch)
@@ -148,24 +148,24 @@ func MarkSnapshotIntegrationStatusAsInProgress(adapterClient client.Client, ctx 
 	return snapshot, nil
 }
 
-// SetSnapshotIntegrationStatusAsFinished sets the HACBS integration status condition for the Snapshot to Finished.
+// SetSnapshotIntegrationStatusAsFinished sets the Stonesoup integration status condition for the Snapshot to Finished.
 func SetSnapshotIntegrationStatusAsFinished(snapshot *applicationapiv1alpha1.Snapshot, message string) {
 	meta.SetStatusCondition(&snapshot.Status.Conditions, metav1.Condition{
-		Type:    HACBSIntegrationStatusCondition,
+		Type:    StonesoupIntegrationStatusCondition,
 		Status:  metav1.ConditionTrue,
-		Reason:  HACBSIntegrationStatusFinished,
+		Reason:  StonesoupIntegrationStatusFinished,
 		Message: message,
 	})
 }
 
-// HaveHACBSTestsFinished checks if the HACBS tests have finished by checking if the HACBS Test Succeeded condition is set.
-func HaveHACBSTestsFinished(snapshot *applicationapiv1alpha1.Snapshot) bool {
-	return meta.FindStatusCondition(snapshot.Status.Conditions, HACBSTestSuceededCondition) != nil
+// HaveStonesoupTestsFinished checks if the Stonesoup tests have finished by checking if the Stonesoup Test Succeeded condition is set.
+func HaveStonesoupTestsFinished(snapshot *applicationapiv1alpha1.Snapshot) bool {
+	return meta.FindStatusCondition(snapshot.Status.Conditions, StonesoupTestSuceededCondition) != nil
 }
 
-// HaveHACBSTestsSucceeded checks if the HACBS tests have finished by checking if the HACBS Test Succeeded condition is set.
-func HaveHACBSTestsSucceeded(snapshot *applicationapiv1alpha1.Snapshot) bool {
-	return meta.IsStatusConditionTrue(snapshot.Status.Conditions, HACBSTestSuceededCondition)
+// HaveStonesoupTestsSucceeded checks if the Stonesoup tests have finished by checking if the Stonesoup Test Succeeded condition is set.
+func HaveStonesoupTestsSucceeded(snapshot *applicationapiv1alpha1.Snapshot) bool {
+	return meta.IsStatusConditionTrue(snapshot.Status.Conditions, StonesoupTestSuceededCondition)
 }
 
 // NewSnapshot creates a new snapshot based on the supplied application and components

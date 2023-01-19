@@ -38,7 +38,7 @@ func newTaskRun(name string, startTime time.Time, completionTime time.Time) *hel
 	})
 }
 
-func newTaskRunWithHACBSTestOutput(name string, startTime time.Time, completionTime time.Time, output string) *helpers.TaskRun {
+func newTaskRunWithStonesoupTestOutput(name string, startTime time.Time, completionTime time.Time, output string) *helpers.TaskRun {
 	return helpers.NewTaskRun(logr.Discard(), &tektonv1beta1.PipelineRunTaskRunStatus{
 		PipelineTaskName: name,
 		Status: &tektonv1beta1.TaskRunStatus{
@@ -47,7 +47,7 @@ func newTaskRunWithHACBSTestOutput(name string, startTime time.Time, completionT
 				CompletionTime: &metav1.Time{Time: completionTime},
 				TaskRunResults: []tektonv1beta1.TaskRunResult{
 					{
-						Name:  "HACBS_TEST_OUTPUT",
+						Name:  "STONESOUP_TEST_OUTPUT",
 						Value: *tektonv1beta1.NewArrayOrString(output),
 					},
 				},
@@ -63,7 +63,7 @@ var _ = Describe("Formatters", func() {
 	BeforeEach(func() {
 		now := time.Now()
 		taskRuns = []*helpers.TaskRun{
-			newTaskRunWithHACBSTestOutput(
+			newTaskRunWithStonesoupTestOutput(
 				"example-task-1",
 				now,
 				now.Add(time.Minute*5).Add(time.Second*30),
@@ -80,7 +80,7 @@ var _ = Describe("Formatters", func() {
 				now.Add(time.Minute*-2),
 				now,
 			),
-			newTaskRunWithHACBSTestOutput(
+			newTaskRunWithStonesoupTestOutput(
 				"example-task-3",
 				now.Add(time.Second*3),
 				now.Add(time.Second*4),
@@ -92,7 +92,7 @@ var _ = Describe("Formatters", func() {
 					"note": "example note 3"
 				}`,
 			),
-			newTaskRunWithHACBSTestOutput(
+			newTaskRunWithStonesoupTestOutput(
 				"example-task-4",
 				now.Add(time.Second*4),
 				now.Add(time.Second*5),
@@ -103,7 +103,7 @@ var _ = Describe("Formatters", func() {
 					"note": "example note 4"
 				}`,
 			),
-			newTaskRunWithHACBSTestOutput(
+			newTaskRunWithStonesoupTestOutput(
 				"example-task-5",
 				now.Add(time.Minute*-5),
 				now,
@@ -112,7 +112,7 @@ var _ = Describe("Formatters", func() {
 					"namespace": "example-namespace-5"
 				}`,
 			),
-			newTaskRunWithHACBSTestOutput(
+			newTaskRunWithStonesoupTestOutput(
 				"example-task-6",
 				now.Add(time.Second*6),
 				now.Add(time.Second*7),
@@ -121,7 +121,7 @@ var _ = Describe("Formatters", func() {
 					"namespace": "example-namespace-6"
 				}`,
 			),
-			newTaskRunWithHACBSTestOutput(
+			newTaskRunWithStonesoupTestOutput(
 				"example-task-7",
 				now.Add(time.Second*7),
 				now.Add(time.Second*7),

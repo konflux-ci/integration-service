@@ -18,30 +18,32 @@ import (
 )
 
 const (
-	//HACBSTestOutputName is the name of the standardized HACBS Test output Tekton task result
-	HACBSTestOutputName = "HACBS_TEST_OUTPUT"
+	// TODO check effects of modifying output name
+	//StonesoupTestOutputName is the name of the standardized Stonesoup Test output Tekton task result
+	StonesoupTestOutputName = "STONESOUP_TEST_OUTPUT"
 
-	// HACBSTestOutputSuccess is the result that's set when the HACBS test succeeds.
-	HACBSTestOutputSuccess = "SUCCESS"
+	// StonesoupTestOutputSuccess is the result that's set when the Stonesoup test succeeds.
+	StonesoupTestOutputSuccess = "SUCCESS"
 
-	// HACBSTestOutputFailure is the result that's set when the HACBS test fails.
-	HACBSTestOutputFailure = "FAILURE"
+	// StonesoupTestOutputFailure is the result that's set when the Stonesoup test fails.
+	StonesoupTestOutputFailure = "FAILURE"
 
-	// HACBSTestOutputWarning is the result that's set when the HACBS test passes with a warning.
-	HACBSTestOutputWarning = "WARNING"
+	// StonesoupTestOutputWarning is the result that's set when the Stonesoup test passes with a warning.
+	StonesoupTestOutputWarning = "WARNING"
 
-	// HACBSTestOutputSkipped is the result that's set when the HACBS test gets skipped.
-	HACBSTestOutputSkipped = "SKIPPED"
+	// StonesoupTestOutputSkipped is the result that's set when the Stonesoup test gets skipped.
+	StonesoupTestOutputSkipped = "SKIPPED"
 
-	// HACBSTestOutputError is the result that's set when the HACBS test produces an error.
-	HACBSTestOutputError = "ERROR"
+	// StonesoupTestOutputError is the result that's set when the Stonesoup test produces an error.
+	StonesoupTestOutputError = "ERROR"
 
-	// AppStudioLabelSuffix is the suffix that's added to all HACBS label headings
+	// AppStudioLabelSuffix is the suffix that's added to all Stonesoup label headings
 	AppStudioLabelSuffix = "appstudio.openshift.io"
 )
 
-// HACBSTestResult matches HACBS TaskRun result contract
-type HACBSTestResult struct {
+// TODO understand the TaskRun result contract and implications of making the following changes
+// StonesoupTestResult matches Stonesoup TaskRun result contract
+type StonesoupTestResult struct {
 	Result    string `json:"result"`
 	Namespace string `json:"namespace"`
 	Timestamp string `json:"timestamp"`
@@ -55,7 +57,7 @@ type HACBSTestResult struct {
 type TaskRun struct {
 	logger     logr.Logger
 	trStatus   *tektonv1beta1.PipelineRunTaskRunStatus
-	testResult *HACBSTestResult
+	testResult *StonesoupTestResult
 }
 
 // NewTaskRun creates and returns am integration TaskRun.
@@ -90,21 +92,21 @@ func (t *TaskRun) GetDuration() time.Duration {
 	return end.Sub(start)
 }
 
-// GetTestResult returns a HACBSTestResult if the TaskRun produced the result. It will return nil otherwise.
-func (t *TaskRun) GetTestResult() (*HACBSTestResult, error) {
+// GetTestResult returns a StonesoupTestResult if the TaskRun produced the result. It will return nil otherwise.
+func (t *TaskRun) GetTestResult() (*StonesoupTestResult, error) {
 	// Check for an already parsed result.
 	if t.testResult != nil {
 		return t.testResult, nil
 	}
 
 	for _, taskRunResult := range t.trStatus.Status.TaskRunResults {
-		if taskRunResult.Name == HACBSTestOutputName {
-			var result HACBSTestResult
+		if taskRunResult.Name == StonesoupTestOutputName {
+			var result StonesoupTestResult
 			err := json.Unmarshal([]byte(taskRunResult.Value.StringVal), &result)
 			if err != nil {
 				return nil, err
 			}
-			t.logger.Info("Found a HACBS test result", "Result", result)
+			t.logger.Info("Found a Stonesoup test result", "Result", result)
 			t.testResult = &result
 			return &result, nil
 		}
@@ -173,14 +175,14 @@ func GetAllIntegrationTestScenariosForApplication(adapterClient client.Client, c
 }
 
 // CalculateIntegrationPipelineRunOutcome checks the Tekton results for a given PipelineRun and calculates the overall outcome.
-// If any of the tasks with the HACBS_TEST_OUTPUT result don't have the `result` field set to SUCCESS or SKIPPED, it returns false.
+// If any of the tasks with the STONESOUP_TEST_OUTPUT result don't have the `result` field set to SUCCESS or SKIPPED, it returns false.
 func CalculateIntegrationPipelineRunOutcome(logger logr.Logger, pipelineRun *tektonv1beta1.PipelineRun) (bool, error) {
-	results, err := GetHACBSTestResultsFromPipelineRun(logger, pipelineRun)
+	results, err := GetStonesoupTestResultsFromPipelineRun(logger, pipelineRun)
 	if err != nil {
 		return false, err
 	}
 	for _, result := range results {
-		if result.Result != HACBSTestOutputSuccess && result.Result != HACBSTestOutputSkipped {
+		if result.Result != StonesoupTestOutputSuccess && result.Result != StonesoupTestOutputSkipped {
 			return false, nil
 		}
 	}
@@ -238,10 +240,10 @@ func GetLatestPipelineRunForSnapshotAndScenario(adapterClient client.Client, ctx
 	return nil, err
 }
 
-// GetHACBSTestResultsFromPipelineRun finds all TaskRuns with a HACBS_TEST_OUTPUT result and returns the parsed data
-func GetHACBSTestResultsFromPipelineRun(logger logr.Logger, pipelineRun *tektonv1beta1.PipelineRun) ([]*HACBSTestResult, error) {
+// GetStonesoupTestResultsFromPipelineRun finds all TaskRuns with a STONESOUP_TEST_OUTPUT result and returns the parsed data
+func GetStonesoupTestResultsFromPipelineRun(logger logr.Logger, pipelineRun *tektonv1beta1.PipelineRun) ([]*StonesoupTestResult, error) {
 	taskRuns := GetTaskRunsFromPipelineRun(logger, pipelineRun)
-	results := []*HACBSTestResult{}
+	results := []*StonesoupTestResult{}
 	for _, tr := range taskRuns {
 		r, err := tr.GetTestResult()
 		if err != nil {

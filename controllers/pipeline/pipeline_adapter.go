@@ -165,7 +165,7 @@ func (a *Adapter) EnsureSnapshotPassedAllTests() (results.OperationResult, error
 			existingSnapshot, err := gitops.MarkSnapshotAsFailed(a.client, a.context, existingSnapshot,
 				"The global component list has changed in the meantime, superseding with a composite snapshot")
 			if err != nil {
-				a.logger.Error(err, "Failed to Update Snapshot HACBSTestSucceeded status")
+				a.logger.Error(err, "Failed to Update Snapshot StonesoupTestSucceeded status")
 				return results.RequeueWithError(err)
 			}
 			a.logger.Info("The global component list has changed in the meantime, marking snapshot as failed",
@@ -179,7 +179,7 @@ func (a *Adapter) EnsureSnapshotPassedAllTests() (results.OperationResult, error
 	if allIntegrationPipelineRunsPassed {
 		existingSnapshot, err = gitops.MarkSnapshotAsPassed(a.client, a.context, existingSnapshot, "All Integration Pipeline tests passed")
 		if err != nil {
-			a.logger.Error(err, "Failed to Update Snapshot HACBSTestSucceeded status")
+			a.logger.Error(err, "Failed to Update Snapshot StonesoupTestSucceeded status")
 			return results.RequeueWithError(err)
 		}
 		a.logger.Info("All Integration PipelineRuns succeeded, marking Snapshot as succeeded",
@@ -188,7 +188,7 @@ func (a *Adapter) EnsureSnapshotPassedAllTests() (results.OperationResult, error
 	} else {
 		existingSnapshot, err = gitops.MarkSnapshotAsFailed(a.client, a.context, existingSnapshot, "Some Integration pipeline tests failed")
 		if err != nil {
-			a.logger.Error(err, "Failed to Update Snapshot HACBSTestSucceeded status")
+			a.logger.Error(err, "Failed to Update Snapshot StonesoupTestSucceeded status")
 			return results.RequeueWithError(err)
 		}
 		a.logger.Info("Some tests within Integration PipelineRuns failed, marking Snapshot as failed",

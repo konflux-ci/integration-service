@@ -59,7 +59,7 @@ func NewAdapter(snapshot *applicationapiv1alpha1.Snapshot, application *applicat
 // associated with the Snapshot and the Application's IntegrationTestScenarios exist.
 // Otherwise, it will create new Releases for each ReleasePlan.
 func (a *Adapter) EnsureAllIntegrationTestPipelinesExist() (results.OperationResult, error) {
-	if gitops.HaveHACBSTestsFinished(a.snapshot) {
+	if gitops.HaveStonesoupTestsFinished(a.snapshot) {
 		a.logger.Info("The Snapshot has finished testing.")
 		return results.ContinueProcessing()
 	}
@@ -144,7 +144,7 @@ func (a *Adapter) EnsureAllIntegrationTestPipelinesExist() (results.OperationRes
 // EnsureGlobalComponentImageUpdated is an operation that ensure the ContainerImage in the Global Candidate List
 // being updated when the Snapshot passed all the integration tests
 func (a *Adapter) EnsureGlobalComponentImageUpdated() (results.OperationResult, error) {
-	if (a.component != nil) && gitops.HaveHACBSTestsSucceeded(a.snapshot) && !gitops.IsSnapshotCreatedByPACPullRequestEvent(a.snapshot) {
+	if (a.component != nil) && gitops.HaveStonesoupTestsSucceeded(a.snapshot) && !gitops.IsSnapshotCreatedByPACPullRequestEvent(a.snapshot) {
 		patch := client.MergeFrom(a.component.DeepCopy())
 		for _, component := range a.snapshot.Spec.Components {
 			if component.Name == a.component.Name {
@@ -165,8 +165,8 @@ func (a *Adapter) EnsureGlobalComponentImageUpdated() (results.OperationResult, 
 // to the Snapshot and the Application's ReleasePlans exist.
 // Otherwise, it will create new Releases for each ReleasePlan.
 func (a *Adapter) EnsureAllReleasesExist() (results.OperationResult, error) {
-	if !gitops.HaveHACBSTestsSucceeded(a.snapshot) {
-		a.logger.Info("The Snapshot hasn't been marked as HACBSTestSucceeded, holding off on releasing.")
+	if !gitops.HaveStonesoupTestsSucceeded(a.snapshot) {
+		a.logger.Info("The Snapshot hasn't been marked as StonesoupTestSucceeded, holding off on releasing.")
 		return results.ContinueProcessing()
 	}
 
@@ -202,8 +202,8 @@ func (a *Adapter) EnsureAllReleasesExist() (results.OperationResult, error) {
 // SnapshotEnvironmentBindings for non-ephemeral root environments point to the newly constructed snapshot.
 // If the bindings don't already exist, it will create new ones for each of the environments.
 func (a *Adapter) EnsureSnapshotEnvironmentBindingExist() (results.OperationResult, error) {
-	if !gitops.HaveHACBSTestsSucceeded(a.snapshot) {
-		a.logger.Info("The Snapshot hasn't been marked as HACBSTestSucceeded, holding off on deploying.")
+	if !gitops.HaveStonesoupTestsSucceeded(a.snapshot) {
+		a.logger.Info("The Snapshot hasn't been marked as StonesoupTestSucceeded, holding off on deploying.")
 		return results.ContinueProcessing()
 	}
 

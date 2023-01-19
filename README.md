@@ -1,5 +1,5 @@
-# HACBS Integration Service
-The HACBS Integration Service is a Kubernetes operator to control the integration and testing of HACBS-managed 
+# Stonesoup Integration Service
+The Stonesoup Integration Service is a Kubernetes operator to control the integration and testing of Stonesoup-managed 
 Application Component builds in Red Hat AppStudio.
 
 ## Running, building and testing the operator

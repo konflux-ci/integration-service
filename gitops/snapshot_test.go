@@ -114,7 +114,7 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 		Expect(err == nil).To(BeTrue())
 		Expect(updatedSnapshot != nil).To(BeTrue())
 		Expect(updatedSnapshot.Status.Conditions != nil).To(BeTrue())
-		Expect(meta.IsStatusConditionTrue(updatedSnapshot.Status.Conditions, gitops.HACBSTestSuceededCondition)).To(BeTrue())
+		Expect(meta.IsStatusConditionTrue(updatedSnapshot.Status.Conditions, gitops.StonesoupTestSuceededCondition)).To(BeTrue())
 	})
 
 	It("ensures the Snapshots status can be marked as failed", func() {
@@ -122,22 +122,22 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 		Expect(err == nil).To(BeTrue())
 		Expect(updatedSnapshot != nil).To(BeTrue())
 		Expect(updatedSnapshot.Status.Conditions != nil).To(BeTrue())
-		Expect(meta.IsStatusConditionTrue(updatedSnapshot.Status.Conditions, gitops.HACBSTestSuceededCondition)).To(BeFalse())
+		Expect(meta.IsStatusConditionTrue(updatedSnapshot.Status.Conditions, gitops.StonesoupTestSuceededCondition)).To(BeFalse())
 	})
 
 	It("ensures the Snapshots status can be marked as invalid", func() {
 		gitops.SetSnapshotIntegrationStatusAsInvalid(hasSnapshot, "Test message")
 		Expect(hasSnapshot != nil).To(BeTrue())
 		Expect(hasSnapshot.Status.Conditions != nil).To(BeTrue())
-		Expect(meta.IsStatusConditionTrue(hasSnapshot.Status.Conditions, gitops.HACBSIntegrationStatusCondition)).To(BeFalse())
+		Expect(meta.IsStatusConditionTrue(hasSnapshot.Status.Conditions, gitops.StonesoupIntegrationStatusCondition)).To(BeFalse())
 	})
 
 	It("ensures the Snapshots status can be marked as finished", func() {
 		gitops.SetSnapshotIntegrationStatusAsFinished(hasSnapshot, "Test message")
 		Expect(hasSnapshot.Status.Conditions != nil).To(BeTrue())
-		Expect(meta.IsStatusConditionTrue(hasSnapshot.Status.Conditions, gitops.HACBSIntegrationStatusCondition)).To(BeTrue())
-		foundStatusCondition := meta.FindStatusCondition(hasSnapshot.Status.Conditions, gitops.HACBSIntegrationStatusCondition)
-		Expect(foundStatusCondition.Reason == gitops.HACBSIntegrationStatusFinished).To(BeTrue())
+		Expect(meta.IsStatusConditionTrue(hasSnapshot.Status.Conditions, gitops.StonesoupIntegrationStatusCondition)).To(BeTrue())
+		foundStatusCondition := meta.FindStatusCondition(hasSnapshot.Status.Conditions, gitops.StonesoupIntegrationStatusCondition)
+		Expect(foundStatusCondition.Reason == gitops.StonesoupIntegrationStatusFinished).To(BeTrue())
 	})
 
 	It("ensures the Snapshots status can be marked as in progress", func() {
@@ -145,17 +145,17 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 		Expect(err == nil).To(BeTrue())
 		Expect(updatedSnapshot != nil).To(BeTrue())
 		Expect(updatedSnapshot.Status.Conditions != nil).To(BeTrue())
-		foundStatusCondition := meta.FindStatusCondition(updatedSnapshot.Status.Conditions, gitops.HACBSIntegrationStatusCondition)
-		Expect(foundStatusCondition.Reason == gitops.HACBSIntegrationStatusInProgress).To(BeTrue())
+		foundStatusCondition := meta.FindStatusCondition(updatedSnapshot.Status.Conditions, gitops.StonesoupIntegrationStatusCondition)
+		Expect(foundStatusCondition.Reason == gitops.StonesoupIntegrationStatusInProgress).To(BeTrue())
 	})
 
-	It("ensures the Snapshots can be checked for the HACBSTestSuceededCondition", func() {
-		checkResult := gitops.HaveHACBSTestsFinished(hasSnapshot)
+	It("ensures the Snapshots can be checked for the StonesoupTestSuceededCondition", func() {
+		checkResult := gitops.HaveStonesoupTestsFinished(hasSnapshot)
 		Expect(checkResult).To(BeFalse())
 	})
 
-	It("ensures the Snapshots can be checked for the HACBSTestSuceededCondition", func() {
-		checkResult := gitops.HaveHACBSTestsSucceeded(hasSnapshot)
+	It("ensures the Snapshots can be checked for the StonesoupTestSuceededCondition", func() {
+		checkResult := gitops.HaveStonesoupTestsSucceeded(hasSnapshot)
 		Expect(checkResult).To(BeFalse())
 	})
 

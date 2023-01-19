@@ -271,7 +271,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 							TaskRunStatusFields: tektonv1beta1.TaskRunStatusFields{
 								TaskRunResults: []tektonv1beta1.TaskRunResult{
 									{
-										Name:  "HACBS_TEST_OUTPUT",
+										Name:  "Stonesoup_TEST_OUTPUT",
 										Value: *tektonv1beta1.NewArrayOrString("{\"result\":\"SUCCESS\",\"timestamp\":\"1665405317\",\"failures\":0,\"successes\":1}"),
 									},
 								},

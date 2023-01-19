@@ -300,9 +300,9 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		}
 	})
 
-	It("ensures all Releases exists when HACBSTests succeeded", func() {
+	It("ensures all Releases exists when StonesoupTests succeeded", func() {
 		gitops.MarkSnapshotAsPassed(k8sClient, ctx, hasSnapshot, "test passed")
-		Expect(gitops.HaveHACBSTestsSucceeded(hasSnapshot)).To(BeTrue())
+		Expect(gitops.HaveStonesoupTestsSucceeded(hasSnapshot)).To(BeTrue())
 
 		Eventually(func() bool {
 			result, err := adapter.EnsureAllReleasesExist()
@@ -320,7 +320,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 	It("ensures global Component Image will not be updated in the PR context", func() {
 
 		gitops.MarkSnapshotAsPassed(k8sClient, ctx, hasSnapshotPR, "test passed")
-		Expect(gitops.HaveHACBSTestsSucceeded(hasSnapshotPR)).To(BeTrue())
+		Expect(gitops.HaveStonesoupTestsSucceeded(hasSnapshotPR)).To(BeTrue())
 
 		Eventually(func() bool {
 			result, err := adapter.EnsureGlobalComponentImageUpdated()
@@ -330,9 +330,9 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		Expect(hasComp.Spec.ContainerImage).To(Equal(""))
 	})
 
-	It("ensures global Component Image updated when HACBSTests succeeded", func() {
+	It("ensures global Component Image updated when StonesoupTests succeeded", func() {
 		gitops.MarkSnapshotAsPassed(k8sClient, ctx, hasSnapshot, "test passed")
-		Expect(gitops.HaveHACBSTestsSucceeded(hasSnapshot)).To(BeTrue())
+		Expect(gitops.HaveStonesoupTestsSucceeded(hasSnapshot)).To(BeTrue())
 
 		Eventually(func() bool {
 			result, err := adapter.EnsureGlobalComponentImageUpdated()
@@ -343,17 +343,17 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 
 	})
 
-	It("no error from ensuring global Component Image updated when HACBSTests failed", func() {
+	It("no error from ensuring global Component Image updated when StonesoupTests failed", func() {
 		gitops.MarkSnapshotAsFailed(k8sClient, ctx, hasSnapshot, "test failed")
-		Expect(gitops.HaveHACBSTestsSucceeded(hasSnapshot)).To(BeFalse())
+		Expect(gitops.HaveStonesoupTestsSucceeded(hasSnapshot)).To(BeFalse())
 		result, err := adapter.EnsureGlobalComponentImageUpdated()
 		Expect(err).ShouldNot(HaveOccurred())
 		Expect(result.CancelRequest).To(BeFalse())
 	})
 
-	It("no error from ensuring all Releases exists function when HACBSTests failed", func() {
+	It("no error from ensuring all Releases exists function when StonesoupTests failed", func() {
 		gitops.MarkSnapshotAsFailed(k8sClient, ctx, hasSnapshot, "test failed")
-		Expect(gitops.HaveHACBSTestsSucceeded(hasSnapshot)).To(BeFalse())
+		Expect(gitops.HaveStonesoupTestsSucceeded(hasSnapshot)).To(BeFalse())
 		Eventually(func() bool {
 			result, err := adapter.EnsureAllReleasesExist()
 			return !result.CancelRequest && err == nil
@@ -362,7 +362,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 
 	It("ensures snapshot environmentBinding exist", func() {
 		gitops.MarkSnapshotAsPassed(k8sClient, ctx, hasSnapshot, "test passed")
-		Expect(gitops.HaveHACBSTestsSucceeded(hasSnapshot)).To(BeTrue())
+		Expect(gitops.HaveStonesoupTestsSucceeded(hasSnapshot)).To(BeTrue())
 		Eventually(func() bool {
 			result, err := adapter.EnsureSnapshotEnvironmentBindingExist()
 			return !result.CancelRequest && err == nil

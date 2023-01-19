@@ -79,15 +79,15 @@ func FormatStatus(taskRun *helpers.TaskRun) (string, error) {
 
 	var emoji string
 	switch result.Result {
-	case helpers.HACBSTestOutputSuccess:
+	case helpers.StonesoupTestOutputSuccess:
 		emoji = ":heavy_check_mark:"
-	case helpers.HACBSTestOutputFailure:
+	case helpers.StonesoupTestOutputFailure:
 		emoji = ":x:"
-	case helpers.HACBSTestOutputWarning:
+	case helpers.StonesoupTestOutputWarning:
 		emoji = ":warning:"
-	case helpers.HACBSTestOutputSkipped:
+	case helpers.StonesoupTestOutputSkipped:
 		emoji = ":white_check_mark:"
-	case helpers.HACBSTestOutputError:
+	case helpers.StonesoupTestOutputError:
 		emoji = ":heavy_exclamation_mark:"
 	default:
 		emoji = ":question:"
