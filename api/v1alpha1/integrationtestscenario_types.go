@@ -43,6 +43,7 @@ type IntegrationTestScenarioSpec struct {
 
 // IntegrationTestScenarioStatus defines the observed state of IntegrationTestScenario
 type IntegrationTestScenarioStatus struct {
+	Conditions []metav1.Condition `json:"conditions"`
 }
 
 // PipelineParameter contains the name and values of a Tekton Pipeline parameter

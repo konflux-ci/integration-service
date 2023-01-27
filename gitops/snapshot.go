@@ -2,6 +2,7 @@ package gitops
 
 import (
 	"context"
+
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/helpers"
 	"github.com/redhat-appstudio/integration-service/tekton"
@@ -65,6 +66,9 @@ const (
 	// HACBSIntegrationStatusCondition is the condition for marking the HACBS integration status of the Snapshot.
 	HACBSIntegrationStatusCondition = "HACBSIntegrationStatus"
 
+	// IntegrationTestScenarioValid is the condition for marking the HACBS integration status of the Scenario.
+	IntegrationTestScenarioValid = "IntegrationTestScenarioValid"
+
 	// HACBSTestSuceededConditionPassed is the reason that's set when the HACBS tests succeed.
 	HACBSTestSuceededConditionPassed = "Passed"
 
@@ -73,6 +77,9 @@ const (
 
 	// HACBSIntegrationStatusInvalid is the reason that's set when the HACBS integration gets into an invalid state.
 	HACBSIntegrationStatusInvalid = "Invalid"
+
+	// HACBSIntegrationStatusValid is the reason that's set when the HACBS integration gets into an valid state.
+	HACBSIntegrationStatusValid = "Valid"
 
 	//HACBSIntegrationStatusInProgress is the reason that's set when the HACBS tests gets into an in progress state.
 	HACBSIntegrationStatusInProgress = "InProgress"
