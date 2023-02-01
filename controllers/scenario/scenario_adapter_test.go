@@ -144,6 +144,16 @@ var _ = Describe("Scenario Adapter", Ordered, func() {
 		Expect(reflect.TypeOf(NewAdapter(hasApp, invalidScenario, ctrl.Log, k8sClient, ctx))).To(Equal(reflect.TypeOf(&Adapter{})))
 	})
 
+	It("EnsureCreatedScenarioIsValid without app", func() {
+		a := NewAdapter(nil, integrationTestScenario, ctrl.Log, k8sClient, ctx)
+
+		Eventually(func() bool {
+			result, err := a.EnsureCreatedScenarioIsValid()
+			return !result.CancelRequest && err == nil
+		}, time.Second*10).Should(BeTrue())
+
+	})
+
 	It("ensures the integrationTestPipelines are created", func() {
 		Eventually(func() bool {
 			result, err := adapter.EnsureCreatedScenarioIsValid()
