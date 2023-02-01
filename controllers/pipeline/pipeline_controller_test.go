@@ -97,6 +97,7 @@ var _ = Describe("PipelineController", func() {
 					"pipelines.openshift.io/runtime":        "nodejs",
 					"pipelines.openshift.io/strategy":       "s2i",
 					"appstudio.openshift.io/component":      "component-sample",
+					"appstudio.openshift.io/application":    applicationName,
 				},
 				Annotations: map[string]string{
 					"appstudio.redhat.com/updateComponentOnSuccess": "false",
@@ -214,5 +215,12 @@ var _ = Describe("PipelineController", func() {
 			err = manager.Start(ctx)
 			Expect(err).NotTo(HaveOccurred())
 		}()
+	})
+
+	It("get application from pipelineRun", func() {
+		app, err := pipelineReconciler.getApplicationFromPipelineRun(ctx, testpipelineRun)
+		Expect(err).To(BeNil())
+		Expect(app).NotTo(BeNil())
+		Expect(app.ObjectMeta).To(Equal(hasApp.ObjectMeta))
 	})
 })
