@@ -462,6 +462,26 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		}, time.Second*10).Should(BeTrue())
 	})
 
+	When("Snapshot already exists", func() {
+		BeforeEach(func() {
+			adapter = NewAdapter(testpipelineRunBuild, hasComp, hasApp, ctrl.Log, k8sClient, ctx)
+			Expect(reflect.TypeOf(adapter)).To(Equal(reflect.TypeOf(&Adapter{})))
+
+			snapshot, err := adapter.prepareSnapshotForPipelineRun(adapter.pipelineRun, adapter.component, adapter.application)
+			Expect(err).To(BeNil())
+
+			err = adapter.client.Create(adapter.context, snapshot)
+			Expect(err).To(BeNil())
+		})
+
+		It("ensures snapshot creation is skipped when snapshot already exists", func() {
+			Eventually(func() bool {
+				result, err := adapter.EnsureSnapshotExists()
+				return !result.CancelRequest && err == nil
+			}, time.Second*10).Should(BeTrue())
+		})
+	})
+
 	It("ensures Snapshot passed all tests", func() {
 		adapter = NewAdapter(testpipelineRunComponent, hasComp, hasApp, ctrl.Log, k8sClient, ctx)
 		Expect(reflect.TypeOf(adapter)).To(Equal(reflect.TypeOf(&Adapter{})))
