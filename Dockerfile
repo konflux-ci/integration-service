@@ -16,6 +16,7 @@ COPY tekton/ tekton/
 COPY helpers/ helpers/
 COPY gitops/ gitops/
 COPY release/ release/
+COPY metrics/ metrics/
 COPY status/ status/
 COPY git/ git/
 
