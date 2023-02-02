@@ -100,16 +100,19 @@ func (a *Adapter) EnsureAllIntegrationTestPipelinesExist() (reconciler.Operation
 					a.logger.Error(err, "Failed to create pipelineRun for snapshot and scenario")
 					return reconciler.RequeueOnErrorOrStop(err)
 				}
-				updatedSnapshot, err := gitops.MarkSnapshotIntegrationStatusAsInProgress(a.client, a.context, a.snapshot, "Snapshot starts being tested by the integrationPipelineRun")
-				if err != nil {
-					a.logger.Error(err, "Failed to update integration status condition to in progress for snapshot",
-						"Snapshot.Name", a.snapshot.Name,
-						"Snapshot.Namespace", a.snapshot.Namespace)
+				gitops.PrepareToRegisterIntegrationPipelineRun(a.snapshot)
+				if gitops.IsSnapshotNotStarted(a.snapshot) {
+					_, err := gitops.MarkSnapshotIntegrationStatusAsInProgress(a.client, a.context, a.snapshot, "Snapshot starts being tested by the integrationPipelineRun")
+					if err != nil {
+						a.logger.Error(err, "Failed to update integration status condition to in progress for snapshot",
+							"Snapshot.Name", a.snapshot.Name,
+							"Snapshot.Namespace", a.snapshot.Namespace)
+					}
 				}
 				a.logger.Info("IntegrationTestscenario pipeline has been created and integration status condition has been marked as in progress",
 					"IntegrationTestScenario.Name", integrationTestScenario.Name,
 					"App name", a.application.Name,
-					"Snapshot name", updatedSnapshot.Name,
+					"Snapshot name", a.snapshot.Name,
 					"Namespace", a.application.Namespace)
 			}
 		}
