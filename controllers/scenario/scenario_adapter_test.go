@@ -13,21 +13,24 @@ import (
 	integrationv1alpha1 "github.com/redhat-appstudio/integration-service/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/gitops"
 
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 var _ = Describe("Scenario Adapter", Ordered, func() {
+	const (
+		DefaultNamespace = "default"
+		SampleRepoLink   = "https://github.com/devfile-samples/devfile-sample-java-springboot-basic"
+	)
 	var (
 		adapter                 *Adapter
 		hasApp                  *applicationapiv1alpha1.Application
 		integrationTestScenario *integrationv1alpha1.IntegrationTestScenario
 		invalidScenario         *integrationv1alpha1.IntegrationTestScenario
+		envNamespace            string = DefaultNamespace
 		env                     applicationapiv1alpha1.Environment
-	)
-	const (
-		SampleRepoLink = "https://github.com/devfile-samples/devfile-sample-java-springboot-basic"
 	)
 
 	BeforeAll(func() {
@@ -93,10 +96,14 @@ var _ = Describe("Scenario Adapter", Ordered, func() {
 		}
 		Expect(k8sClient.Create(ctx, invalidScenario)).Should(Succeed())
 
+	})
+
+	JustBeforeEach(func() {
+
 		env = applicationapiv1alpha1.Environment{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "envname",
-				Namespace: "default",
+				Namespace: envNamespace,
 			},
 			Spec: applicationapiv1alpha1.EnvironmentSpec{
 				Type:               "POC",
@@ -115,15 +122,14 @@ var _ = Describe("Scenario Adapter", Ordered, func() {
 			},
 		}
 		Expect(k8sClient.Create(ctx, &env)).Should(Succeed())
-	})
 
-	BeforeEach(func() {
 		adapter = NewAdapter(hasApp, integrationTestScenario, ctrl.Log, k8sClient, ctx)
 		Expect(reflect.TypeOf(adapter)).To(Equal(reflect.TypeOf(&Adapter{})))
 	})
 
 	AfterEach(func() {
-
+		err := k8sClient.Delete(ctx, &env)
+		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 	})
 
 	AfterAll(func() {
@@ -151,6 +157,40 @@ var _ = Describe("Scenario Adapter", Ordered, func() {
 			result, err := a.EnsureCreatedScenarioIsValid()
 			return !result.CancelRequest && err == nil
 		}, time.Second*10).Should(BeTrue())
+
+	})
+
+	When("environment is in a different namespace than scenario", func() {
+
+		var namespace *corev1.Namespace
+
+		BeforeEach(func() {
+			envNamespace = "separatenamespace"
+
+			namespace = &corev1.Namespace{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: envNamespace,
+				},
+			}
+
+			Expect(k8sClient.Create(ctx, namespace)).Should(Succeed())
+		})
+
+		AfterEach(func() {
+			envNamespace = DefaultNamespace
+
+			err := k8sClient.Delete(ctx, namespace)
+			Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
+		})
+
+		It("ensure the scenario status is invalid", func() {
+
+			Eventually(func() bool {
+				result, err := adapter.EnsureCreatedScenarioIsValid()
+				return !result.CancelRequest && err == nil
+			}, time.Second*10).Should(BeTrue())
+			Expect(meta.IsStatusConditionFalse(integrationTestScenario.Status.Conditions, gitops.IntegrationTestScenarioValid)).To(BeTrue())
+		})
 
 	})
 
