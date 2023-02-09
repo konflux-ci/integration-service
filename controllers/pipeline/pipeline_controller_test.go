@@ -49,12 +49,11 @@ var _ = Describe("PipelineController", func() {
 		hasComp            *applicationapiv1alpha1.Component
 	)
 	const (
-		SampleRepoLink = "https://github.com/devfile-samples/devfile-sample-java-springboot-basic"
+		applicationName = "application-sample"
+		SampleRepoLink  = "https://github.com/devfile-samples/devfile-sample-java-springboot-basic"
 	)
 
 	BeforeEach(func() {
-
-		applicationName := "application-sample"
 
 		hasApp = &applicationapiv1alpha1.Application{
 			ObjectMeta: metav1.ObjectMeta{
@@ -222,5 +221,67 @@ var _ = Describe("PipelineController", func() {
 		Expect(err).To(BeNil())
 		Expect(app).NotTo(BeNil())
 		Expect(app.ObjectMeta).To(Equal(hasApp.ObjectMeta))
+	})
+
+	When("pipelinerun has no component", func() {
+
+		var (
+			testPipelineRunNoComponent *tektonv1beta1.PipelineRun
+			reqNoComponent             ctrl.Request
+		)
+
+		BeforeEach(func() {
+			testPipelineRunNoComponent = &tektonv1beta1.PipelineRun{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "pipelinerun-sample-no-component",
+					Namespace: "default",
+					Labels: map[string]string{
+						"pipelines.appstudio.openshift.io/type": "test",
+						"pipelines.openshift.io/used-by":        "build-cloud",
+						"pipelines.openshift.io/runtime":        "nodejs",
+						"pipelines.openshift.io/strategy":       "s2i",
+						"appstudio.openshift.io/application":    applicationName,
+					},
+					Annotations: map[string]string{
+						"appstudio.redhat.com/updateComponentOnSuccess": "false",
+					},
+				},
+				Spec: tektonv1beta1.PipelineRunSpec{
+					PipelineRef: &tektonv1beta1.PipelineRef{
+						Name:   "build-pipeline-pass",
+						Bundle: "quay.io/kpavic/test-bundle:build-pipeline-pass",
+					},
+					Params: []tektonv1beta1.Param{
+						{
+							Name: "output-image",
+							Value: tektonv1beta1.ArrayOrString{
+								Type:      "string",
+								StringVal: "quay.io/redhat-appstudio/sample-image",
+							},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, testPipelineRunNoComponent)).Should(Succeed())
+
+			reqNoComponent = ctrl.Request{
+				NamespacedName: types.NamespacedName{
+					Namespace: "default",
+					Name:      testPipelineRunNoComponent.Name,
+				},
+			}
+		})
+
+		AfterEach(func() {
+			err := k8sClient.Delete(ctx, testPipelineRunNoComponent)
+			Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
+		})
+
+		It("reconcile with application taken from pipelinerun (test pipeline)", func() {
+			result, err := pipelineReconciler.Reconcile(ctx, reqNoComponent)
+			Expect(reflect.TypeOf(result)).To(Equal(reflect.TypeOf(reconcile.Result{})))
+			Expect(err).To(BeNil())
+		})
+
 	})
 })
