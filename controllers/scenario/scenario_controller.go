@@ -47,7 +47,8 @@ func NewScenarioReconciler(client client.Client, logger *logr.Logger, scheme *ru
 	}
 }
 
-//+kubebuilder:rbac:groups=appstudio.redhat.com,resources=integrationTestScenarios,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=appstudio.redhat.com,resources=integrationtestscenarios,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=appstudio.redhat.com,resources=integrationtestscenarios/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=appstudio.redhat.com,resources=environments,verbs=get;list;watch;
 //+kubebuilder:rbac:groups=appstudio.redhat.com,resources=applications,verbs=get;list;watch;create;update;patch;delete
 
