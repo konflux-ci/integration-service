@@ -42,7 +42,7 @@ rules:
 - apiGroups:
   - appstudio.redhat.com
   resources:
-  - integrationTestScenarios
+  - integrationtestscenarios
   verbs:
   - create
   - delete
@@ -51,6 +51,14 @@ rules:
   - patch
   - update
   - watch
+- apiGroups:
+  - appstudio.redhat.com
+  resources:
+  - integrationtestscenarios/status
+  verbs:
+  - get
+  - patch
+  - update
 - apiGroups:
   - appstudio.redhat.com
   resources:
