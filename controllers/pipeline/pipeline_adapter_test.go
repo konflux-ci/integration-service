@@ -241,6 +241,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				Name:      "pipelinerun-component-sample",
 				Namespace: "default",
 				Labels: map[string]string{
+					"pipelines.appstudio.openshift.io/type":           "test",
 					"pac.test.appstudio.openshift.io/url-org":         "redhat-appstudio",
 					"pac.test.appstudio.openshift.io/original-prname": "build-service-on-push",
 					"pac.test.appstudio.openshift.io/url-repository":  "build-service",
