@@ -72,8 +72,9 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 				Name:      snapshotName,
 				Namespace: namespace,
 				Labels: map[string]string{
-					gitops.SnapshotTypeLabel:      gitops.SnapshotComponentType,
-					gitops.SnapshotComponentLabel: componentName,
+					gitops.SnapshotTypeLabel:               gitops.SnapshotComponentType,
+					gitops.SnapshotComponentLabel:          componentName,
+					gitops.BuildPipelineRunFinishTimeLabel: "1675992257",
 				},
 			},
 			Spec: applicationapiv1alpha1.SnapshotSpec{

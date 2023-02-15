@@ -2,9 +2,12 @@ package gitops
 
 import (
 	"context"
+	"strconv"
+	"time"
 
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/helpers"
+	"github.com/redhat-appstudio/integration-service/metrics"
 	"github.com/redhat-appstudio/integration-service/tekton"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -20,6 +23,9 @@ const (
 
 	// SnapshotTestScenarioLabel contains the name of the Snapshot test scenario.
 	SnapshotTestScenarioLabel = "test.appstudio.openshift.io/scenario"
+
+	// BuildPipelineRunFinishTimeLabel contains the build PipelineRun finish time of the Snapshot.
+	BuildPipelineRunFinishTimeLabel = "test.appstudio.openshift.io/pipelinerunfinishtime"
 
 	// SnapshotComponentType is the type of Snapshot which was created for a single component build.
 	SnapshotComponentType = "component"
@@ -97,17 +103,23 @@ var (
 // If the patch command fails, an error will be returned.
 func MarkSnapshotAsPassed(adapterClient client.Client, ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot, message string) (*applicationapiv1alpha1.Snapshot, error) {
 	patch := client.MergeFrom(snapshot.DeepCopy())
-	meta.SetStatusCondition(&snapshot.Status.Conditions, metav1.Condition{
+	condition := metav1.Condition{
 		Type:    HACBSTestSuceededCondition,
 		Status:  metav1.ConditionTrue,
 		Reason:  HACBSTestSuceededConditionPassed,
 		Message: message,
-	})
+	}
+	meta.SetStatusCondition(&snapshot.Status.Conditions, condition)
+
 	SetSnapshotIntegrationStatusAsFinished(snapshot, "Marking snapshot integration status condition as finished since the testing is passed")
+
 	err := adapterClient.Status().Patch(ctx, snapshot, patch)
 	if err != nil {
 		return nil, err
 	}
+
+	snapshotCompletionTime := &metav1.Time{Time: time.Now()}
+	go metrics.RegisterCompletedSnapshot(condition.Type, condition.Reason, snapshot.GetCreationTimestamp(), snapshotCompletionTime)
 	return snapshot, nil
 }
 
@@ -115,28 +127,36 @@ func MarkSnapshotAsPassed(adapterClient client.Client, ctx context.Context, snap
 // If the patch command fails, an error will be returned.
 func MarkSnapshotAsFailed(adapterClient client.Client, ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot, message string) (*applicationapiv1alpha1.Snapshot, error) {
 	patch := client.MergeFrom(snapshot.DeepCopy())
-	meta.SetStatusCondition(&snapshot.Status.Conditions, metav1.Condition{
+	condition := metav1.Condition{
 		Type:    HACBSTestSuceededCondition,
 		Status:  metav1.ConditionFalse,
 		Reason:  HACBSTestSuceededConditionFailed,
 		Message: message,
-	})
+	}
+	meta.SetStatusCondition(&snapshot.Status.Conditions, condition)
+
 	SetSnapshotIntegrationStatusAsFinished(snapshot, "Marking snapshot integration status condition as finished since the testing fails")
+
 	err := adapterClient.Status().Patch(ctx, snapshot, patch)
 	if err != nil {
 		return nil, err
 	}
+
+	snapshotCompletionTime := &metav1.Time{Time: time.Now()}
+	go metrics.RegisterCompletedSnapshot(condition.Type, condition.Reason, snapshot.GetCreationTimestamp(), snapshotCompletionTime)
 	return snapshot, nil
 }
 
 // SetSnapshotIntegrationStatusAsInvalid sets the HACBS integration status condition for the Snapshot to invalid.
 func SetSnapshotIntegrationStatusAsInvalid(snapshot *applicationapiv1alpha1.Snapshot, message string) {
-	meta.SetStatusCondition(&snapshot.Status.Conditions, metav1.Condition{
+	condition := metav1.Condition{
 		Type:    HACBSIntegrationStatusCondition,
 		Status:  metav1.ConditionFalse,
 		Reason:  HACBSIntegrationStatusInvalid,
 		Message: message,
-	})
+	}
+	meta.SetStatusCondition(&snapshot.Status.Conditions, condition)
+	go metrics.RegisterInvalidSnapshot(condition.Type, condition.Reason)
 }
 
 // MarkSnapshotIntegrationStatusAsInProgress sets the HACBS integration status condition for the Snapshot to In Progress.
@@ -152,17 +172,43 @@ func MarkSnapshotIntegrationStatusAsInProgress(adapterClient client.Client, ctx 
 	if err != nil {
 		return nil, err
 	}
+
+	snapshotInProgressTime := &metav1.Time{Time: time.Now()}
+	if helpers.HasLabel(snapshot, BuildPipelineRunFinishTimeLabel) {
+		buildPipelineRunFinishTimeStr := snapshot.Labels[BuildPipelineRunFinishTimeLabel]
+		buildPipelineRunFinishTimeInt, _ := strconv.ParseInt(buildPipelineRunFinishTimeStr, 10, 64)
+		buildPipelineRunFinishTime := time.Unix(buildPipelineRunFinishTimeInt, 0)
+		buildPipelineRunFinishTimeMeta := &metav1.Time{Time: buildPipelineRunFinishTime}
+
+		go metrics.RegisterIntegrationResponse(*buildPipelineRunFinishTimeMeta, snapshotInProgressTime)
+	}
 	return snapshot, nil
+}
+
+// PrepareToRegisterIntegrationPipelineRun is to do preparation before calling RegisterNewIntegrationPipelineRun
+func PrepareToRegisterIntegrationPipelineRun(snapshot *applicationapiv1alpha1.Snapshot) {
+	pipelineRunStartTime := &metav1.Time{Time: time.Now()}
+	go metrics.RegisterNewIntegrationPipelineRun(snapshot.GetCreationTimestamp(), pipelineRunStartTime)
 }
 
 // SetSnapshotIntegrationStatusAsFinished sets the HACBS integration status condition for the Snapshot to Finished.
 func SetSnapshotIntegrationStatusAsFinished(snapshot *applicationapiv1alpha1.Snapshot, message string) {
-	meta.SetStatusCondition(&snapshot.Status.Conditions, metav1.Condition{
+	condition := metav1.Condition{
 		Type:    HACBSIntegrationStatusCondition,
 		Status:  metav1.ConditionTrue,
 		Reason:  HACBSIntegrationStatusFinished,
 		Message: message,
-	})
+	}
+	meta.SetStatusCondition(&snapshot.Status.Conditions, condition)
+}
+
+// IsSnapshotNotStarted checks if the HACBS Integration Status condition is not in progress status.
+func IsSnapshotNotStarted(snapshot *applicationapiv1alpha1.Snapshot) bool {
+	condition := meta.FindStatusCondition(snapshot.Status.Conditions, HACBSIntegrationStatusCondition)
+	if condition == nil || condition.Reason != HACBSIntegrationStatusInProgress {
+		return true
+	}
+	return false
 }
 
 // HaveHACBSTestsFinished checks if the HACBS tests have finished by checking if the HACBS Test Succeeded condition is set.
@@ -187,6 +233,7 @@ func NewSnapshot(application *applicationapiv1alpha1.Application, snapshotCompon
 			Components:  *snapshotComponents,
 		},
 	}
+	go metrics.RegisterNewSnapshot()
 	return snapshot
 }
 
