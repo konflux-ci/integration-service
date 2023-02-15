@@ -340,6 +340,37 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		Expect(result).To(BeFalse())
 	})
 
+	It("can handle broken json as HACBS_TEST_OUTPUT result", func() {
+		testpipelineRun.Status = tektonv1beta1.PipelineRunStatus{
+			PipelineRunStatusFields: tektonv1beta1.PipelineRunStatusFields{
+				TaskRuns: map[string]*tektonv1beta1.PipelineRunTaskRunStatus{
+					"task1": {
+						PipelineTaskName: "task-malformed-result",
+						Status: &tektonv1beta1.TaskRunStatus{
+							TaskRunStatusFields: tektonv1beta1.TaskRunStatusFields{
+								TaskRunResults: []tektonv1beta1.TaskRunResult{
+									{
+										Name: "HACBS_TEST_OUTPUT",
+										Value: *tektonv1beta1.NewArrayOrString(`{
+											"success":false,
+											"errors":[{"code":6007,"message":"Malformed JSON in request body"}],
+											"messages":[],
+											"result":null,}`),
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+
+		Expect(k8sClient.Status().Update(ctx, testpipelineRun)).Should(Succeed())
+		result, err := helpers.CalculateIntegrationPipelineRunOutcome(logr.Discard(), testpipelineRun)
+		Expect(err).ToNot(BeNil())
+		Expect(result).To(BeFalse())
+	})
+
 	It("can get all the TaskRuns for a PipelineRun", func() {
 		now := time.Now()
 		testpipelineRun.Status = tektonv1beta1.PipelineRunStatus{
