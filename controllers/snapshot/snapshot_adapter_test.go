@@ -374,4 +374,63 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		}, time.Second*10).Should(BeTrue())
 	})
 
+	When("multiple components exist", func() {
+
+		var (
+			secondComp *applicationapiv1alpha1.Component
+		)
+
+		BeforeEach(func() {
+			secondComp = &applicationapiv1alpha1.Component{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "component-second-sample",
+					Namespace: "default",
+				},
+				Spec: applicationapiv1alpha1.ComponentSpec{
+					ComponentName:  "component-second-sample",
+					Application:    "application-sample",
+					ContainerImage: "",
+					Source: applicationapiv1alpha1.ComponentSource{
+						ComponentSourceUnion: applicationapiv1alpha1.ComponentSourceUnion{
+							GitSource: &applicationapiv1alpha1.GitSource{
+								URL: SampleRepoLink,
+							},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, secondComp)).Should(Succeed())
+
+		})
+
+		AfterEach(func() {
+			err := k8sClient.Delete(ctx, secondComp)
+			Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
+		})
+
+		It("ensures updating existing snapshot works", func() {
+			var snapshotEnvironmentBinding *applicationapiv1alpha1.SnapshotEnvironmentBinding
+
+			// create snapshot environment
+			components := []applicationapiv1alpha1.Component{
+				*hasComp,
+			}
+			snapshotEnvironmentBinding, err := adapter.createSnapshotEnvironmentBindingForSnapshot(adapter.application, &env, hasSnapshot, &components)
+			Expect(err).To(BeNil())
+			Expect(snapshotEnvironmentBinding).NotTo(BeNil())
+
+			// update snapshot environment with new component
+			componentsUpdate := []applicationapiv1alpha1.Component{
+				*secondComp,
+			}
+
+			updatedSnapshotEnvironmentBinding, err := adapter.updateExistingSnapshotEnvironmentBindingWithSnapshot(snapshotEnvironmentBinding, hasSnapshot, &componentsUpdate)
+			Expect(err).To(BeNil())
+			Expect(updatedSnapshotEnvironmentBinding).NotTo(BeNil())
+			Expect(len(updatedSnapshotEnvironmentBinding.Spec.Components) == 1)
+			Expect(updatedSnapshotEnvironmentBinding.Spec.Components[0].Name == secondComp.Spec.ComponentName)
+
+		})
+	})
+
 })

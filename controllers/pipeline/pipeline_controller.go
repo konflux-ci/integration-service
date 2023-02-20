@@ -18,6 +18,7 @@ package pipeline
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/go-logr/logr"
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
@@ -99,6 +100,12 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 				"PipelineRun.Name", pipelineRun.Name, "PipelineRun.Namespace", pipelineRun.Namespace)
 			return ctrl.Result{}, err
 		}
+	}
+
+	if application == nil {
+		err := fmt.Errorf("failed to get Application")
+		logger.Error(err, "reconcile cannot resolve application")
+		return ctrl.Result{}, err
 	}
 
 	adapter := NewAdapter(pipelineRun, component, application, logger, r.Client, ctx)
