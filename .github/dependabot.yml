@@ -19,6 +19,7 @@ updates:
       - "jsztuka"
       - "jinqi7"
       - "Josh-Everett"
+      - "sonam1412"
       - "MartinBasti"
       - "dheerajodha"
   - package-ecosystem: "github-actions"
@@ -33,5 +34,21 @@ updates:
       - "jsztuka"
       - "jinqi7"
       - "Josh-Everett"
+      - "sonam1412"
+      - "MartinBasti"
+      - "dheerajodha"
+  - package-ecosystem: "gomod"
+    directory: "/"
+    schedule:
+      interval: daily
+    commit-message:
+      prefix: "chore(go): "
+    reviewers:
+      - "dirgim"
+      - "hongweiliu17"
+      - "jsztuka"
+      - "jinqi7"
+      - "Josh-Everett"
+      - "sonam1412"
       - "MartinBasti"
       - "dheerajodha"
