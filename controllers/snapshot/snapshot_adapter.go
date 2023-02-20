@@ -18,6 +18,7 @@ package snapshot
 
 import (
 	"context"
+
 	ctrl "sigs.k8s.io/controller-runtime"
 
 	"github.com/go-logr/logr"
@@ -378,6 +379,7 @@ func (a *Adapter) createIntegrationPipelineRun(application *applicationapiv1alph
 		WithSnapshot(snapshot).
 		WithIntegrationLabels(integrationTestScenario).
 		WithApplicationAndComponent(a.application, a.component).
+		WithExtraParams(integrationTestScenario.Spec.Params).
 		AsPipelineRun()
 	// copy PipelineRun PAC annotations/labels from snapshot to integration test PipelineRuns
 	helpers.CopyAnnotationsByPrefix(&snapshot.ObjectMeta, &pipelineRun.ObjectMeta, gitops.PipelinesAsCodePrefix, gitops.PipelinesAsCodePrefix)
