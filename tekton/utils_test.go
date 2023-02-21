@@ -4,12 +4,10 @@ import (
 	"fmt"
 
 	. "github.com/onsi/ginkgo/v2"
-	. "github.com/onsi/gomega"
 	"github.com/redhat-appstudio/integration-service/tekton"
 	tektonv1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	klog "k8s.io/klog/v2"
-	"knative.dev/pkg/apis"
 )
 
 var _ = Describe("Utils", func() {
@@ -66,16 +64,6 @@ var _ = Describe("Utils", func() {
 			Fail(fmt.Sprintf("Expected image_digest is image_digest_value, but got %s", image_digest))
 		}
 		klog.Infoln("Got expected image_digest")
-	})
-
-	It("can detect if a PipelineRun has succeeded", func() {
-		Expect(tekton.HasPipelineRunSucceeded(pipelineRun)).To(BeFalse())
-		pipelineRun.Status.SetCondition(&apis.Condition{
-			Type:   apis.ConditionSucceeded,
-			Status: "True",
-		})
-		Expect(tekton.HasPipelineRunSucceeded(pipelineRun)).To(BeTrue())
-		Expect(tekton.HasPipelineRunSucceeded(&tektonv1beta1.TaskRun{})).To(BeFalse())
 	})
 
 })

@@ -76,16 +76,6 @@ func hasPipelineRunStateChangedToStarted(objectOld, objectNew client.Object) boo
 	return false
 }
 
-// HasPipelineRunSucceeded returns a boolean indicating whether the PipelineRun succeeded or not.
-// If the object passed to this function is not a PipelineRun, the function will return false.
-func HasPipelineRunSucceeded(object client.Object) bool {
-	if pr, ok := object.(*tektonv1beta1.PipelineRun); ok {
-		return pr.Status.GetCondition(apis.ConditionSucceeded).IsTrue()
-	}
-
-	return false
-}
-
 // GetTypeFromPipelineRun extracts the pipeline type from the pipelineRun labels.
 func GetTypeFromPipelineRun(object client.Object) (string, error) {
 	if pipelineRun, ok := object.(*tektonv1beta1.PipelineRun); ok {
