@@ -103,6 +103,26 @@ func (r *IntegrationPipelineRun) WithExtraParam(name string, value tektonv1beta1
 	return r
 }
 
+// WithExtraParams adds all provided parameters to the Integration PipelineRun.
+func (r *IntegrationPipelineRun) WithExtraParams(params []v1alpha1.PipelineParameter) *IntegrationPipelineRun {
+	for _, param := range params {
+		var value tektonv1beta1.ArrayOrString
+		switch {
+		case param.Value != "":
+			value.StringVal = param.Value
+			value.Type = tektonv1beta1.ParamTypeString
+		case len(param.Values) > 0:
+			value.ArrayVal = param.Values
+			value.Type = tektonv1beta1.ParamTypeArray
+		default:
+			value.Type = tektonv1beta1.ParamTypeObject
+		}
+		r.WithExtraParam(param.Name, value)
+	}
+
+	return r
+}
+
 // WithSnapshot adds a param containing the Snapshot as a json string
 // to the integration PipelineRun.
 func (r *IntegrationPipelineRun) WithSnapshot(snapshot *applicationapiv1alpha1.Snapshot) *IntegrationPipelineRun {
