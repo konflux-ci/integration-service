@@ -74,6 +74,19 @@ func (a *Adapter) EnsureSnapshotExists() (reconciler.OperationResult, error) {
 		return reconciler.ContinueProcessing()
 	}
 
+	isLatest, err := a.isLatestSucceededPipelineRun()
+	if err != nil {
+		return reconciler.RequeueWithError(err)
+	}
+	if !isLatest {
+		// not the last started pipeline that succeeded for current snapshot
+		// this prevents deploying older pipeline run over new deployment
+		a.logger.Info("The pipelineRun", a.pipelineRun.Name,
+			"is not the latest succeded pipelineRun for component",
+			a.component.Name, "will not create a new Snapshot.")
+		return reconciler.ContinueProcessing()
+	}
+
 	expectedSnapshot, err := a.prepareSnapshotForPipelineRun(a.pipelineRun, a.component, a.application)
 	if err != nil {
 		return reconciler.RequeueWithError(err)
@@ -456,4 +469,30 @@ func (a *Adapter) createCompositeSnapshotsIfConflictExists(application *applicat
 	}
 
 	return nil, nil
+}
+
+// isLatestSucceededPipelineRun return true if pipelineRun is the latest succeded pipelineRun
+// for the component. Pipeline start timestamp is used for comparison because we care about
+// time when pipeline was created.
+func (a *Adapter) isLatestSucceededPipelineRun() (bool, error) {
+
+	pipelineStartTime := a.pipelineRun.CreationTimestamp.Time
+
+	pipelineRuns, err := helpers.GetSucceededBuildPipelineRunsForComponent(a.client, a.context, a.component)
+	if err != nil {
+		return false, err
+	}
+	for _, run := range *pipelineRuns {
+		if a.pipelineRun.Name == run.Name {
+			// it's the same pipeline
+			continue
+		}
+		timestamp := run.CreationTimestamp.Time
+		if pipelineStartTime.Before(timestamp) {
+			// pipeline is not the latest
+			// 1 second is minimal granularity, if both pipelines started at the same second, we cannot decide
+			return false, nil
+		}
+	}
+	return true, nil
 }
