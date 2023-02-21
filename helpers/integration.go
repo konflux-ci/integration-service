@@ -208,6 +208,47 @@ func GetAllPipelineRunsForSnapshotAndScenario(adapterClient client.Client, ctx c
 	return &integrationPipelineRuns.Items, nil
 }
 
+// GetAllPipelineRunsForComponent returns all PipelineRun for the
+// associated component. In the case the List operation fails,
+// an error will be returned.
+func GetAllBuildPipelineRunsForComponent(adapterClient client.Client, ctx context.Context, component *applicationapiv1alpha1.Component) (*[]tektonv1beta1.PipelineRun, error) {
+	buildPipelineRuns := &tektonv1beta1.PipelineRunList{}
+	opts := []client.ListOption{
+		client.InNamespace(component.Namespace),
+		client.MatchingLabels{
+			"pipelines.appstudio.openshift.io/type": "build",
+			"appstudio.openshift.io/component":      component.Name,
+		},
+	}
+
+	err := adapterClient.List(ctx, buildPipelineRuns, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &buildPipelineRuns.Items, nil
+}
+
+// GetSucceededPipelineRunsForComponent returns all  succeeded PipelineRun for the
+// associated component. In the case the List operation fails,
+// an error will be returned.
+func GetSucceededBuildPipelineRunsForComponent(adapterClient client.Client, ctx context.Context, component *applicationapiv1alpha1.Component) (*[]tektonv1beta1.PipelineRun, error) {
+	var succeededPipelineRuns []tektonv1beta1.PipelineRun
+
+	buildPipelineRuns, err := GetAllBuildPipelineRunsForComponent(adapterClient, ctx, component)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, pipelineRun := range *buildPipelineRuns {
+		pipelineRun := pipelineRun // G601
+		if HasPipelineRunSucceeded(&pipelineRun) {
+			succeededPipelineRuns = append(succeededPipelineRuns, pipelineRun)
+		}
+
+	}
+	return &succeededPipelineRuns, nil
+}
+
 // GetLatestPipelineRunForSnapshotAndScenario returns the latest Integration PipelineRun for the
 // associated Snapshot and IntegrationTestScenario. In the case the List operation fails,
 // an error will be returned.
@@ -262,4 +303,14 @@ func GetTaskRunsFromPipelineRun(logger logr.Logger, pipelineRun *tektonv1beta1.P
 	}
 	sort.Sort(SortTaskRunsByStartTime(taskRuns))
 	return taskRuns
+}
+
+// HasPipelineRunSucceeded returns a boolean indicating whether the PipelineRun succeeded or not.
+// If the object passed to this function is not a PipelineRun, the function will return false.
+func HasPipelineRunSucceeded(object client.Object) bool {
+	if pr, ok := object.(*tektonv1beta1.PipelineRun); ok {
+		return pr.Status.GetCondition(apis.ConditionSucceeded).IsTrue()
+	}
+
+	return false
 }

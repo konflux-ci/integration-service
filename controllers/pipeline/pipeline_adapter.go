@@ -65,7 +65,7 @@ func NewAdapter(pipelineRun *tektonv1beta1.PipelineRun, component *applicationap
 // EnsureSnapshotExists is an operation that will ensure that a pipeline Snapshot associated
 // to the PipelineRun being processed exists. Otherwise, it will create a new pipeline Snapshot.
 func (a *Adapter) EnsureSnapshotExists() (reconciler.OperationResult, error) {
-	if !tekton.IsBuildPipelineRun(a.pipelineRun) || !tekton.HasPipelineRunSucceeded(a.pipelineRun) {
+	if !tekton.IsBuildPipelineRun(a.pipelineRun) || !helpers.HasPipelineRunSucceeded(a.pipelineRun) {
 		return reconciler.ContinueProcessing()
 	}
 
@@ -109,7 +109,7 @@ func (a *Adapter) EnsureSnapshotExists() (reconciler.OperationResult, error) {
 // EnsureSnapshotPassedAllTests is an operation that will ensure that a pipeline Snapshot
 // to the PipelineRun being processed passed all tests for all defined non-optional IntegrationTestScenarios.
 func (a *Adapter) EnsureSnapshotPassedAllTests() (reconciler.OperationResult, error) {
-	if !tekton.IsIntegrationPipelineRun(a.pipelineRun) || !tekton.HasPipelineRunSucceeded(a.pipelineRun) {
+	if !tekton.IsIntegrationPipelineRun(a.pipelineRun) || !helpers.HasPipelineRunSucceeded(a.pipelineRun) {
 		return reconciler.ContinueProcessing()
 	}
 
