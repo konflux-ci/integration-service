@@ -176,6 +176,25 @@ var _ = Describe("Integration pipeline", func() {
 				To(Equal(hasApp.Name))
 		})
 
+		It("provides parameters from IntegrationTestScenario to the PipelineRun", func() {
+			scenarioParams := []v1alpha1.PipelineParameter{
+				{
+					Name:  "ADDITIONAL_PARAMETER",
+					Value: "custom value",
+				},
+				{
+					Name:   "MULTIVALUE_PARAMETER",
+					Values: []string{"value1", "value2"},
+				},
+			}
+
+			newIntegrationPipelineRun.WithExtraParams(scenarioParams)
+			Expect(newIntegrationPipelineRun.Spec.Params[0].Name).To(Equal(scenarioParams[0].Name))
+			Expect(newIntegrationPipelineRun.Spec.Params[0].Value.StringVal).To(Equal(scenarioParams[0].Value))
+			Expect(newIntegrationPipelineRun.Spec.Params[1].Name).To(Equal(scenarioParams[1].Name))
+			Expect(newIntegrationPipelineRun.Spec.Params[1].Value.ArrayVal).To(Equal(scenarioParams[1].Values))
+		})
+
 	})
 
 })
