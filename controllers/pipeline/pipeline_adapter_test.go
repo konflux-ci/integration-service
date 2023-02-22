@@ -14,6 +14,7 @@ limitations under the License.
 package pipeline
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -34,9 +35,11 @@ import (
 
 	ctrl "sigs.k8s.io/controller-runtime"
 
+	"github.com/go-logr/logr"
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/status"
 	tektonv1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
+	"github.com/tonglil/buflogr"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -680,13 +683,19 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		})
 
 		It("ensure that EnsureSnapshotExists doesn't create snapshot for previous pipeline run", func() {
+			var buf bytes.Buffer
+			var log logr.Logger = buflogr.NewWithBuffer(&buf)
+
 			// make sure the first pipeline started as first
 			testpipelineRunBuild.CreationTimestamp.Time = testpipelineRunBuild.CreationTimestamp.Add(-2 * time.Hour)
-			adapter = NewAdapter(testpipelineRunBuild, hasComp, hasApp, ctrl.Log, k8sClient, ctx)
+			adapter = NewAdapter(testpipelineRunBuild, hasComp, hasApp, log, k8sClient, ctx)
 			Eventually(func() bool {
 				result, err := adapter.EnsureSnapshotExists()
 				return !result.CancelRequest && err == nil
 			}, time.Second*10).Should(BeTrue())
+
+			expectedLogEntry := "INFO The pipelineRun pipelinerun-build-sample is not the latest succeded pipelineRun for component component-sample will not create a new Snapshot."
+			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
 		})
 	})
 })
