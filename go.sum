@@ -322,8 +322,8 @@ github.com/prometheus/procfs v0.8.0/go.mod h1:z7EfXMXOkbkqb9IINtpCn86r/to3BnA0ua
 github.com/prometheus/statsd_exporter v0.22.7/go.mod h1:N/TevpjkIh9ccs6nuzY3jQn9dFqnUakOjnEuMPJJJnI=
 github.com/prometheus/statsd_exporter v0.22.8 h1:Qo2D9ZzaQG+id9i5NYNGmbf1aa/KxKbB9aKfMS+Yib0=
 github.com/prometheus/statsd_exporter v0.22.8/go.mod h1:/DzwbTEaFTE0Ojz5PqcSk6+PFHOPWGxdXVr6yC8eFOM=
-github.com/redhat-appstudio/application-api v0.0.0-20221114151952-77cba9006505 h1:8x+HtXDPJ9xmQbtWMdV5ntb0T+uEXjsmzzLgxpKFR1M=
-github.com/redhat-appstudio/application-api v0.0.0-20221114151952-77cba9006505/go.mod h1:LpcTNLCDMf1CUNTw2bgTiz8M49sUsN2F9T7bOSKcJEo=
+github.com/redhat-appstudio/application-api v0.0.0-20230221154511-1195a0fda8ae h1:XFrRq1xjkbLUt09htfb7x0OfSdMyP2Y9PgyfpjaGZ4Q=
+github.com/redhat-appstudio/application-api v0.0.0-20230221154511-1195a0fda8ae/go.mod h1:LpcTNLCDMf1CUNTw2bgTiz8M49sUsN2F9T7bOSKcJEo=
 github.com/redhat-appstudio/operator-goodies v0.0.0-20221130140446-010c05bd7471 h1:BB/XtDbzL4txupSVRkPvGf1Jm5tFsK+/yKgLQuDIDc0=
 github.com/redhat-appstudio/operator-goodies v0.0.0-20221130140446-010c05bd7471/go.mod h1:sfJSn4B9LcaWhIxnRXWs2olpJNdLZ+Nnb7hTSj98Fv8=
 github.com/redhat-appstudio/release-service v0.0.0-20221116195308-308d82e909fa h1:04xP6GQmZ7Qgo8X3I86iAM8wF8jp35J1nr0Nx0hOsAA=
