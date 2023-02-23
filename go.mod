@@ -10,7 +10,7 @@ require (
 	github.com/onsi/gomega v1.24.1
 	github.com/openshift-pipelines/pipelines-as-code v0.13.0
 	github.com/prometheus/client_golang v1.13.0
-	github.com/redhat-appstudio/application-api v0.0.0-20221114151952-77cba9006505
+	github.com/redhat-appstudio/application-api v0.0.0-20230221154511-1195a0fda8ae
 	github.com/redhat-appstudio/operator-goodies v0.0.0-20221130140446-010c05bd7471
 	github.com/redhat-appstudio/release-service v0.0.0-20221116195308-308d82e909fa
 	github.com/tektoncd/pipeline v0.41.0
