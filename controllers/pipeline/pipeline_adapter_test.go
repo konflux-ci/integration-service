@@ -14,6 +14,7 @@ limitations under the License.
 package pipeline
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -34,9 +35,11 @@ import (
 
 	ctrl "sigs.k8s.io/controller-runtime"
 
+	"github.com/go-logr/logr"
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/status"
 	tektonv1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
+	"github.com/tonglil/buflogr"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -567,5 +570,132 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			result, err := adapter.EnsureStatusReported()
 			return result.RequeueRequest && err != nil && err.Error() == "ReportStatusError"
 		}, time.Second*10).Should(BeTrue())
+	})
+
+	When("multiple succesfull build pipeline runs exists for the same component", func() {
+
+		var (
+			testpipelineRunBuild2 *tektonv1beta1.PipelineRun
+		)
+
+		BeforeAll(func() {
+			testpipelineRunBuild2 = &tektonv1beta1.PipelineRun{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "pipelinerun-build-sample-2",
+					Namespace: "default",
+					Labels: map[string]string{
+						"pipelines.appstudio.openshift.io/type": "build",
+						"pipelines.openshift.io/used-by":        "build-cloud",
+						"pipelines.openshift.io/runtime":        "nodejs",
+						"pipelines.openshift.io/strategy":       "s2i",
+						"appstudio.openshift.io/component":      "component-sample",
+						"pipelinesascode.tekton.dev/event-type": "pull_request",
+					},
+					Annotations: map[string]string{
+						"appstudio.redhat.com/updateComponentOnSuccess": "false",
+						"pipelinesascode.tekton.dev/on-target-branch":   "[main,master]",
+						"foo": "bar",
+					},
+				},
+				Spec: tektonv1beta1.PipelineRunSpec{
+					PipelineRef: &tektonv1beta1.PipelineRef{
+						Name:   "build-pipeline-pass",
+						Bundle: "quay.io/kpavic/test-bundle:build-pipeline-pass",
+					},
+					Params: []tektonv1beta1.Param{
+						{
+							Name: "output-image",
+							Value: tektonv1beta1.ArrayOrString{
+								Type:      "string",
+								StringVal: "quay.io/redhat-appstudio/sample-image",
+							},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, testpipelineRunBuild2)).Should(Succeed())
+
+			testpipelineRunBuild2.Status = tektonv1beta1.PipelineRunStatus{
+				PipelineRunStatusFields: tektonv1beta1.PipelineRunStatusFields{
+					TaskRuns: map[string]*tektonv1beta1.PipelineRunTaskRunStatus{
+						"index1": {
+							PipelineTaskName: "build-container",
+							Status: &tektonv1beta1.TaskRunStatus{
+								TaskRunStatusFields: tektonv1beta1.TaskRunStatusFields{
+									TaskRunResults: []tektonv1beta1.TaskRunResult{
+										{
+											Name:  "IMAGE_DIGEST",
+											Value: *tektonv1beta1.NewArrayOrString("image_digest_value"),
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+				Status: v1beta1.Status{
+					Conditions: v1beta1.Conditions{
+						apis.Condition{
+							Reason: "Completed",
+							Status: "True",
+							Type:   apis.ConditionSucceeded,
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Status().Update(ctx, testpipelineRunBuild2)).Should(Succeed())
+			Eventually(func() error {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      testpipelineRunBuild2.Name,
+					Namespace: "default",
+				}, testpipelineRunBuild2)
+				if err != nil {
+					return err
+				}
+				if !helpers.HasPipelineRunSucceeded(testpipelineRunBuild2) {
+					return fmt.Errorf("Pipeline is not marked as succeeded yet")
+				}
+				return err
+			}, time.Second*10).ShouldNot(HaveOccurred())
+		})
+
+		AfterAll(func() {
+			err := k8sClient.Delete(ctx, testpipelineRunBuild2)
+			Expect(err == nil || k8serrors.IsNotFound(err)).To(BeTrue())
+		})
+
+		It("isLatestSucceededPipelineRun reports second pipeline as the latest pipeline", func() {
+			// make sure the seocnd pipeline started as second
+			testpipelineRunBuild2.CreationTimestamp.Time = testpipelineRunBuild2.CreationTimestamp.Add(2 * time.Hour)
+			adapter = NewAdapter(testpipelineRunBuild2, hasComp, hasApp, ctrl.Log, k8sClient, ctx)
+			isLatest, err := adapter.isLatestSucceededPipelineRun()
+			Expect(err).To(BeNil())
+			Expect(isLatest).To(BeTrue())
+		})
+
+		It("isLatestSucceededPipelineRun doesn't report first pipeline as the latest pipeline", func() {
+			// make sure the first pipeline started as first
+			testpipelineRunBuild.CreationTimestamp.Time = testpipelineRunBuild.CreationTimestamp.Add(-2 * time.Hour)
+			adapter = NewAdapter(testpipelineRunBuild, hasComp, hasApp, ctrl.Log, k8sClient, ctx)
+			isLatest, err := adapter.isLatestSucceededPipelineRun()
+			Expect(err).To(BeNil())
+			Expect(isLatest).To(BeFalse())
+		})
+
+		It("ensure that EnsureSnapshotExists doesn't create snapshot for previous pipeline run", func() {
+			var buf bytes.Buffer
+			var log logr.Logger = buflogr.NewWithBuffer(&buf)
+
+			// make sure the first pipeline started as first
+			testpipelineRunBuild.CreationTimestamp.Time = testpipelineRunBuild.CreationTimestamp.Add(-2 * time.Hour)
+			adapter = NewAdapter(testpipelineRunBuild, hasComp, hasApp, log, k8sClient, ctx)
+			Eventually(func() bool {
+				result, err := adapter.EnsureSnapshotExists()
+				return !result.CancelRequest && err == nil
+			}, time.Second*10).Should(BeTrue())
+
+			expectedLogEntry := "INFO The pipelineRun pipelinerun-build-sample is not the latest succeded pipelineRun for component component-sample will not create a new Snapshot."
+			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
+		})
 	})
 })
