@@ -65,12 +65,25 @@ func NewAdapter(pipelineRun *tektonv1beta1.PipelineRun, component *applicationap
 // EnsureSnapshotExists is an operation that will ensure that a pipeline Snapshot associated
 // to the PipelineRun being processed exists. Otherwise, it will create a new pipeline Snapshot.
 func (a *Adapter) EnsureSnapshotExists() (reconciler.OperationResult, error) {
-	if !tekton.IsBuildPipelineRun(a.pipelineRun) || !tekton.HasPipelineRunSucceeded(a.pipelineRun) {
+	if !tekton.IsBuildPipelineRun(a.pipelineRun) || !helpers.HasPipelineRunSucceeded(a.pipelineRun) {
 		return reconciler.ContinueProcessing()
 	}
 
 	if a.component == nil {
 		a.logger.Info("The pipelineRun does not have any component associated with it, will not create a new Snapshot.")
+		return reconciler.ContinueProcessing()
+	}
+
+	isLatest, err := a.isLatestSucceededPipelineRun()
+	if err != nil {
+		return reconciler.RequeueWithError(err)
+	}
+	if !isLatest {
+		// not the last started pipeline that succeeded for current snapshot
+		// this prevents deploying older pipeline run over new deployment
+		a.logger.Info("The pipelineRun", a.pipelineRun.Name,
+			"is not the latest succeded pipelineRun for component",
+			a.component.Name, "will not create a new Snapshot.")
 		return reconciler.ContinueProcessing()
 	}
 
@@ -109,7 +122,7 @@ func (a *Adapter) EnsureSnapshotExists() (reconciler.OperationResult, error) {
 // EnsureSnapshotPassedAllTests is an operation that will ensure that a pipeline Snapshot
 // to the PipelineRun being processed passed all tests for all defined non-optional IntegrationTestScenarios.
 func (a *Adapter) EnsureSnapshotPassedAllTests() (reconciler.OperationResult, error) {
-	if !tekton.IsIntegrationPipelineRun(a.pipelineRun) || !tekton.HasPipelineRunSucceeded(a.pipelineRun) {
+	if !tekton.IsIntegrationPipelineRun(a.pipelineRun) || !helpers.HasPipelineRunSucceeded(a.pipelineRun) {
 		return reconciler.ContinueProcessing()
 	}
 
@@ -456,4 +469,30 @@ func (a *Adapter) createCompositeSnapshotsIfConflictExists(application *applicat
 	}
 
 	return nil, nil
+}
+
+// isLatestSucceededPipelineRun return true if pipelineRun is the latest succeded pipelineRun
+// for the component. Pipeline start timestamp is used for comparison because we care about
+// time when pipeline was created.
+func (a *Adapter) isLatestSucceededPipelineRun() (bool, error) {
+
+	pipelineStartTime := a.pipelineRun.CreationTimestamp.Time
+
+	pipelineRuns, err := helpers.GetSucceededBuildPipelineRunsForComponent(a.client, a.context, a.component)
+	if err != nil {
+		return false, err
+	}
+	for _, run := range *pipelineRuns {
+		if a.pipelineRun.Name == run.Name {
+			// it's the same pipeline
+			continue
+		}
+		timestamp := run.CreationTimestamp.Time
+		if pipelineStartTime.Before(timestamp) {
+			// pipeline is not the latest
+			// 1 second is minimal granularity, if both pipelines started at the same second, we cannot decide
+			return false, nil
+		}
+	}
+	return true, nil
 }

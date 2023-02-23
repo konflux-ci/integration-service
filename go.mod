@@ -15,6 +15,7 @@ require (
 	github.com/redhat-appstudio/operator-goodies v0.0.0-20221130140446-010c05bd7471
 	github.com/redhat-appstudio/release-service v0.0.0-20221116195308-308d82e909fa
 	github.com/tektoncd/pipeline v0.41.0
+	github.com/tonglil/buflogr v1.0.1
 	golang.org/x/oauth2 v0.1.0
 	k8s.io/api v0.25.3
 	k8s.io/apimachinery v0.25.3

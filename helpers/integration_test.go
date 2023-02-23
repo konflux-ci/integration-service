@@ -1,6 +1,7 @@
 package helpers_test
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -14,17 +15,26 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"knative.dev/pkg/apis"
+	"knative.dev/pkg/apis/duck/v1beta1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 var _ = Describe("Pipeline Adapter", Ordered, func() {
+	const (
+		applicationName = "application-sample"
+		SampleRepoLink  = "https://github.com/devfile-samples/devfile-sample-java-springboot-basic"
+	)
+
 	var (
-		testpipelineRun *tektonv1beta1.PipelineRun
-		hasApp          *applicationapiv1alpha1.Application
-		hasSnapshot     *applicationapiv1alpha1.Snapshot
-		logger          logr.Logger
-		sample_image    string
+		testpipelineRun      *tektonv1beta1.PipelineRun
+		testBuildPipelineRun *tektonv1beta1.PipelineRun
+		hasComp              *applicationapiv1alpha1.Component
+		hasApp               *applicationapiv1alpha1.Application
+		hasSnapshot          *applicationapiv1alpha1.Snapshot
+		logger               logr.Logger
+		sample_image         string
 	)
 
 	BeforeAll(func() {
@@ -32,15 +42,35 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 
 		hasApp = &applicationapiv1alpha1.Application{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      "application-sample",
+				Name:      applicationName,
 				Namespace: "default",
 			},
 			Spec: applicationapiv1alpha1.ApplicationSpec{
-				DisplayName: "application-sample",
+				DisplayName: applicationName,
 				Description: "This is an example application",
 			},
 		}
 		Expect(k8sClient.Create(ctx, hasApp)).Should(Succeed())
+
+		hasComp = &applicationapiv1alpha1.Component{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "component-sample",
+				Namespace: "default",
+			},
+			Spec: applicationapiv1alpha1.ComponentSpec{
+				ComponentName: "component-sample",
+				Application:   applicationName,
+				Source: applicationapiv1alpha1.ComponentSource{
+					ComponentSourceUnion: applicationapiv1alpha1.ComponentSourceUnion{
+						GitSource: &applicationapiv1alpha1.GitSource{
+							URL: SampleRepoLink,
+						},
+					},
+				},
+			},
+		}
+		Expect(k8sClient.Create(ctx, hasComp)).Should(Succeed())
+
 	})
 
 	BeforeEach(func() {
@@ -91,6 +121,81 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		}
 		Expect(k8sClient.Create(ctx, testpipelineRun)).Should(Succeed())
 
+		testBuildPipelineRun = &tektonv1beta1.PipelineRun{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "build-pipelinerun-sample",
+				Namespace: "default",
+				Labels: map[string]string{
+					"pipelines.appstudio.openshift.io/type": "build",
+					"pipelines.openshift.io/used-by":        "build-cloud",
+					"pipelines.openshift.io/runtime":        "nodejs",
+					"pipelines.openshift.io/strategy":       "s2i",
+					"appstudio.openshift.io/component":      "component-sample",
+					"appstudio.openshift.io/application":    applicationName,
+				},
+			},
+			Spec: tektonv1beta1.PipelineRunSpec{
+				PipelineRef: &tektonv1beta1.PipelineRef{
+					Name:   "build-pipeline-pass",
+					Bundle: "quay.io/kpavic/test-bundle:build-pipeline-pass",
+				},
+				Params: []tektonv1beta1.Param{
+					{
+						Name: "output-image",
+						Value: tektonv1beta1.ArrayOrString{
+							Type:      "string",
+							StringVal: "quay.io/redhat-appstudio/sample-image",
+						},
+					},
+				},
+			},
+		}
+		Expect(k8sClient.Create(ctx, testBuildPipelineRun)).Should(Succeed())
+
+		testBuildPipelineRun.Status = tektonv1beta1.PipelineRunStatus{
+			PipelineRunStatusFields: tektonv1beta1.PipelineRunStatusFields{
+				TaskRuns: map[string]*tektonv1beta1.PipelineRunTaskRunStatus{
+					"index1": {
+						PipelineTaskName: "build-container",
+						Status: &tektonv1beta1.TaskRunStatus{
+							TaskRunStatusFields: tektonv1beta1.TaskRunStatusFields{
+								TaskRunResults: []tektonv1beta1.TaskRunResult{
+									{
+										Name:  "IMAGE_DIGEST",
+										Value: *tektonv1beta1.NewArrayOrString("image_digest_value"),
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			Status: v1beta1.Status{
+				Conditions: v1beta1.Conditions{
+					apis.Condition{
+						Reason: "Completed",
+						Status: "True",
+						Type:   apis.ConditionSucceeded,
+					},
+				},
+			},
+		}
+		Expect(k8sClient.Status().Update(ctx, testBuildPipelineRun)).Should(Succeed())
+
+		Eventually(func() error {
+			err := k8sClient.Get(ctx, types.NamespacedName{
+				Name:      testBuildPipelineRun.Name,
+				Namespace: "default",
+			}, testBuildPipelineRun)
+			if err != nil {
+				return err
+			}
+			if !helpers.HasPipelineRunSucceeded(testBuildPipelineRun) {
+				return fmt.Errorf("Pipeline is not marked as succeeded yet")
+			}
+			return err
+		}, time.Second*10).ShouldNot(HaveOccurred())
+
 		Eventually(func() error {
 			err := k8sClient.Get(ctx, types.NamespacedName{
 				Name:      hasSnapshot.Name,
@@ -104,10 +209,14 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 		err = k8sClient.Delete(ctx, testpipelineRun)
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
+		err = k8sClient.Delete(ctx, testBuildPipelineRun)
+		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 	})
 
 	AfterAll(func() {
 		err := k8sClient.Delete(ctx, hasApp)
+		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
+		err = k8sClient.Delete(ctx, hasComp)
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 	})
 
@@ -428,5 +537,31 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		Expect(tr2.GetStartTime().Equal(time.Time{}))
 		Expect(tr2.GetDuration().Minutes()).To(Equal(0.0))
 
+	})
+
+	It("can fetch all build pipelineRuns", func() {
+		pipelineRuns, err := helpers.GetAllBuildPipelineRunsForComponent(k8sClient, ctx, hasComp)
+		Expect(err).To(BeNil())
+		Expect(pipelineRuns).NotTo(BeNil())
+		Expect(len(*pipelineRuns)).To(Equal(1))
+		Expect((*pipelineRuns)[0].Name == testBuildPipelineRun.Name)
+	})
+
+	It("can fetch all succeeded build pipelineRuns", func() {
+		pipelineRuns, err := helpers.GetSucceededBuildPipelineRunsForComponent(k8sClient, ctx, hasComp)
+		Expect(err).To(BeNil())
+		Expect(pipelineRuns).NotTo(BeNil())
+		Expect(len(*pipelineRuns)).To(Equal(1))
+		Expect((*pipelineRuns)[0].Name == testBuildPipelineRun.Name)
+	})
+
+	It("can detect if a PipelineRun has succeeded", func() {
+		Expect(helpers.HasPipelineRunSucceeded(testpipelineRun)).To(BeFalse())
+		testpipelineRun.Status.SetCondition(&apis.Condition{
+			Type:   apis.ConditionSucceeded,
+			Status: "True",
+		})
+		Expect(helpers.HasPipelineRunSucceeded(testpipelineRun)).To(BeTrue())
+		Expect(helpers.HasPipelineRunSucceeded(&tektonv1beta1.TaskRun{})).To(BeFalse())
 	})
 })
