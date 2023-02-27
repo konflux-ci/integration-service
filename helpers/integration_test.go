@@ -16,7 +16,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"knative.dev/pkg/apis"
-	"knative.dev/pkg/apis/duck/v1beta1"
+	v1 "knative.dev/pkg/apis/duck/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 )
@@ -170,8 +170,8 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 					},
 				},
 			},
-			Status: v1beta1.Status{
-				Conditions: v1beta1.Conditions{
+			Status: v1.Status{
+				Conditions: v1.Conditions{
 					apis.Condition{
 						Reason: "Completed",
 						Status: "True",
