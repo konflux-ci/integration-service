@@ -25,7 +25,7 @@ import (
 	"github.com/redhat-appstudio/integration-service/gitops"
 	"github.com/redhat-appstudio/integration-service/helpers"
 	"knative.dev/pkg/apis"
-	"knative.dev/pkg/apis/duck/v1beta1"
+	v1 "knative.dev/pkg/apis/duck/v1"
 
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
@@ -219,8 +219,8 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 					},
 				},
 			},
-			Status: v1beta1.Status{
-				Conditions: v1beta1.Conditions{
+			Status: v1.Status{
+				Conditions: v1.Conditions{
 					apis.Condition{
 						Reason: "Completed",
 						Status: "True",
@@ -284,8 +284,8 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 					},
 				},
 			},
-			Status: v1beta1.Status{
-				Conditions: v1beta1.Conditions{
+			Status: v1.Status{
+				Conditions: v1.Conditions{
 					apis.Condition{
 						Reason: "Completed",
 						Status: "True",
@@ -633,8 +633,8 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 						},
 					},
 				},
-				Status: v1beta1.Status{
-					Conditions: v1beta1.Conditions{
+				Status: v1.Status{
+					Conditions: v1.Conditions{
 						apis.Condition{
 							Reason: "Completed",
 							Status: "True",
