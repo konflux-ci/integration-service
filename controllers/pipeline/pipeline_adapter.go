@@ -81,9 +81,10 @@ func (a *Adapter) EnsureSnapshotExists() (reconciler.OperationResult, error) {
 	if !isLatest {
 		// not the last started pipeline that succeeded for current snapshot
 		// this prevents deploying older pipeline run over new deployment
-		a.logger.Info("The pipelineRun", a.pipelineRun.Name,
-			"is not the latest succeded pipelineRun for component",
-			a.component.Name, "will not create a new Snapshot.")
+		a.logger.Info("The pipelineRun is not the latest succeded pipelineRun for the component, skipping creation of a new Snapshot ",
+			"PipelineRun.Namespace", a.pipelineRun.Namespace,
+			"PipelineRun.Name", a.pipelineRun.Name,
+			"Component.Name", a.component.Name)
 		return reconciler.ContinueProcessing()
 	}
 
