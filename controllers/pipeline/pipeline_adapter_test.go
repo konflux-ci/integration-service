@@ -694,7 +694,8 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				return !result.CancelRequest && err == nil
 			}, time.Second*10).Should(BeTrue())
 
-			expectedLogEntry := "INFO The pipelineRun pipelinerun-build-sample is not the latest succeded pipelineRun for component component-sample will not create a new Snapshot."
+			expectedLogEntry := "INFO The pipelineRun is not the latest succeded pipelineRun for the component, " +
+				"skipping creation of a new Snapshot  PipelineRun.Namespace default PipelineRun.Name pipelinerun-build-sample Component.Name component-sample"
 			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
 		})
 	})
