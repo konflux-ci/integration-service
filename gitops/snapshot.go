@@ -111,8 +111,6 @@ func MarkSnapshotAsPassed(adapterClient client.Client, ctx context.Context, snap
 	}
 	meta.SetStatusCondition(&snapshot.Status.Conditions, condition)
 
-	SetSnapshotIntegrationStatusAsFinished(snapshot, "Marking snapshot integration status condition as finished since the testing is passed")
-
 	err := adapterClient.Status().Patch(ctx, snapshot, patch)
 	if err != nil {
 		return nil, err
@@ -134,8 +132,6 @@ func MarkSnapshotAsFailed(adapterClient client.Client, ctx context.Context, snap
 		Message: message,
 	}
 	meta.SetStatusCondition(&snapshot.Status.Conditions, condition)
-
-	SetSnapshotIntegrationStatusAsFinished(snapshot, "Marking snapshot integration status condition as finished since the testing fails")
 
 	err := adapterClient.Status().Patch(ctx, snapshot, patch)
 	if err != nil {
@@ -211,14 +207,43 @@ func IsSnapshotNotStarted(snapshot *applicationapiv1alpha1.Snapshot) bool {
 	return false
 }
 
+// IsSnapshotValid checks if the HACBS Integration Status condition is not invalid.
+func IsSnapshotValid(snapshot *applicationapiv1alpha1.Snapshot) bool {
+	condition := meta.FindStatusCondition(snapshot.Status.Conditions, HACBSIntegrationStatusCondition)
+	if condition == nil || condition.Reason != HACBSIntegrationStatusInvalid {
+		return true
+	}
+	return false
+}
+
 // HaveHACBSTestsFinished checks if the HACBS tests have finished by checking if the HACBS Test Succeeded condition is set.
 func HaveHACBSTestsFinished(snapshot *applicationapiv1alpha1.Snapshot) bool {
-	return meta.FindStatusCondition(snapshot.Status.Conditions, HACBSTestSuceededCondition) != nil
+	statusCondition := meta.FindStatusCondition(snapshot.Status.Conditions, HACBSTestSuceededCondition)
+	return statusCondition != nil && statusCondition.Status != metav1.ConditionUnknown
 }
 
 // HaveHACBSTestsSucceeded checks if the HACBS tests have finished by checking if the HACBS Test Succeeded condition is set.
 func HaveHACBSTestsSucceeded(snapshot *applicationapiv1alpha1.Snapshot) bool {
 	return meta.IsStatusConditionTrue(snapshot.Status.Conditions, HACBSTestSuceededCondition)
+}
+
+// CanSnapshotBePromoted checks if the Snapshot in question can be promoted for deployment and release.
+func CanSnapshotBePromoted(snapshot *applicationapiv1alpha1.Snapshot) (bool, []string) {
+	canBePromoted := true
+	reasons := make([]string, 0)
+	if !HaveHACBSTestsSucceeded(snapshot) {
+		canBePromoted = false
+		reasons = append(reasons, "the Snapshot hasn't passed all required integration tests")
+	}
+	if !IsSnapshotValid(snapshot) {
+		canBePromoted = false
+		reasons = append(reasons, "the Snapshot is invalid")
+	}
+	if IsSnapshotCreatedByPACPullRequestEvent(snapshot) {
+		canBePromoted = false
+		reasons = append(reasons, "the Snapshot was created for a PaC pull request event")
+	}
+	return canBePromoted, reasons
 }
 
 // NewSnapshot creates a new snapshot based on the supplied application and components
