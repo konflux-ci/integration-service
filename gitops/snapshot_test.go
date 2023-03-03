@@ -197,4 +197,58 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 		Expect(comparisonResult).To(BeFalse())
 	})
 
+	It("ensures the Snapshots status can be detected to be invalid", func() {
+		gitops.SetSnapshotIntegrationStatusAsInvalid(hasSnapshot, "Test message")
+		Expect(hasSnapshot != nil).To(BeTrue())
+		Expect(hasSnapshot.Status.Conditions != nil).To(BeTrue())
+		Expect(gitops.IsSnapshotValid(hasSnapshot)).To(BeFalse())
+	})
+
+	It("ensures the Snapshots status can be detected to be valid", func() {
+		gitops.SetSnapshotIntegrationStatusAsFinished(hasSnapshot, "Test message")
+		Expect(hasSnapshot != nil).To(BeTrue())
+		Expect(hasSnapshot.Status.Conditions != nil).To(BeTrue())
+		Expect(gitops.IsSnapshotValid(hasSnapshot)).To(BeTrue())
+	})
+
+	It("ensures the a decision can be made to promote the Snapshot based on its status", func() {
+		gitops.SetSnapshotIntegrationStatusAsFinished(hasSnapshot, "Test message")
+		Expect(hasSnapshot != nil).To(BeTrue())
+		Expect(hasSnapshot.Status.Conditions != nil).To(BeTrue())
+
+		updatedSnapshot, err := gitops.MarkSnapshotAsPassed(k8sClient, ctx, hasSnapshot, "Test message")
+		Expect(err == nil).To(BeTrue())
+		Expect(updatedSnapshot != nil).To(BeTrue())
+		Expect(updatedSnapshot.Status.Conditions != nil).To(BeTrue())
+
+		canBePromoted, reasons := gitops.CanSnapshotBePromoted(updatedSnapshot)
+		Expect(canBePromoted).To(BeTrue())
+		Expect(len(reasons) == 0).To(BeTrue())
+	})
+
+	It("ensures the a decision can be made to NOT promote the Snapshot based on its status", func() {
+		gitops.SetSnapshotIntegrationStatusAsFinished(hasSnapshot, "Test message")
+		Expect(hasSnapshot != nil).To(BeTrue())
+		Expect(hasSnapshot.Status.Conditions != nil).To(BeTrue())
+
+		updatedSnapshot, err := gitops.MarkSnapshotAsFailed(k8sClient, ctx, hasSnapshot, "Test message")
+		Expect(err == nil).To(BeTrue())
+		Expect(updatedSnapshot != nil).To(BeTrue())
+		Expect(updatedSnapshot.Status.Conditions != nil).To(BeTrue())
+
+		canBePromoted, reasons := gitops.CanSnapshotBePromoted(updatedSnapshot)
+		Expect(canBePromoted).To(BeFalse())
+		Expect(len(reasons) == 1).To(BeTrue())
+
+		updatedSnapshot.Labels[gitops.PipelineAsCodeEventTypeLabel] = gitops.PipelineAsCodePullRequestType
+		canBePromoted, reasons = gitops.CanSnapshotBePromoted(updatedSnapshot)
+		Expect(canBePromoted).To(BeFalse())
+		Expect(len(reasons) == 2).To(BeTrue())
+
+		gitops.SetSnapshotIntegrationStatusAsInvalid(updatedSnapshot, "Test message")
+		canBePromoted, reasons = gitops.CanSnapshotBePromoted(updatedSnapshot)
+		Expect(canBePromoted).To(BeFalse())
+		Expect(len(reasons) == 3).To(BeTrue())
+	})
+
 })

@@ -159,6 +159,10 @@ func (a *Adapter) EnsureSnapshotPassedAllTests() (reconciler.OperationResult, er
 		return reconciler.ContinueProcessing()
 	}
 
+	// Set the Snapshot Integration status as finished, but don't update the resource yet
+	gitops.SetSnapshotIntegrationStatusAsFinished(existingSnapshot,
+		"Snapshot integration status condition is finished since all testing pipelines completed")
+
 	// Go into the individual PipelineRun task results for each Integration PipelineRun
 	// and determine if all of them passed (or were skipped)
 	allIntegrationPipelineRunsPassed, err := a.determineIfAllIntegrationPipelinesPassed(integrationPipelineRuns)
@@ -178,20 +182,16 @@ func (a *Adapter) EnsureSnapshotPassedAllTests() (reconciler.OperationResult, er
 			return reconciler.RequeueWithError(err)
 		}
 		if compositeSnapshot != nil {
-			existingSnapshot, err := gitops.MarkSnapshotAsFailed(a.client, a.context, existingSnapshot,
-				"The global component list has changed in the meantime, superseding with a composite snapshot")
-			if err != nil {
-				a.logger.Error(err, "Failed to Update Snapshot HACBSTestSucceeded status")
-				return reconciler.RequeueWithError(err)
-			}
-			a.logger.Info("The global component list has changed in the meantime, marking snapshot as failed",
+			a.logger.Info("The global component list has changed in the meantime, marking snapshot as Invalid",
 				"Application.Name", a.application.Name,
 				"Snapshot.Name", existingSnapshot.Name)
-			return reconciler.ContinueProcessing()
+			gitops.SetSnapshotIntegrationStatusAsInvalid(existingSnapshot,
+				"The global component list has changed in the meantime, superseding with a composite snapshot")
 		}
 	}
 
 	// If all Integration Pipeline runs passed, mark the snapshot as succeeded, otherwise mark it as failed
+	// This updates the Snapshot resource on the cluster
 	if allIntegrationPipelineRunsPassed {
 		existingSnapshot, err = gitops.MarkSnapshotAsPassed(a.client, a.context, existingSnapshot, "All Integration Pipeline tests passed")
 		if err != nil {
