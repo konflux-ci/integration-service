@@ -327,3 +327,14 @@ func CompareSnapshots(expectedSnapshot *applicationapiv1alpha1.Snapshot, foundSn
 func IsSnapshotCreatedByPACPullRequestEvent(snapshot *applicationapiv1alpha1.Snapshot) bool {
 	return helpers.HasLabelWithValue(snapshot, PipelineAsCodeEventTypeLabel, PipelineAsCodePullRequestType)
 }
+
+// HasSnapshotTestingChangedToFinished returns a boolean indicating whether the Snapshot testing status has
+// changed to finished. If the objects passed to this function are not Snapshots, the function will return false.
+func HasSnapshotTestingChangedToFinished(objectOld, objectNew client.Object) bool {
+	if oldSnapshot, ok := objectOld.(*applicationapiv1alpha1.Snapshot); ok {
+		if newSnapshot, ok := objectNew.(*applicationapiv1alpha1.Snapshot); ok {
+			return !HaveHACBSTestsFinished(oldSnapshot) && HaveHACBSTestsFinished(newSnapshot)
+		}
+	}
+	return false
+}
