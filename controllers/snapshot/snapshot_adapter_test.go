@@ -1,6 +1,9 @@
 package snapshot
 
 import (
+	"bytes"
+	"github.com/go-logr/logr"
+	"github.com/tonglil/buflogr"
 	"reflect"
 	"time"
 
@@ -323,7 +326,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		Expect(gitops.HaveHACBSTestsSucceeded(hasSnapshotPR)).To(BeTrue())
 
 		Eventually(func() bool {
-			result, err := adapter.EnsureGlobalComponentImageUpdated()
+			result, err := adapter.EnsureGlobalCandidateImageUpdated()
 			return !result.CancelRequest && err == nil
 		}, time.Second*10).Should(BeTrue())
 
@@ -335,7 +338,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		Expect(gitops.HaveHACBSTestsSucceeded(hasSnapshot)).To(BeTrue())
 
 		Eventually(func() bool {
-			result, err := adapter.EnsureGlobalComponentImageUpdated()
+			result, err := adapter.EnsureGlobalCandidateImageUpdated()
 			return !result.CancelRequest && err == nil
 		}, time.Second*10).Should(BeTrue())
 
@@ -346,18 +349,67 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 	It("no error from ensuring global Component Image updated when HACBSTests failed", func() {
 		gitops.MarkSnapshotAsFailed(k8sClient, ctx, hasSnapshot, "test failed")
 		Expect(gitops.HaveHACBSTestsSucceeded(hasSnapshot)).To(BeFalse())
-		result, err := adapter.EnsureGlobalComponentImageUpdated()
+		result, err := adapter.EnsureGlobalCandidateImageUpdated()
 		Expect(err).ShouldNot(HaveOccurred())
 		Expect(result.CancelRequest).To(BeFalse())
 	})
 
-	It("no error from ensuring all Releases exists function when HACBSTests failed", func() {
-		gitops.MarkSnapshotAsFailed(k8sClient, ctx, hasSnapshot, "test failed")
+	It("no action when EnsureAllReleasesExist function runs when HACBSTests failed and the snapshot is invalid", func() {
+		var buf bytes.Buffer
+		var log logr.Logger = buflogr.NewWithBuffer(&buf)
+
+		// Set the snapshot up for failure by setting its status as failed and invalid
+		// as well as marking it as PaC pull request event type
+		updatedSnapshot, err := gitops.MarkSnapshotAsFailed(k8sClient, ctx, hasSnapshot, "test failed")
+		Expect(err).ShouldNot(HaveOccurred())
+		gitops.SetSnapshotIntegrationStatusAsInvalid(updatedSnapshot, "snapshot invalid")
+		hasSnapshot.Labels[gitops.PipelineAsCodeEventTypeLabel] = gitops.PipelineAsCodePullRequestType
 		Expect(gitops.HaveHACBSTestsSucceeded(hasSnapshot)).To(BeFalse())
+		Expect(gitops.IsSnapshotValid(hasSnapshot)).To(BeFalse())
+
+		adapter = NewAdapter(hasSnapshot, hasApp, hasComp, log, k8sClient, ctx)
 		Eventually(func() bool {
 			result, err := adapter.EnsureAllReleasesExist()
 			return !result.CancelRequest && err == nil
 		}, time.Second*10).Should(BeTrue())
+
+		expectedLogEntry := "The Snapshot won't be released"
+		Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
+		expectedLogEntry = "the Snapshot hasn't passed all required integration tests"
+		Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
+		expectedLogEntry = "the Snapshot is invalid"
+		Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
+		expectedLogEntry = "the Snapshot was created for a PaC pull request event"
+		Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
+	})
+
+	It("no action when EnsureSnapshotEnvironmentBindingExist function runs when HACBSTests failed and the snapshot is invalid", func() {
+		var buf bytes.Buffer
+		var log logr.Logger = buflogr.NewWithBuffer(&buf)
+
+		// Set the snapshot up for failure by setting its status as failed and invalid
+		// as well as marking it as PaC pull request event type
+		updatedSnapshot, err := gitops.MarkSnapshotAsFailed(k8sClient, ctx, hasSnapshot, "test failed")
+		Expect(err).ShouldNot(HaveOccurred())
+		gitops.SetSnapshotIntegrationStatusAsInvalid(updatedSnapshot, "snapshot invalid")
+		hasSnapshot.Labels[gitops.PipelineAsCodeEventTypeLabel] = gitops.PipelineAsCodePullRequestType
+		Expect(gitops.HaveHACBSTestsSucceeded(hasSnapshot)).To(BeFalse())
+		Expect(gitops.IsSnapshotValid(hasSnapshot)).To(BeFalse())
+
+		adapter = NewAdapter(hasSnapshot, hasApp, hasComp, log, k8sClient, ctx)
+		Eventually(func() bool {
+			result, err := adapter.EnsureSnapshotEnvironmentBindingExist()
+			return !result.CancelRequest && err == nil
+		}, time.Second*10).Should(BeTrue())
+
+		expectedLogEntry := "The Snapshot won't be deployed"
+		Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
+		expectedLogEntry = "the Snapshot hasn't passed all required integration tests"
+		Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
+		expectedLogEntry = "the Snapshot is invalid"
+		Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
+		expectedLogEntry = "the Snapshot was created for a PaC pull request event"
+		Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
 	})
 
 	It("ensures snapshot environmentBinding exist", func() {

@@ -20,6 +20,7 @@ import (
 	"context"
 
 	ctrl "sigs.k8s.io/controller-runtime"
+	"strings"
 
 	"github.com/go-logr/logr"
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
@@ -145,9 +146,9 @@ func (a *Adapter) EnsureAllIntegrationTestPipelinesExist() (reconciler.Operation
 	return reconciler.ContinueProcessing()
 }
 
-// EnsureGlobalComponentImageUpdated is an operation that ensure the ContainerImage in the Global Candidate List
+// EnsureGlobalCandidateImageUpdated is an operation that ensure the ContainerImage in the Global Candidate List
 // being updated when the Snapshot passed all the integration tests
-func (a *Adapter) EnsureGlobalComponentImageUpdated() (reconciler.OperationResult, error) {
+func (a *Adapter) EnsureGlobalCandidateImageUpdated() (reconciler.OperationResult, error) {
 	if (a.component != nil) && gitops.HaveHACBSTestsSucceeded(a.snapshot) && !gitops.IsSnapshotCreatedByPACPullRequestEvent(a.snapshot) {
 		patch := client.MergeFrom(a.component.DeepCopy())
 		for _, component := range a.snapshot.Spec.Components {
@@ -169,13 +170,10 @@ func (a *Adapter) EnsureGlobalComponentImageUpdated() (reconciler.OperationResul
 // to the Snapshot and the Application's ReleasePlans exist.
 // Otherwise, it will create new Releases for each ReleasePlan.
 func (a *Adapter) EnsureAllReleasesExist() (reconciler.OperationResult, error) {
-	if !gitops.HaveHACBSTestsSucceeded(a.snapshot) {
-		a.logger.Info("The Snapshot hasn't been marked as HACBSTestSucceeded, holding off on releasing.")
-		return reconciler.ContinueProcessing()
-	}
-
-	if gitops.IsSnapshotCreatedByPACPullRequestEvent(a.snapshot) {
-		a.logger.Info("The Snapshot won't be released because it was created for a PaC pull request event.")
+	canSnapshotBePromoted, reasons := gitops.CanSnapshotBePromoted(a.snapshot)
+	if !canSnapshotBePromoted {
+		a.logger.Info("The Snapshot won't be released.",
+			"Reasons", strings.Join(reasons, ","))
 		return reconciler.ContinueProcessing()
 	}
 
@@ -206,13 +204,10 @@ func (a *Adapter) EnsureAllReleasesExist() (reconciler.OperationResult, error) {
 // SnapshotEnvironmentBindings for non-ephemeral root environments point to the newly constructed snapshot.
 // If the bindings don't already exist, it will create new ones for each of the environments.
 func (a *Adapter) EnsureSnapshotEnvironmentBindingExist() (reconciler.OperationResult, error) {
-	if !gitops.HaveHACBSTestsSucceeded(a.snapshot) {
-		a.logger.Info("The Snapshot hasn't been marked as HACBSTestSucceeded, holding off on deploying.")
-		return reconciler.ContinueProcessing()
-	}
-
-	if gitops.IsSnapshotCreatedByPACPullRequestEvent(a.snapshot) {
-		a.logger.Info("The Snapshot won't be deployed because it was created for a PaC pull request event.")
+	canSnapshotBePromoted, reasons := gitops.CanSnapshotBePromoted(a.snapshot)
+	if !canSnapshotBePromoted {
+		a.logger.Info("The Snapshot won't be deployed.",
+			"Reasons", strings.Join(reasons, ","))
 		return reconciler.ContinueProcessing()
 	}
 
