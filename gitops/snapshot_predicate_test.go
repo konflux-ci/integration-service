@@ -123,6 +123,13 @@ var _ = Describe("Predicates", Ordered, func() {
 			}
 			Expect(instance.Update(contextEvent)).To(BeTrue())
 		})
+		It("returns false when the old Snapshot has true status and the new one has true status", func() {
+			contextEvent := event.UpdateEvent{
+				ObjectOld: hasSnapshotTrueStatus,
+				ObjectNew: hasSnapshotTrueStatus,
+			}
+			Expect(instance.Update(contextEvent)).To(BeFalse())
+		})
 		It("returns false when the Snapshot is deleted", func() {
 			contextEvent := event.DeleteEvent{
 				Object: hasSnapshotUnknownStatus,
