@@ -6,7 +6,7 @@ import (
 )
 
 // IntegrationSnapshotChangePredicate returns a predicate which filters out all objects except
-// snapshot is deleted.
+// snapshot is deleted and requires HasSnapshotTestingChangedToFinished for update events.
 func IntegrationSnapshotChangePredicate() predicate.Predicate {
 	return predicate.Funcs{
 		CreateFunc: func(createEvent event.CreateEvent) bool {
@@ -19,7 +19,7 @@ func IntegrationSnapshotChangePredicate() predicate.Predicate {
 			return true
 		},
 		UpdateFunc: func(e event.UpdateEvent) bool {
-			return true
+			return HasSnapshotTestingChangedToFinished(e.ObjectOld, e.ObjectNew)
 		},
 	}
 }
