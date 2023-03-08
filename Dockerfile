@@ -1,6 +1,8 @@
 # Build the manager binary
 FROM registry.access.redhat.com/ubi8/go-toolset:1.18.9-13 as builder
 
+WORKDIR /opt/app-root/src
+
 # Copy the Go Modules manifests
 COPY go.mod go.mod
 COPY go.sum go.sum

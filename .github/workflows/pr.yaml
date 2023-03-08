@@ -8,6 +8,15 @@ on:
 
 jobs:
 
+  Dockerfile-linter:
+    name: Check Dockerfiles
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: Dockerfile
+
   go:
     name: Check sources
     runs-on: ubuntu-20.04
