@@ -91,6 +91,7 @@ func RegisterIntegrationResponse(buildPipelineFinishTime metav1.Time, inProgress
 	IntegrationSvcResponseSeconds.Observe(inProgressTime.Sub(buildPipelineFinishTime.Time).Seconds())
 }
 
+// RegisterNewSnapshot is to register a metric when a new Snapshot CR is created
 func RegisterNewSnapshot() {
 	SnapshotConcurrentTotal.Inc()
 }
