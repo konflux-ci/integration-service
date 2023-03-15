@@ -137,14 +137,14 @@ func (r *Reconciler) getComponentFromPipelineRun(context context.Context, pipeli
 	return nil, nil
 }
 
-// getApplicationFromPipelineRun loads from the cluster the Component referenced in the given PipelineRun. If the PipelineRun doesn't
-// specify a Component or this is not found in the cluster, an error will be returned.
+// getApplicationFromPipelineRun loads from the cluster the Application referenced in the given PipelineRun. If the PipelineRun doesn't
+// specify an Application or this is not found in the cluster, an error will be returned.
 func (r *Reconciler) getApplicationFromPipelineRun(context context.Context, pipelineRun *tektonv1beta1.PipelineRun) (*applicationapiv1alpha1.Application, error) {
-	if componentName, found := pipelineRun.Labels[tekton.PipelineRunApplicationLabel]; found {
+	if applicationName, found := pipelineRun.Labels[tekton.PipelineRunApplicationLabel]; found {
 		application := &applicationapiv1alpha1.Application{}
 		err := r.Get(context, types.NamespacedName{
 			Namespace: pipelineRun.Namespace,
-			Name:      componentName,
+			Name:      applicationName,
 		}, application)
 
 		if err != nil {
