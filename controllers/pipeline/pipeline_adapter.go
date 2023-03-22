@@ -37,7 +37,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-// Adapter holds the objects needed to reconcile a Release.
+// Adapter holds the objects needed to reconcile a Pipeline.
 type Adapter struct {
 	pipelineRun *tektonv1beta1.PipelineRun
 	component   *applicationapiv1alpha1.Component
@@ -255,7 +255,7 @@ func (a *Adapter) getAllApplicationComponents(application *applicationapiv1alpha
 }
 
 // getImagePullSpecFromPipelineRun gets the full image pullspec from the given build PipelineRun,
-// In case the Image pullspec can't be can't be composed, an error will be returned.
+// In case the Image pullspec can't be composed, an error will be returned.
 func (a *Adapter) getImagePullSpecFromPipelineRun(pipelineRun *tektonv1beta1.PipelineRun) (string, error) {
 	outputImage, err := tekton.GetOutputImage(pipelineRun)
 	if err != nil {
@@ -268,6 +268,29 @@ func (a *Adapter) getImagePullSpecFromPipelineRun(pipelineRun *tektonv1beta1.Pip
 	return fmt.Sprintf("%s@%s", strings.Split(outputImage, ":")[0], imageDigest), nil
 }
 
+// getComponentSourceFromPipelineRun gets the component Git Source for the Component built in the given build PipelineRun,
+// In case the Git Source can't be composed, an error will be returned.
+func (a *Adapter) getComponentSourceFromPipelineRun(pipelineRun *tektonv1beta1.PipelineRun) (*applicationapiv1alpha1.ComponentSource, error) {
+	componentSourceGitUrl, err := tekton.GetComponentSourceGitUrl(pipelineRun)
+	if err != nil {
+		return nil, err
+	}
+	componentSourceGitCommit, err := tekton.GetComponentSourceGitCommit(pipelineRun)
+	if err != nil {
+		return nil, err
+	}
+	componentSource := applicationapiv1alpha1.ComponentSource{
+		ComponentSourceUnion: applicationapiv1alpha1.ComponentSourceUnion{
+			GitSource: &applicationapiv1alpha1.GitSource{
+				URL:      componentSourceGitUrl,
+				Revision: componentSourceGitCommit,
+			},
+		},
+	}
+
+	return &componentSource, nil
+}
+
 // getImagePullSpecFromSnapshotComponent gets the full image pullspec from the given Snapshot Component,
 func (a *Adapter) getImagePullSpecFromSnapshotComponent(snapshot *applicationapiv1alpha1.Snapshot, component *applicationapiv1alpha1.Component) (string, error) {
 	for _, snapshotComponent := range snapshot.Spec.Components {
@@ -276,6 +299,26 @@ func (a *Adapter) getImagePullSpecFromSnapshotComponent(snapshot *applicationapi
 		}
 	}
 	return "", fmt.Errorf("couldn't find the requested component info in the given Snapshot")
+}
+
+// getComponentSourceFromSnapshotComponent gets the component source from the given Snapshot for the given Component,
+func (a *Adapter) getComponentSourceFromSnapshotComponent(snapshot *applicationapiv1alpha1.Snapshot, component *applicationapiv1alpha1.Component) (*applicationapiv1alpha1.ComponentSource, error) {
+	for _, snapshotComponent := range snapshot.Spec.Components {
+		if snapshotComponent.Name == component.Name {
+			return &snapshotComponent.Source, nil
+		}
+	}
+	return nil, fmt.Errorf("couldn't find the requested component source info in the given Snapshot")
+}
+
+// getComponentSourceFromComponent gets the component source from the given Component as Revision
+// and set Component.Status.LastBuiltCommit as Component.Source.GitSource.Revision if it is defined.
+func (a *Adapter) getComponentSourceFromComponent(component *applicationapiv1alpha1.Component) *applicationapiv1alpha1.ComponentSource {
+	componentSource := component.Spec.Source.DeepCopy()
+	if component.Status.LastBuiltCommit != "" {
+		componentSource.GitSource.Revision = component.Status.LastBuiltCommit
+	}
+	return componentSource
 }
 
 // determineIfAllIntegrationPipelinesPassed checks all Integration pipelines passed all of their test tasks.
@@ -350,7 +393,7 @@ func (a *Adapter) getAllPipelineRunsForSnapshot(snapshot *applicationapiv1alpha1
 
 // prepareSnapshot prepares the Snapshot for a given application and the updated component (if any).
 // In case the Snapshot can't be created, an error will be returned.
-func (a *Adapter) prepareSnapshot(application *applicationapiv1alpha1.Application, component *applicationapiv1alpha1.Component, newContainerImage string) (*applicationapiv1alpha1.Snapshot, error) {
+func (a *Adapter) prepareSnapshot(application *applicationapiv1alpha1.Application, component *applicationapiv1alpha1.Component, newContainerImage string, newComponentSource *applicationapiv1alpha1.ComponentSource) (*applicationapiv1alpha1.Snapshot, error) {
 	applicationComponents, err := a.getAllApplicationComponents(application)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get all Application Components for Application %s", a.application.Name)
@@ -358,13 +401,21 @@ func (a *Adapter) prepareSnapshot(application *applicationapiv1alpha1.Applicatio
 
 	var snapshotComponents []applicationapiv1alpha1.SnapshotComponent
 	for _, applicationComponent := range *applicationComponents {
+		applicationComponent := applicationComponent // G601
 		containerImage := applicationComponent.Spec.ContainerImage
+
+		var componentSource *applicationapiv1alpha1.ComponentSource
 		if applicationComponent.Name == component.Name {
 			containerImage = newContainerImage
+			componentSource = newComponentSource
+		} else {
+			// Get ComponentSource for the component which is not built in this pipeline
+			componentSource = a.getComponentSourceFromComponent(&applicationComponent)
 		}
 		snapshotComponents = append(snapshotComponents, applicationapiv1alpha1.SnapshotComponent{
 			Name:           applicationComponent.Name,
 			ContainerImage: containerImage,
+			Source:         *componentSource,
 		})
 	}
 
@@ -385,8 +436,12 @@ func (a *Adapter) prepareSnapshotForPipelineRun(pipelineRun *tektonv1beta1.Pipel
 	if err != nil {
 		return nil, err
 	}
+	componentSource, err := a.getComponentSourceFromPipelineRun(pipelineRun)
+	if err != nil {
+		return nil, err
+	}
 
-	snapshot, err := a.prepareSnapshot(application, component, newContainerImage)
+	snapshot, err := a.prepareSnapshot(application, component, newContainerImage, componentSource)
 	if err != nil {
 		return nil, err
 	}
@@ -410,10 +465,10 @@ func (a *Adapter) prepareSnapshotForPipelineRun(pipelineRun *tektonv1beta1.Pipel
 	return snapshot, nil
 }
 
-// prepareSnapshotForPipelineRun prepares the Snapshot for a given PipelineRun,
-// component and application. In case the Snapshot can't be created, an error will be returned.
-func (a *Adapter) prepareCompositeSnapshot(application *applicationapiv1alpha1.Application, component *applicationapiv1alpha1.Component, newContainerImage string) (*applicationapiv1alpha1.Snapshot, error) {
-	snapshot, err := a.prepareSnapshot(application, component, newContainerImage)
+// prepareCompositeSnapshot prepares the Snapshot for a given application,
+// componentnew, containerImage and newContainerSource. In case the Snapshot can't be created, an error will be returned.
+func (a *Adapter) prepareCompositeSnapshot(application *applicationapiv1alpha1.Application, component *applicationapiv1alpha1.Component, newContainerImage string, newComponentSource *applicationapiv1alpha1.ComponentSource) (*applicationapiv1alpha1.Snapshot, error) {
+	snapshot, err := a.prepareSnapshot(application, component, newContainerImage, newComponentSource)
 	if err != nil {
 		return nil, err
 	}
@@ -434,7 +489,12 @@ func (a *Adapter) createCompositeSnapshotsIfConflictExists(application *applicat
 		return nil, err
 	}
 
-	compositeSnapshot, err := a.prepareCompositeSnapshot(application, component, newContainerImage)
+	newComponentSource, err := a.getComponentSourceFromSnapshotComponent(testedSnapshot, component)
+	if err != nil {
+		return nil, err
+	}
+
+	compositeSnapshot, err := a.prepareCompositeSnapshot(application, component, newContainerImage, newComponentSource)
 	if err != nil {
 		return nil, err
 	}

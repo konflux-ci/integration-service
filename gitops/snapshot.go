@@ -2,6 +2,7 @@ package gitops
 
 import (
 	"context"
+	"reflect"
 	"strconv"
 	"time"
 
@@ -310,7 +311,7 @@ func CompareSnapshots(expectedSnapshot *applicationapiv1alpha1.Snapshot, foundSn
 	for _, expectedSnapshotComponent := range expectedSnapshot.Spec.Components {
 		foundImage := false
 		for _, foundSnapshotComponent := range foundSnapshot.Spec.Components {
-			if expectedSnapshotComponent == foundSnapshotComponent {
+			if reflect.DeepEqual(expectedSnapshotComponent, foundSnapshotComponent) {
 				foundImage = true
 				break
 			}

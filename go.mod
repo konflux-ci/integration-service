@@ -8,11 +8,11 @@ require (
 	github.com/google/go-github/v45 v45.2.0
 	github.com/onsi/ginkgo/v2 v2.8.4
 	github.com/onsi/gomega v1.27.2
-	github.com/openshift-pipelines/pipelines-as-code v0.16.0
+	github.com/openshift-pipelines/pipelines-as-code v0.17.1
 	github.com/prometheus/client_golang v1.14.0
-	github.com/redhat-appstudio/application-api v0.0.0-20230221154511-1195a0fda8ae
+	github.com/redhat-appstudio/application-api v0.0.0-20230323195735-25c812747051
 	github.com/redhat-appstudio/operator-goodies v0.0.0-20221130140446-010c05bd7471
-	github.com/redhat-appstudio/release-service v0.0.0-20221116195308-308d82e909fa
+	github.com/redhat-appstudio/release-service v0.0.0-20230314103738-21edb2dadc4e
 	github.com/tektoncd/pipeline v0.44.0
 	github.com/tonglil/buflogr v1.0.1
 	golang.org/x/oauth2 v0.5.0
