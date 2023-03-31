@@ -77,6 +77,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 	)
 	const (
 		SampleRepoLink = "https://github.com/devfile-samples/devfile-sample-java-springboot-basic"
+		SampleCommit   = "a2ba645d50e471d5f084b"
 	)
 
 	BeforeAll(func() {
@@ -105,7 +106,8 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				Source: applicationapiv1alpha1.ComponentSource{
 					ComponentSourceUnion: applicationapiv1alpha1.ComponentSourceUnion{
 						GitSource: &applicationapiv1alpha1.GitSource{
-							URL: SampleRepoLink,
+							URL:      SampleRepoLink,
+							Revision: SampleCommit,
 						},
 					},
 				},
@@ -216,6 +218,16 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 								},
 							},
 						},
+					},
+				},
+				PipelineResults: []tektonv1beta1.PipelineRunResult{
+					{
+						Name:  "CHAINS-GIT_URL",
+						Value: *tektonv1beta1.NewArrayOrString(SampleRepoLink),
+					},
+					{
+						Name:  "CHAINS-GIT_COMMIT",
+						Value: *tektonv1beta1.NewArrayOrString(SampleCommit),
 					},
 				},
 			},
@@ -340,12 +352,16 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		Expect(applicationComponents != nil).To(BeTrue())
 	})
 
-	It("ensures the Imagepullspec from pipelinerun and prepare snapshot can be created", func() {
+	It("ensures the Imagepullspec and ComponentSource from pipelinerun and prepare snapshot can be created", func() {
 		imagePullSpec, err := adapter.getImagePullSpecFromPipelineRun(testpipelineRunBuild)
 		Expect(err == nil).To(BeTrue())
 		Expect(imagePullSpec != "").To(BeTrue())
 
-		snapshot, err := adapter.prepareSnapshot(hasApp, hasComp, imagePullSpec)
+		componentSource, err := adapter.getComponentSourceFromPipelineRun(testpipelineRunBuild)
+		Expect(err == nil).To(BeTrue())
+
+		snapshot, err := adapter.prepareSnapshot(hasApp, hasComp, imagePullSpec, componentSource)
+		Expect(snapshot != nil).To(BeTrue())
 		Expect(err == nil).To(BeTrue())
 		Expect(snapshot != nil).To(BeTrue())
 
@@ -353,6 +369,12 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		Expect(err == nil).To(BeTrue())
 		Expect(fetchedPullSpec != "").To(BeTrue())
 		Expect(fetchedPullSpec == imagePullSpec).To(BeTrue())
+
+		fetchedComponentSource, err := adapter.getComponentSourceFromSnapshotComponent(snapshot, hasComp)
+		Expect(err == nil).To(BeTrue())
+		Expect(fetchedComponentSource != nil).To(BeTrue())
+		Expect(componentSource.ComponentSourceUnion.GitSource.URL == fetchedComponentSource.ComponentSourceUnion.GitSource.URL).To(BeTrue())
+		Expect(componentSource.ComponentSourceUnion.GitSource.Revision == fetchedComponentSource.ComponentSourceUnion.GitSource.Revision).To(BeTrue())
 	})
 
 	It("ensures the global component list unchanged and compositeSnapshot shouldn't be created ", func() {
@@ -384,13 +406,18 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				Source: applicationapiv1alpha1.ComponentSource{
 					ComponentSourceUnion: applicationapiv1alpha1.ComponentSourceUnion{
 						GitSource: &applicationapiv1alpha1.GitSource{
-							URL: SampleRepoLink,
+							URL:      SampleRepoLink,
+							Revision: SampleCommit,
 						},
 					},
 				},
 			},
 		}
 		Expect(k8sClient.Create(ctx, hasCompNew)).Should(Succeed())
+		hasCompNew.Status = applicationapiv1alpha1.ComponentStatus{
+			LastBuiltCommit: "lastbuildcommit",
+		}
+		Expect(k8sClient.Status().Update(ctx, hasCompNew)).Should(Succeed())
 
 		Eventually(func() bool {
 			applicationComponents, err := adapter.getAllApplicationComponents(hasApp)
@@ -399,7 +426,8 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 
 		// Check if the global component list changed in the meantime and create a composite snapshot if it did.
 		compositeSnapshot, err := adapter.createCompositeSnapshotsIfConflictExists(hasApp, hasComp, createdSnapshot)
-		fmt.Fprintf(GinkgoWriter, "compositeSnapshot: %v\n", compositeSnapshot.Name)
+		fmt.Fprintf(GinkgoWriter, "compositeSnapshot.Name: %v\n", compositeSnapshot.Name)
+
 		Expect(err == nil).To(BeTrue())
 		Expect(compositeSnapshot != nil).To(BeTrue())
 
@@ -416,6 +444,66 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		Expect(err == nil).To(BeTrue())
 		Expect(existingCompositeSnapshot != nil).To(BeTrue())
 		Expect(existingCompositeSnapshot.Name == compositeSnapshot.Name).To(BeTrue())
+
+		componentSource, _ := adapter.getComponentSourceFromSnapshotComponent(existingCompositeSnapshot, hasCompNew)
+		Expect(componentSource.GitSource.Revision == "lastbuildcommit").To(BeTrue())
+		err = k8sClient.Delete(ctx, hasCompNew)
+		Expect(err == nil || k8serrors.IsNotFound(err)).To(BeTrue())
+	})
+
+	It("ensure ComponentSource can returned when component have Status.LastBuiltCommit defined or not", func() {
+		componentSource := adapter.getComponentSourceFromComponent(hasComp)
+		Expect(componentSource.GitSource.Revision == "a2ba645d50e471d5f084b").To(BeTrue())
+
+		hasComp.Status = applicationapiv1alpha1.ComponentStatus{
+			LastBuiltCommit: "lastbuildcommit",
+		}
+		Expect(k8sClient.Status().Update(ctx, hasComp)).Should(Succeed())
+		componentSource = adapter.getComponentSourceFromComponent(hasComp)
+		Expect(componentSource.GitSource.Revision == "lastbuildcommit").To(BeTrue())
+	})
+
+	It("ensure err is returned when pipelinerun doesn't have Result for ", func() {
+		//hongliu
+		testpipelineRunBuild.Status = tektonv1beta1.PipelineRunStatus{
+			PipelineRunStatusFields: tektonv1beta1.PipelineRunStatusFields{
+				TaskRuns: map[string]*tektonv1beta1.PipelineRunTaskRunStatus{
+					"index1": {
+						PipelineTaskName: "build-container",
+						Status: &tektonv1beta1.TaskRunStatus{
+							TaskRunStatusFields: tektonv1beta1.TaskRunStatusFields{
+								TaskRunResults: []tektonv1beta1.TaskRunResult{
+									{
+										Name:  "IMAGE_DIGEST",
+										Value: *tektonv1beta1.NewArrayOrString("image_digest_value"),
+									},
+								},
+							},
+						},
+					},
+				},
+				PipelineResults: []tektonv1beta1.PipelineRunResult{
+					{
+						Name:  "CHAINS-GIT_URL",
+						Value: *tektonv1beta1.NewArrayOrString(SampleRepoLink),
+					},
+				},
+			},
+			Status: v1.Status{
+				Conditions: v1.Conditions{
+					apis.Condition{
+						Reason: "Completed",
+						Status: "True",
+						Type:   apis.ConditionSucceeded,
+					},
+				},
+			},
+		}
+		Expect(k8sClient.Status().Update(ctx, testpipelineRunBuild)).Should(Succeed())
+
+		componentSource, err := adapter.getComponentSourceFromPipelineRun(testpipelineRunBuild)
+		Expect(componentSource).To(BeNil())
+		Expect(err).ToNot(BeNil())
 	})
 
 	It("ensures pipelines as code labels and annotations are propagated to the snapshot", func() {
