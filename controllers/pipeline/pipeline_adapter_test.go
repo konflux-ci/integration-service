@@ -377,6 +377,15 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		Expect(componentSource.ComponentSourceUnion.GitSource.Revision == fetchedComponentSource.ComponentSourceUnion.GitSource.Revision).To(BeTrue())
 	})
 
+	It("ensures that snapshot has label pointing to build pipelinerun", func() {
+		expectedSnapshot, err := adapter.prepareSnapshotForPipelineRun(testpipelineRunBuild, hasComp, hasApp)
+		Expect(err == nil).To(BeTrue())
+		Expect(expectedSnapshot != nil).To(BeTrue())
+
+		Expect(expectedSnapshot.Labels).NotTo(BeNil())
+		Expect(expectedSnapshot.Labels).Should(HaveKeyWithValue(Equal(gitops.BuildPipelineRunNameLabel), Equal(testpipelineRunBuild.Name)))
+	})
+
 	It("ensures the global component list unchanged and compositeSnapshot shouldn't be created ", func() {
 		expectedSnapshot, err := adapter.prepareSnapshotForPipelineRun(testpipelineRunBuild, hasComp, hasApp)
 		Expect(err == nil).To(BeTrue())
