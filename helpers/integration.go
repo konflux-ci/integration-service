@@ -12,6 +12,7 @@ import (
 	"github.com/go-logr/logr"
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/api/v1alpha1"
+	"github.com/santhosh-tekuri/jsonschema/v5"
 	tektonv1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/labels"
@@ -50,6 +51,40 @@ type HACBSTestResult struct {
 	Failures  int    `json:"failures"`
 	Warnings  int    `json:"warnings"`
 }
+
+var testResultSchema = `{
+  "$schema": "http://json-schema.org/draft/2020-12/schema#",
+  "type": "object",
+  "properties": {
+    "result": {
+      "type": "string",
+      "enum": ["SUCCESS", "FAILURE", "WARNING", "SKIPPED", "ERROR"]
+    },
+    "namespace": {
+      "type": "string"
+    },
+    "timestamp": {
+      "type": "string",
+      "pattern": "^[0-9]{10}$"
+    },
+    "successes": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "note": {
+      "type": "string"
+    },
+    "failures": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "warnings": {
+      "type": "integer",
+      "minimum": 0
+    }
+  },
+  "required": ["result", "timestamp", "successes", "failures", "warnings"]
+}`
 
 // TaskRun is an integration specific wrapper around the status of a Tekton TaskRun.
 type TaskRun struct {
@@ -97,13 +132,25 @@ func (t *TaskRun) GetTestResult() (*HACBSTestResult, error) {
 	if t.testResult != nil {
 		return t.testResult, nil
 	}
+	// load schema for test validation
+	sch, err := jsonschema.CompileString("schema.json", testResultSchema)
+	if err != nil {
+		return nil, fmt.Errorf("error while compiling json data for schema validation: %w", err)
+	}
 
 	for _, taskRunResult := range t.trStatus.TaskRunResults {
 		if taskRunResult.Name == HACBSTestOutputName {
 			var result HACBSTestResult
+			var v interface{}
 			err := json.Unmarshal([]byte(taskRunResult.Value.StringVal), &result)
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("error while mapping json data from taskRun %s: to HACBSTestResult %w", taskRunResult.Name, err)
+			}
+			if err := json.Unmarshal([]byte(taskRunResult.Value.StringVal), &v); err != nil {
+				return nil, fmt.Errorf("error while mapping json data from taskRun %s: %w", taskRunResult.Name, err)
+			}
+			if err = sch.Validate(v); err != nil {
+				return nil, fmt.Errorf("error validating schema of results from taskRun %s: %w", taskRunResult.Name, err)
 			}
 			t.logger.Info("Found a HACBS test result", "Result", result)
 			t.testResult = &result

@@ -20,7 +20,6 @@ const expectedSummary = `| Task | Duration | Test Suite | Status | Details |
 | example-task-4[^example-task-4] | 1s | example-namespace-4 | :warning: WARNING | :warning: 1 warning(s) |
 | example-task-5 | 5m0s | example-namespace-5 | :white_check_mark: SKIPPED |  |
 | example-task-6 | 1s | example-namespace-6 | :heavy_exclamation_mark: ERROR |  |
-| example-task-7 | 0s | example-namespace-7 | :question: UNEXPECTED |  |
 
 [^example-task-3]: example note 3
 [^example-task-4]: example note 4`
@@ -63,6 +62,7 @@ var _ = Describe("Formatters", func() {
 				now.Add(time.Minute*5).Add(time.Second*30),
 				`{
 					"result": "SUCCESS",
+					"timestamp": "1665405318",
 					"namespace": "example-namespace-1",
 					"successes": 2,
 					"warnings": 1,
@@ -80,8 +80,10 @@ var _ = Describe("Formatters", func() {
 				now.Add(time.Second*4),
 				`{
 					"result": "FAILURE",
+					"timestamp": "1665405318",
 					"namespace": "example-namespace-3",
 					"successes": 0,
+					"warnings": 0,
 					"failures": 1,
 					"note": "example note 3"
 				}`,
@@ -92,8 +94,11 @@ var _ = Describe("Formatters", func() {
 				now.Add(time.Second*5),
 				`{
 					"result": "WARNING",
+					"timestamp": "1665405318",
 					"namespace": "example-namespace-4",
+					"successes": 0,
 					"warnings": 1,
+					"failures": 0,
 					"note": "example note 4"
 				}`,
 			),
@@ -103,7 +108,11 @@ var _ = Describe("Formatters", func() {
 				now,
 				`{
 					"result": "SKIPPED",
-					"namespace": "example-namespace-5"
+					"timestamp": "1665405318",
+					"namespace": "example-namespace-5",
+					"successes": 0,
+					"warnings": 0,
+					"failures": 0
 				}`,
 			),
 			newTaskRunWithHACBSTestOutput(
@@ -112,16 +121,11 @@ var _ = Describe("Formatters", func() {
 				now.Add(time.Second*7),
 				`{
 					"result": "ERROR",
-					"namespace": "example-namespace-6"
-				}`,
-			),
-			newTaskRunWithHACBSTestOutput(
-				"example-task-7",
-				now.Add(time.Second*7),
-				now.Add(time.Second*7),
-				`{
-					"result": "UNEXPECTED",
-					"namespace": "example-namespace-7"
+					"timestamp": "1665405318",
+					"namespace": "example-namespace-6",
+					"successes": 0,
+					"warnings": 0,
+					"failures": 0
 				}`,
 			),
 		}

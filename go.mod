@@ -13,6 +13,7 @@ require (
 	github.com/redhat-appstudio/application-api v0.0.0-20230323195735-25c812747051
 	github.com/redhat-appstudio/operator-goodies v0.0.0-20221130140446-010c05bd7471
 	github.com/redhat-appstudio/release-service v0.0.0-20230314103738-21edb2dadc4e
+	github.com/santhosh-tekuri/jsonschema/v5 v5.3.0
 	github.com/tektoncd/pipeline v0.45.0
 	github.com/tonglil/buflogr v1.0.1
 	golang.org/x/oauth2 v0.5.0
