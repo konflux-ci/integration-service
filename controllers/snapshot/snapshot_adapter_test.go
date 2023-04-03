@@ -2,10 +2,11 @@ package snapshot
 
 import (
 	"bytes"
-	"github.com/go-logr/logr"
-	"github.com/tonglil/buflogr"
 	"reflect"
 	"time"
+
+	"github.com/go-logr/logr"
+	"github.com/tonglil/buflogr"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -39,6 +40,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		integrationTestScenario *integrationv1alpha1.IntegrationTestScenario
 		env                     applicationapiv1alpha1.Environment
 		sample_image            string
+		sample_revision         string
 	)
 	const (
 		SampleRepoLink = "https://github.com/devfile-samples/devfile-sample-java-springboot-basic"
@@ -138,12 +140,16 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 					},
 				},
 			},
+			Status: applicationapiv1alpha1.ComponentStatus{
+				LastBuiltCommit: "",
+			},
 		}
 		Expect(k8sClient.Create(ctx, hasComp)).Should(Succeed())
 	})
 
 	BeforeEach(func() {
 		sample_image = "quay.io/redhat-appstudio/sample-image"
+		sample_revision = "random-value"
 
 		hasSnapshot = &applicationapiv1alpha1.Snapshot{
 			ObjectMeta: metav1.ObjectMeta{
@@ -163,6 +169,13 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 					{
 						Name:           "component-sample",
 						ContainerImage: sample_image,
+						Source: applicationapiv1alpha1.ComponentSource{
+							ComponentSourceUnion: applicationapiv1alpha1.ComponentSourceUnion{
+								GitSource: &applicationapiv1alpha1.GitSource{
+									Revision: sample_revision,
+								},
+							},
+						},
 					},
 				},
 			},
@@ -331,6 +344,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		}, time.Second*10).Should(BeTrue())
 
 		Expect(hasComp.Spec.ContainerImage).To(Equal(""))
+		Expect(hasComp.Status.LastBuiltCommit).To(Equal(""))
 	})
 
 	It("ensures global Component Image updated when HACBSTests succeeded", func() {
@@ -343,7 +357,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		}, time.Second*10).Should(BeTrue())
 
 		Expect(hasComp.Spec.ContainerImage).To(Equal(sample_image))
-
+		Expect(hasComp.Status.LastBuiltCommit).To(Equal(sample_revision))
 	})
 
 	It("no error from ensuring global Component Image updated when HACBSTests failed", func() {
