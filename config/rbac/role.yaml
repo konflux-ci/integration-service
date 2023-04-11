@@ -34,6 +34,24 @@ rules:
 - apiGroups:
   - appstudio.redhat.com
   resources:
+  - components
+  verbs:
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - appstudio.redhat.com
+  resources:
+  - components/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - appstudio.redhat.com
+  resources:
   - environments
   verbs:
   - get
