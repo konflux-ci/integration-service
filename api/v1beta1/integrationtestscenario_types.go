@@ -52,9 +52,9 @@ type PipelineParameter struct {
 
 // TestEnvironment contains the name and values of a Test environment
 type TestEnvironment struct {
-	Name          string                                          `json:"name"`
-	Type          applicationapiv1alpha1.EnvironmentType          `json:"type"`
-	Configuration applicationapiv1alpha1.EnvironmentConfiguration `json:"configuration,omitempty"`
+	Name          string                                           `json:"name"`
+	Type          applicationapiv1alpha1.EnvironmentType           `json:"type"`
+	Configuration *applicationapiv1alpha1.EnvironmentConfiguration `json:"configuration,omitempty"`
 }
 
 // TestContext contains the name and values of a Test context
