@@ -18,9 +18,10 @@ package snapshot
 
 import (
 	"context"
+	"reflect"
+	"strings"
 
 	ctrl "sigs.k8s.io/controller-runtime"
-	"strings"
 
 	"github.com/go-logr/logr"
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
@@ -156,9 +157,18 @@ func (a *Adapter) EnsureGlobalCandidateImageUpdated() (reconciler.OperationResul
 				a.component.Spec.ContainerImage = component.ContainerImage
 				err := a.client.Patch(a.context, a.component, patch)
 				if err != nil {
-					a.logger.Error(err, "Failed to update Global Candidate for the Component",
+					a.logger.Error(err, "Failed to update .Spec.ContainerImage of Global Candidate for the Component",
 						"Component.Name", a.component.Name)
 					return reconciler.RequeueWithError(err)
+				}
+				if reflect.ValueOf(component.Source).IsValid() {
+					a.component.Status.LastBuiltCommit = component.Source.GitSource.Revision
+					err = a.client.Status().Patch(a.context, a.component, patch)
+					if err != nil {
+						a.logger.Error(err, "Failed to update .Status.LastBuiltCommit of Global Candidate for the Component",
+							"Component.Name", a.component.Name)
+						return reconciler.RequeueWithError(err)
+					}
 				}
 			}
 		}
