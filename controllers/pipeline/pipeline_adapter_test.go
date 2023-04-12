@@ -71,6 +71,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		testpipelineRunBuild     *tektonv1beta1.PipelineRun
 		testpipelineRunComponent *tektonv1beta1.PipelineRun
 		hasComp                  *applicationapiv1alpha1.Component
+		hasComp2                 *applicationapiv1alpha1.Component
 		hasApp                   *applicationapiv1alpha1.Application
 		hasSnapshot              *applicationapiv1alpha1.Snapshot
 		integrationTestScenario  *integrationv1alpha1.IntegrationTestScenario
@@ -114,6 +115,27 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			},
 		}
 		Expect(k8sClient.Create(ctx, hasComp)).Should(Succeed())
+
+		hasComp2 = &applicationapiv1alpha1.Component{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "another-component-sample",
+				Namespace: "default",
+			},
+			Spec: applicationapiv1alpha1.ComponentSpec{
+				ComponentName:  "another-component-sample",
+				Application:    "application-sample",
+				ContainerImage: "",
+				Source: applicationapiv1alpha1.ComponentSource{
+					ComponentSourceUnion: applicationapiv1alpha1.ComponentSourceUnion{
+						GitSource: &applicationapiv1alpha1.GitSource{
+							URL:      SampleRepoLink,
+							Revision: SampleCommit,
+						},
+					},
+				},
+			},
+		}
+		Expect(k8sClient.Create(ctx, hasComp2)).Should(Succeed())
 
 		sampleImage := "quay.io/redhat-appstudio/sample-image"
 
@@ -364,6 +386,8 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		Expect(snapshot != nil).To(BeTrue())
 		Expect(err == nil).To(BeTrue())
 		Expect(snapshot != nil).To(BeTrue())
+		Expect(snapshot.Spec.Components).To(HaveLen(1), "One component should have been added to snapshot.  Other component should have been omited due to empty ContainerImage field")
+		Expect(snapshot.Spec.Components[0].Name).To(Equal(hasComp.Name), "The built component should have been added to the snapshot")
 
 		fetchedPullSpec, err := adapter.getImagePullSpecFromSnapshotComponent(snapshot, hasComp)
 		Expect(err == nil).To(BeTrue())

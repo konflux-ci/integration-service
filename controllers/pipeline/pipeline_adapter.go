@@ -412,6 +412,14 @@ func (a *Adapter) prepareSnapshot(application *applicationapiv1alpha1.Applicatio
 			// Get ComponentSource for the component which is not built in this pipeline
 			componentSource = a.getComponentSourceFromComponent(&applicationComponent)
 		}
+
+		// If containerImage is empty, we have run into a race condition in
+		// which multiple components are being built in close succession.
+		// We omit this not-yet-built component from the snapshot rather than
+		// including a component that is incomplete.
+		if containerImage == "" {
+			continue
+		}
 		snapshotComponents = append(snapshotComponents, applicationapiv1alpha1.SnapshotComponent{
 			Name:           applicationComponent.Name,
 			ContainerImage: containerImage,
