@@ -3,6 +3,8 @@ package helpers
 import (
 	"context"
 	"encoding/json"
+	"k8s.io/apimachinery/pkg/types"
+	"reflect"
 	"sort"
 	"time"
 
@@ -53,28 +55,34 @@ type HACBSTestResult struct {
 
 // TaskRun is an integration specific wrapper around the status of a Tekton TaskRun.
 type TaskRun struct {
-	logger     logr.Logger
-	trStatus   *tektonv1beta1.PipelineRunTaskRunStatus
-	testResult *HACBSTestResult
+	logger           logr.Logger
+	pipelineTaskName string
+	trStatus         *tektonv1beta1.TaskRunStatus
+	testResult       *HACBSTestResult
 }
 
-// NewTaskRun creates and returns am integration TaskRun.
-func NewTaskRun(logger logr.Logger, status *tektonv1beta1.PipelineRunTaskRunStatus) *TaskRun {
-	return &TaskRun{logger: logger, trStatus: status}
+// NewTaskRunFromPipelineRunStatus creates and returns am integration TaskRun from the PipelineRunTaskRunStatus.
+func NewTaskRunFromPipelineRunStatus(logger logr.Logger, status *tektonv1beta1.PipelineRunTaskRunStatus) *TaskRun {
+	return &TaskRun{logger: logger, pipelineTaskName: status.PipelineTaskName, trStatus: status.Status}
 }
 
-// GetPipelinesTaskName returns the name of the PipelineTask.
+// NewTaskRunFromTektonTaskRun creates and returns am integration TaskRun from the TaskRunStatus.
+func NewTaskRunFromTektonTaskRun(logger logr.Logger, pipelineTaskName string, status *tektonv1beta1.TaskRunStatus) *TaskRun {
+	return &TaskRun{logger: logger, pipelineTaskName: pipelineTaskName, trStatus: status}
+}
+
+// GetPipelineTaskName returns the name of the PipelineTask.
 func (t *TaskRun) GetPipelineTaskName() string {
-	return t.trStatus.PipelineTaskName
+	return t.pipelineTaskName
 }
 
 // GetStartTime returns the start time of the TaskRun.
 // If the start time is unknown, the zero start time is returned.
 func (t *TaskRun) GetStartTime() time.Time {
-	if t.trStatus.Status.StartTime == nil {
+	if t.trStatus.StartTime == nil {
 		return time.Time{}
 	}
-	return t.trStatus.Status.StartTime.Time
+	return t.trStatus.StartTime.Time
 }
 
 // GetDuration returns the time it took to execute the Task.
@@ -82,8 +90,8 @@ func (t *TaskRun) GetStartTime() time.Time {
 func (t *TaskRun) GetDuration() time.Duration {
 	var end time.Time
 	start := t.GetStartTime()
-	if t.trStatus.Status.CompletionTime != nil {
-		end = t.trStatus.Status.CompletionTime.Time
+	if t.trStatus.CompletionTime != nil {
+		end = t.trStatus.CompletionTime.Time
 	} else {
 		end = start
 	}
@@ -97,7 +105,7 @@ func (t *TaskRun) GetTestResult() (*HACBSTestResult, error) {
 		return t.testResult, nil
 	}
 
-	for _, taskRunResult := range t.trStatus.Status.TaskRunResults {
+	for _, taskRunResult := range t.trStatus.TaskRunResults {
 		if taskRunResult.Name == HACBSTestOutputName {
 			var result HACBSTestResult
 			err := json.Unmarshal([]byte(taskRunResult.Value.StringVal), &result)
@@ -174,16 +182,31 @@ func GetAllIntegrationTestScenariosForApplication(adapterClient client.Client, c
 
 // CalculateIntegrationPipelineRunOutcome checks the Tekton results for a given PipelineRun and calculates the overall outcome.
 // If any of the tasks with the HACBS_TEST_OUTPUT result don't have the `result` field set to SUCCESS or SKIPPED, it returns false.
-func CalculateIntegrationPipelineRunOutcome(logger logr.Logger, pipelineRun *tektonv1beta1.PipelineRun) (bool, error) {
-	results, err := GetHACBSTestResultsFromPipelineRun(logger, pipelineRun)
-	if err != nil {
-		return false, err
+func CalculateIntegrationPipelineRunOutcome(adapterClient client.Client, ctx context.Context, logger logr.Logger, pipelineRun *tektonv1beta1.PipelineRun) (bool, error) {
+	var results []*HACBSTestResult
+	var err error
+	// Check if the pipelineRun.Status contains the deprecated TaskRuns
+	if !reflect.ValueOf(pipelineRun.Status.TaskRuns).IsZero() {
+		// If the pipelineRun.Status contains the deprecated TaskRuns, parse them in the old way
+		results, err = GetHACBSTestResultsFromPipelineRunWithTaskRuns(logger, pipelineRun)
+		if err != nil {
+			return false, err
+		}
+
+	} else if !reflect.ValueOf(pipelineRun.Status.ChildReferences).IsZero() {
+		// If the pipelineRun.Status contains the childReferences instead, parse them in the new way by querying for TaskRuns
+		results, err = GetHACBSTestResultsFromPipelineRunWithChildReferences(adapterClient, ctx, logger, pipelineRun)
+		if err != nil {
+			return false, err
+		}
 	}
+
 	for _, result := range results {
 		if result.Result != HACBSTestOutputSuccess && result.Result != HACBSTestOutputSkipped {
 			return false, nil
 		}
 	}
+
 	return true, nil
 }
 
@@ -208,7 +231,7 @@ func GetAllPipelineRunsForSnapshotAndScenario(adapterClient client.Client, ctx c
 	return &integrationPipelineRuns.Items, nil
 }
 
-// GetAllPipelineRunsForComponent returns all PipelineRun for the
+// GetAllBuildPipelineRunsForComponent returns all PipelineRun for the
 // associated component. In the case the List operation fails,
 // an error will be returned.
 func GetAllBuildPipelineRunsForComponent(adapterClient client.Client, ctx context.Context, component *applicationapiv1alpha1.Component) (*[]tektonv1beta1.PipelineRun, error) {
@@ -228,7 +251,7 @@ func GetAllBuildPipelineRunsForComponent(adapterClient client.Client, ctx contex
 	return &buildPipelineRuns.Items, nil
 }
 
-// GetSucceededPipelineRunsForComponent returns all  succeeded PipelineRun for the
+// GetSucceededBuildPipelineRunsForComponent returns all  succeeded PipelineRun for the
 // associated component. In the case the List operation fails,
 // an error will be returned.
 func GetSucceededBuildPipelineRunsForComponent(adapterClient client.Client, ctx context.Context, component *applicationapiv1alpha1.Component) (*[]tektonv1beta1.PipelineRun, error) {
@@ -279,9 +302,31 @@ func GetLatestPipelineRunForSnapshotAndScenario(adapterClient client.Client, ctx
 	return nil, err
 }
 
-// GetHACBSTestResultsFromPipelineRun finds all TaskRuns with a HACBS_TEST_OUTPUT result and returns the parsed data
-func GetHACBSTestResultsFromPipelineRun(logger logr.Logger, pipelineRun *tektonv1beta1.PipelineRun) ([]*HACBSTestResult, error) {
+// GetHACBSTestResultsFromPipelineRunWithTaskRuns finds all TaskRuns from the PipelineRun Status
+// with a HACBS_TEST_OUTPUT result and returns the parsed data
+func GetHACBSTestResultsFromPipelineRunWithTaskRuns(logger logr.Logger, pipelineRun *tektonv1beta1.PipelineRun) ([]*HACBSTestResult, error) {
 	taskRuns := GetTaskRunsFromPipelineRun(logger, pipelineRun)
+	results := []*HACBSTestResult{}
+	for _, tr := range taskRuns {
+		r, err := tr.GetTestResult()
+		if err != nil {
+			return nil, err
+		}
+		if r != nil {
+			results = append(results, r)
+		}
+	}
+	return results, nil
+}
+
+// GetHACBSTestResultsFromPipelineRunWithChildReferences finds all TaskRuns from childReferences of the PipelineRun
+// that also contain a HACBS_TEST_OUTPUT result and returns the parsed data
+func GetHACBSTestResultsFromPipelineRunWithChildReferences(adapterClient client.Client, ctx context.Context, logger logr.Logger, pipelineRun *tektonv1beta1.PipelineRun) ([]*HACBSTestResult, error) {
+	taskRuns, err := GetAllChildTaskRunsForPipelineRun(adapterClient, ctx, logger, pipelineRun)
+	if err != nil {
+		return nil, err
+	}
+
 	results := []*HACBSTestResult{}
 	for _, tr := range taskRuns {
 		r, err := tr.GetTestResult()
@@ -299,10 +344,35 @@ func GetHACBSTestResultsFromPipelineRun(logger logr.Logger, pipelineRun *tektonv
 func GetTaskRunsFromPipelineRun(logger logr.Logger, pipelineRun *tektonv1beta1.PipelineRun) []*TaskRun {
 	taskRuns := []*TaskRun{}
 	for _, tr := range pipelineRun.Status.TaskRuns {
-		taskRuns = append(taskRuns, NewTaskRun(logger, tr))
+		taskRuns = append(taskRuns, NewTaskRunFromPipelineRunStatus(logger, tr))
 	}
 	sort.Sort(SortTaskRunsByStartTime(taskRuns))
 	return taskRuns
+}
+
+// GetAllChildTaskRunsForPipelineRun finds all Child TaskRuns for a given PipelineRun and
+// returns integration TaskRun wrappers for them sorted by start time.
+func GetAllChildTaskRunsForPipelineRun(adapterClient client.Client, ctx context.Context, logger logr.Logger, pipelineRun *tektonv1beta1.PipelineRun) ([]*TaskRun, error) {
+	taskRuns := []*TaskRun{}
+	// If there are no childReferences, skip trying to get tasks
+	if reflect.ValueOf(pipelineRun.Status.ChildReferences).IsZero() {
+		return nil, nil
+	}
+	for _, childReference := range pipelineRun.Status.ChildReferences {
+		pipelineTaskRun := &tektonv1beta1.TaskRun{}
+		err := adapterClient.Get(ctx, types.NamespacedName{
+			Namespace: pipelineRun.Namespace,
+			Name:      childReference.Name,
+		}, pipelineTaskRun)
+		if err != nil {
+			return nil, err
+		}
+
+		integrationTaskRun := NewTaskRunFromTektonTaskRun(logger, childReference.PipelineTaskName, &pipelineTaskRun.Status)
+		taskRuns = append(taskRuns, integrationTaskRun)
+	}
+	sort.Sort(SortTaskRunsByStartTime(taskRuns))
+	return taskRuns, nil
 }
 
 // HasPipelineRunSucceeded returns a boolean indicating whether the PipelineRun succeeded or not.

@@ -229,7 +229,7 @@ func (a *Adapter) EnsureStatusReported() (reconciler.OperationResult, error) {
 	}
 
 	for _, reporter := range reporters {
-		if err := reporter.ReportStatus(a.context, a.pipelineRun); err != nil {
+		if err := reporter.ReportStatus(a.client, a.context, a.pipelineRun); err != nil {
 			return reconciler.RequeueWithError(err)
 		}
 	}
@@ -327,7 +327,7 @@ func (a *Adapter) determineIfAllIntegrationPipelinesPassed(integrationPipelineRu
 	allIntegrationPipelineRunsPassed := true
 	for _, integrationPipelineRun := range *integrationPipelineRuns {
 		integrationPipelineRun := integrationPipelineRun // G601
-		pipelineRunOutcome, err := helpers.CalculateIntegrationPipelineRunOutcome(a.logger, &integrationPipelineRun)
+		pipelineRunOutcome, err := helpers.CalculateIntegrationPipelineRunOutcome(a.client, a.context, a.logger, &integrationPipelineRun)
 		if err != nil {
 			a.logger.Error(err, "Failed to get Integration PipelineRun outcome",
 				"PipelineRun.Name", integrationPipelineRun.Name, "PipelineRun.Namespace", integrationPipelineRun.Namespace)
