@@ -18,6 +18,7 @@ package pipeline
 
 import (
 	"context"
+
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/api/v1beta1"
 	ctrl "sigs.k8s.io/controller-runtime"
