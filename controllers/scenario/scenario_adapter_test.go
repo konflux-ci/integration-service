@@ -203,15 +203,15 @@ var _ = Describe("Scenario Adapter", Ordered, func() {
 
 	It("ensures the Scenario status can be marked as invalid", func() {
 		SetScenarioIntegrationStatusAsInvalid(invalidScenario, "Test message")
-		Expect(invalidScenario != nil).To(BeTrue())
-		Expect(invalidScenario.Status.Conditions != nil).To(BeTrue())
+		Expect(invalidScenario).NotTo(BeNil())
+		Expect(invalidScenario.Status.Conditions).NotTo(BeNil())
 		Expect(meta.IsStatusConditionFalse(invalidScenario.Status.Conditions, gitops.IntegrationTestScenarioValid)).To(BeTrue())
 	})
 
 	It("ensures the Scenario status can be marked as valid", func() {
 		SetScenarioIntegrationStatusAsValid(integrationTestScenario, "Test message")
-		Expect(integrationTestScenario != nil).To(BeTrue())
-		Expect(integrationTestScenario.Status.Conditions != nil).To(BeTrue())
+		Expect(integrationTestScenario).NotTo(BeNil())
+		Expect(integrationTestScenario.Status.Conditions).NotTo(BeNil())
 		Expect(meta.IsStatusConditionTrue(integrationTestScenario.Status.Conditions, gitops.IntegrationTestScenarioValid)).To(BeTrue())
 	})
 
