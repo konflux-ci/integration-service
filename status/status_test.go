@@ -10,11 +10,12 @@ import (
 	"github.com/go-logr/logr"
 	tektonv1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 type MockReporter struct{}
 
-func (r *MockReporter) ReportStatus(context.Context, *tektonv1beta1.PipelineRun) error {
+func (r *MockReporter) ReportStatus(client.Client, context.Context, *tektonv1beta1.PipelineRun) error {
 	return nil
 }
 

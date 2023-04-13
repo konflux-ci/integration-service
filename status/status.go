@@ -15,7 +15,7 @@ const NamePrefix = "HACBS Test"
 
 // Reporter is a generic interface all status implementations must follow.
 type Reporter interface {
-	ReportStatus(context.Context, *tektonv1beta1.PipelineRun) error
+	ReportStatus(client.Client, context.Context, *tektonv1beta1.PipelineRun) error
 }
 
 // Status is the interface of the main status Adapter.
@@ -41,7 +41,7 @@ func WithGitHubReporter(reporter Reporter) AdapterOption {
 }
 
 // NewAdapter constructs an Adapter with optional params, if specified.
-func NewAdapter(logger logr.Logger, k8sClient client.Reader, opts ...AdapterOption) *Adapter {
+func NewAdapter(logger logr.Logger, k8sClient client.Client, opts ...AdapterOption) *Adapter {
 	adapter := Adapter{
 		logger:         logger,
 		k8sClient:      k8sClient,

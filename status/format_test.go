@@ -26,7 +26,7 @@ const expectedSummary = `| Task | Duration | Test Suite | Status | Details |
 [^example-task-4]: example note 4`
 
 func newTaskRun(name string, startTime time.Time, completionTime time.Time) *helpers.TaskRun {
-	return helpers.NewTaskRun(logr.Discard(), &tektonv1beta1.PipelineRunTaskRunStatus{
+	return helpers.NewTaskRunFromPipelineRunStatus(logr.Discard(), &tektonv1beta1.PipelineRunTaskRunStatus{
 		PipelineTaskName: name,
 		Status: &tektonv1beta1.TaskRunStatus{
 			TaskRunStatusFields: tektonv1beta1.TaskRunStatusFields{
@@ -39,7 +39,7 @@ func newTaskRun(name string, startTime time.Time, completionTime time.Time) *hel
 }
 
 func newTaskRunWithHACBSTestOutput(name string, startTime time.Time, completionTime time.Time, output string) *helpers.TaskRun {
-	return helpers.NewTaskRun(logr.Discard(), &tektonv1beta1.PipelineRunTaskRunStatus{
+	return helpers.NewTaskRunFromPipelineRunStatus(logr.Discard(), &tektonv1beta1.PipelineRunTaskRunStatus{
 		PipelineTaskName: name,
 		Status: &tektonv1beta1.TaskRunStatus{
 			TaskRunStatusFields: tektonv1beta1.TaskRunStatusFields{
