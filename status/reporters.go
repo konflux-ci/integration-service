@@ -22,7 +22,7 @@ import (
 // GitHubReporter reports status back to GitHub for a PipelineRun.
 type GitHubReporter struct {
 	logger    logr.Logger
-	k8sClient client.Reader
+	k8sClient client.Client
 	client    github.ClientInterface
 }
 
@@ -36,7 +36,7 @@ func WithGitHubClient(client github.ClientInterface) GitHubReporterOption {
 }
 
 // NewGitHubReporter returns a struct implementing the Reporter interface for GitHub
-func NewGitHubReporter(logger logr.Logger, k8sClient client.Reader, opts ...GitHubReporterOption) *GitHubReporter {
+func NewGitHubReporter(logger logr.Logger, k8sClient client.Client, opts ...GitHubReporterOption) *GitHubReporter {
 	reporter := GitHubReporter{
 		logger:    logger,
 		k8sClient: k8sClient,
@@ -137,7 +137,7 @@ func (r *GitHubReporter) getToken(ctx context.Context, pipelineRun *tektonv1beta
 	return string(token), nil
 }
 
-func (r *GitHubReporter) createCheckRunAdapter(pipelineRun *tektonv1beta1.PipelineRun) (*github.CheckRunAdapter, error) {
+func (r *GitHubReporter) createCheckRunAdapter(ctx context.Context, pipelineRun *tektonv1beta1.PipelineRun) (*github.CheckRunAdapter, error) {
 	labels := pipelineRun.GetLabels()
 
 	scenario, found := labels[gitops.SnapshotTestScenarioLabel]
@@ -171,7 +171,7 @@ func (r *GitHubReporter) createCheckRunAdapter(pipelineRun *tektonv1beta1.Pipeli
 	if succeeded.IsUnknown() {
 		title = scenario + " has started"
 	} else {
-		outcome, err := helpers.CalculateIntegrationPipelineRunOutcome(r.logger, pipelineRun)
+		outcome, err := helpers.CalculateIntegrationPipelineRunOutcome(r.k8sClient, ctx, r.logger, pipelineRun)
 
 		if err != nil {
 			return nil, err
@@ -263,7 +263,7 @@ func (r *GitHubReporter) createCommitStatus(ctx context.Context, pipelineRun *te
 		state = "pending"
 		description = scenario + " has started"
 	} else {
-		outcome, err := helpers.CalculateIntegrationPipelineRunOutcome(r.logger, pipelineRun)
+		outcome, err := helpers.CalculateIntegrationPipelineRunOutcome(r.k8sClient, ctx, r.logger, pipelineRun)
 		if err != nil {
 			return err
 		}
@@ -318,7 +318,7 @@ func (r *GitHubReporter) createComment(ctx context.Context, pipelineRun *tektonv
 		return err
 	}
 
-	outcome, err := helpers.CalculateIntegrationPipelineRunOutcome(r.logger, pipelineRun)
+	outcome, err := helpers.CalculateIntegrationPipelineRunOutcome(r.k8sClient, ctx, r.logger, pipelineRun)
 	if err != nil {
 		return err
 	}
@@ -346,7 +346,7 @@ func (r *GitHubReporter) createComment(ctx context.Context, pipelineRun *tektonv
 
 // ReportStatus creates/updates CheckRuns when using GitHub App integration.
 // When using GitHub webhook integration a commit status and, in some cases, a comment is created.
-func (r *GitHubReporter) ReportStatus(ctx context.Context, pipelineRun *tektonv1beta1.PipelineRun) error {
+func (r *GitHubReporter) ReportStatus(k8sClient client.Client, ctx context.Context, pipelineRun *tektonv1beta1.PipelineRun) error {
 	if !helpers.HasLabelWithValue(pipelineRun, gitops.PipelineAsCodeEventTypeLabel, gitops.PipelineAsCodePullRequestType) {
 		return nil
 	}
@@ -366,7 +366,7 @@ func (r *GitHubReporter) ReportStatus(ctx context.Context, pipelineRun *tektonv1
 
 		r.client.SetOAuthToken(ctx, token)
 
-		checkRun, err := r.createCheckRunAdapter(pipelineRun)
+		checkRun, err := r.createCheckRunAdapter(ctx, pipelineRun)
 		if err != nil {
 			return err
 		}

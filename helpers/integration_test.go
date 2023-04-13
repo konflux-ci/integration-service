@@ -237,7 +237,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			integrationPipelineRun, err := helpers.GetLatestPipelineRunForSnapshotAndScenario(k8sClient, ctx, hasSnapshot, &integrationTestScenario)
 			Expect(err != nil && integrationPipelineRun == nil)
 		}
-		pipelineRunOutcome, err := helpers.CalculateIntegrationPipelineRunOutcome(logger, testpipelineRun)
+		pipelineRunOutcome, err := helpers.CalculateIntegrationPipelineRunOutcome(k8sClient, ctx, logger, testpipelineRun)
 		Expect(err).To(BeNil())
 		Expect(pipelineRunOutcome).To(BeTrue())
 	})
@@ -275,7 +275,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				integrationPipelineRun, err := helpers.GetLatestPipelineRunForSnapshotAndScenario(k8sClient, ctx, hasSnapshot, &requiredIntegrationTestScenario)
 				Expect(err != nil && integrationPipelineRun == nil)
 
-				pipelineRunOutcome, err := helpers.CalculateIntegrationPipelineRunOutcome(logger, integrationPipelineRun)
+				pipelineRunOutcome, err := helpers.CalculateIntegrationPipelineRunOutcome(k8sClient, ctx, logger, testpipelineRun)
 				Expect(err).To(BeNil())
 				Expect(pipelineRunOutcome).To(BeTrue())
 
@@ -347,8 +347,9 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		}
 		Expect(k8sClient.Status().Update(ctx, testpipelineRun)).Should(Succeed())
 
-		pipelineRunOutcome, err := helpers.CalculateIntegrationPipelineRunOutcome(logger, testpipelineRun)
-		Expect(err == nil && pipelineRunOutcome).To(BeTrue())
+		pipelineRunOutcome, err := helpers.CalculateIntegrationPipelineRunOutcome(k8sClient, ctx, logger, testpipelineRun)
+		Expect(err).To(BeNil())
+		Expect(pipelineRunOutcome).To(BeTrue())
 
 		gitops.MarkSnapshotAsPassed(k8sClient, ctx, hasSnapshot, "test passed")
 		Expect(gitops.HaveHACBSTestsSucceeded(hasSnapshot)).To(BeTrue())
@@ -381,7 +382,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		}
 		Expect(k8sClient.Status().Update(ctx, testpipelineRun)).Should(Succeed())
 
-		pipelineRunOutcome, err := helpers.CalculateIntegrationPipelineRunOutcome(logger, testpipelineRun)
+		pipelineRunOutcome, err := helpers.CalculateIntegrationPipelineRunOutcome(k8sClient, ctx, logger, testpipelineRun)
 		Expect(err).To(BeNil())
 		Expect(pipelineRunOutcome).To(BeFalse())
 
@@ -420,7 +421,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		}
 		Expect(k8sClient.Status().Update(ctx, testpipelineRun)).Should(Succeed())
 
-		pipelineRunOutcome, err := helpers.CalculateIntegrationPipelineRunOutcome(logger, testpipelineRun)
+		pipelineRunOutcome, err := helpers.CalculateIntegrationPipelineRunOutcome(k8sClient, ctx, logger, testpipelineRun)
 		Expect(err).To(BeNil())
 		Expect(pipelineRunOutcome).To(BeTrue())
 
@@ -450,7 +451,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		}
 
 		Expect(k8sClient.Status().Update(ctx, testpipelineRun)).Should(Succeed())
-		result, err := helpers.CalculateIntegrationPipelineRunOutcome(logr.Discard(), testpipelineRun)
+		result, err := helpers.CalculateIntegrationPipelineRunOutcome(k8sClient, ctx, logr.Discard(), testpipelineRun)
 		Expect(err).ToNot(BeNil())
 		Expect(result).To(BeFalse())
 	})
@@ -481,7 +482,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		}
 
 		Expect(k8sClient.Status().Update(ctx, testpipelineRun)).Should(Succeed())
-		result, err := helpers.CalculateIntegrationPipelineRunOutcome(logr.Discard(), testpipelineRun)
+		result, err := helpers.CalculateIntegrationPipelineRunOutcome(k8sClient, ctx, logr.Discard(), testpipelineRun)
 		Expect(err).ToNot(BeNil())
 		Expect(result).To(BeFalse())
 	})
@@ -543,6 +544,87 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		Expect(tr2.GetStartTime().Equal(time.Time{}))
 		Expect(tr2.GetDuration().Minutes()).To(Equal(0.0))
 
+	})
+
+	It("can get all the TaskRuns for a PipelineRun with childReferences", func() {
+		now := time.Now()
+
+		testPipelineRunTaskRun := tektonv1beta1.TaskRun{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "test-taskrun-sample",
+				Namespace: "default",
+			},
+			Spec: tektonv1beta1.TaskRunSpec{
+				TaskRef: &tektonv1beta1.TaskRef{
+					Name:   "build-pipeline-pass",
+					Bundle: "quay.io/redhat-appstudio/example-tekton-bundle:test",
+				},
+			},
+		}
+
+		Expect(k8sClient.Create(ctx, &testPipelineRunTaskRun)).Should(Succeed())
+
+		testPipelineRunTaskRun.Status = tektonv1beta1.TaskRunStatus{
+			TaskRunStatusFields: tektonv1beta1.TaskRunStatusFields{
+				StartTime:      &metav1.Time{Time: now},
+				CompletionTime: &metav1.Time{Time: now.Add(5 * time.Minute)},
+				TaskRunResults: []tektonv1beta1.TaskRunResult{
+					{
+						Name: "HACBS_TEST_OUTPUT",
+						Value: *tektonv1beta1.NewArrayOrString(`{
+							"result": "SUCCESS",
+							"successes": 1 }`),
+					},
+				},
+			},
+		}
+
+		Expect(k8sClient.Status().Update(ctx, &testPipelineRunTaskRun)).Should(Succeed())
+
+		Eventually(func() error {
+			err := k8sClient.Get(ctx, types.NamespacedName{
+				Name:      testPipelineRunTaskRun.Name,
+				Namespace: "default",
+			}, &testPipelineRunTaskRun)
+			if err != nil {
+				return err
+			}
+
+			if testPipelineRunTaskRun.Status.TaskRunResults != nil && len(testPipelineRunTaskRun.Status.TaskRunResults) > 1 {
+				return fmt.Errorf("the task status has not been updated with results yet")
+			}
+			return err
+		}, time.Second*10).ShouldNot(HaveOccurred())
+
+		testpipelineRun.Status = tektonv1beta1.PipelineRunStatus{
+			PipelineRunStatusFields: tektonv1beta1.PipelineRunStatusFields{
+				ChildReferences: []tektonv1beta1.ChildStatusReference{
+					{
+						Name:             testPipelineRunTaskRun.Name,
+						PipelineTaskName: "pipeline1-task1",
+					},
+				},
+			},
+		}
+
+		taskRuns, err := helpers.GetAllChildTaskRunsForPipelineRun(k8sClient, ctx, logr.Discard(), testpipelineRun)
+		Expect(err).To(BeNil())
+		Expect(len(taskRuns)).To(Equal(1))
+
+		tr1 := taskRuns[0]
+		Expect(tr1.GetPipelineTaskName()).To(Equal("pipeline1-task1"))
+		Expect(tr1.GetStartTime().Equal(now))
+		Expect(tr1.GetDuration().Minutes()).To(Equal(5.0))
+
+		result1, err := tr1.GetTestResult()
+		Expect(err).To(BeNil())
+		Expect(result1).ToNot(BeNil())
+		Expect(result1.Result).To(Equal("SUCCESS"))
+		Expect(result1.Successes).To(Equal(1))
+
+		result2, err := tr1.GetTestResult()
+		Expect(err).To(BeNil())
+		Expect(result1).To(Equal(result2))
 	})
 
 	It("can fetch all build pipelineRuns", func() {
