@@ -25,3 +25,5 @@ rules:
   - components/status
   verbs:
   - get
+  - patch
+  - update
