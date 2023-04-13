@@ -97,7 +97,7 @@ var _ = Describe("Release functions for managing Releases", Ordered, func() {
 
 	It("ensures the ReleasePlan can be gotten for Application", func() {
 		gottenReleasePlanItems, err := integrationservicerelease.GetAutoReleasePlansForApplication(k8sClient, ctx, hasApp)
-		Expect(err == nil).To(BeTrue())
-		Expect(gottenReleasePlanItems != nil).To(BeTrue())
+		Expect(err).To(BeNil())
+		Expect(gottenReleasePlanItems).NotTo(BeNil())
 	})
 })
