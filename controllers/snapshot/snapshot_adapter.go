@@ -161,7 +161,7 @@ func (a *Adapter) EnsureGlobalCandidateImageUpdated() (reconciler.OperationResul
 						"Component.Name", a.component.Name)
 					return reconciler.RequeueWithError(err)
 				}
-				if reflect.ValueOf(component.Source).IsValid() {
+				if reflect.ValueOf(component.Source).IsValid() && component.Source.GitSource != nil && component.Source.GitSource.Revision != "" {
 					a.component.Status.LastBuiltCommit = component.Source.GitSource.Revision
 					err = a.client.Status().Patch(a.context, a.component, patch)
 					if err != nil {
