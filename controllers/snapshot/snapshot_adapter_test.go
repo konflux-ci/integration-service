@@ -201,6 +201,9 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 					{
 						Name:           "component-sample",
 						ContainerImage: sample_image,
+						Source: applicationapiv1alpha1.ComponentSource{
+							ComponentSourceUnion: applicationapiv1alpha1.ComponentSourceUnion{},
+						},
 					},
 				},
 			},
