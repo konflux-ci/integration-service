@@ -1,6 +1,7 @@
 # Documentation: https://docs.codecov.io/docs/codecov-yaml
 ignore:
   - "api/v1alpha1/zz_generated.deepcopy.go" # generated file
+  - "api/v1beta1/zz_generated.deepcopy.go" # generated file
 
 coverage:
     status:
