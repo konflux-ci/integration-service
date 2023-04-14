@@ -31,22 +31,15 @@ var _ = Describe("Utils", func() {
 			},
 			Status: tektonv1beta1.PipelineRunStatus{
 				PipelineRunStatusFields: tektonv1beta1.PipelineRunStatusFields{
-					TaskRuns: map[string]*tektonv1beta1.PipelineRunTaskRunStatus{
-						"index1": {
-							PipelineTaskName: "build-container",
-							Status: &tektonv1beta1.TaskRunStatus{
-								TaskRunStatusFields: tektonv1beta1.TaskRunStatusFields{
-									TaskRunResults: []tektonv1beta1.TaskRunResult{
-										{
-											Name:  "IMAGE_DIGEST",
-											Value: *tektonv1beta1.NewArrayOrString("image_digest_value"),
-										},
-									},
-								},
-							},
-						},
-					},
 					PipelineResults: []tektonv1beta1.PipelineRunResult{
+						{
+							Name:  "IMAGE_DIGEST",
+							Value: *tektonv1beta1.NewArrayOrString("image_digest_value"),
+						},
+						{
+							Name:  "IMAGE_URL",
+							Value: *tektonv1beta1.NewArrayOrString("test-image"),
+						},
 						{
 							Name:  "CHAINS-GIT_URL",
 							Value: *tektonv1beta1.NewArrayOrString("https://github.com/devfile-samples/devfile-sample-java-springboot-basic"),

@@ -13,7 +13,7 @@ require (
 	github.com/redhat-appstudio/application-api v0.0.0-20230323195735-25c812747051
 	github.com/redhat-appstudio/operator-goodies v0.0.0-20221130140446-010c05bd7471
 	github.com/redhat-appstudio/release-service v0.0.0-20230314103738-21edb2dadc4e
-	github.com/tektoncd/pipeline v0.44.0
+	github.com/tektoncd/pipeline v0.45.0
 	github.com/tonglil/buflogr v1.0.1
 	golang.org/x/oauth2 v0.5.0
 	k8s.io/api v0.26.1
@@ -76,7 +76,7 @@ require (
 	go.uber.org/atomic v1.10.0 // indirect
 	go.uber.org/multierr v1.9.0 // indirect
 	go.uber.org/zap v1.24.0 // indirect
-	golang.org/x/crypto v0.5.0 // indirect
+	golang.org/x/crypto v0.6.0 // indirect
 	golang.org/x/net v0.7.0 // indirect
 	golang.org/x/sync v0.1.0 // indirect
 	golang.org/x/sys v0.5.0 // indirect
