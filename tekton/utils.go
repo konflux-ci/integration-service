@@ -89,9 +89,9 @@ func GetTypeFromPipelineRun(object client.Object) (string, error) {
 // GetOutputImage returns a string containing the output-image parameter value from a given PipelineRun.
 func GetOutputImage(object client.Object) (string, error) {
 	if pipelineRun, ok := object.(*tektonv1beta1.PipelineRun); ok {
-		for _, param := range pipelineRun.Spec.Params {
-			if param.Name == "output-image" {
-				return param.Value.StringVal, nil
+		for _, pipelineResult := range pipelineRun.Status.PipelineResults {
+			if pipelineResult.Name == "IMAGE_URL" {
+				return pipelineResult.Value.StringVal, nil
 			}
 		}
 	}
@@ -101,13 +101,9 @@ func GetOutputImage(object client.Object) (string, error) {
 // GetOutputImageDigest returns a string containing the IMAGE_DIGEST result value from a given PipelineRun.
 func GetOutputImageDigest(object client.Object) (string, error) {
 	if pipelineRun, ok := object.(*tektonv1beta1.PipelineRun); ok {
-		for _, taskRun := range pipelineRun.Status.TaskRuns {
-			if taskRun.PipelineTaskName == "build-container" {
-				for _, taskRunResult := range taskRun.Status.TaskRunResults {
-					if taskRunResult.Name == "IMAGE_DIGEST" {
-						return taskRunResult.Value.StringVal, nil
-					}
-				}
+		for _, pipelineResult := range pipelineRun.Status.PipelineResults {
+			if pipelineResult.Name == "IMAGE_DIGEST" {
+				return pipelineResult.Value.StringVal, nil
 			}
 		}
 	}
