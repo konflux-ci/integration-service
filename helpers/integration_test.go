@@ -222,11 +222,13 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 
 	It("should return all IntegrationTestScenarios used by the application", func() {
 		updatedSnapshot, err := gitops.MarkSnapshotAsPassed(k8sClient, ctx, hasSnapshot, "test passed")
-		Expect(err == nil && updatedSnapshot != nil).To(BeTrue())
+		Expect(err).To(BeNil())
+		Expect(updatedSnapshot).NotTo(BeNil())
 		Expect(gitops.HaveHACBSTestsFinished(hasSnapshot)).To(BeTrue())
 
 		integrationTestScenarios, err := helpers.GetAllIntegrationTestScenariosForApplication(k8sClient, ctx, hasApp)
-		Expect(err == nil && integrationTestScenarios != nil).To(BeTrue())
+		Expect(err).To(BeNil())
+		Expect(integrationTestScenarios).NotTo(BeNil())
 
 		for _, integrationTestScenario := range *integrationTestScenarios {
 			integrationTestScenario := integrationTestScenario //G601
@@ -236,16 +238,19 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			Expect(err != nil && integrationPipelineRun == nil)
 		}
 		pipelineRunOutcome, err := helpers.CalculateIntegrationPipelineRunOutcome(logger, testpipelineRun)
-		Expect(err == nil && pipelineRunOutcome).To(BeTrue())
+		Expect(err).To(BeNil())
+		Expect(pipelineRunOutcome).To(BeTrue())
 	})
 
 	It("should return all the required IntegrationTestScenarios used by the application", func() {
 		updatedSnapshot, err := gitops.MarkSnapshotAsPassed(k8sClient, ctx, hasSnapshot, "test passed")
-		Expect(err == nil && updatedSnapshot != nil).To(BeTrue())
+		Expect(err).To(BeNil())
+		Expect(updatedSnapshot).NotTo(BeNil())
 		Expect(gitops.HaveHACBSTestsFinished(hasSnapshot)).To(BeTrue())
 
 		requiredIntegrationTestScenarios, err := helpers.GetRequiredIntegrationTestScenariosForApplication(k8sClient, ctx, hasApp)
-		Expect(err == nil && requiredIntegrationTestScenarios != nil).To(BeTrue())
+		Expect(err).To(BeNil())
+		Expect(requiredIntegrationTestScenarios).NotTo(BeNil())
 		if requiredIntegrationTestScenarios != nil {
 			for _, requiredIntegrationTestScenario := range *requiredIntegrationTestScenarios {
 				requiredIntegrationTestScenario := requiredIntegrationTestScenario
@@ -271,7 +276,8 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				Expect(err != nil && integrationPipelineRun == nil)
 
 				pipelineRunOutcome, err := helpers.CalculateIntegrationPipelineRunOutcome(logger, integrationPipelineRun)
-				Expect(err == nil && pipelineRunOutcome).To(BeTrue())
+				Expect(err).To(BeNil())
+				Expect(pipelineRunOutcome).To(BeTrue())
 
 				Expect(k8sClient.Delete(ctx, &integrationPipelineRuns.Items[0])).Should(Succeed())
 			}
@@ -376,7 +382,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		Expect(k8sClient.Status().Update(ctx, testpipelineRun)).Should(Succeed())
 
 		pipelineRunOutcome, err := helpers.CalculateIntegrationPipelineRunOutcome(logger, testpipelineRun)
-		Expect(err == nil).To(BeTrue())
+		Expect(err).To(BeNil())
 		Expect(pipelineRunOutcome).To(BeFalse())
 
 		gitops.MarkSnapshotAsFailed(k8sClient, ctx, hasSnapshot, "test failed")
@@ -415,7 +421,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		Expect(k8sClient.Status().Update(ctx, testpipelineRun)).Should(Succeed())
 
 		pipelineRunOutcome, err := helpers.CalculateIntegrationPipelineRunOutcome(logger, testpipelineRun)
-		Expect(err == nil).To(BeTrue())
+		Expect(err).To(BeNil())
 		Expect(pipelineRunOutcome).To(BeTrue())
 
 		gitops.MarkSnapshotAsPassed(k8sClient, ctx, hasSnapshot, "test passed")

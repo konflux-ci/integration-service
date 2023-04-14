@@ -284,8 +284,8 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 
 	It("ensures the Applicationcomponents can be found ", func() {
 		applicationComponents, err := adapter.getAllApplicationComponents(hasApp)
-		Expect(err == nil).To(BeTrue())
-		Expect(applicationComponents != nil).To(BeTrue())
+		Expect(err).To(BeNil())
+		Expect(applicationComponents).NotTo(BeNil())
 	})
 
 	It("ensures the integrationTestPipelines are created", func() {
@@ -295,7 +295,8 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		}, time.Second*20).Should(BeTrue())
 
 		requiredIntegrationTestScenarios, err := helpers.GetRequiredIntegrationTestScenariosForApplication(k8sClient, ctx, hasApp)
-		Expect(requiredIntegrationTestScenarios != nil && err == nil).To(BeTrue())
+		Expect(err).To(BeNil())
+		Expect(requiredIntegrationTestScenarios).NotTo(BeNil())
 		if requiredIntegrationTestScenarios != nil {
 			for _, requiredIntegrationTestScenario := range *requiredIntegrationTestScenarios {
 				requiredIntegrationTestScenario := requiredIntegrationTestScenario
@@ -329,8 +330,8 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		}, time.Second*10).Should(BeTrue())
 
 		releases, err := adapter.getReleasesWithSnapshot(hasSnapshot)
-		Expect(err == nil).To(BeTrue())
-		Expect(releases != nil).To(BeTrue())
+		Expect(err).To(BeNil())
+		Expect(releases).NotTo(BeNil())
 		for _, release := range *releases {
 			Expect(k8sClient.Delete(ctx, &release)).Should(Succeed())
 		}

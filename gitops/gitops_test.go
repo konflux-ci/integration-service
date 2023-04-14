@@ -154,7 +154,7 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 		gitops.MarkSnapshotAsPassed(k8sClient, ctx, hasSnapshot, "test passed")
 		Expect(gitops.HaveHACBSTestsSucceeded(hasSnapshot)).To(BeTrue())
 		bindingComponents := gitops.NewBindingComponents([]applicationapiv1alpha1.Component{*hasComp})
-		Expect(bindingComponents != nil).To(BeTrue())
+		Expect(bindingComponents).NotTo(BeNil())
 	})
 
 	It("ensures Snapshot Environment Binding is created and exists", func() {
@@ -162,7 +162,7 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 		snapshotEnvironmentBinding := gitops.NewSnapshotEnvironmentBinding(
 			bindingName, hasApp.Namespace, hasApp.Name,
 			env.Name, hasSnapshot, []applicationapiv1alpha1.Component{*hasComp})
-		Expect(snapshotEnvironmentBinding != nil).To(BeTrue())
+		Expect(snapshotEnvironmentBinding).NotTo(BeNil())
 		Expect(k8sClient.Create(ctx, snapshotEnvironmentBinding)).Should(Succeed())
 		Eventually(func() bool {
 			snapshotEnvironmentBinding, err := gitops.FindExistingSnapshotEnvironmentBinding(k8sClient, ctx, hasApp, &env)

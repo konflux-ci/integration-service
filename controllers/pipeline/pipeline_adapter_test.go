@@ -370,41 +370,41 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 
 	It("ensures the Application Components can be found ", func() {
 		applicationComponents, err := adapter.getAllApplicationComponents(hasApp)
-		Expect(err == nil).To(BeTrue())
-		Expect(applicationComponents != nil).To(BeTrue())
+		Expect(err).To(BeNil())
+		Expect(applicationComponents).NotTo(BeNil())
 	})
 
 	It("ensures the Imagepullspec and ComponentSource from pipelinerun and prepare snapshot can be created", func() {
 		imagePullSpec, err := adapter.getImagePullSpecFromPipelineRun(testpipelineRunBuild)
-		Expect(err == nil).To(BeTrue())
-		Expect(imagePullSpec != "").To(BeTrue())
+		Expect(err).To(BeNil())
+		Expect(imagePullSpec).NotTo(BeEmpty())
 
 		componentSource, err := adapter.getComponentSourceFromPipelineRun(testpipelineRunBuild)
-		Expect(err == nil).To(BeTrue())
+		Expect(err).To(BeNil())
 
 		snapshot, err := adapter.prepareSnapshot(hasApp, hasComp, imagePullSpec, componentSource)
-		Expect(snapshot != nil).To(BeTrue())
-		Expect(err == nil).To(BeTrue())
-		Expect(snapshot != nil).To(BeTrue())
+		Expect(snapshot).NotTo(BeNil())
+		Expect(err).To(BeNil())
+		Expect(snapshot).NotTo(BeNil())
 		Expect(snapshot.Spec.Components).To(HaveLen(1), "One component should have been added to snapshot.  Other component should have been omited due to empty ContainerImage field")
 		Expect(snapshot.Spec.Components[0].Name).To(Equal(hasComp.Name), "The built component should have been added to the snapshot")
 
 		fetchedPullSpec, err := adapter.getImagePullSpecFromSnapshotComponent(snapshot, hasComp)
-		Expect(err == nil).To(BeTrue())
-		Expect(fetchedPullSpec != "").To(BeTrue())
-		Expect(fetchedPullSpec == imagePullSpec).To(BeTrue())
+		Expect(err).To(BeNil())
+		Expect(fetchedPullSpec).NotTo(BeEmpty())
+		Expect(fetchedPullSpec).To(Equal(imagePullSpec))
 
 		fetchedComponentSource, err := adapter.getComponentSourceFromSnapshotComponent(snapshot, hasComp)
-		Expect(err == nil).To(BeTrue())
-		Expect(fetchedComponentSource != nil).To(BeTrue())
-		Expect(componentSource.ComponentSourceUnion.GitSource.URL == fetchedComponentSource.ComponentSourceUnion.GitSource.URL).To(BeTrue())
-		Expect(componentSource.ComponentSourceUnion.GitSource.Revision == fetchedComponentSource.ComponentSourceUnion.GitSource.Revision).To(BeTrue())
+		Expect(err).To(BeNil())
+		Expect(fetchedComponentSource).NotTo(BeNil())
+		Expect(componentSource.ComponentSourceUnion.GitSource.URL).To(Equal(fetchedComponentSource.ComponentSourceUnion.GitSource.URL))
+		Expect(componentSource.ComponentSourceUnion.GitSource.Revision).To(Equal(fetchedComponentSource.ComponentSourceUnion.GitSource.Revision))
 	})
 
 	It("ensures that snapshot has label pointing to build pipelinerun", func() {
 		expectedSnapshot, err := adapter.prepareSnapshotForPipelineRun(testpipelineRunBuild, hasComp, hasApp)
-		Expect(err == nil).To(BeTrue())
-		Expect(expectedSnapshot != nil).To(BeTrue())
+		Expect(err).To(BeNil())
+		Expect(expectedSnapshot).NotTo(BeNil())
 
 		Expect(expectedSnapshot.Labels).NotTo(BeNil())
 		Expect(expectedSnapshot.Labels).Should(HaveKeyWithValue(Equal(gitops.BuildPipelineRunNameLabel), Equal(testpipelineRunBuild.Name)))
@@ -412,13 +412,13 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 
 	It("ensures the global component list unchanged and compositeSnapshot shouldn't be created ", func() {
 		expectedSnapshot, err := adapter.prepareSnapshotForPipelineRun(testpipelineRunBuild, hasComp, hasApp)
-		Expect(err == nil).To(BeTrue())
-		Expect(expectedSnapshot != nil).To(BeTrue())
+		Expect(err).To(BeNil())
+		Expect(expectedSnapshot).NotTo(BeNil())
 
 		// Check if the global component list changed in the meantime and create a composite snapshot if it did.
 		compositeSnapshot, err := adapter.createCompositeSnapshotsIfConflictExists(hasApp, hasComp, expectedSnapshot)
-		Expect(err == nil).To(BeTrue())
-		Expect(compositeSnapshot == nil).To(BeTrue())
+		Expect(err).To(BeNil())
+		Expect(compositeSnapshot).To(BeNil())
 	})
 
 	It("ensures the global component list is changed and compositeSnapshot should be created", func() {
@@ -461,8 +461,8 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		compositeSnapshot, err := adapter.createCompositeSnapshotsIfConflictExists(hasApp, hasComp, createdSnapshot)
 		fmt.Fprintf(GinkgoWriter, "compositeSnapshot.Name: %v\n", compositeSnapshot.Name)
 
-		Expect(err == nil).To(BeTrue())
-		Expect(compositeSnapshot != nil).To(BeTrue())
+		Expect(err).To(BeNil())
+		Expect(compositeSnapshot).NotTo(BeNil())
 
 		Eventually(func() error {
 			err := k8sClient.Get(ctx, types.NamespacedName{
@@ -474,26 +474,26 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 
 		// Check if the composite snapshot that was already created above was correctly detected and returned.
 		existingCompositeSnapshot, err := adapter.createCompositeSnapshotsIfConflictExists(hasApp, hasComp, createdSnapshot)
-		Expect(err == nil).To(BeTrue())
-		Expect(existingCompositeSnapshot != nil).To(BeTrue())
-		Expect(existingCompositeSnapshot.Name == compositeSnapshot.Name).To(BeTrue())
+		Expect(err).To(BeNil())
+		Expect(existingCompositeSnapshot).NotTo(BeNil())
+		Expect(existingCompositeSnapshot.Name).To(Equal(compositeSnapshot.Name))
 
 		componentSource, _ := adapter.getComponentSourceFromSnapshotComponent(existingCompositeSnapshot, hasCompNew)
-		Expect(componentSource.GitSource.Revision == "lastbuildcommit").To(BeTrue())
+		Expect(componentSource.GitSource.Revision).To(Equal("lastbuildcommit"))
 		err = k8sClient.Delete(ctx, hasCompNew)
 		Expect(err == nil || k8serrors.IsNotFound(err)).To(BeTrue())
 	})
 
 	It("ensure ComponentSource can returned when component have Status.LastBuiltCommit defined or not", func() {
 		componentSource := adapter.getComponentSourceFromComponent(hasComp)
-		Expect(componentSource.GitSource.Revision == "a2ba645d50e471d5f084b").To(BeTrue())
+		Expect(componentSource.GitSource.Revision).To(Equal("a2ba645d50e471d5f084b"))
 
 		hasComp.Status = applicationapiv1alpha1.ComponentStatus{
 			LastBuiltCommit: "lastbuildcommit",
 		}
 		Expect(k8sClient.Status().Update(ctx, hasComp)).Should(Succeed())
 		componentSource = adapter.getComponentSourceFromComponent(hasComp)
-		Expect(componentSource.GitSource.Revision == "lastbuildcommit").To(BeTrue())
+		Expect(componentSource.GitSource.Revision).To(Equal("lastbuildcommit"))
 	})
 
 	It("ensure err is returned when pipelinerun doesn't have Result for ", func() {
@@ -617,15 +617,15 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		}, time.Second*10).Should(BeTrue())
 
 		integrationTestScenarios, err := helpers.GetRequiredIntegrationTestScenariosForApplication(k8sClient, ctx, hasApp)
-		Expect(err == nil).To(BeTrue())
+		Expect(err).To(BeNil())
 		Expect(len(*integrationTestScenarios) > 0).To(BeTrue())
 
 		integrationPipelineRuns, err := adapter.getAllPipelineRunsForSnapshot(hasSnapshot, integrationTestScenarios)
-		Expect(err == nil).To(BeTrue())
+		Expect(err).To(BeNil())
 		Expect(len(*integrationPipelineRuns) > 0).To(BeTrue())
 
 		allIntegrationPipelineRunsPassed, err := adapter.determineIfAllIntegrationPipelinesPassed(integrationPipelineRuns)
-		Expect(err == nil).To(BeTrue())
+		Expect(err).To(BeNil())
 		Expect(allIntegrationPipelineRunsPassed).To(BeTrue())
 	})
 

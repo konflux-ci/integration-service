@@ -154,8 +154,8 @@ var _ = Describe("ScenarioController", func() {
 
 	It("Run reconciler for scenario", func() {
 		hasApp, err := scenarioReconciler.getApplicationFromScenario(ctx, failScenario)
-		Expect(err != nil).To(BeTrue())
-		Expect(hasApp == nil).To(BeTrue())
+		Expect(err).NotTo(BeNil())
+		Expect(hasApp).To(BeNil())
 		Expect(err).To(HaveOccurred())
 	})
 
