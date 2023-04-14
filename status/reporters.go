@@ -137,7 +137,7 @@ func (r *GitHubReporter) getToken(ctx context.Context, pipelineRun *tektonv1beta
 	return string(token), nil
 }
 
-func (r *GitHubReporter) createCheckRunAdapter(ctx context.Context, pipelineRun *tektonv1beta1.PipelineRun) (*github.CheckRunAdapter, error) {
+func (r *GitHubReporter) createCheckRunAdapter(k8sClient client.Client, ctx context.Context, pipelineRun *tektonv1beta1.PipelineRun) (*github.CheckRunAdapter, error) {
 	labels := pipelineRun.GetLabels()
 
 	scenario, found := labels[gitops.SnapshotTestScenarioLabel]
@@ -171,7 +171,7 @@ func (r *GitHubReporter) createCheckRunAdapter(ctx context.Context, pipelineRun 
 	if succeeded.IsUnknown() {
 		title = scenario + " has started"
 	} else {
-		outcome, err := helpers.CalculateIntegrationPipelineRunOutcome(r.k8sClient, ctx, r.logger, pipelineRun)
+		outcome, err := helpers.CalculateIntegrationPipelineRunOutcome(k8sClient, ctx, r.logger, pipelineRun)
 
 		if err != nil {
 			return nil, err
@@ -186,7 +186,10 @@ func (r *GitHubReporter) createCheckRunAdapter(ctx context.Context, pipelineRun 
 		}
 	}
 
-	taskRuns := helpers.GetTaskRunsFromPipelineRun(r.logger, pipelineRun)
+	taskRuns, err := helpers.GetAllChildTaskRunsForPipelineRun(r.k8sClient, ctx, r.logger, pipelineRun)
+	if err != nil {
+		return nil, err
+	}
 	summary, err := FormatSummary(taskRuns)
 	if err != nil {
 		return nil, err
@@ -222,7 +225,7 @@ func (r *GitHubReporter) createCheckRunAdapter(ctx context.Context, pipelineRun 
 	}, nil
 }
 
-func (r *GitHubReporter) createCommitStatus(ctx context.Context, pipelineRun *tektonv1beta1.PipelineRun) error {
+func (r *GitHubReporter) createCommitStatus(k8sClient client.Client, ctx context.Context, pipelineRun *tektonv1beta1.PipelineRun) error {
 	var (
 		state       string
 		description string
@@ -263,7 +266,7 @@ func (r *GitHubReporter) createCommitStatus(ctx context.Context, pipelineRun *te
 		state = "pending"
 		description = scenario + " has started"
 	} else {
-		outcome, err := helpers.CalculateIntegrationPipelineRunOutcome(r.k8sClient, ctx, r.logger, pipelineRun)
+		outcome, err := helpers.CalculateIntegrationPipelineRunOutcome(k8sClient, ctx, r.logger, pipelineRun)
 		if err != nil {
 			return err
 		}
@@ -285,7 +288,7 @@ func (r *GitHubReporter) createCommitStatus(ctx context.Context, pipelineRun *te
 	return nil
 }
 
-func (r *GitHubReporter) createComment(ctx context.Context, pipelineRun *tektonv1beta1.PipelineRun) error {
+func (r *GitHubReporter) createComment(k8sClient client.Client, ctx context.Context, pipelineRun *tektonv1beta1.PipelineRun) error {
 	labels := pipelineRun.GetLabels()
 
 	succeeded := pipelineRun.Status.GetCondition(apis.ConditionSucceeded)
@@ -318,7 +321,7 @@ func (r *GitHubReporter) createComment(ctx context.Context, pipelineRun *tektonv
 		return err
 	}
 
-	outcome, err := helpers.CalculateIntegrationPipelineRunOutcome(r.k8sClient, ctx, r.logger, pipelineRun)
+	outcome, err := helpers.CalculateIntegrationPipelineRunOutcome(k8sClient, ctx, r.logger, pipelineRun)
 	if err != nil {
 		return err
 	}
@@ -330,7 +333,10 @@ func (r *GitHubReporter) createComment(ctx context.Context, pipelineRun *tektonv
 		title = scenario + " has failed"
 	}
 
-	taskRuns := helpers.GetTaskRunsFromPipelineRun(r.logger, pipelineRun)
+	taskRuns, err := helpers.GetAllChildTaskRunsForPipelineRun(r.k8sClient, ctx, r.logger, pipelineRun)
+	if err != nil {
+		return err
+	}
 	comment, err := FormatComment(title, taskRuns)
 	if err != nil {
 		return err
@@ -366,7 +372,7 @@ func (r *GitHubReporter) ReportStatus(k8sClient client.Client, ctx context.Conte
 
 		r.client.SetOAuthToken(ctx, token)
 
-		checkRun, err := r.createCheckRunAdapter(ctx, pipelineRun)
+		checkRun, err := r.createCheckRunAdapter(k8sClient, ctx, pipelineRun)
 		if err != nil {
 			return err
 		}
@@ -393,12 +399,12 @@ func (r *GitHubReporter) ReportStatus(k8sClient client.Client, ctx context.Conte
 
 		r.client.SetOAuthToken(ctx, token)
 
-		err = r.createCommitStatus(ctx, pipelineRun)
+		err = r.createCommitStatus(k8sClient, ctx, pipelineRun)
 		if err != nil {
 			return err
 		}
 
-		err = r.createComment(ctx, pipelineRun)
+		err = r.createComment(k8sClient, ctx, pipelineRun)
 		if err != nil {
 			return err
 		}

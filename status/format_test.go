@@ -26,30 +26,24 @@ const expectedSummary = `| Task | Duration | Test Suite | Status | Details |
 [^example-task-4]: example note 4`
 
 func newTaskRun(name string, startTime time.Time, completionTime time.Time) *helpers.TaskRun {
-	return helpers.NewTaskRunFromPipelineRunStatus(logr.Discard(), &tektonv1beta1.PipelineRunTaskRunStatus{
-		PipelineTaskName: name,
-		Status: &tektonv1beta1.TaskRunStatus{
-			TaskRunStatusFields: tektonv1beta1.TaskRunStatusFields{
-				StartTime:      &metav1.Time{Time: startTime},
-				CompletionTime: &metav1.Time{Time: completionTime},
-				TaskRunResults: []tektonv1beta1.TaskRunResult{},
-			},
+	return helpers.NewTaskRunFromTektonTaskRun(logr.Discard(), name, &tektonv1beta1.TaskRunStatus{
+		TaskRunStatusFields: tektonv1beta1.TaskRunStatusFields{
+			StartTime:      &metav1.Time{Time: startTime},
+			CompletionTime: &metav1.Time{Time: completionTime},
+			TaskRunResults: []tektonv1beta1.TaskRunResult{},
 		},
 	})
 }
 
 func newTaskRunWithHACBSTestOutput(name string, startTime time.Time, completionTime time.Time, output string) *helpers.TaskRun {
-	return helpers.NewTaskRunFromPipelineRunStatus(logr.Discard(), &tektonv1beta1.PipelineRunTaskRunStatus{
-		PipelineTaskName: name,
-		Status: &tektonv1beta1.TaskRunStatus{
-			TaskRunStatusFields: tektonv1beta1.TaskRunStatusFields{
-				StartTime:      &metav1.Time{Time: startTime},
-				CompletionTime: &metav1.Time{Time: completionTime},
-				TaskRunResults: []tektonv1beta1.TaskRunResult{
-					{
-						Name:  "HACBS_TEST_OUTPUT",
-						Value: *tektonv1beta1.NewArrayOrString(output),
-					},
+	return helpers.NewTaskRunFromTektonTaskRun(logr.Discard(), name, &tektonv1beta1.TaskRunStatus{
+		TaskRunStatusFields: tektonv1beta1.TaskRunStatusFields{
+			StartTime:      &metav1.Time{Time: startTime},
+			CompletionTime: &metav1.Time{Time: completionTime},
+			TaskRunResults: []tektonv1beta1.TaskRunResult{
+				{
+					Name:  "HACBS_TEST_OUTPUT",
+					Value: *tektonv1beta1.NewArrayOrString(output),
 				},
 			},
 		},

@@ -61,11 +61,6 @@ type TaskRun struct {
 	testResult       *HACBSTestResult
 }
 
-// NewTaskRunFromPipelineRunStatus creates and returns am integration TaskRun from the PipelineRunTaskRunStatus.
-func NewTaskRunFromPipelineRunStatus(logger logr.Logger, status *tektonv1beta1.PipelineRunTaskRunStatus) *TaskRun {
-	return &TaskRun{logger: logger, pipelineTaskName: status.PipelineTaskName, trStatus: status.Status}
-}
-
 // NewTaskRunFromTektonTaskRun creates and returns am integration TaskRun from the TaskRunStatus.
 func NewTaskRunFromTektonTaskRun(logger logr.Logger, pipelineTaskName string, status *tektonv1beta1.TaskRunStatus) *TaskRun {
 	return &TaskRun{logger: logger, pipelineTaskName: pipelineTaskName, trStatus: status}
@@ -185,16 +180,9 @@ func GetAllIntegrationTestScenariosForApplication(adapterClient client.Client, c
 func CalculateIntegrationPipelineRunOutcome(adapterClient client.Client, ctx context.Context, logger logr.Logger, pipelineRun *tektonv1beta1.PipelineRun) (bool, error) {
 	var results []*HACBSTestResult
 	var err error
-	// Check if the pipelineRun.Status contains the deprecated TaskRuns
-	if !reflect.ValueOf(pipelineRun.Status.TaskRuns).IsZero() {
-		// If the pipelineRun.Status contains the deprecated TaskRuns, parse them in the old way
-		results, err = GetHACBSTestResultsFromPipelineRunWithTaskRuns(logger, pipelineRun)
-		if err != nil {
-			return false, err
-		}
-
-	} else if !reflect.ValueOf(pipelineRun.Status.ChildReferences).IsZero() {
-		// If the pipelineRun.Status contains the childReferences instead, parse them in the new way by querying for TaskRuns
+	// Check if the pipelineRun.Status contains the childReferences to TaskRuns
+	if !reflect.ValueOf(pipelineRun.Status.ChildReferences).IsZero() {
+		// If the pipelineRun.Status contains the childReferences, parse them in the new way by querying for TaskRuns
 		results, err = GetHACBSTestResultsFromPipelineRunWithChildReferences(adapterClient, ctx, logger, pipelineRun)
 		if err != nil {
 			return false, err
@@ -302,23 +290,6 @@ func GetLatestPipelineRunForSnapshotAndScenario(adapterClient client.Client, ctx
 	return nil, err
 }
 
-// GetHACBSTestResultsFromPipelineRunWithTaskRuns finds all TaskRuns from the PipelineRun Status
-// with a HACBS_TEST_OUTPUT result and returns the parsed data
-func GetHACBSTestResultsFromPipelineRunWithTaskRuns(logger logr.Logger, pipelineRun *tektonv1beta1.PipelineRun) ([]*HACBSTestResult, error) {
-	taskRuns := GetTaskRunsFromPipelineRun(logger, pipelineRun)
-	results := []*HACBSTestResult{}
-	for _, tr := range taskRuns {
-		r, err := tr.GetTestResult()
-		if err != nil {
-			return nil, err
-		}
-		if r != nil {
-			results = append(results, r)
-		}
-	}
-	return results, nil
-}
-
 // GetHACBSTestResultsFromPipelineRunWithChildReferences finds all TaskRuns from childReferences of the PipelineRun
 // that also contain a HACBS_TEST_OUTPUT result and returns the parsed data
 func GetHACBSTestResultsFromPipelineRunWithChildReferences(adapterClient client.Client, ctx context.Context, logger logr.Logger, pipelineRun *tektonv1beta1.PipelineRun) ([]*HACBSTestResult, error) {
@@ -338,16 +309,6 @@ func GetHACBSTestResultsFromPipelineRunWithChildReferences(adapterClient client.
 		}
 	}
 	return results, nil
-}
-
-// GetTaskRunsFromPipelineRun returns integration TaskRun wrappers for all Tekton TaskRuns in a PipelineRun sorted by start time.
-func GetTaskRunsFromPipelineRun(logger logr.Logger, pipelineRun *tektonv1beta1.PipelineRun) []*TaskRun {
-	taskRuns := []*TaskRun{}
-	for _, tr := range pipelineRun.Status.TaskRuns {
-		taskRuns = append(taskRuns, NewTaskRunFromPipelineRunStatus(logger, tr))
-	}
-	sort.Sort(SortTaskRunsByStartTime(taskRuns))
-	return taskRuns
 }
 
 // GetAllChildTaskRunsForPipelineRun finds all Child TaskRuns for a given PipelineRun and
