@@ -54,8 +54,8 @@ func SetupApplicationCache(mgr ctrl.Manager) error {
 		"spec.environment", applicationIndexFunc)
 }
 
-// SetupEnvironmentCache adds a new index field to be able to search SnapshotEnvironmentBindings by Application.
-func SetupEnvironmentCache(mgr ctrl.Manager) error {
+// SetupSnapshotEnvironmentBindingCache adds a new index field to be able to search SnapshotEnvironmentBindings by Application.
+func SetupSnapshotEnvironmentBindingCache(mgr ctrl.Manager) error {
 	environmentIndexFunc := func(obj client.Object) []string {
 		return []string{obj.(*applicationapiv1alpha1.SnapshotEnvironmentBinding).Spec.Application}
 	}

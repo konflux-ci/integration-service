@@ -36,6 +36,8 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 		hasApp                   *applicationapiv1alpha1.Application
 		hasSnapshot              *applicationapiv1alpha1.Snapshot
 		envWithEnvVars           *applicationapiv1alpha1.Environment
+		deploymentTarget         *applicationapiv1alpha1.DeploymentTarget
+		deploymentTargetClaim    *applicationapiv1alpha1.DeploymentTargetClaim
 		copiedEnvWithEnvVars     *gitops.CopiedEnvironment
 		copiedEnvWithEnvVarsITS  *gitops.CopiedEnvironment
 		copiedEnvWithEnvVarsDiff *gitops.CopiedEnvironment
@@ -89,6 +91,35 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 		}
 		Expect(k8sClient.Create(ctx, hasApp)).Should(Succeed())
 
+		deploymentTarget = &applicationapiv1alpha1.DeploymentTarget{
+			ObjectMeta: metav1.ObjectMeta{
+				GenerateName: "dt" + "-",
+				Namespace:    "default",
+			},
+			Spec: applicationapiv1alpha1.DeploymentTargetSpec{
+				DeploymentTargetClassName: "dtcls-name",
+				KubernetesClusterCredentials: applicationapiv1alpha1.DeploymentTargetKubernetesClusterCredentials{
+					DefaultNamespace:           "default",
+					APIURL:                     "https://url",
+					ClusterCredentialsSecret:   "secret-sample",
+					AllowInsecureSkipTLSVerify: false,
+				},
+			},
+		}
+		Expect(k8sClient.Create(ctx, deploymentTarget)).Should(Succeed())
+
+		deploymentTargetClaim = &applicationapiv1alpha1.DeploymentTargetClaim{
+			ObjectMeta: metav1.ObjectMeta{
+				GenerateName: "dtc" + "-",
+				Namespace:    "default",
+			},
+			Spec: applicationapiv1alpha1.DeploymentTargetClaimSpec{
+				DeploymentTargetClassName: applicationapiv1alpha1.DeploymentTargetClassName("dtcls-name"),
+				TargetName:                deploymentTarget.Name,
+			},
+		}
+		Expect(k8sClient.Create(ctx, deploymentTargetClaim)).Should(Succeed())
+
 		envWithEnvVars = &applicationapiv1alpha1.Environment{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "envname-with-env-vars",
@@ -108,7 +139,7 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 					},
 					Target: applicationapiv1alpha1.EnvironmentTarget{
 						DeploymentTargetClaim: applicationapiv1alpha1.DeploymentTargetClaimConfig{
-							ClaimName: "dtc-sample",
+							ClaimName: deploymentTargetClaim.Name,
 						},
 					},
 				},
@@ -269,6 +300,10 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 		err = k8sClient.Delete(ctx, envWithEnvVars)
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
+		err = k8sClient.Delete(ctx, deploymentTarget)
+		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
+		err = k8sClient.Delete(ctx, deploymentTargetClaim)
+		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 
 	})
 	Context("When copying an existing environment", func() {
@@ -302,6 +337,12 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 		It("Can return DeploymentTargetClaim object", func() {
 			dtc := gitops.NewDeploymentTargetClaim("default", deploymentTargetClass.Name)
 			Expect(dtc.Spec.DeploymentTargetClassName == applicationapiv1alpha1.DeploymentTargetClassName(deploymentTargetClass.Name)).To(BeTrue())
+		})
+
+		It("Can get DeploymentTarget for Environment", func() {
+			dt, err := gitops.GetDeploymentTargetForEnvironment(k8sClient, ctx, envWithEnvVars)
+			Expect(dt.Name == deploymentTarget.Name).To(BeTrue())
+			Expect(err == nil).To(BeTrue())
 		})
 	})
 

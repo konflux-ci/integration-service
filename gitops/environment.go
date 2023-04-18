@@ -17,9 +17,14 @@ limitations under the License.
 package gitops
 
 import (
+	"context"
+	"fmt"
+
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/api/v1alpha1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 type CopiedEnvironment struct {
@@ -110,4 +115,63 @@ func NewDeploymentTargetClaim(namespace string, deploymentTargetClassName string
 	}
 
 	return dtc
+}
+
+// GetDeploymentTargetForEnvironment gets the DeploymentTarget associated with Environment, if the DeploymentTarget is not found, an error will be returned
+func GetDeploymentTargetForEnvironment(adapterClient client.Client, ctx context.Context, environment *applicationapiv1alpha1.Environment) (*applicationapiv1alpha1.DeploymentTarget, error) {
+	deploymentTargetClaim, err := GetDeploymentTargetClaimForEnvironment(adapterClient, ctx, environment)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find deploymentTargetClaim defined in environment %s: %w", environment.Name, err)
+	}
+
+	deploymentTarget, err := GetDeploymentTargetForDeploymentTargetClaim(adapterClient, ctx, deploymentTargetClaim)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find deploymentTarget defined in deploymentTargetClaim %s: %w", deploymentTargetClaim.Name, err)
+	}
+
+	return deploymentTarget, nil
+}
+
+// GetDeploymentTargetClaimForEnvironment try to find the DeploymentTargetClaim whose name is defined in Environment
+// if not found, an error is returned
+func GetDeploymentTargetClaimForEnvironment(adapterClient client.Client, ctx context.Context, environment *applicationapiv1alpha1.Environment) (*applicationapiv1alpha1.DeploymentTargetClaim, error) {
+	if (environment.Spec.Configuration.Target != applicationapiv1alpha1.EnvironmentTarget{}) {
+		dtcName := environment.Spec.Configuration.Target.DeploymentTargetClaim.ClaimName
+		if dtcName != "" {
+			deploymentTargetClaim := &applicationapiv1alpha1.DeploymentTargetClaim{}
+			err := adapterClient.Get(ctx, types.NamespacedName{
+				Namespace: environment.Namespace,
+				Name:      dtcName,
+			}, deploymentTargetClaim)
+
+			if err != nil {
+				return nil, err
+			}
+
+			return deploymentTargetClaim, nil
+		}
+	}
+
+	return nil, fmt.Errorf("deploymentTargetClaim is not defined in .Spec.Configuration.Target.DeploymentTargetClaim.ClaimName for Environment: %s/%s", environment.Namespace, environment.Name)
+}
+
+// GetDeploymentTargetForDeploymentTargetClaim try to find the DeploymentTarget whose name is defined in DeploymentTargetClaim
+// if not found, an error is returned
+func GetDeploymentTargetForDeploymentTargetClaim(adapterClient client.Client, ctx context.Context, dtc *applicationapiv1alpha1.DeploymentTargetClaim) (*applicationapiv1alpha1.DeploymentTarget, error) {
+	dtName := dtc.Spec.TargetName
+	if dtName == "" {
+		return nil, fmt.Errorf("deploymentTarget is not defined in .Spec.TargetName for deploymentTargetClaim: %s/%s", dtc.Namespace, dtc.Name)
+	}
+
+	deploymentTarget := &applicationapiv1alpha1.DeploymentTarget{}
+	err := adapterClient.Get(ctx, types.NamespacedName{
+		Namespace: dtc.Namespace,
+		Name:      dtName,
+	}, deploymentTarget)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return deploymentTarget, nil
 }
