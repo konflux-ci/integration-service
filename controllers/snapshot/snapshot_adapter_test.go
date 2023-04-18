@@ -14,6 +14,7 @@ import (
 
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	integrationv1alpha1 "github.com/redhat-appstudio/integration-service/api/v1alpha1"
+	"github.com/redhat-appstudio/integration-service/loader"
 	releasev1alpha1 "github.com/redhat-appstudio/release-service/api/v1alpha1"
 	tektonv1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 
@@ -318,12 +319,6 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		Expect(reflect.TypeOf(NewAdapter(hasSnapshot, hasApp, hasComp, logger, k8sClient, ctx))).To(Equal(reflect.TypeOf(&Adapter{})))
 	})
 
-	It("ensures the Applicationcomponents can be found ", func() {
-		applicationComponents, err := adapter.getAllApplicationComponents(hasApp)
-		Expect(err).To(BeNil())
-		Expect(applicationComponents).NotTo(BeNil())
-	})
-
 	It("ensures the integrationTestPipelines are created", func() {
 		Eventually(func() bool {
 			result, err := adapter.EnsureAllIntegrationTestPipelinesExist()
@@ -380,23 +375,6 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		}, time.Second*10).Should(BeTrue())
 
 		Expect(k8sClient.Delete(ctx, &integrationPipelineRuns.Items[0])).Should(Succeed())
-	})
-
-	It("ensures all Releases exists when AppStudio Tests succeeded", func() {
-		gitops.MarkSnapshotAsPassed(k8sClient, ctx, hasSnapshot, "test passed")
-		Expect(gitops.HaveAppStudioTestsSucceeded(hasSnapshot)).To(BeTrue())
-
-		Eventually(func() bool {
-			result, err := adapter.EnsureAllReleasesExist()
-			return !result.CancelRequest && err == nil
-		}, time.Second*10).Should(BeTrue())
-
-		releases, err := adapter.getReleasesWithSnapshot(hasSnapshot)
-		Expect(err).To(BeNil())
-		Expect(releases).NotTo(BeNil())
-		for _, release := range *releases {
-			Expect(k8sClient.Delete(ctx, &release)).Should(Succeed())
-		}
 	})
 
 	It("ensures global Component Image will not be updated in the PR context", func() {
@@ -581,7 +559,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			Expect(deploymentTargetClaimList).NotTo(BeNil())
 			dtc := &deploymentTargetClaimList.Items[0]
 
-			allEnvironments, err := adapter.getAllEnvironments()
+			allEnvironments, err := loader.GetAllEnvironments(k8sClient, ctx, hasApp)
 			expected_environment := applicationapiv1alpha1.Environment{}
 			for _, environment := range *allEnvironments {
 				if environment.Spec.Configuration.Target.DeploymentTargetClaim.ClaimName == dtc.Name {

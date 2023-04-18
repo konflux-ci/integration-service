@@ -247,13 +247,6 @@ var _ = Describe("PipelineController", func() {
 		}()
 	})
 
-	It("get application from pipelineRun", func() {
-		app, err := pipelineReconciler.getApplicationFromPipelineRun(ctx, testpipelineRun)
-		Expect(err).To(BeNil())
-		Expect(app).NotTo(BeNil())
-		Expect(app.ObjectMeta).To(Equal(hasApp.ObjectMeta))
-	})
-
 	When("pipelinerun has no component", func() {
 
 		var (
