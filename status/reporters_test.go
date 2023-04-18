@@ -2,7 +2,6 @@ package status_test
 
 import (
 	"context"
-	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/runtime"
 	"strings"
@@ -101,9 +100,10 @@ func (c *MockGitHubClient) CreateCommitStatus(ctx context.Context, owner string,
 }
 
 type MockK8sClient struct {
-	getInterceptor  func(obj client.Object)
-	listInterceptor func(list client.ObjectList)
-	err             error
+	getInterceptor     func(key client.ObjectKey, obj client.Object)
+	listInterceptor    func(list client.ObjectList)
+	genericInterceptor func(obj client.Object)
+	err                error
 }
 
 func (c *MockK8sClient) List(ctx context.Context, list client.ObjectList, opts ...client.ListOption) error {
@@ -115,42 +115,42 @@ func (c *MockK8sClient) List(ctx context.Context, list client.ObjectList, opts .
 
 func (c *MockK8sClient) Get(ctx context.Context, key types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
 	if c.getInterceptor != nil {
-		c.getInterceptor(obj)
+		c.getInterceptor(key, obj)
 	}
 	return c.err
 }
 
 func (c *MockK8sClient) Create(ctx context.Context, obj client.Object, opts ...client.CreateOption) error {
-	if c.getInterceptor != nil {
-		c.getInterceptor(obj)
+	if c.genericInterceptor != nil {
+		c.genericInterceptor(obj)
 	}
 	return c.err
 }
 
 func (c *MockK8sClient) Update(ctx context.Context, obj client.Object, opts ...client.UpdateOption) error {
-	if c.getInterceptor != nil {
-		c.getInterceptor(obj)
+	if c.genericInterceptor != nil {
+		c.genericInterceptor(obj)
 	}
 	return c.err
 }
 
 func (c *MockK8sClient) Patch(ctx context.Context, obj client.Object, patch client.Patch, opts ...client.PatchOption) error {
-	if c.getInterceptor != nil {
-		c.getInterceptor(obj)
+	if c.genericInterceptor != nil {
+		c.genericInterceptor(obj)
 	}
 	return c.err
 }
 
 func (c *MockK8sClient) Delete(ctx context.Context, obj client.Object, opts ...client.DeleteOption) error {
-	if c.getInterceptor != nil {
-		c.getInterceptor(obj)
+	if c.genericInterceptor != nil {
+		c.genericInterceptor(obj)
 	}
 	return c.err
 }
 
 func (c *MockK8sClient) DeleteAllOf(ctx context.Context, obj client.Object, opts ...client.DeleteAllOfOption) error {
-	if c.getInterceptor != nil {
-		c.getInterceptor(obj)
+	if c.genericInterceptor != nil {
+		c.genericInterceptor(obj)
 	}
 	return c.err
 }
@@ -184,12 +184,13 @@ func setPipelineRunOutcome(pipelineRun *tektonv1beta1.PipelineRun, taskRun *tekt
 		},
 	}
 	pipelineRun.Status.SetCondition(&apis.Condition{
-		Type:   apis.ConditionSucceeded,
-		Status: "True",
+		Type:    apis.ConditionSucceeded,
+		Message: "sample msg",
+		Status:  "True",
 	})
 }
 
-var _ = Describe("GitHubReporter", Ordered, func() {
+var _ = Describe("GitHubReporter", func() {
 
 	var reporter *status.GitHubReporter
 	var pipelineRun *tektonv1beta1.PipelineRun
@@ -199,7 +200,7 @@ var _ = Describe("GitHubReporter", Ordered, func() {
 	var failedTaskRun *tektonv1beta1.TaskRun
 	var skippedTaskRun *tektonv1beta1.TaskRun
 
-	BeforeAll(func() {
+	BeforeEach(func() {
 		now := time.Now()
 
 		successfulTaskRun = &tektonv1beta1.TaskRun{
@@ -213,28 +214,25 @@ var _ = Describe("GitHubReporter", Ordered, func() {
 					Bundle: "quay.io/redhat-appstudio/example-tekton-bundle:test",
 				},
 			},
-		}
-
-		Expect(k8sClient.Create(ctx, successfulTaskRun)).Should(Succeed())
-
-		successfulTaskRun.Status = tektonv1beta1.TaskRunStatus{
-			TaskRunStatusFields: tektonv1beta1.TaskRunStatusFields{
-				StartTime:      &metav1.Time{Time: now},
-				CompletionTime: &metav1.Time{Time: now.Add(5 * time.Minute)},
-				TaskRunResults: []tektonv1beta1.TaskRunResult{
-					{
-						Name: "HACBS_TEST_OUTPUT",
-						Value: *tektonv1beta1.NewArrayOrString(`{
+			Status: tektonv1beta1.TaskRunStatus{
+				TaskRunStatusFields: tektonv1beta1.TaskRunStatusFields{
+					StartTime:      &metav1.Time{Time: now},
+					CompletionTime: &metav1.Time{Time: now.Add(5 * time.Minute)},
+					TaskRunResults: []tektonv1beta1.TaskRunResult{
+						{
+							Name: "HACBS_TEST_OUTPUT",
+							Value: *tektonv1beta1.NewArrayOrString(`{
 											"result": "SUCCESS",
 											"timestamp": "1665405318",
 											"failures": 0,
-											"successes": 10
+											"successes": 10,
+											"warnings": 0
 										}`),
+						},
 					},
 				},
 			},
 		}
-		Expect(k8sClient.Status().Update(ctx, successfulTaskRun)).Should(Succeed())
 
 		failedTaskRun = &tektonv1beta1.TaskRun{
 			ObjectMeta: metav1.ObjectMeta{
@@ -247,28 +245,25 @@ var _ = Describe("GitHubReporter", Ordered, func() {
 					Bundle: "quay.io/redhat-appstudio/example-tekton-bundle:test",
 				},
 			},
-		}
-
-		Expect(k8sClient.Create(ctx, failedTaskRun)).Should(Succeed())
-
-		failedTaskRun.Status = tektonv1beta1.TaskRunStatus{
-			TaskRunStatusFields: tektonv1beta1.TaskRunStatusFields{
-				StartTime:      &metav1.Time{Time: now},
-				CompletionTime: &metav1.Time{Time: now.Add(5 * time.Minute)},
-				TaskRunResults: []tektonv1beta1.TaskRunResult{
-					{
-						Name: "HACBS_TEST_OUTPUT",
-						Value: *tektonv1beta1.NewArrayOrString(`{
+			Status: tektonv1beta1.TaskRunStatus{
+				TaskRunStatusFields: tektonv1beta1.TaskRunStatusFields{
+					StartTime:      &metav1.Time{Time: now},
+					CompletionTime: &metav1.Time{Time: now.Add(5 * time.Minute)},
+					TaskRunResults: []tektonv1beta1.TaskRunResult{
+						{
+							Name: "HACBS_TEST_OUTPUT",
+							Value: *tektonv1beta1.NewArrayOrString(`{
 											"result": "FAILURE",
 											"timestamp": "1665405317",
 											"failures": 1,
-											"successes": 0
+											"successes": 0,
+											"warnings": 0
 										}`),
+						},
 					},
 				},
 			},
 		}
-		Expect(k8sClient.Status().Update(ctx, failedTaskRun)).Should(Succeed())
 
 		skippedTaskRun = &tektonv1beta1.TaskRun{
 			ObjectMeta: metav1.ObjectMeta{
@@ -281,31 +276,26 @@ var _ = Describe("GitHubReporter", Ordered, func() {
 					Bundle: "quay.io/redhat-appstudio/example-tekton-bundle:test",
 				},
 			},
-		}
-
-		Expect(k8sClient.Create(ctx, skippedTaskRun)).Should(Succeed())
-
-		skippedTaskRun.Status = tektonv1beta1.TaskRunStatus{
-			TaskRunStatusFields: tektonv1beta1.TaskRunStatusFields{
-				StartTime:      &metav1.Time{Time: now.Add(5 * time.Minute)},
-				CompletionTime: &metav1.Time{Time: now.Add(10 * time.Minute)},
-				TaskRunResults: []tektonv1beta1.TaskRunResult{
-					{
-						Name: "HACBS_TEST_OUTPUT",
-						Value: *tektonv1beta1.NewArrayOrString(`{
+			Status: tektonv1beta1.TaskRunStatus{
+				TaskRunStatusFields: tektonv1beta1.TaskRunStatusFields{
+					StartTime:      &metav1.Time{Time: now.Add(5 * time.Minute)},
+					CompletionTime: &metav1.Time{Time: now.Add(10 * time.Minute)},
+					TaskRunResults: []tektonv1beta1.TaskRunResult{
+						{
+							Name: "HACBS_TEST_OUTPUT",
+							Value: *tektonv1beta1.NewArrayOrString(`{
 											"result": "SKIPPED",
 											"timestamp": "1665405318",
 											"failures": 0,
-											"successes": 0
+											"successes": 0,
+											"warnings": 0
 										}`),
+						},
 					},
 				},
 			},
 		}
-		Expect(k8sClient.Status().Update(ctx, skippedTaskRun)).Should(Succeed())
-	})
 
-	BeforeEach(func() {
 		pipelineRun = &tektonv1beta1.PipelineRun{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "test-pipelinerun",
@@ -341,15 +331,6 @@ var _ = Describe("GitHubReporter", Ordered, func() {
 		}
 	})
 
-	AfterAll(func() {
-		err := k8sClient.Delete(ctx, successfulTaskRun)
-		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
-		err = k8sClient.Delete(ctx, failedTaskRun)
-		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
-		err = k8sClient.Delete(ctx, skippedTaskRun)
-		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
-	})
-
 	Context("when provided GitHub app credentials", func() {
 
 		var secretData map[string][]byte
@@ -363,9 +344,18 @@ var _ = Describe("GitHubReporter", Ordered, func() {
 			}
 
 			mockK8sClient = &MockK8sClient{
-				getInterceptor: func(obj client.Object) {
+				getInterceptor: func(key client.ObjectKey, obj client.Object) {
 					if secret, ok := obj.(*v1.Secret); ok {
 						secret.Data = secretData
+					}
+					if taskRun, ok := obj.(*tektonv1beta1.TaskRun); ok {
+						if key.Name == successfulTaskRun.Name {
+							taskRun.Status = successfulTaskRun.Status
+						} else if key.Name == failedTaskRun.Name {
+							taskRun.Status = failedTaskRun.Status
+						} else if key.Name == skippedTaskRun.Name {
+							taskRun.Status = skippedTaskRun.Status
+						}
 					}
 				},
 				listInterceptor: func(list client.ObjectList) {},
@@ -377,37 +367,37 @@ var _ = Describe("GitHubReporter", Ordered, func() {
 
 		It("doesn't report status for non-pull request events", func() {
 			delete(pipelineRun.Labels, "pac.test.appstudio.openshift.io/event-type")
-			Expect(reporter.ReportStatus(k8sClient, ctx, pipelineRun)).To(BeNil())
+			Expect(reporter.ReportStatus(mockK8sClient, context.TODO(), pipelineRun)).To(BeNil())
 		})
 
 		It("doesn't report status when the credentials are invalid/missing", func() {
 			// Invalid installation ID value
 			pipelineRun.Annotations["pac.test.appstudio.openshift.io/installation-id"] = "bad-installation-id"
-			err := reporter.ReportStatus(k8sClient, ctx, pipelineRun)
+			err := reporter.ReportStatus(mockK8sClient, context.TODO(), pipelineRun)
 			Expect(err).ToNot(BeNil())
 			pipelineRun.Annotations["pac.test.appstudio.openshift.io/installation-id"] = "123"
 
 			// Invalid app ID value
 			secretData["github-application-id"] = []byte("bad-app-id")
-			err = reporter.ReportStatus(k8sClient, ctx, pipelineRun)
+			err = reporter.ReportStatus(mockK8sClient, context.TODO(), pipelineRun)
 			Expect(err).ToNot(BeNil())
 			secretData["github-application-id"] = []byte("456")
 
 			// Missing app ID value
 			delete(secretData, "github-application-id")
-			err = reporter.ReportStatus(k8sClient, ctx, pipelineRun)
+			err = reporter.ReportStatus(mockK8sClient, context.TODO(), pipelineRun)
 			Expect(err).ToNot(BeNil())
 			secretData["github-application-id"] = []byte("456")
 
 			// Missing private key
 			delete(secretData, "github-private-key")
-			err = reporter.ReportStatus(k8sClient, ctx, pipelineRun)
+			err = reporter.ReportStatus(mockK8sClient, context.TODO(), pipelineRun)
 			Expect(err).ToNot(BeNil())
 		})
 
 		It("reports status via CheckRuns", func() {
 			// Create an in progress CheckRun
-			Expect(reporter.ReportStatus(k8sClient, ctx, pipelineRun)).To(BeNil())
+			Expect(reporter.ReportStatus(mockK8sClient, context.TODO(), pipelineRun)).To(BeNil())
 			Expect(mockGitHubClient.CreateCheckRunResult.cra.Title).To(Equal("example-pass has started"))
 			Expect(mockGitHubClient.CreateCheckRunResult.cra.Conclusion).To(Equal(""))
 			Expect(mockGitHubClient.CreateCheckRunResult.cra.ExternalID).To(Equal(pipelineRun.Name))
@@ -421,14 +411,9 @@ var _ = Describe("GitHubReporter", Ordered, func() {
 
 			// Update existing CheckRun w/success
 			setPipelineRunOutcome(pipelineRun, successfulTaskRun)
-			pipelineRun.Status.SetCondition(&apis.Condition{
-				Type:    apis.ConditionSucceeded,
-				Message: "sample msg",
-				Status:  "True",
-			})
 			var id int64 = 1
 			mockGitHubClient.GetCheckRunIDResult.ID = &id
-			Expect(reporter.ReportStatus(k8sClient, ctx, pipelineRun)).To(BeNil())
+			Expect(reporter.ReportStatus(mockK8sClient, context.TODO(), pipelineRun)).To(BeNil())
 			Expect(mockGitHubClient.UpdateCheckRunResult.cra.Title).To(Equal("example-pass has succeeded"))
 			Expect(mockGitHubClient.UpdateCheckRunResult.cra.Conclusion).To(Equal("success"))
 			Expect(mockGitHubClient.UpdateCheckRunResult.cra.CompletionTime.IsZero()).To(BeFalse())
@@ -436,7 +421,7 @@ var _ = Describe("GitHubReporter", Ordered, func() {
 
 			// Update existing CheckRun w/failure
 			setPipelineRunOutcome(pipelineRun, failedTaskRun)
-			Expect(reporter.ReportStatus(k8sClient, ctx, pipelineRun)).To(BeNil())
+			Expect(reporter.ReportStatus(mockK8sClient, context.TODO(), pipelineRun)).To(BeNil())
 			Expect(mockGitHubClient.UpdateCheckRunResult.cra.Title).To(Equal("example-pass has failed"))
 			Expect(mockGitHubClient.UpdateCheckRunResult.cra.Conclusion).To(Equal("failure"))
 		})
@@ -463,9 +448,18 @@ var _ = Describe("GitHubReporter", Ordered, func() {
 			}
 
 			mockK8sClient = &MockK8sClient{
-				getInterceptor: func(obj client.Object) {
+				getInterceptor: func(key client.ObjectKey, obj client.Object) {
 					if secret, ok := obj.(*v1.Secret); ok {
 						secret.Data = secretData
+					}
+					if taskRun, ok := obj.(*tektonv1beta1.TaskRun); ok {
+						if key.Name == successfulTaskRun.Name {
+							taskRun.Status = successfulTaskRun.Status
+						} else if key.Name == failedTaskRun.Name {
+							taskRun.Status = failedTaskRun.Status
+						} else if key.Name == skippedTaskRun.Name {
+							taskRun.Status = skippedTaskRun.Status
+						}
 					}
 				},
 				listInterceptor: func(list client.ObjectList) {
@@ -485,7 +479,7 @@ var _ = Describe("GitHubReporter", Ordered, func() {
 
 		It("doesn't report status for non-pull request events", func() {
 			delete(pipelineRun.Labels, "pac.test.appstudio.openshift.io/event-type")
-			Expect(reporter.ReportStatus(k8sClient, ctx, pipelineRun)).To(BeNil())
+			Expect(reporter.ReportStatus(mockK8sClient, context.TODO(), pipelineRun)).To(BeNil())
 		})
 
 		It("creates a comment for a succeeded PipelineRun", func() {
@@ -493,28 +487,28 @@ var _ = Describe("GitHubReporter", Ordered, func() {
 				Type:   apis.ConditionSucceeded,
 				Status: "True",
 			})
-			Expect(reporter.ReportStatus(k8sClient, ctx, pipelineRun)).To(BeNil())
+			Expect(reporter.ReportStatus(mockK8sClient, context.TODO(), pipelineRun)).To(BeNil())
 			Expect(mockGitHubClient.CreateCommentResult.body).To(ContainSubstring("# example-pass has succeeded"))
 			Expect(mockGitHubClient.CreateCommentResult.issueNumber).To(Equal(999))
 		})
 
 		It("creates a comment for a failed PipelineRun", func() {
 			setPipelineRunOutcome(pipelineRun, failedTaskRun)
-			Expect(reporter.ReportStatus(k8sClient, ctx, pipelineRun)).To(BeNil())
+			Expect(reporter.ReportStatus(mockK8sClient, context.TODO(), pipelineRun)).To(BeNil())
 			called := strings.Contains(mockGitHubClient.CreateCommentResult.body, "# example-pass has failed")
 			Expect(called).To(BeTrue())
 			Expect(mockGitHubClient.CreateCommentResult.issueNumber).To(Equal(999))
 		})
 
 		It("doesn't create a comment for non-completed PipelineRuns", func() {
-			Expect(reporter.ReportStatus(k8sClient, ctx, pipelineRun)).To(BeNil())
+			Expect(reporter.ReportStatus(mockK8sClient, context.TODO(), pipelineRun)).To(BeNil())
 			Expect(mockGitHubClient.CreateCommentResult.body).To(Equal(""))
 			Expect(mockGitHubClient.CreateCommentResult.issueNumber).To(Equal(0))
 		})
 
 		It("creates a commit status", func() {
 			// In progress
-			Expect(reporter.ReportStatus(k8sClient, ctx, pipelineRun)).To(BeNil())
+			Expect(reporter.ReportStatus(mockK8sClient, context.TODO(), pipelineRun)).To(BeNil())
 			Expect(mockGitHubClient.CreateCommitStatusResult.state).To(Equal("pending"))
 			Expect(mockGitHubClient.CreateCommitStatusResult.description).To(Equal("example-pass has started"))
 			Expect(mockGitHubClient.CreateCommitStatusResult.statusContext).To(Equal("HACBS Test / devfile-sample-go-basic / example-pass"))
@@ -524,14 +518,14 @@ var _ = Describe("GitHubReporter", Ordered, func() {
 				Type:   apis.ConditionSucceeded,
 				Status: "True",
 			})
-			Expect(reporter.ReportStatus(k8sClient, ctx, pipelineRun)).To(BeNil())
+			Expect(reporter.ReportStatus(mockK8sClient, context.TODO(), pipelineRun)).To(BeNil())
 			Expect(mockGitHubClient.CreateCommitStatusResult.state).To(Equal("success"))
 			Expect(mockGitHubClient.CreateCommitStatusResult.description).To(Equal("example-pass has succeeded"))
 			Expect(mockGitHubClient.CreateCommitStatusResult.statusContext).To(Equal("HACBS Test / devfile-sample-go-basic / example-pass"))
 
 			// Failure
 			setPipelineRunOutcome(pipelineRun, failedTaskRun)
-			Expect(reporter.ReportStatus(k8sClient, ctx, pipelineRun)).To(BeNil())
+			Expect(reporter.ReportStatus(mockK8sClient, context.TODO(), pipelineRun)).To(BeNil())
 			Expect(mockGitHubClient.CreateCommitStatusResult.state).To(Equal("failure"))
 			Expect(mockGitHubClient.CreateCommitStatusResult.description).To(Equal("example-pass has failed"))
 			Expect(mockGitHubClient.CreateCommitStatusResult.statusContext).To(Equal("HACBS Test / devfile-sample-go-basic / example-pass"))

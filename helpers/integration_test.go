@@ -105,7 +105,8 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 											"result": "SUCCESS",
 											"timestamp": "1665405318",
 											"failures": 0,
-											"successes": 10
+											"successes": 10,
+											"warnings": 0
 										}`),
 					},
 				},
@@ -139,7 +140,8 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 											"result": "FAILURE",
 											"timestamp": "1665405317",
 											"failures": 1,
-											"successes": 0
+											"successes": 0,
+											"warnings": 0
 										}`),
 					},
 				},
@@ -173,7 +175,8 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 											"result": "SKIPPED",
 											"timestamp": "1665405318",
 											"failures": 0,
-											"successes": 0
+											"successes": 0,
+											"warnings": 0
 										}`),
 					},
 				},

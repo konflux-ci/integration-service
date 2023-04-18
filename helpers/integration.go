@@ -3,6 +3,7 @@ package helpers
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"k8s.io/apimachinery/pkg/types"
 	"reflect"
 	"sort"
@@ -37,9 +38,6 @@ const (
 
 	// HACBSTestOutputError is the result that's set when the HACBS test produces an error.
 	HACBSTestOutputError = "ERROR"
-
-	// AppStudioLabelSuffix is the suffix that's added to all HACBS label headings
-	AppStudioLabelSuffix = "appstudio.openshift.io"
 )
 
 // HACBSTestResult matches HACBS TaskRun result contract
@@ -185,7 +183,7 @@ func CalculateIntegrationPipelineRunOutcome(adapterClient client.Client, ctx con
 		// If the pipelineRun.Status contains the childReferences, parse them in the new way by querying for TaskRuns
 		results, err = GetHACBSTestResultsFromPipelineRunWithChildReferences(adapterClient, ctx, logger, pipelineRun)
 		if err != nil {
-			return false, err
+			return false, fmt.Errorf("error while getting test results from pipelineRun %s: %w", pipelineRun.Name, err)
 		}
 	}
 
@@ -326,7 +324,7 @@ func GetAllChildTaskRunsForPipelineRun(adapterClient client.Client, ctx context.
 			Name:      childReference.Name,
 		}, pipelineTaskRun)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("error while getting the child taskRun %s from pipelineRun: %w", childReference.Name, err)
 		}
 
 		integrationTaskRun := NewTaskRunFromTektonTaskRun(logger, childReference.PipelineTaskName, &pipelineTaskRun.Status)
