@@ -21,6 +21,7 @@ COPY release/ release/
 COPY metrics/ metrics/
 COPY status/ status/
 COPY git/ git/
+COPY loader/ loader/
 
 # Build
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -o manager main.go

@@ -24,6 +24,7 @@ import (
 	integrationv1alpha1 "github.com/redhat-appstudio/integration-service/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/gitops"
 	"github.com/redhat-appstudio/integration-service/helpers"
+	"github.com/redhat-appstudio/integration-service/loader"
 	"knative.dev/pkg/apis"
 	v1 "knative.dev/pkg/apis/duck/v1"
 
@@ -433,12 +434,6 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		Expect(reflect.TypeOf(NewAdapter(testpipelineRunBuild, hasComp, hasApp, logger, k8sClient, ctx))).To(Equal(reflect.TypeOf(&Adapter{})))
 	})
 
-	It("ensures the Application Components can be found ", func() {
-		applicationComponents, err := adapter.getAllApplicationComponents(hasApp)
-		Expect(err).To(BeNil())
-		Expect(applicationComponents).NotTo(BeNil())
-	})
-
 	It("ensures the Imagepullspec and ComponentSource from pipelinerun and prepare snapshot can be created", func() {
 		imagePullSpec, err := adapter.getImagePullSpecFromPipelineRun(testpipelineRunBuild)
 		Expect(err).To(BeNil())
@@ -487,7 +482,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 	})
 
 	It("ensures the global component list is changed and compositeSnapshot should be created", func() {
-		createdSnapshot, err := adapter.getSnapshotFromPipelineRun(testpipelineRunComponent)
+		createdSnapshot, err := loader.GetSnapshotFromPipelineRun(adapter.client, adapter.context, testpipelineRunComponent)
 		Expect(err).To(BeNil())
 		Expect(createdSnapshot).ToNot(BeNil())
 
@@ -518,7 +513,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		Expect(k8sClient.Status().Update(ctx, hasCompNew)).Should(Succeed())
 
 		Eventually(func() bool {
-			applicationComponents, err := adapter.getAllApplicationComponents(hasApp)
+			applicationComponents, err := loader.GetAllApplicationComponents(k8sClient, ctx, hasApp)
 			return err == nil && len(*applicationComponents) > 1
 		}, time.Second*10).Should(BeTrue())
 

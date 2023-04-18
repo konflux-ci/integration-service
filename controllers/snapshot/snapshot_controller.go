@@ -23,10 +23,10 @@ import (
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/gitops"
 	"github.com/redhat-appstudio/integration-service/helpers"
+	"github.com/redhat-appstudio/integration-service/loader"
 	"github.com/redhat-appstudio/operator-goodies/reconciler"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
@@ -76,14 +76,14 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{}, err
 	}
 
-	application, err := r.getApplicationFromSnapshot(ctx, snapshot)
+	application, err := loader.GetApplicationFromSnapshot(r.Client, ctx, snapshot)
 	if err != nil {
 		logger.Error(err, "Failed to get Application for ",
 			"Snapshot.Name ", snapshot.Name, "Snapshot.Namespace ", snapshot.Namespace)
 		return ctrl.Result{}, err
 	}
 
-	component, err := r.getComponentFromSnapshot(ctx, snapshot)
+	component, err := loader.GetComponentFromSnapshot(r.Client, ctx, snapshot)
 	if err != nil {
 		logger.Error(err, "Failed to get Application for ",
 			"Component.Name ", snapshot.Name, "Component.Namespace ", snapshot.Namespace)
@@ -99,42 +99,6 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		adapter.EnsureCreationOfEnvironment,
 		adapter.EnsureAllIntegrationTestPipelinesExist,
 	})
-}
-
-// getApplicationFromSnapshot loads from the cluster the Application referenced in the given Snapshot.
-// If the Snapshot doesn't specify an Component or this is not found in the cluster, an error will be returned.
-func (r *Reconciler) getApplicationFromSnapshot(context context.Context, snapshot *applicationapiv1alpha1.Snapshot) (*applicationapiv1alpha1.Application, error) {
-	application := &applicationapiv1alpha1.Application{}
-	err := r.Get(context, types.NamespacedName{
-		Namespace: snapshot.Namespace,
-		Name:      snapshot.Spec.Application,
-	}, application)
-
-	if err != nil {
-		return nil, err
-	}
-
-	return application, nil
-}
-
-// getComponentFromSnapshot loads from the cluster the Component referenced in the given Snapshot.
-// If the Snapshot doesn't specify an Application or this is not found in the cluster, an error will be returned.
-func (r *Reconciler) getComponentFromSnapshot(context context.Context, snapshot *applicationapiv1alpha1.Snapshot) (*applicationapiv1alpha1.Component, error) {
-	if componentLabel, ok := snapshot.Labels[gitops.SnapshotComponentLabel]; ok {
-		component := &applicationapiv1alpha1.Component{}
-		err := r.Get(context, types.NamespacedName{
-			Namespace: snapshot.Namespace,
-			Name:      componentLabel,
-		}, component)
-
-		if err != nil {
-			return nil, err
-		}
-
-		return component, nil
-	} else {
-		return nil, nil
-	}
 }
 
 // AdapterInterface is an interface defining all the operations that should be defined in an Integration adapter.
