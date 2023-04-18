@@ -188,7 +188,7 @@ func (r *GitHubReporter) createCheckRunAdapter(k8sClient client.Client, ctx cont
 
 	taskRuns, err := helpers.GetAllChildTaskRunsForPipelineRun(r.k8sClient, ctx, r.logger, pipelineRun)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error while getting all child taskRuns from pipelineRun %s: %w", pipelineRun.Name, err)
 	}
 	summary, err := FormatSummary(taskRuns)
 	if err != nil {
@@ -335,7 +335,7 @@ func (r *GitHubReporter) createComment(k8sClient client.Client, ctx context.Cont
 
 	taskRuns, err := helpers.GetAllChildTaskRunsForPipelineRun(r.k8sClient, ctx, r.logger, pipelineRun)
 	if err != nil {
-		return err
+		return fmt.Errorf("error while getting all child taskRuns from pipelineRun %s: %w", pipelineRun.Name, err)
 	}
 	comment, err := FormatComment(title, taskRuns)
 	if err != nil {
