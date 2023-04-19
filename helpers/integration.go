@@ -72,7 +72,8 @@ var testResultSchema = `{
       "minimum": 0
     },
     "note": {
-      "type": "string"
+      "type": "string",
+      "maxlength": 512
     },
     "failures": {
       "type": "integer",
