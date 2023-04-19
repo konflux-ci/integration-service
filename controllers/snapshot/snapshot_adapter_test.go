@@ -14,7 +14,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
-	integrationv1alpha1 "github.com/redhat-appstudio/integration-service/api/v1alpha1"
+	integrationv1beta1 "github.com/redhat-appstudio/integration-service/api/v1beta1"
 	releasev1alpha1 "github.com/redhat-appstudio/release-service/api/v1alpha1"
 	tektonv1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 
@@ -37,7 +37,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		hasSnapshot             *applicationapiv1alpha1.Snapshot
 		hasSnapshotPR           *applicationapiv1alpha1.Snapshot
 		testpipelineRun         *tektonv1beta1.PipelineRun
-		integrationTestScenario *integrationv1alpha1.IntegrationTestScenario
+		integrationTestScenario *integrationv1beta1.IntegrationTestScenario
 		env                     applicationapiv1alpha1.Environment
 		sample_image            string
 		sample_revision         string
@@ -61,7 +61,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 
 		Expect(k8sClient.Create(ctx, hasApp)).Should(Succeed())
 
-		integrationTestScenario = &integrationv1alpha1.IntegrationTestScenario{
+		integrationTestScenario = &integrationv1beta1.IntegrationTestScenario{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "example-pass",
 				Namespace: "default",
@@ -70,11 +70,26 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 					"test.appstudio.openshift.io/optional": "false",
 				},
 			},
-			Spec: integrationv1alpha1.IntegrationTestScenarioSpec{
+			Spec: integrationv1beta1.IntegrationTestScenarioSpec{
 				Application: "application-sample",
-				Bundle:      "quay.io/kpavic/test-bundle:component-pipeline-pass",
-				Pipeline:    "component-pipeline-pass",
-				Environment: integrationv1alpha1.TestEnvironment{
+				ResolverRef: integrationv1beta1.ResolverRef{
+					Resolver: "git",
+					Params: []integrationv1beta1.ResolverParameter{
+						{
+							Name:  "url",
+							Value: "https://github.com/redhat-appstudio/integration-examples.git",
+						},
+						{
+							Name:  "revision",
+							Value: "main",
+						},
+						{
+							Name:  "pathInRepo",
+							Value: "pipelineruns/integration_pipelinerun_pass.yaml",
+						},
+					},
+				},
+				Environment: integrationv1beta1.TestEnvironment{
 					Name: "envname",
 					Type: "POC",
 					Configuration: applicationapiv1alpha1.EnvironmentConfiguration{

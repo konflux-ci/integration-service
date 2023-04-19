@@ -3,9 +3,9 @@ package tekton_test
 import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/redhat-appstudio/integration-service/api/v1beta1"
 
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
-	"github.com/redhat-appstudio/integration-service/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/gitops"
 	tekton "github.com/redhat-appstudio/integration-service/tekton"
 	tektonv1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
@@ -31,7 +31,7 @@ var _ = Describe("Integration pipeline", func() {
 		hasSnapshot               *applicationapiv1alpha1.Snapshot
 		hasComp                   *applicationapiv1alpha1.Component
 		newIntegrationPipelineRun *tekton.IntegrationPipelineRun
-		integrationTestScenario   *v1alpha1.IntegrationTestScenario
+		integrationTestScenario   *v1beta1.IntegrationTestScenario
 		extraParams               *ExtraParams
 	)
 
@@ -45,7 +45,7 @@ var _ = Describe("Integration pipeline", func() {
 			},
 		}
 
-		integrationTestScenario = &v1alpha1.IntegrationTestScenario{
+		integrationTestScenario = &v1beta1.IntegrationTestScenario{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "example-pass",
 				Namespace: "default",
@@ -54,11 +54,26 @@ var _ = Describe("Integration pipeline", func() {
 					"test.appstudio.openshift.io/optional": "false",
 				},
 			},
-			Spec: v1alpha1.IntegrationTestScenarioSpec{
+			Spec: v1beta1.IntegrationTestScenarioSpec{
 				Application: "application-sample",
-				Bundle:      "quay.io/kpavic/test-bundle:component-pipeline-pass",
-				Pipeline:    "component-pipeline-pass",
-				Environment: v1alpha1.TestEnvironment{
+				ResolverRef: v1beta1.ResolverRef{
+					Resolver: "git",
+					Params: []v1beta1.ResolverParameter{
+						{
+							Name:  "url",
+							Value: "https://github.com/redhat-appstudio/integration-examples.git",
+						},
+						{
+							Name:  "revision",
+							Value: "main",
+						},
+						{
+							Name:  "pathInRepo",
+							Value: "pipelineruns/integration_pipelinerun_pass.yaml",
+						},
+					},
+				},
+				Environment: v1beta1.TestEnvironment{
 					Name: "envname",
 					Type: "POC",
 					//Params: []string{},
@@ -177,7 +192,7 @@ var _ = Describe("Integration pipeline", func() {
 		})
 
 		It("provides parameters from IntegrationTestScenario to the PipelineRun", func() {
-			scenarioParams := []v1alpha1.PipelineParameter{
+			scenarioParams := []v1beta1.PipelineParameter{
 				{
 					Name:  "ADDITIONAL_PARAMETER",
 					Value: "custom value",
