@@ -25,7 +25,7 @@ import (
 
 	"github.com/go-logr/logr"
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
-	"github.com/redhat-appstudio/integration-service/api/v1alpha1"
+	"github.com/redhat-appstudio/integration-service/api/v1beta1"
 	"github.com/redhat-appstudio/integration-service/gitops"
 	"github.com/redhat-appstudio/integration-service/helpers"
 	"github.com/redhat-appstudio/integration-service/release"
@@ -379,7 +379,7 @@ func (a *Adapter) getAllApplicationComponents(application *applicationapiv1alpha
 
 // createIntegrationPipelineRun creates and returns a new integration PipelineRun. The Pipeline information and the parameters to it
 // will be extracted from the given integrationScenario. The integration's Snapshot will also be passed to the integration PipelineRun.
-func (a *Adapter) createIntegrationPipelineRun(application *applicationapiv1alpha1.Application, integrationTestScenario *v1alpha1.IntegrationTestScenario, snapshot *applicationapiv1alpha1.Snapshot) error {
+func (a *Adapter) createIntegrationPipelineRun(application *applicationapiv1alpha1.Application, integrationTestScenario *v1beta1.IntegrationTestScenario, snapshot *applicationapiv1alpha1.Snapshot) error {
 	pipelineRun := tekton.NewIntegrationPipelineRun(snapshot.Name, application.Namespace, *integrationTestScenario).
 		WithSnapshot(snapshot).
 		WithIntegrationLabels(integrationTestScenario).
