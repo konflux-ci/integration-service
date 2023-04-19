@@ -11,8 +11,8 @@ import (
 
 	"github.com/go-logr/logr"
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
-	"github.com/redhat-appstudio/integration-service/api/v1alpha1"
-	"github.com/santhosh-tekuri/jsonschema/v5"
+	"github.com/redhat-appstudio/integration-service/api/v1beta1"
+	jsonschema "github.com/santhosh-tekuri/jsonschema/v5"
 	tektonv1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/labels"
@@ -181,8 +181,8 @@ func (s SortTaskRunsByStartTime) Less(i int, j int) bool {
 // GetRequiredIntegrationTestScenariosForApplication returns the IntegrationTestScenarios used by the application being processed.
 // An IntegrationTestScenarios will only be returned if it has the test.appstudio.openshift.io/optional
 // label not set to true or if it is missing the label entirely.
-func GetRequiredIntegrationTestScenariosForApplication(adapterClient client.Client, ctx context.Context, application *applicationapiv1alpha1.Application) (*[]v1alpha1.IntegrationTestScenario, error) {
-	integrationList := &v1alpha1.IntegrationTestScenarioList{}
+func GetRequiredIntegrationTestScenariosForApplication(adapterClient client.Client, ctx context.Context, application *applicationapiv1alpha1.Application) (*[]v1beta1.IntegrationTestScenario, error) {
+	integrationList := &v1beta1.IntegrationTestScenarioList{}
 	labelRequirement, err := labels.NewRequirement("test.appstudio.openshift.io/optional", selection.NotIn, []string{"true"})
 	if err != nil {
 		return nil, err
@@ -204,8 +204,8 @@ func GetRequiredIntegrationTestScenariosForApplication(adapterClient client.Clie
 }
 
 // GetAllIntegrationTestScenariosForApplication returns all IntegrationTestScenarios used by the application being processed.
-func GetAllIntegrationTestScenariosForApplication(adapterClient client.Client, ctx context.Context, application *applicationapiv1alpha1.Application) (*[]v1alpha1.IntegrationTestScenario, error) {
-	integrationList := &v1alpha1.IntegrationTestScenarioList{}
+func GetAllIntegrationTestScenariosForApplication(adapterClient client.Client, ctx context.Context, application *applicationapiv1alpha1.Application) (*[]v1beta1.IntegrationTestScenario, error) {
+	integrationList := &v1beta1.IntegrationTestScenarioList{}
 
 	opts := &client.ListOptions{
 		Namespace:     application.Namespace,
@@ -246,7 +246,7 @@ func CalculateIntegrationPipelineRunOutcome(adapterClient client.Client, ctx con
 // GetAllPipelineRunsForSnapshotAndScenario returns all Integration PipelineRun for the
 // associated Snapshot and IntegrationTestScenario. In the case the List operation fails,
 // an error will be returned.
-func GetAllPipelineRunsForSnapshotAndScenario(adapterClient client.Client, ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot, integrationTestScenario *v1alpha1.IntegrationTestScenario) (*[]tektonv1beta1.PipelineRun, error) {
+func GetAllPipelineRunsForSnapshotAndScenario(adapterClient client.Client, ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot, integrationTestScenario *v1beta1.IntegrationTestScenario) (*[]tektonv1beta1.PipelineRun, error) {
 	integrationPipelineRuns := &tektonv1beta1.PipelineRunList{}
 	opts := []client.ListOption{
 		client.InNamespace(snapshot.Namespace),
@@ -308,7 +308,7 @@ func GetSucceededBuildPipelineRunsForComponent(adapterClient client.Client, ctx 
 // GetLatestPipelineRunForSnapshotAndScenario returns the latest Integration PipelineRun for the
 // associated Snapshot and IntegrationTestScenario. In the case the List operation fails,
 // an error will be returned.
-func GetLatestPipelineRunForSnapshotAndScenario(adapterClient client.Client, ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot, integrationTestScenario *v1alpha1.IntegrationTestScenario) (*tektonv1beta1.PipelineRun, error) {
+func GetLatestPipelineRunForSnapshotAndScenario(adapterClient client.Client, ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot, integrationTestScenario *v1beta1.IntegrationTestScenario) (*tektonv1beta1.PipelineRun, error) {
 	var latestIntegrationPipelineRun = &tektonv1beta1.PipelineRun{}
 	integrationPipelineRuns, err := GetAllPipelineRunsForSnapshotAndScenario(adapterClient, ctx, snapshot, integrationTestScenario)
 	if err != nil {

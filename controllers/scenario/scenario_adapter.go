@@ -24,7 +24,7 @@ import (
 
 	"github.com/go-logr/logr"
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
-	"github.com/redhat-appstudio/integration-service/api/v1alpha1"
+	"github.com/redhat-appstudio/integration-service/api/v1beta1"
 	"github.com/redhat-appstudio/integration-service/gitops"
 	"github.com/redhat-appstudio/operator-goodies/reconciler"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -33,14 +33,14 @@ import (
 // Adapter holds the objects needed to reconcile a Release.
 type Adapter struct {
 	application *applicationapiv1alpha1.Application
-	scenario    *v1alpha1.IntegrationTestScenario
+	scenario    *v1beta1.IntegrationTestScenario
 	logger      logr.Logger
 	client      client.Client
 	context     context.Context
 }
 
 // NewAdapter creates and returns an Adapter instance.
-func NewAdapter(application *applicationapiv1alpha1.Application, scenario *v1alpha1.IntegrationTestScenario, logger logr.Logger, client client.Client,
+func NewAdapter(application *applicationapiv1alpha1.Application, scenario *v1beta1.IntegrationTestScenario, logger logr.Logger, client client.Client,
 	context context.Context) *Adapter {
 	return &Adapter{
 		application: application,
@@ -58,14 +58,15 @@ func (a *Adapter) EnsureCreatedScenarioIsValid() (reconciler.OperationResult, er
 	// First check if application exists or not
 	if a.application == nil {
 		a.logger.Info("Application for scenario was not found.",
-			"Sceario.Name:", a.scenario.Name)
+			"Scenario.Name:", a.scenario.Name)
 
 		patch := client.MergeFrom(a.scenario.DeepCopy())
 		SetScenarioIntegrationStatusAsInvalid(a.scenario, "Failed to get application for scenario.")
 		err := a.client.Status().Patch(a.context, a.scenario, patch)
 		if err != nil {
 			a.logger.Error(err, "Failed to update Scenario",
-				"Scenario.Name:", a.scenario.Name)
+				"Scenario.Name:", a.scenario.Name,
+				"patch", patch)
 			return reconciler.RequeueWithError(err)
 		}
 		return reconciler.ContinueProcessing()
@@ -83,7 +84,8 @@ func (a *Adapter) EnsureCreatedScenarioIsValid() (reconciler.OperationResult, er
 		err = a.client.Patch(a.context, a.scenario, patch)
 		if err != nil {
 			a.logger.Error(err, "Failed to update Scenario",
-				"Scenario.Name:", a.scenario.Name)
+				"Scenario.Name:", a.scenario.Name,
+				"patch", patch)
 			return reconciler.RequeueWithError(err)
 		}
 
@@ -134,8 +136,8 @@ func (a *Adapter) EnsureCreatedScenarioIsValid() (reconciler.OperationResult, er
 	return reconciler.ContinueProcessing()
 }
 
-// SetSnapshotIntegrationStatusAsInvalid sets the HACBS integration status condition for the Snapshot to invalid.
-func SetScenarioIntegrationStatusAsInvalid(scenario *v1alpha1.IntegrationTestScenario, message string) {
+// SetScenarioIntegrationStatusAsInvalid sets the IntegrationTestScenarioValid status condition for the Scenario to invalid.
+func SetScenarioIntegrationStatusAsInvalid(scenario *v1beta1.IntegrationTestScenario, message string) {
 	meta.SetStatusCondition(&scenario.Status.Conditions, metav1.Condition{
 		Type:    gitops.IntegrationTestScenarioValid,
 		Status:  metav1.ConditionFalse,
@@ -144,8 +146,8 @@ func SetScenarioIntegrationStatusAsInvalid(scenario *v1alpha1.IntegrationTestSce
 	})
 }
 
-// SetSnapshotIntegrationStatusAsValid sets the HACBS integration status condition for the Snapshot to valid.
-func SetScenarioIntegrationStatusAsValid(scenario *v1alpha1.IntegrationTestScenario, message string) {
+// SetScenarioIntegrationStatusAsValid sets the IntegrationTestScenarioValid integration status condition for the Scenario to valid.
+func SetScenarioIntegrationStatusAsValid(scenario *v1beta1.IntegrationTestScenario, message string) {
 	meta.SetStatusCondition(&scenario.Status.Conditions, metav1.Condition{
 		Type:    gitops.IntegrationTestScenarioValid,
 		Status:  metav1.ConditionTrue,
