@@ -18,9 +18,11 @@ package snapshot
 
 import (
 	"context"
+	"fmt"
 	"reflect"
 	"strings"
 
+	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 
 	"github.com/go-logr/logr"
@@ -68,9 +70,8 @@ func (a *Adapter) EnsureAllIntegrationTestPipelinesExist() (reconciler.Operation
 	}
 
 	integrationTestScenarios, err := helpers.GetAllIntegrationTestScenariosForApplication(a.client, a.context, a.application)
-
 	if err != nil {
-		a.logger.Error(err, "Failed to get Integration test scenarios for following application",
+		a.logger.Error(err, "Failed to get Integration test scenarios for the following application",
 			"Application.Name", a.application.Name,
 			"Application.Namespace", a.application.Namespace)
 	}
@@ -81,6 +82,11 @@ func (a *Adapter) EnsureAllIntegrationTestPipelinesExist() (reconciler.Operation
 			"IntegrationTestScenarios", len(*integrationTestScenarios))
 		for _, integrationTestScenario := range *integrationTestScenarios {
 			integrationTestScenario := integrationTestScenario //G601
+			if !reflect.ValueOf(integrationTestScenario.Spec.Environment).IsZero() {
+				// the test pipeline for scenario needing an ephemeral environment will be handled in STONEINTG-333
+				a.logger.Info("IntegrationTestScenario has environment defined, skipping creation of pipelinerun.", "IntegrationTestScenario", integrationTestScenario)
+				continue
+			}
 			integrationPipelineRuns, err := helpers.GetAllPipelineRunsForSnapshotAndScenario(a.client, a.context, a.snapshot, &integrationTestScenario)
 			if err != nil {
 				a.logger.Error(err, "Failed to get pipelineRuns for snapshot and scenario",
@@ -144,6 +150,99 @@ func (a *Adapter) EnsureAllIntegrationTestPipelinesExist() (reconciler.Operation
 			"Snapshot.Status", updatedSnapshot.Status)
 	}
 
+	return reconciler.ContinueProcessing()
+}
+
+// EnsureCreationOfEnvironment makes sure that all envrionments that were requested via
+// IntegrationTestScenarios get created, in case that environment is already created, provides
+// a message about this fact
+func (a *Adapter) EnsureCreationOfEnvironment() (reconciler.OperationResult, error) {
+	if gitops.HaveHACBSTestsFinished(a.snapshot) {
+		a.logger.Info("The Snapshot has finished testing.")
+		return reconciler.ContinueProcessing()
+	}
+
+	integrationTestScenarios, err := helpers.GetAllIntegrationTestScenariosForApplication(a.client, a.context, a.application)
+
+	if err != nil {
+		a.logger.Error(err, "Failed to get Integration test scenarios for the following application",
+			"Application.Name", a.application.Name,
+			"Application.Namespace", a.application.Namespace)
+		return reconciler.RequeueOnErrorOrStop(err)
+	}
+	if integrationTestScenarios == nil {
+		a.logger.Info("No integration test scenario found for Application",
+			"Application.Name", a.application.Name,
+			"Application.Namespace", a.application.Namespace)
+		return reconciler.ContinueProcessing()
+	}
+
+	allEnvironments, err := a.getAllEnvironments()
+	if err != nil {
+		a.logger.Error(err, "Failed to get all environments.",
+			"Application.Name", a.application.Name,
+			"Application.Namespace", a.application.Namespace)
+		return reconciler.RequeueOnErrorOrStop(err)
+	}
+
+TestScenarioLoop:
+	for _, integrationTestScenario := range *integrationTestScenarios {
+		integrationTestScenario := integrationTestScenario //G601
+		if reflect.ValueOf(integrationTestScenario.Spec.Environment).IsZero() {
+			continue
+		}
+		for _, environment := range *allEnvironments {
+			environment := environment //G601
+			//prevent creating already existing environments
+			if helpers.HasLabelWithValue(&environment, gitops.SnapshotLabel, a.snapshot.Name) && helpers.HasLabelWithValue(&environment, gitops.SnapshotTestScenarioLabel, integrationTestScenario.Name) {
+				a.logger.Info("Environment already exists and contains snapshot and scenario:",
+					"Environment.Name", environment.Name,
+					"Snapshot.Name", a.snapshot.Name,
+					"IntegrationScenario.Name", integrationTestScenario.Name)
+				continue TestScenarioLoop
+			}
+		}
+
+		//get the existing environment according to environment name from integrationTestScenario
+		existingEnv, err := a.getEnvironmentFromIntegrationTestScenario(&integrationTestScenario)
+		if err != nil {
+			a.logger.Error(err, "Failed to find the env defined in integrationTestScenario.",
+				"integrationTestScenario.Namespace", integrationTestScenario.Namespace,
+				"integrationTestScenario.Name", integrationTestScenario.Name)
+			return reconciler.RequeueOnErrorOrStop(err)
+		}
+
+		//create an ephemeral copy env of existing environment
+		copyEnv, err := a.createCopyOfExistingEnvironment(existingEnv, a.snapshot.Namespace, &integrationTestScenario, a.snapshot, a.application)
+
+		if err != nil {
+			a.logger.Error(err, "Copying of environment failed.")
+			return reconciler.RequeueOnErrorOrStop(err)
+		}
+		a.logger.Info("An ephemeral Environment is created for integrationTestScenario",
+			"environment.Namespace", copyEnv.Namespace,
+			"environment.Name", copyEnv.Name,
+			"integrationTestScenario.Name", integrationTestScenario.Name)
+
+		components, err := a.getAllApplicationComponents(a.application)
+		if err != nil {
+			return reconciler.RequeueWithError(err)
+		}
+
+		binding, err := a.createSnapshotEnvironmentBindingForSnapshot(a.application, copyEnv, a.snapshot, components)
+		if err != nil {
+			a.logger.Error(err, "Failed to create snapshotEnvironmentbinding for snapshot.",
+				"Binding", binding,
+				"Snapshot.Spec.Components", a.snapshot.Spec.Components)
+		}
+		a.logger.Info("A snapshotEnvironmentbinding is created",
+			"binding.Namespace", binding.Namespace,
+			"binding.Name", binding.Name,
+			"snapshot.Name", a.snapshot.Name,
+			"application.Name", a.application.Name,
+			"environment.Name", copyEnv.Name,
+			"integrationTestScenario.Name", integrationTestScenario.Name)
+	}
 	return reconciler.ContinueProcessing()
 }
 
@@ -445,4 +544,99 @@ func (a *Adapter) updateExistingSnapshotEnvironmentBindingWithSnapshot(snapshotE
 	}
 
 	return snapshotEnvironmentBinding, nil
+}
+
+// createCopyOfExistingEnvironment uses existing env as input, specifies namespace where the environment is situated,
+// integrationTestScenario contains information about existing environment
+// snapshot is mainly used for adding labels
+// returns copy of already existing environment with updated envVars
+func (a *Adapter) createCopyOfExistingEnvironment(existingEnvironment *applicationapiv1alpha1.Environment, namespace string, integrationTestScenario *v1alpha1.IntegrationTestScenario, snapshot *applicationapiv1alpha1.Snapshot, application *applicationapiv1alpha1.Application) (*applicationapiv1alpha1.Environment, error) {
+	// Try to find a available DeploymentTargetClass with the right provisioner
+	deploymentTargetClass, err := a.FindAvailableDeploymentTargetClass()
+	if err != nil || deploymentTargetClass == nil {
+		a.logger.Error(err, "Failed to find deploymentTargetClass with right provisioner for copy of existingEnvironment!",
+			"existingEnvironment.NameSpace", existingEnvironment.Namespace,
+			"existingEnvironment.Name", existingEnvironment.Name,
+			"deploymentTargetClass.Provisioner", applicationapiv1alpha1.Provisioner_Devsandbox)
+		return nil, err
+	}
+	a.logger.Info("Found DeploymentTargetClass with Provisioner appstudio.redhat.com/devsandbox, creating new DeploymentTargetClaim for Environment",
+		"deploymentTargetClass.Name", deploymentTargetClass.Name)
+
+	dtc, err := a.CreateDeploymentTargetClaimForEnvironment(existingEnvironment.Namespace, deploymentTargetClass.Name)
+	if err != nil {
+		a.logger.Error(err, "Failed to create deploymentTargetClaim with deploymentTargetClass for copy of environment!",
+			"existingEnvironment.NameSpace", existingEnvironment.Namespace,
+			"existingEnvironment.Name", existingEnvironment.Name,
+			"deploymentTargetClass.Name", deploymentTargetClass.Name)
+		return nil, fmt.Errorf("failed to create deploymentTargetClaim with deploymentTargetClass %s: %w", deploymentTargetClass.Name, err)
+	}
+	a.logger.Info("DeploymentTargetClaim is created for environment:",
+		"deploymentTargetClaim.NameSpace", dtc.Namespace,
+		"deploymentTargetClaim.Name", dtc.Name)
+
+	environment := gitops.NewCopyOfExistingEnvironment(existingEnvironment, namespace, integrationTestScenario, dtc.Name).
+		WithIntegrationLabels(integrationTestScenario).
+		WithSnapshot(snapshot).
+		AsEnvironment()
+
+	ref := ctrl.SetControllerReference(application, environment, a.client.Scheme())
+	if ref != nil {
+		a.logger.Error(ref, "Failed to set controller reference for Environment!",
+			"application.Name", application.Name,
+			"environment.Name", environment.Name)
+	}
+
+	err = a.client.Create(a.context, environment)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create environment %s: %w", environment.Name, err)
+	}
+	return environment, nil
+}
+
+// CreateDeploymentTargetClaimForEnvironment creates a new DeploymentTargetClaim based on the supplied Namespace and DeploymentTargetClassName
+func (a *Adapter) CreateDeploymentTargetClaimForEnvironment(namespace string, deploymentTargetClassName string) (*applicationapiv1alpha1.DeploymentTargetClaim, error) {
+	deploymentTargetClaim := gitops.NewDeploymentTargetClaim(namespace, deploymentTargetClassName)
+	err := a.client.Create(a.context, deploymentTargetClaim)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create DeploymentTargetClaim %s: %w", deploymentTargetClaim.Name, err)
+	}
+
+	return deploymentTargetClaim, nil
+}
+
+// FindAvailableDeploymentTargetClass attempts to find a DeploymentTargetClass with applicationapiv1alpha1.Provisioner_Devsandbox as provisioner.
+func (a *Adapter) FindAvailableDeploymentTargetClass() (*applicationapiv1alpha1.DeploymentTargetClass, error) {
+	deploymentTargetClassList := &applicationapiv1alpha1.DeploymentTargetClassList{}
+	err := a.client.List(a.context, deploymentTargetClassList)
+	if err != nil {
+		return nil, fmt.Errorf("cannot find the avaiable DeploymentTargetClass with provisioner %s: %w", applicationapiv1alpha1.Provisioner_Devsandbox, err)
+	}
+
+	for _, dtcls := range deploymentTargetClassList.Items {
+		if dtcls.Spec.Provisioner == applicationapiv1alpha1.Provisioner_Devsandbox {
+			return &dtcls, nil
+		}
+	}
+
+	return nil, fmt.Errorf("cannot find the avaiable DeploymentTargetClass with provisioner %s", applicationapiv1alpha1.Provisioner_Devsandbox)
+}
+
+// getEnvironmentFromIntegrationTestScenario looks for already existing environment, if it exists it is returned, if not, nil is returned then together with
+// information about what went wrong
+func (a *Adapter) getEnvironmentFromIntegrationTestScenario(integrationTestScenario *v1alpha1.IntegrationTestScenario) (*applicationapiv1alpha1.Environment, error) {
+	existingEnv := &applicationapiv1alpha1.Environment{}
+
+	err := a.client.Get(a.context, types.NamespacedName{
+		Namespace: a.application.Namespace,
+		Name:      integrationTestScenario.Spec.Environment.Name,
+	}, existingEnv)
+
+	if err != nil {
+		a.logger.Info("Environment doesn't exist in same namespace as IntegrationTestScenario at all.",
+			"integrationTestScenario:", integrationTestScenario.Name,
+			"environment:", integrationTestScenario.Spec.Environment.Name)
+		return nil, fmt.Errorf("environment %s doesn't exist in same namespace as IntegrationTestScenario at all: %w", integrationTestScenario.Spec.Environment.Name, err)
+	}
+	return existingEnv, nil
 }

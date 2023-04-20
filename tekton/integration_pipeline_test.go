@@ -62,7 +62,7 @@ var _ = Describe("Integration pipeline", func() {
 					Name: "envname",
 					Type: "POC",
 					//Params: []string{},
-					Configuration: applicationapiv1alpha1.EnvironmentConfiguration{
+					Configuration: &applicationapiv1alpha1.EnvironmentConfiguration{
 						Env: []applicationapiv1alpha1.EnvVarPair{},
 					},
 				},
