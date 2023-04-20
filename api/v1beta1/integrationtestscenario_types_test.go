@@ -51,7 +51,7 @@ var _ = Describe("IntegrationTestScenario type", func() {
 				Environment: TestEnvironment{
 					Name: "environment-name",
 					Type: "POC",
-					Configuration: applicationapiv1alpha1.EnvironmentConfiguration{
+					Configuration: &applicationapiv1alpha1.EnvironmentConfiguration{
 						Env: []applicationapiv1alpha1.EnvVarPair{
 							{
 								Name:  "env-config-name",

@@ -31,16 +31,18 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 	var (
 		adapter *Adapter
 
-		testReleasePlan         *releasev1alpha1.ReleasePlan
-		hasApp                  *applicationapiv1alpha1.Application
-		hasComp                 *applicationapiv1alpha1.Component
-		hasSnapshot             *applicationapiv1alpha1.Snapshot
-		hasSnapshotPR           *applicationapiv1alpha1.Snapshot
-		testpipelineRun         *tektonv1beta1.PipelineRun
-		integrationTestScenario *integrationv1alpha1.IntegrationTestScenario
-		env                     applicationapiv1alpha1.Environment
-		sample_image            string
-		sample_revision         string
+		testReleasePlan                   *releasev1alpha1.ReleasePlan
+		hasApp                            *applicationapiv1alpha1.Application
+		hasComp                           *applicationapiv1alpha1.Component
+		hasSnapshot                       *applicationapiv1alpha1.Snapshot
+		hasSnapshotPR                     *applicationapiv1alpha1.Snapshot
+		deploymentTargetClass             *applicationapiv1alpha1.DeploymentTargetClass
+		testpipelineRun                   *tektonv1beta1.PipelineRun
+		integrationTestScenario           *integrationv1alpha1.IntegrationTestScenario
+		integrationTestScenarioWithoutEnv *integrationv1alpha1.IntegrationTestScenario
+		env                               *applicationapiv1alpha1.Environment
+		sample_image                      string
+		sample_revision                   string
 	)
 	const (
 		SampleRepoLink = "https://github.com/devfile-samples/devfile-sample-java-springboot-basic"
@@ -58,7 +60,6 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 				Description: "This is an example application",
 			},
 		}
-
 		Expect(k8sClient.Create(ctx, hasApp)).Should(Succeed())
 
 		integrationTestScenario = &integrationv1alpha1.IntegrationTestScenario{
@@ -77,13 +78,30 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 				Environment: integrationv1alpha1.TestEnvironment{
 					Name: "envname",
 					Type: "POC",
-					Configuration: applicationapiv1alpha1.EnvironmentConfiguration{
+					Configuration: &applicationapiv1alpha1.EnvironmentConfiguration{
 						Env: []applicationapiv1alpha1.EnvVarPair{},
 					},
 				},
 			},
 		}
 		Expect(k8sClient.Create(ctx, integrationTestScenario)).Should(Succeed())
+
+		integrationTestScenarioWithoutEnv = &integrationv1alpha1.IntegrationTestScenario{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "example-pass-withoutenv",
+				Namespace: "default",
+
+				Labels: map[string]string{
+					"test.appstudio.openshift.io/optional": "false",
+				},
+			},
+			Spec: integrationv1alpha1.IntegrationTestScenarioSpec{
+				Application: "application-sample",
+				Bundle:      "quay.io/kpavic/test-bundle:component-pipeline-pass",
+				Pipeline:    "component-pipeline-pass",
+			},
+		}
+		Expect(k8sClient.Create(ctx, integrationTestScenarioWithoutEnv)).Should(Succeed())
 
 		testReleasePlan = &releasev1alpha1.ReleasePlan{
 			ObjectMeta: metav1.ObjectMeta{
@@ -100,7 +118,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		}
 		Expect(k8sClient.Create(ctx, testReleasePlan)).Should(Succeed())
 
-		env = applicationapiv1alpha1.Environment{
+		env = &applicationapiv1alpha1.Environment{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "envname",
 				Namespace: "default",
@@ -121,7 +139,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 				},
 			},
 		}
-		Expect(k8sClient.Create(ctx, &env)).Should(Succeed())
+		Expect(k8sClient.Create(ctx, env)).Should(Succeed())
 
 		hasComp = &applicationapiv1alpha1.Component{
 			ObjectMeta: metav1.ObjectMeta{
@@ -145,6 +163,16 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			},
 		}
 		Expect(k8sClient.Create(ctx, hasComp)).Should(Succeed())
+
+		deploymentTargetClass = &applicationapiv1alpha1.DeploymentTargetClass{
+			ObjectMeta: metav1.ObjectMeta{
+				GenerateName: "dtcls" + "-",
+			},
+			Spec: applicationapiv1alpha1.DeploymentTargetClassSpec{
+				Provisioner: applicationapiv1alpha1.Provisioner_Devsandbox,
+			},
+		}
+		Expect(k8sClient.Create(ctx, deploymentTargetClass)).Should(Succeed())
 	})
 
 	BeforeEach(func() {
@@ -269,9 +297,15 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 	AfterAll(func() {
 		err := k8sClient.Delete(ctx, hasApp)
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
+		err = k8sClient.Delete(ctx, env)
+		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
+		err = k8sClient.Delete(ctx, deploymentTargetClass)
+		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 		err = k8sClient.Delete(ctx, hasComp)
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 		err = k8sClient.Delete(ctx, integrationTestScenario)
+		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
+		err = k8sClient.Delete(ctx, integrationTestScenarioWithoutEnv)
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 		err = k8sClient.Delete(ctx, testReleasePlan)
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
@@ -299,6 +333,9 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		Expect(requiredIntegrationTestScenarios).NotTo(BeNil())
 		if requiredIntegrationTestScenarios != nil {
 			for _, requiredIntegrationTestScenario := range *requiredIntegrationTestScenarios {
+				if !reflect.ValueOf(requiredIntegrationTestScenario.Spec.Environment).IsZero() {
+					continue
+				}
 				requiredIntegrationTestScenario := requiredIntegrationTestScenario
 
 				integrationPipelineRuns := &tektonv1beta1.PipelineRunList{}
@@ -318,6 +355,29 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 				Expect(k8sClient.Delete(ctx, &integrationPipelineRuns.Items[0])).Should(Succeed())
 			}
 		}
+	})
+
+	It("Ensure IntegrationPipelineRun can be created for scenario", func() {
+		Eventually(func() bool {
+			err := adapter.createIntegrationPipelineRun(hasApp, integrationTestScenario, hasSnapshot)
+			return err == nil
+		}, time.Second*20).Should(BeTrue())
+
+		integrationPipelineRuns := &tektonv1beta1.PipelineRunList{}
+		opts := []client.ListOption{
+			client.InNamespace(hasApp.Namespace),
+			client.MatchingLabels{
+				"pipelines.appstudio.openshift.io/type": "test",
+				"appstudio.openshift.io/snapshot":       hasSnapshot.Name,
+				"test.appstudio.openshift.io/scenario":  integrationTestScenario.Name,
+			},
+		}
+		Eventually(func() bool {
+			err := k8sClient.List(ctx, integrationPipelineRuns, opts...)
+			return len(integrationPipelineRuns.Items) > 0 && err == nil
+		}, time.Second*10).Should(BeTrue())
+
+		Expect(k8sClient.Delete(ctx, &integrationPipelineRuns.Items[0])).Should(Succeed())
 	})
 
 	It("ensures all Releases exists when HACBSTests succeeded", func() {
@@ -439,7 +499,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		}, time.Second*10).Should(BeTrue())
 
 		Eventually(func() bool {
-			snapshotEnvironmentBinding, err := gitops.FindExistingSnapshotEnvironmentBinding(k8sClient, ctx, hasApp, &env)
+			snapshotEnvironmentBinding, err := gitops.FindExistingSnapshotEnvironmentBinding(k8sClient, ctx, hasApp, env)
 			return snapshotEnvironmentBinding != nil && err == nil
 		}, time.Second*10).Should(BeTrue())
 	})
@@ -485,7 +545,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			components := []applicationapiv1alpha1.Component{
 				*hasComp,
 			}
-			snapshotEnvironmentBinding, err := adapter.createSnapshotEnvironmentBindingForSnapshot(adapter.application, &env, hasSnapshot, &components)
+			snapshotEnvironmentBinding, err := adapter.createSnapshotEnvironmentBindingForSnapshot(adapter.application, env, hasSnapshot, &components)
 			Expect(err).To(BeNil())
 			Expect(snapshotEnvironmentBinding).NotTo(BeNil())
 
@@ -500,6 +560,37 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			Expect(len(updatedSnapshotEnvironmentBinding.Spec.Components) == 1)
 			Expect(updatedSnapshotEnvironmentBinding.Spec.Components[0].Name == secondComp.Spec.ComponentName)
 
+		})
+
+		It("ensures the ephemeral copy Environment are created for IntegrationTestScenario", func() {
+			Eventually(func() bool {
+				result, err := adapter.EnsureCreationOfEnvironment()
+				return !result.CancelRequest && err == nil
+			}, time.Second*20).Should(BeTrue())
+
+			deploymentTargetClaimList := &applicationapiv1alpha1.DeploymentTargetClaimList{}
+			opts := []client.ListOption{
+				client.InNamespace("default"),
+			}
+			Eventually(func() bool {
+				err := k8sClient.List(ctx, deploymentTargetClaimList, opts...)
+				return len(deploymentTargetClaimList.Items) > 0 && err == nil
+			}, time.Second*10).Should(BeTrue())
+			Expect(deploymentTargetClaimList).NotTo(BeNil())
+			dtc := &deploymentTargetClaimList.Items[0]
+
+			allEnvironments, err := adapter.getAllEnvironments()
+			expected_environment := applicationapiv1alpha1.Environment{}
+			for _, environment := range *allEnvironments {
+				if environment.Spec.Configuration.Target.DeploymentTargetClaim.ClaimName == dtc.Name {
+					expected_environment = environment
+				}
+			}
+			Expect(err).To(BeNil())
+			Expect(allEnvironments).NotTo(BeNil())
+			Expect(expected_environment).NotTo(BeNil())
+			Expect(k8sClient.Delete(ctx, &expected_environment)).Should(Succeed())
+			Expect(k8sClient.Delete(ctx, dtc)).Should(Succeed())
 		})
 	})
 

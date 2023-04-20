@@ -64,7 +64,7 @@ var _ = Describe("Scenario Adapter", Ordered, func() {
 				Environment: integrationv1alpha1.TestEnvironment{
 					Name: "envname",
 					Type: "POC",
-					Configuration: applicationapiv1alpha1.EnvironmentConfiguration{
+					Configuration: &applicationapiv1alpha1.EnvironmentConfiguration{
 						Env: []applicationapiv1alpha1.EnvVarPair{},
 					},
 				},
@@ -88,7 +88,7 @@ var _ = Describe("Scenario Adapter", Ordered, func() {
 				Environment: integrationv1alpha1.TestEnvironment{
 					Name: "invEnv",
 					Type: "POC",
-					Configuration: applicationapiv1alpha1.EnvironmentConfiguration{
+					Configuration: &applicationapiv1alpha1.EnvironmentConfiguration{
 						Env: []applicationapiv1alpha1.EnvVarPair{},
 					},
 				},

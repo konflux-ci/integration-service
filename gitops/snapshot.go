@@ -22,6 +22,9 @@ const (
 	// SnapshotTypeLabel contains the type of the Snapshot.
 	SnapshotTypeLabel = "test.appstudio.openshift.io/type"
 
+	// SnapshotLabel contains the name of the Snapshot within appstudio
+	SnapshotLabel = "appstudio.openshift.io/snapshot"
+
 	// SnapshotTestScenarioLabel contains the name of the Snapshot test scenario.
 	SnapshotTestScenarioLabel = "test.appstudio.openshift.io/scenario"
 

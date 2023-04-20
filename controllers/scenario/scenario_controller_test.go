@@ -69,7 +69,7 @@ var _ = Describe("ScenarioController", func() {
 				Environment: v1alpha1.TestEnvironment{
 					Name: "envname",
 					Type: "POC",
-					Configuration: applicationapiv1alpha1.EnvironmentConfiguration{
+					Configuration: &applicationapiv1alpha1.EnvironmentConfiguration{
 						Env: []applicationapiv1alpha1.EnvVarPair{},
 					},
 				},
@@ -90,7 +90,7 @@ var _ = Describe("ScenarioController", func() {
 				Environment: v1alpha1.TestEnvironment{
 					Name: "envname",
 					Type: "POC",
-					Configuration: applicationapiv1alpha1.EnvironmentConfiguration{
+					Configuration: &applicationapiv1alpha1.EnvironmentConfiguration{
 						Env: []applicationapiv1alpha1.EnvVarPair{},
 					},
 				},

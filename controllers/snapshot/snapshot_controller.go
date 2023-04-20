@@ -55,6 +55,9 @@ func NewSnapshotReconciler(client client.Client, logger *logr.Logger, scheme *ru
 //+kubebuilder:rbac:groups=appstudio.redhat.com,resources=applications/finalizers,verbs=update
 //+kubebuilder:rbac:groups=appstudio.redhat.com,resources=components,verbs=get;list;watch;update;patch
 //+kubebuilder:rbac:groups=appstudio.redhat.com,resources=components/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=appstudio.redhat.com,resources=deploymentTargetClasses,verbs=get;list;watch
+//+kubebuilder:rbac:groups=appstudio.redhat.com,resources=deploymentTargetClaims,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=appstudio.redhat.com,resources=environments,verbs=get;list;watch;create;update;patch;delete
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -92,6 +95,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		adapter.EnsureAllReleasesExist,
 		adapter.EnsureGlobalCandidateImageUpdated,
 		adapter.EnsureSnapshotEnvironmentBindingExist,
+		adapter.EnsureCreationOfEnvironment,
 		adapter.EnsureAllIntegrationTestPipelinesExist,
 	})
 }
@@ -135,6 +139,7 @@ func (r *Reconciler) getComponentFromSnapshot(context context.Context, snapshot 
 // AdapterInterface is an interface defining all the operations that should be defined in an Integration adapter.
 type AdapterInterface interface {
 	EnsureAllReleasesExist() (reconciler.OperationResult, error)
+	EnsureCreationOfEnvironment() (reconciler.OperationResult, error)
 	EnsureAllIntegrationTestPipelinesExist() (reconciler.OperationResult, error)
 	EnsureGlobalCandidateImageUpdated() (reconciler.OperationResult, error)
 	EnsureSnapshotEnvironmentBindingExist() (reconciler.OperationResult, error)
