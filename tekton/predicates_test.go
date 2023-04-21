@@ -42,7 +42,7 @@ var _ = Describe("Predicates", func() {
 	})
 
 	Context("when testing IntegrationOrBuildPipelineRunSucceededPredicate", func() {
-		instance := tekton.IntegrationOrBuildPipelineRunSucceededPredicate()
+		instance := tekton.IntegrationOrBuildPipelineRunFinishedPredicate()
 
 		It("should ignore creating events", func() {
 			contextEvent := event.CreateEvent{
@@ -74,6 +74,24 @@ var _ = Describe("Predicates", func() {
 			newtestpipelineRun.Status.SetCondition(&apis.Condition{
 				Type:   apis.ConditionSucceeded,
 				Status: "True",
+			})
+			Expect(instance.Update(contextEvent)).To(BeTrue())
+			newtestpipelineRun.Labels["pipelines.appstudio.openshift.io/type"] = "build"
+			Expect(instance.Update(contextEvent)).To(BeTrue())
+			contextEvent.ObjectNew = &tektonv1beta1.TaskRun{}
+			Expect(instance.Update(contextEvent)).To(BeFalse())
+		})
+
+		It("should return true when an updated event is received for a failed PipelineRun", func() {
+			contextEvent := event.UpdateEvent{
+				ObjectOld: testpipelineRun,
+				ObjectNew: newtestpipelineRun,
+			}
+
+			Expect(instance.Update(contextEvent)).To(BeFalse())
+			newtestpipelineRun.Status.SetCondition(&apis.Condition{
+				Type:   apis.ConditionSucceeded,
+				Status: "False",
 			})
 			Expect(instance.Update(contextEvent)).To(BeTrue())
 			newtestpipelineRun.Labels["pipelines.appstudio.openshift.io/type"] = "build"

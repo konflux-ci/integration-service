@@ -237,6 +237,103 @@ func (a *Adapter) EnsureStatusReported() (reconciler.OperationResult, error) {
 	return reconciler.ContinueProcessing()
 }
 
+// EnsureEphemeralEnvironmentsCleanedUp will ensure that ephemeral environment(s) associated with the
+// integration PipelineRun are cleaned up.
+func (a *Adapter) EnsureEphemeralEnvironmentsCleanedUp() (reconciler.OperationResult, error) {
+	if !tekton.IsIntegrationPipelineRun(a.pipelineRun) || !helpers.HasPipelineRunFinished(a.pipelineRun) {
+		return reconciler.ContinueProcessing()
+	}
+
+	testEnvironment, err := a.getEnvironmentFromIntegrationPipelineRun(a.context, a.pipelineRun)
+	if err != nil {
+		a.logger.Error(err, "Failed to find the environment for the pipelineRun")
+		return reconciler.RequeueWithError(err)
+	} else if testEnvironment == nil {
+		a.logger.Info("The pipelineRun does not have any test Environments associated with it, skipping cleanup.")
+		return reconciler.ContinueProcessing()
+	}
+
+	isEphemeral := false
+	for _, tag := range testEnvironment.Spec.Tags {
+		if tag == "ephemeral" {
+			isEphemeral = true
+			break
+		}
+	}
+
+	if isEphemeral {
+		dtc, err := gitops.GetDeploymentTargetClaimForEnvironment(a.client, a.context, testEnvironment)
+		if err != nil || dtc == nil {
+			a.logger.Error(err, "Failed to find deploymentTargetClaim defined in environment", "environment.Name", testEnvironment.Name)
+			return reconciler.RequeueWithError(err)
+		}
+
+		dt, err := gitops.GetDeploymentTargetForDeploymentTargetClaim(a.client, a.context, dtc)
+		if err != nil || dt == nil {
+			a.logger.Error(err, "Failed to find deploymentTarget defined in deploymentTargetClaim", "deploymentTargetClaim.Name", dtc.Name)
+			return reconciler.RequeueWithError(err)
+		}
+
+		binding, err := gitops.FindExistingSnapshotEnvironmentBinding(a.client, a.context, a.application, testEnvironment)
+		if err != nil || binding == nil {
+			a.logger.Error(err, "Failed to find snapshotEnvironmentBinding associated with environment", "environment.Name", testEnvironment.Name)
+			return reconciler.RequeueWithError(err)
+		}
+
+		a.logger.Info("Deleting deploymentTarget", "deploymentTarget.Name", dt.Name)
+		err = a.client.Delete(a.context, dt)
+		if err != nil {
+			a.logger.Error(err, "Failed to delete the deploymentTarget!")
+			return reconciler.RequeueWithError(err)
+		}
+
+		a.logger.Info("Deleting deploymentTargetClaim", "deploymentTargetClaim.Name", dtc.Name)
+		err = a.client.Delete(a.context, dtc)
+		if err != nil {
+			a.logger.Error(err, "Failed to delete the deploymentTargetClaim!")
+			return reconciler.RequeueWithError(err)
+		}
+
+		a.logger.Info("Deleting environment", "environment.Name", testEnvironment.Name)
+		err = a.client.Delete(a.context, testEnvironment)
+		if err != nil {
+			a.logger.Error(err, "Failed to delete the test ephemeral environment!")
+			return reconciler.RequeueWithError(err)
+		}
+
+		a.logger.Info("Deleting snapshotEnvironmentBinding", "binding.Name", binding.Name)
+		err = a.client.Delete(a.context, binding)
+		if err != nil {
+			a.logger.Error(err, "Failed to delete the snapshotEnvironmentBinding!")
+			return reconciler.RequeueWithError(err)
+		}
+	} else {
+		a.logger.Info("The pipelineRun test Environment is not ephemeral, skipping cleanup.")
+	}
+
+	return reconciler.ContinueProcessing()
+}
+
+// getEnvironmentFromIntegrationPipelineRun loads from the cluster the Environment referenced in the given PipelineRun.
+// If the PipelineRun doesn't specify an Environment or this is not found in the cluster, an error will be returned.
+func (a *Adapter) getEnvironmentFromIntegrationPipelineRun(context context.Context, pipelineRun *tektonv1beta1.PipelineRun) (*applicationapiv1alpha1.Environment, error) {
+	if environmentLabel, ok := pipelineRun.Labels[tekton.EnvironmentNameLabel]; ok {
+		environment := &applicationapiv1alpha1.Environment{}
+		err := a.client.Get(context, types.NamespacedName{
+			Namespace: pipelineRun.Namespace,
+			Name:      environmentLabel,
+		}, environment)
+
+		if err != nil {
+			return nil, err
+		}
+
+		return environment, nil
+	} else {
+		return nil, nil
+	}
+}
+
 // getAllApplicationComponents loads from the cluster all Components associated with the given Application.
 // If the Application doesn't have any Components or this is not found in the cluster, an error will be returned.
 func (a *Adapter) getAllApplicationComponents(application *applicationapiv1alpha1.Application) (*[]applicationapiv1alpha1.Component, error) {
