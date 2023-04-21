@@ -74,8 +74,12 @@ rules:
   resources:
   - deploymentTargets
   verbs:
+  - create
+  - delete
   - get
   - list
+  - patch
+  - update
   - watch
 - apiGroups:
   - appstudio.redhat.com
