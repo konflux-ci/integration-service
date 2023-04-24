@@ -31,6 +31,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/redhat-appstudio/integration-service/gitops"
+	"github.com/redhat-appstudio/integration-service/helpers"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -39,6 +40,7 @@ import (
 var _ = Describe("Binding Adapter", Ordered, func() {
 	var (
 		adapter *Adapter
+		logger  helpers.IntegrationLogger
 
 		testReleasePlan         *releasev1alpha1.ReleasePlan
 		hasApp                  *applicationapiv1alpha1.Application
@@ -57,6 +59,8 @@ var _ = Describe("Binding Adapter", Ordered, func() {
 	)
 
 	BeforeAll(func() {
+
+		logger = helpers.IntegrationLogger{Logger: ctrl.Log}
 
 		hasApp = &applicationapiv1alpha1.Application{
 			ObjectMeta: metav1.ObjectMeta{
@@ -289,7 +293,7 @@ var _ = Describe("Binding Adapter", Ordered, func() {
 			return err
 		}, time.Second*10).ShouldNot(HaveOccurred())
 
-		adapter = NewAdapter(hasBinding, hasSnapshot, hasEnv, hasApp, integrationTestScenario, ctrl.Log, k8sClient, ctx)
+		adapter = NewAdapter(hasBinding, hasSnapshot, hasEnv, hasApp, integrationTestScenario, logger, k8sClient, ctx)
 		Expect(reflect.TypeOf(adapter)).To(Equal(reflect.TypeOf(&Adapter{})))
 
 	})
@@ -322,7 +326,7 @@ var _ = Describe("Binding Adapter", Ordered, func() {
 	})
 
 	It("can create a new Adapter instance", func() {
-		Expect(reflect.TypeOf(NewAdapter(hasBinding, hasSnapshot, hasEnv, hasApp, integrationTestScenario, ctrl.Log, k8sClient, ctx))).To(Equal(reflect.TypeOf(&Adapter{})))
+		Expect(reflect.TypeOf(NewAdapter(hasBinding, hasSnapshot, hasEnv, hasApp, integrationTestScenario, logger, k8sClient, ctx))).To(Equal(reflect.TypeOf(&Adapter{})))
 	})
 
 	It("ensures the integrationTestPipelines are created for a deployed SnapshotEnvironment binding", func() {
@@ -358,7 +362,7 @@ var _ = Describe("Binding Adapter", Ordered, func() {
 	})
 
 	It("ensures the integrationTestPipelines are NOT created for a Snapshot that finished testing", func() {
-		finishedAdapter := NewAdapter(hasBinding, finishedSnapshot, hasEnv, hasApp, integrationTestScenario, ctrl.Log, k8sClient, ctx)
+		finishedAdapter := NewAdapter(hasBinding, finishedSnapshot, hasEnv, hasApp, integrationTestScenario, logger, k8sClient, ctx)
 		Expect(reflect.TypeOf(adapter)).To(Equal(reflect.TypeOf(&Adapter{})))
 
 		Eventually(func() bool {

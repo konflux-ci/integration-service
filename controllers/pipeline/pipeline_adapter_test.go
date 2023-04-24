@@ -35,7 +35,6 @@ import (
 
 	ctrl "sigs.k8s.io/controller-runtime"
 
-	"github.com/go-logr/logr"
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/status"
 	tektonv1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
@@ -66,6 +65,7 @@ func (a *MockStatusAdapter) GetReporters(pipelineRun *tektonv1beta1.PipelineRun)
 var _ = Describe("Pipeline Adapter", Ordered, func() {
 	var (
 		adapter        *Adapter
+		logger         helpers.IntegrationLogger
 		statusAdapter  *MockStatusAdapter
 		statusReporter *MockStatusReporter
 
@@ -118,6 +118,8 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			}, hasEnv)
 			return err == nil
 		}, time.Second*10).Should(BeTrue())
+
+		logger = helpers.IntegrationLogger{Logger: ctrl.Log}
 
 		hasApp = &applicationapiv1alpha1.Application{
 			ObjectMeta: metav1.ObjectMeta{
@@ -397,7 +399,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			return err
 		}, time.Second*10).ShouldNot(HaveOccurred())
 
-		adapter = NewAdapter(testpipelineRunBuild, hasComp, hasApp, ctrl.Log, k8sClient, ctx)
+		adapter = NewAdapter(testpipelineRunBuild, hasComp, hasApp, logger, k8sClient, ctx)
 		statusReporter = &MockStatusReporter{}
 		statusAdapter = &MockStatusAdapter{Reporter: statusReporter}
 		adapter.status = statusAdapter
@@ -428,7 +430,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 	})
 
 	It("can create a new Adapter instance", func() {
-		Expect(reflect.TypeOf(NewAdapter(testpipelineRunBuild, hasComp, hasApp, ctrl.Log, k8sClient, ctx))).To(Equal(reflect.TypeOf(&Adapter{})))
+		Expect(reflect.TypeOf(NewAdapter(testpipelineRunBuild, hasComp, hasApp, logger, k8sClient, ctx))).To(Equal(reflect.TypeOf(&Adapter{})))
 	})
 
 	It("ensures the Application Components can be found ", func() {
@@ -632,7 +634,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 	})
 
 	It("ensures snapshot creation is skipped when there is no component defined ", func() {
-		adapter = NewAdapter(testpipelineRunBuild, nil, hasApp, ctrl.Log, k8sClient, ctx)
+		adapter = NewAdapter(testpipelineRunBuild, nil, hasApp, logger, k8sClient, ctx)
 		Expect(reflect.TypeOf(adapter)).To(Equal(reflect.TypeOf(&Adapter{})))
 
 		Eventually(func() bool {
@@ -643,7 +645,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 
 	When("Snapshot already exists", func() {
 		BeforeEach(func() {
-			adapter = NewAdapter(testpipelineRunBuild, hasComp, hasApp, ctrl.Log, k8sClient, ctx)
+			adapter = NewAdapter(testpipelineRunBuild, hasComp, hasApp, logger, k8sClient, ctx)
 			Expect(reflect.TypeOf(adapter)).To(Equal(reflect.TypeOf(&Adapter{})))
 
 			snapshot, err := adapter.prepareSnapshotForPipelineRun(adapter.pipelineRun, adapter.component, adapter.application)
@@ -662,7 +664,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 	})
 
 	It("ensures Snapshot passed all tests", func() {
-		adapter = NewAdapter(testpipelineRunComponent, hasComp, hasApp, ctrl.Log, k8sClient, ctx)
+		adapter = NewAdapter(testpipelineRunComponent, hasComp, hasApp, logger, k8sClient, ctx)
 		Expect(reflect.TypeOf(adapter)).To(Equal(reflect.TypeOf(&Adapter{})))
 
 		Eventually(func() bool {
@@ -833,7 +835,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		It("isLatestSucceededPipelineRun reports second pipeline as the latest pipeline", func() {
 			// make sure the seocnd pipeline started as second
 			testpipelineRunBuild2.CreationTimestamp.Time = testpipelineRunBuild2.CreationTimestamp.Add(2 * time.Hour)
-			adapter = NewAdapter(testpipelineRunBuild2, hasComp, hasApp, ctrl.Log, k8sClient, ctx)
+			adapter = NewAdapter(testpipelineRunBuild2, hasComp, hasApp, logger, k8sClient, ctx)
 			isLatest, err := adapter.isLatestSucceededPipelineRun()
 			Expect(err).To(BeNil())
 			Expect(isLatest).To(BeTrue())
@@ -842,7 +844,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		It("isLatestSucceededPipelineRun doesn't report first pipeline as the latest pipeline", func() {
 			// make sure the first pipeline started as first
 			testpipelineRunBuild.CreationTimestamp.Time = testpipelineRunBuild.CreationTimestamp.Add(-2 * time.Hour)
-			adapter = NewAdapter(testpipelineRunBuild, hasComp, hasApp, ctrl.Log, k8sClient, ctx)
+			adapter = NewAdapter(testpipelineRunBuild, hasComp, hasApp, logger, k8sClient, ctx)
 			isLatest, err := adapter.isLatestSucceededPipelineRun()
 			Expect(err).To(BeNil())
 			Expect(isLatest).To(BeFalse())
@@ -850,7 +852,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 
 		It("ensure that EnsureSnapshotExists doesn't create snapshot for previous pipeline run", func() {
 			var buf bytes.Buffer
-			var log logr.Logger = buflogr.NewWithBuffer(&buf)
+			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
 
 			// make sure the first pipeline started as first
 			testpipelineRunBuild.CreationTimestamp.Time = testpipelineRunBuild.CreationTimestamp.Add(-2 * time.Hour)
@@ -925,7 +927,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			binding, _ := gitops.FindExistingSnapshotEnvironmentBinding(k8sClient, ctx, hasApp, hasEnv)
 			Expect(binding).NotTo(BeNil())
 
-			adapter = NewAdapter(testpipelineRunComponent, hasComp, hasApp, ctrl.Log, k8sClient, ctx)
+			adapter = NewAdapter(testpipelineRunComponent, hasComp, hasApp, logger, k8sClient, ctx)
 			Expect(reflect.TypeOf(adapter)).To(Equal(reflect.TypeOf(&Adapter{})))
 
 			Eventually(func() bool {
