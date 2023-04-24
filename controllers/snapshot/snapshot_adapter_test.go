@@ -14,7 +14,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
-	integrationv1beta1 "github.com/redhat-appstudio/integration-service/api/v1beta1"
+	"github.com/redhat-appstudio/integration-service/api/v1beta1"
 	releasev1alpha1 "github.com/redhat-appstudio/release-service/api/v1alpha1"
 	tektonv1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 
@@ -37,7 +37,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		hasSnapshot             *applicationapiv1alpha1.Snapshot
 		hasSnapshotPR           *applicationapiv1alpha1.Snapshot
 		testpipelineRun         *tektonv1beta1.PipelineRun
-		integrationTestScenario *integrationv1beta1.IntegrationTestScenario
+		integrationTestScenario *v1beta1.IntegrationTestScenario
 		env                     applicationapiv1alpha1.Environment
 		sample_image            string
 		sample_revision         string
@@ -61,7 +61,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 
 		Expect(k8sClient.Create(ctx, hasApp)).Should(Succeed())
 
-		integrationTestScenario = &integrationv1beta1.IntegrationTestScenario{
+		integrationTestScenario = &v1beta1.IntegrationTestScenario{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "example-pass",
 				Namespace: "default",
@@ -70,11 +70,11 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 					"test.appstudio.openshift.io/optional": "false",
 				},
 			},
-			Spec: integrationv1beta1.IntegrationTestScenarioSpec{
+			Spec: v1beta1.IntegrationTestScenarioSpec{
 				Application: "application-sample",
-				ResolverRef: integrationv1beta1.ResolverRef{
+				ResolverRef: v1beta1.ResolverRef{
 					Resolver: "git",
-					Params: []integrationv1beta1.ResolverParameter{
+					Params: []v1beta1.ResolverParameter{
 						{
 							Name:  "url",
 							Value: "https://github.com/redhat-appstudio/integration-examples.git",
@@ -89,7 +89,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 						},
 					},
 				},
-				Environment: integrationv1beta1.TestEnvironment{
+				Environment: v1beta1.TestEnvironment{
 					Name: "envname",
 					Type: "POC",
 					Configuration: applicationapiv1alpha1.EnvironmentConfiguration{
