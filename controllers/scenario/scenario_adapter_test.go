@@ -10,7 +10,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
-	integrationv1beta1 "github.com/redhat-appstudio/integration-service/api/v1beta1"
+	"github.com/redhat-appstudio/integration-service/api/v1beta1"
 	"github.com/redhat-appstudio/integration-service/gitops"
 
 	corev1 "k8s.io/api/core/v1"
@@ -27,8 +27,8 @@ var _ = Describe("Scenario Adapter", Ordered, func() {
 	var (
 		adapter                 *Adapter
 		hasApp                  *applicationapiv1alpha1.Application
-		integrationTestScenario *integrationv1beta1.IntegrationTestScenario
-		invalidScenario         *integrationv1beta1.IntegrationTestScenario
+		integrationTestScenario *v1beta1.IntegrationTestScenario
+		invalidScenario         *v1beta1.IntegrationTestScenario
 		envNamespace            string = DefaultNamespace
 		env                     applicationapiv1alpha1.Environment
 	)
@@ -48,7 +48,7 @@ var _ = Describe("Scenario Adapter", Ordered, func() {
 
 		Expect(k8sClient.Create(ctx, hasApp)).Should(Succeed())
 
-		integrationTestScenario = &integrationv1beta1.IntegrationTestScenario{
+		integrationTestScenario = &v1beta1.IntegrationTestScenario{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "example-pass",
 				Namespace: "default",
@@ -57,11 +57,11 @@ var _ = Describe("Scenario Adapter", Ordered, func() {
 					"test.appstudio.openshift.io/optional": "false",
 				},
 			},
-			Spec: integrationv1beta1.IntegrationTestScenarioSpec{
+			Spec: v1beta1.IntegrationTestScenarioSpec{
 				Application: "application-sample",
-				ResolverRef: integrationv1beta1.ResolverRef{
+				ResolverRef: v1beta1.ResolverRef{
 					Resolver: "git",
-					Params: []integrationv1beta1.ResolverParameter{
+					Params: []v1beta1.ResolverParameter{
 						{
 							Name:  "url",
 							Value: "https://github.com/redhat-appstudio/integration-examples.git",
@@ -76,7 +76,7 @@ var _ = Describe("Scenario Adapter", Ordered, func() {
 						},
 					},
 				},
-				Environment: integrationv1beta1.TestEnvironment{
+				Environment: v1beta1.TestEnvironment{
 					Name: "envname",
 					Type: "POC",
 					Configuration: applicationapiv1alpha1.EnvironmentConfiguration{
@@ -87,7 +87,7 @@ var _ = Describe("Scenario Adapter", Ordered, func() {
 		}
 		Expect(k8sClient.Create(ctx, integrationTestScenario)).Should(Succeed())
 
-		invalidScenario = &integrationv1beta1.IntegrationTestScenario{
+		invalidScenario = &v1beta1.IntegrationTestScenario{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "example-fail",
 				Namespace: "default",
@@ -96,11 +96,11 @@ var _ = Describe("Scenario Adapter", Ordered, func() {
 					"test.appstudio.openshift.io/optional": "false",
 				},
 			},
-			Spec: integrationv1beta1.IntegrationTestScenarioSpec{
+			Spec: v1beta1.IntegrationTestScenarioSpec{
 				Application: "perpetum-mobile",
-				ResolverRef: integrationv1beta1.ResolverRef{
+				ResolverRef: v1beta1.ResolverRef{
 					Resolver: "git",
-					Params: []integrationv1beta1.ResolverParameter{
+					Params: []v1beta1.ResolverParameter{
 						{
 							Name:  "url",
 							Value: "https://github.com/redhat-appstudio/integration-examples.git",
@@ -115,7 +115,7 @@ var _ = Describe("Scenario Adapter", Ordered, func() {
 						},
 					},
 				},
-				Environment: integrationv1beta1.TestEnvironment{
+				Environment: v1beta1.TestEnvironment{
 					Name: "invEnv",
 					Type: "POC",
 					Configuration: applicationapiv1alpha1.EnvironmentConfiguration{
