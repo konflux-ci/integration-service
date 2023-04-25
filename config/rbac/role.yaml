@@ -72,6 +72,14 @@ rules:
 - apiGroups:
   - appstudio.redhat.com
   resources:
+  - deploymentTargets
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - appstudio.redhat.com
+  resources:
   - environments
   verbs:
   - create
