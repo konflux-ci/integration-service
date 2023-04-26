@@ -49,6 +49,9 @@ func NewIntegrationReconciler(client client.Client, logger *logr.Logger, scheme 
 	}
 }
 
+//+kubebuilder:rbac:groups=appstudio.redhat.com,resources=deploymentTargetClaims,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=appstudio.redhat.com,resources=deploymentTargets,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=appstudio.redhat.com,resources=environments,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=tekton.dev,resources=pipelineruns,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=tekton.dev,resources=pipelineruns/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=tekton.dev,resources=pipelineruns/finalizers,verbs=update
@@ -116,6 +119,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		adapter.EnsureSnapshotExists,
 		adapter.EnsureSnapshotPassedAllTests,
 		adapter.EnsureStatusReported,
+		adapter.EnsureEphemeralEnvironmentsCleanedUp,
 	})
 }
 
@@ -180,6 +184,7 @@ type AdapterInterface interface {
 	EnsureSnapshotExists() (reconciler.OperationResult, error)
 	EnsureSnapshotPassedAllTests() (reconciler.OperationResult, error)
 	EnsureStatusReported() (reconciler.OperationResult, error)
+	EnsureEphemeralEnvironmentsCleanedUp() (reconciler.OperationResult, error)
 }
 
 // SetupController creates a new Integration reconciler and adds it to the Manager.
@@ -187,7 +192,7 @@ func SetupController(manager ctrl.Manager, log *logr.Logger) error {
 	return setupControllerWithManager(manager, NewIntegrationReconciler(manager.GetClient(), log, manager.GetScheme()))
 }
 
-// setupCache indexes fields for each of the resources used in the release adapter in those cases where filtering by
+// setupCache indexes fields for each of the resources used in the pipeline adapter in those cases where filtering by
 // field is required.
 func setupCache(mgr ctrl.Manager) error {
 	if err := SetupApplicationComponentCache(mgr); err != nil {
@@ -213,6 +218,6 @@ func setupControllerWithManager(manager ctrl.Manager, reconciler *Reconciler) er
 		For(&tektonv1beta1.PipelineRun{}).
 		WithEventFilter(predicate.Or(
 			tekton.IntegrationPipelineRunStartedPredicate(),
-			tekton.IntegrationOrBuildPipelineRunSucceededPredicate())).
+			tekton.IntegrationOrBuildPipelineRunFinishedPredicate())).
 		Complete(reconciler)
 }

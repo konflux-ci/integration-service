@@ -25,9 +25,9 @@ func IntegrationPipelineRunStartedPredicate() predicate.Predicate {
 	}
 }
 
-// IntegrationOrBuildPipelineRunSucceededPredicate returns a predicate which filters out all objects except
-// Integration and Build PipelineRuns which have just succeeded.
-func IntegrationOrBuildPipelineRunSucceededPredicate() predicate.Predicate {
+// IntegrationOrBuildPipelineRunFinishedPredicate returns a predicate which filters out all objects except
+// Integration and Build PipelineRuns which have just finished.
+func IntegrationOrBuildPipelineRunFinishedPredicate() predicate.Predicate {
 	return predicate.Funcs{
 		CreateFunc: func(createEvent event.CreateEvent) bool {
 			return false
@@ -40,7 +40,7 @@ func IntegrationOrBuildPipelineRunSucceededPredicate() predicate.Predicate {
 		},
 		UpdateFunc: func(e event.UpdateEvent) bool {
 			return (IsIntegrationPipelineRun(e.ObjectNew) || IsBuildPipelineRun(e.ObjectNew)) &&
-				hasPipelineRunStateChangedToSucceeded(e.ObjectOld, e.ObjectNew)
+				hasPipelineRunStateChangedToFinished(e.ObjectOld, e.ObjectNew)
 		},
 	}
 }
