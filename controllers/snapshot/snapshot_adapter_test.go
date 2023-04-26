@@ -361,7 +361,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 
 	It("Ensure IntegrationPipelineRun can be created for scenario", func() {
 		Eventually(func() bool {
-			err := adapter.createIntegrationPipelineRun(hasApp, integrationTestScenario, hasSnapshot)
+			_, err := adapter.createIntegrationPipelineRun(hasApp, integrationTestScenario, hasSnapshot)
 			return err == nil
 		}, time.Second*20).Should(BeTrue())
 
