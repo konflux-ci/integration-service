@@ -33,6 +33,7 @@ import (
 	"github.com/redhat-appstudio/integration-service/tekton"
 	"github.com/redhat-appstudio/operator-goodies/reconciler"
 	releasev1alpha1 "github.com/redhat-appstudio/release-service/api/v1alpha1"
+	"github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -103,15 +104,15 @@ func (a *Adapter) EnsureAllIntegrationTestPipelinesExist() (reconciler.Operation
 					"IntegrationTestScenario.Name", integrationTestScenario.Name,
 					"app name", a.application.Name,
 					"namespace", a.application.Namespace)
-				err := a.createIntegrationPipelineRun(a.application, &integrationTestScenario, a.snapshot)
+				pipelineRun, err := a.createIntegrationPipelineRun(a.application, &integrationTestScenario, a.snapshot)
 				if err != nil {
 					a.logger.Error(err, "Failed to create pipelineRun for snapshot and scenario")
 					return reconciler.RequeueOnErrorOrStop(err)
 				}
-				a.logger.Info("IntegrationTestscenario pipeline has been created",
+				a.logger.LogAuditEvent("IntegrationTestscenario pipeline has been created", pipelineRun, h.LogActionAdd,
 					"IntegrationTestScenario.Name", integrationTestScenario.Name,
-					"App name", a.application.Name,
-					"Snapshot name", a.snapshot.Name,
+					"Application.name", a.application.Name,
+					"Snapshot.name", a.snapshot.Name,
 					"Namespace", a.application.Namespace)
 				gitops.PrepareToRegisterIntegrationPipelineRun(a.snapshot)
 				if gitops.IsSnapshotNotStarted(a.snapshot) {
@@ -497,7 +498,7 @@ func (a *Adapter) getAllApplicationComponents(application *applicationapiv1alpha
 
 // createIntegrationPipelineRun creates and returns a new integration PipelineRun. The Pipeline information and the parameters to it
 // will be extracted from the given integrationScenario. The integration's Snapshot will also be passed to the integration PipelineRun.
-func (a *Adapter) createIntegrationPipelineRun(application *applicationapiv1alpha1.Application, integrationTestScenario *v1alpha1.IntegrationTestScenario, snapshot *applicationapiv1alpha1.Snapshot) error {
+func (a *Adapter) createIntegrationPipelineRun(application *applicationapiv1alpha1.Application, integrationTestScenario *v1alpha1.IntegrationTestScenario, snapshot *applicationapiv1alpha1.Snapshot) (*v1beta1.PipelineRun, error) {
 	pipelineRun := tekton.NewIntegrationPipelineRun(snapshot.Name, application.Namespace, *integrationTestScenario).
 		WithSnapshot(snapshot).
 		WithIntegrationLabels(integrationTestScenario).
@@ -509,14 +510,14 @@ func (a *Adapter) createIntegrationPipelineRun(application *applicationapiv1alph
 	h.CopyLabelsByPrefix(&snapshot.ObjectMeta, &pipelineRun.ObjectMeta, gitops.PipelinesAsCodePrefix, gitops.PipelinesAsCodePrefix)
 	err := ctrl.SetControllerReference(snapshot, pipelineRun, a.client.Scheme())
 	if err != nil {
-		return err
+		return nil, err
 	}
 	err = a.client.Create(a.context, pipelineRun)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	return nil
+	return pipelineRun, nil
 }
 
 // createSnapshotEnvironmentBindingForSnapshot creates and returns a new snapshotEnvironmentBinding
