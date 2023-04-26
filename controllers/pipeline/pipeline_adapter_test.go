@@ -69,14 +69,18 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		statusAdapter  *MockStatusAdapter
 		statusReporter *MockStatusReporter
 
-		successfulTaskRun        *tektonv1beta1.TaskRun
-		testpipelineRunBuild     *tektonv1beta1.PipelineRun
-		testpipelineRunComponent *tektonv1beta1.PipelineRun
-		hasComp                  *applicationapiv1alpha1.Component
-		hasComp2                 *applicationapiv1alpha1.Component
-		hasApp                   *applicationapiv1alpha1.Application
-		hasSnapshot              *applicationapiv1alpha1.Snapshot
-		integrationTestScenario  *integrationv1alpha1.IntegrationTestScenario
+		successfulTaskRun          *tektonv1beta1.TaskRun
+		testpipelineRunBuild       *tektonv1beta1.PipelineRun
+		testpipelineRunComponent   *tektonv1beta1.PipelineRun
+		hasComp                    *applicationapiv1alpha1.Component
+		hasComp2                   *applicationapiv1alpha1.Component
+		hasApp                     *applicationapiv1alpha1.Application
+		hasSnapshot                *applicationapiv1alpha1.Snapshot
+		hasEnv                     *applicationapiv1alpha1.Environment
+		deploymentTarget           *applicationapiv1alpha1.DeploymentTarget
+		deploymentTargetClaim      *applicationapiv1alpha1.DeploymentTargetClaim
+		snapshotEnvironmentBinding *applicationapiv1alpha1.SnapshotEnvironmentBinding
+		integrationTestScenario    *integrationv1alpha1.IntegrationTestScenario
 	)
 	const (
 		SampleRepoLink = "https://github.com/devfile-samples/devfile-sample-java-springboot-basic"
@@ -84,6 +88,36 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 	)
 
 	BeforeAll(func() {
+		hasEnv = &applicationapiv1alpha1.Environment{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "test-env",
+				Namespace: "default",
+			},
+			Spec: applicationapiv1alpha1.EnvironmentSpec{
+				Type:               "POC",
+				DisplayName:        "my-environment",
+				DeploymentStrategy: applicationapiv1alpha1.DeploymentStrategy_Manual,
+				ParentEnvironment:  "",
+				Tags:               []string{"ephemeral"},
+				Configuration: applicationapiv1alpha1.EnvironmentConfiguration{
+					Env: []applicationapiv1alpha1.EnvVarPair{
+						{
+							Name:  "var_name",
+							Value: "test",
+						},
+					},
+				},
+			},
+		}
+		Expect(k8sClient.Create(ctx, hasEnv)).Should(Succeed())
+
+		Eventually(func() bool {
+			err := k8sClient.Get(ctx, types.NamespacedName{
+				Name:      hasEnv.Name,
+				Namespace: "default",
+			}, hasEnv)
+			return err == nil
+		}, time.Second*10).Should(BeTrue())
 
 		hasApp = &applicationapiv1alpha1.Application{
 			ObjectMeta: metav1.ObjectMeta{
@@ -316,6 +350,9 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 					"pac.test.appstudio.openshift.io/repository":      "build-service-pac",
 					"appstudio.openshift.io/snapshot":                 hasSnapshot.Name,
 					"test.appstudio.openshift.io/scenario":            integrationTestScenario.Name,
+					"appstudio.openshift.io/environment":              hasEnv.Name,
+					"appstudio.openshift.io/application":              hasApp.Name,
+					"appstudio.openshift.io/component":                hasComp.Name,
 				},
 				Annotations: map[string]string{
 					"pac.test.appstudio.openshift.io/on-target-branch": "[main]",
@@ -385,6 +422,8 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		err = k8sClient.Delete(ctx, integrationTestScenario)
 		Expect(err == nil || k8serrors.IsNotFound(err)).To(BeTrue())
 		err = k8sClient.Delete(ctx, successfulTaskRun)
+		Expect(err == nil || k8serrors.IsNotFound(err)).To(BeTrue())
+		err = k8sClient.Delete(ctx, hasEnv)
 		Expect(err == nil || k8serrors.IsNotFound(err)).To(BeTrue())
 	})
 
@@ -824,6 +863,107 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			expectedLogEntry := "INFO The pipelineRun is not the latest succeded pipelineRun for the component, " +
 				"skipping creation of a new Snapshot  PipelineRun.Namespace default PipelineRun.Name pipelinerun-build-sample Component.Name component-sample"
 			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
+		})
+
+		It("ensures ephemeral environment is deleted for the given pipelineRun ", func() {
+			deploymentTarget = &applicationapiv1alpha1.DeploymentTarget{
+				ObjectMeta: metav1.ObjectMeta{
+					GenerateName: "dt" + "-",
+					Namespace:    "default",
+				},
+				Spec: applicationapiv1alpha1.DeploymentTargetSpec{
+					DeploymentTargetClassName: "dtcls-name",
+					KubernetesClusterCredentials: applicationapiv1alpha1.DeploymentTargetKubernetesClusterCredentials{
+						DefaultNamespace:           "default",
+						APIURL:                     "https://url",
+						ClusterCredentialsSecret:   "secret-sample",
+						AllowInsecureSkipTLSVerify: false,
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, deploymentTarget)).Should(Succeed())
+
+			deploymentTargetClaim = &applicationapiv1alpha1.DeploymentTargetClaim{
+				ObjectMeta: metav1.ObjectMeta{
+					GenerateName: "dtc" + "-",
+					Namespace:    "default",
+				},
+				Spec: applicationapiv1alpha1.DeploymentTargetClaimSpec{
+					DeploymentTargetClassName: applicationapiv1alpha1.DeploymentTargetClassName("dtcls-name"),
+					TargetName:                deploymentTarget.Name,
+				},
+			}
+			Expect(k8sClient.Create(ctx, deploymentTargetClaim)).Should(Succeed())
+
+			snapshotEnvironmentBinding = &applicationapiv1alpha1.SnapshotEnvironmentBinding{
+				ObjectMeta: metav1.ObjectMeta{
+					GenerateName: "binding" + "-",
+					Namespace:    "default",
+				},
+				Spec: applicationapiv1alpha1.SnapshotEnvironmentBindingSpec{
+					Application: hasApp.Name,
+					Environment: hasEnv.Name,
+					Snapshot:    hasSnapshot.Name,
+					Components:  []applicationapiv1alpha1.BindingComponent{},
+				},
+			}
+			Expect(k8sClient.Create(ctx, snapshotEnvironmentBinding)).Should(Succeed())
+
+			hasEnv.Spec.Configuration.Target = applicationapiv1alpha1.EnvironmentTarget{
+				DeploymentTargetClaim: applicationapiv1alpha1.DeploymentTargetClaimConfig{
+					ClaimName: deploymentTargetClaim.Name,
+				},
+			}
+			Expect(k8sClient.Update(ctx, hasEnv)).Should(Succeed())
+
+			dtc, _ := gitops.GetDeploymentTargetClaimForEnvironment(k8sClient, ctx, hasEnv)
+			Expect(dtc).NotTo(BeNil())
+
+			dt, _ := gitops.GetDeploymentTargetForDeploymentTargetClaim(k8sClient, ctx, dtc)
+			Expect(dt).NotTo(BeNil())
+
+			binding, _ := gitops.FindExistingSnapshotEnvironmentBinding(k8sClient, ctx, hasApp, hasEnv)
+			Expect(binding).NotTo(BeNil())
+
+			adapter = NewAdapter(testpipelineRunComponent, hasComp, hasApp, ctrl.Log, k8sClient, ctx)
+			Expect(reflect.TypeOf(adapter)).To(Equal(reflect.TypeOf(&Adapter{})))
+
+			Eventually(func() bool {
+				result, err := adapter.EnsureEphemeralEnvironmentsCleanedUp()
+				return !result.CancelRequest && err == nil
+			}, time.Second*20).Should(BeTrue())
+
+			Eventually(func() bool {
+				env := &applicationapiv1alpha1.Environment{}
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Namespace: "default",
+				}, env)
+				return k8serrors.IsNotFound(err)
+			}, time.Second*20).Should(BeTrue())
+
+			Eventually(func() bool {
+				dt := &applicationapiv1alpha1.DeploymentTarget{}
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Namespace: "default",
+				}, dt)
+				return k8serrors.IsNotFound(err)
+			}, time.Second*20).Should(BeTrue())
+
+			Eventually(func() bool {
+				dtc := &applicationapiv1alpha1.DeploymentTargetClaim{}
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Namespace: "default",
+				}, dtc)
+				return k8serrors.IsNotFound(err)
+			}, time.Second*20).Should(BeTrue())
+
+			Eventually(func() bool {
+				binding := &applicationapiv1alpha1.SnapshotEnvironmentBinding{}
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Namespace: "default",
+				}, binding)
+				return k8serrors.IsNotFound(err)
+			}, time.Second*20).Should(BeTrue())
 		})
 	})
 })

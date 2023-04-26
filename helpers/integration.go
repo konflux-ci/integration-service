@@ -390,3 +390,13 @@ func HasPipelineRunSucceeded(object client.Object) bool {
 
 	return false
 }
+
+// HasPipelineRunFinished returns a boolean indicating whether the PipelineRun finished or not.
+// If the object passed to this function is not a PipelineRun, the function will return false.
+func HasPipelineRunFinished(object client.Object) bool {
+	if pr, ok := object.(*tektonv1beta1.PipelineRun); ok {
+		return (pr.Status.GetCondition(apis.ConditionSucceeded).IsFalse() || pr.Status.GetCondition(apis.ConditionSucceeded).IsTrue())
+	}
+
+	return false
+}
