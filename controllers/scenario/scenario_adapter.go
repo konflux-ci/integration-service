@@ -22,10 +22,10 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 
-	"github.com/go-logr/logr"
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/gitops"
+	h "github.com/redhat-appstudio/integration-service/helpers"
 	"github.com/redhat-appstudio/operator-goodies/reconciler"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -34,13 +34,13 @@ import (
 type Adapter struct {
 	application *applicationapiv1alpha1.Application
 	scenario    *v1alpha1.IntegrationTestScenario
-	logger      logr.Logger
+	logger      h.IntegrationLogger
 	client      client.Client
 	context     context.Context
 }
 
 // NewAdapter creates and returns an Adapter instance.
-func NewAdapter(application *applicationapiv1alpha1.Application, scenario *v1alpha1.IntegrationTestScenario, logger logr.Logger, client client.Client,
+func NewAdapter(application *applicationapiv1alpha1.Application, scenario *v1alpha1.IntegrationTestScenario, logger h.IntegrationLogger, client client.Client,
 	context context.Context) *Adapter {
 	return &Adapter{
 		application: application,
@@ -115,6 +115,8 @@ func (a *Adapter) EnsureCreatedScenarioIsValid() (reconciler.OperationResult, er
 					"Scenario.Name:", a.scenario.Name)
 				return reconciler.RequeueWithError(err)
 			}
+			a.logger.LogAuditEvent("IntegrationTestScenario marked as Invalid. Environment "+a.scenario.Spec.Environment.Name+" is located in different namespace than scenario. ",
+				a.scenario, h.LogActionUpdate)
 			return reconciler.ContinueProcessing()
 		}
 
@@ -129,6 +131,7 @@ func (a *Adapter) EnsureCreatedScenarioIsValid() (reconciler.OperationResult, er
 				"Scenario.Name:", a.scenario.Name)
 			return reconciler.ContinueProcessing()
 		}
+		a.logger.LogAuditEvent("IntegrationTestScenario marked as Valid", a.scenario, h.LogActionUpdate)
 	}
 
 	return reconciler.ContinueProcessing()
