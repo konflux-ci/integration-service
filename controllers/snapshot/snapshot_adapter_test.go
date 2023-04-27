@@ -5,7 +5,6 @@ import (
 	"reflect"
 	"time"
 
-	"github.com/go-logr/logr"
 	"github.com/tonglil/buflogr"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -29,6 +28,7 @@ import (
 
 var _ = Describe("Snapshot Adapter", Ordered, func() {
 	var (
+		logger  helpers.IntegrationLogger
 		adapter *Adapter
 
 		testReleasePlan                   *releasev1alpha1.ReleasePlan
@@ -49,6 +49,8 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 	)
 
 	BeforeAll(func() {
+
+		logger = helpers.IntegrationLogger{Logger: ctrl.Log}
 
 		hasApp = &applicationapiv1alpha1.Application{
 			ObjectMeta: metav1.ObjectMeta{
@@ -280,7 +282,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			return err
 		}, time.Second*10).ShouldNot(HaveOccurred())
 
-		adapter = NewAdapter(hasSnapshot, hasApp, hasComp, ctrl.Log, k8sClient, ctx)
+		adapter = NewAdapter(hasSnapshot, hasApp, hasComp, logger, k8sClient, ctx)
 		Expect(reflect.TypeOf(adapter)).To(Equal(reflect.TypeOf(&Adapter{})))
 
 	})
@@ -313,7 +315,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 	})
 
 	It("can create a new Adapter instance", func() {
-		Expect(reflect.TypeOf(NewAdapter(hasSnapshot, hasApp, hasComp, ctrl.Log, k8sClient, ctx))).To(Equal(reflect.TypeOf(&Adapter{})))
+		Expect(reflect.TypeOf(NewAdapter(hasSnapshot, hasApp, hasComp, logger, k8sClient, ctx))).To(Equal(reflect.TypeOf(&Adapter{})))
 	})
 
 	It("ensures the Applicationcomponents can be found ", func() {
@@ -359,7 +361,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 
 	It("Ensure IntegrationPipelineRun can be created for scenario", func() {
 		Eventually(func() bool {
-			err := adapter.createIntegrationPipelineRun(hasApp, integrationTestScenario, hasSnapshot)
+			_, err := adapter.createIntegrationPipelineRun(hasApp, integrationTestScenario, hasSnapshot)
 			return err == nil
 		}, time.Second*20).Should(BeTrue())
 
@@ -434,7 +436,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 
 	It("no action when EnsureAllReleasesExist function runs when HACBSTests failed and the snapshot is invalid", func() {
 		var buf bytes.Buffer
-		var log logr.Logger = buflogr.NewWithBuffer(&buf)
+		log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
 
 		// Set the snapshot up for failure by setting its status as failed and invalid
 		// as well as marking it as PaC pull request event type
@@ -463,7 +465,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 
 	It("no action when EnsureSnapshotEnvironmentBindingExist function runs when HACBSTests failed and the snapshot is invalid", func() {
 		var buf bytes.Buffer
-		var log logr.Logger = buflogr.NewWithBuffer(&buf)
+		log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
 
 		// Set the snapshot up for failure by setting its status as failed and invalid
 		// as well as marking it as PaC pull request event type

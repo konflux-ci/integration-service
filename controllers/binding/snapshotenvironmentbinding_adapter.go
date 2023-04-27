@@ -15,15 +15,16 @@ package binding
 
 import (
 	"context"
+
 	"github.com/redhat-appstudio/operator-goodies/reconciler"
 	ctrl "sigs.k8s.io/controller-runtime"
 
-	"github.com/go-logr/logr"
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/gitops"
-	"github.com/redhat-appstudio/integration-service/helpers"
+	h "github.com/redhat-appstudio/integration-service/helpers"
 	"github.com/redhat-appstudio/integration-service/tekton"
+	"github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -34,13 +35,13 @@ type Adapter struct {
 	application                *applicationapiv1alpha1.Application
 	environment                *applicationapiv1alpha1.Environment
 	integrationTestScenario    *v1alpha1.IntegrationTestScenario
-	logger                     logr.Logger
+	logger                     h.IntegrationLogger
 	client                     client.Client
 	context                    context.Context
 }
 
 // NewAdapter creates and returns an Adapter instance.
-func NewAdapter(snapshotEnvironmentBinding *applicationapiv1alpha1.SnapshotEnvironmentBinding, snapshot *applicationapiv1alpha1.Snapshot, environment *applicationapiv1alpha1.Environment, application *applicationapiv1alpha1.Application, integrationTestScenario *v1alpha1.IntegrationTestScenario, logger logr.Logger, client client.Client,
+func NewAdapter(snapshotEnvironmentBinding *applicationapiv1alpha1.SnapshotEnvironmentBinding, snapshot *applicationapiv1alpha1.Snapshot, environment *applicationapiv1alpha1.Environment, application *applicationapiv1alpha1.Application, integrationTestScenario *v1alpha1.IntegrationTestScenario, logger h.IntegrationLogger, client client.Client,
 	context context.Context) *Adapter {
 	return &Adapter{
 		snapshotEnvironmentBinding: snapshotEnvironmentBinding,
@@ -63,7 +64,7 @@ func (a *Adapter) EnsureIntegrationTestPipelineForScenarioExists() (reconciler.O
 	}
 
 	if a.integrationTestScenario != nil {
-		integrationPipelineRun, err := helpers.GetLatestPipelineRunForSnapshotAndScenario(a.client, a.context, a.snapshot, a.integrationTestScenario)
+		integrationPipelineRun, err := h.GetLatestPipelineRunForSnapshotAndScenario(a.client, a.context, a.snapshot, a.integrationTestScenario)
 		if err != nil {
 			a.logger.Error(err, "Failed to get latest pipelineRun for snapshot and scenario",
 				"snapshot", a.snapshot,
@@ -79,11 +80,13 @@ func (a *Adapter) EnsureIntegrationTestPipelineForScenarioExists() (reconciler.O
 				"IntegrationTestScenario.Name", a.integrationTestScenario.Name,
 				"app name", a.application.Name,
 				"namespace", a.application.Namespace)
-			err := a.createIntegrationPipelineRunWithEnvironment(a.application, a.integrationTestScenario, a.snapshot, a.environment)
+			pipelineRun, err := a.createIntegrationPipelineRunWithEnvironment(a.application, a.integrationTestScenario, a.snapshot, a.environment)
 			if err != nil {
 				a.logger.Error(err, "Failed to create pipelineRun for snapshot, environment and scenario")
 				return reconciler.RequeueOnErrorOrStop(err)
 			}
+			a.logger.LogAuditEvent("PipelineRun for snapshot created", pipelineRun, h.LogActionAdd,
+				"snapshot.Name", a.snapshot.Name)
 		}
 	}
 
@@ -93,10 +96,10 @@ func (a *Adapter) EnsureIntegrationTestPipelineForScenarioExists() (reconciler.O
 // createIntegrationPipelineRunWithEnvironment creates new integration PipelineRun. The Pipeline information and the parameters to it
 // will be extracted from the given integrationScenario. The integration's Snapshot will also be passed to the integration PipelineRun.
 // If the creation of the PipelineRun is unsuccessful, an error will be returned.
-func (a *Adapter) createIntegrationPipelineRunWithEnvironment(application *applicationapiv1alpha1.Application, integrationTestScenario *v1alpha1.IntegrationTestScenario, snapshot *applicationapiv1alpha1.Snapshot, environment *applicationapiv1alpha1.Environment) error {
+func (a *Adapter) createIntegrationPipelineRunWithEnvironment(application *applicationapiv1alpha1.Application, integrationTestScenario *v1alpha1.IntegrationTestScenario, snapshot *applicationapiv1alpha1.Snapshot, environment *applicationapiv1alpha1.Environment) (*v1beta1.PipelineRun, error) {
 	deploymentTarget, err := gitops.GetDeploymentTargetForEnvironment(a.client, a.context, environment)
 	if err != nil || deploymentTarget == nil {
-		return err
+		return nil, err
 	}
 
 	pipelineRun := tekton.NewIntegrationPipelineRun(snapshot.Name, application.Namespace, *integrationTestScenario).
@@ -105,17 +108,17 @@ func (a *Adapter) createIntegrationPipelineRunWithEnvironment(application *appli
 		WithEnvironmentAndDeploymentTarget(deploymentTarget, environment.Name).
 		AsPipelineRun()
 	// copy PipelineRun PAC annotations/labels from snapshot to integration test PipelineRuns
-	helpers.CopyAnnotationsByPrefix(&snapshot.ObjectMeta, &pipelineRun.ObjectMeta, gitops.PipelinesAsCodePrefix, gitops.PipelinesAsCodePrefix)
-	helpers.CopyLabelsByPrefix(&snapshot.ObjectMeta, &pipelineRun.ObjectMeta, gitops.PipelinesAsCodePrefix, gitops.PipelinesAsCodePrefix)
+	h.CopyAnnotationsByPrefix(&snapshot.ObjectMeta, &pipelineRun.ObjectMeta, gitops.PipelinesAsCodePrefix, gitops.PipelinesAsCodePrefix)
+	h.CopyLabelsByPrefix(&snapshot.ObjectMeta, &pipelineRun.ObjectMeta, gitops.PipelinesAsCodePrefix, gitops.PipelinesAsCodePrefix)
 	err = ctrl.SetControllerReference(snapshot, pipelineRun, a.client.Scheme())
 	if err != nil {
-		return err
+		return nil, err
 	}
 	err = a.client.Create(a.context, pipelineRun)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	return nil
+	return pipelineRun, nil
 
 }

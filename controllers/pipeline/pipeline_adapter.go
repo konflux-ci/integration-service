@@ -23,11 +23,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-logr/logr"
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/gitops"
-	"github.com/redhat-appstudio/integration-service/helpers"
+	h "github.com/redhat-appstudio/integration-service/helpers"
 	"github.com/redhat-appstudio/integration-service/status"
 	"github.com/redhat-appstudio/integration-service/tekton"
 	"github.com/redhat-appstudio/operator-goodies/reconciler"
@@ -42,14 +41,14 @@ type Adapter struct {
 	pipelineRun *tektonv1beta1.PipelineRun
 	component   *applicationapiv1alpha1.Component
 	application *applicationapiv1alpha1.Application
-	logger      logr.Logger
+	logger      h.IntegrationLogger
 	client      client.Client
 	context     context.Context
 	status      status.Status
 }
 
 // NewAdapter creates and returns an Adapter instance.
-func NewAdapter(pipelineRun *tektonv1beta1.PipelineRun, component *applicationapiv1alpha1.Component, application *applicationapiv1alpha1.Application, logger logr.Logger, client client.Client,
+func NewAdapter(pipelineRun *tektonv1beta1.PipelineRun, component *applicationapiv1alpha1.Component, application *applicationapiv1alpha1.Application, logger h.IntegrationLogger, client client.Client,
 	context context.Context) *Adapter {
 	return &Adapter{
 		pipelineRun: pipelineRun,
@@ -58,14 +57,14 @@ func NewAdapter(pipelineRun *tektonv1beta1.PipelineRun, component *applicationap
 		logger:      logger,
 		client:      client,
 		context:     context,
-		status:      status.NewAdapter(logger, client),
+		status:      status.NewAdapter(logger.Logger, client),
 	}
 }
 
 // EnsureSnapshotExists is an operation that will ensure that a pipeline Snapshot associated
 // to the PipelineRun being processed exists. Otherwise, it will create a new pipeline Snapshot.
 func (a *Adapter) EnsureSnapshotExists() (reconciler.OperationResult, error) {
-	if !tekton.IsBuildPipelineRun(a.pipelineRun) || !helpers.HasPipelineRunSucceeded(a.pipelineRun) {
+	if !tekton.IsBuildPipelineRun(a.pipelineRun) || !h.HasPipelineRunSucceeded(a.pipelineRun) {
 		return reconciler.ContinueProcessing()
 	}
 
@@ -112,7 +111,7 @@ func (a *Adapter) EnsureSnapshotExists() (reconciler.OperationResult, error) {
 		return reconciler.RequeueWithError(err)
 	}
 
-	a.logger.Info("Created new Snapshot",
+	a.logger.LogAuditEvent("Created new Snapshot", expectedSnapshot, h.LogActionAdd,
 		"Application.Name", a.application.Name,
 		"Snapshot.Name", expectedSnapshot.Name,
 		"Snapshot.Spec.Components", expectedSnapshot.Spec.Components)
@@ -123,7 +122,7 @@ func (a *Adapter) EnsureSnapshotExists() (reconciler.OperationResult, error) {
 // EnsureSnapshotPassedAllTests is an operation that will ensure that a pipeline Snapshot
 // to the PipelineRun being processed passed all tests for all defined non-optional IntegrationTestScenarios.
 func (a *Adapter) EnsureSnapshotPassedAllTests() (reconciler.OperationResult, error) {
-	if !tekton.IsIntegrationPipelineRun(a.pipelineRun) || !helpers.HasPipelineRunSucceeded(a.pipelineRun) {
+	if !tekton.IsIntegrationPipelineRun(a.pipelineRun) || !h.HasPipelineRunSucceeded(a.pipelineRun) {
 		return reconciler.ContinueProcessing()
 	}
 
@@ -140,7 +139,7 @@ func (a *Adapter) EnsureSnapshotPassedAllTests() (reconciler.OperationResult, er
 
 	// Get all integrationTestScenarios for the Application and then find the latest Succeeded Integration PipelineRuns
 	// for the Snapshot
-	integrationTestScenarios, err := helpers.GetRequiredIntegrationTestScenariosForApplication(a.client, a.context, a.application)
+	integrationTestScenarios, err := h.GetRequiredIntegrationTestScenariosForApplication(a.client, a.context, a.application)
 	if err != nil {
 		return reconciler.RequeueWithError(err)
 	}
@@ -162,6 +161,8 @@ func (a *Adapter) EnsureSnapshotPassedAllTests() (reconciler.OperationResult, er
 	// Set the Snapshot Integration status as finished, but don't update the resource yet
 	gitops.SetSnapshotIntegrationStatusAsFinished(existingSnapshot,
 		"Snapshot integration status condition is finished since all testing pipelines completed")
+	a.logger.LogAuditEvent("Snapshot integration status condition marked as finished, all testing pipelines completed",
+		existingSnapshot, h.LogActionUpdate)
 
 	// Go into the individual PipelineRun task results for each Integration PipelineRun
 	// and determine if all of them passed (or were skipped)
@@ -174,19 +175,22 @@ func (a *Adapter) EnsureSnapshotPassedAllTests() (reconciler.OperationResult, er
 
 	// If the snapshot is a component type, check if the global component list changed in the meantime and
 	// create a composite snapshot if it did. Does not apply for PAC pull request events.
-	if a.component != nil && helpers.HasLabelWithValue(existingSnapshot, gitops.SnapshotTypeLabel, gitops.SnapshotComponentType) && !gitops.IsSnapshotCreatedByPACPullRequestEvent(existingSnapshot) {
+	if a.component != nil && h.HasLabelWithValue(existingSnapshot, gitops.SnapshotTypeLabel, gitops.SnapshotComponentType) && !gitops.IsSnapshotCreatedByPACPullRequestEvent(existingSnapshot) {
 		compositeSnapshot, err := a.createCompositeSnapshotsIfConflictExists(a.application, a.component, existingSnapshot)
 		if err != nil {
 			a.logger.Error(err, "Failed to determine if a composite snapshot needs to be created because of a conflict",
 				"Snapshot.Name", existingSnapshot.Name)
 			return reconciler.RequeueWithError(err)
 		}
+
 		if compositeSnapshot != nil {
 			a.logger.Info("The global component list has changed in the meantime, marking snapshot as Invalid",
 				"Application.Name", a.application.Name,
 				"Snapshot.Name", existingSnapshot.Name)
 			gitops.SetSnapshotIntegrationStatusAsInvalid(existingSnapshot,
 				"The global component list has changed in the meantime, superseding with a composite snapshot")
+			a.logger.LogAuditEvent("Snapshot integration status condition marked as invalid, the global component list has changed in the meantime",
+				existingSnapshot, h.LogActionUpdate)
 		}
 	}
 
@@ -198,18 +202,16 @@ func (a *Adapter) EnsureSnapshotPassedAllTests() (reconciler.OperationResult, er
 			a.logger.Error(err, "Failed to Update Snapshot HACBSTestSucceeded status")
 			return reconciler.RequeueWithError(err)
 		}
-		a.logger.Info("All Integration PipelineRuns succeeded, marking Snapshot as succeeded",
-			"Application.Name", a.application.Name,
-			"Snapshot.Name", existingSnapshot.Name)
+		a.logger.LogAuditEvent("Snapshot integration status condition marked as passed, all Integration PipelineRuns succeeded",
+			existingSnapshot, h.LogActionUpdate)
 	} else {
 		existingSnapshot, err = gitops.MarkSnapshotAsFailed(a.client, a.context, existingSnapshot, "Some Integration pipeline tests failed")
 		if err != nil {
 			a.logger.Error(err, "Failed to Update Snapshot HACBSTestSucceeded status")
 			return reconciler.RequeueWithError(err)
 		}
-		a.logger.Info("Some tests within Integration PipelineRuns failed, marking Snapshot as failed",
-			"Application.Name", a.application.Name,
-			"Snapshot.Name", existingSnapshot.Name)
+		a.logger.LogAuditEvent("Snapshot integration status condition marked as failed, some tests within Integration PipelineRuns failed",
+			existingSnapshot, h.LogActionUpdate)
 	}
 
 	return reconciler.ContinueProcessing()
@@ -240,7 +242,7 @@ func (a *Adapter) EnsureStatusReported() (reconciler.OperationResult, error) {
 // EnsureEphemeralEnvironmentsCleanedUp will ensure that ephemeral environment(s) associated with the
 // integration PipelineRun are cleaned up.
 func (a *Adapter) EnsureEphemeralEnvironmentsCleanedUp() (reconciler.OperationResult, error) {
-	if !tekton.IsIntegrationPipelineRun(a.pipelineRun) || !helpers.HasPipelineRunFinished(a.pipelineRun) {
+	if !tekton.IsIntegrationPipelineRun(a.pipelineRun) || !h.HasPipelineRunFinished(a.pipelineRun) {
 		return reconciler.ContinueProcessing()
 	}
 
@@ -286,6 +288,7 @@ func (a *Adapter) EnsureEphemeralEnvironmentsCleanedUp() (reconciler.OperationRe
 			a.logger.Error(err, "Failed to delete the deploymentTarget!")
 			return reconciler.RequeueWithError(err)
 		}
+		a.logger.LogAuditEvent("DeploymentTarget deleted", dt, h.LogActionDelete)
 
 		a.logger.Info("Deleting deploymentTargetClaim", "deploymentTargetClaim.Name", dtc.Name)
 		err = a.client.Delete(a.context, dtc)
@@ -293,6 +296,7 @@ func (a *Adapter) EnsureEphemeralEnvironmentsCleanedUp() (reconciler.OperationRe
 			a.logger.Error(err, "Failed to delete the deploymentTargetClaim!")
 			return reconciler.RequeueWithError(err)
 		}
+		a.logger.LogAuditEvent("DeploymentTargetClaim deleted", dtc, h.LogActionDelete)
 
 		a.logger.Info("Deleting environment", "environment.Name", testEnvironment.Name)
 		err = a.client.Delete(a.context, testEnvironment)
@@ -300,6 +304,7 @@ func (a *Adapter) EnsureEphemeralEnvironmentsCleanedUp() (reconciler.OperationRe
 			a.logger.Error(err, "Failed to delete the test ephemeral environment!")
 			return reconciler.RequeueWithError(err)
 		}
+		a.logger.LogAuditEvent("Ephemeral environment deleted", testEnvironment, h.LogActionDelete)
 
 		a.logger.Info("Deleting snapshotEnvironmentBinding", "binding.Name", binding.Name)
 		err = a.client.Delete(a.context, binding)
@@ -307,6 +312,7 @@ func (a *Adapter) EnsureEphemeralEnvironmentsCleanedUp() (reconciler.OperationRe
 			a.logger.Error(err, "Failed to delete the snapshotEnvironmentBinding!")
 			return reconciler.RequeueWithError(err)
 		}
+		a.logger.LogAuditEvent("SnapshotEnvironmentBinding deleted", binding, h.LogActionDelete)
 	} else {
 		a.logger.Info("The pipelineRun test Environment is not ephemeral, skipping cleanup.")
 	}
@@ -424,7 +430,7 @@ func (a *Adapter) determineIfAllIntegrationPipelinesPassed(integrationPipelineRu
 	allIntegrationPipelineRunsPassed := true
 	for _, integrationPipelineRun := range *integrationPipelineRuns {
 		integrationPipelineRun := integrationPipelineRun // G601
-		pipelineRunOutcome, err := helpers.CalculateIntegrationPipelineRunOutcome(a.client, a.context, a.logger, &integrationPipelineRun)
+		pipelineRunOutcome, err := h.CalculateIntegrationPipelineRunOutcome(a.client, a.context, a.logger.Logger, &integrationPipelineRun)
 		if err != nil {
 			a.logger.Error(err, "Failed to get Integration PipelineRun outcome",
 				"PipelineRun.Name", integrationPipelineRun.Name, "PipelineRun.Namespace", integrationPipelineRun.Namespace)
@@ -467,7 +473,7 @@ func (a *Adapter) getAllPipelineRunsForSnapshot(snapshot *applicationapiv1alpha1
 	for _, integrationTestScenario := range *integrationTestScenarios {
 		integrationTestScenario := integrationTestScenario // G601
 		if a.pipelineRun.Labels[tekton.ScenarioNameLabel] != integrationTestScenario.Name {
-			integrationPipelineRun, err := helpers.GetLatestPipelineRunForSnapshotAndScenario(a.client, a.context, snapshot, &integrationTestScenario)
+			integrationPipelineRun, err := h.GetLatestPipelineRunForSnapshotAndScenario(a.client, a.context, snapshot, &integrationTestScenario)
 			if err != nil {
 				return nil, err
 			}
@@ -565,8 +571,8 @@ func (a *Adapter) prepareSnapshotForPipelineRun(pipelineRun *tektonv1beta1.Pipel
 
 	// Copy PipelineRun PAC annotations/labels from Build to snapshot.
 	// Modify the prefix so the PaC controller won't react to PipelineRuns generated from the snapshot.
-	helpers.CopyLabelsByPrefix(&pipelineRun.ObjectMeta, &snapshot.ObjectMeta, "pipelinesascode.tekton.dev", gitops.PipelinesAsCodePrefix)
-	helpers.CopyAnnotationsByPrefix(&pipelineRun.ObjectMeta, &snapshot.ObjectMeta, "pipelinesascode.tekton.dev", gitops.PipelinesAsCodePrefix)
+	h.CopyLabelsByPrefix(&pipelineRun.ObjectMeta, &snapshot.ObjectMeta, "pipelinesascode.tekton.dev", gitops.PipelinesAsCodePrefix)
+	h.CopyAnnotationsByPrefix(&pipelineRun.ObjectMeta, &snapshot.ObjectMeta, "pipelinesascode.tekton.dev", gitops.PipelinesAsCodePrefix)
 
 	return snapshot, nil
 }
@@ -606,8 +612,8 @@ func (a *Adapter) createCompositeSnapshotsIfConflictExists(application *applicat
 	}
 
 	// Copy PAC annotations/labels from testedSnapshot to compositeSnapshot.
-	helpers.CopyLabelsByPrefix(&testedSnapshot.ObjectMeta, &compositeSnapshot.ObjectMeta, gitops.PipelinesAsCodePrefix, gitops.PipelinesAsCodePrefix)
-	helpers.CopyAnnotationsByPrefix(&testedSnapshot.ObjectMeta, &compositeSnapshot.ObjectMeta, gitops.PipelinesAsCodePrefix, gitops.PipelinesAsCodePrefix)
+	h.CopyLabelsByPrefix(&testedSnapshot.ObjectMeta, &compositeSnapshot.ObjectMeta, gitops.PipelinesAsCodePrefix, gitops.PipelinesAsCodePrefix)
+	h.CopyAnnotationsByPrefix(&testedSnapshot.ObjectMeta, &compositeSnapshot.ObjectMeta, gitops.PipelinesAsCodePrefix, gitops.PipelinesAsCodePrefix)
 
 	// Mark tested snapshot as failed and create the new composite snapshot if it doesn't exist already
 	if !gitops.CompareSnapshots(compositeSnapshot, testedSnapshot) {
@@ -627,9 +633,8 @@ func (a *Adapter) createCompositeSnapshotsIfConflictExists(application *applicat
 			if err != nil {
 				return nil, err
 			}
-			a.logger.Info("Created a new composite Snapshot",
+			a.logger.LogAuditEvent("CompositeSnapshot created", compositeSnapshot, h.LogActionAdd,
 				"Application.Name", a.application.Name,
-				"Snapshot.Name", compositeSnapshot.Name,
 				"Snapshot.Spec.Components", compositeSnapshot.Spec.Components)
 			return compositeSnapshot, nil
 		}
@@ -645,7 +650,7 @@ func (a *Adapter) isLatestSucceededPipelineRun() (bool, error) {
 
 	pipelineStartTime := a.pipelineRun.CreationTimestamp.Time
 
-	pipelineRuns, err := helpers.GetSucceededBuildPipelineRunsForComponent(a.client, a.context, a.component)
+	pipelineRuns, err := h.GetSucceededBuildPipelineRunsForComponent(a.client, a.context, a.component)
 	if err != nil {
 		return false, err
 	}

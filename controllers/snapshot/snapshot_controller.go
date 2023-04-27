@@ -22,6 +22,7 @@ import (
 	"github.com/go-logr/logr"
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/gitops"
+	"github.com/redhat-appstudio/integration-service/helpers"
 	"github.com/redhat-appstudio/operator-goodies/reconciler"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -62,7 +63,7 @@ func NewSnapshotReconciler(client client.Client, logger *logr.Logger, scheme *ru
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
 func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	logger := r.Log.WithValues("Integration", req.NamespacedName)
+	logger := helpers.IntegrationLogger{Logger: r.Log.WithValues("Integration", req.NamespacedName)}
 
 	snapshot := &applicationapiv1alpha1.Snapshot{}
 	err := r.Get(ctx, req.NamespacedName, snapshot)
