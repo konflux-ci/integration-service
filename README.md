@@ -1,5 +1,5 @@
-# HACBS Integration Service
-The HACBS Integration Service is a Kubernetes operator to control the integration and testing of HACBS-managed 
+# AppStudio Integration Service
+The AppStudio Integration Service is a Kubernetes operator to control the integration and testing of AppStudio-managed 
 Application Component builds in Red Hat AppStudio.
 
 ## Running, building and testing the operator

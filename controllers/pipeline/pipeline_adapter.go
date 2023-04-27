@@ -195,7 +195,7 @@ func (a *Adapter) EnsureSnapshotPassedAllTests() (reconciler.OperationResult, er
 	if allIntegrationPipelineRunsPassed {
 		existingSnapshot, err = gitops.MarkSnapshotAsPassed(a.client, a.context, existingSnapshot, "All Integration Pipeline tests passed")
 		if err != nil {
-			a.logger.Error(err, "Failed to Update Snapshot HACBSTestSucceeded status")
+			a.logger.Error(err, "Failed to Update Snapshot AppStudioTestSucceeded status")
 			return reconciler.RequeueWithError(err)
 		}
 		a.logger.Info("All Integration PipelineRuns succeeded, marking Snapshot as succeeded",
@@ -204,7 +204,7 @@ func (a *Adapter) EnsureSnapshotPassedAllTests() (reconciler.OperationResult, er
 	} else {
 		existingSnapshot, err = gitops.MarkSnapshotAsFailed(a.client, a.context, existingSnapshot, "Some Integration pipeline tests failed")
 		if err != nil {
-			a.logger.Error(err, "Failed to Update Snapshot HACBSTestSucceeded status")
+			a.logger.Error(err, "Failed to Update Snapshot AppStudioTestSucceeded status")
 			return reconciler.RequeueWithError(err)
 		}
 		a.logger.Info("Some tests within Integration PipelineRuns failed, marking Snapshot as failed",

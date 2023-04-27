@@ -220,7 +220,7 @@ var _ = Describe("GitHubReporter", func() {
 					CompletionTime: &metav1.Time{Time: now.Add(5 * time.Minute)},
 					TaskRunResults: []tektonv1beta1.TaskRunResult{
 						{
-							Name: "HACBS_TEST_OUTPUT",
+							Name: "TEST_OUTPUT",
 							Value: *tektonv1beta1.NewArrayOrString(`{
 											"result": "SUCCESS",
 											"timestamp": "1665405318",
@@ -251,7 +251,7 @@ var _ = Describe("GitHubReporter", func() {
 					CompletionTime: &metav1.Time{Time: now.Add(5 * time.Minute)},
 					TaskRunResults: []tektonv1beta1.TaskRunResult{
 						{
-							Name: "HACBS_TEST_OUTPUT",
+							Name: "TEST_OUTPUT",
 							Value: *tektonv1beta1.NewArrayOrString(`{
 											"result": "FAILURE",
 											"timestamp": "1665405317",
@@ -282,7 +282,7 @@ var _ = Describe("GitHubReporter", func() {
 					CompletionTime: &metav1.Time{Time: now.Add(10 * time.Minute)},
 					TaskRunResults: []tektonv1beta1.TaskRunResult{
 						{
-							Name: "HACBS_TEST_OUTPUT",
+							Name: "TEST_OUTPUT",
 							Value: *tektonv1beta1.NewArrayOrString(`{
 											"result": "SKIPPED",
 											"timestamp": "1665405318",
@@ -404,7 +404,7 @@ var _ = Describe("GitHubReporter", func() {
 			Expect(mockGitHubClient.CreateCheckRunResult.cra.Owner).To(Equal("devfile-sample"))
 			Expect(mockGitHubClient.CreateCheckRunResult.cra.Repository).To(Equal("devfile-sample-go-basic"))
 			Expect(mockGitHubClient.CreateCheckRunResult.cra.SHA).To(Equal("12a4a35ccd08194595179815e4646c3a6c08bb77"))
-			Expect(mockGitHubClient.CreateCheckRunResult.cra.Name).To(Equal("HACBS Test / devfile-sample-go-basic / example-pass"))
+			Expect(mockGitHubClient.CreateCheckRunResult.cra.Name).To(Equal("Red Hat Trusted App Test / devfile-sample-go-basic / example-pass"))
 			Expect(mockGitHubClient.CreateCheckRunResult.cra.StartTime.IsZero()).To(BeFalse())
 			Expect(mockGitHubClient.CreateCheckRunResult.cra.CompletionTime.IsZero()).To(BeTrue())
 			Expect(mockGitHubClient.CreateCheckRunResult.cra.Text).To(Equal(""))
@@ -511,7 +511,7 @@ var _ = Describe("GitHubReporter", func() {
 			Expect(reporter.ReportStatus(mockK8sClient, context.TODO(), pipelineRun)).To(BeNil())
 			Expect(mockGitHubClient.CreateCommitStatusResult.state).To(Equal("pending"))
 			Expect(mockGitHubClient.CreateCommitStatusResult.description).To(Equal("example-pass has started"))
-			Expect(mockGitHubClient.CreateCommitStatusResult.statusContext).To(Equal("HACBS Test / devfile-sample-go-basic / example-pass"))
+			Expect(mockGitHubClient.CreateCommitStatusResult.statusContext).To(Equal("Red Hat Trusted App Test / devfile-sample-go-basic / example-pass"))
 
 			// Success
 			pipelineRun.Status.SetCondition(&apis.Condition{
@@ -521,14 +521,14 @@ var _ = Describe("GitHubReporter", func() {
 			Expect(reporter.ReportStatus(mockK8sClient, context.TODO(), pipelineRun)).To(BeNil())
 			Expect(mockGitHubClient.CreateCommitStatusResult.state).To(Equal("success"))
 			Expect(mockGitHubClient.CreateCommitStatusResult.description).To(Equal("example-pass has succeeded"))
-			Expect(mockGitHubClient.CreateCommitStatusResult.statusContext).To(Equal("HACBS Test / devfile-sample-go-basic / example-pass"))
+			Expect(mockGitHubClient.CreateCommitStatusResult.statusContext).To(Equal("Red Hat Trusted App Test / devfile-sample-go-basic / example-pass"))
 
 			// Failure
 			setPipelineRunOutcome(pipelineRun, failedTaskRun)
 			Expect(reporter.ReportStatus(mockK8sClient, context.TODO(), pipelineRun)).To(BeNil())
 			Expect(mockGitHubClient.CreateCommitStatusResult.state).To(Equal("failure"))
 			Expect(mockGitHubClient.CreateCommitStatusResult.description).To(Equal("example-pass has failed"))
-			Expect(mockGitHubClient.CreateCommitStatusResult.statusContext).To(Equal("HACBS Test / devfile-sample-go-basic / example-pass"))
+			Expect(mockGitHubClient.CreateCommitStatusResult.statusContext).To(Equal("Red Hat Trusted App Test / devfile-sample-go-basic / example-pass"))
 		})
 	})
 
