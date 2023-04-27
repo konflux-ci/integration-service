@@ -245,7 +245,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				CompletionTime: &metav1.Time{Time: now.Add(5 * time.Minute)},
 				TaskRunResults: []tektonv1beta1.TaskRunResult{
 					{
-						Name: "HACBS_TEST_OUTPUT",
+						Name: "TEST_OUTPUT",
 						Value: *tektonv1beta1.NewArrayOrString(`{
 											"result": "SUCCESS",
 											"timestamp": "1665405318",

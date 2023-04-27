@@ -115,7 +115,7 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 		Expect(err).To(BeNil())
 		Expect(updatedSnapshot).NotTo(BeNil())
 		Expect(updatedSnapshot.Status.Conditions).NotTo(BeNil())
-		Expect(meta.IsStatusConditionTrue(updatedSnapshot.Status.Conditions, gitops.HACBSTestSuceededCondition)).To(BeTrue())
+		Expect(meta.IsStatusConditionTrue(updatedSnapshot.Status.Conditions, gitops.AppStudioTestSuceededCondition)).To(BeTrue())
 	})
 
 	It("ensures the Snapshots status can be marked as failed", func() {
@@ -123,22 +123,22 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 		Expect(err).To(BeNil())
 		Expect(updatedSnapshot).NotTo(BeNil())
 		Expect(updatedSnapshot.Status.Conditions).NotTo(BeNil())
-		Expect(meta.IsStatusConditionTrue(updatedSnapshot.Status.Conditions, gitops.HACBSTestSuceededCondition)).To(BeFalse())
+		Expect(meta.IsStatusConditionTrue(updatedSnapshot.Status.Conditions, gitops.AppStudioTestSuceededCondition)).To(BeFalse())
 	})
 
 	It("ensures the Snapshots status can be marked as invalid", func() {
 		gitops.SetSnapshotIntegrationStatusAsInvalid(hasSnapshot, "Test message")
 		Expect(hasSnapshot).NotTo(BeNil())
 		Expect(hasSnapshot.Status.Conditions).NotTo(BeNil())
-		Expect(meta.IsStatusConditionTrue(hasSnapshot.Status.Conditions, gitops.HACBSIntegrationStatusCondition)).To(BeFalse())
+		Expect(meta.IsStatusConditionTrue(hasSnapshot.Status.Conditions, gitops.AppStudioIntegrationStatusCondition)).To(BeFalse())
 	})
 
 	It("ensures the Snapshots status can be marked as finished", func() {
 		gitops.SetSnapshotIntegrationStatusAsFinished(hasSnapshot, "Test message")
 		Expect(hasSnapshot.Status.Conditions).NotTo(BeNil())
-		Expect(meta.IsStatusConditionTrue(hasSnapshot.Status.Conditions, gitops.HACBSIntegrationStatusCondition)).To(BeTrue())
-		foundStatusCondition := meta.FindStatusCondition(hasSnapshot.Status.Conditions, gitops.HACBSIntegrationStatusCondition)
-		Expect(foundStatusCondition.Reason).To(Equal(gitops.HACBSIntegrationStatusFinished))
+		Expect(meta.IsStatusConditionTrue(hasSnapshot.Status.Conditions, gitops.AppStudioIntegrationStatusCondition)).To(BeTrue())
+		foundStatusCondition := meta.FindStatusCondition(hasSnapshot.Status.Conditions, gitops.AppStudioIntegrationStatusCondition)
+		Expect(foundStatusCondition.Reason).To(Equal(gitops.AppStudioIntegrationStatusFinished))
 	})
 
 	It("ensures the Snapshots status can be marked as in progress", func() {
@@ -146,17 +146,17 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 		Expect(err).To(BeNil())
 		Expect(updatedSnapshot).NotTo(BeNil())
 		Expect(updatedSnapshot.Status.Conditions).NotTo(BeNil())
-		foundStatusCondition := meta.FindStatusCondition(updatedSnapshot.Status.Conditions, gitops.HACBSIntegrationStatusCondition)
-		Expect(foundStatusCondition.Reason).To(Equal(gitops.HACBSIntegrationStatusInProgress))
+		foundStatusCondition := meta.FindStatusCondition(updatedSnapshot.Status.Conditions, gitops.AppStudioIntegrationStatusCondition)
+		Expect(foundStatusCondition.Reason).To(Equal(gitops.AppStudioIntegrationStatusInProgress))
 	})
 
-	It("ensures the Snapshots can be checked for the HACBSTestSuceededCondition", func() {
-		checkResult := gitops.HaveHACBSTestsFinished(hasSnapshot)
+	It("ensures the Snapshots can be checked for the AppStudioTestSuceededCondition", func() {
+		checkResult := gitops.HaveAppStudioTestsFinished(hasSnapshot)
 		Expect(checkResult).To(BeFalse())
 	})
 
-	It("ensures the Snapshots can be checked for the HACBSTestSuceededCondition", func() {
-		checkResult := gitops.HaveHACBSTestsSucceeded(hasSnapshot)
+	It("ensures the Snapshots can be checked for the AppStudioTestSuceededCondition", func() {
+		checkResult := gitops.HaveAppStudioTestsSucceeded(hasSnapshot)
 		Expect(checkResult).To(BeFalse())
 	})
 

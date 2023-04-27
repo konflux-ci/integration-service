@@ -380,9 +380,9 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		Expect(k8sClient.Delete(ctx, &integrationPipelineRuns.Items[0])).Should(Succeed())
 	})
 
-	It("ensures all Releases exists when HACBSTests succeeded", func() {
+	It("ensures all Releases exists when AppStudio Tests succeeded", func() {
 		gitops.MarkSnapshotAsPassed(k8sClient, ctx, hasSnapshot, "test passed")
-		Expect(gitops.HaveHACBSTestsSucceeded(hasSnapshot)).To(BeTrue())
+		Expect(gitops.HaveAppStudioTestsSucceeded(hasSnapshot)).To(BeTrue())
 
 		Eventually(func() bool {
 			result, err := adapter.EnsureAllReleasesExist()
@@ -400,7 +400,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 	It("ensures global Component Image will not be updated in the PR context", func() {
 
 		gitops.MarkSnapshotAsPassed(k8sClient, ctx, hasSnapshotPR, "test passed")
-		Expect(gitops.HaveHACBSTestsSucceeded(hasSnapshotPR)).To(BeTrue())
+		Expect(gitops.HaveAppStudioTestsSucceeded(hasSnapshotPR)).To(BeTrue())
 
 		Eventually(func() bool {
 			result, err := adapter.EnsureGlobalCandidateImageUpdated()
@@ -411,9 +411,9 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		Expect(hasComp.Status.LastBuiltCommit).To(Equal(""))
 	})
 
-	It("ensures global Component Image updated when HACBSTests succeeded", func() {
+	It("ensures global Component Image updated when AppStudio Tests succeeded", func() {
 		gitops.MarkSnapshotAsPassed(k8sClient, ctx, hasSnapshot, "test passed")
-		Expect(gitops.HaveHACBSTestsSucceeded(hasSnapshot)).To(BeTrue())
+		Expect(gitops.HaveAppStudioTestsSucceeded(hasSnapshot)).To(BeTrue())
 
 		Eventually(func() bool {
 			result, err := adapter.EnsureGlobalCandidateImageUpdated()
@@ -424,15 +424,15 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		Expect(hasComp.Status.LastBuiltCommit).To(Equal(sample_revision))
 	})
 
-	It("no error from ensuring global Component Image updated when HACBSTests failed", func() {
+	It("no error from ensuring global Component Image updated when AppStudio Tests failed", func() {
 		gitops.MarkSnapshotAsFailed(k8sClient, ctx, hasSnapshot, "test failed")
-		Expect(gitops.HaveHACBSTestsSucceeded(hasSnapshot)).To(BeFalse())
+		Expect(gitops.HaveAppStudioTestsSucceeded(hasSnapshot)).To(BeFalse())
 		result, err := adapter.EnsureGlobalCandidateImageUpdated()
 		Expect(err).ShouldNot(HaveOccurred())
 		Expect(result.CancelRequest).To(BeFalse())
 	})
 
-	It("no action when EnsureAllReleasesExist function runs when HACBSTests failed and the snapshot is invalid", func() {
+	It("no action when EnsureAllReleasesExist function runs when AppStudio Tests failed and the snapshot is invalid", func() {
 		var buf bytes.Buffer
 		var log logr.Logger = buflogr.NewWithBuffer(&buf)
 
@@ -442,7 +442,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		Expect(err).ShouldNot(HaveOccurred())
 		gitops.SetSnapshotIntegrationStatusAsInvalid(updatedSnapshot, "snapshot invalid")
 		hasSnapshot.Labels[gitops.PipelineAsCodeEventTypeLabel] = gitops.PipelineAsCodePullRequestType
-		Expect(gitops.HaveHACBSTestsSucceeded(hasSnapshot)).To(BeFalse())
+		Expect(gitops.HaveAppStudioTestsSucceeded(hasSnapshot)).To(BeFalse())
 		Expect(gitops.IsSnapshotValid(hasSnapshot)).To(BeFalse())
 
 		adapter = NewAdapter(hasSnapshot, hasApp, hasComp, log, k8sClient, ctx)
@@ -461,7 +461,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
 	})
 
-	It("no action when EnsureSnapshotEnvironmentBindingExist function runs when HACBSTests failed and the snapshot is invalid", func() {
+	It("no action when EnsureSnapshotEnvironmentBindingExist function runs when AppStudio Tests failed and the snapshot is invalid", func() {
 		var buf bytes.Buffer
 		var log logr.Logger = buflogr.NewWithBuffer(&buf)
 
@@ -471,7 +471,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		Expect(err).ShouldNot(HaveOccurred())
 		gitops.SetSnapshotIntegrationStatusAsInvalid(updatedSnapshot, "snapshot invalid")
 		hasSnapshot.Labels[gitops.PipelineAsCodeEventTypeLabel] = gitops.PipelineAsCodePullRequestType
-		Expect(gitops.HaveHACBSTestsSucceeded(hasSnapshot)).To(BeFalse())
+		Expect(gitops.HaveAppStudioTestsSucceeded(hasSnapshot)).To(BeFalse())
 		Expect(gitops.IsSnapshotValid(hasSnapshot)).To(BeFalse())
 
 		adapter = NewAdapter(hasSnapshot, hasApp, hasComp, log, k8sClient, ctx)
@@ -492,7 +492,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 
 	It("ensures snapshot environmentBinding exist", func() {
 		gitops.MarkSnapshotAsPassed(k8sClient, ctx, hasSnapshot, "test passed")
-		Expect(gitops.HaveHACBSTestsSucceeded(hasSnapshot)).To(BeTrue())
+		Expect(gitops.HaveAppStudioTestsSucceeded(hasSnapshot)).To(BeTrue())
 		Eventually(func() bool {
 			result, err := adapter.EnsureSnapshotEnvironmentBindingExist()
 			return !result.CancelRequest && err == nil

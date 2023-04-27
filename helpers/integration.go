@@ -22,27 +22,31 @@ import (
 )
 
 const (
-	//HACBSTestOutputName is the name of the standardized HACBS Test output Tekton task result
-	HACBSTestOutputName = "HACBS_TEST_OUTPUT"
 
-	// HACBSTestOutputSuccess is the result that's set when the HACBS test succeeds.
-	HACBSTestOutputSuccess = "SUCCESS"
+	//TestOutputName is the name of the standardized Test output Tekton task result
+	TestOutputName = "TEST_OUTPUT"
 
-	// HACBSTestOutputFailure is the result that's set when the HACBS test fails.
-	HACBSTestOutputFailure = "FAILURE"
+	//LegacyTestOutputName is the previous name of the standardized AppStudio Test output Tekton task result
+	LegacyTestOutputName = "HACBS_TEST_OUTPUT"
 
-	// HACBSTestOutputWarning is the result that's set when the HACBS test passes with a warning.
-	HACBSTestOutputWarning = "WARNING"
+	// AppStudioTestOutputSuccess is the result that's set when the AppStudio test succeeds.
+	AppStudioTestOutputSuccess = "SUCCESS"
 
-	// HACBSTestOutputSkipped is the result that's set when the HACBS test gets skipped.
-	HACBSTestOutputSkipped = "SKIPPED"
+	// AppStudioTestOutputFailure is the result that's set when the AppStudio test fails.
+	AppStudioTestOutputFailure = "FAILURE"
 
-	// HACBSTestOutputError is the result that's set when the HACBS test produces an error.
-	HACBSTestOutputError = "ERROR"
+	// AppStudioTestOutputWarning is the result that's set when the AppStudio test passes with a warning.
+	AppStudioTestOutputWarning = "WARNING"
+
+	// AppStudioTestOutputSkipped is the result that's set when the AppStudio test gets skipped.
+	AppStudioTestOutputSkipped = "SKIPPED"
+
+	// AppStudioTestOutputError is the result that's set when the AppStudio test produces an error.
+	AppStudioTestOutputError = "ERROR"
 )
 
-// HACBSTestResult matches HACBS TaskRun result contract
-type HACBSTestResult struct {
+// AppStudioTestResult matches AppStudio TaskRun result contract
+type AppStudioTestResult struct {
 	Result    string `json:"result"`
 	Namespace string `json:"namespace"`
 	Timestamp string `json:"timestamp"`
@@ -91,7 +95,7 @@ type TaskRun struct {
 	logger           logr.Logger
 	pipelineTaskName string
 	trStatus         *tektonv1beta1.TaskRunStatus
-	testResult       *HACBSTestResult
+	testResult       *AppStudioTestResult
 }
 
 // NewTaskRunFromTektonTaskRun creates and returns am integration TaskRun from the TaskRunStatus.
@@ -126,8 +130,8 @@ func (t *TaskRun) GetDuration() time.Duration {
 	return end.Sub(start)
 }
 
-// GetTestResult returns a HACBSTestResult if the TaskRun produced the result. It will return nil otherwise.
-func (t *TaskRun) GetTestResult() (*HACBSTestResult, error) {
+// GetTestResult returns a AppStudioTestResult if the TaskRun produced the result. It will return nil otherwise.
+func (t *TaskRun) GetTestResult() (*AppStudioTestResult, error) {
 	// Check for an already parsed result.
 	if t.testResult != nil {
 		return t.testResult, nil
@@ -139,12 +143,12 @@ func (t *TaskRun) GetTestResult() (*HACBSTestResult, error) {
 	}
 
 	for _, taskRunResult := range t.trStatus.TaskRunResults {
-		if taskRunResult.Name == HACBSTestOutputName {
-			var result HACBSTestResult
+		if taskRunResult.Name == LegacyTestOutputName || taskRunResult.Name == TestOutputName {
+			var result AppStudioTestResult
 			var v interface{}
 			err := json.Unmarshal([]byte(taskRunResult.Value.StringVal), &result)
 			if err != nil {
-				return nil, fmt.Errorf("error while mapping json data from taskRun %s: to HACBSTestResult %w", taskRunResult.Name, err)
+				return nil, fmt.Errorf("error while mapping json data from taskRun %s: to AppStudioTestResult %w", taskRunResult.Name, err)
 			}
 			if err := json.Unmarshal([]byte(taskRunResult.Value.StringVal), &v); err != nil {
 				return nil, fmt.Errorf("error while mapping json data from taskRun %s: %w", taskRunResult.Name, err)
@@ -152,7 +156,7 @@ func (t *TaskRun) GetTestResult() (*HACBSTestResult, error) {
 			if err = sch.Validate(v); err != nil {
 				return nil, fmt.Errorf("error validating schema of results from taskRun %s: %w", taskRunResult.Name, err)
 			}
-			t.logger.Info("Found a HACBS test result", "Result", result)
+			t.logger.Info("Found a AppStudio test result", "Result", result)
 			t.testResult = &result
 			return &result, nil
 		}
@@ -221,21 +225,21 @@ func GetAllIntegrationTestScenariosForApplication(adapterClient client.Client, c
 }
 
 // CalculateIntegrationPipelineRunOutcome checks the Tekton results for a given PipelineRun and calculates the overall outcome.
-// If any of the tasks with the HACBS_TEST_OUTPUT result don't have the `result` field set to SUCCESS or SKIPPED, it returns false.
+// If any of the tasks with the TEST_OUTPUT result don't have the `result` field set to SUCCESS or SKIPPED, it returns false.
 func CalculateIntegrationPipelineRunOutcome(adapterClient client.Client, ctx context.Context, logger logr.Logger, pipelineRun *tektonv1beta1.PipelineRun) (bool, error) {
-	var results []*HACBSTestResult
+	var results []*AppStudioTestResult
 	var err error
 	// Check if the pipelineRun.Status contains the childReferences to TaskRuns
 	if !reflect.ValueOf(pipelineRun.Status.ChildReferences).IsZero() {
 		// If the pipelineRun.Status contains the childReferences, parse them in the new way by querying for TaskRuns
-		results, err = GetHACBSTestResultsFromPipelineRunWithChildReferences(adapterClient, ctx, logger, pipelineRun)
+		results, err = GetAppStudioTestResultsFromPipelineRunWithChildReferences(adapterClient, ctx, logger, pipelineRun)
 		if err != nil {
 			return false, fmt.Errorf("error while getting test results from pipelineRun %s: %w", pipelineRun.Name, err)
 		}
 	}
 
 	for _, result := range results {
-		if result.Result != HACBSTestOutputSuccess && result.Result != HACBSTestOutputSkipped {
+		if result.Result != AppStudioTestOutputSuccess && result.Result != AppStudioTestOutputSkipped {
 			return false, nil
 		}
 	}
@@ -335,15 +339,15 @@ func GetLatestPipelineRunForSnapshotAndScenario(adapterClient client.Client, ctx
 	return nil, err
 }
 
-// GetHACBSTestResultsFromPipelineRunWithChildReferences finds all TaskRuns from childReferences of the PipelineRun
-// that also contain a HACBS_TEST_OUTPUT result and returns the parsed data
-func GetHACBSTestResultsFromPipelineRunWithChildReferences(adapterClient client.Client, ctx context.Context, logger logr.Logger, pipelineRun *tektonv1beta1.PipelineRun) ([]*HACBSTestResult, error) {
+// GetAppStudioTestResultsFromPipelineRunWithChildReferences finds all TaskRuns from childReferences of the PipelineRun
+// that also contain a TEST_OUTPUT result and returns the parsed data
+func GetAppStudioTestResultsFromPipelineRunWithChildReferences(adapterClient client.Client, ctx context.Context, logger logr.Logger, pipelineRun *tektonv1beta1.PipelineRun) ([]*AppStudioTestResult, error) {
 	taskRuns, err := GetAllChildTaskRunsForPipelineRun(adapterClient, ctx, logger, pipelineRun)
 	if err != nil {
 		return nil, err
 	}
 
-	results := []*HACBSTestResult{}
+	results := []*AppStudioTestResult{}
 	for _, tr := range taskRuns {
 		r, err := tr.GetTestResult()
 		if err != nil {

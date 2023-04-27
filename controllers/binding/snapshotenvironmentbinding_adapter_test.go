@@ -222,7 +222,7 @@ var _ = Describe("Binding Adapter", Ordered, func() {
 
 		finishedSnapshot, err := gitops.MarkSnapshotAsPassed(k8sClient, ctx, finishedSnapshot, "Snapshot passed")
 		Expect(err == nil).To(BeTrue())
-		Expect(gitops.HaveHACBSTestsFinished(finishedSnapshot)).To(BeTrue())
+		Expect(gitops.HaveAppStudioTestsFinished(finishedSnapshot)).To(BeTrue())
 	})
 
 	BeforeEach(func() {
