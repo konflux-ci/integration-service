@@ -137,22 +137,22 @@ func (a *Adapter) EnsureCreatedScenarioIsValid() (reconciler.OperationResult, er
 	return reconciler.ContinueProcessing()
 }
 
-// SetSnapshotIntegrationStatusAsInvalid sets the HACBS integration status condition for the Snapshot to invalid.
+// SetSnapshotIntegrationStatusAsInvalid sets the AppStudio integration status condition for the Snapshot to invalid.
 func SetScenarioIntegrationStatusAsInvalid(scenario *v1alpha1.IntegrationTestScenario, message string) {
 	meta.SetStatusCondition(&scenario.Status.Conditions, metav1.Condition{
 		Type:    gitops.IntegrationTestScenarioValid,
 		Status:  metav1.ConditionFalse,
-		Reason:  gitops.HACBSIntegrationStatusInvalid,
+		Reason:  gitops.AppStudioIntegrationStatusInvalid,
 		Message: message,
 	})
 }
 
-// SetSnapshotIntegrationStatusAsValid sets the HACBS integration status condition for the Snapshot to valid.
+// SetSnapshotIntegrationStatusAsValid sets the AppStudio integration status condition for the Snapshot to valid.
 func SetScenarioIntegrationStatusAsValid(scenario *v1alpha1.IntegrationTestScenario, message string) {
 	meta.SetStatusCondition(&scenario.Status.Conditions, metav1.Condition{
 		Type:    gitops.IntegrationTestScenarioValid,
 		Status:  metav1.ConditionTrue,
-		Reason:  gitops.HACBSIntegrationStatusValid,
+		Reason:  gitops.AppStudioIntegrationStatusValid,
 		Message: message,
 	})
 }

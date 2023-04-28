@@ -64,7 +64,7 @@ func NewAdapter(snapshot *applicationapiv1alpha1.Snapshot, application *applicat
 // associated with the Snapshot and the Application's IntegrationTestScenarios exist.
 // Otherwise, it will create new Releases for each ReleasePlan.
 func (a *Adapter) EnsureAllIntegrationTestPipelinesExist() (reconciler.OperationResult, error) {
-	if gitops.HaveHACBSTestsFinished(a.snapshot) {
+	if gitops.HaveAppStudioTestsFinished(a.snapshot) {
 		a.logger.Info("The Snapshot has finished testing.")
 		return reconciler.ContinueProcessing()
 	}
@@ -161,7 +161,7 @@ func (a *Adapter) EnsureAllIntegrationTestPipelinesExist() (reconciler.Operation
 // IntegrationTestScenarios get created, in case that environment is already created, provides
 // a message about this fact
 func (a *Adapter) EnsureCreationOfEnvironment() (reconciler.OperationResult, error) {
-	if gitops.HaveHACBSTestsFinished(a.snapshot) {
+	if gitops.HaveAppStudioTestsFinished(a.snapshot) {
 		a.logger.Info("The Snapshot has finished testing.")
 		return reconciler.ContinueProcessing()
 	}
@@ -250,7 +250,7 @@ TestScenarioLoop:
 // EnsureGlobalCandidateImageUpdated is an operation that ensure the ContainerImage in the Global Candidate List
 // being updated when the Snapshot passed all the integration tests
 func (a *Adapter) EnsureGlobalCandidateImageUpdated() (reconciler.OperationResult, error) {
-	if (a.component != nil) && gitops.HaveHACBSTestsSucceeded(a.snapshot) && !gitops.IsSnapshotCreatedByPACPullRequestEvent(a.snapshot) {
+	if (a.component != nil) && gitops.HaveAppStudioTestsSucceeded(a.snapshot) && !gitops.IsSnapshotCreatedByPACPullRequestEvent(a.snapshot) {
 		patch := client.MergeFrom(a.component.DeepCopy())
 		for _, component := range a.snapshot.Spec.Components {
 			if component.Name == a.component.Name {

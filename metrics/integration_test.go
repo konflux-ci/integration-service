@@ -146,7 +146,7 @@ var _ = Describe("Metrics Integration", Ordered, func() {
 		// Input seconds for duration of operations less or equal to the following buckets of 60, 600, 1800 and 3600 seconds
 		inputSeconds := []float64{30, 500, 1500, 3000}
 		elapsedSeconds := 0.0
-		labels := fmt.Sprintf(`reason="%s", type="%s",`, "passed", "HACBSIntegrationStatus")
+		labels := fmt.Sprintf(`reason="%s", type="%s",`, "passed", "AppStudioIntegrationStatus")
 
 		It("increments 'SnapshotConcurrentTotal' so we can decrement it to a non-negative number in the next test", func() {
 			creationTime := metav1.Time{}
@@ -165,7 +165,7 @@ var _ = Describe("Metrics Integration", Ordered, func() {
 			for _, seconds := range inputSeconds {
 				completionTime := metav1.NewTime(completionTime.Add(time.Second * time.Duration(seconds)))
 				elapsedSeconds += seconds
-				RegisterCompletedSnapshot("HACBSIntegrationStatus", "passed", startTime, &completionTime)
+				RegisterCompletedSnapshot("AppStudioIntegrationStatus", "passed", startTime, &completionTime)
 			}
 			readerData := createCounterReader(SnapshotTotalHeader, labels, true, len(inputSeconds))
 			Expect(testutil.ToFloat64(SnapshotConcurrentTotal)).To(Equal(0.0))
@@ -184,15 +184,15 @@ var _ = Describe("Metrics Integration", Ordered, func() {
 	Context("When RegisterInvalidSnapshot", func() {
 		It("increments the 'SnapshotInvalidTotal' metric", func() {
 			for i := 0; i < 10; i++ {
-				RegisterInvalidSnapshot("HACBSIntegrationStatus", "invalid")
+				RegisterInvalidSnapshot("AppStudioIntegrationStatus", "invalid")
 			}
 			Expect(testutil.ToFloat64(SnapshotInvalidTotal)).To(Equal(float64(10)))
 		})
 
 		It("increments the 'SnapshotTotal' metric.", func() {
-			labels := fmt.Sprintf(`reason="%s", type="%s",`, "invalid", "HACBSIntegrationStatus")
+			labels := fmt.Sprintf(`reason="%s", type="%s",`, "invalid", "AppStudioIntegrationStatus")
 			readerData := createCounterReader(SnapshotTotalHeader, labels, true, 10.0)
-			Expect(testutil.CollectAndCompare(SnapshotTotal.WithLabelValues("HACBSIntegrationStatus", "invalid"),
+			Expect(testutil.CollectAndCompare(SnapshotTotal.WithLabelValues("AppStudioIntegrationStatus", "invalid"),
 				strings.NewReader(readerData))).To(Succeed())
 		})
 	})
