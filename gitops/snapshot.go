@@ -73,32 +73,38 @@ const (
 	// PipelineAsCodeGitHubProviderType is the git provider type for a GitHub event which triggered the pipelinerun in build service.
 	PipelineAsCodeGitHubProviderType = "github"
 
-	//HACBSTestSuceededCondition is the condition for marking if the HACBS Tests succeeded for the Snapshot.
-	HACBSTestSuceededCondition = "HACBSTestSucceeded"
+	//AppStudioTestSuceededCondition is the condition for marking if the AppStudio Tests succeeded for the Snapshot.
+	AppStudioTestSuceededCondition = "AppStudioTestSucceeded"
 
-	// HACBSIntegrationStatusCondition is the condition for marking the HACBS integration status of the Snapshot.
-	HACBSIntegrationStatusCondition = "HACBSIntegrationStatus"
+	//LegacyTestSuceededCondition is the condition for marking if the AppStudio Tests succeeded for the Snapshot.
+	LegacyTestSuceededCondition = "HACBSStudioTestSucceeded"
 
-	// IntegrationTestScenarioValid is the condition for marking the HACBS integration status of the Scenario.
+	// AppStudioIntegrationStatusCondition is the condition for marking the AppStudio integration status of the Snapshot.
+	AppStudioIntegrationStatusCondition = "AppStudioIntegrationStatus"
+
+	// LegacyIntegrationStatusCondition is the condition for marking the AppStudio integration status of the Snapshot.
+	LegacyIntegrationStatusCondition = "HACBSIntegrationStatus"
+
+	// IntegrationTestScenarioValid is the condition for marking the AppStudio integration status of the Scenario.
 	IntegrationTestScenarioValid = "IntegrationTestScenarioValid"
 
-	// HACBSTestSuceededConditionPassed is the reason that's set when the HACBS tests succeed.
-	HACBSTestSuceededConditionPassed = "Passed"
+	// AppStudioTestSuceededConditionPassed is the reason that's set when the AppStudio tests succeed.
+	AppStudioTestSuceededConditionPassed = "Passed"
 
-	// HACBSTestSuceededConditionFailed is the reason that's set when the HACBS tests fail.
-	HACBSTestSuceededConditionFailed = "Failed"
+	// AppStudioTestSuceededConditionFailed is the reason that's set when the AppStudio tests fail.
+	AppStudioTestSuceededConditionFailed = "Failed"
 
-	// HACBSIntegrationStatusInvalid is the reason that's set when the HACBS integration gets into an invalid state.
-	HACBSIntegrationStatusInvalid = "Invalid"
+	// AppStudioIntegrationStatusInvalid is the reason that's set when the AppStudio integration gets into an invalid state.
+	AppStudioIntegrationStatusInvalid = "Invalid"
 
-	// HACBSIntegrationStatusValid is the reason that's set when the HACBS integration gets into an valid state.
-	HACBSIntegrationStatusValid = "Valid"
+	// AppStudioIntegrationStatusValid is the reason that's set when the AppStudio integration gets into an valid state.
+	AppStudioIntegrationStatusValid = "Valid"
 
-	//HACBSIntegrationStatusInProgress is the reason that's set when the HACBS tests gets into an in progress state.
-	HACBSIntegrationStatusInProgress = "InProgress"
+	//AppStudioIntegrationStatusInProgress is the reason that's set when the AppStudio tests gets into an in progress state.
+	AppStudioIntegrationStatusInProgress = "InProgress"
 
-	//HACBSIntegrationStatusFinished is the reason that's set when the HACBS tests finish.
-	HACBSIntegrationStatusFinished = "Finished"
+	//AppStudioIntegrationStatusFinished is the reason that's set when the AppStudio tests finish.
+	AppStudioIntegrationStatusFinished = "Finished"
 )
 
 var (
@@ -106,14 +112,14 @@ var (
 	SnapshotComponentLabel = tekton.ComponentNameLabel
 )
 
-// MarkSnapshotAsPassed updates the HACBS Test succeeded condition for the Snapshot to passed.
+// MarkSnapshotAsPassed updates the AppStudio Test succeeded condition for the Snapshot to passed.
 // If the patch command fails, an error will be returned.
 func MarkSnapshotAsPassed(adapterClient client.Client, ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot, message string) (*applicationapiv1alpha1.Snapshot, error) {
 	patch := client.MergeFrom(snapshot.DeepCopy())
 	condition := metav1.Condition{
-		Type:    HACBSTestSuceededCondition,
+		Type:    AppStudioTestSuceededCondition,
 		Status:  metav1.ConditionTrue,
-		Reason:  HACBSTestSuceededConditionPassed,
+		Reason:  AppStudioTestSuceededConditionPassed,
 		Message: message,
 	}
 	meta.SetStatusCondition(&snapshot.Status.Conditions, condition)
@@ -128,14 +134,14 @@ func MarkSnapshotAsPassed(adapterClient client.Client, ctx context.Context, snap
 	return snapshot, nil
 }
 
-// MarkSnapshotAsFailed updates the HACBS Test succeeded condition for the Snapshot to failed.
+// MarkSnapshotAsFailed updates the AppStudio Test succeeded condition for the Snapshot to failed.
 // If the patch command fails, an error will be returned.
 func MarkSnapshotAsFailed(adapterClient client.Client, ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot, message string) (*applicationapiv1alpha1.Snapshot, error) {
 	patch := client.MergeFrom(snapshot.DeepCopy())
 	condition := metav1.Condition{
-		Type:    HACBSTestSuceededCondition,
+		Type:    AppStudioTestSuceededCondition,
 		Status:  metav1.ConditionFalse,
-		Reason:  HACBSTestSuceededConditionFailed,
+		Reason:  AppStudioTestSuceededConditionFailed,
 		Message: message,
 	}
 	meta.SetStatusCondition(&snapshot.Status.Conditions, condition)
@@ -150,25 +156,25 @@ func MarkSnapshotAsFailed(adapterClient client.Client, ctx context.Context, snap
 	return snapshot, nil
 }
 
-// SetSnapshotIntegrationStatusAsInvalid sets the HACBS integration status condition for the Snapshot to invalid.
+// SetSnapshotIntegrationStatusAsInvalid sets the AppStudio integration status condition for the Snapshot to invalid.
 func SetSnapshotIntegrationStatusAsInvalid(snapshot *applicationapiv1alpha1.Snapshot, message string) {
 	condition := metav1.Condition{
-		Type:    HACBSIntegrationStatusCondition,
+		Type:    AppStudioIntegrationStatusCondition,
 		Status:  metav1.ConditionFalse,
-		Reason:  HACBSIntegrationStatusInvalid,
+		Reason:  AppStudioIntegrationStatusInvalid,
 		Message: message,
 	}
 	meta.SetStatusCondition(&snapshot.Status.Conditions, condition)
 	go metrics.RegisterInvalidSnapshot(condition.Type, condition.Reason)
 }
 
-// MarkSnapshotIntegrationStatusAsInProgress sets the HACBS integration status condition for the Snapshot to In Progress.
+// MarkSnapshotIntegrationStatusAsInProgress sets the AppStudio integration status condition for the Snapshot to In Progress.
 func MarkSnapshotIntegrationStatusAsInProgress(adapterClient client.Client, ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot, message string) (*applicationapiv1alpha1.Snapshot, error) {
 	patch := client.MergeFrom(snapshot.DeepCopy())
 	meta.SetStatusCondition(&snapshot.Status.Conditions, metav1.Condition{
-		Type:    HACBSIntegrationStatusCondition,
+		Type:    AppStudioIntegrationStatusCondition,
 		Status:  metav1.ConditionUnknown,
-		Reason:  HACBSIntegrationStatusInProgress,
+		Reason:  AppStudioIntegrationStatusInProgress,
 		Message: message,
 	})
 	err := adapterClient.Status().Patch(ctx, snapshot, patch)
@@ -194,51 +200,64 @@ func PrepareToRegisterIntegrationPipelineRun(snapshot *applicationapiv1alpha1.Sn
 	go metrics.RegisterNewIntegrationPipelineRun(snapshot.GetCreationTimestamp(), pipelineRunStartTime)
 }
 
-// SetSnapshotIntegrationStatusAsFinished sets the HACBS integration status condition for the Snapshot to Finished.
+// SetSnapshotIntegrationStatusAsFinished sets the AppStudio integration status condition for the Snapshot to Finished.
 func SetSnapshotIntegrationStatusAsFinished(snapshot *applicationapiv1alpha1.Snapshot, message string) {
 	condition := metav1.Condition{
-		Type:    HACBSIntegrationStatusCondition,
+		Type:    AppStudioIntegrationStatusCondition,
 		Status:  metav1.ConditionTrue,
-		Reason:  HACBSIntegrationStatusFinished,
+		Reason:  AppStudioIntegrationStatusFinished,
 		Message: message,
 	}
 	meta.SetStatusCondition(&snapshot.Status.Conditions, condition)
 }
 
-// IsSnapshotNotStarted checks if the HACBS Integration Status condition is not in progress status.
+// IsSnapshotNotStarted checks if the AppStudio Integration Status condition is not in progress status.
 func IsSnapshotNotStarted(snapshot *applicationapiv1alpha1.Snapshot) bool {
-	condition := meta.FindStatusCondition(snapshot.Status.Conditions, HACBSIntegrationStatusCondition)
-	if condition == nil || condition.Reason != HACBSIntegrationStatusInProgress {
+	condition := meta.FindStatusCondition(snapshot.Status.Conditions, AppStudioIntegrationStatusCondition)
+	if condition == nil {
+		condition = meta.FindStatusCondition(snapshot.Status.Conditions, LegacyIntegrationStatusCondition)
+	}
+	if condition == nil || condition.Reason != AppStudioIntegrationStatusInProgress {
 		return true
 	}
 	return false
 }
 
-// IsSnapshotValid checks if the HACBS Integration Status condition is not invalid.
+// IsSnapshotValid checks if the AppStudio Integration Status condition is not invalid.
 func IsSnapshotValid(snapshot *applicationapiv1alpha1.Snapshot) bool {
-	condition := meta.FindStatusCondition(snapshot.Status.Conditions, HACBSIntegrationStatusCondition)
-	if condition == nil || condition.Reason != HACBSIntegrationStatusInvalid {
+	condition := meta.FindStatusCondition(snapshot.Status.Conditions, AppStudioIntegrationStatusCondition)
+	if condition == nil {
+		condition = meta.FindStatusCondition(snapshot.Status.Conditions, LegacyIntegrationStatusCondition)
+	}
+	if condition == nil || condition.Reason != AppStudioIntegrationStatusInvalid {
 		return true
 	}
 	return false
 }
 
-// HaveHACBSTestsFinished checks if the HACBS tests have finished by checking if the HACBS Test Succeeded condition is set.
-func HaveHACBSTestsFinished(snapshot *applicationapiv1alpha1.Snapshot) bool {
-	statusCondition := meta.FindStatusCondition(snapshot.Status.Conditions, HACBSTestSuceededCondition)
+// HaveAppStudioTestsFinished checks if the AppStudio tests have finished by checking if the AppStudio Test Succeeded condition is set.
+func HaveAppStudioTestsFinished(snapshot *applicationapiv1alpha1.Snapshot) bool {
+	statusCondition := meta.FindStatusCondition(snapshot.Status.Conditions, AppStudioTestSuceededCondition)
+	if statusCondition == nil {
+		statusCondition = meta.FindStatusCondition(snapshot.Status.Conditions, LegacyTestSuceededCondition)
+		return statusCondition != nil && statusCondition.Status != metav1.ConditionUnknown
+	}
 	return statusCondition != nil && statusCondition.Status != metav1.ConditionUnknown
 }
 
-// HaveHACBSTestsSucceeded checks if the HACBS tests have finished by checking if the HACBS Test Succeeded condition is set.
-func HaveHACBSTestsSucceeded(snapshot *applicationapiv1alpha1.Snapshot) bool {
-	return meta.IsStatusConditionTrue(snapshot.Status.Conditions, HACBSTestSuceededCondition)
+// HaveAppStudioTestsSucceeded checks if the AppStudio tests have finished by checking if the AppStudio Test Succeeded condition is set.
+func HaveAppStudioTestsSucceeded(snapshot *applicationapiv1alpha1.Snapshot) bool {
+	if meta.FindStatusCondition(snapshot.Status.Conditions, AppStudioTestSuceededCondition) == nil {
+		return meta.IsStatusConditionTrue(snapshot.Status.Conditions, LegacyTestSuceededCondition)
+	}
+	return meta.IsStatusConditionTrue(snapshot.Status.Conditions, AppStudioTestSuceededCondition)
 }
 
 // CanSnapshotBePromoted checks if the Snapshot in question can be promoted for deployment and release.
 func CanSnapshotBePromoted(snapshot *applicationapiv1alpha1.Snapshot) (bool, []string) {
 	canBePromoted := true
 	reasons := make([]string, 0)
-	if !HaveHACBSTestsSucceeded(snapshot) {
+	if !HaveAppStudioTestsSucceeded(snapshot) {
 		canBePromoted = false
 		reasons = append(reasons, "the Snapshot hasn't passed all required integration tests")
 	}
@@ -340,7 +359,7 @@ func IsSnapshotCreatedByPACPullRequestEvent(snapshot *applicationapiv1alpha1.Sna
 func HasSnapshotTestingChangedToFinished(objectOld, objectNew client.Object) bool {
 	if oldSnapshot, ok := objectOld.(*applicationapiv1alpha1.Snapshot); ok {
 		if newSnapshot, ok := objectNew.(*applicationapiv1alpha1.Snapshot); ok {
-			return !HaveHACBSTestsFinished(oldSnapshot) && HaveHACBSTestsFinished(newSnapshot)
+			return !HaveAppStudioTestsFinished(oldSnapshot) && HaveAppStudioTestsFinished(newSnapshot)
 		}
 	}
 	return false
