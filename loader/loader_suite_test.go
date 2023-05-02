@@ -1,5 +1,5 @@
 /*
-Copyright 2022.
+Copyright 2023.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package snapshot
+package loader
 
 import (
 	"context"
@@ -24,10 +24,11 @@ import (
 
 	goodies "github.com/redhat-appstudio/operator-goodies/test"
 
-	"k8s.io/client-go/rest"
-
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/envtest"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
@@ -35,12 +36,10 @@ import (
 
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	integrationalpha1 "github.com/redhat-appstudio/integration-service/api/v1alpha1"
-	"github.com/redhat-appstudio/integration-service/controllers/pipeline"
 	releasev1alpha1 "github.com/redhat-appstudio/release-service/api/v1alpha1"
 	tektonv1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 	clientsetscheme "k8s.io/client-go/kubernetes/scheme"
-	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/envtest"
+	"k8s.io/client-go/rest"
 )
 
 var (
@@ -51,9 +50,9 @@ var (
 	cancel    context.CancelFunc
 )
 
-func TestControllerSnapshot(t *testing.T) {
+func TestLoader(t *testing.T) {
 	RegisterFailHandler(Fail)
-	RunSpecs(t, "Snapshot Controller Test Suite")
+	RunSpecs(t, "Loader Test Suite")
 }
 
 var _ = BeforeSuite(func() {
@@ -63,7 +62,7 @@ var _ = BeforeSuite(func() {
 	//adding required CRDs, including tekton for PipelineRun Kind
 	testEnv = &envtest.Environment{
 		CRDDirectoryPaths: []string{
-			filepath.Join("..", "..", "config", "crd", "bases"),
+			filepath.Join("..", "config", "crd", "bases"),
 			filepath.Join(
 				build.Default.GOPATH,
 				"pkg", "mod", goodies.GetRelativeDependencyPath("tektoncd/pipeline"), "config",
@@ -101,9 +100,8 @@ var _ = BeforeSuite(func() {
 	go func() {
 		defer GinkgoRecover()
 		Expect(setupCache(k8sManager)).To(Succeed())
-		Expect(pipeline.SetupApplicationComponentCache(k8sManager)).To(Succeed())
-		Expect(pipeline.SetupIntegrationTestScenarioCache(k8sManager)).To(Succeed())
-		Expect(pipeline.SetupSnapshotCache(k8sManager)).To(Succeed())
+		//Expect(pipeline.SetupIntegrationTestScenarioCache(k8sManager)).To(Succeed())
+		//Expect(pipeline.SetupSnapshotCache(k8sManager)).To(Succeed())
 		Expect(k8sManager.Start(ctx)).To(Succeed())
 	}()
 })
