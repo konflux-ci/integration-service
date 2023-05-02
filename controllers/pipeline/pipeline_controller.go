@@ -23,12 +23,12 @@ import (
 	"github.com/go-logr/logr"
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/helpers"
+	"github.com/redhat-appstudio/integration-service/loader"
 	"github.com/redhat-appstudio/integration-service/tekton"
 	"github.com/redhat-appstudio/operator-goodies/reconciler"
 	tektonv1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
@@ -84,7 +84,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 			"PipelineRun.Name", pipelineRun.Name, "PipelineRun.Namespace", pipelineRun.Namespace)
 		return ctrl.Result{}, err
 	}
-	component, err := r.getComponentFromPipelineRun(ctx, pipelineRun)
+	component, err := loader.GetComponentFromPipelineRun(r.Client, ctx, pipelineRun)
 	if err != nil {
 		logger.Error(err, "Failed to get Component for",
 			"PipelineRun.Name", pipelineRun.Name, "PipelineRun.Namespace", pipelineRun.Namespace)
@@ -93,14 +93,14 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 
 	application := &applicationapiv1alpha1.Application{}
 	if component != nil {
-		application, err = r.getApplicationFromComponent(ctx, component)
+		application, err = loader.GetApplicationFromComponent(r.Client, ctx, component)
 		if err != nil {
 			logger.Error(err, "Failed to get Application for",
 				"Component.Name ", component.Name, "Component.Namespace ", component.Namespace)
 			return ctrl.Result{}, err
 		}
 	} else if pipelineType == tekton.PipelineRunTestType {
-		application, err = r.getApplicationFromPipelineRun(ctx, pipelineRun)
+		application, err = loader.GetApplicationFromPipelineRun(r.Client, ctx, pipelineRun)
 		if err != nil {
 			logger.Error(err, "Failed to get Application for",
 				"PipelineRun.Name", pipelineRun.Name, "PipelineRun.Namespace", pipelineRun.Namespace)
@@ -122,62 +122,6 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		adapter.EnsureStatusReported,
 		adapter.EnsureEphemeralEnvironmentsCleanedUp,
 	})
-}
-
-// getComponentFromPipelineRun loads from the cluster the Component referenced in the given PipelineRun. If the PipelineRun doesn't
-// specify a Component or this is not found in the cluster, an error will be returned.
-func (r *Reconciler) getComponentFromPipelineRun(context context.Context, pipelineRun *tektonv1beta1.PipelineRun) (*applicationapiv1alpha1.Component, error) {
-	if componentName, found := pipelineRun.Labels[tekton.PipelineRunComponentLabel]; found {
-		component := &applicationapiv1alpha1.Component{}
-		err := r.Get(context, types.NamespacedName{
-			Namespace: pipelineRun.Namespace,
-			Name:      componentName,
-		}, component)
-
-		if err != nil {
-			return nil, err
-		}
-
-		return component, nil
-	}
-
-	return nil, nil
-}
-
-// getApplicationFromPipelineRun loads from the cluster the Application referenced in the given PipelineRun. If the PipelineRun doesn't
-// specify an Application or this is not found in the cluster, an error will be returned.
-func (r *Reconciler) getApplicationFromPipelineRun(context context.Context, pipelineRun *tektonv1beta1.PipelineRun) (*applicationapiv1alpha1.Application, error) {
-	if applicationName, found := pipelineRun.Labels[tekton.PipelineRunApplicationLabel]; found {
-		application := &applicationapiv1alpha1.Application{}
-		err := r.Get(context, types.NamespacedName{
-			Namespace: pipelineRun.Namespace,
-			Name:      applicationName,
-		}, application)
-
-		if err != nil {
-			return nil, err
-		}
-
-		return application, nil
-	}
-
-	return nil, nil
-}
-
-// getApplicationFromComponent loads from the cluster the Application referenced in the given Component. If the Component doesn't
-// specify an Application or this is not found in the cluster, an error will be returned.
-func (r *Reconciler) getApplicationFromComponent(context context.Context, component *applicationapiv1alpha1.Component) (*applicationapiv1alpha1.Application, error) {
-	application := &applicationapiv1alpha1.Application{}
-	err := r.Get(context, types.NamespacedName{
-		Namespace: component.Namespace,
-		Name:      component.Spec.Application,
-	}, application)
-
-	if err != nil {
-		return nil, err
-	}
-
-	return application, nil
 }
 
 // AdapterInterface is an interface defining all the operations that should be defined in an Integration adapter.

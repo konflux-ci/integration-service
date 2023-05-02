@@ -31,6 +31,8 @@ import (
 	h "github.com/redhat-appstudio/integration-service/helpers"
 	"github.com/redhat-appstudio/integration-service/release"
 	"github.com/redhat-appstudio/integration-service/tekton"
+
+	"github.com/redhat-appstudio/integration-service/loader"
 	"github.com/redhat-appstudio/operator-goodies/reconciler"
 	releasev1alpha1 "github.com/redhat-appstudio/release-service/api/v1alpha1"
 	"github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
@@ -181,7 +183,7 @@ func (a *Adapter) EnsureCreationOfEnvironment() (reconciler.OperationResult, err
 		return reconciler.ContinueProcessing()
 	}
 
-	allEnvironments, err := a.getAllEnvironments()
+	allEnvironments, err := loader.GetAllEnvironments(a.client, a.context, a.application)
 	if err != nil {
 		a.logger.Error(err, "Failed to get all environments.",
 			"Application.Name", a.application.Name,
@@ -227,7 +229,7 @@ TestScenarioLoop:
 			copyEnv, h.LogActionAdd,
 			"integrationTestScenario.Name", integrationTestScenario.Name)
 
-		components, err := a.getAllApplicationComponents(a.application)
+		components, err := loader.GetAllApplicationComponents(a.client, a.context, a.application)
 		if err != nil {
 			return reconciler.RequeueWithError(err)
 		}
@@ -335,7 +337,7 @@ func (a *Adapter) EnsureSnapshotEnvironmentBindingExist() (reconciler.OperationR
 		return reconciler.RequeueWithError(err)
 	}
 
-	components, err := a.getAllApplicationComponents(a.application)
+	components, err := loader.GetAllApplicationComponents(a.client, a.context, a.application)
 	if err != nil {
 		return reconciler.RequeueWithError(err)
 	}
@@ -389,27 +391,10 @@ func (a *Adapter) EnsureSnapshotEnvironmentBindingExist() (reconciler.OperationR
 	return reconciler.ContinueProcessing()
 }
 
-// getReleasesWithSnapshot returns all Releases associated with the given snapshot.
-// In the case the List operation fails, an error will be returned.
-func (a *Adapter) getReleasesWithSnapshot(snapshot *applicationapiv1alpha1.Snapshot) (*[]releasev1alpha1.Release, error) {
-	releases := &releasev1alpha1.ReleaseList{}
-	opts := []client.ListOption{
-		client.InNamespace(snapshot.Namespace),
-		client.MatchingFields{"spec.snapshot": snapshot.Name},
-	}
-
-	err := a.client.List(a.context, releases, opts...)
-	if err != nil {
-		return nil, err
-	}
-
-	return &releases.Items, nil
-}
-
 // createMissingReleasesForReleasePlans checks if there's existing Releases for a given list of ReleasePlans and creates
 // new ones if they are missing. In case the Releases can't be created, an error will be returned.
 func (a *Adapter) createMissingReleasesForReleasePlans(application *applicationapiv1alpha1.Application, releasePlans *[]releasev1alpha1.ReleasePlan, snapshot *applicationapiv1alpha1.Snapshot) error {
-	releases, err := a.getReleasesWithSnapshot(snapshot)
+	releases, err := loader.GetReleasesWithSnapshot(a.client, a.context, a.snapshot)
 	if err != nil {
 		return err
 	}
@@ -444,20 +429,9 @@ func (a *Adapter) createMissingReleasesForReleasePlans(application *applicationa
 	return nil
 }
 
-// getAllEnvironments gets all environments in the namespace
-func (a *Adapter) getAllEnvironments() (*[]applicationapiv1alpha1.Environment, error) {
-
-	environmentList := &applicationapiv1alpha1.EnvironmentList{}
-	opts := []client.ListOption{
-		client.InNamespace(a.application.Namespace),
-	}
-	err := a.client.List(a.context, environmentList, opts...)
-	return &environmentList.Items, err
-}
-
 // findAvailableEnvironments gets all environments that don't have a ParentEnvironment and are not tagged as ephemeral.
 func (a *Adapter) findAvailableEnvironments() (*[]applicationapiv1alpha1.Environment, error) {
-	allEnvironments, err := a.getAllEnvironments()
+	allEnvironments, err := loader.GetAllEnvironments(a.client, a.context, a.application)
 	if err != nil {
 		return nil, err
 	}
@@ -477,23 +451,6 @@ func (a *Adapter) findAvailableEnvironments() (*[]applicationapiv1alpha1.Environ
 		}
 	}
 	return &availableEnvironments, nil
-}
-
-// getAllApplicationComponents loads from the cluster all Components associated with the given Application.
-// If the Application doesn't have any Components or this is not found in the cluster, an error will be returned.
-func (a *Adapter) getAllApplicationComponents(application *applicationapiv1alpha1.Application) (*[]applicationapiv1alpha1.Component, error) {
-	applicationComponents := &applicationapiv1alpha1.ComponentList{}
-	opts := []client.ListOption{
-		client.InNamespace(application.Namespace),
-		client.MatchingFields{"spec.application": application.Name},
-	}
-
-	err := a.client.List(a.context, applicationComponents, opts...)
-	if err != nil {
-		return nil, err
-	}
-
-	return &applicationComponents.Items, nil
 }
 
 // createIntegrationPipelineRun creates and returns a new integration PipelineRun. The Pipeline information and the parameters to it

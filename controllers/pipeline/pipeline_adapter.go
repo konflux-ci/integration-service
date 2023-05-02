@@ -27,6 +27,7 @@ import (
 	"github.com/redhat-appstudio/integration-service/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/gitops"
 	h "github.com/redhat-appstudio/integration-service/helpers"
+	"github.com/redhat-appstudio/integration-service/loader"
 	"github.com/redhat-appstudio/integration-service/status"
 	"github.com/redhat-appstudio/integration-service/tekton"
 	"github.com/redhat-appstudio/operator-goodies/reconciler"
@@ -246,7 +247,7 @@ func (a *Adapter) EnsureEphemeralEnvironmentsCleanedUp() (reconciler.OperationRe
 		return reconciler.ContinueProcessing()
 	}
 
-	testEnvironment, err := a.getEnvironmentFromIntegrationPipelineRun(a.context, a.pipelineRun)
+	testEnvironment, err := loader.GetEnvironmentFromIntegrationPipelineRun(a.client, a.context, a.pipelineRun)
 	if err != nil {
 		a.logger.Error(err, "Failed to find the environment for the pipelineRun")
 		return reconciler.RequeueWithError(err)
@@ -318,43 +319,6 @@ func (a *Adapter) EnsureEphemeralEnvironmentsCleanedUp() (reconciler.OperationRe
 	}
 
 	return reconciler.ContinueProcessing()
-}
-
-// getEnvironmentFromIntegrationPipelineRun loads from the cluster the Environment referenced in the given PipelineRun.
-// If the PipelineRun doesn't specify an Environment or this is not found in the cluster, an error will be returned.
-func (a *Adapter) getEnvironmentFromIntegrationPipelineRun(context context.Context, pipelineRun *tektonv1beta1.PipelineRun) (*applicationapiv1alpha1.Environment, error) {
-	if environmentLabel, ok := pipelineRun.Labels[tekton.EnvironmentNameLabel]; ok {
-		environment := &applicationapiv1alpha1.Environment{}
-		err := a.client.Get(context, types.NamespacedName{
-			Namespace: pipelineRun.Namespace,
-			Name:      environmentLabel,
-		}, environment)
-
-		if err != nil {
-			return nil, err
-		}
-
-		return environment, nil
-	} else {
-		return nil, nil
-	}
-}
-
-// getAllApplicationComponents loads from the cluster all Components associated with the given Application.
-// If the Application doesn't have any Components or this is not found in the cluster, an error will be returned.
-func (a *Adapter) getAllApplicationComponents(application *applicationapiv1alpha1.Application) (*[]applicationapiv1alpha1.Component, error) {
-	applicationComponents := &applicationapiv1alpha1.ComponentList{}
-	opts := []client.ListOption{
-		client.InNamespace(application.Namespace),
-		client.MatchingFields{"spec.application": application.Name},
-	}
-
-	err := a.client.List(a.context, applicationComponents, opts...)
-	if err != nil {
-		return nil, err
-	}
-
-	return &applicationComponents.Items, nil
 }
 
 // getImagePullSpecFromPipelineRun gets the full image pullspec from the given build PipelineRun,
@@ -497,7 +461,7 @@ func (a *Adapter) getAllPipelineRunsForSnapshot(snapshot *applicationapiv1alpha1
 // prepareSnapshot prepares the Snapshot for a given application and the updated component (if any).
 // In case the Snapshot can't be created, an error will be returned.
 func (a *Adapter) prepareSnapshot(application *applicationapiv1alpha1.Application, component *applicationapiv1alpha1.Component, newContainerImage string, newComponentSource *applicationapiv1alpha1.ComponentSource) (*applicationapiv1alpha1.Snapshot, error) {
-	applicationComponents, err := a.getAllApplicationComponents(application)
+	applicationComponents, err := loader.GetAllApplicationComponents(a.client, a.context, application)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get all Application Components for Application %s", a.application.Name)
 	}
