@@ -65,7 +65,7 @@ func NewIntegrationReconciler(client client.Client, logger *logr.Logger, scheme 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
 func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	logger := helpers.IntegrationLogger{Logger: r.Log.WithValues("Integration", req.NamespacedName)}
+	logger := helpers.IntegrationLogger{Logger: r.Log.WithValues("pipelineRun", req.NamespacedName)}
 
 	pipelineRun := &tektonv1beta1.PipelineRun{}
 	err := r.Get(ctx, req.NamespacedName, pipelineRun)
