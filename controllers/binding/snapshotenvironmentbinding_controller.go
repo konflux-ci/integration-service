@@ -53,8 +53,8 @@ func NewBindingReconciler(client client.Client, logger *logr.Logger, scheme *run
 //+kubebuilder:rbac:groups=tekton.dev,resources=pipelineruns,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=tekton.dev,resources=pipelineruns/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=appstudio.redhat.com,resources=applications/finalizers,verbs=update
-//+kubebuilder:rbac:groups=appstudio.redhat.com,resources=deploymentTargets,verbs=get;list;watch
-//+kubebuilder:rbac:groups=appstudio.redhat.com,resources=deploymentTargetClaims,verbs=get;list;watch
+//+kubebuilder:rbac:groups=appstudio.redhat.com,resources=deploymenttargets,verbs=get;list;watch
+//+kubebuilder:rbac:groups=appstudio.redhat.com,resources=deploymenttargetclaims,verbs=get;list;watch
 //+kubebuilder:rbac:groups=appstudio.redhat.com,resources=environments,verbs=get;list;watch
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
