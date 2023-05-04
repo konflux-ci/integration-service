@@ -111,8 +111,10 @@ spec:
                   name:
                     type: string
                   type:
-                    description: EnvironmentType currently indicates whether an environment
-                      is POC/Non-POC, see API doc for details.
+                    description: 'DEPRECATED: EnvironmentType should no longer be
+                      used, and has no replacement. - It''s original purpose was to
+                      indicate whether an environment is POC/Non-POC, but these data
+                      were ultimately not required.'
                     type: string
                 required:
                 - name
@@ -317,8 +319,10 @@ spec:
                   name:
                     type: string
                   type:
-                    description: EnvironmentType currently indicates whether an environment
-                      is POC/Non-POC, see API doc for details.
+                    description: 'DEPRECATED: EnvironmentType should no longer be
+                      used, and has no replacement. - It''s original purpose was to
+                      indicate whether an environment is POC/Non-POC, but these data
+                      were ultimately not required.'
                     type: string
                 required:
                 - name
