@@ -15,6 +15,7 @@ package helpers
 
 import (
 	"github.com/go-logr/logr"
+	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 )
@@ -50,6 +51,10 @@ func loggerWithObjectMeta(obj runtime.Object, log logr.Logger) logr.Logger {
 	return log.WithValues("namespace", namespace, "name", name, "controllerKind", kind)
 }
 
+func (il *IntegrationLogger) setLogger(log logr.Logger) {
+	il.Logger = log
+}
+
 // LogAuditEvent should be used for auditable events to log all required metadata
 // msg is a user friendly log message
 // obj is k8s runtime object
@@ -62,4 +67,11 @@ func (il *IntegrationLogger) LogAuditEvent(msg string, obj runtime.Object, actio
 	log = log.WithValues("audit", "true", "action", action)
 
 	log.Info(msg, keysAndValues...)
+}
+
+// WithApp returns a new logger with application.name and application.namespace key-values
+func (il IntegrationLogger) WithApp(app applicationapiv1alpha1.Application) IntegrationLogger {
+	log := il.Logger.WithValues("application.namespace", app.Namespace, "application.name", app.Name)
+	il.setLogger(log)
+	return il
 }

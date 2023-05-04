@@ -113,6 +113,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		logger.Error(err, "reconcile cannot resolve application")
 		return ctrl.Result{}, err
 	}
+	logger = logger.WithApp(*application)
 
 	adapter := NewAdapter(pipelineRun, component, application, logger, r.Client, ctx)
 

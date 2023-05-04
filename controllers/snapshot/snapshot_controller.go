@@ -82,6 +82,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 			"Snapshot.Name ", snapshot.Name, "Snapshot.Namespace ", snapshot.Namespace)
 		return ctrl.Result{}, err
 	}
+	logger = logger.WithApp(*application)
 
 	component, err := loader.GetComponentFromSnapshot(r.Client, ctx, snapshot)
 	if err != nil {

@@ -70,6 +70,9 @@ func (a *Adapter) EnsureCreatedScenarioIsValid() (reconciler.OperationResult, er
 		}
 		return reconciler.ContinueProcessing()
 	}
+
+	// application exist, always log it
+	a.logger = a.logger.WithApp(*a.application)
 	// Checks if scenario has ownerReference assigned to it
 	if a.scenario.OwnerReferences == nil {
 		patch := client.MergeFrom(a.scenario.DeepCopy())
