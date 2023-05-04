@@ -16,6 +16,7 @@ import (
 	integrationv1alpha1 "github.com/redhat-appstudio/integration-service/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/loader"
 	releasev1alpha1 "github.com/redhat-appstudio/release-service/api/v1alpha1"
+	releasemetadata "github.com/redhat-appstudio/release-service/metadata"
 	tektonv1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -111,7 +112,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 				GenerateName: "test-releaseplan-",
 				Namespace:    "default",
 				Labels: map[string]string{
-					releasev1alpha1.AutoReleaseLabel: "true",
+					releasemetadata.AutoReleaseLabel: "true",
 				},
 			},
 			Spec: releasev1alpha1.ReleasePlanSpec{
