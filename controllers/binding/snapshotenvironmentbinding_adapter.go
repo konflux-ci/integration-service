@@ -73,11 +73,11 @@ func (a *Adapter) EnsureIntegrationTestPipelineForScenarioExists() (reconciler.O
 		}
 		if integrationPipelineRun != nil {
 			a.logger.Info("Found existing integrationPipelineRun",
-				"IntegrationTestScenario.Name", a.integrationTestScenario.Name,
+				"integrationTestScenario.Name", a.integrationTestScenario.Name,
 				"integrationPipelineRun.Name", integrationPipelineRun.Name)
 		} else {
 			a.logger.Info("Creating new pipelinerun for integrationTestscenario",
-				"IntegrationTestScenario.Name", a.integrationTestScenario.Name,
+				"integrationTestScenario.Name", a.integrationTestScenario.Name,
 				"app name", a.application.Name,
 				"namespace", a.application.Namespace)
 			pipelineRun, err := a.createIntegrationPipelineRunWithEnvironment(a.application, a.integrationTestScenario, a.snapshot, a.environment)

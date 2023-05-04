@@ -78,16 +78,14 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 
 	application, err := loader.GetApplicationFromSnapshot(r.Client, ctx, snapshot)
 	if err != nil {
-		logger.Error(err, "Failed to get Application for ",
-			"Snapshot.Name ", snapshot.Name, "Snapshot.Namespace ", snapshot.Namespace)
+		logger.Error(err, "Failed to get Application from the Snapshot")
 		return ctrl.Result{}, err
 	}
 	logger = logger.WithApp(*application)
 
 	component, err := loader.GetComponentFromSnapshot(r.Client, ctx, snapshot)
 	if err != nil {
-		logger.Error(err, "Failed to get Application for ",
-			"Component.Name ", snapshot.Name, "Component.Namespace ", snapshot.Namespace)
+		logger.Error(err, "Failed to get Component from the Snapshot")
 		return ctrl.Result{}, err
 	}
 

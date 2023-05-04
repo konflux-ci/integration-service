@@ -82,9 +82,7 @@ func (a *Adapter) EnsureSnapshotExists() (reconciler.OperationResult, error) {
 		// not the last started pipeline that succeeded for current snapshot
 		// this prevents deploying older pipeline run over new deployment
 		a.logger.Info("The pipelineRun is not the latest succeded pipelineRun for the component, skipping creation of a new Snapshot ",
-			"PipelineRun.Namespace", a.pipelineRun.Namespace,
-			"PipelineRun.Name", a.pipelineRun.Name,
-			"Component.Name", a.component.Name)
+			"component.Name", a.component.Name)
 		return reconciler.ContinueProcessing()
 	}
 
@@ -99,23 +97,20 @@ func (a *Adapter) EnsureSnapshotExists() (reconciler.OperationResult, error) {
 
 	if existingSnapshot != nil {
 		a.logger.Info("Found existing Snapshot",
-			"Application.Name", a.application.Name,
-			"Snapshot.Name", existingSnapshot.Name,
-			"Snapshot.Spec.Components", existingSnapshot.Spec.Components)
+			"snapshot.Name", existingSnapshot.Name,
+			"snapshot.Spec.Components", existingSnapshot.Spec.Components)
 		return reconciler.ContinueProcessing()
 	}
 
 	err = a.client.Create(a.context, expectedSnapshot)
 	if err != nil {
-		a.logger.Error(err, "Failed to create Snapshot",
-			"Application.Name", a.application.Name, "Application.Namespace", a.application.Namespace)
+		a.logger.Error(err, "Failed to create Snapshot")
 		return reconciler.RequeueWithError(err)
 	}
 
 	a.logger.LogAuditEvent("Created new Snapshot", expectedSnapshot, h.LogActionAdd,
-		"Application.Name", a.application.Name,
-		"Snapshot.Name", expectedSnapshot.Name,
-		"Snapshot.Spec.Components", expectedSnapshot.Spec.Components)
+		"snapshot.Name", expectedSnapshot.Name,
+		"snapshot.Spec.Components", expectedSnapshot.Spec.Components)
 
 	return reconciler.ContinueProcessing()
 }
@@ -133,9 +128,8 @@ func (a *Adapter) EnsureSnapshotPassedAllTests() (reconciler.OperationResult, er
 	}
 	if existingSnapshot != nil {
 		a.logger.Info("Found existing Snapshot",
-			"Application.Name", a.application.Name,
-			"Snapshot.Name", existingSnapshot.Name,
-			"Snapshot.Spec.Components", existingSnapshot.Spec.Components)
+			"snapshot.Name", existingSnapshot.Name,
+			"snapshot.Spec.Components", existingSnapshot.Spec.Components)
 	}
 
 	// Get all integrationTestScenarios for the Application and then find the latest Succeeded Integration PipelineRuns
@@ -147,15 +141,15 @@ func (a *Adapter) EnsureSnapshotPassedAllTests() (reconciler.OperationResult, er
 	integrationPipelineRuns, err := a.getAllPipelineRunsForSnapshot(existingSnapshot, integrationTestScenarios)
 	if err != nil {
 		a.logger.Error(err, "Failed to get Integration PipelineRuns",
-			"Snapshot.Name", existingSnapshot.Name)
+			"snapshot.Name", existingSnapshot.Name)
 		return reconciler.RequeueWithError(err)
 	}
 
 	// Skip doing anything if not all Integration PipelineRuns were found for all integrationTestScenarios
 	if len(*integrationTestScenarios) != len(*integrationPipelineRuns) {
 		a.logger.Info("Not all required Integration PipelineRuns finished",
-			"Snapshot.Name", existingSnapshot.Name,
-			"Snapshot.Spec.Components", existingSnapshot.Spec.Components)
+			"snapshot.Name", existingSnapshot.Name,
+			"snapshot.Spec.Components", existingSnapshot.Spec.Components)
 		return reconciler.ContinueProcessing()
 	}
 
@@ -170,7 +164,7 @@ func (a *Adapter) EnsureSnapshotPassedAllTests() (reconciler.OperationResult, er
 	allIntegrationPipelineRunsPassed, err := a.determineIfAllIntegrationPipelinesPassed(integrationPipelineRuns)
 	if err != nil {
 		a.logger.Error(err, "Failed to determine outcomes for Integration PipelineRuns",
-			"Snapshot.Name", existingSnapshot.Name)
+			"snapshot.Name", existingSnapshot.Name)
 		return reconciler.RequeueWithError(err)
 	}
 
@@ -180,14 +174,13 @@ func (a *Adapter) EnsureSnapshotPassedAllTests() (reconciler.OperationResult, er
 		compositeSnapshot, err := a.createCompositeSnapshotsIfConflictExists(a.application, a.component, existingSnapshot)
 		if err != nil {
 			a.logger.Error(err, "Failed to determine if a composite snapshot needs to be created because of a conflict",
-				"Snapshot.Name", existingSnapshot.Name)
+				"snapshot.Name", existingSnapshot.Name)
 			return reconciler.RequeueWithError(err)
 		}
 
 		if compositeSnapshot != nil {
 			a.logger.Info("The global component list has changed in the meantime, marking snapshot as Invalid",
-				"Application.Name", a.application.Name,
-				"Snapshot.Name", existingSnapshot.Name)
+				"snapshot.Name", existingSnapshot.Name)
 			gitops.SetSnapshotIntegrationStatusAsInvalid(existingSnapshot,
 				"The global component list has changed in the meantime, superseding with a composite snapshot")
 			a.logger.LogAuditEvent("Snapshot integration status condition marked as invalid, the global component list has changed in the meantime",
@@ -396,13 +389,11 @@ func (a *Adapter) determineIfAllIntegrationPipelinesPassed(integrationPipelineRu
 		integrationPipelineRun := integrationPipelineRun // G601
 		pipelineRunOutcome, err := h.CalculateIntegrationPipelineRunOutcome(a.client, a.context, a.logger.Logger, &integrationPipelineRun)
 		if err != nil {
-			a.logger.Error(err, "Failed to get Integration PipelineRun outcome",
-				"PipelineRun.Name", integrationPipelineRun.Name, "PipelineRun.Namespace", integrationPipelineRun.Namespace)
+			a.logger.Error(err, "Failed to get Integration PipelineRun outcome")
 			return false, err
 		}
 		if !pipelineRunOutcome {
-			a.logger.Info("Integration PipelineRun did not pass all tests",
-				"PipelineRun.Name", integrationPipelineRun.Name, "PipelineRun.Namespace", integrationPipelineRun.Namespace)
+			a.logger.Info("Integration PipelineRun did not pass all tests")
 			allIntegrationPipelineRunsPassed = false
 		}
 	}
@@ -443,14 +434,14 @@ func (a *Adapter) getAllPipelineRunsForSnapshot(snapshot *applicationapiv1alpha1
 			}
 			if integrationPipelineRun != nil {
 				a.logger.Info("Found existing integrationPipelineRun",
-					"IntegrationTestScenario.Name", integrationTestScenario.Name,
+					"integrationTestScenario.Name", integrationTestScenario.Name,
 					"integrationPipelineRun.Name", integrationPipelineRun.Name)
 				integrationPipelineRuns = append(integrationPipelineRuns, *integrationPipelineRun)
 			}
 		} else {
 			integrationPipelineRuns = append(integrationPipelineRuns, *a.pipelineRun)
 			a.logger.Info("The current integrationPipelineRun matches the integration test scenario",
-				"IntegrationTestScenario.Name", integrationTestScenario.Name,
+				"integrationTestScenario.Name", integrationTestScenario.Name,
 				"integrationPipelineRun.Name", a.pipelineRun.Name)
 		}
 	}
@@ -588,9 +579,8 @@ func (a *Adapter) createCompositeSnapshotsIfConflictExists(application *applicat
 
 		if existingCompositeSnapshot != nil {
 			a.logger.Info("Found existing composite Snapshot",
-				"Application.Name", a.application.Name,
-				"Snapshot.Name", existingCompositeSnapshot.Name,
-				"Snapshot.Spec.Components", existingCompositeSnapshot.Spec.Components)
+				"snapshot.Name", existingCompositeSnapshot.Name,
+				"snapshot.Spec.Components", existingCompositeSnapshot.Spec.Components)
 			return existingCompositeSnapshot, nil
 		} else {
 			err = a.client.Create(a.context, compositeSnapshot)
@@ -598,8 +588,7 @@ func (a *Adapter) createCompositeSnapshotsIfConflictExists(application *applicat
 				return nil, err
 			}
 			a.logger.LogAuditEvent("CompositeSnapshot created", compositeSnapshot, h.LogActionAdd,
-				"Application.Name", a.application.Name,
-				"Snapshot.Spec.Components", compositeSnapshot.Spec.Components)
+				"snapshot.Spec.Components", compositeSnapshot.Spec.Components)
 			return compositeSnapshot, nil
 		}
 	}

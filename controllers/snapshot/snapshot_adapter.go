@@ -92,40 +92,32 @@ func (a *Adapter) EnsureAllIntegrationTestPipelinesExist() (reconciler.Operation
 			integrationPipelineRuns, err := h.GetAllPipelineRunsForSnapshotAndScenario(a.client, a.context, a.snapshot, &integrationTestScenario)
 			if err != nil {
 				a.logger.Error(err, "Failed to get pipelineRuns for snapshot and scenario",
-					"Snapshot.Name:", a.snapshot.Name,
-					"IntegrationTestScenario.Name", integrationTestScenario.Name)
+					"integrationTestScenario.Name", integrationTestScenario.Name)
 				return reconciler.RequeueOnErrorOrStop(err)
 			}
 			if integrationPipelineRuns != nil && len(*integrationPipelineRuns) > 0 {
 				a.logger.Info("Found existing integrationPipelineRuns",
-					"Snapshot.Name", a.snapshot.Name,
-					"IntegrationTestScenario.Name", integrationTestScenario.Name,
+					"integrationTestScenario.Name", integrationTestScenario.Name,
 					"len(integrationPipelineRuns)", len(*integrationPipelineRuns))
 			} else {
 				a.logger.Info("Creating new pipelinerun for integrationTestscenario",
-					"IntegrationTestScenario.Name", integrationTestScenario.Name,
-					"app name", a.application.Name,
-					"namespace", a.application.Namespace)
+					"integrationTestScenario.Name", integrationTestScenario.Name)
 				pipelineRun, err := a.createIntegrationPipelineRun(a.application, &integrationTestScenario, a.snapshot)
 				if err != nil {
 					a.logger.Error(err, "Failed to create pipelineRun for snapshot and scenario")
 					return reconciler.RequeueOnErrorOrStop(err)
 				}
 				a.logger.LogAuditEvent("IntegrationTestscenario pipeline has been created", pipelineRun, h.LogActionAdd,
-					"IntegrationTestScenario.Name", integrationTestScenario.Name,
-					"Application.name", a.application.Name,
-					"Snapshot.name", a.snapshot.Name,
-					"Namespace", a.application.Namespace)
+					"integrationTestScenario.Name", integrationTestScenario.Name)
 				gitops.PrepareToRegisterIntegrationPipelineRun(a.snapshot)
 				if gitops.IsSnapshotNotStarted(a.snapshot) {
 					_, err := gitops.MarkSnapshotIntegrationStatusAsInProgress(a.client, a.context, a.snapshot, "Snapshot starts being tested by the integrationPipelineRun")
 					if err != nil {
-						a.logger.Error(err, "Failed to update integration status condition to in progress for snapshot",
-							"Snapshot.Name", a.snapshot.Name,
-							"Snapshot.Namespace", a.snapshot.Namespace)
+						a.logger.Error(err, "Failed to update integration status condition to in progress for snapshot")
+					} else {
+						a.logger.LogAuditEvent("Snapshot integration status marked as In Progress. Snapshot starts being tested by the integrationPipelineRun",
+							a.snapshot, h.LogActionUpdate)
 					}
-					a.logger.LogAuditEvent("Snapshot integration status marked as In Progress. Snapshot starts being tested by the integrationPipelineRun",
-						a.snapshot, h.LogActionUpdate)
 				}
 
 			}
@@ -134,9 +126,7 @@ func (a *Adapter) EnsureAllIntegrationTestPipelinesExist() (reconciler.Operation
 
 	requiredIntegrationTestScenarios, err := h.GetRequiredIntegrationTestScenariosForApplication(a.client, a.context, a.application)
 	if err != nil {
-		a.logger.Error(err, "Failed to get all required IntegrationTestScenarios",
-			"Application.Name", a.application.Name,
-			"Application.Namespace", a.application.Namespace)
+		a.logger.Error(err, "Failed to get all required IntegrationTestScenarios")
 		patch := client.MergeFrom(a.snapshot.DeepCopy())
 		gitops.SetSnapshotIntegrationStatusAsInvalid(a.snapshot, "Failed to get all required IntegrationTestScenarios")
 		a.logger.LogAuditEvent("Snapshot integration status marked as Invalid. Failed to get all required IntegrationTestScenarios",
@@ -146,9 +136,7 @@ func (a *Adapter) EnsureAllIntegrationTestPipelinesExist() (reconciler.Operation
 	if len(*requiredIntegrationTestScenarios) == 0 {
 		updatedSnapshot, err := gitops.MarkSnapshotAsPassed(a.client, a.context, a.snapshot, "No required IntegrationTestScenarios found, skipped testing")
 		if err != nil {
-			a.logger.Error(err, "Failed to update Snapshot status",
-				"Snapshot.Name", a.snapshot.Name,
-				"Snapshot.Namespace", a.snapshot.Namespace)
+			a.logger.Error(err, "Failed to update Snapshot status")
 			return reconciler.RequeueWithError(err)
 		}
 		a.logger.LogAuditEvent("Snapshot marked as successful. No required IntegrationTestScenarios found, skipped testing",
@@ -171,23 +159,17 @@ func (a *Adapter) EnsureCreationOfEnvironment() (reconciler.OperationResult, err
 	integrationTestScenarios, err := h.GetAllIntegrationTestScenariosForApplication(a.client, a.context, a.application)
 
 	if err != nil {
-		a.logger.Error(err, "Failed to get Integration test scenarios for the following application",
-			"Application.Name", a.application.Name,
-			"Application.Namespace", a.application.Namespace)
+		a.logger.Error(err, "Failed to get Integration test scenarios for the following application")
 		return reconciler.RequeueOnErrorOrStop(err)
 	}
 	if integrationTestScenarios == nil {
-		a.logger.Info("No integration test scenario found for Application",
-			"Application.Name", a.application.Name,
-			"Application.Namespace", a.application.Namespace)
+		a.logger.Info("No integration test scenario found for Application")
 		return reconciler.ContinueProcessing()
 	}
 
 	allEnvironments, err := loader.GetAllEnvironments(a.client, a.context, a.application)
 	if err != nil {
-		a.logger.Error(err, "Failed to get all environments.",
-			"Application.Name", a.application.Name,
-			"Application.Namespace", a.application.Namespace)
+		a.logger.Error(err, "Failed to get all environments.")
 		return reconciler.RequeueOnErrorOrStop(err)
 	}
 
@@ -202,9 +184,8 @@ TestScenarioLoop:
 			//prevent creating already existing environments
 			if h.HasLabelWithValue(&environment, gitops.SnapshotLabel, a.snapshot.Name) && h.HasLabelWithValue(&environment, gitops.SnapshotTestScenarioLabel, integrationTestScenario.Name) {
 				a.logger.Info("Environment already exists and contains snapshot and scenario:",
-					"Environment.Name", environment.Name,
-					"Snapshot.Name", a.snapshot.Name,
-					"IntegrationScenario.Name", integrationTestScenario.Name)
+					"environment.Name", environment.Name,
+					"integrationScenario.Name", integrationTestScenario.Name)
 				continue TestScenarioLoop
 			}
 		}
@@ -237,12 +218,10 @@ TestScenarioLoop:
 		binding, err := a.createSnapshotEnvironmentBindingForSnapshot(a.application, copyEnv, a.snapshot, components)
 		if err != nil {
 			a.logger.Error(err, "Failed to create snapshotEnvironmentbinding for snapshot.",
-				"Binding", binding,
-				"Snapshot.Spec.Components", a.snapshot.Spec.Components)
+				"binding", binding,
+				"snapshot.Spec.Components", a.snapshot.Spec.Components)
 		}
 		a.logger.LogAuditEvent("A snapshotEnvironmentbinding is created", binding, h.LogActionAdd,
-			"snapshot.Name", a.snapshot.Name,
-			"application.Name", a.application.Name,
 			"environment.Name", copyEnv.Name,
 			"integrationTestScenario.Name", integrationTestScenario.Name)
 	}
@@ -260,7 +239,7 @@ func (a *Adapter) EnsureGlobalCandidateImageUpdated() (reconciler.OperationResul
 				err := a.client.Patch(a.context, a.component, patch)
 				if err != nil {
 					a.logger.Error(err, "Failed to update .Spec.ContainerImage of Global Candidate for the Component",
-						"Component.Name", a.component.Name)
+						"component.Name", a.component.Name)
 					return reconciler.RequeueWithError(err)
 				}
 				a.logger.LogAuditEvent("Updated .Spec.ContainerImage of Global Candidate for the Component",
@@ -271,7 +250,7 @@ func (a *Adapter) EnsureGlobalCandidateImageUpdated() (reconciler.OperationResul
 					err = a.client.Status().Patch(a.context, a.component, patch)
 					if err != nil {
 						a.logger.Error(err, "Failed to update .Status.LastBuiltCommit of Global Candidate for the Component",
-							"Component.Name", a.component.Name)
+							"component.Name", a.component.Name)
 						return reconciler.RequeueWithError(err)
 					}
 					a.logger.LogAuditEvent("Updated .Status.LastBuiltCommit of Global Candidate for the Component",
@@ -291,15 +270,13 @@ func (a *Adapter) EnsureAllReleasesExist() (reconciler.OperationResult, error) {
 	canSnapshotBePromoted, reasons := gitops.CanSnapshotBePromoted(a.snapshot)
 	if !canSnapshotBePromoted {
 		a.logger.Info("The Snapshot won't be released.",
-			"Reasons", strings.Join(reasons, ","))
+			"reasons", strings.Join(reasons, ","))
 		return reconciler.ContinueProcessing()
 	}
 
 	releasePlans, err := release.GetAutoReleasePlansForApplication(a.client, a.context, a.application)
 	if err != nil {
-		a.logger.Error(err, "Failed to get all ReleasePlans",
-			"Application.Name", a.application.Name,
-			"Application.Namespace", a.application.Namespace)
+		a.logger.Error(err, "Failed to get all ReleasePlans")
 		patch := client.MergeFrom(a.snapshot.DeepCopy())
 		gitops.SetSnapshotIntegrationStatusAsInvalid(a.snapshot, "Failed to get all ReleasePlans")
 		a.logger.LogAuditEvent("Snapshot integration status marked as Invalid. Failed to get all ReleasePlans",
@@ -309,9 +286,7 @@ func (a *Adapter) EnsureAllReleasesExist() (reconciler.OperationResult, error) {
 
 	err = a.createMissingReleasesForReleasePlans(a.application, releasePlans, a.snapshot)
 	if err != nil {
-		a.logger.Error(err, "Failed to create new Releases",
-			"Snapshot.Name", a.snapshot.Name,
-			"Snapshot.Namespace", a.snapshot.Namespace)
+		a.logger.Error(err, "Failed to create new Releases")
 		patch := client.MergeFrom(a.snapshot.DeepCopy())
 		gitops.SetSnapshotIntegrationStatusAsInvalid(a.snapshot, "Failed to create new Releases")
 		a.logger.LogAuditEvent("Snapshot integration status marked as Invalid. Failed to create new Releases",
@@ -328,7 +303,7 @@ func (a *Adapter) EnsureSnapshotEnvironmentBindingExist() (reconciler.OperationR
 	canSnapshotBePromoted, reasons := gitops.CanSnapshotBePromoted(a.snapshot)
 	if !canSnapshotBePromoted {
 		a.logger.Info("The Snapshot won't be deployed.",
-			"Reasons", strings.Join(reasons, ","))
+			"reasons", strings.Join(reasons, ","))
 		return reconciler.ContinueProcessing()
 	}
 
@@ -352,9 +327,9 @@ func (a *Adapter) EnsureSnapshotEnvironmentBindingExist() (reconciler.OperationR
 			snapshotEnvironmentBinding, err = a.updateExistingSnapshotEnvironmentBindingWithSnapshot(snapshotEnvironmentBinding, a.snapshot, components)
 			if err != nil {
 				a.logger.Error(err, "Failed to update SnapshotEnvironmentBinding",
-					"SnapshotEnvironmentBinding.Application", snapshotEnvironmentBinding.Spec.Application,
-					"SnapshotEnvironmentBinding.Environment", snapshotEnvironmentBinding.Spec.Environment,
-					"SnapshotEnvironmentBinding.Snapshot", snapshotEnvironmentBinding.Spec.Snapshot)
+					"snapshotEnvironmentBinding.Application", snapshotEnvironmentBinding.Spec.Application,
+					"snapshotEnvironmentBinding.Environment", snapshotEnvironmentBinding.Spec.Environment,
+					"snapshotEnvironmentBinding.Snapshot", snapshotEnvironmentBinding.Spec.Snapshot)
 				patch := client.MergeFrom(a.snapshot.DeepCopy())
 				gitops.SetSnapshotIntegrationStatusAsInvalid(a.snapshot, "Failed to update SnapshotEnvironmentBinding")
 				a.logger.LogAuditEvent("Snapshot integration status marked as Invalid. Failed to update SnapshotEnvironmentBinding",
@@ -371,9 +346,9 @@ func (a *Adapter) EnsureSnapshotEnvironmentBindingExist() (reconciler.OperationR
 			snapshotEnvironmentBinding, err = a.createSnapshotEnvironmentBindingForSnapshot(a.application, &availableEnvironment, a.snapshot, components)
 			if err != nil {
 				a.logger.Error(err, "Failed to create SnapshotEnvironmentBinding",
-					"SnapshotEnvironmentBinding.Application", snapshotEnvironmentBinding.Spec.Application,
-					"SnapshotEnvironmentBinding.Environment", snapshotEnvironmentBinding.Spec.Environment,
-					"SnapshotEnvironmentBinding.Snapshot", snapshotEnvironmentBinding.Spec.Snapshot)
+					"snapshotEnvironmentBinding.Application", snapshotEnvironmentBinding.Spec.Application,
+					"snapshotEnvironmentBinding.Environment", snapshotEnvironmentBinding.Spec.Environment,
+					"snapshotEnvironmentBinding.Snapshot", snapshotEnvironmentBinding.Spec.Snapshot)
 				patch := client.MergeFrom(a.snapshot.DeepCopy())
 				gitops.SetSnapshotIntegrationStatusAsInvalid(a.snapshot, "Failed to create SnapshotEnvironmentBinding")
 				a.logger.LogAuditEvent("Snapshot integration status marked as Invalid. Failed to create SnapshotEnvironmentBinding",
@@ -382,9 +357,9 @@ func (a *Adapter) EnsureSnapshotEnvironmentBindingExist() (reconciler.OperationR
 			}
 			a.logger.LogAuditEvent("SnapshotEnvironmentBinding created for Snapshot",
 				snapshotEnvironmentBinding, h.LogActionAdd,
-				"SnapshotEnvironmentBinding.Application", snapshotEnvironmentBinding.Spec.Application,
-				"SnapshotEnvironmentBinding.Environment", snapshotEnvironmentBinding.Spec.Environment,
-				"SnapshotEnvironmentBinding.Snapshot", snapshotEnvironmentBinding.Spec.Snapshot)
+				"snapshotEnvironmentBinding.Application", snapshotEnvironmentBinding.Spec.Application,
+				"snapshotEnvironmentBinding.Environment", snapshotEnvironmentBinding.Spec.Environment,
+				"snapshotEnvironmentBinding.Snapshot", snapshotEnvironmentBinding.Spec.Snapshot)
 
 		}
 	}
@@ -404,9 +379,9 @@ func (a *Adapter) createMissingReleasesForReleasePlans(application *applicationa
 		existingRelease := release.FindMatchingReleaseWithReleasePlan(releases, releasePlan)
 		if existingRelease != nil {
 			a.logger.Info("Found existing Release",
-				"Snapshot.Name", snapshot.Name,
-				"ReleasePlan.Name", releasePlan.Name,
-				"Release.Name", existingRelease.Name)
+				"snapshot.Name", snapshot.Name,
+				"releasePlan.Name", releasePlan.Name,
+				"release.Name", existingRelease.Name)
 		} else {
 			newRelease := release.NewReleaseForReleasePlan(&releasePlan, snapshot)
 			// Propagate annotations/labels from snapshot to Release
@@ -422,7 +397,6 @@ func (a *Adapter) createMissingReleasesForReleasePlans(application *applicationa
 				return err
 			}
 			a.logger.LogAuditEvent("Created a new Release", newRelease, h.LogActionAdd,
-				"Application.Name", a.application.Name,
 				"releasePlan.Name", releasePlan.Name)
 		}
 	}
