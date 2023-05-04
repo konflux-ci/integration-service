@@ -52,7 +52,7 @@ rules:
 - apiGroups:
   - appstudio.redhat.com
   resources:
-  - deploymentTargetClaims
+  - deploymenttargetclaims
   verbs:
   - create
   - delete
@@ -64,7 +64,7 @@ rules:
 - apiGroups:
   - appstudio.redhat.com
   resources:
-  - deploymentTargetClasses
+  - deploymenttargetclasses
   verbs:
   - get
   - list
@@ -72,7 +72,7 @@ rules:
 - apiGroups:
   - appstudio.redhat.com
   resources:
-  - deploymentTargets
+  - deploymenttargets
   verbs:
   - create
   - delete
