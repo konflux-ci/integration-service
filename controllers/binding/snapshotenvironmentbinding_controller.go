@@ -79,6 +79,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 			"SnapshotEnvironmentBinding.Name ", snapshotEnvironmentBinding.Name, "SnapshotEnvironmentBinding.Namespace ", snapshotEnvironmentBinding.Namespace)
 		return ctrl.Result{}, err
 	}
+	logger = logger.WithApp(*application)
 
 	snapshot, err := r.getSnapshotFromSnapshotEnvironmentBinding(ctx, snapshotEnvironmentBinding)
 	if err != nil {
