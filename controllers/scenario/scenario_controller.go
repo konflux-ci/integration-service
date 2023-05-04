@@ -60,7 +60,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	scenario := &v1alpha1.IntegrationTestScenario{}
 	err := r.Get(ctx, req.NamespacedName, scenario)
 	if err != nil {
-		logger.Error(err, "Failed to get integrationTestScenario for:", "req", req.NamespacedName)
+		logger.Error(err, "Failed to get IntegrationTestScenario from request", "req", req.NamespacedName)
 		if errors.IsNotFound(err) {
 			return ctrl.Result{}, nil
 		}
@@ -70,8 +70,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 
 	application, err := r.getApplicationFromScenario(ctx, scenario)
 	if err != nil {
-		logger.Info("Failed to get Application for ",
-			"IntegrationTestScenario.Name: ", scenario.Name, "IntegrationTestScenario.Namespace: ", scenario.Namespace, "error:", err)
+		logger.Info("Failed to get Application from the IntegrationTestScenario", "error:", err)
 	}
 
 	adapter := NewAdapter(application, scenario, logger, r.Client, ctx)

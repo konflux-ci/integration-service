@@ -95,15 +95,14 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	if component != nil {
 		application, err = loader.GetApplicationFromComponent(r.Client, ctx, component)
 		if err != nil {
-			logger.Error(err, "Failed to get Application for",
+			logger.Error(err, "Failed to get Application from Component",
 				"Component.Name ", component.Name, "Component.Namespace ", component.Namespace)
 			return ctrl.Result{}, err
 		}
 	} else if pipelineType == tekton.PipelineRunTestType {
 		application, err = loader.GetApplicationFromPipelineRun(r.Client, ctx, pipelineRun)
 		if err != nil {
-			logger.Error(err, "Failed to get Application for",
-				"PipelineRun.Name", pipelineRun.Name, "PipelineRun.Namespace", pipelineRun.Namespace)
+			logger.Error(err, "Failed to get Application from the pipelineRun")
 			return ctrl.Result{}, err
 		}
 	}

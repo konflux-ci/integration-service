@@ -75,30 +75,26 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 
 	application, err := r.getApplicationFromSnapshotEnvironmentBinding(ctx, snapshotEnvironmentBinding)
 	if err != nil {
-		logger.Error(err, "Failed to get Application for ",
-			"SnapshotEnvironmentBinding.Name ", snapshotEnvironmentBinding.Name, "SnapshotEnvironmentBinding.Namespace ", snapshotEnvironmentBinding.Namespace)
+		logger.Error(err, "Failed to get Application from the SnapshotEnvironmentBinding")
 		return ctrl.Result{}, err
 	}
 	logger = logger.WithApp(*application)
 
 	snapshot, err := r.getSnapshotFromSnapshotEnvironmentBinding(ctx, snapshotEnvironmentBinding)
 	if err != nil {
-		logger.Error(err, "Failed to get Snapshot for ",
-			"SnapshotEnvironmentBinding.Name ", snapshotEnvironmentBinding.Name, "SnapshotEnvironmentBinding.Namespace ", snapshotEnvironmentBinding.Namespace)
+		logger.Error(err, "Failed to get Snapshot from the SnapshotEnvironmentBinding")
 		return ctrl.Result{}, err
 	}
 
 	environment, err := r.getEnvironmentFromSnapshotEnvironmentBinding(ctx, snapshotEnvironmentBinding)
 	if err != nil {
-		logger.Error(err, "Failed to get Environment for ",
-			"SnapshotEnvironmentBinding.Name ", snapshotEnvironmentBinding.Name, "SnapshotEnvironmentBinding.Namespace ", snapshotEnvironmentBinding.Namespace)
+		logger.Error(err, "Failed to get Environment from the SnapshotEnvironmentBinding")
 		return ctrl.Result{}, err
 	}
 
 	integrationTestScenario, err := r.getIntegrationTestScenarioFromSnapshotEnvironmentBiding(ctx, snapshotEnvironmentBinding)
 	if err != nil {
-		logger.Error(err, "Failed to get IntegrationTestScenario for ",
-			"SnapshotEnvironmentBinding.Name ", snapshotEnvironmentBinding.Name, "SnapshotEnvironmentBinding.Namespace ", snapshotEnvironmentBinding.Namespace)
+		logger.Error(err, "Failed to get IntegrationTestScenario from the SnapshotEnvironmentBinding")
 		return ctrl.Result{}, err
 	}
 
