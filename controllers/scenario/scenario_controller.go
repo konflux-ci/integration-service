@@ -56,7 +56,7 @@ func NewScenarioReconciler(client client.Client, logger *logr.Logger, scheme *ru
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
 func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	logger := helpers.IntegrationLogger{Logger: r.Log.WithValues("IntegrationTestScenario", req.NamespacedName)}
+	logger := helpers.IntegrationLogger{Logger: r.Log.WithValues("integrationTestScenario", req.NamespacedName)}
 	scenario := &v1alpha1.IntegrationTestScenario{}
 	err := r.Get(ctx, req.NamespacedName, scenario)
 	if err != nil {
