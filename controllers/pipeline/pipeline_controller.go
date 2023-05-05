@@ -65,7 +65,7 @@ func NewIntegrationReconciler(client client.Client, logger *logr.Logger, scheme 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
 func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	logger := helpers.IntegrationLogger{Logger: r.Log.WithValues("Integration", req.NamespacedName)}
+	logger := helpers.IntegrationLogger{Logger: r.Log.WithValues("pipelineRun", req.NamespacedName)}
 
 	pipelineRun := &tektonv1beta1.PipelineRun{}
 	err := r.Get(ctx, req.NamespacedName, pipelineRun)
@@ -95,15 +95,14 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	if component != nil {
 		application, err = loader.GetApplicationFromComponent(r.Client, ctx, component)
 		if err != nil {
-			logger.Error(err, "Failed to get Application for",
+			logger.Error(err, "Failed to get Application from Component",
 				"Component.Name ", component.Name, "Component.Namespace ", component.Namespace)
 			return ctrl.Result{}, err
 		}
 	} else if pipelineType == tekton.PipelineRunTestType {
 		application, err = loader.GetApplicationFromPipelineRun(r.Client, ctx, pipelineRun)
 		if err != nil {
-			logger.Error(err, "Failed to get Application for",
-				"PipelineRun.Name", pipelineRun.Name, "PipelineRun.Namespace", pipelineRun.Namespace)
+			logger.Error(err, "Failed to get Application from the pipelineRun")
 			return ctrl.Result{}, err
 		}
 	}
@@ -113,6 +112,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		logger.Error(err, "reconcile cannot resolve application")
 		return ctrl.Result{}, err
 	}
+	logger = logger.WithApp(*application)
 
 	adapter := NewAdapter(pipelineRun, component, application, logger, r.Client, ctx)
 
