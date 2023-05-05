@@ -14,7 +14,10 @@ limitations under the License.
 package helpers
 
 import (
+	"fmt"
+
 	"github.com/go-logr/logr"
+	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 )
@@ -50,6 +53,10 @@ func loggerWithObjectMeta(obj runtime.Object, log logr.Logger) logr.Logger {
 	return log.WithValues("namespace", namespace, "name", name, "controllerKind", kind)
 }
 
+func (il *IntegrationLogger) setLogger(log logr.Logger) {
+	il.Logger = log
+}
+
 // LogAuditEvent should be used for auditable events to log all required metadata
 // msg is a user friendly log message
 // obj is k8s runtime object
@@ -62,4 +69,11 @@ func (il *IntegrationLogger) LogAuditEvent(msg string, obj runtime.Object, actio
 	log = log.WithValues("audit", "true", "action", action)
 
 	log.Info(msg, keysAndValues...)
+}
+
+// WithApp returns a new logger with application namespacedName key-value
+func (il IntegrationLogger) WithApp(app applicationapiv1alpha1.Application) IntegrationLogger {
+	log := il.Logger.WithValues("application", fmt.Sprintf("%s/%s", app.Namespace, app.Name))
+	il.setLogger(log)
+	return il
 }

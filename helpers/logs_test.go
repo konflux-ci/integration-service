@@ -93,4 +93,20 @@ var _ = Describe("Helpers for logs", Ordered, func() {
 		})
 
 	})
+
+	Context("logs with application", func() {
+		BeforeEach(func() {
+			log = log.WithApp(*app)
+		})
+
+		It("has application name and namespace in log entries", func() {
+			log.Info("test")
+			Expect(logbuf.String()).Should(ContainSubstring("application default/application-sample"))
+		})
+
+		It("new instance is returned", func() {
+			log2 := log.WithApp(*app)
+			Expect(log).NotTo(Equal(log2))
+		})
+	})
 })
