@@ -15,10 +15,11 @@ limitations under the License.
 
 import (
 	"context"
-	goodies "github.com/redhat-appstudio/operator-goodies/test"
 	"go/build"
 	"path/filepath"
 	"testing"
+
+	goodies "github.com/redhat-appstudio/operator-goodies/test"
 
 	"github.com/redhat-appstudio/integration-service/controllers/pipeline"
 	"github.com/redhat-appstudio/integration-service/controllers/snapshot"
