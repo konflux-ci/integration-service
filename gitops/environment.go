@@ -19,6 +19,7 @@ package gitops
 import (
 	"context"
 	"fmt"
+	"reflect"
 
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/api/v1alpha1"
@@ -40,23 +41,26 @@ func (r *CopiedEnvironment) AsEnvironment() *applicationapiv1alpha1.Environment 
 func NewCopyOfExistingEnvironment(existingEnvironment *applicationapiv1alpha1.Environment, namespace string, integrationTestScenario *v1alpha1.IntegrationTestScenario, deploymentTargetClaimName string) *CopiedEnvironment {
 	copiedEnvConfiguration := applicationapiv1alpha1.EnvironmentConfiguration{}
 	copiedEnvConfiguration = *existingEnvironment.Spec.Configuration.DeepCopy()
-	copiedEnvConfigFromIntTestScenario := *integrationTestScenario.Spec.Environment.Configuration.DeepCopy()
-	// if existing environment does not contain EnvVars, copy ones from IntegrationTestScenario
-	if existingEnvironment.Spec.Configuration.Env == nil {
-		copiedEnvConfiguration.Env = copiedEnvConfigFromIntTestScenario.Env
-	} else if len(copiedEnvConfigFromIntTestScenario.Env) != 0 {
-		for intEnvVars := range copiedEnvConfigFromIntTestScenario.Env {
-			envVarFound := false
-			for existingEnvVar := range copiedEnvConfiguration.Env {
-				// envVar names are matching? overwrite existing environment with one from ITS
-				if copiedEnvConfigFromIntTestScenario.Env[intEnvVars].Name == copiedEnvConfiguration.Env[existingEnvVar].Name {
-					copiedEnvConfiguration.Env[existingEnvVar].Value = copiedEnvConfigFromIntTestScenario.Env[intEnvVars].Value
-					envVarFound = true
+
+	if !reflect.ValueOf(integrationTestScenario.Spec.Environment.Configuration).IsZero() {
+		copiedEnvConfigFromIntTestScenario := *integrationTestScenario.Spec.Environment.Configuration.DeepCopy()
+		// if existing environment does not contain EnvVars, copy ones from IntegrationTestScenario
+		if existingEnvironment.Spec.Configuration.Env == nil {
+			copiedEnvConfiguration.Env = copiedEnvConfigFromIntTestScenario.Env
+		} else if len(copiedEnvConfigFromIntTestScenario.Env) != 0 {
+			for intEnvVars := range copiedEnvConfigFromIntTestScenario.Env {
+				envVarFound := false
+				for existingEnvVar := range copiedEnvConfiguration.Env {
+					// envVar names are matching? overwrite existing environment with one from ITS
+					if copiedEnvConfigFromIntTestScenario.Env[intEnvVars].Name == copiedEnvConfiguration.Env[existingEnvVar].Name {
+						copiedEnvConfiguration.Env[existingEnvVar].Value = copiedEnvConfigFromIntTestScenario.Env[intEnvVars].Value
+						envVarFound = true
+					}
 				}
-			}
-			if !envVarFound {
-				// in case that EnvVar from IntegrationTestScenario is not matching any EnvVar from existingEnv, add this ITS EnvVar to copied Environment
-				copiedEnvConfiguration.Env = append(copiedEnvConfiguration.Env, applicationapiv1alpha1.EnvVarPair{Name: copiedEnvConfigFromIntTestScenario.Env[intEnvVars].Name, Value: copiedEnvConfigFromIntTestScenario.Env[intEnvVars].Value})
+				if !envVarFound {
+					// in case that EnvVar from IntegrationTestScenario is not matching any EnvVar from existingEnv, add this ITS EnvVar to copied Environment
+					copiedEnvConfiguration.Env = append(copiedEnvConfiguration.Env, applicationapiv1alpha1.EnvVarPair{Name: copiedEnvConfigFromIntTestScenario.Env[intEnvVars].Name, Value: copiedEnvConfigFromIntTestScenario.Env[intEnvVars].Value})
+				}
 			}
 		}
 	}

@@ -522,15 +522,13 @@ func (a *Adapter) createCopyOfExistingEnvironment(existingEnvironment *applicati
 			"deploymentTargetClass.Name", deploymentTargetClass.Name)
 		return nil, fmt.Errorf("failed to create deploymentTargetClaim with deploymentTargetClass %s: %w", deploymentTargetClass.Name, err)
 	}
-	a.logger.Info("DeploymentTargetClaim is created for environment:",
-		"deploymentTargetClaim.NameSpace", dtc.Namespace,
-		"deploymentTargetClaim.Name", dtc.Name)
+	a.logger.LogAuditEvent("DeploymentTargetClaim is created for environment", dtc, h.LogActionAdd,
+		"integrationTestScenario.Name", integrationTestScenario.Name)
 
 	environment := gitops.NewCopyOfExistingEnvironment(existingEnvironment, namespace, integrationTestScenario, dtc.Name).
 		WithIntegrationLabels(integrationTestScenario).
 		WithSnapshot(snapshot).
 		AsEnvironment()
-
 	ref := ctrl.SetControllerReference(application, environment, a.client.Scheme())
 	if ref != nil {
 		a.logger.Error(ref, "Failed to set controller reference for Environment!",
@@ -540,8 +538,17 @@ func (a *Adapter) createCopyOfExistingEnvironment(existingEnvironment *applicati
 
 	err = a.client.Create(a.context, environment)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create environment %s: %w", environment.Name, err)
+		// We don't want to leave the new DTC on the cluster without the matching environment
+		dtcErr := a.client.Delete(a.context, dtc)
+		if dtcErr != nil {
+			return nil, fmt.Errorf("failed to delete DTC %s: %v; failed to create ephemeral environment %s: %w", dtc.Name, dtcErr, environment.Name, err)
+		}
+		a.logger.LogAuditEvent("Deleted DTC after creation of environment failed", dtc, h.LogActionDelete,
+			"integrationTestScenario.Name", integrationTestScenario.Name)
+		return nil, fmt.Errorf("failed to create ephemeral environment %s: %w", environment.Name, err)
 	}
+	a.logger.LogAuditEvent("Ephemeral environment is created for integrationTestScenario", environment, h.LogActionAdd,
+		"integrationTestScenario.Name", integrationTestScenario.Name)
 	return environment, nil
 }
 
