@@ -101,8 +101,7 @@ var _ = Describe("Helpers for logs", Ordered, func() {
 
 		It("has application name and namespace in log entries", func() {
 			log.Info("test")
-			Expect(logbuf.String()).Should(ContainSubstring("application.namespace default"))
-			Expect(logbuf.String()).Should(ContainSubstring("application.name application-sample"))
+			Expect(logbuf.String()).Should(ContainSubstring("application default/application-sample"))
 		})
 
 		It("new instance is returned", func() {
