@@ -534,6 +534,25 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		Expect(gitops.HaveAppStudioTestsSucceeded(hasSnapshot)).To(BeTrue())
 	})
 
+	It("ensures multiple task pipelinerun outcome when AppStudio Tests failed", func() {
+		testpipelineRun.Status = tektonv1beta1.PipelineRunStatus{
+			PipelineRunStatusFields: tektonv1beta1.PipelineRunStatusFields{},
+		}
+		testpipelineRun.Status.SetCondition(&apis.Condition{
+			Type:   apis.ConditionSucceeded,
+			Status: "False",
+			Reason: "NotFindPipeline",
+		})
+		Expect(k8sClient.Status().Update(ctx, testpipelineRun)).Should(Succeed())
+
+		pipelineRunOutcome, err := helpers.CalculateIntegrationPipelineRunOutcome(k8sClient, ctx, logger, testpipelineRun)
+		Expect(err).To(BeNil())
+		Expect(pipelineRunOutcome).To(BeFalse())
+
+		gitops.MarkSnapshotAsFailed(k8sClient, ctx, hasSnapshot, "test failed")
+		Expect(gitops.HaveAppStudioTestsSucceeded(hasSnapshot)).To(BeFalse())
+	})
+
 	It("no error from pipelinrun when AppStudio Tests failed", func() {
 		testpipelineRun.Status = tektonv1beta1.PipelineRunStatus{
 			PipelineRunStatusFields: tektonv1beta1.PipelineRunStatusFields{
