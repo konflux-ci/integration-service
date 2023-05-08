@@ -476,6 +476,14 @@ func (a *Adapter) prepareSnapshot(application *applicationapiv1alpha1.Applicatio
 		// We omit this not-yet-built component from the snapshot rather than
 		// including a component that is incomplete.
 		if containerImage == "" {
+			a.logger.Error(nil, "component cannot be added to snapshot for application due to missing containerImage", "component.Name", applicationComponent.Name)
+			continue
+		}
+		// if the containerImage donesn't have a valid digest, the component
+		// will not be added to snapshot
+		err := gitops.ValidateImageDigest(containerImage)
+		if err != nil {
+			a.logger.Error(err, "component cannot added to snapshot for application due to invalid digest in containerImage", "component.Name", applicationComponent.Name)
 			continue
 		}
 		snapshotComponents = append(snapshotComponents, applicationapiv1alpha1.SnapshotComponent{
@@ -485,6 +493,9 @@ func (a *Adapter) prepareSnapshot(application *applicationapiv1alpha1.Applicatio
 		})
 	}
 
+	if len(snapshotComponents) == 0 {
+		return nil, fmt.Errorf("failed to prepare snapshot due to missing valid digest in containerImage for all components of application")
+	}
 	snapshot := gitops.NewSnapshot(application, &snapshotComponents)
 
 	err = ctrl.SetControllerReference(application, snapshot, a.client.Scheme())
