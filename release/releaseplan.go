@@ -18,8 +18,10 @@ package release
 
 import (
 	"context"
+
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	releasev1alpha1 "github.com/redhat-appstudio/release-service/api/v1alpha1"
+	releasemetadata "github.com/redhat-appstudio/release-service/metadata"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/labels"
@@ -33,6 +35,9 @@ func NewReleaseForReleasePlan(releasePlan *releasev1alpha1.ReleasePlan, snapshot
 		ObjectMeta: metav1.ObjectMeta{
 			GenerateName: snapshot.Name + "-",
 			Namespace:    snapshot.Namespace,
+			Labels: map[string]string{
+				releasemetadata.AutomatedLabel: "true",
+			},
 		},
 		Spec: releasev1alpha1.ReleaseSpec{
 			Snapshot:    snapshot.Name,
