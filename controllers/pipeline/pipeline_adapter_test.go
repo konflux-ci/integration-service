@@ -84,8 +84,11 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		integrationTestScenario    *integrationv1alpha1.IntegrationTestScenario
 	)
 	const (
-		SampleRepoLink = "https://github.com/devfile-samples/devfile-sample-java-springboot-basic"
-		SampleCommit   = "a2ba645d50e471d5f084b"
+		SampleRepoLink           = "https://github.com/devfile-samples/devfile-sample-java-springboot-basic"
+		SampleCommit             = "a2ba645d50e471d5f084b"
+		SampleDigest             = "sha256:841328df1b9f8c4087adbdcfec6cc99ac8308805dea83f6d415d6fb8d40227c1"
+		SampleImageWithoutDigest = "quay.io/redhat-appstudio/sample-image"
+		SampleImage              = SampleImageWithoutDigest + "@" + SampleDigest
 	)
 
 	BeforeAll(func() {
@@ -120,8 +123,6 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			return err == nil
 		}, time.Second*10).Should(BeTrue())
 
-		logger = helpers.IntegrationLogger{Logger: ctrl.Log}
-
 		hasApp = &applicationapiv1alpha1.Application{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "application-sample",
@@ -134,6 +135,8 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		}
 		Expect(k8sClient.Create(ctx, hasApp)).Should(Succeed())
 
+		logger = helpers.IntegrationLogger{Logger: ctrl.Log}.WithApp(*hasApp)
+
 		hasComp = &applicationapiv1alpha1.Component{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "component-sample",
@@ -142,7 +145,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			Spec: applicationapiv1alpha1.ComponentSpec{
 				ComponentName:  "component-sample",
 				Application:    "application-sample",
-				ContainerImage: "",
+				ContainerImage: "invalidImage",
 				Source: applicationapiv1alpha1.ComponentSource{
 					ComponentSourceUnion: applicationapiv1alpha1.ComponentSourceUnion{
 						GitSource: &applicationapiv1alpha1.GitSource{
@@ -176,8 +179,6 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		}
 		Expect(k8sClient.Create(ctx, hasComp2)).Should(Succeed())
 
-		sampleImage := "quay.io/redhat-appstudio/sample-image"
-
 		hasSnapshot = &applicationapiv1alpha1.Snapshot{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "snapshot-sample",
@@ -195,7 +196,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				Components: []applicationapiv1alpha1.SnapshotComponent{
 					{
 						Name:           hasComp.Name,
-						ContainerImage: sampleImage,
+						ContainerImage: SampleImage,
 					},
 				},
 			},
@@ -292,7 +293,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 						Name: "output-image",
 						Value: tektonv1beta1.ArrayOrString{
 							Type:      "string",
-							StringVal: "quay.io/redhat-appstudio/sample-image",
+							StringVal: SampleImageWithoutDigest,
 						},
 					},
 				},
@@ -305,11 +306,11 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				PipelineResults: []tektonv1beta1.PipelineRunResult{
 					{
 						Name:  "IMAGE_DIGEST",
-						Value: *tektonv1beta1.NewArrayOrString("image_digest_value"),
+						Value: *tektonv1beta1.NewArrayOrString(SampleDigest),
 					},
 					{
 						Name:  "IMAGE_URL",
-						Value: *tektonv1beta1.NewArrayOrString("quay.io/sample/sample"),
+						Value: *tektonv1beta1.NewArrayOrString(SampleImageWithoutDigest),
 					},
 					{
 						Name:  "CHAINS-GIT_URL",
@@ -446,7 +447,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		Expect(snapshot).NotTo(BeNil())
 		Expect(err).To(BeNil())
 		Expect(snapshot).NotTo(BeNil())
-		Expect(snapshot.Spec.Components).To(HaveLen(1), "One component should have been added to snapshot.  Other component should have been omited due to empty ContainerImage field")
+		Expect(snapshot.Spec.Components).To(HaveLen(1), "One component should have been added to snapshot.  Other component should have been omited due to empty ContainerImage field or missing valid digest")
 		Expect(snapshot.Spec.Components[0].Name).To(Equal(hasComp.Name), "The built component should have been added to the snapshot")
 
 		fetchedPullSpec, err := adapter.getImagePullSpecFromSnapshotComponent(snapshot, hasComp)
@@ -495,7 +496,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			Spec: applicationapiv1alpha1.ComponentSpec{
 				ComponentName:  "component-sample-2",
 				Application:    hasApp.Name,
-				ContainerImage: "quay.io/redhat-appstudio/sample-image:new-label",
+				ContainerImage: SampleImage,
 				Source: applicationapiv1alpha1.ComponentSource{
 					ComponentSourceUnion: applicationapiv1alpha1.ComponentSourceUnion{
 						GitSource: &applicationapiv1alpha1.GitSource{
@@ -779,7 +780,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 							Name: "output-image",
 							Value: tektonv1beta1.ArrayOrString{
 								Type:      "string",
-								StringVal: "quay.io/redhat-appstudio/sample-image",
+								StringVal: SampleImageWithoutDigest,
 							},
 						},
 					},
@@ -792,7 +793,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 					PipelineResults: []tektonv1beta1.PipelineRunResult{
 						{
 							Name:  "IMAGE_DIGEST",
-							Value: *tektonv1beta1.NewArrayOrString("image_digest_value"),
+							Value: *tektonv1beta1.NewArrayOrString(SampleDigest),
 						},
 					},
 				},
