@@ -229,6 +229,11 @@ func GetAllIntegrationTestScenariosForApplication(adapterClient client.Client, c
 func CalculateIntegrationPipelineRunOutcome(adapterClient client.Client, ctx context.Context, logger logr.Logger, pipelineRun *tektonv1beta1.PipelineRun) (bool, error) {
 	var results []*AppStudioTestResult
 	var err error
+	// Check if the pipelineRun failed from the conditions of status
+	if HasPipelineRunFinished(pipelineRun) && !HasPipelineRunSucceeded(pipelineRun) {
+		logger.Error(fmt.Errorf("PipelineRun %s in namespace %s failed for %s", pipelineRun.Name, pipelineRun.Namespace, GetPipelineRunFailedReason(pipelineRun)), "PipelineRun failed without test results of TaskRuns")
+		return false, nil
+	}
 	// Check if the pipelineRun.Status contains the childReferences to TaskRuns
 	if !reflect.ValueOf(pipelineRun.Status.ChildReferences).IsZero() {
 		// If the pipelineRun.Status contains the childReferences, parse them in the new way by querying for TaskRuns
@@ -304,7 +309,6 @@ func GetSucceededBuildPipelineRunsForComponent(adapterClient client.Client, ctx 
 		if HasPipelineRunSucceeded(&pipelineRun) {
 			succeededPipelineRuns = append(succeededPipelineRuns, pipelineRun)
 		}
-
 	}
 	return &succeededPipelineRuns, nil
 }
@@ -393,6 +397,19 @@ func HasPipelineRunSucceeded(object client.Object) bool {
 	}
 
 	return false
+}
+
+// GetPipelineRunFailedReason returns a string indicating why the PipelineRun failed.
+// If the object passed to this function is not a PipelineRun, the function will return "".
+func GetPipelineRunFailedReason(object client.Object) string {
+	var reason string
+	reason = ""
+	if pr, ok := object.(*tektonv1beta1.PipelineRun); ok {
+		if pr.Status.GetCondition(apis.ConditionSucceeded).IsFalse() {
+			reason = pr.Status.GetCondition(apis.ConditionSucceeded).GetReason()
+		}
+	}
+	return reason
 }
 
 // HasPipelineRunFinished returns a boolean indicating whether the PipelineRun finished or not.
