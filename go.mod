@@ -13,7 +13,7 @@ require (
 	github.com/prometheus/client_golang v1.14.0
 	github.com/redhat-appstudio/application-api v0.0.0-20230427114540-a91722251e0a
 	github.com/redhat-appstudio/operator-goodies v0.0.0-20221130140446-010c05bd7471
-	github.com/redhat-appstudio/release-service v0.0.0-20230504094255-035afad2cab8
+	github.com/redhat-appstudio/release-service v0.0.0-20230511145849-bde1cdcbb60b
 	github.com/santhosh-tekuri/jsonschema/v5 v5.3.0
 	github.com/tektoncd/pipeline v0.45.0
 	github.com/tonglil/buflogr v1.0.1
@@ -54,7 +54,7 @@ require (
 	github.com/google/go-github/v48 v48.2.0 // indirect
 	github.com/google/go-querystring v1.1.0 // indirect
 	github.com/google/gofuzz v1.2.0 // indirect
-	github.com/google/pprof v0.0.0-20210407192527-94a9f03dee38 // indirect
+	github.com/google/pprof v0.0.0-20230510103437-eeec1cb781c3 // indirect
 	github.com/google/uuid v1.3.0 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.15.0 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
