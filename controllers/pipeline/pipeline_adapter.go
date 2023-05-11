@@ -118,7 +118,7 @@ func (a *Adapter) EnsureSnapshotExists() (reconciler.OperationResult, error) {
 // EnsureSnapshotPassedAllTests is an operation that will ensure that a pipeline Snapshot
 // to the PipelineRun being processed passed all tests for all defined non-optional IntegrationTestScenarios.
 func (a *Adapter) EnsureSnapshotPassedAllTests() (reconciler.OperationResult, error) {
-	if !tekton.IsIntegrationPipelineRun(a.pipelineRun) || !h.HasPipelineRunSucceeded(a.pipelineRun) {
+	if !tekton.IsIntegrationPipelineRun(a.pipelineRun) || !h.HasPipelineRunFinished(a.pipelineRun) {
 		return reconciler.ContinueProcessing()
 	}
 
