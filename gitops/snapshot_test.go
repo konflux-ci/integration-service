@@ -251,4 +251,14 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 		Expect(reasons).To(HaveLen(3))
 	})
 
+	It("Return false when the image url contains invalid digest", func() {
+		imageUrl := "quay.io/redhat-appstudio/sample-image:latest"
+		Expect(gitops.ValidateImageDigest(imageUrl)).NotTo(BeNil())
+	})
+
+	It("Return true when the image url contains valid digest", func() {
+		// Prepare a valid image with digest
+		imageUrl := "quay.io/redhat-appstudio/sample-image@sha256:841328df1b9f8c4087adbdcfec6cc99ac8308805dea83f6d415d6fb8d40227c1"
+		Expect(gitops.ValidateImageDigest(imageUrl)).To(BeNil())
+	})
 })

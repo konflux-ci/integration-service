@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/google/go-containerregistry/pkg/name"
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/helpers"
 	"github.com/redhat-appstudio/integration-service/metrics"
@@ -233,6 +234,12 @@ func IsSnapshotValid(snapshot *applicationapiv1alpha1.Snapshot) bool {
 		return true
 	}
 	return false
+}
+
+// ValidateImageDigest checks if image url contains valid digest, return error if check fails
+func ValidateImageDigest(imageUrl string) error {
+	_, err := name.NewDigest(imageUrl)
+	return err
 }
 
 // HaveAppStudioTestsFinished checks if the AppStudio tests have finished by checking if the AppStudio Test Succeeded condition is set.
