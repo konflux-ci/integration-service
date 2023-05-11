@@ -162,7 +162,7 @@ func setupControllerWithManager(manager ctrl.Manager, reconciler *Reconciler) er
 	return ctrl.NewControllerManagedBy(manager).
 		For(&tektonv1beta1.PipelineRun{}).
 		WithEventFilter(predicate.Or(
-			tekton.IntegrationPipelineRunStartedPredicate(),
-			tekton.IntegrationOrBuildPipelineRunFinishedPredicate())).
+			tekton.IntegrationPipelineRunPredicate(),
+			tekton.BuildPipelineRunFinishedPredicate())).
 		Complete(reconciler)
 }
