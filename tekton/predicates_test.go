@@ -22,61 +22,135 @@ var _ = Describe("Predicates", func() {
 		PipelineTypeIntegration = "integration"
 	)
 	var (
-		testpipelineRun    *tektonv1beta1.PipelineRun
-		newtestpipelineRun *tektonv1beta1.PipelineRun
+		pipelineRun    *tektonv1beta1.PipelineRun
+		newPipelineRun *tektonv1beta1.PipelineRun
 	)
 
-	BeforeEach(func() {
+	Context("when testing BuildPipelineRunSucceededPredicate", func() {
+		instance := tekton.BuildPipelineRunFinishedPredicate()
 
-		testpipelineRun = &tektonv1beta1.PipelineRun{
-			ObjectMeta: v1.ObjectMeta{
-				GenerateName: prefix + "-",
-				Namespace:    namespace,
-				Labels: map[string]string{
-					"pipelines.appstudio.openshift.io/type": "test",
+		BeforeEach(func() {
+
+			pipelineRun = &tektonv1beta1.PipelineRun{
+				ObjectMeta: v1.ObjectMeta{
+					GenerateName: prefix + "-",
+					Namespace:    namespace,
+					Labels: map[string]string{
+						"pipelines.appstudio.openshift.io/type": "build",
+					},
+					Annotations: map[string]string{},
 				},
-			},
-			Spec: tektonv1beta1.PipelineRunSpec{},
-		}
-		newtestpipelineRun = testpipelineRun.DeepCopy()
-	})
-
-	Context("when testing IntegrationOrBuildPipelineRunSucceededPredicate", func() {
-		instance := tekton.IntegrationOrBuildPipelineRunFinishedPredicate()
+				Spec: tektonv1beta1.PipelineRunSpec{},
+			}
+			newPipelineRun = pipelineRun.DeepCopy()
+		})
 
 		It("should ignore creating events", func() {
 			contextEvent := event.CreateEvent{
-				Object: testpipelineRun,
+				Object: pipelineRun,
 			}
 			Expect(instance.Create(contextEvent)).To(BeFalse())
 		})
 		It("should ignore deleting events", func() {
 			contextEvent := event.DeleteEvent{
-				Object: testpipelineRun,
+				Object: pipelineRun,
 			}
 			Expect(instance.Delete(contextEvent)).To(BeFalse())
 		})
 
 		It("should ignore generic events", func() {
 			contextEvent := event.GenericEvent{
-				Object: testpipelineRun,
+				Object: pipelineRun,
+			}
+			Expect(instance.Generic(contextEvent)).To(BeFalse())
+		})
+
+		It("should return true when an updated event is received for a succeeded PipelineRun and signed", func() {
+			newPipelineRun.Status.SetCondition(&apis.Condition{
+				Type:   apis.ConditionSucceeded,
+				Status: "True",
+			})
+			contextEvent := event.UpdateEvent{
+				ObjectOld: pipelineRun,
+				ObjectNew: newPipelineRun,
+			}
+			Expect(instance.Update(contextEvent)).To(BeFalse())
+
+			newPipelineRun.Annotations["chains.tekton.dev/signed"] = "true"
+			Expect(instance.Update(contextEvent)).To(BeTrue())
+			contextEvent.ObjectNew = &tektonv1beta1.TaskRun{}
+			Expect(instance.Update(contextEvent)).To(BeFalse())
+		})
+
+		It("should return true when an updated event is received for a failed PipelineRun and signed", func() {
+			// also failed pipelines are signed by tekton chains, test it
+			newPipelineRun.Status.SetCondition(&apis.Condition{
+				Type:   apis.ConditionSucceeded,
+				Status: "False",
+			})
+
+			contextEvent := event.UpdateEvent{
+				ObjectOld: pipelineRun,
+				ObjectNew: newPipelineRun,
+			}
+			Expect(instance.Update(contextEvent)).To(BeFalse())
+
+			newPipelineRun.Annotations["chains.tekton.dev/signed"] = "true"
+			Expect(instance.Update(contextEvent)).To(BeTrue())
+			contextEvent.ObjectNew = &tektonv1beta1.TaskRun{}
+			Expect(instance.Update(contextEvent)).To(BeFalse())
+		})
+	})
+
+	Context("when testing IntegrationPipelineRunPredicate", func() {
+		instance := tekton.IntegrationPipelineRunPredicate()
+
+		BeforeEach(func() {
+
+			pipelineRun = &tektonv1beta1.PipelineRun{
+				ObjectMeta: v1.ObjectMeta{
+					GenerateName: prefix + "-",
+					Namespace:    namespace,
+					Labels: map[string]string{
+						"pipelines.appstudio.openshift.io/type": "test",
+					},
+				},
+				Spec: tektonv1beta1.PipelineRunSpec{},
+			}
+			newPipelineRun = pipelineRun.DeepCopy()
+		})
+
+		It("should ignore create events", func() {
+			contextEvent := event.CreateEvent{
+				Object: pipelineRun,
+			}
+			Expect(instance.Create(contextEvent)).To(BeFalse())
+		})
+		It("should ignore delete events", func() {
+			contextEvent := event.DeleteEvent{
+				Object: pipelineRun,
+			}
+			Expect(instance.Delete(contextEvent)).To(BeFalse())
+		})
+
+		It("should ignore generic events", func() {
+			contextEvent := event.GenericEvent{
+				Object: pipelineRun,
 			}
 			Expect(instance.Generic(contextEvent)).To(BeFalse())
 		})
 
 		It("should return true when an updated event is received for a succeeded PipelineRun", func() {
 			contextEvent := event.UpdateEvent{
-				ObjectOld: testpipelineRun,
-				ObjectNew: newtestpipelineRun,
+				ObjectOld: pipelineRun,
+				ObjectNew: newPipelineRun,
 			}
 
 			Expect(instance.Update(contextEvent)).To(BeFalse())
-			newtestpipelineRun.Status.SetCondition(&apis.Condition{
+			newPipelineRun.Status.SetCondition(&apis.Condition{
 				Type:   apis.ConditionSucceeded,
 				Status: "True",
 			})
-			Expect(instance.Update(contextEvent)).To(BeTrue())
-			newtestpipelineRun.Labels["pipelines.appstudio.openshift.io/type"] = "build"
 			Expect(instance.Update(contextEvent)).To(BeTrue())
 			contextEvent.ObjectNew = &tektonv1beta1.TaskRun{}
 			Expect(instance.Update(contextEvent)).To(BeFalse())
@@ -84,53 +158,27 @@ var _ = Describe("Predicates", func() {
 
 		It("should return true when an updated event is received for a failed PipelineRun", func() {
 			contextEvent := event.UpdateEvent{
-				ObjectOld: testpipelineRun,
-				ObjectNew: newtestpipelineRun,
+				ObjectOld: pipelineRun,
+				ObjectNew: newPipelineRun,
 			}
 
 			Expect(instance.Update(contextEvent)).To(BeFalse())
-			newtestpipelineRun.Status.SetCondition(&apis.Condition{
+			newPipelineRun.Status.SetCondition(&apis.Condition{
 				Type:   apis.ConditionSucceeded,
 				Status: "False",
 			})
 			Expect(instance.Update(contextEvent)).To(BeTrue())
-			newtestpipelineRun.Labels["pipelines.appstudio.openshift.io/type"] = "build"
-			Expect(instance.Update(contextEvent)).To(BeTrue())
 			contextEvent.ObjectNew = &tektonv1beta1.TaskRun{}
 			Expect(instance.Update(contextEvent)).To(BeFalse())
-		})
-	})
-
-	Context("when testing IntegrationPipelineRunStartedPredicate", func() {
-		instance := tekton.IntegrationPipelineRunStartedPredicate()
-
-		It("should ignore create events", func() {
-			contextEvent := event.CreateEvent{
-				Object: testpipelineRun,
-			}
-			Expect(instance.Create(contextEvent)).To(BeFalse())
-		})
-		It("should ignore delete events", func() {
-			contextEvent := event.DeleteEvent{
-				Object: testpipelineRun,
-			}
-			Expect(instance.Delete(contextEvent)).To(BeFalse())
-		})
-
-		It("should ignore generic events", func() {
-			contextEvent := event.GenericEvent{
-				Object: testpipelineRun,
-			}
-			Expect(instance.Generic(contextEvent)).To(BeFalse())
 		})
 
 		It("should return true when an update event is received for a started PipelineRun", func() {
 			contextEvent := event.UpdateEvent{
-				ObjectOld: testpipelineRun,
-				ObjectNew: newtestpipelineRun,
+				ObjectOld: pipelineRun,
+				ObjectNew: newPipelineRun,
 			}
 			Expect(instance.Update(contextEvent)).To(BeFalse())
-			newtestpipelineRun.Status.StartTime = &v1.Time{Time: time.Now()}
+			newPipelineRun.Status.StartTime = &v1.Time{Time: time.Now()}
 			Expect(instance.Update(contextEvent)).To(BeTrue())
 			contextEvent.ObjectNew = &tektonv1beta1.TaskRun{}
 			Expect(instance.Update(contextEvent)).To(BeFalse())
