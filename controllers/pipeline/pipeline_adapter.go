@@ -279,7 +279,7 @@ func (a *Adapter) EnsureEphemeralEnvironmentsCleanedUp() (reconciler.OperationRe
 		a.logger.Info("Deleting deploymentTarget", "deploymentTarget.Name", dt.Name)
 		err = a.client.Delete(a.context, dt)
 		if err != nil {
-			a.logger.Error(err, "Failed to delete the deploymentTarget!")
+			a.logger.Error(err, "Failed to delete the deploymentTarget")
 			return reconciler.RequeueWithError(err)
 		}
 		a.logger.LogAuditEvent("DeploymentTarget deleted", dt, h.LogActionDelete)
@@ -287,7 +287,7 @@ func (a *Adapter) EnsureEphemeralEnvironmentsCleanedUp() (reconciler.OperationRe
 		a.logger.Info("Deleting deploymentTargetClaim", "deploymentTargetClaim.Name", dtc.Name)
 		err = a.client.Delete(a.context, dtc)
 		if err != nil {
-			a.logger.Error(err, "Failed to delete the deploymentTargetClaim!")
+			a.logger.Error(err, "Failed to delete the deploymentTargetClaim")
 			return reconciler.RequeueWithError(err)
 		}
 		a.logger.LogAuditEvent("DeploymentTargetClaim deleted", dtc, h.LogActionDelete)
@@ -295,7 +295,7 @@ func (a *Adapter) EnsureEphemeralEnvironmentsCleanedUp() (reconciler.OperationRe
 		a.logger.Info("Deleting environment", "environment.Name", testEnvironment.Name)
 		err = a.client.Delete(a.context, testEnvironment)
 		if err != nil {
-			a.logger.Error(err, "Failed to delete the test ephemeral environment!")
+			a.logger.Error(err, "Failed to delete the test ephemeral environment")
 			return reconciler.RequeueWithError(err)
 		}
 		a.logger.LogAuditEvent("Ephemeral environment deleted", testEnvironment, h.LogActionDelete)
@@ -303,7 +303,7 @@ func (a *Adapter) EnsureEphemeralEnvironmentsCleanedUp() (reconciler.OperationRe
 		a.logger.Info("Deleting snapshotEnvironmentBinding", "binding.Name", binding.Name)
 		err = a.client.Delete(a.context, binding)
 		if err != nil {
-			a.logger.Error(err, "Failed to delete the snapshotEnvironmentBinding!")
+			a.logger.Error(err, "Failed to delete the snapshotEnvironmentBinding")
 			return reconciler.RequeueWithError(err)
 		}
 		a.logger.LogAuditEvent("SnapshotEnvironmentBinding deleted", binding, h.LogActionDelete)
