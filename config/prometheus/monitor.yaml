@@ -4,6 +4,12 @@ apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
   labels:
+    app.kubernetes.io/name: servicemonitor
+    app.kubernetes.io/instance: controller-manager-metrics-monitor
+    app.kubernetes.io/component: metrics
+    app.kubernetes.io/created-by: integration-service
+    app.kubernetes.io/part-of: integration-service
+    app.kubernetes.io/managed-by: kustomize
     control-plane: controller-manager
   name: controller-manager-metrics-monitor
   namespace: system
@@ -12,7 +18,9 @@ spec:
     - path: /metrics
       port: https
       scheme: https
-      bearerTokenFile: /var/run/secrets/kubernetes.io/serviceaccount/token
+      bearerTokenSecret:
+        key: token
+        name: "integration-service-metrics-reader"
       tlsConfig:
         insecureSkipVerify: true
   selector:
