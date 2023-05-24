@@ -67,6 +67,7 @@ func NewIntegrationReconciler(client client.Client, logger *logr.Logger, scheme 
 // move the current state of the cluster closer to the desired state.
 func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := helpers.IntegrationLogger{Logger: r.Log.WithValues("pipelineRun", req.NamespacedName)}
+	loader := loader.NewLoader()
 
 	pipelineRun := &tektonv1beta1.PipelineRun{}
 	err := r.Get(ctx, req.NamespacedName, pipelineRun)
@@ -115,7 +116,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	}
 	logger = logger.WithApp(*application)
 
-	adapter := NewAdapter(pipelineRun, component, application, logger, r.Client, ctx)
+	adapter := NewAdapter(pipelineRun, component, application, logger, loader, r.Client, ctx)
 
 	return reconciler.ReconcileHandler([]reconciler.ReconcileOperation{
 		adapter.EnsureSnapshotExists,

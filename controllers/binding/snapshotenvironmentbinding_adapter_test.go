@@ -33,6 +33,7 @@ import (
 
 	"github.com/redhat-appstudio/integration-service/gitops"
 	"github.com/redhat-appstudio/integration-service/helpers"
+	"github.com/redhat-appstudio/integration-service/loader"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -293,10 +294,6 @@ var _ = Describe("Binding Adapter", Ordered, func() {
 			}, hasBinding)
 			return err
 		}, time.Second*10).ShouldNot(HaveOccurred())
-
-		adapter = NewAdapter(hasBinding, hasSnapshot, hasEnv, hasApp, integrationTestScenario, logger, k8sClient, ctx)
-		Expect(reflect.TypeOf(adapter)).To(Equal(reflect.TypeOf(&Adapter{})))
-
 	})
 
 	AfterEach(func() {
@@ -327,10 +324,34 @@ var _ = Describe("Binding Adapter", Ordered, func() {
 	})
 
 	It("can create a new Adapter instance", func() {
-		Expect(reflect.TypeOf(NewAdapter(hasBinding, hasSnapshot, hasEnv, hasApp, integrationTestScenario, logger, k8sClient, ctx))).To(Equal(reflect.TypeOf(&Adapter{})))
+		Expect(reflect.TypeOf(NewAdapter(hasBinding, hasSnapshot, hasEnv, hasApp, integrationTestScenario, logger, loader.NewMockLoader(), k8sClient, ctx))).To(Equal(reflect.TypeOf(&Adapter{})))
 	})
 
 	It("ensures the integrationTestPipelines are created for a deployed SnapshotEnvironment binding", func() {
+		adapter = NewAdapter(hasBinding, hasSnapshot, hasEnv, hasApp, integrationTestScenario, logger, loader.NewMockLoader(), k8sClient, ctx)
+		Expect(reflect.TypeOf(adapter)).To(Equal(reflect.TypeOf(&Adapter{})))
+		adapter.context = loader.GetMockedContext(ctx, []loader.MockData{
+			{
+				ContextKey: loader.ApplicationContextKey,
+				Resource:   hasApp,
+			},
+			{
+				ContextKey: loader.ComponentContextKey,
+				Resource:   hasComp,
+			},
+			{
+				ContextKey: loader.DeploymentTargetClaimContextKey,
+				Resource:   deploymentTargetClaim,
+			},
+			{
+				ContextKey: loader.DeploymentTargetContextKey,
+				Resource:   deploymentTarget,
+			},
+			{
+				ContextKey: loader.PipelineRunsContextKey,
+				Resource:   nil,
+			},
+		})
 		Eventually(func() bool {
 			result, err := adapter.EnsureIntegrationTestPipelineForScenarioExists()
 			return !result.CancelRequest && err == nil
@@ -347,7 +368,7 @@ var _ = Describe("Binding Adapter", Ordered, func() {
 			},
 		}
 		Eventually(func() bool {
-			err := k8sClient.List(ctx, integrationPipelineRuns, opts...)
+			err := k8sClient.List(adapter.context, integrationPipelineRuns, opts...)
 			return len(integrationPipelineRuns.Items) > 0 && err == nil
 		}, time.Second*20).Should(BeTrue())
 
@@ -363,7 +384,7 @@ var _ = Describe("Binding Adapter", Ordered, func() {
 	})
 
 	It("ensures the integrationTestPipelines are NOT created for a Snapshot that finished testing", func() {
-		finishedAdapter := NewAdapter(hasBinding, finishedSnapshot, hasEnv, hasApp, integrationTestScenario, logger, k8sClient, ctx)
+		finishedAdapter := NewAdapter(hasBinding, finishedSnapshot, hasEnv, hasApp, integrationTestScenario, logger, loader.NewMockLoader(), k8sClient, ctx)
 		Expect(reflect.TypeOf(adapter)).To(Equal(reflect.TypeOf(&Adapter{})))
 
 		Eventually(func() bool {
@@ -382,7 +403,7 @@ var _ = Describe("Binding Adapter", Ordered, func() {
 			},
 		}
 		Eventually(func() bool {
-			err := k8sClient.List(ctx, integrationPipelineRuns, opts...)
+			err := k8sClient.List(adapter.context, integrationPipelineRuns, opts...)
 			return len(integrationPipelineRuns.Items) == 0 && err == nil
 		}, time.Second*10).Should(BeTrue())
 	})

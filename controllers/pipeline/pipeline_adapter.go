@@ -32,7 +32,6 @@ import (
 	"github.com/redhat-appstudio/integration-service/tekton"
 	"github.com/redhat-appstudio/operator-goodies/reconciler"
 	tektonv1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
-	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -42,6 +41,7 @@ type Adapter struct {
 	pipelineRun *tektonv1beta1.PipelineRun
 	component   *applicationapiv1alpha1.Component
 	application *applicationapiv1alpha1.Application
+	loader      loader.ObjectLoader
 	logger      h.IntegrationLogger
 	client      client.Client
 	context     context.Context
@@ -49,13 +49,14 @@ type Adapter struct {
 }
 
 // NewAdapter creates and returns an Adapter instance.
-func NewAdapter(pipelineRun *tektonv1beta1.PipelineRun, component *applicationapiv1alpha1.Component, application *applicationapiv1alpha1.Application, logger h.IntegrationLogger, client client.Client,
+func NewAdapter(pipelineRun *tektonv1beta1.PipelineRun, component *applicationapiv1alpha1.Component, application *applicationapiv1alpha1.Application, logger h.IntegrationLogger, loader loader.ObjectLoader, client client.Client,
 	context context.Context) *Adapter {
 	return &Adapter{
 		pipelineRun: pipelineRun,
 		component:   component,
 		application: application,
 		logger:      logger,
+		loader:      loader,
 		client:      client,
 		context:     context,
 		status:      status.NewAdapter(logger.Logger, client),
@@ -90,7 +91,7 @@ func (a *Adapter) EnsureSnapshotExists() (reconciler.OperationResult, error) {
 	if err != nil {
 		return reconciler.RequeueWithError(err)
 	}
-	existingSnapshot, err := gitops.FindMatchingSnapshot(a.client, a.context, a.application, expectedSnapshot)
+	existingSnapshot, err := a.findMatchingSnapshot(a.application, expectedSnapshot)
 	if err != nil {
 		return reconciler.RequeueWithError(err)
 	}
@@ -122,7 +123,7 @@ func (a *Adapter) EnsureSnapshotPassedAllTests() (reconciler.OperationResult, er
 		return reconciler.ContinueProcessing()
 	}
 
-	existingSnapshot, err := a.getSnapshotFromPipelineRun(a.pipelineRun)
+	existingSnapshot, err := a.loader.GetSnapshotFromPipelineRun(a.client, a.context, a.pipelineRun)
 	if err != nil {
 		return reconciler.RequeueWithError(err)
 	}
@@ -134,7 +135,7 @@ func (a *Adapter) EnsureSnapshotPassedAllTests() (reconciler.OperationResult, er
 
 	// Get all integrationTestScenarios for the Application and then find the latest Succeeded Integration PipelineRuns
 	// for the Snapshot
-	integrationTestScenarios, err := h.GetRequiredIntegrationTestScenariosForApplication(a.client, a.context, a.application)
+	integrationTestScenarios, err := a.loader.GetRequiredIntegrationTestScenariosForApplication(a.client, a.context, a.application)
 	if err != nil {
 		return reconciler.RequeueWithError(err)
 	}
@@ -240,7 +241,7 @@ func (a *Adapter) EnsureEphemeralEnvironmentsCleanedUp() (reconciler.OperationRe
 		return reconciler.ContinueProcessing()
 	}
 
-	testEnvironment, err := loader.GetEnvironmentFromIntegrationPipelineRun(a.client, a.context, a.pipelineRun)
+	testEnvironment, err := a.loader.GetEnvironmentFromIntegrationPipelineRun(a.client, a.context, a.pipelineRun)
 	if err != nil {
 		a.logger.Error(err, "Failed to find the environment for the pipelineRun")
 		return reconciler.RequeueWithError(err)
@@ -258,19 +259,19 @@ func (a *Adapter) EnsureEphemeralEnvironmentsCleanedUp() (reconciler.OperationRe
 	}
 
 	if isEphemeral {
-		dtc, err := gitops.GetDeploymentTargetClaimForEnvironment(a.client, a.context, testEnvironment)
+		dtc, err := a.loader.GetDeploymentTargetClaimForEnvironment(a.client, a.context, testEnvironment)
 		if err != nil || dtc == nil {
 			a.logger.Error(err, "Failed to find deploymentTargetClaim defined in environment", "environment.Name", testEnvironment.Name)
 			return reconciler.RequeueWithError(err)
 		}
 
-		dt, err := gitops.GetDeploymentTargetForDeploymentTargetClaim(a.client, a.context, dtc)
+		dt, err := a.loader.GetDeploymentTargetForDeploymentTargetClaim(a.client, a.context, dtc)
 		if err != nil || dt == nil {
 			a.logger.Error(err, "Failed to find deploymentTarget defined in deploymentTargetClaim", "deploymentTargetClaim.Name", dtc.Name)
 			return reconciler.RequeueWithError(err)
 		}
 
-		binding, err := gitops.FindExistingSnapshotEnvironmentBinding(a.client, a.context, a.application, testEnvironment)
+		binding, err := a.loader.FindExistingSnapshotEnvironmentBinding(a.client, a.context, a.application, testEnvironment)
 		if err != nil || binding == nil {
 			a.logger.Error(err, "Failed to find snapshotEnvironmentBinding associated with environment", "environment.Name", testEnvironment.Name)
 			return reconciler.RequeueWithError(err)
@@ -400,26 +401,6 @@ func (a *Adapter) determineIfAllIntegrationPipelinesPassed(integrationPipelineRu
 	return allIntegrationPipelineRunsPassed, nil
 }
 
-// getSnapshotFromPipelineRun loads from the cluster the Snapshot referenced in the given PipelineRun.
-// If the PipelineRun doesn't specify an Snapshot or this is not found in the cluster, an error will be returned.
-func (a *Adapter) getSnapshotFromPipelineRun(pipelineRun *tektonv1beta1.PipelineRun) (*applicationapiv1alpha1.Snapshot, error) {
-	if snapshotName, found := pipelineRun.Labels[tekton.SnapshotNameLabel]; found {
-		snapshot := &applicationapiv1alpha1.Snapshot{}
-		err := a.client.Get(a.context, types.NamespacedName{
-			Namespace: pipelineRun.Namespace,
-			Name:      snapshotName,
-		}, snapshot)
-
-		if err != nil {
-			return nil, err
-		}
-
-		return snapshot, nil
-	}
-
-	return nil, fmt.Errorf("the pipeline has no snapshot associated with it")
-}
-
 // getAllPipelineRunsForSnapshot loads from the cluster all Integration PipelineRuns for each IntegrationTestScenario
 // associated with the Snapshot. If the Application doesn't have any IntegrationTestScenarios associated with it,
 // an error will be returned.
@@ -428,7 +409,7 @@ func (a *Adapter) getAllPipelineRunsForSnapshot(snapshot *applicationapiv1alpha1
 	for _, integrationTestScenario := range *integrationTestScenarios {
 		integrationTestScenario := integrationTestScenario // G601
 		if a.pipelineRun.Labels[tekton.ScenarioNameLabel] != integrationTestScenario.Name {
-			integrationPipelineRun, err := h.GetLatestPipelineRunForSnapshotAndScenario(a.client, a.context, snapshot, &integrationTestScenario)
+			integrationPipelineRun, err := loader.GetLatestPipelineRunForSnapshotAndScenario(a.client, a.context, a.loader, snapshot, &integrationTestScenario)
 			if err != nil {
 				return nil, err
 			}
@@ -452,7 +433,7 @@ func (a *Adapter) getAllPipelineRunsForSnapshot(snapshot *applicationapiv1alpha1
 // prepareSnapshot prepares the Snapshot for a given application and the updated component (if any).
 // In case the Snapshot can't be created, an error will be returned.
 func (a *Adapter) prepareSnapshot(application *applicationapiv1alpha1.Application, component *applicationapiv1alpha1.Component, newContainerImage string, newComponentSource *applicationapiv1alpha1.ComponentSource) (*applicationapiv1alpha1.Snapshot, error) {
-	applicationComponents, err := loader.GetAllApplicationComponents(a.client, a.context, application)
+	applicationComponents, err := a.loader.GetAllApplicationComponents(a.client, a.context, application)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get all Application Components for Application %s", a.application.Name)
 	}
@@ -583,7 +564,7 @@ func (a *Adapter) createCompositeSnapshotsIfConflictExists(application *applicat
 
 	// Mark tested snapshot as failed and create the new composite snapshot if it doesn't exist already
 	if !gitops.CompareSnapshots(compositeSnapshot, testedSnapshot) {
-		existingCompositeSnapshot, err := gitops.FindMatchingSnapshot(a.client, a.context, a.application, compositeSnapshot)
+		existingCompositeSnapshot, err := a.findMatchingSnapshot(a.application, compositeSnapshot)
 		if err != nil {
 			return nil, err
 		}
@@ -614,7 +595,7 @@ func (a *Adapter) isLatestSucceededPipelineRun() (bool, error) {
 
 	pipelineStartTime := a.pipelineRun.CreationTimestamp.Time
 
-	pipelineRuns, err := h.GetSucceededBuildPipelineRunsForComponent(a.client, a.context, a.component)
+	pipelineRuns, err := a.getSucceededBuildPipelineRunsForComponent(a.component)
 	if err != nil {
 		return false, err
 	}
@@ -631,4 +612,40 @@ func (a *Adapter) isLatestSucceededPipelineRun() (bool, error) {
 		}
 	}
 	return true, nil
+}
+
+// getSucceededBuildPipelineRunsForComponent returns all  succeeded PipelineRun for the
+// associated component. In the case the List operation fails,
+// an error will be returned.
+func (a *Adapter) getSucceededBuildPipelineRunsForComponent(component *applicationapiv1alpha1.Component) (*[]tektonv1beta1.PipelineRun, error) {
+	var succeededPipelineRuns []tektonv1beta1.PipelineRun
+
+	buildPipelineRuns, err := a.loader.GetAllBuildPipelineRunsForComponent(a.client, a.context, component)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, pipelineRun := range *buildPipelineRuns {
+		pipelineRun := pipelineRun // G601
+		if h.HasPipelineRunSucceeded(&pipelineRun) {
+			succeededPipelineRuns = append(succeededPipelineRuns, pipelineRun)
+		}
+	}
+	return &succeededPipelineRuns, nil
+}
+
+// findMatchingSnapshot tries to find the expected Snapshot with the same set of images.
+func (a *Adapter) findMatchingSnapshot(application *applicationapiv1alpha1.Application, expectedSnapshot *applicationapiv1alpha1.Snapshot) (*applicationapiv1alpha1.Snapshot, error) {
+	allSnapshots, err := a.loader.GetAllSnapshots(a.client, a.context, application)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, foundSnapshot := range *allSnapshots {
+		foundSnapshot := foundSnapshot
+		if gitops.CompareSnapshots(expectedSnapshot, &foundSnapshot) {
+			return &foundSnapshot, nil
+		}
+	}
+	return nil, nil
 }
