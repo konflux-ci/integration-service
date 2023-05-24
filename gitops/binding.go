@@ -17,7 +17,6 @@ limitations under the License.
 package gitops
 
 import (
-	"context"
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -64,29 +63,6 @@ func NewBindingComponents(components []applicationapiv1alpha1.Component) *[]appl
 		})
 	}
 	return &bindingComponents
-}
-
-// FindExistingSnapshotEnvironmentBinding attempts to find a SnapshotEnvironmentBinding that's
-// associated with the provided environment.
-func FindExistingSnapshotEnvironmentBinding(adapterClient client.Client, ctx context.Context, application *applicationapiv1alpha1.Application, environment *applicationapiv1alpha1.Environment) (*applicationapiv1alpha1.SnapshotEnvironmentBinding, error) {
-	snapshotEnvironmentBindingList := &applicationapiv1alpha1.SnapshotEnvironmentBindingList{}
-	opts := []client.ListOption{
-		client.InNamespace(application.Namespace),
-		client.MatchingFields{"spec.environment": environment.Name},
-	}
-
-	err := adapterClient.List(ctx, snapshotEnvironmentBindingList, opts...)
-	if err != nil {
-		return nil, err
-	}
-
-	for _, binding := range snapshotEnvironmentBindingList.Items {
-		if binding.Spec.Application == application.Name {
-			return &binding, nil
-		}
-	}
-
-	return nil, nil
 }
 
 // hasDeploymentFinished returns a boolean that is only true if the first passed object
