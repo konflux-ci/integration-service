@@ -18,6 +18,7 @@ package pipeline
 
 import (
 	"context"
+	"github.com/redhat-appstudio/integration-service/cache"
 	"go/build"
 	"path/filepath"
 	"testing"
@@ -33,8 +34,6 @@ import (
 
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	integrationalpha1 "github.com/redhat-appstudio/integration-service/api/v1alpha1"
-	"github.com/redhat-appstudio/integration-service/controllers/snapshot"
-
 	goodies "github.com/redhat-appstudio/operator-goodies/test"
 	releasev1alpha1 "github.com/redhat-appstudio/release-service/api/v1alpha1"
 	tektonv1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
@@ -101,7 +100,7 @@ var _ = BeforeSuite(func() {
 	go func() {
 		defer GinkgoRecover()
 		Expect(setupCache(k8sManager)).To(Succeed())
-		Expect(snapshot.SetupApplicationCache(k8sManager)).To(Succeed())
+		Expect(cache.SetupBindingEnvironmentCache(k8sManager)).To(Succeed())
 		Expect(k8sManager.Start(ctx)).To(Succeed())
 	}()
 })
