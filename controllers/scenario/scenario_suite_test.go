@@ -18,6 +18,7 @@ package scenario
 
 import (
 	"context"
+	"github.com/redhat-appstudio/integration-service/cache"
 	"go/build"
 	"path/filepath"
 	"testing"
@@ -35,7 +36,6 @@ import (
 
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	integrationalpha1 "github.com/redhat-appstudio/integration-service/api/v1alpha1"
-	"github.com/redhat-appstudio/integration-service/controllers/pipeline"
 	releasev1alpha1 "github.com/redhat-appstudio/release-service/api/v1alpha1"
 	tektonv1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 	clientsetscheme "k8s.io/client-go/kubernetes/scheme"
@@ -100,9 +100,9 @@ var _ = BeforeSuite(func() {
 	k8sClient = k8sManager.GetClient()
 	go func() {
 		defer GinkgoRecover()
-		Expect(pipeline.SetupApplicationComponentCache(k8sManager)).To(Succeed())
-		Expect(pipeline.SetupIntegrationTestScenarioCache(k8sManager)).To(Succeed())
-		Expect(pipeline.SetupSnapshotCache(k8sManager)).To(Succeed())
+		Expect(cache.SetupApplicationComponentCache(k8sManager)).To(Succeed())
+		Expect(cache.SetupIntegrationTestScenarioCache(k8sManager)).To(Succeed())
+		Expect(cache.SetupSnapshotCache(k8sManager)).To(Succeed())
 		Expect(k8sManager.Start(ctx)).To(Succeed())
 	}()
 })

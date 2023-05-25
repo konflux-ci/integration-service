@@ -18,6 +18,7 @@ package loader
 
 import (
 	"context"
+	"github.com/redhat-appstudio/integration-service/cache"
 	"go/build"
 	"path/filepath"
 	"testing"
@@ -99,9 +100,10 @@ var _ = BeforeSuite(func() {
 	k8sClient = k8sManager.GetClient()
 	go func() {
 		defer GinkgoRecover()
-		Expect(setupCache(k8sManager)).To(Succeed())
-		//Expect(pipeline.SetupIntegrationTestScenarioCache(k8sManager)).To(Succeed())
-		//Expect(pipeline.SetupSnapshotCache(k8sManager)).To(Succeed())
+		Expect(cache.SetupIntegrationTestScenarioCache(k8sManager)).To(Succeed())
+		Expect(cache.SetupReleaseCache(k8sManager)).To(Succeed())
+		Expect(cache.SetupApplicationComponentCache(k8sManager)).To(Succeed())
+		Expect(cache.SetupSnapshotCache(k8sManager)).To(Succeed())
 		Expect(k8sManager.Start(ctx)).To(Succeed())
 	}()
 })

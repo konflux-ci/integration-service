@@ -15,13 +15,11 @@ limitations under the License.
 
 import (
 	"context"
+	"github.com/redhat-appstudio/integration-service/cache"
 	goodies "github.com/redhat-appstudio/operator-goodies/test"
 	"go/build"
 	"path/filepath"
 	"testing"
-
-	"github.com/redhat-appstudio/integration-service/controllers/pipeline"
-	"github.com/redhat-appstudio/integration-service/controllers/snapshot"
 
 	"k8s.io/client-go/rest"
 
@@ -93,9 +91,9 @@ var _ = BeforeSuite(func() {
 	k8sClient = k8sManager.GetClient()
 	go func() {
 		defer GinkgoRecover()
-		Expect(snapshot.SetupApplicationCache(k8sManager)).To(Succeed())
-		Expect(snapshot.SetupSnapshotEnvironmentBindingCache(k8sManager)).To(Succeed())
-		Expect(pipeline.SetupSnapshotCache(k8sManager)).To(Succeed())
+		Expect(cache.SetupBindingEnvironmentCache(k8sManager)).To(Succeed())
+		Expect(cache.SetupBindingApplicationCache(k8sManager)).To(Succeed())
+		Expect(cache.SetupSnapshotCache(k8sManager)).To(Succeed())
 		Expect(k8sManager.Start(ctx)).To(Succeed())
 	}()
 })
