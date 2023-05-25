@@ -18,6 +18,7 @@ package snapshot
 
 import (
 	"context"
+	"github.com/redhat-appstudio/integration-service/cache"
 
 	"github.com/go-logr/logr"
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
@@ -118,19 +119,19 @@ func SetupController(manager ctrl.Manager, log *logr.Logger) error {
 // setupCache indexes fields for each of the resources used in the release adapter in those cases where filtering by
 // field is required.
 func setupCache(mgr ctrl.Manager) error {
-	if err := SetupReleasePlanCache(mgr); err != nil {
+	if err := cache.SetupReleasePlanCache(mgr); err != nil {
 		return err
 	}
 
-	if err := SetupReleaseCache(mgr); err != nil {
+	if err := cache.SetupReleaseCache(mgr); err != nil {
 		return err
 	}
 
-	if err := SetupApplicationCache(mgr); err != nil {
+	if err := cache.SetupBindingEnvironmentCache(mgr); err != nil {
 		return err
 	}
 
-	return SetupSnapshotEnvironmentBindingCache(mgr)
+	return cache.SetupBindingApplicationCache(mgr)
 }
 
 // setupControllerWithManager sets up the controller with the Manager which monitors new Snapshots

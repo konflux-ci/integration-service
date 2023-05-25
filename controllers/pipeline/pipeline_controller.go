@@ -19,6 +19,7 @@ package pipeline
 import (
 	"context"
 	"fmt"
+	"github.com/redhat-appstudio/integration-service/cache"
 
 	"github.com/go-logr/logr"
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
@@ -140,15 +141,15 @@ func SetupController(manager ctrl.Manager, log *logr.Logger) error {
 // setupCache indexes fields for each of the resources used in the pipeline adapter in those cases where filtering by
 // field is required.
 func setupCache(mgr ctrl.Manager) error {
-	if err := SetupApplicationComponentCache(mgr); err != nil {
+	if err := cache.SetupApplicationComponentCache(mgr); err != nil {
 		return err
 	}
 
-	if err := SetupSnapshotCache(mgr); err != nil {
+	if err := cache.SetupSnapshotCache(mgr); err != nil {
 		return err
 	}
 
-	return SetupIntegrationTestScenarioCache(mgr)
+	return cache.SetupIntegrationTestScenarioCache(mgr)
 }
 
 // setupControllerWithManager sets up the controller with the Manager which monitors new PipelineRuns and filters
