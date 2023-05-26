@@ -116,6 +116,14 @@ rules:
 - apiGroups:
   - appstudio.redhat.com
   resources:
+  - releases/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - appstudio.redhat.com
+  resources:
   - snapshots
   verbs:
   - create

@@ -398,6 +398,14 @@ func (a *Adapter) createMissingReleasesForReleasePlans(application *applicationa
 			}
 			a.logger.LogAuditEvent("Created a new Release", newRelease, h.LogActionAdd,
 				"releasePlan.Name", releasePlan.Name)
+
+			patch := client.MergeFrom(newRelease.DeepCopy())
+			newRelease.SetAutomated()
+			err = a.client.Status().Patch(a.context, newRelease, patch)
+			if err != nil {
+				return err
+			}
+			a.logger.Info("Marked Release status automated", "release.Name", newRelease.Name)
 		}
 	}
 	return nil
