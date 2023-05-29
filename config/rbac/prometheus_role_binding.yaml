@@ -8,5 +8,5 @@ roleRef:
   name: prometheus-viewer-role
 subjects:
   - kind: ServiceAccount
-    name: prometheus-k8s
-    namespace: openshift-monitoring
+    name: metrics-reader
+    namespace: system
