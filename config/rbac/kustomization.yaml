@@ -44,5 +44,6 @@ resources:
 - environment_editor_role.yaml
 - environment_role_binding.yaml
 # Prometheus
+- prometheus_service_account.yaml
 - prometheus_viewer_role.yaml
 - prometheus_role_binding.yaml
