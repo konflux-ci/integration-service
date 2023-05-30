@@ -4,7 +4,7 @@ go 1.18
 
 require (
 	github.com/bradleyfalzon/ghinstallation/v2 v2.4.0
-	github.com/go-logr/logr v1.2.3
+	github.com/go-logr/logr v1.2.4
 	github.com/google/go-containerregistry v0.15.2
 	github.com/google/go-github/v45 v45.2.0
 	github.com/onsi/ginkgo/v2 v2.8.4
