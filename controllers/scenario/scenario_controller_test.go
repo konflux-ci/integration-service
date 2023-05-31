@@ -32,9 +32,6 @@ var _ = Describe("ScenarioController", func() {
 		hasScenario        *v1alpha1.IntegrationTestScenario
 		failScenario       *v1alpha1.IntegrationTestScenario
 	)
-	const (
-		SampleRepoLink = "https://github.com/devfile-samples/devfile-sample-java-springboot-basic"
-	)
 
 	BeforeEach(func() {
 
