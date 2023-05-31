@@ -1,6 +1,6 @@
 module github.com/redhat-appstudio/integration-service
 
-go 1.18
+go 1.19
 
 require (
 	github.com/bradleyfalzon/ghinstallation/v2 v2.4.0
