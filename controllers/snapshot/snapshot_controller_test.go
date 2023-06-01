@@ -23,13 +23,16 @@ import (
 
 var _ = Describe("SnapshotController", func() {
 	var (
-		manager            ctrl.Manager
-		snapshotReconciler *Reconciler
-		scheme             runtime.Scheme
-		req                ctrl.Request
-		hasApp             *applicationapiv1alpha1.Application
-		hasComp            *applicationapiv1alpha1.Component
-		hasSnapshot        *applicationapiv1alpha1.Snapshot
+		manager                  ctrl.Manager
+		snapshotReconciler       *Reconciler
+		scheme                   runtime.Scheme
+		req                      ctrl.Request
+		reqWithoutValidCompLabel ctrl.Request
+		hasApp                   *applicationapiv1alpha1.Application
+		hasComp                  *applicationapiv1alpha1.Component
+		hasSnapshot              *applicationapiv1alpha1.Snapshot
+		//snapshot without existing component in label appstudio.openshift.io/component
+		hasSnapshotWithoutComponent *applicationapiv1alpha1.Snapshot
 	)
 	const (
 		SampleRepoLink = "https://github.com/devfile-samples/devfile-sample-java-springboot-basic"
@@ -91,10 +94,41 @@ var _ = Describe("SnapshotController", func() {
 		}
 		Expect(k8sClient.Create(ctx, hasSnapshot)).Should(Succeed())
 
+		hasSnapshotWithoutComponent = &applicationapiv1alpha1.Snapshot{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "snapshot-sample-withoutvalidcomplabel",
+				Namespace: "default",
+				Labels: map[string]string{
+					gitops.SnapshotTypeLabel:      "component",
+					gitops.SnapshotComponentLabel: "",
+				},
+				Annotations: map[string]string{
+					gitops.PipelineAsCodeInstallationIDAnnotation: "123",
+				},
+			},
+			Spec: applicationapiv1alpha1.SnapshotSpec{
+				Application: hasApp.Name,
+				Components: []applicationapiv1alpha1.SnapshotComponent{
+					{
+						Name:           "component-sample-2",
+						ContainerImage: "testimage",
+					},
+				},
+			},
+		}
+		Expect(k8sClient.Create(ctx, hasSnapshotWithoutComponent)).Should(Succeed())
+
 		req = ctrl.Request{
 			NamespacedName: types.NamespacedName{
 				Namespace: "default",
 				Name:      hasSnapshot.Name,
+			},
+		}
+
+		reqWithoutValidCompLabel = ctrl.Request{
+			NamespacedName: types.NamespacedName{
+				Namespace: "default",
+				Name:      hasSnapshotWithoutComponent.Name,
 			},
 		}
 
@@ -125,6 +159,8 @@ var _ = Describe("SnapshotController", func() {
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 		err = k8sClient.Delete(ctx, hasSnapshot)
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
+		err = k8sClient.Delete(ctx, hasSnapshotWithoutComponent)
+		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 	})
 
 	It("can create and return a new Reconciler object", func() {
@@ -141,6 +177,12 @@ var _ = Describe("SnapshotController", func() {
 
 	It("can Reconcile function prepare the adapter and return the result of the reconcile handling operation", func() {
 		result, err := snapshotReconciler.Reconcile(ctx, req)
+		Expect(reflect.TypeOf(result)).To(Equal(reflect.TypeOf(reconcile.Result{})))
+		Expect(err).To(BeNil())
+	})
+
+	It("can Reconcile function prepare the adapter and return the result of the reconcile handling operation for snapshot without valid component label", func() {
+		result, err := snapshotReconciler.Reconcile(ctx, reqWithoutValidCompLabel)
 		Expect(reflect.TypeOf(result)).To(Equal(reflect.TypeOf(reconcile.Result{})))
 		Expect(err).To(BeNil())
 	})

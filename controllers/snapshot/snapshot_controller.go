@@ -86,8 +86,10 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	logger = logger.WithApp(*application)
 
 	component, err := loader.GetComponentFromSnapshot(r.Client, ctx, snapshot)
-	if err != nil {
-		logger.Error(err, "Failed to get Component from the Snapshot")
+	if err != nil && errors.IsNotFound(err) {
+		logger.Info("Failed to get Component defined in snapshot label appstudio.openshift.io/component, use nil value")
+	} else if err != nil && !errors.IsNotFound(err) {
+		logger.Error(err, "Error when getting Component from the Snapshot")
 		return ctrl.Result{}, err
 	}
 

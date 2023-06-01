@@ -33,13 +33,15 @@ import (
 
 var _ = Describe("Loader", Ordered, func() {
 	var (
-		hasSnapshot       *applicationapiv1alpha1.Snapshot
-		hasApp            *applicationapiv1alpha1.Application
-		hasComp           *applicationapiv1alpha1.Component
-		successfulTaskRun *tektonv1beta1.TaskRun
-		testPipelineRun   *tektonv1beta1.PipelineRun
-		sample_image      string
-		sample_revision   string
+		hasSnapshot *applicationapiv1alpha1.Snapshot
+		//snapshot withou existing component in label appstudio.openshift.io/component
+		hasSnapshotWithoutComponent *applicationapiv1alpha1.Snapshot
+		hasApp                      *applicationapiv1alpha1.Application
+		hasComp                     *applicationapiv1alpha1.Component
+		successfulTaskRun           *tektonv1beta1.TaskRun
+		testPipelineRun             *tektonv1beta1.PipelineRun
+		sample_image                string
+		sample_revision             string
 	)
 
 	const (
@@ -119,6 +121,37 @@ var _ = Describe("Loader", Ordered, func() {
 			},
 		}
 		Expect(k8sClient.Create(ctx, hasSnapshot)).Should(Succeed())
+
+		hasSnapshotWithoutComponent = &applicationapiv1alpha1.Snapshot{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      snapshotName + "withoutvalidcomplabel",
+				Namespace: "default",
+				Labels: map[string]string{
+					gitops.SnapshotTypeLabel:      "component",
+					gitops.SnapshotComponentLabel: "",
+				},
+				Annotations: map[string]string{
+					gitops.PipelineAsCodeInstallationIDAnnotation: "123",
+				},
+			},
+			Spec: applicationapiv1alpha1.SnapshotSpec{
+				Application: hasApp.Name,
+				Components: []applicationapiv1alpha1.SnapshotComponent{
+					{
+						Name:           "component-sample-2",
+						ContainerImage: sample_image,
+						Source: applicationapiv1alpha1.ComponentSource{
+							ComponentSourceUnion: applicationapiv1alpha1.ComponentSourceUnion{
+								GitSource: &applicationapiv1alpha1.GitSource{
+									Revision: sample_revision,
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+		Expect(k8sClient.Create(ctx, hasSnapshotWithoutComponent)).Should(Succeed())
 
 		successfulTaskRun = &tektonv1beta1.TaskRun{
 			ObjectMeta: metav1.ObjectMeta{
@@ -207,6 +240,8 @@ var _ = Describe("Loader", Ordered, func() {
 	AfterEach(func() {
 		err := k8sClient.Delete(ctx, hasSnapshot)
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
+		err = k8sClient.Delete(ctx, hasSnapshotWithoutComponent)
+		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 		err = k8sClient.Delete(ctx, testPipelineRun)
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 		err = k8sClient.Delete(ctx, successfulTaskRun)
@@ -262,6 +297,12 @@ var _ = Describe("Loader", Ordered, func() {
 		Expect(err).To(BeNil())
 		Expect(comp).NotTo(BeNil())
 		Expect(comp.ObjectMeta).To(Equal(hasComp.ObjectMeta))
+	})
+
+	It("ensures we can get nil from a Snapshot without component in label", func() {
+		comp, err := GetComponentFromSnapshot(k8sClient, ctx, hasSnapshotWithoutComponent)
+		Expect(errors.IsNotFound(err)).To(BeTrue())
+		Expect(comp).To(BeNil())
 	})
 
 	It("ensures we can get a Component from a Pipeline Run ", func() {
