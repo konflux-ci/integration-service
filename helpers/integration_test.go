@@ -7,6 +7,7 @@ import (
 	"github.com/go-logr/logr"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/redhat-appstudio/integration-service/api/v1alpha1"
 	tektonv1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
@@ -27,20 +28,23 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 	)
 
 	var (
-		testpipelineRun      *tektonv1beta1.PipelineRun
-		testBuildPipelineRun *tektonv1beta1.PipelineRun
-		successfulTaskRun    *tektonv1beta1.TaskRun
-		failedTaskRun        *tektonv1beta1.TaskRun
-		skippedTaskRun       *tektonv1beta1.TaskRun
-		emptyTaskRun         *tektonv1beta1.TaskRun
-		malformedTaskRun     *tektonv1beta1.TaskRun
-		brokenJSONTaskRun    *tektonv1beta1.TaskRun
-		now                  time.Time
-		hasComp              *applicationapiv1alpha1.Component
-		hasApp               *applicationapiv1alpha1.Application
-		hasSnapshot          *applicationapiv1alpha1.Snapshot
-		logger               logr.Logger
-		sample_image         string
+		//two test pipeline for integrationTestScenario
+		testpipelineRun         *tektonv1beta1.PipelineRun
+		testpipelineRunFailed   *tektonv1beta1.PipelineRun
+		testBuildPipelineRun    *tektonv1beta1.PipelineRun
+		successfulTaskRun       *tektonv1beta1.TaskRun
+		failedTaskRun           *tektonv1beta1.TaskRun
+		skippedTaskRun          *tektonv1beta1.TaskRun
+		emptyTaskRun            *tektonv1beta1.TaskRun
+		malformedTaskRun        *tektonv1beta1.TaskRun
+		brokenJSONTaskRun       *tektonv1beta1.TaskRun
+		now                     time.Time
+		hasComp                 *applicationapiv1alpha1.Component
+		hasApp                  *applicationapiv1alpha1.Application
+		hasSnapshot             *applicationapiv1alpha1.Snapshot
+		logger                  logr.Logger
+		integrationTestScenario *v1alpha1.IntegrationTestScenario
+		sample_image            string
 	)
 
 	BeforeAll(func() {
@@ -77,6 +81,30 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			},
 		}
 		Expect(k8sClient.Create(ctx, hasComp)).Should(Succeed())
+
+		integrationTestScenario = &v1alpha1.IntegrationTestScenario{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "example-pass",
+				Namespace: "default",
+
+				Labels: map[string]string{
+					"test.appstudio.openshift.io/optional": "false",
+				},
+			},
+			Spec: v1alpha1.IntegrationTestScenarioSpec{
+				Application: "application-sample",
+				Bundle:      "quay.io/kpavic/test-bundle:component-pipeline-pass",
+				Pipeline:    "component-pipeline-pass",
+				Environment: v1alpha1.TestEnvironment{
+					Name: "envname",
+					Type: "POC",
+					Configuration: &applicationapiv1alpha1.EnvironmentConfiguration{
+						Env: []applicationapiv1alpha1.EnvVarPair{},
+					},
+				},
+			},
+		}
+		Expect(k8sClient.Create(ctx, integrationTestScenario)).Should(Succeed())
 
 		successfulTaskRun = &tektonv1beta1.TaskRun{
 			ObjectMeta: metav1.ObjectMeta{
@@ -300,7 +328,9 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 					"pac.test.appstudio.openshift.io/original-prname": "build-service-on-push",
 					"pac.test.appstudio.openshift.io/url-repository":  "build-service",
 					"pac.test.appstudio.openshift.io/repository":      "build-service-pac",
-					"appstudio.openshift.io/snapshot":                 "snapshot-sample",
+					"pipelines.appstudio.openshift.io/type":           "test",
+					"appstudio.openshift.io/snapshot":                 hasSnapshot.Name,
+					"test.appstudio.openshift.io/scenario":            integrationTestScenario.Name,
 				},
 				Annotations: map[string]string{
 					"pac.test.appstudio.openshift.io/on-target-branch": "[main]",
@@ -314,6 +344,32 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			},
 		}
 		Expect(k8sClient.Create(ctx, testpipelineRun)).Should(Succeed())
+
+		testpipelineRunFailed = &tektonv1beta1.PipelineRun{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "pipelinerun-component-sample-failed",
+				Namespace: "default",
+				Labels: map[string]string{
+					"pac.test.appstudio.openshift.io/url-org":         "redhat-appstudio",
+					"pac.test.appstudio.openshift.io/original-prname": "build-service-on-push",
+					"pac.test.appstudio.openshift.io/url-repository":  "build-service",
+					"pac.test.appstudio.openshift.io/repository":      "build-service-pac",
+					"pipelines.appstudio.openshift.io/type":           "test",
+					"appstudio.openshift.io/snapshot":                 hasSnapshot.Name,
+					"test.appstudio.openshift.io/scenario":            integrationTestScenario.Name,
+				},
+				Annotations: map[string]string{
+					"pac.test.appstudio.openshift.io/on-target-branch": "[main]",
+				},
+			},
+			Spec: tektonv1beta1.PipelineRunSpec{
+				PipelineRef: &tektonv1beta1.PipelineRef{
+					Name:   "component-pipeline-pass",
+					Bundle: "quay.io/kpavic/test-bundle:component-pipeline-pass",
+				},
+			},
+		}
+		Expect(k8sClient.Create(ctx, testpipelineRunFailed)).Should(Succeed())
 
 		testBuildPipelineRun = &tektonv1beta1.PipelineRun{
 			ObjectMeta: metav1.ObjectMeta{
@@ -408,6 +464,8 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 		err = k8sClient.Delete(ctx, testBuildPipelineRun)
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
+		err = k8sClient.Delete(ctx, testpipelineRunFailed)
+		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 	})
 
 	AfterAll(func() {
@@ -426,6 +484,8 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		err = k8sClient.Delete(ctx, malformedTaskRun)
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 		err = k8sClient.Delete(ctx, brokenJSONTaskRun)
+		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
+		err = k8sClient.Delete(ctx, integrationTestScenario)
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 
 	})
@@ -455,6 +515,15 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 					{
 						Name:             skippedTaskRun.Name,
 						PipelineTaskName: "pipeline1-task2",
+					},
+				},
+			},
+			Status: v1.Status{
+				Conditions: v1.Conditions{
+					apis.Condition{
+						Reason: "Completed",
+						Status: "True",
+						Type:   apis.ConditionSucceeded,
 					},
 				},
 			},
@@ -502,6 +571,15 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 					},
 				},
 			},
+			Status: v1.Status{
+				Conditions: v1.Conditions{
+					apis.Condition{
+						Reason: "Failed",
+						Status: "False",
+						Type:   apis.ConditionSucceeded,
+					},
+				},
+			},
 		}
 		Expect(k8sClient.Status().Update(ctx, testpipelineRun)).Should(Succeed())
 
@@ -528,12 +606,21 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 					},
 				},
 			},
+			Status: v1.Status{
+				Conditions: v1.Conditions{
+					apis.Condition{
+						Reason: "Failed",
+						Status: "False",
+						Type:   apis.ConditionSucceeded,
+					},
+				},
+			},
 		}
 		Expect(k8sClient.Status().Update(ctx, testpipelineRun)).Should(Succeed())
 
 		pipelineRunOutcome, err := helpers.CalculateIntegrationPipelineRunOutcome(k8sClient, ctx, logger, testpipelineRun)
 		Expect(err).To(BeNil())
-		Expect(pipelineRunOutcome).To(BeTrue())
+		Expect(pipelineRunOutcome).To(BeFalse())
 
 		gitops.MarkSnapshotAsPassed(k8sClient, ctx, hasSnapshot, "test passed")
 		Expect(gitops.HaveAppStudioTestsSucceeded(hasSnapshot)).To(BeTrue())
@@ -546,6 +633,15 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 					{
 						Name:             malformedTaskRun.Name,
 						PipelineTaskName: "pipeline1-task1",
+					},
+				},
+			},
+			Status: v1.Status{
+				Conditions: v1.Conditions{
+					apis.Condition{
+						Reason: "Completed",
+						Status: "True",
+						Type:   apis.ConditionSucceeded,
 					},
 				},
 			},
@@ -564,6 +660,15 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 					{
 						Name:             brokenJSONTaskRun.Name,
 						PipelineTaskName: "pipeline1-task1",
+					},
+				},
+			},
+			Status: v1.Status{
+				Conditions: v1.Conditions{
+					apis.Condition{
+						Reason: "Completed",
+						Status: "True",
+						Type:   apis.ConditionSucceeded,
 					},
 				},
 			},
@@ -586,6 +691,15 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 					{
 						Name:             skippedTaskRun.Name,
 						PipelineTaskName: "pipeline1-task2",
+					},
+				},
+			},
+			Status: v1.Status{
+				Conditions: v1.Conditions{
+					apis.Condition{
+						Reason: "Completed",
+						Status: "True",
+						Type:   apis.ConditionSucceeded,
 					},
 				},
 			},

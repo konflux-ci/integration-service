@@ -39,7 +39,7 @@ func GetLatestPipelineRunForSnapshotAndScenario(adapterClient client.Client, ctx
 	latestIntegrationPipelineRun = nil
 	for _, pipelineRun := range *integrationPipelineRuns {
 		pipelineRun := pipelineRun // G601
-		if pipelineRun.Status.GetCondition(apis.ConditionSucceeded).IsTrue() {
+		if !pipelineRun.Status.GetCondition(apis.ConditionSucceeded).IsUnknown() {
 			if latestIntegrationPipelineRun == nil {
 				latestIntegrationPipelineRun = &pipelineRun
 			} else {
