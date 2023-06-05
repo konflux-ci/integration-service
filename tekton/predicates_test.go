@@ -26,7 +26,7 @@ var _ = Describe("Predicates", func() {
 		newPipelineRun *tektonv1beta1.PipelineRun
 	)
 
-	Context("when testing BuildPipelineRunSucceededPredicate", func() {
+	Context("when testing BuildPipelineRunFinishedPredicate", func() {
 		instance := tekton.BuildPipelineRunFinishedPredicate()
 
 		BeforeEach(func() {
@@ -98,6 +98,23 @@ var _ = Describe("Predicates", func() {
 			newPipelineRun.Annotations["chains.tekton.dev/signed"] = "true"
 			Expect(instance.Update(contextEvent)).To(BeTrue())
 			contextEvent.ObjectNew = &tektonv1beta1.TaskRun{}
+			Expect(instance.Update(contextEvent)).To(BeFalse())
+		})
+
+		It("should return false when an updated event is received for a failed PipelineRun and no signed", func() {
+			// also failed pipelines are signed by tekton chains, test it
+			newPipelineRun.Status.SetCondition(&apis.Condition{
+				Type:   apis.ConditionSucceeded,
+				Status: "True",
+			})
+
+			contextEvent := event.UpdateEvent{
+				ObjectOld: pipelineRun,
+				ObjectNew: newPipelineRun,
+			}
+			Expect(instance.Update(contextEvent)).To(BeFalse())
+
+			newPipelineRun.Annotations["chains.tekton.dev/signed"] = "false"
 			Expect(instance.Update(contextEvent)).To(BeFalse())
 		})
 	})

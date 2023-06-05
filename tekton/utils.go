@@ -25,7 +25,7 @@ const (
 	// PipelineRunApplicationLabel is the label denoting the application.
 	PipelineRunApplicationLabel = "appstudio.openshift.io/application"
 
-	// PipelineRunApplicationLabel is the label added by Tekton Chains to signed PipelineRuns
+	// PipelineRunChainsSignedAnnotation is the label added by Tekton Chains to signed PipelineRuns
 	PipelineRunChainsSignedAnnotation = "chains.tekton.dev/signed"
 )
 
@@ -78,16 +78,12 @@ func hasPipelineRunStateChangedToStarted(objectOld, objectNew client.Object) boo
 	return false
 }
 
-// hasPipelineRunBeenChangedToSigned returns a boolean indicated whether the PipelineRun just been signed
-// If the objects passed to this function are not PipelineRuns, the function will return false.
-func hasPipelineRunBeenChangedToSigned(objectOld, objectNew client.Object) bool {
-	if oldPipelineRun, ok := objectOld.(*tektonv1beta1.PipelineRun); ok {
-		if newPipelineRun, ok := objectNew.(*tektonv1beta1.PipelineRun); ok {
-			return (!helpers.HasAnnotationWithValue(oldPipelineRun, PipelineRunChainsSignedAnnotation, "true") &&
-				helpers.HasAnnotationWithValue(newPipelineRun, PipelineRunChainsSignedAnnotation, "true"))
-		}
+// isPipelineRunSigned returns a boolean indicated whether the PipelineRun been signed
+// If the object passed to this function is not a PipelineRun, the function will return false.
+func isPipelineRunSigned(objectNew client.Object) bool {
+	if newPipelineRun, ok := objectNew.(*tektonv1beta1.PipelineRun); ok {
+		return helpers.HasAnnotationWithValue(newPipelineRun, PipelineRunChainsSignedAnnotation, "true")
 	}
-
 	return false
 }
 
