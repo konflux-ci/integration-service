@@ -1,6 +1,7 @@
 package tekton
 
 import (
+	"github.com/redhat-appstudio/integration-service/helpers"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 )
@@ -19,8 +20,8 @@ func IntegrationPipelineRunPredicate() predicate.Predicate {
 			return false
 		},
 		UpdateFunc: func(e event.UpdateEvent) bool {
-			return (IsIntegrationPipelineRun(e.ObjectNew) &&
-				(hasPipelineRunStateChangedToStarted(e.ObjectOld, e.ObjectNew) || hasPipelineRunStateChangedToFinished(e.ObjectOld, e.ObjectNew)))
+			return IsIntegrationPipelineRun(e.ObjectNew) &&
+				(hasPipelineRunStateChangedToStarted(e.ObjectOld, e.ObjectNew) || hasPipelineRunStateChangedToFinished(e.ObjectOld, e.ObjectNew))
 		},
 	}
 }
@@ -39,8 +40,7 @@ func BuildPipelineRunFinishedPredicate() predicate.Predicate {
 			return false
 		},
 		UpdateFunc: func(e event.UpdateEvent) bool {
-			return (IsBuildPipelineRun(e.ObjectNew)) &&
-				hasPipelineRunBeenChangedToSigned(e.ObjectOld, e.ObjectNew) // only finished pipelines are signed
+			return IsBuildPipelineRun(e.ObjectNew) && isPipelineRunSigned(e.ObjectNew) && helpers.HasPipelineRunSucceeded(e.ObjectNew)
 		},
 	}
 }
