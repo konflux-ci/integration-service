@@ -167,5 +167,17 @@ var _ = Describe("Helpers for labels and annotation", Ordered, func() {
 			helpers.CopyAnnotationsByPrefix(&testpipelineLabel.ObjectMeta, &dest.ObjectMeta, "test.prefix", "new.prefix")
 			Expect(dest.Annotations).To(BeNil())
 		})
+		It("AddAnnotation with a test annotation", func() {
+			testpipelineLabel.ObjectMeta.Annotations = nil
+			helpers.AddAnnotation(&testpipelineLabel.ObjectMeta, "test/test", "test")
+			Expect(testpipelineLabel.ObjectMeta.Annotations).To(Not(BeNil()))
+			Expect(testpipelineLabel.ObjectMeta.Annotations["test/test"]).To(Equal("test"))
+
+			// Verify that AddAnnotation doesn't remove existing annotations
+			helpers.AddAnnotation(&testpipelineLabel.ObjectMeta, "test/test2", "test2")
+			Expect(testpipelineLabel.ObjectMeta.Annotations).To(Not(BeNil()))
+			Expect(testpipelineLabel.ObjectMeta.Annotations["test/test"]).To(Equal("test"))
+			Expect(testpipelineLabel.ObjectMeta.Annotations["test/test2"]).To(Equal("test2"))
+		})
 	})
 })

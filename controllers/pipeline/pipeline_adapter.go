@@ -113,6 +113,17 @@ func (a *Adapter) EnsureSnapshotExists() (reconciler.OperationResult, error) {
 		"snapshot.Name", expectedSnapshot.Name,
 		"snapshot.Spec.Components", expectedSnapshot.Spec.Components)
 
+	patch := client.MergeFrom(a.pipelineRun.DeepCopy())
+	h.AddAnnotation(&a.pipelineRun.ObjectMeta, tekton.SnapshotNameLabel, expectedSnapshot.Name)
+	err = a.client.Patch(a.context, a.pipelineRun, patch)
+	if err != nil {
+		a.logger.Error(err, "Failed to update the build pipelineRun with new annotations",
+			"pipelineRun.Name", a.pipelineRun.Name)
+		return reconciler.RequeueWithError(err)
+	}
+	a.logger.LogAuditEvent("Updated build pipelineRun", a.pipelineRun, h.LogActionUpdate,
+		"snapshot.Name", expectedSnapshot.Name)
+
 	return reconciler.ContinueProcessing()
 }
 

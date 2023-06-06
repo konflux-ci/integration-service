@@ -26,9 +26,9 @@ func IntegrationPipelineRunPredicate() predicate.Predicate {
 	}
 }
 
-// BuildPipelineRunFinishedPredicate returns a predicate which filters out all objects except
-// Build PipelineRuns which have finished and been just signed.
-func BuildPipelineRunFinishedPredicate() predicate.Predicate {
+// BuildPipelineRunSignedAndSucceededPredicate returns a predicate which filters out all objects except
+// Build PipelineRuns which have finished, been signed and haven't had a Snapshot created for them.
+func BuildPipelineRunSignedAndSucceededPredicate() predicate.Predicate {
 	return predicate.Funcs{
 		CreateFunc: func(createEvent event.CreateEvent) bool {
 			return false
@@ -40,7 +40,9 @@ func BuildPipelineRunFinishedPredicate() predicate.Predicate {
 			return false
 		},
 		UpdateFunc: func(e event.UpdateEvent) bool {
-			return IsBuildPipelineRun(e.ObjectNew) && isPipelineRunSigned(e.ObjectNew) && helpers.HasPipelineRunSucceeded(e.ObjectNew)
+			return IsBuildPipelineRun(e.ObjectNew) && isPipelineRunSigned(e.ObjectNew) &&
+				helpers.HasPipelineRunSucceeded(e.ObjectNew) &&
+				!helpers.HasAnnotation(e.ObjectNew, SnapshotNameLabel)
 		},
 	}
 }
