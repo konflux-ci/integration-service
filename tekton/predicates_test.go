@@ -17,17 +17,16 @@ import (
 var _ = Describe("Predicates", func() {
 
 	const (
-		prefix                  = "testpipeline"
-		namespace               = "default"
-		PipelineTypeIntegration = "integration"
+		prefix    = "testpipeline"
+		namespace = "default"
 	)
 	var (
 		pipelineRun    *tektonv1beta1.PipelineRun
 		newPipelineRun *tektonv1beta1.PipelineRun
 	)
 
-	Context("when testing BuildPipelineRunFinishedPredicate", func() {
-		instance := tekton.BuildPipelineRunFinishedPredicate()
+	Context("when testing BuildPipelineRunSignedAndSucceededPredicate", func() {
+		instance := tekton.BuildPipelineRunSignedAndSucceededPredicate()
 
 		BeforeEach(func() {
 
@@ -82,7 +81,7 @@ var _ = Describe("Predicates", func() {
 			Expect(instance.Update(contextEvent)).To(BeFalse())
 		})
 
-		It("should return true when an updated event is received for a failed PipelineRun and signed", func() {
+		It("should return false when an updated event is received for a failed PipelineRun and signed", func() {
 			// also failed pipelines are signed by tekton chains, test it
 			newPipelineRun.Status.SetCondition(&apis.Condition{
 				Type:   apis.ConditionSucceeded,
@@ -96,13 +95,10 @@ var _ = Describe("Predicates", func() {
 			Expect(instance.Update(contextEvent)).To(BeFalse())
 
 			newPipelineRun.Annotations["chains.tekton.dev/signed"] = "true"
-			Expect(instance.Update(contextEvent)).To(BeTrue())
-			contextEvent.ObjectNew = &tektonv1beta1.TaskRun{}
 			Expect(instance.Update(contextEvent)).To(BeFalse())
 		})
 
-		It("should return false when an updated event is received for a failed PipelineRun and no signed", func() {
-			// also failed pipelines are signed by tekton chains, test it
+		It("should return false when an updated event is received for a succeeded PipelineRun and not signed", func() {
 			newPipelineRun.Status.SetCondition(&apis.Condition{
 				Type:   apis.ConditionSucceeded,
 				Status: "True",
@@ -115,6 +111,23 @@ var _ = Describe("Predicates", func() {
 			Expect(instance.Update(contextEvent)).To(BeFalse())
 
 			newPipelineRun.Annotations["chains.tekton.dev/signed"] = "false"
+			Expect(instance.Update(contextEvent)).To(BeFalse())
+		})
+
+		It("should return false when an updated event is received for a succeeded and signed pipelineRun that was annotated with Snapshot", func() {
+			newPipelineRun.Status.SetCondition(&apis.Condition{
+				Type:   apis.ConditionSucceeded,
+				Status: "True",
+			})
+
+			contextEvent := event.UpdateEvent{
+				ObjectOld: pipelineRun,
+				ObjectNew: newPipelineRun,
+			}
+			Expect(instance.Update(contextEvent)).To(BeFalse())
+
+			newPipelineRun.Annotations["chains.tekton.dev/signed"] = "true"
+			newPipelineRun.Annotations["appstudio.openshift.io/snapshot"] = "snapshot"
 			Expect(instance.Update(contextEvent)).To(BeFalse())
 		})
 	})

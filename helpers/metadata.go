@@ -23,6 +23,17 @@ func HasAnnotationWithValue(object client.Object, annotation, value string) bool
 	return false
 }
 
+// AddAnnotation adds an annotation to an object
+func AddAnnotation(objectMeta *metav1.ObjectMeta, annotation string, value string) {
+	annotations := map[string]string{}
+	if objectMeta.GetAnnotations() != nil {
+		annotations = objectMeta.GetAnnotations()
+	}
+	annotations[annotation] = value
+
+	objectMeta.SetAnnotations(annotations)
+}
+
 // HasLabel checks if a given label exists
 func HasLabel(object client.Object, label string) bool {
 	_, found := object.GetLabels()[label]

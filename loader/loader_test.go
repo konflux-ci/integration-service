@@ -269,6 +269,7 @@ var _ = Describe("Loader", Ordered, func() {
 				},
 				Annotations: map[string]string{
 					"appstudio.redhat.com/updateComponentOnSuccess": "false",
+					"appstudio.openshift.io/snapshot":               hasSnapshot.Name,
 				},
 			},
 			Spec: tektonv1beta1.PipelineRunSpec{
