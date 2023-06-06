@@ -17,7 +17,6 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"knative.dev/pkg/apis"
 	v1 "knative.dev/pkg/apis/duck/v1"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
@@ -431,70 +430,6 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 
 	})
 
-	It("should return all IntegrationTestScenarios used by the application", func() {
-		updatedSnapshot, err := gitops.MarkSnapshotAsPassed(k8sClient, ctx, hasSnapshot, "test passed")
-		Expect(err).To(BeNil())
-		Expect(updatedSnapshot).NotTo(BeNil())
-		Expect(gitops.HaveAppStudioTestsFinished(hasSnapshot)).To(BeTrue())
-
-		integrationTestScenarios, err := helpers.GetAllIntegrationTestScenariosForApplication(k8sClient, ctx, hasApp)
-		Expect(err).To(BeNil())
-		Expect(integrationTestScenarios).NotTo(BeNil())
-
-		for _, integrationTestScenario := range *integrationTestScenarios {
-			integrationTestScenario := integrationTestScenario //G601
-			integrationPipelineRuns, err := helpers.GetAllPipelineRunsForSnapshotAndScenario(k8sClient, ctx, hasSnapshot, &integrationTestScenario)
-			Expect(err != nil && integrationPipelineRuns == nil)
-			integrationPipelineRun, err := helpers.GetLatestPipelineRunForSnapshotAndScenario(k8sClient, ctx, hasSnapshot, &integrationTestScenario)
-			Expect(err != nil && integrationPipelineRun == nil)
-		}
-		pipelineRunOutcome, err := helpers.CalculateIntegrationPipelineRunOutcome(k8sClient, ctx, logger, testpipelineRun)
-		Expect(err).To(BeNil())
-		Expect(pipelineRunOutcome).To(BeTrue())
-	})
-
-	It("should return all the required IntegrationTestScenarios used by the application", func() {
-		updatedSnapshot, err := gitops.MarkSnapshotAsPassed(k8sClient, ctx, hasSnapshot, "test passed")
-		Expect(err).To(BeNil())
-		Expect(updatedSnapshot).NotTo(BeNil())
-		Expect(gitops.HaveAppStudioTestsFinished(hasSnapshot)).To(BeTrue())
-
-		requiredIntegrationTestScenarios, err := helpers.GetRequiredIntegrationTestScenariosForApplication(k8sClient, ctx, hasApp)
-		Expect(err).To(BeNil())
-		Expect(requiredIntegrationTestScenarios).NotTo(BeNil())
-		if requiredIntegrationTestScenarios != nil {
-			for _, requiredIntegrationTestScenario := range *requiredIntegrationTestScenarios {
-				requiredIntegrationTestScenario := requiredIntegrationTestScenario
-
-				integrationPipelineRuns := &tektonv1beta1.PipelineRunList{}
-				opts := []client.ListOption{
-					client.InNamespace(hasApp.Namespace),
-					client.MatchingLabels{
-						"pipelines.appstudio.openshift.io/type": "test",
-						"appstudio.openshift.io/snapshot":       hasSnapshot.Name,
-						"test.appstudio.openshift.io/scenario":  requiredIntegrationTestScenario.Name,
-					},
-				}
-				Eventually(func() bool {
-					err := k8sClient.List(ctx, integrationPipelineRuns, opts...)
-					return len(integrationPipelineRuns.Items) > 0 && err == nil
-				}, time.Second*10).Should(BeTrue())
-
-				allFoundIntegrationPipelineRuns, err := helpers.GetAllPipelineRunsForSnapshotAndScenario(k8sClient, ctx, hasSnapshot, &requiredIntegrationTestScenario)
-				Expect(err != nil && integrationPipelineRuns != nil && len(*allFoundIntegrationPipelineRuns) > 0)
-
-				integrationPipelineRun, err := helpers.GetLatestPipelineRunForSnapshotAndScenario(k8sClient, ctx, hasSnapshot, &requiredIntegrationTestScenario)
-				Expect(err != nil && integrationPipelineRun == nil)
-
-				pipelineRunOutcome, err := helpers.CalculateIntegrationPipelineRunOutcome(k8sClient, ctx, logger, testpipelineRun)
-				Expect(err).To(BeNil())
-				Expect(pipelineRunOutcome).To(BeTrue())
-
-				Expect(k8sClient.Delete(ctx, &integrationPipelineRuns.Items[0])).Should(Succeed())
-			}
-		}
-	})
-
 	It("can create an accurate Integration TaskRun from the given TaskRun status", func() {
 		integrationTaskRun := helpers.NewTaskRunFromTektonTaskRun(logger, "task-success", &successfulTaskRun.Status)
 		Expect(integrationTaskRun).NotTo(BeNil())
@@ -695,31 +630,5 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		taskRuns, err := helpers.GetAllChildTaskRunsForPipelineRun(k8sClient, ctx, logr.Discard(), testpipelineRun)
 		Expect(err).To(BeNil())
 		Expect(taskRuns).To(BeNil())
-	})
-
-	It("can fetch all build pipelineRuns", func() {
-		pipelineRuns, err := helpers.GetAllBuildPipelineRunsForComponent(k8sClient, ctx, hasComp)
-		Expect(err).To(BeNil())
-		Expect(pipelineRuns).NotTo(BeNil())
-		Expect(len(*pipelineRuns)).To(Equal(1))
-		Expect((*pipelineRuns)[0].Name == testBuildPipelineRun.Name)
-	})
-
-	It("can fetch all succeeded build pipelineRuns", func() {
-		pipelineRuns, err := helpers.GetSucceededBuildPipelineRunsForComponent(k8sClient, ctx, hasComp)
-		Expect(err).To(BeNil())
-		Expect(pipelineRuns).NotTo(BeNil())
-		Expect(len(*pipelineRuns)).To(Equal(1))
-		Expect((*pipelineRuns)[0].Name == testBuildPipelineRun.Name)
-	})
-
-	It("can detect if a PipelineRun has succeeded", func() {
-		Expect(helpers.HasPipelineRunSucceeded(testpipelineRun)).To(BeFalse())
-		testpipelineRun.Status.SetCondition(&apis.Condition{
-			Type:   apis.ConditionSucceeded,
-			Status: "True",
-		})
-		Expect(helpers.HasPipelineRunSucceeded(testpipelineRun)).To(BeTrue())
-		Expect(helpers.HasPipelineRunSucceeded(&tektonv1beta1.TaskRun{})).To(BeFalse())
 	})
 })

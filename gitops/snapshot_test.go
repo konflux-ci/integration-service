@@ -166,20 +166,6 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 		Expect(createdSnapshot).NotTo(BeNil())
 	})
 
-	It("ensures a matching Snapshot can be found", func() {
-		expectedSnapshot := hasSnapshot.DeepCopy()
-		foundSnapshot, err := gitops.FindMatchingSnapshot(k8sClient, ctx, hasApp, expectedSnapshot)
-		Expect(err).To(BeNil())
-		Expect(foundSnapshot).NotTo(BeNil())
-		Expect(foundSnapshot.Name).To(Equal(hasSnapshot.Name))
-	})
-
-	It("ensures that all Snapshots for a given application can be found", func() {
-		snapshots, err := gitops.GetAllSnapshots(k8sClient, ctx, hasApp)
-		Expect(err).To(BeNil())
-		Expect(snapshots).NotTo(BeNil())
-	})
-
 	It("ensures the same Snapshots can be successfully compared", func() {
 		expectedSnapshot := hasSnapshot.DeepCopy()
 		comparisonResult := gitops.CompareSnapshots(hasSnapshot, expectedSnapshot)

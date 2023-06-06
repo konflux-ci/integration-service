@@ -66,6 +66,7 @@ func NewSnapshotReconciler(client client.Client, logger *logr.Logger, scheme *ru
 // move the current state of the cluster closer to the desired state.
 func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := helpers.IntegrationLogger{Logger: r.Log.WithValues("snapshot", req.NamespacedName)}
+	loader := loader.NewLoader()
 
 	snapshot := &applicationapiv1alpha1.Snapshot{}
 	err := r.Get(ctx, req.NamespacedName, snapshot)
@@ -91,7 +92,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{}, err
 	}
 
-	adapter := NewAdapter(snapshot, application, component, logger, r.Client, ctx)
+	adapter := NewAdapter(snapshot, application, component, logger, loader, r.Client, ctx)
 
 	return reconciler.ReconcileHandler([]reconciler.ReconcileOperation{
 		adapter.EnsureAllReleasesExist,

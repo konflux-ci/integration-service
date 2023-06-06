@@ -15,6 +15,7 @@ package binding
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/redhat-appstudio/operator-goodies/reconciler"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -23,6 +24,7 @@ import (
 	"github.com/redhat-appstudio/integration-service/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/gitops"
 	h "github.com/redhat-appstudio/integration-service/helpers"
+	"github.com/redhat-appstudio/integration-service/loader"
 	"github.com/redhat-appstudio/integration-service/tekton"
 	"github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -38,10 +40,11 @@ type Adapter struct {
 	logger                     h.IntegrationLogger
 	client                     client.Client
 	context                    context.Context
+	loader                     loader.ObjectLoader
 }
 
 // NewAdapter creates and returns an Adapter instance.
-func NewAdapter(snapshotEnvironmentBinding *applicationapiv1alpha1.SnapshotEnvironmentBinding, snapshot *applicationapiv1alpha1.Snapshot, environment *applicationapiv1alpha1.Environment, application *applicationapiv1alpha1.Application, integrationTestScenario *v1alpha1.IntegrationTestScenario, logger h.IntegrationLogger, client client.Client,
+func NewAdapter(snapshotEnvironmentBinding *applicationapiv1alpha1.SnapshotEnvironmentBinding, snapshot *applicationapiv1alpha1.Snapshot, environment *applicationapiv1alpha1.Environment, application *applicationapiv1alpha1.Application, integrationTestScenario *v1alpha1.IntegrationTestScenario, logger h.IntegrationLogger, loader loader.ObjectLoader, client client.Client,
 	context context.Context) *Adapter {
 	return &Adapter{
 		snapshotEnvironmentBinding: snapshotEnvironmentBinding,
@@ -50,6 +53,7 @@ func NewAdapter(snapshotEnvironmentBinding *applicationapiv1alpha1.SnapshotEnvir
 		application:                application,
 		integrationTestScenario:    integrationTestScenario,
 		logger:                     logger,
+		loader:                     loader,
 		client:                     client,
 		context:                    context,
 	}
@@ -64,7 +68,7 @@ func (a *Adapter) EnsureIntegrationTestPipelineForScenarioExists() (reconciler.O
 	}
 
 	if a.integrationTestScenario != nil {
-		integrationPipelineRun, err := h.GetLatestPipelineRunForSnapshotAndScenario(a.client, a.context, a.snapshot, a.integrationTestScenario)
+		integrationPipelineRun, err := loader.GetLatestPipelineRunForSnapshotAndScenario(a.client, a.context, a.loader, a.snapshot, a.integrationTestScenario)
 		if err != nil {
 			a.logger.Error(err, "Failed to get latest pipelineRun for snapshot and scenario",
 				"snapshot", a.snapshot,
@@ -97,7 +101,7 @@ func (a *Adapter) EnsureIntegrationTestPipelineForScenarioExists() (reconciler.O
 // will be extracted from the given integrationScenario. The integration's Snapshot will also be passed to the integration PipelineRun.
 // If the creation of the PipelineRun is unsuccessful, an error will be returned.
 func (a *Adapter) createIntegrationPipelineRunWithEnvironment(application *applicationapiv1alpha1.Application, integrationTestScenario *v1alpha1.IntegrationTestScenario, snapshot *applicationapiv1alpha1.Snapshot, environment *applicationapiv1alpha1.Environment) (*v1beta1.PipelineRun, error) {
-	deploymentTarget, err := gitops.GetDeploymentTargetForEnvironment(a.client, a.context, environment)
+	deploymentTarget, err := a.getDeploymentTargetForEnvironment(environment)
 	if err != nil || deploymentTarget == nil {
 		return nil, err
 	}
@@ -121,4 +125,19 @@ func (a *Adapter) createIntegrationPipelineRunWithEnvironment(application *appli
 
 	return pipelineRun, nil
 
+}
+
+// getDeploymentTargetForEnvironment gets the DeploymentTarget associated with Environment, if the DeploymentTarget is not found, an error will be returned
+func (a *Adapter) getDeploymentTargetForEnvironment(environment *applicationapiv1alpha1.Environment) (*applicationapiv1alpha1.DeploymentTarget, error) {
+	deploymentTargetClaim, err := a.loader.GetDeploymentTargetClaimForEnvironment(a.client, a.context, environment)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find deploymentTargetClaim defined in environment %s: %w", environment.Name, err)
+	}
+
+	deploymentTarget, err := a.loader.GetDeploymentTargetForDeploymentTargetClaim(a.client, a.context, deploymentTargetClaim)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find deploymentTarget defined in deploymentTargetClaim %s: %w", deploymentTargetClaim.Name, err)
+	}
+
+	return deploymentTarget, nil
 }

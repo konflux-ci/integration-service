@@ -45,18 +45,20 @@ type Adapter struct {
 	application *applicationapiv1alpha1.Application
 	component   *applicationapiv1alpha1.Component
 	logger      h.IntegrationLogger
+	loader      loader.ObjectLoader
 	client      client.Client
 	context     context.Context
 }
 
 // NewAdapter creates and returns an Adapter instance.
-func NewAdapter(snapshot *applicationapiv1alpha1.Snapshot, application *applicationapiv1alpha1.Application, component *applicationapiv1alpha1.Component, logger h.IntegrationLogger, client client.Client,
+func NewAdapter(snapshot *applicationapiv1alpha1.Snapshot, application *applicationapiv1alpha1.Application, component *applicationapiv1alpha1.Component, logger h.IntegrationLogger, loader loader.ObjectLoader, client client.Client,
 	context context.Context) *Adapter {
 	return &Adapter{
 		snapshot:    snapshot,
 		application: application,
 		component:   component,
 		logger:      logger,
+		loader:      loader,
 		client:      client,
 		context:     context,
 	}
@@ -71,7 +73,7 @@ func (a *Adapter) EnsureAllIntegrationTestPipelinesExist() (reconciler.Operation
 		return reconciler.ContinueProcessing()
 	}
 
-	integrationTestScenarios, err := h.GetAllIntegrationTestScenariosForApplication(a.client, a.context, a.application)
+	integrationTestScenarios, err := a.loader.GetAllIntegrationTestScenariosForApplication(a.client, a.context, a.application)
 	if err != nil {
 		a.logger.Error(err, "Failed to get Integration test scenarios for the following application",
 			"Application.Name", a.application.Name,
@@ -89,7 +91,7 @@ func (a *Adapter) EnsureAllIntegrationTestPipelinesExist() (reconciler.Operation
 				a.logger.Info("IntegrationTestScenario has environment defined, skipping creation of pipelinerun.", "IntegrationTestScenario", integrationTestScenario)
 				continue
 			}
-			integrationPipelineRuns, err := h.GetAllPipelineRunsForSnapshotAndScenario(a.client, a.context, a.snapshot, &integrationTestScenario)
+			integrationPipelineRuns, err := a.loader.GetAllPipelineRunsForSnapshotAndScenario(a.client, a.context, a.snapshot, &integrationTestScenario)
 			if err != nil {
 				a.logger.Error(err, "Failed to get pipelineRuns for snapshot and scenario",
 					"integrationTestScenario.Name", integrationTestScenario.Name)
@@ -124,7 +126,7 @@ func (a *Adapter) EnsureAllIntegrationTestPipelinesExist() (reconciler.Operation
 		}
 	}
 
-	requiredIntegrationTestScenarios, err := h.GetRequiredIntegrationTestScenariosForApplication(a.client, a.context, a.application)
+	requiredIntegrationTestScenarios, err := a.loader.GetRequiredIntegrationTestScenariosForApplication(a.client, a.context, a.application)
 	if err != nil {
 		a.logger.Error(err, "Failed to get all required IntegrationTestScenarios")
 		patch := client.MergeFrom(a.snapshot.DeepCopy())
@@ -156,7 +158,7 @@ func (a *Adapter) EnsureCreationOfEnvironment() (reconciler.OperationResult, err
 		return reconciler.ContinueProcessing()
 	}
 
-	integrationTestScenarios, err := h.GetAllIntegrationTestScenariosForApplication(a.client, a.context, a.application)
+	integrationTestScenarios, err := a.loader.GetAllIntegrationTestScenariosForApplication(a.client, a.context, a.application)
 
 	if err != nil {
 		a.logger.Error(err, "Failed to get Integration test scenarios for the following application")
@@ -167,7 +169,7 @@ func (a *Adapter) EnsureCreationOfEnvironment() (reconciler.OperationResult, err
 		return reconciler.ContinueProcessing()
 	}
 
-	allEnvironments, err := loader.GetAllEnvironments(a.client, a.context, a.application)
+	allEnvironments, err := a.loader.GetAllEnvironments(a.client, a.context, a.application)
 	if err != nil {
 		a.logger.Error(err, "Failed to get all environments.")
 		return reconciler.RequeueOnErrorOrStop(err)
@@ -210,7 +212,7 @@ TestScenarioLoop:
 			copyEnv, h.LogActionAdd,
 			"integrationTestScenario.Name", integrationTestScenario.Name)
 
-		components, err := loader.GetAllApplicationComponents(a.client, a.context, a.application)
+		components, err := a.loader.GetAllApplicationComponents(a.client, a.context, a.application)
 		if err != nil {
 			return reconciler.RequeueWithError(err)
 		}
@@ -312,14 +314,14 @@ func (a *Adapter) EnsureSnapshotEnvironmentBindingExist() (reconciler.OperationR
 		return reconciler.RequeueWithError(err)
 	}
 
-	components, err := loader.GetAllApplicationComponents(a.client, a.context, a.application)
+	components, err := a.loader.GetAllApplicationComponents(a.client, a.context, a.application)
 	if err != nil {
 		return reconciler.RequeueWithError(err)
 	}
 
 	for _, availableEnvironment := range *availableEnvironments {
 		availableEnvironment := availableEnvironment // G601
-		snapshotEnvironmentBinding, err := gitops.FindExistingSnapshotEnvironmentBinding(a.client, a.context, a.application, &availableEnvironment)
+		snapshotEnvironmentBinding, err := a.loader.FindExistingSnapshotEnvironmentBinding(a.client, a.context, a.application, &availableEnvironment)
 		if err != nil {
 			return reconciler.RequeueWithError(err)
 		}
@@ -369,7 +371,7 @@ func (a *Adapter) EnsureSnapshotEnvironmentBindingExist() (reconciler.OperationR
 // createMissingReleasesForReleasePlans checks if there's existing Releases for a given list of ReleasePlans and creates
 // new ones if they are missing. In case the Releases can't be created, an error will be returned.
 func (a *Adapter) createMissingReleasesForReleasePlans(application *applicationapiv1alpha1.Application, releasePlans *[]releasev1alpha1.ReleasePlan, snapshot *applicationapiv1alpha1.Snapshot) error {
-	releases, err := loader.GetReleasesWithSnapshot(a.client, a.context, a.snapshot)
+	releases, err := a.loader.GetReleasesWithSnapshot(a.client, a.context, a.snapshot)
 	if err != nil {
 		return err
 	}
@@ -413,7 +415,7 @@ func (a *Adapter) createMissingReleasesForReleasePlans(application *applicationa
 
 // findAvailableEnvironments gets all environments that don't have a ParentEnvironment and are not tagged as ephemeral.
 func (a *Adapter) findAvailableEnvironments() (*[]applicationapiv1alpha1.Environment, error) {
-	allEnvironments, err := loader.GetAllEnvironments(a.client, a.context, a.application)
+	allEnvironments, err := a.loader.GetAllEnvironments(a.client, a.context, a.application)
 	if err != nil {
 		return nil, err
 	}
@@ -511,7 +513,7 @@ func (a *Adapter) updateExistingSnapshotEnvironmentBindingWithSnapshot(snapshotE
 // returns copy of already existing environment with updated envVars
 func (a *Adapter) createCopyOfExistingEnvironment(existingEnvironment *applicationapiv1alpha1.Environment, namespace string, integrationTestScenario *v1alpha1.IntegrationTestScenario, snapshot *applicationapiv1alpha1.Snapshot, application *applicationapiv1alpha1.Application) (*applicationapiv1alpha1.Environment, error) {
 	// Try to find a available DeploymentTargetClass with the right provisioner
-	deploymentTargetClass, err := a.FindAvailableDeploymentTargetClass()
+	deploymentTargetClass, err := a.loader.FindAvailableDeploymentTargetClass(a.client, a.context)
 	if err != nil || deploymentTargetClass == nil {
 		a.logger.Error(err, "Failed to find deploymentTargetClass with right provisioner for copy of existingEnvironment!",
 			"existingEnvironment.NameSpace", existingEnvironment.Namespace,
@@ -569,23 +571,6 @@ func (a *Adapter) CreateDeploymentTargetClaimForEnvironment(namespace string, de
 	}
 
 	return deploymentTargetClaim, nil
-}
-
-// FindAvailableDeploymentTargetClass attempts to find a DeploymentTargetClass with applicationapiv1alpha1.Provisioner_Devsandbox as provisioner.
-func (a *Adapter) FindAvailableDeploymentTargetClass() (*applicationapiv1alpha1.DeploymentTargetClass, error) {
-	deploymentTargetClassList := &applicationapiv1alpha1.DeploymentTargetClassList{}
-	err := a.client.List(a.context, deploymentTargetClassList)
-	if err != nil {
-		return nil, fmt.Errorf("cannot find the avaiable DeploymentTargetClass with provisioner %s: %w", applicationapiv1alpha1.Provisioner_Devsandbox, err)
-	}
-
-	for _, dtcls := range deploymentTargetClassList.Items {
-		if dtcls.Spec.Provisioner == applicationapiv1alpha1.Provisioner_Devsandbox {
-			return &dtcls, nil
-		}
-	}
-
-	return nil, fmt.Errorf("cannot find the avaiable DeploymentTargetClass with provisioner %s", applicationapiv1alpha1.Provisioner_Devsandbox)
 }
 
 // getEnvironmentFromIntegrationTestScenario looks for already existing environment, if it exists it is returned, if not, nil is returned then together with
