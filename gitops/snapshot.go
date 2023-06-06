@@ -295,39 +295,6 @@ func NewSnapshot(application *applicationapiv1alpha1.Application, snapshotCompon
 	return snapshot
 }
 
-// FindMatchingSnapshot tries to find the expected Snapshot with the same set of images.
-func FindMatchingSnapshot(adapterClient client.Client, ctx context.Context, application *applicationapiv1alpha1.Application, expectedSnapshot *applicationapiv1alpha1.Snapshot) (*applicationapiv1alpha1.Snapshot, error) {
-	allSnapshots, err := GetAllSnapshots(adapterClient, ctx, application)
-	if err != nil {
-		return nil, err
-	}
-
-	for _, foundSnapshot := range *allSnapshots {
-		foundSnapshot := foundSnapshot
-		if CompareSnapshots(expectedSnapshot, &foundSnapshot) {
-			return &foundSnapshot, nil
-		}
-	}
-	return nil, nil
-}
-
-// GetAllSnapshots returns all Snapshots in the Application's namespace nil if it's not found.
-// In the case the List operation fails, an error will be returned.
-func GetAllSnapshots(adapterClient client.Client, ctx context.Context, application *applicationapiv1alpha1.Application) (*[]applicationapiv1alpha1.Snapshot, error) {
-	snapshots := &applicationapiv1alpha1.SnapshotList{}
-	opts := []client.ListOption{
-		client.InNamespace(application.Namespace),
-		client.MatchingFields{"spec.application": application.Name},
-	}
-
-	err := adapterClient.List(ctx, snapshots, opts...)
-	if err != nil {
-		return nil, err
-	}
-
-	return &snapshots.Items, nil
-}
-
 // CompareSnapshots compares two Snapshots and returns boolean true if their images match exactly.
 func CompareSnapshots(expectedSnapshot *applicationapiv1alpha1.Snapshot, foundSnapshot *applicationapiv1alpha1.Snapshot) bool {
 	// Check if the snapshots are created by the same event type

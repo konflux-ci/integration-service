@@ -338,12 +338,6 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 			dtc := gitops.NewDeploymentTargetClaim("default", deploymentTargetClass.Name)
 			Expect(dtc.Spec.DeploymentTargetClassName == applicationapiv1alpha1.DeploymentTargetClassName(deploymentTargetClass.Name)).To(BeTrue())
 		})
-
-		It("Can get DeploymentTarget for Environment", func() {
-			dt, err := gitops.GetDeploymentTargetForEnvironment(k8sClient, ctx, envWithEnvVars)
-			Expect(dt.Name == deploymentTarget.Name).To(BeTrue())
-			Expect(err == nil).To(BeTrue())
-		})
 	})
 
 })

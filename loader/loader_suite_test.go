@@ -104,6 +104,8 @@ var _ = BeforeSuite(func() {
 		Expect(cache.SetupReleaseCache(k8sManager)).To(Succeed())
 		Expect(cache.SetupApplicationComponentCache(k8sManager)).To(Succeed())
 		Expect(cache.SetupSnapshotCache(k8sManager)).To(Succeed())
+		Expect(cache.SetupBindingApplicationCache(k8sManager)).To(Succeed())
+		Expect(cache.SetupBindingEnvironmentCache(k8sManager)).To(Succeed())
 		Expect(k8sManager.Start(ctx)).To(Succeed())
 	}()
 })

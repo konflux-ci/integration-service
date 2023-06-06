@@ -21,6 +21,7 @@ import (
 	"github.com/redhat-appstudio/integration-service/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/gitops"
 	"github.com/redhat-appstudio/integration-service/helpers"
+	"github.com/redhat-appstudio/integration-service/loader"
 	"github.com/redhat-appstudio/operator-goodies/predicates"
 	"github.com/redhat-appstudio/operator-goodies/reconciler"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -61,6 +62,7 @@ func NewBindingReconciler(client client.Client, logger *logr.Logger, scheme *run
 // move the current state of the cluster closer to the desired state.
 func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := helpers.IntegrationLogger{Logger: r.Log.WithValues("snapshotEnvironmentBinding", req.NamespacedName)}
+	loader := loader.NewLoader()
 
 	snapshotEnvironmentBinding := &applicationapiv1alpha1.SnapshotEnvironmentBinding{}
 	err := r.Get(ctx, req.NamespacedName, snapshotEnvironmentBinding)
@@ -98,7 +100,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{}, err
 	}
 
-	adapter := NewAdapter(snapshotEnvironmentBinding, snapshot, environment, application, integrationTestScenario, logger, r.Client, ctx)
+	adapter := NewAdapter(snapshotEnvironmentBinding, snapshot, environment, application, integrationTestScenario, logger, loader, r.Client, ctx)
 
 	return reconciler.ReconcileHandler([]reconciler.ReconcileOperation{
 		adapter.EnsureIntegrationTestPipelineForScenarioExists,
