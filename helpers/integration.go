@@ -182,8 +182,13 @@ func (s SortTaskRunsByStartTime) Less(i int, j int) bool {
 func CalculateIntegrationPipelineRunOutcome(adapterClient client.Client, ctx context.Context, logger logr.Logger, pipelineRun *tektonv1beta1.PipelineRun) (bool, error) {
 	var results []*AppStudioTestResult
 	var err error
+	// Check if the pipelineRun finished from the condition of status
+	if !HasPipelineRunFinished(pipelineRun) {
+		logger.Info(fmt.Sprintf("PipelineRun %s in namespace %s has not finished", pipelineRun.Name, pipelineRun.Namespace))
+		return false, nil
+	}
 	// Check if the pipelineRun failed from the conditions of status
-	if HasPipelineRunFinished(pipelineRun) && !HasPipelineRunSucceeded(pipelineRun) {
+	if !HasPipelineRunSucceeded(pipelineRun) {
 		logger.Error(fmt.Errorf("PipelineRun %s in namespace %s failed for %s", pipelineRun.Name, pipelineRun.Namespace, GetPipelineRunFailedReason(pipelineRun)), "PipelineRun failed without test results of TaskRuns")
 		return false, nil
 	}
@@ -278,7 +283,7 @@ func GetPipelineRunFailedReason(object client.Object) string {
 // If the object passed to this function is not a PipelineRun, the function will return false.
 func HasPipelineRunFinished(object client.Object) bool {
 	if pr, ok := object.(*tektonv1beta1.PipelineRun); ok {
-		return (pr.Status.GetCondition(apis.ConditionSucceeded).IsFalse() || pr.Status.GetCondition(apis.ConditionSucceeded).IsTrue())
+		return !pr.Status.GetCondition(apis.ConditionSucceeded).IsUnknown()
 	}
 
 	return false
