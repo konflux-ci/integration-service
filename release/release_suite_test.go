@@ -22,8 +22,6 @@ import (
 	"github.com/redhat-appstudio/integration-service/cache"
 	goodies "github.com/redhat-appstudio/operator-goodies/test"
 
-	goodies "github.com/redhat-appstudio/operator-goodies/test"
-
 	"k8s.io/client-go/rest"
 
 	. "github.com/onsi/ginkgo/v2"
