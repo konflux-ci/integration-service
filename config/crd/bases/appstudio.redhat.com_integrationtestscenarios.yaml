@@ -90,14 +90,34 @@ spec:
                           - value
                           type: object
                         type: array
+                      target:
+                        description: Target is used to reference a DeploymentTargetClaim
+                          for a target Environment. The Environment controller uses
+                          the referenced DeploymentTargetClaim to access its bounded
+                          DeploymentTarget with cluster credential secret.
+                        properties:
+                          deploymentTargetClaim:
+                            description: DeploymentTargetClaimConfig specifies the
+                              DeploymentTargetClaim details for a given Environment.
+                            properties:
+                              claimName:
+                                type: string
+                            required:
+                            - claimName
+                            type: object
+                        required:
+                        - deploymentTargetClaim
+                        type: object
                     required:
                     - env
                     type: object
                   name:
                     type: string
                   type:
-                    description: EnvironmentType currently indicates whether an environment
-                      is POC/Non-POC, see API doc for details.
+                    description: 'DEPRECATED: EnvironmentType should no longer be
+                      used, and has no replacement. - It''s original purpose was to
+                      indicate whether an environment is POC/Non-POC, but these data
+                      were ultimately not required.'
                     type: string
                 required:
                 - name
@@ -278,14 +298,34 @@ spec:
                           - value
                           type: object
                         type: array
+                      target:
+                        description: Target is used to reference a DeploymentTargetClaim
+                          for a target Environment. The Environment controller uses
+                          the referenced DeploymentTargetClaim to access its bounded
+                          DeploymentTarget with cluster credential secret.
+                        properties:
+                          deploymentTargetClaim:
+                            description: DeploymentTargetClaimConfig specifies the
+                              DeploymentTargetClaim details for a given Environment.
+                            properties:
+                              claimName:
+                                type: string
+                            required:
+                            - claimName
+                            type: object
+                        required:
+                        - deploymentTargetClaim
+                        type: object
                     required:
                     - env
                     type: object
                   name:
                     type: string
                   type:
-                    description: EnvironmentType currently indicates whether an environment
-                      is POC/Non-POC, see API doc for details.
+                    description: 'DEPRECATED: EnvironmentType should no longer be
+                      used, and has no replacement. - It''s original purpose was to
+                      indicate whether an environment is POC/Non-POC, but these data
+                      were ultimately not required.'
                     type: string
                 required:
                 - name

@@ -34,14 +34,14 @@ func newTaskRun(name string, startTime time.Time, completionTime time.Time) *hel
 	})
 }
 
-func newTaskRunWithHACBSTestOutput(name string, startTime time.Time, completionTime time.Time, output string) *helpers.TaskRun {
+func newTaskRunWithAppStudioTestOutput(name string, startTime time.Time, completionTime time.Time, output string) *helpers.TaskRun {
 	return helpers.NewTaskRunFromTektonTaskRun(logr.Discard(), name, &tektonv1beta1.TaskRunStatus{
 		TaskRunStatusFields: tektonv1beta1.TaskRunStatusFields{
 			StartTime:      &metav1.Time{Time: startTime},
 			CompletionTime: &metav1.Time{Time: completionTime},
 			TaskRunResults: []tektonv1beta1.TaskRunResult{
 				{
-					Name:  "HACBS_TEST_OUTPUT",
+					Name:  "TEST_OUTPUT",
 					Value: *tektonv1beta1.NewArrayOrString(output),
 				},
 			},
@@ -56,7 +56,7 @@ var _ = Describe("Formatters", func() {
 	BeforeEach(func() {
 		now := time.Now()
 		taskRuns = []*helpers.TaskRun{
-			newTaskRunWithHACBSTestOutput(
+			newTaskRunWithAppStudioTestOutput(
 				"example-task-1",
 				now,
 				now.Add(time.Minute*5).Add(time.Second*30),
@@ -74,7 +74,7 @@ var _ = Describe("Formatters", func() {
 				now.Add(time.Minute*-2),
 				now,
 			),
-			newTaskRunWithHACBSTestOutput(
+			newTaskRunWithAppStudioTestOutput(
 				"example-task-3",
 				now.Add(time.Second*3),
 				now.Add(time.Second*4),
@@ -88,7 +88,7 @@ var _ = Describe("Formatters", func() {
 					"note": "example note 3"
 				}`,
 			),
-			newTaskRunWithHACBSTestOutput(
+			newTaskRunWithAppStudioTestOutput(
 				"example-task-4",
 				now.Add(time.Second*4),
 				now.Add(time.Second*5),
@@ -102,7 +102,7 @@ var _ = Describe("Formatters", func() {
 					"note": "example note 4"
 				}`,
 			),
-			newTaskRunWithHACBSTestOutput(
+			newTaskRunWithAppStudioTestOutput(
 				"example-task-5",
 				now.Add(time.Minute*-5),
 				now,
@@ -115,7 +115,7 @@ var _ = Describe("Formatters", func() {
 					"failures": 0
 				}`,
 			),
-			newTaskRunWithHACBSTestOutput(
+			newTaskRunWithAppStudioTestOutput(
 				"example-task-6",
 				now.Add(time.Second*6),
 				now.Add(time.Second*7),

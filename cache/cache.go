@@ -14,16 +14,58 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package pipeline
+package cache
 
 import (
 	"context"
 
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/api/v1beta1"
+
+	releasev1alpha1 "github.com/redhat-appstudio/release-service/api/v1alpha1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
+
+// SetupReleasePlanCache adds a new index field to be able to search ReleasePlans by application.
+func SetupReleasePlanCache(mgr ctrl.Manager) error {
+	releasePlanIndexFunc := func(obj client.Object) []string {
+		return []string{obj.(*releasev1alpha1.ReleasePlan).Spec.Application}
+	}
+
+	return mgr.GetCache().IndexField(context.Background(), &releasev1alpha1.ReleasePlan{},
+		"spec.application", releasePlanIndexFunc)
+}
+
+// SetupReleaseCache adds a new index field to be able to search Releases by Snapshot.
+func SetupReleaseCache(mgr ctrl.Manager) error {
+	releaseIndexFunc := func(obj client.Object) []string {
+		return []string{obj.(*releasev1alpha1.Release).Spec.Snapshot}
+	}
+
+	return mgr.GetCache().IndexField(context.Background(), &releasev1alpha1.Release{},
+		"spec.snapshot", releaseIndexFunc)
+}
+
+// SetupBindingEnvironmentCache adds a new index field to be able to search SnapshotEnvironmentBindings by Environment.
+func SetupBindingEnvironmentCache(mgr ctrl.Manager) error {
+	bindingEnvironmentIndexFunc := func(obj client.Object) []string {
+		return []string{obj.(*applicationapiv1alpha1.SnapshotEnvironmentBinding).Spec.Environment}
+	}
+
+	return mgr.GetCache().IndexField(context.Background(), &applicationapiv1alpha1.SnapshotEnvironmentBinding{},
+		"spec.environment", bindingEnvironmentIndexFunc)
+}
+
+// SetupBindingApplicationCache adds a new index field to be able to search SnapshotEnvironmentBindings by Application.
+func SetupBindingApplicationCache(mgr ctrl.Manager) error {
+	bindingApplicationIndexFunc := func(obj client.Object) []string {
+		return []string{obj.(*applicationapiv1alpha1.SnapshotEnvironmentBinding).Spec.Application}
+	}
+
+	return mgr.GetCache().IndexField(context.Background(), &applicationapiv1alpha1.SnapshotEnvironmentBinding{},
+		"spec.application", bindingApplicationIndexFunc)
+}
 
 // SetupApplicationComponentCache adds a new index field to be able to search Components by application.
 func SetupApplicationComponentCache(mgr ctrl.Manager) error {

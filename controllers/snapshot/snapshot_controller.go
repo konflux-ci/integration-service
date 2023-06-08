@@ -19,13 +19,16 @@ package snapshot
 import (
 	"context"
 
+	"github.com/redhat-appstudio/integration-service/cache"
+
 	"github.com/go-logr/logr"
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/gitops"
+	"github.com/redhat-appstudio/integration-service/helpers"
+	"github.com/redhat-appstudio/integration-service/loader"
 	"github.com/redhat-appstudio/operator-goodies/reconciler"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
@@ -55,11 +58,16 @@ func NewSnapshotReconciler(client client.Client, logger *logr.Logger, scheme *ru
 //+kubebuilder:rbac:groups=appstudio.redhat.com,resources=applications/finalizers,verbs=update
 //+kubebuilder:rbac:groups=appstudio.redhat.com,resources=components,verbs=get;list;watch;update;patch
 //+kubebuilder:rbac:groups=appstudio.redhat.com,resources=components/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=appstudio.redhat.com,resources=deploymenttargetclasses,verbs=get;list;watch
+//+kubebuilder:rbac:groups=appstudio.redhat.com,resources=deploymenttargetclaims,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=appstudio.redhat.com,resources=environments,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=appstudio.redhat.com,resources=releases/status,verbs=get;update;patch
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
 func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	logger := r.Log.WithValues("Integration", req.NamespacedName)
+	logger := helpers.IntegrationLogger{Logger: r.Log.WithValues("snapshot", req.NamespacedName)}
+	loader := loader.NewLoader()
 
 	snapshot := &applicationapiv1alpha1.Snapshot{}
 	err := r.Get(ctx, req.NamespacedName, snapshot)
@@ -72,69 +80,34 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{}, err
 	}
 
-	application, err := r.getApplicationFromSnapshot(ctx, snapshot)
+	application, err := loader.GetApplicationFromSnapshot(r.Client, ctx, snapshot)
 	if err != nil {
-		logger.Error(err, "Failed to get Application for ",
-			"Snapshot.Name ", snapshot.Name, "Snapshot.Namespace ", snapshot.Namespace)
+		logger.Error(err, "Failed to get Application from the Snapshot")
+		return ctrl.Result{}, err
+	}
+	logger = logger.WithApp(*application)
+
+	component, err := loader.GetComponentFromSnapshot(r.Client, ctx, snapshot)
+	if err != nil {
+		logger.Error(err, "Failed to get Component from the Snapshot")
 		return ctrl.Result{}, err
 	}
 
-	component, err := r.getComponentFromSnapshot(ctx, snapshot)
-	if err != nil {
-		logger.Error(err, "Failed to get Application for ",
-			"Component.Name ", snapshot.Name, "Component.Namespace ", snapshot.Namespace)
-		return ctrl.Result{}, err
-	}
-
-	adapter := NewAdapter(snapshot, application, component, logger, r.Client, ctx)
+	adapter := NewAdapter(snapshot, application, component, logger, loader, r.Client, ctx)
 
 	return reconciler.ReconcileHandler([]reconciler.ReconcileOperation{
 		adapter.EnsureAllReleasesExist,
 		adapter.EnsureGlobalCandidateImageUpdated,
 		adapter.EnsureSnapshotEnvironmentBindingExist,
+		adapter.EnsureCreationOfEnvironment,
 		adapter.EnsureAllIntegrationTestPipelinesExist,
 	})
-}
-
-// getApplicationFromSnapshot loads from the cluster the Application referenced in the given Snapshot.
-// If the Snapshot doesn't specify an Component or this is not found in the cluster, an error will be returned.
-func (r *Reconciler) getApplicationFromSnapshot(context context.Context, snapshot *applicationapiv1alpha1.Snapshot) (*applicationapiv1alpha1.Application, error) {
-	application := &applicationapiv1alpha1.Application{}
-	err := r.Get(context, types.NamespacedName{
-		Namespace: snapshot.Namespace,
-		Name:      snapshot.Spec.Application,
-	}, application)
-
-	if err != nil {
-		return nil, err
-	}
-
-	return application, nil
-}
-
-// getComponentFromSnapshot loads from the cluster the Component referenced in the given Snapshot.
-// If the Snapshot doesn't specify an Application or this is not found in the cluster, an error will be returned.
-func (r *Reconciler) getComponentFromSnapshot(context context.Context, snapshot *applicationapiv1alpha1.Snapshot) (*applicationapiv1alpha1.Component, error) {
-	if componentLabel, ok := snapshot.Labels[gitops.SnapshotComponentLabel]; ok {
-		component := &applicationapiv1alpha1.Component{}
-		err := r.Get(context, types.NamespacedName{
-			Namespace: snapshot.Namespace,
-			Name:      componentLabel,
-		}, component)
-
-		if err != nil {
-			return nil, err
-		}
-
-		return component, nil
-	} else {
-		return nil, nil
-	}
 }
 
 // AdapterInterface is an interface defining all the operations that should be defined in an Integration adapter.
 type AdapterInterface interface {
 	EnsureAllReleasesExist() (reconciler.OperationResult, error)
+	EnsureCreationOfEnvironment() (reconciler.OperationResult, error)
 	EnsureAllIntegrationTestPipelinesExist() (reconciler.OperationResult, error)
 	EnsureGlobalCandidateImageUpdated() (reconciler.OperationResult, error)
 	EnsureSnapshotEnvironmentBindingExist() (reconciler.OperationResult, error)
@@ -148,19 +121,19 @@ func SetupController(manager ctrl.Manager, log *logr.Logger) error {
 // setupCache indexes fields for each of the resources used in the release adapter in those cases where filtering by
 // field is required.
 func setupCache(mgr ctrl.Manager) error {
-	if err := SetupReleasePlanCache(mgr); err != nil {
+	if err := cache.SetupReleasePlanCache(mgr); err != nil {
 		return err
 	}
 
-	if err := SetupReleaseCache(mgr); err != nil {
+	if err := cache.SetupReleaseCache(mgr); err != nil {
 		return err
 	}
 
-	if err := SetupApplicationCache(mgr); err != nil {
+	if err := cache.SetupBindingEnvironmentCache(mgr); err != nil {
 		return err
 	}
 
-	return SetupEnvironmentCache(mgr)
+	return cache.SetupBindingApplicationCache(mgr)
 }
 
 // setupControllerWithManager sets up the controller with the Manager which monitors new Snapshots

@@ -19,11 +19,13 @@ package tekton
 import (
 	"encoding/json"
 	"fmt"
+	"reflect"
 
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/api/v1beta1"
 	"github.com/redhat-appstudio/integration-service/helpers"
 	tektonv1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -53,6 +55,9 @@ var (
 
 	// SnapshotNameLabel is the label of specific the name of the snapshot associated with PipelineRun
 	SnapshotNameLabel = fmt.Sprintf("%s/%s", ResourceLabelSuffix, "snapshot")
+
+	// EnvironmentNameLabel is the label of specific the name of the environment associated with PipelineRun
+	EnvironmentNameLabel = fmt.Sprintf("%s/%s", ResourceLabelSuffix, "environment")
 
 	// ApplicationNameLabel is the label of specific the name of the Application associated with PipelineRun
 	ApplicationNameLabel = fmt.Sprintf("%s/%s", ResourceLabelSuffix, "application")
@@ -183,6 +188,37 @@ func (r *IntegrationPipelineRun) WithApplicationAndComponent(application *applic
 		r.ObjectMeta.Labels[ComponentNameLabel] = component.Name
 	}
 	r.ObjectMeta.Labels[ApplicationNameLabel] = application.Name
+
+	return r
+}
+
+// WithEnvironmentAndDeploymentTarget adds a param containing the DeploymentTarget connection details and Environment name
+// to the integration PipelineRun.
+func (r *IntegrationPipelineRun) WithEnvironmentAndDeploymentTarget(dt *applicationapiv1alpha1.DeploymentTarget, environmentName string) *IntegrationPipelineRun {
+	if !reflect.ValueOf(dt.Spec.KubernetesClusterCredentials).IsZero() {
+		// Add the NAMESPACE parameter to the pipeline
+		r.WithExtraParam("NAMESPACE", tektonv1beta1.ArrayOrString{
+			Type:      tektonv1beta1.ParamTypeString,
+			StringVal: dt.Spec.KubernetesClusterCredentials.DefaultNamespace,
+		})
+
+		// Create a new Workspace binding which will allow mounting the ClusterCredentialsSecret in the Tekton pipelineRun
+		workspace := tektonv1beta1.WorkspaceBinding{
+			Name:   "cluster-credentials",
+			Secret: &corev1.SecretVolumeSource{SecretName: dt.Spec.KubernetesClusterCredentials.ClusterCredentialsSecret},
+		}
+		// Add the new workspace to the pipelineRun Spec
+		if r.Spec.Workspaces == nil {
+			r.Spec.Workspaces = []tektonv1beta1.WorkspaceBinding{}
+		}
+		r.Spec.Workspaces = append(r.Spec.Workspaces, workspace)
+	}
+
+	// Add the environment label to the pipelineRun
+	if r.ObjectMeta.Labels == nil {
+		r.ObjectMeta.Labels = map[string]string{}
+	}
+	r.ObjectMeta.Labels[EnvironmentNameLabel] = environmentName
 
 	return r
 }

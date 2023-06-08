@@ -19,6 +19,9 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/redhat-appstudio/integration-service/cache"
+	goodies "github.com/redhat-appstudio/operator-goodies/test"
+
 	goodies "github.com/redhat-appstudio/operator-goodies/test"
 
 	"k8s.io/client-go/rest"
@@ -32,7 +35,6 @@ import (
 
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/api/v1beta1"
-	"github.com/redhat-appstudio/integration-service/controllers/snapshot"
 	releasev1alpha1 "github.com/redhat-appstudio/release-service/api/v1alpha1"
 	clientsetscheme "k8s.io/client-go/kubernetes/scheme"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -94,7 +96,7 @@ var _ = BeforeSuite(func() {
 	k8sClient = k8sManager.GetClient()
 	go func() {
 		defer GinkgoRecover()
-		Expect(snapshot.SetupReleasePlanCache(k8sManager)).To(Succeed())
+		Expect(cache.SetupReleasePlanCache(k8sManager)).To(Succeed())
 		Expect(k8sManager.Start(ctx)).To(Succeed())
 	}()
 })

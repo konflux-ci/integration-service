@@ -27,7 +27,7 @@ jobs:
       - name: Set up Go 1.x
         uses: actions/setup-go@v4
         with:
-          go-version: 1.18
+          go-version: 1.19
       - name: Check out code into the Go module directory
         uses: actions/checkout@v3
         with:
@@ -89,7 +89,7 @@ jobs:
           fi
       - uses: dominikh/staticcheck-action@v1.3.0
         with:
-          version: "2022.1"
+          version: "2023.1.3"
           install-go: false
       - name: Check manifests # make generate manifests touches files even for no changes
         run: |

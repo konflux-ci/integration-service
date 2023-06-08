@@ -5,9 +5,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 )
 
-// IntegrationPipelineRunStartedPredicate returns a predicate which filters out all objects except
-// integration PipelineRuns that have just started.
-func IntegrationPipelineRunStartedPredicate() predicate.Predicate {
+// IntegrationPipelineRunPredicate returns a predicate which filters out all objects except
+// integration PipelineRuns that have just started or finished.
+func IntegrationPipelineRunPredicate() predicate.Predicate {
 	return predicate.Funcs{
 		CreateFunc: func(createEvent event.CreateEvent) bool {
 			return false
@@ -20,14 +20,14 @@ func IntegrationPipelineRunStartedPredicate() predicate.Predicate {
 		},
 		UpdateFunc: func(e event.UpdateEvent) bool {
 			return (IsIntegrationPipelineRun(e.ObjectNew) &&
-				hasPipelineRunStateChangedToStarted(e.ObjectOld, e.ObjectNew))
+				(hasPipelineRunStateChangedToStarted(e.ObjectOld, e.ObjectNew) || hasPipelineRunStateChangedToFinished(e.ObjectOld, e.ObjectNew)))
 		},
 	}
 }
 
-// IntegrationOrBuildPipelineRunSucceededPredicate returns a predicate which filters out all objects except
-// Integration and Build PipelineRuns which have just succeeded.
-func IntegrationOrBuildPipelineRunSucceededPredicate() predicate.Predicate {
+// BuildPipelineRunFinishedPredicate returns a predicate which filters out all objects except
+// Build PipelineRuns which have finished and been just signed.
+func BuildPipelineRunFinishedPredicate() predicate.Predicate {
 	return predicate.Funcs{
 		CreateFunc: func(createEvent event.CreateEvent) bool {
 			return false
@@ -39,8 +39,8 @@ func IntegrationOrBuildPipelineRunSucceededPredicate() predicate.Predicate {
 			return false
 		},
 		UpdateFunc: func(e event.UpdateEvent) bool {
-			return (IsIntegrationPipelineRun(e.ObjectNew) || IsBuildPipelineRun(e.ObjectNew)) &&
-				hasPipelineRunStateChangedToSucceeded(e.ObjectOld, e.ObjectNew)
+			return (IsBuildPipelineRun(e.ObjectNew)) &&
+				hasPipelineRunBeenChangedToSigned(e.ObjectOld, e.ObjectNew) // only finished pipelines are signed
 		},
 	}
 }

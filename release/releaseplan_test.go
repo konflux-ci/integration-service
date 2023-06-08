@@ -6,6 +6,7 @@ import (
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	integrationservicerelease "github.com/redhat-appstudio/integration-service/release"
 	releasev1alpha1 "github.com/redhat-appstudio/release-service/api/v1alpha1"
+	releasemetadata "github.com/redhat-appstudio/release-service/metadata"
 	"k8s.io/apimachinery/pkg/api/errors"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -53,7 +54,7 @@ var _ = Describe("Release functions for managing Releases", Ordered, func() {
 				GenerateName: "releaseplan-sample-",
 				Namespace:    namespace,
 				Labels: map[string]string{
-					releasev1alpha1.AutoReleaseLabel: "true",
+					releasemetadata.AutoReleaseLabel: "true",
 				},
 			},
 			Spec: releasev1alpha1.ReleasePlanSpec{
@@ -73,9 +74,10 @@ var _ = Describe("Release functions for managing Releases", Ordered, func() {
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 	})
 
-	It("ensures the Release can be created for ReleasePlan", func() {
+	It("ensures the Release can be created for ReleasePlan and is labelled as automated", func() {
 		createdRelease := integrationservicerelease.NewReleaseForReleasePlan(releasePlan, hasSnapshot)
 		Expect(createdRelease.Spec.ReleasePlan).To(Equal(releasePlan.Name))
+		Expect(createdRelease.GetLabels()[releasemetadata.AutomatedLabel]).To(Equal("true"))
 	})
 
 	It("ensures the matching Release can be found for ReleasePlan", func() {

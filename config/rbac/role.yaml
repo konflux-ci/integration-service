@@ -52,10 +52,46 @@ rules:
 - apiGroups:
   - appstudio.redhat.com
   resources:
-  - environments
+  - deploymenttargetclaims
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - appstudio.redhat.com
+  resources:
+  - deploymenttargetclasses
   verbs:
   - get
   - list
+  - watch
+- apiGroups:
+  - appstudio.redhat.com
+  resources:
+  - deploymenttargets
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - appstudio.redhat.com
+  resources:
+  - environments
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
   - watch
 - apiGroups:
   - appstudio.redhat.com
@@ -73,6 +109,14 @@ rules:
   - appstudio.redhat.com
   resources:
   - integrationtestscenarios/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - appstudio.redhat.com
+  resources:
+  - releases/status
   verbs:
   - get
   - patch
