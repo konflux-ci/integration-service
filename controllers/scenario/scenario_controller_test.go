@@ -32,9 +32,6 @@ var _ = Describe("ScenarioController", func() {
 		hasScenario        *v1beta1.IntegrationTestScenario
 		failScenario       *v1beta1.IntegrationTestScenario
 	)
-	const (
-		SampleRepoLink = "https://github.com/devfile-samples/devfile-sample-java-springboot-basic"
-	)
 
 	BeforeEach(func() {
 
@@ -82,7 +79,7 @@ var _ = Describe("ScenarioController", func() {
 				Environment: v1beta1.TestEnvironment{
 					Name: "envname",
 					Type: "POC",
-					Configuration: applicationapiv1alpha1.EnvironmentConfiguration{
+					Configuration: &applicationapiv1alpha1.EnvironmentConfiguration{
 						Env: []applicationapiv1alpha1.EnvVarPair{},
 					},
 				},
@@ -118,7 +115,7 @@ var _ = Describe("ScenarioController", func() {
 				Environment: v1beta1.TestEnvironment{
 					Name: "envname",
 					Type: "POC",
-					Configuration: applicationapiv1alpha1.EnvironmentConfiguration{
+					Configuration: &applicationapiv1alpha1.EnvironmentConfiguration{
 						Env: []applicationapiv1alpha1.EnvVarPair{},
 					},
 				},

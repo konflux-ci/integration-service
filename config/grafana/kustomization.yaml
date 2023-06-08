@@ -1,0 +1,12 @@
+kind: Kustomization
+apiVersion: kustomize.config.k8s.io/v1beta1
+
+namespace: integration-service
+
+configMapGenerator:
+  - name: grafana-dashboard-integration-service
+    files:
+      - dashboards/integration-service-dashboard.json
+
+resources:
+  - dashboard.yaml

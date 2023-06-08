@@ -22,10 +22,10 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 
-	"github.com/go-logr/logr"
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/api/v1beta1"
 	"github.com/redhat-appstudio/integration-service/gitops"
+	h "github.com/redhat-appstudio/integration-service/helpers"
 	"github.com/redhat-appstudio/operator-goodies/reconciler"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -34,13 +34,13 @@ import (
 type Adapter struct {
 	application *applicationapiv1alpha1.Application
 	scenario    *v1beta1.IntegrationTestScenario
-	logger      logr.Logger
+	logger      h.IntegrationLogger
 	client      client.Client
 	context     context.Context
 }
 
 // NewAdapter creates and returns an Adapter instance.
-func NewAdapter(application *applicationapiv1alpha1.Application, scenario *v1beta1.IntegrationTestScenario, logger logr.Logger, client client.Client,
+func NewAdapter(application *applicationapiv1alpha1.Application, scenario *v1beta1.IntegrationTestScenario, logger h.IntegrationLogger, client client.Client,
 	context context.Context) *Adapter {
 	return &Adapter{
 		application: application,
@@ -57,44 +57,38 @@ func (a *Adapter) EnsureCreatedScenarioIsValid() (reconciler.OperationResult, er
 
 	// First check if application exists or not
 	if a.application == nil {
-		a.logger.Info("Application for scenario was not found.",
-			"Scenario.Name:", a.scenario.Name)
+		a.logger.Info("Application for scenario was not found.")
 
 		patch := client.MergeFrom(a.scenario.DeepCopy())
 		SetScenarioIntegrationStatusAsInvalid(a.scenario, "Failed to get application for scenario.")
 		err := a.client.Status().Patch(a.context, a.scenario, patch)
 		if err != nil {
-			a.logger.Error(err, "Failed to update Scenario",
-				"Scenario.Name:", a.scenario.Name,
-				"patch", patch)
+			a.logger.Error(err, "Failed to update Scenario")
 			return reconciler.RequeueWithError(err)
 		}
 		return reconciler.ContinueProcessing()
 	}
+
+	// application exist, always log it
+	a.logger = a.logger.WithApp(*a.application)
 	// Checks if scenario has ownerReference assigned to it
 	if a.scenario.OwnerReferences == nil {
 		patch := client.MergeFrom(a.scenario.DeepCopy())
 		err := ctrl.SetControllerReference(a.application, a.scenario, a.client.Scheme())
 		if err != nil {
-			a.logger.Error(err, "Error setting owner reference.",
-				"Application.Name:", a.application.Name,
-				"Application.Namespace:", a.application.Namespace)
+			a.logger.Error(err, "Error setting owner reference.")
 			return reconciler.RequeueWithError(err)
 		}
 		err = a.client.Patch(a.context, a.scenario, patch)
 		if err != nil {
-			a.logger.Error(err, "Failed to update Scenario",
-				"Scenario.Name:", a.scenario.Name,
-				"patch", patch)
+			a.logger.Error(err, "Failed to update Scenario")
 			return reconciler.RequeueWithError(err)
 		}
 
 	}
 	// Checks if scenario has environment defined
 	if reflect.ValueOf(a.scenario.Spec.Environment).IsZero() {
-		a.logger.Info("IntegrationTestScenario has no environment defined",
-			"Scenario.Name:", a.scenario.Name,
-			"Scenario.Namespace:", a.scenario.Namespace)
+		a.logger.Info("IntegrationTestScenario has no environment defined")
 	} else {
 		//Same as function getEnvironmentFromIntegrationTestScenario - this could be later changed to call only that function
 		ITSEnv := &applicationapiv1alpha1.Environment{}
@@ -106,17 +100,16 @@ func (a *Adapter) EnsureCreatedScenarioIsValid() (reconciler.OperationResult, er
 
 		if err != nil {
 			a.logger.Info("Environment doesn't exist in same namespace as IntegrationTestScenario.",
-				"Scenario.Name:", a.scenario.Name,
-				"Scenario.Namespace:", a.scenario.Namespace,
-				"Environment.Name:", a.scenario.Spec.Environment.Name)
+				"environment.Name:", a.scenario.Spec.Environment.Name)
 			patch := client.MergeFrom(a.scenario.DeepCopy())
 			SetScenarioIntegrationStatusAsInvalid(a.scenario, "Environment "+a.scenario.Spec.Environment.Name+" is located in different namespace than scenario.")
 			err = a.client.Status().Patch(a.context, a.scenario, patch)
 			if err != nil {
-				a.logger.Error(err, "Failed to update Scenario",
-					"Scenario.Name:", a.scenario.Name)
+				a.logger.Error(err, "Failed to update Scenario")
 				return reconciler.RequeueWithError(err)
 			}
+			a.logger.LogAuditEvent("IntegrationTestScenario marked as Invalid. Environment "+a.scenario.Spec.Environment.Name+" is located in different namespace than scenario. ",
+				a.scenario, h.LogActionUpdate)
 			return reconciler.ContinueProcessing()
 		}
 
@@ -127,10 +120,10 @@ func (a *Adapter) EnsureCreatedScenarioIsValid() (reconciler.OperationResult, er
 		SetScenarioIntegrationStatusAsValid(a.scenario, "Integration test scenario is Valid.")
 		err := a.client.Status().Patch(a.context, a.scenario, patch)
 		if err != nil {
-			a.logger.Error(err, "Failed to update Scenario",
-				"Scenario.Name:", a.scenario.Name)
+			a.logger.Error(err, "Failed to update Scenario")
 			return reconciler.ContinueProcessing()
 		}
+		a.logger.LogAuditEvent("IntegrationTestScenario marked as Valid", a.scenario, h.LogActionUpdate)
 	}
 
 	return reconciler.ContinueProcessing()
@@ -141,7 +134,7 @@ func SetScenarioIntegrationStatusAsInvalid(scenario *v1beta1.IntegrationTestScen
 	meta.SetStatusCondition(&scenario.Status.Conditions, metav1.Condition{
 		Type:    gitops.IntegrationTestScenarioValid,
 		Status:  metav1.ConditionFalse,
-		Reason:  gitops.HACBSIntegrationStatusInvalid,
+		Reason:  gitops.AppStudioIntegrationStatusInvalid,
 		Message: message,
 	})
 }
@@ -151,7 +144,7 @@ func SetScenarioIntegrationStatusAsValid(scenario *v1beta1.IntegrationTestScenar
 	meta.SetStatusCondition(&scenario.Status.Conditions, metav1.Condition{
 		Type:    gitops.IntegrationTestScenarioValid,
 		Status:  metav1.ConditionTrue,
-		Reason:  gitops.HACBSIntegrationStatusValid,
+		Reason:  gitops.AppStudioIntegrationStatusValid,
 		Message: message,
 	})
 }

@@ -110,7 +110,7 @@ var _ = Describe("PipelineController", func() {
 				CompletionTime: &metav1.Time{Time: now.Add(5 * time.Minute)},
 				TaskRunResults: []tektonv1beta1.TaskRunResult{
 					{
-						Name: "HACBS_TEST_OUTPUT",
+						Name: "TEST_OUTPUT",
 						Value: *tektonv1beta1.NewArrayOrString(`{
 											"result": "SUCCESS",
 											"timestamp": "1665405318",
@@ -245,13 +245,6 @@ var _ = Describe("PipelineController", func() {
 			err = manager.Start(ctx)
 			Expect(err).NotTo(HaveOccurred())
 		}()
-	})
-
-	It("get application from pipelineRun", func() {
-		app, err := pipelineReconciler.getApplicationFromPipelineRun(ctx, testpipelineRun)
-		Expect(err).To(BeNil())
-		Expect(app).NotTo(BeNil())
-		Expect(app.ObjectMeta).To(Equal(hasApp.ObjectMeta))
 	})
 
 	When("pipelinerun has no component", func() {

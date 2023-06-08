@@ -1,8 +1,6 @@
 package gitops_test
 
 import (
-	"fmt"
-
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
@@ -138,36 +136,10 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 
 	})
 
-	It("ensures Snapshot Environment Binding doesn't exist", func() {
-		gitops.MarkSnapshotAsPassed(k8sClient, ctx, hasSnapshot, "test passed")
-		Expect(gitops.HaveHACBSTestsSucceeded(hasSnapshot)).To(BeTrue())
-
-		Eventually(func() bool {
-			snapshotEnvironmentBinding, err := gitops.FindExistingSnapshotEnvironmentBinding(k8sClient, ctx, hasApp, &env)
-			fmt.Fprintf(GinkgoWriter, "Err: %v\n", err)
-			fmt.Fprintf(GinkgoWriter, "appenvbinding: %v\n", snapshotEnvironmentBinding)
-			return snapshotEnvironmentBinding == nil && err == nil
-		}, time.Second*10).Should(BeTrue())
-	})
-
 	It("ensures Binding Component is created", func() {
 		gitops.MarkSnapshotAsPassed(k8sClient, ctx, hasSnapshot, "test passed")
-		Expect(gitops.HaveHACBSTestsSucceeded(hasSnapshot)).To(BeTrue())
+		Expect(gitops.HaveAppStudioTestsSucceeded(hasSnapshot)).To(BeTrue())
 		bindingComponents := gitops.NewBindingComponents([]applicationapiv1alpha1.Component{*hasComp})
 		Expect(bindingComponents).NotTo(BeNil())
-	})
-
-	It("ensures Snapshot Environment Binding is created and exists", func() {
-		bindingName := hasApp.Name + "-" + env.Name + "-" + "binding"
-		snapshotEnvironmentBinding := gitops.NewSnapshotEnvironmentBinding(
-			bindingName, hasApp.Namespace, hasApp.Name,
-			env.Name, hasSnapshot, []applicationapiv1alpha1.Component{*hasComp})
-		Expect(snapshotEnvironmentBinding).NotTo(BeNil())
-		Expect(k8sClient.Create(ctx, snapshotEnvironmentBinding)).Should(Succeed())
-		Eventually(func() bool {
-			snapshotEnvironmentBinding, err := gitops.FindExistingSnapshotEnvironmentBinding(k8sClient, ctx, hasApp, &env)
-			return snapshotEnvironmentBinding != nil && err == nil
-		}, time.Second*10).Should(BeTrue())
-		Expect(k8sClient.Delete(ctx, snapshotEnvironmentBinding)).Should(Succeed())
 	})
 })

@@ -11,7 +11,7 @@ import (
 )
 
 // NamePrefix is a common name prefix for this service.
-const NamePrefix = "HACBS Test"
+const NamePrefix = "Red Hat Trusted App Test"
 
 // Reporter is a generic interface all status implementations must follow.
 type Reporter interface {

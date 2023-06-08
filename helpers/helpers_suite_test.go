@@ -19,9 +19,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/redhat-appstudio/integration-service/cache"
 	goodies "github.com/redhat-appstudio/operator-goodies/test"
-
-	"github.com/redhat-appstudio/integration-service/controllers/pipeline"
 
 	"k8s.io/client-go/rest"
 
@@ -93,7 +92,7 @@ var _ = BeforeSuite(func() {
 	k8sClient = k8sManager.GetClient()
 	go func() {
 		defer GinkgoRecover()
-		Expect(pipeline.SetupIntegrationTestScenarioCache(k8sManager)).To(Succeed())
+		Expect(cache.SetupIntegrationTestScenarioCache(k8sManager)).To(Succeed())
 		Expect(k8sManager.Start(ctx)).To(Succeed())
 	}()
 })

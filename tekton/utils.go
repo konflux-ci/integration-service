@@ -24,6 +24,9 @@ const (
 
 	// PipelineRunApplicationLabel is the label denoting the application.
 	PipelineRunApplicationLabel = "appstudio.openshift.io/application"
+
+	// PipelineRunApplicationLabel is the label added by Tekton Chains to signed PipelineRuns
+	PipelineRunChainsSignedAnnotation = "chains.tekton.dev/signed"
 )
 
 // IsBuildPipelineRun returns a boolean indicating whether the object passed is a PipelineRun from
@@ -50,13 +53,12 @@ func IsIntegrationPipelineRun(object client.Object) bool {
 	return false
 }
 
-// hasPipelineRunStateChangedToSucceeded returns a boolean indicating whether the PipelineRun status changed to succeeded or not.
+// hasPipelineRunStateChangedToFinished returns a boolean indicating whether the PipelineRun status changed to finished or not.
 // If the objects passed to this function are not PipelineRuns, the function will return false.
-func hasPipelineRunStateChangedToSucceeded(objectOld, objectNew client.Object) bool {
+func hasPipelineRunStateChangedToFinished(objectOld, objectNew client.Object) bool {
 	if oldPipelineRun, ok := objectOld.(*tektonv1beta1.PipelineRun); ok {
 		if newPipelineRun, ok := objectNew.(*tektonv1beta1.PipelineRun); ok {
-			return oldPipelineRun.Status.GetCondition(apis.ConditionSucceeded).IsUnknown() &&
-				newPipelineRun.Status.GetCondition(apis.ConditionSucceeded).IsTrue()
+			return oldPipelineRun.Status.GetCondition(apis.ConditionSucceeded).IsUnknown() && !newPipelineRun.Status.GetCondition(apis.ConditionSucceeded).IsUnknown()
 		}
 	}
 
@@ -70,6 +72,19 @@ func hasPipelineRunStateChangedToStarted(objectOld, objectNew client.Object) boo
 		if newPipelineRun, ok := objectNew.(*tektonv1beta1.PipelineRun); ok {
 			return (oldPipelineRun.Status.StartTime == nil || oldPipelineRun.Status.StartTime.IsZero()) &&
 				(newPipelineRun.Status.StartTime != nil && !newPipelineRun.Status.StartTime.IsZero())
+		}
+	}
+
+	return false
+}
+
+// hasPipelineRunBeenChangedToSigned returns a boolean indicated whether the PipelineRun just been signed
+// If the objects passed to this function are not PipelineRuns, the function will return false.
+func hasPipelineRunBeenChangedToSigned(objectOld, objectNew client.Object) bool {
+	if oldPipelineRun, ok := objectOld.(*tektonv1beta1.PipelineRun); ok {
+		if newPipelineRun, ok := objectNew.(*tektonv1beta1.PipelineRun); ok {
+			return (!helpers.HasAnnotationWithValue(oldPipelineRun, PipelineRunChainsSignedAnnotation, "true") &&
+				helpers.HasAnnotationWithValue(newPipelineRun, PipelineRunChainsSignedAnnotation, "true"))
 		}
 	}
 

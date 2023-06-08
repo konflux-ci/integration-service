@@ -12,6 +12,7 @@ import (
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/api/v1beta1"
 	"github.com/redhat-appstudio/integration-service/gitops"
+	"github.com/redhat-appstudio/integration-service/helpers"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -29,11 +30,14 @@ var _ = Describe("Scenario Adapter", Ordered, func() {
 		hasApp                  *applicationapiv1alpha1.Application
 		integrationTestScenario *v1beta1.IntegrationTestScenario
 		invalidScenario         *v1beta1.IntegrationTestScenario
+		logger                  helpers.IntegrationLogger
 		envNamespace            string = DefaultNamespace
 		env                     applicationapiv1alpha1.Environment
 	)
 
 	BeforeAll(func() {
+
+		logger = helpers.IntegrationLogger{Logger: ctrl.Log}
 
 		hasApp = &applicationapiv1alpha1.Application{
 			ObjectMeta: metav1.ObjectMeta{
@@ -79,7 +83,7 @@ var _ = Describe("Scenario Adapter", Ordered, func() {
 				Environment: v1beta1.TestEnvironment{
 					Name: "envname",
 					Type: "POC",
-					Configuration: applicationapiv1alpha1.EnvironmentConfiguration{
+					Configuration: &applicationapiv1alpha1.EnvironmentConfiguration{
 						Env: []applicationapiv1alpha1.EnvVarPair{},
 					},
 				},
@@ -118,7 +122,7 @@ var _ = Describe("Scenario Adapter", Ordered, func() {
 				Environment: v1beta1.TestEnvironment{
 					Name: "invEnv",
 					Type: "POC",
-					Configuration: applicationapiv1alpha1.EnvironmentConfiguration{
+					Configuration: &applicationapiv1alpha1.EnvironmentConfiguration{
 						Env: []applicationapiv1alpha1.EnvVarPair{},
 					},
 				},
@@ -153,7 +157,7 @@ var _ = Describe("Scenario Adapter", Ordered, func() {
 		}
 		Expect(k8sClient.Create(ctx, &env)).Should(Succeed())
 
-		adapter = NewAdapter(hasApp, integrationTestScenario, ctrl.Log, k8sClient, ctx)
+		adapter = NewAdapter(hasApp, integrationTestScenario, logger, k8sClient, ctx)
 		Expect(reflect.TypeOf(adapter)).To(Equal(reflect.TypeOf(&Adapter{})))
 	})
 
@@ -173,15 +177,15 @@ var _ = Describe("Scenario Adapter", Ordered, func() {
 	})
 
 	It("can create a new Adapter instance", func() {
-		Expect(reflect.TypeOf(NewAdapter(hasApp, integrationTestScenario, ctrl.Log, k8sClient, ctx))).To(Equal(reflect.TypeOf(&Adapter{})))
+		Expect(reflect.TypeOf(NewAdapter(hasApp, integrationTestScenario, logger, k8sClient, ctx))).To(Equal(reflect.TypeOf(&Adapter{})))
 	})
 
 	It("can create a new Adapter instance with invalid scenario", func() {
-		Expect(reflect.TypeOf(NewAdapter(hasApp, invalidScenario, ctrl.Log, k8sClient, ctx))).To(Equal(reflect.TypeOf(&Adapter{})))
+		Expect(reflect.TypeOf(NewAdapter(hasApp, invalidScenario, logger, k8sClient, ctx))).To(Equal(reflect.TypeOf(&Adapter{})))
 	})
 
 	It("EnsureCreatedScenarioIsValid without app", func() {
-		a := NewAdapter(nil, integrationTestScenario, ctrl.Log, k8sClient, ctx)
+		a := NewAdapter(nil, integrationTestScenario, logger, k8sClient, ctx)
 
 		Eventually(func() bool {
 			result, err := a.EnsureCreatedScenarioIsValid()
