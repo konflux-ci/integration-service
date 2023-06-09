@@ -18,6 +18,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/redhat-appstudio/integration-service/tekton"
 	"reflect"
 	"time"
 
@@ -1140,6 +1141,13 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			Expect(pipelineRuns).NotTo(BeNil())
 			Expect(len(*pipelineRuns)).To(Equal(2))
 			Expect((*pipelineRuns)[0].Name == testpipelineRunBuild.Name || (*pipelineRuns)[1].Name == testpipelineRunBuild.Name).To(BeTrue())
+		})
+
+		It("can annotate the build pipelineRun with the Snapshot name", func() {
+			pipelineRun, err := adapter.annotateBuildPipelineRunWithSnapshot(testpipelineRunBuild, hasSnapshot)
+			Expect(err).To(BeNil())
+			Expect(pipelineRun).NotTo(BeNil())
+			Expect(pipelineRun.ObjectMeta.Annotations[tekton.SnapshotNameLabel]).To(Equal(hasSnapshot.Name))
 		})
 
 		It("ensure that EnsureSnapshotExists doesn't create snapshot for previous pipeline run", func() {
