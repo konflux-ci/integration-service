@@ -602,7 +602,7 @@
           "exemplar": true,
           "expr": "snapshot_attempt_total",
           "interval": "",
-          "legendFormat": "{{ pod }}",
+          "legendFormat": "{{ reason }}",
           "refId": "A"
         }
       ],
@@ -626,6 +626,7 @@
       },
       "yaxes": [
         {
+          "$$hashKey": "object:170",
           "format": "short",
           "label": null,
           "logBase": 1,
@@ -634,6 +635,7 @@
           "show": true
         },
         {
+          "$$hashKey": "object:171",
           "format": "short",
           "label": null,
           "logBase": 1,
@@ -753,7 +755,7 @@
         "exponent": 0.5,
         "mode": "spectrum"
       },
-      "dataFormat": "timeseries",
+      "dataFormat": "tsbuckets",
       "description": "Integration service response time from the moment the buildPipelineRun is completed till the snapshot is marked as in progress status",
       "fieldConfig": {
         "defaults": {},
@@ -766,20 +768,22 @@
         "y": 27
       },
       "heatmap": {},
-      "hideZeroBuckets": false,
+      "hideZeroBuckets": true,
       "highlightCards": true,
       "id": 8,
       "legend": {
         "show": false
       },
+      "maxDataPoints": 25,
       "pluginVersion": "7.5.17",
       "reverseYBuckets": false,
       "targets": [
         {
           "exemplar": true,
-          "expr": "integration_svc_response_seconds_bucket",
+          "expr": " sum(increase(integration_svc_response_seconds_bucket[$__interval])) by (le)",
+          "format": "heatmap",
           "interval": "",
-          "legendFormat": "",
+          "legendFormat": "{{le}}",
           "refId": "A"
         }
       ],
@@ -916,7 +920,7 @@
         "exponent": 0.5,
         "mode": "spectrum"
       },
-      "dataFormat": "timeseries",
+      "dataFormat": "tsbuckets",
       "description": "Time duration from the moment the snapshot resource was created till a integration pipelineRun is started",
       "fieldConfig": {
         "defaults": {},
@@ -929,20 +933,22 @@
         "y": 42
       },
       "heatmap": {},
-      "hideZeroBuckets": false,
+      "hideZeroBuckets": true,
       "highlightCards": true,
       "id": 10,
       "legend": {
         "show": false
       },
+      "maxDataPoints": 25,
       "pluginVersion": "7.5.17",
       "reverseYBuckets": false,
       "targets": [
         {
           "exemplar": true,
-          "expr": "snapshot_created_to_pipelinerun_started_seconds_bucket",
+          "expr": "sum(increase(snapshot_created_to_pipelinerun_started_seconds_bucket[$__interval])) by (le)",
+          "format": "heatmap",
           "interval": "",
-          "legendFormat": "",
+          "legendFormat": "{{le}}",
           "refId": "A"
         }
       ],
@@ -984,7 +990,7 @@
         "exponent": 0.5,
         "mode": "spectrum"
       },
-      "dataFormat": "timeseries",
+      "dataFormat": "tsbuckets",
       "description": "Snapshot durations from the moment the Snapshot was created till the Snapshot is marked as finished",
       "fieldConfig": {
         "defaults": {},
@@ -997,20 +1003,22 @@
         "y": 50
       },
       "heatmap": {},
-      "hideZeroBuckets": false,
+      "hideZeroBuckets": true,
       "highlightCards": true,
       "id": 14,
       "legend": {
         "show": false
       },
+      "maxDataPoints": 25,
       "pluginVersion": "7.5.17",
       "reverseYBuckets": false,
       "targets": [
         {
           "exemplar": true,
-          "expr": "snapshot_attempt_duration_seconds_bucket",
+          "expr": "sum(increase(snapshot_attempt_duration_seconds_bucket[$__interval])) by (le)",
+          "format": "heatmap",
           "interval": "",
-          "legendFormat": "",
+          "legendFormat": "{{le}}",
           "refId": "A"
         }
       ],
@@ -1053,5 +1061,5 @@
   "timezone": "",
   "title": "Integration Service",
   "uid": "b1fac0453848b1e7ce9377a6eb38d7ec3b8a23d9",
-  "version": 4
+  "version": 5
 }
