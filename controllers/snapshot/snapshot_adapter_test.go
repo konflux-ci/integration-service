@@ -12,7 +12,7 @@ import (
 	. "github.com/onsi/gomega"
 
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
-	"github.com/redhat-appstudio/integration-service/api/v1alpha1"
+	"github.com/redhat-appstudio/integration-service/api/v1beta1"
 	"github.com/redhat-appstudio/integration-service/loader"
 	releasev1alpha1 "github.com/redhat-appstudio/release-service/api/v1alpha1"
 	releasemetadata "github.com/redhat-appstudio/release-service/metadata"
@@ -39,8 +39,8 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		hasSnapshotPR                     *applicationapiv1alpha1.Snapshot
 		deploymentTargetClass             *applicationapiv1alpha1.DeploymentTargetClass
 		testpipelineRun                   *tektonv1beta1.PipelineRun
-		integrationTestScenario           *v1alpha1.IntegrationTestScenario
-		integrationTestScenarioWithoutEnv *v1alpha1.IntegrationTestScenario
+		integrationTestScenario           *v1beta1.IntegrationTestScenario
+		integrationTestScenarioWithoutEnv *v1beta1.IntegrationTestScenario
 		env                               *applicationapiv1alpha1.Environment
 	)
 	const (
@@ -63,7 +63,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		}
 		Expect(k8sClient.Create(ctx, hasApp)).Should(Succeed())
 
-		integrationTestScenario = &v1alpha1.IntegrationTestScenario{
+		integrationTestScenario = &v1beta1.IntegrationTestScenario{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "example-pass",
 				Namespace: "default",
@@ -72,11 +72,26 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 					"test.appstudio.openshift.io/optional": "false",
 				},
 			},
-			Spec: v1alpha1.IntegrationTestScenarioSpec{
+			Spec: v1beta1.IntegrationTestScenarioSpec{
 				Application: "application-sample",
-				Bundle:      "quay.io/kpavic/test-bundle:component-pipeline-pass",
-				Pipeline:    "component-pipeline-pass",
-				Environment: v1alpha1.TestEnvironment{
+				ResolverRef: v1beta1.ResolverRef{
+					Resolver: "git",
+					Params: []v1beta1.ResolverParameter{
+						{
+							Name:  "url",
+							Value: "https://github.com/redhat-appstudio/integration-examples.git",
+						},
+						{
+							Name:  "revision",
+							Value: "main",
+						},
+						{
+							Name:  "pathInRepo",
+							Value: "pipelineruns/integration_pipelinerun_pass.yaml",
+						},
+					},
+				},
+				Environment: v1beta1.TestEnvironment{
 					Name: "envname",
 					Type: "POC",
 					Configuration: &applicationapiv1alpha1.EnvironmentConfiguration{
@@ -87,19 +102,34 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		}
 		Expect(k8sClient.Create(ctx, integrationTestScenario)).Should(Succeed())
 
-		integrationTestScenarioWithoutEnv = &v1alpha1.IntegrationTestScenario{
+		integrationTestScenarioWithoutEnv = &v1beta1.IntegrationTestScenario{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      "example-pass-withoutenv",
+				Name:      "example-pass-without-env",
 				Namespace: "default",
 
 				Labels: map[string]string{
 					"test.appstudio.openshift.io/optional": "false",
 				},
 			},
-			Spec: v1alpha1.IntegrationTestScenarioSpec{
+			Spec: v1beta1.IntegrationTestScenarioSpec{
 				Application: "application-sample",
-				Bundle:      "quay.io/kpavic/test-bundle:component-pipeline-pass",
-				Pipeline:    "component-pipeline-pass",
+				ResolverRef: v1beta1.ResolverRef{
+					Resolver: "git",
+					Params: []v1beta1.ResolverParameter{
+						{
+							Name:  "url",
+							Value: "https://github.com/redhat-appstudio/integration-examples.git",
+						},
+						{
+							Name:  "revision",
+							Value: "main",
+						},
+						{
+							Name:  "pathInRepo",
+							Value: "pipelineruns/integration_pipelinerun_pass.yaml",
+						},
+					},
+				},
 			},
 		}
 		Expect(k8sClient.Create(ctx, integrationTestScenarioWithoutEnv)).Should(Succeed())
@@ -338,11 +368,11 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 				},
 				{
 					ContextKey: loader.AllIntegrationTestScenariosContextKey,
-					Resource:   []v1alpha1.IntegrationTestScenario{*integrationTestScenario, *integrationTestScenarioWithoutEnv},
+					Resource:   []v1beta1.IntegrationTestScenario{*integrationTestScenario, *integrationTestScenarioWithoutEnv},
 				},
 				{
 					ContextKey: loader.RequiredIntegrationTestScenariosContextKey,
-					Resource:   []v1alpha1.IntegrationTestScenario{*integrationTestScenario, *integrationTestScenarioWithoutEnv},
+					Resource:   []v1beta1.IntegrationTestScenario{*integrationTestScenario, *integrationTestScenarioWithoutEnv},
 				},
 			})
 			result, err := adapter.EnsureAllIntegrationTestPipelinesExist()
@@ -568,11 +598,11 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 				},
 				{
 					ContextKey: loader.AllIntegrationTestScenariosContextKey,
-					Resource:   []v1alpha1.IntegrationTestScenario{*integrationTestScenario, *integrationTestScenarioWithoutEnv},
+					Resource:   []v1beta1.IntegrationTestScenario{*integrationTestScenario, *integrationTestScenarioWithoutEnv},
 				},
 				{
 					ContextKey: loader.RequiredIntegrationTestScenariosContextKey,
-					Resource:   []v1alpha1.IntegrationTestScenario{*integrationTestScenario, *integrationTestScenarioWithoutEnv},
+					Resource:   []v1beta1.IntegrationTestScenario{*integrationTestScenario, *integrationTestScenarioWithoutEnv},
 				},
 			})
 		})

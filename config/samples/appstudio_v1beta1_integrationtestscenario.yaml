@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: integration-sample
+---
+apiVersion: appstudio.redhat.com/v1beta1
+kind: IntegrationTestScenario
+metadata:
+  labels:
+    app.kubernetes.io/name: integrationtestscenario
+    app.kubernetes.io/instance: integrationtestscenario-sample
+    app.kubernetes.io/part-of: integration-service
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/created-by: integration-service
+  name: integrationtestscenario-sample
+spec:

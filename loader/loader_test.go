@@ -22,7 +22,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/redhat-appstudio/integration-service/api/v1alpha1"
+	"github.com/redhat-appstudio/integration-service/api/v1beta1"
 	tektonv1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -41,7 +41,7 @@ var _ = Describe("Loader", Ordered, func() {
 		deploymentTargetClass   *applicationapiv1alpha1.DeploymentTargetClass
 		deploymentTarget        *applicationapiv1alpha1.DeploymentTarget
 		deploymentTargetClaim   *applicationapiv1alpha1.DeploymentTargetClaim
-		integrationTestScenario *v1alpha1.IntegrationTestScenario
+		integrationTestScenario *v1beta1.IntegrationTestScenario
 		successfulTaskRun       *tektonv1beta1.TaskRun
 		testBuildPipelineRun    *tektonv1beta1.PipelineRun
 		testPipelineRun         *tektonv1beta1.PipelineRun
@@ -161,7 +161,7 @@ var _ = Describe("Loader", Ordered, func() {
 		}
 		Expect(k8sClient.Status().Update(ctx, successfulTaskRun)).Should(Succeed())
 
-		integrationTestScenario = &v1alpha1.IntegrationTestScenario{
+		integrationTestScenario = &v1beta1.IntegrationTestScenario{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "example-pass",
 				Namespace: "default",
@@ -170,11 +170,26 @@ var _ = Describe("Loader", Ordered, func() {
 					"test.appstudio.openshift.io/optional": "false",
 				},
 			},
-			Spec: v1alpha1.IntegrationTestScenarioSpec{
-				Application: "application-sample",
-				Bundle:      "quay.io/kpavic/test-bundle:component-pipeline-pass",
-				Pipeline:    "component-pipeline-pass",
-				Environment: v1alpha1.TestEnvironment{
+			Spec: v1beta1.IntegrationTestScenarioSpec{
+				Application: hasApp.Name,
+				ResolverRef: v1beta1.ResolverRef{
+					Resolver: "git",
+					Params: []v1beta1.ResolverParameter{
+						{
+							Name:  "url",
+							Value: "https://github.com/redhat-appstudio/integration-examples.git",
+						},
+						{
+							Name:  "revision",
+							Value: "main",
+						},
+						{
+							Name:  "pathInRepo",
+							Value: "pipelineruns/integration_pipelinerun_pass.yaml",
+						},
+					},
+				},
+				Environment: v1beta1.TestEnvironment{
 					Name: "envname",
 					Type: "POC",
 					Configuration: &applicationapiv1alpha1.EnvironmentConfiguration{

@@ -26,7 +26,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
-	"github.com/redhat-appstudio/integration-service/api/v1alpha1"
+	"github.com/redhat-appstudio/integration-service/api/v1beta1"
 	"github.com/redhat-appstudio/integration-service/gitops"
 	h "github.com/redhat-appstudio/integration-service/helpers"
 	"github.com/redhat-appstudio/integration-service/release"
@@ -35,7 +35,7 @@ import (
 	"github.com/redhat-appstudio/integration-service/loader"
 	"github.com/redhat-appstudio/operator-goodies/reconciler"
 	releasev1alpha1 "github.com/redhat-appstudio/release-service/api/v1alpha1"
-	"github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
+	pipeline "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -439,7 +439,7 @@ func (a *Adapter) findAvailableEnvironments() (*[]applicationapiv1alpha1.Environ
 
 // createIntegrationPipelineRun creates and returns a new integration PipelineRun. The Pipeline information and the parameters to it
 // will be extracted from the given integrationScenario. The integration's Snapshot will also be passed to the integration PipelineRun.
-func (a *Adapter) createIntegrationPipelineRun(application *applicationapiv1alpha1.Application, integrationTestScenario *v1alpha1.IntegrationTestScenario, snapshot *applicationapiv1alpha1.Snapshot) (*v1beta1.PipelineRun, error) {
+func (a *Adapter) createIntegrationPipelineRun(application *applicationapiv1alpha1.Application, integrationTestScenario *v1beta1.IntegrationTestScenario, snapshot *applicationapiv1alpha1.Snapshot) (*pipeline.PipelineRun, error) {
 	pipelineRun := tekton.NewIntegrationPipelineRun(snapshot.Name, application.Namespace, *integrationTestScenario).
 		WithSnapshot(snapshot).
 		WithIntegrationLabels(integrationTestScenario).
@@ -511,7 +511,7 @@ func (a *Adapter) updateExistingSnapshotEnvironmentBindingWithSnapshot(snapshotE
 // integrationTestScenario contains information about existing environment
 // snapshot is mainly used for adding labels
 // returns copy of already existing environment with updated envVars
-func (a *Adapter) createCopyOfExistingEnvironment(existingEnvironment *applicationapiv1alpha1.Environment, namespace string, integrationTestScenario *v1alpha1.IntegrationTestScenario, snapshot *applicationapiv1alpha1.Snapshot, application *applicationapiv1alpha1.Application) (*applicationapiv1alpha1.Environment, error) {
+func (a *Adapter) createCopyOfExistingEnvironment(existingEnvironment *applicationapiv1alpha1.Environment, namespace string, integrationTestScenario *v1beta1.IntegrationTestScenario, snapshot *applicationapiv1alpha1.Snapshot, application *applicationapiv1alpha1.Application) (*applicationapiv1alpha1.Environment, error) {
 	// Try to find a available DeploymentTargetClass with the right provisioner
 	deploymentTargetClass, err := a.loader.FindAvailableDeploymentTargetClass(a.client, a.context)
 	if err != nil || deploymentTargetClass == nil {
@@ -575,7 +575,7 @@ func (a *Adapter) CreateDeploymentTargetClaimForEnvironment(namespace string, de
 
 // getEnvironmentFromIntegrationTestScenario looks for already existing environment, if it exists it is returned, if not, nil is returned then together with
 // information about what went wrong
-func (a *Adapter) getEnvironmentFromIntegrationTestScenario(integrationTestScenario *v1alpha1.IntegrationTestScenario) (*applicationapiv1alpha1.Environment, error) {
+func (a *Adapter) getEnvironmentFromIntegrationTestScenario(integrationTestScenario *v1beta1.IntegrationTestScenario) (*applicationapiv1alpha1.Environment, error) {
 	existingEnv := &applicationapiv1alpha1.Environment{}
 
 	err := a.client.Get(a.context, types.NamespacedName{

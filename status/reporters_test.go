@@ -2,10 +2,11 @@ package status_test
 
 import (
 	"context"
-	"k8s.io/apimachinery/pkg/api/meta"
-	"k8s.io/apimachinery/pkg/runtime"
 	"strings"
 	"time"
+
+	"k8s.io/apimachinery/pkg/api/meta"
+	"k8s.io/apimachinery/pkg/runtime"
 
 	"github.com/go-logr/logr"
 	. "github.com/onsi/ginkgo/v2"

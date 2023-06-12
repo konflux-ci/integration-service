@@ -18,8 +18,10 @@ package cache
 
 import (
 	"context"
+
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
-	"github.com/redhat-appstudio/integration-service/api/v1alpha1"
+	"github.com/redhat-appstudio/integration-service/api/v1beta1"
+
 	releasev1alpha1 "github.com/redhat-appstudio/release-service/api/v1alpha1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -88,9 +90,9 @@ func SetupSnapshotCache(mgr ctrl.Manager) error {
 // SetupIntegrationTestScenarioCache adds a new index field to be able to search IntegrationTestScenarios by Application.
 func SetupIntegrationTestScenarioCache(mgr ctrl.Manager) error {
 	integrationTestScenariosIndexFunc := func(obj client.Object) []string {
-		return []string{obj.(*v1alpha1.IntegrationTestScenario).Spec.Application}
+		return []string{obj.(*v1beta1.IntegrationTestScenario).Spec.Application}
 	}
 
-	return mgr.GetCache().IndexField(context.Background(), &v1alpha1.IntegrationTestScenario{},
+	return mgr.GetCache().IndexField(context.Background(), &v1beta1.IntegrationTestScenario{},
 		"spec.application", integrationTestScenariosIndexFunc)
 }

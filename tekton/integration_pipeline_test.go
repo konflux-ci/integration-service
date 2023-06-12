@@ -3,9 +3,9 @@ package tekton_test
 import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/redhat-appstudio/integration-service/api/v1beta1"
 
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
-	"github.com/redhat-appstudio/integration-service/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/gitops"
 	tekton "github.com/redhat-appstudio/integration-service/tekton"
 	tektonv1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
@@ -26,15 +26,19 @@ var _ = Describe("Integration pipeline", func() {
 		SampleRepoLink  = "https://github.com/devfile-samples/devfile-sample-java-springboot-basic"
 	)
 	var (
-		hasApp                    *applicationapiv1alpha1.Application
-		hasSnapshot               *applicationapiv1alpha1.Snapshot
-		hasComp                   *applicationapiv1alpha1.Component
-		hasEnv                    *applicationapiv1alpha1.Environment
-		deploymentTargetClaim     *applicationapiv1alpha1.DeploymentTargetClaim
-		deploymentTarget          *applicationapiv1alpha1.DeploymentTarget
-		newIntegrationPipelineRun *tekton.IntegrationPipelineRun
-		integrationTestScenario   *v1alpha1.IntegrationTestScenario
-		extraParams               *ExtraParams
+		hasApp                          *applicationapiv1alpha1.Application
+		hasSnapshot                     *applicationapiv1alpha1.Snapshot
+		hasComp                         *applicationapiv1alpha1.Component
+		newIntegrationPipelineRun       *tekton.IntegrationPipelineRun
+		newIntegrationBundlePipelineRun *tekton.IntegrationPipelineRun
+		enterpriseContractPipelineRun   *tekton.IntegrationPipelineRun
+		hasEnv                          *applicationapiv1alpha1.Environment
+		deploymentTargetClaim           *applicationapiv1alpha1.DeploymentTargetClaim
+		deploymentTarget                *applicationapiv1alpha1.DeploymentTarget
+		integrationTestScenarioGit      *v1beta1.IntegrationTestScenario
+		integrationTestScenarioBundle   *v1beta1.IntegrationTestScenario
+		enterpriseContractTestScenario  *v1beta1.IntegrationTestScenario
+		extraParams                     *ExtraParams
 	)
 
 	BeforeEach(func() {
@@ -47,7 +51,7 @@ var _ = Describe("Integration pipeline", func() {
 			},
 		}
 
-		integrationTestScenario = &v1alpha1.IntegrationTestScenario{
+		integrationTestScenarioGit = &v1beta1.IntegrationTestScenario{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "example-pass",
 				Namespace: "default",
@@ -56,11 +60,26 @@ var _ = Describe("Integration pipeline", func() {
 					"test.appstudio.openshift.io/optional": "false",
 				},
 			},
-			Spec: v1alpha1.IntegrationTestScenarioSpec{
+			Spec: v1beta1.IntegrationTestScenarioSpec{
 				Application: "application-sample",
-				Bundle:      "quay.io/kpavic/test-bundle:component-pipeline-pass",
-				Pipeline:    "component-pipeline-pass",
-				Environment: v1alpha1.TestEnvironment{
+				ResolverRef: v1beta1.ResolverRef{
+					Resolver: "git",
+					Params: []v1beta1.ResolverParameter{
+						{
+							Name:  "url",
+							Value: "https://github.com/redhat-appstudio/integration-examples.git",
+						},
+						{
+							Name:  "revision",
+							Value: "main",
+						},
+						{
+							Name:  "pathInRepo",
+							Value: "pipelineruns/integration_pipelinerun_pass.yaml",
+						},
+					},
+				},
+				Environment: v1beta1.TestEnvironment{
 					Name: "envname",
 					Type: "POC",
 					//Params: []string{},
@@ -70,11 +89,97 @@ var _ = Describe("Integration pipeline", func() {
 				},
 			},
 		}
-		Expect(k8sClient.Create(ctx, integrationTestScenario)).Should(Succeed())
+		Expect(k8sClient.Create(ctx, integrationTestScenarioGit)).Should(Succeed())
 
 		//create new integration pipeline run from integration test scenario
-		newIntegrationPipelineRun = tekton.NewIntegrationPipelineRun(prefix, namespace, *integrationTestScenario)
+		newIntegrationPipelineRun = tekton.NewIntegrationPipelineRun(prefix, namespace, *integrationTestScenarioGit)
 		Expect(k8sClient.Create(ctx, newIntegrationPipelineRun.AsPipelineRun())).Should(Succeed())
+
+		integrationTestScenarioBundle = &v1beta1.IntegrationTestScenario{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "test-bundle",
+				Namespace: "default",
+
+				Labels: map[string]string{
+					"test.appstudio.openshift.io/optional": "false",
+				},
+			},
+			Spec: v1beta1.IntegrationTestScenarioSpec{
+				Application: "application-sample",
+				ResolverRef: v1beta1.ResolverRef{
+					Resolver: "bundles",
+					Params: []v1beta1.ResolverParameter{
+						{
+							Name:  "bundle",
+							Value: "quay.io/redhat-appstudio/example-tekton-bundle:integration-pipeline-pass",
+						},
+						{
+							Name:  "name",
+							Value: "integration-pipeline-pass",
+						},
+						{
+							Name:  "kind",
+							Value: "pipeline",
+						},
+					},
+				},
+				Environment: v1beta1.TestEnvironment{
+					Name: "envname",
+					Type: "POC",
+					//Params: []string{},
+					Configuration: &applicationapiv1alpha1.EnvironmentConfiguration{
+						Env: []applicationapiv1alpha1.EnvVarPair{},
+					},
+				},
+			},
+		}
+		Expect(k8sClient.Create(ctx, integrationTestScenarioBundle)).Should(Succeed())
+
+		enterpriseContractTestScenario = &v1beta1.IntegrationTestScenario{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "enterprise-contract",
+				Namespace: "default",
+
+				Labels: map[string]string{
+					"test.appstudio.openshift.io/optional": "false",
+				},
+			},
+			Spec: v1beta1.IntegrationTestScenarioSpec{
+				Application: "application-sample",
+				ResolverRef: v1beta1.ResolverRef{
+					Resolver: "git",
+					Params: []v1beta1.ResolverParameter{
+						{
+							Name:  "url",
+							Value: "https://github.com/redhat-appstudio/build-definitions.git",
+						},
+						{
+							Name:  "revision",
+							Value: "main",
+						},
+						{
+							Name:  "pathInRepo",
+							Value: "pipelines/enterprise-contract.yaml",
+						},
+					},
+				},
+				Environment: v1beta1.TestEnvironment{
+					Name: "envname",
+					Type: "POC",
+					//Params: []string{},
+					Configuration: &applicationapiv1alpha1.EnvironmentConfiguration{
+						Env: []applicationapiv1alpha1.EnvVarPair{},
+					},
+				},
+				Params: []v1beta1.PipelineParameter{
+					{
+						Name:  "POLICY_CONFIGURATION",
+						Value: "default/default",
+					},
+				},
+			},
+		}
+		Expect(k8sClient.Create(ctx, enterpriseContractTestScenario)).Should(Succeed())
 
 		hasApp = &applicationapiv1alpha1.Application{
 			ObjectMeta: metav1.ObjectMeta{
@@ -185,10 +290,28 @@ var _ = Describe("Integration pipeline", func() {
 			},
 		}
 		Expect(k8sClient.Create(ctx, hasComp)).Should(Succeed())
+
+		newIntegrationBundlePipelineRun = tekton.NewIntegrationPipelineRun(prefix, namespace, *integrationTestScenarioBundle).
+			WithIntegrationLabels(integrationTestScenarioBundle).
+			WithSnapshot(hasSnapshot).
+			WithApplicationAndComponent(hasApp, hasComp)
+		Expect(k8sClient.Create(ctx, newIntegrationBundlePipelineRun.AsPipelineRun())).Should(Succeed())
+
+		enterpriseContractPipelineRun = tekton.NewIntegrationPipelineRun(prefix, namespace, *enterpriseContractTestScenario).
+			WithIntegrationLabels(enterpriseContractTestScenario).
+			WithSnapshot(hasSnapshot).
+			WithExtraParams(enterpriseContractTestScenario.Spec.Params).
+			WithApplicationAndComponent(hasApp, hasComp)
+		Expect(k8sClient.Create(ctx, enterpriseContractPipelineRun.AsPipelineRun())).Should(Succeed())
 	})
 
 	AfterEach(func() {
-		_ = k8sClient.Delete(ctx, integrationTestScenario)
+		_ = k8sClient.Delete(ctx, integrationTestScenarioGit)
+		_ = k8sClient.Delete(ctx, integrationTestScenarioBundle)
+		_ = k8sClient.Delete(ctx, enterpriseContractTestScenario)
+		_ = k8sClient.Delete(ctx, newIntegrationPipelineRun)
+		_ = k8sClient.Delete(ctx, newIntegrationBundlePipelineRun)
+		_ = k8sClient.Delete(ctx, enterpriseContractPipelineRun)
 		_ = k8sClient.Delete(ctx, hasApp)
 		_ = k8sClient.Delete(ctx, hasSnapshot)
 		_ = k8sClient.Delete(ctx, hasComp)
@@ -203,6 +326,7 @@ var _ = Describe("Integration pipeline", func() {
 			Expect(newIntegrationPipelineRun.ObjectMeta.Name).
 				Should(HavePrefix(prefix))
 			Expect(newIntegrationPipelineRun.ObjectMeta.Namespace).To(Equal(namespace))
+			Expect(string(enterpriseContractPipelineRun.Spec.PipelineRef.ResolverRef.Resolver)).To(Equal("git"))
 		})
 
 		It("can append extra params to IntegrationPipelineRun and these parameters are present in the object Specs", func() {
@@ -213,15 +337,15 @@ var _ = Describe("Integration pipeline", func() {
 		})
 
 		It("can append the scenario Name, optional flag and Namespace to a IntegrationPipelineRun object and that these label key names match the correct label format", func() {
-			newIntegrationPipelineRun.WithIntegrationLabels(integrationTestScenario)
+			newIntegrationPipelineRun.WithIntegrationLabels(integrationTestScenarioGit)
 			Expect(newIntegrationPipelineRun.Labels["test.appstudio.openshift.io/scenario"]).
-				To(Equal(integrationTestScenario.Name))
+				To(Equal(integrationTestScenarioGit.Name))
 			Expect(newIntegrationPipelineRun.Labels["pipelines.appstudio.openshift.io/type"]).
 				To(Equal("test"))
 			Expect(newIntegrationPipelineRun.Labels["test.appstudio.openshift.io/optional"]).
 				To(Equal("false"))
 			Expect(newIntegrationPipelineRun.Namespace).
-				To(Equal(integrationTestScenario.Namespace))
+				To(Equal(integrationTestScenarioGit.Namespace))
 		})
 
 		It("can append labels that comes from Snapshot to IntegrationPipelineRun and make sure that label value matches the snapshot name", func() {
@@ -256,7 +380,7 @@ var _ = Describe("Integration pipeline", func() {
 		})
 
 		It("provides parameters from IntegrationTestScenario to the PipelineRun", func() {
-			scenarioParams := []v1alpha1.PipelineParameter{
+			scenarioParams := []v1beta1.PipelineParameter{
 				{
 					Name:  "ADDITIONAL_PARAMETER",
 					Value: "custom value",
@@ -276,4 +400,41 @@ var _ = Describe("Integration pipeline", func() {
 
 	})
 
+	Context("When managing a new pipelineRun from a bundle-based IntegrationTestScenario", func() {
+		It("has set all required labels to be used for integration testing of the EC pipeline", func() {
+			Expect(newIntegrationBundlePipelineRun.ObjectMeta.Name).Should(HavePrefix(prefix))
+			Expect(newIntegrationBundlePipelineRun.ObjectMeta.Namespace).To(Equal(namespace))
+			Expect(newIntegrationBundlePipelineRun.Labels["test.appstudio.openshift.io/scenario"]).
+				To(Equal(integrationTestScenarioBundle.Name))
+			Expect(newIntegrationBundlePipelineRun.Labels["pipelines.appstudio.openshift.io/type"]).
+				To(Equal("test"))
+			Expect(newIntegrationBundlePipelineRun.Labels["test.appstudio.openshift.io/optional"]).
+				To(Equal("false"))
+
+			Expect(string(newIntegrationBundlePipelineRun.Spec.PipelineRef.ResolverRef.Resolver)).To(Equal("bundles"))
+			Expect(len(newIntegrationBundlePipelineRun.Spec.PipelineRef.ResolverRef.Params)).To(Equal(3))
+		})
+	})
+
+	Context("When managing a new Enterprise Contract PipelineRun", func() {
+		It("has set all required labels to be used for integration testing of the EC pipeline", func() {
+			Expect(enterpriseContractPipelineRun.ObjectMeta.Name).Should(HavePrefix(prefix))
+			Expect(enterpriseContractPipelineRun.ObjectMeta.Namespace).To(Equal(namespace))
+			Expect(enterpriseContractPipelineRun.Labels["test.appstudio.openshift.io/scenario"]).
+				To(Equal(enterpriseContractTestScenario.Name))
+			Expect(enterpriseContractPipelineRun.Labels["pipelines.appstudio.openshift.io/type"]).
+				To(Equal("test"))
+			Expect(enterpriseContractPipelineRun.Labels["test.appstudio.openshift.io/optional"]).
+				To(Equal("false"))
+		})
+
+		It("has set all parameters required for executing the EC pipeline", func() {
+			Expect(string(enterpriseContractPipelineRun.Spec.PipelineRef.ResolverRef.Resolver)).To(Equal("git"))
+			Expect(len(enterpriseContractPipelineRun.Spec.PipelineRef.ResolverRef.Params)).To(Equal(3))
+
+			Expect(enterpriseContractPipelineRun.Spec.Params[0].Name).To(Equal("SNAPSHOT"))
+			Expect(enterpriseContractPipelineRun.Spec.Params[1].Name).To(Equal("POLICY_CONFIGURATION"))
+			Expect(enterpriseContractPipelineRun.Spec.Params[1].Value.StringVal).To(Equal("default/default"))
+		})
+	})
 })

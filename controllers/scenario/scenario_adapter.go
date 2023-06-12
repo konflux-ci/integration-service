@@ -23,7 +23,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
-	"github.com/redhat-appstudio/integration-service/api/v1alpha1"
+	"github.com/redhat-appstudio/integration-service/api/v1beta1"
 	"github.com/redhat-appstudio/integration-service/gitops"
 	h "github.com/redhat-appstudio/integration-service/helpers"
 	"github.com/redhat-appstudio/operator-goodies/reconciler"
@@ -33,14 +33,14 @@ import (
 // Adapter holds the objects needed to reconcile a Release.
 type Adapter struct {
 	application *applicationapiv1alpha1.Application
-	scenario    *v1alpha1.IntegrationTestScenario
+	scenario    *v1beta1.IntegrationTestScenario
 	logger      h.IntegrationLogger
 	client      client.Client
 	context     context.Context
 }
 
 // NewAdapter creates and returns an Adapter instance.
-func NewAdapter(application *applicationapiv1alpha1.Application, scenario *v1alpha1.IntegrationTestScenario, logger h.IntegrationLogger, client client.Client,
+func NewAdapter(application *applicationapiv1alpha1.Application, scenario *v1beta1.IntegrationTestScenario, logger h.IntegrationLogger, client client.Client,
 	context context.Context) *Adapter {
 	return &Adapter{
 		application: application,
@@ -129,8 +129,8 @@ func (a *Adapter) EnsureCreatedScenarioIsValid() (reconciler.OperationResult, er
 	return reconciler.ContinueProcessing()
 }
 
-// SetSnapshotIntegrationStatusAsInvalid sets the AppStudio integration status condition for the Snapshot to invalid.
-func SetScenarioIntegrationStatusAsInvalid(scenario *v1alpha1.IntegrationTestScenario, message string) {
+// SetScenarioIntegrationStatusAsInvalid sets the IntegrationTestScenarioValid status condition for the Scenario to invalid.
+func SetScenarioIntegrationStatusAsInvalid(scenario *v1beta1.IntegrationTestScenario, message string) {
 	meta.SetStatusCondition(&scenario.Status.Conditions, metav1.Condition{
 		Type:    gitops.IntegrationTestScenarioValid,
 		Status:  metav1.ConditionFalse,
@@ -139,8 +139,8 @@ func SetScenarioIntegrationStatusAsInvalid(scenario *v1alpha1.IntegrationTestSce
 	})
 }
 
-// SetSnapshotIntegrationStatusAsValid sets the AppStudio integration status condition for the Snapshot to valid.
-func SetScenarioIntegrationStatusAsValid(scenario *v1alpha1.IntegrationTestScenario, message string) {
+// SetScenarioIntegrationStatusAsValid sets the IntegrationTestScenarioValid integration status condition for the Scenario to valid.
+func SetScenarioIntegrationStatusAsValid(scenario *v1beta1.IntegrationTestScenario, message string) {
 	meta.SetStatusCondition(&scenario.Status.Conditions, metav1.Condition{
 		Type:    gitops.IntegrationTestScenarioValid,
 		Status:  metav1.ConditionTrue,

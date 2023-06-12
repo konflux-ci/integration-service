@@ -23,7 +23,7 @@ import (
 	. "github.com/onsi/gomega"
 
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
-	"github.com/redhat-appstudio/integration-service/api/v1alpha1"
+	"github.com/redhat-appstudio/integration-service/api/v1beta1"
 	"github.com/redhat-appstudio/integration-service/gitops"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -42,9 +42,9 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 		copiedEnvWithEnvVarsITS  *gitops.CopiedEnvironment
 		copiedEnvWithEnvVarsDiff *gitops.CopiedEnvironment
 		expectEnv                *applicationapiv1alpha1.Environment
-		hasIntTestSc             *v1alpha1.IntegrationTestScenario
-		hasIntTestScWithNoEnv    *v1alpha1.IntegrationTestScenario
-		hasIntTestScDiff         *v1alpha1.IntegrationTestScenario
+		hasIntTestSc             *v1beta1.IntegrationTestScenario
+		hasIntTestScWithNoEnv    *v1beta1.IntegrationTestScenario
+		hasIntTestScDiff         *v1beta1.IntegrationTestScenario
 		deploymentTargetClass    *applicationapiv1alpha1.DeploymentTargetClass
 		sampleImage              string
 	)
@@ -157,7 +157,7 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 		}
 		Expect(k8sClient.Create(ctx, deploymentTargetClass)).Should(Succeed())
 
-		hasIntTestSc = &v1alpha1.IntegrationTestScenario{
+		hasIntTestSc = &v1beta1.IntegrationTestScenario{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "example-pass",
 				Namespace: "default",
@@ -166,11 +166,26 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 					"test.appstudio.openshift.io/optional": "false",
 				},
 			},
-			Spec: v1alpha1.IntegrationTestScenarioSpec{
+			Spec: v1beta1.IntegrationTestScenarioSpec{
 				Application: "application-sample",
-				Bundle:      "quay.io/kpavic/test-bundle:component-pipeline-pass",
-				Pipeline:    "component-pipeline-pass",
-				Environment: v1alpha1.TestEnvironment{
+				ResolverRef: v1beta1.ResolverRef{
+					Resolver: "git",
+					Params: []v1beta1.ResolverParameter{
+						{
+							Name:  "url",
+							Value: "https://github.com/redhat-appstudio/integration-examples.git",
+						},
+						{
+							Name:  "revision",
+							Value: "main",
+						},
+						{
+							Name:  "pathInRepo",
+							Value: "pipelineruns/integration_pipelinerun_pass.yaml",
+						},
+					},
+				},
+				Environment: v1beta1.TestEnvironment{
 					Name: "envname",
 					Type: "POC",
 					Configuration: &applicationapiv1alpha1.EnvironmentConfiguration{
@@ -184,9 +199,10 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 				},
 			},
 		}
+
 		Expect(k8sClient.Create(ctx, hasIntTestSc)).Should(Succeed())
 
-		hasIntTestScWithNoEnv = &v1alpha1.IntegrationTestScenario{
+		hasIntTestScWithNoEnv = &v1beta1.IntegrationTestScenario{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "example-pass-no-env",
 				Namespace: "default",
@@ -195,11 +211,26 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 					"test.appstudio.openshift.io/optional": "false",
 				},
 			},
-			Spec: v1alpha1.IntegrationTestScenarioSpec{
+			Spec: v1beta1.IntegrationTestScenarioSpec{
 				Application: "application-sample",
-				Bundle:      "quay.io/kpavic/test-bundle:component-pipeline-pass",
-				Pipeline:    "component-pipeline-pass",
-				Environment: v1alpha1.TestEnvironment{
+				ResolverRef: v1beta1.ResolverRef{
+					Resolver: "git",
+					Params: []v1beta1.ResolverParameter{
+						{
+							Name:  "url",
+							Value: "https://github.com/redhat-appstudio/integration-examples.git",
+						},
+						{
+							Name:  "revision",
+							Value: "main",
+						},
+						{
+							Name:  "pathInRepo",
+							Value: "pipelineruns/integration_pipelinerun_pass.yaml",
+						},
+					},
+				},
+				Environment: v1beta1.TestEnvironment{
 					Name: "envname",
 					Type: "POC",
 					Configuration: &applicationapiv1alpha1.EnvironmentConfiguration{
@@ -208,9 +239,10 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 				},
 			},
 		}
+
 		Expect(k8sClient.Create(ctx, hasIntTestScWithNoEnv)).Should(Succeed())
 
-		hasIntTestScDiff = &v1alpha1.IntegrationTestScenario{
+		hasIntTestScDiff = &v1beta1.IntegrationTestScenario{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "example-pass-diff",
 				Namespace: "default",
@@ -219,11 +251,26 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 					"test.appstudio.openshift.io/optional": "false",
 				},
 			},
-			Spec: v1alpha1.IntegrationTestScenarioSpec{
+			Spec: v1beta1.IntegrationTestScenarioSpec{
 				Application: "application-sample",
-				Bundle:      "quay.io/kpavic/test-bundle:component-pipeline-pass",
-				Pipeline:    "component-pipeline-pass",
-				Environment: v1alpha1.TestEnvironment{
+				ResolverRef: v1beta1.ResolverRef{
+					Resolver: "git",
+					Params: []v1beta1.ResolverParameter{
+						{
+							Name:  "url",
+							Value: "https://github.com/redhat-appstudio/integration-examples.git",
+						},
+						{
+							Name:  "revision",
+							Value: "main",
+						},
+						{
+							Name:  "pathInRepo",
+							Value: "pipelineruns/integration_pipelinerun_pass.yaml",
+						},
+					},
+				},
+				Environment: v1beta1.TestEnvironment{
 					Name: "envname",
 					Type: "POC",
 					Configuration: &applicationapiv1alpha1.EnvironmentConfiguration{
@@ -237,6 +284,7 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 				},
 			},
 		}
+
 		Expect(k8sClient.Create(ctx, hasIntTestScDiff)).Should(Succeed())
 	})
 

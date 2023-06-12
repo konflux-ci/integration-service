@@ -22,6 +22,7 @@ import (
 	"reflect"
 	"time"
 
+	"github.com/redhat-appstudio/integration-service/api/v1beta1"
 	"github.com/redhat-appstudio/integration-service/gitops"
 	"github.com/redhat-appstudio/integration-service/helpers"
 	"github.com/redhat-appstudio/integration-service/loader"
@@ -38,7 +39,6 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
-	"github.com/redhat-appstudio/integration-service/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/status"
 	tektonv1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 	"github.com/tonglil/buflogr"
@@ -89,8 +89,8 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		deploymentTargetClaim          *applicationapiv1alpha1.DeploymentTargetClaim
 		deploymentTargetClass          *applicationapiv1alpha1.DeploymentTargetClass
 		snapshotEnvironmentBinding     *applicationapiv1alpha1.SnapshotEnvironmentBinding
-		integrationTestScenario        *v1alpha1.IntegrationTestScenario
-		integrationTestScenarioFailed  *v1alpha1.IntegrationTestScenario
+		integrationTestScenario        *v1beta1.IntegrationTestScenario
+		integrationTestScenarioFailed  *v1beta1.IntegrationTestScenario
 	)
 	const (
 		SampleRepoLink           = "https://github.com/devfile-samples/devfile-sample-java-springboot-basic"
@@ -204,7 +204,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		}
 		Expect(k8sClient.Create(ctx, hasSnapshot)).Should(Succeed())
 
-		integrationTestScenario = &v1alpha1.IntegrationTestScenario{
+		integrationTestScenario = &v1beta1.IntegrationTestScenario{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "example-pass",
 				Namespace: "default",
@@ -213,11 +213,26 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 					"test.appstudio.openshift.io/optional": "false",
 				},
 			},
-			Spec: v1alpha1.IntegrationTestScenarioSpec{
+			Spec: v1beta1.IntegrationTestScenarioSpec{
 				Application: hasApp.Name,
-				Bundle:      "quay.io/redhat-appstudio/example-tekton-bundle:component-pipeline-pass",
-				Pipeline:    "component-pipeline-pass",
-				Environment: v1alpha1.TestEnvironment{
+				ResolverRef: v1beta1.ResolverRef{
+					Resolver: "git",
+					Params: []v1beta1.ResolverParameter{
+						{
+							Name:  "url",
+							Value: "https://github.com/redhat-appstudio/integration-examples.git",
+						},
+						{
+							Name:  "revision",
+							Value: "main",
+						},
+						{
+							Name:  "pathInRepo",
+							Value: "pipelineruns/integration_pipelinerun_pass.yaml",
+						},
+					},
+				},
+				Environment: v1beta1.TestEnvironment{
 					Name: "envname",
 					Type: "POC",
 					Configuration: &applicationapiv1alpha1.EnvironmentConfiguration{
@@ -761,7 +776,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				},
 				{
 					ContextKey: loader.RequiredIntegrationTestScenariosContextKey,
-					Resource:   []v1alpha1.IntegrationTestScenario{*integrationTestScenario},
+					Resource:   []v1beta1.IntegrationTestScenario{*integrationTestScenario},
 				},
 			})
 			Expect(reflect.TypeOf(adapter)).To(Equal(reflect.TypeOf(&Adapter{})))
@@ -786,7 +801,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 
 		It("ensures Snapshot failed once one pipeline failed", func() {
 			//Create one failed scenario and its failed pipelineRun
-			integrationTestScenarioFailed = &v1alpha1.IntegrationTestScenario{
+			integrationTestScenarioFailed = &v1beta1.IntegrationTestScenario{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "example-fail",
 					Namespace: "default",
@@ -795,11 +810,26 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 						"test.appstudio.openshift.io/optional": "false",
 					},
 				},
-				Spec: v1alpha1.IntegrationTestScenarioSpec{
+				Spec: v1beta1.IntegrationTestScenarioSpec{
 					Application: hasApp.Name,
-					Bundle:      "quay.io/redhat-appstudio/example-tekton-bundle:component-pipeline-fail",
-					Pipeline:    "component-pipeline-fail",
-					Environment: v1alpha1.TestEnvironment{
+					ResolverRef: v1beta1.ResolverRef{
+						Resolver: "git",
+						Params: []v1beta1.ResolverParameter{
+							{
+								Name:  "url",
+								Value: "https://github.com/redhat-appstudio/integration-examples.git",
+							},
+							{
+								Name:  "revision",
+								Value: "main",
+							},
+							{
+								Name:  "pathInRepo",
+								Value: "pipelineruns/integration_pipelinerun_pass.yaml",
+							},
+						},
+					},
+					Environment: v1beta1.TestEnvironment{
 						Name: "envname",
 						Type: "POC",
 						Configuration: &applicationapiv1alpha1.EnvironmentConfiguration{
@@ -881,7 +911,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				},
 				{
 					ContextKey: loader.RequiredIntegrationTestScenariosContextKey,
-					Resource:   []v1alpha1.IntegrationTestScenario{*integrationTestScenario, *integrationTestScenarioFailed},
+					Resource:   []v1beta1.IntegrationTestScenario{*integrationTestScenario, *integrationTestScenarioFailed},
 				},
 			})
 
@@ -939,7 +969,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				},
 				{
 					ContextKey: loader.RequiredIntegrationTestScenariosContextKey,
-					Resource:   []v1alpha1.IntegrationTestScenario{*integrationTestScenario},
+					Resource:   []v1beta1.IntegrationTestScenario{*integrationTestScenario},
 				},
 			})
 

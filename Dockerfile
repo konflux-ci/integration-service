@@ -27,6 +27,8 @@ COPY cache/ cache/
 # Build
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -o manager main.go
 
+ARG ENABLE_WEBHOOKS=true
+ENV ENABLE_WEBHOOKS=${ENABLE_WEBHOOKS}
 # Use ubi-minimal as minimal base image to package the manager binary
 # Refer to https://catalog.redhat.com/software/containers/ubi8/ubi-minimal/5c359a62bed8bd75a2c3fba8 for more details
 FROM registry.access.redhat.com/ubi8/ubi-minimal:8.8-860

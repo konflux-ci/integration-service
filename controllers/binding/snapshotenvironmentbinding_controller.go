@@ -18,7 +18,7 @@ import (
 
 	"github.com/go-logr/logr"
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
-	"github.com/redhat-appstudio/integration-service/api/v1alpha1"
+	"github.com/redhat-appstudio/integration-service/api/v1beta1"
 	"github.com/redhat-appstudio/integration-service/gitops"
 	"github.com/redhat-appstudio/integration-service/helpers"
 	"github.com/redhat-appstudio/integration-service/loader"
@@ -157,9 +157,9 @@ func (r *Reconciler) getEnvironmentFromSnapshotEnvironmentBinding(context contex
 
 // getIntegrationTestScenarioFromSnapshotEnvironmentBiding loads from the cluster the IntegrationTestScenario referenced in the given SnapshotEnvironmentBiding.
 // If the SnapshotEnvironmentBinding doesn't specify an IntegrationTestScenario or this is not found in the cluster, an error will be returned.
-func (r *Reconciler) getIntegrationTestScenarioFromSnapshotEnvironmentBiding(context context.Context, snapshotEnvironmentBinding *applicationapiv1alpha1.SnapshotEnvironmentBinding) (*v1alpha1.IntegrationTestScenario, error) {
+func (r *Reconciler) getIntegrationTestScenarioFromSnapshotEnvironmentBiding(context context.Context, snapshotEnvironmentBinding *applicationapiv1alpha1.SnapshotEnvironmentBinding) (*v1beta1.IntegrationTestScenario, error) {
 	if scenarioLabel, ok := snapshotEnvironmentBinding.Labels[gitops.SnapshotTestScenarioLabel]; ok {
-		integrationTestScenario := &v1alpha1.IntegrationTestScenario{}
+		integrationTestScenario := &v1beta1.IntegrationTestScenario{}
 		err := r.Get(context, types.NamespacedName{
 			Namespace: snapshotEnvironmentBinding.Namespace,
 			Name:      scenarioLabel,
