@@ -7,7 +7,7 @@ import (
 	"github.com/go-logr/logr"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"github.com/redhat-appstudio/integration-service/api/v1alpha1"
+	"github.com/redhat-appstudio/integration-service/api/v1beta1"
 	tektonv1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
@@ -43,7 +43,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		hasApp                  *applicationapiv1alpha1.Application
 		hasSnapshot             *applicationapiv1alpha1.Snapshot
 		logger                  logr.Logger
-		integrationTestScenario *v1alpha1.IntegrationTestScenario
+		integrationTestScenario *v1beta1.IntegrationTestScenario
 		sample_image            string
 	)
 
@@ -82,7 +82,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		}
 		Expect(k8sClient.Create(ctx, hasComp)).Should(Succeed())
 
-		integrationTestScenario = &v1alpha1.IntegrationTestScenario{
+		integrationTestScenario = &v1beta1.IntegrationTestScenario{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "example-pass",
 				Namespace: "default",
@@ -91,11 +91,26 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 					"test.appstudio.openshift.io/optional": "false",
 				},
 			},
-			Spec: v1alpha1.IntegrationTestScenarioSpec{
+			Spec: v1beta1.IntegrationTestScenarioSpec{
 				Application: "application-sample",
-				Bundle:      "quay.io/kpavic/test-bundle:component-pipeline-pass",
-				Pipeline:    "component-pipeline-pass",
-				Environment: v1alpha1.TestEnvironment{
+				ResolverRef: v1beta1.ResolverRef{
+					Resolver: "git",
+					Params: []v1beta1.ResolverParameter{
+						{
+							Name:  "url",
+							Value: "https://github.com/redhat-appstudio/integration-examples.git",
+						},
+						{
+							Name:  "revision",
+							Value: "main",
+						},
+						{
+							Name:  "pathInRepo",
+							Value: "pipelineruns/integration_pipelinerun_pass.yaml",
+						},
+					},
+				},
+				Environment: v1beta1.TestEnvironment{
 					Name: "envname",
 					Type: "POC",
 					Configuration: &applicationapiv1alpha1.EnvironmentConfiguration{

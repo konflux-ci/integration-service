@@ -24,7 +24,7 @@ import (
 	"time"
 
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
-	"github.com/redhat-appstudio/integration-service/api/v1alpha1"
+	"github.com/redhat-appstudio/integration-service/api/v1beta1"
 	"github.com/redhat-appstudio/integration-service/gitops"
 	h "github.com/redhat-appstudio/integration-service/helpers"
 	"github.com/redhat-appstudio/integration-service/loader"
@@ -419,7 +419,7 @@ func (a *Adapter) determineIfAllIntegrationPipelinesPassed(integrationPipelineRu
 // getAllPipelineRunsForSnapshot loads from the cluster all Integration PipelineRuns for each IntegrationTestScenario
 // associated with the Snapshot. If the Application doesn't have any IntegrationTestScenarios associated with it,
 // an error will be returned.
-func (a *Adapter) getAllPipelineRunsForSnapshot(snapshot *applicationapiv1alpha1.Snapshot, integrationTestScenarios *[]v1alpha1.IntegrationTestScenario) (*[]tektonv1beta1.PipelineRun, error) {
+func (a *Adapter) getAllPipelineRunsForSnapshot(snapshot *applicationapiv1alpha1.Snapshot, integrationTestScenarios *[]v1beta1.IntegrationTestScenario) (*[]tektonv1beta1.PipelineRun, error) {
 	var integrationPipelineRuns []tektonv1beta1.PipelineRun
 	for _, integrationTestScenario := range *integrationTestScenarios {
 		integrationTestScenario := integrationTestScenario // G601

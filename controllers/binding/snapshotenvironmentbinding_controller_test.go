@@ -14,10 +14,11 @@ limitations under the License.
 package binding
 
 import (
-	"github.com/redhat-appstudio/integration-service/api/v1alpha1"
-	"k8s.io/apimachinery/pkg/api/errors"
 	"reflect"
 	"time"
+
+	"github.com/redhat-appstudio/integration-service/api/v1beta1"
+	"k8s.io/apimachinery/pkg/api/errors"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -49,7 +50,7 @@ var _ = Describe("BindingController", func() {
 		hasBinding              *applicationapiv1alpha1.SnapshotEnvironmentBinding
 		deploymentTargetClaim   *applicationapiv1alpha1.DeploymentTargetClaim
 		deploymentTarget        *applicationapiv1alpha1.DeploymentTarget
-		integrationTestScenario *v1alpha1.IntegrationTestScenario
+		integrationTestScenario *v1beta1.IntegrationTestScenario
 	)
 	const (
 		SampleRepoLink = "https://github.com/devfile-samples/devfile-sample-java-springboot-basic"
@@ -148,7 +149,7 @@ var _ = Describe("BindingController", func() {
 		}
 		Expect(k8sClient.Create(ctx, hasEnv)).Should(Succeed())
 
-		integrationTestScenario = &v1alpha1.IntegrationTestScenario{
+		integrationTestScenario = &v1beta1.IntegrationTestScenario{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "example-pass",
 				Namespace: "default",
@@ -157,11 +158,26 @@ var _ = Describe("BindingController", func() {
 					"test.appstudio.openshift.io/optional": "false",
 				},
 			},
-			Spec: v1alpha1.IntegrationTestScenarioSpec{
+			Spec: v1beta1.IntegrationTestScenarioSpec{
 				Application: "application-sample",
-				Bundle:      "quay.io/redhat-appstudio/example-tekton-bundle:component-pipeline-pass",
-				Pipeline:    "component-pipeline-pass",
-				Environment: v1alpha1.TestEnvironment{
+				ResolverRef: v1beta1.ResolverRef{
+					Resolver: "git",
+					Params: []v1beta1.ResolverParameter{
+						{
+							Name:  "url",
+							Value: "https://github.com/redhat-appstudio/integration-examples.git",
+						},
+						{
+							Name:  "revision",
+							Value: "main",
+						},
+						{
+							Name:  "pathInRepo",
+							Value: "pipelineruns/integration_pipelinerun_pass.yaml",
+						},
+					},
+				},
+				Environment: v1beta1.TestEnvironment{
 					Name: hasEnv.Name,
 					Type: "POC",
 					Configuration: &applicationapiv1alpha1.EnvironmentConfiguration{

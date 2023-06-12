@@ -19,6 +19,9 @@ spec:
     - jsonPath: .spec.application
       name: Application
       type: string
+    deprecated: true
+    deprecationWarning: The v1alpha1 version is deprecated and will be automatically
+      migrated to v1beta1
     name: v1alpha1
     schema:
       openAPIV3Schema:
@@ -223,7 +226,7 @@ spec:
             type: object
         type: object
     served: true
-    storage: true
+    storage: false
     subresources:
       status: {}
   - additionalPrinterColumns:
@@ -459,7 +462,7 @@ spec:
             type: object
         type: object
     served: true
-    storage: false
+    storage: true
     subresources:
       status: {}
 status:

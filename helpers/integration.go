@@ -4,10 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"k8s.io/apimachinery/pkg/types"
 	"reflect"
 	"sort"
 	"time"
+
+	"k8s.io/apimachinery/pkg/types"
 
 	"github.com/go-logr/logr"
 	"github.com/santhosh-tekuri/jsonschema/v5"

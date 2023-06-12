@@ -1,5 +1,5 @@
 /*
-Copyright 2022.
+Copyright 2023.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -66,6 +66,7 @@ type TestContext struct {
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="Application",type=string,JSONPath=`.spec.application`
+// +kubebuilder:storageversion
 
 // IntegrationTestScenario is the Schema for the integrationtestscenarios API
 type IntegrationTestScenario struct {

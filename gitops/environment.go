@@ -20,7 +20,7 @@ import (
 	"reflect"
 
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
-	"github.com/redhat-appstudio/integration-service/api/v1alpha1"
+	"github.com/redhat-appstudio/integration-service/api/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -34,7 +34,7 @@ func (r *CopiedEnvironment) AsEnvironment() *applicationapiv1alpha1.Environment 
 
 // NewCopyOfExistingEnvironment gets the existing environment from current namespace and makes copy of it with the DeploymentTargetClaimName as Target
 // new name is generated consisting of existing environment name and integrationTestScenario name
-func NewCopyOfExistingEnvironment(existingEnvironment *applicationapiv1alpha1.Environment, namespace string, integrationTestScenario *v1alpha1.IntegrationTestScenario, deploymentTargetClaimName string) *CopiedEnvironment {
+func NewCopyOfExistingEnvironment(existingEnvironment *applicationapiv1alpha1.Environment, namespace string, integrationTestScenario *v1beta1.IntegrationTestScenario, deploymentTargetClaimName string) *CopiedEnvironment {
 	copiedEnvConfiguration := applicationapiv1alpha1.EnvironmentConfiguration{}
 	copiedEnvConfiguration = *existingEnvironment.Spec.Configuration.DeepCopy()
 
@@ -81,7 +81,7 @@ func NewCopyOfExistingEnvironment(existingEnvironment *applicationapiv1alpha1.En
 }
 
 // WithIntegrationLabels adds IntegrationTestScenario name as label to the copied environment.
-func (e *CopiedEnvironment) WithIntegrationLabels(integrationTestScenario *v1alpha1.IntegrationTestScenario) *CopiedEnvironment {
+func (e *CopiedEnvironment) WithIntegrationLabels(integrationTestScenario *v1beta1.IntegrationTestScenario) *CopiedEnvironment {
 	if e.ObjectMeta.Labels == nil {
 		e.ObjectMeta.Labels = map[string]string{}
 	}
