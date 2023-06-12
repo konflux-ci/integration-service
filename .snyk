@@ -1,0 +1,4 @@
+exclude:
+  code:
+    - "**/*_test.go"
+
