@@ -18,23 +18,23 @@ and build the operator.
 To build the operator and push a new image to the registry, the following commands can be used:
 
 ```shell
-$ make docker-build
-$ make docker-push
+$ make img-build
+$ make img-push
 ```
 
 These commands will use the default image and tag. To modify them, new values for `TAG` and `IMG` environment variables
 can be passed. For example, to override the tag:
 
 ```shell
-$ TAG=my-tag make docker-build
-$ TAG=my-tag make docker-push
+$ TAG=my-tag make img-build
+$ TAG=my-tag make img-push
 ```
 
 Or, in the case the image should be pushed to a different repository:
 
 ```shell
-$ IMG=quay.io/user/integration-service:my-tag make docker-build
-$ IMG=quay.io/user/integration-service:my-tag make docker-push
+$ IMG=quay.io/user/integration-service:my-tag make img-build
+$ IMG=quay.io/user/integration-service:my-tag make img-push
 ```
 
 ### Running tests
