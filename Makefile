@@ -54,6 +54,9 @@ IMG ?= $(IMAGE_TAG_BASE):$(TAG_NAME)
 # ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to be downloaded by envtest binary.
 ENVTEST_K8S_VERSION = 1.23
 
+# container engine to use.  Defaults to docker
+CONT_ENGINE ?= docker
+
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
 ifeq (,$(shell go env GOBIN))
 GOBIN=$(shell go env GOPATH)/bin
@@ -119,13 +122,13 @@ build: generate fmt vet ## Build manager binary.
 run: manifests generate fmt vet ## Run a controller from your host.
 	go run ./main.go
 
-.PHONY: docker-build
-docker-build: test ## Build docker image with the manager.
-	docker build -t ${IMG} .
+.PHONY: img-build
+img-build: test ## Build container image with the manager.
+	$(CONT_ENGINE) build -t ${IMG} .
 
-.PHONY: docker-push
-docker-push: ## Push docker image with the manager.
-	docker push ${IMG}
+.PHONY: img-push
+img-push: ## Push container image with the manager.
+	$(CONT_ENGINE) push ${IMG}
 
 ##@ Deployment
 
@@ -195,7 +198,7 @@ bundle-build: ## Build the bundle image.
 
 .PHONY: bundle-push
 bundle-push: ## Push the bundle image.
-	$(MAKE) docker-push IMG=$(BUNDLE_IMG)
+	$(MAKE) img-push IMG=$(BUNDLE_IMG)
 
 .PHONY: opm
 OPM = ./bin/opm
@@ -236,4 +239,4 @@ catalog-build: opm ## Build a catalog image.
 # Push the catalog image.
 .PHONY: catalog-push
 catalog-push: ## Push a catalog image.
-	$(MAKE) docker-push IMG=$(CATALOG_IMG)
+	$(MAKE) img-push IMG=$(CATALOG_IMG)
