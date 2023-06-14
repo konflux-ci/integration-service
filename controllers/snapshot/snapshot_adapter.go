@@ -172,7 +172,12 @@ func (a *Adapter) EnsureCreationOfEnvironment() (reconciler.OperationResult, err
 	allEnvironments, err := a.loader.GetAllEnvironments(a.client, a.context, a.application)
 	if err != nil {
 		a.logger.Error(err, "Failed to get all environments.")
-		return reconciler.RequeueOnErrorOrStop(err)
+		return reconciler.RequeueWithError(err)
+	}
+	components, err := a.loader.GetAllApplicationComponents(a.client, a.context, a.application)
+	if err != nil {
+		a.logger.Error(err, "Failed to get all components.")
+		return reconciler.RequeueWithError(err)
 	}
 
 TestScenarioLoop:
@@ -188,6 +193,47 @@ TestScenarioLoop:
 				a.logger.Info("Environment already exists and contains snapshot and scenario:",
 					"environment.Name", environment.Name,
 					"integrationScenario.Name", integrationTestScenario.Name)
+
+				//check if the environmentSnapshotBinding exists for this existing environment, create it if it doesn't exist
+				var binding = &applicationapiv1alpha1.SnapshotEnvironmentBinding{}
+				binding, err = a.loader.FindExistingSnapshotEnvironmentBinding(a.client, a.context, a.application, &environment)
+				if err != nil {
+					a.logger.Error(err, "Failed to find snapshotEnvironmentBinding associated with environment", "environment.Name", environment.Name)
+					return reconciler.RequeueWithError(err)
+				}
+				if binding == nil {
+					binding, err = a.createSnapshotEnvironmentBindingForSnapshot(a.application, &environment, a.snapshot, components)
+					if err != nil {
+						a.logger.Error(err, "Failed to create snapshotEnvironmentbinding for snapshot",
+							"snapshot", a.snapshot.Name,
+							"environment.Name", environment.Name,
+							"snapshot.Spec.Components", a.snapshot.Spec.Components)
+						return reconciler.RequeueWithError(err)
+					}
+					a.logger.LogAuditEvent("A snapshotEnvironmentbinding is created", binding, h.LogActionAdd,
+						"integrationTestScenario.Name", integrationTestScenario.Name)
+				} else {
+					a.logger.Info("SnapshotEnvironmentBinding already exists for environment",
+						"binding.Name", binding.Name,
+						"environment.Name", environment.Name)
+				}
+
+				//check if the scenario label is added to the binding, if not, add it
+				if !h.HasLabelWithValue(binding, gitops.SnapshotTestScenarioLabel, integrationTestScenario.Name) {
+					err = a.labelBindingWithScenario(binding, integrationTestScenario.Name)
+					if err != nil {
+						a.logger.Error(err, "Failed to update snapshotEnvironmentbinding label",
+							"binding.Name", binding.Name,
+							gitops.SnapshotTestScenarioLabel, integrationTestScenario.Name)
+						return reconciler.RequeueWithError(err)
+					}
+					a.logger.LogAuditEvent("Updated snapshotEnvironmentbinding label", binding, h.LogActionUpdate,
+						gitops.SnapshotTestScenarioLabel, integrationTestScenario.Name)
+				} else {
+					a.logger.Info("SnapshotEnvironmentBinding already contains label",
+						"binding.Name", binding.Name,
+						"integrationScenario.Name", integrationTestScenario.Name)
+				}
 				continue TestScenarioLoop
 			}
 		}
@@ -195,37 +241,44 @@ TestScenarioLoop:
 		//get the existing environment according to environment name from integrationTestScenario
 		existingEnv, err := a.getEnvironmentFromIntegrationTestScenario(&integrationTestScenario)
 		if err != nil {
-			a.logger.Error(err, "Failed to find the env defined in integrationTestScenario.",
+			a.logger.Error(err, "Failed to find the env defined in integrationTestScenario",
 				"integrationTestScenario.Namespace", integrationTestScenario.Namespace,
 				"integrationTestScenario.Name", integrationTestScenario.Name)
-			return reconciler.RequeueOnErrorOrStop(err)
+			return reconciler.RequeueWithError(err)
 		}
 
 		//create an ephemeral copy env of existing environment
 		copyEnv, err := a.createCopyOfExistingEnvironment(existingEnv, a.snapshot.Namespace, &integrationTestScenario, a.snapshot, a.application)
 
 		if err != nil {
-			a.logger.Error(err, "Copying of environment failed.")
-			return reconciler.RequeueOnErrorOrStop(err)
+			a.logger.Error(err, "Copying of environment failed")
+			return reconciler.RequeueWithError(err)
 		}
 		a.logger.LogAuditEvent("An ephemeral Environment is created for integrationTestScenario",
 			copyEnv, h.LogActionAdd,
 			"integrationTestScenario.Name", integrationTestScenario.Name)
 
-		components, err := a.loader.GetAllApplicationComponents(a.client, a.context, a.application)
-		if err != nil {
-			return reconciler.RequeueWithError(err)
-		}
-
 		binding, err := a.createSnapshotEnvironmentBindingForSnapshot(a.application, copyEnv, a.snapshot, components)
 		if err != nil {
-			a.logger.Error(err, "Failed to create snapshotEnvironmentbinding for snapshot.",
-				"binding", binding,
+			a.logger.Error(err, "Failed to create snapshotEnvironmentbinding for snapshot",
+				"snapshot", a.snapshot.Name,
+				"environment.Name", copyEnv.Name,
 				"snapshot.Spec.Components", a.snapshot.Spec.Components)
+			return reconciler.RequeueWithError(err)
 		}
 		a.logger.LogAuditEvent("A snapshotEnvironmentbinding is created", binding, h.LogActionAdd,
 			"environment.Name", copyEnv.Name,
 			"integrationTestScenario.Name", integrationTestScenario.Name)
+
+		err = a.labelBindingWithScenario(binding, integrationTestScenario.Name)
+		if err != nil {
+			a.logger.Error(err, "Failed to update snapshotEnvironmentbinding with label",
+				"binding", binding,
+				gitops.SnapshotTestScenarioLabel, integrationTestScenario.Name)
+			return reconciler.RequeueWithError(err)
+		}
+		a.logger.LogAuditEvent("Updated snapshotEnvironmentbinding with label", binding, h.LogActionUpdate,
+			gitops.SnapshotTestScenarioLabel, integrationTestScenario.Name)
 	}
 	return reconciler.ContinueProcessing()
 }
@@ -590,4 +643,14 @@ func (a *Adapter) getEnvironmentFromIntegrationTestScenario(integrationTestScena
 		return nil, fmt.Errorf("environment %s doesn't exist in same namespace as IntegrationTestScenario at all: %w", integrationTestScenario.Spec.Environment.Name, err)
 	}
 	return existingEnv, nil
+}
+
+func (a *Adapter) labelBindingWithScenario(binding *applicationapiv1alpha1.SnapshotEnvironmentBinding, value string) error {
+	patch := client.MergeFrom(binding.DeepCopy())
+	h.AddLabel(&binding.ObjectMeta, gitops.SnapshotTestScenarioLabel, value)
+	err := a.client.Patch(a.context, binding, patch)
+	if err != nil {
+		return err
+	}
+	return nil
 }

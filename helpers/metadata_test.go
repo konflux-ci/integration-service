@@ -179,5 +179,17 @@ var _ = Describe("Helpers for labels and annotation", Ordered, func() {
 			Expect(testpipelineLabel.ObjectMeta.Annotations["test/test"]).To(Equal("test"))
 			Expect(testpipelineLabel.ObjectMeta.Annotations["test/test2"]).To(Equal("test2"))
 		})
+		It("AddLabel with a test label", func() {
+			testpipelineLabel.ObjectMeta.Labels = nil
+			helpers.AddLabel(&testpipelineLabel.ObjectMeta, "test/test", "test")
+			Expect(testpipelineLabel.ObjectMeta.Labels).To(Not(BeNil()))
+			Expect(testpipelineLabel.ObjectMeta.Labels["test/test"]).To(Equal("test"))
+
+			// Verify that AddLabel doesn't remove existing labels
+			helpers.AddLabel(&testpipelineLabel.ObjectMeta, "test/test2", "test2")
+			Expect(testpipelineLabel.ObjectMeta.Labels).To(Not(BeNil()))
+			Expect(testpipelineLabel.ObjectMeta.Labels["test/test"]).To(Equal("test"))
+			Expect(testpipelineLabel.ObjectMeta.Labels["test/test2"]).To(Equal("test2"))
+		})
 	})
 })
