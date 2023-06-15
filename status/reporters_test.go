@@ -222,7 +222,7 @@ var _ = Describe("GitHubReporter", func() {
 					TaskRunResults: []tektonv1beta1.TaskRunResult{
 						{
 							Name: "TEST_OUTPUT",
-							Value: *tektonv1beta1.NewArrayOrString(`{
+							Value: *tektonv1beta1.NewStructuredValues(`{
 											"result": "SUCCESS",
 											"timestamp": "1665405318",
 											"failures": 0,
@@ -253,7 +253,7 @@ var _ = Describe("GitHubReporter", func() {
 					TaskRunResults: []tektonv1beta1.TaskRunResult{
 						{
 							Name: "TEST_OUTPUT",
-							Value: *tektonv1beta1.NewArrayOrString(`{
+							Value: *tektonv1beta1.NewStructuredValues(`{
 											"result": "FAILURE",
 											"timestamp": "1665405317",
 											"failures": 1,
@@ -284,7 +284,7 @@ var _ = Describe("GitHubReporter", func() {
 					TaskRunResults: []tektonv1beta1.TaskRunResult{
 						{
 							Name: "TEST_OUTPUT",
-							Value: *tektonv1beta1.NewArrayOrString(`{
+							Value: *tektonv1beta1.NewStructuredValues(`{
 											"result": "SKIPPED",
 											"timestamp": "1665405318",
 											"failures": 0,

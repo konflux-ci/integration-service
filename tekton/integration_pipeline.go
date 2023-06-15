@@ -114,7 +114,7 @@ func NewIntegrationPipelineRun(prefix, namespace string, integrationTestScenario
 
 // WithExtraParam adds an extra param to the Integration PipelineRun. If the parameter is not part of the Pipeline
 // definition, it will be silently ignored.
-func (r *IntegrationPipelineRun) WithExtraParam(name string, value tektonv1beta1.ArrayOrString) *IntegrationPipelineRun {
+func (r *IntegrationPipelineRun) WithExtraParam(name string, value tektonv1beta1.ParamValue) *IntegrationPipelineRun {
 	r.Spec.Params = append(r.Spec.Params, tektonv1beta1.Param{
 		Name:  name,
 		Value: value,
@@ -126,7 +126,7 @@ func (r *IntegrationPipelineRun) WithExtraParam(name string, value tektonv1beta1
 // WithExtraParams adds all provided parameters to the Integration PipelineRun.
 func (r *IntegrationPipelineRun) WithExtraParams(params []v1beta1.PipelineParameter) *IntegrationPipelineRun {
 	for _, param := range params {
-		var value tektonv1beta1.ArrayOrString
+		var value tektonv1beta1.ParamValue
 		switch {
 		case param.Value != "":
 			value.StringVal = param.Value
@@ -151,7 +151,7 @@ func (r *IntegrationPipelineRun) WithSnapshot(snapshot *applicationapiv1alpha1.S
 	// add something like a `Complete` function that returns the final object and error.
 	snapshotString, _ := json.Marshal(snapshot.Spec)
 
-	r.WithExtraParam("SNAPSHOT", tektonv1beta1.ArrayOrString{
+	r.WithExtraParam("SNAPSHOT", tektonv1beta1.ParamValue{
 		Type:      tektonv1beta1.ParamTypeString,
 		StringVal: string(snapshotString),
 	})
@@ -197,7 +197,7 @@ func (r *IntegrationPipelineRun) WithApplicationAndComponent(application *applic
 func (r *IntegrationPipelineRun) WithEnvironmentAndDeploymentTarget(dt *applicationapiv1alpha1.DeploymentTarget, environmentName string) *IntegrationPipelineRun {
 	if !reflect.ValueOf(dt.Spec.KubernetesClusterCredentials).IsZero() {
 		// Add the NAMESPACE parameter to the pipeline
-		r.WithExtraParam("NAMESPACE", tektonv1beta1.ArrayOrString{
+		r.WithExtraParam("NAMESPACE", tektonv1beta1.ParamValue{
 			Type:      tektonv1beta1.ParamTypeString,
 			StringVal: dt.Spec.KubernetesClusterCredentials.DefaultNamespace,
 		})
