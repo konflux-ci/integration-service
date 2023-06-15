@@ -290,8 +290,8 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 				Params: []tektonv1beta1.Param{
 					{
 						Name: "output-image",
-						Value: tektonv1beta1.ArrayOrString{
-							Type:      "string",
+						Value: tektonv1beta1.ParamValue{
+							Type:      tektonv1beta1.ParamTypeString,
 							StringVal: "quay.io/redhat-appstudio/sample-image",
 						},
 					},

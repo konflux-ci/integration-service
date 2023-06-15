@@ -149,7 +149,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				TaskRunResults: []tektonv1beta1.TaskRunResult{
 					{
 						Name: "TEST_OUTPUT",
-						Value: *tektonv1beta1.NewArrayOrString(`{
+						Value: *tektonv1beta1.NewStructuredValues(`{
 											"result": "SUCCESS",
 											"timestamp": "1665405318",
 											"failures": 0,

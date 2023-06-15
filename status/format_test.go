@@ -42,7 +42,7 @@ func newTaskRunWithAppStudioTestOutput(name string, startTime time.Time, complet
 			TaskRunResults: []tektonv1beta1.TaskRunResult{
 				{
 					Name:  "TEST_OUTPUT",
-					Value: *tektonv1beta1.NewArrayOrString(output),
+					Value: *tektonv1beta1.NewStructuredValues(output),
 				},
 			},
 		},
