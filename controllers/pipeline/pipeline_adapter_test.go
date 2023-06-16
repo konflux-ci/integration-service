@@ -265,7 +265,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				TaskRunResults: []tektonv1beta1.TaskRunResult{
 					{
 						Name: "TEST_OUTPUT",
-						Value: *tektonv1beta1.NewArrayOrString(`{
+						Value: *tektonv1beta1.NewStructuredValues(`{
 											"result": "SUCCESS",
 											"timestamp": "1665405318",
 											"failures": 0,
@@ -300,7 +300,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				TaskRunResults: []tektonv1beta1.TaskRunResult{
 					{
 						Name: "TEST_OUTPUT",
-						Value: *tektonv1beta1.NewArrayOrString(`{
+						Value: *tektonv1beta1.NewStructuredValues(`{
 											"result": "FAILURE",
 											"timestamp": "1665405317",
 											"failures": 1,
@@ -341,8 +341,8 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				Params: []tektonv1beta1.Param{
 					{
 						Name: "output-image",
-						Value: tektonv1beta1.ArrayOrString{
-							Type:      "string",
+						Value: tektonv1beta1.ParamValue{
+							Type:      tektonv1beta1.ParamTypeString,
 							StringVal: SampleImageWithoutDigest,
 						},
 					},
@@ -356,19 +356,19 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				PipelineResults: []tektonv1beta1.PipelineRunResult{
 					{
 						Name:  "IMAGE_DIGEST",
-						Value: *tektonv1beta1.NewArrayOrString(SampleDigest),
+						Value: *tektonv1beta1.NewStructuredValues(SampleDigest),
 					},
 					{
 						Name:  "IMAGE_URL",
-						Value: *tektonv1beta1.NewArrayOrString(SampleImageWithoutDigest),
+						Value: *tektonv1beta1.NewStructuredValues(SampleImageWithoutDigest),
 					},
 					{
 						Name:  "CHAINS-GIT_URL",
-						Value: *tektonv1beta1.NewArrayOrString(SampleRepoLink),
+						Value: *tektonv1beta1.NewStructuredValues(SampleRepoLink),
 					},
 					{
 						Name:  "CHAINS-GIT_COMMIT",
-						Value: *tektonv1beta1.NewArrayOrString(SampleCommit),
+						Value: *tektonv1beta1.NewStructuredValues(SampleCommit),
 					},
 				},
 			},
@@ -645,7 +645,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 					PipelineResults: []tektonv1beta1.PipelineRunResult{
 						{
 							Name:  "CHAINS-GIT_URL",
-							Value: *tektonv1beta1.NewArrayOrString(SampleRepoLink),
+							Value: *tektonv1beta1.NewStructuredValues(SampleRepoLink),
 						},
 					},
 				},
@@ -1059,8 +1059,8 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 					Params: []tektonv1beta1.Param{
 						{
 							Name: "output-image",
-							Value: tektonv1beta1.ArrayOrString{
-								Type:      "string",
+							Value: tektonv1beta1.ParamValue{
+								Type:      tektonv1beta1.ParamTypeString,
 								StringVal: SampleImageWithoutDigest,
 							},
 						},
@@ -1074,7 +1074,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 					PipelineResults: []tektonv1beta1.PipelineRunResult{
 						{
 							Name:  "IMAGE_DIGEST",
-							Value: *tektonv1beta1.NewArrayOrString(SampleDigest),
+							Value: *tektonv1beta1.NewStructuredValues(SampleDigest),
 						},
 					},
 				},
