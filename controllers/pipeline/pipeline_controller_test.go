@@ -111,7 +111,7 @@ var _ = Describe("PipelineController", func() {
 				TaskRunResults: []tektonv1beta1.TaskRunResult{
 					{
 						Name: "TEST_OUTPUT",
-						Value: *tektonv1beta1.NewArrayOrString(`{
+						Value: *tektonv1beta1.NewStructuredValues(`{
 											"result": "SUCCESS",
 											"timestamp": "1665405318",
 											"failures": 0,
@@ -148,8 +148,8 @@ var _ = Describe("PipelineController", func() {
 				Params: []tektonv1beta1.Param{
 					{
 						Name: "output-image",
-						Value: tektonv1beta1.ArrayOrString{
-							Type:      "string",
+						Value: tektonv1beta1.ParamValue{
+							Type:      tektonv1beta1.ParamTypeString,
 							StringVal: "quay.io/redhat-appstudio/sample-image",
 						},
 					},
@@ -278,8 +278,8 @@ var _ = Describe("PipelineController", func() {
 					Params: []tektonv1beta1.Param{
 						{
 							Name: "output-image",
-							Value: tektonv1beta1.ArrayOrString{
-								Type:      "string",
+							Value: tektonv1beta1.ParamValue{
+								Type:      tektonv1beta1.ParamTypeString,
 								StringVal: "quay.io/redhat-appstudio/sample-image",
 							},
 						},

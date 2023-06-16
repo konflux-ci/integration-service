@@ -143,7 +143,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				TaskRunResults: []tektonv1beta1.TaskRunResult{
 					{
 						Name: "TEST_OUTPUT",
-						Value: *tektonv1beta1.NewArrayOrString(`{
+						Value: *tektonv1beta1.NewStructuredValues(`{
 											"result": "SUCCESS",
 											"timestamp": "1665405318",
 											"failures": 0,
@@ -178,7 +178,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				TaskRunResults: []tektonv1beta1.TaskRunResult{
 					{
 						Name: "TEST_OUTPUT",
-						Value: *tektonv1beta1.NewArrayOrString(`{
+						Value: *tektonv1beta1.NewStructuredValues(`{
 											"result": "FAILURE",
 											"timestamp": "1665405317",
 											"failures": 1,
@@ -213,7 +213,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				TaskRunResults: []tektonv1beta1.TaskRunResult{
 					{
 						Name: "TEST_OUTPUT",
-						Value: *tektonv1beta1.NewArrayOrString(`{
+						Value: *tektonv1beta1.NewStructuredValues(`{
 											"result": "SKIPPED",
 											"timestamp": "1665405318",
 											"failures": 0,
@@ -268,7 +268,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				TaskRunResults: []tektonv1beta1.TaskRunResult{
 					{
 						Name:  "TEST_OUTPUT",
-						Value: *tektonv1beta1.NewArrayOrString("invalid json"),
+						Value: *tektonv1beta1.NewStructuredValues("invalid json"),
 					},
 				},
 			},
@@ -297,7 +297,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				TaskRunResults: []tektonv1beta1.TaskRunResult{
 					{
 						Name: "TEST_OUTPUT",
-						Value: *tektonv1beta1.NewArrayOrString(`{
+						Value: *tektonv1beta1.NewStructuredValues(`{
 											"success":false,
 											"errors":[{"code":6007,"message":"Malformed JSON in request body"}],
 											"messages":[],
@@ -407,8 +407,8 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				Params: []tektonv1beta1.Param{
 					{
 						Name: "output-image",
-						Value: tektonv1beta1.ArrayOrString{
-							Type:      "string",
+						Value: tektonv1beta1.ParamValue{
+							Type:      tektonv1beta1.ParamTypeString,
 							StringVal: "quay.io/redhat-appstudio/sample-image",
 						},
 					},
@@ -422,19 +422,19 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				PipelineResults: []tektonv1beta1.PipelineRunResult{
 					{
 						Name:  "IMAGE_DIGEST",
-						Value: *tektonv1beta1.NewArrayOrString("image_digest_value"),
+						Value: *tektonv1beta1.NewStructuredValues("image_digest_value"),
 					},
 					{
 						Name:  "IMAGE_URL",
-						Value: *tektonv1beta1.NewArrayOrString(sample_image),
+						Value: *tektonv1beta1.NewStructuredValues(sample_image),
 					},
 					{
 						Name:  "CHAINS-GIT_URL",
-						Value: *tektonv1beta1.NewArrayOrString("git_url_value"),
+						Value: *tektonv1beta1.NewStructuredValues("git_url_value"),
 					},
 					{
 						Name:  "CHAINS-GIT_COMMIT",
-						Value: *tektonv1beta1.NewArrayOrString("git_commit_value"),
+						Value: *tektonv1beta1.NewStructuredValues("git_commit_value"),
 					},
 				},
 			},

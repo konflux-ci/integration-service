@@ -14,7 +14,7 @@ import (
 
 type ExtraParams struct {
 	Name  string
-	Value tektonv1beta1.ArrayOrString
+	Value tektonv1beta1.ParamValue
 }
 
 var _ = Describe("Integration pipeline", func() {
@@ -45,7 +45,7 @@ var _ = Describe("Integration pipeline", func() {
 
 		extraParams = &ExtraParams{
 			Name: "extraConfigPath",
-			Value: tektonv1beta1.ArrayOrString{
+			Value: tektonv1beta1.ParamValue{
 				Type:      tektonv1beta1.ParamTypeString,
 				StringVal: "path/to/extra/config.yaml",
 			},

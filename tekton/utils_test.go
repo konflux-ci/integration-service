@@ -23,7 +23,7 @@ var _ = Describe("Utils", func() {
 				Params: []tektonv1beta1.Param{
 					{
 						Name: "output-image",
-						Value: tektonv1beta1.ArrayOrString{
+						Value: tektonv1beta1.ParamValue{
 							StringVal: "test-image",
 						},
 					},
@@ -34,19 +34,19 @@ var _ = Describe("Utils", func() {
 					PipelineResults: []tektonv1beta1.PipelineRunResult{
 						{
 							Name:  "IMAGE_DIGEST",
-							Value: *tektonv1beta1.NewArrayOrString("image_digest_value"),
+							Value: *tektonv1beta1.NewStructuredValues("image_digest_value"),
 						},
 						{
 							Name:  "IMAGE_URL",
-							Value: *tektonv1beta1.NewArrayOrString("test-image"),
+							Value: *tektonv1beta1.NewStructuredValues("test-image"),
 						},
 						{
 							Name:  "CHAINS-GIT_URL",
-							Value: *tektonv1beta1.NewArrayOrString("https://github.com/devfile-samples/devfile-sample-java-springboot-basic"),
+							Value: *tektonv1beta1.NewStructuredValues("https://github.com/devfile-samples/devfile-sample-java-springboot-basic"),
 						},
 						{
 							Name:  "CHAINS-GIT_COMMIT",
-							Value: *tektonv1beta1.NewArrayOrString("a2ba645d50e471d5f084b"),
+							Value: *tektonv1beta1.NewStructuredValues("a2ba645d50e471d5f084b"),
 						},
 					},
 				},
