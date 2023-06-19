@@ -592,6 +592,10 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 					ContextKey: loader.ApplicationComponentsContextKey,
 					Resource:   []applicationapiv1alpha1.Component{*hasComp, *hasCompNew},
 				},
+				{
+					ContextKey: loader.AllSnapshotsContextKey,
+					Resource:   []applicationapiv1alpha1.Snapshot{},
+				},
 			})
 			applicationComponents, err := adapter.loader.GetAllApplicationComponents(k8sClient, adapter.context, hasApp)
 			Expect(err == nil && len(*applicationComponents) > 1).To(BeTrue())
@@ -610,6 +614,32 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			}, time.Second*10).ShouldNot(HaveOccurred())
 
 			// Check if the composite snapshot that was already created above was correctly detected and returned.
+			adapter.context = loader.GetMockedContext(ctx, []loader.MockData{
+				{
+					ContextKey: loader.ApplicationContextKey,
+					Resource:   hasApp,
+				},
+				{
+					ContextKey: loader.ComponentContextKey,
+					Resource:   hasComp,
+				},
+				{
+					ContextKey: loader.SnapshotContextKey,
+					Resource:   hasSnapshot,
+				},
+				{
+					ContextKey: loader.EnvironmentContextKey,
+					Resource:   hasEnv,
+				},
+				{
+					ContextKey: loader.ApplicationComponentsContextKey,
+					Resource:   []applicationapiv1alpha1.Component{*hasComp, *hasCompNew},
+				},
+				{
+					ContextKey: loader.AllSnapshotsContextKey,
+					Resource:   []applicationapiv1alpha1.Snapshot{*compositeSnapshot},
+				},
+			})
 			existingCompositeSnapshot, err := adapter.createCompositeSnapshotsIfConflictExists(hasApp, hasComp, createdSnapshot)
 			Expect(err).To(BeNil())
 			Expect(existingCompositeSnapshot).NotTo(BeNil())
@@ -695,14 +725,6 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			_, found = snapshot.GetAnnotations()["foo"]
 			Expect(found).To(BeFalse())
 		})
-
-		It("ensures Snapshot exists and can be found ", func() {
-			Eventually(func() bool {
-				result, err := adapter.EnsureSnapshotExists()
-				fmt.Fprintf(GinkgoWriter, "Err: %v\n", err)
-				return !result.CancelRequest && err == nil
-			}, time.Second*10).Should(BeTrue())
-		})
 	})
 
 	When("Adapter is created but no components defined", func() {
@@ -711,7 +733,8 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			Expect(reflect.TypeOf(adapter)).To(Equal(reflect.TypeOf(&Adapter{})))
 
 			result, err := adapter.EnsureSnapshotExists()
-			Expect(!result.CancelRequest && err == nil)
+			Expect(!result.CancelRequest).To(BeTrue())
+			Expect(err).To(BeNil())
 		})
 	})
 
@@ -777,6 +800,10 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				{
 					ContextKey: loader.RequiredIntegrationTestScenariosContextKey,
 					Resource:   []v1beta1.IntegrationTestScenario{*integrationTestScenario},
+				},
+				{
+					ContextKey: loader.ApplicationComponentsContextKey,
+					Resource:   []applicationapiv1alpha1.Component{*hasComp},
 				},
 			})
 			Expect(reflect.TypeOf(adapter)).To(Equal(reflect.TypeOf(&Adapter{})))
@@ -912,6 +939,10 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				{
 					ContextKey: loader.RequiredIntegrationTestScenariosContextKey,
 					Resource:   []v1beta1.IntegrationTestScenario{*integrationTestScenario, *integrationTestScenarioFailed},
+				},
+				{
+					ContextKey: loader.ApplicationComponentsContextKey,
+					Resource:   []applicationapiv1alpha1.Component{*hasComp},
 				},
 			})
 
