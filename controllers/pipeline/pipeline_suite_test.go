@@ -22,8 +22,6 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/redhat-appstudio/integration-service/cache"
-
 	"k8s.io/client-go/rest"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -101,8 +99,6 @@ var _ = BeforeSuite(func() {
 	k8sClient = k8sManager.GetClient()
 	go func() {
 		defer GinkgoRecover()
-		Expect(setupCache(k8sManager)).To(Succeed())
-		Expect(cache.SetupBindingEnvironmentCache(k8sManager)).To(Succeed())
 		Expect(k8sManager.Start(ctx)).To(Succeed())
 	}()
 })

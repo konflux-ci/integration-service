@@ -222,6 +222,12 @@ var _ = Describe("PipelineController", func() {
 	})
 
 	It("can Reconcile function prepare the adapter and return the result of the reconcile handling operation", func() {
+		req := ctrl.Request{
+			NamespacedName: types.NamespacedName{
+				Name:      "non-existent",
+				Namespace: "default",
+			},
+		}
 		result, err := pipelineReconciler.Reconcile(ctx, req)
 		Expect(reflect.TypeOf(result)).To(Equal(reflect.TypeOf(reconcile.Result{})))
 		Expect(err).To(BeNil())

@@ -741,6 +741,10 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 					Resource:   ephemeralEnv,
 				},
 				{
+					ContextKey: loader.SnapshotEnvironmentBindingContextKey,
+					Resource:   nil,
+				},
+				{
 					ContextKey: loader.ApplicationComponentsContextKey,
 					Resource:   []applicationapiv1alpha1.Component{*hasComp},
 				},
