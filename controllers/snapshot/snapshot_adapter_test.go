@@ -764,8 +764,6 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
 			expectedLogEntry = "A snapshotEnvironmentbinding is created"
 			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
-			expectedLogEntry = "Updated snapshotEnvironmentbinding label"
-			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
 		})
 
 		It("ensure binding with scenario label created", func() {
@@ -784,113 +782,6 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 
 			err := k8sClient.Delete(ctx, &binding)
 			Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
-		})
-	})
-
-	When("An ephemeral Environment environment exists and binding without label exist", func() {
-		var (
-			ephemeralEnv *applicationapiv1alpha1.Environment
-			hasBinding   *applicationapiv1alpha1.SnapshotEnvironmentBinding
-			buf          bytes.Buffer
-		)
-
-		BeforeAll(func() {
-			ephemeralEnv = &applicationapiv1alpha1.Environment{
-				ObjectMeta: metav1.ObjectMeta{
-					GenerateName: "ephemeral-env-",
-					Namespace:    "default",
-					Labels: map[string]string{
-						gitops.SnapshotLabel:             hasSnapshotPR.Name,
-						gitops.SnapshotTestScenarioLabel: integrationTestScenario.Name,
-					},
-				},
-				Spec: applicationapiv1alpha1.EnvironmentSpec{
-					Type:               "POC",
-					DisplayName:        "ephemeral-environment",
-					DeploymentStrategy: applicationapiv1alpha1.DeploymentStrategy_Manual,
-					ParentEnvironment:  "",
-					Tags:               []string{"ephemeral"},
-					Configuration: applicationapiv1alpha1.EnvironmentConfiguration{
-						Env: []applicationapiv1alpha1.EnvVarPair{
-							{
-								Name:  "var_name",
-								Value: "test",
-							},
-						},
-					},
-				},
-			}
-			Expect(k8sClient.Create(ctx, ephemeralEnv)).Should(Succeed())
-
-			hasBinding = &applicationapiv1alpha1.SnapshotEnvironmentBinding{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "snapshot-binding-sample",
-					Namespace: "default",
-				},
-				Spec: applicationapiv1alpha1.SnapshotEnvironmentBindingSpec{
-					Application: hasApp.Name,
-					Snapshot:    hasSnapshot.Name,
-					Environment: ephemeralEnv.Name,
-					Components:  []applicationapiv1alpha1.BindingComponent{},
-				},
-			}
-			Expect(k8sClient.Create(ctx, hasBinding)).Should(Succeed())
-
-			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
-			adapter = NewAdapter(hasSnapshotPR, hasApp, hasComp, log, loader.NewMockLoader(), k8sClient, ctx)
-			adapter.context = loader.GetMockedContext(ctx, []loader.MockData{
-				{
-					ContextKey: loader.ApplicationContextKey,
-					Resource:   hasApp,
-				},
-				{
-					ContextKey: loader.ComponentContextKey,
-					Resource:   hasComp,
-				},
-				{
-					ContextKey: loader.SnapshotContextKey,
-					Resource:   hasSnapshotPR,
-				},
-				{
-					ContextKey: loader.EnvironmentContextKey,
-					Resource:   ephemeralEnv,
-				},
-				{
-					ContextKey: loader.ApplicationComponentsContextKey,
-					Resource:   []applicationapiv1alpha1.Component{*hasComp},
-				},
-				{
-					ContextKey: loader.AllIntegrationTestScenariosContextKey,
-					Resource:   []v1beta1.IntegrationTestScenario{*integrationTestScenario, *integrationTestScenarioWithoutEnv},
-				},
-				{
-					ContextKey: loader.SnapshotEnvironmentBindingContextKey,
-					Resource:   hasBinding,
-				},
-			})
-		})
-
-		AfterAll(func() {
-			err := k8sClient.Delete(ctx, ephemeralEnv)
-			Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
-			err = k8sClient.Delete(ctx, hasBinding)
-			Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
-		})
-
-		It("ensures the ephemeral copy Environment will not be created again for IntegrationTestScenario", func() {
-			result, err := adapter.EnsureCreationOfEnvironment()
-			Expect(!result.CancelRequest && err == nil).To(BeTrue())
-
-			expectedLogEntry := "Environment already exists and contains snapshot and scenario"
-			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
-			expectedLogEntry = "SnapshotEnvironmentBinding already exists for environment"
-			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
-			expectedLogEntry = "Updated snapshotEnvironmentbinding label"
-			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
-		})
-
-		It("ensure binding has label added", func() {
-			Expect(helpers.HasLabelWithValue(hasBinding, gitops.SnapshotTestScenarioLabel, integrationTestScenario.Name)).To(BeTrue())
 		})
 	})
 })
