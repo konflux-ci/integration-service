@@ -14,12 +14,14 @@ limitations under the License.
 package binding
 
 import (
+	"bytes"
 	"fmt"
 	"reflect"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/tonglil/buflogr"
 
 	ctrl "sigs.k8s.io/controller-runtime"
 
@@ -429,4 +431,52 @@ var _ = Describe("Binding Adapter", Ordered, func() {
 		}, time.Second*10).Should(BeTrue())
 	})
 
+	It("ensures ephemeral environment is deleted for the given pipelineRun ", func() {
+		var buf bytes.Buffer
+		log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+		hasEnv.Spec.Tags = append(hasEnv.Spec.Tags, "ephemeral")
+		hasBinding.Status = applicationapiv1alpha1.SnapshotEnvironmentBindingStatus{
+			ComponentDeploymentConditions: []metav1.Condition{
+				{
+					Reason:             "ErrorOccurred",
+					Status:             "True",
+					Type:               gitops.BindingErrorOccurredStatusConditionType,
+					LastTransitionTime: metav1.Time{Time: time.Now()},
+				},
+			},
+		}
+
+		adapter = NewAdapter(hasBinding, hasSnapshot, hasEnv, hasApp, hasComp, integrationTestScenario, log, loader.NewMockLoader(), k8sClient, ctx)
+		adapter.context = loader.GetMockedContext(ctx, []loader.MockData{
+			{
+				ContextKey: loader.ApplicationContextKey,
+				Resource:   hasApp,
+			},
+			{
+				ContextKey: loader.EnvironmentContextKey,
+				Resource:   hasEnv,
+			},
+			{
+				ContextKey: loader.DeploymentTargetContextKey,
+				Resource:   deploymentTarget,
+			},
+		})
+
+		dtc, _ := adapter.loader.GetDeploymentTargetClaimForEnvironment(k8sClient, adapter.context, hasEnv)
+		Expect(dtc).NotTo(BeNil())
+
+		dt, _ := adapter.loader.GetDeploymentTargetForDeploymentTargetClaim(k8sClient, adapter.context, dtc)
+		Expect(dt).NotTo(BeNil())
+
+		result, err := adapter.EnsureEphemeralEnvironmentsCleanedUp()
+		Expect(!result.CancelRequest && err == nil).To(BeTrue())
+
+		Expect(gitops.HaveAppStudioTestsSucceeded(hasSnapshot)).To(BeFalse())
+
+		expectedLogEntry := "DeploymentTargetClaim deleted"
+		Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
+
+		expectedLogEntry = "Ephemeral environment and its owning snapshotEnvironmentBinding deleted"
+		Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
+	})
 })
