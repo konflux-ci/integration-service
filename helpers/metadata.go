@@ -34,6 +34,14 @@ func AddAnnotation(objectMeta *metav1.ObjectMeta, annotation string, value strin
 	objectMeta.SetAnnotations(annotations)
 }
 
+// AddLabel adds a label to an object
+func AddLabel(objectMeta *metav1.ObjectMeta, label string, value string) {
+	if objectMeta.Labels == nil {
+		objectMeta.Labels = map[string]string{}
+	}
+	objectMeta.Labels[label] = value
+}
+
 // HasLabel checks if a given label exists
 func HasLabel(object client.Object, label string) bool {
 	_, found := object.GetLabels()[label]

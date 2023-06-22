@@ -94,7 +94,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{}, err
 	}
 
-	integrationTestScenario, err := r.getIntegrationTestScenarioFromSnapshotEnvironmentBiding(ctx, snapshotEnvironmentBinding)
+	integrationTestScenario, err := r.getIntegrationTestScenarioFromSnapshotEnvironmentBinding(ctx, snapshotEnvironmentBinding)
 	if err != nil {
 		logger.Error(err, "Failed to get IntegrationTestScenario from the SnapshotEnvironmentBinding")
 		return ctrl.Result{}, err
@@ -155,9 +155,9 @@ func (r *Reconciler) getEnvironmentFromSnapshotEnvironmentBinding(context contex
 	return environment, nil
 }
 
-// getIntegrationTestScenarioFromSnapshotEnvironmentBiding loads from the cluster the IntegrationTestScenario referenced in the given SnapshotEnvironmentBiding.
+// getIntegrationTestScenarioFromSnapshotEnvironmentBinding loads from the cluster the IntegrationTestScenario referenced in the given SnapshotEnvironmentBinding.
 // If the SnapshotEnvironmentBinding doesn't specify an IntegrationTestScenario or this is not found in the cluster, an error will be returned.
-func (r *Reconciler) getIntegrationTestScenarioFromSnapshotEnvironmentBiding(context context.Context, snapshotEnvironmentBinding *applicationapiv1alpha1.SnapshotEnvironmentBinding) (*v1beta1.IntegrationTestScenario, error) {
+func (r *Reconciler) getIntegrationTestScenarioFromSnapshotEnvironmentBinding(context context.Context, snapshotEnvironmentBinding *applicationapiv1alpha1.SnapshotEnvironmentBinding) (*v1beta1.IntegrationTestScenario, error) {
 	if scenarioLabel, ok := snapshotEnvironmentBinding.Labels[gitops.SnapshotTestScenarioLabel]; ok {
 		integrationTestScenario := &v1beta1.IntegrationTestScenario{}
 		err := r.Get(context, types.NamespacedName{
