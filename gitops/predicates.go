@@ -29,3 +29,13 @@ func DeploymentSucceededForIntegrationBindingPredicate() predicate.Predicate {
 		},
 	}
 }
+
+// DeploymentFailedForIntegrationBindingPredicate returns a predicate which filters out update events to a
+// SnapshotEnvironmentBinding that have resulted in a deployment failure.
+func DeploymentFailedForIntegrationBindingPredicate() predicate.Predicate {
+	return predicate.Funcs{
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			return hasDeploymentFailed(e.ObjectOld, e.ObjectNew)
+		},
+	}
+}

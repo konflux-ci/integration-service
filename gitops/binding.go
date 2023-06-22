@@ -27,6 +27,10 @@ const (
 	// BindingDeploymentStatusConditionType is the condition type to retrieve from the ComponentDeploymentConditions
 	// in the SnapshotEnvironmentBinding's status to copy into the Release status
 	BindingDeploymentStatusConditionType string = "AllComponentsDeployed"
+
+	// BindingErrorOccurredStatusConditionType is the condition to check for failures within the
+	// SnapshotEnvironmentBindingConditions status
+	BindingErrorOccurredStatusConditionType string = "ErrorOccurred"
 )
 
 // NewSnapshotEnvironmentBinding creates a new SnapshotEnvironmentBinding using the provided info.
@@ -61,6 +65,14 @@ func NewBindingComponents(components []applicationapiv1alpha1.Component) *[]appl
 	return &bindingComponents
 }
 
+func HaveBindingsFailed(snapshotEnvironmentBinding *applicationapiv1alpha1.SnapshotEnvironmentBinding) bool {
+	bindingStatus := meta.FindStatusCondition(snapshotEnvironmentBinding.Status.ComponentDeploymentConditions, BindingErrorOccurredStatusConditionType)
+	if bindingStatus == nil {
+		return false
+	}
+	return bindingStatus.Status == metav1.ConditionTrue
+}
+
 // hasDeploymentSucceeded returns a boolean that is only true if the first passed object
 // is a SnapshotEnvironmentBinding with the componentDeployment status anything other than True and
 // the second passed object is a SnapshotEnvironmentBinding with the componentDeployment status True.
@@ -77,5 +89,22 @@ func hasDeploymentSucceeded(objectOld, objectNew client.Object) bool {
 		}
 	}
 
+	return (oldCondition == nil || oldCondition.Status != metav1.ConditionTrue) && newCondition.Status == metav1.ConditionTrue
+}
+
+// hasDeploymentFailed returns a boolean that is only true if the first passed object
+// is a SnapshotEnvironmentBinding with the BindingConditions status anything other than True and
+// the second passed object is a SnapshotEnvironmentBinding with the BindingErrorOccurred status True.
+func hasDeploymentFailed(objectOld, objectNew client.Object) bool {
+	var oldCondition, newCondition *metav1.Condition
+	if oldBinding, ok := objectOld.(*applicationapiv1alpha1.SnapshotEnvironmentBinding); ok {
+		oldCondition = meta.FindStatusCondition(oldBinding.Status.BindingConditions, BindingErrorOccurredStatusConditionType)
+	}
+	if newBinding, ok := objectNew.(*applicationapiv1alpha1.SnapshotEnvironmentBinding); ok {
+		newCondition = meta.FindStatusCondition(newBinding.Status.BindingConditions, BindingErrorOccurredStatusConditionType)
+		if newCondition == nil {
+			return false
+		}
+	}
 	return (oldCondition == nil || oldCondition.Status != metav1.ConditionTrue) && newCondition.Status == metav1.ConditionTrue
 }

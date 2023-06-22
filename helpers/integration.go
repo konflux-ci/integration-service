@@ -303,9 +303,7 @@ func IsEnvironmentEphemeral(testEnvironment *applicationapiv1alpha1.Environment)
 	return isEphemeral
 }
 
-func CleanUpEphemeralEnvironments(client client.Client, logger *IntegrationLogger, ctx context.Context, env *applicationapiv1alpha1.Environment,
-	dtc *applicationapiv1alpha1.DeploymentTargetClaim) error {
-
+func CleanUpEphemeralEnvironments(client client.Client, logger *IntegrationLogger, ctx context.Context, env *applicationapiv1alpha1.Environment, dtc *applicationapiv1alpha1.DeploymentTargetClaim) error {
 	logger.Info("Deleting deploymentTargetClaim", "deploymentTargetClaim.Name", dtc.Name)
 	err := client.Delete(ctx, dtc)
 	if err != nil {
