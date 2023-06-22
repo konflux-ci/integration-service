@@ -20,6 +20,9 @@ const (
 	// PipelinesAsCodePrefix contains the prefix applied to labels and annotations copied from Pipelines as Code resources.
 	PipelinesAsCodePrefix = "pac.test.appstudio.openshift.io"
 
+	// BuildPipelineRunPrefix contains the build pipeline run related labels and annotations
+	BuildPipelineRunPrefix = "build.appstudio"
+
 	// SnapshotTypeLabel contains the type of the Snapshot.
 	SnapshotTypeLabel = "test.appstudio.openshift.io/type"
 
