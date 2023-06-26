@@ -1,0 +1,30 @@
+%%{init: {'theme':'forest'}}%%
+flowchart TD
+  %% Defining the styles
+  classDef Red fill:#FF9999;
+  classDef Amber fill:#FFDEAD;
+  classDef Green fill:#BDFFA4;
+
+  predicate((PREDICATE: <br>Integration test <br>triggered ))
+  %%%%%%%%%%%%%%%%%%%%%%% Drawing EnsureCreatedScenarioIsValid() function
+
+  %% Node definitions
+  
+  application_exists{"Application for scenario <br>was found?"}
+  set_owner_reference(Set owner reference to <br>IntegrationTestScenario)
+  environment_defined{"IntegrationTestScenario <br>has environment defined?"}
+  environment_exists("Environment exists in same <br>namespace as IntegrationTestScenario?")
+  update_scenario_status(Update IntegrationTestScenario <br>status if needed)
+  complete_reconciliation(Complete reconciliation for <br>IntegrationTestScenario)
+  continue_reconciliation(Continue with next reconciliation)
+
+  %% Node connections
+  predicate                        ----> |"EnsureCreatedScenarioIsValid()"| application_exists
+  application_exists               --No--> update_scenario_status
+  application_exists               --Yes--> set_owner_reference
+  set_owner_reference              -->   environment_defined
+  environment_defined              --Yes--> environment_exists
+  environment_defined              --No--> continue_reconciliation
+  environment_exists               --> update_scenario_status
+  update_scenario_status           -->   complete_reconciliation
+  complete_reconciliation          -->   continue_reconciliation
