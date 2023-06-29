@@ -18,9 +18,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/redhat-appstudio/integration-service/tekton"
 	"reflect"
 	"time"
+
+	"github.com/redhat-appstudio/integration-service/tekton"
 
 	"github.com/redhat-appstudio/integration-service/api/v1beta1"
 	"github.com/redhat-appstudio/integration-service/gitops"
@@ -320,17 +321,19 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				Name:      "pipelinerun-build-sample",
 				Namespace: "default",
 				Labels: map[string]string{
-					"pipelines.appstudio.openshift.io/type": "build",
-					"pipelines.openshift.io/used-by":        "build-cloud",
-					"pipelines.openshift.io/runtime":        "nodejs",
-					"pipelines.openshift.io/strategy":       "s2i",
-					"appstudio.openshift.io/component":      "component-sample",
-					"pipelinesascode.tekton.dev/event-type": "pull_request",
+					"pipelines.appstudio.openshift.io/type":    "build",
+					"pipelines.openshift.io/used-by":           "build-cloud",
+					"pipelines.openshift.io/runtime":           "nodejs",
+					"pipelines.openshift.io/strategy":          "s2i",
+					"appstudio.openshift.io/component":         "component-sample",
+					"pipelinesascode.tekton.dev/event-type":    "pull_request",
+					"build.appstudio.redhat.com/target_branch": "main",
 				},
 				Annotations: map[string]string{
 					"appstudio.redhat.com/updateComponentOnSuccess": "false",
 					"pipelinesascode.tekton.dev/on-target-branch":   "[main,master]",
-					"foo": "bar",
+					"build.appstudio.openshift.io/repo":             "https://github.com/devfile-samples/devfile-sample-go-basic?rev=c713067b0e65fb3de50d1f7c457eb51c2ab0dbb0",
+					"foo":                                           "bar",
 				},
 			},
 			Spec: tektonv1beta1.PipelineRunSpec{
@@ -724,6 +727,39 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			Expect(found).To(BeTrue())
 			_, found = snapshot.GetAnnotations()["foo"]
 			Expect(found).To(BeFalse())
+		})
+
+		It("ensures build labels and annotations prefixed with 'build.appstudio' are propagated to the snapshot", func() {
+			snapshot, err := adapter.prepareSnapshotForPipelineRun(testpipelineRunBuild, hasComp, hasApp)
+			Expect(err).To(BeNil())
+			Expect(snapshot).ToNot(BeNil())
+
+			annotation, found := snapshot.GetAnnotations()["build.appstudio.openshift.io/repo"]
+			Expect(found).To(BeTrue())
+			Expect(annotation).To(Equal("https://github.com/devfile-samples/devfile-sample-go-basic?rev=c713067b0e65fb3de50d1f7c457eb51c2ab0dbb0"))
+
+			label, found := snapshot.GetLabels()["build.appstudio.redhat.com/target_branch"]
+			Expect(found).To(BeTrue())
+			Expect(label).To(Equal("main"))
+		})
+
+		It("ensures build labels and annotations non-prefixed with 'build.appstudio' are NOT propagated to the snapshot", func() {
+			snapshot, err := adapter.prepareSnapshotForPipelineRun(testpipelineRunBuild, hasComp, hasApp)
+			Expect(err).To(BeNil())
+			Expect(snapshot).ToNot(BeNil())
+
+			// build annotations non-prefixed with 'build.appstudio' are not copied
+			_, found := testpipelineRunBuild.GetAnnotations()["appstudio.redhat.com/updateComponentOnSuccess"]
+			Expect(found).To(BeTrue())
+			_, found = snapshot.GetAnnotations()["appstudio.redhat.com/updateComponentOnSuccess"]
+			Expect(found).To(BeFalse())
+
+			// build labels non-prefixed with 'build.appstudio' are not copied
+			_, found = testpipelineRunBuild.GetLabels()["pipelines.appstudio.openshift.io/type"]
+			Expect(found).To(BeTrue())
+			_, found = snapshot.GetLabels()["pipelines.appstudio.openshift.io/type"]
+			Expect(found).To(BeFalse())
+
 		})
 	})
 
