@@ -34,6 +34,12 @@ rules:
 - apiGroups:
   - appstudio.redhat.com
   resources:
+  - applications/status
+  verbs:
+  - get
+- apiGroups:
+  - appstudio.redhat.com
+  resources:
   - components
   verbs:
   - get
@@ -102,6 +108,14 @@ rules:
 - apiGroups:
   - appstudio.redhat.com
   resources:
+  - environments/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - appstudio.redhat.com
+  resources:
   - integrationtestscenarios
   verbs:
   - create
@@ -122,11 +136,57 @@ rules:
 - apiGroups:
   - appstudio.redhat.com
   resources:
+  - releaseplans
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - appstudio.redhat.com
+  resources:
+  - releaseplans/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - appstudio.redhat.com
+  resources:
+  - releases
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - appstudio.redhat.com
+  resources:
   - releases/status
   verbs:
   - get
   - patch
   - update
+- apiGroups:
+  - appstudio.redhat.com
+  resources:
+  - snapshotenvironmentbindings
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - appstudio.redhat.com
+  resources:
+  - snapshotenvironmentbindings/status
+  verbs:
+  - get
 - apiGroups:
   - appstudio.redhat.com
   resources:
@@ -168,6 +228,7 @@ rules:
   verbs:
   - create
   - delete
+  - deletecollection
   - get
   - list
   - patch

@@ -19,6 +19,7 @@ package pipeline
 import (
 	"context"
 	"fmt"
+
 	"github.com/redhat-appstudio/integration-service/cache"
 
 	"github.com/go-logr/logr"
@@ -54,13 +55,16 @@ func NewIntegrationReconciler(client client.Client, logger *logr.Logger, scheme 
 //+kubebuilder:rbac:groups=appstudio.redhat.com,resources=deploymenttargetclaims,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=appstudio.redhat.com,resources=deploymenttargets,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=appstudio.redhat.com,resources=environments,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=tekton.dev,resources=pipelineruns,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=appstudio.redhat.com,resources=environments/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=tekton.dev,resources=pipelineruns,verbs=get;list;watch;create;update;patch;delete;deletecollection
 //+kubebuilder:rbac:groups=tekton.dev,resources=pipelineruns/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=tekton.dev,resources=pipelineruns/finalizers,verbs=update
 //+kubebuilder:rbac:groups=tekton.dev,resources=taskruns,verbs=get;list;watch
 //+kubebuilder:rbac:groups=tekton.dev,resources=taskruns/status,verbs=get
 //+kubebuilder:rbac:groups=appstudio.redhat.com,resources=applications/finalizers,verbs=update
 //+kubebuilder:rbac:groups=appstudio.redhat.com,resources=environments/finalizers,verbs=update
+//+kubebuilder:rbac:groups=appstudio.redhat.com,resources=applications,verbs=get;list;watch
+//+kubebuilder:rbac:groups=appstudio.redhat.com,resources=applications/status,verbs=get
 //+kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
 //+kubebuilder:rbac:groups=pipelinesascode.tekton.dev,resources=repositories,verbs=get;list;watch
 
