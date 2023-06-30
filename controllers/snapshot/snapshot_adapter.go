@@ -378,10 +378,10 @@ func (a *Adapter) EnsureSnapshotEnvironmentBindingExist() (reconciler.OperationR
 		} else {
 			snapshotEnvironmentBinding, err = a.createSnapshotEnvironmentBindingForSnapshot(a.application, &availableEnvironment, a.snapshot, components)
 			if err != nil {
-				a.logger.Error(err, "Failed to create SnapshotEnvironmentBinding",
-					"snapshotEnvironmentBinding.Application", snapshotEnvironmentBinding.Spec.Application,
-					"snapshotEnvironmentBinding.Environment", snapshotEnvironmentBinding.Spec.Environment,
-					"snapshotEnvironmentBinding.Snapshot", snapshotEnvironmentBinding.Spec.Snapshot)
+				a.logger.Error(err, "Failed to create SnapshotEnvironmentBinding for snapshot",
+					"application", a.application.Name,
+					"environment", availableEnvironment.Name,
+					"snapshot", a.snapshot.Name)
 				patch := client.MergeFrom(a.snapshot.DeepCopy())
 				gitops.SetSnapshotIntegrationStatusAsInvalid(a.snapshot, "Failed to create SnapshotEnvironmentBinding")
 				a.logger.LogAuditEvent("Snapshot integration status marked as Invalid. Failed to create SnapshotEnvironmentBinding",
@@ -505,7 +505,8 @@ func (a *Adapter) createSnapshotEnvironmentBindingForSnapshot(application *appli
 		environment.Name,
 		snapshot, *components)
 
-	err := ctrl.SetControllerReference(application, snapshotEnvironmentBinding, a.client.Scheme())
+	// set environemtn as owner of snapshotEnvironmentBinding on controlled
+	err := ctrl.SetControllerReference(environment, snapshotEnvironmentBinding, a.client.Scheme())
 	if err != nil {
 		return nil, err
 	}
