@@ -286,12 +286,6 @@ func (a *Adapter) EnsureEphemeralEnvironmentsCleanedUp() (reconciler.OperationRe
 			return reconciler.RequeueWithError(err)
 		}
 
-		binding, err := a.loader.FindExistingSnapshotEnvironmentBinding(a.client, a.context, a.application, testEnvironment)
-		if err != nil || binding == nil {
-			a.logger.Error(err, "Failed to find snapshotEnvironmentBinding associated with environment", "environment.Name", testEnvironment.Name)
-			return reconciler.RequeueWithError(err)
-		}
-
 		a.logger.Info("Deleting deploymentTarget", "deploymentTarget.Name", dt.Name)
 		err = a.client.Delete(a.context, dt)
 		if err != nil {
@@ -308,21 +302,13 @@ func (a *Adapter) EnsureEphemeralEnvironmentsCleanedUp() (reconciler.OperationRe
 		}
 		a.logger.LogAuditEvent("DeploymentTargetClaim deleted", dtc, h.LogActionDelete)
 
-		a.logger.Info("Deleting environment", "environment.Name", testEnvironment.Name)
+		a.logger.Info("Deleting environment and its owning snapshotEnvironmentBinding", "environment.Name", testEnvironment.Name)
 		err = a.client.Delete(a.context, testEnvironment)
 		if err != nil {
-			a.logger.Error(err, "Failed to delete the test ephemeral environment")
+			a.logger.Error(err, "Failed to delete the test ephemeral environment and the owning snapshotEnvironmentBinding")
 			return reconciler.RequeueWithError(err)
 		}
-		a.logger.LogAuditEvent("Ephemeral environment deleted", testEnvironment, h.LogActionDelete)
-
-		a.logger.Info("Deleting snapshotEnvironmentBinding", "binding.Name", binding.Name)
-		err = a.client.Delete(a.context, binding)
-		if err != nil {
-			a.logger.Error(err, "Failed to delete the snapshotEnvironmentBinding")
-			return reconciler.RequeueWithError(err)
-		}
-		a.logger.LogAuditEvent("SnapshotEnvironmentBinding deleted", binding, h.LogActionDelete)
+		a.logger.LogAuditEvent("Ephemeral environment and the owning snapshotEnvironmentBinding deleted", testEnvironment, h.LogActionDelete)
 	} else {
 		a.logger.Info("The pipelineRun test Environment is not ephemeral, skipping cleanup.")
 	}
