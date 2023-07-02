@@ -22,10 +22,10 @@ import (
 // DeploymentFinishedForIntegrationBindingPredicate returns a predicate which filters out update events to a
 // SnapshotEnvironmentBinding that has the IntegrationTestScenario specified in the label and
 // where the component deployment status goes from unknown to true/false.
-func DeploymentFinishedForIntegrationBindingPredicate() predicate.Predicate {
+func DeploymentSucceededForIntegrationBindingPredicate() predicate.Predicate {
 	return predicate.Funcs{
 		UpdateFunc: func(e event.UpdateEvent) bool {
-			return hasDeploymentFinished(e.ObjectOld, e.ObjectNew) && helpers.HasLabel(e.ObjectNew, SnapshotTestScenarioLabel)
+			return hasDeploymentSucceeded(e.ObjectOld, e.ObjectNew) && helpers.HasLabel(e.ObjectNew, SnapshotTestScenarioLabel)
 		},
 	}
 }

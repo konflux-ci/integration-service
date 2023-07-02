@@ -193,6 +193,6 @@ func SetupController(manager ctrl.Manager, log *logr.Logger) error {
 // setupControllerWithManager sets up the controller with the Manager which monitors new SnapshotEnvironmentBindings
 func setupControllerWithManager(manager ctrl.Manager, reconciler *Reconciler) error {
 	return ctrl.NewControllerManagedBy(manager).
-		For(&applicationapiv1alpha1.SnapshotEnvironmentBinding{}, builder.WithPredicates(predicates.GenerationUnchangedOnUpdatePredicate{}, gitops.DeploymentFinishedForIntegrationBindingPredicate())).
+		For(&applicationapiv1alpha1.SnapshotEnvironmentBinding{}, builder.WithPredicates(predicates.GenerationUnchangedOnUpdatePredicate{}, gitops.DeploymentSucceededForIntegrationBindingPredicate())).
 		Complete(reconciler)
 }

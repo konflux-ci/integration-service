@@ -61,17 +61,14 @@ func NewBindingComponents(components []applicationapiv1alpha1.Component) *[]appl
 	return &bindingComponents
 }
 
-// hasDeploymentFinished returns a boolean that is only true if the first passed object
-// is a SnapshotEnvironmentBinding with the componentDeployment status Unknown and the second
-// passed object is a SnapshotEnvironmentBinding with the componentDeployment status True/False.
-func hasDeploymentFinished(objectOld, objectNew client.Object) bool {
+// hasDeploymentSucceeded returns a boolean that is only true if the first passed object
+// is a SnapshotEnvironmentBinding with the componentDeployment status anything other than True and
+// the second passed object is a SnapshotEnvironmentBinding with the componentDeployment status True.
+func hasDeploymentSucceeded(objectOld, objectNew client.Object) bool {
 	var oldCondition, newCondition *metav1.Condition
 
 	if oldBinding, ok := objectOld.(*applicationapiv1alpha1.SnapshotEnvironmentBinding); ok {
 		oldCondition = meta.FindStatusCondition(oldBinding.Status.ComponentDeploymentConditions, BindingDeploymentStatusConditionType)
-		if oldCondition == nil {
-			return false
-		}
 	}
 	if newBinding, ok := objectNew.(*applicationapiv1alpha1.SnapshotEnvironmentBinding); ok {
 		newCondition = meta.FindStatusCondition(newBinding.Status.ComponentDeploymentConditions, BindingDeploymentStatusConditionType)
@@ -80,5 +77,5 @@ func hasDeploymentFinished(objectOld, objectNew client.Object) bool {
 		}
 	}
 
-	return oldCondition.Status == metav1.ConditionUnknown && newCondition.Status != metav1.ConditionUnknown
+	return (oldCondition == nil || oldCondition.Status != metav1.ConditionTrue) && newCondition.Status == metav1.ConditionTrue
 }
