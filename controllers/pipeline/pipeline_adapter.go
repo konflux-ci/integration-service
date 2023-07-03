@@ -536,6 +536,10 @@ func (a *Adapter) prepareSnapshotForPipelineRun(pipelineRun *tektonv1beta1.Pipel
 	h.CopyLabelsByPrefix(&pipelineRun.ObjectMeta, &snapshot.ObjectMeta, "pipelinesascode.tekton.dev", gitops.PipelinesAsCodePrefix)
 	h.CopyAnnotationsByPrefix(&pipelineRun.ObjectMeta, &snapshot.ObjectMeta, "pipelinesascode.tekton.dev", gitops.PipelinesAsCodePrefix)
 
+	// Copy build labels and annotations prefixed with build.appstudio from Build to Snapshot.
+	h.CopyLabelsByPrefix(&pipelineRun.ObjectMeta, &snapshot.ObjectMeta, gitops.BuildPipelineRunPrefix, gitops.BuildPipelineRunPrefix)
+	h.CopyAnnotationsByPrefix(&pipelineRun.ObjectMeta, &snapshot.ObjectMeta, gitops.BuildPipelineRunPrefix, gitops.BuildPipelineRunPrefix)
+
 	return snapshot, nil
 }
 
