@@ -29,6 +29,9 @@ const (
 	// SnapshotTestScenarioLabel contains the name of the Snapshot test scenario.
 	SnapshotTestScenarioLabel = "test.appstudio.openshift.io/scenario"
 
+	// BuildPipelineRunPrefix contains the build pipeline run related labels and annotations
+	BuildPipelineRunPrefix = "build.appstudio"
+
 	// BuildPipelineRunFinishTimeLabel contains the build PipelineRun finish time of the Snapshot.
 	BuildPipelineRunFinishTimeLabel = "test.appstudio.openshift.io/pipelinerunfinishtime"
 
