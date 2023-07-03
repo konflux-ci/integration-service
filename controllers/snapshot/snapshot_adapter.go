@@ -130,7 +130,7 @@ func (a *Adapter) EnsureAllIntegrationTestPipelinesExist() (reconciler.Operation
 	if err != nil {
 		a.logger.Error(err, "Failed to get all required IntegrationTestScenarios")
 		patch := client.MergeFrom(a.snapshot.DeepCopy())
-		gitops.SetSnapshotIntegrationStatusAsInvalid(a.snapshot, "Failed to get all required IntegrationTestScenarios")
+		gitops.SetSnapshotIntegrationStatusAsInvalid(a.snapshot, "Failed to get all required IntegrationTestScenarios: "+err.Error())
 		a.logger.LogAuditEvent("Snapshot integration status marked as Invalid. Failed to get all required IntegrationTestScenarios",
 			a.snapshot, h.LogActionUpdate)
 		return reconciler.RequeueOnErrorOrStop(a.client.Status().Patch(a.context, a.snapshot, patch))
@@ -311,7 +311,7 @@ func (a *Adapter) EnsureAllReleasesExist() (reconciler.OperationResult, error) {
 	if err != nil {
 		a.logger.Error(err, "Failed to get all ReleasePlans")
 		patch := client.MergeFrom(a.snapshot.DeepCopy())
-		gitops.SetSnapshotIntegrationStatusAsInvalid(a.snapshot, "Failed to get all ReleasePlans")
+		gitops.SetSnapshotIntegrationStatusAsInvalid(a.snapshot, "Failed to get all ReleasePlans: "+err.Error())
 		a.logger.LogAuditEvent("Snapshot integration status marked as Invalid. Failed to get all ReleasePlans",
 			a.snapshot, h.LogActionUpdate)
 		return reconciler.RequeueOnErrorOrStop(a.client.Status().Patch(a.context, a.snapshot, patch))
@@ -321,7 +321,7 @@ func (a *Adapter) EnsureAllReleasesExist() (reconciler.OperationResult, error) {
 	if err != nil {
 		a.logger.Error(err, "Failed to create new Releases")
 		patch := client.MergeFrom(a.snapshot.DeepCopy())
-		gitops.SetSnapshotIntegrationStatusAsInvalid(a.snapshot, "Failed to create new Releases")
+		gitops.SetSnapshotIntegrationStatusAsInvalid(a.snapshot, "Failed to create new Releases: "+err.Error())
 		a.logger.LogAuditEvent("Snapshot integration status marked as Invalid. Failed to create new Releases",
 			a.snapshot, h.LogActionUpdate)
 		return reconciler.RequeueOnErrorOrStop(a.client.Status().Patch(a.context, a.snapshot, patch))
@@ -364,7 +364,7 @@ func (a *Adapter) EnsureSnapshotEnvironmentBindingExist() (reconciler.OperationR
 					"snapshotEnvironmentBinding.Environment", snapshotEnvironmentBinding.Spec.Environment,
 					"snapshotEnvironmentBinding.Snapshot", snapshotEnvironmentBinding.Spec.Snapshot)
 				patch := client.MergeFrom(a.snapshot.DeepCopy())
-				gitops.SetSnapshotIntegrationStatusAsInvalid(a.snapshot, "Failed to update SnapshotEnvironmentBinding")
+				gitops.SetSnapshotIntegrationStatusAsInvalid(a.snapshot, "Failed to update SnapshotEnvironmentBinding: "+err.Error())
 				a.logger.LogAuditEvent("Snapshot integration status marked as Invalid. Failed to update SnapshotEnvironmentBinding",
 					a.snapshot, h.LogActionUpdate)
 				return reconciler.RequeueOnErrorOrStop(a.client.Status().Patch(a.context, a.snapshot, patch))
@@ -383,7 +383,7 @@ func (a *Adapter) EnsureSnapshotEnvironmentBindingExist() (reconciler.OperationR
 					"environment", availableEnvironment.Name,
 					"snapshot", a.snapshot.Name)
 				patch := client.MergeFrom(a.snapshot.DeepCopy())
-				gitops.SetSnapshotIntegrationStatusAsInvalid(a.snapshot, "Failed to create SnapshotEnvironmentBinding: " + err.Error())
+				gitops.SetSnapshotIntegrationStatusAsInvalid(a.snapshot, "Failed to create SnapshotEnvironmentBinding: "+err.Error())
 				a.logger.LogAuditEvent("Snapshot integration status marked as Invalid. Failed to create SnapshotEnvironmentBinding",
 					a.snapshot, h.LogActionUpdate)
 				return reconciler.RequeueOnErrorOrStop(a.client.Status().Patch(a.context, a.snapshot, patch))
