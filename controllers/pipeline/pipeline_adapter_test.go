@@ -1380,7 +1380,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			expectedLogEntry = "DeploymentTargetClaim deleted"
 			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
 
-			expectedLogEntry = "Ephemeral environment and the owning snapshotEnvironmentBinding deleted"
+			expectedLogEntry = "Ephemeral environment and its owning snapshotEnvironmentBinding deleted"
 			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
 		})
 	})
