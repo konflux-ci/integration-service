@@ -96,6 +96,12 @@ rules:
 - apiGroups:
   - appstudio.redhat.com
   resources:
+  - environments/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - appstudio.redhat.com
+  resources:
   - integrationtestscenarios
   verbs:
   - create
