@@ -76,7 +76,6 @@ func (a *Adapter) EnsureAllIntegrationTestPipelinesExist() (reconciler.Operation
 	integrationTestScenarios, err := a.loader.GetAllIntegrationTestScenariosForApplication(a.client, a.context, a.application)
 	if err != nil {
 		a.logger.Error(err, "Failed to get Integration test scenarios for the following application",
-			"Application.Name", a.application.Name,
 			"Application.Namespace", a.application.Namespace)
 	}
 
@@ -360,7 +359,6 @@ func (a *Adapter) EnsureSnapshotEnvironmentBindingExist() (reconciler.OperationR
 			snapshotEnvironmentBinding, err = a.updateExistingSnapshotEnvironmentBindingWithSnapshot(snapshotEnvironmentBinding, a.snapshot, components)
 			if err != nil {
 				a.logger.Error(err, "Failed to update SnapshotEnvironmentBinding",
-					"snapshotEnvironmentBinding.Application", snapshotEnvironmentBinding.Spec.Application,
 					"snapshotEnvironmentBinding.Environment", snapshotEnvironmentBinding.Spec.Environment,
 					"snapshotEnvironmentBinding.Snapshot", snapshotEnvironmentBinding.Spec.Snapshot)
 				patch := client.MergeFrom(a.snapshot.DeepCopy())
@@ -371,7 +369,6 @@ func (a *Adapter) EnsureSnapshotEnvironmentBindingExist() (reconciler.OperationR
 			}
 			a.logger.LogAuditEvent("Existing SnapshotEnvironmentBinding updated with Snapshot",
 				snapshotEnvironmentBinding, h.LogActionUpdate,
-				"snapshotEnvironmentBinding.Application", snapshotEnvironmentBinding.Spec.Application,
 				"snapshotEnvironmentBinding.Environment", snapshotEnvironmentBinding.Spec.Environment,
 				"snapshotEnvironmentBinding.Snapshot", snapshotEnvironmentBinding.Spec.Snapshot)
 
@@ -379,7 +376,6 @@ func (a *Adapter) EnsureSnapshotEnvironmentBindingExist() (reconciler.OperationR
 			snapshotEnvironmentBinding, err = a.createSnapshotEnvironmentBindingForSnapshot(a.application, &availableEnvironment, a.snapshot, components)
 			if err != nil {
 				a.logger.Error(err, "Failed to create SnapshotEnvironmentBinding for snapshot",
-					"application", a.application.Name,
 					"environment", availableEnvironment.Name,
 					"snapshot", a.snapshot.Name)
 				patch := client.MergeFrom(a.snapshot.DeepCopy())
@@ -582,7 +578,6 @@ func (a *Adapter) createCopyOfExistingEnvironment(existingEnvironment *applicati
 	ref := ctrl.SetControllerReference(application, environment, a.client.Scheme())
 	if ref != nil {
 		a.logger.Error(ref, "Failed to set controller reference for Environment!",
-			"application.Name", application.Name,
 			"environment.Name", environment.Name)
 	}
 
