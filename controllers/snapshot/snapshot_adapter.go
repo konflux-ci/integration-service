@@ -501,7 +501,7 @@ func (a *Adapter) createSnapshotEnvironmentBindingForSnapshot(application *appli
 		environment.Name,
 		snapshot, *components)
 
-	// set environemtn as owner of snapshotEnvironmentBinding on controlled
+	// set environment as owner of snapshotEnvironmentBinding on controlled
 	err := ctrl.SetControllerReference(environment, snapshotEnvironmentBinding, a.client.Scheme())
 	if err != nil {
 		return nil, err
