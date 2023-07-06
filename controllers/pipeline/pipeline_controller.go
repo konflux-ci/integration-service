@@ -60,6 +60,7 @@ func NewIntegrationReconciler(client client.Client, logger *logr.Logger, scheme 
 //+kubebuilder:rbac:groups=tekton.dev,resources=taskruns,verbs=get;list;watch
 //+kubebuilder:rbac:groups=tekton.dev,resources=taskruns/status,verbs=get
 //+kubebuilder:rbac:groups=appstudio.redhat.com,resources=applications/finalizers,verbs=update
+//+kubebuilder:rbac:groups=appstudio.redhat.com,resources=environments/finalizers,verbs=update
 //+kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
 //+kubebuilder:rbac:groups=pipelinesascode.tekton.dev,resources=repositories,verbs=get;list;watch
 

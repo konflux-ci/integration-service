@@ -76,7 +76,6 @@ func (a *Adapter) EnsureAllIntegrationTestPipelinesExist() (reconciler.Operation
 	integrationTestScenarios, err := a.loader.GetAllIntegrationTestScenariosForApplication(a.client, a.context, a.application)
 	if err != nil {
 		a.logger.Error(err, "Failed to get Integration test scenarios for the following application",
-			"Application.Name", a.application.Name,
 			"Application.Namespace", a.application.Namespace)
 	}
 
@@ -130,7 +129,7 @@ func (a *Adapter) EnsureAllIntegrationTestPipelinesExist() (reconciler.Operation
 	if err != nil {
 		a.logger.Error(err, "Failed to get all required IntegrationTestScenarios")
 		patch := client.MergeFrom(a.snapshot.DeepCopy())
-		gitops.SetSnapshotIntegrationStatusAsInvalid(a.snapshot, "Failed to get all required IntegrationTestScenarios")
+		gitops.SetSnapshotIntegrationStatusAsInvalid(a.snapshot, "Failed to get all required IntegrationTestScenarios: "+err.Error())
 		a.logger.LogAuditEvent("Snapshot integration status marked as Invalid. Failed to get all required IntegrationTestScenarios",
 			a.snapshot, h.LogActionUpdate)
 		return reconciler.RequeueOnErrorOrStop(a.client.Status().Patch(a.context, a.snapshot, patch))
@@ -311,7 +310,7 @@ func (a *Adapter) EnsureAllReleasesExist() (reconciler.OperationResult, error) {
 	if err != nil {
 		a.logger.Error(err, "Failed to get all ReleasePlans")
 		patch := client.MergeFrom(a.snapshot.DeepCopy())
-		gitops.SetSnapshotIntegrationStatusAsInvalid(a.snapshot, "Failed to get all ReleasePlans")
+		gitops.SetSnapshotIntegrationStatusAsInvalid(a.snapshot, "Failed to get all ReleasePlans: "+err.Error())
 		a.logger.LogAuditEvent("Snapshot integration status marked as Invalid. Failed to get all ReleasePlans",
 			a.snapshot, h.LogActionUpdate)
 		return reconciler.RequeueOnErrorOrStop(a.client.Status().Patch(a.context, a.snapshot, patch))
@@ -321,7 +320,7 @@ func (a *Adapter) EnsureAllReleasesExist() (reconciler.OperationResult, error) {
 	if err != nil {
 		a.logger.Error(err, "Failed to create new Releases")
 		patch := client.MergeFrom(a.snapshot.DeepCopy())
-		gitops.SetSnapshotIntegrationStatusAsInvalid(a.snapshot, "Failed to create new Releases")
+		gitops.SetSnapshotIntegrationStatusAsInvalid(a.snapshot, "Failed to create new Releases: "+err.Error())
 		a.logger.LogAuditEvent("Snapshot integration status marked as Invalid. Failed to create new Releases",
 			a.snapshot, h.LogActionUpdate)
 		return reconciler.RequeueOnErrorOrStop(a.client.Status().Patch(a.context, a.snapshot, patch))
@@ -360,30 +359,27 @@ func (a *Adapter) EnsureSnapshotEnvironmentBindingExist() (reconciler.OperationR
 			snapshotEnvironmentBinding, err = a.updateExistingSnapshotEnvironmentBindingWithSnapshot(snapshotEnvironmentBinding, a.snapshot, components)
 			if err != nil {
 				a.logger.Error(err, "Failed to update SnapshotEnvironmentBinding",
-					"snapshotEnvironmentBinding.Application", snapshotEnvironmentBinding.Spec.Application,
 					"snapshotEnvironmentBinding.Environment", snapshotEnvironmentBinding.Spec.Environment,
 					"snapshotEnvironmentBinding.Snapshot", snapshotEnvironmentBinding.Spec.Snapshot)
 				patch := client.MergeFrom(a.snapshot.DeepCopy())
-				gitops.SetSnapshotIntegrationStatusAsInvalid(a.snapshot, "Failed to update SnapshotEnvironmentBinding")
+				gitops.SetSnapshotIntegrationStatusAsInvalid(a.snapshot, "Failed to update SnapshotEnvironmentBinding: "+err.Error())
 				a.logger.LogAuditEvent("Snapshot integration status marked as Invalid. Failed to update SnapshotEnvironmentBinding",
 					a.snapshot, h.LogActionUpdate)
 				return reconciler.RequeueOnErrorOrStop(a.client.Status().Patch(a.context, a.snapshot, patch))
 			}
 			a.logger.LogAuditEvent("Existing SnapshotEnvironmentBinding updated with Snapshot",
 				snapshotEnvironmentBinding, h.LogActionUpdate,
-				"snapshotEnvironmentBinding.Application", snapshotEnvironmentBinding.Spec.Application,
 				"snapshotEnvironmentBinding.Environment", snapshotEnvironmentBinding.Spec.Environment,
 				"snapshotEnvironmentBinding.Snapshot", snapshotEnvironmentBinding.Spec.Snapshot)
 
 		} else {
 			snapshotEnvironmentBinding, err = a.createSnapshotEnvironmentBindingForSnapshot(a.application, &availableEnvironment, a.snapshot, components)
 			if err != nil {
-				a.logger.Error(err, "Failed to create SnapshotEnvironmentBinding",
-					"snapshotEnvironmentBinding.Application", snapshotEnvironmentBinding.Spec.Application,
-					"snapshotEnvironmentBinding.Environment", snapshotEnvironmentBinding.Spec.Environment,
-					"snapshotEnvironmentBinding.Snapshot", snapshotEnvironmentBinding.Spec.Snapshot)
+				a.logger.Error(err, "Failed to create SnapshotEnvironmentBinding for snapshot",
+					"environment", availableEnvironment.Name,
+					"snapshot", a.snapshot.Name)
 				patch := client.MergeFrom(a.snapshot.DeepCopy())
-				gitops.SetSnapshotIntegrationStatusAsInvalid(a.snapshot, "Failed to create SnapshotEnvironmentBinding")
+				gitops.SetSnapshotIntegrationStatusAsInvalid(a.snapshot, "Failed to create SnapshotEnvironmentBinding: "+err.Error())
 				a.logger.LogAuditEvent("Snapshot integration status marked as Invalid. Failed to create SnapshotEnvironmentBinding",
 					a.snapshot, h.LogActionUpdate)
 				return reconciler.RequeueOnErrorOrStop(a.client.Status().Patch(a.context, a.snapshot, patch))
@@ -505,7 +501,8 @@ func (a *Adapter) createSnapshotEnvironmentBindingForSnapshot(application *appli
 		environment.Name,
 		snapshot, *components)
 
-	err := ctrl.SetControllerReference(application, snapshotEnvironmentBinding, a.client.Scheme())
+	// set environment as owner of snapshotEnvironmentBinding on controlled
+	err := ctrl.SetControllerReference(environment, snapshotEnvironmentBinding, a.client.Scheme())
 	if err != nil {
 		return nil, err
 	}
@@ -581,7 +578,6 @@ func (a *Adapter) createCopyOfExistingEnvironment(existingEnvironment *applicati
 	ref := ctrl.SetControllerReference(application, environment, a.client.Scheme())
 	if ref != nil {
 		a.logger.Error(ref, "Failed to set controller reference for Environment!",
-			"application.Name", application.Name,
 			"environment.Name", environment.Name)
 	}
 

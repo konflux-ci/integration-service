@@ -784,8 +784,9 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			Expect(binding.Spec.Snapshot).To(Equal(hasSnapshotPR.Name))
 			Expect(binding.Spec.Environment).To(Equal(ephemeralEnv.Name))
 
-			err := k8sClient.Delete(ctx, &binding)
-			Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
+			owners := binding.GetOwnerReferences()
+			Expect(len(owners) == 1).To(BeTrue())
+			Expect(owners[0].Name).To(Equal(ephemeralEnv.Name))
 		})
 	})
 })

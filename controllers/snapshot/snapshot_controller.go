@@ -56,6 +56,7 @@ func NewSnapshotReconciler(client client.Client, logger *logr.Logger, scheme *ru
 //+kubebuilder:rbac:groups=tekton.dev,resources=pipelineruns,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=tekton.dev,resources=pipelineruns/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=appstudio.redhat.com,resources=applications/finalizers,verbs=update
+//+kubebuilder:rbac:groups=appstudio.redhat.com,resources=environments/finalizers,verbs=update
 //+kubebuilder:rbac:groups=appstudio.redhat.com,resources=components,verbs=get;list;watch;update;patch
 //+kubebuilder:rbac:groups=appstudio.redhat.com,resources=components/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=appstudio.redhat.com,resources=deploymenttargetclasses,verbs=get;list;watch
