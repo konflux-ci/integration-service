@@ -20,7 +20,6 @@ import (
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"math"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -57,9 +56,6 @@ func NewBindingComponents(components []applicationapiv1alpha1.Component) *[]appl
 	for _, component := range components {
 		bindingComponents = append(bindingComponents, applicationapiv1alpha1.BindingComponent{
 			Name: component.Spec.ComponentName,
-			Configuration: applicationapiv1alpha1.BindingComponentConfiguration{
-				Replicas: int(math.Max(1, float64(component.Spec.Replicas))),
-			},
 		})
 	}
 	return &bindingComponents
