@@ -17,32 +17,10 @@ resources:
 - auth_proxy_role_binding.yaml
 - auth_proxy_client_clusterrole.yaml
 
-# Integration service
-- integrationtestscenario_editor_role.yaml
-- integrationtestscenario_viewer_role.yaml
-- integrationtestscenario_role_binding.yaml
-# Application service
-- application_viewer_role.yaml
-- application_role_binding.yaml
-- component_editor_role.yaml
-- component_role_binding.yaml
-# Release service
-- release_editor_role.yaml
-- release_viewer_role.yaml
-- release_role_binding.yaml
-- releaseplan_viewer_role.yaml
-- releaseplan_role_binding.yaml
 # Tekton
 - tekton_editor_role.yaml
 - tekton_role_binding.yaml
-# GitOps
-- snapshot_editor_role.yaml
-- snapshot_role_binding.yaml
-- snapshot_viewer_role.yaml
-- snapshotenvironmentbinding_editor_role.yaml
-- snapshotenvironmentbinding_role_binding.yaml
-- environment_editor_role.yaml
-- environment_role_binding.yaml
+
 # Prometheus
 - prometheus_service_account.yaml
 - prometheus_viewer_role.yaml
