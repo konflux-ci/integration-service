@@ -35,6 +35,7 @@ type Adapter struct {
 	snapshotEnvironmentBinding *applicationapiv1alpha1.SnapshotEnvironmentBinding
 	snapshot                   *applicationapiv1alpha1.Snapshot
 	application                *applicationapiv1alpha1.Application
+	component                  *applicationapiv1alpha1.Component
 	environment                *applicationapiv1alpha1.Environment
 	integrationTestScenario    *v1beta1.IntegrationTestScenario
 	logger                     h.IntegrationLogger
@@ -44,13 +45,14 @@ type Adapter struct {
 }
 
 // NewAdapter creates and returns an Adapter instance.
-func NewAdapter(snapshotEnvironmentBinding *applicationapiv1alpha1.SnapshotEnvironmentBinding, snapshot *applicationapiv1alpha1.Snapshot, environment *applicationapiv1alpha1.Environment, application *applicationapiv1alpha1.Application, integrationTestScenario *v1beta1.IntegrationTestScenario, logger h.IntegrationLogger, loader loader.ObjectLoader, client client.Client,
+func NewAdapter(snapshotEnvironmentBinding *applicationapiv1alpha1.SnapshotEnvironmentBinding, snapshot *applicationapiv1alpha1.Snapshot, environment *applicationapiv1alpha1.Environment, application *applicationapiv1alpha1.Application, component *applicationapiv1alpha1.Component, integrationTestScenario *v1beta1.IntegrationTestScenario, logger h.IntegrationLogger, loader loader.ObjectLoader, client client.Client,
 	context context.Context) *Adapter {
 	return &Adapter{
 		snapshotEnvironmentBinding: snapshotEnvironmentBinding,
 		snapshot:                   snapshot,
 		environment:                environment,
 		application:                application,
+		component:                  component,
 		integrationTestScenario:    integrationTestScenario,
 		logger:                     logger,
 		loader:                     loader,
@@ -108,6 +110,7 @@ func (a *Adapter) createIntegrationPipelineRunWithEnvironment(application *appli
 
 	pipelineRun := tekton.NewIntegrationPipelineRun(snapshot.Name, application.Namespace, *integrationTestScenario).
 		WithSnapshot(snapshot).
+		WithApplicationAndComponent(a.application, a.component).
 		WithIntegrationLabels(integrationTestScenario).
 		WithEnvironmentAndDeploymentTarget(deploymentTarget, environment.Name).
 		AsPipelineRun()

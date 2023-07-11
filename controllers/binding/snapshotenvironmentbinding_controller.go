@@ -93,6 +93,12 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{}, err
 	}
 
+	component, err := loader.GetComponentFromSnapshot(r.Client, ctx, snapshot)
+	if err != nil {
+		logger.Error(err, "Failed to get Component from the Snapshot")
+		return ctrl.Result{}, err
+	}
+
 	environment, err := r.getEnvironmentFromSnapshotEnvironmentBinding(ctx, snapshotEnvironmentBinding)
 	if err != nil {
 		logger.Error(err, "Failed to get Environment from the SnapshotEnvironmentBinding")
@@ -105,7 +111,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{}, err
 	}
 
-	adapter := NewAdapter(snapshotEnvironmentBinding, snapshot, environment, application, integrationTestScenario, logger, loader, r.Client, ctx)
+	adapter := NewAdapter(snapshotEnvironmentBinding, snapshot, environment, application, component, integrationTestScenario, logger, loader, r.Client, ctx)
 
 	return reconciler.ReconcileHandler([]reconciler.ReconcileOperation{
 		adapter.EnsureIntegrationTestPipelineForScenarioExists,

@@ -339,11 +339,11 @@ var _ = Describe("Binding Adapter", Ordered, func() {
 	})
 
 	It("can create a new Adapter instance", func() {
-		Expect(reflect.TypeOf(NewAdapter(hasBinding, hasSnapshot, hasEnv, hasApp, integrationTestScenario, logger, loader.NewMockLoader(), k8sClient, ctx))).To(Equal(reflect.TypeOf(&Adapter{})))
+		Expect(reflect.TypeOf(NewAdapter(hasBinding, hasSnapshot, hasEnv, hasApp, hasComp, integrationTestScenario, logger, loader.NewMockLoader(), k8sClient, ctx))).To(Equal(reflect.TypeOf(&Adapter{})))
 	})
 
 	It("ensures the integrationTestPipelines are created for a deployed SnapshotEnvironment binding", func() {
-		adapter = NewAdapter(hasBinding, hasSnapshot, hasEnv, hasApp, integrationTestScenario, logger, loader.NewMockLoader(), k8sClient, ctx)
+		adapter = NewAdapter(hasBinding, hasSnapshot, hasEnv, hasApp, hasComp, integrationTestScenario, logger, loader.NewMockLoader(), k8sClient, ctx)
 		Expect(reflect.TypeOf(adapter)).To(Equal(reflect.TypeOf(&Adapter{})))
 		adapter.context = loader.GetMockedContext(ctx, []loader.MockData{
 			{
@@ -377,6 +377,8 @@ var _ = Describe("Binding Adapter", Ordered, func() {
 			client.InNamespace(hasApp.Namespace),
 			client.MatchingLabels{
 				"pipelines.appstudio.openshift.io/type": "test",
+				"appstudio.openshift.io/application":    hasApp.Name,
+				"appstudio.openshift.io/component":      hasComp.Name,
 				"appstudio.openshift.io/snapshot":       hasSnapshot.Name,
 				"test.appstudio.openshift.io/scenario":  integrationTestScenario.Name,
 				"appstudio.openshift.io/environment":    hasEnv.Name,
@@ -389,6 +391,8 @@ var _ = Describe("Binding Adapter", Ordered, func() {
 
 		integrationPipelineRun := integrationPipelineRuns.Items[0]
 		fmt.Fprintf(GinkgoWriter, "*******integrationPipelineRun: %v\n", integrationPipelineRun)
+		Expect(integrationPipelineRun.Labels["appstudio.openshift.io/application"] == hasApp.Name).To(BeTrue())
+		Expect(integrationPipelineRun.Labels["appstudio.openshift.io/component"] == hasComp.Name).To(BeTrue())
 		Expect(integrationPipelineRun.Labels["appstudio.openshift.io/environment"] == hasEnv.Name).To(BeTrue())
 		Expect(integrationPipelineRun.Spec.Workspaces != nil).To(BeTrue())
 		Expect(len(integrationPipelineRun.Spec.Workspaces) > 0).To(BeTrue())
@@ -399,7 +403,7 @@ var _ = Describe("Binding Adapter", Ordered, func() {
 	})
 
 	It("ensures the integrationTestPipelines are NOT created for a Snapshot that finished testing", func() {
-		finishedAdapter := NewAdapter(hasBinding, finishedSnapshot, hasEnv, hasApp, integrationTestScenario, logger, loader.NewMockLoader(), k8sClient, ctx)
+		finishedAdapter := NewAdapter(hasBinding, finishedSnapshot, hasEnv, hasApp, hasComp, integrationTestScenario, logger, loader.NewMockLoader(), k8sClient, ctx)
 		Expect(reflect.TypeOf(adapter)).To(Equal(reflect.TypeOf(&Adapter{})))
 
 		Eventually(func() bool {
@@ -412,6 +416,8 @@ var _ = Describe("Binding Adapter", Ordered, func() {
 			client.InNamespace(hasApp.Namespace),
 			client.MatchingLabels{
 				"pipelines.appstudio.openshift.io/type": "test",
+				"appstudio.openshift.io/application":    hasApp.Name,
+				"appstudio.openshift.io/component":      hasComp.Name,
 				"appstudio.openshift.io/snapshot":       finishedSnapshot.Name,
 				"test.appstudio.openshift.io/scenario":  integrationTestScenario.Name,
 				"appstudio.openshift.io/environment":    hasEnv.Name,
