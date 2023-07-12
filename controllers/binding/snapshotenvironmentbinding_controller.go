@@ -93,6 +93,12 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{}, err
 	}
 
+	component, err := loader.GetComponentFromSnapshot(r.Client, ctx, snapshot)
+	if err != nil {
+		logger.Error(err, "Failed to get Component from the Snapshot")
+		return ctrl.Result{}, err
+	}
+
 	environment, err := r.getEnvironmentFromSnapshotEnvironmentBinding(ctx, snapshotEnvironmentBinding)
 	if err != nil {
 		logger.Error(err, "Failed to get Environment from the SnapshotEnvironmentBinding")
@@ -105,7 +111,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{}, err
 	}
 
-	adapter := NewAdapter(snapshotEnvironmentBinding, snapshot, environment, application, integrationTestScenario, logger, loader, r.Client, ctx)
+	adapter := NewAdapter(snapshotEnvironmentBinding, snapshot, environment, application, component, integrationTestScenario, logger, loader, r.Client, ctx)
 
 	return reconciler.ReconcileHandler([]reconciler.ReconcileOperation{
 		adapter.EnsureIntegrationTestPipelineForScenarioExists,
@@ -193,6 +199,6 @@ func SetupController(manager ctrl.Manager, log *logr.Logger) error {
 // setupControllerWithManager sets up the controller with the Manager which monitors new SnapshotEnvironmentBindings
 func setupControllerWithManager(manager ctrl.Manager, reconciler *Reconciler) error {
 	return ctrl.NewControllerManagedBy(manager).
-		For(&applicationapiv1alpha1.SnapshotEnvironmentBinding{}, builder.WithPredicates(predicates.GenerationUnchangedOnUpdatePredicate{}, gitops.DeploymentFinishedForIntegrationBindingPredicate())).
+		For(&applicationapiv1alpha1.SnapshotEnvironmentBinding{}, builder.WithPredicates(predicates.GenerationUnchangedOnUpdatePredicate{}, gitops.DeploymentSucceededForIntegrationBindingPredicate())).
 		Complete(reconciler)
 }
