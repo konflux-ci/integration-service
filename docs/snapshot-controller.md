@@ -87,7 +87,7 @@ flowchart TD
   ensure4(Process further if: Snapshot testing <br>is not finished yet)
   step1_fetch_all_ITS(Step 1: Fetch ALL the IntegrationTestScenario <br>for the given Application)
   step2_fetch_all_env(Step 2: Fetch ALL the Environments <br>present in the same namespace)
-  select_ITS_with_env_defined(For each of the IntegrationTestScenario form Step 1, <br>select the ones that have .spec.environment field defined. <br>And process them in the next steps)
+  select_ITS_with_env_defined(For each of the IntegrationTestScenario from Step 1, <br>select the ones that have .spec.environment field defined. <br>And process them in the next steps)
   does_env_already_exists{"Is there any <br>environment (from Step 2), <br>that contains labels with names <br>of current Snapshot and <br>IntegrationTestScenario?"}
   continue_processing4(Controller continues processing...)
   copy_and_create_eph_env(For each IntegrationTestScenario, <br> copy the existing env definition from <br>their spec.environment field and use it to <br><b>create a new ephemeral environment</b>)
