@@ -48,6 +48,7 @@ const (
 	IntegrationTestScenarioContextKey          contextKey = iota
 	TaskRunContextKey                          contextKey = iota
 	ApplicationComponentsContextKey            contextKey = iota
+	SnapshotComponentsContextKey               contextKey = iota
 	EnvironmentContextKey                      contextKey = iota
 	ReleaseContextKey                          contextKey = iota
 	PipelineRunsContextKey                     contextKey = iota
@@ -119,6 +120,15 @@ func (l *mockLoader) GetAllApplicationComponents(c client.Client, ctx context.Co
 		return l.loader.GetAllApplicationComponents(c, ctx, application)
 	}
 	components, err := getMockedResourceAndErrorFromContext(ctx, ApplicationComponentsContextKey, []applicationapiv1alpha1.Component{})
+	return &components, err
+}
+
+// GetAllSnapshotComponents returns the resource and error passed as values of the context.
+func (l *mockLoader) GetAllSnapshotComponents(c client.Client, ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot) (*[]applicationapiv1alpha1.Component, error) {
+	if ctx.Value(SnapshotComponentsContextKey) == nil {
+		return l.loader.GetAllSnapshotComponents(c, ctx, snapshot)
+	}
+	components, err := getMockedResourceAndErrorFromContext(ctx, SnapshotComponentsContextKey, []applicationapiv1alpha1.Component{})
 	return &components, err
 }
 
