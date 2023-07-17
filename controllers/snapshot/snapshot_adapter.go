@@ -344,7 +344,7 @@ func (a *Adapter) EnsureSnapshotEnvironmentBindingExist() (reconciler.OperationR
 		return reconciler.RequeueWithError(err)
 	}
 
-	components, err := a.loader.GetAllApplicationComponents(a.client, a.context, a.application)
+	components, err := a.loader.GetAllSnapshotComponents(a.client, a.context, a.snapshot)
 	if err != nil {
 		return reconciler.RequeueWithError(err)
 	}

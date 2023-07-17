@@ -362,7 +362,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 					Resource:   env,
 				},
 				{
-					ContextKey: loader.ApplicationComponentsContextKey,
+					ContextKey: loader.SnapshotComponentsContextKey,
 					Resource:   []applicationapiv1alpha1.Component{*hasComp},
 				},
 				{
