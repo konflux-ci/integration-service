@@ -55,6 +55,7 @@ type ObjectLoader interface {
 	GetAllPipelineRunsForSnapshotAndScenario(c client.Client, ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot, integrationTestScenario *v1beta1.IntegrationTestScenario) (*[]tektonv1beta1.PipelineRun, error)
 	GetAllBuildPipelineRunsForComponent(c client.Client, ctx context.Context, component *applicationapiv1alpha1.Component) (*[]tektonv1beta1.PipelineRun, error)
 	GetAllSnapshots(c client.Client, ctx context.Context, application *applicationapiv1alpha1.Application) (*[]applicationapiv1alpha1.Snapshot, error)
+	GetAutoReleasePlansForApplication(c client.Client, ctx context.Context, application *applicationapiv1alpha1.Application) (*[]releasev1alpha1.ReleasePlan, error)
 }
 
 type loader struct{}
@@ -455,4 +456,29 @@ func (l *loader) GetAllSnapshots(c client.Client, ctx context.Context, applicati
 	}
 
 	return &snapshots.Items, nil
+}
+
+// GetAutoReleasePlansForApplication returns the ReleasePlans used by the application being processed. If matching
+// ReleasePlans are not found, an error will be returned. A ReleasePlan will only be returned if it has the
+// release.appstudio.openshift.io/auto-release label set to true or if it is missing the label entirely.
+func (l *loader) GetAutoReleasePlansForApplication(c client.Client, ctx context.Context, application *applicationapiv1alpha1.Application) (*[]releasev1alpha1.ReleasePlan, error) {
+	releasePlans := &releasev1alpha1.ReleasePlanList{}
+	labelRequirement, err := labels.NewRequirement("release.appstudio.openshift.io/auto-release", selection.NotIn, []string{"false"})
+	if err != nil {
+		return nil, err
+	}
+	labelSelector := labels.NewSelector().Add(*labelRequirement)
+
+	opts := &client.ListOptions{
+		Namespace:     application.Namespace,
+		FieldSelector: fields.OneTermEqualSelector("spec.application", application.Name),
+		LabelSelector: labelSelector,
+	}
+
+	err = c.List(ctx, releasePlans, opts)
+	if err != nil {
+		return nil, err
+	}
+
+	return &releasePlans.Items, nil
 }

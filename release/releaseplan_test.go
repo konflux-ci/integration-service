@@ -96,10 +96,4 @@ var _ = Describe("Release functions for managing Releases", Ordered, func() {
 		foundMatchingRelease := integrationservicerelease.FindMatchingReleaseWithReleasePlan(&releases, *releasePlan)
 		Expect(foundMatchingRelease.Spec.ReleasePlan).To(Equal(releasePlan.Name))
 	})
-
-	It("ensures the ReleasePlan can be gotten for Application", func() {
-		gottenReleasePlanItems, err := integrationservicerelease.GetAutoReleasePlansForApplication(k8sClient, ctx, hasApp)
-		Expect(err).To(BeNil())
-		Expect(gottenReleasePlanItems).NotTo(BeNil())
-	})
 })
