@@ -126,6 +126,7 @@ func (a *Adapter) EnsureSnapshotExists() (reconciler.OperationResult, error) {
 	if err != nil {
 		a.logger.Error(err, "Failed to update the build pipelineRun with new annotations",
 			"pipelineRun.Name", a.pipelineRun.Name)
+		return reconciler.RequeueWithError(err)
 	}
 
 	return reconciler.ContinueProcessing()
