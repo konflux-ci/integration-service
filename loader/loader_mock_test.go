@@ -139,6 +139,21 @@ var _ = Describe("Release Adapter", Ordered, func() {
 		})
 	})
 
+	Context("When calling GetAllSnapshotComponents", func() {
+		It("returns resource and error from the context", func() {
+			snapshotComponents := []applicationapiv1alpha1.Component{}
+			mockContext := GetMockedContext(ctx, []MockData{
+				{
+					ContextKey: SnapshotComponentsContextKey,
+					Resource:   snapshotComponents,
+				},
+			})
+			resource, err := loader.GetAllSnapshotComponents(nil, mockContext, nil)
+			Expect(resource).To(Equal(&snapshotComponents))
+			Expect(err).To(BeNil())
+		})
+	})
+
 	Context("When calling GetApplicationFromSnapshot", func() {
 		It("returns resource and error from the context", func() {
 			application := &applicationapiv1alpha1.Application{}
