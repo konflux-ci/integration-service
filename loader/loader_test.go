@@ -410,6 +410,50 @@ var _ = Describe("Loader", Ordered, func() {
 		Expect(applicationComponents).NotTo(BeNil())
 	})
 
+	It("ensures the Snapshot Components can be found ", func() {
+		snapshotComponents, err := loader.GetAllSnapshotComponents(k8sClient, ctx, hasSnapshot)
+		Expect(err).To(BeNil())
+		Expect(snapshotComponents).NotTo(BeNil())
+	})
+
+	It("ensures GetAllSnapshotComponents does not gather non-snapshot application components ", func() {
+		// otherComp has the same namespace and application as the snapshot,
+		// but does not belong to the snapshot itself.  When creating SEBs
+		// for older snapshots we do not want to accidentally add components
+		// for newer snapshots.
+		otherComp := &applicationapiv1alpha1.Component{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "other-component",
+				Namespace: "default",
+			},
+			Spec: applicationapiv1alpha1.ComponentSpec{
+				ComponentName:  "other-component",
+				Application:    applicationName,
+				ContainerImage: "",
+				Source: applicationapiv1alpha1.ComponentSource{
+					ComponentSourceUnion: applicationapiv1alpha1.ComponentSourceUnion{
+						GitSource: &applicationapiv1alpha1.GitSource{
+							URL: SampleRepoLink,
+						},
+					},
+				},
+			},
+			Status: applicationapiv1alpha1.ComponentStatus{
+				LastBuiltCommit: "",
+			},
+		}
+		Expect(k8sClient.Create(ctx, otherComp)).Should(Succeed())
+		defer k8sClient.Delete(ctx, otherComp)
+
+		snapshotComponents, err := loader.GetAllSnapshotComponents(k8sClient, ctx, hasSnapshot)
+		Expect(err).To(BeNil())
+		Expect(snapshotComponents).NotTo(BeNil())
+		Expect(*snapshotComponents).To(HaveLen(1))
+		for _, comp := range *snapshotComponents {
+			Expect(comp.Name).NotTo(Equal("other-component"))
+		}
+	})
+
 	It("ensures we can get an Application from a Snapshot ", func() {
 		app, err := loader.GetApplicationFromSnapshot(k8sClient, ctx, hasSnapshot)
 		Expect(err).To(BeNil())
