@@ -126,11 +126,12 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 		Expect(meta.IsStatusConditionTrue(updatedSnapshot.Status.Conditions, gitops.AppStudioTestSuceededCondition)).To(BeFalse())
 	})
 
-	It("ensures the Snapshots status can be marked as invalid", func() {
-		gitops.SetSnapshotIntegrationStatusAsInvalid(hasSnapshot, "Test message")
+	It("ensures the Snapshots status can be marked as error", func() {
+		gitops.SetSnapshotIntegrationStatusAsError(hasSnapshot, "Test message")
 		Expect(hasSnapshot).NotTo(BeNil())
 		Expect(hasSnapshot.Status.Conditions).NotTo(BeNil())
 		Expect(meta.IsStatusConditionTrue(hasSnapshot.Status.Conditions, gitops.AppStudioIntegrationStatusCondition)).To(BeFalse())
+		Expect(gitops.IsSnapshotError(hasSnapshot)).To(BeTrue())
 	})
 
 	It("ensures the Snapshots status can be marked as finished", func() {
