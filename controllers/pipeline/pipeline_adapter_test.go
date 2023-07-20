@@ -1410,10 +1410,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			result, err := adapter.EnsureEphemeralEnvironmentsCleanedUp()
 			Expect(!result.CancelRequest && err == nil).To(BeTrue())
 
-			expectedLogEntry := "DeploymentTarget deleted"
-			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
-
-			expectedLogEntry = "DeploymentTargetClaim deleted"
+			expectedLogEntry := "DeploymentTargetClaim deleted"
 			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
 
 			expectedLogEntry = "Ephemeral environment and its owning snapshotEnvironmentBinding deleted"

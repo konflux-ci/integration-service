@@ -265,24 +265,12 @@ func (a *Adapter) EnsureEphemeralEnvironmentsCleanedUp() (reconciler.OperationRe
 		return reconciler.ContinueProcessing()
 	}
 
-	isEphemeral := false
-	for _, tag := range testEnvironment.Spec.Tags {
-		if tag == "ephemeral" {
-			isEphemeral = true
-			break
-		}
-	}
+	isEphemeral := h.IsEnvironmentEphemeral(testEnvironment)
 
 	if isEphemeral {
 		dtc, err := a.loader.GetDeploymentTargetClaimForEnvironment(a.client, a.context, testEnvironment)
 		if err != nil || dtc == nil {
 			a.logger.Error(err, "Failed to find deploymentTargetClaim defined in environment", "environment.Name", testEnvironment.Name)
-			return reconciler.RequeueWithError(err)
-		}
-
-		dt, err := a.loader.GetDeploymentTargetForDeploymentTargetClaim(a.client, a.context, dtc)
-		if err != nil || dt == nil {
-			a.logger.Error(err, "Failed to find deploymentTarget defined in deploymentTargetClaim", "deploymentTargetClaim.Name", dtc.Name)
 			return reconciler.RequeueWithError(err)
 		}
 
@@ -292,31 +280,11 @@ func (a *Adapter) EnsureEphemeralEnvironmentsCleanedUp() (reconciler.OperationRe
 			return reconciler.RequeueWithError(err)
 		}
 
-		a.logger.Info("Deleting deploymentTarget", "deploymentTarget.Name", dt.Name)
-		err = a.client.Delete(a.context, dt)
+		err = h.CleanUpEphemeralEnvironments(a.client, &a.logger, a.context, testEnvironment, dtc)
 		if err != nil {
-			a.logger.Error(err, "Failed to delete the deploymentTarget")
+			a.logger.Error(err, "Failed to delete the Ephemeral Environment")
 			return reconciler.RequeueWithError(err)
 		}
-		a.logger.LogAuditEvent("DeploymentTarget deleted", dt, h.LogActionDelete)
-
-		a.logger.Info("Deleting deploymentTargetClaim", "deploymentTargetClaim.Name", dtc.Name)
-		err = a.client.Delete(a.context, dtc)
-		if err != nil {
-			a.logger.Error(err, "Failed to delete the deploymentTargetClaim")
-			return reconciler.RequeueWithError(err)
-		}
-		a.logger.LogAuditEvent("DeploymentTargetClaim deleted", dtc, h.LogActionDelete)
-
-		a.logger.Info("Deleting environment and its owning snapshotEnvironmentBinding", "environment.Name", testEnvironment.Name, "binding.Name", binding.Name)
-		err = a.client.Delete(a.context, testEnvironment)
-		if err != nil {
-			a.logger.Error(err, "Failed to delete the test ephemeral environment and its owning snapshotEnvironmentBinding", "environment.Name", testEnvironment.Name, "binding.Name", binding.Name)
-			return reconciler.RequeueWithError(err)
-		}
-		a.logger.LogAuditEvent("Ephemeral environment and its owning snapshotEnvironmentBinding deleted", testEnvironment, h.LogActionDelete)
-	} else {
-		a.logger.Info("The pipelineRun test Environment is not ephemeral, skipping cleanup.")
 	}
 
 	return reconciler.ContinueProcessing()

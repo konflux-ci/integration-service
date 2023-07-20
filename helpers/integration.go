@@ -15,6 +15,8 @@ import (
 	tektonv1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 	"knative.dev/pkg/apis"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 )
 
 const (
@@ -288,4 +290,36 @@ func HasPipelineRunFinished(object client.Object) bool {
 	}
 
 	return false
+}
+
+func IsEnvironmentEphemeral(testEnvironment *applicationapiv1alpha1.Environment) bool {
+	isEphemeral := false
+	for _, tag := range testEnvironment.Spec.Tags {
+		if tag == "ephemeral" {
+			isEphemeral = true
+			break
+		}
+	}
+	return isEphemeral
+}
+
+func CleanUpEphemeralEnvironments(client client.Client, logger *IntegrationLogger, ctx context.Context, env *applicationapiv1alpha1.Environment,
+	dtc *applicationapiv1alpha1.DeploymentTargetClaim) error {
+
+	logger.Info("Deleting deploymentTargetClaim", "deploymentTargetClaim.Name", dtc.Name)
+	err := client.Delete(ctx, dtc)
+	if err != nil {
+		logger.Error(err, "Failed to delete the deploymentTargetClaim")
+		return err
+	}
+	logger.LogAuditEvent("DeploymentTargetClaim deleted", dtc, LogActionDelete)
+
+	logger.Info("Deleting environment", "environment.Name", env.Name)
+	err = client.Delete(ctx, env)
+	if err != nil {
+		logger.Error(err, "Failed to delete the test ephemeral environment and its owning snapshotEnvironmentBinding", "environment.Name", env.Name)
+		return err
+	}
+	logger.LogAuditEvent("Ephemeral environment and its owning snapshotEnvironmentBinding deleted", env, LogActionDelete)
+	return nil
 }
