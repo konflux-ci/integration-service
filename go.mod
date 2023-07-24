@@ -20,7 +20,7 @@ require (
 	go.uber.org/zap v1.24.0
 	golang.org/x/oauth2 v0.10.0
 	k8s.io/api v0.26.1
-	k8s.io/apimachinery v0.26.6
+	k8s.io/apimachinery v0.26.7
 	k8s.io/client-go v0.26.1
 	k8s.io/klog/v2 v2.100.1
 	knative.dev/pkg v0.0.0-20230221145627-8efb3485adcf
