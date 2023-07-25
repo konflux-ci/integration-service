@@ -18,6 +18,7 @@ import (
 	"fmt"
 
 	"github.com/redhat-appstudio/operator-goodies/reconciler"
+	"k8s.io/apimachinery/pkg/api/meta"
 	ctrl "sigs.k8s.io/controller-runtime"
 
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
@@ -69,6 +70,11 @@ func (a *Adapter) EnsureIntegrationTestPipelineForScenarioExists() (reconciler.O
 		return reconciler.ContinueProcessing()
 	}
 
+	if gitops.HaveBindingsFailed(a.snapshotEnvironmentBinding) {
+		a.logger.Info("The SnapshotEnvrionmentBinding has failed to deploy on ephemeral envrionment and will be deleted later.", "snapshotEnvironmentBinding.Name", a.snapshotEnvironmentBinding.Name)
+		return reconciler.ContinueProcessing()
+	}
+
 	if a.integrationTestScenario != nil {
 		integrationPipelineRun, err := loader.GetLatestPipelineRunForSnapshotAndScenario(a.client, a.context, a.loader, a.snapshot, a.integrationTestScenario)
 		if err != nil {
@@ -97,6 +103,39 @@ func (a *Adapter) EnsureIntegrationTestPipelineForScenarioExists() (reconciler.O
 	}
 
 	return reconciler.ContinueProcessing()
+}
+
+// EnsureEphemeralEnvironmentsCleanedUp will ensure that ephemeral environment(s) associated with the
+// SnapshotEnvironmentBinding are cleaned up.
+func (a *Adapter) EnsureEphemeralEnvironmentsCleanedUp() (reconciler.OperationResult, error) {
+
+	if !gitops.HaveBindingsFailed(a.snapshotEnvironmentBinding) {
+		return reconciler.ContinueProcessing()
+	}
+
+	// mark snapshot as failed
+	snapshotErrorMessage := "Encountered issue deploying snapshot on ephemeral environments: " +
+		meta.FindStatusCondition(a.snapshotEnvironmentBinding.Status.ComponentDeploymentConditions, "ErrorOccurred").Message
+	_, err := gitops.MarkSnapshotAsFailed(a.client, a.context, a.snapshot, snapshotErrorMessage)
+	if err != nil {
+		a.logger.Error(err, "Failed to Update Snapshot status")
+		return reconciler.RequeueOnErrorOrStop(err)
+	}
+
+	deploymentTargetClaim, err := a.loader.GetDeploymentTargetClaimForEnvironment(a.client, a.context, a.environment)
+	if err != nil {
+		a.logger.Error(err, "failed to find deploymentTargetClaim defined in environment %s", a.environment.Name)
+		return reconciler.RequeueOnErrorOrStop(err)
+	}
+
+	err = h.CleanUpEphemeralEnvironments(a.client, &a.logger, a.context, a.environment, deploymentTargetClaim)
+	if err != nil {
+		a.logger.Error(err, "Failed to delete the Ephemeral Environment")
+		return reconciler.RequeueOnErrorOrStop(err)
+	}
+
+	return reconciler.ContinueProcessing()
+
 }
 
 // createIntegrationPipelineRunWithEnvironment creates new integration PipelineRun. The Pipeline information and the parameters to it
