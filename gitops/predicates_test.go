@@ -15,6 +15,7 @@ package gitops_test
 
 import (
 	"context"
+
 	"github.com/redhat-appstudio/integration-service/gitops"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -36,7 +37,7 @@ var _ = Describe("Predicates", Ordered, func() {
 		snapshotName    = "test-snapshot"
 	)
 
-	var bindingMissingStatus, bindingFalseStatus, bindingTrueStatus *applicationapiv1alpha1.SnapshotEnvironmentBinding
+	var bindingMissingStatus, bindingFalseStatus, bindingTrueStatus, bindingDeploymentFailedStatus *applicationapiv1alpha1.SnapshotEnvironmentBinding
 
 	BeforeAll(func() {
 		bindingMissingStatus = &applicationapiv1alpha1.SnapshotEnvironmentBinding{
@@ -79,11 +80,26 @@ var _ = Describe("Predicates", Ordered, func() {
 				Components:  []applicationapiv1alpha1.BindingComponent{},
 			},
 		}
+		bindingDeploymentFailedStatus = &applicationapiv1alpha1.SnapshotEnvironmentBinding{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:       "bindingdeploymentfailedstatus",
+				Namespace:  namespace,
+				Generation: 1,
+				Labels:     map[string]string{gitops.SnapshotTestScenarioLabel: "test-scenario"},
+			},
+			Spec: applicationapiv1alpha1.SnapshotEnvironmentBindingSpec{
+				Application: applicationName,
+				Environment: environmentName,
+				Snapshot:    snapshotName,
+				Components:  []applicationapiv1alpha1.BindingComponent{},
+			},
+		}
 		ctx := context.Background()
 
 		Expect(k8sClient.Create(ctx, bindingMissingStatus)).Should(Succeed())
 		Expect(k8sClient.Create(ctx, bindingFalseStatus)).Should(Succeed())
 		Expect(k8sClient.Create(ctx, bindingTrueStatus)).Should(Succeed())
+		Expect(k8sClient.Create(ctx, bindingDeploymentFailedStatus)).Should(Succeed())
 
 		// Set the binding statuses after they are created
 		bindingFalseStatus.Status.ComponentDeploymentConditions = []metav1.Condition{
@@ -95,6 +111,12 @@ var _ = Describe("Predicates", Ordered, func() {
 		bindingTrueStatus.Status.ComponentDeploymentConditions = []metav1.Condition{
 			{
 				Type:   gitops.BindingDeploymentStatusConditionType,
+				Status: metav1.ConditionTrue,
+			},
+		}
+		bindingDeploymentFailedStatus.Status.BindingConditions = []metav1.Condition{
+			{
+				Type:   gitops.BindingErrorOccurredStatusConditionType,
 				Status: metav1.ConditionTrue,
 			},
 		}
@@ -124,6 +146,24 @@ var _ = Describe("Predicates", Ordered, func() {
 			contextEvent := event.UpdateEvent{
 				ObjectOld: bindingMissingStatus,
 				ObjectNew: bindingTrueStatus,
+			}
+			Expect(instance.Update(contextEvent)).To(BeTrue())
+		})
+	})
+	Context("when testing DeploymentFailedPredicate predicate", func() {
+		instance := gitops.DeploymentFailedForIntegrationBindingPredicate()
+		It("returns true when the .Status.BindingConditions.ErrorOccured field of old SEB is set to false and that of new SEB is set to true", func() {
+			contextEvent := event.UpdateEvent{
+				ObjectOld: bindingFalseStatus,
+				ObjectNew: bindingDeploymentFailedStatus,
+			}
+			Expect(instance.Update(contextEvent)).To(BeTrue())
+		})
+
+		It("returns true when the .Status.BindingConditions.ErrorOccured field of old SEB is unset and that of new SEB is set to true", func() {
+			contextEvent := event.UpdateEvent{
+				ObjectOld: bindingMissingStatus,
+				ObjectNew: bindingDeploymentFailedStatus,
 			}
 			Expect(instance.Update(contextEvent)).To(BeTrue())
 		})

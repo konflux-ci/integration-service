@@ -30,6 +30,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 )
 
 // Reconciler reconciles a SnapshotEnvironmentBinding object
@@ -115,6 +116,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 
 	return reconciler.ReconcileHandler([]reconciler.ReconcileOperation{
 		adapter.EnsureIntegrationTestPipelineForScenarioExists,
+		adapter.EnsureEphemeralEnvironmentsCleanedUp,
 	})
 }
 
@@ -199,6 +201,9 @@ func SetupController(manager ctrl.Manager, log *logr.Logger) error {
 // setupControllerWithManager sets up the controller with the Manager which monitors new SnapshotEnvironmentBindings
 func setupControllerWithManager(manager ctrl.Manager, reconciler *Reconciler) error {
 	return ctrl.NewControllerManagedBy(manager).
-		For(&applicationapiv1alpha1.SnapshotEnvironmentBinding{}, builder.WithPredicates(predicates.GenerationUnchangedOnUpdatePredicate{}, gitops.DeploymentSucceededForIntegrationBindingPredicate())).
+		For(&applicationapiv1alpha1.SnapshotEnvironmentBinding{},
+			builder.WithPredicates(predicates.GenerationUnchangedOnUpdatePredicate{})).
+		WithEventFilter(predicate.Or(
+			gitops.DeploymentSucceededForIntegrationBindingPredicate(), gitops.DeploymentFailedForIntegrationBindingPredicate())).
 		Complete(reconciler)
 }
