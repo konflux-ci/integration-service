@@ -94,7 +94,7 @@ func (a *Adapter) EnsureAllIntegrationTestPipelinesExist() (reconciler.Operation
 			if err != nil {
 				a.logger.Error(err, "Failed to get pipelineRuns for snapshot and scenario",
 					"integrationTestScenario.Name", integrationTestScenario.Name)
-				return reconciler.RequeueOnErrorOrStop(err)
+				return reconciler.RequeueWithError(err)
 			}
 			if integrationPipelineRuns != nil && len(*integrationPipelineRuns) > 0 {
 				a.logger.Info("Found existing integrationPipelineRuns",
@@ -106,7 +106,7 @@ func (a *Adapter) EnsureAllIntegrationTestPipelinesExist() (reconciler.Operation
 				pipelineRun, err := a.createIntegrationPipelineRun(a.application, &integrationTestScenario, a.snapshot)
 				if err != nil {
 					a.logger.Error(err, "Failed to create pipelineRun for snapshot and scenario")
-					return reconciler.RequeueOnErrorOrStop(err)
+					return reconciler.RequeueWithError(err)
 				}
 				a.logger.LogAuditEvent("IntegrationTestscenario pipeline has been created", pipelineRun, h.LogActionAdd,
 					"integrationTestScenario.Name", integrationTestScenario.Name)
@@ -161,7 +161,7 @@ func (a *Adapter) EnsureCreationOfEnvironment() (reconciler.OperationResult, err
 
 	if err != nil {
 		a.logger.Error(err, "Failed to get Integration test scenarios for the following application")
-		return reconciler.RequeueOnErrorOrStop(err)
+		return reconciler.RequeueWithError(err)
 	}
 	if integrationTestScenarios == nil {
 		a.logger.Info("No integration test scenario found for Application")
