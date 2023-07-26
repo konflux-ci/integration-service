@@ -81,7 +81,7 @@ func (a *Adapter) EnsureIntegrationTestPipelineForScenarioExists() (reconciler.O
 			a.logger.Error(err, "Failed to get latest pipelineRun for snapshot and scenario",
 				"snapshot", a.snapshot,
 				"integrationTestScenario", a.integrationTestScenario)
-			return reconciler.RequeueOnErrorOrStop(err)
+			return reconciler.RequeueWithError(err)
 		}
 		if integrationPipelineRun != nil {
 			a.logger.Info("Found existing integrationPipelineRun",
@@ -95,7 +95,7 @@ func (a *Adapter) EnsureIntegrationTestPipelineForScenarioExists() (reconciler.O
 			pipelineRun, err := a.createIntegrationPipelineRunWithEnvironment(a.application, a.integrationTestScenario, a.snapshot, a.environment)
 			if err != nil {
 				a.logger.Error(err, "Failed to create pipelineRun for snapshot, environment and scenario")
-				return reconciler.RequeueOnErrorOrStop(err)
+				return reconciler.RequeueWithError(err)
 			}
 			a.logger.LogAuditEvent("PipelineRun for snapshot created", pipelineRun, h.LogActionAdd,
 				"snapshot.Name", a.snapshot.Name)
@@ -119,19 +119,19 @@ func (a *Adapter) EnsureEphemeralEnvironmentsCleanedUp() (reconciler.OperationRe
 	_, err := gitops.MarkSnapshotAsFailed(a.client, a.context, a.snapshot, snapshotErrorMessage)
 	if err != nil {
 		a.logger.Error(err, "Failed to Update Snapshot status")
-		return reconciler.RequeueOnErrorOrStop(err)
+		return reconciler.RequeueWithError(err)
 	}
 
 	deploymentTargetClaim, err := a.loader.GetDeploymentTargetClaimForEnvironment(a.client, a.context, a.environment)
 	if err != nil {
 		a.logger.Error(err, "failed to find deploymentTargetClaim defined in environment %s", a.environment.Name)
-		return reconciler.RequeueOnErrorOrStop(err)
+		return reconciler.RequeueWithError(err)
 	}
 
 	err = h.CleanUpEphemeralEnvironments(a.client, &a.logger, a.context, a.environment, deploymentTargetClaim)
 	if err != nil {
 		a.logger.Error(err, "Failed to delete the Ephemeral Environment")
-		return reconciler.RequeueOnErrorOrStop(err)
+		return reconciler.RequeueWithError(err)
 	}
 
 	return reconciler.ContinueProcessing()

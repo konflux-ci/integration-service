@@ -121,7 +121,7 @@ func (a *Adapter) EnsureCreatedScenarioIsValid() (reconciler.OperationResult, er
 		err := a.client.Status().Patch(a.context, a.scenario, patch)
 		if err != nil {
 			a.logger.Error(err, "Failed to update Scenario")
-			return reconciler.ContinueProcessing()
+			return reconciler.RequeueWithError(err)
 		}
 		a.logger.LogAuditEvent("IntegrationTestScenario marked as Valid", a.scenario, h.LogActionUpdate)
 	}
