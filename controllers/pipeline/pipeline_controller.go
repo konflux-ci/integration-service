@@ -27,7 +27,7 @@ import (
 	"github.com/redhat-appstudio/integration-service/helpers"
 	"github.com/redhat-appstudio/integration-service/loader"
 	"github.com/redhat-appstudio/integration-service/tekton"
-	"github.com/redhat-appstudio/operator-goodies/reconciler"
+	"github.com/redhat-appstudio/operator-toolkit/controller"
 	tektonv1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -123,7 +123,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 
 	adapter := NewAdapter(pipelineRun, component, application, logger, loader, r.Client, ctx)
 
-	return reconciler.ReconcileHandler([]reconciler.ReconcileOperation{
+	return controller.ReconcileHandler([]controller.Operation{
 		adapter.EnsureSnapshotExists,
 		adapter.EnsureSnapshotPassedAllTests,
 		adapter.EnsureStatusReported,
@@ -133,13 +133,13 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 
 // AdapterInterface is an interface defining all the operations that should be defined in an Integration adapter.
 type AdapterInterface interface {
-	EnsureSnapshotExists() (reconciler.OperationResult, error)
-	EnsureSnapshotPassedAllTests() (reconciler.OperationResult, error)
-	EnsureStatusReported() (reconciler.OperationResult, error)
-	EnsureEphemeralEnvironmentsCleanedUp() (reconciler.OperationResult, error)
+	EnsureSnapshotExists() (controller.OperationResult, error)
+	EnsureSnapshotPassedAllTests() (controller.OperationResult, error)
+	EnsureStatusReported() (controller.OperationResult, error)
+	EnsureEphemeralEnvironmentsCleanedUp() (controller.OperationResult, error)
 }
 
-// SetupController creates a new Integration reconciler and adds it to the Manager.
+// SetupController creates a new Integration controller and adds it to the Manager.
 func SetupController(manager ctrl.Manager, log *logr.Logger) error {
 	return setupControllerWithManager(manager, NewIntegrationReconciler(manager.GetClient(), log, manager.GetScheme()))
 }
@@ -160,7 +160,7 @@ func setupCache(mgr ctrl.Manager) error {
 
 // setupControllerWithManager sets up the controller with the Manager which monitors new PipelineRuns and filters
 // out status updates.
-func setupControllerWithManager(manager ctrl.Manager, reconciler *Reconciler) error {
+func setupControllerWithManager(manager ctrl.Manager, controller *Reconciler) error {
 	err := setupCache(manager)
 	if err != nil {
 		return err
@@ -171,5 +171,5 @@ func setupControllerWithManager(manager ctrl.Manager, reconciler *Reconciler) er
 		WithEventFilter(predicate.Or(
 			tekton.IntegrationPipelineRunPredicate(),
 			tekton.BuildPipelineRunSignedAndSucceededPredicate())).
-		Complete(reconciler)
+		Complete(controller)
 }

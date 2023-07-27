@@ -17,7 +17,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/redhat-appstudio/operator-goodies/reconciler"
+	"github.com/redhat-appstudio/operator-toolkit/controller"
 	"k8s.io/apimachinery/pkg/api/meta"
 	ctrl "sigs.k8s.io/controller-runtime"
 
@@ -64,15 +64,15 @@ func NewAdapter(snapshotEnvironmentBinding *applicationapiv1alpha1.SnapshotEnvir
 
 // EnsureIntegrationTestPipelineForScenarioExists is an operation that will ensure that the Integration test pipeline
 // associated with the Snapshot and the SnapshotEnvironmentBinding's IntegrationTestScenarios exist.
-func (a *Adapter) EnsureIntegrationTestPipelineForScenarioExists() (reconciler.OperationResult, error) {
+func (a *Adapter) EnsureIntegrationTestPipelineForScenarioExists() (controller.OperationResult, error) {
 	if gitops.HaveAppStudioTestsFinished(a.snapshot) {
 		a.logger.Info("The Snapshot has finished testing.")
-		return reconciler.ContinueProcessing()
+		return controller.ContinueProcessing()
 	}
 
 	if gitops.HaveBindingsFailed(a.snapshotEnvironmentBinding) {
 		a.logger.Info("The SnapshotEnvrionmentBinding has failed to deploy on ephemeral envrionment and will be deleted later.", "snapshotEnvironmentBinding.Name", a.snapshotEnvironmentBinding.Name)
-		return reconciler.ContinueProcessing()
+		return controller.ContinueProcessing()
 	}
 
 	if a.integrationTestScenario != nil {
@@ -81,7 +81,7 @@ func (a *Adapter) EnsureIntegrationTestPipelineForScenarioExists() (reconciler.O
 			a.logger.Error(err, "Failed to get latest pipelineRun for snapshot and scenario",
 				"snapshot", a.snapshot,
 				"integrationTestScenario", a.integrationTestScenario)
-			return reconciler.RequeueWithError(err)
+			return controller.RequeueWithError(err)
 		}
 		if integrationPipelineRun != nil {
 			a.logger.Info("Found existing integrationPipelineRun",
@@ -95,22 +95,22 @@ func (a *Adapter) EnsureIntegrationTestPipelineForScenarioExists() (reconciler.O
 			pipelineRun, err := a.createIntegrationPipelineRunWithEnvironment(a.application, a.integrationTestScenario, a.snapshot, a.environment)
 			if err != nil {
 				a.logger.Error(err, "Failed to create pipelineRun for snapshot, environment and scenario")
-				return reconciler.RequeueWithError(err)
+				return controller.RequeueWithError(err)
 			}
 			a.logger.LogAuditEvent("PipelineRun for snapshot created", pipelineRun, h.LogActionAdd,
 				"snapshot.Name", a.snapshot.Name)
 		}
 	}
 
-	return reconciler.ContinueProcessing()
+	return controller.ContinueProcessing()
 }
 
 // EnsureEphemeralEnvironmentsCleanedUp will ensure that ephemeral environment(s) associated with the
 // SnapshotEnvironmentBinding are cleaned up.
-func (a *Adapter) EnsureEphemeralEnvironmentsCleanedUp() (reconciler.OperationResult, error) {
+func (a *Adapter) EnsureEphemeralEnvironmentsCleanedUp() (controller.OperationResult, error) {
 
 	if !gitops.HaveBindingsFailed(a.snapshotEnvironmentBinding) {
-		return reconciler.ContinueProcessing()
+		return controller.ContinueProcessing()
 	}
 
 	// mark snapshot as failed
@@ -119,22 +119,22 @@ func (a *Adapter) EnsureEphemeralEnvironmentsCleanedUp() (reconciler.OperationRe
 	_, err := gitops.MarkSnapshotAsFailed(a.client, a.context, a.snapshot, snapshotErrorMessage)
 	if err != nil {
 		a.logger.Error(err, "Failed to Update Snapshot status")
-		return reconciler.RequeueWithError(err)
+		return controller.RequeueWithError(err)
 	}
 
 	deploymentTargetClaim, err := a.loader.GetDeploymentTargetClaimForEnvironment(a.client, a.context, a.environment)
 	if err != nil {
 		a.logger.Error(err, "failed to find deploymentTargetClaim defined in environment %s", a.environment.Name)
-		return reconciler.RequeueWithError(err)
+		return controller.RequeueWithError(err)
 	}
 
 	err = h.CleanUpEphemeralEnvironments(a.client, &a.logger, a.context, a.environment, deploymentTargetClaim)
 	if err != nil {
 		a.logger.Error(err, "Failed to delete the Ephemeral Environment")
-		return reconciler.RequeueWithError(err)
+		return controller.RequeueWithError(err)
 	}
 
-	return reconciler.ContinueProcessing()
+	return controller.ContinueProcessing()
 
 }
 

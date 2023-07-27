@@ -26,7 +26,7 @@ import (
 	"github.com/redhat-appstudio/integration-service/api/v1beta1"
 	"github.com/redhat-appstudio/integration-service/gitops"
 	h "github.com/redhat-appstudio/integration-service/helpers"
-	"github.com/redhat-appstudio/operator-goodies/reconciler"
+	"github.com/redhat-appstudio/operator-toolkit/controller"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -53,7 +53,7 @@ func NewAdapter(application *applicationapiv1alpha1.Application, scenario *v1bet
 
 // EnsureCreatedScenarioIsValid is an operation that ensures created IntegrationTestScenario is valid
 // in case it is, set its owner reference
-func (a *Adapter) EnsureCreatedScenarioIsValid() (reconciler.OperationResult, error) {
+func (a *Adapter) EnsureCreatedScenarioIsValid() (controller.OperationResult, error) {
 
 	// First check if application exists or not
 	if a.application == nil {
@@ -64,9 +64,9 @@ func (a *Adapter) EnsureCreatedScenarioIsValid() (reconciler.OperationResult, er
 		err := a.client.Status().Patch(a.context, a.scenario, patch)
 		if err != nil {
 			a.logger.Error(err, "Failed to update Scenario")
-			return reconciler.RequeueWithError(err)
+			return controller.RequeueWithError(err)
 		}
-		return reconciler.ContinueProcessing()
+		return controller.ContinueProcessing()
 	}
 
 	// application exist, always log it
@@ -77,12 +77,12 @@ func (a *Adapter) EnsureCreatedScenarioIsValid() (reconciler.OperationResult, er
 		err := ctrl.SetControllerReference(a.application, a.scenario, a.client.Scheme())
 		if err != nil {
 			a.logger.Error(err, "Error setting owner reference.")
-			return reconciler.RequeueWithError(err)
+			return controller.RequeueWithError(err)
 		}
 		err = a.client.Patch(a.context, a.scenario, patch)
 		if err != nil {
 			a.logger.Error(err, "Failed to update Scenario")
-			return reconciler.RequeueWithError(err)
+			return controller.RequeueWithError(err)
 		}
 
 	}
@@ -106,11 +106,11 @@ func (a *Adapter) EnsureCreatedScenarioIsValid() (reconciler.OperationResult, er
 			err = a.client.Status().Patch(a.context, a.scenario, patch)
 			if err != nil {
 				a.logger.Error(err, "Failed to update Scenario")
-				return reconciler.RequeueWithError(err)
+				return controller.RequeueWithError(err)
 			}
 			a.logger.LogAuditEvent("IntegrationTestScenario marked as Invalid. Environment "+a.scenario.Spec.Environment.Name+" is located in different namespace than scenario. ",
 				a.scenario, h.LogActionUpdate)
-			return reconciler.ContinueProcessing()
+			return controller.ContinueProcessing()
 		}
 
 	}
@@ -121,12 +121,12 @@ func (a *Adapter) EnsureCreatedScenarioIsValid() (reconciler.OperationResult, er
 		err := a.client.Status().Patch(a.context, a.scenario, patch)
 		if err != nil {
 			a.logger.Error(err, "Failed to update Scenario")
-			return reconciler.RequeueWithError(err)
+			return controller.RequeueWithError(err)
 		}
 		a.logger.LogAuditEvent("IntegrationTestScenario marked as Valid", a.scenario, h.LogActionUpdate)
 	}
 
-	return reconciler.ContinueProcessing()
+	return controller.ContinueProcessing()
 }
 
 // SetScenarioIntegrationStatusAsInvalid sets the IntegrationTestScenarioValid status condition for the Scenario to invalid.
