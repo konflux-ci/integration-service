@@ -28,6 +28,7 @@ import (
 	"github.com/redhat-appstudio/integration-service/gitops"
 	h "github.com/redhat-appstudio/integration-service/helpers"
 	"github.com/redhat-appstudio/integration-service/loader"
+	"github.com/redhat-appstudio/integration-service/metrics"
 	"github.com/redhat-appstudio/integration-service/status"
 	"github.com/redhat-appstudio/integration-service/tekton"
 	"github.com/redhat-appstudio/operator-goodies/reconciler"
@@ -117,6 +118,7 @@ func (a *Adapter) EnsureSnapshotExists() (reconciler.OperationResult, error) {
 		a.logger.Error(err, "Failed to create Snapshot")
 		return reconciler.RequeueWithError(err)
 	}
+	go metrics.RegisterNewSnapshot()
 
 	a.logger.LogAuditEvent("Created new Snapshot", expectedSnapshot, h.LogActionAdd,
 		"snapshot.Name", expectedSnapshot.Name,
@@ -559,6 +561,7 @@ func (a *Adapter) createCompositeSnapshotsIfConflictExists(application *applicat
 			if err != nil {
 				return nil, err
 			}
+			go metrics.RegisterNewSnapshot()
 			a.logger.LogAuditEvent("CompositeSnapshot created", compositeSnapshot, h.LogActionAdd,
 				"snapshot.Spec.Components", compositeSnapshot.Spec.Components)
 			return compositeSnapshot, nil
