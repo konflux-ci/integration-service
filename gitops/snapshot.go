@@ -101,6 +101,9 @@ const (
 	// AppStudioIntegrationStatusInvalid is the reason that's set when the AppStudio integration gets into an invalid state.
 	AppStudioIntegrationStatusInvalid = "Invalid"
 
+	// AppStudioIntegrationStatusErrorOccured is the reason that's set when the AppStudio integration gets into an error state.
+	AppStudioIntegrationStatusErrorOccured = "ErrorOccured"
+
 	// AppStudioIntegrationStatusValid is the reason that's set when the AppStudio integration gets into an valid state.
 	AppStudioIntegrationStatusValid = "Valid"
 
@@ -169,7 +172,18 @@ func SetSnapshotIntegrationStatusAsInvalid(snapshot *applicationapiv1alpha1.Snap
 		Message: message,
 	}
 	meta.SetStatusCondition(&snapshot.Status.Conditions, condition)
-	go metrics.RegisterInvalidSnapshot(condition.Type, condition.Reason)
+	go metrics.RegisterInvalidSnapshot(AppStudioIntegrationStatusCondition, AppStudioIntegrationStatusInvalid)
+}
+
+// SetSnapshotIntegrationStatusAsError sets the AppStudio integration status condition for the Snapshot to error.
+func SetSnapshotIntegrationStatusAsError(snapshot *applicationapiv1alpha1.Snapshot, message string) {
+	condition := metav1.Condition{
+		Type:    AppStudioIntegrationStatusCondition,
+		Status:  metav1.ConditionFalse,
+		Reason:  AppStudioIntegrationStatusErrorOccured,
+		Message: message,
+	}
+	meta.SetStatusCondition(&snapshot.Status.Conditions, condition)
 }
 
 // MarkSnapshotIntegrationStatusAsInProgress sets the AppStudio integration status condition for the Snapshot to In Progress.
@@ -222,6 +236,18 @@ func IsSnapshotNotStarted(snapshot *applicationapiv1alpha1.Snapshot) bool {
 		condition = meta.FindStatusCondition(snapshot.Status.Conditions, LegacyIntegrationStatusCondition)
 	}
 	if condition == nil || condition.Reason != AppStudioIntegrationStatusInProgress {
+		return true
+	}
+	return false
+}
+
+// IsSnapshotError if the AppStudio Integration Status condition is in ErrorOcurred status.
+func IsSnapshotError(snapshot *applicationapiv1alpha1.Snapshot) bool {
+	condition := meta.FindStatusCondition(snapshot.Status.Conditions, AppStudioIntegrationStatusCondition)
+	if condition == nil {
+		condition = meta.FindStatusCondition(snapshot.Status.Conditions, LegacyIntegrationStatusCondition)
+	}
+	if condition.Reason == AppStudioIntegrationStatusErrorOccured {
 		return true
 	}
 	return false
@@ -294,7 +320,6 @@ func NewSnapshot(application *applicationapiv1alpha1.Application, snapshotCompon
 			Components:  *snapshotComponents,
 		},
 	}
-	go metrics.RegisterNewSnapshot()
 	return snapshot
 }
 
