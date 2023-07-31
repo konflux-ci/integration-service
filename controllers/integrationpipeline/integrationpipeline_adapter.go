@@ -1,5 +1,5 @@
 /*
-Copyright 2022.
+Copyright 2023.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,14 +14,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package pipeline
+package integrationpipeline
 
 import (
 	"context"
 	"fmt"
-	"strconv"
-	"strings"
-	"time"
 
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/api/v1beta1"
@@ -33,11 +30,10 @@ import (
 	"github.com/redhat-appstudio/integration-service/tekton"
 	"github.com/redhat-appstudio/operator-toolkit/controller"
 	tektonv1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
-	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-// Adapter holds the objects needed to reconcile a Pipeline.
+// Adapter holds the objects needed to reconcile a integration PipelineRun.
 type Adapter struct {
 	pipelineRun *tektonv1beta1.PipelineRun
 	component   *applicationapiv1alpha1.Component
@@ -64,83 +60,12 @@ func NewAdapter(pipelineRun *tektonv1beta1.PipelineRun, component *applicationap
 	}
 }
 
-// EnsureSnapshotExists is an operation that will ensure that a pipeline Snapshot associated
-// to the PipelineRun being processed exists. Otherwise, it will create a new pipeline Snapshot.
-func (a *Adapter) EnsureSnapshotExists() (controller.OperationResult, error) {
-	if !tekton.IsBuildPipelineRun(a.pipelineRun) || !h.HasPipelineRunSucceeded(a.pipelineRun) {
-		return controller.ContinueProcessing()
-	}
-
-	if a.component == nil {
-		a.logger.Info("The pipelineRun does not have any component associated with it, will not create a new Snapshot.")
-		return controller.ContinueProcessing()
-	}
-
-	isLatest, err := a.isLatestSucceededPipelineRun()
-	if err != nil {
-		return controller.RequeueWithError(err)
-	}
-	if !isLatest {
-		// not the last started pipeline that succeeded for current snapshot
-		// this prevents deploying older pipeline run over new deployment
-		a.logger.Info("The pipelineRun is not the latest succeded pipelineRun for the component, skipping creation of a new Snapshot ",
-			"component.Name", a.component.Name)
-		return controller.ContinueProcessing()
-	}
-
-	expectedSnapshot, err := a.prepareSnapshotForPipelineRun(a.pipelineRun, a.component, a.application)
-	if err != nil {
-		return controller.RequeueWithError(err)
-	}
-	existingSnapshot, err := a.findMatchingSnapshot(a.application, expectedSnapshot)
-	if err != nil {
-		return controller.RequeueWithError(err)
-	}
-
-	if existingSnapshot != nil {
-		a.logger.Info("Found existing Snapshot",
-			"snapshot.Name", existingSnapshot.Name,
-			"snapshot.Spec.Components", existingSnapshot.Spec.Components)
-		// Annotate the build pipelineRun with the existing Snapshot if it hasn't been already annotated
-		if _, found := a.pipelineRun.ObjectMeta.Annotations[tekton.SnapshotNameLabel]; !found {
-			a.pipelineRun, err = a.annotateBuildPipelineRunWithSnapshot(a.pipelineRun, existingSnapshot)
-			if err != nil {
-				a.logger.Error(err, "Failed to update the build pipelineRun with new annotations",
-					"pipelineRun.Name", a.pipelineRun.Name)
-				return controller.RequeueWithError(err)
-			}
-		}
-		return controller.ContinueProcessing()
-	}
-
-	err = a.client.Create(a.context, expectedSnapshot)
-	if err != nil {
-		a.logger.Error(err, "Failed to create Snapshot")
-		return controller.RequeueWithError(err)
-	}
-	go metrics.RegisterNewSnapshot()
-
-	a.logger.LogAuditEvent("Created new Snapshot", expectedSnapshot, h.LogActionAdd,
-		"snapshot.Name", expectedSnapshot.Name,
-		"snapshot.Spec.Components", expectedSnapshot.Spec.Components)
-
-	a.pipelineRun, err = a.annotateBuildPipelineRunWithSnapshot(a.pipelineRun, expectedSnapshot)
-	if err != nil {
-		a.logger.Error(err, "Failed to update the build pipelineRun with new annotations",
-			"pipelineRun.Name", a.pipelineRun.Name)
-		return controller.RequeueWithError(err)
-	}
-
-	return controller.ContinueProcessing()
-}
-
 // EnsureSnapshotPassedAllTests is an operation that will ensure that a pipeline Snapshot
 // to the PipelineRun being processed passed all tests for all defined non-optional IntegrationTestScenarios.
 func (a *Adapter) EnsureSnapshotPassedAllTests() (controller.OperationResult, error) {
-	if !tekton.IsIntegrationPipelineRun(a.pipelineRun) || !h.HasPipelineRunFinished(a.pipelineRun) {
+	if !h.HasPipelineRunFinished(a.pipelineRun) {
 		return controller.ContinueProcessing()
 	}
-
 	existingSnapshot, err := a.loader.GetSnapshotFromPipelineRun(a.client, a.context, a.pipelineRun)
 	if err != nil {
 		return controller.RequeueWithError(err)
@@ -233,10 +158,6 @@ func (a *Adapter) EnsureSnapshotPassedAllTests() (controller.OperationResult, er
 // EnsureStatusReported will ensure that integration PipelineRun status is reported to the git provider
 // which (indirectly) triggered its execution.
 func (a *Adapter) EnsureStatusReported() (controller.OperationResult, error) {
-	if !tekton.IsIntegrationPipelineRun(a.pipelineRun) {
-		return controller.ContinueProcessing()
-	}
-
 	reporters, err := a.status.GetReporters(a.pipelineRun)
 
 	if err != nil {
@@ -255,7 +176,7 @@ func (a *Adapter) EnsureStatusReported() (controller.OperationResult, error) {
 // EnsureEphemeralEnvironmentsCleanedUp will ensure that ephemeral environment(s) associated with the
 // integration PipelineRun are cleaned up.
 func (a *Adapter) EnsureEphemeralEnvironmentsCleanedUp() (controller.OperationResult, error) {
-	if !tekton.IsIntegrationPipelineRun(a.pipelineRun) || !h.HasPipelineRunFinished(a.pipelineRun) {
+	if !h.HasPipelineRunFinished(a.pipelineRun) {
 		return controller.ContinueProcessing()
 	}
 
@@ -293,43 +214,6 @@ func (a *Adapter) EnsureEphemeralEnvironmentsCleanedUp() (controller.OperationRe
 	return controller.ContinueProcessing()
 }
 
-// getImagePullSpecFromPipelineRun gets the full image pullspec from the given build PipelineRun,
-// In case the Image pullspec can't be composed, an error will be returned.
-func (a *Adapter) getImagePullSpecFromPipelineRun(pipelineRun *tektonv1beta1.PipelineRun) (string, error) {
-	outputImage, err := tekton.GetOutputImage(pipelineRun)
-	if err != nil {
-		return "", err
-	}
-	imageDigest, err := tekton.GetOutputImageDigest(pipelineRun)
-	if err != nil {
-		return "", err
-	}
-	return fmt.Sprintf("%s@%s", strings.Split(outputImage, ":")[0], imageDigest), nil
-}
-
-// getComponentSourceFromPipelineRun gets the component Git Source for the Component built in the given build PipelineRun,
-// In case the Git Source can't be composed, an error will be returned.
-func (a *Adapter) getComponentSourceFromPipelineRun(pipelineRun *tektonv1beta1.PipelineRun) (*applicationapiv1alpha1.ComponentSource, error) {
-	componentSourceGitUrl, err := tekton.GetComponentSourceGitUrl(pipelineRun)
-	if err != nil {
-		return nil, err
-	}
-	componentSourceGitCommit, err := tekton.GetComponentSourceGitCommit(pipelineRun)
-	if err != nil {
-		return nil, err
-	}
-	componentSource := applicationapiv1alpha1.ComponentSource{
-		ComponentSourceUnion: applicationapiv1alpha1.ComponentSourceUnion{
-			GitSource: &applicationapiv1alpha1.GitSource{
-				URL:      componentSourceGitUrl,
-				Revision: componentSourceGitCommit,
-			},
-		},
-	}
-
-	return &componentSource, nil
-}
-
 // getImagePullSpecFromSnapshotComponent gets the full image pullspec from the given Snapshot Component,
 func (a *Adapter) getImagePullSpecFromSnapshotComponent(snapshot *applicationapiv1alpha1.Snapshot, component *applicationapiv1alpha1.Component) (string, error) {
 	for _, snapshotComponent := range snapshot.Spec.Components {
@@ -348,16 +232,6 @@ func (a *Adapter) getComponentSourceFromSnapshotComponent(snapshot *applicationa
 		}
 	}
 	return nil, fmt.Errorf("couldn't find the requested component source info in the given Snapshot")
-}
-
-// getComponentSourceFromComponent gets the component source from the given Component as Revision
-// and set Component.Status.LastBuiltCommit as Component.Source.GitSource.Revision if it is defined.
-func (a *Adapter) getComponentSourceFromComponent(component *applicationapiv1alpha1.Component) *applicationapiv1alpha1.ComponentSource {
-	componentSource := component.Spec.Source.DeepCopy()
-	if component.Status.LastBuiltCommit != "" {
-		componentSource.GitSource.Revision = component.Status.LastBuiltCommit
-	}
-	return componentSource
 }
 
 // determineIfAllIntegrationPipelinesPassed checks all Integration pipelines passed all of their test tasks.
@@ -408,108 +282,15 @@ func (a *Adapter) getAllPipelineRunsForSnapshot(snapshot *applicationapiv1alpha1
 	return &integrationPipelineRuns, nil
 }
 
-// prepareSnapshot prepares the Snapshot for a given application and the updated component (if any).
-// In case the Snapshot can't be created, an error will be returned.
-func (a *Adapter) prepareSnapshot(application *applicationapiv1alpha1.Application, component *applicationapiv1alpha1.Component, newContainerImage string, newComponentSource *applicationapiv1alpha1.ComponentSource) (*applicationapiv1alpha1.Snapshot, error) {
-	applicationComponents, err := a.loader.GetAllApplicationComponents(a.client, a.context, application)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get all Application Components for Application %s", a.application.Name)
-	}
-
-	var snapshotComponents []applicationapiv1alpha1.SnapshotComponent
-	for _, applicationComponent := range *applicationComponents {
-		applicationComponent := applicationComponent // G601
-		containerImage := applicationComponent.Spec.ContainerImage
-
-		var componentSource *applicationapiv1alpha1.ComponentSource
-		if applicationComponent.Name == component.Name {
-			containerImage = newContainerImage
-			componentSource = newComponentSource
-		} else {
-			// Get ComponentSource for the component which is not built in this pipeline
-			componentSource = a.getComponentSourceFromComponent(&applicationComponent)
-		}
-
-		// If containerImage is empty, we have run into a race condition in
-		// which multiple components are being built in close succession.
-		// We omit this not-yet-built component from the snapshot rather than
-		// including a component that is incomplete.
-		if containerImage == "" {
-			a.logger.Error(nil, "component cannot be added to snapshot for application due to missing containerImage", "component.Name", applicationComponent.Name)
-			continue
-		}
-		// if the containerImage donesn't have a valid digest, the component
-		// will not be added to snapshot
-		err := gitops.ValidateImageDigest(containerImage)
-		if err != nil {
-			a.logger.Error(err, "component cannot added to snapshot for application due to invalid digest in containerImage", "component.Name", applicationComponent.Name)
-			continue
-		}
-		snapshotComponents = append(snapshotComponents, applicationapiv1alpha1.SnapshotComponent{
-			Name:           applicationComponent.Name,
-			ContainerImage: containerImage,
-			Source:         *componentSource,
-		})
-	}
-
-	if len(snapshotComponents) == 0 {
-		return nil, fmt.Errorf("failed to prepare snapshot due to missing valid digest in containerImage for all components of application")
-	}
-	snapshot := gitops.NewSnapshot(application, &snapshotComponents)
-
-	err = ctrl.SetControllerReference(application, snapshot, a.client.Scheme())
-	if err != nil {
-		return nil, err
-	}
-
-	return snapshot, nil
-}
-
-// prepareSnapshotForPipelineRun prepares the Snapshot for a given PipelineRun,
-// component and application. In case the Snapshot can't be created, an error will be returned.
-func (a *Adapter) prepareSnapshotForPipelineRun(pipelineRun *tektonv1beta1.PipelineRun, component *applicationapiv1alpha1.Component, application *applicationapiv1alpha1.Application) (*applicationapiv1alpha1.Snapshot, error) {
-	newContainerImage, err := a.getImagePullSpecFromPipelineRun(pipelineRun)
-	if err != nil {
-		return nil, err
-	}
-	componentSource, err := a.getComponentSourceFromPipelineRun(pipelineRun)
-	if err != nil {
-		return nil, err
-	}
-
-	snapshot, err := a.prepareSnapshot(application, component, newContainerImage, componentSource)
-	if err != nil {
-		return nil, err
-	}
-
-	if snapshot.Labels == nil {
-		snapshot.Labels = make(map[string]string)
-	}
-	snapshot.Labels[gitops.SnapshotTypeLabel] = gitops.SnapshotComponentType
-	snapshot.Labels[gitops.SnapshotComponentLabel] = a.component.Name
-	snapshot.Labels[gitops.BuildPipelineRunNameLabel] = pipelineRun.Name
-	if pipelineRun.Status.CompletionTime != nil {
-		snapshot.Labels[gitops.BuildPipelineRunFinishTimeLabel] = strconv.FormatInt(pipelineRun.Status.CompletionTime.Time.Unix(), 10)
-	} else {
-		snapshot.Labels[gitops.BuildPipelineRunFinishTimeLabel] = strconv.FormatInt(time.Now().Unix(), 10)
-	}
-
-	// Copy PipelineRun PAC annotations/labels from Build to snapshot.
-	// Modify the prefix so the PaC controller won't react to PipelineRuns generated from the snapshot.
-	h.CopyLabelsByPrefix(&pipelineRun.ObjectMeta, &snapshot.ObjectMeta, "pipelinesascode.tekton.dev", gitops.PipelinesAsCodePrefix)
-	h.CopyAnnotationsByPrefix(&pipelineRun.ObjectMeta, &snapshot.ObjectMeta, "pipelinesascode.tekton.dev", gitops.PipelinesAsCodePrefix)
-
-	// Copy build labels and annotations prefixed with build.appstudio from Build to Snapshot.
-	h.CopyLabelsByPrefix(&pipelineRun.ObjectMeta, &snapshot.ObjectMeta, gitops.BuildPipelineRunPrefix, gitops.BuildPipelineRunPrefix)
-	h.CopyAnnotationsByPrefix(&pipelineRun.ObjectMeta, &snapshot.ObjectMeta, gitops.BuildPipelineRunPrefix, gitops.BuildPipelineRunPrefix)
-
-	return snapshot, nil
-}
-
 // prepareCompositeSnapshot prepares the Snapshot for a given application,
 // componentnew, containerImage and newContainerSource. In case the Snapshot can't be created, an error will be returned.
 func (a *Adapter) prepareCompositeSnapshot(application *applicationapiv1alpha1.Application, component *applicationapiv1alpha1.Component, newContainerImage string, newComponentSource *applicationapiv1alpha1.ComponentSource) (*applicationapiv1alpha1.Snapshot, error) {
-	snapshot, err := a.prepareSnapshot(application, component, newContainerImage, newComponentSource)
+	applicationComponents, err := a.loader.GetAllApplicationComponents(a.client, a.context, application)
+	if err != nil {
+		return nil, err
+	}
+
+	snapshot, err := gitops.PrepareSnapshot(a.client, a.context, application, applicationComponents, component, newContainerImage, newComponentSource)
 	if err != nil {
 		return nil, err
 	}
@@ -546,10 +327,11 @@ func (a *Adapter) createCompositeSnapshotsIfConflictExists(application *applicat
 
 	// Mark tested snapshot as failed and create the new composite snapshot if it doesn't exist already
 	if !gitops.CompareSnapshots(compositeSnapshot, testedSnapshot) {
-		existingCompositeSnapshot, err := a.findMatchingSnapshot(a.application, compositeSnapshot)
+		allSnapshots, err := a.loader.GetAllSnapshots(a.client, a.context, application)
 		if err != nil {
 			return nil, err
 		}
+		existingCompositeSnapshot := gitops.FindMatchingSnapshot(a.application, allSnapshots, compositeSnapshot)
 
 		if existingCompositeSnapshot != nil {
 			a.logger.Info("Found existing composite Snapshot",
@@ -569,78 +351,4 @@ func (a *Adapter) createCompositeSnapshotsIfConflictExists(application *applicat
 	}
 
 	return nil, nil
-}
-
-// isLatestSucceededPipelineRun return true if pipelineRun is the latest succeded pipelineRun
-// for the component. Pipeline start timestamp is used for comparison because we care about
-// time when pipeline was created.
-func (a *Adapter) isLatestSucceededPipelineRun() (bool, error) {
-
-	pipelineStartTime := a.pipelineRun.CreationTimestamp.Time
-
-	pipelineRuns, err := a.getSucceededBuildPipelineRunsForComponent(a.component)
-	if err != nil {
-		return false, err
-	}
-	for _, run := range *pipelineRuns {
-		if a.pipelineRun.Name == run.Name {
-			// it's the same pipeline
-			continue
-		}
-		timestamp := run.CreationTimestamp.Time
-		if pipelineStartTime.Before(timestamp) {
-			// pipeline is not the latest
-			// 1 second is minimal granularity, if both pipelines started at the same second, we cannot decide
-			return false, nil
-		}
-	}
-	return true, nil
-}
-
-// getSucceededBuildPipelineRunsForComponent returns all  succeeded PipelineRun for the
-// associated component. In the case the List operation fails,
-// an error will be returned.
-func (a *Adapter) getSucceededBuildPipelineRunsForComponent(component *applicationapiv1alpha1.Component) (*[]tektonv1beta1.PipelineRun, error) {
-	var succeededPipelineRuns []tektonv1beta1.PipelineRun
-
-	buildPipelineRuns, err := a.loader.GetAllBuildPipelineRunsForComponent(a.client, a.context, component)
-	if err != nil {
-		return nil, err
-	}
-
-	for _, pipelineRun := range *buildPipelineRuns {
-		pipelineRun := pipelineRun // G601
-		if h.HasPipelineRunSucceeded(&pipelineRun) {
-			succeededPipelineRuns = append(succeededPipelineRuns, pipelineRun)
-		}
-	}
-	return &succeededPipelineRuns, nil
-}
-
-// findMatchingSnapshot tries to find the expected Snapshot with the same set of images.
-func (a *Adapter) findMatchingSnapshot(application *applicationapiv1alpha1.Application, expectedSnapshot *applicationapiv1alpha1.Snapshot) (*applicationapiv1alpha1.Snapshot, error) {
-	allSnapshots, err := a.loader.GetAllSnapshots(a.client, a.context, application)
-	if err != nil {
-		return nil, err
-	}
-
-	for _, foundSnapshot := range *allSnapshots {
-		foundSnapshot := foundSnapshot
-		if gitops.CompareSnapshots(expectedSnapshot, &foundSnapshot) {
-			return &foundSnapshot, nil
-		}
-	}
-	return nil, nil
-}
-
-func (a *Adapter) annotateBuildPipelineRunWithSnapshot(pipelineRun *tektonv1beta1.PipelineRun, snapshot *applicationapiv1alpha1.Snapshot) (*tektonv1beta1.PipelineRun, error) {
-	patch := client.MergeFrom(pipelineRun.DeepCopy())
-	h.AddAnnotation(&pipelineRun.ObjectMeta, tekton.SnapshotNameLabel, snapshot.Name)
-	err := a.client.Patch(a.context, pipelineRun, patch)
-	if err != nil {
-		return pipelineRun, err
-	}
-	a.logger.LogAuditEvent("Updated build pipelineRun", pipelineRun, h.LogActionUpdate,
-		"snapshot.Name", snapshot.Name)
-	return pipelineRun, nil
 }

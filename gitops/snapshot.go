@@ -2,6 +2,7 @@ package gitops
 
 import (
 	"context"
+	"fmt"
 	"reflect"
 	"strconv"
 	"time"
@@ -13,7 +14,9 @@ import (
 	"github.com/redhat-appstudio/integration-service/tekton"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 const (
@@ -365,4 +368,78 @@ func HasSnapshotTestingChangedToFinished(objectOld, objectNew client.Object) boo
 		}
 	}
 	return false
+}
+
+// PrepareSnapshot prepares the Snapshot for a given application, components and the updated component (if any).
+// In case the Snapshot can't be created, an error will be returned.
+func PrepareSnapshot(adapterClient client.Client, ctx context.Context, application *applicationapiv1alpha1.Application, applicationComponents *[]applicationapiv1alpha1.Component, component *applicationapiv1alpha1.Component, newContainerImage string, newComponentSource *applicationapiv1alpha1.ComponentSource) (*applicationapiv1alpha1.Snapshot, error) {
+	log := log.FromContext(ctx)
+	var snapshotComponents []applicationapiv1alpha1.SnapshotComponent
+	for _, applicationComponent := range *applicationComponents {
+		applicationComponent := applicationComponent // G601
+		containerImage := applicationComponent.Spec.ContainerImage
+
+		var componentSource *applicationapiv1alpha1.ComponentSource
+		if applicationComponent.Name == component.Name {
+			containerImage = newContainerImage
+			componentSource = newComponentSource
+		} else {
+			// Get ComponentSource for the component which is not built in this pipeline
+			componentSource = GetComponentSourceFromComponent(&applicationComponent)
+		}
+
+		// If containerImage is empty, we have run into a race condition in
+		// which multiple components are being built in close succession.
+		// We omit this not-yet-built component from the snapshot rather than
+		// including a component that is incomplete.
+		if containerImage == "" {
+			log.Error(nil, "component cannot be added to snapshot for application due to missing containerImage", "component.Name", applicationComponent.Name)
+			continue
+		}
+		// if the containerImage donesn't have a valid digest, the component
+		// will not be added to snapshot
+		err := ValidateImageDigest(containerImage)
+		if err != nil {
+			log.Error(err, "component cannot added to snapshot for application due to invalid digest in containerImage", "component.Name", applicationComponent.Name)
+			continue
+		}
+		snapshotComponents = append(snapshotComponents, applicationapiv1alpha1.SnapshotComponent{
+			Name:           applicationComponent.Name,
+			ContainerImage: containerImage,
+			Source:         *componentSource,
+		})
+	}
+
+	if len(snapshotComponents) == 0 {
+		return nil, fmt.Errorf("failed to prepare snapshot due to missing valid digest in containerImage for all components of application")
+	}
+	snapshot := NewSnapshot(application, &snapshotComponents)
+
+	err := ctrl.SetControllerReference(application, snapshot, adapterClient.Scheme())
+	if err != nil {
+		return nil, err
+	}
+
+	return snapshot, nil
+}
+
+// FindMatchingSnapshot tries to find the expected Snapshot with the same set of images.
+func FindMatchingSnapshot(application *applicationapiv1alpha1.Application, allSnapshots *[]applicationapiv1alpha1.Snapshot, expectedSnapshot *applicationapiv1alpha1.Snapshot) *applicationapiv1alpha1.Snapshot {
+	for _, foundSnapshot := range *allSnapshots {
+		foundSnapshot := foundSnapshot
+		if CompareSnapshots(expectedSnapshot, &foundSnapshot) {
+			return &foundSnapshot
+		}
+	}
+	return nil
+}
+
+// GetComponentSourceFromComponent gets the component source from the given Component as Revision
+// and set Component.Status.LastBuiltCommit as Component.Source.GitSource.Revision if it is defined.
+func GetComponentSourceFromComponent(component *applicationapiv1alpha1.Component) *applicationapiv1alpha1.ComponentSource {
+	componentSource := component.Spec.Source.DeepCopy()
+	if component.Status.LastBuiltCommit != "" {
+		componentSource.GitSource.Revision = component.Status.LastBuiltCommit
+	}
+	return componentSource
 }

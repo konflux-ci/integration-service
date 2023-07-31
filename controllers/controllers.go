@@ -19,7 +19,8 @@ package controllers
 import (
 	"github.com/go-logr/logr"
 	"github.com/redhat-appstudio/integration-service/controllers/binding"
-	"github.com/redhat-appstudio/integration-service/controllers/pipeline"
+	"github.com/redhat-appstudio/integration-service/controllers/buildpipeline"
+	"github.com/redhat-appstudio/integration-service/controllers/integrationpipeline"
 	"github.com/redhat-appstudio/integration-service/controllers/scenario"
 	"github.com/redhat-appstudio/integration-service/controllers/snapshot"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
@@ -28,7 +29,8 @@ import (
 
 // setupFunctions is a list of register functions to be invoked so all controllers are added to the Manager
 var setupFunctions = []func(manager.Manager, *logr.Logger) error{
-	pipeline.SetupController,
+	integrationpipeline.SetupController,
+	buildpipeline.SetupController,
 	snapshot.SetupController,
 	scenario.SetupController,
 	binding.SetupController,

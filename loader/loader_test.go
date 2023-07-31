@@ -47,8 +47,8 @@ var _ = Describe("Loader", Ordered, func() {
 		deploymentTargetClaim   *applicationapiv1alpha1.DeploymentTargetClaim
 		integrationTestScenario *v1beta1.IntegrationTestScenario
 		successfulTaskRun       *tektonv1beta1.TaskRun
-		testBuildPipelineRun    *tektonv1beta1.PipelineRun
-		testPipelineRun         *tektonv1beta1.PipelineRun
+		buildPipelineRun        *tektonv1beta1.PipelineRun
+		integrationPipelineRun  *tektonv1beta1.PipelineRun
 		hasBinding              *applicationapiv1alpha1.SnapshotEnvironmentBinding
 		releasePlan             *releasev1alpha1.ReleasePlan
 		releasePlanNoLabel      *releasev1alpha1.ReleasePlan
@@ -275,7 +275,7 @@ var _ = Describe("Loader", Ordered, func() {
 		}
 		Expect(k8sClient.Create(ctx, hasEnv)).Should(Succeed())
 
-		testBuildPipelineRun = &tektonv1beta1.PipelineRun{
+		buildPipelineRun = &tektonv1beta1.PipelineRun{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "pipelinerun-sample",
 				Namespace: "default",
@@ -311,9 +311,9 @@ var _ = Describe("Loader", Ordered, func() {
 				},
 			},
 		}
-		Expect(k8sClient.Create(ctx, testBuildPipelineRun)).Should(Succeed())
+		Expect(k8sClient.Create(ctx, buildPipelineRun)).Should(Succeed())
 
-		testBuildPipelineRun.Status = tektonv1beta1.PipelineRunStatus{
+		buildPipelineRun.Status = tektonv1beta1.PipelineRunStatus{
 			PipelineRunStatusFields: tektonv1beta1.PipelineRunStatusFields{
 				ChildReferences: []tektonv1beta1.ChildStatusReference{
 					{
@@ -323,9 +323,9 @@ var _ = Describe("Loader", Ordered, func() {
 				},
 			},
 		}
-		Expect(k8sClient.Status().Update(ctx, testBuildPipelineRun)).Should(Succeed())
+		Expect(k8sClient.Status().Update(ctx, buildPipelineRun)).Should(Succeed())
 
-		testPipelineRun = &tektonv1beta1.PipelineRun{
+		integrationPipelineRun = &tektonv1beta1.PipelineRun{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "pipelinerun-component-sample",
 				Namespace: "default",
@@ -353,7 +353,7 @@ var _ = Describe("Loader", Ordered, func() {
 			},
 		}
 
-		Expect(k8sClient.Create(ctx, testPipelineRun)).Should(Succeed())
+		Expect(k8sClient.Create(ctx, integrationPipelineRun)).Should(Succeed())
 
 		hasBinding = &applicationapiv1alpha1.SnapshotEnvironmentBinding{
 			ObjectMeta: metav1.ObjectMeta{
@@ -390,8 +390,8 @@ var _ = Describe("Loader", Ordered, func() {
 
 	AfterAll(func() {
 		_ = k8sClient.Delete(ctx, hasSnapshot)
-		_ = k8sClient.Delete(ctx, testBuildPipelineRun)
-		_ = k8sClient.Delete(ctx, testPipelineRun)
+		_ = k8sClient.Delete(ctx, buildPipelineRun)
+		_ = k8sClient.Delete(ctx, integrationPipelineRun)
 		_ = k8sClient.Delete(ctx, successfulTaskRun)
 		_ = k8sClient.Delete(ctx, hasEnv)
 		_ = k8sClient.Delete(ctx, integrationTestScenario)
@@ -494,21 +494,21 @@ var _ = Describe("Loader", Ordered, func() {
 	})
 
 	It("ensures we can get a Component from a Pipeline Run ", func() {
-		comp, err := loader.GetComponentFromPipelineRun(k8sClient, ctx, testBuildPipelineRun)
+		comp, err := loader.GetComponentFromPipelineRun(k8sClient, ctx, buildPipelineRun)
 		Expect(err).To(BeNil())
 		Expect(comp).NotTo(BeNil())
 		Expect(comp.ObjectMeta).To(Equal(hasComp.ObjectMeta))
 	})
 
 	It("ensures we can get the application from the Pipeline Run", func() {
-		app, err := loader.GetApplicationFromPipelineRun(k8sClient, ctx, testBuildPipelineRun)
+		app, err := loader.GetApplicationFromPipelineRun(k8sClient, ctx, buildPipelineRun)
 		Expect(err).To(BeNil())
 		Expect(app).NotTo(BeNil())
 		Expect(app.ObjectMeta).To(Equal(hasApp.ObjectMeta))
 	})
 
 	It("ensures we can get the environment from the Pipeline Run", func() {
-		env, err := loader.GetApplicationFromPipelineRun(k8sClient, ctx, testBuildPipelineRun)
+		env, err := loader.GetApplicationFromPipelineRun(k8sClient, ctx, buildPipelineRun)
 		Expect(err).To(BeNil())
 		Expect(env).NotTo(BeNil())
 	})
@@ -521,14 +521,14 @@ var _ = Describe("Loader", Ordered, func() {
 	})
 
 	It("ensures we can get the Snapshot from a Pipeline Run", func() {
-		snapshot, err := loader.GetSnapshotFromPipelineRun(k8sClient, ctx, testBuildPipelineRun)
+		snapshot, err := loader.GetSnapshotFromPipelineRun(k8sClient, ctx, buildPipelineRun)
 		Expect(err).To(BeNil())
 		Expect(snapshot).NotTo(BeNil())
 		Expect(snapshot.ObjectMeta).To(Equal(hasSnapshot.ObjectMeta))
 	})
 
 	It("ensures we can get the Environment from a Pipeline Run", func() {
-		env, err := loader.GetEnvironmentFromIntegrationPipelineRun(k8sClient, ctx, testBuildPipelineRun)
+		env, err := loader.GetEnvironmentFromIntegrationPipelineRun(k8sClient, ctx, buildPipelineRun)
 		Expect(err).To(BeNil())
 		Expect(env).NotTo(BeNil())
 		Expect(env.ObjectMeta).To(Equal(hasEnv.ObjectMeta))
@@ -539,7 +539,7 @@ var _ = Describe("Loader", Ordered, func() {
 		Expect(err).To(BeNil())
 		Expect(pipelineRuns).NotTo(BeNil())
 		Expect(len(*pipelineRuns)).To(Equal(1))
-		Expect((*pipelineRuns)[0].Name == testBuildPipelineRun.Name)
+		Expect((*pipelineRuns)[0].Name == buildPipelineRun.Name)
 	})
 
 	It("can fetch all pipelineRuns for snapshot and scenario", func() {
@@ -547,7 +547,7 @@ var _ = Describe("Loader", Ordered, func() {
 		Expect(err).To(BeNil())
 		Expect(pipelineRuns).NotTo(BeNil())
 		Expect(len(*pipelineRuns)).To(Equal(1))
-		Expect((*pipelineRuns)[0].Name == testBuildPipelineRun.Name)
+		Expect((*pipelineRuns)[0].Name == buildPipelineRun.Name)
 	})
 
 	It("can fetch all integrationTestScenario for application", func() {
