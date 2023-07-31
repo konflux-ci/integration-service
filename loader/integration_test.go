@@ -41,8 +41,8 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 
 	var (
 		taskRun                 *tektonv1beta1.TaskRun
-		testpipelineRun1        *tektonv1beta1.PipelineRun
-		testpipelineRun2        *tektonv1beta1.PipelineRun
+		integrationPipelineRun1 *tektonv1beta1.PipelineRun
+		integrationPipelineRun2 *tektonv1beta1.PipelineRun
 		hasApp                  *applicationapiv1alpha1.Application
 		hasSnapshot             *applicationapiv1alpha1.Snapshot
 		integrationTestScenario *v1beta1.IntegrationTestScenario
@@ -162,7 +162,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		}
 		Expect(k8sClient.Status().Update(ctx, taskRun)).Should(Succeed())
 
-		testpipelineRun1 = &tektonv1beta1.PipelineRun{
+		integrationPipelineRun1 = &tektonv1beta1.PipelineRun{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "pipelinerun-component-sample-1",
 				Namespace: "default",
@@ -187,9 +187,9 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				},
 			},
 		}
-		Expect(k8sClient.Create(ctx, testpipelineRun1)).Should(Succeed())
+		Expect(k8sClient.Create(ctx, integrationPipelineRun1)).Should(Succeed())
 
-		testpipelineRun1.Status = tektonv1beta1.PipelineRunStatus{
+		integrationPipelineRun1.Status = tektonv1beta1.PipelineRunStatus{
 			PipelineRunStatusFields: tektonv1beta1.PipelineRunStatusFields{
 				CompletionTime: &metav1.Time{Time: time.Now()},
 				ChildReferences: []tektonv1beta1.ChildStatusReference{
@@ -209,18 +209,18 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				},
 			},
 		}
-		Expect(k8sClient.Status().Update(ctx, testpipelineRun1)).Should(Succeed())
+		Expect(k8sClient.Status().Update(ctx, integrationPipelineRun1)).Should(Succeed())
 
 		pr := &tektonv1beta1.PipelineRun{}
 		Eventually(func() bool {
 			err := k8sClient.Get(ctx, types.NamespacedName{
-				Name:      testpipelineRun1.Name,
-				Namespace: testpipelineRun1.Namespace,
+				Name:      integrationPipelineRun1.Name,
+				Namespace: integrationPipelineRun1.Namespace,
 			}, pr)
 			return err == nil && pr.Status.CompletionTime != nil
 		}, time.Second*10).Should(BeTrue(), "timed out when waiting for the PipelineRun to be updated")
 
-		testpipelineRun2 = &tektonv1beta1.PipelineRun{
+		integrationPipelineRun2 = &tektonv1beta1.PipelineRun{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "pipelinerun-component-sample-2",
 				Namespace: "default",
@@ -245,9 +245,9 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				},
 			},
 		}
-		Expect(k8sClient.Create(ctx, testpipelineRun2)).Should(Succeed())
+		Expect(k8sClient.Create(ctx, integrationPipelineRun2)).Should(Succeed())
 
-		testpipelineRun2.Status = tektonv1beta1.PipelineRunStatus{
+		integrationPipelineRun2.Status = tektonv1beta1.PipelineRunStatus{
 			PipelineRunStatusFields: tektonv1beta1.PipelineRunStatusFields{
 				CompletionTime: &metav1.Time{Time: time.Now().Add(5 * time.Minute)},
 				ChildReferences: []tektonv1beta1.ChildStatusReference{
@@ -267,13 +267,13 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				},
 			},
 		}
-		Expect(k8sClient.Status().Update(ctx, testpipelineRun2)).Should(Succeed())
+		Expect(k8sClient.Status().Update(ctx, integrationPipelineRun2)).Should(Succeed())
 
 		pr = &tektonv1beta1.PipelineRun{}
 		Eventually(func() bool {
 			err := k8sClient.Get(ctx, types.NamespacedName{
-				Name:      testpipelineRun2.Name,
-				Namespace: testpipelineRun2.Namespace,
+				Name:      integrationPipelineRun2.Name,
+				Namespace: integrationPipelineRun2.Namespace,
 			}, pr)
 			return err == nil && pr.Status.CompletionTime != nil
 		}, time.Second*10).Should(BeTrue(), "timed out when waiting for the PipelineRun to be updated")
@@ -282,9 +282,9 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 	AfterAll(func() {
 		err := k8sClient.Delete(ctx, hasSnapshot)
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
-		err = k8sClient.Delete(ctx, testpipelineRun1)
+		err = k8sClient.Delete(ctx, integrationPipelineRun1)
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
-		err = k8sClient.Delete(ctx, testpipelineRun2)
+		err = k8sClient.Delete(ctx, integrationPipelineRun2)
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 		err = k8sClient.Delete(ctx, hasApp)
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
@@ -296,8 +296,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 
 	It("can fetch latest pipelineRun for snapshot and scenario", func() {
 		pipelineRun, err := GetLatestPipelineRunForSnapshotAndScenario(k8sClient, ctx, loader, hasSnapshot, integrationTestScenario)
-		Expect(pipelineRun.Name == testpipelineRun2.Name).To(BeTrue())
+		Expect(pipelineRun.Name == integrationPipelineRun2.Name).To(BeTrue())
 		Expect(err).To(BeNil())
 	})
-
 })
