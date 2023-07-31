@@ -501,10 +501,18 @@ func (a *Adapter) createSnapshotEnvironmentBindingForSnapshot(application *appli
 		environment.Name,
 		snapshot, *components)
 
-	// set environment as owner of snapshotEnvironmentBinding on controlled
-	err := ctrl.SetControllerReference(environment, snapshotEnvironmentBinding, a.client.Scheme())
-	if err != nil {
-		return nil, err
+	// The SEBs for ephemeral Environments are expected to be cleaned up along with the Environment,
+	// while all other SEBs are meant to persist and be deleted with the Application
+	if h.IsEnvironmentEphemeral(environment) {
+		err := ctrl.SetControllerReference(environment, snapshotEnvironmentBinding, a.client.Scheme())
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		err := ctrl.SetControllerReference(application, snapshotEnvironmentBinding, a.client.Scheme())
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	for _, keyAndValue := range optionalLabelKeysAndValues {
@@ -515,7 +523,7 @@ func (a *Adapter) createSnapshotEnvironmentBindingForSnapshot(application *appli
 		}
 	}
 
-	err = a.client.Create(a.context, snapshotEnvironmentBinding)
+	err := a.client.Create(a.context, snapshotEnvironmentBinding)
 	if err != nil {
 		return nil, err
 	}
