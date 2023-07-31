@@ -500,10 +500,11 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
 		})
 
-		It("ensures snapshot environmentBinding exist", func() {
+		It("ensures snapshot environmentBinding exists", func() {
 			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
 
 			gitops.MarkSnapshotAsPassed(k8sClient, ctx, hasSnapshot, "test passed")
+			hasSnapshot.Labels[gitops.PipelineAsCodeEventTypeLabel] = gitops.PipelineAsCodePushType
 			Expect(gitops.HaveAppStudioTestsSucceeded(hasSnapshot)).To(BeTrue())
 			adapter = NewAdapter(hasSnapshot, hasApp, hasComp, log, loader.NewMockLoader(), k8sClient, ctx)
 			adapter.context = loader.GetMockedContext(ctx, []loader.MockData{
@@ -537,6 +538,26 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 
 			expectedLogEntry := "SnapshotEnvironmentBinding created for Snapshot"
 			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
+
+			bindingList := &applicationapiv1alpha1.SnapshotEnvironmentBindingList{}
+			opts := &client.ListOptions{
+				Namespace: hasApp.Namespace,
+			}
+			Eventually(func() bool {
+				_ = adapter.client.List(adapter.context, bindingList, opts)
+				return len(bindingList.Items) > 0 && bindingList.Items[0].Spec.Snapshot == hasSnapshot.Name
+			}, time.Second*10).Should(BeTrue())
+			binding := bindingList.Items[0]
+
+			Expect(binding.Spec.Application).To(Equal(hasApp.Name))
+			Expect(binding.Spec.Environment).To(Equal(env.Name))
+
+			owners := binding.GetOwnerReferences()
+			Expect(len(owners) == 1).To(BeTrue())
+			Expect(owners[0].Name).To(Equal(hasApp.Name))
+
+			err = k8sClient.Delete(ctx, &binding)
+			Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 		})
 	})
 
