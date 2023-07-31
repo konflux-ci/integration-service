@@ -1,5 +1,5 @@
 /*
-Copyright 2022.
+Copyright 2023.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package pipeline
+package integrationpipeline
 
 import (
 	"reflect"
@@ -39,16 +39,16 @@ import (
 	klog "k8s.io/klog/v2"
 )
 
-var _ = Describe("PipelineController", func() {
+var _ = Describe("Integration PipelineController", func() {
 	var (
-		manager            ctrl.Manager
-		pipelineReconciler *Reconciler
-		scheme             runtime.Scheme
-		req                ctrl.Request
-		successfulTaskRun  *tektonv1beta1.TaskRun
-		testpipelineRun    *tektonv1beta1.PipelineRun
-		hasApp             *applicationapiv1alpha1.Application
-		hasComp            *applicationapiv1alpha1.Component
+		manager                ctrl.Manager
+		pipelineReconciler     *Reconciler
+		scheme                 runtime.Scheme
+		req                    ctrl.Request
+		successfulTaskRun      *tektonv1beta1.TaskRun
+		integrationPipelineRun *tektonv1beta1.PipelineRun
+		hasApp                 *applicationapiv1alpha1.Application
+		hasComp                *applicationapiv1alpha1.Component
 	)
 	const (
 		applicationName = "application-sample"
@@ -124,7 +124,7 @@ var _ = Describe("PipelineController", func() {
 		}
 		Expect(k8sClient.Status().Update(ctx, successfulTaskRun)).Should(Succeed())
 
-		testpipelineRun = &tektonv1beta1.PipelineRun{
+		integrationPipelineRun = &tektonv1beta1.PipelineRun{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "pipelinerun-sample",
 				Namespace: "default",
@@ -156,9 +156,9 @@ var _ = Describe("PipelineController", func() {
 				},
 			},
 		}
-		Expect(k8sClient.Create(ctx, testpipelineRun)).Should(Succeed())
+		Expect(k8sClient.Create(ctx, integrationPipelineRun)).Should(Succeed())
 
-		testpipelineRun.Status = tektonv1beta1.PipelineRunStatus{
+		integrationPipelineRun.Status = tektonv1beta1.PipelineRunStatus{
 			PipelineRunStatusFields: tektonv1beta1.PipelineRunStatusFields{
 				ChildReferences: []tektonv1beta1.ChildStatusReference{
 					{
@@ -168,12 +168,12 @@ var _ = Describe("PipelineController", func() {
 				},
 			},
 		}
-		Expect(k8sClient.Status().Update(ctx, testpipelineRun)).Should(Succeed())
+		Expect(k8sClient.Status().Update(ctx, integrationPipelineRun)).Should(Succeed())
 
 		req = ctrl.Request{
 			NamespacedName: types.NamespacedName{
 				Namespace: "default",
-				Name:      testpipelineRun.Name,
+				Name:      integrationPipelineRun.Name,
 			},
 		}
 
@@ -203,7 +203,7 @@ var _ = Describe("PipelineController", func() {
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 		err = k8sClient.Delete(ctx, hasComp)
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
-		err = k8sClient.Delete(ctx, testpipelineRun)
+		err = k8sClient.Delete(ctx, integrationPipelineRun)
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 		err = k8sClient.Delete(ctx, successfulTaskRun)
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
@@ -214,7 +214,7 @@ var _ = Describe("PipelineController", func() {
 	})
 
 	It("can fail when Reconcile fails to prepare the adapter when pipeline is not found", func() {
-		Expect(k8sClient.Delete(ctx, testpipelineRun)).Should(Succeed())
+		Expect(k8sClient.Delete(ctx, integrationPipelineRun)).Should(Succeed())
 		Eventually(func() error {
 			_, err := pipelineReconciler.Reconcile(ctx, req)
 			return err
@@ -256,12 +256,12 @@ var _ = Describe("PipelineController", func() {
 	When("pipelinerun has no component", func() {
 
 		var (
-			testPipelineRunNoComponent *tektonv1beta1.PipelineRun
-			reqNoComponent             ctrl.Request
+			integrationPipelineRunNoComponent *tektonv1beta1.PipelineRun
+			reqNoComponent                    ctrl.Request
 		)
 
 		BeforeEach(func() {
-			testPipelineRunNoComponent = &tektonv1beta1.PipelineRun{
+			integrationPipelineRunNoComponent = &tektonv1beta1.PipelineRun{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "pipelinerun-sample-no-component",
 					Namespace: "default",
@@ -292,18 +292,18 @@ var _ = Describe("PipelineController", func() {
 					},
 				},
 			}
-			Expect(k8sClient.Create(ctx, testPipelineRunNoComponent)).Should(Succeed())
+			Expect(k8sClient.Create(ctx, integrationPipelineRunNoComponent)).Should(Succeed())
 
 			reqNoComponent = ctrl.Request{
 				NamespacedName: types.NamespacedName{
 					Namespace: "default",
-					Name:      testPipelineRunNoComponent.Name,
+					Name:      integrationPipelineRunNoComponent.Name,
 				},
 			}
 		})
 
 		AfterEach(func() {
-			err := k8sClient.Delete(ctx, testPipelineRunNoComponent)
+			err := k8sClient.Delete(ctx, integrationPipelineRunNoComponent)
 			Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 		})
 

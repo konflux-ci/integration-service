@@ -37,7 +37,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		hasSnapshot                       *applicationapiv1alpha1.Snapshot
 		hasSnapshotPR                     *applicationapiv1alpha1.Snapshot
 		deploymentTargetClass             *applicationapiv1alpha1.DeploymentTargetClass
-		testpipelineRun                   *tektonv1beta1.PipelineRun
+		integrationPipelineRun            *tektonv1beta1.PipelineRun
 		integrationTestScenario           *v1beta1.IntegrationTestScenario
 		integrationTestScenarioWithoutEnv *v1beta1.IntegrationTestScenario
 		env                               *applicationapiv1alpha1.Environment
@@ -265,7 +265,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		}
 		Expect(k8sClient.Create(ctx, hasSnapshotPR)).Should(Succeed())
 
-		testpipelineRun = &tektonv1beta1.PipelineRun{
+		integrationPipelineRun = &tektonv1beta1.PipelineRun{
 			ObjectMeta: metav1.ObjectMeta{
 				GenerateName: "build-pipelinerun" + "-",
 				Namespace:    "default",
@@ -297,7 +297,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 				},
 			},
 		}
-		Expect(k8sClient.Create(ctx, testpipelineRun)).Should(Succeed())
+		Expect(k8sClient.Create(ctx, integrationPipelineRun)).Should(Succeed())
 
 		Eventually(func() error {
 			err := k8sClient.Get(ctx, types.NamespacedName{
@@ -311,7 +311,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 	AfterEach(func() {
 		err := k8sClient.Delete(ctx, hasSnapshotPR)
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
-		err = k8sClient.Delete(ctx, testpipelineRun)
+		err = k8sClient.Delete(ctx, integrationPipelineRun)
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 	})
 

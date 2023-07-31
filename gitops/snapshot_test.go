@@ -29,8 +29,8 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 		applicationName = "application-sample"
 		componentName   = "component-sample"
 		snapshotName    = "snapshot-sample"
+		SampleCommit    = "a2ba645d50e471d5f084b"
 	)
-
 	BeforeAll(func() {
 		hasApp = &applicationapiv1alpha1.Application{
 			ObjectMeta: metav1.ObjectMeta{
@@ -55,7 +55,8 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 				Source: applicationapiv1alpha1.ComponentSource{
 					ComponentSourceUnion: applicationapiv1alpha1.ComponentSourceUnion{
 						GitSource: &applicationapiv1alpha1.GitSource{
-							URL: SampleRepoLink,
+							URL:      SampleRepoLink,
+							Revision: SampleCommit,
 						},
 					},
 				},
@@ -247,5 +248,46 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 		// Prepare a valid image with digest
 		imageUrl := "quay.io/redhat-appstudio/sample-image@sha256:841328df1b9f8c4087adbdcfec6cc99ac8308805dea83f6d415d6fb8d40227c1"
 		Expect(gitops.ValidateImageDigest(imageUrl)).To(BeNil())
+	})
+
+	It("ensure snapshot can be prepared for pipelinerun ", func() {
+		imagePullSpec := "quay.io/redhat-appstudio/sample-image@sha256:841328df1b9f8c4087adbdcfec6cc99ac8308805dea83f6d415d6fb8d40227c1"
+		componentSource := &applicationapiv1alpha1.ComponentSource{
+			ComponentSourceUnion: applicationapiv1alpha1.ComponentSourceUnion{
+				GitSource: &applicationapiv1alpha1.GitSource{
+					URL:      SampleRepoLink,
+					Revision: SampleCommit,
+				},
+			},
+		}
+		allApplicationComponents := &[]applicationapiv1alpha1.Component{*hasComp}
+		snapshot, err := gitops.PrepareSnapshot(k8sClient, ctx, hasApp, allApplicationComponents, hasComp, imagePullSpec, componentSource)
+		Expect(snapshot).NotTo(BeNil())
+		Expect(err).To(BeNil())
+		Expect(snapshot.Spec.Components).To(HaveLen(1), "One component should have been added to snapshot.  Other component should have been omited due to empty ContainerImage field or missing valid digest")
+		Expect(snapshot.Spec.Components[0].Name).To(Equal(hasComp.Name), "The built component should have been added to the snapshot")
+	})
+
+	It("Return false when the image url contains invalid digest", func() {
+		imageUrl := "quay.io/redhat-appstudio/sample-image:latest"
+		Expect(gitops.ValidateImageDigest(imageUrl)).NotTo(BeNil())
+	})
+
+	It("ensure ComponentSource can returned when component have Status.LastBuiltCommit defined or not", func() {
+		componentSource := gitops.GetComponentSourceFromComponent(hasComp)
+		Expect(componentSource.GitSource.Revision).To(Equal("a2ba645d50e471d5f084b"))
+
+		hasComp.Status = applicationapiv1alpha1.ComponentStatus{
+			LastBuiltCommit: "lastbuildcommit",
+		}
+		//Expect(k8sClient.Status().Update(ctx, hasComp)).Should(Succeed())
+		componentSource = gitops.GetComponentSourceFromComponent(hasComp)
+		Expect(componentSource.GitSource.Revision).To(Equal("lastbuildcommit"))
+	})
+
+	It("ensure existing snapshot can be found", func() {
+		allSnapshots := &[]applicationapiv1alpha1.Snapshot{*hasSnapshot}
+		existingSnapshot := gitops.FindMatchingSnapshot(hasApp, allSnapshots, hasSnapshot)
+		Expect(existingSnapshot.Name).To(Equal(hasSnapshot.Name))
 	})
 })

@@ -1,5 +1,5 @@
 /*
-Copyright 2022.
+Copyright 2023.
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
@@ -11,7 +11,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package pipeline
+package integrationpipeline
 
 import (
 	"bytes"
@@ -20,8 +20,6 @@ import (
 	"fmt"
 	"reflect"
 	"time"
-
-	"github.com/redhat-appstudio/integration-service/tekton"
 
 	"github.com/redhat-appstudio/integration-service/api/v1beta1"
 	"github.com/redhat-appstudio/integration-service/gitops"
@@ -74,24 +72,22 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		statusAdapter  *MockStatusAdapter
 		statusReporter *MockStatusReporter
 
-		successfulTaskRun              *tektonv1beta1.TaskRun
-		failedTaskRun                  *tektonv1beta1.TaskRun
-		testpipelineRunBuild           *tektonv1beta1.PipelineRun
-		testpipelineRunBuild2          *tektonv1beta1.PipelineRun
-		testpipelineRunComponent       *tektonv1beta1.PipelineRun
-		testpipelineRunComponentFailed *tektonv1beta1.PipelineRun
-		hasComp                        *applicationapiv1alpha1.Component
-		hasComp2                       *applicationapiv1alpha1.Component
-		hasCompNew                     *applicationapiv1alpha1.Component
-		hasApp                         *applicationapiv1alpha1.Application
-		hasSnapshot                    *applicationapiv1alpha1.Snapshot
-		hasEnv                         *applicationapiv1alpha1.Environment
-		deploymentTarget               *applicationapiv1alpha1.DeploymentTarget
-		deploymentTargetClaim          *applicationapiv1alpha1.DeploymentTargetClaim
-		deploymentTargetClass          *applicationapiv1alpha1.DeploymentTargetClass
-		snapshotEnvironmentBinding     *applicationapiv1alpha1.SnapshotEnvironmentBinding
-		integrationTestScenario        *v1beta1.IntegrationTestScenario
-		integrationTestScenarioFailed  *v1beta1.IntegrationTestScenario
+		successfulTaskRun                     *tektonv1beta1.TaskRun
+		failedTaskRun                         *tektonv1beta1.TaskRun
+		integrationPipelineRunComponent       *tektonv1beta1.PipelineRun
+		integrationPipelineRunComponentFailed *tektonv1beta1.PipelineRun
+		hasComp                               *applicationapiv1alpha1.Component
+		hasComp2                              *applicationapiv1alpha1.Component
+		hasCompNew                            *applicationapiv1alpha1.Component
+		hasApp                                *applicationapiv1alpha1.Application
+		hasSnapshot                           *applicationapiv1alpha1.Snapshot
+		hasEnv                                *applicationapiv1alpha1.Environment
+		deploymentTarget                      *applicationapiv1alpha1.DeploymentTarget
+		deploymentTargetClaim                 *applicationapiv1alpha1.DeploymentTargetClaim
+		deploymentTargetClass                 *applicationapiv1alpha1.DeploymentTargetClass
+		snapshotEnvironmentBinding            *applicationapiv1alpha1.SnapshotEnvironmentBinding
+		integrationTestScenario               *v1beta1.IntegrationTestScenario
+		integrationTestScenarioFailed         *v1beta1.IntegrationTestScenario
 	)
 	const (
 		SampleRepoLink           = "https://github.com/devfile-samples/devfile-sample-java-springboot-basic"
@@ -316,78 +312,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 	})
 
 	BeforeEach(func() {
-		testpipelineRunBuild = &tektonv1beta1.PipelineRun{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "pipelinerun-build-sample",
-				Namespace: "default",
-				Labels: map[string]string{
-					"pipelines.appstudio.openshift.io/type":    "build",
-					"pipelines.openshift.io/used-by":           "build-cloud",
-					"pipelines.openshift.io/runtime":           "nodejs",
-					"pipelines.openshift.io/strategy":          "s2i",
-					"appstudio.openshift.io/component":         "component-sample",
-					"pipelinesascode.tekton.dev/event-type":    "pull_request",
-					"build.appstudio.redhat.com/target_branch": "main",
-				},
-				Annotations: map[string]string{
-					"appstudio.redhat.com/updateComponentOnSuccess": "false",
-					"pipelinesascode.tekton.dev/on-target-branch":   "[main,master]",
-					"build.appstudio.openshift.io/repo":             "https://github.com/devfile-samples/devfile-sample-go-basic?rev=c713067b0e65fb3de50d1f7c457eb51c2ab0dbb0",
-					"foo":                                           "bar",
-				},
-			},
-			Spec: tektonv1beta1.PipelineRunSpec{
-				PipelineRef: &tektonv1beta1.PipelineRef{
-					Name:   "build-pipeline-pass",
-					Bundle: "quay.io/kpavic/test-bundle:build-pipeline-pass",
-				},
-				Params: []tektonv1beta1.Param{
-					{
-						Name: "output-image",
-						Value: tektonv1beta1.ParamValue{
-							Type:      tektonv1beta1.ParamTypeString,
-							StringVal: SampleImageWithoutDigest,
-						},
-					},
-				},
-			},
-		}
-		Expect(k8sClient.Create(ctx, testpipelineRunBuild)).Should(Succeed())
-
-		testpipelineRunBuild.Status = tektonv1beta1.PipelineRunStatus{
-			PipelineRunStatusFields: tektonv1beta1.PipelineRunStatusFields{
-				PipelineResults: []tektonv1beta1.PipelineRunResult{
-					{
-						Name:  "IMAGE_DIGEST",
-						Value: *tektonv1beta1.NewStructuredValues(SampleDigest),
-					},
-					{
-						Name:  "IMAGE_URL",
-						Value: *tektonv1beta1.NewStructuredValues(SampleImageWithoutDigest),
-					},
-					{
-						Name:  "CHAINS-GIT_URL",
-						Value: *tektonv1beta1.NewStructuredValues(SampleRepoLink),
-					},
-					{
-						Name:  "CHAINS-GIT_COMMIT",
-						Value: *tektonv1beta1.NewStructuredValues(SampleCommit),
-					},
-				},
-			},
-			Status: v1.Status{
-				Conditions: v1.Conditions{
-					apis.Condition{
-						Reason: "Completed",
-						Status: "True",
-						Type:   apis.ConditionSucceeded,
-					},
-				},
-			},
-		}
-		Expect(k8sClient.Status().Update(ctx, testpipelineRunBuild)).Should(Succeed())
-
-		testpipelineRunComponent = &tektonv1beta1.PipelineRun{
+		integrationPipelineRunComponent = &tektonv1beta1.PipelineRun{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "pipelinerun-component-sample",
 				Namespace: "default",
@@ -414,9 +339,9 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				},
 			},
 		}
-		Expect(k8sClient.Create(ctx, testpipelineRunComponent)).Should(Succeed())
+		Expect(k8sClient.Create(ctx, integrationPipelineRunComponent)).Should(Succeed())
 
-		testpipelineRunComponent.Status = tektonv1beta1.PipelineRunStatus{
+		integrationPipelineRunComponent.Status = tektonv1beta1.PipelineRunStatus{
 			PipelineRunStatusFields: tektonv1beta1.PipelineRunStatusFields{
 				CompletionTime: &metav1.Time{Time: time.Now()},
 				ChildReferences: []tektonv1beta1.ChildStatusReference{
@@ -436,13 +361,11 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				},
 			},
 		}
-		Expect(k8sClient.Status().Update(ctx, testpipelineRunComponent)).Should(Succeed())
+		Expect(k8sClient.Status().Update(ctx, integrationPipelineRunComponent)).Should(Succeed())
 	})
 
 	AfterEach(func() {
-		err := k8sClient.Delete(ctx, testpipelineRunBuild)
-		Expect(err == nil || k8serrors.IsNotFound(err)).To(BeTrue())
-		err = k8sClient.Delete(ctx, testpipelineRunComponent)
+		err := k8sClient.Delete(ctx, integrationPipelineRunComponent)
 		Expect(err == nil || k8serrors.IsNotFound(err)).To(BeTrue())
 	})
 
@@ -465,7 +388,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 
 	When("NewAdapter is called", func() {
 		It("creates and return a new adapter", func() {
-			Expect(reflect.TypeOf(NewAdapter(testpipelineRunBuild, hasComp, hasApp, logger, loader.NewMockLoader(), k8sClient, ctx))).To(Equal(reflect.TypeOf(&Adapter{})))
+			Expect(reflect.TypeOf(NewAdapter(integrationPipelineRunComponent, hasComp, hasApp, logger, loader.NewMockLoader(), k8sClient, ctx))).To(Equal(reflect.TypeOf(&Adapter{})))
 		})
 	})
 
@@ -496,55 +419,15 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			})
 		})
 
-		It("ensures the Imagepullspec and ComponentSource from pipelinerun and prepare snapshot can be created", func() {
-			imagePullSpec, err := adapter.getImagePullSpecFromPipelineRun(testpipelineRunBuild)
-			Expect(err).To(BeNil())
-			Expect(imagePullSpec).NotTo(BeEmpty())
-
-			componentSource, err := adapter.getComponentSourceFromPipelineRun(testpipelineRunBuild)
-			Expect(err).To(BeNil())
-
-			snapshot, err := adapter.prepareSnapshot(hasApp, hasComp, imagePullSpec, componentSource)
-			Expect(snapshot).NotTo(BeNil())
-			Expect(err).To(BeNil())
-			Expect(snapshot).NotTo(BeNil())
-			Expect(snapshot.Spec.Components).To(HaveLen(1), "One component should have been added to snapshot.  Other component should have been omited due to empty ContainerImage field or missing valid digest")
-			Expect(snapshot.Spec.Components[0].Name).To(Equal(hasComp.Name), "The built component should have been added to the snapshot")
-
-			fetchedPullSpec, err := adapter.getImagePullSpecFromSnapshotComponent(snapshot, hasComp)
-			Expect(err).To(BeNil())
-			Expect(fetchedPullSpec).NotTo(BeEmpty())
-			Expect(fetchedPullSpec).To(Equal(imagePullSpec))
-
-			fetchedComponentSource, err := adapter.getComponentSourceFromSnapshotComponent(snapshot, hasComp)
-			Expect(err).To(BeNil())
-			Expect(fetchedComponentSource).NotTo(BeNil())
-			Expect(componentSource.ComponentSourceUnion.GitSource.URL).To(Equal(fetchedComponentSource.ComponentSourceUnion.GitSource.URL))
-			Expect(componentSource.ComponentSourceUnion.GitSource.Revision).To(Equal(fetchedComponentSource.ComponentSourceUnion.GitSource.Revision))
-		})
-
-		It("ensures that snapshot has label pointing to build pipelinerun", func() {
-			expectedSnapshot, err := adapter.prepareSnapshotForPipelineRun(testpipelineRunBuild, hasComp, hasApp)
-			Expect(err).To(BeNil())
-			Expect(expectedSnapshot).NotTo(BeNil())
-
-			Expect(expectedSnapshot.Labels).NotTo(BeNil())
-			Expect(expectedSnapshot.Labels).Should(HaveKeyWithValue(Equal(gitops.BuildPipelineRunNameLabel), Equal(testpipelineRunBuild.Name)))
-		})
-
 		It("ensures the global component list unchanged and compositeSnapshot shouldn't be created ", func() {
-			expectedSnapshot, err := adapter.prepareSnapshotForPipelineRun(testpipelineRunBuild, hasComp, hasApp)
-			Expect(err).To(BeNil())
-			Expect(expectedSnapshot).NotTo(BeNil())
-
 			// Check if the global component list changed in the meantime and create a composite snapshot if it did.
-			compositeSnapshot, err := adapter.createCompositeSnapshotsIfConflictExists(hasApp, hasComp, expectedSnapshot)
+			compositeSnapshot, err := adapter.createCompositeSnapshotsIfConflictExists(hasApp, hasComp, hasSnapshot)
 			Expect(err).To(BeNil())
 			Expect(compositeSnapshot).To(BeNil())
 		})
 
 		It("ensures the global component list is changed and compositeSnapshot should be created", func() {
-			createdSnapshot, err := adapter.loader.GetSnapshotFromPipelineRun(adapter.client, adapter.context, testpipelineRunComponent)
+			createdSnapshot, err := adapter.loader.GetSnapshotFromPipelineRun(adapter.client, adapter.context, integrationPipelineRunComponent)
 			Expect(err).To(BeNil())
 			Expect(createdSnapshot).ToNot(BeNil())
 
@@ -653,130 +536,11 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			err = k8sClient.Delete(ctx, hasCompNew)
 			Expect(err == nil || k8serrors.IsNotFound(err)).To(BeTrue())
 		})
-
-		It("ensure ComponentSource can returned when component have Status.LastBuiltCommit defined or not", func() {
-			componentSource := adapter.getComponentSourceFromComponent(hasComp)
-			Expect(componentSource.GitSource.Revision).To(Equal("a2ba645d50e471d5f084b"))
-
-			hasComp.Status = applicationapiv1alpha1.ComponentStatus{
-				LastBuiltCommit: "lastbuildcommit",
-			}
-			Expect(k8sClient.Status().Update(ctx, hasComp)).Should(Succeed())
-			componentSource = adapter.getComponentSourceFromComponent(hasComp)
-			Expect(componentSource.GitSource.Revision).To(Equal("lastbuildcommit"))
-		})
-
-		It("ensure err is returned when pipelinerun doesn't have Result for ", func() {
-			testpipelineRunBuild.Status = tektonv1beta1.PipelineRunStatus{
-				PipelineRunStatusFields: tektonv1beta1.PipelineRunStatusFields{
-					ChildReferences: []tektonv1beta1.ChildStatusReference{
-						{
-							Name:             successfulTaskRun.Name,
-							PipelineTaskName: "task1",
-						},
-					},
-					PipelineResults: []tektonv1beta1.PipelineRunResult{
-						{
-							Name:  "CHAINS-GIT_URL",
-							Value: *tektonv1beta1.NewStructuredValues(SampleRepoLink),
-						},
-					},
-				},
-				Status: v1.Status{
-					Conditions: v1.Conditions{
-						apis.Condition{
-							Reason: "Completed",
-							Status: "True",
-							Type:   apis.ConditionSucceeded,
-						},
-					},
-				},
-			}
-			Expect(k8sClient.Status().Update(ctx, testpipelineRunBuild)).Should(Succeed())
-
-			componentSource, err := adapter.getComponentSourceFromPipelineRun(testpipelineRunBuild)
-			Expect(componentSource).To(BeNil())
-			Expect(err).ToNot(BeNil())
-		})
-
-		It("ensures pipelines as code labels and annotations are propagated to the snapshot", func() {
-			snapshot, err := adapter.prepareSnapshotForPipelineRun(testpipelineRunBuild, hasComp, hasApp)
-			Expect(err).To(BeNil())
-			Expect(snapshot).ToNot(BeNil())
-			annotation, found := snapshot.GetAnnotations()["pac.test.appstudio.openshift.io/on-target-branch"]
-			Expect(found).To(BeTrue())
-			Expect(annotation).To(Equal("[main,master]"))
-			label, found := snapshot.GetLabels()["pac.test.appstudio.openshift.io/event-type"]
-			Expect(found).To(BeTrue())
-			Expect(label).To(Equal("pull_request"))
-		})
-
-		It("ensures non-pipelines as code labels and annotations are NOT propagated to the snapshot", func() {
-			snapshot, err := adapter.prepareSnapshotForPipelineRun(testpipelineRunBuild, hasComp, hasApp)
-			Expect(err).To(BeNil())
-			Expect(snapshot).ToNot(BeNil())
-
-			// non-PaC labels are not copied
-			_, found := testpipelineRunBuild.GetLabels()["pipelines.appstudio.openshift.io/type"]
-			Expect(found).To(BeTrue())
-			_, found = snapshot.GetLabels()["pipelines.appstudio.openshift.io/type"]
-			Expect(found).To(BeFalse())
-
-			// non-PaC annotations are not copied
-			_, found = testpipelineRunBuild.GetAnnotations()["foo"]
-			Expect(found).To(BeTrue())
-			_, found = snapshot.GetAnnotations()["foo"]
-			Expect(found).To(BeFalse())
-		})
-
-		It("ensures build labels and annotations prefixed with 'build.appstudio' are propagated to the snapshot", func() {
-			snapshot, err := adapter.prepareSnapshotForPipelineRun(testpipelineRunBuild, hasComp, hasApp)
-			Expect(err).To(BeNil())
-			Expect(snapshot).ToNot(BeNil())
-
-			annotation, found := snapshot.GetAnnotations()["build.appstudio.openshift.io/repo"]
-			Expect(found).To(BeTrue())
-			Expect(annotation).To(Equal("https://github.com/devfile-samples/devfile-sample-go-basic?rev=c713067b0e65fb3de50d1f7c457eb51c2ab0dbb0"))
-
-			label, found := snapshot.GetLabels()["build.appstudio.redhat.com/target_branch"]
-			Expect(found).To(BeTrue())
-			Expect(label).To(Equal("main"))
-		})
-
-		It("ensures build labels and annotations non-prefixed with 'build.appstudio' are NOT propagated to the snapshot", func() {
-			snapshot, err := adapter.prepareSnapshotForPipelineRun(testpipelineRunBuild, hasComp, hasApp)
-			Expect(err).To(BeNil())
-			Expect(snapshot).ToNot(BeNil())
-
-			// build annotations non-prefixed with 'build.appstudio' are not copied
-			_, found := testpipelineRunBuild.GetAnnotations()["appstudio.redhat.com/updateComponentOnSuccess"]
-			Expect(found).To(BeTrue())
-			_, found = snapshot.GetAnnotations()["appstudio.redhat.com/updateComponentOnSuccess"]
-			Expect(found).To(BeFalse())
-
-			// build labels non-prefixed with 'build.appstudio' are not copied
-			_, found = testpipelineRunBuild.GetLabels()["pipelines.appstudio.openshift.io/type"]
-			Expect(found).To(BeTrue())
-			_, found = snapshot.GetLabels()["pipelines.appstudio.openshift.io/type"]
-			Expect(found).To(BeFalse())
-
-		})
-	})
-
-	When("Adapter is created but no components defined", func() {
-		It("ensures snapshot creation is skipped when there is no component defined ", func() {
-			adapter = NewAdapter(testpipelineRunBuild, nil, hasApp, logger, loader.NewMockLoader(), k8sClient, ctx)
-			Expect(reflect.TypeOf(adapter)).To(Equal(reflect.TypeOf(&Adapter{})))
-
-			result, err := adapter.EnsureSnapshotExists()
-			Expect(!result.CancelRequest).To(BeTrue())
-			Expect(err).To(BeNil())
-		})
 	})
 
 	When("Snapshot already exists", func() {
 		BeforeEach(func() {
-			adapter = NewAdapter(testpipelineRunComponent, hasComp, hasApp, logger, loader.NewMockLoader(), k8sClient, ctx)
+			adapter = NewAdapter(integrationPipelineRunComponent, hasComp, hasApp, logger, loader.NewMockLoader(), k8sClient, ctx)
 			adapter.context = loader.GetMockedContext(ctx, []loader.MockData{
 				{
 					ContextKey: loader.ApplicationContextKey,
@@ -803,16 +567,9 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 					Resource:   []applicationapiv1alpha1.Component{*hasComp},
 				},
 			})
-			existingSnapshot, err := adapter.loader.GetSnapshotFromPipelineRun(adapter.client, adapter.context, testpipelineRunComponent)
+			existingSnapshot, err := adapter.loader.GetSnapshotFromPipelineRun(adapter.client, adapter.context, integrationPipelineRunComponent)
 			Expect(err).To(BeNil())
 			Expect(existingSnapshot).ToNot(BeNil())
-		})
-
-		It("ensures snapshot creation is skipped when snapshot already exists", func() {
-			Eventually(func() bool {
-				result, err := adapter.EnsureSnapshotExists()
-				return !result.CancelRequest && err == nil
-			}, time.Second*10).Should(BeTrue())
 		})
 
 		It("ensures Snapshot passed all tests", func() {
@@ -831,7 +588,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				},
 				{
 					ContextKey: loader.PipelineRunsContextKey,
-					Resource:   []tektonv1beta1.PipelineRun{*testpipelineRunComponent},
+					Resource:   []tektonv1beta1.PipelineRun{*integrationPipelineRunComponent},
 				},
 				{
 					ContextKey: loader.RequiredIntegrationTestScenariosContextKey,
@@ -903,7 +660,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			}
 			Expect(k8sClient.Create(ctx, integrationTestScenarioFailed)).Should(Succeed())
 
-			testpipelineRunComponentFailed = &tektonv1beta1.PipelineRun{
+			integrationPipelineRunComponentFailed = &tektonv1beta1.PipelineRun{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "pipelinerun-component-sample-failed",
 					Namespace: "default",
@@ -931,9 +688,9 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				},
 			}
 
-			Expect(k8sClient.Create(ctx, testpipelineRunComponentFailed)).Should(Succeed())
+			Expect(k8sClient.Create(ctx, integrationPipelineRunComponentFailed)).Should(Succeed())
 
-			testpipelineRunComponentFailed.Status = tektonv1beta1.PipelineRunStatus{
+			integrationPipelineRunComponentFailed.Status = tektonv1beta1.PipelineRunStatus{
 				PipelineRunStatusFields: tektonv1beta1.PipelineRunStatusFields{
 					CompletionTime: &metav1.Time{Time: time.Now().Add(5 * time.Minute)},
 					ChildReferences: []tektonv1beta1.ChildStatusReference{
@@ -953,7 +710,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 					},
 				},
 			}
-			Expect(k8sClient.Status().Update(ctx, testpipelineRunComponentFailed)).Should(Succeed())
+			Expect(k8sClient.Status().Update(ctx, integrationPipelineRunComponentFailed)).Should(Succeed())
 
 			adapter.context = loader.GetMockedContext(ctx, []loader.MockData{
 				{
@@ -970,7 +727,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				},
 				{
 					ContextKey: loader.PipelineRunsContextKey,
-					Resource:   []tektonv1beta1.PipelineRun{*testpipelineRunComponent, *testpipelineRunComponentFailed},
+					Resource:   []tektonv1beta1.PipelineRun{*integrationPipelineRunComponent, *integrationPipelineRunComponentFailed},
 				},
 				{
 					ContextKey: loader.RequiredIntegrationTestScenariosContextKey,
@@ -999,7 +756,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 
 			Expect(meta.IsStatusConditionFalse(hasSnapshot.Status.Conditions, gitops.AppStudioTestSuceededCondition)).To(BeTrue())
 
-			err = k8sClient.Delete(ctx, testpipelineRunComponentFailed)
+			err = k8sClient.Delete(ctx, integrationPipelineRunComponentFailed)
 			Expect(err == nil || k8serrors.IsNotFound(err)).To(BeTrue())
 			err = k8sClient.Delete(ctx, integrationTestScenarioFailed)
 			Expect(err == nil || k8serrors.IsNotFound(err)).To(BeTrue())
@@ -1032,7 +789,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				},
 				{
 					ContextKey: loader.PipelineRunsContextKey,
-					Resource:   []tektonv1beta1.PipelineRun{*testpipelineRunComponent},
+					Resource:   []tektonv1beta1.PipelineRun{*integrationPipelineRunComponent},
 				},
 				{
 					ContextKey: loader.RequiredIntegrationTestScenariosContextKey,
@@ -1095,209 +852,6 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 
 			result, err = adapter.EnsureStatusReported()
 			Expect(result.RequeueRequest && err != nil && err.Error() == "ReportStatusError").To(BeTrue())
-		})
-	})
-
-	When("multiple succesfull build pipeline runs exists for the same component", func() {
-		BeforeAll(func() {
-			testpipelineRunBuild2 = &tektonv1beta1.PipelineRun{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "pipelinerun-build-sample-2",
-					Namespace: "default",
-					Labels: map[string]string{
-						"pipelines.appstudio.openshift.io/type": "build",
-						"pipelines.openshift.io/used-by":        "build-cloud",
-						"pipelines.openshift.io/runtime":        "nodejs",
-						"pipelines.openshift.io/strategy":       "s2i",
-						"appstudio.openshift.io/component":      "component-sample",
-						"pipelinesascode.tekton.dev/event-type": "pull_request",
-					},
-					Annotations: map[string]string{
-						"appstudio.redhat.com/updateComponentOnSuccess": "false",
-						"pipelinesascode.tekton.dev/on-target-branch":   "[main,master]",
-						"foo": "bar",
-					},
-				},
-				Spec: tektonv1beta1.PipelineRunSpec{
-					PipelineRef: &tektonv1beta1.PipelineRef{
-						Name:   "build-pipeline-pass",
-						Bundle: "quay.io/kpavic/test-bundle:build-pipeline-pass",
-					},
-					Params: []tektonv1beta1.Param{
-						{
-							Name: "output-image",
-							Value: tektonv1beta1.ParamValue{
-								Type:      tektonv1beta1.ParamTypeString,
-								StringVal: SampleImageWithoutDigest,
-							},
-						},
-					},
-				},
-			}
-			Expect(k8sClient.Create(ctx, testpipelineRunBuild2)).Should(Succeed())
-
-			testpipelineRunBuild2.Status = tektonv1beta1.PipelineRunStatus{
-				PipelineRunStatusFields: tektonv1beta1.PipelineRunStatusFields{
-					PipelineResults: []tektonv1beta1.PipelineRunResult{
-						{
-							Name:  "IMAGE_DIGEST",
-							Value: *tektonv1beta1.NewStructuredValues(SampleDigest),
-						},
-					},
-				},
-				Status: v1.Status{
-					Conditions: v1.Conditions{
-						apis.Condition{
-							Reason: "Completed",
-							Status: "True",
-							Type:   apis.ConditionSucceeded,
-						},
-					},
-				},
-			}
-			Expect(k8sClient.Status().Update(ctx, testpipelineRunBuild2)).Should(Succeed())
-			Expect(helpers.HasPipelineRunSucceeded(testpipelineRunBuild2)).To(BeTrue())
-		})
-
-		AfterAll(func() {
-			err := k8sClient.Delete(ctx, testpipelineRunBuild2)
-			Expect(err == nil || k8serrors.IsNotFound(err)).To(BeTrue())
-		})
-
-		It("isLatestSucceededPipelineRun reports second pipeline as the latest pipeline", func() {
-			// make sure the seocnd pipeline started as second
-			testpipelineRunBuild2.CreationTimestamp.Time = testpipelineRunBuild2.CreationTimestamp.Add(2 * time.Hour)
-			adapter = NewAdapter(testpipelineRunBuild2, hasComp, hasApp, logger, loader.NewMockLoader(), k8sClient, ctx)
-			adapter.context = loader.GetMockedContext(ctx, []loader.MockData{
-				{
-					ContextKey: loader.ApplicationContextKey,
-					Resource:   hasApp,
-				},
-				{
-					ContextKey: loader.ComponentContextKey,
-					Resource:   hasComp,
-				},
-				{
-					ContextKey: loader.SnapshotContextKey,
-					Resource:   hasSnapshot,
-				},
-				{
-					ContextKey: loader.PipelineRunsContextKey,
-					Resource:   []tektonv1beta1.PipelineRun{*testpipelineRunBuild2, *testpipelineRunBuild},
-				},
-			})
-			isLatest, err := adapter.isLatestSucceededPipelineRun()
-			Expect(err).To(BeNil())
-			Expect(isLatest).To(BeTrue())
-		})
-
-		It("isLatestSucceededPipelineRun doesn't report first pipeline as the latest pipeline", func() {
-			// make sure the first pipeline started as first
-			testpipelineRunBuild.CreationTimestamp.Time = testpipelineRunBuild.CreationTimestamp.Add(-2 * time.Hour)
-			adapter = NewAdapter(testpipelineRunBuild, hasComp, hasApp, logger, loader.NewMockLoader(), k8sClient, ctx)
-			adapter.context = loader.GetMockedContext(ctx, []loader.MockData{
-				{
-					ContextKey: loader.ApplicationContextKey,
-					Resource:   hasApp,
-				},
-				{
-					ContextKey: loader.ComponentContextKey,
-					Resource:   hasComp,
-				},
-				{
-					ContextKey: loader.SnapshotContextKey,
-					Resource:   hasSnapshot,
-				},
-				{
-					ContextKey: loader.PipelineRunsContextKey,
-					Resource:   []tektonv1beta1.PipelineRun{*testpipelineRunBuild2, *testpipelineRunBuild},
-				},
-			})
-			isLatest, err := adapter.isLatestSucceededPipelineRun()
-			Expect(err).To(BeNil())
-			Expect(isLatest).To(BeFalse())
-		})
-
-		It("can detect if a PipelineRun has succeeded", func() {
-			testpipelineRunBuild.Status.SetCondition(&apis.Condition{
-				Type:   apis.ConditionSucceeded,
-				Status: "False",
-			})
-			Expect(helpers.HasPipelineRunSucceeded(testpipelineRunBuild)).To(BeFalse())
-			testpipelineRunBuild.Status.SetCondition(&apis.Condition{
-				Type:   apis.ConditionSucceeded,
-				Status: "True",
-			})
-			Expect(helpers.HasPipelineRunSucceeded(testpipelineRunBuild)).To(BeTrue())
-			Expect(helpers.HasPipelineRunSucceeded(&tektonv1beta1.TaskRun{})).To(BeFalse())
-		})
-
-		It("can fetch all succeeded build pipelineRuns", func() {
-			pipelineRuns, err := adapter.getSucceededBuildPipelineRunsForComponent(hasComp)
-			Expect(err).To(BeNil())
-			Expect(pipelineRuns).NotTo(BeNil())
-			Expect(len(*pipelineRuns)).To(Equal(2))
-			Expect((*pipelineRuns)[0].Name == testpipelineRunBuild.Name || (*pipelineRuns)[1].Name == testpipelineRunBuild.Name).To(BeTrue())
-		})
-
-		It("can annotate the build pipelineRun with the Snapshot name", func() {
-			pipelineRun, err := adapter.annotateBuildPipelineRunWithSnapshot(testpipelineRunBuild, hasSnapshot)
-			Expect(err).To(BeNil())
-			Expect(pipelineRun).NotTo(BeNil())
-			Expect(pipelineRun.ObjectMeta.Annotations[tekton.SnapshotNameLabel]).To(Equal(hasSnapshot.Name))
-		})
-
-		It("ensure that EnsureSnapshotExists doesn't create snapshot for previous pipeline run", func() {
-			var buf bytes.Buffer
-			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
-
-			// make sure the first pipeline started as first
-			testpipelineRunBuild.CreationTimestamp.Time = testpipelineRunBuild.CreationTimestamp.Add(-2 * time.Hour)
-			adapter = NewAdapter(testpipelineRunBuild, hasComp, hasApp, log, loader.NewMockLoader(), k8sClient, ctx)
-			adapter.context = loader.GetMockedContext(ctx, []loader.MockData{
-				{
-					ContextKey: loader.ApplicationContextKey,
-					Resource:   hasApp,
-				},
-				{
-					ContextKey: loader.ComponentContextKey,
-					Resource:   hasComp,
-				},
-				{
-					ContextKey: loader.PipelineRunsContextKey,
-					Resource:   []tektonv1beta1.PipelineRun{*testpipelineRunBuild2, *testpipelineRunBuild},
-				},
-			})
-			Eventually(func() bool {
-				result, err := adapter.EnsureSnapshotExists()
-				return !result.CancelRequest && err == nil
-			}, time.Second*10).Should(BeTrue())
-
-			expectedLogEntry := "INFO The pipelineRun is not the latest succeded pipelineRun for the component, " +
-				"skipping creation of a new Snapshot"
-			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
-		})
-
-		It("can find matching snapshot", func() {
-			// make sure the first pipeline started as first
-			adapter = NewAdapter(testpipelineRunBuild, hasComp, hasApp, logger, loader.NewMockLoader(), k8sClient, ctx)
-			adapter.context = loader.GetMockedContext(ctx, []loader.MockData{
-				{
-					ContextKey: loader.ApplicationContextKey,
-					Resource:   hasApp,
-				},
-				{
-					ContextKey: loader.ComponentContextKey,
-					Resource:   hasComp,
-				},
-				{
-					ContextKey: loader.AllSnapshotsContextKey,
-					Resource:   []applicationapiv1alpha1.Snapshot{*hasSnapshot},
-				},
-			})
-			existingSnapshot, err := adapter.findMatchingSnapshot(adapter.application, hasSnapshot)
-			Expect(err).To(BeNil())
-			Expect(existingSnapshot.Name).To(Equal(hasSnapshot.Name))
 		})
 	})
 
@@ -1366,7 +920,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		It("ensures ephemeral environment is deleted for the given pipelineRun ", func() {
 			var buf bytes.Buffer
 			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
-			adapter = NewAdapter(testpipelineRunComponent, hasComp, hasApp, log, loader.NewMockLoader(), k8sClient, ctx)
+			adapter = NewAdapter(integrationPipelineRunComponent, hasComp, hasApp, log, loader.NewMockLoader(), k8sClient, ctx)
 			adapter.context = loader.GetMockedContext(ctx, []loader.MockData{
 				{
 					ContextKey: loader.ApplicationContextKey,
@@ -1378,7 +932,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				},
 				{
 					ContextKey: loader.PipelineRunsContextKey,
-					Resource:   []tektonv1beta1.PipelineRun{*testpipelineRunComponent},
+					Resource:   []tektonv1beta1.PipelineRun{*integrationPipelineRunComponent},
 				},
 				{
 					ContextKey: loader.SnapshotEnvironmentBindingContextKey,
@@ -1419,7 +973,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 	})
 
 	createAdapter = func() *Adapter {
-		adapter = NewAdapter(testpipelineRunBuild, hasComp, hasApp, logger, loader.NewMockLoader(), k8sClient, ctx)
+		adapter = NewAdapter(integrationPipelineRunComponent, hasComp, hasApp, logger, loader.NewMockLoader(), k8sClient, ctx)
 		statusReporter = &MockStatusReporter{}
 		statusAdapter = &MockStatusAdapter{Reporter: statusReporter}
 		adapter.status = statusAdapter
