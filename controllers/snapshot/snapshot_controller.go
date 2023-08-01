@@ -26,7 +26,7 @@ import (
 	"github.com/redhat-appstudio/integration-service/gitops"
 	"github.com/redhat-appstudio/integration-service/helpers"
 	"github.com/redhat-appstudio/integration-service/loader"
-	"github.com/redhat-appstudio/operator-goodies/reconciler"
+	"github.com/redhat-appstudio/operator-toolkit/controller"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -104,7 +104,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 
 	adapter := NewAdapter(snapshot, application, component, logger, loader, r.Client, ctx)
 
-	return reconciler.ReconcileHandler([]reconciler.ReconcileOperation{
+	return controller.ReconcileHandler([]controller.Operation{
 		adapter.EnsureAllReleasesExist,
 		adapter.EnsureGlobalCandidateImageUpdated,
 		adapter.EnsureSnapshotEnvironmentBindingExist,
@@ -115,14 +115,14 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 
 // AdapterInterface is an interface defining all the operations that should be defined in an Integration adapter.
 type AdapterInterface interface {
-	EnsureAllReleasesExist() (reconciler.OperationResult, error)
-	EnsureCreationOfEnvironment() (reconciler.OperationResult, error)
-	EnsureAllIntegrationTestPipelinesExist() (reconciler.OperationResult, error)
-	EnsureGlobalCandidateImageUpdated() (reconciler.OperationResult, error)
-	EnsureSnapshotEnvironmentBindingExist() (reconciler.OperationResult, error)
+	EnsureAllReleasesExist() (controller.OperationResult, error)
+	EnsureCreationOfEnvironment() (controller.OperationResult, error)
+	EnsureAllIntegrationTestPipelinesExist() (controller.OperationResult, error)
+	EnsureGlobalCandidateImageUpdated() (controller.OperationResult, error)
+	EnsureSnapshotEnvironmentBindingExist() (controller.OperationResult, error)
 }
 
-// SetupController creates a new Integration reconciler and adds it to the Manager.
+// SetupController creates a new Integration controller and adds it to the Manager.
 func SetupController(manager ctrl.Manager, log *logr.Logger) error {
 	return setupControllerWithManager(manager, NewSnapshotReconciler(manager.GetClient(), log, manager.GetScheme()))
 }
@@ -146,7 +146,7 @@ func setupCache(mgr ctrl.Manager) error {
 }
 
 // setupControllerWithManager sets up the controller with the Manager which monitors new Snapshots
-func setupControllerWithManager(manager ctrl.Manager, reconciler *Reconciler) error {
+func setupControllerWithManager(manager ctrl.Manager, controller *Reconciler) error {
 	err := setupCache(manager)
 	if err != nil {
 		return err
@@ -156,5 +156,5 @@ func setupControllerWithManager(manager ctrl.Manager, reconciler *Reconciler) er
 		For(&applicationapiv1alpha1.Snapshot{}).
 		WithEventFilter(predicate.Or(
 			gitops.IntegrationSnapshotChangePredicate())).
-		Complete(reconciler)
+		Complete(controller)
 }

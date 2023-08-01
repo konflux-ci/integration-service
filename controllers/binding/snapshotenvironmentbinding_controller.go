@@ -22,8 +22,8 @@ import (
 	"github.com/redhat-appstudio/integration-service/gitops"
 	"github.com/redhat-appstudio/integration-service/helpers"
 	"github.com/redhat-appstudio/integration-service/loader"
-	"github.com/redhat-appstudio/operator-goodies/predicates"
-	"github.com/redhat-appstudio/operator-goodies/reconciler"
+	"github.com/redhat-appstudio/operator-toolkit/controller"
+	"github.com/redhat-appstudio/operator-toolkit/predicates"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -114,7 +114,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 
 	adapter := NewAdapter(snapshotEnvironmentBinding, snapshot, environment, application, component, integrationTestScenario, logger, loader, r.Client, ctx)
 
-	return reconciler.ReconcileHandler([]reconciler.ReconcileOperation{
+	return controller.ReconcileHandler([]controller.Operation{
 		adapter.EnsureIntegrationTestPipelineForScenarioExists,
 		adapter.EnsureEphemeralEnvironmentsCleanedUp,
 	})
@@ -190,7 +190,7 @@ func (r *Reconciler) getIntegrationTestScenarioFromSnapshotEnvironmentBinding(co
 
 // AdapterInterface is an interface defining all the operations that should be defined in an Integration adapter.
 type AdapterInterface interface {
-	EnsureIntegrationTestPipelineForScenarioExists() (reconciler.OperationResult, error)
+	EnsureIntegrationTestPipelineForScenarioExists() (controller.OperationResult, error)
 }
 
 // SetupController creates a new Integration reconciler and adds it to the Manager.
