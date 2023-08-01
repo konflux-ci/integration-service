@@ -19,7 +19,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	goodies "github.com/redhat-appstudio/operator-goodies/test"
+	toolkit "github.com/redhat-appstudio/operator-toolkit/test"
 
 	"k8s.io/client-go/rest"
 
@@ -62,11 +62,11 @@ var _ = BeforeSuite(func() {
 			filepath.Join("..", "config", "crd", "bases"),
 			filepath.Join(
 				build.Default.GOPATH,
-				"pkg", "mod", goodies.GetRelativeDependencyPath("tektoncd/pipeline"), "config",
+				"pkg", "mod", toolkit.GetRelativeDependencyPath("tektoncd/pipeline"), "config",
 			),
 			filepath.Join(
 				build.Default.GOPATH,
-				"pkg", "mod", goodies.GetRelativeDependencyPath("application-api"), "config", "crd", "bases",
+				"pkg", "mod", toolkit.GetRelativeDependencyPath("application-api"), "config", "crd", "bases",
 			),
 		},
 		ErrorIfCRDPathMissing: true,

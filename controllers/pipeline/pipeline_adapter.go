@@ -31,7 +31,7 @@ import (
 	"github.com/redhat-appstudio/integration-service/metrics"
 	"github.com/redhat-appstudio/integration-service/status"
 	"github.com/redhat-appstudio/integration-service/tekton"
-	"github.com/redhat-appstudio/operator-goodies/reconciler"
+	"github.com/redhat-appstudio/operator-toolkit/controller"
 	tektonv1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -66,35 +66,35 @@ func NewAdapter(pipelineRun *tektonv1beta1.PipelineRun, component *applicationap
 
 // EnsureSnapshotExists is an operation that will ensure that a pipeline Snapshot associated
 // to the PipelineRun being processed exists. Otherwise, it will create a new pipeline Snapshot.
-func (a *Adapter) EnsureSnapshotExists() (reconciler.OperationResult, error) {
+func (a *Adapter) EnsureSnapshotExists() (controller.OperationResult, error) {
 	if !tekton.IsBuildPipelineRun(a.pipelineRun) || !h.HasPipelineRunSucceeded(a.pipelineRun) {
-		return reconciler.ContinueProcessing()
+		return controller.ContinueProcessing()
 	}
 
 	if a.component == nil {
 		a.logger.Info("The pipelineRun does not have any component associated with it, will not create a new Snapshot.")
-		return reconciler.ContinueProcessing()
+		return controller.ContinueProcessing()
 	}
 
 	isLatest, err := a.isLatestSucceededPipelineRun()
 	if err != nil {
-		return reconciler.RequeueWithError(err)
+		return controller.RequeueWithError(err)
 	}
 	if !isLatest {
 		// not the last started pipeline that succeeded for current snapshot
 		// this prevents deploying older pipeline run over new deployment
 		a.logger.Info("The pipelineRun is not the latest succeded pipelineRun for the component, skipping creation of a new Snapshot ",
 			"component.Name", a.component.Name)
-		return reconciler.ContinueProcessing()
+		return controller.ContinueProcessing()
 	}
 
 	expectedSnapshot, err := a.prepareSnapshotForPipelineRun(a.pipelineRun, a.component, a.application)
 	if err != nil {
-		return reconciler.RequeueWithError(err)
+		return controller.RequeueWithError(err)
 	}
 	existingSnapshot, err := a.findMatchingSnapshot(a.application, expectedSnapshot)
 	if err != nil {
-		return reconciler.RequeueWithError(err)
+		return controller.RequeueWithError(err)
 	}
 
 	if existingSnapshot != nil {
@@ -107,16 +107,16 @@ func (a *Adapter) EnsureSnapshotExists() (reconciler.OperationResult, error) {
 			if err != nil {
 				a.logger.Error(err, "Failed to update the build pipelineRun with new annotations",
 					"pipelineRun.Name", a.pipelineRun.Name)
-				return reconciler.RequeueWithError(err)
+				return controller.RequeueWithError(err)
 			}
 		}
-		return reconciler.ContinueProcessing()
+		return controller.ContinueProcessing()
 	}
 
 	err = a.client.Create(a.context, expectedSnapshot)
 	if err != nil {
 		a.logger.Error(err, "Failed to create Snapshot")
-		return reconciler.RequeueWithError(err)
+		return controller.RequeueWithError(err)
 	}
 	go metrics.RegisterNewSnapshot()
 
@@ -128,22 +128,22 @@ func (a *Adapter) EnsureSnapshotExists() (reconciler.OperationResult, error) {
 	if err != nil {
 		a.logger.Error(err, "Failed to update the build pipelineRun with new annotations",
 			"pipelineRun.Name", a.pipelineRun.Name)
-		return reconciler.RequeueWithError(err)
+		return controller.RequeueWithError(err)
 	}
 
-	return reconciler.ContinueProcessing()
+	return controller.ContinueProcessing()
 }
 
 // EnsureSnapshotPassedAllTests is an operation that will ensure that a pipeline Snapshot
 // to the PipelineRun being processed passed all tests for all defined non-optional IntegrationTestScenarios.
-func (a *Adapter) EnsureSnapshotPassedAllTests() (reconciler.OperationResult, error) {
+func (a *Adapter) EnsureSnapshotPassedAllTests() (controller.OperationResult, error) {
 	if !tekton.IsIntegrationPipelineRun(a.pipelineRun) || !h.HasPipelineRunFinished(a.pipelineRun) {
-		return reconciler.ContinueProcessing()
+		return controller.ContinueProcessing()
 	}
 
 	existingSnapshot, err := a.loader.GetSnapshotFromPipelineRun(a.client, a.context, a.pipelineRun)
 	if err != nil {
-		return reconciler.RequeueWithError(err)
+		return controller.RequeueWithError(err)
 	}
 	if existingSnapshot != nil {
 		a.logger.Info("Found existing Snapshot",
@@ -155,13 +155,13 @@ func (a *Adapter) EnsureSnapshotPassedAllTests() (reconciler.OperationResult, er
 	// for the Snapshot
 	integrationTestScenarios, err := a.loader.GetRequiredIntegrationTestScenariosForApplication(a.client, a.context, a.application)
 	if err != nil {
-		return reconciler.RequeueWithError(err)
+		return controller.RequeueWithError(err)
 	}
 	integrationPipelineRuns, err := a.getAllPipelineRunsForSnapshot(existingSnapshot, integrationTestScenarios)
 	if err != nil {
 		a.logger.Error(err, "Failed to get Integration PipelineRuns",
 			"snapshot.Name", existingSnapshot.Name)
-		return reconciler.RequeueWithError(err)
+		return controller.RequeueWithError(err)
 	}
 
 	// Skip doing anything if not all Integration PipelineRuns were found for all integrationTestScenarios
@@ -169,7 +169,7 @@ func (a *Adapter) EnsureSnapshotPassedAllTests() (reconciler.OperationResult, er
 		a.logger.Info("Not all required Integration PipelineRuns finished",
 			"snapshot.Name", existingSnapshot.Name,
 			"snapshot.Spec.Components", existingSnapshot.Spec.Components)
-		return reconciler.ContinueProcessing()
+		return controller.ContinueProcessing()
 	}
 
 	// Set the Snapshot Integration status as finished, but don't update the resource yet
@@ -184,7 +184,7 @@ func (a *Adapter) EnsureSnapshotPassedAllTests() (reconciler.OperationResult, er
 	if err != nil {
 		a.logger.Error(err, "Failed to determine outcomes for Integration PipelineRuns",
 			"snapshot.Name", existingSnapshot.Name)
-		return reconciler.RequeueWithError(err)
+		return controller.RequeueWithError(err)
 	}
 
 	// If the snapshot is a component type, check if the global component list changed in the meantime and
@@ -194,7 +194,7 @@ func (a *Adapter) EnsureSnapshotPassedAllTests() (reconciler.OperationResult, er
 		if err != nil {
 			a.logger.Error(err, "Failed to determine if a composite snapshot needs to be created because of a conflict",
 				"snapshot.Name", existingSnapshot.Name)
-			return reconciler.RequeueWithError(err)
+			return controller.RequeueWithError(err)
 		}
 
 		if compositeSnapshot != nil {
@@ -213,7 +213,7 @@ func (a *Adapter) EnsureSnapshotPassedAllTests() (reconciler.OperationResult, er
 		existingSnapshot, err = gitops.MarkSnapshotAsPassed(a.client, a.context, existingSnapshot, "All Integration Pipeline tests passed")
 		if err != nil {
 			a.logger.Error(err, "Failed to Update Snapshot AppStudioTestSucceeded status")
-			return reconciler.RequeueWithError(err)
+			return controller.RequeueWithError(err)
 		}
 		a.logger.LogAuditEvent("Snapshot integration status condition marked as passed, all Integration PipelineRuns succeeded",
 			existingSnapshot, h.LogActionUpdate)
@@ -221,51 +221,51 @@ func (a *Adapter) EnsureSnapshotPassedAllTests() (reconciler.OperationResult, er
 		existingSnapshot, err = gitops.MarkSnapshotAsFailed(a.client, a.context, existingSnapshot, "Some Integration pipeline tests failed")
 		if err != nil {
 			a.logger.Error(err, "Failed to Update Snapshot AppStudioTestSucceeded status")
-			return reconciler.RequeueWithError(err)
+			return controller.RequeueWithError(err)
 		}
 		a.logger.LogAuditEvent("Snapshot integration status condition marked as failed, some tests within Integration PipelineRuns failed",
 			existingSnapshot, h.LogActionUpdate)
 	}
 
-	return reconciler.ContinueProcessing()
+	return controller.ContinueProcessing()
 }
 
 // EnsureStatusReported will ensure that integration PipelineRun status is reported to the git provider
 // which (indirectly) triggered its execution.
-func (a *Adapter) EnsureStatusReported() (reconciler.OperationResult, error) {
+func (a *Adapter) EnsureStatusReported() (controller.OperationResult, error) {
 	if !tekton.IsIntegrationPipelineRun(a.pipelineRun) {
-		return reconciler.ContinueProcessing()
+		return controller.ContinueProcessing()
 	}
 
 	reporters, err := a.status.GetReporters(a.pipelineRun)
 
 	if err != nil {
-		return reconciler.RequeueWithError(err)
+		return controller.RequeueWithError(err)
 	}
 
 	for _, reporter := range reporters {
 		if err := reporter.ReportStatus(a.client, a.context, a.pipelineRun); err != nil {
-			return reconciler.RequeueWithError(err)
+			return controller.RequeueWithError(err)
 		}
 	}
 
-	return reconciler.ContinueProcessing()
+	return controller.ContinueProcessing()
 }
 
 // EnsureEphemeralEnvironmentsCleanedUp will ensure that ephemeral environment(s) associated with the
 // integration PipelineRun are cleaned up.
-func (a *Adapter) EnsureEphemeralEnvironmentsCleanedUp() (reconciler.OperationResult, error) {
+func (a *Adapter) EnsureEphemeralEnvironmentsCleanedUp() (controller.OperationResult, error) {
 	if !tekton.IsIntegrationPipelineRun(a.pipelineRun) || !h.HasPipelineRunFinished(a.pipelineRun) {
-		return reconciler.ContinueProcessing()
+		return controller.ContinueProcessing()
 	}
 
 	testEnvironment, err := a.loader.GetEnvironmentFromIntegrationPipelineRun(a.client, a.context, a.pipelineRun)
 	if err != nil {
 		a.logger.Error(err, "Failed to find the environment for the pipelineRun")
-		return reconciler.RequeueWithError(err)
+		return controller.RequeueWithError(err)
 	} else if testEnvironment == nil {
 		a.logger.Info("The pipelineRun does not have any test Environments associated with it, skipping cleanup.")
-		return reconciler.ContinueProcessing()
+		return controller.ContinueProcessing()
 	}
 
 	isEphemeral := h.IsEnvironmentEphemeral(testEnvironment)
@@ -274,23 +274,23 @@ func (a *Adapter) EnsureEphemeralEnvironmentsCleanedUp() (reconciler.OperationRe
 		dtc, err := a.loader.GetDeploymentTargetClaimForEnvironment(a.client, a.context, testEnvironment)
 		if err != nil || dtc == nil {
 			a.logger.Error(err, "Failed to find deploymentTargetClaim defined in environment", "environment.Name", testEnvironment.Name)
-			return reconciler.RequeueWithError(err)
+			return controller.RequeueWithError(err)
 		}
 
 		binding, err := a.loader.FindExistingSnapshotEnvironmentBinding(a.client, a.context, a.application, testEnvironment)
 		if err != nil || binding == nil {
 			a.logger.Error(err, "Failed to find snapshotEnvironmentBinding associated with environment", "environment.Name", testEnvironment.Name)
-			return reconciler.RequeueWithError(err)
+			return controller.RequeueWithError(err)
 		}
 
 		err = h.CleanUpEphemeralEnvironments(a.client, &a.logger, a.context, testEnvironment, dtc)
 		if err != nil {
 			a.logger.Error(err, "Failed to delete the Ephemeral Environment")
-			return reconciler.RequeueWithError(err)
+			return controller.RequeueWithError(err)
 		}
 	}
 
-	return reconciler.ContinueProcessing()
+	return controller.ContinueProcessing()
 }
 
 // getImagePullSpecFromPipelineRun gets the full image pullspec from the given build PipelineRun,

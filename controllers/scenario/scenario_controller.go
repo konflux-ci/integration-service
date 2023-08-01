@@ -23,7 +23,7 @@ import (
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/api/v1beta1"
 	"github.com/redhat-appstudio/integration-service/helpers"
-	"github.com/redhat-appstudio/operator-goodies/reconciler"
+	"github.com/redhat-appstudio/operator-toolkit/controller"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -77,7 +77,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 
 	adapter := NewAdapter(application, scenario, logger, r.Client, ctx)
 
-	return reconciler.ReconcileHandler([]reconciler.ReconcileOperation{
+	return controller.ReconcileHandler([]controller.Operation{
 		adapter.EnsureCreatedScenarioIsValid,
 	})
 }
@@ -100,19 +100,19 @@ func (r *Reconciler) getApplicationFromScenario(context context.Context, scenari
 
 // AdapterInterface is an interface defining all the operations that should be defined in an Integration adapter.
 type AdapterInterface interface {
-	EnsureCreatedScenarioIsValid() (reconciler.OperationResult, error)
+	EnsureCreatedScenarioIsValid() (controller.OperationResult, error)
 }
 
-// SetupController creates a new Integration reconciler and adds it to the Manager.
+// SetupController creates a new Integration controller and adds it to the Manager.
 func SetupController(manager ctrl.Manager, log *logr.Logger) error {
 	return setupControllerWithManager(manager, NewScenarioReconciler(manager.GetClient(), log, manager.GetScheme()))
 }
 
-func setupControllerWithManager(manager ctrl.Manager, reconciler *Reconciler) error {
+func setupControllerWithManager(manager ctrl.Manager, controller *Reconciler) error {
 
 	return ctrl.NewControllerManagedBy(manager).
 		For(&v1beta1.IntegrationTestScenario{}).
 		WithEventFilter(predicate.Or(
 			IntegrationScenarioCreatedPredicate())).
-		Complete(reconciler)
+		Complete(controller)
 }
