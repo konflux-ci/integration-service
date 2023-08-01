@@ -199,11 +199,14 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 				Name:      "snapshot-sample",
 				Namespace: "default",
 				Labels: map[string]string{
-					gitops.SnapshotTypeLabel:      "component",
-					gitops.SnapshotComponentLabel: "component-sample",
+					gitops.SnapshotTypeLabel:              "component",
+					gitops.SnapshotComponentLabel:         "component-sample",
+					"build.appstudio.redhat.com/pipeline": "enterprise-contract",
 				},
 				Annotations: map[string]string{
-					gitops.PipelineAsCodeInstallationIDAnnotation: "123",
+					gitops.PipelineAsCodeInstallationIDAnnotation:   "123",
+					"build.appstudio.redhat.com/commit_sha":         "6c65b2fcaea3e1a0a92476c8b5dc89e92a85f025",
+					"appstudio.redhat.com/updateComponentOnSuccess": "false",
 				},
 			},
 			Spec: applicationapiv1alpha1.SnapshotSpec{
@@ -537,6 +540,39 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 
 			expectedLogEntry := "SnapshotEnvironmentBinding created for Snapshot"
 			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
+		})
+
+		It("ensures build labels/annotations prefixed with 'build.appstudio' are propagated from snapshot to Integration test PLR", func() {
+			pipelineRun, err := adapter.createIntegrationPipelineRun(hasApp, integrationTestScenario, hasSnapshot)
+			Expect(err).To(BeNil())
+			Expect(pipelineRun).ToNot(BeNil())
+
+			annotation, found := pipelineRun.GetAnnotations()["build.appstudio.redhat.com/commit_sha"]
+			Expect(found).To(BeTrue())
+			Expect(annotation).To(Equal("6c65b2fcaea3e1a0a92476c8b5dc89e92a85f025"))
+
+			label, found := pipelineRun.GetLabels()["build.appstudio.redhat.com/pipeline"]
+			Expect(found).To(BeTrue())
+			Expect(label).To(Equal("enterprise-contract"))
+		})
+
+		It("ensures build labels/annotations non-prefixed with 'build.appstudio' are NOT propagated from snapshot to Integration test PLR", func() {
+			pipelineRun, err := adapter.createIntegrationPipelineRun(hasApp, integrationTestScenario, hasSnapshot)
+			Expect(err).To(BeNil())
+			Expect(pipelineRun).ToNot(BeNil())
+
+			// build annotations non-prefixed with 'build.appstudio' are not copied
+			_, found := hasSnapshot.GetAnnotations()["appstudio.redhat.com/updateComponentOnSuccess"]
+			Expect(found).To(BeTrue())
+			_, found = pipelineRun.GetAnnotations()["appstudio.redhat.com/updateComponentOnSuccess"]
+			Expect(found).To(BeFalse())
+
+			// build labels non-prefixed with 'build.appstudio' are not copied
+			_, found = hasSnapshot.GetLabels()[gitops.SnapshotTypeLabel]
+			Expect(found).To(BeTrue())
+			_, found = pipelineRun.GetLabels()[gitops.SnapshotTypeLabel]
+			Expect(found).To(BeFalse())
+
 		})
 	})
 
