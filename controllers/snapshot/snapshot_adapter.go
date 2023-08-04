@@ -306,7 +306,7 @@ func (a *Adapter) EnsureAllReleasesExist() (controller.OperationResult, error) {
 		return controller.ContinueProcessing()
 	}
 
-	releasePlans, err := release.GetAutoReleasePlansForApplication(a.client, a.context, a.application)
+	releasePlans, err := a.loader.GetAutoReleasePlansForApplication(a.client, a.context, a.application)
 	if err != nil {
 		a.logger.Error(err, "Failed to get all ReleasePlans")
 		patch := client.MergeFrom(a.snapshot.DeepCopy())

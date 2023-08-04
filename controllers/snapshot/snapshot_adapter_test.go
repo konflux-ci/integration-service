@@ -2,6 +2,7 @@ package snapshot
 
 import (
 	"bytes"
+	"fmt"
 	"reflect"
 	"time"
 
@@ -597,6 +598,29 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		})
 	})
 
+	It("fails when EnsureAllReleasesExist is called and GetAutoReleasePlansForApplication returns an error", func() {
+		var buf bytes.Buffer
+		log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+
+		gitops.MarkSnapshotAsPassed(k8sClient, ctx, hasSnapshot, "test passed")
+		Expect(gitops.HaveAppStudioTestsSucceeded(hasSnapshot)).To(BeTrue())
+		adapter = NewAdapter(hasSnapshot, hasApp, hasComp, log, loader.NewMockLoader(), k8sClient, ctx)
+
+		// Mock the context with error for AutoReleasePlansContextKey
+		adapter.context = loader.GetMockedContext(ctx, []loader.MockData{
+			{
+				ContextKey: loader.AutoReleasePlansContextKey,
+				Err:        fmt.Errorf("Failed to get all ReleasePlans"),
+			},
+		})
+
+		result, err := adapter.EnsureAllReleasesExist()
+		Expect(result.CancelRequest).To(BeTrue())
+		Expect(result.RequeueRequest).To(BeFalse())
+		Expect(err).NotTo(HaveOccurred())
+		Expect(buf.String()).Should(ContainSubstring("Snapshot integration status marked as Invalid. Failed to get all ReleasePlans"))
+	})
+
 	When("multiple components exist", func() {
 
 		var (
@@ -846,4 +870,5 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			Expect(owners[0].Name).To(Equal(ephemeralEnv.Name))
 		})
 	})
+
 })

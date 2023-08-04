@@ -56,6 +56,7 @@ const (
 	AllIntegrationTestScenariosContextKey      contextKey = iota
 	RequiredIntegrationTestScenariosContextKey contextKey = iota
 	AllSnapshotsContextKey                     contextKey = iota
+	AutoReleasePlansContextKey                 contextKey = iota
 )
 
 func GetMockedContext(ctx context.Context, data []MockData) context.Context {
@@ -263,4 +264,13 @@ func (l *mockLoader) GetAllSnapshots(c client.Client, ctx context.Context, appli
 	}
 	snapshots, err := getMockedResourceAndErrorFromContext(ctx, AllSnapshotsContextKey, []applicationapiv1alpha1.Snapshot{})
 	return &snapshots, err
+}
+
+// GetAutoReleasePlansForApplication returns the resource and error passed as values of the context.
+func (l *mockLoader) GetAutoReleasePlansForApplication(c client.Client, ctx context.Context, application *applicationapiv1alpha1.Application) (*[]releasev1alpha1.ReleasePlan, error) {
+	if ctx.Value(AutoReleasePlansContextKey) == nil {
+		return l.loader.GetAutoReleasePlansForApplication(c, ctx, application)
+	}
+	autoReleasePlans, err := getMockedResourceAndErrorFromContext(ctx, AutoReleasePlansContextKey, []releasev1alpha1.ReleasePlan{})
+	return &autoReleasePlans, err
 }
