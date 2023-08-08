@@ -191,6 +191,7 @@ func (r *Reconciler) getIntegrationTestScenarioFromSnapshotEnvironmentBinding(co
 // AdapterInterface is an interface defining all the operations that should be defined in an Integration adapter.
 type AdapterInterface interface {
 	EnsureIntegrationTestPipelineForScenarioExists() (controller.OperationResult, error)
+	EnsureEphemeralEnvironmentsCleanedUp() (controller.OperationResult, error)
 }
 
 // SetupController creates a new Integration reconciler and adds it to the Manager.
