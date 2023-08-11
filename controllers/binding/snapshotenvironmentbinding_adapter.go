@@ -79,6 +79,7 @@ func (a *Adapter) EnsureIntegrationTestPipelineForScenarioExists() (controller.O
 		a.logger.Info("The SnapshotEnvironmentBinding hasn't yet deployed to the ephemeral environment.", "snapshotEnvironmentBinding.Name", a.snapshotEnvironmentBinding.Name)
 		return controller.ContinueProcessing()
 	}
+	a.logger.Info("The SnapshotEnvironmentBinding's deployment succeeded", "snapshotEnvironmentBinding.Name", a.snapshotEnvironmentBinding.Name)
 
 	if a.integrationTestScenario != nil {
 		integrationPipelineRun, err := loader.GetLatestPipelineRunForSnapshotAndScenario(a.client, a.context, a.loader, a.snapshot, a.integrationTestScenario)
@@ -113,7 +114,6 @@ func (a *Adapter) EnsureIntegrationTestPipelineForScenarioExists() (controller.O
 // EnsureEphemeralEnvironmentsCleanedUp will ensure that ephemeral environment(s) associated with the
 // SnapshotEnvironmentBinding are cleaned up.
 func (a *Adapter) EnsureEphemeralEnvironmentsCleanedUp() (controller.OperationResult, error) {
-
 	if !gitops.HaveBindingsFailed(a.snapshotEnvironmentBinding) {
 		return controller.ContinueProcessing()
 	}
@@ -121,6 +121,9 @@ func (a *Adapter) EnsureEphemeralEnvironmentsCleanedUp() (controller.OperationRe
 	// mark snapshot as failed
 	snapshotErrorMessage := "Encountered issue deploying snapshot on ephemeral environments: " +
 		meta.FindStatusCondition(a.snapshotEnvironmentBinding.Status.BindingConditions, "ErrorOccurred").Message
+	a.logger.Info("The SnapshotEnvironmentBinding encountered an issue deploying snapshot on ephemeral environments",
+		"snapshotEnvironmentBinding.Name", a.snapshotEnvironmentBinding.Name,
+		"message", snapshotErrorMessage)
 	_, err := gitops.MarkSnapshotAsFailed(a.client, a.context, a.snapshot, snapshotErrorMessage)
 	if err != nil {
 		a.logger.Error(err, "Failed to Update Snapshot status")
