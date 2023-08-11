@@ -9,6 +9,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -117,6 +118,45 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 		Expect(updatedSnapshot).NotTo(BeNil())
 		Expect(updatedSnapshot.Status.Conditions).NotTo(BeNil())
 		Expect(meta.IsStatusConditionTrue(updatedSnapshot.Status.Conditions, gitops.AppStudioTestSuceededCondition)).To(BeTrue())
+		Expect(gitops.IsSnapshotStatusConditionSet(hasSnapshot, gitops.AppStudioTestSuceededCondition, metav1.ConditionTrue, "")).To(BeTrue())
+	})
+
+	It("ensures the Snapshots LegacyTestSuceededCondition status can be marked as passed", func() {
+		patch := client.MergeFrom(hasSnapshot.DeepCopy())
+		condition := metav1.Condition{
+			Type:    gitops.LegacyTestSuceededCondition,
+			Status:  metav1.ConditionTrue,
+			Reason:  gitops.AppStudioTestSuceededConditionPassed,
+			Message: "Test message",
+		}
+		meta.SetStatusCondition(&hasSnapshot.Status.Conditions, condition)
+
+		err := k8sClient.Status().Patch(ctx, hasSnapshot, patch)
+		Expect(err).To(BeNil())
+		Expect(hasSnapshot).NotTo(BeNil())
+		Expect(hasSnapshot.Status.Conditions).NotTo(BeNil())
+		Expect(meta.IsStatusConditionTrue(hasSnapshot.Status.Conditions, gitops.LegacyTestSuceededCondition)).To(BeTrue())
+		Expect(gitops.IsSnapshotStatusConditionSet(hasSnapshot, gitops.AppStudioTestSuceededCondition, metav1.ConditionTrue, "")).To(BeTrue())
+		Expect(gitops.IsSnapshotStatusConditionSet(hasSnapshot, gitops.AppStudioTestSuceededCondition, metav1.ConditionFalse, "")).To(BeFalse())
+	})
+
+	It("ensures the Snapshots LegacyIntegrationStatusCondition status can be marked as invalid", func() {
+		patch := client.MergeFrom(hasSnapshot.DeepCopy())
+		condition := metav1.Condition{
+			Type:    gitops.LegacyIntegrationStatusCondition,
+			Status:  metav1.ConditionFalse,
+			Reason:  gitops.AppStudioIntegrationStatusInvalid,
+			Message: "Test message",
+		}
+		meta.SetStatusCondition(&hasSnapshot.Status.Conditions, condition)
+
+		err := k8sClient.Status().Patch(ctx, hasSnapshot, patch)
+		Expect(err).To(BeNil())
+		Expect(hasSnapshot).NotTo(BeNil())
+		Expect(hasSnapshot.Status.Conditions).NotTo(BeNil())
+		Expect(meta.IsStatusConditionTrue(hasSnapshot.Status.Conditions, gitops.LegacyIntegrationStatusCondition)).To(BeFalse())
+		Expect(gitops.IsSnapshotStatusConditionSet(hasSnapshot, gitops.AppStudioIntegrationStatusCondition, metav1.ConditionFalse, "Invalid")).To(BeTrue())
+		Expect(gitops.IsSnapshotStatusConditionSet(hasSnapshot, gitops.AppStudioIntegrationStatusCondition, metav1.ConditionFalse, "Valid")).To(BeFalse())
 	})
 
 	It("ensures the Snapshots status can be marked as failed", func() {
@@ -125,6 +165,7 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 		Expect(updatedSnapshot).NotTo(BeNil())
 		Expect(updatedSnapshot.Status.Conditions).NotTo(BeNil())
 		Expect(meta.IsStatusConditionTrue(updatedSnapshot.Status.Conditions, gitops.AppStudioTestSuceededCondition)).To(BeFalse())
+		Expect(gitops.IsSnapshotStatusConditionSet(hasSnapshot, gitops.AppStudioTestSuceededCondition, metav1.ConditionFalse, "")).To(BeTrue())
 	})
 
 	It("ensures the Snapshots status can be marked as error", func() {
@@ -190,6 +231,8 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 		Expect(hasSnapshot).NotTo(BeNil())
 		Expect(hasSnapshot.Status.Conditions).NotTo(BeNil())
 		Expect(gitops.IsSnapshotValid(hasSnapshot)).To(BeFalse())
+		Expect(gitops.IsSnapshotStatusConditionSet(hasSnapshot, gitops.AppStudioIntegrationStatusCondition,
+			metav1.ConditionFalse, gitops.AppStudioIntegrationStatusInvalid)).To(BeTrue())
 	})
 
 	It("ensures the Snapshots status can be detected to be valid", func() {
