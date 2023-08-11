@@ -66,7 +66,15 @@ func NewBindingComponents(components []applicationapiv1alpha1.Component) *[]appl
 }
 
 func HaveBindingsFailed(snapshotEnvironmentBinding *applicationapiv1alpha1.SnapshotEnvironmentBinding) bool {
-	bindingStatus := meta.FindStatusCondition(snapshotEnvironmentBinding.Status.ComponentDeploymentConditions, BindingErrorOccurredStatusConditionType)
+	bindingStatus := meta.FindStatusCondition(snapshotEnvironmentBinding.Status.BindingConditions, BindingErrorOccurredStatusConditionType)
+	if bindingStatus == nil {
+		return false
+	}
+	return bindingStatus.Status == metav1.ConditionTrue
+}
+
+func IsBindingDeployed(snapshotEnvironmentBinding *applicationapiv1alpha1.SnapshotEnvironmentBinding) bool {
+	bindingStatus := meta.FindStatusCondition(snapshotEnvironmentBinding.Status.ComponentDeploymentConditions, BindingDeploymentStatusConditionType)
 	if bindingStatus == nil {
 		return false
 	}
