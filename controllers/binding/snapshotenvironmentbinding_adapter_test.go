@@ -292,7 +292,7 @@ var _ = Describe("Binding Adapter", Ordered, func() {
 		Expect(k8sClient.Create(ctx, hasBinding)).Should(Succeed())
 
 		hasBinding.Status = applicationapiv1alpha1.SnapshotEnvironmentBindingStatus{
-			BindingConditions: []metav1.Condition{
+			ComponentDeploymentConditions: []metav1.Condition{
 				{
 					Reason:             "Completed",
 					Status:             "True",
@@ -436,7 +436,7 @@ var _ = Describe("Binding Adapter", Ordered, func() {
 		log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
 		hasEnv.Spec.Tags = append(hasEnv.Spec.Tags, "ephemeral")
 		hasBinding.Status = applicationapiv1alpha1.SnapshotEnvironmentBindingStatus{
-			ComponentDeploymentConditions: []metav1.Condition{
+			BindingConditions: []metav1.Condition{
 				{
 					Reason:             "ErrorOccurred",
 					Status:             "True",

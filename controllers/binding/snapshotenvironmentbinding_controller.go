@@ -23,12 +23,10 @@ import (
 	"github.com/redhat-appstudio/integration-service/helpers"
 	"github.com/redhat-appstudio/integration-service/loader"
 	"github.com/redhat-appstudio/operator-toolkit/controller"
-	"github.com/redhat-appstudio/operator-toolkit/predicates"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 )
@@ -202,8 +200,7 @@ func SetupController(manager ctrl.Manager, log *logr.Logger) error {
 // setupControllerWithManager sets up the controller with the Manager which monitors new SnapshotEnvironmentBindings
 func setupControllerWithManager(manager ctrl.Manager, reconciler *Reconciler) error {
 	return ctrl.NewControllerManagedBy(manager).
-		For(&applicationapiv1alpha1.SnapshotEnvironmentBinding{},
-			builder.WithPredicates(predicates.GenerationUnchangedOnUpdatePredicate{})).
+		For(&applicationapiv1alpha1.SnapshotEnvironmentBinding{}).
 		WithEventFilter(predicate.Or(
 			gitops.DeploymentSucceededForIntegrationBindingPredicate(), gitops.DeploymentFailedForIntegrationBindingPredicate())).
 		Complete(reconciler)

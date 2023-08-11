@@ -71,7 +71,12 @@ func (a *Adapter) EnsureIntegrationTestPipelineForScenarioExists() (controller.O
 	}
 
 	if gitops.HaveBindingsFailed(a.snapshotEnvironmentBinding) {
-		a.logger.Info("The SnapshotEnvrionmentBinding has failed to deploy on ephemeral envrionment and will be deleted later.", "snapshotEnvironmentBinding.Name", a.snapshotEnvironmentBinding.Name)
+		a.logger.Info("The SnapshotEnvironmentBinding has failed to deploy on ephemeral environment and will be deleted later.", "snapshotEnvironmentBinding.Name", a.snapshotEnvironmentBinding.Name)
+		return controller.ContinueProcessing()
+	}
+
+	if !gitops.IsBindingDeployed(a.snapshotEnvironmentBinding) {
+		a.logger.Info("The SnapshotEnvironmentBinding hasn't yet deployed to the ephemeral environment.", "snapshotEnvironmentBinding.Name", a.snapshotEnvironmentBinding.Name)
 		return controller.ContinueProcessing()
 	}
 
@@ -115,7 +120,7 @@ func (a *Adapter) EnsureEphemeralEnvironmentsCleanedUp() (controller.OperationRe
 
 	// mark snapshot as failed
 	snapshotErrorMessage := "Encountered issue deploying snapshot on ephemeral environments: " +
-		meta.FindStatusCondition(a.snapshotEnvironmentBinding.Status.ComponentDeploymentConditions, "ErrorOccurred").Message
+		meta.FindStatusCondition(a.snapshotEnvironmentBinding.Status.BindingConditions, "ErrorOccurred").Message
 	_, err := gitops.MarkSnapshotAsFailed(a.client, a.context, a.snapshot, snapshotErrorMessage)
 	if err != nil {
 		a.logger.Error(err, "Failed to Update Snapshot status")
