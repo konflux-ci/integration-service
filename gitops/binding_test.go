@@ -20,8 +20,8 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 		hasApp      *applicationapiv1alpha1.Application
 		hasComp     *applicationapiv1alpha1.Component
 		hasSnapshot *applicationapiv1alpha1.Snapshot
+		hasBinding  *applicationapiv1alpha1.SnapshotEnvironmentBinding
 		env         applicationapiv1alpha1.Environment
-		sampleImage string
 	)
 	const (
 		SampleRepoLink  = "https://github.com/devfile-samples/devfile-sample-java-springboot-basic"
@@ -29,6 +29,7 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 		applicationName = "application-sample"
 		componentName   = "component-sample"
 		snapshotName    = "snapshot-sample"
+		sampleImage     = "quay.io/redhat-appstudio/sample-image:latest"
 	)
 
 	BeforeAll(func() {
@@ -86,10 +87,6 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 			},
 		}
 		Expect(k8sClient.Create(ctx, &env)).Should(Succeed())
-	})
-
-	BeforeEach(func() {
-		sampleImage = "quay.io/redhat-appstudio/sample-image:latest"
 
 		hasSnapshot = &applicationapiv1alpha1.Snapshot{
 			ObjectMeta: metav1.ObjectMeta{
@@ -112,18 +109,40 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 		}
 		Expect(k8sClient.Create(ctx, hasSnapshot)).Should(Succeed())
 
-		Eventually(func() error {
-			err := k8sClient.Get(ctx, types.NamespacedName{
-				Name:      hasSnapshot.Name,
-				Namespace: namespace,
-			}, hasSnapshot)
-			return err
-		}, time.Second*10).ShouldNot(HaveOccurred())
-	})
+		hasBinding = &applicationapiv1alpha1.SnapshotEnvironmentBinding{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "snapshot-binding-sample",
+				Namespace: "default",
+			},
+			Spec: applicationapiv1alpha1.SnapshotEnvironmentBindingSpec{
+				Application: hasApp.Name,
+				Snapshot:    hasSnapshot.Name,
+				Environment: env.Name,
+				Components:  []applicationapiv1alpha1.BindingComponent{},
+			},
+		}
+		Expect(k8sClient.Create(ctx, hasBinding)).Should(Succeed())
 
-	AfterEach(func() {
-		err := k8sClient.Delete(ctx, hasSnapshot)
-		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
+		hasBinding.Status = applicationapiv1alpha1.SnapshotEnvironmentBindingStatus{
+			ComponentDeploymentConditions: []metav1.Condition{
+				{
+					Reason:             "Completed",
+					Status:             "True",
+					Type:               gitops.BindingDeploymentStatusConditionType,
+					LastTransitionTime: metav1.Time{Time: time.Now()},
+				},
+			},
+		}
+
+		Expect(k8sClient.Status().Update(ctx, hasBinding)).Should(Succeed())
+
+		Eventually(func() bool {
+			err := k8sClient.Get(ctx, types.NamespacedName{
+				Name:      hasBinding.Name,
+				Namespace: "default",
+			}, hasBinding)
+			return err == nil && gitops.IsBindingDeployed(hasBinding)
+		}, time.Second*20).Should(BeTrue())
 	})
 
 	AfterAll(func() {
@@ -133,7 +152,10 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 		err = k8sClient.Delete(ctx, &env)
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
-
+		err = k8sClient.Delete(ctx, hasSnapshot)
+		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
+		err = k8sClient.Delete(ctx, hasBinding)
+		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 	})
 
 	It("ensures Binding Component is created", func() {
@@ -142,5 +164,43 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 		bindingComponents := gitops.NewBindingComponents([]applicationapiv1alpha1.Component{*hasComp})
 		Expect(bindingComponents).NotTo(BeNil())
 		Expect(hasComp.Spec.Replicas).To(Equal(0))
+	})
+
+	It("ensures a new SnapshotEnvironmentBinding is created", func() {
+		newSnapshotEnvironmentBinding := gitops.NewSnapshotEnvironmentBinding("sample", namespace, hasApp.Name, env.Name, hasSnapshot, []applicationapiv1alpha1.Component{*hasComp})
+		Expect(newSnapshotEnvironmentBinding).NotTo(BeNil())
+		Expect(newSnapshotEnvironmentBinding.Spec.Snapshot).To(Equal(hasSnapshot.Name))
+		Expect(newSnapshotEnvironmentBinding.Spec.Environment).To(Equal(env.Name))
+		Expect(len(newSnapshotEnvironmentBinding.Spec.Components)).To(Equal(1))
+
+		Expect(gitops.IsBindingDeployed(newSnapshotEnvironmentBinding)).NotTo(BeTrue())
+		Expect(gitops.HaveBindingsFailed(newSnapshotEnvironmentBinding)).NotTo(BeTrue())
+	})
+
+	It("ensures an existing deployed SnapshotEnvironmentBinding conditions are recognized", func() {
+		Expect(gitops.IsBindingDeployed(hasBinding)).To(BeTrue())
+		Expect(gitops.HaveBindingsFailed(hasBinding)).NotTo(BeTrue())
+
+		hasBinding.Status = applicationapiv1alpha1.SnapshotEnvironmentBindingStatus{
+			ComponentDeploymentConditions: []metav1.Condition{
+				{
+					Reason:             "CommitsUnsynced",
+					Status:             "False",
+					Type:               gitops.BindingDeploymentStatusConditionType,
+					LastTransitionTime: metav1.Time{Time: time.Now()},
+				},
+			},
+			BindingConditions: []metav1.Condition{
+				{
+					Reason:             "ErrorOccurred",
+					Status:             "True",
+					Type:               gitops.BindingErrorOccurredStatusConditionType,
+					LastTransitionTime: metav1.Time{Time: time.Now()},
+				},
+			},
+		}
+
+		Expect(gitops.IsBindingDeployed(hasBinding)).NotTo(BeTrue())
+		Expect(gitops.HaveBindingsFailed(hasBinding)).To(BeTrue())
 	})
 })

@@ -304,13 +304,13 @@ var _ = Describe("Binding Adapter", Ordered, func() {
 
 		Expect(k8sClient.Status().Update(ctx, hasBinding)).Should(Succeed())
 
-		Eventually(func() error {
+		Eventually(func() bool {
 			err := k8sClient.Get(ctx, types.NamespacedName{
 				Name:      hasBinding.Name,
 				Namespace: "default",
 			}, hasBinding)
-			return err
-		}, time.Second*10).ShouldNot(HaveOccurred())
+			return err == nil && gitops.IsBindingDeployed(hasBinding)
+		}, time.Second*20).Should(BeTrue())
 	})
 
 	AfterEach(func() {
