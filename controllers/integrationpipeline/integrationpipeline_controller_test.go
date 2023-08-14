@@ -278,17 +278,8 @@ var _ = Describe("Integration PipelineController", func() {
 				},
 				Spec: tektonv1beta1.PipelineRunSpec{
 					PipelineRef: &tektonv1beta1.PipelineRef{
-						Name:   "build-pipeline-pass",
-						Bundle: "quay.io/kpavic/test-bundle:build-pipeline-pass",
-					},
-					Params: []tektonv1beta1.Param{
-						{
-							Name: "output-image",
-							Value: tektonv1beta1.ParamValue{
-								Type:      tektonv1beta1.ParamTypeString,
-								StringVal: "quay.io/redhat-appstudio/sample-image",
-							},
-						},
+						Name:   "component-pipeline-pass",
+						Bundle: "quay.io/kpavic/test-bundle:component-pipeline-pass",
 					},
 				},
 			}
@@ -307,7 +298,7 @@ var _ = Describe("Integration PipelineController", func() {
 			Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 		})
 
-		It("reconcile with application taken from pipelinerun (test pipeline)", func() {
+		It("reconcile with application taken from pipelinerun (integration pipeline)", func() {
 			result, err := pipelineReconciler.Reconcile(ctx, reqNoComponent)
 			Expect(reflect.TypeOf(result)).To(Equal(reflect.TypeOf(reconcile.Result{})))
 			Expect(err).To(BeNil())

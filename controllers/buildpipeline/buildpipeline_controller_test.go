@@ -261,7 +261,7 @@ var _ = Describe("PipelineController", func() {
 					Name:      "pipelinerun-sample-no-component",
 					Namespace: "default",
 					Labels: map[string]string{
-						"pipelines.appstudio.openshift.io/type": "test",
+						"pipelines.appstudio.openshift.io/type": "build",
 						"pipelines.openshift.io/used-by":        "build-cloud",
 						"pipelines.openshift.io/runtime":        "nodejs",
 						"pipelines.openshift.io/strategy":       "s2i",
@@ -302,7 +302,7 @@ var _ = Describe("PipelineController", func() {
 			Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 		})
 
-		It("reconcile with application taken from pipelinerun (test pipeline)", func() {
+		It("reconcile with application taken from pipelinerun (build pipeline)", func() {
 			result, err := pipelineReconciler.Reconcile(ctx, reqNoComponent)
 			Expect(reflect.TypeOf(result)).To(Equal(reflect.TypeOf(reconcile.Result{})))
 			Expect(err).To(BeNil())
