@@ -33,7 +33,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-// Adapter holds the objects needed to reconcile a integration PipelineRun.
+// Adapter holds the objects needed to reconcile an integration PipelineRun.
 type Adapter struct {
 	pipelineRun *tektonv1beta1.PipelineRun
 	component   *applicationapiv1alpha1.Component
@@ -282,7 +282,7 @@ func (a *Adapter) getAllPipelineRunsForSnapshot(snapshot *applicationapiv1alpha1
 	return &integrationPipelineRuns, nil
 }
 
-// prepareCompositeSnapshot prepares the Snapshot for a given application,
+// prepareCompositeSnapshot prepares the Composite Snapshot for a given application,
 // componentnew, containerImage and newContainerSource. In case the Snapshot can't be created, an error will be returned.
 func (a *Adapter) prepareCompositeSnapshot(application *applicationapiv1alpha1.Application, component *applicationapiv1alpha1.Component, newContainerImage string, newComponentSource *applicationapiv1alpha1.ComponentSource) (*applicationapiv1alpha1.Snapshot, error) {
 	applicationComponents, err := a.loader.GetAllApplicationComponents(a.client, a.context, application)

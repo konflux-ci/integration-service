@@ -28,7 +28,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 	)
 
 	var (
-		//two test pipeline for integrationTestScenario
+		//two integration pipeline for integrationTestScenario
 		integrationPipelineRun       *tektonv1beta1.PipelineRun
 		integrationPipelineRunFailed *tektonv1beta1.PipelineRun
 		buildPipelineRun             *tektonv1beta1.PipelineRun
