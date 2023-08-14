@@ -19,13 +19,12 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 )
 
-// DeploymentFinishedForIntegrationBindingPredicate returns a predicate which filters out update events to a
-// SnapshotEnvironmentBinding that has the IntegrationTestScenario specified in the label and
-// where the component deployment status goes from unknown to true/false.
+// DeploymentSucceededForIntegrationBindingPredicate returns a predicate which filters out update events to a
+// SnapshotEnvironmentBinding whose component deployment status goes from unknown/false to true.
 func DeploymentSucceededForIntegrationBindingPredicate() predicate.Predicate {
 	return predicate.Funcs{
 		UpdateFunc: func(e event.UpdateEvent) bool {
-			return hasDeploymentSucceeded(e.ObjectOld, e.ObjectNew) && helpers.HasLabel(e.ObjectNew, SnapshotTestScenarioLabel)
+			return hasDeploymentSucceeded(e.ObjectOld, e.ObjectNew)
 		},
 	}
 }
@@ -36,6 +35,25 @@ func DeploymentFailedForIntegrationBindingPredicate() predicate.Predicate {
 	return predicate.Funcs{
 		UpdateFunc: func(e event.UpdateEvent) bool {
 			return hasDeploymentFailed(e.ObjectOld, e.ObjectNew)
+		},
+	}
+}
+
+// IntegrationSnapshotEnvironmentBindingPredicate returns a predicate which filters out update events to a
+// SnapshotEnvironmentBinding associated with an IntegrationTestScenario.
+func IntegrationSnapshotEnvironmentBindingPredicate() predicate.Predicate {
+	return predicate.Funcs{
+		CreateFunc: func(createEvent event.CreateEvent) bool {
+			return false
+		},
+		DeleteFunc: func(deleteEvent event.DeleteEvent) bool {
+			return false
+		},
+		GenericFunc: func(genericEvent event.GenericEvent) bool {
+			return false
+		},
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			return helpers.HasLabel(e.ObjectNew, SnapshotTestScenarioLabel)
 		},
 	}
 }

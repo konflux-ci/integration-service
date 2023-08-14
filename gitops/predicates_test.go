@@ -168,4 +168,57 @@ var _ = Describe("Predicates", Ordered, func() {
 			Expect(instance.Update(contextEvent)).To(BeTrue())
 		})
 	})
+	Context("when testing IntegrationSnapshotEnvironmentBindingPredicate predicate", func() {
+		instance := gitops.IntegrationSnapshotEnvironmentBindingPredicate()
+		It("returns true when the successfully deployed SEB has the SnapshotTestScenarioLabel set", func() {
+			contextEvent := event.UpdateEvent{
+				ObjectOld: bindingMissingStatus,
+				ObjectNew: bindingTrueStatus,
+			}
+			Expect(instance.Update(contextEvent)).To(BeTrue())
+		})
+
+		It("returns true when the SEB with failed deployment has the SnapshotTestScenarioLabel set", func() {
+			contextEvent := event.UpdateEvent{
+				ObjectOld: bindingMissingStatus,
+				ObjectNew: bindingDeploymentFailedStatus,
+			}
+			Expect(instance.Update(contextEvent)).To(BeTrue())
+		})
+
+		It("returns false when the successfully deployed SEB has the SnapshotTestScenarioLabel not set", func() {
+			bindingTrueStatus.ObjectMeta.Labels = map[string]string{}
+
+			contextEvent := event.UpdateEvent{
+				ObjectOld: bindingMissingStatus,
+				ObjectNew: bindingTrueStatus,
+			}
+			Expect(instance.Update(contextEvent)).To(BeFalse())
+		})
+
+		It("returns false when the SEB with SnapshotTestScenarioLabel is created", func() {
+			bindingMissingStatus.ObjectMeta.Labels = map[string]string{gitops.SnapshotTestScenarioLabel: "test-scenario"}
+
+			contextEvent := event.CreateEvent{
+				Object: bindingMissingStatus,
+			}
+			Expect(instance.Create(contextEvent)).To(BeFalse())
+		})
+		It("returns false when the SEB with SnapshotTestScenarioLabel is deleted", func() {
+			bindingMissingStatus.ObjectMeta.Labels = map[string]string{gitops.SnapshotTestScenarioLabel: "test-scenario"}
+
+			contextEvent := event.DeleteEvent{
+				Object: bindingMissingStatus,
+			}
+			Expect(instance.Delete(contextEvent)).To(BeFalse())
+		})
+		It("returns false when the SEB with SnapshotTestScenarioLabel encounters a generic event", func() {
+			bindingMissingStatus.ObjectMeta.Labels = map[string]string{gitops.SnapshotTestScenarioLabel: "test-scenario"}
+
+			contextEvent := event.GenericEvent{
+				Object: bindingMissingStatus,
+			}
+			Expect(instance.Generic(contextEvent)).To(BeFalse())
+		})
+	})
 })

@@ -6,6 +6,7 @@ flowchart TD
     classDef Amber fill:#FFDEAD;
     classDef Green fill:#BDFFA4;
 
+predicate_integration_seb((PREDICATE: <br>SnapshotEnvironmentBinding<br>is associated with<br>IntegrationTestScenario))
 predicate_deploy_success((PREDICATE:  <br>SnapshotEnvironmentBinding<br>is updated or successfully<br>deployed))
 
 %%%%%%%%%%%%%%%%%%%%%%% Drawing EnsureIntegrationTestPipelineForScenarioExists() function
@@ -19,6 +20,7 @@ isPipelineRunExisting{"Does an integration<br>pipelineRun exist?"}
 createNewPipelineRun("Create a new pipelineRun<br>for the snapshot")
 
 %% Node connections
+predicate_integration_seb  ---->       predicate_deploy_success
 predicate_deploy_success   ---->       |"EnsureIntegrationTestPipelineForScenarioExists()"|ensure1
 ensure1                    ---->       isThereAnITS
 isThereAnITS               --No-->     continueProcessing1
@@ -39,6 +41,7 @@ cleanupDeploymentArtifacts("Delete DeploymentTargetClaim and Environment")
 continueProcessing2[/Controller continues processing.../]
 
 %% Node connections
+predicate_integration_seb    ---->       predicate_deploy_fail
 predicate_deploy_fail        ---->       |"EnsureEphemeralEnvironmentsCleanedUp()"|ensure2
 ensure2                      ---->       markSnapshot
 markSnapshot                 ---->       cleanupDeploymentArtifacts
@@ -47,4 +50,5 @@ cleanupDeploymentArtifacts   ---->       continueProcessing2
 %% Assigning styles to nodes
 class predicate_deploy_success Amber;
 class predicate_deploy_fail Amber;
+class predicate_integration_seb Amber;
 ```
