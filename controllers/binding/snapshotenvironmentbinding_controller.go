@@ -201,7 +201,7 @@ func SetupController(manager ctrl.Manager, log *logr.Logger) error {
 func setupControllerWithManager(manager ctrl.Manager, reconciler *Reconciler) error {
 	return ctrl.NewControllerManagedBy(manager).
 		For(&applicationapiv1alpha1.SnapshotEnvironmentBinding{}).
-		WithEventFilter(predicate.Or(
-			gitops.DeploymentSucceededForIntegrationBindingPredicate(), gitops.DeploymentFailedForIntegrationBindingPredicate())).
+		WithEventFilter(predicate.And(gitops.IntegrationSnapshotEnvironmentBindingPredicate(), predicate.Or(
+			gitops.DeploymentSucceededForIntegrationBindingPredicate(), gitops.DeploymentFailedForIntegrationBindingPredicate()))).
 		Complete(reconciler)
 }
