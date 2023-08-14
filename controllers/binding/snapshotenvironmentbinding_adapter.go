@@ -132,7 +132,8 @@ func (a *Adapter) EnsureEphemeralEnvironmentsCleanedUp() (controller.OperationRe
 
 	deploymentTargetClaim, err := a.loader.GetDeploymentTargetClaimForEnvironment(a.client, a.context, a.environment)
 	if err != nil {
-		a.logger.Error(err, "failed to find deploymentTargetClaim defined in environment %s", a.environment.Name)
+		a.logger.Error(err, "failed to find deploymentTargetClaim for environment",
+			"environment", a.environment.Name)
 		return controller.RequeueWithError(err)
 	}
 
