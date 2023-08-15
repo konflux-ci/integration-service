@@ -95,7 +95,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	application := &applicationapiv1alpha1.Application{}
 	application, err = loader.GetApplicationFromPipelineRun(r.Client, ctx, pipelineRun)
 	if err != nil {
-		logger.Error(err, "Failed to get Application from the test pipelineRun",
+		logger.Error(err, "Failed to get Application from the integration pipelineRun",
 			"PipelineRun.Name", pipelineRun.Name, "PipelineRun.Namespace", pipelineRun.Namespace)
 		return ctrl.Result{}, err
 	}
