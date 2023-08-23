@@ -5,9 +5,11 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/redhat-appstudio/integration-service/gitops"
 	"github.com/redhat-appstudio/integration-service/status"
 
 	"github.com/go-logr/logr"
+	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	tektonv1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -15,7 +17,11 @@ import (
 
 type MockReporter struct{}
 
-func (r *MockReporter) ReportStatus(client.Client, context.Context, *tektonv1beta1.PipelineRun) error {
+func (r *MockReporter) ReportStatusForPipelineRun(client.Client, context.Context, *tektonv1beta1.PipelineRun) error {
+	return nil
+}
+
+func (r *MockReporter) ReportStatusForSnapshot(client.Client, context.Context, *applicationapiv1alpha1.Snapshot, string, gitops.IntegrationTestStatus) error {
 	return nil
 }
 
@@ -35,8 +41,8 @@ var _ = Describe("Status Adapter", func() {
 
 	It("can get reporters from a PipelineRun", func() {
 		adapter := status.NewAdapter(logr.Discard(), nil, status.WithGitHubReporter(&MockReporter{}))
-		reporters, err := adapter.GetReporters(pipelineRun)
+		reporter, err := adapter.GetReporters(pipelineRun)
 		Expect(err).To(BeNil())
-		Expect(len(reporters)).To(Equal(1))
+		Expect(reporter).NotTo(BeNil())
 	})
 })

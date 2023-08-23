@@ -2,6 +2,7 @@ package snapshot
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"reflect"
 	"time"
@@ -14,6 +15,7 @@ import (
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/api/v1beta1"
 	"github.com/redhat-appstudio/integration-service/loader"
+	"github.com/redhat-appstudio/integration-service/status"
 	releasev1alpha1 "github.com/redhat-appstudio/release-service/api/v1alpha1"
 	releasemetadata "github.com/redhat-appstudio/release-service/metadata"
 	tektonv1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
@@ -27,10 +29,36 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
+type MockStatusAdapter struct {
+	Reporter          *MockStatusReporter
+	GetReportersError error
+}
+
+type MockStatusReporter struct {
+	Called            bool
+	ReportStatusError error
+}
+
+func (r *MockStatusReporter) ReportStatusForPipelineRun(client.Client, context.Context, *tektonv1beta1.PipelineRun) error {
+	r.Called = true
+	return r.ReportStatusError
+}
+
+func (r *MockStatusReporter) ReportStatusForSnapshot(client.Client, context.Context, *applicationapiv1alpha1.Snapshot, string, gitops.IntegrationTestStatus) error {
+	r.Called = true
+	return r.ReportStatusError
+}
+
+func (a *MockStatusAdapter) GetReporters(object client.Object) ([]status.Reporter, error) {
+	return []status.Reporter{a.Reporter}, a.GetReportersError
+}
+
 var _ = Describe("Snapshot Adapter", Ordered, func() {
 	var (
-		adapter *Adapter
-		logger  helpers.IntegrationLogger
+		adapter        *Adapter
+		logger         helpers.IntegrationLogger
+		statusAdapter  *MockStatusAdapter
+		statusReporter *MockStatusReporter
 
 		testReleasePlan                   *releasev1alpha1.ReleasePlan
 		hasApp                            *applicationapiv1alpha1.Application
@@ -727,6 +755,50 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 
 			expectedLogEntry = "DeploymentTargetClaim is created for environment"
 			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
+		})
+
+		It("ensures status is reported if ephemeral Environment provision failed", func() {
+			adapter.context = loader.GetMockedContext(ctx, []loader.MockData{
+				{
+					ContextKey: loader.ApplicationContextKey,
+					Resource:   hasApp,
+				},
+				{
+					ContextKey: loader.ComponentContextKey,
+					Resource:   hasComp,
+				},
+				{
+					ContextKey: loader.SnapshotContextKey,
+					Resource:   hasSnapshotPR,
+				},
+				{
+					ContextKey: loader.EnvironmentContextKey,
+					Resource:   env,
+				},
+				{
+					ContextKey: loader.ApplicationComponentsContextKey,
+					Resource:   []applicationapiv1alpha1.Component{*hasComp, *secondComp},
+				},
+				{
+					ContextKey: loader.DeploymentTargetClassContextKey,
+					Resource:   nil,
+					Err:        fmt.Errorf("error"),
+				},
+				{
+					ContextKey: loader.AllIntegrationTestScenariosContextKey,
+					Resource:   []v1beta1.IntegrationTestScenario{*integrationTestScenario, *integrationTestScenarioWithoutEnv},
+				},
+				{
+					ContextKey: loader.RequiredIntegrationTestScenariosContextKey,
+					Resource:   []v1beta1.IntegrationTestScenario{*integrationTestScenario, *integrationTestScenarioWithoutEnv},
+				},
+			})
+			statusReporter = &MockStatusReporter{}
+			statusAdapter = &MockStatusAdapter{Reporter: statusReporter}
+			adapter.status = statusAdapter
+			result, err := adapter.EnsureCreationOfEnvironment()
+			Expect(statusReporter.Called).To(BeTrue())
+			Expect(!result.CancelRequest && err != nil).To(BeTrue())
 		})
 
 		It("ensure binding with scenario label created", func() {

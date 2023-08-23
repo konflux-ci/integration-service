@@ -15,6 +15,8 @@ package binding
 
 import (
 	"bytes"
+	"context"
+	"errors"
 	"fmt"
 	"reflect"
 	"time"
@@ -27,6 +29,7 @@ import (
 
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/api/v1beta1"
+	"github.com/redhat-appstudio/integration-service/status"
 	releasev1alpha1 "github.com/redhat-appstudio/release-service/api/v1alpha1"
 	releasemetadata "github.com/redhat-appstudio/release-service/metadata"
 	tektonv1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
@@ -36,15 +39,41 @@ import (
 	"github.com/redhat-appstudio/integration-service/gitops"
 	"github.com/redhat-appstudio/integration-service/helpers"
 	"github.com/redhat-appstudio/integration-service/loader"
-	"k8s.io/apimachinery/pkg/api/errors"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
+type MockStatusAdapter struct {
+	Reporter          *MockStatusReporter
+	GetReportersError error
+}
+
+type MockStatusReporter struct {
+	Called            bool
+	ReportStatusError error
+}
+
+func (r *MockStatusReporter) ReportStatusForPipelineRun(client.Client, context.Context, *tektonv1beta1.PipelineRun) error {
+	r.Called = true
+	return r.ReportStatusError
+}
+
+func (r *MockStatusReporter) ReportStatusForSnapshot(client.Client, context.Context, *applicationapiv1alpha1.Snapshot, string, gitops.IntegrationTestStatus) error {
+	r.Called = true
+	return r.ReportStatusError
+}
+
+func (a *MockStatusAdapter) GetReporters(object client.Object) ([]status.Reporter, error) {
+	return []status.Reporter{a.Reporter}, a.GetReportersError
+}
+
 var _ = Describe("Binding Adapter", Ordered, func() {
 	var (
-		adapter *Adapter
-		logger  helpers.IntegrationLogger
+		adapter        *Adapter
+		logger         helpers.IntegrationLogger
+		statusAdapter  *MockStatusAdapter
+		statusReporter *MockStatusReporter
 
 		testReleasePlan         *releasev1alpha1.ReleasePlan
 		hasApp                  *applicationapiv1alpha1.Application
@@ -315,28 +344,28 @@ var _ = Describe("Binding Adapter", Ordered, func() {
 
 	AfterEach(func() {
 		err := k8sClient.Delete(ctx, hasBinding)
-		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
+		Expect(err == nil || k8serrors.IsNotFound(err)).To(BeTrue())
 		err = k8sClient.Delete(ctx, hasSnapshot)
-		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
+		Expect(err == nil || k8serrors.IsNotFound(err)).To(BeTrue())
 	})
 
 	AfterAll(func() {
 		err := k8sClient.Delete(ctx, hasApp)
-		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
+		Expect(err == nil || k8serrors.IsNotFound(err)).To(BeTrue())
 		err = k8sClient.Delete(ctx, hasComp)
-		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
+		Expect(err == nil || k8serrors.IsNotFound(err)).To(BeTrue())
 		err = k8sClient.Delete(ctx, hasEnv)
-		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
+		Expect(err == nil || k8serrors.IsNotFound(err)).To(BeTrue())
 		err = k8sClient.Delete(ctx, integrationTestScenario)
-		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
+		Expect(err == nil || k8serrors.IsNotFound(err)).To(BeTrue())
 		err = k8sClient.Delete(ctx, testReleasePlan)
-		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
+		Expect(err == nil || k8serrors.IsNotFound(err)).To(BeTrue())
 		err = k8sClient.Delete(ctx, deploymentTarget)
-		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
+		Expect(err == nil || k8serrors.IsNotFound(err)).To(BeTrue())
 		err = k8sClient.Delete(ctx, deploymentTargetClaim)
-		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
+		Expect(err == nil || k8serrors.IsNotFound(err)).To(BeTrue())
 		err = k8sClient.Delete(ctx, finishedSnapshot)
-		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
+		Expect(err == nil || k8serrors.IsNotFound(err)).To(BeTrue())
 
 	})
 
@@ -478,5 +507,41 @@ var _ = Describe("Binding Adapter", Ordered, func() {
 
 		expectedLogEntry = "Ephemeral environment and its owning snapshotEnvironmentBinding deleted"
 		Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
+	})
+
+	It("ensures status is reported for the failed binding condition ", func() {
+		var buf bytes.Buffer
+		log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+		hasEnv.Spec.Tags = append(hasEnv.Spec.Tags, "ephemeral")
+		hasBinding.Status = applicationapiv1alpha1.SnapshotEnvironmentBindingStatus{
+			BindingConditions: []metav1.Condition{
+				{
+					Reason:             "ErrorOccurred",
+					Status:             "True",
+					Type:               gitops.BindingErrorOccurredStatusConditionType,
+					LastTransitionTime: metav1.Time{Time: time.Now()},
+				},
+			},
+		}
+
+		adapter = NewAdapter(hasBinding, hasSnapshot, hasEnv, hasApp, hasComp, integrationTestScenario, log, loader.NewMockLoader(), k8sClient, ctx)
+		statusReporter = &MockStatusReporter{}
+		statusAdapter = &MockStatusAdapter{Reporter: statusReporter}
+		adapter.status = statusAdapter
+
+		result, err := adapter.EnsureIntegrationTestPipelineForScenarioExists()
+		Expect(statusReporter.Called).To(BeTrue())
+		Expect(!result.CancelRequest && err == nil).To(BeTrue())
+
+		statusAdapter.GetReportersError = errors.New("GetReportersError")
+
+		result, err = adapter.EnsureIntegrationTestPipelineForScenarioExists()
+		Expect(!result.RequeueRequest && err == nil).To(BeTrue())
+
+		statusAdapter.GetReportersError = nil
+		statusReporter.ReportStatusError = errors.New("ReportStatusError")
+
+		result, err = adapter.EnsureIntegrationTestPipelineForScenarioExists()
+		Expect(!result.RequeueRequest && err == nil).To(BeTrue())
 	})
 })

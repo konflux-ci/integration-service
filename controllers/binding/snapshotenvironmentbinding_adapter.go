@@ -26,6 +26,7 @@ import (
 	"github.com/redhat-appstudio/integration-service/gitops"
 	h "github.com/redhat-appstudio/integration-service/helpers"
 	"github.com/redhat-appstudio/integration-service/loader"
+	"github.com/redhat-appstudio/integration-service/status"
 	"github.com/redhat-appstudio/integration-service/tekton"
 	pipeline "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -43,6 +44,7 @@ type Adapter struct {
 	client                     client.Client
 	context                    context.Context
 	loader                     loader.ObjectLoader
+	status                     status.Status
 }
 
 // NewAdapter creates and returns an Adapter instance.
@@ -59,6 +61,7 @@ func NewAdapter(snapshotEnvironmentBinding *applicationapiv1alpha1.SnapshotEnvir
 		loader:                     loader,
 		client:                     client,
 		context:                    context,
+		status:                     status.NewAdapter(logger.Logger, client),
 	}
 }
 
@@ -71,7 +74,14 @@ func (a *Adapter) EnsureIntegrationTestPipelineForScenarioExists() (controller.O
 	}
 
 	if gitops.HaveBindingsFailed(a.snapshotEnvironmentBinding) {
-		a.logger.Info("The SnapshotEnvironmentBinding has failed to deploy on ephemeral environment and will be deleted later.", "snapshotEnvironmentBinding.Name", a.snapshotEnvironmentBinding.Name)
+		a.logger.Info("The SnapshotEnvrionmentBinding has failed to deploy on ephemeral envrionment and will be deleted later.", "snapshotEnvironmentBinding.Name", a.snapshotEnvironmentBinding.Name)
+		bindingDeployment_err := a.ReportScenarioTestStatusToGitHub(a.snapshot, a.integrationTestScenario.Name)
+		if bindingDeployment_err != nil {
+			a.logger.Error(bindingDeployment_err, "Failed to create commitStatus for snapshot",
+				"snapshot", a.snapshot.Name,
+				"snapshotEnvironmentBinding.Name", a.snapshotEnvironmentBinding.Name,
+				"scenario.Name", a.integrationTestScenario.Name)
+		}
 		return controller.ContinueProcessing()
 	}
 
@@ -191,4 +201,22 @@ func (a *Adapter) getDeploymentTargetForEnvironment(environment *applicationapiv
 	}
 
 	return deploymentTarget, nil
+}
+
+// EnsureStatusReported will ensure that integration binding deployment status is reported to the git provider
+// which (indirectly) triggered its execution.
+func (a *Adapter) ReportScenarioTestStatusToGitHub(snapshot *applicationapiv1alpha1.Snapshot, scenarioName string) error {
+	reporters, err := a.status.GetReporters(a.snapshot)
+
+	if err != nil {
+		return err
+	}
+
+	for _, reporter := range reporters {
+		if err := reporter.ReportStatusForSnapshot(a.client, a.context, snapshot, scenarioName, gitops.IntegrationTestStatusDeploymentError); err != nil {
+			return fmt.Errorf("experienced error when reporting error for snapshot %s/%s to GitHub: %w", a.snapshot.Namespace, a.snapshot.Name, err)
+		}
+	}
+
+	return nil
 }

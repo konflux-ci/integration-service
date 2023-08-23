@@ -9,6 +9,7 @@ import (
 
 	"github.com/go-logr/logr"
 	pacv1alpha1 "github.com/openshift-pipelines/pipelines-as-code/pkg/apis/pipelinesascode/v1alpha1"
+	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/git/github"
 	"github.com/redhat-appstudio/integration-service/gitops"
 	"github.com/redhat-appstudio/integration-service/helpers"
@@ -56,12 +57,12 @@ type appCredentials struct {
 	PrivateKey     []byte
 }
 
-func (r *GitHubReporter) getAppCredentials(ctx context.Context, pipelineRun *tektonv1beta1.PipelineRun) (*appCredentials, error) {
+func (r *GitHubReporter) getAppCredentials(ctx context.Context, object client.Object) (*appCredentials, error) {
 	var err error
 	var found bool
 	appInfo := appCredentials{}
 
-	appInfo.InstallationID, err = strconv.ParseInt(pipelineRun.GetAnnotations()[gitops.PipelineAsCodeInstallationIDAnnotation], 10, 64)
+	appInfo.InstallationID, err = strconv.ParseInt(object.GetAnnotations()[gitops.PipelineAsCodeInstallationIDAnnotation], 10, 64)
 	if err != nil {
 		return nil, err
 	}
@@ -93,19 +94,19 @@ func (r *GitHubReporter) getAppCredentials(ctx context.Context, pipelineRun *tek
 	return &appInfo, nil
 }
 
-func (r *GitHubReporter) getToken(ctx context.Context, pipelineRun *tektonv1beta1.PipelineRun) (string, error) {
+func (r *GitHubReporter) getToken(ctx context.Context, object client.Object, namespace string) (string, error) {
 	var err error
 
 	// List all the Repository CRs in the PipelineRun's namespace
 	repos := pacv1alpha1.RepositoryList{}
-	if err = r.k8sClient.List(ctx, &repos, &client.ListOptions{Namespace: pipelineRun.Namespace}); err != nil {
+	if err = r.k8sClient.List(ctx, &repos, &client.ListOptions{Namespace: namespace}); err != nil {
 		return "", err
 	}
 
 	// Get the full repo URL
-	url, found := pipelineRun.GetAnnotations()[gitops.PipelineAsCodeRepoURLAnnotation]
+	url, found := object.GetAnnotations()[gitops.PipelineAsCodeRepoURLAnnotation]
 	if !found {
-		return "", fmt.Errorf("PipelineRun annotation not found %q", gitops.PipelineAsCodeRepoURLAnnotation)
+		return "", fmt.Errorf("object annotation not found %q", gitops.PipelineAsCodeRepoURLAnnotation)
 	}
 
 	// Find a Repository CR with a matching URL and get its secret details
@@ -121,9 +122,9 @@ func (r *GitHubReporter) getToken(ctx context.Context, pipelineRun *tektonv1beta
 		return "", fmt.Errorf("failed to find a Repository matching URL: %q", url)
 	}
 
-	// Get the pipelines as code secret from the PipelineRun's namespace
+	// Get the pipelines as code secret from the namespace
 	pacSecret := v1.Secret{}
-	err = r.k8sClient.Get(ctx, types.NamespacedName{Namespace: pipelineRun.Namespace, Name: repoSecret.Name}, &pacSecret)
+	err = r.k8sClient.Get(ctx, types.NamespacedName{Namespace: namespace, Name: repoSecret.Name}, &pacSecret)
 	if err != nil {
 		return "", err
 	}
@@ -137,7 +138,7 @@ func (r *GitHubReporter) getToken(ctx context.Context, pipelineRun *tektonv1beta
 	return string(token), nil
 }
 
-func (r *GitHubReporter) createCheckRunAdapter(k8sClient client.Client, ctx context.Context, pipelineRun *tektonv1beta1.PipelineRun) (*github.CheckRunAdapter, error) {
+func (r *GitHubReporter) createCheckRunAdapterForPipelineRun(k8sClient client.Client, ctx context.Context, pipelineRun *tektonv1beta1.PipelineRun) (*github.CheckRunAdapter, error) {
 	labels := pipelineRun.GetLabels()
 
 	scenario, found := labels[gitops.SnapshotTestScenarioLabel]
@@ -225,7 +226,71 @@ func (r *GitHubReporter) createCheckRunAdapter(k8sClient client.Client, ctx cont
 	}, nil
 }
 
-func (r *GitHubReporter) createCommitStatus(k8sClient client.Client, ctx context.Context, pipelineRun *tektonv1beta1.PipelineRun) error {
+func (r *GitHubReporter) createCheckRunAdapterForSnapshot(k8sClient client.Client, ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot, scenarioName string, scenarioTestStatus gitops.IntegrationTestStatus) (*github.CheckRunAdapter, error) {
+	labels := snapshot.GetLabels()
+
+	owner, found := labels[gitops.PipelineAsCodeURLOrgLabel]
+	if !found {
+		return nil, fmt.Errorf("snapshot label not found %q", gitops.PipelineAsCodeURLOrgLabel)
+	}
+
+	repo, found := labels[gitops.PipelineAsCodeURLRepositoryLabel]
+	if !found {
+		return nil, fmt.Errorf("snapshot label not found %q", gitops.PipelineAsCodeURLRepositoryLabel)
+	}
+
+	SHA, found := labels[gitops.PipelineAsCodeSHALabel]
+	if !found {
+		return nil, fmt.Errorf("snapshot label not found %q", gitops.PipelineAsCodeSHALabel)
+	}
+
+	var title, conclusion string
+
+	switch scenarioTestStatus {
+	case gitops.IntegrationTestStatusEnvironmentProvisionError:
+		title = "snapshot " + snapshot.Name + " experienced error when provisioning environment for integrationTestScenario " + scenarioName
+		conclusion = "errorOccured"
+	case gitops.IntegrationTestStatusDeploymentError:
+		title = "snapshot " + snapshot.Name + " experienced error when deploying snapshotEnvironmentBinding for integrationTestScenario " + scenarioName
+		conclusion = "errorOccured"
+	case gitops.IntegrationTestStatusTestPassed:
+		title = "snapshot " + snapshot.Name + " has passed integration test against integrationTestScenario " + scenarioName
+		conclusion = "success"
+	case gitops.IntegrationTestStatusTestFail:
+		title = "snapshot " + snapshot.Name + " has failed integration test against integrationTestScenario " + scenarioName
+		conclusion = "failure"
+	default:
+		return nil, fmt.Errorf("unknown status %s for integrationTestScenario %s/%s", scenarioTestStatus, snapshot.Namespace, scenarioName)
+	}
+
+	startTime := time.Now()
+	// placeholder for the starttime
+	// if start := pipelineRun.Status.StartTime; start != nil {
+	// 	startTime = start.Time
+	// }
+
+	completionTime := time.Now()
+	// placeholder for the completiontime
+	// if complete := pipelineRun.Status.CompletionTime; complete != nil {
+	// 	completionTime = complete.Time
+	// }
+
+	return &github.CheckRunAdapter{
+		Owner:      owner,
+		Repository: repo,
+		Name:       NamePrefix + " / " + snapshot.Name + " / " + scenarioName,
+		SHA:        SHA,
+		ExternalID: scenarioName,
+		Conclusion: conclusion,
+		Title:      title,
+		// Summary:        summary,
+		// Text:           text,
+		StartTime:      startTime,
+		CompletionTime: completionTime,
+	}, nil
+}
+
+func (r *GitHubReporter) createCommitStatusForPipelineRun(k8sClient client.Client, ctx context.Context, pipelineRun *tektonv1beta1.PipelineRun) error {
 	var (
 		state       string
 		description string
@@ -278,6 +343,56 @@ func (r *GitHubReporter) createCommitStatus(k8sClient client.Client, ctx context
 			state = "failure"
 			description = scenario + " has failed"
 		}
+	}
+
+	_, err := r.client.CreateCommitStatus(ctx, owner, repo, SHA, state, description, statusContext)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (r *GitHubReporter) createCommitStatusForSnapshot(k8sClient client.Client, ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot, scenarioName string, scenarioTestStatus gitops.IntegrationTestStatus) error {
+	var (
+		state       string
+		description string
+	)
+
+	labels := snapshot.GetLabels()
+
+	owner, found := labels[gitops.PipelineAsCodeURLOrgLabel]
+	if !found {
+		return fmt.Errorf("PipelineRun label not found %q", gitops.PipelineAsCodeURLOrgLabel)
+	}
+
+	repo, found := labels[gitops.PipelineAsCodeURLRepositoryLabel]
+	if !found {
+		return fmt.Errorf("PipelineRun label not found %q", gitops.PipelineAsCodeURLRepositoryLabel)
+	}
+
+	SHA, found := labels[gitops.PipelineAsCodeSHALabel]
+	if !found {
+		return fmt.Errorf("PipelineRun label not found %q", gitops.PipelineAsCodeSHALabel)
+	}
+
+	statusContext := NamePrefix + " / " + snapshot.Name + " / " + scenarioName
+
+	switch scenarioTestStatus {
+	case gitops.IntegrationTestStatusEnvironmentProvisionError:
+		state = "errorOccured"
+		description = "snapshot " + snapshot.Name + " experienced error when provisioning environment for integrationTestScenario " + scenarioName
+	case gitops.IntegrationTestStatusDeploymentError:
+		state = "errorOccured"
+		description = "snapshot " + snapshot.Name + " experienced error when deploying snapshotEnvironmentBinding for integrationTestScenario " + scenarioName
+	case gitops.IntegrationTestStatusTestPassed:
+		state = "success"
+		description = "snapshot " + snapshot.Name + " has passed integration test against integrationTestScenario " + scenarioName
+	case gitops.IntegrationTestStatusTestFail:
+		state = "failure"
+		description = "snapshot " + snapshot.Name + " has failed integration test against integrationTestScenario " + scenarioName
+	default:
+		return fmt.Errorf("unknown status %s for integrationTestScenario %s/%s", scenarioTestStatus, snapshot.Namespace, scenarioName)
 	}
 
 	_, err := r.client.CreateCommitStatus(ctx, owner, repo, SHA, state, description, statusContext)
@@ -350,9 +465,9 @@ func (r *GitHubReporter) createComment(k8sClient client.Client, ctx context.Cont
 	return nil
 }
 
-// ReportStatus creates/updates CheckRuns when using GitHub App integration.
+// ReportStatusForPipelineRun creates/updates CheckRuns when using GitHub App integration.
 // When using GitHub webhook integration a commit status and, in some cases, a comment is created.
-func (r *GitHubReporter) ReportStatus(k8sClient client.Client, ctx context.Context, pipelineRun *tektonv1beta1.PipelineRun) error {
+func (r *GitHubReporter) ReportStatusForPipelineRun(k8sClient client.Client, ctx context.Context, pipelineRun *tektonv1beta1.PipelineRun) error {
 	if !helpers.HasLabelWithValue(pipelineRun, gitops.PipelineAsCodeEventTypeLabel, gitops.PipelineAsCodePullRequestType) {
 		return nil
 	}
@@ -372,7 +487,7 @@ func (r *GitHubReporter) ReportStatus(k8sClient client.Client, ctx context.Conte
 
 		r.client.SetOAuthToken(ctx, token)
 
-		checkRun, err := r.createCheckRunAdapter(k8sClient, ctx, pipelineRun)
+		checkRun, err := r.createCheckRunAdapterForPipelineRun(k8sClient, ctx, pipelineRun)
 		if err != nil {
 			return err
 		}
@@ -392,19 +507,77 @@ func (r *GitHubReporter) ReportStatus(k8sClient client.Client, ctx context.Conte
 			return err
 		}
 	} else {
-		token, err := r.getToken(ctx, pipelineRun)
+		token, err := r.getToken(ctx, pipelineRun, pipelineRun.Namespace)
 		if err != nil {
 			return err
 		}
 
 		r.client.SetOAuthToken(ctx, token)
 
-		err = r.createCommitStatus(k8sClient, ctx, pipelineRun)
+		err = r.createCommitStatusForPipelineRun(k8sClient, ctx, pipelineRun)
 		if err != nil {
 			return err
 		}
 
 		err = r.createComment(k8sClient, ctx, pipelineRun)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// ReportStatusForSnapshot creates CheckRuns when using GitHub App integration.
+// When using GitHub webhook integration a commit status
+func (r *GitHubReporter) ReportStatusForSnapshot(k8sClient client.Client, ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot, scenarioName string, scenarioTestStatus gitops.IntegrationTestStatus) error {
+	if !helpers.HasLabelWithValue(snapshot, gitops.PipelineAsCodeEventTypeLabel, gitops.PipelineAsCodePullRequestType) {
+		return nil
+	}
+
+	// Existence of the Pipelines as Code installation ID annotation signals configuration using GitHub App integration.
+	// If it doesn't exist, GitHub webhook integration is configured.
+	if helpers.HasAnnotation(snapshot, gitops.PipelineAsCodeInstallationIDAnnotation) {
+		creds, err := r.getAppCredentials(ctx, snapshot)
+		if err != nil {
+			return err
+		}
+
+		token, err := r.client.CreateAppInstallationToken(ctx, creds.AppID, creds.InstallationID, creds.PrivateKey)
+		if err != nil {
+			return err
+		}
+
+		r.client.SetOAuthToken(ctx, token)
+
+		checkRun, err := r.createCheckRunAdapterForSnapshot(k8sClient, ctx, snapshot, scenarioName, scenarioTestStatus)
+		if err != nil {
+			return err
+		}
+
+		checkRunID, err := r.client.GetCheckRunID(ctx, checkRun.Owner, checkRun.Repository, checkRun.SHA, checkRun.ExternalID, creds.AppID)
+		if err != nil {
+			return err
+		}
+
+		if checkRunID == nil {
+			_, err = r.client.CreateCheckRun(ctx, checkRun)
+		} else {
+			err = r.client.UpdateCheckRun(ctx, *checkRunID, checkRun)
+		}
+
+		if err != nil {
+			return err
+		}
+	} else {
+		token, err := r.getToken(ctx, snapshot, snapshot.Namespace)
+		if err != nil {
+			return err
+		}
+
+		r.client.SetOAuthToken(ctx, token)
+
+		err = r.createCommitStatusForSnapshot(k8sClient, ctx, snapshot, scenarioName, scenarioTestStatus)
 		if err != nil {
 			return err
 		}

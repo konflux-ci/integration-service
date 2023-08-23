@@ -30,6 +30,7 @@ import (
 	"github.com/redhat-appstudio/integration-service/gitops"
 	h "github.com/redhat-appstudio/integration-service/helpers"
 	"github.com/redhat-appstudio/integration-service/release"
+	"github.com/redhat-appstudio/integration-service/status"
 	"github.com/redhat-appstudio/integration-service/tekton"
 
 	"github.com/redhat-appstudio/integration-service/loader"
@@ -49,6 +50,7 @@ type Adapter struct {
 	loader      loader.ObjectLoader
 	client      client.Client
 	context     context.Context
+	status      status.Status
 }
 
 // NewAdapter creates and returns an Adapter instance.
@@ -62,6 +64,7 @@ func NewAdapter(snapshot *applicationapiv1alpha1.Snapshot, application *applicat
 		loader:      loader,
 		client:      client,
 		context:     context,
+		status:      status.NewAdapter(logger.Logger, client),
 	}
 }
 
@@ -210,6 +213,14 @@ TestScenarioLoop:
 							"snapshot", a.snapshot.Name,
 							"environment.Name", environment.Name,
 							"snapshot.Spec.Components", a.snapshot.Spec.Components)
+						envProvision_err := a.ReportScenarioTestStatusToGitHub(a.snapshot, integrationTestScenario.Name)
+						if envProvision_err != nil {
+							a.logger.Error(envProvision_err, "Failed to create commitStatus for snapshot",
+								"snapshot", a.snapshot.Name,
+								"environment.Name", environment.Name,
+								"scenario.Name", integrationTestScenario.Name)
+							return controller.RequeueWithError(envProvision_err)
+						}
 						return controller.RequeueWithError(err)
 					}
 					a.logger.LogAuditEvent("A snapshotEnvironmentbinding is created", binding, h.LogActionAdd,
@@ -238,6 +249,14 @@ TestScenarioLoop:
 
 		if err != nil {
 			a.logger.Error(err, "Copying of environment failed")
+			envProvision_err := a.ReportScenarioTestStatusToGitHub(a.snapshot, integrationTestScenario.Name)
+			if envProvision_err != nil {
+				a.logger.Error(envProvision_err, "Failed to create commitStatus for snapshot",
+					"snapshot", a.snapshot.Name,
+					"environment.Name", copyEnv.Name,
+					"scenario.Name", integrationTestScenario.Name)
+				return controller.RequeueWithError(envProvision_err)
+			}
 			return controller.RequeueWithError(err)
 		}
 		a.logger.LogAuditEvent("An ephemeral Environment is created for integrationTestScenario",
@@ -252,6 +271,14 @@ TestScenarioLoop:
 				"snapshot", a.snapshot.Name,
 				"environment.Name", copyEnv.Name,
 				"snapshot.Spec.Components", a.snapshot.Spec.Components)
+			envProvision_err := a.ReportScenarioTestStatusToGitHub(a.snapshot, integrationTestScenario.Name)
+			if envProvision_err != nil {
+				a.logger.Error(envProvision_err, "Failed to create commitStatus for snapshot",
+					"snapshot", a.snapshot.Name,
+					"environment.Name", copyEnv.Name,
+					"scenario.Name", integrationTestScenario.Name)
+				return controller.RequeueWithError(envProvision_err)
+			}
 			return controller.RequeueWithError(err)
 		}
 		a.logger.LogAuditEvent("A snapshotEnvironmentbinding is created", binding, h.LogActionAdd,
@@ -639,4 +666,22 @@ func (a *Adapter) getEnvironmentFromIntegrationTestScenario(integrationTestScena
 		return nil, fmt.Errorf("environment %s doesn't exist in same namespace as IntegrationTestScenario at all: %w", integrationTestScenario.Spec.Environment.Name, err)
 	}
 	return existingEnv, nil
+}
+
+// EnsureStatusReported will ensure that integration environment provision status is reported to the git provider
+// which (indirectly) triggered its execution.
+func (a *Adapter) ReportScenarioTestStatusToGitHub(snapshot *applicationapiv1alpha1.Snapshot, scenarioName string) error {
+	reporters, err := a.status.GetReporters(a.snapshot)
+
+	if err != nil {
+		return err
+	}
+
+	for _, reporter := range reporters {
+		if err := reporter.ReportStatusForSnapshot(a.client, a.context, snapshot, scenarioName, gitops.IntegrationTestStatusEnvironmentProvisionError); err != nil {
+			return fmt.Errorf("experienced error when reporting error for snapshot %s/%s to GitHub: %w", a.snapshot.Namespace, a.snapshot.Name, err)
+		}
+	}
+
+	return nil
 }

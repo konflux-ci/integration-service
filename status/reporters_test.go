@@ -12,7 +12,9 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	pacv1alpha1 "github.com/openshift-pipelines/pipelines-as-code/pkg/apis/pipelinesascode/v1alpha1"
+	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/git/github"
+	"github.com/redhat-appstudio/integration-service/gitops"
 	"github.com/redhat-appstudio/integration-service/status"
 	tektonv1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 	v1 "k8s.io/api/core/v1"
@@ -195,6 +197,7 @@ var _ = Describe("GitHubReporter", func() {
 
 	var reporter *status.GitHubReporter
 	var pipelineRun *tektonv1beta1.PipelineRun
+	var hasSnapshot *applicationapiv1alpha1.Snapshot
 	var mockK8sClient *MockK8sClient
 	var mockGitHubClient *MockGitHubClient
 	var successfulTaskRun *tektonv1beta1.TaskRun
@@ -330,6 +333,44 @@ var _ = Describe("GitHubReporter", func() {
 				},
 			},
 		}
+
+		hasSnapshot = &applicationapiv1alpha1.Snapshot{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "snapshot-sample",
+				Namespace: "default",
+				Labels: map[string]string{
+					"test.appstudio.openshift.io/type":               "component",
+					"appstudio.openshift.io/component":               "component-sample",
+					"build.appstudio.redhat.com/pipeline":            "enterprise-contract",
+					"pac.test.appstudio.openshift.io/git-provider":   "github",
+					"pac.test.appstudio.openshift.io/url-org":        "devfile-sample",
+					"pac.test.appstudio.openshift.io/url-repository": "devfile-sample-go-basic",
+					"pac.test.appstudio.openshift.io/sha":            "12a4a35ccd08194595179815e4646c3a6c08bb77",
+					"pac.test.appstudio.openshift.io/event-type":     "pull_request",
+				},
+				Annotations: map[string]string{
+					"build.appstudio.redhat.com/commit_sha":         "6c65b2fcaea3e1a0a92476c8b5dc89e92a85f025",
+					"appstudio.redhat.com/updateComponentOnSuccess": "false",
+					"pac.test.appstudio.openshift.io/repo-url":      "https://github.com/devfile-sample/devfile-sample-go-basic",
+				},
+			},
+			Spec: applicationapiv1alpha1.SnapshotSpec{
+				Application: "application-sample",
+				Components: []applicationapiv1alpha1.SnapshotComponent{
+					{
+						Name:           "component-sample",
+						ContainerImage: "sample_image",
+						Source: applicationapiv1alpha1.ComponentSource{
+							ComponentSourceUnion: applicationapiv1alpha1.ComponentSourceUnion{
+								GitSource: &applicationapiv1alpha1.GitSource{
+									Revision: "sample_revision",
+								},
+							},
+						},
+					},
+				},
+			},
+		}
 	})
 
 	Context("when provided GitHub app credentials", func() {
@@ -338,6 +379,7 @@ var _ = Describe("GitHubReporter", func() {
 
 		BeforeEach(func() {
 			pipelineRun.Annotations["pac.test.appstudio.openshift.io/installation-id"] = "123"
+			hasSnapshot.Annotations["pac.test.appstudio.openshift.io/installation-id"] = "123"
 
 			secretData = map[string][]byte{
 				"github-application-id": []byte("456"),
@@ -368,37 +410,51 @@ var _ = Describe("GitHubReporter", func() {
 
 		It("doesn't report status for non-pull request events", func() {
 			delete(pipelineRun.Labels, "pac.test.appstudio.openshift.io/event-type")
-			Expect(reporter.ReportStatus(mockK8sClient, context.TODO(), pipelineRun)).To(BeNil())
+			Expect(reporter.ReportStatusForPipelineRun(mockK8sClient, context.TODO(), pipelineRun)).To(BeNil())
+
+			delete(hasSnapshot.Labels, "pac.test.appstudio.openshift.io/event-type")
+			Expect(reporter.ReportStatusForSnapshot(mockK8sClient, context.TODO(), hasSnapshot, "scenarioName", gitops.IntegrationTestStatusEnvironmentProvisionError)).To(BeNil())
 		})
 
 		It("doesn't report status when the credentials are invalid/missing", func() {
 			// Invalid installation ID value
 			pipelineRun.Annotations["pac.test.appstudio.openshift.io/installation-id"] = "bad-installation-id"
-			err := reporter.ReportStatus(mockK8sClient, context.TODO(), pipelineRun)
+			err := reporter.ReportStatusForPipelineRun(mockK8sClient, context.TODO(), pipelineRun)
 			Expect(err).ToNot(BeNil())
 			pipelineRun.Annotations["pac.test.appstudio.openshift.io/installation-id"] = "123"
 
+			hasSnapshot.Annotations["pac.test.appstudio.openshift.io/installation-id"] = "bad-installation-id"
+			err = reporter.ReportStatusForSnapshot(mockK8sClient, context.TODO(), hasSnapshot, "scenarioName", gitops.IntegrationTestStatusEnvironmentProvisionError)
+			Expect(err).ToNot(BeNil())
+			hasSnapshot.Annotations["pac.test.appstudio.openshift.io/installation-id"] = "123"
+
 			// Invalid app ID value
 			secretData["github-application-id"] = []byte("bad-app-id")
-			err = reporter.ReportStatus(mockK8sClient, context.TODO(), pipelineRun)
+			err = reporter.ReportStatusForPipelineRun(mockK8sClient, context.TODO(), pipelineRun)
+			Expect(err).ToNot(BeNil())
+			err = reporter.ReportStatusForSnapshot(mockK8sClient, context.TODO(), hasSnapshot, "scenarioName", gitops.IntegrationTestStatusEnvironmentProvisionError)
 			Expect(err).ToNot(BeNil())
 			secretData["github-application-id"] = []byte("456")
 
 			// Missing app ID value
 			delete(secretData, "github-application-id")
-			err = reporter.ReportStatus(mockK8sClient, context.TODO(), pipelineRun)
+			err = reporter.ReportStatusForPipelineRun(mockK8sClient, context.TODO(), pipelineRun)
+			Expect(err).ToNot(BeNil())
+			err = reporter.ReportStatusForSnapshot(mockK8sClient, context.TODO(), hasSnapshot, "scenarioName", gitops.IntegrationTestStatusEnvironmentProvisionError)
 			Expect(err).ToNot(BeNil())
 			secretData["github-application-id"] = []byte("456")
 
 			// Missing private key
 			delete(secretData, "github-private-key")
-			err = reporter.ReportStatus(mockK8sClient, context.TODO(), pipelineRun)
+			err = reporter.ReportStatusForPipelineRun(mockK8sClient, context.TODO(), pipelineRun)
+			Expect(err).ToNot(BeNil())
+			err = reporter.ReportStatusForSnapshot(mockK8sClient, context.TODO(), hasSnapshot, "scenarioName", gitops.IntegrationTestStatusEnvironmentProvisionError)
 			Expect(err).ToNot(BeNil())
 		})
 
-		It("reports status via CheckRuns", func() {
+		It("reports pipelinerun status via CheckRuns", func() {
 			// Create an in progress CheckRun
-			Expect(reporter.ReportStatus(mockK8sClient, context.TODO(), pipelineRun)).To(BeNil())
+			Expect(reporter.ReportStatusForPipelineRun(mockK8sClient, context.TODO(), pipelineRun)).To(BeNil())
 			Expect(mockGitHubClient.CreateCheckRunResult.cra.Title).To(Equal("example-pass has started"))
 			Expect(mockGitHubClient.CreateCheckRunResult.cra.Conclusion).To(Equal(""))
 			Expect(mockGitHubClient.CreateCheckRunResult.cra.ExternalID).To(Equal(pipelineRun.Name))
@@ -414,7 +470,7 @@ var _ = Describe("GitHubReporter", func() {
 			setPipelineRunOutcome(pipelineRun, successfulTaskRun)
 			var id int64 = 1
 			mockGitHubClient.GetCheckRunIDResult.ID = &id
-			Expect(reporter.ReportStatus(mockK8sClient, context.TODO(), pipelineRun)).To(BeNil())
+			Expect(reporter.ReportStatusForPipelineRun(mockK8sClient, context.TODO(), pipelineRun)).To(BeNil())
 			Expect(mockGitHubClient.UpdateCheckRunResult.cra.Title).To(Equal("example-pass has succeeded"))
 			Expect(mockGitHubClient.UpdateCheckRunResult.cra.Conclusion).To(Equal("success"))
 			Expect(mockGitHubClient.UpdateCheckRunResult.cra.CompletionTime.IsZero()).To(BeFalse())
@@ -422,9 +478,42 @@ var _ = Describe("GitHubReporter", func() {
 
 			// Update existing CheckRun w/failure
 			setPipelineRunOutcome(pipelineRun, failedTaskRun)
-			Expect(reporter.ReportStatus(mockK8sClient, context.TODO(), pipelineRun)).To(BeNil())
+			Expect(reporter.ReportStatusForPipelineRun(mockK8sClient, context.TODO(), pipelineRun)).To(BeNil())
 			Expect(mockGitHubClient.UpdateCheckRunResult.cra.Title).To(Equal("example-pass has failed"))
 			Expect(mockGitHubClient.UpdateCheckRunResult.cra.Conclusion).To(Equal("failure"))
+		})
+
+		It("reports snapshot tests status via CheckRuns", func() {
+			// Create an in progress CheckRun
+			Expect(reporter.ReportStatusForSnapshot(mockK8sClient, context.TODO(), hasSnapshot, "scenarioName", gitops.IntegrationTestStatusEnvironmentProvisionError)).To(BeNil())
+			Expect(mockGitHubClient.CreateCheckRunResult.cra.Title).To(Equal("snapshot snapshot-sample experienced error when provisioning environment for integrationTestScenario scenarioName"))
+			Expect(mockGitHubClient.CreateCheckRunResult.cra.Conclusion).To(Equal("errorOccured"))
+			Expect(mockGitHubClient.CreateCheckRunResult.cra.ExternalID).To(Equal("scenarioName"))
+			Expect(mockGitHubClient.CreateCheckRunResult.cra.Owner).To(Equal("devfile-sample"))
+			Expect(mockGitHubClient.CreateCheckRunResult.cra.Repository).To(Equal("devfile-sample-go-basic"))
+			Expect(mockGitHubClient.CreateCheckRunResult.cra.SHA).To(Equal("12a4a35ccd08194595179815e4646c3a6c08bb77"))
+			Expect(mockGitHubClient.CreateCheckRunResult.cra.Name).To(Equal("Red Hat Trusted App Test / snapshot-sample / scenarioName"))
+			Expect(mockGitHubClient.CreateCheckRunResult.cra.StartTime.IsZero()).To(BeFalse())
+			Expect(mockGitHubClient.CreateCheckRunResult.cra.CompletionTime.IsZero()).To(BeFalse())
+
+			// Update existing CheckRun w/failure
+			var id int64 = 1
+			mockGitHubClient.GetCheckRunIDResult.ID = &id
+			Expect(reporter.ReportStatusForSnapshot(mockK8sClient, context.TODO(), hasSnapshot, "scenarioName", gitops.IntegrationTestStatusDeploymentError)).To(BeNil())
+			Expect(mockGitHubClient.UpdateCheckRunResult.cra.Title).To(Equal("snapshot snapshot-sample experienced error when deploying snapshotEnvironmentBinding for integrationTestScenario scenarioName"))
+			Expect(mockGitHubClient.UpdateCheckRunResult.cra.Conclusion).To(Equal("errorOccured"))
+			Expect(mockGitHubClient.UpdateCheckRunResult.cra.CompletionTime.IsZero()).To(BeFalse())
+
+			Expect(reporter.ReportStatusForSnapshot(mockK8sClient, context.TODO(), hasSnapshot, "scenarioName", gitops.IntegrationTestStatusTestFail)).To(BeNil())
+			Expect(mockGitHubClient.UpdateCheckRunResult.cra.Title).To(Equal("snapshot snapshot-sample has failed integration test against integrationTestScenario scenarioName"))
+			Expect(mockGitHubClient.UpdateCheckRunResult.cra.Conclusion).To(Equal("failure"))
+			Expect(mockGitHubClient.UpdateCheckRunResult.cra.CompletionTime.IsZero()).To(BeFalse())
+
+			// Update existing CheckRun w/success
+			setPipelineRunOutcome(pipelineRun, failedTaskRun)
+			Expect(reporter.ReportStatusForSnapshot(mockK8sClient, context.TODO(), hasSnapshot, "scenarioName", gitops.IntegrationTestStatusTestPassed)).To(BeNil())
+			Expect(mockGitHubClient.UpdateCheckRunResult.cra.Title).To(Equal("snapshot snapshot-sample has passed integration test against integrationTestScenario scenarioName"))
+			Expect(mockGitHubClient.UpdateCheckRunResult.cra.Conclusion).To(Equal("success"))
 		})
 	})
 
@@ -435,6 +524,7 @@ var _ = Describe("GitHubReporter", func() {
 
 		BeforeEach(func() {
 			pipelineRun.Annotations["pac.test.appstudio.openshift.io/pull-request"] = "999"
+			hasSnapshot.Annotations["pac.test.appstudio.openshift.io/pull-request"] = "999"
 
 			repo = pacv1alpha1.Repository{
 				Spec: pacv1alpha1.RepositorySpec{
@@ -480,7 +570,7 @@ var _ = Describe("GitHubReporter", func() {
 
 		It("doesn't report status for non-pull request events", func() {
 			delete(pipelineRun.Labels, "pac.test.appstudio.openshift.io/event-type")
-			Expect(reporter.ReportStatus(mockK8sClient, context.TODO(), pipelineRun)).To(BeNil())
+			Expect(reporter.ReportStatusForPipelineRun(mockK8sClient, context.TODO(), pipelineRun)).To(BeNil())
 		})
 
 		It("creates a comment for a succeeded PipelineRun", func() {
@@ -488,28 +578,28 @@ var _ = Describe("GitHubReporter", func() {
 				Type:   apis.ConditionSucceeded,
 				Status: "True",
 			})
-			Expect(reporter.ReportStatus(mockK8sClient, context.TODO(), pipelineRun)).To(BeNil())
+			Expect(reporter.ReportStatusForPipelineRun(mockK8sClient, context.TODO(), pipelineRun)).To(BeNil())
 			Expect(mockGitHubClient.CreateCommentResult.body).To(ContainSubstring("# example-pass has succeeded"))
 			Expect(mockGitHubClient.CreateCommentResult.issueNumber).To(Equal(999))
 		})
 
 		It("creates a comment for a failed PipelineRun", func() {
 			setPipelineRunOutcome(pipelineRun, failedTaskRun)
-			Expect(reporter.ReportStatus(mockK8sClient, context.TODO(), pipelineRun)).To(BeNil())
+			Expect(reporter.ReportStatusForPipelineRun(mockK8sClient, context.TODO(), pipelineRun)).To(BeNil())
 			called := strings.Contains(mockGitHubClient.CreateCommentResult.body, "# example-pass has failed")
 			Expect(called).To(BeTrue())
 			Expect(mockGitHubClient.CreateCommentResult.issueNumber).To(Equal(999))
 		})
 
 		It("doesn't create a comment for non-completed PipelineRuns", func() {
-			Expect(reporter.ReportStatus(mockK8sClient, context.TODO(), pipelineRun)).To(BeNil())
+			Expect(reporter.ReportStatusForPipelineRun(mockK8sClient, context.TODO(), pipelineRun)).To(BeNil())
 			Expect(mockGitHubClient.CreateCommentResult.body).To(Equal(""))
 			Expect(mockGitHubClient.CreateCommentResult.issueNumber).To(Equal(0))
 		})
 
-		It("creates a commit status", func() {
+		It("creates a commit status for pipelinerun", func() {
 			// In progress
-			Expect(reporter.ReportStatus(mockK8sClient, context.TODO(), pipelineRun)).To(BeNil())
+			Expect(reporter.ReportStatusForPipelineRun(mockK8sClient, context.TODO(), pipelineRun)).To(BeNil())
 			Expect(mockGitHubClient.CreateCommitStatusResult.state).To(Equal("pending"))
 			Expect(mockGitHubClient.CreateCommitStatusResult.description).To(Equal("example-pass has started"))
 			Expect(mockGitHubClient.CreateCommitStatusResult.statusContext).To(Equal("Red Hat Trusted App Test / devfile-sample-go-basic / example-pass"))
@@ -519,17 +609,42 @@ var _ = Describe("GitHubReporter", func() {
 				Type:   apis.ConditionSucceeded,
 				Status: "True",
 			})
-			Expect(reporter.ReportStatus(mockK8sClient, context.TODO(), pipelineRun)).To(BeNil())
+			Expect(reporter.ReportStatusForPipelineRun(mockK8sClient, context.TODO(), pipelineRun)).To(BeNil())
 			Expect(mockGitHubClient.CreateCommitStatusResult.state).To(Equal("success"))
 			Expect(mockGitHubClient.CreateCommitStatusResult.description).To(Equal("example-pass has succeeded"))
 			Expect(mockGitHubClient.CreateCommitStatusResult.statusContext).To(Equal("Red Hat Trusted App Test / devfile-sample-go-basic / example-pass"))
 
 			// Failure
 			setPipelineRunOutcome(pipelineRun, failedTaskRun)
-			Expect(reporter.ReportStatus(mockK8sClient, context.TODO(), pipelineRun)).To(BeNil())
+			Expect(reporter.ReportStatusForPipelineRun(mockK8sClient, context.TODO(), pipelineRun)).To(BeNil())
 			Expect(mockGitHubClient.CreateCommitStatusResult.state).To(Equal("failure"))
 			Expect(mockGitHubClient.CreateCommitStatusResult.description).To(Equal("example-pass has failed"))
 			Expect(mockGitHubClient.CreateCommitStatusResult.statusContext).To(Equal("Red Hat Trusted App Test / devfile-sample-go-basic / example-pass"))
+		})
+
+		It("creates a commit status for snapshot", func() {
+			// Error
+			Expect(reporter.ReportStatusForSnapshot(mockK8sClient, context.TODO(), hasSnapshot, "scenarioName", gitops.IntegrationTestStatusEnvironmentProvisionError)).To(BeNil())
+			Expect(mockGitHubClient.CreateCommitStatusResult.state).To(Equal("errorOccured"))
+			Expect(mockGitHubClient.CreateCommitStatusResult.description).To(Equal("snapshot snapshot-sample experienced error when provisioning environment for integrationTestScenario scenarioName"))
+			Expect(mockGitHubClient.CreateCommitStatusResult.statusContext).To(Equal("Red Hat Trusted App Test / snapshot-sample / scenarioName"))
+
+			Expect(reporter.ReportStatusForSnapshot(mockK8sClient, context.TODO(), hasSnapshot, "scenarioName", gitops.IntegrationTestStatusDeploymentError)).To(BeNil())
+			Expect(mockGitHubClient.CreateCommitStatusResult.state).To(Equal("errorOccured"))
+			Expect(mockGitHubClient.CreateCommitStatusResult.description).To(Equal("snapshot snapshot-sample experienced error when deploying snapshotEnvironmentBinding for integrationTestScenario scenarioName"))
+			Expect(mockGitHubClient.CreateCommitStatusResult.statusContext).To(Equal("Red Hat Trusted App Test / snapshot-sample / scenarioName"))
+
+			// Success
+			Expect(reporter.ReportStatusForSnapshot(mockK8sClient, context.TODO(), hasSnapshot, "scenarioName", gitops.IntegrationTestStatusTestPassed)).To(BeNil())
+			Expect(mockGitHubClient.CreateCommitStatusResult.state).To(Equal("success"))
+			Expect(mockGitHubClient.CreateCommitStatusResult.description).To(Equal("snapshot snapshot-sample has passed integration test against integrationTestScenario scenarioName"))
+			Expect(mockGitHubClient.CreateCommitStatusResult.statusContext).To(Equal("Red Hat Trusted App Test / snapshot-sample / scenarioName"))
+
+			// Failure
+			Expect(reporter.ReportStatusForSnapshot(mockK8sClient, context.TODO(), hasSnapshot, "scenarioName", gitops.IntegrationTestStatusTestFail)).To(BeNil())
+			Expect(mockGitHubClient.CreateCommitStatusResult.state).To(Equal("failure"))
+			Expect(mockGitHubClient.CreateCommitStatusResult.description).To(Equal("snapshot snapshot-sample has failed integration test against integrationTestScenario scenarioName"))
+			Expect(mockGitHubClient.CreateCommitStatusResult.statusContext).To(Equal("Red Hat Trusted App Test / snapshot-sample / scenarioName"))
 		})
 	})
 

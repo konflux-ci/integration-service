@@ -55,12 +55,17 @@ type MockStatusReporter struct {
 	ReportStatusError error
 }
 
-func (r *MockStatusReporter) ReportStatus(client.Client, context.Context, *tektonv1beta1.PipelineRun) error {
+func (r *MockStatusReporter) ReportStatusForPipelineRun(client.Client, context.Context, *tektonv1beta1.PipelineRun) error {
 	r.Called = true
 	return r.ReportStatusError
 }
 
-func (a *MockStatusAdapter) GetReporters(pipelineRun *tektonv1beta1.PipelineRun) ([]status.Reporter, error) {
+func (r *MockStatusReporter) ReportStatusForSnapshot(client.Client, context.Context, *applicationapiv1alpha1.Snapshot, string, gitops.IntegrationTestStatus) error {
+	r.Called = true
+	return r.ReportStatusError
+}
+
+func (a *MockStatusAdapter) GetReporters(object client.Object) ([]status.Reporter, error) {
 	return []status.Reporter{a.Reporter}, a.GetReportersError
 }
 
