@@ -4,13 +4,14 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	"time"
+
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/gitops"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -332,5 +333,42 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 		allSnapshots := &[]applicationapiv1alpha1.Snapshot{*hasSnapshot}
 		existingSnapshot := gitops.FindMatchingSnapshot(hasApp, allSnapshots, hasSnapshot)
 		Expect(existingSnapshot.Name).To(Equal(hasSnapshot.Name))
+	})
+
+	Context("TestStatus type tests", func() {
+		DescribeTable("Status to string and vice versa",
+			func(st gitops.IntegrationTestStatus, expectedStr string) {
+				strRepr := st.String()
+				Expect(strRepr).To(Equal(expectedStr))
+				controlStatus, err := gitops.IntegrationTestStatusString(strRepr)
+				Expect(err).To(BeNil())
+				Expect(controlStatus).To(Equal(st))
+			},
+			Entry("When status is Pending", gitops.IntegrationTestStatusPending, "Pending"),
+			Entry("When status is InProgress", gitops.IntegrationTestStatusInProgress, "InProgress"),
+			Entry("When status is EnvironmentProvisionError", gitops.IntegrationTestStatusEnvironmentProvisionError, "EnvironmentProvisionError"),
+			Entry("When status is DeploymentError", gitops.IntegrationTestStatusDeploymentError, "DeploymentError"),
+			Entry("When status is TestFail", gitops.IntegrationTestStatusTestFail, "TestFail"),
+			Entry("When status is TestPass", gitops.IntegrationTestStatusTestPassed, "TestPassed"),
+		)
+
+		DescribeTable("Status to JSON and vice versa",
+			func(st gitops.IntegrationTestStatus, expectedStr string) {
+				jsonRepr, err := st.MarshalJSON()
+				Expect(err).To(BeNil())
+				Expect(jsonRepr).To(Equal([]byte("\"" + expectedStr + "\"")))
+
+				var controlStatus gitops.IntegrationTestStatus
+				err = controlStatus.UnmarshalJSON(jsonRepr)
+				Expect(err).To(BeNil())
+				Expect(controlStatus).To(Equal(st))
+			},
+			Entry("When status is Pending", gitops.IntegrationTestStatusPending, "Pending"),
+			Entry("When status is InProgress", gitops.IntegrationTestStatusInProgress, "InProgress"),
+			Entry("When status is EnvironmentProvisionError", gitops.IntegrationTestStatusEnvironmentProvisionError, "EnvironmentProvisionError"),
+			Entry("When status is DeploymentError", gitops.IntegrationTestStatusDeploymentError, "DeploymentError"),
+			Entry("When status is TestFail", gitops.IntegrationTestStatusTestFail, "TestFail"),
+			Entry("When status is TestPass", gitops.IntegrationTestStatusTestPassed, "TestPassed"),
+		)
 	})
 })
