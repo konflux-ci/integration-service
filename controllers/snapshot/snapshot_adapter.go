@@ -36,6 +36,7 @@ import (
 	"github.com/redhat-appstudio/operator-toolkit/controller"
 	releasev1alpha1 "github.com/redhat-appstudio/release-service/api/v1alpha1"
 	pipeline "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -134,7 +135,7 @@ func (a *Adapter) EnsureAllIntegrationTestPipelinesExist() (controller.Operation
 			a.snapshot, h.LogActionUpdate)
 		return controller.RequeueOnErrorOrStop(a.client.Status().Patch(a.context, a.snapshot, patch))
 	}
-	if len(*requiredIntegrationTestScenarios) == 0 {
+	if len(*requiredIntegrationTestScenarios) == 0 && !gitops.IsSnapshotStatusConditionSet(a.snapshot, gitops.AppStudioTestSuceededCondition, metav1.ConditionTrue, "") {
 		updatedSnapshot, err := gitops.MarkSnapshotAsPassed(a.client, a.context, a.snapshot, "No required IntegrationTestScenarios found, skipped testing")
 		if err != nil {
 			a.logger.Error(err, "Failed to update Snapshot status")

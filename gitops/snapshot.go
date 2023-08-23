@@ -268,6 +268,24 @@ func IsSnapshotValid(snapshot *applicationapiv1alpha1.Snapshot) bool {
 	return false
 }
 
+// IsSnapshotStatusConditionSet checks if the condition with the conditionType in the status of Snapshot has been marked as the conditionStatus and reason.
+func IsSnapshotStatusConditionSet(snapshot *applicationapiv1alpha1.Snapshot, conditionType string, conditionStatus metav1.ConditionStatus, reason string) bool {
+	condition := meta.FindStatusCondition(snapshot.Status.Conditions, conditionType)
+	if condition == nil && conditionType == AppStudioTestSuceededCondition {
+		condition = meta.FindStatusCondition(snapshot.Status.Conditions, LegacyTestSuceededCondition)
+	}
+	if condition == nil && conditionType == AppStudioIntegrationStatusCondition {
+		condition = meta.FindStatusCondition(snapshot.Status.Conditions, LegacyIntegrationStatusCondition)
+	}
+	if condition == nil || condition.Status != conditionStatus {
+		return false
+	}
+	if reason != "" && reason != condition.Reason {
+		return false
+	}
+	return true
+}
+
 // ValidateImageDigest checks if image url contains valid digest, return error if check fails
 func ValidateImageDigest(imageUrl string) error {
 	_, err := name.NewDigest(imageUrl)
