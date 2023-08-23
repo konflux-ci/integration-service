@@ -30,6 +30,7 @@ import (
 	"github.com/redhat-appstudio/integration-service/tekton"
 	"github.com/redhat-appstudio/operator-toolkit/controller"
 	tektonv1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -125,31 +126,46 @@ func (a *Adapter) EnsureSnapshotPassedAllTests() (controller.OperationResult, er
 		if compositeSnapshot != nil {
 			a.logger.Info("The global component list has changed in the meantime, marking snapshot as Invalid",
 				"snapshot.Name", existingSnapshot.Name)
-			gitops.SetSnapshotIntegrationStatusAsInvalid(existingSnapshot,
-				"The global component list has changed in the meantime, superseding with a composite snapshot")
-			a.logger.LogAuditEvent("Snapshot integration status condition marked as invalid, the global component list has changed in the meantime",
-				existingSnapshot, h.LogActionUpdate)
+			if !gitops.IsSnapshotStatusConditionSet(existingSnapshot, gitops.AppStudioIntegrationStatusCondition,
+				metav1.ConditionFalse, gitops.AppStudioIntegrationStatusInvalid) {
+				patch := client.MergeFrom(existingSnapshot.DeepCopy())
+				gitops.SetSnapshotIntegrationStatusAsInvalid(existingSnapshot,
+					"The global component list has changed in the meantime, superseding with a composite snapshot")
+				err := a.client.Status().Patch(a.context, existingSnapshot, patch)
+				if err != nil {
+					a.logger.Error(err, "Failed to update the status to Invalid for the snapshot",
+						"snapshot.Name", existingSnapshot.Name)
+					return controller.RequeueWithError(err)
+				}
+				a.logger.LogAuditEvent("Snapshot integration status condition marked as invalid, the global component list has changed in the meantime",
+					existingSnapshot, h.LogActionUpdate)
+			}
+			return controller.ContinueProcessing()
 		}
 	}
 
 	// If all Integration Pipeline runs passed, mark the snapshot as succeeded, otherwise mark it as failed
 	// This updates the Snapshot resource on the cluster
 	if allIntegrationPipelineRunsPassed {
-		existingSnapshot, err = gitops.MarkSnapshotAsPassed(a.client, a.context, existingSnapshot, "All Integration Pipeline tests passed")
-		if err != nil {
-			a.logger.Error(err, "Failed to Update Snapshot AppStudioTestSucceeded status")
-			return controller.RequeueWithError(err)
+		if !gitops.IsSnapshotStatusConditionSet(existingSnapshot, gitops.AppStudioTestSuceededCondition, metav1.ConditionTrue, "") {
+			existingSnapshot, err = gitops.MarkSnapshotAsPassed(a.client, a.context, existingSnapshot, "All Integration Pipeline tests passed")
+			if err != nil {
+				a.logger.Error(err, "Failed to Update Snapshot AppStudioTestSucceeded status")
+				return controller.RequeueWithError(err)
+			}
+			a.logger.LogAuditEvent("Snapshot integration status condition marked as passed, all Integration PipelineRuns succeeded",
+				existingSnapshot, h.LogActionUpdate)
 		}
-		a.logger.LogAuditEvent("Snapshot integration status condition marked as passed, all Integration PipelineRuns succeeded",
-			existingSnapshot, h.LogActionUpdate)
 	} else {
-		existingSnapshot, err = gitops.MarkSnapshotAsFailed(a.client, a.context, existingSnapshot, "Some Integration pipeline tests failed")
-		if err != nil {
-			a.logger.Error(err, "Failed to Update Snapshot AppStudioTestSucceeded status")
-			return controller.RequeueWithError(err)
+		if !gitops.IsSnapshotStatusConditionSet(existingSnapshot, gitops.AppStudioTestSuceededCondition, metav1.ConditionFalse, "") {
+			existingSnapshot, err = gitops.MarkSnapshotAsFailed(a.client, a.context, existingSnapshot, "Some Integration pipeline tests failed")
+			if err != nil {
+				a.logger.Error(err, "Failed to Update Snapshot AppStudioTestSucceeded status")
+				return controller.RequeueWithError(err)
+			}
+			a.logger.LogAuditEvent("Snapshot integration status condition marked as failed, some tests within Integration PipelineRuns failed",
+				existingSnapshot, h.LogActionUpdate)
 		}
-		a.logger.LogAuditEvent("Snapshot integration status condition marked as failed, some tests within Integration PipelineRuns failed",
-			existingSnapshot, h.LogActionUpdate)
 	}
 
 	return controller.ContinueProcessing()
