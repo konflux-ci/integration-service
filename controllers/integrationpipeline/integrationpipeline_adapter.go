@@ -257,14 +257,44 @@ func (a *Adapter) determineIfAllIntegrationPipelinesPassed(integrationPipelineRu
 	allIntegrationPipelineRunsPassed := true
 	for _, integrationPipelineRun := range *integrationPipelineRuns {
 		integrationPipelineRun := integrationPipelineRun // G601
-		pipelineRunOutcome, err := h.CalculateIntegrationPipelineRunOutcome(a.client, a.context, a.logger.Logger, &integrationPipelineRun)
+		if !h.HasPipelineRunFinished(&integrationPipelineRun) {
+			a.logger.Info(
+				fmt.Sprintf("Integration Pipeline Run %s has not finished yet", integrationPipelineRun.Name),
+				"pipelineRun.Name", integrationPipelineRun.Name,
+				"pipelineRun.Namespace", integrationPipelineRun.Namespace,
+			)
+			allIntegrationPipelineRunsPassed = false
+			continue
+		}
+		pipelineRunOutcome, err := h.GetIntegrationPipelineRunOutcome(a.client, a.context, &integrationPipelineRun)
 		if err != nil {
-			a.logger.Error(err, "Failed to get Integration PipelineRun outcome")
+			a.logger.Error(err, fmt.Sprintf("Failed to get Integration Pipeline Run %s outcome", integrationPipelineRun.Name),
+				"pipelineRun.Name", integrationPipelineRun.Name,
+				"pipelineRun.Namespace", integrationPipelineRun.Namespace,
+			)
 			return false, err
 		}
-		if !pipelineRunOutcome {
-			a.logger.Info("Integration PipelineRun did not pass all tests")
+		if !pipelineRunOutcome.HasPipelineRunPassedTesting() {
+			if !pipelineRunOutcome.HasPipelineRunSucceeded() {
+				a.logger.Info(
+					fmt.Sprintf("integration Pipeline Run %s failed without test results of TaskRuns: %s", integrationPipelineRun.Name, h.GetPipelineRunFailedReason(&integrationPipelineRun)),
+					"pipelineRun.Name", integrationPipelineRun.Name,
+					"pipelineRun.Namespace", integrationPipelineRun.Namespace,
+				)
+
+			} else {
+				a.logger.Info(
+					fmt.Sprintf("Integration Pipeline Run %s did not pass all tests", integrationPipelineRun.Name),
+					"pipelineRun.Name", integrationPipelineRun.Name,
+					"pipelineRun.Namespace", integrationPipelineRun.Namespace,
+				)
+			}
 			allIntegrationPipelineRunsPassed = false
+		}
+		if a.pipelineRun.Name == integrationPipelineRun.Name {
+			// log only results of current pipeline run, other pipelines will be logged in their reconciliations
+			// prevent mess in logs
+			pipelineRunOutcome.LogResults(a.logger.Logger)
 		}
 	}
 	return allIntegrationPipelineRunsPassed, nil

@@ -172,13 +172,13 @@ func (r *GitHubReporter) createCheckRunAdapter(k8sClient client.Client, ctx cont
 	if succeeded.IsUnknown() {
 		title = scenario + " has started"
 	} else {
-		outcome, err := helpers.CalculateIntegrationPipelineRunOutcome(k8sClient, ctx, r.logger, pipelineRun)
+		outcome, err := helpers.GetIntegrationPipelineRunOutcome(k8sClient, ctx, pipelineRun)
 
 		if err != nil {
 			return nil, err
 		}
 
-		if outcome {
+		if outcome.HasPipelineRunPassedTesting() {
 			title = scenario + " has succeeded"
 			conclusion = "success"
 		} else {
@@ -187,7 +187,7 @@ func (r *GitHubReporter) createCheckRunAdapter(k8sClient client.Client, ctx cont
 		}
 	}
 
-	taskRuns, err := helpers.GetAllChildTaskRunsForPipelineRun(r.k8sClient, ctx, r.logger, pipelineRun)
+	taskRuns, err := helpers.GetAllChildTaskRunsForPipelineRun(r.k8sClient, ctx, pipelineRun)
 	if err != nil {
 		return nil, fmt.Errorf("error while getting all child taskRuns from pipelineRun %s: %w", pipelineRun.Name, err)
 	}
@@ -267,12 +267,12 @@ func (r *GitHubReporter) createCommitStatus(k8sClient client.Client, ctx context
 		state = "pending"
 		description = scenario + " has started"
 	} else {
-		outcome, err := helpers.CalculateIntegrationPipelineRunOutcome(k8sClient, ctx, r.logger, pipelineRun)
+		outcome, err := helpers.GetIntegrationPipelineRunOutcome(k8sClient, ctx, pipelineRun)
 		if err != nil {
 			return err
 		}
 
-		if outcome {
+		if outcome.HasPipelineRunPassedTesting() {
 			state = "success"
 			description = scenario + " has succeeded"
 		} else {
@@ -322,19 +322,19 @@ func (r *GitHubReporter) createComment(k8sClient client.Client, ctx context.Cont
 		return err
 	}
 
-	outcome, err := helpers.CalculateIntegrationPipelineRunOutcome(k8sClient, ctx, r.logger, pipelineRun)
+	outcome, err := helpers.GetIntegrationPipelineRunOutcome(k8sClient, ctx, pipelineRun)
 	if err != nil {
 		return err
 	}
 
 	var title string
-	if outcome {
+	if outcome.HasPipelineRunPassedTesting() {
 		title = scenario + " has succeeded"
 	} else {
 		title = scenario + " has failed"
 	}
 
-	taskRuns, err := helpers.GetAllChildTaskRunsForPipelineRun(r.k8sClient, ctx, r.logger, pipelineRun)
+	taskRuns, err := helpers.GetAllChildTaskRunsForPipelineRun(r.k8sClient, ctx, pipelineRun)
 	if err != nil {
 		return fmt.Errorf("error while getting all child taskRuns from pipelineRun %s: %w", pipelineRun.Name, err)
 	}
