@@ -23,7 +23,7 @@ import (
 
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/api/v1beta1"
-	"github.com/redhat-appstudio/integration-service/helpers"
+	"github.com/redhat-appstudio/operator-toolkit/metadata"
 	tektonv1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -172,7 +172,7 @@ func (r *IntegrationPipelineRun) WithIntegrationLabels(integrationTestScenario *
 	r.ObjectMeta.Labels[PipelinesTypeLabel] = PipelineTypeTest
 	r.ObjectMeta.Labels[ScenarioNameLabel] = integrationTestScenario.Name
 
-	if helpers.HasLabel(integrationTestScenario, OptionalLabel) {
+	if metadata.HasLabel(integrationTestScenario, OptionalLabel) {
 		r.ObjectMeta.Labels[OptionalLabel] = integrationTestScenario.Labels[OptionalLabel]
 	}
 

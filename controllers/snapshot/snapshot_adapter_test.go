@@ -203,6 +203,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 					gitops.SnapshotTypeLabel:              "component",
 					gitops.SnapshotComponentLabel:         "component-sample",
 					"build.appstudio.redhat.com/pipeline": "enterprise-contract",
+					gitops.PipelineAsCodeEventTypeLabel:   "push",
 				},
 				Annotations: map[string]string{
 					gitops.PipelineAsCodeInstallationIDAnnotation:   "123",
@@ -446,6 +447,48 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			result, err := adapter.EnsureGlobalCandidateImageUpdated()
 			Expect(err).ShouldNot(HaveOccurred())
 			Expect(result.CancelRequest).To(BeFalse())
+		})
+
+		It("ensures Release created successfully", func() {
+			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+
+			gitops.SetSnapshotIntegrationStatusAsFinished(hasSnapshot, "Snapshot integration status condition is finished since all testing pipelines completed")
+			Expect(gitops.HaveAppStudioTestsFinished(hasSnapshot)).To(BeTrue())
+			gitops.MarkSnapshotAsPassed(k8sClient, ctx, hasSnapshot, "test passed")
+			Expect(gitops.HaveAppStudioTestsSucceeded(hasSnapshot)).To(BeTrue())
+			adapter = NewAdapter(hasSnapshot, hasApp, hasComp, log, loader.NewMockLoader(), k8sClient, ctx)
+
+			adapter.context = loader.GetMockedContext(ctx, []loader.MockData{
+				{
+					ContextKey: loader.ApplicationContextKey,
+					Resource:   hasApp,
+				},
+				{
+					ContextKey: loader.ComponentContextKey,
+					Resource:   hasComp,
+				},
+				{
+					ContextKey: loader.SnapshotContextKey,
+					Resource:   hasSnapshot,
+				},
+				{
+					ContextKey: loader.AllIntegrationTestScenariosContextKey,
+					Resource:   []v1beta1.IntegrationTestScenario{*integrationTestScenarioWithoutEnv},
+				},
+				{
+					ContextKey: loader.AutoReleasePlansContextKey,
+					Resource:   []releasev1alpha1.ReleasePlan{*testReleasePlan},
+				},
+				{
+					ContextKey: loader.ReleaseContextKey,
+					Resource:   &releasev1alpha1.Release{},
+				},
+			})
+
+			Eventually(func() bool {
+				result, err := adapter.EnsureAllReleasesExist()
+				return !result.CancelRequest && err == nil
+			}, time.Second*10).Should(BeTrue())
 		})
 
 		It("no action when EnsureAllReleasesExist function runs when AppStudio Tests failed and the snapshot is invalid", func() {
@@ -699,9 +742,12 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			components := []applicationapiv1alpha1.Component{
 				*hasComp,
 			}
-			snapshotEnvironmentBinding, err := adapter.createSnapshotEnvironmentBindingForSnapshot(adapter.application, env, hasSnapshot, &components)
+			newLabels := map[string]string{}
+			newLabels[gitops.SnapshotTestScenarioLabel] = integrationTestScenario.Name
+			snapshotEnvironmentBinding, err := adapter.createSnapshotEnvironmentBindingForSnapshot(adapter.application, env, hasSnapshot, &components, newLabels)
 			Expect(err).To(BeNil())
 			Expect(snapshotEnvironmentBinding).NotTo(BeNil())
+			Expect(snapshotEnvironmentBinding.Labels[gitops.SnapshotTestScenarioLabel]).To(Equal(integrationTestScenario.Name))
 
 			// update snapshot environment with new component
 			componentsUpdate := []applicationapiv1alpha1.Component{
@@ -713,7 +759,8 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			Expect(updatedSnapshotEnvironmentBinding).NotTo(BeNil())
 			Expect(len(updatedSnapshotEnvironmentBinding.Spec.Components) == 1)
 			Expect(updatedSnapshotEnvironmentBinding.Spec.Components[0].Name == secondComp.Spec.ComponentName)
-
+			err = k8sClient.Delete(ctx, snapshotEnvironmentBinding)
+			Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 		})
 
 		It("ensures the ephemeral copy Environment are created for IntegrationTestScenario", func() {

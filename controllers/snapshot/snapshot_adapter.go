@@ -34,6 +34,7 @@ import (
 
 	"github.com/redhat-appstudio/integration-service/loader"
 	"github.com/redhat-appstudio/operator-toolkit/controller"
+	"github.com/redhat-appstudio/operator-toolkit/metadata"
 	releasev1alpha1 "github.com/redhat-appstudio/release-service/api/v1alpha1"
 	pipeline "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -189,7 +190,7 @@ TestScenarioLoop:
 		for _, environment := range *allEnvironments {
 			environment := environment //G601
 			//prevent creating already existing environments
-			if h.HasLabelWithValue(&environment, gitops.SnapshotLabel, a.snapshot.Name) && h.HasLabelWithValue(&environment, gitops.SnapshotTestScenarioLabel, integrationTestScenario.Name) {
+			if metadata.HasLabelWithValue(&environment, gitops.SnapshotLabel, a.snapshot.Name) && metadata.HasLabelWithValue(&environment, gitops.SnapshotTestScenarioLabel, integrationTestScenario.Name) {
 				a.logger.Info("Environment already exists and contains snapshot and scenario:",
 					"environment.Name", environment.Name,
 					"integrationScenario.Name", integrationTestScenario.Name)
@@ -415,8 +416,8 @@ func (a *Adapter) createMissingReleasesForReleasePlans(application *applicationa
 		} else {
 			newRelease := release.NewReleaseForReleasePlan(&releasePlan, snapshot)
 			// Propagate annotations/labels from snapshot to Release
-			h.CopyAnnotationsByPrefix(&snapshot.ObjectMeta, &newRelease.ObjectMeta, gitops.PipelinesAsCodePrefix, gitops.PipelinesAsCodePrefix)
-			h.CopyLabelsByPrefix(&snapshot.ObjectMeta, &newRelease.ObjectMeta, gitops.PipelinesAsCodePrefix, gitops.PipelinesAsCodePrefix)
+			_ = metadata.CopyAnnotationsByPrefix(&snapshot.ObjectMeta, &newRelease.ObjectMeta, gitops.PipelinesAsCodePrefix)
+			_ = metadata.CopyLabelsByPrefix(&snapshot.ObjectMeta, &newRelease.ObjectMeta, gitops.PipelinesAsCodePrefix)
 
 			err := ctrl.SetControllerReference(application, newRelease, a.client.Scheme())
 			if err != nil {
@@ -475,12 +476,12 @@ func (a *Adapter) createIntegrationPipelineRun(application *applicationapiv1alph
 		WithExtraParams(integrationTestScenario.Spec.Params).
 		AsPipelineRun()
 	// copy PipelineRun PAC annotations/labels from snapshot to integration test PipelineRuns
-	h.CopyAnnotationsByPrefix(&snapshot.ObjectMeta, &pipelineRun.ObjectMeta, gitops.PipelinesAsCodePrefix, gitops.PipelinesAsCodePrefix)
-	h.CopyLabelsByPrefix(&snapshot.ObjectMeta, &pipelineRun.ObjectMeta, gitops.PipelinesAsCodePrefix, gitops.PipelinesAsCodePrefix)
+	_ = metadata.CopyAnnotationsByPrefix(&snapshot.ObjectMeta, &pipelineRun.ObjectMeta, gitops.PipelinesAsCodePrefix)
+	_ = metadata.CopyLabelsByPrefix(&snapshot.ObjectMeta, &pipelineRun.ObjectMeta, gitops.PipelinesAsCodePrefix)
 
 	// Copy build labels and annotations prefixed with build.appstudio from snapshot to integration test PipelineRuns
-	h.CopyLabelsByPrefix(&snapshot.ObjectMeta, &pipelineRun.ObjectMeta, gitops.BuildPipelineRunPrefix, gitops.BuildPipelineRunPrefix)
-	h.CopyAnnotationsByPrefix(&snapshot.ObjectMeta, &pipelineRun.ObjectMeta, gitops.BuildPipelineRunPrefix, gitops.BuildPipelineRunPrefix)
+	_ = metadata.CopyLabelsByPrefix(&snapshot.ObjectMeta, &pipelineRun.ObjectMeta, gitops.BuildPipelineRunPrefix)
+	_ = metadata.CopyAnnotationsByPrefix(&snapshot.ObjectMeta, &pipelineRun.ObjectMeta, gitops.BuildPipelineRunPrefix)
 
 	err := ctrl.SetControllerReference(snapshot, pipelineRun, a.client.Scheme())
 	if err != nil {
@@ -523,7 +524,9 @@ func (a *Adapter) createSnapshotEnvironmentBindingForSnapshot(application *appli
 
 	for _, keyAndValue := range optionalLabelKeysAndValues {
 		if v, ok := keyAndValue[gitops.SnapshotTestScenarioLabel]; ok {
-			h.AddLabel(&snapshotEnvironmentBinding.ObjectMeta, gitops.SnapshotTestScenarioLabel, v)
+			newLabels := map[string]string{}
+			newLabels[gitops.SnapshotTestScenarioLabel] = v
+			_ = metadata.AddLabels(&snapshotEnvironmentBinding.ObjectMeta, newLabels)
 		} else {
 			return nil, fmt.Errorf("error while adding label to binding: invalid label in %s", optionalLabelKeysAndValues)
 		}
