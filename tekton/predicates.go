@@ -2,6 +2,7 @@ package tekton
 
 import (
 	"github.com/redhat-appstudio/integration-service/helpers"
+	"github.com/redhat-appstudio/operator-toolkit/metadata"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 )
@@ -42,7 +43,7 @@ func BuildPipelineRunSignedAndSucceededPredicate() predicate.Predicate {
 		UpdateFunc: func(e event.UpdateEvent) bool {
 			return IsBuildPipelineRun(e.ObjectNew) && isPipelineRunSigned(e.ObjectNew) &&
 				helpers.HasPipelineRunSucceeded(e.ObjectNew) &&
-				!helpers.HasAnnotation(e.ObjectNew, SnapshotNameLabel)
+				!metadata.HasAnnotation(e.ObjectNew, SnapshotNameLabel)
 		},
 	}
 }

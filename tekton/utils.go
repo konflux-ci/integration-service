@@ -3,7 +3,7 @@ package tekton
 import (
 	"fmt"
 
-	"github.com/redhat-appstudio/integration-service/helpers"
+	"github.com/redhat-appstudio/operator-toolkit/metadata"
 	tektonv1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 	"knative.dev/pkg/apis"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -33,7 +33,7 @@ const (
 // the Build service or not.
 func IsBuildPipelineRun(object client.Object) bool {
 	if pipelineRun, ok := object.(*tektonv1beta1.PipelineRun); ok {
-		return helpers.HasLabelWithValue(pipelineRun,
+		return metadata.HasLabelWithValue(pipelineRun,
 			PipelineRunTypeLabel,
 			PipelineRunBuildType)
 	}
@@ -45,7 +45,7 @@ func IsBuildPipelineRun(object client.Object) bool {
 // Component PipelineRun
 func IsIntegrationPipelineRun(object client.Object) bool {
 	if pipelineRun, ok := object.(*tektonv1beta1.PipelineRun); ok {
-		return helpers.HasLabelWithValue(pipelineRun,
+		return metadata.HasLabelWithValue(pipelineRun,
 			PipelineRunTypeLabel,
 			PipelineRunTestType)
 	}
@@ -82,7 +82,7 @@ func hasPipelineRunStateChangedToStarted(objectOld, objectNew client.Object) boo
 // If the object passed to this function is not a PipelineRun, the function will return false.
 func isPipelineRunSigned(objectNew client.Object) bool {
 	if newPipelineRun, ok := objectNew.(*tektonv1beta1.PipelineRun); ok {
-		return helpers.HasAnnotationWithValue(newPipelineRun, PipelineRunChainsSignedAnnotation, "true")
+		return metadata.HasAnnotationWithValue(newPipelineRun, PipelineRunChainsSignedAnnotation, "true")
 	}
 	return false
 }
