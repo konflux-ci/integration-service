@@ -23,7 +23,6 @@ import (
 	"github.com/redhat-appstudio/integration-service/cache"
 
 	"github.com/go-logr/logr"
-	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/helpers"
 	"github.com/redhat-appstudio/integration-service/loader"
 	"github.com/redhat-appstudio/integration-service/tekton"
@@ -92,8 +91,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{}, err
 	}
 
-	application := &applicationapiv1alpha1.Application{}
-	application, err = loader.GetApplicationFromPipelineRun(r.Client, ctx, pipelineRun)
+	application, err := loader.GetApplicationFromPipelineRun(r.Client, ctx, pipelineRun)
 	if err != nil {
 		logger.Error(err, "Failed to get Application from the integration pipelineRun",
 			"PipelineRun.Name", pipelineRun.Name, "PipelineRun.Namespace", pipelineRun.Namespace)
