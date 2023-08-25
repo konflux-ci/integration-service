@@ -195,8 +195,7 @@ TestScenarioLoop:
 					"integrationScenario.Name", integrationTestScenario.Name)
 
 				//check if the environmentSnapshotBinding exists for this existing environment, create it if it doesn't exist
-				var binding = &applicationapiv1alpha1.SnapshotEnvironmentBinding{}
-				binding, err = a.loader.FindExistingSnapshotEnvironmentBinding(a.client, a.context, a.application, &environment)
+				binding, err := a.loader.FindExistingSnapshotEnvironmentBinding(a.client, a.context, a.application, &environment)
 				if err != nil {
 					a.logger.Error(err, "Failed to find snapshotEnvironmentBinding associated with environment", "environment.Name", environment.Name)
 					return controller.RequeueWithError(err)
