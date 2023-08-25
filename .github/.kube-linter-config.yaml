@@ -5,5 +5,4 @@ checks:
   include: [ ]
   # exclude explicitly excludes checks, by name. exclude has the highest priority: if a check is
   # in exclude, then it is not considered, even if it is in include as well.
-  exclude:
-    - no-read-only-root-fs  # FIXME
+  exclude: [ ]
