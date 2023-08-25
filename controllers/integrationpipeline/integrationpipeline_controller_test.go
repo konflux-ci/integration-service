@@ -129,7 +129,7 @@ var _ = Describe("Integration PipelineController", func() {
 				Name:      "pipelinerun-sample",
 				Namespace: "default",
 				Labels: map[string]string{
-					"pipelines.appstudio.openshift.io/type": "build",
+					"pipelines.appstudio.openshift.io/type": "test",
 					"pipelines.openshift.io/used-by":        "build-cloud",
 					"pipelines.openshift.io/runtime":        "nodejs",
 					"pipelines.openshift.io/strategy":       "s2i",
