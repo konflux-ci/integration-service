@@ -150,46 +150,6 @@ var _ = Describe("Binding Adapter", Ordered, func() {
 		}
 		Expect(k8sClient.Create(ctx, deploymentTarget)).Should(Succeed())
 
-		deploymentTargetClaim = &applicationapiv1alpha1.DeploymentTargetClaim{
-			ObjectMeta: metav1.ObjectMeta{
-				GenerateName: "dtc" + "-",
-				Namespace:    "default",
-			},
-			Spec: applicationapiv1alpha1.DeploymentTargetClaimSpec{
-				DeploymentTargetClassName: applicationapiv1alpha1.DeploymentTargetClassName("dtcls-name"),
-				TargetName:                deploymentTarget.Name,
-			},
-		}
-		Expect(k8sClient.Create(ctx, deploymentTargetClaim)).Should(Succeed())
-
-		hasEnv = &applicationapiv1alpha1.Environment{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "envname",
-				Namespace: "default",
-			},
-			Spec: applicationapiv1alpha1.EnvironmentSpec{
-				Type:               "POC",
-				DisplayName:        "my-environment",
-				DeploymentStrategy: applicationapiv1alpha1.DeploymentStrategy_Manual,
-				ParentEnvironment:  "",
-				Tags:               []string{},
-				Configuration: applicationapiv1alpha1.EnvironmentConfiguration{
-					Env: []applicationapiv1alpha1.EnvVarPair{
-						{
-							Name:  "var_name",
-							Value: "test",
-						},
-					},
-					Target: applicationapiv1alpha1.EnvironmentTarget{
-						DeploymentTargetClaim: applicationapiv1alpha1.DeploymentTargetClaimConfig{
-							ClaimName: deploymentTargetClaim.Name,
-						},
-					},
-				},
-			},
-		}
-		Expect(k8sClient.Create(ctx, hasEnv)).Should(Succeed())
-
 		hasComp = &applicationapiv1alpha1.Component{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "component-sample",
@@ -274,6 +234,46 @@ var _ = Describe("Binding Adapter", Ordered, func() {
 		}
 		Expect(k8sClient.Create(ctx, hasSnapshot)).Should(Succeed())
 
+		deploymentTargetClaim = &applicationapiv1alpha1.DeploymentTargetClaim{
+			ObjectMeta: metav1.ObjectMeta{
+				GenerateName: "dtc" + "-",
+				Namespace:    "default",
+			},
+			Spec: applicationapiv1alpha1.DeploymentTargetClaimSpec{
+				DeploymentTargetClassName: applicationapiv1alpha1.DeploymentTargetClassName("dtcls-name"),
+				TargetName:                deploymentTarget.Name,
+			},
+		}
+		Expect(k8sClient.Create(ctx, deploymentTargetClaim)).Should(Succeed())
+
+		hasEnv = &applicationapiv1alpha1.Environment{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "envname",
+				Namespace: "default",
+			},
+			Spec: applicationapiv1alpha1.EnvironmentSpec{
+				Type:               "POC",
+				DisplayName:        "my-environment",
+				DeploymentStrategy: applicationapiv1alpha1.DeploymentStrategy_Manual,
+				ParentEnvironment:  "",
+				Tags:               []string{},
+				Configuration: applicationapiv1alpha1.EnvironmentConfiguration{
+					Env: []applicationapiv1alpha1.EnvVarPair{
+						{
+							Name:  "var_name",
+							Value: "test",
+						},
+					},
+					Target: applicationapiv1alpha1.EnvironmentTarget{
+						DeploymentTargetClaim: applicationapiv1alpha1.DeploymentTargetClaimConfig{
+							ClaimName: deploymentTargetClaim.Name,
+						},
+					},
+				},
+			},
+		}
+		Expect(k8sClient.Create(ctx, hasEnv)).Should(Succeed())
+
 		hasBinding = &applicationapiv1alpha1.SnapshotEnvironmentBinding{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "snapshot-binding-sample",
@@ -318,6 +318,10 @@ var _ = Describe("Binding Adapter", Ordered, func() {
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 		err = k8sClient.Delete(ctx, hasSnapshot)
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
+		err = k8sClient.Delete(ctx, deploymentTargetClaim)
+		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
+		err = k8sClient.Delete(ctx, hasEnv)
+		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 	})
 
 	AfterAll(func() {
@@ -325,15 +329,11 @@ var _ = Describe("Binding Adapter", Ordered, func() {
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 		err = k8sClient.Delete(ctx, hasComp)
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
-		err = k8sClient.Delete(ctx, hasEnv)
-		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 		err = k8sClient.Delete(ctx, integrationTestScenario)
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 		err = k8sClient.Delete(ctx, testReleasePlan)
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 		err = k8sClient.Delete(ctx, deploymentTarget)
-		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
-		err = k8sClient.Delete(ctx, deploymentTargetClaim)
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 		err = k8sClient.Delete(ctx, finishedSnapshot)
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
@@ -441,7 +441,7 @@ var _ = Describe("Binding Adapter", Ordered, func() {
 					Reason:             "ErrorOccurred",
 					Status:             "True",
 					Type:               gitops.BindingErrorOccurredStatusConditionType,
-					LastTransitionTime: metav1.Time{Time: time.Now()},
+					LastTransitionTime: metav1.Time{Time: time.Time{}},
 				},
 			},
 		}
@@ -478,5 +478,57 @@ var _ = Describe("Binding Adapter", Ordered, func() {
 
 		expectedLogEntry = "Ephemeral environment and its owning snapshotEnvironmentBinding deleted"
 		Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
+	})
+
+	It("Requeues the environment cleanup if the binding is younger than the threshold", func() {
+		var buf bytes.Buffer
+		log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+		hasEnv.Spec.Tags = append(hasEnv.Spec.Tags, "ephemeral")
+		hasBinding.Status = applicationapiv1alpha1.SnapshotEnvironmentBindingStatus{
+			BindingConditions: []metav1.Condition{
+				{
+					Reason:             "ErrorOccurred",
+					Status:             "True",
+					Type:               gitops.BindingErrorOccurredStatusConditionType,
+					LastTransitionTime: metav1.Time{Time: time.Now()},
+				},
+			},
+		}
+
+		adapter = NewAdapter(hasBinding, hasSnapshot, hasEnv, hasApp, hasComp, integrationTestScenario, log, loader.NewMockLoader(), k8sClient, ctx)
+		adapter.context = loader.GetMockedContext(ctx, []loader.MockData{
+			{
+				ContextKey: loader.ApplicationContextKey,
+				Resource:   hasApp,
+			},
+			{
+				ContextKey: loader.EnvironmentContextKey,
+				Resource:   hasEnv,
+			},
+			{
+				ContextKey: loader.DeploymentTargetContextKey,
+				Resource:   deploymentTarget,
+			},
+		})
+
+		dtc, _ := adapter.loader.GetDeploymentTargetClaimForEnvironment(k8sClient, adapter.context, hasEnv)
+		Expect(dtc).NotTo(BeNil())
+
+		dt, _ := adapter.loader.GetDeploymentTargetForDeploymentTargetClaim(k8sClient, adapter.context, dtc)
+		Expect(dt).NotTo(BeNil())
+
+		result, err := adapter.EnsureEphemeralEnvironmentsCleanedUp()
+		Expect(!result.CancelRequest && err == nil).To(BeTrue())
+
+		Expect(gitops.HaveAppStudioTestsSucceeded(hasSnapshot)).To(BeFalse())
+
+		expectedLogEntry := "Requeueing cleanup after delay"
+		Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
+
+		// Expect the environment and DTC to not have been deleted
+		dtc, _ = adapter.loader.GetDeploymentTargetClaimForEnvironment(k8sClient, adapter.context, hasEnv)
+		Expect(dtc).NotTo(BeNil())
+		environments, _ := adapter.loader.GetAllEnvironments(k8sClient, adapter.context, hasApp)
+		Expect(*environments).To(ContainElement(HaveField("ObjectMeta.Name", "envname")))
 	})
 })
