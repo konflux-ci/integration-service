@@ -16,6 +16,7 @@ package binding
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/redhat-appstudio/operator-toolkit/controller"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -116,6 +117,28 @@ func (a *Adapter) EnsureIntegrationTestPipelineForScenarioExists() (controller.O
 func (a *Adapter) EnsureEphemeralEnvironmentsCleanedUp() (controller.OperationResult, error) {
 	if !gitops.HaveBindingsFailed(a.snapshotEnvironmentBinding) {
 		return controller.ContinueProcessing()
+	}
+
+	// The default value for ErrorOccured is 'True'.  We know that the state
+	// of the condition is still 'True' due to the earlier call to
+	// HaveBindingsFailed().  If this condition is still true after a
+	// reasonable time then we assume that the SEB is stuck in an unrecoverable
+	// state and clean it up.  Otherwise we requeue and wait until the timeout
+	// has passed
+	const snapshotEnvironmentBindingErrorTimeoutSeconds float64 = 300
+	var lastTransitionTime time.Time
+	bindingStatus := meta.FindStatusCondition(a.snapshotEnvironmentBinding.Status.BindingConditions, gitops.BindingErrorOccurredStatusConditionType)
+	if bindingStatus != nil {
+		lastTransitionTime = bindingStatus.LastTransitionTime.Time
+	}
+	sinceLastTransition := time.Since(lastTransitionTime).Seconds()
+	if sinceLastTransition < snapshotEnvironmentBindingErrorTimeoutSeconds {
+		a.logger.Info(fmt.Sprintf("SnapshotEnvironmentBinding has been in error state for %f "+
+			"seconds,  which is less than threshold time of %f. Requeueing cleanup after delay.",
+			sinceLastTransition, snapshotEnvironmentBindingErrorTimeoutSeconds))
+		return controller.RequeueAfter(time.Duration(snapshotEnvironmentBindingErrorTimeoutSeconds*float64(time.Second)), nil)
+	} else {
+		a.logger.Info(fmt.Sprintf("SEB has been in the error state for more than the threshold time of %f seconds", snapshotEnvironmentBindingErrorTimeoutSeconds))
 	}
 
 	// mark snapshot as failed

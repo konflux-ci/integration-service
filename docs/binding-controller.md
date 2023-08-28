@@ -36,6 +36,8 @@ predicate_deploy_fail((PREDICATE:  <br>SnapshotEnvironmentBinding<br>fails to de
 
 %% Node definitions
 ensure2(Proceed further if:<br>Snapshot testing <br> not finished yet)
+isSnapshotOldEnough{"Is lastUpdatedTime greater than the threshold?"}
+requeue[/"Requeue environment cleanup after threshold delay"/]
 markSnapshot("Mark snapshot as failed for failure to deploy")
 cleanupDeploymentArtifacts("Delete DeploymentTargetClaim and Environment")
 continueProcessing2[/Controller continues processing.../]
@@ -43,7 +45,9 @@ continueProcessing2[/Controller continues processing.../]
 %% Node connections
 predicate_integration_seb    ---->       predicate_deploy_fail
 predicate_deploy_fail        ---->       |"EnsureEphemeralEnvironmentsCleanedUp()"|ensure2
-ensure2                      ---->       markSnapshot
+ensure2                      ---->       isSnapshotOldEnough
+isSnapshotOldEnough          --No-->     requeue 
+isSnapshotOldEnough          --Yes-->    markSnapshot
 markSnapshot                 ---->       cleanupDeploymentArtifacts
 cleanupDeploymentArtifacts   ---->       continueProcessing2
 
