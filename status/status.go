@@ -5,7 +5,7 @@ import (
 
 	"github.com/go-logr/logr"
 	"github.com/redhat-appstudio/integration-service/gitops"
-	"github.com/redhat-appstudio/integration-service/helpers"
+	"github.com/redhat-appstudio/operator-toolkit/metadata"
 	tektonv1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -60,7 +60,7 @@ func NewAdapter(logger logr.Logger, k8sClient client.Client, opts ...AdapterOpti
 func (a *Adapter) GetReporters(pipelineRun *tektonv1beta1.PipelineRun) ([]Reporter, error) {
 	var reporters []Reporter
 
-	if helpers.HasLabelWithValue(pipelineRun, gitops.PipelineAsCodeGitProviderLabel, gitops.PipelineAsCodeGitHubProviderType) {
+	if metadata.HasLabelWithValue(pipelineRun, gitops.PipelineAsCodeGitProviderLabel, gitops.PipelineAsCodeGitHubProviderType) {
 		reporters = append(reporters, a.githubReporter)
 	}
 

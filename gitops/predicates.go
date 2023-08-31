@@ -14,7 +14,7 @@ limitations under the License.
 package gitops
 
 import (
-	"github.com/redhat-appstudio/integration-service/helpers"
+	"github.com/redhat-appstudio/operator-toolkit/metadata"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 )
@@ -53,7 +53,7 @@ func IntegrationSnapshotEnvironmentBindingPredicate() predicate.Predicate {
 			return false
 		},
 		UpdateFunc: func(e event.UpdateEvent) bool {
-			return helpers.HasLabel(e.ObjectNew, SnapshotTestScenarioLabel)
+			return metadata.HasLabel(e.ObjectNew, SnapshotTestScenarioLabel)
 		},
 	}
 }

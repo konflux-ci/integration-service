@@ -12,6 +12,7 @@ import (
 	"github.com/redhat-appstudio/integration-service/git/github"
 	"github.com/redhat-appstudio/integration-service/gitops"
 	"github.com/redhat-appstudio/integration-service/helpers"
+	"github.com/redhat-appstudio/operator-toolkit/metadata"
 	tektonv1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -353,13 +354,13 @@ func (r *GitHubReporter) createComment(k8sClient client.Client, ctx context.Cont
 // ReportStatus creates/updates CheckRuns when using GitHub App integration.
 // When using GitHub webhook integration a commit status and, in some cases, a comment is created.
 func (r *GitHubReporter) ReportStatus(k8sClient client.Client, ctx context.Context, pipelineRun *tektonv1beta1.PipelineRun) error {
-	if !helpers.HasLabelWithValue(pipelineRun, gitops.PipelineAsCodeEventTypeLabel, gitops.PipelineAsCodePullRequestType) {
+	if !metadata.HasLabelWithValue(pipelineRun, gitops.PipelineAsCodeEventTypeLabel, gitops.PipelineAsCodePullRequestType) {
 		return nil
 	}
 
 	// Existence of the Pipelines as Code installation ID annotation signals configuration using GitHub App integration.
 	// If it doesn't exist, GitHub webhook integration is configured.
-	if helpers.HasAnnotation(pipelineRun, gitops.PipelineAsCodeInstallationIDAnnotation) {
+	if metadata.HasAnnotation(pipelineRun, gitops.PipelineAsCodeInstallationIDAnnotation) {
 		creds, err := r.getAppCredentials(ctx, pipelineRun)
 		if err != nil {
 			return err

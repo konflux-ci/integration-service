@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/redhat-appstudio/operator-toolkit/controller"
+	"github.com/redhat-appstudio/operator-toolkit/metadata"
 	"k8s.io/apimachinery/pkg/api/meta"
 	ctrl "sigs.k8s.io/controller-runtime"
 
@@ -185,9 +186,11 @@ func (a *Adapter) createIntegrationPipelineRunWithEnvironment(application *appli
 		WithIntegrationLabels(integrationTestScenario).
 		WithEnvironmentAndDeploymentTarget(deploymentTarget, environment.Name).
 		AsPipelineRun()
+
 	// copy PipelineRun PAC annotations/labels from snapshot to integration test PipelineRuns
-	h.CopyAnnotationsByPrefix(&snapshot.ObjectMeta, &pipelineRun.ObjectMeta, gitops.PipelinesAsCodePrefix, gitops.PipelinesAsCodePrefix)
-	h.CopyLabelsByPrefix(&snapshot.ObjectMeta, &pipelineRun.ObjectMeta, gitops.PipelinesAsCodePrefix, gitops.PipelinesAsCodePrefix)
+	_ = metadata.CopyAnnotationsByPrefix(&snapshot.ObjectMeta, &pipelineRun.ObjectMeta, gitops.PipelinesAsCodePrefix)
+	_ = metadata.CopyLabelsByPrefix(&snapshot.ObjectMeta, &pipelineRun.ObjectMeta, gitops.PipelinesAsCodePrefix)
+
 	err = ctrl.SetControllerReference(snapshot, pipelineRun, a.client.Scheme())
 	if err != nil {
 		return nil, err
