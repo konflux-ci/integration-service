@@ -9,9 +9,9 @@ import (
 
 	"github.com/google/go-containerregistry/pkg/name"
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
-	"github.com/redhat-appstudio/integration-service/helpers"
 	"github.com/redhat-appstudio/integration-service/metrics"
 	"github.com/redhat-appstudio/integration-service/tekton"
+	"github.com/redhat-appstudio/operator-toolkit/metadata"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -223,7 +223,7 @@ func MarkSnapshotIntegrationStatusAsInProgress(adapterClient client.Client, ctx 
 	}
 
 	snapshotInProgressTime := &metav1.Time{Time: time.Now()}
-	if helpers.HasLabel(snapshot, BuildPipelineRunFinishTimeLabel) {
+	if metadata.HasLabel(snapshot, BuildPipelineRunFinishTimeLabel) {
 		buildPipelineRunFinishTimeStr := snapshot.Labels[BuildPipelineRunFinishTimeLabel]
 		buildPipelineRunFinishTimeInt, _ := strconv.ParseInt(buildPipelineRunFinishTimeStr, 10, 64)
 		buildPipelineRunFinishTime := time.Unix(buildPipelineRunFinishTimeInt, 0)
@@ -393,7 +393,7 @@ func CompareSnapshots(expectedSnapshot *applicationapiv1alpha1.Snapshot, foundSn
 
 // IsSnapshotCreatedByPACPullRequestEvent checks if a snapshot has label PipelineAsCodeEventTypeLabel and with push value
 func IsSnapshotCreatedByPACPullRequestEvent(snapshot *applicationapiv1alpha1.Snapshot) bool {
-	return helpers.HasLabelWithValue(snapshot, PipelineAsCodeEventTypeLabel, PipelineAsCodePullRequestType)
+	return metadata.HasLabelWithValue(snapshot, PipelineAsCodeEventTypeLabel, PipelineAsCodePullRequestType)
 }
 
 // HasSnapshotTestingChangedToFinished returns a boolean indicating whether the Snapshot testing status has
