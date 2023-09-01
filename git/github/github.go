@@ -2,6 +2,7 @@ package github
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -24,6 +25,16 @@ type CheckRunAdapter struct {
 	Text           string
 	StartTime      time.Time
 	CompletionTime time.Time
+}
+
+// CommitStatusAdapter is an abstraction for the github.CommiStatus struct.
+type CommitStatusAdapter struct {
+	Owner       string
+	Repository  string
+	SHA         string
+	State       string
+	Description string
+	Context     string
 }
 
 // GetStatus returns the appropriate status based on conclusion and start time.
@@ -56,6 +67,7 @@ type IssuesService interface {
 // RepositoriesService defines the methods used in the github Repositories service.
 type RepositoriesService interface {
 	CreateStatus(ctx context.Context, owner string, repo string, ref string, status *ghapi.RepoStatus) (*ghapi.RepoStatus, *ghapi.Response, error)
+	ListStatuses(ctx context.Context, owner, repo, ref string, opts *ghapi.ListOptions) ([]*ghapi.RepoStatus, *ghapi.Response, error)
 }
 
 // ClientInterface defines the methods that should be implemented by a GitHub client
@@ -67,6 +79,11 @@ type ClientInterface interface {
 	GetCheckRunID(ctx context.Context, owner string, repo string, SHA string, externalID string, appID int64) (*int64, error)
 	CreateComment(ctx context.Context, owner string, repo string, issueNumber int, body string) (int64, error)
 	CreateCommitStatus(ctx context.Context, owner string, repo string, SHA string, state string, description string, statusContext string) (int64, error)
+	GetAllCheckRunsForRef(ctx context.Context, owner string, repo string, SHA string, appID int64) ([]*ghapi.CheckRun, error)
+	IsUpdateNeeded(existingCheckRun *ghapi.CheckRun, newCheckRun *CheckRunAdapter) bool
+	GetExistingCheckRun(checkRuns []*ghapi.CheckRun, newCheckRun *CheckRunAdapter) *ghapi.CheckRun
+	GetAllCommitStatusesForRef(ctx context.Context, owner, repo, sha string) ([]*ghapi.RepoStatus, error)
+	CommitStatusExists(res []*ghapi.RepoStatus, commitStatus *CommitStatusAdapter) (bool, error)
 }
 
 // Client is an abstraction around the API client.
@@ -217,7 +234,7 @@ func (c *Client) CreateCheckRun(ctx context.Context, cra *CheckRunAdapter) (*int
 	cr, _, err := c.GetChecksService().CreateCheckRun(ctx, cra.Owner, cra.Repository, options)
 
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to create check run for for owner/repo/Ref %s/%s/%s: %w", cra.Owner, cra.Repository, cra.SHA, err)
 	}
 
 	c.logger.Info("Created CheckRun",
@@ -284,7 +301,7 @@ func (c *Client) GetCheckRunID(ctx context.Context, owner string, repo string, S
 	)
 
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to list all checks run for GitHub owner/repo/Ref %s/%s/%s: %w", owner, repo, SHA, err)
 	}
 
 	if *res.Total == 0 {
@@ -300,6 +317,89 @@ func (c *Client) GetCheckRunID(ctx context.Context, owner string, repo string, S
 	c.logger.Info("Found no CheckRuns with a matching ExternalID", "ExternalID", externalID)
 
 	return nil, nil
+}
+
+// GetAllCheckRunsForRef returns all existing GitHub CheckRuns if a match for the Owner, Repo, SHA, and appID.
+func (c *Client) GetAllCheckRunsForRef(ctx context.Context, owner string, repo string, SHA string, appID int64) ([]*ghapi.CheckRun, error) {
+	filter := "all"
+
+	res, _, err := c.GetChecksService().ListCheckRunsForRef(
+		ctx,
+		owner,
+		repo,
+		SHA,
+		&ghapi.ListCheckRunsOptions{
+			AppID:  &appID,
+			Filter: &filter,
+		},
+	)
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to get all check runs for GitHub owner/repo/Ref %s/%s/%s: %w", owner, repo, SHA, err)
+	}
+
+	if *res.Total == 0 {
+		c.logger.Info("Found no CheckRuns for the ref", "SHA", SHA)
+		return nil, nil
+	}
+
+	return res.CheckRuns, nil
+}
+
+// GetExistingCheckRun returns existing GitHub CheckRun for the ExternalID in checkRunAdapter.
+func (c *Client) GetExistingCheckRun(checkRuns []*ghapi.CheckRun, newCheckRun *CheckRunAdapter) *ghapi.CheckRun {
+	for _, cr := range checkRuns {
+		if *cr.ExternalID == newCheckRun.ExternalID {
+			c.logger.Info("found CheckRun with a matching ExternalID", "ExternalID", newCheckRun.ExternalID)
+			return cr
+		}
+	}
+	c.logger.Info("found no CheckRuns with a matching ExternalID", "ExternalID", newCheckRun.ExternalID)
+	return nil
+}
+
+// IsUpdateNeeded check if check run update is needed
+// according to the text of existingCheckRun and newCheckRun since the details are different every update
+func (c *Client) IsUpdateNeeded(existingCheckRun *ghapi.CheckRun, newCheckRun *CheckRunAdapter) bool {
+	if newCheckRun.Text != *existingCheckRun.Output.Text {
+		// We need to update the existing checkrun if their ExternalID and Text are different
+		c.logger.Info("found CheckRun with a matching ExternalID and status, so need to update", "ExternalID", newCheckRun.ExternalID)
+		return true
+	} else {
+		// We don't need to update the existing checkrun if their ExternalID and Text are the same
+		c.logger.Info("found CheckRun with a matching ExternalID and status, so no need to update", "ExternalID", newCheckRun.ExternalID)
+		return false
+	}
+}
+
+// GetAllCommitStatusesForRef returns all existing GitHub CommitStatuses if a match for the Owner, Repo, and SHA.
+func (c *Client) GetAllCommitStatusesForRef(ctx context.Context, owner, repo, sha string) ([]*ghapi.RepoStatus, error) {
+	res, _, err := c.GetRepositoriesService().ListStatuses(ctx, owner, repo, sha, &ghapi.ListOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get all commit statuses for GitHub owner/repo/Ref %s/%s/%s: %w", owner, repo, sha, err)
+	}
+
+	if len(res) == 0 {
+		c.logger.Info("Found no commitStatus for the ref", "SHA", sha)
+		return nil, nil
+	}
+
+	return res, nil
+}
+
+// CommitStatusExists returns if a match is found for the SHA, state, context and decription.
+func (c *Client) CommitStatusExists(res []*ghapi.RepoStatus, commitStatus *CommitStatusAdapter) (bool, error) {
+	for _, cs := range res {
+		if *cs.State == commitStatus.State && *cs.Description == commitStatus.Description && *cs.Context == commitStatus.Context {
+			c.logger.Info("Found CommitStatus with matching conditions", "CommitStatus.State", commitStatus.State, "CommitStatus.Description", commitStatus.Description, "CommitStatus.Context", commitStatus.Context)
+			return true, nil
+		} else {
+			return false, nil
+		}
+	}
+	c.logger.Info("Found no CommitStatus with matching conditions", "CommitStatus.State", commitStatus.State, "CommitStatus.Description", commitStatus.Description, "CommitStatus.Context", commitStatus.Context)
+
+	return false, nil
 }
 
 // CreateComment creates a new issue comment via the GitHub API.
@@ -330,7 +430,7 @@ func (c *Client) CreateCommitStatus(ctx context.Context, owner string, repo stri
 		"Owner", owner,
 		"Repository", repo,
 		"SHA", SHA,
-		"State", status.State,
+		"State", state,
 	)
 	return *status.ID, nil
 }
