@@ -90,15 +90,14 @@ var testResultSchema = `{
 
 // TaskRun is an integration specific wrapper around the status of a Tekton TaskRun.
 type TaskRun struct {
-	logger           logr.Logger
 	pipelineTaskName string
 	trStatus         *tektonv1beta1.TaskRunStatus
 	testResult       *AppStudioTestResult
 }
 
 // NewTaskRunFromTektonTaskRun creates and returns am integration TaskRun from the TaskRunStatus.
-func NewTaskRunFromTektonTaskRun(logger logr.Logger, pipelineTaskName string, status *tektonv1beta1.TaskRunStatus) *TaskRun {
-	return &TaskRun{logger: logger, pipelineTaskName: pipelineTaskName, trStatus: status}
+func NewTaskRunFromTektonTaskRun(pipelineTaskName string, status *tektonv1beta1.TaskRunStatus) *TaskRun {
+	return &TaskRun{pipelineTaskName: pipelineTaskName, trStatus: status}
 }
 
 // GetPipelineTaskName returns the name of the PipelineTask.
@@ -154,7 +153,6 @@ func (t *TaskRun) GetTestResult() (*AppStudioTestResult, error) {
 			if err = sch.Validate(v); err != nil {
 				return nil, fmt.Errorf("error validating schema of results from taskRun %s: %w", taskRunResult.Name, err)
 			}
-			t.logger.Info("Found a AppStudio test result", "Result", result)
 			t.testResult = &result
 			return &result, nil
 		}
@@ -180,55 +178,95 @@ func (s SortTaskRunsByStartTime) Less(i int, j int) bool {
 	return s[i].GetStartTime().Before(s[j].GetStartTime())
 }
 
-// CalculateIntegrationPipelineRunOutcome checks the Tekton results for a given PipelineRun and calculates the overall outcome.
+// IntegrationPipelineRunOutcome is struct for pipeline outcome metadata
+type IntegrationPipelineRunOutcome struct {
+	pipelineRunSucceeded bool
+	pipelineRun          *tektonv1beta1.PipelineRun
+	// map: task name to results
+	results map[string]*AppStudioTestResult
+}
+
+// HasPipelineRunSucceeded returns true when pipeline in outcome succeeded
+func (ipro *IntegrationPipelineRunOutcome) HasPipelineRunSucceeded() bool {
+	return ipro.pipelineRunSucceeded
+}
+
+// HasPipelineRunPassedTesting returns general outcome
 // If any of the tasks with the TEST_OUTPUT result don't have the `result` field set to SUCCESS or SKIPPED, it returns false.
-func CalculateIntegrationPipelineRunOutcome(adapterClient client.Client, ctx context.Context, logger logr.Logger, pipelineRun *tektonv1beta1.PipelineRun) (bool, error) {
-	var results []*AppStudioTestResult
-	var err error
-	// Check if the pipelineRun finished from the condition of status
-	if !HasPipelineRunFinished(pipelineRun) {
-		logger.Info(fmt.Sprintf("PipelineRun %s in namespace %s has not finished", pipelineRun.Name, pipelineRun.Namespace))
-		return false, nil
+func (ipro *IntegrationPipelineRunOutcome) HasPipelineRunPassedTesting() bool {
+	if !ipro.HasPipelineRunSucceeded() {
+		return false
 	}
+	for _, result := range ipro.results {
+		if result.Result != AppStudioTestOutputSuccess && result.Result != AppStudioTestOutputSkipped {
+			return false
+		}
+	}
+	return true
+}
+
+// LogResults writes tasks names with results into given logger, each task on separate line
+func (ipro *IntegrationPipelineRunOutcome) LogResults(logger logr.Logger) {
+	for k, v := range ipro.results {
+		logger.Info(fmt.Sprintf("Found task results for pipeline run %s", ipro.pipelineRun.Name),
+			"pipelineRun.Name", ipro.pipelineRun.Name,
+			"pipelineRun.Namespace", ipro.pipelineRun.Namespace,
+			"task.Name", k, "task.Result", v)
+	}
+}
+
+// GetIntegrationPipelineRunOutcome returns the IntegrationPipelineRunOutcome which can be used for further inspection of
+// the results and general outcome
+// This function must be called on the finished pipeline
+func GetIntegrationPipelineRunOutcome(adapterClient client.Client, ctx context.Context, pipelineRun *tektonv1beta1.PipelineRun) (*IntegrationPipelineRunOutcome, error) {
+
 	// Check if the pipelineRun failed from the conditions of status
 	if !HasPipelineRunSucceeded(pipelineRun) {
-		logger.Error(fmt.Errorf("PipelineRun %s in namespace %s failed for %s", pipelineRun.Name, pipelineRun.Namespace, GetPipelineRunFailedReason(pipelineRun)), "PipelineRun failed without test results of TaskRuns")
-		return false, nil
+		return &IntegrationPipelineRunOutcome{
+			pipelineRunSucceeded: false,
+			pipelineRun:          pipelineRun,
+			results:              map[string]*AppStudioTestResult{},
+		}, nil
 	}
 	// Check if the pipelineRun.Status contains the childReferences to TaskRuns
 	if !reflect.ValueOf(pipelineRun.Status.ChildReferences).IsZero() {
 		// If the pipelineRun.Status contains the childReferences, parse them in the new way by querying for TaskRuns
-		results, err = GetAppStudioTestResultsFromPipelineRunWithChildReferences(adapterClient, ctx, logger, pipelineRun)
+		results, err := GetAppStudioTestResultsFromPipelineRunWithChildReferences(adapterClient, ctx, pipelineRun)
 		if err != nil {
-			return false, fmt.Errorf("error while getting test results from pipelineRun %s: %w", pipelineRun.Name, err)
+			return nil, fmt.Errorf("error while getting test results from pipelineRun %s: %w", pipelineRun.Name, err)
 		}
+		return &IntegrationPipelineRunOutcome{
+			pipelineRunSucceeded: true,
+			pipelineRun:          pipelineRun,
+			results:              results,
+		}, nil
 	}
 
-	for _, result := range results {
-		if result.Result != AppStudioTestOutputSuccess && result.Result != AppStudioTestOutputSkipped {
-			return false, nil
-		}
-	}
-
-	return true, nil
+	// PLR passed but no results were found
+	return &IntegrationPipelineRunOutcome{
+		pipelineRunSucceeded: true,
+		pipelineRun:          pipelineRun,
+		results:              map[string]*AppStudioTestResult{},
+	}, nil
 }
 
 // GetAppStudioTestResultsFromPipelineRunWithChildReferences finds all TaskRuns from childReferences of the PipelineRun
 // that also contain a TEST_OUTPUT result and returns the parsed data
-func GetAppStudioTestResultsFromPipelineRunWithChildReferences(adapterClient client.Client, ctx context.Context, logger logr.Logger, pipelineRun *tektonv1beta1.PipelineRun) ([]*AppStudioTestResult, error) {
-	taskRuns, err := GetAllChildTaskRunsForPipelineRun(adapterClient, ctx, logger, pipelineRun)
+// returns map taskName: result
+func GetAppStudioTestResultsFromPipelineRunWithChildReferences(adapterClient client.Client, ctx context.Context, pipelineRun *tektonv1beta1.PipelineRun) (map[string]*AppStudioTestResult, error) {
+	taskRuns, err := GetAllChildTaskRunsForPipelineRun(adapterClient, ctx, pipelineRun)
 	if err != nil {
 		return nil, err
 	}
 
-	results := []*AppStudioTestResult{}
+	results := map[string]*AppStudioTestResult{}
 	for _, tr := range taskRuns {
 		r, err := tr.GetTestResult()
 		if err != nil {
 			return nil, err
 		}
 		if r != nil {
-			results = append(results, r)
+			results[tr.GetPipelineTaskName()] = r
 		}
 	}
 	return results, nil
@@ -236,7 +274,7 @@ func GetAppStudioTestResultsFromPipelineRunWithChildReferences(adapterClient cli
 
 // GetAllChildTaskRunsForPipelineRun finds all Child TaskRuns for a given PipelineRun and
 // returns integration TaskRun wrappers for them sorted by start time.
-func GetAllChildTaskRunsForPipelineRun(adapterClient client.Client, ctx context.Context, logger logr.Logger, pipelineRun *tektonv1beta1.PipelineRun) ([]*TaskRun, error) {
+func GetAllChildTaskRunsForPipelineRun(adapterClient client.Client, ctx context.Context, pipelineRun *tektonv1beta1.PipelineRun) ([]*TaskRun, error) {
 	taskRuns := []*TaskRun{}
 	// If there are no childReferences, skip trying to get tasks
 	if reflect.ValueOf(pipelineRun.Status.ChildReferences).IsZero() {
@@ -252,7 +290,7 @@ func GetAllChildTaskRunsForPipelineRun(adapterClient client.Client, ctx context.
 			return nil, fmt.Errorf("error while getting the child taskRun %s from pipelineRun: %w", childReference.Name, err)
 		}
 
-		integrationTaskRun := NewTaskRunFromTektonTaskRun(logger, childReference.PipelineTaskName, &pipelineTaskRun.Status)
+		integrationTaskRun := NewTaskRunFromTektonTaskRun(childReference.PipelineTaskName, &pipelineTaskRun.Status)
 		taskRuns = append(taskRuns, integrationTaskRun)
 	}
 	sort.Sort(SortTaskRunsByStartTime(taskRuns))
