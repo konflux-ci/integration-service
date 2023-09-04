@@ -3,7 +3,6 @@ package status_test
 import (
 	"time"
 
-	"github.com/go-logr/logr"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/redhat-appstudio/integration-service/helpers"
@@ -25,7 +24,7 @@ const expectedSummary = `| Task | Duration | Test Suite | Status | Details |
 [^example-task-4]: example note 4`
 
 func newTaskRun(name string, startTime time.Time, completionTime time.Time) *helpers.TaskRun {
-	return helpers.NewTaskRunFromTektonTaskRun(logr.Discard(), name, &tektonv1beta1.TaskRunStatus{
+	return helpers.NewTaskRunFromTektonTaskRun(name, &tektonv1beta1.TaskRunStatus{
 		TaskRunStatusFields: tektonv1beta1.TaskRunStatusFields{
 			StartTime:      &metav1.Time{Time: startTime},
 			CompletionTime: &metav1.Time{Time: completionTime},
@@ -35,7 +34,7 @@ func newTaskRun(name string, startTime time.Time, completionTime time.Time) *hel
 }
 
 func newTaskRunWithAppStudioTestOutput(name string, startTime time.Time, completionTime time.Time, output string) *helpers.TaskRun {
-	return helpers.NewTaskRunFromTektonTaskRun(logr.Discard(), name, &tektonv1beta1.TaskRunStatus{
+	return helpers.NewTaskRunFromTektonTaskRun(name, &tektonv1beta1.TaskRunStatus{
 		TaskRunStatusFields: tektonv1beta1.TaskRunStatusFields{
 			StartTime:      &metav1.Time{Time: startTime},
 			CompletionTime: &metav1.Time{Time: completionTime},
