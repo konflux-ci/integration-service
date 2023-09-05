@@ -108,6 +108,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	adapter := NewAdapter(pipelineRun, component, application, logger, loader, r.Client, ctx)
 
 	return controller.ReconcileHandler([]controller.Operation{
+		adapter.EnsureStatusReportedInSnapshot,
 		adapter.EnsureSnapshotPassedAllTests,
 		adapter.EnsureStatusReported,
 		adapter.EnsureEphemeralEnvironmentsCleanedUp,
@@ -118,6 +119,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 type AdapterInterface interface {
 	EnsureSnapshotPassedAllTests() (controller.OperationResult, error)
 	EnsureStatusReported() (controller.OperationResult, error)
+	EnsureStatusReportedInSnapshot() (controller.OperationResult, error)
 	EnsureEphemeralEnvironmentsCleanedUp() (controller.OperationResult, error)
 }
 

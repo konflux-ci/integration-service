@@ -32,6 +32,7 @@ import (
 	"github.com/redhat-appstudio/operator-toolkit/metadata"
 	tektonv1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -187,6 +188,41 @@ func (a *Adapter) EnsureStatusReported() (controller.OperationResult, error) {
 		}
 	}
 
+	return controller.ContinueProcessing()
+}
+
+// EnsureStatusReportedInSnapshot will ensure that status of the integration test pipelines is reported to snapshot
+// to be consumed by user
+func (a *Adapter) EnsureStatusReportedInSnapshot() (controller.OperationResult, error) {
+
+	// pipelines run in parallel and have great potential to cause conflict on update
+	// thus `RetryOnConflict` is easy solution here, given the snaphost must be loaded specifically here
+	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+
+		snapshot, err := a.loader.GetSnapshotFromPipelineRun(a.client, a.context, a.pipelineRun)
+		if err != nil {
+			return err
+		}
+
+		statuses, err := gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(snapshot)
+		if err != nil {
+			return err
+		}
+
+		status, detail, err := GetIntegrationPipelineRunStatus(a.client, a.context, a.pipelineRun)
+		if err != nil {
+			return err
+		}
+		statuses.UpdateTestStatusIfChanged(a.pipelineRun.Labels[tekton.ScenarioNameLabel], status, detail)
+
+		// don't return wrapped err for retries
+		err = gitops.WriteIntegrationTestStatusesIntoSnapshot(snapshot, statuses, a.client, a.context)
+		return err
+	})
+	if err != nil {
+		a.logger.Error(err, "Failed to update pipeline status in snapshot")
+		return controller.RequeueWithError(fmt.Errorf("failed to update test status in snapshot: %w", err))
+	}
 	return controller.ContinueProcessing()
 }
 
@@ -398,4 +434,23 @@ func (a *Adapter) createCompositeSnapshotsIfConflictExists(application *applicat
 	}
 
 	return nil, nil
+}
+
+// GetIntegrationPipelineRunStatus checks the Tekton results for a given PipelineRun and returns status of test.
+func GetIntegrationPipelineRunStatus(adapterClient client.Client, ctx context.Context, pipelineRun *tektonv1beta1.PipelineRun) (gitops.IntegrationTestStatus, string, error) {
+	// Check if the pipelineRun finished from the condition of status
+	if !h.HasPipelineRunFinished(pipelineRun) {
+		return gitops.IntegrationTestStatusInProgress, fmt.Sprintf("Integration test is running as pipeline run '%s'", pipelineRun.Name), nil
+	}
+
+	outcome, err := h.GetIntegrationPipelineRunOutcome(adapterClient, ctx, pipelineRun)
+	if err != nil {
+		return gitops.IntegrationTestStatusTestFail, "", fmt.Errorf("failed to evaluate inegration test results: %w", err)
+	}
+
+	if !outcome.HasPipelineRunPassedTesting() {
+		return gitops.IntegrationTestStatusTestFail, "Integration test failed", nil
+	}
+
+	return gitops.IntegrationTestStatusTestPassed, "Integration test passed", nil
 }

@@ -603,6 +603,13 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			Expect(len(owners) == 1).To(BeTrue())
 			Expect(owners[0].Name).To(Equal(hasApp.Name))
 
+			// Snapshot must have InProgress tests
+			statuses, err := gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(hasSnapshot)
+			Expect(err).To(BeNil())
+			detail, ok := statuses.GetScenarioStatus(integrationTestScenarioWithoutEnv.Name)
+			Expect(ok).To(BeTrue())
+			Expect(detail.Status).To(Equal(gitops.IntegrationTestStatusInProgress))
+
 			err = k8sClient.Delete(ctx, &binding)
 			Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 		})
