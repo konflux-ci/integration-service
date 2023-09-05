@@ -22,6 +22,7 @@ updates:
       - "sonam1412"
       - "MartinBasti"
       - "dheerajodha"
+      - "14rcole"
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
@@ -37,6 +38,7 @@ updates:
       - "sonam1412"
       - "MartinBasti"
       - "dheerajodha"
+      - "14rcole"
   - package-ecosystem: "gomod"
     directory: "/"
     schedule:
@@ -52,3 +54,4 @@ updates:
       - "sonam1412"
       - "MartinBasti"
       - "dheerajodha"
+      - "14rcole"
