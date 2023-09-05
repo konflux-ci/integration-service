@@ -10,7 +10,7 @@ flowchart TD
 
   predicate((PREDICATE: <br>Snapshot got created OR <br> changed to Finished))
 
-  %%%%%%%%%%%%%%%%%%%%%%% Drawing EnsureAllIntegrationTestPipelinesExist() function 
+  %%%%%%%%%%%%%%%%%%%%%%% Drawing EnsureAllIntegrationTestPipelinesExist() function
 
   %% Node definitions
   ensure1(Process further if: Snapshot testing <br>is not finished yet)
@@ -44,7 +44,7 @@ flowchart TD
   mark_snapshot_passed      -->      continue_processing1
 
 
-  %%%%%%%%%%%%%%%%%%%%%%% Drawing EnsureGlobalCandidateImageUpdated() function 
+  %%%%%%%%%%%%%%%%%%%%%%% Drawing EnsureGlobalCandidateImageUpdated() function
 
   %% Node definitions
   ensure2(Process further if: Component is not nil & <br>Snapshot testing succeeded & <br>Snapshot was not created by <br>PAC Pull Request Event)
@@ -59,7 +59,7 @@ flowchart TD
   update_last_built_commit -->    continue_processing2
 
 
-  %%%%%%%%%%%%%%%%%%%%%%% Drawing EnsureAllReleasesExists() function 
+  %%%%%%%%%%%%%%%%%%%%%%% Drawing EnsureAllReleasesExists() function
 
   %% Node definitions
   ensure3(Process further if: Snapshot is valid & <br>Snapshot testing succeeded & <br>Snapshot was not created by <br>PAC Pull Request Event)
@@ -81,12 +81,13 @@ flowchart TD
   encountered_error32    --Yes--> mark_snapshot_Invalid3
 
 
-  %%%%%%%%%%%%%%%%%%%%%%% Drawing EnsureCreationOfEnvironment() function 
+  %%%%%%%%%%%%%%%%%%%%%%% Drawing EnsureCreationOfEnvironment() function
 
   %% Node definitions
   ensure4(Process further if: Snapshot testing <br>is not finished yet)
   step1_fetch_all_ITS(Step 1: Fetch ALL the IntegrationTestScenario <br>for the given Application)
   step2_fetch_all_env(Step 2: Fetch ALL the Environments <br>present in the same namespace)
+  init_test_statuses_snapshot("Initialize test statuses in snapshot.<br>Remove deleted scenarios from snapshot test annotation")
   select_ITS_with_env_defined(For each of the IntegrationTestScenario from Step 1, <br>select the ones that have .spec.environment field defined. <br>And process them in the next steps)
   does_env_already_exists{"Is there any <br>environment (from Step 2), <br>that contains labels with names <br>of current Snapshot and <br>IntegrationTestScenario?"}
   continue_processing4(Controller continues processing...)
@@ -97,14 +98,15 @@ flowchart TD
   predicate                   ---->    |"EnsureCreationOfEnvironment()"|ensure4
   ensure4                     -->      step1_fetch_all_ITS
   step1_fetch_all_ITS         -->      step2_fetch_all_env
-  step2_fetch_all_env         -->      select_ITS_with_env_defined
+  step2_fetch_all_env         -->      init_test_statuses_snapshot
+  init_test_statuses_snapshot -->      select_ITS_with_env_defined
   select_ITS_with_env_defined -->      does_env_already_exists
   does_env_already_exists     --No-->  copy_and_create_eph_env
   does_env_already_exists     --Yes--> continue_processing4
   copy_and_create_eph_env     -->      create_SEB_for_eph_env
 
 
-  %%%%%%%%%%%%%%%%%%%%%%% Drawing EnsureSnapshotEnvironmentBindingExists() function 
+  %%%%%%%%%%%%%%%%%%%%%%% Drawing EnsureSnapshotEnvironmentBindingExists() function
 
   %% Node definitions
   ensure5(Process further if: Snapshot is valid & <br>Snapshot testing succeeded & <br>Snapshot was not created by <br>PAC Pull Request Event)
@@ -118,7 +120,7 @@ flowchart TD
 
   %% Node connections
   predicate                  ---->    |"EnsureSnapshotEnvironmentBindingExists()"|ensure5
-  ensure5                    -->      any_existing_non_eph_env 
+  ensure5                    -->      any_existing_non_eph_env
   any_existing_non_eph_env   --Yes--> any_existing_SEB
   any_existing_non_eph_env   --No-->  continue_processing5
   any_existing_SEB           --Yes--> update_existing_SEB

@@ -201,6 +201,7 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 		}
 
 		Expect(gitops.IsBindingDeployed(hasBinding)).NotTo(BeTrue())
-		Expect(gitops.HaveBindingsFailed(hasBinding)).To(BeTrue())
+		failed := gitops.HaveBindingsFailed(hasBinding)
+		Expect(failed).To(BeTrue())
 	})
 })
