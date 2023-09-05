@@ -32,6 +32,9 @@ const (
 	// SnapshotTestScenarioLabel contains the name of the Snapshot test scenario.
 	SnapshotTestScenarioLabel = "test.appstudio.openshift.io/scenario"
 
+	// SnapshotTestScenarioLabel contains json data with test results of the particular snapshot
+	SnapshotTestsStatusAnnotation = "test.appstudio.openshift.io/status"
+
 	// BuildPipelineRunPrefix contains the build pipeline run related labels and annotations
 	BuildPipelineRunPrefix = "build.appstudio"
 

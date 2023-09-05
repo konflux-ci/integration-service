@@ -370,5 +370,17 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 			Entry("When status is TestFail", gitops.IntegrationTestStatusTestFail, "TestFail"),
 			Entry("When status is TestPass", gitops.IntegrationTestStatusTestPassed, "TestPassed"),
 		)
+
+		It("Invalid status to type fails with error", func() {
+			_, err := gitops.IntegrationTestStatusString("Unknown")
+			Expect(err).NotTo(BeNil())
+		})
+
+		It("Invalid JSON status to type fails with error", func() {
+			const unknownJson = "\"Unknown\""
+			var controlStatus gitops.IntegrationTestStatus
+			err := controlStatus.UnmarshalJSON([]byte(unknownJson))
+			Expect(err).NotTo(BeNil())
+		})
 	})
 })
