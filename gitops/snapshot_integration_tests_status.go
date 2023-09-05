@@ -46,7 +46,13 @@ const integrationTestStatusesSchema = `{
         },
         "details": {
           "type": "string"
-	    }
+        },
+        "startTime": {
+          "type": "string"
+        },
+        "completionTime": {
+          "type": "string"
+        }
       },
 	  "required": ["scenario", "status", "lastUpdateTime"]
 	}
@@ -62,6 +68,10 @@ type IntegrationTestStatusDetail struct {
 	LastUpdateTime time.Time `json:"lastUpdateTime"`
 	// The details of reported status
 	Details string `json:"details"`
+	// Startime when we moved to inProgress
+	StartTime *time.Time `json:"startTime,omitempty"` // pointer to make omitempty work
+	// Completion time when test failed or passed
+	CompletionTime *time.Time `json:"completionTime,omitempty"` // pointer to make omitempty work
 }
 
 // SnapshotIntegrationTestStatuses type handles details about snapshot tests
@@ -86,25 +96,49 @@ func (sits *SnapshotIntegrationTestStatuses) ResetDirty() {
 
 // UpdateTestStatusIfChanged updates status of scenario test when status or details changed
 func (sits *SnapshotIntegrationTestStatuses) UpdateTestStatusIfChanged(scenarioName string, status IntegrationTestStatus, details string) {
+	var detail *IntegrationTestStatusDetail
 	detail, ok := sits.statuses[scenarioName]
 	timestamp := time.Now().UTC()
-	if ok {
-		// update only when status or details changed, otherwise it's a no-op
-		// to preserve timestamps
-		if detail.Status != status || detail.Details != details {
-			detail.Status = status
-			detail.Details = details
-			detail.LastUpdateTime = timestamp
-			sits.dirty = true
-		}
-	} else {
+	if !ok {
 		newDetail := IntegrationTestStatusDetail{
 			ScenarioName:   scenarioName,
-			Status:         status,
+			Status:         -1, // undefined, must be udpated within function
 			Details:        details,
 			LastUpdateTime: timestamp,
 		}
-		sits.statuses[scenarioName] = &newDetail
+		detail = &newDetail
+		sits.statuses[scenarioName] = detail
+		sits.dirty = true
+	}
+
+	// update only when status or details changed, otherwise it's a no-op
+	// to preserve timestamps
+	if detail.Status != status {
+		detail.Status = status
+		detail.LastUpdateTime = timestamp
+		sits.dirty = true
+
+		// update start and completion time if needed, only when status changed
+		switch status {
+		case IntegrationTestStatusInProgress:
+			detail.StartTime = &timestamp
+			// null CompletionTime because testing started again
+			detail.CompletionTime = nil
+		case IntegrationTestStatusPending:
+			// null all timestamps as test is not inProgress neither in final state
+			detail.StartTime = nil
+			detail.CompletionTime = nil
+		case IntegrationTestStatusDeploymentError,
+			IntegrationTestStatusEnvironmentProvisionError,
+			IntegrationTestStatusTestFail,
+			IntegrationTestStatusTestPassed:
+			detail.CompletionTime = &timestamp
+		}
+	}
+
+	if detail.Details != details {
+		detail.Details = details
+		detail.LastUpdateTime = timestamp
 		sits.dirty = true
 	}
 
@@ -166,17 +200,17 @@ func (sits *SnapshotIntegrationTestStatuses) GetScenarioStatus(scenarioName stri
 // MarshalJSON converts data to JSON
 // Please note that internal representation of data differs from marshalled output
 // Example:
-// [
 //
-//	{
-//	  "scenario": "scenario-1",
-//	  "status": "EnvironmentProvisionError",
-//	  "lastUpdateTime": "2023-07-26T16:57:49+02:00",
-//	  "details": "Failed ..."
-//	}
-//
-// ]
-
+//	[
+//	  {
+//	    "scenario": "scenario-1",
+//	    "status": "EnvironmentProvisionError",
+//	    "lastUpdateTime": "2023-07-26T16:57:49+02:00",
+//	    "details": "Failed ...",
+//	    "startTime": "2023-07-26T14:57:49+02:00",
+//	    "completionTime": "2023-07-26T16:57:49+02:00"
+//	  }
+//	]
 func (sits *SnapshotIntegrationTestStatuses) MarshalJSON() ([]byte, error) {
 	result := sits.GetStatuses()
 	return json.Marshal(result)

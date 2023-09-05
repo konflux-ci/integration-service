@@ -151,7 +151,76 @@ var _ = Describe("Snapshot integration test statuses", func() {
 			Expect(detail.Status).To(Equal(gitops.IntegrationTestStatusPending))
 		})
 
-		It("Can export valid JSON", func() {
+		DescribeTable("Test expected additons of startTime",
+			func(st gitops.IntegrationTestStatus, shouldAdd bool) {
+				sits.UpdateTestStatusIfChanged(testScenarioName, st, testDetails)
+				detail, ok := sits.GetScenarioStatus(testScenarioName)
+				Expect(ok).To(BeTrue())
+				if shouldAdd {
+					Expect(detail.StartTime).NotTo(BeNil())
+				} else {
+					Expect(detail.StartTime).To(BeNil())
+				}
+			},
+			Entry("When status is Pending", gitops.IntegrationTestStatusPending, false),
+			Entry("When status is InProgress", gitops.IntegrationTestStatusInProgress, true),
+			Entry("When status is EnvironmentProvisionError", gitops.IntegrationTestStatusEnvironmentProvisionError, false),
+			Entry("When status is DeploymentError", gitops.IntegrationTestStatusDeploymentError, false),
+			Entry("When status is TestFail", gitops.IntegrationTestStatusTestFail, false),
+			Entry("When status is TestPass", gitops.IntegrationTestStatusTestPassed, false),
+		)
+
+		DescribeTable("Test expected additons of completionTime",
+			func(st gitops.IntegrationTestStatus, shouldAdd bool) {
+				sits.UpdateTestStatusIfChanged(testScenarioName, st, testDetails)
+				detail, ok := sits.GetScenarioStatus(testScenarioName)
+				Expect(ok).To(BeTrue())
+				if shouldAdd {
+					Expect(detail.CompletionTime).NotTo(BeNil())
+				} else {
+					Expect(detail.CompletionTime).To(BeNil())
+				}
+			},
+			Entry("When status is Pending", gitops.IntegrationTestStatusPending, false),
+			Entry("When status is InProgress", gitops.IntegrationTestStatusInProgress, false),
+			Entry("When status is EnvironmentProvisionError", gitops.IntegrationTestStatusEnvironmentProvisionError, true),
+			Entry("When status is DeploymentError", gitops.IntegrationTestStatusDeploymentError, true),
+			Entry("When status is TestFail", gitops.IntegrationTestStatusTestFail, true),
+			Entry("When status is TestPass", gitops.IntegrationTestStatusTestPassed, true),
+		)
+
+		It("Change back to InProgress updates timestamps accordingly", func() {
+			sits.UpdateTestStatusIfChanged(testScenarioName, gitops.IntegrationTestStatusTestPassed, testDetails)
+			originalDetail, ok := sits.GetScenarioStatus(testScenarioName)
+			Expect(ok).To(BeTrue())
+			Expect(originalDetail.CompletionTime).ToNot(BeNil())
+			originalStartTime := originalDetail.StartTime // copy time, it's all in pointers
+
+			sits.UpdateTestStatusIfChanged(testScenarioName, gitops.IntegrationTestStatusInProgress, testDetails)
+			newDetail, ok := sits.GetScenarioStatus(testScenarioName)
+			Expect(ok).To(BeTrue())
+			Expect(originalDetail.CompletionTime).To(BeNil())
+			Expect(newDetail.StartTime).NotTo(Equal(originalStartTime))
+		})
+
+		It("not changing status keeps starting time the same", func() {
+			newDetails := "something important"
+			sits.UpdateTestStatusIfChanged(testScenarioName, gitops.IntegrationTestStatusInProgress, testDetails)
+			originalDetail, ok := sits.GetScenarioStatus(testScenarioName)
+			Expect(ok).To(BeTrue())
+			originalStartTime := originalDetail.StartTime // copy time, it's all in pointers
+			originalLastUpdateTime := originalDetail.LastUpdateTime
+
+			sits.UpdateTestStatusIfChanged(testScenarioName, gitops.IntegrationTestStatusInProgress, newDetails)
+			newDetail, ok := sits.GetScenarioStatus(testScenarioName)
+			Expect(ok).To(BeTrue())
+			Expect(newDetail.StartTime).To(Equal(originalStartTime))
+			// but details and lastUpdateTimestamp must changed
+			Expect(newDetail.Details).To(Equal(newDetails))
+			Expect(newDetail.LastUpdateTime).NotTo(Equal(originalLastUpdateTime))
+		})
+
+		It("Can export valid JSON without start and completion time (Pending)", func() {
 			sits.UpdateTestStatusIfChanged(testScenarioName, gitops.IntegrationTestStatusPending, testDetails)
 			detail, ok := sits.GetScenarioStatus(testScenarioName)
 			Expect(ok).To(BeTrue())
@@ -167,6 +236,85 @@ var _ = Describe("Snapshot integration test statuses", func() {
 			marshaledTime, err := detail.LastUpdateTime.MarshalText()
 			Expect(err).To(BeNil())
 			expectedStr := fmt.Sprintf(expectedFormatStr, testScenarioName, marshaledTime, testDetails)
+			expected := []byte(expectedStr)
+
+			Expect(json.Marshal(sits)).To(MatchJSON(expected))
+		})
+
+		It("Can export valid JSON with start time (InProgress)", func() {
+			sits.UpdateTestStatusIfChanged(testScenarioName, gitops.IntegrationTestStatusInProgress, testDetails)
+
+			detail, ok := sits.GetScenarioStatus(testScenarioName)
+			Expect(ok).To(BeTrue())
+
+			expectedFormatStr := `[
+				{
+					"scenario": "%s",
+					"status": "InProgress",
+					"lastUpdateTime": "%s",
+					"details": "%s",
+					"startTime": "%s"
+				}
+			]`
+			marshaledTime, err := detail.LastUpdateTime.MarshalText()
+			Expect(err).To(BeNil())
+			marshaledStartTime, err := detail.StartTime.MarshalText()
+			Expect(err).To(BeNil())
+			expectedStr := fmt.Sprintf(expectedFormatStr, testScenarioName, marshaledTime, testDetails, marshaledStartTime)
+			expected := []byte(expectedStr)
+
+			Expect(json.Marshal(sits)).To(MatchJSON(expected))
+		})
+
+		It("Can export valid JSON with completion time (TestFailed)", func() {
+			sits.UpdateTestStatusIfChanged(testScenarioName, gitops.IntegrationTestStatusTestFail, testDetails)
+
+			detail, ok := sits.GetScenarioStatus(testScenarioName)
+			Expect(ok).To(BeTrue())
+
+			expectedFormatStr := `[
+				{
+					"scenario": "%s",
+					"status": "TestFail",
+					"lastUpdateTime": "%s",
+					"details": "%s",
+					"completionTime": "%s"
+				}
+			]`
+			marshaledTime, err := detail.LastUpdateTime.MarshalText()
+			Expect(err).To(BeNil())
+			marshaledCompletionTime, err := detail.CompletionTime.MarshalText()
+			Expect(err).To(BeNil())
+			expectedStr := fmt.Sprintf(expectedFormatStr, testScenarioName, marshaledTime, testDetails, marshaledCompletionTime)
+			expected := []byte(expectedStr)
+
+			Expect(json.Marshal(sits)).To(MatchJSON(expected))
+		})
+
+		It("Can export valid JSON with startTime and completion time", func() {
+			sits.UpdateTestStatusIfChanged(testScenarioName, gitops.IntegrationTestStatusInProgress, "yolo")
+			sits.UpdateTestStatusIfChanged(testScenarioName, gitops.IntegrationTestStatusTestFail, testDetails)
+
+			detail, ok := sits.GetScenarioStatus(testScenarioName)
+			Expect(ok).To(BeTrue())
+
+			expectedFormatStr := `[
+				{
+					"scenario": "%s",
+					"status": "TestFail",
+					"lastUpdateTime": "%s",
+					"details": "%s",
+					"startTime": "%s",
+					"completionTime": "%s"
+				}
+			]`
+			marshaledTime, err := detail.LastUpdateTime.MarshalText()
+			Expect(err).To(BeNil())
+			marshaledStartTime, err := detail.StartTime.MarshalText()
+			Expect(err).To(BeNil())
+			marshaledCompletionTime, err := detail.CompletionTime.MarshalText()
+			Expect(err).To(BeNil())
+			expectedStr := fmt.Sprintf(expectedFormatStr, testScenarioName, marshaledTime, testDetails, marshaledStartTime, marshaledCompletionTime)
 			expected := []byte(expectedStr)
 
 			Expect(json.Marshal(sits)).To(MatchJSON(expected))
@@ -373,11 +521,18 @@ var _ = Describe("Snapshot integration test statuses", func() {
 
 				// fetch updated snapshot
 				Eventually(func() error {
-					err := k8sClient.Get(ctx, types.NamespacedName{
+					if err := k8sClient.Get(ctx, types.NamespacedName{
 						Name:      snapshot.Name,
 						Namespace: namespace,
-					}, snapshot)
-					return err
+					}, snapshot); err != nil {
+						return err
+					}
+					// race condition, sometimes it fetched old object
+					annotations := snapshot.GetAnnotations()
+					if _, ok := annotations[gitops.SnapshotTestsStatusAnnotation]; ok != true {
+						return fmt.Errorf("Snapshot doesn't contain the expected annotation")
+					}
+					return nil
 				}, time.Second*10).ShouldNot(HaveOccurred())
 
 				statuses, err := gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(snapshot)
