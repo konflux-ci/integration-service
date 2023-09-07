@@ -113,6 +113,13 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 	})
 
+	It("ensures the a decision can be made to NOT promote when the snaphot has not been marked as passed/failed", func() {
+		canBePromoted, reasons := gitops.CanSnapshotBePromoted(hasSnapshot)
+		Expect(canBePromoted).To(BeFalse())
+		Expect(reasons).To(HaveLen(1))
+		Expect(reasons[0]).To(Equal("the Snapshot has not yet finished testing"))
+	})
+
 	It("ensures the Snapshots status can be marked as passed", func() {
 		updatedSnapshot, err := gitops.MarkSnapshotAsPassed(k8sClient, ctx, hasSnapshot, "Test message")
 		Expect(err).To(BeNil())

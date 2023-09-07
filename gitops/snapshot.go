@@ -333,17 +333,22 @@ func HaveAppStudioTestsSucceeded(snapshot *applicationapiv1alpha1.Snapshot) bool
 func CanSnapshotBePromoted(snapshot *applicationapiv1alpha1.Snapshot) (bool, []string) {
 	canBePromoted := true
 	reasons := make([]string, 0)
-	if !HaveAppStudioTestsSucceeded(snapshot) {
+	if !HaveAppStudioTestsFinished(snapshot) {
 		canBePromoted = false
-		reasons = append(reasons, "the Snapshot hasn't passed all required integration tests")
-	}
-	if !IsSnapshotValid(snapshot) {
-		canBePromoted = false
-		reasons = append(reasons, "the Snapshot is invalid")
-	}
-	if IsSnapshotCreatedByPACPullRequestEvent(snapshot) {
-		canBePromoted = false
-		reasons = append(reasons, "the Snapshot was created for a PaC pull request event")
+		reasons = append(reasons, "the Snapshot has not yet finished testing")
+	} else {
+		if !HaveAppStudioTestsSucceeded(snapshot) {
+			canBePromoted = false
+			reasons = append(reasons, "the Snapshot hasn't passed all required integration tests")
+		}
+		if !IsSnapshotValid(snapshot) {
+			canBePromoted = false
+			reasons = append(reasons, "the Snapshot is invalid")
+		}
+		if IsSnapshotCreatedByPACPullRequestEvent(snapshot) {
+			canBePromoted = false
+			reasons = append(reasons, "the Snapshot was created for a PaC pull request event")
+		}
 	}
 	return canBePromoted, reasons
 }
