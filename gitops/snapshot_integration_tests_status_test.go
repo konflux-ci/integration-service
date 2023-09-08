@@ -211,6 +211,7 @@ var _ = Describe("Snapshot integration test statuses", func() {
 			originalStartTime := originalDetail.StartTime // copy time, it's all in pointers
 			originalLastUpdateTime := originalDetail.LastUpdateTime
 
+			time.Sleep(time.Duration(100)) // wait 100ns to avoid race condition when test is too quick and timestamp is the same
 			sits.UpdateTestStatusIfChanged(testScenarioName, gitops.IntegrationTestStatusInProgress, newDetails)
 			newDetail, ok := sits.GetScenarioStatus(testScenarioName)
 			Expect(ok).To(BeTrue())
