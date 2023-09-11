@@ -1045,7 +1045,232 @@
       "yBucketBound": "auto",
       "yBucketNumber": null,
       "yBucketSize": null
+    },
+
+    {
+      "id": 26,
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 26
+      },
+      "type": "graph",
+      "title": "Work Queue Depth",
+      "thresholds": [],
+      "pluginVersion": "9.1.6",
+      "legend": {
+        "avg": false,
+        "current": false,
+        "max": false,
+        "min": false,
+        "show": true,
+        "total": false,
+        "values": false
+      },
+      "aliasColors": {},
+      "dashLength": 10,
+      "fill": 1,
+      "lines": true,
+      "linewidth": 1,
+      "nullPointMode": "null",
+      "options": {
+        "alertThreshold": true
+      },
+      "pointradius": 2,
+      "renderer": "flot",
+      "seriesOverrides": [],
+      "spaceLength": 10,
+      "targets": [
+        {
+          "exemplar": true,
+          "expr": "workqueue_depth{name=\"snapshot\", namespace=\"integration-service\"}",
+          "instant": false,
+          "interval": "",
+          "legendFormat": "{{name}}",
+          "refId": "A",
+          "editorMode": "builder"
+        },
+        {
+          "refId": "B",
+          "hide": false,
+          "editorMode": "builder",
+          "expr": "workqueue_depth{name=\"integrationtestscenario\", namespace=\"integration-service\"}",
+          "legendFormat": "{{name}}",
+          "range": true
+        },
+        {
+          "refId": "C",
+          "hide": false,
+          "editorMode": "builder",
+          "expr": "workqueue_depth{name=\"snapshotenvironmentbinding\", namespace=\"integration-service\"}",
+          "legendFormat": "{{name}}",
+          "range": true
+        }
+      ],
+      "timeRegions": [],
+      "tooltip": {
+        "shared": true,
+        "sort": 0,
+        "value_type": "individual"
+      },
+      "xaxis": {
+        "buckets": null,
+        "mode": "time",
+        "name": null,
+        "show": true,
+        "values": []
+      },
+      "yaxes": [
+        {
+          "format": "short",
+          "label": null,
+          "logBase": 1,
+          "max": null,
+          "min": null,
+          "show": true
+        },
+        {
+          "format": "short",
+          "label": null,
+          "logBase": 1,
+          "max": null,
+          "min": null,
+          "show": true
+        }
+      ],
+      "yaxis": {
+        "align": false,
+        "alignLevel": null
+      },
+      "interval": "5m",
+      "description": "",
+      "bars": false,
+      "dashes": false,
+      "fillGradient": 0,
+      "hiddenSeries": false,
+      "percentage": false,
+      "points": false,
+      "stack": false,
+      "steppedLine": false,
+      "timeFrom": null,
+      "timeShift": null
+    },
+    
+    {
+      "id": 27,
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 26
+      },
+      "type": "graph",
+      "title": "Work Queue Duration Seconds",
+      "thresholds": [],
+      "pluginVersion": "9.1.6",
+      "description": "Total number of concurrent snapshot attempts",
+      "legend": {
+        "avg": false,
+        "current": false,
+        "max": false,
+        "min": false,
+        "show": true,
+        "total": false,
+        "values": false
+      },
+      "aliasColors": {},
+      "dashLength": 10,
+      "fill": 1,
+      "lines": true,
+      "linewidth": 1,
+      "nullPointMode": "null",
+      "options": {
+        "alertThreshold": true
+      },
+      "pointradius": 2,
+      "renderer": "flot",
+      "seriesOverrides": [],
+      "spaceLength": 10,
+      "targets": [
+        {
+          "exemplar": true,
+          "expr": "histogram_quantile(0.95, sum by(le) (rate(workqueue_queue_duration_seconds_bucket{name=\"snapshot\", namespace=\"integration-service\"}[$__rate_interval])))",
+          "instant": false,
+          "interval": "",
+          "legendFormat": "",
+          "refId": "A",
+          "editorMode": "code"
+        },
+        {
+          "exemplar": true,
+          "expr": "histogram_quantile(0.95, sum by(le) (rate(workqueue_queue_duration_seconds_bucket{name=\"integrationtestscenario\", namespace=\"integration-service\"}[$__rate_interval])))",
+          "instant": false,
+          "interval": "",
+          "legendFormat": "",
+          "refId": "B",
+          "editorMode": "code",
+          "hide": false
+        },
+        {
+          "exemplar": true,
+          "expr": "histogram_quantile(0.95, sum by(le) (rate(workqueue_queue_duration_seconds_bucket{name=\"snapshotenvironmentbinding\", namespace=\"integration-service\"}[$__rate_interval])))",
+          "instant": false,
+          "interval": "",
+          "legendFormat": "__auto",
+          "refId": "C",
+          "editorMode": "code",
+          "hide": false
+        }
+      ],
+      "timeRegions": [],
+      "tooltip": {
+        "shared": true,
+        "sort": 0,
+        "value_type": "individual"
+      },
+      "xaxis": {
+        "buckets": null,
+        "mode": "time",
+        "name": null,
+        "show": true,
+        "values": []
+      },
+      "yaxes": [
+        {
+          "format": "short",
+          "label": null,
+          "logBase": 1,
+          "max": null,
+          "min": null,
+          "show": true
+        },
+        {
+          "format": "short",
+          "label": null,
+          "logBase": 1,
+          "max": null,
+          "min": null,
+          "show": true
+        }
+      ],
+      "yaxis": {
+        "align": false,
+        "alignLevel": null
+      },
+      "interval": "5m",
+      "bars": false,
+      "dashes": false,
+      "fillGradient": 0,
+      "hiddenSeries": false,
+      "percentage": false,
+      "points": false,
+      "stack": false,
+      "steppedLine": false,
+      "timeFrom": null,
+      "timeShift": null
     }
+
   ],
   "schemaVersion": 27,
   "style": "dark",
