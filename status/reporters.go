@@ -69,7 +69,7 @@ func (r *GitHubReporter) getAppCredentials(ctx context.Context, pipelineRun *tek
 
 	// Get the global pipelines as code secret
 	pacSecret := v1.Secret{}
-	err = r.k8sClient.Get(ctx, types.NamespacedName{Namespace: "pipelines-as-code", Name: "pipelines-as-code-secret"}, &pacSecret)
+	err = r.k8sClient.Get(ctx, types.NamespacedName{Namespace: "openshift-pipelines", Name: "pipelines-as-code-secret"}, &pacSecret)
 	if err != nil {
 		return nil, err
 	}
