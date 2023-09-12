@@ -23,6 +23,16 @@ var (
 		},
 	)
 
+	SEBCreatedToReadySeconds = prometheus.NewHistogram(
+		sebCreatedToReadySecondsOpts,
+	)
+
+	sebCreatedToReadySecondsOpts = prometheus.HistogramOpts{
+		Name:    "seb_created_to_ready_seconds",
+		Help:    "Time duration from the moment the snapshotEnvironmentBinding was created till the snapshot is deployed to the environtment",
+		Buckets: []float64{1, 5, 10, 20, 40, 60, 80, 120, 160, 200, 300},
+	}
+
 	IntegrationPipelineRunTotal = prometheus.NewCounter(
 		prometheus.CounterOpts{
 			Name: "integration_pipelinerun_total",
@@ -87,6 +97,11 @@ func RegisterPipelineRunStarted(snapshotCreatedTime metav1.Time, pipelineRunStar
 	SnapshotCreatedToPipelineRunStartedSeconds.Observe(pipelineRunStartTime.Sub(snapshotCreatedTime.Time).Seconds())
 }
 
+func RegisterSEBCreatedToReady(sebCreatedTime metav1.Time, sebReadyTime *metav1.Time) {
+	SEBCreatedToReadySeconds.
+		Observe(sebReadyTime.Sub(sebCreatedTime.Time).Seconds())
+}
+
 func RegisterIntegrationResponse(buildPipelineFinishTime metav1.Time, inProgressTime *metav1.Time) {
 	IntegrationSvcResponseSeconds.Observe(inProgressTime.Sub(buildPipelineFinishTime.Time).Seconds())
 }
@@ -103,6 +118,7 @@ func RegisterNewIntegrationPipelineRun(snapshotCreatedTime metav1.Time, pipeline
 func init() {
 	metrics.Registry.MustRegister(
 		SnapshotCreatedToPipelineRunStartedSeconds,
+		SEBCreatedToReadySeconds,
 		IntegrationSvcResponseSeconds,
 		IntegrationPipelineRunTotal,
 		SnapshotConcurrentTotal,

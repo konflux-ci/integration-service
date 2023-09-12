@@ -25,6 +25,7 @@ import (
 	. "github.com/onsi/gomega"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
+	"github.com/redhat-appstudio/operator-toolkit/test"
 	"sigs.k8s.io/controller-runtime/pkg/metrics"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -194,6 +195,26 @@ var _ = Describe("Metrics Integration", Ordered, func() {
 			readerData := createCounterReader(SnapshotTotalHeader, labels, true, 10.0)
 			Expect(testutil.CollectAndCompare(SnapshotTotal.WithLabelValues("AppStudioIntegrationStatus", "invalid"),
 				strings.NewReader(readerData))).To(Succeed())
+		})
+	})
+
+	When("RegisterSEBCreatedToReady is called", func() {
+		var completionTime *metav1.Time
+		var startTime metav1.Time
+
+		BeforeEach(func() {
+			completionTime = &metav1.Time{}
+			startTime = metav1.Time{Time: completionTime.Add(-60 * time.Second)}
+		})
+
+		It("adds an observation to ReleaseProcessingDurationSeconds", func() {
+			RegisterSEBCreatedToReady(startTime, completionTime)
+			Expect(testutil.CollectAndCompare(SEBCreatedToReadySeconds,
+				test.NewHistogramReader(
+					sebCreatedToReadySecondsOpts,
+					nil,
+					&startTime, completionTime,
+				))).To(Succeed())
 		})
 	})
 })
