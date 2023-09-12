@@ -1169,7 +1169,7 @@
       "title": "Work Queue Duration Seconds",
       "thresholds": [],
       "pluginVersion": "9.1.6",
-      "description": "Total number of concurrent snapshot attempts",
+      "description": "",
       "legend": {
         "avg": false,
         "current": false,
