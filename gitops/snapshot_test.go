@@ -125,16 +125,16 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 		Expect(err).To(BeNil())
 		Expect(updatedSnapshot).NotTo(BeNil())
 		Expect(updatedSnapshot.Status.Conditions).NotTo(BeNil())
-		Expect(meta.IsStatusConditionTrue(updatedSnapshot.Status.Conditions, gitops.AppStudioTestSuceededCondition)).To(BeTrue())
-		Expect(gitops.IsSnapshotStatusConditionSet(hasSnapshot, gitops.AppStudioTestSuceededCondition, metav1.ConditionTrue, "")).To(BeTrue())
+		Expect(meta.IsStatusConditionTrue(updatedSnapshot.Status.Conditions, gitops.AppStudioTestSucceededCondition)).To(BeTrue())
+		Expect(gitops.IsSnapshotStatusConditionSet(hasSnapshot, gitops.AppStudioTestSucceededCondition, metav1.ConditionTrue, "")).To(BeTrue())
 	})
 
-	It("ensures the Snapshots LegacyTestSuceededCondition status can be marked as passed", func() {
+	It("ensures the Snapshots LegacyTestSucceededCondition status can be marked as passed", func() {
 		patch := client.MergeFrom(hasSnapshot.DeepCopy())
 		condition := metav1.Condition{
-			Type:    gitops.LegacyTestSuceededCondition,
+			Type:    gitops.LegacyTestSucceededCondition,
 			Status:  metav1.ConditionTrue,
-			Reason:  gitops.AppStudioTestSuceededConditionPassed,
+			Reason:  gitops.AppStudioTestSucceededConditionPassed,
 			Message: "Test message",
 		}
 		meta.SetStatusCondition(&hasSnapshot.Status.Conditions, condition)
@@ -143,9 +143,9 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 		Expect(err).To(BeNil())
 		Expect(hasSnapshot).NotTo(BeNil())
 		Expect(hasSnapshot.Status.Conditions).NotTo(BeNil())
-		Expect(meta.IsStatusConditionTrue(hasSnapshot.Status.Conditions, gitops.LegacyTestSuceededCondition)).To(BeTrue())
-		Expect(gitops.IsSnapshotStatusConditionSet(hasSnapshot, gitops.AppStudioTestSuceededCondition, metav1.ConditionTrue, "")).To(BeTrue())
-		Expect(gitops.IsSnapshotStatusConditionSet(hasSnapshot, gitops.AppStudioTestSuceededCondition, metav1.ConditionFalse, "")).To(BeFalse())
+		Expect(meta.IsStatusConditionTrue(hasSnapshot.Status.Conditions, gitops.LegacyTestSucceededCondition)).To(BeTrue())
+		Expect(gitops.IsSnapshotStatusConditionSet(hasSnapshot, gitops.AppStudioTestSucceededCondition, metav1.ConditionTrue, "")).To(BeTrue())
+		Expect(gitops.IsSnapshotStatusConditionSet(hasSnapshot, gitops.AppStudioTestSucceededCondition, metav1.ConditionFalse, "")).To(BeFalse())
 	})
 
 	It("ensures the Snapshots LegacyIntegrationStatusCondition status can be marked as invalid", func() {
@@ -172,8 +172,8 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 		Expect(err).To(BeNil())
 		Expect(updatedSnapshot).NotTo(BeNil())
 		Expect(updatedSnapshot.Status.Conditions).NotTo(BeNil())
-		Expect(meta.IsStatusConditionTrue(updatedSnapshot.Status.Conditions, gitops.AppStudioTestSuceededCondition)).To(BeFalse())
-		Expect(gitops.IsSnapshotStatusConditionSet(hasSnapshot, gitops.AppStudioTestSuceededCondition, metav1.ConditionFalse, "")).To(BeTrue())
+		Expect(meta.IsStatusConditionTrue(updatedSnapshot.Status.Conditions, gitops.AppStudioTestSucceededCondition)).To(BeFalse())
+		Expect(gitops.IsSnapshotStatusConditionSet(hasSnapshot, gitops.AppStudioTestSucceededCondition, metav1.ConditionFalse, "")).To(BeTrue())
 	})
 
 	It("ensures the Snapshots status can be marked as error", func() {
@@ -201,12 +201,12 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 		Expect(foundStatusCondition.Reason).To(Equal(gitops.AppStudioIntegrationStatusInProgress))
 	})
 
-	It("ensures the Snapshots can be checked for the AppStudioTestSuceededCondition", func() {
+	It("ensures the Snapshots can be checked for the AppStudioTestSucceededCondition", func() {
 		checkResult := gitops.HaveAppStudioTestsFinished(hasSnapshot)
 		Expect(checkResult).To(BeFalse())
 	})
 
-	It("ensures the Snapshots can be checked for the AppStudioTestSuceededCondition", func() {
+	It("ensures the Snapshots can be checked for the AppStudioTestSucceededCondition", func() {
 		checkResult := gitops.HaveAppStudioTestsSucceeded(hasSnapshot)
 		Expect(checkResult).To(BeFalse())
 	})

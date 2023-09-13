@@ -136,7 +136,7 @@ func (a *Adapter) EnsureAllIntegrationTestPipelinesExist() (controller.Operation
 			a.snapshot, h.LogActionUpdate)
 		return controller.RequeueOnErrorOrStop(a.client.Status().Patch(a.context, a.snapshot, patch))
 	}
-	if len(*requiredIntegrationTestScenarios) == 0 && !gitops.IsSnapshotStatusConditionSet(a.snapshot, gitops.AppStudioTestSuceededCondition, metav1.ConditionTrue, "") {
+	if len(*requiredIntegrationTestScenarios) == 0 && !gitops.IsSnapshotStatusConditionSet(a.snapshot, gitops.AppStudioTestSucceededCondition, metav1.ConditionTrue, "") {
 		updatedSnapshot, err := gitops.MarkSnapshotAsPassed(a.client, a.context, a.snapshot, "No required IntegrationTestScenarios found, skipped testing")
 		if err != nil {
 			a.logger.Error(err, "Failed to update Snapshot status")

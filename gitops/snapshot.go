@@ -83,11 +83,11 @@ const (
 	// PipelineAsCodeGitHubProviderType is the git provider type for a GitHub event which triggered the pipelinerun in build service.
 	PipelineAsCodeGitHubProviderType = "github"
 
-	//AppStudioTestSuceededCondition is the condition for marking if the AppStudio Tests succeeded for the Snapshot.
-	AppStudioTestSuceededCondition = "AppStudioTestSucceeded"
+	//AppStudioTestSucceededCondition is the condition for marking if the AppStudio Tests succeeded for the Snapshot.
+	AppStudioTestSucceededCondition = "AppStudioTestSucceeded"
 
-	//LegacyTestSuceededCondition is the condition for marking if the AppStudio Tests succeeded for the Snapshot.
-	LegacyTestSuceededCondition = "HACBSStudioTestSucceeded"
+	//LegacyTestSucceededCondition is the condition for marking if the AppStudio Tests succeeded for the Snapshot.
+	LegacyTestSucceededCondition = "HACBSStudioTestSucceeded"
 
 	// AppStudioIntegrationStatusCondition is the condition for marking the AppStudio integration status of the Snapshot.
 	AppStudioIntegrationStatusCondition = "AppStudioIntegrationStatus"
@@ -98,11 +98,11 @@ const (
 	// IntegrationTestScenarioValid is the condition for marking the AppStudio integration status of the Scenario.
 	IntegrationTestScenarioValid = "IntegrationTestScenarioValid"
 
-	// AppStudioTestSuceededConditionPassed is the reason that's set when the AppStudio tests succeed.
-	AppStudioTestSuceededConditionPassed = "Passed"
+	// AppStudioTestSucceededConditionPassed is the reason that's set when the AppStudio tests succeed.
+	AppStudioTestSucceededConditionPassed = "Passed"
 
-	// AppStudioTestSuceededConditionFailed is the reason that's set when the AppStudio tests fail.
-	AppStudioTestSuceededConditionFailed = "Failed"
+	// AppStudioTestSucceededConditionFailed is the reason that's set when the AppStudio tests fail.
+	AppStudioTestSucceededConditionFailed = "Failed"
 
 	// AppStudioIntegrationStatusInvalid is the reason that's set when the AppStudio integration gets into an invalid state.
 	AppStudioIntegrationStatusInvalid = "Invalid"
@@ -149,9 +149,9 @@ var (
 func MarkSnapshotAsPassed(adapterClient client.Client, ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot, message string) (*applicationapiv1alpha1.Snapshot, error) {
 	patch := client.MergeFrom(snapshot.DeepCopy())
 	condition := metav1.Condition{
-		Type:    AppStudioTestSuceededCondition,
+		Type:    AppStudioTestSucceededCondition,
 		Status:  metav1.ConditionTrue,
-		Reason:  AppStudioTestSuceededConditionPassed,
+		Reason:  AppStudioTestSucceededConditionPassed,
 		Message: message,
 	}
 	meta.SetStatusCondition(&snapshot.Status.Conditions, condition)
@@ -171,9 +171,9 @@ func MarkSnapshotAsPassed(adapterClient client.Client, ctx context.Context, snap
 func MarkSnapshotAsFailed(adapterClient client.Client, ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot, message string) (*applicationapiv1alpha1.Snapshot, error) {
 	patch := client.MergeFrom(snapshot.DeepCopy())
 	condition := metav1.Condition{
-		Type:    AppStudioTestSuceededCondition,
+		Type:    AppStudioTestSucceededCondition,
 		Status:  metav1.ConditionFalse,
-		Reason:  AppStudioTestSuceededConditionFailed,
+		Reason:  AppStudioTestSucceededConditionFailed,
 		Message: message,
 	}
 	meta.SetStatusCondition(&snapshot.Status.Conditions, condition)
@@ -293,8 +293,8 @@ func IsSnapshotValid(snapshot *applicationapiv1alpha1.Snapshot) bool {
 // IsSnapshotStatusConditionSet checks if the condition with the conditionType in the status of Snapshot has been marked as the conditionStatus and reason.
 func IsSnapshotStatusConditionSet(snapshot *applicationapiv1alpha1.Snapshot, conditionType string, conditionStatus metav1.ConditionStatus, reason string) bool {
 	condition := meta.FindStatusCondition(snapshot.Status.Conditions, conditionType)
-	if condition == nil && conditionType == AppStudioTestSuceededCondition {
-		condition = meta.FindStatusCondition(snapshot.Status.Conditions, LegacyTestSuceededCondition)
+	if condition == nil && conditionType == AppStudioTestSucceededCondition {
+		condition = meta.FindStatusCondition(snapshot.Status.Conditions, LegacyTestSucceededCondition)
 	}
 	if condition == nil && conditionType == AppStudioIntegrationStatusCondition {
 		condition = meta.FindStatusCondition(snapshot.Status.Conditions, LegacyIntegrationStatusCondition)
@@ -316,9 +316,9 @@ func ValidateImageDigest(imageUrl string) error {
 
 // HaveAppStudioTestsFinished checks if the AppStudio tests have finished by checking if the AppStudio Test Succeeded condition is set.
 func HaveAppStudioTestsFinished(snapshot *applicationapiv1alpha1.Snapshot) bool {
-	statusCondition := meta.FindStatusCondition(snapshot.Status.Conditions, AppStudioTestSuceededCondition)
+	statusCondition := meta.FindStatusCondition(snapshot.Status.Conditions, AppStudioTestSucceededCondition)
 	if statusCondition == nil {
-		statusCondition = meta.FindStatusCondition(snapshot.Status.Conditions, LegacyTestSuceededCondition)
+		statusCondition = meta.FindStatusCondition(snapshot.Status.Conditions, LegacyTestSucceededCondition)
 		return statusCondition != nil && statusCondition.Status != metav1.ConditionUnknown
 	}
 	return statusCondition != nil && statusCondition.Status != metav1.ConditionUnknown
@@ -326,10 +326,10 @@ func HaveAppStudioTestsFinished(snapshot *applicationapiv1alpha1.Snapshot) bool 
 
 // HaveAppStudioTestsSucceeded checks if the AppStudio tests have finished by checking if the AppStudio Test Succeeded condition is set.
 func HaveAppStudioTestsSucceeded(snapshot *applicationapiv1alpha1.Snapshot) bool {
-	if meta.FindStatusCondition(snapshot.Status.Conditions, AppStudioTestSuceededCondition) == nil {
-		return meta.IsStatusConditionTrue(snapshot.Status.Conditions, LegacyTestSuceededCondition)
+	if meta.FindStatusCondition(snapshot.Status.Conditions, AppStudioTestSucceededCondition) == nil {
+		return meta.IsStatusConditionTrue(snapshot.Status.Conditions, LegacyTestSucceededCondition)
 	}
-	return meta.IsStatusConditionTrue(snapshot.Status.Conditions, AppStudioTestSuceededCondition)
+	return meta.IsStatusConditionTrue(snapshot.Status.Conditions, AppStudioTestSucceededCondition)
 }
 
 // CanSnapshotBePromoted checks if the Snapshot in question can be promoted for deployment and release.

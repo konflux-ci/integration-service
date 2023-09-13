@@ -693,7 +693,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			Expect(err).To(BeNil())
 			Expect(allIntegrationPipelineRunsPassed).To(BeTrue())
 
-			Expect(meta.IsStatusConditionTrue(hasSnapshot.Status.Conditions, gitops.AppStudioTestSuceededCondition)).To(BeTrue())
+			Expect(meta.IsStatusConditionTrue(hasSnapshot.Status.Conditions, gitops.AppStudioTestSucceededCondition)).To(BeTrue())
 		})
 
 		It("ensures Snapshot failed once one pipeline failed", func() {
@@ -831,7 +831,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			Expect(err).To(BeNil())
 			Expect(allIntegrationPipelineRunsPassed).To(BeFalse())
 
-			Expect(meta.IsStatusConditionFalse(hasSnapshot.Status.Conditions, gitops.AppStudioTestSuceededCondition)).To(BeTrue())
+			Expect(meta.IsStatusConditionFalse(hasSnapshot.Status.Conditions, gitops.AppStudioTestSucceededCondition)).To(BeTrue())
 
 			err = k8sClient.Delete(ctx, integrationPipelineRunComponentFailed)
 			Expect(err == nil || k8serrors.IsNotFound(err)).To(BeTrue())
