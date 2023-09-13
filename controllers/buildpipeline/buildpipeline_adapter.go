@@ -263,10 +263,8 @@ func (a *Adapter) getSucceededBuildPipelineRunsForComponent(component *applicati
 
 func (a *Adapter) annotateBuildPipelineRunWithSnapshot(pipelineRun *tektonv1beta1.PipelineRun, snapshot *applicationapiv1alpha1.Snapshot) (*tektonv1beta1.PipelineRun, error) {
 	patch := client.MergeFrom(pipelineRun.DeepCopy())
-	newAnnotations := map[string]string{}
-	newAnnotations[tekton.SnapshotNameLabel] = snapshot.Name
 
-	_ = metadata.AddAnnotations(&pipelineRun.ObjectMeta, newAnnotations)
+	_ = metadata.SetAnnotation(&pipelineRun.ObjectMeta, tekton.SnapshotNameLabel, snapshot.Name)
 
 	err := a.client.Patch(a.context, pipelineRun, patch)
 	if err != nil {

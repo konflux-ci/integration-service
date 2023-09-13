@@ -423,10 +423,7 @@ var _ = Describe("Snapshot integration test statuses", func() {
 		When("Snapshot contains empty test status annotation", func() {
 
 			BeforeEach(func() {
-				err := metadata.AddAnnotations(
-					snapshot,
-					map[string]string{gitops.SnapshotTestsStatusAnnotation: "[]"},
-				)
+				err := metadata.SetAnnotation(snapshot, gitops.SnapshotTestsStatusAnnotation, "[]")
 				Expect(err).To(BeNil())
 			})
 
@@ -442,10 +439,7 @@ var _ = Describe("Snapshot integration test statuses", func() {
 				sits.UpdateTestStatusIfChanged(testScenarioName, gitops.IntegrationTestStatusInProgress, testDetails)
 				testAnnotation, err := json.Marshal(sits)
 				Expect(err).To(BeNil())
-				err = metadata.AddAnnotations(
-					snapshot,
-					map[string]string{gitops.SnapshotTestsStatusAnnotation: string(testAnnotation)},
-				)
+				err = metadata.SetAnnotation(snapshot, gitops.SnapshotTestsStatusAnnotation, string(testAnnotation))
 				Expect(err).To(BeNil())
 
 			})
@@ -465,10 +459,8 @@ var _ = Describe("Snapshot integration test statuses", func() {
 
 		When("Snapshot contains invalid test status annotation", func() {
 			BeforeEach(func() {
-				err := metadata.AddAnnotations(
-					snapshot,
-					map[string]string{gitops.SnapshotTestsStatusAnnotation: "[{\"invalid\":\"data\"}]"},
-				)
+				err := metadata.SetAnnotation(
+					snapshot, gitops.SnapshotTestsStatusAnnotation, "[{\"invalid\":\"data\"}]")
 				Expect(err).To(BeNil())
 			})
 
@@ -480,10 +472,7 @@ var _ = Describe("Snapshot integration test statuses", func() {
 
 		When("Snapshot contains invalid JSON test status annotation", func() {
 			BeforeEach(func() {
-				err := metadata.AddAnnotations(
-					snapshot,
-					map[string]string{gitops.SnapshotTestsStatusAnnotation: "{}"},
-				)
+				err := metadata.SetAnnotation(snapshot, gitops.SnapshotTestsStatusAnnotation, "{}")
 				Expect(err).To(BeNil())
 			})
 
