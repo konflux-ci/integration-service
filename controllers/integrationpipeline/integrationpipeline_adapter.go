@@ -148,7 +148,7 @@ func (a *Adapter) EnsureSnapshotPassedAllTests() (controller.OperationResult, er
 	// If all Integration Pipeline runs passed, mark the snapshot as succeeded, otherwise mark it as failed
 	// This updates the Snapshot resource on the cluster
 	if allIntegrationPipelineRunsPassed {
-		if !gitops.IsSnapshotStatusConditionSet(existingSnapshot, gitops.AppStudioTestSuceededCondition, metav1.ConditionTrue, "") {
+		if !gitops.IsSnapshotStatusConditionSet(existingSnapshot, gitops.AppStudioTestSucceededCondition, metav1.ConditionTrue, "") {
 			existingSnapshot, err = gitops.MarkSnapshotAsPassed(a.client, a.context, existingSnapshot, "All Integration Pipeline tests passed")
 			if err != nil {
 				a.logger.Error(err, "Failed to Update Snapshot AppStudioTestSucceeded status")
@@ -158,7 +158,7 @@ func (a *Adapter) EnsureSnapshotPassedAllTests() (controller.OperationResult, er
 				existingSnapshot, h.LogActionUpdate)
 		}
 	} else {
-		if !gitops.IsSnapshotStatusConditionSet(existingSnapshot, gitops.AppStudioTestSuceededCondition, metav1.ConditionFalse, "") {
+		if !gitops.IsSnapshotStatusConditionSet(existingSnapshot, gitops.AppStudioTestSucceededCondition, metav1.ConditionFalse, "") {
 			existingSnapshot, err = gitops.MarkSnapshotAsFailed(a.client, a.context, existingSnapshot, "Some Integration pipeline tests failed")
 			if err != nil {
 				a.logger.Error(err, "Failed to Update Snapshot AppStudioTestSucceeded status")

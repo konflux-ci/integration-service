@@ -94,13 +94,13 @@ var _ = Describe("Predicates", Ordered, func() {
 		// Set the binding statuses after they are created
 		hasSnapshotUnknownStatus.Status.Conditions = []metav1.Condition{
 			{
-				Type:   gitops.AppStudioTestSuceededCondition,
+				Type:   gitops.AppStudioTestSucceededCondition,
 				Status: metav1.ConditionUnknown,
 			},
 		}
 		hasSnapshotTrueStatus.Status.Conditions = []metav1.Condition{
 			{
-				Type:   gitops.AppStudioTestSuceededCondition,
+				Type:   gitops.AppStudioTestSucceededCondition,
 				Status: metav1.ConditionTrue,
 			},
 		}
