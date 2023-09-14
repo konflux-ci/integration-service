@@ -144,6 +144,18 @@ var (
 	SnapshotComponentLabel = tekton.ComponentNameLabel
 )
 
+// IsFinal returns true when test status is final
+func (its IntegrationTestStatus) IsFinal() bool {
+	switch its {
+	case IntegrationTestStatusEnvironmentProvisionError,
+		IntegrationTestStatusTestPassed,
+		IntegrationTestStatusTestFail,
+		IntegrationTestStatusDeploymentError:
+		return true
+	}
+	return false
+}
+
 // MarkSnapshotAsPassed updates the AppStudio Test succeeded condition for the Snapshot to passed.
 // If the patch command fails, an error will be returned.
 func MarkSnapshotAsPassed(adapterClient client.Client, ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot, message string) (*applicationapiv1alpha1.Snapshot, error) {

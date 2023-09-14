@@ -378,6 +378,18 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 			Entry("When status is TestPass", gitops.IntegrationTestStatusTestPassed, "TestPassed"),
 		)
 
+		DescribeTable("Status is final",
+			func(st gitops.IntegrationTestStatus, isFinal bool) {
+				Expect(st.IsFinal()).To(Equal(isFinal))
+			},
+			Entry("When status is Pending", gitops.IntegrationTestStatusPending, false),
+			Entry("When status is InProgress", gitops.IntegrationTestStatusInProgress, false),
+			Entry("When status is EnvironmentProvisionError", gitops.IntegrationTestStatusEnvironmentProvisionError, true),
+			Entry("When status is DeploymentError", gitops.IntegrationTestStatusDeploymentError, true),
+			Entry("When status is TestFail", gitops.IntegrationTestStatusTestFail, true),
+			Entry("When status is TestPass", gitops.IntegrationTestStatusTestPassed, true),
+		)
+
 		It("Invalid status to type fails with error", func() {
 			_, err := gitops.IntegrationTestStatusString("Unknown")
 			Expect(err).NotTo(BeNil())
