@@ -286,10 +286,7 @@ func WriteIntegrationTestStatusesIntoSnapshot(s *applicationapiv1alpha1.Snapshot
 		return fmt.Errorf("failed to marshal test results into JSON: %w", err)
 	}
 
-	newAnnotations := map[string]string{
-		SnapshotTestsStatusAnnotation: string(value),
-	}
-	if err := metadata.AddAnnotations(&s.ObjectMeta, newAnnotations); err != nil {
+	if err := metadata.SetAnnotation(&s.ObjectMeta, SnapshotTestsStatusAnnotation, string(value)); err != nil {
 		return fmt.Errorf("failed to add annotations: %w", err)
 	}
 

@@ -12,7 +12,7 @@ require (
 	github.com/openshift-pipelines/pipelines-as-code v0.17.2
 	github.com/prometheus/client_golang v1.16.0
 	github.com/redhat-appstudio/application-api v0.0.0-20230427114540-a91722251e0a
-	github.com/redhat-appstudio/operator-toolkit v0.0.0-20230829074524-440a6e31b5ae
+	github.com/redhat-appstudio/operator-toolkit v0.0.0-20230913085326-6c5e9d368a6a
 	github.com/redhat-appstudio/release-service v0.0.0-20230511145849-bde1cdcbb60b
 	github.com/santhosh-tekuri/jsonschema/v5 v5.3.1
 	github.com/tektoncd/pipeline v0.48.0
