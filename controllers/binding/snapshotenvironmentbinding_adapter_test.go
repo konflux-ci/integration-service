@@ -518,12 +518,9 @@ var _ = Describe("Binding Adapter", Ordered, func() {
 		Expect(dt).NotTo(BeNil())
 
 		result, err := adapter.EnsureEphemeralEnvironmentsCleanedUp()
-		Expect(!result.CancelRequest && err == nil).To(BeTrue())
+		Expect(!result.CancelRequest && err == nil && result.RequeueDelay != 0).To(BeTrue())
 
 		Expect(gitops.HaveAppStudioTestsSucceeded(hasSnapshot)).To(BeFalse())
-
-		expectedLogEntry := "Requeueing cleanup after delay"
-		Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
 
 		// Expect the environment and DTC to not have been deleted
 		dtc, _ = adapter.loader.GetDeploymentTargetClaimForEnvironment(k8sClient, adapter.context, hasEnv)

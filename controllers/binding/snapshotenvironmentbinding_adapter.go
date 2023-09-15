@@ -73,7 +73,7 @@ func (a *Adapter) EnsureIntegrationTestPipelineForScenarioExists() (controller.O
 	}
 
 	if gitops.HaveBindingsFailed(a.snapshotEnvironmentBinding) {
-		a.logger.Info("The SnapshotEnvironmentBinding has failed to deploy on ephemeral environment and will be deleted later.", "snapshotEnvironmentBinding.Name", a.snapshotEnvironmentBinding.Name)
+		// don't log here it floods logs
 		return controller.ContinueProcessing()
 	}
 
@@ -134,12 +134,12 @@ func (a *Adapter) EnsureEphemeralEnvironmentsCleanedUp() (controller.OperationRe
 	}
 	sinceLastTransition := time.Since(lastTransitionTime).Seconds()
 	if sinceLastTransition < snapshotEnvironmentBindingErrorTimeoutSeconds {
-		a.logger.Info(fmt.Sprintf("SnapshotEnvironmentBinding has been in error state for %f "+
-			"seconds,  which is less than threshold time of %f. Requeueing cleanup after delay.",
-			sinceLastTransition, snapshotEnvironmentBindingErrorTimeoutSeconds))
+		// don't log here, it floods logs
 		return controller.RequeueAfter(time.Duration(snapshotEnvironmentBindingErrorTimeoutSeconds*float64(time.Second)), nil)
 	} else {
-		a.logger.Info(fmt.Sprintf("SEB has been in the error state for more than the threshold time of %f seconds", snapshotEnvironmentBindingErrorTimeoutSeconds))
+		a.logger.Info(
+			fmt.Sprintf("SEB has been in the error state for more than the threshold time of %f seconds and will be deleted", snapshotEnvironmentBindingErrorTimeoutSeconds),
+		)
 	}
 
 	// mark snapshot as failed
