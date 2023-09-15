@@ -82,7 +82,8 @@ func (a *Adapter) EnsureAllIntegrationTestPipelinesExist() (controller.Operation
 	}
 
 	if integrationTestScenarios != nil {
-		a.logger.Info("Found IntegrationTestScenarios for application",
+		a.logger.Info(
+			fmt.Sprintf("Found %d IntegrationTestScenarios for application", len(*integrationTestScenarios)),
 			"Application.Name", a.application.Name,
 			"IntegrationTestScenarios", len(*integrationTestScenarios))
 		for _, integrationTestScenario := range *integrationTestScenarios {
