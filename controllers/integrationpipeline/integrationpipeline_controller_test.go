@@ -31,6 +31,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
+	"github.com/redhat-appstudio/integration-service/gitops"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -49,9 +50,12 @@ var _ = Describe("Integration PipelineController", func() {
 		integrationPipelineRun *tektonv1beta1.PipelineRun
 		hasApp                 *applicationapiv1alpha1.Application
 		hasComp                *applicationapiv1alpha1.Component
+		hasSnapshot            *applicationapiv1alpha1.Snapshot
 	)
 	const (
 		applicationName = "application-sample"
+		sample_image    = "quay.io/redhat-appstudio/sample-image"
+		sample_revision = "random-value"
 		SampleRepoLink  = "https://github.com/devfile-samples/devfile-sample-java-springboot-basic"
 	)
 
@@ -87,6 +91,40 @@ var _ = Describe("Integration PipelineController", func() {
 			},
 		}
 		Expect(k8sClient.Create(ctx, hasComp)).Should(Succeed())
+
+		hasSnapshot = &applicationapiv1alpha1.Snapshot{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "snapshot-sample",
+				Namespace: "default",
+				Labels: map[string]string{
+					gitops.SnapshotTypeLabel:              "component",
+					gitops.SnapshotComponentLabel:         "component-sample",
+					"build.appstudio.redhat.com/pipeline": "enterprise-contract",
+				},
+				Annotations: map[string]string{
+					gitops.PipelineAsCodeInstallationIDAnnotation:   "123",
+					"build.appstudio.redhat.com/commit_sha":         "6c65b2fcaea3e1a0a92476c8b5dc89e92a85f025",
+					"appstudio.redhat.com/updateComponentOnSuccess": "false",
+				},
+			},
+			Spec: applicationapiv1alpha1.SnapshotSpec{
+				Application: hasApp.Name,
+				Components: []applicationapiv1alpha1.SnapshotComponent{
+					{
+						Name:           "component-sample",
+						ContainerImage: sample_image,
+						Source: applicationapiv1alpha1.ComponentSource{
+							ComponentSourceUnion: applicationapiv1alpha1.ComponentSourceUnion{
+								GitSource: &applicationapiv1alpha1.GitSource{
+									Revision: sample_revision,
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+		Expect(k8sClient.Create(ctx, hasSnapshot)).Should(Succeed())
 
 		successfulTaskRun = &tektonv1beta1.TaskRun{
 			ObjectMeta: metav1.ObjectMeta{
@@ -135,6 +173,7 @@ var _ = Describe("Integration PipelineController", func() {
 					"pipelines.openshift.io/strategy":       "s2i",
 					"appstudio.openshift.io/component":      "component-sample",
 					"appstudio.openshift.io/application":    applicationName,
+					gitops.SnapshotLabel:                    hasSnapshot.Name,
 				},
 				Annotations: map[string]string{
 					"appstudio.redhat.com/updateComponentOnSuccess": "false",
@@ -202,6 +241,8 @@ var _ = Describe("Integration PipelineController", func() {
 		err := k8sClient.Delete(ctx, hasApp)
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 		err = k8sClient.Delete(ctx, hasComp)
+		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
+		err = k8sClient.Delete(ctx, hasSnapshot)
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 		err = k8sClient.Delete(ctx, integrationPipelineRun)
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
@@ -271,6 +312,7 @@ var _ = Describe("Integration PipelineController", func() {
 						"pipelines.openshift.io/runtime":        "nodejs",
 						"pipelines.openshift.io/strategy":       "s2i",
 						"appstudio.openshift.io/application":    applicationName,
+						gitops.SnapshotLabel:                    hasSnapshot.Name,
 					},
 					Annotations: map[string]string{
 						"appstudio.redhat.com/updateComponentOnSuccess": "false",

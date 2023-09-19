@@ -33,6 +33,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
+const SnapshotEnvironmentBindingErrorTimeoutSeconds float64 = 300
+
 // Adapter holds the objects needed to reconcile a SnapshotEnvironmentBinding.
 type Adapter struct {
 	snapshotEnvironmentBinding *applicationapiv1alpha1.SnapshotEnvironmentBinding
@@ -128,20 +130,32 @@ func (a *Adapter) EnsureEphemeralEnvironmentsCleanedUp() (controller.OperationRe
 	// reasonable time then we assume that the SEB is stuck in an unrecoverable
 	// state and clean it up.  Otherwise we requeue and wait until the timeout
 	// has passed
-	const snapshotEnvironmentBindingErrorTimeoutSeconds float64 = 300
 	var lastTransitionTime time.Time
 	bindingStatus := meta.FindStatusCondition(a.snapshotEnvironmentBinding.Status.BindingConditions, gitops.BindingErrorOccurredStatusConditionType)
 	if bindingStatus != nil {
 		lastTransitionTime = bindingStatus.LastTransitionTime.Time
 	}
 	sinceLastTransition := time.Since(lastTransitionTime).Seconds()
-	if sinceLastTransition < snapshotEnvironmentBindingErrorTimeoutSeconds {
+	if sinceLastTransition < SnapshotEnvironmentBindingErrorTimeoutSeconds {
 		// don't log here, it floods logs
-		return controller.RequeueAfter(time.Duration(snapshotEnvironmentBindingErrorTimeoutSeconds*float64(time.Second)), nil)
-	} else {
-		a.logger.Info(
-			fmt.Sprintf("SEB has been in the error state for more than the threshold time of %f seconds and will be deleted", snapshotEnvironmentBindingErrorTimeoutSeconds),
-		)
+		return controller.RequeueAfter(time.Duration(SnapshotEnvironmentBindingErrorTimeoutSeconds*float64(time.Second)), nil)
+	}
+
+	reasonMsg := "Unknown reason"
+
+	if conditionStatus := gitops.GetBindingConditionStatus(a.snapshotEnvironmentBinding); conditionStatus != nil {
+		reasonMsg = fmt.Sprintf("%s (%s)", conditionStatus.Reason, conditionStatus.Message)
+	}
+	// we don't want to scare users prematurely, report error only after SEB timeout for trying to deploy
+	a.logger.Info(
+		fmt.Sprintf("SEB has been in the error state for more than the threshold time of %f seconds", SnapshotEnvironmentBindingErrorTimeoutSeconds),
+		"reason", reasonMsg,
+	)
+
+	err := a.writeTestStatusIntoSnapshot(gitops.IntegrationTestStatusDeploymentError,
+		fmt.Sprintf("The SnapshotEnvironmentBinding has failed to deploy on ephemeral environment: %s", reasonMsg))
+	if err != nil {
+		return controller.RequeueWithError(fmt.Errorf("failed to update snapshot test status: %w", err))
 	}
 
 	// mark snapshot as failed
@@ -150,7 +164,7 @@ func (a *Adapter) EnsureEphemeralEnvironmentsCleanedUp() (controller.OperationRe
 	a.logger.Info("The SnapshotEnvironmentBinding encountered an issue deploying snapshot on ephemeral environments",
 		"snapshotEnvironmentBinding.Name", a.snapshotEnvironmentBinding.Name,
 		"message", snapshotErrorMessage)
-	_, err := gitops.MarkSnapshotAsFailed(a.client, a.context, a.snapshot, snapshotErrorMessage)
+	_, err = gitops.MarkSnapshotAsFailed(a.client, a.context, a.snapshot, snapshotErrorMessage)
 	if err != nil {
 		a.logger.Error(err, "Failed to Update Snapshot status")
 		return controller.RequeueWithError(err)
@@ -219,4 +233,19 @@ func (a *Adapter) getDeploymentTargetForEnvironment(environment *applicationapiv
 	}
 
 	return deploymentTarget, nil
+}
+
+// writeTestStatusIntoSnapshot updates test status and instantly writes changes into test result annotation
+func (a *Adapter) writeTestStatusIntoSnapshot(status gitops.IntegrationTestStatus, details string) error {
+	testStatuses, err := gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(a.snapshot)
+	if err != nil {
+		return err
+	}
+	testStatuses.UpdateTestStatusIfChanged(a.integrationTestScenario.Name, status, details)
+	err = gitops.WriteIntegrationTestStatusesIntoSnapshot(a.snapshot, testStatuses, a.client, a.context)
+	if err != nil {
+		return err
+
+	}
+	return nil
 }

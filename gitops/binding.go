@@ -68,8 +68,13 @@ func NewBindingComponents(components []applicationapiv1alpha1.Component) *[]appl
 	return &bindingComponents
 }
 
-func HaveBindingsFailed(snapshotEnvironmentBinding *applicationapiv1alpha1.SnapshotEnvironmentBinding) bool {
+func GetBindingConditionStatus(snapshotEnvironmentBinding *applicationapiv1alpha1.SnapshotEnvironmentBinding) *metav1.Condition {
 	bindingStatus := meta.FindStatusCondition(snapshotEnvironmentBinding.Status.BindingConditions, BindingErrorOccurredStatusConditionType)
+	return bindingStatus
+}
+
+func HaveBindingsFailed(snapshotEnvironmentBinding *applicationapiv1alpha1.SnapshotEnvironmentBinding) bool {
+	bindingStatus := GetBindingConditionStatus(snapshotEnvironmentBinding)
 	if bindingStatus == nil {
 		return false
 	}

@@ -86,6 +86,23 @@ func (a *Adapter) EnsureAllIntegrationTestPipelinesExist() (controller.Operation
 			fmt.Sprintf("Found %d IntegrationTestScenarios for application", len(*integrationTestScenarios)),
 			"Application.Name", a.application.Name,
 			"IntegrationTestScenarios", len(*integrationTestScenarios))
+
+		testStatuses, err := gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(a.snapshot)
+		if err != nil {
+			return controller.RequeueWithError(err)
+		}
+		defer func() {
+			// Try to update status of test if something failed, because test loop can stop prematurely on error,
+			// we should record current status.
+			// This is only best effort update
+			//
+			// When update of statuses worked fine at the end of function, this is just a no-op
+			err = gitops.WriteIntegrationTestStatusesIntoSnapshot(a.snapshot, testStatuses, a.client, a.context)
+			if err != nil {
+				a.logger.Error(err, "Defer: Updating statuses of tests in snapshot failed")
+			}
+		}()
+
 		for _, integrationTestScenario := range *integrationTestScenarios {
 			integrationTestScenario := integrationTestScenario //G601
 			if !reflect.ValueOf(integrationTestScenario.Spec.Environment).IsZero() {
@@ -113,6 +130,9 @@ func (a *Adapter) EnsureAllIntegrationTestPipelinesExist() (controller.Operation
 				}
 				a.logger.LogAuditEvent("IntegrationTestscenario pipeline has been created", pipelineRun, h.LogActionAdd,
 					"integrationTestScenario.Name", integrationTestScenario.Name)
+				testStatuses.UpdateTestStatusIfChanged(
+					integrationTestScenario.Name, gitops.IntegrationTestStatusInProgress,
+					fmt.Sprintf("IntegrationTestScenario pipeline '%s' has been created", pipelineRun.Name))
 				gitops.PrepareToRegisterIntegrationPipelineRun(a.snapshot)
 				if gitops.IsSnapshotNotStarted(a.snapshot) {
 					_, err := gitops.MarkSnapshotIntegrationStatusAsInProgress(a.client, a.context, a.snapshot, "Snapshot starts being tested by the integrationPipelineRun")
@@ -125,6 +145,11 @@ func (a *Adapter) EnsureAllIntegrationTestPipelinesExist() (controller.Operation
 				}
 
 			}
+		}
+
+		err = gitops.WriteIntegrationTestStatusesIntoSnapshot(a.snapshot, testStatuses, a.client, a.context)
+		if err != nil {
+			return controller.RequeueWithError(err)
 		}
 	}
 
@@ -171,6 +196,18 @@ func (a *Adapter) EnsureCreationOfEnvironment() (controller.OperationResult, err
 		return controller.ContinueProcessing()
 	}
 
+	// Initialize status of all integration tests
+	// This is starting place where integration tests are being initialized
+	testStatuses, err := gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(a.snapshot)
+	if err != nil {
+		return controller.RequeueWithError(err)
+	}
+	testStatuses.InitStatuses(integrationTestScenarios)
+	err = gitops.WriteIntegrationTestStatusesIntoSnapshot(a.snapshot, testStatuses, a.client, a.context)
+	if err != nil {
+		return controller.RequeueWithError(err)
+	}
+
 	allEnvironments, err := a.loader.GetAllEnvironments(a.client, a.context, a.application)
 	if err != nil {
 		a.logger.Error(err, "Failed to get all environments.")
@@ -207,18 +244,31 @@ TestScenarioLoop:
 					scenarioLabelAndKey := map[string]string{gitops.SnapshotTestScenarioLabel: integrationTestScenario.Name}
 					binding, err = a.createSnapshotEnvironmentBindingForSnapshot(a.application, &environment, a.snapshot, components, scenarioLabelAndKey)
 					if err != nil {
-						a.logger.Error(err, "Failed to create snapshotEnvironmentbinding for snapshot",
+						errStr := "Failed to create SnapshotEnvironmentBinding for snapshot"
+						a.logger.Error(err, errStr,
 							"snapshot", a.snapshot.Name,
 							"environment.Name", environment.Name,
 							"snapshot.Spec.Components", a.snapshot.Spec.Components)
+
+						testStatuses.UpdateTestStatusIfChanged(integrationTestScenario.Name, gitops.IntegrationTestStatusEnvironmentProvisionError, errStr)
+						a.writeIntegrationTestStatusAtError(testStatuses)
+
 						return controller.RequeueWithError(err)
 					}
 					a.logger.LogAuditEvent("A snapshotEnvironmentbinding is created", binding, h.LogActionAdd,
 						"integrationTestScenario.Name", integrationTestScenario.Name)
+
+					testStatuses.UpdateTestStatusIfChanged(integrationTestScenario.Name, gitops.IntegrationTestStatusInProgress, "Deploying")
+
 				} else {
 					a.logger.Info("SnapshotEnvironmentBinding already exists for environment",
 						"binding.Name", binding.Name,
 						"environment.Name", environment.Name)
+
+					if d, ok := testStatuses.GetScenarioStatus(integrationTestScenario.Name); ok && d.Status == gitops.IntegrationTestStatusPending {
+						// update only from Pending to InProgress to avoid accidental overwrittes from followup states
+						testStatuses.UpdateTestStatusIfChanged(integrationTestScenario.Name, gitops.IntegrationTestStatusInProgress, "Deploying")
+					}
 				}
 
 				continue TestScenarioLoop
@@ -239,6 +289,10 @@ TestScenarioLoop:
 
 		if err != nil {
 			a.logger.Error(err, "Copying of environment failed")
+			testStatuses.UpdateTestStatusIfChanged(
+				integrationTestScenario.Name, gitops.IntegrationTestStatusEnvironmentProvisionError,
+				fmt.Sprintf("Creation of ephemeral environment failed: copying of environment failed: %s", err))
+			a.writeIntegrationTestStatusAtError(testStatuses)
 			return controller.RequeueWithError(err)
 		}
 		a.logger.LogAuditEvent("An ephemeral Environment is created for integrationTestScenario",
@@ -249,16 +303,31 @@ TestScenarioLoop:
 		scenarioLabelAndKey := map[string]string{gitops.SnapshotTestScenarioLabel: integrationTestScenario.Name}
 		binding, err := a.createSnapshotEnvironmentBindingForSnapshot(a.application, copyEnv, a.snapshot, components, scenarioLabelAndKey)
 		if err != nil {
-			a.logger.Error(err, "Failed to create snapshotEnvironmentbinding for snapshot",
+			errStr := "Failed to create SnapshotEnvironmentBinding for snapshot"
+			a.logger.Error(err, errStr,
 				"snapshot", a.snapshot.Name,
 				"environment.Name", copyEnv.Name,
 				"snapshot.Spec.Components", a.snapshot.Spec.Components)
+
+			testStatuses.UpdateTestStatusIfChanged(
+				integrationTestScenario.Name, gitops.IntegrationTestStatusEnvironmentProvisionError,
+				fmt.Sprintf("%s: %s", errStr, err))
+			a.writeIntegrationTestStatusAtError(testStatuses)
+
 			return controller.RequeueWithError(err)
 		}
 		a.logger.LogAuditEvent("A snapshotEnvironmentbinding is created", binding, h.LogActionAdd,
 			"environment.Name", copyEnv.Name,
 			"integrationTestScenario.Name", integrationTestScenario.Name)
+
+		testStatuses.UpdateTestStatusIfChanged(integrationTestScenario.Name, gitops.IntegrationTestStatusInProgress, "Deploying")
 	}
+
+	err = gitops.WriteIntegrationTestStatusesIntoSnapshot(a.snapshot, testStatuses, a.client, a.context)
+	if err != nil {
+		return controller.RequeueWithError(err)
+	}
+
 	return controller.ContinueProcessing()
 }
 
@@ -642,4 +711,13 @@ func (a *Adapter) getEnvironmentFromIntegrationTestScenario(integrationTestScena
 		return nil, fmt.Errorf("environment %s doesn't exist in same namespace as IntegrationTestScenario at all: %w", integrationTestScenario.Spec.Environment.Name, err)
 	}
 	return existingEnv, nil
+}
+
+// writeIntegrationTestStatusAtError writes updates of integration test statuses into snapshot
+// This is best effort function, should be used only for handling faulty state before reconcilarion requeue
+func (a *Adapter) writeIntegrationTestStatusAtError(sits *gitops.SnapshotIntegrationTestStatuses) {
+	err := gitops.WriteIntegrationTestStatusesIntoSnapshot(a.snapshot, sits, a.client, a.context)
+	if err != nil {
+		a.logger.Error(err, "Updating statuses of tests in snapshot failed")
+	}
 }
