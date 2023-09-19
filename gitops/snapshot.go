@@ -144,6 +144,11 @@ var (
 	SnapshotComponentLabel = tekton.ComponentNameLabel
 )
 
+// IsSnapshotMarkedAsPassed returns true if snapshot is marked as passed
+func IsSnapshotMarkedAsPassed(snapshot *applicationapiv1alpha1.Snapshot) bool {
+	return IsSnapshotStatusConditionSet(snapshot, AppStudioTestSucceededCondition, metav1.ConditionTrue, "")
+}
+
 // MarkSnapshotAsPassed updates the AppStudio Test succeeded condition for the Snapshot to passed.
 // If the patch command fails, an error will be returned.
 func MarkSnapshotAsPassed(adapterClient client.Client, ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot, message string) (*applicationapiv1alpha1.Snapshot, error) {
@@ -166,6 +171,11 @@ func MarkSnapshotAsPassed(adapterClient client.Client, ctx context.Context, snap
 	return snapshot, nil
 }
 
+// IsSnapshotMarkedAsFailed returns true if snapshot is marked as failed
+func IsSnapshotMarkedAsFailed(snapshot *applicationapiv1alpha1.Snapshot) bool {
+	return IsSnapshotStatusConditionSet(snapshot, AppStudioTestSucceededCondition, metav1.ConditionFalse, "")
+}
+
 // MarkSnapshotAsFailed updates the AppStudio Test succeeded condition for the Snapshot to failed.
 // If the patch command fails, an error will be returned.
 func MarkSnapshotAsFailed(adapterClient client.Client, ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot, message string) (*applicationapiv1alpha1.Snapshot, error) {
@@ -186,6 +196,11 @@ func MarkSnapshotAsFailed(adapterClient client.Client, ctx context.Context, snap
 	snapshotCompletionTime := &metav1.Time{Time: time.Now()}
 	go metrics.RegisterCompletedSnapshot(condition.Type, condition.Reason, snapshot.GetCreationTimestamp(), snapshotCompletionTime)
 	return snapshot, nil
+}
+
+// IsSnapshotMarkedAsInvalid returns true if snapshot is marked as failed
+func IsSnapshotMarkedAsInvalid(snapshot *applicationapiv1alpha1.Snapshot) bool {
+	return IsSnapshotStatusConditionSet(snapshot, AppStudioIntegrationStatusCondition, metav1.ConditionFalse, AppStudioIntegrationStatusInvalid)
 }
 
 // SetSnapshotIntegrationStatusAsInvalid sets the AppStudio integration status condition for the Snapshot to invalid.
