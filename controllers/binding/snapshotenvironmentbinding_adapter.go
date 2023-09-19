@@ -83,6 +83,8 @@ func (a *Adapter) EnsureIntegrationTestPipelineForScenarioExists() (controller.O
 	}
 	a.logger.Info("The SnapshotEnvironmentBinding's deployment succeeded", "snapshotEnvironmentBinding.Name", a.snapshotEnvironmentBinding.Name)
 
+	gitops.PrepareAndRegisterSEBReady(a.snapshotEnvironmentBinding)
+
 	if a.integrationTestScenario != nil {
 		integrationPipelineRun, err := loader.GetLatestPipelineRunForSnapshotAndScenario(a.client, a.context, a.loader, a.snapshot, a.integrationTestScenario)
 		if err != nil {
