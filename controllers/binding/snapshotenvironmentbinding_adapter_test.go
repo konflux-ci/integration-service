@@ -528,4 +528,66 @@ var _ = Describe("Binding Adapter", Ordered, func() {
 		environments, _ := adapter.loader.GetAllEnvironments(k8sClient, adapter.context, hasApp)
 		Expect(*environments).To(ContainElement(HaveField("ObjectMeta.Name", "envname")))
 	})
+
+	When("binding deployment failed", func() {
+		var (
+			failedBinding *applicationapiv1alpha1.SnapshotEnvironmentBinding
+		)
+
+		BeforeEach(func() {
+			failedBinding = &applicationapiv1alpha1.SnapshotEnvironmentBinding{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "snapshot-binding-sample-failed",
+					Namespace: "default",
+					Labels: map[string]string{
+						gitops.SnapshotTestScenarioLabel: integrationTestScenario.Name,
+					},
+				},
+				Spec: applicationapiv1alpha1.SnapshotEnvironmentBindingSpec{
+					Application: hasApp.Name,
+					Snapshot:    hasSnapshot.Name,
+					Environment: hasEnv.Name,
+					Components:  []applicationapiv1alpha1.BindingComponent{},
+				},
+			}
+			Expect(k8sClient.Create(ctx, failedBinding)).Should(Succeed())
+
+			failedBinding.Status = applicationapiv1alpha1.SnapshotEnvironmentBindingStatus{
+				BindingConditions: []metav1.Condition{
+					{
+						Reason: "Failed",
+						Status: "True",
+						Type:   gitops.BindingErrorOccurredStatusConditionType,
+						LastTransitionTime: metav1.Time{
+							// time set after timeout so cleanup is called
+							Time: time.Now().Add(time.Duration(-1*SnapshotEnvironmentBindingErrorTimeoutSeconds*float64(time.Second) + 1)),
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Status().Update(ctx, failedBinding)).Should(Succeed())
+		})
+
+		AfterEach(func() {
+			err := k8sClient.Delete(ctx, failedBinding)
+			Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
+		})
+
+		It("Failed binding test status is reported into snapshot", func() {
+			adapter = NewAdapter(failedBinding, hasSnapshot, hasEnv, hasApp, hasComp, integrationTestScenario, logger, loader.NewMockLoader(), k8sClient, ctx)
+			Expect(reflect.TypeOf(adapter)).To(Equal(reflect.TypeOf(&Adapter{})))
+
+			Eventually(func() bool {
+				result, err := adapter.EnsureEphemeralEnvironmentsCleanedUp()
+				return !result.CancelRequest && err == nil
+			}, time.Second*20).Should(BeTrue())
+
+			statuses, err := gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(hasSnapshot)
+			Expect(err).To(BeNil())
+			detail, ok := statuses.GetScenarioStatus(integrationTestScenario.Name)
+			Expect(ok).To(BeTrue())
+			Expect(detail.Status).To(Equal(gitops.IntegrationTestStatusDeploymentError))
+		})
+
+	})
 })

@@ -38,18 +38,20 @@ predicate_deploy_fail((PREDICATE:  <br>SnapshotEnvironmentBinding<br>fails to de
 ensure2(Proceed further if:<br>Snapshot testing <br> not finished yet)
 isSnapshotOldEnough{"Is lastUpdatedTime greater than the threshold?"}
 requeue[/"Requeue environment cleanup after threshold delay"/]
+reportErrorToSnapshotTestStatus("Report test error into snaphost annotation `test.appstudio.openshift.io/status`")
 markSnapshot("Mark snapshot as failed for failure to deploy")
 cleanupDeploymentArtifacts("Delete DeploymentTargetClaim and Environment")
 continueProcessing2[/Controller continues processing.../]
 
 %% Node connections
-predicate_integration_seb    ---->       predicate_deploy_fail
-predicate_deploy_fail        ---->       |"EnsureEphemeralEnvironmentsCleanedUp()"|ensure2
-ensure2                      ---->       isSnapshotOldEnough
-isSnapshotOldEnough          --No-->     requeue 
-isSnapshotOldEnough          --Yes-->    markSnapshot
-markSnapshot                 ---->       cleanupDeploymentArtifacts
-cleanupDeploymentArtifacts   ---->       continueProcessing2
+predicate_integration_seb       ---->       predicate_deploy_fail
+predicate_deploy_fail           ---->       |"EnsureEphemeralEnvironmentsCleanedUp()"|ensure2
+ensure2                         ---->       isSnapshotOldEnough
+isSnapshotOldEnough             --No-->     requeue
+isSnapshotOldEnough             --Yes-->    reportErrorToSnapshotTestStatus
+reportErrorToSnapshotTestStatus ---->       markSnapshot
+markSnapshot                    ---->       cleanupDeploymentArtifacts
+cleanupDeploymentArtifacts      ---->       continueProcessing2
 
 %% Assigning styles to nodes
 class predicate_deploy_success Amber;

@@ -696,148 +696,183 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			Expect(meta.IsStatusConditionTrue(hasSnapshot.Status.Conditions, gitops.AppStudioTestSucceededCondition)).To(BeTrue())
 		})
 
-		It("ensures Snapshot failed once one pipeline failed", func() {
-			//Create one failed scenario and its failed pipelineRun
-			integrationTestScenarioFailed = &v1beta1.IntegrationTestScenario{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "example-fail",
-					Namespace: "default",
-
-					Labels: map[string]string{
-						"test.appstudio.openshift.io/optional": "false",
-					},
-				},
-				Spec: v1beta1.IntegrationTestScenarioSpec{
-					Application: hasApp.Name,
-					ResolverRef: v1beta1.ResolverRef{
-						Resolver: "git",
-						Params: []v1beta1.ResolverParameter{
-							{
-								Name:  "url",
-								Value: "https://github.com/redhat-appstudio/integration-examples.git",
-							},
-							{
-								Name:  "revision",
-								Value: "main",
-							},
-							{
-								Name:  "pathInRepo",
-								Value: "pipelineruns/integration_pipelinerun_pass.yaml",
-							},
-						},
-					},
-					Environment: v1beta1.TestEnvironment{
-						Name: "envname",
-						Type: "POC",
-						Configuration: &applicationapiv1alpha1.EnvironmentConfiguration{
-							Env: []applicationapiv1alpha1.EnvVarPair{},
-						},
-					},
-				},
-			}
-			Expect(k8sClient.Create(ctx, integrationTestScenarioFailed)).Should(Succeed())
-
-			integrationPipelineRunComponentFailed = &tektonv1beta1.PipelineRun{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "pipelinerun-component-sample-failed",
-					Namespace: "default",
-					Labels: map[string]string{
-						"pipelines.appstudio.openshift.io/type":           "test",
-						"pac.test.appstudio.openshift.io/url-org":         "redhat-appstudio",
-						"pac.test.appstudio.openshift.io/original-prname": "build-service-on-push",
-						"pac.test.appstudio.openshift.io/url-repository":  "build-service",
-						"pac.test.appstudio.openshift.io/repository":      "build-service-pac",
-						"appstudio.openshift.io/snapshot":                 hasSnapshot.Name,
-						"test.appstudio.openshift.io/scenario":            integrationTestScenarioFailed.Name,
-						"appstudio.openshift.io/environment":              hasEnv.Name,
-						"appstudio.openshift.io/application":              hasApp.Name,
-						"appstudio.openshift.io/component":                hasComp.Name,
-					},
-					Annotations: map[string]string{
-						"pac.test.appstudio.openshift.io/on-target-branch": "[main]",
-					},
-				},
-				Spec: tektonv1beta1.PipelineRunSpec{
-					PipelineRef: &tektonv1beta1.PipelineRef{
-						Name:   "component-pipeline-fail",
-						Bundle: "quay.io/kpavic/test-bundle:component-pipeline-fail",
-					},
-				},
-			}
-
-			Expect(k8sClient.Create(ctx, integrationPipelineRunComponentFailed)).Should(Succeed())
-
-			integrationPipelineRunComponentFailed.Status = tektonv1beta1.PipelineRunStatus{
-				PipelineRunStatusFields: tektonv1beta1.PipelineRunStatusFields{
-					CompletionTime: &metav1.Time{Time: time.Now().Add(5 * time.Minute)},
-					ChildReferences: []tektonv1beta1.ChildStatusReference{
-						{
-							Name:             failedTaskRun.Name,
-							PipelineTaskName: "task1",
-						},
-					},
-				},
-				Status: v1.Status{
-					Conditions: v1.Conditions{
-						apis.Condition{
-							Reason: "Failed",
-							Status: "False",
-							Type:   apis.ConditionSucceeded,
-						},
-					},
-				},
-			}
-			Expect(k8sClient.Status().Update(ctx, integrationPipelineRunComponentFailed)).Should(Succeed())
-
-			adapter.context = loader.GetMockedContext(ctx, []loader.MockData{
-				{
-					ContextKey: loader.ApplicationContextKey,
-					Resource:   hasApp,
-				},
-				{
-					ContextKey: loader.ComponentContextKey,
-					Resource:   hasComp,
-				},
-				{
-					ContextKey: loader.SnapshotContextKey,
-					Resource:   hasSnapshot,
-				},
-				{
-					ContextKey: loader.PipelineRunsContextKey,
-					Resource:   []tektonv1beta1.PipelineRun{*integrationPipelineRunComponent, *integrationPipelineRunComponentFailed},
-				},
-				{
-					ContextKey: loader.RequiredIntegrationTestScenariosContextKey,
-					Resource:   []v1beta1.IntegrationTestScenario{*integrationTestScenario, *integrationTestScenarioFailed},
-				},
-				{
-					ContextKey: loader.ApplicationComponentsContextKey,
-					Resource:   []applicationapiv1alpha1.Component{*hasComp},
-				},
-			})
-
-			result, err := adapter.EnsureSnapshotPassedAllTests()
+		It("ensures test status in snapshot is updated to passed", func() {
+			result, err := adapter.EnsureStatusReportedInSnapshot()
 			Expect(!result.CancelRequest && err == nil).To(BeTrue())
 
-			integrationTestScenarios, err := adapter.loader.GetRequiredIntegrationTestScenariosForApplication(k8sClient, adapter.context, hasApp)
+			statuses, err := gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(hasSnapshot)
 			Expect(err).To(BeNil())
-			Expect(len(*integrationTestScenarios) > 0).To(BeTrue())
 
-			integrationPipelineRuns, err := adapter.getAllPipelineRunsForSnapshot(hasSnapshot, integrationTestScenarios)
-			Expect(err).To(BeNil())
-			Expect(len(*integrationPipelineRuns) > 0).To(BeTrue())
-
-			allIntegrationPipelineRunsPassed, err := adapter.determineIfAllIntegrationPipelinesPassed(integrationPipelineRuns)
-			Expect(err).To(BeNil())
-			Expect(allIntegrationPipelineRunsPassed).To(BeFalse())
-
-			Expect(meta.IsStatusConditionFalse(hasSnapshot.Status.Conditions, gitops.AppStudioTestSucceededCondition)).To(BeTrue())
-
-			err = k8sClient.Delete(ctx, integrationPipelineRunComponentFailed)
-			Expect(err == nil || k8serrors.IsNotFound(err)).To(BeTrue())
-			err = k8sClient.Delete(ctx, integrationTestScenarioFailed)
-			Expect(err == nil || k8serrors.IsNotFound(err)).To(BeTrue())
+			detail, ok := statuses.GetScenarioStatus(integrationTestScenario.Name)
+			Expect(ok).To(BeTrue())
+			Expect(detail.Status).To(Equal(gitops.IntegrationTestStatusTestPassed))
 		})
+
+		When("integration pipeline failed", func() {
+
+			BeforeEach(func() {
+				//Create one failed scenario and its failed pipelineRun
+				integrationTestScenarioFailed = &v1beta1.IntegrationTestScenario{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "example-fail",
+						Namespace: "default",
+
+						Labels: map[string]string{
+							"test.appstudio.openshift.io/optional": "false",
+						},
+					},
+					Spec: v1beta1.IntegrationTestScenarioSpec{
+						Application: hasApp.Name,
+						ResolverRef: v1beta1.ResolverRef{
+							Resolver: "git",
+							Params: []v1beta1.ResolverParameter{
+								{
+									Name:  "url",
+									Value: "https://github.com/redhat-appstudio/integration-examples.git",
+								},
+								{
+									Name:  "revision",
+									Value: "main",
+								},
+								{
+									Name:  "pathInRepo",
+									Value: "pipelineruns/integration_pipelinerun_pass.yaml",
+								},
+							},
+						},
+						Environment: v1beta1.TestEnvironment{
+							Name: "envname",
+							Type: "POC",
+							Configuration: &applicationapiv1alpha1.EnvironmentConfiguration{
+								Env: []applicationapiv1alpha1.EnvVarPair{},
+							},
+						},
+					},
+				}
+				Expect(k8sClient.Create(ctx, integrationTestScenarioFailed)).Should(Succeed())
+
+				integrationPipelineRunComponentFailed = &tektonv1beta1.PipelineRun{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "pipelinerun-component-sample-failed",
+						Namespace: "default",
+						Labels: map[string]string{
+							"pipelines.appstudio.openshift.io/type":           "test",
+							"pac.test.appstudio.openshift.io/url-org":         "redhat-appstudio",
+							"pac.test.appstudio.openshift.io/original-prname": "build-service-on-push",
+							"pac.test.appstudio.openshift.io/url-repository":  "build-service",
+							"pac.test.appstudio.openshift.io/repository":      "build-service-pac",
+							"appstudio.openshift.io/snapshot":                 hasSnapshot.Name,
+							"test.appstudio.openshift.io/scenario":            integrationTestScenarioFailed.Name,
+							"appstudio.openshift.io/environment":              hasEnv.Name,
+							"appstudio.openshift.io/application":              hasApp.Name,
+							"appstudio.openshift.io/component":                hasComp.Name,
+						},
+						Annotations: map[string]string{
+							"pac.test.appstudio.openshift.io/on-target-branch": "[main]",
+						},
+					},
+					Spec: tektonv1beta1.PipelineRunSpec{
+						PipelineRef: &tektonv1beta1.PipelineRef{
+							Name:   "component-pipeline-fail",
+							Bundle: "quay.io/kpavic/test-bundle:component-pipeline-fail",
+						},
+					},
+				}
+
+				Expect(k8sClient.Create(ctx, integrationPipelineRunComponentFailed)).Should(Succeed())
+
+				integrationPipelineRunComponentFailed.Status = tektonv1beta1.PipelineRunStatus{
+					PipelineRunStatusFields: tektonv1beta1.PipelineRunStatusFields{
+						CompletionTime: &metav1.Time{Time: time.Now().Add(5 * time.Minute)},
+						ChildReferences: []tektonv1beta1.ChildStatusReference{
+							{
+								Name:             failedTaskRun.Name,
+								PipelineTaskName: "task1",
+							},
+						},
+					},
+					Status: v1.Status{
+						Conditions: v1.Conditions{
+							apis.Condition{
+								Reason: "Failed",
+								Status: "False",
+								Type:   apis.ConditionSucceeded,
+							},
+						},
+					},
+				}
+				Expect(k8sClient.Status().Update(ctx, integrationPipelineRunComponentFailed)).Should(Succeed())
+
+				adapter = NewAdapter(integrationPipelineRunComponentFailed, hasComp, hasApp, logger, loader.NewMockLoader(), k8sClient, ctx)
+				adapter.context = loader.GetMockedContext(ctx, []loader.MockData{
+					{
+						ContextKey: loader.ApplicationContextKey,
+						Resource:   hasApp,
+					},
+					{
+						ContextKey: loader.ComponentContextKey,
+						Resource:   hasComp,
+					},
+					{
+						ContextKey: loader.SnapshotContextKey,
+						Resource:   hasSnapshot,
+					},
+					{
+						ContextKey: loader.PipelineRunsContextKey,
+						Resource:   []tektonv1beta1.PipelineRun{*integrationPipelineRunComponent, *integrationPipelineRunComponentFailed},
+					},
+					{
+						ContextKey: loader.RequiredIntegrationTestScenariosContextKey,
+						Resource:   []v1beta1.IntegrationTestScenario{*integrationTestScenario, *integrationTestScenarioFailed},
+					},
+					{
+						ContextKey: loader.ApplicationComponentsContextKey,
+						Resource:   []applicationapiv1alpha1.Component{*hasComp},
+					},
+				})
+			})
+
+			AfterEach(func() {
+				err := k8sClient.Delete(ctx, integrationPipelineRunComponentFailed)
+				Expect(err == nil || k8serrors.IsNotFound(err)).To(BeTrue())
+				err = k8sClient.Delete(ctx, integrationTestScenarioFailed)
+				Expect(err == nil || k8serrors.IsNotFound(err)).To(BeTrue())
+			})
+
+			It("ensures Snapshot failed", func() {
+				result, err := adapter.EnsureSnapshotPassedAllTests()
+				Expect(!result.CancelRequest && err == nil).To(BeTrue())
+
+				integrationTestScenarios, err := adapter.loader.GetRequiredIntegrationTestScenariosForApplication(k8sClient, adapter.context, hasApp)
+				Expect(err).To(BeNil())
+				Expect(len(*integrationTestScenarios) > 0).To(BeTrue())
+
+				integrationPipelineRuns, err := adapter.getAllPipelineRunsForSnapshot(hasSnapshot, integrationTestScenarios)
+				Expect(err).To(BeNil())
+				Expect(len(*integrationPipelineRuns) > 0).To(BeTrue())
+
+				allIntegrationPipelineRunsPassed, err := adapter.determineIfAllIntegrationPipelinesPassed(integrationPipelineRuns)
+				Expect(err).To(BeNil())
+				Expect(allIntegrationPipelineRunsPassed).To(BeFalse())
+
+				Expect(meta.IsStatusConditionFalse(hasSnapshot.Status.Conditions, gitops.AppStudioTestSucceededCondition)).To(BeTrue())
+
+			})
+
+			It("ensures test status ins snapshot is updated to failed", func() {
+				result, err := adapter.EnsureStatusReportedInSnapshot()
+				Expect(!result.CancelRequest && err == nil).To(BeTrue())
+
+				statuses, err := gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(hasSnapshot)
+				Expect(err).To(BeNil())
+
+				detail, ok := statuses.GetScenarioStatus(integrationTestScenarioFailed.Name)
+				Expect(ok).To(BeTrue())
+				Expect(detail.Status).To(Equal(gitops.IntegrationTestStatusTestFail))
+
+			})
+		})
+
 	})
 
 	When("EnsureStatusReported is called", func() {
