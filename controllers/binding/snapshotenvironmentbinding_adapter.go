@@ -164,10 +164,13 @@ func (a *Adapter) EnsureEphemeralEnvironmentsCleanedUp() (controller.OperationRe
 	a.logger.Info("The SnapshotEnvironmentBinding encountered an issue deploying snapshot on ephemeral environments",
 		"snapshotEnvironmentBinding.Name", a.snapshotEnvironmentBinding.Name,
 		"message", snapshotErrorMessage)
-	_, err = gitops.MarkSnapshotAsFailed(a.client, a.context, a.snapshot, snapshotErrorMessage)
-	if err != nil {
-		a.logger.Error(err, "Failed to Update Snapshot status")
-		return controller.RequeueWithError(err)
+
+	if !gitops.IsSnapshotMarkedAsFailed(a.snapshot) {
+		_, err = gitops.MarkSnapshotAsFailed(a.client, a.context, a.snapshot, snapshotErrorMessage)
+		if err != nil {
+			a.logger.Error(err, "Failed to Update Snapshot status")
+			return controller.RequeueWithError(err)
+		}
 	}
 
 	deploymentTargetClaim, err := a.loader.GetDeploymentTargetClaimForEnvironment(a.client, a.context, a.environment)
