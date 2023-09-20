@@ -31,7 +31,6 @@ import (
 	"github.com/redhat-appstudio/operator-toolkit/controller"
 	"github.com/redhat-appstudio/operator-toolkit/metadata"
 	tektonv1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -128,8 +127,7 @@ func (a *Adapter) EnsureSnapshotPassedAllTests() (controller.OperationResult, er
 		if compositeSnapshot != nil {
 			a.logger.Info("The global component list has changed in the meantime, marking snapshot as Invalid",
 				"snapshot.Name", existingSnapshot.Name)
-			if !gitops.IsSnapshotStatusConditionSet(existingSnapshot, gitops.AppStudioIntegrationStatusCondition,
-				metav1.ConditionFalse, gitops.AppStudioIntegrationStatusInvalid) {
+			if !gitops.IsSnapshotMarkedAsInvalid(existingSnapshot) {
 				patch := client.MergeFrom(existingSnapshot.DeepCopy())
 				gitops.SetSnapshotIntegrationStatusAsInvalid(existingSnapshot,
 					"The global component list has changed in the meantime, superseding with a composite snapshot")
@@ -149,7 +147,7 @@ func (a *Adapter) EnsureSnapshotPassedAllTests() (controller.OperationResult, er
 	// If all Integration Pipeline runs passed, mark the snapshot as succeeded, otherwise mark it as failed
 	// This updates the Snapshot resource on the cluster
 	if allIntegrationPipelineRunsPassed {
-		if !gitops.IsSnapshotStatusConditionSet(existingSnapshot, gitops.AppStudioTestSucceededCondition, metav1.ConditionTrue, "") {
+		if !gitops.IsSnapshotMarkedAsPassed(existingSnapshot) {
 			existingSnapshot, err = gitops.MarkSnapshotAsPassed(a.client, a.context, existingSnapshot, "All Integration Pipeline tests passed")
 			if err != nil {
 				a.logger.Error(err, "Failed to Update Snapshot AppStudioTestSucceeded status")
@@ -159,7 +157,7 @@ func (a *Adapter) EnsureSnapshotPassedAllTests() (controller.OperationResult, er
 				existingSnapshot, h.LogActionUpdate)
 		}
 	} else {
-		if !gitops.IsSnapshotStatusConditionSet(existingSnapshot, gitops.AppStudioTestSucceededCondition, metav1.ConditionFalse, "") {
+		if !gitops.IsSnapshotMarkedAsFailed(existingSnapshot) {
 			existingSnapshot, err = gitops.MarkSnapshotAsFailed(a.client, a.context, existingSnapshot, "Some Integration pipeline tests failed")
 			if err != nil {
 				a.logger.Error(err, "Failed to Update Snapshot AppStudioTestSucceeded status")
