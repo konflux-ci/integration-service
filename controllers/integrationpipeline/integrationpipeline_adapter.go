@@ -212,6 +212,9 @@ func (a *Adapter) EnsureStatusReportedInSnapshot() (controller.OperationResult, 
 			return err
 		}
 		statuses.UpdateTestStatusIfChanged(a.pipelineRun.Labels[tekton.ScenarioNameLabel], status, detail)
+		if err = statuses.UpdateTestPipelineRunName(a.pipelineRun.Labels[tekton.ScenarioNameLabel], a.pipelineRun.Name); err != nil {
+			return err
+		}
 
 		// don't return wrapped err for retries
 		err = gitops.WriteIntegrationTestStatusesIntoSnapshot(snapshot, statuses, a.client, a.context)
