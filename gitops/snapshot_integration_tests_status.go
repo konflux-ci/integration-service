@@ -52,6 +52,9 @@ const integrationTestStatusesSchema = `{
         },
         "completionTime": {
           "type": "string"
+        },
+        "testPipelineRunName": {
+          "type": "string"
         }
       },
 	  "required": ["scenario", "status", "lastUpdateTime"]
@@ -72,6 +75,8 @@ type IntegrationTestStatusDetail struct {
 	StartTime *time.Time `json:"startTime,omitempty"` // pointer to make omitempty work
 	// Completion time when test failed or passed
 	CompletionTime *time.Time `json:"completionTime,omitempty"` // pointer to make omitempty work
+	// TestPipelineName name of testing pipelineRun
+	TestPipelineRunName string `json:"testPipelineRunName,omitempty"`
 }
 
 // SnapshotIntegrationTestStatuses type handles details about snapshot tests
@@ -144,6 +149,21 @@ func (sits *SnapshotIntegrationTestStatuses) UpdateTestStatusIfChanged(scenarioN
 
 }
 
+// UpdatePipelineRunName updates TestPipelineRunName if changed
+// scenario must already exist in statuses
+func (sits *SnapshotIntegrationTestStatuses) UpdateTestPipelineRunName(scenarioName string, pipelineRunName string) error {
+	detail, ok := sits.GetScenarioStatus(scenarioName)
+	if !ok {
+		return fmt.Errorf("scenario name %s not found and cannot be updated", scenarioName)
+	}
+
+	if detail.TestPipelineRunName != pipelineRunName {
+		detail.TestPipelineRunName = pipelineRunName
+		sits.dirty = true
+	}
+	return nil
+}
+
 // InitStatuses creates initial representation all scenarios
 // This function also removes scenarios which are not defined in scenarios param
 func (sits *SnapshotIntegrationTestStatuses) InitStatuses(scenarios *[]v1beta1.IntegrationTestScenario) {
@@ -208,7 +228,8 @@ func (sits *SnapshotIntegrationTestStatuses) GetScenarioStatus(scenarioName stri
 //	    "lastUpdateTime": "2023-07-26T16:57:49+02:00",
 //	    "details": "Failed ...",
 //	    "startTime": "2023-07-26T14:57:49+02:00",
-//	    "completionTime": "2023-07-26T16:57:49+02:00"
+//	    "completionTime": "2023-07-26T16:57:49+02:00",
+//	    "testPipelineRunName": "pipeline-run-feedbeef"
 //	  }
 //	]
 func (sits *SnapshotIntegrationTestStatuses) MarshalJSON() ([]byte, error) {
