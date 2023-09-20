@@ -429,7 +429,7 @@
       ],
       "timeFrom": null,
       "timeShift": null
-    }
+    },
     {
       "collapsed": false,
       "gridPos": {
@@ -1126,7 +1126,7 @@
       "timeFrom": null,
       "timeShift": null
     },
-    
+
     {
       "id": 27,
       "gridPos": {
