@@ -26,9 +26,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/redhat-appstudio/operator-toolkit/test"
-	"sigs.k8s.io/controller-runtime/pkg/metrics"
-
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/controller-runtime/pkg/metrics"
 )
 
 var _ = Describe("Metrics Integration", Ordered, func() {
@@ -215,6 +214,52 @@ var _ = Describe("Metrics Integration", Ordered, func() {
 					nil,
 					&startTime, completionTime,
 				))).To(Succeed())
+		})
+	})
+
+	Context("When RegisterReleaseLatency is called", func() {
+
+		metrics.Registry.Unregister(ReleaseLatencySeconds)
+
+		BeforeAll(func() {
+			// Mocking metrics to reset data with each test.
+			ReleaseLatencySeconds = prometheus.NewHistogram(
+				prometheus.HistogramOpts{
+					Name:    "release_latency_seconds",
+					Help:    "Latency between integration tests completion and release creation",
+					Buckets: []float64{0.05, 0.1, 0.5, 1, 2, 3, 4, 5, 10, 15, 30},
+				},
+			)
+			// Register this metric with the registry
+			metrics.Registry.MustRegister(ReleaseLatencySeconds)
+		})
+
+		AfterAll(func() {
+			metrics.Registry.Unregister(ReleaseLatencySeconds)
+		})
+
+		var startTime, completionTime metav1.Time
+
+		BeforeEach(func() {
+			// Set completion time to current time and start time to 60 seconds prior.
+			completionTime = metav1.Time{Time: time.Now()}
+			startTime = metav1.Time{Time: completionTime.Time.Add(-60 * time.Second)}
+		})
+
+		It("adds an observation to ReleaseLatencySeconds", func() {
+			RegisterReleaseLatency(startTime)
+
+			// Calculate observed latency
+			observedLatency := completionTime.Sub(startTime.Time).Seconds()
+
+			// Ensure the observed latency is within ±5ms of 60 seconds
+			Expect(observedLatency).To(BeNumerically(">=", 59.995))
+			Expect(observedLatency).To(BeNumerically("<=", 60.005))
+		})
+
+		It("measures latency for only one release", func() {
+			RegisterReleaseLatency(startTime)
+			Expect(testutil.CollectAndCount(ReleaseLatencySeconds)).To(Equal(1))
 		})
 	})
 })

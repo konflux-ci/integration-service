@@ -227,6 +227,62 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 		Expect(checkResult).To(BeFalse())
 	})
 
+	It("returns true if only AppStudioTestSucceededCondition is set", func() {
+		appStudioTestSucceededCondition := "AppStudioTestSucceeded" // Local variable
+		condition := metav1.Condition{
+			Type:   appStudioTestSucceededCondition,
+			Status: metav1.ConditionTrue,
+		}
+		meta.SetStatusCondition(&hasSnapshot.Status.Conditions, condition)
+		Expect(gitops.HaveAppStudioTestsSucceeded(hasSnapshot)).To(BeTrue())
+	})
+
+	It("returns true if only LegacyTestSucceededCondition is set", func() {
+		legacyTestSucceededCondition := "HACBSStudioTestSucceeded" // Local variable
+		condition := metav1.Condition{
+			Type:   legacyTestSucceededCondition,
+			Status: metav1.ConditionTrue,
+		}
+		meta.SetStatusCondition(&hasSnapshot.Status.Conditions, condition)
+		Expect(gitops.HaveAppStudioTestsSucceeded(hasSnapshot)).To(BeTrue())
+	})
+
+	It("returns the LastTransitionTime when AppStudioTestSucceededCondition is set", func() {
+		appStudioTestSucceededCondition := "AppStudioTestSucceeded" // Local variable
+		testTime := metav1.NewTime(time.Now())
+		condition := metav1.Condition{
+			Type:               appStudioTestSucceededCondition,
+			Status:             metav1.ConditionTrue,
+			LastTransitionTime: testTime,
+		}
+		meta.SetStatusCondition(&hasSnapshot.Status.Conditions, condition)
+
+		returnedTime, ok := gitops.GetAppStudioTestsFinishedTime(hasSnapshot)
+		Expect(ok).To(BeTrue())
+		Expect(returnedTime).To(Equal(testTime))
+	})
+
+	It("returns the LastTransitionTime when LegacyTestSucceededCondition is set", func() {
+		legacyTestSucceededCondition := "HACBSStudioTestSucceeded"
+		testTime := metav1.NewTime(time.Now())
+		condition := metav1.Condition{
+			Type:               legacyTestSucceededCondition,
+			Status:             metav1.ConditionTrue,
+			LastTransitionTime: testTime,
+		}
+		meta.SetStatusCondition(&hasSnapshot.Status.Conditions, condition)
+
+		returnedTime, ok := gitops.GetAppStudioTestsFinishedTime(hasSnapshot)
+		Expect(ok).To(BeTrue())
+		Expect(returnedTime).To(Equal(testTime))
+	})
+
+	It("returns zero time when neither condition is set", func() {
+		returnedTime, ok := gitops.GetAppStudioTestsFinishedTime(hasSnapshot)
+		Expect(ok).To(BeFalse())
+		Expect(returnedTime).To(Equal(metav1.Time{})) // Empty or zero time
+	})
+
 	It("ensures that a new Snapshots can be successfully created", func() {
 		snapshotComponents := []applicationapiv1alpha1.SnapshotComponent{}
 		createdSnapshot := gitops.NewSnapshot(hasApp, &snapshotComponents)

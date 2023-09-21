@@ -29,6 +29,7 @@ import (
 	"github.com/redhat-appstudio/integration-service/api/v1beta1"
 	"github.com/redhat-appstudio/integration-service/gitops"
 	h "github.com/redhat-appstudio/integration-service/helpers"
+	"github.com/redhat-appstudio/integration-service/metrics"
 	"github.com/redhat-appstudio/integration-service/release"
 	"github.com/redhat-appstudio/integration-service/tekton"
 
@@ -474,6 +475,8 @@ func (a *Adapter) createMissingReleasesForReleasePlans(application *applicationa
 		return err
 	}
 
+	firstRelease := true
+
 	for _, releasePlan := range *releasePlans {
 		releasePlan := releasePlan // G601
 		existingRelease := release.FindMatchingReleaseWithReleasePlan(releases, releasePlan)
@@ -506,6 +509,14 @@ func (a *Adapter) createMissingReleasesForReleasePlans(application *applicationa
 				return err
 			}
 			a.logger.Info("Marked Release status automated", "release.Name", newRelease.Name)
+		}
+		// Register the first release time for metrics calculation
+		if firstRelease {
+			startTime, ok := gitops.GetAppStudioTestsFinishedTime(a.snapshot)
+			if ok {
+				metrics.RegisterReleaseLatency(startTime)
+				firstRelease = false
+			}
 		}
 	}
 	return nil
