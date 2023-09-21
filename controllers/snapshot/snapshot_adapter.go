@@ -348,6 +348,7 @@ func (a *Adapter) EnsureGlobalCandidateImageUpdated() (controller.OperationResul
 					a.component, h.LogActionUpdate,
 					"containerImage", component.ContainerImage)
 				if reflect.ValueOf(component.Source).IsValid() && component.Source.GitSource != nil && component.Source.GitSource.Revision != "" {
+					patch := client.MergeFrom(a.component.DeepCopy())
 					a.component.Status.LastBuiltCommit = component.Source.GitSource.Revision
 					err = a.client.Status().Patch(a.context, a.component, patch)
 					if err != nil {
