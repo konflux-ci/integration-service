@@ -17,7 +17,7 @@ require (
 	github.com/santhosh-tekuri/jsonschema/v5 v5.3.1
 	github.com/tektoncd/pipeline v0.48.0
 	github.com/tonglil/buflogr v1.0.1
-	go.uber.org/zap v1.25.0
+	go.uber.org/zap v1.26.0
 	golang.org/x/oauth2 v0.12.0
 	k8s.io/api v0.26.1
 	k8s.io/apimachinery v0.26.7
