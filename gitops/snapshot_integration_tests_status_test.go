@@ -70,6 +70,7 @@ var _ = Describe("Snapshot integration test statuses", func() {
 			applicationName  = "application-sample"
 			componentName    = "component-sample"
 			snapshotName     = "snapshot-sample"
+			pipelineRunName  = "pipeline-run-abcdf"
 		)
 		var (
 			sits                    *gitops.SnapshotIntegrationTestStatuses
@@ -221,6 +222,46 @@ var _ = Describe("Snapshot integration test statuses", func() {
 			Expect(newDetail.LastUpdateTime).NotTo(Equal(originalLastUpdateTime))
 		})
 
+		It("can update details with pipeline run name", func() {
+			// test detail must exist first
+			sits.UpdateTestStatusIfChanged(testScenarioName, gitops.IntegrationTestStatusInProgress, testDetails)
+			sits.ResetDirty()
+
+			err := sits.UpdateTestPipelineRunName(testScenarioName, pipelineRunName)
+			Expect(err).To(BeNil())
+
+			detail, ok := sits.GetScenarioStatus(testScenarioName)
+			Expect(ok).To(BeTrue())
+			Expect(detail.TestPipelineRunName).To(Equal(pipelineRunName))
+			Expect(sits.IsDirty()).To(BeTrue())
+
+			// other data hasn't been removed
+			Expect(detail.ScenarioName).To(Equal(testScenarioName))
+			Expect(detail.Details).To(Equal(testDetails))
+			Expect(detail.Status).To(Equal(gitops.IntegrationTestStatusInProgress))
+		})
+
+		It("doesn't update the same pipeline run name twice", func() {
+			// test detail must exist first
+			sits.UpdateTestStatusIfChanged(testScenarioName, gitops.IntegrationTestStatusInProgress, testDetails)
+			sits.ResetDirty()
+
+			err := sits.UpdateTestPipelineRunName(testScenarioName, pipelineRunName)
+			Expect(err).To(BeNil())
+			Expect(sits.IsDirty()).To(BeTrue())
+			sits.ResetDirty()
+
+			err = sits.UpdateTestPipelineRunName(testScenarioName, pipelineRunName)
+			Expect(err).To(BeNil())
+
+			Expect(sits.IsDirty()).To(BeFalse())
+		})
+
+		It("fails to update details with pipeline run name when testScenario doesn't exist", func() {
+			err := sits.UpdateTestPipelineRunName(testScenarioName, pipelineRunName)
+			Expect(err).NotTo(BeNil())
+		})
+
 		It("Can export valid JSON without start and completion time (Pending)", func() {
 			sits.UpdateTestStatusIfChanged(testScenarioName, gitops.IntegrationTestStatusPending, testDetails)
 			detail, ok := sits.GetScenarioStatus(testScenarioName)
@@ -316,6 +357,31 @@ var _ = Describe("Snapshot integration test statuses", func() {
 			marshaledCompletionTime, err := detail.CompletionTime.MarshalText()
 			Expect(err).To(BeNil())
 			expectedStr := fmt.Sprintf(expectedFormatStr, testScenarioName, marshaledTime, testDetails, marshaledStartTime, marshaledCompletionTime)
+			expected := []byte(expectedStr)
+
+			Expect(json.Marshal(sits)).To(MatchJSON(expected))
+		})
+
+		It("Can export valid JSON with TestPipelineRunName", func() {
+			sits.UpdateTestStatusIfChanged(testScenarioName, gitops.IntegrationTestStatusPending, testDetails)
+			err := sits.UpdateTestPipelineRunName(testScenarioName, pipelineRunName)
+			Expect(err).To(BeNil())
+
+			detail, ok := sits.GetScenarioStatus(testScenarioName)
+			Expect(ok).To(BeTrue())
+
+			expectedFormatStr := `[
+				{
+					"scenario": "%s",
+					"status": "Pending",
+					"lastUpdateTime": "%s",
+					"details": "%s",
+					"testPipelineRunName": "%s"
+				}
+			]`
+			marshaledTime, err := detail.LastUpdateTime.MarshalText()
+			Expect(err).To(BeNil())
+			expectedStr := fmt.Sprintf(expectedFormatStr, testScenarioName, marshaledTime, testDetails, pipelineRunName)
 			expected := []byte(expectedStr)
 
 			Expect(json.Marshal(sits)).To(MatchJSON(expected))

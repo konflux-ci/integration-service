@@ -859,7 +859,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 
 			})
 
-			It("ensures test status ins snapshot is updated to failed", func() {
+			It("ensures test status in snapshot is updated to failed", func() {
 				result, err := adapter.EnsureStatusReportedInSnapshot()
 				Expect(!result.CancelRequest && err == nil).To(BeTrue())
 
@@ -869,6 +869,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				detail, ok := statuses.GetScenarioStatus(integrationTestScenarioFailed.Name)
 				Expect(ok).To(BeTrue())
 				Expect(detail.Status).To(Equal(gitops.IntegrationTestStatusTestFail))
+				Expect(detail.TestPipelineRunName).To(Equal(integrationPipelineRunComponentFailed.Name))
 
 			})
 		})
