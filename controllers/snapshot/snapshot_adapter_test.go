@@ -426,20 +426,6 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			Expect(hasComp.Status.LastBuiltCommit).To(Equal(""))
 		})
 
-		It("ensures global Component Image updated when AppStudio Tests succeeded", func() {
-			gitops.MarkSnapshotAsPassed(k8sClient, ctx, hasSnapshot, "test passed")
-			Expect(gitops.HaveAppStudioTestsSucceeded(hasSnapshot)).To(BeTrue())
-			adapter.snapshot = hasSnapshot
-
-			Eventually(func() bool {
-				result, err := adapter.EnsureGlobalCandidateImageUpdated()
-				return !result.CancelRequest && err == nil
-			}, time.Second*10).Should(BeTrue())
-
-			Expect(hasComp.Spec.ContainerImage).To(Equal(sample_image))
-			Expect(hasComp.Status.LastBuiltCommit).To(Equal(sample_revision))
-		})
-
 		It("no error from ensuring global Component Image updated when AppStudio Tests failed", func() {
 			gitops.MarkSnapshotAsFailed(k8sClient, ctx, hasSnapshot, "test failed")
 			Expect(gitops.HaveAppStudioTestsSucceeded(hasSnapshot)).To(BeFalse())
@@ -447,6 +433,22 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			result, err := adapter.EnsureGlobalCandidateImageUpdated()
 			Expect(err).ShouldNot(HaveOccurred())
 			Expect(result.CancelRequest).To(BeFalse())
+
+			Expect(hasComp.Spec.ContainerImage).To(Equal(""))
+			Expect(hasComp.Status.LastBuiltCommit).To(Equal(""))
+		})
+
+		It("ensures global Component Image updated when AppStudio Tests succeeded", func() {
+			gitops.MarkSnapshotAsPassed(k8sClient, ctx, hasSnapshot, "test passed")
+			Expect(gitops.HaveAppStudioTestsSucceeded(hasSnapshot)).To(BeTrue())
+			adapter.snapshot = hasSnapshot
+
+			result, err := adapter.EnsureGlobalCandidateImageUpdated()
+			Expect(err).ShouldNot(HaveOccurred())
+			Expect(result.CancelRequest).To(BeFalse())
+
+			Expect(hasComp.Spec.ContainerImage).To(Equal(sample_image))
+			Expect(hasComp.Status.LastBuiltCommit).To(Equal(sample_revision))
 		})
 
 		It("ensures Release created successfully", func() {
