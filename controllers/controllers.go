@@ -23,6 +23,7 @@ import (
 	"github.com/redhat-appstudio/integration-service/controllers/integrationpipeline"
 	"github.com/redhat-appstudio/integration-service/controllers/scenario"
 	"github.com/redhat-appstudio/integration-service/controllers/snapshot"
+	"github.com/redhat-appstudio/integration-service/controllers/statusreport"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 )
@@ -34,6 +35,7 @@ var setupFunctions = []func(manager.Manager, *logr.Logger) error{
 	snapshot.SetupController,
 	scenario.SetupController,
 	binding.SetupController,
+	statusreport.SetupController,
 }
 
 // SetupControllers invoke all SetupController functions defined in setupFunctions, setting all controllers up and

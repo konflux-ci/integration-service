@@ -5,6 +5,8 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
+	"github.com/redhat-appstudio/integration-service/helpers"
 	"github.com/redhat-appstudio/integration-service/status"
 
 	"github.com/go-logr/logr"
@@ -16,6 +18,10 @@ import (
 type MockReporter struct{}
 
 func (r *MockReporter) ReportStatus(client.Client, context.Context, *tektonv1beta1.PipelineRun) error {
+	return nil
+}
+
+func (r *MockReporter) ReportStatusForSnapshot(client.Client, context.Context, *helpers.IntegrationLogger, *applicationapiv1alpha1.Snapshot) error {
 	return nil
 }
 

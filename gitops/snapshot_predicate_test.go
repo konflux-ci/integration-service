@@ -31,16 +31,20 @@ import (
 var _ = Describe("Predicates", Ordered, func() {
 
 	const (
-		namespace       = "default"
-		applicationName = "test-application"
-		componentName   = "test-component"
-		snapshotOldName = "test-snapshot-old"
-		snapshotNewName = "test-snapshot-new"
+		namespace             = "default"
+		applicationName       = "test-application"
+		componentName         = "test-component"
+		snapshotOldName       = "test-snapshot-old"
+		snapshotNewName       = "test-snapshot-new"
+		snapshotAnnotationOld = "snapshot-annotation-old"
+		snapshotAnnotationNew = "snapshot-annotation-new"
 	)
 
 	var (
 		hasSnapshotUnknownStatus *applicationapiv1alpha1.Snapshot
 		hasSnapshotTrueStatus    *applicationapiv1alpha1.Snapshot
+		hasSnapshotAnnotationOld *applicationapiv1alpha1.Snapshot
+		hasSnapshotAnnotationNew *applicationapiv1alpha1.Snapshot
 		sampleImage              string
 	)
 
@@ -86,10 +90,58 @@ var _ = Describe("Predicates", Ordered, func() {
 			},
 		}
 
+		hasSnapshotAnnotationOld = &applicationapiv1alpha1.Snapshot{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      snapshotAnnotationOld,
+				Namespace: namespace,
+				Labels: map[string]string{
+					gitops.SnapshotTypeLabel:      gitops.SnapshotComponentType,
+					gitops.SnapshotComponentLabel: componentName,
+				},
+				Annotations: map[string]string{
+					gitops.SnapshotTestsStatusAnnotation: "[{\"scenario\":\"scenario-1\",\"status\":\"EnvironmentProvisionError\",\"startTime\":\"2023-07-26T16:57:49+02:00\",\"sompletionTime\":\"2023-07-26T17:57:49+02:00\",\"details\":\"Failed to find deploymentTargetClass with right provisioner for copy of existingEnvironment\"}]",
+				},
+			},
+			Spec: applicationapiv1alpha1.SnapshotSpec{
+				Application: applicationName,
+				Components: []applicationapiv1alpha1.SnapshotComponent{
+					{
+						Name:           componentName,
+						ContainerImage: sampleImage,
+					},
+				},
+			},
+		}
+
+		hasSnapshotAnnotationNew = &applicationapiv1alpha1.Snapshot{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      snapshotAnnotationNew,
+				Namespace: namespace,
+				Labels: map[string]string{
+					gitops.SnapshotTypeLabel:                     gitops.SnapshotComponentType,
+					gitops.SnapshotComponentLabel:                componentName,
+					"pac.test.appstudio.openshift.io/event-type": "pull_request",
+				},
+				Annotations: map[string]string{
+					gitops.SnapshotTestsStatusAnnotation: "[{\"scenario\":\"scenario-1\",\"status\":\"TestPassed\",\"startTime\":\"2023-07-26T16:57:49+02:00\",\"completionTime\":\"2023-07-26T17:57:49+02:00\",\"details\": \"test pass\"}]",
+				},
+			},
+			Spec: applicationapiv1alpha1.SnapshotSpec{
+				Application: applicationName,
+				Components: []applicationapiv1alpha1.SnapshotComponent{
+					{
+						Name:           componentName,
+						ContainerImage: sampleImage,
+					},
+				},
+			},
+		}
 		ctx := context.Background()
 
 		Expect(k8sClient.Create(ctx, hasSnapshotUnknownStatus)).Should(Succeed())
 		Expect(k8sClient.Create(ctx, hasSnapshotTrueStatus)).Should(Succeed())
+		Expect(k8sClient.Create(ctx, hasSnapshotAnnotationOld)).Should(Succeed())
+		Expect(k8sClient.Create(ctx, hasSnapshotAnnotationNew)).Should(Succeed())
 
 		// Set the binding statuses after they are created
 		hasSnapshotUnknownStatus.Status.Conditions = []metav1.Condition{
@@ -130,6 +182,49 @@ var _ = Describe("Predicates", Ordered, func() {
 			}
 			Expect(instance.Update(contextEvent)).To(BeFalse())
 		})
+		It("returns false when the Snapshot is deleted", func() {
+			contextEvent := event.DeleteEvent{
+				Object: hasSnapshotUnknownStatus,
+			}
+			Expect(instance.Delete(contextEvent)).To(BeFalse())
+		})
+	})
+
+	Context("when testing IntegrationSnapshotChangePredicate predicate", func() {
+		instance := gitops.PRSnapshotTestAnnotationChangePredicate()
+
+		It("returns true when the test status annotation of Snapshot changed ", func() {
+			contextEvent := event.UpdateEvent{
+				ObjectOld: hasSnapshotAnnotationOld,
+				ObjectNew: hasSnapshotAnnotationNew,
+			}
+			Expect(instance.Update(contextEvent)).To(BeTrue())
+		})
+
+		It("returns false when the test status annotation of Snapshot is not changed ", func() {
+			contextEvent := event.UpdateEvent{
+				ObjectOld: hasSnapshotAnnotationOld,
+				ObjectNew: hasSnapshotAnnotationOld,
+			}
+			Expect(instance.Update(contextEvent)).To(BeFalse())
+		})
+
+		It("returns true when the test status annotation of old Snapshot doesn't exist but exists in new snapshot ", func() {
+			contextEvent := event.UpdateEvent{
+				ObjectOld: hasSnapshotTrueStatus,
+				ObjectNew: hasSnapshotAnnotationNew,
+			}
+			Expect(instance.Update(contextEvent)).To(BeTrue())
+		})
+
+		It("returns false when the test status annotation doesn't exist in old and new Snapshot", func() {
+			contextEvent := event.UpdateEvent{
+				ObjectOld: hasSnapshotTrueStatus,
+				ObjectNew: hasSnapshotTrueStatus,
+			}
+			Expect(instance.Update(contextEvent)).To(BeFalse())
+		})
+
 		It("returns false when the Snapshot is deleted", func() {
 			contextEvent := event.DeleteEvent{
 				Object: hasSnapshotUnknownStatus,
