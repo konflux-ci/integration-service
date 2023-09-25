@@ -20,6 +20,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"strings"
 
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/api/v1beta1"
@@ -174,6 +175,21 @@ func (r *IntegrationPipelineRun) WithIntegrationLabels(integrationTestScenario *
 
 	if metadata.HasLabel(integrationTestScenario, OptionalLabel) {
 		r.ObjectMeta.Labels[OptionalLabel] = integrationTestScenario.Labels[OptionalLabel]
+	}
+
+	return r
+}
+
+// WithIntegrationAnnotations copies the App Studio annotations from the
+// IntegrationTestScenario to the PipelineRun
+func (r *IntegrationPipelineRun) WithIntegrationAnnotations(its *v1beta1.IntegrationTestScenario) *IntegrationPipelineRun {
+	for k, v := range its.GetAnnotations() {
+		if strings.Contains(k, "appstudio.openshift.io/") {
+			if err := metadata.SetAnnotation(r, k, v); err != nil {
+				// this will only happen if we pass IntegrationPipelineRun as nil
+				panic(err)
+			}
+		}
 	}
 
 	return r

@@ -541,6 +541,7 @@ func (a *Adapter) createIntegrationPipelineRun(application *applicationapiv1alph
 	pipelineRun := tekton.NewIntegrationPipelineRun(snapshot.Name, application.Namespace, *integrationTestScenario).
 		WithSnapshot(snapshot).
 		WithIntegrationLabels(integrationTestScenario).
+		WithIntegrationAnnotations(integrationTestScenario).
 		WithApplicationAndComponent(a.application, a.component).
 		WithExtraParams(integrationTestScenario.Spec.Params).
 		AsPipelineRun()
