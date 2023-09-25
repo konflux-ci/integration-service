@@ -143,6 +143,10 @@ var _ = Describe("Integration pipeline", func() {
 				Labels: map[string]string{
 					"test.appstudio.openshift.io/optional": "false",
 				},
+
+				Annotations: map[string]string{
+					"test.appstudio.openshift.io/kind": "enterprise-contract",
+				},
 			},
 			Spec: v1beta1.IntegrationTestScenarioSpec{
 				Application: "application-sample",
@@ -299,6 +303,7 @@ var _ = Describe("Integration pipeline", func() {
 
 		enterpriseContractPipelineRun = tekton.NewIntegrationPipelineRun(prefix, namespace, *enterpriseContractTestScenario).
 			WithIntegrationLabels(enterpriseContractTestScenario).
+			WithIntegrationAnnotations(enterpriseContractTestScenario).
 			WithSnapshot(hasSnapshot).
 			WithExtraParams(enterpriseContractTestScenario.Spec.Params).
 			WithApplicationAndComponent(hasApp, hasComp)
@@ -417,7 +422,7 @@ var _ = Describe("Integration pipeline", func() {
 	})
 
 	Context("When managing a new Enterprise Contract PipelineRun", func() {
-		It("has set all required labels to be used for integration testing of the EC pipeline", func() {
+		It("has set all required labels and annotations to be used for integration testing of the EC pipeline", func() {
 			Expect(enterpriseContractPipelineRun.ObjectMeta.Name).Should(HavePrefix(prefix))
 			Expect(enterpriseContractPipelineRun.ObjectMeta.Namespace).To(Equal(namespace))
 			Expect(enterpriseContractPipelineRun.Labels["test.appstudio.openshift.io/scenario"]).
@@ -426,6 +431,8 @@ var _ = Describe("Integration pipeline", func() {
 				To(Equal("test"))
 			Expect(enterpriseContractPipelineRun.Labels["test.appstudio.openshift.io/optional"]).
 				To(Equal("false"))
+			Expect(enterpriseContractPipelineRun.Annotations["test.appstudio.openshift.io/kind"]).
+				To(Equal("enterprise-contract"))
 		})
 
 		It("has set all parameters required for executing the EC pipeline", func() {
@@ -435,6 +442,24 @@ var _ = Describe("Integration pipeline", func() {
 			Expect(enterpriseContractPipelineRun.Spec.Params[0].Name).To(Equal("SNAPSHOT"))
 			Expect(enterpriseContractPipelineRun.Spec.Params[1].Name).To(Equal("POLICY_CONFIGURATION"))
 			Expect(enterpriseContractPipelineRun.Spec.Params[1].Value.StringVal).To(Equal("default/default"))
+		})
+
+		It("copies the annotations", func() {
+			its := v1beta1.IntegrationTestScenario{}
+			its.Annotations = map[string]string{
+				"unrelated":                          "unrelated",
+				"test.appstudio.openshift.io/kind":   "kind",
+				"test.appstudio.openshift.io/future": "future",
+			}
+
+			ipr := tekton.IntegrationPipelineRun{}
+
+			ipr.WithIntegrationAnnotations(&its)
+
+			Expect(ipr.Annotations).To(Equal(map[string]string{
+				"test.appstudio.openshift.io/kind":   "kind",
+				"test.appstudio.openshift.io/future": "future",
+			}))
 		})
 	})
 })

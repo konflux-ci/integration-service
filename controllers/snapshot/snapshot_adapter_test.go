@@ -71,6 +71,10 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 				Labels: map[string]string{
 					"test.appstudio.openshift.io/optional": "false",
 				},
+
+				Annotations: map[string]string{
+					"test.appstudio.openshift.io/kind": "kind",
+				},
 			},
 			Spec: v1beta1.IntegrationTestScenarioSpec{
 				Application: "application-sample",
@@ -404,10 +408,24 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 					"test.appstudio.openshift.io/scenario":  integrationTestScenario.Name,
 				},
 			}
-			Eventually(func() bool {
-				err := k8sClient.List(adapter.context, integrationPipelineRuns, opts...)
-				return len(integrationPipelineRuns.Items) > 0 && err == nil
-			}, time.Second*10).Should(BeTrue())
+			Eventually(func() error {
+				if err := k8sClient.List(adapter.context, integrationPipelineRuns, opts...); err != nil {
+					return err
+				}
+
+				if expected, got := 1, len(integrationPipelineRuns.Items); expected != got {
+					return fmt.Errorf("found %d PipelineRuns, expected: %d", expected, got)
+				}
+
+				return nil
+			}, time.Second*10).Should(BeNil())
+
+			Expect(integrationPipelineRuns.Items).To(HaveLen(1))
+			Expect(integrationPipelineRuns.Items[0].Annotations).To(Equal(map[string]string{
+				gitops.PipelineAsCodeInstallationIDAnnotation: "123",
+				"build.appstudio.redhat.com/commit_sha":       "6c65b2fcaea3e1a0a92476c8b5dc89e92a85f025",
+				"test.appstudio.openshift.io/kind":            "kind",
+			}))
 
 			Expect(k8sClient.Delete(adapter.context, &integrationPipelineRuns.Items[0])).Should(Succeed())
 		})
