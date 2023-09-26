@@ -21,18 +21,17 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/redhat-appstudio/integration-service/api/v1beta1"
 	tektonv1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	types "k8s.io/apimachinery/pkg/types"
 
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/gitops"
 	releasev1alpha1 "github.com/redhat-appstudio/release-service/api/v1alpha1"
-	releasemetadata "github.com/redhat-appstudio/release-service/metadata"
 )
 
 var _ = Describe("Loader", Ordered, func() {
@@ -50,9 +49,6 @@ var _ = Describe("Loader", Ordered, func() {
 		buildPipelineRun        *tektonv1beta1.PipelineRun
 		integrationPipelineRun  *tektonv1beta1.PipelineRun
 		hasBinding              *applicationapiv1alpha1.SnapshotEnvironmentBinding
-		releasePlan             *releasev1alpha1.ReleasePlan
-		releasePlanNoLabel      *releasev1alpha1.ReleasePlan
-		releasePlanFalseLabel   *releasev1alpha1.ReleasePlan
 	)
 
 	const (
@@ -371,21 +367,6 @@ var _ = Describe("Loader", Ordered, func() {
 			},
 		}
 		Expect(k8sClient.Create(ctx, hasBinding)).Should(Succeed())
-
-		releasePlan = &releasev1alpha1.ReleasePlan{
-			ObjectMeta: metav1.ObjectMeta{
-				GenerateName: "releaseplan-sample-",
-				Namespace:    namespace,
-				Labels: map[string]string{
-					releasemetadata.AutoReleaseLabel: "true",
-				},
-			},
-			Spec: releasev1alpha1.ReleasePlanSpec{
-				Application: "application-sample",
-				Target:      "default",
-			},
-		}
-		Expect(k8sClient.Create(ctx, releasePlan)).Should(Succeed())
 	})
 
 	AfterAll(func() {
@@ -401,9 +382,36 @@ var _ = Describe("Loader", Ordered, func() {
 		_ = k8sClient.Delete(ctx, deploymentTargetClaim)
 		_ = k8sClient.Delete(ctx, deploymentTarget)
 		_ = k8sClient.Delete(ctx, hasBinding)
-		_ = k8sClient.Delete(ctx, releasePlan)
-
 	})
+
+	createReleasePlan := func(releasePlan *releasev1alpha1.ReleasePlan) {
+		Expect(k8sClient.Create(ctx, releasePlan)).Should(Succeed())
+
+		// Wait for the release plan to be created
+		Eventually(func() bool {
+			tmpPlan := &releasev1alpha1.ReleasePlan{}
+			err := k8sClient.Get(ctx, types.NamespacedName{
+				Namespace: releasePlan.Namespace,
+				Name:      releasePlan.Name,
+			}, tmpPlan)
+			return err == nil
+		}, time.Second*10).Should(BeTrue())
+	}
+
+	deleteReleasePlan := func(releasePlan *releasev1alpha1.ReleasePlan) {
+		err := k8sClient.Delete(ctx, releasePlan)
+		Expect(err == nil || k8serrors.IsNotFound(err)).To(BeTrue())
+
+		// Wait for the release plan to be removed
+		Eventually(func() bool {
+			tmpPlan := &releasev1alpha1.ReleasePlan{}
+			err := k8sClient.Get(ctx, types.NamespacedName{
+				Namespace: releasePlan.Namespace,
+				Name:      releasePlan.Name,
+			}, tmpPlan)
+			return k8serrors.IsNotFound(err)
+		}, time.Second*10).Should(BeTrue())
+	}
 
 	It("ensures environments can be found", func() {
 		environments, err := loader.GetAllEnvironments(k8sClient, ctx, hasApp)
@@ -603,75 +611,128 @@ var _ = Describe("Loader", Ordered, func() {
 
 	})
 
-	It("ensures the auto-release plans for application are returned correctly when the auto-release label is missing", func() {
-		// Cleanup existing ReleasePlans before starting new test
-		releasePlanList := &releasev1alpha1.ReleasePlanList{}
-		err := k8sClient.List(ctx, releasePlanList, &client.ListOptions{Namespace: hasApp.Namespace})
-		Expect(err).To(BeNil())
-		for _, releasePlan := range releasePlanList.Items {
-			err = k8sClient.Delete(ctx, &releasePlan)
-			Expect(err == nil || k8serrors.IsNotFound(err)).To(BeTrue())
-		}
+	When("release plan with auto-release label is created", func() {
 
-		// Create ReleasePlan without "auto-release" label
-		releasePlanNoLabel = &releasev1alpha1.ReleasePlan{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "test-release-plan-no-label",
-				Namespace: hasApp.Namespace,
-			},
-			Spec: releasev1alpha1.ReleasePlanSpec{
-				Application: hasApp.Name,
-				Target:      "default",
-			},
-		}
-		Expect(k8sClient.Create(ctx, releasePlanNoLabel)).Should(Succeed())
-		defer k8sClient.Delete(ctx, releasePlanNoLabel)
+		const (
+			releasePlanName = "test-release-plan-with-label"
+		)
 
-		// Wait for the release plan to be created
-		Eventually(func() bool {
-			err := k8sClient.List(ctx, releasePlanList, &client.ListOptions{Namespace: hasApp.Namespace})
-			return len(releasePlanList.Items) == 1 && err == nil
-		}, time.Second*10).Should(BeTrue())
+		var (
+			releasePlanWithLabel *releasev1alpha1.ReleasePlan
+		)
 
-		// Get auto-release plans for application
-		autoReleasePlans, err := loader.GetAutoReleasePlansForApplication(k8sClient, ctx, hasApp)
-		Expect(err).To(BeNil())
-		Expect(autoReleasePlans).ToNot(BeNil())
-		Expect(len(*autoReleasePlans)).To(Equal(1))
-		Expect((*autoReleasePlans)[0].Name).To(Equal(releasePlanNoLabel.Name))
-
-	})
-
-	It("ensures the auto-release plans for application are returned correctly when the auto-release label is set to false", func() {
-
-		// Create ReleasePlan with the "auto-release" label set to false
-		releasePlanFalseLabel = &releasev1alpha1.ReleasePlan{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "test-release-plan-false-label",
-				Namespace: hasApp.Namespace,
-				Labels: map[string]string{
-					"release.appstudio.openshift.io/auto-release": "false",
+		BeforeEach(func() {
+			// Create ReleasePlan with "auto-release" label set to true
+			releasePlanWithLabel = &releasev1alpha1.ReleasePlan{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      releasePlanName,
+					Namespace: hasApp.Namespace,
+					Labels: map[string]string{
+						"release.appstudio.openshift.io/auto-release": "true",
+					},
 				},
-			},
-			Spec: releasev1alpha1.ReleasePlanSpec{
-				Application: hasApp.Name,
-				Target:      "default",
-			},
-		}
+				Spec: releasev1alpha1.ReleasePlanSpec{
+					Application: hasApp.Name,
+					Target:      "default",
+				},
+			}
+			createReleasePlan(releasePlanWithLabel)
+		})
 
-		Expect(k8sClient.Create(ctx, releasePlanFalseLabel)).Should(Succeed())
+		AfterEach(func() {
+			deleteReleasePlan(releasePlanWithLabel)
+		})
 
-		// Wait for the release plan to be created
-		releasePlanList := &releasev1alpha1.ReleasePlanList{}
-		Eventually(func() bool {
-			err := k8sClient.List(ctx, releasePlanList, &client.ListOptions{Namespace: hasApp.Namespace})
-			return len(releasePlanList.Items) == 1 && err == nil
-		}, time.Second*10).Should(BeTrue())
+		It("ensures the auto-release plans for application are returned correctly when the auto-release label is set to true", func() {
+			// Get auto-release plans for application
+			autoReleasePlans, err := loader.GetAutoReleasePlansForApplication(k8sClient, ctx, hasApp)
+			Expect(err).To(BeNil())
+			Expect(autoReleasePlans).ToNot(BeNil())
+			Expect(len(*autoReleasePlans)).To(Equal(1))
+			Expect((*autoReleasePlans)[0].Name).To(Equal(releasePlanWithLabel.Name))
 
-		// Get auto-release plans for application
-		autoReleasePlans, err := loader.GetAutoReleasePlansForApplication(k8sClient, ctx, hasApp)
-		Expect(err).To(BeNil())
-		Expect(autoReleasePlans).ToNot(BeNil())
-		Expect(len(*autoReleasePlans)).To(Equal(0))
+		})
 	})
+
+	When("release plan without auto-release label is created", func() {
+
+		const (
+			releasePlanName = "test-release-plan-no-label"
+		)
+
+		var (
+			releasePlanNoLabel *releasev1alpha1.ReleasePlan
+		)
+
+		BeforeEach(func() {
+			// Create ReleasePlan without "auto-release" label
+			releasePlanNoLabel = &releasev1alpha1.ReleasePlan{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      releasePlanName,
+					Namespace: hasApp.Namespace,
+				},
+				Spec: releasev1alpha1.ReleasePlanSpec{
+					Application: hasApp.Name,
+					Target:      "default",
+				},
+			}
+			createReleasePlan(releasePlanNoLabel)
+		})
+
+		AfterEach(func() {
+			deleteReleasePlan(releasePlanNoLabel)
+		})
+
+		It("ensures the auto-release plans for application are returned correctly when the auto-release label is missing", func() {
+			// Get auto-release plans for application
+			autoReleasePlans, err := loader.GetAutoReleasePlansForApplication(k8sClient, ctx, hasApp)
+			Expect(err).To(BeNil())
+			Expect(autoReleasePlans).ToNot(BeNil())
+			Expect(len(*autoReleasePlans)).To(Equal(1))
+			Expect((*autoReleasePlans)[0].Name).To(Equal(releasePlanNoLabel.Name))
+
+		})
+	})
+
+	When("release plan with auto-release label is set to false", func() {
+
+		const (
+			releasePlanName = "test-release-plan-false-label"
+		)
+
+		var (
+			releasePlanFalseLabel *releasev1alpha1.ReleasePlan
+		)
+
+		BeforeEach(func() {
+			// Create ReleasePlan with the "auto-release" label set to false
+			releasePlanFalseLabel = &releasev1alpha1.ReleasePlan{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      releasePlanName,
+					Namespace: hasApp.Namespace,
+					Labels: map[string]string{
+						"release.appstudio.openshift.io/auto-release": "false",
+					},
+				},
+				Spec: releasev1alpha1.ReleasePlanSpec{
+					Application: hasApp.Name,
+					Target:      "default",
+				},
+			}
+			createReleasePlan(releasePlanFalseLabel)
+		})
+
+		AfterEach(func() {
+			deleteReleasePlan(releasePlanFalseLabel)
+		})
+
+		It("ensures the auto-release plans for application are returned correctly when the auto-release label is set to false", func() {
+			// Get auto-release plans for application
+			autoReleasePlans, err := loader.GetAutoReleasePlansForApplication(k8sClient, ctx, hasApp)
+			Expect(err).To(BeNil())
+			Expect(autoReleasePlans).ToNot(BeNil())
+			Expect(len(*autoReleasePlans)).To(Equal(0))
+		})
+	})
+
 })
