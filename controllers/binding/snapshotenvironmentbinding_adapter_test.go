@@ -236,8 +236,8 @@ var _ = Describe("Binding Adapter", Ordered, func() {
 
 		deploymentTargetClaim = &applicationapiv1alpha1.DeploymentTargetClaim{
 			ObjectMeta: metav1.ObjectMeta{
-				GenerateName: "dtc" + "-",
-				Namespace:    "default",
+				Name:      "dtcname",
+				Namespace: "default",
 			},
 			Spec: applicationapiv1alpha1.DeploymentTargetClaimSpec{
 				DeploymentTargetClassName: applicationapiv1alpha1.DeploymentTargetClassName("dtcls-name"),
@@ -431,7 +431,7 @@ var _ = Describe("Binding Adapter", Ordered, func() {
 		}, time.Second*10).Should(BeTrue())
 	})
 
-	It("ensures ephemeral environment is deleted for the given pipelineRun ", func() {
+	It("ensures ephemeral environment is deleted for the given pipelineRun", func() {
 		var buf bytes.Buffer
 		log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
 		hasEnv.Spec.Tags = append(hasEnv.Spec.Tags, "ephemeral")
@@ -482,6 +482,8 @@ var _ = Describe("Binding Adapter", Ordered, func() {
 
 	It("Requeues the environment cleanup if the binding is younger than the threshold", func() {
 		var buf bytes.Buffer
+		var dtc *applicationapiv1alpha1.DeploymentTargetClaim
+
 		log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
 		hasEnv.Spec.Tags = append(hasEnv.Spec.Tags, "ephemeral")
 		hasBinding.Status = applicationapiv1alpha1.SnapshotEnvironmentBindingStatus{
@@ -502,16 +504,32 @@ var _ = Describe("Binding Adapter", Ordered, func() {
 				Resource:   hasApp,
 			},
 			{
+				ContextKey: loader.ComponentContextKey,
+				Resource:   hasComp,
+			},
+			{
 				ContextKey: loader.EnvironmentContextKey,
 				Resource:   hasEnv,
+			},
+			{
+				ContextKey: loader.SnapshotContextKey,
+				Resource:   hasSnapshot,
 			},
 			{
 				ContextKey: loader.DeploymentTargetContextKey,
 				Resource:   deploymentTarget,
 			},
+			{
+				ContextKey: loader.DeploymentTargetClaimContextKey,
+				Resource:   deploymentTargetClaim,
+			},
+			{
+				ContextKey: loader.SnapshotEnvironmentBindingContextKey,
+				Resource:   hasBinding,
+			},
 		})
 
-		dtc, _ := adapter.loader.GetDeploymentTargetClaimForEnvironment(k8sClient, adapter.context, hasEnv)
+		dtc, _ = adapter.loader.GetDeploymentTargetClaimForEnvironment(k8sClient, adapter.context, hasEnv)
 		Expect(dtc).NotTo(BeNil())
 
 		dt, _ := adapter.loader.GetDeploymentTargetForDeploymentTargetClaim(k8sClient, adapter.context, dtc)
@@ -522,9 +540,16 @@ var _ = Describe("Binding Adapter", Ordered, func() {
 
 		Expect(gitops.HaveAppStudioTestsSucceeded(hasSnapshot)).To(BeFalse())
 
-		// Expect the environment and DTC to not have been deleted
+		// Check the log that the environment and DTC to not have been deleted
+		deleteLogEntry := "DeploymentTargetClaim deleted"
+		Expect(buf.String()).ShouldNot(ContainSubstring(deleteLogEntry))
+
+		deleteLogEntry = "Ephemeral environment and its owning snapshotEnvironmentBinding deleted"
+		Expect(buf.String()).ShouldNot(ContainSubstring(deleteLogEntry))
+
 		dtc, _ = adapter.loader.GetDeploymentTargetClaimForEnvironment(k8sClient, adapter.context, hasEnv)
 		Expect(dtc).NotTo(BeNil())
+
 		environments, _ := adapter.loader.GetAllEnvironments(k8sClient, adapter.context, hasApp)
 		Expect(*environments).To(ContainElement(HaveField("ObjectMeta.Name", "envname")))
 	})
@@ -588,6 +613,5 @@ var _ = Describe("Binding Adapter", Ordered, func() {
 			Expect(ok).To(BeTrue())
 			Expect(detail.Status).To(Equal(gitops.IntegrationTestStatusDeploymentError))
 		})
-
 	})
 })
