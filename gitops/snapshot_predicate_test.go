@@ -139,5 +139,11 @@ var _ = Describe("Predicates", Ordered, func() {
 			}
 			Expect(instance.Delete(contextEvent)).To(BeFalse())
 		})
+		It("returns false when the Snapshot encounters a generic event", func() {
+			contextEvent := event.GenericEvent{
+				Object: hasSnapshotUnknownStatus,
+			}
+			Expect(instance.Generic(contextEvent)).To(BeFalse())
+		})
 	})
 })
