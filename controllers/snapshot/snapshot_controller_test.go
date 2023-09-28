@@ -17,8 +17,9 @@ limitations under the License.
 package snapshot
 
 import (
-	"k8s.io/apimachinery/pkg/api/errors"
 	"reflect"
+
+	"k8s.io/apimachinery/pkg/api/errors"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -164,6 +165,22 @@ var _ = Describe("SnapshotController", func() {
 		}
 		result, err := snapshotReconciler.Reconcile(ctx, req)
 		Expect(reflect.TypeOf(result)).To(Equal(reflect.TypeOf(reconcile.Result{})))
+		Expect(err).To(BeNil())
+	})
+
+	It("Does not return an error if the component cannot be found", func() {
+		err := k8sClient.Delete(ctx, hasComp)
+		Eventually(func() bool {
+			err := k8sClient.Get(ctx, types.NamespacedName{
+				Namespace: hasComp.ObjectMeta.Namespace,
+				Name:      hasComp.ObjectMeta.Name,
+			}, hasComp)
+			return err != nil
+		}).Should(BeTrue())
+		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
+
+		result, err := snapshotReconciler.Reconcile(ctx, req)
+		Expect(result).To(Equal(ctrl.Result{}))
 		Expect(err).To(BeNil())
 	})
 
