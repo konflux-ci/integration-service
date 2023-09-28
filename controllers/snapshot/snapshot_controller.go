@@ -29,6 +29,7 @@ import (
 	"github.com/redhat-appstudio/operator-toolkit/controller"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
@@ -96,10 +97,13 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	}
 	logger = logger.WithApp(*application)
 
-	component, err := loader.GetComponentFromSnapshot(r.Client, ctx, snapshot)
+	var component *applicationapiv1alpha1.Component
+	err = retry.OnError(retry.DefaultRetry, func(_ error) bool { return true }, func() error {
+		component, err = loader.GetComponentFromSnapshot(r.Client, ctx, snapshot)
+		return err
+	})
 	if err != nil {
-		logger.Error(err, "Failed to get Component from the Snapshot")
-		return ctrl.Result{}, err
+		return logger.HandleLoaderError(err, "Component", "Snapshot")
 	}
 
 	adapter := NewAdapter(snapshot, application, component, logger, loader, r.Client, ctx)
