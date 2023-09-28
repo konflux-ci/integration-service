@@ -29,6 +29,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
@@ -82,10 +83,13 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{}, err
 	}
 
-	application, err := r.getApplicationFromSnapshotEnvironmentBinding(ctx, snapshotEnvironmentBinding)
+	var application *applicationapiv1alpha1.Application
+	err = retry.OnError(retry.DefaultRetry, func(_ error) bool { return true }, func() error {
+		application, err = r.getApplicationFromSnapshotEnvironmentBinding(ctx, snapshotEnvironmentBinding)
+		return err
+	})
 	if err != nil {
-		logger.Error(err, "Failed to get Application from the SnapshotEnvironmentBinding")
-		return ctrl.Result{}, err
+		return helpers.HandleLoaderError(logger, err, "Application", "SnapshotEnvironmentBinding")
 	}
 	logger = logger.WithApp(*application)
 
