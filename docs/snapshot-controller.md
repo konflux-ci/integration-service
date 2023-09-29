@@ -47,27 +47,30 @@ flowchart TD
   %%%%%%%%%%%%%%%%%%%%%%% Drawing EnsureGlobalCandidateImageUpdated() function
 
   %% Node definitions
-  ensure2(Process further if: Component is not nil & <br>Snapshot testing succeeded & <br>Snapshot was not created by <br>PAC Pull Request Event)
+  ensure2(Process further if: Component is not nil & <br>Snapshot testing succeeded & <br>Snapshot was not created by <br>PAC Pull Request Event & <br> Snapshot wasn't added to Global Candidate List)
   update_container_image("<b>Update</b> the '.spec.containerImage' field of the given <br>component with the latest value, taken from <br>given Snapshot's .spec.components[x].containerImage field")
   update_last_built_commit("<b>Update</b> the '.status.lastBuiltCommit' field of the given <br>component with the latest value, taken from <br>given Snapshot's .spec.components[x].source.git.revision field")
+  mark_snapshot_added_to_GCL(<b>Mark</b> the Snapshot as AddedToGlobalCandidateList)
   continue_processing2(Controller continues processing...)
 
   %% Node connections
   predicate                ----> |"EnsureGlobalCandidateImageUpdated()"|ensure2
-  ensure2                  -->    update_container_image
-  update_container_image   -->    update_last_built_commit
-  update_last_built_commit -->    continue_processing2
+  ensure2                    -->    update_container_image
+  update_container_image     -->    update_last_built_commit
+  update_last_built_commit   -->    mark_snapshot_added_to_GCL
+  mark_snapshot_added_to_GCL -->    continue_processing2
 
 
   %%%%%%%%%%%%%%%%%%%%%%% Drawing EnsureAllReleasesExists() function
 
   %% Node definitions
-  ensure3(Process further if: Snapshot is valid & <br>Snapshot testing succeeded & <br>Snapshot was not created by <br>PAC Pull Request Event)
+  ensure3(Process further if: Snapshot is valid & <br>Snapshot testing succeeded & <br>Snapshot was not created by <br>PAC Pull Request Event & <br> Snapshot wasn't auto-released)
   fetch_all_ReleasePlans("Fetch ALL the ReleasePlan CRs <br>for the given Application, that have the <br>'release.appstudio.openshift.io/auto-release' <br>label set to 'True'")
   encountered_error31{Encountered error?}
   create_Release(<b>Create a Release</b> for each of the above <br>ReleasePlan if it doesn't exists already)
   encountered_error32{Encountered error?}
   mark_snapshot_Invalid3(<b>Mark</b> the Snapshot as Invalid)
+  mark_snapshot_autoreleased(<b>Mark</b> the Snapshot as AutoReleased)
   continue_processing3(Controller continues processing...)
 
   %% Node connections
@@ -77,7 +80,8 @@ flowchart TD
   encountered_error31    --No-->  create_Release
   encountered_error31    --Yes--> mark_snapshot_Invalid3
   create_Release         -->      encountered_error32
-  encountered_error32    --No-->  continue_processing3
+  encountered_error32    --No-->  mark_snapshot_autoreleased
+  mark_snapshot_autoreleased -->  continue_processing3
   encountered_error32    --Yes--> mark_snapshot_Invalid3
 
 
@@ -109,26 +113,28 @@ flowchart TD
   %%%%%%%%%%%%%%%%%%%%%%% Drawing EnsureSnapshotEnvironmentBindingExists() function
 
   %% Node definitions
-  ensure5(Process further if: Snapshot is valid & <br>Snapshot testing succeeded & <br>Snapshot was not created by <br>PAC Pull Request Event)
+  ensure5(Process further if: Snapshot is valid & <br>Snapshot testing succeeded & <br>Snapshot was not created by <br>PAC Pull Request Event & <br> Snapshot wasn't deployed to root environments)
   any_existing_non_eph_env{Any existing root <br>and non-ephemeral <br>environment?}
   any_existing_SEB{Any existing-SEB <br>containing the current <br>environment and <br>application?}
   update_existing_SEB(<b>Update</b> the existing-SEB <br>with the given Snapshot's name)
   create_SEB_for_non_eph_env("<b>Create a new <br>SnapshotEnvironmentBinding</b> (SEB) <br>with the current env and given Snapshot")
   encountered_error5{Encountered error?}
   mark_snapshot_Invalid5(<b>Mark</b> the Snapshot as Invalid)
+  mark_snapshot_deployed(<b>Mark</b> the Snapshot as DeployedToRootEnvironments)
   continue_processing5(Controller continues processing...)
 
   %% Node connections
   predicate                  ---->    |"EnsureSnapshotEnvironmentBindingExists()"|ensure5
   ensure5                    -->      any_existing_non_eph_env
   any_existing_non_eph_env   --Yes--> any_existing_SEB
-  any_existing_non_eph_env   --No-->  continue_processing5
+  any_existing_non_eph_env   --No-->  mark_snapshot_deployed
   any_existing_SEB           --Yes--> update_existing_SEB
   any_existing_SEB           --No-->  create_SEB_for_non_eph_env
   update_existing_SEB        -->      encountered_error5
   create_SEB_for_non_eph_env -->      encountered_error5
   encountered_error5         --Yes--> mark_snapshot_Invalid5
-  encountered_error5         --No-->  continue_processing5
+  encountered_error5         --No-->  mark_snapshot_deployed
+  mark_snapshot_deployed     -->      continue_processing5
 
   %% Assigning styles to nodes
   class predicate Amber;

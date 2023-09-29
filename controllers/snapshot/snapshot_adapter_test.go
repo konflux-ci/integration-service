@@ -215,6 +215,18 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		}
 		Expect(k8sClient.Create(ctx, hasComp)).Should(Succeed())
 
+		deploymentTargetClass = &applicationapiv1alpha1.DeploymentTargetClass{
+			ObjectMeta: metav1.ObjectMeta{
+				GenerateName: "dtcls" + "-",
+			},
+			Spec: applicationapiv1alpha1.DeploymentTargetClassSpec{
+				Provisioner: applicationapiv1alpha1.Provisioner_Devsandbox,
+			},
+		}
+		Expect(k8sClient.Create(ctx, deploymentTargetClass)).Should(Succeed())
+	})
+
+	BeforeEach(func() {
 		hasSnapshot = &applicationapiv1alpha1.Snapshot{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "snapshot-sample",
@@ -250,18 +262,6 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		}
 		Expect(k8sClient.Create(ctx, hasSnapshot)).Should(Succeed())
 
-		deploymentTargetClass = &applicationapiv1alpha1.DeploymentTargetClass{
-			ObjectMeta: metav1.ObjectMeta{
-				GenerateName: "dtcls" + "-",
-			},
-			Spec: applicationapiv1alpha1.DeploymentTargetClassSpec{
-				Provisioner: applicationapiv1alpha1.Provisioner_Devsandbox,
-			},
-		}
-		Expect(k8sClient.Create(ctx, deploymentTargetClass)).Should(Succeed())
-	})
-
-	BeforeEach(func() {
 		hasSnapshotPR = &applicationapiv1alpha1.Snapshot{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "snapshotpr-sample",
@@ -338,12 +338,12 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 		err = k8sClient.Delete(ctx, integrationPipelineRun)
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
+		err = k8sClient.Delete(ctx, hasSnapshot)
+		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 	})
 
 	AfterAll(func() {
-		err := k8sClient.Delete(ctx, hasSnapshot)
-		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
-		err = k8sClient.Delete(ctx, hasApp)
+		err := k8sClient.Delete(ctx, hasApp)
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 		err = k8sClient.Delete(ctx, env)
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
@@ -409,6 +409,13 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
 			expectedLogEntry = "IntegrationTestscenario pipeline has been created namespace default name"
 			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
+
+			// Snapshot must have InProgress tests
+			statuses, err := gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(hasSnapshot)
+			Expect(err).To(BeNil())
+			detail, ok := statuses.GetScenarioStatus(integrationTestScenarioWithoutEnv.Name)
+			Expect(ok).To(BeTrue())
+			Expect(detail.Status).To(Equal(gitops.IntegrationTestStatusInProgress))
 		})
 
 		It("Ensure IntegrationPipelineRun can be created for scenario", func() {
@@ -483,14 +490,30 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 
 			Expect(hasComp.Spec.ContainerImage).To(Equal(sample_image))
 			Expect(hasComp.Status.LastBuiltCommit).To(Equal(sample_revision))
+
+			Eventually(func() bool {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      hasSnapshot.Name,
+					Namespace: "default",
+				}, hasSnapshot)
+				return err == nil && gitops.IsSnapshotMarkedAsAddedToGlobalCandidateList(hasSnapshot)
+			}, time.Second*10).Should(BeTrue())
+
+			// Check if the adapter function detects that it already promoted the snapshot component
+			result, err = adapter.EnsureGlobalCandidateImageUpdated()
+			Expect(err).ShouldNot(HaveOccurred())
+			Expect(result.CancelRequest).To(BeFalse())
+
+			expectedLogEntry := "The Snapshot's component was previously added to the global candidate list, skipping adding it."
+			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
 		})
 
 		It("ensures Release created successfully", func() {
 			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
 
 			gitops.SetSnapshotIntegrationStatusAsFinished(hasSnapshot, "Snapshot integration status condition is finished since all testing pipelines completed")
-			Expect(gitops.HaveAppStudioTestsFinished(hasSnapshot)).To(BeTrue())
 			gitops.MarkSnapshotAsPassed(k8sClient, ctx, hasSnapshot, "test passed")
+			Expect(gitops.HaveAppStudioTestsFinished(hasSnapshot)).To(BeTrue())
 			Expect(gitops.HaveAppStudioTestsSucceeded(hasSnapshot)).To(BeTrue())
 			adapter = NewAdapter(hasSnapshot, hasApp, hasComp, log, loader.NewMockLoader(), k8sClient, ctx)
 
@@ -525,6 +548,22 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 				result, err := adapter.EnsureAllReleasesExist()
 				return !result.CancelRequest && err == nil
 			}, time.Second*10).Should(BeTrue())
+
+			Eventually(func() bool {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      hasSnapshot.Name,
+					Namespace: "default",
+				}, hasSnapshot)
+				return err == nil && gitops.IsSnapshotMarkedAsAutoReleased(hasSnapshot)
+			}, time.Second*10).Should(BeTrue())
+
+			// Check if the adapter function detects that it already released the snapshot
+			result, err := adapter.EnsureAllReleasesExist()
+			Expect(err).ShouldNot(HaveOccurred())
+			Expect(result.CancelRequest).To(BeFalse())
+
+			expectedLogEntry := "The Snapshot was previously auto-released, skipping auto-release."
+			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
 		})
 
 		It("no action when EnsureAllReleasesExist function runs when AppStudio Tests failed and the snapshot is invalid", func() {
@@ -619,6 +658,14 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			result, err := adapter.EnsureSnapshotEnvironmentBindingExist()
 			Expect(!result.CancelRequest && err == nil).To(BeTrue())
 
+			Eventually(func() bool {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      hasSnapshot.Name,
+					Namespace: "default",
+				}, hasSnapshot)
+				return err == nil && gitops.IsSnapshotMarkedAsDeployedToRootEnvironments(hasSnapshot)
+			}, time.Second*10).Should(BeTrue())
+
 			expectedLogEntry := "SnapshotEnvironmentBinding created for Snapshot"
 			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
 
@@ -639,15 +686,16 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			Expect(len(owners) == 1).To(BeTrue())
 			Expect(owners[0].Name).To(Equal(hasApp.Name))
 
-			// Snapshot must have InProgress tests
-			statuses, err := gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(hasSnapshot)
-			Expect(err).To(BeNil())
-			detail, ok := statuses.GetScenarioStatus(integrationTestScenarioWithoutEnv.Name)
-			Expect(ok).To(BeTrue())
-			Expect(detail.Status).To(Equal(gitops.IntegrationTestStatusInProgress))
-
 			err = k8sClient.Delete(ctx, &binding)
 			Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
+
+			// Check if the adapter function detects that it already released the snapshot
+			result, err = adapter.EnsureSnapshotEnvironmentBindingExist()
+			Expect(err).ShouldNot(HaveOccurred())
+			Expect(result.CancelRequest).To(BeFalse())
+
+			expectedLogEntry = "The Snapshot was previously deployed to all root environments, skipping deployment."
+			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
 		})
 
 		It("ensures build labels/annotations prefixed with 'build.appstudio' are propagated from snapshot to Integration test PLR", func() {
