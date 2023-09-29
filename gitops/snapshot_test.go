@@ -217,6 +217,48 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 		Expect(foundStatusCondition.Reason).To(Equal(gitops.AppStudioIntegrationStatusInProgress))
 	})
 
+	It("ensures the Snapshots status can be marked as auto released", func() {
+		Expect(gitops.IsSnapshotMarkedAsAutoReleased(hasSnapshot)).To(BeFalse())
+
+		updatedSnapshot, err := gitops.MarkSnapshotAsAutoReleased(k8sClient, ctx, hasSnapshot, "Test message")
+		Expect(err).To(BeNil())
+		Expect(updatedSnapshot).NotTo(BeNil())
+		Expect(updatedSnapshot.Status.Conditions).NotTo(BeNil())
+		foundStatusCondition := meta.FindStatusCondition(updatedSnapshot.Status.Conditions, gitops.SnapshotAutoReleasedCondition)
+		Expect(foundStatusCondition.Status).To(Equal(metav1.ConditionTrue))
+		Expect(foundStatusCondition.Message).To(Equal("Test message"))
+
+		Expect(gitops.IsSnapshotMarkedAsAutoReleased(updatedSnapshot)).To(BeTrue())
+	})
+
+	It("ensures the Snapshots status can be marked as deployed to root environments", func() {
+		Expect(gitops.IsSnapshotMarkedAsDeployedToRootEnvironments(hasSnapshot)).To(BeFalse())
+
+		updatedSnapshot, err := gitops.MarkSnapshotAsDeployedToRootEnvironments(k8sClient, ctx, hasSnapshot, "Test message")
+		Expect(err).To(BeNil())
+		Expect(updatedSnapshot).NotTo(BeNil())
+		Expect(updatedSnapshot.Status.Conditions).NotTo(BeNil())
+		foundStatusCondition := meta.FindStatusCondition(updatedSnapshot.Status.Conditions, gitops.SnapshotDeployedToRootEnvironmentsCondition)
+		Expect(foundStatusCondition.Status).To(Equal(metav1.ConditionTrue))
+		Expect(foundStatusCondition.Message).To(Equal("Test message"))
+
+		Expect(gitops.IsSnapshotMarkedAsDeployedToRootEnvironments(updatedSnapshot)).To(BeTrue())
+	})
+
+	It("ensures the Snapshots status can be marked as component added to global candidate list", func() {
+		Expect(gitops.IsSnapshotMarkedAsAddedToGlobalCandidateList(hasSnapshot)).To(BeFalse())
+
+		updatedSnapshot, err := gitops.MarkSnapshotAsAddedToGlobalCandidateList(k8sClient, ctx, hasSnapshot, "Test message")
+		Expect(err).To(BeNil())
+		Expect(updatedSnapshot).NotTo(BeNil())
+		Expect(updatedSnapshot.Status.Conditions).NotTo(BeNil())
+		foundStatusCondition := meta.FindStatusCondition(updatedSnapshot.Status.Conditions, gitops.SnapshotAddedToGlobalCandidateListCondition)
+		Expect(foundStatusCondition.Status).To(Equal(metav1.ConditionTrue))
+		Expect(foundStatusCondition.Message).To(Equal("Test message"))
+
+		Expect(gitops.IsSnapshotMarkedAsAddedToGlobalCandidateList(updatedSnapshot)).To(BeTrue())
+	})
+
 	It("ensures the Snapshots can be checked for the AppStudioTestSucceededCondition", func() {
 		checkResult := gitops.HaveAppStudioTestsFinished(hasSnapshot)
 		Expect(checkResult).To(BeFalse())

@@ -334,36 +334,58 @@ TestScenarioLoop:
 // EnsureGlobalCandidateImageUpdated is an operation that ensure the ContainerImage in the Global Candidate List
 // being updated when the Snapshot passed all the integration tests
 func (a *Adapter) EnsureGlobalCandidateImageUpdated() (controller.OperationResult, error) {
-	if (a.component != nil) && gitops.HaveAppStudioTestsSucceeded(a.snapshot) && !gitops.IsSnapshotCreatedByPACPullRequestEvent(a.snapshot) {
-		patch := client.MergeFrom(a.component.DeepCopy())
-		for _, component := range a.snapshot.Spec.Components {
-			if component.Name == a.component.Name {
-				a.component.Spec.ContainerImage = component.ContainerImage
-				err := a.client.Patch(a.context, a.component, patch)
+	if a.component == nil || gitops.IsSnapshotCreatedByPACPullRequestEvent(a.snapshot) {
+		a.logger.Info("The Snapshot wasn't created for a single component push event, not updating the global candidate list.")
+		return controller.ContinueProcessing()
+	}
+	if !gitops.HaveAppStudioTestsSucceeded(a.snapshot) {
+		a.logger.Info("The Snapshot hasn't yet passed all required integration tests, not updating the global candidate list.")
+		return controller.ContinueProcessing()
+	}
+	if gitops.IsSnapshotMarkedAsAddedToGlobalCandidateList(a.snapshot) {
+		a.logger.Info("The Snapshot's component was previously added to the global candidate list, skipping adding it.")
+		return controller.ContinueProcessing()
+	}
+
+	for _, component := range a.snapshot.Spec.Components {
+		if component.Name == a.component.Name {
+			patch := client.MergeFrom(a.component.DeepCopy())
+			a.component.Spec.ContainerImage = component.ContainerImage
+			err := a.client.Patch(a.context, a.component, patch)
+			if err != nil {
+				a.logger.Error(err, "Failed to update .Spec.ContainerImage of Global Candidate for the Component",
+					"component.Name", a.component.Name)
+				return controller.RequeueWithError(err)
+			}
+			a.logger.LogAuditEvent("Updated .Spec.ContainerImage of Global Candidate for the Component",
+				a.component, h.LogActionUpdate,
+				"containerImage", component.ContainerImage)
+			if reflect.ValueOf(component.Source).IsValid() && component.Source.GitSource != nil && component.Source.GitSource.Revision != "" {
+				patch := client.MergeFrom(a.component.DeepCopy())
+				a.component.Status.LastBuiltCommit = component.Source.GitSource.Revision
+				err = a.client.Status().Patch(a.context, a.component, patch)
 				if err != nil {
-					a.logger.Error(err, "Failed to update .Spec.ContainerImage of Global Candidate for the Component",
+					a.logger.Error(err, "Failed to update .Status.LastBuiltCommit of Global Candidate for the Component",
 						"component.Name", a.component.Name)
 					return controller.RequeueWithError(err)
 				}
-				a.logger.LogAuditEvent("Updated .Spec.ContainerImage of Global Candidate for the Component",
+				a.logger.LogAuditEvent("Updated .Status.LastBuiltCommit of Global Candidate for the Component",
 					a.component, h.LogActionUpdate,
-					"containerImage", component.ContainerImage)
-				if reflect.ValueOf(component.Source).IsValid() && component.Source.GitSource != nil && component.Source.GitSource.Revision != "" {
-					patch := client.MergeFrom(a.component.DeepCopy())
-					a.component.Status.LastBuiltCommit = component.Source.GitSource.Revision
-					err = a.client.Status().Patch(a.context, a.component, patch)
-					if err != nil {
-						a.logger.Error(err, "Failed to update .Status.LastBuiltCommit of Global Candidate for the Component",
-							"component.Name", a.component.Name)
-						return controller.RequeueWithError(err)
-					}
-					a.logger.LogAuditEvent("Updated .Status.LastBuiltCommit of Global Candidate for the Component",
-						a.component, h.LogActionUpdate,
-						"lastBuildCommit", a.component.Status.LastBuiltCommit)
-				}
+					"lastBuildCommit", a.component.Status.LastBuiltCommit)
 			}
+			break
 		}
 	}
+
+	// Mark the Snapshot as already added to global candidate list to prevent it from getting added again when the Snapshot
+	// gets reconciled at a later time
+	var err error
+	a.snapshot, err = gitops.MarkSnapshotAsAddedToGlobalCandidateList(a.client, a.context, a.snapshot, "The Snapshot's component was added to the global candidate list")
+	if err != nil {
+		a.logger.Error(err, "Failed to update the Snapshot's status to AddedToGlobalCandidateList")
+		return controller.RequeueWithError(err)
+	}
+
 	return controller.ContinueProcessing()
 }
 
@@ -375,6 +397,10 @@ func (a *Adapter) EnsureAllReleasesExist() (controller.OperationResult, error) {
 	if !canSnapshotBePromoted {
 		a.logger.Info("The Snapshot won't be released.",
 			"reasons", strings.Join(reasons, ","))
+		return controller.ContinueProcessing()
+	}
+	if gitops.IsSnapshotMarkedAsAutoReleased(a.snapshot) {
+		a.logger.Info("The Snapshot was previously auto-released, skipping auto-release.")
 		return controller.ContinueProcessing()
 	}
 
@@ -397,6 +423,15 @@ func (a *Adapter) EnsureAllReleasesExist() (controller.OperationResult, error) {
 			a.snapshot, h.LogActionUpdate)
 		return controller.RequeueOnErrorOrStop(a.client.Status().Patch(a.context, a.snapshot, patch))
 	}
+
+	// Mark the Snapshot as already auto-released to prevent re-releasing the Snapshot when it gets reconciled
+	// at a later time, especially if new ReleasePlans are introduced or existing ones are renamed
+	a.snapshot, err = gitops.MarkSnapshotAsAutoReleased(a.client, a.context, a.snapshot, "The Snapshot was auto-released")
+	if err != nil {
+		a.logger.Error(err, "Failed to update the Snapshot's status to auto-released")
+		return controller.RequeueWithError(err)
+	}
+
 	return controller.ContinueProcessing()
 }
 
@@ -408,6 +443,10 @@ func (a *Adapter) EnsureSnapshotEnvironmentBindingExist() (controller.OperationR
 	if !canSnapshotBePromoted {
 		a.logger.Info("The Snapshot won't be deployed.",
 			"reasons", strings.Join(reasons, ","))
+		return controller.ContinueProcessing()
+	}
+	if gitops.IsSnapshotMarkedAsDeployedToRootEnvironments(a.snapshot) {
+		a.logger.Info("The Snapshot was previously deployed to all root environments, skipping deployment.")
 		return controller.ContinueProcessing()
 	}
 
@@ -463,6 +502,14 @@ func (a *Adapter) EnsureSnapshotEnvironmentBindingExist() (controller.OperationR
 				"snapshotEnvironmentBinding.Snapshot", snapshotEnvironmentBinding.Spec.Snapshot)
 
 		}
+	}
+
+	// Mark the Snapshot as already deployed to root environments to prevent re-deploying the Snapshot when it gets
+	// reconciled at a later time
+	a.snapshot, err = gitops.MarkSnapshotAsDeployedToRootEnvironments(a.client, a.context, a.snapshot, "The Snapshot was deployed to all root environments")
+	if err != nil {
+		a.logger.Error(err, "Failed to update the Snapshot's status to DeployedToRootEnvironments")
+		return controller.RequeueWithError(err)
 	}
 	return controller.ContinueProcessing()
 }
