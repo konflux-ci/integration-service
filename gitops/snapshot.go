@@ -114,6 +114,17 @@ const (
 	// IntegrationTestScenarioValid is the condition for marking the AppStudio integration status of the Scenario.
 	IntegrationTestScenarioValid = "IntegrationTestScenarioValid"
 
+	// SnapshotDeployedToRootEnvironmentsCondition is the condition for marking if Snapshot was deployed to root environments
+	// within the user's workspace.
+	SnapshotDeployedToRootEnvironmentsCondition = "DeployedToRootEnvironments"
+
+	// SnapshotAutoReleasedCondition is the condition for marking if Snapshot was auto-released released with AppStudio.
+	SnapshotAutoReleasedCondition = "AutoReleased"
+
+	// SnapshotAddedToGlobalCandidateListCondition is the condition for marking if Snapshot's component was added to
+	// the global candidate list.
+	SnapshotAddedToGlobalCandidateListCondition = "AddedToGlobalCandidateList"
+
 	// AppStudioTestSucceededConditionPassed is the reason that's set when the AppStudio tests succeed.
 	AppStudioTestSucceededConditionPassed = "Passed"
 
@@ -337,6 +348,80 @@ func IsSnapshotStatusConditionSet(snapshot *applicationapiv1alpha1.Snapshot, con
 		return false
 	}
 	return true
+}
+
+// IsSnapshotMarkedAsDeployedToRootEnvironments returns true if snapshot is marked as deployed to root environments
+func IsSnapshotMarkedAsDeployedToRootEnvironments(snapshot *applicationapiv1alpha1.Snapshot) bool {
+	return IsSnapshotStatusConditionSet(snapshot, SnapshotDeployedToRootEnvironmentsCondition, metav1.ConditionTrue, "")
+}
+
+// MarkSnapshotAsDeployedToRootEnvironments updates the SnapshotDeployedToRootEnvironmentsCondition for the Snapshot to 'Deployed'.
+// If the patch command fails, an error will be returned.
+func MarkSnapshotAsDeployedToRootEnvironments(adapterClient client.Client, ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot, message string) (*applicationapiv1alpha1.Snapshot, error) {
+	patch := client.MergeFrom(snapshot.DeepCopy())
+	condition := metav1.Condition{
+		Type:    SnapshotDeployedToRootEnvironmentsCondition,
+		Status:  metav1.ConditionTrue,
+		Reason:  "Deployed",
+		Message: message,
+	}
+	meta.SetStatusCondition(&snapshot.Status.Conditions, condition)
+
+	err := adapterClient.Status().Patch(ctx, snapshot, patch)
+	if err != nil {
+		return nil, err
+	}
+	return snapshot, nil
+}
+
+// IsSnapshotMarkedAsAutoReleased returns true if snapshot is marked as deployed to root environments
+func IsSnapshotMarkedAsAutoReleased(snapshot *applicationapiv1alpha1.Snapshot) bool {
+	return IsSnapshotStatusConditionSet(snapshot, SnapshotAutoReleasedCondition, metav1.ConditionTrue, "")
+}
+
+// MarkSnapshotAsAutoReleased updates the SnapshotAutoReleasedCondition for the Snapshot to 'AutoReleased'.
+// If the patch command fails, an error will be returned.
+func MarkSnapshotAsAutoReleased(adapterClient client.Client, ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot, message string) (*applicationapiv1alpha1.Snapshot, error) {
+	patch := client.MergeFrom(snapshot.DeepCopy())
+	condition := metav1.Condition{
+		Type:    SnapshotAutoReleasedCondition,
+		Status:  metav1.ConditionTrue,
+		Reason:  "AutoReleased",
+		Message: message,
+	}
+	meta.SetStatusCondition(&snapshot.Status.Conditions, condition)
+
+	err := adapterClient.Status().Patch(ctx, snapshot, patch)
+	if err != nil {
+		return nil, err
+	}
+
+	return snapshot, nil
+}
+
+// IsSnapshotMarkedAsAddedToGlobalCandidateList returns true if snapshot's component is marked as added to global candidate list
+func IsSnapshotMarkedAsAddedToGlobalCandidateList(snapshot *applicationapiv1alpha1.Snapshot) bool {
+	return IsSnapshotStatusConditionSet(snapshot, SnapshotAddedToGlobalCandidateListCondition, metav1.ConditionTrue, "")
+}
+
+// MarkSnapshotAsAddedToGlobalCandidateList updates the SnapshotAddedToGlobalCandidateListCondition for the Snapshot to true with reason 'Added'.
+// If the patch command fails, an error will be returned.
+func MarkSnapshotAsAddedToGlobalCandidateList(adapterClient client.Client, ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot, message string) (*applicationapiv1alpha1.Snapshot, error) {
+	patch := client.MergeFrom(snapshot.DeepCopy())
+	condition := metav1.Condition{
+		Type:    SnapshotAddedToGlobalCandidateListCondition,
+		Status:  metav1.ConditionTrue,
+		Reason:  "Added",
+		Message: message,
+	}
+	meta.SetStatusCondition(&snapshot.Status.Conditions, condition)
+
+	err := adapterClient.Status().Patch(ctx, snapshot, patch)
+	if err != nil {
+		return nil, err
+	}
+
+	return snapshot, nil
 }
 
 // ValidateImageDigest checks if image url contains valid digest, return error if check fails
