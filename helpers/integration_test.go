@@ -48,6 +48,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		buildPipelineRun             *tektonv1beta1.PipelineRun
 		successfulTaskRun            *tektonv1beta1.TaskRun
 		failedTaskRun                *tektonv1beta1.TaskRun
+		warningTaskRun               *tektonv1beta1.TaskRun
 		skippedTaskRun               *tektonv1beta1.TaskRun
 		emptyTaskRun                 *tektonv1beta1.TaskRun
 		malformedTaskRun             *tektonv1beta1.TaskRun
@@ -237,6 +238,40 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			},
 		}
 		Expect(k8sClient.Status().Update(ctx, skippedTaskRun)).Should(Succeed())
+
+		warningTaskRun = &tektonv1beta1.TaskRun{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "test-taskrun-warning",
+				Namespace: "default",
+			},
+			Spec: tektonv1beta1.TaskRunSpec{
+				TaskRef: &tektonv1beta1.TaskRef{
+					Name:   "test-taskrun-warning",
+					Bundle: "quay.io/redhat-appstudio/example-tekton-bundle:test",
+				},
+			},
+		}
+		Expect(k8sClient.Create(ctx, warningTaskRun)).Should(Succeed())
+
+		warningTaskRun.Status = tektonv1beta1.TaskRunStatus{
+			TaskRunStatusFields: tektonv1beta1.TaskRunStatusFields{
+				StartTime:      &metav1.Time{Time: now.Add(5 * time.Minute)},
+				CompletionTime: &metav1.Time{Time: now.Add(10 * time.Minute)},
+				TaskRunResults: []tektonv1beta1.TaskRunResult{
+					{
+						Name: "TEST_OUTPUT",
+						Value: *tektonv1beta1.NewStructuredValues(`{
+							"result": "WARNING",
+							"timestamp": "1665405320",
+							"failures": 0,
+							"successes": 0,
+							"warnings": 1
+						}`),
+					},
+				},
+			},
+		}
+		Expect(k8sClient.Status().Update(ctx, warningTaskRun)).Should(Succeed())
 
 		emptyTaskRun = &tektonv1beta1.TaskRun{
 			ObjectMeta: metav1.ObjectMeta{
@@ -541,6 +576,40 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 					},
 					{
 						Name:             skippedTaskRun.Name,
+						PipelineTaskName: "pipeline1-task2",
+					},
+				},
+			},
+			Status: v1.Status{
+				Conditions: v1.Conditions{
+					apis.Condition{
+						Reason: "Completed",
+						Status: "True",
+						Type:   apis.ConditionSucceeded,
+					},
+				},
+			},
+		}
+		Expect(k8sClient.Status().Update(ctx, integrationPipelineRun)).Should(Succeed())
+
+		pipelineRunOutcome, err := helpers.GetIntegrationPipelineRunOutcome(k8sClient, ctx, integrationPipelineRun)
+		Expect(err).To(BeNil())
+		Expect(pipelineRunOutcome.HasPipelineRunPassedTesting()).To(BeTrue())
+
+		gitops.MarkSnapshotAsPassed(k8sClient, ctx, hasSnapshot, "test passed")
+		Expect(gitops.HaveAppStudioTestsSucceeded(hasSnapshot)).To(BeTrue())
+	})
+
+	It("ensures multiple task pipelinerun outcome when AppStudio Tests warned", func() {
+		integrationPipelineRun.Status = tektonv1beta1.PipelineRunStatus{
+			PipelineRunStatusFields: tektonv1beta1.PipelineRunStatusFields{
+				ChildReferences: []tektonv1beta1.ChildStatusReference{
+					{
+						Name:             successfulTaskRun.Name,
+						PipelineTaskName: "pipeline1-task1",
+					},
+					{
+						Name:             warningTaskRun.Name,
 						PipelineTaskName: "pipeline1-task2",
 					},
 				},
