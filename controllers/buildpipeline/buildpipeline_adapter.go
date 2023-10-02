@@ -165,8 +165,14 @@ func (a *Adapter) getComponentSourceFromPipelineRun(pipelineRun *tektonv1beta1.P
 			},
 		},
 	}
-
 	return &componentSource, nil
+}
+
+func GetPipelineRunCompletionTime(pipelineRun *tektonv1beta1.PipelineRun) time.Time {
+	if pipelineRun.Status.CompletionTime != nil {
+		return pipelineRun.Status.CompletionTime.Time
+	}
+	return time.Now()
 }
 
 // prepareSnapshotForPipelineRun prepares the Snapshot for a given PipelineRun,
@@ -197,11 +203,10 @@ func (a *Adapter) prepareSnapshotForPipelineRun(pipelineRun *tektonv1beta1.Pipel
 	snapshot.Labels[gitops.SnapshotTypeLabel] = gitops.SnapshotComponentType
 	snapshot.Labels[gitops.SnapshotComponentLabel] = a.component.Name
 	snapshot.Labels[gitops.BuildPipelineRunNameLabel] = pipelineRun.Name
-	if pipelineRun.Status.CompletionTime != nil {
-		snapshot.Labels[gitops.BuildPipelineRunFinishTimeLabel] = strconv.FormatInt(pipelineRun.Status.CompletionTime.Time.Unix(), 10)
-	} else {
-		snapshot.Labels[gitops.BuildPipelineRunFinishTimeLabel] = strconv.FormatInt(time.Now().Unix(), 10)
-	}
+	snapshot.Labels[gitops.BuildPipelineRunNameLabel] = pipelineRun.Name
+
+	completionTime := GetPipelineRunCompletionTime(pipelineRun)
+	snapshot.Labels[gitops.BuildPipelineRunFinishTimeLabel] = strconv.FormatInt(completionTime.Unix(), 10)
 
 	// Copy PipelineRun PAC annotations/labels from Build to snapshot.
 	// Modify the prefix so the PaC controller won't react to PipelineRuns generated from the snapshot.

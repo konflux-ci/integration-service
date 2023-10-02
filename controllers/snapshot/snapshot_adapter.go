@@ -21,14 +21,17 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
+	"time"
 
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/api/v1beta1"
+	"github.com/redhat-appstudio/integration-service/controllers/buildpipeline"
 	"github.com/redhat-appstudio/integration-service/gitops"
 	h "github.com/redhat-appstudio/integration-service/helpers"
+	"github.com/redhat-appstudio/integration-service/metrics"
 	"github.com/redhat-appstudio/integration-service/release"
 	"github.com/redhat-appstudio/integration-service/tekton"
 
@@ -37,6 +40,7 @@ import (
 	"github.com/redhat-appstudio/operator-toolkit/metadata"
 	releasev1alpha1 "github.com/redhat-appstudio/release-service/api/v1alpha1"
 	pipeline "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -127,6 +131,9 @@ func (a *Adapter) EnsureAllIntegrationTestPipelinesExist() (controller.Operation
 					a.logger.Error(err, "Failed to create pipelineRun for snapshot and scenario")
 					return controller.RequeueWithError(err)
 				}
+				pipelineRunFinishTimeRaw := buildpipeline.GetPipelineRunCompletionTime(pipelineRun)
+				pipelineRunFinishTime := metav1.NewTime(pipelineRunFinishTimeRaw)
+
 				a.logger.LogAuditEvent("IntegrationTestscenario pipeline has been created", pipelineRun, h.LogActionAdd,
 					"integrationTestScenario.Name", integrationTestScenario.Name)
 				testStatuses.UpdateTestStatusIfChanged(
@@ -140,9 +147,9 @@ func (a *Adapter) EnsureAllIntegrationTestPipelinesExist() (controller.Operation
 					} else {
 						a.logger.LogAuditEvent("Snapshot integration status marked as In Progress. Snapshot starts being tested by the integrationPipelineRun",
 							a.snapshot, h.LogActionUpdate)
+						metrics.RegisterPipelineRunFinishedToSnapshotInProgress(pipelineRunFinishTime, &metav1.Time{Time: time.Now()})
 					}
 				}
-
 			}
 		}
 
