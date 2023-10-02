@@ -50,6 +50,12 @@ rules:
 - apiGroups:
   - appstudio.redhat.com
   resources:
+  - components/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - appstudio.redhat.com
+  resources:
   - components/status
   verbs:
   - get
