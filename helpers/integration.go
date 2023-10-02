@@ -214,7 +214,9 @@ func (ipro *IntegrationPipelineRunOutcome) HasPipelineRunPassedTesting() bool {
 		return false
 	}
 	for _, result := range ipro.results {
-		if result.Result != AppStudioTestOutputSuccess && result.Result != AppStudioTestOutputSkipped {
+		if result.Result != AppStudioTestOutputSuccess &&
+			result.Result != AppStudioTestOutputSkipped &&
+			result.Result != AppStudioTestOutputWarning {
 			return false
 		}
 	}
