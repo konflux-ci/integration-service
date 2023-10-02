@@ -103,7 +103,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return err
 	})
 	if err != nil {
-		return logger.HandleLoaderError(err, "Component", "Snapshot")
+		return helpers.HandleLoaderError(logger, err, "Component", "Snapshot")
 	}
 
 	adapter := NewAdapter(snapshot, application, component, logger, loader, r.Client, ctx)
