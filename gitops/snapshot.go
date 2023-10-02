@@ -494,7 +494,7 @@ func PrepareSnapshot(adapterClient client.Client, ctx context.Context, applicati
 			log.Error(nil, "component cannot be added to snapshot for application due to missing containerImage", "component.Name", applicationComponent.Name)
 			continue
 		}
-		// if the containerImage donesn't have a valid digest, the component
+		// if the containerImage doesn't have a valid digest, the component
 		// will not be added to snapshot
 		err := ValidateImageDigest(containerImage)
 		if err != nil {
