@@ -11,16 +11,27 @@ flowchart TD
 
   %% Node definitions
 predicate((PREDICATE: <br> Filter events related to <br> PipelineRuns <br> proccessed by Chains <br> that have <br> succeeded))
-get_pipeline_run{Pipeline found?}
+new_pipeline_run{Pipeline created?}
+get_pipeline_run{Pipeline updated?}
+failed_pipeline_run{Pipeline failed?}
+finalizer_exists{Does the finalizer already exist?}
 retrieve_associated_entity(Retrieve the entity <br> component/application)
 determine_snapshot{Does a snapshot exist?}
 create_snapshot(Gather Application components<br> Add new component  <br> Create snapshot)
 annotate_pipelineRun(Annotate pipeline with <br> name of Snapshot)
+add_finalizer(Add finalizer to build PLR)
+remove_finalizer(Remove finalizer from build PLR)
 error[Return error]
 continue[Continue processing]
 
 %% Node connections
 predicate                        --> get_pipeline_run
+predicate                       -->  new_pipeline_run
+predicate                       -->  failed_pipeline_run
+new_pipeline_run           --Yes-->  finalizer_exists
+finalizer_exists           --No-->   add_finalizer
+add_finalizer                    --> continue
+failed_pipeline_run           --Yes --> remove_finalizer
 get_pipeline_run           --Yes --> retrieve_associated_entity
 get_pipeline_run           --No  --> error
 retrieve_associated_entity --No  --> error
@@ -29,7 +40,8 @@ retrieve_associated_entity --Yes --> determine_snapshot
 determine_snapshot         --Yes --> annotate_pipelineRun
 determine_snapshot         --No  --> create_snapshot
 create_snapshot            --Yes --> annotate_pipelineRun
-annotate_pipelineRun       --Yes --> continue
+annotate_pipelineRun       --Yes --> remove_finalizer
+remove_finalizer                 --> continue
 
 %% Assigning styles to nodes
 class predicate Amber;
