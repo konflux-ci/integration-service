@@ -17,6 +17,8 @@ limitations under the License.
 package metrics
 
 import (
+	"time"
+
 	"github.com/prometheus/client_golang/prometheus"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/metrics"
@@ -87,6 +89,14 @@ var (
 		},
 		[]string{"type", "reason"},
 	)
+
+	ReleaseLatencySeconds = prometheus.NewHistogram(
+		prometheus.HistogramOpts{
+			Name:    "release_latency_seconds",
+			Help:    "Latency between integration tests completion and release creation",
+			Buckets: []float64{0.05, 0.1, 0.5, 1, 2, 3, 4, 5, 10, 15, 30},
+		},
+	)
 )
 
 func RegisterCompletedSnapshot(conditiontype, reason string, startTime metav1.Time, completionTime *metav1.Time) {
@@ -131,6 +141,11 @@ func RegisterNewIntegrationPipelineRun(snapshotCreatedTime metav1.Time, pipeline
 	RegisterPipelineRunStarted(snapshotCreatedTime, pipelineRunStartTime)
 }
 
+func RegisterReleaseLatency(startTime metav1.Time) {
+	latency := time.Since(startTime.Time).Seconds()
+	ReleaseLatencySeconds.Observe(latency)
+}
+
 func init() {
 	metrics.Registry.MustRegister(
 		SnapshotCreatedToPipelineRunStartedSeconds,
@@ -141,5 +156,6 @@ func init() {
 		SnapshotDurationSeconds,
 		SnapshotInvalidTotal,
 		SnapshotTotal,
+		ReleaseLatencySeconds,
 	)
 }
