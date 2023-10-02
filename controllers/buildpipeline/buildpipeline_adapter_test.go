@@ -29,6 +29,8 @@ import (
 	v1 "knative.dev/pkg/apis/duck/v1"
 
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/utils/strings/slices"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -758,6 +760,44 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			Expect(allSnapshots).NotTo(BeNil())
 			existingSnapshot := gitops.FindMatchingSnapshot(hasApp, allSnapshots, hasSnapshot)
 			Expect(existingSnapshot.Name).To(Equal(hasSnapshot.Name))
+		})
+	})
+
+	When("A new Build pipelineRun is created", func() {
+		BeforeAll(func() {
+			adapter = NewAdapter(buildPipelineRun, hasComp, hasApp, logger, loader.NewMockLoader(), k8sClient, ctx)
+		})
+		It("can add and remove finalizers from the pipelineRun", func() {
+			// Mark build PLR as incomplete
+			buildPipelineRun.Status.Conditions = nil
+			Expect(k8sClient.Status().Update(ctx, buildPipelineRun)).Should(Succeed())
+
+			// Ensure PLR does not have finalizer
+			existingBuildPLR := new(tektonv1.PipelineRun)
+			err := k8sClient.Get(ctx, types.NamespacedName{
+				Namespace: buildPipelineRun.ObjectMeta.Namespace,
+				Name:      buildPipelineRun.ObjectMeta.Name,
+			}, existingBuildPLR)
+			Expect(err).To(BeNil())
+			Expect(existingBuildPLR.ObjectMeta.Finalizers).To(BeNil())
+
+			// Add Finalizer to PLR
+			result, err := adapter.EnsurePipelineIsFinalized()
+			Expect(result.CancelRequest).To(BeFalse())
+			Expect(err).To(BeNil())
+
+			// Ensure PLR has finalizer
+			Eventually(func() bool {
+				return slices.Contains(buildPipelineRun.ObjectMeta.Finalizers, helpers.IntegrationPipelineRunFinalizer)
+			}, time.Second*10).Should(BeTrue())
+
+			// Remove finalizer from PLR
+			result, err = adapter.removeFinalizerAndContinueProcessing()
+			Expect(result.CancelRequest).To(BeFalse())
+			Expect(err).To(BeNil())
+
+			// Ensure PLR does not have finalizer
+			Expect(buildPipelineRun.ObjectMeta.Finalizers).NotTo(ContainElement("build.appstudio.openshift.io/pipelinerun"))
 		})
 	})
 
