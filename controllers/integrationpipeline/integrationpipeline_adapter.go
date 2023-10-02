@@ -32,6 +32,7 @@ import (
 	tektonv1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
 // Adapter holds the objects needed to reconcile an integration PipelineRun.
@@ -96,6 +97,21 @@ func (a *Adapter) EnsureStatusReportedInSnapshot() (controller.OperationResult, 
 		a.logger.Error(err, "Failed to update pipeline status in snapshot")
 		return controller.RequeueWithError(fmt.Errorf("failed to update test status in snapshot: %w", err))
 	}
+
+	if h.HasPipelineRunFinished(a.pipelineRun) {
+		// Remove the finalizer from this Integration PipelineRun
+		patch := client.MergeFrom(a.pipelineRun.DeepCopy())
+		controllerutil.RemoveFinalizer(a.pipelineRun, h.IntegrationPipelineRunFinalizer)
+		err = a.client.Patch(a.context, a.pipelineRun, patch)
+		if err != nil {
+			return controller.RequeueWithError(fmt.Errorf("failed to remove finalizer from the Integration PipelineRun: %w", err))
+		}
+
+		a.logger.LogAuditEvent("Removed Finalizer from the Integration PipelineRun",
+			a.pipelineRun, h.LogActionUpdate,
+			"finalizer", h.IntegrationPipelineRunFinalizer)
+	}
+
 	return controller.ContinueProcessing()
 }
 

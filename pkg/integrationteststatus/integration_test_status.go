@@ -158,6 +158,7 @@ func (sits *SnapshotIntegrationTestStatuses) UpdateTestStatusIfChanged(scenarioN
 	if detail.Details != details {
 		detail.Details = details
 		detail.LastUpdateTime = timestamp
+		sits.statuses[scenarioName] = detail
 		sits.dirty = true
 	}
 
@@ -168,7 +169,7 @@ func (sits *SnapshotIntegrationTestStatuses) UpdateTestStatusIfChanged(scenarioN
 func (sits *SnapshotIntegrationTestStatuses) UpdateTestPipelineRunName(scenarioName string, pipelineRunName string) error {
 	detail, ok := sits.GetScenarioStatus(scenarioName)
 	if !ok {
-		return fmt.Errorf("scenario name %s not found and cannot be updated", scenarioName)
+		return fmt.Errorf("scenario name %s not found within the SnapshotIntegrationTestStatus, and cannot be updated", scenarioName)
 	}
 
 	if detail.TestPipelineRunName != pipelineRunName {
