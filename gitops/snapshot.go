@@ -360,7 +360,29 @@ func HaveAppStudioTestsSucceeded(snapshot *applicationapiv1alpha1.Snapshot) bool
 	if meta.FindStatusCondition(snapshot.Status.Conditions, AppStudioTestSucceededCondition) == nil {
 		return meta.IsStatusConditionTrue(snapshot.Status.Conditions, LegacyTestSucceededCondition)
 	}
+
 	return meta.IsStatusConditionTrue(snapshot.Status.Conditions, AppStudioTestSucceededCondition)
+}
+
+// GetTestSucceededCondition checks status of tests on the snapshot
+func GetTestSucceededCondition(snapshot *applicationapiv1alpha1.Snapshot) (condition *metav1.Condition, ok bool) {
+
+	condition = meta.FindStatusCondition(snapshot.Status.Conditions, AppStudioTestSucceededCondition)
+	if condition == nil {
+		condition = meta.FindStatusCondition(snapshot.Status.Conditions, LegacyTestSucceededCondition)
+	}
+
+	ok = (condition != nil && condition.Status != metav1.ConditionUnknown)
+	return
+}
+
+// GetAppStudioTestsFinishedTime finds the timestamp of tests succeeded condition
+func GetAppStudioTestsFinishedTime(snapshot *applicationapiv1alpha1.Snapshot) (metav1.Time, bool) {
+	condition, ok := GetTestSucceededCondition(snapshot)
+	if ok {
+		return condition.LastTransitionTime, true
+	}
+	return metav1.Time{}, false
 }
 
 // CanSnapshotBePromoted checks if the Snapshot in question can be promoted for deployment and release.
