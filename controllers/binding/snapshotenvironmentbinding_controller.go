@@ -29,6 +29,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
@@ -89,10 +90,13 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	}
 	logger = logger.WithApp(*application)
 
-	snapshot, err := r.getSnapshotFromSnapshotEnvironmentBinding(ctx, snapshotEnvironmentBinding)
+	var snapshot *applicationapiv1alpha1.Snapshot
+	err = retry.OnError(retry.DefaultRetry, func(_ error) bool { return true }, func() error {
+		snapshot, err = r.getSnapshotFromSnapshotEnvironmentBinding(ctx, snapshotEnvironmentBinding)
+		return err
+	})
 	if err != nil {
-		logger.Error(err, "Failed to get Snapshot from the SnapshotEnvironmentBinding")
-		return ctrl.Result{}, err
+		return helpers.HandleLoaderError(logger, err, "Snapshot", "SnapshotEnvironmentBinding")
 	}
 
 	component, err := loader.GetComponentFromSnapshot(r.Client, ctx, snapshot)
