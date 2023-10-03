@@ -1,5 +1,5 @@
 /*
-Copyright 2023.
+Copyright 2023 Red Hat Inc.
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
@@ -20,11 +20,11 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 )
 
-func (l IntegrationLogger) HandleLoaderError(err error, resource, from string) (ctrl.Result, error) {
+func HandleLoaderError(logger IntegrationLogger, err error, resource, from string) (ctrl.Result, error) {
 	if errors.IsNotFound(err) {
-		l.Info(fmt.Sprintf("Could not get %[1]s from %[2]s.  %[1]s may have been removed.  Declining to proceed with reconciliation", resource, from))
+		logger.Info(fmt.Sprintf("Could not get %[1]s from %[2]s.  %[1]s may have been removed.  Declining to proceed with reconciliation", resource, from))
 		return ctrl.Result{}, nil
 	}
-	l.Error(err, fmt.Sprintf("Failed to get %s from the %s", resource, from))
+	logger.Error(err, fmt.Sprintf("Failed to get %s from the %s", resource, from))
 	return ctrl.Result{}, err
 }
