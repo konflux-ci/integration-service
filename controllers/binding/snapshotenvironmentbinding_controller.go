@@ -83,10 +83,13 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{}, err
 	}
 
-	application, err := r.getApplicationFromSnapshotEnvironmentBinding(ctx, snapshotEnvironmentBinding)
+	var application *applicationapiv1alpha1.Application
+	err = retry.OnError(retry.DefaultRetry, func(_ error) bool { return true }, func() error {
+		application, err = r.getApplicationFromSnapshotEnvironmentBinding(ctx, snapshotEnvironmentBinding)
+		return err
+	})
 	if err != nil {
-		logger.Error(err, "Failed to get Application from the SnapshotEnvironmentBinding")
-		return ctrl.Result{}, err
+		return helpers.HandleLoaderError(logger, err, "Application", "SnapshotEnvironmentBinding")
 	}
 	logger = logger.WithApp(*application)
 
