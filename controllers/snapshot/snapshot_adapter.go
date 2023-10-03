@@ -121,29 +121,14 @@ func (a *Adapter) EnsureAllIntegrationTestPipelinesExist() (controller.Operation
 					"integrationTestScenario.Name", integrationTestScenario.Name,
 					"len(integrationPipelineRuns)", len(*integrationPipelineRuns))
 			} else {
-				a.logger.Info("Creating new pipelinerun for integrationTestscenario",
-					"integrationTestScenario.Name", integrationTestScenario.Name)
 				pipelineRun, err := a.createIntegrationPipelineRun(a.application, &integrationTestScenario, a.snapshot)
 				if err != nil {
 					a.logger.Error(err, "Failed to create pipelineRun for snapshot and scenario")
 					return controller.RequeueWithError(err)
 				}
-				a.logger.LogAuditEvent("IntegrationTestscenario pipeline has been created", pipelineRun, h.LogActionAdd,
-					"integrationTestScenario.Name", integrationTestScenario.Name)
 				testStatuses.UpdateTestStatusIfChanged(
 					integrationTestScenario.Name, gitops.IntegrationTestStatusInProgress,
 					fmt.Sprintf("IntegrationTestScenario pipeline '%s' has been created", pipelineRun.Name))
-				gitops.PrepareToRegisterIntegrationPipelineRun(a.snapshot)
-				if gitops.IsSnapshotNotStarted(a.snapshot) {
-					_, err := gitops.MarkSnapshotIntegrationStatusAsInProgress(a.client, a.context, a.snapshot, "Snapshot starts being tested by the integrationPipelineRun")
-					if err != nil {
-						a.logger.Error(err, "Failed to update integration status condition to in progress for snapshot")
-					} else {
-						a.logger.LogAuditEvent("Snapshot integration status marked as In Progress. Snapshot starts being tested by the integrationPipelineRun",
-							a.snapshot, h.LogActionUpdate)
-					}
-				}
-
 			}
 		}
 
@@ -596,6 +581,9 @@ func (a *Adapter) findAvailableEnvironments() (*[]applicationapiv1alpha1.Environ
 // createIntegrationPipelineRun creates and returns a new integration PipelineRun. The Pipeline information and the parameters to it
 // will be extracted from the given integrationScenario. The integration's Snapshot will also be passed to the integration PipelineRun.
 func (a *Adapter) createIntegrationPipelineRun(application *applicationapiv1alpha1.Application, integrationTestScenario *v1beta1.IntegrationTestScenario, snapshot *applicationapiv1alpha1.Snapshot) (*pipeline.PipelineRun, error) {
+	a.logger.Info("Creating new pipelinerun for integrationTestscenario",
+		"integrationTestScenario.Name", integrationTestScenario.Name)
+
 	pipelineRun := tekton.NewIntegrationPipelineRun(snapshot.Name, application.Namespace, *integrationTestScenario).
 		WithSnapshot(snapshot).
 		WithIntegrationLabels(integrationTestScenario).
@@ -613,13 +601,25 @@ func (a *Adapter) createIntegrationPipelineRun(application *applicationapiv1alph
 
 	err := ctrl.SetControllerReference(snapshot, pipelineRun, a.client.Scheme())
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to set snapshot %s as ControllerReference of pipelineRun: %w", snapshot.Name, err)
 	}
 	err = a.client.Create(a.context, pipelineRun)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to call client.Create to create pipelineRun for snapshot %s: %w", snapshot.Name, err)
 	}
 
+	a.logger.LogAuditEvent("IntegrationTestscenario pipeline has been created", pipelineRun, h.LogActionAdd,
+		"integrationTestScenario.Name", integrationTestScenario.Name)
+	gitops.PrepareToRegisterIntegrationPipelineRun(a.snapshot)
+	if gitops.IsSnapshotNotStarted(a.snapshot) {
+		_, err := gitops.MarkSnapshotIntegrationStatusAsInProgress(a.client, a.context, a.snapshot, "Snapshot starts being tested by the integrationPipelineRun")
+		if err != nil {
+			a.logger.Error(err, "Failed to update integration status condition to in progress for snapshot")
+		} else {
+			a.logger.LogAuditEvent("Snapshot integration status marked as In Progress. Snapshot starts being tested by the integrationPipelineRun",
+				a.snapshot, h.LogActionUpdate)
+		}
+	}
 	return pipelineRun, nil
 }
 

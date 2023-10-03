@@ -48,16 +48,17 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		adapter *Adapter
 		logger  helpers.IntegrationLogger
 
-		testReleasePlan                   *releasev1alpha1.ReleasePlan
-		hasApp                            *applicationapiv1alpha1.Application
-		hasComp                           *applicationapiv1alpha1.Component
-		hasSnapshot                       *applicationapiv1alpha1.Snapshot
-		hasSnapshotPR                     *applicationapiv1alpha1.Snapshot
-		deploymentTargetClass             *applicationapiv1alpha1.DeploymentTargetClass
-		integrationPipelineRun            *tektonv1beta1.PipelineRun
-		integrationTestScenario           *v1beta1.IntegrationTestScenario
-		integrationTestScenarioWithoutEnv *v1beta1.IntegrationTestScenario
-		env                               *applicationapiv1alpha1.Environment
+		testReleasePlan                       *releasev1alpha1.ReleasePlan
+		hasApp                                *applicationapiv1alpha1.Application
+		hasComp                               *applicationapiv1alpha1.Component
+		hasSnapshot                           *applicationapiv1alpha1.Snapshot
+		hasSnapshotPR                         *applicationapiv1alpha1.Snapshot
+		deploymentTargetClass                 *applicationapiv1alpha1.DeploymentTargetClass
+		integrationPipelineRun                *tektonv1beta1.PipelineRun
+		integrationTestScenario               *v1beta1.IntegrationTestScenario
+		integrationTestScenarioWithoutEnv     *v1beta1.IntegrationTestScenario
+		integrationTestScenarioWithoutEnvCopy *v1beta1.IntegrationTestScenario
+		env                                   *applicationapiv1alpha1.Environment
 	)
 	const (
 		SampleRepoLink  = "https://github.com/devfile-samples/devfile-sample-java-springboot-basic"
@@ -367,6 +368,38 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		})
 
 		It("ensures the integrationTestPipelines are created", func() {
+			integrationTestScenarioWithoutEnvCopy = &v1beta1.IntegrationTestScenario{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "example-pass-without-env-copy",
+					Namespace: "default",
+
+					Labels: map[string]string{
+						"test.appstudio.openshift.io/optional": "false",
+					},
+				},
+				Spec: v1beta1.IntegrationTestScenarioSpec{
+					Application: "application-sample",
+					ResolverRef: v1beta1.ResolverRef{
+						Resolver: "git",
+						Params: []v1beta1.ResolverParameter{
+							{
+								Name:  "url",
+								Value: "https://github.com/redhat-appstudio/integration-examples.git",
+							},
+							{
+								Name:  "revision",
+								Value: "main",
+							},
+							{
+								Name:  "pathInRepo",
+								Value: "pipelineruns/integration_pipelinerun_pass.yaml",
+							},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, integrationTestScenarioWithoutEnvCopy)).Should(Succeed())
+
 			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
 			adapter = NewAdapter(hasSnapshot, hasApp, hasComp, log, loader.NewMockLoader(), k8sClient, ctx)
 			adapter.context = loader.GetMockedContext(ctx, []loader.MockData{
@@ -392,11 +425,11 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 				},
 				{
 					ContextKey: loader.AllIntegrationTestScenariosContextKey,
-					Resource:   []v1beta1.IntegrationTestScenario{*integrationTestScenario, *integrationTestScenarioWithoutEnv},
+					Resource:   []v1beta1.IntegrationTestScenario{*integrationTestScenario, *integrationTestScenarioWithoutEnv, *integrationTestScenarioWithoutEnvCopy},
 				},
 				{
 					ContextKey: loader.RequiredIntegrationTestScenariosContextKey,
-					Resource:   []v1beta1.IntegrationTestScenario{*integrationTestScenario, *integrationTestScenarioWithoutEnv},
+					Resource:   []v1beta1.IntegrationTestScenario{*integrationTestScenario, *integrationTestScenarioWithoutEnv, *integrationTestScenarioWithoutEnvCopy},
 				},
 			})
 			result, err := adapter.EnsureAllIntegrationTestPipelinesExist()
@@ -407,7 +440,11 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			Expect(requiredIntegrationTestScenarios).NotTo(BeNil())
 			expectedLogEntry := "IntegrationTestScenario has environment defined,"
 			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
-			expectedLogEntry = "IntegrationTestscenario pipeline has been created namespace default name"
+			expectedLogEntry = "Creating new pipelinerun for integrationTestscenario integrationTestScenario.Name example-pass-without-env"
+			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
+			expectedLogEntry = "Creating new pipelinerun for integrationTestscenario integrationTestScenario.Name example-pass-without-env-copy"
+			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
+			expectedLogEntry = "Snapshot integration status marked as In Progress. Snapshot starts being tested by the integrationPipelineRun"
 			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
 
 			// Snapshot must have InProgress tests
