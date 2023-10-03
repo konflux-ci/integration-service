@@ -306,11 +306,19 @@ var _ = Describe("BindingController", func() {
 	})
 
 	It("can fail when Reconcile fails to prepare the adapter when Snapshot is not found", func() {
-		Expect(k8sClient.Delete(ctx, hasSnapshot)).Should(Succeed())
-		Eventually(func() error {
-			_, err := bindingReconciler.Reconcile(ctx, req)
-			return err
-		}).ShouldNot(BeNil())
+		err := k8sClient.Delete(ctx, hasSnapshot)
+		Eventually(func() bool {
+			err := k8sClient.Get(ctx, types.NamespacedName{
+				Namespace: hasComp.ObjectMeta.Namespace,
+				Name:      hasComp.ObjectMeta.Name,
+			}, hasSnapshot)
+			return err != nil && errors.IsNotFound(err)
+		}).Should(BeTrue())
+		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
+
+		result, err := bindingReconciler.Reconcile(ctx, req)
+		Expect(result).To(Equal(ctrl.Result{}))
+		Expect(err).To(BeNil())
 	})
 
 	It("can fail when Reconcile fails to prepare the adapter when Environment is not found", func() {
