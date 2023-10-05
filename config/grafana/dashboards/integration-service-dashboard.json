@@ -1242,76 +1242,21 @@
     },
 
     {
-      "cards": {
-        "cardPadding": null,
-        "cardRound": null
-      },
-      "color": {
-        "cardColor": "#b4ff00",
-        "colorScale": "sqrt",
-        "colorScheme": "interpolateOranges",
-        "exponent": 0.5,
-        "mode": "spectrum"
-      },
-      "dataFormat": "tsbuckets",
-      "description": "Time duration from the moment the snapshotEnvironmentBinding was created till the snapshot is deployed to the environtment",
-      "fieldConfig": {
-        "defaults": {},
-        "overrides": []
-      },
+      "id": 28,
       "gridPos": {
         "h": 8,
         "w": 12,
-        "x": 0,
-        "y": 27
+        "x": 12,
+        "y": 58
       },
-      "heatmap": {},
-      "hideZeroBuckets": true,
-      "highlightCards": true,
-      "id": 28,
-      "legend": {
-        "show": false
-      },
-      "maxDataPoints": 25,
-      "pluginVersion": "7.5.17",
-      "reverseYBuckets": false,
-      "targets": [
-        {
-          "exemplar": true,
-          "expr": " sum(increase(seb_created_to_ready_seconds_bucket[$__interval])) by (le)",
-          "format": "heatmap",
-          "interval": "",
-          "legendFormat": "{{le}}",
-          "refId": "A"
-        }
-      ],
-      "timeFrom": null,
-      "timeShift": null,
+      "type": "heatmap",
       "title": "SnapshotEnvironmentBinding created to ready Seconds",
-      "tooltip": {
-        "show": true,
-        "showHistogram": false
+      "pluginVersion": "9.1.6",
+      "maxDataPoints": 25,
+      "description": "Time duration from the moment the snapshotEnvironmentBinding was created till the snapshot is deployed to the environtment",
+      "legend": {
+        "show": false
       },
-      "type": "heatmap",
-      "xAxis": {
-        "show": true
-      },
-      "xBucketNumber": null,
-      "xBucketSize": null,
-      "yAxis": {
-        "decimals": null,
-        "format": "short",
-        "logBase": 1,
-        "max": null,
-        "min": null,
-        "show": true,
-        "splitFactor": null
-      },
-      "yBucketBound": "auto",
-      "yBucketNumber": null,
-      "yBucketSize": null
-    },
-    {
       "cards": {
         "cardPadding": null,
         "cardRound": null
@@ -1324,31 +1269,29 @@
         "mode": "spectrum"
       },
       "dataFormat": "tsbuckets",
-      "description": "Measure release creation latency from end of testing to release created",
       "fieldConfig": {
-        "defaults": {},
+        "defaults": {
+          "custom": {
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "hideFrom": {
+              "tooltip": false,
+              "viz": false,
+              "legend": false
+            }
+          }
+        },
         "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 0,
-        "y": 27
       },
       "heatmap": {},
       "hideZeroBuckets": true,
       "highlightCards": true,
-      "id": 28,
-      "legend": {
-        "show": false
-      },
-      "maxDataPoints": 25,
-      "pluginVersion": "7.5.17",
       "reverseYBuckets": false,
       "targets": [
         {
           "exemplar": true,
-          "expr": "histogram_quantile(0.90, sum(rate(release_latency_seconds_bucket[5m])) by (le)) ",
+          "expr": "sum(increase(seb_created_to_ready_seconds_bucket[$__interval])) by (le)",
           "format": "heatmap",
           "interval": "",
           "legendFormat": "{{le}}",
@@ -1357,12 +1300,10 @@
       ],
       "timeFrom": null,
       "timeShift": null,
-      "title": "Latency of Release Creation",
       "tooltip": {
         "show": true,
         "showHistogram": false
       },
-      "type": "heatmap",
       "xAxis": {
         "show": true
       },
@@ -1379,9 +1320,168 @@
       },
       "yBucketBound": "auto",
       "yBucketNumber": null,
-      "yBucketSize": null
-    }
+      "yBucketSize": null,
+      "options": {
+        "calculate": false,
+        "yAxis": {
+          "axisPlacement": "left",
+          "reverse": false,
+          "min": null,
+          "max": null,
+          "unit": "short",
+          "decimals": null
+        },
+        "rowsFrame": {
+          "layout": "auto"
+        },
+        "color": {
+          "mode": "scheme",
+          "fill": "#b4ff00",
+          "scale": "exponential",
+          "exponent": 0.5,
+          "scheme": "Oranges",
+          "steps": 128,
+          "reverse": false
+        },
+        "cellGap": 2,
+        "filterValues": {
+          "le": 1e-9
+        },
+        "tooltip": {
+          "show": true,
+          "yHistogram": false
+        },
+        "legend": {
+          "show": false
+        },
+        "exemplars": {
+          "color": "rgba(255,0,255,0.7)"
+        },
+        "calculation": {},
+        "cellValues": {},
+        "showValue": "never"
+      }
+    },
 
+    {
+      "id": 29,
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 66
+      },
+      "type": "heatmap",
+      "title": "Latency of Release Creation in Seconds",
+      "pluginVersion": "9.1.6",
+      "maxDataPoints": 25,
+      "description": "Measure release creation latency from end of testing to release created ",
+      "legend": {
+        "show": false
+      },
+      "cards": {
+        "cardPadding": null,
+        "cardRound": null
+      },
+      "color": {
+        "cardColor": "#b4ff00",
+        "colorScale": "sqrt",
+        "colorScheme": "interpolateOranges",
+        "exponent": 0.5,
+        "mode": "spectrum"
+      },
+      "dataFormat": "tsbuckets",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "hideFrom": {
+              "tooltip": false,
+              "viz": false,
+              "legend": false
+            }
+          }
+        },
+        "overrides": []
+      },
+      "heatmap": {},
+      "hideZeroBuckets": true,
+      "highlightCards": true,
+      "reverseYBuckets": false,
+      "targets": [
+        {
+          "exemplar": true,
+          "expr": "sum(increase(release_latency_seconds_bucket[$__interval])) by (le)",
+          "format": "heatmap",
+          "interval": "",
+          "legendFormat": "{{le}}",
+          "refId": "A"
+        }
+      ],
+      "tooltip": {
+        "show": true,
+        "showHistogram": false
+      },
+      "xAxis": {
+        "show": true
+      },
+      "xBucketNumber": null,
+      "xBucketSize": null,
+      "yAxis": {
+        "decimals": null,
+        "format": "short",
+        "logBase": 1,
+        "max": null,
+        "min": null,
+        "show": true,
+        "splitFactor": null
+      },
+      "yBucketBound": "auto",
+      "yBucketNumber": null,
+      "yBucketSize": null,
+      "options": {
+        "calculate": false,
+        "yAxis": {
+          "axisPlacement": "left",
+          "reverse": false,
+          "min": null,
+          "max": null,
+          "unit": "short",
+          "decimals": null
+        },
+        "rowsFrame": {
+          "layout": "auto"
+        },
+        "color": {
+          "mode": "scheme",
+          "fill": "#b4ff00",
+          "scale": "exponential",
+          "exponent": 0.5,
+          "scheme": "Oranges",
+          "steps": 128,
+          "reverse": false
+        },
+        "cellGap": 2,
+        "filterValues": {
+          "le": 1e-9
+        },
+        "tooltip": {
+          "show": true,
+          "yHistogram": false
+        },
+        "legend": {
+          "show": false
+        },
+        "exemplars": {
+          "color": "rgba(255,0,255,0.7)"
+        },
+        "calculation": {},
+        "cellValues": {},
+        "showValue": "never"
+      }
+    }
   ],
   "schemaVersion": 27,
   "style": "dark",
