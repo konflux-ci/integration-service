@@ -19,6 +19,7 @@ package statusreport
 import (
 	"context"
 	"fmt"
+	"os"
 	"reflect"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -130,6 +131,10 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			},
 		}
 		Expect(k8sClient.Create(ctx, hasSnapshot)).Should(Succeed())
+
+		// enable feature flag for testing
+		err := os.Setenv(FeatureFlagStatusReprotingEnabled, "yes")
+		Expect(err).To(BeNil())
 	})
 
 	AfterAll(func() {
@@ -137,6 +142,8 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 		err = k8sClient.Delete(ctx, hasApp)
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
+
+		_ = os.Unsetenv(FeatureFlagStatusReprotingEnabled)
 	})
 
 	When("adapter is created", func() {
