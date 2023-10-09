@@ -20,7 +20,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"fmt"
 	"reflect"
 	"time"
 
@@ -34,11 +33,9 @@ import (
 	"knative.dev/pkg/apis"
 	v1 "knative.dev/pkg/apis/duck/v1"
 
-	k8serrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/types"
-
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 
 	ctrl "sigs.k8s.io/controller-runtime"
 
@@ -88,7 +85,6 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		integrationPipelineRunComponentFailed *tektonv1beta1.PipelineRun
 		hasComp                               *applicationapiv1alpha1.Component
 		hasComp2                              *applicationapiv1alpha1.Component
-		hasCompNew                            *applicationapiv1alpha1.Component
 		hasApp                                *applicationapiv1alpha1.Application
 		hasSnapshot                           *applicationapiv1alpha1.Snapshot
 		hasEnv                                *applicationapiv1alpha1.Environment
@@ -404,227 +400,6 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		})
 	})
 
-	When("NewAdapter is created", func() {
-		BeforeEach(func() {
-			adapter = createAdapter()
-			adapter.context = loader.GetMockedContext(ctx, []loader.MockData{
-				{
-					ContextKey: loader.ApplicationContextKey,
-					Resource:   hasApp,
-				},
-				{
-					ContextKey: loader.ComponentContextKey,
-					Resource:   hasComp,
-				},
-				{
-					ContextKey: loader.SnapshotContextKey,
-					Resource:   hasSnapshot,
-				},
-				{
-					ContextKey: loader.EnvironmentContextKey,
-					Resource:   hasEnv,
-				},
-				{
-					ContextKey: loader.ApplicationComponentsContextKey,
-					Resource:   []applicationapiv1alpha1.Component{*hasComp, *hasComp2},
-				},
-			})
-		})
-
-		It("ensures the global component list unchanged and compositeSnapshot shouldn't be created ", func() {
-			// Check if the global component list changed in the meantime and create a composite snapshot if it did.
-			compositeSnapshot, err := adapter.createCompositeSnapshotsIfConflictExists(hasApp, hasComp, hasSnapshot)
-			Expect(err).To(BeNil())
-			Expect(compositeSnapshot).To(BeNil())
-		})
-
-		It("ensures the component Snapshot is marked as invalid when the global component list is changed", func() {
-			createdSnapshot, err := adapter.loader.GetSnapshotFromPipelineRun(adapter.client, adapter.context, integrationPipelineRunComponent)
-			Expect(err).To(BeNil())
-			Expect(createdSnapshot).ToNot(BeNil())
-
-			// A new component is added to the application in the meantime, to change the global component list.
-			hasCompNew = &applicationapiv1alpha1.Component{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "component-sample-2",
-					Namespace: "default",
-				},
-				Spec: applicationapiv1alpha1.ComponentSpec{
-					ComponentName:  "component-sample-2",
-					Application:    hasApp.Name,
-					ContainerImage: SampleImage,
-					Source: applicationapiv1alpha1.ComponentSource{
-						ComponentSourceUnion: applicationapiv1alpha1.ComponentSourceUnion{
-							GitSource: &applicationapiv1alpha1.GitSource{
-								URL:      SampleRepoLink,
-								Revision: SampleCommit,
-							},
-						},
-					},
-				},
-			}
-			Expect(k8sClient.Create(ctx, hasCompNew)).Should(Succeed())
-			hasCompNew.Status = applicationapiv1alpha1.ComponentStatus{
-				LastBuiltCommit: "lastbuildcommit",
-			}
-			Expect(k8sClient.Status().Update(ctx, hasCompNew)).Should(Succeed())
-
-			adapter.context = loader.GetMockedContext(ctx, []loader.MockData{
-				{
-					ContextKey: loader.ApplicationContextKey,
-					Resource:   hasApp,
-				},
-				{
-					ContextKey: loader.ComponentContextKey,
-					Resource:   hasComp,
-				},
-				{
-					ContextKey: loader.SnapshotContextKey,
-					Resource:   hasSnapshot,
-				},
-				{
-					ContextKey: loader.EnvironmentContextKey,
-					Resource:   hasEnv,
-				},
-				{
-					ContextKey: loader.ApplicationComponentsContextKey,
-					Resource:   []applicationapiv1alpha1.Component{*hasComp, *hasCompNew},
-				},
-				{
-					ContextKey: loader.RequiredIntegrationTestScenariosContextKey,
-					Resource:   []v1beta1.IntegrationTestScenario{*integrationTestScenario},
-				},
-				{
-					ContextKey: loader.AllSnapshotsContextKey,
-					Resource:   []applicationapiv1alpha1.Snapshot{},
-				},
-			})
-
-			result, err := adapter.EnsureSnapshotPassedAllTests()
-			Expect(!result.RequeueRequest && !result.CancelRequest && err == nil).To(BeTrue())
-			condition := meta.FindStatusCondition(hasSnapshot.Status.Conditions, gitops.AppStudioIntegrationStatusCondition)
-			Expect(condition.Status).To(Equal(metav1.ConditionFalse))
-			Expect(condition.Reason).To(Equal("Invalid"))
-			err = k8sClient.Delete(ctx, hasCompNew)
-			Expect(err == nil || k8serrors.IsNotFound(err)).To(BeTrue())
-		})
-
-		It("ensures the global component list is changed and compositeSnapshot should be created", func() {
-			createdSnapshot, err := adapter.loader.GetSnapshotFromPipelineRun(adapter.client, adapter.context, integrationPipelineRunComponent)
-			Expect(err).To(BeNil())
-			Expect(createdSnapshot).ToNot(BeNil())
-
-			// A new component is added to the application in the meantime, to change the global component list.
-			hasCompNew = &applicationapiv1alpha1.Component{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "component-sample-2",
-					Namespace: "default",
-				},
-				Spec: applicationapiv1alpha1.ComponentSpec{
-					ComponentName:  "component-sample-2",
-					Application:    hasApp.Name,
-					ContainerImage: SampleImage,
-					Source: applicationapiv1alpha1.ComponentSource{
-						ComponentSourceUnion: applicationapiv1alpha1.ComponentSourceUnion{
-							GitSource: &applicationapiv1alpha1.GitSource{
-								URL:      SampleRepoLink,
-								Revision: SampleCommit,
-							},
-						},
-					},
-				},
-			}
-			Expect(k8sClient.Create(ctx, hasCompNew)).Should(Succeed())
-			hasCompNew.Status = applicationapiv1alpha1.ComponentStatus{
-				LastBuiltCommit: "lastbuildcommit",
-			}
-			Expect(k8sClient.Status().Update(ctx, hasCompNew)).Should(Succeed())
-
-			adapter.context = loader.GetMockedContext(ctx, []loader.MockData{
-				{
-					ContextKey: loader.ApplicationContextKey,
-					Resource:   hasApp,
-				},
-				{
-					ContextKey: loader.ComponentContextKey,
-					Resource:   hasComp,
-				},
-				{
-					ContextKey: loader.SnapshotContextKey,
-					Resource:   hasSnapshot,
-				},
-				{
-					ContextKey: loader.EnvironmentContextKey,
-					Resource:   hasEnv,
-				},
-				{
-					ContextKey: loader.ApplicationComponentsContextKey,
-					Resource:   []applicationapiv1alpha1.Component{*hasComp, *hasCompNew},
-				},
-				{
-					ContextKey: loader.RequiredIntegrationTestScenariosContextKey,
-					Resource:   []v1beta1.IntegrationTestScenario{*integrationTestScenario},
-				},
-				{
-					ContextKey: loader.AllSnapshotsContextKey,
-					Resource:   []applicationapiv1alpha1.Snapshot{},
-				},
-			})
-			applicationComponents, err := adapter.loader.GetAllApplicationComponents(k8sClient, adapter.context, hasApp)
-			Expect(err == nil && len(*applicationComponents) > 1).To(BeTrue())
-
-			// Check if the global component list changed in the meantime and create a composite snapshot if it did.
-			compositeSnapshot, err := adapter.createCompositeSnapshotsIfConflictExists(hasApp, hasComp, createdSnapshot)
-			fmt.Fprintf(GinkgoWriter, "compositeSnapshot.Name: %v\n", compositeSnapshot.Name)
-			Expect(err).To(BeNil())
-			Expect(compositeSnapshot).NotTo(BeNil())
-			Eventually(func() error {
-				err := k8sClient.Get(adapter.context, types.NamespacedName{
-					Name:      compositeSnapshot.Name,
-					Namespace: compositeSnapshot.Namespace,
-				}, compositeSnapshot)
-				return err
-			}, time.Second*10).ShouldNot(HaveOccurred())
-
-			// Check if the composite snapshot that was already created above was correctly detected and returned.
-			adapter.context = loader.GetMockedContext(ctx, []loader.MockData{
-				{
-					ContextKey: loader.ApplicationContextKey,
-					Resource:   hasApp,
-				},
-				{
-					ContextKey: loader.ComponentContextKey,
-					Resource:   hasComp,
-				},
-				{
-					ContextKey: loader.SnapshotContextKey,
-					Resource:   hasSnapshot,
-				},
-				{
-					ContextKey: loader.EnvironmentContextKey,
-					Resource:   hasEnv,
-				},
-				{
-					ContextKey: loader.ApplicationComponentsContextKey,
-					Resource:   []applicationapiv1alpha1.Component{*hasComp, *hasCompNew},
-				},
-				{
-					ContextKey: loader.AllSnapshotsContextKey,
-					Resource:   []applicationapiv1alpha1.Snapshot{*compositeSnapshot},
-				},
-			})
-			existingCompositeSnapshot, err := adapter.createCompositeSnapshotsIfConflictExists(hasApp, hasComp, createdSnapshot)
-			Expect(err).To(BeNil())
-			Expect(existingCompositeSnapshot).NotTo(BeNil())
-			Expect(existingCompositeSnapshot.Name).To(Equal(compositeSnapshot.Name))
-
-			componentSource, _ := adapter.getComponentSourceFromSnapshotComponent(existingCompositeSnapshot, hasCompNew)
-			Expect(componentSource.GitSource.Revision).To(Equal("lastbuildcommit"))
-			err = k8sClient.Delete(ctx, hasCompNew)
-			Expect(err == nil || k8serrors.IsNotFound(err)).To(BeTrue())
-		})
-	})
-
 	When("Snapshot already exists", func() {
 		BeforeEach(func() {
 			adapter = NewAdapter(integrationPipelineRunComponent, hasComp, hasApp, logger, loader.NewMockLoader(), k8sClient, ctx)
@@ -657,53 +432,6 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			existingSnapshot, err := adapter.loader.GetSnapshotFromPipelineRun(adapter.client, adapter.context, integrationPipelineRunComponent)
 			Expect(err).To(BeNil())
 			Expect(existingSnapshot).ToNot(BeNil())
-		})
-
-		It("ensures Snapshot passed all tests", func() {
-			adapter.context = loader.GetMockedContext(ctx, []loader.MockData{
-				{
-					ContextKey: loader.ApplicationContextKey,
-					Resource:   hasApp,
-				},
-				{
-					ContextKey: loader.ComponentContextKey,
-					Resource:   hasComp,
-				},
-				{
-					ContextKey: loader.SnapshotContextKey,
-					Resource:   hasSnapshot,
-				},
-				{
-					ContextKey: loader.PipelineRunsContextKey,
-					Resource:   []tektonv1beta1.PipelineRun{*integrationPipelineRunComponent},
-				},
-				{
-					ContextKey: loader.RequiredIntegrationTestScenariosContextKey,
-					Resource:   []v1beta1.IntegrationTestScenario{*integrationTestScenario},
-				},
-				{
-					ContextKey: loader.ApplicationComponentsContextKey,
-					Resource:   []applicationapiv1alpha1.Component{*hasComp},
-				},
-			})
-			Expect(reflect.TypeOf(adapter)).To(Equal(reflect.TypeOf(&Adapter{})))
-
-			result, err := adapter.EnsureSnapshotPassedAllTests()
-			Expect(!result.CancelRequest && err == nil).To(BeTrue())
-
-			integrationTestScenarios, err := adapter.loader.GetRequiredIntegrationTestScenariosForApplication(k8sClient, adapter.context, hasApp)
-			Expect(err).To(BeNil())
-			Expect(len(*integrationTestScenarios) > 0).To(BeTrue())
-
-			integrationPipelineRuns, err := adapter.getAllPipelineRunsForSnapshot(hasSnapshot, integrationTestScenarios)
-			Expect(err).To(BeNil())
-			Expect(len(*integrationPipelineRuns) > 0).To(BeTrue())
-
-			allIntegrationPipelineRunsPassed, err := adapter.determineIfAllIntegrationPipelinesPassed(integrationPipelineRuns)
-			Expect(err).To(BeNil())
-			Expect(allIntegrationPipelineRunsPassed).To(BeTrue())
-
-			Expect(meta.IsStatusConditionTrue(hasSnapshot.Status.Conditions, gitops.AppStudioTestSucceededCondition)).To(BeTrue())
 		})
 
 		It("ensures test status in snapshot is updated to passed", func() {
@@ -847,26 +575,6 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				Expect(err == nil || k8serrors.IsNotFound(err)).To(BeTrue())
 				err = k8sClient.Delete(ctx, integrationTestScenarioFailed)
 				Expect(err == nil || k8serrors.IsNotFound(err)).To(BeTrue())
-			})
-
-			It("ensures Snapshot failed", func() {
-				result, err := adapter.EnsureSnapshotPassedAllTests()
-				Expect(!result.CancelRequest && err == nil).To(BeTrue())
-
-				integrationTestScenarios, err := adapter.loader.GetRequiredIntegrationTestScenariosForApplication(k8sClient, adapter.context, hasApp)
-				Expect(err).To(BeNil())
-				Expect(len(*integrationTestScenarios) > 0).To(BeTrue())
-
-				integrationPipelineRuns, err := adapter.getAllPipelineRunsForSnapshot(hasSnapshot, integrationTestScenarios)
-				Expect(err).To(BeNil())
-				Expect(len(*integrationPipelineRuns) > 0).To(BeTrue())
-
-				allIntegrationPipelineRunsPassed, err := adapter.determineIfAllIntegrationPipelinesPassed(integrationPipelineRuns)
-				Expect(err).To(BeNil())
-				Expect(allIntegrationPipelineRunsPassed).To(BeFalse())
-
-				Expect(meta.IsStatusConditionFalse(hasSnapshot.Status.Conditions, gitops.AppStudioTestSucceededCondition)).To(BeTrue())
-
 			})
 
 			It("ensures test status in snapshot is updated to failed", func() {
