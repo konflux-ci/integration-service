@@ -479,7 +479,7 @@ var _ = Describe("Binding Adapter", Ordered, func() {
 		expectedLogEntry := "DeploymentTargetClaim deleted"
 		Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
 
-		expectedLogEntry = "Ephemeral environment and its owning snapshotEnvironmentBinding deleted"
+		expectedLogEntry = "Ephemeral environment is deleted and its owning SnapshotEnvironmentBinding is in the process of being deleted"
 		Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
 	})
 
