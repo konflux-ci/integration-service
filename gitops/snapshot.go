@@ -145,6 +145,24 @@ const (
 
 	//AppStudioIntegrationStatusFinished is the reason that's set when the AppStudio tests finish.
 	AppStudioIntegrationStatusFinished = "Finished"
+
+	// the statuses needed to report to GiHub when creating check run or commit status, see doc
+	// https://docs.github.com/en/rest/guides/using-the-rest-api-to-interact-with-checks?apiVersion=2022-11-28
+	// https://docs.github.com/en/free-pro-team@latest/rest/checks/runs?apiVersion=2022-11-28#create-a-check-run
+	//IntegrationTestStatusPendingGithub is the status reported to github when integration test is in a queue
+	IntegrationTestStatusPendingGithub = "pending"
+
+	//IntegrationTestStatusSuccessGithub is the status reported to github when integration test succeed
+	IntegrationTestStatusSuccessGithub = "success"
+
+	//IntegrationTestStatusFailureGithub is the status reported to github when integration test fail
+	IntegrationTestStatusFailureGithub = "failure"
+
+	//IntegrationTestStatusErrorGithub is the status reported to github when integration test experience error
+	IntegrationTestStatusErrorGithub = "error"
+
+	//IntegrationTestStatusInProgressGithub is the status reported to github when integration test is in progress
+	IntegrationTestStatusInProgressGithub = "in_progress"
 )
 
 // IntegrationTestScenario test runs status
@@ -548,6 +566,26 @@ func HasSnapshotTestingChangedToFinished(objectOld, objectNew client.Object) boo
 	if oldSnapshot, ok := objectOld.(*applicationapiv1alpha1.Snapshot); ok {
 		if newSnapshot, ok := objectNew.(*applicationapiv1alpha1.Snapshot); ok {
 			return !HaveAppStudioTestsFinished(oldSnapshot) && HaveAppStudioTestsFinished(newSnapshot)
+		}
+	}
+	return false
+}
+
+// HasSnapshotTestAnnotationChanged returns a boolean indicating whether the Snapshot annotation has
+// changed. If the objects passed to this function are not Snapshots, the function will return false.
+func HasSnapshotTestAnnotationChanged(objectOld, objectNew client.Object) bool {
+	if oldSnapshot, ok := objectOld.(*applicationapiv1alpha1.Snapshot); ok {
+		if newSnapshot, ok := objectNew.(*applicationapiv1alpha1.Snapshot); ok {
+			if !metadata.HasAnnotation(oldSnapshot, SnapshotTestsStatusAnnotation) && metadata.HasAnnotation(newSnapshot, SnapshotTestsStatusAnnotation) {
+				return true
+			}
+			if old_value, ok := oldSnapshot.GetAnnotations()[SnapshotTestsStatusAnnotation]; ok {
+				if new_value, ok := newSnapshot.GetAnnotations()[SnapshotTestsStatusAnnotation]; ok {
+					if old_value != new_value {
+						return true
+					}
+				}
+			}
 		}
 	}
 	return false
