@@ -374,6 +374,6 @@ func CleanUpEphemeralEnvironments(client client.Client, logger *IntegrationLogge
 		logger.Error(err, "Failed to delete the test ephemeral environment and its owning snapshotEnvironmentBinding", "environment.Name", env.Name)
 		return err
 	}
-	logger.LogAuditEvent("Ephemeral environment and its owning snapshotEnvironmentBinding deleted", env, LogActionDelete)
+	logger.LogAuditEvent("Ephemeral environment is deleted and its owning SnapshotEnvironmentBinding is in the process of being deleted", env, LogActionDelete)
 	return nil
 }
