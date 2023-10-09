@@ -20,6 +20,7 @@ import (
 	"github.com/go-logr/logr"
 	"github.com/redhat-appstudio/integration-service/controllers/binding"
 	"github.com/redhat-appstudio/integration-service/controllers/buildpipeline"
+	"github.com/redhat-appstudio/integration-service/controllers/component"
 	"github.com/redhat-appstudio/integration-service/controllers/integrationpipeline"
 	"github.com/redhat-appstudio/integration-service/controllers/scenario"
 	"github.com/redhat-appstudio/integration-service/controllers/snapshot"
@@ -36,6 +37,7 @@ var setupFunctions = []func(manager.Manager, *logr.Logger) error{
 	scenario.SetupController,
 	binding.SetupController,
 	statusreport.SetupController,
+	component.SetupController,
 }
 
 // SetupControllers invoke all SetupController functions defined in setupFunctions, setting all controllers up and
