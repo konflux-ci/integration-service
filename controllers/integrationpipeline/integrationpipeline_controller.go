@@ -109,7 +109,6 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 
 	return controller.ReconcileHandler([]controller.Operation{
 		adapter.EnsureStatusReportedInSnapshot,
-		adapter.EnsureSnapshotPassedAllTests,
 		adapter.EnsureStatusReported,
 		adapter.EnsureEphemeralEnvironmentsCleanedUp,
 	})
@@ -117,7 +116,6 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 
 // AdapterInterface is an interface defining all the operations that should be defined in an Integration adapter.
 type AdapterInterface interface {
-	EnsureSnapshotPassedAllTests() (controller.OperationResult, error)
 	EnsureStatusReported() (controller.OperationResult, error)
 	EnsureStatusReportedInSnapshot() (controller.OperationResult, error)
 	EnsureEphemeralEnvironmentsCleanedUp() (controller.OperationResult, error)
