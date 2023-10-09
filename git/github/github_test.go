@@ -71,9 +71,25 @@ func (MockChecksService) ListCheckRunsForRef(
 ) (*ghapi.ListCheckRunsResults, *ghapi.Response, error) {
 	var id int64 = 20
 	var externalID string = "example-external-id"
-	checkRuns := []*ghapi.CheckRun{{ID: &id, ExternalID: &externalID}}
+	var text string = "example-text-update"
+	var checkRunOutput = ghapi.CheckRunOutput{Text: &text}
+	conclusion := "failure"
+	checkRuns := []*ghapi.CheckRun{{ID: &id, ExternalID: &externalID, Conclusion: &conclusion, Output: &checkRunOutput}}
 	total := len(checkRuns)
 	return &ghapi.ListCheckRunsResults{Total: &total, CheckRuns: checkRuns}, nil, nil
+}
+
+// GetAllCheckRunsForRef implements github.ChecksService
+func (MockChecksService) GetAllCheckRunsForRef(
+	ctx context.Context, owner string, repo string, ref string, appID int64,
+) ([]*ghapi.CheckRun, error) {
+	var id int64 = 20
+	var externalID string = "example-external-id"
+	var text string = "example-text-update"
+	var checkRunOutput = ghapi.CheckRunOutput{Text: &text}
+	conclusion := "failure"
+	checkRuns := []*ghapi.CheckRun{{ID: &id, ExternalID: &externalID, Conclusion: &conclusion, Output: &checkRunOutput}}
+	return checkRuns, nil
 }
 
 // UpdateCheckRun implements github.ChecksService
@@ -105,6 +121,18 @@ func (MockRepositoriesService) CreateStatus(
 	return &ghapi.RepoStatus{ID: &id, State: &state}, nil, nil
 }
 
+// ListStatuses implements github.RepositoriesService
+func (MockRepositoriesService) ListStatuses(
+	ctx context.Context, owner string, repo string, ref string, opts *ghapi.ListOptions,
+) ([]*ghapi.RepoStatus, *ghapi.Response, error) {
+	var id int64 = 60
+	var state = "success"
+	var description = "example-description"
+	var context = "example-context"
+	repoStatus := &ghapi.RepoStatus{ID: &id, State: &state, Description: &description, Context: &context}
+	return []*ghapi.RepoStatus{repoStatus}, nil, nil
+}
+
 var _ = Describe("CheckRunAdapter", func() {
 	It("can compute status", func() {
 		adapter := &github.CheckRunAdapter{Conclusion: "success", StartTime: time.Time{}}
@@ -134,12 +162,21 @@ var _ = Describe("Client", func() {
 		Repository:     "example-repo",
 		SHA:            "abcdef1",
 		ExternalID:     "example-external-id",
-		Conclusion:     "success",
+		Conclusion:     "Passed",
 		Title:          "example-title",
 		Summary:        "example-summary",
 		Text:           "example-text",
 		StartTime:      time.Now(),
 		CompletionTime: time.Now(),
+	}
+
+	var commitStatusAdapter = &github.CommitStatusAdapter{
+		Owner:       "example-owner",
+		Repository:  "example-repo",
+		SHA:         "abcdef1",
+		State:       "success",
+		Description: "example-description",
+		Context:     "example-context",
 	}
 
 	BeforeEach(func() {
@@ -210,5 +247,66 @@ var _ = Describe("Client", func() {
 		checkRunID, err = client.GetCheckRunID(context.TODO(), "", "", "", "unknown-external-id", 1)
 		Expect(err).To(BeNil())
 		Expect(checkRunID).To(BeNil())
+	})
+
+	It("can check if check run updated is needed", func() {
+		var checkRunAdapter = &github.CheckRunAdapter{
+			Name:           "example-name",
+			Owner:          "example-owner",
+			Repository:     "example-repo",
+			SHA:            "abcdef1",
+			ExternalID:     "example-external-id",
+			Conclusion:     "success",
+			Title:          "example-title",
+			Summary:        "example-summary",
+			Text:           "example-text",
+			StartTime:      time.Now(),
+			CompletionTime: time.Now(),
+		}
+
+		allCheckRuns, err := client.GetAllCheckRunsForRef(context.TODO(), "", "", "", 1)
+		Expect(err).To(BeNil())
+		Expect(len(allCheckRuns) > 0).To(BeTrue())
+
+		existingCheckRun := client.GetExistingCheckRun(allCheckRuns, checkRunAdapter)
+		Expect(existingCheckRun).NotTo(BeNil())
+		Expect(client.IsUpdateNeeded(existingCheckRun, checkRunAdapter)).To(BeTrue())
+
+		checkRunAdapter = &github.CheckRunAdapter{
+			Name:           "example-name",
+			Owner:          "example-owner",
+			Repository:     "example-repo",
+			SHA:            "abcdef1",
+			ExternalID:     "example-external-id",
+			Conclusion:     "failure",
+			Title:          "example-title",
+			Summary:        "example-summary",
+			Text:           "example-text-update",
+			StartTime:      time.Now(),
+			CompletionTime: time.Now(),
+		}
+		Expect(client.IsUpdateNeeded(existingCheckRun, checkRunAdapter)).To(BeFalse())
+	})
+
+	It("can check if creating a new commit status is needed", func() {
+		commitStatuses, err := client.GetAllCommitStatusesForRef(context.TODO(), "", "", "")
+		Expect(err).To(BeNil())
+		Expect(len(commitStatuses) > 0).To(BeTrue())
+
+		commitStatusExist, err := client.CommitStatusExists(commitStatuses, commitStatusAdapter)
+		Expect(commitStatusExist).To(BeTrue())
+		Expect(err).To(BeNil())
+
+		commitStatusAdapter = &github.CommitStatusAdapter{
+			Owner:       "example-owner",
+			Repository:  "example-repo",
+			SHA:         "abcdef1",
+			State:       "failure",
+			Description: "example-description",
+			Context:     "example-context",
+		}
+		commitStatusExist, err = client.CommitStatusExists(commitStatuses, commitStatusAdapter)
+		Expect(commitStatusExist).To(BeFalse())
+		Expect(err).To(BeNil())
 	})
 })

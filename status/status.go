@@ -20,7 +20,9 @@ import (
 	"context"
 
 	"github.com/go-logr/logr"
+	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/gitops"
+	"github.com/redhat-appstudio/integration-service/helpers"
 	"github.com/redhat-appstudio/operator-toolkit/metadata"
 	tektonv1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -32,11 +34,12 @@ const NamePrefix = "Red Hat Trusted App Test"
 // Reporter is a generic interface all status implementations must follow.
 type Reporter interface {
 	ReportStatus(client.Client, context.Context, *tektonv1beta1.PipelineRun) error
+	ReportStatusForSnapshot(client.Client, context.Context, *helpers.IntegrationLogger, *applicationapiv1alpha1.Snapshot) error
 }
 
 // Status is the interface of the main status Adapter.
 type Status interface {
-	GetReporters(*tektonv1beta1.PipelineRun) ([]Reporter, error)
+	GetReporters(client.Object) ([]Reporter, error)
 }
 
 // Adapter is responsible for discovering supported Reporter implementations.
@@ -73,10 +76,10 @@ func NewAdapter(logger logr.Logger, k8sClient client.Client, opts ...AdapterOpti
 
 // GetReporters returns a list of enabled/supported status reporters for a PipelineRun.
 // All potential reporters must be added to this function for them to be utilized.
-func (a *Adapter) GetReporters(pipelineRun *tektonv1beta1.PipelineRun) ([]Reporter, error) {
+func (a *Adapter) GetReporters(object client.Object) ([]Reporter, error) {
 	var reporters []Reporter
 
-	if metadata.HasLabelWithValue(pipelineRun, gitops.PipelineAsCodeGitProviderLabel, gitops.PipelineAsCodeGitHubProviderType) {
+	if metadata.HasLabelWithValue(object, gitops.PipelineAsCodeGitProviderLabel, gitops.PipelineAsCodeGitHubProviderType) {
 		reporters = append(reporters, a.githubReporter)
 	}
 
