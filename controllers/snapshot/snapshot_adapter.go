@@ -225,7 +225,7 @@ TestScenarioLoop:
 					return controller.RequeueWithError(err)
 				}
 				if binding == nil {
-					//create bindging and add scenario name to label of binding
+					//create binding and add scenario name to label of binding
 					scenarioLabelAndKey := map[string]string{gitops.SnapshotTestScenarioLabel: integrationTestScenario.Name}
 					binding, err = a.createSnapshotEnvironmentBindingForSnapshot(a.application, &environment, a.snapshot, components, scenarioLabelAndKey)
 					if err != nil {
@@ -267,6 +267,12 @@ TestScenarioLoop:
 				"integrationTestScenario.Namespace", integrationTestScenario.Namespace,
 				"integrationTestScenario.Name", integrationTestScenario.Name)
 			return controller.RequeueWithError(err)
+		}
+		if existingEnv.Spec.Configuration.Env == nil {
+			a.logger.Error(err, "Failed to find the env defined in configuration from integrationTestScenario",
+				"integrationTestScenario.Namespace", integrationTestScenario.Namespace,
+				"integrationTestScenario.Name", integrationTestScenario.Name)
+			return controller.StopProcessing()
 		}
 
 		//create an ephemeral copy env of existing environment
@@ -693,7 +699,7 @@ func (a *Adapter) updateExistingSnapshotEnvironmentBindingWithSnapshot(snapshotE
 // snapshot is mainly used for adding labels
 // returns copy of already existing environment with updated envVars
 func (a *Adapter) createCopyOfExistingEnvironment(existingEnvironment *applicationapiv1alpha1.Environment, namespace string, integrationTestScenario *v1beta1.IntegrationTestScenario, snapshot *applicationapiv1alpha1.Snapshot, application *applicationapiv1alpha1.Application) (*applicationapiv1alpha1.Environment, error) {
-	// Try to find a available DeploymentTargetClass with the right provisioner
+	// Try to find an available DeploymentTargetClass with the right provisioner
 	deploymentTargetClass, err := a.loader.FindAvailableDeploymentTargetClass(a.client, a.context)
 	if err != nil || deploymentTargetClass == nil {
 		a.logger.Error(err, "Failed to find deploymentTargetClass with right provisioner for copy of existingEnvironment!",
