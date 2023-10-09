@@ -194,7 +194,7 @@ var _ = Describe("Predicates", Ordered, func() {
 	})
 
 	Context("when testing IntegrationSnapshotChangePredicate predicate", func() {
-		instance := gitops.PRSnapshotTestAnnotationChangePredicate()
+		instance := gitops.SnapshotTestAnnotationChangePredicate()
 
 		It("returns true when the test status annotation of Snapshot changed ", func() {
 			contextEvent := event.UpdateEvent{

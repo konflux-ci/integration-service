@@ -123,7 +123,8 @@ var _ = Describe("StatusReportController", func() {
 		Expect(reflect.TypeOf(statusReportReconciler)).To(Equal(reflect.TypeOf(&Reconciler{})))
 	})
 
-	It("can Reconcile when Reconcile fails to prepare the adapter when snapshot is found", func() {
+	It("can Reconcile when Reconcile fails to prepare the adapter when snapshot is not found", func() {
+		Expect(k8sClient.Delete(ctx, hasSnapshot)).Should(Succeed())
 		Eventually(func() error {
 			_, err := statusReportReconciler.Reconcile(ctx, req)
 			return err
