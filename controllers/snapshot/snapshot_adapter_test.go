@@ -855,6 +855,10 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 					ContextKey: loader.RequiredIntegrationTestScenariosContextKey,
 					Resource:   []v1beta1.IntegrationTestScenario{*integrationTestScenario, *integrationTestScenarioWithoutEnv},
 				},
+				{
+					ContextKey: loader.SnapshotEnvironmentBindingContextKey,
+					Resource:   nil,
+				},
 			})
 		})
 
@@ -895,7 +899,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			result, err := adapter.EnsureCreationOfEnvironment()
 			Expect(!result.CancelRequest && err == nil).To(BeTrue())
 
-			expectedLogEntry := "An ephemeral Environment is created for integrationTestScenario"
+			expectedLogEntry := "Ephemeral environment is created for integrationTestScenario"
 			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
 			expectedLogEntry = "A snapshotEnvironmentbinding is created"
 			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
