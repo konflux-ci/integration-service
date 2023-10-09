@@ -82,12 +82,14 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	adapter := NewAdapter(snapshot, application, logger, loader, r.Client, ctx)
 	return controller.ReconcileHandler([]controller.Operation{
 		adapter.EnsureSnapshotTestStatusReported,
+		adapter.EnsureSnapshotFinishedAllTests,
 	})
 }
 
 // AdapterInterface is an interface defining all the operations that should be defined in an Integration adapter.
 type AdapterInterface interface {
 	EnsureSnapshotTestStatusReported() (controller.OperationResult, error)
+	EnsureSnapshotFinishedAllTests() (controller.OperationResult, error)
 }
 
 // SetupController creates a new Integration controller and adds it to the Manager.
@@ -100,6 +102,6 @@ func setupControllerWithManager(manager ctrl.Manager, controller *Reconciler) er
 	return ctrl.NewControllerManagedBy(manager).
 		For(&applicationapiv1alpha1.Snapshot{}).
 		WithEventFilter(predicate.Or(
-			gitops.PRSnapshotTestAnnotationChangePredicate())).
+			gitops.SnapshotTestAnnotationChangePredicate())).
 		Complete(controller)
 }
