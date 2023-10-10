@@ -30,6 +30,7 @@ import (
 	"github.com/redhat-appstudio/integration-service/gitops"
 	h "github.com/redhat-appstudio/integration-service/helpers"
 	"github.com/redhat-appstudio/integration-service/metrics"
+	intgteststat "github.com/redhat-appstudio/integration-service/pkg/integrationteststatus"
 	"github.com/redhat-appstudio/integration-service/release"
 	"github.com/redhat-appstudio/integration-service/tekton"
 
@@ -64,6 +65,15 @@ func NewAdapter(snapshot *applicationapiv1alpha1.Snapshot, application *applicat
 		client:      client,
 		context:     context,
 	}
+}
+
+func scenariosNamesToList(integrationTestScenarions *[]v1beta1.IntegrationTestScenario) *[]string {
+	// transform list of structs into list of strings
+	result := make([]string, 0, len(*integrationTestScenarions))
+	for _, v := range *integrationTestScenarions {
+		result = append(result, v.Name)
+	}
+	return &result
 }
 
 // EnsureAllIntegrationTestPipelinesExist is an operation that will ensure that all Integration test pipelines
@@ -127,7 +137,7 @@ func (a *Adapter) EnsureAllIntegrationTestPipelinesExist() (controller.Operation
 					return controller.RequeueWithError(err)
 				}
 				testStatuses.UpdateTestStatusIfChanged(
-					integrationTestScenario.Name, gitops.IntegrationTestStatusInProgress,
+					integrationTestScenario.Name, intgteststat.IntegrationTestStatusInProgress,
 					fmt.Sprintf("IntegrationTestScenario pipeline '%s' has been created", pipelineRun.Name))
 			}
 		}
@@ -187,7 +197,7 @@ func (a *Adapter) EnsureCreationOfEnvironment() (controller.OperationResult, err
 	if err != nil {
 		return controller.RequeueWithError(err)
 	}
-	testStatuses.InitStatuses(integrationTestScenarios)
+	testStatuses.InitStatuses(scenariosNamesToList(integrationTestScenarios))
 	err = gitops.WriteIntegrationTestStatusesIntoSnapshot(a.snapshot, testStatuses, a.client, a.context)
 	if err != nil {
 		return controller.RequeueWithError(err)
@@ -459,7 +469,7 @@ func (a *Adapter) createEnvironmentBindingForScenario(integrationTestScenario *v
 }
 
 // ensureEphemeralEnvironmentForScenarioExists creates or return existing epehemeral environment for the given test scenario
-func (a *Adapter) ensureEphemeralEnvironmentForScenarioExists(integrationTestScenario *v1beta1.IntegrationTestScenario, testStatuses *gitops.SnapshotIntegrationTestStatuses, components *[]applicationapiv1alpha1.Component, allEnvironments *[]applicationapiv1alpha1.Environment) (*applicationapiv1alpha1.SnapshotEnvironmentBinding, error) {
+func (a *Adapter) ensureEphemeralEnvironmentForScenarioExists(integrationTestScenario *v1beta1.IntegrationTestScenario, testStatuses *intgteststat.SnapshotIntegrationTestStatuses, components *[]applicationapiv1alpha1.Component, allEnvironments *[]applicationapiv1alpha1.Environment) (*applicationapiv1alpha1.SnapshotEnvironmentBinding, error) {
 
 	var (
 		environment *applicationapiv1alpha1.Environment
@@ -472,7 +482,7 @@ func (a *Adapter) ensureEphemeralEnvironmentForScenarioExists(integrationTestSce
 		environment, err = a.createEnvironmentForScenario(integrationTestScenario)
 		if err != nil {
 			testStatuses.UpdateTestStatusIfChanged(
-				integrationTestScenario.Name, gitops.IntegrationTestStatusEnvironmentProvisionError,
+				integrationTestScenario.Name, intgteststat.IntegrationTestStatusEnvironmentProvisionError,
 				fmt.Sprintf("Creation of ephemeral environment failed: %s", err))
 			a.writeIntegrationTestStatusAtError(testStatuses)
 			return nil, fmt.Errorf("failed to create environment: %w", err)
@@ -495,21 +505,21 @@ func (a *Adapter) ensureEphemeralEnvironmentForScenarioExists(integrationTestSce
 		if err != nil {
 			testStatuses.UpdateTestStatusIfChanged(
 				integrationTestScenario.Name,
-				gitops.IntegrationTestStatusEnvironmentProvisionError,
+				intgteststat.IntegrationTestStatusEnvironmentProvisionError,
 				fmt.Sprintf("Failed to create integration test environment: %s", err))
 			a.writeIntegrationTestStatusAtError(testStatuses)
 			return nil, fmt.Errorf("failed to create SnapshotEnvironmentBinding: %w", err)
 		} else {
-			testStatuses.UpdateTestStatusIfChanged(integrationTestScenario.Name, gitops.IntegrationTestStatusInProgress, "Deploying")
+			testStatuses.UpdateTestStatusIfChanged(integrationTestScenario.Name, intgteststat.IntegrationTestStatusInProgress, "Deploying")
 		}
 	} else {
 		a.logger.Info("SnapshotEnvironmentBinding already exists for environment",
 			"binding.Name", binding.Name,
 			"environment.Name", environment.Name)
 
-		if d, ok := testStatuses.GetScenarioStatus(integrationTestScenario.Name); ok && d.Status == gitops.IntegrationTestStatusPending {
+		if d, ok := testStatuses.GetScenarioStatus(integrationTestScenario.Name); ok && d.Status == intgteststat.IntegrationTestStatusPending {
 			// update only from Pending to InProgress to avoid accidental overwrittes from followup states
-			testStatuses.UpdateTestStatusIfChanged(integrationTestScenario.Name, gitops.IntegrationTestStatusInProgress, "Deploying")
+			testStatuses.UpdateTestStatusIfChanged(integrationTestScenario.Name, intgteststat.IntegrationTestStatusInProgress, "Deploying")
 		}
 	}
 
@@ -791,7 +801,7 @@ func (a *Adapter) getEnvironmentFromIntegrationTestScenario(integrationTestScena
 
 // writeIntegrationTestStatusAtError writes updates of integration test statuses into snapshot
 // This is best effort function, should be used only for handling faulty state before reconcilarion requeue
-func (a *Adapter) writeIntegrationTestStatusAtError(sits *gitops.SnapshotIntegrationTestStatuses) {
+func (a *Adapter) writeIntegrationTestStatusAtError(sits *intgteststat.SnapshotIntegrationTestStatuses) {
 	err := gitops.WriteIntegrationTestStatusesIntoSnapshot(a.snapshot, sits, a.client, a.context)
 	if err != nil {
 		a.logger.Error(err, "Updating statuses of tests in snapshot failed")
