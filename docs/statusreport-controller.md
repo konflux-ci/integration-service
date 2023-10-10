@@ -58,6 +58,33 @@ flowchart TD
   does_commitStatus_exist        --No--> create_new_commitStatus_on_gh
   create_new_commitStatus_on_gh  --> continue_processing
 
+%%%%%%%%%%%%%%%%%%%%%%% Drawing EnsureSnapshotTestStatusReported() function 
+
+%% Node definitions
+  
+  get_required_scenarios(Get all required <br> IntegrationTestScenarios)
+  parse_snapshot_status(Parse the Snapshot's <br> status annotation)
+  check_finished_tests{Did Snapshot <br> finish all required <br> integration tests?}
+  check_supersede{Does Snapshot need <br> to be superseded <br> with a composite Snapshot?}
+  check_passed_tests{Did Snapshot <br> pass all required <br> integration tests?}
+  create_snapshot(Create composite Snapshot)
+  update_status(Update Snapshot status accordingly)
+  continue_processing_tests(Controller continues processing)
+
+
+%% Node connections
+  predicate                    ---->    |"EnsureSnapshotFinishedAllTests()"|get_required_scenarios
+  get_required_scenarios        --->    parse_snapshot_status
+  parse_snapshot_status         --->    check_finished_tests
+  check_finished_tests      --Yes-->    check_supersede
+  check_finished_tests       --No-->    continue_processing_tests
+  check_supersede           --Yes-->    create_snapshot
+  check_supersede            --No-->    check_passed_tests
+  create_snapshot               --->    update_status
+  check_passed_tests        --Yes-->    update_status
+  check_passed_tests         --No-->    update_status
+  update_status                ---->    continue_processing_tests
+
   %% Assigning styles to nodes
   class predicate Amber;
 ```

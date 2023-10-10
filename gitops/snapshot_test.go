@@ -217,6 +217,15 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 		Expect(foundStatusCondition.Reason).To(Equal(gitops.AppStudioIntegrationStatusInProgress))
 	})
 
+	It("ensures the Snapshots status can be marked as invalid", func() {
+		updatedSnapshot, err := gitops.MarkSnapshotAsInvalid(k8sClient, ctx, hasSnapshot, "Test message")
+		Expect(err).To(BeNil())
+		Expect(updatedSnapshot).NotTo(BeNil())
+		Expect(updatedSnapshot.Status.Conditions).NotTo(BeNil())
+		Expect(meta.IsStatusConditionTrue(updatedSnapshot.Status.Conditions, gitops.AppStudioIntegrationStatusCondition)).To(BeFalse())
+		Expect(gitops.IsSnapshotMarkedAsPassed(updatedSnapshot)).To(BeFalse())
+	})
+
 	It("ensures the Snapshots status can be marked as auto released", func() {
 		Expect(gitops.IsSnapshotMarkedAsAutoReleased(hasSnapshot)).To(BeFalse())
 
