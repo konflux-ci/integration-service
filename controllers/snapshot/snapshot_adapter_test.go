@@ -56,7 +56,6 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		hasSnapshot                           *applicationapiv1alpha1.Snapshot
 		hasSnapshotPR                         *applicationapiv1alpha1.Snapshot
 		deploymentTargetClass                 *applicationapiv1alpha1.DeploymentTargetClass
-		integrationPipelineRun                *tektonv1beta1.PipelineRun
 		integrationTestScenario               *v1beta1.IntegrationTestScenario
 		integrationTestScenarioWithoutEnv     *v1beta1.IntegrationTestScenario
 		integrationTestScenarioWithoutEnvCopy *v1beta1.IntegrationTestScenario
@@ -293,40 +292,6 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		}
 		Expect(k8sClient.Create(ctx, hasSnapshotPR)).Should(Succeed())
 
-		integrationPipelineRun = &tektonv1beta1.PipelineRun{
-			ObjectMeta: metav1.ObjectMeta{
-				GenerateName: "build-pipelinerun" + "-",
-				Namespace:    "default",
-				Labels: map[string]string{
-					"pipelines.appstudio.openshift.io/type": "build",
-					"pipelines.openshift.io/used-by":        "build-cloud",
-					"pipelines.openshift.io/runtime":        "nodejs",
-					"pipelines.openshift.io/strategy":       "s2i",
-					"appstudio.openshift.io/component":      "component-sample",
-				},
-				Annotations: map[string]string{
-					"appstudio.redhat.com/updateComponentOnSuccess": "false",
-					"pipelinesascode.tekton.dev/installation-id":    "123",
-				},
-			},
-			Spec: tektonv1beta1.PipelineRunSpec{
-				PipelineRef: &tektonv1beta1.PipelineRef{
-					Name:   "build-pipeline-pass",
-					Bundle: "quay.io/kpavic/test-bundle:build-pipeline-pass",
-				},
-				Params: []tektonv1beta1.Param{
-					{
-						Name: "output-image",
-						Value: tektonv1beta1.ParamValue{
-							Type:      tektonv1beta1.ParamTypeString,
-							StringVal: "quay.io/redhat-appstudio/sample-image",
-						},
-					},
-				},
-			},
-		}
-		Expect(k8sClient.Create(ctx, integrationPipelineRun)).Should(Succeed())
-
 		Eventually(func() error {
 			err := k8sClient.Get(ctx, types.NamespacedName{
 				Name:      hasSnapshot.Name,
@@ -338,8 +303,6 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 
 	AfterEach(func() {
 		err := k8sClient.Delete(ctx, hasSnapshotPR)
-		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
-		err = k8sClient.Delete(ctx, integrationPipelineRun)
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 		err = k8sClient.Delete(ctx, hasSnapshot)
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())

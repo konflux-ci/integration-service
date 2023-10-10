@@ -120,16 +120,13 @@ func (a *Adapter) EnsureAllIntegrationTestPipelinesExist() (controller.Operation
 				a.logger.Info("IntegrationTestScenario has environment defined, skipping creation of pipelinerun.", "IntegrationTestScenario", integrationTestScenario)
 				continue
 			}
-			integrationPipelineRuns, err := a.loader.GetAllPipelineRunsForSnapshotAndScenario(a.client, a.context, a.snapshot, &integrationTestScenario)
-			if err != nil {
-				a.logger.Error(err, "Failed to get pipelineRuns for snapshot and scenario",
-					"integrationTestScenario.Name", integrationTestScenario.Name)
-				return controller.RequeueWithError(err)
-			}
-			if integrationPipelineRuns != nil && len(*integrationPipelineRuns) > 0 {
-				a.logger.Info("Found existing integrationPipelineRuns",
+			// Check if an existing integration pipelineRun is registered in the Snapshot's status
+			// We rely on this because the actual pipelineRun CR may have been pruned by this point
+			integrationTestScenarioStatus, ok := testStatuses.GetScenarioStatus(integrationTestScenario.Name)
+			if ok && integrationTestScenarioStatus.TestPipelineRunName != "" {
+				a.logger.Info("Found existing integrationPipelineRun",
 					"integrationTestScenario.Name", integrationTestScenario.Name,
-					"len(integrationPipelineRuns)", len(*integrationPipelineRuns))
+					"pipelineRun.Name", integrationTestScenarioStatus.TestPipelineRunName)
 			} else {
 				pipelineRun, err := a.createIntegrationPipelineRun(a.application, &integrationTestScenario, a.snapshot)
 				if err != nil {
