@@ -39,6 +39,8 @@ import (
 	"github.com/redhat-appstudio/integration-service/gitops"
 	"github.com/redhat-appstudio/integration-service/helpers"
 	"github.com/redhat-appstudio/integration-service/loader"
+	intgteststat "github.com/redhat-appstudio/integration-service/pkg/integrationteststatus"
+
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -614,7 +616,7 @@ var _ = Describe("Binding Adapter", Ordered, func() {
 			Expect(err).To(BeNil())
 			detail, ok := statuses.GetScenarioStatus(integrationTestScenario.Name)
 			Expect(ok).To(BeTrue())
-			Expect(detail.Status).To(Equal(gitops.IntegrationTestStatusDeploymentError))
+			Expect(detail.Status).To(Equal(intgteststat.IntegrationTestStatusDeploymentError))
 		})
 	})
 })

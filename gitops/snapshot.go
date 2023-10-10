@@ -165,25 +165,6 @@ const (
 	IntegrationTestStatusInProgressGithub = "in_progress"
 )
 
-// IntegrationTestScenario test runs status
-type IntegrationTestStatus int
-
-//go:generate enumer -type=IntegrationTestStatus -linecomment -json
-const (
-	// Nothing is done yet for the ITS list and snapshot
-	IntegrationTestStatusPending IntegrationTestStatus = iota + 1 // Pending
-	// Starting to handle an integration test scenario for a snapshot
-	IntegrationTestStatusInProgress // InProgress
-	// The environment provision experienced error for this ITS and snapshot
-	IntegrationTestStatusEnvironmentProvisionError // EnvironmentProvisionError
-	// The SEB deployment experienced error for this ITS and snapshot
-	IntegrationTestStatusDeploymentError // DeploymentError
-	// Integration PLR failed for this ITS and snapshot
-	IntegrationTestStatusTestFail // TestFail
-	// Integration PLR passed for this ITS and snapshot
-	IntegrationTestStatusTestPassed // TestPassed
-)
-
 var (
 	// SnapshotComponentLabel contains the name of the updated Snapshot component - it should match the pipeline label.
 	SnapshotComponentLabel = tekton.ComponentNameLabel

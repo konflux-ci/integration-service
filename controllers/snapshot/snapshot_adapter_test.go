@@ -38,6 +38,8 @@ import (
 
 	"github.com/redhat-appstudio/integration-service/gitops"
 	"github.com/redhat-appstudio/integration-service/helpers"
+	intgteststat "github.com/redhat-appstudio/integration-service/pkg/integrationteststatus"
+
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -452,7 +454,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			Expect(err).To(BeNil())
 			detail, ok := statuses.GetScenarioStatus(integrationTestScenarioWithoutEnv.Name)
 			Expect(ok).To(BeTrue())
-			Expect(detail.Status).To(Equal(gitops.IntegrationTestStatusInProgress))
+			Expect(detail.Status).To(Equal(intgteststat.IntegrationTestStatusInProgress))
 		})
 
 		It("Ensure IntegrationPipelineRun can be created for scenario", func() {

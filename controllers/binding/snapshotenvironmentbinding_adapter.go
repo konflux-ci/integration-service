@@ -29,6 +29,8 @@ import (
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/api/v1beta1"
 	"github.com/redhat-appstudio/integration-service/gitops"
+	intgteststat "github.com/redhat-appstudio/integration-service/pkg/integrationteststatus"
+
 	h "github.com/redhat-appstudio/integration-service/helpers"
 	"github.com/redhat-appstudio/integration-service/loader"
 	"github.com/redhat-appstudio/integration-service/tekton"
@@ -155,7 +157,7 @@ func (a *Adapter) EnsureEphemeralEnvironmentsCleanedUp() (controller.OperationRe
 		"reason", reasonMsg,
 	)
 
-	err := a.writeTestStatusIntoSnapshot(gitops.IntegrationTestStatusDeploymentError,
+	err := a.writeTestStatusIntoSnapshot(intgteststat.IntegrationTestStatusDeploymentError,
 		fmt.Sprintf("The SnapshotEnvironmentBinding has failed to deploy on ephemeral environment: %s", reasonMsg))
 	if err != nil {
 		return controller.RequeueWithError(fmt.Errorf("failed to update snapshot test status: %w", err))
@@ -242,7 +244,7 @@ func (a *Adapter) getDeploymentTargetForEnvironment(environment *applicationapiv
 }
 
 // writeTestStatusIntoSnapshot updates test status and instantly writes changes into test result annotation
-func (a *Adapter) writeTestStatusIntoSnapshot(status gitops.IntegrationTestStatus, details string) error {
+func (a *Adapter) writeTestStatusIntoSnapshot(status intgteststat.IntegrationTestStatus, details string) error {
 	testStatuses, err := gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(a.snapshot)
 	if err != nil {
 		return err
