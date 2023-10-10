@@ -27,6 +27,7 @@ import (
 
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/helpers"
+	intgteststat "github.com/redhat-appstudio/integration-service/pkg/integrationteststatus"
 	"github.com/redhat-appstudio/integration-service/status"
 
 	"github.com/redhat-appstudio/integration-service/loader"
@@ -64,7 +65,7 @@ func NewAdapter(snapshot *applicationapiv1alpha1.Snapshot, application *applicat
 // EnsureSnapshotTestStatusReported will ensure that integration test status including env provision and snapshotEnvironmentBinding error is reported to the git provider
 // which (indirectly) triggered its execution.
 func (a *Adapter) EnsureSnapshotTestStatusReported() (controller.OperationResult, error) {
-	if !isFeatureEnabled() || !metadata.HasLabelWithValue(a.snapshot, gitops.PipelineAsCodeEventTypeLabel, gitops.PipelineAsCodePullRequestType) {
+	if !isFeatureEnabled() || !gitops.IsSnapshotCreatedByPACPullRequestEvent(a.snapshot) {
 		return controller.ContinueProcessing()
 	}
 
@@ -149,10 +150,8 @@ func (a *Adapter) EnsureSnapshotFinishedAllTests() (controller.OperationResult, 
 			a.logger.Info("The global component list has changed in the meantime, marking snapshot as Invalid",
 				"snapshot.Name", a.snapshot.Name)
 			if !gitops.IsSnapshotMarkedAsInvalid(a.snapshot) {
-				patch := client.MergeFrom(a.snapshot.DeepCopy())
-				gitops.SetSnapshotIntegrationStatusAsInvalid(a.snapshot,
+				_, err = gitops.MarkSnapshotAsInvalid(a.client, a.context, a.snapshot,
 					"The global component list has changed in the meantime, superseding with a composite snapshot")
-				err := a.client.Status().Patch(a.context, a.snapshot, patch)
 				if err != nil {
 					a.logger.Error(err, "Failed to update the status to Invalid for the snapshot",
 						"snapshot.Name", a.snapshot.Name)
@@ -194,15 +193,15 @@ func (a *Adapter) EnsureSnapshotFinishedAllTests() (controller.OperationResult, 
 
 // determineIfAllIntegrationTestsFinishedAndPassed checks if all Integration tests finished and passed for the given
 // list of integrationTestScenarios.
-func (a *Adapter) determineIfAllIntegrationTestsFinishedAndPassed(integrationTestScenarios *[]v1beta1.IntegrationTestScenario, testStatuses *gitops.SnapshotIntegrationTestStatuses) (bool, bool) {
+func (a *Adapter) determineIfAllIntegrationTestsFinishedAndPassed(integrationTestScenarios *[]v1beta1.IntegrationTestScenario, testStatuses *intgteststat.SnapshotIntegrationTestStatuses) (bool, bool) {
 	allIntegrationTestsFinished, allIntegrationTestsPassed := true, true
 	for _, integrationTestScenario := range *integrationTestScenarios {
 		integrationTestScenario := integrationTestScenario // G601
 		testDetails, ok := testStatuses.GetScenarioStatus(integrationTestScenario.Name)
-		if !ok || (testDetails.Status != gitops.IntegrationTestStatusTestPassed && testDetails.Status != gitops.IntegrationTestStatusTestFail) {
+		if !ok || (testDetails.Status != intgteststat.IntegrationTestStatusTestPassed && testDetails.Status != intgteststat.IntegrationTestStatusTestFail) {
 			allIntegrationTestsFinished = false
 		}
-		if ok && testDetails.Status != gitops.IntegrationTestStatusTestPassed {
+		if ok && testDetails.Status != intgteststat.IntegrationTestStatusTestPassed {
 			allIntegrationTestsPassed = false
 		}
 

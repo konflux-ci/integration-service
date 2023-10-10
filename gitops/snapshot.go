@@ -224,6 +224,19 @@ func MarkSnapshotAsFailed(adapterClient client.Client, ctx context.Context, snap
 	return snapshot, nil
 }
 
+// MarkSnapshotAsInvalid updates the AppStudio integration status condition for the Snapshot to invalid.
+// If the patch command fails, an error will be returned.
+func MarkSnapshotAsInvalid(adapterClient client.Client, ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot, message string) (*applicationapiv1alpha1.Snapshot, error) {
+	patch := client.MergeFrom(snapshot.DeepCopy())
+	SetSnapshotIntegrationStatusAsInvalid(snapshot, message)
+	err := adapterClient.Status().Patch(ctx, snapshot, patch)
+	if err != nil {
+		return nil, err
+	}
+
+	return snapshot, nil
+}
+
 // IsSnapshotMarkedAsInvalid returns true if snapshot is marked as failed
 func IsSnapshotMarkedAsInvalid(snapshot *applicationapiv1alpha1.Snapshot) bool {
 	return IsSnapshotStatusConditionSet(snapshot, AppStudioIntegrationStatusCondition, metav1.ConditionFalse, AppStudioIntegrationStatusInvalid)
