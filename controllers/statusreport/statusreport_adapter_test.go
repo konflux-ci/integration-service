@@ -32,6 +32,7 @@ import (
 
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/loader"
+	intgteststat "github.com/redhat-appstudio/integration-service/pkg/integrationteststatus"
 	"github.com/redhat-appstudio/integration-service/status"
 	tektonv1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 
@@ -306,7 +307,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 
 			statuses, err := gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(hasSnapshot)
 			Expect(err).To(BeNil())
-			statuses.UpdateTestStatusIfChanged(integrationTestScenario.Name, gitops.IntegrationTestStatusTestPassed, "testDetails")
+			statuses.UpdateTestStatusIfChanged(integrationTestScenario.Name, intgteststat.IntegrationTestStatusTestPassed, "testDetails")
 			err = gitops.WriteIntegrationTestStatusesIntoSnapshot(hasSnapshot, statuses, k8sClient, ctx)
 			Expect(err).To(BeNil())
 
@@ -374,7 +375,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 
 			statuses, err := gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(hasSnapshot)
 			Expect(err).To(BeNil())
-			statuses.UpdateTestStatusIfChanged(integrationTestScenario.Name, gitops.IntegrationTestStatusTestFail, "Failed test")
+			statuses.UpdateTestStatusIfChanged(integrationTestScenario.Name, intgteststat.IntegrationTestStatusTestFail, "Failed test")
 			err = gitops.WriteIntegrationTestStatusesIntoSnapshot(hasSnapshot, statuses, k8sClient, ctx)
 			Expect(err).To(BeNil())
 
@@ -428,7 +429,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 
 			statuses, err := gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(hasSnapshot)
 			Expect(err).To(BeNil())
-			statuses.UpdateTestStatusIfChanged(integrationTestScenario.Name, gitops.IntegrationTestStatusTestPassed, "testDetails")
+			statuses.UpdateTestStatusIfChanged(integrationTestScenario.Name, intgteststat.IntegrationTestStatusTestPassed, "testDetails")
 			err = gitops.WriteIntegrationTestStatusesIntoSnapshot(hasSnapshot, statuses, k8sClient, ctx)
 			Expect(err).To(BeNil())
 

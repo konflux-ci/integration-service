@@ -93,17 +93,18 @@ func (a *Adapter) EnsureIntegrationTestPipelineForScenarioExists() (controller.O
 	gitops.PrepareAndRegisterSEBReady(a.snapshotEnvironmentBinding)
 
 	if a.integrationTestScenario != nil {
-		integrationPipelineRun, err := loader.GetLatestPipelineRunForSnapshotAndScenario(a.client, a.context, a.loader, a.snapshot, a.integrationTestScenario)
+		// Check if an existing integration pipelineRun is registered in the Snapshot's status
+		// We rely on this because the actual pipelineRun CR may have been pruned by this point
+		testStatuses, err := gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(a.snapshot)
 		if err != nil {
-			a.logger.Error(err, "Failed to get latest pipelineRun for snapshot and scenario",
-				"snapshot", a.snapshot,
-				"integrationTestScenario", a.integrationTestScenario)
+			a.logger.Error(err, "Failed to extract test statuses from the Snapshot's status annotation")
 			return controller.RequeueWithError(err)
 		}
-		if integrationPipelineRun != nil {
+		integrationTestScenarioStatus, ok := testStatuses.GetScenarioStatus(a.integrationTestScenario.Name)
+		if ok && integrationTestScenarioStatus.TestPipelineRunName != "" {
 			a.logger.Info("Found existing integrationPipelineRun",
 				"integrationTestScenario.Name", a.integrationTestScenario.Name,
-				"integrationPipelineRun.Name", integrationPipelineRun.Name)
+				"pipelineRun.Name", integrationTestScenarioStatus.TestPipelineRunName)
 		} else {
 			a.logger.Info("Creating new pipelinerun for integrationTestscenario",
 				"integrationTestScenario.Name", a.integrationTestScenario.Name,
