@@ -76,10 +76,11 @@ func scenariosNamesToList(integrationTestScenarions *[]v1beta1.IntegrationTestSc
 	return &result
 }
 
-// EnsureAllIntegrationTestPipelinesExist is an operation that will ensure that all Integration test pipelines
+// EnsureStaticIntegrationPipelineRunsExist is an operation that will ensure that all Integration pipeline runs
 // associated with the Snapshot and the Application's IntegrationTestScenarios exist.
-// Otherwise, it will create new Releases for each ReleasePlan.
-func (a *Adapter) EnsureAllIntegrationTestPipelinesExist() (controller.OperationResult, error) {
+// Creates integration pipeline runs for scenarios in static environments (i.e. scenarios which doesn't require
+// deploying application into ephemeral environemnt, like static checks - enterprise contract)
+func (a *Adapter) EnsureStaticIntegrationPipelineRunsExist() (controller.OperationResult, error) {
 	if gitops.HaveAppStudioTestsFinished(a.snapshot) {
 		a.logger.Info("The Snapshot has finished testing.")
 		return controller.ContinueProcessing()
@@ -116,7 +117,7 @@ func (a *Adapter) EnsureAllIntegrationTestPipelinesExist() (controller.Operation
 		for _, integrationTestScenario := range *integrationTestScenarios {
 			integrationTestScenario := integrationTestScenario //G601
 			if shouldScenarioRunInEphemeralEnv(&integrationTestScenario) {
-				// the test pipeline for scenario needing an ephemeral environment will be handled in STONEINTG-333
+				// integration pipeline runs for scenarios which need an ephemeral environment are handled in EnsureCreationOfEphemeralEnvironments()
 				a.logger.Info("IntegrationTestScenario has environment defined, skipping creation of pipelinerun.", "IntegrationTestScenario", integrationTestScenario)
 				continue
 			}
@@ -171,10 +172,10 @@ func (a *Adapter) EnsureAllIntegrationTestPipelinesExist() (controller.Operation
 	return controller.ContinueProcessing()
 }
 
-// EnsureCreationOfEnvironment makes sure that all ephemeral envrionments that were requested via
+// EnsureCreationOfEphemeralEnvironments makes sure that all ephemeral envrionments that were requested via
 // IntegrationTestScenarios get created, in case that environment is already created, provides
 // a message about this fact
-func (a *Adapter) EnsureCreationOfEnvironment() (controller.OperationResult, error) {
+func (a *Adapter) EnsureCreationOfEphemeralEnvironments() (controller.OperationResult, error) {
 	if gitops.HaveAppStudioTestsFinished(a.snapshot) {
 		a.logger.Info("The Snapshot has finished testing.")
 		return controller.ContinueProcessing()

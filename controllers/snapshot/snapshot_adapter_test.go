@@ -434,7 +434,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 					Resource:   []v1beta1.IntegrationTestScenario{*integrationTestScenario, *integrationTestScenarioWithoutEnv, *integrationTestScenarioWithoutEnvCopy},
 				},
 			})
-			result, err := adapter.EnsureAllIntegrationTestPipelinesExist()
+			result, err := adapter.EnsureStaticIntegrationPipelineRunsExist()
 			Expect(!result.CancelRequest && err == nil).To(BeTrue())
 
 			requiredIntegrationTestScenarios, err := adapter.loader.GetRequiredIntegrationTestScenariosForApplication(k8sClient, adapter.context, hasApp)
@@ -898,7 +898,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		})
 
 		It("ensures the ephemeral copy Environment are created for IntegrationTestScenario", func() {
-			result, err := adapter.EnsureCreationOfEnvironment()
+			result, err := adapter.EnsureCreationOfEphemeralEnvironments()
 			Expect(!result.CancelRequest && err == nil).To(BeTrue())
 
 			expectedLogEntry := "Ephemeral environment is created for integrationTestScenario"
@@ -1023,7 +1023,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		})
 
 		It("ensures the ephemeral copy Environment will not be created again for IntegrationTestScenario", func() {
-			result, err := adapter.EnsureCreationOfEnvironment()
+			result, err := adapter.EnsureCreationOfEphemeralEnvironments()
 			Expect(!result.CancelRequest && err == nil).To(BeTrue())
 
 			expectedLogEntry := "Environment already exists and contains snapshot and scenario"
