@@ -1052,4 +1052,14 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		})
 	})
 
+	Describe("shouldScenarioRunInEphemeralEnv", func() {
+		It("returns true when env is defined in scenario", func() {
+			Expect(shouldScenarioRunInEphemeralEnv(integrationTestScenario)).To(BeTrue())
+		})
+
+		It("returns false when env is NOT defined in scenario", func() {
+			Expect(shouldScenarioRunInEphemeralEnv(integrationTestScenarioWithoutEnv)).To(BeFalse())
+		})
+	})
+
 })
