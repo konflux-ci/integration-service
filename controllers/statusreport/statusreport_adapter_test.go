@@ -23,7 +23,6 @@ import (
 	"github.com/redhat-appstudio/integration-service/api/v1beta1"
 	"github.com/tonglil/buflogr"
 	"k8s.io/apimachinery/pkg/api/meta"
-	"os"
 	"reflect"
 	"time"
 
@@ -34,7 +33,6 @@ import (
 	"github.com/redhat-appstudio/integration-service/loader"
 	intgteststat "github.com/redhat-appstudio/integration-service/pkg/integrationteststatus"
 	"github.com/redhat-appstudio/integration-service/status"
-	tektonv1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
@@ -52,11 +50,6 @@ type MockStatusAdapter struct {
 type MockStatusReporter struct {
 	Called            bool
 	ReportStatusError error
-}
-
-func (r *MockStatusReporter) ReportStatus(client.Client, context.Context, *tektonv1beta1.PipelineRun) error {
-	r.Called = true
-	return r.ReportStatusError
 }
 
 func (r *MockStatusReporter) ReportStatusForSnapshot(client.Client, context.Context, *helpers.IntegrationLogger, *applicationapiv1alpha1.Snapshot) error {
@@ -260,10 +253,6 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			},
 		}
 		Expect(k8sClient.Create(ctx, hasSnapshot)).Should(Succeed())
-
-		// enable feature flag for testing
-		err := os.Setenv(FeatureFlagStatusReprotingEnabled, "yes")
-		Expect(err).To(BeNil())
 	})
 
 	AfterEach(func() {
@@ -293,7 +282,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 					Resource:   hasPRSnapshot,
 				},
 			})
-			result, err := adapter.EnsureSnapshotTestStatusReported()
+			result, err := adapter.EnsureSnapshotTestStatusReportedToGitHub()
 			fmt.Fprintf(GinkgoWriter, "-------err: %v\n", err)
 			fmt.Fprintf(GinkgoWriter, "-------result: %v\n", result)
 			Expect(!result.CancelRequest && err == nil).To(BeTrue())

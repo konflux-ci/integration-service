@@ -110,6 +110,21 @@ func (MockIssuesService) CreateComment(
 	return &ghapi.IssueComment{ID: &id}, nil, nil
 }
 
+// ListComments implements github.IssuesService
+func (MockIssuesService) ListComments(ctx context.Context, owner string, repo string,
+	number int, opts *ghapi.IssueListCommentsOptions) ([]*ghapi.IssueComment, *ghapi.Response, error) {
+	var id int64 = 40
+	var body string = "Integration test for snapshot snapshotName and scenario scenarioName"
+	issueComments := []*ghapi.IssueComment{{ID: &id, Body: &body}}
+	return issueComments, nil, nil
+}
+
+// EditComment implements github.IssuesService
+func (MockIssuesService) EditComment(ctx context.Context, owner string, repo string, number int64, comment *ghapi.IssueComment,
+) (*ghapi.IssueComment, *ghapi.Response, error) {
+	return &ghapi.IssueComment{ID: &number}, nil, nil
+}
+
 type MockRepositoriesService struct{}
 
 // CreateStatus implements github.RepositoriesService
@@ -308,5 +323,20 @@ var _ = Describe("Client", func() {
 		commitStatusExist, err = client.CommitStatusExists(commitStatuses, commitStatusAdapter)
 		Expect(commitStatusExist).To(BeFalse())
 		Expect(err).To(BeNil())
+	})
+
+	It("can get existing comment id", func() {
+		comments, err := client.GetAllCommentsForPR(context.TODO(), "", "", 1)
+		Expect(err).To(BeNil())
+		Expect(len(comments) > 0).To(BeTrue())
+
+		commentID := client.GetExistingCommentID(comments, "snapshotName", "scenarioName")
+		Expect(*commentID).To(Equal(int64(40)))
+	})
+
+	It("can edit comments", func() {
+		id, err := client.EditComment(context.TODO(), "", "", 1, "example-comment")
+		Expect(err).To(BeNil())
+		Expect(id).To(Equal(int64(1)))
 	})
 })

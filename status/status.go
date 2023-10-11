@@ -24,7 +24,6 @@ import (
 	"github.com/redhat-appstudio/integration-service/gitops"
 	"github.com/redhat-appstudio/integration-service/helpers"
 	"github.com/redhat-appstudio/operator-toolkit/metadata"
-	tektonv1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -33,7 +32,6 @@ const NamePrefix = "Red Hat Trusted App Test"
 
 // Reporter is a generic interface all status implementations must follow.
 type Reporter interface {
-	ReportStatus(client.Client, context.Context, *tektonv1beta1.PipelineRun) error
 	ReportStatusForSnapshot(client.Client, context.Context, *helpers.IntegrationLogger, *applicationapiv1alpha1.Snapshot) error
 }
 

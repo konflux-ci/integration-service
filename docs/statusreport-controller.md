@@ -8,7 +8,7 @@ flowchart TD
 
   predicate((PREDICATE: <br>Snapshot has annotation <br>test.appstudio.openshift.io/status <br>changed))
 
-  %%%%%%%%%%%%%%%%%%%%%%% Drawing EnsureSnapshotTestStatusReported() function 
+  %%%%%%%%%%%%%%%%%%%%%%% Drawing EnsureSnapshotTestStatusReportedToGitHub() function
 
   %% Node definitions
   ensure(Process further if: Snapshot has label <br>pac.test.appstudio.openshift.io/git-provider:github <br>defined)
@@ -30,11 +30,14 @@ flowchart TD
   create_commitStatusAdapter(Create commitStatusAdapter according to <br>commit owner, repo, SHA <br>and integration test status)
   does_commitStatus_exist{Does commitStatus exist <br>on github already?}
   create_new_commitStatus_on_gh(Create new commitStatus on github)
+  does_comment_exist(Does a comment exist for snapshot and scenario?)
+  update_existing_comment(Update the existing comment for <br>snapshot and scenario</br>)
+  create_new_comment(Create a new comment for <br>snapshot and scenario</br>)
 
   continue_processing(Controller continues processing)
 
   %% Node connections
-  predicate                      ---->    |"EnsureSnapshotTestStatusReported()"|ensure
+  predicate                      ---->    |"EnsureSnapshotTestStatusReportedToGitHub()"|ensure
   ensure                         -->      get_annotation_value
   get_annotation_value           -->      collect_commit_info
   collect_commit_info            --> is_installation_defined
@@ -56,9 +59,13 @@ flowchart TD
   create_commitStatusAdapter     --> does_commitStatus_exist
   does_commitStatus_exist        --Yes--> continue_processing
   does_commitStatus_exist        --No--> create_new_commitStatus_on_gh
-  create_new_commitStatus_on_gh  --> continue_processing
+  create_new_commitStatus_on_gh  --> does_comment_exist
+  does_comment_exist             --Yes--> update_existing_comment
+  does_comment_exist             --No--> create_new_comment
+  update_existing_comment        --> continue_processing
+  create_new_comment             --> continue_processing
 
-%%%%%%%%%%%%%%%%%%%%%%% Drawing EnsureSnapshotTestStatusReported() function 
+%%%%%%%%%%%%%%%%%%%%%%% Drawing EnsureSnapshotFinishedAllTests() function
 
 %% Node definitions
   
