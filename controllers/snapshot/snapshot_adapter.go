@@ -671,7 +671,7 @@ func (a *Adapter) createSnapshotEnvironmentBindingForSnapshot(application *appli
 			return nil, err
 		}
 	} else {
-		err := ctrl.SetControllerReference(application, snapshotEnvironmentBinding, a.client.Scheme())
+		err := ctrl.SetControllerReference(snapshot, snapshotEnvironmentBinding, a.client.Scheme())
 		if err != nil {
 			return nil, err
 		}
