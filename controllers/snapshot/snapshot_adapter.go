@@ -370,7 +370,7 @@ func (a *Adapter) EnsureSnapshotEnvironmentBindingExist() (controller.OperationR
 			return controller.RequeueWithError(err)
 		}
 		if snapshotEnvironmentBinding != nil {
-			snapshotEnvironmentBinding, err = a.updateExistingSnapshotEnvironmentBindingWithSnapshot(snapshotEnvironmentBinding, a.snapshot, components)
+			err = a.updateExistingSnapshotEnvironmentBindingWithSnapshot(snapshotEnvironmentBinding, a.snapshot, components)
 			if err != nil {
 				a.logger.Error(err, "Failed to update SnapshotEnvironmentBinding",
 					"snapshotEnvironmentBinding.Environment", snapshotEnvironmentBinding.Spec.Environment,
@@ -699,7 +699,7 @@ func (a *Adapter) createSnapshotEnvironmentBindingForSnapshot(application *appli
 // with the given snapshot and components. If it's not possible to patch, an error will be returned.
 func (a *Adapter) updateExistingSnapshotEnvironmentBindingWithSnapshot(snapshotEnvironmentBinding *applicationapiv1alpha1.SnapshotEnvironmentBinding,
 	snapshot *applicationapiv1alpha1.Snapshot,
-	components *[]applicationapiv1alpha1.Component) (*applicationapiv1alpha1.SnapshotEnvironmentBinding, error) {
+	components *[]applicationapiv1alpha1.Component) error {
 
 	patch := client.MergeFrom(snapshotEnvironmentBinding.DeepCopy())
 
@@ -709,10 +709,10 @@ func (a *Adapter) updateExistingSnapshotEnvironmentBindingWithSnapshot(snapshotE
 
 	err := a.client.Patch(a.context, snapshotEnvironmentBinding, patch)
 	if err != nil {
-		return nil, err
+		return fmt.Errorf("failed to patch snapshotEnvironmentBinding: %w", err)
 	}
 
-	return snapshotEnvironmentBinding, nil
+	return nil
 }
 
 // createCopyOfExistingEnvironment uses existing env as input, specifies namespace where the environment is situated,
