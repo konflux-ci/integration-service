@@ -28,6 +28,8 @@ import (
 	"github.com/redhat-appstudio/integration-service/gitops"
 	"github.com/redhat-appstudio/integration-service/helpers"
 	"github.com/redhat-appstudio/integration-service/loader"
+	intgteststat "github.com/redhat-appstudio/integration-service/pkg/integrationteststatus"
+
 	"k8s.io/apimachinery/pkg/api/meta"
 	"knative.dev/pkg/apis"
 	v1 "knative.dev/pkg/apis/duck/v1"
@@ -713,7 +715,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 
 			detail, ok := statuses.GetScenarioStatus(integrationTestScenario.Name)
 			Expect(ok).To(BeTrue())
-			Expect(detail.Status).To(Equal(gitops.IntegrationTestStatusTestPassed))
+			Expect(detail.Status).To(Equal(intgteststat.IntegrationTestStatusTestPassed))
 		})
 
 		When("integration pipeline failed", func() {
@@ -876,7 +878,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 
 				detail, ok := statuses.GetScenarioStatus(integrationTestScenarioFailed.Name)
 				Expect(ok).To(BeTrue())
-				Expect(detail.Status).To(Equal(gitops.IntegrationTestStatusTestFail))
+				Expect(detail.Status).To(Equal(intgteststat.IntegrationTestStatusTestFail))
 				Expect(detail.TestPipelineRunName).To(Equal(integrationPipelineRunComponentFailed.Name))
 
 			})
