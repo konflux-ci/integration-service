@@ -26,8 +26,10 @@ import (
 	h "github.com/redhat-appstudio/integration-service/helpers"
 	"github.com/redhat-appstudio/integration-service/loader"
 	"github.com/redhat-appstudio/integration-service/metrics"
+	intgteststat "github.com/redhat-appstudio/integration-service/pkg/integrationteststatus"
 	"github.com/redhat-appstudio/integration-service/status"
 	"github.com/redhat-appstudio/integration-service/tekton"
+
 	"github.com/redhat-appstudio/operator-toolkit/controller"
 	"github.com/redhat-appstudio/operator-toolkit/metadata"
 	tektonv1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
@@ -438,20 +440,20 @@ func (a *Adapter) createCompositeSnapshotsIfConflictExists(application *applicat
 }
 
 // GetIntegrationPipelineRunStatus checks the Tekton results for a given PipelineRun and returns status of test.
-func GetIntegrationPipelineRunStatus(adapterClient client.Client, ctx context.Context, pipelineRun *tektonv1beta1.PipelineRun) (gitops.IntegrationTestStatus, string, error) {
+func GetIntegrationPipelineRunStatus(adapterClient client.Client, ctx context.Context, pipelineRun *tektonv1beta1.PipelineRun) (intgteststat.IntegrationTestStatus, string, error) {
 	// Check if the pipelineRun finished from the condition of status
 	if !h.HasPipelineRunFinished(pipelineRun) {
-		return gitops.IntegrationTestStatusInProgress, fmt.Sprintf("Integration test is running as pipeline run '%s'", pipelineRun.Name), nil
+		return intgteststat.IntegrationTestStatusInProgress, fmt.Sprintf("Integration test is running as pipeline run '%s'", pipelineRun.Name), nil
 	}
 
 	outcome, err := h.GetIntegrationPipelineRunOutcome(adapterClient, ctx, pipelineRun)
 	if err != nil {
-		return gitops.IntegrationTestStatusTestFail, "", fmt.Errorf("failed to evaluate inegration test results: %w", err)
+		return intgteststat.IntegrationTestStatusTestFail, "", fmt.Errorf("failed to evaluate inegration test results: %w", err)
 	}
 
 	if !outcome.HasPipelineRunPassedTesting() {
-		return gitops.IntegrationTestStatusTestFail, "Integration test failed", nil
+		return intgteststat.IntegrationTestStatusTestFail, "Integration test failed", nil
 	}
 
-	return gitops.IntegrationTestStatusTestPassed, "Integration test passed", nil
+	return intgteststat.IntegrationTestStatusTestPassed, "Integration test passed", nil
 }

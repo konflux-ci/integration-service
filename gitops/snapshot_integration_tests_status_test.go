@@ -28,39 +28,13 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
-	"github.com/redhat-appstudio/integration-service/api/v1beta1"
+	intgteststat "github.com/redhat-appstudio/integration-service/pkg/integrationteststatus"
+
 	"github.com/redhat-appstudio/integration-service/gitops"
 	"github.com/redhat-appstudio/operator-toolkit/metadata"
 )
 
 var _ = Describe("Snapshot integration test statuses", func() {
-
-	Context("TestStatusDetail", func() {
-		var (
-			statusDetailPending gitops.IntegrationTestStatusDetail
-		)
-
-		BeforeEach(func() {
-			statusDetailPending = gitops.IntegrationTestStatusDetail{Status: gitops.IntegrationTestStatusPending}
-		})
-
-		Describe("JSON operations", func() {
-			It("Struct can be transformed to JSON", func() {
-				jsonData, err := json.Marshal(statusDetailPending)
-				Expect(err).To(BeNil())
-				Expect(jsonData).Should(ContainSubstring("Pending"))
-			})
-
-			It("From JSON back to struct", func() {
-				jsonData, err := json.Marshal(statusDetailPending)
-				Expect(err).To(BeNil())
-				var statusDetailFromJSON gitops.IntegrationTestStatusDetail
-				err = json.Unmarshal(jsonData, &statusDetailFromJSON)
-				Expect(err).To(BeNil())
-				Expect(statusDetailFromJSON).Should(Equal(statusDetailPending))
-			})
-		})
-	})
 
 	Context("SnapshotTestsStatus", func() {
 		const (
@@ -73,51 +47,14 @@ var _ = Describe("Snapshot integration test statuses", func() {
 			pipelineRunName  = "pipeline-run-abcdf"
 		)
 		var (
-			sits                    *gitops.SnapshotIntegrationTestStatuses
-			integrationTestScenario *v1beta1.IntegrationTestScenario
-			snapshot                *applicationapiv1alpha1.Snapshot
+			sits     *intgteststat.SnapshotIntegrationTestStatuses
+			snapshot *applicationapiv1alpha1.Snapshot
 		)
 
 		BeforeEach(func() {
-			sits = gitops.NewSnapshotIntegrationTestStatuses()
-
-			integrationTestScenario = &v1beta1.IntegrationTestScenario{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "example-pass",
-					Namespace: "default",
-
-					Labels: map[string]string{
-						"test.appstudio.openshift.io/optional": "false",
-					},
-				},
-				Spec: v1beta1.IntegrationTestScenarioSpec{
-					Application: "application-sample",
-					ResolverRef: v1beta1.ResolverRef{
-						Resolver: "git",
-						Params: []v1beta1.ResolverParameter{
-							{
-								Name:  "url",
-								Value: "https://github.com/redhat-appstudio/integration-examples.git",
-							},
-							{
-								Name:  "revision",
-								Value: "main",
-							},
-							{
-								Name:  "pathInRepo",
-								Value: "pipelineruns/integration_pipelinerun_pass.yaml",
-							},
-						},
-					},
-					Environment: v1beta1.TestEnvironment{
-						Name: "envname",
-						Type: "POC",
-						Configuration: &applicationapiv1alpha1.EnvironmentConfiguration{
-							Env: []applicationapiv1alpha1.EnvVarPair{},
-						},
-					},
-				},
-			}
+			var err error
+			sits, err = intgteststat.NewSnapshotIntegrationTestStatuses("")
+			Expect(err).To(BeNil())
 
 			snapshot = &applicationapiv1alpha1.Snapshot{
 				ObjectMeta: metav1.ObjectMeta{
@@ -139,345 +76,6 @@ var _ = Describe("Snapshot integration test statuses", func() {
 					},
 				},
 			}
-		})
-
-		It("Can add new scenario test status", func() {
-			Expect(len(sits.GetStatuses())).To(Equal(0))
-			sits.UpdateTestStatusIfChanged(testScenarioName, gitops.IntegrationTestStatusPending, testDetails)
-			Expect(len(sits.GetStatuses())).To(Equal(1))
-
-			detail, ok := sits.GetScenarioStatus(testScenarioName)
-			Expect(ok).To(BeTrue())
-			Expect(detail.ScenarioName).To(Equal(testScenarioName))
-			Expect(detail.Status).To(Equal(gitops.IntegrationTestStatusPending))
-		})
-
-		DescribeTable("Test expected additons of startTime",
-			func(st gitops.IntegrationTestStatus, shouldAdd bool) {
-				sits.UpdateTestStatusIfChanged(testScenarioName, st, testDetails)
-				detail, ok := sits.GetScenarioStatus(testScenarioName)
-				Expect(ok).To(BeTrue())
-				if shouldAdd {
-					Expect(detail.StartTime).NotTo(BeNil())
-				} else {
-					Expect(detail.StartTime).To(BeNil())
-				}
-			},
-			Entry("When status is Pending", gitops.IntegrationTestStatusPending, false),
-			Entry("When status is InProgress", gitops.IntegrationTestStatusInProgress, true),
-			Entry("When status is EnvironmentProvisionError", gitops.IntegrationTestStatusEnvironmentProvisionError, false),
-			Entry("When status is DeploymentError", gitops.IntegrationTestStatusDeploymentError, false),
-			Entry("When status is TestFail", gitops.IntegrationTestStatusTestFail, false),
-			Entry("When status is TestPass", gitops.IntegrationTestStatusTestPassed, false),
-		)
-
-		DescribeTable("Test expected additons of completionTime",
-			func(st gitops.IntegrationTestStatus, shouldAdd bool) {
-				sits.UpdateTestStatusIfChanged(testScenarioName, st, testDetails)
-				detail, ok := sits.GetScenarioStatus(testScenarioName)
-				Expect(ok).To(BeTrue())
-				if shouldAdd {
-					Expect(detail.CompletionTime).NotTo(BeNil())
-				} else {
-					Expect(detail.CompletionTime).To(BeNil())
-				}
-			},
-			Entry("When status is Pending", gitops.IntegrationTestStatusPending, false),
-			Entry("When status is InProgress", gitops.IntegrationTestStatusInProgress, false),
-			Entry("When status is EnvironmentProvisionError", gitops.IntegrationTestStatusEnvironmentProvisionError, true),
-			Entry("When status is DeploymentError", gitops.IntegrationTestStatusDeploymentError, true),
-			Entry("When status is TestFail", gitops.IntegrationTestStatusTestFail, true),
-			Entry("When status is TestPass", gitops.IntegrationTestStatusTestPassed, true),
-		)
-
-		It("Change back to InProgress updates timestamps accordingly", func() {
-			sits.UpdateTestStatusIfChanged(testScenarioName, gitops.IntegrationTestStatusTestPassed, testDetails)
-			originalDetail, ok := sits.GetScenarioStatus(testScenarioName)
-			Expect(ok).To(BeTrue())
-			Expect(originalDetail.CompletionTime).ToNot(BeNil())
-			originalStartTime := originalDetail.StartTime // copy time, it's all in pointers
-
-			sits.UpdateTestStatusIfChanged(testScenarioName, gitops.IntegrationTestStatusInProgress, testDetails)
-			newDetail, ok := sits.GetScenarioStatus(testScenarioName)
-			Expect(ok).To(BeTrue())
-			Expect(originalDetail.CompletionTime).To(BeNil())
-			Expect(newDetail.StartTime).NotTo(Equal(originalStartTime))
-		})
-
-		It("not changing status keeps starting time the same", func() {
-			newDetails := "something important"
-			sits.UpdateTestStatusIfChanged(testScenarioName, gitops.IntegrationTestStatusInProgress, testDetails)
-			originalDetail, ok := sits.GetScenarioStatus(testScenarioName)
-			Expect(ok).To(BeTrue())
-			originalStartTime := originalDetail.StartTime // copy time, it's all in pointers
-			originalLastUpdateTime := originalDetail.LastUpdateTime
-
-			time.Sleep(time.Duration(100)) // wait 100ns to avoid race condition when test is too quick and timestamp is the same
-			sits.UpdateTestStatusIfChanged(testScenarioName, gitops.IntegrationTestStatusInProgress, newDetails)
-			newDetail, ok := sits.GetScenarioStatus(testScenarioName)
-			Expect(ok).To(BeTrue())
-			Expect(newDetail.StartTime).To(Equal(originalStartTime))
-			// but details and lastUpdateTimestamp must changed
-			Expect(newDetail.Details).To(Equal(newDetails))
-			Expect(newDetail.LastUpdateTime).NotTo(Equal(originalLastUpdateTime))
-		})
-
-		It("can update details with pipeline run name", func() {
-			// test detail must exist first
-			sits.UpdateTestStatusIfChanged(testScenarioName, gitops.IntegrationTestStatusInProgress, testDetails)
-			sits.ResetDirty()
-
-			err := sits.UpdateTestPipelineRunName(testScenarioName, pipelineRunName)
-			Expect(err).To(BeNil())
-
-			detail, ok := sits.GetScenarioStatus(testScenarioName)
-			Expect(ok).To(BeTrue())
-			Expect(detail.TestPipelineRunName).To(Equal(pipelineRunName))
-			Expect(sits.IsDirty()).To(BeTrue())
-
-			// other data hasn't been removed
-			Expect(detail.ScenarioName).To(Equal(testScenarioName))
-			Expect(detail.Details).To(Equal(testDetails))
-			Expect(detail.Status).To(Equal(gitops.IntegrationTestStatusInProgress))
-		})
-
-		It("doesn't update the same pipeline run name twice", func() {
-			// test detail must exist first
-			sits.UpdateTestStatusIfChanged(testScenarioName, gitops.IntegrationTestStatusInProgress, testDetails)
-			sits.ResetDirty()
-
-			err := sits.UpdateTestPipelineRunName(testScenarioName, pipelineRunName)
-			Expect(err).To(BeNil())
-			Expect(sits.IsDirty()).To(BeTrue())
-			sits.ResetDirty()
-
-			err = sits.UpdateTestPipelineRunName(testScenarioName, pipelineRunName)
-			Expect(err).To(BeNil())
-
-			Expect(sits.IsDirty()).To(BeFalse())
-		})
-
-		It("fails to update details with pipeline run name when testScenario doesn't exist", func() {
-			err := sits.UpdateTestPipelineRunName(testScenarioName, pipelineRunName)
-			Expect(err).NotTo(BeNil())
-		})
-
-		It("Can export valid JSON without start and completion time (Pending)", func() {
-			sits.UpdateTestStatusIfChanged(testScenarioName, gitops.IntegrationTestStatusPending, testDetails)
-			detail, ok := sits.GetScenarioStatus(testScenarioName)
-			Expect(ok).To(BeTrue())
-
-			expectedFormatStr := `[
-				{
-					"scenario": "%s",
-					"status": "Pending",
-					"lastUpdateTime": "%s",
-					"details": "%s"
-				}
-			]`
-			marshaledTime, err := detail.LastUpdateTime.MarshalText()
-			Expect(err).To(BeNil())
-			expectedStr := fmt.Sprintf(expectedFormatStr, testScenarioName, marshaledTime, testDetails)
-			expected := []byte(expectedStr)
-
-			Expect(json.Marshal(sits)).To(MatchJSON(expected))
-		})
-
-		It("Can export valid JSON with start time (InProgress)", func() {
-			sits.UpdateTestStatusIfChanged(testScenarioName, gitops.IntegrationTestStatusInProgress, testDetails)
-
-			detail, ok := sits.GetScenarioStatus(testScenarioName)
-			Expect(ok).To(BeTrue())
-
-			expectedFormatStr := `[
-				{
-					"scenario": "%s",
-					"status": "InProgress",
-					"lastUpdateTime": "%s",
-					"details": "%s",
-					"startTime": "%s"
-				}
-			]`
-			marshaledTime, err := detail.LastUpdateTime.MarshalText()
-			Expect(err).To(BeNil())
-			marshaledStartTime, err := detail.StartTime.MarshalText()
-			Expect(err).To(BeNil())
-			expectedStr := fmt.Sprintf(expectedFormatStr, testScenarioName, marshaledTime, testDetails, marshaledStartTime)
-			expected := []byte(expectedStr)
-
-			Expect(json.Marshal(sits)).To(MatchJSON(expected))
-		})
-
-		It("Can export valid JSON with completion time (TestFailed)", func() {
-			sits.UpdateTestStatusIfChanged(testScenarioName, gitops.IntegrationTestStatusTestFail, testDetails)
-
-			detail, ok := sits.GetScenarioStatus(testScenarioName)
-			Expect(ok).To(BeTrue())
-
-			expectedFormatStr := `[
-				{
-					"scenario": "%s",
-					"status": "TestFail",
-					"lastUpdateTime": "%s",
-					"details": "%s",
-					"completionTime": "%s"
-				}
-			]`
-			marshaledTime, err := detail.LastUpdateTime.MarshalText()
-			Expect(err).To(BeNil())
-			marshaledCompletionTime, err := detail.CompletionTime.MarshalText()
-			Expect(err).To(BeNil())
-			expectedStr := fmt.Sprintf(expectedFormatStr, testScenarioName, marshaledTime, testDetails, marshaledCompletionTime)
-			expected := []byte(expectedStr)
-
-			Expect(json.Marshal(sits)).To(MatchJSON(expected))
-		})
-
-		It("Can export valid JSON with startTime and completion time", func() {
-			sits.UpdateTestStatusIfChanged(testScenarioName, gitops.IntegrationTestStatusInProgress, "yolo")
-			sits.UpdateTestStatusIfChanged(testScenarioName, gitops.IntegrationTestStatusTestFail, testDetails)
-
-			detail, ok := sits.GetScenarioStatus(testScenarioName)
-			Expect(ok).To(BeTrue())
-
-			expectedFormatStr := `[
-				{
-					"scenario": "%s",
-					"status": "TestFail",
-					"lastUpdateTime": "%s",
-					"details": "%s",
-					"startTime": "%s",
-					"completionTime": "%s"
-				}
-			]`
-			marshaledTime, err := detail.LastUpdateTime.MarshalText()
-			Expect(err).To(BeNil())
-			marshaledStartTime, err := detail.StartTime.MarshalText()
-			Expect(err).To(BeNil())
-			marshaledCompletionTime, err := detail.CompletionTime.MarshalText()
-			Expect(err).To(BeNil())
-			expectedStr := fmt.Sprintf(expectedFormatStr, testScenarioName, marshaledTime, testDetails, marshaledStartTime, marshaledCompletionTime)
-			expected := []byte(expectedStr)
-
-			Expect(json.Marshal(sits)).To(MatchJSON(expected))
-		})
-
-		It("Can export valid JSON with TestPipelineRunName", func() {
-			sits.UpdateTestStatusIfChanged(testScenarioName, gitops.IntegrationTestStatusPending, testDetails)
-			err := sits.UpdateTestPipelineRunName(testScenarioName, pipelineRunName)
-			Expect(err).To(BeNil())
-
-			detail, ok := sits.GetScenarioStatus(testScenarioName)
-			Expect(ok).To(BeTrue())
-
-			expectedFormatStr := `[
-				{
-					"scenario": "%s",
-					"status": "Pending",
-					"lastUpdateTime": "%s",
-					"details": "%s",
-					"testPipelineRunName": "%s"
-				}
-			]`
-			marshaledTime, err := detail.LastUpdateTime.MarshalText()
-			Expect(err).To(BeNil())
-			expectedStr := fmt.Sprintf(expectedFormatStr, testScenarioName, marshaledTime, testDetails, pipelineRunName)
-			expected := []byte(expectedStr)
-
-			Expect(json.Marshal(sits)).To(MatchJSON(expected))
-		})
-
-		When("Contains updates to status", func() {
-
-			BeforeEach(func() {
-				sits.UpdateTestStatusIfChanged(testScenarioName, gitops.IntegrationTestStatusPending, testDetails)
-			})
-
-			It("Status is marked as dirty", func() {
-				Expect(sits.IsDirty()).To(BeTrue())
-			})
-
-			It("Status can be reseted as non-dirty", func() {
-				sits.ResetDirty()
-				Expect(sits.IsDirty()).To(BeFalse())
-			})
-
-			It("Adding the same update keeps status non-dirty", func() {
-				sits.ResetDirty()
-				sits.UpdateTestStatusIfChanged(testScenarioName, gitops.IntegrationTestStatusPending, testDetails)
-				Expect(sits.IsDirty()).To(BeFalse())
-			})
-
-			It("Updating status of scenario is reflected", func() {
-				oldSt, ok := sits.GetScenarioStatus(testScenarioName)
-				Expect(ok).To(BeTrue())
-
-				oldTimestamp := oldSt.LastUpdateTime
-
-				sits.ResetDirty()
-				// needs different status
-				sits.UpdateTestStatusIfChanged(testScenarioName, gitops.IntegrationTestStatusInProgress, testDetails)
-				Expect(sits.IsDirty()).To(BeTrue())
-
-				newSt, ok := sits.GetScenarioStatus(testScenarioName)
-				Expect(ok).To(BeTrue())
-				Expect(newSt.Status).To(Equal(gitops.IntegrationTestStatusInProgress))
-				// timestamp must be updated too
-				Expect(newSt.LastUpdateTime).NotTo(Equal(oldTimestamp))
-
-				// no changes to nuber of records
-				Expect(len(sits.GetStatuses())).To(Equal(1))
-			})
-
-			It("Updating details of scenario is reflected", func() {
-				newDetails := "_Testing details_"
-				oldSt, ok := sits.GetScenarioStatus(testScenarioName)
-				Expect(ok).To(BeTrue())
-
-				oldTimestamp := oldSt.LastUpdateTime
-
-				sits.ResetDirty()
-				// needs the same status but different details
-				sits.UpdateTestStatusIfChanged(testScenarioName, gitops.IntegrationTestStatusPending, newDetails)
-				Expect(sits.IsDirty()).To(BeTrue())
-
-				newSt, ok := sits.GetScenarioStatus(testScenarioName)
-				Expect(ok).To(BeTrue())
-				Expect(newSt.Details).To(Equal(newDetails))
-				// timestamp must be updated too
-				Expect(newSt.LastUpdateTime).NotTo(Equal(oldTimestamp))
-
-				// no changes to nuber of records
-				Expect(len(sits.GetStatuses())).To(Equal(1))
-			})
-
-			It("Scenario can be deleted", func() {
-				sits.ResetDirty()
-				sits.DeleteStatus(testScenarioName)
-				Expect(len(sits.GetStatuses())).To(Equal(0))
-				Expect(sits.IsDirty()).To(BeTrue())
-			})
-
-			It("Initialization with empty scneario list will remove data", func() {
-				sits.ResetDirty()
-				sits.InitStatuses(&[]v1beta1.IntegrationTestScenario{})
-				Expect(len(sits.GetStatuses())).To(Equal(0))
-				Expect(sits.IsDirty()).To(BeTrue())
-			})
-
-		})
-
-		It("Initialization with new test scenario creates pending status", func() {
-			sits.ResetDirty()
-			sits.InitStatuses(&[]v1beta1.IntegrationTestScenario{*integrationTestScenario})
-
-			Expect(sits.IsDirty()).To(BeTrue())
-			Expect(len(sits.GetStatuses())).To(Equal(1))
-
-			statusDetail, ok := sits.GetScenarioStatus(integrationTestScenario.Name)
-			Expect(ok).To(BeTrue())
-			Expect(statusDetail.ScenarioName).To(Equal(integrationTestScenario.Name))
-			Expect(statusDetail.Status).To(Equal(gitops.IntegrationTestStatusPending))
 		})
 
 		It("Creates empty statuses when a snaphost doesn't have test status annotation", func() {
@@ -502,7 +100,7 @@ var _ = Describe("Snapshot integration test statuses", func() {
 
 		When("Snapshot contains valid test status annotation", func() {
 			BeforeEach(func() {
-				sits.UpdateTestStatusIfChanged(testScenarioName, gitops.IntegrationTestStatusInProgress, testDetails)
+				sits.UpdateTestStatusIfChanged(testScenarioName, intgteststat.IntegrationTestStatusInProgress, testDetails)
 				testAnnotation, err := json.Marshal(sits)
 				Expect(err).To(BeNil())
 				err = metadata.SetAnnotation(snapshot, gitops.SnapshotTestsStatusAnnotation, string(testAnnotation))
@@ -516,7 +114,7 @@ var _ = Describe("Snapshot integration test statuses", func() {
 				Expect(len(statuses.GetStatuses())).To(Equal(1))
 
 				statusDetail := statuses.GetStatuses()[0]
-				Expect(statusDetail.Status).To(Equal(gitops.IntegrationTestStatusInProgress))
+				Expect(statusDetail.Status).To(Equal(intgteststat.IntegrationTestStatusInProgress))
 				Expect(statusDetail.ScenarioName).To(Equal(testScenarioName))
 				Expect(statusDetail.Details).To(Equal(testDetails))
 			})
@@ -569,7 +167,7 @@ var _ = Describe("Snapshot integration test statuses", func() {
 			})
 
 			It("Test results are written into snapshot", func() {
-				sits.UpdateTestStatusIfChanged(testScenarioName, gitops.IntegrationTestStatusInProgress, testDetails)
+				sits.UpdateTestStatusIfChanged(testScenarioName, intgteststat.IntegrationTestStatusInProgress, testDetails)
 
 				err := gitops.WriteIntegrationTestStatusesIntoSnapshot(snapshot, sits, k8sClient, ctx)
 				Expect(err).To(BeNil())

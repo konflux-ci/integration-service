@@ -29,6 +29,8 @@ import (
 	"github.com/redhat-appstudio/integration-service/git/github"
 	"github.com/redhat-appstudio/integration-service/gitops"
 	"github.com/redhat-appstudio/integration-service/helpers"
+	intgteststat "github.com/redhat-appstudio/integration-service/pkg/integrationteststatus"
+
 	"github.com/redhat-appstudio/operator-toolkit/metadata"
 	tektonv1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 	v1 "k8s.io/api/core/v1"
@@ -244,23 +246,23 @@ func (r *GitHubReporter) createCheckRunAdapter(k8sClient client.Client, ctx cont
 }
 
 // generateSummary generate a string for the given state, snapshotName and scenarioName
-func generateSummary(state gitops.IntegrationTestStatus, snapshotName, scenarioName string) (string, error) {
+func generateSummary(state intgteststat.IntegrationTestStatus, snapshotName, scenarioName string) (string, error) {
 	var title string
 
 	var statusDesc string = "is unknown"
 
 	switch state {
-	case gitops.IntegrationTestStatusPending:
+	case intgteststat.IntegrationTestStatusPending:
 		statusDesc = "is pending"
-	case gitops.IntegrationTestStatusInProgress:
+	case intgteststat.IntegrationTestStatusInProgress:
 		statusDesc = "is in progress"
-	case gitops.IntegrationTestStatusEnvironmentProvisionError:
+	case intgteststat.IntegrationTestStatusEnvironmentProvisionError:
 		statusDesc = "experienced an error when provisioning environment"
-	case gitops.IntegrationTestStatusDeploymentError:
+	case intgteststat.IntegrationTestStatusDeploymentError:
 		statusDesc = "experienced an error when deploying snapshotEnvironmentBinding"
-	case gitops.IntegrationTestStatusTestPassed:
+	case intgteststat.IntegrationTestStatusTestPassed:
 		statusDesc = "has passed"
-	case gitops.IntegrationTestStatusTestFail:
+	case intgteststat.IntegrationTestStatusTestFail:
 		statusDesc = "has failed"
 	default:
 		return title, fmt.Errorf("unknown status")
@@ -274,15 +276,15 @@ func generateSummary(state gitops.IntegrationTestStatus, snapshotName, scenarioN
 // generateCheckRunConclusion generate a conclusion as the conclusion of CheckRun
 // can be Can be one of: action_required, cancelled, failure, neutral, success, skipped, stale, timed_out
 // https://docs.github.com/en/rest/checks/runs?apiVersion=2022-11-28#create-a-check-run
-func generateCheckRunConclusion(state gitops.IntegrationTestStatus) (string, error) {
+func generateCheckRunConclusion(state intgteststat.IntegrationTestStatus) (string, error) {
 	var conclusion string
 
 	switch state {
-	case gitops.IntegrationTestStatusTestFail, gitops.IntegrationTestStatusEnvironmentProvisionError, gitops.IntegrationTestStatusDeploymentError:
+	case intgteststat.IntegrationTestStatusTestFail, intgteststat.IntegrationTestStatusEnvironmentProvisionError, intgteststat.IntegrationTestStatusDeploymentError:
 		conclusion = gitops.IntegrationTestStatusFailureGithub
-	case gitops.IntegrationTestStatusTestPassed:
+	case intgteststat.IntegrationTestStatusTestPassed:
 		conclusion = gitops.IntegrationTestStatusSuccessGithub
-	case gitops.IntegrationTestStatusPending, gitops.IntegrationTestStatusInProgress:
+	case intgteststat.IntegrationTestStatusPending, intgteststat.IntegrationTestStatusInProgress:
 		conclusion = ""
 	default:
 		return conclusion, fmt.Errorf("unknown status")
@@ -294,17 +296,17 @@ func generateCheckRunConclusion(state gitops.IntegrationTestStatus) (string, err
 // generateCommitState generate state of CommitStatus
 // Can be one of: error, failure, pending, success
 // https://docs.github.com/en/rest/commits/statuses?apiVersion=2022-11-28#create-a-commit-status
-func generateCommitState(state gitops.IntegrationTestStatus) (string, error) {
+func generateCommitState(state intgteststat.IntegrationTestStatus) (string, error) {
 	var commitState string
 
 	switch state {
-	case gitops.IntegrationTestStatusTestFail:
+	case intgteststat.IntegrationTestStatusTestFail:
 		commitState = gitops.IntegrationTestStatusFailureGithub
-	case gitops.IntegrationTestStatusEnvironmentProvisionError, gitops.IntegrationTestStatusDeploymentError:
+	case intgteststat.IntegrationTestStatusEnvironmentProvisionError, intgteststat.IntegrationTestStatusDeploymentError:
 		commitState = gitops.IntegrationTestStatusErrorGithub
-	case gitops.IntegrationTestStatusTestPassed:
+	case intgteststat.IntegrationTestStatusTestPassed:
 		commitState = gitops.IntegrationTestStatusSuccessGithub
-	case gitops.IntegrationTestStatusPending, gitops.IntegrationTestStatusInProgress:
+	case intgteststat.IntegrationTestStatusPending, intgteststat.IntegrationTestStatusInProgress:
 		commitState = gitops.IntegrationTestStatusPendingGithub
 	default:
 		return commitState, fmt.Errorf("unknown status")
@@ -315,7 +317,7 @@ func generateCommitState(state gitops.IntegrationTestStatus) (string, error) {
 
 // createCheckRunAdapterForSnapshot create a CheckRunAdapter for given snapshot, integrationTestStatusDetail, owner, repo and sha to create a checkRun
 // https://docs.github.com/en/rest/checks/runs?apiVersion=2022-11-28#create-a-check-run
-func (r *GitHubReporter) createCheckRunAdapterForSnapshot(snapshot *applicationapiv1alpha1.Snapshot, integrationTestStatusDetail gitops.IntegrationTestStatusDetail, owner, repo, sha string) (*github.CheckRunAdapter, error) {
+func (r *GitHubReporter) createCheckRunAdapterForSnapshot(snapshot *applicationapiv1alpha1.Snapshot, integrationTestStatusDetail intgteststat.IntegrationTestStatusDetail, owner, repo, sha string) (*github.CheckRunAdapter, error) {
 	snapshotName := snapshot.Name
 	scenarioName := integrationTestStatusDetail.ScenarioName
 
@@ -418,7 +420,7 @@ func (r *GitHubReporter) createCommitStatus(k8sClient client.Client, ctx context
 
 // createCommitStatusAdapterForSnapshot create a commitStatusAdapter used to create commitStatus on GitHub
 // https://docs.github.com/en/rest/commits/statuses?apiVersion=2022-11-28#create-a-commit-status
-func (r *GitHubReporter) createCommitStatusAdapterForSnapshot(snapshot *applicationapiv1alpha1.Snapshot, integrationTestStatusDetail gitops.IntegrationTestStatusDetail, owner, repo, sha string) (*github.CommitStatusAdapter, error) {
+func (r *GitHubReporter) createCommitStatusAdapterForSnapshot(snapshot *applicationapiv1alpha1.Snapshot, integrationTestStatusDetail intgteststat.IntegrationTestStatusDetail, owner, repo, sha string) (*github.CommitStatusAdapter, error) {
 	snapshotName := snapshot.Name
 	scenarioName := integrationTestStatusDetail.ScenarioName
 	statusContext := NamePrefix + " / " + snapshot.Name + " / " + scenarioName
