@@ -61,24 +61,6 @@ func NewAdapter(pipelineRun *tektonv1beta1.PipelineRun, component *applicationap
 	}
 }
 
-// EnsureStatusReported will ensure that integration PipelineRun status is reported to the git provider
-// which (indirectly) triggered its execution.
-func (a *Adapter) EnsureStatusReported() (controller.OperationResult, error) {
-	reporters, err := a.status.GetReporters(a.pipelineRun)
-
-	if err != nil {
-		return controller.RequeueWithError(err)
-	}
-
-	for _, reporter := range reporters {
-		if err := reporter.ReportStatus(a.client, a.context, a.pipelineRun); err != nil {
-			return controller.RequeueWithError(err)
-		}
-	}
-
-	return controller.ContinueProcessing()
-}
-
 // EnsureStatusReportedInSnapshot will ensure that status of the integration test pipelines is reported to snapshot
 // to be consumed by user
 func (a *Adapter) EnsureStatusReportedInSnapshot() (controller.OperationResult, error) {

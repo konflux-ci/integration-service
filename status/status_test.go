@@ -33,10 +33,6 @@ import (
 
 type MockReporter struct{}
 
-func (r *MockReporter) ReportStatus(client.Client, context.Context, *tektonv1beta1.PipelineRun) error {
-	return nil
-}
-
 func (r *MockReporter) ReportStatusForSnapshot(client.Client, context.Context, *helpers.IntegrationLogger, *applicationapiv1alpha1.Snapshot) error {
 	return nil
 }

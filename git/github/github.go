@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/bradleyfalzon/ghinstallation/v2"
@@ -78,6 +79,8 @@ type ChecksService interface {
 // IssuesService defines the methods used in the github Issues service.
 type IssuesService interface {
 	CreateComment(ctx context.Context, owner string, repo string, number int, comment *ghapi.IssueComment) (*ghapi.IssueComment, *ghapi.Response, error)
+	ListComments(ctx context.Context, owner string, repo string, number int, opts *ghapi.IssueListCommentsOptions) ([]*ghapi.IssueComment, *ghapi.Response, error)
+	EditComment(ctx context.Context, owner string, repo string, id int64, comment *ghapi.IssueComment) (*ghapi.IssueComment, *ghapi.Response, error)
 }
 
 // RepositoriesService defines the methods used in the github Repositories service.
@@ -99,7 +102,10 @@ type ClientInterface interface {
 	IsUpdateNeeded(existingCheckRun *ghapi.CheckRun, newCheckRun *CheckRunAdapter) bool
 	GetExistingCheckRun(checkRuns []*ghapi.CheckRun, newCheckRun *CheckRunAdapter) *ghapi.CheckRun
 	GetAllCommitStatusesForRef(ctx context.Context, owner, repo, sha string) ([]*ghapi.RepoStatus, error)
+	GetAllCommentsForPR(ctx context.Context, owner string, repo string, pr int) ([]*ghapi.IssueComment, error)
 	CommitStatusExists(res []*ghapi.RepoStatus, commitStatus *CommitStatusAdapter) (bool, error)
+	GetExistingCommentID(comments []*ghapi.IssueComment, snapshotName, scenarioName string) *int64
+	EditComment(ctx context.Context, owner string, repo string, commentID int64, body string) (int64, error)
 }
 
 // Client is an abstraction around the API client.
@@ -374,6 +380,18 @@ func (c *Client) GetExistingCheckRun(checkRuns []*ghapi.CheckRun, newCheckRun *C
 	return nil
 }
 
+// GetExistingComment returns existing GitHub comment for the scenario of ref.
+func (c *Client) GetExistingCommentID(comments []*ghapi.IssueComment, snapshotName, scenarioName string) *int64 {
+	for _, comment := range comments {
+		if strings.Contains(*comment.Body, snapshotName) && strings.Contains(*comment.Body, scenarioName) {
+			c.logger.Info("found comment ID with a matching scenarioName", "scenarioName", scenarioName)
+			return comment.ID
+		}
+	}
+	c.logger.Info("found no comment with a matching scenarioName", "scenarioName", scenarioName)
+	return nil
+}
+
 // IsUpdateNeeded check if check run update is needed
 // according to the text of existingCheckRun and newCheckRun since the details are different every update
 func (c *Client) IsUpdateNeeded(existingCheckRun *ghapi.CheckRun, newCheckRun *CheckRunAdapter) bool {
@@ -403,14 +421,27 @@ func (c *Client) GetAllCommitStatusesForRef(ctx context.Context, owner, repo, sh
 	return res, nil
 }
 
+// GetAllCommentsForPR returns all existing comment if a match for the Owner, Repo, and PR.
+func (c *Client) GetAllCommentsForPR(ctx context.Context, owner string, repo string, number int) ([]*ghapi.IssueComment, error) {
+	res, _, err := c.GetIssuesService().ListComments(ctx, owner, repo, number, &ghapi.IssueListCommentsOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get all comments for GitHub owner/repo/PR %s/%s/%d: %w", owner, repo, number, err)
+	}
+
+	if len(res) == 0 {
+		c.logger.Info("Found no comments for PR", "PR", number)
+		return nil, nil
+	}
+
+	return res, nil
+}
+
 // CommitStatusExists returns if a match is found for the SHA, state, context and decription.
 func (c *Client) CommitStatusExists(res []*ghapi.RepoStatus, commitStatus *CommitStatusAdapter) (bool, error) {
 	for _, cs := range res {
 		if *cs.State == commitStatus.State && *cs.Description == commitStatus.Description && *cs.Context == commitStatus.Context {
 			c.logger.Info("Found CommitStatus with matching conditions", "CommitStatus.State", commitStatus.State, "CommitStatus.Description", commitStatus.Description, "CommitStatus.Context", commitStatus.Context)
 			return true, nil
-		} else {
-			return false, nil
 		}
 	}
 	c.logger.Info("Found no CommitStatus with matching conditions", "CommitStatus.State", commitStatus.State, "CommitStatus.Description", commitStatus.Description, "CommitStatus.Context", commitStatus.Context)
@@ -422,7 +453,7 @@ func (c *Client) CommitStatusExists(res []*ghapi.RepoStatus, commitStatus *Commi
 func (c *Client) CreateComment(ctx context.Context, owner string, repo string, issueNumber int, body string) (int64, error) {
 	comment, _, err := c.GetIssuesService().CreateComment(ctx, owner, repo, issueNumber, &ghapi.IssueComment{Body: &body})
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("failed to create a comment for GitHub owner/repo/PR %s/%s/%d: %w", owner, repo, issueNumber, err)
 	}
 
 	c.logger.Info("Created comment",
@@ -434,11 +465,27 @@ func (c *Client) CreateComment(ctx context.Context, owner string, repo string, i
 	return *comment.ID, nil
 }
 
+// EditComment edits an existing issue comment via the GitHub API.
+func (c *Client) EditComment(ctx context.Context, owner string, repo string, commentID int64, body string) (int64, error) {
+	comment, _, err := c.GetIssuesService().EditComment(ctx, owner, repo, commentID, &ghapi.IssueComment{Body: &body})
+	if err != nil {
+		return 0, fmt.Errorf("failed to edit an existing comment for GitHub owner/repo/comment %s/%s/%d: %w", owner, repo, commentID, err)
+	}
+
+	c.logger.Info("Edited comment",
+		"ID", comment.ID,
+		"Owner", owner,
+		"Repository", repo,
+		"commentID", commentID,
+	)
+	return *comment.ID, nil
+}
+
 // CreateCommitStatus creates a repository commit status via the GitHub API.
 func (c *Client) CreateCommitStatus(ctx context.Context, owner string, repo string, SHA string, state string, description string, statusContext string) (int64, error) {
 	status, _, err := c.GetRepositoriesService().CreateStatus(ctx, owner, repo, SHA, &ghapi.RepoStatus{State: &state, Description: &description, Context: &statusContext})
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("failed to create an existing commitStatus for GitHub owner/repo/ref %s/%s/%s: %w", owner, repo, SHA, err)
 	}
 
 	c.logger.Info("Created commit status",

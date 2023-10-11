@@ -18,8 +18,6 @@ package integrationpipeline
 
 import (
 	"bytes"
-	"context"
-	"errors"
 	"reflect"
 	"time"
 
@@ -39,44 +37,15 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
-	"github.com/redhat-appstudio/integration-service/status"
 	tektonv1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 	"github.com/tonglil/buflogr"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 )
-
-type MockStatusAdapter struct {
-	Reporter          *MockStatusReporter
-	GetReportersError error
-}
-
-type MockStatusReporter struct {
-	Called            bool
-	ReportStatusError error
-}
-
-func (r *MockStatusReporter) ReportStatus(client.Client, context.Context, *tektonv1beta1.PipelineRun) error {
-	r.Called = true
-	return r.ReportStatusError
-}
-
-func (r *MockStatusReporter) ReportStatusForSnapshot(client.Client, context.Context, *helpers.IntegrationLogger, *applicationapiv1alpha1.Snapshot) error {
-	r.Called = true
-	return r.ReportStatusError
-}
-
-func (a *MockStatusAdapter) GetReporters(object client.Object) ([]status.Reporter, error) {
-	return []status.Reporter{a.Reporter}, a.GetReportersError
-}
 
 var _ = Describe("Pipeline Adapter", Ordered, func() {
 	var (
-		adapter        *Adapter
-		createAdapter  func() *Adapter
-		logger         helpers.IntegrationLogger
-		statusAdapter  *MockStatusAdapter
-		statusReporter *MockStatusReporter
+		adapter *Adapter
+		logger  helpers.IntegrationLogger
 
 		successfulTaskRun                     *tektonv1beta1.TaskRun
 		failedTaskRun                         *tektonv1beta1.TaskRun
@@ -593,98 +562,6 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 
 	})
 
-	When("EnsureStatusReported is called", func() {
-		It("ensures status is reported for integration PipelineRuns", func() {
-			adapter = createAdapter()
-			adapter.context = loader.GetMockedContext(ctx, []loader.MockData{
-				{
-					ContextKey: loader.ApplicationContextKey,
-					Resource:   hasApp,
-				},
-				{
-					ContextKey: loader.ComponentContextKey,
-					Resource:   hasComp,
-				},
-				{
-					ContextKey: loader.SnapshotContextKey,
-					Resource:   hasSnapshot,
-				},
-				{
-					ContextKey: loader.TaskRunContextKey,
-					Resource:   successfulTaskRun,
-				},
-				{
-					ContextKey: loader.EnvironmentContextKey,
-					Resource:   hasEnv,
-				},
-				{
-					ContextKey: loader.PipelineRunsContextKey,
-					Resource:   []tektonv1beta1.PipelineRun{*integrationPipelineRunComponent},
-				},
-				{
-					ContextKey: loader.RequiredIntegrationTestScenariosContextKey,
-					Resource:   []v1beta1.IntegrationTestScenario{*integrationTestScenario},
-				},
-			})
-
-			adapter.pipelineRun = &tektonv1beta1.PipelineRun{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "pipelinerun-status-sample",
-					Namespace: "default",
-					Labels: map[string]string{
-						"appstudio.openshift.io/application":              "test-application",
-						"appstudio.openshift.io/component":                "devfile-sample-go-basic",
-						"appstudio.openshift.io/snapshot":                 "test-application-s8tnj",
-						"test.appstudio.openshift.io/scenario":            "example-pass",
-						"pac.test.appstudio.openshift.io/state":           "started",
-						"pac.test.appstudio.openshift.io/sender":          "foo",
-						"pac.test.appstudio.openshift.io/check-run-id":    "9058825284",
-						"pac.test.appstudio.openshift.io/branch":          "main",
-						"pac.test.appstudio.openshift.io/url-org":         "devfile-sample",
-						"pac.test.appstudio.openshift.io/original-prname": "devfile-sample-go-basic-on-pull-request",
-						"pac.test.appstudio.openshift.io/url-repository":  "devfile-sample-go-basic",
-						"pac.test.appstudio.openshift.io/repository":      "devfile-sample-go-basic",
-						"pac.test.appstudio.openshift.io/sha":             "12a4a35ccd08194595179815e4646c3a6c08bb77",
-						"pac.test.appstudio.openshift.io/git-provider":    "github",
-						"pac.test.appstudio.openshift.io/event-type":      "pull_request",
-						"pipelines.appstudio.openshift.io/type":           "test",
-					},
-					Annotations: map[string]string{
-						"pac.test.appstudio.openshift.io/on-target-branch": "[main,master]",
-						"pac.test.appstudio.openshift.io/repo-url":         "https://github.com/devfile-samples/devfile-sample-go-basic",
-						"pac.test.appstudio.openshift.io/sha-title":        "Appstudio update devfile-sample-go-basic",
-						"pac.test.appstudio.openshift.io/git-auth-secret":  "pac-gitauth-zjib",
-						"pac.test.appstudio.openshift.io/pull-request":     "16",
-						"pac.test.appstudio.openshift.io/on-event":         "[pull_request]",
-						"pac.test.appstudio.openshift.io/installation-id":  "30353543",
-					},
-				},
-				Spec: tektonv1beta1.PipelineRunSpec{
-					PipelineRef: &tektonv1beta1.PipelineRef{
-						Name:   "component-pipeline-pass",
-						Bundle: "quay.io/kpavic/test-bundle:component-pipeline-pass",
-					},
-				},
-			}
-
-			result, err := adapter.EnsureStatusReported()
-			Expect(!result.CancelRequest && err == nil).To(BeTrue())
-
-			Expect(statusReporter.Called).To(BeTrue())
-
-			statusAdapter.GetReportersError = errors.New("GetReportersError")
-
-			result, err = adapter.EnsureStatusReported()
-			Expect(result.RequeueRequest && err != nil && err.Error() == "GetReportersError").To(BeTrue())
-
-			statusAdapter.GetReportersError = nil
-			statusReporter.ReportStatusError = errors.New("ReportStatusError")
-
-			result, err = adapter.EnsureStatusReported()
-			Expect(result.RequeueRequest && err != nil && err.Error() == "ReportStatusError").To(BeTrue())
-		})
-	})
-
 	When("EnsureEphemeralEnvironmentsCleanedUp is called", func() {
 		BeforeEach(func() {
 			deploymentTargetClass = &applicationapiv1alpha1.DeploymentTargetClass{
@@ -802,11 +679,4 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		})
 	})
 
-	createAdapter = func() *Adapter {
-		adapter = NewAdapter(integrationPipelineRunComponent, hasComp, hasApp, logger, loader.NewMockLoader(), k8sClient, ctx)
-		statusReporter = &MockStatusReporter{}
-		statusAdapter = &MockStatusAdapter{Reporter: statusReporter}
-		adapter.status = statusAdapter
-		return adapter
-	}
 })
