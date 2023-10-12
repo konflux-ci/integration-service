@@ -723,7 +723,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 
 			owners := binding.GetOwnerReferences()
 			Expect(len(owners) == 1).To(BeTrue())
-			Expect(owners[0].Name).To(Equal(hasApp.Name))
+			Expect(owners[0].Name).To(Equal(hasSnapshot.Name))
 
 			err = k8sClient.Delete(ctx, &binding)
 			Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
