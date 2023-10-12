@@ -10,7 +10,7 @@ flowchart TD
 
   predicate((PREDICATE: <br>Snapshot got created OR <br> changed to Finished))
 
-  %%%%%%%%%%%%%%%%%%%%%%% Drawing EnsureAllIntegrationTestPipelinesExist() function
+  %%%%%%%%%%%%%%%%%%%%%%% Drawing EnsureStaticIntegrationPipelineRunsExist() function
 
   %% Node definitions
   ensure1(Process further if: Snapshot testing <br>is not finished yet)
@@ -27,7 +27,7 @@ flowchart TD
   continue_processing1(Controller continues processing...)
 
   %% Node connections
-  predicate                 ---->    |"EnsureAllIntegrationTestPipelinesExist()"|ensure1
+  predicate                 ---->    |"EnsureStaticIntegrationPipelineRunsExist()"|ensure1
   ensure1                   -->      are_there_any_ITS
   are_there_any_ITS         --Yes--> does_ITS_has_env_defined
   are_there_any_ITS         --No-->  fetch_all_required_ITS
@@ -85,7 +85,7 @@ flowchart TD
   encountered_error32    --Yes--> mark_snapshot_Invalid3
 
 
-  %%%%%%%%%%%%%%%%%%%%%%% Drawing EnsureCreationOfEnvironment() function
+  %%%%%%%%%%%%%%%%%%%%%%% Drawing EnsureCreationOfEphemeralEnvironments() function
 
   %% Node definitions
   ensure4(Process further if: Snapshot testing <br>is not finished yet)
@@ -99,7 +99,7 @@ flowchart TD
   create_SEB_for_eph_env(<b>Create a SnapshotEnvironmentBinding</b> <br>for the given Snapshot and the <br>above ephemeral environment)
 
   %% Node connections
-  predicate                   ---->    |"EnsureCreationOfEnvironment()"|ensure4
+  predicate                   ---->    |"EnsureCreationOfEphemeralEnvironments()"|ensure4
   ensure4                     -->      step1_fetch_all_ITS
   step1_fetch_all_ITS         -->      step2_fetch_all_env
   step2_fetch_all_env         -->      init_test_statuses_snapshot

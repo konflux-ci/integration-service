@@ -112,8 +112,8 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		adapter.EnsureAllReleasesExist,
 		adapter.EnsureGlobalCandidateImageUpdated,
 		adapter.EnsureSnapshotEnvironmentBindingExist,
-		adapter.EnsureCreationOfEnvironment,
-		adapter.EnsureAllIntegrationTestPipelinesExist,
+		adapter.EnsureCreationOfEphemeralEnvironments,
+		adapter.EnsureStaticIntegrationPipelineRunsExist,
 	})
 }
 
