@@ -115,7 +115,7 @@ func (a *Adapter) EnsureAllIntegrationTestPipelinesExist() (controller.Operation
 
 		for _, integrationTestScenario := range *integrationTestScenarios {
 			integrationTestScenario := integrationTestScenario //G601
-			if !reflect.ValueOf(integrationTestScenario.Spec.Environment).IsZero() {
+			if shouldScenarioRunInEphemeralEnv(&integrationTestScenario) {
 				// the test pipeline for scenario needing an ephemeral environment will be handled in STONEINTG-333
 				a.logger.Info("IntegrationTestScenario has environment defined, skipping creation of pipelinerun.", "IntegrationTestScenario", integrationTestScenario)
 				continue
@@ -216,7 +216,7 @@ func (a *Adapter) EnsureCreationOfEnvironment() (controller.OperationResult, err
 
 	for _, integrationTestScenario := range *integrationTestScenarios {
 		integrationTestScenario := integrationTestScenario //G601
-		if reflect.ValueOf(integrationTestScenario.Spec.Environment).IsZero() {
+		if !shouldScenarioRunInEphemeralEnv(&integrationTestScenario) {
 			continue
 		}
 
@@ -806,4 +806,10 @@ func (a *Adapter) writeIntegrationTestStatusAtError(sits *intgteststat.SnapshotI
 	if err != nil {
 		a.logger.Error(err, "Updating statuses of tests in snapshot failed")
 	}
+}
+
+// shouldScenarioRunInEphemeralEnv returns true when integration test for scenario should run in an ephemeral environment
+func shouldScenarioRunInEphemeralEnv(scenario *v1beta1.IntegrationTestScenario) bool {
+	// non-empty environment defined in scenario resource means to run in ephemeral env
+	return !reflect.ValueOf(scenario.Spec.Environment).IsZero()
 }
