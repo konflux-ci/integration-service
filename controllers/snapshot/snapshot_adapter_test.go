@@ -851,11 +851,20 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 				*secondComp,
 			}
 
-			updatedSnapshotEnvironmentBinding, err := adapter.updateExistingSnapshotEnvironmentBindingWithSnapshot(snapshotEnvironmentBinding, hasSnapshot, &componentsUpdate)
+			err = adapter.updateExistingSnapshotEnvironmentBindingWithSnapshot(snapshotEnvironmentBinding, hasSnapshot, &componentsUpdate)
 			Expect(err).To(BeNil())
-			Expect(updatedSnapshotEnvironmentBinding).NotTo(BeNil())
-			Expect(len(updatedSnapshotEnvironmentBinding.Spec.Components) == 1)
-			Expect(updatedSnapshotEnvironmentBinding.Spec.Components[0].Name == secondComp.Spec.ComponentName)
+
+			// get fresh copy to make sure that SEB was updated in k8s
+			updatedSEB := &applicationapiv1alpha1.SnapshotEnvironmentBinding{}
+			Eventually(func() bool {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Namespace: snapshotEnvironmentBinding.Namespace,
+					Name:      snapshotEnvironmentBinding.Name,
+				}, updatedSEB)
+				return err == nil && len(updatedSEB.Spec.Components) == 1
+			}, time.Second*10).Should(BeTrue())
+			Expect(updatedSEB.Spec.Components[0].Name == secondComp.Spec.ComponentName)
+
 			err = k8sClient.Delete(ctx, snapshotEnvironmentBinding)
 			Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 		})
