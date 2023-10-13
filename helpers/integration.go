@@ -31,6 +31,7 @@ import (
 	tektonv1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 	"knative.dev/pkg/apis"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 )
@@ -375,5 +376,19 @@ func CleanUpEphemeralEnvironments(client client.Client, logger *IntegrationLogge
 		return err
 	}
 	logger.LogAuditEvent("Ephemeral environment is deleted and its owning SnapshotEnvironmentBinding is in the process of being deleted", env, LogActionDelete)
+	return nil
+}
+
+func RemoveFinalizer(adapterClient client.Client, logger IntegrationLogger, ctx context.Context, pipelineRun *tektonv1beta1.PipelineRun, finalizer string) error {
+	// Remove the finalizer from this Integration PipelineRun
+	patch := client.MergeFrom(pipelineRun.DeepCopy())
+	controllerutil.RemoveFinalizer(pipelineRun, finalizer)
+	err := adapterClient.Patch(ctx, pipelineRun, patch)
+	if err != nil {
+		return fmt.Errorf("error occurred while removing finalizer from the Integration PipelineRun: %w", err)
+	}
+
+	logger.LogAuditEvent("Removed Finalizer from the Integration PipelineRun", pipelineRun, LogActionUpdate, "finalizer", IntegrationPipelineRunFinalizer)
+
 	return nil
 }

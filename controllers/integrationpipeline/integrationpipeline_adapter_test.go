@@ -18,6 +18,7 @@ package integrationpipeline
 
 import (
 	"bytes"
+	"fmt"
 	"reflect"
 	"time"
 
@@ -51,6 +52,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		failedTaskRun                         *tektonv1beta1.TaskRun
 		integrationPipelineRunComponent       *tektonv1beta1.PipelineRun
 		integrationPipelineRunComponentFailed *tektonv1beta1.PipelineRun
+		intgPipelineRunWithDeletionTimestamp  *tektonv1beta1.PipelineRun
 		hasComp                               *applicationapiv1alpha1.Component
 		hasComp2                              *applicationapiv1alpha1.Component
 		hasApp                                *applicationapiv1alpha1.Application
@@ -679,4 +681,42 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		})
 	})
 
+	When("GetIntegrationPipelineRunStatus is called with an Integration PLR with non-nil Deletion timestamp", func() {
+		BeforeEach(func() {
+			intgPipelineRunWithDeletionTimestamp = &tektonv1beta1.PipelineRun{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "pipelinerun-component-sample-deletion-timestamp",
+					Namespace: "default",
+					Annotations: map[string]string{
+						"pac.test.appstudio.openshift.io/on-target-branch": "[main]",
+					},
+				},
+				Spec: tektonv1beta1.PipelineRunSpec{
+					PipelineRef: &tektonv1beta1.PipelineRef{
+						Name:   "component-pipeline-fail",
+						Bundle: "quay.io/kpavic/test-bundle:component-pipeline-fail",
+					},
+				},
+			}
+
+			Expect(k8sClient.Create(ctx, intgPipelineRunWithDeletionTimestamp)).Should(Succeed())
+
+			now := metav1.NewTime(metav1.Now().Add(time.Second * 1))
+			intgPipelineRunWithDeletionTimestamp.SetDeletionTimestamp(&now)
+		})
+
+		AfterEach(func() {
+			err := k8sClient.Delete(ctx, intgPipelineRunWithDeletionTimestamp)
+			Expect(err == nil || k8serrors.IsNotFound(err)).To(BeTrue())
+		})
+
+		It("ensures test status in snapshot is updated to failed", func() {
+			status, detail, err := GetIntegrationPipelineRunStatus(adapter.client, adapter.context, intgPipelineRunWithDeletionTimestamp)
+
+			Expect(err).To(BeNil())
+			Expect(status).To(Equal(intgteststat.IntegrationTestStatusDeleted))
+			Expect(detail).To(ContainSubstring(fmt.Sprintf("Integration test which is running as pipeline run '%s', has been deleted", intgPipelineRunWithDeletionTimestamp.Name)))
+			Expect(intgPipelineRunWithDeletionTimestamp.DeletionTimestamp).ToNot(BeNil())
+		})
+	})
 })
