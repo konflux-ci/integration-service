@@ -32,7 +32,6 @@ import (
 	tektonv1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
 // Adapter holds the objects needed to reconcile an integration PipelineRun.
@@ -65,12 +64,16 @@ func NewAdapter(pipelineRun *tektonv1beta1.PipelineRun, component *applicationap
 // EnsureStatusReportedInSnapshot will ensure that status of the integration test pipelines is reported to snapshot
 // to be consumed by user
 func (a *Adapter) EnsureStatusReportedInSnapshot() (controller.OperationResult, error) {
+	var pipelinerunStatus intgteststat.IntegrationTestStatus
+	var snapshot *applicationapiv1alpha1.Snapshot
+	var detail string
+	var err error
 
 	// pipelines run in parallel and have great potential to cause conflict on update
-	// thus `RetryOnConflict` is easy solution here, given the snaphost must be loaded specifically here
-	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+	// thus `RetryOnConflict` is easy solution here, given the snapshot must be loaded specifically here
+	err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
 
-		snapshot, err := a.loader.GetSnapshotFromPipelineRun(a.client, a.context, a.pipelineRun)
+		snapshot, err = a.loader.GetSnapshotFromPipelineRun(a.client, a.context, a.pipelineRun)
 		if err != nil {
 			return err
 		}
@@ -80,11 +83,11 @@ func (a *Adapter) EnsureStatusReportedInSnapshot() (controller.OperationResult, 
 			return err
 		}
 
-		status, detail, err := GetIntegrationPipelineRunStatus(a.client, a.context, a.pipelineRun)
+		pipelinerunStatus, detail, err = GetIntegrationPipelineRunStatus(a.client, a.context, a.pipelineRun)
 		if err != nil {
 			return err
 		}
-		statuses.UpdateTestStatusIfChanged(a.pipelineRun.Labels[tekton.ScenarioNameLabel], status, detail)
+		statuses.UpdateTestStatusIfChanged(a.pipelineRun.Labels[tekton.ScenarioNameLabel], pipelinerunStatus, detail)
 		if err = statuses.UpdateTestPipelineRunName(a.pipelineRun.Labels[tekton.ScenarioNameLabel], a.pipelineRun.Name); err != nil {
 			return err
 		}
@@ -98,18 +101,13 @@ func (a *Adapter) EnsureStatusReportedInSnapshot() (controller.OperationResult, 
 		return controller.RequeueWithError(fmt.Errorf("failed to update test status in snapshot: %w", err))
 	}
 
-	if h.HasPipelineRunFinished(a.pipelineRun) {
-		// Remove the finalizer from this Integration PipelineRun
-		patch := client.MergeFrom(a.pipelineRun.DeepCopy())
-		controllerutil.RemoveFinalizer(a.pipelineRun, h.IntegrationPipelineRunFinalizer)
-		err = a.client.Patch(a.context, a.pipelineRun, patch)
+	// Remove the finalizer from Integration PLRs only if they aren't related to Snapshots created by Pull-Request event
+	// If they are related, then the statusreport controller removes the finalizers from these PLRs
+	if !gitops.IsSnapshotCreatedByPACPullRequestEvent(snapshot) && (h.HasPipelineRunFinished(a.pipelineRun) || pipelinerunStatus == intgteststat.IntegrationTestStatusDeleted) {
+		err = h.RemoveFinalizer(a.client, a.logger, a.context, a.pipelineRun, h.IntegrationPipelineRunFinalizer)
 		if err != nil {
-			return controller.RequeueWithError(fmt.Errorf("failed to remove finalizer from the Integration PipelineRun: %w", err))
+			return controller.RequeueWithError(fmt.Errorf("failed to remove the finalizer: %w", err))
 		}
-
-		a.logger.LogAuditEvent("Removed Finalizer from the Integration PipelineRun",
-			a.pipelineRun, h.LogActionUpdate,
-			"finalizer", h.IntegrationPipelineRunFinalizer)
 	}
 
 	return controller.ContinueProcessing()
@@ -160,7 +158,12 @@ func (a *Adapter) EnsureEphemeralEnvironmentsCleanedUp() (controller.OperationRe
 func GetIntegrationPipelineRunStatus(adapterClient client.Client, ctx context.Context, pipelineRun *tektonv1beta1.PipelineRun) (intgteststat.IntegrationTestStatus, string, error) {
 	// Check if the pipelineRun finished from the condition of status
 	if !h.HasPipelineRunFinished(pipelineRun) {
-		return intgteststat.IntegrationTestStatusInProgress, fmt.Sprintf("Integration test is running as pipeline run '%s'", pipelineRun.Name), nil
+		// Mark the pipelineRun's status as "Deleted" if its not finished yet and is marked for deletion (with a non-nil deletionTimestamp)
+		if pipelineRun.GetDeletionTimestamp() != nil {
+			return intgteststat.IntegrationTestStatusDeleted, fmt.Sprintf("Integration test which is running as pipeline run '%s', has been deleted", pipelineRun.Name), nil
+		} else {
+			return intgteststat.IntegrationTestStatusInProgress, fmt.Sprintf("Integration test is running as pipeline run '%s'", pipelineRun.Name), nil
+		}
 	}
 
 	outcome, err := h.GetIntegrationPipelineRunOutcome(adapterClient, ctx, pipelineRun)

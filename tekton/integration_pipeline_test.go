@@ -20,6 +20,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/redhat-appstudio/integration-service/api/v1beta1"
+	"github.com/redhat-appstudio/integration-service/helpers"
 
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/gitops"
@@ -348,6 +349,16 @@ var _ = Describe("Integration pipeline", func() {
 				Should(HavePrefix(prefix))
 			Expect(newIntegrationPipelineRun.ObjectMeta.Namespace).To(Equal(namespace))
 			Expect(string(enterpriseContractPipelineRun.Spec.PipelineRef.ResolverRef.Resolver)).To(Equal("git"))
+		})
+
+		It("can add finalizer to IntegrationPipelineRun", func() {
+			newIntegrationPipelineRun.WithFinalizer(helpers.IntegrationPipelineRunFinalizer)
+			Expect(newIntegrationPipelineRun.Finalizers).To(ContainElement(ContainSubstring(helpers.IntegrationPipelineRunFinalizer)))
+		})
+
+		It("can remove finalizer to IntegrationPipelineRun", func() {
+			Expect(helpers.RemoveFinalizer(k8sClient, helpers.IntegrationLogger{}, ctx, &newIntegrationPipelineRun.PipelineRun, helpers.IntegrationPipelineRunFinalizer)).To(BeNil())
+			Expect(newIntegrationPipelineRun.Finalizers).To(BeNil())
 		})
 
 		It("can append extra params to IntegrationPipelineRun and these parameters are present in the object Specs", func() {

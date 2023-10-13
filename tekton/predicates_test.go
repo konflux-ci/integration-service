@@ -229,5 +229,19 @@ var _ = Describe("Predicates", func() {
 			contextEvent.ObjectNew = &tektonv1beta1.TaskRun{}
 			Expect(instance.Update(contextEvent)).To(BeFalse())
 		})
+
+		It("should return true when an update event is received for a PipelineRun getting deleted", func() {
+			contextEvent := event.UpdateEvent{
+				ObjectOld: pipelineRun,
+				ObjectNew: newPipelineRun,
+			}
+			Expect(instance.Update(contextEvent)).To(BeFalse())
+			newPipelineRun.DeletionTimestamp = nil
+			Expect(instance.Update(contextEvent)).To(BeFalse())
+			newPipelineRun.DeletionTimestamp = &v1.Time{Time: time.Now()}
+			Expect(instance.Update(contextEvent)).To(BeTrue())
+			contextEvent.ObjectNew = &tektonv1beta1.TaskRun{}
+			Expect(instance.Update(contextEvent)).To(BeFalse())
+		})
 	})
 })

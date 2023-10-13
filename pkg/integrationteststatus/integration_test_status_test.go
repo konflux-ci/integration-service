@@ -44,6 +44,7 @@ var _ = Describe("integrationteststatus library unittests", func() {
 			Entry("When status is DeploymentError", intgteststat.IntegrationTestStatusDeploymentError, "DeploymentError"),
 			Entry("When status is TestFail", intgteststat.IntegrationTestStatusTestFail, "TestFail"),
 			Entry("When status is TestPass", intgteststat.IntegrationTestStatusTestPassed, "TestPassed"),
+			Entry("When status is Deleted", intgteststat.IntegrationTestStatusDeleted, "Deleted"),
 		)
 
 		DescribeTable("Status to JSON and vice versa",
@@ -63,6 +64,7 @@ var _ = Describe("integrationteststatus library unittests", func() {
 			Entry("When status is DeploymentError", intgteststat.IntegrationTestStatusDeploymentError, "DeploymentError"),
 			Entry("When status is TestFail", intgteststat.IntegrationTestStatusTestFail, "TestFail"),
 			Entry("When status is TestPass", intgteststat.IntegrationTestStatusTestPassed, "TestPassed"),
+			Entry("When status is Deleted", intgteststat.IntegrationTestStatusDeleted, "Deleted"),
 		)
 
 		It("Invalid status to type fails with error", func() {
@@ -150,6 +152,7 @@ var _ = Describe("integrationteststatus library unittests", func() {
 			Entry("When status is DeploymentError", intgteststat.IntegrationTestStatusDeploymentError, false),
 			Entry("When status is TestFail", intgteststat.IntegrationTestStatusTestFail, false),
 			Entry("When status is TestPass", intgteststat.IntegrationTestStatusTestPassed, false),
+			Entry("When status is Deleted", intgteststat.IntegrationTestStatusDeleted, false),
 		)
 
 		DescribeTable("Test expected additons of completionTime",
@@ -169,6 +172,7 @@ var _ = Describe("integrationteststatus library unittests", func() {
 			Entry("When status is DeploymentError", intgteststat.IntegrationTestStatusDeploymentError, true),
 			Entry("When status is TestFail", intgteststat.IntegrationTestStatusTestFail, true),
 			Entry("When status is TestPass", intgteststat.IntegrationTestStatusTestPassed, true),
+			Entry("When status is Deleted", intgteststat.IntegrationTestStatusDeleted, true),
 		)
 
 		It("Change back to InProgress updates timestamps accordingly", func() {

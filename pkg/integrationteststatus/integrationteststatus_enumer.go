@@ -7,9 +7,9 @@ import (
 	"fmt"
 )
 
-const _IntegrationTestStatusName = "PendingInProgressEnvironmentProvisionErrorDeploymentErrorTestFailTestPassed"
+const _IntegrationTestStatusName = "PendingInProgressDeletedEnvironmentProvisionErrorDeploymentErrorTestFailTestPassed"
 
-var _IntegrationTestStatusIndex = [...]uint8{0, 7, 17, 42, 57, 65, 75}
+var _IntegrationTestStatusIndex = [...]uint8{0, 7, 17, 24, 49, 64, 72, 82}
 
 func (i IntegrationTestStatus) String() string {
 	i -= 1
@@ -19,15 +19,16 @@ func (i IntegrationTestStatus) String() string {
 	return _IntegrationTestStatusName[_IntegrationTestStatusIndex[i]:_IntegrationTestStatusIndex[i+1]]
 }
 
-var _IntegrationTestStatusValues = []IntegrationTestStatus{1, 2, 3, 4, 5, 6}
+var _IntegrationTestStatusValues = []IntegrationTestStatus{1, 2, 3, 4, 5, 6, 7}
 
 var _IntegrationTestStatusNameToValueMap = map[string]IntegrationTestStatus{
 	_IntegrationTestStatusName[0:7]:   1,
 	_IntegrationTestStatusName[7:17]:  2,
-	_IntegrationTestStatusName[17:42]: 3,
-	_IntegrationTestStatusName[42:57]: 4,
-	_IntegrationTestStatusName[57:65]: 5,
-	_IntegrationTestStatusName[65:75]: 6,
+	_IntegrationTestStatusName[17:24]: 3,
+	_IntegrationTestStatusName[24:49]: 4,
+	_IntegrationTestStatusName[49:64]: 5,
+	_IntegrationTestStatusName[64:72]: 6,
+	_IntegrationTestStatusName[72:82]: 7,
 }
 
 // IntegrationTestStatusString retrieves an enum value from the enum constants string name.
