@@ -17,6 +17,7 @@ limitations under the License.
 package v1alpha1
 
 import (
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"reflect"
 
 	"github.com/redhat-appstudio/integration-service/api/v1beta1"
@@ -36,6 +37,8 @@ func (src *IntegrationTestScenario) ConvertTo(dstRaw conversion.Hub) error {
 	dst := dstRaw.(*v1beta1.IntegrationTestScenario)
 	dst.ObjectMeta = src.ObjectMeta
 	dst.Spec.Application = src.Spec.Application
+	dst.Status = v1beta1.IntegrationTestScenarioStatus{Conditions: make([]metav1.Condition, 0)}
+
 	if !reflect.ValueOf(src.Spec.Environment).IsZero() {
 		dst.Spec.Environment = v1beta1.TestEnvironment(src.Spec.Environment)
 	}
@@ -49,6 +52,11 @@ func (src *IntegrationTestScenario) ConvertTo(dstRaw conversion.Hub) error {
 			dst.Spec.Contexts = append(dst.Spec.Contexts, v1beta1.TestContext(par))
 		}
 	}
+
+	if src.Status.Conditions != nil {
+		dst.Status.Conditions = append(dst.Status.Conditions, src.Status.Conditions...)
+	}
+
 	dst.Spec.ResolverRef = v1beta1.ResolverRef{
 		Resolver: "bundles",
 		Params: []v1beta1.ResolverParameter{
