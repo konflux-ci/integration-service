@@ -58,7 +58,19 @@ func NewAdapter(application *applicationapiv1alpha1.Application, scenario *v1bet
 // in case it is, set its owner reference
 func (a *Adapter) EnsureCreatedScenarioIsValid() (controller.OperationResult, error) {
 
-	// First check if application exists or not
+	// First check if status conditions are set to prevent a known issue with incorrectly migrated v1alpha1 scenarios
+	if a.scenario.Status.Conditions == nil {
+		a.logger.Info("The scenario doesn't have status.conditions set correctly, adding them.")
+		patch := client.MergeFrom(a.scenario.DeepCopy())
+		a.scenario.Status.Conditions = []metav1.Condition{}
+		err := a.client.Status().Patch(a.context, a.scenario, patch)
+		if err != nil {
+			a.logger.Error(err, "Failed to add Scenario status condition")
+			return controller.RequeueWithError(err)
+		}
+	}
+
+	// Check if application exists or not
 	if a.application == nil {
 		a.logger.Info("Application for scenario was not found.")
 
