@@ -29,6 +29,7 @@ import (
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/api/v1beta1"
 	"github.com/redhat-appstudio/integration-service/gitops"
+	"github.com/redhat-appstudio/integration-service/metrics"
 	intgteststat "github.com/redhat-appstudio/integration-service/pkg/integrationteststatus"
 
 	h "github.com/redhat-appstudio/integration-service/helpers"
@@ -119,7 +120,7 @@ func (a *Adapter) EnsureIntegrationTestPipelineForScenarioExists() (controller.O
 				"snapshot.Name", a.snapshot.Name)
 		}
 	}
-
+	metrics.RegisterSEBSuccessfulDeployment()
 	return controller.ContinueProcessing()
 }
 
@@ -191,7 +192,7 @@ func (a *Adapter) EnsureEphemeralEnvironmentsCleanedUp() (controller.OperationRe
 		a.logger.Error(err, "Failed to delete the Ephemeral Environment")
 		return controller.RequeueWithError(err)
 	}
-
+	metrics.RegisterSEBFailedDeployment()
 	return controller.ContinueProcessing()
 
 }

@@ -51,6 +51,13 @@ var (
 		Buckets: []float64{1, 5, 10, 20, 40, 60, 80, 120, 160, 200, 300},
 	}
 
+	SEBEphemeralDeploymentsTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "seb_ephemeral_deployments_total",
+			Help: "Total number of SEB deployments processed by the operator",
+		}, []string{"reason"},
+	)
+
 	IntegrationPipelineRunTotal = prometheus.NewCounter(
 		prometheus.CounterOpts{
 			Name: "integration_pipelinerun_total",
@@ -119,6 +126,18 @@ func RegisterInvalidSnapshot(conditiontype, reason string) {
 	}).Inc()
 }
 
+func RegisterSEBSuccessfulDeployment() {
+	SEBEphemeralDeploymentsTotal.With(prometheus.Labels{
+		"reason": "successful",
+	}).Inc()
+}
+
+func RegisterSEBFailedDeployment() {
+	SEBEphemeralDeploymentsTotal.With(prometheus.Labels{
+		"reason": "failed",
+	}).Inc()
+}
+
 func RegisterPipelineRunStarted(snapshotCreatedTime metav1.Time, pipelineRunStartTime *metav1.Time) {
 	SnapshotCreatedToPipelineRunStartedSeconds.Observe(pipelineRunStartTime.Sub(snapshotCreatedTime.Time).Seconds())
 }
@@ -157,5 +176,6 @@ func init() {
 		SnapshotInvalidTotal,
 		SnapshotTotal,
 		ReleaseLatencySeconds,
+		SEBEphemeralDeploymentsTotal,
 	)
 }
