@@ -836,22 +836,18 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			var snapshotEnvironmentBinding *applicationapiv1alpha1.SnapshotEnvironmentBinding
 
 			// create snapshot environment
-			components := []applicationapiv1alpha1.Component{
-				*hasComp,
-			}
 			newLabels := map[string]string{}
 			newLabels[gitops.SnapshotTestScenarioLabel] = integrationTestScenario.Name
-			snapshotEnvironmentBinding, err := adapter.createSnapshotEnvironmentBindingForSnapshot(adapter.application, env, hasSnapshot, &components, newLabels)
+			snapshotEnvironmentBinding, err := adapter.createSnapshotEnvironmentBindingForSnapshot(adapter.application, env, hasSnapshot, newLabels)
 			Expect(err).To(BeNil())
 			Expect(snapshotEnvironmentBinding).NotTo(BeNil())
 			Expect(snapshotEnvironmentBinding.Labels[gitops.SnapshotTestScenarioLabel]).To(Equal(integrationTestScenario.Name))
 
-			// update snapshot environment with new component
-			componentsUpdate := []applicationapiv1alpha1.Component{
-				*secondComp,
-			}
+			otherSnapshot := hasSnapshot.DeepCopy()
+			otherSnapshot.Name = "other-snapshot"
+			otherSnapshot.Spec.Components = []applicationapiv1alpha1.SnapshotComponent{{Name: secondComp.Name, ContainerImage: sample_image}}
 
-			err = adapter.updateExistingSnapshotEnvironmentBindingWithSnapshot(snapshotEnvironmentBinding, hasSnapshot, &componentsUpdate)
+			err = adapter.updateExistingSnapshotEnvironmentBindingWithSnapshot(snapshotEnvironmentBinding, otherSnapshot)
 			Expect(err).To(BeNil())
 
 			// get fresh copy to make sure that SEB was updated in k8s
@@ -863,7 +859,8 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 				}, updatedSEB)
 				return err == nil && len(updatedSEB.Spec.Components) == 1
 			}, time.Second*10).Should(BeTrue())
-			Expect(updatedSEB.Spec.Components[0].Name == secondComp.Spec.ComponentName)
+			Expect(updatedSEB.Spec.Snapshot == otherSnapshot.Name)
+			Expect(updatedSEB.Spec.Components[0].Name == secondComp.Name)
 
 			err = k8sClient.Delete(ctx, snapshotEnvironmentBinding)
 			Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
