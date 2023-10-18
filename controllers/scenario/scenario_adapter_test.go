@@ -17,6 +17,8 @@ limitations under the License.
 package scenario
 
 import (
+	"bytes"
+	"github.com/tonglil/buflogr"
 	"reflect"
 	"time"
 
@@ -263,6 +265,23 @@ var _ = Describe("Scenario Adapter", Ordered, func() {
 		Expect(integrationTestScenario).NotTo(BeNil())
 		Expect(integrationTestScenario.Status.Conditions).NotTo(BeNil())
 		Expect(meta.IsStatusConditionTrue(integrationTestScenario.Status.Conditions, gitops.IntegrationTestScenarioValid)).To(BeTrue())
+	})
+
+	It("ensures the integrationTestScenario with empty status.conditions is handled correctly", func() {
+		var buf bytes.Buffer
+		log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+
+		integrationTestScenarioMissingConditions := integrationTestScenario.DeepCopy()
+		integrationTestScenarioMissingConditions.Status = v1beta1.IntegrationTestScenarioStatus{}
+		adapter = NewAdapter(hasApp, integrationTestScenarioMissingConditions, log, k8sClient, ctx)
+
+		Eventually(func() bool {
+			result, err := adapter.EnsureCreatedScenarioIsValid()
+			return !result.CancelRequest && err == nil
+		}, time.Second*20).Should(BeTrue())
+
+		expectedLogEntry := "The scenario doesn't have status.conditions set correctly, adding them"
+		Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
 	})
 
 })
