@@ -206,11 +206,6 @@ func (a *Adapter) EnsureCreationOfEphemeralEnvironments() (controller.OperationR
 		a.logger.Error(err, "Failed to get all environments.")
 		return controller.RequeueWithError(err)
 	}
-	components, err := a.loader.GetAllApplicationComponents(a.client, a.context, a.application)
-	if err != nil {
-		a.logger.Error(err, "Failed to get all components.")
-		return controller.RequeueWithError(err)
-	}
 
 	for _, integrationTestScenario := range *integrationTestScenarios {
 		integrationTestScenario := integrationTestScenario //G601
@@ -218,7 +213,7 @@ func (a *Adapter) EnsureCreationOfEphemeralEnvironments() (controller.OperationR
 			continue
 		}
 
-		_, err = a.ensureEphemeralEnvironmentForScenarioExists(&integrationTestScenario, testStatuses, components, allEnvironments)
+		_, err = a.ensureEphemeralEnvironmentForScenarioExists(&integrationTestScenario, testStatuses, allEnvironments)
 		if err != nil {
 			return controller.RequeueWithError(fmt.Errorf("failed to ensure existence of the environment for scenario %s: %w", integrationTestScenario.Name, err))
 		}
@@ -356,11 +351,6 @@ func (a *Adapter) EnsureSnapshotEnvironmentBindingExist() (controller.OperationR
 		return controller.RequeueWithError(err)
 	}
 
-	components, err := a.loader.GetAllSnapshotComponents(a.client, a.context, a.snapshot)
-	if err != nil {
-		return controller.RequeueWithError(err)
-	}
-
 	for _, availableEnvironment := range *availableEnvironments {
 		availableEnvironment := availableEnvironment // G601
 		snapshotEnvironmentBinding, err := a.loader.FindExistingSnapshotEnvironmentBinding(a.client, a.context, a.application, &availableEnvironment)
@@ -368,7 +358,7 @@ func (a *Adapter) EnsureSnapshotEnvironmentBindingExist() (controller.OperationR
 			return controller.RequeueWithError(err)
 		}
 		if snapshotEnvironmentBinding != nil {
-			err = a.updateExistingSnapshotEnvironmentBindingWithSnapshot(snapshotEnvironmentBinding, a.snapshot, components)
+			err = a.updateExistingSnapshotEnvironmentBindingWithSnapshot(snapshotEnvironmentBinding, a.snapshot)
 			if err != nil {
 				a.logger.Error(err, "Failed to update SnapshotEnvironmentBinding",
 					"snapshotEnvironmentBinding.Environment", snapshotEnvironmentBinding.Spec.Environment,
@@ -385,7 +375,7 @@ func (a *Adapter) EnsureSnapshotEnvironmentBindingExist() (controller.OperationR
 				"snapshotEnvironmentBinding.Snapshot", snapshotEnvironmentBinding.Spec.Snapshot)
 
 		} else {
-			snapshotEnvironmentBinding, err = a.createSnapshotEnvironmentBindingForSnapshot(a.application, &availableEnvironment, a.snapshot, components)
+			snapshotEnvironmentBinding, err = a.createSnapshotEnvironmentBindingForSnapshot(a.application, &availableEnvironment, a.snapshot)
 			if err != nil {
 				a.logger.Error(err, "Failed to create SnapshotEnvironmentBinding for snapshot",
 					"environment", availableEnvironment.Name,
@@ -449,9 +439,9 @@ func (a *Adapter) createEnvironmentForScenario(integrationTestScenario *v1beta1.
 }
 
 // createEnvironmentBindingForScenario creates SnapshotEnvironmentBinding for the given test scenario and snapshot
-func (a *Adapter) createEnvironmentBindingForScenario(integrationTestScenario *v1beta1.IntegrationTestScenario, environment *applicationapiv1alpha1.Environment, components *[]applicationapiv1alpha1.Component) (*applicationapiv1alpha1.SnapshotEnvironmentBinding, error) {
+func (a *Adapter) createEnvironmentBindingForScenario(integrationTestScenario *v1beta1.IntegrationTestScenario, environment *applicationapiv1alpha1.Environment) (*applicationapiv1alpha1.SnapshotEnvironmentBinding, error) {
 	scenarioLabelAndKey := map[string]string{gitops.SnapshotTestScenarioLabel: integrationTestScenario.Name}
-	binding, err := a.createSnapshotEnvironmentBindingForSnapshot(a.application, environment, a.snapshot, components, scenarioLabelAndKey)
+	binding, err := a.createSnapshotEnvironmentBindingForSnapshot(a.application, environment, a.snapshot, scenarioLabelAndKey)
 	if err != nil {
 		a.logger.Error(err, "Failed to create SnapshotEnvironmentBinding for snapshot",
 			"snapshot", a.snapshot.Name,
@@ -467,7 +457,7 @@ func (a *Adapter) createEnvironmentBindingForScenario(integrationTestScenario *v
 }
 
 // ensureEphemeralEnvironmentForScenarioExists creates or return existing epehemeral environment for the given test scenario
-func (a *Adapter) ensureEphemeralEnvironmentForScenarioExists(integrationTestScenario *v1beta1.IntegrationTestScenario, testStatuses *intgteststat.SnapshotIntegrationTestStatuses, components *[]applicationapiv1alpha1.Component, allEnvironments *[]applicationapiv1alpha1.Environment) (*applicationapiv1alpha1.SnapshotEnvironmentBinding, error) {
+func (a *Adapter) ensureEphemeralEnvironmentForScenarioExists(integrationTestScenario *v1beta1.IntegrationTestScenario, testStatuses *intgteststat.SnapshotIntegrationTestStatuses, allEnvironments *[]applicationapiv1alpha1.Environment) (*applicationapiv1alpha1.SnapshotEnvironmentBinding, error) {
 
 	var (
 		environment *applicationapiv1alpha1.Environment
@@ -499,7 +489,7 @@ func (a *Adapter) ensureEphemeralEnvironmentForScenarioExists(integrationTestSce
 	}
 	if binding == nil {
 		// create binding and add scenario name to label of binding
-		binding, err = a.createEnvironmentBindingForScenario(integrationTestScenario, environment, components)
+		binding, err = a.createEnvironmentBindingForScenario(integrationTestScenario, environment)
 		if err != nil {
 			testStatuses.UpdateTestStatusIfChanged(
 				integrationTestScenario.Name,
@@ -649,17 +639,17 @@ func (a *Adapter) createIntegrationPipelineRun(application *applicationapiv1alph
 }
 
 // createSnapshotEnvironmentBindingForSnapshot creates and returns a new snapshotEnvironmentBinding
-// for the given application, environment, snapshot, and components.
+// for the given application, environment, and snapshot.
 // If it's not possible to create it and set the application as the owner, an error will be returned
 func (a *Adapter) createSnapshotEnvironmentBindingForSnapshot(application *applicationapiv1alpha1.Application,
 	environment *applicationapiv1alpha1.Environment, snapshot *applicationapiv1alpha1.Snapshot,
-	components *[]applicationapiv1alpha1.Component, optionalLabelKeysAndValues ...map[string]string) (*applicationapiv1alpha1.SnapshotEnvironmentBinding, error) {
+	optionalLabelKeysAndValues ...map[string]string) (*applicationapiv1alpha1.SnapshotEnvironmentBinding, error) {
 	bindingName := application.Name + "-" + environment.Name + "-" + "binding"
 
 	snapshotEnvironmentBinding := gitops.NewSnapshotEnvironmentBinding(
 		bindingName, application.Namespace, application.Name,
 		environment.Name,
-		snapshot, *components)
+		snapshot)
 
 	// The SEBs for ephemeral Environments are expected to be cleaned up along with the Environment,
 	// while all other SEBs are meant to persist and be deleted with the Application
@@ -694,15 +684,14 @@ func (a *Adapter) createSnapshotEnvironmentBindingForSnapshot(application *appli
 }
 
 // updateExistingSnapshotEnvironmentBindingWithSnapshot updates and returns snapshotEnvironmentBinding
-// with the given snapshot and components. If it's not possible to patch, an error will be returned.
+// with the given snapshot. If it's not possible to patch, an error will be returned.
 func (a *Adapter) updateExistingSnapshotEnvironmentBindingWithSnapshot(snapshotEnvironmentBinding *applicationapiv1alpha1.SnapshotEnvironmentBinding,
-	snapshot *applicationapiv1alpha1.Snapshot,
-	components *[]applicationapiv1alpha1.Component) error {
+	snapshot *applicationapiv1alpha1.Snapshot) error {
 
 	patch := client.MergeFrom(snapshotEnvironmentBinding.DeepCopy())
 
 	snapshotEnvironmentBinding.Spec.Snapshot = snapshot.Name
-	snapshotComponents := gitops.NewBindingComponents(*components)
+	snapshotComponents := gitops.NewBindingComponents(snapshot)
 	snapshotEnvironmentBinding.Spec.Components = *snapshotComponents
 
 	err := a.client.Patch(a.context, snapshotEnvironmentBinding, patch)

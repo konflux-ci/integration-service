@@ -124,15 +124,6 @@ func (l *mockLoader) GetAllApplicationComponents(c client.Client, ctx context.Co
 	return &components, err
 }
 
-// GetAllSnapshotComponents returns the resource and error passed as values of the context.
-func (l *mockLoader) GetAllSnapshotComponents(c client.Client, ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot) (*[]applicationapiv1alpha1.Component, error) {
-	if ctx.Value(SnapshotComponentsContextKey) == nil {
-		return l.loader.GetAllSnapshotComponents(c, ctx, snapshot)
-	}
-	components, err := getMockedResourceAndErrorFromContext(ctx, SnapshotComponentsContextKey, []applicationapiv1alpha1.Component{})
-	return &components, err
-}
-
 // GetApplicationFromSnapshot returns the resource and error passed as values of the context.
 func (l *mockLoader) GetApplicationFromSnapshot(c client.Client, ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot) (*applicationapiv1alpha1.Application, error) {
 	if ctx.Value(ApplicationContextKey) == nil {

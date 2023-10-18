@@ -38,7 +38,6 @@ type ObjectLoader interface {
 	GetAllEnvironments(c client.Client, ctx context.Context, application *applicationapiv1alpha1.Application) (*[]applicationapiv1alpha1.Environment, error)
 	GetReleasesWithSnapshot(c client.Client, ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot) (*[]releasev1alpha1.Release, error)
 	GetAllApplicationComponents(c client.Client, ctx context.Context, application *applicationapiv1alpha1.Application) (*[]applicationapiv1alpha1.Component, error)
-	GetAllSnapshotComponents(c client.Client, ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot) (*[]applicationapiv1alpha1.Component, error)
 	GetApplicationFromSnapshot(c client.Client, ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot) (*applicationapiv1alpha1.Application, error)
 	GetComponentFromSnapshot(c client.Client, ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot) (*applicationapiv1alpha1.Component, error)
 	GetComponentFromPipelineRun(c client.Client, ctx context.Context, pipelineRun *tektonv1beta1.PipelineRun) (*applicationapiv1alpha1.Component, error)
@@ -119,27 +118,6 @@ func (l *loader) GetAllApplicationComponents(c client.Client, ctx context.Contex
 	}
 
 	return &applicationComponents.Items, nil
-}
-
-// GetAllSnapshotComponents loads from the cluster all Components associated with the given Snapshot.
-// If the Snapshot doesn't have any Components or this is not found in the cluster, an error will be returned.
-func (l *loader) GetAllSnapshotComponents(c client.Client, ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot) (*[]applicationapiv1alpha1.Component, error) {
-	components := []applicationapiv1alpha1.Component{}
-
-	for _, sc := range snapshot.Spec.Components {
-		component := &applicationapiv1alpha1.Component{}
-		err := c.Get(ctx, types.NamespacedName{
-			Namespace: snapshot.Namespace,
-			Name:      sc.Name,
-		}, component)
-		if err != nil {
-			return nil, err
-		}
-
-		components = append(components, *component)
-	}
-
-	return &components, nil
 }
 
 // GetApplicationFromSnapshot loads from the cluster the Application referenced in the given Snapshot.
