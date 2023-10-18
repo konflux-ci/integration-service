@@ -37,8 +37,8 @@ const (
 )
 
 // NewSnapshotEnvironmentBinding creates a new SnapshotEnvironmentBinding using the provided info.
-func NewSnapshotEnvironmentBinding(bindingName string, namespace string, applicationName string, environmentName string, snapshot *applicationapiv1alpha1.Snapshot, components []applicationapiv1alpha1.Component) *applicationapiv1alpha1.SnapshotEnvironmentBinding {
-	bindingComponents := NewBindingComponents(components)
+func NewSnapshotEnvironmentBinding(bindingName string, namespace string, applicationName string, environmentName string, snapshot *applicationapiv1alpha1.Snapshot) *applicationapiv1alpha1.SnapshotEnvironmentBinding {
+	bindingComponents := NewBindingComponents(snapshot)
 
 	snapshotEnvironmentBinding := &applicationapiv1alpha1.SnapshotEnvironmentBinding{
 		ObjectMeta: metav1.ObjectMeta{
@@ -58,11 +58,11 @@ func NewSnapshotEnvironmentBinding(bindingName string, namespace string, applica
 
 // NewBindingComponents gets all components from the Snapshot and formats them to be used in the
 // SnapshotEnvironmentBinding as BindingComponents.
-func NewBindingComponents(components []applicationapiv1alpha1.Component) *[]applicationapiv1alpha1.BindingComponent {
+func NewBindingComponents(snapshot *applicationapiv1alpha1.Snapshot) *[]applicationapiv1alpha1.BindingComponent {
 	bindingComponents := []applicationapiv1alpha1.BindingComponent{}
-	for _, component := range components {
+	for _, component := range snapshot.Spec.Components {
 		bindingComponents = append(bindingComponents, applicationapiv1alpha1.BindingComponent{
-			Name: component.Spec.ComponentName,
+			Name: component.Name,
 		})
 	}
 	return &bindingComponents
