@@ -147,7 +147,7 @@ var _ = Describe("Formatters", func() {
 	})
 
 	It("can construct a comment", func() {
-		comment, err := status.FormatComment("example-title", taskRuns)
+		comment, err := status.FormatCommentForFinishedPipelineRun("example-title", taskRuns)
 		Expect(err).To(BeNil())
 		Expect(comment).To(ContainSubstring("### example-title"))
 		Expect(comment).To(ContainSubstring(expectedSummary))

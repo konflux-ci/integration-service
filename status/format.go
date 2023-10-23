@@ -66,8 +66,8 @@ func FormatSummary(taskRuns []*helpers.TaskRun) (string, error) {
 	return buf.String(), nil
 }
 
-// FormatComment builds a markdown comment for a list of integration TaskRuns.
-func FormatComment(title string, results []*helpers.TaskRun) (string, error) {
+// FormatCommentForFinishedPipelineRun builds a markdown comment for a list of finished integration TaskRuns
+func FormatCommentForFinishedPipelineRun(title string, results []*helpers.TaskRun) (string, error) {
 	summary, err := FormatSummary(results)
 	if err != nil {
 		return "", err
@@ -75,6 +75,17 @@ func FormatComment(title string, results []*helpers.TaskRun) (string, error) {
 
 	buf := bytes.Buffer{}
 	data := CommentTemplateData{Title: title, Summary: summary}
+	t := template.Must(template.New("").Parse(commentTemplate))
+	if err := t.Execute(&buf, data); err != nil {
+		return "", err
+	}
+	return buf.String(), nil
+}
+
+// FormatCommentForDetail build a markdown comment for the details of unfinished integrationTest
+func FormatCommentForDetail(title, detail string) (string, error) {
+	buf := bytes.Buffer{}
+	data := CommentTemplateData{Title: title, Summary: detail}
 	t := template.Must(template.New("").Parse(commentTemplate))
 	if err := t.Execute(&buf, data); err != nil {
 		return "", err
