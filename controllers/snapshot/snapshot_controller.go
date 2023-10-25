@@ -129,6 +129,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	return controller.ReconcileHandler([]controller.Operation{
 		adapter.EnsureAllReleasesExist,
 		adapter.EnsureGlobalCandidateImageUpdated,
+		adapter.EnsureRerunPipelineRunsExist,
 		adapter.EnsureSnapshotEnvironmentBindingExist,
 		adapter.EnsureCreationOfEphemeralEnvironments,
 		adapter.EnsureStaticIntegrationPipelineRunsExist,
@@ -138,6 +139,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 // AdapterInterface is an interface defining all the operations that should be defined in an Integration adapter.
 type AdapterInterface interface {
 	EnsureAllReleasesExist() (controller.OperationResult, error)
+	EnsureRerunPipelineRunsExist() (controller.OperationResult, error)
 	EnsureCreationOfEnvironment() (controller.OperationResult, error)
 	EnsureAllIntegrationTestPipelinesExist() (controller.OperationResult, error)
 	EnsureGlobalCandidateImageUpdated() (controller.OperationResult, error)
@@ -177,6 +179,8 @@ func setupControllerWithManager(manager ctrl.Manager, controller *Reconciler) er
 	return ctrl.NewControllerManagedBy(manager).
 		For(&applicationapiv1alpha1.Snapshot{}).
 		WithEventFilter(predicate.Or(
-			gitops.IntegrationSnapshotChangePredicate())).
+			gitops.IntegrationSnapshotChangePredicate(),
+			gitops.SnapshotIntegrationTestRerunTriggerPredicate(),
+		)).
 		Complete(controller)
 }

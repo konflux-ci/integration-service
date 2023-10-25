@@ -115,6 +115,14 @@ func (sits *SnapshotIntegrationTestStatuses) ResetDirty() {
 	sits.dirty = false
 }
 
+// ResetStatus reset status of test back to initial Pending status and removes invalidated values
+func (sits *SnapshotIntegrationTestStatuses) ResetStatus(scenarioName string) {
+	sits.UpdateTestStatusIfChanged(scenarioName, IntegrationTestStatusPending, "Pending")
+	detail := sits.statuses[scenarioName]
+	detail.TestPipelineRunName = ""
+	sits.dirty = true
+}
+
 // UpdateTestStatusIfChanged updates status of scenario test when status or details changed
 func (sits *SnapshotIntegrationTestStatuses) UpdateTestStatusIfChanged(scenarioName string, status IntegrationTestStatus, details string) {
 	var detail *IntegrationTestStatusDetail

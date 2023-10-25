@@ -56,6 +56,7 @@ type ObjectLoader interface {
 	GetAllBuildPipelineRunsForComponent(c client.Client, ctx context.Context, component *applicationapiv1alpha1.Component) (*[]tektonv1.PipelineRun, error)
 	GetAllSnapshots(c client.Client, ctx context.Context, application *applicationapiv1alpha1.Application) (*[]applicationapiv1alpha1.Snapshot, error)
 	GetAutoReleasePlansForApplication(c client.Client, ctx context.Context, application *applicationapiv1alpha1.Application) (*[]releasev1alpha1.ReleasePlan, error)
+	GetScenario(c client.Client, ctx context.Context, name, namespace string) (*v1beta1.IntegrationTestScenario, error)
 }
 
 type loader struct{}
@@ -442,4 +443,10 @@ func (l *loader) GetAutoReleasePlansForApplication(c client.Client, ctx context.
 	}
 
 	return &releasePlans.Items, nil
+}
+
+// GetScenario returns integration test scenario requested by name and namespace
+func (l *loader) GetScenario(c client.Client, ctx context.Context, name, namespace string) (*v1beta1.IntegrationTestScenario, error) {
+	scenario := &v1beta1.IntegrationTestScenario{}
+	return scenario, toolkit.GetObject(name, namespace, c, ctx, scenario)
 }

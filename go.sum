@@ -297,10 +297,10 @@ github.com/prometheus/statsd_exporter v0.23.0 h1:GEkriUCmARYh1gSA0gzpvmTg/oHMc5M
 github.com/prometheus/statsd_exporter v0.23.0/go.mod h1:1itCY9XMa2p5pjO5HseGjs5cnaIA5qxLCYmn3OUna58=
 github.com/redhat-appstudio/application-api v0.0.0-20231025105224-2790bb451725 h1:9808yVdQmzCLGrbedW6h4brggYqdnMpyMwKhFpx9/pE=
 github.com/redhat-appstudio/application-api v0.0.0-20231025105224-2790bb451725/go.mod h1:OvmeiVOItG2OSX/QE+vQwzOYfbOMBhBy43ZFxkWZJyc=
-github.com/redhat-appstudio/operator-toolkit v0.0.0-20230913085326-6c5e9d368a6a h1:pwTvkRzRF6zyLW1Bb4vEuqaNXlGJOnBtt9n5gNp0/r4=
-github.com/redhat-appstudio/operator-toolkit v0.0.0-20230913085326-6c5e9d368a6a/go.mod h1:7cX2+4KGZLJ4Yoj+1v0iV5hkCGBzbSd9wkNJQjCdDJs=
 github.com/redhat-appstudio/release-service v0.0.0-20231107140301-56ac66b56719 h1:ux2WWixr9td48HWFKmxPGrkpNRlxuNPRUfPsbPVbWqk=
 github.com/redhat-appstudio/release-service v0.0.0-20231107140301-56ac66b56719/go.mod h1:1AO3t3h9DiAxx2Ck8H2CzBmPKV1JHGEpMx2iUzvZ3kc=
+github.com/redhat-appstudio/operator-toolkit v0.0.0-20231110101006-2965c9ce25d0 h1:tiXE05ojXCcdcGiZpoDMNneRoilD2zosylQvp9M3eLc=
+github.com/redhat-appstudio/operator-toolkit v0.0.0-20231110101006-2965c9ce25d0/go.mod h1:7cX2+4KGZLJ4Yoj+1v0iV5hkCGBzbSd9wkNJQjCdDJs=
 github.com/rogpeppe/fastuuid v1.2.0/go.mod h1:jVj6XXZzXRy/MSR5jhDC/2q6DgLz+nrA6LYCDYWNEvQ=
 github.com/rogpeppe/go-internal v1.3.0/go.mod h1:M8bDsm7K2OlrFYOpmOWEs/qY81heoFRclV5y23lUDJ4=
 github.com/rogpeppe/go-internal v1.10.0 h1:TMyTOH3F/DB16zRVcYyreMH6GnZZrwQVAoYjRBZyWFQ=

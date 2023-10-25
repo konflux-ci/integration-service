@@ -40,6 +40,25 @@ func IntegrationSnapshotChangePredicate() predicate.Predicate {
 	}
 }
 
+// SnapshotIntegrationTestRerunTriggerPredicate returns a predicate which filters out all objects except
+// when label for rerunning an integration test is added.
+func SnapshotIntegrationTestRerunTriggerPredicate() predicate.Predicate {
+	return predicate.Funcs{
+		CreateFunc: func(createEvent event.CreateEvent) bool {
+			return false
+		},
+		DeleteFunc: func(deleteEvent event.DeleteEvent) bool {
+			return false
+		},
+		GenericFunc: func(genericEvent event.GenericEvent) bool {
+			return false
+		},
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			return HasSnapshotRerunLabelChanged(e.ObjectOld, e.ObjectNew)
+		},
+	}
+}
+
 // SnapshotTestAnnotationChangePredicate returns a predicate which filters out all objects except
 // when Snapshot annotation "test.appstudio.openshift.io/status" is changed for update events.
 func SnapshotTestAnnotationChangePredicate() predicate.Predicate {
