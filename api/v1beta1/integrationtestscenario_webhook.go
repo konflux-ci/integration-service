@@ -17,11 +17,42 @@ limitations under the License.
 package v1beta1
 
 import (
+	"fmt"
+
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/util/validation"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/webhook"
 )
 
 func (r *IntegrationTestScenario) SetupWebhookWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewWebhookManagedBy(mgr).
 		For(r).
 		Complete()
+}
+
+//+kubebuilder:webhook:path=/validate-appstudio-redhat-com-v1beta1-integrationtestscenario,mutating=false,failurePolicy=fail,sideEffects=None,groups=appstudio.redhat.com,resources=integrationtestscenarios,verbs=create;update;delete,versions=v1beta1,name=vintegrationtestscenario.kb.io,admissionReviewVersions=v1
+
+var _ webhook.Validator = &IntegrationTestScenario{}
+
+// ValidateCreate implements webhook.Validator so a webhook will be registered for the type
+func (r *IntegrationTestScenario) ValidateCreate() error {
+	// We use the DNS-1035 format for application names, so ensure it conforms to that specification
+
+	if len(validation.IsDNS1035Label(r.Name)) != 0 {
+		return fmt.Errorf("invalid scenario name: %q: an IntegrationTestScenario resource name must start with a lower case "+
+			"alphabetical character, be under 63 characters, and can only consist of lower case alphanumeric characters or ‘-’,",
+			r.Name)
+	}
+	return nil
+}
+
+// ValidateUpdate implements webhook.Validator so a webhook will be registered for the type
+func (r *IntegrationTestScenario) ValidateUpdate(old runtime.Object) error {
+	return nil
+}
+
+// ValidateDelete implements webhook.Validator so a webhook will be registered for the type
+func (r *IntegrationTestScenario) ValidateDelete() error {
+	return nil
 }
