@@ -379,16 +379,18 @@ func CleanUpEphemeralEnvironments(client client.Client, logger *IntegrationLogge
 	return nil
 }
 
-func RemoveFinalizer(adapterClient client.Client, logger IntegrationLogger, ctx context.Context, pipelineRun *tektonv1beta1.PipelineRun, finalizer string) error {
-	// Remove the finalizer from this Integration PipelineRun
+// RemoveFinalizerFromPipelineRun removes the finalizer from the PipelineRun.
+// If finalizer was not removed successfully, a non-nil error is returned.
+func RemoveFinalizerFromPipelineRun(adapterClient client.Client, logger IntegrationLogger, ctx context.Context, pipelineRun *tektonv1beta1.PipelineRun, finalizer string) error {
 	patch := client.MergeFrom(pipelineRun.DeepCopy())
-	controllerutil.RemoveFinalizer(pipelineRun, finalizer)
-	err := adapterClient.Patch(ctx, pipelineRun, patch)
-	if err != nil {
-		return fmt.Errorf("error occurred while removing finalizer from the Integration PipelineRun: %w", err)
-	}
+	if ok := controllerutil.RemoveFinalizer(pipelineRun, finalizer); ok {
+		err := adapterClient.Patch(ctx, pipelineRun, patch)
+		if err != nil {
+			return fmt.Errorf("error occurred while patching the updated PipelineRun after finalizer removal: %w", err)
+		}
 
-	logger.LogAuditEvent("Removed Finalizer from the Integration PipelineRun", pipelineRun, LogActionUpdate, "finalizer", IntegrationPipelineRunFinalizer)
+		logger.LogAuditEvent("Removed Finalizer from the Integration PipelineRun", pipelineRun, LogActionUpdate, "finalizer", finalizer)
+	}
 
 	return nil
 }

@@ -17,10 +17,13 @@ limitations under the License.
 package tekton_test
 
 import (
+	"bytes"
+
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/redhat-appstudio/integration-service/api/v1beta1"
 	"github.com/redhat-appstudio/integration-service/helpers"
+	"github.com/tonglil/buflogr"
 
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/gitops"
@@ -351,14 +354,25 @@ var _ = Describe("Integration pipeline", func() {
 			Expect(string(enterpriseContractPipelineRun.Spec.PipelineRef.ResolverRef.Resolver)).To(Equal("git"))
 		})
 
-		It("can add finalizer to IntegrationPipelineRun", func() {
+		It("can add and remove finalizer from IntegrationPipelineRun", func() {
+			var buf bytes.Buffer
+			logEntry := "Removed Finalizer from the Integration PipelineRun"
+
 			newIntegrationPipelineRun.WithFinalizer(helpers.IntegrationPipelineRunFinalizer)
 			Expect(newIntegrationPipelineRun.Finalizers).To(ContainElement(ContainSubstring(helpers.IntegrationPipelineRunFinalizer)))
-		})
 
-		It("can remove finalizer to IntegrationPipelineRun", func() {
-			Expect(helpers.RemoveFinalizer(k8sClient, helpers.IntegrationLogger{}, ctx, &newIntegrationPipelineRun.PipelineRun, helpers.IntegrationPipelineRunFinalizer)).To(BeNil())
+			// calling RemoveFinalizerFromPipelineRun() when the PipelineRun contains the finalizer
+			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+			Expect(helpers.RemoveFinalizerFromPipelineRun(k8sClient, log, ctx, &newIntegrationPipelineRun.PipelineRun, helpers.IntegrationPipelineRunFinalizer)).To(BeNil())
 			Expect(newIntegrationPipelineRun.Finalizers).To(BeNil())
+			Expect(buf.String()).Should(ContainSubstring(logEntry))
+
+			// calling RemoveFinalizerFromPipelineRun() when the PipelineRun doesn't contain the finalizer
+			buf = bytes.Buffer{}
+			log = helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+			Expect(helpers.RemoveFinalizerFromPipelineRun(k8sClient, log, ctx, &newIntegrationPipelineRun.PipelineRun, helpers.IntegrationPipelineRunFinalizer)).To(BeNil())
+			Expect(newIntegrationPipelineRun.Finalizers).To(BeNil())
+			Expect(buf.String()).ShouldNot(ContainSubstring(logEntry))
 		})
 
 		It("can append extra params to IntegrationPipelineRun and these parameters are present in the object Specs", func() {

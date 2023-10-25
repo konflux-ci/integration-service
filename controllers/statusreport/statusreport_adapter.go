@@ -79,6 +79,16 @@ func (a *Adapter) EnsureSnapshotTestStatusReportedToGitHub() (controller.Operati
 		}
 	}
 
+	if gitops.IsSnapshotMarkedAsPassed(a.snapshot) || gitops.IsSnapshotMarkedAsFailed(a.snapshot) || gitops.IsSnapshotMarkedAsInvalid(a.snapshot) {
+		a.logger.Info("Status has been reported successfully, now in the process of removing the finalizer")
+		// Remove the finalizer from all the Integration PLRs related to the Snapshot
+		err = loader.RemoveFinalizerFromAllIntegrationPipelineRunsOfSnapshot(a.client, a.logger, a.context, *a.snapshot, helpers.IntegrationPipelineRunFinalizer)
+		if err != nil {
+			return controller.RequeueWithError(err)
+		}
+		a.logger.Info("Successfully removed the finalizer from all the Integration PLRs related to current snapshot", "snapshot.Name", a.snapshot.Name)
+	}
+
 	return controller.ContinueProcessing()
 }
 
