@@ -220,4 +220,75 @@ var _ = Describe("Predicates", Ordered, func() {
 			Expect(instance.Delete(contextEvent)).To(BeFalse())
 		})
 	})
+
+	Context("testing SnapshotIntegrationTestRerunTriggerPredicate predicate", func() {
+
+		var (
+			hasSnapshot             *applicationapiv1alpha1.Snapshot
+			hasSnapshotLabelAdded   *applicationapiv1alpha1.Snapshot
+			hasSnapshotLabelUpdated *applicationapiv1alpha1.Snapshot
+		)
+
+		BeforeAll(func() {
+			hasSnapshot = &applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      snapshotAnnotationOld,
+					Namespace: namespace,
+					Labels: map[string]string{
+						gitops.SnapshotTypeLabel:      gitops.SnapshotComponentType,
+						gitops.SnapshotComponentLabel: componentName,
+					},
+				},
+				Spec: applicationapiv1alpha1.SnapshotSpec{
+					Application: applicationName,
+					Components: []applicationapiv1alpha1.SnapshotComponent{
+						{
+							Name:           componentName,
+							ContainerImage: sampleImage,
+						},
+					},
+				},
+			}
+
+			hasSnapshotLabelAdded = hasSnapshot.DeepCopy()
+			hasSnapshotLabelAdded.Labels[gitops.SnapshotIntegrationTestRun] = "example-test-rerun"
+
+			hasSnapshotLabelUpdated = hasSnapshotLabelAdded.DeepCopy()
+			hasSnapshotLabelUpdated.Labels[gitops.SnapshotIntegrationTestRun] = "example-test-rerun-updated"
+		})
+		instance := gitops.SnapshotIntegrationTestRerunTriggerPredicate()
+
+		It("returns true when re-run label is added to snapshot", func() {
+			contextEvent := event.UpdateEvent{
+				ObjectOld: hasSnapshot,
+				ObjectNew: hasSnapshotLabelAdded,
+			}
+			Expect(instance.Update(contextEvent)).To(BeTrue())
+		})
+
+		It("returns true when re-run label is updated", func() {
+			contextEvent := event.UpdateEvent{
+				ObjectOld: hasSnapshotLabelAdded,
+				ObjectNew: hasSnapshotLabelUpdated,
+			}
+			Expect(instance.Update(contextEvent)).To(BeTrue())
+		})
+
+		It("returns false when re-run label is the same", func() {
+			contextEvent := event.UpdateEvent{
+				ObjectOld: hasSnapshotLabelAdded,
+				ObjectNew: hasSnapshotLabelAdded,
+			}
+			Expect(instance.Update(contextEvent)).To(BeFalse())
+		})
+
+		It("returns false when re-run label is not present", func() {
+			contextEvent := event.UpdateEvent{
+				ObjectOld: hasSnapshot,
+				ObjectNew: hasSnapshot,
+			}
+			Expect(instance.Update(contextEvent)).To(BeFalse())
+		})
+
+	})
 })
