@@ -1,32 +1,3 @@
-
----
-apiVersion: admissionregistration.k8s.io/v1
-kind: MutatingWebhookConfiguration
-metadata:
-  creationTimestamp: null
-  name: mutating-webhook-configuration
-webhooks:
-- admissionReviewVersions:
-  - v1alpha1
-  - v1beta1
-  clientConfig:
-    service:
-      name: webhook-service
-      namespace: system
-      path: /mutate-appstudio-redhat-com-v1beta1-integrationtestscenario
-  failurePolicy: Fail
-  name: mintegration.kb.io
-  rules:
-  - apiGroups:
-    - appstudio.redhat.com
-    apiVersions:
-    - v1beta1
-    operations:
-    - CREATE
-    - UPDATE
-    resources:
-    - applications
-  sideEffects: None
 ---
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingWebhookConfiguration
@@ -35,15 +6,14 @@ metadata:
   name: validating-webhook-configuration
 webhooks:
 - admissionReviewVersions:
-  - v1alpha1
-  - v1beta1
+  - v1
   clientConfig:
     service:
       name: webhook-service
       namespace: system
       path: /validate-appstudio-redhat-com-v1beta1-integrationtestscenario
   failurePolicy: Fail
-  name: vapplication.kb.io
+  name: vintegrationtestscenario.kb.io
   rules:
   - apiGroups:
     - appstudio.redhat.com
@@ -52,6 +22,7 @@ webhooks:
     operations:
     - CREATE
     - UPDATE
+    - DELETE
     resources:
-    - applications
+    - integrationtestscenarios
   sideEffects: None
