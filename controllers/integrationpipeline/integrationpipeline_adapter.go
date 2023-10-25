@@ -104,7 +104,7 @@ func (a *Adapter) EnsureStatusReportedInSnapshot() (controller.OperationResult, 
 	// Remove the finalizer from Integration PLRs only if they aren't related to Snapshots created by Pull-Request event
 	// If they are related, then the statusreport controller removes the finalizers from these PLRs
 	if !gitops.IsSnapshotCreatedByPACPullRequestEvent(snapshot) && (h.HasPipelineRunFinished(a.pipelineRun) || pipelinerunStatus == intgteststat.IntegrationTestStatusDeleted) {
-		err = h.RemoveFinalizer(a.client, a.logger, a.context, a.pipelineRun, h.IntegrationPipelineRunFinalizer)
+		err = h.RemoveFinalizerFromPipelineRun(a.client, a.logger, a.context, a.pipelineRun, h.IntegrationPipelineRunFinalizer)
 		if err != nil {
 			return controller.RequeueWithError(fmt.Errorf("failed to remove the finalizer: %w", err))
 		}

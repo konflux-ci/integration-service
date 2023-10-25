@@ -21,6 +21,7 @@ import (
 
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/api/v1beta1"
+	"github.com/redhat-appstudio/integration-service/helpers"
 	tektonv1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 	"knative.dev/pkg/apis"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -54,4 +55,32 @@ func GetLatestPipelineRunForSnapshotAndScenario(adapterClient client.Client, ctx
 	}
 
 	return nil, err
+}
+
+// RemoveFinalizerFromAllIntegrationPipelineRunsOfSnapshot fetches all the Integration
+// PipelineRuns associated with the given Snapshot and each of the IntegrationTestScenarios.
+// After fetching them, it removes the finalizer from the PipelineRun, and returns error if any.
+func RemoveFinalizerFromAllIntegrationPipelineRunsOfSnapshot(adapterClient client.Client, logger helpers.IntegrationLogger, ctx context.Context, snapshot applicationapiv1alpha1.Snapshot, finalizer string) error {
+	integrationPipelineRuns := &tektonv1beta1.PipelineRunList{}
+	opts := []client.ListOption{
+		client.InNamespace(snapshot.Namespace),
+		client.MatchingLabels{
+			"appstudio.openshift.io/snapshot": snapshot.Name,
+		},
+	}
+
+	err := adapterClient.List(ctx, integrationPipelineRuns, opts...)
+	if err != nil {
+		return err
+	}
+
+	// Remove finalizer from each of the PipelineRuns
+	for _, pipelineRun := range integrationPipelineRuns.Items {
+		err = helpers.RemoveFinalizerFromPipelineRun(adapterClient, logger, ctx, &pipelineRun, finalizer)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
