@@ -18,6 +18,7 @@ package helpers_test
 
 import (
 	"bytes"
+	"fmt"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -67,6 +68,19 @@ var _ = Describe("Helpers for error handlers", Ordered, func() {
 			_, returnedError := helpers.HandleLoaderError(log, err, "Component", "Snapshot")
 			Expect(returnedError).NotTo(BeNil())
 			Expect(logbuf.String()).Should(ContainSubstring("Failed to get Component from the Snapshot"))
+		})
+	})
+
+	Context("Handling customized integration error", func() {
+		It("Can define an NewEnvironmentNotInNamespaceError", func() {
+			err := helpers.NewEnvironmentNotInNamespaceError("env", "namespace")
+			Expect(helpers.IsEnvironmentNotInNamespaceError(err)).To(BeTrue())
+			Expect(err.Error()).To(Equal("Environment env not found in namespace namespace"))
+		})
+
+		It("Can handle non integration error", func() {
+			err := fmt.Errorf("failed")
+			Expect(helpers.IsEnvironmentNotInNamespaceError(err)).To(BeFalse())
 		})
 	})
 })
