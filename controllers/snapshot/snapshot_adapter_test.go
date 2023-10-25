@@ -60,6 +60,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		integrationTestScenarioWithoutEnv     *v1beta1.IntegrationTestScenario
 		integrationTestScenarioWithoutEnvCopy *v1beta1.IntegrationTestScenario
 		env                                   *applicationapiv1alpha1.Environment
+		tmpEnv                                *applicationapiv1alpha1.Environment
 	)
 	const (
 		SampleRepoLink  = "https://github.com/devfile-samples/devfile-sample-java-springboot-basic"
@@ -1022,6 +1023,83 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			Expect(len(owners) == 1).To(BeTrue())
 			Expect(owners[0].Name).To(Equal(ephemeralEnv.Name))
 		})
+	})
+
+	When("An environment defined in ITS doesn't exist", func() {
+		var (
+			buf bytes.Buffer
+		)
+
+		BeforeAll(func() {
+			tmpEnv = &applicationapiv1alpha1.Environment{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "envname-tmp",
+					Namespace: "default",
+				},
+				Spec: applicationapiv1alpha1.EnvironmentSpec{
+					Type:               "POC",
+					DisplayName:        "envname-tmp",
+					DeploymentStrategy: applicationapiv1alpha1.DeploymentStrategy_Manual,
+					ParentEnvironment:  "",
+					Tags:               []string{},
+					Configuration: applicationapiv1alpha1.EnvironmentConfiguration{
+						Env: []applicationapiv1alpha1.EnvVarPair{
+							{
+								Name:  "var_name",
+								Value: "test",
+							},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, tmpEnv)).Should(Succeed())
+
+			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+			adapter = NewAdapter(hasSnapshotPR, hasApp, hasComp, log, loader.NewMockLoader(), k8sClient, ctx)
+			adapter.context = loader.GetMockedContext(ctx, []loader.MockData{
+				{
+					ContextKey: loader.ApplicationContextKey,
+					Resource:   hasApp,
+				},
+				{
+					ContextKey: loader.ComponentContextKey,
+					Resource:   hasComp,
+				},
+				{
+					ContextKey: loader.SnapshotContextKey,
+					Resource:   hasSnapshotPR,
+				},
+				{
+					ContextKey: loader.EnvironmentContextKey,
+					Resource:   tmpEnv,
+				},
+				{
+					ContextKey: loader.SnapshotEnvironmentBindingContextKey,
+					Resource:   nil,
+				},
+				{
+					ContextKey: loader.ApplicationComponentsContextKey,
+					Resource:   []applicationapiv1alpha1.Component{*hasComp},
+				},
+				{
+					ContextKey: loader.AllIntegrationTestScenariosContextKey,
+					Resource:   []v1beta1.IntegrationTestScenario{*integrationTestScenario},
+				},
+			})
+		})
+
+		AfterAll(func() {
+			err := k8sClient.Delete(ctx, tmpEnv)
+			Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
+		})
+
+		It("Ensure stopping processing when environment defined in ITS doesn't exist", func() {
+			result, err := adapter.EnsureCreationOfEphemeralEnvironments()
+			Expect(result.CancelRequest && !result.RequeueRequest && err == nil).To(BeTrue())
+			expectedLogEntry := "environment doesn't exist in the same namespace as integrationScenario at all"
+			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
+		})
+
 	})
 
 	Describe("shouldScenarioRunInEphemeralEnv", func() {
