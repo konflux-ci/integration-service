@@ -81,8 +81,8 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 
 	adapter := NewAdapter(snapshot, application, logger, loader, r.Client, ctx)
 	return controller.ReconcileHandler([]controller.Operation{
-		adapter.EnsureSnapshotTestStatusReportedToGitHub,
 		adapter.EnsureSnapshotFinishedAllTests,
+		adapter.EnsureSnapshotTestStatusReportedToGitHub,
 	})
 }
 
