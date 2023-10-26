@@ -19,6 +19,7 @@ package v1beta1
 import (
 	"context"
 	"path/filepath"
+	"sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"testing"
 	"time"
 
@@ -74,9 +75,11 @@ var _ = BeforeSuite(func() {
 
 	// start webhook server using Manager
 	k8sManager, _ := ctrl.NewManager(cfg, ctrl.Options{
-		Scheme:             scheme,
-		LeaderElection:     false,
-		MetricsBindAddress: "0",
+		Scheme:         scheme,
+		LeaderElection: false,
+		Metrics: server.Options{
+			BindAddress: "0", // disables metrics
+		},
 	})
 	k8sClient = k8sManager.GetClient()
 

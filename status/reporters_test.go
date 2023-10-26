@@ -19,6 +19,7 @@ package status_test
 import (
 	"bytes"
 	"context"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"time"
 
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -193,6 +194,14 @@ type MockK8sClient struct {
 	listInterceptor    func(list client.ObjectList)
 	genericInterceptor func(obj client.Object)
 	err                error
+}
+
+func (c *MockK8sClient) GroupVersionKindFor(obj runtime.Object) (schema.GroupVersionKind, error) {
+	return schema.GroupVersionKind{}, nil
+}
+
+func (c *MockK8sClient) IsObjectNamespaced(obj runtime.Object) (bool, error) {
+	return true, nil
 }
 
 func (c *MockK8sClient) List(ctx context.Context, list client.ObjectList, opts ...client.ListOption) error {
