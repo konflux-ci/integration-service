@@ -439,7 +439,7 @@
         "y": 9
       },
       "type": "graph",
-      "title": "#3 Latency of Release Creation",
+      "title": "#5 Latency of Release Creation",
       "thresholds": [
         {
           "$$hashKey": "object:1475",
@@ -544,7 +544,7 @@
         "y": 9
       },
       "type": "timeseries",
-      "title": "[Violations] #3 Latency of Release Creation",
+      "title": "[Violations] #5 Latency of Release Creation",
       "pluginVersion": "9.1.6",
       "description": "90% of requests must take less than 10 sec. Measure release creation latency from end of testing to release created ",
       "fieldConfig": {
@@ -616,7 +616,7 @@
         {
           "editorMode": "code",
           "exemplar": true,
-          "expr": "sum(rate(release_latency_seconds_bucket{le=10}[$__rate_interval])) by (job)/sum(rate(release_latency_seconds_bucket[$__rate_interval])) by (job)*100",
+          "expr": "sum(rate(release_latency_seconds_bucket{le=\"10\"}[$__rate_interval])) by (job) / sum(rate(release_latency_seconds_bucket[$__rate_interval])) by (job)*100",
           "interval": "",
           "legendFormat": "% of requests within required latency time",
           "range": true,
