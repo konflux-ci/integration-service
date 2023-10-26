@@ -36,6 +36,7 @@ import (
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	tektonv1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
@@ -406,6 +407,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		})
 
 		It("ensures test status in snapshot is updated to passed", func() {
+			controllerutil.AddFinalizer(integrationPipelineRunComponent, "test.appstudio.openshift.io/pipelinerun")
 			result, err := adapter.EnsureStatusReportedInSnapshot()
 			Expect(!result.CancelRequest && err == nil).To(BeTrue())
 
@@ -549,6 +551,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			})
 
 			It("ensures test status in snapshot is updated to failed", func() {
+				controllerutil.AddFinalizer(integrationPipelineRunComponentFailed, "test.appstudio.openshift.io/pipelinerun")
 				result, err := adapter.EnsureStatusReportedInSnapshot()
 				Expect(!result.CancelRequest && err == nil).To(BeTrue())
 

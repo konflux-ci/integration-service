@@ -379,6 +379,35 @@ func CleanUpEphemeralEnvironments(client client.Client, logger *IntegrationLogge
 	return nil
 }
 
+// RemoveFinalizerFromAllIntegrationPipelineRunsOfSnapshot fetches all the Integration
+// PipelineRuns associated with the given Snapshot. After fetching them, it removes the
+// finalizer from the PipelineRun, and returns error if any.
+func RemoveFinalizerFromAllIntegrationPipelineRunsOfSnapshot(adapterClient client.Client, logger IntegrationLogger, ctx context.Context, snapshot applicationapiv1alpha1.Snapshot, finalizer string) error {
+	integrationPipelineRuns := &tektonv1beta1.PipelineRunList{}
+	opts := []client.ListOption{
+		client.InNamespace(snapshot.Namespace),
+		client.MatchingLabels{
+			"appstudio.openshift.io/snapshot": snapshot.Name,
+		},
+	}
+
+	err := adapterClient.List(ctx, integrationPipelineRuns, opts...)
+	if err != nil {
+		return err
+	}
+
+	// Remove finalizer from each of the PipelineRuns
+	for _, pipelineRun := range integrationPipelineRuns.Items {
+		pipelineRun := pipelineRun
+		err = RemoveFinalizerFromPipelineRun(adapterClient, logger, ctx, &pipelineRun, finalizer)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 // RemoveFinalizerFromPipelineRun removes the finalizer from the PipelineRun.
 // If finalizer was not removed successfully, a non-nil error is returned.
 func RemoveFinalizerFromPipelineRun(adapterClient client.Client, logger IntegrationLogger, ctx context.Context, pipelineRun *tektonv1beta1.PipelineRun, finalizer string) error {
