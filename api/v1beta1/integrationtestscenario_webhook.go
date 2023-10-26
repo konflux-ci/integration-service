@@ -17,10 +17,9 @@ limitations under the License.
 package v1beta1
 
 import (
-	"fmt"
-
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/validation"
+	"k8s.io/apimachinery/pkg/util/validation/field"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 )
@@ -40,9 +39,10 @@ func (r *IntegrationTestScenario) ValidateCreate() error {
 	// We use the DNS-1035 format for application names, so ensure it conforms to that specification
 
 	if len(validation.IsDNS1035Label(r.Name)) != 0 {
-		return fmt.Errorf("invalid scenario name: %q: an IntegrationTestScenario resource name must start with a lower case "+
-			"alphabetical character, be under 63 characters, and can only consist of lower case alphanumeric characters or ‘-’,",
-			r.Name)
+		return field.Invalid(field.NewPath("metadata").Child("name"), r.Name,
+			"an IntegrationTestScenario resource name must start with a lower case "+
+				"alphabetical character, be under 63 characters, and can only consist "+
+				"of lower case alphanumeric characters or ‘-’")
 	}
 	return nil
 }
