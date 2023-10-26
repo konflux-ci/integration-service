@@ -34,6 +34,9 @@ flowchart TD
   update_existing_comment(Update the existing comment for <br>snapshot and scenario</br>)
   create_new_comment(Create a new comment for <br>snapshot and scenario</br>)
 
+  is_snapshot_marked{Is <br>Snapshot marked as <br>passed/failed?}
+  remove_finalizer_from_all_intg_plr(Remove the finalizer from all the <br>Integration PLRs related to the Snapshot)
+
   continue_processing(Controller continues processing)
 
   %% Node connections
@@ -49,21 +52,25 @@ flowchart TD
   create_checkRunAdapter         --> does_checkRun_exist
   does_checkRun_exist            --Yes--> is_checkRun_update_needed
   does_checkRun_exist            --No--> create_new_checkRun_on_gh
-  create_new_checkRun_on_gh      --> continue_processing
+  create_new_checkRun_on_gh      --> is_snapshot_marked
   is_checkRun_update_needed      --Yes--> update_existing_checkRun_on_gh
-  is_checkRun_update_needed      --No--> continue_processing
-  update_existing_checkRun_on_gh --> continue_processing
+  is_checkRun_update_needed      --No--> is_snapshot_marked
+  update_existing_checkRun_on_gh --> is_snapshot_marked
 
   set_oAuth_token                --> get_all_commitStatuses_from_gh
   get_all_commitStatuses_from_gh --> create_commitStatusAdapter
   create_commitStatusAdapter     --> does_commitStatus_exist
-  does_commitStatus_exist        --Yes--> continue_processing
+  does_commitStatus_exist        --Yes--> is_snapshot_marked
   does_commitStatus_exist        --No--> create_new_commitStatus_on_gh
   create_new_commitStatus_on_gh  --> does_comment_exist
   does_comment_exist             --Yes--> update_existing_comment
   does_comment_exist             --No--> create_new_comment
-  update_existing_comment        --> continue_processing
-  create_new_comment             --> continue_processing
+  update_existing_comment        --> is_snapshot_marked
+  create_new_comment             --> is_snapshot_marked
+
+  is_snapshot_marked                 --Yes--> remove_finalizer_from_all_intg_plr
+  is_snapshot_marked                 --No --> continue_processing
+  remove_finalizer_from_all_intg_plr -->      continue_processing
 
 %%%%%%%%%%%%%%%%%%%%%%% Drawing EnsureSnapshotFinishedAllTests() function
 
