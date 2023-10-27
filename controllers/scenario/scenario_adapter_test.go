@@ -282,6 +282,9 @@ var _ = Describe("Scenario Adapter", Ordered, func() {
 
 		expectedLogEntry := "The scenario doesn't have status.conditions set correctly, adding them"
 		Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
+		expectedLogEntry = "IntegrationTestScenario marked as Valid"
+		Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
+		Expect(meta.IsStatusConditionTrue(integrationTestScenarioMissingConditions.Status.Conditions, gitops.IntegrationTestScenarioValid)).To(BeTrue())
 	})
 
 })
