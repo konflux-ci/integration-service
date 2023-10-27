@@ -616,7 +616,7 @@
         {
           "editorMode": "code",
           "exemplar": true,
-          "expr": "sum(rate(release_latency_seconds_bucket{le=\"10\"}[$__rate_interval])) by (job) / sum(rate(release_latency_seconds_bucket[$__rate_interval])) by (job)*100",
+          "expr": "sum(rate(release_latency_seconds_bucket{le=\"10\"}[$__rate_interval])) by (job) / sum(rate(release_latency_seconds_count[$__rate_interval])) by (job)*100",
           "interval": "",
           "legendFormat": "% of requests within required latency time",
           "range": true,
