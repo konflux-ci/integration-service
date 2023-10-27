@@ -130,7 +130,8 @@ func (a *Adapter) EnsureCreatedScenarioIsValid() (controller.OperationResult, er
 
 	}
 
-	if reflect.ValueOf(a.scenario.Status).IsZero() || (meta.IsStatusConditionFalse(a.scenario.Status.Conditions, gitops.IntegrationTestScenarioValid)) {
+	// If the scenario status IntegrationTestScenarioValid condition is not defined or false, we set it to Valid
+	if reflect.ValueOf(a.scenario.Status).IsZero() || !meta.IsStatusConditionTrue(a.scenario.Status.Conditions, gitops.IntegrationTestScenarioValid) {
 		patch := client.MergeFrom(a.scenario.DeepCopy())
 		SetScenarioIntegrationStatusAsValid(a.scenario, "Integration test scenario is Valid.")
 		err := a.client.Status().Patch(a.context, a.scenario, patch)
