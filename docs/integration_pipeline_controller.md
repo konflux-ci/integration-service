@@ -13,14 +13,14 @@ flowchart TD
   predicate((PREDICATE: <br>Integration Pipeline just got<br> Started OR Finished<br> OR marked for Deletion))
   get_resources{Get pipeline, <br> component, <br> & application}
   report_status_snapshot(Report status of the test <br> into snapshot annotation <br> `test.appstudio.openshift.io/status`)
-  report_status(Report status <br> if Snapshot was created <br> for Pull requests)
   is_snapshot_of_pr_event{Is <br> Snapshot created<br> for Pull requests?}
   is_plr_finished_or_getting_deleted{Is <br> Integration PLR <br> finished or marked for<br> deletion?}
   remove_finalizer(Remove <br> `test.appstudio.openshift.io/pipelinerun`<br> finalizer)
   clean_environment(Clean up ephemeral environment <br> if testing finished)
   error(Return error)
   requeue(Requeue)
-  continue(Continue processing)
+  continue1(Continue processing)
+  continue2(Continue processing)
 
   %% Node connections
   predicate                                   --> get_resources
@@ -28,13 +28,13 @@ flowchart TD
   get_resources     --No                      --> error
   get_resources     --Yes                     --> report_status_snapshot
   report_status_snapshot                      --> is_snapshot_of_pr_event
-  is_snapshot_of_pr_event            --Yes    --> report_status
+  is_snapshot_of_pr_event            --Yes    --> continue1
   is_snapshot_of_pr_event            --No     --> is_plr_finished_or_getting_deleted
   is_plr_finished_or_getting_deleted --Yes    --> remove_finalizer
-  is_plr_finished_or_getting_deleted --No     --> report_status
-  remove_finalizer                            --> report_status
+  is_plr_finished_or_getting_deleted --No     --> continue1
+  remove_finalizer                            --> continue1
   clean_environment --No                      --> requeue
-  clean_environment --yes                     ---> continue
+  clean_environment --yes                     ---> continue2
 
   %% Assigning styles to nodes
   class predicate Amber;
