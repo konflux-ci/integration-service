@@ -211,6 +211,7 @@ func (a *Adapter) createIntegrationPipelineRunWithEnvironment(application *appli
 		WithApplicationAndComponent(a.application, a.component).
 		WithIntegrationLabels(integrationTestScenario).
 		WithEnvironmentAndDeploymentTarget(deploymentTarget, environment.Name).
+		WithFinalizer(h.IntegrationPipelineRunFinalizer).
 		AsPipelineRun()
 
 	// copy PipelineRun PAC annotations/labels from snapshot to integration test PipelineRuns

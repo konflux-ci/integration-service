@@ -528,6 +528,7 @@ func (r *GitHubReporter) ReportStatusForSnapshot(k8sClient client.Client, ctx co
 
 		for _, integrationTestStatusDetail := range integrationTestStatusDetails {
 			integrationTestStatusDetail := *integrationTestStatusDetail //G601
+
 			commitStatus, err := r.createCommitStatusAdapterForSnapshot(snapshot, integrationTestStatusDetail, owner, repo, sha)
 			if err != nil {
 				logger.Error(err, "failed to create CommitStatusAdapter for snapshot",
