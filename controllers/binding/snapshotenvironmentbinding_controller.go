@@ -83,6 +83,11 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{}, err
 	}
 
+	if snapshotEnvironmentBinding.DeletionTimestamp != nil {
+		logger.Info("SnapshotEnvironmentBinding is being deleted. Skipping reconciliation")
+		return ctrl.Result{}, nil
+	}
+
 	var application *applicationapiv1alpha1.Application
 	err = retry.OnError(retry.DefaultRetry, func(_ error) bool { return true }, func() error {
 		application, err = r.getApplicationFromSnapshotEnvironmentBinding(ctx, snapshotEnvironmentBinding)

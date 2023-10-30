@@ -297,6 +297,18 @@ var _ = Describe("BindingController", func() {
 		}).Should(BeNil())
 	})
 
+	It("can skip reconcile when SnapshotEnvironmentBinding is being deleted", func() {
+		Expect(k8sClient.Delete(ctx, hasBinding)).Should(Succeed())
+
+		// DeletionTimestamp is not nil
+		now := metav1.NewTime(metav1.Now().Add(time.Second * 1))
+		hasBinding.SetDeletionTimestamp(&now)
+
+		result, err := bindingReconciler.Reconcile(ctx, req)
+		Expect(result).To(Equal(ctrl.Result{}))
+		Expect(err).To(BeNil())
+	})
+
 	It("can fail when Reconcile fails to prepare the adapter when Application is not found", func() {
 		err := k8sClient.Delete(ctx, hasApp)
 		Eventually(func() bool {
