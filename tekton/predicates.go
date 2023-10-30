@@ -38,7 +38,9 @@ func IntegrationPipelineRunPredicate() predicate.Predicate {
 		},
 		UpdateFunc: func(e event.UpdateEvent) bool {
 			return IsIntegrationPipelineRun(e.ObjectNew) &&
-				(hasPipelineRunStateChangedToStarted(e.ObjectOld, e.ObjectNew) || hasPipelineRunStateChangedToFinished(e.ObjectOld, e.ObjectNew))
+				(hasPipelineRunStateChangedToStarted(e.ObjectOld, e.ObjectNew) ||
+					hasPipelineRunStateChangedToFinished(e.ObjectOld, e.ObjectNew) ||
+					hasPipelineRunStateChangedToDeleting(e.ObjectOld, e.ObjectNew))
 		},
 	}
 }

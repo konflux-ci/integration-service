@@ -79,6 +79,16 @@ func (a *Adapter) EnsureSnapshotTestStatusReportedToGitHub() (controller.Operati
 		}
 	}
 
+	if gitops.IsSnapshotMarkedAsPassed(a.snapshot) || gitops.IsSnapshotMarkedAsFailed(a.snapshot) || gitops.IsSnapshotMarkedAsInvalid(a.snapshot) {
+		a.logger.Info("Status has been reported successfully, now in the process of removing the finalizer")
+		// Remove the finalizer from all the Integration PLRs related to the Snapshot
+		err = helpers.RemoveFinalizerFromAllIntegrationPipelineRunsOfSnapshot(a.client, a.logger, a.context, *a.snapshot, helpers.IntegrationPipelineRunFinalizer)
+		if err != nil {
+			return controller.RequeueWithError(err)
+		}
+		a.logger.Info("Successfully removed the finalizer from all the Integration PLRs related to current snapshot", "snapshot.Name", a.snapshot.Name)
+	}
+
 	return controller.ContinueProcessing()
 }
 
@@ -187,7 +197,7 @@ func (a *Adapter) determineIfAllIntegrationTestsFinishedAndPassed(integrationTes
 	for _, integrationTestScenario := range *integrationTestScenarios {
 		integrationTestScenario := integrationTestScenario // G601
 		testDetails, ok := testStatuses.GetScenarioStatus(integrationTestScenario.Name)
-		if !ok || (testDetails.Status != intgteststat.IntegrationTestStatusTestPassed && testDetails.Status != intgteststat.IntegrationTestStatusTestFail) {
+		if !ok || (testDetails.Status != intgteststat.IntegrationTestStatusTestPassed && testDetails.Status != intgteststat.IntegrationTestStatusTestFail && testDetails.Status != intgteststat.IntegrationTestStatusDeleted) {
 			allIntegrationTestsFinished = false
 		}
 		if ok && testDetails.Status != intgteststat.IntegrationTestStatusTestPassed {

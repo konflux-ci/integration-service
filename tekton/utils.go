@@ -94,6 +94,19 @@ func hasPipelineRunStateChangedToStarted(objectOld, objectNew client.Object) boo
 	return false
 }
 
+// hasPipelineRunStateChangedToDeleting returns a boolean indicating whether the PipelineRun just got marked for deletion or not.
+// If the objects passed to this function are not PipelineRuns, the function will return false.
+func hasPipelineRunStateChangedToDeleting(objectOld, objectNew client.Object) bool {
+	if oldPipelineRun, ok := objectOld.(*tektonv1beta1.PipelineRun); ok {
+		if newPipelineRun, ok := objectNew.(*tektonv1beta1.PipelineRun); ok {
+			return (oldPipelineRun.GetDeletionTimestamp() == nil &&
+				newPipelineRun.GetDeletionTimestamp() != nil)
+		}
+	}
+
+	return false
+}
+
 // isPipelineRunSigned returns a boolean indicated whether the PipelineRun been signed
 // If the object passed to this function is not a PipelineRun, the function will return false.
 func isPipelineRunSigned(objectNew client.Object) bool {

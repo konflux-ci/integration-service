@@ -605,6 +605,7 @@ func (a *Adapter) createIntegrationPipelineRun(application *applicationapiv1alph
 		WithIntegrationAnnotations(integrationTestScenario).
 		WithApplicationAndComponent(a.application, a.component).
 		WithExtraParams(integrationTestScenario.Spec.Params).
+		WithFinalizer(h.IntegrationPipelineRunFinalizer).
 		AsPipelineRun()
 	// copy PipelineRun PAC annotations/labels from snapshot to integration test PipelineRuns
 	_ = metadata.CopyAnnotationsByPrefix(&snapshot.ObjectMeta, &pipelineRun.ObjectMeta, gitops.PipelinesAsCodePrefix)

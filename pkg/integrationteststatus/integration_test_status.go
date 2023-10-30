@@ -33,6 +33,8 @@ const (
 	IntegrationTestStatusPending IntegrationTestStatus = iota + 1 // Pending
 	// Starting to handle an integration test scenario for a snapshot
 	IntegrationTestStatusInProgress // InProgress
+	// Integration PLR deleted for this ITS and snapshot
+	IntegrationTestStatusDeleted // Deleted
 	// The environment provision experienced error for this ITS and snapshot
 	IntegrationTestStatusEnvironmentProvisionError // EnvironmentProvisionError
 	// The SEB deployment experienced error for this ITS and snapshot
@@ -149,6 +151,7 @@ func (sits *SnapshotIntegrationTestStatuses) UpdateTestStatusIfChanged(scenarioN
 			detail.CompletionTime = nil
 		case IntegrationTestStatusDeploymentError,
 			IntegrationTestStatusEnvironmentProvisionError,
+			IntegrationTestStatusDeleted,
 			IntegrationTestStatusTestFail,
 			IntegrationTestStatusTestPassed:
 			detail.CompletionTime = &timestamp
@@ -163,18 +166,19 @@ func (sits *SnapshotIntegrationTestStatuses) UpdateTestStatusIfChanged(scenarioN
 
 }
 
-// UpdatePipelineRunName updates TestPipelineRunName if changed
+// UpdateTestPipelineRunName updates TestPipelineRunName if changed
 // scenario must already exist in statuses
 func (sits *SnapshotIntegrationTestStatuses) UpdateTestPipelineRunName(scenarioName string, pipelineRunName string) error {
 	detail, ok := sits.GetScenarioStatus(scenarioName)
 	if !ok {
-		return fmt.Errorf("scenario name %s not found and cannot be updated", scenarioName)
+		return fmt.Errorf("scenario name %s not found within the SnapshotIntegrationTestStatus, and cannot be updated", scenarioName)
 	}
 
 	if detail.TestPipelineRunName != pipelineRunName {
 		detail.TestPipelineRunName = pipelineRunName
 		sits.dirty = true
 	}
+
 	return nil
 }
 

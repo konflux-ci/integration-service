@@ -28,6 +28,7 @@ import (
 	tektonv1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
 const (
@@ -111,6 +112,13 @@ func NewIntegrationPipelineRun(prefix, namespace string, integrationTestScenario
 		},
 	}
 	return &IntegrationPipelineRun{pipelineRun}
+}
+
+// WithFinalizer adds a Finalizer on the Integration PipelineRun
+func (iplr *IntegrationPipelineRun) WithFinalizer(finalizer string) *IntegrationPipelineRun {
+	controllerutil.AddFinalizer(iplr, finalizer)
+
+	return iplr
 }
 
 // WithExtraParam adds an extra param to the Integration PipelineRun. If the parameter is not part of the Pipeline
