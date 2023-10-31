@@ -22,7 +22,7 @@ require (
 	k8s.io/api v0.26.1
 	k8s.io/apimachinery v0.26.7
 	k8s.io/client-go v0.26.1
-	k8s.io/klog/v2 v2.100.1
+	k8s.io/klog/v2 v2.110.1
 	knative.dev/pkg v0.0.0-20230221145627-8efb3485adcf
 	sigs.k8s.io/controller-runtime v0.14.6
 )
