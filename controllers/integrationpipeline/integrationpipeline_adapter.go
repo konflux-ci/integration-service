@@ -37,7 +37,6 @@ import (
 // Adapter holds the objects needed to reconcile an integration PipelineRun.
 type Adapter struct {
 	pipelineRun *tektonv1beta1.PipelineRun
-	component   *applicationapiv1alpha1.Component
 	application *applicationapiv1alpha1.Application
 	loader      loader.ObjectLoader
 	logger      h.IntegrationLogger
@@ -47,11 +46,10 @@ type Adapter struct {
 }
 
 // NewAdapter creates and returns an Adapter instance.
-func NewAdapter(pipelineRun *tektonv1beta1.PipelineRun, component *applicationapiv1alpha1.Component, application *applicationapiv1alpha1.Application, logger h.IntegrationLogger, loader loader.ObjectLoader, client client.Client,
+func NewAdapter(pipelineRun *tektonv1beta1.PipelineRun, application *applicationapiv1alpha1.Application, logger h.IntegrationLogger, loader loader.ObjectLoader, client client.Client,
 	context context.Context) *Adapter {
 	return &Adapter{
 		pipelineRun: pipelineRun,
-		component:   component,
 		application: application,
 		logger:      logger,
 		loader:      loader,

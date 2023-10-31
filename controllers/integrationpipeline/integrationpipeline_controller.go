@@ -19,7 +19,6 @@ package integrationpipeline
 import (
 	"context"
 	"fmt"
-
 	"github.com/redhat-appstudio/integration-service/cache"
 
 	"github.com/go-logr/logr"
@@ -84,13 +83,6 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{}, err
 	}
 
-	component, err := loader.GetComponentFromPipelineRun(r.Client, ctx, pipelineRun)
-	if err != nil {
-		logger.Error(err, "Failed to get Component for",
-			"PipelineRun.Name", pipelineRun.Name, "PipelineRun.Namespace", pipelineRun.Namespace)
-		return ctrl.Result{}, err
-	}
-
 	application, err := loader.GetApplicationFromPipelineRun(r.Client, ctx, pipelineRun)
 	if err != nil {
 		logger.Error(err, "Failed to get Application from the integration pipelineRun",
@@ -105,7 +97,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	}
 	logger = logger.WithApp(*application)
 
-	adapter := NewAdapter(pipelineRun, component, application, logger, loader, r.Client, ctx)
+	adapter := NewAdapter(pipelineRun, application, logger, loader, r.Client, ctx)
 
 	return controller.ReconcileHandler([]controller.Operation{
 		adapter.EnsureStatusReportedInSnapshot,
@@ -127,10 +119,6 @@ func SetupController(manager ctrl.Manager, log *logr.Logger) error {
 // setupCache indexes fields for each of the resources used in the pipeline adapter in those cases where filtering by
 // field is required.
 func setupCache(mgr ctrl.Manager) error {
-	if err := cache.SetupApplicationComponentCache(mgr); err != nil {
-		return err
-	}
-
 	if err := cache.SetupSnapshotCache(mgr); err != nil {
 		return err
 	}
