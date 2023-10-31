@@ -19,6 +19,7 @@ package buildpipeline
 import (
 	"context"
 	"fmt"
+	"github.com/redhat-appstudio/integration-service/cache"
 
 	"github.com/go-logr/logr"
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
@@ -119,9 +120,20 @@ func SetupController(manager ctrl.Manager, log *logr.Logger) error {
 	return setupControllerWithManager(manager, NewIntegrationReconciler(manager.GetClient(), log, manager.GetScheme()))
 }
 
+// setupCache indexes fields for each of the resources used in the build pipeline adapter in those cases where
+// filtering by field is required.
+func setupCache(mgr ctrl.Manager) error {
+	return cache.SetupApplicationComponentCache(mgr)
+}
+
 // setupControllerWithManager sets up the controller with the Manager which monitors new build PipelineRuns and filters
 // out status updates.
 func setupControllerWithManager(manager ctrl.Manager, controller *Reconciler) error {
+	err := setupCache(manager)
+	if err != nil {
+		return err
+	}
+
 	return ctrl.NewControllerManagedBy(manager).
 		For(&tektonv1beta1.PipelineRun{}).
 		WithEventFilter(predicate.Or(

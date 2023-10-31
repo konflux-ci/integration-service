@@ -368,13 +368,13 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 
 	When("NewAdapter is called", func() {
 		It("creates and return a new adapter", func() {
-			Expect(reflect.TypeOf(NewAdapter(integrationPipelineRunComponent, hasComp, hasApp, logger, loader.NewMockLoader(), k8sClient, ctx))).To(Equal(reflect.TypeOf(&Adapter{})))
+			Expect(reflect.TypeOf(NewAdapter(integrationPipelineRunComponent, hasApp, logger, loader.NewMockLoader(), k8sClient, ctx))).To(Equal(reflect.TypeOf(&Adapter{})))
 		})
 	})
 
 	When("Snapshot already exists", func() {
 		BeforeEach(func() {
-			adapter = NewAdapter(integrationPipelineRunComponent, hasComp, hasApp, logger, loader.NewMockLoader(), k8sClient, ctx)
+			adapter = NewAdapter(integrationPipelineRunComponent, hasApp, logger, loader.NewMockLoader(), k8sClient, ctx)
 			adapter.context = loader.GetMockedContext(ctx, []loader.MockData{
 				{
 					ContextKey: loader.ApplicationContextKey,
@@ -514,7 +514,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				}
 				Expect(k8sClient.Status().Update(ctx, integrationPipelineRunComponentFailed)).Should(Succeed())
 
-				adapter = NewAdapter(integrationPipelineRunComponentFailed, hasComp, hasApp, logger, loader.NewMockLoader(), k8sClient, ctx)
+				adapter = NewAdapter(integrationPipelineRunComponentFailed, hasApp, logger, loader.NewMockLoader(), k8sClient, ctx)
 				adapter.context = loader.GetMockedContext(ctx, []loader.MockData{
 					{
 						ContextKey: loader.ApplicationContextKey,
@@ -633,7 +633,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		It("ensures ephemeral environment is deleted for the given pipelineRun ", func() {
 			var buf bytes.Buffer
 			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
-			adapter = NewAdapter(integrationPipelineRunComponent, hasComp, hasApp, log, loader.NewMockLoader(), k8sClient, ctx)
+			adapter = NewAdapter(integrationPipelineRunComponent, hasApp, log, loader.NewMockLoader(), k8sClient, ctx)
 			adapter.context = loader.GetMockedContext(ctx, []loader.MockData{
 				{
 					ContextKey: loader.ApplicationContextKey,
@@ -807,7 +807,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			}
 			Expect(k8sClient.Status().Update(ctx, integrationPipelineRunComponentFailed)).Should(Succeed())
 
-			adapter = NewAdapter(integrationPipelineRunComponentFailed, hasComp, hasApp, logger, loader.NewMockLoader(), k8sClient, ctx)
+			adapter = NewAdapter(integrationPipelineRunComponentFailed, hasApp, logger, loader.NewMockLoader(), k8sClient, ctx)
 			adapter.context = loader.GetMockedContext(ctx, []loader.MockData{
 				{
 					ContextKey: loader.ApplicationContextKey,
