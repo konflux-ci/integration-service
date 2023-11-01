@@ -18,6 +18,7 @@ package snapshot
 
 import (
 	"reflect"
+	"time"
 
 	"k8s.io/apimachinery/pkg/api/errors"
 
@@ -182,6 +183,29 @@ var _ = Describe("SnapshotController", func() {
 		result, err := snapshotReconciler.Reconcile(ctx, req)
 		Expect(result).To(Equal(ctrl.Result{}))
 		Expect(err).To(BeNil())
+	})
+
+	It("Does not return an error if the application cannot be found", func() {
+		err := k8sClient.Delete(ctx, hasApp)
+		Eventually(func() bool {
+			err := k8sClient.Get(ctx, types.NamespacedName{
+				Namespace: hasApp.ObjectMeta.Namespace,
+				Name:      hasApp.ObjectMeta.Name,
+			}, hasApp)
+			return err != nil
+		}).Should(BeTrue())
+		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
+
+		result, err := snapshotReconciler.Reconcile(ctx, req)
+		Expect(result).To(Equal(ctrl.Result{}))
+		Expect(err).To(BeNil())
+		Eventually(func() bool {
+			err := k8sClient.Get(ctx, types.NamespacedName{
+				Namespace: hasSnapshot.Namespace,
+				Name:      hasSnapshot.Name,
+			}, hasSnapshot)
+			return err == nil && gitops.IsSnapshotMarkedAsInvalid(hasSnapshot)
+		}, time.Second*20).Should(BeTrue())
 	})
 
 	It("can setup the cache by adding a new index field to search for ReleasePlanAdmissions", func() {
