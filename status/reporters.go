@@ -170,6 +170,8 @@ func generateSummary(state intgteststat.IntegrationTestStatus, snapshotName, sce
 		statusDesc = "experienced an error when provisioning environment"
 	case intgteststat.IntegrationTestStatusDeploymentError:
 		statusDesc = "experienced an error when deploying snapshotEnvironmentBinding"
+	case intgteststat.IntegrationTestStatusDeleted:
+		statusDesc = "was deleted before the pipelineRun could finish"
 	case intgteststat.IntegrationTestStatusTestPassed:
 		statusDesc = "has passed"
 	case intgteststat.IntegrationTestStatusTestFail:
@@ -196,6 +198,8 @@ func generateCheckRunTitle(state intgteststat.IntegrationTestStatus) (string, er
 		title = "Errored"
 	case intgteststat.IntegrationTestStatusDeploymentError:
 		title = "Errored"
+	case intgteststat.IntegrationTestStatusDeleted:
+		title = "Deleted"
 	case intgteststat.IntegrationTestStatusTestPassed:
 		title = "Succeeded"
 	case intgteststat.IntegrationTestStatusTestFail:
@@ -242,7 +246,8 @@ func generateCheckRunConclusion(state intgteststat.IntegrationTestStatus) (strin
 	var conclusion string
 
 	switch state {
-	case intgteststat.IntegrationTestStatusTestFail, intgteststat.IntegrationTestStatusEnvironmentProvisionError, intgteststat.IntegrationTestStatusDeploymentError:
+	case intgteststat.IntegrationTestStatusTestFail, intgteststat.IntegrationTestStatusEnvironmentProvisionError,
+		intgteststat.IntegrationTestStatusDeploymentError, intgteststat.IntegrationTestStatusDeleted:
 		conclusion = gitops.IntegrationTestStatusFailureGithub
 	case intgteststat.IntegrationTestStatusTestPassed:
 		conclusion = gitops.IntegrationTestStatusSuccessGithub
@@ -264,7 +269,8 @@ func generateCommitState(state intgteststat.IntegrationTestStatus) (string, erro
 	switch state {
 	case intgteststat.IntegrationTestStatusTestFail:
 		commitState = gitops.IntegrationTestStatusFailureGithub
-	case intgteststat.IntegrationTestStatusEnvironmentProvisionError, intgteststat.IntegrationTestStatusDeploymentError:
+	case intgteststat.IntegrationTestStatusEnvironmentProvisionError, intgteststat.IntegrationTestStatusDeploymentError,
+		intgteststat.IntegrationTestStatusDeleted:
 		commitState = gitops.IntegrationTestStatusErrorGithub
 	case intgteststat.IntegrationTestStatusTestPassed:
 		commitState = gitops.IntegrationTestStatusSuccessGithub
