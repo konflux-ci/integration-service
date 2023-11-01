@@ -34,5 +34,6 @@ resources:
   version: v1beta1
   webhooks:
     conversion: true
+    validation: true
     webhookVersion: v1
 version: "3"
