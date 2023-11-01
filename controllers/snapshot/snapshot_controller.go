@@ -18,6 +18,7 @@ package snapshot
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/redhat-appstudio/integration-service/cache"
 
@@ -90,11 +91,28 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{}, err
 	}
 
-	application, err := loader.GetApplicationFromSnapshot(r.Client, ctx, snapshot)
+	var application *applicationapiv1alpha1.Application
+	err = retry.OnError(retry.DefaultRetry, func(_ error) bool { return true }, func() error {
+		application, err = loader.GetApplicationFromSnapshot(r.Client, ctx, snapshot)
+		return err
+	})
 	if err != nil {
-		logger.Error(err, "Failed to get Application from the Snapshot")
-		return ctrl.Result{}, err
+		if errors.IsNotFound(err) {
+			if !gitops.IsSnapshotMarkedAsInvalid(snapshot) {
+				_, err := gitops.MarkSnapshotAsInvalid(r.Client, ctx, snapshot,
+					fmt.Sprintf("The application %s owning this snapshot doesn't exist, try again after creating application", snapshot.Spec.Application))
+				if err != nil {
+					logger.Error(err, "Failed to update the status to Invalid for the snapshot",
+						"snapshot.Namespace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
+					return ctrl.Result{}, err
+				}
+				logger.Info("Snapshot integration status condition marked as invalid, the application owning this snapshot cannot be found",
+					"snapshot.Namespace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
+			}
+		}
+		return helpers.HandleLoaderError(logger, err, "Application", "Snapshot")
 	}
+
 	logger = logger.WithApp(*application)
 
 	var component *applicationapiv1alpha1.Component
