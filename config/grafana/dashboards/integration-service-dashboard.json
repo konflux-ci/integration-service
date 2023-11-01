@@ -1873,6 +1873,101 @@
         "cellValues": {},
         "showValue": "never"
       }
+    },
+
+    {
+      "id": 30,
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 34
+      },
+      "type": "graph",
+      "title": "SEB Ephemeral Deployments Total",
+      "thresholds": [],
+      "pluginVersion": "9.1.6",
+      "description": "Total number of SEB deployments processed by the operator",
+      "legend": {
+        "avg": false,
+        "current": false,
+        "max": false,
+        "min": false,
+        "show": true,
+        "total": false,
+        "values": false
+      },
+      "aliasColors": {},
+      "dashLength": 10,
+      "fill": 1,
+      "lines": true,
+      "linewidth": 1,
+      "nullPointMode": "null",
+      "options": {
+        "alertThreshold": true
+      },
+      "pointradius": 2,
+      "renderer": "flot",
+      "seriesOverrides": [],
+      "spaceLength": 10,
+      "targets": [
+        {
+          "exemplar": true,
+          "expr": "seb_ephemeral_deployments_total",
+          "interval": "",
+          "legendFormat": "{{ reason }}",
+          "refId": "A",
+          "editorMode": "code",
+          "range": true
+        }
+      ],
+      "timeRegions": [],
+      "tooltip": {
+        "shared": true,
+        "sort": 0,
+        "value_type": "individual"
+      },
+      "xaxis": {
+        "buckets": null,
+        "mode": "time",
+        "name": null,
+        "show": true,
+        "values": []
+      },
+      "yaxes": [
+        {
+          "$$hashKey": "object:170",
+          "format": "short",
+          "label": null,
+          "logBase": 1,
+          "max": null,
+          "min": null,
+          "show": true
+        },
+        {
+          "$$hashKey": "object:171",
+          "format": "short",
+          "label": null,
+          "logBase": 1,
+          "max": null,
+          "min": null,
+          "show": true
+        }
+      ],
+      "yaxis": {
+        "align": false,
+        "alignLevel": null
+      },
+      "bars": false,
+      "dashes": false,
+      "fillGradient": 0,
+      "hiddenSeries": false,
+      "percentage": false,
+      "points": false,
+      "stack": false,
+      "steppedLine": false,
+      "timeFrom": null,
+      "timeShift": null
     }
   ],
   "schemaVersion": 27,
