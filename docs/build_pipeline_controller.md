@@ -8,9 +8,9 @@ flowchart TD
   classDef Red fill:#FF9999;
   classDef Amber fill:#FFDEAD;
   classDef Green fill:#BDFFA4;
- 
+
   %% Node definitions
-predicate((PREDICATE: <br> Filter events related to <br> PipelineRun <br> that are signed <br> and have <br> succeeded))
+predicate((PREDICATE: <br> Filter events related to <br> PipelineRuns <br> proccessed by Chains <br> that have <br> succeeded))
 get_pipeline_run{Pipeline found?}
 retrieve_associated_entity(Retrieve the entity <br> component/application)
 determine_snapshot{Does a snapshot exist?}

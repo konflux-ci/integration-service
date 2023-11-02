@@ -114,7 +114,7 @@ var _ = Describe("Predicates", func() {
 			Expect(instance.Update(contextEvent)).To(BeFalse())
 		})
 
-		It("should return false when an updated event is received for a succeeded PipelineRun and not signed", func() {
+		It("should return true when an updated event is received for a succeeded PipelineRun with failed chains signing", func() {
 			newPipelineRun.Status.SetCondition(&apis.Condition{
 				Type:   apis.ConditionSucceeded,
 				Status: "True",
@@ -126,8 +126,8 @@ var _ = Describe("Predicates", func() {
 			}
 			Expect(instance.Update(contextEvent)).To(BeFalse())
 
-			newPipelineRun.Annotations["chains.tekton.dev/signed"] = "false"
-			Expect(instance.Update(contextEvent)).To(BeFalse())
+			newPipelineRun.Annotations["chains.tekton.dev/signed"] = "failed"
+			Expect(instance.Update(contextEvent)).To(BeTrue())
 		})
 
 		It("should return false when an updated event is received for a succeeded and signed pipelineRun that was annotated with Snapshot", func() {

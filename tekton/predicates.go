@@ -59,7 +59,7 @@ func BuildPipelineRunSignedAndSucceededPredicate() predicate.Predicate {
 			return false
 		},
 		UpdateFunc: func(e event.UpdateEvent) bool {
-			return IsBuildPipelineRun(e.ObjectNew) && isPipelineRunSigned(e.ObjectNew) &&
+			return IsBuildPipelineRun(e.ObjectNew) && isChainsDoneWithPipelineRun(e.ObjectNew) &&
 				helpers.HasPipelineRunSucceeded(e.ObjectNew) &&
 				!metadata.HasAnnotation(e.ObjectNew, SnapshotNameLabel)
 		},

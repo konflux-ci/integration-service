@@ -107,11 +107,19 @@ func hasPipelineRunStateChangedToDeleting(objectOld, objectNew client.Object) bo
 	return false
 }
 
-// isPipelineRunSigned returns a boolean indicated whether the PipelineRun been signed
-// If the object passed to this function is not a PipelineRun, the function will return false.
-func isPipelineRunSigned(objectNew client.Object) bool {
+// isChainsDoneWithPipelineRun returns a boolean indicating whether Tekton Chains is done processing
+// the PipelineRun. true is returned regardless if Chains was able to successfully sign/attest the
+// artifacts produced by the PipelineRun. If the object passed to this function is not a
+// PipelineRun, the function will return false.
+func isChainsDoneWithPipelineRun(objectNew client.Object) bool {
 	if newPipelineRun, ok := objectNew.(*tektonv1beta1.PipelineRun); ok {
-		return metadata.HasAnnotationWithValue(newPipelineRun, PipelineRunChainsSignedAnnotation, "true")
+		// If the annotation value is set "true" it means Chains was able to sign. If it is set to
+		// "failed", it means something prevented Chains from signing, e.g. insufficient access. In
+		// either case, we want to proceed processing the PipelineRun instead of waiting
+		// indefinitely for a condition that may never happen, e.g. "failed" -> "true". Let
+		// downstream verification processes, e.g. Enterprise Contract, deal with the Chains
+		// failure.
+		return metadata.HasAnnotation(newPipelineRun, PipelineRunChainsSignedAnnotation)
 	}
 	return false
 }
