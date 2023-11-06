@@ -41,6 +41,14 @@ var (
 		},
 	)
 
+	SnapshotCreatedToPipelineRunWithEphemeralEnvStartedSeconds = prometheus.NewHistogram(
+		prometheus.HistogramOpts{
+			Name:    "snapshot_created_to_pipelinerun_with_ephemeral_env_started_seconds",
+			Help:    "The duration measures the time elapsed between the creation of a snapshot resource and the initiation of an integration PipelineRun for pipelines operating within an ephemeral environment.",
+			Buckets: []float64{0.05, 0.1, 0.5, 1, 2, 3, 4, 5, 10, 15, 30},
+		},
+	)
+
 	SEBCreatedToReadySeconds = prometheus.NewHistogram(
 		sebCreatedToReadySecondsOpts,
 	)
@@ -142,6 +150,10 @@ func RegisterPipelineRunStarted(snapshotCreatedTime metav1.Time, pipelineRunStar
 	SnapshotCreatedToPipelineRunStartedSeconds.Observe(pipelineRunStartTime.Sub(snapshotCreatedTime.Time).Seconds())
 }
 
+func RegisterPipelineRunWithEphemeralEnvStarted(snapshotCreatedTime metav1.Time, pipelineRunStartTime metav1.Time) {
+	SnapshotCreatedToPipelineRunWithEphemeralEnvStartedSeconds.Observe(pipelineRunStartTime.Sub(snapshotCreatedTime.Time).Seconds())
+}
+
 func RegisterSEBCreatedToReady(sebCreatedTime metav1.Time, sebReadyTime *metav1.Time) {
 	SEBCreatedToReadySeconds.
 		Observe(sebReadyTime.Sub(sebCreatedTime.Time).Seconds())
@@ -168,6 +180,7 @@ func RegisterReleaseLatency(startTime metav1.Time) {
 func init() {
 	metrics.Registry.MustRegister(
 		SnapshotCreatedToPipelineRunStartedSeconds,
+		SnapshotCreatedToPipelineRunWithEphemeralEnvStartedSeconds,
 		SEBCreatedToReadySeconds,
 		IntegrationSvcResponseSeconds,
 		IntegrationPipelineRunTotal,
