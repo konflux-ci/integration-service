@@ -30,6 +30,7 @@ import (
 
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/api/v1beta1"
+	toolkit "github.com/redhat-appstudio/operator-toolkit/loader"
 	releasev1alpha1 "github.com/redhat-appstudio/release-service/api/v1alpha1"
 	releasemetadata "github.com/redhat-appstudio/release-service/metadata"
 	tektonv1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
@@ -352,7 +353,7 @@ var _ = Describe("Binding Adapter", Ordered, func() {
 	It("ensures the integrationTestPipelines are created for a deployed SnapshotEnvironment binding", func() {
 		adapter = NewAdapter(hasBinding, hasSnapshot, hasEnv, hasApp, hasComp, integrationTestScenario, logger, loader.NewMockLoader(), k8sClient, ctx)
 		Expect(reflect.TypeOf(adapter)).To(Equal(reflect.TypeOf(&Adapter{})))
-		adapter.context = loader.GetMockedContext(ctx, []loader.MockData{
+		adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 			{
 				ContextKey: loader.ApplicationContextKey,
 				Resource:   hasApp,
@@ -452,7 +453,7 @@ var _ = Describe("Binding Adapter", Ordered, func() {
 		}
 
 		adapter = NewAdapter(hasBinding, hasSnapshot, hasEnv, hasApp, hasComp, integrationTestScenario, log, loader.NewMockLoader(), k8sClient, ctx)
-		adapter.context = loader.GetMockedContext(ctx, []loader.MockData{
+		adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 			{
 				ContextKey: loader.ApplicationContextKey,
 				Resource:   hasApp,
@@ -503,7 +504,7 @@ var _ = Describe("Binding Adapter", Ordered, func() {
 		}
 
 		adapter = NewAdapter(hasBinding, hasSnapshot, hasEnv, hasApp, hasComp, integrationTestScenario, log, loader.NewMockLoader(), k8sClient, ctx)
-		adapter.context = loader.GetMockedContext(ctx, []loader.MockData{
+		adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 			{
 				ContextKey: loader.ApplicationContextKey,
 				Resource:   hasApp,
