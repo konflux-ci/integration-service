@@ -21,6 +21,7 @@ import (
 	"fmt"
 
 	"github.com/redhat-appstudio/integration-service/cache"
+	"k8s.io/client-go/util/retry"
 
 	"github.com/go-logr/logr"
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
@@ -80,11 +81,18 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{}, err
 	}
 
-	component, err := loader.GetComponentFromPipelineRun(r.Client, ctx, pipelineRun)
+	var component *applicationapiv1alpha1.Component
+	err = retry.OnError(retry.DefaultRetry, func(_ error) bool { return true }, func() error {
+		component, err = loader.GetComponentFromPipelineRun(r.Client, ctx, pipelineRun)
+		return err
+	})
 	if err != nil {
-		logger.Error(err, "Failed to get Component for",
-			"PipelineRun.Name", pipelineRun.Name, "PipelineRun.Namespace", pipelineRun.Namespace)
-		return ctrl.Result{}, err
+		if errors.IsNotFound(err) {
+			if err := helpers.RemoveFinalizerFromPipelineRun(r.Client, logger, ctx, pipelineRun, helpers.IntegrationPipelineRunFinalizer); err != nil {
+				return ctrl.Result{}, err
+			}
+		}
+		return helpers.HandleLoaderError(logger, err, "Component", "PipelineRun")
 	}
 
 	application := &applicationapiv1alpha1.Application{}

@@ -17,6 +17,7 @@ limitations under the License.
 package buildpipeline
 
 import (
+	"github.com/redhat-appstudio/integration-service/helpers"
 	"reflect"
 	"sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	crwebhook "sigs.k8s.io/controller-runtime/pkg/webhook"
@@ -274,6 +275,34 @@ var _ = Describe("PipelineController", func() {
 			err = manager.Start(ctx)
 			Expect(err).NotTo(HaveOccurred())
 		}()
+	})
+
+	It("Does not return an error if the component cannot be found", func() {
+		controllerutil.AddFinalizer(buildPipelineRun, helpers.IntegrationPipelineRunFinalizer)
+		err := k8sClient.Update(ctx, buildPipelineRun)
+		Expect(err).To(BeNil())
+
+		err = k8sClient.Delete(ctx, hasComp)
+		Eventually(func() bool {
+			err := k8sClient.Get(ctx, types.NamespacedName{
+				Namespace: hasComp.ObjectMeta.Namespace,
+				Name:      hasComp.ObjectMeta.Name,
+			}, hasComp)
+			return err != nil
+		}).Should(BeTrue())
+		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
+
+		result, err := pipelineReconciler.Reconcile(ctx, req)
+		Expect(result).To(Equal(ctrl.Result{}))
+		Expect(err).To(BeNil())
+
+		Eventually(func() bool {
+			err := k8sClient.Get(ctx, types.NamespacedName{
+				Namespace: buildPipelineRun.Namespace,
+				Name:      buildPipelineRun.Name,
+			}, buildPipelineRun)
+			return err == nil && !controllerutil.ContainsFinalizer(buildPipelineRun, helpers.IntegrationPipelineRunFinalizer)
+		}, time.Second*20).Should(BeTrue())
 	})
 
 	When("pipelinerun has no component", func() {
