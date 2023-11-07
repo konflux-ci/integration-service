@@ -18,6 +18,8 @@ package integrationpipeline
 
 import (
 	"reflect"
+	"sigs.k8s.io/controller-runtime/pkg/metrics/server"
+	crwebhook "sigs.k8s.io/controller-runtime/pkg/webhook"
 	"time"
 
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -248,12 +250,16 @@ var _ = Describe("Integration PipelineController", func() {
 
 		var err error
 		manager, err = ctrl.NewManager(cfg, ctrl.Options{
-			Scheme:             clientsetscheme.Scheme,
-			Host:               webhookInstallOptions.LocalServingHost,
-			Port:               webhookInstallOptions.LocalServingPort,
-			CertDir:            webhookInstallOptions.LocalServingCertDir,
-			MetricsBindAddress: "0", // this disables metrics
-			LeaderElection:     false,
+			Scheme: clientsetscheme.Scheme,
+			WebhookServer: crwebhook.NewServer(crwebhook.Options{
+				CertDir: webhookInstallOptions.LocalServingCertDir,
+				Host:    webhookInstallOptions.LocalServingHost,
+				Port:    webhookInstallOptions.LocalServingPort,
+			}),
+			Metrics: server.Options{
+				BindAddress: "0", // disables metrics
+			},
+			LeaderElection: false,
 		})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(err).To(BeNil())
