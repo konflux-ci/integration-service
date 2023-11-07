@@ -19,6 +19,7 @@ package metrics
 import (
 	"context"
 	"fmt"
+	"sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"testing"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -53,8 +54,10 @@ var _ = BeforeSuite(func() {
 	Expect(cfg).NotTo(BeNil())
 
 	k8sManager, _ := ctrl.NewManager(cfg, ctrl.Options{
-		MetricsBindAddress: ":8081",
-		LeaderElection:     false,
+		Metrics: server.Options{
+			BindAddress: ":8081", // disables metrics
+		},
+		LeaderElection: false,
 	})
 
 	go func() {
