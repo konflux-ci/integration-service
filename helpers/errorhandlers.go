@@ -20,6 +20,39 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 )
 
+const (
+	ReasonEnvironmentNotInNamespace = "EnvironmentNotInNamespace"
+	ReasonUnknownError              = "UnknownError"
+)
+
+type IntegrationError struct {
+	Reason  string
+	Message string
+}
+
+func (ie *IntegrationError) Error() string {
+	return ie.Message
+}
+
+func getReason(err error) string {
+	integrationErr, ok := err.(*IntegrationError)
+	if !ok {
+		return ReasonUnknownError
+	}
+	return integrationErr.Reason
+}
+
+func NewEnvironmentNotInNamespaceError(environment, namespace string) error {
+	return &IntegrationError{
+		Reason:  ReasonEnvironmentNotInNamespace,
+		Message: fmt.Sprintf("Environment %s not found in namespace %s", environment, namespace),
+	}
+}
+
+func IsEnvironmentNotInNamespaceError(err error) bool {
+	return getReason(err) == ReasonEnvironmentNotInNamespace
+}
+
 func HandleLoaderError(logger IntegrationLogger, err error, resource, from string) (ctrl.Result, error) {
 	if errors.IsNotFound(err) {
 		logger.Info(fmt.Sprintf("Could not get %[1]s from %[2]s.  %[1]s may have been removed.  Declining to proceed with reconciliation", resource, from))
