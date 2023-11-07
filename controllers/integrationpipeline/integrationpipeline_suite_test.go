@@ -20,6 +20,7 @@ import (
 	"context"
 	"go/build"
 	"path/filepath"
+	"sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"testing"
 
 	"k8s.io/client-go/rest"
@@ -91,9 +92,11 @@ var _ = BeforeSuite(func() {
 	Expect(v1beta1.AddToScheme(clientsetscheme.Scheme)).To(Succeed())
 
 	k8sManager, _ := ctrl.NewManager(cfg, ctrl.Options{
-		Scheme:             clientsetscheme.Scheme,
-		MetricsBindAddress: "0", // this disables metrics
-		LeaderElection:     false,
+		Scheme: clientsetscheme.Scheme,
+		Metrics: server.Options{
+			BindAddress: "0", // disables metrics
+		},
+		LeaderElection: false,
 	})
 
 	k8sClient = k8sManager.GetClient()
