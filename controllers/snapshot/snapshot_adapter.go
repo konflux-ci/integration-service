@@ -22,7 +22,6 @@ import (
 	"reflect"
 	"strings"
 
-	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
@@ -215,6 +214,11 @@ func (a *Adapter) EnsureCreationOfEphemeralEnvironments() (controller.OperationR
 
 		_, err = a.ensureEphemeralEnvironmentForScenarioExists(&integrationTestScenario, testStatuses, allEnvironments)
 		if err != nil {
+			if h.IsEnvironmentNotInNamespaceError(err) {
+				a.logger.Error(err, "environment doesn't exist in the same namespace as integrationScenario at all, try again after creating environment",
+					"integrationTestScenario.Name", integrationTestScenario.Name)
+				return controller.StopProcessing()
+			}
 			return controller.RequeueWithError(fmt.Errorf("failed to ensure existence of the environment for scenario %s: %w", integrationTestScenario.Name, err))
 		}
 	}
@@ -416,28 +420,6 @@ func (a *Adapter) getExistingEnvironmentForScenario(integrationTestScenario *v1b
 	return nil, false
 }
 
-// createEnvironmentForScenario creates new epehemeral environment for scenario by copying existing environment
-func (a *Adapter) createEnvironmentForScenario(integrationTestScenario *v1beta1.IntegrationTestScenario) (*applicationapiv1alpha1.Environment, error) {
-	//get the existing environment according to environment name from integrationTestScenario
-	existingEnv, err := a.getEnvironmentFromIntegrationTestScenario(integrationTestScenario)
-	if err != nil {
-		a.logger.Error(err, "Failed to find the env defined in integrationTestScenario",
-			"integrationTestScenario.Namespace", integrationTestScenario.Namespace,
-			"integrationTestScenario.Name", integrationTestScenario.Name)
-		return nil, err
-	}
-
-	//create an ephemeral copy env of existing environment
-	copyEnv, err := a.createCopyOfExistingEnvironment(existingEnv, a.snapshot.Namespace, integrationTestScenario, a.snapshot, a.application)
-
-	if err != nil {
-		a.logger.Error(err, "Copying of environment failed")
-		return nil, fmt.Errorf("copying of environment failed: %w", err)
-	}
-
-	return copyEnv, nil
-}
-
 // createEnvironmentBindingForScenario creates SnapshotEnvironmentBinding for the given test scenario and snapshot
 func (a *Adapter) createEnvironmentBindingForScenario(integrationTestScenario *v1beta1.IntegrationTestScenario, environment *applicationapiv1alpha1.Environment) (*applicationapiv1alpha1.SnapshotEnvironmentBinding, error) {
 	scenarioLabelAndKey := map[string]string{gitops.SnapshotTestScenarioLabel: integrationTestScenario.Name}
@@ -467,8 +449,20 @@ func (a *Adapter) ensureEphemeralEnvironmentForScenarioExists(integrationTestSce
 	environment, ok := a.getExistingEnvironmentForScenario(integrationTestScenario, allEnvironments)
 	if !ok {
 		// environment doesn't exist, we have to create a new one
-		environment, err = a.createEnvironmentForScenario(integrationTestScenario)
+		existingEnv := findEnvironmentFromAllEnvironmentsByName(allEnvironments, integrationTestScenario.Spec.Environment.Name)
+		if existingEnv == nil {
+			err := h.NewEnvironmentNotInNamespaceError(integrationTestScenario.Spec.Environment.Name, integrationTestScenario.Namespace)
+			testStatuses.UpdateTestStatusIfChanged(
+				integrationTestScenario.Name, intgteststat.IntegrationTestStatusEnvironmentProvisionError,
+				fmt.Sprintf("Creation of copied ephemeral environment failed: %s. Try again after creating environment.", err))
+			a.writeIntegrationTestStatusAtError(testStatuses)
+			return nil, err
+		}
+		//create an ephemeral copy env of existing environment
+		environment, err = a.createCopyOfExistingEnvironment(existingEnv, a.snapshot.Namespace, integrationTestScenario, a.snapshot, a.application)
+
 		if err != nil {
+			a.logger.Error(err, "Copying of environment failed")
 			testStatuses.UpdateTestStatusIfChanged(
 				integrationTestScenario.Name, intgteststat.IntegrationTestStatusEnvironmentProvisionError,
 				fmt.Sprintf("Creation of ephemeral environment failed: %s", err))
@@ -768,23 +762,15 @@ func (a *Adapter) CreateDeploymentTargetClaimForEnvironment(namespace string, de
 	return deploymentTargetClaim, nil
 }
 
-// getEnvironmentFromIntegrationTestScenario looks for already existing environment, if it exists it is returned, if not, nil is returned then together with
-// information about what went wrong
-func (a *Adapter) getEnvironmentFromIntegrationTestScenario(integrationTestScenario *v1beta1.IntegrationTestScenario) (*applicationapiv1alpha1.Environment, error) {
-	existingEnv := &applicationapiv1alpha1.Environment{}
-
-	err := a.client.Get(a.context, types.NamespacedName{
-		Namespace: a.application.Namespace,
-		Name:      integrationTestScenario.Spec.Environment.Name,
-	}, existingEnv)
-
-	if err != nil {
-		a.logger.Info("Environment doesn't exist in same namespace as IntegrationTestScenario at all.",
-			"integrationTestScenario:", integrationTestScenario.Name,
-			"environment:", integrationTestScenario.Spec.Environment.Name)
-		return nil, fmt.Errorf("environment %s doesn't exist in same namespace as IntegrationTestScenario at all: %w", integrationTestScenario.Spec.Environment.Name, err)
+// findEnvironmentFromAllEnvironmentsByName try to find environment from all environments by name, return the environment if it exists, otherwise return nil
+func findEnvironmentFromAllEnvironmentsByName(allEnvironments *[]applicationapiv1alpha1.Environment, envname string) *applicationapiv1alpha1.Environment {
+	for _, e := range *allEnvironments {
+		e := e //G601
+		if e.Name == envname {
+			return &e
+		}
 	}
-	return existingEnv, nil
+	return nil
 }
 
 // writeIntegrationTestStatusAtError writes updates of integration test statuses into snapshot
