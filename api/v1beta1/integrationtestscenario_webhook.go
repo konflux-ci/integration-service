@@ -22,6 +22,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
+	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
 
 func (r *IntegrationTestScenario) SetupWebhookWithManager(mgr ctrl.Manager) error {
@@ -35,24 +36,24 @@ func (r *IntegrationTestScenario) SetupWebhookWithManager(mgr ctrl.Manager) erro
 var _ webhook.Validator = &IntegrationTestScenario{}
 
 // ValidateCreate implements webhook.Validator so a webhook will be registered for the type
-func (r *IntegrationTestScenario) ValidateCreate() error {
+func (r *IntegrationTestScenario) ValidateCreate() (warnings admission.Warnings, err error) {
 	// We use the DNS-1035 format for application names, so ensure it conforms to that specification
 
 	if len(validation.IsDNS1035Label(r.Name)) != 0 {
-		return field.Invalid(field.NewPath("metadata").Child("name"), r.Name,
+		return nil, field.Invalid(field.NewPath("metadata").Child("name"), r.Name,
 			"an IntegrationTestScenario resource name must start with a lower case "+
 				"alphabetical character, be under 63 characters, and can only consist "+
 				"of lower case alphanumeric characters or ‘-’")
 	}
-	return nil
+	return nil, nil
 }
 
 // ValidateUpdate implements webhook.Validator so a webhook will be registered for the type
-func (r *IntegrationTestScenario) ValidateUpdate(old runtime.Object) error {
-	return nil
+func (r *IntegrationTestScenario) ValidateUpdate(old runtime.Object) (warnings admission.Warnings, err error) {
+	return nil, nil
 }
 
 // ValidateDelete implements webhook.Validator so a webhook will be registered for the type
-func (r *IntegrationTestScenario) ValidateDelete() error {
-	return nil
+func (r *IntegrationTestScenario) ValidateDelete() (warnings admission.Warnings, err error) {
+	return nil, nil
 }
