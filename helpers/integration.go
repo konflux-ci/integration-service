@@ -476,6 +476,37 @@ func AddFinalizerToPipelineRun(adapterClient client.Client, logger IntegrationLo
 
 		logger.LogAuditEvent("Added Finalizer to the Integration PipelineRun", pipelineRun, LogActionUpdate, "finalizer", finalizer)
 	}
+	return nil
+}
+
+// AddFinalizerToComponent adds the finalizer to the component.
+// If finalizer was not added successfully, a non-nil error is returned.
+func AddFinalizerToComponent(adapterClient client.Client, logger IntegrationLogger, ctx context.Context, component *applicationapiv1alpha1.Component, finalizer string) error {
+	patch := client.MergeFrom(component.DeepCopy())
+	if ok := controllerutil.AddFinalizer(component, finalizer); ok {
+		err := adapterClient.Patch(ctx, component, patch)
+		if err != nil {
+			return fmt.Errorf("error occurred while patching the updated component after finalizer addition: %w", err)
+		}
+
+		logger.LogAuditEvent("Added Finalizer to the Component", component, LogActionUpdate, "finalizer", finalizer)
+	}
+
+	return nil
+}
+
+// RemoveFinalizerFromComponent removes the finalizer from the Component.
+// If finalizer was not removed successfully, a non-nil error is returned.
+func RemoveFinalizerFromComponent(adapterClient client.Client, logger IntegrationLogger, ctx context.Context, component *applicationapiv1alpha1.Component, finalizer string) error {
+	patch := client.MergeFrom(component.DeepCopy())
+	if ok := controllerutil.RemoveFinalizer(component, finalizer); ok {
+		err := adapterClient.Patch(ctx, component, patch)
+		if err != nil {
+			return fmt.Errorf("error occurred while patching the updated Component after finalizer removal: %w", err)
+		}
+
+		logger.LogAuditEvent("Removed Finalizer from the Component", component, LogActionDelete, "finalizer", finalizer)
+	}
 
 	return nil
 }
