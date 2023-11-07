@@ -1055,4 +1055,21 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		logEntry = "Removed Finalizer from the IntegrationTestScenario"
 		Expect(buf.String()).Should(ContainSubstring(logEntry))
 	})
+
+	It("can add and remove finalizer from a component", func() {
+		var buf bytes.Buffer
+
+		// calling AddFinalizerToComponent() when the Component doesn't contain the finalizer
+		log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+		Expect(helpers.AddFinalizerToComponent(k8sClient, log, ctx, hasComp, helpers.ComponentFinalizer)).To(Succeed())
+		Expect(hasComp.Finalizers).To(ContainElement(ContainSubstring(helpers.ComponentFinalizer)))
+		logEntry := "Added Finalizer to the Component"
+		Expect(buf.String()).Should(ContainSubstring(logEntry))
+
+		// calling RemoveFinalizerFromComponent() when the Component contains the finalizer
+		Expect(helpers.RemoveFinalizerFromComponent(k8sClient, log, ctx, hasComp, helpers.ComponentFinalizer)).To(Succeed())
+		Expect(hasComp.Finalizers).NotTo(ContainElement(ContainSubstring(helpers.ComponentFinalizer)))
+		logEntry = "Removed Finalizer from the Component"
+		Expect(buf.String()).Should(ContainSubstring(logEntry))
+	})
 })

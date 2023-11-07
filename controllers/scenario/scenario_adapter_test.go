@@ -364,7 +364,7 @@ var _ = Describe("Scenario Adapter", Ordered, func() {
 				return !result.CancelRequest && err == nil
 			}, time.Second*20).Should(BeTrue())
 
-			expectedLogEntry := "Ephemeral environment is deleted and its owning SnapshotEnvironmentBinding is in the process of being deleted"
+			expectedLogEntry := "SnapshotEnvironmentBinding is in the process of being deleted"
 			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
 			expectedLogEntry = "Removed Finalizer from the IntegrationTestScenario"
 			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
