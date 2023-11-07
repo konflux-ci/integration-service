@@ -13,7 +13,7 @@ require (
 	github.com/prometheus/client_golang v1.17.0
 	github.com/redhat-appstudio/application-api v0.0.0-20231025105224-2790bb451725
 	github.com/redhat-appstudio/operator-toolkit v0.0.0-20230913085326-6c5e9d368a6a
-	github.com/redhat-appstudio/release-service v0.0.0-20230511145849-bde1cdcbb60b
+	github.com/redhat-appstudio/release-service v0.0.0-20231107140301-56ac66b56719
 	github.com/santhosh-tekuri/jsonschema/v5 v5.3.1
 	github.com/tektoncd/pipeline v0.49.0
 	github.com/tonglil/buflogr v1.0.1
