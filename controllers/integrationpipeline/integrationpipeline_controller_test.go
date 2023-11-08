@@ -24,7 +24,7 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	tektonv1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
+	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
@@ -46,8 +46,8 @@ var _ = Describe("Integration PipelineController", func() {
 		pipelineReconciler     *Reconciler
 		scheme                 runtime.Scheme
 		req                    ctrl.Request
-		successfulTaskRun      *tektonv1beta1.TaskRun
-		integrationPipelineRun *tektonv1beta1.PipelineRun
+		successfulTaskRun      *tektonv1.TaskRun
+		integrationPipelineRun *tektonv1.PipelineRun
 		hasApp                 *applicationapiv1alpha1.Application
 		hasComp                *applicationapiv1alpha1.Component
 		hasSnapshot            *applicationapiv1alpha1.Snapshot
@@ -126,15 +126,27 @@ var _ = Describe("Integration PipelineController", func() {
 		}
 		Expect(k8sClient.Create(ctx, hasSnapshot)).Should(Succeed())
 
-		successfulTaskRun = &tektonv1beta1.TaskRun{
+		successfulTaskRun = &tektonv1.TaskRun{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "test-taskrun-pass",
 				Namespace: "default",
 			},
-			Spec: tektonv1beta1.TaskRunSpec{
-				TaskRef: &tektonv1beta1.TaskRef{
-					Name:   "test-taskrun-pass",
-					Bundle: "quay.io/redhat-appstudio/example-tekton-bundle:test",
+			Spec: tektonv1.TaskRunSpec{
+				TaskRef: &tektonv1.TaskRef{
+					Name: "test-taskrun-pass",
+					ResolverRef: tektonv1.ResolverRef{
+						Resolver: "bundle",
+						Params: tektonv1.Params{
+							{
+								Name:  "bundle",
+								Value: tektonv1.ParamValue{Type: "string", StringVal: "quay.io/redhat-appstudio/example-tekton-bundle:test"},
+							},
+							{
+								Name:  "name",
+								Value: tektonv1.ParamValue{Type: "string", StringVal: "test-task"},
+							},
+						},
+					},
 				},
 			},
 		}
@@ -142,14 +154,14 @@ var _ = Describe("Integration PipelineController", func() {
 		Expect(k8sClient.Create(ctx, successfulTaskRun)).Should(Succeed())
 
 		now := time.Now()
-		successfulTaskRun.Status = tektonv1beta1.TaskRunStatus{
-			TaskRunStatusFields: tektonv1beta1.TaskRunStatusFields{
+		successfulTaskRun.Status = tektonv1.TaskRunStatus{
+			TaskRunStatusFields: tektonv1.TaskRunStatusFields{
 				StartTime:      &metav1.Time{Time: now},
 				CompletionTime: &metav1.Time{Time: now.Add(5 * time.Minute)},
-				TaskRunResults: []tektonv1beta1.TaskRunResult{
+				Results: []tektonv1.TaskRunResult{
 					{
 						Name: "TEST_OUTPUT",
-						Value: *tektonv1beta1.NewStructuredValues(`{
+						Value: *tektonv1.NewStructuredValues(`{
 											"result": "SUCCESS",
 											"timestamp": "1665405318",
 											"failures": 0,
@@ -162,7 +174,7 @@ var _ = Describe("Integration PipelineController", func() {
 		}
 		Expect(k8sClient.Status().Update(ctx, successfulTaskRun)).Should(Succeed())
 
-		integrationPipelineRun = &tektonv1beta1.PipelineRun{
+		integrationPipelineRun = &tektonv1.PipelineRun{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "pipelinerun-sample",
 				Namespace: "default",
@@ -179,16 +191,28 @@ var _ = Describe("Integration PipelineController", func() {
 					"appstudio.redhat.com/updateComponentOnSuccess": "false",
 				},
 			},
-			Spec: tektonv1beta1.PipelineRunSpec{
-				PipelineRef: &tektonv1beta1.PipelineRef{
-					Name:   "build-pipeline-pass",
-					Bundle: "quay.io/kpavic/test-bundle:build-pipeline-pass",
+			Spec: tektonv1.PipelineRunSpec{
+				PipelineRef: &tektonv1.PipelineRef{
+					Name: "build-pipeline-pass",
+					ResolverRef: tektonv1.ResolverRef{
+						Resolver: "bundle",
+						Params: tektonv1.Params{
+							{
+								Name:  "bundle",
+								Value: tektonv1.ParamValue{Type: "string", StringVal: "quay.io/redhat-appstudio/example-tekton-bundle:test"},
+							},
+							{
+								Name:  "name",
+								Value: tektonv1.ParamValue{Type: "string", StringVal: "test-task"},
+							},
+						},
+					},
 				},
-				Params: []tektonv1beta1.Param{
+				Params: []tektonv1.Param{
 					{
 						Name: "output-image",
-						Value: tektonv1beta1.ParamValue{
-							Type:      tektonv1beta1.ParamTypeString,
+						Value: tektonv1.ParamValue{
+							Type:      tektonv1.ParamTypeString,
 							StringVal: "quay.io/redhat-appstudio/sample-image",
 						},
 					},
@@ -197,9 +221,9 @@ var _ = Describe("Integration PipelineController", func() {
 		}
 		Expect(k8sClient.Create(ctx, integrationPipelineRun)).Should(Succeed())
 
-		integrationPipelineRun.Status = tektonv1beta1.PipelineRunStatus{
-			PipelineRunStatusFields: tektonv1beta1.PipelineRunStatusFields{
-				ChildReferences: []tektonv1beta1.ChildStatusReference{
+		integrationPipelineRun.Status = tektonv1.PipelineRunStatus{
+			PipelineRunStatusFields: tektonv1.PipelineRunStatusFields{
+				ChildReferences: []tektonv1.ChildStatusReference{
 					{
 						Name:             successfulTaskRun.Name,
 						PipelineTaskName: "task1",
@@ -297,12 +321,12 @@ var _ = Describe("Integration PipelineController", func() {
 	When("pipelinerun has no component", func() {
 
 		var (
-			integrationPipelineRunNoComponent *tektonv1beta1.PipelineRun
+			integrationPipelineRunNoComponent *tektonv1.PipelineRun
 			reqNoComponent                    ctrl.Request
 		)
 
 		BeforeEach(func() {
-			integrationPipelineRunNoComponent = &tektonv1beta1.PipelineRun{
+			integrationPipelineRunNoComponent = &tektonv1.PipelineRun{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "pipelinerun-sample-no-component",
 					Namespace: "default",
@@ -318,10 +342,22 @@ var _ = Describe("Integration PipelineController", func() {
 						"appstudio.redhat.com/updateComponentOnSuccess": "false",
 					},
 				},
-				Spec: tektonv1beta1.PipelineRunSpec{
-					PipelineRef: &tektonv1beta1.PipelineRef{
-						Name:   "component-pipeline-pass",
-						Bundle: "quay.io/kpavic/test-bundle:component-pipeline-pass",
+				Spec: tektonv1.PipelineRunSpec{
+					PipelineRef: &tektonv1.PipelineRef{
+						Name: "component-pipeline-pass",
+						ResolverRef: tektonv1.ResolverRef{
+							Resolver: "bundle",
+							Params: tektonv1.Params{
+								{
+									Name:  "bundle",
+									Value: tektonv1.ParamValue{Type: "string", StringVal: "quay.io/redhat-appstudio/example-tekton-bundle:test"},
+								},
+								{
+									Name:  "name",
+									Value: tektonv1.ParamValue{Type: "string", StringVal: "test-task"},
+								},
+							},
+						},
 					},
 				},
 			}

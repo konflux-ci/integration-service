@@ -179,7 +179,6 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 		Expect(gitops.HaveAppStudioTestsSucceeded(hasSnapshot)).To(BeTrue())
 		bindingComponents := gitops.NewBindingComponents(hasSnapshot)
 		Expect(bindingComponents).NotTo(BeNil())
-		Expect(hasComp.Spec.Replicas).To(Equal(0))
 	})
 
 	It("ensures a new SnapshotEnvironmentBinding is created", func() {

@@ -40,7 +40,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
-	tektonv1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
+	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	"github.com/tonglil/buflogr"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -50,11 +50,11 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		adapter *Adapter
 		logger  helpers.IntegrationLogger
 
-		successfulTaskRun                     *tektonv1beta1.TaskRun
-		failedTaskRun                         *tektonv1beta1.TaskRun
-		integrationPipelineRunComponent       *tektonv1beta1.PipelineRun
-		integrationPipelineRunComponentFailed *tektonv1beta1.PipelineRun
-		intgPipelineRunWithDeletionTimestamp  *tektonv1beta1.PipelineRun
+		successfulTaskRun                     *tektonv1.TaskRun
+		failedTaskRun                         *tektonv1.TaskRun
+		integrationPipelineRunComponent       *tektonv1.PipelineRun
+		integrationPipelineRunComponentFailed *tektonv1.PipelineRun
+		intgPipelineRunWithDeletionTimestamp  *tektonv1.PipelineRun
 		hasComp                               *applicationapiv1alpha1.Component
 		hasComp2                              *applicationapiv1alpha1.Component
 		hasApp                                *applicationapiv1alpha1.Application
@@ -195,29 +195,41 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		}
 		Expect(k8sClient.Create(ctx, integrationTestScenario)).Should(Succeed())
 
-		successfulTaskRun = &tektonv1beta1.TaskRun{
+		successfulTaskRun = &tektonv1.TaskRun{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "test-taskrun-pass",
 				Namespace: "default",
 			},
-			Spec: tektonv1beta1.TaskRunSpec{
-				TaskRef: &tektonv1beta1.TaskRef{
-					Name:   "test-taskrun-pass",
-					Bundle: "quay.io/redhat-appstudio/example-tekton-bundle:test",
+			Spec: tektonv1.TaskRunSpec{
+				TaskRef: &tektonv1.TaskRef{
+					Name: "test-taskrun-pass",
+					ResolverRef: tektonv1.ResolverRef{
+						Resolver: "bundle",
+						Params: tektonv1.Params{
+							{
+								Name:  "bundle",
+								Value: tektonv1.ParamValue{Type: "string", StringVal: "quay.io/redhat-appstudio/example-tekton-bundle:test"},
+							},
+							{
+								Name:  "name",
+								Value: tektonv1.ParamValue{Type: "string", StringVal: "test-task"},
+							},
+						},
+					},
 				},
 			},
 		}
 		Expect(k8sClient.Create(ctx, successfulTaskRun)).Should(Succeed())
 
 		now := time.Now()
-		successfulTaskRun.Status = tektonv1beta1.TaskRunStatus{
-			TaskRunStatusFields: tektonv1beta1.TaskRunStatusFields{
+		successfulTaskRun.Status = tektonv1.TaskRunStatus{
+			TaskRunStatusFields: tektonv1.TaskRunStatusFields{
 				StartTime:      &metav1.Time{Time: now},
 				CompletionTime: &metav1.Time{Time: now.Add(5 * time.Minute)},
-				TaskRunResults: []tektonv1beta1.TaskRunResult{
+				Results: []tektonv1.TaskRunResult{
 					{
 						Name: "TEST_OUTPUT",
-						Value: *tektonv1beta1.NewStructuredValues(`{
+						Value: *tektonv1.NewStructuredValues(`{
 											"result": "SUCCESS",
 											"timestamp": "1665405318",
 											"failures": 0,
@@ -230,29 +242,41 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		}
 		Expect(k8sClient.Status().Update(ctx, successfulTaskRun)).Should(Succeed())
 
-		failedTaskRun = &tektonv1beta1.TaskRun{
+		failedTaskRun = &tektonv1.TaskRun{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "test-taskrun-fail",
 				Namespace: "default",
 			},
-			Spec: tektonv1beta1.TaskRunSpec{
-				TaskRef: &tektonv1beta1.TaskRef{
-					Name:   "test-taskrun-fail",
-					Bundle: "quay.io/redhat-appstudio/example-tekton-bundle:test",
+			Spec: tektonv1.TaskRunSpec{
+				TaskRef: &tektonv1.TaskRef{
+					Name: "test-taskrun-fail",
+					ResolverRef: tektonv1.ResolverRef{
+						Resolver: "bundle",
+						Params: tektonv1.Params{
+							{
+								Name:  "bundle",
+								Value: tektonv1.ParamValue{Type: "string", StringVal: "quay.io/redhat-appstudio/example-tekton-bundle:test"},
+							},
+							{
+								Name:  "name",
+								Value: tektonv1.ParamValue{Type: "string", StringVal: "test-task"},
+							},
+						},
+					},
 				},
 			},
 		}
 
 		Expect(k8sClient.Create(ctx, failedTaskRun)).Should(Succeed())
 
-		failedTaskRun.Status = tektonv1beta1.TaskRunStatus{
-			TaskRunStatusFields: tektonv1beta1.TaskRunStatusFields{
+		failedTaskRun.Status = tektonv1.TaskRunStatus{
+			TaskRunStatusFields: tektonv1.TaskRunStatusFields{
 				StartTime:      &metav1.Time{Time: now},
 				CompletionTime: &metav1.Time{Time: now.Add(5 * time.Minute)},
-				TaskRunResults: []tektonv1beta1.TaskRunResult{
+				Results: []tektonv1.TaskRunResult{
 					{
 						Name: "TEST_OUTPUT",
-						Value: *tektonv1beta1.NewStructuredValues(`{
+						Value: *tektonv1.NewStructuredValues(`{
 											"result": "FAILURE",
 											"timestamp": "1665405317",
 											"failures": 1,
@@ -291,7 +315,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		}
 		Expect(k8sClient.Create(ctx, hasSnapshot)).Should(Succeed())
 
-		integrationPipelineRunComponent = &tektonv1beta1.PipelineRun{
+		integrationPipelineRunComponent = &tektonv1.PipelineRun{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "pipelinerun-component-sample",
 				Namespace: "default",
@@ -311,19 +335,31 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 					"pac.test.appstudio.openshift.io/on-target-branch": "[main]",
 				},
 			},
-			Spec: tektonv1beta1.PipelineRunSpec{
-				PipelineRef: &tektonv1beta1.PipelineRef{
-					Name:   "component-pipeline-pass",
-					Bundle: "quay.io/kpavic/test-bundle:component-pipeline-pass",
+			Spec: tektonv1.PipelineRunSpec{
+				PipelineRef: &tektonv1.PipelineRef{
+					Name: "component-pipeline-pass",
+					ResolverRef: tektonv1.ResolverRef{
+						Resolver: "bundle",
+						Params: tektonv1.Params{
+							{
+								Name:  "bundle",
+								Value: tektonv1.ParamValue{Type: "string", StringVal: "quay.io/kpavic/test-bundle:component-pipeline-pass"},
+							},
+							{
+								Name:  "name",
+								Value: tektonv1.ParamValue{Type: "string", StringVal: "test-task"},
+							},
+						},
+					},
 				},
 			},
 		}
 		Expect(k8sClient.Create(ctx, integrationPipelineRunComponent)).Should(Succeed())
 
-		integrationPipelineRunComponent.Status = tektonv1beta1.PipelineRunStatus{
-			PipelineRunStatusFields: tektonv1beta1.PipelineRunStatusFields{
+		integrationPipelineRunComponent.Status = tektonv1.PipelineRunStatus{
+			PipelineRunStatusFields: tektonv1.PipelineRunStatusFields{
 				CompletionTime: &metav1.Time{Time: time.Now()},
-				ChildReferences: []tektonv1beta1.ChildStatusReference{
+				ChildReferences: []tektonv1.ChildStatusReference{
 					{
 						Name:             successfulTaskRun.Name,
 						PipelineTaskName: "task1",
@@ -463,7 +499,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				}
 				Expect(k8sClient.Create(ctx, integrationTestScenarioFailed)).Should(Succeed())
 
-				integrationPipelineRunComponentFailed = &tektonv1beta1.PipelineRun{
+				integrationPipelineRunComponentFailed = &tektonv1.PipelineRun{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "pipelinerun-component-sample-failed",
 						Namespace: "default",
@@ -483,20 +519,32 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 							"pac.test.appstudio.openshift.io/on-target-branch": "[main]",
 						},
 					},
-					Spec: tektonv1beta1.PipelineRunSpec{
-						PipelineRef: &tektonv1beta1.PipelineRef{
-							Name:   "component-pipeline-fail",
-							Bundle: "quay.io/kpavic/test-bundle:component-pipeline-fail",
+					Spec: tektonv1.PipelineRunSpec{
+						PipelineRef: &tektonv1.PipelineRef{
+							Name: "component-pipeline-fail",
+							ResolverRef: tektonv1.ResolverRef{
+								Resolver: "bundle",
+								Params: tektonv1.Params{
+									{
+										Name:  "bundle",
+										Value: tektonv1.ParamValue{Type: "string", StringVal: "quay.io/redhat-appstudio/example-tekton-bundle:component-pipeline-fail"},
+									},
+									{
+										Name:  "name",
+										Value: tektonv1.ParamValue{Type: "string", StringVal: "test-task"},
+									},
+								},
+							},
 						},
 					},
 				}
 
 				Expect(k8sClient.Create(ctx, integrationPipelineRunComponentFailed)).Should(Succeed())
 
-				integrationPipelineRunComponentFailed.Status = tektonv1beta1.PipelineRunStatus{
-					PipelineRunStatusFields: tektonv1beta1.PipelineRunStatusFields{
+				integrationPipelineRunComponentFailed.Status = tektonv1.PipelineRunStatus{
+					PipelineRunStatusFields: tektonv1.PipelineRunStatusFields{
 						CompletionTime: &metav1.Time{Time: time.Now().Add(5 * time.Minute)},
-						ChildReferences: []tektonv1beta1.ChildStatusReference{
+						ChildReferences: []tektonv1.ChildStatusReference{
 							{
 								Name:             failedTaskRun.Name,
 								PipelineTaskName: "task1",
@@ -531,7 +579,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 					},
 					{
 						ContextKey: loader.PipelineRunsContextKey,
-						Resource:   []tektonv1beta1.PipelineRun{*integrationPipelineRunComponent, *integrationPipelineRunComponentFailed},
+						Resource:   []tektonv1.PipelineRun{*integrationPipelineRunComponent, *integrationPipelineRunComponentFailed},
 					},
 					{
 						ContextKey: loader.RequiredIntegrationTestScenariosContextKey,
@@ -646,7 +694,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				},
 				{
 					ContextKey: loader.PipelineRunsContextKey,
-					Resource:   []tektonv1beta1.PipelineRun{*integrationPipelineRunComponent},
+					Resource:   []tektonv1.PipelineRun{*integrationPipelineRunComponent},
 				},
 				{
 					ContextKey: loader.SnapshotEnvironmentBindingContextKey,
@@ -753,7 +801,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			}
 			Expect(k8sClient.Create(ctx, integrationTestScenarioFailed)).Should(Succeed())
 
-			integrationPipelineRunComponentFailed = &tektonv1beta1.PipelineRun{
+			integrationPipelineRunComponentFailed = &tektonv1.PipelineRun{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "pipelinerun-component-sample-failed",
 					Namespace: "default",
@@ -776,20 +824,32 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 						"pac.test.appstudio.openshift.io/on-target-branch": "[main]",
 					},
 				},
-				Spec: tektonv1beta1.PipelineRunSpec{
-					PipelineRef: &tektonv1beta1.PipelineRef{
-						Name:   "component-pipeline-fail",
-						Bundle: "quay.io/kpavic/test-bundle:component-pipeline-fail",
+				Spec: tektonv1.PipelineRunSpec{
+					PipelineRef: &tektonv1.PipelineRef{
+						Name: "component-pipeline-fail",
+						ResolverRef: tektonv1.ResolverRef{
+							Resolver: "bundle",
+							Params: tektonv1.Params{
+								{
+									Name:  "bundle",
+									Value: tektonv1.ParamValue{Type: "string", StringVal: "quay.io/redhat-appstudio/example-tekton-bundle:component-pipeline-fail"},
+								},
+								{
+									Name:  "name",
+									Value: tektonv1.ParamValue{Type: "string", StringVal: "test-task"},
+								},
+							},
+						},
 					},
 				},
 			}
 
 			Expect(k8sClient.Create(ctx, integrationPipelineRunComponentFailed)).Should(Succeed())
 
-			integrationPipelineRunComponentFailed.Status = tektonv1beta1.PipelineRunStatus{
-				PipelineRunStatusFields: tektonv1beta1.PipelineRunStatusFields{
+			integrationPipelineRunComponentFailed.Status = tektonv1.PipelineRunStatus{
+				PipelineRunStatusFields: tektonv1.PipelineRunStatusFields{
 					CompletionTime: &metav1.Time{Time: time.Now().Add(5 * time.Minute)},
-					ChildReferences: []tektonv1beta1.ChildStatusReference{
+					ChildReferences: []tektonv1.ChildStatusReference{
 						{
 							Name:             failedTaskRun.Name,
 							PipelineTaskName: "task1",
@@ -824,7 +884,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				},
 				{
 					ContextKey: loader.PipelineRunsContextKey,
-					Resource:   []tektonv1beta1.PipelineRun{*integrationPipelineRunComponent, *integrationPipelineRunComponentFailed},
+					Resource:   []tektonv1.PipelineRun{*integrationPipelineRunComponent, *integrationPipelineRunComponentFailed},
 				},
 				{
 					ContextKey: loader.RequiredIntegrationTestScenariosContextKey,
@@ -862,7 +922,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 
 	When("GetIntegrationPipelineRunStatus is called with an Integration PLR with non-nil Deletion timestamp", func() {
 		BeforeEach(func() {
-			intgPipelineRunWithDeletionTimestamp = &tektonv1beta1.PipelineRun{
+			intgPipelineRunWithDeletionTimestamp = &tektonv1.PipelineRun{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "pipelinerun-component-sample-deletion-timestamp",
 					Namespace: "default",
@@ -870,10 +930,22 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 						"pac.test.appstudio.openshift.io/on-target-branch": "[main]",
 					},
 				},
-				Spec: tektonv1beta1.PipelineRunSpec{
-					PipelineRef: &tektonv1beta1.PipelineRef{
-						Name:   "component-pipeline-fail",
-						Bundle: "quay.io/kpavic/test-bundle:component-pipeline-fail",
+				Spec: tektonv1.PipelineRunSpec{
+					PipelineRef: &tektonv1.PipelineRef{
+						Name: "component-pipeline-fail",
+						ResolverRef: tektonv1.ResolverRef{
+							Resolver: "bundle",
+							Params: tektonv1.Params{
+								{
+									Name:  "bundle",
+									Value: tektonv1.ParamValue{Type: "string", StringVal: "quay.io/redhat-appstudio/example-tekton-bundle:component-pipeline-fail"},
+								},
+								{
+									Name:  "name",
+									Value: tektonv1.ParamValue{Type: "string", StringVal: "test-task"},
+								},
+							},
+						},
 					},
 				},
 			}

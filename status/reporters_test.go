@@ -34,7 +34,7 @@ import (
 	"github.com/redhat-appstudio/integration-service/gitops"
 	"github.com/redhat-appstudio/integration-service/helpers"
 	"github.com/redhat-appstudio/integration-service/status"
-	tektonv1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
+	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	"github.com/tonglil/buflogr"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -263,37 +263,49 @@ func (c *MockK8sClient) RESTMapper() meta.RESTMapper {
 var _ = Describe("GitHubReporter", func() {
 
 	var reporter *status.GitHubReporter
-	var pipelineRun *tektonv1beta1.PipelineRun
+	var pipelineRun *tektonv1.PipelineRun
 	var mockK8sClient *MockK8sClient
 	var mockGitHubClient *MockGitHubClient
-	var successfulTaskRun *tektonv1beta1.TaskRun
-	var failedTaskRun *tektonv1beta1.TaskRun
-	var skippedTaskRun *tektonv1beta1.TaskRun
+	var successfulTaskRun *tektonv1.TaskRun
+	var failedTaskRun *tektonv1.TaskRun
+	var skippedTaskRun *tektonv1.TaskRun
 	var hasSnapshot *applicationapiv1alpha1.Snapshot
 	var logger helpers.IntegrationLogger
 
 	BeforeEach(func() {
 		now := time.Now()
 
-		successfulTaskRun = &tektonv1beta1.TaskRun{
+		successfulTaskRun = &tektonv1.TaskRun{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "test-taskrun-pass",
 				Namespace: "default",
 			},
-			Spec: tektonv1beta1.TaskRunSpec{
-				TaskRef: &tektonv1beta1.TaskRef{
-					Name:   "test-taskrun-pass",
-					Bundle: "quay.io/redhat-appstudio/example-tekton-bundle:test",
+			Spec: tektonv1.TaskRunSpec{
+				TaskRef: &tektonv1.TaskRef{
+					Name: "test-taskrun-pass",
+					ResolverRef: tektonv1.ResolverRef{
+						Resolver: "bundle",
+						Params: tektonv1.Params{
+							{
+								Name:  "bundle",
+								Value: tektonv1.ParamValue{Type: "string", StringVal: "quay.io/redhat-appstudio/example-tekton-bundle:test"},
+							},
+							{
+								Name:  "name",
+								Value: tektonv1.ParamValue{Type: "string", StringVal: "test-task"},
+							},
+						},
+					},
 				},
 			},
-			Status: tektonv1beta1.TaskRunStatus{
-				TaskRunStatusFields: tektonv1beta1.TaskRunStatusFields{
+			Status: tektonv1.TaskRunStatus{
+				TaskRunStatusFields: tektonv1.TaskRunStatusFields{
 					StartTime:      &metav1.Time{Time: now},
 					CompletionTime: &metav1.Time{Time: now.Add(5 * time.Minute)},
-					TaskRunResults: []tektonv1beta1.TaskRunResult{
+					Results: []tektonv1.TaskRunResult{
 						{
 							Name: "TEST_OUTPUT",
-							Value: *tektonv1beta1.NewStructuredValues(`{
+							Value: *tektonv1.NewStructuredValues(`{
 											"result": "SUCCESS",
 											"timestamp": "1665405318",
 											"failures": 0,
@@ -306,25 +318,37 @@ var _ = Describe("GitHubReporter", func() {
 			},
 		}
 
-		failedTaskRun = &tektonv1beta1.TaskRun{
+		failedTaskRun = &tektonv1.TaskRun{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "test-taskrun-fail",
 				Namespace: "default",
 			},
-			Spec: tektonv1beta1.TaskRunSpec{
-				TaskRef: &tektonv1beta1.TaskRef{
-					Name:   "test-taskrun-fail",
-					Bundle: "quay.io/redhat-appstudio/example-tekton-bundle:test",
+			Spec: tektonv1.TaskRunSpec{
+				TaskRef: &tektonv1.TaskRef{
+					Name: "test-taskrun-fail",
+					ResolverRef: tektonv1.ResolverRef{
+						Resolver: "bundle",
+						Params: tektonv1.Params{
+							{
+								Name:  "bundle",
+								Value: tektonv1.ParamValue{Type: "string", StringVal: "quay.io/redhat-appstudio/example-tekton-bundle:test"},
+							},
+							{
+								Name:  "name",
+								Value: tektonv1.ParamValue{Type: "string", StringVal: "test-task"},
+							},
+						},
+					},
 				},
 			},
-			Status: tektonv1beta1.TaskRunStatus{
-				TaskRunStatusFields: tektonv1beta1.TaskRunStatusFields{
+			Status: tektonv1.TaskRunStatus{
+				TaskRunStatusFields: tektonv1.TaskRunStatusFields{
 					StartTime:      &metav1.Time{Time: now},
 					CompletionTime: &metav1.Time{Time: now.Add(5 * time.Minute)},
-					TaskRunResults: []tektonv1beta1.TaskRunResult{
+					Results: []tektonv1.TaskRunResult{
 						{
 							Name: "TEST_OUTPUT",
-							Value: *tektonv1beta1.NewStructuredValues(`{
+							Value: *tektonv1.NewStructuredValues(`{
 											"result": "FAILURE",
 											"timestamp": "1665405317",
 											"failures": 1,
@@ -337,25 +361,37 @@ var _ = Describe("GitHubReporter", func() {
 			},
 		}
 
-		skippedTaskRun = &tektonv1beta1.TaskRun{
+		skippedTaskRun = &tektonv1.TaskRun{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "test-taskrun-skip",
 				Namespace: "default",
 			},
-			Spec: tektonv1beta1.TaskRunSpec{
-				TaskRef: &tektonv1beta1.TaskRef{
-					Name:   "test-taskrun-skip",
-					Bundle: "quay.io/redhat-appstudio/example-tekton-bundle:test",
+			Spec: tektonv1.TaskRunSpec{
+				TaskRef: &tektonv1.TaskRef{
+					Name: "test-taskrun-skip",
+					ResolverRef: tektonv1.ResolverRef{
+						Resolver: "bundle",
+						Params: tektonv1.Params{
+							{
+								Name:  "bundle",
+								Value: tektonv1.ParamValue{Type: "string", StringVal: "quay.io/redhat-appstudio/example-tekton-bundle:test"},
+							},
+							{
+								Name:  "name",
+								Value: tektonv1.ParamValue{Type: "string", StringVal: "test-task"},
+							},
+						},
+					},
 				},
 			},
-			Status: tektonv1beta1.TaskRunStatus{
-				TaskRunStatusFields: tektonv1beta1.TaskRunStatusFields{
+			Status: tektonv1.TaskRunStatus{
+				TaskRunStatusFields: tektonv1.TaskRunStatusFields{
 					StartTime:      &metav1.Time{Time: now.Add(5 * time.Minute)},
 					CompletionTime: &metav1.Time{Time: now.Add(10 * time.Minute)},
-					TaskRunResults: []tektonv1beta1.TaskRunResult{
+					Results: []tektonv1.TaskRunResult{
 						{
 							Name: "TEST_OUTPUT",
-							Value: *tektonv1beta1.NewStructuredValues(`{
+							Value: *tektonv1.NewStructuredValues(`{
 											"result": "SKIPPED",
 											"timestamp": "1665405318",
 											"failures": 0,
@@ -368,7 +404,7 @@ var _ = Describe("GitHubReporter", func() {
 			},
 		}
 
-		pipelineRun = &tektonv1beta1.PipelineRun{
+		pipelineRun = &tektonv1.PipelineRun{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "test-pipelinerun",
 				Namespace: "default",
@@ -385,10 +421,10 @@ var _ = Describe("GitHubReporter", func() {
 					"pac.test.appstudio.openshift.io/repo-url": "https://github.com/devfile-sample/devfile-sample-go-basic",
 				},
 			},
-			Status: tektonv1beta1.PipelineRunStatus{
-				PipelineRunStatusFields: tektonv1beta1.PipelineRunStatusFields{
+			Status: tektonv1.PipelineRunStatus{
+				PipelineRunStatusFields: tektonv1.PipelineRunStatusFields{
 					StartTime: &metav1.Time{Time: time.Now()},
-					ChildReferences: []tektonv1beta1.ChildStatusReference{
+					ChildReferences: []tektonv1.ChildStatusReference{
 						{
 							Name:             successfulTaskRun.Name,
 							PipelineTaskName: "pipeline1-task1",
@@ -458,7 +494,7 @@ var _ = Describe("GitHubReporter", func() {
 					if secret, ok := obj.(*v1.Secret); ok {
 						secret.Data = secretData
 					}
-					if taskRun, ok := obj.(*tektonv1beta1.TaskRun); ok {
+					if taskRun, ok := obj.(*tektonv1.TaskRun); ok {
 						if key.Name == successfulTaskRun.Name {
 							taskRun.Status = successfulTaskRun.Status
 						} else if key.Name == failedTaskRun.Name {
@@ -467,7 +503,7 @@ var _ = Describe("GitHubReporter", func() {
 							taskRun.Status = skippedTaskRun.Status
 						}
 					}
-					if plr, ok := obj.(*tektonv1beta1.PipelineRun); ok {
+					if plr, ok := obj.(*tektonv1.PipelineRun); ok {
 						if key.Name == pipelineRun.Name {
 							plr.Status = pipelineRun.Status
 						}
@@ -598,7 +634,7 @@ var _ = Describe("GitHubReporter", func() {
 					if secret, ok := obj.(*v1.Secret); ok {
 						secret.Data = secretData
 					}
-					if taskRun, ok := obj.(*tektonv1beta1.TaskRun); ok {
+					if taskRun, ok := obj.(*tektonv1.TaskRun); ok {
 						if key.Name == successfulTaskRun.Name {
 							taskRun.Status = successfulTaskRun.Status
 						} else if key.Name == failedTaskRun.Name {
@@ -607,7 +643,7 @@ var _ = Describe("GitHubReporter", func() {
 							taskRun.Status = skippedTaskRun.Status
 						}
 					}
-					if plr, ok := obj.(*tektonv1beta1.PipelineRun); ok {
+					if plr, ok := obj.(*tektonv1.PipelineRun); ok {
 						if key.Name == pipelineRun.Name {
 							plr.Status = pipelineRun.Status
 						}

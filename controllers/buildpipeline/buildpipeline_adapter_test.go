@@ -36,8 +36,8 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
+	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	toolkit "github.com/redhat-appstudio/operator-toolkit/loader"
-	tektonv1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 	"github.com/tonglil/buflogr"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -48,10 +48,10 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		createAdapter func() *Adapter
 		logger        helpers.IntegrationLogger
 
-		successfulTaskRun *tektonv1beta1.TaskRun
-		failedTaskRun     *tektonv1beta1.TaskRun
-		buildPipelineRun  *tektonv1beta1.PipelineRun
-		buildPipelineRun2 *tektonv1beta1.PipelineRun
+		successfulTaskRun *tektonv1.TaskRun
+		failedTaskRun     *tektonv1.TaskRun
+		buildPipelineRun  *tektonv1.PipelineRun
+		buildPipelineRun2 *tektonv1.PipelineRun
 		hasComp           *applicationapiv1alpha1.Component
 		hasComp2          *applicationapiv1alpha1.Component
 		hasApp            *applicationapiv1alpha1.Application
@@ -146,29 +146,39 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		}
 		Expect(k8sClient.Create(ctx, hasSnapshot)).Should(Succeed())
 
-		successfulTaskRun = &tektonv1beta1.TaskRun{
+		successfulTaskRun = &tektonv1.TaskRun{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "test-taskrun-pass",
 				Namespace: "default",
 			},
-			Spec: tektonv1beta1.TaskRunSpec{
-				TaskRef: &tektonv1beta1.TaskRef{
-					Name:   "test-taskrun-pass",
-					Bundle: "quay.io/redhat-appstudio/example-tekton-bundle:test",
+			Spec: tektonv1.TaskRunSpec{
+				TaskRef: &tektonv1.TaskRef{
+					Name: "test-taskrun-pass",
+					ResolverRef: tektonv1.ResolverRef{
+						Resolver: "bundle",
+						Params: tektonv1.Params{
+							{Name: "bundle",
+								Value: tektonv1.ParamValue{Type: "string", StringVal: "quay.io/redhat-appstudio/example-tekton-bundle:test"},
+							},
+							{Name: "name",
+								Value: tektonv1.ParamValue{Type: "string", StringVal: "test-task"},
+							},
+						},
+					},
 				},
 			},
 		}
 		Expect(k8sClient.Create(ctx, successfulTaskRun)).Should(Succeed())
 
 		now := time.Now()
-		successfulTaskRun.Status = tektonv1beta1.TaskRunStatus{
-			TaskRunStatusFields: tektonv1beta1.TaskRunStatusFields{
+		successfulTaskRun.Status = tektonv1.TaskRunStatus{
+			TaskRunStatusFields: tektonv1.TaskRunStatusFields{
 				StartTime:      &metav1.Time{Time: now},
 				CompletionTime: &metav1.Time{Time: now.Add(5 * time.Minute)},
-				TaskRunResults: []tektonv1beta1.TaskRunResult{
+				Results: []tektonv1.TaskRunResult{
 					{
 						Name: "TEST_OUTPUT",
-						Value: *tektonv1beta1.NewStructuredValues(`{
+						Value: *tektonv1.NewStructuredValues(`{
 											"result": "SUCCESS",
 											"timestamp": "1665405318",
 											"failures": 0,
@@ -181,29 +191,39 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		}
 		Expect(k8sClient.Status().Update(ctx, successfulTaskRun)).Should(Succeed())
 
-		failedTaskRun = &tektonv1beta1.TaskRun{
+		failedTaskRun = &tektonv1.TaskRun{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "test-taskrun-fail",
 				Namespace: "default",
 			},
-			Spec: tektonv1beta1.TaskRunSpec{
-				TaskRef: &tektonv1beta1.TaskRef{
-					Name:   "test-taskrun-fail",
-					Bundle: "quay.io/redhat-appstudio/example-tekton-bundle:test",
+			Spec: tektonv1.TaskRunSpec{
+				TaskRef: &tektonv1.TaskRef{
+					Name: "test-taskrun-fail",
+					ResolverRef: tektonv1.ResolverRef{
+						Resolver: "bundle",
+						Params: tektonv1.Params{
+							{Name: "bundle",
+								Value: tektonv1.ParamValue{Type: "string", StringVal: "quay.io/redhat-appstudio/example-tekton-bundle:test"},
+							},
+							{Name: "name",
+								Value: tektonv1.ParamValue{Type: "string", StringVal: "test-task"},
+							},
+						},
+					},
 				},
 			},
 		}
 
 		Expect(k8sClient.Create(ctx, failedTaskRun)).Should(Succeed())
 
-		failedTaskRun.Status = tektonv1beta1.TaskRunStatus{
-			TaskRunStatusFields: tektonv1beta1.TaskRunStatusFields{
+		failedTaskRun.Status = tektonv1.TaskRunStatus{
+			TaskRunStatusFields: tektonv1.TaskRunStatusFields{
 				StartTime:      &metav1.Time{Time: now},
 				CompletionTime: &metav1.Time{Time: now.Add(5 * time.Minute)},
-				TaskRunResults: []tektonv1beta1.TaskRunResult{
+				Results: []tektonv1.TaskRunResult{
 					{
 						Name: "TEST_OUTPUT",
-						Value: *tektonv1beta1.NewStructuredValues(`{
+						Value: *tektonv1.NewStructuredValues(`{
 											"result": "FAILURE",
 											"timestamp": "1665405317",
 											"failures": 1,
@@ -218,7 +238,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 	})
 
 	BeforeEach(func() {
-		buildPipelineRun = &tektonv1beta1.PipelineRun{
+		buildPipelineRun = &tektonv1.PipelineRun{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "pipelinerun-build-sample",
 				Namespace: "default",
@@ -238,16 +258,26 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 					"foo":                                           "bar",
 				},
 			},
-			Spec: tektonv1beta1.PipelineRunSpec{
-				PipelineRef: &tektonv1beta1.PipelineRef{
-					Name:   "build-pipeline-pass",
-					Bundle: "quay.io/kpavic/test-bundle:build-pipeline-pass",
+			Spec: tektonv1.PipelineRunSpec{
+				PipelineRef: &tektonv1.PipelineRef{
+					Name: "build-pipeline-pass",
+					ResolverRef: tektonv1.ResolverRef{
+						Resolver: "bundle",
+						Params: tektonv1.Params{
+							{Name: "bundle",
+								Value: tektonv1.ParamValue{Type: "string", StringVal: "quay.io/redhat-appstudio/example-tekton-bundle:test"},
+							},
+							{Name: "name",
+								Value: tektonv1.ParamValue{Type: "string", StringVal: "test-task"},
+							},
+						},
+					},
 				},
-				Params: []tektonv1beta1.Param{
+				Params: []tektonv1.Param{
 					{
 						Name: "output-image",
-						Value: tektonv1beta1.ParamValue{
-							Type:      tektonv1beta1.ParamTypeString,
+						Value: tektonv1.ParamValue{
+							Type:      tektonv1.ParamTypeString,
 							StringVal: SampleImageWithoutDigest,
 						},
 					},
@@ -256,24 +286,24 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		}
 		Expect(k8sClient.Create(ctx, buildPipelineRun)).Should(Succeed())
 
-		buildPipelineRun.Status = tektonv1beta1.PipelineRunStatus{
-			PipelineRunStatusFields: tektonv1beta1.PipelineRunStatusFields{
-				PipelineResults: []tektonv1beta1.PipelineRunResult{
+		buildPipelineRun.Status = tektonv1.PipelineRunStatus{
+			PipelineRunStatusFields: tektonv1.PipelineRunStatusFields{
+				Results: []tektonv1.PipelineRunResult{
 					{
 						Name:  "IMAGE_DIGEST",
-						Value: *tektonv1beta1.NewStructuredValues(SampleDigest),
+						Value: *tektonv1.NewStructuredValues(SampleDigest),
 					},
 					{
 						Name:  "IMAGE_URL",
-						Value: *tektonv1beta1.NewStructuredValues(SampleImageWithoutDigest),
+						Value: *tektonv1.NewStructuredValues(SampleImageWithoutDigest),
 					},
 					{
 						Name:  "CHAINS-GIT_URL",
-						Value: *tektonv1beta1.NewStructuredValues(SampleRepoLink),
+						Value: *tektonv1.NewStructuredValues(SampleRepoLink),
 					},
 					{
 						Name:  "CHAINS-GIT_COMMIT",
-						Value: *tektonv1beta1.NewStructuredValues(SampleCommit),
+						Value: *tektonv1.NewStructuredValues(SampleCommit),
 					},
 				},
 			},
@@ -367,18 +397,18 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		})
 
 		It("ensure err is returned when pipelinerun doesn't have Result for ", func() {
-			buildPipelineRun.Status = tektonv1beta1.PipelineRunStatus{
-				PipelineRunStatusFields: tektonv1beta1.PipelineRunStatusFields{
-					ChildReferences: []tektonv1beta1.ChildStatusReference{
+			buildPipelineRun.Status = tektonv1.PipelineRunStatus{
+				PipelineRunStatusFields: tektonv1.PipelineRunStatusFields{
+					ChildReferences: []tektonv1.ChildStatusReference{
 						{
 							Name:             successfulTaskRun.Name,
 							PipelineTaskName: "task1",
 						},
 					},
-					PipelineResults: []tektonv1beta1.PipelineRunResult{
+					Results: []tektonv1.PipelineRunResult{
 						{
 							Name:  "CHAINS-GIT_URL",
-							Value: *tektonv1beta1.NewStructuredValues(SampleRepoLink),
+							Value: *tektonv1.NewStructuredValues(SampleRepoLink),
 						},
 					},
 				},
@@ -518,7 +548,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 
 	When("multiple succesfull build pipeline runs exists for the same component", func() {
 		BeforeAll(func() {
-			buildPipelineRun2 = &tektonv1beta1.PipelineRun{
+			buildPipelineRun2 = &tektonv1.PipelineRun{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "pipelinerun-build-sample-2",
 					Namespace: "default",
@@ -536,16 +566,26 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 						"foo": "bar",
 					},
 				},
-				Spec: tektonv1beta1.PipelineRunSpec{
-					PipelineRef: &tektonv1beta1.PipelineRef{
-						Name:   "build-pipeline-pass",
-						Bundle: "quay.io/kpavic/test-bundle:build-pipeline-pass",
+				Spec: tektonv1.PipelineRunSpec{
+					PipelineRef: &tektonv1.PipelineRef{
+						Name: "build-pipeline-pass",
+						ResolverRef: tektonv1.ResolverRef{
+							Resolver: "bundle",
+							Params: tektonv1.Params{
+								{Name: "bundle",
+									Value: tektonv1.ParamValue{Type: "string", StringVal: "quay.io/redhat-appstudio/example-tekton-bundle:test"},
+								},
+								{Name: "name",
+									Value: tektonv1.ParamValue{Type: "string", StringVal: "test-task"},
+								},
+							},
+						},
 					},
-					Params: []tektonv1beta1.Param{
+					Params: []tektonv1.Param{
 						{
 							Name: "output-image",
-							Value: tektonv1beta1.ParamValue{
-								Type:      tektonv1beta1.ParamTypeString,
+							Value: tektonv1.ParamValue{
+								Type:      tektonv1.ParamTypeString,
 								StringVal: SampleImageWithoutDigest,
 							},
 						},
@@ -554,12 +594,12 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			}
 			Expect(k8sClient.Create(ctx, buildPipelineRun2)).Should(Succeed())
 
-			buildPipelineRun2.Status = tektonv1beta1.PipelineRunStatus{
-				PipelineRunStatusFields: tektonv1beta1.PipelineRunStatusFields{
-					PipelineResults: []tektonv1beta1.PipelineRunResult{
+			buildPipelineRun2.Status = tektonv1.PipelineRunStatus{
+				PipelineRunStatusFields: tektonv1.PipelineRunStatusFields{
+					Results: []tektonv1.PipelineRunResult{
 						{
 							Name:  "IMAGE_DIGEST",
-							Value: *tektonv1beta1.NewStructuredValues(SampleDigest),
+							Value: *tektonv1.NewStructuredValues(SampleDigest),
 						},
 					},
 				},
@@ -601,7 +641,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				},
 				{
 					ContextKey: loader.PipelineRunsContextKey,
-					Resource:   []tektonv1beta1.PipelineRun{*buildPipelineRun2, *buildPipelineRun},
+					Resource:   []tektonv1.PipelineRun{*buildPipelineRun2, *buildPipelineRun},
 				},
 			})
 			isLatest, err := adapter.isLatestSucceededBuildPipelineRun()
@@ -628,7 +668,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				},
 				{
 					ContextKey: loader.PipelineRunsContextKey,
-					Resource:   []tektonv1beta1.PipelineRun{*buildPipelineRun2, *buildPipelineRun},
+					Resource:   []tektonv1.PipelineRun{*buildPipelineRun2, *buildPipelineRun},
 				},
 			})
 			isLatest, err := adapter.isLatestSucceededBuildPipelineRun()
@@ -647,7 +687,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				Status: "True",
 			})
 			Expect(helpers.HasPipelineRunSucceeded(buildPipelineRun)).To(BeTrue())
-			Expect(helpers.HasPipelineRunSucceeded(&tektonv1beta1.TaskRun{})).To(BeFalse())
+			Expect(helpers.HasPipelineRunSucceeded(&tektonv1.TaskRun{})).To(BeFalse())
 		})
 
 		It("can fetch all succeeded build pipelineRuns", func() {
@@ -683,7 +723,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				},
 				{
 					ContextKey: loader.PipelineRunsContextKey,
-					Resource:   []tektonv1beta1.PipelineRun{*buildPipelineRun2, *buildPipelineRun},
+					Resource:   []tektonv1.PipelineRun{*buildPipelineRun2, *buildPipelineRun},
 				},
 			})
 			Eventually(func() bool {

@@ -34,7 +34,7 @@ import (
 	"github.com/redhat-appstudio/operator-toolkit/metadata"
 	releasev1alpha1 "github.com/redhat-appstudio/release-service/api/v1alpha1"
 	releasemetadata "github.com/redhat-appstudio/release-service/metadata"
-	tektonv1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
+	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
@@ -474,7 +474,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			_, err := adapter.createIntegrationPipelineRun(hasApp, integrationTestScenario, hasSnapshot)
 			Expect(err == nil).To(BeTrue())
 
-			integrationPipelineRuns := &tektonv1beta1.PipelineRunList{}
+			integrationPipelineRuns := &tektonv1.PipelineRunList{}
 			opts := []client.ListOption{
 				client.InNamespace(hasApp.Namespace),
 				client.MatchingLabels{

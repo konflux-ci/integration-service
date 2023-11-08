@@ -31,13 +31,13 @@ import (
 	"github.com/redhat-appstudio/integration-service/tekton"
 	"github.com/redhat-appstudio/operator-toolkit/controller"
 	"github.com/redhat-appstudio/operator-toolkit/metadata"
-	tektonv1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
+	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 // Adapter holds the objects needed to reconcile a build PipelineRun.
 type Adapter struct {
-	pipelineRun *tektonv1beta1.PipelineRun
+	pipelineRun *tektonv1.PipelineRun
 	component   *applicationapiv1alpha1.Component
 	application *applicationapiv1alpha1.Application
 	loader      loader.ObjectLoader
@@ -47,7 +47,7 @@ type Adapter struct {
 }
 
 // NewAdapter creates and returns an Adapter instance.
-func NewAdapter(pipelineRun *tektonv1beta1.PipelineRun, component *applicationapiv1alpha1.Component, application *applicationapiv1alpha1.Application, logger h.IntegrationLogger, loader loader.ObjectLoader, client client.Client,
+func NewAdapter(pipelineRun *tektonv1.PipelineRun, component *applicationapiv1alpha1.Component, application *applicationapiv1alpha1.Application, logger h.IntegrationLogger, loader loader.ObjectLoader, client client.Client,
 	context context.Context) *Adapter {
 	return &Adapter{
 		pipelineRun: pipelineRun,
@@ -134,7 +134,7 @@ func (a *Adapter) EnsureSnapshotExists() (controller.OperationResult, error) {
 
 // getImagePullSpecFromPipelineRun gets the full image pullspec from the given build PipelineRun,
 // In case the Image pullspec can't be composed, an error will be returned.
-func (a *Adapter) getImagePullSpecFromPipelineRun(pipelineRun *tektonv1beta1.PipelineRun) (string, error) {
+func (a *Adapter) getImagePullSpecFromPipelineRun(pipelineRun *tektonv1.PipelineRun) (string, error) {
 	outputImage, err := tekton.GetOutputImage(pipelineRun)
 	if err != nil {
 		return "", err
@@ -148,7 +148,7 @@ func (a *Adapter) getImagePullSpecFromPipelineRun(pipelineRun *tektonv1beta1.Pip
 
 // getComponentSourceFromPipelineRun gets the component Git Source for the Component built in the given build PipelineRun,
 // In case the Git Source can't be composed, an error will be returned.
-func (a *Adapter) getComponentSourceFromPipelineRun(pipelineRun *tektonv1beta1.PipelineRun) (*applicationapiv1alpha1.ComponentSource, error) {
+func (a *Adapter) getComponentSourceFromPipelineRun(pipelineRun *tektonv1.PipelineRun) (*applicationapiv1alpha1.ComponentSource, error) {
 	componentSourceGitUrl, err := tekton.GetComponentSourceGitUrl(pipelineRun)
 	if err != nil {
 		return nil, err
@@ -171,7 +171,7 @@ func (a *Adapter) getComponentSourceFromPipelineRun(pipelineRun *tektonv1beta1.P
 
 // prepareSnapshotForPipelineRun prepares the Snapshot for a given PipelineRun,
 // component and application. In case the Snapshot can't be created, an error will be returned.
-func (a *Adapter) prepareSnapshotForPipelineRun(pipelineRun *tektonv1beta1.PipelineRun, component *applicationapiv1alpha1.Component, application *applicationapiv1alpha1.Application) (*applicationapiv1alpha1.Snapshot, error) {
+func (a *Adapter) prepareSnapshotForPipelineRun(pipelineRun *tektonv1.PipelineRun, component *applicationapiv1alpha1.Component, application *applicationapiv1alpha1.Application) (*applicationapiv1alpha1.Snapshot, error) {
 	newContainerImage, err := a.getImagePullSpecFromPipelineRun(pipelineRun)
 	if err != nil {
 		return nil, err
@@ -244,8 +244,8 @@ func (a *Adapter) isLatestSucceededBuildPipelineRun() (bool, error) {
 // getSucceededBuildPipelineRunsForComponent returns all  succeeded PipelineRun for the
 // associated component. In the case the List operation fails,
 // an error will be returned.
-func (a *Adapter) getSucceededBuildPipelineRunsForComponent(component *applicationapiv1alpha1.Component) (*[]tektonv1beta1.PipelineRun, error) {
-	var succeededPipelineRuns []tektonv1beta1.PipelineRun
+func (a *Adapter) getSucceededBuildPipelineRunsForComponent(component *applicationapiv1alpha1.Component) (*[]tektonv1.PipelineRun, error) {
+	var succeededPipelineRuns []tektonv1.PipelineRun
 
 	buildPipelineRuns, err := a.loader.GetAllBuildPipelineRunsForComponent(a.client, a.context, component)
 	if err != nil {
@@ -261,7 +261,7 @@ func (a *Adapter) getSucceededBuildPipelineRunsForComponent(component *applicati
 	return &succeededPipelineRuns, nil
 }
 
-func (a *Adapter) annotateBuildPipelineRunWithSnapshot(pipelineRun *tektonv1beta1.PipelineRun, snapshot *applicationapiv1alpha1.Snapshot) (*tektonv1beta1.PipelineRun, error) {
+func (a *Adapter) annotateBuildPipelineRunWithSnapshot(pipelineRun *tektonv1.PipelineRun, snapshot *applicationapiv1alpha1.Snapshot) (*tektonv1.PipelineRun, error) {
 	patch := client.MergeFrom(pipelineRun.DeepCopy())
 
 	_ = metadata.SetAnnotation(&pipelineRun.ObjectMeta, tekton.SnapshotNameLabel, snapshot.Name)

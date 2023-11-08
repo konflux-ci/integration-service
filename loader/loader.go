@@ -27,7 +27,7 @@ import (
 	"github.com/redhat-appstudio/integration-service/tekton"
 	toolkit "github.com/redhat-appstudio/operator-toolkit/loader"
 	releasev1alpha1 "github.com/redhat-appstudio/release-service/api/v1alpha1"
-	tektonv1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
+	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/selection"
@@ -41,19 +41,19 @@ type ObjectLoader interface {
 	GetAllApplicationComponents(c client.Client, ctx context.Context, application *applicationapiv1alpha1.Application) (*[]applicationapiv1alpha1.Component, error)
 	GetApplicationFromSnapshot(c client.Client, ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot) (*applicationapiv1alpha1.Application, error)
 	GetComponentFromSnapshot(c client.Client, ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot) (*applicationapiv1alpha1.Component, error)
-	GetComponentFromPipelineRun(c client.Client, ctx context.Context, pipelineRun *tektonv1beta1.PipelineRun) (*applicationapiv1alpha1.Component, error)
-	GetApplicationFromPipelineRun(c client.Client, ctx context.Context, pipelineRun *tektonv1beta1.PipelineRun) (*applicationapiv1alpha1.Application, error)
+	GetComponentFromPipelineRun(c client.Client, ctx context.Context, pipelineRun *tektonv1.PipelineRun) (*applicationapiv1alpha1.Component, error)
+	GetApplicationFromPipelineRun(c client.Client, ctx context.Context, pipelineRun *tektonv1.PipelineRun) (*applicationapiv1alpha1.Application, error)
 	GetApplicationFromComponent(c client.Client, ctx context.Context, component *applicationapiv1alpha1.Component) (*applicationapiv1alpha1.Application, error)
-	GetEnvironmentFromIntegrationPipelineRun(c client.Client, ctx context.Context, pipelineRun *tektonv1beta1.PipelineRun) (*applicationapiv1alpha1.Environment, error)
-	GetSnapshotFromPipelineRun(c client.Client, ctx context.Context, pipelineRun *tektonv1beta1.PipelineRun) (*applicationapiv1alpha1.Snapshot, error)
+	GetEnvironmentFromIntegrationPipelineRun(c client.Client, ctx context.Context, pipelineRun *tektonv1.PipelineRun) (*applicationapiv1alpha1.Environment, error)
+	GetSnapshotFromPipelineRun(c client.Client, ctx context.Context, pipelineRun *tektonv1.PipelineRun) (*applicationapiv1alpha1.Snapshot, error)
 	FindAvailableDeploymentTargetClass(c client.Client, ctx context.Context) (*applicationapiv1alpha1.DeploymentTargetClass, error)
 	GetAllIntegrationTestScenariosForApplication(c client.Client, ctx context.Context, application *applicationapiv1alpha1.Application) (*[]v1beta1.IntegrationTestScenario, error)
 	GetRequiredIntegrationTestScenariosForApplication(c client.Client, ctx context.Context, application *applicationapiv1alpha1.Application) (*[]v1beta1.IntegrationTestScenario, error)
 	GetDeploymentTargetClaimForEnvironment(c client.Client, ctx context.Context, environment *applicationapiv1alpha1.Environment) (*applicationapiv1alpha1.DeploymentTargetClaim, error)
 	GetDeploymentTargetForDeploymentTargetClaim(c client.Client, ctx context.Context, dtc *applicationapiv1alpha1.DeploymentTargetClaim) (*applicationapiv1alpha1.DeploymentTarget, error)
 	FindExistingSnapshotEnvironmentBinding(c client.Client, ctx context.Context, application *applicationapiv1alpha1.Application, environment *applicationapiv1alpha1.Environment) (*applicationapiv1alpha1.SnapshotEnvironmentBinding, error)
-	GetAllPipelineRunsForSnapshotAndScenario(c client.Client, ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot, integrationTestScenario *v1beta1.IntegrationTestScenario) (*[]tektonv1beta1.PipelineRun, error)
-	GetAllBuildPipelineRunsForComponent(c client.Client, ctx context.Context, component *applicationapiv1alpha1.Component) (*[]tektonv1beta1.PipelineRun, error)
+	GetAllPipelineRunsForSnapshotAndScenario(c client.Client, ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot, integrationTestScenario *v1beta1.IntegrationTestScenario) (*[]tektonv1.PipelineRun, error)
+	GetAllBuildPipelineRunsForComponent(c client.Client, ctx context.Context, component *applicationapiv1alpha1.Component) (*[]tektonv1.PipelineRun, error)
 	GetAllSnapshots(c client.Client, ctx context.Context, application *applicationapiv1alpha1.Application) (*[]applicationapiv1alpha1.Snapshot, error)
 	GetAutoReleasePlansForApplication(c client.Client, ctx context.Context, application *applicationapiv1alpha1.Application) (*[]releasev1alpha1.ReleasePlan, error)
 }
@@ -141,7 +141,7 @@ func (l *loader) GetComponentFromSnapshot(c client.Client, ctx context.Context, 
 
 // GetComponentFromPipelineRun loads from the cluster the Component referenced in the given PipelineRun. If the PipelineRun doesn't
 // specify a Component or this is not found in the cluster, an error will be returned.
-func (l *loader) GetComponentFromPipelineRun(c client.Client, ctx context.Context, pipelineRun *tektonv1beta1.PipelineRun) (*applicationapiv1alpha1.Component, error) {
+func (l *loader) GetComponentFromPipelineRun(c client.Client, ctx context.Context, pipelineRun *tektonv1.PipelineRun) (*applicationapiv1alpha1.Component, error) {
 	if componentName, found := pipelineRun.Labels[tekton.PipelineRunComponentLabel]; found {
 		component := &applicationapiv1alpha1.Component{}
 		err := c.Get(ctx, types.NamespacedName{
@@ -161,7 +161,7 @@ func (l *loader) GetComponentFromPipelineRun(c client.Client, ctx context.Contex
 
 // GetApplicationFromPipelineRun loads from the cluster the Application referenced in the given PipelineRun. If the PipelineRun doesn't
 // specify an Application or this is not found in the cluster, an error will be returned.
-func (l *loader) GetApplicationFromPipelineRun(c client.Client, ctx context.Context, pipelineRun *tektonv1beta1.PipelineRun) (*applicationapiv1alpha1.Application, error) {
+func (l *loader) GetApplicationFromPipelineRun(c client.Client, ctx context.Context, pipelineRun *tektonv1.PipelineRun) (*applicationapiv1alpha1.Application, error) {
 	if applicationName, found := pipelineRun.Labels[tekton.PipelineRunApplicationLabel]; found {
 		application := &applicationapiv1alpha1.Application{}
 		err := c.Get(ctx, types.NamespacedName{
@@ -197,7 +197,7 @@ func (l *loader) GetApplicationFromComponent(c client.Client, ctx context.Contex
 
 // GetEnvironmentFromIntegrationPipelineRun loads from the cluster the Environment referenced in the given PipelineRun.
 // If the PipelineRun doesn't specify an Environment or this is not found in the cluster, an error will be returned.
-func (l *loader) GetEnvironmentFromIntegrationPipelineRun(c client.Client, ctx context.Context, pipelineRun *tektonv1beta1.PipelineRun) (*applicationapiv1alpha1.Environment, error) {
+func (l *loader) GetEnvironmentFromIntegrationPipelineRun(c client.Client, ctx context.Context, pipelineRun *tektonv1.PipelineRun) (*applicationapiv1alpha1.Environment, error) {
 	if environmentLabel, ok := pipelineRun.Labels[tekton.EnvironmentNameLabel]; ok {
 		environment := &applicationapiv1alpha1.Environment{}
 		err := c.Get(ctx, types.NamespacedName{
@@ -217,7 +217,7 @@ func (l *loader) GetEnvironmentFromIntegrationPipelineRun(c client.Client, ctx c
 
 // GetSnapshotFromPipelineRun loads from the cluster the Snapshot referenced in the given PipelineRun.
 // If the PipelineRun doesn't specify an Snapshot or this is not found in the cluster, an error will be returned.
-func (l *loader) GetSnapshotFromPipelineRun(c client.Client, ctx context.Context, pipelineRun *tektonv1beta1.PipelineRun) (*applicationapiv1alpha1.Snapshot, error) {
+func (l *loader) GetSnapshotFromPipelineRun(c client.Client, ctx context.Context, pipelineRun *tektonv1.PipelineRun) (*applicationapiv1alpha1.Snapshot, error) {
 	if snapshotName, found := pipelineRun.Labels[tekton.SnapshotNameLabel]; found {
 		snapshot := &applicationapiv1alpha1.Snapshot{}
 		err := c.Get(ctx, types.NamespacedName{
@@ -364,8 +364,8 @@ func (l *loader) FindExistingSnapshotEnvironmentBinding(c client.Client, ctx con
 // GetAllPipelineRunsForSnapshotAndScenario returns all Integration PipelineRun for the
 // associated Snapshot and IntegrationTestScenario. In the case the List operation fails,
 // an error will be returned.
-func (l *loader) GetAllPipelineRunsForSnapshotAndScenario(adapterClient client.Client, ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot, integrationTestScenario *v1beta1.IntegrationTestScenario) (*[]tektonv1beta1.PipelineRun, error) {
-	integrationPipelineRuns := &tektonv1beta1.PipelineRunList{}
+func (l *loader) GetAllPipelineRunsForSnapshotAndScenario(adapterClient client.Client, ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot, integrationTestScenario *v1beta1.IntegrationTestScenario) (*[]tektonv1.PipelineRun, error) {
+	integrationPipelineRuns := &tektonv1.PipelineRunList{}
 	opts := []client.ListOption{
 		client.InNamespace(snapshot.Namespace),
 		client.MatchingLabels{
@@ -385,8 +385,8 @@ func (l *loader) GetAllPipelineRunsForSnapshotAndScenario(adapterClient client.C
 // GetAllBuildPipelineRunsForComponent returns all PipelineRun for the
 // associated component. In the case the List operation fails,
 // an error will be returned.
-func (l *loader) GetAllBuildPipelineRunsForComponent(c client.Client, ctx context.Context, component *applicationapiv1alpha1.Component) (*[]tektonv1beta1.PipelineRun, error) {
-	buildPipelineRuns := &tektonv1beta1.PipelineRunList{}
+func (l *loader) GetAllBuildPipelineRunsForComponent(c client.Client, ctx context.Context, component *applicationapiv1alpha1.Component) (*[]tektonv1.PipelineRun, error) {
+	buildPipelineRuns := &tektonv1.PipelineRunList{}
 	opts := []client.ListOption{
 		client.InNamespace(component.Namespace),
 		client.MatchingLabels{

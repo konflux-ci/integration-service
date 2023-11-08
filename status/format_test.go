@@ -23,7 +23,7 @@ import (
 	. "github.com/onsi/gomega"
 	"github.com/redhat-appstudio/integration-service/helpers"
 	"github.com/redhat-appstudio/integration-service/status"
-	tektonv1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
+	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -40,24 +40,24 @@ const expectedSummary = `| Task | Duration | Test Suite | Status | Details |
 [^example-task-4]: example note 4`
 
 func newTaskRun(name string, startTime time.Time, completionTime time.Time) *helpers.TaskRun {
-	return helpers.NewTaskRunFromTektonTaskRun(name, &tektonv1beta1.TaskRunStatus{
-		TaskRunStatusFields: tektonv1beta1.TaskRunStatusFields{
+	return helpers.NewTaskRunFromTektonTaskRun(name, &tektonv1.TaskRunStatus{
+		TaskRunStatusFields: tektonv1.TaskRunStatusFields{
 			StartTime:      &metav1.Time{Time: startTime},
 			CompletionTime: &metav1.Time{Time: completionTime},
-			TaskRunResults: []tektonv1beta1.TaskRunResult{},
+			Results:        []tektonv1.TaskRunResult{},
 		},
 	})
 }
 
 func newTaskRunWithAppStudioTestOutput(name string, startTime time.Time, completionTime time.Time, output string) *helpers.TaskRun {
-	return helpers.NewTaskRunFromTektonTaskRun(name, &tektonv1beta1.TaskRunStatus{
-		TaskRunStatusFields: tektonv1beta1.TaskRunStatusFields{
+	return helpers.NewTaskRunFromTektonTaskRun(name, &tektonv1.TaskRunStatus{
+		TaskRunStatusFields: tektonv1.TaskRunStatusFields{
 			StartTime:      &metav1.Time{Time: startTime},
 			CompletionTime: &metav1.Time{Time: completionTime},
-			TaskRunResults: []tektonv1beta1.TaskRunResult{
+			Results: []tektonv1.TaskRunResult{
 				{
 					Name:  "TEST_OUTPUT",
-					Value: *tektonv1beta1.NewStructuredValues(output),
+					Value: *tektonv1.NewStructuredValues(output),
 				},
 			},
 		},
