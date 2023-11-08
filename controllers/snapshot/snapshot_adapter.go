@@ -37,7 +37,7 @@ import (
 	"github.com/redhat-appstudio/operator-toolkit/controller"
 	"github.com/redhat-appstudio/operator-toolkit/metadata"
 	releasev1alpha1 "github.com/redhat-appstudio/release-service/api/v1alpha1"
-	pipeline "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
+	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -589,7 +589,7 @@ func (a *Adapter) findAvailableEnvironments() (*[]applicationapiv1alpha1.Environ
 
 // createIntegrationPipelineRun creates and returns a new integration PipelineRun. The Pipeline information and the parameters to it
 // will be extracted from the given integrationScenario. The integration's Snapshot will also be passed to the integration PipelineRun.
-func (a *Adapter) createIntegrationPipelineRun(application *applicationapiv1alpha1.Application, integrationTestScenario *v1beta1.IntegrationTestScenario, snapshot *applicationapiv1alpha1.Snapshot) (*pipeline.PipelineRun, error) {
+func (a *Adapter) createIntegrationPipelineRun(application *applicationapiv1alpha1.Application, integrationTestScenario *v1beta1.IntegrationTestScenario, snapshot *applicationapiv1alpha1.Snapshot) (*tektonv1.PipelineRun, error) {
 	a.logger.Info("Creating new pipelinerun for integrationTestscenario",
 		"integrationTestScenario.Name", integrationTestScenario.Name)
 

@@ -22,47 +22,47 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/redhat-appstudio/integration-service/tekton"
-	tektonv1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
+	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	klog "k8s.io/klog/v2"
 )
 
 var _ = Describe("Utils", func() {
 
-	var pipelineRun *tektonv1beta1.PipelineRun
+	var pipelineRun *tektonv1.PipelineRun
 
 	BeforeEach(func() {
 
-		pipelineRun = &tektonv1beta1.PipelineRun{
+		pipelineRun = &tektonv1.PipelineRun{
 			ObjectMeta: v1.ObjectMeta{},
-			Spec: tektonv1beta1.PipelineRunSpec{
-				Params: []tektonv1beta1.Param{
+			Spec: tektonv1.PipelineRunSpec{
+				Params: []tektonv1.Param{
 					{
 						Name: "output-image",
-						Value: tektonv1beta1.ParamValue{
+						Value: tektonv1.ParamValue{
 							StringVal: "test-image",
 						},
 					},
 				},
 			},
-			Status: tektonv1beta1.PipelineRunStatus{
-				PipelineRunStatusFields: tektonv1beta1.PipelineRunStatusFields{
-					PipelineResults: []tektonv1beta1.PipelineRunResult{
+			Status: tektonv1.PipelineRunStatus{
+				PipelineRunStatusFields: tektonv1.PipelineRunStatusFields{
+					Results: []tektonv1.PipelineRunResult{
 						{
 							Name:  "IMAGE_DIGEST",
-							Value: *tektonv1beta1.NewStructuredValues("image_digest_value"),
+							Value: *tektonv1.NewStructuredValues("image_digest_value"),
 						},
 						{
 							Name:  "IMAGE_URL",
-							Value: *tektonv1beta1.NewStructuredValues("test-image"),
+							Value: *tektonv1.NewStructuredValues("test-image"),
 						},
 						{
 							Name:  "CHAINS-GIT_URL",
-							Value: *tektonv1beta1.NewStructuredValues("https://github.com/devfile-samples/devfile-sample-java-springboot-basic"),
+							Value: *tektonv1.NewStructuredValues("https://github.com/devfile-samples/devfile-sample-java-springboot-basic"),
 						},
 						{
 							Name:  "CHAINS-GIT_COMMIT",
-							Value: *tektonv1beta1.NewStructuredValues("a2ba645d50e471d5f084b"),
+							Value: *tektonv1.NewStructuredValues("a2ba645d50e471d5f084b"),
 						},
 					},
 				},
@@ -95,7 +95,7 @@ var _ = Describe("Utils", func() {
 	})
 
 	It("can return err when can't find result for CHAINS-GIT_URL", func() {
-		pipelineRun.Status.PipelineResults = []tektonv1beta1.PipelineRunResult{}
+		pipelineRun.Status.PipelineRunStatusFields.Results = []tektonv1.PipelineRunResult{}
 		_, err := tekton.GetComponentSourceGitUrl(pipelineRun)
 		Expect(err).ToNot(BeNil())
 	})
@@ -109,7 +109,7 @@ var _ = Describe("Utils", func() {
 	})
 
 	It("can return err when can't find result CHAINS-GIT_COMMIT", func() {
-		pipelineRun.Status.PipelineResults = []tektonv1beta1.PipelineRunResult{}
+		pipelineRun.Status.PipelineRunStatusFields.Results = []tektonv1.PipelineRunResult{}
 		_, err := tekton.GetComponentSourceGitCommit(pipelineRun)
 		Expect(err).ToNot(BeNil())
 	})

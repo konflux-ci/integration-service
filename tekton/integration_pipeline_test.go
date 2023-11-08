@@ -28,13 +28,13 @@ import (
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/gitops"
 	tekton "github.com/redhat-appstudio/integration-service/tekton"
-	tektonv1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
+	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 type ExtraParams struct {
 	Name  string
-	Value tektonv1beta1.ParamValue
+	Value tektonv1.ParamValue
 }
 
 var _ = Describe("Integration pipeline", func() {
@@ -65,8 +65,8 @@ var _ = Describe("Integration pipeline", func() {
 
 		extraParams = &ExtraParams{
 			Name: "extraConfigPath",
-			Value: tektonv1beta1.ParamValue{
-				Type:      tektonv1beta1.ParamTypeString,
+			Value: tektonv1.ParamValue{
+				Type:      tektonv1.ParamTypeString,
 				StringVal: "path/to/extra/config.yaml",
 			},
 		}

@@ -21,7 +21,7 @@ import (
 
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/api/v1beta1"
-	tektonv1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
+	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	"knative.dev/pkg/apis"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -29,13 +29,13 @@ import (
 // GetLatestPipelineRunForSnapshotAndScenario returns the latest Integration PipelineRun for the
 // associated Snapshot and IntegrationTestScenario. In the case the List operation fails,
 // an error will be returned.
-func GetLatestPipelineRunForSnapshotAndScenario(adapterClient client.Client, ctx context.Context, loader ObjectLoader, snapshot *applicationapiv1alpha1.Snapshot, integrationTestScenario *v1beta1.IntegrationTestScenario) (*tektonv1beta1.PipelineRun, error) {
+func GetLatestPipelineRunForSnapshotAndScenario(adapterClient client.Client, ctx context.Context, loader ObjectLoader, snapshot *applicationapiv1alpha1.Snapshot, integrationTestScenario *v1beta1.IntegrationTestScenario) (*tektonv1.PipelineRun, error) {
 	integrationPipelineRuns, err := loader.GetAllPipelineRunsForSnapshotAndScenario(adapterClient, ctx, snapshot, integrationTestScenario)
 	if err != nil {
 		return nil, err
 	}
 
-	var latestIntegrationPipelineRun = &tektonv1beta1.PipelineRun{}
+	var latestIntegrationPipelineRun = &tektonv1.PipelineRun{}
 	latestIntegrationPipelineRun = nil
 	for _, pipelineRun := range *integrationPipelineRuns {
 		pipelineRun := pipelineRun // G601

@@ -39,7 +39,7 @@ import (
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	integrationv1alpha1 "github.com/redhat-appstudio/integration-service/api/v1alpha1"
 	releasev1alpha1 "github.com/redhat-appstudio/release-service/api/v1alpha1"
-	tektonv1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
+	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 
 	"github.com/redhat-appstudio/integration-service/api/v1beta1"
 	//+kubebuilder:scaffold:imports
@@ -55,7 +55,7 @@ func init() {
 	utilruntime.Must(applicationapiv1alpha1.AddToScheme(scheme))
 	utilruntime.Must(integrationv1alpha1.AddToScheme(scheme))
 	utilruntime.Must(v1beta1.AddToScheme(scheme))
-	utilruntime.Must(tektonv1beta1.AddToScheme(scheme))
+	utilruntime.Must(tektonv1.AddToScheme(scheme))
 	utilruntime.Must(releasev1alpha1.AddToScheme(scheme))
 	utilruntime.Must(pacv1alpha1.AddToScheme(scheme))
 	//+kubebuilder:scaffold:scheme
