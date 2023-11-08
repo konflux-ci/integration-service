@@ -17,7 +17,6 @@ limitations under the License.
 package gitops_test
 
 import (
-	"context"
 	"github.com/redhat-appstudio/integration-service/gitops"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -27,7 +26,6 @@ import (
 
 	"sigs.k8s.io/controller-runtime/pkg/event"
 
-	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -139,12 +137,6 @@ var _ = Describe("Predicates", Ordered, func() {
 				},
 			},
 		}
-		ctx := context.Background()
-
-		Expect(k8sClient.Create(ctx, hasSnapshotUnknownStatus)).Should(Succeed())
-		Expect(k8sClient.Create(ctx, hasSnapshotTrueStatus)).Should(Succeed())
-		Expect(k8sClient.Create(ctx, hasSnapshotAnnotationOld)).Should(Succeed())
-		Expect(k8sClient.Create(ctx, hasSnapshotAnnotationNew)).Should(Succeed())
 
 		// Set the binding statuses after they are created
 		hasSnapshotUnknownStatus.Status.Conditions = []metav1.Condition{
@@ -159,13 +151,6 @@ var _ = Describe("Predicates", Ordered, func() {
 				Status: metav1.ConditionTrue,
 			},
 		}
-	})
-
-	AfterAll(func() {
-		err := k8sClient.Delete(ctx, hasSnapshotUnknownStatus)
-		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
-		err = k8sClient.Delete(ctx, hasSnapshotTrueStatus)
-		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 	})
 
 	Context("when testing IntegrationSnapshotChangePredicate predicate", func() {
