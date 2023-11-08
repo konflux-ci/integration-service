@@ -31,7 +31,7 @@ import (
 	intgteststat "github.com/redhat-appstudio/integration-service/pkg/integrationteststatus"
 
 	"github.com/redhat-appstudio/operator-toolkit/metadata"
-	tektonv1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
+	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -215,7 +215,7 @@ func generateCheckRunTitle(state intgteststat.IntegrationTestStatus) (string, er
 func generateCheckRunText(k8sClient client.Client, ctx context.Context, integrationTestStatusDetail intgteststat.IntegrationTestStatusDetail, namespace string) (string, error) {
 	if integrationTestStatusDetail.Status == intgteststat.IntegrationTestStatusTestPassed || integrationTestStatusDetail.Status == intgteststat.IntegrationTestStatusTestFail {
 		pipelineRunName := integrationTestStatusDetail.TestPipelineRunName
-		pipelineRun := &tektonv1beta1.PipelineRun{}
+		pipelineRun := &tektonv1.PipelineRun{}
 		err := k8sClient.Get(ctx, types.NamespacedName{
 			Namespace: namespace,
 			Name:      pipelineRunName,
@@ -381,7 +381,7 @@ func (r *GitHubReporter) UpdateStatusInComment(k8sClient client.Client, ctx cont
 	var comment string
 	if state == intgteststat.IntegrationTestStatusTestPassed || state == intgteststat.IntegrationTestStatusTestFail {
 		pipelineRunName := integrationTestStatusDetail.TestPipelineRunName
-		pipelineRun := &tektonv1beta1.PipelineRun{}
+		pipelineRun := &tektonv1.PipelineRun{}
 		err := r.k8sClient.Get(ctx, types.NamespacedName{
 			Namespace: snapshot.Namespace,
 			Name:      pipelineRunName,

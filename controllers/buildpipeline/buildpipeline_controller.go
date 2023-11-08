@@ -27,7 +27,7 @@ import (
 	"github.com/redhat-appstudio/integration-service/loader"
 	"github.com/redhat-appstudio/integration-service/tekton"
 	"github.com/redhat-appstudio/operator-toolkit/controller"
-	tektonv1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
+	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -68,7 +68,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	logger := helpers.IntegrationLogger{Logger: r.Log.WithValues("buildpipelineRun", req.NamespacedName)}
 	loader := loader.NewLoader()
 
-	pipelineRun := &tektonv1beta1.PipelineRun{}
+	pipelineRun := &tektonv1.PipelineRun{}
 	err := r.Get(ctx, req.NamespacedName, pipelineRun)
 	if err != nil {
 		logger.Error(err, "Failed to get build pipelineRun for", "req", req.NamespacedName)
@@ -135,7 +135,7 @@ func setupControllerWithManager(manager ctrl.Manager, controller *Reconciler) er
 	}
 
 	return ctrl.NewControllerManagedBy(manager).
-		For(&tektonv1beta1.PipelineRun{}).
+		For(&tektonv1.PipelineRun{}).
 		WithEventFilter(predicate.Or(
 			tekton.BuildPipelineRunSignedAndSucceededPredicate())).
 		Complete(controller)

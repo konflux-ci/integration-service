@@ -11,11 +11,11 @@ require (
 	github.com/onsi/gomega v1.29.0
 	github.com/openshift-pipelines/pipelines-as-code v0.17.2
 	github.com/prometheus/client_golang v1.17.0
-	github.com/redhat-appstudio/application-api v0.0.0-20230427114540-a91722251e0a
+	github.com/redhat-appstudio/application-api v0.0.0-20231025105224-2790bb451725
 	github.com/redhat-appstudio/operator-toolkit v0.0.0-20230913085326-6c5e9d368a6a
 	github.com/redhat-appstudio/release-service v0.0.0-20230511145849-bde1cdcbb60b
 	github.com/santhosh-tekuri/jsonschema/v5 v5.3.1
-	github.com/tektoncd/pipeline v0.48.0
+	github.com/tektoncd/pipeline v0.49.0
 	github.com/tonglil/buflogr v1.0.1
 	go.uber.org/zap v1.26.0
 	golang.org/x/oauth2 v0.13.0
@@ -57,8 +57,6 @@ require (
 	github.com/google/pprof v0.0.0-20230510103437-eeec1cb781c3 // indirect
 	github.com/google/uuid v1.3.0 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.15.0 // indirect
-	github.com/hashicorp/errwrap v1.1.0 // indirect
-	github.com/hashicorp/go-multierror v1.1.1 // indirect
 	github.com/imdario/mergo v0.3.13 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect

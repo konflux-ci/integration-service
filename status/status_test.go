@@ -26,7 +26,7 @@ import (
 	"github.com/redhat-appstudio/integration-service/status"
 
 	"github.com/go-logr/logr"
-	tektonv1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
+	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -39,10 +39,10 @@ func (r *MockReporter) ReportStatusForSnapshot(client.Client, context.Context, *
 
 var _ = Describe("Status Adapter", func() {
 
-	var pipelineRun *tektonv1beta1.PipelineRun
+	var pipelineRun *tektonv1.PipelineRun
 
 	BeforeEach(func() {
-		pipelineRun = &tektonv1beta1.PipelineRun{
+		pipelineRun = &tektonv1.PipelineRun{
 			ObjectMeta: metav1.ObjectMeta{
 				Labels: map[string]string{
 					"pac.test.appstudio.openshift.io/git-provider": "github",

@@ -108,8 +108,6 @@ spec:
                         required:
                         - deploymentTargetClaim
                         type: object
-                    required:
-                    - env
                     type: object
                   name:
                     type: string
@@ -316,8 +314,6 @@ spec:
                         required:
                         - deploymentTargetClaim
                         type: object
-                    required:
-                    - env
                     type: object
                   name:
                     type: string

@@ -29,14 +29,14 @@ import (
 	"github.com/redhat-appstudio/integration-service/tekton"
 
 	"github.com/redhat-appstudio/operator-toolkit/controller"
-	tektonv1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
+	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 // Adapter holds the objects needed to reconcile an integration PipelineRun.
 type Adapter struct {
-	pipelineRun *tektonv1beta1.PipelineRun
+	pipelineRun *tektonv1.PipelineRun
 	application *applicationapiv1alpha1.Application
 	loader      loader.ObjectLoader
 	logger      h.IntegrationLogger
@@ -46,7 +46,7 @@ type Adapter struct {
 }
 
 // NewAdapter creates and returns an Adapter instance.
-func NewAdapter(pipelineRun *tektonv1beta1.PipelineRun, application *applicationapiv1alpha1.Application, logger h.IntegrationLogger, loader loader.ObjectLoader, client client.Client,
+func NewAdapter(pipelineRun *tektonv1.PipelineRun, application *applicationapiv1alpha1.Application, logger h.IntegrationLogger, loader loader.ObjectLoader, client client.Client,
 	context context.Context) *Adapter {
 	return &Adapter{
 		pipelineRun: pipelineRun,
@@ -153,7 +153,7 @@ func (a *Adapter) EnsureEphemeralEnvironmentsCleanedUp() (controller.OperationRe
 }
 
 // GetIntegrationPipelineRunStatus checks the Tekton results for a given PipelineRun and returns status of test.
-func GetIntegrationPipelineRunStatus(adapterClient client.Client, ctx context.Context, pipelineRun *tektonv1beta1.PipelineRun) (intgteststat.IntegrationTestStatus, string, error) {
+func GetIntegrationPipelineRunStatus(adapterClient client.Client, ctx context.Context, pipelineRun *tektonv1.PipelineRun) (intgteststat.IntegrationTestStatus, string, error) {
 	// Check if the pipelineRun finished from the condition of status
 	if !h.HasPipelineRunFinished(pipelineRun) {
 		// Mark the pipelineRun's status as "Deleted" if its not finished yet and is marked for deletion (with a non-nil deletionTimestamp)

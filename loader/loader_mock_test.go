@@ -24,7 +24,7 @@ import (
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/api/v1beta1"
 	releasev1alpha1 "github.com/redhat-appstudio/release-service/api/v1alpha1"
-	tektonv1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
+	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 )
 
 var _ = Describe("Release Adapter", Ordered, func() {
@@ -278,7 +278,7 @@ var _ = Describe("Release Adapter", Ordered, func() {
 
 	Context("When calling GetAllPipelineRunsForSnapshotAndScenario", func() {
 		It("returns pipelineRuns and error from the context", func() {
-			prs := []tektonv1beta1.PipelineRun{}
+			prs := []tektonv1.PipelineRun{}
 			mockContext := toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
 					ContextKey: PipelineRunsContextKey,
@@ -323,7 +323,7 @@ var _ = Describe("Release Adapter", Ordered, func() {
 
 	Context("When calling GetAllBuildPipelineRunsForComponent", func() {
 		It("returns snapshots and error from the context", func() {
-			pipelineRuns := []tektonv1beta1.PipelineRun{}
+			pipelineRuns := []tektonv1.PipelineRun{}
 			mockContext := toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
 					ContextKey: PipelineRunsContextKey,
