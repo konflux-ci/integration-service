@@ -92,17 +92,20 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 				return ctrl.Result{}, err
 			}
 		}
-		return helpers.HandleLoaderError(logger, err, "Component", "PipelineRun")
+		return helpers.HandleLoaderError(logger, err, "component", "pipelineRun")
+	} else if component == nil {
+		// if both component and error are nil then the component label for the pipeline did not exist
+		// in this case we should stop reconciliation
+		logger.Info("Failed to  get component for build pipeline - component label does not exist", "name", pipelineRun.Name, "namespace", pipelineRun.Namespace)
+		return ctrl.Result{}, nil
 	}
 
 	application := &applicationapiv1alpha1.Application{}
-	if component != nil {
-		application, err = loader.GetApplicationFromComponent(r.Client, ctx, component)
-		if err != nil {
-			logger.Error(err, "Failed to get Application from Component",
-				"Component.Name ", component.Name, "Component.Namespace ", component.Namespace)
-			return ctrl.Result{}, err
-		}
+	application, err = loader.GetApplicationFromComponent(r.Client, ctx, component)
+	if err != nil {
+		logger.Error(err, "Failed to get Application from Component",
+			"Component.Name ", component.Name, "Component.Namespace ", component.Namespace)
+		return ctrl.Result{}, err
 	}
 
 	if application == nil {

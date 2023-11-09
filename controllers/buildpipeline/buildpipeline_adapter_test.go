@@ -19,8 +19,9 @@ package buildpipeline
 import (
 	"bytes"
 	"reflect"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"time"
+
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	"github.com/redhat-appstudio/integration-service/gitops"
 	"github.com/redhat-appstudio/integration-service/helpers"
@@ -495,17 +496,6 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			_, found = snapshot.GetLabels()["pipelines.appstudio.openshift.io/type"]
 			Expect(found).To(BeFalse())
 
-		})
-	})
-
-	When("Adapter is created but no components defined", func() {
-		It("ensures snapshot creation is skipped when there is no component defined ", func() {
-			adapter = NewAdapter(buildPipelineRun, nil, hasApp, logger, loader.NewMockLoader(), k8sClient, ctx)
-			Expect(reflect.TypeOf(adapter)).To(Equal(reflect.TypeOf(&Adapter{})))
-
-			result, err := adapter.EnsureSnapshotExists()
-			Expect(!result.CancelRequest).To(BeTrue())
-			Expect(err).To(BeNil())
 		})
 	})
 
