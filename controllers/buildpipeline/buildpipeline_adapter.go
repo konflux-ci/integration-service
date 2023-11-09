@@ -73,10 +73,6 @@ func (a *Adapter) EnsureSnapshotExists() (controller.OperationResult, error) {
 		return controller.ContinueProcessing()
 	}
 
-	if a.component == nil {
-		return a.removeFinalizerAndContinueProcessing()
-	}
-
 	isLatest, err := a.isLatestSucceededBuildPipelineRun()
 	if err != nil {
 		return controller.RequeueWithError(err)
