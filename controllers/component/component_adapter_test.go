@@ -12,6 +12,7 @@ import (
 
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/loader"
+	toolkit "github.com/redhat-appstudio/operator-toolkit/loader"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
@@ -115,7 +116,7 @@ var _ = Describe("Component Adapter", Ordered, func() {
 
 		log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
 		adapter = NewAdapter(hasComp, hasApp, log, loader.NewMockLoader(), k8sClient, ctx)
-		adapter.context = loader.GetMockedContext(ctx, []loader.MockData{
+		adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 			{
 				ContextKey: loader.ApplicationContextKey,
 				Resource:   hasApp,

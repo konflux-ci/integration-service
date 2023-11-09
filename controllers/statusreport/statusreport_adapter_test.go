@@ -33,6 +33,7 @@ import (
 	"github.com/redhat-appstudio/integration-service/loader"
 	intgteststat "github.com/redhat-appstudio/integration-service/pkg/integrationteststatus"
 	"github.com/redhat-appstudio/integration-service/status"
+	toolkit "github.com/redhat-appstudio/operator-toolkit/loader"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
@@ -272,7 +273,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			statusReporter = &MockStatusReporter{}
 			statusAdapter = &MockStatusAdapter{Reporter: statusReporter}
 			adapter.status = statusAdapter
-			adapter.context = loader.GetMockedContext(ctx, []loader.MockData{
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
 					ContextKey: loader.ApplicationContextKey,
 					Resource:   hasApp,
@@ -301,7 +302,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			Expect(err).To(BeNil())
 
 			adapter = NewAdapter(hasSnapshot, hasApp, log, loader.NewMockLoader(), k8sClient, ctx)
-			adapter.context = loader.GetMockedContext(ctx, []loader.MockData{
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
 					ContextKey: loader.ApplicationContextKey,
 					Resource:   hasApp,
@@ -369,7 +370,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			Expect(err).To(BeNil())
 
 			adapter = NewAdapter(hasSnapshot, hasApp, log, loader.NewMockLoader(), k8sClient, ctx)
-			adapter.context = loader.GetMockedContext(ctx, []loader.MockData{
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
 					ContextKey: loader.ApplicationContextKey,
 					Resource:   hasApp,
@@ -423,7 +424,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			Expect(err).To(BeNil())
 
 			adapter = NewAdapter(hasSnapshot, hasApp, log, loader.NewMockLoader(), k8sClient, ctx)
-			adapter.context = loader.GetMockedContext(ctx, []loader.MockData{
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
 					ContextKey: loader.ApplicationContextKey,
 					Resource:   hasApp,
@@ -487,7 +488,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			Expect(compositeSnapshot).NotTo(BeNil())
 
 			// Check if the composite snapshot that was already created above was correctly detected and returned.
-			adapter.context = loader.GetMockedContext(ctx, []loader.MockData{
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
 					ContextKey: loader.ApplicationContextKey,
 					Resource:   hasApp,

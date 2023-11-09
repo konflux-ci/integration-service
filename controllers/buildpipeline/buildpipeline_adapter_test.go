@@ -36,6 +36,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
+	toolkit "github.com/redhat-appstudio/operator-toolkit/loader"
 	tektonv1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 	"github.com/tonglil/buflogr"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -316,7 +317,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 	When("NewAdapter is created", func() {
 		BeforeEach(func() {
 			adapter = createAdapter()
-			adapter.context = loader.GetMockedContext(ctx, []loader.MockData{
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
 					ContextKey: loader.ApplicationContextKey,
 					Resource:   hasApp,
@@ -476,7 +477,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 	When("Snapshot already exists", func() {
 		BeforeEach(func() {
 			adapter = NewAdapter(buildPipelineRun, hasComp, hasApp, logger, loader.NewMockLoader(), k8sClient, ctx)
-			adapter.context = loader.GetMockedContext(ctx, []loader.MockData{
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
 					ContextKey: loader.ApplicationContextKey,
 					Resource:   hasApp,
@@ -585,7 +586,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			// make sure the seocnd pipeline started as second
 			buildPipelineRun2.CreationTimestamp.Time = buildPipelineRun2.CreationTimestamp.Add(2 * time.Hour)
 			adapter = NewAdapter(buildPipelineRun2, hasComp, hasApp, logger, loader.NewMockLoader(), k8sClient, ctx)
-			adapter.context = loader.GetMockedContext(ctx, []loader.MockData{
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
 					ContextKey: loader.ApplicationContextKey,
 					Resource:   hasApp,
@@ -612,7 +613,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			// make sure the first pipeline started as first
 			buildPipelineRun.CreationTimestamp.Time = buildPipelineRun.CreationTimestamp.Add(-2 * time.Hour)
 			adapter = NewAdapter(buildPipelineRun, hasComp, hasApp, logger, loader.NewMockLoader(), k8sClient, ctx)
-			adapter.context = loader.GetMockedContext(ctx, []loader.MockData{
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
 					ContextKey: loader.ApplicationContextKey,
 					Resource:   hasApp,
@@ -671,7 +672,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			// make sure the first pipeline started as first
 			buildPipelineRun.CreationTimestamp.Time = buildPipelineRun.CreationTimestamp.Add(-2 * time.Hour)
 			adapter = NewAdapter(buildPipelineRun, hasComp, hasApp, log, loader.NewMockLoader(), k8sClient, ctx)
-			adapter.context = loader.GetMockedContext(ctx, []loader.MockData{
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
 					ContextKey: loader.ApplicationContextKey,
 					Resource:   hasApp,
@@ -698,7 +699,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		It("can find matching snapshot", func() {
 			// make sure the first pipeline started as first
 			adapter = NewAdapter(buildPipelineRun, hasComp, hasApp, logger, loader.NewMockLoader(), k8sClient, ctx)
-			adapter.context = loader.GetMockedContext(ctx, []loader.MockData{
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
 					ContextKey: loader.ApplicationContextKey,
 					Resource:   hasApp,
