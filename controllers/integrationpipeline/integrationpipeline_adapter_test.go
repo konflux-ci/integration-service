@@ -27,6 +27,7 @@ import (
 	"github.com/redhat-appstudio/integration-service/helpers"
 	"github.com/redhat-appstudio/integration-service/loader"
 	intgteststat "github.com/redhat-appstudio/integration-service/pkg/integrationteststatus"
+	toolkit "github.com/redhat-appstudio/operator-toolkit/loader"
 
 	"knative.dev/pkg/apis"
 	v1 "knative.dev/pkg/apis/duck/v1"
@@ -375,7 +376,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 	When("Snapshot already exists", func() {
 		BeforeEach(func() {
 			adapter = NewAdapter(integrationPipelineRunComponent, hasApp, logger, loader.NewMockLoader(), k8sClient, ctx)
-			adapter.context = loader.GetMockedContext(ctx, []loader.MockData{
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
 					ContextKey: loader.ApplicationContextKey,
 					Resource:   hasApp,
@@ -515,7 +516,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				Expect(k8sClient.Status().Update(ctx, integrationPipelineRunComponentFailed)).Should(Succeed())
 
 				adapter = NewAdapter(integrationPipelineRunComponentFailed, hasApp, logger, loader.NewMockLoader(), k8sClient, ctx)
-				adapter.context = loader.GetMockedContext(ctx, []loader.MockData{
+				adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 					{
 						ContextKey: loader.ApplicationContextKey,
 						Resource:   hasApp,
@@ -634,7 +635,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			var buf bytes.Buffer
 			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
 			adapter = NewAdapter(integrationPipelineRunComponent, hasApp, log, loader.NewMockLoader(), k8sClient, ctx)
-			adapter.context = loader.GetMockedContext(ctx, []loader.MockData{
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
 					ContextKey: loader.ApplicationContextKey,
 					Resource:   hasApp,
@@ -808,7 +809,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			Expect(k8sClient.Status().Update(ctx, integrationPipelineRunComponentFailed)).Should(Succeed())
 
 			adapter = NewAdapter(integrationPipelineRunComponentFailed, hasApp, logger, loader.NewMockLoader(), k8sClient, ctx)
-			adapter.context = loader.GetMockedContext(ctx, []loader.MockData{
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
 					ContextKey: loader.ApplicationContextKey,
 					Resource:   hasApp,

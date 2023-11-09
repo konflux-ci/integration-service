@@ -25,6 +25,7 @@ import (
 	"github.com/redhat-appstudio/integration-service/api/v1beta1"
 	"github.com/redhat-appstudio/integration-service/gitops"
 	"github.com/redhat-appstudio/integration-service/tekton"
+	toolkit "github.com/redhat-appstudio/operator-toolkit/loader"
 	releasev1alpha1 "github.com/redhat-appstudio/release-service/api/v1alpha1"
 	tektonv1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 	"k8s.io/apimachinery/pkg/fields"
@@ -62,15 +63,6 @@ type loader struct{}
 func NewLoader() ObjectLoader {
 	return &loader{}
 }
-
-// getObject loads an object from the cluster. This is a generic function that requires the object to be passed as an
-// argument. The object is modified during the invocation.
-// func getObject(name, namespace string, cli client.Client, ctx context.Context, object client.Object) error {
-// 	return cli.Get(ctx, types.NamespacedName{
-// 		Name:      name,
-// 		Namespace: namespace,
-// 	}, object)
-// }
 
 // GetAllEnvironments gets all environments in the namespace
 func (l *loader) GetAllEnvironments(c client.Client, ctx context.Context, application *applicationapiv1alpha1.Application) (*[]applicationapiv1alpha1.Environment, error) {
@@ -124,16 +116,7 @@ func (l *loader) GetAllApplicationComponents(c client.Client, ctx context.Contex
 // If the Snapshot doesn't specify an Component or this is not found in the cluster, an error will be returned.
 func (l *loader) GetApplicationFromSnapshot(c client.Client, ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot) (*applicationapiv1alpha1.Application, error) {
 	application := &applicationapiv1alpha1.Application{}
-	err := c.Get(ctx, types.NamespacedName{
-		Namespace: snapshot.Namespace,
-		Name:      snapshot.Spec.Application,
-	}, application)
-
-	if err != nil {
-		return nil, err
-	}
-
-	return application, nil
+	return application, toolkit.GetObject(snapshot.Spec.Application, snapshot.Namespace, c, ctx, application)
 }
 
 // GetComponentFromSnapshot loads from the cluster the Component referenced in the given Snapshot.
