@@ -75,11 +75,6 @@ func NewAdapter(snapshotEnvironmentBinding *applicationapiv1alpha1.SnapshotEnvir
 // EnsureIntegrationTestPipelineForScenarioExists is an operation that will ensure that the Integration test pipeline
 // associated with the Snapshot and the SnapshotEnvironmentBinding's IntegrationTestScenarios exist.
 func (a *Adapter) EnsureIntegrationTestPipelineForScenarioExists() (controller.OperationResult, error) {
-	if gitops.HaveAppStudioTestsFinished(a.snapshot) {
-		a.logger.Info("The Snapshot has finished testing.")
-		return controller.ContinueProcessing()
-	}
-
 	if gitops.HaveBindingsFailed(a.snapshotEnvironmentBinding) {
 		// don't log here it floods logs
 		return controller.ContinueProcessing()

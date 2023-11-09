@@ -410,33 +410,6 @@ var _ = Describe("Binding Adapter", Ordered, func() {
 
 	})
 
-	It("ensures the integrationTestPipelines are NOT created for a Snapshot that finished testing", func() {
-		finishedAdapter := NewAdapter(hasBinding, finishedSnapshot, hasEnv, hasApp, hasComp, integrationTestScenario, logger, loader.NewMockLoader(), k8sClient, ctx)
-		Expect(reflect.TypeOf(adapter)).To(Equal(reflect.TypeOf(&Adapter{})))
-
-		Eventually(func() bool {
-			result, err := finishedAdapter.EnsureIntegrationTestPipelineForScenarioExists()
-			return !result.CancelRequest && err == nil
-		}, time.Second*20).Should(BeTrue())
-
-		integrationPipelineRuns := &tektonv1.PipelineRunList{}
-		opts := []client.ListOption{
-			client.InNamespace(hasApp.Namespace),
-			client.MatchingLabels{
-				"pipelines.appstudio.openshift.io/type": "test",
-				"appstudio.openshift.io/application":    hasApp.Name,
-				"appstudio.openshift.io/component":      hasComp.Name,
-				"appstudio.openshift.io/snapshot":       finishedSnapshot.Name,
-				"test.appstudio.openshift.io/scenario":  integrationTestScenario.Name,
-				"appstudio.openshift.io/environment":    hasEnv.Name,
-			},
-		}
-		Eventually(func() bool {
-			err := k8sClient.List(adapter.context, integrationPipelineRuns, opts...)
-			return len(integrationPipelineRuns.Items) == 0 && err == nil
-		}, time.Second*10).Should(BeTrue())
-	})
-
 	It("ensures ephemeral environment is deleted for the given pipelineRun", func() {
 		var buf bytes.Buffer
 		log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
