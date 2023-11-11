@@ -18,6 +18,8 @@ package snapshot
 
 import (
 	"bytes"
+	"context"
+	e "errors"
 	"fmt"
 	"reflect"
 	"time"
@@ -43,9 +45,28 @@ import (
 	intgteststat "github.com/redhat-appstudio/integration-service/pkg/integrationteststatus"
 
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	clientsetscheme "k8s.io/client-go/kubernetes/scheme"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
+
+type mockedFakeCtrlRuntimeClient struct {
+	client.Client
+	returnError bool
+}
+
+func (mc *mockedFakeCtrlRuntimeClient) Patch(
+	ctx context.Context,
+	object client.Object,
+	patch client.Patch,
+	opts ...client.PatchOption) error {
+	if mc.returnError {
+		return e.New("mock error")
+	}
+	return mc.Client.Patch(ctx, object, patch)
+}
 
 var _ = Describe("Snapshot Adapter", Ordered, func() {
 	var (
@@ -932,6 +953,45 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			Expect(result.CancelRequest).To(BeFalse())
 			Expect(result.RequeueRequest).To(BeFalse())
 			Expect(err == nil).To(BeTrue())
+		})
+
+		It("return error", func() {
+			var buf bytes.Buffer
+			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+			adapter = NewAdapter(hasSnapshot, hasApp, hasComp, log, loader.NewMockLoader(), k8sClient, ctx)
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: loader.ApplicationContextKey,
+					Resource:   hasApp,
+				},
+				{
+					ContextKey: loader.ComponentContextKey,
+					Resource:   hasComp,
+				},
+				{
+					ContextKey: loader.SnapshotContextKey,
+					Resource:   hasSnapshot,
+				},
+				{
+					ContextKey: loader.AllIntegrationTestScenariosContextKey,
+					Resource:   []v1beta1.IntegrationTestScenario{*integrationTestScenarioWithoutEnv},
+				},
+				{
+					ContextKey: loader.RequiredIntegrationTestScenariosContextKey,
+					Resource:   []v1beta1.IntegrationTestScenario{*integrationTestScenarioWithoutEnv},
+				},
+			})
+			objs := []runtime.Object{hasSnapshot, hasApp, integrationTestScenarioWithoutEnv}
+			adapter.client = &mockedFakeCtrlRuntimeClient{
+				fake.NewClientBuilder().WithScheme(clientsetscheme.Scheme).WithRuntimeObjects(objs...).Build(),
+				true,
+			}
+			result, err := adapter.EnsureStaticIntegrationPipelineRunsExist()
+			expectedLogEntry := "Defer: Updating statuses of tests in snapshot failed"
+			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
+			Expect(result.CancelRequest).To(BeFalse())
+			Expect(result.RequeueRequest).To(BeTrue())
+			Expect(err).NotTo(BeNil())
 		})
 	})
 
