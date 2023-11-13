@@ -158,4 +158,33 @@ var _ = Describe("Formatters", func() {
 		Expect(err).To(BeNil())
 		Expect(summary).To(Equal(expectedSummary))
 	})
+
+	When("task TEST_OUTPUT is invalid", func() {
+
+		var taskRun *helpers.TaskRun
+
+		BeforeEach(func() {
+			now := time.Now()
+			taskRun = newTaskRunWithAppStudioTestOutput(
+				"example-task-1",
+				now,
+				now.Add(time.Minute*5).Add(time.Second*30),
+				`{
+					"result": "INVALID",
+				}`,
+			)
+		})
+
+		It("can construct a detail from an invalid result", func() {
+			detail, err := status.FormatDetails(taskRun)
+			Expect(err).To(Succeed())
+			Expect(detail).Should(ContainSubstring("Invalid result:"))
+		})
+
+		It("won't fail when summary is generated from invalid result", func() {
+			_, err := status.FormatSummary([]*helpers.TaskRun{taskRun})
+			Expect(err).To(Succeed())
+		})
+	})
+
 })
