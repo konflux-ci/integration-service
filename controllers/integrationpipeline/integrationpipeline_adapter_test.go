@@ -970,4 +970,124 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			Expect(intgPipelineRunWithDeletionTimestamp.DeletionTimestamp).ToNot(BeNil())
 		})
 	})
+
+	When("GetIntegrationPipelineRunStatus is called with an Integration PLR with invalid TEST_OUTPUT result", func() {
+		var (
+			taskRunInvalidResult      *tektonv1.TaskRun
+			intgPipelineInvalidResult *tektonv1.PipelineRun
+		)
+
+		BeforeEach(func() {
+
+			taskRunInvalidResult = &tektonv1.TaskRun{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-taskrun-invalid",
+					Namespace: "default",
+				},
+				Spec: tektonv1.TaskRunSpec{
+					TaskRef: &tektonv1.TaskRef{
+						Name: "test-taskrun-invalid",
+						ResolverRef: tektonv1.ResolverRef{
+							Resolver: "bundle",
+							Params: tektonv1.Params{
+								{
+									Name:  "bundle",
+									Value: tektonv1.ParamValue{Type: "string", StringVal: "quay.io/redhat-appstudio/example-tekton-bundle:test"},
+								},
+								{
+									Name:  "name",
+									Value: tektonv1.ParamValue{Type: "string", StringVal: "test-task"},
+								},
+							},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, taskRunInvalidResult)).Should(Succeed())
+
+			now := time.Now()
+			taskRunInvalidResult.Status = tektonv1.TaskRunStatus{
+				TaskRunStatusFields: tektonv1.TaskRunStatusFields{
+					StartTime:      &metav1.Time{Time: now},
+					CompletionTime: &metav1.Time{Time: now.Add(5 * time.Minute)},
+					Results: []tektonv1.TaskRunResult{
+						{
+							Name: "TEST_OUTPUT",
+							Value: *tektonv1.NewStructuredValues(`{
+												"result": "INVALID",
+											}`),
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Status().Update(ctx, taskRunInvalidResult)).Should(Succeed())
+
+			intgPipelineInvalidResult = &tektonv1.PipelineRun{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "pipelinerun-component-sample-invalid-result",
+					Namespace: "default",
+					Annotations: map[string]string{
+						"pac.test.appstudio.openshift.io/on-target-branch": "[main]",
+					},
+				},
+				Spec: tektonv1.PipelineRunSpec{
+					PipelineRef: &tektonv1.PipelineRef{
+						Name: "component-pipeline-invalid",
+						ResolverRef: tektonv1.ResolverRef{
+							Resolver: "bundle",
+							Params: tektonv1.Params{
+								{
+									Name:  "bundle",
+									Value: tektonv1.ParamValue{Type: "string", StringVal: "quay.io/redhat-appstudio/example-tekton-bundle:component-pipeline-fail"},
+								},
+								{
+									Name:  "name",
+									Value: tektonv1.ParamValue{Type: "string", StringVal: "test-task"},
+								},
+							},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, intgPipelineInvalidResult)).Should(Succeed())
+
+			intgPipelineInvalidResult.Status = tektonv1.PipelineRunStatus{
+				PipelineRunStatusFields: tektonv1.PipelineRunStatusFields{
+					CompletionTime: &metav1.Time{Time: time.Now()},
+					ChildReferences: []tektonv1.ChildStatusReference{
+						{
+							Name:             taskRunInvalidResult.Name,
+							PipelineTaskName: "task1",
+						},
+					},
+				},
+				Status: v1.Status{
+					Conditions: v1.Conditions{
+						apis.Condition{
+							Reason: "Completed",
+							Status: "True",
+							Type:   apis.ConditionSucceeded,
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Status().Update(ctx, intgPipelineInvalidResult)).Should(Succeed())
+
+		})
+
+		AfterEach(func() {
+			err := k8sClient.Delete(ctx, intgPipelineInvalidResult)
+			Expect(err == nil || k8serrors.IsNotFound(err)).To(BeTrue())
+			err = k8sClient.Delete(ctx, taskRunInvalidResult)
+			Expect(err == nil || k8serrors.IsNotFound(err)).To(BeTrue())
+		})
+
+		It("ensures test status in snapshot is updated to failed", func() {
+			status, detail, err := GetIntegrationPipelineRunStatus(adapter.client, adapter.context, intgPipelineInvalidResult)
+
+			Expect(err).To(BeNil())
+			Expect(status).To(Equal(intgteststat.IntegrationTestStatusTestFail))
+			Expect(detail).To(ContainSubstring("Invalid result:"))
+		})
+	})
 })
