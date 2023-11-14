@@ -172,6 +172,7 @@ var _ = Describe("Predicates", func() {
 			}
 			Expect(instance.Create(contextEvent)).To(BeFalse())
 		})
+
 		It("should ignore delete events", func() {
 			contextEvent := event.DeleteEvent{
 				Object: pipelineRun,
@@ -241,6 +242,129 @@ var _ = Describe("Predicates", func() {
 			newPipelineRun.DeletionTimestamp = &v1.Time{Time: time.Now()}
 			Expect(instance.Update(contextEvent)).To(BeTrue())
 			contextEvent.ObjectNew = &tektonv1.TaskRun{}
+			Expect(instance.Update(contextEvent)).To(BeFalse())
+		})
+	})
+
+	Context("when testing BuildPipelineRunCreatedPredicate", func() {
+		instance := tekton.BuildPipelineRunCreatedPredicate()
+
+		BeforeEach(func() {
+
+			pipelineRun = &tektonv1.PipelineRun{
+				ObjectMeta: v1.ObjectMeta{
+					GenerateName: prefix + "-",
+					Namespace:    namespace,
+					Labels: map[string]string{
+						"pipelines.appstudio.openshift.io/type": "build",
+					},
+					Annotations: map[string]string{},
+				},
+				Spec: tektonv1.PipelineRunSpec{},
+			}
+			newPipelineRun = pipelineRun.DeepCopy()
+		})
+
+		It("should return true when a build pipeline is created", func() {
+			contextEvent := event.CreateEvent{
+				Object: pipelineRun,
+			}
+			Expect(instance.Create(contextEvent)).To(BeTrue())
+		})
+		It("should ignore deleting events", func() {
+			contextEvent := event.DeleteEvent{
+				Object: pipelineRun,
+			}
+			Expect(instance.Delete(contextEvent)).To(BeFalse())
+		})
+
+		It("should ignore generic events", func() {
+			contextEvent := event.GenericEvent{
+				Object: pipelineRun,
+			}
+			Expect(instance.Generic(contextEvent)).To(BeFalse())
+		})
+
+		It("should ignore update events", func() {
+			contextEvent := event.UpdateEvent{
+				ObjectOld: pipelineRun,
+				ObjectNew: pipelineRun,
+			}
+			Expect(instance.Update(contextEvent)).To(BeFalse())
+		})
+
+	})
+
+	Context("when testing BuildPipelineRunFailedPredicate", func() {
+		instance := tekton.BuildPipelineRunFailedPredicate()
+
+		BeforeEach(func() {
+
+			pipelineRun = &tektonv1.PipelineRun{
+				ObjectMeta: v1.ObjectMeta{
+					GenerateName: prefix + "-",
+					Namespace:    namespace,
+					Labels: map[string]string{
+						"pipelines.appstudio.openshift.io/type": "build",
+					},
+					Annotations: map[string]string{},
+				},
+				Spec: tektonv1.PipelineRunSpec{},
+			}
+			newPipelineRun = pipelineRun.DeepCopy()
+		})
+
+		It("should ignore creation events", func() {
+			contextEvent := event.CreateEvent{
+				Object: pipelineRun,
+			}
+			Expect(instance.Create(contextEvent)).To(BeFalse())
+		})
+		It("should ignore deleting events", func() {
+			contextEvent := event.DeleteEvent{
+				Object: pipelineRun,
+			}
+			Expect(instance.Delete(contextEvent)).To(BeFalse())
+		})
+
+		It("should ignore generic events", func() {
+			contextEvent := event.GenericEvent{
+				Object: pipelineRun,
+			}
+			Expect(instance.Generic(contextEvent)).To(BeFalse())
+		})
+
+		It("should return false for an update event in which the build PLR has not finished", func() {
+			contextEvent := event.UpdateEvent{
+				ObjectOld: pipelineRun,
+				ObjectNew: newPipelineRun,
+			}
+			Expect(instance.Update(contextEvent)).To(BeFalse())
+		})
+
+		It("should return true for an update event in which the build PLR failed", func() {
+			newPipelineRun.Status.SetCondition(&apis.Condition{
+				Type:   apis.ConditionSucceeded,
+				Status: "False",
+			})
+			newPipelineRun.Annotations["chains.tekton.dev/signed"] = "true"
+			contextEvent := event.UpdateEvent{
+				ObjectOld: pipelineRun,
+				ObjectNew: newPipelineRun,
+			}
+			Expect(instance.Update(contextEvent)).To(BeTrue())
+		})
+
+		It("should return false for an update event in which the build PLR succeeded", func() {
+			newPipelineRun.Status.SetCondition(&apis.Condition{
+				Type:   apis.ConditionSucceeded,
+				Status: "True",
+			})
+			newPipelineRun.Annotations["chains.tekton.dev/signed"] = "true"
+			contextEvent := event.UpdateEvent{
+				ObjectOld: pipelineRun,
+				ObjectNew: newPipelineRun,
+			}
 			Expect(instance.Update(contextEvent)).To(BeFalse())
 		})
 	})

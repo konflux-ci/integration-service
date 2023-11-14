@@ -33,6 +33,7 @@ import (
 	"github.com/redhat-appstudio/operator-toolkit/metadata"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
 // Adapter holds the objects needed to reconcile a build PipelineRun.
@@ -64,12 +65,16 @@ func NewAdapter(pipelineRun *tektonv1.PipelineRun, component *applicationapiv1al
 // to the build PipelineRun being processed exists. Otherwise, it will create a new pipeline Snapshot.
 func (a *Adapter) EnsureSnapshotExists() (controller.OperationResult, error) {
 	if !h.HasPipelineRunSucceeded(a.pipelineRun) {
+		if h.HasPipelineRunFinished(a.pipelineRun) {
+			// The pipeline run  has failed
+			return a.removeFinalizerAndContinueProcessing()
+		}
+		// The build pipeline run has not finished yet
 		return controller.ContinueProcessing()
 	}
 
 	if a.component == nil {
-		a.logger.Info("The build pipelineRun does not have any component associated with it, will not create a new Snapshot.")
-		return controller.ContinueProcessing()
+		return a.removeFinalizerAndContinueProcessing()
 	}
 
 	isLatest, err := a.isLatestSucceededBuildPipelineRun()
@@ -81,7 +86,7 @@ func (a *Adapter) EnsureSnapshotExists() (controller.OperationResult, error) {
 		// this prevents deploying older pipeline run over new deployment
 		a.logger.Info("The pipelineRun is not the latest successful build pipelineRun for the component, skipping creation of a new Snapshot ",
 			"component.Name", a.component.Name)
-		return controller.ContinueProcessing()
+		return a.removeFinalizerAndContinueProcessing()
 	}
 
 	expectedSnapshot, err := a.prepareSnapshotForPipelineRun(a.pipelineRun, a.component, a.application)
@@ -108,7 +113,7 @@ func (a *Adapter) EnsureSnapshotExists() (controller.OperationResult, error) {
 				return controller.RequeueWithError(err)
 			}
 		}
-		return controller.ContinueProcessing()
+		return a.removeFinalizerAndContinueProcessing()
 	}
 
 	err = a.client.Create(a.context, expectedSnapshot)
@@ -126,6 +131,20 @@ func (a *Adapter) EnsureSnapshotExists() (controller.OperationResult, error) {
 	if err != nil {
 		a.logger.Error(err, "Failed to update the build pipelineRun with new annotations",
 			"pipelineRun.Name", a.pipelineRun.Name)
+		return controller.RequeueWithError(err)
+	}
+
+	return a.removeFinalizerAndContinueProcessing()
+}
+
+func (a *Adapter) EnsurePipelineIsFinalized() (controller.OperationResult, error) {
+	if h.HasPipelineRunFinished(a.pipelineRun) || controllerutil.ContainsFinalizer(a.pipelineRun, h.IntegrationPipelineRunFinalizer) {
+		return controller.ContinueProcessing()
+	}
+
+	err := h.AddFinalizerToPipelineRun(a.client, a.logger, a.context, a.pipelineRun, h.IntegrationPipelineRunFinalizer)
+	if err != nil {
+		a.logger.Error(err, fmt.Sprintf("Could not add finalizer %s to build pipeline %s", h.IntegrationPipelineRunFinalizer, a.pipelineRun.Name))
 		return controller.RequeueWithError(err)
 	}
 
@@ -273,4 +292,13 @@ func (a *Adapter) annotateBuildPipelineRunWithSnapshot(pipelineRun *tektonv1.Pip
 	a.logger.LogAuditEvent("Updated build pipelineRun", pipelineRun, h.LogActionUpdate,
 		"snapshot.Name", snapshot.Name)
 	return pipelineRun, nil
+}
+
+func (a *Adapter) removeFinalizerAndContinueProcessing() (controller.OperationResult, error) {
+	if !controllerutil.ContainsFinalizer(a.pipelineRun, h.IntegrationPipelineRunFinalizer) {
+		return controller.ContinueProcessing()
+	}
+
+	err := h.RemoveFinalizerFromPipelineRun(a.client, a.logger, a.context, a.pipelineRun, h.IntegrationPipelineRunFinalizer)
+	return controller.RequeueOnErrorOrContinue(err)
 }

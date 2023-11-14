@@ -19,6 +19,7 @@ package buildpipeline
 import (
 	"context"
 	"fmt"
+
 	"github.com/redhat-appstudio/integration-service/cache"
 
 	"github.com/go-logr/logr"
@@ -106,12 +107,14 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	adapter := NewAdapter(pipelineRun, component, application, logger, loader, r.Client, ctx)
 
 	return controller.ReconcileHandler([]controller.Operation{
+		adapter.EnsurePipelineIsFinalized,
 		adapter.EnsureSnapshotExists,
 	})
 }
 
 // AdapterInterface is an interface defining all the operations that should be defined in an Integration adapter.
 type AdapterInterface interface {
+	EnsurePipelineIsFinalized() (controller.OperationResult, error)
 	EnsureSnapshotExists() (controller.OperationResult, error)
 }
 
@@ -137,6 +140,8 @@ func setupControllerWithManager(manager ctrl.Manager, controller *Reconciler) er
 	return ctrl.NewControllerManagedBy(manager).
 		For(&tektonv1.PipelineRun{}).
 		WithEventFilter(predicate.Or(
-			tekton.BuildPipelineRunSignedAndSucceededPredicate())).
+			tekton.BuildPipelineRunSignedAndSucceededPredicate(),
+			tekton.BuildPipelineRunFailedPredicate(),
+			tekton.BuildPipelineRunCreatedPredicate())).
 		Complete(controller)
 }

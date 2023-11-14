@@ -65,3 +65,43 @@ func BuildPipelineRunSignedAndSucceededPredicate() predicate.Predicate {
 		},
 	}
 }
+
+// BuildPipelineRunFailedPredicate returns a predicate which filters out all objects except Build
+// PipelineRuns which have finished and have failed.
+func BuildPipelineRunFailedPredicate() predicate.Predicate {
+	return predicate.Funcs{
+		CreateFunc: func(createEvent event.CreateEvent) bool {
+			return false
+		},
+		DeleteFunc: func(deleteEvent event.DeleteEvent) bool {
+			return false
+		},
+		GenericFunc: func(genericEvent event.GenericEvent) bool {
+			return false
+		},
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			return IsBuildPipelineRun(e.ObjectNew) &&
+				isChainsDoneWithPipelineRun(e.ObjectNew) &&
+				!helpers.HasPipelineRunSucceeded(e.ObjectNew)
+		},
+	}
+}
+
+// BuildPipelineRunCreatedPredicate returns a predicate which filters out all objects except
+// Build PipelineRuns which have been created
+func BuildPipelineRunCreatedPredicate() predicate.Predicate {
+	return predicate.Funcs{
+		CreateFunc: func(createEvent event.CreateEvent) bool {
+			return IsBuildPipelineRun(createEvent.Object)
+		},
+		DeleteFunc: func(deleteEvent event.DeleteEvent) bool {
+			return false
+		},
+		GenericFunc: func(genericEvent event.GenericEvent) bool {
+			return false
+		},
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			return false
+		},
+	}
+}

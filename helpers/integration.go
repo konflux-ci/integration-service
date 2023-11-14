@@ -423,3 +423,19 @@ func RemoveFinalizerFromPipelineRun(adapterClient client.Client, logger Integrat
 
 	return nil
 }
+
+// AddFinalizerToPipelineRun adds the finalizer to the PipelineRun.
+// If finalizer was not added successfully, a non-nil error is returned.
+func AddFinalizerToPipelineRun(adapterClient client.Client, logger IntegrationLogger, ctx context.Context, pipelineRun *tektonv1.PipelineRun, finalizer string) error {
+	patch := client.MergeFrom(pipelineRun.DeepCopy())
+	if ok := controllerutil.AddFinalizer(pipelineRun, finalizer); ok {
+		err := adapterClient.Patch(ctx, pipelineRun, patch)
+		if err != nil {
+			return fmt.Errorf("error occurred while patching the updated PipelineRun after finalizer addition: %w", err)
+		}
+
+		logger.LogAuditEvent("Added Finalizer to the Integration PipelineRun", pipelineRun, LogActionUpdate, "finalizer", finalizer)
+	}
+
+	return nil
+}
