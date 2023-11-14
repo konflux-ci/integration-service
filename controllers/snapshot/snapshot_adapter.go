@@ -18,6 +18,7 @@ package snapshot
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"reflect"
 	"strings"
@@ -306,6 +307,19 @@ func (a *Adapter) EnsureCreationOfEphemeralEnvironments() (controller.OperationR
 				a.logger.Error(err, "environment doesn't exist in the same namespace as integrationScenario at all, try again after creating environment",
 					"integrationTestScenario.Name", integrationTestScenario.Name)
 				return controller.StopProcessing()
+			}
+			if clienterrors.IsInvalid(err) {
+
+				if !gitops.IsSnapshotMarkedAsFailed(a.snapshot) {
+					errKind, errName := GetDetailsFromStatusError(err)
+					a.logger.Error(err, fmt.Sprintf("Resource %s (%s) referenced by integrationTestScenario is invalid", errName, errKind), "integrationTestScenario.Name", integrationTestScenario.Name)
+					_, err = gitops.MarkSnapshotAsFailed(a.client, a.context, a.snapshot, fmt.Sprintf("Resource %s (%s) associated with integrationTestScenario %s is invalid: %s.", errName, errKind, integrationTestScenario.Name, err))
+					if err != nil {
+						a.logger.Error(err, "Failed to Update Snapshot status")
+						return controller.RequeueWithError(err)
+					}
+					return controller.StopProcessing()
+				}
 			}
 			return controller.RequeueWithError(fmt.Errorf("failed to ensure existence of the environment for scenario %s: %w", integrationTestScenario.Name, err))
 		}
@@ -879,4 +893,17 @@ func (a *Adapter) writeIntegrationTestStatusAtError(sits *intgteststat.SnapshotI
 func shouldScenarioRunInEphemeralEnv(scenario *v1beta1.IntegrationTestScenario) bool {
 	// non-empty environment defined in scenario resource means to run in ephemeral env
 	return !reflect.ValueOf(scenario.Spec.Environment).IsZero()
+}
+
+func GetDetailsFromStatusError(err error) (string, string) {
+	var (
+		errKind   string = "<unknown>"
+		errName   string = "<unknown>"
+		statusErr *clienterrors.StatusError
+	)
+	if ok := errors.As(err, &statusErr); ok {
+		errKind = statusErr.Status().Details.Kind
+		errName = statusErr.Status().Details.Name
+	}
+	return errKind, errName
 }
