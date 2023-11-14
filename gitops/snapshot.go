@@ -608,7 +608,7 @@ func PrepareSnapshot(adapterClient client.Client, ctx context.Context, applicati
 		// We omit this not-yet-built component from the snapshot rather than
 		// including a component that is incomplete.
 		if containerImage == "" {
-			log.Error(nil, "component cannot be added to snapshot for application due to missing containerImage", "component.Name", applicationComponent.Name)
+			log.Info("component cannot be added to snapshot for application due to missing containerImage", "component.Name", applicationComponent.Name)
 			continue
 		}
 		// if the containerImage doesn't have a valid digest, the component
