@@ -19,6 +19,7 @@ package gitops_test
 import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	. "github.com/onsi/gomega/gstruct"
 
 	"time"
 
@@ -463,6 +464,55 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 		allSnapshots := &[]applicationapiv1alpha1.Snapshot{*hasSnapshot}
 		existingSnapshot := gitops.FindMatchingSnapshot(hasApp, allSnapshots, hasSnapshot)
 		Expect(existingSnapshot.Name).To(Equal(hasSnapshot.Name))
+	})
+
+	Context("GetIntegrationTestRunLabelValue tests", func() {
+
+		It("snapshot has no label defined", func() {
+			_, ok := gitops.GetIntegrationTestRunLabelValue(*hasSnapshot)
+			Expect(ok).To(BeFalse())
+		})
+
+		It("snaphost has label defined", func() {
+			testScenario := "test-scenario"
+			hasSnapshot.Labels[gitops.SnapshotIntegrationTestRun] = testScenario
+			val, ok := gitops.GetIntegrationTestRunLabelValue(*hasSnapshot)
+			Expect(ok).To(BeTrue())
+			Expect(val).To(Equal(testScenario))
+		})
+	})
+
+	Context("RemoveIntegrationTestRerunLabel tests", func() {
+
+		It("won't fail if re-run label is not present", func() {
+			err := gitops.RemoveIntegrationTestRerunLabel(k8sClient, ctx, hasSnapshot)
+			Expect(err).To(Succeed())
+		})
+
+		When("Snapshot has re-run label", func() {
+			testScenario := "test-scenario"
+			var (
+				snapshotRerun *applicationapiv1alpha1.Snapshot
+			)
+
+			BeforeEach(func() {
+				// cannot create real object, reconciliation would just fetch it and process it
+				// rerun label would be removed
+				snapshotRerun = hasSnapshot.DeepCopy()
+				snapshotRerun.Labels[gitops.SnapshotIntegrationTestRun] = testScenario
+			})
+
+			It("removes re-run label from snapshot and saves result into DB", func() {
+				m := MatchKeys(IgnoreExtras, Keys{
+					gitops.SnapshotIntegrationTestRun: Equal(testScenario),
+				})
+				Expect(snapshotRerun.GetLabels()).Should(m, "have re-run label")
+				err := gitops.RemoveIntegrationTestRerunLabel(k8sClient, ctx, snapshotRerun)
+				Expect(err).To(Succeed())
+				Expect(snapshotRerun.GetLabels()).ShouldNot(m, "shouldn't have re-run label")
+			})
+		})
+
 	})
 
 })

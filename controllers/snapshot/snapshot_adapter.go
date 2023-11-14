@@ -22,6 +22,7 @@ import (
 	"reflect"
 	"strings"
 
+	clienterrors "k8s.io/apimachinery/pkg/api/errors"
 	ctrl "sigs.k8s.io/controller-runtime"
 
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
@@ -73,6 +74,92 @@ func scenariosNamesToList(integrationTestScenarions *[]v1beta1.IntegrationTestSc
 		result = append(result, v.Name)
 	}
 	return &result
+}
+
+// EnsureRerunPipelineRunsExist is responsible for recreating integration test pipelines triggered by users
+func (a *Adapter) EnsureRerunPipelineRunsExist() (controller.OperationResult, error) {
+
+	scenarioName, ok := gitops.GetIntegrationTestRunLabelValue(*a.snapshot)
+	if !ok {
+		// no test rerun triggered
+		return controller.ContinueProcessing()
+	}
+	integrationTestScenario, err := a.loader.GetScenario(a.client, a.context, scenarioName, a.application.Namespace)
+
+	if err != nil {
+		if clienterrors.IsNotFound(err) {
+			a.logger.Error(err, "scenario for integration test re-run not found", "scenario", scenarioName)
+			// scenario doesn't exist just remove label and continue
+			if err = gitops.RemoveIntegrationTestRerunLabel(a.client, a.context, a.snapshot); err != nil {
+				return controller.RequeueWithError(err)
+			}
+			return controller.ContinueProcessing()
+		}
+		return controller.RequeueWithError(fmt.Errorf("failed to fetch requested scenario %s: %w", scenarioName, err))
+	}
+
+	a.logger.Info("Re-running integration test for scenario", "scenario", scenarioName)
+
+	testStatuses, err := gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(a.snapshot)
+	if err != nil {
+		return controller.RequeueWithError(err)
+	}
+
+	integrationTestScenarioStatus, ok := testStatuses.GetScenarioStatus(integrationTestScenario.Name)
+	if ok && (integrationTestScenarioStatus.Status == intgteststat.IntegrationTestStatusInProgress ||
+		integrationTestScenarioStatus.Status == intgteststat.IntegrationTestStatusPending) {
+		a.logger.Info(fmt.Sprintf("Found existing test in %s status, skipping re-run", integrationTestScenarioStatus.Status),
+			"integrationTestScenario.Name", integrationTestScenario.Name)
+		if err = gitops.RemoveIntegrationTestRerunLabel(a.client, a.context, a.snapshot); err != nil {
+			return controller.RequeueWithError(err)
+		}
+		return controller.ContinueProcessing()
+	}
+	testStatuses.ResetStatus(scenarioName)
+
+	if shouldScenarioRunInEphemeralEnv(integrationTestScenario) {
+		allEnvironments, err := a.loader.GetAllEnvironments(a.client, a.context, a.application)
+		if err != nil {
+			a.logger.Error(err, "Failed to get all environments.")
+			return controller.RequeueWithError(err)
+		}
+
+		_, err = a.ensureEphemeralEnvironmentForScenarioExists(integrationTestScenario, testStatuses, allEnvironments)
+		if err != nil {
+			if h.IsEnvironmentNotInNamespaceError(err) {
+				a.logger.Error(err, "environment doesn't exist in the same namespace as integrationScenario at all, try again after creating environment",
+					"integrationTestScenario.Name", integrationTestScenario.Name)
+				// remove label to prevent indefinite failures, users must restart test manually again
+				if err = gitops.RemoveIntegrationTestRerunLabel(a.client, a.context, a.snapshot); err != nil {
+					return controller.RequeueWithError(err)
+				}
+				return controller.StopProcessing()
+			}
+			return controller.RequeueWithError(fmt.Errorf("failed to ensure existence of the environment for scenario %s: %w", integrationTestScenario.Name, err))
+		}
+
+	} else {
+
+		pipelineRun, err := a.createIntegrationPipelineRun(a.application, integrationTestScenario, a.snapshot)
+		if err != nil {
+			a.logger.Error(err, "Failed to create pipelineRun for snapshot and scenario")
+			return controller.RequeueWithError(err)
+		}
+		testStatuses.UpdateTestStatusIfChanged(
+			integrationTestScenario.Name, intgteststat.IntegrationTestStatusInProgress,
+			fmt.Sprintf("IntegrationTestScenario pipeline '%s' has been created", pipelineRun.Name))
+
+	}
+
+	if err = gitops.WriteIntegrationTestStatusesIntoSnapshot(a.snapshot, testStatuses, a.client, a.context); err != nil {
+		return controller.RequeueWithError(err)
+	}
+
+	if err = gitops.RemoveIntegrationTestRerunLabel(a.client, a.context, a.snapshot); err != nil {
+		return controller.RequeueWithError(err)
+	}
+
+	return controller.ContinueProcessing()
 }
 
 // EnsureStaticIntegrationPipelineRunsExist is an operation that will ensure that all Integration pipeline runs
