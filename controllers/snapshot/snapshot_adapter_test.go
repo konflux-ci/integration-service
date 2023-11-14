@@ -1502,6 +1502,60 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 
 	})
 
+	When("An environment defined in ITS is invalid", func() {
+		var (
+			buf bytes.Buffer
+		)
+
+		BeforeAll(func() {
+
+			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+			adapter = NewAdapter(hasSnapshotPR, hasApp, hasComp, log, loader.NewMockLoader(), k8sClient, ctx)
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: loader.ApplicationContextKey,
+					Resource:   hasApp,
+				},
+				{
+					ContextKey: loader.ComponentContextKey,
+					Resource:   hasComp,
+				},
+				{
+					ContextKey: loader.SnapshotContextKey,
+					Resource:   hasSnapshotPR,
+				},
+				{
+					ContextKey: loader.EnvironmentContextKey,
+					Resource:   env,
+				},
+				{
+					ContextKey: loader.SnapshotEnvironmentBindingContextKey,
+					Resource:   nil,
+				},
+				{
+					ContextKey: loader.ApplicationComponentsContextKey,
+					Resource:   []applicationapiv1alpha1.Component{*hasComp},
+				},
+				{
+					ContextKey: loader.AllIntegrationTestScenariosContextKey,
+					Resource:   []v1beta1.IntegrationTestScenario{*integrationTestScenario},
+				},
+				{
+					ContextKey: loader.DeploymentTargetClassContextKey,
+					Resource:   deploymentTargetClass,
+					Err:        errors.NewInvalid(deploymentTargetClass.GetObjectKind().GroupVersionKind().GroupKind(), "invalid environment", nil),
+				},
+			})
+		})
+
+		It("Ensure stopping processing when environment defined in ITS is invalid", func() {
+			result, err := adapter.EnsureCreationOfEphemeralEnvironments()
+			Expect(result.CancelRequest && !result.RequeueRequest && err == nil).To(BeTrue())
+			expectedLogEntry := "is invalid"
+			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
+		})
+	})
+
 	Describe("EnsureRerunPipelineRunsExist", func() {
 
 		When("manual re-run of scenario using static env is trigerred", func() {
