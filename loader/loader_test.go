@@ -725,6 +725,14 @@ var _ = Describe("Loader", Ordered, func() {
 			Expect(autoReleasePlans).ToNot(BeNil())
 			Expect(len(*autoReleasePlans)).To(Equal(0))
 		})
+
+		It("Can fetch integration test scenario", func() {
+			fetchedScenario, err := loader.GetScenario(k8sClient, ctx, integrationTestScenario.Name, integrationTestScenario.Namespace)
+			Expect(err).To(Succeed())
+			Expect(fetchedScenario.Name).To(Equal(integrationTestScenario.Name))
+			Expect(fetchedScenario.Namespace).To(Equal(integrationTestScenario.Namespace))
+			Expect(fetchedScenario.Spec).To(Equal(integrationTestScenario.Spec))
+		})
 	})
 
 })

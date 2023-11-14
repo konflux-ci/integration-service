@@ -50,6 +50,7 @@ const (
 	RequiredIntegrationTestScenariosContextKey
 	AllSnapshotsContextKey
 	AutoReleasePlansContextKey
+	GetScenarioContextKey
 )
 
 func NewMockLoader() ObjectLoader {
@@ -225,4 +226,12 @@ func (l *mockLoader) GetAutoReleasePlansForApplication(c client.Client, ctx cont
 	}
 	autoReleasePlans, err := toolkit.GetMockedResourceAndErrorFromContext(ctx, AutoReleasePlansContextKey, []releasev1alpha1.ReleasePlan{})
 	return &autoReleasePlans, err
+}
+
+// GetScenario returns the resource and error passed as values of the context.
+func (l *mockLoader) GetScenario(c client.Client, ctx context.Context, name, namespace string) (*v1beta1.IntegrationTestScenario, error) {
+	if ctx.Value(GetScenarioContextKey) == nil {
+		return l.loader.GetScenario(c, ctx, name, namespace)
+	}
+	return toolkit.GetMockedResourceAndErrorFromContext(ctx, GetScenarioContextKey, &v1beta1.IntegrationTestScenario{})
 }

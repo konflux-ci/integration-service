@@ -8,7 +8,7 @@ flowchart TD
     classDef Amber fill:#FFDEAD;
     classDef Green fill:#BDFFA4;
 
-  predicate((PREDICATE: <br>Snapshot got created OR <br> changed to Finished))
+  predicate((PREDICATE: <br>Snapshot got created OR <br> changed to Finished OR <br> re-run label added))
 
   %%%%%%%%%%%%%%%%%%%%%%% Drawing EnsureStaticIntegrationPipelineRunsExist() function
 
@@ -135,6 +135,34 @@ flowchart TD
   encountered_error5         --Yes--> mark_snapshot_Invalid5
   encountered_error5         --No-->  mark_snapshot_deployed
   mark_snapshot_deployed     -->      continue_processing5
+
+
+  %%%%%%%%%%%%%%%%%%%%%%% Drawing EnsureRerunPipelineRunsExist() function
+
+  %% Node definitions
+  ensure6(Process further if: Snapshot has re-run label added by a user)
+  if_scenario_exist{Does scenario requested by user exist?}
+  if_scenario_is_for_ephmeral_env{Should scenario run in ephemeral environment?}
+  if_source_env_not_found{Source environment to copy from is not found?}
+  remove_rerun_label(Remove rerun label)
+  remove_rerun_label_and_stop(Remove rerun label AND stop processing of request)
+  rerun_static_env(Rerun static env pipeline for scenario)
+  rerun_ephemeral_env(Create ephemeral SEB to run scenario)
+  continue_processing6(Controller continues processing...)
+
+  %% Node connections
+  predicate                       ---->    |"EnsureRerunPipelineRunsExist()"|ensure6
+  ensure6                         -->      if_scenario_exist
+  if_scenario_exist               --Yes--> if_scenario_is_for_ephmeral_env
+  if_scenario_exist               --No-->  remove_rerun_label
+  remove_rerun_label              ---->    continue_processing6
+  if_scenario_is_for_ephmeral_env --Yes--> rerun_ephemeral_env
+  if_scenario_is_for_ephmeral_env --No-->  rerun_static_env
+  rerun_static_env                ---->    remove_rerun_label
+  rerun_ephemeral_env             ---->    if_source_env_not_found
+  if_source_env_not_found         --Yes--> remove_rerun_label_and_stop
+  if_source_env_not_found         --No-->  remove_rerun_label
+
 
   %% Assigning styles to nodes
   class predicate Amber;
