@@ -33,6 +33,7 @@ import (
 var _ = Describe("Metrics Integration", Ordered, func() {
 	BeforeAll(func() {
 		metrics.Registry.Unregister(SnapshotCreatedToPipelineRunStartedSeconds)
+		metrics.Registry.Unregister(SnapshotCreatedToPipelineRunWithEphemeralEnvStartedSeconds)
 		metrics.Registry.Unregister(SnapshotConcurrentTotal)
 		metrics.Registry.Unregister(SnapshotDurationSeconds)
 	})
@@ -41,6 +42,10 @@ var _ = Describe("Metrics Integration", Ordered, func() {
 		SnapshotPipelineRunStartedSecondsHeader = inputHeader{
 			Name: "snapshot_created_to_pipelinerun_started_seconds",
 			Help: "Time duration from the moment the snapshot resource was created till a integration pipelineRun is started",
+		}
+		SnapshotPipelineRunWithEphemeralEnvStartedSecondsHeader = inputHeader{
+			Name: "snapshot_created_to_pipelinerun_with_ephemeral_env_started_seconds",
+			Help: "Time duration from the moment the snapshot resource was created till a integration pipelineRun is started for pipelines running in an ephemeral environment",
 		}
 		SnapshotDurationSecondsHeader = inputHeader{
 			Name: "snapshot_attempt_duration_seconds",
@@ -101,6 +106,46 @@ var _ = Describe("Metrics Integration", Ordered, func() {
 			Expect(testutil.CollectAndCompare(SnapshotCreatedToPipelineRunStartedSeconds, strings.NewReader(readerData))).To(Succeed())
 		})
 	})
+
+	Context("When RegisterPipelineRunWithEphemeralEnvStarted is called", func() {
+		// As we need to share metrics within the Context, we need to use "per Context" '(Before|After)All'
+		BeforeAll(func() {
+			// Mocking metrics to be able to resent data with each tests. Otherwise, we would have to take previous tests into account.
+			//
+			// 'Help' can't be overridden due to 'https://github.com/prometheus/client_golang/blob/83d56b1144a0c2eb10d399e7abbae3333bebc463/prometheus/registry.go#L314'
+			SnapshotCreatedToPipelineRunWithEphemeralEnvStartedSeconds = prometheus.NewHistogram(
+				prometheus.HistogramOpts{
+					Name:    "snapshot_created_to_pipelinerun_with_ephemeral_env_started_seconds",
+					Help:    "Time duration from the moment the snapshot resource was created till a integration pipelineRun is started for pipelines running in an ephemeral environment",
+					Buckets: []float64{1, 5, 10, 30},
+				},
+			)
+		})
+
+		AfterAll(func() {
+			metrics.Registry.Unregister(SnapshotCreatedToPipelineRunWithEphemeralEnvStartedSeconds)
+		})
+
+		// Input seconds for duration of operations less or equal to the following buckets of 1, 5, 10 and 30 seconds
+		inputSeconds := []float64{1, 3, 8, 15}
+		elapsedSeconds := 0.0
+
+		It("registers a new observation for 'snapshot_created_to_pipelinerun_with_ephemeral_env_started_seconds' with the elapsed time from the moment"+
+			"the snapshot is created to first integration pipelineRun is started.", func() {
+			creationTime := metav1.Time{}
+			for _, seconds := range inputSeconds {
+				startTime := metav1.NewTime(creationTime.Add(time.Second * time.Duration(seconds)))
+				elapsedSeconds += seconds
+				RegisterPipelineRunWithEphemeralEnvStarted(creationTime, startTime)
+			}
+			// Defined buckets for SnapshotCreatedToPipelineRunWithEphemeralEnvStartedSeconds
+			timeBuckets := []string{"1", "5", "10", "30"}
+			data := []int{1, 2, 3, 4}
+			readerData := createHistogramReader(SnapshotPipelineRunWithEphemeralEnvStartedSecondsHeader, timeBuckets, data, "", elapsedSeconds, len(inputSeconds))
+			Expect(testutil.CollectAndCompare(SnapshotCreatedToPipelineRunWithEphemeralEnvStartedSeconds, strings.NewReader(readerData))).To(Succeed())
+		})
+	})
+
 	Context("When RegisterCompletedSnapshot is called", func() {
 		BeforeAll(func() {
 			SnapshotCreatedToPipelineRunStartedSeconds = prometheus.NewHistogram(
