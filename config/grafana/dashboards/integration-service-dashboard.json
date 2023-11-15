@@ -431,6 +431,209 @@
       "timeShift": null
     },
     {
+      "id": 31,
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 17
+      },
+      "type": "graph",
+      "title": "#2b Time to Start PipelineRun With Ephemeral Env",
+      "thresholds": [
+        {
+          "$$hashKey": "object:1475",
+          "colorMode": "critical",
+          "fill": true,
+          "line": true,
+          "op": "gt",
+          "value": 5,
+          "yaxis": "left"
+        }
+      ],
+      "pluginVersion": "9.1.6",
+      "description": "Measure the time between ApplicationSnapshot creation to pipelineRun creation when the pipelineRun has an ephemeral environment. \n",
+      "legend": {
+        "avg": false,
+        "current": false,
+        "max": false,
+        "min": false,
+        "show": true,
+        "total": false,
+        "values": false
+      },
+      "aliasColors": {},
+      "dashLength": 10,
+      "fill": 1,
+      "lines": true,
+      "linewidth": 1,
+      "nullPointMode": "null",
+      "options": {
+        "alertThreshold": true
+      },
+      "pointradius": 2,
+      "renderer": "flot",
+      "seriesOverrides": [],
+      "spaceLength": 10,
+      "targets": [
+        {
+          "exemplar": true,
+          "expr": "histogram_quantile(0.90, sum(rate(snapshot_created_to_pipelinerun_with_ephemeral_env_started_seconds_bucket[$__rate_interval])) by (le))",
+          "interval": "",
+          "legendFormat": "percentile90",
+          "refId": "A",
+          "datasource": {
+            "uid": "064f2b18-a714-4631-997b-1fe80bb695b5",
+            "type": "prometheus"
+          },
+          "editorMode": "code",
+          "range": true
+        }
+      ],
+      "timeRegions": [],
+      "tooltip": {
+        "shared": true,
+        "sort": 0,
+        "value_type": "individual"
+      },
+      "xaxis": {
+        "buckets": null,
+        "mode": "time",
+        "name": null,
+        "show": true,
+        "values": []
+      },
+      "yaxes": [
+        {
+          "$$hashKey": "object:1283",
+          "format": "short",
+          "label": "sec",
+          "logBase": 1,
+          "max": null,
+          "min": null,
+          "show": true
+        },
+        {
+          "$$hashKey": "object:1284",
+          "format": "short",
+          "label": null,
+          "logBase": 1,
+          "max": null,
+          "min": null,
+          "show": true
+        }
+      ],
+      "yaxis": {
+        "align": false,
+        "alignLevel": null
+      },
+      "bars": false,
+      "dashes": false,
+      "fillGradient": 0,
+      "hiddenSeries": false,
+      "percentage": false,
+      "points": false,
+      "stack": false,
+      "steppedLine": false,
+      "timeFrom": null,
+      "timeShift": null
+    },
+    {
+      "id": 32,
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 17
+      },
+      "type": "timeseries",
+      "title": "[Violations] #2b Time to Start PipelineRun with Ephemeral Environment",
+      "pluginVersion": "9.1.6",
+      "description": "90% of requests must take less than 5sec",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "bars",
+            "lineInterpolation": "linear",
+            "barAlignment": 0,
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "spanNulls": false,
+            "showPoints": "never",
+            "pointSize": 5,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "axisPlacement": "auto",
+            "axisLabel": "%",
+            "axisColorMode": "text",
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "axisCenteredZero": false,
+            "hideFrom": {
+              "tooltip": false,
+              "viz": false,
+              "legend": false
+            },
+            "thresholdsStyle": {
+              "mode": "line+area"
+            }
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "transparent",
+                "value": 90
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        },
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": []
+        }
+      },
+      "targets": [
+        {
+          "editorMode": "code",
+          "exemplar": true,
+          "expr": "sum(rate(snapshot_created_to_pipelinerun_with_ephemeral_env_started_seconds_bucket{le=\"5\"}[$__rate_interval])) by (job)\n/\nsum(rate(snapshot_created_to_pipelinerun_with_ephemeral_env_started_seconds_count[$__rate_interval]) > 0) by (job)\n*100",
+          "interval": "",
+          "legendFormat": "% of requests within required latency time",
+          "range": true,
+          "refId": "A",
+          "datasource": {
+            "uid": "064f2b18-a714-4631-997b-1fe80bb695b5",
+            "type": "prometheus"
+          }
+        }
+      ],
+      "timeFrom": null,
+      "timeShift": null
+    },
+    {
       "id": 23,
       "gridPos": {
         "h": 8,
