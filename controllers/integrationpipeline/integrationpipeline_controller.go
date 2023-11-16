@@ -19,7 +19,9 @@ package integrationpipeline
 import (
 	"context"
 	"fmt"
+	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/cache"
+	"k8s.io/client-go/util/retry"
 
 	"github.com/go-logr/logr"
 	"github.com/redhat-appstudio/integration-service/helpers"
@@ -83,6 +85,20 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{}, err
 	}
 
+	var snapshot *applicationapiv1alpha1.Snapshot
+	err = retry.OnError(retry.DefaultRetry, func(_ error) bool { return true }, func() error {
+		snapshot, err = loader.GetSnapshotFromPipelineRun(r.Client, ctx, pipelineRun)
+		return err
+	})
+	if err != nil {
+		if errors.IsNotFound(err) {
+			if err := helpers.RemoveFinalizerFromPipelineRun(r.Client, logger, ctx, pipelineRun, helpers.IntegrationPipelineRunFinalizer); err != nil {
+				return ctrl.Result{}, err
+			}
+		}
+		return helpers.HandleLoaderError(logger, err, "Snapshot", "PipelineRun")
+	}
+
 	application, err := loader.GetApplicationFromPipelineRun(r.Client, ctx, pipelineRun)
 	if err != nil {
 		logger.Error(err, "Failed to get Application from the integration pipelineRun",
@@ -97,7 +113,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	}
 	logger = logger.WithApp(*application)
 
-	adapter := NewAdapter(pipelineRun, application, logger, loader, r.Client, ctx)
+	adapter := NewAdapter(pipelineRun, application, snapshot, logger, loader, r.Client, ctx)
 
 	return controller.ReconcileHandler([]controller.Operation{
 		adapter.EnsureStatusReportedInSnapshot,

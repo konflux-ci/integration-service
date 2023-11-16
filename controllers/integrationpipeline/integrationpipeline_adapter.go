@@ -39,6 +39,7 @@ import (
 type Adapter struct {
 	pipelineRun *tektonv1.PipelineRun
 	application *applicationapiv1alpha1.Application
+	snapshot    *applicationapiv1alpha1.Snapshot
 	loader      loader.ObjectLoader
 	logger      h.IntegrationLogger
 	client      client.Client
@@ -47,11 +48,12 @@ type Adapter struct {
 }
 
 // NewAdapter creates and returns an Adapter instance.
-func NewAdapter(pipelineRun *tektonv1.PipelineRun, application *applicationapiv1alpha1.Application, logger h.IntegrationLogger, loader loader.ObjectLoader, client client.Client,
+func NewAdapter(pipelineRun *tektonv1.PipelineRun, application *applicationapiv1alpha1.Application, snapshot *applicationapiv1alpha1.Snapshot, logger h.IntegrationLogger, loader loader.ObjectLoader, client client.Client,
 	context context.Context) *Adapter {
 	return &Adapter{
 		pipelineRun: pipelineRun,
 		application: application,
+		snapshot:    snapshot,
 		logger:      logger,
 		loader:      loader,
 		client:      client,
@@ -64,7 +66,6 @@ func NewAdapter(pipelineRun *tektonv1.PipelineRun, application *applicationapiv1
 // to be consumed by user
 func (a *Adapter) EnsureStatusReportedInSnapshot() (controller.OperationResult, error) {
 	var pipelinerunStatus intgteststat.IntegrationTestStatus
-	var snapshot *applicationapiv1alpha1.Snapshot
 	var detail string
 	var err error
 
@@ -72,12 +73,12 @@ func (a *Adapter) EnsureStatusReportedInSnapshot() (controller.OperationResult, 
 	// thus `RetryOnConflict` is easy solution here, given the snapshot must be loaded specifically here
 	err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
 
-		snapshot, err = a.loader.GetSnapshotFromPipelineRun(a.client, a.context, a.pipelineRun)
+		a.snapshot, err = a.loader.GetSnapshotFromPipelineRun(a.client, a.context, a.pipelineRun)
 		if err != nil {
 			return err
 		}
 
-		statuses, err := gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(snapshot)
+		statuses, err := gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(a.snapshot)
 		if err != nil {
 			return err
 		}
@@ -92,7 +93,7 @@ func (a *Adapter) EnsureStatusReportedInSnapshot() (controller.OperationResult, 
 		}
 
 		// don't return wrapped err for retries
-		err = gitops.WriteIntegrationTestStatusesIntoSnapshot(snapshot, statuses, a.client, a.context)
+		err = gitops.WriteIntegrationTestStatusesIntoSnapshot(a.snapshot, statuses, a.client, a.context)
 		return err
 	})
 	if err != nil {
@@ -102,7 +103,7 @@ func (a *Adapter) EnsureStatusReportedInSnapshot() (controller.OperationResult, 
 
 	// Remove the finalizer from Integration PLRs only if they aren't related to Snapshots created by Pull-Request event
 	// If they are related, then the statusreport controller removes the finalizers from these PLRs
-	if !gitops.IsSnapshotCreatedByPACPullRequestEvent(snapshot) && (h.HasPipelineRunFinished(a.pipelineRun) || pipelinerunStatus == intgteststat.IntegrationTestStatusDeleted) {
+	if !gitops.IsSnapshotCreatedByPACPullRequestEvent(a.snapshot) && (h.HasPipelineRunFinished(a.pipelineRun) || pipelinerunStatus == intgteststat.IntegrationTestStatusDeleted) {
 		err = h.RemoveFinalizerFromPipelineRun(a.client, a.logger, a.context, a.pipelineRun, h.IntegrationPipelineRunFinalizer)
 		if err != nil {
 			return controller.RequeueWithError(fmt.Errorf("failed to remove the finalizer: %w", err))
