@@ -17,7 +17,9 @@ limitations under the License.
 package integrationpipeline
 
 import (
+	"github.com/redhat-appstudio/integration-service/helpers"
 	"reflect"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	crwebhook "sigs.k8s.io/controller-runtime/pkg/webhook"
 	"time"
@@ -322,6 +324,34 @@ var _ = Describe("Integration PipelineController", func() {
 			err = manager.Start(ctx)
 			Expect(err).NotTo(HaveOccurred())
 		}()
+	})
+
+	It("Does not return an error if the snapshot cannot be found", func() {
+		controllerutil.AddFinalizer(integrationPipelineRun, helpers.IntegrationPipelineRunFinalizer)
+		err := k8sClient.Update(ctx, integrationPipelineRun)
+		Expect(err).To(BeNil())
+
+		err = k8sClient.Delete(ctx, hasSnapshot)
+		Eventually(func() bool {
+			err := k8sClient.Get(ctx, types.NamespacedName{
+				Namespace: hasSnapshot.ObjectMeta.Namespace,
+				Name:      hasSnapshot.ObjectMeta.Name,
+			}, hasSnapshot)
+			return err != nil
+		}).Should(BeTrue())
+		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
+
+		result, err := pipelineReconciler.Reconcile(ctx, req)
+		Expect(result).To(Equal(ctrl.Result{}))
+		Expect(err).To(BeNil())
+
+		Eventually(func() bool {
+			err := k8sClient.Get(ctx, types.NamespacedName{
+				Namespace: integrationPipelineRun.Namespace,
+				Name:      integrationPipelineRun.Name,
+			}, integrationPipelineRun)
+			return err == nil && !controllerutil.ContainsFinalizer(integrationPipelineRun, helpers.IntegrationPipelineRunFinalizer)
+		}, time.Second*20).Should(BeTrue())
 	})
 
 	When("pipelinerun has no component", func() {
