@@ -478,7 +478,7 @@
       "targets": [
         {
           "exemplar": true,
-          "expr": "histogram_quantile(0.90, sum(rate(release_latency_seconds_bucket[$__rate_interval])) by (le))",
+          "expr": "histogram_quantile(0.90, sum(rate(integration_svc_release_latency_seconds_bucket[$__rate_interval])) by (le))",
           "interval": "",
           "legendFormat": "percentile90",
           "refId": "A",
@@ -616,7 +616,7 @@
         {
           "editorMode": "code",
           "exemplar": true,
-          "expr": "sum(rate(release_latency_seconds_bucket{le=\"10\"}[$__rate_interval])) by (job) / sum(rate(release_latency_seconds_count[$__rate_interval])) by (job)*100",
+          "expr": "sum(rate(integration_svc_release_latency_seconds_bucket{le=\"10\"}[$__rate_interval])) by (job) / sum(rate(integration_svc_release_latency_seconds_count[$__rate_interval])) by (job)*100",
           "interval": "",
           "legendFormat": "% of requests within required latency time",
           "range": true,
@@ -1928,7 +1928,7 @@
       "targets": [
         {
           "exemplar": true,
-          "expr": "sum(increase(release_latency_seconds_bucket[$__interval])) by (le)",
+          "expr": "sum(increase(integration_svc_release_latency_seconds_bucket[$__interval])) by (le)",
           "format": "heatmap",
           "interval": "",
           "legendFormat": "{{le}}",

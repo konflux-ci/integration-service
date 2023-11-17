@@ -107,7 +107,7 @@ var (
 
 	ReleaseLatencySeconds = prometheus.NewHistogram(
 		prometheus.HistogramOpts{
-			Name:    "release_latency_seconds",
+			Name:    "integration_svc_release_latency_seconds",
 			Help:    "Latency between integration tests completion and release creation",
 			Buckets: []float64{0.05, 0.1, 0.5, 1, 2, 3, 4, 5, 10, 15, 30},
 		},
