@@ -40,9 +40,9 @@ func IntegrationSnapshotChangePredicate() predicate.Predicate {
 	}
 }
 
-// SnapshotIntegrationTestRerunTriggerPredicate returns a predicate which filters out all objects except
-// when label for rerunning an integration test is added.
-func SnapshotIntegrationTestRerunTriggerPredicate() predicate.Predicate {
+// SnapshotIntegrationTestRunTriggerPredicate returns a predicate which filters out all objects except
+// when label for rerunning or dry-running an integration test is added.
+func SnapshotIntegrationTestRunTriggerPredicate() predicate.Predicate {
 	return predicate.Funcs{
 		CreateFunc: func(createEvent event.CreateEvent) bool {
 			return false
@@ -54,7 +54,7 @@ func SnapshotIntegrationTestRerunTriggerPredicate() predicate.Predicate {
 			return false
 		},
 		UpdateFunc: func(e event.UpdateEvent) bool {
-			return HasSnapshotRerunLabelChanged(e.ObjectOld, e.ObjectNew)
+			return HasSnapshotRerunLabelChanged(e.ObjectOld, e.ObjectNew) || HasSnapshotDryRunLabelChanged(e.ObjectOld, e.ObjectNew)
 		},
 	}
 }

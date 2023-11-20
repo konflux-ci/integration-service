@@ -221,12 +221,14 @@ var _ = Describe("Predicates", Ordered, func() {
 		})
 	})
 
-	Context("testing SnapshotIntegrationTestRerunTriggerPredicate predicate", func() {
+	Context("testing SnapshotIntegrationTestRunTriggerPredicate predicate", func() {
 
 		var (
-			hasSnapshot             *applicationapiv1alpha1.Snapshot
-			hasSnapshotLabelAdded   *applicationapiv1alpha1.Snapshot
-			hasSnapshotLabelUpdated *applicationapiv1alpha1.Snapshot
+			hasSnapshot                   *applicationapiv1alpha1.Snapshot
+			hasSnapshotLabelAdded         *applicationapiv1alpha1.Snapshot
+			hasSnapshotLabelUpdated       *applicationapiv1alpha1.Snapshot
+			hasSnapshotDryRunLabelAdded   *applicationapiv1alpha1.Snapshot
+			hasSnapshotDryRunLabelUpdated *applicationapiv1alpha1.Snapshot
 		)
 
 		BeforeAll(func() {
@@ -255,8 +257,14 @@ var _ = Describe("Predicates", Ordered, func() {
 
 			hasSnapshotLabelUpdated = hasSnapshotLabelAdded.DeepCopy()
 			hasSnapshotLabelUpdated.Labels[gitops.SnapshotIntegrationTestRun] = "example-test-rerun-updated"
+
+			hasSnapshotDryRunLabelAdded = hasSnapshot.DeepCopy()
+			hasSnapshotDryRunLabelAdded.Labels[gitops.SnapshotIntegrationTestDryRun] = "example-dry-run"
+
+			hasSnapshotDryRunLabelUpdated = hasSnapshotDryRunLabelAdded.DeepCopy()
+			hasSnapshotDryRunLabelUpdated.Labels[gitops.SnapshotIntegrationTestDryRun] = "example-dry-run-updated"
 		})
-		instance := gitops.SnapshotIntegrationTestRerunTriggerPredicate()
+		instance := gitops.SnapshotIntegrationTestRunTriggerPredicate()
 
 		It("returns true when re-run label is added to snapshot", func() {
 			contextEvent := event.UpdateEvent{
@@ -282,10 +290,34 @@ var _ = Describe("Predicates", Ordered, func() {
 			Expect(instance.Update(contextEvent)).To(BeFalse())
 		})
 
-		It("returns false when re-run label is not present", func() {
+		It("returns false when re-run/dry-run label is not present", func() {
 			contextEvent := event.UpdateEvent{
 				ObjectOld: hasSnapshot,
 				ObjectNew: hasSnapshot,
+			}
+			Expect(instance.Update(contextEvent)).To(BeFalse())
+		})
+
+		It("returns true when dry-run label is added to snapshot", func() {
+			contextEvent := event.UpdateEvent{
+				ObjectOld: hasSnapshot,
+				ObjectNew: hasSnapshotDryRunLabelAdded,
+			}
+			Expect(instance.Update(contextEvent)).To(BeTrue())
+		})
+
+		It("returns true when dry-run label is updated", func() {
+			contextEvent := event.UpdateEvent{
+				ObjectOld: hasSnapshotDryRunLabelAdded,
+				ObjectNew: hasSnapshotDryRunLabelUpdated,
+			}
+			Expect(instance.Update(contextEvent)).To(BeTrue())
+		})
+
+		It("returns false when dry-run label is the same", func() {
+			contextEvent := event.UpdateEvent{
+				ObjectOld: hasSnapshotDryRunLabelAdded,
+				ObjectNew: hasSnapshotDryRunLabelAdded,
 			}
 			Expect(instance.Update(contextEvent)).To(BeFalse())
 		})

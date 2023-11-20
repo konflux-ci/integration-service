@@ -79,8 +79,22 @@ func scenariosNamesToList(integrationTestScenarions *[]v1beta1.IntegrationTestSc
 // EnsureRerunPipelineRunsExist is responsible for recreating integration test pipelines triggered by users
 func (a *Adapter) EnsureRerunPipelineRunsExist() (controller.OperationResult, error) {
 
-	scenarioName, ok := gitops.GetIntegrationTestRunLabelValue(*a.snapshot)
-	if !ok {
+	type LabelRemovalFunctionType func(client.Client, context.Context, *applicationapiv1alpha1.Snapshot) error
+
+	var (
+		scenarioName         string
+		ok                   bool
+		isDryRun             bool
+		labelRemovalFunction LabelRemovalFunctionType
+	)
+
+	if scenarioName, ok = gitops.GetIntegrationTestRunLabelValue(*a.snapshot); ok {
+		isDryRun = false
+		labelRemovalFunction = gitops.RemoveIntegrationTestRerunLabel
+	} else if scenarioName, ok = gitops.GetIntegrationTestDryRunLabelValue(*a.snapshot); ok {
+		isDryRun = true
+		labelRemovalFunction = gitops.RemoveIntegrationTestDryRunLabel
+	} else {
 		// no test rerun triggered
 		return controller.ContinueProcessing()
 	}
@@ -88,9 +102,9 @@ func (a *Adapter) EnsureRerunPipelineRunsExist() (controller.OperationResult, er
 
 	if err != nil {
 		if clienterrors.IsNotFound(err) {
-			a.logger.Error(err, "scenario for integration test re-run not found", "scenario", scenarioName)
+			a.logger.Error(err, "scenario for integration test re-run not found", "scenario", scenarioName, "dry-run", isDryRun)
 			// scenario doesn't exist just remove label and continue
-			if err = gitops.RemoveIntegrationTestRerunLabel(a.client, a.context, a.snapshot); err != nil {
+			if err = labelRemovalFunction(a.client, a.context, a.snapshot); err != nil {
 				return controller.RequeueWithError(err)
 			}
 			return controller.ContinueProcessing()
@@ -98,7 +112,11 @@ func (a *Adapter) EnsureRerunPipelineRunsExist() (controller.OperationResult, er
 		return controller.RequeueWithError(fmt.Errorf("failed to fetch requested scenario %s: %w", scenarioName, err))
 	}
 
-	a.logger.Info("Re-running integration test for scenario", "scenario", scenarioName)
+	if isDryRun {
+		a.logger.Info("Dry run integration test for scenario", "scenario", scenarioName)
+	} else {
+		a.logger.Info("Re-running integration test for scenario", "scenario", scenarioName)
+	}
 
 	testStatuses, err := gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(a.snapshot)
 	if err != nil {
@@ -110,12 +128,15 @@ func (a *Adapter) EnsureRerunPipelineRunsExist() (controller.OperationResult, er
 		integrationTestScenarioStatus.Status == intgteststat.IntegrationTestStatusPending) {
 		a.logger.Info(fmt.Sprintf("Found existing test in %s status, skipping re-run", integrationTestScenarioStatus.Status),
 			"integrationTestScenario.Name", integrationTestScenario.Name)
-		if err = gitops.RemoveIntegrationTestRerunLabel(a.client, a.context, a.snapshot); err != nil {
+		if err = labelRemovalFunction(a.client, a.context, a.snapshot); err != nil {
 			return controller.RequeueWithError(err)
 		}
 		return controller.ContinueProcessing()
 	}
 	testStatuses.ResetStatus(scenarioName)
+	if isDryRun {
+		testStatuses.UpdateDryRun(scenarioName, true)
+	}
 
 	if shouldScenarioRunInEphemeralEnv(integrationTestScenario) {
 		allEnvironments, err := a.loader.GetAllEnvironments(a.client, a.context, a.application)
@@ -130,7 +151,7 @@ func (a *Adapter) EnsureRerunPipelineRunsExist() (controller.OperationResult, er
 				a.logger.Error(err, "environment doesn't exist in the same namespace as integrationScenario at all, try again after creating environment",
 					"integrationTestScenario.Name", integrationTestScenario.Name)
 				// remove label to prevent indefinite failures, users must restart test manually again
-				if err = gitops.RemoveIntegrationTestRerunLabel(a.client, a.context, a.snapshot); err != nil {
+				if err = labelRemovalFunction(a.client, a.context, a.snapshot); err != nil {
 					return controller.RequeueWithError(err)
 				}
 				return controller.StopProcessing()
@@ -155,7 +176,7 @@ func (a *Adapter) EnsureRerunPipelineRunsExist() (controller.OperationResult, er
 		return controller.RequeueWithError(err)
 	}
 
-	if err = gitops.RemoveIntegrationTestRerunLabel(a.client, a.context, a.snapshot); err != nil {
+	if err = labelRemovalFunction(a.client, a.context, a.snapshot); err != nil {
 		return controller.RequeueWithError(err)
 	}
 

@@ -480,6 +480,13 @@ func (r *GitHubReporter) ReportStatusForSnapshot(k8sClient client.Client, ctx co
 
 		for _, integrationTestStatusDetail := range integrationTestStatusDetails {
 			integrationTestStatusDetail := *integrationTestStatusDetail // G601
+
+			if integrationTestStatusDetail.DryRun {
+				// we don't want to report dry runs into PR
+				// trigerred by appstudio UI, should be only in appstudio UI
+				continue
+			}
+
 			checkRun, err := r.createCheckRunAdapterForSnapshot(ctx, snapshot, integrationTestStatusDetail, owner, repo, sha)
 			if err != nil {
 				logger.Error(err, "failed to create checkRunAdapter for scenario, skipping update",

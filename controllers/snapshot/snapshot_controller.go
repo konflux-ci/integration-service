@@ -180,7 +180,7 @@ func setupControllerWithManager(manager ctrl.Manager, controller *Reconciler) er
 		For(&applicationapiv1alpha1.Snapshot{}).
 		WithEventFilter(predicate.Or(
 			gitops.IntegrationSnapshotChangePredicate(),
-			gitops.SnapshotIntegrationTestRerunTriggerPredicate(),
+			gitops.SnapshotIntegrationTestRunTriggerPredicate(),
 		)).
 		Complete(controller)
 }

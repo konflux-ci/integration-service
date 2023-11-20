@@ -45,6 +45,9 @@ const (
 	// SnapshotIntegrationTestRun contains name of test we want to trigger run
 	SnapshotIntegrationTestRun = "test.appstudio.openshift.io/run"
 
+	// SnapshotIntegrationTestDryRun contains name of test we want to trigger as dry-run
+	SnapshotIntegrationTestDryRun = "test.appstudio.openshift.io/dry-run"
+
 	// SnapshotLabel contains the name of the Snapshot within appstudio
 	SnapshotLabel = "appstudio.openshift.io/snapshot"
 
@@ -608,6 +611,26 @@ func HasSnapshotRerunLabelChanged(objectOld, objectNew client.Object) bool {
 	return false
 }
 
+// HasSnapshotDryRunLabelChanged returns a boolean indicating whether the Snapshot label for dry-running
+// integration test has changed. If the objects passed to this function are not Snapshots, the function will return false.
+func HasSnapshotDryRunLabelChanged(objectOld, objectNew client.Object) bool {
+	if oldSnapshot, ok := objectOld.(*applicationapiv1alpha1.Snapshot); ok {
+		if newSnapshot, ok := objectNew.(*applicationapiv1alpha1.Snapshot); ok {
+			if !metadata.HasLabel(oldSnapshot, SnapshotIntegrationTestDryRun) && metadata.HasLabel(newSnapshot, SnapshotIntegrationTestDryRun) {
+				return true
+			}
+			if old_value, ok := oldSnapshot.GetLabels()[SnapshotIntegrationTestDryRun]; ok {
+				if new_value, ok := newSnapshot.GetLabels()[SnapshotIntegrationTestDryRun]; ok {
+					if old_value != new_value {
+						return true
+					}
+				}
+			}
+		}
+	}
+	return false
+}
+
 // PrepareSnapshot prepares the Snapshot for a given application, components and the updated component (if any).
 // In case the Snapshot can't be created, an error will be returned.
 func PrepareSnapshot(adapterClient client.Client, ctx context.Context, application *applicationapiv1alpha1.Application, applicationComponents *[]applicationapiv1alpha1.Component, component *applicationapiv1alpha1.Component, newContainerImage string, newComponentSource *applicationapiv1alpha1.ComponentSource) (*applicationapiv1alpha1.Snapshot, error) {
@@ -689,10 +712,32 @@ func GetIntegrationTestRunLabelValue(snapshot applicationapiv1alpha1.Snapshot) (
 	return labelVal, ok
 }
 
+// GetIntegrationTestDryRunLabelValue returns value of the label responsible for dry-running tests
+func GetIntegrationTestDryRunLabelValue(snapshot applicationapiv1alpha1.Snapshot) (string, bool) {
+	labels := snapshot.GetLabels()
+	labelVal, ok := labels[SnapshotIntegrationTestDryRun]
+	return labelVal, ok
+}
+
 // RemoveIntegrationTestRerunLabel removes re-run label from snapshot
 func RemoveIntegrationTestRerunLabel(adapterClient client.Client, ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot) error {
 	patch := client.MergeFrom(snapshot.DeepCopy())
 	err := metadata.DeleteLabel(snapshot, SnapshotIntegrationTestRun)
+	if err != nil {
+		return fmt.Errorf("failed to delete label %s: %w", SnapshotIntegrationTestRun, err)
+	}
+	err = adapterClient.Patch(ctx, snapshot, patch)
+	if err != nil {
+		return fmt.Errorf("failed to patch snapshot: %w", err)
+	}
+
+	return nil
+}
+
+// RemoveIntegrationTestDryRunLabel removes dry-run label from snapshot
+func RemoveIntegrationTestDryRunLabel(adapterClient client.Client, ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot) error {
+	patch := client.MergeFrom(snapshot.DeepCopy())
+	err := metadata.DeleteLabel(snapshot, SnapshotIntegrationTestDryRun)
 	if err != nil {
 		return fmt.Errorf("failed to delete label %s: %w", SnapshotIntegrationTestRun, err)
 	}

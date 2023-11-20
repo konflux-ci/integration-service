@@ -200,7 +200,8 @@ func (a *Adapter) determineIfAllIntegrationTestsFinishedAndPassed(integrationTes
 		if !ok || (testDetails.Status != intgteststat.IntegrationTestStatusTestPassed && testDetails.Status != intgteststat.IntegrationTestStatusTestFail && testDetails.Status != intgteststat.IntegrationTestStatusDeleted) {
 			allIntegrationTestsFinished = false
 		}
-		if ok && testDetails.Status != intgteststat.IntegrationTestStatusTestPassed {
+		if ok && (testDetails.Status != intgteststat.IntegrationTestStatusTestPassed || testDetails.DryRun) {
+			// dry-run tests cannot be used to determine if tests passed
 			allIntegrationTestsPassed = false
 		}
 

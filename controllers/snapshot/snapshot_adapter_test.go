@@ -1531,8 +1531,9 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 
 				statuses, err = gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(hasSnapshot)
 				Expect(err).To(Succeed())
-				_, ok = statuses.GetScenarioStatus(integrationTestScenarioWithoutEnv.Name)
+				details, ok := statuses.GetScenarioStatus(integrationTestScenarioWithoutEnv.Name)
 				Expect(ok).To(BeTrue()) // test restarted has a status now
+				Expect(details.DryRun).To(BeFalse())
 
 				m := MatchKeys(IgnoreExtras, Keys{
 					gitops.SnapshotIntegrationTestRun: Equal(integrationTestScenarioWithoutEnv.Name),
@@ -1631,7 +1632,8 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 
 				statuses, err = gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(hasSnapshot)
 				Expect(err).To(Succeed())
-				_, ok = statuses.GetScenarioStatus(integrationTestScenario.Name)
+				details, ok := statuses.GetScenarioStatus(integrationTestScenario.Name)
+				Expect(details.DryRun).To(BeFalse())
 				Expect(ok).To(BeTrue()) // test restarted has status now
 
 				m := MatchKeys(IgnoreExtras, Keys{
@@ -1713,6 +1715,247 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 					gitops.SnapshotIntegrationTestRun: Equal(integrationTestScenarioWithoutEnv.Name),
 				})
 				Expect(hasSnapshot.GetLabels()).ShouldNot(m, "shouln't have re-run label after re-running scenario")
+
+			})
+		})
+
+		When("manual dry-run of scenario scenario using static env is trigerred", func() {
+			BeforeEach(func() {
+				var (
+					buf bytes.Buffer
+				)
+
+				// add rerun label
+				// we cannot update it into k8s DB via patch, it would trigger reconciliation in background
+				// and test wouldn't test anything
+				hasSnapshot.Labels[gitops.SnapshotIntegrationTestDryRun] = integrationTestScenarioWithoutEnv.Name
+
+				log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+				adapter = NewAdapter(hasSnapshot, hasApp, hasComp, log, loader.NewMockLoader(), k8sClient, ctx)
+				adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+					{
+						ContextKey: loader.ApplicationContextKey,
+						Resource:   hasApp,
+					},
+					{
+						ContextKey: loader.ComponentContextKey,
+						Resource:   hasComp,
+					},
+					{
+						ContextKey: loader.SnapshotContextKey,
+						Resource:   hasSnapshot,
+					},
+					{
+						ContextKey: loader.EnvironmentContextKey,
+						Resource:   env,
+					},
+					{
+						ContextKey: loader.SnapshotComponentsContextKey,
+						Resource:   []applicationapiv1alpha1.Component{*hasComp},
+					},
+					{
+						ContextKey: loader.GetScenarioContextKey,
+						Resource:   integrationTestScenarioWithoutEnv,
+					},
+				})
+			})
+
+			It("creates integration test in static environemnt", func() {
+				statuses, err := gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(hasSnapshot)
+				Expect(err).To(Succeed())
+				_, ok := statuses.GetScenarioStatus(integrationTestScenarioWithoutEnv.Name)
+				Expect(ok).To(BeFalse()) // no scenario test yet
+
+				result, err := adapter.EnsureRerunPipelineRunsExist()
+				Expect(err).To(Succeed())
+				Expect(result.CancelRequest).To(BeFalse())
+
+				statuses, err = gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(hasSnapshot)
+				Expect(err).To(Succeed())
+				details, ok := statuses.GetScenarioStatus(integrationTestScenarioWithoutEnv.Name)
+				Expect(ok).To(BeTrue()) // test restarted has a status now
+				Expect(details.DryRun).Should(BeTrue())
+
+				m := MatchKeys(IgnoreExtras, Keys{
+					gitops.SnapshotIntegrationTestDryRun: Equal(integrationTestScenarioWithoutEnv.Name),
+				})
+				Expect(hasSnapshot.GetLabels()).ShouldNot(m, "shouln't have dry-run label after running scenario")
+
+			})
+		})
+
+		When("manual dry-run of scenario scenario using ephemeral] env is trigerred", func() {
+			BeforeEach(func() {
+				var (
+					buf          bytes.Buffer
+					ephemeralEnv *applicationapiv1alpha1.Environment
+				)
+
+				ephemeralEnv = &applicationapiv1alpha1.Environment{
+					ObjectMeta: metav1.ObjectMeta{
+						GenerateName: "ephemeral-env-",
+						Namespace:    "default",
+						Labels: map[string]string{
+							gitops.SnapshotLabel:             hasSnapshot.Name,
+							gitops.SnapshotTestScenarioLabel: integrationTestScenario.Name,
+						},
+					},
+					Spec: applicationapiv1alpha1.EnvironmentSpec{
+						Type:               "POC",
+						DisplayName:        "ephemeral-environment",
+						DeploymentStrategy: applicationapiv1alpha1.DeploymentStrategy_Manual,
+						ParentEnvironment:  "",
+						Tags:               []string{"ephemeral"},
+						Configuration: applicationapiv1alpha1.EnvironmentConfiguration{
+							Env: []applicationapiv1alpha1.EnvVarPair{
+								{
+									Name:  "var_name",
+									Value: "test",
+								},
+							},
+						},
+					},
+				}
+				Expect(k8sClient.Create(ctx, ephemeralEnv)).Should(Succeed())
+
+				// add rerun label
+				// we cannot update it into k8s DB via patch, it would trigger reconciliation in background
+				// and test wouldn't test anything
+				hasSnapshot.Labels[gitops.SnapshotIntegrationTestDryRun] = integrationTestScenario.Name
+
+				log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+				adapter = NewAdapter(hasSnapshot, hasApp, hasComp, log, loader.NewMockLoader(), k8sClient, ctx)
+				adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+					{
+						ContextKey: loader.ApplicationContextKey,
+						Resource:   hasApp,
+					},
+					{
+						ContextKey: loader.ComponentContextKey,
+						Resource:   hasComp,
+					},
+					{
+						ContextKey: loader.SnapshotContextKey,
+						Resource:   hasSnapshot,
+					},
+					{
+						ContextKey: loader.EnvironmentContextKey,
+						Resource:   ephemeralEnv,
+					},
+					{
+						ContextKey: loader.SnapshotComponentsContextKey,
+						Resource:   []applicationapiv1alpha1.Component{*hasComp},
+					},
+					{
+						ContextKey: loader.GetScenarioContextKey,
+						Resource:   integrationTestScenario,
+					},
+					{
+						ContextKey: loader.SnapshotEnvironmentBindingContextKey,
+						Resource:   nil,
+					},
+					{
+						ContextKey: loader.AllIntegrationTestScenariosContextKey,
+						Resource:   []v1beta1.IntegrationTestScenario{*integrationTestScenario},
+					},
+				})
+			})
+
+			It("creates integration test in ephemeral environemnt", func() {
+				statuses, err := gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(hasSnapshot)
+				Expect(err).To(Succeed())
+				_, ok := statuses.GetScenarioStatus(integrationTestScenario.Name)
+				Expect(ok).To(BeFalse()) // no scenario test yet
+
+				result, err := adapter.EnsureRerunPipelineRunsExist()
+				Expect(err).To(Succeed())
+				Expect(result.CancelRequest).To(BeFalse())
+
+				statuses, err = gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(hasSnapshot)
+				Expect(err).To(Succeed())
+				details, ok := statuses.GetScenarioStatus(integrationTestScenario.Name)
+				Expect(ok).To(BeTrue()) // test restarted has status now
+				Expect(details.DryRun).To(BeTrue())
+
+				m := MatchKeys(IgnoreExtras, Keys{
+					gitops.SnapshotIntegrationTestDryRun: Equal(integrationTestScenario.Name),
+				})
+				Expect(hasSnapshot.GetLabels()).ShouldNot(m, "shouln't have dry-run label after running scenario")
+
+			})
+		})
+
+		When("test for scenario is alreday in-progress", func() {
+
+			const (
+				fakePLRName string = "pipelinerun-test"
+				fakeDetails string = "Lorem ipsum sit dolor mit amet"
+			)
+			var (
+				buf bytes.Buffer
+			)
+
+			BeforeEach(func() {
+				// mock that test for scenario is already in progress by setting it in annotation
+				statuses, err := intgteststat.NewSnapshotIntegrationTestStatuses("")
+				Expect(err).To(Succeed())
+				statuses.UpdateTestStatusIfChanged(integrationTestScenarioWithoutEnv.Name, intgteststat.IntegrationTestStatusInProgress, fakeDetails)
+				statuses.UpdateTestPipelineRunName(integrationTestScenarioWithoutEnv.Name, fakePLRName)
+				Expect(gitops.WriteIntegrationTestStatusesIntoSnapshot(hasSnapshot, statuses, k8sClient, ctx)).Should(Succeed())
+
+				// add rerun label
+				// we cannot update it into k8s DB via patch, it would trigger reconciliation in background
+				// and test wouldn't test anything
+				hasSnapshot.Labels[gitops.SnapshotIntegrationTestDryRun] = integrationTestScenarioWithoutEnv.Name
+
+				log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+				adapter = NewAdapter(hasSnapshot, hasApp, hasComp, log, loader.NewMockLoader(), k8sClient, ctx)
+				adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+					{
+						ContextKey: loader.ApplicationContextKey,
+						Resource:   hasApp,
+					},
+					{
+						ContextKey: loader.ComponentContextKey,
+						Resource:   hasComp,
+					},
+					{
+						ContextKey: loader.SnapshotContextKey,
+						Resource:   hasSnapshot,
+					},
+					{
+						ContextKey: loader.EnvironmentContextKey,
+						Resource:   env,
+					},
+					{
+						ContextKey: loader.SnapshotComponentsContextKey,
+						Resource:   []applicationapiv1alpha1.Component{*hasComp},
+					},
+					{
+						ContextKey: loader.GetScenarioContextKey,
+						Resource:   integrationTestScenarioWithoutEnv,
+					},
+				})
+			})
+
+			It("doesn't create new test", func() {
+				result, err := adapter.EnsureRerunPipelineRunsExist()
+				Expect(err).To(Succeed())
+				Expect(result.CancelRequest).To(BeFalse())
+
+				// make sure that test details hasn't changed
+				statuses, err := gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(hasSnapshot)
+				Expect(err).To(Succeed())
+				detail, ok := statuses.GetScenarioStatus(integrationTestScenarioWithoutEnv.Name)
+				Expect(ok).To(BeTrue())
+				Expect(detail.Status).Should(Equal(intgteststat.IntegrationTestStatusInProgress))
+				Expect(detail.Details).Should(Equal(fakeDetails))
+				Expect(detail.TestPipelineRunName).Should(Equal(fakePLRName))
+
+				m := MatchKeys(IgnoreExtras, Keys{
+					gitops.SnapshotIntegrationTestDryRun: Equal(integrationTestScenarioWithoutEnv.Name),
+				})
+				Expect(hasSnapshot.GetLabels()).ShouldNot(m, "shouln't have dry-run label after running scenario")
 
 			})
 		})
