@@ -238,7 +238,7 @@
       "bars": false,
       "dashLength": 10,
       "dashes": false,
-      "description": "Measure the time between ApplicationSnapshot creation to pipelineRun creation. \n",
+      "description": "Measure the time between ApplicationSnapshot creation to pipelineRun creation in a static env. \n",
       "fieldConfig": {
         "defaults": {},
         "overrides": []
@@ -280,7 +280,7 @@
       "targets": [
         {
           "exemplar": true,
-          "expr": "histogram_quantile(0.90, sum(rate(snapshot_created_to_pipelinerun_started_seconds_bucket[$__rate_interval])) by (le))",
+          "expr": "histogram_quantile(0.90, sum(rate(snapshot_created_to_pipelinerun_with_static_env_started_seconds_bucket[$__rate_interval])) by (le))",
           "interval": "",
           "legendFormat": "percentile90",
           "refId": "A"
@@ -300,7 +300,7 @@
       "timeFrom": null,
       "timeRegions": [],
       "timeShift": null,
-      "title": "#2 Time to Start PipelineRun",
+      "title": "#2A Time to Start PipelineRun in static envs",
       "tooltip": {
         "shared": true,
         "sort": 0,
@@ -348,7 +348,7 @@
         "y": 9
       },
       "type": "timeseries",
-      "title": "[Violations] #2 Time to Start PipelineRun",
+      "title": "[Violations] #2A Time to Start PipelineRun in static envs",
       "pluginVersion": "9.1.6",
       "description": "90% of requests must take less than 5sec",
       "fieldConfig": {
@@ -419,7 +419,7 @@
       "targets": [
         {
           "exemplar": true,
-          "expr": "sum(rate(snapshot_created_to_pipelinerun_started_seconds_bucket{le=\"5\"}[$__rate_interval])) by (job)\n/\nsum(rate(snapshot_created_to_pipelinerun_started_seconds_count[$__rate_interval]) > 0) by (job)\n*100",
+          "expr": "sum(rate(snapshot_created_to_pipelinerun_with_static_env_started_seconds_bucket{le=\"5\"}[$__rate_interval])) by (job)\n/\nsum(rate(snapshot_created_to_pipelinerun_with_static_env_started_seconds_count[$__rate_interval]) > 0) by (job)\n*100",
           "interval": "",
           "legendFormat": "% of requests within required latency time",
           "refId": "A",
@@ -1283,7 +1283,7 @@
         "mode": "spectrum"
       },
       "dataFormat": "tsbuckets",
-      "description": "Time duration from the moment the snapshot resource was created till a integration pipelineRun is started",
+      "description": "Time duration from the moment the snapshot resource was created till a integration pipelineRun is started in static environment",
       "fieldConfig": {
         "defaults": {},
         "overrides": []
@@ -1307,7 +1307,7 @@
       "targets": [
         {
           "exemplar": true,
-          "expr": "sum(increase(snapshot_created_to_pipelinerun_started_seconds_bucket[$__interval])) by (le)",
+          "expr": "sum(increase(snapshot_created_to_pipelinerun_with_static_env_started_seconds_bucket[$__interval])) by (le)",
           "format": "heatmap",
           "interval": "",
           "legendFormat": "{{le}}",
