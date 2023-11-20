@@ -87,6 +87,8 @@ type IntegrationTestStatusDetail struct {
 	LastUpdateTime time.Time `json:"lastUpdateTime"`
 	// The details of reported status
 	Details string `json:"details"`
+	// The scenario is running as dry-run
+	DryRun bool `json:"dryRun,omitempty"`
 	// Startime when we moved to inProgress
 	StartTime *time.Time `json:"startTime,omitempty"` // pointer to make omitempty work
 	// Completion time when test failed or passed
@@ -120,6 +122,7 @@ func (sits *SnapshotIntegrationTestStatuses) ResetStatus(scenarioName string) {
 	sits.UpdateTestStatusIfChanged(scenarioName, IntegrationTestStatusPending, "Pending")
 	detail := sits.statuses[scenarioName]
 	detail.TestPipelineRunName = ""
+	detail.DryRun = false
 	sits.dirty = true
 }
 
@@ -190,6 +193,22 @@ func (sits *SnapshotIntegrationTestStatuses) UpdateTestPipelineRunName(scenarioN
 	return nil
 }
 
+// UpdateDryRun updates DryRun if changed
+// scenario must already exist in statuses
+func (sits *SnapshotIntegrationTestStatuses) UpdateDryRun(scenarioName string, dryRun bool) error {
+	detail, ok := sits.GetScenarioStatus(scenarioName)
+	if !ok {
+		return fmt.Errorf("scenario name %s not found within the SnapshotIntegrationTestStatus, and cannot be updated", scenarioName)
+	}
+
+	if detail.DryRun != dryRun {
+		detail.DryRun = dryRun
+		sits.dirty = true
+	}
+
+	return nil
+}
+
 // InitStatuses creates initial representation all scenarios
 // This function also removes scenarios which are not defined in scenarios param
 func (sits *SnapshotIntegrationTestStatuses) InitStatuses(scenarioNames *[]string) {
@@ -253,6 +272,7 @@ func (sits *SnapshotIntegrationTestStatuses) GetScenarioStatus(scenarioName stri
 //	    "status": "EnvironmentProvisionError",
 //	    "lastUpdateTime": "2023-07-26T16:57:49+02:00",
 //	    "details": "Failed ...",
+//	    "dryRun": true,
 //	    "startTime": "2023-07-26T14:57:49+02:00",
 //	    "completionTime": "2023-07-26T16:57:49+02:00",
 //	    "testPipelineRunName": "pipeline-run-feedbeef"

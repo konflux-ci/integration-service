@@ -242,9 +242,63 @@ var _ = Describe("integrationteststatus library unittests", func() {
 			Expect(sits.IsDirty()).To(BeFalse())
 		})
 
-		It("fails to update details with pipeline run name when testScenario doesn't exist", func() {
+		It("can update details with pipeline run name", func() {
+			// test detail must exist first
+			sits.UpdateTestStatusIfChanged(testScenarioName, intgteststat.IntegrationTestStatusInProgress, testDetails)
+			sits.ResetDirty()
+
 			err := sits.UpdateTestPipelineRunName(testScenarioName, pipelineRunName)
+			Expect(err).To(BeNil())
+
+			detail, ok := sits.GetScenarioStatus(testScenarioName)
+			Expect(ok).To(BeTrue())
+			Expect(detail.TestPipelineRunName).To(Equal(pipelineRunName))
+			Expect(sits.IsDirty()).To(BeTrue())
+
+			// other data hasn't been removed
+			Expect(detail.ScenarioName).To(Equal(testScenarioName))
+			Expect(detail.Details).To(Equal(testDetails))
+			Expect(detail.Status).To(Equal(intgteststat.IntegrationTestStatusInProgress))
+		})
+
+		It("doesn't update the same dry run state twice", func() {
+			// test detail must exist first
+			sits.UpdateTestStatusIfChanged(testScenarioName, intgteststat.IntegrationTestStatusInProgress, testDetails)
+			sits.ResetDirty()
+
+			err := sits.UpdateDryRun(testScenarioName, true)
+			Expect(err).To(BeNil())
+			Expect(sits.IsDirty()).To(BeTrue())
+			sits.ResetDirty()
+
+			err = sits.UpdateDryRun(testScenarioName, true)
+			Expect(err).To(BeNil())
+
+			Expect(sits.IsDirty()).To(BeFalse())
+		})
+
+		It("fails to update details with dryRun when testScenario doesn't exist", func() {
+			err := sits.UpdateDryRun(testScenarioName, true)
 			Expect(err).NotTo(BeNil())
+		})
+
+		It("can update details with dry run status", func() {
+			// test detail must exist first
+			sits.UpdateTestStatusIfChanged(testScenarioName, intgteststat.IntegrationTestStatusInProgress, testDetails)
+			sits.ResetDirty()
+
+			err := sits.UpdateDryRun(testScenarioName, true)
+			Expect(err).To(BeNil())
+
+			detail, ok := sits.GetScenarioStatus(testScenarioName)
+			Expect(ok).To(BeTrue())
+			Expect(detail.DryRun).To(BeTrue())
+			Expect(sits.IsDirty()).To(BeTrue())
+
+			// other data hasn't been removed
+			Expect(detail.ScenarioName).To(Equal(testScenarioName))
+			Expect(detail.Details).To(Equal(testDetails))
+			Expect(detail.Status).To(Equal(intgteststat.IntegrationTestStatusInProgress))
 		})
 
 		It("Can export valid JSON without start and completion time (Pending)", func() {
@@ -367,6 +421,31 @@ var _ = Describe("integrationteststatus library unittests", func() {
 			marshaledTime, err := detail.LastUpdateTime.MarshalText()
 			Expect(err).To(BeNil())
 			expectedStr := fmt.Sprintf(expectedFormatStr, testScenarioName, marshaledTime, testDetails, pipelineRunName)
+			expected := []byte(expectedStr)
+
+			Expect(json.Marshal(sits)).To(MatchJSON(expected))
+		})
+
+		It("Can export valid JSON with DryRun", func() {
+			sits.UpdateTestStatusIfChanged(testScenarioName, intgteststat.IntegrationTestStatusPending, testDetails)
+			err := sits.UpdateDryRun(testScenarioName, true)
+			Expect(err).To(BeNil())
+
+			detail, ok := sits.GetScenarioStatus(testScenarioName)
+			Expect(ok).To(BeTrue())
+
+			expectedFormatStr := `[
+					{
+						"scenario": "%s",
+						"status": "Pending",
+						"lastUpdateTime": "%s",
+						"details": "%s",
+						"dryRun": %s
+					}
+				]`
+			marshaledTime, err := detail.LastUpdateTime.MarshalText()
+			Expect(err).To(BeNil())
+			expectedStr := fmt.Sprintf(expectedFormatStr, testScenarioName, marshaledTime, testDetails, "true")
 			expected := []byte(expectedStr)
 
 			Expect(json.Marshal(sits)).To(MatchJSON(expected))
