@@ -19,6 +19,7 @@ package integrationpipeline
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/gitops"
@@ -170,6 +171,9 @@ func GetIntegrationPipelineRunStatus(adapterClient client.Client, ctx context.Co
 	}
 
 	if !outcome.HasPipelineRunPassedTesting() {
+		if !outcome.HasPipelineRunValidTestOutputs() {
+			return intgteststat.IntegrationTestStatusTestFail, strings.Join(outcome.GetValidationErrorsList(), "; "), nil
+		}
 		return intgteststat.IntegrationTestStatusTestFail, "Integration test failed", nil
 	}
 

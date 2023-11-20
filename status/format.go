@@ -100,12 +100,12 @@ func FormatStatus(taskRun *helpers.TaskRun) (string, error) {
 		return "", err
 	}
 
-	if result == nil {
+	if result == nil || result.TestOutput == nil {
 		return "", nil
 	}
 
 	var emoji string
-	switch result.Result {
+	switch result.TestOutput.Result {
 	case helpers.AppStudioTestOutputSuccess:
 		emoji = ":heavy_check_mark:"
 	case helpers.AppStudioTestOutputFailure:
@@ -120,7 +120,7 @@ func FormatStatus(taskRun *helpers.TaskRun) (string, error) {
 		emoji = ":question:"
 	}
 
-	return emoji + " " + result.Result, nil
+	return emoji + " " + result.TestOutput.Result, nil
 }
 
 // FormatTaskName accepts a TaskRun and returns a Markdown friendly representation of its name.
@@ -132,11 +132,11 @@ func FormatTaskName(taskRun *helpers.TaskRun) (string, error) {
 
 	name := taskRun.GetPipelineTaskName()
 
-	if result == nil {
+	if result == nil || result.TestOutput == nil {
 		return name, nil
 	}
 
-	if result.Note == "" {
+	if result.TestOutput.Note == "" {
 		return name, nil
 	}
 
@@ -150,11 +150,11 @@ func FormatNamespace(taskRun *helpers.TaskRun) (string, error) {
 		return "", err
 	}
 
-	if result == nil {
+	if result == nil || result.TestOutput == nil {
 		return "", nil
 	}
 
-	return result.Namespace, nil
+	return result.TestOutput.Namespace, nil
 }
 
 // FormatDetails accepts a TaskRun and returns a Markdown friendly representation of its detailed test results, if any.
@@ -168,18 +168,26 @@ func FormatDetails(taskRun *helpers.TaskRun) (string, error) {
 		return "", nil
 	}
 
+	if result.ValidationError != nil {
+		return fmt.Sprintf("Invalid result: %s", result.ValidationError), nil
+	}
+
+	if result.TestOutput == nil {
+		return "", nil
+	}
+
 	details := []string{}
 
-	if result.Successes > 0 {
-		details = append(details, fmt.Sprint(":heavy_check_mark: ", result.Successes, " success(es)"))
+	if result.TestOutput.Successes > 0 {
+		details = append(details, fmt.Sprint(":heavy_check_mark: ", result.TestOutput.Successes, " success(es)"))
 	}
 
-	if result.Warnings > 0 {
-		details = append(details, fmt.Sprint(":warning: ", result.Warnings, " warning(s)"))
+	if result.TestOutput.Warnings > 0 {
+		details = append(details, fmt.Sprint(":warning: ", result.TestOutput.Warnings, " warning(s)"))
 	}
 
-	if result.Failures > 0 {
-		details = append(details, fmt.Sprint(":x: ", result.Failures, " failure(s)"))
+	if result.TestOutput.Failures > 0 {
+		details = append(details, fmt.Sprint(":x: ", result.TestOutput.Failures, " failure(s)"))
 	}
 
 	return strings.Join(details, "<br>"), nil
@@ -194,12 +202,12 @@ func FormatFootnotes(taskRuns []*helpers.TaskRun) (string, error) {
 			return "", err
 		}
 
-		if result == nil {
+		if result == nil || result.TestOutput == nil {
 			continue
 		}
 
-		if result.Note != "" {
-			footnotes = append(footnotes, "[^"+tr.GetPipelineTaskName()+"]: "+result.Note)
+		if result.TestOutput.Note != "" {
+			footnotes = append(footnotes, "[^"+tr.GetPipelineTaskName()+"]: "+result.TestOutput.Note)
 		}
 	}
 	return strings.Join(footnotes, "\n"), nil

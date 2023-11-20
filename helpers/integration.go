@@ -71,6 +71,13 @@ type AppStudioTestResult struct {
 	Warnings  int    `json:"warnings"`
 }
 
+// IntegrationTestTaskResult provides results from integration test task
+// including metadata about validity of results
+type IntegrationTestTaskResult struct {
+	TestOutput      *AppStudioTestResult
+	ValidationError error
+}
+
 var testResultSchema = `{
   "$schema": "http://json-schema.org/draft/2020-12/schema#",
   "type": "object",
@@ -109,7 +116,7 @@ var testResultSchema = `{
 type TaskRun struct {
 	pipelineTaskName string
 	trStatus         *tektonv1.TaskRunStatus
-	testResult       *AppStudioTestResult
+	testResult       *IntegrationTestTaskResult
 }
 
 // NewTaskRunFromTektonTaskRun creates and returns am integration TaskRun from the TaskRunStatus.
@@ -144,8 +151,8 @@ func (t *TaskRun) GetDuration() time.Duration {
 	return end.Sub(start)
 }
 
-// GetTestResult returns a AppStudioTestResult if the TaskRun produced the result. It will return nil otherwise.
-func (t *TaskRun) GetTestResult() (*AppStudioTestResult, error) {
+// GetTestResult returns a IntegrationTestTaskResult if the TaskRun produced the result. It will return nil otherwise.
+func (t *TaskRun) GetTestResult() (*IntegrationTestTaskResult, error) {
 	// Check for an already parsed result.
 	if t.testResult != nil {
 		return t.testResult, nil
@@ -158,20 +165,21 @@ func (t *TaskRun) GetTestResult() (*AppStudioTestResult, error) {
 
 	for _, taskRunResult := range t.trStatus.TaskRunStatusFields.Results {
 		if taskRunResult.Name == LegacyTestOutputName || taskRunResult.Name == TestOutputName {
-			var result AppStudioTestResult
+			var testOutput AppStudioTestResult
+			var testResult IntegrationTestTaskResult = IntegrationTestTaskResult{}
 			var v interface{}
-			err := json.Unmarshal([]byte(taskRunResult.Value.StringVal), &result)
-			if err != nil {
-				return nil, fmt.Errorf("error while mapping json data from taskRun %s: to AppStudioTestResult %w", taskRunResult.Name, err)
+
+			if err := json.Unmarshal([]byte(taskRunResult.Value.StringVal), &testOutput); err != nil {
+				testResult.ValidationError = fmt.Errorf("error while mapping json data from task %s result %s to AppStudioTestResult: %w", t.GetPipelineTaskName(), taskRunResult.Name, err)
+			} else if err := json.Unmarshal([]byte(taskRunResult.Value.StringVal), &v); err != nil {
+				testResult.ValidationError = fmt.Errorf("error while mapping json data from task %s result %s: %w", t.GetPipelineTaskName(), taskRunResult.Name, err)
+			} else if err = sch.Validate(v); err != nil {
+				testResult.ValidationError = fmt.Errorf("error validating schema of results from task %s result %s: %w", t.GetPipelineTaskName(), taskRunResult.Name, err)
+			} else {
+				testResult.TestOutput = &testOutput
 			}
-			if err := json.Unmarshal([]byte(taskRunResult.Value.StringVal), &v); err != nil {
-				return nil, fmt.Errorf("error while mapping json data from taskRun %s: %w", taskRunResult.Name, err)
-			}
-			if err = sch.Validate(v); err != nil {
-				return nil, fmt.Errorf("error validating schema of results from taskRun %s: %w", taskRunResult.Name, err)
-			}
-			t.testResult = &result
-			return &result, nil
+			t.testResult = &testResult
+			return &testResult, nil
 		}
 	}
 	return nil, nil
@@ -200,12 +208,33 @@ type IntegrationPipelineRunOutcome struct {
 	pipelineRunSucceeded bool
 	pipelineRun          *tektonv1.PipelineRun
 	// map: task name to results
-	results map[string]*AppStudioTestResult
+	results map[string]*IntegrationTestTaskResult
 }
 
 // HasPipelineRunSucceeded returns true when pipeline in outcome succeeded
 func (ipro *IntegrationPipelineRunOutcome) HasPipelineRunSucceeded() bool {
 	return ipro.pipelineRunSucceeded
+}
+
+// HasPipelineRunValidTestOutputs returns false when we failed to parse results of TEST_OUTPUT in tasks
+func (ipro *IntegrationPipelineRunOutcome) HasPipelineRunValidTestOutputs() bool {
+	for _, result := range ipro.results {
+		if result.ValidationError != nil {
+			return false
+		}
+	}
+	return true
+}
+
+// GetValidationErrorsList returns validation error messages for each invalid task result in a list.
+func (ipro *IntegrationPipelineRunOutcome) GetValidationErrorsList() []string {
+	var errors []string
+	for _, result := range ipro.results {
+		if result.ValidationError != nil {
+			errors = append(errors, fmt.Sprintf("Invalid result: %s", result.ValidationError))
+		}
+	}
+	return errors
 }
 
 // HasPipelineRunPassedTesting returns general outcome
@@ -214,10 +243,13 @@ func (ipro *IntegrationPipelineRunOutcome) HasPipelineRunPassedTesting() bool {
 	if !ipro.HasPipelineRunSucceeded() {
 		return false
 	}
+	if !ipro.HasPipelineRunValidTestOutputs() {
+		return false
+	}
 	for _, result := range ipro.results {
-		if result.Result != AppStudioTestOutputSuccess &&
-			result.Result != AppStudioTestOutputSkipped &&
-			result.Result != AppStudioTestOutputWarning {
+		if result.TestOutput.Result != AppStudioTestOutputSuccess &&
+			result.TestOutput.Result != AppStudioTestOutputSkipped &&
+			result.TestOutput.Result != AppStudioTestOutputWarning {
 			return false
 		}
 	}
@@ -227,10 +259,17 @@ func (ipro *IntegrationPipelineRunOutcome) HasPipelineRunPassedTesting() bool {
 // LogResults writes tasks names with results into given logger, each task on separate line
 func (ipro *IntegrationPipelineRunOutcome) LogResults(logger logr.Logger) {
 	for k, v := range ipro.results {
-		logger.Info(fmt.Sprintf("Found task results for pipeline run %s", ipro.pipelineRun.Name),
-			"pipelineRun.Name", ipro.pipelineRun.Name,
-			"pipelineRun.Namespace", ipro.pipelineRun.Namespace,
-			"task.Name", k, "task.Result", v)
+		if v.TestOutput != nil {
+			logger.Info(fmt.Sprintf("Found task results for pipeline run %s", ipro.pipelineRun.Name),
+				"pipelineRun.Name", ipro.pipelineRun.Name,
+				"pipelineRun.Namespace", ipro.pipelineRun.Namespace,
+				"task.Name", k, "task.TestOutput", v.TestOutput)
+		} else if v.ValidationError != nil {
+			logger.Info(fmt.Sprintf("Invalid task results for pipeline run %s", ipro.pipelineRun.Name),
+				"pipelineRun.Name", ipro.pipelineRun.Name,
+				"pipelineRun.Namespace", ipro.pipelineRun.Namespace,
+				"task.Name", k, "task.ValidationError", v.ValidationError.Error())
+		}
 	}
 }
 
@@ -244,13 +283,13 @@ func GetIntegrationPipelineRunOutcome(adapterClient client.Client, ctx context.C
 		return &IntegrationPipelineRunOutcome{
 			pipelineRunSucceeded: false,
 			pipelineRun:          pipelineRun,
-			results:              map[string]*AppStudioTestResult{},
+			results:              map[string]*IntegrationTestTaskResult{},
 		}, nil
 	}
 	// Check if the pipelineRun.Status contains the childReferences to TaskRuns
 	if !reflect.ValueOf(pipelineRun.Status.ChildReferences).IsZero() {
 		// If the pipelineRun.Status contains the childReferences, parse them in the new way by querying for TaskRuns
-		results, err := GetAppStudioTestResultsFromPipelineRunWithChildReferences(adapterClient, ctx, pipelineRun)
+		results, err := GetIntegrationTestTaskResultsFromPipelineRunWithChildReferences(adapterClient, ctx, pipelineRun)
 		if err != nil {
 			return nil, fmt.Errorf("error while getting test results from pipelineRun %s: %w", pipelineRun.Name, err)
 		}
@@ -265,20 +304,20 @@ func GetIntegrationPipelineRunOutcome(adapterClient client.Client, ctx context.C
 	return &IntegrationPipelineRunOutcome{
 		pipelineRunSucceeded: true,
 		pipelineRun:          pipelineRun,
-		results:              map[string]*AppStudioTestResult{},
+		results:              map[string]*IntegrationTestTaskResult{},
 	}, nil
 }
 
-// GetAppStudioTestResultsFromPipelineRunWithChildReferences finds all TaskRuns from childReferences of the PipelineRun
-// that also contain a TEST_OUTPUT result and returns the parsed data
+// GetIntegrationTestTaskResultsFromPipelineRunWithChildReferences finds all TaskRuns from childReferences of the PipelineRun
+// that also contain a TEST_OUTPUT result and returns the parsed data or validation error
 // returns map taskName: result
-func GetAppStudioTestResultsFromPipelineRunWithChildReferences(adapterClient client.Client, ctx context.Context, pipelineRun *tektonv1.PipelineRun) (map[string]*AppStudioTestResult, error) {
+func GetIntegrationTestTaskResultsFromPipelineRunWithChildReferences(adapterClient client.Client, ctx context.Context, pipelineRun *tektonv1.PipelineRun) (map[string]*IntegrationTestTaskResult, error) {
 	taskRuns, err := GetAllChildTaskRunsForPipelineRun(adapterClient, ctx, pipelineRun)
 	if err != nil {
 		return nil, err
 	}
 
-	results := map[string]*AppStudioTestResult{}
+	results := map[string]*IntegrationTestTaskResult{}
 	for _, tr := range taskRuns {
 		r, err := tr.GetTestResult()
 		if err != nil {
