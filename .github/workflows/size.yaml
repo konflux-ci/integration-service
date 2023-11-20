@@ -19,15 +19,15 @@ jobs:
           size=$((additions + deletions))
 
           sizelabel=XS
-          if [ ${size} -gt 500 ]; then
+          if [ ${size} -gt 600 ]; then
             sizelabel="XXL"
-          elif [ ${size} -gt 200 ]; then
+          elif [ ${size} -gt 240 ]; then
             sizelabel="XL"
-          elif [ ${size} -gt 100 ]; then
+          elif [ ${size} -gt 120 ]; then
             sizelabel="L"
-          elif [ ${size} -gt 50 ]; then
+          elif [ ${size} -gt 60 ]; then
             sizelabel="M"
-          elif [ ${size} -gt 30 ]; then
+          elif [ ${size} -gt 35 ]; then
             sizelabel="S"
           fi
 
