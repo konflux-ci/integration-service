@@ -17,6 +17,7 @@ limitations under the License.
 package helpers_test
 
 import (
+	"bytes"
 	"fmt"
 	"time"
 
@@ -28,6 +29,7 @@ import (
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/gitops"
 	"github.com/redhat-appstudio/integration-service/helpers"
+	"github.com/tonglil/buflogr"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -710,6 +712,8 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		pipelineRunOutcome, err := helpers.GetIntegrationPipelineRunOutcome(k8sClient, ctx, integrationPipelineRun)
 		Expect(err).To(BeNil())
 		Expect(pipelineRunOutcome.HasPipelineRunPassedTesting()).To(BeTrue())
+		Expect(pipelineRunOutcome.HasPipelineRunValidTestOutputs()).To(BeTrue())
+		Expect(pipelineRunOutcome.GetValidationErrorsList()).Should(BeEmpty())
 
 		gitops.MarkSnapshotAsPassed(k8sClient, ctx, hasSnapshot, "test passed")
 		Expect(gitops.HaveAppStudioTestsSucceeded(hasSnapshot)).To(BeTrue())
@@ -744,6 +748,8 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		pipelineRunOutcome, err := helpers.GetIntegrationPipelineRunOutcome(k8sClient, ctx, integrationPipelineRun)
 		Expect(err).To(BeNil())
 		Expect(pipelineRunOutcome.HasPipelineRunPassedTesting()).To(BeTrue())
+		Expect(pipelineRunOutcome.HasPipelineRunValidTestOutputs()).To(BeTrue())
+		Expect(pipelineRunOutcome.GetValidationErrorsList()).Should(BeEmpty())
 
 		gitops.MarkSnapshotAsPassed(k8sClient, ctx, hasSnapshot, "test passed")
 		Expect(gitops.HaveAppStudioTestsSucceeded(hasSnapshot)).To(BeTrue())
@@ -763,6 +769,8 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		pipelineRunOutcome, err := helpers.GetIntegrationPipelineRunOutcome(k8sClient, ctx, integrationPipelineRun)
 		Expect(err).To(BeNil())
 		Expect(pipelineRunOutcome.HasPipelineRunPassedTesting()).To(BeFalse())
+		Expect(pipelineRunOutcome.HasPipelineRunValidTestOutputs()).To(BeTrue())
+		Expect(pipelineRunOutcome.GetValidationErrorsList()).Should(BeEmpty())
 
 		gitops.MarkSnapshotAsFailed(k8sClient, ctx, hasSnapshot, "test failed")
 		Expect(gitops.HaveAppStudioTestsSucceeded(hasSnapshot)).To(BeFalse())
@@ -797,12 +805,18 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		pipelineRunOutcome, err := helpers.GetIntegrationPipelineRunOutcome(k8sClient, ctx, integrationPipelineRun)
 		Expect(err).To(BeNil())
 		Expect(pipelineRunOutcome.HasPipelineRunPassedTesting()).To(BeFalse())
+		Expect(pipelineRunOutcome.HasPipelineRunValidTestOutputs()).To(BeTrue())
+		Expect(pipelineRunOutcome.GetValidationErrorsList()).Should(BeEmpty())
 
 		gitops.MarkSnapshotAsFailed(k8sClient, ctx, hasSnapshot, "test failed")
 		Expect(gitops.HaveAppStudioTestsSucceeded(hasSnapshot)).To(BeFalse())
 	})
 
 	It("no error from pipelinrun when AppStudio Tests failed but pipeline passed", func() {
+		var (
+			buf bytes.Buffer
+		)
+
 		integrationPipelineRun.Status = tektonv1.PipelineRunStatus{
 			PipelineRunStatusFields: tektonv1.PipelineRunStatusFields{
 				ChildReferences: []tektonv1.ChildStatusReference{
@@ -831,6 +845,13 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		pipelineRunOutcome, err := helpers.GetIntegrationPipelineRunOutcome(k8sClient, ctx, integrationPipelineRun)
 		Expect(err).To(BeNil())
 		Expect(pipelineRunOutcome.HasPipelineRunPassedTesting()).To(BeFalse())
+		Expect(pipelineRunOutcome.HasPipelineRunValidTestOutputs()).To(BeTrue())
+		Expect(pipelineRunOutcome.GetValidationErrorsList()).Should(BeEmpty())
+
+		pipelineRunOutcome.LogResults(buflogr.NewWithBuffer(&buf))
+		expectedLogEntry := "Found task results for pipeline run"
+		Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
+
 	})
 
 	It("ensure No Task pipelinerun passed when AppStudio Tests passed", func() {
@@ -863,12 +884,18 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		pipelineRunOutcome, err := helpers.GetIntegrationPipelineRunOutcome(k8sClient, ctx, integrationPipelineRun)
 		Expect(err).To(BeNil())
 		Expect(pipelineRunOutcome.HasPipelineRunPassedTesting()).To(BeFalse())
+		Expect(pipelineRunOutcome.HasPipelineRunValidTestOutputs()).To(BeTrue())
+		Expect(pipelineRunOutcome.GetValidationErrorsList()).Should(BeEmpty())
 
 		gitops.MarkSnapshotAsPassed(k8sClient, ctx, hasSnapshot, "test passed")
 		Expect(gitops.HaveAppStudioTestsSucceeded(hasSnapshot)).To(BeTrue())
 	})
 
 	It("can handle malformed TEST_OUTPUT result", func() {
+		var (
+			buf bytes.Buffer
+		)
+
 		integrationPipelineRun.Status = tektonv1.PipelineRunStatus{
 			PipelineRunStatusFields: tektonv1.PipelineRunStatusFields{
 				ChildReferences: []tektonv1.ChildStatusReference{
@@ -890,12 +917,24 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		}
 
 		Expect(k8sClient.Status().Update(ctx, integrationPipelineRun)).Should(Succeed())
-		result, err := helpers.GetIntegrationPipelineRunOutcome(k8sClient, ctx, integrationPipelineRun)
-		Expect(err).ToNot(BeNil())
-		Expect(result).To(BeNil())
+		pipelineRunOutcome, err := helpers.GetIntegrationPipelineRunOutcome(k8sClient, ctx, integrationPipelineRun)
+		Expect(err).To(BeNil())
+		Expect(pipelineRunOutcome).NotTo(BeNil())
+		Expect(pipelineRunOutcome.HasPipelineRunPassedTesting()).To(BeFalse())
+		Expect(pipelineRunOutcome.HasPipelineRunValidTestOutputs()).To(BeFalse())
+		Expect(pipelineRunOutcome.GetValidationErrorsList()).ShouldNot(BeEmpty())
+
+		pipelineRunOutcome.LogResults(buflogr.NewWithBuffer(&buf))
+		expectedLogEntry := "Invalid task results for pipeline run"
+		Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
+
 	})
 
 	It("can handle broken json as TEST_OUTPUT result", func() {
+		var (
+			buf bytes.Buffer
+		)
+
 		integrationPipelineRun.Status = tektonv1.PipelineRunStatus{
 			PipelineRunStatusFields: tektonv1.PipelineRunStatusFields{
 				ChildReferences: []tektonv1.ChildStatusReference{
@@ -917,9 +956,16 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		}
 
 		Expect(k8sClient.Status().Update(ctx, integrationPipelineRun)).Should(Succeed())
-		result, err := helpers.GetIntegrationPipelineRunOutcome(k8sClient, ctx, integrationPipelineRun)
-		Expect(err).ToNot(BeNil())
-		Expect(result).To(BeNil())
+		pipelineRunOutcome, err := helpers.GetIntegrationPipelineRunOutcome(k8sClient, ctx, integrationPipelineRun)
+		Expect(err).To(BeNil())
+		Expect(pipelineRunOutcome).NotTo(BeNil())
+
+		Expect(pipelineRunOutcome.HasPipelineRunValidTestOutputs()).To(BeFalse())
+		Expect(pipelineRunOutcome.GetValidationErrorsList()).ShouldNot(BeEmpty())
+
+		pipelineRunOutcome.LogResults(buflogr.NewWithBuffer(&buf))
+		expectedLogEntry := "Invalid task results for pipeline run"
+		Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
 	})
 
 	It("can get all the TaskRuns for a PipelineRun with childReferences", func() {
@@ -960,8 +1006,8 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		result1, err := tr1.GetTestResult()
 		Expect(err).To(BeNil())
 		Expect(result1).ToNot(BeNil())
-		Expect(result1.Result).To(Equal("SUCCESS"))
-		Expect(result1.Successes).To(Equal(10))
+		Expect(result1.TestOutput.Result).To(Equal("SUCCESS"))
+		Expect(result1.TestOutput.Successes).To(Equal(10))
 
 		result2, err := tr1.GetTestResult()
 		Expect(err).To(BeNil())
@@ -974,8 +1020,8 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		result3, err := tr2.GetTestResult()
 		Expect(err).To(BeNil())
 		Expect(result3).ToNot(BeNil())
-		Expect(result3.Result).To(Equal("SKIPPED"))
-		Expect(result3.Successes).To(Equal(0))
+		Expect(result3.TestOutput.Result).To(Equal("SKIPPED"))
+		Expect(result3.TestOutput.Successes).To(Equal(0))
 	})
 
 	It("can return nil for a PipelineRun with no childReferences", func() {
