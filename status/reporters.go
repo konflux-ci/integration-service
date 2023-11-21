@@ -482,9 +482,11 @@ func (r *GitHubReporter) ReportStatusForSnapshot(k8sClient client.Client, ctx co
 			integrationTestStatusDetail := *integrationTestStatusDetail // G601
 			checkRun, err := r.createCheckRunAdapterForSnapshot(ctx, snapshot, integrationTestStatusDetail, owner, repo, sha)
 			if err != nil {
-				logger.Error(err, "failed to create checkRunAdapter for snapshot",
-					"snapshot.NameSpace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
-				return err
+				logger.Error(err, "failed to create checkRunAdapter for scenario, skipping update",
+					"snapshot.NameSpace", snapshot.Namespace, "snapshot.Name", snapshot.Name,
+					"scenario.Name", integrationTestStatusDetail.ScenarioName,
+				)
+				continue
 			}
 
 			existingCheckrun := r.client.GetExistingCheckRun(allCheckRuns, checkRun)
@@ -537,9 +539,11 @@ func (r *GitHubReporter) ReportStatusForSnapshot(k8sClient client.Client, ctx co
 
 			commitStatus, err := r.createCommitStatusAdapterForSnapshot(snapshot, integrationTestStatusDetail, owner, repo, sha)
 			if err != nil {
-				logger.Error(err, "failed to create CommitStatusAdapter for snapshot",
-					"snapshot.NameSpace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
-				return err
+				logger.Error(err, "failed to create CommitStatusAdapter for scenario, skipping update",
+					"snapshot.NameSpace", snapshot.Namespace, "snapshot.Name", snapshot.Name,
+					"scenario.Name", integrationTestStatusDetail.ScenarioName,
+				)
+				continue
 			}
 
 			commitStatusExist, err := r.client.CommitStatusExists(allCommitStatuses, commitStatus)
