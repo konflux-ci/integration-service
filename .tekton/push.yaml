@@ -17,7 +17,8 @@ spec:
       value: 'quay.io/redhat-appstudio/integration-service:{{ revision }}'
     - name: infra-deployment-update-script
       value: |
-        sed -i -e 's|\(https://github.com/redhat-appstudio/integration-service/.*?ref=\)\(.*\)|\1{{ revision }}|' -e 's/\(newTag: \).*/\1{{ revision }}/' components/integration/kustomization.yaml
+        sed -i -e 's|\(https://github.com/redhat-appstudio/integration-service/.*?ref=\)\(.*\)|\1{{ revision }}|' -e 's/\(newTag: \).*/\1{{ revision }}/' components/integration/development/kustomization.yaml
+        sed -i -e 's|\(https://github.com/redhat-appstudio/integration-service/.*?ref=\)\(.*\)|\1{{ revision }}|' -e 's/\(newTag: \).*/\1{{ revision }}/' components/integration/staging/kustomization.yaml
 
         # Temporary disabled grafana updates
         # sed -i -e 's|\(https://github.com/redhat-appstudio/integration-service/.*?ref=\)\(.*\)|\1{{ revision }}|' -e 's/\(newTag: \).*/\1{{ revision }}/' components/monitoring/grafana/base/dashboards/integration/kustomization.yaml
