@@ -19,8 +19,9 @@ package status_test
 import (
 	"bytes"
 	"context"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 	"time"
+
+	"k8s.io/apimachinery/pkg/runtime/schema"
 
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -118,10 +119,6 @@ func (c *MockGitHubClient) UpdateCheckRun(ctx context.Context, checkRunID int64,
 
 func (c *MockGitHubClient) GetCheckRunID(context.Context, string, string, string, string, int64) (*int64, error) {
 	return c.GetCheckRunIDResult.ID, c.GetCheckRunIDResult.Error
-}
-
-func (c *MockGitHubClient) IsUpdateNeeded(existingCheckRun *ghapi.CheckRun, cra *github.CheckRunAdapter) bool {
-	return true
 }
 
 func (c *MockGitHubClient) GetExistingCheckRun(checkRuns []*ghapi.CheckRun, cra *github.CheckRunAdapter) *ghapi.CheckRun {
@@ -557,13 +554,13 @@ var _ = Describe("GitHubReporter", func() {
 
 		It("reports snapshot tests status via CheckRuns", func() {
 			// Create an pending CheckRun
-			hasSnapshot.Annotations["test.appstudio.openshift.io/status"] = "[{\"scenario\":\"scenario1\",\"status\":\"Pending\",\"lastUpdateTime\":\"2023-08-26T17:57:49+02:00\",\"details\":\"pending\"}]"
+			hasSnapshot.Annotations["test.appstudio.openshift.io/status"] = "[{\"scenario\":\"scenario1\",\"status\":\"Pending\",\"lastUpdateTime\":\"2023-07-26T16:57:49+02:00\",\"details\":\"pending\"}]"
 			Expect(reporter.ReportStatusForSnapshot(mockK8sClient, context.TODO(), &logger, hasSnapshot)).To(BeNil())
 			Expect(mockGitHubClient.CreateCheckRunResult.cra.Summary).To(Equal("Integration test for snapshot snapshot-sample and scenario scenario1 is pending"))
 			Expect(mockGitHubClient.CreateCheckRunResult.cra.Conclusion).To(Equal(""))
 
 			// Update existing CheckRun w/inprogress
-			hasSnapshot.Annotations["test.appstudio.openshift.io/status"] = "[{\"scenario\":\"scenario1\",\"status\":\"InProgress\",\"startTime\":\"2023-07-26T16:57:49+02:00\",\"lastUpdateTime\":\"2023-08-26T17:57:49+02:00\",\"details\":\"Failed to find deploymentTargetClass with right provisioner for copy of existingEnvironment\"}]"
+			hasSnapshot.Annotations["test.appstudio.openshift.io/status"] = "[{\"scenario\":\"scenario1\",\"status\":\"InProgress\",\"startTime\":\"2023-07-26T16:57:49+02:00\",\"lastUpdateTime\":\"2023-08-26T17:57:50+02:00\",\"details\":\"Failed to find deploymentTargetClass with right provisioner for copy of existingEnvironment\"}]"
 			var id int64 = 1
 			var externalID string = "example-external-id"
 			conclusion := ""
@@ -574,7 +571,7 @@ var _ = Describe("GitHubReporter", func() {
 			Expect(mockGitHubClient.UpdateCheckRunResult.cra.StartTime.IsZero()).To(BeFalse())
 
 			// Update existing CheckRun w/failure
-			hasSnapshot.Annotations["test.appstudio.openshift.io/status"] = "[{\"scenario\":\"scenario1\",\"status\":\"EnvironmentProvisionError\",\"startTime\":\"2023-07-26T16:57:49+02:00\",\"completionTime\":\"2023-07-26T17:57:49+02:00\",\"lastUpdateTime\":\"2023-08-26T17:57:49+02:00\",\"details\":\"Failed to find deploymentTargetClass with right provisioner for copy of existingEnvironment\"}]"
+			hasSnapshot.Annotations["test.appstudio.openshift.io/status"] = "[{\"scenario\":\"scenario1\",\"status\":\"EnvironmentProvisionError\",\"startTime\":\"2023-07-26T16:57:49+02:00\",\"completionTime\":\"2023-07-26T17:57:49+02:00\",\"lastUpdateTime\":\"2023-08-26T17:57:51+02:00\",\"details\":\"Failed to find deploymentTargetClass with right provisioner for copy of existingEnvironment\"}]"
 			mockGitHubClient.GetCheckRunResult.cr = &ghapi.CheckRun{ID: &id, ExternalID: &externalID, Conclusion: &conclusion}
 			Expect(reporter.ReportStatusForSnapshot(mockK8sClient, context.TODO(), &logger, hasSnapshot)).To(BeNil())
 			Expect(mockGitHubClient.UpdateCheckRunResult.cra.Summary).To(Equal("Integration test for snapshot snapshot-sample and scenario scenario1 experienced an error when provisioning environment"))
@@ -585,30 +582,29 @@ var _ = Describe("GitHubReporter", func() {
 			Expect(mockGitHubClient.UpdateCheckRunResult.cra.SHA).To(Equal("12a4a35ccd08194595179815e4646c3a6c08bb77"))
 			Expect(mockGitHubClient.UpdateCheckRunResult.cra.Name).To(Equal("Red Hat Trusted App Test / snapshot-sample / scenario1"))
 			Expect(mockGitHubClient.UpdateCheckRunResult.cra.StartTime.IsZero()).To(BeFalse())
-			Expect(mockGitHubClient.UpdateCheckRunResult.cra.CompletionTime.IsZero()).To(BeFalse())
 
 			// Update existing CheckRun w/failure
-			hasSnapshot.Annotations["test.appstudio.openshift.io/status"] = "[{\"scenario\":\"scenario1\",\"status\":\"DeploymentError\",\"startTime\":\"2023-07-26T16:57:49+02:00\",\"completionTime\":\"2023-07-26T17:57:49+02:00\",\"lastUpdateTime\":\"2023-08-26T17:57:49+02:00\",\"details\":\"error\"}]"
+			hasSnapshot.Annotations["test.appstudio.openshift.io/status"] = "[{\"scenario\":\"scenario1\",\"status\":\"DeploymentError\",\"startTime\":\"2023-07-26T16:57:49+02:00\",\"completionTime\":\"2023-07-26T17:57:49+02:00\",\"lastUpdateTime\":\"2023-08-26T17:57:52+02:00\",\"details\":\"error\"}]"
 			Expect(reporter.ReportStatusForSnapshot(mockK8sClient, context.TODO(), &logger, hasSnapshot)).To(BeNil())
 			Expect(mockGitHubClient.UpdateCheckRunResult.cra.Summary).To(Equal("Integration test for snapshot snapshot-sample and scenario scenario1 experienced an error when deploying snapshotEnvironmentBinding"))
 			Expect(mockGitHubClient.UpdateCheckRunResult.cra.Conclusion).To(Equal(gitops.IntegrationTestStatusFailureGithub))
 			Expect(mockGitHubClient.UpdateCheckRunResult.cra.CompletionTime.IsZero()).To(BeFalse())
 
 			// Update existing CheckRun w/deleted
-			hasSnapshot.Annotations["test.appstudio.openshift.io/status"] = "[{\"scenario\":\"scenario1\",\"status\":\"Deleted\",\"startTime\":\"2023-07-26T16:57:49+02:00\",\"completionTime\":\"2023-07-26T17:57:49+02:00\",\"lastUpdateTime\":\"2023-08-26T17:57:49+02:00\",\"details\":\"deleted\"}]"
+			hasSnapshot.Annotations["test.appstudio.openshift.io/status"] = "[{\"scenario\":\"scenario1\",\"status\":\"Deleted\",\"startTime\":\"2023-07-26T16:57:49+02:00\",\"completionTime\":\"2023-07-26T17:57:49+02:00\",\"lastUpdateTime\":\"2023-08-26T17:57:53+02:00\",\"details\":\"deleted\"}]"
 			Expect(reporter.ReportStatusForSnapshot(mockK8sClient, context.TODO(), &logger, hasSnapshot)).To(BeNil())
 			Expect(mockGitHubClient.UpdateCheckRunResult.cra.Summary).To(Equal("Integration test for snapshot snapshot-sample and scenario scenario1 was deleted before the pipelineRun could finish"))
 			Expect(mockGitHubClient.UpdateCheckRunResult.cra.Conclusion).To(Equal(gitops.IntegrationTestStatusFailureGithub))
 			Expect(mockGitHubClient.UpdateCheckRunResult.cra.CompletionTime.IsZero()).To(BeFalse())
 
-			hasSnapshot.Annotations["test.appstudio.openshift.io/status"] = "[{\"scenario\":\"scenario1\",\"status\":\"TestFail\",\"testPipelineRunName\":\"test-pipelinerun\",\"startTime\":\"2023-07-26T16:57:49+02:00\",\"completionTime\":\"2023-07-26T17:57:49+02:00\",\"lastUpdateTime\":\"2023-08-26T17:57:49+02:00\",\"details\":\"failed\"}]"
+			hasSnapshot.Annotations["test.appstudio.openshift.io/status"] = "[{\"scenario\":\"scenario1\",\"status\":\"TestFail\",\"testPipelineRunName\":\"test-pipelinerun\",\"startTime\":\"2023-07-26T16:57:49+02:00\",\"completionTime\":\"2023-07-26T17:57:49+02:00\",\"lastUpdateTime\":\"2023-08-26T17:57:54+02:00\",\"details\":\"failed\"}]"
 			Expect(reporter.ReportStatusForSnapshot(mockK8sClient, context.TODO(), &logger, hasSnapshot)).To(BeNil())
 			Expect(mockGitHubClient.UpdateCheckRunResult.cra.Summary).To(Equal("Integration test for snapshot snapshot-sample and scenario scenario1 has failed"))
 			Expect(mockGitHubClient.UpdateCheckRunResult.cra.Conclusion).To(Equal(gitops.IntegrationTestStatusFailureGithub))
 			Expect(mockGitHubClient.UpdateCheckRunResult.cra.CompletionTime.IsZero()).To(BeFalse())
 
 			// Update existing CheckRun w/success
-			hasSnapshot.Annotations["test.appstudio.openshift.io/status"] = "[{\"scenario\":\"scenario1\",\"status\":\"TestPassed\",\"testPipelineRunName\":\"test-pipelinerun\",\"startTime\":\"2023-07-26T16:57:49+02:00\",\"completionTime\":\"2023-07-26T17:57:49+02:00\",\"lastUpdateTime\":\"2023-08-26T17:57:49+02:00\",\"details\":\"failed\"}]"
+			hasSnapshot.Annotations["test.appstudio.openshift.io/status"] = "[{\"scenario\":\"scenario1\",\"status\":\"TestPassed\",\"testPipelineRunName\":\"test-pipelinerun\",\"startTime\":\"2023-07-26T16:57:49+02:00\",\"completionTime\":\"2023-07-26T17:57:49+02:00\",\"lastUpdateTime\":\"2023-08-26T17:57:55+02:00\",\"details\":\"failed\"}]"
 			Expect(reporter.ReportStatusForSnapshot(mockK8sClient, context.TODO(), &logger, hasSnapshot)).To(BeNil())
 			Expect(mockGitHubClient.UpdateCheckRunResult.cra.Summary).To(Equal("Integration test for snapshot snapshot-sample and scenario scenario1 has passed"))
 			Expect(mockGitHubClient.UpdateCheckRunResult.cra.Conclusion).To(Equal(gitops.IntegrationTestStatusSuccessGithub))
@@ -683,7 +679,7 @@ var _ = Describe("GitHubReporter", func() {
 			Expect(mockGitHubClient.CreateCommentResult.body).Should(ContainSubstring("experienced an error when provisioning environment"))
 
 			// DeploymentError
-			hasSnapshot.Annotations["test.appstudio.openshift.io/status"] = "[{\"scenario\":\"scenario1\",\"status\":\"DeploymentError\",\"startTime\":\"2023-07-26T16:57:49+02:00\",\"completionTime\":\"2023-07-26T17:57:49+02:00\",\"lastUpdateTime\":\"2023-08-26T17:57:49+02:00\",\"details\":\"failed\"}]"
+			hasSnapshot.Annotations["test.appstudio.openshift.io/status"] = "[{\"scenario\":\"scenario1\",\"status\":\"DeploymentError\",\"startTime\":\"2023-07-26T16:57:49+02:00\",\"completionTime\":\"2023-07-26T17:57:49+02:00\",\"lastUpdateTime\":\"2023-08-26T17:57:50+02:00\",\"details\":\"failed\"}]"
 			Expect(reporter.ReportStatusForSnapshot(mockK8sClient, context.TODO(), &logger, hasSnapshot)).To(BeNil())
 			Expect(mockGitHubClient.CreateCommitStatusResult.state).To(Equal(gitops.IntegrationTestStatusErrorGithub))
 			Expect(mockGitHubClient.CreateCommitStatusResult.description).To(Equal("Integration test for snapshot snapshot-sample and scenario scenario1 experienced an error when deploying snapshotEnvironmentBinding"))
@@ -691,7 +687,7 @@ var _ = Describe("GitHubReporter", func() {
 			Expect(mockGitHubClient.CreateCommentResult.body).Should(ContainSubstring("experienced an error when deploying snapshotEnvironmentBinding"))
 
 			// Deleted
-			hasSnapshot.Annotations["test.appstudio.openshift.io/status"] = "[{\"scenario\":\"scenario1\",\"status\":\"Deleted\",\"startTime\":\"2023-07-26T16:57:49+02:00\",\"completionTime\":\"2023-07-26T17:57:49+02:00\",\"lastUpdateTime\":\"2023-08-26T17:57:49+02:00\",\"details\":\"deleted\"}]"
+			hasSnapshot.Annotations["test.appstudio.openshift.io/status"] = "[{\"scenario\":\"scenario1\",\"status\":\"Deleted\",\"startTime\":\"2023-07-26T16:57:49+02:00\",\"completionTime\":\"2023-07-26T17:57:49+02:00\",\"lastUpdateTime\":\"2023-08-26T17:57:51+02:00\",\"details\":\"deleted\"}]"
 			Expect(reporter.ReportStatusForSnapshot(mockK8sClient, context.TODO(), &logger, hasSnapshot)).To(BeNil())
 			Expect(mockGitHubClient.CreateCommitStatusResult.state).To(Equal(gitops.IntegrationTestStatusErrorGithub))
 			Expect(mockGitHubClient.CreateCommitStatusResult.description).To(Equal("Integration test for snapshot snapshot-sample and scenario scenario1 was deleted before the pipelineRun could finish"))
@@ -699,7 +695,7 @@ var _ = Describe("GitHubReporter", func() {
 			Expect(mockGitHubClient.CreateCommentResult.body).Should(ContainSubstring("was deleted before the pipelineRun could finish"))
 
 			// Success
-			hasSnapshot.Annotations["test.appstudio.openshift.io/status"] = "[{\"scenario\":\"scenario1\",\"status\":\"TestPassed\",\"testPipelineRunName\":\"test-pipelinerun\",\"startTime\":\"2023-07-26T16:57:49+02:00\",\"completionTime\":\"2023-07-26T17:57:49+02:00\",\"lastUpdateTime\":\"2023-08-26T17:57:49+02:00\",\"details\":\"passed\"}]"
+			hasSnapshot.Annotations["test.appstudio.openshift.io/status"] = "[{\"scenario\":\"scenario1\",\"status\":\"TestPassed\",\"testPipelineRunName\":\"test-pipelinerun\",\"startTime\":\"2023-07-26T16:57:49+02:00\",\"completionTime\":\"2023-07-26T17:57:49+02:00\",\"lastUpdateTime\":\"2023-08-26T17:57:55+02:00\",\"details\":\"passed\"}]"
 			Expect(reporter.ReportStatusForSnapshot(mockK8sClient, context.TODO(), &logger, hasSnapshot)).To(BeNil())
 			Expect(mockGitHubClient.CreateCommitStatusResult.state).To(Equal(gitops.IntegrationTestStatusSuccessGithub))
 			Expect(mockGitHubClient.CreateCommitStatusResult.description).To(Equal("Integration test for snapshot snapshot-sample and scenario scenario1 has passed"))
@@ -707,7 +703,7 @@ var _ = Describe("GitHubReporter", func() {
 			Expect(mockGitHubClient.CreateCommentResult.body).Should(ContainSubstring("has passed"))
 
 			// TestFail
-			hasSnapshot.Annotations["test.appstudio.openshift.io/status"] = "[{\"scenario\":\"scenario1\",\"status\":\"TestFail\",\"testPipelineRunName\":\"test-pipelinerun\",\"startTime\":\"2023-07-26T16:57:49+02:00\",\"completionTime\":\"2023-07-26T17:57:49+02:00\",\"lastUpdateTime\":\"2023-08-26T17:57:49+02:00\",\"details\":\"failed\"}]"
+			hasSnapshot.Annotations["test.appstudio.openshift.io/status"] = "[{\"scenario\":\"scenario1\",\"status\":\"TestFail\",\"testPipelineRunName\":\"test-pipelinerun\",\"startTime\":\"2023-07-26T16:57:49+02:00\",\"completionTime\":\"2023-07-26T17:57:56+02:00\",\"lastUpdateTime\":\"2023-08-26T17:57:58+02:00\",\"details\":\"failed\"}]"
 			Expect(reporter.ReportStatusForSnapshot(mockK8sClient, context.TODO(), &logger, hasSnapshot)).To(BeNil())
 			Expect(mockGitHubClient.CreateCommitStatusResult.state).To(Equal(gitops.IntegrationTestStatusFailureGithub))
 			Expect(mockGitHubClient.CreateCommitStatusResult.description).To(Equal("Integration test for snapshot snapshot-sample and scenario scenario1 has failed"))
@@ -715,21 +711,21 @@ var _ = Describe("GitHubReporter", func() {
 			Expect(mockGitHubClient.CreateCommentResult.body).Should(ContainSubstring("has failed"))
 
 			// InProgress
-			hasSnapshot.Annotations["test.appstudio.openshift.io/status"] = "[{\"scenario\":\"scenario1\",\"status\":\"InProgress\",\"startTime\":\"2023-07-26T16:57:49+02:00\",\"lastUpdateTime\":\"2023-08-26T17:57:49+02:00\",\"details\":\"In progress\"}]"
+			hasSnapshot.Annotations["test.appstudio.openshift.io/status"] = "[{\"scenario\":\"scenario1\",\"status\":\"InProgress\",\"startTime\":\"2023-07-26T16:57:49+02:00\",\"lastUpdateTime\":\"2023-08-26T17:58:58+02:00\",\"details\":\"In progress\"}]"
 			Expect(reporter.ReportStatusForSnapshot(mockK8sClient, context.TODO(), &logger, hasSnapshot)).To(BeNil())
 			Expect(mockGitHubClient.CreateCommitStatusResult.state).To(Equal(gitops.IntegrationTestStatusPendingGithub))
 			Expect(mockGitHubClient.CreateCommitStatusResult.description).To(Equal("Integration test for snapshot snapshot-sample and scenario scenario1 is in progress"))
 			Expect(mockGitHubClient.CreateCommitStatusResult.statusContext).To(Equal("Red Hat Trusted App Test / snapshot-sample / scenario1"))
 
 			// Pending
-			hasSnapshot.Annotations["test.appstudio.openshift.io/status"] = "[{\"scenario\":\"scenario1\",\"status\":\"Pending\",\"lastUpdateTime\":\"2023-08-26T17:57:49+02:00\",\"details\":\"pending\"}]"
+			hasSnapshot.Annotations["test.appstudio.openshift.io/status"] = "[{\"scenario\":\"scenario1\",\"status\":\"Pending\",\"lastUpdateTime\":\"2023-08-26T17:59:49+02:00\",\"details\":\"pending\"}]"
 			Expect(reporter.ReportStatusForSnapshot(mockK8sClient, context.TODO(), &log, hasSnapshot)).To(BeNil())
 			Expect(mockGitHubClient.CreateCommitStatusResult.state).To(Equal(gitops.IntegrationTestStatusPendingGithub))
 			Expect(mockGitHubClient.CreateCommitStatusResult.description).To(Equal("Integration test for snapshot snapshot-sample and scenario scenario1 is pending"))
 			Expect(mockGitHubClient.CreateCommitStatusResult.statusContext).To(Equal("Red Hat Trusted App Test / snapshot-sample / scenario1"))
 
 			// One commitStatus exists already
-			hasSnapshot.Annotations["test.appstudio.openshift.io/status"] = "[{\"scenario\":\"scenario2\",\"status\":\"Pending\",\"lastUpdateTime\":\"2023-08-26T17:57:49+02:00\",\"details\":\"pending\"}]"
+			hasSnapshot.Annotations["test.appstudio.openshift.io/status"] = "[{\"scenario\":\"scenario2\",\"status\":\"Pending\",\"lastUpdateTime\":\"2023-08-26T17:59:59+02:00\",\"details\":\"pending\"}]"
 			Expect(reporter.ReportStatusForSnapshot(mockK8sClient, context.TODO(), &log, hasSnapshot)).To(BeNil())
 			expectedLogEntry := "found existing commitStatus for scenario test status of snapshot, no need to create new commit status"
 			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))

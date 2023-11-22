@@ -99,7 +99,6 @@ type ClientInterface interface {
 	CreateComment(ctx context.Context, owner string, repo string, issueNumber int, body string) (int64, error)
 	CreateCommitStatus(ctx context.Context, owner string, repo string, SHA string, state string, description string, statusContext string) (int64, error)
 	GetAllCheckRunsForRef(ctx context.Context, owner string, repo string, SHA string, appID int64) ([]*ghapi.CheckRun, error)
-	IsUpdateNeeded(existingCheckRun *ghapi.CheckRun, newCheckRun *CheckRunAdapter) bool
 	GetExistingCheckRun(checkRuns []*ghapi.CheckRun, newCheckRun *CheckRunAdapter) *ghapi.CheckRun
 	GetAllCommitStatusesForRef(ctx context.Context, owner, repo, sha string) ([]*ghapi.RepoStatus, error)
 	GetAllCommentsForPR(ctx context.Context, owner string, repo string, pr int) ([]*ghapi.IssueComment, error)
@@ -390,20 +389,6 @@ func (c *Client) GetExistingCommentID(comments []*ghapi.IssueComment, snapshotNa
 	}
 	c.logger.Info("found no comment with a matching scenarioName", "scenarioName", scenarioName)
 	return nil
-}
-
-// IsUpdateNeeded check if check run update is needed
-// according to the text of existingCheckRun and newCheckRun since the details are different every update
-func (c *Client) IsUpdateNeeded(existingCheckRun *ghapi.CheckRun, newCheckRun *CheckRunAdapter) bool {
-	if newCheckRun.Text != *existingCheckRun.Output.Text {
-		// We need to update the existing checkrun if their ExternalID and Text are different
-		c.logger.Info("found CheckRun with a matching ExternalID and status, so need to update", "ExternalID", newCheckRun.ExternalID)
-		return true
-	} else {
-		// We don't need to update the existing checkrun if their ExternalID and Text are the same
-		c.logger.Info("found CheckRun with a matching ExternalID and status, so no need to update", "ExternalID", newCheckRun.ExternalID)
-		return false
-	}
 }
 
 // GetAllCommitStatusesForRef returns all existing GitHub CommitStatuses if a match for the Owner, Repo, and SHA.

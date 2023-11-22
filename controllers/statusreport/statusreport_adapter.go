@@ -19,6 +19,7 @@ package statusreport
 import (
 	"context"
 	"fmt"
+
 	"github.com/redhat-appstudio/integration-service/api/v1beta1"
 	"github.com/redhat-appstudio/integration-service/gitops"
 	"github.com/redhat-appstudio/integration-service/metrics"
