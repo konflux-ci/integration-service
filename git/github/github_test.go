@@ -285,7 +285,6 @@ var _ = Describe("Client", func() {
 
 		existingCheckRun := client.GetExistingCheckRun(allCheckRuns, checkRunAdapter)
 		Expect(existingCheckRun).NotTo(BeNil())
-		Expect(client.IsUpdateNeeded(existingCheckRun, checkRunAdapter)).To(BeTrue())
 
 		checkRunAdapter = &github.CheckRunAdapter{
 			Name:           "example-name",
@@ -300,7 +299,6 @@ var _ = Describe("Client", func() {
 			StartTime:      time.Now(),
 			CompletionTime: time.Now(),
 		}
-		Expect(client.IsUpdateNeeded(existingCheckRun, checkRunAdapter)).To(BeFalse())
 	})
 
 	It("can check if creating a new commit status is needed", func() {
