@@ -19,6 +19,7 @@ package buildpipeline
 import (
 	"bytes"
 	"reflect"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"time"
 
 	"github.com/redhat-appstudio/integration-service/gitops"
@@ -399,7 +400,10 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		})
 
 		It("ensure err is returned when pipelinerun doesn't have Result for ", func() {
-			buildPipelineRun.Status = tektonv1.PipelineRunStatus{
+			// We don't need to update the underlying resource on the control plane,
+			// so we create a copy and modify its status. This prevents update conflicts in other tests.
+			buildPipelineRunNoSource := buildPipelineRun.DeepCopy()
+			buildPipelineRunNoSource.Status = tektonv1.PipelineRunStatus{
 				PipelineRunStatusFields: tektonv1.PipelineRunStatusFields{
 					ChildReferences: []tektonv1.ChildStatusReference{
 						{
@@ -424,9 +428,8 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 					},
 				},
 			}
-			Expect(k8sClient.Status().Update(ctx, buildPipelineRun)).Should(Succeed())
 
-			componentSource, err := adapter.getComponentSourceFromPipelineRun(buildPipelineRun)
+			componentSource, err := adapter.getComponentSourceFromPipelineRun(buildPipelineRunNoSource)
 			Expect(componentSource).To(BeNil())
 			Expect(err).ToNot(BeNil())
 		})
@@ -796,8 +799,14 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			Expect(result.CancelRequest).To(BeFalse())
 			Expect(err).To(BeNil())
 
-			// Ensure PLR does not have finalizer
-			Expect(buildPipelineRun.ObjectMeta.Finalizers).NotTo(ContainElement("build.appstudio.openshift.io/pipelinerun"))
+			// Ensure the PLR on the control plane does not have finalizer
+			Eventually(func() bool {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Namespace: buildPipelineRun.Namespace,
+					Name:      buildPipelineRun.Name,
+				}, buildPipelineRun)
+				return err == nil && !controllerutil.ContainsFinalizer(buildPipelineRun, helpers.IntegrationPipelineRunFinalizer)
+			}, time.Second*20).Should(BeTrue())
 		})
 	})
 
