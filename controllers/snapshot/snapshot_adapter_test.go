@@ -619,6 +619,32 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
 		})
 
+		It("ensures Snapshot labels/annotations prefixed with 'appstudio.openshift.io' are propagated to the release", func() {
+			releasePlans := []releasev1alpha1.ReleasePlan{*testReleasePlan}
+			releaseList := &releasev1alpha1.ReleaseList{}
+			err := adapter.createMissingReleasesForReleasePlans(hasApp, &releasePlans, hasSnapshot)
+
+			Expect(err).To(BeNil())
+
+			opts := []client.ListOption{
+				client.InNamespace(hasApp.Namespace),
+				client.MatchingLabels{
+					"appstudio.openshift.io/component": hasComp.Name,
+					//"appstudio.openshift.io/application": hasApp.Name,
+				},
+			}
+
+			Eventually(func() error {
+				if err := k8sClient.List(adapter.context, releaseList, opts...); err != nil {
+					return err
+				}
+				if len(releaseList.Items) > 0 {
+					Expect(releaseList.Items[0].ObjectMeta.Labels["appstudio.openshift.io/component"] == hasComp.Name)
+				}
+				return nil
+			}, time.Second*10).Should(BeNil())
+		})
+
 		It("no action when EnsureAllReleasesExist function runs when AppStudio Tests failed and the snapshot is invalid", func() {
 			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
 
@@ -1478,7 +1504,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 
 	Describe("EnsureRerunPipelineRunsExist", func() {
 
-		When("manual re-run of scenario scenario using static env is trigerred", func() {
+		When("manual re-run of scenario using static env is trigerred", func() {
 			BeforeEach(func() {
 				var (
 					buf bytes.Buffer
@@ -1542,7 +1568,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			})
 		})
 
-		When("manual re-run of scenario scenario using ephemeral] env is trigerred", func() {
+		When("manual re-run of scenario using ephemeral] env is trigerred", func() {
 			BeforeEach(func() {
 				var (
 					buf          bytes.Buffer
