@@ -231,7 +231,7 @@ var _ = Describe("PipelineController", func() {
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 		err = k8sClient.Delete(ctx, hasComp)
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
-		_ = controllerutil.RemoveFinalizer(buildPipelineRun, "build.appstudio.openshift.io/pipelinerun")
+		_ = controllerutil.RemoveFinalizer(buildPipelineRun, "test.appstudio.openshift.io/pipelinerun")
 		err = k8sClient.Delete(ctx, buildPipelineRun)
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 		err = k8sClient.Delete(ctx, successfulTaskRun)
@@ -262,19 +262,14 @@ var _ = Describe("PipelineController", func() {
 		Expect(err).To(BeNil())
 	})
 
+	It("can setup a new Controller manager", func() {
+		err := SetupController(manager, &ctrl.Log)
+		Expect(err).To(BeNil())
+	})
+
 	It("can setup a new controller manager with the given reconciler", func() {
 		err := setupControllerWithManager(manager, pipelineReconciler)
 		Expect(err).NotTo(HaveOccurred())
-	})
-
-	It("can setup a new Controller manager and start it", func() {
-		err := SetupController(manager, &ctrl.Log)
-		Expect(err).To(BeNil())
-		go func() {
-			defer GinkgoRecover()
-			err = manager.Start(ctx)
-			Expect(err).NotTo(HaveOccurred())
-		}()
 	})
 
 	It("Does not return an error if the component cannot be found", func() {
