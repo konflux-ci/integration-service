@@ -1316,7 +1316,7 @@
       ],
       "timeFrom": null,
       "timeShift": null,
-      "title": "Snapshot Created to PipelineRun Started Seconds",
+      "title": "Snapshot Created to PipelineRun With Static Environment Started Seconds",
       "tooltip": {
         "show": true,
         "showHistogram": false
