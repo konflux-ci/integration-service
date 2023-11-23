@@ -45,6 +45,9 @@ const (
 	// SnapshotIntegrationTestRun contains name of test we want to trigger run
 	SnapshotIntegrationTestRun = "test.appstudio.openshift.io/run"
 
+	// AppstudioLabelPrefix contains application, component, build-pipelinerun etc.
+	AppstudioLabelPrefix = "appstudio.openshift.io"
+
 	// SnapshotLabel contains the name of the Snapshot within appstudio
 	SnapshotLabel = "appstudio.openshift.io/snapshot"
 
