@@ -472,7 +472,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		})
 
 		It("Ensure IntegrationPipelineRun can be created for scenario", func() {
-			_, err := adapter.createIntegrationPipelineRun(hasApp, integrationTestScenario, hasSnapshot)
+			_, err := adapter.createIntegrationPipelineRun(hasApp, integrationTestScenario, hasSnapshot, gitops.ScenarioOptions{})
 			Expect(err == nil).To(BeTrue())
 
 			integrationPipelineRuns := &tektonv1.PipelineRunList{}
@@ -813,7 +813,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		})
 
 		It("ensures build labels/annotations prefixed with 'build.appstudio' are propagated from snapshot to Integration test PLR", func() {
-			pipelineRun, err := adapter.createIntegrationPipelineRun(hasApp, integrationTestScenario, hasSnapshot)
+			pipelineRun, err := adapter.createIntegrationPipelineRun(hasApp, integrationTestScenario, hasSnapshot, gitops.ScenarioOptions{})
 			Expect(err).To(BeNil())
 			Expect(pipelineRun).ToNot(BeNil())
 
@@ -827,7 +827,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		})
 
 		It("ensures build labels/annotations non-prefixed with 'build.appstudio' are NOT propagated from snapshot to Integration test PLR", func() {
-			pipelineRun, err := adapter.createIntegrationPipelineRun(hasApp, integrationTestScenario, hasSnapshot)
+			pipelineRun, err := adapter.createIntegrationPipelineRun(hasApp, integrationTestScenario, hasSnapshot, gitops.ScenarioOptions{})
 			Expect(err).To(BeNil())
 			Expect(pipelineRun).ToNot(BeNil())
 

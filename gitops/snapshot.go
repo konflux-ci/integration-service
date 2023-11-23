@@ -713,8 +713,8 @@ func GetIntegrationTestRunLabelValue(snapshot applicationapiv1alpha1.Snapshot) (
 }
 
 // GetIntegrationTestDryRunLabelValue returns value of the label responsible for dry-running tests
-func GetIntegrationTestDryRunLabelValue(snapshot applicationapiv1alpha1.Snapshot) (string, bool) {
-	labels := snapshot.GetLabels()
+func GetIntegrationTestDryRunLabelValue(obj metav1.Object) (string, bool) {
+	labels := obj.GetLabels()
 	labelVal, ok := labels[SnapshotIntegrationTestDryRun]
 	return labelVal, ok
 }

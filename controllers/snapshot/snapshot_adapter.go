@@ -91,7 +91,7 @@ func (a *Adapter) EnsureRerunPipelineRunsExist() (controller.OperationResult, er
 	if scenarioName, ok = gitops.GetIntegrationTestRunLabelValue(*a.snapshot); ok {
 		isDryRun = false
 		labelRemovalFunction = gitops.RemoveIntegrationTestRerunLabel
-	} else if scenarioName, ok = gitops.GetIntegrationTestDryRunLabelValue(*a.snapshot); ok {
+	} else if scenarioName, ok = gitops.GetIntegrationTestDryRunLabelValue(a.snapshot); ok {
 		isDryRun = true
 		labelRemovalFunction = gitops.RemoveIntegrationTestDryRunLabel
 	} else {
@@ -145,7 +145,7 @@ func (a *Adapter) EnsureRerunPipelineRunsExist() (controller.OperationResult, er
 			return controller.RequeueWithError(err)
 		}
 
-		_, err = a.ensureEphemeralEnvironmentForScenarioExists(integrationTestScenario, testStatuses, allEnvironments)
+		_, err = a.ensureEphemeralEnvironmentForScenarioExists(integrationTestScenario, testStatuses, allEnvironments, gitops.ScenarioOptions{})
 		if err != nil {
 			if h.IsEnvironmentNotInNamespaceError(err) {
 				a.logger.Error(err, "environment doesn't exist in the same namespace as integrationScenario at all, try again after creating environment",
@@ -161,7 +161,7 @@ func (a *Adapter) EnsureRerunPipelineRunsExist() (controller.OperationResult, er
 
 	} else {
 
-		pipelineRun, err := a.createIntegrationPipelineRun(a.application, integrationTestScenario, a.snapshot)
+		pipelineRun, err := a.createIntegrationPipelineRun(a.application, integrationTestScenario, a.snapshot, gitops.ScenarioOptions{DryRun: isDryRun})
 		if err != nil {
 			a.logger.Error(err, "Failed to create pipelineRun for snapshot and scenario")
 			return controller.RequeueWithError(err)
@@ -236,7 +236,7 @@ func (a *Adapter) EnsureStaticIntegrationPipelineRunsExist() (controller.Operati
 					"integrationTestScenario.Name", integrationTestScenario.Name,
 					"pipelineRun.Name", integrationTestScenarioStatus.TestPipelineRunName)
 			} else {
-				pipelineRun, err := a.createIntegrationPipelineRun(a.application, &integrationTestScenario, a.snapshot)
+				pipelineRun, err := a.createIntegrationPipelineRun(a.application, &integrationTestScenario, a.snapshot, gitops.ScenarioOptions{})
 				if err != nil {
 					a.logger.Error(err, "Failed to create pipelineRun for snapshot and scenario")
 					return controller.RequeueWithError(err)
@@ -320,7 +320,7 @@ func (a *Adapter) EnsureCreationOfEphemeralEnvironments() (controller.OperationR
 			continue
 		}
 
-		_, err = a.ensureEphemeralEnvironmentForScenarioExists(&integrationTestScenario, testStatuses, allEnvironments)
+		_, err = a.ensureEphemeralEnvironmentForScenarioExists(&integrationTestScenario, testStatuses, allEnvironments, gitops.ScenarioOptions{})
 		if err != nil {
 			if h.IsEnvironmentNotInNamespaceError(err) {
 				a.logger.Error(err, "environment doesn't exist in the same namespace as integrationScenario at all, try again after creating environment",
@@ -529,9 +529,12 @@ func (a *Adapter) getExistingEnvironmentForScenario(integrationTestScenario *v1b
 }
 
 // createEnvironmentBindingForScenario creates SnapshotEnvironmentBinding for the given test scenario and snapshot
-func (a *Adapter) createEnvironmentBindingForScenario(integrationTestScenario *v1beta1.IntegrationTestScenario, environment *applicationapiv1alpha1.Environment) (*applicationapiv1alpha1.SnapshotEnvironmentBinding, error) {
-	scenarioLabelAndKey := map[string]string{gitops.SnapshotTestScenarioLabel: integrationTestScenario.Name}
-	binding, err := a.createSnapshotEnvironmentBindingForSnapshot(a.application, environment, a.snapshot, scenarioLabelAndKey)
+func (a *Adapter) createEnvironmentBindingForScenario(integrationTestScenario *v1beta1.IntegrationTestScenario, environment *applicationapiv1alpha1.Environment, scenarioOptions gitops.ScenarioOptions) (*applicationapiv1alpha1.SnapshotEnvironmentBinding, error) {
+	additionalLabels := map[string]string{gitops.SnapshotTestScenarioLabel: integrationTestScenario.Name}
+	if scenarioOptions.DryRun {
+		additionalLabels[gitops.SnapshotIntegrationTestDryRun] = integrationTestScenario.Name
+	}
+	binding, err := a.createSnapshotEnvironmentBindingForSnapshot(a.application, environment, a.snapshot, additionalLabels)
 	if err != nil {
 		a.logger.Error(err, "Failed to create SnapshotEnvironmentBinding for snapshot",
 			"snapshot", a.snapshot.Name,
@@ -547,7 +550,7 @@ func (a *Adapter) createEnvironmentBindingForScenario(integrationTestScenario *v
 }
 
 // ensureEphemeralEnvironmentForScenarioExists creates or return existing epehemeral environment for the given test scenario
-func (a *Adapter) ensureEphemeralEnvironmentForScenarioExists(integrationTestScenario *v1beta1.IntegrationTestScenario, testStatuses *intgteststat.SnapshotIntegrationTestStatuses, allEnvironments *[]applicationapiv1alpha1.Environment) (*applicationapiv1alpha1.SnapshotEnvironmentBinding, error) {
+func (a *Adapter) ensureEphemeralEnvironmentForScenarioExists(integrationTestScenario *v1beta1.IntegrationTestScenario, testStatuses *intgteststat.SnapshotIntegrationTestStatuses, allEnvironments *[]applicationapiv1alpha1.Environment, scenarioOptions gitops.ScenarioOptions) (*applicationapiv1alpha1.SnapshotEnvironmentBinding, error) {
 
 	var (
 		environment *applicationapiv1alpha1.Environment
@@ -591,7 +594,7 @@ func (a *Adapter) ensureEphemeralEnvironmentForScenarioExists(integrationTestSce
 	}
 	if binding == nil {
 		// create binding and add scenario name to label of binding
-		binding, err = a.createEnvironmentBindingForScenario(integrationTestScenario, environment)
+		binding, err = a.createEnvironmentBindingForScenario(integrationTestScenario, environment, scenarioOptions)
 		if err != nil {
 			testStatuses.UpdateTestStatusIfChanged(
 				integrationTestScenario.Name,
@@ -697,7 +700,7 @@ func (a *Adapter) findAvailableEnvironments() (*[]applicationapiv1alpha1.Environ
 
 // createIntegrationPipelineRun creates and returns a new integration PipelineRun. The Pipeline information and the parameters to it
 // will be extracted from the given integrationScenario. The integration's Snapshot will also be passed to the integration PipelineRun.
-func (a *Adapter) createIntegrationPipelineRun(application *applicationapiv1alpha1.Application, integrationTestScenario *v1beta1.IntegrationTestScenario, snapshot *applicationapiv1alpha1.Snapshot) (*tektonv1.PipelineRun, error) {
+func (a *Adapter) createIntegrationPipelineRun(application *applicationapiv1alpha1.Application, integrationTestScenario *v1beta1.IntegrationTestScenario, snapshot *applicationapiv1alpha1.Snapshot, scenarioOptions gitops.ScenarioOptions) (*tektonv1.PipelineRun, error) {
 	a.logger.Info("Creating new pipelinerun for integrationTestscenario",
 		"integrationTestScenario.Name", integrationTestScenario.Name)
 
@@ -709,6 +712,12 @@ func (a *Adapter) createIntegrationPipelineRun(application *applicationapiv1alph
 		WithExtraParams(integrationTestScenario.Spec.Params).
 		WithFinalizer(h.IntegrationPipelineRunFinalizer).
 		AsPipelineRun()
+
+	if scenarioOptions.DryRun {
+		// add dry-run label to PLR triggered as dry-run
+		_ = metadata.SetLabel(pipelineRun, gitops.SnapshotIntegrationTestDryRun, integrationTestScenario.Name)
+	}
+
 	// copy PipelineRun PAC annotations/labels from snapshot to integration test PipelineRuns
 	_ = metadata.CopyAnnotationsByPrefix(&snapshot.ObjectMeta, &pipelineRun.ObjectMeta, gitops.PipelinesAsCodePrefix)
 	_ = metadata.CopyLabelsByPrefix(&snapshot.ObjectMeta, &pipelineRun.ObjectMeta, gitops.PipelinesAsCodePrefix)

@@ -107,7 +107,8 @@ func (a *Adapter) EnsureIntegrationTestPipelineForScenarioExists() (controller.O
 				"integrationTestScenario.Name", a.integrationTestScenario.Name,
 				"app name", a.application.Name,
 				"namespace", a.application.Namespace)
-			pipelineRun, err := a.createIntegrationPipelineRunWithEnvironment(a.application, a.integrationTestScenario, a.snapshot, a.environment)
+			_, isDryRun := gitops.GetIntegrationTestDryRunLabelValue(a.snapshotEnvironmentBinding)
+			pipelineRun, err := a.createIntegrationPipelineRunWithEnvironment(a.application, a.integrationTestScenario, a.snapshot, a.environment, gitops.ScenarioOptions{DryRun: isDryRun})
 			if err != nil {
 				a.logger.Error(err, "Failed to create pipelineRun for snapshot, environment and scenario")
 				return controller.RequeueWithError(err)
@@ -197,7 +198,7 @@ func (a *Adapter) EnsureEphemeralEnvironmentsCleanedUp() (controller.OperationRe
 // createIntegrationPipelineRunWithEnvironment creates new integration PipelineRun. The Pipeline information and the parameters to it
 // will be extracted from the given integrationScenario. The integration's Snapshot will also be passed to the integration PipelineRun.
 // If the creation of the PipelineRun is unsuccessful, an error will be returned.
-func (a *Adapter) createIntegrationPipelineRunWithEnvironment(application *applicationapiv1alpha1.Application, integrationTestScenario *v1beta1.IntegrationTestScenario, snapshot *applicationapiv1alpha1.Snapshot, environment *applicationapiv1alpha1.Environment) (*tektonv1.PipelineRun, error) {
+func (a *Adapter) createIntegrationPipelineRunWithEnvironment(application *applicationapiv1alpha1.Application, integrationTestScenario *v1beta1.IntegrationTestScenario, snapshot *applicationapiv1alpha1.Snapshot, environment *applicationapiv1alpha1.Environment, scenarioOptions gitops.ScenarioOptions) (*tektonv1.PipelineRun, error) {
 	deploymentTarget, err := a.getDeploymentTargetForEnvironment(environment)
 	if err != nil || deploymentTarget == nil {
 		return nil, err
@@ -210,6 +211,11 @@ func (a *Adapter) createIntegrationPipelineRunWithEnvironment(application *appli
 		WithEnvironmentAndDeploymentTarget(deploymentTarget, environment.Name).
 		WithFinalizer(h.IntegrationPipelineRunFinalizer).
 		AsPipelineRun()
+
+	if scenarioOptions.DryRun {
+		// add dry-run label to PLR triggered as dry-run
+		_ = metadata.SetLabel(pipelineRun, gitops.SnapshotIntegrationTestDryRun, integrationTestScenario.Name)
+	}
 
 	// copy PipelineRun PAC annotations/labels from snapshot to integration test PipelineRuns
 	_ = metadata.CopyAnnotationsByPrefix(&snapshot.ObjectMeta, &pipelineRun.ObjectMeta, gitops.PipelinesAsCodePrefix)
