@@ -205,8 +205,10 @@ func (a *Adapter) createIntegrationPipelineRunWithEnvironment(application *appli
 
 	pipelineRun := tekton.NewIntegrationPipelineRun(snapshot.Name, application.Namespace, *integrationTestScenario).
 		WithSnapshot(snapshot).
-		WithApplicationAndComponent(a.application, a.component).
 		WithIntegrationLabels(integrationTestScenario).
+		WithIntegrationAnnotations(integrationTestScenario).
+		WithApplicationAndComponent(a.application, a.component).
+		WithExtraParams(integrationTestScenario.Spec.Params).
 		WithEnvironmentAndDeploymentTarget(deploymentTarget, environment.Name).
 		WithFinalizer(h.IntegrationPipelineRunFinalizer).
 		AsPipelineRun()
