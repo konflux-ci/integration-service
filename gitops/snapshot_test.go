@@ -500,6 +500,19 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 		})
 	})
 
+	Context("AddIntegrationTestRerunLabel tests", func() {
+
+		It("add run label to snapshot", func() {
+			testScenario := "test-scenario"
+			err := gitops.AddIntegrationTestRerunLabel(k8sClient, ctx, hasSnapshot, testScenario)
+			Expect(err).To(BeNil())
+			val, ok := gitops.GetIntegrationTestRunLabelValue(*hasSnapshot)
+			Expect(ok).To(BeTrue())
+			Expect(val).To(Equal(testScenario))
+		})
+
+	})
+
 	Context("RemoveIntegrationTestRerunLabel tests", func() {
 
 		It("won't fail if re-run label is not present", func() {
