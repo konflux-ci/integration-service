@@ -350,6 +350,62 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
 		})
 
+		It("testing function findUntriggeredIntegrationTestFromStatus ", func() {
+
+			integrationTestScenarioTest := &v1beta1.IntegrationTestScenario{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "example-pass-test",
+					Namespace: "default",
+
+					Labels: map[string]string{
+						"test.appstudio.openshift.io/optional": "false",
+					},
+				},
+				Spec: v1beta1.IntegrationTestScenarioSpec{
+					Application: hasApp.Name,
+					ResolverRef: v1beta1.ResolverRef{
+						Resolver: "git",
+						Params: []v1beta1.ResolverParameter{
+							{
+								Name:  "url",
+								Value: "https://github.com/redhat-appstudio/integration-examples.git",
+							},
+							{
+								Name:  "revision",
+								Value: "main",
+							},
+							{
+								Name:  "pathInRepo",
+								Value: "pipelineruns/integration_pipelinerun_pass.yaml",
+							},
+						},
+					},
+					Environment: v1beta1.TestEnvironment{
+						Name: "envname",
+						Type: "POC",
+						Configuration: &applicationapiv1alpha1.EnvironmentConfiguration{
+							Env: []applicationapiv1alpha1.EnvVarPair{},
+						},
+					},
+				},
+			}
+
+			// Check when all integrationTestScenarion exist in testStatuses of the snapshot
+			testStatuses, err := gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(hasSnapshot)
+			Expect(err).To(BeNil())
+			integrationTestScenarios, err := adapter.loader.GetRequiredIntegrationTestScenariosForApplication(adapter.client, adapter.context, adapter.application)
+			Expect(err).To(BeNil())
+			result := adapter.findUntriggeredIntegrationTestFromStatus(integrationTestScenarios, testStatuses)
+			Expect(result).To(BeEmpty())
+
+			// Check when we have one integrationTestScenario not exist in testStatuses of the snapshot
+			*integrationTestScenarios = append(*integrationTestScenarios, *integrationTestScenarioTest)
+
+			result = adapter.findUntriggeredIntegrationTestFromStatus(integrationTestScenarios, testStatuses)
+			Expect(result).To(BeEquivalentTo("example-pass-test"))
+
+		})
+
 		It("ensures the global component list unchanged and compositeSnapshot shouldn't be created ", func() {
 			// Check if the global component list changed in the meantime and create a composite snapshot if it did.
 			compositeSnapshot, err := adapter.createCompositeSnapshotsIfConflictExists(hasApp, hasComp, hasSnapshot)

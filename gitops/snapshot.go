@@ -714,6 +714,23 @@ func RemoveIntegrationTestRerunLabel(adapterClient client.Client, ctx context.Co
 	return nil
 }
 
+// AddIntegrationTestRerunLabel adding re-run label to snapshot
+func AddIntegrationTestRerunLabel(adapterClient client.Client, ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot, integrationTestScenarioName string) error {
+	patch := client.MergeFrom(snapshot.DeepCopy())
+	newLabel := map[string]string{}
+	newLabel[SnapshotIntegrationTestRun] = integrationTestScenarioName
+	err := metadata.AddLabels(snapshot, newLabel)
+	if err != nil {
+		return fmt.Errorf("failed to add label %s: %w", SnapshotIntegrationTestRun, err)
+	}
+	err = adapterClient.Patch(ctx, snapshot, patch)
+	if err != nil {
+		return fmt.Errorf("failed to patch snapshot: %w", err)
+	}
+
+	return nil
+}
+
 func GetLatestUpdateTime(snapshot *applicationapiv1alpha1.Snapshot) (time.Time, error) {
 	latestUpdateTime := snapshot.GetAnnotations()[SnapshotPRLastUpdate]
 	if latestUpdateTime == "" {
