@@ -121,6 +121,18 @@ func (a *Adapter) EnsureSnapshotFinishedAllTests() (controller.OperationResult, 
 	if !allIntegrationTestsFinished {
 		a.logger.Info("Not all required Integration PipelineRuns finished",
 			"snapshot.Name", a.snapshot.Name)
+
+		// If for the snapshot there is an IntegrationTestScenario that is not triggered, it will add run labebl to snapshot
+		integrationTestScenarioNotTriggered := a.findUntriggeredIntegrationTestFromStatus(integrationTestScenarios, testStatuses)
+		if integrationTestScenarioNotTriggered != "" {
+			a.logger.Info("Detected an integrationTestScenario was not triggered, applying snapshot reconcilation",
+				"integrationTestScenario.Name", integrationTestScenarioNotTriggered)
+			if err = gitops.AddIntegrationTestRerunLabel(a.client, a.context, a.snapshot, integrationTestScenarioNotTriggered); err != nil {
+				return controller.RequeueWithError(err)
+			}
+
+		}
+
 		return controller.ContinueProcessing()
 	}
 
@@ -298,4 +310,17 @@ func (a *Adapter) getComponentSourceFromSnapshotComponent(snapshot *applicationa
 		}
 	}
 	return nil, fmt.Errorf("couldn't find the requested component source info in the given Snapshot")
+}
+
+// findUntriggeredIntegrationTestFromStatus returns name of integrationTestScenario that is not triggered yet.
+func (a *Adapter) findUntriggeredIntegrationTestFromStatus(integrationTestScenarios *[]v1beta1.IntegrationTestScenario, testStatuses *intgteststat.SnapshotIntegrationTestStatuses) string {
+	for _, integrationTestScenario := range *integrationTestScenarios {
+		integrationTestScenario := integrationTestScenario // G601
+		_, ok := testStatuses.GetScenarioStatus(integrationTestScenario.Name)
+		if !ok {
+			return integrationTestScenario.Name
+		}
+
+	}
+	return ""
 }
