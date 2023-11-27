@@ -216,6 +216,7 @@ func (a *Adapter) EnsureStaticIntegrationPipelineRunsExist() (controller.Operati
 					"pipelineRun.Name", integrationTestScenarioStatus.TestPipelineRunName)
 			} else {
 				pipelineRun, err := a.createIntegrationPipelineRun(a.application, &integrationTestScenario, a.snapshot)
+				gitops.PrepareToRegisterIntegrationPipelineRunStarted(a.snapshot) // don't count re-runs
 				if err != nil {
 					a.logger.Error(err, "Failed to create pipelineRun for snapshot and scenario")
 					return controller.RequeueWithError(err)
@@ -705,9 +706,10 @@ func (a *Adapter) createIntegrationPipelineRun(application *applicationapiv1alph
 		return nil, fmt.Errorf("failed to call client.Create to create pipelineRun for snapshot %s: %w", snapshot.Name, err)
 	}
 
+	go metrics.RegisterNewIntegrationPipelineRun()
+
 	a.logger.LogAuditEvent("IntegrationTestscenario pipeline has been created", pipelineRun, h.LogActionAdd,
 		"integrationTestScenario.Name", integrationTestScenario.Name)
-	gitops.PrepareToRegisterIntegrationPipelineRun(a.snapshot)
 	if gitops.IsSnapshotNotStarted(a.snapshot) {
 		_, err := gitops.MarkSnapshotIntegrationStatusAsInProgress(a.client, a.context, a.snapshot, "Snapshot starts being tested by the integrationPipelineRun")
 		if err != nil {
