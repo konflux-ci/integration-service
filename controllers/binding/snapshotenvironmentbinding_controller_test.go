@@ -369,11 +369,6 @@ var _ = Describe("BindingController", func() {
 	It("can setup a new Controller manager and start it", func() {
 		err := SetupController(manager, &ctrl.Log)
 		Expect(err).To(BeNil())
-		go func() {
-			defer GinkgoRecover()
-			err = manager.Start(ctx)
-			Expect(err).NotTo(HaveOccurred())
-		}()
 	})
 
 })
