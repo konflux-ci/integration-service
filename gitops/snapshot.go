@@ -294,10 +294,11 @@ func MarkSnapshotIntegrationStatusAsInProgress(adapterClient client.Client, ctx 
 	return snapshot, nil
 }
 
-// PrepareToRegisterIntegrationPipelineRun is to do preparation before calling RegisterNewIntegrationPipelineRun
-func PrepareToRegisterIntegrationPipelineRun(snapshot *applicationapiv1alpha1.Snapshot) {
+// PrepareToRegisterIntegrationPipelineRunStarted is to do preparation before calling RegisterPipelineRunStarted
+// Don't use this function for PLR re-runs
+func PrepareToRegisterIntegrationPipelineRunStarted(snapshot *applicationapiv1alpha1.Snapshot) {
 	pipelineRunStartTime := &metav1.Time{Time: time.Now()}
-	go metrics.RegisterNewIntegrationPipelineRun(snapshot.GetCreationTimestamp(), pipelineRunStartTime)
+	go metrics.RegisterPipelineRunStarted(snapshot.GetCreationTimestamp(), pipelineRunStartTime)
 }
 
 // SetSnapshotIntegrationStatusAsFinished sets the AppStudio integration status condition for the Snapshot to Finished.
