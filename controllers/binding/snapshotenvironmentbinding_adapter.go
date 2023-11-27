@@ -230,6 +230,8 @@ func (a *Adapter) createIntegrationPipelineRunWithEnvironment(application *appli
 		return nil, err
 	}
 
+	go metrics.RegisterNewIntegrationPipelineRun()
+
 	return pipelineRun, nil
 
 }
