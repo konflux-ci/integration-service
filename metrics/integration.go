@@ -167,9 +167,8 @@ func RegisterNewSnapshot() {
 	SnapshotConcurrentTotal.Inc()
 }
 
-func RegisterNewIntegrationPipelineRun(snapshotCreatedTime metav1.Time, pipelineRunStartTime *metav1.Time) {
+func RegisterNewIntegrationPipelineRun() {
 	IntegrationPipelineRunTotal.Inc()
-	RegisterPipelineRunStarted(snapshotCreatedTime, pipelineRunStartTime)
 }
 
 func RegisterReleaseLatency(startTime metav1.Time) {
