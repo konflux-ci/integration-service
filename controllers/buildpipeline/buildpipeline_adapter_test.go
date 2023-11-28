@@ -410,6 +410,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 
 			Expect(expectedSnapshot.Labels).NotTo(BeNil())
 			Expect(expectedSnapshot.Labels).Should(HaveKeyWithValue(Equal(gitops.BuildPipelineRunNameLabel), Equal(buildPipelineRun.Name)))
+			Expect(expectedSnapshot.Labels).Should(HaveKeyWithValue(Equal(gitops.ApplicationNameLabel), Equal(hasApp.Name)))
 		})
 
 		It("ensure err is returned when pipelinerun doesn't have Result for ", func() {
