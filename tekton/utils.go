@@ -158,26 +158,26 @@ func GetOutputImageDigest(object client.Object) (string, error) {
 	return "", fmt.Errorf("couldn't find the IMAGE_DIGEST TaskRun result")
 }
 
-// GetComponentSourceGitUrl returns a string containing the CHAINS-GIT_URL result value from a given PipelineRun.
+// GetComponentSourceGitUrl returns a string containing the git-url params value from a given PipelineRun.
 func GetComponentSourceGitUrl(object client.Object) (string, error) {
 	if pipelineRun, ok := object.(*tektonv1.PipelineRun); ok {
-		for _, pipelineResult := range pipelineRun.Status.Results {
-			if pipelineResult.Name == "CHAINS-GIT_URL" {
-				return pipelineResult.Value.StringVal, nil
+		for _, param := range pipelineRun.Spec.Params {
+			if param.Name == "git-url" {
+				return param.Value.StringVal, nil
 			}
 		}
 	}
-	return "", fmt.Errorf("couldn't find the CHAINS-GIT_URL PipelineRun result")
+	return "", fmt.Errorf("couldn't find the 'git-url' PipelineRun parameter")
 }
 
 // GetComponentSourceGitCommit returns a string containing the CHAINS-GIT_COMMIT result value from a given PipelineRun.
 func GetComponentSourceGitCommit(object client.Object) (string, error) {
 	if pipelineRun, ok := object.(*tektonv1.PipelineRun); ok {
-		for _, pipelineResult := range pipelineRun.Status.Results {
-			if pipelineResult.Name == "CHAINS-GIT_COMMIT" {
-				return pipelineResult.Value.StringVal, nil
+		for _, param := range pipelineRun.Spec.Params {
+			if param.Name == "revision" {
+				return param.Value.StringVal, nil
 			}
 		}
 	}
-	return "", fmt.Errorf("couldn't find the CHAINS-GIT_COMMIT PipelineRun result")
+	return "", fmt.Errorf("couldn't find the 'revision' PipelineRun parameter")
 }
