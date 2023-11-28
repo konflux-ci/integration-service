@@ -64,7 +64,10 @@ const (
 	BuildPipelineRunFinishTimeLabel = "test.appstudio.openshift.io/pipelinerunfinishtime"
 
 	// BuildPipelineRunNameLabel contains the build PipelineRun name
-	BuildPipelineRunNameLabel = "appstudio.openshift.io/build-pipelinerun"
+	BuildPipelineRunNameLabel = AppstudioLabelPrefix + "/build-pipelinerun"
+
+	// ApplicationNameLabel contains the name of the application
+	ApplicationNameLabel = AppstudioLabelPrefix + "/application"
 
 	// SnapshotComponentType is the type of Snapshot which was created for a single component build.
 	SnapshotComponentType = "component"
