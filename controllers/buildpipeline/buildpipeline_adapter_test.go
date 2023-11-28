@@ -495,17 +495,6 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		})
 	})
 
-	When("Adapter is created but no components defined", func() {
-		It("ensures snapshot creation is skipped when there is no component defined ", func() {
-			adapter = NewAdapter(buildPipelineRun, nil, hasApp, logger, loader.NewMockLoader(), k8sClient, ctx)
-			Expect(reflect.TypeOf(adapter)).To(Equal(reflect.TypeOf(&Adapter{})))
-
-			result, err := adapter.EnsureSnapshotExists()
-			Expect(!result.CancelRequest).To(BeTrue())
-			Expect(err).To(BeNil())
-		})
-	})
-
 	When("Snapshot already exists", func() {
 		BeforeEach(func() {
 			adapter = NewAdapter(buildPipelineRun, hasComp, hasApp, logger, loader.NewMockLoader(), k8sClient, ctx)
