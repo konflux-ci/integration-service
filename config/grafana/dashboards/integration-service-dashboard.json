@@ -280,7 +280,7 @@
       "targets": [
         {
           "exemplar": true,
-          "expr": "histogram_quantile(0.90, sum(rate(snapshot_created_to_pipelinerun_with_static_env_started_seconds_bucket[$__rate_interval])) by (le))",
+          "expr": "histogram_quantile(0.90, sum(rate(integration_svc_snapshot_created_to_pipelinerun_with_static_env_started_seconds_bucket[$__rate_interval])) by (le))",
           "interval": "",
           "legendFormat": "percentile90",
           "refId": "A"
@@ -419,7 +419,7 @@
       "targets": [
         {
           "exemplar": true,
-          "expr": "sum(rate(snapshot_created_to_pipelinerun_with_static_env_started_seconds_bucket{le=\"5\"}[$__rate_interval])) by (job)\n/\nsum(rate(snapshot_created_to_pipelinerun_with_static_env_started_seconds_count[$__rate_interval]) > 0) by (job)\n*100",
+          "expr": "sum(rate(integration_svc_snapshot_created_to_pipelinerun_with_static_env_started_seconds_bucket{le=\"5\"}[$__rate_interval])) by (job)\n/\nsum(rate(integration_svc_snapshot_created_to_pipelinerun_with_static_env_started_seconds_count[$__rate_interval]) > 0) by (job)\n*100",
           "interval": "",
           "legendFormat": "% of requests within required latency time",
           "refId": "A",
@@ -676,7 +676,7 @@
         {
           "editorMode": "code",
           "exemplar": true,
-          "expr": "histogram_quantile(0.90, sum(rate(seb_created_to_ready_seconds_bucket[$__interval])) by (le))",
+          "expr": "histogram_quantile(0.90, sum(rate(integration_svc_seb_created_to_ready_seconds_bucket[$__interval])) by (le))",
           "interval": "",
           "legendFormat": "percentile90",
           "range": true,
@@ -812,7 +812,7 @@
         {
           "editorMode": "code",
           "exemplar": true,
-          "expr": "sum(rate(seb_created_to_ready_seconds_bucket{le=\"120\"}[$__rate_interval])) by (job) / sum(rate(seb_created_to_ready_seconds_count[$__rate_interval]) > 0) by (job) *100",
+          "expr": "sum(rate(integration_svc_seb_created_to_ready_seconds_bucket{le=\"120\"}[$__rate_interval])) by (job) / sum(rate(integration_svc_seb_created_to_ready_seconds_count[$__rate_interval]) > 0) by (job) *100",
           "interval": "",
           "legendFormat": "% of requests within required latency time",
           "range": true,
@@ -906,7 +906,7 @@
       "targets": [
         {
           "exemplar": true,
-          "expr": "integration_pipelinerun_total",
+          "expr": "integration_svc_integration_pipelinerun_total",
           "interval": "",
           "legendFormat": "{{ pod }}",
           "refId": "A"
@@ -962,7 +962,7 @@
       "targets": [
         {
           "exemplar": true,
-          "expr": "snapshot_attempt_total",
+          "expr": "integration_svc_snapshot_attempt_total",
           "interval": "",
           "legendFormat": "{{ reason }}",
           "refId": "A"
@@ -1058,7 +1058,7 @@
       "targets": [
         {
           "exemplar": true,
-          "expr": "snapshot_attempt_invalid_total",
+          "expr": "integration_svc_snapshot_attempt_invalid_total",
           "interval": "",
           "legendFormat": "",
           "refId": "A"
@@ -1222,7 +1222,7 @@
       "targets": [
         {
           "exemplar": true,
-          "expr": "snapshot_attempt_concurrent_requests",
+          "expr": "integration_svc_snapshot_attempt_concurrent_requests",
           "instant": false,
           "interval": "",
           "legendFormat": "{{ pod }}",
@@ -1307,7 +1307,7 @@
       "targets": [
         {
           "exemplar": true,
-          "expr": "sum(increase(snapshot_created_to_pipelinerun_with_static_env_started_seconds_bucket[$__interval])) by (le)",
+          "expr": "sum(increase(integration_svc_snapshot_created_to_pipelinerun_with_static_env_started_seconds_bucket[$__interval])) by (le)",
           "format": "heatmap",
           "interval": "",
           "legendFormat": "{{le}}",
@@ -1389,7 +1389,7 @@
       "targets": [
         {
           "exemplar": true,
-          "expr": "sum(increase(snapshot_created_to_pipelinerun_with_ephemeral_env_started_seconds_bucket[$__interval])) by (le)",
+          "expr": "sum(increase(integration_svc_snapshot_created_to_pipelinerun_with_ephemeral_env_started_seconds_bucket[$__interval])) by (le)",
           "format": "heatmap",
           "interval": "",
           "legendFormat": "{{le}}",
@@ -1500,7 +1500,7 @@
       "targets": [
         {
           "exemplar": true,
-          "expr": "sum(increase(snapshot_attempt_duration_seconds_bucket[$__interval])) by (le)",
+          "expr": "sum(increase(integration_svc_snapshot_attempt_duration_seconds_bucket[$__interval])) by (le)",
           "format": "heatmap",
           "interval": "",
           "legendFormat": "{{le}}",
@@ -1806,7 +1806,7 @@
       "targets": [
         {
           "exemplar": true,
-          "expr": "sum(increase(seb_created_to_ready_seconds_bucket[$__interval])) by (le)",
+          "expr": "sum(increase(integration_svc_seb_created_to_ready_seconds_bucket[$__interval])) by (le)",
           "format": "heatmap",
           "interval": "",
           "legendFormat": "{{le}}",
@@ -2036,7 +2036,7 @@
       "targets": [
         {
           "exemplar": true,
-          "expr": "seb_ephemeral_deployments_total",
+          "expr": "integration_svc_seb_ephemeral_deployments_total",
           "interval": "",
           "legendFormat": "{{ reason }}",
           "refId": "A",
