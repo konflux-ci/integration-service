@@ -40,19 +40,19 @@ var _ = Describe("Metrics Integration", Ordered, func() {
 
 	var (
 		SnapshotPipelineRunStartedStaticEnvSecondsHeader = inputHeader{
-			Name: "snapshot_created_to_pipelinerun_with_static_env_started_seconds",
+			Name: "integration_svc_snapshot_created_to_pipelinerun_with_static_env_started_seconds",
 			Help: "Time duration from the moment the snapshot resource was created till a integration pipelineRun is started in a static environment",
 		}
 		SnapshotPipelineRunWithEphemeralEnvStartedSecondsHeader = inputHeader{
-			Name: "snapshot_created_to_pipelinerun_with_ephemeral_env_started_seconds",
+			Name: "integration_svc_snapshot_created_to_pipelinerun_with_ephemeral_env_started_seconds",
 			Help: "Time duration from the moment the snapshot resource was created till a integration pipelineRun is started for pipelines running in an ephemeral environment",
 		}
 		SnapshotDurationSecondsHeader = inputHeader{
-			Name: "snapshot_attempt_duration_seconds",
+			Name: "integration_svc_snapshot_attempt_duration_seconds",
 			Help: "Snapshot durations from the moment the Snapshot was created till the Snapshot is marked as finished",
 		}
 		SnapshotTotalHeader = inputHeader{
-			Name: "snapshot_attempt_total",
+			Name: "integration_svc_snapshot_attempt_total",
 			Help: "Total number of snapshots processed by the operator",
 		}
 	)
@@ -65,14 +65,14 @@ var _ = Describe("Metrics Integration", Ordered, func() {
 			// 'Help' can't be overridden due to 'https://github.com/prometheus/client_golang/blob/83d56b1144a0c2eb10d399e7abbae3333bebc463/prometheus/registry.go#L314'
 			SnapshotCreatedToPipelineRunStartedStaticEnvSeconds = prometheus.NewHistogram(
 				prometheus.HistogramOpts{
-					Name:    "snapshot_created_to_pipelinerun_with_static_env_started_seconds",
+					Name:    "integration_svc_snapshot_created_to_pipelinerun_with_static_env_started_seconds",
 					Help:    "Time duration from the moment the snapshot resource was created till a integration pipelineRun is started in a static environment",
 					Buckets: []float64{1, 5, 10, 30},
 				},
 			)
 			SnapshotConcurrentTotal = prometheus.NewGauge(
 				prometheus.GaugeOpts{
-					Name: "snapshot_attempt_concurrent_requests",
+					Name: "integration_svc_snapshot_attempt_concurrent_requests",
 					Help: "Total number of concurrent snapshot attempts",
 				},
 			)
@@ -87,7 +87,7 @@ var _ = Describe("Metrics Integration", Ordered, func() {
 		inputSeconds := []float64{1, 3, 8, 15}
 		elapsedSeconds := 0.0
 
-		It("increments the 'snapshot_attempt_concurrent_requests'.", func() {
+		It("increments the 'integration_svc_snapshot_attempt_concurrent_requests'.", func() {
 			creationTime := metav1.Time{}
 			for _, seconds := range inputSeconds {
 				RegisterNewSnapshot()
@@ -97,7 +97,7 @@ var _ = Describe("Metrics Integration", Ordered, func() {
 			}
 			Expect(testutil.ToFloat64(SnapshotConcurrentTotal)).To(Equal(float64(len(inputSeconds))))
 		})
-		It("registers a new observation for 'snapshot_created_to_pipelinerun_with_static_env_started_seconds' with the elapsed time from the moment"+
+		It("registers a new observation for 'integration_svc_snapshot_created_to_pipelinerun_with_static_env_started_seconds' with the elapsed time from the moment"+
 			"the snapshot is created to first integration pipelineRun is started.", func() {
 			// Defined buckets for SnapshotCreatedToPipelineRunStartedSeconds
 			timeBuckets := []string{"1", "5", "10", "30"}
@@ -115,7 +115,7 @@ var _ = Describe("Metrics Integration", Ordered, func() {
 			// 'Help' can't be overridden due to 'https://github.com/prometheus/client_golang/blob/83d56b1144a0c2eb10d399e7abbae3333bebc463/prometheus/registry.go#L314'
 			SnapshotCreatedToPipelineRunWithEphemeralEnvStartedSeconds = prometheus.NewHistogram(
 				prometheus.HistogramOpts{
-					Name:    "snapshot_created_to_pipelinerun_with_ephemeral_env_started_seconds",
+					Name:    "integration_svc_snapshot_created_to_pipelinerun_with_ephemeral_env_started_seconds",
 					Help:    "Time duration from the moment the snapshot resource was created till a integration pipelineRun is started for pipelines running in an ephemeral environment",
 					Buckets: []float64{1, 5, 10, 30},
 				},
@@ -130,7 +130,7 @@ var _ = Describe("Metrics Integration", Ordered, func() {
 		inputSeconds := []float64{1, 3, 8, 15}
 		elapsedSeconds := 0.0
 
-		It("registers a new observation for 'snapshot_created_to_pipelinerun_with_ephemeral_env_started_seconds' with the elapsed time from the moment"+
+		It("registers a new observation for 'integration_svc_snapshot_created_to_pipelinerun_with_ephemeral_env_started_seconds' with the elapsed time from the moment"+
 			"the snapshot is created to first integration pipelineRun is started.", func() {
 			creationTime := metav1.Time{}
 			for _, seconds := range inputSeconds {
@@ -150,14 +150,14 @@ var _ = Describe("Metrics Integration", Ordered, func() {
 		BeforeAll(func() {
 			SnapshotCreatedToPipelineRunStartedStaticEnvSeconds = prometheus.NewHistogram(
 				prometheus.HistogramOpts{
-					Name:    "snapshot_created_to_pipelinerun_with_static_env_started_seconds",
+					Name:    "integration_svc_snapshot_created_to_pipelinerun_with_static_env_started_seconds",
 					Help:    "Snapshot durations from the moment the snapshot resource was created till a integration pipelineRun is started in static environment",
 					Buckets: []float64{1, 5, 10, 30},
 				},
 			)
 			SnapshotDurationSeconds = prometheus.NewHistogramVec(
 				prometheus.HistogramOpts{
-					Name:    "snapshot_attempt_duration_seconds",
+					Name:    "integration_svc_snapshot_attempt_duration_seconds",
 					Help:    "Snapshot durations from the moment the Snapshot was created till the Snapshot is marked as finished",
 					Buckets: []float64{60, 600, 1800, 3600},
 				},
@@ -166,13 +166,13 @@ var _ = Describe("Metrics Integration", Ordered, func() {
 
 			SnapshotConcurrentTotal = prometheus.NewGauge(
 				prometheus.GaugeOpts{
-					Name: "snapshot_attempt_concurrent_requests",
+					Name: "integration_svc_snapshot_attempt_concurrent_requests",
 					Help: "Total number of concurrent snapshot attempts",
 				},
 			)
 			SnapshotTotal = prometheus.NewCounterVec(
 				prometheus.CounterOpts{
-					Name: "snapshot_attempt_total",
+					Name: "integration_svc_snapshot_attempt_total",
 					Help: "Total number of snapshots processed by the operator",
 				},
 				[]string{"type", "reason"},

@@ -35,7 +35,7 @@ var (
 
 	SnapshotCreatedToPipelineRunStartedStaticEnvSeconds = prometheus.NewHistogram(
 		prometheus.HistogramOpts{
-			Name:    "snapshot_created_to_pipelinerun_with_static_env_started_seconds",
+			Name:    "integration_svc_snapshot_created_to_pipelinerun_with_static_env_started_seconds",
 			Help:    "Time duration from the moment the snapshot resource was created till a integration pipelineRun is started in a static environment",
 			Buckets: []float64{0.05, 0.1, 0.5, 1, 2, 3, 4, 5, 10, 15, 30},
 		},
@@ -43,7 +43,7 @@ var (
 
 	SnapshotCreatedToPipelineRunWithEphemeralEnvStartedSeconds = prometheus.NewHistogram(
 		prometheus.HistogramOpts{
-			Name:    "snapshot_created_to_pipelinerun_with_ephemeral_env_started_seconds",
+			Name:    "integration_svc_snapshot_created_to_pipelinerun_with_ephemeral_env_started_seconds",
 			Help:    "The duration measures the time elapsed between the creation of a snapshot resource and the initiation of an integration PipelineRun for pipelines operating within an ephemeral environment.",
 			Buckets: []float64{0.05, 0.1, 0.5, 1, 2, 3, 4, 5, 10, 15, 30},
 		},
@@ -54,35 +54,35 @@ var (
 	)
 
 	sebCreatedToReadySecondsOpts = prometheus.HistogramOpts{
-		Name:    "seb_created_to_ready_seconds",
-		Help:    "Time duration from the moment the snapshotEnvironmentBinding was created till the snapshot is deployed to the environtment",
+		Name:    "integration_svc_seb_created_to_ready_seconds",
+		Help:    "Time duration from the moment the snapshotEnvironmentBinding was created till the snapshot is deployed to the environment",
 		Buckets: []float64{1, 5, 10, 20, 40, 60, 80, 120, 160, 200, 300},
 	}
 
 	SEBEphemeralDeploymentsTotal = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
-			Name: "seb_ephemeral_deployments_total",
+			Name: "integration_svc_seb_ephemeral_deployments_total",
 			Help: "Total number of SEB deployments processed by the operator",
 		}, []string{"reason"},
 	)
 
 	IntegrationPipelineRunTotal = prometheus.NewCounter(
 		prometheus.CounterOpts{
-			Name: "integration_pipelinerun_total",
+			Name: "integration_svc_integration_pipelinerun_total",
 			Help: "Total number of integration PipelineRun created",
 		},
 	)
 
 	SnapshotConcurrentTotal = prometheus.NewGauge(
 		prometheus.GaugeOpts{
-			Name: "snapshot_attempt_concurrent_requests",
+			Name: "integration_svc_snapshot_attempt_concurrent_requests",
 			Help: "Total number of concurrent snapshot attempts",
 		},
 	)
 
 	SnapshotDurationSeconds = prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
-			Name:    "snapshot_attempt_duration_seconds",
+			Name:    "integration_svc_snapshot_attempt_duration_seconds",
 			Help:    "Snapshot durations from the moment the Snapshot was created till the Snapshot is marked as finished",
 			Buckets: []float64{7, 15, 30, 60, 150, 300, 450, 600, 750, 900, 1050},
 		},
@@ -91,7 +91,7 @@ var (
 
 	SnapshotInvalidTotal = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
-			Name: "snapshot_attempt_invalid_total",
+			Name: "integration_svc_snapshot_attempt_invalid_total",
 			Help: "Number of invalid snapshots",
 		},
 		[]string{"reason"},
@@ -99,7 +99,7 @@ var (
 
 	SnapshotTotal = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
-			Name: "snapshot_attempt_total",
+			Name: "integration_svc_snapshot_attempt_total",
 			Help: "Total number of snapshots processed by the operator",
 		},
 		[]string{"type", "reason"},
