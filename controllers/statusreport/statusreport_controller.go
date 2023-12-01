@@ -25,6 +25,8 @@ import (
 	"github.com/redhat-appstudio/integration-service/helpers"
 	"github.com/redhat-appstudio/integration-service/loader"
 	"github.com/redhat-appstudio/operator-toolkit/controller"
+	toolkitpredicates "github.com/redhat-appstudio/operator-toolkit/predicates"
+	toolkitutils "github.com/redhat-appstudio/operator-toolkit/utils"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -72,6 +74,11 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{}, err
 	}
 
+	if toolkitutils.IsObjectRestoredFromBackup(snapshot) {
+		logger.Info("Snapshot restored from backup has been updated, we cannot reconcile it, skipping.")
+		return ctrl.Result{}, nil
+	}
+
 	application, err := loader.GetApplicationFromSnapshot(r.Client, ctx, snapshot)
 	if err != nil {
 		logger.Error(err, "Failed to get Application from the Snapshot")
@@ -101,7 +108,10 @@ func SetupController(manager ctrl.Manager, log *logr.Logger) error {
 func setupControllerWithManager(manager ctrl.Manager, controller *Reconciler) error {
 	return ctrl.NewControllerManagedBy(manager).
 		For(&applicationapiv1alpha1.Snapshot{}).
-		WithEventFilter(predicate.Or(
-			gitops.SnapshotTestAnnotationChangePredicate())).
+		WithEventFilter(
+			predicate.And(
+				toolkitpredicates.IgnoreBackups{},
+				gitops.SnapshotTestAnnotationChangePredicate(),
+			)).
 		Complete(controller)
 }

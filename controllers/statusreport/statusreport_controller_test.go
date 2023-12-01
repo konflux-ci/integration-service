@@ -17,8 +17,9 @@ limitations under the License.
 package statusreport
 
 import (
-	"k8s.io/apimachinery/pkg/api/errors"
 	"reflect"
+
+	"k8s.io/apimachinery/pkg/api/errors"
 	"sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	crwebhook "sigs.k8s.io/controller-runtime/pkg/webhook"
 
@@ -157,6 +158,20 @@ var _ = Describe("StatusReportController", func() {
 	It("can setup a new Controller manager and start it", func() {
 		err := SetupController(manager, &ctrl.Log)
 		Expect(err).To(BeNil())
+	})
+
+	When("snapshot is restored from backup", func() {
+
+		BeforeEach(func() {
+			hasSnapshot.Labels["velero.io/restore-name"] = "something"
+			Expect(k8sClient.Update(ctx, hasSnapshot)).To(Succeed())
+		})
+
+		It("stops reconciliation without error", func() {
+			result, err := statusReportReconciler.Reconcile(ctx, req)
+			Expect(result).To(Equal(ctrl.Result{}))
+			Expect(err).To(BeNil())
+		})
 	})
 
 })

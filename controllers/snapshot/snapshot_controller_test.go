@@ -18,9 +18,10 @@ package snapshot
 
 import (
 	"reflect"
+	"time"
+
 	"sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	crwebhook "sigs.k8s.io/controller-runtime/pkg/webhook"
-	"time"
 
 	"k8s.io/apimachinery/pkg/api/errors"
 
@@ -227,6 +228,20 @@ var _ = Describe("SnapshotController", func() {
 	It("can setup a new Controller manager and start it", func() {
 		err := SetupController(manager, &ctrl.Log)
 		Expect(err).To(BeNil())
+	})
+
+	When("snapshot is restored from backup", func() {
+
+		BeforeEach(func() {
+			hasSnapshot.Labels["velero.io/restore-name"] = "something"
+			Expect(k8sClient.Update(ctx, hasSnapshot)).To(Succeed())
+		})
+
+		It("stops reconciliation without error", func() {
+			result, err := snapshotReconciler.Reconcile(ctx, req)
+			Expect(result).To(Equal(ctrl.Result{}))
+			Expect(err).To(BeNil())
+		})
 	})
 
 })
