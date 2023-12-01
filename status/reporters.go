@@ -38,6 +38,14 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
+// Used by statusReport to get pipelines-as-code-secret under NS integration-service
+const (
+	integrationNS       = "integration-service"
+	PACSecret           = "pipelines-as-code-secret"
+	gitHubApplicationID = "github-application-id"
+	gitHubPrivateKey    = "github-private-key"
+)
+
 // StatusUpdater is common interface used by status reporter to update PR status
 type StatusUpdater interface {
 	// Authentication of client
@@ -92,13 +100,13 @@ func (cru *CheckRunStatusUpdater) getAppCredentials(ctx context.Context, object 
 
 	// Get the global pipelines as code secret
 	pacSecret := v1.Secret{}
-	err = cru.k8sClient.Get(ctx, types.NamespacedName{Namespace: "openshift-pipelines", Name: "pipelines-as-code-secret"}, &pacSecret)
+	err = cru.k8sClient.Get(ctx, types.NamespacedName{Namespace: integrationNS, Name: PACSecret}, &pacSecret)
 	if err != nil {
 		return nil, err
 	}
 
 	// Get the App ID from the secret
-	ghAppIDBytes, found := pacSecret.Data["github-application-id"]
+	ghAppIDBytes, found := pacSecret.Data[gitHubApplicationID]
 	if !found {
 		return nil, errors.New("failed to find github-application-id secret key")
 	}
@@ -109,7 +117,7 @@ func (cru *CheckRunStatusUpdater) getAppCredentials(ctx context.Context, object 
 	}
 
 	// Get the App's private key from the secret
-	appInfo.PrivateKey, found = pacSecret.Data["github-private-key"]
+	appInfo.PrivateKey, found = pacSecret.Data[gitHubPrivateKey]
 	if !found {
 		return nil, errors.New("failed to find github-private-key secret key")
 	}
