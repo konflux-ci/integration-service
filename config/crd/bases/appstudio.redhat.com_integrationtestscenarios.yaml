@@ -12,6 +12,8 @@ spec:
     kind: IntegrationTestScenario
     listKind: IntegrationTestScenarioList
     plural: integrationtestscenarios
+    shortNames:
+    - its
     singular: integrationtestscenario
   scope: Namespaced
   versions:

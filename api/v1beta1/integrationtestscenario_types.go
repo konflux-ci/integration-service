@@ -64,6 +64,7 @@ type TestContext struct {
 }
 
 // +kubebuilder:object:root=true
+// +kubebuilder:resource:shortName=its
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="Application",type=string,JSONPath=`.spec.application`
 // +kubebuilder:storageversion
