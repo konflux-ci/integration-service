@@ -8,7 +8,7 @@ flowchart TD
     classDef Amber fill:#FFDEAD;
     classDef Green fill:#BDFFA4;
 
-  predicate((PREDICATE: <br>Snapshot got created OR <br> changed to Finished OR <br> re-run label added))
+  predicate((PREDICATE: <br>Snapshot got created OR <br> changed to Finished OR <br> re-run label added AND <br> it's not restored from backup))
 
   %%%%%%%%%%%%%%%%%%%%%%% Drawing EnsureStaticIntegrationPipelineRunsExist() function
 

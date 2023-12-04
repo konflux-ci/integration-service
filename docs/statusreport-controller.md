@@ -6,7 +6,7 @@ flowchart TD
   %% Defining the styles
     classDef Amber fill:#FFDEAD;
 
-  predicate((PREDICATE: <br>Snapshot has annotation <br>test.appstudio.openshift.io/status <br>changed))
+  predicate((PREDICATE: <br>Snapshot has annotation <br>test.appstudio.openshift.io/status <br>changed AND <br> it's not restored from backup))
 
 %%%%%%%%%%%%%%%%%%%%%%% Drawing EnsureSnapshotFinishedAllTests() function
 
