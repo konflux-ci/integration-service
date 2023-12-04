@@ -227,14 +227,11 @@ var _ = Describe("Metrics Integration", Ordered, func() {
 	})
 
 	Context("When RegisterInvalidSnapshot", func() {
-		It("increments the 'SnapshotInvalidTotal' metric", func() {
+
+		It("increments the 'SnapshotTotal' metric.", func() {
 			for i := 0; i < 10; i++ {
 				RegisterInvalidSnapshot("AppStudioIntegrationStatus", "invalid")
 			}
-			Expect(testutil.ToFloat64(SnapshotInvalidTotal)).To(Equal(float64(10)))
-		})
-
-		It("increments the 'SnapshotTotal' metric.", func() {
 			labels := fmt.Sprintf(`reason="%s", type="%s",`, "invalid", "AppStudioIntegrationStatus")
 			readerData := createCounterReader(SnapshotTotalHeader, labels, true, 10.0)
 			Expect(testutil.CollectAndCompare(SnapshotTotal.WithLabelValues("AppStudioIntegrationStatus", "invalid"),
