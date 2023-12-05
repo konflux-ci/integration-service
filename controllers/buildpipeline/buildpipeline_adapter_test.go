@@ -19,9 +19,8 @@ package buildpipeline
 import (
 	"bytes"
 	"reflect"
-	"time"
-
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"time"
 
 	"github.com/redhat-appstudio/integration-service/gitops"
 	"github.com/redhat-appstudio/integration-service/helpers"
@@ -285,18 +284,6 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 							StringVal: SampleImageWithoutDigest,
 						},
 					},
-					{Name: "git-url",
-						Value: tektonv1.ParamValue{
-							Type:      "string",
-							StringVal: "github.com/upstream-user/devfile-sample-go-basic",
-						},
-					},
-					{Name: "revision",
-						Value: tektonv1.ParamValue{
-							Type:      "string",
-							StringVal: SampleCommit,
-						},
-					},
 				},
 			},
 		}
@@ -417,12 +404,28 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			// We don't need to update the underlying resource on the control plane,
 			// so we create a copy and modify its status. This prevents update conflicts in other tests.
 			buildPipelineRunNoSource := buildPipelineRun.DeepCopy()
-			buildPipelineRunNoSource.Spec.Params = []tektonv1.Param{
-				{
-					Name: "output-image",
-					Value: tektonv1.ParamValue{
-						Type:      tektonv1.ParamTypeString,
-						StringVal: SampleImageWithoutDigest,
+			buildPipelineRunNoSource.Status = tektonv1.PipelineRunStatus{
+				PipelineRunStatusFields: tektonv1.PipelineRunStatusFields{
+					ChildReferences: []tektonv1.ChildStatusReference{
+						{
+							Name:             successfulTaskRun.Name,
+							PipelineTaskName: "task1",
+						},
+					},
+					Results: []tektonv1.PipelineRunResult{
+						{
+							Name:  "CHAINS-GIT_URL",
+							Value: *tektonv1.NewStructuredValues(SampleRepoLink),
+						},
+					},
+				},
+				Status: v1.Status{
+					Conditions: v1.Conditions{
+						apis.Condition{
+							Reason: "Completed",
+							Status: "True",
+							Type:   apis.ConditionSucceeded,
+						},
 					},
 				},
 			}
