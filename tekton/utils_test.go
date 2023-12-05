@@ -43,18 +43,6 @@ var _ = Describe("Utils", func() {
 							StringVal: "test-image",
 						},
 					},
-					{
-						Name: "git-url",
-						Value: tektonv1.ParamValue{
-							StringVal: "https://github.com/upstream-user/devfile-sample-java-springboot-basic",
-						},
-					},
-					{
-						Name: "revision",
-						Value: tektonv1.ParamValue{
-							StringVal: "a2ba645d50e471d5f084b",
-						},
-					},
 				},
 			},
 			Status: tektonv1.PipelineRunStatus{
@@ -100,19 +88,19 @@ var _ = Describe("Utils", func() {
 
 	It("can get git-url", func() {
 		git_url, _ := tekton.GetComponentSourceGitUrl(pipelineRun)
-		if git_url != "https://github.com/upstream-user/devfile-sample-java-springboot-basic" {
-			Fail(fmt.Sprintf("Expected git_url is https://github.com/upstream-user/devfile-sample-java-springboot-basic, but got %s", git_url))
+		if git_url != "https://github.com/devfile-samples/devfile-sample-java-springboot-basic" {
+			Fail(fmt.Sprintf("Expected git_url is https://github.com/devfile-samples/devfile-sample-java-springboot-basic, but got %s", git_url))
 		}
 		klog.Infoln("Got expected git_url")
 	})
 
-	It("can return err when can't find result for git-url", func() {
-		pipelineRun.Spec.Params = []tektonv1.Param{}
+	It("can return err when can't find result for CHAINS-GIT_URL", func() {
+		pipelineRun.Status.PipelineRunStatusFields.Results = []tektonv1.PipelineRunResult{}
 		_, err := tekton.GetComponentSourceGitUrl(pipelineRun)
 		Expect(err).ToNot(BeNil())
 	})
 
-	It("can get git revision", func() {
+	It("can get git-commit", func() {
 		commit, _ := tekton.GetComponentSourceGitCommit(pipelineRun)
 		if commit != "a2ba645d50e471d5f084b" {
 			Fail(fmt.Sprintf("Expected commit is a2ba645d50e471d5f084b, but got %s", commit))
@@ -120,8 +108,8 @@ var _ = Describe("Utils", func() {
 		klog.Infoln("Got expected commit")
 	})
 
-	It("can return err when can't find param revision", func() {
-		pipelineRun.Spec.Params = []tektonv1.Param{}
+	It("can return err when can't find result CHAINS-GIT_COMMIT", func() {
+		pipelineRun.Status.PipelineRunStatusFields.Results = []tektonv1.PipelineRunResult{}
 		_, err := tekton.GetComponentSourceGitCommit(pipelineRun)
 		Expect(err).ToNot(BeNil())
 	})
