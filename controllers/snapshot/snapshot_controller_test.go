@@ -17,6 +17,7 @@ limitations under the License.
 package snapshot
 
 import (
+	"github.com/redhat-appstudio/operator-toolkit/metadata"
 	"reflect"
 	"time"
 
@@ -235,6 +236,14 @@ var _ = Describe("SnapshotController", func() {
 		BeforeEach(func() {
 			hasSnapshot.Labels["velero.io/restore-name"] = "something"
 			Expect(k8sClient.Update(ctx, hasSnapshot)).To(Succeed())
+
+			Eventually(func() bool {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Namespace: hasSnapshot.Namespace,
+					Name:      hasSnapshot.Name,
+				}, hasSnapshot)
+				return err == nil && metadata.HasLabel(hasSnapshot, "velero.io/restore-name")
+			}, time.Second*20).Should(BeTrue())
 		})
 
 		It("stops reconciliation without error", func() {
