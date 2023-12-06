@@ -57,6 +57,9 @@ const (
 	// SnapshotTestScenarioLabel contains json data with test results of the particular snapshot
 	SnapshotTestsStatusAnnotation = "test.appstudio.openshift.io/status"
 
+	// SnapshotPRLastUpdate contains timestamp of last time PR was updated
+	SnapshotPRLastUpdate = "test.appstudio.openshift.io/pr-last-update"
+
 	// BuildPipelineRunPrefix contains the build pipeline run related labels and annotations
 	BuildPipelineRunPrefix = "build.appstudio"
 
@@ -708,5 +711,27 @@ func RemoveIntegrationTestRerunLabel(adapterClient client.Client, ctx context.Co
 		return fmt.Errorf("failed to patch snapshot: %w", err)
 	}
 
+	return nil
+}
+
+func GetLatestUpdateTime(snapshot *applicationapiv1alpha1.Snapshot) (time.Time, error) {
+	latestUpdateTime := snapshot.GetAnnotations()[SnapshotPRLastUpdate]
+	if latestUpdateTime == "" {
+		return time.Time{}, nil
+	}
+	t := time.Time{}
+	err := t.UnmarshalText([]byte(latestUpdateTime))
+	if err != nil {
+		return t, fmt.Errorf("failed to unmarshal time annotation: %w", err)
+	}
+	return t, nil
+}
+
+func SetLatestUpdateTime(snapshot *applicationapiv1alpha1.Snapshot, t time.Time) error {
+	byteVal, _ := t.MarshalText()
+	err := metadata.SetAnnotation(snapshot, SnapshotPRLastUpdate, string(byteVal))
+	if err != nil {
+		return fmt.Errorf("failed to set annotation for snapshot %w", err)
+	}
 	return nil
 }

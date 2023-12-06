@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"time"
 
 	"github.com/go-logr/logr"
 	ghapi "github.com/google/go-github/v45/github"
@@ -244,19 +245,13 @@ func (cru *CheckRunStatusUpdater) UpdateStatus(ctx context.Context, integrationT
 		}
 	} else {
 		cru.logger.Info("found existing checkrun", "existingCheckRun", existingCheckrun)
-		if cru.ghClient.IsUpdateNeeded(existingCheckrun, checkRun) {
-			cru.logger.Info("found existing check run with the same ExternalID but different conclusion/status, updating checkrun for scenario test status of snapshot",
-				"snapshot.NameSpace", cru.snapshot.Namespace, "snapshot.Name", cru.snapshot.Name, "scenarioName", integrationTestStatusDetail.ScenarioName, "checkrun.ExternalID", checkRun.ExternalID)
-			err = cru.ghClient.UpdateCheckRun(ctx, *existingCheckrun.ID, checkRun)
-			if err != nil {
-				cru.logger.Error(err, "failed to update checkrun",
-					"checkRun", checkRun)
-				return err
-			}
-		} else {
-			cru.logger.Info("found existing check run with the same ExternalID and conclusion/status, no need to update checkrun for scenario test status of snapshot",
-				"snapshot.NameSpace", cru.snapshot.Namespace, "snapshot.Name", cru.snapshot.Name, "scenarioName", integrationTestStatusDetail.ScenarioName, "checkrun.ExternalID", checkRun.ExternalID)
+		err = cru.ghClient.UpdateCheckRun(ctx, *existingCheckrun.ID, checkRun)
+		if err != nil {
+			cru.logger.Error(err, "failed to update checkrun",
+				"checkRun", checkRun)
+			return err
 		}
+
 	}
 	return nil
 }
@@ -696,6 +691,14 @@ func (r *GitHubReporter) ReportStatusForSnapshot(k8sClient client.Client, ctx co
 		return fmt.Errorf("sha label not found %q", gitops.PipelineAsCodeSHALabel)
 	}
 	integrationTestStatusDetails := statuses.GetStatuses()
+	latestUpdateTime, err := gitops.GetLatestUpdateTime(snapshot)
+	if err != nil {
+		logger.Error(err, "failed to get latest update annotation for snapshot",
+			"snapshot.NameSpace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
+		latestUpdateTime = time.Time{}
+	}
+	newLatestUpdateTime := latestUpdateTime
+
 	// Existence of the Pipelines as Code installation ID annotation signals configuration using GitHub App integration.
 	// If it doesn't exist, GitHub webhook integration is configured.
 	if metadata.HasAnnotation(snapshot, gitops.PipelineAsCodeInstallationIDAnnotation) {
@@ -709,10 +712,20 @@ func (r *GitHubReporter) ReportStatusForSnapshot(k8sClient client.Client, ctx co
 	}
 
 	for _, integrationTestStatusDetail := range integrationTestStatusDetails {
+		if latestUpdateTime.Before(integrationTestStatusDetail.LastUpdateTime) {
+			logger.Info("Integration Test contains new status updates", "scenario.Name", integrationTestStatusDetail.ScenarioName)
+			if newLatestUpdateTime.Before(integrationTestStatusDetail.LastUpdateTime) {
+				newLatestUpdateTime = integrationTestStatusDetail.LastUpdateTime
+			}
+		} else {
+			//integration test contains no changes
+			continue
+		}
 		if err := updater.UpdateStatus(ctx, *integrationTestStatusDetail); err != nil {
 			return fmt.Errorf("failed to update status: %w", err)
 		}
-	}
 
+	}
+	_ = gitops.SetLatestUpdateTime(snapshot, newLatestUpdateTime)
 	return nil
 }

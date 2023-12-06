@@ -20,11 +20,12 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"reflect"
+	"time"
+
 	"github.com/redhat-appstudio/integration-service/api/v1beta1"
 	"github.com/tonglil/buflogr"
 	"k8s.io/apimachinery/pkg/api/meta"
-	"reflect"
-	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
