@@ -462,7 +462,7 @@ func RemoveFinalizerFromPipelineRun(adapterClient client.Client, logger Integrat
 			return fmt.Errorf("error occurred while patching the updated PipelineRun after finalizer removal: %w", err)
 		}
 
-		logger.LogAuditEvent("Removed Finalizer from the Integration PipelineRun", pipelineRun, LogActionUpdate, "finalizer", finalizer)
+		logger.LogAuditEvent("Removed Finalizer from the PipelineRun", pipelineRun, LogActionUpdate, "finalizer", finalizer)
 	}
 
 	return nil
@@ -478,7 +478,7 @@ func AddFinalizerToPipelineRun(adapterClient client.Client, logger IntegrationLo
 			return fmt.Errorf("error occurred while patching the updated PipelineRun after finalizer addition: %w", err)
 		}
 
-		logger.LogAuditEvent("Added Finalizer to the Integration PipelineRun", pipelineRun, LogActionUpdate, "finalizer", finalizer)
+		logger.LogAuditEvent("Added Finalizer to the PipelineRun", pipelineRun, LogActionUpdate, "finalizer", finalizer)
 	}
 	return nil
 }
