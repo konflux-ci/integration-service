@@ -96,6 +96,9 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 					gitops.SnapshotComponentLabel:          componentName,
 					gitops.BuildPipelineRunFinishTimeLabel: "1675992257",
 				},
+				Annotations: map[string]string{
+					"test.appstudio.openshift.io/pr-last-update": "2023-08-26T17:57:50+02:00",
+				},
 			},
 			Spec: applicationapiv1alpha1.SnapshotSpec{
 				Application: hasApp.Name,
@@ -128,6 +131,21 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 	AfterAll(func() {
 		err := k8sClient.Delete(ctx, hasApp)
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
+	})
+
+	It("ensures that latest update annotation can be set and get from snapshot", func() {
+		t := time.Time{}
+		t.UnmarshalText([]byte("2023-08-26T17:57:50+02:00"))
+		Expect(gitops.GetLatestUpdateTime(hasSnapshot)).To(Equal(t))
+		//set different time
+		t.UnmarshalText([]byte("2023-08-26T18:57:50+02:00"))
+		gitops.SetLatestUpdateTime(hasSnapshot, t)
+		Expect(hasSnapshot.GetAnnotations()[gitops.SnapshotPRLastUpdate]).To(Equal("2023-08-26T18:57:50+02:00"))
+		//set latest update time to nil
+		t.UnmarshalText([]byte(""))
+		gitops.SetLatestUpdateTime(hasSnapshot, t)
+		Expect(hasSnapshot.GetAnnotations()[gitops.SnapshotPRLastUpdate]).To(Equal("0001-01-01T00:00:00Z"))
+
 	})
 
 	It("ensures the a decision can be made to NOT promote when the snaphot has not been marked as passed/failed", func() {
