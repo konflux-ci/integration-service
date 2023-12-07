@@ -19,8 +19,9 @@ package main
 import (
 	"crypto/tls"
 	"flag"
-	"github.com/redhat-appstudio/integration-service/controllers"
 	"os"
+
+	"github.com/redhat-appstudio/integration-service/controllers"
 	"sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	crwebhook "sigs.k8s.io/controller-runtime/pkg/webhook"
 
@@ -102,6 +103,7 @@ func main() {
 				},
 			},
 		}),
+		PprofBindAddress: "127.0.0.1:9091",
 	})
 	if err != nil {
 		setupLog.Error(err, "unable to start manager")
