@@ -503,7 +503,7 @@ func (a *Adapter) EnsureSnapshotEnvironmentBindingExist() (controller.OperationR
 
 	// Mark the Snapshot as already deployed to root environments to prevent re-deploying the Snapshot when it gets
 	// reconciled at a later time
-	a.snapshot, err = gitops.MarkSnapshotAsDeployedToRootEnvironments(a.client, a.context, a.snapshot, "The Snapshot was deployed to all root environments")
+	a.snapshot, err = gitops.MarkSnapshotAsDeployedToRootEnvironments(a.client, a.context, a.snapshot, "The Snapshot was deployed to all available root environments at the time of promotion")
 	if err != nil {
 		a.logger.Error(err, "Failed to update the Snapshot's status to DeployedToRootEnvironments")
 		return controller.RequeueWithError(err)
