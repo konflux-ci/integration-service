@@ -89,14 +89,6 @@ var (
 		[]string{"type", "reason"},
 	)
 
-	SnapshotInvalidTotal = prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "integration_svc_snapshot_attempt_invalid_total",
-			Help: "Number of invalid snapshots",
-		},
-		[]string{"reason"},
-	)
-
 	SnapshotTotal = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "integration_svc_snapshot_attempt_total",
@@ -127,7 +119,6 @@ func RegisterCompletedSnapshot(conditiontype, reason string, startTime metav1.Ti
 
 func RegisterInvalidSnapshot(conditiontype, reason string) {
 	SnapshotConcurrentTotal.Dec()
-	SnapshotInvalidTotal.With(prometheus.Labels{"reason": reason}).Inc()
 	SnapshotTotal.With(prometheus.Labels{
 		"type":   conditiontype,
 		"reason": reason,
@@ -185,7 +176,6 @@ func init() {
 		IntegrationPipelineRunTotal,
 		SnapshotConcurrentTotal,
 		SnapshotDurationSeconds,
-		SnapshotInvalidTotal,
 		SnapshotTotal,
 		ReleaseLatencySeconds,
 		SEBEphemeralDeploymentsTotal,
