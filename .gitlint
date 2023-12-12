@@ -14,4 +14,4 @@ line-length=72
 [contrib-title-conventional-commits]
 
 [ignore-by-author-name]
-regex=(.*)dependabot(.*)
+regex=(.*)dependabot(.*),(.*)rhtap(.*)
