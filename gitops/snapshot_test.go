@@ -169,7 +169,7 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 		condition := metav1.Condition{
 			Type:    gitops.LegacyTestSucceededCondition,
 			Status:  metav1.ConditionTrue,
-			Reason:  gitops.AppStudioTestSucceededConditionPassed,
+			Reason:  gitops.AppStudioTestSucceededConditionSatisfied,
 			Message: "Test message",
 		}
 		meta.SetStatusCondition(&hasSnapshot.Status.Conditions, condition)

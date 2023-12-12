@@ -137,8 +137,8 @@ const (
 	// the global candidate list.
 	SnapshotAddedToGlobalCandidateListCondition = "AddedToGlobalCandidateList"
 
-	// AppStudioTestSucceededConditionPassed is the reason that's set when the AppStudio tests succeed.
-	AppStudioTestSucceededConditionPassed = "Passed"
+	// AppStudioTestSucceededConditionSatisfied is the reason that's set when the AppStudio tests succeed.
+	AppStudioTestSucceededConditionSatisfied = "Passed"
 
 	// AppStudioTestSucceededConditionFailed is the reason that's set when the AppStudio tests fail.
 	AppStudioTestSucceededConditionFailed = "Failed"
@@ -194,7 +194,7 @@ func MarkSnapshotAsPassed(adapterClient client.Client, ctx context.Context, snap
 	condition := metav1.Condition{
 		Type:    AppStudioTestSucceededCondition,
 		Status:  metav1.ConditionTrue,
-		Reason:  AppStudioTestSucceededConditionPassed,
+		Reason:  AppStudioTestSucceededConditionSatisfied,
 		Message: message,
 	}
 	meta.SetStatusCondition(&snapshot.Status.Conditions, condition)
