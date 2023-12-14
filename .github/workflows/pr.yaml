@@ -16,7 +16,34 @@ jobs:
       - uses: hadolint/hadolint-action@v3.1.0
         with:
           dockerfile: Dockerfile
-
+  go-linters:
+    name: Go linters
+    runs-on: ubuntu-20.04
+    steps:
+      - name: Set up Go 1.x
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.20"
+      - name: Check out code into the Go module directory
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Run Gosec Security Scanner
+        uses: securego/gosec@master
+        with:
+          args: -exclude-generated ./...
+        env:
+          GOROOT: ""
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v3
+        with:
+          args: --timeout=10m
+          only-new-issues: true
+      - uses: dominikh/staticcheck-action@v1.3.0
+        with:
+          version: "2023.1.3"
+          install-go: false
+          skip-cache: true
   go:
     name: Check sources
     runs-on: ubuntu-20.04
@@ -84,10 +111,6 @@ jobs:
             find . -type f -newermt "$time_before"
             exit 1
           fi
-      - uses: dominikh/staticcheck-action@v1.3.0
-        with:
-          version: "2023.1.3"
-          install-go: false
       - name: Check kubernetes manifests
         run: |
           set -euo pipefail
