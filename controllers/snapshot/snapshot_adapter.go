@@ -217,11 +217,11 @@ func (a *Adapter) EnsureStaticIntegrationPipelineRunsExist() (controller.Operati
 					"pipelineRun.Name", integrationTestScenarioStatus.TestPipelineRunName)
 			} else {
 				pipelineRun, err := a.createIntegrationPipelineRun(a.application, &integrationTestScenario, a.snapshot)
-				gitops.PrepareToRegisterIntegrationPipelineRunStarted(a.snapshot) // don't count re-runs
 				if err != nil {
 					a.logger.Error(err, "Failed to create pipelineRun for snapshot and scenario")
 					return controller.RequeueWithError(err)
 				}
+				gitops.PrepareToRegisterIntegrationPipelineRunStarted(a.snapshot) // don't count re-runs
 				testStatuses.UpdateTestStatusIfChanged(
 					integrationTestScenario.Name, intgteststat.IntegrationTestStatusInProgress,
 					fmt.Sprintf("IntegrationTestScenario pipeline '%s' has been created", pipelineRun.Name))
