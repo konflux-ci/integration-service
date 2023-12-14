@@ -26,6 +26,15 @@ import (
 // SnapshotEnvironmentBinding whose component deployment status goes from unknown/false to true.
 func DeploymentSucceededForIntegrationBindingPredicate() predicate.Predicate {
 	return predicate.Funcs{
+		CreateFunc: func(createEvent event.CreateEvent) bool {
+			return false
+		},
+		DeleteFunc: func(deleteEvent event.DeleteEvent) bool {
+			return false
+		},
+		GenericFunc: func(genericEvent event.GenericEvent) bool {
+			return false
+		},
 		UpdateFunc: func(e event.UpdateEvent) bool {
 			return hasDeploymentSucceeded(e.ObjectOld, e.ObjectNew)
 		},
@@ -36,6 +45,15 @@ func DeploymentSucceededForIntegrationBindingPredicate() predicate.Predicate {
 // SnapshotEnvironmentBinding that have resulted in a deployment failure.
 func DeploymentFailedForIntegrationBindingPredicate() predicate.Predicate {
 	return predicate.Funcs{
+		CreateFunc: func(createEvent event.CreateEvent) bool {
+			return false
+		},
+		DeleteFunc: func(deleteEvent event.DeleteEvent) bool {
+			return false
+		},
+		GenericFunc: func(genericEvent event.GenericEvent) bool {
+			return false
+		},
 		UpdateFunc: func(e event.UpdateEvent) bool {
 			return hasDeploymentFailed(e.ObjectOld, e.ObjectNew)
 		},

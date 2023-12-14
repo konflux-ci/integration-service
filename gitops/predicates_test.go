@@ -152,6 +152,27 @@ var _ = Describe("Predicates", Ordered, func() {
 			}
 			Expect(instance.Update(contextEvent)).To(BeTrue())
 		})
+
+		It("returns false when the SEB with succeeded deployment is created", func() {
+			contextEvent := event.CreateEvent{
+				Object: bindingTrueStatus,
+			}
+			Expect(instance.Create(contextEvent)).To(BeFalse())
+		})
+
+		It("returns false when the SEB with succeeded deployment is deleted", func() {
+			contextEvent := event.DeleteEvent{
+				Object: bindingTrueStatus,
+			}
+			Expect(instance.Delete(contextEvent)).To(BeFalse())
+		})
+
+		It("returns false when the SEB with succeeded deployment encounters a generic event", func() {
+			contextEvent := event.GenericEvent{
+				Object: bindingTrueStatus,
+			}
+			Expect(instance.Generic(contextEvent)).To(BeFalse())
+		})
 	})
 	Context("when testing DeploymentFailedPredicate predicate", func() {
 		instance := gitops.DeploymentFailedForIntegrationBindingPredicate()
@@ -169,6 +190,27 @@ var _ = Describe("Predicates", Ordered, func() {
 				ObjectNew: bindingDeploymentFailedStatus,
 			}
 			Expect(instance.Update(contextEvent)).To(BeTrue())
+		})
+
+		It("returns false when the SEB with failed deployment is created", func() {
+			contextEvent := event.CreateEvent{
+				Object: bindingDeploymentFailedStatus,
+			}
+			Expect(instance.Create(contextEvent)).To(BeFalse())
+		})
+
+		It("returns false when the SEB with failed deployment is deleted", func() {
+			contextEvent := event.DeleteEvent{
+				Object: bindingDeploymentFailedStatus,
+			}
+			Expect(instance.Delete(contextEvent)).To(BeFalse())
+		})
+
+		It("returns false when the SEB with failed deployment encounters a generic event", func() {
+			contextEvent := event.GenericEvent{
+				Object: bindingDeploymentFailedStatus,
+			}
+			Expect(instance.Generic(contextEvent)).To(BeFalse())
 		})
 	})
 	Context("when testing IntegrationSnapshotEnvironmentBindingPredicate predicate", func() {
