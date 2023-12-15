@@ -413,7 +413,13 @@ func (a *Adapter) EnsureAllReleasesExist() (controller.OperationResult, error) {
 		gitops.SetSnapshotIntegrationStatusAsError(a.snapshot, "Failed to get all ReleasePlans: "+err.Error())
 		a.logger.LogAuditEvent("Snapshot integration status marked as Invalid. Failed to get all ReleasePlans",
 			a.snapshot, h.LogActionUpdate)
-		return controller.RequeueOnErrorOrStop(a.client.Status().Patch(a.context, a.snapshot, patch))
+		er := a.client.Status().Patch(a.context, a.snapshot, patch)
+		if er != nil {
+			a.logger.Error(er, "Failed to mark snapshot integration status as invalid",
+				"snapshot.Name", a.snapshot.Name)
+			return controller.RequeueWithError(errors.Join(err, er))
+		}
+		return controller.RequeueWithError(err)
 	}
 
 	err = a.createMissingReleasesForReleasePlans(a.application, releasePlans, a.snapshot)
@@ -423,7 +429,13 @@ func (a *Adapter) EnsureAllReleasesExist() (controller.OperationResult, error) {
 		gitops.SetSnapshotIntegrationStatusAsError(a.snapshot, "Failed to create new Releases: "+err.Error())
 		a.logger.LogAuditEvent("Snapshot integration status marked as Invalid. Failed to create new Releases",
 			a.snapshot, h.LogActionUpdate)
-		return controller.RequeueOnErrorOrStop(a.client.Status().Patch(a.context, a.snapshot, patch))
+		er := a.client.Status().Patch(a.context, a.snapshot, patch)
+		if er != nil {
+			a.logger.Error(er, "Failed to mark snapshot integration status as invalid",
+				"snapshot.Name", a.snapshot.Name)
+			return controller.RequeueWithError(errors.Join(err, er))
+		}
+		return controller.RequeueWithError(err)
 	}
 
 	// Mark the Snapshot as already auto-released to prevent re-releasing the Snapshot when it gets reconciled
