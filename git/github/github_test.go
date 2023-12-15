@@ -286,19 +286,6 @@ var _ = Describe("Client", func() {
 		existingCheckRun := client.GetExistingCheckRun(allCheckRuns, checkRunAdapter)
 		Expect(existingCheckRun).NotTo(BeNil())
 
-		checkRunAdapter = &github.CheckRunAdapter{
-			Name:           "example-name",
-			Owner:          "example-owner",
-			Repository:     "example-repo",
-			SHA:            "abcdef1",
-			ExternalID:     "example-external-id",
-			Conclusion:     "failure",
-			Title:          "example-title",
-			Summary:        "example-summary",
-			Text:           "example-text-update",
-			StartTime:      time.Now(),
-			CompletionTime: time.Now(),
-		}
 	})
 
 	It("can check if creating a new commit status is needed", func() {
