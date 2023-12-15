@@ -100,8 +100,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{}, nil
 	}
 
-	application := &applicationapiv1alpha1.Application{}
-	application, err = loader.GetApplicationFromComponent(r.Client, ctx, component)
+	application, err := loader.GetApplicationFromComponent(r.Client, ctx, component)
 	if err != nil {
 		logger.Error(err, "Failed to get Application from Component",
 			"Component.Name ", component.Name, "Component.Namespace ", component.Namespace)
