@@ -538,7 +538,7 @@ var _ = Describe("Loader", Ordered, func() {
 		pipelineRuns, err := loader.GetAllBuildPipelineRunsForComponent(k8sClient, ctx, hasComp)
 		Expect(err).To(BeNil())
 		Expect(pipelineRuns).NotTo(BeNil())
-		Expect(len(*pipelineRuns)).To(Equal(1))
+		Expect(*pipelineRuns).To(HaveLen(1))
 		Expect((*pipelineRuns)[0].Name == buildPipelineRun.Name)
 	})
 
@@ -546,7 +546,7 @@ var _ = Describe("Loader", Ordered, func() {
 		pipelineRuns, err := loader.GetAllPipelineRunsForSnapshotAndScenario(k8sClient, ctx, hasSnapshot, integrationTestScenario)
 		Expect(err).To(BeNil())
 		Expect(pipelineRuns).NotTo(BeNil())
-		Expect(len(*pipelineRuns)).To(Equal(1))
+		Expect(*pipelineRuns).To(HaveLen(1))
 		Expect((*pipelineRuns)[0].Name == buildPipelineRun.Name)
 	})
 
@@ -554,7 +554,7 @@ var _ = Describe("Loader", Ordered, func() {
 		integrationTestScenarios, err := loader.GetAllIntegrationTestScenariosForApplication(k8sClient, ctx, hasApp)
 		Expect(err).To(BeNil())
 		Expect(integrationTestScenarios).NotTo(BeNil())
-		Expect(len(*integrationTestScenarios)).To(Equal(1))
+		Expect(*integrationTestScenarios).To(HaveLen(1))
 		Expect((*integrationTestScenarios)[0].Name == integrationTestScenario.Name)
 	})
 
@@ -562,7 +562,7 @@ var _ = Describe("Loader", Ordered, func() {
 		integrationTestScenarios, err := loader.GetRequiredIntegrationTestScenariosForApplication(k8sClient, ctx, hasApp)
 		Expect(err).To(BeNil())
 		Expect(integrationTestScenarios).NotTo(BeNil())
-		Expect(len(*integrationTestScenarios)).To(Equal(1))
+		Expect(*integrationTestScenarios).To(HaveLen(1))
 		Expect((*integrationTestScenarios)[0].Name == integrationTestScenario.Name)
 	})
 
@@ -593,7 +593,7 @@ var _ = Describe("Loader", Ordered, func() {
 	It("ensures that all Snapshots for a given application can be found", func() {
 		snapshots, err := loader.GetAllSnapshots(k8sClient, ctx, hasApp)
 		Expect(err).To(BeNil())
-		Expect(len(*snapshots)).To(Equal(1))
+		Expect(*snapshots).To(HaveLen(1))
 	})
 
 	It("ensures the ReleasePlan can be gotten for Application", func() {
@@ -640,7 +640,7 @@ var _ = Describe("Loader", Ordered, func() {
 			autoReleasePlans, err := loader.GetAutoReleasePlansForApplication(k8sClient, ctx, hasApp)
 			Expect(err).To(BeNil())
 			Expect(autoReleasePlans).ToNot(BeNil())
-			Expect(len(*autoReleasePlans)).To(Equal(1))
+			Expect(*autoReleasePlans).To(HaveLen(1))
 			Expect((*autoReleasePlans)[0].Name).To(Equal(releasePlanWithLabel.Name))
 
 		})
@@ -680,7 +680,7 @@ var _ = Describe("Loader", Ordered, func() {
 			autoReleasePlans, err := loader.GetAutoReleasePlansForApplication(k8sClient, ctx, hasApp)
 			Expect(err).To(BeNil())
 			Expect(autoReleasePlans).ToNot(BeNil())
-			Expect(len(*autoReleasePlans)).To(Equal(1))
+			Expect(*autoReleasePlans).To(HaveLen(1))
 			Expect((*autoReleasePlans)[0].Name).To(Equal(releasePlanNoLabel.Name))
 
 		})
@@ -723,7 +723,7 @@ var _ = Describe("Loader", Ordered, func() {
 			autoReleasePlans, err := loader.GetAutoReleasePlansForApplication(k8sClient, ctx, hasApp)
 			Expect(err).To(BeNil())
 			Expect(autoReleasePlans).ToNot(BeNil())
-			Expect(len(*autoReleasePlans)).To(Equal(0))
+			Expect(*autoReleasePlans).To(BeEmpty())
 		})
 
 		It("Can fetch integration test scenario", func() {

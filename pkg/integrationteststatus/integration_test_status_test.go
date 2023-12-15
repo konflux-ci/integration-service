@@ -125,9 +125,9 @@ var _ = Describe("integrationteststatus library unittests", func() {
 		})
 
 		It("Can add new scenario test status", func() {
-			Expect(len(sits.GetStatuses())).To(Equal(0))
+			Expect(sits.GetStatuses()).To(BeEmpty())
 			sits.UpdateTestStatusIfChanged(testScenarioName, intgteststat.IntegrationTestStatusPending, testDetails)
-			Expect(len(sits.GetStatuses())).To(Equal(1))
+			Expect(sits.GetStatuses()).To(HaveLen(1))
 
 			detail, ok := sits.GetScenarioStatus(testScenarioName)
 			Expect(ok).To(BeTrue())
@@ -411,7 +411,7 @@ var _ = Describe("integrationteststatus library unittests", func() {
 				Expect(newSt.LastUpdateTime).NotTo(Equal(oldTimestamp))
 
 				// no changes to nuber of records
-				Expect(len(sits.GetStatuses())).To(Equal(1))
+				Expect(sits.GetStatuses()).To(HaveLen(1))
 			})
 
 			It("Updating details of scenario is reflected", func() {
@@ -433,20 +433,20 @@ var _ = Describe("integrationteststatus library unittests", func() {
 				Expect(newSt.LastUpdateTime).NotTo(Equal(oldTimestamp))
 
 				// no changes to nuber of records
-				Expect(len(sits.GetStatuses())).To(Equal(1))
+				Expect(sits.GetStatuses()).To(HaveLen(1))
 			})
 
 			It("Scenario can be deleted", func() {
 				sits.ResetDirty()
 				sits.DeleteStatus(testScenarioName)
-				Expect(len(sits.GetStatuses())).To(Equal(0))
+				Expect(sits.GetStatuses()).To(BeEmpty())
 				Expect(sits.IsDirty()).To(BeTrue())
 			})
 
 			It("Initialization with empty scneario list will remove data", func() {
 				sits.ResetDirty()
 				sits.InitStatuses(&[]string{})
-				Expect(len(sits.GetStatuses())).To(Equal(0))
+				Expect(sits.GetStatuses()).To(BeEmpty())
 				Expect(sits.IsDirty()).To(BeTrue())
 			})
 
@@ -457,7 +457,7 @@ var _ = Describe("integrationteststatus library unittests", func() {
 			sits.InitStatuses(&[]string{testScenarioName})
 
 			Expect(sits.IsDirty()).To(BeTrue())
-			Expect(len(sits.GetStatuses())).To(Equal(1))
+			Expect(sits.GetStatuses()).To(HaveLen(1))
 
 			statusDetail, ok := sits.GetScenarioStatus(testScenarioName)
 			Expect(ok).To(BeTrue())
@@ -469,7 +469,7 @@ var _ = Describe("integrationteststatus library unittests", func() {
 			It("Returns empty test statuses", func() {
 				statuses, err := intgteststat.NewSnapshotIntegrationTestStatuses("[]")
 				Expect(err).To(BeNil())
-				Expect(len(statuses.GetStatuses())).To(Equal(0))
+				Expect(statuses.GetStatuses()).To(BeEmpty())
 			})
 		})
 
@@ -487,7 +487,7 @@ var _ = Describe("integrationteststatus library unittests", func() {
 			It("Returns expected test statuses", func() {
 				statuses, err := intgteststat.NewSnapshotIntegrationTestStatuses(jsondata)
 				Expect(err).To(BeNil())
-				Expect(len(statuses.GetStatuses())).To(Equal(1))
+				Expect(statuses.GetStatuses()).To(HaveLen(1))
 
 				statusDetail := statuses.GetStatuses()[0]
 				Expect(statusDetail.Status).To(Equal(intgteststat.IntegrationTestStatusInProgress))

@@ -762,7 +762,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			Expect(binding.Spec.Environment).To(Equal(env.Name))
 
 			owners := binding.GetOwnerReferences()
-			Expect(len(owners) == 1).To(BeTrue())
+			Expect(owners).To(HaveLen(1))
 			Expect(owners[0].Name).To(Equal(hasSnapshot.Name))
 
 			// Check if the adapter function detects that it already released the snapshot
@@ -1271,7 +1271,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			Expect(binding.Spec.Environment).To(Equal(ephemeralEnv.Name))
 
 			owners := binding.GetOwnerReferences()
-			Expect(len(owners) == 1).To(BeTrue())
+			Expect(owners).To(HaveLen(1))
 			Expect(owners[0].Name).To(Equal(ephemeralEnv.Name))
 		})
 

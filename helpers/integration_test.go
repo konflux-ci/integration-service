@@ -995,7 +995,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 
 		taskRuns, err := helpers.GetAllChildTaskRunsForPipelineRun(k8sClient, ctx, integrationPipelineRun)
 		Expect(err).To(BeNil())
-		Expect(len(taskRuns)).To(Equal(2))
+		Expect(taskRuns).To(HaveLen(2))
 
 		// We expect the tasks to be sorted by start time
 		tr1 := taskRuns[0]
