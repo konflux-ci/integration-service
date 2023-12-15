@@ -55,6 +55,6 @@ var _ = Describe("Status Adapter", func() {
 		adapter := status.NewAdapter(logr.Discard(), nil, status.WithGitHubReporter(&MockReporter{}))
 		reporters, err := adapter.GetReporters(pipelineRun)
 		Expect(err).To(BeNil())
-		Expect(len(reporters)).To(Equal(1))
+		Expect(reporters).To(HaveLen(1))
 	})
 })
