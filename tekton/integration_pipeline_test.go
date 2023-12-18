@@ -414,12 +414,12 @@ var _ = Describe("Integration pipeline", func() {
 				To(Equal(hasEnv.Name))
 
 			Expect(newIntegrationPipelineRun.Spec.Workspaces != nil).To(BeTrue())
-			Expect(len(newIntegrationPipelineRun.Spec.Workspaces) > 0).To(BeTrue())
+			Expect(newIntegrationPipelineRun.Spec.Workspaces).NotTo(BeEmpty())
 			Expect(newIntegrationPipelineRun.Spec.Workspaces[0].Name).To(Equal("cluster-credentials"))
 			Expect(newIntegrationPipelineRun.Spec.Workspaces[0].Secret.SecretName).
 				To(Equal(deploymentTarget.Spec.KubernetesClusterCredentials.ClusterCredentialsSecret))
 
-			Expect(len(newIntegrationPipelineRun.Spec.Params) > 0).To(BeTrue())
+			Expect(newIntegrationPipelineRun.Spec.Params).NotTo(BeEmpty())
 			Expect(newIntegrationPipelineRun.Spec.Params[0].Name).To(Equal("NAMESPACE"))
 			Expect(newIntegrationPipelineRun.Spec.Params[0].Value.StringVal).
 				To(Equal(deploymentTarget.Spec.KubernetesClusterCredentials.DefaultNamespace))
