@@ -413,7 +413,7 @@ var _ = Describe("Integration pipeline", func() {
 			Expect(newIntegrationPipelineRun.Labels["appstudio.openshift.io/environment"]).
 				To(Equal(hasEnv.Name))
 
-			Expect(newIntegrationPipelineRun.Spec.Workspaces != nil).To(BeTrue())
+			Expect(newIntegrationPipelineRun.Spec.Workspaces).NotTo(BeNil())
 			Expect(newIntegrationPipelineRun.Spec.Workspaces).NotTo(BeEmpty())
 			Expect(newIntegrationPipelineRun.Spec.Workspaces[0].Name).To(Equal("cluster-credentials"))
 			Expect(newIntegrationPipelineRun.Spec.Workspaces[0].Secret.SecretName).

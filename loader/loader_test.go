@@ -539,7 +539,7 @@ var _ = Describe("Loader", Ordered, func() {
 		Expect(err).To(BeNil())
 		Expect(pipelineRuns).NotTo(BeNil())
 		Expect(*pipelineRuns).To(HaveLen(1))
-		Expect((*pipelineRuns)[0].Name == buildPipelineRun.Name)
+		Expect((*pipelineRuns)[0].Name).To(Equal(buildPipelineRun.Name))
 	})
 
 	It("can fetch all pipelineRuns for snapshot and scenario", func() {
@@ -547,7 +547,7 @@ var _ = Describe("Loader", Ordered, func() {
 		Expect(err).To(BeNil())
 		Expect(pipelineRuns).NotTo(BeNil())
 		Expect(*pipelineRuns).To(HaveLen(1))
-		Expect((*pipelineRuns)[0].Name == buildPipelineRun.Name)
+		Expect((*pipelineRuns)[0].Name).To(Equal(integrationPipelineRun.Name))
 	})
 
 	It("can fetch all integrationTestScenario for application", func() {
@@ -555,7 +555,7 @@ var _ = Describe("Loader", Ordered, func() {
 		Expect(err).To(BeNil())
 		Expect(integrationTestScenarios).NotTo(BeNil())
 		Expect(*integrationTestScenarios).To(HaveLen(1))
-		Expect((*integrationTestScenarios)[0].Name == integrationTestScenario.Name)
+		Expect((*integrationTestScenarios)[0].Name).To(Equal(integrationTestScenario.Name))
 	})
 
 	It("can fetch required integrationTestScenario for application", func() {
@@ -563,31 +563,31 @@ var _ = Describe("Loader", Ordered, func() {
 		Expect(err).To(BeNil())
 		Expect(integrationTestScenarios).NotTo(BeNil())
 		Expect(*integrationTestScenarios).To(HaveLen(1))
-		Expect((*integrationTestScenarios)[0].Name == integrationTestScenario.Name)
+		Expect((*integrationTestScenarios)[0].Name).To(Equal(integrationTestScenario.Name))
 	})
 
 	It("can find available DeploymentTargetClass for application", func() {
 		dtcls, err := loader.FindAvailableDeploymentTargetClass(k8sClient, ctx)
 		Expect(err).To(BeNil())
-		Expect(dtcls.Name == deploymentTargetClass.Name)
+		Expect(dtcls.Name).To(Equal(deploymentTargetClass.Name))
 	})
 
 	It("can fetch DeploymentTargetClaim for environment", func() {
 		dtcls, err := loader.GetDeploymentTargetClaimForEnvironment(k8sClient, ctx, hasEnv)
 		Expect(err).To(BeNil())
-		Expect(dtcls.Name == deploymentTargetClass.Name)
+		Expect(dtcls.Name).To(Equal(deploymentTargetClaim.Name))
 	})
 
 	It("can fetch DeploymentTarget for DeploymentTargetClaim", func() {
 		dt, err := loader.GetDeploymentTargetForDeploymentTargetClaim(k8sClient, ctx, deploymentTargetClaim)
 		Expect(err).To(BeNil())
-		Expect(dt.Name == deploymentTarget.Name)
+		Expect(dt.Name).To(Equal(deploymentTarget.Name))
 	})
 
 	It("can snapshotEnvironmentBinding for application and environment", func() {
 		binding, err := loader.FindExistingSnapshotEnvironmentBinding(k8sClient, ctx, hasApp, hasEnv)
 		Expect(err).To(BeNil())
-		Expect(binding.Name == hasBinding.Name)
+		Expect(binding.Name).To(Equal(hasBinding.Name))
 	})
 
 	It("ensures that all Snapshots for a given application can be found", func() {
