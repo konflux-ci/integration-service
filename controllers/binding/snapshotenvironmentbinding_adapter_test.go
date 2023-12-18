@@ -399,9 +399,9 @@ var _ = Describe("Binding Adapter", Ordered, func() {
 
 		integrationPipelineRun := integrationPipelineRuns.Items[0]
 		fmt.Fprintf(GinkgoWriter, "*******integrationPipelineRun: %v\n", integrationPipelineRun)
-		Expect(integrationPipelineRun.Labels["appstudio.openshift.io/application"] == hasApp.Name).To(BeTrue())
-		Expect(integrationPipelineRun.Labels["appstudio.openshift.io/component"] == hasComp.Name).To(BeTrue())
-		Expect(integrationPipelineRun.Labels["appstudio.openshift.io/environment"] == hasEnv.Name).To(BeTrue())
+		Expect(integrationPipelineRun.Labels["appstudio.openshift.io/application"]).To(Equal(hasApp.Name))
+		Expect(integrationPipelineRun.Labels["appstudio.openshift.io/component"]).To(Equal(hasComp.Name))
+		Expect(integrationPipelineRun.Labels["appstudio.openshift.io/environment"]).To(Equal(hasEnv.Name))
 		Expect(integrationPipelineRun.Spec.Workspaces).NotTo(BeNil())
 		Expect(integrationPipelineRun.Spec.Workspaces).NotTo(BeEmpty())
 		Expect(integrationPipelineRun.Spec.Params).NotTo(BeEmpty())

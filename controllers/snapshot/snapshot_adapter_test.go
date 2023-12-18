@@ -639,7 +639,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 					return err
 				}
 				if len(releaseList.Items) > 0 {
-					Expect(releaseList.Items[0].ObjectMeta.Labels["appstudio.openshift.io/component"] == hasComp.Name)
+					Expect(releaseList.Items[0].ObjectMeta.Labels["appstudio.openshift.io/component"]).To(Equal(hasComp.Name))
 				}
 				return nil
 			}, time.Second*10).Should(BeNil())
@@ -1089,10 +1089,10 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 					Namespace: snapshotEnvironmentBinding.Namespace,
 					Name:      snapshotEnvironmentBinding.Name,
 				}, updatedSEB)
-				return err == nil && len(updatedSEB.Spec.Components) == 1
+				return err == nil && len(updatedSEB.Spec.Components) == 1 && updatedSEB.Spec.Snapshot == otherSnapshot.Name
 			}, time.Second*10).Should(BeTrue())
-			Expect(updatedSEB.Spec.Snapshot == otherSnapshot.Name)
-			Expect(updatedSEB.Spec.Components[0].Name == secondComp.Name)
+			Expect(updatedSEB.Spec.Snapshot).To(Equal(otherSnapshot.Name))
+			Expect(updatedSEB.Spec.Components[0].Name).To(Equal(secondComp.Name))
 
 			err = k8sClient.Delete(ctx, snapshotEnvironmentBinding)
 			Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
