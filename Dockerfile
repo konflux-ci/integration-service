@@ -34,6 +34,14 @@ ENV ENABLE_WEBHOOKS=${ENABLE_WEBHOOKS}
 # Refer to https://catalog.redhat.com/software/containers/ubi8/ubi-minimal/5c359a62bed8bd75a2c3fba8 for more details
 FROM registry.access.redhat.com/ubi8/ubi-minimal:8.9-1029
 COPY --from=builder /opt/app-root/src/manager /
+
+# It is mandatory to set these labels
+LABEL description="RHTAP Integration Service"
+LABEL io.k8s.description="RHTAP Integration Service"
+LABEL io.k8s.display-name="Integration-service"
+LABEL summary="RHTAP Integration Service"
+LABEL io.openshift.tags="rhtap"
+
 USER 65532:65532
 
 ENTRYPOINT ["/manager"]
