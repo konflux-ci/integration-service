@@ -128,7 +128,7 @@ var _ = Describe("Component Adapter", Ordered, func() {
 		})
 		snapshots := &applicationapiv1alpha1.SnapshotList{}
 		Eventually(func() bool {
-			k8sClient.List(ctx, snapshots, &client.ListOptions{Namespace: hasApp.Namespace})
+			Expect(k8sClient.List(ctx, snapshots, &client.ListOptions{Namespace: hasApp.Namespace})).To(Succeed())
 			return len(snapshots.Items) == 0
 		}, time.Second*20).Should(BeTrue())
 
@@ -138,7 +138,7 @@ var _ = Describe("Component Adapter", Ordered, func() {
 		result, err := adapter.EnsureComponentIsCleanedUp()
 
 		Eventually(func() bool {
-			k8sClient.List(ctx, snapshots, &client.ListOptions{Namespace: hasApp.Namespace})
+			Expect(k8sClient.List(ctx, snapshots, &client.ListOptions{Namespace: hasApp.Namespace})).To(Succeed())
 			return !result.CancelRequest && len(snapshots.Items) == 1 && err == nil
 		}, time.Second*20).Should(BeTrue())
 	})
