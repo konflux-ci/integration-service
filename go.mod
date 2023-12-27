@@ -4,7 +4,7 @@ go 1.20
 
 require (
 	github.com/bradleyfalzon/ghinstallation/v2 v2.8.0
-	github.com/go-logr/logr v1.3.0
+	github.com/go-logr/logr v1.4.1
 	github.com/google/go-containerregistry v0.17.0
 	github.com/google/go-github/v45 v45.2.0
 	github.com/onsi/ginkgo/v2 v2.13.2
@@ -16,7 +16,7 @@ require (
 	github.com/redhat-appstudio/release-service v0.0.0-20231107140301-56ac66b56719
 	github.com/santhosh-tekuri/jsonschema/v5 v5.3.1
 	github.com/tektoncd/pipeline v0.55.0
-	github.com/tonglil/buflogr v1.0.1
+	github.com/tonglil/buflogr v1.1.1
 	go.uber.org/zap v1.26.0
 	golang.org/x/oauth2 v0.15.0
 	k8s.io/api v0.28.4
