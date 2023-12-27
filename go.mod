@@ -16,7 +16,7 @@ require (
 	github.com/redhat-appstudio/release-service v0.0.0-20231107140301-56ac66b56719
 	github.com/santhosh-tekuri/jsonschema/v5 v5.3.1
 	github.com/tektoncd/pipeline v0.55.0
-	github.com/tonglil/buflogr v1.0.1
+	github.com/tonglil/buflogr v1.1.1
 	go.uber.org/zap v1.26.0
 	golang.org/x/oauth2 v0.15.0
 	k8s.io/api v0.28.4
