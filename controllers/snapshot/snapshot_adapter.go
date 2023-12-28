@@ -156,6 +156,11 @@ func (a *Adapter) EnsureRerunPipelineRunsExist() (controller.OperationResult, er
 		return controller.RequeueWithError(err)
 	}
 
+	if err = gitops.ResetSnapshotStatusConditions(a.client, a.context, a.snapshot, "Integration test is being rerun for snapshot"); err != nil {
+		a.logger.Error(err, "Failed to reset snapshot status conditions")
+		return controller.RequeueWithError(err)
+	}
+
 	if err = gitops.RemoveIntegrationTestRerunLabel(a.client, a.context, a.snapshot); err != nil {
 		return controller.RequeueWithError(err)
 	}

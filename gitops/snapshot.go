@@ -752,3 +752,26 @@ func SetLatestUpdateTime(snapshot *applicationapiv1alpha1.Snapshot, t time.Time)
 	}
 	return nil
 }
+
+func ResetSnapshotStatusConditions(adapterClient client.Client, ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot, message string) error {
+	if HaveAppStudioTestsFinished(snapshot) {
+		patch := client.MergeFrom(snapshot.DeepCopy())
+		meta.SetStatusCondition(&snapshot.Status.Conditions, metav1.Condition{
+			Type:    AppStudioIntegrationStatusCondition,
+			Status:  metav1.ConditionUnknown,
+			Reason:  AppStudioIntegrationStatusInProgress,
+			Message: message,
+		})
+		meta.SetStatusCondition(&snapshot.Status.Conditions, metav1.Condition{
+			Type:    AppStudioTestSucceededCondition,
+			Status:  metav1.ConditionUnknown,
+			Reason:  AppStudioIntegrationStatusInProgress,
+			Message: message,
+		})
+
+		err := adapterClient.Status().Patch(ctx, snapshot, patch)
+		return err
+	}
+
+	return nil
+}
