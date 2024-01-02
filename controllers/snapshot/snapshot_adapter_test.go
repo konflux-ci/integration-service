@@ -982,9 +982,9 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			})
 
 			result, err := adapter.EnsureAllReleasesExist()
-			Expect(result.CancelRequest).To(BeTrue())
-			Expect(result.RequeueRequest).To(BeFalse())
-			Expect(err).NotTo(HaveOccurred())
+			Expect(result.CancelRequest).To(BeFalse())
+			Expect(result.RequeueRequest).To(BeTrue())
+			Expect(err).To(HaveOccurred())
 			Expect(buf.String()).Should(ContainSubstring("Snapshot integration status marked as Invalid. Failed to get all ReleasePlans"))
 		})
 	})
