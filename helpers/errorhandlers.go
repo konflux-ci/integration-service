@@ -15,6 +15,7 @@ package helpers
 
 import (
 	"fmt"
+	"regexp"
 
 	"k8s.io/apimachinery/pkg/api/errors"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -22,6 +23,7 @@ import (
 
 const (
 	ReasonEnvironmentNotInNamespace = "EnvironmentNotInNamespace"
+	MissingParamInPipelineRun       = "MissingParamInPipelineRun"
 	ReasonUnknownError              = "UnknownError"
 )
 
@@ -51,6 +53,19 @@ func NewEnvironmentNotInNamespaceError(environment, namespace string) error {
 
 func IsEnvironmentNotInNamespaceError(err error) bool {
 	return getReason(err) == ReasonEnvironmentNotInNamespace
+}
+
+func IsMissingParamInPipelineRunError(err error) bool {
+	pattern := `couldn't find the '.*' PipelineRun parameter`
+	re := regexp.MustCompile(pattern)
+	return re.MatchString(getReason(err))
+}
+
+func MissingParamInPipelineRunError(pipelinerunName, paramName string) error {
+	return &IntegrationError{
+		Reason:  ReasonEnvironmentNotInNamespace,
+		Message: fmt.Sprintf("Missing param %s in PipelineRun %s", pipelinerunName, paramName),
+	}
 }
 
 func HandleLoaderError(logger IntegrationLogger, err error, resource, from string) (ctrl.Result, error) {
