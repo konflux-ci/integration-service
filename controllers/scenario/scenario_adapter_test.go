@@ -18,8 +18,10 @@ package scenario
 
 import (
 	"bytes"
+	"github.com/redhat-appstudio/integration-service/loader"
 	"github.com/tonglil/buflogr"
 	"reflect"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -36,6 +38,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 var _ = Describe("Scenario Adapter", Ordered, func() {
@@ -175,7 +178,7 @@ var _ = Describe("Scenario Adapter", Ordered, func() {
 		}
 		Expect(k8sClient.Create(ctx, &env)).Should(Succeed())
 
-		adapter = NewAdapter(hasApp, integrationTestScenario, logger, k8sClient, ctx)
+		adapter = NewAdapter(hasApp, integrationTestScenario, logger, loader.NewMockLoader(), k8sClient, ctx)
 		Expect(reflect.TypeOf(adapter)).To(Equal(reflect.TypeOf(&Adapter{})))
 	})
 
@@ -195,15 +198,15 @@ var _ = Describe("Scenario Adapter", Ordered, func() {
 	})
 
 	It("can create a new Adapter instance", func() {
-		Expect(reflect.TypeOf(NewAdapter(hasApp, integrationTestScenario, logger, k8sClient, ctx))).To(Equal(reflect.TypeOf(&Adapter{})))
+		Expect(reflect.TypeOf(NewAdapter(hasApp, integrationTestScenario, logger, loader.NewMockLoader(), k8sClient, ctx))).To(Equal(reflect.TypeOf(&Adapter{})))
 	})
 
 	It("can create a new Adapter instance with invalid scenario", func() {
-		Expect(reflect.TypeOf(NewAdapter(hasApp, invalidScenario, logger, k8sClient, ctx))).To(Equal(reflect.TypeOf(&Adapter{})))
+		Expect(reflect.TypeOf(NewAdapter(hasApp, invalidScenario, logger, loader.NewMockLoader(), k8sClient, ctx))).To(Equal(reflect.TypeOf(&Adapter{})))
 	})
 
 	It("EnsureCreatedScenarioIsValid without app", func() {
-		a := NewAdapter(nil, integrationTestScenario, logger, k8sClient, ctx)
+		a := NewAdapter(nil, integrationTestScenario, logger, loader.NewMockLoader(), k8sClient, ctx)
 
 		Eventually(func() bool {
 			result, err := a.EnsureCreatedScenarioIsValid()
@@ -273,7 +276,7 @@ var _ = Describe("Scenario Adapter", Ordered, func() {
 
 		integrationTestScenarioMissingConditions := integrationTestScenario.DeepCopy()
 		integrationTestScenarioMissingConditions.Status = v1beta1.IntegrationTestScenarioStatus{}
-		adapter = NewAdapter(hasApp, integrationTestScenarioMissingConditions, log, k8sClient, ctx)
+		adapter = NewAdapter(hasApp, integrationTestScenarioMissingConditions, log, loader.NewMockLoader(), k8sClient, ctx)
 
 		Eventually(func() bool {
 			result, err := adapter.EnsureCreatedScenarioIsValid()
@@ -285,6 +288,100 @@ var _ = Describe("Scenario Adapter", Ordered, func() {
 		expectedLogEntry = "IntegrationTestScenario marked as Valid"
 		Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
 		Expect(meta.IsStatusConditionTrue(integrationTestScenarioMissingConditions.Status.Conditions, gitops.IntegrationTestScenarioValid)).To(BeTrue())
+		Expect(controllerutil.ContainsFinalizer(integrationTestScenarioMissingConditions, helpers.IntegrationTestScenarioFinalizer)).To(BeTrue())
 	})
 
+	When("IntegrationTestScenario is deleted while environment resources are still on the cluster", func() {
+		var (
+			ephemeralEnvironment  *applicationapiv1alpha1.Environment
+			deploymentTargetClaim *applicationapiv1alpha1.DeploymentTargetClaim
+		)
+
+		BeforeEach(func() {
+			deploymentTargetClaim = &applicationapiv1alpha1.DeploymentTargetClaim{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "dtcname",
+					Namespace: "default",
+				},
+				Spec: applicationapiv1alpha1.DeploymentTargetClaimSpec{
+					DeploymentTargetClassName: "dtcls-name",
+					TargetName:                "deploymentTarget",
+				},
+			}
+			Expect(k8sClient.Create(ctx, deploymentTargetClaim)).Should(Succeed())
+
+			ephemeralEnvironment = &applicationapiv1alpha1.Environment{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "ephemeral-env",
+					Namespace: "default",
+					Labels: map[string]string{
+						gitops.SnapshotTestScenarioLabel: integrationTestScenario.Name,
+					},
+				},
+				Spec: applicationapiv1alpha1.EnvironmentSpec{
+					Type:               "POC",
+					DisplayName:        "my-environment",
+					DeploymentStrategy: applicationapiv1alpha1.DeploymentStrategy_Manual,
+					ParentEnvironment:  "",
+					Tags:               []string{"ephemeral"},
+					Configuration: applicationapiv1alpha1.EnvironmentConfiguration{
+						Env: []applicationapiv1alpha1.EnvVarPair{
+							{
+								Name:  "var_name",
+								Value: "test",
+							},
+						},
+						Target: applicationapiv1alpha1.EnvironmentTarget{
+							DeploymentTargetClaim: applicationapiv1alpha1.DeploymentTargetClaimConfig{
+								ClaimName: deploymentTargetClaim.Name,
+							},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, ephemeralEnvironment)).Should(Succeed())
+		})
+
+		AfterEach(func() {
+			err := k8sClient.Delete(ctx, deploymentTargetClaim)
+			Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
+			err = k8sClient.Delete(ctx, ephemeralEnvironment)
+			Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
+		})
+
+		It("ensures the integrationTestScenario deletion cleans up related environment resources", func() {
+			var buf bytes.Buffer
+			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+
+			deletedIntegrationTestScenario := integrationTestScenario.DeepCopy()
+			controllerutil.AddFinalizer(deletedIntegrationTestScenario, helpers.IntegrationTestScenarioFinalizer)
+			now := metav1.NewTime(metav1.Now().Add(time.Second * 1))
+			deletedIntegrationTestScenario.SetDeletionTimestamp(&now)
+			adapter = NewAdapter(hasApp, deletedIntegrationTestScenario, log, loader.NewMockLoader(), k8sClient, ctx)
+
+			Eventually(func() bool {
+				result, err := adapter.EnsureDeletedScenarioResourcesAreCleanedUp()
+				return !result.CancelRequest && err == nil
+			}, time.Second*20).Should(BeTrue())
+
+			expectedLogEntry := "Ephemeral environment is deleted and its owning SnapshotEnvironmentBinding is in the process of being deleted"
+			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
+			expectedLogEntry = "Removed Finalizer from the IntegrationTestScenario"
+			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
+
+			ephemeralEnvironments := &applicationapiv1alpha1.EnvironmentList{}
+			opts := []client.ListOption{
+				client.InNamespace(deletedIntegrationTestScenario.Namespace),
+				client.MatchingLabels{
+					gitops.SnapshotTestScenarioLabel: deletedIntegrationTestScenario.Name,
+				},
+			}
+			Eventually(func() bool {
+				err := k8sClient.List(adapter.context, ephemeralEnvironments, opts...)
+				return len(ephemeralEnvironments.Items) == 0 && err == nil
+			}, time.Second*20).Should(BeTrue())
+
+			Expect(controllerutil.ContainsFinalizer(deletedIntegrationTestScenario, helpers.IntegrationTestScenarioFinalizer)).To(BeFalse())
+		})
+	})
 })
