@@ -122,6 +122,9 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	integrationTestScenario, err := r.getIntegrationTestScenarioFromSnapshotEnvironmentBinding(ctx, snapshotEnvironmentBinding)
 	if err != nil {
 		logger.Error(err, "Failed to get IntegrationTestScenario from the SnapshotEnvironmentBinding")
+		if errors.IsNotFound(err) {
+			return ctrl.Result{}, nil
+		}
 		return ctrl.Result{}, err
 	}
 
