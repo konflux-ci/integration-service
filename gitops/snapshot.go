@@ -731,6 +731,7 @@ func AddIntegrationTestRerunLabel(adapterClient client.Client, ctx context.Conte
 	return nil
 }
 
+// TODO
 func GetLatestUpdateTime(snapshot *applicationapiv1alpha1.Snapshot) (time.Time, error) {
 	latestUpdateTime := snapshot.GetAnnotations()[SnapshotPRLastUpdate]
 	if latestUpdateTime == "" {
@@ -744,6 +745,7 @@ func GetLatestUpdateTime(snapshot *applicationapiv1alpha1.Snapshot) (time.Time, 
 	return t, nil
 }
 
+// TODO
 func SetLatestUpdateTime(snapshot *applicationapiv1alpha1.Snapshot, t time.Time) error {
 	byteVal, _ := t.MarshalText()
 	err := metadata.SetAnnotation(snapshot, SnapshotPRLastUpdate, string(byteVal))
