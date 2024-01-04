@@ -20,6 +20,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/redhat-appstudio/integration-service/api/v1beta1"
 	"reflect"
 	"sort"
 	"time"
@@ -474,6 +475,38 @@ func AddFinalizerToPipelineRun(adapterClient client.Client, logger IntegrationLo
 		}
 
 		logger.LogAuditEvent("Added Finalizer to the Integration PipelineRun", pipelineRun, LogActionUpdate, "finalizer", finalizer)
+	}
+
+	return nil
+}
+
+// RemoveFinalizerFromScenario removes the finalizer from the IntegrationTestScenario.
+// If finalizer was not removed successfully, a non-nil error is returned.
+func RemoveFinalizerFromScenario(adapterClient client.Client, logger IntegrationLogger, ctx context.Context, scenario *v1beta1.IntegrationTestScenario, finalizer string) error {
+	patch := client.MergeFrom(scenario.DeepCopy())
+	if ok := controllerutil.RemoveFinalizer(scenario, finalizer); ok {
+		err := adapterClient.Patch(ctx, scenario, patch)
+		if err != nil {
+			return fmt.Errorf("error occurred while patching the updated IntegrationTestScenario after finalizer removal: %w", err)
+		}
+
+		logger.LogAuditEvent("Removed Finalizer from the IntegrationTestScenario", scenario, LogActionUpdate, "finalizer", finalizer)
+	}
+
+	return nil
+}
+
+// AddFinalizerToScenario adds the finalizer to the IntegrationTestScenario.
+// If finalizer was not added successfully, a non-nil error is returned.
+func AddFinalizerToScenario(adapterClient client.Client, logger IntegrationLogger, ctx context.Context, scenario *v1beta1.IntegrationTestScenario, finalizer string) error {
+	patch := client.MergeFrom(scenario.DeepCopy())
+	if ok := controllerutil.AddFinalizer(scenario, finalizer); ok {
+		err := adapterClient.Patch(ctx, scenario, patch)
+		if err != nil {
+			return fmt.Errorf("error occurred while patching the updated IntegrationTestScenario after finalizer addition: %w", err)
+		}
+
+		logger.LogAuditEvent("Added Finalizer to the IntegrationTestScenario", scenario, LogActionUpdate, "finalizer", finalizer)
 	}
 
 	return nil

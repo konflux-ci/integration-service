@@ -57,6 +57,7 @@ type ObjectLoader interface {
 	GetAllSnapshots(c client.Client, ctx context.Context, application *applicationapiv1alpha1.Application) (*[]applicationapiv1alpha1.Snapshot, error)
 	GetAutoReleasePlansForApplication(c client.Client, ctx context.Context, application *applicationapiv1alpha1.Application) (*[]releasev1alpha1.ReleasePlan, error)
 	GetScenario(c client.Client, ctx context.Context, name, namespace string) (*v1beta1.IntegrationTestScenario, error)
+	GetAllEnvironmentsForScenario(c client.Client, ctx context.Context, integrationTestScenario *v1beta1.IntegrationTestScenario) (*[]applicationapiv1alpha1.Environment, error)
 }
 
 type loader struct{}
@@ -449,4 +450,22 @@ func (l *loader) GetAutoReleasePlansForApplication(c client.Client, ctx context.
 func (l *loader) GetScenario(c client.Client, ctx context.Context, name, namespace string) (*v1beta1.IntegrationTestScenario, error) {
 	scenario := &v1beta1.IntegrationTestScenario{}
 	return scenario, toolkit.GetObject(name, namespace, c, ctx, scenario)
+}
+
+// GetAllEnvironmentsForScenario returns all Environments for the associated integrationTestScenario.
+// In the case the List operation fails, an error will be returned.
+func (l *loader) GetAllEnvironmentsForScenario(c client.Client, ctx context.Context, integrationTestScenario *v1beta1.IntegrationTestScenario) (*[]applicationapiv1alpha1.Environment, error) {
+	environments := &applicationapiv1alpha1.EnvironmentList{}
+	opts := []client.ListOption{
+		client.InNamespace(integrationTestScenario.Namespace),
+		client.MatchingLabels{
+			"test.appstudio.openshift.io/scenario": integrationTestScenario.Name,
+		},
+	}
+
+	err := c.List(ctx, environments, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &environments.Items, nil
 }

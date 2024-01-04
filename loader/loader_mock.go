@@ -51,6 +51,7 @@ const (
 	AllSnapshotsContextKey
 	AutoReleasePlansContextKey
 	GetScenarioContextKey
+	AllEnvironmentsForScenarioContextKey
 )
 
 func NewMockLoader() ObjectLoader {
@@ -234,4 +235,12 @@ func (l *mockLoader) GetScenario(c client.Client, ctx context.Context, name, nam
 		return l.loader.GetScenario(c, ctx, name, namespace)
 	}
 	return toolkit.GetMockedResourceAndErrorFromContext(ctx, GetScenarioContextKey, &v1beta1.IntegrationTestScenario{})
+}
+
+func (l *mockLoader) GetAllEnvironmentsForScenario(c client.Client, ctx context.Context, integrationTestScenario *v1beta1.IntegrationTestScenario) (*[]applicationapiv1alpha1.Environment, error) {
+	if ctx.Value(AllEnvironmentsForScenarioContextKey) == nil {
+		return l.loader.GetAllEnvironmentsForScenario(c, ctx, integrationTestScenario)
+	}
+	environments, err := toolkit.GetMockedResourceAndErrorFromContext(ctx, AllEnvironmentsForScenarioContextKey, []applicationapiv1alpha1.Environment{})
+	return &environments, err
 }

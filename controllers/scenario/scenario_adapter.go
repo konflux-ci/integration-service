@@ -18,18 +18,17 @@ package scenario
 
 import (
 	"context"
-	"reflect"
-
-	"k8s.io/apimachinery/pkg/api/meta"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
-	ctrl "sigs.k8s.io/controller-runtime"
-
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/api/v1beta1"
 	"github.com/redhat-appstudio/integration-service/gitops"
 	h "github.com/redhat-appstudio/integration-service/helpers"
+	"github.com/redhat-appstudio/integration-service/loader"
 	"github.com/redhat-appstudio/operator-toolkit/controller"
+	"k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
+	"reflect"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -38,17 +37,19 @@ type Adapter struct {
 	application *applicationapiv1alpha1.Application
 	scenario    *v1beta1.IntegrationTestScenario
 	logger      h.IntegrationLogger
+	loader      loader.ObjectLoader
 	client      client.Client
 	context     context.Context
 }
 
 // NewAdapter creates and returns an Adapter instance.
-func NewAdapter(application *applicationapiv1alpha1.Application, scenario *v1beta1.IntegrationTestScenario, logger h.IntegrationLogger, client client.Client,
+func NewAdapter(application *applicationapiv1alpha1.Application, scenario *v1beta1.IntegrationTestScenario, logger h.IntegrationLogger, loader loader.ObjectLoader, client client.Client,
 	context context.Context) *Adapter {
 	return &Adapter{
 		application: application,
 		scenario:    scenario,
 		logger:      logger,
+		loader:      loader,
 		client:      client,
 		context:     context,
 	}
@@ -57,6 +58,9 @@ func NewAdapter(application *applicationapiv1alpha1.Application, scenario *v1bet
 // EnsureCreatedScenarioIsValid is an operation that ensures created IntegrationTestScenario is valid
 // in case it is, set its owner reference
 func (a *Adapter) EnsureCreatedScenarioIsValid() (controller.OperationResult, error) {
+	if a.scenario.DeletionTimestamp != nil {
+		return controller.ContinueProcessing()
+	}
 
 	// First check if status conditions are set to prevent a known issue with incorrectly migrated v1alpha1 scenarios
 	if a.scenario.Status.Conditions == nil {
@@ -142,6 +146,49 @@ func (a *Adapter) EnsureCreatedScenarioIsValid() (controller.OperationResult, er
 		a.logger.LogAuditEvent("IntegrationTestScenario marked as Valid", a.scenario, h.LogActionUpdate)
 	}
 
+	err := h.AddFinalizerToScenario(a.client, a.logger, a.context, a.scenario, h.IntegrationTestScenarioFinalizer)
+	if err != nil {
+		a.logger.Error(err, "Failed to add finalizer to IntegrationTestScenario")
+		return controller.RequeueWithError(err)
+	}
+
+	return controller.ContinueProcessing()
+}
+
+// EnsureDeletedScenarioResourcesAreCleanedUp is an operation that ensures that all resources related to the
+// deleted IntegrationTestScenario are cleaned up.
+func (a *Adapter) EnsureDeletedScenarioResourcesAreCleanedUp() (controller.OperationResult, error) {
+	if a.scenario.DeletionTimestamp == nil {
+		return controller.ContinueProcessing()
+	}
+
+	environmentsForScenario, err := a.loader.GetAllEnvironmentsForScenario(a.client, a.context, a.scenario)
+	if err != nil {
+		a.logger.Error(err, "Failed to find all Environments for IntegrationTestScenario")
+		return controller.RequeueWithError(err)
+	}
+	for _, testEnvironment := range *environmentsForScenario {
+		if h.IsEnvironmentEphemeral(&testEnvironment) {
+			dtc, err := a.loader.GetDeploymentTargetClaimForEnvironment(a.client, a.context, &testEnvironment)
+			if err != nil || dtc == nil {
+				a.logger.Error(err, "Failed to find deploymentTargetClaim defined in environment", "environment.Name", &testEnvironment.Name)
+				return controller.RequeueWithError(err)
+			}
+
+			err = h.CleanUpEphemeralEnvironments(a.client, &a.logger, a.context, &testEnvironment, dtc)
+			if err != nil {
+				a.logger.Error(err, "Failed to delete the Ephemeral Environment")
+				return controller.RequeueWithError(err)
+			}
+		}
+	}
+
+	// Remove the finalizer from the scenario since the cleanup has been handled
+	err = h.RemoveFinalizerFromScenario(a.client, a.logger, a.context, a.scenario, h.IntegrationTestScenarioFinalizer)
+	if err != nil {
+		a.logger.Error(err, "Failed to remove the finalizer from the Scenario")
+		return controller.RequeueWithError(err)
+	}
 	return controller.ContinueProcessing()
 }
 

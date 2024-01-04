@@ -19,6 +19,7 @@ package integrationpipeline
 import (
 	"context"
 	"fmt"
+	"k8s.io/apimachinery/pkg/api/errors"
 	"strings"
 
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
@@ -121,10 +122,11 @@ func (a *Adapter) EnsureEphemeralEnvironmentsCleanedUp() (controller.OperationRe
 	}
 
 	testEnvironment, err := a.loader.GetEnvironmentFromIntegrationPipelineRun(a.client, a.context, a.pipelineRun)
-	if err != nil {
+	if err != nil && !errors.IsNotFound(err) {
 		a.logger.Error(err, "Failed to find the environment for the pipelineRun")
 		return controller.RequeueWithError(err)
-	} else if testEnvironment == nil {
+	}
+	if testEnvironment == nil {
 		a.logger.Info("The pipelineRun does not have any test Environments associated with it, skipping cleanup.")
 		return controller.ContinueProcessing()
 	}

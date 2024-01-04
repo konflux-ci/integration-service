@@ -259,6 +259,10 @@ var _ = Describe("Loader", Ordered, func() {
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "test-env",
 				Namespace: "default",
+				Labels: map[string]string{
+					gitops.SnapshotTestScenarioLabel: integrationTestScenario.Name,
+					gitops.SnapshotLabel:             hasSnapshot.Name,
+				},
 			},
 			Spec: applicationapiv1alpha1.EnvironmentSpec{
 				Type:               "POC",
@@ -602,6 +606,13 @@ var _ = Describe("Loader", Ordered, func() {
 		Expect(err).To(BeNil())
 		Expect(gottenReleasePlanItems).NotTo(BeNil())
 
+	})
+
+	It("can get all environments for integrationTestScenario", func() {
+		environments, err := loader.GetAllEnvironmentsForScenario(k8sClient, ctx, integrationTestScenario)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(*environments).To(HaveLen(1))
+		Expect((*environments)[0].Name).To(Equal(hasEnv.Name))
 	})
 
 	When("release plan with auto-release label is created", func() {

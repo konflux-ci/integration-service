@@ -18,3 +18,4 @@ package helpers
 
 // IntegrationPipelineRunFinalizer is the finalizer name to be added to the Integration PipelineRuns
 const IntegrationPipelineRunFinalizer string = "test.appstudio.openshift.io/pipelinerun"
+const IntegrationTestScenarioFinalizer string = "test.appstudio.openshift.io/scenario"
