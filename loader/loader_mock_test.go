@@ -335,4 +335,19 @@ var _ = Describe("Release Adapter", Ordered, func() {
 			Expect(err).To(BeNil())
 		})
 	})
+
+	Context("When calling GetAllSnapshotEnvironmentBindingsForScenario", func() {
+		It("returns snapshotEnvironmentBindings and error from the context", func() {
+			environments := []applicationapiv1alpha1.Environment{}
+			mockContext := toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: AllEnvironmentsForScenarioContextKey,
+					Resource:   environments,
+				},
+			})
+			resource, err := loader.GetAllEnvironmentsForScenario(nil, mockContext, nil)
+			Expect(resource).To(Equal(&environments))
+			Expect(err).ToNot(HaveOccurred())
+		})
+	})
 })

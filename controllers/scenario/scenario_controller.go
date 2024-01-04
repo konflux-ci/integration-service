@@ -18,6 +18,7 @@ package scenario
 
 import (
 	"context"
+	"github.com/redhat-appstudio/integration-service/loader"
 
 	"github.com/go-logr/logr"
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
@@ -29,7 +30,6 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/predicate"
 )
 
 // Reconciler reconciles an scenario object
@@ -59,6 +59,8 @@ func NewScenarioReconciler(client client.Client, logger *logr.Logger, scheme *ru
 // move the current state of the cluster closer to the desired state.
 func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := helpers.IntegrationLogger{Logger: r.Log.WithValues("integrationTestScenario", req.NamespacedName)}
+	loader := loader.NewLoader()
+
 	scenario := &v1beta1.IntegrationTestScenario{}
 	err := r.Get(ctx, req.NamespacedName, scenario)
 	if err != nil {
@@ -75,10 +77,11 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		logger.Info("Failed to get Application from the IntegrationTestScenario", "error:", err)
 	}
 
-	adapter := NewAdapter(application, scenario, logger, r.Client, ctx)
+	adapter := NewAdapter(application, scenario, logger, loader, r.Client, ctx)
 
 	return controller.ReconcileHandler([]controller.Operation{
 		adapter.EnsureCreatedScenarioIsValid,
+		adapter.EnsureDeletedScenarioResourcesAreCleanedUp,
 	})
 }
 
@@ -101,6 +104,7 @@ func (r *Reconciler) getApplicationFromScenario(context context.Context, scenari
 // AdapterInterface is an interface defining all the operations that should be defined in an Integration adapter.
 type AdapterInterface interface {
 	EnsureCreatedScenarioIsValid() (controller.OperationResult, error)
+	EnsureDeletedScenarioResourcesAreCleanedUp() (controller.OperationResult, error)
 }
 
 // SetupController creates a new Integration controller and adds it to the Manager.
@@ -112,7 +116,5 @@ func setupControllerWithManager(manager ctrl.Manager, controller *Reconciler) er
 
 	return ctrl.NewControllerManagedBy(manager).
 		For(&v1beta1.IntegrationTestScenario{}).
-		WithEventFilter(predicate.Or(
-			IntegrationScenarioCreatedPredicate())).
 		Complete(controller)
 }
