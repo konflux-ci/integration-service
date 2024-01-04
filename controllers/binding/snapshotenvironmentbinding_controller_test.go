@@ -319,8 +319,8 @@ var _ = Describe("BindingController", func() {
 		err := k8sClient.Delete(ctx, hasApp)
 		Eventually(func() bool {
 			err := k8sClient.Get(ctx, types.NamespacedName{
-				Namespace: hasComp.ObjectMeta.Namespace,
-				Name:      hasComp.ObjectMeta.Name,
+				Namespace: hasApp.ObjectMeta.Namespace,
+				Name:      hasApp.ObjectMeta.Name,
 			}, hasApp)
 			return err != nil && errors.IsNotFound(err)
 		}).Should(BeTrue())
@@ -335,8 +335,8 @@ var _ = Describe("BindingController", func() {
 		err := k8sClient.Delete(ctx, hasSnapshot)
 		Eventually(func() bool {
 			err := k8sClient.Get(ctx, types.NamespacedName{
-				Namespace: hasComp.ObjectMeta.Namespace,
-				Name:      hasComp.ObjectMeta.Name,
+				Namespace: hasSnapshot.ObjectMeta.Namespace,
+				Name:      hasSnapshot.ObjectMeta.Name,
 			}, hasSnapshot)
 			return err != nil && errors.IsNotFound(err)
 		}).Should(BeTrue())
@@ -353,6 +353,22 @@ var _ = Describe("BindingController", func() {
 			_, err := bindingReconciler.Reconcile(ctx, req)
 			return err
 		}).ShouldNot(BeNil())
+	})
+
+	It("can fail when Reconcile fails to prepare the adapter when IntegrationTestScenario is not found", func() {
+		err := k8sClient.Delete(ctx, integrationTestScenario)
+		Expect(err).ToNot(HaveOccurred())
+		Eventually(func() bool {
+			err := k8sClient.Get(ctx, types.NamespacedName{
+				Namespace: integrationTestScenario.ObjectMeta.Namespace,
+				Name:      integrationTestScenario.ObjectMeta.Name,
+			}, integrationTestScenario)
+			return err != nil && errors.IsNotFound(err)
+		}).Should(BeTrue())
+
+		result, err := bindingReconciler.Reconcile(ctx, req)
+		Expect(result).To(Equal(ctrl.Result{}))
+		Expect(err).ToNot(HaveOccurred())
 	})
 
 	It("can Reconcile function prepare the adapter and return the result of the reconcile handling operation", func() {
