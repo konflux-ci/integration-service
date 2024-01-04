@@ -392,6 +392,18 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 		Expect(gitops.IsSnapshotValid(hasSnapshot)).To(BeTrue())
 	})
 
+	It("ensures the Snapshots status can be reset", func() {
+		gitops.SetSnapshotIntegrationStatusAsFinished(hasSnapshot, "Test message")
+		_, err := gitops.MarkSnapshotAsPassed(k8sClient, ctx, hasSnapshot, "test passed")
+		Expect(err).ToNot(HaveOccurred())
+		Expect(gitops.HaveAppStudioTestsFinished(hasSnapshot)).To(BeTrue())
+		Expect(gitops.HaveAppStudioTestsSucceeded(hasSnapshot)).To(BeTrue())
+		Expect(hasSnapshot.Status.Conditions).NotTo(BeNil())
+		Expect(gitops.ResetSnapshotStatusConditions(k8sClient, ctx, hasSnapshot, "in progress")).To(Succeed())
+		Expect(gitops.HaveAppStudioTestsSucceeded(hasSnapshot)).To(BeFalse())
+		Expect(gitops.HaveAppStudioTestsFinished(hasSnapshot)).To(BeFalse())
+	})
+
 	It("ensures the a decision can be made to promote the Snapshot based on its status", func() {
 		gitops.SetSnapshotIntegrationStatusAsFinished(hasSnapshot, "Test message")
 		Expect(hasSnapshot).NotTo(BeNil())
