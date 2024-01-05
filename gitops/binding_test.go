@@ -175,7 +175,8 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 	})
 
 	It("ensures Binding Component is created", func() {
-		gitops.MarkSnapshotAsPassed(k8sClient, ctx, hasSnapshot, "test passed")
+		_, err := gitops.MarkSnapshotAsPassed(k8sClient, ctx, hasSnapshot, "test passed")
+		Expect(err).To(Succeed())
 		Expect(gitops.HaveAppStudioTestsSucceeded(hasSnapshot)).To(BeTrue())
 		bindingComponents := gitops.NewBindingComponents(hasSnapshot)
 		Expect(bindingComponents).NotTo(BeNil())
@@ -186,7 +187,7 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 		Expect(newSnapshotEnvironmentBinding).NotTo(BeNil())
 		Expect(newSnapshotEnvironmentBinding.Spec.Snapshot).To(Equal(hasSnapshot.Name))
 		Expect(newSnapshotEnvironmentBinding.Spec.Environment).To(Equal(env.Name))
-		Expect(len(newSnapshotEnvironmentBinding.Spec.Components)).To(Equal(1))
+		Expect(newSnapshotEnvironmentBinding.Spec.Components).To(HaveLen(1))
 
 		Expect(gitops.IsBindingDeployed(newSnapshotEnvironmentBinding)).NotTo(BeTrue())
 		Expect(gitops.HaveBindingsFailed(newSnapshotEnvironmentBinding)).NotTo(BeTrue())
