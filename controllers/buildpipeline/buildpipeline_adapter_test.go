@@ -19,8 +19,9 @@ package buildpipeline
 import (
 	"bytes"
 	"reflect"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"time"
+
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	"github.com/redhat-appstudio/integration-service/gitops"
 	"github.com/redhat-appstudio/integration-service/helpers"
@@ -689,7 +690,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			pipelineRuns, err := adapter.getSucceededBuildPipelineRunsForComponent(hasComp)
 			Expect(err).To(BeNil())
 			Expect(pipelineRuns).NotTo(BeNil())
-			Expect(len(*pipelineRuns)).To(Equal(2))
+			Expect(*pipelineRuns).To(HaveLen(2))
 			Expect((*pipelineRuns)[0].Name == buildPipelineRun.Name || (*pipelineRuns)[1].Name == buildPipelineRun.Name).To(BeTrue())
 		})
 

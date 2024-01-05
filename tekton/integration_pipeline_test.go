@@ -413,13 +413,13 @@ var _ = Describe("Integration pipeline", func() {
 			Expect(newIntegrationPipelineRun.Labels["appstudio.openshift.io/environment"]).
 				To(Equal(hasEnv.Name))
 
-			Expect(newIntegrationPipelineRun.Spec.Workspaces != nil).To(BeTrue())
-			Expect(len(newIntegrationPipelineRun.Spec.Workspaces) > 0).To(BeTrue())
+			Expect(newIntegrationPipelineRun.Spec.Workspaces).NotTo(BeNil())
+			Expect(newIntegrationPipelineRun.Spec.Workspaces).NotTo(BeEmpty())
 			Expect(newIntegrationPipelineRun.Spec.Workspaces[0].Name).To(Equal("cluster-credentials"))
 			Expect(newIntegrationPipelineRun.Spec.Workspaces[0].Secret.SecretName).
 				To(Equal(deploymentTarget.Spec.KubernetesClusterCredentials.ClusterCredentialsSecret))
 
-			Expect(len(newIntegrationPipelineRun.Spec.Params) > 0).To(BeTrue())
+			Expect(newIntegrationPipelineRun.Spec.Params).NotTo(BeEmpty())
 			Expect(newIntegrationPipelineRun.Spec.Params[0].Name).To(Equal("NAMESPACE"))
 			Expect(newIntegrationPipelineRun.Spec.Params[0].Value.StringVal).
 				To(Equal(deploymentTarget.Spec.KubernetesClusterCredentials.DefaultNamespace))
@@ -458,7 +458,7 @@ var _ = Describe("Integration pipeline", func() {
 				To(Equal("false"))
 
 			Expect(string(newIntegrationBundlePipelineRun.Spec.PipelineRef.ResolverRef.Resolver)).To(Equal("bundles"))
-			Expect(len(newIntegrationBundlePipelineRun.Spec.PipelineRef.ResolverRef.Params)).To(Equal(3))
+			Expect(newIntegrationBundlePipelineRun.Spec.PipelineRef.ResolverRef.Params).To(HaveLen(3))
 		})
 	})
 
@@ -478,7 +478,7 @@ var _ = Describe("Integration pipeline", func() {
 
 		It("has set all parameters required for executing the EC pipeline", func() {
 			Expect(string(enterpriseContractPipelineRun.Spec.PipelineRef.ResolverRef.Resolver)).To(Equal("git"))
-			Expect(len(enterpriseContractPipelineRun.Spec.PipelineRef.ResolverRef.Params)).To(Equal(3))
+			Expect(enterpriseContractPipelineRun.Spec.PipelineRef.ResolverRef.Params).To(HaveLen(3))
 
 			Expect(enterpriseContractPipelineRun.Spec.Params[0].Name).To(Equal("SNAPSHOT"))
 			Expect(enterpriseContractPipelineRun.Spec.Params[1].Name).To(Equal("POLICY_CONFIGURATION"))

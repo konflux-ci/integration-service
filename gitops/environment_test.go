@@ -384,7 +384,7 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 
 		It("Can return DeploymentTargetClaim object", func() {
 			dtc := gitops.NewDeploymentTargetClaim("default", deploymentTargetClass.Name)
-			Expect(dtc.Spec.DeploymentTargetClassName == applicationapiv1alpha1.DeploymentTargetClassName(deploymentTargetClass.Name)).To(BeTrue())
+			Expect(dtc.Spec.DeploymentTargetClassName).To(Equal(applicationapiv1alpha1.DeploymentTargetClassName(deploymentTargetClass.Name)))
 		})
 	})
 

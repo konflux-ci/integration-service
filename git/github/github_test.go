@@ -281,30 +281,17 @@ var _ = Describe("Client", func() {
 
 		allCheckRuns, err := client.GetAllCheckRunsForRef(context.TODO(), "", "", "", 1)
 		Expect(err).To(BeNil())
-		Expect(len(allCheckRuns) > 0).To(BeTrue())
+		Expect(allCheckRuns).NotTo(BeEmpty())
 
 		existingCheckRun := client.GetExistingCheckRun(allCheckRuns, checkRunAdapter)
 		Expect(existingCheckRun).NotTo(BeNil())
 
-		checkRunAdapter = &github.CheckRunAdapter{
-			Name:           "example-name",
-			Owner:          "example-owner",
-			Repository:     "example-repo",
-			SHA:            "abcdef1",
-			ExternalID:     "example-external-id",
-			Conclusion:     "failure",
-			Title:          "example-title",
-			Summary:        "example-summary",
-			Text:           "example-text-update",
-			StartTime:      time.Now(),
-			CompletionTime: time.Now(),
-		}
 	})
 
 	It("can check if creating a new commit status is needed", func() {
 		commitStatuses, err := client.GetAllCommitStatusesForRef(context.TODO(), "", "", "")
 		Expect(err).To(BeNil())
-		Expect(len(commitStatuses) > 0).To(BeTrue())
+		Expect(commitStatuses).NotTo(BeEmpty())
 
 		commitStatusExist, err := client.CommitStatusExists(commitStatuses, commitStatusAdapter)
 		Expect(commitStatusExist).To(BeTrue())
@@ -326,7 +313,7 @@ var _ = Describe("Client", func() {
 	It("can get existing comment id", func() {
 		comments, err := client.GetAllCommentsForPR(context.TODO(), "", "", 1)
 		Expect(err).To(BeNil())
-		Expect(len(comments) > 0).To(BeTrue())
+		Expect(comments).NotTo(BeEmpty())
 
 		commentID := client.GetExistingCommentID(comments, "snapshotName", "scenarioName")
 		Expect(*commentID).To(Equal(int64(40)))

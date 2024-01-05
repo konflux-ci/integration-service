@@ -64,7 +64,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 	)
 
 	BeforeAll(func() {
-		now = time.Now()
+		now = time.Now().Truncate(time.Second) // saved resources doesn't have subsecond values in timestamps
 
 		hasApp = &applicationapiv1alpha1.Application{
 			ObjectMeta: metav1.ObjectMeta{
@@ -673,7 +673,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		integrationTaskRun := helpers.NewTaskRunFromTektonTaskRun("task-success", &successfulTaskRun.Status)
 		Expect(integrationTaskRun).NotTo(BeNil())
 		Expect(integrationTaskRun.GetPipelineTaskName()).To(Equal("task-success"))
-		Expect(integrationTaskRun.GetStartTime().Equal(now))
+		Expect(integrationTaskRun.GetStartTime()).To(Equal(now))
 		Expect(integrationTaskRun.GetDuration().Minutes()).To(Equal(5.0))
 
 		integrationTaskRun = helpers.NewTaskRunFromTektonTaskRun("task-instant", &emptyTaskRun.Status)
@@ -715,7 +715,8 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		Expect(pipelineRunOutcome.HasPipelineRunValidTestOutputs()).To(BeTrue())
 		Expect(pipelineRunOutcome.GetValidationErrorsList()).Should(BeEmpty())
 
-		gitops.MarkSnapshotAsPassed(k8sClient, ctx, hasSnapshot, "test passed")
+		_, err = gitops.MarkSnapshotAsPassed(k8sClient, ctx, hasSnapshot, "test passed")
+		Expect(err).To(Succeed())
 		Expect(gitops.HaveAppStudioTestsSucceeded(hasSnapshot)).To(BeTrue())
 	})
 
@@ -751,7 +752,8 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		Expect(pipelineRunOutcome.HasPipelineRunValidTestOutputs()).To(BeTrue())
 		Expect(pipelineRunOutcome.GetValidationErrorsList()).Should(BeEmpty())
 
-		gitops.MarkSnapshotAsPassed(k8sClient, ctx, hasSnapshot, "test passed")
+		_, err = gitops.MarkSnapshotAsPassed(k8sClient, ctx, hasSnapshot, "test passed")
+		Expect(err).To(Succeed())
 		Expect(gitops.HaveAppStudioTestsSucceeded(hasSnapshot)).To(BeTrue())
 	})
 
@@ -772,7 +774,8 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		Expect(pipelineRunOutcome.HasPipelineRunValidTestOutputs()).To(BeTrue())
 		Expect(pipelineRunOutcome.GetValidationErrorsList()).Should(BeEmpty())
 
-		gitops.MarkSnapshotAsFailed(k8sClient, ctx, hasSnapshot, "test failed")
+		_, err = gitops.MarkSnapshotAsFailed(k8sClient, ctx, hasSnapshot, "test failed")
+		Expect(err).To(Succeed())
 		Expect(gitops.HaveAppStudioTestsSucceeded(hasSnapshot)).To(BeFalse())
 	})
 
@@ -808,7 +811,8 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		Expect(pipelineRunOutcome.HasPipelineRunValidTestOutputs()).To(BeTrue())
 		Expect(pipelineRunOutcome.GetValidationErrorsList()).Should(BeEmpty())
 
-		gitops.MarkSnapshotAsFailed(k8sClient, ctx, hasSnapshot, "test failed")
+		_, err = gitops.MarkSnapshotAsFailed(k8sClient, ctx, hasSnapshot, "test failed")
+		Expect(err).To(Succeed())
 		Expect(gitops.HaveAppStudioTestsSucceeded(hasSnapshot)).To(BeFalse())
 	})
 
@@ -887,7 +891,8 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		Expect(pipelineRunOutcome.HasPipelineRunValidTestOutputs()).To(BeTrue())
 		Expect(pipelineRunOutcome.GetValidationErrorsList()).Should(BeEmpty())
 
-		gitops.MarkSnapshotAsPassed(k8sClient, ctx, hasSnapshot, "test passed")
+		_, err = gitops.MarkSnapshotAsPassed(k8sClient, ctx, hasSnapshot, "test passed")
+		Expect(err).To(Succeed())
 		Expect(gitops.HaveAppStudioTestsSucceeded(hasSnapshot)).To(BeTrue())
 	})
 
@@ -995,12 +1000,12 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 
 		taskRuns, err := helpers.GetAllChildTaskRunsForPipelineRun(k8sClient, ctx, integrationPipelineRun)
 		Expect(err).To(BeNil())
-		Expect(len(taskRuns)).To(Equal(2))
+		Expect(taskRuns).To(HaveLen(2))
 
 		// We expect the tasks to be sorted by start time
 		tr1 := taskRuns[0]
 		Expect(tr1.GetPipelineTaskName()).To(Equal("pipeline1-task1"))
-		Expect(tr1.GetStartTime().Equal(now))
+		Expect(tr1.GetStartTime()).To(Equal(now))
 		Expect(tr1.GetDuration().Minutes()).To(Equal(5.0))
 
 		result1, err := tr1.GetTestResult()
@@ -1014,7 +1019,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		Expect(result1).To(Equal(result2))
 
 		tr2 := taskRuns[1]
-		Expect(tr2.GetStartTime().Equal(now.Add(5 * time.Minute)))
+		Expect(tr2.GetStartTime()).To(Equal(now.Add(5 * time.Minute)))
 		Expect(tr2.GetDuration().Minutes()).To(Equal(5.0))
 
 		result3, err := tr2.GetTestResult()

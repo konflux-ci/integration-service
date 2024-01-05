@@ -459,7 +459,8 @@ var _ = Describe("Loader", Ordered, func() {
 		Expect(k8sClient).NotTo(BeNil())
 		Expect(ctx).NotTo(BeNil())
 		Expect(hasSnapshot).NotTo(BeNil())
-		gitops.MarkSnapshotAsPassed(k8sClient, ctx, hasSnapshot, "test passed")
+		_, err := gitops.MarkSnapshotAsPassed(k8sClient, ctx, hasSnapshot, "test passed")
+		Expect(err).To(Succeed())
 		Expect(gitops.HaveAppStudioTestsSucceeded(hasSnapshot)).To(BeTrue())
 
 		// Normally we would Ensure that releases exist here, but that requires
@@ -538,62 +539,62 @@ var _ = Describe("Loader", Ordered, func() {
 		pipelineRuns, err := loader.GetAllBuildPipelineRunsForComponent(k8sClient, ctx, hasComp)
 		Expect(err).To(BeNil())
 		Expect(pipelineRuns).NotTo(BeNil())
-		Expect(len(*pipelineRuns)).To(Equal(1))
-		Expect((*pipelineRuns)[0].Name == buildPipelineRun.Name)
+		Expect(*pipelineRuns).To(HaveLen(1))
+		Expect((*pipelineRuns)[0].Name).To(Equal(buildPipelineRun.Name))
 	})
 
 	It("can fetch all pipelineRuns for snapshot and scenario", func() {
 		pipelineRuns, err := loader.GetAllPipelineRunsForSnapshotAndScenario(k8sClient, ctx, hasSnapshot, integrationTestScenario)
 		Expect(err).To(BeNil())
 		Expect(pipelineRuns).NotTo(BeNil())
-		Expect(len(*pipelineRuns)).To(Equal(1))
-		Expect((*pipelineRuns)[0].Name == buildPipelineRun.Name)
+		Expect(*pipelineRuns).To(HaveLen(1))
+		Expect((*pipelineRuns)[0].Name).To(Equal(integrationPipelineRun.Name))
 	})
 
 	It("can fetch all integrationTestScenario for application", func() {
 		integrationTestScenarios, err := loader.GetAllIntegrationTestScenariosForApplication(k8sClient, ctx, hasApp)
 		Expect(err).To(BeNil())
 		Expect(integrationTestScenarios).NotTo(BeNil())
-		Expect(len(*integrationTestScenarios)).To(Equal(1))
-		Expect((*integrationTestScenarios)[0].Name == integrationTestScenario.Name)
+		Expect(*integrationTestScenarios).To(HaveLen(1))
+		Expect((*integrationTestScenarios)[0].Name).To(Equal(integrationTestScenario.Name))
 	})
 
 	It("can fetch required integrationTestScenario for application", func() {
 		integrationTestScenarios, err := loader.GetRequiredIntegrationTestScenariosForApplication(k8sClient, ctx, hasApp)
 		Expect(err).To(BeNil())
 		Expect(integrationTestScenarios).NotTo(BeNil())
-		Expect(len(*integrationTestScenarios)).To(Equal(1))
-		Expect((*integrationTestScenarios)[0].Name == integrationTestScenario.Name)
+		Expect(*integrationTestScenarios).To(HaveLen(1))
+		Expect((*integrationTestScenarios)[0].Name).To(Equal(integrationTestScenario.Name))
 	})
 
 	It("can find available DeploymentTargetClass for application", func() {
 		dtcls, err := loader.FindAvailableDeploymentTargetClass(k8sClient, ctx)
 		Expect(err).To(BeNil())
-		Expect(dtcls.Name == deploymentTargetClass.Name)
+		Expect(dtcls.Name).To(Equal(deploymentTargetClass.Name))
 	})
 
 	It("can fetch DeploymentTargetClaim for environment", func() {
 		dtcls, err := loader.GetDeploymentTargetClaimForEnvironment(k8sClient, ctx, hasEnv)
 		Expect(err).To(BeNil())
-		Expect(dtcls.Name == deploymentTargetClass.Name)
+		Expect(dtcls.Name).To(Equal(deploymentTargetClaim.Name))
 	})
 
 	It("can fetch DeploymentTarget for DeploymentTargetClaim", func() {
 		dt, err := loader.GetDeploymentTargetForDeploymentTargetClaim(k8sClient, ctx, deploymentTargetClaim)
 		Expect(err).To(BeNil())
-		Expect(dt.Name == deploymentTarget.Name)
+		Expect(dt.Name).To(Equal(deploymentTarget.Name))
 	})
 
 	It("can snapshotEnvironmentBinding for application and environment", func() {
 		binding, err := loader.FindExistingSnapshotEnvironmentBinding(k8sClient, ctx, hasApp, hasEnv)
 		Expect(err).To(BeNil())
-		Expect(binding.Name == hasBinding.Name)
+		Expect(binding.Name).To(Equal(hasBinding.Name))
 	})
 
 	It("ensures that all Snapshots for a given application can be found", func() {
 		snapshots, err := loader.GetAllSnapshots(k8sClient, ctx, hasApp)
 		Expect(err).To(BeNil())
-		Expect(len(*snapshots)).To(Equal(1))
+		Expect(*snapshots).To(HaveLen(1))
 	})
 
 	It("ensures the ReleasePlan can be gotten for Application", func() {
@@ -640,7 +641,7 @@ var _ = Describe("Loader", Ordered, func() {
 			autoReleasePlans, err := loader.GetAutoReleasePlansForApplication(k8sClient, ctx, hasApp)
 			Expect(err).To(BeNil())
 			Expect(autoReleasePlans).ToNot(BeNil())
-			Expect(len(*autoReleasePlans)).To(Equal(1))
+			Expect(*autoReleasePlans).To(HaveLen(1))
 			Expect((*autoReleasePlans)[0].Name).To(Equal(releasePlanWithLabel.Name))
 
 		})
@@ -680,7 +681,7 @@ var _ = Describe("Loader", Ordered, func() {
 			autoReleasePlans, err := loader.GetAutoReleasePlansForApplication(k8sClient, ctx, hasApp)
 			Expect(err).To(BeNil())
 			Expect(autoReleasePlans).ToNot(BeNil())
-			Expect(len(*autoReleasePlans)).To(Equal(1))
+			Expect(*autoReleasePlans).To(HaveLen(1))
 			Expect((*autoReleasePlans)[0].Name).To(Equal(releasePlanNoLabel.Name))
 
 		})
@@ -723,7 +724,7 @@ var _ = Describe("Loader", Ordered, func() {
 			autoReleasePlans, err := loader.GetAutoReleasePlansForApplication(k8sClient, ctx, hasApp)
 			Expect(err).To(BeNil())
 			Expect(autoReleasePlans).ToNot(BeNil())
-			Expect(len(*autoReleasePlans)).To(Equal(0))
+			Expect(*autoReleasePlans).To(BeEmpty())
 		})
 
 		It("Can fetch integration test scenario", func() {

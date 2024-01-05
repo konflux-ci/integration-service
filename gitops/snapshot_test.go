@@ -135,15 +135,14 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 
 	It("ensures that latest update annotation can be set and get from snapshot", func() {
 		t := time.Time{}
-		t.UnmarshalText([]byte("2023-08-26T17:57:50+02:00"))
+		Expect(t.UnmarshalText([]byte("2023-08-26T17:57:50+02:00"))).To(Succeed())
 		Expect(gitops.GetLatestUpdateTime(hasSnapshot)).To(Equal(t))
 		//set different time
-		t.UnmarshalText([]byte("2023-08-26T18:57:50+02:00"))
-		gitops.SetLatestUpdateTime(hasSnapshot, t)
+		Expect(t.UnmarshalText([]byte("2023-08-26T18:57:50+02:00"))).To(Succeed())
+		Expect(gitops.SetLatestUpdateTime(hasSnapshot, t)).To(Succeed())
 		Expect(hasSnapshot.GetAnnotations()[gitops.SnapshotPRLastUpdate]).To(Equal("2023-08-26T18:57:50+02:00"))
-		//set latest update time to nil
-		t.UnmarshalText([]byte(""))
-		gitops.SetLatestUpdateTime(hasSnapshot, t)
+		//set latest update time to zero
+		Expect(gitops.SetLatestUpdateTime(hasSnapshot, time.Time{})).To(Succeed())
 		Expect(hasSnapshot.GetAnnotations()[gitops.SnapshotPRLastUpdate]).To(Equal("0001-01-01T00:00:00Z"))
 
 	})
