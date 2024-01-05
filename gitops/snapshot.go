@@ -693,8 +693,8 @@ func GetComponentSourceFromComponent(component *applicationapiv1alpha1.Component
 }
 
 // GetIntegrationTestRunLabelValue returns value of the label responsible for re-running tests
-func GetIntegrationTestRunLabelValue(snapshot applicationapiv1alpha1.Snapshot) (string, bool) {
-	labels := snapshot.GetLabels()
+func GetIntegrationTestRunLabelValue(obj metav1.Object) (string, bool) {
+	labels := obj.GetLabels()
 	labelVal, ok := labels[SnapshotIntegrationTestRun]
 	return labelVal, ok
 }

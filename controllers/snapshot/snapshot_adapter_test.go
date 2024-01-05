@@ -1807,6 +1807,33 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		})
 	})
 
+	Describe("createEnvironmentBindingForScenario", func() {
+
+		var (
+			testSEB *applicationapiv1alpha1.SnapshotEnvironmentBinding
+		)
+
+		When("SEB for rerun is created", func() {
+
+			BeforeEach(func() {
+				var err error
+				testSEB, err = adapter.createEnvironmentBindingForScenario(integrationTestScenario, env, ScenarioOptions{IsReRun: true})
+				Expect(err).To(Succeed())
+			})
+
+			AfterEach(func() {
+				err := k8sClient.Delete(ctx, testSEB)
+				Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
+			})
+
+			It("SEB contains rerun label", func() {
+				Expect(testSEB.GetLabels()).To(HaveKey(gitops.SnapshotIntegrationTestRun))
+			})
+
+		})
+
+	})
+
 	Describe("shouldScenarioRunInEphemeralEnv", func() {
 		It("returns true when env is defined in scenario", func() {
 			Expect(shouldScenarioRunInEphemeralEnv(integrationTestScenario)).To(BeTrue())
