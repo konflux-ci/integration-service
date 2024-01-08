@@ -149,6 +149,10 @@ func (a *Adapter) EnsureRerunPipelineRunsExist() (controller.OperationResult, er
 		testStatuses.UpdateTestStatusIfChanged(
 			integrationTestScenario.Name, intgteststat.IntegrationTestStatusInProgress,
 			fmt.Sprintf("IntegrationTestScenario pipeline '%s' has been created", pipelineRun.Name))
+		if err = testStatuses.UpdateTestPipelineRunName(integrationTestScenario.Name, pipelineRun.Name); err != nil {
+			// it doesn't make sense to restart reconciliation here, it will be eventually updated by integrationpipeline adapter
+			a.logger.Error(err, "Failed to update pipelinerun name in test status")
+		}
 
 	}
 
@@ -230,6 +234,10 @@ func (a *Adapter) EnsureStaticIntegrationPipelineRunsExist() (controller.Operati
 				testStatuses.UpdateTestStatusIfChanged(
 					integrationTestScenario.Name, intgteststat.IntegrationTestStatusInProgress,
 					fmt.Sprintf("IntegrationTestScenario pipeline '%s' has been created", pipelineRun.Name))
+				if err = testStatuses.UpdateTestPipelineRunName(integrationTestScenario.Name, pipelineRun.Name); err != nil {
+					// it doesn't make sense to restart reconciliation here, it will be eventually updated by integrationpipeline adapter
+					a.logger.Error(err, "Failed to update pipelinerun name in test status")
+				}
 			}
 		}
 

@@ -1618,8 +1618,10 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 
 				statuses, err = gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(hasSnapshot)
 				Expect(err).To(Succeed())
-				_, ok = statuses.GetScenarioStatus(integrationTestScenarioWithoutEnv.Name)
+				detail, ok := statuses.GetScenarioStatus(integrationTestScenarioWithoutEnv.Name)
 				Expect(ok).To(BeTrue()) // test restarted has a status now
+				Expect(detail).ToNot(BeNil())
+				Expect(detail.TestPipelineRunName).ToNot(BeEmpty()) // must set PLR name to prevent creation of duplicated PLR
 
 				m := MatchKeys(IgnoreExtras, Keys{
 					gitops.SnapshotIntegrationTestRun: Equal(integrationTestScenarioWithoutEnv.Name),
