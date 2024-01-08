@@ -96,6 +96,16 @@ func (a *Adapter) EnsureSnapshotExists() (controller.OperationResult, error) {
 
 	expectedSnapshot, err := a.prepareSnapshotForPipelineRun(a.pipelineRun, a.component, a.application)
 	if err != nil {
+		// If PipelineRun result returns cusomized error update PLR annotation and exit
+		if h.IsMissingInfoInPipelineRunError(err) {
+			// update the build PLR annotation with the error cusomized Reason and Value
+			if annotateErr := a.annotateBuildPipelineRunWithCreateSnapshotAnnotation(err); annotateErr != nil {
+				a.logger.Error(annotateErr, "Could not add create snapshot annotation to build pipelineRun", h.CreateSnapshotAnnotationName, a.pipelineRun)
+			}
+			a.logger.Error(err, "Build PipelineRun %s failed with error, should be fixed and re-run manually", a.pipelineRun)
+			return a.removeFinalizerAndContinueProcessing()
+		}
+
 		return controller.RequeueWithError(err)
 	}
 
