@@ -21,8 +21,9 @@ import (
 )
 
 const (
-	ReasonEnvironmentNotInNamespace = "EnvironmentNotInNamespace"
-	ReasonUnknownError              = "UnknownError"
+	ReasonEnvironmentNotInNamespace     = "EnvironmentNotInNamespace"
+	ReasonMissingInfoInPipelineRunError = "MissingInfoInPipelineRunError"
+	ReasonUnknownError                  = "UnknownError"
 )
 
 type IntegrationError struct {
@@ -51,6 +52,17 @@ func NewEnvironmentNotInNamespaceError(environment, namespace string) error {
 
 func IsEnvironmentNotInNamespaceError(err error) bool {
 	return getReason(err) == ReasonEnvironmentNotInNamespace
+}
+
+func MissingInfoInPipelineRunError(pipelineRunName, paramName string) error {
+	return &IntegrationError{
+		Reason:  ReasonMissingInfoInPipelineRunError,
+		Message: fmt.Sprintf("Missing info %s from pipelinerun %s", paramName, pipelineRunName),
+	}
+}
+
+func IsMissingInfoInPipelineRunError(err error) bool {
+	return getReason(err) == ReasonMissingInfoInPipelineRunError
 }
 
 func HandleLoaderError(logger IntegrationLogger, err error, resource, from string) (ctrl.Result, error) {

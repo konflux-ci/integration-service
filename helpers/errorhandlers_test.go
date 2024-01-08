@@ -82,5 +82,17 @@ var _ = Describe("Helpers for error handlers", Ordered, func() {
 			err := fmt.Errorf("failed")
 			Expect(helpers.IsEnvironmentNotInNamespaceError(err)).To(BeFalse())
 		})
+
+		It("Can define MissingInfoInPipelineRunError", func() {
+			err := helpers.MissingInfoInPipelineRunError("pipelineRunName", "revision")
+			Expect(helpers.IsMissingInfoInPipelineRunError(err)).To(BeTrue())
+			Expect(err.Error()).To(Equal("Missing info revision from pipelinerun pipelineRunName"))
+		})
+
+		It("Can handle non integration error", func() {
+			err := fmt.Errorf("failed")
+			Expect(helpers.IsMissingInfoInPipelineRunError(err)).To(BeFalse())
+		})
+
 	})
 })

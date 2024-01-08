@@ -19,6 +19,7 @@ package tekton
 import (
 	"fmt"
 
+	h "github.com/redhat-appstudio/integration-service/helpers"
 	"github.com/redhat-appstudio/operator-toolkit/metadata"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	"knative.dev/pkg/apis"
@@ -43,6 +44,18 @@ const (
 
 	// PipelineRunChainsSignedAnnotation is the label added by Tekton Chains to signed PipelineRuns
 	PipelineRunChainsSignedAnnotation = "chains.tekton.dev/signed"
+
+	// PipelineRunImageUrlParamName name of image url output param
+	PipelineRunImageUrlParamName = "IMAGE_URL"
+
+	// PipelineRunImageDigestParamName name of image digest in PipelineRun result param
+	PipelineRunImageDigestParamName = "IMAGE_DIGEST"
+
+	// PipelineRunChainsGitUrlParamName name of param chains repo url
+	PipelineRunChainsGitUrlParamName = "CHAINS-GIT_URL"
+
+	// PipelineRunChainsGitCommitParamName name of param repo chains commit
+	PipelineRunChainsGitCommitParamName = "CHAINS-GIT_COMMIT"
 )
 
 // IsBuildPipelineRun returns a boolean indicating whether the object passed is a PipelineRun from
@@ -136,48 +149,53 @@ func GetTypeFromPipelineRun(object client.Object) (string, error) {
 
 // GetOutputImage returns a string containing the output-image parameter value from a given PipelineRun.
 func GetOutputImage(object client.Object) (string, error) {
-	if pipelineRun, ok := object.(*tektonv1.PipelineRun); ok {
+	pipelineRun, ok := object.(*tektonv1.PipelineRun)
+	if ok {
 		for _, pipelineResult := range pipelineRun.Status.Results {
-			if pipelineResult.Name == "IMAGE_URL" {
+			if pipelineResult.Name == PipelineRunImageUrlParamName {
 				return pipelineResult.Value.StringVal, nil
 			}
 		}
 	}
-	return "", fmt.Errorf("couldn't find the output-image PipelineRun param")
+
+	return "", h.MissingInfoInPipelineRunError(pipelineRun.Name, PipelineRunImageUrlParamName)
 }
 
 // GetOutputImageDigest returns a string containing the IMAGE_DIGEST result value from a given PipelineRun.
 func GetOutputImageDigest(object client.Object) (string, error) {
-	if pipelineRun, ok := object.(*tektonv1.PipelineRun); ok {
+	pipelineRun, ok := object.(*tektonv1.PipelineRun)
+	if ok {
 		for _, pipelineResult := range pipelineRun.Status.Results {
-			if pipelineResult.Name == "IMAGE_DIGEST" {
+			if pipelineResult.Name == PipelineRunImageDigestParamName {
 				return pipelineResult.Value.StringVal, nil
 			}
 		}
 	}
-	return "", fmt.Errorf("couldn't find the IMAGE_DIGEST TaskRun result")
+	return "", h.MissingInfoInPipelineRunError(pipelineRun.Name, PipelineRunImageDigestParamName)
 }
 
 // GetComponentSourceGitUrl returns a string containing the CHAINS-GIT_URL result value from a given PipelineRun.
 func GetComponentSourceGitUrl(object client.Object) (string, error) {
-	if pipelineRun, ok := object.(*tektonv1.PipelineRun); ok {
+	pipelineRun, ok := object.(*tektonv1.PipelineRun)
+	if ok {
 		for _, pipelineResult := range pipelineRun.Status.Results {
-			if pipelineResult.Name == "CHAINS-GIT_URL" {
+			if pipelineResult.Name == PipelineRunChainsGitUrlParamName {
 				return pipelineResult.Value.StringVal, nil
 			}
 		}
 	}
-	return "", fmt.Errorf("couldn't find the CHAINS-GIT_URL PipelineRun result")
+	return "", h.MissingInfoInPipelineRunError(pipelineRun.Name, PipelineRunChainsGitUrlParamName)
 }
 
 // GetComponentSourceGitCommit returns a string containing the CHAINS-GIT_COMMIT result value from a given PipelineRun.
 func GetComponentSourceGitCommit(object client.Object) (string, error) {
-	if pipelineRun, ok := object.(*tektonv1.PipelineRun); ok {
+	pipelineRun, ok := object.(*tektonv1.PipelineRun)
+	if ok {
 		for _, pipelineResult := range pipelineRun.Status.Results {
-			if pipelineResult.Name == "CHAINS-GIT_COMMIT" {
+			if pipelineResult.Name == PipelineRunChainsGitCommitParamName {
 				return pipelineResult.Value.StringVal, nil
 			}
 		}
 	}
-	return "", fmt.Errorf("couldn't find the CHAINS-GIT_COMMIT PipelineRun result")
+	return "", h.MissingInfoInPipelineRunError(pipelineRun.Name, PipelineRunChainsGitCommitParamName)
 }
