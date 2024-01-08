@@ -452,6 +452,55 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			Expect(err).ToNot(BeNil())
 		})
 
+		It("ensure err is returned when pipelinerun doesn't have Result for customized error and build pipelineRun annotated ", func() {
+			// We don't need to update the underlying resource on the control plane,
+			// so we create a copy and modify its status. This prevents update conflicts in other tests.
+			buildPipelineRunNoSource := buildPipelineRun.DeepCopy()
+			buildPipelineRunNoSource.Status = tektonv1.PipelineRunStatus{
+				PipelineRunStatusFields: tektonv1.PipelineRunStatusFields{
+					ChildReferences: []tektonv1.ChildStatusReference{
+						{
+							Name:             successfulTaskRun.Name,
+							PipelineTaskName: "task1",
+						},
+					},
+					Results: []tektonv1.PipelineRunResult{
+						{
+							Name:  "CHAINS-GIT_URL",
+							Value: *tektonv1.NewStructuredValues(SampleRepoLink),
+						},
+						{
+							Name:  "IMAGE_URL",
+							Value: *tektonv1.NewStructuredValues(SampleImageWithoutDigest),
+						},
+					},
+				},
+				Status: v1.Status{
+					Conditions: v1.Conditions{
+						apis.Condition{
+							Reason: "Completed",
+							Status: "True",
+							Type:   apis.ConditionSucceeded,
+						},
+					},
+				},
+			}
+
+			messageError := "Missing info IMAGE_DIGEST from pipelinerun pipelinerun-build-sample"
+			var info map[string]string
+			expectedSnap, err := adapter.prepareSnapshotForPipelineRun(buildPipelineRunNoSource, hasComp, hasApp)
+			Expect(expectedSnap).To(BeNil())
+			Expect(err).To(HaveOccurred())
+			err = adapter.annotateBuildPipelineRunWithCreateSnapshotAnnotation(err)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(adapter.pipelineRun.GetAnnotations()[helpers.CreateSnapshotAnnotationName]).ToNot(BeNil())
+			err = json.Unmarshal([]byte(adapter.pipelineRun.GetAnnotations()[helpers.CreateSnapshotAnnotationName]), &info)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(info["status"]).To(Equal("failed"))
+			Expect(info["message"]).To(Equal(messageError))
+
+		})
+
 		It("ensures pipelines as code labels and annotations are propagated to the snapshot", func() {
 			snapshot, err := adapter.prepareSnapshotForPipelineRun(buildPipelineRun, hasComp, hasApp)
 			Expect(err).To(BeNil())
