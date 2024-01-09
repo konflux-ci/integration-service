@@ -53,18 +53,20 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		adapter *Adapter
 		logger  helpers.IntegrationLogger
 
-		testReleasePlan                       *releasev1alpha1.ReleasePlan
-		hasApp                                *applicationapiv1alpha1.Application
-		hasComp                               *applicationapiv1alpha1.Component
-		hasSnapshot                           *applicationapiv1alpha1.Snapshot
-		hasSnapshotPR                         *applicationapiv1alpha1.Snapshot
-		deploymentTargetClass                 *applicationapiv1alpha1.DeploymentTargetClass
-		integrationTestScenario               *v1beta1.IntegrationTestScenario
-		integrationTestScenarioWithoutEnv     *v1beta1.IntegrationTestScenario
-		integrationTestScenarioWithoutEnvCopy *v1beta1.IntegrationTestScenario
-		env                                   *applicationapiv1alpha1.Environment
-		tmpEnv                                *applicationapiv1alpha1.Environment
-		hasBinding                            *applicationapiv1alpha1.SnapshotEnvironmentBinding
+		testReleasePlan                           *releasev1alpha1.ReleasePlan
+		hasApp                                    *applicationapiv1alpha1.Application
+		hasComp                                   *applicationapiv1alpha1.Component
+		hasSnapshot                               *applicationapiv1alpha1.Snapshot
+		hasSnapshotPR                             *applicationapiv1alpha1.Snapshot
+		hasInvalidSnapshot                        *applicationapiv1alpha1.Snapshot
+		deploymentTargetClass                     *applicationapiv1alpha1.DeploymentTargetClass
+		integrationTestScenario                   *v1beta1.IntegrationTestScenario
+		integrationTestScenarioWithoutEnv         *v1beta1.IntegrationTestScenario
+		integrationTestScenarioWithoutEnvCopy     *v1beta1.IntegrationTestScenario
+		integrationTestScenarioForInvalidSnapshot *v1beta1.IntegrationTestScenario
+		env                                       *applicationapiv1alpha1.Environment
+		tmpEnv                                    *applicationapiv1alpha1.Environment
+		hasBinding                                *applicationapiv1alpha1.SnapshotEnvironmentBinding
 	)
 	const (
 		SampleRepoLink  = "https://github.com/devfile-samples/devfile-sample-java-springboot-basic"
@@ -966,6 +968,138 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			Expect(result.CancelRequest).To(BeFalse())
 			Expect(result.RequeueRequest).To(BeFalse())
 			Expect(err == nil).To(BeTrue())
+		})
+	})
+
+	When("Snapshot is Invalid by way of oversized name", func() {
+
+		BeforeEach(func() {
+			hasInvalidSnapshot = &applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "this-name-is-too-long-it-has-64-characters-and-we-allow-max-63ch",
+					Namespace: "default",
+					Labels: map[string]string{
+						gitops.SnapshotTypeLabel:              "component",
+						gitops.SnapshotComponentLabel:         "component-sample",
+						"build.appstudio.redhat.com/pipeline": "enterprise-contract",
+						gitops.PipelineAsCodeEventTypeLabel:   "push",
+					},
+					Annotations: map[string]string{
+						gitops.PipelineAsCodeInstallationIDAnnotation:   "123",
+						"build.appstudio.redhat.com/commit_sha":         "6c65b2fcaea3e1a0a92476c8b5dc89e92a85f025",
+						"appstudio.redhat.com/updateComponentOnSuccess": "false",
+					},
+				},
+				Spec: applicationapiv1alpha1.SnapshotSpec{
+					Application: hasApp.Name,
+					Components: []applicationapiv1alpha1.SnapshotComponent{
+						{
+							Name:           "component-sample",
+							ContainerImage: sample_image,
+							Source: applicationapiv1alpha1.ComponentSource{
+								ComponentSourceUnion: applicationapiv1alpha1.ComponentSourceUnion{
+									GitSource: &applicationapiv1alpha1.GitSource{
+										Revision: sample_revision,
+									},
+								},
+							},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, hasInvalidSnapshot)).Should(Succeed())
+
+			integrationTestScenarioForInvalidSnapshot = &v1beta1.IntegrationTestScenario{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "invald-snapshot-its",
+					Namespace: "default",
+
+					Labels: map[string]string{
+						"test.appstudio.openshift.io/optional": "false",
+					},
+				},
+				Spec: v1beta1.IntegrationTestScenarioSpec{
+					Application: "application-sample",
+					ResolverRef: v1beta1.ResolverRef{
+						Resolver: "git",
+						Params: []v1beta1.ResolverParameter{
+							{
+								Name:  "url",
+								Value: "https://github.com/redhat-appstudio/integration-examples.git",
+							},
+							{
+								Name:  "revision",
+								Value: "main",
+							},
+							{
+								Name:  "pathInRepo",
+								Value: "pipelineruns/integration_pipelinerun_pass.yaml",
+							},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, integrationTestScenarioForInvalidSnapshot)).Should(Succeed())
+
+			Eventually(func() error {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      hasInvalidSnapshot.Name,
+					Namespace: "default",
+				}, hasInvalidSnapshot)
+				return err
+			}, time.Second*10).ShouldNot(HaveOccurred())
+		})
+
+		AfterEach(func() {
+			err := k8sClient.Delete(ctx, hasInvalidSnapshot)
+			Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
+			err = k8sClient.Delete(ctx, integrationTestScenarioForInvalidSnapshot)
+			Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
+		})
+
+		It("will stop reconciliation", func() {
+			var buf bytes.Buffer
+
+			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+			adapter = NewAdapter(hasInvalidSnapshot, hasApp, hasComp, log, loader.NewMockLoader(), k8sClient, ctx)
+
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: loader.ApplicationContextKey,
+					Resource:   hasApp,
+				},
+				{
+					ContextKey: loader.ComponentContextKey,
+					Resource:   hasComp,
+				},
+				{
+					ContextKey: loader.SnapshotContextKey,
+					Resource:   hasInvalidSnapshot,
+				},
+				{
+					ContextKey: loader.EnvironmentContextKey,
+					Resource:   env,
+				},
+				{
+					ContextKey: loader.SnapshotComponentsContextKey,
+					Resource:   []applicationapiv1alpha1.Component{*hasComp},
+				},
+				{
+					ContextKey: loader.AllIntegrationTestScenariosContextKey,
+					Resource:   []v1beta1.IntegrationTestScenario{*integrationTestScenarioForInvalidSnapshot},
+				},
+				{
+					ContextKey: loader.RequiredIntegrationTestScenariosContextKey,
+					Resource:   []v1beta1.IntegrationTestScenario{*integrationTestScenarioForInvalidSnapshot},
+				},
+			})
+
+			result, err := adapter.EnsureStaticIntegrationPipelineRunsExist()
+			Expect(result.CancelRequest).To(BeTrue())
+			Expect(err).ToNot(HaveOccurred())
+
+			expectedLogEntry := "failed during creation due to invalid resource"
+			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
 		})
 	})
 
