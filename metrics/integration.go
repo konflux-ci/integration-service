@@ -45,7 +45,7 @@ var (
 		prometheus.HistogramOpts{
 			Name:    "integration_svc_snapshot_created_to_pipelinerun_with_ephemeral_env_started_seconds",
 			Help:    "The duration measures the time elapsed between the creation of a snapshot resource and the initiation of an integration PipelineRun for pipelines operating within an ephemeral environment.",
-			Buckets: []float64{0.05, 0.1, 0.5, 1, 2, 3, 4, 5, 10, 15, 30},
+			Buckets: []float64{1, 5, 10, 15, 20, 25, 30, 35, 45, 60, 120, 240, 300},
 		},
 	)
 
