@@ -45,6 +45,7 @@ var _ = Describe("integrationteststatus library unittests", func() {
 			Entry("When status is TestFail", intgteststat.IntegrationTestStatusTestFail, "TestFail"),
 			Entry("When status is TestPass", intgteststat.IntegrationTestStatusTestPassed, "TestPassed"),
 			Entry("When status is Deleted", intgteststat.IntegrationTestStatusDeleted, "Deleted"),
+			Entry("When status is Invalid", intgteststat.IntegrationTestStatusTestInvalid, "TestInvalid"),
 		)
 
 		DescribeTable("Status to JSON and vice versa",
@@ -65,6 +66,7 @@ var _ = Describe("integrationteststatus library unittests", func() {
 			Entry("When status is TestFail", intgteststat.IntegrationTestStatusTestFail, "TestFail"),
 			Entry("When status is TestPass", intgteststat.IntegrationTestStatusTestPassed, "TestPassed"),
 			Entry("When status is Deleted", intgteststat.IntegrationTestStatusDeleted, "Deleted"),
+			Entry("When status is Invalid", intgteststat.IntegrationTestStatusTestInvalid, "TestInvalid"),
 		)
 
 		It("Invalid status to type fails with error", func() {
@@ -135,7 +137,7 @@ var _ = Describe("integrationteststatus library unittests", func() {
 			Expect(detail.Status).To(Equal(intgteststat.IntegrationTestStatusPending))
 		})
 
-		DescribeTable("Test expected additons of startTime",
+		DescribeTable("Test expected additions of startTime",
 			func(st intgteststat.IntegrationTestStatus, shouldAdd bool) {
 				sits.UpdateTestStatusIfChanged(testScenarioName, st, testDetails)
 				detail, ok := sits.GetScenarioStatus(testScenarioName)
@@ -153,9 +155,10 @@ var _ = Describe("integrationteststatus library unittests", func() {
 			Entry("When status is TestFail", intgteststat.IntegrationTestStatusTestFail, false),
 			Entry("When status is TestPass", intgteststat.IntegrationTestStatusTestPassed, false),
 			Entry("When status is Deleted", intgteststat.IntegrationTestStatusDeleted, false),
+			Entry("When status is Invalid", intgteststat.IntegrationTestStatusTestInvalid, false),
 		)
 
-		DescribeTable("Test expected additons of completionTime",
+		DescribeTable("Test expected additions of completionTime",
 			func(st intgteststat.IntegrationTestStatus, shouldAdd bool) {
 				sits.UpdateTestStatusIfChanged(testScenarioName, st, testDetails)
 				detail, ok := sits.GetScenarioStatus(testScenarioName)
@@ -173,6 +176,7 @@ var _ = Describe("integrationteststatus library unittests", func() {
 			Entry("When status is TestFail", intgteststat.IntegrationTestStatusTestFail, true),
 			Entry("When status is TestPass", intgteststat.IntegrationTestStatusTestPassed, true),
 			Entry("When status is Deleted", intgteststat.IntegrationTestStatusDeleted, true),
+			Entry("When status is Invalid", intgteststat.IntegrationTestStatusTestInvalid, true),
 		)
 
 		It("Change back to InProgress updates timestamps accordingly", func() {
@@ -382,7 +386,7 @@ var _ = Describe("integrationteststatus library unittests", func() {
 				Expect(sits.IsDirty()).To(BeTrue())
 			})
 
-			It("Status can be reseted as non-dirty", func() {
+			It("Status can be reset as non-dirty", func() {
 				sits.ResetDirty()
 				Expect(sits.IsDirty()).To(BeFalse())
 			})
@@ -410,7 +414,7 @@ var _ = Describe("integrationteststatus library unittests", func() {
 				// timestamp must be updated too
 				Expect(newSt.LastUpdateTime).NotTo(Equal(oldTimestamp))
 
-				// no changes to nuber of records
+				// no changes to number of records
 				Expect(sits.GetStatuses()).To(HaveLen(1))
 			})
 
@@ -432,7 +436,7 @@ var _ = Describe("integrationteststatus library unittests", func() {
 				// timestamp must be updated too
 				Expect(newSt.LastUpdateTime).NotTo(Equal(oldTimestamp))
 
-				// no changes to nuber of records
+				// no changes to number of records
 				Expect(sits.GetStatuses()).To(HaveLen(1))
 			})
 
@@ -443,7 +447,7 @@ var _ = Describe("integrationteststatus library unittests", func() {
 				Expect(sits.IsDirty()).To(BeTrue())
 			})
 
-			It("Initialization with empty scneario list will remove data", func() {
+			It("Initialization with empty scenario list will remove data", func() {
 				sits.ResetDirty()
 				sits.InitStatuses(&[]string{})
 				Expect(sits.GetStatuses()).To(BeEmpty())

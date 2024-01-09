@@ -43,6 +43,8 @@ const (
 	IntegrationTestStatusTestFail // TestFail
 	// Integration PLR passed for this ITS and snapshot
 	IntegrationTestStatusTestPassed // TestPassed
+	// Integration PLR is invalid
+	IntegrationTestStatusTestInvalid // TestInvalid
 )
 
 const integrationTestStatusesSchema = `{
@@ -161,7 +163,8 @@ func (sits *SnapshotIntegrationTestStatuses) UpdateTestStatusIfChanged(scenarioN
 			IntegrationTestStatusEnvironmentProvisionError,
 			IntegrationTestStatusDeleted,
 			IntegrationTestStatusTestFail,
-			IntegrationTestStatusTestPassed:
+			IntegrationTestStatusTestPassed,
+			IntegrationTestStatusTestInvalid:
 			detail.CompletionTime = &timestamp
 		}
 	}
