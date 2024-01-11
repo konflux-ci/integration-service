@@ -112,7 +112,11 @@ func (a *Adapter) EnsureIntegrationTestPipelineForScenarioExists() (controller.O
 				a.logger.Error(err, "Failed to create pipelineRun for snapshot, environment and scenario")
 				return controller.RequeueWithError(err)
 			}
-			metrics.RegisterPipelineRunWithEphemeralEnvStarted(a.snapshot.CreationTimestamp, metav1.Now())
+
+			// measure only non-reruns
+			if _, ok := gitops.GetIntegrationTestRunLabelValue(a.snapshotEnvironmentBinding); !ok {
+				metrics.RegisterPipelineRunWithEphemeralEnvStarted(a.snapshot.CreationTimestamp, metav1.Now())
+			}
 			a.logger.LogAuditEvent("PipelineRun for snapshot created", pipelineRun, h.LogActionAdd,
 				"snapshot.Name", a.snapshot.Name)
 		}
