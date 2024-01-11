@@ -799,6 +799,102 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				return err == nil && !controllerutil.ContainsFinalizer(buildPipelineRun, helpers.IntegrationPipelineRunFinalizer)
 			}, time.Second*20).Should(BeTrue())
 		})
+
+		When("running pipeline with deletion timestamp is processed", func() {
+
+			var runningDeletingBuildPipeline *tektonv1.PipelineRun
+
+			BeforeEach(func() {
+				runningDeletingBuildPipeline = &tektonv1.PipelineRun{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "pipelinerun-build-running-deleting",
+						Namespace: "default",
+						Labels: map[string]string{
+							"pipelines.appstudio.openshift.io/type":    "build",
+							"pipelines.openshift.io/used-by":           "build-cloud",
+							"pipelines.openshift.io/runtime":           "nodejs",
+							"pipelines.openshift.io/strategy":          "s2i",
+							"appstudio.openshift.io/component":         "component-sample",
+							"pipelinesascode.tekton.dev/event-type":    "pull_request",
+							"build.appstudio.redhat.com/target_branch": "main",
+						},
+						Annotations: map[string]string{
+							"appstudio.redhat.com/updateComponentOnSuccess": "false",
+							"pipelinesascode.tekton.dev/on-target-branch":   "[main,master]",
+							"build.appstudio.openshift.io/repo":             "https://github.com/devfile-samples/devfile-sample-go-basic?rev=c713067b0e65fb3de50d1f7c457eb51c2ab0dbb0",
+							"foo":                                           "bar",
+						},
+					},
+					Spec: tektonv1.PipelineRunSpec{
+						PipelineRef: &tektonv1.PipelineRef{
+							Name: "build-pipeline-pass",
+							ResolverRef: tektonv1.ResolverRef{
+								Resolver: "bundle",
+								Params: tektonv1.Params{
+									{Name: "bundle",
+										Value: tektonv1.ParamValue{Type: "string", StringVal: "quay.io/redhat-appstudio/example-tekton-bundle:test"},
+									},
+									{Name: "name",
+										Value: tektonv1.ParamValue{Type: "string", StringVal: "test-task"},
+									},
+								},
+							},
+						},
+						Params: []tektonv1.Param{
+							{
+								Name: "output-image",
+								Value: tektonv1.ParamValue{
+									Type:      tektonv1.ParamTypeString,
+									StringVal: SampleImageWithoutDigest,
+								},
+							},
+						},
+					},
+				}
+				Expect(k8sClient.Create(ctx, runningDeletingBuildPipeline)).Should(Succeed())
+
+				runningDeletingBuildPipeline.Status = tektonv1.PipelineRunStatus{
+					PipelineRunStatusFields: tektonv1.PipelineRunStatusFields{
+						Results: []tektonv1.PipelineRunResult{},
+					},
+					Status: v1.Status{
+						Conditions: v1.Conditions{
+							apis.Condition{
+								Reason: "Running",
+								Status: "Unknown",
+								Type:   apis.ConditionSucceeded,
+							},
+						},
+					},
+				}
+				Expect(k8sClient.Status().Update(ctx, runningDeletingBuildPipeline)).Should(Succeed())
+
+				adapter = NewAdapter(runningDeletingBuildPipeline, hasComp, hasApp, logger, loader.NewMockLoader(), k8sClient, ctx)
+			})
+
+			AfterEach(func() {
+				err := k8sClient.Delete(ctx, runningDeletingBuildPipeline)
+				Expect(err == nil || k8serrors.IsNotFound(err)).To(BeTrue())
+			})
+
+			// tekton is keeping deleted pipelines in running state, we have to remove finalizer in this case
+			It("removes finalizer", func() {
+				// Add Finalizer to PLR
+				result, err := adapter.EnsurePipelineIsFinalized()
+				Expect(result.CancelRequest).To(BeFalse())
+				Expect(err).ToNot(HaveOccurred())
+				// make sure the finelizer is there
+				Expect(controllerutil.ContainsFinalizer(runningDeletingBuildPipeline, helpers.IntegrationPipelineRunFinalizer)).To(BeTrue())
+
+				// deletionTimestamp must be set here, create client call in BeforeEach() removes it
+				runningDeletingBuildPipeline.DeletionTimestamp = &metav1.Time{Time: time.Now()}
+				result, err = adapter.EnsureSnapshotExists()
+				Expect(err).ToNot(HaveOccurred())
+				Expect(result.CancelRequest).To(BeFalse())
+				Expect(controllerutil.ContainsFinalizer(runningDeletingBuildPipeline, helpers.IntegrationPipelineRunFinalizer)).To(BeFalse())
+			})
+
+		})
 	})
 
 	createAdapter = func() *Adapter {
