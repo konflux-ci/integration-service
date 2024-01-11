@@ -498,14 +498,14 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 	Context("GetIntegrationTestRunLabelValue tests", func() {
 
 		It("snapshot has no label defined", func() {
-			_, ok := gitops.GetIntegrationTestRunLabelValue(*hasSnapshot)
+			_, ok := gitops.GetIntegrationTestRunLabelValue(hasSnapshot)
 			Expect(ok).To(BeFalse())
 		})
 
 		It("snaphost has label defined", func() {
 			testScenario := "test-scenario"
 			hasSnapshot.Labels[gitops.SnapshotIntegrationTestRun] = testScenario
-			val, ok := gitops.GetIntegrationTestRunLabelValue(*hasSnapshot)
+			val, ok := gitops.GetIntegrationTestRunLabelValue(hasSnapshot)
 			Expect(ok).To(BeTrue())
 			Expect(val).To(Equal(testScenario))
 		})
@@ -517,7 +517,7 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 			testScenario := "test-scenario"
 			err := gitops.AddIntegrationTestRerunLabel(k8sClient, ctx, hasSnapshot, testScenario)
 			Expect(err).To(BeNil())
-			val, ok := gitops.GetIntegrationTestRunLabelValue(*hasSnapshot)
+			val, ok := gitops.GetIntegrationTestRunLabelValue(hasSnapshot)
 			Expect(ok).To(BeTrue())
 			Expect(val).To(Equal(testScenario))
 		})
