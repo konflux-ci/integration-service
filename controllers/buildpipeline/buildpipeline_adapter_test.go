@@ -401,6 +401,20 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			Expect(expectedSnapshot.Labels).Should(HaveKeyWithValue(Equal(gitops.ApplicationNameLabel), Equal(hasApp.Name)))
 		})
 
+		It("ensures that Labels and Annotations were coppied to snapshot from pipelinerun", func() {
+			copyToSnapshot, err := adapter.prepareSnapshotForPipelineRun(buildPipelineRun, hasComp, hasApp)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(copyToSnapshot).NotTo(BeNil())
+
+			gitops.CopySnapshotLabelsAndAnnotation(hasApp, copyToSnapshot, hasComp.Name, &buildPipelineRun.ObjectMeta, gitops.BuildPipelineRunPrefix, false)
+			Expect(copyToSnapshot.Labels[gitops.SnapshotTypeLabel]).To(Equal(gitops.SnapshotComponentType))
+			Expect(copyToSnapshot.Labels[gitops.SnapshotComponentLabel]).To(Equal(hasComp.Name))
+			Expect(copyToSnapshot.Labels[gitops.ApplicationNameLabel]).To(Equal(hasApp.Name))
+			Expect(copyToSnapshot.Labels["build.appstudio.redhat.com/target_branch"]).To(Equal("main"))
+			Expect(copyToSnapshot.Annotations["build.appstudio.openshift.io/repo"]).To(Equal("https://github.com/devfile-samples/devfile-sample-go-basic?rev=c713067b0e65fb3de50d1f7c457eb51c2ab0dbb0"))
+
+		})
+
 		It("ensure err is returned when pipelinerun doesn't have Result for ", func() {
 			// We don't need to update the underlying resource on the control plane,
 			// so we create a copy and modify its status. This prevents update conflicts in other tests.
