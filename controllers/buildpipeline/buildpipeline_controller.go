@@ -152,6 +152,8 @@ func setupControllerWithManager(manager ctrl.Manager, controller *Reconciler) er
 		WithEventFilter(predicate.Or(
 			tekton.BuildPipelineRunSignedAndSucceededPredicate(),
 			tekton.BuildPipelineRunFailedPredicate(),
-			tekton.BuildPipelineRunCreatedPredicate())).
+			tekton.BuildPipelineRunCreatedPredicate(),
+			tekton.BuildPipelineRunDeletingPredicate(),
+		)).
 		Complete(controller)
 }
