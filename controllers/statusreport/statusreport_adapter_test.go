@@ -581,5 +581,23 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			componentImagePullSpec, _ := adapter.getImagePullSpecFromSnapshotComponent(existingCompositeSnapshot, hasComp2)
 			Expect(componentImagePullSpec).To(Equal(SampleImage))
 		})
+
+		It("ensures that Labels and Annotations were coppied to composite snapshot from PR snapshot", func() {
+			copyToCompositeSnapshot, err := adapter.createCompositeSnapshotsIfConflictExists(hasApp, hasComp, hasSnapshot)
+
+			Expect(err).ToNot(HaveOccurred())
+			Expect(copyToCompositeSnapshot).NotTo(BeNil())
+
+			gitops.CopySnapshotLabelsAndAnnotation(hasApp, copyToCompositeSnapshot, hasComp.Name, &hasPRSnapshot.ObjectMeta, gitops.PipelinesAsCodePrefix, true)
+			Expect(copyToCompositeSnapshot.Labels[gitops.SnapshotTypeLabel]).To(Equal(gitops.SnapshotCompositeType))
+			Expect(copyToCompositeSnapshot.Labels[gitops.SnapshotComponentLabel]).To(Equal(hasComp.Name))
+			Expect(copyToCompositeSnapshot.Labels[gitops.ApplicationNameLabel]).To(Equal(hasApp.Name))
+			Expect(copyToCompositeSnapshot.Labels["pac.test.appstudio.openshift.io/url-org"]).To(Equal("testorg"))
+			Expect(copyToCompositeSnapshot.Labels["pac.test.appstudio.openshift.io/url-repository"]).To(Equal("testrepo"))
+			Expect(copyToCompositeSnapshot.Labels["pac.test.appstudio.openshift.io/sha"]).To(Equal("testsha"))
+
+			Expect(copyToCompositeSnapshot.Annotations[gitops.PipelineAsCodeInstallationIDAnnotation]).To(Equal("123"))
+
+		})
 	})
 })

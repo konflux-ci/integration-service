@@ -206,27 +206,14 @@ func (a *Adapter) prepareSnapshotForPipelineRun(pipelineRun *tektonv1.PipelineRu
 		return nil, err
 	}
 
-	if snapshot.Labels == nil {
-		snapshot.Labels = make(map[string]string)
-	}
-	snapshot.Labels[gitops.SnapshotTypeLabel] = gitops.SnapshotComponentType
-	snapshot.Labels[gitops.SnapshotComponentLabel] = a.component.Name
+	gitops.CopySnapshotLabelsAndAnnotation(application, snapshot, a.component.Name, &pipelineRun.ObjectMeta, gitops.BuildPipelineRunPrefix, false)
+
 	snapshot.Labels[gitops.BuildPipelineRunNameLabel] = pipelineRun.Name
-	snapshot.Labels[gitops.ApplicationNameLabel] = application.Name
 	if pipelineRun.Status.CompletionTime != nil {
 		snapshot.Labels[gitops.BuildPipelineRunFinishTimeLabel] = strconv.FormatInt(pipelineRun.Status.CompletionTime.Time.Unix(), 10)
 	} else {
 		snapshot.Labels[gitops.BuildPipelineRunFinishTimeLabel] = strconv.FormatInt(time.Now().Unix(), 10)
 	}
-
-	// Copy PipelineRun PAC annotations/labels from Build to snapshot.
-	// Modify the prefix so the PaC controller won't react to PipelineRuns generated from the snapshot.
-	_ = metadata.CopyLabelsWithPrefixReplacement(&pipelineRun.ObjectMeta, &snapshot.ObjectMeta, "pipelinesascode.tekton.dev", gitops.PipelinesAsCodePrefix)
-	_ = metadata.CopyAnnotationsWithPrefixReplacement(&pipelineRun.ObjectMeta, &snapshot.ObjectMeta, "pipelinesascode.tekton.dev", gitops.PipelinesAsCodePrefix)
-
-	// Copy build labels and annotations prefixed with build.appstudio from Build to Snapshot.
-	_ = metadata.CopyLabelsByPrefix(&pipelineRun.ObjectMeta, &snapshot.ObjectMeta, gitops.BuildPipelineRunPrefix)
-	_ = metadata.CopyAnnotationsByPrefix(&pipelineRun.ObjectMeta, &snapshot.ObjectMeta, gitops.BuildPipelineRunPrefix)
 
 	return snapshot, nil
 }
