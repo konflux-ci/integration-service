@@ -105,3 +105,23 @@ func BuildPipelineRunCreatedPredicate() predicate.Predicate {
 		},
 	}
 }
+
+// BuildPipelineRunDeletingPredicate returns a predicate which filters out all objects except
+// Build PipelineRuns which have been updated to deleting
+func BuildPipelineRunDeletingPredicate() predicate.Predicate {
+	return predicate.Funcs{
+		CreateFunc: func(createEvent event.CreateEvent) bool {
+			return false
+		},
+		DeleteFunc: func(deleteEvent event.DeleteEvent) bool {
+			return false
+		},
+		GenericFunc: func(genericEvent event.GenericEvent) bool {
+			return false
+		},
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			return IsBuildPipelineRun(e.ObjectNew) &&
+				hasPipelineRunStateChangedToDeleting(e.ObjectOld, e.ObjectNew)
+		},
+	}
+}
