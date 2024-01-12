@@ -65,8 +65,9 @@ func NewAdapter(pipelineRun *tektonv1.PipelineRun, component *applicationapiv1al
 // to the build PipelineRun being processed exists. Otherwise, it will create a new pipeline Snapshot.
 func (a *Adapter) EnsureSnapshotExists() (controller.OperationResult, error) {
 	if !h.HasPipelineRunSucceeded(a.pipelineRun) {
-		if h.HasPipelineRunFinished(a.pipelineRun) {
+		if h.HasPipelineRunFinished(a.pipelineRun) || a.pipelineRun.GetDeletionTimestamp() != nil {
 			// The pipeline run  has failed
+			// OR pipeline has been deleted but it's still in running state (tekton bug/feature?)
 			return a.removeFinalizerAndContinueProcessing()
 		}
 		// The build pipeline run has not finished yet
