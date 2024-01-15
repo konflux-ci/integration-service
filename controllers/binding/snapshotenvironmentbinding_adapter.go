@@ -174,7 +174,7 @@ func (a *Adapter) EnsureEphemeralEnvironmentsCleanedUp() (controller.OperationRe
 		"message", snapshotErrorMessage)
 
 	if !gitops.IsSnapshotMarkedAsFailed(a.snapshot) {
-		_, err = gitops.MarkSnapshotAsFailed(a.client, a.context, a.snapshot, snapshotErrorMessage)
+		err = gitops.MarkSnapshotAsFailed(a.client, a.context, a.snapshot, snapshotErrorMessage)
 		if err != nil {
 			a.logger.Error(err, "Failed to Update Snapshot status")
 			return controller.RequeueWithError(err)
@@ -237,7 +237,7 @@ func (a *Adapter) createIntegrationPipelineRunWithEnvironment(application *appli
 	go metrics.RegisterNewIntegrationPipelineRun()
 
 	if gitops.IsSnapshotNotStarted(a.snapshot) {
-		_, err := gitops.MarkSnapshotIntegrationStatusAsInProgress(a.client, a.context, a.snapshot, "Snapshot starts being tested by the integrationPipelineRun")
+		err := gitops.MarkSnapshotIntegrationStatusAsInProgress(a.client, a.context, a.snapshot, "Snapshot starts being tested by the integrationPipelineRun")
 		if err != nil {
 			a.logger.Error(err, "Failed to update integration status condition to in progress for snapshot")
 		} else {
