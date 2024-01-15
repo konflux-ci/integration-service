@@ -262,14 +262,14 @@ func (a *Adapter) EnsureStaticIntegrationPipelineRunsExist() (controller.Operati
 		return controller.RequeueOnErrorOrStop(a.client.Status().Patch(a.context, a.snapshot, patch))
 	}
 	if len(*requiredIntegrationTestScenarios) == 0 && !gitops.IsSnapshotMarkedAsPassed(a.snapshot) {
-		updatedSnapshot, err := gitops.MarkSnapshotAsPassed(a.client, a.context, a.snapshot, "No required IntegrationTestScenarios found, skipped testing")
+		err := gitops.MarkSnapshotAsPassed(a.client, a.context, a.snapshot, "No required IntegrationTestScenarios found, skipped testing")
 		if err != nil {
 			a.logger.Error(err, "Failed to update Snapshot status")
 			return controller.RequeueWithError(err)
 		}
 		a.logger.LogAuditEvent("Snapshot marked as successful. No required IntegrationTestScenarios found, skipped testing",
-			updatedSnapshot, h.LogActionUpdate,
-			"snapshot.Status", updatedSnapshot.Status)
+			a.snapshot, h.LogActionUpdate,
+			"snapshot.Status", a.snapshot.Status)
 	}
 
 	return controller.ContinueProcessing()
@@ -331,7 +331,7 @@ func (a *Adapter) EnsureCreationOfEphemeralEnvironments() (controller.OperationR
 				if !gitops.IsSnapshotMarkedAsFailed(a.snapshot) {
 					errKind, errName := GetDetailsFromStatusError(err)
 					a.logger.Error(err, fmt.Sprintf("Resource %s (%s) referenced by integrationTestScenario is invalid", errName, errKind), "integrationTestScenario.Name", integrationTestScenario.Name)
-					_, err = gitops.MarkSnapshotAsFailed(a.client, a.context, a.snapshot, fmt.Sprintf("Resource %s (%s) associated with integrationTestScenario %s is invalid: %s.", errName, errKind, integrationTestScenario.Name, err))
+					err = gitops.MarkSnapshotAsFailed(a.client, a.context, a.snapshot, fmt.Sprintf("Resource %s (%s) associated with integrationTestScenario %s is invalid: %s.", errName, errKind, integrationTestScenario.Name, err))
 					if err != nil {
 						a.logger.Error(err, "Failed to Update Snapshot status")
 						return controller.RequeueWithError(err)
@@ -399,8 +399,7 @@ func (a *Adapter) EnsureGlobalCandidateImageUpdated() (controller.OperationResul
 
 	// Mark the Snapshot as already added to global candidate list to prevent it from getting added again when the Snapshot
 	// gets reconciled at a later time
-	var err error
-	a.snapshot, err = gitops.MarkSnapshotAsAddedToGlobalCandidateList(a.client, a.context, a.snapshot, "The Snapshot's component was added to the global candidate list")
+	err := gitops.MarkSnapshotAsAddedToGlobalCandidateList(a.client, a.context, a.snapshot, "The Snapshot's component was added to the global candidate list")
 	if err != nil {
 		a.logger.Error(err, "Failed to update the Snapshot's status to AddedToGlobalCandidateList")
 		return controller.RequeueWithError(err)
@@ -458,7 +457,7 @@ func (a *Adapter) EnsureAllReleasesExist() (controller.OperationResult, error) {
 
 	// Mark the Snapshot as already auto-released to prevent re-releasing the Snapshot when it gets reconciled
 	// at a later time, especially if new ReleasePlans are introduced or existing ones are renamed
-	a.snapshot, err = gitops.MarkSnapshotAsAutoReleased(a.client, a.context, a.snapshot, "The Snapshot was auto-released")
+	err = gitops.MarkSnapshotAsAutoReleased(a.client, a.context, a.snapshot, "The Snapshot was auto-released")
 	if err != nil {
 		a.logger.Error(err, "Failed to update the Snapshot's status to auto-released")
 		return controller.RequeueWithError(err)
@@ -533,7 +532,7 @@ func (a *Adapter) EnsureSnapshotEnvironmentBindingExist() (controller.OperationR
 
 	// Mark the Snapshot as already deployed to root environments to prevent re-deploying the Snapshot when it gets
 	// reconciled at a later time
-	a.snapshot, err = gitops.MarkSnapshotAsDeployedToRootEnvironments(a.client, a.context, a.snapshot, "The Snapshot was deployed to all available root environments at the time of promotion")
+	err = gitops.MarkSnapshotAsDeployedToRootEnvironments(a.client, a.context, a.snapshot, "The Snapshot was deployed to all available root environments at the time of promotion")
 	if err != nil {
 		a.logger.Error(err, "Failed to update the Snapshot's status to DeployedToRootEnvironments")
 		return controller.RequeueWithError(err)
@@ -764,7 +763,7 @@ func (a *Adapter) createIntegrationPipelineRun(application *applicationapiv1alph
 	a.logger.LogAuditEvent("IntegrationTestscenario pipeline has been created", pipelineRun, h.LogActionAdd,
 		"integrationTestScenario.Name", integrationTestScenario.Name)
 	if gitops.IsSnapshotNotStarted(a.snapshot) {
-		_, err := gitops.MarkSnapshotIntegrationStatusAsInProgress(a.client, a.context, a.snapshot, "Snapshot starts being tested by the integrationPipelineRun")
+		err := gitops.MarkSnapshotIntegrationStatusAsInProgress(a.client, a.context, a.snapshot, "Snapshot starts being tested by the integrationPipelineRun")
 		if err != nil {
 			a.logger.Error(err, "Failed to update integration status condition to in progress for snapshot")
 		} else {

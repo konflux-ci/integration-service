@@ -715,7 +715,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		Expect(pipelineRunOutcome.HasPipelineRunValidTestOutputs()).To(BeTrue())
 		Expect(pipelineRunOutcome.GetValidationErrorsList()).Should(BeEmpty())
 
-		_, err = gitops.MarkSnapshotAsPassed(k8sClient, ctx, hasSnapshot, "test passed")
+		err = gitops.MarkSnapshotAsPassed(k8sClient, ctx, hasSnapshot, "test passed")
 		Expect(err).To(Succeed())
 		Expect(gitops.HaveAppStudioTestsSucceeded(hasSnapshot)).To(BeTrue())
 	})
@@ -752,7 +752,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		Expect(pipelineRunOutcome.HasPipelineRunValidTestOutputs()).To(BeTrue())
 		Expect(pipelineRunOutcome.GetValidationErrorsList()).Should(BeEmpty())
 
-		_, err = gitops.MarkSnapshotAsPassed(k8sClient, ctx, hasSnapshot, "test passed")
+		err = gitops.MarkSnapshotAsPassed(k8sClient, ctx, hasSnapshot, "test passed")
 		Expect(err).To(Succeed())
 		Expect(gitops.HaveAppStudioTestsSucceeded(hasSnapshot)).To(BeTrue())
 	})
@@ -774,7 +774,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		Expect(pipelineRunOutcome.HasPipelineRunValidTestOutputs()).To(BeTrue())
 		Expect(pipelineRunOutcome.GetValidationErrorsList()).Should(BeEmpty())
 
-		_, err = gitops.MarkSnapshotAsFailed(k8sClient, ctx, hasSnapshot, "test failed")
+		err = gitops.MarkSnapshotAsFailed(k8sClient, ctx, hasSnapshot, "test failed")
 		Expect(err).To(Succeed())
 		Expect(gitops.HaveAppStudioTestsSucceeded(hasSnapshot)).To(BeFalse())
 	})
@@ -811,7 +811,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		Expect(pipelineRunOutcome.HasPipelineRunValidTestOutputs()).To(BeTrue())
 		Expect(pipelineRunOutcome.GetValidationErrorsList()).Should(BeEmpty())
 
-		_, err = gitops.MarkSnapshotAsFailed(k8sClient, ctx, hasSnapshot, "test failed")
+		err = gitops.MarkSnapshotAsFailed(k8sClient, ctx, hasSnapshot, "test failed")
 		Expect(err).To(Succeed())
 		Expect(gitops.HaveAppStudioTestsSucceeded(hasSnapshot)).To(BeFalse())
 	})
@@ -891,7 +891,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		Expect(pipelineRunOutcome.HasPipelineRunValidTestOutputs()).To(BeTrue())
 		Expect(pipelineRunOutcome.GetValidationErrorsList()).Should(BeEmpty())
 
-		_, err = gitops.MarkSnapshotAsPassed(k8sClient, ctx, hasSnapshot, "test passed")
+		err = gitops.MarkSnapshotAsPassed(k8sClient, ctx, hasSnapshot, "test passed")
 		Expect(err).To(Succeed())
 		Expect(gitops.HaveAppStudioTestsSucceeded(hasSnapshot)).To(BeTrue())
 	})
