@@ -775,3 +775,33 @@ func ResetSnapshotStatusConditions(adapterClient client.Client, ctx context.Cont
 
 	return nil
 }
+
+// CopySnapshotLabelsAndAnnotation coppies labels and annotations from build pipelineRun or tested snapshot
+// into regular or composite snapshot
+func CopySnapshotLabelsAndAnnotation(application *applicationapiv1alpha1.Application, snapshot *applicationapiv1alpha1.Snapshot, componentName string, source *metav1.ObjectMeta, prefix string, isComposite bool) {
+
+	if snapshot.Labels == nil {
+		snapshot.Labels = map[string]string{}
+	}
+
+	if snapshot.Annotations == nil {
+		snapshot.Annotations = map[string]string{}
+	}
+	if !isComposite {
+		snapshot.Labels[SnapshotTypeLabel] = SnapshotComponentType
+	} else {
+		snapshot.Labels[SnapshotTypeLabel] = SnapshotCompositeType
+	}
+
+	snapshot.Labels[SnapshotComponentLabel] = componentName
+	snapshot.Labels[ApplicationNameLabel] = application.Name
+
+	// Copy PAC annotations/labels from source(tested snapshot or pipelinerun) to snapshot.
+	_ = metadata.CopyLabelsWithPrefixReplacement(source, &snapshot.ObjectMeta, "pipelinesascode.tekton.dev", PipelinesAsCodePrefix)
+	_ = metadata.CopyAnnotationsWithPrefixReplacement(source, &snapshot.ObjectMeta, "pipelinesascode.tekton.dev", PipelinesAsCodePrefix)
+
+	// Copy labels and annotations prefixed with defined prefix
+	_ = metadata.CopyLabelsByPrefix(source, &snapshot.ObjectMeta, prefix)
+	_ = metadata.CopyAnnotationsByPrefix(source, &snapshot.ObjectMeta, prefix)
+
+}
