@@ -18,6 +18,8 @@ package buildpipeline
 
 import (
 	"bytes"
+	"encoding/json"
+	"errors"
 	"reflect"
 	"time"
 
@@ -694,11 +696,42 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			Expect((*pipelineRuns)[0].Name == buildPipelineRun.Name || (*pipelineRuns)[1].Name == buildPipelineRun.Name).To(BeTrue())
 		})
 
+		It("Can add an annotation to the build pipelinerun", func() {
+			pipelineRun, err := adapter.annotateBuildPipelineRun(buildPipelineRun, "test", "value")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(pipelineRun).NotTo(BeNil())
+			Expect(pipelineRun.ObjectMeta.Annotations["test"]).To(Equal("value"))
+		})
+
 		It("can annotate the build pipelineRun with the Snapshot name", func() {
 			pipelineRun, err := adapter.annotateBuildPipelineRunWithSnapshot(buildPipelineRun, hasSnapshot)
 			Expect(err).To(BeNil())
 			Expect(pipelineRun).NotTo(BeNil())
 			Expect(pipelineRun.ObjectMeta.Annotations[tekton.SnapshotNameLabel]).To(Equal(hasSnapshot.Name))
+		})
+
+		It("Can annotate the build pipelineRun with the CreateSnapshot annotate", func() {
+			sampleErr := errors.New("this is a sample error")
+			adapter = NewAdapter(buildPipelineRun, hasComp, hasApp, logger, loader.NewMockLoader(), k8sClient, ctx)
+			err := adapter.annotateBuildPipelineRunWithCreateSnapshotAnnotation(sampleErr)
+			Expect(err).NotTo(HaveOccurred())
+
+			time.Sleep(3 * time.Second)
+			// Get pipeline run from cluster
+			newPipelineRun := new(tektonv1.PipelineRun)
+			err = k8sClient.Get(ctx, types.NamespacedName{
+				Namespace: buildPipelineRun.ObjectMeta.Namespace,
+				Name:      buildPipelineRun.ObjectMeta.Name,
+			}, newPipelineRun)
+			Expect(err).NotTo(HaveOccurred())
+
+			// Check that annotation from pipelineRun contains the JSON string we expect
+			Expect(newPipelineRun.ObjectMeta.Annotations[helpers.CreateSnapshotAnnotationName]).NotTo(BeNil())
+			var info map[string]string
+			err = json.Unmarshal([]byte(newPipelineRun.ObjectMeta.Annotations[helpers.CreateSnapshotAnnotationName]), &info)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(info["status"]).To(Equal("failed"))
+			Expect(info["message"]).To(Equal(sampleErr.Error()))
 		})
 
 		It("ensure that EnsureSnapshotExists doesn't create snapshot for previous pipeline run", func() {
