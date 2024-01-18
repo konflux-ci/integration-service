@@ -209,7 +209,7 @@ var _ = Describe("Binding Adapter", Ordered, func() {
 			return err
 		}, time.Second*10).ShouldNot(HaveOccurred())
 
-		finishedSnapshot, err := gitops.MarkSnapshotAsPassed(k8sClient, ctx, finishedSnapshot, "Snapshot passed")
+		err := gitops.MarkSnapshotAsPassed(k8sClient, ctx, finishedSnapshot, "Snapshot passed")
 		Expect(err == nil).To(BeTrue())
 		Expect(gitops.HaveAppStudioTestsFinished(finishedSnapshot)).To(BeTrue())
 	})

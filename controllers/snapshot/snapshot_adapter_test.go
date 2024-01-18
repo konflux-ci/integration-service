@@ -507,7 +507,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		})
 
 		It("ensures global Component Image will not be updated in the PR context", func() {
-			_, err := gitops.MarkSnapshotAsPassed(k8sClient, ctx, hasSnapshotPR, "test passed")
+			err := gitops.MarkSnapshotAsPassed(k8sClient, ctx, hasSnapshotPR, "test passed")
 			Expect(err).To(Succeed())
 			Expect(gitops.HaveAppStudioTestsSucceeded(hasSnapshotPR)).To(BeTrue())
 			adapter.snapshot = hasSnapshotPR
@@ -522,7 +522,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		})
 
 		It("no error from ensuring global Component Image updated when AppStudio Tests failed", func() {
-			_, err := gitops.MarkSnapshotAsFailed(k8sClient, ctx, hasSnapshot, "test failed")
+			err := gitops.MarkSnapshotAsFailed(k8sClient, ctx, hasSnapshot, "test failed")
 			Expect(err).To(Succeed())
 			Expect(gitops.HaveAppStudioTestsSucceeded(hasSnapshot)).To(BeFalse())
 			adapter.snapshot = hasSnapshot
@@ -535,7 +535,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		})
 
 		It("ensures global Component Image updated when AppStudio Tests succeeded", func() {
-			_, err := gitops.MarkSnapshotAsPassed(k8sClient, ctx, hasSnapshot, "test passed")
+			err := gitops.MarkSnapshotAsPassed(k8sClient, ctx, hasSnapshot, "test passed")
 			Expect(err).To(Succeed())
 			Expect(gitops.HaveAppStudioTestsSucceeded(hasSnapshot)).To(BeTrue())
 			adapter.snapshot = hasSnapshot
@@ -568,7 +568,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
 
 			gitops.SetSnapshotIntegrationStatusAsFinished(hasSnapshot, "Snapshot integration status condition is finished since all testing pipelines completed")
-			_, err := gitops.MarkSnapshotAsPassed(k8sClient, ctx, hasSnapshot, "test passed")
+			err := gitops.MarkSnapshotAsPassed(k8sClient, ctx, hasSnapshot, "test passed")
 			Expect(err).To(Succeed())
 			Expect(gitops.HaveAppStudioTestsFinished(hasSnapshot)).To(BeTrue())
 			Expect(gitops.HaveAppStudioTestsSucceeded(hasSnapshot)).To(BeTrue())
@@ -654,9 +654,9 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 
 			// Set the snapshot up for failure by setting its status as failed and invalid
 			// as well as marking it as PaC pull request event type
-			updatedSnapshot, err := gitops.MarkSnapshotAsFailed(k8sClient, ctx, hasSnapshot, "test failed")
+			err := gitops.MarkSnapshotAsFailed(k8sClient, ctx, hasSnapshot, "test failed")
 			Expect(err).ShouldNot(HaveOccurred())
-			gitops.SetSnapshotIntegrationStatusAsInvalid(updatedSnapshot, "snapshot invalid")
+			gitops.SetSnapshotIntegrationStatusAsInvalid(hasSnapshot, "snapshot invalid")
 			hasSnapshot.Labels[gitops.PipelineAsCodeEventTypeLabel] = gitops.PipelineAsCodePullRequestType
 			Expect(gitops.HaveAppStudioTestsSucceeded(hasSnapshot)).To(BeFalse())
 			Expect(gitops.IsSnapshotValid(hasSnapshot)).To(BeFalse())
@@ -682,9 +682,9 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 
 			// Set the snapshot up for failure by setting its status as failed and invalid
 			// as well as marking it as PaC pull request event type
-			updatedSnapshot, err := gitops.MarkSnapshotAsFailed(k8sClient, ctx, hasSnapshot, "test failed")
+			err := gitops.MarkSnapshotAsFailed(k8sClient, ctx, hasSnapshot, "test failed")
 			Expect(err).ShouldNot(HaveOccurred())
-			gitops.SetSnapshotIntegrationStatusAsInvalid(updatedSnapshot, "snapshot invalid")
+			gitops.SetSnapshotIntegrationStatusAsInvalid(hasSnapshot, "snapshot invalid")
 			hasSnapshot.Labels[gitops.PipelineAsCodeEventTypeLabel] = gitops.PipelineAsCodePullRequestType
 			Expect(gitops.HaveAppStudioTestsSucceeded(hasSnapshot)).To(BeFalse())
 			Expect(gitops.IsSnapshotValid(hasSnapshot)).To(BeFalse())
@@ -708,7 +708,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		It("ensures snapshot environmentBinding exists", func() {
 			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
 
-			_, err := gitops.MarkSnapshotAsPassed(k8sClient, ctx, hasSnapshot, "test passed")
+			err := gitops.MarkSnapshotAsPassed(k8sClient, ctx, hasSnapshot, "test passed")
 			Expect(err).To(Succeed())
 			hasSnapshot.Labels[gitops.PipelineAsCodeEventTypeLabel] = gitops.PipelineAsCodePushType
 			Expect(gitops.HaveAppStudioTestsSucceeded(hasSnapshot)).To(BeTrue())
@@ -798,7 +798,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 				}
 				Expect(k8sClient.Create(ctx, hasBinding)).Should(Succeed())
 
-				_, err := gitops.MarkSnapshotAsPassed(k8sClient, ctx, hasSnapshot, "test passed")
+				err := gitops.MarkSnapshotAsPassed(k8sClient, ctx, hasSnapshot, "test passed")
 				Expect(err).To(Succeed())
 				hasSnapshot.Labels[gitops.PipelineAsCodeEventTypeLabel] = gitops.PipelineAsCodePushType
 				Expect(gitops.HaveAppStudioTestsSucceeded(hasSnapshot)).To(BeTrue())
@@ -941,8 +941,9 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		})
 
 		It("Skip integration test for passed Snapshot", func() {
-			updatedSnapshot, _ := gitops.MarkSnapshotAsPassed(k8sClient, ctx, hasSnapshot, "test pass")
-			Expect(gitops.HaveAppStudioTestsSucceeded(updatedSnapshot)).To(BeTrue())
+			err := gitops.MarkSnapshotAsPassed(k8sClient, ctx, hasSnapshot, "test pass")
+			Expect(err).To(Succeed())
+			Expect(gitops.HaveAppStudioTestsSucceeded(hasSnapshot)).To(BeTrue())
 			var buf bytes.Buffer
 			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
 			adapter = NewAdapter(hasSnapshot, hasApp, hasComp, log, loader.NewMockLoader(), k8sClient, ctx)
@@ -973,7 +974,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
 
 		BeforeAll(func() {
-			_, err := gitops.MarkSnapshotAsPassed(k8sClient, ctx, hasSnapshot, "test passed")
+			err := gitops.MarkSnapshotAsPassed(k8sClient, ctx, hasSnapshot, "test passed")
 			Expect(err).To(Succeed())
 			Expect(gitops.HaveAppStudioTestsSucceeded(hasSnapshot)).To(BeTrue())
 		})
@@ -1159,9 +1160,10 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		It("Skip ephemeral env creation for passed Snapshot", func() {
 			var buf bytes.Buffer
 			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
-			updatedSnapshot, _ := gitops.MarkSnapshotAsPassed(k8sClient, ctx, hasSnapshot, "test pass")
-			Expect(gitops.HaveAppStudioTestsSucceeded(updatedSnapshot)).To(BeTrue())
-			adapter = NewAdapter(updatedSnapshot, hasApp, hasComp, log, loader.NewMockLoader(), k8sClient, ctx)
+			err := gitops.MarkSnapshotAsPassed(k8sClient, ctx, hasSnapshot, "test pass")
+			Expect(err).To((Succeed()))
+			Expect(gitops.HaveAppStudioTestsSucceeded(hasSnapshot)).To(BeTrue())
+			adapter = NewAdapter(hasSnapshot, hasApp, hasComp, log, loader.NewMockLoader(), k8sClient, ctx)
 			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
 					ContextKey: loader.ApplicationContextKey,
@@ -1169,7 +1171,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 				},
 				{
 					ContextKey: loader.SnapshotContextKey,
-					Resource:   updatedSnapshot,
+					Resource:   hasSnapshot,
 				},
 			})
 			result, err := adapter.EnsureCreationOfEphemeralEnvironments()

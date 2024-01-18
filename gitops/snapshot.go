@@ -189,7 +189,7 @@ func IsSnapshotMarkedAsPassed(snapshot *applicationapiv1alpha1.Snapshot) bool {
 
 // MarkSnapshotAsPassed updates the AppStudio Test succeeded condition for the Snapshot to passed.
 // If the patch command fails, an error will be returned.
-func MarkSnapshotAsPassed(adapterClient client.Client, ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot, message string) (*applicationapiv1alpha1.Snapshot, error) {
+func MarkSnapshotAsPassed(adapterClient client.Client, ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot, message string) error {
 	patch := client.MergeFrom(snapshot.DeepCopy())
 	condition := metav1.Condition{
 		Type:    AppStudioTestSucceededCondition,
@@ -201,12 +201,12 @@ func MarkSnapshotAsPassed(adapterClient client.Client, ctx context.Context, snap
 
 	err := adapterClient.Status().Patch(ctx, snapshot, patch)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	snapshotCompletionTime := &metav1.Time{Time: time.Now()}
 	go metrics.RegisterCompletedSnapshot(condition.Type, condition.Reason, snapshot.GetCreationTimestamp(), snapshotCompletionTime)
-	return snapshot, nil
+	return nil
 }
 
 // IsSnapshotMarkedAsFailed returns true if snapshot is marked as failed
@@ -216,7 +216,7 @@ func IsSnapshotMarkedAsFailed(snapshot *applicationapiv1alpha1.Snapshot) bool {
 
 // MarkSnapshotAsFailed updates the AppStudio Test succeeded condition for the Snapshot to failed.
 // If the patch command fails, an error will be returned.
-func MarkSnapshotAsFailed(adapterClient client.Client, ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot, message string) (*applicationapiv1alpha1.Snapshot, error) {
+func MarkSnapshotAsFailed(adapterClient client.Client, ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot, message string) error {
 	patch := client.MergeFrom(snapshot.DeepCopy())
 	condition := metav1.Condition{
 		Type:    AppStudioTestSucceededCondition,
@@ -228,25 +228,25 @@ func MarkSnapshotAsFailed(adapterClient client.Client, ctx context.Context, snap
 
 	err := adapterClient.Status().Patch(ctx, snapshot, patch)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	snapshotCompletionTime := &metav1.Time{Time: time.Now()}
 	go metrics.RegisterCompletedSnapshot(condition.Type, condition.Reason, snapshot.GetCreationTimestamp(), snapshotCompletionTime)
-	return snapshot, nil
+	return nil
 }
 
 // MarkSnapshotAsInvalid updates the AppStudio integration status condition for the Snapshot to invalid.
 // If the patch command fails, an error will be returned.
-func MarkSnapshotAsInvalid(adapterClient client.Client, ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot, message string) (*applicationapiv1alpha1.Snapshot, error) {
+func MarkSnapshotAsInvalid(adapterClient client.Client, ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot, message string) error {
 	patch := client.MergeFrom(snapshot.DeepCopy())
 	SetSnapshotIntegrationStatusAsInvalid(snapshot, message)
 	err := adapterClient.Status().Patch(ctx, snapshot, patch)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	return snapshot, nil
+	return nil
 }
 
 // IsSnapshotMarkedAsInvalid returns true if snapshot is marked as failed
@@ -278,7 +278,7 @@ func SetSnapshotIntegrationStatusAsError(snapshot *applicationapiv1alpha1.Snapsh
 }
 
 // MarkSnapshotIntegrationStatusAsInProgress sets the AppStudio integration status condition for the Snapshot to In Progress.
-func MarkSnapshotIntegrationStatusAsInProgress(adapterClient client.Client, ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot, message string) (*applicationapiv1alpha1.Snapshot, error) {
+func MarkSnapshotIntegrationStatusAsInProgress(adapterClient client.Client, ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot, message string) error {
 	patch := client.MergeFrom(snapshot.DeepCopy())
 	meta.SetStatusCondition(&snapshot.Status.Conditions, metav1.Condition{
 		Type:    AppStudioIntegrationStatusCondition,
@@ -288,7 +288,7 @@ func MarkSnapshotIntegrationStatusAsInProgress(adapterClient client.Client, ctx 
 	})
 	err := adapterClient.Status().Patch(ctx, snapshot, patch)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	snapshotInProgressTime := &metav1.Time{Time: time.Now()}
@@ -300,7 +300,7 @@ func MarkSnapshotIntegrationStatusAsInProgress(adapterClient client.Client, ctx 
 
 		go metrics.RegisterIntegrationResponse(*buildPipelineRunFinishTimeMeta, snapshotInProgressTime)
 	}
-	return snapshot, nil
+	return nil
 }
 
 // PrepareToRegisterIntegrationPipelineRunStarted is to do preparation before calling RegisterPipelineRunStarted
@@ -382,7 +382,7 @@ func IsSnapshotMarkedAsDeployedToRootEnvironments(snapshot *applicationapiv1alph
 
 // MarkSnapshotAsDeployedToRootEnvironments updates the SnapshotDeployedToRootEnvironmentsCondition for the Snapshot to 'Deployed'.
 // If the patch command fails, an error will be returned.
-func MarkSnapshotAsDeployedToRootEnvironments(adapterClient client.Client, ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot, message string) (*applicationapiv1alpha1.Snapshot, error) {
+func MarkSnapshotAsDeployedToRootEnvironments(adapterClient client.Client, ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot, message string) error {
 	patch := client.MergeFrom(snapshot.DeepCopy())
 	condition := metav1.Condition{
 		Type:    SnapshotDeployedToRootEnvironmentsCondition,
@@ -394,9 +394,9 @@ func MarkSnapshotAsDeployedToRootEnvironments(adapterClient client.Client, ctx c
 
 	err := adapterClient.Status().Patch(ctx, snapshot, patch)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	return snapshot, nil
+	return nil
 }
 
 // IsSnapshotMarkedAsAutoReleased returns true if snapshot is marked as deployed to root environments
@@ -406,7 +406,7 @@ func IsSnapshotMarkedAsAutoReleased(snapshot *applicationapiv1alpha1.Snapshot) b
 
 // MarkSnapshotAsAutoReleased updates the SnapshotAutoReleasedCondition for the Snapshot to 'AutoReleased'.
 // If the patch command fails, an error will be returned.
-func MarkSnapshotAsAutoReleased(adapterClient client.Client, ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot, message string) (*applicationapiv1alpha1.Snapshot, error) {
+func MarkSnapshotAsAutoReleased(adapterClient client.Client, ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot, message string) error {
 	patch := client.MergeFrom(snapshot.DeepCopy())
 	condition := metav1.Condition{
 		Type:    SnapshotAutoReleasedCondition,
@@ -418,10 +418,10 @@ func MarkSnapshotAsAutoReleased(adapterClient client.Client, ctx context.Context
 
 	err := adapterClient.Status().Patch(ctx, snapshot, patch)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	return snapshot, nil
+	return nil
 }
 
 // IsSnapshotMarkedAsAddedToGlobalCandidateList returns true if snapshot's component is marked as added to global candidate list
@@ -431,7 +431,7 @@ func IsSnapshotMarkedAsAddedToGlobalCandidateList(snapshot *applicationapiv1alph
 
 // MarkSnapshotAsAddedToGlobalCandidateList updates the SnapshotAddedToGlobalCandidateListCondition for the Snapshot to true with reason 'Added'.
 // If the patch command fails, an error will be returned.
-func MarkSnapshotAsAddedToGlobalCandidateList(adapterClient client.Client, ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot, message string) (*applicationapiv1alpha1.Snapshot, error) {
+func MarkSnapshotAsAddedToGlobalCandidateList(adapterClient client.Client, ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot, message string) error {
 	patch := client.MergeFrom(snapshot.DeepCopy())
 	condition := metav1.Condition{
 		Type:    SnapshotAddedToGlobalCandidateListCondition,
@@ -443,10 +443,10 @@ func MarkSnapshotAsAddedToGlobalCandidateList(adapterClient client.Client, ctx c
 
 	err := adapterClient.Status().Patch(ctx, snapshot, patch)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	return snapshot, nil
+	return nil
 }
 
 // ValidateImageDigest checks if image url contains valid digest, return error if check fails
