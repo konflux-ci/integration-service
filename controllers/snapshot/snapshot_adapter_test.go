@@ -995,6 +995,32 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			Expect(err).To(HaveOccurred())
 			Expect(buf.String()).Should(ContainSubstring("Snapshot integration status marked as Invalid. Failed to get all ReleasePlans"))
 		})
+
+		It("Returns RequeueWithError if the snapshot is less than three hours old", func() {
+			adapter = NewAdapter(hasSnapshot, hasApp, hasComp, log, loader.NewMockLoader(), k8sClient, ctx)
+			testErr := fmt.Errorf("something went wrong with the release")
+
+			result, err := adapter.RequeueIfYoungerThanThreshold(testErr)
+			Expect(err).To(HaveOccurred())
+			Expect(err).To(Equal(testErr))
+			Expect(result).NotTo(BeNil())
+			Expect(result.RequeueRequest).To(BeTrue())
+		})
+
+		It("Returns ContinueProcessing if the snapshot is greater than or equal to three hours old", func() {
+			// Set snapshot creation time to 3 hours ago
+			// time.Sub takes a time.Time and returns a time.Duration.  Time.Add takes a time.Duration
+			// and returns a time.Time.  Why?  Who knows.  We want the latter, so we add -3 hours here
+			hasSnapshot.CreationTimestamp = metav1.NewTime(time.Now().Add(-1 * RetryReleaseTimeout))
+
+			adapter = NewAdapter(hasSnapshot, hasApp, hasComp, log, loader.NewMockLoader(), k8sClient, ctx)
+			testErr := fmt.Errorf("something went wrong with the release")
+
+			result, err := adapter.RequeueIfYoungerThanThreshold(testErr)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result).NotTo(BeNil())
+			Expect(result.RequeueRequest).To(BeFalse())
+		})
 	})
 
 	When("multiple components exist", func() {

@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
+	"time"
 
 	clienterrors "k8s.io/apimachinery/pkg/api/errors"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -42,6 +43,8 @@ import (
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
+
+const RetryReleaseTimeout = time.Duration(3 * time.Hour)
 
 // configuration options for scenario
 type ScenarioOptions struct {
@@ -434,9 +437,9 @@ func (a *Adapter) EnsureAllReleasesExist() (controller.OperationResult, error) {
 		if er != nil {
 			a.logger.Error(er, "Failed to mark snapshot integration status as invalid",
 				"snapshot.Name", a.snapshot.Name)
-			return controller.RequeueWithError(errors.Join(err, er))
+			return a.RequeueIfYoungerThanThreshold(errors.Join(err, er))
 		}
-		return controller.RequeueWithError(err)
+		return a.RequeueIfYoungerThanThreshold(err)
 	}
 
 	err = a.createMissingReleasesForReleasePlans(a.application, releasePlans, a.snapshot)
@@ -450,9 +453,9 @@ func (a *Adapter) EnsureAllReleasesExist() (controller.OperationResult, error) {
 		if er != nil {
 			a.logger.Error(er, "Failed to mark snapshot integration status as invalid",
 				"snapshot.Name", a.snapshot.Name)
-			return controller.RequeueWithError(errors.Join(err, er))
+			return a.RequeueIfYoungerThanThreshold(errors.Join(err, er))
 		}
-		return controller.RequeueWithError(err)
+		return a.RequeueIfYoungerThanThreshold(err)
 	}
 
 	// Mark the Snapshot as already auto-released to prevent re-releasing the Snapshot when it gets reconciled
@@ -932,4 +935,18 @@ func GetDetailsFromStatusError(err error) (string, string) {
 		errName = statusErr.Status().Details.Name
 	}
 	return errKind, errName
+}
+
+// RequeueIfYoungerThanThreshold checks if the adapter' snapshot is younger than the threshold defined
+// in the function.  If it is, the function returns an operation result instructing the reconciler
+// to requeue the object and the error message passed to the function.  If not, the function returns
+// an operation result instructing the reconciler NOT to requeue the object.
+func (a *Adapter) RequeueIfYoungerThanThreshold(retErr error) (controller.OperationResult, error) {
+	snapshotCreationTime := a.snapshot.GetCreationTimestamp().Time
+	durationSinceSnapshotCreation := time.Since(snapshotCreationTime)
+
+	if durationSinceSnapshotCreation < RetryReleaseTimeout {
+		return controller.RequeueWithError(retErr)
+	}
+	return controller.ContinueProcessing()
 }
