@@ -7,7 +7,7 @@ require (
 	github.com/go-logr/logr v1.4.1
 	github.com/google/go-containerregistry v0.17.0
 	github.com/google/go-github/v45 v45.2.0
-	github.com/onsi/ginkgo/v2 v2.14.0
+	github.com/onsi/ginkgo/v2 v2.15.0
 	github.com/onsi/gomega v1.30.0
 	github.com/openshift-pipelines/pipelines-as-code v0.17.2
 	github.com/prometheus/client_golang v1.18.0
