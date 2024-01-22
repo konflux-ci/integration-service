@@ -59,7 +59,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: Cache Operator SDK ${{ env.OPERATOR_SDK_VERSION }}
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         id: cache-operator-sdk
         with:
           path: ~/cache
@@ -81,7 +81,7 @@ jobs:
           make kustomize controller-gen
       - name: Cache go modules
         id: cache-mod
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: ~/go/pkg/mod
           key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
