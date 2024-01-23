@@ -5,4 +5,5 @@ checks:
   include: [ ]
   # exclude explicitly excludes checks, by name. exclude has the highest priority: if a check is
   # in exclude, then it is not considered, even if it is in include as well.
-  exclude: [ ]
+  exclude:
+    - "latest-tag"  # this is for a dev deployment, we don't care about this; will be checked in infra repository for real deployments
