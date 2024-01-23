@@ -674,6 +674,13 @@ func (r *GitHubReporter) ReportStatusForSnapshot(k8sClient client.Client, ctx co
 		return err
 	}
 
+	if len(statuses.GetStatuses()) == 0 {
+		// no tests to report, skip
+		logger.Info("No test result to report to GitHub, skipping",
+			"snapshot.Namespace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
+		return nil
+	}
+
 	labels := snapshot.GetLabels()
 
 	owner, found := labels[gitops.PipelineAsCodeURLOrgLabel]
