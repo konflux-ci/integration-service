@@ -529,6 +529,7 @@ var _ = Describe("GitHubReporter", func() {
 
 		It("doesn't report status when the credentials are invalid/missing", func() {
 			// Invalid installation ID value
+			hasSnapshot.Annotations["test.appstudio.openshift.io/status"] = "[{\"scenario\":\"scenario1\",\"status\":\"Pending\",\"lastUpdateTime\":\"2023-07-26T16:57:49+02:00\",\"details\":\"pending\"}]"
 			hasSnapshot.Annotations["pac.test.appstudio.openshift.io/installation-id"] = "bad-installation-id"
 			err := reporter.ReportStatusForSnapshot(mockK8sClient, context.TODO(), &logger, hasSnapshot)
 			Expect(err).ToNot(BeNil())
@@ -550,6 +551,12 @@ var _ = Describe("GitHubReporter", func() {
 			delete(secretData, "github-private-key")
 			err = reporter.ReportStatusForSnapshot(mockK8sClient, context.TODO(), &logger, hasSnapshot)
 			Expect(err).ToNot(BeNil())
+		})
+
+		It("doesn't report status when there are no tests", func() {
+			err := reporter.ReportStatusForSnapshot(mockK8sClient, context.TODO(), &logger, hasSnapshot)
+			Expect(err).To(Succeed())
+			Expect(mockGitHubClient.UpdateCheckRunResult.cra).To(BeNil())
 		})
 
 		It("reports snapshot tests status via CheckRuns", func() {
