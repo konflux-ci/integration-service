@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/go-logr/logr"
 	"github.com/go-logr/zapr"
@@ -341,6 +342,141 @@ var _ = Describe("Test garbage collection for snapshots", func() {
 			Expect(err).To(MatchError(ContainSubstring(
 				"no kind is registered for the type v1alpha1.SnapshotList in scheme",
 			)))
+		})
+	})
+	Describe("Test getSnapshotsForRemoval", func() {
+		It("Handles no snapshots", func() {
+
+			cl := fake.NewClientBuilder().
+				WithScheme(scheme).
+				WithLists(
+					&applicationapiv1alpha1.SnapshotList{
+						Items: []applicationapiv1alpha1.Snapshot{},
+					}).Build()
+			candidates := []applicationapiv1alpha1.Snapshot{}
+			output := getSnapshotsForRemoval(cl, candidates, 2, 1, logger)
+
+			Expect(output).To(BeEmpty())
+		})
+
+		It("No PR snapshots, some non-PR snapshots. Not enough to GCed", func() {
+			currentTime := time.Now()
+			newerSnap := &applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "newer-snapshot",
+					Labels: map[string]string{
+						"pac.test.appstudio.openshift.io/event-type": "some-event",
+					},
+					CreationTimestamp: metav1.NewTime(currentTime.Add(time.Hour * 1)),
+				},
+			}
+			olderSnap := &applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:              "older-snapshot",
+					CreationTimestamp: metav1.NewTime(currentTime),
+				},
+			}
+
+			cl := fake.NewClientBuilder().
+				WithScheme(scheme).
+				WithLists(
+					&applicationapiv1alpha1.SnapshotList{
+						Items: []applicationapiv1alpha1.Snapshot{
+							*newerSnap, *olderSnap,
+						},
+					}).Build()
+			candidates := []applicationapiv1alpha1.Snapshot{*newerSnap, *olderSnap}
+			output := getSnapshotsForRemoval(cl, candidates, 2, 2, logger)
+
+			Expect(output).To(BeEmpty())
+		})
+
+		It("Some PR snapshots, no non-PR snapshots. some to be GCed", func() {
+			currentTime := time.Now()
+			newerSnap := &applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "newer-snapshot",
+					Labels: map[string]string{
+						"pac.test.appstudio.openshift.io/event-type": "pull_request",
+					},
+					CreationTimestamp: metav1.NewTime(currentTime.Add(time.Hour * 1)),
+				},
+			}
+			olderSnap := &applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "older-snapshot",
+					Labels: map[string]string{
+						"pac.test.appstudio.openshift.io/event-type": "pull_request",
+					},
+					CreationTimestamp: metav1.NewTime(currentTime),
+				},
+			}
+
+			cl := fake.NewClientBuilder().
+				WithScheme(scheme).
+				WithLists(
+					&applicationapiv1alpha1.SnapshotList{
+						Items: []applicationapiv1alpha1.Snapshot{
+							*newerSnap, *olderSnap,
+						},
+					}).Build()
+			candidates := []applicationapiv1alpha1.Snapshot{*newerSnap, *olderSnap}
+			output := getSnapshotsForRemoval(cl, candidates, 1, 2, logger)
+
+			Expect(output).To(HaveLen(1))
+			Expect(output[0].Name).To(Equal("older-snapshot"))
+		})
+
+		It("Snapshots of both types to be GCed", func() {
+			currentTime := time.Now()
+			newerPRSnap := &applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "newer-pr-snapshot",
+					Labels: map[string]string{
+						"pac.test.appstudio.openshift.io/event-type": "pull_request",
+					},
+					CreationTimestamp: metav1.NewTime(currentTime.Add(time.Hour * 1)),
+				},
+			}
+			olderPRSnap := &applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "older-pr-snapshot",
+					Labels: map[string]string{
+						"pac.test.appstudio.openshift.io/event-type": "pull_request",
+					},
+					CreationTimestamp: metav1.NewTime(currentTime),
+				},
+			}
+			newerNonPRSnap := &applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:              "newer-non-pr-snapshot",
+					CreationTimestamp: metav1.NewTime(currentTime.Add(time.Hour * 11)),
+				},
+			}
+			olderNonPRSnap := &applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:              "older-non-pr-snapshot",
+					CreationTimestamp: metav1.NewTime(currentTime.Add(time.Hour * 10)),
+				},
+			}
+
+			cl := fake.NewClientBuilder().
+				WithScheme(scheme).
+				WithLists(
+					&applicationapiv1alpha1.SnapshotList{
+						Items: []applicationapiv1alpha1.Snapshot{
+							*newerPRSnap, *olderPRSnap,
+							*newerNonPRSnap, *olderNonPRSnap,
+						},
+					}).Build()
+			candidates := []applicationapiv1alpha1.Snapshot{
+				*newerPRSnap, *olderPRSnap, *newerNonPRSnap, *olderNonPRSnap,
+			}
+			output := getSnapshotsForRemoval(cl, candidates, 1, 1, logger)
+
+			Expect(output).To(HaveLen(2))
+			Expect(output[0].Name).To(Equal("older-non-pr-snapshot"))
+			Expect(output[1].Name).To(Equal("older-pr-snapshot"))
 		})
 	})
 })

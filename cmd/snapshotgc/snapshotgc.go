@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"sort"
 
 	"github.com/go-logr/logr"
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
@@ -112,7 +113,7 @@ func getUnassociatedNSSnapshots(
 		if _, found := snapToData[snap.Name]; found {
 			logger.V(1).Info(
 				"Skipping snapshot as it's associated with release/binding",
-				"snapshot-name",
+				"snapshot.name",
 				snap.Name,
 			)
 			continue
@@ -121,4 +122,48 @@ func getUnassociatedNSSnapshots(
 	}
 
 	return unAssociatedSnaps, nil
+}
+
+// Keep a certain amount of pr/non-pr snapshots
+func getSnapshotsForRemoval(
+	cl client.Client,
+	snapshots []applicationapiv1alpha1.Snapshot,
+	prSnapshotsToKeep int,
+	nonPrSnapshotsToKeep int,
+	logger logr.Logger,
+) []applicationapiv1alpha1.Snapshot {
+	sort.Slice(snapshots, func(i, j int) bool {
+		// sorting in reverse order, so we keep the latest snapshots
+		return snapshots[j].CreationTimestamp.Before(&snapshots[i].CreationTimestamp)
+	})
+
+	shortList := []applicationapiv1alpha1.Snapshot{}
+	keptPrSnaps := 0
+	keptNonPrSnaps := 0
+
+	for _, snap := range snapshots {
+		label, found := snap.GetLabels()["pac.test.appstudio.openshift.io/event-type"]
+		if found && label == "pull_request" && keptPrSnaps < prSnapshotsToKeep {
+			// if pr, and we did not keep enough PR snapshots -> discard from candidates
+			logger.V(1).Info(
+				"Skipping PR candidate snapshot",
+				"snapshot.name", snap.Name,
+				"pr-snapshot-kept", keptPrSnaps+1,
+			)
+			keptPrSnaps++
+			continue
+		} else if (!found || label != "pull_request") && keptNonPrSnaps < nonPrSnapshotsToKeep {
+			// same for non-pr
+			logger.V(1).Info(
+				"Skipping non-PR candidate snapshot",
+				"snapshot.name", snap.Name,
+				"non-pr-snapshot-kept", keptNonPrSnaps+1,
+			)
+			keptNonPrSnaps++
+			continue
+		}
+		logger.V(1).Info("Adding candidate", "snapshot.name", snap.Name)
+		shortList = append(shortList, snap)
+	}
+	return shortList
 }
