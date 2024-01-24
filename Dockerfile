@@ -44,6 +44,4 @@ LABEL io.openshift.tags="rhtap"
 
 USER 65532:65532
 
-EXPOSE 8081
-
 ENTRYPOINT ["/manager"]
