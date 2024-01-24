@@ -220,4 +220,127 @@ var _ = Describe("Test garbage collection for snapshots", func() {
 			)))
 		})
 	})
+
+	Describe("Test getUnassociatedNSSnapshots", func() {
+		It("Finds no unassociated snapshots when there are no snapshots", func() {
+
+			cl := fake.NewClientBuilder().
+				WithScheme(scheme).
+				WithLists(
+					&applicationapiv1alpha1.SnapshotList{
+						Items: []applicationapiv1alpha1.Snapshot{},
+					}).Build()
+			snapToData := make(map[string]snapshotData)
+			output, err := getUnassociatedNSSnapshots(cl, snapToData, "ns1", logger)
+
+			Expect(err).ShouldNot(HaveOccurred())
+			Expect(output).To(BeEmpty())
+		})
+
+		It("Finds no unassociated snapshots when all are associated", func() {
+			snap1 := &applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "associated-snapshot",
+					Namespace: "ns1",
+				},
+			}
+			snap2 := &applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "another-associated-snapshot",
+					Namespace: "ns1",
+				},
+			}
+
+			cl := fake.NewClientBuilder().
+				WithScheme(scheme).
+				WithLists(
+					&applicationapiv1alpha1.SnapshotList{
+						Items: []applicationapiv1alpha1.Snapshot{*snap1, *snap2},
+					}).Build()
+			snapToData := make(map[string]snapshotData)
+			snapToData["associated-snapshot"] = snapshotData{}
+			snapToData["another-associated-snapshot"] = snapshotData{}
+			output, err := getUnassociatedNSSnapshots(cl, snapToData, "ns1", logger)
+
+			Expect(err).ShouldNot(HaveOccurred())
+			Expect(output).To(BeEmpty())
+		})
+
+		It("Finds unassociated snapshots when some snapshots are associated", func() {
+			snap1 := &applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "associated-snapshot",
+					Namespace: "ns1",
+				},
+			}
+			snap2 := &applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "another-associated-snapshot",
+					Namespace: "ns1",
+				},
+			}
+			snap3 := &applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "unassociated-snapshot",
+					Namespace: "ns1",
+				},
+			}
+
+			cl := fake.NewClientBuilder().
+				WithScheme(scheme).
+				WithLists(
+					&applicationapiv1alpha1.SnapshotList{
+						Items: []applicationapiv1alpha1.Snapshot{
+							*snap1, *snap2, *snap3,
+						},
+					}).Build()
+			snapToData := make(map[string]snapshotData)
+			snapToData["associated-snapshot"] = snapshotData{}
+			snapToData["another-associated-snapshot"] = snapshotData{}
+			output, err := getUnassociatedNSSnapshots(cl, snapToData, "ns1", logger)
+
+			Expect(err).ShouldNot(HaveOccurred())
+			Expect(output).To(HaveLen(1))
+			Expect(output[0].Name).To(Equal("unassociated-snapshot"))
+		})
+
+		It("Finds unassociated snapshots when no snapshots are associated", func() {
+			snap1 := &applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "unassociated-snapshot",
+					Namespace: "ns1",
+				},
+			}
+			snap2 := &applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "another-unassociated-snapshot",
+					Namespace: "ns1",
+				},
+			}
+
+			cl := fake.NewClientBuilder().
+				WithScheme(scheme).
+				WithLists(
+					&applicationapiv1alpha1.SnapshotList{
+						Items: []applicationapiv1alpha1.Snapshot{*snap1, *snap2},
+					}).Build()
+			snapToData := make(map[string]snapshotData)
+			output, err := getUnassociatedNSSnapshots(cl, snapToData, "ns1", logger)
+
+			Expect(err).ShouldNot(HaveOccurred())
+			Expect(output).To(HaveLen(2))
+		})
+
+		It("Returns error when fails API call", func() {
+
+			cl := fake.NewClientBuilder().Build()
+			snapToData := make(map[string]snapshotData)
+			_, err := getUnassociatedNSSnapshots(cl, snapToData, "ns1", logger)
+
+			Expect(err).Should(HaveOccurred())
+			Expect(err).To(MatchError(ContainSubstring(
+				"no kind is registered for the type v1alpha1.SnapshotList in scheme",
+			)))
+		})
+	})
 })
