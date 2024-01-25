@@ -167,3 +167,18 @@ func getSnapshotsForRemoval(
 	}
 	return shortList
 }
+
+// Delete snapshots determined to be garbage-collected
+func deleteSnapshots(
+	cl client.Client,
+	snapshots []applicationapiv1alpha1.Snapshot,
+	logger logr.Logger,
+) {
+
+	for _, snap := range snapshots {
+		err := cl.Delete(context.Background(), &snap)
+		if err != nil {
+			logger.Error(err, "Failed to delete snapshot")
+		}
+	}
+}
