@@ -1,29 +1,28 @@
 package main
 
 import (
-	"fmt"
+	"bytes"
+	"context"
+	"strings"
 	"time"
 
 	"github.com/go-logr/logr"
-	"github.com/go-logr/zapr"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	releasev1alpha1 "github.com/redhat-appstudio/release-service/api/v1alpha1"
-	"go.uber.org/zap"
+	"github.com/tonglil/buflogr"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
 var _ = Describe("Test garbage collection for snapshots", func() {
+	var buf bytes.Buffer
 	var logger logr.Logger
 
 	BeforeEach(func() {
-		zapLog, err := zap.NewDevelopment()
-		if err != nil {
-			panic(fmt.Sprintf("who watches the watchmen (%v)?", err))
-		}
-		logger = zapr.NewLogger(zapLog)
+		buf.Reset()
+		logger = buflogr.NewWithBuffer(&buf)
 	})
 
 	Describe("Test getSnapshotsForNSReleases", func() {
@@ -477,6 +476,101 @@ var _ = Describe("Test garbage collection for snapshots", func() {
 			Expect(output).To(HaveLen(2))
 			Expect(output[0].Name).To(Equal("older-non-pr-snapshot"))
 			Expect(output[1].Name).To(Equal("older-pr-snapshot"))
+		})
+	})
+
+	Describe("Test deleteSnapshots", func() {
+		It("Handles no snapshots to be removed", func() {
+			snap := &applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "snap",
+				},
+			}
+			cl := fake.NewClientBuilder().
+				WithScheme(scheme).
+				WithLists(
+					&applicationapiv1alpha1.SnapshotList{
+						Items: []applicationapiv1alpha1.Snapshot{*snap},
+					}).Build()
+			snapsToDelete := []applicationapiv1alpha1.Snapshot{}
+			deleteSnapshots(cl, snapsToDelete, logger)
+
+			snapsRemaining := &applicationapiv1alpha1.SnapshotList{}
+			err := cl.List(context.Background(), snapsRemaining)
+
+			Expect(err).ShouldNot(HaveOccurred())
+			Expect(snapsRemaining.Items).To(HaveLen(1))
+		})
+
+		It("Handles some snapshots to be removed", func() {
+			noDel := &applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "no-del",
+				},
+			}
+			del1 := &applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "del1",
+				},
+			}
+			del2 := &applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "del2",
+				},
+			}
+			cl := fake.NewClientBuilder().
+				WithScheme(scheme).
+				WithLists(
+					&applicationapiv1alpha1.SnapshotList{
+						Items: []applicationapiv1alpha1.Snapshot{*noDel, *del1, *del2},
+					}).Build()
+			snapsToDelete := []applicationapiv1alpha1.Snapshot{*del1, *del2}
+			deleteSnapshots(cl, snapsToDelete, logger)
+
+			snapsRemaining := &applicationapiv1alpha1.SnapshotList{}
+			err := cl.List(context.Background(), snapsRemaining)
+
+			Expect(err).ShouldNot(HaveOccurred())
+			Expect(snapsRemaining.Items).To(HaveLen(1))
+			Expect(snapsRemaining.Items[0].Name).To(Equal("no-del"))
+		})
+
+		It("Handles all snapshots to be removed and continues on failure", func() {
+			nonExist := &applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "non-existing",
+				},
+			}
+			del1 := &applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "del1",
+				},
+			}
+			del2 := &applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "del2",
+				},
+			}
+			cl := fake.NewClientBuilder().
+				WithScheme(scheme).
+				WithLists(
+					&applicationapiv1alpha1.SnapshotList{
+						Items: []applicationapiv1alpha1.Snapshot{*del1, *del2},
+					}).Build()
+			snapsToDelete := []applicationapiv1alpha1.Snapshot{*nonExist, *del1, *del2}
+			deleteSnapshots(cl, snapsToDelete, logger)
+
+			snapsRemaining := &applicationapiv1alpha1.SnapshotList{}
+			err := cl.List(context.Background(), snapsRemaining)
+
+			Expect(err).ShouldNot(HaveOccurred())
+			Expect(snapsRemaining.Items).To(BeEmpty())
+
+			logLines := strings.Split(buf.String(), "\n")
+			Expect(logLines[len(logLines)-2]).Should(ContainSubstring(
+				"ERROR snapshots.appstudio.redhat.com \"non-existing\" not found " +
+					"Failed to delete snapshot",
+			))
 		})
 	})
 })
