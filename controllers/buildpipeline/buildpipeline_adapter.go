@@ -18,7 +18,6 @@ package buildpipeline
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
@@ -31,7 +30,6 @@ import (
 	"github.com/redhat-appstudio/integration-service/metrics"
 	"github.com/redhat-appstudio/integration-service/tekton"
 	"github.com/redhat-appstudio/operator-toolkit/controller"
-	"github.com/redhat-appstudio/operator-toolkit/metadata"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -67,7 +65,7 @@ func NewAdapter(pipelineRun *tektonv1.PipelineRun, component *applicationapiv1al
 func (a *Adapter) EnsureSnapshotExists() (controller.OperationResult, error) {
 	var err error
 	defer func() {
-		err = a.annotateBuildPipelineRunWithCreateSnapshotAnnotation(err)
+		err = tekton.AnnotateBuildPipelineRunWithCreateSnapshotAnnotation(a.context, a.pipelineRun, a.client, err)
 		if err != nil {
 			a.logger.Error(err, "Could not add create snapshot annotation to build pipelineRun", h.CreateSnapshotAnnotationName, a.pipelineRun)
 		}
@@ -99,7 +97,7 @@ func (a *Adapter) EnsureSnapshotExists() (controller.OperationResult, error) {
 		// If PipelineRun result returns cusomized error update PLR annotation and exit
 		if h.IsMissingInfoInPipelineRunError(err) {
 			// update the build PLR annotation with the error cusomized Reason and Value
-			if annotateErr := a.annotateBuildPipelineRunWithCreateSnapshotAnnotation(err); annotateErr != nil {
+			if annotateErr := tekton.AnnotateBuildPipelineRunWithCreateSnapshotAnnotation(a.context, a.pipelineRun, a.client, err); annotateErr != nil {
 				a.logger.Error(annotateErr, "Could not add create snapshot annotation to build pipelineRun", h.CreateSnapshotAnnotationName, a.pipelineRun)
 			}
 			a.logger.Error(err, "Build PipelineRun %s failed with error, should be fixed and re-run manually", a.pipelineRun)
@@ -283,47 +281,13 @@ func (a *Adapter) getSucceededBuildPipelineRunsForComponent(component *applicati
 	return &succeededPipelineRuns, nil
 }
 
-func (a *Adapter) annotateBuildPipelineRun(pipelineRun *tektonv1.PipelineRun, key, value string) (*tektonv1.PipelineRun, error) {
-	patch := client.MergeFrom(pipelineRun.DeepCopy())
-
-	_ = metadata.SetAnnotation(&pipelineRun.ObjectMeta, key, value)
-
-	err := a.client.Patch(a.context, pipelineRun, patch)
-	if err != nil {
-		return pipelineRun, err
-	}
-	return pipelineRun, nil
-}
-
 func (a *Adapter) annotateBuildPipelineRunWithSnapshot(pipelineRun *tektonv1.PipelineRun, snapshot *applicationapiv1alpha1.Snapshot) (*tektonv1.PipelineRun, error) {
-	pipelineRun, err := a.annotateBuildPipelineRun(pipelineRun, tekton.SnapshotNameLabel, snapshot.Name)
+	pipelineRun, err := tekton.AnnotateBuildPipelineRun(a.context, pipelineRun, tekton.SnapshotNameLabel, snapshot.Name, a.client)
 	if err == nil {
 		a.logger.LogAuditEvent("Updated build pipelineRun", pipelineRun, h.LogActionUpdate,
 			"snapshot.Name", snapshot.Name)
 	}
 	return pipelineRun, err
-}
-
-func (a *Adapter) annotateBuildPipelineRunWithCreateSnapshotAnnotation(ensureSnapshotExistsErr error) error {
-	message := ""
-	status := ""
-	if ensureSnapshotExistsErr == nil {
-		message = fmt.Sprintf("Sucessfully created snapshot. See annotation %s for name", tekton.SnapshotNameLabel)
-		status = "success"
-	} else {
-		message = ensureSnapshotExistsErr.Error()
-		status = "failed"
-	}
-
-	jsonResult, err := json.Marshal(map[string]string{
-		"status":  status,
-		"message": message,
-	})
-	if err != nil {
-		return err
-	}
-	_, err = a.annotateBuildPipelineRun(a.pipelineRun, h.CreateSnapshotAnnotationName, string(jsonResult))
-	return err
 }
 
 func (a *Adapter) removeFinalizerAndContinueProcessing() (controller.OperationResult, error) {

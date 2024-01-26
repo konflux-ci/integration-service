@@ -491,13 +491,13 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			expectedSnap, err := adapter.prepareSnapshotForPipelineRun(buildPipelineRunNoSource, hasComp, hasApp)
 			Expect(expectedSnap).To(BeNil())
 			Expect(err).To(HaveOccurred())
-			err = adapter.annotateBuildPipelineRunWithCreateSnapshotAnnotation(err)
+			err = tekton.AnnotateBuildPipelineRunWithCreateSnapshotAnnotation(adapter.context, buildPipelineRun, adapter.client, err)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(adapter.pipelineRun.GetAnnotations()[helpers.CreateSnapshotAnnotationName]).ToNot(BeNil())
 			err = json.Unmarshal([]byte(adapter.pipelineRun.GetAnnotations()[helpers.CreateSnapshotAnnotationName]), &info)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(info["status"]).To(Equal("failed"))
-			Expect(info["message"]).To(Equal(messageError))
+			Expect(info["message"]).To(Equal("Failed to create snapshot. Error: " + messageError))
 
 		})
 
@@ -760,7 +760,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		})
 
 		It("Can add an annotation to the build pipelinerun", func() {
-			pipelineRun, err := adapter.annotateBuildPipelineRun(buildPipelineRun, "test", "value")
+			pipelineRun, err := tekton.AnnotateBuildPipelineRun(adapter.context, buildPipelineRun, "test", "value", adapter.client)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(pipelineRun).NotTo(BeNil())
 			Expect(pipelineRun.ObjectMeta.Annotations["test"]).To(Equal("value"))
@@ -776,7 +776,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		It("Can annotate the build pipelineRun with the CreateSnapshot annotate", func() {
 			sampleErr := errors.New("this is a sample error")
 			adapter = NewAdapter(buildPipelineRun, hasComp, hasApp, logger, loader.NewMockLoader(), k8sClient, ctx)
-			err := adapter.annotateBuildPipelineRunWithCreateSnapshotAnnotation(sampleErr)
+			err := tekton.AnnotateBuildPipelineRunWithCreateSnapshotAnnotation(adapter.context, buildPipelineRun, adapter.client, sampleErr)
 			Expect(err).NotTo(HaveOccurred())
 
 			time.Sleep(3 * time.Second)
@@ -794,7 +794,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			err = json.Unmarshal([]byte(newPipelineRun.ObjectMeta.Annotations[helpers.CreateSnapshotAnnotationName]), &info)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(info["status"]).To(Equal("failed"))
-			Expect(info["message"]).To(Equal(sampleErr.Error()))
+			Expect(info["message"]).To(Equal("Failed to create snapshot. Error: " + sampleErr.Error()))
 		})
 
 		It("ensure that EnsureSnapshotExists doesn't create snapshot for previous pipeline run", func() {
