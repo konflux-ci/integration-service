@@ -18,7 +18,6 @@ package buildpipeline
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/redhat-appstudio/integration-service/cache"
 	"k8s.io/client-go/util/retry"
@@ -104,14 +103,14 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	if err != nil {
 		logger.Error(err, "Failed to get Application from Component",
 			"Component.Name ", component.Name, "Component.Namespace ", component.Namespace)
-		return ctrl.Result{}, err
+		tknErr := tekton.AnnotateBuildPipelineRunWithCreateSnapshotAnnotation(ctx, pipelineRun, r.Client, err)
+		if tknErr != nil {
+			return ctrl.Result{}, tknErr
+		}
+		return helpers.HandleLoaderError(logger, err, "application", "component")
+
 	}
 
-	if application == nil {
-		err := fmt.Errorf("failed to get Application")
-		logger.Error(err, "reconcile cannot resolve application")
-		return ctrl.Result{}, err
-	}
 	logger = logger.WithApp(*application)
 
 	adapter := NewAdapter(pipelineRun, component, application, logger, loader, r.Client, ctx)
