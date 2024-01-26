@@ -24,8 +24,8 @@ func init() {
 
 // Stores pointers to resources to which the snapshot is associated
 type snapshotData struct {
-	// environmentBinding applicationapiv1alpha1.SnapshotEnvironmentBinding
-	release releasev1alpha1.Release
+	environmentBinding applicationapiv1alpha1.SnapshotEnvironmentBinding
+	release            releasev1alpha1.Release
 }
 
 // Gets a map to allow to tell with direct lookup if a snapshot is associated with
@@ -54,6 +54,36 @@ func getSnapshotsForNSReleases(
 		}
 		data.release = release
 		snapToData[release.Spec.Snapshot] = data
+	}
+	return snapToData, nil
+}
+
+// Gets a map to allow to tell with direct lookup if a snapshot is associated with
+// a SnapshotEnvironmentBinding resource
+func getSnapshotsForNSBindings(
+	cl client.Client,
+	snapToData map[string]snapshotData,
+	namespace string,
+	logger logr.Logger,
+) (map[string]snapshotData, error) {
+	binds := &applicationapiv1alpha1.SnapshotEnvironmentBindingList{}
+	err := cl.List(
+		context.Background(),
+		binds,
+		&client.ListOptions{Namespace: namespace},
+	)
+	if err != nil {
+		logger.Error(err, "Failed to list bindings")
+		return nil, err
+	}
+
+	for _, bind := range binds.Items {
+		data, ok := snapToData[bind.Spec.Snapshot]
+		if !ok {
+			data = snapshotData{}
+		}
+		data.environmentBinding = bind
+		snapToData[bind.Spec.Snapshot] = data
 	}
 	return snapToData, nil
 }
