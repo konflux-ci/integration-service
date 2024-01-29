@@ -87,3 +87,38 @@ func getSnapshotsForNSBindings(
 	}
 	return snapToData, nil
 }
+
+// Gets all namespace snapshots that aren't associated with a release/binding
+func getUnassociatedNSSnapshots(
+	cl client.Client,
+	snapToData map[string]snapshotData,
+	namespace string,
+	logger logr.Logger,
+) ([]applicationapiv1alpha1.Snapshot, error) {
+	snaps := &applicationapiv1alpha1.SnapshotList{}
+	err := cl.List(
+		context.Background(),
+		snaps,
+		&client.ListOptions{Namespace: namespace},
+	)
+	if err != nil {
+		logger.Error(err, "Failed to list snapshots")
+		return nil, err
+	}
+
+	var unAssociatedSnaps []applicationapiv1alpha1.Snapshot
+
+	for _, snap := range snaps.Items {
+		if _, found := snapToData[snap.Name]; found {
+			logger.V(1).Info(
+				"Skipping snapshot as it's associated with release/binding",
+				"snapshot-name",
+				snap.Name,
+			)
+			continue
+		}
+		unAssociatedSnaps = append(unAssociatedSnaps, snap)
+	}
+
+	return unAssociatedSnaps, nil
+}
