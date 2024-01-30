@@ -42,6 +42,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
+	"github.com/redhat-appstudio/operator-toolkit/controller"
 	toolkit "github.com/redhat-appstudio/operator-toolkit/loader"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	"github.com/tonglil/buflogr"
@@ -854,10 +855,14 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 	})
 
 	When("A new Build pipelineRun is created", func() {
-		BeforeAll(func() {
+
+		type removeFuncType func() (controller.OperationResult, error)
+
+		BeforeEach(func() {
 			adapter = NewAdapter(buildPipelineRun, hasComp, hasApp, logger, loader.NewMockLoader(), k8sClient, ctx)
 		})
-		It("can add and remove finalizers from the pipelineRun", func() {
+
+		DescribeTable("can add and remove finalizers from the pipelineRun", func(removeFunc removeFuncType, shouldStop bool) {
 			// Mark build PLR as incomplete
 			buildPipelineRun.Status.Conditions = nil
 			Expect(k8sClient.Status().Update(ctx, buildPipelineRun)).Should(Succeed())
@@ -882,19 +887,23 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			}, time.Second*10).Should(BeTrue())
 
 			// Remove finalizer from PLR
-			result, err = adapter.removeFinalizerAndContinueProcessing()
-			Expect(result.CancelRequest).To(BeFalse())
+			result, err = removeFunc()
+			Expect(result.CancelRequest).To(Equal(shouldStop))
 			Expect(err).To(BeNil())
 
 			// Ensure the PLR on the control plane does not have finalizer
 			Eventually(func() bool {
+				updatedBuildPLR := new(tektonv1.PipelineRun)
 				err := k8sClient.Get(ctx, types.NamespacedName{
 					Namespace: buildPipelineRun.Namespace,
 					Name:      buildPipelineRun.Name,
-				}, buildPipelineRun)
-				return err == nil && !controllerutil.ContainsFinalizer(buildPipelineRun, helpers.IntegrationPipelineRunFinalizer)
+				}, updatedBuildPLR)
+				return err == nil && !controllerutil.ContainsFinalizer(updatedBuildPLR, helpers.IntegrationPipelineRunFinalizer)
 			}, time.Second*20).Should(BeTrue())
-		})
+		},
+			Entry("with continue processing", func() (controller.OperationResult, error) { return adapter.removeFinalizerAndContinueProcessing() }, false),
+			Entry("with stop processing", func() (controller.OperationResult, error) { return adapter.removeFinalizerAndStopProcessing() }, true),
+		)
 
 		When("running pipeline with deletion timestamp is processed", func() {
 

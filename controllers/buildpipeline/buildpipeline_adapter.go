@@ -31,6 +31,7 @@ import (
 	"github.com/redhat-appstudio/integration-service/tekton"
 	"github.com/redhat-appstudio/operator-toolkit/controller"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
@@ -132,6 +133,10 @@ func (a *Adapter) EnsureSnapshotExists() (controller.OperationResult, error) {
 	err = a.client.Create(a.context, expectedSnapshot)
 	if err != nil {
 		a.logger.Error(err, "Failed to create Snapshot")
+		if errors.IsForbidden(err) {
+			// we cannot create a snapshot (possibly because the snapshot quota is hit) and we don't want to block resources, user has to retry
+			return a.removeFinalizerAndStopProcessing()
+		}
 		return controller.RequeueWithError(err)
 	}
 	go metrics.RegisterNewSnapshot()
@@ -297,4 +302,14 @@ func (a *Adapter) removeFinalizerAndContinueProcessing() (controller.OperationRe
 
 	err := h.RemoveFinalizerFromPipelineRun(a.client, a.logger, a.context, a.pipelineRun, h.IntegrationPipelineRunFinalizer)
 	return controller.RequeueOnErrorOrContinue(err)
+}
+
+// Removes finalizer from the build pipeline and stop
+func (a *Adapter) removeFinalizerAndStopProcessing() (controller.OperationResult, error) {
+	if !controllerutil.ContainsFinalizer(a.pipelineRun, h.IntegrationPipelineRunFinalizer) {
+		return controller.StopProcessing()
+	}
+
+	err := h.RemoveFinalizerFromPipelineRun(a.client, a.logger, a.context, a.pipelineRun, h.IntegrationPipelineRunFinalizer)
+	return controller.RequeueOnErrorOrStop(err)
 }
