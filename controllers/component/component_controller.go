@@ -43,7 +43,7 @@ type Reconciler struct {
 func NewComponentReconciler(client client.Client, logger *logr.Logger, scheme *runtime.Scheme) *Reconciler {
 	return &Reconciler{
 		Client: client,
-		Log:    logger.WithName("integration pipeline"),
+		Log:    logger.WithName("component"),
 		Scheme: scheme,
 	}
 }
@@ -71,6 +71,11 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	var application *applicationapiv1alpha1.Application
 	application, err = loader.GetApplicationFromComponent(r.Client, ctx, component)
 	if err != nil {
+		if errors.IsNotFound(err) {
+			if err := helpers.RemoveFinalizerFromComponent(r.Client, logger, ctx, component, helpers.ComponentFinalizer); err != nil {
+				return ctrl.Result{}, err
+			}
+		}
 		logger.Error(err, "Failed to get Application from the component",
 			"Component.Name", component.Name)
 		return ctrl.Result{}, err
@@ -86,13 +91,15 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	adapter := NewAdapter(component, application, logger, loader, r.Client, ctx)
 
 	return controller.ReconcileHandler([]controller.Operation{
+		adapter.EnsureComponentHasFinalizer,
 		adapter.EnsureComponentIsCleanedUp,
 	})
 }
 
 // AdapterInterface is an interface defining all the operations that should be defined in an Integration adapter.
 type AdapterInterface interface {
-	EnsureSnapshotIsFresh() (controller.OperationResult, error)
+	EnsureComponentHasFinalizer() (controller.OperationResult, error)
+	EnsureComponentIsCleanedUp() (controller.OperationResult, error)
 }
 
 // SetupController creates a new Component controller and adds it to the Manager.
@@ -107,6 +114,7 @@ func setupControllerWithManager(manager ctrl.Manager, controller *Reconciler) er
 	return ctrl.NewControllerManagedBy(manager).
 		For(&applicationapiv1alpha1.Component{}).
 		WithEventFilter(predicate.Or(
+			ComponentCreatedPredicate(),
 			ComponentDeletedPredicate())).
 		Complete(controller)
 }

@@ -19,6 +19,8 @@ package component
 import (
 	"context"
 
+	"fmt"
+
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/gitops"
 	h "github.com/redhat-appstudio/integration-service/helpers"
@@ -27,6 +29,7 @@ import (
 	"github.com/redhat-appstudio/operator-toolkit/controller"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
 // Adapter holds the objects needed to reconcile a integration PipelineRun.
@@ -52,10 +55,25 @@ func NewAdapter(component *applicationapiv1alpha1.Component, application *applic
 	}
 }
 
+// EnsureComponentHasFinalizer is an operation that will ensure components
+// that have been created are assigned a finalizer
+func (a *Adapter) EnsureComponentHasFinalizer() (controller.OperationResult, error) {
+	if !isComponentMarkedForDeletion(a.component) {
+		if !controllerutil.ContainsFinalizer(a.component, h.ComponentFinalizer) {
+			err := h.AddFinalizerToComponent(a.client, a.logger, a.context, a.component, h.ComponentFinalizer)
+			if err != nil {
+				return controller.RequeueWithError(fmt.Errorf("failed to add the finalizer: %w", err))
+			}
+		}
+	}
+
+	return controller.ContinueProcessing()
+}
+
 // EnsureComponentIsCleanedUp is an operation that will ensure components
 // marked for deletion have a snapshot created without said component
 func (a *Adapter) EnsureComponentIsCleanedUp() (controller.OperationResult, error) {
-	if !hasComponentBeenDeleted(a.component) {
+	if !isComponentMarkedForDeletion(a.component) {
 		return controller.ContinueProcessing()
 	}
 
@@ -80,15 +98,16 @@ func (a *Adapter) EnsureComponentIsCleanedUp() (controller.OperationResult, erro
 		}
 	}
 
-	if len(snapshotComponents) == 0 {
-		a.logger.Info("Application has no available snapshot components for snapshot creation")
-		return controller.StopProcessing()
+	if len(snapshotComponents) != 0 {
+		_, err = a.createUpdatedSnapshot(&snapshotComponents)
+		if err != nil {
+			a.logger.Error(err, "Failed to create new snapshot after component deletion")
+			return controller.RequeueWithError(err)
+		}
 	}
-
-	_, err = a.createUpdatedSnapshot(&snapshotComponents)
+	err = h.RemoveFinalizerFromComponent(a.client, a.logger, a.context, a.component, h.ComponentFinalizer)
 	if err != nil {
-		a.logger.Error(err, "Failed to create new snapshot after component deletion")
-		return controller.RequeueWithError(err)
+		return controller.RequeueWithError(fmt.Errorf("failed to remove the finalizer: %w", err))
 	}
 
 	return controller.ContinueProcessing()
@@ -109,7 +128,7 @@ func (a *Adapter) createUpdatedSnapshot(snapshotComponents *[]applicationapiv1al
 
 	err := ctrl.SetControllerReference(a.application, snapshot, a.client.Scheme())
 	if err != nil {
-		a.logger.Error(err, "Failed to set controller refrence")
+		a.logger.Error(err, "Failed to set controller reference")
 		return nil, err
 	}
 
@@ -123,10 +142,22 @@ func (a *Adapter) createUpdatedSnapshot(snapshotComponents *[]applicationapiv1al
 	return snapshot, nil
 }
 
-func hasComponentBeenDeleted(object client.Object) bool {
-
+func isComponentMarkedForDeletion(object client.Object) bool {
 	if comp, ok := object.(*applicationapiv1alpha1.Component); ok {
 		return !comp.ObjectMeta.DeletionTimestamp.IsZero()
 	}
+	return false
+}
+
+// hasComponentChangedToDeleting returns a boolean indicating whether the Component was marked for deletion.
+// If the objects passed to this function is not a Component, the function will return false.
+func hasComponentChangedToDeleting(objectOld, objectNew client.Object) bool {
+	if oldComponent, ok := objectOld.(*applicationapiv1alpha1.Component); ok {
+		if newComponent, ok := objectNew.(*applicationapiv1alpha1.Component); ok {
+			return (oldComponent.GetDeletionTimestamp() == nil &&
+				newComponent.GetDeletionTimestamp() != nil)
+		}
+	}
+
 	return false
 }
