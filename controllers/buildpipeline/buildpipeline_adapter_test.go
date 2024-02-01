@@ -42,7 +42,6 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
-	"github.com/redhat-appstudio/operator-toolkit/controller"
 	toolkit "github.com/redhat-appstudio/operator-toolkit/loader"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	"github.com/tonglil/buflogr"
@@ -856,54 +855,82 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 
 	When("A new Build pipelineRun is created", func() {
 
-		type removeFuncType func() (controller.OperationResult, error)
+		When("can add and remove finalizers from the pipelineRun", func() {
+			BeforeEach(func() {
+				adapter = NewAdapter(buildPipelineRun, hasComp, hasApp, logger, loader.NewMockLoader(), k8sClient, ctx)
+			})
+			It("can add and remove finalizers from build pipelineRun", func() {
+				// Mark build PLR as incomplete
+				buildPipelineRun.Status.Conditions = nil
+				Expect(k8sClient.Status().Update(ctx, buildPipelineRun)).Should(Succeed())
 
-		BeforeEach(func() {
-			adapter = NewAdapter(buildPipelineRun, hasComp, hasApp, logger, loader.NewMockLoader(), k8sClient, ctx)
-		})
-
-		DescribeTable("can add and remove finalizers from the pipelineRun", func(removeFunc removeFuncType, shouldStop bool) {
-			// Mark build PLR as incomplete
-			buildPipelineRun.Status.Conditions = nil
-			Expect(k8sClient.Status().Update(ctx, buildPipelineRun)).Should(Succeed())
-
-			// Ensure PLR does not have finalizer
-			existingBuildPLR := new(tektonv1.PipelineRun)
-			err := k8sClient.Get(ctx, types.NamespacedName{
-				Namespace: buildPipelineRun.ObjectMeta.Namespace,
-				Name:      buildPipelineRun.ObjectMeta.Name,
-			}, existingBuildPLR)
-			Expect(err).To(BeNil())
-			Expect(existingBuildPLR.ObjectMeta.Finalizers).To(BeNil())
-
-			// Add Finalizer to PLR
-			result, err := adapter.EnsurePipelineIsFinalized()
-			Expect(result.CancelRequest).To(BeFalse())
-			Expect(err).To(BeNil())
-
-			// Ensure PLR has finalizer
-			Eventually(func() bool {
-				return slices.Contains(buildPipelineRun.ObjectMeta.Finalizers, helpers.IntegrationPipelineRunFinalizer)
-			}, time.Second*10).Should(BeTrue())
-
-			// Remove finalizer from PLR
-			result, err = removeFunc()
-			Expect(result.CancelRequest).To(Equal(shouldStop))
-			Expect(err).To(BeNil())
-
-			// Ensure the PLR on the control plane does not have finalizer
-			Eventually(func() bool {
-				updatedBuildPLR := new(tektonv1.PipelineRun)
+				// Ensure PLR does not have finalizer
+				existingBuildPLR := new(tektonv1.PipelineRun)
 				err := k8sClient.Get(ctx, types.NamespacedName{
-					Namespace: buildPipelineRun.Namespace,
-					Name:      buildPipelineRun.Name,
-				}, updatedBuildPLR)
-				return err == nil && !controllerutil.ContainsFinalizer(updatedBuildPLR, helpers.IntegrationPipelineRunFinalizer)
-			}, time.Second*20).Should(BeTrue())
-		},
-			Entry("with continue processing", func() (controller.OperationResult, error) { return adapter.removeFinalizerAndContinueProcessing() }, false),
-			Entry("with stop processing", func() (controller.OperationResult, error) { return adapter.removeFinalizerAndStopProcessing() }, true),
-		)
+					Namespace: buildPipelineRun.ObjectMeta.Namespace,
+					Name:      buildPipelineRun.ObjectMeta.Name,
+				}, existingBuildPLR)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(existingBuildPLR.ObjectMeta.Finalizers).To(BeNil())
+
+				// Add Finalizer to PLR
+				result, err := adapter.EnsurePipelineIsFinalized()
+				Expect(result.CancelRequest).To(BeFalse())
+				Expect(err).ToNot(HaveOccurred())
+
+				// Ensure PLR has finalizer
+				Eventually(func() bool {
+					return slices.Contains(buildPipelineRun.ObjectMeta.Finalizers, helpers.IntegrationPipelineRunFinalizer)
+				}, time.Second*10).Should(BeTrue())
+
+				// Update build PLR as completed
+				buildPipelineRun.Status = tektonv1.PipelineRunStatus{
+					PipelineRunStatusFields: tektonv1.PipelineRunStatusFields{
+						ChildReferences: []tektonv1.ChildStatusReference{
+							{
+								Name:             successfulTaskRun.Name,
+								PipelineTaskName: "task1",
+							},
+						},
+						Results: []tektonv1.PipelineRunResult{
+							{
+								Name:  "CHAINS-GIT_URL",
+								Value: *tektonv1.NewStructuredValues(SampleRepoLink),
+							},
+							{
+								Name:  "IMAGE_URL",
+								Value: *tektonv1.NewStructuredValues(SampleImageWithoutDigest),
+							},
+						},
+					},
+					Status: v1.Status{
+						Conditions: v1.Conditions{
+							apis.Condition{
+								Reason: "Completed",
+								Status: "True",
+								Type:   apis.ConditionSucceeded,
+							},
+						},
+					},
+				}
+				Expect(k8sClient.Status().Update(ctx, buildPipelineRun)).Should(Succeed())
+
+				Eventually(func() bool {
+					result, err := adapter.EnsureSnapshotExists()
+					return !result.CancelRequest && err == nil
+				}, time.Second*10).Should(BeTrue())
+				// Ensure the PLR on the control plane does not have finalizer
+				Eventually(func() bool {
+					updatedBuildPLR := new(tektonv1.PipelineRun)
+					err := k8sClient.Get(ctx, types.NamespacedName{
+						Namespace: buildPipelineRun.Namespace,
+						Name:      buildPipelineRun.Name,
+					}, updatedBuildPLR)
+					return err == nil && !controllerutil.ContainsFinalizer(updatedBuildPLR, helpers.IntegrationPipelineRunFinalizer)
+				}, time.Second*20).Should(BeTrue())
+			})
+
+		})
 
 		When("running pipeline with deletion timestamp is processed", func() {
 
@@ -981,7 +1008,6 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				err := k8sClient.Delete(ctx, runningDeletingBuildPipeline)
 				Expect(err == nil || k8serrors.IsNotFound(err)).To(BeTrue())
 			})
-
 			// tekton is keeping deleted pipelines in running state, we have to remove finalizer in this case
 			It("removes finalizer", func() {
 				// Add Finalizer to PLR
