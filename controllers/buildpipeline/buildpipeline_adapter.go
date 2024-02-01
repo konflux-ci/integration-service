@@ -101,7 +101,7 @@ func (a *Adapter) EnsureSnapshotExists() (controller.OperationResult, error) {
 			if annotateErr := tekton.AnnotateBuildPipelineRunWithCreateSnapshotAnnotation(a.context, a.pipelineRun, a.client, err); annotateErr != nil {
 				a.logger.Error(annotateErr, "Could not add create snapshot annotation to build pipelineRun", h.CreateSnapshotAnnotationName, a.pipelineRun)
 			}
-			a.logger.Error(err, "Build PipelineRun %s failed with error, should be fixed and re-run manually", a.pipelineRun)
+			a.logger.Error(err, "Build PipelineRun failed with error, should be fixed and re-run manually", "pipelineRun.Name", a.pipelineRun.Name)
 			return a.removeFinalizerAndContinueProcessing()
 		}
 
