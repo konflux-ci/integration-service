@@ -451,6 +451,10 @@ func RemoveFinalizerFromAllIntegrationPipelineRunsOfSnapshot(adapterClient clien
 // RemoveFinalizerFromPipelineRun removes the finalizer from the PipelineRun.
 // If finalizer was not removed successfully, a non-nil error is returned.
 func RemoveFinalizerFromPipelineRun(adapterClient client.Client, logger IntegrationLogger, ctx context.Context, pipelineRun *tektonv1.PipelineRun, finalizer string) error {
+	if !controllerutil.ContainsFinalizer(pipelineRun, finalizer) {
+		return nil
+	}
+
 	patch := client.MergeFrom(pipelineRun.DeepCopy())
 	if ok := controllerutil.RemoveFinalizer(pipelineRun, finalizer); ok {
 		err := adapterClient.Patch(ctx, pipelineRun, patch)
