@@ -279,6 +279,7 @@ func SetSnapshotIntegrationStatusAsError(snapshot *applicationapiv1alpha1.Snapsh
 
 // MarkSnapshotIntegrationStatusAsInProgress sets the AppStudio integration status condition for the Snapshot to In Progress.
 func MarkSnapshotIntegrationStatusAsInProgress(adapterClient client.Client, ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot, message string) error {
+	log := log.FromContext(ctx)
 	patch := client.MergeFrom(snapshot.DeepCopy())
 	meta.SetStatusCondition(&snapshot.Status.Conditions, metav1.Condition{
 		Type:    AppStudioIntegrationStatusCondition,
@@ -298,7 +299,13 @@ func MarkSnapshotIntegrationStatusAsInProgress(adapterClient client.Client, ctx 
 		buildPipelineRunFinishTime := time.Unix(buildPipelineRunFinishTimeInt, 0)
 		buildPipelineRunFinishTimeMeta := &metav1.Time{Time: buildPipelineRunFinishTime}
 
-		go metrics.RegisterIntegrationResponse(*buildPipelineRunFinishTimeMeta, snapshotInProgressTime)
+		duration := snapshotInProgressTime.Sub(buildPipelineRunFinishTimeMeta.Time)
+		log.Info("Integration Service Response time (integration_svc_response_seconds)",
+			"snapshot.name", snapshot.Name,
+			"pipelinerun.name", snapshot.Labels[BuildPipelineRunNameLabel],
+			"duration", duration,
+		)
+		go metrics.RegisterIntegrationResponse(duration)
 	}
 	return nil
 }

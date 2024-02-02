@@ -150,8 +150,8 @@ func RegisterSEBCreatedToReady(sebCreatedTime metav1.Time, sebReadyTime *metav1.
 		Observe(sebReadyTime.Sub(sebCreatedTime.Time).Seconds())
 }
 
-func RegisterIntegrationResponse(buildPipelineFinishTime metav1.Time, inProgressTime *metav1.Time) {
-	IntegrationSvcResponseSeconds.Observe(inProgressTime.Sub(buildPipelineFinishTime.Time).Seconds())
+func RegisterIntegrationResponse(duration time.Duration) {
+	IntegrationSvcResponseSeconds.Observe(duration.Seconds())
 }
 
 func RegisterNewSnapshot() {
