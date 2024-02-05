@@ -63,19 +63,33 @@ func NewAdapter(pipelineRun *tektonv1.PipelineRun, component *applicationapiv1al
 
 // EnsureSnapshotExists is an operation that will ensure that a pipeline Snapshot associated
 // to the build PipelineRun being processed exists. Otherwise, it will create a new pipeline Snapshot.
-func (a *Adapter) EnsureSnapshotExists() (controller.OperationResult, error) {
-	var err error
+func (a *Adapter) EnsureSnapshotExists() (result controller.OperationResult, err error) {
+	// a marker if we should remove finalizer from build PLR
+	var canRemoveFinalizer bool
+
 	defer func() {
 		err = tekton.AnnotateBuildPipelineRunWithCreateSnapshotAnnotation(a.context, a.pipelineRun, a.client, err)
 		if err != nil {
 			a.logger.Error(err, "Could not add create snapshot annotation to build pipelineRun", h.CreateSnapshotAnnotationName, a.pipelineRun)
+			// requeue when err is not nil
+			result, err = controller.RequeueWithError(err)
+		}
+
+		if canRemoveFinalizer {
+			err = h.RemoveFinalizerFromPipelineRun(a.client, a.logger, a.context, a.pipelineRun, h.IntegrationPipelineRunFinalizer)
+			if err != nil {
+				a.logger.Error(err, "Failed to remove finalizer from build pipelineRun")
+				// requeue when err is not nil
+				result, err = controller.RequeueWithError(err)
+			}
 		}
 	}()
 	if !h.HasPipelineRunSucceeded(a.pipelineRun) {
 		if h.HasPipelineRunFinished(a.pipelineRun) || a.pipelineRun.GetDeletionTimestamp() != nil {
-			// The pipeline run  has failed
+			// The pipeline run has failed
 			// OR pipeline has been deleted but it's still in running state (tekton bug/feature?)
-			return a.removeFinalizerAndContinueProcessing()
+			canRemoveFinalizer = true
+			return controller.ContinueProcessing()
 		}
 		// The build pipeline run has not finished yet
 		return controller.ContinueProcessing()
@@ -90,7 +104,8 @@ func (a *Adapter) EnsureSnapshotExists() (controller.OperationResult, error) {
 		// this prevents deploying older pipeline run over new deployment
 		a.logger.Info("The pipelineRun is not the latest successful build pipelineRun for the component, skipping creation of a new Snapshot ",
 			"component.Name", a.component.Name)
-		return a.removeFinalizerAndContinueProcessing()
+		canRemoveFinalizer = true
+		return controller.ContinueProcessing()
 	}
 
 	expectedSnapshot, err := a.prepareSnapshotForPipelineRun(a.pipelineRun, a.component, a.application)
@@ -102,7 +117,8 @@ func (a *Adapter) EnsureSnapshotExists() (controller.OperationResult, error) {
 				a.logger.Error(annotateErr, "Could not add create snapshot annotation to build pipelineRun", h.CreateSnapshotAnnotationName, a.pipelineRun)
 			}
 			a.logger.Error(err, "Build PipelineRun failed with error, should be fixed and re-run manually", "pipelineRun.Name", a.pipelineRun.Name)
-			return a.removeFinalizerAndContinueProcessing()
+			canRemoveFinalizer = true
+			return controller.ContinueProcessing()
 		}
 
 		return controller.RequeueWithError(err)
@@ -127,7 +143,8 @@ func (a *Adapter) EnsureSnapshotExists() (controller.OperationResult, error) {
 				return controller.RequeueWithError(err)
 			}
 		}
-		return a.removeFinalizerAndContinueProcessing()
+		canRemoveFinalizer = true
+		return controller.ContinueProcessing()
 	}
 
 	err = a.client.Create(a.context, expectedSnapshot)
@@ -135,7 +152,8 @@ func (a *Adapter) EnsureSnapshotExists() (controller.OperationResult, error) {
 		a.logger.Error(err, "Failed to create Snapshot")
 		if errors.IsForbidden(err) {
 			// we cannot create a snapshot (possibly because the snapshot quota is hit) and we don't want to block resources, user has to retry
-			return a.removeFinalizerAndStopProcessing()
+			canRemoveFinalizer = true
+			return controller.StopProcessing()
 		}
 		return controller.RequeueWithError(err)
 	}
@@ -152,7 +170,8 @@ func (a *Adapter) EnsureSnapshotExists() (controller.OperationResult, error) {
 		return controller.RequeueWithError(err)
 	}
 
-	return a.removeFinalizerAndContinueProcessing()
+	canRemoveFinalizer = true
+	return controller.ContinueProcessing()
 }
 
 func (a *Adapter) EnsurePipelineIsFinalized() (controller.OperationResult, error) {
@@ -293,23 +312,4 @@ func (a *Adapter) annotateBuildPipelineRunWithSnapshot(pipelineRun *tektonv1.Pip
 			"snapshot.Name", snapshot.Name)
 	}
 	return pipelineRun, err
-}
-
-func (a *Adapter) removeFinalizerAndContinueProcessing() (controller.OperationResult, error) {
-	if !controllerutil.ContainsFinalizer(a.pipelineRun, h.IntegrationPipelineRunFinalizer) {
-		return controller.ContinueProcessing()
-	}
-
-	err := h.RemoveFinalizerFromPipelineRun(a.client, a.logger, a.context, a.pipelineRun, h.IntegrationPipelineRunFinalizer)
-	return controller.RequeueOnErrorOrContinue(err)
-}
-
-// Removes finalizer from the build pipeline and stop
-func (a *Adapter) removeFinalizerAndStopProcessing() (controller.OperationResult, error) {
-	if !controllerutil.ContainsFinalizer(a.pipelineRun, h.IntegrationPipelineRunFinalizer) {
-		return controller.StopProcessing()
-	}
-
-	err := h.RemoveFinalizerFromPipelineRun(a.client, a.logger, a.context, a.pipelineRun, h.IntegrationPipelineRunFinalizer)
-	return controller.RequeueOnErrorOrStop(err)
 }
