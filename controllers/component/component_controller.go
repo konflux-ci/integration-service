@@ -76,9 +76,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 				return ctrl.Result{}, err
 			}
 		}
-		logger.Error(err, "Failed to get Application from the component",
-			"Component.Name", component.Name)
-		return ctrl.Result{}, err
+		return helpers.HandleLoaderError(logger, err, "Application", "Component")
 	}
 
 	if application == nil {
