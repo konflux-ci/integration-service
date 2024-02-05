@@ -121,12 +121,12 @@ var _ = Describe("ComponentController", func() {
 		}).Should(BeNil())
 	})
 
-	It("can fail when Reconcile fails to prepare the adapter when Application is not found", func() {
+	It("Should stop Reconciliation when Application is not found", func() {
 		Expect(k8sClient.Delete(ctx, hasApp)).Should(Succeed())
 		Eventually(func() error {
 			_, err := componentReconciler.Reconcile(ctx, req)
 			return err
-		}).ShouldNot(BeNil())
+		}).Should(BeNil())
 	})
 
 	It("can Reconcile function prepare the adapter and return the result of the reconcile handling operation", func() {
