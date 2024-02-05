@@ -46,6 +46,10 @@ func AnnotateBuildPipelineRunWithCreateSnapshotAnnotation(ctx context.Context, p
 	message := ""
 	status := ""
 	if ensureSnapshotExistsErr == nil {
+		if !metadata.HasAnnotation(pipelineRun, SnapshotNameLabel) {
+			// do nothing for in progress build PLR
+			return nil
+		}
 		message = fmt.Sprintf("Sucessfully created snapshot. See annotation %s for name", SnapshotNameLabel)
 		status = "success"
 	} else {
