@@ -566,8 +566,12 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 	})
 
 	When("Snapshot already exists", func() {
-		BeforeEach(func() {
-			adapter = NewAdapter(buildPipelineRun, hasComp, hasApp, logger, loader.NewMockLoader(), k8sClient, ctx)
+		It("ensures snapshot creation is skipped when snapshot already exists", func() {
+			var buf bytes.Buffer
+			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+
+			// check the behavior when there are multiple Snapshots associated with the build pipelineRun
+			adapter = NewAdapter(buildPipelineRun, hasComp, hasApp, log, loader.NewMockLoader(), k8sClient, ctx)
 			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
 					ContextKey: loader.ApplicationContextKey,
@@ -582,28 +586,80 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 					Resource:   hasSnapshot,
 				},
 				{
-					ContextKey: loader.AllSnapshotsContextKey,
-					Resource:   []applicationapiv1alpha1.Snapshot{*hasSnapshot},
+					ContextKey: loader.PipelineRunsContextKey,
+					Resource:   []tektonv1.PipelineRun{*buildPipelineRun},
 				},
 				{
-					ContextKey: loader.TaskRunContextKey,
-					Resource:   successfulTaskRun,
+					ContextKey: loader.AllSnapshotsForBuildPipelineRunContextKey,
+					Resource:   []applicationapiv1alpha1.Snapshot{*hasSnapshot, *hasSnapshot},
 				},
 				{
 					ContextKey: loader.ApplicationComponentsContextKey,
 					Resource:   []applicationapiv1alpha1.Component{*hasComp},
 				},
 			})
-			existingSnapshot, err := adapter.loader.GetSnapshotFromPipelineRun(adapter.client, adapter.context, buildPipelineRun)
-			Expect(err).To(BeNil())
-			Expect(existingSnapshot).ToNot(BeNil())
-		})
 
-		It("ensures snapshot creation is skipped when snapshot already exists", func() {
 			Eventually(func() bool {
 				result, err := adapter.EnsureSnapshotExists()
 				return !result.CancelRequest && err == nil
 			}, time.Second*10).Should(BeTrue())
+
+			expectedLogEntry := "The build pipelineRun is already associated with more than one existing Snapshot"
+			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
+			unexpectedLogEntry := "Created new Snapshot"
+			Expect(buf.String()).ShouldNot(ContainSubstring(unexpectedLogEntry))
+
+			// check the behavior when there is only one Snapshot associated with the build pipelineRun
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: loader.ApplicationContextKey,
+					Resource:   hasApp,
+				},
+				{
+					ContextKey: loader.ComponentContextKey,
+					Resource:   hasComp,
+				},
+				{
+					ContextKey: loader.SnapshotContextKey,
+					Resource:   hasSnapshot,
+				},
+				{
+					ContextKey: loader.PipelineRunsContextKey,
+					Resource:   []tektonv1.PipelineRun{*buildPipelineRun},
+				},
+				{
+					ContextKey: loader.AllSnapshotsForBuildPipelineRunContextKey,
+					Resource:   []applicationapiv1alpha1.Snapshot{*hasSnapshot},
+				},
+				{
+					ContextKey: loader.ApplicationComponentsContextKey,
+					Resource:   []applicationapiv1alpha1.Component{*hasComp},
+				},
+			})
+
+			Eventually(func() bool {
+				result, err := adapter.EnsureSnapshotExists()
+				return !result.CancelRequest && err == nil
+			}, time.Second*10).Should(BeTrue())
+
+			expectedLogEntry = "There is an existing Snapshot associated with this build pipelineRun, but the pipelineRun is not yet annotated"
+			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
+			expectedLogEntry = "Updated build pipelineRun"
+			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
+			unexpectedLogEntry = "Created new Snapshot"
+			Expect(buf.String()).ShouldNot(ContainSubstring(unexpectedLogEntry))
+
+			// The previous call should have added the Snapshot annotation to the buildPipelineRun
+			// now we test if that is detected correctly
+			Eventually(func() bool {
+				result, err := adapter.EnsureSnapshotExists()
+				return !result.CancelRequest && err == nil
+			}, time.Second*10).Should(BeTrue())
+
+			expectedLogEntry = "The build pipelineRun is already associated with existing Snapshot via annotation"
+			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
+			unexpectedLogEntry = "Created new Snapshot"
+			Expect(buf.String()).ShouldNot(ContainSubstring(unexpectedLogEntry))
 		})
 	})
 
@@ -760,17 +816,15 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		})
 
 		It("Can add an annotation to the build pipelinerun", func() {
-			pipelineRun, err := tekton.AnnotateBuildPipelineRun(adapter.context, buildPipelineRun, "test", "value", adapter.client)
+			err := tekton.AnnotateBuildPipelineRun(adapter.context, buildPipelineRun, "test", "value", adapter.client)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(pipelineRun).NotTo(BeNil())
-			Expect(pipelineRun.ObjectMeta.Annotations["test"]).To(Equal("value"))
+			Expect(buildPipelineRun.ObjectMeta.Annotations["test"]).To(Equal("value"))
 		})
 
 		It("can annotate the build pipelineRun with the Snapshot name", func() {
-			pipelineRun, err := adapter.annotateBuildPipelineRunWithSnapshot(buildPipelineRun, hasSnapshot)
+			err := adapter.annotateBuildPipelineRunWithSnapshot(buildPipelineRun, hasSnapshot)
 			Expect(err).To(BeNil())
-			Expect(pipelineRun).NotTo(BeNil())
-			Expect(pipelineRun.ObjectMeta.Annotations[tekton.SnapshotNameLabel]).To(Equal(hasSnapshot.Name))
+			Expect(buildPipelineRun.ObjectMeta.Annotations[tekton.SnapshotNameLabel]).To(Equal(hasSnapshot.Name))
 		})
 
 		It("Can annotate the build pipelineRun with the CreateSnapshot annotate", func() {
