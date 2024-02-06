@@ -52,6 +52,7 @@ const (
 	AutoReleasePlansContextKey
 	GetScenarioContextKey
 	AllEnvironmentsForScenarioContextKey
+	AllSnapshotsForBuildPipelineRunContextKey
 )
 
 func NewMockLoader() ObjectLoader {
@@ -243,4 +244,12 @@ func (l *mockLoader) GetAllEnvironmentsForScenario(c client.Client, ctx context.
 	}
 	environments, err := toolkit.GetMockedResourceAndErrorFromContext(ctx, AllEnvironmentsForScenarioContextKey, []applicationapiv1alpha1.Environment{})
 	return &environments, err
+}
+
+func (l *mockLoader) GetAllSnapshotsForBuildPipelineRun(c client.Client, ctx context.Context, pipelineRun *tektonv1.PipelineRun) (*[]applicationapiv1alpha1.Snapshot, error) {
+	if ctx.Value(AllSnapshotsForBuildPipelineRunContextKey) == nil {
+		return l.loader.GetAllSnapshotsForBuildPipelineRun(c, ctx, pipelineRun)
+	}
+	snapshots, err := toolkit.GetMockedResourceAndErrorFromContext(ctx, AllSnapshotsForBuildPipelineRunContextKey, []applicationapiv1alpha1.Snapshot{})
+	return &snapshots, err
 }

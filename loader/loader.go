@@ -58,6 +58,7 @@ type ObjectLoader interface {
 	GetAutoReleasePlansForApplication(c client.Client, ctx context.Context, application *applicationapiv1alpha1.Application) (*[]releasev1alpha1.ReleasePlan, error)
 	GetScenario(c client.Client, ctx context.Context, name, namespace string) (*v1beta1.IntegrationTestScenario, error)
 	GetAllEnvironmentsForScenario(c client.Client, ctx context.Context, integrationTestScenario *v1beta1.IntegrationTestScenario) (*[]applicationapiv1alpha1.Environment, error)
+	GetAllSnapshotsForBuildPipelineRun(c client.Client, ctx context.Context, pipelineRun *tektonv1.PipelineRun) (*[]applicationapiv1alpha1.Snapshot, error)
 }
 
 type loader struct{}
@@ -468,4 +469,22 @@ func (l *loader) GetAllEnvironmentsForScenario(c client.Client, ctx context.Cont
 		return nil, err
 	}
 	return &environments.Items, nil
+}
+
+// GetAllSnapshotsForBuildPipelineRun returns all Snapshots for the associated build pipelineRun.
+// In the case the List operation fails, an error will be returned.
+func (l *loader) GetAllSnapshotsForBuildPipelineRun(c client.Client, ctx context.Context, pipelineRun *tektonv1.PipelineRun) (*[]applicationapiv1alpha1.Snapshot, error) {
+	snapshots := &applicationapiv1alpha1.SnapshotList{}
+	opts := []client.ListOption{
+		client.InNamespace(pipelineRun.Namespace),
+		client.MatchingLabels{
+			gitops.BuildPipelineRunNameLabel: pipelineRun.Name,
+		},
+	}
+
+	err := c.List(ctx, snapshots, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &snapshots.Items, nil
 }

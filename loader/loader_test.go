@@ -103,8 +103,9 @@ var _ = Describe("Loader", Ordered, func() {
 				Name:      snapshotName,
 				Namespace: "default",
 				Labels: map[string]string{
-					gitops.SnapshotTypeLabel:      "component",
-					gitops.SnapshotComponentLabel: "component-sample",
+					gitops.SnapshotTypeLabel:         "component",
+					gitops.SnapshotComponentLabel:    "component-sample",
+					gitops.BuildPipelineRunNameLabel: "pipelinerun-sample",
 				},
 				Annotations: map[string]string{
 					gitops.PipelineAsCodeInstallationIDAnnotation: "123",
@@ -532,6 +533,14 @@ var _ = Describe("Loader", Ordered, func() {
 		Expect(snapshot.ObjectMeta).To(Equal(hasSnapshot.ObjectMeta))
 	})
 
+	It("ensures we can get the Snapshot from a Pipeline Run", func() {
+		snapshots, err := loader.GetAllSnapshotsForBuildPipelineRun(k8sClient, ctx, buildPipelineRun)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(snapshots).NotTo(BeNil())
+		Expect(*snapshots).To(HaveLen(1))
+		Expect((*snapshots)[0].Name).To(Equal(hasSnapshot.Name))
+	})
+
 	It("ensures we can get the Environment from a Pipeline Run", func() {
 		env, err := loader.GetEnvironmentFromIntegrationPipelineRun(k8sClient, ctx, buildPipelineRun)
 		Expect(err).To(BeNil())
@@ -606,6 +615,13 @@ var _ = Describe("Loader", Ordered, func() {
 		Expect(err).To(BeNil())
 		Expect(gottenReleasePlanItems).NotTo(BeNil())
 
+	})
+
+	It("can get all environments for integrationTestScenario", func() {
+		environments, err := loader.GetAllEnvironmentsForScenario(k8sClient, ctx, integrationTestScenario)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(*environments).To(HaveLen(1))
+		Expect((*environments)[0].Name).To(Equal(hasEnv.Name))
 	})
 
 	It("can get all environments for integrationTestScenario", func() {
