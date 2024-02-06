@@ -28,16 +28,16 @@ import (
 )
 
 // AnnotateBuildPipelineRun sets annotation for a build pipelineRun in defined context and returns that pipeline
-func AnnotateBuildPipelineRun(ctx context.Context, pipelineRun *tektonv1.PipelineRun, key, value string, cl client.Client) (*tektonv1.PipelineRun, error) {
+func AnnotateBuildPipelineRun(ctx context.Context, pipelineRun *tektonv1.PipelineRun, key, value string, cl client.Client) error {
 	patch := client.MergeFrom(pipelineRun.DeepCopy())
 
 	_ = metadata.SetAnnotation(&pipelineRun.ObjectMeta, key, value)
 
 	err := cl.Patch(ctx, pipelineRun, patch)
 	if err != nil {
-		return pipelineRun, err
+		return err
 	}
-	return pipelineRun, nil
+	return nil
 }
 
 // AnnotateBuildPipelineRunWithCreateSnapshotAnnotation sets annotation test.appstudio.openshift.io/create-snapshot-status to build pipelineRun with
@@ -64,6 +64,6 @@ func AnnotateBuildPipelineRunWithCreateSnapshotAnnotation(ctx context.Context, p
 	if err != nil {
 		return err
 	}
-	_, err = AnnotateBuildPipelineRun(ctx, pipelineRun, h.CreateSnapshotAnnotationName, string(jsonResult), cl)
+	err = AnnotateBuildPipelineRun(ctx, pipelineRun, h.CreateSnapshotAnnotationName, string(jsonResult), cl)
 	return err
 }

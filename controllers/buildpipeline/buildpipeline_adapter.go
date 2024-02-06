@@ -108,6 +108,36 @@ func (a *Adapter) EnsureSnapshotExists() (result controller.OperationResult, err
 		return controller.ContinueProcessing()
 	}
 
+	if _, found := a.pipelineRun.ObjectMeta.Annotations[tekton.SnapshotNameLabel]; found {
+		a.logger.Info("The build pipelineRun is already associated with existing Snapshot via annotation",
+			"snapshot.Name", a.pipelineRun.ObjectMeta.Annotations[tekton.SnapshotNameLabel])
+		canRemoveFinalizer = true
+		return controller.ContinueProcessing()
+	}
+
+	existingSnapshots, err := a.loader.GetAllSnapshotsForBuildPipelineRun(a.client, a.context, a.pipelineRun)
+	if err != nil {
+		a.logger.Error(err, "Failed to fetch Snapshots for the build pipelineRun")
+		return controller.RequeueWithError(err)
+	}
+	if len(*existingSnapshots) > 0 {
+		if len(*existingSnapshots) == 1 {
+			existingSnapshot := (*existingSnapshots)[0]
+			a.logger.Info("There is an existing Snapshot associated with this build pipelineRun, but the pipelineRun is not yet annotated",
+				"snapshot.Name", existingSnapshot.Name)
+			err := a.annotateBuildPipelineRunWithSnapshot(a.pipelineRun, &existingSnapshot)
+			if err != nil {
+				a.logger.Error(err, "Failed to update the build pipelineRun with snapshot name",
+					"pipelineRun.Name", a.pipelineRun.Name)
+				return controller.RequeueWithError(err)
+			}
+		} else {
+			a.logger.Info("The build pipelineRun is already associated with more than one existing Snapshot")
+		}
+		canRemoveFinalizer = true
+		return controller.ContinueProcessing()
+	}
+
 	expectedSnapshot, err := a.prepareSnapshotForPipelineRun(a.pipelineRun, a.component, a.application)
 	if err != nil {
 		// If PipelineRun result returns cusomized error update PLR annotation and exit
@@ -122,29 +152,6 @@ func (a *Adapter) EnsureSnapshotExists() (result controller.OperationResult, err
 		}
 
 		return controller.RequeueWithError(err)
-	}
-
-	allSnapshots, err := a.loader.GetAllSnapshots(a.client, a.context, a.application)
-	if err != nil {
-		return controller.RequeueWithError(err)
-	}
-	existingSnapshot := gitops.FindMatchingSnapshot(a.application, allSnapshots, expectedSnapshot)
-
-	if existingSnapshot != nil {
-		a.logger.Info("Found existing Snapshot",
-			"snapshot.Name", existingSnapshot.Name,
-			"snapshot.Spec.Components", existingSnapshot.Spec.Components)
-		// Annotate the build pipelineRun with the existing Snapshot if it hasn't been already annotated
-		if _, found := a.pipelineRun.ObjectMeta.Annotations[tekton.SnapshotNameLabel]; !found {
-			a.pipelineRun, err = a.annotateBuildPipelineRunWithSnapshot(a.pipelineRun, existingSnapshot)
-			if err != nil {
-				a.logger.Error(err, "Failed to update the build pipelineRun with new annotations",
-					"pipelineRun.Name", a.pipelineRun.Name)
-				return controller.RequeueWithError(err)
-			}
-		}
-		canRemoveFinalizer = true
-		return controller.ContinueProcessing()
 	}
 
 	err = a.client.Create(a.context, expectedSnapshot)
@@ -163,7 +170,7 @@ func (a *Adapter) EnsureSnapshotExists() (result controller.OperationResult, err
 		"snapshot.Name", expectedSnapshot.Name,
 		"snapshot.Spec.Components", expectedSnapshot.Spec.Components)
 
-	a.pipelineRun, err = a.annotateBuildPipelineRunWithSnapshot(a.pipelineRun, expectedSnapshot)
+	err = a.annotateBuildPipelineRunWithSnapshot(a.pipelineRun, expectedSnapshot)
 	if err != nil {
 		a.logger.Error(err, "Failed to update the build pipelineRun with new annotations",
 			"pipelineRun.Name", a.pipelineRun.Name)
@@ -305,11 +312,11 @@ func (a *Adapter) getSucceededBuildPipelineRunsForComponent(component *applicati
 	return &succeededPipelineRuns, nil
 }
 
-func (a *Adapter) annotateBuildPipelineRunWithSnapshot(pipelineRun *tektonv1.PipelineRun, snapshot *applicationapiv1alpha1.Snapshot) (*tektonv1.PipelineRun, error) {
-	pipelineRun, err := tekton.AnnotateBuildPipelineRun(a.context, pipelineRun, tekton.SnapshotNameLabel, snapshot.Name, a.client)
+func (a *Adapter) annotateBuildPipelineRunWithSnapshot(pipelineRun *tektonv1.PipelineRun, snapshot *applicationapiv1alpha1.Snapshot) error {
+	err := tekton.AnnotateBuildPipelineRun(a.context, pipelineRun, tekton.SnapshotNameLabel, snapshot.Name, a.client)
 	if err == nil {
 		a.logger.LogAuditEvent("Updated build pipelineRun", pipelineRun, h.LogActionUpdate,
 			"snapshot.Name", snapshot.Name)
 	}
-	return pipelineRun, err
+	return err
 }
