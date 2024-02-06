@@ -14,4 +14,4 @@ line-length=72
 [contrib-title-conventional-commits]
 
 [ignore-by-author-name]
-regex=((.*dependabot.*)|(.*rhtap.*)|(red-hat-trusted-app-pipeline))
+regex=((.*dependabot.*)|(red-hat-konflux))
