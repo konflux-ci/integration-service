@@ -274,8 +274,8 @@ func (ipro *IntegrationPipelineRunOutcome) LogResults(logger logr.Logger) {
 	}
 }
 
-// GetIntegrationPipelineRunOutcome returns the IntegrationPipelineRunOutcome which can be used for further inspection of
-// the results and general outcome
+// GetIntegrationPipelineRunOutcome returns the IntegrationPipelineRunOutcome
+// which can be used for further inspection of the results and general outcome
 // This function must be called on the finished pipeline
 func GetIntegrationPipelineRunOutcome(adapterClient client.Client, ctx context.Context, pipelineRun *tektonv1.PipelineRun) (*IntegrationPipelineRunOutcome, error) {
 
@@ -353,6 +353,25 @@ func GetAllChildTaskRunsForPipelineRun(adapterClient client.Client, ctx context.
 		taskRuns = append(taskRuns, integrationTaskRun)
 	}
 	sort.Sort(SortTaskRunsByStartTime(taskRuns))
+	return taskRuns, nil
+}
+
+// GetAllTaskRunsWithMatchingPipelineLabel finds all Child TaskRuns
+// whose "tekton.dev/pipeline" label points to the given PipelineRun
+func GetAllTaskRunsWithMatchingPipelineLabel(adapterClient client.Client, ctx context.Context, pipelineRun *tektonv1.PipelineRun) (*tektonv1.TaskRunList, error) {
+	taskRuns := &tektonv1.TaskRunList{}
+	opts := []client.ListOption{
+		client.InNamespace(pipelineRun.Namespace),
+		client.MatchingLabels{
+			"tekton.dev/pipeline": pipelineRun.Name,
+		},
+	}
+
+	err := adapterClient.List(ctx, taskRuns, opts...)
+	if err != nil {
+		return nil, err
+	}
+
 	return taskRuns, nil
 }
 
