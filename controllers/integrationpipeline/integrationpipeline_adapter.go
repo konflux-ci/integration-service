@@ -19,8 +19,9 @@ package integrationpipeline
 import (
 	"context"
 	"fmt"
-	"k8s.io/apimachinery/pkg/api/errors"
 	"strings"
+
+	"k8s.io/apimachinery/pkg/api/errors"
 
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/gitops"
@@ -166,6 +167,20 @@ func GetIntegrationPipelineRunStatus(adapterClient client.Client, ctx context.Co
 		} else {
 			return intgteststat.IntegrationTestStatusInProgress, fmt.Sprintf("Integration test is running as pipeline run '%s'", pipelineRun.Name), nil
 		}
+	}
+
+	taskRuns, err := h.GetAllTaskRunsWithMatchingPipelineLabel(adapterClient, ctx, pipelineRun)
+	if err != nil {
+		return intgteststat.IntegrationTestStatusTestInvalid, fmt.Sprintf("Unable to get all the TaskRun(s) related to the pipelineRun '%s'", pipelineRun.Name), err
+	}
+
+	taskRunsInClusterCount := len(taskRuns.Items)
+	taskRunsInChildRefCount := len(pipelineRun.Status.ChildReferences)
+
+	if taskRunsInClusterCount != taskRunsInChildRefCount {
+		return intgteststat.IntegrationTestStatusTestInvalid, fmt.Sprintf("Failed to determine status of pipelinerun '%s'"+
+			", due to mismatch in TaskRuns present in cluster (%v) and those referenced within childReferences (%v)",
+			pipelineRun.Name, taskRunsInClusterCount, taskRunsInChildRefCount), nil
 	}
 
 	outcome, err := h.GetIntegrationPipelineRunOutcome(adapterClient, ctx, pipelineRun)
