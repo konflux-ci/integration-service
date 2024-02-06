@@ -2,15 +2,23 @@ package main
 
 import (
 	"context"
+	"flag"
 	"sort"
 
 	"github.com/go-logr/logr"
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	releasev1alpha1 "github.com/redhat-appstudio/release-service/api/v1alpha1"
+	zap2 "go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
+	core "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/selection"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/config"
+	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 )
 
 var (
@@ -27,6 +35,84 @@ func init() {
 type snapshotData struct {
 	environmentBinding applicationapiv1alpha1.SnapshotEnvironmentBinding
 	release            releasev1alpha1.Release
+}
+
+// Iterates tenant namespaces and garbage-collect their snapshots
+func garbageCollectSnapshots(
+	cl client.Client,
+	logger logr.Logger,
+	prSnapshotsToKeep, nonPrSnapshotsToKeep int,
+) error {
+	namespaces, err := getTenantNamespaces(cl, logger)
+	if err != nil {
+		return err
+	}
+
+	logger.V(1).Info("Snapshot garbage collection started...")
+	for _, ns := range namespaces {
+		logger.V(1).Info("Processing namespace", "namespace", ns.Name)
+
+		snapToData := make(map[string]snapshotData)
+		snapToData, err = getSnapshotsForNSReleases(cl, snapToData, ns.Name, logger)
+		if err != nil {
+			logger.Error(
+				err,
+				"Failed getting releases associated with snapshots. Skipping namespace",
+				"namespace",
+				ns.Name,
+			)
+			continue
+		}
+
+		snapToData, err = getSnapshotsForNSBindings(cl, snapToData, ns.Name, logger)
+		if err != nil {
+			logger.Error(
+				err,
+				"Failed getting bindings associated with snapshots. Skipping namespace",
+				"namespace",
+				ns.Name,
+			)
+			continue
+		}
+
+		var candidates []applicationapiv1alpha1.Snapshot
+		candidates, err = getUnassociatedNSSnapshots(cl, snapToData, ns.Name, logger)
+		if err != nil {
+			logger.Error(
+				err,
+				"Failed getting unassociated snapshots. Skipping namespace",
+				"namespace", ns.Name,
+			)
+			continue
+		}
+
+		candidates = getSnapshotsForRemoval(
+			cl, candidates, prSnapshotsToKeep, nonPrSnapshotsToKeep, logger,
+		)
+
+		deleteSnapshots(cl, candidates, logger)
+	}
+	return nil
+}
+
+// Gets all tenant namespaces
+func getTenantNamespaces(
+	cl client.Client, logger logr.Logger) ([]core.Namespace, error) {
+	req, _ := labels.NewRequirement(
+		"toolchain.dev.openshift.com/type", selection.In, []string{"tenant"},
+	)
+	selector := labels.NewSelector().Add(*req)
+	namespaceList := &core.NamespaceList{}
+	err := cl.List(
+		context.Background(),
+		namespaceList,
+		&client.ListOptions{LabelSelector: selector},
+	)
+	if err != nil {
+		logger.Error(err, "Failed listing namespaces")
+		return nil, err
+	}
+	return namespaceList.Items, nil
 }
 
 // Gets a map to allow to tell with direct lookup if a snapshot is associated with
@@ -178,7 +264,46 @@ func deleteSnapshots(
 	for _, snap := range snapshots {
 		err := cl.Delete(context.Background(), &snap)
 		if err != nil {
-			logger.Error(err, "Failed to delete snapshot")
+			logger.Error(err, "Failed to delete snapshot.", "snapshot.name", snap.Name)
 		}
+	}
+}
+
+func main() {
+	var prSnapshotsToKeep, nonPrSnapshotsToKeep int
+	flag.IntVar(
+		&prSnapshotsToKeep,
+		"pr-snapshots-to-keep",
+		512,
+		"Number of PR snapshots to keep after garbage collection",
+	)
+	flag.IntVar(
+		&nonPrSnapshotsToKeep,
+		"non-pr-snapshots-to-keep",
+		512,
+		"Number of non-PR snapshots to keep after garbage collection",
+	)
+	opts := zap.Options{
+		Development: false,
+		TimeEncoder: zapcore.RFC3339TimeEncoder,
+		ZapOpts:     []zap2.Option{zap2.WithCaller(true)},
+	}
+	opts.BindFlags(flag.CommandLine)
+	flag.Parse()
+
+	logger := zap.New(zap.UseFlagOptions(&opts))
+
+	var err error
+
+	cl, err := client.New(config.GetConfigOrDie(), client.Options{Scheme: scheme})
+	if err != nil {
+		logger.Error(err, "Snapshots garbage collection failed creating client")
+		panic(err.Error())
+	}
+
+	err = garbageCollectSnapshots(cl, logger, prSnapshotsToKeep, nonPrSnapshotsToKeep)
+	if err != nil {
+		logger.Error(err, "Snapshots garbage collection failed")
+		panic(err.Error())
 	}
 }
