@@ -3,6 +3,7 @@ module github.com/redhat-appstudio/integration-service
 go 1.20
 
 require (
+	github.com/agiledragon/gomonkey/v2 v2.11.0
 	github.com/bradleyfalzon/ghinstallation/v2 v2.9.0
 	github.com/go-logr/logr v1.4.1
 	github.com/google/go-containerregistry v0.19.0
