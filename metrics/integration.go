@@ -29,7 +29,7 @@ var (
 		prometheus.HistogramOpts{
 			Name:    "integration_svc_response_seconds",
 			Help:    "Integration service response time from the moment the buildPipelineRun is completed till the snapshot is marked as in progress status",
-			Buckets: []float64{0.5, 1, 2, 3, 4, 5, 6, 7, 10, 15, 30},
+			Buckets: []float64{0.5, 1, 2, 3, 4, 5, 6, 7, 10, 15, 30, 60, 120, 240},
 		},
 	)
 
