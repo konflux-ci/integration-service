@@ -24,9 +24,11 @@ COPY status/ status/
 COPY git/ git/
 COPY loader/ loader/
 COPY cache/ cache/
+COPY cmd/ cmd/
 
 # Build
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -o manager main.go
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -o manager main.go \
+ && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -o snapshotgc cmd/snapshotgc/snapshotgc.go
 
 ARG ENABLE_WEBHOOKS=true
 ENV ENABLE_WEBHOOKS=${ENABLE_WEBHOOKS}
@@ -34,6 +36,7 @@ ENV ENABLE_WEBHOOKS=${ENABLE_WEBHOOKS}
 # Refer to https://catalog.redhat.com/software/containers/ubi8/ubi-minimal/5c359a62bed8bd75a2c3fba8 for more details
 FROM registry.access.redhat.com/ubi8/ubi-minimal:8.9-1108.1706795067
 COPY --from=builder /opt/app-root/src/manager /
+COPY --from=builder /opt/app-root/src/snapshotgc /
 
 # It is mandatory to set these labels
 LABEL description="RHTAP Integration Service"
