@@ -170,7 +170,7 @@ func GetIntegrationPipelineRunStatus(adapterClient client.Client, ctx context.Co
 
 	outcome, err := h.GetIntegrationPipelineRunOutcome(adapterClient, ctx, pipelineRun)
 	if err != nil {
-		return intgteststat.IntegrationTestStatusTestFail, "", fmt.Errorf("failed to evaluate inegration test results: %w", err)
+		return intgteststat.IntegrationTestStatusTestFail, "", fmt.Errorf("failed to evaluate integration test results: %w", err)
 	}
 
 	if !outcome.HasPipelineRunPassedTesting() {
