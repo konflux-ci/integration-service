@@ -356,7 +356,7 @@ var _ = Describe("Integration pipeline", func() {
 
 		It("can add and remove finalizer from IntegrationPipelineRun", func() {
 			var buf bytes.Buffer
-			logEntry := "Removed Finalizer from the Integration PipelineRun"
+			logEntry := "Removed Finalizer from the PipelineRun"
 
 			newIntegrationPipelineRun.WithFinalizer(helpers.IntegrationPipelineRunFinalizer)
 			Expect(newIntegrationPipelineRun.Finalizers).To(ContainElement(ContainSubstring(helpers.IntegrationPipelineRunFinalizer)))
