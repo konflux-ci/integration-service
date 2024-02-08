@@ -25,3 +25,6 @@ resources:
 - prometheus_service_account.yaml
 - prometheus_viewer_role.yaml
 - prometheus_role_binding.yaml
+
+# Snapshot garbage collector
+- snapshotgc_rbac.yaml
