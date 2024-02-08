@@ -85,7 +85,7 @@ func (a *Adapter) EnsureStatusReportedInSnapshot() (controller.OperationResult, 
 			return err
 		}
 
-		pipelinerunStatus, detail, err = GetIntegrationPipelineRunStatus(a.client, a.context, a.pipelineRun)
+		pipelinerunStatus, detail, err = a.GetIntegrationPipelineRunStatus(a.client, a.context, a.pipelineRun)
 		if err != nil {
 			return err
 		}
@@ -158,7 +158,7 @@ func (a *Adapter) EnsureEphemeralEnvironmentsCleanedUp() (controller.OperationRe
 }
 
 // GetIntegrationPipelineRunStatus checks the Tekton results for a given PipelineRun and returns status of test.
-func GetIntegrationPipelineRunStatus(adapterClient client.Client, ctx context.Context, pipelineRun *tektonv1.PipelineRun) (intgteststat.IntegrationTestStatus, string, error) {
+func (a *Adapter) GetIntegrationPipelineRunStatus(adapterClient client.Client, ctx context.Context, pipelineRun *tektonv1.PipelineRun) (intgteststat.IntegrationTestStatus, string, error) {
 	// Check if the pipelineRun finished from the condition of status
 	if !h.HasPipelineRunFinished(pipelineRun) {
 		// Mark the pipelineRun's status as "Deleted" if its not finished yet and is marked for deletion (with a non-nil deletionTimestamp)
@@ -169,12 +169,12 @@ func GetIntegrationPipelineRunStatus(adapterClient client.Client, ctx context.Co
 		}
 	}
 
-	taskRuns, err := h.GetAllTaskRunsWithMatchingPipelineLabel(adapterClient, ctx, pipelineRun)
+	taskRuns, err := a.loader.GetAllTaskRunsWithMatchingPipelineLabel(adapterClient, ctx, pipelineRun)
 	if err != nil {
 		return intgteststat.IntegrationTestStatusTestInvalid, fmt.Sprintf("Unable to get all the TaskRun(s) related to the pipelineRun '%s'", pipelineRun.Name), err
 	}
 
-	taskRunsInClusterCount := len(taskRuns.Items)
+	taskRunsInClusterCount := len(*taskRuns)
 	taskRunsInChildRefCount := len(pipelineRun.Status.ChildReferences)
 
 	if taskRunsInClusterCount != taskRunsInChildRefCount {

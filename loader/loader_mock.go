@@ -53,6 +53,7 @@ const (
 	GetScenarioContextKey
 	AllEnvironmentsForScenarioContextKey
 	AllSnapshotsForBuildPipelineRunContextKey
+	AllTaskRunsWithMatchingPipelineLabelContextKey
 )
 
 func NewMockLoader() ObjectLoader {
@@ -252,4 +253,12 @@ func (l *mockLoader) GetAllSnapshotsForBuildPipelineRun(c client.Client, ctx con
 	}
 	snapshots, err := toolkit.GetMockedResourceAndErrorFromContext(ctx, AllSnapshotsForBuildPipelineRunContextKey, []applicationapiv1alpha1.Snapshot{})
 	return &snapshots, err
+}
+
+func (l *mockLoader) GetAllTaskRunsWithMatchingPipelineLabel(c client.Client, ctx context.Context, pipelineRun *tektonv1.PipelineRun) (*[]tektonv1.TaskRun, error) {
+	if ctx.Value(AllTaskRunsWithMatchingPipelineLabelContextKey) == nil {
+		return l.loader.GetAllTaskRunsWithMatchingPipelineLabel(c, ctx, pipelineRun)
+	}
+	taskRuns, err := toolkit.GetMockedResourceAndErrorFromContext(ctx, AllTaskRunsWithMatchingPipelineLabelContextKey, []tektonv1.TaskRun{})
+	return &taskRuns, err
 }

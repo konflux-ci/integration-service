@@ -356,25 +356,6 @@ func GetAllChildTaskRunsForPipelineRun(adapterClient client.Client, ctx context.
 	return taskRuns, nil
 }
 
-// GetAllTaskRunsWithMatchingPipelineLabel finds all Child TaskRuns
-// whose "tekton.dev/pipeline" label points to the given PipelineRun
-func GetAllTaskRunsWithMatchingPipelineLabel(adapterClient client.Client, ctx context.Context, pipelineRun *tektonv1.PipelineRun) (*tektonv1.TaskRunList, error) {
-	taskRuns := &tektonv1.TaskRunList{}
-	opts := []client.ListOption{
-		client.InNamespace(pipelineRun.Namespace),
-		client.MatchingLabels{
-			"tekton.dev/pipeline": pipelineRun.Name,
-		},
-	}
-
-	err := adapterClient.List(ctx, taskRuns, opts...)
-	if err != nil {
-		return nil, err
-	}
-
-	return taskRuns, nil
-}
-
 // HasPipelineRunSucceeded returns a boolean indicating whether the PipelineRun succeeded or not.
 // If the object passed to this function is not a PipelineRun, the function will return false.
 func HasPipelineRunSucceeded(object client.Object) bool {

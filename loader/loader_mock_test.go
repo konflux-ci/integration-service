@@ -365,4 +365,19 @@ var _ = Describe("Release Adapter", Ordered, func() {
 			Expect(err).ToNot(HaveOccurred())
 		})
 	})
+
+	Context("When calling GetAllTaskRunsWithMatchingPipelineLabel", func() {
+		It("returns TaskRuns and error from the context", func() {
+			taskRuns := []tektonv1.TaskRun{}
+			mockContext := toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: AllTaskRunsWithMatchingPipelineLabelContextKey,
+					Resource:   taskRuns,
+				},
+			})
+			resource, err := loader.GetAllTaskRunsWithMatchingPipelineLabel(nil, mockContext, nil)
+			Expect(resource).To(Equal(&taskRuns))
+			Expect(err).ToNot(HaveOccurred())
+		})
+	})
 })
