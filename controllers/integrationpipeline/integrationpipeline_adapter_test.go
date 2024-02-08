@@ -437,9 +437,13 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 					ContextKey: loader.ApplicationComponentsContextKey,
 					Resource:   []applicationapiv1alpha1.Component{*hasComp},
 				},
+				{
+					ContextKey: loader.AllTaskRunsWithMatchingPipelineLabelContextKey,
+					Resource:   []tektonv1.TaskRun{*successfulTaskRun},
+				},
 			})
 			existingSnapshot, err := adapter.loader.GetSnapshotFromPipelineRun(adapter.client, adapter.context, integrationPipelineRunComponent)
-			Expect(err).To(BeNil())
+			Expect(err).ToNot(HaveOccurred())
 			Expect(existingSnapshot).ToNot(BeNil())
 		})
 
@@ -449,7 +453,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			Expect(!result.CancelRequest && err == nil).To(BeTrue())
 
 			statuses, err := gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(hasSnapshot)
-			Expect(err).To(BeNil())
+			Expect(err).ToNot(HaveOccurred())
 
 			detail, ok := statuses.GetScenarioStatus(integrationTestScenario.Name)
 			Expect(ok).To(BeTrue())
@@ -589,6 +593,10 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 						ContextKey: loader.ApplicationComponentsContextKey,
 						Resource:   []applicationapiv1alpha1.Component{*hasComp},
 					},
+					{
+						ContextKey: loader.AllTaskRunsWithMatchingPipelineLabelContextKey,
+						Resource:   []tektonv1.TaskRun{*failedTaskRun},
+					},
 				})
 			})
 
@@ -605,7 +613,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				Expect(!result.CancelRequest && err == nil).To(BeTrue())
 
 				statuses, err := gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(hasSnapshot)
-				Expect(err).To(BeNil())
+				Expect(err).ToNot(HaveOccurred())
 
 				detail, ok := statuses.GetScenarioStatus(integrationTestScenarioFailed.Name)
 				Expect(ok).To(BeTrue())
@@ -894,6 +902,10 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 					ContextKey: loader.ApplicationComponentsContextKey,
 					Resource:   []applicationapiv1alpha1.Component{*hasComp},
 				},
+				{
+					ContextKey: loader.AllTaskRunsWithMatchingPipelineLabelContextKey,
+					Resource:   []tektonv1.TaskRun{*failedTaskRun},
+				},
 			})
 		})
 
@@ -909,7 +921,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			Expect(!result.CancelRequest && err == nil).To(BeTrue())
 
 			statuses, err := gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(snapshotPREvent)
-			Expect(err).To(BeNil())
+			Expect(err).ToNot(HaveOccurred())
 
 			detail, ok := statuses.GetScenarioStatus(integrationTestScenarioFailed.Name)
 			Expect(ok).To(BeTrue())
@@ -954,6 +966,8 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 
 			now := metav1.NewTime(metav1.Now().Add(time.Second * 1))
 			intgPipelineRunWithDeletionTimestamp.SetDeletionTimestamp(&now)
+
+			adapter = NewAdapter(intgPipelineRunWithDeletionTimestamp, hasApp, hasSnapshot, logger, loader.NewMockLoader(), k8sClient, ctx)
 		})
 
 		AfterEach(func() {
@@ -962,9 +976,9 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		})
 
 		It("ensures test status in snapshot is updated to failed", func() {
-			status, detail, err := GetIntegrationPipelineRunStatus(adapter.client, adapter.context, intgPipelineRunWithDeletionTimestamp)
+			status, detail, err := adapter.GetIntegrationPipelineRunStatus(adapter.client, adapter.context, intgPipelineRunWithDeletionTimestamp)
 
-			Expect(err).To(BeNil())
+			Expect(err).ToNot(HaveOccurred())
 			Expect(status).To(Equal(intgteststat.IntegrationTestStatusDeleted))
 			Expect(detail).To(ContainSubstring(fmt.Sprintf("Integration test which is running as pipeline run '%s', has been deleted", intgPipelineRunWithDeletionTimestamp.Name)))
 			Expect(intgPipelineRunWithDeletionTimestamp.DeletionTimestamp).ToNot(BeNil())
@@ -1073,6 +1087,13 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			}
 			Expect(k8sClient.Status().Update(ctx, intgPipelineInvalidResult)).Should(Succeed())
 
+			adapter = NewAdapter(intgPipelineInvalidResult, hasApp, hasSnapshot, logger, loader.NewMockLoader(), k8sClient, ctx)
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: loader.AllTaskRunsWithMatchingPipelineLabelContextKey,
+					Resource:   []tektonv1.TaskRun{*taskRunInvalidResult},
+				},
+			})
 		})
 
 		AfterEach(func() {
@@ -1083,11 +1104,44 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		})
 
 		It("ensures test status in snapshot is updated to failed", func() {
-			status, detail, err := GetIntegrationPipelineRunStatus(adapter.client, adapter.context, intgPipelineInvalidResult)
+			status, detail, err := adapter.GetIntegrationPipelineRunStatus(adapter.client, adapter.context, intgPipelineInvalidResult)
 
-			Expect(err).To(BeNil())
+			Expect(err).ToNot(HaveOccurred())
 			Expect(status).To(Equal(intgteststat.IntegrationTestStatusTestFail))
 			Expect(detail).To(ContainSubstring("Invalid result:"))
+		})
+	})
+
+	When("GetIntegrationPipelineRunStatus is called with a PLR with TaskRun, mentioned in its ChildReferences field, missing from the cluster", func() {
+		BeforeEach(func() {
+			adapter = NewAdapter(integrationPipelineRunComponent, hasApp, hasSnapshot, logger, loader.NewMockLoader(), k8sClient, ctx)
+		})
+
+		It("ensures test status in snapshot is updated to failed", func() {
+			status, detail, err := adapter.GetIntegrationPipelineRunStatus(adapter.client, adapter.context, integrationPipelineRunComponent)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(status).To(Equal(intgteststat.IntegrationTestStatusTestInvalid))
+			Expect(detail).To(ContainSubstring(fmt.Sprintf("Failed to determine status of pipelinerun '%s', due to mismatch"+
+				" in TaskRuns present in cluster (0) and those referenced within childReferences (1)", integrationPipelineRunComponent.Name)))
+		})
+	})
+
+	When("GetIntegrationPipelineRunStatus is called with a PLR with TaskRun, mentioned in its ChildReferences field, present within the cluster", func() {
+		BeforeEach(func() {
+			adapter = NewAdapter(integrationPipelineRunComponent, hasApp, hasSnapshot, logger, loader.NewMockLoader(), k8sClient, ctx)
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: loader.AllTaskRunsWithMatchingPipelineLabelContextKey,
+					Resource:   []tektonv1.TaskRun{*successfulTaskRun},
+				},
+			})
+		})
+
+		It("ensures test status in snapshot is updated to failed", func() {
+			status, detail, err := adapter.GetIntegrationPipelineRunStatus(adapter.client, adapter.context, integrationPipelineRunComponent)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(status).To(Equal(intgteststat.IntegrationTestStatusTestPassed))
+			Expect(detail).To(ContainSubstring("Integration test passed"))
 		})
 	})
 })
