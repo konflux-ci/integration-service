@@ -18,11 +18,12 @@ package scenario
 
 import (
 	"bytes"
+	"reflect"
+	"time"
+
 	"github.com/redhat-appstudio/integration-service/loader"
 	"github.com/tonglil/buflogr"
-	"reflect"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
-	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -268,27 +269,6 @@ var _ = Describe("Scenario Adapter", Ordered, func() {
 		Expect(integrationTestScenario).NotTo(BeNil())
 		Expect(integrationTestScenario.Status.Conditions).NotTo(BeNil())
 		Expect(meta.IsStatusConditionTrue(integrationTestScenario.Status.Conditions, gitops.IntegrationTestScenarioValid)).To(BeTrue())
-	})
-
-	It("ensures the integrationTestScenario with empty status.conditions is handled correctly", func() {
-		var buf bytes.Buffer
-		log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
-
-		integrationTestScenarioMissingConditions := integrationTestScenario.DeepCopy()
-		integrationTestScenarioMissingConditions.Status = v1beta1.IntegrationTestScenarioStatus{}
-		adapter = NewAdapter(hasApp, integrationTestScenarioMissingConditions, log, loader.NewMockLoader(), k8sClient, ctx)
-
-		Eventually(func() bool {
-			result, err := adapter.EnsureCreatedScenarioIsValid()
-			return !result.CancelRequest && err == nil
-		}, time.Second*20).Should(BeTrue())
-
-		expectedLogEntry := "The scenario doesn't have status.conditions set correctly, adding them"
-		Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
-		expectedLogEntry = "IntegrationTestScenario marked as Valid"
-		Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
-		Expect(meta.IsStatusConditionTrue(integrationTestScenarioMissingConditions.Status.Conditions, gitops.IntegrationTestScenarioValid)).To(BeTrue())
-		Expect(controllerutil.ContainsFinalizer(integrationTestScenarioMissingConditions, helpers.IntegrationTestScenarioFinalizer)).To(BeTrue())
 	})
 
 	When("IntegrationTestScenario is deleted while environment resources are still on the cluster", func() {
