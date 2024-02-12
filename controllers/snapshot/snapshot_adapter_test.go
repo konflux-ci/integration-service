@@ -1145,7 +1145,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			// Set snapshot creation time to 3 hours ago
 			// time.Sub takes a time.Time and returns a time.Duration.  Time.Add takes a time.Duration
 			// and returns a time.Time.  Why?  Who knows.  We want the latter, so we add -3 hours here
-			hasSnapshot.CreationTimestamp = metav1.NewTime(time.Now().Add(-1 * RetryReleaseTimeout))
+			hasSnapshot.CreationTimestamp = metav1.NewTime(time.Now().Add(-1 * SnapshotRetryTimeout))
 
 			adapter = NewAdapter(hasSnapshot, hasApp, hasComp, log, loader.NewMockLoader(), k8sClient, ctx)
 			testErr := fmt.Errorf("something went wrong with the release")

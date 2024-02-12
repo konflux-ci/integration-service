@@ -1072,4 +1072,15 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		logEntry = "Removed Finalizer from the Component"
 		Expect(buf.String()).Should(ContainSubstring(logEntry))
 	})
+
+	It("Returns RequeueWithError if the object is less than timeout threshold", func() {
+		hasCompTimeout := time.Duration(3 * time.Hour)
+
+		result := helpers.IsObjectYoungerThanThreshold(hasComp, hasCompTimeout)
+		Expect(result).To(BeTrue())
+		hasComp.CreationTimestamp = metav1.NewTime(time.Now().Add(-1 * hasCompTimeout))
+		result = helpers.IsObjectYoungerThanThreshold(hasComp, hasCompTimeout)
+		Expect(result).To(BeFalse())
+	})
+
 })
