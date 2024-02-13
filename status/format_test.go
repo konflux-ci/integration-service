@@ -147,14 +147,16 @@ var _ = Describe("Formatters", func() {
 	})
 
 	It("can construct a comment", func() {
-		comment, err := status.FormatCommentForFinishedPipelineRun("example-title", taskRuns)
+		text, err := status.FormatTestsSummary(taskRuns)
+		Expect(err).To(Succeed())
+		comment, err := status.FormatComment("example-title", text)
 		Expect(err).To(BeNil())
 		Expect(comment).To(ContainSubstring("### example-title"))
 		Expect(comment).To(ContainSubstring(expectedSummary))
 	})
 
 	It("can construct a summary", func() {
-		summary, err := status.FormatSummary(taskRuns)
+		summary, err := status.FormatTestsSummary(taskRuns)
 		Expect(err).To(BeNil())
 		Expect(summary).To(Equal(expectedSummary))
 	})
@@ -182,7 +184,7 @@ var _ = Describe("Formatters", func() {
 		})
 
 		It("won't fail when summary is generated from invalid result", func() {
-			_, err := status.FormatSummary([]*helpers.TaskRun{taskRun})
+			_, err := status.FormatTestsSummary([]*helpers.TaskRun{taskRun})
 			Expect(err).To(Succeed())
 		})
 	})
