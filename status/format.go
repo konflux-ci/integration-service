@@ -48,8 +48,8 @@ type CommentTemplateData struct {
 	Summary string
 }
 
-// FormatSummary builds a markdown summary for a list of integration TaskRuns.
-func FormatSummary(taskRuns []*helpers.TaskRun) (string, error) {
+// FormatTestsSummary builds a markdown summary for a list of integration TaskRuns.
+func FormatTestsSummary(taskRuns []*helpers.TaskRun) (string, error) {
 	funcMap := template.FuncMap{
 		"formatTaskName":  FormatTaskName,
 		"formatNamespace": FormatNamespace,
@@ -66,26 +66,10 @@ func FormatSummary(taskRuns []*helpers.TaskRun) (string, error) {
 	return buf.String(), nil
 }
 
-// FormatCommentForFinishedPipelineRun builds a markdown comment for a list of finished integration TaskRuns
-func FormatCommentForFinishedPipelineRun(title string, results []*helpers.TaskRun) (string, error) {
-	summary, err := FormatSummary(results)
-	if err != nil {
-		return "", err
-	}
-
+// FormatComment build a markdown comment with the details in text
+func FormatComment(title, text string) (string, error) {
 	buf := bytes.Buffer{}
-	data := CommentTemplateData{Title: title, Summary: summary}
-	t := template.Must(template.New("").Parse(commentTemplate))
-	if err := t.Execute(&buf, data); err != nil {
-		return "", err
-	}
-	return buf.String(), nil
-}
-
-// FormatCommentForDetail build a markdown comment for the details of unfinished integrationTest
-func FormatCommentForDetail(title, detail string) (string, error) {
-	buf := bytes.Buffer{}
-	data := CommentTemplateData{Title: title, Summary: detail}
+	data := CommentTemplateData{Title: title, Summary: text}
 	t := template.Must(template.New("").Parse(commentTemplate))
 	if err := t.Execute(&buf, data); err != nil {
 		return "", err

@@ -18,13 +18,13 @@ package statusreport
 
 import (
 	"bytes"
-	"context"
 	"fmt"
 	"reflect"
 	"time"
 
 	"github.com/redhat-appstudio/integration-service/api/v1beta1"
 	"github.com/tonglil/buflogr"
+	"go.uber.org/mock/gomock"
 	"k8s.io/apimachinery/pkg/api/meta"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -44,33 +44,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-type MockStatusAdapter struct {
-	Reporter          *MockStatusReporter
-	GetReportersError error
-}
-
-type MockStatusReporter struct {
-	Called            bool
-	ReportStatusError error
-}
-
-func (r *MockStatusReporter) ReportStatusForSnapshot(client.Client, context.Context, *helpers.IntegrationLogger, *applicationapiv1alpha1.Snapshot) error {
-	r.Called = true
-	r.ReportStatusError = nil
-	return r.ReportStatusError
-}
-
-func (a *MockStatusAdapter) GetReporters(object client.Object) ([]status.Reporter, error) {
-	return []status.Reporter{a.Reporter}, a.GetReportersError
-}
-
 var _ = Describe("Snapshot Adapter", Ordered, func() {
 	var (
-		adapter        *Adapter
-		logger         helpers.IntegrationLogger
-		statusAdapter  *MockStatusAdapter
-		statusReporter *MockStatusReporter
-		buf            bytes.Buffer
+		adapter *Adapter
+		logger  helpers.IntegrationLogger
+		buf     bytes.Buffer
 
 		hasComp                 *applicationapiv1alpha1.Component
 		hasComp2                *applicationapiv1alpha1.Component
@@ -270,10 +248,19 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		})
 
 		It("ensures the statusReport is called", func() {
+
+			ctrl := gomock.NewController(GinkgoT())
+			mockReporter := status.NewMockReporterInterface(ctrl)
+			mockStatus := status.NewMockStatusInterface(ctrl)
+
+			mockReporter.EXPECT().GetReporterName().Return("mocked_reporter")
+
+			mockStatus.EXPECT().GetReporter(gomock.Any()).Return(mockReporter)
+			// ReportSnapshotStatus must be called once
+			mockStatus.EXPECT().ReportSnapshotStatus(gomock.Any(), gomock.Any(), gomock.Any()).Times(1)
+
 			adapter = NewAdapter(hasPRSnapshot, hasApp, logger, loader.NewMockLoader(), k8sClient, ctx)
-			statusReporter = &MockStatusReporter{}
-			statusAdapter = &MockStatusAdapter{Reporter: statusReporter}
-			adapter.status = statusAdapter
+			adapter.status = mockStatus
 			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
 					ContextKey: loader.ApplicationContextKey,
