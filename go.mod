@@ -16,7 +16,7 @@ require (
 	github.com/redhat-appstudio/operator-toolkit v0.0.0-20231201124606-2087182322ae
 	github.com/redhat-appstudio/release-service v0.0.0-20231107140301-56ac66b56719
 	github.com/santhosh-tekuri/jsonschema/v5 v5.3.1
-	github.com/tektoncd/pipeline v0.56.0
+	github.com/tektoncd/pipeline v0.56.1
 	github.com/tonglil/buflogr v1.1.1
 	go.uber.org/zap v1.26.0
 	golang.org/x/oauth2 v0.17.0
