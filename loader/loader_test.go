@@ -46,6 +46,7 @@ var _ = Describe("Loader", Ordered, func() {
 		deploymentTargetClaim   *applicationapiv1alpha1.DeploymentTargetClaim
 		integrationTestScenario *v1beta1.IntegrationTestScenario
 		successfulTaskRun       *tektonv1.TaskRun
+		taskRunSample           *tektonv1.TaskRun
 		buildPipelineRun        *tektonv1.PipelineRun
 		integrationPipelineRun  *tektonv1.PipelineRun
 		hasBinding              *applicationapiv1alpha1.SnapshotEnvironmentBinding
@@ -763,4 +764,35 @@ var _ = Describe("Loader", Ordered, func() {
 		})
 	})
 
+	When("there's no TaskRuns present in the cluster that are associated with the given pipelineRun", func() {
+		It("ensures that GetAllTaskRunsWithMatchingPipelineLabel returns 0 TaskRuns", func() {
+			taskRuns, err := loader.GetAllTaskRunsWithMatchingPipelineLabel(k8sClient, ctx, integrationPipelineRun)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(*taskRuns).To(BeEmpty())
+		})
+	})
+
+	When("there's a TaskRun present in the cluster that is associated with the given pipelineRun", func() {
+		BeforeEach(func() {
+			taskRunSample = &tektonv1.TaskRun{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "taskrun-sample",
+					Namespace: "default",
+					Labels: map[string]string{
+						"tekton.dev/pipeline": buildPipelineRun.Name,
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, taskRunSample)).Should(Succeed())
+		})
+		AfterEach(func() {
+			_ = k8sClient.Delete(ctx, taskRunSample)
+		})
+		It("ensures that GetAllTaskRunsWithMatchingPipelineLabel returns that 1 TaskRun", func() {
+			taskRuns, err := loader.GetAllTaskRunsWithMatchingPipelineLabel(k8sClient, ctx, buildPipelineRun)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(*taskRuns).To(HaveLen(1))
+			Expect((*taskRuns)[0].Name).To(Equal(taskRunSample.Name))
+		})
+	})
 })

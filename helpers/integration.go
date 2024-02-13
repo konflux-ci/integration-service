@@ -274,8 +274,8 @@ func (ipro *IntegrationPipelineRunOutcome) LogResults(logger logr.Logger) {
 	}
 }
 
-// GetIntegrationPipelineRunOutcome returns the IntegrationPipelineRunOutcome which can be used for further inspection of
-// the results and general outcome
+// GetIntegrationPipelineRunOutcome returns the IntegrationPipelineRunOutcome
+// which can be used for further inspection of the results and general outcome
 // This function must be called on the finished pipeline
 func GetIntegrationPipelineRunOutcome(adapterClient client.Client, ctx context.Context, pipelineRun *tektonv1.PipelineRun) (*IntegrationPipelineRunOutcome, error) {
 
