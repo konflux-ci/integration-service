@@ -18,8 +18,6 @@ package scenario
 
 import (
 	"context"
-	"reflect"
-
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/api/v1beta1"
 	"github.com/redhat-appstudio/integration-service/gitops"
@@ -29,6 +27,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"reflect"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -61,6 +60,18 @@ func NewAdapter(application *applicationapiv1alpha1.Application, scenario *v1bet
 func (a *Adapter) EnsureCreatedScenarioIsValid() (controller.OperationResult, error) {
 	if a.scenario.DeletionTimestamp != nil {
 		return controller.ContinueProcessing()
+	}
+
+	// First check if status conditions are set to prevent a known issue with incorrectly migrated v1alpha1 scenarios
+	if a.scenario.Status.Conditions == nil {
+		a.logger.Info("The scenario doesn't have status.conditions set correctly, adding them.")
+		patch := client.MergeFrom(a.scenario.DeepCopy())
+		a.scenario.Status.Conditions = []metav1.Condition{}
+		err := a.client.Status().Patch(a.context, a.scenario, patch)
+		if err != nil {
+			a.logger.Error(err, "Failed to add Scenario status condition")
+			return controller.RequeueWithError(err)
+		}
 	}
 
 	// Check if application exists or not
