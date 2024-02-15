@@ -17,9 +17,23 @@ resources:
   domain: redhat.com
   group: appstudio
   kind: IntegrationTestScenario
+  path: github.com/redhat-appstudio/integration-service/api/v1alpha1
+  version: v1alpha1
+- controller: true
+  domain: redhat.com
+  group: appstudio
+  kind: Integration
+  version: v1alpha1
+- api:
+    crdVersion: v1
+    namespaced: true
+  domain: redhat.com
+  group: appstudio
+  kind: IntegrationTestScenario
   path: github.com/redhat-appstudio/integration-service/api/v1beta1
   version: v1beta1
   webhooks:
+    conversion: true
     validation: true
     webhookVersion: v1
 version: "3"
