@@ -199,8 +199,8 @@ func getUnassociatedNSSnapshots(
 		if _, found := snapToData[snap.Name]; found {
 			logger.V(1).Info(
 				"Skipping snapshot as it's associated with release/binding",
-				"snapshot.name",
-				snap.Name,
+				"namespace", snap.Namespace,
+				"snapshot.name", snap.Name,
 			)
 			continue
 		}
@@ -229,27 +229,53 @@ func getSnapshotsForRemoval(
 
 	for _, snap := range snapshots {
 		label, found := snap.GetLabels()["pac.test.appstudio.openshift.io/event-type"]
-		if found && label == "pull_request" && keptPrSnaps < prSnapshotsToKeep {
-			// if pr, and we did not keep enough PR snapshots -> discard from candidates
-			logger.V(1).Info(
-				"Skipping PR candidate snapshot",
+		if found && label == "pull_request" {
+			if keptPrSnaps < prSnapshotsToKeep {
+				logger.V(1).Info(
+					"Skipping PR candidate snapshot",
+					"namespace", snap.Namespace,
+					"snapshot.name", snap.Name,
+					"pr-snapshot-kept", keptPrSnaps+1,
+					"pr-snapshots-to-keep", prSnapshotsToKeep,
+				)
+				keptPrSnaps++
+			} else {
+				logger.V(1).Info(
+					"Adding PR candidate snapshot",
+					"namespace", snap.Namespace,
+					"snapshot.name", snap.Name,
+					"pr-snapshot-kept", keptPrSnaps,
+					"pr-snapshots-to-keep", prSnapshotsToKeep,
+				)
+				shortList = append(shortList, snap)
+			}
+		} else if !found || label != "pull_request" {
+			if keptNonPrSnaps < nonPrSnapshotsToKeep {
+				logger.V(1).Info(
+					"Skipping non-PR candidate snapshot",
+					"namespace", snap.Namespace,
+					"snapshot.name", snap.Name,
+					"non-pr-snapshot-kept", keptNonPrSnaps+1,
+					"non-pr-snapshots-to-keep", nonPrSnapshotsToKeep,
+				)
+				keptNonPrSnaps++
+			} else {
+				logger.V(1).Info(
+					"Adding non-PR candidate snapshot",
+					"namespace", snap.Namespace,
+					"snapshot.name", snap.Name,
+					"non-pr-snapshot-kept", keptNonPrSnaps,
+					"non-pr-snapshots-to-keep", nonPrSnapshotsToKeep,
+				)
+				shortList = append(shortList, snap)
+			}
+		} else {
+			logger.Info(
+				"Failed classifying snapshot",
+				"namespace", snap.Namespace,
 				"snapshot.name", snap.Name,
-				"pr-snapshot-kept", keptPrSnaps+1,
 			)
-			keptPrSnaps++
-			continue
-		} else if (!found || label != "pull_request") && keptNonPrSnaps < nonPrSnapshotsToKeep {
-			// same for non-pr
-			logger.V(1).Info(
-				"Skipping non-PR candidate snapshot",
-				"snapshot.name", snap.Name,
-				"non-pr-snapshot-kept", keptNonPrSnaps+1,
-			)
-			keptNonPrSnaps++
-			continue
 		}
-		logger.V(1).Info("Adding candidate", "snapshot.name", snap.Name)
-		shortList = append(shortList, snap)
 	}
 	return shortList
 }
