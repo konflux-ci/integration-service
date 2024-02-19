@@ -17,10 +17,7 @@ limitations under the License.
 package gitops
 
 import (
-	"time"
-
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
-	"github.com/redhat-appstudio/integration-service/metrics"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -123,10 +120,4 @@ func hasDeploymentFailed(objectOld, objectNew client.Object) bool {
 		}
 	}
 	return (oldCondition == nil || oldCondition.Status != metav1.ConditionTrue) && newCondition.Status == metav1.ConditionTrue
-}
-
-// PrepareAndRegisterSEBReady is to do preparation and register SEBCreatedToReadySeconds
-func PrepareAndRegisterSEBReady(seb *applicationapiv1alpha1.SnapshotEnvironmentBinding) {
-	sebReadyTime := &metav1.Time{Time: time.Now()}
-	go metrics.RegisterSEBCreatedToReady(seb.GetCreationTimestamp(), sebReadyTime)
 }

@@ -25,7 +25,6 @@ import (
 	. "github.com/onsi/gomega"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
-	"github.com/redhat-appstudio/operator-toolkit/test"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/metrics"
 )
@@ -33,7 +32,6 @@ import (
 var _ = Describe("Metrics Integration", Ordered, func() {
 	BeforeAll(func() {
 		metrics.Registry.Unregister(SnapshotCreatedToPipelineRunStartedStaticEnvSeconds)
-		metrics.Registry.Unregister(SnapshotCreatedToPipelineRunWithEphemeralEnvStartedSeconds)
 		metrics.Registry.Unregister(SnapshotConcurrentTotal)
 		metrics.Registry.Unregister(SnapshotDurationSeconds)
 	})
@@ -42,10 +40,6 @@ var _ = Describe("Metrics Integration", Ordered, func() {
 		SnapshotPipelineRunStartedStaticEnvSecondsHeader = inputHeader{
 			Name: "integration_svc_snapshot_created_to_pipelinerun_with_static_env_started_seconds",
 			Help: "Time duration from the moment the snapshot resource was created till a integration pipelineRun is started in a static environment",
-		}
-		SnapshotPipelineRunWithEphemeralEnvStartedSecondsHeader = inputHeader{
-			Name: "integration_svc_snapshot_created_to_pipelinerun_with_ephemeral_env_started_seconds",
-			Help: "Time duration from the moment the snapshot resource was created till a integration pipelineRun is started for pipelines running in an ephemeral environment",
 		}
 		SnapshotDurationSecondsHeader = inputHeader{
 			Name: "integration_svc_snapshot_attempt_duration_seconds",
@@ -104,45 +98,6 @@ var _ = Describe("Metrics Integration", Ordered, func() {
 			data := []int{1, 2, 3, 4}
 			readerData := createHistogramReader(SnapshotPipelineRunStartedStaticEnvSecondsHeader, timeBuckets, data, "", elapsedSeconds, len(inputSeconds))
 			Expect(testutil.CollectAndCompare(SnapshotCreatedToPipelineRunStartedStaticEnvSeconds, strings.NewReader(readerData))).To(Succeed())
-		})
-	})
-
-	Context("When RegisterPipelineRunWithEphemeralEnvStarted is called", func() {
-		// As we need to share metrics within the Context, we need to use "per Context" '(Before|After)All'
-		BeforeAll(func() {
-			// Mocking metrics to be able to resent data with each tests. Otherwise, we would have to take previous tests into account.
-			//
-			// 'Help' can't be overridden due to 'https://github.com/prometheus/client_golang/blob/83d56b1144a0c2eb10d399e7abbae3333bebc463/prometheus/registry.go#L314'
-			SnapshotCreatedToPipelineRunWithEphemeralEnvStartedSeconds = prometheus.NewHistogram(
-				prometheus.HistogramOpts{
-					Name:    "integration_svc_snapshot_created_to_pipelinerun_with_ephemeral_env_started_seconds",
-					Help:    "Time duration from the moment the snapshot resource was created till a integration pipelineRun is started for pipelines running in an ephemeral environment",
-					Buckets: []float64{1, 5, 10, 30},
-				},
-			)
-		})
-
-		AfterAll(func() {
-			metrics.Registry.Unregister(SnapshotCreatedToPipelineRunWithEphemeralEnvStartedSeconds)
-		})
-
-		// Input seconds for duration of operations less or equal to the following buckets of 1, 5, 10 and 30 seconds
-		inputSeconds := []float64{1, 3, 8, 15}
-		elapsedSeconds := 0.0
-
-		It("registers a new observation for 'integration_svc_snapshot_created_to_pipelinerun_with_ephemeral_env_started_seconds' with the elapsed time from the moment"+
-			"the snapshot is created to first integration pipelineRun is started.", func() {
-			creationTime := metav1.Time{}
-			for _, seconds := range inputSeconds {
-				startTime := metav1.NewTime(creationTime.Add(time.Second * time.Duration(seconds)))
-				elapsedSeconds += seconds
-				RegisterPipelineRunWithEphemeralEnvStarted(creationTime, startTime)
-			}
-			// Defined buckets for SnapshotCreatedToPipelineRunWithEphemeralEnvStartedSeconds
-			timeBuckets := []string{"1", "5", "10", "30"}
-			data := []int{1, 2, 3, 4}
-			readerData := createHistogramReader(SnapshotPipelineRunWithEphemeralEnvStartedSecondsHeader, timeBuckets, data, "", elapsedSeconds, len(inputSeconds))
-			Expect(testutil.CollectAndCompare(SnapshotCreatedToPipelineRunWithEphemeralEnvStartedSeconds, strings.NewReader(readerData))).To(Succeed())
 		})
 	})
 
@@ -236,26 +191,6 @@ var _ = Describe("Metrics Integration", Ordered, func() {
 			readerData := createCounterReader(SnapshotTotalHeader, labels, true, 10.0)
 			Expect(testutil.CollectAndCompare(SnapshotTotal.WithLabelValues("AppStudioIntegrationStatus", "invalid"),
 				strings.NewReader(readerData))).To(Succeed())
-		})
-	})
-
-	When("RegisterSEBCreatedToReady is called", func() {
-		var completionTime *metav1.Time
-		var startTime metav1.Time
-
-		BeforeEach(func() {
-			completionTime = &metav1.Time{}
-			startTime = metav1.Time{Time: completionTime.Add(-60 * time.Second)}
-		})
-
-		It("adds an observation to ReleaseProcessingDurationSeconds", func() {
-			RegisterSEBCreatedToReady(startTime, completionTime)
-			Expect(testutil.CollectAndCompare(SEBCreatedToReadySeconds,
-				test.NewHistogramReader(
-					sebCreatedToReadySecondsOpts,
-					nil,
-					&startTime, completionTime,
-				))).To(Succeed())
 		})
 	})
 
