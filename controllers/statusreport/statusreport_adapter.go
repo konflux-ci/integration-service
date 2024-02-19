@@ -19,21 +19,21 @@ package statusreport
 import (
 	"context"
 	"fmt"
-	"github.com/redhat-appstudio/integration-service/api/v1beta1"
-	"github.com/redhat-appstudio/integration-service/gitops"
-	"github.com/redhat-appstudio/integration-service/metrics"
-	"github.com/redhat-appstudio/operator-toolkit/metadata"
-	"k8s.io/client-go/util/retry"
 	"time"
 
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
+	"github.com/redhat-appstudio/operator-toolkit/controller"
+	"k8s.io/client-go/util/retry"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	"github.com/redhat-appstudio/integration-service/api/v1beta1"
+	"github.com/redhat-appstudio/integration-service/gitops"
 	"github.com/redhat-appstudio/integration-service/helpers"
+	"github.com/redhat-appstudio/integration-service/loader"
+	"github.com/redhat-appstudio/integration-service/metrics"
 	intgteststat "github.com/redhat-appstudio/integration-service/pkg/integrationteststatus"
 	"github.com/redhat-appstudio/integration-service/status"
-
-	"github.com/redhat-appstudio/integration-service/loader"
-	"github.com/redhat-appstudio/operator-toolkit/controller"
-	"sigs.k8s.io/controller-runtime/pkg/client"
+	"github.com/redhat-appstudio/operator-toolkit/metadata"
 )
 
 const SnapshotRetryTimeout = time.Duration(3 * time.Hour)
@@ -63,9 +63,9 @@ func NewAdapter(snapshot *applicationapiv1alpha1.Snapshot, application *applicat
 	}
 }
 
-// EnsureSnapshotTestStatusReportedToGitHub will ensure that integration test status including env provision and snapshotEnvironmentBinding error is reported to the git provider
+// EnsureSnapshotTestStatusReportedToGitProvider will ensure that integration test status including env provision and snapshotEnvironmentBinding error is reported to the git provider
 // which (indirectly) triggered its execution.
-func (a *Adapter) EnsureSnapshotTestStatusReportedToGitHub() (controller.OperationResult, error) {
+func (a *Adapter) EnsureSnapshotTestStatusReportedToGitProvider() (controller.OperationResult, error) {
 	if !gitops.IsSnapshotCreatedByPACPullRequestEvent(a.snapshot) {
 		return controller.ContinueProcessing()
 	}
@@ -79,7 +79,7 @@ func (a *Adapter) EnsureSnapshotTestStatusReportedToGitHub() (controller.Operati
 
 	err := a.status.ReportSnapshotStatus(a.context, reporter, a.snapshot)
 	if err != nil {
-		a.logger.Error(err, "failed to report test status to github for snapshot",
+		a.logger.Error(err, "failed to report test status to git provider for snapshot",
 			"snapshot.Namespace", a.snapshot.Namespace, "snapshot.Name", a.snapshot.Name)
 		if helpers.IsObjectYoungerThanThreshold(a.snapshot, SnapshotRetryTimeout) {
 			return controller.RequeueWithError(err)

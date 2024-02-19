@@ -20,10 +20,16 @@ package status
 
 import (
 	"context"
+	"fmt"
 	"time"
 
+	pacv1alpha1 "github.com/openshift-pipelines/pipelines-as-code/pkg/apis/pipelinesascode/v1alpha1"
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
+	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	"github.com/redhat-appstudio/integration-service/gitops"
 	intgteststat "github.com/redhat-appstudio/integration-service/pkg/integrationteststatus"
 )
 
@@ -53,4 +59,49 @@ type ReporterInterface interface {
 	GetReporterName() string
 	// Update status of the integration test
 	ReportStatus(context.Context, TestReport) error
+}
+
+// GetPACGitProviderToken lookup for configured repo and fetch token from namespace
+func GetPACGitProviderToken(ctx context.Context, k8sClient client.Client, snapshot *applicationapiv1alpha1.Snapshot) (string, error) {
+	var err error
+
+	// List all the Repository CRs in the namespace
+	repos := pacv1alpha1.RepositoryList{}
+	if err = k8sClient.List(ctx, &repos, &client.ListOptions{Namespace: snapshot.Namespace}); err != nil {
+		return "", err
+	}
+
+	// Get the full repo URL
+	url, found := snapshot.GetAnnotations()[gitops.PipelineAsCodeRepoURLAnnotation]
+	if !found {
+		return "", fmt.Errorf("object annotation not found %q", gitops.PipelineAsCodeRepoURLAnnotation)
+	}
+
+	// Find a Repository CR with a matching URL and get its secret details
+	var repoSecret *pacv1alpha1.Secret
+	for _, repo := range repos.Items {
+		if url == repo.Spec.URL {
+			repoSecret = repo.Spec.GitProvider.Secret
+			break
+		}
+	}
+
+	if repoSecret == nil {
+		return "", fmt.Errorf("failed to find a Repository matching URL: %q", url)
+	}
+
+	// Get the pipelines as code secret from the PipelineRun's namespace
+	pacSecret := v1.Secret{}
+	err = k8sClient.Get(ctx, types.NamespacedName{Namespace: snapshot.Namespace, Name: repoSecret.Name}, &pacSecret)
+	if err != nil {
+		return "", err
+	}
+
+	// Get the personal access token from the secret
+	token, found := pacSecret.Data[repoSecret.Key]
+	if !found {
+		return "", fmt.Errorf("failed to find %s secret key", repoSecret.Key)
+	}
+
+	return string(token), nil
 }
