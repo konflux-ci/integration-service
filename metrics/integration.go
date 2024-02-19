@@ -41,31 +41,6 @@ var (
 		},
 	)
 
-	SnapshotCreatedToPipelineRunWithEphemeralEnvStartedSeconds = prometheus.NewHistogram(
-		prometheus.HistogramOpts{
-			Name:    "integration_svc_snapshot_created_to_pipelinerun_with_ephemeral_env_started_seconds",
-			Help:    "The duration measures the time elapsed between the creation of a snapshot resource and the initiation of an integration PipelineRun for pipelines operating within an ephemeral environment.",
-			Buckets: []float64{1, 5, 10, 15, 20, 25, 30, 35, 45, 60, 120, 240, 300},
-		},
-	)
-
-	SEBCreatedToReadySeconds = prometheus.NewHistogram(
-		sebCreatedToReadySecondsOpts,
-	)
-
-	sebCreatedToReadySecondsOpts = prometheus.HistogramOpts{
-		Name:    "integration_svc_seb_created_to_ready_seconds",
-		Help:    "Time duration from the moment the snapshotEnvironmentBinding was created till the snapshot is deployed to the environment",
-		Buckets: []float64{1, 5, 10, 20, 40, 60, 80, 120, 160, 200, 300},
-	}
-
-	SEBEphemeralDeploymentsTotal = prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "integration_svc_seb_ephemeral_deployments_total",
-			Help: "Total number of SEB deployments processed by the operator",
-		}, []string{"reason"},
-	)
-
 	IntegrationPipelineRunTotal = prometheus.NewCounter(
 		prometheus.CounterOpts{
 			Name: "integration_svc_integration_pipelinerun_total",
@@ -125,29 +100,8 @@ func RegisterInvalidSnapshot(conditiontype, reason string) {
 	}).Inc()
 }
 
-func RegisterSEBSuccessfulDeployment() {
-	SEBEphemeralDeploymentsTotal.With(prometheus.Labels{
-		"reason": "successful",
-	}).Inc()
-}
-
-func RegisterSEBFailedDeployment() {
-	SEBEphemeralDeploymentsTotal.With(prometheus.Labels{
-		"reason": "failed",
-	}).Inc()
-}
-
 func RegisterPipelineRunStarted(snapshotCreatedTime metav1.Time, pipelineRunStartTime *metav1.Time) {
 	SnapshotCreatedToPipelineRunStartedStaticEnvSeconds.Observe(pipelineRunStartTime.Sub(snapshotCreatedTime.Time).Seconds())
-}
-
-func RegisterPipelineRunWithEphemeralEnvStarted(snapshotCreatedTime metav1.Time, pipelineRunStartTime metav1.Time) {
-	SnapshotCreatedToPipelineRunWithEphemeralEnvStartedSeconds.Observe(pipelineRunStartTime.Sub(snapshotCreatedTime.Time).Seconds())
-}
-
-func RegisterSEBCreatedToReady(sebCreatedTime metav1.Time, sebReadyTime *metav1.Time) {
-	SEBCreatedToReadySeconds.
-		Observe(sebReadyTime.Sub(sebCreatedTime.Time).Seconds())
 }
 
 func RegisterIntegrationResponse(duration time.Duration) {
@@ -170,14 +124,11 @@ func RegisterReleaseLatency(startTime metav1.Time) {
 func init() {
 	metrics.Registry.MustRegister(
 		SnapshotCreatedToPipelineRunStartedStaticEnvSeconds,
-		SnapshotCreatedToPipelineRunWithEphemeralEnvStartedSeconds,
-		SEBCreatedToReadySeconds,
 		IntegrationSvcResponseSeconds,
 		IntegrationPipelineRunTotal,
 		SnapshotConcurrentTotal,
 		SnapshotDurationSeconds,
 		SnapshotTotal,
 		ReleaseLatencySeconds,
-		SEBEphemeralDeploymentsTotal,
 	)
 }
