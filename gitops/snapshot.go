@@ -102,6 +102,9 @@ const (
 	// PipelineAsCodePullRequestAnnotation is the git repository's pull request identifier
 	PipelineAsCodePullRequestAnnotation = PipelinesAsCodePrefix + "/pull-request"
 
+	// PipelineAsCodeSourceProjectIDAnnotation is the source project ID for gitlab
+	PipelineAsCodeSourceProjectIDAnnotation = PipelinesAsCodePrefix + "/source-project-id"
+
 	// PipelineAsCodePushType is the type of push event which triggered the pipelinerun in build service
 	PipelineAsCodePushType = "push"
 
@@ -110,6 +113,9 @@ const (
 
 	// PipelineAsCodeGitHubProviderType is the git provider type for a GitHub event which triggered the pipelinerun in build service.
 	PipelineAsCodeGitHubProviderType = "github"
+
+	// PipelineAsCodeGitHubProviderType is the git provider type for a GitHub event which triggered the pipelinerun in build service.
+	PipelineAsCodeGitLabProviderType = "gitlab"
 
 	//AppStudioTestSucceededCondition is the condition for marking if the AppStudio Tests succeeded for the Snapshot.
 	AppStudioTestSucceededCondition = "AppStudioTestSucceeded"
