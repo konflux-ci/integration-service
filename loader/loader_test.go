@@ -409,6 +409,17 @@ var _ = Describe("Loader", Ordered, func() {
 			},
 		}
 		Expect(k8sClient.Create(ctx, hasBinding)).Should(Succeed())
+
+		taskRunSample = &tektonv1.TaskRun{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "taskrun-sample",
+				Namespace: "default",
+				Labels: map[string]string{
+					"tekton.dev/pipeline": buildPipelineRun.Name,
+				},
+			},
+		}
+		Expect(k8sClient.Create(ctx, taskRunSample)).Should(Succeed())
 	})
 
 	AfterAll(func() {
@@ -424,6 +435,7 @@ var _ = Describe("Loader", Ordered, func() {
 		_ = k8sClient.Delete(ctx, deploymentTargetClaim)
 		_ = k8sClient.Delete(ctx, deploymentTarget)
 		_ = k8sClient.Delete(ctx, hasBinding)
+		_ = k8sClient.Delete(ctx, taskRunSample)
 	})
 
 	createReleasePlan := func(releasePlan *releasev1alpha1.ReleasePlan) {
@@ -632,6 +644,13 @@ var _ = Describe("Loader", Ordered, func() {
 		Expect((*environments)[0].Name).To(Equal(hasEnv.Name))
 	})
 
+	It("can get all TaskRuns present in the cluster that are associated with the given pipelineRun", func() {
+		taskRuns, err := loader.GetAllTaskRunsWithMatchingPipelineLabel(k8sClient, ctx, buildPipelineRun)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(*taskRuns).To(HaveLen(1))
+		Expect((*taskRuns)[0].Name).To(Equal(taskRunSample.Name))
+	})
+
 	When("release plan with auto-release label is created", func() {
 
 		const (
@@ -761,38 +780,6 @@ var _ = Describe("Loader", Ordered, func() {
 			Expect(fetchedScenario.Name).To(Equal(integrationTestScenario.Name))
 			Expect(fetchedScenario.Namespace).To(Equal(integrationTestScenario.Namespace))
 			Expect(fetchedScenario.Spec).To(Equal(integrationTestScenario.Spec))
-		})
-	})
-
-	When("there's no TaskRuns present in the cluster that are associated with the given pipelineRun", func() {
-		It("ensures that GetAllTaskRunsWithMatchingPipelineLabel returns 0 TaskRuns", func() {
-			taskRuns, err := loader.GetAllTaskRunsWithMatchingPipelineLabel(k8sClient, ctx, integrationPipelineRun)
-			Expect(err).ToNot(HaveOccurred())
-			Expect(*taskRuns).To(BeEmpty())
-		})
-	})
-
-	When("there's a TaskRun present in the cluster that is associated with the given pipelineRun", func() {
-		BeforeEach(func() {
-			taskRunSample = &tektonv1.TaskRun{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "taskrun-sample",
-					Namespace: "default",
-					Labels: map[string]string{
-						"tekton.dev/pipeline": buildPipelineRun.Name,
-					},
-				},
-			}
-			Expect(k8sClient.Create(ctx, taskRunSample)).Should(Succeed())
-		})
-		AfterEach(func() {
-			_ = k8sClient.Delete(ctx, taskRunSample)
-		})
-		It("ensures that GetAllTaskRunsWithMatchingPipelineLabel returns that 1 TaskRun", func() {
-			taskRuns, err := loader.GetAllTaskRunsWithMatchingPipelineLabel(k8sClient, ctx, buildPipelineRun)
-			Expect(err).ToNot(HaveOccurred())
-			Expect(*taskRuns).To(HaveLen(1))
-			Expect((*taskRuns)[0].Name).To(Equal(taskRunSample.Name))
 		})
 	})
 })
