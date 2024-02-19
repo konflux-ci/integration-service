@@ -191,7 +191,6 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 
 		Expect(gitops.IsBindingDeployed(newSnapshotEnvironmentBinding)).NotTo(BeTrue())
 		Expect(gitops.HaveBindingsFailed(newSnapshotEnvironmentBinding)).NotTo(BeTrue())
-		gitops.PrepareAndRegisterSEBReady(newSnapshotEnvironmentBinding)
 	})
 
 	It("ensures an existing deployed SnapshotEnvironmentBinding conditions are recognized", func() {

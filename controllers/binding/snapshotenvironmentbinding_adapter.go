@@ -24,7 +24,6 @@ import (
 	"github.com/redhat-appstudio/operator-toolkit/controller"
 	"github.com/redhat-appstudio/operator-toolkit/metadata"
 	"k8s.io/apimachinery/pkg/api/meta"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
 
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
@@ -87,8 +86,6 @@ func (a *Adapter) EnsureIntegrationTestPipelineForScenarioExists() (controller.O
 	}
 	a.logger.Info("The SnapshotEnvironmentBinding's deployment succeeded", "snapshotEnvironmentBinding.Name", a.snapshotEnvironmentBinding.Name)
 
-	gitops.PrepareAndRegisterSEBReady(a.snapshotEnvironmentBinding)
-
 	if a.integrationTestScenario != nil {
 		// Check if an existing integration pipelineRun is registered in the Snapshot's status
 		// We rely on this because the actual pipelineRun CR may have been pruned by this point
@@ -113,15 +110,10 @@ func (a *Adapter) EnsureIntegrationTestPipelineForScenarioExists() (controller.O
 				return controller.RequeueWithError(err)
 			}
 
-			// measure only non-reruns
-			if _, ok := gitops.GetIntegrationTestRunLabelValue(a.snapshotEnvironmentBinding); !ok {
-				metrics.RegisterPipelineRunWithEphemeralEnvStarted(a.snapshot.CreationTimestamp, metav1.Now())
-			}
 			a.logger.LogAuditEvent("PipelineRun for snapshot created", pipelineRun, h.LogActionAdd,
 				"snapshot.Name", a.snapshot.Name)
 		}
 	}
-	metrics.RegisterSEBSuccessfulDeployment()
 	return controller.ContinueProcessing()
 }
 
@@ -193,7 +185,6 @@ func (a *Adapter) EnsureEphemeralEnvironmentsCleanedUp() (controller.OperationRe
 		a.logger.Error(err, "Failed to delete the Ephemeral Environment")
 		return controller.RequeueWithError(err)
 	}
-	metrics.RegisterSEBFailedDeployment()
 	return controller.ContinueProcessing()
 
 }
