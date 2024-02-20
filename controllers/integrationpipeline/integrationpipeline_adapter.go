@@ -169,7 +169,7 @@ func (a *Adapter) GetIntegrationPipelineRunStatus(adapterClient client.Client, c
 		}
 	}
 
-	taskRuns, err := a.loader.GetAllTaskRunsWithMatchingPipelineLabel(adapterClient, ctx, pipelineRun)
+	taskRuns, err := a.loader.GetAllTaskRunsWithMatchingPipelineRunLabel(adapterClient, ctx, pipelineRun)
 	if err != nil {
 		return intgteststat.IntegrationTestStatusTestInvalid, fmt.Sprintf("Unable to get all the TaskRun(s) related to the pipelineRun '%s'", pipelineRun.Name), err
 	}
