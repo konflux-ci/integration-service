@@ -555,6 +555,8 @@ func generateSummary(state intgteststat.IntegrationTestStatus, snapshotName, sce
 		statusDesc = "has passed"
 	case intgteststat.IntegrationTestStatusTestFail:
 		statusDesc = "has failed"
+	case intgteststat.IntegrationTestStatusTestInvalid:
+		statusDesc = "is invalid"
 	default:
 		return summary, fmt.Errorf("unknown status")
 	}
@@ -573,9 +575,9 @@ func generateCheckRunTitle(state intgteststat.IntegrationTestStatus) (string, er
 		title = "Pending"
 	case intgteststat.IntegrationTestStatusInProgress:
 		title = "In Progress"
-	case intgteststat.IntegrationTestStatusEnvironmentProvisionError:
-		title = "Errored"
-	case intgteststat.IntegrationTestStatusDeploymentError:
+	case intgteststat.IntegrationTestStatusEnvironmentProvisionError,
+		intgteststat.IntegrationTestStatusDeploymentError,
+		intgteststat.IntegrationTestStatusTestInvalid:
 		title = "Errored"
 	case intgteststat.IntegrationTestStatusDeleted:
 		title = "Deleted"
@@ -626,7 +628,8 @@ func generateCheckRunConclusion(state intgteststat.IntegrationTestStatus) (strin
 
 	switch state {
 	case intgteststat.IntegrationTestStatusTestFail, intgteststat.IntegrationTestStatusEnvironmentProvisionError,
-		intgteststat.IntegrationTestStatusDeploymentError, intgteststat.IntegrationTestStatusDeleted:
+		intgteststat.IntegrationTestStatusDeploymentError, intgteststat.IntegrationTestStatusDeleted,
+		intgteststat.IntegrationTestStatusTestInvalid:
 		conclusion = gitops.IntegrationTestStatusFailureGithub
 	case intgteststat.IntegrationTestStatusTestPassed:
 		conclusion = gitops.IntegrationTestStatusSuccessGithub
@@ -649,7 +652,7 @@ func generateCommitState(state intgteststat.IntegrationTestStatus) (string, erro
 	case intgteststat.IntegrationTestStatusTestFail:
 		commitState = gitops.IntegrationTestStatusFailureGithub
 	case intgteststat.IntegrationTestStatusEnvironmentProvisionError, intgteststat.IntegrationTestStatusDeploymentError,
-		intgteststat.IntegrationTestStatusDeleted:
+		intgteststat.IntegrationTestStatusDeleted, intgteststat.IntegrationTestStatusTestInvalid:
 		commitState = gitops.IntegrationTestStatusErrorGithub
 	case intgteststat.IntegrationTestStatusTestPassed:
 		commitState = gitops.IntegrationTestStatusSuccessGithub
