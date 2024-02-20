@@ -32,6 +32,7 @@ import (
 var _ = Describe("Metrics Integration", Ordered, func() {
 	BeforeAll(func() {
 		metrics.Registry.Unregister(SnapshotCreatedToPipelineRunStartedStaticEnvSeconds)
+		metrics.Registry.Unregister(SnapshotCreatedToPipelineRunStartedSeconds)
 		metrics.Registry.Unregister(SnapshotConcurrentTotal)
 		metrics.Registry.Unregister(SnapshotDurationSeconds)
 	})
@@ -41,6 +42,12 @@ var _ = Describe("Metrics Integration", Ordered, func() {
 			Name: "integration_svc_snapshot_created_to_pipelinerun_with_static_env_started_seconds",
 			Help: "Time duration from the moment the snapshot resource was created till a integration pipelineRun is started in a static environment",
 		}
+
+		SnapshotCreatedToPipelineRunStartedSecondsHeader = inputHeader{
+			Name: "integration_svc_snapshot_created_to_pipelinerun_started_seconds",
+			Help: "Time duration from the moment the snapshot resource was created till a integration pipelineRun is started in the environment",
+		}
+
 		SnapshotDurationSecondsHeader = inputHeader{
 			Name: "integration_svc_snapshot_attempt_duration_seconds",
 			Help: "Snapshot durations from the moment the Snapshot was created till the Snapshot is marked as finished",
@@ -64,6 +71,13 @@ var _ = Describe("Metrics Integration", Ordered, func() {
 					Buckets: []float64{1, 5, 10, 30},
 				},
 			)
+			SnapshotCreatedToPipelineRunStartedSeconds = prometheus.NewHistogram(
+				prometheus.HistogramOpts{
+					Name:    "integration_svc_snapshot_created_to_pipelinerun_started_seconds",
+					Help:    "Time duration from the moment the snapshot resource was created till a integration pipelineRun is started in the environment",
+					Buckets: []float64{1, 5, 10, 30},
+				},
+			)
 			SnapshotConcurrentTotal = prometheus.NewGauge(
 				prometheus.GaugeOpts{
 					Name: "integration_svc_snapshot_attempt_concurrent_requests",
@@ -74,6 +88,7 @@ var _ = Describe("Metrics Integration", Ordered, func() {
 
 		AfterAll(func() {
 			metrics.Registry.Unregister(SnapshotCreatedToPipelineRunStartedStaticEnvSeconds)
+			metrics.Registry.Unregister(SnapshotCreatedToPipelineRunStartedSeconds)
 			metrics.Registry.Unregister(SnapshotConcurrentTotal)
 		})
 
@@ -96,8 +111,10 @@ var _ = Describe("Metrics Integration", Ordered, func() {
 			// Defined buckets for SnapshotCreatedToPipelineRunStartedSeconds
 			timeBuckets := []string{"1", "5", "10", "30"}
 			data := []int{1, 2, 3, 4}
-			readerData := createHistogramReader(SnapshotPipelineRunStartedStaticEnvSecondsHeader, timeBuckets, data, "", elapsedSeconds, len(inputSeconds))
-			Expect(testutil.CollectAndCompare(SnapshotCreatedToPipelineRunStartedStaticEnvSeconds, strings.NewReader(readerData))).To(Succeed())
+			readerDataEnv := createHistogramReader(SnapshotPipelineRunStartedStaticEnvSecondsHeader, timeBuckets, data, "", elapsedSeconds, len(inputSeconds))
+			Expect(testutil.CollectAndCompare(SnapshotCreatedToPipelineRunStartedStaticEnvSeconds, strings.NewReader(readerDataEnv))).To(Succeed())
+			readerData := createHistogramReader(SnapshotCreatedToPipelineRunStartedSecondsHeader, timeBuckets, data, "", elapsedSeconds, len(inputSeconds))
+			Expect(testutil.CollectAndCompare(SnapshotCreatedToPipelineRunStartedSeconds, strings.NewReader(readerData))).To(Succeed())
 		})
 	})
 
@@ -107,6 +124,13 @@ var _ = Describe("Metrics Integration", Ordered, func() {
 				prometheus.HistogramOpts{
 					Name:    "integration_svc_snapshot_created_to_pipelinerun_with_static_env_started_seconds",
 					Help:    "Snapshot durations from the moment the snapshot resource was created till a integration pipelineRun is started in static environment",
+					Buckets: []float64{1, 5, 10, 30},
+				},
+			)
+			SnapshotCreatedToPipelineRunStartedSeconds = prometheus.NewHistogram(
+				prometheus.HistogramOpts{
+					Name:    "integration_svc_snapshot_created_to_pipelinerun_started_seconds",
+					Help:    "Time duration from the moment the snapshot resource was created till a integration pipelineRun is started in the environment",
 					Buckets: []float64{1, 5, 10, 30},
 				},
 			)
@@ -138,6 +162,7 @@ var _ = Describe("Metrics Integration", Ordered, func() {
 
 		AfterAll(func() {
 			metrics.Registry.Unregister(SnapshotCreatedToPipelineRunStartedStaticEnvSeconds)
+			metrics.Registry.Unregister(SnapshotCreatedToPipelineRunStartedSeconds)
 			metrics.Registry.Unregister(SnapshotDurationSeconds)
 			metrics.Registry.Unregister(SnapshotConcurrentTotal)
 			metrics.Registry.Unregister(SnapshotTotal)
