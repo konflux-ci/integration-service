@@ -438,7 +438,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 					Resource:   []applicationapiv1alpha1.Component{*hasComp},
 				},
 				{
-					ContextKey: loader.AllTaskRunsWithMatchingPipelineLabelContextKey,
+					ContextKey: loader.AllTaskRunsWithMatchingPipelineRunLabelContextKey,
 					Resource:   []tektonv1.TaskRun{*successfulTaskRun},
 				},
 			})
@@ -594,7 +594,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 						Resource:   []applicationapiv1alpha1.Component{*hasComp},
 					},
 					{
-						ContextKey: loader.AllTaskRunsWithMatchingPipelineLabelContextKey,
+						ContextKey: loader.AllTaskRunsWithMatchingPipelineRunLabelContextKey,
 						Resource:   []tektonv1.TaskRun{*failedTaskRun},
 					},
 				})
@@ -903,7 +903,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 					Resource:   []applicationapiv1alpha1.Component{*hasComp},
 				},
 				{
-					ContextKey: loader.AllTaskRunsWithMatchingPipelineLabelContextKey,
+					ContextKey: loader.AllTaskRunsWithMatchingPipelineRunLabelContextKey,
 					Resource:   []tektonv1.TaskRun{*failedTaskRun},
 				},
 			})
@@ -1090,7 +1090,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			adapter = NewAdapter(intgPipelineInvalidResult, hasApp, hasSnapshot, logger, loader.NewMockLoader(), k8sClient, ctx)
 			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
-					ContextKey: loader.AllTaskRunsWithMatchingPipelineLabelContextKey,
+					ContextKey: loader.AllTaskRunsWithMatchingPipelineRunLabelContextKey,
 					Resource:   []tektonv1.TaskRun{*taskRunInvalidResult},
 				},
 			})
@@ -1131,7 +1131,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			adapter = NewAdapter(integrationPipelineRunComponent, hasApp, hasSnapshot, logger, loader.NewMockLoader(), k8sClient, ctx)
 			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
-					ContextKey: loader.AllTaskRunsWithMatchingPipelineLabelContextKey,
+					ContextKey: loader.AllTaskRunsWithMatchingPipelineRunLabelContextKey,
 					Resource:   []tektonv1.TaskRun{*successfulTaskRun},
 				},
 			})

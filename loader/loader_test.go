@@ -415,7 +415,7 @@ var _ = Describe("Loader", Ordered, func() {
 				Name:      "taskrun-sample",
 				Namespace: "default",
 				Labels: map[string]string{
-					"tekton.dev/pipeline": buildPipelineRun.Name,
+					"tekton.dev/pipelineRun": buildPipelineRun.Name,
 				},
 			},
 		}
@@ -645,7 +645,7 @@ var _ = Describe("Loader", Ordered, func() {
 	})
 
 	It("can get all TaskRuns present in the cluster that are associated with the given pipelineRun", func() {
-		taskRuns, err := loader.GetAllTaskRunsWithMatchingPipelineLabel(k8sClient, ctx, buildPipelineRun)
+		taskRuns, err := loader.GetAllTaskRunsWithMatchingPipelineRunLabel(k8sClient, ctx, buildPipelineRun)
 		Expect(err).ToNot(HaveOccurred())
 		Expect(*taskRuns).To(HaveLen(1))
 		Expect((*taskRuns)[0].Name).To(Equal(taskRunSample.Name))
