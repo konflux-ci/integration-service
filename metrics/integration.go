@@ -33,10 +33,19 @@ var (
 		},
 	)
 
+	//This metric should be dropped once SnapshotCreatedToPipelineRunStartedSeconds is merged in prod
 	SnapshotCreatedToPipelineRunStartedStaticEnvSeconds = prometheus.NewHistogram(
 		prometheus.HistogramOpts{
 			Name:    "integration_svc_snapshot_created_to_pipelinerun_with_static_env_started_seconds",
 			Help:    "Time duration from the moment the snapshot resource was created till a integration pipelineRun is started in a static environment",
+			Buckets: []float64{0.05, 0.1, 0.5, 1, 2, 3, 4, 5, 10, 15, 30},
+		},
+	)
+
+	SnapshotCreatedToPipelineRunStartedSeconds = prometheus.NewHistogram(
+		prometheus.HistogramOpts{
+			Name:    "integration_svc_snapshot_created_to_pipelinerun_started_seconds",
+			Help:    "Time duration from the moment the snapshot resource was created till a integration pipelineRun is started in the environment",
 			Buckets: []float64{0.05, 0.1, 0.5, 1, 2, 3, 4, 5, 10, 15, 30},
 		},
 	)
@@ -102,6 +111,7 @@ func RegisterInvalidSnapshot(conditiontype, reason string) {
 
 func RegisterPipelineRunStarted(snapshotCreatedTime metav1.Time, pipelineRunStartTime *metav1.Time) {
 	SnapshotCreatedToPipelineRunStartedStaticEnvSeconds.Observe(pipelineRunStartTime.Sub(snapshotCreatedTime.Time).Seconds())
+	SnapshotCreatedToPipelineRunStartedSeconds.Observe(pipelineRunStartTime.Sub(snapshotCreatedTime.Time).Seconds())
 }
 
 func RegisterIntegrationResponse(duration time.Duration) {
@@ -124,6 +134,7 @@ func RegisterReleaseLatency(startTime metav1.Time) {
 func init() {
 	metrics.Registry.MustRegister(
 		SnapshotCreatedToPipelineRunStartedStaticEnvSeconds,
+		SnapshotCreatedToPipelineRunStartedSeconds,
 		IntegrationSvcResponseSeconds,
 		IntegrationPipelineRunTotal,
 		SnapshotConcurrentTotal,
