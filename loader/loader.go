@@ -59,7 +59,7 @@ type ObjectLoader interface {
 	GetScenario(c client.Client, ctx context.Context, name, namespace string) (*v1beta1.IntegrationTestScenario, error)
 	GetAllEnvironmentsForScenario(c client.Client, ctx context.Context, integrationTestScenario *v1beta1.IntegrationTestScenario) (*[]applicationapiv1alpha1.Environment, error)
 	GetAllSnapshotsForBuildPipelineRun(c client.Client, ctx context.Context, pipelineRun *tektonv1.PipelineRun) (*[]applicationapiv1alpha1.Snapshot, error)
-	GetAllTaskRunsWithMatchingPipelineLabel(c client.Client, ctx context.Context, pipelineRun *tektonv1.PipelineRun) (*[]tektonv1.TaskRun, error)
+	GetAllTaskRunsWithMatchingPipelineRunLabel(c client.Client, ctx context.Context, pipelineRun *tektonv1.PipelineRun) (*[]tektonv1.TaskRun, error)
 }
 
 type loader struct{}
@@ -490,14 +490,14 @@ func (l *loader) GetAllSnapshotsForBuildPipelineRun(c client.Client, ctx context
 	return &snapshots.Items, nil
 }
 
-// GetAllTaskRunsWithMatchingPipelineLabel finds all Child TaskRuns
+// GetAllTaskRunsWithMatchingPipelineRunLabel finds all Child TaskRuns
 // whose "tekton.dev/pipeline" label points to the given PipelineRun
-func (l *loader) GetAllTaskRunsWithMatchingPipelineLabel(c client.Client, ctx context.Context, pipelineRun *tektonv1.PipelineRun) (*[]tektonv1.TaskRun, error) {
+func (l *loader) GetAllTaskRunsWithMatchingPipelineRunLabel(c client.Client, ctx context.Context, pipelineRun *tektonv1.PipelineRun) (*[]tektonv1.TaskRun, error) {
 	taskRuns := &tektonv1.TaskRunList{}
 	opts := []client.ListOption{
 		client.InNamespace(pipelineRun.Namespace),
 		client.MatchingLabels{
-			"tekton.dev/pipeline": pipelineRun.Name,
+			"tekton.dev/pipelineRun": pipelineRun.Name,
 		},
 	}
 
