@@ -3,7 +3,9 @@ package main
 import (
 	"context"
 	"flag"
+	"os"
 	"sort"
+	"strconv"
 
 	"github.com/go-logr/logr"
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
@@ -320,6 +322,22 @@ func main() {
 	logger := zap.New(zap.UseFlagOptions(&opts))
 
 	var err error
+
+	// We want env vars args to take precedence over cli args
+	if value, ok := os.LookupEnv("PR_SNAPSHOTS_TO_KEEP"); ok {
+		prSnapshotsToKeep, err = strconv.Atoi(value)
+		if err != nil {
+			logger.Error(err, "Failed parsing env var PR_SNAPSHOTS_TO_KEEP")
+			panic(err.Error())
+		}
+	}
+	if value, ok := os.LookupEnv("NON_PR_SNAPSHOTS_TO_KEEP"); ok {
+		nonPrSnapshotsToKeep, err = strconv.Atoi(value)
+		if err != nil {
+			logger.Error(err, "Failed parsing env var NON_PR_SNAPSHOTS_TO_KEEP")
+			panic(err.Error())
+		}
+	}
 
 	cl, err := client.New(config.GetConfigOrDie(), client.Options{Scheme: scheme})
 	if err != nil {
