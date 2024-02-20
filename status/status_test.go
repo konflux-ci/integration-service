@@ -424,4 +424,11 @@ var _ = Describe("Status Adapter", func() {
 		Entry("Invalid", integrationteststatus.IntegrationTestStatusTestInvalid, "is invalid"),
 	)
 
+	It("check if GenerateSummary supports all integration test statuses", func() {
+		for _, teststatus := range integrationteststatus.IntegrationTestStatusValues() {
+			_, err := status.GenerateSummary(teststatus, "yolo", "yolo")
+			Expect(err).NotTo(HaveOccurred())
+		}
+	})
+
 })
