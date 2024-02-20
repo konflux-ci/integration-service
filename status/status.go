@@ -43,7 +43,7 @@ func generateTestReport(ctx context.Context, client client.Client, detail intgte
 		return nil, fmt.Errorf("failed to generate text message: %w", err)
 	}
 
-	summary, err := generateSummary(detail.Status, snapshot.Name, detail.ScenarioName)
+	summary, err := GenerateSummary(detail.Status, snapshot.Name, detail.ScenarioName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate summary message: %w", err)
 	}
@@ -173,8 +173,8 @@ func generateText(k8sClient client.Client, ctx context.Context, integrationTestS
 	}
 }
 
-// generateSummary returns summary for the given state, snapshotName and scenarioName
-func generateSummary(state intgteststat.IntegrationTestStatus, snapshotName, scenarioName string) (string, error) {
+// GenerateSummary returns summary for the given state, snapshotName and scenarioName
+func GenerateSummary(state intgteststat.IntegrationTestStatus, snapshotName, scenarioName string) (string, error) {
 	var summary string
 	var statusDesc string
 

@@ -312,6 +312,17 @@ var _ = Describe("GitHubReporter", func() {
 			Entry("Invalid", integrationteststatus.IntegrationTestStatusTestInvalid, "Errored", gitops.IntegrationTestStatusFailureGithub),
 		)
 
+		It("check if all integration tests statuses are supported", func() {
+			for _, teststatus := range integrationteststatus.IntegrationTestStatusValues() {
+				Expect(reporter.ReportStatus(
+					context.TODO(),
+					status.TestReport{
+						ScenarioName: "scenario1",
+						Status:       teststatus,
+					})).To(Succeed())
+			}
+		})
+
 		It("reports all details of snapshot tests status via CheckRuns", func() {
 			now := time.Now()
 
@@ -455,6 +466,17 @@ var _ = Describe("GitHubReporter", func() {
 			Entry("Pending", integrationteststatus.IntegrationTestStatusPending, gitops.IntegrationTestStatusPendingGithub),
 			Entry("Invalid", integrationteststatus.IntegrationTestStatusTestInvalid, gitops.IntegrationTestStatusErrorGithub),
 		)
+
+		It("check if all integration tests statuses are supported", func() {
+			for _, teststatus := range integrationteststatus.IntegrationTestStatusValues() {
+				Expect(reporter.ReportStatus(
+					context.TODO(),
+					status.TestReport{
+						ScenarioName: "scenario1",
+						Status:       teststatus,
+					})).To(Succeed())
+			}
+		})
 
 		It("don't create a new commit status when already exist", func() {
 			testReport := status.TestReport{
