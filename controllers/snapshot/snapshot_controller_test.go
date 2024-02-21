@@ -194,15 +194,8 @@ var _ = Describe("SnapshotController", func() {
 	})
 
 	It("Does not return an error if the application cannot be found", func() {
-		err := k8sClient.Delete(ctx, hasApp)
-		Eventually(func() bool {
-			err := k8sClient.Get(ctx, types.NamespacedName{
-				Namespace: hasApp.ObjectMeta.Namespace,
-				Name:      hasApp.ObjectMeta.Name,
-			}, hasApp)
-			return err != nil
-		}).Should(BeTrue())
-		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
+		hasSnapshot.Spec.Application = string("im-a-ghost")
+		Expect(k8sClient.Update(ctx, hasSnapshot)).Should(Succeed())
 
 		result, err := snapshotReconciler.Reconcile(ctx, req)
 		Expect(result).To(Equal(ctrl.Result{}))
