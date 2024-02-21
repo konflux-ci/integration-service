@@ -209,7 +209,10 @@ func (a *Adapter) determineIfAllIntegrationTestsFinishedAndPassed(integrationTes
 	for _, integrationTestScenario := range *integrationTestScenarios {
 		integrationTestScenario := integrationTestScenario // G601
 		testDetails, ok := testStatuses.GetScenarioStatus(integrationTestScenario.Name)
-		if !ok || (testDetails.Status != intgteststat.IntegrationTestStatusTestPassed && testDetails.Status != intgteststat.IntegrationTestStatusTestFail && testDetails.Status != intgteststat.IntegrationTestStatusDeleted) {
+		if !ok || (testDetails.Status != intgteststat.IntegrationTestStatusTestPassed &&
+			testDetails.Status != intgteststat.IntegrationTestStatusTestFail &&
+			testDetails.Status != intgteststat.IntegrationTestStatusDeleted &&
+			testDetails.Status != intgteststat.IntegrationTestStatusTestInvalid) {
 			allIntegrationTestsFinished = false
 		}
 		if ok && testDetails.Status != intgteststat.IntegrationTestStatusTestPassed {
