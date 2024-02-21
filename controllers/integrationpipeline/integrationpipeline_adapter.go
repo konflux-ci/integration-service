@@ -28,7 +28,6 @@ import (
 	h "github.com/redhat-appstudio/integration-service/helpers"
 	"github.com/redhat-appstudio/integration-service/loader"
 	intgteststat "github.com/redhat-appstudio/integration-service/pkg/integrationteststatus"
-	"github.com/redhat-appstudio/integration-service/status"
 	"github.com/redhat-appstudio/integration-service/tekton"
 
 	"github.com/redhat-appstudio/operator-toolkit/controller"
@@ -46,7 +45,6 @@ type Adapter struct {
 	logger      h.IntegrationLogger
 	client      client.Client
 	context     context.Context
-	status      status.Status
 }
 
 // NewAdapter creates and returns an Adapter instance.
@@ -60,7 +58,6 @@ func NewAdapter(pipelineRun *tektonv1.PipelineRun, application *applicationapiv1
 		loader:      loader,
 		client:      client,
 		context:     context,
-		status:      status.NewAdapter(logger.Logger, client),
 	}
 }
 

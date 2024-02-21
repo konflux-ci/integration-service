@@ -43,7 +43,7 @@ type Adapter struct {
 	loader      loader.ObjectLoader
 	client      client.Client
 	context     context.Context
-	status      status.Status
+	status      status.StatusInterface
 }
 
 // NewAdapter creates and returns an Adapter instance.
@@ -56,7 +56,7 @@ func NewAdapter(snapshot *applicationapiv1alpha1.Snapshot, application *applicat
 		loader:      loader,
 		client:      client,
 		context:     context,
-		status:      status.NewAdapter(logger.Logger, client),
+		status:      status.NewStatus(logger.Logger, client),
 	}
 }
 
@@ -67,17 +67,16 @@ func (a *Adapter) EnsureSnapshotTestStatusReportedToGitHub() (controller.Operati
 		return controller.ContinueProcessing()
 	}
 
-	reporters, err := a.status.GetReporters(a.snapshot)
-	if err != nil {
-		return controller.RequeueWithError(err)
+	reporter := a.status.GetReporter(a.snapshot)
+	if reporter == nil {
+		a.logger.Info("No suitable reporter found, skipping report")
+		return controller.ContinueProcessing()
 	}
+	a.logger.Info(fmt.Sprintf("Detected reporter: %s", reporter.GetReporterName()))
 
-	for _, reporter := range reporters {
-		if err := reporter.ReportStatusForSnapshot(a.client, a.context, &a.logger, a.snapshot); err != nil {
-			a.logger.Error(err, "failed to report test status to github for snapshot",
-				"snapshot.Namespace", a.snapshot.Namespace, "snapshot.Name", a.snapshot.Name)
-			return controller.RequeueWithError(err)
-		}
+	err := a.status.ReportSnapshotStatus(a.context, reporter, a.snapshot)
+	if err != nil {
+		return controller.RequeueWithError(fmt.Errorf("failed to report status: %w", err))
 	}
 
 	if gitops.IsSnapshotMarkedAsPassed(a.snapshot) || gitops.IsSnapshotMarkedAsFailed(a.snapshot) || gitops.IsSnapshotMarkedAsInvalid(a.snapshot) {

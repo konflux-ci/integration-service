@@ -21,7 +21,6 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
-	"time"
 
 	"github.com/go-logr/logr"
 	ghapi "github.com/google/go-github/v45/github"
@@ -29,11 +28,9 @@ import (
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/git/github"
 	"github.com/redhat-appstudio/integration-service/gitops"
-	"github.com/redhat-appstudio/integration-service/helpers"
 	intgteststat "github.com/redhat-appstudio/integration-service/pkg/integrationteststatus"
 
 	"github.com/redhat-appstudio/operator-toolkit/metadata"
-	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -52,14 +49,14 @@ type StatusUpdater interface {
 	// Authentication of client
 	Authenticate(ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot) error
 	// Update status of PR
-	UpdateStatus(ctx context.Context, integrationTestStatusDetail intgteststat.IntegrationTestStatusDetail) error
+	UpdateStatus(ctx context.Context, report TestReport) error
 }
 
 // CheckRunStatusUpdater updates PR status using CheckRuns (when application integration is enabled in repo)
 type CheckRunStatusUpdater struct {
 	ghClient          github.ClientInterface
 	k8sClient         client.Client
-	logger            *helpers.IntegrationLogger
+	logger            *logr.Logger
 	owner             string
 	repo              string
 	sha               string
@@ -72,7 +69,7 @@ type CheckRunStatusUpdater struct {
 func NewCheckRunStatusUpdater(
 	ghClient github.ClientInterface,
 	k8sClient client.Client,
-	logger *helpers.IntegrationLogger,
+	logger *logr.Logger,
 	owner string,
 	repo string,
 	sha string,
@@ -164,48 +161,36 @@ func (cru *CheckRunStatusUpdater) getAllCheckRuns(ctx context.Context) ([]*ghapi
 
 // createCheckRunAdapterForSnapshot create a CheckRunAdapter for given snapshot, integrationTestStatusDetail, owner, repo and sha to create a checkRun
 // https://docs.github.com/en/rest/checks/runs?apiVersion=2022-11-28#create-a-check-run
-func (cru *CheckRunStatusUpdater) createCheckRunAdapterForSnapshot(ctx context.Context, integrationTestStatusDetail intgteststat.IntegrationTestStatusDetail, owner, repo, sha string) (*github.CheckRunAdapter, error) {
-	var text string
+func (cru *CheckRunStatusUpdater) createCheckRunAdapterForSnapshot(ctx context.Context, report TestReport) (*github.CheckRunAdapter, error) {
 	snapshot := cru.snapshot
-	scenarioName := integrationTestStatusDetail.ScenarioName
 
-	conclusion, err := generateCheckRunConclusion(integrationTestStatusDetail.Status)
+	conclusion, err := generateCheckRunConclusion(report.Status)
 	if err != nil {
-		return nil, fmt.Errorf("unknown status %s for integrationTestScenario %s and snapshot %s/%s", integrationTestStatusDetail.Status, scenarioName, snapshot.Namespace, snapshot.Name)
+		return nil, fmt.Errorf("unknown status %s for integrationTestScenario %s and snapshot %s/%s", report.Status, report.ScenarioName, snapshot.Namespace, snapshot.Name)
 	}
 
-	title, err := generateCheckRunTitle(integrationTestStatusDetail.Status)
+	title, err := generateCheckRunTitle(report.Status)
 	if err != nil {
-		return nil, fmt.Errorf("unknown status %s for integrationTestScenario %s and snapshot %s/%s", integrationTestStatusDetail.Status, scenarioName, snapshot.Namespace, snapshot.Name)
-	}
-
-	summary, err := generateSummary(integrationTestStatusDetail.Status, snapshot.Name, scenarioName)
-	if err != nil {
-		return nil, fmt.Errorf("unknown status %s for integrationTestScenario %s and snapshot %s/%s", integrationTestStatusDetail.Status, scenarioName, snapshot.Namespace, snapshot.Name)
-	}
-
-	text, err = generateCheckRunText(cru.k8sClient, ctx, integrationTestStatusDetail, cru.snapshot.Namespace)
-	if err != nil {
-		return nil, fmt.Errorf("experienced error when generating text for checkRun: %w", err)
+		return nil, fmt.Errorf("unknown status %s for integrationTestScenario %s and snapshot %s/%s", report.Status, report.ScenarioName, snapshot.Namespace, snapshot.Name)
 	}
 
 	cra := &github.CheckRunAdapter{
-		Owner:      owner,
-		Repository: repo,
-		Name:       NamePrefix + " / " + snapshot.Name + " / " + scenarioName,
-		SHA:        sha,
-		ExternalID: scenarioName,
+		Owner:      cru.owner,
+		Repository: cru.repo,
+		Name:       report.FullName,
+		SHA:        cru.sha,
+		ExternalID: report.ScenarioName,
 		Conclusion: conclusion,
 		Title:      title,
-		Summary:    summary,
-		Text:       text,
+		Summary:    report.Summary,
+		Text:       report.Text,
 	}
 
-	if start := integrationTestStatusDetail.StartTime; start != nil {
+	if start := report.StartTime; start != nil {
 		cra.StartTime = *start
 	}
 
-	if complete := integrationTestStatusDetail.CompletionTime; complete != nil {
+	if complete := report.CompletionTime; complete != nil {
 		cra.CompletionTime = *complete
 	}
 
@@ -213,7 +198,7 @@ func (cru *CheckRunStatusUpdater) createCheckRunAdapterForSnapshot(ctx context.C
 }
 
 // UpdateStatus updates CheckRun status of PR
-func (cru *CheckRunStatusUpdater) UpdateStatus(ctx context.Context, integrationTestStatusDetail intgteststat.IntegrationTestStatusDetail) error {
+func (cru *CheckRunStatusUpdater) UpdateStatus(ctx context.Context, report TestReport) error {
 	if cru.creds == nil {
 		panic("authenticate first")
 	}
@@ -223,11 +208,11 @@ func (cru *CheckRunStatusUpdater) UpdateStatus(ctx context.Context, integrationT
 		return err
 	}
 
-	checkRun, err := cru.createCheckRunAdapterForSnapshot(ctx, integrationTestStatusDetail, cru.owner, cru.repo, cru.sha)
+	checkRun, err := cru.createCheckRunAdapterForSnapshot(ctx, report)
 	if err != nil {
 		cru.logger.Error(err, "failed to create checkRunAdapter for scenario, skipping update",
 			"snapshot.NameSpace", cru.snapshot.Namespace, "snapshot.Name", cru.snapshot.Name,
-			"scenario.Name", integrationTestStatusDetail.ScenarioName,
+			"scenario.Name", report.ScenarioName,
 		)
 		return nil
 	}
@@ -236,7 +221,7 @@ func (cru *CheckRunStatusUpdater) UpdateStatus(ctx context.Context, integrationT
 
 	if existingCheckrun == nil {
 		cru.logger.Info("creating checkrun for scenario test status of snapshot",
-			"snapshot.NameSpace", cru.snapshot.Namespace, "snapshot.Name", cru.snapshot.Name, "scenarioName", integrationTestStatusDetail.ScenarioName)
+			"snapshot.NameSpace", cru.snapshot.Namespace, "snapshot.Name", cru.snapshot.Name, "scenarioName", report.ScenarioName)
 		_, err = cru.ghClient.CreateCheckRun(ctx, checkRun)
 		if err != nil {
 			cru.logger.Error(err, "failed to create checkrun",
@@ -260,7 +245,7 @@ func (cru *CheckRunStatusUpdater) UpdateStatus(ctx context.Context, integrationT
 type CommitStatusUpdater struct {
 	ghClient               github.ClientInterface
 	k8sClient              client.Client
-	logger                 *helpers.IntegrationLogger
+	logger                 *logr.Logger
 	owner                  string
 	repo                   string
 	sha                    string
@@ -272,7 +257,7 @@ type CommitStatusUpdater struct {
 func NewCommitStatusUpdater(
 	ghClient github.ClientInterface,
 	k8sClient client.Client,
-	logger *helpers.IntegrationLogger,
+	logger *logr.Logger,
 	owner string,
 	repo string,
 	sha string,
@@ -361,19 +346,12 @@ func (csu *CommitStatusUpdater) Authenticate(ctx context.Context, snapshot *appl
 
 // createCommitStatusAdapterForSnapshot create a commitStatusAdapter used to create commitStatus on GitHub
 // https://docs.github.com/en/rest/commits/statuses?apiVersion=2022-11-28#create-a-commit-status
-func (csu *CommitStatusUpdater) createCommitStatusAdapterForSnapshot(integrationTestStatusDetail intgteststat.IntegrationTestStatusDetail) (*github.CommitStatusAdapter, error) {
+func (csu *CommitStatusUpdater) createCommitStatusAdapterForSnapshot(report TestReport) (*github.CommitStatusAdapter, error) {
 	snapshot := csu.snapshot
-	scenarioName := integrationTestStatusDetail.ScenarioName
-	statusContext := NamePrefix + " / " + snapshot.Name + " / " + scenarioName
 
-	state, err := generateCommitState(integrationTestStatusDetail.Status)
+	state, err := generateCommitState(report.Status)
 	if err != nil {
-		return nil, fmt.Errorf("unknown status %s for integrationTestScenario %s and snapshot %s/%s", integrationTestStatusDetail.Status, scenarioName, snapshot.Namespace, snapshot.Name)
-	}
-
-	description, err := generateSummary(integrationTestStatusDetail.Status, snapshot.Name, scenarioName)
-	if err != nil {
-		return nil, fmt.Errorf("unknown status %s for integrationTestScenario %s and snapshot %s/%s", integrationTestStatusDetail.Status, scenarioName, snapshot.Namespace, snapshot.Name)
+		return nil, fmt.Errorf("unknown status %s for integrationTestScenario %s and snapshot %s/%s", report.Status, report.ScenarioName, snapshot.Namespace, snapshot.Name)
 	}
 
 	return &github.CommitStatusAdapter{
@@ -381,13 +359,13 @@ func (csu *CommitStatusUpdater) createCommitStatusAdapterForSnapshot(integration
 		Repository:  csu.repo,
 		SHA:         csu.sha,
 		State:       state,
-		Description: description,
-		Context:     statusContext,
+		Description: report.Summary,
+		Context:     report.FullName,
 	}, nil
 }
 
 // updateStatusInComment will create/update a comment in PR which creates snapshot
-func (csu *CommitStatusUpdater) updateStatusInComment(ctx context.Context, integrationTestStatusDetail intgteststat.IntegrationTestStatusDetail) error {
+func (csu *CommitStatusUpdater) updateStatusInComment(ctx context.Context, report TestReport) error {
 	issueNumberStr, found := csu.snapshot.GetAnnotations()[gitops.PipelineAsCodePullRequestAnnotation]
 	if !found {
 		return fmt.Errorf("pull-request annotation not found %q", gitops.PipelineAsCodePullRequestAnnotation)
@@ -398,46 +376,16 @@ func (csu *CommitStatusUpdater) updateStatusInComment(ctx context.Context, integ
 		return err
 	}
 
-	state := integrationTestStatusDetail.Status
-	title, err := generateSummary(state, csu.snapshot.Name, integrationTestStatusDetail.ScenarioName)
+	comment, err := FormatComment(report.Summary, report.Text)
 	if err != nil {
-		return fmt.Errorf(
-			"unknown status %s for integrationTestScenario %s and snapshot %s/%s",
-			integrationTestStatusDetail.Status, integrationTestStatusDetail.ScenarioName, csu.snapshot.Namespace, csu.snapshot.Name)
-	}
-
-	var comment string
-	if state == intgteststat.IntegrationTestStatusTestPassed || state == intgteststat.IntegrationTestStatusTestFail {
-		pipelineRunName := integrationTestStatusDetail.TestPipelineRunName
-		pipelineRun := &tektonv1.PipelineRun{}
-		err := csu.k8sClient.Get(ctx, types.NamespacedName{
-			Namespace: csu.snapshot.Namespace,
-			Name:      pipelineRunName,
-		}, pipelineRun)
-		if err != nil {
-			return fmt.Errorf("error while getting the pipelineRun %s: %w", pipelineRunName, err)
-		}
-
-		taskRuns, err := helpers.GetAllChildTaskRunsForPipelineRun(csu.k8sClient, ctx, pipelineRun)
-		if err != nil {
-			return fmt.Errorf("error while getting all child taskRuns from pipelineRun %s: %w", pipelineRunName, err)
-		}
-		comment, err = FormatCommentForFinishedPipelineRun(title, taskRuns)
-		if err != nil {
-			return fmt.Errorf("error while formating all child taskRuns from pipelineRun %s: %w", pipelineRun.Name, err)
-		}
-	} else {
-		comment, err = FormatCommentForDetail(title, integrationTestStatusDetail.Details)
-		if err != nil {
-			return err
-		}
+		return fmt.Errorf("failed to generate comment for pull-request %d: %w", issueNumber, err)
 	}
 
 	allComments, err := csu.ghClient.GetAllCommentsForPR(ctx, csu.owner, csu.repo, issueNumber)
 	if err != nil {
 		return fmt.Errorf("error while getting all comments for pull-request %s: %w", issueNumberStr, err)
 	}
-	existingCommentId := csu.ghClient.GetExistingCommentID(allComments, csu.snapshot.Name, integrationTestStatusDetail.ScenarioName)
+	existingCommentId := csu.ghClient.GetExistingCommentID(allComments, csu.snapshot.Name, report.ScenarioName)
 	if existingCommentId == nil {
 		_, err = csu.ghClient.CreateComment(ctx, csu.owner, csu.repo, issueNumber, comment)
 		if err != nil {
@@ -454,18 +402,18 @@ func (csu *CommitStatusUpdater) updateStatusInComment(ctx context.Context, integ
 }
 
 // UpdateStatus updates commit status in PR
-func (csu *CommitStatusUpdater) UpdateStatus(ctx context.Context, integrationTestStatusDetail intgteststat.IntegrationTestStatusDetail) error {
+func (csu *CommitStatusUpdater) UpdateStatus(ctx context.Context, report TestReport) error {
 
 	allCommitStatuses, err := csu.getAllCommitStatuses(ctx)
 	if err != nil {
 		return err
 	}
 
-	commitStatus, err := csu.createCommitStatusAdapterForSnapshot(integrationTestStatusDetail)
+	commitStatus, err := csu.createCommitStatusAdapterForSnapshot(report)
 	if err != nil {
 		csu.logger.Error(err, "failed to create CommitStatusAdapter for scenario, skipping update",
 			"snapshot.NameSpace", csu.snapshot.Namespace, "snapshot.Name", csu.snapshot.Name,
-			"scenario.Name", integrationTestStatusDetail.ScenarioName,
+			"scenario.Name", report.ScenarioName,
 		)
 		return nil
 	}
@@ -477,21 +425,21 @@ func (csu *CommitStatusUpdater) UpdateStatus(ctx context.Context, integrationTes
 
 	if !commitStatusExist {
 		csu.logger.Info("creating commit status for scenario test status of snapshot",
-			"snapshot.NameSpace", csu.snapshot.Namespace, "snapshot.Name", csu.snapshot.Name, "scenarioName", integrationTestStatusDetail.ScenarioName)
+			"snapshot.NameSpace", csu.snapshot.Namespace, "snapshot.Name", csu.snapshot.Name, "scenarioName", report.ScenarioName)
 		_, err = csu.ghClient.CreateCommitStatus(ctx, commitStatus.Owner, commitStatus.Repository, commitStatus.SHA, commitStatus.State, commitStatus.Description, commitStatus.Context)
 		if err != nil {
 			return err
 		}
 		// Create a comment when integration test is neither pending nor inprogress since comment for pending/inprogress is less meaningful and there is commitStatus for all statuses
-		if integrationTestStatusDetail.Status != intgteststat.IntegrationTestStatusPending && integrationTestStatusDetail.Status != intgteststat.IntegrationTestStatusInProgress {
-			err = csu.updateStatusInComment(ctx, integrationTestStatusDetail)
+		if report.Status != intgteststat.IntegrationTestStatusPending && report.Status != intgteststat.IntegrationTestStatusInProgress {
+			err = csu.updateStatusInComment(ctx, report)
 			if err != nil {
 				return err
 			}
 		}
 	} else {
 		csu.logger.Info("found existing commitStatus for scenario test status of snapshot, no need to create new commit status",
-			"snapshot.NameSpace", csu.snapshot.Namespace, "snapshot.Name", csu.snapshot.Name, "scenarioName", integrationTestStatusDetail.ScenarioName)
+			"snapshot.NameSpace", csu.snapshot.Namespace, "snapshot.Name", csu.snapshot.Name, "scenarioName", report.ScenarioName)
 	}
 
 	return nil
@@ -499,10 +447,14 @@ func (csu *CommitStatusUpdater) UpdateStatus(ctx context.Context, integrationTes
 
 // GitHubReporter reports status back to GitHub for a Snapshot.
 type GitHubReporter struct {
-	logger    logr.Logger
+	logger    *logr.Logger
 	k8sClient client.Client
 	client    github.ClientInterface
+	updater   StatusUpdater
 }
+
+// check if interface has been correctly implemented
+var _ ReporterInterface = (*GitHubReporter)(nil)
 
 // GitHubReporterOption is used to extend GitHubReporter with optional parameters.
 type GitHubReporterOption = func(r *GitHubReporter)
@@ -516,7 +468,7 @@ func WithGitHubClient(client github.ClientInterface) GitHubReporterOption {
 // NewGitHubReporter returns a struct implementing the Reporter interface for GitHub
 func NewGitHubReporter(logger logr.Logger, k8sClient client.Client, opts ...GitHubReporterOption) *GitHubReporter {
 	reporter := GitHubReporter{
-		logger:    logger,
+		logger:    &logger,
 		k8sClient: k8sClient,
 		client:    github.NewClient(logger),
 	}
@@ -532,38 +484,6 @@ type appCredentials struct {
 	AppID          int64
 	InstallationID int64
 	PrivateKey     []byte
-}
-
-// generateSummary generate a summary used in checkRun and commitStatus
-// for the given state, snapshotName and scenarioName
-func generateSummary(state intgteststat.IntegrationTestStatus, snapshotName, scenarioName string) (string, error) {
-	var summary string
-	var statusDesc string = "is unknown"
-
-	switch state {
-	case intgteststat.IntegrationTestStatusPending:
-		statusDesc = "is pending"
-	case intgteststat.IntegrationTestStatusInProgress:
-		statusDesc = "is in progress"
-	case intgteststat.IntegrationTestStatusEnvironmentProvisionError:
-		statusDesc = "experienced an error when provisioning environment"
-	case intgteststat.IntegrationTestStatusDeploymentError:
-		statusDesc = "experienced an error when deploying snapshotEnvironmentBinding"
-	case intgteststat.IntegrationTestStatusDeleted:
-		statusDesc = "was deleted before the pipelineRun could finish"
-	case intgteststat.IntegrationTestStatusTestPassed:
-		statusDesc = "has passed"
-	case intgteststat.IntegrationTestStatusTestFail:
-		statusDesc = "has failed"
-	case intgteststat.IntegrationTestStatusTestInvalid:
-		statusDesc = "is invalid"
-	default:
-		return summary, fmt.Errorf("unknown status")
-	}
-
-	summary = fmt.Sprintf("Integration test for snapshot %s and scenario %s %s", snapshotName, scenarioName, statusDesc)
-
-	return summary, nil
 }
 
 // generateTitle generate a Title of checkRun for the given state
@@ -590,34 +510,6 @@ func generateCheckRunTitle(state intgteststat.IntegrationTestStatus) (string, er
 	}
 
 	return title, nil
-}
-
-// generateTitle generate a Text of checkRun for the given state
-func generateCheckRunText(k8sClient client.Client, ctx context.Context, integrationTestStatusDetail intgteststat.IntegrationTestStatusDetail, namespace string) (string, error) {
-	if integrationTestStatusDetail.Status == intgteststat.IntegrationTestStatusTestPassed || integrationTestStatusDetail.Status == intgteststat.IntegrationTestStatusTestFail {
-		pipelineRunName := integrationTestStatusDetail.TestPipelineRunName
-		pipelineRun := &tektonv1.PipelineRun{}
-		err := k8sClient.Get(ctx, types.NamespacedName{
-			Namespace: namespace,
-			Name:      pipelineRunName,
-		}, pipelineRun)
-		if err != nil {
-			return "", fmt.Errorf("error while getting the pipelineRun %s: %w", pipelineRunName, err)
-		}
-
-		taskRuns, err := helpers.GetAllChildTaskRunsForPipelineRun(k8sClient, ctx, pipelineRun)
-		if err != nil {
-			return "", fmt.Errorf("error while getting all child taskRuns from pipelineRun %s: %w", pipelineRunName, err)
-		}
-		text, err := FormatSummary(taskRuns)
-		if err != nil {
-			return "", err
-		}
-		return text, nil
-	} else {
-		text := integrationTestStatusDetail.Details
-		return text, nil
-	}
 }
 
 // generateCheckRunConclusion generate a conclusion as the conclusion of CheckRun
@@ -665,25 +557,13 @@ func generateCommitState(state intgteststat.IntegrationTestStatus) (string, erro
 	return commitState, nil
 }
 
-// ReportStatusForSnapshot creates CheckRun when using GitHub App integration.
-// When using GitHub webhook integration it creates a commit status and a comment.
-func (r *GitHubReporter) ReportStatusForSnapshot(k8sClient client.Client, ctx context.Context, logger *helpers.IntegrationLogger, snapshot *applicationapiv1alpha1.Snapshot) error {
-	var updater StatusUpdater
+// Detect if GitHubReporter can be used
+func (r *GitHubReporter) Detect(snapshot *applicationapiv1alpha1.Snapshot) bool {
+	return metadata.HasLabelWithValue(snapshot, gitops.PipelineAsCodeGitProviderLabel, gitops.PipelineAsCodeGitHubProviderType)
+}
 
-	statuses, err := gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(snapshot)
-	if err != nil {
-		logger.Error(err, "failed to get test status annotations from snapshot",
-			"snapshot.Namespace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
-		return err
-	}
-
-	if len(statuses.GetStatuses()) == 0 {
-		// no tests to report, skip
-		logger.Info("No test result to report to GitHub, skipping",
-			"snapshot.Namespace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
-		return nil
-	}
-
+// Initialize github reporter. Must be called before updating status
+func (r *GitHubReporter) Initialize(ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot) error {
 	labels := snapshot.GetLabels()
 
 	owner, found := labels[gitops.PipelineAsCodeURLOrgLabel]
@@ -700,42 +580,35 @@ func (r *GitHubReporter) ReportStatusForSnapshot(k8sClient client.Client, ctx co
 	if !found {
 		return fmt.Errorf("sha label not found %q", gitops.PipelineAsCodeSHALabel)
 	}
-	integrationTestStatusDetails := statuses.GetStatuses()
-	latestUpdateTime, err := gitops.GetLatestUpdateTime(snapshot)
-	if err != nil {
-		logger.Error(err, "failed to get latest update annotation for snapshot",
-			"snapshot.NameSpace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
-		latestUpdateTime = time.Time{}
-	}
-	newLatestUpdateTime := latestUpdateTime
 
 	// Existence of the Pipelines as Code installation ID annotation signals configuration using GitHub App integration.
 	// If it doesn't exist, GitHub webhook integration is configured.
 	if metadata.HasAnnotation(snapshot, gitops.PipelineAsCodeInstallationIDAnnotation) {
-		updater = NewCheckRunStatusUpdater(r.client, k8sClient, logger, owner, repo, sha, snapshot)
+		r.updater = NewCheckRunStatusUpdater(r.client, r.k8sClient, r.logger, owner, repo, sha, snapshot)
 	} else {
-		updater = NewCommitStatusUpdater(r.client, k8sClient, logger, owner, repo, sha, snapshot)
+		r.updater = NewCommitStatusUpdater(r.client, r.k8sClient, r.logger, owner, repo, sha, snapshot)
 	}
 
-	if err := updater.Authenticate(ctx, snapshot); err != nil {
+	if err := r.updater.Authenticate(ctx, snapshot); err != nil {
 		return fmt.Errorf("authentication failed: %w", err)
 	}
 
-	for _, integrationTestStatusDetail := range integrationTestStatusDetails {
-		if latestUpdateTime.Before(integrationTestStatusDetail.LastUpdateTime) {
-			logger.Info("Integration Test contains new status updates", "scenario.Name", integrationTestStatusDetail.ScenarioName)
-			if newLatestUpdateTime.Before(integrationTestStatusDetail.LastUpdateTime) {
-				newLatestUpdateTime = integrationTestStatusDetail.LastUpdateTime
-			}
-		} else {
-			//integration test contains no changes
-			continue
-		}
-		if err := updater.UpdateStatus(ctx, *integrationTestStatusDetail); err != nil {
-			return fmt.Errorf("failed to update status: %w", err)
-		}
+	return nil
+}
 
+// Return reporter name
+func (r *GitHubReporter) GetReporterName() string {
+	return "GithubReporter"
+}
+
+// Update status in Github
+func (r *GitHubReporter) ReportStatus(ctx context.Context, report TestReport) error {
+	if r.updater == nil {
+		return fmt.Errorf("reporter is not initialized")
 	}
-	_ = gitops.SetLatestUpdateTime(snapshot, newLatestUpdateTime)
+
+	if err := r.updater.UpdateStatus(ctx, report); err != nil {
+		return fmt.Errorf("failed to update status: %w", err)
+	}
 	return nil
 }
