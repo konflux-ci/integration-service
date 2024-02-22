@@ -139,7 +139,7 @@ func (l *loader) GetComponentFromSnapshot(c client.Client, ctx context.Context, 
 
 		return component, nil
 	} else {
-		return nil, nil
+		return nil, fmt.Errorf("%s label missing from the Snapshot", gitops.SnapshotComponentLabel)
 	}
 }
 

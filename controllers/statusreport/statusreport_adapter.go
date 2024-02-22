@@ -23,6 +23,7 @@ import (
 	"github.com/redhat-appstudio/integration-service/gitops"
 	"github.com/redhat-appstudio/integration-service/metrics"
 	"github.com/redhat-appstudio/operator-toolkit/metadata"
+	"k8s.io/client-go/util/retry"
 	"time"
 
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
@@ -152,10 +153,16 @@ func (a *Adapter) EnsureSnapshotFinishedAllTests() (controller.OperationResult, 
 	// If the Snapshot is a component type, check if the global component list changed in the meantime and
 	// create a composite snapshot if it did. Does not apply for PAC pull request events.
 	if metadata.HasLabelWithValue(a.snapshot, gitops.SnapshotTypeLabel, gitops.SnapshotComponentType) && !gitops.IsSnapshotCreatedByPACPullRequestEvent(a.snapshot) {
-		component, err := a.loader.GetComponentFromSnapshot(a.client, a.context, a.snapshot)
+		var component *applicationapiv1alpha1.Component
+		err = retry.OnError(retry.DefaultRetry, func(_ error) bool { return true }, func() error {
+			component, err = a.loader.GetComponentFromSnapshot(a.client, a.context, a.snapshot)
+			return err
+		})
 		if err != nil {
-			a.logger.Error(err, "Failed to get Component for snapshot")
-			return controller.RequeueWithError(err)
+			if _, err = helpers.HandleLoaderError(a.logger, err, "Component", "Snapshot"); err != nil {
+				return controller.RequeueWithError(err)
+			}
+			return controller.ContinueProcessing()
 		}
 
 		compositeSnapshot, err := a.createCompositeSnapshotsIfConflictExists(a.application, component, a.snapshot)
