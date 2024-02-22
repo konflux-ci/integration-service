@@ -412,7 +412,7 @@ var _ = Describe("Test garbage collection for snapshots", func() {
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "older-snapshot",
 					Labels: map[string]string{
-						"pac.test.appstudio.openshift.io/event-type": "pull_request",
+						"pac.test.appstudio.openshift.io/event-type": "Merge Request",
 					},
 					CreationTimestamp: metav1.NewTime(currentTime),
 				},
@@ -448,9 +448,18 @@ var _ = Describe("Test garbage collection for snapshots", func() {
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "older-pr-snapshot",
 					Labels: map[string]string{
-						"pac.test.appstudio.openshift.io/event-type": "pull_request",
+						"pac.test.appstudio.openshift.io/event-type": "Merge_Request",
 					},
 					CreationTimestamp: metav1.NewTime(currentTime),
+				},
+			}
+			anotherOldPRSnap := &applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "another-old-pr-snapshot",
+					Labels: map[string]string{
+						"pac.test.appstudio.openshift.io/event-type": "Note",
+					},
+					CreationTimestamp: metav1.NewTime(currentTime.Add(time.Minute * 1)),
 				},
 			}
 			newerNonPRSnap := &applicationapiv1alpha1.Snapshot{
@@ -471,18 +480,20 @@ var _ = Describe("Test garbage collection for snapshots", func() {
 				WithLists(
 					&applicationapiv1alpha1.SnapshotList{
 						Items: []applicationapiv1alpha1.Snapshot{
-							*newerPRSnap, *olderPRSnap,
+							*newerPRSnap, *olderPRSnap, *anotherOldPRSnap,
 							*newerNonPRSnap, *olderNonPRSnap,
 						},
 					}).Build()
 			candidates := []applicationapiv1alpha1.Snapshot{
 				*newerPRSnap, *olderPRSnap, *newerNonPRSnap, *olderNonPRSnap,
+				*anotherOldPRSnap,
 			}
 			output := getSnapshotsForRemoval(cl, candidates, 1, 1, logger)
 
-			Expect(output).To(HaveLen(2))
+			Expect(output).To(HaveLen(3))
 			Expect(output[0].Name).To(Equal("older-non-pr-snapshot"))
-			Expect(output[1].Name).To(Equal("older-pr-snapshot"))
+			Expect(output[1].Name).To(Equal("another-old-pr-snapshot"))
+			Expect(output[2].Name).To(Equal("older-pr-snapshot"))
 		})
 	})
 

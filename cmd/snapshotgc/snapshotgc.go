@@ -231,7 +231,10 @@ func getSnapshotsForRemoval(
 
 	for _, snap := range snapshots {
 		label, found := snap.GetLabels()["pac.test.appstudio.openshift.io/event-type"]
-		if found && label == "pull_request" {
+		if found && (label == "pull_request" ||
+			label == "Merge Request" ||
+			label == "Merge_Request" ||
+			label == "Note") {
 			if keptPrSnaps < prSnapshotsToKeep {
 				logger.V(1).Info(
 					"Skipping PR candidate snapshot",
