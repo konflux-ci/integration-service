@@ -64,7 +64,7 @@ func SnapshotIntegrationTestRerunTriggerPredicate() predicate.Predicate {
 func SnapshotTestAnnotationChangePredicate() predicate.Predicate {
 	return predicate.Funcs{
 		CreateFunc: func(createEvent event.CreateEvent) bool {
-			return true
+			return false
 		},
 		DeleteFunc: func(deleteEvent event.DeleteEvent) bool {
 			return false
