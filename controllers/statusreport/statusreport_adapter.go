@@ -19,11 +19,11 @@ package statusreport
 import (
 	"context"
 	"fmt"
-
 	"github.com/redhat-appstudio/integration-service/api/v1beta1"
 	"github.com/redhat-appstudio/integration-service/gitops"
 	"github.com/redhat-appstudio/integration-service/metrics"
 	"github.com/redhat-appstudio/operator-toolkit/metadata"
+	"time"
 
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/helpers"
@@ -34,6 +34,8 @@ import (
 	"github.com/redhat-appstudio/operator-toolkit/controller"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
+
+const SnapshotRetryTimeout = time.Duration(3 * time.Hour)
 
 // Adapter holds the objects needed to reconcile a snapshot's test status report.
 type Adapter struct {
@@ -76,7 +78,13 @@ func (a *Adapter) EnsureSnapshotTestStatusReportedToGitHub() (controller.Operati
 
 	err := a.status.ReportSnapshotStatus(a.context, reporter, a.snapshot)
 	if err != nil {
-		return controller.RequeueWithError(fmt.Errorf("failed to report status: %w", err))
+		a.logger.Error(err, "failed to report test status to github for snapshot",
+			"snapshot.Namespace", a.snapshot.Namespace, "snapshot.Name", a.snapshot.Name)
+		if helpers.IsObjectYoungerThanThreshold(a.snapshot, SnapshotRetryTimeout) {
+			return controller.RequeueWithError(err)
+		} else {
+			return controller.ContinueProcessing()
+		}
 	}
 
 	if gitops.IsSnapshotMarkedAsPassed(a.snapshot) || gitops.IsSnapshotMarkedAsFailed(a.snapshot) || gitops.IsSnapshotMarkedAsInvalid(a.snapshot) {

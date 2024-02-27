@@ -20,12 +20,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	clienterrors "k8s.io/apimachinery/pkg/api/errors"
 	"reflect"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"strings"
 	"time"
-
-	clienterrors "k8s.io/apimachinery/pkg/api/errors"
-	ctrl "sigs.k8s.io/controller-runtime"
 
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/api/v1beta1"
@@ -44,7 +43,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-const RetryReleaseTimeout = time.Duration(3 * time.Hour)
+const SnapshotRetryTimeout = time.Duration(3 * time.Hour)
 
 // configuration options for scenario
 type ScenarioOptions struct {
@@ -940,10 +939,7 @@ func GetDetailsFromStatusError(err error) (string, string) {
 // to requeue the object and the error message passed to the function.  If not, the function returns
 // an operation result instructing the reconciler NOT to requeue the object.
 func (a *Adapter) RequeueIfYoungerThanThreshold(retErr error) (controller.OperationResult, error) {
-	snapshotCreationTime := a.snapshot.GetCreationTimestamp().Time
-	durationSinceSnapshotCreation := time.Since(snapshotCreationTime)
-
-	if durationSinceSnapshotCreation < RetryReleaseTimeout {
+	if h.IsObjectYoungerThanThreshold(a.snapshot, SnapshotRetryTimeout) {
 		return controller.RequeueWithError(retErr)
 	}
 	return controller.ContinueProcessing()
