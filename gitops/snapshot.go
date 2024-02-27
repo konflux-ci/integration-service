@@ -108,8 +108,14 @@ const (
 	// PipelineAsCodePushType is the type of push event which triggered the pipelinerun in build service
 	PipelineAsCodePushType = "push"
 
+	// PipelineAsCodeGLPushType is the type of gitlab push event which triggered the pipelinerun in build service
+	PipelineAsCodeGLPushType = "Push"
+
 	// PipelineAsCodePullRequestType is the type of pull_request event which triggered the pipelinerun in build service
 	PipelineAsCodePullRequestType = "pull_request"
+
+	// PipelineAsCodeMergeRequestType is the type of merge request event which triggered the pipelinerun in build service
+	PipelineAsCodeMergeRequestType = "merge request"
 
 	// PipelineAsCodeGitHubProviderType is the git provider type for a GitHub event which triggered the pipelinerun in build service.
 	PipelineAsCodeGitHubProviderType = "github"
@@ -524,7 +530,7 @@ func CanSnapshotBePromoted(snapshot *applicationapiv1alpha1.Snapshot) (bool, []s
 			canBePromoted = false
 			reasons = append(reasons, "the Snapshot is invalid")
 		}
-		if IsSnapshotCreatedByPACPullRequestEvent(snapshot) {
+		if !IsSnapshotCreatedByPACPushEvent(snapshot) {
 			canBePromoted = false
 			reasons = append(reasons, "the Snapshot was created for a PaC pull request event")
 		}
@@ -550,7 +556,7 @@ func NewSnapshot(application *applicationapiv1alpha1.Application, snapshotCompon
 // CompareSnapshots compares two Snapshots and returns boolean true if their images match exactly.
 func CompareSnapshots(expectedSnapshot *applicationapiv1alpha1.Snapshot, foundSnapshot *applicationapiv1alpha1.Snapshot) bool {
 	// Check if the snapshots are created by the same event type
-	if IsSnapshotCreatedByPACPullRequestEvent(expectedSnapshot) != IsSnapshotCreatedByPACPullRequestEvent(foundSnapshot) {
+	if !IsSnapshotCreatedBySamePACEvent(expectedSnapshot, foundSnapshot) {
 		return false
 	}
 	// If the number of components doesn't match, we immediately know that the snapshots are not equal.
@@ -575,9 +581,28 @@ func CompareSnapshots(expectedSnapshot *applicationapiv1alpha1.Snapshot, foundSn
 	return true
 }
 
-// IsSnapshotCreatedByPACPullRequestEvent checks if a snapshot has label PipelineAsCodeEventTypeLabel and with push value
-func IsSnapshotCreatedByPACPullRequestEvent(snapshot *applicationapiv1alpha1.Snapshot) bool {
-	return metadata.HasLabelWithValue(snapshot, PipelineAsCodeEventTypeLabel, PipelineAsCodePullRequestType)
+// IsSnapshotCreatedByPACPushEvent checks if a snapshot has label PipelineAsCodeEventTypeLabel and with push value
+// it the label doesn't exist for some manual snapshot
+func IsSnapshotCreatedByPACPushEvent(snapshot *applicationapiv1alpha1.Snapshot) bool {
+	return metadata.HasLabelWithValue(snapshot, PipelineAsCodeEventTypeLabel, PipelineAsCodePushType) ||
+		metadata.HasLabelWithValue(snapshot, PipelineAsCodeEventTypeLabel, PipelineAsCodeGLPushType) ||
+		!metadata.HasLabel(snapshot, PipelineAsCodeEventTypeLabel)
+}
+
+// IsSnapshotCreatedBySamePACEvent checks if the two snapshot are created by the same PAC event
+// or they don't have event type
+func IsSnapshotCreatedBySamePACEvent(snapshot1, snapshot2 *applicationapiv1alpha1.Snapshot) bool {
+	value1, ok1 := snapshot1.GetLabels()[PipelineAsCodeEventTypeLabel]
+	value2, ok2 := snapshot2.GetLabels()[PipelineAsCodeEventTypeLabel]
+	// if label exists and two snapshots have the same value
+	if ok1 && ok2 && value1 == value2 {
+		return true
+	}
+	// if label doesn't exist in two snapshot
+	if !ok1 && !ok2 {
+		return true
+	}
+	return false
 }
 
 // HasSnapshotTestingChangedToFinished returns a boolean indicating whether the Snapshot testing status has

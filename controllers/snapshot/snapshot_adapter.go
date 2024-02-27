@@ -354,7 +354,7 @@ func (a *Adapter) EnsureCreationOfEphemeralEnvironments() (controller.OperationR
 // EnsureGlobalCandidateImageUpdated is an operation that ensure the ContainerImage in the Global Candidate List
 // being updated when the Snapshot passed all the integration tests
 func (a *Adapter) EnsureGlobalCandidateImageUpdated() (controller.OperationResult, error) {
-	if a.component == nil || gitops.IsSnapshotCreatedByPACPullRequestEvent(a.snapshot) {
+	if a.component == nil || !gitops.IsSnapshotCreatedByPACPushEvent(a.snapshot) {
 		a.logger.Info("The Snapshot wasn't created for a single component push event, not updating the global candidate list.")
 		return controller.ContinueProcessing()
 	}
