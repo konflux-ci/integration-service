@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/redhat-appstudio/integration-service/api/v1beta1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"reflect"
 	"sort"
 	"time"
@@ -545,4 +546,11 @@ func AddFinalizerToScenario(adapterClient client.Client, logger IntegrationLogge
 	}
 
 	return nil
+}
+
+func IsObjectYoungerThanThreshold(obj metav1.Object, threshold time.Duration) bool {
+	objectCreationTime := obj.GetCreationTimestamp().Time
+	durationSinceObjectCreation := time.Since(objectCreationTime)
+
+	return durationSinceObjectCreation < threshold
 }
