@@ -512,6 +512,18 @@ var _ = Describe("Loader", Ordered, func() {
 		Expect(comp.ObjectMeta).To(Equal(hasComp.ObjectMeta))
 	})
 
+	It("ensures a non-nil error is returned when we cannot get a Component from a Snapshot if the label is missing", func() {
+		// Temporarily remove the component label from Snapshot
+		delete(hasSnapshot.Labels, gitops.SnapshotComponentLabel)
+
+		comp, err := loader.GetComponentFromSnapshot(k8sClient, ctx, hasSnapshot)
+		Expect(err).To(HaveOccurred())
+		Expect(comp).To(BeNil())
+
+		// Restore the component label
+		hasSnapshot.Labels[gitops.SnapshotComponentLabel] = "component-sample"
+	})
+
 	It("ensures we can get a Component from a Pipeline Run ", func() {
 		comp, err := loader.GetComponentFromPipelineRun(k8sClient, ctx, buildPipelineRun)
 		Expect(err).To(BeNil())
