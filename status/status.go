@@ -87,6 +87,11 @@ func (s *Status) GetReporter(snapshot *applicationapiv1alpha1.Snapshot) Reporter
 		return githubReporter
 	}
 
+	gitlabReporter := NewGitLabReporter(s.logger, s.client)
+	if gitlabReporter.Detect(snapshot) {
+		return gitlabReporter
+	}
+
 	return nil
 }
 

@@ -35,12 +35,15 @@ flowchart TD
   check_passed_tests         --No-->    update_status
   update_status                ---->    continue_processing_tests
 
-  %%%%%%%%%%%%%%%%%%%%%%% Drawing EnsureSnapshotTestStatusReportedToGitHub() function
+  %%%%%%%%%%%%%%%%%%%%%%% Drawing EnsureSnapshotTestStatusReportedToGitProvider() function
 
   %% Node definitions
   ensure(Process further if: Snapshot has label <br>pac.test.appstudio.openshift.io/git-provider:github <br>defined)
   get_annotation_value(Get integration test status from annotation <br>test.appstudio.openshift.io/status <br>from Snapshot)
-  collect_commit_info(Collect commit owner, repo and SHA from Snapshot)
+
+  detect_git_provider{Detect git provider}
+
+  collect_commit_info_gh(Collect commit owner, repo and SHA from Snapshot)
 
   is_installation_defined{Is annotation <br>pac.test.appstudio.openshift.io/installation-id <br>defined?}
 
@@ -61,16 +64,21 @@ flowchart TD
   update_existing_comment(Update the existing comment for <br>snapshot and scenario</br>)
   create_new_comment(Create a new comment for <br>snapshot and scenario</br>)
 
+  collect_commit_info_gl(Collect commit projectID, repo-url and SHA from Snapshot)
+  report_commit_status_gl(Create/update commitStatus on Gitlab)
+
   is_snapshot_marked{Is <br>Snapshot marked as <br>passed/failed?}
   remove_finalizer_from_all_intg_plr(Remove the finalizer from all the <br>Integration PLRs related to the Snapshot)
 
   continue_processing(Controller continues processing)
 
   %% Node connections
-  predicate                      ---->    |"EnsureSnapshotTestStatusReportedToGitHub()"|ensure
+  predicate                      ---->    |"EnsureSnapshotTestStatusReportedToGitProvider()"|ensure
   ensure                         -->      get_annotation_value
-  get_annotation_value           -->      collect_commit_info
-  collect_commit_info            --> is_installation_defined
+  get_annotation_value           -->      detect_git_provider
+  detect_git_provider            --github--> collect_commit_info_gh
+  detect_git_provider            --gitlab--> collect_commit_info_gl
+  collect_commit_info_gh         --> is_installation_defined
   is_installation_defined        --Yes--> create_appInstallation_token
   is_installation_defined        --No--> set_oAuth_token
 
@@ -94,6 +102,9 @@ flowchart TD
   does_comment_exist             --No--> create_new_comment
   update_existing_comment        --> is_snapshot_marked
   create_new_comment             --> is_snapshot_marked
+
+  collect_commit_info_gl         --> report_commit_status_gl
+  report_commit_status_gl        --> is_snapshot_marked
 
   is_snapshot_marked                 --Yes--> remove_finalizer_from_all_intg_plr
   is_snapshot_marked                 --No --> continue_processing
