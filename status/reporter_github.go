@@ -24,7 +24,6 @@ import (
 
 	"github.com/go-logr/logr"
 	ghapi "github.com/google/go-github/v45/github"
-	pacv1alpha1 "github.com/openshift-pipelines/pipelines-as-code/pkg/apis/pipelinesascode/v1alpha1"
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/git/github"
 	"github.com/redhat-appstudio/integration-service/gitops"
@@ -274,50 +273,6 @@ func NewCommitStatusUpdater(
 	}
 }
 
-func (csu *CommitStatusUpdater) getToken(ctx context.Context) (string, error) {
-	var err error
-
-	// List all the Repository CRs in the namespace
-	repos := pacv1alpha1.RepositoryList{}
-	if err = csu.k8sClient.List(ctx, &repos, &client.ListOptions{Namespace: csu.snapshot.Namespace}); err != nil {
-		return "", err
-	}
-
-	// Get the full repo URL
-	url, found := csu.snapshot.GetAnnotations()[gitops.PipelineAsCodeRepoURLAnnotation]
-	if !found {
-		return "", fmt.Errorf("object annotation not found %q", gitops.PipelineAsCodeRepoURLAnnotation)
-	}
-
-	// Find a Repository CR with a matching URL and get its secret details
-	var repoSecret *pacv1alpha1.Secret
-	for _, repo := range repos.Items {
-		if url == repo.Spec.URL {
-			repoSecret = repo.Spec.GitProvider.Secret
-			break
-		}
-	}
-
-	if repoSecret == nil {
-		return "", fmt.Errorf("failed to find a Repository matching URL: %q", url)
-	}
-
-	// Get the pipelines as code secret from the PipelineRun's namespace
-	pacSecret := v1.Secret{}
-	err = csu.k8sClient.Get(ctx, types.NamespacedName{Namespace: csu.snapshot.Namespace, Name: repoSecret.Name}, &pacSecret)
-	if err != nil {
-		return "", err
-	}
-
-	// Get the personal access token from the secret
-	token, found := pacSecret.Data[repoSecret.Key]
-	if !found {
-		return "", fmt.Errorf("failed to find %s secret key", repoSecret.Key)
-	}
-
-	return string(token), nil
-}
-
 func (csu *CommitStatusUpdater) getAllCommitStatuses(ctx context.Context) ([]*ghapi.RepoStatus, error) {
 	if len(csu.allCommitStatusesCache) == 0 {
 		allCommitStatuses, err := csu.ghClient.GetAllCommitStatusesForRef(ctx, csu.owner, csu.repo, csu.sha)
@@ -333,7 +288,7 @@ func (csu *CommitStatusUpdater) getAllCommitStatuses(ctx context.Context) ([]*gh
 
 // Authenticate Github Client with token secret ref defined in snapshot
 func (csu *CommitStatusUpdater) Authenticate(ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot) error {
-	token, err := csu.getToken(ctx)
+	token, err := GetPACGitProviderToken(ctx, csu.k8sClient, snapshot)
 	if err != nil {
 		csu.logger.Error(err, "failed to get token from snapshot",
 			"snapshot.NameSpace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
@@ -349,7 +304,7 @@ func (csu *CommitStatusUpdater) Authenticate(ctx context.Context, snapshot *appl
 func (csu *CommitStatusUpdater) createCommitStatusAdapterForSnapshot(report TestReport) (*github.CommitStatusAdapter, error) {
 	snapshot := csu.snapshot
 
-	state, err := generateCommitState(report.Status)
+	state, err := generateGithubCommitState(report.Status)
 	if err != nil {
 		return nil, fmt.Errorf("unknown status %s for integrationTestScenario %s and snapshot %s/%s", report.Status, report.ScenarioName, snapshot.Namespace, snapshot.Name)
 	}
@@ -534,10 +489,10 @@ func generateCheckRunConclusion(state intgteststat.IntegrationTestStatus) (strin
 	return conclusion, nil
 }
 
-// generateCommitState generate state of CommitStatus
+// generateGithubCommitState generate state of CommitStatus
 // Can be one of: error, failure, pending, success
 // https://docs.github.com/en/rest/commits/statuses?apiVersion=2022-11-28#create-a-commit-status
-func generateCommitState(state intgteststat.IntegrationTestStatus) (string, error) {
+func generateGithubCommitState(state intgteststat.IntegrationTestStatus) (string, error) {
 	var commitState string
 
 	switch state {

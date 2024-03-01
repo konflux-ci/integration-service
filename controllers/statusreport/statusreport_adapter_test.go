@@ -271,7 +271,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 					Resource:   hasPRSnapshot,
 				},
 			})
-			result, err := adapter.EnsureSnapshotTestStatusReportedToGitHub()
+			result, err := adapter.EnsureSnapshotTestStatusReportedToGitProvider()
 			fmt.Fprintf(GinkgoWriter, "-------err: %v\n", err)
 			fmt.Fprintf(GinkgoWriter, "-------result: %v\n", result)
 			Expect(!result.CancelRequest && err == nil).To(BeTrue())
