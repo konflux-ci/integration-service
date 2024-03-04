@@ -188,9 +188,9 @@ func GenerateSummary(state intgteststat.IntegrationTestStatus, snapshotName, sce
 		statusDesc = "is pending"
 	case intgteststat.IntegrationTestStatusInProgress:
 		statusDesc = "is in progress"
-	case intgteststat.IntegrationTestStatusEnvironmentProvisionError:
+	case intgteststat.IntegrationTestStatusEnvironmentProvisionError_Deprecated:
 		statusDesc = "experienced an error when provisioning environment"
-	case intgteststat.IntegrationTestStatusDeploymentError:
+	case intgteststat.IntegrationTestStatusDeploymentError_Deprecated:
 		statusDesc = "experienced an error when deploying snapshotEnvironmentBinding"
 	case intgteststat.IntegrationTestStatusDeleted:
 		statusDesc = "was deleted before the pipelineRun could finish"

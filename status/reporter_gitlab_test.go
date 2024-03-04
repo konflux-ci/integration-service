@@ -199,7 +199,7 @@ var _ = Describe("GitLabReporter", func() {
 				status.TestReport{
 					FullName:     "fullname/scenario1",
 					ScenarioName: "scenario1",
-					Status:       integrationteststatus.IntegrationTestStatusEnvironmentProvisionError,
+					Status:       integrationteststatus.IntegrationTestStatusEnvironmentProvisionError_Deprecated,
 					Summary:      summary,
 					Text:         "detailed text here",
 				})).To(Succeed())
@@ -217,8 +217,8 @@ var _ = Describe("GitLabReporter", func() {
 				Expect(err).ToNot(HaveOccurred())
 				Expect(state).To(Equal(glState))
 			},
-			Entry("Provision error", integrationteststatus.IntegrationTestStatusEnvironmentProvisionError, gitlab.Failed),
-			Entry("Deployment error", integrationteststatus.IntegrationTestStatusDeploymentError, gitlab.Failed),
+			Entry("Provision error", integrationteststatus.IntegrationTestStatusEnvironmentProvisionError_Deprecated, gitlab.Failed),
+			Entry("Deployment error", integrationteststatus.IntegrationTestStatusDeploymentError_Deprecated, gitlab.Failed),
 			Entry("Deleted", integrationteststatus.IntegrationTestStatusDeleted, gitlab.Canceled),
 			Entry("Success", integrationteststatus.IntegrationTestStatusTestPassed, gitlab.Success),
 			Entry("Test failure", integrationteststatus.IntegrationTestStatusTestFail, gitlab.Failed),

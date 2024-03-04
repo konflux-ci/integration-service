@@ -20,11 +20,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	clienterrors "k8s.io/apimachinery/pkg/api/errors"
 	"reflect"
-	ctrl "sigs.k8s.io/controller-runtime"
 	"strings"
 	"time"
+
+	clienterrors "k8s.io/apimachinery/pkg/api/errors"
+	ctrl "sigs.k8s.io/controller-runtime"
 
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/api/v1beta1"
@@ -589,7 +590,7 @@ func (a *Adapter) ensureEphemeralEnvironmentForScenarioExists(integrationTestSce
 		if existingEnv == nil {
 			err := h.NewEnvironmentNotInNamespaceError(integrationTestScenario.Spec.Environment.Name, integrationTestScenario.Namespace)
 			testStatuses.UpdateTestStatusIfChanged(
-				integrationTestScenario.Name, intgteststat.IntegrationTestStatusEnvironmentProvisionError,
+				integrationTestScenario.Name, intgteststat.IntegrationTestStatusEnvironmentProvisionError_Deprecated,
 				fmt.Sprintf("Creation of copied ephemeral environment failed: %s. Try again after creating environment.", err))
 			a.writeIntegrationTestStatusAtError(testStatuses)
 			return nil, err
@@ -600,7 +601,7 @@ func (a *Adapter) ensureEphemeralEnvironmentForScenarioExists(integrationTestSce
 		if err != nil {
 			a.logger.Error(err, "Copying of environment failed")
 			testStatuses.UpdateTestStatusIfChanged(
-				integrationTestScenario.Name, intgteststat.IntegrationTestStatusEnvironmentProvisionError,
+				integrationTestScenario.Name, intgteststat.IntegrationTestStatusEnvironmentProvisionError_Deprecated,
 				fmt.Sprintf("Creation of ephemeral environment failed: %s", err))
 			a.writeIntegrationTestStatusAtError(testStatuses)
 			return nil, fmt.Errorf("failed to create environment: %w", err)
@@ -623,7 +624,7 @@ func (a *Adapter) ensureEphemeralEnvironmentForScenarioExists(integrationTestSce
 		if err != nil {
 			testStatuses.UpdateTestStatusIfChanged(
 				integrationTestScenario.Name,
-				intgteststat.IntegrationTestStatusEnvironmentProvisionError,
+				intgteststat.IntegrationTestStatusEnvironmentProvisionError_Deprecated,
 				fmt.Sprintf("Failed to create integration test environment: %s", err))
 			a.writeIntegrationTestStatusAtError(testStatuses)
 			return nil, fmt.Errorf("failed to create SnapshotEnvironmentBinding: %w", err)
