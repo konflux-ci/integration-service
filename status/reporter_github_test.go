@@ -302,8 +302,8 @@ var _ = Describe("GitHubReporter", func() {
 				Expect(mockGitHubClient.CreateCheckRunResult.cra.Conclusion).To(Equal(conclusion))
 
 			},
-			Entry("Provision error", integrationteststatus.IntegrationTestStatusEnvironmentProvisionError, "Errored", gitops.IntegrationTestStatusFailureGithub),
-			Entry("Deployment error", integrationteststatus.IntegrationTestStatusDeploymentError, "Errored", gitops.IntegrationTestStatusFailureGithub),
+			Entry("Provision error", integrationteststatus.IntegrationTestStatusEnvironmentProvisionError_Deprecated, "Errored", gitops.IntegrationTestStatusFailureGithub),
+			Entry("Deployment error", integrationteststatus.IntegrationTestStatusDeploymentError_Deprecated, "Errored", gitops.IntegrationTestStatusFailureGithub),
 			Entry("Deleted", integrationteststatus.IntegrationTestStatusDeleted, "Deleted", gitops.IntegrationTestStatusFailureGithub),
 			Entry("Success", integrationteststatus.IntegrationTestStatusTestPassed, "Succeeded", gitops.IntegrationTestStatusSuccessGithub),
 			Entry("Test failure", integrationteststatus.IntegrationTestStatusTestFail, "Failed", gitops.IntegrationTestStatusFailureGithub),
@@ -435,7 +435,7 @@ var _ = Describe("GitHubReporter", func() {
 				status.TestReport{
 					FullName:     "fullname/scenario1",
 					ScenarioName: "scenario1",
-					Status:       integrationteststatus.IntegrationTestStatusEnvironmentProvisionError,
+					Status:       integrationteststatus.IntegrationTestStatusEnvironmentProvisionError_Deprecated,
 					Summary:      "Integration test for snapshot snapshot-sample and scenario scenario1 failed",
 					Text:         "detailed text here",
 				})).To(Succeed())
@@ -457,8 +457,8 @@ var _ = Describe("GitHubReporter", func() {
 					})).To(Succeed())
 				Expect(mockGitHubClient.CreateCommitStatusResult.state).To(Equal(ghstatus))
 			},
-			Entry("Provision error", integrationteststatus.IntegrationTestStatusEnvironmentProvisionError, gitops.IntegrationTestStatusErrorGithub),
-			Entry("Deployment error", integrationteststatus.IntegrationTestStatusDeploymentError, gitops.IntegrationTestStatusErrorGithub),
+			Entry("Provision error", integrationteststatus.IntegrationTestStatusEnvironmentProvisionError_Deprecated, gitops.IntegrationTestStatusErrorGithub),
+			Entry("Deployment error", integrationteststatus.IntegrationTestStatusDeploymentError_Deprecated, gitops.IntegrationTestStatusErrorGithub),
 			Entry("Deleted", integrationteststatus.IntegrationTestStatusDeleted, gitops.IntegrationTestStatusErrorGithub),
 			Entry("Success", integrationteststatus.IntegrationTestStatusTestPassed, gitops.IntegrationTestStatusSuccessGithub),
 			Entry("Test failure", integrationteststatus.IntegrationTestStatusTestFail, gitops.IntegrationTestStatusFailureGithub),

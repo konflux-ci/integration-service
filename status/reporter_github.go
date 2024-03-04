@@ -450,8 +450,8 @@ func generateCheckRunTitle(state intgteststat.IntegrationTestStatus) (string, er
 		title = "Pending"
 	case intgteststat.IntegrationTestStatusInProgress:
 		title = "In Progress"
-	case intgteststat.IntegrationTestStatusEnvironmentProvisionError,
-		intgteststat.IntegrationTestStatusDeploymentError,
+	case intgteststat.IntegrationTestStatusEnvironmentProvisionError_Deprecated,
+		intgteststat.IntegrationTestStatusDeploymentError_Deprecated,
 		intgteststat.IntegrationTestStatusTestInvalid:
 		title = "Errored"
 	case intgteststat.IntegrationTestStatusDeleted:
@@ -474,8 +474,8 @@ func generateCheckRunConclusion(state intgteststat.IntegrationTestStatus) (strin
 	var conclusion string
 
 	switch state {
-	case intgteststat.IntegrationTestStatusTestFail, intgteststat.IntegrationTestStatusEnvironmentProvisionError,
-		intgteststat.IntegrationTestStatusDeploymentError, intgteststat.IntegrationTestStatusDeleted,
+	case intgteststat.IntegrationTestStatusTestFail, intgteststat.IntegrationTestStatusEnvironmentProvisionError_Deprecated,
+		intgteststat.IntegrationTestStatusDeploymentError_Deprecated, intgteststat.IntegrationTestStatusDeleted,
 		intgteststat.IntegrationTestStatusTestInvalid:
 		conclusion = gitops.IntegrationTestStatusFailureGithub
 	case intgteststat.IntegrationTestStatusTestPassed:
@@ -498,7 +498,7 @@ func generateGithubCommitState(state intgteststat.IntegrationTestStatus) (string
 	switch state {
 	case intgteststat.IntegrationTestStatusTestFail:
 		commitState = gitops.IntegrationTestStatusFailureGithub
-	case intgteststat.IntegrationTestStatusEnvironmentProvisionError, intgteststat.IntegrationTestStatusDeploymentError,
+	case intgteststat.IntegrationTestStatusEnvironmentProvisionError_Deprecated, intgteststat.IntegrationTestStatusDeploymentError_Deprecated,
 		intgteststat.IntegrationTestStatusDeleted, intgteststat.IntegrationTestStatusTestInvalid:
 		commitState = gitops.IntegrationTestStatusErrorGithub
 	case intgteststat.IntegrationTestStatusTestPassed:
