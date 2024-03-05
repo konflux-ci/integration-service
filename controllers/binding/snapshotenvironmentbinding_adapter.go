@@ -152,7 +152,7 @@ func (a *Adapter) EnsureEphemeralEnvironmentsCleanedUp() (controller.OperationRe
 		"reason", reasonMsg,
 	)
 
-	err := a.writeTestStatusIntoSnapshot(intgteststat.IntegrationTestStatusDeploymentError,
+	err := a.writeTestStatusIntoSnapshot(intgteststat.IntegrationTestStatusDeploymentError_Deprecated,
 		fmt.Sprintf("The SnapshotEnvironmentBinding has failed to deploy on ephemeral environment: %s", reasonMsg))
 	if err != nil {
 		return controller.RequeueWithError(fmt.Errorf("failed to update snapshot test status: %w", err))
