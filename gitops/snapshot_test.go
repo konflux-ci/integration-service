@@ -25,6 +25,7 @@ import (
 
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/gitops"
+	"github.com/redhat-appstudio/operator-toolkit/metadata"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/types"
@@ -95,6 +96,7 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 					gitops.SnapshotTypeLabel:               gitops.SnapshotComponentType,
 					gitops.SnapshotComponentLabel:          componentName,
 					gitops.BuildPipelineRunFinishTimeLabel: "1675992257",
+					gitops.PipelineAsCodeEventTypeLabel:    gitops.PipelineAsCodePushType,
 				},
 				Annotations: map[string]string{
 					"test.appstudio.openshift.io/pr-last-update": "2023-08-26T17:57:50+02:00",
@@ -351,6 +353,21 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 	})
 
 	It("ensures the same Snapshots can be successfully compared", func() {
+		expectedSnapshot := hasSnapshot.DeepCopy()
+		comparisonResult := gitops.CompareSnapshots(hasSnapshot, expectedSnapshot)
+		Expect(comparisonResult).To(BeTrue())
+	})
+
+	It("ensures the different Snapshots can be successfully compared if they have different event-type", func() {
+		expectedSnapshot := hasSnapshot.DeepCopy()
+		expectedSnapshot.Labels[gitops.PipelineAsCodeEventTypeLabel] = gitops.PipelineAsCodeMergeRequestType
+		comparisonResult := gitops.CompareSnapshots(hasSnapshot, expectedSnapshot)
+		Expect(comparisonResult).To(BeFalse())
+	})
+
+	It("ensures the different Snapshots can be successfully compared if missing event-type label", func() {
+		err := metadata.DeleteLabel(hasSnapshot, gitops.PipelineAsCodeEventTypeLabel)
+		Expect(err).ToNot(HaveOccurred())
 		expectedSnapshot := hasSnapshot.DeepCopy()
 		comparisonResult := gitops.CompareSnapshots(hasSnapshot, expectedSnapshot)
 		Expect(comparisonResult).To(BeTrue())

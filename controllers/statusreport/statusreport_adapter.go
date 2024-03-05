@@ -66,7 +66,7 @@ func NewAdapter(snapshot *applicationapiv1alpha1.Snapshot, application *applicat
 // EnsureSnapshotTestStatusReportedToGitProvider will ensure that integration test status including env provision and snapshotEnvironmentBinding error is reported to the git provider
 // which (indirectly) triggered its execution.
 func (a *Adapter) EnsureSnapshotTestStatusReportedToGitProvider() (controller.OperationResult, error) {
-	if !gitops.IsSnapshotCreatedByPACPullRequestEvent(a.snapshot) {
+	if gitops.IsSnapshotCreatedByPACPushEvent(a.snapshot) {
 		return controller.ContinueProcessing()
 	}
 
@@ -152,7 +152,7 @@ func (a *Adapter) EnsureSnapshotFinishedAllTests() (controller.OperationResult, 
 
 	// If the Snapshot is a component type, check if the global component list changed in the meantime and
 	// create a composite snapshot if it did. Does not apply for PAC pull request events.
-	if metadata.HasLabelWithValue(a.snapshot, gitops.SnapshotTypeLabel, gitops.SnapshotComponentType) && !gitops.IsSnapshotCreatedByPACPullRequestEvent(a.snapshot) {
+	if metadata.HasLabelWithValue(a.snapshot, gitops.SnapshotTypeLabel, gitops.SnapshotComponentType) && gitops.IsSnapshotCreatedByPACPushEvent(a.snapshot) {
 		var component *applicationapiv1alpha1.Component
 		err = retry.OnError(retry.DefaultRetry, func(_ error) bool { return true }, func() error {
 			component, err = a.loader.GetComponentFromSnapshot(a.client, a.context, a.snapshot)
