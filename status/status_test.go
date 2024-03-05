@@ -19,6 +19,7 @@ package status_test
 import (
 	"context"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -74,6 +75,7 @@ var _ = Describe("Status Adapter", func() {
 
 	BeforeEach(func() {
 		now := time.Now()
+		os.Setenv("CONSOLE_URL", "https://definetly.not.prod/preview/application-pipeline/ns/{{ .Namespace }}/pipelinerun/{{ .PipelineRunName }}")
 
 		successfulTaskRun = &tektonv1.TaskRun{
 			ObjectMeta: metav1.ObjectMeta{
@@ -308,6 +310,9 @@ var _ = Describe("Status Adapter", func() {
 		mockReporter = status.NewMockReporterInterface(ctrl)
 		mockReporter.EXPECT().GetReporterName().Return("mocked-reporter").AnyTimes()
 	})
+	AfterEach(func() {
+		os.Setenv("CONSOLE_URL", "")
+	})
 
 	It("can get reporters from a snapshot", func() {
 		st := status.NewStatus(logr.Discard(), nil)
@@ -376,7 +381,12 @@ var _ = Describe("Status Adapter", func() {
 		Expect(err).NotTo(HaveOccurred())
 		tc, err := time.Parse(time.RFC3339, "2023-07-26T17:57:49+02:00")
 		Expect(err).NotTo(HaveOccurred())
-		text := `| Task | Duration | Test Suite | Status | Details |
+		text := `<ul>
+<li><b>Pipelinerun</b>: <a href="https://definetly.not.prod/preview/application-pipeline/ns/default/pipelinerun/test-pipelinerun">test-pipelinerun</a></li>
+</ul>
+<hr>
+
+| Task | Duration | Test Suite | Status | Details |
 | --- | --- | --- | --- | --- |
 | pipeline1-task1 | 5m0s |  | :heavy_check_mark: SUCCESS | :heavy_check_mark: 10 success(es) |
 | pipeline1-task2 | 5m0s |  | :white_check_mark: SKIPPED |  |

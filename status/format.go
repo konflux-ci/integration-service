@@ -19,9 +19,11 @@ package status
 import (
 	"bytes"
 	"fmt"
+	"os"
 	"strings"
 	"text/template"
 
+	"github.com/go-logr/logr"
 	"github.com/redhat-appstudio/integration-service/helpers"
 )
 
@@ -29,7 +31,14 @@ const commentTemplate = `### {{ .Title }}
 
 {{ .Summary }}`
 
-const summaryTemplate = `| Task | Duration | Test Suite | Status | Details |
+const summaryTemplate = `
+{{- $pipelineRunName := .PipelineRunName -}} {{ $namespace := .Namespace -}} {{ $logger := .Logger -}}
+<ul>
+<li><b>Pipelinerun</b>: <a href="{{ formatPipelineURL $pipelineRunName $namespace $logger }}">{{ $pipelineRunName }}</a></li>
+</ul>
+<hr>
+
+| Task | Duration | Test Suite | Status | Details |
 | --- | --- | --- | --- | --- |
 {{- range $tr := .TaskRuns }}
 | {{ formatTaskName $tr }} | {{ $tr.GetDuration.String }} | {{ formatNamespace $tr }} | {{ formatStatus $tr }} | {{ formatDetails $tr }} |
@@ -39,7 +48,10 @@ const summaryTemplate = `| Task | Duration | Test Suite | Status | Details |
 
 // SummaryTemplateData holds the data necessary to construct a PipelineRun summary.
 type SummaryTemplateData struct {
-	TaskRuns []*helpers.TaskRun
+	TaskRuns        []*helpers.TaskRun
+	PipelineRunName string
+	Namespace       string
+	Logger          logr.Logger
 }
 
 // CommentTemplateData holds the data necessary to construct a PipelineRun comment.
@@ -49,16 +61,17 @@ type CommentTemplateData struct {
 }
 
 // FormatTestsSummary builds a markdown summary for a list of integration TaskRuns.
-func FormatTestsSummary(taskRuns []*helpers.TaskRun) (string, error) {
+func FormatTestsSummary(taskRuns []*helpers.TaskRun, pipelineRunName string, namespace string, logger logr.Logger) (string, error) {
 	funcMap := template.FuncMap{
-		"formatTaskName":  FormatTaskName,
-		"formatNamespace": FormatNamespace,
-		"formatStatus":    FormatStatus,
-		"formatDetails":   FormatDetails,
-		"formatFootnotes": FormatFootnotes,
+		"formatTaskName":    FormatTaskName,
+		"formatNamespace":   FormatNamespace,
+		"formatStatus":      FormatStatus,
+		"formatDetails":     FormatDetails,
+		"formatPipelineURL": FormatPipelineURL,
+		"formatFootnotes":   FormatFootnotes,
 	}
 	buf := bytes.Buffer{}
-	data := SummaryTemplateData{TaskRuns: taskRuns}
+	data := SummaryTemplateData{TaskRuns: taskRuns, PipelineRunName: pipelineRunName, Namespace: namespace, Logger: logger}
 	t := template.Must(template.New("").Funcs(funcMap).Parse(summaryTemplate))
 	if err := t.Execute(&buf, data); err != nil {
 		return "", err
@@ -195,4 +208,19 @@ func FormatFootnotes(taskRuns []*helpers.TaskRun) (string, error) {
 		}
 	}
 	return strings.Join(footnotes, "\n"), nil
+}
+
+// FormatPipelineURL accepts a name of application, pipelinerun, namespace and returns a complete pipelineURL.
+func FormatPipelineURL(pipelinerun string, namespace string, logger logr.Logger) string {
+	console_url := os.Getenv("CONSOLE_URL")
+	if console_url == "" {
+		return "CONSOLE_URL_NOT_AVAILABLE"
+	}
+	buf := bytes.Buffer{}
+	data := SummaryTemplateData{PipelineRunName: pipelinerun, Namespace: namespace}
+	t := template.Must(template.New("").Parse(console_url))
+	if err := t.Execute(&buf, data); err != nil {
+		logger.Error(err, "Error occured when executing template.")
+	}
+	return buf.String()
 }
