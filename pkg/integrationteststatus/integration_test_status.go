@@ -35,10 +35,10 @@ const (
 	IntegrationTestStatusInProgress // InProgress
 	// Integration PLR deleted for this ITS and snapshot
 	IntegrationTestStatusDeleted // Deleted
-	// The environment provision experienced error for this ITS and snapshot
-	IntegrationTestStatusEnvironmentProvisionError // EnvironmentProvisionError
-	// The SEB deployment experienced error for this ITS and snapshot
-	IntegrationTestStatusDeploymentError // DeploymentError
+	// (Deprecated) The environment provision experienced error for this ITS and snapshot
+	IntegrationTestStatusEnvironmentProvisionError_Deprecated // EnvironmentProvisionError
+	// (Deprecated) The SEB deployment experienced error for this ITS and snapshot
+	IntegrationTestStatusDeploymentError_Deprecated // DeploymentError
 	// Integration PLR failed for this ITS and snapshot
 	IntegrationTestStatusTestFail // TestFail
 	// Integration PLR passed for this ITS and snapshot
@@ -159,8 +159,8 @@ func (sits *SnapshotIntegrationTestStatuses) UpdateTestStatusIfChanged(scenarioN
 			// null all timestamps as test is not inProgress neither in final state
 			detail.StartTime = nil
 			detail.CompletionTime = nil
-		case IntegrationTestStatusDeploymentError,
-			IntegrationTestStatusEnvironmentProvisionError,
+		case IntegrationTestStatusDeploymentError_Deprecated,
+			IntegrationTestStatusEnvironmentProvisionError_Deprecated,
 			IntegrationTestStatusDeleted,
 			IntegrationTestStatusTestFail,
 			IntegrationTestStatusTestPassed,

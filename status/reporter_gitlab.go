@@ -154,8 +154,8 @@ func GenerateGitlabCommitState(state intgteststat.IntegrationTestStatus) (gitlab
 		glState = gitlab.Pending
 	case intgteststat.IntegrationTestStatusInProgress:
 		glState = gitlab.Running
-	case intgteststat.IntegrationTestStatusEnvironmentProvisionError,
-		intgteststat.IntegrationTestStatusDeploymentError,
+	case intgteststat.IntegrationTestStatusEnvironmentProvisionError_Deprecated,
+		intgteststat.IntegrationTestStatusDeploymentError_Deprecated,
 		intgteststat.IntegrationTestStatusTestInvalid:
 		glState = gitlab.Failed
 	case intgteststat.IntegrationTestStatusDeleted:

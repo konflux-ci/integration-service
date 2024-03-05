@@ -590,7 +590,7 @@ var _ = Describe("Binding Adapter", Ordered, func() {
 			Expect(err).To(BeNil())
 			detail, ok := statuses.GetScenarioStatus(integrationTestScenario.Name)
 			Expect(ok).To(BeTrue())
-			Expect(detail.Status).To(Equal(intgteststat.IntegrationTestStatusDeploymentError))
+			Expect(detail.Status).To(Equal(intgteststat.IntegrationTestStatusDeploymentError_Deprecated))
 		})
 	})
 })
