@@ -100,9 +100,9 @@ func (a *Adapter) EnsureStatusReportedInSnapshot() (controller.OperationResult, 
 		return controller.RequeueWithError(fmt.Errorf("failed to update test status in snapshot: %w", err))
 	}
 
-	// Remove the finalizer from Integration PLRs only if they aren't related to Snapshots created by Pull-Request event
+	// Remove the finalizer from Integration PLRs only if they are related to Snapshots created by Push event
 	// If they are related, then the statusreport controller removes the finalizers from these PLRs
-	if !gitops.IsSnapshotCreatedByPACPullRequestEvent(a.snapshot) && (h.HasPipelineRunFinished(a.pipelineRun) || pipelinerunStatus == intgteststat.IntegrationTestStatusDeleted) {
+	if gitops.IsSnapshotCreatedByPACPushEvent(a.snapshot) && (h.HasPipelineRunFinished(a.pipelineRun) || pipelinerunStatus == intgteststat.IntegrationTestStatusDeleted) {
 		err = h.RemoveFinalizerFromPipelineRun(a.client, a.logger, a.context, a.pipelineRun, h.IntegrationPipelineRunFinalizer)
 		if err != nil {
 			return controller.RequeueWithError(fmt.Errorf("failed to remove the finalizer: %w", err))

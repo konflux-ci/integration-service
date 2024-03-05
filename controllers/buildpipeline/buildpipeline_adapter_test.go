@@ -133,8 +133,9 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				Name:      "snapshot-sample",
 				Namespace: "default",
 				Labels: map[string]string{
-					gitops.SnapshotTypeLabel:      "component",
-					gitops.SnapshotComponentLabel: hasComp.Name,
+					gitops.SnapshotTypeLabel:            "component",
+					gitops.SnapshotComponentLabel:       hasComp.Name,
+					gitops.PipelineAsCodeEventTypeLabel: gitops.PipelineAsCodePullRequestType,
 				},
 				Annotations: map[string]string{
 					gitops.PipelineAsCodeInstallationIDAnnotation: "123",
@@ -903,6 +904,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			Expect(err).To(BeNil())
 			Expect(allSnapshots).NotTo(BeNil())
 			existingSnapshot := gitops.FindMatchingSnapshot(hasApp, allSnapshots, hasSnapshot)
+			Expect(existingSnapshot).NotTo(BeNil())
 			Expect(existingSnapshot.Name).To(Equal(hasSnapshot.Name))
 		})
 	})
