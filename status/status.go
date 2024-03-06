@@ -29,36 +29,13 @@ import (
 	"github.com/redhat-appstudio/integration-service/helpers"
 	intgteststat "github.com/redhat-appstudio/integration-service/pkg/integrationteststatus"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 // NamePrefix is a common name prefix for this service.
 const NamePrefix = "Red Hat Trusted App Test"
-
-// generate TestReport to be used by all reporters
-func generateTestReport(ctx context.Context, client client.Client, detail intgteststat.IntegrationTestStatusDetail, snapshot *applicationapiv1alpha1.Snapshot) (*TestReport, error) {
-	text, err := generateText(client, ctx, detail, snapshot.Namespace)
-	if err != nil {
-		return nil, fmt.Errorf("failed to generate text message: %w", err)
-	}
-
-	summary, err := GenerateSummary(detail.Status, snapshot.Name, detail.ScenarioName)
-	if err != nil {
-		return nil, fmt.Errorf("failed to generate summary message: %w", err)
-	}
-
-	report := TestReport{
-		Text:           text,
-		FullName:       NamePrefix + " / " + snapshot.Name + " / " + detail.ScenarioName,
-		ScenarioName:   detail.ScenarioName,
-		Status:         detail.Status,
-		Summary:        summary,
-		StartTime:      detail.StartTime,
-		CompletionTime: detail.CompletionTime,
-	}
-	return &report, nil
-}
 
 type StatusInterface interface {
 	GetReporter(*applicationapiv1alpha1.Snapshot) ReporterInterface
@@ -137,7 +114,7 @@ func (s *Status) ReportSnapshotStatus(ctx context.Context, reporter ReporterInte
 			//integration test contains no changes
 			continue
 		}
-		testReport, err := generateTestReport(ctx, s.client, *integrationTestStatusDetail, snapshot)
+		testReport, err := s.generateTestReport(ctx, *integrationTestStatusDetail, snapshot)
 		if err != nil {
 			return fmt.Errorf("failed to generate test report: %w", err)
 		}
@@ -150,20 +127,51 @@ func (s *Status) ReportSnapshotStatus(ctx context.Context, reporter ReporterInte
 	return nil
 }
 
+// generateTestReport generates TestReport to be used by all reporters
+func (s *Status) generateTestReport(ctx context.Context, detail intgteststat.IntegrationTestStatusDetail, snapshot *applicationapiv1alpha1.Snapshot) (*TestReport, error) {
+	text, err := s.generateText(ctx, detail, snapshot.Namespace)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate text message: %w", err)
+	}
+
+	summary, err := GenerateSummary(detail.Status, snapshot.Name, detail.ScenarioName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate summary message: %w", err)
+	}
+
+	report := TestReport{
+		Text:           text,
+		FullName:       NamePrefix + " / " + snapshot.Name + " / " + detail.ScenarioName,
+		ScenarioName:   detail.ScenarioName,
+		Status:         detail.Status,
+		Summary:        summary,
+		StartTime:      detail.StartTime,
+		CompletionTime: detail.CompletionTime,
+	}
+	return &report, nil
+}
+
 // generateText generates a text with details for the given state
-func generateText(k8sClient client.Client, ctx context.Context, integrationTestStatusDetail intgteststat.IntegrationTestStatusDetail, namespace string) (string, error) {
+func (s *Status) generateText(ctx context.Context, integrationTestStatusDetail intgteststat.IntegrationTestStatusDetail, namespace string) (string, error) {
 	if integrationTestStatusDetail.Status == intgteststat.IntegrationTestStatusTestPassed || integrationTestStatusDetail.Status == intgteststat.IntegrationTestStatusTestFail {
 		pipelineRunName := integrationTestStatusDetail.TestPipelineRunName
 		pipelineRun := &tektonv1.PipelineRun{}
-		err := k8sClient.Get(ctx, types.NamespacedName{
+		err := s.client.Get(ctx, types.NamespacedName{
 			Namespace: namespace,
 			Name:      pipelineRunName,
 		}, pipelineRun)
+
 		if err != nil {
+			if errors.IsNotFound(err) {
+				s.logger.Error(err, "Failed to fetch pipelineRun", "pipelineRun.Name", pipelineRunName)
+				text := fmt.Sprintf("%s\n\n\n(Failed to fetch test result details.)", integrationTestStatusDetail.Details)
+				return text, nil
+			}
+
 			return "", fmt.Errorf("error while getting the pipelineRun %s: %w", pipelineRunName, err)
 		}
 
-		taskRuns, err := helpers.GetAllChildTaskRunsForPipelineRun(k8sClient, ctx, pipelineRun)
+		taskRuns, err := helpers.GetAllChildTaskRunsForPipelineRun(s.client, ctx, pipelineRun)
 		if err != nil {
 			return "", fmt.Errorf("error while getting all child taskRuns from pipelineRun %s: %w", pipelineRunName, err)
 		}
