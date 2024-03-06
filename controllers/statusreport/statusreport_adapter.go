@@ -83,8 +83,6 @@ func (a *Adapter) EnsureSnapshotTestStatusReportedToGitProvider() (controller.Op
 			"snapshot.Namespace", a.snapshot.Namespace, "snapshot.Name", a.snapshot.Name)
 		if helpers.IsObjectYoungerThanThreshold(a.snapshot, SnapshotRetryTimeout) {
 			return controller.RequeueWithError(err)
-		} else {
-			return controller.ContinueProcessing()
 		}
 	}
 
