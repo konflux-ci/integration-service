@@ -88,6 +88,10 @@ func (a *Adapter) EnsureSnapshotExists() (result controller.OperationResult, err
 		if h.HasPipelineRunFinished(a.pipelineRun) || a.pipelineRun.GetDeletionTimestamp() != nil {
 			// The pipeline run has failed
 			// OR pipeline has been deleted but it's still in running state (tekton bug/feature?)
+			a.logger.Info("Finished processing of unsuccessful build PLR",
+				"statusCondition", a.pipelineRun.GetStatusCondition(),
+				"deletionTimestamp", a.pipelineRun.GetDeletionTimestamp(),
+			)
 			canRemoveFinalizer = true
 			return controller.ContinueProcessing()
 		}
