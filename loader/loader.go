@@ -28,8 +28,10 @@ import (
 	toolkit "github.com/redhat-appstudio/operator-toolkit/loader"
 	releasev1alpha1 "github.com/redhat-appstudio/release-service/api/v1alpha1"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/selection"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -138,7 +140,8 @@ func (l *loader) GetComponentFromSnapshot(c client.Client, ctx context.Context, 
 
 		return component, nil
 	} else {
-		return nil, fmt.Errorf("%s label missing from the Snapshot", gitops.SnapshotComponentLabel)
+		groupResource := schema.GroupResource{Group: "", Resource: ""}
+		return nil, errors.NewNotFound(groupResource, fmt.Sprintf("Label '%s'", gitops.SnapshotComponentLabel))
 	}
 }
 

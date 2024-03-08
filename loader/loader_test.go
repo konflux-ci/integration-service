@@ -521,7 +521,7 @@ var _ = Describe("Loader", Ordered, func() {
 		Expect(comp).To(BeNil())
 
 		// Restore the component label
-		hasSnapshot.Labels[gitops.SnapshotComponentLabel] = "component-sample"
+		hasSnapshot.Labels[gitops.SnapshotComponentLabel] = hasComp.Name
 	})
 
 	It("ensures we can get a Component from a Pipeline Run ", func() {

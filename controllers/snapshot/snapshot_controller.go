@@ -21,6 +21,7 @@ import (
 	"fmt"
 
 	"github.com/redhat-appstudio/integration-service/cache"
+	"github.com/redhat-appstudio/integration-service/tekton"
 
 	"github.com/go-logr/logr"
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
@@ -128,7 +129,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return err
 	})
 	if err != nil {
-		return helpers.HandleLoaderError(logger, err, "Component", "Snapshot")
+		return helpers.HandleLoaderError(logger, err, fmt.Sprintf("Component or '%s' label", tekton.ComponentNameLabel), "Snapshot")
 	}
 
 	adapter := NewAdapter(snapshot, application, component, logger, loader, r.Client, ctx)
