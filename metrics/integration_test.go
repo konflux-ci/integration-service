@@ -39,13 +39,13 @@ var _ = Describe("Metrics Integration", Ordered, func() {
 
 	var (
 		SnapshotPipelineRunStartedStaticEnvSecondsHeader = inputHeader{
-			Name: "integration_svc_snapshot_created_to_pipelinerun_with_static_env_started_seconds",
-			Help: "Time duration from the moment the snapshot resource was created till a integration pipelineRun is started in a static environment",
+			Name: "integration_svc_snapshot_created_to_pipelinerun_started_seconds",
+			Help: "Time duration from the moment the snapshot resource was created till a integration pipelineRun is started",
 		}
 
 		SnapshotCreatedToPipelineRunStartedSecondsHeader = inputHeader{
 			Name: "integration_svc_snapshot_created_to_pipelinerun_started_seconds",
-			Help: "Time duration from the moment the snapshot resource was created till a integration pipelineRun is started in the environment",
+			Help: "Time duration from the moment the snapshot resource was created till a integration pipelineRun is started",
 		}
 
 		SnapshotDurationSecondsHeader = inputHeader{
@@ -66,15 +66,15 @@ var _ = Describe("Metrics Integration", Ordered, func() {
 			// 'Help' can't be overridden due to 'https://github.com/prometheus/client_golang/blob/83d56b1144a0c2eb10d399e7abbae3333bebc463/prometheus/registry.go#L314'
 			SnapshotCreatedToPipelineRunStartedStaticEnvSeconds = prometheus.NewHistogram(
 				prometheus.HistogramOpts{
-					Name:    "integration_svc_snapshot_created_to_pipelinerun_with_static_env_started_seconds",
-					Help:    "Time duration from the moment the snapshot resource was created till a integration pipelineRun is started in a static environment",
+					Name:    "integration_svc_snapshot_created_to_pipelinerun_started_seconds",
+					Help:    "Time duration from the moment the snapshot resource was created till a integration pipelineRun is started",
 					Buckets: []float64{1, 5, 10, 30},
 				},
 			)
 			SnapshotCreatedToPipelineRunStartedSeconds = prometheus.NewHistogram(
 				prometheus.HistogramOpts{
 					Name:    "integration_svc_snapshot_created_to_pipelinerun_started_seconds",
-					Help:    "Time duration from the moment the snapshot resource was created till a integration pipelineRun is started in the environment",
+					Help:    "Time duration from the moment the snapshot resource was created till a integration pipelineRun is started",
 					Buckets: []float64{1, 5, 10, 30},
 				},
 			)
@@ -106,7 +106,7 @@ var _ = Describe("Metrics Integration", Ordered, func() {
 			}
 			Expect(testutil.ToFloat64(SnapshotConcurrentTotal)).To(Equal(float64(len(inputSeconds))))
 		})
-		It("registers a new observation for 'integration_svc_snapshot_created_to_pipelinerun_with_static_env_started_seconds' with the elapsed time from the moment"+
+		It("registers a new observation for 'integration_svc_snapshot_created_to_pipelinerun_started_seconds' with the elapsed time from the moment"+
 			"the snapshot is created to first integration pipelineRun is started.", func() {
 			// Defined buckets for SnapshotCreatedToPipelineRunStartedSeconds
 			timeBuckets := []string{"1", "5", "10", "30"}
@@ -122,15 +122,15 @@ var _ = Describe("Metrics Integration", Ordered, func() {
 		BeforeAll(func() {
 			SnapshotCreatedToPipelineRunStartedStaticEnvSeconds = prometheus.NewHistogram(
 				prometheus.HistogramOpts{
-					Name:    "integration_svc_snapshot_created_to_pipelinerun_with_static_env_started_seconds",
-					Help:    "Snapshot durations from the moment the snapshot resource was created till a integration pipelineRun is started in static environment",
+					Name:    "integration_svc_snapshot_created_to_pipelinerun_started_seconds",
+					Help:    "Snapshot durations from the moment the snapshot resource was created till a integration pipelineRun is startedt",
 					Buckets: []float64{1, 5, 10, 30},
 				},
 			)
 			SnapshotCreatedToPipelineRunStartedSeconds = prometheus.NewHistogram(
 				prometheus.HistogramOpts{
 					Name:    "integration_svc_snapshot_created_to_pipelinerun_started_seconds",
-					Help:    "Time duration from the moment the snapshot resource was created till a integration pipelineRun is started in the environment",
+					Help:    "Time duration from the moment the snapshot resource was created till a integration pipelineRun is started",
 					Buckets: []float64{1, 5, 10, 30},
 				},
 			)

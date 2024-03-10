@@ -36,8 +36,8 @@ var (
 	//This metric should be dropped once SnapshotCreatedToPipelineRunStartedSeconds is merged in prod
 	SnapshotCreatedToPipelineRunStartedStaticEnvSeconds = prometheus.NewHistogram(
 		prometheus.HistogramOpts{
-			Name:    "integration_svc_snapshot_created_to_pipelinerun_with_static_env_started_seconds",
-			Help:    "Time duration from the moment the snapshot resource was created till a integration pipelineRun is started in a static environment",
+			Name:    "integration_svc_snapshot_created_to_pipelinerun_started_seconds",
+			Help:    "Time duration from the moment the snapshot resource was created till a integration pipelineRun is started",
 			Buckets: []float64{0.05, 0.1, 0.5, 1, 2, 3, 4, 5, 10, 15, 30},
 		},
 	)
@@ -45,7 +45,7 @@ var (
 	SnapshotCreatedToPipelineRunStartedSeconds = prometheus.NewHistogram(
 		prometheus.HistogramOpts{
 			Name:    "integration_svc_snapshot_created_to_pipelinerun_started_seconds",
-			Help:    "Time duration from the moment the snapshot resource was created till a integration pipelineRun is started in the environment",
+			Help:    "Time duration from the moment the snapshot resource was created till a integration pipelineRun is started",
 			Buckets: []float64{0.05, 0.1, 0.5, 1, 2, 3, 4, 5, 10, 15, 30},
 		},
 	)
