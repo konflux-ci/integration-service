@@ -280,7 +280,7 @@
       "targets": [
         {
           "exemplar": true,
-          "expr": "histogram_quantile(0.90, sum(rate(integration_svc_snapshot_created_to_pipelinerun_with_static_env_started_seconds_bucket[$__rate_interval])) by (le))",
+          "expr": "histogram_quantile(0.90, sum(rate(integration_svc_snapshot_created_to_pipelinerun_started_seconds_bucket[$__rate_interval])) by (le))",
           "interval": "",
           "legendFormat": "percentile90",
           "refId": "A"
@@ -300,7 +300,7 @@
       "timeFrom": null,
       "timeRegions": [],
       "timeShift": null,
-      "title": "#2A Time to Start PipelineRun in static envs",
+      "title": "#2A Time to Start PipelineRun",
       "tooltip": {
         "shared": true,
         "sort": 0,
@@ -348,7 +348,7 @@
         "y": 9
       },
       "type": "timeseries",
-      "title": "[Violations] #2A Time to Start PipelineRun in static envs",
+      "title": "[Violations] #2A Time to Start PipelineRun",
       "pluginVersion": "9.1.6",
       "description": "90% of requests must take less than 5sec",
       "fieldConfig": {
@@ -624,201 +624,6 @@
         }
       ],
 
-      "timeFrom": null,
-      "timeShift": null
-    },
-    {
-      "id": 21,
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 0,
-        "y": 17
-      },
-      "type": "graph",
-      "title": "#6 SnapshotEnvironmentBinding created to ready seconds",
-      "thresholds": [
-        {
-          "$$hashKey": "object:1475",
-          "colorMode": "critical",
-          "fill": true,
-          "line": true,
-          "op": "gt",
-          "value": 120,
-          "yaxis": "left"
-        }
-      ],
-      "pluginVersion": "9.1.6",
-      "description": "Measure length of time from snapshot environment binding created to marked as ready for testing",
-      "legend": {
-        "avg": false,
-        "current": false,
-        "max": false,
-        "min": false,
-        "show": true,
-        "total": false,
-        "values": false
-      },
-      "aliasColors": {},
-      "dashLength": 10,
-      "fill": 1,
-      "lines": true,
-      "linewidth": 1,
-      "nullPointMode": "null",
-      "options": {
-        "alertThreshold": true
-      },
-      "pointradius": 2,
-      "renderer": "flot",
-      "seriesOverrides": [],
-      "spaceLength": 10,
-      "targets": [
-        {
-          "editorMode": "code",
-          "exemplar": true,
-          "expr": "histogram_quantile(0.90, sum(rate(integration_svc_seb_created_to_ready_seconds_bucket[$__interval])) by (le))",
-          "interval": "",
-          "legendFormat": "percentile90",
-          "range": true,
-          "refId": "A"
-        }
-      ],
-      "timeRegions": [],
-      "tooltip": {
-        "shared": true,
-        "sort": 0,
-        "value_type": "individual"
-      },
-      "xaxis": {
-        "buckets": null,
-        "mode": "time",
-        "name": null,
-        "show": true,
-        "values": []
-      },
-      "yaxes": [
-        {
-          "$$hashKey": "object:1283",
-          "format": "short",
-          "label": "sec",
-          "logBase": 1,
-          "max": null,
-          "min": null,
-          "show": true
-        },
-        {
-          "$$hashKey": "object:1284",
-          "format": "short",
-          "label": null,
-          "logBase": 1,
-          "max": null,
-          "min": null,
-          "show": true
-        }
-      ],
-      "yaxis": {
-        "align": false,
-        "alignLevel": null
-      },
-      "bars": false,
-      "dashes": false,
-      "fillGradient": 0,
-      "hiddenSeries": false,
-      "percentage": false,
-      "points": false,
-      "stack": false,
-      "steppedLine": false,
-      "timeFrom": null,
-      "timeShift": null
-    },
-    {
-      "id": 27,
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 9
-      },
-      "type": "timeseries",
-      "title": "[Violations] #6 SnapshotEnvironmentBinding created to ready seconds",
-      "pluginVersion": "9.1.6",
-      "description": "90% of requests take less than 120 seconds",
-      "fieldConfig": {
-        "defaults": {
-          "custom": {
-            "drawStyle": "bars",
-            "lineInterpolation": "linear",
-            "barAlignment": 0,
-            "lineWidth": 1,
-            "fillOpacity": 10,
-            "gradientMode": "none",
-            "spanNulls": false,
-            "showPoints": "never",
-            "pointSize": 5,
-            "stacking": {
-              "mode": "none",
-              "group": "A"
-            },
-            "axisPlacement": "auto",
-            "axisLabel": "%",
-            "axisColorMode": "text",
-            "scaleDistribution": {
-              "type": "linear"
-            },
-            "axisCenteredZero": false,
-            "hideFrom": {
-              "tooltip": false,
-              "viz": false,
-              "legend": false
-            },
-            "thresholdsStyle": {
-              "mode": "line+area"
-            }
-          },
-          "color": {
-            "mode": "palette-classic"
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "red",
-                "value": null
-              },
-              {
-                "color": "transparent",
-                "value": 90
-              }
-            ]
-          },
-          "unit": "short"
-        },
-        "overrides": []
-      },
-      "options": {
-        "tooltip": {
-          "mode": "multi",
-          "sort": "none"
-        },
-        "legend": {
-          "showLegend": true,
-          "displayMode": "list",
-          "placement": "bottom",
-          "calcs": []
-        }
-      },
-      "targets": [
-        {
-          "editorMode": "code",
-          "exemplar": true,
-          "expr": "sum(rate(integration_svc_seb_created_to_ready_seconds_bucket{le=\"120\"}[$__rate_interval])) by (job) / sum(rate(integration_svc_seb_created_to_ready_seconds_count[$__rate_interval]) > 0) by (job) *100",
-          "interval": "",
-          "legendFormat": "% of requests within required latency time",
-          "range": true,
-          "refId": "A"
-        }
-      ],
       "timeFrom": null,
       "timeShift": null
     },
@@ -1189,7 +994,7 @@
         "mode": "spectrum"
       },
       "dataFormat": "tsbuckets",
-      "description": "Time duration from the moment the snapshot resource was created till a integration pipelineRun is started in static environment",
+      "description": "Time duration from the moment the snapshot resource was created till a integration pipelineRun is started",
       "fieldConfig": {
         "defaults": {},
         "overrides": []
@@ -1222,7 +1027,7 @@
       ],
       "timeFrom": null,
       "timeShift": null,
-      "title": "Snapshot Created to PipelineRun With Static Environment Started Seconds",
+      "title": "Snapshot Created to PipelineRun",
       "tooltip": {
         "show": true,
         "showHistogram": false
@@ -1255,10 +1060,10 @@
         "y": 90
       },
       "type": "heatmap",
-      "title": "Snapshot Created to PipelineRun With Ephemeral Environment Started Seconds",
+      "title": "Snapshot Created to PipelineRun",
       "pluginVersion": "9.1.6",
       "maxDataPoints": 25,
-      "description": "Time duration from the moment the snapshot resource was created till a integration pipelineRun is started for pipelineRuns with ephemeral environments",
+      "description": "Time duration from the moment the snapshot resource was created till a integration pipelineRun is started for pipelineRuns",
       "legend": {
         "show": false
       },
@@ -1489,14 +1294,6 @@
           "expr": "workqueue_depth{name=\"integrationtestscenario\", namespace=\"integration-service\"}",
           "legendFormat": "{{name}}",
           "range": true
-        },
-        {
-          "refId": "C",
-          "hide": false,
-          "editorMode": "builder",
-          "expr": "workqueue_depth{name=\"snapshotenvironmentbinding\", namespace=\"integration-service\"}",
-          "legendFormat": "{{name}}",
-          "range": true
         }
       ],
       "timeRegions": [],
@@ -1602,16 +1399,6 @@
           "refId": "B",
           "editorMode": "code",
           "hide": false
-        },
-        {
-          "exemplar": true,
-          "expr": "histogram_quantile(0.95, sum by(le) (rate(workqueue_queue_duration_seconds_bucket{name=\"snapshotenvironmentbinding\", namespace=\"integration-service\"}[$__rate_interval])))",
-          "instant": false,
-          "interval": "",
-          "legendFormat": "__auto",
-          "refId": "C",
-          "editorMode": "code",
-          "hide": false
         }
       ],
       "timeRegions": [],
@@ -1660,128 +1447,6 @@
       "steppedLine": false,
       "timeFrom": null,
       "timeShift": null
-    },
-
-    {
-      "id": 28,
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 58
-      },
-      "type": "heatmap",
-      "title": "SnapshotEnvironmentBinding created to ready Seconds",
-      "pluginVersion": "9.1.6",
-      "maxDataPoints": 25,
-      "description": "Time duration from the moment the snapshotEnvironmentBinding was created till the snapshot is deployed to the environtment",
-      "legend": {
-        "show": false
-      },
-      "cards": {
-        "cardPadding": null,
-        "cardRound": null
-      },
-      "color": {
-        "cardColor": "#b4ff00",
-        "colorScale": "sqrt",
-        "colorScheme": "interpolateOranges",
-        "exponent": 0.5,
-        "mode": "spectrum"
-      },
-      "dataFormat": "tsbuckets",
-      "fieldConfig": {
-        "defaults": {
-          "custom": {
-            "scaleDistribution": {
-              "type": "linear"
-            },
-            "hideFrom": {
-              "tooltip": false,
-              "viz": false,
-              "legend": false
-            }
-          }
-        },
-        "overrides": []
-      },
-      "heatmap": {},
-      "hideZeroBuckets": true,
-      "highlightCards": true,
-      "reverseYBuckets": false,
-      "targets": [
-        {
-          "exemplar": true,
-          "expr": "sum(increase(integration_svc_seb_created_to_ready_seconds_bucket[$__interval])) by (le)",
-          "format": "heatmap",
-          "interval": "",
-          "legendFormat": "{{le}}",
-          "refId": "A"
-        }
-      ],
-      "timeFrom": null,
-      "timeShift": null,
-      "tooltip": {
-        "show": true,
-        "showHistogram": false
-      },
-      "xAxis": {
-        "show": true
-      },
-      "xBucketNumber": null,
-      "xBucketSize": null,
-      "yAxis": {
-        "decimals": null,
-        "format": "short",
-        "logBase": 1,
-        "max": null,
-        "min": null,
-        "show": true,
-        "splitFactor": null
-      },
-      "yBucketBound": "auto",
-      "yBucketNumber": null,
-      "yBucketSize": null,
-      "options": {
-        "calculate": false,
-        "yAxis": {
-          "axisPlacement": "left",
-          "reverse": false,
-          "min": null,
-          "max": null,
-          "unit": "short",
-          "decimals": null
-        },
-        "rowsFrame": {
-          "layout": "auto"
-        },
-        "color": {
-          "mode": "scheme",
-          "fill": "#b4ff00",
-          "scale": "exponential",
-          "exponent": 0.5,
-          "scheme": "Oranges",
-          "steps": 128,
-          "reverse": false
-        },
-        "cellGap": 2,
-        "filterValues": {
-          "le": 1e-9
-        },
-        "tooltip": {
-          "show": true,
-          "yHistogram": false
-        },
-        "legend": {
-          "show": false
-        },
-        "exemplars": {
-          "color": "rgba(255,0,255,0.7)"
-        },
-        "calculation": {},
-        "cellValues": {},
-        "showValue": "never"
-      }
     },
 
     {
@@ -1902,101 +1567,6 @@
         "cellValues": {},
         "showValue": "never"
       }
-    },
-
-    {
-      "id": 30,
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 34
-      },
-      "type": "graph",
-      "title": "SEB Ephemeral Deployments Total",
-      "thresholds": [],
-      "pluginVersion": "9.1.6",
-      "description": "Total number of SEB deployments processed by the operator",
-      "legend": {
-        "avg": false,
-        "current": false,
-        "max": false,
-        "min": false,
-        "show": true,
-        "total": false,
-        "values": false
-      },
-      "aliasColors": {},
-      "dashLength": 10,
-      "fill": 1,
-      "lines": true,
-      "linewidth": 1,
-      "nullPointMode": "null",
-      "options": {
-        "alertThreshold": true
-      },
-      "pointradius": 2,
-      "renderer": "flot",
-      "seriesOverrides": [],
-      "spaceLength": 10,
-      "targets": [
-        {
-          "exemplar": true,
-          "expr": "integration_svc_seb_ephemeral_deployments_total",
-          "interval": "",
-          "legendFormat": "{{ reason }}",
-          "refId": "A",
-          "editorMode": "code",
-          "range": true
-        }
-      ],
-      "timeRegions": [],
-      "tooltip": {
-        "shared": true,
-        "sort": 0,
-        "value_type": "individual"
-      },
-      "xaxis": {
-        "buckets": null,
-        "mode": "time",
-        "name": null,
-        "show": true,
-        "values": []
-      },
-      "yaxes": [
-        {
-          "$$hashKey": "object:170",
-          "format": "short",
-          "label": null,
-          "logBase": 1,
-          "max": null,
-          "min": null,
-          "show": true
-        },
-        {
-          "$$hashKey": "object:171",
-          "format": "short",
-          "label": null,
-          "logBase": 1,
-          "max": null,
-          "min": null,
-          "show": true
-        }
-      ],
-      "yaxis": {
-        "align": false,
-        "alignLevel": null
-      },
-      "bars": false,
-      "dashes": false,
-      "fillGradient": 0,
-      "hiddenSeries": false,
-      "percentage": false,
-      "points": false,
-      "stack": false,
-      "steppedLine": false,
-      "timeFrom": null,
-      "timeShift": null
     }
   ],
   "schemaVersion": 27,
