@@ -107,6 +107,19 @@ type SnapshotIntegrationTestStatuses struct {
 	dirty bool
 }
 
+func (sits *IntegrationTestStatus) IsFinal() bool {
+	switch *sits {
+	case IntegrationTestStatusDeleted,
+		IntegrationTestStatusDeploymentError_Deprecated,
+		IntegrationTestStatusEnvironmentProvisionError_Deprecated,
+		IntegrationTestStatusTestFail,
+		IntegrationTestStatusTestPassed,
+		IntegrationTestStatusTestInvalid:
+		return true
+	}
+	return false
+}
+
 // IsDirty returns boolean if there are any changes
 func (sits *SnapshotIntegrationTestStatuses) IsDirty() bool {
 	return sits.dirty
