@@ -67,8 +67,9 @@ flowchart TD
   collect_commit_info_gl(Collect commit projectID, repo-url and SHA from Snapshot)
   report_commit_status_gl(Create/update commitStatus on Gitlab)
 
-  is_snapshot_marked{Is <br>Snapshot marked as <br>passed/failed?}
-  remove_finalizer_from_all_intg_plr(Remove the finalizer from all the <br>Integration PLRs related to the Snapshot)
+  test_iterate(Iterate across all existing related testStatuses)
+  is_test_final{Is <br> the test in it's <br>final state?}
+  remove_finalizer_from_plr(Remove the finalizer from <br>the associated PLR)
 
   continue_processing(Controller continues processing)
 
@@ -87,28 +88,30 @@ flowchart TD
   create_checkRunAdapter         --> does_checkRun_exist
   does_checkRun_exist            --Yes--> is_checkRun_update_needed
   does_checkRun_exist            --No--> create_new_checkRun_on_gh
-  create_new_checkRun_on_gh      --> is_snapshot_marked
+  create_new_checkRun_on_gh      --> test_iterate
   is_checkRun_update_needed      --Yes--> update_existing_checkRun_on_gh
-  is_checkRun_update_needed      --No--> is_snapshot_marked
-  update_existing_checkRun_on_gh --> is_snapshot_marked
+  is_checkRun_update_needed      --No--> test_iterate
+  update_existing_checkRun_on_gh --> test_iterate
 
   set_oAuth_token                --> get_all_commitStatuses_from_gh
   get_all_commitStatuses_from_gh --> create_commitStatusAdapter
   create_commitStatusAdapter     --> does_commitStatus_exist
-  does_commitStatus_exist        --Yes--> is_snapshot_marked
+  does_commitStatus_exist        --Yes--> test_iterate
   does_commitStatus_exist        --No--> create_new_commitStatus_on_gh
   create_new_commitStatus_on_gh  --> does_comment_exist
   does_comment_exist             --Yes--> update_existing_comment
   does_comment_exist             --No--> create_new_comment
-  update_existing_comment        --> is_snapshot_marked
-  create_new_comment             --> is_snapshot_marked
+  update_existing_comment        --> test_iterate
+  create_new_comment             --> test_iterate
 
   collect_commit_info_gl         --> report_commit_status_gl
-  report_commit_status_gl        --> is_snapshot_marked
+  report_commit_status_gl        --> test_iterate
 
-  is_snapshot_marked                 --Yes--> remove_finalizer_from_all_intg_plr
-  is_snapshot_marked                 --No --> continue_processing
-  remove_finalizer_from_all_intg_plr -->      continue_processing
+  test_iterate                   --> is_test_final
+
+  is_test_final                  --Yes--> remove_finalizer_from_plr
+  is_test_final                  --No --> test_iterate
+  remove_finalizer_from_plr      -->      continue_processing
 
   %% Assigning styles to nodes
   class predicate Amber;
