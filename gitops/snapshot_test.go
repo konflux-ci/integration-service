@@ -135,20 +135,6 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 	})
 
-	It("ensures that latest update annotation can be set and get from snapshot", func() {
-		t := time.Time{}
-		Expect(t.UnmarshalText([]byte("2023-08-26T17:57:50+02:00"))).To(Succeed())
-		Expect(gitops.GetLatestUpdateTime(hasSnapshot)).To(Equal(t))
-		//set different time
-		Expect(t.UnmarshalText([]byte("2023-08-26T18:57:50+02:00"))).To(Succeed())
-		Expect(gitops.SetLatestUpdateTime(hasSnapshot, t)).To(Succeed())
-		Expect(hasSnapshot.GetAnnotations()[gitops.SnapshotPRLastUpdate]).To(Equal("2023-08-26T18:57:50+02:00"))
-		//set latest update time to zero
-		Expect(gitops.SetLatestUpdateTime(hasSnapshot, time.Time{})).To(Succeed())
-		Expect(hasSnapshot.GetAnnotations()[gitops.SnapshotPRLastUpdate]).To(Equal("0001-01-01T00:00:00Z"))
-
-	})
-
 	It("ensures the a decision can be made to NOT promote when the snaphot has not been marked as passed/failed", func() {
 		canBePromoted, reasons := gitops.CanSnapshotBePromoted(hasSnapshot)
 		Expect(canBePromoted).To(BeFalse())

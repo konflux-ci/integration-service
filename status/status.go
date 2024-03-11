@@ -20,6 +20,7 @@ package status
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -28,6 +29,7 @@ import (
 	"github.com/redhat-appstudio/integration-service/gitops"
 	"github.com/redhat-appstudio/integration-service/helpers"
 	intgteststat "github.com/redhat-appstudio/integration-service/pkg/integrationteststatus"
+	"github.com/redhat-appstudio/operator-toolkit/metadata"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
@@ -36,6 +38,147 @@ import (
 
 // NamePrefix is a common name prefix for this service.
 const NamePrefix = "Red Hat Konflux"
+
+// ScenarioReportStatus keep report status of git provider for the particular scenario
+type ScenarioReportStatus struct {
+	LastUpdateTime *time.Time `json:"lastUpdateTime"`
+}
+
+// SnapshotReportStatus keep report status of git provider for the snapshot
+type SnapshotReportStatus struct {
+	Scenarios map[string]*ScenarioReportStatus `json:"scenarios"`
+	dirty     bool
+}
+
+// SetLastUpdateTime updates the last udpate time of the given scenario to the given time
+func (srs *SnapshotReportStatus) SetLastUpdateTime(scenarioName string, t time.Time) {
+	srs.dirty = true
+	if scenario, ok := srs.Scenarios[scenarioName]; ok {
+		scenario.LastUpdateTime = &t
+		return
+	}
+
+	srs.Scenarios[scenarioName] = &ScenarioReportStatus{
+		LastUpdateTime: &t,
+	}
+}
+
+// IsNewer returns true if given scenario has newer time than the last updated
+func (srs *SnapshotReportStatus) IsNewer(scenarioName string, t time.Time) bool {
+	if scenario, ok := srs.Scenarios[scenarioName]; ok {
+		return scenario.LastUpdateTime.Before(t)
+	}
+
+	// no record, it's new
+	return true
+}
+
+// ToAnnotationString exports data in format for annotation
+func (srs *SnapshotReportStatus) ToAnnotationString() (string, error) {
+	byteVar, err := json.Marshal(srs)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal report status metadata: %w", err)
+	}
+	return string(byteVar), nil
+}
+
+// IsDirty returns true if there are new changes to be written
+func (srs *SnapshotReportStatus) IsDirty() bool {
+	return srs.dirty
+}
+
+// ResetDirty marks changes as synced to snapshot
+func (srs *SnapshotReportStatus) ResetDirty() {
+	srs.dirty = false
+}
+
+// NewSnapshotReportStatus creates new object
+func NewSnapshotReportStatus(jsondata string) (*SnapshotReportStatus, error) {
+	srs := SnapshotReportStatus{
+		Scenarios: map[string]*ScenarioReportStatus{},
+	}
+	if jsondata != "" {
+		err := json.Unmarshal([]byte(jsondata), &srs)
+		if err != nil {
+			return nil, fmt.Errorf("failed to unmarshal json '%s': %w", jsondata, err)
+		}
+	}
+	return &srs, nil
+}
+
+// NewSnapshotReportStatusFromSnapshot creates new SnapshotTestStatus struct from snapshot annotation
+func NewSnapshotReportStatusFromSnapshot(s *applicationapiv1alpha1.Snapshot) (*SnapshotReportStatus, error) {
+	var (
+		statusAnnotation string
+		ok               bool
+	)
+
+	if statusAnnotation, ok = s.ObjectMeta.GetAnnotations()[gitops.SnapshotStatusReportAnnotation]; !ok {
+		statusAnnotation = ""
+	}
+
+	srs, err := NewSnapshotReportStatus(statusAnnotation)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get integration tests report status metadata from snapshot %s (annotation: %s): %w", s.Name, gitops.SnapshotStatusReportAnnotation, err)
+	}
+
+	return srs, nil
+}
+
+// WriteSnapshotReportStatus writes report status
+func WriteSnapshotReportStatus(ctx context.Context, c client.Client, s *applicationapiv1alpha1.Snapshot, srs *SnapshotReportStatus) error {
+	if !srs.IsDirty() {
+		return nil // nothing to update
+	}
+	patch := client.MergeFrom(s.DeepCopy())
+
+	value, err := srs.ToAnnotationString()
+	if err != nil {
+		return fmt.Errorf("failed to marshal test results into JSON: %w", err)
+	}
+
+	if err := metadata.SetAnnotation(&s.ObjectMeta, gitops.SnapshotStatusReportAnnotation, value); err != nil {
+		return fmt.Errorf("failed to add annotations: %w", err)
+	}
+
+	err = c.Patch(ctx, s, patch)
+	if err != nil {
+		// don't return wrapped err, so we can use RetryOnConflict
+		return err
+	}
+
+	srs.ResetDirty()
+	return nil
+}
+
+// MigrateSnapshotToReportStatus migrates old way of keeping updates sync to the new way by updating annotations in snapshot
+func MigrateSnapshotToReportStatus(s *applicationapiv1alpha1.Snapshot, testStatuses []*intgteststat.IntegrationTestStatusDetail) {
+	if s.ObjectMeta.GetAnnotations() == nil {
+		return // nothing to migrate
+	}
+	annotations := s.ObjectMeta.GetAnnotations()
+	_, ok := annotations[gitops.SnapshotPRLastUpdate]
+	if !ok {
+		return // nothing to migrate
+	}
+
+	oldLastUpdateTime, err := gitops.GetLatestUpdateTime(s)
+	delete(annotations, gitops.SnapshotPRLastUpdate) // we don't care at this point
+	if err != nil {
+		return // something happen, cancel migration and start with fresh data
+	}
+
+	srs, err := NewSnapshotReportStatus("")
+	if err != nil {
+		return // something happen, cancel migration and start with fresh data
+	}
+
+	for _, testStatDetail := range testStatuses {
+		srs.SetLastUpdateTime(testStatDetail.ScenarioName, oldLastUpdateTime)
+	}
+
+	annotations[gitops.SnapshotStatusReportAnnotation], _ = srs.ToAnnotationString()
+}
 
 type StatusInterface interface {
 	GetReporter(*applicationapiv1alpha1.Snapshot) ReporterInterface
@@ -96,34 +239,38 @@ func (s *Status) ReportSnapshotStatus(ctx context.Context, reporter ReporterInte
 	}
 	s.logger.Info("Reporter initialized", "reporter", reporter.GetReporterName())
 
-	latestUpdateTime, err := gitops.GetLatestUpdateTime(snapshot)
+	MigrateSnapshotToReportStatus(snapshot, integrationTestStatusDetails)
+
+	srs, err := NewSnapshotReportStatusFromSnapshot(snapshot)
 	if err != nil {
-		s.logger.Error(err, "failed to get latest update annotation for snapshot",
+		s.logger.Error(err, "failed to get latest snapshot write metadata annotation for snapshot",
 			"snapshot.NameSpace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
-		latestUpdateTime = time.Time{}
+		srs, _ = NewSnapshotReportStatus("")
 	}
-	newLatestUpdateTime := latestUpdateTime
 
 	for _, integrationTestStatusDetail := range integrationTestStatusDetails {
-		if latestUpdateTime.Before(integrationTestStatusDetail.LastUpdateTime) {
+		if srs.IsNewer(integrationTestStatusDetail.ScenarioName, integrationTestStatusDetail.LastUpdateTime) {
 			s.logger.Info("Integration Test contains new status updates", "scenario.Name", integrationTestStatusDetail.ScenarioName)
-			if newLatestUpdateTime.Before(integrationTestStatusDetail.LastUpdateTime) {
-				newLatestUpdateTime = integrationTestStatusDetail.LastUpdateTime
-			}
 		} else {
 			//integration test contains no changes
 			continue
 		}
 		testReport, err := s.generateTestReport(ctx, *integrationTestStatusDetail, snapshot)
 		if err != nil {
+			_ = WriteSnapshotReportStatus(ctx, s.client, snapshot, srs) // try to write what was already written
 			return fmt.Errorf("failed to generate test report: %w", err)
 		}
 		if err := reporter.ReportStatus(ctx, *testReport); err != nil {
+			_ = WriteSnapshotReportStatus(ctx, s.client, snapshot, srs) // try to write what was already written
 			return fmt.Errorf("failed to update status: %w", err)
 		}
+		srs.SetLastUpdateTime(integrationTestStatusDetail.ScenarioName, integrationTestStatusDetail.LastUpdateTime)
 
 	}
-	_ = gitops.SetLatestUpdateTime(snapshot, newLatestUpdateTime)
+	if err := WriteSnapshotReportStatus(ctx, s.client, snapshot, srs); err != nil {
+		return fmt.Errorf("failed to write snapshot report status metadata: %w", err)
+	}
+
 	return nil
 }
 
