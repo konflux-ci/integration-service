@@ -337,8 +337,20 @@ var _ = Describe("Status Adapter", func() {
 		mockReporter.EXPECT().ReportStatus(gomock.Any(), gomock.Any()).Times(0) // data are older, status shouldn't be reported
 
 		hasSnapshot.Annotations["test.appstudio.openshift.io/status"] = "[{\"scenario\":\"scenario1\",\"status\":\"InProgress\",\"startTime\":\"2023-07-26T16:57:49+02:00\",\"lastUpdateTime\":\"2023-08-26T17:57:50+02:00\",\"details\":\"Test in progress\"}]"
+		hasSnapshot.Annotations["test.appstudio.openshift.io/git-reporter-status"] = "{\"scenarios\":{\"scenario1\":{\"lastUpdateTime\":\"2023-08-26T17:57:50+02:00\"}}}"
+		st := status.NewStatus(logr.Discard(), mockK8sClient)
+		err := st.ReportSnapshotStatus(context.Background(), mockReporter, hasSnapshot)
+		Expect(err).NotTo(HaveOccurred())
+	})
+
+	It("doesn't report anything when data are older (old way - migration test)", func() {
+
+		mockReporter.EXPECT().Initialize(gomock.Any(), gomock.Any()).Times(1)
+		mockReporter.EXPECT().ReportStatus(gomock.Any(), gomock.Any()).Times(0) // data are older, status shouldn't be reported
+
+		hasSnapshot.Annotations["test.appstudio.openshift.io/status"] = "[{\"scenario\":\"scenario1\",\"status\":\"InProgress\",\"startTime\":\"2023-07-26T16:57:49+02:00\",\"lastUpdateTime\":\"2023-08-26T17:57:50+02:00\",\"details\":\"Test in progress\"}]"
 		hasSnapshot.Annotations["test.appstudio.openshift.io/pr-last-update"] = "2023-08-26T17:57:50+02:00"
-		st := status.NewStatus(logr.Discard(), nil)
+		st := status.NewStatus(logr.Discard(), mockK8sClient)
 		err := st.ReportSnapshotStatus(context.Background(), mockReporter, hasSnapshot)
 		Expect(err).NotTo(HaveOccurred())
 	})
@@ -349,8 +361,20 @@ var _ = Describe("Status Adapter", func() {
 		mockReporter.EXPECT().ReportStatus(gomock.Any(), gomock.Any()).Times(1)
 
 		hasSnapshot.Annotations["test.appstudio.openshift.io/status"] = "[{\"scenario\":\"scenario1\",\"status\":\"InProgress\",\"startTime\":\"2023-07-26T16:57:49+02:00\",\"lastUpdateTime\":\"2023-08-26T17:57:50+02:00\",\"details\":\"Test in progress\"}]"
+		hasSnapshot.Annotations["test.appstudio.openshift.io/git-reporter-status"] = "{\"scenarios\":{\"scenario1\":{\"lastUpdateTime\":\"2023-08-26T17:57:49+02:00\"}}}"
+		st := status.NewStatus(logr.Discard(), mockK8sClient)
+		err := st.ReportSnapshotStatus(context.Background(), mockReporter, hasSnapshot)
+		Expect(err).NotTo(HaveOccurred())
+	})
+
+	It("Report new status if it was updated (old way - migration test)", func() {
+
+		mockReporter.EXPECT().Initialize(gomock.Any(), gomock.Any()).Times(1)
+		mockReporter.EXPECT().ReportStatus(gomock.Any(), gomock.Any()).Times(1)
+
+		hasSnapshot.Annotations["test.appstudio.openshift.io/status"] = "[{\"scenario\":\"scenario1\",\"status\":\"InProgress\",\"startTime\":\"2023-07-26T16:57:49+02:00\",\"lastUpdateTime\":\"2023-08-26T17:57:50+02:00\",\"details\":\"Test in progress\"}]"
 		hasSnapshot.Annotations["test.appstudio.openshift.io/pr-last-update"] = "2023-08-26T17:57:49+02:00"
-		st := status.NewStatus(logr.Discard(), nil)
+		st := status.NewStatus(logr.Discard(), mockK8sClient)
 		err := st.ReportSnapshotStatus(context.Background(), mockReporter, hasSnapshot)
 		Expect(err).NotTo(HaveOccurred())
 	})
@@ -439,6 +463,114 @@ var _ = Describe("Status Adapter", func() {
 			_, err := status.GenerateSummary(teststatus, "yolo", "yolo")
 			Expect(err).NotTo(HaveOccurred())
 		}
+	})
+
+	Describe("SnapshotReportStatus (SRS)", func() {
+		const (
+			scenarioName = "test-scenario"
+		)
+		var (
+			hasSRS *status.SnapshotReportStatus
+			now    time.Time
+		)
+
+		BeforeEach(func() {
+			var err error
+
+			now = time.Now().UTC()
+
+			hasSRS, err = status.NewSnapshotReportStatus("")
+			Expect(err).ToNot(HaveOccurred())
+		})
+
+		It("New SRS is not dirty", func() {
+			Expect(hasSRS.IsDirty()).To(BeFalse())
+		})
+
+		It("Reseting dirty bit works", func() {
+			hasSRS.SetLastUpdateTime(scenarioName, now)
+			Expect(hasSRS.IsDirty()).To(BeTrue())
+
+			hasSRS.ResetDirty()
+			Expect(hasSRS.IsDirty()).To(BeFalse())
+
+			// must keep scenarios
+			Expect(hasSRS.Scenarios).To(
+				HaveKeyWithValue(scenarioName, &status.ScenarioReportStatus{
+					LastUpdateTime: &now,
+				}))
+		})
+
+		It("New scenario can be added to SRS", func() {
+			hasSRS.SetLastUpdateTime(scenarioName, now)
+			Expect(hasSRS.IsDirty()).To(BeTrue())
+
+			Expect(hasSRS.Scenarios).To(
+				HaveKeyWithValue(scenarioName, &status.ScenarioReportStatus{
+					LastUpdateTime: &now,
+				}))
+		})
+
+		It("Additional scenario can be added to SRS", func() {
+			extraScenarioName := "test-scenario-2"
+			hasSRS.SetLastUpdateTime(scenarioName, now)
+			hasSRS.SetLastUpdateTime(extraScenarioName, now)
+
+			Expect(hasSRS.Scenarios).To(HaveLen(2))
+		})
+
+		It("New last updated time can be assigned to existing scenario", func() {
+			tNew := now.Add(1 * time.Minute)
+			hasSRS.SetLastUpdateTime(scenarioName, now)
+			hasSRS.ResetDirty()
+
+			hasSRS.SetLastUpdateTime(scenarioName, tNew)
+			Expect(hasSRS.Scenarios).To(
+				HaveKeyWithValue(scenarioName, &status.ScenarioReportStatus{
+					LastUpdateTime: &tNew,
+				}))
+			Expect(hasSRS.Scenarios).To(HaveLen(1))
+		})
+
+		It("Detect newer update", func() {
+			tNew := now.Add(1 * time.Minute)
+			hasSRS.SetLastUpdateTime(scenarioName, now)
+
+			Expect(hasSRS.IsNewer(scenarioName, tNew)).To(BeTrue())
+		})
+
+		It("Detect no new update", func() {
+			tOld := now.Add(-1 * time.Minute)
+			hasSRS.SetLastUpdateTime(scenarioName, now)
+
+			Expect(hasSRS.IsNewer(scenarioName, tOld)).To(BeFalse())
+		})
+
+		It("Can export valid annotation", func() {
+			hasSRS.SetLastUpdateTime(scenarioName, now)
+
+			annotation, err := hasSRS.ToAnnotationString()
+			Expect(err).ToNot(HaveOccurred())
+			Expect(annotation).ToNot(BeEmpty())
+
+			newSRS, err := status.NewSnapshotReportStatus(annotation)
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(newSRS.Scenarios).To(HaveKey(scenarioName))
+			// comparing string because it was trying to compare pointer address and it changed
+			Expect(newSRS.Scenarios[scenarioName].LastUpdateTime.UnixMicro()).To(Equal(now.UnixMicro()))
+			Expect(newSRS.Scenarios).To(HaveLen(1))
+		})
+
+		It("Can read annotation from snapshot", func() {
+			hasSnapshot.Annotations["test.appstudio.openshift.io/git-reporter-status"] = "{\"scenarios\":{\"test-scenario\":{\"lastUpdateTime\":\"2023-08-26T17:57:49+02:00\"}}}"
+			newSRS, err := status.NewSnapshotReportStatusFromSnapshot(hasSnapshot)
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(newSRS.Scenarios).To(HaveKey(scenarioName))
+			Expect(newSRS.Scenarios).To(HaveLen(1))
+		})
+
 	})
 
 })
