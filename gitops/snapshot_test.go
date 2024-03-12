@@ -479,6 +479,23 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 		Expect(snapshot.Spec.Components[0].Name).To(Equal(hasComp.Name), "The built component should have been added to the snapshot")
 	})
 
+	It("ensure error is returned if the ContainerImage digest is invalid", func() {
+		imagePullSpec := "quay.io/redhat-appstudio/sample-image@invaliDigest"
+		componentSource := &applicationapiv1alpha1.ComponentSource{
+			ComponentSourceUnion: applicationapiv1alpha1.ComponentSourceUnion{
+				GitSource: &applicationapiv1alpha1.GitSource{
+					URL:      SampleRepoLink,
+					Revision: SampleCommit,
+				},
+			},
+		}
+		allApplicationComponents := &[]applicationapiv1alpha1.Component{*hasComp}
+		snapshot, err := gitops.PrepareSnapshot(k8sClient, ctx, hasApp, allApplicationComponents, hasComp, imagePullSpec, componentSource)
+		Expect(snapshot).To(BeNil())
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).Should(ContainSubstring("quay.io/redhat-appstudio/sample-image@invaliDigest is invalid container image digest from component component-sample"))
+	})
+
 	It("Return false when the image url contains invalid digest", func() {
 		imageUrl := "quay.io/redhat-appstudio/sample-image:latest"
 		Expect(gitops.ValidateImageDigest(imageUrl)).NotTo(BeNil())

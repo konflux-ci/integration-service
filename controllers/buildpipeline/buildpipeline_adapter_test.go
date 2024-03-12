@@ -69,6 +69,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		SampleDigest             = "sha256:841328df1b9f8c4087adbdcfec6cc99ac8308805dea83f6d415d6fb8d40227c1"
 		SampleImageWithoutDigest = "quay.io/redhat-appstudio/sample-image"
 		SampleImage              = SampleImageWithoutDigest + "@" + SampleDigest
+		invalidDigest            = "invalidDigest"
 	)
 
 	BeforeAll(func() {
@@ -562,7 +563,73 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			Expect(found).To(BeTrue())
 			_, found = snapshot.GetLabels()["pipelines.appstudio.openshift.io/type"]
 			Expect(found).To(BeFalse())
+		})
 
+		It("ensure error info is added to build pipelineRun annotation", func() {
+			buildPipelineRun.Status = tektonv1.PipelineRunStatus{
+				PipelineRunStatusFields: tektonv1.PipelineRunStatusFields{
+					Results: []tektonv1.PipelineRunResult{
+						{
+							Name:  "IMAGE_DIGEST",
+							Value: *tektonv1.NewStructuredValues(invalidDigest),
+						},
+						{
+							Name:  "IMAGE_URL",
+							Value: *tektonv1.NewStructuredValues(SampleImageWithoutDigest),
+						},
+						{
+							Name:  "CHAINS-GIT_URL",
+							Value: *tektonv1.NewStructuredValues(SampleRepoLink),
+						},
+						{
+							Name:  "CHAINS-GIT_COMMIT",
+							Value: *tektonv1.NewStructuredValues(SampleCommit),
+						},
+					},
+				},
+				Status: v1.Status{
+					Conditions: v1.Conditions{
+						apis.Condition{
+							Reason: "Completed",
+							Status: "True",
+							Type:   apis.ConditionSucceeded,
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Status().Update(ctx, buildPipelineRun)).Should(Succeed())
+			adapter = createAdapter()
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: loader.ApplicationContextKey,
+					Resource:   hasApp,
+				},
+				{
+					ContextKey: loader.ComponentContextKey,
+					Resource:   hasComp,
+				},
+				{
+					ContextKey: loader.SnapshotContextKey,
+					Resource:   hasSnapshot,
+				},
+				{
+					ContextKey: loader.ApplicationComponentsContextKey,
+					Resource:   []applicationapiv1alpha1.Component{*hasComp},
+				},
+			})
+			_, err := adapter.prepareSnapshotForPipelineRun(adapter.pipelineRun, adapter.component, adapter.application)
+			Expect(helpers.IsInvalidImageDigestError(err)).To(BeTrue())
+			Eventually(func() bool {
+				result, err := adapter.EnsureSnapshotExists()
+				return !result.CancelRequest && err == nil
+			}, time.Second*10).Should(BeTrue())
+			Expect(adapter.pipelineRun.GetAnnotations()[helpers.CreateSnapshotAnnotationName]).ToNot(BeNil())
+			var info map[string]string
+			err = json.Unmarshal([]byte(adapter.pipelineRun.GetAnnotations()[helpers.CreateSnapshotAnnotationName]), &info)
+			Expect(err).NotTo(HaveOccurred())
+			invalidDigestError := helpers.NewInvalidImageDigestError(hasComp.Name, SampleImageWithoutDigest+"@"+invalidDigest)
+			Expect(info["status"]).To(Equal("failed"))
+			Expect(info["message"]).Should(ContainSubstring(invalidDigestError.Error()))
 		})
 	})
 
