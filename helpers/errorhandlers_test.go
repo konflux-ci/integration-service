@@ -89,6 +89,18 @@ var _ = Describe("Helpers for error handlers", Ordered, func() {
 			Expect(err.Error()).To(Equal("Missing info revision from pipelinerun pipelineRunName"))
 		})
 
+		It("Can define InvalidImageDigestError", func() {
+			err := helpers.NewInvalidImageDigestError("componentName", "badDigest")
+			Expect(helpers.IsInvalidImageDigestError(err)).To(BeTrue())
+			Expect(err.Error()).To(Equal("badDigest is invalid container image digest from component componentName"))
+		})
+
+		It("Can define MissingValidComponentError", func() {
+			err := helpers.NewMissingValidComponentError("componentName")
+			Expect(helpers.IsMissingValidComponentError(err)).To(BeTrue())
+			Expect(err.Error()).To(Equal("The only one component componentName is invalid, valid .Spec.ContainerImage is missing"))
+		})
+
 		It("Can handle non integration error", func() {
 			err := fmt.Errorf("failed")
 			Expect(helpers.IsMissingInfoInPipelineRunError(err)).To(BeFalse())

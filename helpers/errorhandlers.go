@@ -24,6 +24,8 @@ import (
 const (
 	ReasonEnvironmentNotInNamespace     = "EnvironmentNotInNamespace"
 	ReasonMissingInfoInPipelineRunError = "MissingInfoInPipelineRunError"
+	ReasonInvalidImageDigestError       = "InvalidImageDigest"
+	ReasonMissingValidComponentError    = "MissingValidComponentError"
 	ReasonUnknownError                  = "UnknownError"
 )
 
@@ -64,6 +66,28 @@ func MissingInfoInPipelineRunError(pipelineRunName, paramName string) error {
 
 func IsMissingInfoInPipelineRunError(err error) bool {
 	return getReason(err) == ReasonMissingInfoInPipelineRunError
+}
+
+func NewInvalidImageDigestError(componentName, image_digest string) error {
+	return &IntegrationError{
+		Reason:  ReasonInvalidImageDigestError,
+		Message: fmt.Sprintf("%s is invalid container image digest from component %s", image_digest, componentName),
+	}
+}
+
+func IsInvalidImageDigestError(err error) bool {
+	return getReason(err) == ReasonInvalidImageDigestError
+}
+
+func NewMissingValidComponentError(componentName string) error {
+	return &IntegrationError{
+		Reason:  ReasonMissingValidComponentError,
+		Message: fmt.Sprintf("The only one component %s is invalid, valid .Spec.ContainerImage is missing", componentName),
+	}
+}
+
+func IsMissingValidComponentError(err error) bool {
+	return getReason(err) == ReasonMissingValidComponentError
 }
 
 func HandleLoaderError(logger IntegrationLogger, err error, resource, from string) (ctrl.Result, error) {
