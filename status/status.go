@@ -290,6 +290,7 @@ func (s *Status) generateTestReport(ctx context.Context, detail intgteststat.Int
 		Text:           text,
 		FullName:       NamePrefix + " / " + snapshot.Name + " / " + detail.ScenarioName,
 		ScenarioName:   detail.ScenarioName,
+		SnapshotName:   snapshot.Name,
 		Status:         detail.Status,
 		Summary:        summary,
 		StartTime:      detail.StartTime,

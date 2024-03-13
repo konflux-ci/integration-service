@@ -43,9 +43,10 @@ import (
 var _ = Describe("GitLabReporter", func() {
 
 	const (
-		repoUrl   = "https://gitlab.com/example/example"
-		digest    = "12a4a35ccd08194595179815e4646c3a6c08bb77"
-		projectID = "123"
+		repoUrl      = "https://gitlab.com/example/example"
+		digest       = "12a4a35ccd08194595179815e4646c3a6c08bb77"
+		projectID    = "123"
+		mergeRequest = "45"
 	)
 
 	var (
@@ -77,6 +78,7 @@ var _ = Describe("GitLabReporter", func() {
 					"appstudio.redhat.com/updateComponentOnSuccess":     "false",
 					"pac.test.appstudio.openshift.io/repo-url":          repoUrl,
 					"pac.test.appstudio.openshift.io/source-project-id": projectID,
+					"pac.test.appstudio.openshift.io/pull-request":      mergeRequest,
 				},
 			},
 			Spec: applicationapiv1alpha1.SnapshotSpec{
@@ -193,6 +195,7 @@ var _ = Describe("GitLabReporter", func() {
 			summary := "Integration test for snapshot snapshot-sample and scenario scenario1 failed"
 
 			muxCommitStatusPost(mux, projectID, digest, summary)
+			muxMergeNotes(mux, projectID, mergeRequest, summary)
 
 			Expect(reporter.ReportStatus(
 				context.TODO(),
@@ -246,5 +249,22 @@ func muxCommitStatusPost(mux *http.ServeMux, pid string, sha string, catchStr st
 			Expect(s).To(ContainSubstring(catchStr))
 		}
 		fmt.Fprintf(rw, "{}")
+	})
+}
+
+// muxMergeNotes mocks merge request notes GET and POST request, if catchStr is non-empty POST request must contain such substring
+func muxMergeNotes(mux *http.ServeMux, pid string, sha string, catchStr string) {
+	path := fmt.Sprintf("/projects/%s/merge_requests/%s/notes", pid, sha)
+	mux.HandleFunc(path, func(rw http.ResponseWriter, r *http.Request) {
+		if r.Method == "POST" {
+			bit, _ := io.ReadAll(r.Body)
+			s := string(bit)
+			if catchStr != "" {
+				Expect(s).To(ContainSubstring(catchStr))
+			}
+			fmt.Fprintf(rw, "{}")
+		} else {
+			fmt.Fprintf(rw, "[]")
+		}
 	})
 }

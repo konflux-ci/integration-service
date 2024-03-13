@@ -386,6 +386,7 @@ var _ = Describe("Status Adapter", func() {
 		expectedTestReport := status.TestReport{
 			FullName:     "Red Hat Konflux / snapshot-sample / scenario1",
 			ScenarioName: "scenario1",
+			SnapshotName: "snapshot-sample",
 			Text:         "Test in progress",
 			Summary:      "Integration test for snapshot snapshot-sample and scenario scenario1 is in progress",
 			Status:       integrationteststatus.IntegrationTestStatusInProgress,
@@ -419,6 +420,7 @@ var _ = Describe("Status Adapter", func() {
 		expectedTestReport := status.TestReport{
 			FullName:       "Red Hat Konflux / snapshot-sample / scenario1",
 			ScenarioName:   "scenario1",
+			SnapshotName:   "snapshot-sample",
 			Text:           text,
 			Summary:        "Integration test for snapshot snapshot-sample and scenario scenario1 has passed",
 			Status:         integrationteststatus.IntegrationTestStatusTestPassed,
