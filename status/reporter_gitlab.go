@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"net/url"
 	"strconv"
+	"strings"
 
 	"github.com/go-logr/logr"
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
@@ -33,11 +34,12 @@ import (
 )
 
 type GitLabReporter struct {
-	logger    *logr.Logger
-	k8sClient client.Client
-	client    *gitlab.Client
-	sha       string
-	projectID int
+	logger       *logr.Logger
+	k8sClient    client.Client
+	client       *gitlab.Client
+	sha          string
+	projectID    int
+	mergeRequest int
 }
 
 func NewGitLabReporter(logger logr.Logger, k8sClient client.Client) *GitLabReporter {
@@ -103,6 +105,15 @@ func (r *GitLabReporter) Initialize(ctx context.Context, snapshot *applicationap
 		return fmt.Errorf("failed to convert project ID '%s' to integer: %w", projectIDstr, err)
 	}
 
+	mergeRequestStr, found := annotations[gitops.PipelineAsCodePullRequestAnnotation]
+	if !found {
+		return fmt.Errorf("pull-request annotation not found %q", gitops.PipelineAsCodePullRequestAnnotation)
+	}
+	r.mergeRequest, err = strconv.Atoi(mergeRequestStr)
+	if err != nil {
+		return fmt.Errorf("failed to convert merge request number '%s' to integer: %w", mergeRequestStr, err)
+	}
+
 	return nil
 }
 
@@ -132,6 +143,47 @@ func (r *GitLabReporter) setCommitStatus(report TestReport) error {
 	return nil
 }
 
+// updateStatusInComment will create/update a comment in the MR which creates snapshot
+func (r *GitLabReporter) updateStatusInComment(report TestReport) error {
+	comment, err := FormatComment(report.Summary, report.Text)
+	if err != nil {
+		return fmt.Errorf("failed to generate comment for merge-request %d: %w", r.mergeRequest, err)
+	}
+
+	allNotes, _, err := r.client.Notes.ListMergeRequestNotes(r.projectID, r.mergeRequest, nil)
+	if err != nil {
+		return fmt.Errorf("error while getting all comments for merge-request %d: %w", r.mergeRequest, err)
+	}
+	existingCommentId := r.GetExistingNoteID(allNotes, report.ScenarioName, report.SnapshotName)
+	if existingCommentId == nil {
+		noteOptions := gitlab.CreateMergeRequestNoteOptions{Body: &comment}
+		_, _, err := r.client.Notes.CreateMergeRequestNote(r.projectID, r.mergeRequest, &noteOptions)
+		if err != nil {
+			return fmt.Errorf("error while creating comment for merge-request %d: %w", r.mergeRequest, err)
+		}
+	} else {
+		noteOptions := gitlab.UpdateMergeRequestNoteOptions{Body: &comment}
+		_, _, err := r.client.Notes.UpdateMergeRequestNote(r.projectID, r.mergeRequest, *existingCommentId, &noteOptions)
+		if err != nil {
+			return fmt.Errorf("error while creating comment for merge-request %d: %w", r.mergeRequest, err)
+		}
+	}
+
+	return nil
+}
+
+// GetExistingNoteID returns existing GitLab note for the scenario of ref.
+func (r *GitLabReporter) GetExistingNoteID(notes []*gitlab.Note, scenarioName, snapshotName string) *int {
+	for _, note := range notes {
+		if strings.Contains(note.Body, snapshotName) && strings.Contains(note.Body, scenarioName) {
+			r.logger.Info("found note ID with a matching scenarioName", "scenarioName", scenarioName, "noteID", &note.ID)
+			return &note.ID
+		}
+	}
+	r.logger.Info("found no note with a matching scenarioName", "scenarioName", scenarioName)
+	return nil
+}
+
 // ReportStatus reports test result to gitlab
 func (r *GitLabReporter) ReportStatus(ctx context.Context, report TestReport) error {
 	if r.client == nil {
@@ -140,6 +192,14 @@ func (r *GitLabReporter) ReportStatus(ctx context.Context, report TestReport) er
 
 	if err := r.setCommitStatus(report); err != nil {
 		return fmt.Errorf("failed to set gitlab commit status: %w", err)
+	}
+
+	// Create a note when integration test is neither pending nor inprogress since comment for pending/inprogress is less meaningful
+	if report.Status != intgteststat.IntegrationTestStatusPending && report.Status != intgteststat.IntegrationTestStatusInProgress {
+		err := r.updateStatusInComment(report)
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil
