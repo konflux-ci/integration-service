@@ -331,6 +331,7 @@ var _ = Describe("GitHubReporter", func() {
 				status.TestReport{
 					FullName:       "test-name",
 					ScenarioName:   "scenario1",
+					SnapshotName:   "snapshot-sample",
 					Status:         integrationteststatus.IntegrationTestStatusTestFail,
 					Summary:        "Integration test for snapshot snapshot-sample and scenario scenario1 experienced an error when provisioning environment",
 					StartTime:      &now,
@@ -363,6 +364,7 @@ var _ = Describe("GitHubReporter", func() {
 				status.TestReport{
 					FullName:       "test-name",
 					ScenarioName:   "scenario1",
+					SnapshotName:   "snapshot-sample",
 					Status:         integrationteststatus.IntegrationTestStatusTestFail,
 					Summary:        "Integration test for snapshot snapshot-sample and scenario scenario1 experienced an error when provisioning environment",
 					StartTime:      &now,
@@ -435,6 +437,7 @@ var _ = Describe("GitHubReporter", func() {
 				status.TestReport{
 					FullName:     "fullname/scenario1",
 					ScenarioName: "scenario1",
+					SnapshotName: "snapshot-sample",
 					Status:       integrationteststatus.IntegrationTestStatusEnvironmentProvisionError_Deprecated,
 					Summary:      "Integration test for snapshot snapshot-sample and scenario scenario1 failed",
 					Text:         "detailed text here",

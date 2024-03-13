@@ -38,6 +38,8 @@ type TestReport struct {
 	FullName string
 	// Name of scenario
 	ScenarioName string
+	// Name of snapshot
+	SnapshotName string
 	// text with details of test results
 	Text string
 	// test status
