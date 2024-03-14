@@ -14,9 +14,10 @@ limitations under the License.
 package helpers
 
 import (
+	"errors"
 	"fmt"
 
-	"k8s.io/apimachinery/pkg/api/errors"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	ctrl "sigs.k8s.io/controller-runtime"
 )
 
@@ -36,8 +37,8 @@ func (ie *IntegrationError) Error() string {
 }
 
 func getReason(err error) string {
-	integrationErr, ok := err.(*IntegrationError)
-	if !ok {
+	var integrationErr *IntegrationError
+	if !errors.As(err, &integrationErr) {
 		return ReasonUnknownError
 	}
 	return integrationErr.Reason
@@ -66,7 +67,7 @@ func IsMissingInfoInPipelineRunError(err error) bool {
 }
 
 func HandleLoaderError(logger IntegrationLogger, err error, resource, from string) (ctrl.Result, error) {
-	if errors.IsNotFound(err) {
+	if k8serrors.IsNotFound(err) {
 		logger.Info(fmt.Sprintf("Could not get %[1]s from %[2]s.  %[1]s may have been removed.  Declining to proceed with reconciliation", resource, from))
 		return ctrl.Result{}, nil
 	}
