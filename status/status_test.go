@@ -355,7 +355,7 @@ var _ = Describe("Status Adapter", func() {
 		t, err := time.Parse(time.RFC3339, "2023-07-26T16:57:49+02:00")
 		Expect(err).NotTo(HaveOccurred())
 		expectedTestReport := status.TestReport{
-			FullName:     "Red Hat Trusted App Test / snapshot-sample / scenario1",
+			FullName:     "Red Hat Konflux / snapshot-sample / scenario1",
 			ScenarioName: "scenario1",
 			Text:         "Test in progress",
 			Summary:      "Integration test for snapshot snapshot-sample and scenario scenario1 is in progress",
@@ -383,7 +383,7 @@ var _ = Describe("Status Adapter", func() {
 
 `
 		expectedTestReport := status.TestReport{
-			FullName:       "Red Hat Trusted App Test / snapshot-sample / scenario1",
+			FullName:       "Red Hat Konflux / snapshot-sample / scenario1",
 			ScenarioName:   "scenario1",
 			Text:           text,
 			Summary:        "Integration test for snapshot snapshot-sample and scenario scenario1 has passed",
