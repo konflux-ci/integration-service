@@ -99,19 +99,6 @@ func (a *Adapter) EnsureSnapshotExists() (result controller.OperationResult, err
 		return controller.ContinueProcessing()
 	}
 
-	isLatest, err := a.isLatestSucceededBuildPipelineRun()
-	if err != nil {
-		return controller.RequeueWithError(err)
-	}
-	if !isLatest {
-		// not the last started pipeline that succeeded for current snapshot
-		// this prevents deploying older pipeline run over new deployment
-		a.logger.Info("The pipelineRun is not the latest successful build pipelineRun for the component, skipping creation of a new Snapshot ",
-			"component.Name", a.component.Name)
-		canRemoveFinalizer = true
-		return controller.ContinueProcessing()
-	}
-
 	if _, found := a.pipelineRun.ObjectMeta.Annotations[tekton.SnapshotNameLabel]; found {
 		a.logger.Info("The build pipelineRun is already associated with existing Snapshot via annotation",
 			"snapshot.Name", a.pipelineRun.ObjectMeta.Annotations[tekton.SnapshotNameLabel])
@@ -268,52 +255,6 @@ func (a *Adapter) prepareSnapshotForPipelineRun(pipelineRun *tektonv1.PipelineRu
 	}
 
 	return snapshot, nil
-}
-
-// isLatestSucceededBuildPipelineRun return true if pipelineRun is the latest succeded pipelineRun
-// for the component. Pipeline start timestamp is used for comparison because we care about
-// time when pipeline was created.
-func (a *Adapter) isLatestSucceededBuildPipelineRun() (bool, error) {
-
-	pipelineStartTime := a.pipelineRun.CreationTimestamp.Time
-
-	pipelineRuns, err := a.getSucceededBuildPipelineRunsForComponent(a.component)
-	if err != nil {
-		return false, err
-	}
-	for _, run := range *pipelineRuns {
-		if a.pipelineRun.Name == run.Name {
-			// it's the same pipeline
-			continue
-		}
-		timestamp := run.CreationTimestamp.Time
-		if pipelineStartTime.Before(timestamp) {
-			// pipeline is not the latest
-			// 1 second is minimal granularity, if both pipelines started at the same second, we cannot decide
-			return false, nil
-		}
-	}
-	return true, nil
-}
-
-// getSucceededBuildPipelineRunsForComponent returns all  succeeded PipelineRun for the
-// associated component. In the case the List operation fails,
-// an error will be returned.
-func (a *Adapter) getSucceededBuildPipelineRunsForComponent(component *applicationapiv1alpha1.Component) (*[]tektonv1.PipelineRun, error) {
-	var succeededPipelineRuns []tektonv1.PipelineRun
-
-	buildPipelineRuns, err := a.loader.GetAllBuildPipelineRunsForComponent(a.client, a.context, component)
-	if err != nil {
-		return nil, err
-	}
-
-	for _, pipelineRun := range *buildPipelineRuns {
-		pipelineRun := pipelineRun // G601
-		if h.HasPipelineRunSucceeded(&pipelineRun) {
-			succeededPipelineRuns = append(succeededPipelineRuns, pipelineRun)
-		}
-	}
-	return &succeededPipelineRuns, nil
 }
 
 func (a *Adapter) annotateBuildPipelineRunWithSnapshot(pipelineRun *tektonv1.PipelineRun, snapshot *applicationapiv1alpha1.Snapshot) error {

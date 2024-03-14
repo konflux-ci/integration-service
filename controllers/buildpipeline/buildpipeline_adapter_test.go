@@ -740,60 +740,6 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			Expect(err == nil || k8serrors.IsNotFound(err)).To(BeTrue())
 		})
 
-		It("isLatestSucceededBuildPipelineRun reports second pipeline as the latest pipeline", func() {
-			// make sure the seocnd pipeline started as second
-			buildPipelineRun2.CreationTimestamp.Time = buildPipelineRun2.CreationTimestamp.Add(2 * time.Hour)
-			adapter = NewAdapter(buildPipelineRun2, hasComp, hasApp, logger, loader.NewMockLoader(), k8sClient, ctx)
-			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
-				{
-					ContextKey: loader.ApplicationContextKey,
-					Resource:   hasApp,
-				},
-				{
-					ContextKey: loader.ComponentContextKey,
-					Resource:   hasComp,
-				},
-				{
-					ContextKey: loader.SnapshotContextKey,
-					Resource:   hasSnapshot,
-				},
-				{
-					ContextKey: loader.PipelineRunsContextKey,
-					Resource:   []tektonv1.PipelineRun{*buildPipelineRun2, *buildPipelineRun},
-				},
-			})
-			isLatest, err := adapter.isLatestSucceededBuildPipelineRun()
-			Expect(err).To(BeNil())
-			Expect(isLatest).To(BeTrue())
-		})
-
-		It("isLatestSucceededBuildPipelineRun doesn't report first pipeline as the latest pipeline", func() {
-			// make sure the first pipeline started as first
-			buildPipelineRun.CreationTimestamp.Time = buildPipelineRun.CreationTimestamp.Add(-2 * time.Hour)
-			adapter = NewAdapter(buildPipelineRun, hasComp, hasApp, logger, loader.NewMockLoader(), k8sClient, ctx)
-			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
-				{
-					ContextKey: loader.ApplicationContextKey,
-					Resource:   hasApp,
-				},
-				{
-					ContextKey: loader.ComponentContextKey,
-					Resource:   hasComp,
-				},
-				{
-					ContextKey: loader.SnapshotContextKey,
-					Resource:   hasSnapshot,
-				},
-				{
-					ContextKey: loader.PipelineRunsContextKey,
-					Resource:   []tektonv1.PipelineRun{*buildPipelineRun2, *buildPipelineRun},
-				},
-			})
-			isLatest, err := adapter.isLatestSucceededBuildPipelineRun()
-			Expect(err).To(BeNil())
-			Expect(isLatest).To(BeFalse())
-		})
-
 		It("can detect if a PipelineRun has succeeded", func() {
 			buildPipelineRun.Status.SetCondition(&apis.Condition{
 				Type:   apis.ConditionSucceeded,
@@ -806,14 +752,6 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			})
 			Expect(helpers.HasPipelineRunSucceeded(buildPipelineRun)).To(BeTrue())
 			Expect(helpers.HasPipelineRunSucceeded(&tektonv1.TaskRun{})).To(BeFalse())
-		})
-
-		It("can fetch all succeeded build pipelineRuns", func() {
-			pipelineRuns, err := adapter.getSucceededBuildPipelineRunsForComponent(hasComp)
-			Expect(err).To(BeNil())
-			Expect(pipelineRuns).NotTo(BeNil())
-			Expect(*pipelineRuns).To(HaveLen(2))
-			Expect((*pipelineRuns)[0].Name == buildPipelineRun.Name || (*pipelineRuns)[1].Name == buildPipelineRun.Name).To(BeTrue())
 		})
 
 		It("Can add an annotation to the build pipelinerun", func() {
@@ -850,37 +788,6 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(info["status"]).To(Equal("failed"))
 			Expect(info["message"]).To(Equal("Failed to create snapshot. Error: " + sampleErr.Error()))
-		})
-
-		It("ensure that EnsureSnapshotExists doesn't create snapshot for previous pipeline run", func() {
-			var buf bytes.Buffer
-			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
-
-			// make sure the first pipeline started as first
-			buildPipelineRun.CreationTimestamp.Time = buildPipelineRun.CreationTimestamp.Add(-2 * time.Hour)
-			adapter = NewAdapter(buildPipelineRun, hasComp, hasApp, log, loader.NewMockLoader(), k8sClient, ctx)
-			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
-				{
-					ContextKey: loader.ApplicationContextKey,
-					Resource:   hasApp,
-				},
-				{
-					ContextKey: loader.ComponentContextKey,
-					Resource:   hasComp,
-				},
-				{
-					ContextKey: loader.PipelineRunsContextKey,
-					Resource:   []tektonv1.PipelineRun{*buildPipelineRun2, *buildPipelineRun},
-				},
-			})
-			Eventually(func() bool {
-				result, err := adapter.EnsureSnapshotExists()
-				return !result.CancelRequest && err == nil
-			}, time.Second*10).Should(BeTrue())
-
-			expectedLogEntry := "INFO The pipelineRun is not the latest successful build pipelineRun for the component, " +
-				"skipping creation of a new Snapshot"
-			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
 		})
 
 		It("can find matching snapshot", func() {
