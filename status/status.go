@@ -35,7 +35,7 @@ import (
 )
 
 // NamePrefix is a common name prefix for this service.
-const NamePrefix = "Red Hat Trusted App Test"
+const NamePrefix = "Red Hat Konflux"
 
 type StatusInterface interface {
 	GetReporter(*applicationapiv1alpha1.Snapshot) ReporterInterface
