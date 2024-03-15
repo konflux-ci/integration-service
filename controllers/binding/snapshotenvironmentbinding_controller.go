@@ -18,6 +18,7 @@ package binding
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/go-logr/logr"
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
@@ -25,6 +26,7 @@ import (
 	"github.com/redhat-appstudio/integration-service/gitops"
 	"github.com/redhat-appstudio/integration-service/helpers"
 	"github.com/redhat-appstudio/integration-service/loader"
+	"github.com/redhat-appstudio/integration-service/tekton"
 	"github.com/redhat-appstudio/operator-toolkit/controller"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -107,10 +109,13 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return helpers.HandleLoaderError(logger, err, "Snapshot", "SnapshotEnvironmentBinding")
 	}
 
-	component, err := loader.GetComponentFromSnapshot(r.Client, ctx, snapshot)
+	var component *applicationapiv1alpha1.Component
+	err = retry.OnError(retry.DefaultRetry, func(_ error) bool { return true }, func() error {
+		component, err = loader.GetComponentFromSnapshot(r.Client, ctx, snapshot)
+		return err
+	})
 	if err != nil {
-		logger.Error(err, "Failed to get Component from the Snapshot")
-		return ctrl.Result{}, err
+		return helpers.HandleLoaderError(logger, err, fmt.Sprintf("Component or '%s' label", tekton.ComponentNameLabel), "Snapshot")
 	}
 
 	environment, err := r.getEnvironmentFromSnapshotEnvironmentBinding(ctx, snapshotEnvironmentBinding)
