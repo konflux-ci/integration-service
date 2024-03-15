@@ -23,3 +23,8 @@ vendor
 *.swp
 *.swo
 *~
+
+#Mac
+.DS_Store
+.AppleDouble
+.LSOverride
