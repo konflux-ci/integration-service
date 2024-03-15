@@ -33,6 +33,7 @@ import (
 	"github.com/redhat-appstudio/integration-service/metrics"
 	intgteststat "github.com/redhat-appstudio/integration-service/pkg/integrationteststatus"
 	"github.com/redhat-appstudio/integration-service/status"
+	"github.com/redhat-appstudio/integration-service/tekton"
 	"github.com/redhat-appstudio/operator-toolkit/metadata"
 )
 
@@ -157,7 +158,7 @@ func (a *Adapter) EnsureSnapshotFinishedAllTests() (controller.OperationResult, 
 			return err
 		})
 		if err != nil {
-			if _, err = helpers.HandleLoaderError(a.logger, err, "Component", "Snapshot"); err != nil {
+			if _, err = helpers.HandleLoaderError(a.logger, err, fmt.Sprintf("Component or '%s' label", tekton.ComponentNameLabel), "Snapshot"); err != nil {
 				return controller.RequeueWithError(err)
 			}
 			return controller.ContinueProcessing()

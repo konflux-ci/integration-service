@@ -68,9 +68,10 @@ func IsMissingInfoInPipelineRunError(err error) bool {
 
 func HandleLoaderError(logger IntegrationLogger, err error, resource, from string) (ctrl.Result, error) {
 	if k8serrors.IsNotFound(err) {
-		logger.Info(fmt.Sprintf("Could not get %[1]s from %[2]s.  %[1]s may have been removed.  Declining to proceed with reconciliation", resource, from))
+		logger.Info(fmt.Sprintf("Could not get %[1]s from %[2]s.  %[1]s may have been removed.  Declining to proceed with reconciliation due to the error: %[3]v", resource, from, err))
 		return ctrl.Result{}, nil
 	}
+
 	logger.Error(err, fmt.Sprintf("Failed to get %s from the %s", resource, from))
 	return ctrl.Result{}, err
 }
