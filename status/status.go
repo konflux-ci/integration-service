@@ -175,7 +175,7 @@ func (s *Status) generateText(ctx context.Context, integrationTestStatusDetail i
 		if err != nil {
 			return "", fmt.Errorf("error while getting all child taskRuns from pipelineRun %s: %w", pipelineRunName, err)
 		}
-		text, err := FormatTestsSummary(taskRuns)
+		text, err := FormatTestsSummary(taskRuns, pipelineRunName, namespace, s.logger)
 		if err != nil {
 			return "", err
 		}
