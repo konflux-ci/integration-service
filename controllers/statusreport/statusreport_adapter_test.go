@@ -118,45 +118,6 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			},
 		}
 		Expect(k8sClient.Create(ctx, hasComp2)).Should(Succeed())
-
-		integrationTestScenario = &v1beta1.IntegrationTestScenario{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "example-pass",
-				Namespace: "default",
-
-				Labels: map[string]string{
-					"test.appstudio.openshift.io/optional": "false",
-				},
-			},
-			Spec: v1beta1.IntegrationTestScenarioSpec{
-				Application: hasApp.Name,
-				ResolverRef: v1beta1.ResolverRef{
-					Resolver: "git",
-					Params: []v1beta1.ResolverParameter{
-						{
-							Name:  "url",
-							Value: "https://github.com/redhat-appstudio/integration-examples.git",
-						},
-						{
-							Name:  "revision",
-							Value: "main",
-						},
-						{
-							Name:  "pathInRepo",
-							Value: "pipelineruns/integration_pipelinerun_pass.yaml",
-						},
-					},
-				},
-				Environment: v1beta1.TestEnvironment{
-					Name: "envname",
-					Type: "POC",
-					Configuration: &applicationapiv1alpha1.EnvironmentConfiguration{
-						Env: []applicationapiv1alpha1.EnvVarPair{},
-					},
-				},
-			},
-		}
-		Expect(k8sClient.Create(ctx, integrationTestScenario)).Should(Succeed())
 	})
 
 	AfterAll(func() {
@@ -165,8 +126,6 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		err = k8sClient.Delete(ctx, hasComp)
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 		err = k8sClient.Delete(ctx, hasComp2)
-		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
-		err = k8sClient.Delete(ctx, integrationTestScenario)
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 	})
 
@@ -234,12 +193,53 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			},
 		}
 		Expect(k8sClient.Create(ctx, hasSnapshot)).Should(Succeed())
+
+		integrationTestScenario = &v1beta1.IntegrationTestScenario{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "example-pass",
+				Namespace: "default",
+
+				Labels: map[string]string{
+					"test.appstudio.openshift.io/optional": "false",
+				},
+			},
+			Spec: v1beta1.IntegrationTestScenarioSpec{
+				Application: hasApp.Name,
+				ResolverRef: v1beta1.ResolverRef{
+					Resolver: "git",
+					Params: []v1beta1.ResolverParameter{
+						{
+							Name:  "url",
+							Value: "https://github.com/redhat-appstudio/integration-examples.git",
+						},
+						{
+							Name:  "revision",
+							Value: "main",
+						},
+						{
+							Name:  "pathInRepo",
+							Value: "pipelineruns/integration_pipelinerun_pass.yaml",
+						},
+					},
+				},
+				Environment: v1beta1.TestEnvironment{
+					Name: "envname",
+					Type: "POC",
+					Configuration: &applicationapiv1alpha1.EnvironmentConfiguration{
+						Env: []applicationapiv1alpha1.EnvVarPair{},
+					},
+				},
+			},
+		}
+		Expect(k8sClient.Create(ctx, integrationTestScenario)).Should(Succeed())
 	})
 
 	AfterEach(func() {
 		err := k8sClient.Delete(ctx, hasSnapshot)
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 		err = k8sClient.Delete(ctx, hasPRSnapshot)
+		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
+		err = k8sClient.Delete(ctx, integrationTestScenario)
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 	})
 
@@ -334,7 +334,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 
 			expectedLogEntry := "Snapshot integration status condition marked as finished, all testing pipelines completed"
 			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
-			expectedLogEntry = "Snapshot integration status condition marked as passed, all Integration PipelineRuns succeeded"
+			expectedLogEntry = "Snapshot integration status condition marked as passed, all of 1 required Integration PipelineRuns succeeded"
 			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
 		})
 
@@ -453,6 +453,60 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			expectedLogEntry := "Snapshot integration status condition marked as finished, all testing pipelines completed"
 			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
 			expectedLogEntry = "Snapshot integration status condition marked as failed, some tests within Integration PipelineRuns failed"
+			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
+		})
+	})
+
+	When("New Adapter is created for a push-type Snapshot that has no tests", func() {
+		BeforeEach(func() {
+			buf = bytes.Buffer{}
+			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+
+			statuses, err := gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(hasSnapshot)
+			Expect(err).ToNot(HaveOccurred())
+			statuses.UpdateTestStatusIfChanged(integrationTestScenario.Name, intgteststat.IntegrationTestStatusTestFail, "Failed test")
+			err = gitops.WriteIntegrationTestStatusesIntoSnapshot(hasSnapshot, statuses, k8sClient, ctx)
+			Expect(err).ToNot(HaveOccurred())
+
+			adapter = NewAdapter(hasSnapshot, hasApp, log, loader.NewMockLoader(), k8sClient, ctx)
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: loader.ApplicationContextKey,
+					Resource:   hasApp,
+				},
+				{
+					ContextKey: loader.ComponentContextKey,
+					Resource:   hasComp,
+				},
+				{
+					ContextKey: loader.SnapshotContextKey,
+					Resource:   hasSnapshot,
+				},
+				{
+					ContextKey: loader.RequiredIntegrationTestScenariosContextKey,
+					Resource:   []v1beta1.IntegrationTestScenario{},
+				},
+				{
+					ContextKey: loader.ApplicationComponentsContextKey,
+					Resource:   []applicationapiv1alpha1.Component{*hasComp},
+				},
+			})
+			Expect(reflect.TypeOf(adapter)).To(Equal(reflect.TypeOf(&Adapter{})))
+		})
+
+		It("ensures tests report as skipped and overall result is success", func() {
+			result, err := adapter.EnsureSnapshotFinishedAllTests()
+			Expect(!result.CancelRequest && err == nil).To(BeTrue())
+
+			Expect(meta.FindStatusCondition(hasSnapshot.Status.Conditions, gitops.AppStudioTestSucceededCondition)).ToNot(BeNil())
+			Expect(meta.IsStatusConditionTrue(hasSnapshot.Status.Conditions, gitops.AppStudioTestSucceededCondition)).To(BeTrue())
+
+			Expect(meta.FindStatusCondition(hasSnapshot.Status.Conditions, gitops.AppStudioIntegrationStatusCondition)).ToNot(BeNil())
+			Expect(meta.IsStatusConditionTrue(hasSnapshot.Status.Conditions, gitops.AppStudioIntegrationStatusCondition)).To(BeTrue())
+
+			expectedLogEntry := "Snapshot integration status condition marked as finished, no required integration test scenarios defined for this application"
+			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
+			expectedLogEntry = "Snapshot integration status condition marked as passed, all of 0 required Integration PipelineRuns succeeded"
 			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
 		})
 	})
