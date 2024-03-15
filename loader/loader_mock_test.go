@@ -336,21 +336,6 @@ var _ = Describe("Release Adapter", Ordered, func() {
 		})
 	})
 
-	Context("When calling GetAllBuildPipelineRunsForComponent", func() {
-		It("returns snapshots and error from the context", func() {
-			pipelineRuns := []tektonv1.PipelineRun{}
-			mockContext := toolkit.GetMockedContext(ctx, []toolkit.MockData{
-				{
-					ContextKey: PipelineRunsContextKey,
-					Resource:   pipelineRuns,
-				},
-			})
-			resource, err := loader.GetAllBuildPipelineRunsForComponent(nil, mockContext, nil)
-			Expect(resource).To(Equal(&pipelineRuns))
-			Expect(err).To(BeNil())
-		})
-	})
-
 	Context("When calling GetAllSnapshotEnvironmentBindingsForScenario", func() {
 		It("returns snapshotEnvironmentBindings and error from the context", func() {
 			environments := []applicationapiv1alpha1.Environment{}

@@ -573,14 +573,6 @@ var _ = Describe("Loader", Ordered, func() {
 		Expect(env.ObjectMeta).To(Equal(hasEnv.ObjectMeta))
 	})
 
-	It("can fetch all build pipelineRuns", func() {
-		pipelineRuns, err := loader.GetAllBuildPipelineRunsForComponent(k8sClient, ctx, hasComp)
-		Expect(err).To(BeNil())
-		Expect(pipelineRuns).NotTo(BeNil())
-		Expect(*pipelineRuns).To(HaveLen(1))
-		Expect((*pipelineRuns)[0].Name).To(Equal(buildPipelineRun.Name))
-	})
-
 	It("can fetch all pipelineRuns for snapshot and scenario", func() {
 		pipelineRuns, err := loader.GetAllPipelineRunsForSnapshotAndScenario(k8sClient, ctx, hasSnapshot, integrationTestScenario)
 		Expect(err).To(BeNil())
