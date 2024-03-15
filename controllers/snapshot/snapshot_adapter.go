@@ -948,7 +948,8 @@ func (a *Adapter) RequeueIfYoungerThanThreshold(retErr error) (controller.Operat
 
 func (a *Adapter) HandlePipelineCreationError(err error, integrationTestScenario *v1beta1.IntegrationTestScenario, testStatuses *intgteststat.SnapshotIntegrationTestStatuses) (controller.OperationResult, error) {
 	if clienterrors.IsInvalid(err) {
-		a.logger.Error(err, "pipelineRun failed during creation due to invalid resource")
+		a.logger.Error(err, "pipelineRun failed during creation due to invalid resource",
+			"integrationScenario.Name", integrationTestScenario.Name)
 		testStatuses.UpdateTestStatusIfChanged(
 			integrationTestScenario.Name, intgteststat.IntegrationTestStatusTestInvalid,
 			fmt.Sprintf("Creation of pipelineRun failed during creation due to invalid resource: %s.", err))
@@ -959,6 +960,7 @@ func (a *Adapter) HandlePipelineCreationError(err error, integrationTestScenario
 		}
 		return controller.StopProcessing()
 	}
-	a.logger.Error(err, "Failed to create pipelineRun for snapshot and scenario")
+	a.logger.Error(err, "Failed to create pipelineRun for snapshot and scenario",
+		"integrationScenario.Name", integrationTestScenario.Name)
 	return controller.RequeueWithError(err)
 }
