@@ -143,11 +143,18 @@ func (a *Adapter) EnsureSnapshotFinishedAllTests() (controller.OperationResult, 
 		return controller.ContinueProcessing()
 	}
 
-	// Since all integration tests finished, set the Snapshot Integration status as finished, but don't update the resource yet
-	gitops.SetSnapshotIntegrationStatusAsFinished(a.snapshot,
-		"Snapshot integration status condition is finished since all testing pipelines completed")
-	a.logger.LogAuditEvent("Snapshot integration status condition marked as finished, all testing pipelines completed",
-		a.snapshot, helpers.LogActionUpdate)
+	if len(*integrationTestScenarios) > 0 {
+		// Since all integration tests finished, set the Snapshot Integration status as finished, but don't update the resource yet
+		gitops.SetSnapshotIntegrationStatusAsFinished(a.snapshot,
+			"Snapshot integration status condition is finished since all testing pipelines completed")
+		a.logger.LogAuditEvent("Snapshot integration status condition marked as finished, all testing pipelines completed",
+			a.snapshot, helpers.LogActionUpdate)
+	} else {
+		gitops.SetSnapshotIntegrationStatusAsFinished(a.snapshot,
+			"Snapshot integration status condition is finished since there are no required testing pipelines defined for its application")
+		a.logger.LogAuditEvent("Snapshot integration status condition marked as finished, no required integration test scenarios defined for this application",
+			a.snapshot, helpers.LogActionUpdate)
+	}
 
 	// If the Snapshot is a component type, check if the global component list changed in the meantime and
 	// create a composite snapshot if it did. Does not apply for PAC pull request events.
@@ -198,7 +205,7 @@ func (a *Adapter) EnsureSnapshotFinishedAllTests() (controller.OperationResult, 
 				a.logger.Error(err, "Failed to Update Snapshot AppStudioTestSucceeded status")
 				return controller.RequeueWithError(err)
 			}
-			a.logger.LogAuditEvent("Snapshot integration status condition marked as passed, all Integration PipelineRuns succeeded",
+			a.logger.LogAuditEvent(fmt.Sprintf("Snapshot integration status condition marked as passed, all of %d required Integration PipelineRuns succeeded", len(*integrationTestScenarios)),
 				a.snapshot, helpers.LogActionUpdate)
 		}
 	} else {
