@@ -17,8 +17,10 @@ limitations under the License.
 package status_test
 
 import (
+	"os"
 	"time"
 
+	"github.com/go-logr/logr"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/redhat-appstudio/integration-service/helpers"
@@ -27,7 +29,12 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-const expectedSummary = `| Task | Duration | Test Suite | Status | Details |
+const expectedSummary = `<ul>
+<li><b>Pipelinerun</b>: <a href="https://definetly.not.prod/preview/application-pipeline/ns/default/pipelinerun/pipelinerun-component-sample">pipelinerun-component-sample</a></li>
+</ul>
+<hr>
+
+| Task | Duration | Test Suite | Status | Details |
 | --- | --- | --- | --- | --- |
 | example-task-1 | 5m30s | example-namespace-1 | :heavy_check_mark: SUCCESS | :heavy_check_mark: 2 success(es)<br>:warning: 1 warning(s) |
 | example-task-2 | 2m0s |  |  |  |
@@ -67,9 +74,11 @@ func newTaskRunWithAppStudioTestOutput(name string, startTime time.Time, complet
 var _ = Describe("Formatters", func() {
 
 	var taskRuns []*helpers.TaskRun
+	var pipelineRun *tektonv1.PipelineRun
 
 	BeforeEach(func() {
 		now := time.Now()
+		os.Setenv("CONSOLE_URL", "https://definetly.not.prod/preview/application-pipeline/ns/{{ .Namespace }}/pipelinerun/{{ .PipelineRunName }}")
 		taskRuns = []*helpers.TaskRun{
 			newTaskRunWithAppStudioTestOutput(
 				"example-task-1",
@@ -144,10 +153,54 @@ var _ = Describe("Formatters", func() {
 				}`,
 			),
 		}
+		pipelineRun = &tektonv1.PipelineRun{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "pipelinerun-component-sample",
+				Namespace: "default",
+				Labels: map[string]string{
+					"pipelines.appstudio.openshift.io/type":           "test",
+					"pac.test.appstudio.openshift.io/url-org":         "redhat-appstudio",
+					"pac.test.appstudio.openshift.io/original-prname": "build-service-on-push",
+					"pac.test.appstudio.openshift.io/url-repository":  "build-service",
+					"pac.test.appstudio.openshift.io/repository":      "build-service-pac",
+				},
+				Annotations: map[string]string{
+					"pac.test.appstudio.openshift.io/on-target-branch": "[main]",
+				},
+			},
+			Spec: tektonv1.PipelineRunSpec{
+				PipelineRef: &tektonv1.PipelineRef{
+					Name: "component-pipeline-pass",
+					ResolverRef: tektonv1.ResolverRef{
+						Resolver: "bundle",
+						Params: tektonv1.Params{
+							{
+								Name:  "bundle",
+								Value: tektonv1.ParamValue{Type: "string", StringVal: "quay.io/redhat-appstudio/test-bundle:component-pipeline-pass"},
+							},
+							{
+								Name:  "name",
+								Value: tektonv1.ParamValue{Type: "string", StringVal: "test-task"},
+							},
+						},
+					},
+				},
+			},
+		}
+	})
+	AfterEach(func() {
+		os.Setenv("CONSOLE_URL", "")
+	})
+
+	It("Env var not set", func() {
+		os.Setenv("CONSOLE_URL", "")
+		text, err := status.FormatTestsSummary(taskRuns, pipelineRun.Name, pipelineRun.Namespace, logr.Discard())
+		Expect(err).To(Succeed())
+		Expect(text).To(ContainSubstring("CONSOLE_URL_NOT_AVAILABLE"))
 	})
 
 	It("can construct a comment", func() {
-		text, err := status.FormatTestsSummary(taskRuns)
+		text, err := status.FormatTestsSummary(taskRuns, pipelineRun.Name, pipelineRun.Namespace, logr.Discard())
 		Expect(err).To(Succeed())
 		comment, err := status.FormatComment("example-title", text)
 		Expect(err).To(BeNil())
@@ -156,7 +209,7 @@ var _ = Describe("Formatters", func() {
 	})
 
 	It("can construct a summary", func() {
-		summary, err := status.FormatTestsSummary(taskRuns)
+		summary, err := status.FormatTestsSummary(taskRuns, pipelineRun.Name, pipelineRun.Namespace, logr.Discard())
 		Expect(err).To(BeNil())
 		Expect(summary).To(Equal(expectedSummary))
 	})
@@ -184,7 +237,7 @@ var _ = Describe("Formatters", func() {
 		})
 
 		It("won't fail when summary is generated from invalid result", func() {
-			_, err := status.FormatTestsSummary([]*helpers.TaskRun{taskRun})
+			_, err := status.FormatTestsSummary([]*helpers.TaskRun{taskRun}, pipelineRun.Name, pipelineRun.Namespace, logr.Discard())
 			Expect(err).To(Succeed())
 		})
 	})
