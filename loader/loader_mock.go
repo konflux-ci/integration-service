@@ -204,15 +204,6 @@ func (l *mockLoader) GetAllPipelineRunsForSnapshotAndScenario(c client.Client, c
 	return &pipelineRuns, err
 }
 
-// GetAllBuildPipelineRunsForComponent returns the resource and error passed as values of the context.
-func (l *mockLoader) GetAllBuildPipelineRunsForComponent(c client.Client, ctx context.Context, component *applicationapiv1alpha1.Component) (*[]tektonv1.PipelineRun, error) {
-	if ctx.Value(PipelineRunsContextKey) == nil {
-		return l.loader.GetAllBuildPipelineRunsForComponent(c, ctx, component)
-	}
-	pipelineRuns, err := toolkit.GetMockedResourceAndErrorFromContext(ctx, PipelineRunsContextKey, []tektonv1.PipelineRun{})
-	return &pipelineRuns, err
-}
-
 // GetAllSnapshots returns the resource and error passed as values of the context.
 func (l *mockLoader) GetAllSnapshots(c client.Client, ctx context.Context, application *applicationapiv1alpha1.Application) (*[]applicationapiv1alpha1.Snapshot, error) {
 	if ctx.Value(AllSnapshotsContextKey) == nil {

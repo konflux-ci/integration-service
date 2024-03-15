@@ -53,7 +53,6 @@ type ObjectLoader interface {
 	GetDeploymentTargetForDeploymentTargetClaim(c client.Client, ctx context.Context, dtc *applicationapiv1alpha1.DeploymentTargetClaim) (*applicationapiv1alpha1.DeploymentTarget, error)
 	FindExistingSnapshotEnvironmentBinding(c client.Client, ctx context.Context, application *applicationapiv1alpha1.Application, environment *applicationapiv1alpha1.Environment) (*applicationapiv1alpha1.SnapshotEnvironmentBinding, error)
 	GetAllPipelineRunsForSnapshotAndScenario(c client.Client, ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot, integrationTestScenario *v1beta1.IntegrationTestScenario) (*[]tektonv1.PipelineRun, error)
-	GetAllBuildPipelineRunsForComponent(c client.Client, ctx context.Context, component *applicationapiv1alpha1.Component) (*[]tektonv1.PipelineRun, error)
 	GetAllSnapshots(c client.Client, ctx context.Context, application *applicationapiv1alpha1.Application) (*[]applicationapiv1alpha1.Snapshot, error)
 	GetAutoReleasePlansForApplication(c client.Client, ctx context.Context, application *applicationapiv1alpha1.Application) (*[]releasev1alpha1.ReleasePlan, error)
 	GetScenario(c client.Client, ctx context.Context, name, namespace string) (*v1beta1.IntegrationTestScenario, error)
@@ -384,26 +383,6 @@ func (l *loader) GetAllPipelineRunsForSnapshotAndScenario(adapterClient client.C
 		return nil, err
 	}
 	return &integrationPipelineRuns.Items, nil
-}
-
-// GetAllBuildPipelineRunsForComponent returns all PipelineRun for the
-// associated component. In the case the List operation fails,
-// an error will be returned.
-func (l *loader) GetAllBuildPipelineRunsForComponent(c client.Client, ctx context.Context, component *applicationapiv1alpha1.Component) (*[]tektonv1.PipelineRun, error) {
-	buildPipelineRuns := &tektonv1.PipelineRunList{}
-	opts := []client.ListOption{
-		client.InNamespace(component.Namespace),
-		client.MatchingLabels{
-			"pipelines.appstudio.openshift.io/type": "build",
-			"appstudio.openshift.io/component":      component.Name,
-		},
-	}
-
-	err := c.List(ctx, buildPipelineRuns, opts...)
-	if err != nil {
-		return nil, err
-	}
-	return &buildPipelineRuns.Items, nil
 }
 
 // GetAllSnapshots returns all Snapshots in the Application's namespace nil if it's not found.
