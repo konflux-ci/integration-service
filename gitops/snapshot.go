@@ -18,6 +18,7 @@ package gitops
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"reflect"
 	"strconv"
@@ -25,6 +26,7 @@ import (
 
 	"github.com/google/go-containerregistry/pkg/name"
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
+	"github.com/redhat-appstudio/integration-service/helpers"
 	"github.com/redhat-appstudio/integration-service/metrics"
 	"github.com/redhat-appstudio/integration-service/tekton"
 	"github.com/redhat-appstudio/operator-toolkit/metadata"
@@ -681,23 +683,24 @@ func PrepareSnapshot(adapterClient client.Client, ctx context.Context, applicati
 		if containerImage == "" {
 			log.Info("component cannot be added to snapshot for application due to missing containerImage", "component.Name", applicationComponent.Name)
 			continue
+		} else {
+			// if the containerImage doesn't have a valid digest, the component
+			// will not be added to snapshot
+			err := ValidateImageDigest(containerImage)
+			if err != nil {
+				log.Error(err, "component cannot be added to snapshot for application due to invalid digest in containerImage", "component.Name", applicationComponent.Name)
+				return nil, errors.Join(helpers.NewInvalidImageDigestError(component.Name, containerImage), err)
+			}
+			snapshotComponents = append(snapshotComponents, applicationapiv1alpha1.SnapshotComponent{
+				Name:           applicationComponent.Name,
+				ContainerImage: containerImage,
+				Source:         *componentSource,
+			})
 		}
-		// if the containerImage doesn't have a valid digest, the component
-		// will not be added to snapshot
-		err := ValidateImageDigest(containerImage)
-		if err != nil {
-			log.Error(err, "component cannot added to snapshot for application due to invalid digest in containerImage", "component.Name", applicationComponent.Name)
-			continue
-		}
-		snapshotComponents = append(snapshotComponents, applicationapiv1alpha1.SnapshotComponent{
-			Name:           applicationComponent.Name,
-			ContainerImage: containerImage,
-			Source:         *componentSource,
-		})
 	}
 
 	if len(snapshotComponents) == 0 {
-		return nil, fmt.Errorf("failed to prepare snapshot due to missing valid digest in containerImage for all components of application")
+		return nil, helpers.NewMissingValidComponentError(component.Name)
 	}
 	snapshot := NewSnapshot(application, &snapshotComponents)
 
