@@ -332,6 +332,33 @@ var _ = Describe("GitHubReporter", func() {
 					FullName:       "test-name",
 					ScenarioName:   "scenario1",
 					SnapshotName:   "snapshot-sample",
+					ComponentName:  "component-sample",
+					Status:         integrationteststatus.IntegrationTestStatusTestFail,
+					Summary:        "Integration test for snapshot snapshot-sample and scenario scenario1 experienced an error when provisioning environment",
+					StartTime:      &now,
+					CompletionTime: &now,
+				})).To(Succeed())
+			Expect(mockGitHubClient.CreateCheckRunResult.cra).NotTo(BeNil())
+			Expect(mockGitHubClient.CreateCheckRunResult.cra.Summary).To(Equal("Integration test for snapshot snapshot-sample and scenario scenario1 experienced an error when provisioning environment"))
+			Expect(mockGitHubClient.CreateCheckRunResult.cra.Conclusion).To(Equal(gitops.IntegrationTestStatusFailureGithub))
+			Expect(mockGitHubClient.CreateCheckRunResult.cra.ExternalID).To(Equal("scenario1-component-sample"))
+			Expect(mockGitHubClient.CreateCheckRunResult.cra.Owner).To(Equal("devfile-sample"))
+			Expect(mockGitHubClient.CreateCheckRunResult.cra.Repository).To(Equal("devfile-sample-go-basic"))
+			Expect(mockGitHubClient.CreateCheckRunResult.cra.SHA).To(Equal("12a4a35ccd08194595179815e4646c3a6c08bb77"))
+			Expect(mockGitHubClient.CreateCheckRunResult.cra.Name).To(Equal("test-name"))
+			Expect(mockGitHubClient.CreateCheckRunResult.cra.StartTime.IsZero()).To(BeFalse())
+			Expect(mockGitHubClient.CreateCheckRunResult.cra.CompletionTime.IsZero()).To(BeFalse())
+		})
+
+		It("reports all details of snapshot tests status via CheckRuns for a Snapshot without a component", func() {
+			now := time.Now()
+
+			Expect(reporter.ReportStatus(
+				context.TODO(),
+				status.TestReport{
+					FullName:       "test-name",
+					ScenarioName:   "scenario1",
+					SnapshotName:   "snapshot-sample",
 					Status:         integrationteststatus.IntegrationTestStatusTestFail,
 					Summary:        "Integration test for snapshot snapshot-sample and scenario scenario1 experienced an error when provisioning environment",
 					StartTime:      &now,
@@ -365,6 +392,7 @@ var _ = Describe("GitHubReporter", func() {
 					FullName:       "test-name",
 					ScenarioName:   "scenario1",
 					SnapshotName:   "snapshot-sample",
+					ComponentName:  "component-sample",
 					Status:         integrationteststatus.IntegrationTestStatusTestFail,
 					Summary:        "Integration test for snapshot snapshot-sample and scenario scenario1 experienced an error when provisioning environment",
 					StartTime:      &now,
@@ -373,7 +401,7 @@ var _ = Describe("GitHubReporter", func() {
 			Expect(mockGitHubClient.UpdateCheckRunResult.cra).NotTo(BeNil())
 			Expect(mockGitHubClient.UpdateCheckRunResult.cra.Summary).To(Equal("Integration test for snapshot snapshot-sample and scenario scenario1 experienced an error when provisioning environment"))
 			Expect(mockGitHubClient.UpdateCheckRunResult.cra.Conclusion).To(Equal(gitops.IntegrationTestStatusFailureGithub))
-			Expect(mockGitHubClient.UpdateCheckRunResult.cra.ExternalID).To(Equal("scenario1"))
+			Expect(mockGitHubClient.UpdateCheckRunResult.cra.ExternalID).To(Equal("scenario1-component-sample"))
 			Expect(mockGitHubClient.UpdateCheckRunResult.cra.Owner).To(Equal("devfile-sample"))
 			Expect(mockGitHubClient.UpdateCheckRunResult.cra.Repository).To(Equal("devfile-sample-go-basic"))
 			Expect(mockGitHubClient.UpdateCheckRunResult.cra.SHA).To(Equal("12a4a35ccd08194595179815e4646c3a6c08bb77"))
@@ -435,12 +463,13 @@ var _ = Describe("GitHubReporter", func() {
 			Expect(reporter.ReportStatus(
 				context.TODO(),
 				status.TestReport{
-					FullName:     "fullname/scenario1",
-					ScenarioName: "scenario1",
-					SnapshotName: "snapshot-sample",
-					Status:       integrationteststatus.IntegrationTestStatusEnvironmentProvisionError_Deprecated,
-					Summary:      "Integration test for snapshot snapshot-sample and scenario scenario1 failed",
-					Text:         "detailed text here",
+					FullName:      "fullname/scenario1",
+					ScenarioName:  "scenario1",
+					SnapshotName:  "snapshot-sample",
+					ComponentName: "component-sample",
+					Status:        integrationteststatus.IntegrationTestStatusEnvironmentProvisionError_Deprecated,
+					Summary:       "Integration test for snapshot snapshot-sample and scenario scenario1 failed",
+					Text:          "detailed text here",
 				})).To(Succeed())
 			Expect(mockGitHubClient.CreateCommitStatusResult.state).To(Equal(gitops.IntegrationTestStatusErrorGithub))
 			Expect(mockGitHubClient.CreateCommitStatusResult.description).To(Equal("Integration test for snapshot snapshot-sample and scenario scenario1 failed"))

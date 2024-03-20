@@ -291,6 +291,7 @@ func (s *Status) generateTestReport(ctx context.Context, detail intgteststat.Int
 		FullName:       NamePrefix + " / " + snapshot.Name + " / " + detail.ScenarioName,
 		ScenarioName:   detail.ScenarioName,
 		SnapshotName:   snapshot.Name,
+		ComponentName:  snapshot.Labels[gitops.SnapshotComponentLabel],
 		Status:         detail.Status,
 		Summary:        summary,
 		StartTime:      detail.StartTime,

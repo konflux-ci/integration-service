@@ -384,13 +384,14 @@ var _ = Describe("Status Adapter", func() {
 		t, err := time.Parse(time.RFC3339, "2023-07-26T16:57:49+02:00")
 		Expect(err).NotTo(HaveOccurred())
 		expectedTestReport := status.TestReport{
-			FullName:     "Red Hat Konflux / snapshot-sample / scenario1",
-			ScenarioName: "scenario1",
-			SnapshotName: "snapshot-sample",
-			Text:         "Test in progress",
-			Summary:      "Integration test for snapshot snapshot-sample and scenario scenario1 is in progress",
-			Status:       integrationteststatus.IntegrationTestStatusInProgress,
-			StartTime:    &t,
+			FullName:      "Red Hat Konflux / snapshot-sample / scenario1",
+			ScenarioName:  "scenario1",
+			SnapshotName:  "snapshot-sample",
+			ComponentName: "component-sample",
+			Text:          "Test in progress",
+			Summary:       "Integration test for snapshot snapshot-sample and scenario scenario1 is in progress",
+			Status:        integrationteststatus.IntegrationTestStatusInProgress,
+			StartTime:     &t,
 		}
 		mockReporter.EXPECT().Initialize(gomock.Any(), gomock.Any()).Times(1)
 		mockReporter.EXPECT().ReportStatus(gomock.Any(), gomock.Eq(expectedTestReport)).Times(1)
@@ -402,6 +403,7 @@ var _ = Describe("Status Adapter", func() {
 
 	It("report status for TestPassed test scenario", func() {
 		hasSnapshot.Annotations["test.appstudio.openshift.io/status"] = "[{\"scenario\":\"scenario1\",\"status\":\"TestPassed\",\"testPipelineRunName\":\"test-pipelinerun\",\"startTime\":\"2023-07-26T16:57:49+02:00\",\"completionTime\":\"2023-07-26T17:57:49+02:00\",\"lastUpdateTime\":\"2023-08-26T17:57:55+02:00\",\"details\":\"failed\"}]"
+		delete(hasSnapshot.Labels, "appstudio.openshift.io/component")
 		ts, err := time.Parse(time.RFC3339, "2023-07-26T16:57:49+02:00")
 		Expect(err).NotTo(HaveOccurred())
 		tc, err := time.Parse(time.RFC3339, "2023-07-26T17:57:49+02:00")
@@ -421,6 +423,7 @@ var _ = Describe("Status Adapter", func() {
 			FullName:       "Red Hat Konflux / snapshot-sample / scenario1",
 			ScenarioName:   "scenario1",
 			SnapshotName:   "snapshot-sample",
+			ComponentName:  "",
 			Text:           text,
 			Summary:        "Integration test for snapshot snapshot-sample and scenario scenario1 has passed",
 			Status:         integrationteststatus.IntegrationTestStatusTestPassed,
