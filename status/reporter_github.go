@@ -160,7 +160,7 @@ func (cru *CheckRunStatusUpdater) getAllCheckRuns(ctx context.Context) ([]*ghapi
 
 // createCheckRunAdapterForSnapshot create a CheckRunAdapter for given snapshot, integrationTestStatusDetail, owner, repo and sha to create a checkRun
 // https://docs.github.com/en/rest/checks/runs?apiVersion=2022-11-28#create-a-check-run
-func (cru *CheckRunStatusUpdater) createCheckRunAdapterForSnapshot(ctx context.Context, report TestReport) (*github.CheckRunAdapter, error) {
+func (cru *CheckRunStatusUpdater) createCheckRunAdapterForSnapshot(report TestReport) (*github.CheckRunAdapter, error) {
 	snapshot := cru.snapshot
 
 	conclusion, err := generateCheckRunConclusion(report.Status)
@@ -173,12 +173,17 @@ func (cru *CheckRunStatusUpdater) createCheckRunAdapterForSnapshot(ctx context.C
 		return nil, fmt.Errorf("unknown status %s for integrationTestScenario %s and snapshot %s/%s", report.Status, report.ScenarioName, snapshot.Namespace, snapshot.Name)
 	}
 
+	externalID := report.ScenarioName
+	if report.ComponentName != "" {
+		externalID = fmt.Sprintf("%s-%s", report.ScenarioName, report.ComponentName)
+	}
+
 	cra := &github.CheckRunAdapter{
 		Owner:      cru.owner,
 		Repository: cru.repo,
 		Name:       report.FullName,
 		SHA:        cru.sha,
-		ExternalID: report.ScenarioName,
+		ExternalID: externalID,
 		Conclusion: conclusion,
 		Title:      title,
 		Summary:    report.Summary,
@@ -207,7 +212,7 @@ func (cru *CheckRunStatusUpdater) UpdateStatus(ctx context.Context, report TestR
 		return err
 	}
 
-	checkRun, err := cru.createCheckRunAdapterForSnapshot(ctx, report)
+	checkRun, err := cru.createCheckRunAdapterForSnapshot(report)
 	if err != nil {
 		cru.logger.Error(err, "failed to create checkRunAdapter for scenario, skipping update",
 			"snapshot.NameSpace", cru.snapshot.Namespace, "snapshot.Name", cru.snapshot.Name,

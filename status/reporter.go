@@ -40,6 +40,8 @@ type TestReport struct {
 	ScenarioName string
 	// Name of snapshot
 	SnapshotName string
+	// Name of Component that triggered snapshot creation (optional)
+	ComponentName string
 	// text with details of test results
 	Text string
 	// test status
