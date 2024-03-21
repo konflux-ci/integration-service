@@ -131,6 +131,20 @@ func (r *GitLabReporter) setCommitStatus(report TestReport) error {
 		Description: gitlab.Ptr(report.Summary),
 	}
 
+	// Special case for gitLab `running` state because of a bug where it can't be updated to the same state again
+	if glState == gitlab.Running {
+		allCommitStatuses, _, err := r.client.Commits.GetCommitStatuses(r.projectID, r.sha, nil)
+		if err != nil {
+			return fmt.Errorf("error while getting all commitStatuses for sha %s: %w", r.sha, err)
+		}
+		existingCommitStatus := r.GetExistingCommitStatus(allCommitStatuses, report.FullName)
+		if existingCommitStatus != nil && existingCommitStatus.Status == string(gitlab.Running) {
+			r.logger.Info("Will not update the existing commit status from `running` to `running`",
+				"scenario.name", report.ScenarioName, "commitStatus.ID", existingCommitStatus.ID)
+			return nil
+		}
+	}
+
 	r.logger.Info("creating commit status for scenario test status of snapshot",
 		"scenarioName", report.ScenarioName)
 
@@ -169,6 +183,19 @@ func (r *GitLabReporter) updateStatusInComment(report TestReport) error {
 		}
 	}
 
+	return nil
+}
+
+// GetExistingCommitStatus returns existing GitLab commit status that matches .
+func (r *GitLabReporter) GetExistingCommitStatus(commitStatuses []*gitlab.CommitStatus, statusName string) *gitlab.CommitStatus {
+	for _, commitStatus := range commitStatuses {
+		if commitStatus.Name == statusName {
+			r.logger.Info("found matching existing commitStatus",
+				"commitStatus.Name", commitStatus.Name, "commitStatus.ID", commitStatus.ID)
+			return commitStatus
+		}
+	}
+	r.logger.Info("found no matching existing commitStatus", "statusName", statusName)
 	return nil
 }
 

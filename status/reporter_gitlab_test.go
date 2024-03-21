@@ -19,11 +19,8 @@ package status_test
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
-	"net/http/httptest"
-
 	"github.com/go-logr/logr"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -31,8 +28,11 @@ import (
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	"github.com/tonglil/buflogr"
 	gitlab "github.com/xanzy/go-gitlab"
+	"io"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"net/http"
+	"net/http/httptest"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/redhat-appstudio/integration-service/gitops"
@@ -208,6 +208,74 @@ var _ = Describe("GitLabReporter", func() {
 				})).To(Succeed())
 		})
 
+		It("does not create a commit status or comment for snapshot with existing matching checkRun in running state", func() {
+			summary := "Integration test for snapshot snapshot-sample and scenario scenario1 is running"
+
+			report := status.TestReport{
+				FullName:     "fullname/scenario1",
+				ScenarioName: "scenario1",
+				Status:       integrationteststatus.IntegrationTestStatusInProgress,
+				Summary:      summary,
+				Text:         "detailed text here",
+			}
+
+			muxCommitStatusesGet(mux, projectID, digest, &report)
+
+			Expect(reporter.ReportStatus(context.TODO(), report)).To(Succeed())
+		})
+
+		It("can get an existing commitStatus that matches the report", func() {
+			summary := "Integration test for snapshot snapshot-sample and scenario scenario1 failed"
+			report := status.TestReport{
+				FullName:     "fullname/scenario1",
+				ScenarioName: "scenario1",
+				Status:       integrationteststatus.IntegrationTestStatusTestPassed,
+				Summary:      summary,
+				Text:         "detailed text here",
+			}
+
+			commitStatus := gitlab.CommitStatus{}
+			commitStatus.ID = 123
+			commitStatus.Name = report.FullName
+			commitStatus.Status = string(gitlab.Running)
+			commitStatus.Description = report.Summary
+
+			commitStatuses := []*gitlab.CommitStatus{
+				&commitStatus,
+			}
+
+			existingCommitStatus := reporter.GetExistingCommitStatus(commitStatuses, report.FullName)
+
+			Expect(existingCommitStatus.Name).To(Equal(commitStatus.Name))
+			Expect(existingCommitStatus.ID).To(Equal(commitStatus.ID))
+			Expect(existingCommitStatus.Status).To(Equal(commitStatus.Status))
+		})
+
+		It("can get an existing mergeRequest note that matches the report", func() {
+			summary := "Integration test for snapshot snapshot-sample and scenario scenario1 failed"
+			report := status.TestReport{
+				FullName:     "fullname/scenario1",
+				ScenarioName: "scenario1",
+				SnapshotName: "snapshot-sample",
+				Status:       integrationteststatus.IntegrationTestStatusTestPassed,
+				Summary:      summary,
+				Text:         "detailed text here",
+			}
+			comment, err := status.FormatComment(report.Summary, report.Text)
+			Expect(err).ToNot(HaveOccurred())
+
+			note := gitlab.Note{}
+			note.ID = 123
+			note.Body = comment
+
+			notes := []*gitlab.Note{
+				&note,
+			}
+			existingNoteID := reporter.GetExistingNoteID(notes, report.ScenarioName, report.SnapshotName)
+
+			Expect(*existingNoteID).To(Equal(note.ID))
+		})
+
 	})
 
 	Describe("Test helper functions", func() {
@@ -252,9 +320,30 @@ func muxCommitStatusPost(mux *http.ServeMux, pid string, sha string, catchStr st
 	})
 }
 
-// muxMergeNotes mocks merge request notes GET and POST request, if catchStr is non-empty POST request must contain such substring
-func muxMergeNotes(mux *http.ServeMux, pid string, sha string, catchStr string) {
-	path := fmt.Sprintf("/projects/%s/merge_requests/%s/notes", pid, sha)
+// muxCommitStatusesGet mocks commit statuses GET request,
+// if report is non-empty GET request will return a matching commitStatus
+func muxCommitStatusesGet(mux *http.ServeMux, pid string, sha string, report *status.TestReport) {
+	path := fmt.Sprintf("/projects/%s/repository/commits/%s/statuses", pid, sha)
+	mux.HandleFunc(path, func(rw http.ResponseWriter, r *http.Request) {
+		output := "[]"
+		if report != nil {
+			commitStatus := gitlab.CommitStatus{
+				ID:          123,
+				Name:        report.FullName,
+				Status:      string(gitlab.Running),
+				Description: report.Summary,
+			}
+
+			jsonStatuses, _ := json.Marshal([]gitlab.CommitStatus{commitStatus})
+			output = string(jsonStatuses)
+		}
+		fmt.Fprint(rw, output)
+	})
+}
+
+// muxMergeNotes mocks merge request notes GET and POST requests, if catchStr is non-empty POST request must contain such substring
+func muxMergeNotes(mux *http.ServeMux, pid string, mr string, catchStr string) {
+	path := fmt.Sprintf("/projects/%s/merge_requests/%s/notes", pid, mr)
 	mux.HandleFunc(path, func(rw http.ResponseWriter, r *http.Request) {
 		if r.Method == "POST" {
 			bit, _ := io.ReadAll(r.Body)
