@@ -286,9 +286,14 @@ func (s *Status) generateTestReport(ctx context.Context, detail intgteststat.Int
 		return nil, fmt.Errorf("failed to generate summary message: %w", err)
 	}
 
+	fullName := fmt.Sprintf("%s / %s", NamePrefix, detail.ScenarioName)
+	if snapshot.Labels[gitops.SnapshotComponentLabel] != "" {
+		fullName = fmt.Sprintf("%s / %s", fullName, snapshot.Labels[gitops.SnapshotComponentLabel])
+	}
+
 	report := TestReport{
 		Text:           text,
-		FullName:       NamePrefix + " / " + snapshot.Name + " / " + detail.ScenarioName,
+		FullName:       fullName,
 		ScenarioName:   detail.ScenarioName,
 		SnapshotName:   snapshot.Name,
 		ComponentName:  snapshot.Labels[gitops.SnapshotComponentLabel],
