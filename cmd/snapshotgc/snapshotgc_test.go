@@ -371,7 +371,7 @@ var _ = Describe("Test garbage collection for snapshots", func() {
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "newer-snapshot",
 					Labels: map[string]string{
-						"pac.test.appstudio.openshift.io/event-type": "some-event",
+						"pac.test.appstudio.openshift.io/event-type": "push",
 					},
 					CreationTimestamp: metav1.NewTime(currentTime.Add(time.Hour * 1)),
 				},
@@ -392,7 +392,7 @@ var _ = Describe("Test garbage collection for snapshots", func() {
 						},
 					}).Build()
 			candidates := []applicationapiv1alpha1.Snapshot{*newerSnap, *olderSnap}
-			output := getSnapshotsForRemoval(cl, candidates, 2, 2, logger)
+			output := getSnapshotsForRemoval(cl, candidates, 0, 2, logger)
 
 			Expect(output).To(BeEmpty())
 		})
@@ -427,7 +427,7 @@ var _ = Describe("Test garbage collection for snapshots", func() {
 						},
 					}).Build()
 			candidates := []applicationapiv1alpha1.Snapshot{*newerSnap, *olderSnap}
-			output := getSnapshotsForRemoval(cl, candidates, 1, 2, logger)
+			output := getSnapshotsForRemoval(cl, candidates, 1, 0, logger)
 
 			Expect(output).To(HaveLen(1))
 			Expect(output[0].Name).To(Equal("older-snapshot"))
@@ -464,7 +464,10 @@ var _ = Describe("Test garbage collection for snapshots", func() {
 			}
 			newerNonPRSnap := &applicationapiv1alpha1.Snapshot{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:              "newer-non-pr-snapshot",
+					Name: "newer-non-pr-snapshot",
+					Labels: map[string]string{
+						"pac.test.appstudio.openshift.io/event-type": "Push",
+					},
 					CreationTimestamp: metav1.NewTime(currentTime.Add(time.Hour * 11)),
 				},
 			}

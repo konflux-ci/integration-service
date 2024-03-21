@@ -231,30 +231,7 @@ func getSnapshotsForRemoval(
 
 	for _, snap := range snapshots {
 		label, found := snap.GetLabels()["pac.test.appstudio.openshift.io/event-type"]
-		if found && (label == "pull_request" ||
-			label == "Merge Request" ||
-			label == "Merge_Request" ||
-			label == "Note") {
-			if keptPrSnaps < prSnapshotsToKeep {
-				logger.V(1).Info(
-					"Skipping PR candidate snapshot",
-					"namespace", snap.Namespace,
-					"snapshot.name", snap.Name,
-					"pr-snapshot-kept", keptPrSnaps+1,
-					"pr-snapshots-to-keep", prSnapshotsToKeep,
-				)
-				keptPrSnaps++
-			} else {
-				logger.V(1).Info(
-					"Adding PR candidate snapshot",
-					"namespace", snap.Namespace,
-					"snapshot.name", snap.Name,
-					"pr-snapshot-kept", keptPrSnaps,
-					"pr-snapshots-to-keep", prSnapshotsToKeep,
-				)
-				shortList = append(shortList, snap)
-			}
-		} else if !found || label != "pull_request" {
+		if !found || label == "push" || label == "Push" {
 			if keptNonPrSnaps < nonPrSnapshotsToKeep {
 				logger.V(1).Info(
 					"Skipping non-PR candidate snapshot",
@@ -275,11 +252,25 @@ func getSnapshotsForRemoval(
 				shortList = append(shortList, snap)
 			}
 		} else {
-			logger.Info(
-				"Failed classifying snapshot",
-				"namespace", snap.Namespace,
-				"snapshot.name", snap.Name,
-			)
+			if keptPrSnaps < prSnapshotsToKeep {
+				logger.V(1).Info(
+					"Skipping PR candidate snapshot",
+					"namespace", snap.Namespace,
+					"snapshot.name", snap.Name,
+					"pr-snapshot-kept", keptPrSnaps+1,
+					"pr-snapshots-to-keep", prSnapshotsToKeep,
+				)
+				keptPrSnaps++
+			} else {
+				logger.V(1).Info(
+					"Adding PR candidate snapshot",
+					"namespace", snap.Namespace,
+					"snapshot.name", snap.Name,
+					"pr-snapshot-kept", keptPrSnaps,
+					"pr-snapshots-to-keep", prSnapshotsToKeep,
+				)
+				shortList = append(shortList, snap)
+			}
 		}
 	}
 	return shortList
