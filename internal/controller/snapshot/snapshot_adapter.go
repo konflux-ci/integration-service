@@ -38,8 +38,8 @@ import (
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 
 	"github.com/konflux-ci/integration-service/loader"
-	"github.com/redhat-appstudio/operator-toolkit/controller"
-	"github.com/redhat-appstudio/operator-toolkit/metadata"
+	"github.com/konflux-ci/operator-toolkit/controller"
+	"github.com/konflux-ci/operator-toolkit/metadata"
 	releasev1alpha1 "github.com/redhat-appstudio/release-service/api/v1alpha1"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"

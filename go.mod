@@ -8,12 +8,12 @@ require (
 	github.com/go-logr/logr v1.4.1
 	github.com/google/go-containerregistry v0.19.1
 	github.com/google/go-github/v45 v45.2.0
+	github.com/konflux-ci/operator-toolkit v0.0.0-20240402130556-ef6dcbeca69d
 	github.com/onsi/ginkgo/v2 v2.17.3
 	github.com/onsi/gomega v1.33.1
 	github.com/openshift-pipelines/pipelines-as-code v0.17.2
 	github.com/prometheus/client_golang v1.19.1
 	github.com/redhat-appstudio/application-api v0.0.0-20231025105224-2790bb451725
-	github.com/redhat-appstudio/operator-toolkit v0.0.0-20231201124606-2087182322ae
 	github.com/redhat-appstudio/release-service v0.0.0-20231107140301-56ac66b56719
 	github.com/santhosh-tekuri/jsonschema/v5 v5.3.1
 	github.com/tektoncd/pipeline v0.58.0
@@ -79,6 +79,7 @@ require (
 	github.com/prometheus/common v0.48.0 // indirect
 	github.com/prometheus/procfs v0.12.0 // indirect
 	github.com/prometheus/statsd_exporter v0.23.0 // indirect
+	github.com/redhat-appstudio/operator-toolkit v0.0.0-20230913085326-6c5e9d368a6a // indirect
 	github.com/spf13/pflag v1.0.6-0.20210604193023-d5e0c0615ace // indirect
 	github.com/stoewer/go-strcase v1.2.1 // indirect
 	go.opencensus.io v0.24.0 // indirect
