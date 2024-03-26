@@ -26,7 +26,7 @@ import (
 
 	"github.com/konflux-ci/integration-service/cache"
 
-	toolkit "github.com/redhat-appstudio/operator-toolkit/test"
+	toolkit "github.com/konflux-ci/operator-toolkit/test"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"

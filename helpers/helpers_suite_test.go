@@ -26,7 +26,7 @@ import (
 
 	"github.com/konflux-ci/integration-service/api/v1beta2"
 	"github.com/konflux-ci/integration-service/cache"
-	toolkit "github.com/redhat-appstudio/operator-toolkit/test"
+	toolkit "github.com/konflux-ci/operator-toolkit/test"
 
 	"k8s.io/client-go/rest"
 
