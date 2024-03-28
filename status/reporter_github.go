@@ -162,6 +162,7 @@ func (cru *CheckRunStatusUpdater) getAllCheckRuns(ctx context.Context) ([]*ghapi
 // https://docs.github.com/en/rest/checks/runs?apiVersion=2022-11-28#create-a-check-run
 func (cru *CheckRunStatusUpdater) createCheckRunAdapterForSnapshot(report TestReport) (*github.CheckRunAdapter, error) {
 	snapshot := cru.snapshot
+	detailsURL := ""
 
 	conclusion, err := generateCheckRunConclusion(report.Status)
 	if err != nil {
@@ -178,6 +179,13 @@ func (cru *CheckRunStatusUpdater) createCheckRunAdapterForSnapshot(report TestRe
 		externalID = fmt.Sprintf("%s-%s", report.ScenarioName, report.ComponentName)
 	}
 
+	if report.TestPipelineRunName == "" {
+		cru.logger.Info(" TestPipelineRunName is not set for CheckRun")
+
+	} else {
+		detailsURL = FormatPipelineURL(report.TestPipelineRunName, snapshot.Namespace, *cru.logger)
+	}
+
 	cra := &github.CheckRunAdapter{
 		Owner:      cru.owner,
 		Repository: cru.repo,
@@ -188,6 +196,7 @@ func (cru *CheckRunStatusUpdater) createCheckRunAdapterForSnapshot(report TestRe
 		Title:      title,
 		Summary:    report.Summary,
 		Text:       report.Text,
+		DetailsURL: detailsURL,
 	}
 
 	if start := report.StartTime; start != nil {
@@ -308,10 +317,18 @@ func (csu *CommitStatusUpdater) Authenticate(ctx context.Context, snapshot *appl
 // https://docs.github.com/en/rest/commits/statuses?apiVersion=2022-11-28#create-a-commit-status
 func (csu *CommitStatusUpdater) createCommitStatusAdapterForSnapshot(report TestReport) (*github.CommitStatusAdapter, error) {
 	snapshot := csu.snapshot
+	targetURL := ""
 
 	state, err := generateGithubCommitState(report.Status)
 	if err != nil {
 		return nil, fmt.Errorf("unknown status %s for integrationTestScenario %s and snapshot %s/%s", report.Status, report.ScenarioName, snapshot.Namespace, snapshot.Name)
+	}
+
+	if report.TestPipelineRunName == "" {
+
+		csu.logger.Info("TestPipelineRunName is not set for SommitStatus")
+	} else {
+		targetURL = FormatPipelineURL(report.TestPipelineRunName, snapshot.Namespace, *csu.logger)
 	}
 
 	return &github.CommitStatusAdapter{
@@ -321,6 +338,7 @@ func (csu *CommitStatusUpdater) createCommitStatusAdapterForSnapshot(report Test
 		State:       state,
 		Description: report.Summary,
 		Context:     report.FullName,
+		TargetURL:   targetURL,
 	}, nil
 }
 
@@ -386,7 +404,7 @@ func (csu *CommitStatusUpdater) UpdateStatus(ctx context.Context, report TestRep
 	if !commitStatusExist {
 		csu.logger.Info("creating commit status for scenario test status of snapshot",
 			"snapshot.NameSpace", csu.snapshot.Namespace, "snapshot.Name", csu.snapshot.Name, "scenarioName", report.ScenarioName)
-		_, err = csu.ghClient.CreateCommitStatus(ctx, commitStatus.Owner, commitStatus.Repository, commitStatus.SHA, commitStatus.State, commitStatus.Description, commitStatus.Context)
+		_, err = csu.ghClient.CreateCommitStatus(ctx, commitStatus.Owner, commitStatus.Repository, commitStatus.SHA, commitStatus.State, commitStatus.Description, commitStatus.Context, commitStatus.TargetURL)
 		if err != nil {
 			return err
 		}
