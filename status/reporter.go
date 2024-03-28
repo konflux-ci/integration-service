@@ -52,6 +52,8 @@ type TestReport struct {
 	StartTime *time.Time
 	// time when test completed
 	CompletionTime *time.Time
+	// pipelineRun Name
+	TestPipelineRunName string
 }
 
 type ReporterInterface interface {

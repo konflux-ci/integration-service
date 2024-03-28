@@ -292,15 +292,16 @@ func (s *Status) generateTestReport(ctx context.Context, detail intgteststat.Int
 	}
 
 	report := TestReport{
-		Text:           text,
-		FullName:       fullName,
-		ScenarioName:   detail.ScenarioName,
-		SnapshotName:   snapshot.Name,
-		ComponentName:  snapshot.Labels[gitops.SnapshotComponentLabel],
-		Status:         detail.Status,
-		Summary:        summary,
-		StartTime:      detail.StartTime,
-		CompletionTime: detail.CompletionTime,
+		Text:                text,
+		FullName:            fullName,
+		ScenarioName:        detail.ScenarioName,
+		SnapshotName:        snapshot.Name,
+		ComponentName:       snapshot.Labels[gitops.SnapshotComponentLabel],
+		Status:              detail.Status,
+		Summary:             summary,
+		StartTime:           detail.StartTime,
+		CompletionTime:      detail.CompletionTime,
+		TestPipelineRunName: detail.TestPipelineRunName,
 	}
 	return &report, nil
 }
