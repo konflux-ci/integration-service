@@ -41,7 +41,7 @@ const summaryTemplate = `
 | Task | Duration | Test Suite | Status | Details |
 | --- | --- | --- | --- | --- |
 {{- range $tr := .TaskRuns }}
-| {{ formatTaskName $tr }} | {{ $tr.GetDuration.String }} | {{ formatNamespace $tr }} | {{ formatStatus $tr }} | {{ formatDetails $tr }} |
+| <a href="{{ formatTaskLogURL $tr $pipelineRunName $namespace $logger }}">{{ formatTaskName $tr }}</a> | {{ $tr.GetDuration.String }} | {{ formatNamespace $tr }} | {{ formatStatus $tr }} | {{ formatDetails $tr }} |
 {{- end }}
 
 {{ formatFootnotes .TaskRuns }}`
@@ -52,6 +52,13 @@ type SummaryTemplateData struct {
 	PipelineRunName string
 	Namespace       string
 	Logger          logr.Logger
+}
+
+// TaskLogTemplateData holds the data necessary to construct a Task log URL.
+type TaskLogTemplateData struct {
+	TaskName        string
+	PipelineRunName string
+	Namespace       string
 }
 
 // CommentTemplateData holds the data necessary to construct a PipelineRun comment.
@@ -68,6 +75,7 @@ func FormatTestsSummary(taskRuns []*helpers.TaskRun, pipelineRunName string, nam
 		"formatStatus":      FormatStatus,
 		"formatDetails":     FormatDetails,
 		"formatPipelineURL": FormatPipelineURL,
+		"formatTaskLogURL":  FormatTaskLogURL,
 		"formatFootnotes":   FormatFootnotes,
 	}
 	buf := bytes.Buffer{}
@@ -221,6 +229,23 @@ func FormatPipelineURL(pipelinerun string, namespace string, logger logr.Logger)
 	t := template.Must(template.New("").Parse(console_url))
 	if err := t.Execute(&buf, data); err != nil {
 		logger.Error(err, "Error occured when executing template.")
+	}
+	return buf.String()
+}
+
+// FormatTaskLogURL accepts name of pipelinerun, task, namespace and returns a complete task log URL.
+func FormatTaskLogURL(taskRun *helpers.TaskRun, pipelinerun string, namespace string, logger logr.Logger) string {
+	consoleTaskLogURL := os.Getenv("CONSOLE_URL_TASKLOG")
+	if consoleTaskLogURL == "" {
+		return "CONSOLE_URL_TASKLOG_NOT_AVAILABLE"
+	}
+
+	taskName := taskRun.GetPipelineTaskName()
+	buf := bytes.Buffer{}
+	data := TaskLogTemplateData{PipelineRunName: pipelinerun, TaskName: taskName, Namespace: namespace}
+	t := template.Must(template.New("").Parse(consoleTaskLogURL))
+	if err := t.Execute(&buf, data); err != nil {
+		logger.Error(err, "Error occured when executing task log template.")
 	}
 	return buf.String()
 }

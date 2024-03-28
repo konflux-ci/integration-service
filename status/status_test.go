@@ -76,6 +76,7 @@ var _ = Describe("Status Adapter", func() {
 	BeforeEach(func() {
 		now := time.Now()
 		os.Setenv("CONSOLE_URL", "https://definetly.not.prod/preview/application-pipeline/ns/{{ .Namespace }}/pipelinerun/{{ .PipelineRunName }}")
+		os.Setenv("CONSOLE_URL_TASKLOG", "https://definetly.not.prod/preview/application-pipeline/ns/{{ .Namespace }}/pipelinerun/{{ .PipelineRunName }}/logs/{{ .TaskName }}")
 
 		successfulTaskRun = &tektonv1.TaskRun{
 			ObjectMeta: metav1.ObjectMeta{
@@ -415,8 +416,8 @@ var _ = Describe("Status Adapter", func() {
 
 | Task | Duration | Test Suite | Status | Details |
 | --- | --- | --- | --- | --- |
-| pipeline1-task1 | 5m0s |  | :heavy_check_mark: SUCCESS | :heavy_check_mark: 10 success(es) |
-| pipeline1-task2 | 5m0s |  | :white_check_mark: SKIPPED |  |
+| <a href="https://definetly.not.prod/preview/application-pipeline/ns/default/pipelinerun/test-pipelinerun/logs/pipeline1-task1">pipeline1-task1</a> | 5m0s |  | :heavy_check_mark: SUCCESS | :heavy_check_mark: 10 success(es) |
+| <a href="https://definetly.not.prod/preview/application-pipeline/ns/default/pipelinerun/test-pipelinerun/logs/pipeline1-task2">pipeline1-task2</a> | 5m0s |  | :white_check_mark: SKIPPED |  |
 
 `
 		expectedTestReport := status.TestReport{

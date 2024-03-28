@@ -36,15 +36,17 @@ const expectedSummary = `<ul>
 
 | Task | Duration | Test Suite | Status | Details |
 | --- | --- | --- | --- | --- |
-| example-task-1 | 5m30s | example-namespace-1 | :heavy_check_mark: SUCCESS | :heavy_check_mark: 2 success(es)<br>:warning: 1 warning(s) |
-| example-task-2 | 2m0s |  |  |  |
-| example-task-3[^example-task-3] | 1s | example-namespace-3 | :x: FAILURE | :x: 1 failure(s) |
-| example-task-4[^example-task-4] | 1s | example-namespace-4 | :warning: WARNING | :warning: 1 warning(s) |
-| example-task-5 | 5m0s | example-namespace-5 | :white_check_mark: SKIPPED |  |
-| example-task-6 | 1s | example-namespace-6 | :heavy_exclamation_mark: ERROR |  |
+| <a href="https://definetly.not.prod/preview/application-pipeline/ns/default/pipelinerun/pipelinerun-component-sample/logs/example-task-1">example-task-1</a> | 5m30s | example-namespace-1 | :heavy_check_mark: SUCCESS | :heavy_check_mark: 2 success(es)<br>:warning: 1 warning(s) |
+| <a href="https://definetly.not.prod/preview/application-pipeline/ns/default/pipelinerun/pipelinerun-component-sample/logs/example-task-2">example-task-2</a> | 2m0s |  |  |  |
+| <a href="https://definetly.not.prod/preview/application-pipeline/ns/default/pipelinerun/pipelinerun-component-sample/logs/example-task-3">example-task-3[^example-task-3]</a> | 1s | example-namespace-3 | :x: FAILURE | :x: 1 failure(s) |
+| <a href="https://definetly.not.prod/preview/application-pipeline/ns/default/pipelinerun/pipelinerun-component-sample/logs/example-task-4">example-task-4[^example-task-4]</a> | 1s | example-namespace-4 | :warning: WARNING | :warning: 1 warning(s) |
+| <a href="https://definetly.not.prod/preview/application-pipeline/ns/default/pipelinerun/pipelinerun-component-sample/logs/example-task-5">example-task-5</a> | 5m0s | example-namespace-5 | :white_check_mark: SKIPPED |  |
+| <a href="https://definetly.not.prod/preview/application-pipeline/ns/default/pipelinerun/pipelinerun-component-sample/logs/example-task-6">example-task-6</a> | 1s | example-namespace-6 | :heavy_exclamation_mark: ERROR |  |
 
 [^example-task-3]: example note 3
 [^example-task-4]: example note 4`
+
+const expectedTaskLogURL = `https://definetly.not.prod/preview/application-pipeline/ns/default/pipelinerun/pipelinerun-component-sample/logs/example-task-1`
 
 func newTaskRun(name string, startTime time.Time, completionTime time.Time) *helpers.TaskRun {
 	return helpers.NewTaskRunFromTektonTaskRun(name, &tektonv1.TaskRunStatus{
@@ -79,6 +81,7 @@ var _ = Describe("Formatters", func() {
 	BeforeEach(func() {
 		now := time.Now()
 		os.Setenv("CONSOLE_URL", "https://definetly.not.prod/preview/application-pipeline/ns/{{ .Namespace }}/pipelinerun/{{ .PipelineRunName }}")
+		os.Setenv("CONSOLE_URL_TASKLOG", "https://definetly.not.prod/preview/application-pipeline/ns/{{ .Namespace }}/pipelinerun/{{ .PipelineRunName }}/logs/{{ .TaskName }}")
 		taskRuns = []*helpers.TaskRun{
 			newTaskRunWithAppStudioTestOutput(
 				"example-task-1",
@@ -190,13 +193,20 @@ var _ = Describe("Formatters", func() {
 	})
 	AfterEach(func() {
 		os.Setenv("CONSOLE_URL", "")
+		os.Setenv("CONSOLE_URL_TASKLOG", "")
 	})
 
-	It("Env var not set", func() {
+	It("CONSOLE_URL env var not set", func() {
 		os.Setenv("CONSOLE_URL", "")
 		text, err := status.FormatTestsSummary(taskRuns, pipelineRun.Name, pipelineRun.Namespace, logr.Discard())
 		Expect(err).To(Succeed())
 		Expect(text).To(ContainSubstring("CONSOLE_URL_NOT_AVAILABLE"))
+	})
+
+	It("CONSOLE_URL_TASKLOG env var not set", func() {
+		os.Setenv("CONSOLE_URL_TASKLOG", "")
+		text := status.FormatTaskLogURL(taskRuns[0], pipelineRun.Name, pipelineRun.Namespace, logr.Discard())
+		Expect(text).To(ContainSubstring("CONSOLE_URL_TASKLOG_NOT_AVAILABLE"))
 	})
 
 	It("can construct a comment", func() {
@@ -206,6 +216,11 @@ var _ = Describe("Formatters", func() {
 		Expect(err).To(BeNil())
 		Expect(comment).To(ContainSubstring("### example-title"))
 		Expect(comment).To(ContainSubstring(expectedSummary))
+	})
+
+	It("can construct a taskLogURL", func() {
+		taskLogUrl := status.FormatTaskLogURL(taskRuns[0], pipelineRun.Name, pipelineRun.Namespace, logr.Discard())
+		Expect(taskLogUrl).To(Equal(expectedTaskLogURL))
 	})
 
 	It("can construct a summary", func() {
