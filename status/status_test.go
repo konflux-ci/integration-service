@@ -381,18 +381,19 @@ var _ = Describe("Status Adapter", func() {
 	})
 
 	It("report expected textual data for InProgress test scenario", func() {
-		hasSnapshot.Annotations["test.appstudio.openshift.io/status"] = "[{\"scenario\":\"scenario1\",\"status\":\"InProgress\",\"startTime\":\"2023-07-26T16:57:49+02:00\",\"lastUpdateTime\":\"2023-08-26T17:57:50+02:00\",\"details\":\"Test in progress\"}]"
+		hasSnapshot.Annotations["test.appstudio.openshift.io/status"] = "[{\"scenario\":\"scenario1\",\"status\":\"InProgress\",\"testPipelineRunName\":\"test-pipelinerun\",\"startTime\":\"2023-07-26T16:57:49+02:00\",\"lastUpdateTime\":\"2023-08-26T17:57:50+02:00\",\"details\":\"Test in progress\"}]"
 		t, err := time.Parse(time.RFC3339, "2023-07-26T16:57:49+02:00")
 		Expect(err).NotTo(HaveOccurred())
 		expectedTestReport := status.TestReport{
-			FullName:      "Red Hat Konflux / scenario1 / component-sample",
-			ScenarioName:  "scenario1",
-			SnapshotName:  "snapshot-sample",
-			ComponentName: "component-sample",
-			Text:          "Test in progress",
-			Summary:       "Integration test for snapshot snapshot-sample and scenario scenario1 is in progress",
-			Status:        integrationteststatus.IntegrationTestStatusInProgress,
-			StartTime:     &t,
+			FullName:            "Red Hat Konflux / scenario1 / component-sample",
+			ScenarioName:        "scenario1",
+			SnapshotName:        "snapshot-sample",
+			ComponentName:       "component-sample",
+			Text:                "Test in progress",
+			Summary:             "Integration test for snapshot snapshot-sample and scenario scenario1 is in progress",
+			Status:              integrationteststatus.IntegrationTestStatusInProgress,
+			StartTime:           &t,
+			TestPipelineRunName: "test-pipelinerun",
 		}
 		mockReporter.EXPECT().Initialize(gomock.Any(), gomock.Any()).Times(1)
 		mockReporter.EXPECT().ReportStatus(gomock.Any(), gomock.Eq(expectedTestReport)).Times(1)
@@ -421,15 +422,16 @@ var _ = Describe("Status Adapter", func() {
 
 `
 		expectedTestReport := status.TestReport{
-			FullName:       "Red Hat Konflux / scenario1",
-			ScenarioName:   "scenario1",
-			SnapshotName:   "snapshot-sample",
-			ComponentName:  "",
-			Text:           text,
-			Summary:        "Integration test for snapshot snapshot-sample and scenario scenario1 has passed",
-			Status:         integrationteststatus.IntegrationTestStatusTestPassed,
-			StartTime:      &ts,
-			CompletionTime: &tc,
+			FullName:            "Red Hat Konflux / scenario1",
+			ScenarioName:        "scenario1",
+			SnapshotName:        "snapshot-sample",
+			ComponentName:       "",
+			Text:                text,
+			Summary:             "Integration test for snapshot snapshot-sample and scenario scenario1 has passed",
+			Status:              integrationteststatus.IntegrationTestStatusTestPassed,
+			StartTime:           &ts,
+			CompletionTime:      &tc,
+			TestPipelineRunName: "test-pipelinerun",
 		}
 		mockReporter.EXPECT().Initialize(gomock.Any(), gomock.Any()).Times(1)
 		mockReporter.EXPECT().ReportStatus(gomock.Any(), gomock.Eq(expectedTestReport)).Times(1)
