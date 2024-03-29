@@ -129,6 +129,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			},
 		}
 		Expect(k8sClient.Create(ctx, integrationTestScenario)).Should(Succeed())
+		gitops.SetScenarioIntegrationStatusAsValid(integrationTestScenario, "valid")
 
 		integrationTestScenarioWithoutEnv = &v1beta1.IntegrationTestScenario{
 			ObjectMeta: metav1.ObjectMeta{
@@ -161,6 +162,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			},
 		}
 		Expect(k8sClient.Create(ctx, integrationTestScenarioWithoutEnv)).Should(Succeed())
+		gitops.SetScenarioIntegrationStatusAsValid(integrationTestScenarioWithoutEnv, "valid")
 
 		testReleasePlan = &releasev1alpha1.ReleasePlan{
 			ObjectMeta: metav1.ObjectMeta{
@@ -370,6 +372,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 				},
 			}
 			Expect(k8sClient.Create(ctx, integrationTestScenarioWithoutEnvCopy)).Should(Succeed())
+			gitops.SetScenarioIntegrationStatusAsValid(integrationTestScenarioWithoutEnvCopy, "valid")
 
 			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
 			adapter = NewAdapter(hasSnapshot, hasApp, hasComp, log, loader.NewMockLoader(), k8sClient, ctx)
@@ -1041,6 +1044,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 				},
 			}
 			Expect(k8sClient.Create(ctx, integrationTestScenarioForInvalidSnapshot)).Should(Succeed())
+			gitops.SetScenarioIntegrationStatusAsValid(integrationTestScenarioForInvalidSnapshot, "valid")
 
 			Eventually(func() error {
 				err := k8sClient.Get(ctx, types.NamespacedName{
@@ -1094,13 +1098,63 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 					Resource:   []v1beta1.IntegrationTestScenario{*integrationTestScenarioForInvalidSnapshot},
 				},
 			})
-
 			result, err := adapter.EnsureStaticIntegrationPipelineRunsExist()
-			Expect(result.CancelRequest).To(BeTrue())
+			Expect(result.CancelRequest).To(BeFalse())
 			Expect(err).ToNot(HaveOccurred())
 
 			expectedLogEntry := "failed during creation due to invalid resource"
 			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
+		})
+
+		It("will stop reconciliation and write status to snapshot annotation", func() {
+			var buf bytes.Buffer
+
+			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+			adapter = NewAdapter(hasSnapshot, hasApp, hasComp, log, loader.NewMockLoader(), k8sClient, ctx)
+
+			gitops.SetScenarioIntegrationStatusAsInvalid(integrationTestScenarioForInvalidSnapshot, "invalid")
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: loader.ApplicationContextKey,
+					Resource:   hasApp,
+				},
+				{
+					ContextKey: loader.ComponentContextKey,
+					Resource:   hasComp,
+				},
+				{
+					ContextKey: loader.SnapshotContextKey,
+					Resource:   hasSnapshot,
+				},
+				{
+					ContextKey: loader.EnvironmentContextKey,
+					Resource:   env,
+				},
+				{
+					ContextKey: loader.SnapshotComponentsContextKey,
+					Resource:   []applicationapiv1alpha1.Component{*hasComp},
+				},
+				{
+					ContextKey: loader.AllIntegrationTestScenariosContextKey,
+					Resource:   []v1beta1.IntegrationTestScenario{*integrationTestScenarioForInvalidSnapshot},
+				},
+				{
+					ContextKey: loader.RequiredIntegrationTestScenariosContextKey,
+					Resource:   []v1beta1.IntegrationTestScenario{*integrationTestScenarioForInvalidSnapshot},
+				},
+			})
+			result, err := adapter.EnsureStaticIntegrationPipelineRunsExist()
+			Expect(result.CancelRequest).To(BeFalse())
+			Expect(err).NotTo(HaveOccurred())
+
+			expectedLogEntry := "IntegrationTestScenario is invalid, will not create pipelineRun for it"
+			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
+
+			statuses, err := gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(hasSnapshot)
+			Expect(err).To(Succeed())
+			detail, ok := statuses.GetScenarioStatus(integrationTestScenarioForInvalidSnapshot.Name)
+			Expect(ok).To(BeTrue())
+			Expect(detail.Status).Should(Equal(intgteststat.IntegrationTestStatusTestInvalid))
 		})
 	})
 
