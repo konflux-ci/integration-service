@@ -26,6 +26,7 @@ import (
 
 	"github.com/google/go-containerregistry/pkg/name"
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
+	"github.com/redhat-appstudio/integration-service/api/v1beta1"
 	"github.com/redhat-appstudio/integration-service/helpers"
 	"github.com/redhat-appstudio/integration-service/metrics"
 	"github.com/redhat-appstudio/integration-service/tekton"
@@ -853,4 +854,30 @@ func CopySnapshotLabelsAndAnnotation(application *applicationapiv1alpha1.Applica
 	_ = metadata.CopyLabelsByPrefix(source, &snapshot.ObjectMeta, prefix)
 	_ = metadata.CopyAnnotationsByPrefix(source, &snapshot.ObjectMeta, prefix)
 
+}
+
+// SetScenarioIntegrationStatusAsInvalid sets the IntegrationTestScenarioValid status condition for the Scenario to invalid.
+func SetScenarioIntegrationStatusAsInvalid(scenario *v1beta1.IntegrationTestScenario, message string) {
+	meta.SetStatusCondition(&scenario.Status.Conditions, metav1.Condition{
+		Type:    IntegrationTestScenarioValid,
+		Status:  metav1.ConditionFalse,
+		Reason:  AppStudioIntegrationStatusInvalid,
+		Message: message,
+	})
+}
+
+// SetScenarioIntegrationStatusAsValid sets the IntegrationTestScenarioValid integration status condition for the Scenario to valid.
+func SetScenarioIntegrationStatusAsValid(scenario *v1beta1.IntegrationTestScenario, message string) {
+	meta.SetStatusCondition(&scenario.Status.Conditions, metav1.Condition{
+		Type:    IntegrationTestScenarioValid,
+		Status:  metav1.ConditionTrue,
+		Reason:  AppStudioIntegrationStatusValid,
+		Message: message,
+	})
+}
+
+// IsScenarioValid sets the IntegrationTestScenarioValid integration status condition for the Scenario to valid.
+func IsScenarioValid(scenario *v1beta1.IntegrationTestScenario) bool {
+	statusCondition := meta.FindStatusCondition(scenario.Status.Conditions, IntegrationTestScenarioValid)
+	return statusCondition.Status != metav1.ConditionFalse
 }

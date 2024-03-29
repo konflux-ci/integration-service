@@ -27,7 +27,6 @@ import (
 	"github.com/redhat-appstudio/integration-service/loader"
 	"github.com/redhat-appstudio/operator-toolkit/controller"
 	"k8s.io/apimachinery/pkg/api/meta"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -68,7 +67,7 @@ func (a *Adapter) EnsureCreatedScenarioIsValid() (controller.OperationResult, er
 		a.logger.Info("Application for scenario was not found.")
 
 		patch := client.MergeFrom(a.scenario.DeepCopy())
-		SetScenarioIntegrationStatusAsInvalid(a.scenario, "Failed to get application for scenario.")
+		gitops.SetScenarioIntegrationStatusAsInvalid(a.scenario, "Failed to get application for scenario.")
 		err := a.client.Status().Patch(a.context, a.scenario, patch)
 		if err != nil {
 			a.logger.Error(err, "Failed to update Scenario")
@@ -110,7 +109,7 @@ func (a *Adapter) EnsureCreatedScenarioIsValid() (controller.OperationResult, er
 			a.logger.Info("Environment doesn't exist in same namespace as IntegrationTestScenario.",
 				"environment.Name:", a.scenario.Spec.Environment.Name)
 			patch := client.MergeFrom(a.scenario.DeepCopy())
-			SetScenarioIntegrationStatusAsInvalid(a.scenario, "Environment "+a.scenario.Spec.Environment.Name+" is located in different namespace than scenario.")
+			gitops.SetScenarioIntegrationStatusAsInvalid(a.scenario, "Environment "+a.scenario.Spec.Environment.Name+" is located in different namespace than scenario.")
 			err = a.client.Status().Patch(a.context, a.scenario, patch)
 			if err != nil {
 				a.logger.Error(err, "Failed to update Scenario")
@@ -126,7 +125,7 @@ func (a *Adapter) EnsureCreatedScenarioIsValid() (controller.OperationResult, er
 	// If the scenario status IntegrationTestScenarioValid condition is not defined or false, we set it to Valid
 	if reflect.ValueOf(a.scenario.Status).IsZero() || !meta.IsStatusConditionTrue(a.scenario.Status.Conditions, gitops.IntegrationTestScenarioValid) {
 		patch := client.MergeFrom(a.scenario.DeepCopy())
-		SetScenarioIntegrationStatusAsValid(a.scenario, "Integration test scenario is Valid.")
+		gitops.SetScenarioIntegrationStatusAsValid(a.scenario, "Integration test scenario is Valid.")
 		err := a.client.Status().Patch(a.context, a.scenario, patch)
 		if err != nil {
 			a.logger.Error(err, "Failed to update Scenario")
@@ -180,24 +179,4 @@ func (a *Adapter) EnsureDeletedScenarioResourcesAreCleanedUp() (controller.Opera
 		return controller.RequeueWithError(err)
 	}
 	return controller.ContinueProcessing()
-}
-
-// SetScenarioIntegrationStatusAsInvalid sets the IntegrationTestScenarioValid status condition for the Scenario to invalid.
-func SetScenarioIntegrationStatusAsInvalid(scenario *v1beta1.IntegrationTestScenario, message string) {
-	meta.SetStatusCondition(&scenario.Status.Conditions, metav1.Condition{
-		Type:    gitops.IntegrationTestScenarioValid,
-		Status:  metav1.ConditionFalse,
-		Reason:  gitops.AppStudioIntegrationStatusInvalid,
-		Message: message,
-	})
-}
-
-// SetScenarioIntegrationStatusAsValid sets the IntegrationTestScenarioValid integration status condition for the Scenario to valid.
-func SetScenarioIntegrationStatusAsValid(scenario *v1beta1.IntegrationTestScenario, message string) {
-	meta.SetStatusCondition(&scenario.Status.Conditions, metav1.Condition{
-		Type:    gitops.IntegrationTestScenarioValid,
-		Status:  metav1.ConditionTrue,
-		Reason:  gitops.AppStudioIntegrationStatusValid,
-		Message: message,
-	})
 }
