@@ -569,7 +569,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		It("ensures Release created successfully", func() {
 			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
 
-			gitops.SetSnapshotIntegrationStatusAsFinished(hasSnapshot, "Snapshot integration status condition is finished since all testing pipelines completed")
+			gitops.MarkSnapshotIntegrationStatusAsFinished(k8sClient, ctx, hasSnapshot, "Snapshot integration status condition is finished since all testing pipelines completed")
 			err := gitops.MarkSnapshotAsPassed(k8sClient, ctx, hasSnapshot, "test passed")
 			Expect(err).To(Succeed())
 			Expect(gitops.HaveAppStudioTestsFinished(hasSnapshot)).To(BeTrue())

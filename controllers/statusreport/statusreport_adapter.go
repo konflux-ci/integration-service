@@ -144,14 +144,24 @@ func (a *Adapter) EnsureSnapshotFinishedAllTests() (controller.OperationResult, 
 	}
 
 	if len(*integrationTestScenarios) > 0 {
-		// Since all integration tests finished, set the Snapshot Integration status as finished, but don't update the resource yet
-		gitops.SetSnapshotIntegrationStatusAsFinished(a.snapshot,
+		// Since all integration tests finished, set the Snapshot Integration status as finished
+		err = gitops.MarkSnapshotIntegrationStatusAsFinished(a.client, a.context, a.snapshot,
 			"Snapshot integration status condition is finished since all testing pipelines completed")
+		if err != nil {
+			a.logger.Error(err, "Failed to Update Snapshot AppStudioIntegrationStatus status")
+			return controller.RequeueWithError(err)
+		}
+
 		a.logger.LogAuditEvent("Snapshot integration status condition marked as finished, all testing pipelines completed",
 			a.snapshot, helpers.LogActionUpdate)
 	} else {
-		gitops.SetSnapshotIntegrationStatusAsFinished(a.snapshot,
+		err = gitops.MarkSnapshotIntegrationStatusAsFinished(a.client, a.context, a.snapshot,
 			"Snapshot integration status condition is finished since there are no required testing pipelines defined for its application")
+		if err != nil {
+			a.logger.Error(err, "Failed to Update Snapshot AppStudioIntegrationStatus status")
+			return controller.RequeueWithError(err)
+		}
+
 		a.logger.LogAuditEvent("Snapshot integration status condition marked as finished, no required integration test scenarios defined for this application",
 			a.snapshot, helpers.LogActionUpdate)
 	}

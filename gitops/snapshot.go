@@ -334,8 +334,9 @@ func PrepareToRegisterIntegrationPipelineRunStarted(snapshot *applicationapiv1al
 	go metrics.RegisterPipelineRunStarted(snapshot.GetCreationTimestamp(), pipelineRunStartTime)
 }
 
-// SetSnapshotIntegrationStatusAsFinished sets the AppStudio integration status condition for the Snapshot to Finished.
-func SetSnapshotIntegrationStatusAsFinished(snapshot *applicationapiv1alpha1.Snapshot, message string) {
+// MarkSnapshotIntegrationStatusAsFinished sets the AppStudio integration status condition for the Snapshot to Finished.
+func MarkSnapshotIntegrationStatusAsFinished(adapterClient client.Client, ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot, message string) error {
+	patch := client.MergeFrom(snapshot.DeepCopy())
 	condition := metav1.Condition{
 		Type:    AppStudioIntegrationStatusCondition,
 		Status:  metav1.ConditionTrue,
@@ -343,6 +344,13 @@ func SetSnapshotIntegrationStatusAsFinished(snapshot *applicationapiv1alpha1.Sna
 		Message: message,
 	}
 	meta.SetStatusCondition(&snapshot.Status.Conditions, condition)
+
+	err := adapterClient.Status().Patch(ctx, snapshot, patch)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // IsSnapshotNotStarted checks if the AppStudio Integration Status condition is not in progress status.
