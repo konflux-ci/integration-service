@@ -204,11 +204,6 @@ func IsSnapshotMarkedAsPassed(snapshot *applicationapiv1alpha1.Snapshot) bool {
 	return IsSnapshotStatusConditionSet(snapshot, AppStudioTestSucceededCondition, metav1.ConditionTrue, "")
 }
 
-// IsSnapshotMarkedAsFinished returns true if snapshot is marked as finished
-func IsSnapshotMarkedAsFinished(snapshot *applicationapiv1alpha1.Snapshot) bool {
-	return IsSnapshotStatusConditionSet(snapshot, AppStudioIntegrationStatusCondition, metav1.ConditionTrue, AppStudioIntegrationStatusFinished)
-}
-
 // MarkSnapshotAsPassed updates the AppStudio Test succeeded condition for the Snapshot to passed.
 // If the patch command fails, an error will be returned.
 func MarkSnapshotAsPassed(adapterClient client.Client, ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot, message string) error {
@@ -392,6 +387,11 @@ func IsSnapshotValid(snapshot *applicationapiv1alpha1.Snapshot) bool {
 		return true
 	}
 	return false
+}
+
+// IsSnapshotIntegrationStatusMarkedAsFinished returns true if snapshot is marked as finished
+func IsSnapshotIntegrationStatusMarkedAsFinished(snapshot *applicationapiv1alpha1.Snapshot) bool {
+	return IsSnapshotStatusConditionSet(snapshot, AppStudioIntegrationStatusCondition, metav1.ConditionTrue, AppStudioIntegrationStatusFinished)
 }
 
 // IsSnapshotStatusConditionSet checks if the condition with the conditionType in the status of Snapshot has been marked as the conditionStatus and reason.
