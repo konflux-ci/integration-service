@@ -14,26 +14,24 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package v1beta1
+package v1beta2
 
 import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/types"
 
-	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-var _ = Describe("IntegrationTestScenario type", func() {
+var _ = Describe("IntegrationTestScenario webhook", func() {
 
 	var integrationTestScenario *IntegrationTestScenario
 
 	BeforeEach(func() {
 		integrationTestScenario = &IntegrationTestScenario{
 			TypeMeta: metav1.TypeMeta{
-				APIVersion: "appstudio.redhat.com/v1alpha1",
+				APIVersion: "appstudio.redhat.com/v1beta2",
 				Kind:       "IntegrationTestScenario",
 			},
 			ObjectMeta: metav1.ObjectMeta{
@@ -46,18 +44,6 @@ var _ = Describe("IntegrationTestScenario type", func() {
 					{
 						Name:  "pipeline-param-name",
 						Value: "pipeline-param-value",
-					},
-				},
-				Environment: TestEnvironment{
-					Name: "environment-name",
-					Type: "POC",
-					Configuration: &applicationapiv1alpha1.EnvironmentConfiguration{
-						Env: []applicationapiv1alpha1.EnvVarPair{
-							{
-								Name:  "env-config-name",
-								Value: "env-config-value",
-							},
-						},
 					},
 				},
 				Contexts: []TestContext{
@@ -92,15 +78,8 @@ var _ = Describe("IntegrationTestScenario type", func() {
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 	})
 
-	It("should be able to create integrationTestScenario", func() {
-		Expect(k8sClient.Create(ctx, integrationTestScenario)).Should(Succeed())
-		Eventually(func() bool {
-			err := k8sClient.Get(ctx, types.NamespacedName{
-				Name:      integrationTestScenario.Name,
-				Namespace: integrationTestScenario.Namespace,
-			}, integrationTestScenario)
-			return err == nil
-		}, timeout).Should(BeTrue())
-		Expect(integrationTestScenario.Spec.Application).To(Equal("application-sample"))
+	It("should fail to create scenario with long name", func() {
+		integrationTestScenario.Name = "this-name-is-too-long-it-has-64-characters-and-we-allow-max-63ch"
+		Expect(k8sClient.Create(ctx, integrationTestScenario)).ShouldNot(Succeed())
 	})
 })

@@ -20,8 +20,9 @@ import (
 	"context"
 	"go/build"
 	"path/filepath"
-	"sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"testing"
+
+	"sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	"k8s.io/client-go/rest"
 
@@ -33,7 +34,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
-	"github.com/redhat-appstudio/integration-service/api/v1beta1"
+	"github.com/redhat-appstudio/integration-service/api/v1beta2"
 
 	toolkit "github.com/redhat-appstudio/operator-toolkit/test"
 	releasev1alpha1 "github.com/redhat-appstudio/release-service/api/v1alpha1"
@@ -93,7 +94,7 @@ var _ = BeforeSuite(func() {
 	Expect(applicationapiv1alpha1.AddToScheme(clientsetscheme.Scheme)).To(Succeed())
 	Expect(tektonv1.AddToScheme(clientsetscheme.Scheme)).To(Succeed())
 	Expect(releasev1alpha1.AddToScheme(clientsetscheme.Scheme)).To(Succeed())
-	Expect(v1beta1.AddToScheme(clientsetscheme.Scheme)).To(Succeed())
+	Expect(v1beta2.AddToScheme(clientsetscheme.Scheme)).To(Succeed())
 
 	k8sManager, _ := ctrl.NewManager(cfg, ctrl.Options{
 		Scheme: clientsetscheme.Scheme,

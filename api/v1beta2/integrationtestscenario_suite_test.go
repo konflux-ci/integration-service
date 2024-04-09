@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package v1beta1
+package v1beta2
 
 import (
 	"context"
@@ -22,10 +22,11 @@ import (
 	"fmt"
 	"net"
 	"path/filepath"
-	"sigs.k8s.io/controller-runtime/pkg/metrics/server"
-	crwebhook "sigs.k8s.io/controller-runtime/pkg/webhook"
 	"testing"
 	"time"
+
+	"sigs.k8s.io/controller-runtime/pkg/metrics/server"
+	crwebhook "sigs.k8s.io/controller-runtime/pkg/webhook"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"

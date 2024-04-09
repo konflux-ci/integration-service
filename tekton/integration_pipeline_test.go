@@ -21,7 +21,7 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"github.com/redhat-appstudio/integration-service/api/v1beta1"
+	"github.com/redhat-appstudio/integration-service/api/v1beta2"
 	"github.com/redhat-appstudio/integration-service/helpers"
 	"github.com/tonglil/buflogr"
 
@@ -55,9 +55,9 @@ var _ = Describe("Integration pipeline", func() {
 		hasEnv                          *applicationapiv1alpha1.Environment
 		deploymentTargetClaim           *applicationapiv1alpha1.DeploymentTargetClaim
 		deploymentTarget                *applicationapiv1alpha1.DeploymentTarget
-		integrationTestScenarioGit      *v1beta1.IntegrationTestScenario
-		integrationTestScenarioBundle   *v1beta1.IntegrationTestScenario
-		enterpriseContractTestScenario  *v1beta1.IntegrationTestScenario
+		integrationTestScenarioGit      *v1beta2.IntegrationTestScenario
+		integrationTestScenarioBundle   *v1beta2.IntegrationTestScenario
+		enterpriseContractTestScenario  *v1beta2.IntegrationTestScenario
 		extraParams                     *ExtraParams
 	)
 
@@ -71,7 +71,7 @@ var _ = Describe("Integration pipeline", func() {
 			},
 		}
 
-		integrationTestScenarioGit = &v1beta1.IntegrationTestScenario{
+		integrationTestScenarioGit = &v1beta2.IntegrationTestScenario{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "example-pass",
 				Namespace: "default",
@@ -80,11 +80,11 @@ var _ = Describe("Integration pipeline", func() {
 					"test.appstudio.openshift.io/optional": "false",
 				},
 			},
-			Spec: v1beta1.IntegrationTestScenarioSpec{
+			Spec: v1beta2.IntegrationTestScenarioSpec{
 				Application: "application-sample",
-				ResolverRef: v1beta1.ResolverRef{
+				ResolverRef: v1beta2.ResolverRef{
 					Resolver: "git",
-					Params: []v1beta1.ResolverParameter{
+					Params: []v1beta2.ResolverParameter{
 						{
 							Name:  "url",
 							Value: "https://github.com/redhat-appstudio/integration-examples.git",
@@ -99,14 +99,6 @@ var _ = Describe("Integration pipeline", func() {
 						},
 					},
 				},
-				Environment: v1beta1.TestEnvironment{
-					Name: "envname",
-					Type: "POC",
-					//Params: []string{},
-					Configuration: &applicationapiv1alpha1.EnvironmentConfiguration{
-						Env: []applicationapiv1alpha1.EnvVarPair{},
-					},
-				},
 			},
 		}
 		Expect(k8sClient.Create(ctx, integrationTestScenarioGit)).Should(Succeed())
@@ -115,7 +107,7 @@ var _ = Describe("Integration pipeline", func() {
 		newIntegrationPipelineRun = tekton.NewIntegrationPipelineRun(prefix, namespace, *integrationTestScenarioGit)
 		Expect(k8sClient.Create(ctx, newIntegrationPipelineRun.AsPipelineRun())).Should(Succeed())
 
-		integrationTestScenarioBundle = &v1beta1.IntegrationTestScenario{
+		integrationTestScenarioBundle = &v1beta2.IntegrationTestScenario{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "test-bundle",
 				Namespace: "default",
@@ -124,11 +116,11 @@ var _ = Describe("Integration pipeline", func() {
 					"test.appstudio.openshift.io/optional": "false",
 				},
 			},
-			Spec: v1beta1.IntegrationTestScenarioSpec{
+			Spec: v1beta2.IntegrationTestScenarioSpec{
 				Application: "application-sample",
-				ResolverRef: v1beta1.ResolverRef{
+				ResolverRef: v1beta2.ResolverRef{
 					Resolver: "bundles",
-					Params: []v1beta1.ResolverParameter{
+					Params: []v1beta2.ResolverParameter{
 						{
 							Name:  "bundle",
 							Value: "quay.io/redhat-appstudio/example-tekton-bundle:integration-pipeline-pass",
@@ -143,19 +135,11 @@ var _ = Describe("Integration pipeline", func() {
 						},
 					},
 				},
-				Environment: v1beta1.TestEnvironment{
-					Name: "envname",
-					Type: "POC",
-					//Params: []string{},
-					Configuration: &applicationapiv1alpha1.EnvironmentConfiguration{
-						Env: []applicationapiv1alpha1.EnvVarPair{},
-					},
-				},
 			},
 		}
 		Expect(k8sClient.Create(ctx, integrationTestScenarioBundle)).Should(Succeed())
 
-		enterpriseContractTestScenario = &v1beta1.IntegrationTestScenario{
+		enterpriseContractTestScenario = &v1beta2.IntegrationTestScenario{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "enterprise-contract",
 				Namespace: "default",
@@ -168,11 +152,11 @@ var _ = Describe("Integration pipeline", func() {
 					"test.appstudio.openshift.io/kind": "enterprise-contract",
 				},
 			},
-			Spec: v1beta1.IntegrationTestScenarioSpec{
+			Spec: v1beta2.IntegrationTestScenarioSpec{
 				Application: "application-sample",
-				ResolverRef: v1beta1.ResolverRef{
+				ResolverRef: v1beta2.ResolverRef{
 					Resolver: "git",
-					Params: []v1beta1.ResolverParameter{
+					Params: []v1beta2.ResolverParameter{
 						{
 							Name:  "url",
 							Value: "https://github.com/redhat-appstudio/build-definitions.git",
@@ -187,15 +171,7 @@ var _ = Describe("Integration pipeline", func() {
 						},
 					},
 				},
-				Environment: v1beta1.TestEnvironment{
-					Name: "envname",
-					Type: "POC",
-					//Params: []string{},
-					Configuration: &applicationapiv1alpha1.EnvironmentConfiguration{
-						Env: []applicationapiv1alpha1.EnvVarPair{},
-					},
-				},
-				Params: []v1beta1.PipelineParameter{
+				Params: []v1beta2.PipelineParameter{
 					{
 						Name:  "POLICY_CONFIGURATION",
 						Value: "default/default",
@@ -426,7 +402,7 @@ var _ = Describe("Integration pipeline", func() {
 		})
 
 		It("provides parameters from IntegrationTestScenario to the PipelineRun", func() {
-			scenarioParams := []v1beta1.PipelineParameter{
+			scenarioParams := []v1beta2.PipelineParameter{
 				{
 					Name:  "ADDITIONAL_PARAMETER",
 					Value: "custom value",
@@ -486,7 +462,7 @@ var _ = Describe("Integration pipeline", func() {
 		})
 
 		It("copies the annotations", func() {
-			its := v1beta1.IntegrationTestScenario{}
+			its := v1beta2.IntegrationTestScenario{}
 			its.Annotations = map[string]string{
 				"unrelated":                          "unrelated",
 				"test.appstudio.openshift.io/kind":   "kind",

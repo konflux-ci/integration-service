@@ -22,7 +22,7 @@ import (
 	"fmt"
 
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
-	"github.com/redhat-appstudio/integration-service/api/v1beta1"
+	"github.com/redhat-appstudio/integration-service/api/v1beta2"
 	"github.com/redhat-appstudio/integration-service/gitops"
 	"github.com/redhat-appstudio/integration-service/tekton"
 	toolkit "github.com/redhat-appstudio/operator-toolkit/loader"
@@ -48,16 +48,16 @@ type ObjectLoader interface {
 	GetApplicationFromComponent(c client.Client, ctx context.Context, component *applicationapiv1alpha1.Component) (*applicationapiv1alpha1.Application, error)
 	GetEnvironmentFromIntegrationPipelineRun(c client.Client, ctx context.Context, pipelineRun *tektonv1.PipelineRun) (*applicationapiv1alpha1.Environment, error)
 	GetSnapshotFromPipelineRun(c client.Client, ctx context.Context, pipelineRun *tektonv1.PipelineRun) (*applicationapiv1alpha1.Snapshot, error)
-	GetAllIntegrationTestScenariosForApplication(c client.Client, ctx context.Context, application *applicationapiv1alpha1.Application) (*[]v1beta1.IntegrationTestScenario, error)
-	GetRequiredIntegrationTestScenariosForApplication(c client.Client, ctx context.Context, application *applicationapiv1alpha1.Application) (*[]v1beta1.IntegrationTestScenario, error)
+	GetAllIntegrationTestScenariosForApplication(c client.Client, ctx context.Context, application *applicationapiv1alpha1.Application) (*[]v1beta2.IntegrationTestScenario, error)
+	GetRequiredIntegrationTestScenariosForApplication(c client.Client, ctx context.Context, application *applicationapiv1alpha1.Application) (*[]v1beta2.IntegrationTestScenario, error)
 	GetDeploymentTargetClaimForEnvironment(c client.Client, ctx context.Context, environment *applicationapiv1alpha1.Environment) (*applicationapiv1alpha1.DeploymentTargetClaim, error)
 	GetDeploymentTargetForDeploymentTargetClaim(c client.Client, ctx context.Context, dtc *applicationapiv1alpha1.DeploymentTargetClaim) (*applicationapiv1alpha1.DeploymentTarget, error)
 	FindExistingSnapshotEnvironmentBinding(c client.Client, ctx context.Context, application *applicationapiv1alpha1.Application, environment *applicationapiv1alpha1.Environment) (*applicationapiv1alpha1.SnapshotEnvironmentBinding, error)
-	GetAllPipelineRunsForSnapshotAndScenario(c client.Client, ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot, integrationTestScenario *v1beta1.IntegrationTestScenario) (*[]tektonv1.PipelineRun, error)
+	GetAllPipelineRunsForSnapshotAndScenario(c client.Client, ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot, integrationTestScenario *v1beta2.IntegrationTestScenario) (*[]tektonv1.PipelineRun, error)
 	GetAllSnapshots(c client.Client, ctx context.Context, application *applicationapiv1alpha1.Application) (*[]applicationapiv1alpha1.Snapshot, error)
 	GetAutoReleasePlansForApplication(c client.Client, ctx context.Context, application *applicationapiv1alpha1.Application) (*[]releasev1alpha1.ReleasePlan, error)
-	GetScenario(c client.Client, ctx context.Context, name, namespace string) (*v1beta1.IntegrationTestScenario, error)
-	GetAllEnvironmentsForScenario(c client.Client, ctx context.Context, integrationTestScenario *v1beta1.IntegrationTestScenario) (*[]applicationapiv1alpha1.Environment, error)
+	GetScenario(c client.Client, ctx context.Context, name, namespace string) (*v1beta2.IntegrationTestScenario, error)
+	GetAllEnvironmentsForScenario(c client.Client, ctx context.Context, integrationTestScenario *v1beta2.IntegrationTestScenario) (*[]applicationapiv1alpha1.Environment, error)
 	GetAllSnapshotsForBuildPipelineRun(c client.Client, ctx context.Context, pipelineRun *tektonv1.PipelineRun) (*[]applicationapiv1alpha1.Snapshot, error)
 	GetAllTaskRunsWithMatchingPipelineRunLabel(c client.Client, ctx context.Context, pipelineRun *tektonv1.PipelineRun) (*[]tektonv1.TaskRun, error)
 	GetPipelineRun(c client.Client, ctx context.Context, name, namespace string) (*tektonv1.PipelineRun, error)
@@ -242,8 +242,8 @@ func (l *loader) GetSnapshotFromPipelineRun(c client.Client, ctx context.Context
 }
 
 // GetAllIntegrationTestScenariosForApplication returns all IntegrationTestScenarios used by the application being processed.
-func (l *loader) GetAllIntegrationTestScenariosForApplication(c client.Client, ctx context.Context, application *applicationapiv1alpha1.Application) (*[]v1beta1.IntegrationTestScenario, error) {
-	integrationList := &v1beta1.IntegrationTestScenarioList{}
+func (l *loader) GetAllIntegrationTestScenariosForApplication(c client.Client, ctx context.Context, application *applicationapiv1alpha1.Application) (*[]v1beta2.IntegrationTestScenario, error) {
+	integrationList := &v1beta2.IntegrationTestScenarioList{}
 
 	opts := &client.ListOptions{
 		Namespace:     application.Namespace,
@@ -261,8 +261,8 @@ func (l *loader) GetAllIntegrationTestScenariosForApplication(c client.Client, c
 // GetRequiredIntegrationTestScenariosForApplication returns the IntegrationTestScenarios used by the application being processed.
 // An IntegrationTestScenarios will only be returned if it has the test.appstudio.openshift.io/optional
 // label not set to true or if it is missing the label entirely.
-func (l *loader) GetRequiredIntegrationTestScenariosForApplication(c client.Client, ctx context.Context, application *applicationapiv1alpha1.Application) (*[]v1beta1.IntegrationTestScenario, error) {
-	integrationList := &v1beta1.IntegrationTestScenarioList{}
+func (l *loader) GetRequiredIntegrationTestScenariosForApplication(c client.Client, ctx context.Context, application *applicationapiv1alpha1.Application) (*[]v1beta2.IntegrationTestScenario, error) {
+	integrationList := &v1beta2.IntegrationTestScenarioList{}
 	labelRequirement, err := labels.NewRequirement("test.appstudio.openshift.io/optional", selection.NotIn, []string{"true"})
 	if err != nil {
 		return nil, err
@@ -353,7 +353,7 @@ func (l *loader) FindExistingSnapshotEnvironmentBinding(c client.Client, ctx con
 // GetAllPipelineRunsForSnapshotAndScenario returns all Integration PipelineRun for the
 // associated Snapshot and IntegrationTestScenario. In the case the List operation fails,
 // an error will be returned.
-func (l *loader) GetAllPipelineRunsForSnapshotAndScenario(adapterClient client.Client, ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot, integrationTestScenario *v1beta1.IntegrationTestScenario) (*[]tektonv1.PipelineRun, error) {
+func (l *loader) GetAllPipelineRunsForSnapshotAndScenario(adapterClient client.Client, ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot, integrationTestScenario *v1beta2.IntegrationTestScenario) (*[]tektonv1.PipelineRun, error) {
 	integrationPipelineRuns := &tektonv1.PipelineRunList{}
 	opts := []client.ListOption{
 		client.InNamespace(snapshot.Namespace),
@@ -414,14 +414,14 @@ func (l *loader) GetAutoReleasePlansForApplication(c client.Client, ctx context.
 }
 
 // GetScenario returns integration test scenario requested by name and namespace
-func (l *loader) GetScenario(c client.Client, ctx context.Context, name, namespace string) (*v1beta1.IntegrationTestScenario, error) {
-	scenario := &v1beta1.IntegrationTestScenario{}
+func (l *loader) GetScenario(c client.Client, ctx context.Context, name, namespace string) (*v1beta2.IntegrationTestScenario, error) {
+	scenario := &v1beta2.IntegrationTestScenario{}
 	return scenario, toolkit.GetObject(name, namespace, c, ctx, scenario)
 }
 
 // GetAllEnvironmentsForScenario returns all Environments for the associated integrationTestScenario.
 // In the case the List operation fails, an error will be returned.
-func (l *loader) GetAllEnvironmentsForScenario(c client.Client, ctx context.Context, integrationTestScenario *v1beta1.IntegrationTestScenario) (*[]applicationapiv1alpha1.Environment, error) {
+func (l *loader) GetAllEnvironmentsForScenario(c client.Client, ctx context.Context, integrationTestScenario *v1beta2.IntegrationTestScenario) (*[]applicationapiv1alpha1.Environment, error) {
 	environments := &applicationapiv1alpha1.EnvironmentList{}
 	opts := []client.ListOption{
 		client.InNamespace(integrationTestScenario.Namespace),

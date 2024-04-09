@@ -67,7 +67,7 @@ type TestContext struct {
 // +kubebuilder:resource:shortName=its
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="Application",type=string,JSONPath=`.spec.application`
-// +kubebuilder:storageversion
+// +kubebuilder:deprecatedversion:warning="The v1beta1 version is deprecated and will be automatically migrated to v1beta2"
 
 // IntegrationTestScenario is the Schema for the integrationtestscenarios API
 type IntegrationTestScenario struct {

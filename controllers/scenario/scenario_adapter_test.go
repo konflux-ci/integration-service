@@ -31,15 +31,12 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
-	"github.com/redhat-appstudio/integration-service/api/v1beta1"
+	"github.com/redhat-appstudio/integration-service/api/v1beta2"
 	"github.com/redhat-appstudio/integration-service/gitops"
 	"github.com/redhat-appstudio/integration-service/helpers"
 
-	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 var _ = Describe("Scenario Adapter", Ordered, func() {
@@ -50,8 +47,8 @@ var _ = Describe("Scenario Adapter", Ordered, func() {
 	var (
 		adapter                 *Adapter
 		hasApp                  *applicationapiv1alpha1.Application
-		integrationTestScenario *v1beta1.IntegrationTestScenario
-		invalidScenario         *v1beta1.IntegrationTestScenario
+		integrationTestScenario *v1beta2.IntegrationTestScenario
+		invalidScenario         *v1beta2.IntegrationTestScenario
 		logger                  helpers.IntegrationLogger
 		envNamespace            string = DefaultNamespace
 		env                     applicationapiv1alpha1.Environment
@@ -74,7 +71,7 @@ var _ = Describe("Scenario Adapter", Ordered, func() {
 
 		Expect(k8sClient.Create(ctx, hasApp)).Should(Succeed())
 
-		integrationTestScenario = &v1beta1.IntegrationTestScenario{
+		integrationTestScenario = &v1beta2.IntegrationTestScenario{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "example-pass",
 				Namespace: "default",
@@ -83,11 +80,11 @@ var _ = Describe("Scenario Adapter", Ordered, func() {
 					"test.appstudio.openshift.io/optional": "false",
 				},
 			},
-			Spec: v1beta1.IntegrationTestScenarioSpec{
+			Spec: v1beta2.IntegrationTestScenarioSpec{
 				Application: "application-sample",
-				ResolverRef: v1beta1.ResolverRef{
+				ResolverRef: v1beta2.ResolverRef{
 					Resolver: "git",
-					Params: []v1beta1.ResolverParameter{
+					Params: []v1beta2.ResolverParameter{
 						{
 							Name:  "url",
 							Value: "https://github.com/redhat-appstudio/integration-examples.git",
@@ -102,18 +99,11 @@ var _ = Describe("Scenario Adapter", Ordered, func() {
 						},
 					},
 				},
-				Environment: v1beta1.TestEnvironment{
-					Name: "envname",
-					Type: "POC",
-					Configuration: &applicationapiv1alpha1.EnvironmentConfiguration{
-						Env: []applicationapiv1alpha1.EnvVarPair{},
-					},
-				},
 			},
 		}
 		Expect(k8sClient.Create(ctx, integrationTestScenario)).Should(Succeed())
 
-		invalidScenario = &v1beta1.IntegrationTestScenario{
+		invalidScenario = &v1beta2.IntegrationTestScenario{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "example-fail",
 				Namespace: "default",
@@ -122,11 +112,11 @@ var _ = Describe("Scenario Adapter", Ordered, func() {
 					"test.appstudio.openshift.io/optional": "false",
 				},
 			},
-			Spec: v1beta1.IntegrationTestScenarioSpec{
+			Spec: v1beta2.IntegrationTestScenarioSpec{
 				Application: "perpetum-mobile",
-				ResolverRef: v1beta1.ResolverRef{
+				ResolverRef: v1beta2.ResolverRef{
 					Resolver: "git",
-					Params: []v1beta1.ResolverParameter{
+					Params: []v1beta2.ResolverParameter{
 						{
 							Name:  "url",
 							Value: "https://github.com/redhat-appstudio/integration-examples.git",
@@ -139,13 +129,6 @@ var _ = Describe("Scenario Adapter", Ordered, func() {
 							Name:  "pathInRepo",
 							Value: "pipelineruns/integration_pipelinerun_pass.yaml",
 						},
-					},
-				},
-				Environment: v1beta1.TestEnvironment{
-					Name: "invEnv",
-					Type: "POC",
-					Configuration: &applicationapiv1alpha1.EnvironmentConfiguration{
-						Env: []applicationapiv1alpha1.EnvVarPair{},
 					},
 				},
 			},
@@ -213,40 +196,6 @@ var _ = Describe("Scenario Adapter", Ordered, func() {
 			result, err := a.EnsureCreatedScenarioIsValid()
 			return !result.CancelRequest && err == nil
 		}, time.Second*10).Should(BeTrue())
-
-	})
-
-	When("environment is in a different namespace than scenario", func() {
-
-		var namespace *corev1.Namespace
-
-		BeforeEach(func() {
-			envNamespace = "separatenamespace"
-
-			namespace = &corev1.Namespace{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: envNamespace,
-				},
-			}
-
-			Expect(k8sClient.Create(ctx, namespace)).Should(Succeed())
-		})
-
-		AfterEach(func() {
-			envNamespace = DefaultNamespace
-
-			err := k8sClient.Delete(ctx, namespace)
-			Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
-		})
-
-		It("ensure the scenario status is invalid", func() {
-
-			Eventually(func() bool {
-				result, err := adapter.EnsureCreatedScenarioIsValid()
-				return !result.CancelRequest && err == nil
-			}, time.Second*10).Should(BeTrue())
-			Expect(meta.IsStatusConditionFalse(integrationTestScenario.Status.Conditions, helpers.IntegrationTestScenarioValid)).To(BeTrue())
-		})
 
 	})
 
@@ -330,22 +279,8 @@ var _ = Describe("Scenario Adapter", Ordered, func() {
 				return !result.CancelRequest && err == nil
 			}, time.Second*20).Should(BeTrue())
 
-			expectedLogEntry := "SnapshotEnvironmentBinding is in the process of being deleted"
+			expectedLogEntry := "Removed Finalizer from the IntegrationTestScenario"
 			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
-			expectedLogEntry = "Removed Finalizer from the IntegrationTestScenario"
-			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
-
-			ephemeralEnvironments := &applicationapiv1alpha1.EnvironmentList{}
-			opts := []client.ListOption{
-				client.InNamespace(deletedIntegrationTestScenario.Namespace),
-				client.MatchingLabels{
-					gitops.SnapshotTestScenarioLabel: deletedIntegrationTestScenario.Name,
-				},
-			}
-			Eventually(func() bool {
-				err := k8sClient.List(adapter.context, ephemeralEnvironments, opts...)
-				return len(ephemeralEnvironments.Items) == 0 && err == nil
-			}, time.Second*20).Should(BeTrue())
 
 			Expect(controllerutil.ContainsFinalizer(deletedIntegrationTestScenario, helpers.IntegrationTestScenarioFinalizer)).To(BeFalse())
 		})
