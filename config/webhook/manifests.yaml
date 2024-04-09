@@ -11,14 +11,14 @@ webhooks:
     service:
       name: webhook-service
       namespace: system
-      path: /validate-appstudio-redhat-com-v1beta1-integrationtestscenario
+      path: /validate-appstudio-redhat-com-v1beta2-integrationtestscenario
   failurePolicy: Fail
   name: vintegrationtestscenario.kb.io
   rules:
   - apiGroups:
     - appstudio.redhat.com
     apiVersions:
-    - v1beta1
+    - v1beta2
     operations:
     - CREATE
     - UPDATE

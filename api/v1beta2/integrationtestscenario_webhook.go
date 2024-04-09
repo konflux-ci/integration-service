@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package v1beta1
+package v1beta2
 
 import (
 	"k8s.io/apimachinery/pkg/runtime"
@@ -31,7 +31,7 @@ func (r *IntegrationTestScenario) SetupWebhookWithManager(mgr ctrl.Manager) erro
 		Complete()
 }
 
-//+kubebuilder:webhook:path=/validate-appstudio-redhat-com-v1beta1-integrationtestscenario,mutating=false,failurePolicy=fail,sideEffects=None,groups=appstudio.redhat.com,resources=integrationtestscenarios,verbs=create;update;delete,versions=v1beta1,name=vintegrationtestscenario.kb.io,admissionReviewVersions=v1
+//+kubebuilder:webhook:path=/validate-appstudio-redhat-com-v1beta2-integrationtestscenario,mutating=false,failurePolicy=fail,sideEffects=None,groups=appstudio.redhat.com,resources=integrationtestscenarios,verbs=create;update;delete,versions=v1beta2,name=vintegrationtestscenario.kb.io,admissionReviewVersions=v1
 
 var _ webhook.Validator = &IntegrationTestScenario{}
 

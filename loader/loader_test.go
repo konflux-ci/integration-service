@@ -22,7 +22,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/redhat-appstudio/integration-service/api/v1beta1"
+	"github.com/redhat-appstudio/integration-service/api/v1beta2"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -44,7 +44,7 @@ var _ = Describe("Loader", Ordered, func() {
 		deploymentTargetClass   *applicationapiv1alpha1.DeploymentTargetClass
 		deploymentTarget        *applicationapiv1alpha1.DeploymentTarget
 		deploymentTargetClaim   *applicationapiv1alpha1.DeploymentTargetClaim
-		integrationTestScenario *v1beta1.IntegrationTestScenario
+		integrationTestScenario *v1beta2.IntegrationTestScenario
 		successfulTaskRun       *tektonv1.TaskRun
 		taskRunSample           *tektonv1.TaskRun
 		buildPipelineRun        *tektonv1.PipelineRun
@@ -179,7 +179,7 @@ var _ = Describe("Loader", Ordered, func() {
 		}
 		Expect(k8sClient.Status().Update(ctx, successfulTaskRun)).Should(Succeed())
 
-		integrationTestScenario = &v1beta1.IntegrationTestScenario{
+		integrationTestScenario = &v1beta2.IntegrationTestScenario{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "example-pass",
 				Namespace: "default",
@@ -188,11 +188,11 @@ var _ = Describe("Loader", Ordered, func() {
 					"test.appstudio.openshift.io/optional": "false",
 				},
 			},
-			Spec: v1beta1.IntegrationTestScenarioSpec{
+			Spec: v1beta2.IntegrationTestScenarioSpec{
 				Application: hasApp.Name,
-				ResolverRef: v1beta1.ResolverRef{
+				ResolverRef: v1beta2.ResolverRef{
 					Resolver: "git",
-					Params: []v1beta1.ResolverParameter{
+					Params: []v1beta2.ResolverParameter{
 						{
 							Name:  "url",
 							Value: "https://github.com/redhat-appstudio/integration-examples.git",
@@ -205,13 +205,6 @@ var _ = Describe("Loader", Ordered, func() {
 							Name:  "pathInRepo",
 							Value: "pipelineruns/integration_pipelinerun_pass.yaml",
 						},
-					},
-				},
-				Environment: v1beta1.TestEnvironment{
-					Name: "envname",
-					Type: "POC",
-					Configuration: &applicationapiv1alpha1.EnvironmentConfiguration{
-						Env: []applicationapiv1alpha1.EnvVarPair{},
 					},
 				},
 			},
