@@ -204,11 +204,10 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 	})
 
 	It("ensures the Snapshots status can be marked as finished", func() {
-		gitops.SetSnapshotIntegrationStatusAsFinished(hasSnapshot, "Test message")
+		err := gitops.MarkSnapshotIntegrationStatusAsFinished(k8sClient, ctx, hasSnapshot, "Test message")
+		Expect(err).ToNot(HaveOccurred())
 		Expect(hasSnapshot.Status.Conditions).NotTo(BeNil())
-		Expect(meta.IsStatusConditionTrue(hasSnapshot.Status.Conditions, gitops.AppStudioIntegrationStatusCondition)).To(BeTrue())
-		foundStatusCondition := meta.FindStatusCondition(hasSnapshot.Status.Conditions, gitops.AppStudioIntegrationStatusCondition)
-		Expect(foundStatusCondition.Reason).To(Equal(gitops.AppStudioIntegrationStatusFinished))
+		Expect(gitops.IsSnapshotIntegrationStatusMarkedAsFinished(hasSnapshot)).To(BeTrue())
 	})
 
 	It("ensures the Snapshots status can be marked as in progress", func() {
@@ -380,15 +379,17 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 	})
 
 	It("ensures the Snapshots status can be detected to be valid", func() {
-		gitops.SetSnapshotIntegrationStatusAsFinished(hasSnapshot, "Test message")
+		err := gitops.MarkSnapshotIntegrationStatusAsFinished(k8sClient, ctx, hasSnapshot, "Test message")
+		Expect(err).ToNot(HaveOccurred())
 		Expect(hasSnapshot).NotTo(BeNil())
 		Expect(hasSnapshot.Status.Conditions).NotTo(BeNil())
 		Expect(gitops.IsSnapshotValid(hasSnapshot)).To(BeTrue())
 	})
 
 	It("ensures the Snapshots status can be reset", func() {
-		gitops.SetSnapshotIntegrationStatusAsFinished(hasSnapshot, "Test message")
-		err := gitops.MarkSnapshotAsPassed(k8sClient, ctx, hasSnapshot, "test passed")
+		err := gitops.MarkSnapshotIntegrationStatusAsFinished(k8sClient, ctx, hasSnapshot, "Test message")
+		Expect(err).ToNot(HaveOccurred())
+		err = gitops.MarkSnapshotAsPassed(k8sClient, ctx, hasSnapshot, "test passed")
 		Expect(err).ToNot(HaveOccurred())
 		Expect(gitops.HaveAppStudioTestsFinished(hasSnapshot)).To(BeTrue())
 		Expect(gitops.HaveAppStudioTestsSucceeded(hasSnapshot)).To(BeTrue())
@@ -399,11 +400,12 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 	})
 
 	It("ensures the a decision can be made to promote the Snapshot based on its status", func() {
-		gitops.SetSnapshotIntegrationStatusAsFinished(hasSnapshot, "Test message")
+		err := gitops.MarkSnapshotIntegrationStatusAsFinished(k8sClient, ctx, hasSnapshot, "Test message")
+		Expect(err).ToNot(HaveOccurred())
 		Expect(hasSnapshot).NotTo(BeNil())
 		Expect(hasSnapshot.Status.Conditions).NotTo(BeNil())
 
-		err := gitops.MarkSnapshotAsPassed(k8sClient, ctx, hasSnapshot, "Test message")
+		err = gitops.MarkSnapshotAsPassed(k8sClient, ctx, hasSnapshot, "Test message")
 		Expect(err).To(BeNil())
 		Expect(hasSnapshot.Status.Conditions).NotTo(BeNil())
 
@@ -413,11 +415,12 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 	})
 
 	It("ensures the a decision can be made to NOT promote the Snapshot based on its status", func() {
-		gitops.SetSnapshotIntegrationStatusAsFinished(hasSnapshot, "Test message")
+		err := gitops.MarkSnapshotIntegrationStatusAsFinished(k8sClient, ctx, hasSnapshot, "Test message")
+		Expect(err).ToNot(HaveOccurred())
 		Expect(hasSnapshot).NotTo(BeNil())
 		Expect(hasSnapshot.Status.Conditions).NotTo(BeNil())
 
-		err := gitops.MarkSnapshotAsFailed(k8sClient, ctx, hasSnapshot, "Test message")
+		err = gitops.MarkSnapshotAsFailed(k8sClient, ctx, hasSnapshot, "Test message")
 		Expect(err).To(BeNil())
 		Expect(hasSnapshot.Status.Conditions).NotTo(BeNil())
 

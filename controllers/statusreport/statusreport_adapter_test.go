@@ -332,7 +332,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			Expect(meta.FindStatusCondition(hasSnapshot.Status.Conditions, gitops.AppStudioIntegrationStatusCondition)).ToNot(BeNil())
 			Expect(meta.IsStatusConditionTrue(hasSnapshot.Status.Conditions, gitops.AppStudioIntegrationStatusCondition)).To(BeTrue())
 
-			expectedLogEntry := "Snapshot integration status condition marked as finished, all testing pipelines completed"
+			expectedLogEntry := "Snapshot integration status condition is finished since all testing pipelines completed"
 			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
 			expectedLogEntry = "Snapshot integration status condition marked as passed, all of 1 required Integration PipelineRuns succeeded"
 			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
@@ -450,7 +450,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			Expect(meta.FindStatusCondition(hasSnapshot.Status.Conditions, gitops.AppStudioIntegrationStatusCondition)).ToNot(BeNil())
 			Expect(meta.IsStatusConditionTrue(hasSnapshot.Status.Conditions, gitops.AppStudioIntegrationStatusCondition)).To(BeTrue())
 
-			expectedLogEntry := "Snapshot integration status condition marked as finished, all testing pipelines completed"
+			expectedLogEntry := "Snapshot integration status condition is finished since all testing pipelines completed"
 			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
 			expectedLogEntry = "Snapshot integration status condition marked as failed, some tests within Integration PipelineRuns failed"
 			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
@@ -504,7 +504,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			Expect(meta.FindStatusCondition(hasSnapshot.Status.Conditions, gitops.AppStudioIntegrationStatusCondition)).ToNot(BeNil())
 			Expect(meta.IsStatusConditionTrue(hasSnapshot.Status.Conditions, gitops.AppStudioIntegrationStatusCondition)).To(BeTrue())
 
-			expectedLogEntry := "Snapshot integration status condition marked as finished, no required integration test scenarios defined for this application"
+			expectedLogEntry := "Snapshot integration status condition is finished since there are no required testing pipelines defined for its application"
 			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
 			expectedLogEntry = "Snapshot integration status condition marked as passed, all of 0 required Integration PipelineRuns succeeded"
 			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
