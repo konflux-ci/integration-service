@@ -157,6 +157,7 @@ func (a *Adapter) EnsureDeletedScenarioResourcesAreCleanedUp() (controller.Opera
 		return controller.RequeueWithError(err)
 	}
 	for _, testEnvironment := range *environmentsForScenario {
+		testEnvironment := testEnvironment
 		if h.IsEnvironmentEphemeral(&testEnvironment) {
 			dtc, err := a.loader.GetDeploymentTargetClaimForEnvironment(a.client, a.context, &testEnvironment)
 			if err != nil || dtc == nil {
