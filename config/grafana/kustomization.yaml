@@ -7,6 +7,8 @@ configMapGenerator:
   - name: grafana-dashboard-integration-service
     files:
       - dashboards/integration-service-dashboard.json
-
+  - name: grafana-dashboard-integration-service-health
+    files:
+      - dashboards/integration-service-health.json
 resources:
   - dashboard.yaml
