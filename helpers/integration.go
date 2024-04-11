@@ -460,7 +460,10 @@ func RemoveFinalizerFromPipelineRun(adapterClient client.Client, logger Integrat
 	if ok := controllerutil.RemoveFinalizer(pipelineRun, finalizer); ok {
 		err := adapterClient.Patch(ctx, pipelineRun, patch)
 		if err != nil {
-			return fmt.Errorf("error occurred while patching the updated PipelineRun after finalizer removal: %w", err)
+			logger.Error(err, "error occurred while patching the updated PipelineRun after finalizer removal",
+				"pipelineRun.Name", pipelineRun.Name)
+			// don't return wrapped err, so we can use RetryOnConflict
+			return err
 		}
 
 		logger.LogAuditEvent("Removed Finalizer from the PipelineRun", pipelineRun, LogActionUpdate, "finalizer", finalizer)

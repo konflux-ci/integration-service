@@ -369,6 +369,10 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 					Resource:   hasSnapshot,
 				},
 				{
+					ContextKey: loader.GetPipelineRunContextKey,
+					Resource:   buildPipelineRun,
+				},
+				{
 					ContextKey: loader.ApplicationComponentsContextKey,
 					Resource:   []applicationapiv1alpha1.Component{*hasComp, *hasComp2},
 				},
@@ -500,7 +504,6 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(info["status"]).To(Equal("failed"))
 			Expect(info["message"]).To(Equal("Failed to create snapshot. Error: " + messageError))
-
 		})
 
 		It("ensures pipelines as code labels and annotations are propagated to the snapshot", func() {
@@ -613,6 +616,10 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 					Resource:   hasSnapshot,
 				},
 				{
+					ContextKey: loader.GetPipelineRunContextKey,
+					Resource:   buildPipelineRun,
+				},
+				{
 					ContextKey: loader.ApplicationComponentsContextKey,
 					Resource:   []applicationapiv1alpha1.Component{*hasComp},
 				},
@@ -654,6 +661,10 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 					Resource:   hasSnapshot,
 				},
 				{
+					ContextKey: loader.GetPipelineRunContextKey,
+					Resource:   buildPipelineRun,
+				},
+				{
 					ContextKey: loader.PipelineRunsContextKey,
 					Resource:   []tektonv1.PipelineRun{*buildPipelineRun},
 				},
@@ -690,6 +701,10 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				{
 					ContextKey: loader.SnapshotContextKey,
 					Resource:   hasSnapshot,
+				},
+				{
+					ContextKey: loader.GetPipelineRunContextKey,
+					Resource:   buildPipelineRun,
 				},
 				{
 					ContextKey: loader.PipelineRunsContextKey,
@@ -828,9 +843,10 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		})
 
 		It("can annotate the build pipelineRun with the Snapshot name", func() {
-			err := adapter.annotateBuildPipelineRunWithSnapshot(buildPipelineRun, hasSnapshot)
+			adapter = NewAdapter(buildPipelineRun, hasComp, hasApp, logger, loader.NewMockLoader(), k8sClient, ctx)
+			err := adapter.annotateBuildPipelineRunWithSnapshot(hasSnapshot)
 			Expect(err).To(BeNil())
-			Expect(buildPipelineRun.ObjectMeta.Annotations[tekton.SnapshotNameLabel]).To(Equal(hasSnapshot.Name))
+			Expect(adapter.pipelineRun.ObjectMeta.Annotations[tekton.SnapshotNameLabel]).To(Equal(hasSnapshot.Name))
 		})
 
 		It("Can annotate the build pipelineRun with the CreateSnapshot annotate", func() {
@@ -852,6 +868,14 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			Expect(newPipelineRun.ObjectMeta.Annotations[helpers.CreateSnapshotAnnotationName]).NotTo(BeNil())
 			var info map[string]string
 			err = json.Unmarshal([]byte(newPipelineRun.ObjectMeta.Annotations[helpers.CreateSnapshotAnnotationName]), &info)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(info["status"]).To(Equal("failed"))
+			Expect(info["message"]).To(Equal("Failed to create snapshot. Error: " + sampleErr.Error()))
+
+			// Check that an attempt to modify a pipelineRun that's being deleted doesn't do anything
+			newPipelineRun.ObjectMeta.DeletionTimestamp = &metav1.Time{Time: time.Now()}
+			newSampleErr := errors.New("this is a different sample error")
+			err = tekton.AnnotateBuildPipelineRunWithCreateSnapshotAnnotation(adapter.context, newPipelineRun, adapter.client, newSampleErr)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(info["status"]).To(Equal("failed"))
 			Expect(info["message"]).To(Equal("Failed to create snapshot. Error: " + sampleErr.Error()))
@@ -1032,6 +1056,12 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				Expect(k8sClient.Status().Update(ctx, runningDeletingBuildPipeline)).Should(Succeed())
 
 				adapter = NewAdapter(runningDeletingBuildPipeline, hasComp, hasApp, logger, loader.NewMockLoader(), k8sClient, ctx)
+				adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+					{
+						ContextKey: loader.GetPipelineRunContextKey,
+						Resource:   runningDeletingBuildPipeline,
+					},
+				})
 			})
 
 			AfterEach(func() {
@@ -1049,12 +1079,130 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 
 				// deletionTimestamp must be set here, create client call in BeforeEach() removes it
 				runningDeletingBuildPipeline.DeletionTimestamp = &metav1.Time{Time: time.Now()}
-				result, err = adapter.EnsureSnapshotExists()
-				Expect(err).ToNot(HaveOccurred())
-				Expect(result.CancelRequest).To(BeFalse())
+				Eventually(func() bool {
+					result, err := adapter.EnsureSnapshotExists()
+					return !result.CancelRequest && err == nil
+				}, time.Second*10).Should(BeTrue())
 				Expect(controllerutil.ContainsFinalizer(runningDeletingBuildPipeline, helpers.IntegrationPipelineRunFinalizer)).To(BeFalse())
 			})
 
+		})
+
+		When("attempting to update a problematic build pipelineRun", func() {
+			It("handles an already deleted build pipelineRun", func() {
+				notFoundErr := new(k8serrors.StatusError)
+				notFoundErr.ErrStatus = metav1.Status{
+					Message: "Resource Not Found",
+					Code:    404,
+					Status:  "Failure",
+					Reason:  metav1.StatusReasonNotFound,
+				}
+
+				var buf bytes.Buffer
+				log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+				buildPipelineRun.ObjectMeta.Annotations[gitops.SnapshotLabel] = hasSnapshot.Name
+				adapter = NewAdapter(buildPipelineRun, hasComp, hasApp, log, loader.NewMockLoader(), k8sClient, ctx)
+				adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+					{
+						ContextKey: loader.GetPipelineRunContextKey,
+						Resource:   nil,
+						Err:        notFoundErr,
+					},
+				})
+
+				Eventually(func() bool {
+					result, err := adapter.EnsureSnapshotExists()
+					return !result.RequeueRequest && err == nil
+				}, time.Second*10).Should(BeTrue())
+
+				expectedLogEntry := "The build pipelineRun is already associated with existing Snapshot via annotation"
+				Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
+				unexpectedLogEntry := "Created new Snapshot"
+				Expect(buf.String()).ShouldNot(ContainSubstring(unexpectedLogEntry))
+				unexpectedLogEntry = "Updated build pipelineRun"
+				Expect(buf.String()).ShouldNot(ContainSubstring(unexpectedLogEntry))
+				unexpectedLogEntry = "Removed Finalizer from the PipelineRun"
+				Expect(buf.String()).ShouldNot(ContainSubstring(unexpectedLogEntry))
+			})
+			It("handles a build pipelineRun that has Snapshot annotation, but runs into conflicts updating status", func() {
+				conflictErr := new(k8serrors.StatusError)
+				conflictErr.ErrStatus = metav1.Status{
+					Message: "Operation cannot be fulfilled",
+					Code:    409,
+					Status:  "Failure",
+					Reason:  metav1.StatusReasonConflict,
+				}
+
+				var buf bytes.Buffer
+				log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+				buildPipelineRun.ObjectMeta.Annotations[gitops.SnapshotLabel] = hasSnapshot.Name
+				adapter = NewAdapter(buildPipelineRun, hasComp, hasApp, log, loader.NewMockLoader(), k8sClient, ctx)
+				adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+					{
+						ContextKey: loader.GetPipelineRunContextKey,
+						Resource:   buildPipelineRun,
+						Err:        conflictErr,
+					},
+				})
+
+				Eventually(func() bool {
+					result, err := adapter.EnsureSnapshotExists()
+					return result.RequeueRequest && err != nil
+				}, time.Second*10).Should(BeTrue())
+
+				expectedLogEntry := "The build pipelineRun is already associated with existing Snapshot via annotation"
+				Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
+				expectedLogEntry = "Operation cannot be fulfilled"
+				Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
+
+				unexpectedLogEntry := "Created new Snapshot"
+				Expect(buf.String()).ShouldNot(ContainSubstring(unexpectedLogEntry))
+				unexpectedLogEntry = "Updated build pipelineRun"
+				Expect(buf.String()).ShouldNot(ContainSubstring(unexpectedLogEntry))
+				unexpectedLogEntry = "Removed Finalizer from the PipelineRun"
+				Expect(buf.String()).ShouldNot(ContainSubstring(unexpectedLogEntry))
+			})
+			It("handles a build pipelineRun without Snapshot annotation that runs into conflicts when trying to add it", func() {
+				conflictErr := new(k8serrors.StatusError)
+				conflictErr.ErrStatus = metav1.Status{
+					Message: "Operation cannot be fulfilled",
+					Code:    409,
+					Status:  "Failure",
+					Reason:  metav1.StatusReasonConflict,
+				}
+
+				var buf bytes.Buffer
+				log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+				adapter = NewAdapter(buildPipelineRun, hasComp, hasApp, log, loader.NewMockLoader(), k8sClient, ctx)
+				adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+					{
+						ContextKey: loader.GetPipelineRunContextKey,
+						Resource:   buildPipelineRun,
+						Err:        conflictErr,
+					},
+					{
+						ContextKey: loader.AllSnapshotsContextKey,
+						Resource:   []applicationapiv1alpha1.Snapshot{*hasSnapshot},
+					},
+				})
+
+				Eventually(func() bool {
+					result, err := adapter.EnsureSnapshotExists()
+					return result.RequeueRequest && err != nil
+				}, time.Second*10).Should(BeTrue())
+
+				expectedLogEntry := "Operation cannot be fulfilled"
+				Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
+
+				unexpectedLogEntry := "The build pipelineRun is already associated with existing Snapshot via annotation"
+				Expect(buf.String()).ShouldNot(ContainSubstring(unexpectedLogEntry))
+				unexpectedLogEntry = "Created new Snapshot"
+				Expect(buf.String()).ShouldNot(ContainSubstring(unexpectedLogEntry))
+				unexpectedLogEntry = "Updated build pipelineRun"
+				Expect(buf.String()).ShouldNot(ContainSubstring(unexpectedLogEntry))
+				unexpectedLogEntry = "Removed Finalizer from the PipelineRun"
+				Expect(buf.String()).ShouldNot(ContainSubstring(unexpectedLogEntry))
+			})
 		})
 	})
 

@@ -54,6 +54,7 @@ const (
 	AllEnvironmentsForScenarioContextKey
 	AllSnapshotsForBuildPipelineRunContextKey
 	AllTaskRunsWithMatchingPipelineRunLabelContextKey
+	GetPipelineRunContextKey
 )
 
 func NewMockLoader() ObjectLoader {
@@ -252,4 +253,12 @@ func (l *mockLoader) GetAllTaskRunsWithMatchingPipelineRunLabel(c client.Client,
 	}
 	taskRuns, err := toolkit.GetMockedResourceAndErrorFromContext(ctx, AllTaskRunsWithMatchingPipelineRunLabelContextKey, []tektonv1.TaskRun{})
 	return &taskRuns, err
+}
+
+// GetPipelineRun returns the resource and error passed as values of the context.
+func (l *mockLoader) GetPipelineRun(c client.Client, ctx context.Context, name, namespace string) (*tektonv1.PipelineRun, error) {
+	if ctx.Value(GetPipelineRunContextKey) == nil {
+		return l.loader.GetPipelineRun(c, ctx, name, namespace)
+	}
+	return toolkit.GetMockedResourceAndErrorFromContext(ctx, GetPipelineRunContextKey, &tektonv1.PipelineRun{})
 }

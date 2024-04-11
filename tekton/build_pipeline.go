@@ -45,6 +45,7 @@ func AnnotateBuildPipelineRun(ctx context.Context, pipelineRun *tektonv1.Pipelin
 func AnnotateBuildPipelineRunWithCreateSnapshotAnnotation(ctx context.Context, pipelineRun *tektonv1.PipelineRun, cl client.Client, ensureSnapshotExistsErr error) error {
 	message := ""
 	status := ""
+
 	if ensureSnapshotExistsErr == nil {
 		if !metadata.HasAnnotation(pipelineRun, SnapshotNameLabel) {
 			// do nothing for in progress build PLR
@@ -64,6 +65,5 @@ func AnnotateBuildPipelineRunWithCreateSnapshotAnnotation(ctx context.Context, p
 	if err != nil {
 		return err
 	}
-	err = AnnotateBuildPipelineRun(ctx, pipelineRun, h.CreateSnapshotAnnotationName, string(jsonResult), cl)
-	return err
+	return AnnotateBuildPipelineRun(ctx, pipelineRun, h.CreateSnapshotAnnotationName, string(jsonResult), cl)
 }
