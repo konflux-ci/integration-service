@@ -785,5 +785,13 @@ var _ = Describe("Loader", Ordered, func() {
 			Expect(fetchedScenario.Namespace).To(Equal(integrationTestScenario.Namespace))
 			Expect(fetchedScenario.Spec).To(Equal(integrationTestScenario.Spec))
 		})
+
+		It("Can fetch pipelineRun", func() {
+			fetchedBuildPipelineRun, err := loader.GetPipelineRun(k8sClient, ctx, buildPipelineRun.Name, buildPipelineRun.Namespace)
+			Expect(err).To(Succeed())
+			Expect(fetchedBuildPipelineRun.Name).To(Equal(buildPipelineRun.Name))
+			Expect(fetchedBuildPipelineRun.Namespace).To(Equal(buildPipelineRun.Namespace))
+			Expect(fetchedBuildPipelineRun.Spec).To(Equal(buildPipelineRun.Spec))
+		})
 	})
 })

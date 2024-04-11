@@ -61,6 +61,7 @@ type ObjectLoader interface {
 	GetAllEnvironmentsForScenario(c client.Client, ctx context.Context, integrationTestScenario *v1beta1.IntegrationTestScenario) (*[]applicationapiv1alpha1.Environment, error)
 	GetAllSnapshotsForBuildPipelineRun(c client.Client, ctx context.Context, pipelineRun *tektonv1.PipelineRun) (*[]applicationapiv1alpha1.Snapshot, error)
 	GetAllTaskRunsWithMatchingPipelineRunLabel(c client.Client, ctx context.Context, pipelineRun *tektonv1.PipelineRun) (*[]tektonv1.TaskRun, error)
+	GetPipelineRun(c client.Client, ctx context.Context, name, namespace string) (*tektonv1.PipelineRun, error)
 }
 
 type loader struct{}
@@ -489,4 +490,10 @@ func (l *loader) GetAllTaskRunsWithMatchingPipelineRunLabel(c client.Client, ctx
 	}
 
 	return &taskRuns.Items, nil
+}
+
+// GetPipelineRun returns Tekton pipelineRun requested by name and namespace
+func (l *loader) GetPipelineRun(c client.Client, ctx context.Context, name, namespace string) (*tektonv1.PipelineRun, error) {
+	pipelineRun := &tektonv1.PipelineRun{}
+	return pipelineRun, toolkit.GetObject(name, namespace, c, ctx, pipelineRun)
 }

@@ -19,6 +19,7 @@ package buildpipeline
 import (
 	"context"
 	"fmt"
+	"k8s.io/client-go/util/retry"
 	"strconv"
 	"strings"
 	"time"
@@ -68,22 +69,17 @@ func (a *Adapter) EnsureSnapshotExists() (result controller.OperationResult, err
 	var canRemoveFinalizer bool
 
 	defer func() {
-		err = tekton.AnnotateBuildPipelineRunWithCreateSnapshotAnnotation(a.context, a.pipelineRun, a.client, err)
-		if err != nil {
-			a.logger.Error(err, "Could not add create snapshot annotation to build pipelineRun", h.CreateSnapshotAnnotationName, a.pipelineRun)
-			// requeue when err is not nil
-			result, err = controller.RequeueWithError(err)
-		}
-
-		if canRemoveFinalizer {
-			err = h.RemoveFinalizerFromPipelineRun(a.client, a.logger, a.context, a.pipelineRun, h.IntegrationPipelineRunFinalizer)
-			if err != nil {
-				a.logger.Error(err, "Failed to remove finalizer from build pipelineRun")
-				// requeue when err is not nil
-				result, err = controller.RequeueWithError(err)
+		updateErr := a.updateBuildPipelineRunWithFinalInfo(canRemoveFinalizer)
+		if updateErr != nil {
+			if errors.IsNotFound(updateErr) {
+				result, err = controller.ContinueProcessing()
+			} else {
+				a.logger.Error(updateErr, "Failed to update build pipelineRun")
+				result, err = controller.RequeueWithError(updateErr)
 			}
 		}
 	}()
+
 	if !h.HasPipelineRunSucceeded(a.pipelineRun) {
 		if h.HasPipelineRunFinished(a.pipelineRun) || a.pipelineRun.GetDeletionTimestamp() != nil {
 			// The pipeline run has failed
@@ -116,7 +112,7 @@ func (a *Adapter) EnsureSnapshotExists() (result controller.OperationResult, err
 			existingSnapshot := (*existingSnapshots)[0]
 			a.logger.Info("There is an existing Snapshot associated with this build pipelineRun, but the pipelineRun is not yet annotated",
 				"snapshot.Name", existingSnapshot.Name)
-			err := a.annotateBuildPipelineRunWithSnapshot(a.pipelineRun, &existingSnapshot)
+			err := a.annotateBuildPipelineRunWithSnapshot(&existingSnapshot)
 			if err != nil {
 				a.logger.Error(err, "Failed to update the build pipelineRun with snapshot name",
 					"pipelineRun.Name", a.pipelineRun.Name)
@@ -161,7 +157,7 @@ func (a *Adapter) EnsureSnapshotExists() (result controller.OperationResult, err
 		"snapshot.Name", expectedSnapshot.Name,
 		"snapshot.Spec.Components", expectedSnapshot.Spec.Components)
 
-	err = a.annotateBuildPipelineRunWithSnapshot(a.pipelineRun, expectedSnapshot)
+	err = a.annotateBuildPipelineRunWithSnapshot(expectedSnapshot)
 	if err != nil {
 		a.logger.Error(err, "Failed to update the build pipelineRun with new annotations",
 			"pipelineRun.Name", a.pipelineRun.Name)
@@ -257,11 +253,48 @@ func (a *Adapter) prepareSnapshotForPipelineRun(pipelineRun *tektonv1.PipelineRu
 	return snapshot, nil
 }
 
-func (a *Adapter) annotateBuildPipelineRunWithSnapshot(pipelineRun *tektonv1.PipelineRun, snapshot *applicationapiv1alpha1.Snapshot) error {
-	err := tekton.AnnotateBuildPipelineRun(a.context, pipelineRun, tekton.SnapshotNameLabel, snapshot.Name, a.client)
-	if err == nil {
-		a.logger.LogAuditEvent("Updated build pipelineRun", pipelineRun, h.LogActionUpdate,
-			"snapshot.Name", snapshot.Name)
-	}
-	return err
+func (a *Adapter) annotateBuildPipelineRunWithSnapshot(snapshot *applicationapiv1alpha1.Snapshot) error {
+	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		var err error
+		a.pipelineRun, err = a.loader.GetPipelineRun(a.client, a.context, a.pipelineRun.Name, a.pipelineRun.Namespace)
+		if err != nil {
+			return err
+		}
+
+		err = tekton.AnnotateBuildPipelineRun(a.context, a.pipelineRun, tekton.SnapshotNameLabel, snapshot.Name, a.client)
+		if err == nil {
+			a.logger.LogAuditEvent("Updated build pipelineRun", a.pipelineRun, h.LogActionUpdate,
+				"snapshot.Name", snapshot.Name)
+		}
+		return err
+	})
+}
+
+// updateBuildPipelineRunWithFinalInfo adds the final pieces of information to the pipelineRun in order to ensure
+// that anything that happened during the reconciliation is reflected in the CR
+func (a *Adapter) updateBuildPipelineRunWithFinalInfo(canRemoveFinalizer bool) error {
+	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		var err error
+		a.pipelineRun, err = a.loader.GetPipelineRun(a.client, a.context, a.pipelineRun.Name, a.pipelineRun.Namespace)
+		if err != nil {
+			return err
+		}
+
+		if a.pipelineRun.GetDeletionTimestamp() != nil {
+			err = tekton.AnnotateBuildPipelineRunWithCreateSnapshotAnnotation(a.context, a.pipelineRun, a.client, err)
+			if err != nil {
+				return err
+			}
+			a.logger.LogAuditEvent("Updated build pipelineRun", a.pipelineRun, h.LogActionUpdate,
+				h.CreateSnapshotAnnotationName, a.pipelineRun.Annotations[h.CreateSnapshotAnnotationName])
+		}
+
+		if canRemoveFinalizer {
+			err = h.RemoveFinalizerFromPipelineRun(a.client, a.logger, a.context, a.pipelineRun, h.IntegrationPipelineRunFinalizer)
+			if err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }
