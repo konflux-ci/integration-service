@@ -110,6 +110,9 @@ const (
 	// PipelineAsCodeSourceProjectIDAnnotation is the source project ID for gitlab
 	PipelineAsCodeSourceProjectIDAnnotation = PipelinesAsCodePrefix + "/source-project-id"
 
+	// PipelineAsCodeTargetProjectIDAnnotation is the target project ID for gitlab
+	PipelineAsCodeTargetProjectIDAnnotation = PipelinesAsCodePrefix + "/target-project-id"
+
 	// PipelineAsCodePushType is the type of push event which triggered the pipelinerun in build service
 	PipelineAsCodePushType = "push"
 
