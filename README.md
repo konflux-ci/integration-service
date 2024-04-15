@@ -37,6 +37,19 @@ $ IMG=quay.io/user/integration-service:my-tag make img-build
 $ IMG=quay.io/user/integration-service:my-tag make img-push
 ```
 
+### Adding/updating a dependency
+
+This repo uses vendoring, please add dependencies in the following way:
+
+```shell
+go get example.com/dep@v1.2.3
+go mod tidy
+go mod vendor
+git add vendor/
+```
+
+If you don't vendor dependencies, `go vet` will fail build.
+
 ### Running tests
 
 To test the code, simply run `make test`. This command will fetch all the required dependencies and test the code. The
