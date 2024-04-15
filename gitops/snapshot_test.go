@@ -24,7 +24,6 @@ import (
 	"time"
 
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
-	"github.com/redhat-appstudio/integration-service/api/v1beta1"
 	"github.com/redhat-appstudio/integration-service/gitops"
 	"github.com/redhat-appstudio/operator-toolkit/metadata"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -38,11 +37,10 @@ import (
 var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 
 	var (
-		hasApp                  *applicationapiv1alpha1.Application
-		hasComp                 *applicationapiv1alpha1.Component
-		hasSnapshot             *applicationapiv1alpha1.Snapshot
-		integrationTestScenario *v1beta1.IntegrationTestScenario
-		sampleImage             string
+		hasApp      *applicationapiv1alpha1.Application
+		hasComp     *applicationapiv1alpha1.Component
+		hasSnapshot *applicationapiv1alpha1.Snapshot
+		sampleImage string
 	)
 
 	const (
@@ -85,45 +83,6 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 			},
 		}
 		Expect(k8sClient.Create(ctx, hasComp)).Should(Succeed())
-
-		integrationTestScenario = &v1beta1.IntegrationTestScenario{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "example-pass",
-				Namespace: "default",
-
-				Labels: map[string]string{
-					"test.appstudio.openshift.io/optional": "false",
-				},
-			},
-			Spec: v1beta1.IntegrationTestScenarioSpec{
-				Application: "application-sample",
-				ResolverRef: v1beta1.ResolverRef{
-					Resolver: "git",
-					Params: []v1beta1.ResolverParameter{
-						{
-							Name:  "url",
-							Value: "https://github.com/redhat-appstudio/integration-examples.git",
-						},
-						{
-							Name:  "revision",
-							Value: "main",
-						},
-						{
-							Name:  "pathInRepo",
-							Value: "pipelineruns/integration_pipelinerun_pass.yaml",
-						},
-					},
-				},
-				Environment: v1beta1.TestEnvironment{
-					Name: "envname",
-					Type: "POC",
-					Configuration: &applicationapiv1alpha1.EnvironmentConfiguration{
-						Env: []applicationapiv1alpha1.EnvVarPair{},
-					},
-				},
-			},
-		}
-		Expect(k8sClient.Create(ctx, integrationTestScenario)).Should(Succeed())
 	})
 
 	BeforeEach(func() {
@@ -168,8 +127,6 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 		err := k8sClient.Delete(ctx, hasComp)
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 		err = k8sClient.Delete(ctx, hasSnapshot)
-		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
-		err = k8sClient.Delete(ctx, integrationTestScenario)
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 	})
 
@@ -610,21 +567,7 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 				Expect(snapshotRerun.GetLabels()).ShouldNot(m, "shouldn't have re-run label")
 			})
 		})
+
 	})
 
-	Context("IntegrationTestscenario can be marked as valid and invalid", func() {
-		It("ensures the Scenario status can be marked as invalid", func() {
-			gitops.SetScenarioIntegrationStatusAsInvalid(integrationTestScenario, "Test message")
-			Expect(integrationTestScenario).NotTo(BeNil())
-			Expect(gitops.IsScenarioValid(integrationTestScenario)).To(BeFalse())
-			Expect(meta.IsStatusConditionFalse(integrationTestScenario.Status.Conditions, gitops.IntegrationTestScenarioValid)).To(BeTrue())
-		})
-
-		It("ensures the Scenario status can be marked as valid", func() {
-			gitops.SetScenarioIntegrationStatusAsValid(integrationTestScenario, "Test message")
-			Expect(integrationTestScenario).NotTo(BeNil())
-			Expect(gitops.IsScenarioValid(integrationTestScenario)).To(BeTrue())
-			Expect(meta.IsStatusConditionTrue(integrationTestScenario.Status.Conditions, gitops.IntegrationTestScenarioValid)).To(BeTrue())
-		})
-	})
 })

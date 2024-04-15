@@ -245,7 +245,7 @@ var _ = Describe("Scenario Adapter", Ordered, func() {
 				result, err := adapter.EnsureCreatedScenarioIsValid()
 				return !result.CancelRequest && err == nil
 			}, time.Second*10).Should(BeTrue())
-			Expect(meta.IsStatusConditionFalse(integrationTestScenario.Status.Conditions, gitops.IntegrationTestScenarioValid)).To(BeTrue())
+			Expect(meta.IsStatusConditionFalse(integrationTestScenario.Status.Conditions, helpers.IntegrationTestScenarioValid)).To(BeTrue())
 		})
 
 	})
