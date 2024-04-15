@@ -221,10 +221,10 @@ func (a *Adapter) EnsureStaticIntegrationPipelineRunsExist() (controller.Operati
 		var errsForPLRCreation error
 		for _, integrationTestScenario := range *integrationTestScenarios {
 			integrationTestScenario := integrationTestScenario //G601
-			if !gitops.IsScenarioValid(&integrationTestScenario) {
+			if !h.IsScenarioValid(&integrationTestScenario) {
 				a.logger.Info("IntegrationTestScenario is invalid, will not create pipelineRun for it",
 					"integrationTestScenario.Name", integrationTestScenario.Name)
-				scenarioStatusCondition := meta.FindStatusCondition(integrationTestScenario.Status.Conditions, gitops.IntegrationTestScenarioValid)
+				scenarioStatusCondition := meta.FindStatusCondition(integrationTestScenario.Status.Conditions, h.IntegrationTestScenarioValid)
 				testStatuses.UpdateTestStatusIfChanged(
 					integrationTestScenario.Name, intgteststat.IntegrationTestStatusTestInvalid,
 					fmt.Sprintf("IntegrationTestScenario '%s' is invalid: %s", integrationTestScenario.Name, scenarioStatusCondition.Message))
