@@ -284,6 +284,7 @@ func deleteSnapshots(
 ) {
 
 	for _, snap := range snapshots {
+		snap := snap
 		err := cl.Delete(context.Background(), &snap)
 		if err != nil {
 			logger.Error(err, "Failed to delete snapshot.", "snapshot.name", snap.Name)
