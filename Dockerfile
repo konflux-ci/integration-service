@@ -39,11 +39,13 @@ COPY --from=builder /opt/app-root/src/manager /
 COPY --from=builder /opt/app-root/src/snapshotgc /
 
 # It is mandatory to set these labels
-LABEL description="RHTAP Integration Service"
-LABEL io.k8s.description="RHTAP Integration Service"
+LABEL name="integration-service"
+LABEL com.redhat.component="konflux-integration-service"
+LABEL description="Konflux Integration Service"
+LABEL io.k8s.description="Konflux Integration Service"
 LABEL io.k8s.display-name="Integration-service"
-LABEL summary="RHTAP Integration Service"
-LABEL io.openshift.tags="rhtap"
+LABEL summary="Konflux Integration Service"
+LABEL io.openshift.tags="konflux"
 
 USER 65532:65532
 
