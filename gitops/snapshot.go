@@ -140,9 +140,6 @@ const (
 	// LegacyIntegrationStatusCondition is the condition for marking the AppStudio integration status of the Snapshot.
 	LegacyIntegrationStatusCondition = "HACBSIntegrationStatus"
 
-	// IntegrationTestScenarioValid is the condition for marking the AppStudio integration status of the Scenario.
-	IntegrationTestScenarioValid = "IntegrationTestScenarioValid"
-
 	// SnapshotDeployedToRootEnvironmentsCondition is the condition for marking if Snapshot was deployed to root environments
 	// within the user's workspace.
 	SnapshotDeployedToRootEnvironmentsCondition = "DeployedToRootEnvironments"
@@ -165,9 +162,6 @@ const (
 
 	// AppStudioIntegrationStatusErrorOccured is the reason that's set when the AppStudio integration gets into an error state.
 	AppStudioIntegrationStatusErrorOccured = "ErrorOccured"
-
-	// AppStudioIntegrationStatusValid is the reason that's set when the AppStudio integration gets into an valid state.
-	AppStudioIntegrationStatusValid = "Valid"
 
 	//AppStudioIntegrationStatusInProgress is the reason that's set when the AppStudio tests gets into an in progress state.
 	AppStudioIntegrationStatusInProgress = "InProgress"

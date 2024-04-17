@@ -245,7 +245,7 @@ var _ = Describe("Scenario Adapter", Ordered, func() {
 				result, err := adapter.EnsureCreatedScenarioIsValid()
 				return !result.CancelRequest && err == nil
 			}, time.Second*10).Should(BeTrue())
-			Expect(meta.IsStatusConditionFalse(integrationTestScenario.Status.Conditions, gitops.IntegrationTestScenarioValid)).To(BeTrue())
+			Expect(meta.IsStatusConditionFalse(integrationTestScenario.Status.Conditions, helpers.IntegrationTestScenarioValid)).To(BeTrue())
 		})
 
 	})
@@ -255,20 +255,6 @@ var _ = Describe("Scenario Adapter", Ordered, func() {
 			result, err := adapter.EnsureCreatedScenarioIsValid()
 			return !result.CancelRequest && err == nil
 		}, time.Second*20).Should(BeTrue())
-	})
-
-	It("ensures the Scenario status can be marked as invalid", func() {
-		SetScenarioIntegrationStatusAsInvalid(invalidScenario, "Test message")
-		Expect(invalidScenario).NotTo(BeNil())
-		Expect(invalidScenario.Status.Conditions).NotTo(BeNil())
-		Expect(meta.IsStatusConditionFalse(invalidScenario.Status.Conditions, gitops.IntegrationTestScenarioValid)).To(BeTrue())
-	})
-
-	It("ensures the Scenario status can be marked as valid", func() {
-		SetScenarioIntegrationStatusAsValid(integrationTestScenario, "Test message")
-		Expect(integrationTestScenario).NotTo(BeNil())
-		Expect(integrationTestScenario.Status.Conditions).NotTo(BeNil())
-		Expect(meta.IsStatusConditionTrue(integrationTestScenario.Status.Conditions, gitops.IntegrationTestScenarioValid)).To(BeTrue())
 	})
 
 	When("IntegrationTestScenario is deleted while environment resources are still on the cluster", func() {
