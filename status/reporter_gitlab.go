@@ -41,6 +41,7 @@ type GitLabReporter struct {
 	sourceProjectID int
 	targetProjectID int
 	mergeRequest    int
+	snapshot        *applicationapiv1alpha1.Snapshot
 }
 
 func NewGitLabReporter(logger logr.Logger, k8sClient client.Client) *GitLabReporter {
@@ -125,12 +126,12 @@ func (r *GitLabReporter) Initialize(ctx context.Context, snapshot *applicationap
 		return fmt.Errorf("failed to convert merge request number '%s' to integer: %w", mergeRequestStr, err)
 	}
 
+	r.snapshot = snapshot
 	return nil
 }
 
 // setCommitStatus sets commit status to be shown as pipeline run in gitlab view
 func (r *GitLabReporter) setCommitStatus(report TestReport) error {
-
 	glState, err := GenerateGitlabCommitState(report.Status)
 	if err != nil {
 		return fmt.Errorf("failed to generate gitlab state: %w", err)
@@ -140,6 +141,13 @@ func (r *GitLabReporter) setCommitStatus(report TestReport) error {
 		State:       gitlab.BuildStateValue(glState),
 		Name:        gitlab.Ptr(report.FullName),
 		Description: gitlab.Ptr(report.Summary),
+	}
+
+	if report.TestPipelineRunName == "" {
+		r.logger.Info("TestPipelineRunName is not set, cannot add URL to message")
+	} else {
+		url := FormatPipelineURL(report.TestPipelineRunName, r.snapshot.Namespace, *r.logger)
+		opt.TargetURL = gitlab.Ptr(url)
 	}
 
 	// Special case for gitLab `running` state because of a bug where it can't be updated to the same state again
@@ -164,7 +172,7 @@ func (r *GitLabReporter) setCommitStatus(report TestReport) error {
 		return fmt.Errorf("failed to set commit status: %w", err)
 	}
 
-	r.logger.Info("Created gitlab commit status", "scenario.name", report.ScenarioName, "commitStatus.ID", commitStatus.ID)
+	r.logger.Info("Created gitlab commit status", "scenario.name", report.ScenarioName, "commitStatus.ID", commitStatus.ID, "TargetURL", opt.TargetURL)
 	return nil
 }
 
