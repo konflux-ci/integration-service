@@ -222,7 +222,7 @@ func FormatFootnotes(taskRuns []*helpers.TaskRun) (string, error) {
 func FormatPipelineURL(pipelinerun string, namespace string, logger logr.Logger) string {
 	console_url := os.Getenv("CONSOLE_URL")
 	if console_url == "" {
-		return "CONSOLE_URL_NOT_AVAILABLE"
+		return "https://CONSOLE_URL_NOT_AVAILABLE"
 	}
 	buf := bytes.Buffer{}
 	data := SummaryTemplateData{PipelineRunName: pipelinerun, Namespace: namespace}
@@ -237,7 +237,7 @@ func FormatPipelineURL(pipelinerun string, namespace string, logger logr.Logger)
 func FormatTaskLogURL(taskRun *helpers.TaskRun, pipelinerun string, namespace string, logger logr.Logger) string {
 	consoleTaskLogURL := os.Getenv("CONSOLE_URL_TASKLOG")
 	if consoleTaskLogURL == "" {
-		return "CONSOLE_URL_TASKLOG_NOT_AVAILABLE"
+		return "https://CONSOLE_URL_TASKLOG_NOT_AVAILABLE"
 	}
 
 	taskName := taskRun.GetPipelineTaskName()
