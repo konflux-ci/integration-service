@@ -200,13 +200,13 @@ var _ = Describe("Formatters", func() {
 		os.Setenv("CONSOLE_URL", "")
 		text, err := status.FormatTestsSummary(taskRuns, pipelineRun.Name, pipelineRun.Namespace, logr.Discard())
 		Expect(err).To(Succeed())
-		Expect(text).To(ContainSubstring("CONSOLE_URL_NOT_AVAILABLE"))
+		Expect(text).To(ContainSubstring("https://CONSOLE_URL_NOT_AVAILABLE"))
 	})
 
 	It("CONSOLE_URL_TASKLOG env var not set", func() {
 		os.Setenv("CONSOLE_URL_TASKLOG", "")
 		text := status.FormatTaskLogURL(taskRuns[0], pipelineRun.Name, pipelineRun.Namespace, logr.Discard())
-		Expect(text).To(ContainSubstring("CONSOLE_URL_TASKLOG_NOT_AVAILABLE"))
+		Expect(text).To(ContainSubstring("https://CONSOLE_URL_TASKLOG_NOT_AVAILABLE"))
 	})
 
 	It("can construct a comment", func() {
