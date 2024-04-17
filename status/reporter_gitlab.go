@@ -34,12 +34,13 @@ import (
 )
 
 type GitLabReporter struct {
-	logger       *logr.Logger
-	k8sClient    client.Client
-	client       *gitlab.Client
-	sha          string
-	projectID    int
-	mergeRequest int
+	logger          *logr.Logger
+	k8sClient       client.Client
+	client          *gitlab.Client
+	sha             string
+	sourceProjectID int
+	targetProjectID int
+	mergeRequest    int
 }
 
 func NewGitLabReporter(logger logr.Logger, k8sClient client.Client) *GitLabReporter {
@@ -95,14 +96,24 @@ func (r *GitLabReporter) Initialize(ctx context.Context, snapshot *applicationap
 	}
 	r.sha = sha
 
-	projectIDstr, found := annotations[gitops.PipelineAsCodeSourceProjectIDAnnotation]
+	targetProjectIDstr, found := annotations[gitops.PipelineAsCodeTargetProjectIDAnnotation]
+	if !found {
+		return fmt.Errorf("project ID label not found %q", gitops.PipelineAsCodeTargetProjectIDAnnotation)
+	}
+
+	r.targetProjectID, err = strconv.Atoi(targetProjectIDstr)
+	if err != nil {
+		return fmt.Errorf("failed to convert project ID '%s' to integer: %w", targetProjectIDstr, err)
+	}
+
+	sourceProjectIDstr, found := annotations[gitops.PipelineAsCodeSourceProjectIDAnnotation]
 	if !found {
 		return fmt.Errorf("project ID label not found %q", gitops.PipelineAsCodeSourceProjectIDAnnotation)
 	}
 
-	r.projectID, err = strconv.Atoi(projectIDstr)
+	r.sourceProjectID, err = strconv.Atoi(sourceProjectIDstr)
 	if err != nil {
-		return fmt.Errorf("failed to convert project ID '%s' to integer: %w", projectIDstr, err)
+		return fmt.Errorf("failed to convert project ID '%s' to integer: %w", sourceProjectIDstr, err)
 	}
 
 	mergeRequestStr, found := annotations[gitops.PipelineAsCodePullRequestAnnotation]
@@ -133,7 +144,7 @@ func (r *GitLabReporter) setCommitStatus(report TestReport) error {
 
 	// Special case for gitLab `running` state because of a bug where it can't be updated to the same state again
 	if glState == gitlab.Running {
-		allCommitStatuses, _, err := r.client.Commits.GetCommitStatuses(r.projectID, r.sha, nil)
+		allCommitStatuses, _, err := r.client.Commits.GetCommitStatuses(r.sourceProjectID, r.sha, nil)
 		if err != nil {
 			return fmt.Errorf("error while getting all commitStatuses for sha %s: %w", r.sha, err)
 		}
@@ -148,7 +159,7 @@ func (r *GitLabReporter) setCommitStatus(report TestReport) error {
 	r.logger.Info("creating commit status for scenario test status of snapshot",
 		"scenarioName", report.ScenarioName)
 
-	commitStatus, _, err := r.client.Commits.SetCommitStatus(r.projectID, r.sha, &opt)
+	commitStatus, _, err := r.client.Commits.SetCommitStatus(r.sourceProjectID, r.sha, &opt)
 	if err != nil {
 		return fmt.Errorf("failed to set commit status: %w", err)
 	}
@@ -164,20 +175,20 @@ func (r *GitLabReporter) updateStatusInComment(report TestReport) error {
 		return fmt.Errorf("failed to generate comment for merge-request %d: %w", r.mergeRequest, err)
 	}
 
-	allNotes, _, err := r.client.Notes.ListMergeRequestNotes(r.projectID, r.mergeRequest, nil)
+	allNotes, _, err := r.client.Notes.ListMergeRequestNotes(r.targetProjectID, r.mergeRequest, nil)
 	if err != nil {
 		return fmt.Errorf("error while getting all comments for merge-request %d: %w", r.mergeRequest, err)
 	}
 	existingCommentId := r.GetExistingNoteID(allNotes, report.ScenarioName, report.SnapshotName)
 	if existingCommentId == nil {
 		noteOptions := gitlab.CreateMergeRequestNoteOptions{Body: &comment}
-		_, _, err := r.client.Notes.CreateMergeRequestNote(r.projectID, r.mergeRequest, &noteOptions)
+		_, _, err := r.client.Notes.CreateMergeRequestNote(r.targetProjectID, r.mergeRequest, &noteOptions)
 		if err != nil {
 			return fmt.Errorf("error while creating comment for merge-request %d: %w", r.mergeRequest, err)
 		}
 	} else {
 		noteOptions := gitlab.UpdateMergeRequestNoteOptions{Body: &comment}
-		_, _, err := r.client.Notes.UpdateMergeRequestNote(r.projectID, r.mergeRequest, *existingCommentId, &noteOptions)
+		_, _, err := r.client.Notes.UpdateMergeRequestNote(r.targetProjectID, r.mergeRequest, *existingCommentId, &noteOptions)
 		if err != nil {
 			return fmt.Errorf("error while creating comment for merge-request %d: %w", r.mergeRequest, err)
 		}
