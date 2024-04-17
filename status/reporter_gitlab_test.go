@@ -43,10 +43,11 @@ import (
 var _ = Describe("GitLabReporter", func() {
 
 	const (
-		repoUrl      = "https://gitlab.com/example/example"
-		digest       = "12a4a35ccd08194595179815e4646c3a6c08bb77"
-		projectID    = "123"
-		mergeRequest = "45"
+		repoUrl         = "https://gitlab.com/example/example"
+		digest          = "12a4a35ccd08194595179815e4646c3a6c08bb77"
+		sourceProjectID = "123"
+		targetProjectID = "456"
+		mergeRequest    = "45"
 	)
 
 	var (
@@ -77,7 +78,8 @@ var _ = Describe("GitLabReporter", func() {
 					"build.appstudio.redhat.com/commit_sha":             digest,
 					"appstudio.redhat.com/updateComponentOnSuccess":     "false",
 					"pac.test.appstudio.openshift.io/repo-url":          repoUrl,
-					"pac.test.appstudio.openshift.io/source-project-id": projectID,
+					"pac.test.appstudio.openshift.io/target-project-id": targetProjectID,
+					"pac.test.appstudio.openshift.io/source-project-id": sourceProjectID,
 					"pac.test.appstudio.openshift.io/pull-request":      mergeRequest,
 				},
 			},
@@ -187,15 +189,16 @@ var _ = Describe("GitLabReporter", func() {
 		},
 			Entry("Missing repo_url", gitops.PipelineAsCodeRepoURLAnnotation, false),
 			Entry("Missing SHA", gitops.PipelineAsCodeSHALabel, true),
-			Entry("Missing project ID", gitops.PipelineAsCodeSourceProjectIDAnnotation, false),
+			Entry("Missing target project ID", gitops.PipelineAsCodeTargetProjectIDAnnotation, false),
+			Entry("Missing source project ID", gitops.PipelineAsCodeSourceProjectIDAnnotation, false),
 		)
 
 		It("creates a commit status for snapshot with correct textual data", func() {
 
 			summary := "Integration test for snapshot snapshot-sample and scenario scenario1 failed"
 
-			muxCommitStatusPost(mux, projectID, digest, summary)
-			muxMergeNotes(mux, projectID, mergeRequest, summary)
+			muxCommitStatusPost(mux, sourceProjectID, digest, summary)
+			muxMergeNotes(mux, targetProjectID, mergeRequest, summary)
 
 			Expect(reporter.ReportStatus(
 				context.TODO(),
@@ -219,7 +222,7 @@ var _ = Describe("GitLabReporter", func() {
 				Text:         "detailed text here",
 			}
 
-			muxCommitStatusesGet(mux, projectID, digest, &report)
+			muxCommitStatusesGet(mux, sourceProjectID, digest, &report)
 
 			Expect(reporter.ReportStatus(context.TODO(), report)).To(Succeed())
 		})
