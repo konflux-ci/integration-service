@@ -25,6 +25,7 @@ import (
 	"time"
 
 	clienterrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	ctrl "sigs.k8s.io/controller-runtime"
 
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
@@ -217,8 +218,18 @@ func (a *Adapter) EnsureStaticIntegrationPipelineRunsExist() (controller.Operati
 			}
 		}()
 
+		var errsForPLRCreation error
 		for _, integrationTestScenario := range *integrationTestScenarios {
 			integrationTestScenario := integrationTestScenario //G601
+			if !h.IsScenarioValid(&integrationTestScenario) {
+				a.logger.Info("IntegrationTestScenario is invalid, will not create pipelineRun for it",
+					"integrationTestScenario.Name", integrationTestScenario.Name)
+				scenarioStatusCondition := meta.FindStatusCondition(integrationTestScenario.Status.Conditions, h.IntegrationTestScenarioValid)
+				testStatuses.UpdateTestStatusIfChanged(
+					integrationTestScenario.Name, intgteststat.IntegrationTestStatusTestInvalid,
+					fmt.Sprintf("IntegrationTestScenario '%s' is invalid: %s", integrationTestScenario.Name, scenarioStatusCondition.Message))
+				continue
+			}
 			if shouldScenarioRunInEphemeralEnv(&integrationTestScenario) {
 				// integration pipeline runs for scenarios which need an ephemeral environment are handled in EnsureCreationOfEphemeralEnvironments()
 				a.logger.Info("IntegrationTestScenario has environment defined, skipping creation of pipelinerun.", "IntegrationTestScenario", integrationTestScenario)
@@ -234,7 +245,18 @@ func (a *Adapter) EnsureStaticIntegrationPipelineRunsExist() (controller.Operati
 			} else {
 				pipelineRun, err := a.createIntegrationPipelineRun(a.application, &integrationTestScenario, a.snapshot)
 				if err != nil {
-					return a.HandlePipelineCreationError(err, &integrationTestScenario, testStatuses)
+					if clienterrors.IsInvalid(err) {
+						a.logger.Error(err, "pipelineRun failed during creation due to invalid resource",
+							"integrationScenario.Name", integrationTestScenario.Name)
+						testStatuses.UpdateTestStatusIfChanged(
+							integrationTestScenario.Name, intgteststat.IntegrationTestStatusTestInvalid,
+							fmt.Sprintf("Creation of pipelineRun failed during creation due to invalid resource: %s.", err))
+					} else {
+						a.logger.Error(err, "Failed to create pipelineRun for snapshot and scenario",
+							"integrationScenario.Name", integrationTestScenario.Name)
+						errsForPLRCreation = errors.Join(errsForPLRCreation, err)
+					}
+					continue
 				}
 				gitops.PrepareToRegisterIntegrationPipelineRunStarted(a.snapshot) // don't count re-runs
 				testStatuses.UpdateTestStatusIfChanged(
@@ -249,7 +271,12 @@ func (a *Adapter) EnsureStaticIntegrationPipelineRunsExist() (controller.Operati
 
 		err = gitops.WriteIntegrationTestStatusesIntoSnapshot(a.snapshot, testStatuses, a.client, a.context)
 		if err != nil {
-			return controller.RequeueWithError(err)
+			a.logger.Error(err, "Failed to update test status in snapshot annotation")
+			errsForPLRCreation = errors.Join(errsForPLRCreation, err)
+		}
+
+		if errsForPLRCreation != nil {
+			return controller.RequeueWithError(errsForPLRCreation)
 		}
 	}
 
