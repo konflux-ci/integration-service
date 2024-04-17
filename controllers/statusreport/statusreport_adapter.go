@@ -26,6 +26,8 @@ import (
 	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	"k8s.io/apimachinery/pkg/api/errors"
+
 	"github.com/redhat-appstudio/integration-service/api/v1beta1"
 	"github.com/redhat-appstudio/integration-service/gitops"
 	"github.com/redhat-appstudio/integration-service/helpers"
@@ -35,6 +37,8 @@ import (
 	"github.com/redhat-appstudio/integration-service/status"
 	"github.com/redhat-appstudio/integration-service/tekton"
 	"github.com/redhat-appstudio/operator-toolkit/metadata"
+	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
+	"k8s.io/apimachinery/pkg/types"
 )
 
 const SnapshotRetryTimeout = time.Duration(3 * time.Hour)
@@ -86,17 +90,33 @@ func (a *Adapter) EnsureSnapshotTestStatusReportedToGitProvider() (controller.Op
 			return controller.RequeueWithError(err)
 		}
 	}
-
-	if gitops.IsSnapshotMarkedAsPassed(a.snapshot) || gitops.IsSnapshotMarkedAsFailed(a.snapshot) || gitops.IsSnapshotMarkedAsInvalid(a.snapshot) {
-		a.logger.Info("Status has been reported successfully, now in the process of removing the finalizer")
-		// Remove the finalizer from all the Integration PLRs related to the Snapshot
-		err = helpers.RemoveFinalizerFromAllIntegrationPipelineRunsOfSnapshot(a.client, a.logger, a.context, *a.snapshot, helpers.IntegrationPipelineRunFinalizer)
-		if err != nil {
-			return controller.RequeueWithError(err)
-		}
-		a.logger.Info("Successfully removed the finalizer from all the Integration PLRs related to current snapshot", "snapshot.Name", a.snapshot.Name)
+	testStatuses, err := gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(a.snapshot)
+	if err != nil {
+		return controller.RequeueWithError(err)
 	}
+	for _, testDetails := range testStatuses.GetStatuses() {
+		if testDetails.Status.IsFinal() && testDetails.TestPipelineRunName != "" {
+			pipelineRunName := testDetails.TestPipelineRunName
+			pipelineRun := &tektonv1.PipelineRun{}
+			err := a.client.Get(a.context, types.NamespacedName{
+				Namespace: a.snapshot.Namespace,
+				Name:      pipelineRunName,
+			}, pipelineRun)
 
+			// if the PLR doesn't exist on cluster we continue the loop
+			if err != nil {
+				if !errors.IsNotFound(err) {
+					return controller.RequeueWithError(err)
+				}
+				continue
+			}
+
+			err = helpers.RemoveFinalizerFromPipelineRun(a.client, a.logger, a.context, pipelineRun, helpers.IntegrationPipelineRunFinalizer)
+			if err != nil {
+				return controller.RequeueWithError(err)
+			}
+		}
+	}
 	return controller.ContinueProcessing()
 }
 
@@ -231,10 +251,7 @@ func (a *Adapter) determineIfAllIntegrationTestsFinishedAndPassed(integrationTes
 	for _, integrationTestScenario := range *integrationTestScenarios {
 		integrationTestScenario := integrationTestScenario // G601
 		testDetails, ok := testStatuses.GetScenarioStatus(integrationTestScenario.Name)
-		if !ok || (testDetails.Status != intgteststat.IntegrationTestStatusTestPassed &&
-			testDetails.Status != intgteststat.IntegrationTestStatusTestFail &&
-			testDetails.Status != intgteststat.IntegrationTestStatusDeleted &&
-			testDetails.Status != intgteststat.IntegrationTestStatusTestInvalid) {
+		if !ok || !testDetails.Status.IsFinal() {
 			allIntegrationTestsFinished = false
 		}
 		if ok && testDetails.Status != intgteststat.IntegrationTestStatusTestPassed {
