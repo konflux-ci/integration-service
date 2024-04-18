@@ -95,6 +95,11 @@ func (a *Adapter) EnsureSnapshotExists() (result controller.OperationResult, err
 		return controller.ContinueProcessing()
 	}
 
+	if _, found := a.pipelineRun.ObjectMeta.Annotations[tekton.PipelineRunChainsSignedAnnotation]; !found {
+		a.logger.Error(err, "Not processing the pipelineRun because it's not yet signed with Chains")
+		return controller.ContinueProcessing()
+	}
+
 	if _, found := a.pipelineRun.ObjectMeta.Annotations[tekton.SnapshotNameLabel]; found {
 		a.logger.Info("The build pipelineRun is already associated with existing Snapshot via annotation",
 			"snapshot.Name", a.pipelineRun.ObjectMeta.Annotations[tekton.SnapshotNameLabel])
