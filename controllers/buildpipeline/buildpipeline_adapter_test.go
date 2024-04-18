@@ -264,6 +264,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 					"pipelinesascode.tekton.dev/on-target-branch":   "[main,master]",
 					"build.appstudio.openshift.io/repo":             "https://github.com/devfile-samples/devfile-sample-go-basic?rev=c713067b0e65fb3de50d1f7c457eb51c2ab0dbb0",
 					"foo":                                           "bar",
+					"chains.tekton.dev/signed":                      "true",
 				},
 			},
 			Spec: tektonv1.PipelineRunSpec{
@@ -409,7 +410,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			Expect(expectedSnapshot.Labels).Should(HaveKeyWithValue(Equal(gitops.ApplicationNameLabel), Equal(hasApp.Name)))
 		})
 
-		It("ensures that Labels and Annotations were coppied to snapshot from pipelinerun", func() {
+		It("ensures that Labels and Annotations were copied to snapshot from pipelinerun", func() {
 			copyToSnapshot, err := adapter.prepareSnapshotForPipelineRun(buildPipelineRun, hasComp, hasApp)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(copyToSnapshot).NotTo(BeNil())
@@ -566,6 +567,28 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			Expect(found).To(BeTrue())
 			_, found = snapshot.GetLabels()["pipelines.appstudio.openshift.io/type"]
 			Expect(found).To(BeFalse())
+		})
+
+		It("ensure snapshot will not be created in instance when chains is incomplete", func() {
+			var buf bytes.Buffer
+			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+			buildPipelineRun.ObjectMeta.Annotations = map[string]string{
+				"appstudio.redhat.com/updateComponentOnSuccess": "false",
+				"pipelinesascode.tekton.dev/on-target-branch":   "[main,master]",
+				"build.appstudio.openshift.io/repo":             "https://github.com/devfile-samples/devfile-sample-go-basic?rev=c713067b0e65fb3de50d1f7c457eb51c2ab0dbb0",
+				"foo":                                           "bar",
+			}
+			adapter = NewAdapter(buildPipelineRun, hasComp, hasApp, log, loader.NewMockLoader(), k8sClient, ctx)
+
+			Eventually(func() bool {
+				result, err := adapter.EnsureSnapshotExists()
+				return !result.CancelRequest && err != nil
+			}, time.Second*10).Should(BeTrue())
+
+			expectedLogEntry := "Not processing the pipelineRun because it's not yet signed with Chains"
+			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
+			unexpectedLogEntry := "Created new Snapshot"
+			Expect(buf.String()).ShouldNot(ContainSubstring(unexpectedLogEntry))
 		})
 
 		It("ensure error info is added to build pipelineRun annotation", func() {
