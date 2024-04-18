@@ -239,19 +239,6 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 		Expect(gitops.IsSnapshotMarkedAsAutoReleased(hasSnapshot)).To(BeTrue())
 	})
 
-	It("ensures the Snapshots status can be marked as deployed to root environments", func() {
-		Expect(gitops.IsSnapshotMarkedAsDeployedToRootEnvironments(hasSnapshot)).To(BeFalse())
-
-		err := gitops.MarkSnapshotAsDeployedToRootEnvironments(k8sClient, ctx, hasSnapshot, "Test message")
-		Expect(err).To(BeNil())
-		Expect(hasSnapshot.Status.Conditions).NotTo(BeNil())
-		foundStatusCondition := meta.FindStatusCondition(hasSnapshot.Status.Conditions, gitops.SnapshotDeployedToRootEnvironmentsCondition)
-		Expect(foundStatusCondition.Status).To(Equal(metav1.ConditionTrue))
-		Expect(foundStatusCondition.Message).To(Equal("Test message"))
-
-		Expect(gitops.IsSnapshotMarkedAsDeployedToRootEnvironments(hasSnapshot)).To(BeTrue())
-	})
-
 	It("ensures the Snapshots status can be marked as component added to global candidate list", func() {
 		Expect(gitops.IsSnapshotMarkedAsAddedToGlobalCandidateList(hasSnapshot)).To(BeFalse())
 

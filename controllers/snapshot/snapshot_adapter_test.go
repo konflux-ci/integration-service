@@ -64,7 +64,6 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		integrationTestScenarioWithoutEnv         *v1beta1.IntegrationTestScenario
 		integrationTestScenarioForInvalidSnapshot *v1beta1.IntegrationTestScenario
 		env                                       *applicationapiv1alpha1.Environment
-		hasBinding                                *applicationapiv1alpha1.SnapshotEnvironmentBinding
 	)
 	const (
 		SampleRepoLink  = "https://github.com/devfile-samples/devfile-sample-java-springboot-basic"
@@ -176,29 +175,6 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			},
 		}
 		Expect(k8sClient.Create(ctx, testReleasePlan)).Should(Succeed())
-
-		env = &applicationapiv1alpha1.Environment{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "envname",
-				Namespace: "default",
-			},
-			Spec: applicationapiv1alpha1.EnvironmentSpec{
-				Type:               "POC",
-				DisplayName:        "my-environment",
-				DeploymentStrategy: applicationapiv1alpha1.DeploymentStrategy_Manual,
-				ParentEnvironment:  "",
-				Tags:               []string{},
-				Configuration: applicationapiv1alpha1.EnvironmentConfiguration{
-					Env: []applicationapiv1alpha1.EnvVarPair{
-						{
-							Name:  "var_name",
-							Value: "test",
-						},
-					},
-				},
-			},
-		}
-		Expect(k8sClient.Create(ctx, env)).Should(Succeed())
 
 		hasComp = &applicationapiv1alpha1.Component{
 			ObjectMeta: metav1.ObjectMeta{
@@ -316,8 +292,6 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 
 	AfterAll(func() {
 		err := k8sClient.Delete(ctx, hasApp)
-		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
-		err = k8sClient.Delete(ctx, env)
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 		err = k8sClient.Delete(ctx, deploymentTargetClass)
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
@@ -589,173 +563,6 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
 			expectedLogEntry = "the Snapshot was created for a PaC pull request event"
 			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
-		})
-
-		It("no action when EnsureSnapshotEnvironmentBindingExist function runs when AppStudio Tests failed and the snapshot is invalid", func() {
-			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
-
-			// Set the snapshot up for failure by setting its status as failed and invalid
-			// as well as marking it as PaC pull request event type
-			err := gitops.MarkSnapshotAsFailed(k8sClient, ctx, hasSnapshot, "test failed")
-			Expect(err).ShouldNot(HaveOccurred())
-			gitops.SetSnapshotIntegrationStatusAsInvalid(hasSnapshot, "snapshot invalid")
-			hasSnapshot.Labels[gitops.PipelineAsCodeEventTypeLabel] = gitops.PipelineAsCodePullRequestType
-			Expect(gitops.HaveAppStudioTestsSucceeded(hasSnapshot)).To(BeFalse())
-			Expect(gitops.IsSnapshotValid(hasSnapshot)).To(BeFalse())
-
-			adapter = NewAdapter(hasSnapshot, hasApp, hasComp, log, loader.NewMockLoader(), k8sClient, ctx)
-			Eventually(func() bool {
-				result, err := adapter.EnsureSnapshotEnvironmentBindingExist()
-				return !result.CancelRequest && err == nil
-			}, time.Second*10).Should(BeTrue())
-
-			expectedLogEntry := "The Snapshot won't be deployed"
-			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
-			expectedLogEntry = "the Snapshot hasn't passed all required integration tests"
-			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
-			expectedLogEntry = "the Snapshot is invalid"
-			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
-			expectedLogEntry = "the Snapshot was created for a PaC pull request event"
-			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
-		})
-
-		It("ensures snapshot environmentBinding exists", func() {
-			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
-
-			err := gitops.MarkSnapshotAsPassed(k8sClient, ctx, hasSnapshot, "test passed")
-			Expect(err).To(Succeed())
-			hasSnapshot.Labels[gitops.PipelineAsCodeEventTypeLabel] = gitops.PipelineAsCodePushType
-			Expect(gitops.HaveAppStudioTestsSucceeded(hasSnapshot)).To(BeTrue())
-			adapter = NewAdapter(hasSnapshot, hasApp, hasComp, log, loader.NewMockLoader(), k8sClient, ctx)
-			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
-				{
-					ContextKey: loader.ApplicationContextKey,
-					Resource:   hasApp,
-				},
-				{
-					ContextKey: loader.ComponentContextKey,
-					Resource:   hasComp,
-				},
-				{
-					ContextKey: loader.SnapshotContextKey,
-					Resource:   hasSnapshot,
-				},
-				{
-					ContextKey: loader.EnvironmentContextKey,
-					Resource:   env,
-				},
-				{
-					ContextKey: loader.ApplicationComponentsContextKey,
-					Resource:   []applicationapiv1alpha1.Component{*hasComp},
-				},
-				{
-					ContextKey: loader.SnapshotEnvironmentBindingContextKey,
-					Resource:   nil,
-				},
-			})
-			result, err := adapter.EnsureSnapshotEnvironmentBindingExist()
-			Expect(!result.CancelRequest && err == nil).To(BeTrue())
-
-			Eventually(func() bool {
-				err := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      hasSnapshot.Name,
-					Namespace: "default",
-				}, hasSnapshot)
-				return err == nil && gitops.IsSnapshotMarkedAsDeployedToRootEnvironments(hasSnapshot)
-			}, time.Second*10).Should(BeTrue())
-
-			expectedLogEntry := "SnapshotEnvironmentBinding created for Snapshot"
-			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
-
-			bindingList := &applicationapiv1alpha1.SnapshotEnvironmentBindingList{}
-			opts := &client.ListOptions{
-				Namespace: hasApp.Namespace,
-			}
-			Eventually(func() bool {
-				_ = adapter.client.List(adapter.context, bindingList, opts)
-				return len(bindingList.Items) > 0 && bindingList.Items[0].Spec.Snapshot == hasSnapshot.Name
-			}, time.Second*10).Should(BeTrue())
-			binding := bindingList.Items[0]
-
-			Expect(binding.Spec.Application).To(Equal(hasApp.Name))
-			Expect(binding.Spec.Environment).To(Equal(env.Name))
-
-			owners := binding.GetOwnerReferences()
-			Expect(owners).To(HaveLen(1))
-			Expect(owners[0].Name).To(Equal(hasSnapshot.Name))
-
-			// Check if the adapter function detects that it already released the snapshot
-			result, err = adapter.EnsureSnapshotEnvironmentBindingExist()
-			Expect(err).ShouldNot(HaveOccurred())
-			Expect(result.CancelRequest).To(BeFalse())
-
-			expectedLogEntry = "The Snapshot was previously deployed to all root environments, skipping deployment."
-			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
-		})
-
-		When("snapshot environmentBinding exists", func() {
-			BeforeEach(func() {
-				hasBinding = &applicationapiv1alpha1.SnapshotEnvironmentBinding{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "snapshot-binding-sample",
-						Namespace: "default",
-						Labels: map[string]string{
-							gitops.SnapshotTestScenarioLabel: integrationTestScenario.Name,
-						},
-					},
-					Spec: applicationapiv1alpha1.SnapshotEnvironmentBindingSpec{
-						Application: hasApp.Name,
-						Snapshot:    hasSnapshotPR.Name,
-						Environment: integrationTestScenario.Spec.Environment.Name,
-						Components:  []applicationapiv1alpha1.BindingComponent{},
-					},
-				}
-				Expect(k8sClient.Create(ctx, hasBinding)).Should(Succeed())
-
-				err := gitops.MarkSnapshotAsPassed(k8sClient, ctx, hasSnapshot, "test passed")
-				Expect(err).To(Succeed())
-				hasSnapshot.Labels[gitops.PipelineAsCodeEventTypeLabel] = gitops.PipelineAsCodePushType
-				Expect(gitops.HaveAppStudioTestsSucceeded(hasSnapshot)).To(BeTrue())
-			})
-
-			It("snapshotEnvironmentBinding won't be created again", func() {
-				var buf bytes.Buffer
-				log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
-				adapter = NewAdapter(hasSnapshot, hasApp, hasComp, log, loader.NewMockLoader(), k8sClient, ctx)
-				adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
-					{
-						ContextKey: loader.ApplicationContextKey,
-						Resource:   hasApp,
-					},
-					{
-						ContextKey: loader.SnapshotContextKey,
-						Resource:   hasSnapshot,
-					},
-					{
-						ContextKey: loader.ApplicationComponentsContextKey,
-						Resource:   []applicationapiv1alpha1.Component{*hasComp},
-					},
-					{
-						ContextKey: loader.SnapshotEnvironmentBindingContextKey,
-						Resource:   hasBinding,
-					},
-				})
-				result, err := adapter.EnsureSnapshotEnvironmentBindingExist()
-				Expect(!result.CancelRequest && err == nil).To(BeTrue())
-
-				expectedLogEntry := "Existing SnapshotEnvironmentBinding updated with Snapshot"
-				Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
-
-				Eventually(func() bool {
-					err = k8sClient.Get(adapter.context, types.NamespacedName{
-						Name:      hasBinding.Name,
-						Namespace: "default",
-					}, hasBinding)
-					return err == nil && hasBinding.Spec.Snapshot == hasSnapshot.Name
-				}, time.Second*10).Should(BeTrue())
-				err = k8sClient.Delete(ctx, hasBinding)
-				Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
-			})
 		})
 
 		It("ensures build labels/annotations prefixed with 'build.appstudio' are propagated from snapshot to Integration test PLR", func() {
