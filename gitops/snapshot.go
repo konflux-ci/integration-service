@@ -409,30 +409,6 @@ func IsSnapshotStatusConditionSet(snapshot *applicationapiv1alpha1.Snapshot, con
 	return true
 }
 
-// IsSnapshotMarkedAsDeployedToRootEnvironments returns true if snapshot is marked as deployed to root environments
-func IsSnapshotMarkedAsDeployedToRootEnvironments(snapshot *applicationapiv1alpha1.Snapshot) bool {
-	return IsSnapshotStatusConditionSet(snapshot, SnapshotDeployedToRootEnvironmentsCondition, metav1.ConditionTrue, "")
-}
-
-// MarkSnapshotAsDeployedToRootEnvironments updates the SnapshotDeployedToRootEnvironmentsCondition for the Snapshot to 'Deployed'.
-// If the patch command fails, an error will be returned.
-func MarkSnapshotAsDeployedToRootEnvironments(adapterClient client.Client, ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot, message string) error {
-	patch := client.MergeFrom(snapshot.DeepCopy())
-	condition := metav1.Condition{
-		Type:    SnapshotDeployedToRootEnvironmentsCondition,
-		Status:  metav1.ConditionTrue,
-		Reason:  "Deployed",
-		Message: message,
-	}
-	meta.SetStatusCondition(&snapshot.Status.Conditions, condition)
-
-	err := adapterClient.Status().Patch(ctx, snapshot, patch)
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
 // IsSnapshotMarkedAsAutoReleased returns true if snapshot is marked as deployed to root environments
 func IsSnapshotMarkedAsAutoReleased(snapshot *applicationapiv1alpha1.Snapshot) bool {
 	return IsSnapshotStatusConditionSet(snapshot, SnapshotAutoReleasedCondition, metav1.ConditionTrue, "")

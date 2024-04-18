@@ -33,26 +33,6 @@ const (
 	BindingErrorOccurredStatusConditionType string = "ErrorOccurred"
 )
 
-// NewSnapshotEnvironmentBinding creates a new SnapshotEnvironmentBinding using the provided info.
-func NewSnapshotEnvironmentBinding(bindingName string, namespace string, applicationName string, environmentName string, snapshot *applicationapiv1alpha1.Snapshot) *applicationapiv1alpha1.SnapshotEnvironmentBinding {
-	bindingComponents := NewBindingComponents(snapshot)
-
-	snapshotEnvironmentBinding := &applicationapiv1alpha1.SnapshotEnvironmentBinding{
-		ObjectMeta: metav1.ObjectMeta{
-			GenerateName: bindingName + "-",
-			Namespace:    namespace,
-		},
-		Spec: applicationapiv1alpha1.SnapshotEnvironmentBindingSpec{
-			Application: applicationName,
-			Environment: environmentName,
-			Snapshot:    snapshot.Name,
-			Components:  *bindingComponents,
-		},
-	}
-
-	return snapshotEnvironmentBinding
-}
-
 // NewBindingComponents gets all components from the Snapshot and formats them to be used in the
 // SnapshotEnvironmentBinding as BindingComponents.
 func NewBindingComponents(snapshot *applicationapiv1alpha1.Snapshot) *[]applicationapiv1alpha1.BindingComponent {
