@@ -341,8 +341,8 @@ github.com/tektoncd/pipeline v0.58.0 h1:+w9H2b1sMZDDirB+B7UB/cLBl0IdXx6O1tSFftMp
 github.com/tektoncd/pipeline v0.58.0/go.mod h1:d0+ycxWm0PP+e8pGGqp8WqLwOtp+rCgvbWCFqpdBp+Q=
 github.com/tonglil/buflogr v1.1.1 h1:CKAjOHBSMmgbRFxpn/RhQHPj5oANc7ekhlsoUDvcZIg=
 github.com/tonglil/buflogr v1.1.1/go.mod h1:WLLtPRLqcFYWQLbA+ytXy5WrFTYnfA+beg1MpvJCxm4=
-github.com/xanzy/go-gitlab v0.102.0 h1:ExHuJ1OTQ2yt25zBMMj0G96ChBirGYv8U7HyUiYkZ+4=
-github.com/xanzy/go-gitlab v0.102.0/go.mod h1:ETg8tcj4OhrB84UEgeE8dSuV/0h4BBL1uOV/qK0vlyI=
+github.com/xanzy/go-gitlab v0.103.0 h1:J9pTQoq0GsEFqzd6srCM1QfdfKAxSNz6mT6ntrpNF2w=
+github.com/xanzy/go-gitlab v0.103.0/go.mod h1:ETg8tcj4OhrB84UEgeE8dSuV/0h4BBL1uOV/qK0vlyI=
 github.com/yuin/goldmark v1.1.25/go.mod h1:3hX8gzYuyVAZsxl0MRgGTJEmQBFcNTphYh9decYSb74=
 github.com/yuin/goldmark v1.1.27/go.mod h1:3hX8gzYuyVAZsxl0MRgGTJEmQBFcNTphYh9decYSb74=
 github.com/yuin/goldmark v1.1.32/go.mod h1:3hX8gzYuyVAZsxl0MRgGTJEmQBFcNTphYh9decYSb74=
