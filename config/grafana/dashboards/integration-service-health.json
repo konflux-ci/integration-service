@@ -104,7 +104,7 @@
         {
           "datasource": "$datasource",
           "editorMode": "builder",
-          "expr": "100 * rate(container_cpu_usage_seconds_total{namespace=\"integration-service\",pod=~\"integration-service-controller-manager-.*\", container=\"manager\"}[5m]) / on (container, pod) kube_pod_container_resource_limits{resource=\"cpu\", namespace=\"integration-service\",pod=~\"integration-service-controller-manager-.*\", container=\"manager\"}",
+          "expr": "100 * rate(container_cpu_usage_seconds_total{namespace=\"integration-service\",pod=~\"integration-service-controller-manager-.*\", container=\"manager\"}[5m]) / on (container, pod) group_left() kube_pod_container_resource_limits{resource=\"cpu\", namespace=\"integration-service\",pod=~\"integration-service-controller-manager-.*\", container=\"manager\"}",
           "interval": "",
           "legendFormat": "% of integration service manager CPU utilization {{pod}}",
           "range": true,
@@ -194,7 +194,7 @@
         {
           "datasource": "$datasource",
           "editorMode": "builder",
-          "expr": "100 * container_memory_working_set_bytes{namespace=\"integration-service\",pod=~\"integration-service-controller-manager-.*\", container=\"manager\"}  / on (pod) kube_pod_container_resource_limits{resource=\"memory\",namespace=\"integration-service\",pod=~\"integration-service-controller-manager-.*\", container=\"manager\"}",
+          "expr": "100 * container_memory_working_set_bytes{namespace=\"integration-service\",pod=~\"integration-service-controller-manager-.*\", container=\"manager\"}  / on (pod) group_left() kube_pod_container_resource_limits{resource=\"memory\",namespace=\"integration-service\",pod=~\"integration-service-controller-manager-.*\", container=\"manager\"}",
           "interval": "",
           "legendFormat": "% of integration service manager memory utilization {{pod}}",
           "range": true,
