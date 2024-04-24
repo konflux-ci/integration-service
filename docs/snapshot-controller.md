@@ -79,32 +79,6 @@ flowchart TD
   mark_snapshot_autoreleased -->  continue_processing3
   encountered_error32    --Yes--> mark_snapshot_Invalid3
 
-  %%%%%%%%%%%%%%%%%%%%%%% Drawing EnsureSnapshotEnvironmentBindingExists() function
-
-  %% Node definitions
-  ensure5(Process further if: Snapshot is valid & <br>Snapshot testing succeeded & <br>Snapshot was not created by <br>PAC Pull Request Event & <br> Snapshot wasn't deployed to root environments)
-  any_existing_non_eph_env{Any existing root <br>and non-ephemeral <br>environment?}
-  any_existing_SEB{Any existing-SEB <br>containing the current <br>environment and <br>application?}
-  update_existing_SEB(<b>Update</b> the existing-SEB <br>with the given Snapshot's name)
-  create_SEB_for_non_eph_env("<b>Create a new <br>SnapshotEnvironmentBinding</b> (SEB) <br>with the current env and given Snapshot")
-  encountered_error5{Encountered error?}
-  mark_snapshot_Invalid5(<b>Mark</b> the Snapshot as Invalid)
-  mark_snapshot_deployed(<b>Mark</b> the Snapshot as DeployedToRootEnvironments)
-  continue_processing5(Controller continues processing...)
-
-  %% Node connections
-  predicate                  ---->    |"EnsureSnapshotEnvironmentBindingExists()"|ensure5
-  ensure5                    -->      any_existing_non_eph_env
-  any_existing_non_eph_env   --Yes--> any_existing_SEB
-  any_existing_non_eph_env   --No-->  mark_snapshot_deployed
-  any_existing_SEB           --Yes--> update_existing_SEB
-  any_existing_SEB           --No-->  create_SEB_for_non_eph_env
-  update_existing_SEB        -->      encountered_error5
-  create_SEB_for_non_eph_env -->      encountered_error5
-  encountered_error5         --Yes--> mark_snapshot_Invalid5
-  encountered_error5         --No-->  mark_snapshot_deployed
-  mark_snapshot_deployed     -->      continue_processing5
-
 
   %%%%%%%%%%%%%%%%%%%%%%% Drawing EnsureRerunPipelineRunsExist() function
 
