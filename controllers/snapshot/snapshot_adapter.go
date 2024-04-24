@@ -394,80 +394,6 @@ func (a *Adapter) EnsureAllReleasesExist() (controller.OperationResult, error) {
 	return controller.ContinueProcessing()
 }
 
-// EnsureSnapshotEnvironmentBindingExist is an operation that will ensure that all
-// SnapshotEnvironmentBindings for non-ephemeral root environments point to the newly constructed snapshot.
-// If the bindings don't already exist, it will create new ones for each of the environments.
-func (a *Adapter) EnsureSnapshotEnvironmentBindingExist() (controller.OperationResult, error) {
-	canSnapshotBePromoted, reasons := gitops.CanSnapshotBePromoted(a.snapshot)
-	if !canSnapshotBePromoted {
-		a.logger.Info("The Snapshot won't be deployed.",
-			"reasons", strings.Join(reasons, ","))
-		return controller.ContinueProcessing()
-	}
-	if gitops.IsSnapshotMarkedAsDeployedToRootEnvironments(a.snapshot) {
-		a.logger.Info("The Snapshot was previously deployed to all root environments, skipping deployment.")
-		return controller.ContinueProcessing()
-	}
-
-	availableEnvironments, err := a.findAvailableEnvironments()
-	if err != nil {
-		return controller.RequeueWithError(err)
-	}
-
-	for _, availableEnvironment := range *availableEnvironments {
-		availableEnvironment := availableEnvironment // G601
-		snapshotEnvironmentBinding, err := a.loader.FindExistingSnapshotEnvironmentBinding(a.client, a.context, a.application, &availableEnvironment)
-		if err != nil {
-			return controller.RequeueWithError(err)
-		}
-		if snapshotEnvironmentBinding != nil {
-			err = a.updateExistingSnapshotEnvironmentBindingWithSnapshot(snapshotEnvironmentBinding, a.snapshot)
-			if err != nil {
-				a.logger.Error(err, "Failed to update SnapshotEnvironmentBinding",
-					"snapshotEnvironmentBinding.Environment", snapshotEnvironmentBinding.Spec.Environment,
-					"snapshotEnvironmentBinding.Snapshot", snapshotEnvironmentBinding.Spec.Snapshot)
-				patch := client.MergeFrom(a.snapshot.DeepCopy())
-				gitops.SetSnapshotIntegrationStatusAsError(a.snapshot, "Failed to update SnapshotEnvironmentBinding: "+err.Error())
-				a.logger.LogAuditEvent("Snapshot integration status marked as Invalid. Failed to update SnapshotEnvironmentBinding",
-					a.snapshot, h.LogActionUpdate)
-				return controller.RequeueOnErrorOrStop(a.client.Status().Patch(a.context, a.snapshot, patch))
-			}
-			a.logger.LogAuditEvent("Existing SnapshotEnvironmentBinding updated with Snapshot",
-				snapshotEnvironmentBinding, h.LogActionUpdate,
-				"snapshotEnvironmentBinding.Environment", snapshotEnvironmentBinding.Spec.Environment,
-				"snapshotEnvironmentBinding.Snapshot", snapshotEnvironmentBinding.Spec.Snapshot)
-
-		} else {
-			snapshotEnvironmentBinding, err = a.createSnapshotEnvironmentBindingForSnapshot(a.application, &availableEnvironment, a.snapshot, map[string]string{})
-			if err != nil {
-				a.logger.Error(err, "Failed to create SnapshotEnvironmentBinding for snapshot",
-					"environment", availableEnvironment.Name,
-					"snapshot", a.snapshot.Name)
-				patch := client.MergeFrom(a.snapshot.DeepCopy())
-				gitops.SetSnapshotIntegrationStatusAsError(a.snapshot, "Failed to create SnapshotEnvironmentBinding: "+err.Error())
-				a.logger.LogAuditEvent("Snapshot integration status marked as Invalid. Failed to create SnapshotEnvironmentBinding",
-					a.snapshot, h.LogActionUpdate)
-				return controller.RequeueOnErrorOrStop(a.client.Status().Patch(a.context, a.snapshot, patch))
-			}
-			a.logger.LogAuditEvent("SnapshotEnvironmentBinding created for Snapshot",
-				snapshotEnvironmentBinding, h.LogActionAdd,
-				"snapshotEnvironmentBinding.Application", snapshotEnvironmentBinding.Spec.Application,
-				"snapshotEnvironmentBinding.Environment", snapshotEnvironmentBinding.Spec.Environment,
-				"snapshotEnvironmentBinding.Snapshot", snapshotEnvironmentBinding.Spec.Snapshot)
-
-		}
-	}
-
-	// Mark the Snapshot as already deployed to root environments to prevent re-deploying the Snapshot when it gets
-	// reconciled at a later time
-	err = gitops.MarkSnapshotAsDeployedToRootEnvironments(a.client, a.context, a.snapshot, "The Snapshot was deployed to all available root environments at the time of promotion")
-	if err != nil {
-		a.logger.Error(err, "Failed to update the Snapshot's status to DeployedToRootEnvironments")
-		return controller.RequeueWithError(err)
-	}
-	return controller.ContinueProcessing()
-}
-
 // createMissingReleasesForReleasePlans checks if there's existing Releases for a given list of ReleasePlans and creates
 // new ones if they are missing. In case the Releases can't be created, an error will be returned.
 func (a *Adapter) createMissingReleasesForReleasePlans(application *applicationapiv1alpha1.Application, releasePlans *[]releasev1alpha1.ReleasePlan, snapshot *applicationapiv1alpha1.Snapshot) error {
@@ -527,30 +453,6 @@ func (a *Adapter) createMissingReleasesForReleasePlans(application *applicationa
 	return nil
 }
 
-// findAvailableEnvironments gets all environments that don't have a ParentEnvironment and are not tagged as ephemeral.
-func (a *Adapter) findAvailableEnvironments() (*[]applicationapiv1alpha1.Environment, error) {
-	allEnvironments, err := a.loader.GetAllEnvironments(a.client, a.context, a.application)
-	if err != nil {
-		return nil, err
-	}
-	availableEnvironments := []applicationapiv1alpha1.Environment{}
-	for _, environment := range *allEnvironments {
-		if environment.Spec.ParentEnvironment == "" {
-			isEphemeral := false
-			for _, tag := range environment.Spec.Tags {
-				if tag == "ephemeral" {
-					isEphemeral = true
-					break
-				}
-			}
-			if !isEphemeral {
-				availableEnvironments = append(availableEnvironments, environment)
-			}
-		}
-	}
-	return &availableEnvironments, nil
-}
-
 // createIntegrationPipelineRun creates and returns a new integration PipelineRun. The Pipeline information and the parameters to it
 // will be extracted from the given integrationScenario. The integration's Snapshot will also be passed to the integration PipelineRun.
 func (a *Adapter) createIntegrationPipelineRun(application *applicationapiv1alpha1.Application, integrationTestScenario *v1beta1.IntegrationTestScenario, snapshot *applicationapiv1alpha1.Snapshot) (*tektonv1.PipelineRun, error) {
@@ -596,53 +498,6 @@ func (a *Adapter) createIntegrationPipelineRun(application *applicationapiv1alph
 		}
 	}
 	return pipelineRun, nil
-}
-
-// createSnapshotEnvironmentBindingForSnapshot creates and returns a new snapshotEnvironmentBinding
-// for the given application, environment, and snapshot.
-// If it's not possible to create it and set the application as the owner, an error will be returned
-func (a *Adapter) createSnapshotEnvironmentBindingForSnapshot(application *applicationapiv1alpha1.Application,
-	environment *applicationapiv1alpha1.Environment, snapshot *applicationapiv1alpha1.Snapshot,
-	additionalLabels map[string]string) (*applicationapiv1alpha1.SnapshotEnvironmentBinding, error) {
-	bindingName := application.Name + "-" + environment.Name + "-" + "binding"
-
-	snapshotEnvironmentBinding := gitops.NewSnapshotEnvironmentBinding(
-		bindingName, application.Namespace, application.Name,
-		environment.Name,
-		snapshot)
-
-	err := ctrl.SetControllerReference(snapshot, snapshotEnvironmentBinding, a.client.Scheme())
-	if err != nil {
-		return nil, err
-	}
-
-	_ = metadata.AddLabels(&snapshotEnvironmentBinding.ObjectMeta, additionalLabels)
-
-	err = a.client.Create(a.context, snapshotEnvironmentBinding)
-	if err != nil {
-		return nil, err
-	}
-
-	return snapshotEnvironmentBinding, nil
-}
-
-// updateExistingSnapshotEnvironmentBindingWithSnapshot updates and returns snapshotEnvironmentBinding
-// with the given snapshot. If it's not possible to patch, an error will be returned.
-func (a *Adapter) updateExistingSnapshotEnvironmentBindingWithSnapshot(snapshotEnvironmentBinding *applicationapiv1alpha1.SnapshotEnvironmentBinding,
-	snapshot *applicationapiv1alpha1.Snapshot) error {
-
-	patch := client.MergeFrom(snapshotEnvironmentBinding.DeepCopy())
-
-	snapshotEnvironmentBinding.Spec.Snapshot = snapshot.Name
-	snapshotComponents := gitops.NewBindingComponents(snapshot)
-	snapshotEnvironmentBinding.Spec.Components = *snapshotComponents
-
-	err := a.client.Patch(a.context, snapshotEnvironmentBinding, patch)
-	if err != nil {
-		return fmt.Errorf("failed to patch snapshotEnvironmentBinding: %w", err)
-	}
-
-	return nil
 }
 
 // RequeueIfYoungerThanThreshold checks if the adapter' snapshot is younger than the threshold defined
