@@ -365,4 +365,19 @@ var _ = Describe("Release Adapter", Ordered, func() {
 			Expect(err).ToNot(HaveOccurred())
 		})
 	})
+
+	Context("When calling GetComponent", func() {
+		It("returns resource and error from the context", func() {
+			component := &applicationapiv1alpha1.Component{}
+			mockContext := toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: GetComponentContextKey,
+					Resource:   component,
+				},
+			})
+			resource, err := loader.GetComponent(mockContext, nil, "", "")
+			Expect(resource).To(Equal(component))
+			Expect(err).ToNot(HaveOccurred())
+		})
+	})
 })

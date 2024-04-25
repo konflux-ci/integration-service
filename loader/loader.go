@@ -61,6 +61,7 @@ type ObjectLoader interface {
 	GetAllSnapshotsForBuildPipelineRun(ctx context.Context, c client.Client, pipelineRun *tektonv1.PipelineRun) (*[]applicationapiv1alpha1.Snapshot, error)
 	GetAllTaskRunsWithMatchingPipelineRunLabel(ctx context.Context, c client.Client, pipelineRun *tektonv1.PipelineRun) (*[]tektonv1.TaskRun, error)
 	GetPipelineRun(ctx context.Context, c client.Client, name, namespace string) (*tektonv1.PipelineRun, error)
+	GetComponent(ctx context.Context, c client.Client, name, namespace string) (*applicationapiv1alpha1.Component, error)
 }
 
 type loader struct{}
@@ -478,4 +479,10 @@ func (l *loader) GetAllTaskRunsWithMatchingPipelineRunLabel(ctx context.Context,
 func (l *loader) GetPipelineRun(ctx context.Context, c client.Client, name, namespace string) (*tektonv1.PipelineRun, error) {
 	pipelineRun := &tektonv1.PipelineRun{}
 	return pipelineRun, toolkit.GetObject(name, namespace, c, ctx, pipelineRun)
+}
+
+// GetComponent returns application component requested by name and namespace
+func (l *loader) GetComponent(ctx context.Context, c client.Client, name, namespace string) (*applicationapiv1alpha1.Component, error) {
+	component := &applicationapiv1alpha1.Component{}
+	return component, toolkit.GetObject(name, namespace, c, ctx, component)
 }
