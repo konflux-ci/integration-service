@@ -1,8 +1,9 @@
 package component
 
 import (
-	"k8s.io/apimachinery/pkg/api/errors"
 	"reflect"
+
+	"k8s.io/apimachinery/pkg/api/errors"
 	"sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	crwebhook "sigs.k8s.io/controller-runtime/pkg/webhook"
 
@@ -22,7 +23,7 @@ import (
 	klog "k8s.io/klog/v2"
 )
 
-var _ = Describe("ComponentController", func() {
+var _ = Describe("ComponentController", Ordered, func() {
 	var (
 		manager             ctrl.Manager
 		componentReconciler *Reconciler
@@ -35,7 +36,7 @@ var _ = Describe("ComponentController", func() {
 		SampleRepoLink = "https://github.com/devfile-samples/devfile-sample-java-springboot-basic"
 	)
 
-	BeforeEach(func() {
+	BeforeAll(func() {
 
 		applicationName := "application-sample"
 
@@ -102,7 +103,7 @@ var _ = Describe("ComponentController", func() {
 
 		componentReconciler = NewComponentReconciler(k8sClient, &logf.Log, &scheme)
 	})
-	AfterEach(func() {
+	AfterAll(func() {
 		err := k8sClient.Delete(ctx, hasApp)
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 		err = k8sClient.Delete(ctx, hasComp)
