@@ -98,7 +98,7 @@ func (r *GitLabReporter) Initialize(ctx context.Context, snapshot *applicationap
 
 	targetProjectIDstr, found := annotations[gitops.PipelineAsCodeTargetProjectIDAnnotation]
 	if !found {
-		return fmt.Errorf("project ID label not found %q", gitops.PipelineAsCodeTargetProjectIDAnnotation)
+		return fmt.Errorf("target project ID annotation not found %q", gitops.PipelineAsCodeTargetProjectIDAnnotation)
 	}
 
 	r.targetProjectID, err = strconv.Atoi(targetProjectIDstr)
@@ -108,7 +108,7 @@ func (r *GitLabReporter) Initialize(ctx context.Context, snapshot *applicationap
 
 	sourceProjectIDstr, found := annotations[gitops.PipelineAsCodeSourceProjectIDAnnotation]
 	if !found {
-		return fmt.Errorf("project ID label not found %q", gitops.PipelineAsCodeSourceProjectIDAnnotation)
+		return fmt.Errorf("source project ID annotation not found %q", gitops.PipelineAsCodeSourceProjectIDAnnotation)
 	}
 
 	r.sourceProjectID, err = strconv.Atoi(sourceProjectIDstr)
