@@ -30,7 +30,7 @@ import (
 	. "github.com/onsi/gomega/gstruct"
 
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
-	"github.com/redhat-appstudio/integration-service/api/v1beta1"
+	"github.com/redhat-appstudio/integration-service/api/v1beta2"
 	"github.com/redhat-appstudio/integration-service/loader"
 	toolkit "github.com/redhat-appstudio/operator-toolkit/loader"
 	releasev1alpha1 "github.com/redhat-appstudio/release-service/api/v1alpha1"
@@ -60,9 +60,8 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		hasSnapshotPR                             *applicationapiv1alpha1.Snapshot
 		hasInvalidSnapshot                        *applicationapiv1alpha1.Snapshot
 		deploymentTargetClass                     *applicationapiv1alpha1.DeploymentTargetClass
-		integrationTestScenario                   *v1beta1.IntegrationTestScenario
-		integrationTestScenarioWithoutEnv         *v1beta1.IntegrationTestScenario
-		integrationTestScenarioForInvalidSnapshot *v1beta1.IntegrationTestScenario
+		integrationTestScenario                   *v1beta2.IntegrationTestScenario
+		integrationTestScenarioForInvalidSnapshot *v1beta2.IntegrationTestScenario
 		env                                       *applicationapiv1alpha1.Environment
 	)
 	const (
@@ -84,7 +83,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		}
 		Expect(k8sClient.Create(ctx, hasApp)).Should(Succeed())
 
-		integrationTestScenario = &v1beta1.IntegrationTestScenario{
+		integrationTestScenario = &v1beta2.IntegrationTestScenario{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "example-pass",
 				Namespace: "default",
@@ -97,11 +96,11 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 					"test.appstudio.openshift.io/kind": "kind",
 				},
 			},
-			Spec: v1beta1.IntegrationTestScenarioSpec{
+			Spec: v1beta2.IntegrationTestScenarioSpec{
 				Application: "application-sample",
-				ResolverRef: v1beta1.ResolverRef{
+				ResolverRef: v1beta2.ResolverRef{
 					Resolver: "git",
-					Params: []v1beta1.ResolverParameter{
+					Params: []v1beta2.ResolverParameter{
 						{
 							Name:  "url",
 							Value: "https://github.com/redhat-appstudio/integration-examples.git",
@@ -114,52 +113,12 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 							Name:  "pathInRepo",
 							Value: "pipelineruns/integration_pipelinerun_pass.yaml",
 						},
-					},
-				},
-				Environment: v1beta1.TestEnvironment{
-					Name: "envname",
-					Type: "POC",
-					Configuration: &applicationapiv1alpha1.EnvironmentConfiguration{
-						Env: []applicationapiv1alpha1.EnvVarPair{},
 					},
 				},
 			},
 		}
 		Expect(k8sClient.Create(ctx, integrationTestScenario)).Should(Succeed())
 		helpers.SetScenarioIntegrationStatusAsValid(integrationTestScenario, "valid")
-
-		integrationTestScenarioWithoutEnv = &v1beta1.IntegrationTestScenario{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "example-pass-without-env",
-				Namespace: "default",
-
-				Labels: map[string]string{
-					"test.appstudio.openshift.io/optional": "false",
-				},
-			},
-			Spec: v1beta1.IntegrationTestScenarioSpec{
-				Application: "application-sample",
-				ResolverRef: v1beta1.ResolverRef{
-					Resolver: "git",
-					Params: []v1beta1.ResolverParameter{
-						{
-							Name:  "url",
-							Value: "https://github.com/redhat-appstudio/integration-examples.git",
-						},
-						{
-							Name:  "revision",
-							Value: "main",
-						},
-						{
-							Name:  "pathInRepo",
-							Value: "pipelineruns/integration_pipelinerun_pass.yaml",
-						},
-					},
-				},
-			},
-		}
-		Expect(k8sClient.Create(ctx, integrationTestScenarioWithoutEnv)).Should(Succeed())
-		helpers.SetScenarioIntegrationStatusAsValid(integrationTestScenarioWithoutEnv, "valid")
 
 		testReleasePlan = &releasev1alpha1.ReleasePlan{
 			ObjectMeta: metav1.ObjectMeta{
@@ -299,8 +258,6 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 		err = k8sClient.Delete(ctx, integrationTestScenario)
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
-		err = k8sClient.Delete(ctx, integrationTestScenarioWithoutEnv)
-		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 		err = k8sClient.Delete(ctx, testReleasePlan)
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 	})
@@ -334,11 +291,11 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 				},
 				{
 					ContextKey: loader.AllIntegrationTestScenariosContextKey,
-					Resource:   []v1beta1.IntegrationTestScenario{*integrationTestScenario, *integrationTestScenarioWithoutEnv},
+					Resource:   []v1beta2.IntegrationTestScenario{*integrationTestScenario},
 				},
 				{
 					ContextKey: loader.RequiredIntegrationTestScenariosContextKey,
-					Resource:   []v1beta1.IntegrationTestScenario{*integrationTestScenario, *integrationTestScenarioWithoutEnv},
+					Resource:   []v1beta2.IntegrationTestScenario{*integrationTestScenario},
 				},
 			})
 
@@ -350,9 +307,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			requiredIntegrationTestScenarios, err := adapter.loader.GetRequiredIntegrationTestScenariosForApplication(k8sClient, adapter.context, hasApp)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(requiredIntegrationTestScenarios).NotTo(BeNil())
-			expectedLogEntry := "Creating new pipelinerun for integrationTestscenario integrationTestScenario.Name example-pass-without-env"
-			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
-			expectedLogEntry = "Creating new pipelinerun for integrationTestscenario integrationTestScenario.Name example-pass"
+			expectedLogEntry := "Creating new pipelinerun for integrationTestscenario integrationTestScenario.Name example-pass"
 			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
 			expectedLogEntry = "Snapshot integration status marked as In Progress. Snapshot starts being tested by the integrationPipelineRun"
 			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
@@ -360,10 +315,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			// Snapshot must have InProgress tests
 			statuses, err := gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(hasSnapshot)
 			Expect(err).ToNot(HaveOccurred())
-			detail, ok := statuses.GetScenarioStatus(integrationTestScenarioWithoutEnv.Name)
-			Expect(ok).To(BeTrue())
-			Expect(detail.Status).To(Equal(intgteststat.IntegrationTestStatusInProgress))
-			detail, ok = statuses.GetScenarioStatus(integrationTestScenario.Name)
+			detail, ok := statuses.GetScenarioStatus(integrationTestScenario.Name)
 			Expect(ok).To(BeTrue())
 			Expect(detail.Status).To(Equal(intgteststat.IntegrationTestStatusInProgress))
 
@@ -374,15 +326,14 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 					return err
 				}
 
-				if expected, got := 2, len(integrationPipelineRuns); expected != got {
+				if expected, got := 1, len(integrationPipelineRuns); expected != got {
 					return fmt.Errorf("found %d PipelineRuns, expected: %d", got, expected)
 				}
 				return nil
 			}, time.Second*10).Should(BeNil())
 
-			Expect(integrationPipelineRuns).To(HaveLen(2))
+			Expect(integrationPipelineRuns).To(HaveLen(1))
 			Expect(k8sClient.Delete(adapter.context, &integrationPipelineRuns[0])).Should(Succeed())
-			Expect(k8sClient.Delete(adapter.context, &integrationPipelineRuns[1])).Should(Succeed())
 
 			// It will not re-trigger integration pipelineRuns
 			result, err = adapter.EnsureIntegrationPipelineRunsExist()
@@ -474,10 +425,6 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 				{
 					ContextKey: loader.SnapshotContextKey,
 					Resource:   hasSnapshot,
-				},
-				{
-					ContextKey: loader.AllIntegrationTestScenariosContextKey,
-					Resource:   []v1beta1.IntegrationTestScenario{*integrationTestScenarioWithoutEnv},
 				},
 				{
 					ContextKey: loader.AutoReleasePlansContextKey,
@@ -728,7 +675,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			}
 			Expect(k8sClient.Create(ctx, hasInvalidSnapshot)).Should(Succeed())
 
-			integrationTestScenarioForInvalidSnapshot = &v1beta1.IntegrationTestScenario{
+			integrationTestScenarioForInvalidSnapshot = &v1beta2.IntegrationTestScenario{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "invald-snapshot-its",
 					Namespace: "default",
@@ -737,11 +684,11 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 						"test.appstudio.openshift.io/optional": "false",
 					},
 				},
-				Spec: v1beta1.IntegrationTestScenarioSpec{
+				Spec: v1beta2.IntegrationTestScenarioSpec{
 					Application: "application-sample",
-					ResolverRef: v1beta1.ResolverRef{
+					ResolverRef: v1beta2.ResolverRef{
 						Resolver: "git",
-						Params: []v1beta1.ResolverParameter{
+						Params: []v1beta2.ResolverParameter{
 							{
 								Name:  "url",
 								Value: "https://github.com/redhat-appstudio/integration-examples.git",
@@ -797,20 +744,16 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 					Resource:   hasInvalidSnapshot,
 				},
 				{
-					ContextKey: loader.EnvironmentContextKey,
-					Resource:   env,
-				},
-				{
 					ContextKey: loader.SnapshotComponentsContextKey,
 					Resource:   []applicationapiv1alpha1.Component{*hasComp},
 				},
 				{
 					ContextKey: loader.AllIntegrationTestScenariosContextKey,
-					Resource:   []v1beta1.IntegrationTestScenario{*integrationTestScenarioForInvalidSnapshot},
+					Resource:   []v1beta2.IntegrationTestScenario{*integrationTestScenarioForInvalidSnapshot},
 				},
 				{
 					ContextKey: loader.RequiredIntegrationTestScenariosContextKey,
-					Resource:   []v1beta1.IntegrationTestScenario{*integrationTestScenarioForInvalidSnapshot},
+					Resource:   []v1beta2.IntegrationTestScenario{*integrationTestScenarioForInvalidSnapshot},
 				},
 			})
 
@@ -852,11 +795,11 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 				},
 				{
 					ContextKey: loader.AllIntegrationTestScenariosContextKey,
-					Resource:   []v1beta1.IntegrationTestScenario{*integrationTestScenarioForInvalidSnapshot},
+					Resource:   []v1beta2.IntegrationTestScenario{*integrationTestScenarioForInvalidSnapshot},
 				},
 				{
 					ContextKey: loader.RequiredIntegrationTestScenariosContextKey,
-					Resource:   []v1beta1.IntegrationTestScenario{*integrationTestScenarioForInvalidSnapshot},
+					Resource:   []v1beta2.IntegrationTestScenario{*integrationTestScenarioForInvalidSnapshot},
 				},
 			})
 			result, err := adapter.EnsureIntegrationPipelineRunsExist()
@@ -939,7 +882,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 				// add rerun label
 				// we cannot update it into k8s DB via patch, it would trigger reconciliation in background
 				// and test wouldn't test anything
-				hasSnapshot.Labels[gitops.SnapshotIntegrationTestRun] = integrationTestScenarioWithoutEnv.Name
+				hasSnapshot.Labels[gitops.SnapshotIntegrationTestRun] = integrationTestScenario.Name
 
 				log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
 				adapter = NewAdapter(hasSnapshot, hasApp, hasComp, log, loader.NewMockLoader(), k8sClient, ctx)
@@ -966,7 +909,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 					},
 					{
 						ContextKey: loader.GetScenarioContextKey,
-						Resource:   integrationTestScenarioWithoutEnv,
+						Resource:   integrationTestScenario,
 					},
 				})
 			})
@@ -974,7 +917,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			It("creates integration test in static environemnt", func() {
 				statuses, err := gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(hasSnapshot)
 				Expect(err).To(Succeed())
-				_, ok := statuses.GetScenarioStatus(integrationTestScenarioWithoutEnv.Name)
+				_, ok := statuses.GetScenarioStatus(integrationTestScenario.Name)
 				Expect(ok).To(BeFalse()) // no scenario test yet
 
 				result, err := adapter.EnsureRerunPipelineRunsExist()
@@ -983,13 +926,13 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 
 				statuses, err = gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(hasSnapshot)
 				Expect(err).To(Succeed())
-				detail, ok := statuses.GetScenarioStatus(integrationTestScenarioWithoutEnv.Name)
+				detail, ok := statuses.GetScenarioStatus(integrationTestScenario.Name)
 				Expect(ok).To(BeTrue()) // test restarted has a status now
 				Expect(detail).ToNot(BeNil())
 				Expect(detail.TestPipelineRunName).ToNot(BeEmpty()) // must set PLR name to prevent creation of duplicated PLR
 
 				m := MatchKeys(IgnoreExtras, Keys{
-					gitops.SnapshotIntegrationTestRun: Equal(integrationTestScenarioWithoutEnv.Name),
+					gitops.SnapshotIntegrationTestRun: Equal(integrationTestScenario.Name),
 				})
 				Expect(hasSnapshot.GetLabels()).ShouldNot(m, "shouln't have re-run label after re-running scenario")
 
@@ -1068,7 +1011,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 					},
 					{
 						ContextKey: loader.AllIntegrationTestScenariosContextKey,
-						Resource:   []v1beta1.IntegrationTestScenario{*integrationTestScenario},
+						Resource:   []v1beta2.IntegrationTestScenario{*integrationTestScenario},
 					},
 				})
 			})
@@ -1110,14 +1053,14 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 				// mock that test for scenario is already in progress by setting it in annotation
 				statuses, err := intgteststat.NewSnapshotIntegrationTestStatuses("")
 				Expect(err).To(Succeed())
-				statuses.UpdateTestStatusIfChanged(integrationTestScenarioWithoutEnv.Name, intgteststat.IntegrationTestStatusInProgress, fakeDetails)
-				Expect(statuses.UpdateTestPipelineRunName(integrationTestScenarioWithoutEnv.Name, fakePLRName)).To(Succeed())
+				statuses.UpdateTestStatusIfChanged(integrationTestScenario.Name, intgteststat.IntegrationTestStatusInProgress, fakeDetails)
+				Expect(statuses.UpdateTestPipelineRunName(integrationTestScenario.Name, fakePLRName)).To(Succeed())
 				Expect(gitops.WriteIntegrationTestStatusesIntoSnapshot(hasSnapshot, statuses, k8sClient, ctx)).Should(Succeed())
 
 				// add rerun label
 				// we cannot update it into k8s DB via patch, it would trigger reconciliation in background
 				// and test wouldn't test anything
-				hasSnapshot.Labels[gitops.SnapshotIntegrationTestRun] = integrationTestScenarioWithoutEnv.Name
+				hasSnapshot.Labels[gitops.SnapshotIntegrationTestRun] = integrationTestScenario.Name
 
 				log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
 				adapter = NewAdapter(hasSnapshot, hasApp, hasComp, log, loader.NewMockLoader(), k8sClient, ctx)
@@ -1144,7 +1087,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 					},
 					{
 						ContextKey: loader.GetScenarioContextKey,
-						Resource:   integrationTestScenarioWithoutEnv,
+						Resource:   integrationTestScenario,
 					},
 				})
 			})
@@ -1157,14 +1100,14 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 				// make sure that test details hasn't changed
 				statuses, err := gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(hasSnapshot)
 				Expect(err).To(Succeed())
-				detail, ok := statuses.GetScenarioStatus(integrationTestScenarioWithoutEnv.Name)
+				detail, ok := statuses.GetScenarioStatus(integrationTestScenario.Name)
 				Expect(ok).To(BeTrue())
 				Expect(detail.Status).Should(Equal(intgteststat.IntegrationTestStatusInProgress))
 				Expect(detail.Details).Should(Equal(fakeDetails))
 				Expect(detail.TestPipelineRunName).Should(Equal(fakePLRName))
 
 				m := MatchKeys(IgnoreExtras, Keys{
-					gitops.SnapshotIntegrationTestRun: Equal(integrationTestScenarioWithoutEnv.Name),
+					gitops.SnapshotIntegrationTestRun: Equal(integrationTestScenario.Name),
 				})
 				Expect(hasSnapshot.GetLabels()).ShouldNot(m, "shouln't have re-run label after re-running scenario")
 

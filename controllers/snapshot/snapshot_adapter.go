@@ -29,7 +29,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
-	"github.com/redhat-appstudio/integration-service/api/v1beta1"
+	"github.com/redhat-appstudio/integration-service/api/v1beta2"
 	"github.com/redhat-appstudio/integration-service/gitops"
 	h "github.com/redhat-appstudio/integration-service/helpers"
 	"github.com/redhat-appstudio/integration-service/metrics"
@@ -77,7 +77,7 @@ func NewAdapter(snapshot *applicationapiv1alpha1.Snapshot, application *applicat
 	}
 }
 
-func scenariosNamesToList(integrationTestScenarios *[]v1beta1.IntegrationTestScenario) *[]string {
+func scenariosNamesToList(integrationTestScenarios *[]v1beta2.IntegrationTestScenario) *[]string {
 	// transform list of structs into list of strings
 	result := make([]string, 0, len(*integrationTestScenarios))
 	for _, v := range *integrationTestScenarios {
@@ -186,7 +186,6 @@ func (a *Adapter) EnsureIntegrationPipelineRunsExist() (controller.OperationResu
 		if err != nil {
 			return controller.RequeueWithError(err)
 		}
-
 		defer func() {
 			// Try to update status of test if something failed, because test loop can stop prematurely on error,
 			// we should record current status.
@@ -455,7 +454,7 @@ func (a *Adapter) createMissingReleasesForReleasePlans(application *applicationa
 
 // createIntegrationPipelineRun creates and returns a new integration PipelineRun. The Pipeline information and the parameters to it
 // will be extracted from the given integrationScenario. The integration's Snapshot will also be passed to the integration PipelineRun.
-func (a *Adapter) createIntegrationPipelineRun(application *applicationapiv1alpha1.Application, integrationTestScenario *v1beta1.IntegrationTestScenario, snapshot *applicationapiv1alpha1.Snapshot) (*tektonv1.PipelineRun, error) {
+func (a *Adapter) createIntegrationPipelineRun(application *applicationapiv1alpha1.Application, integrationTestScenario *v1beta2.IntegrationTestScenario, snapshot *applicationapiv1alpha1.Snapshot) (*tektonv1.PipelineRun, error) {
 	a.logger.Info("Creating new pipelinerun for integrationTestscenario",
 		"integrationTestScenario.Name", integrationTestScenario.Name)
 
@@ -511,7 +510,7 @@ func (a *Adapter) RequeueIfYoungerThanThreshold(retErr error) (controller.Operat
 	return controller.ContinueProcessing()
 }
 
-func (a *Adapter) HandlePipelineCreationError(err error, integrationTestScenario *v1beta1.IntegrationTestScenario, testStatuses *intgteststat.SnapshotIntegrationTestStatuses) (controller.OperationResult, error) {
+func (a *Adapter) HandlePipelineCreationError(err error, integrationTestScenario *v1beta2.IntegrationTestScenario, testStatuses *intgteststat.SnapshotIntegrationTestStatuses) (controller.OperationResult, error) {
 	if clienterrors.IsInvalid(err) {
 		a.logger.Error(err, "pipelineRun failed during creation due to invalid resource",
 			"integrationScenario.Name", integrationTestScenario.Name)

@@ -20,7 +20,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"github.com/redhat-appstudio/integration-service/api/v1beta1"
+	"github.com/redhat-appstudio/integration-service/api/v1beta2"
 )
 
 const (
@@ -36,7 +36,7 @@ const (
 )
 
 // SetScenarioIntegrationStatusAsInvalid sets the IntegrationTestScenarioValid status condition for the Scenario to invalid.
-func SetScenarioIntegrationStatusAsInvalid(scenario *v1beta1.IntegrationTestScenario, message string) {
+func SetScenarioIntegrationStatusAsInvalid(scenario *v1beta2.IntegrationTestScenario, message string) {
 	meta.SetStatusCondition(&scenario.Status.Conditions, metav1.Condition{
 		Type:    IntegrationTestScenarioValid,
 		Status:  metav1.ConditionFalse,
@@ -46,7 +46,7 @@ func SetScenarioIntegrationStatusAsInvalid(scenario *v1beta1.IntegrationTestScen
 }
 
 // SetScenarioIntegrationStatusAsValid sets the IntegrationTestScenarioValid integration status condition for the Scenario to valid.
-func SetScenarioIntegrationStatusAsValid(scenario *v1beta1.IntegrationTestScenario, message string) {
+func SetScenarioIntegrationStatusAsValid(scenario *v1beta2.IntegrationTestScenario, message string) {
 	meta.SetStatusCondition(&scenario.Status.Conditions, metav1.Condition{
 		Type:    IntegrationTestScenarioValid,
 		Status:  metav1.ConditionTrue,
@@ -56,7 +56,7 @@ func SetScenarioIntegrationStatusAsValid(scenario *v1beta1.IntegrationTestScenar
 }
 
 // IsScenarioValid sets the IntegrationTestScenarioValid integration status condition for the Scenario to valid.
-func IsScenarioValid(scenario *v1beta1.IntegrationTestScenario) bool {
+func IsScenarioValid(scenario *v1beta2.IntegrationTestScenario) bool {
 	statusCondition := meta.FindStatusCondition(scenario.Status.Conditions, IntegrationTestScenarioValid)
 	return statusCondition.Status != metav1.ConditionFalse
 }

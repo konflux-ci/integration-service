@@ -27,7 +27,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
-	"github.com/redhat-appstudio/integration-service/api/v1beta1"
+	"github.com/redhat-appstudio/integration-service/api/v1beta2"
 	"github.com/redhat-appstudio/integration-service/gitops"
 	"github.com/redhat-appstudio/integration-service/metrics"
 	intgteststat "github.com/redhat-appstudio/integration-service/pkg/integrationteststatus"
@@ -48,7 +48,7 @@ type Adapter struct {
 	application                *applicationapiv1alpha1.Application
 	component                  *applicationapiv1alpha1.Component
 	environment                *applicationapiv1alpha1.Environment
-	integrationTestScenario    *v1beta1.IntegrationTestScenario
+	integrationTestScenario    *v1beta2.IntegrationTestScenario
 	logger                     h.IntegrationLogger
 	client                     client.Client
 	context                    context.Context
@@ -56,7 +56,7 @@ type Adapter struct {
 }
 
 // NewAdapter creates and returns an Adapter instance.
-func NewAdapter(snapshotEnvironmentBinding *applicationapiv1alpha1.SnapshotEnvironmentBinding, snapshot *applicationapiv1alpha1.Snapshot, environment *applicationapiv1alpha1.Environment, application *applicationapiv1alpha1.Application, component *applicationapiv1alpha1.Component, integrationTestScenario *v1beta1.IntegrationTestScenario, logger h.IntegrationLogger, loader loader.ObjectLoader, client client.Client,
+func NewAdapter(snapshotEnvironmentBinding *applicationapiv1alpha1.SnapshotEnvironmentBinding, snapshot *applicationapiv1alpha1.Snapshot, environment *applicationapiv1alpha1.Environment, application *applicationapiv1alpha1.Application, component *applicationapiv1alpha1.Component, integrationTestScenario *v1beta2.IntegrationTestScenario, logger h.IntegrationLogger, loader loader.ObjectLoader, client client.Client,
 	context context.Context) *Adapter {
 	return &Adapter{
 		snapshotEnvironmentBinding: snapshotEnvironmentBinding,
@@ -192,7 +192,7 @@ func (a *Adapter) EnsureEphemeralEnvironmentsCleanedUp() (controller.OperationRe
 // createIntegrationPipelineRunWithEnvironment creates new integration PipelineRun. The Pipeline information and the parameters to it
 // will be extracted from the given integrationScenario. The integration's Snapshot will also be passed to the integration PipelineRun.
 // If the creation of the PipelineRun is unsuccessful, an error will be returned.
-func (a *Adapter) createIntegrationPipelineRunWithEnvironment(application *applicationapiv1alpha1.Application, integrationTestScenario *v1beta1.IntegrationTestScenario, snapshot *applicationapiv1alpha1.Snapshot, environment *applicationapiv1alpha1.Environment) (*tektonv1.PipelineRun, error) {
+func (a *Adapter) createIntegrationPipelineRunWithEnvironment(application *applicationapiv1alpha1.Application, integrationTestScenario *v1beta2.IntegrationTestScenario, snapshot *applicationapiv1alpha1.Snapshot, environment *applicationapiv1alpha1.Environment) (*tektonv1.PipelineRun, error) {
 	deploymentTarget, err := a.getDeploymentTargetForEnvironment(environment)
 	if err != nil || deploymentTarget == nil {
 		return nil, err

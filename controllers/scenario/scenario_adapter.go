@@ -21,12 +21,11 @@ import (
 	"reflect"
 
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
-	"github.com/redhat-appstudio/integration-service/api/v1beta1"
+	"github.com/redhat-appstudio/integration-service/api/v1beta2"
 	h "github.com/redhat-appstudio/integration-service/helpers"
 	"github.com/redhat-appstudio/integration-service/loader"
 	"github.com/redhat-appstudio/operator-toolkit/controller"
 	"k8s.io/apimachinery/pkg/api/meta"
-	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -34,7 +33,7 @@ import (
 // Adapter holds the objects needed to reconcile a Release.
 type Adapter struct {
 	application *applicationapiv1alpha1.Application
-	scenario    *v1beta1.IntegrationTestScenario
+	scenario    *v1beta2.IntegrationTestScenario
 	logger      h.IntegrationLogger
 	loader      loader.ObjectLoader
 	client      client.Client
@@ -42,7 +41,7 @@ type Adapter struct {
 }
 
 // NewAdapter creates and returns an Adapter instance.
-func NewAdapter(application *applicationapiv1alpha1.Application, scenario *v1beta1.IntegrationTestScenario, logger h.IntegrationLogger, loader loader.ObjectLoader, client client.Client,
+func NewAdapter(application *applicationapiv1alpha1.Application, scenario *v1beta2.IntegrationTestScenario, logger h.IntegrationLogger, loader loader.ObjectLoader, client client.Client,
 	context context.Context) *Adapter {
 	return &Adapter{
 		application: application,
@@ -90,35 +89,6 @@ func (a *Adapter) EnsureCreatedScenarioIsValid() (controller.OperationResult, er
 			a.logger.Error(err, "Failed to update Scenario")
 			return controller.RequeueWithError(err)
 		}
-
-	}
-	// Checks if scenario has environment defined
-	if reflect.ValueOf(a.scenario.Spec.Environment).IsZero() {
-		a.logger.Info("IntegrationTestScenario has no environment defined")
-	} else {
-		//Same as function getEnvironmentFromIntegrationTestScenario - this could be later changed to call only that function
-		ITSEnv := &applicationapiv1alpha1.Environment{}
-
-		err := a.client.Get(a.context, types.NamespacedName{
-			Namespace: a.application.Namespace,
-			Name:      a.scenario.Spec.Environment.Name,
-		}, ITSEnv)
-
-		if err != nil {
-			a.logger.Info("Environment doesn't exist in same namespace as IntegrationTestScenario.",
-				"environment.Name:", a.scenario.Spec.Environment.Name)
-			patch := client.MergeFrom(a.scenario.DeepCopy())
-			h.SetScenarioIntegrationStatusAsInvalid(a.scenario, "Environment "+a.scenario.Spec.Environment.Name+" is located in different namespace than scenario.")
-			err = a.client.Status().Patch(a.context, a.scenario, patch)
-			if err != nil {
-				a.logger.Error(err, "Failed to update Scenario")
-				return controller.RequeueWithError(err)
-			}
-			a.logger.LogAuditEvent("IntegrationTestScenario marked as Invalid. Environment "+a.scenario.Spec.Environment.Name+" is located in different namespace than scenario. ",
-				a.scenario, h.LogActionUpdate)
-			return controller.ContinueProcessing()
-		}
-
 	}
 
 	// If the scenario status IntegrationTestScenarioValid condition is not defined or false, we set it to Valid
@@ -170,7 +140,6 @@ func (a *Adapter) EnsureDeletedScenarioResourcesAreCleanedUp() (controller.Opera
 			}
 		}
 	}
-
 	// Remove the finalizer from the scenario since the cleanup has been handled
 	err = h.RemoveFinalizerFromScenario(a.client, a.logger, a.context, a.scenario, h.IntegrationTestScenarioFinalizer)
 	if err != nil {

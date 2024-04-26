@@ -29,7 +29,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
-	"github.com/redhat-appstudio/integration-service/api/v1beta1"
+	"github.com/redhat-appstudio/integration-service/api/v1beta2"
 	toolkit "github.com/redhat-appstudio/operator-toolkit/loader"
 	releasev1alpha1 "github.com/redhat-appstudio/release-service/api/v1alpha1"
 	releasemetadata "github.com/redhat-appstudio/release-service/metadata"
@@ -59,7 +59,7 @@ var _ = Describe("Binding Adapter", Ordered, func() {
 		finishedSnapshot        *applicationapiv1alpha1.Snapshot
 		deploymentTargetClaim   *applicationapiv1alpha1.DeploymentTargetClaim
 		deploymentTarget        *applicationapiv1alpha1.DeploymentTarget
-		integrationTestScenario *v1beta1.IntegrationTestScenario
+		integrationTestScenario *v1beta2.IntegrationTestScenario
 		hasEnv                  *applicationapiv1alpha1.Environment
 		hasBinding              *applicationapiv1alpha1.SnapshotEnvironmentBinding
 	)
@@ -85,7 +85,7 @@ var _ = Describe("Binding Adapter", Ordered, func() {
 
 		Expect(k8sClient.Create(ctx, hasApp)).Should(Succeed())
 
-		integrationTestScenario = &v1beta1.IntegrationTestScenario{
+		integrationTestScenario = &v1beta2.IntegrationTestScenario{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "example-pass",
 				Namespace: "default",
@@ -94,11 +94,11 @@ var _ = Describe("Binding Adapter", Ordered, func() {
 					"test.appstudio.openshift.io/optional": "false",
 				},
 			},
-			Spec: v1beta1.IntegrationTestScenarioSpec{
+			Spec: v1beta2.IntegrationTestScenarioSpec{
 				Application: "application-sample",
-				ResolverRef: v1beta1.ResolverRef{
+				ResolverRef: v1beta2.ResolverRef{
 					Resolver: "git",
-					Params: []v1beta1.ResolverParameter{
+					Params: []v1beta2.ResolverParameter{
 						{
 							Name:  "url",
 							Value: "https://github.com/redhat-appstudio/integration-examples.git",
@@ -111,13 +111,6 @@ var _ = Describe("Binding Adapter", Ordered, func() {
 							Name:  "pathInRepo",
 							Value: "pipelineruns/integration_pipelinerun_pass.yaml",
 						},
-					},
-				},
-				Environment: v1beta1.TestEnvironment{
-					Name: "envname",
-					Type: "POC",
-					Configuration: &applicationapiv1alpha1.EnvironmentConfiguration{
-						Env: []applicationapiv1alpha1.EnvVarPair{},
 					},
 				},
 			},

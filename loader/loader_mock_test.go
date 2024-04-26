@@ -22,7 +22,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
-	"github.com/redhat-appstudio/integration-service/api/v1beta1"
+	"github.com/redhat-appstudio/integration-service/api/v1beta2"
 	releasev1alpha1 "github.com/redhat-appstudio/release-service/api/v1alpha1"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 )
@@ -203,7 +203,7 @@ var _ = Describe("Release Adapter", Ordered, func() {
 
 	Context("When calling GetAllIntegrationTestScenariosForApplication", func() {
 		It("returns all integrationTestScenario and error from the context", func() {
-			scenarios := []v1beta1.IntegrationTestScenario{}
+			scenarios := []v1beta2.IntegrationTestScenario{}
 			mockContext := toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
 					ContextKey: AllIntegrationTestScenariosContextKey,
@@ -218,7 +218,7 @@ var _ = Describe("Release Adapter", Ordered, func() {
 
 	Context("When calling GetRequiredIntegrationTestScenariosForApplication", func() {
 		It("returns required integrationTestScenario and error from the context", func() {
-			scenarios := []v1beta1.IntegrationTestScenario{}
+			scenarios := []v1beta2.IntegrationTestScenario{}
 			mockContext := toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
 					ContextKey: RequiredIntegrationTestScenariosContextKey,
