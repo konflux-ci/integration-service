@@ -20,11 +20,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/redhat-appstudio/integration-service/api/v1beta1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"reflect"
 	"sort"
 	"time"
+
+	"github.com/redhat-appstudio/integration-service/api/v1beta2"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"k8s.io/apimachinery/pkg/types"
 
@@ -508,7 +509,7 @@ func RemoveFinalizerFromComponent(adapterClient client.Client, logger Integratio
 
 // RemoveFinalizerFromScenario removes the finalizer from the IntegrationTestScenario.
 // If finalizer was not removed successfully, a non-nil error is returned.
-func RemoveFinalizerFromScenario(adapterClient client.Client, logger IntegrationLogger, ctx context.Context, scenario *v1beta1.IntegrationTestScenario, finalizer string) error {
+func RemoveFinalizerFromScenario(adapterClient client.Client, logger IntegrationLogger, ctx context.Context, scenario *v1beta2.IntegrationTestScenario, finalizer string) error {
 	patch := client.MergeFrom(scenario.DeepCopy())
 	if ok := controllerutil.RemoveFinalizer(scenario, finalizer); ok {
 		err := adapterClient.Patch(ctx, scenario, patch)
@@ -524,7 +525,7 @@ func RemoveFinalizerFromScenario(adapterClient client.Client, logger Integration
 
 // AddFinalizerToScenario adds the finalizer to the IntegrationTestScenario.
 // If finalizer was not added successfully, a non-nil error is returned.
-func AddFinalizerToScenario(adapterClient client.Client, logger IntegrationLogger, ctx context.Context, scenario *v1beta1.IntegrationTestScenario, finalizer string) error {
+func AddFinalizerToScenario(adapterClient client.Client, logger IntegrationLogger, ctx context.Context, scenario *v1beta2.IntegrationTestScenario, finalizer string) error {
 	patch := client.MergeFrom(scenario.DeepCopy())
 	if ok := controllerutil.AddFinalizer(scenario, finalizer); ok {
 		err := adapterClient.Patch(ctx, scenario, patch)

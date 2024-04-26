@@ -1,5 +1,5 @@
 /*
-Copyright 2022 Red Hat Inc.
+Copyright 2024 Red Hat Inc.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,10 +14,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package v1alpha1
+package v1beta2
 
 import (
-	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -27,16 +26,11 @@ type IntegrationTestScenarioSpec struct {
 	// +kubebuilder:validation:Pattern=^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
 	// +required
 	Application string `json:"application"`
-	// Release Tekton Pipeline to execute
+	// Tekton Resolver where to store the Tekton resolverRef trigger Tekton pipeline used to refer to a Pipeline or Task in a remote location like a git repo.
 	// +required
-	Pipeline string `json:"pipeline"`
-	// Tekton Bundle where to find the pipeline
-	// +required
-	Bundle string `json:"bundle"`
+	ResolverRef ResolverRef `json:"resolverRef"`
 	// Params to pass to the pipeline
 	Params []PipelineParameter `json:"params,omitempty"`
-	// Environment that will be utilized by the test pipeline
-	Environment TestEnvironment `json:"environment,omitempty"`
 	// Contexts where this IntegrationTestScenario can be applied
 	Contexts []TestContext `json:"contexts,omitempty"`
 }
@@ -53,24 +47,17 @@ type PipelineParameter struct {
 	Values []string `json:"values,omitempty"`
 }
 
-// TestEnvironment contains the name and values of a Test environment
-type TestEnvironment struct {
-	Name          string                                           `json:"name"`
-	Type          applicationapiv1alpha1.EnvironmentType           `json:"type"`
-	Configuration *applicationapiv1alpha1.EnvironmentConfiguration `json:"configuration,omitempty"`
-}
-
 // TestContext contains the name and values of a Test context
 type TestContext struct {
 	Name        string `json:"name"`
 	Description string `json:"description,omitempty"`
 }
 
-// +kubebuilder:unservedversion
 // +kubebuilder:object:root=true
+// +kubebuilder:resource:shortName=its
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="Application",type=string,JSONPath=`.spec.application`
-// +kubebuilder:deprecatedversion:warning="The v1alpha1 version is deprecated and will be automatically migrated to v1beta1"
+// +kubebuilder:storageversion
 
 // IntegrationTestScenario is the Schema for the integrationtestscenarios API
 type IntegrationTestScenario struct {
@@ -88,4 +75,28 @@ type IntegrationTestScenarioList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []IntegrationTestScenario `json:"items"`
+}
+
+// Tekton Resolver where to store the Tekton resolverRef trigger Tekton pipeline used to refer to a Pipeline or Task in a remote location like a git repo.
+// +required
+type ResolverRef struct {
+	// Resolver is the name of the resolver that should perform resolution of the referenced Tekton resource, such as "git" or "bundle"..
+	// +required
+	Resolver string `json:"resolver"`
+	// Params contains the parameters used to identify the
+	// referenced Tekton resource. Example entries might include
+	// "repo" or "path" but the set of params ultimately depends on
+	// the chosen resolver.
+	// +required
+	Params []ResolverParameter `json:"params"`
+}
+
+// ResolverParameter contains the name and values used to identify the referenced Tekton resource
+type ResolverParameter struct {
+	Name  string `json:"name"`
+	Value string `json:"value"`
+}
+
+func init() {
+	SchemeBuilder.Register(&IntegrationTestScenario{}, &IntegrationTestScenarioList{})
 }
