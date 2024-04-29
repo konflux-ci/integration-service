@@ -345,7 +345,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		})
 
 		It("ensures global Component Image will not be updated in the PR context", func() {
-			err := gitops.MarkSnapshotAsPassed(k8sClient, ctx, hasSnapshotPR, "test passed")
+			err := gitops.MarkSnapshotAsPassed(ctx, k8sClient, hasSnapshotPR, "test passed")
 			Expect(err).To(Succeed())
 			Expect(gitops.HaveAppStudioTestsSucceeded(hasSnapshotPR)).To(BeTrue())
 			adapter.snapshot = hasSnapshotPR
@@ -360,7 +360,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		})
 
 		It("no error from ensuring global Component Image updated when AppStudio Tests failed", func() {
-			err := gitops.MarkSnapshotAsFailed(k8sClient, ctx, hasSnapshot, "test failed")
+			err := gitops.MarkSnapshotAsFailed(ctx, k8sClient, hasSnapshot, "test failed")
 			Expect(err).To(Succeed())
 			Expect(gitops.HaveAppStudioTestsSucceeded(hasSnapshot)).To(BeFalse())
 			adapter.snapshot = hasSnapshot
@@ -373,7 +373,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		})
 
 		It("ensures global Component Image updated when AppStudio Tests succeeded", func() {
-			err := gitops.MarkSnapshotAsPassed(k8sClient, ctx, hasSnapshot, "test passed")
+			err := gitops.MarkSnapshotAsPassed(ctx, k8sClient, hasSnapshot, "test passed")
 			Expect(err).To(Succeed())
 			Expect(gitops.HaveAppStudioTestsSucceeded(hasSnapshot)).To(BeTrue())
 			adapter.snapshot = hasSnapshot
@@ -405,9 +405,9 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		It("ensures Release created successfully", func() {
 			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
 
-			err := gitops.MarkSnapshotIntegrationStatusAsFinished(k8sClient, ctx, hasSnapshot, "Snapshot integration status condition is finished since all testing pipelines completed")
+			err := gitops.MarkSnapshotIntegrationStatusAsFinished(ctx, k8sClient, hasSnapshot, "Snapshot integration status condition is finished since all testing pipelines completed")
 			Expect(err).ToNot(HaveOccurred())
-			err = gitops.MarkSnapshotAsPassed(k8sClient, ctx, hasSnapshot, "test passed")
+			err = gitops.MarkSnapshotAsPassed(ctx, k8sClient, hasSnapshot, "test passed")
 			Expect(err).To(Succeed())
 			Expect(gitops.HaveAppStudioTestsFinished(hasSnapshot)).To(BeTrue())
 			Expect(gitops.HaveAppStudioTestsSucceeded(hasSnapshot)).To(BeTrue())
@@ -489,7 +489,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 
 			// Set the snapshot up for failure by setting its status as failed and invalid
 			// as well as marking it as PaC pull request event type
-			err := gitops.MarkSnapshotAsFailed(k8sClient, ctx, hasSnapshot, "test failed")
+			err := gitops.MarkSnapshotAsFailed(ctx, k8sClient, hasSnapshot, "test failed")
 			Expect(err).ShouldNot(HaveOccurred())
 			gitops.SetSnapshotIntegrationStatusAsInvalid(hasSnapshot, "snapshot invalid")
 			hasSnapshot.Labels[gitops.PipelineAsCodeEventTypeLabel] = gitops.PipelineAsCodePullRequestType
@@ -609,7 +609,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		})
 
 		It("Skip integration test for passed Snapshot", func() {
-			err := gitops.MarkSnapshotAsPassed(k8sClient, ctx, hasSnapshot, "test pass")
+			err := gitops.MarkSnapshotAsPassed(ctx, k8sClient, hasSnapshot, "test pass")
 			Expect(err).To(Succeed())
 			Expect(gitops.HaveAppStudioTestsSucceeded(hasSnapshot)).To(BeTrue())
 			var buf bytes.Buffer
@@ -822,7 +822,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
 
 		BeforeAll(func() {
-			err := gitops.MarkSnapshotAsPassed(k8sClient, ctx, hasSnapshot, "test passed")
+			err := gitops.MarkSnapshotAsPassed(ctx, k8sClient, hasSnapshot, "test passed")
 			Expect(err).To(Succeed())
 			Expect(gitops.HaveAppStudioTestsSucceeded(hasSnapshot)).To(BeTrue())
 		})
@@ -1055,7 +1055,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 				Expect(err).To(Succeed())
 				statuses.UpdateTestStatusIfChanged(integrationTestScenario.Name, intgteststat.IntegrationTestStatusInProgress, fakeDetails)
 				Expect(statuses.UpdateTestPipelineRunName(integrationTestScenario.Name, fakePLRName)).To(Succeed())
-				Expect(gitops.WriteIntegrationTestStatusesIntoSnapshot(hasSnapshot, statuses, k8sClient, ctx)).Should(Succeed())
+				Expect(gitops.WriteIntegrationTestStatusesIntoSnapshot(ctx, hasSnapshot, statuses, k8sClient)).Should(Succeed())
 
 				// add rerun label
 				// we cannot update it into k8s DB via patch, it would trigger reconciliation in background

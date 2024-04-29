@@ -470,7 +470,7 @@ var _ = Describe("Loader", Ordered, func() {
 		Expect(k8sClient).NotTo(BeNil())
 		Expect(ctx).NotTo(BeNil())
 		Expect(hasSnapshot).NotTo(BeNil())
-		err := gitops.MarkSnapshotAsPassed(k8sClient, ctx, hasSnapshot, "test passed")
+		err := gitops.MarkSnapshotAsPassed(ctx, k8sClient, hasSnapshot, "test passed")
 		Expect(err).To(Succeed())
 		Expect(gitops.HaveAppStudioTestsSucceeded(hasSnapshot)).To(BeTrue())
 
