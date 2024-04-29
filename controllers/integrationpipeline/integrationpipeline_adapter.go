@@ -72,7 +72,7 @@ func (a *Adapter) EnsureStatusReportedInSnapshot() (controller.OperationResult, 
 	// thus `RetryOnConflict` is easy solution here, given the snapshot must be loaded specifically here
 	err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
 
-		a.snapshot, err = a.loader.GetSnapshotFromPipelineRun(a.client, a.context, a.pipelineRun)
+		a.snapshot, err = a.loader.GetSnapshotFromPipelineRun(a.context, a.client, a.pipelineRun)
 		if err != nil {
 			return err
 		}
@@ -119,7 +119,7 @@ func (a *Adapter) EnsureEphemeralEnvironmentsCleanedUp() (controller.OperationRe
 		return controller.ContinueProcessing()
 	}
 
-	testEnvironment, err := a.loader.GetEnvironmentFromIntegrationPipelineRun(a.client, a.context, a.pipelineRun)
+	testEnvironment, err := a.loader.GetEnvironmentFromIntegrationPipelineRun(a.context, a.client, a.pipelineRun)
 	if err != nil && !errors.IsNotFound(err) {
 		a.logger.Error(err, "Failed to find the environment for the pipelineRun")
 		return controller.RequeueWithError(err)
@@ -132,13 +132,13 @@ func (a *Adapter) EnsureEphemeralEnvironmentsCleanedUp() (controller.OperationRe
 	isEphemeral := h.IsEnvironmentEphemeral(testEnvironment)
 
 	if isEphemeral {
-		dtc, err := a.loader.GetDeploymentTargetClaimForEnvironment(a.client, a.context, testEnvironment)
+		dtc, err := a.loader.GetDeploymentTargetClaimForEnvironment(a.context, a.client, testEnvironment)
 		if err != nil || dtc == nil {
 			a.logger.Error(err, "Failed to find deploymentTargetClaim defined in environment", "environment.Name", testEnvironment.Name)
 			return controller.RequeueWithError(err)
 		}
 
-		binding, err := a.loader.FindExistingSnapshotEnvironmentBinding(a.client, a.context, a.application, testEnvironment)
+		binding, err := a.loader.FindExistingSnapshotEnvironmentBinding(a.context, a.client, a.application, testEnvironment)
 		if err != nil || binding == nil {
 			a.logger.Error(err, "Failed to find snapshotEnvironmentBinding associated with environment", "environment.Name", testEnvironment.Name)
 			return controller.RequeueWithError(err)
@@ -166,7 +166,7 @@ func (a *Adapter) GetIntegrationPipelineRunStatus(adapterClient client.Client, c
 		}
 	}
 
-	taskRuns, err := a.loader.GetAllTaskRunsWithMatchingPipelineRunLabel(adapterClient, ctx, pipelineRun)
+	taskRuns, err := a.loader.GetAllTaskRunsWithMatchingPipelineRunLabel(ctx, adapterClient, pipelineRun)
 	if err != nil {
 		return intgteststat.IntegrationTestStatusTestInvalid, fmt.Sprintf("Unable to get all the TaskRun(s) related to the pipelineRun '%s'", pipelineRun.Name), err
 	}

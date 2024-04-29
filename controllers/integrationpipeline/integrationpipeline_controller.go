@@ -87,7 +87,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 
 	var snapshot *applicationapiv1alpha1.Snapshot
 	err = retry.OnError(retry.DefaultRetry, func(_ error) bool { return true }, func() error {
-		snapshot, err = loader.GetSnapshotFromPipelineRun(r.Client, ctx, pipelineRun)
+		snapshot, err = loader.GetSnapshotFromPipelineRun(ctx, r.Client, pipelineRun)
 		return err
 	})
 	if err != nil {
@@ -99,7 +99,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return helpers.HandleLoaderError(logger, err, "Snapshot", "PipelineRun")
 	}
 
-	application, err := loader.GetApplicationFromPipelineRun(r.Client, ctx, pipelineRun)
+	application, err := loader.GetApplicationFromPipelineRun(ctx, r.Client, pipelineRun)
 	if err != nil {
 		logger.Error(err, "Failed to get Application from the integration pipelineRun",
 			"PipelineRun.Name", pipelineRun.Name, "PipelineRun.Namespace", pipelineRun.Namespace)

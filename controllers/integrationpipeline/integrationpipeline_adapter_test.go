@@ -435,7 +435,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 					Resource:   []tektonv1.TaskRun{*successfulTaskRun},
 				},
 			})
-			existingSnapshot, err := adapter.loader.GetSnapshotFromPipelineRun(adapter.client, adapter.context, integrationPipelineRunComponent)
+			existingSnapshot, err := adapter.loader.GetSnapshotFromPipelineRun(adapter.context, adapter.client, integrationPipelineRunComponent)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(existingSnapshot).ToNot(BeNil())
 		})
@@ -704,13 +704,13 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				},
 			})
 
-			dtc, _ := adapter.loader.GetDeploymentTargetClaimForEnvironment(k8sClient, adapter.context, hasEnv)
+			dtc, _ := adapter.loader.GetDeploymentTargetClaimForEnvironment(adapter.context, k8sClient, hasEnv)
 			Expect(dtc).NotTo(BeNil())
 
-			dt, _ := adapter.loader.GetDeploymentTargetForDeploymentTargetClaim(k8sClient, adapter.context, dtc)
+			dt, _ := adapter.loader.GetDeploymentTargetForDeploymentTargetClaim(adapter.context, k8sClient, dtc)
 			Expect(dt).NotTo(BeNil())
 
-			binding, _ := adapter.loader.FindExistingSnapshotEnvironmentBinding(k8sClient, adapter.context, hasApp, hasEnv)
+			binding, _ := adapter.loader.FindExistingSnapshotEnvironmentBinding(adapter.context, k8sClient, hasApp, hasEnv)
 			Expect(binding).NotTo(BeNil())
 
 			result, err := adapter.EnsureEphemeralEnvironmentsCleanedUp()

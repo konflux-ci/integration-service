@@ -388,7 +388,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			componentSource, err := adapter.getComponentSourceFromPipelineRun(buildPipelineRun)
 			Expect(err).To(BeNil())
 
-			applicationComponents, err := adapter.loader.GetAllApplicationComponents(adapter.client, adapter.context, adapter.application)
+			applicationComponents, err := adapter.loader.GetAllApplicationComponents(adapter.context, adapter.client, adapter.application)
 			Expect(err).To(BeNil())
 			Expect(applicationComponents).NotTo(BeNil())
 
@@ -921,7 +921,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 					Resource:   []applicationapiv1alpha1.Snapshot{*hasSnapshot},
 				},
 			})
-			allSnapshots, err := adapter.loader.GetAllSnapshots(adapter.client, adapter.context, adapter.application)
+			allSnapshots, err := adapter.loader.GetAllSnapshots(adapter.context, adapter.client, adapter.application)
 			Expect(err).To(BeNil())
 			Expect(allSnapshots).NotTo(BeNil())
 			existingSnapshot := gitops.FindMatchingSnapshot(hasApp, allSnapshots, hasSnapshot)

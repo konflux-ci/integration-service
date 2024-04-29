@@ -304,7 +304,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			Expect(result.RequeueRequest).To(BeFalse())
 			Expect(err).ToNot(HaveOccurred())
 
-			requiredIntegrationTestScenarios, err := adapter.loader.GetRequiredIntegrationTestScenariosForApplication(k8sClient, adapter.context, hasApp)
+			requiredIntegrationTestScenarios, err := adapter.loader.GetRequiredIntegrationTestScenariosForApplication(adapter.context, k8sClient, hasApp)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(requiredIntegrationTestScenarios).NotTo(BeNil())
 			expectedLogEntry := "Creating new pipelinerun for integrationTestscenario integrationTestScenario.Name example-pass"
