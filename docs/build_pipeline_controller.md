@@ -10,14 +10,15 @@ flowchart TD
   classDef Green fill:#BDFFA4;
 
   %% Node definitions
-predicate((PREDICATE: <br> Filter events related to <br> PipelineRuns <br> proccessed by Chains <br> that have <br> succeeded))
+predicate((PREDICATE: <br> Filter events related to <br> PipelineRuns))
 new_pipeline_run{Pipeline created?}
 get_pipeline_run{Pipeline updated?}
 failed_pipeline_run{Pipeline failed?}
 finalizer_exists{Does the finalizer already exist?}
 retrieve_associated_entity(Retrieve the entity <br> component/application)
 determine_snapshot{Does a snapshot exist?}
-create_snapshot(Gather Application components<br> Add new component  <br> Create snapshot)
+prep_snapshot(Gather Application components<br> Add new component)
+check_chains{Chains annotation present?}
 annotate_pipelineRun(Annotate pipeline with <br> name of Snapshot)
 add_finalizer(Add finalizer to build PLR)
 remove_finalizer(Remove finalizer from build PLR)
@@ -31,15 +32,16 @@ predicate                       -->  failed_pipeline_run
 new_pipeline_run           --Yes-->  finalizer_exists
 finalizer_exists           --No-->   add_finalizer
 add_finalizer                    --> continue
-failed_pipeline_run           --Yes --> remove_finalizer
+failed_pipeline_run        --Yes --> remove_finalizer
 get_pipeline_run           --Yes --> retrieve_associated_entity
 get_pipeline_run           --No  --> error
 retrieve_associated_entity --No  --> error
 error                            --> continue
 retrieve_associated_entity --Yes --> determine_snapshot
 determine_snapshot         --Yes --> annotate_pipelineRun
-determine_snapshot         --No  --> create_snapshot
-create_snapshot            --Yes --> annotate_pipelineRun
+determine_snapshot         --No  --> prep_snapshot
+prep_snapshot                    --> check_chains
+check_chains               --Yes --> annotate_pipelineRun
 annotate_pipelineRun       --Yes --> remove_finalizer
 remove_finalizer                 --> continue
 
