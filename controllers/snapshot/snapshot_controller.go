@@ -107,7 +107,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	if err != nil {
 		if errors.IsNotFound(err) {
 			if !gitops.IsSnapshotMarkedAsInvalid(snapshot) {
-				err := gitops.MarkSnapshotAsInvalid(r.Client, ctx, snapshot,
+				err := gitops.MarkSnapshotAsInvalid(ctx, r.Client, snapshot,
 					fmt.Sprintf("The application %s owning this snapshot doesn't exist, try again after creating application", snapshot.Spec.Application))
 				if err != nil {
 					logger.Error(err, "Failed to update the status to Invalid for the snapshot",

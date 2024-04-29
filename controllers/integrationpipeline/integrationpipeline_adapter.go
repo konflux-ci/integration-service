@@ -92,7 +92,7 @@ func (a *Adapter) EnsureStatusReportedInSnapshot() (controller.OperationResult, 
 		}
 
 		// don't return wrapped err for retries
-		err = gitops.WriteIntegrationTestStatusesIntoSnapshot(a.snapshot, statuses, a.client, a.context)
+		err = gitops.WriteIntegrationTestStatusesIntoSnapshot(a.context, a.snapshot, statuses, a.client)
 		return err
 	})
 	if err != nil {

@@ -285,7 +285,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			statuses, err := gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(hasSnapshot)
 			Expect(err).To(BeNil())
 			statuses.UpdateTestStatusIfChanged(integrationTestScenario.Name, intgteststat.IntegrationTestStatusTestPassed, "testDetails")
-			err = gitops.WriteIntegrationTestStatusesIntoSnapshot(hasSnapshot, statuses, k8sClient, ctx)
+			err = gitops.WriteIntegrationTestStatusesIntoSnapshot(ctx, hasSnapshot, statuses, k8sClient)
 			Expect(err).To(BeNil())
 
 			adapter = NewAdapter(hasSnapshot, hasApp, log, loader.NewMockLoader(), k8sClient, ctx)
@@ -402,7 +402,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			statuses, err := gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(hasSnapshot)
 			Expect(err).To(BeNil())
 			statuses.UpdateTestStatusIfChanged(integrationTestScenario.Name, intgteststat.IntegrationTestStatusTestFail, "Failed test")
-			err = gitops.WriteIntegrationTestStatusesIntoSnapshot(hasSnapshot, statuses, k8sClient, ctx)
+			err = gitops.WriteIntegrationTestStatusesIntoSnapshot(ctx, hasSnapshot, statuses, k8sClient)
 			Expect(err).To(BeNil())
 
 			adapter = NewAdapter(hasSnapshot, hasApp, log, loader.NewMockLoader(), k8sClient, ctx)
@@ -456,7 +456,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			statuses, err := gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(hasSnapshot)
 			Expect(err).ToNot(HaveOccurred())
 			statuses.UpdateTestStatusIfChanged(integrationTestScenario.Name, intgteststat.IntegrationTestStatusTestFail, "Failed test")
-			err = gitops.WriteIntegrationTestStatusesIntoSnapshot(hasSnapshot, statuses, k8sClient, ctx)
+			err = gitops.WriteIntegrationTestStatusesIntoSnapshot(ctx, hasSnapshot, statuses, k8sClient)
 			Expect(err).ToNot(HaveOccurred())
 
 			adapter = NewAdapter(hasSnapshot, hasApp, log, loader.NewMockLoader(), k8sClient, ctx)
@@ -510,7 +510,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			statuses, err := gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(hasSnapshot)
 			Expect(err).To(BeNil())
 			statuses.UpdateTestStatusIfChanged(integrationTestScenario.Name, intgteststat.IntegrationTestStatusTestPassed, "testDetails")
-			err = gitops.WriteIntegrationTestStatusesIntoSnapshot(hasSnapshot, statuses, k8sClient, ctx)
+			err = gitops.WriteIntegrationTestStatusesIntoSnapshot(ctx, hasSnapshot, statuses, k8sClient)
 			Expect(err).To(BeNil())
 
 			adapter = NewAdapter(hasSnapshot, hasApp, log, loader.NewMockLoader(), k8sClient, ctx)

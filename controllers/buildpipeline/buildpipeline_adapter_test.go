@@ -392,7 +392,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			Expect(err).To(BeNil())
 			Expect(applicationComponents).NotTo(BeNil())
 
-			snapshot, err := gitops.PrepareSnapshot(adapter.client, adapter.context, hasApp, applicationComponents, hasComp, imagePullSpec, componentSource)
+			snapshot, err := gitops.PrepareSnapshot(adapter.context, adapter.client, hasApp, applicationComponents, hasComp, imagePullSpec, componentSource)
 			Expect(snapshot).NotTo(BeNil())
 			Expect(err).To(BeNil())
 			Expect(snapshot).NotTo(BeNil())

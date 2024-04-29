@@ -153,7 +153,7 @@ func (a *Adapter) EnsureSnapshotFinishedAllTests() (controller.OperationResult, 
 		if integrationTestScenarioNotTriggered != "" {
 			a.logger.Info("Detected an integrationTestScenario was not triggered, applying snapshot reconcilation",
 				"integrationTestScenario.Name", integrationTestScenarioNotTriggered)
-			if err = gitops.AddIntegrationTestRerunLabel(a.client, a.context, a.snapshot, integrationTestScenarioNotTriggered); err != nil {
+			if err = gitops.AddIntegrationTestRerunLabel(a.context, a.client, a.snapshot, integrationTestScenarioNotTriggered); err != nil {
 				return controller.RequeueWithError(err)
 			}
 
@@ -168,7 +168,7 @@ func (a *Adapter) EnsureSnapshotFinishedAllTests() (controller.OperationResult, 
 	}
 
 	if !gitops.IsSnapshotIntegrationStatusMarkedAsFinished(a.snapshot) {
-		err = gitops.MarkSnapshotIntegrationStatusAsFinished(a.client, a.context, a.snapshot, finishedStatusMessage)
+		err = gitops.MarkSnapshotIntegrationStatusAsFinished(a.context, a.client, a.snapshot, finishedStatusMessage)
 		if err != nil {
 			a.logger.Error(err, "Failed to Update Snapshot AppStudioIntegrationStatus status")
 			return controller.RequeueWithError(err)
@@ -202,7 +202,7 @@ func (a *Adapter) EnsureSnapshotFinishedAllTests() (controller.OperationResult, 
 			a.logger.Info("The global component list has changed in the meantime, marking snapshot as Invalid",
 				"snapshot.Name", a.snapshot.Name)
 			if !gitops.IsSnapshotMarkedAsInvalid(a.snapshot) {
-				err = gitops.MarkSnapshotAsInvalid(a.client, a.context, a.snapshot,
+				err = gitops.MarkSnapshotAsInvalid(a.context, a.client, a.snapshot,
 					"The global component list has changed in the meantime, superseding with a composite snapshot")
 				if err != nil {
 					a.logger.Error(err, "Failed to update the status to Invalid for the snapshot",
@@ -220,7 +220,7 @@ func (a *Adapter) EnsureSnapshotFinishedAllTests() (controller.OperationResult, 
 	// This updates the Snapshot resource on the cluster
 	if allIntegrationTestsPassed {
 		if !gitops.IsSnapshotMarkedAsPassed(a.snapshot) {
-			err = gitops.MarkSnapshotAsPassed(a.client, a.context, a.snapshot, "All Integration Pipeline tests passed")
+			err = gitops.MarkSnapshotAsPassed(a.context, a.client, a.snapshot, "All Integration Pipeline tests passed")
 			if err != nil {
 				a.logger.Error(err, "Failed to Update Snapshot AppStudioTestSucceeded status")
 				return controller.RequeueWithError(err)
@@ -230,7 +230,7 @@ func (a *Adapter) EnsureSnapshotFinishedAllTests() (controller.OperationResult, 
 		}
 	} else {
 		if !gitops.IsSnapshotMarkedAsFailed(a.snapshot) {
-			err = gitops.MarkSnapshotAsFailed(a.client, a.context, a.snapshot, "Some Integration pipeline tests failed")
+			err = gitops.MarkSnapshotAsFailed(a.context, a.client, a.snapshot, "Some Integration pipeline tests failed")
 			if err != nil {
 				a.logger.Error(err, "Failed to Update Snapshot AppStudioTestSucceeded status")
 				return controller.RequeueWithError(err)
@@ -269,7 +269,7 @@ func (a *Adapter) prepareCompositeSnapshot(application *applicationapiv1alpha1.A
 		return nil, err
 	}
 
-	snapshot, err := gitops.PrepareSnapshot(a.client, a.context, application, applicationComponents, component, newContainerImage, newComponentSource)
+	snapshot, err := gitops.PrepareSnapshot(a.context, a.client, application, applicationComponents, component, newContainerImage, newComponentSource)
 	if err != nil {
 		return nil, err
 	}
