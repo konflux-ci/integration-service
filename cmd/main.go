@@ -21,7 +21,7 @@ import (
 	"flag"
 	"os"
 
-	"github.com/redhat-appstudio/integration-service/controllers"
+	"github.com/redhat-appstudio/integration-service/internal/controller"
 	"sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	crwebhook "sigs.k8s.io/controller-runtime/pkg/webhook"
 

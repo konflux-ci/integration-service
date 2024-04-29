@@ -18,12 +18,12 @@ package controllers
 
 import (
 	"github.com/go-logr/logr"
-	"github.com/redhat-appstudio/integration-service/controllers/buildpipeline"
-	"github.com/redhat-appstudio/integration-service/controllers/component"
-	"github.com/redhat-appstudio/integration-service/controllers/integrationpipeline"
-	"github.com/redhat-appstudio/integration-service/controllers/scenario"
-	"github.com/redhat-appstudio/integration-service/controllers/snapshot"
-	"github.com/redhat-appstudio/integration-service/controllers/statusreport"
+	"github.com/redhat-appstudio/integration-service/internal/controller/buildpipeline"
+	"github.com/redhat-appstudio/integration-service/internal/controller/component"
+	"github.com/redhat-appstudio/integration-service/internal/controller/integrationpipeline"
+	"github.com/redhat-appstudio/integration-service/internal/controller/scenario"
+	"github.com/redhat-appstudio/integration-service/internal/controller/snapshot"
+	"github.com/redhat-appstudio/integration-service/internal/controller/statusreport"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 )
