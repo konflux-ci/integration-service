@@ -94,7 +94,7 @@ func (a *Adapter) EnsureRerunPipelineRunsExist() (controller.OperationResult, er
 		// no test rerun triggered
 		return controller.ContinueProcessing()
 	}
-	integrationTestScenario, err := a.loader.GetScenario(a.client, a.context, scenarioName, a.application.Namespace)
+	integrationTestScenario, err := a.loader.GetScenario(a.context, a.client, scenarioName, a.application.Namespace)
 
 	if err != nil {
 		if clienterrors.IsNotFound(err) {
@@ -163,7 +163,7 @@ func (a *Adapter) EnsureIntegrationPipelineRunsExist() (controller.OperationResu
 		return controller.ContinueProcessing()
 	}
 
-	integrationTestScenarios, err := a.loader.GetAllIntegrationTestScenariosForApplication(a.client, a.context, a.application)
+	integrationTestScenarios, err := a.loader.GetAllIntegrationTestScenariosForApplication(a.context, a.client, a.application)
 	if err != nil {
 		a.logger.Error(err, "Failed to get Integration test scenarios for the following application",
 			"Application.Namespace", a.application.Namespace)
@@ -255,7 +255,7 @@ func (a *Adapter) EnsureIntegrationPipelineRunsExist() (controller.OperationResu
 		}
 	}
 
-	requiredIntegrationTestScenarios, err := a.loader.GetRequiredIntegrationTestScenariosForApplication(a.client, a.context, a.application)
+	requiredIntegrationTestScenarios, err := a.loader.GetRequiredIntegrationTestScenariosForApplication(a.context, a.client, a.application)
 	if err != nil {
 		a.logger.Error(err, "Failed to get all required IntegrationTestScenarios")
 		patch := client.MergeFrom(a.snapshot.DeepCopy())
@@ -350,7 +350,7 @@ func (a *Adapter) EnsureAllReleasesExist() (controller.OperationResult, error) {
 		return controller.ContinueProcessing()
 	}
 
-	releasePlans, err := a.loader.GetAutoReleasePlansForApplication(a.client, a.context, a.application)
+	releasePlans, err := a.loader.GetAutoReleasePlansForApplication(a.context, a.client, a.application)
 	if err != nil {
 		a.logger.Error(err, "Failed to get all ReleasePlans")
 		patch := client.MergeFrom(a.snapshot.DeepCopy())
@@ -396,7 +396,7 @@ func (a *Adapter) EnsureAllReleasesExist() (controller.OperationResult, error) {
 // createMissingReleasesForReleasePlans checks if there's existing Releases for a given list of ReleasePlans and creates
 // new ones if they are missing. In case the Releases can't be created, an error will be returned.
 func (a *Adapter) createMissingReleasesForReleasePlans(application *applicationapiv1alpha1.Application, releasePlans *[]releasev1alpha1.ReleasePlan, snapshot *applicationapiv1alpha1.Snapshot) error {
-	releases, err := a.loader.GetReleasesWithSnapshot(a.client, a.context, a.snapshot)
+	releases, err := a.loader.GetReleasesWithSnapshot(a.context, a.client, a.snapshot)
 	if err != nil {
 		return err
 	}

@@ -107,7 +107,7 @@ func (a *Adapter) EnsureSnapshotExists() (result controller.OperationResult, err
 		return controller.ContinueProcessing()
 	}
 
-	existingSnapshots, err := a.loader.GetAllSnapshotsForBuildPipelineRun(a.client, a.context, a.pipelineRun)
+	existingSnapshots, err := a.loader.GetAllSnapshotsForBuildPipelineRun(a.context, a.client, a.pipelineRun)
 	if err != nil {
 		a.logger.Error(err, "Failed to fetch Snapshots for the build pipelineRun")
 		return controller.RequeueWithError(err)
@@ -236,7 +236,7 @@ func (a *Adapter) prepareSnapshotForPipelineRun(pipelineRun *tektonv1.PipelineRu
 		return nil, err
 	}
 
-	applicationComponents, err := a.loader.GetAllApplicationComponents(a.client, a.context, application)
+	applicationComponents, err := a.loader.GetAllApplicationComponents(a.context, a.client, application)
 	if err != nil {
 		return nil, err
 	}
@@ -261,7 +261,7 @@ func (a *Adapter) prepareSnapshotForPipelineRun(pipelineRun *tektonv1.PipelineRu
 func (a *Adapter) annotateBuildPipelineRunWithSnapshot(snapshot *applicationapiv1alpha1.Snapshot) error {
 	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		var err error
-		a.pipelineRun, err = a.loader.GetPipelineRun(a.client, a.context, a.pipelineRun.Name, a.pipelineRun.Namespace)
+		a.pipelineRun, err = a.loader.GetPipelineRun(a.context, a.client, a.pipelineRun.Name, a.pipelineRun.Namespace)
 		if err != nil {
 			return err
 		}
@@ -280,7 +280,7 @@ func (a *Adapter) annotateBuildPipelineRunWithSnapshot(snapshot *applicationapiv
 func (a *Adapter) updateBuildPipelineRunWithFinalInfo(canRemoveFinalizer bool) error {
 	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		var err error
-		a.pipelineRun, err = a.loader.GetPipelineRun(a.client, a.context, a.pipelineRun.Name, a.pipelineRun.Namespace)
+		a.pipelineRun, err = a.loader.GetPipelineRun(a.context, a.client, a.pipelineRun.Name, a.pipelineRun.Namespace)
 		if err != nil {
 			return err
 		}

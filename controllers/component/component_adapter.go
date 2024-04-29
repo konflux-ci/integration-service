@@ -77,7 +77,7 @@ func (a *Adapter) EnsureComponentIsCleanedUp() (controller.OperationResult, erro
 		return controller.ContinueProcessing()
 	}
 
-	applicationComponents, err := a.loader.GetAllApplicationComponents(a.client, a.context, a.application)
+	applicationComponents, err := a.loader.GetAllApplicationComponents(a.context, a.client, a.application)
 	if err != nil {
 		a.logger.Error(err, "Failed to load application components")
 		return controller.RequeueWithError(err)

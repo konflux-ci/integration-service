@@ -79,7 +79,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{}, nil
 	}
 
-	application, err := loader.GetApplicationFromSnapshot(r.Client, ctx, snapshot)
+	application, err := loader.GetApplicationFromSnapshot(ctx, r.Client, snapshot)
 	if err != nil {
 		logger.Error(err, "Failed to get Application from the Snapshot")
 		return ctrl.Result{}, err

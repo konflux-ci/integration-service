@@ -119,7 +119,7 @@ func (a *Adapter) EnsureDeletedScenarioResourcesAreCleanedUp() (controller.Opera
 		return controller.ContinueProcessing()
 	}
 
-	environmentsForScenario, err := a.loader.GetAllEnvironmentsForScenario(a.client, a.context, a.scenario)
+	environmentsForScenario, err := a.loader.GetAllEnvironmentsForScenario(a.context, a.client, a.scenario)
 	if err != nil {
 		a.logger.Error(err, "Failed to find all Environments for IntegrationTestScenario")
 		return controller.RequeueWithError(err)
@@ -127,7 +127,7 @@ func (a *Adapter) EnsureDeletedScenarioResourcesAreCleanedUp() (controller.Opera
 	for _, testEnvironment := range *environmentsForScenario {
 		testEnvironment := testEnvironment
 		if h.IsEnvironmentEphemeral(&testEnvironment) {
-			dtc, err := a.loader.GetDeploymentTargetClaimForEnvironment(a.client, a.context, &testEnvironment)
+			dtc, err := a.loader.GetDeploymentTargetClaimForEnvironment(a.context, a.client, &testEnvironment)
 			if err != nil || dtc == nil {
 				a.logger.Error(err, "Failed to find deploymentTargetClaim defined in environment", "environment.Name", &testEnvironment.Name)
 				return controller.RequeueWithError(err)

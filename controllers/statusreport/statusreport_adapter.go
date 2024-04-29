@@ -126,7 +126,7 @@ func (a *Adapter) EnsureSnapshotTestStatusReportedToGitProvider() (controller.Op
 func (a *Adapter) EnsureSnapshotFinishedAllTests() (controller.OperationResult, error) {
 	// Get all required integrationTestScenarios for the Application and then use the Snapshot status annotation
 	// to check if all Integration tests were finished for that Snapshot
-	integrationTestScenarios, err := a.loader.GetRequiredIntegrationTestScenariosForApplication(a.client, a.context, a.application)
+	integrationTestScenarios, err := a.loader.GetRequiredIntegrationTestScenariosForApplication(a.context, a.client, a.application)
 	if err != nil {
 		return controller.RequeueWithError(err)
 	}
@@ -181,7 +181,7 @@ func (a *Adapter) EnsureSnapshotFinishedAllTests() (controller.OperationResult, 
 	if metadata.HasLabelWithValue(a.snapshot, gitops.SnapshotTypeLabel, gitops.SnapshotComponentType) && gitops.IsSnapshotCreatedByPACPushEvent(a.snapshot) {
 		var component *applicationapiv1alpha1.Component
 		err = retry.OnError(retry.DefaultRetry, func(_ error) bool { return true }, func() error {
-			component, err = a.loader.GetComponentFromSnapshot(a.client, a.context, a.snapshot)
+			component, err = a.loader.GetComponentFromSnapshot(a.context, a.client, a.snapshot)
 			return err
 		})
 		if err != nil {
@@ -264,7 +264,7 @@ func (a *Adapter) determineIfAllIntegrationTestsFinishedAndPassed(integrationTes
 // prepareCompositeSnapshot prepares the Composite Snapshot for a given application,
 // component, containerImage and containerSource. In case the Snapshot can't be created, an error will be returned.
 func (a *Adapter) prepareCompositeSnapshot(application *applicationapiv1alpha1.Application, component *applicationapiv1alpha1.Component, newContainerImage string, newComponentSource *applicationapiv1alpha1.ComponentSource) (*applicationapiv1alpha1.Snapshot, error) {
-	applicationComponents, err := a.loader.GetAllApplicationComponents(a.client, a.context, application)
+	applicationComponents, err := a.loader.GetAllApplicationComponents(a.context, a.client, application)
 	if err != nil {
 		return nil, err
 	}
@@ -304,7 +304,7 @@ func (a *Adapter) createCompositeSnapshotsIfConflictExists(application *applicat
 
 	// Create the new composite snapshot if it doesn't exist already
 	if !gitops.CompareSnapshots(compositeSnapshot, testedSnapshot) {
-		allSnapshots, err := a.loader.GetAllSnapshots(a.client, a.context, application)
+		allSnapshots, err := a.loader.GetAllSnapshots(a.context, a.client, application)
 		if err != nil {
 			return nil, err
 		}
