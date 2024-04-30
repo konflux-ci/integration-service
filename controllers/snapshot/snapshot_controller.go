@@ -132,7 +132,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return helpers.HandleLoaderError(logger, err, fmt.Sprintf("Component or '%s' label", tekton.ComponentNameLabel), "Snapshot")
 	}
 
-	adapter := NewAdapter(snapshot, application, component, logger, loader, r.Client, ctx)
+	adapter := NewAdapter(ctx, snapshot, application, component, logger, loader, r.Client)
 
 	return controller.ReconcileHandler([]controller.Operation{
 		adapter.EnsureAllReleasesExist,

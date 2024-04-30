@@ -48,8 +48,9 @@ type Adapter struct {
 }
 
 // NewAdapter creates and returns an Adapter instance.
-func NewAdapter(pipelineRun *tektonv1.PipelineRun, application *applicationapiv1alpha1.Application, snapshot *applicationapiv1alpha1.Snapshot, logger h.IntegrationLogger, loader loader.ObjectLoader, client client.Client,
-	context context.Context) *Adapter {
+func NewAdapter(context context.Context, pipelineRun *tektonv1.PipelineRun, application *applicationapiv1alpha1.Application,
+	snapshot *applicationapiv1alpha1.Snapshot, logger h.IntegrationLogger, loader loader.ObjectLoader, client client.Client,
+) *Adapter {
 	return &Adapter{
 		pipelineRun: pipelineRun,
 		application: application,
@@ -82,7 +83,7 @@ func (a *Adapter) EnsureStatusReportedInSnapshot() (controller.OperationResult, 
 			return err
 		}
 
-		pipelinerunStatus, detail, err = a.GetIntegrationPipelineRunStatus(a.client, a.context, a.pipelineRun)
+		pipelinerunStatus, detail, err = a.GetIntegrationPipelineRunStatus(a.context, a.client, a.pipelineRun)
 		if err != nil {
 			return err
 		}
@@ -155,7 +156,7 @@ func (a *Adapter) EnsureEphemeralEnvironmentsCleanedUp() (controller.OperationRe
 }
 
 // GetIntegrationPipelineRunStatus checks the Tekton results for a given PipelineRun and returns status of test.
-func (a *Adapter) GetIntegrationPipelineRunStatus(adapterClient client.Client, ctx context.Context, pipelineRun *tektonv1.PipelineRun) (intgteststat.IntegrationTestStatus, string, error) {
+func (a *Adapter) GetIntegrationPipelineRunStatus(ctx context.Context, adapterClient client.Client, pipelineRun *tektonv1.PipelineRun) (intgteststat.IntegrationTestStatus, string, error) {
 	// Check if the pipelineRun finished from the condition of status
 	if !h.HasPipelineRunFinished(pipelineRun) {
 		// Mark the pipelineRun's status as "Deleted" if its not finished yet and is marked for deletion (with a non-nil deletionTimestamp)

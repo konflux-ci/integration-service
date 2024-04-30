@@ -238,7 +238,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 
 	When("adapter is created", func() {
 		It("can create a new Adapter instance", func() {
-			Expect(reflect.TypeOf(NewAdapter(hasSnapshot, hasApp, logger, loader.NewMockLoader(), k8sClient, ctx))).To(Equal(reflect.TypeOf(&Adapter{})))
+			Expect(reflect.TypeOf(NewAdapter(ctx, hasSnapshot, hasApp, logger, loader.NewMockLoader(), k8sClient))).To(Equal(reflect.TypeOf(&Adapter{})))
 		})
 
 		It("ensures the statusReport is called", func() {
@@ -254,7 +254,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			mockStatus.EXPECT().ReportSnapshotStatus(gomock.Any(), gomock.Any(), gomock.Any()).Times(1)
 
 			mockScenarios := []v1beta2.IntegrationTestScenario{}
-			adapter = NewAdapter(hasPRSnapshot, hasApp, logger, loader.NewMockLoader(), k8sClient, ctx)
+			adapter = NewAdapter(ctx, hasPRSnapshot, hasApp, logger, loader.NewMockLoader(), k8sClient)
 			adapter.status = mockStatus
 			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
@@ -288,7 +288,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			err = gitops.WriteIntegrationTestStatusesIntoSnapshot(ctx, hasSnapshot, statuses, k8sClient)
 			Expect(err).To(BeNil())
 
-			adapter = NewAdapter(hasSnapshot, hasApp, log, loader.NewMockLoader(), k8sClient, ctx)
+			adapter = NewAdapter(ctx, hasSnapshot, hasApp, log, loader.NewMockLoader(), k8sClient)
 			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
 					ContextKey: loader.ApplicationContextKey,
@@ -405,7 +405,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			err = gitops.WriteIntegrationTestStatusesIntoSnapshot(ctx, hasSnapshot, statuses, k8sClient)
 			Expect(err).To(BeNil())
 
-			adapter = NewAdapter(hasSnapshot, hasApp, log, loader.NewMockLoader(), k8sClient, ctx)
+			adapter = NewAdapter(ctx, hasSnapshot, hasApp, log, loader.NewMockLoader(), k8sClient)
 			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
 					ContextKey: loader.ApplicationContextKey,
@@ -459,7 +459,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			err = gitops.WriteIntegrationTestStatusesIntoSnapshot(ctx, hasSnapshot, statuses, k8sClient)
 			Expect(err).ToNot(HaveOccurred())
 
-			adapter = NewAdapter(hasSnapshot, hasApp, log, loader.NewMockLoader(), k8sClient, ctx)
+			adapter = NewAdapter(ctx, hasSnapshot, hasApp, log, loader.NewMockLoader(), k8sClient)
 			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
 					ContextKey: loader.ApplicationContextKey,
@@ -513,7 +513,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			err = gitops.WriteIntegrationTestStatusesIntoSnapshot(ctx, hasSnapshot, statuses, k8sClient)
 			Expect(err).To(BeNil())
 
-			adapter = NewAdapter(hasSnapshot, hasApp, log, loader.NewMockLoader(), k8sClient, ctx)
+			adapter = NewAdapter(ctx, hasSnapshot, hasApp, log, loader.NewMockLoader(), k8sClient)
 			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
 					ContextKey: loader.ApplicationContextKey,

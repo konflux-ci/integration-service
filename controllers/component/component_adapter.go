@@ -43,8 +43,9 @@ type Adapter struct {
 }
 
 // NewAdapter creates and returns an Adapter instance.
-func NewAdapter(component *applicationapiv1alpha1.Component, application *applicationapiv1alpha1.Application, logger h.IntegrationLogger, loader loader.ObjectLoader, client client.Client,
-	context context.Context) *Adapter {
+func NewAdapter(context context.Context, component *applicationapiv1alpha1.Component, application *applicationapiv1alpha1.Application,
+	logger h.IntegrationLogger, loader loader.ObjectLoader, client client.Client,
+) *Adapter {
 	return &Adapter{
 		component:   component,
 		application: application,
