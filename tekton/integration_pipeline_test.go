@@ -339,14 +339,14 @@ var _ = Describe("Integration pipeline", func() {
 
 			// calling RemoveFinalizerFromPipelineRun() when the PipelineRun contains the finalizer
 			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
-			Expect(helpers.RemoveFinalizerFromPipelineRun(ctx, k8sClient, log, &newIntegrationPipelineRun.PipelineRun, helpers.IntegrationPipelineRunFinalizer)).To(BeNil())
+			Expect(helpers.RemoveFinalizerFromPipelineRun(ctx, k8sClient, log, &newIntegrationPipelineRun.PipelineRun, helpers.IntegrationPipelineRunFinalizer)).To(Succeed())
 			Expect(newIntegrationPipelineRun.Finalizers).To(BeNil())
 			Expect(buf.String()).Should(ContainSubstring(logEntry))
 
 			// calling RemoveFinalizerFromPipelineRun() when the PipelineRun doesn't contain the finalizer
 			buf = bytes.Buffer{}
 			log = helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
-			Expect(helpers.RemoveFinalizerFromPipelineRun(ctx, k8sClient, log, &newIntegrationPipelineRun.PipelineRun, helpers.IntegrationPipelineRunFinalizer)).To(BeNil())
+			Expect(helpers.RemoveFinalizerFromPipelineRun(ctx, k8sClient, log, &newIntegrationPipelineRun.PipelineRun, helpers.IntegrationPipelineRunFinalizer)).To(Succeed())
 			Expect(newIntegrationPipelineRun.Finalizers).To(BeNil())
 			Expect(buf.String()).ShouldNot(ContainSubstring(logEntry))
 		})
