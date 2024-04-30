@@ -110,7 +110,7 @@ func (a *Adapter) EnsureSnapshotTestStatusReportedToGitProvider() (controller.Op
 				continue
 			}
 
-			err = helpers.RemoveFinalizerFromPipelineRun(a.client, a.logger, a.context, pipelineRun, helpers.IntegrationPipelineRunFinalizer)
+			err = helpers.RemoveFinalizerFromPipelineRun(a.context, a.client, a.logger, pipelineRun, helpers.IntegrationPipelineRunFinalizer)
 			if err != nil {
 				return controller.RequeueWithError(err)
 			}

@@ -326,7 +326,7 @@ func (s *Status) generateText(ctx context.Context, integrationTestStatusDetail i
 			return "", fmt.Errorf("error while getting the pipelineRun %s: %w", pipelineRunName, err)
 		}
 
-		taskRuns, err := helpers.GetAllChildTaskRunsForPipelineRun(s.client, ctx, pipelineRun)
+		taskRuns, err := helpers.GetAllChildTaskRunsForPipelineRun(ctx, s.client, pipelineRun)
 		if err != nil {
 			return "", fmt.Errorf("error while getting all child taskRuns from pipelineRun %s: %w", pipelineRunName, err)
 		}

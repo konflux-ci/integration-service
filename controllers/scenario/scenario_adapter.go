@@ -103,7 +103,7 @@ func (a *Adapter) EnsureCreatedScenarioIsValid() (controller.OperationResult, er
 		a.logger.LogAuditEvent("IntegrationTestScenario marked as Valid", a.scenario, h.LogActionUpdate)
 	}
 
-	err := h.AddFinalizerToScenario(a.client, a.logger, a.context, a.scenario, h.IntegrationTestScenarioFinalizer)
+	err := h.AddFinalizerToScenario(a.context, a.client, a.logger, a.scenario, h.IntegrationTestScenarioFinalizer)
 	if err != nil {
 		a.logger.Error(err, "Failed to add finalizer to IntegrationTestScenario")
 		return controller.RequeueWithError(err)
@@ -133,7 +133,7 @@ func (a *Adapter) EnsureDeletedScenarioResourcesAreCleanedUp() (controller.Opera
 				return controller.RequeueWithError(err)
 			}
 
-			err = h.CleanUpEphemeralEnvironments(a.client, &a.logger, a.context, &testEnvironment, dtc)
+			err = h.CleanUpEphemeralEnvironments(a.context, a.client, &a.logger, &testEnvironment, dtc)
 			if err != nil {
 				a.logger.Error(err, "Failed to delete the Ephemeral Environment")
 				return controller.RequeueWithError(err)
@@ -141,7 +141,7 @@ func (a *Adapter) EnsureDeletedScenarioResourcesAreCleanedUp() (controller.Opera
 		}
 	}
 	// Remove the finalizer from the scenario since the cleanup has been handled
-	err = h.RemoveFinalizerFromScenario(a.client, a.logger, a.context, a.scenario, h.IntegrationTestScenarioFinalizer)
+	err = h.RemoveFinalizerFromScenario(a.context, a.client, a.logger, a.scenario, h.IntegrationTestScenarioFinalizer)
 	if err != nil {
 		a.logger.Error(err, "Failed to remove the finalizer from the Scenario")
 		return controller.RequeueWithError(err)

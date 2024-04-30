@@ -19,10 +19,11 @@ package buildpipeline
 import (
 	"context"
 	"fmt"
-	"k8s.io/client-go/util/retry"
 	"strconv"
 	"strings"
 	"time"
+
+	"k8s.io/client-go/util/retry"
 
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/gitops"
@@ -178,7 +179,7 @@ func (a *Adapter) EnsurePipelineIsFinalized() (controller.OperationResult, error
 		return controller.ContinueProcessing()
 	}
 
-	err := h.AddFinalizerToPipelineRun(a.client, a.logger, a.context, a.pipelineRun, h.IntegrationPipelineRunFinalizer)
+	err := h.AddFinalizerToPipelineRun(a.context, a.client, a.logger, a.pipelineRun, h.IntegrationPipelineRunFinalizer)
 	if err != nil {
 		a.logger.Error(err, fmt.Sprintf("Could not add finalizer %s to build pipeline %s", h.IntegrationPipelineRunFinalizer, a.pipelineRun.Name))
 		return controller.RequeueWithError(err)
@@ -295,7 +296,7 @@ func (a *Adapter) updateBuildPipelineRunWithFinalInfo(canRemoveFinalizer bool) e
 		}
 
 		if canRemoveFinalizer {
-			err = h.RemoveFinalizerFromPipelineRun(a.client, a.logger, a.context, a.pipelineRun, h.IntegrationPipelineRunFinalizer)
+			err = h.RemoveFinalizerFromPipelineRun(a.context, a.client, a.logger, a.pipelineRun, h.IntegrationPipelineRunFinalizer)
 			if err != nil {
 				return err
 			}

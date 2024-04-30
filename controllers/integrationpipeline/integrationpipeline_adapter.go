@@ -103,7 +103,7 @@ func (a *Adapter) EnsureStatusReportedInSnapshot() (controller.OperationResult, 
 	// Remove the finalizer from Integration PLRs only if they are related to Snapshots created by Push event
 	// If they are related, then the statusreport controller removes the finalizers from these PLRs
 	if gitops.IsSnapshotCreatedByPACPushEvent(a.snapshot) && (h.HasPipelineRunFinished(a.pipelineRun) || pipelinerunStatus == intgteststat.IntegrationTestStatusDeleted) {
-		err = h.RemoveFinalizerFromPipelineRun(a.client, a.logger, a.context, a.pipelineRun, h.IntegrationPipelineRunFinalizer)
+		err = h.RemoveFinalizerFromPipelineRun(a.context, a.client, a.logger, a.pipelineRun, h.IntegrationPipelineRunFinalizer)
 		if err != nil {
 			return controller.RequeueWithError(fmt.Errorf("failed to remove the finalizer: %w", err))
 		}
@@ -144,7 +144,7 @@ func (a *Adapter) EnsureEphemeralEnvironmentsCleanedUp() (controller.OperationRe
 			return controller.RequeueWithError(err)
 		}
 
-		err = h.CleanUpEphemeralEnvironments(a.client, &a.logger, a.context, testEnvironment, dtc)
+		err = h.CleanUpEphemeralEnvironments(a.context, a.client, &a.logger, testEnvironment, dtc)
 		if err != nil {
 			a.logger.Error(err, "Failed to delete the Ephemeral Environment")
 			return controller.RequeueWithError(err)
@@ -180,7 +180,7 @@ func (a *Adapter) GetIntegrationPipelineRunStatus(adapterClient client.Client, c
 			pipelineRun.Name, taskRunsInClusterCount, taskRunsInChildRefCount), nil
 	}
 
-	outcome, err := h.GetIntegrationPipelineRunOutcome(adapterClient, ctx, pipelineRun)
+	outcome, err := h.GetIntegrationPipelineRunOutcome(ctx, adapterClient, pipelineRun)
 	if err != nil {
 		return intgteststat.IntegrationTestStatusTestFail, "", fmt.Errorf("failed to evaluate integration test results: %w", err)
 	}

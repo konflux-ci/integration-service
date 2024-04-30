@@ -87,7 +87,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	})
 	if err != nil {
 		if errors.IsNotFound(err) {
-			if err := helpers.RemoveFinalizerFromPipelineRun(r.Client, logger, ctx, pipelineRun, helpers.IntegrationPipelineRunFinalizer); err != nil {
+			if err := helpers.RemoveFinalizerFromPipelineRun(ctx, r.Client, logger, pipelineRun, helpers.IntegrationPipelineRunFinalizer); err != nil {
 				return ctrl.Result{}, err
 			}
 		}
