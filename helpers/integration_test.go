@@ -702,7 +702,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		}
 		Expect(k8sClient.Status().Update(ctx, integrationPipelineRun)).Should(Succeed())
 
-		pipelineRunOutcome, err := helpers.GetIntegrationPipelineRunOutcome(k8sClient, ctx, integrationPipelineRun)
+		pipelineRunOutcome, err := helpers.GetIntegrationPipelineRunOutcome(ctx, k8sClient, integrationPipelineRun)
 		Expect(err).To(BeNil())
 		Expect(pipelineRunOutcome.HasPipelineRunPassedTesting()).To(BeTrue())
 		Expect(pipelineRunOutcome.HasPipelineRunValidTestOutputs()).To(BeTrue())
@@ -739,7 +739,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		}
 		Expect(k8sClient.Status().Update(ctx, integrationPipelineRun)).Should(Succeed())
 
-		pipelineRunOutcome, err := helpers.GetIntegrationPipelineRunOutcome(k8sClient, ctx, integrationPipelineRun)
+		pipelineRunOutcome, err := helpers.GetIntegrationPipelineRunOutcome(ctx, k8sClient, integrationPipelineRun)
 		Expect(err).To(BeNil())
 		Expect(pipelineRunOutcome.HasPipelineRunPassedTesting()).To(BeTrue())
 		Expect(pipelineRunOutcome.HasPipelineRunValidTestOutputs()).To(BeTrue())
@@ -761,7 +761,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		})
 		Expect(k8sClient.Status().Update(ctx, integrationPipelineRun)).Should(Succeed())
 
-		pipelineRunOutcome, err := helpers.GetIntegrationPipelineRunOutcome(k8sClient, ctx, integrationPipelineRun)
+		pipelineRunOutcome, err := helpers.GetIntegrationPipelineRunOutcome(ctx, k8sClient, integrationPipelineRun)
 		Expect(err).To(BeNil())
 		Expect(pipelineRunOutcome.HasPipelineRunPassedTesting()).To(BeFalse())
 		Expect(pipelineRunOutcome.HasPipelineRunValidTestOutputs()).To(BeTrue())
@@ -798,7 +798,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		}
 		Expect(k8sClient.Status().Update(ctx, integrationPipelineRun)).Should(Succeed())
 
-		pipelineRunOutcome, err := helpers.GetIntegrationPipelineRunOutcome(k8sClient, ctx, integrationPipelineRun)
+		pipelineRunOutcome, err := helpers.GetIntegrationPipelineRunOutcome(ctx, k8sClient, integrationPipelineRun)
 		Expect(err).To(BeNil())
 		Expect(pipelineRunOutcome.HasPipelineRunPassedTesting()).To(BeFalse())
 		Expect(pipelineRunOutcome.HasPipelineRunValidTestOutputs()).To(BeTrue())
@@ -839,7 +839,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		}
 		Expect(k8sClient.Status().Update(ctx, integrationPipelineRun)).Should(Succeed())
 
-		pipelineRunOutcome, err := helpers.GetIntegrationPipelineRunOutcome(k8sClient, ctx, integrationPipelineRun)
+		pipelineRunOutcome, err := helpers.GetIntegrationPipelineRunOutcome(ctx, k8sClient, integrationPipelineRun)
 		Expect(err).To(BeNil())
 		Expect(pipelineRunOutcome.HasPipelineRunPassedTesting()).To(BeFalse())
 		Expect(pipelineRunOutcome.HasPipelineRunValidTestOutputs()).To(BeTrue())
@@ -878,7 +878,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		}
 		Expect(k8sClient.Status().Update(ctx, integrationPipelineRun)).Should(Succeed())
 
-		pipelineRunOutcome, err := helpers.GetIntegrationPipelineRunOutcome(k8sClient, ctx, integrationPipelineRun)
+		pipelineRunOutcome, err := helpers.GetIntegrationPipelineRunOutcome(ctx, k8sClient, integrationPipelineRun)
 		Expect(err).To(BeNil())
 		Expect(pipelineRunOutcome.HasPipelineRunPassedTesting()).To(BeFalse())
 		Expect(pipelineRunOutcome.HasPipelineRunValidTestOutputs()).To(BeTrue())
@@ -915,7 +915,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		}
 
 		Expect(k8sClient.Status().Update(ctx, integrationPipelineRun)).Should(Succeed())
-		pipelineRunOutcome, err := helpers.GetIntegrationPipelineRunOutcome(k8sClient, ctx, integrationPipelineRun)
+		pipelineRunOutcome, err := helpers.GetIntegrationPipelineRunOutcome(ctx, k8sClient, integrationPipelineRun)
 		Expect(err).To(BeNil())
 		Expect(pipelineRunOutcome).NotTo(BeNil())
 		Expect(pipelineRunOutcome.HasPipelineRunPassedTesting()).To(BeFalse())
@@ -954,7 +954,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		}
 
 		Expect(k8sClient.Status().Update(ctx, integrationPipelineRun)).Should(Succeed())
-		pipelineRunOutcome, err := helpers.GetIntegrationPipelineRunOutcome(k8sClient, ctx, integrationPipelineRun)
+		pipelineRunOutcome, err := helpers.GetIntegrationPipelineRunOutcome(ctx, k8sClient, integrationPipelineRun)
 		Expect(err).To(BeNil())
 		Expect(pipelineRunOutcome).NotTo(BeNil())
 
@@ -991,7 +991,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			},
 		}
 
-		taskRuns, err := helpers.GetAllChildTaskRunsForPipelineRun(k8sClient, ctx, integrationPipelineRun)
+		taskRuns, err := helpers.GetAllChildTaskRunsForPipelineRun(ctx, k8sClient, integrationPipelineRun)
 		Expect(err).To(BeNil())
 		Expect(taskRuns).To(HaveLen(2))
 
@@ -1027,7 +1027,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			PipelineRunStatusFields: tektonv1.PipelineRunStatusFields{},
 		}
 
-		taskRuns, err := helpers.GetAllChildTaskRunsForPipelineRun(k8sClient, ctx, integrationPipelineRun)
+		taskRuns, err := helpers.GetAllChildTaskRunsForPipelineRun(ctx, k8sClient, integrationPipelineRun)
 		Expect(err).To(BeNil())
 		Expect(taskRuns).To(BeNil())
 	})
@@ -1037,13 +1037,13 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 
 		// calling AddFinalizerToScenario() when the IntegrationTestScenario doesn't contain the finalizer
 		log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
-		Expect(helpers.AddFinalizerToScenario(k8sClient, log, ctx, integrationTestScenario, helpers.IntegrationTestScenarioFinalizer)).To(Succeed())
+		Expect(helpers.AddFinalizerToScenario(ctx, k8sClient, log, integrationTestScenario, helpers.IntegrationTestScenarioFinalizer)).To(Succeed())
 		Expect(integrationTestScenario.Finalizers).To(ContainElement(ContainSubstring(helpers.IntegrationTestScenarioFinalizer)))
 		logEntry := "Added Finalizer to the IntegrationTestScenario"
 		Expect(buf.String()).Should(ContainSubstring(logEntry))
 
 		// calling RemoveFinalizerFromScenario() when the IntegrationTestScenario contains the finalizer
-		Expect(helpers.RemoveFinalizerFromScenario(k8sClient, log, ctx, integrationTestScenario, helpers.IntegrationTestScenarioFinalizer)).To(Succeed())
+		Expect(helpers.RemoveFinalizerFromScenario(ctx, k8sClient, log, integrationTestScenario, helpers.IntegrationTestScenarioFinalizer)).To(Succeed())
 		Expect(integrationTestScenario.Finalizers).NotTo(ContainElement(ContainSubstring(helpers.IntegrationTestScenarioFinalizer)))
 		logEntry = "Removed Finalizer from the IntegrationTestScenario"
 		Expect(buf.String()).Should(ContainSubstring(logEntry))
@@ -1054,13 +1054,13 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 
 		// calling AddFinalizerToComponent() when the Component doesn't contain the finalizer
 		log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
-		Expect(helpers.AddFinalizerToComponent(k8sClient, log, ctx, hasComp, helpers.ComponentFinalizer)).To(Succeed())
+		Expect(helpers.AddFinalizerToComponent(ctx, k8sClient, log, hasComp, helpers.ComponentFinalizer)).To(Succeed())
 		Expect(hasComp.Finalizers).To(ContainElement(ContainSubstring(helpers.ComponentFinalizer)))
 		logEntry := "Added Finalizer to the Component"
 		Expect(buf.String()).Should(ContainSubstring(logEntry))
 
 		// calling RemoveFinalizerFromComponent() when the Component contains the finalizer
-		Expect(helpers.RemoveFinalizerFromComponent(k8sClient, log, ctx, hasComp, helpers.ComponentFinalizer)).To(Succeed())
+		Expect(helpers.RemoveFinalizerFromComponent(ctx, k8sClient, log, hasComp, helpers.ComponentFinalizer)).To(Succeed())
 		Expect(hasComp.Finalizers).NotTo(ContainElement(ContainSubstring(helpers.ComponentFinalizer)))
 		logEntry = "Removed Finalizer from the Component"
 		Expect(buf.String()).Should(ContainSubstring(logEntry))

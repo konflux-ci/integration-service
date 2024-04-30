@@ -60,7 +60,7 @@ func NewAdapter(component *applicationapiv1alpha1.Component, application *applic
 func (a *Adapter) EnsureComponentHasFinalizer() (controller.OperationResult, error) {
 	if !isComponentMarkedForDeletion(a.component) {
 		if !controllerutil.ContainsFinalizer(a.component, h.ComponentFinalizer) {
-			err := h.AddFinalizerToComponent(a.client, a.logger, a.context, a.component, h.ComponentFinalizer)
+			err := h.AddFinalizerToComponent(a.context, a.client, a.logger, a.component, h.ComponentFinalizer)
 			if err != nil {
 				return controller.RequeueWithError(fmt.Errorf("failed to add the finalizer: %w", err))
 			}
@@ -105,7 +105,7 @@ func (a *Adapter) EnsureComponentIsCleanedUp() (controller.OperationResult, erro
 			return controller.RequeueWithError(err)
 		}
 	}
-	err = h.RemoveFinalizerFromComponent(a.client, a.logger, a.context, a.component, h.ComponentFinalizer)
+	err = h.RemoveFinalizerFromComponent(a.context, a.client, a.logger, a.component, h.ComponentFinalizer)
 	if err != nil {
 		return controller.RequeueWithError(fmt.Errorf("failed to remove the finalizer: %w", err))
 	}
