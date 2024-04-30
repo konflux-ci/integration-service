@@ -113,7 +113,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 
 	logger = logger.WithApp(*application)
 
-	adapter := NewAdapter(pipelineRun, component, application, logger, loader, r.Client, ctx)
+	adapter := NewAdapter(ctx, pipelineRun, component, application, logger, loader, r.Client)
 
 	return controller.ReconcileHandler([]controller.Operation{
 		adapter.EnsurePipelineIsFinalized,

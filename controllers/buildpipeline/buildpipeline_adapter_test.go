@@ -349,7 +349,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 
 	When("NewAdapter is called", func() {
 		It("creates and return a new adapter", func() {
-			Expect(reflect.TypeOf(NewAdapter(buildPipelineRun, hasComp, hasApp, logger, loader.NewMockLoader(), k8sClient, ctx))).To(Equal(reflect.TypeOf(&Adapter{})))
+			Expect(reflect.TypeOf(NewAdapter(ctx, buildPipelineRun, hasComp, hasApp, logger, loader.NewMockLoader(), k8sClient))).To(Equal(reflect.TypeOf(&Adapter{})))
 		})
 	})
 
@@ -578,7 +578,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				"build.appstudio.openshift.io/repo":             "https://github.com/devfile-samples/devfile-sample-go-basic?rev=c713067b0e65fb3de50d1f7c457eb51c2ab0dbb0",
 				"foo":                                           "bar",
 			}
-			adapter = NewAdapter(buildPipelineRun, hasComp, hasApp, log, loader.NewMockLoader(), k8sClient, ctx)
+			adapter = NewAdapter(ctx, buildPipelineRun, hasComp, hasApp, log, loader.NewMockLoader(), k8sClient)
 
 			Eventually(func() bool {
 				result, err := adapter.EnsureSnapshotExists()
@@ -669,7 +669,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
 
 			// check the behavior when there are multiple Snapshots associated with the build pipelineRun
-			adapter = NewAdapter(buildPipelineRun, hasComp, hasApp, log, loader.NewMockLoader(), k8sClient, ctx)
+			adapter = NewAdapter(ctx, buildPipelineRun, hasComp, hasApp, log, loader.NewMockLoader(), k8sClient)
 			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
 					ContextKey: loader.ApplicationContextKey,
@@ -866,7 +866,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		})
 
 		It("can annotate the build pipelineRun with the Snapshot name", func() {
-			adapter = NewAdapter(buildPipelineRun, hasComp, hasApp, logger, loader.NewMockLoader(), k8sClient, ctx)
+			adapter = NewAdapter(ctx, buildPipelineRun, hasComp, hasApp, logger, loader.NewMockLoader(), k8sClient)
 			err := adapter.annotateBuildPipelineRunWithSnapshot(hasSnapshot)
 			Expect(err).To(BeNil())
 			Expect(adapter.pipelineRun.ObjectMeta.Annotations[tekton.SnapshotNameLabel]).To(Equal(hasSnapshot.Name))
@@ -874,7 +874,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 
 		It("Can annotate the build pipelineRun with the CreateSnapshot annotate", func() {
 			sampleErr := errors.New("this is a sample error")
-			adapter = NewAdapter(buildPipelineRun, hasComp, hasApp, logger, loader.NewMockLoader(), k8sClient, ctx)
+			adapter = NewAdapter(ctx, buildPipelineRun, hasComp, hasApp, logger, loader.NewMockLoader(), k8sClient)
 			err := tekton.AnnotateBuildPipelineRunWithCreateSnapshotAnnotation(adapter.context, buildPipelineRun, adapter.client, sampleErr)
 			Expect(err).NotTo(HaveOccurred())
 
@@ -906,7 +906,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 
 		It("can find matching snapshot", func() {
 			// make sure the first pipeline started as first
-			adapter = NewAdapter(buildPipelineRun, hasComp, hasApp, logger, loader.NewMockLoader(), k8sClient, ctx)
+			adapter = NewAdapter(ctx, buildPipelineRun, hasComp, hasApp, logger, loader.NewMockLoader(), k8sClient)
 			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
 					ContextKey: loader.ApplicationContextKey,
@@ -934,7 +934,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 
 		When("can add and remove finalizers from the pipelineRun", func() {
 			BeforeEach(func() {
-				adapter = NewAdapter(buildPipelineRun, hasComp, hasApp, logger, loader.NewMockLoader(), k8sClient, ctx)
+				adapter = NewAdapter(ctx, buildPipelineRun, hasComp, hasApp, logger, loader.NewMockLoader(), k8sClient)
 			})
 			It("can add and remove finalizers from build pipelineRun", func() {
 				// Mark build PLR as incomplete
@@ -1078,7 +1078,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				}
 				Expect(k8sClient.Status().Update(ctx, runningDeletingBuildPipeline)).Should(Succeed())
 
-				adapter = NewAdapter(runningDeletingBuildPipeline, hasComp, hasApp, logger, loader.NewMockLoader(), k8sClient, ctx)
+				adapter = NewAdapter(ctx, runningDeletingBuildPipeline, hasComp, hasApp, logger, loader.NewMockLoader(), k8sClient)
 				adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 					{
 						ContextKey: loader.GetPipelineRunContextKey,
@@ -1124,7 +1124,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				var buf bytes.Buffer
 				log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
 				buildPipelineRun.ObjectMeta.Annotations[gitops.SnapshotLabel] = hasSnapshot.Name
-				adapter = NewAdapter(buildPipelineRun, hasComp, hasApp, log, loader.NewMockLoader(), k8sClient, ctx)
+				adapter = NewAdapter(ctx, buildPipelineRun, hasComp, hasApp, log, loader.NewMockLoader(), k8sClient)
 				adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 					{
 						ContextKey: loader.GetPipelineRunContextKey,
@@ -1159,7 +1159,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				var buf bytes.Buffer
 				log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
 				buildPipelineRun.ObjectMeta.Annotations[gitops.SnapshotLabel] = hasSnapshot.Name
-				adapter = NewAdapter(buildPipelineRun, hasComp, hasApp, log, loader.NewMockLoader(), k8sClient, ctx)
+				adapter = NewAdapter(ctx, buildPipelineRun, hasComp, hasApp, log, loader.NewMockLoader(), k8sClient)
 				adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 					{
 						ContextKey: loader.GetPipelineRunContextKey,
@@ -1196,7 +1196,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 
 				var buf bytes.Buffer
 				log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
-				adapter = NewAdapter(buildPipelineRun, hasComp, hasApp, log, loader.NewMockLoader(), k8sClient, ctx)
+				adapter = NewAdapter(ctx, buildPipelineRun, hasComp, hasApp, log, loader.NewMockLoader(), k8sClient)
 				adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 					{
 						ContextKey: loader.GetPipelineRunContextKey,
@@ -1230,7 +1230,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 	})
 
 	createAdapter = func() *Adapter {
-		adapter = NewAdapter(buildPipelineRun, hasComp, hasApp, logger, loader.NewMockLoader(), k8sClient, ctx)
+		adapter = NewAdapter(ctx, buildPipelineRun, hasComp, hasApp, logger, loader.NewMockLoader(), k8sClient)
 		return adapter
 	}
 })

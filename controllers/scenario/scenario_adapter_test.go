@@ -162,7 +162,7 @@ var _ = Describe("Scenario Adapter", Ordered, func() {
 		}
 		Expect(k8sClient.Create(ctx, &env)).Should(Succeed())
 
-		adapter = NewAdapter(hasApp, integrationTestScenario, logger, loader.NewMockLoader(), k8sClient, ctx)
+		adapter = NewAdapter(ctx, hasApp, integrationTestScenario, logger, loader.NewMockLoader(), k8sClient)
 		Expect(reflect.TypeOf(adapter)).To(Equal(reflect.TypeOf(&Adapter{})))
 	})
 
@@ -182,15 +182,15 @@ var _ = Describe("Scenario Adapter", Ordered, func() {
 	})
 
 	It("can create a new Adapter instance", func() {
-		Expect(reflect.TypeOf(NewAdapter(hasApp, integrationTestScenario, logger, loader.NewMockLoader(), k8sClient, ctx))).To(Equal(reflect.TypeOf(&Adapter{})))
+		Expect(reflect.TypeOf(NewAdapter(ctx, hasApp, integrationTestScenario, logger, loader.NewMockLoader(), k8sClient))).To(Equal(reflect.TypeOf(&Adapter{})))
 	})
 
 	It("can create a new Adapter instance with invalid scenario", func() {
-		Expect(reflect.TypeOf(NewAdapter(hasApp, invalidScenario, logger, loader.NewMockLoader(), k8sClient, ctx))).To(Equal(reflect.TypeOf(&Adapter{})))
+		Expect(reflect.TypeOf(NewAdapter(ctx, hasApp, invalidScenario, logger, loader.NewMockLoader(), k8sClient))).To(Equal(reflect.TypeOf(&Adapter{})))
 	})
 
 	It("EnsureCreatedScenarioIsValid without app", func() {
-		a := NewAdapter(nil, integrationTestScenario, logger, loader.NewMockLoader(), k8sClient, ctx)
+		a := NewAdapter(ctx, nil, integrationTestScenario, logger, loader.NewMockLoader(), k8sClient)
 
 		Eventually(func() bool {
 			result, err := a.EnsureCreatedScenarioIsValid()
@@ -272,7 +272,7 @@ var _ = Describe("Scenario Adapter", Ordered, func() {
 			controllerutil.AddFinalizer(deletedIntegrationTestScenario, helpers.IntegrationTestScenarioFinalizer)
 			now := metav1.NewTime(metav1.Now().Add(time.Second * 1))
 			deletedIntegrationTestScenario.SetDeletionTimestamp(&now)
-			adapter = NewAdapter(hasApp, deletedIntegrationTestScenario, log, loader.NewMockLoader(), k8sClient, ctx)
+			adapter = NewAdapter(ctx, hasApp, deletedIntegrationTestScenario, log, loader.NewMockLoader(), k8sClient)
 
 			Eventually(func() bool {
 				result, err := adapter.EnsureDeletedScenarioResourcesAreCleanedUp()

@@ -78,7 +78,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		logger.Info("Failed to get Application from the IntegrationTestScenario", "error:", err)
 	}
 
-	adapter := NewAdapter(application, scenario, logger, loader, r.Client, ctx)
+	adapter := NewAdapter(ctx, application, scenario, logger, loader, r.Client)
 
 	return controller.ReconcileHandler([]controller.Operation{
 		adapter.EnsureCreatedScenarioIsValid,
