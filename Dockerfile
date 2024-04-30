@@ -1,5 +1,5 @@
 # Build the manager binary
-FROM registry.access.redhat.com/ubi9/go-toolset:1.20.12-3.1713832665 as builder
+FROM registry.access.redhat.com/ubi9/go-toolset:1.21.9-1 as builder
 
 WORKDIR /opt/app-root/src
 
