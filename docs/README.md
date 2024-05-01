@@ -1,6 +1,5 @@
 
 ## Current Diagrams
-- [binding-controller](https://github.com/redhat-appstudio/integration-service/blob/main/docs/binding-controller.md)
 - [scenario-controller](https://github.com/redhat-appstudio/integration-service/blob/main/docs/scenario-controller.md)
 - [snapshot-controller](https://github.com/redhat-appstudio/integration-service/blob/main/docs/snapshot-controller.md)
 - [build-pipeline-controller](https://github.com/redhat-appstudio/integration-service/blob/main/docs/build_pipeline_controller.md)
