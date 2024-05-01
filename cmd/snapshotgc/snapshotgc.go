@@ -8,8 +8,8 @@ import (
 	"strconv"
 
 	"github.com/go-logr/logr"
+	releasev1alpha1 "github.com/konflux-ci/release-service/api/v1alpha1"
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
-	releasev1alpha1 "github.com/redhat-appstudio/release-service/api/v1alpha1"
 	zap2 "go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	core "k8s.io/api/core/v1"

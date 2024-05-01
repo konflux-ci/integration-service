@@ -48,6 +48,9 @@ type DeploymentTargetKubernetesClusterCredentials struct {
 // DeploymentTargetStatus defines the observed state of DeploymentTarget
 type DeploymentTargetStatus struct {
 	Phase DeploymentTargetPhase `json:"phase,omitempty"`
+
+	// Conditions is an array of the DeploymentTarget's status conditions
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
 
 type DeploymentTargetPhase string
