@@ -18,7 +18,6 @@ package controllers
 
 import (
 	"github.com/go-logr/logr"
-	"github.com/redhat-appstudio/integration-service/controllers/binding"
 	"github.com/redhat-appstudio/integration-service/controllers/buildpipeline"
 	"github.com/redhat-appstudio/integration-service/controllers/component"
 	"github.com/redhat-appstudio/integration-service/controllers/integrationpipeline"
@@ -35,7 +34,6 @@ var setupFunctions = []func(manager.Manager, *logr.Logger) error{
 	buildpipeline.SetupController,
 	snapshot.SetupController,
 	scenario.SetupController,
-	binding.SetupController,
 	statusreport.SetupController,
 	component.SetupController,
 }
