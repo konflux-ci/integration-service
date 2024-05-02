@@ -27,6 +27,7 @@ import (
 	"github.com/redhat-appstudio/integration-service/loader"
 	"github.com/redhat-appstudio/integration-service/metrics"
 	"github.com/redhat-appstudio/operator-toolkit/controller"
+	"k8s.io/apimachinery/pkg/api/errors"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -106,12 +107,25 @@ func (a *Adapter) EnsureComponentIsCleanedUp() (controller.OperationResult, erro
 			return controller.RequeueWithError(err)
 		}
 	}
+	// STONEINTG-828: We are refreshing state of component to minimize race condition with updating finalizers
+	a.component, err = a.loader.GetComponent(a.context, a.client, a.component.Name, a.component.Namespace)
+
+	if err != nil {
+		if errors.IsNotFound(err) {
+			return controller.ContinueProcessing()
+		} else {
+			a.logger.Error(err, "Failed to get component.")
+			return controller.RequeueWithError(err)
+		}
+	}
+
 	err = h.RemoveFinalizerFromComponent(a.context, a.client, a.logger, a.component, h.ComponentFinalizer)
 	if err != nil {
 		return controller.RequeueWithError(fmt.Errorf("failed to remove the finalizer: %w", err))
 	}
 
 	return controller.ContinueProcessing()
+
 }
 
 // createUpdatedSnapshot prepares a Snapshot for a given application and component(s).
