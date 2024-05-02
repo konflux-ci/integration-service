@@ -780,5 +780,13 @@ var _ = Describe("Loader", Ordered, func() {
 			Expect(fetchedBuildPipelineRun.Namespace).To(Equal(buildPipelineRun.Namespace))
 			Expect(fetchedBuildPipelineRun.Spec).To(Equal(buildPipelineRun.Spec))
 		})
+
+		It("Can fetch component", func() {
+			fetchedBuildComponent, err := loader.GetComponent(ctx, k8sClient, hasComp.Spec.ComponentName, hasComp.Namespace)
+			Expect(err).To(Succeed())
+			Expect(fetchedBuildComponent.Name).To(Equal(hasComp.Spec.ComponentName))
+			Expect(fetchedBuildComponent.Namespace).To(Equal(hasComp.Namespace))
+			Expect(fetchedBuildComponent.Spec).To(Equal(hasComp.Spec))
+		})
 	})
 })
