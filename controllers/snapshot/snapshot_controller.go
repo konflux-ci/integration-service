@@ -101,13 +101,13 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 
 	var application *applicationapiv1alpha1.Application
 	err = retry.OnError(retry.DefaultRetry, func(_ error) bool { return true }, func() error {
-		application, err = loader.GetApplicationFromSnapshot(r.Client, ctx, snapshot)
+		application, err = loader.GetApplicationFromSnapshot(ctx, r.Client, snapshot)
 		return err
 	})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			if !gitops.IsSnapshotMarkedAsInvalid(snapshot) {
-				err := gitops.MarkSnapshotAsInvalid(r.Client, ctx, snapshot,
+				err := gitops.MarkSnapshotAsInvalid(ctx, r.Client, snapshot,
 					fmt.Sprintf("The application %s owning this snapshot doesn't exist, try again after creating application", snapshot.Spec.Application))
 				if err != nil {
 					logger.Error(err, "Failed to update the status to Invalid for the snapshot",
@@ -125,14 +125,14 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 
 	var component *applicationapiv1alpha1.Component
 	err = retry.OnError(retry.DefaultRetry, func(_ error) bool { return true }, func() error {
-		component, err = loader.GetComponentFromSnapshot(r.Client, ctx, snapshot)
+		component, err = loader.GetComponentFromSnapshot(ctx, r.Client, snapshot)
 		return err
 	})
 	if err != nil {
 		return helpers.HandleLoaderError(logger, err, fmt.Sprintf("Component or '%s' label", tekton.ComponentNameLabel), "Snapshot")
 	}
 
-	adapter := NewAdapter(snapshot, application, component, logger, loader, r.Client, ctx)
+	adapter := NewAdapter(ctx, snapshot, application, component, logger, loader, r.Client)
 
 	return controller.ReconcileHandler([]controller.Operation{
 		adapter.EnsureAllReleasesExist,

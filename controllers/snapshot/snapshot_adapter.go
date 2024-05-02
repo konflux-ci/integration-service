@@ -64,8 +64,8 @@ type Adapter struct {
 }
 
 // NewAdapter creates and returns an Adapter instance.
-func NewAdapter(snapshot *applicationapiv1alpha1.Snapshot, application *applicationapiv1alpha1.Application, component *applicationapiv1alpha1.Component, logger h.IntegrationLogger, loader loader.ObjectLoader, client client.Client,
-	context context.Context) *Adapter {
+func NewAdapter(context context.Context, snapshot *applicationapiv1alpha1.Snapshot, application *applicationapiv1alpha1.Application, component *applicationapiv1alpha1.Component, logger h.IntegrationLogger, loader loader.ObjectLoader, client client.Client,
+) *Adapter {
 	return &Adapter{
 		snapshot:    snapshot,
 		application: application,
@@ -94,13 +94,13 @@ func (a *Adapter) EnsureRerunPipelineRunsExist() (controller.OperationResult, er
 		// no test rerun triggered
 		return controller.ContinueProcessing()
 	}
-	integrationTestScenario, err := a.loader.GetScenario(a.client, a.context, scenarioName, a.application.Namespace)
+	integrationTestScenario, err := a.loader.GetScenario(a.context, a.client, scenarioName, a.application.Namespace)
 
 	if err != nil {
 		if clienterrors.IsNotFound(err) {
 			a.logger.Error(err, "scenario for integration test re-run not found", "scenario", scenarioName)
 			// scenario doesn't exist just remove label and continue
-			if err = gitops.RemoveIntegrationTestRerunLabel(a.client, a.context, a.snapshot); err != nil {
+			if err = gitops.RemoveIntegrationTestRerunLabel(a.context, a.client, a.snapshot); err != nil {
 				return controller.RequeueWithError(err)
 			}
 			return controller.ContinueProcessing()
@@ -120,7 +120,7 @@ func (a *Adapter) EnsureRerunPipelineRunsExist() (controller.OperationResult, er
 		integrationTestScenarioStatus.Status == intgteststat.IntegrationTestStatusPending) {
 		a.logger.Info(fmt.Sprintf("Found existing test in %s status, skipping re-run", integrationTestScenarioStatus.Status),
 			"integrationTestScenario.Name", integrationTestScenario.Name)
-		if err = gitops.RemoveIntegrationTestRerunLabel(a.client, a.context, a.snapshot); err != nil {
+		if err = gitops.RemoveIntegrationTestRerunLabel(a.context, a.client, a.snapshot); err != nil {
 			return controller.RequeueWithError(err)
 		}
 		return controller.ContinueProcessing()
@@ -139,16 +139,16 @@ func (a *Adapter) EnsureRerunPipelineRunsExist() (controller.OperationResult, er
 		a.logger.Error(err, "Failed to update pipelinerun name in test status")
 	}
 
-	if err = gitops.WriteIntegrationTestStatusesIntoSnapshot(a.snapshot, testStatuses, a.client, a.context); err != nil {
+	if err = gitops.WriteIntegrationTestStatusesIntoSnapshot(a.context, a.snapshot, testStatuses, a.client); err != nil {
 		return controller.RequeueWithError(err)
 	}
 
-	if err = gitops.ResetSnapshotStatusConditions(a.client, a.context, a.snapshot, "Integration test is being rerun for snapshot"); err != nil {
+	if err = gitops.ResetSnapshotStatusConditions(a.context, a.client, a.snapshot, "Integration test is being rerun for snapshot"); err != nil {
 		a.logger.Error(err, "Failed to reset snapshot status conditions")
 		return controller.RequeueWithError(err)
 	}
 
-	if err = gitops.RemoveIntegrationTestRerunLabel(a.client, a.context, a.snapshot); err != nil {
+	if err = gitops.RemoveIntegrationTestRerunLabel(a.context, a.client, a.snapshot); err != nil {
 		return controller.RequeueWithError(err)
 	}
 
@@ -163,7 +163,7 @@ func (a *Adapter) EnsureIntegrationPipelineRunsExist() (controller.OperationResu
 		return controller.ContinueProcessing()
 	}
 
-	integrationTestScenarios, err := a.loader.GetAllIntegrationTestScenariosForApplication(a.client, a.context, a.application)
+	integrationTestScenarios, err := a.loader.GetAllIntegrationTestScenariosForApplication(a.context, a.client, a.application)
 	if err != nil {
 		a.logger.Error(err, "Failed to get Integration test scenarios for the following application",
 			"Application.Namespace", a.application.Namespace)
@@ -182,7 +182,7 @@ func (a *Adapter) EnsureIntegrationPipelineRunsExist() (controller.OperationResu
 			return controller.RequeueWithError(err)
 		}
 		testStatuses.InitStatuses(scenariosNamesToList(integrationTestScenarios))
-		err = gitops.WriteIntegrationTestStatusesIntoSnapshot(a.snapshot, testStatuses, a.client, a.context)
+		err = gitops.WriteIntegrationTestStatusesIntoSnapshot(a.context, a.snapshot, testStatuses, a.client)
 		if err != nil {
 			return controller.RequeueWithError(err)
 		}
@@ -192,7 +192,7 @@ func (a *Adapter) EnsureIntegrationPipelineRunsExist() (controller.OperationResu
 			// This is only best effort update
 			//
 			// When update of statuses worked fine at the end of function, this is just a no-op
-			err = gitops.WriteIntegrationTestStatusesIntoSnapshot(a.snapshot, testStatuses, a.client, a.context)
+			err = gitops.WriteIntegrationTestStatusesIntoSnapshot(a.context, a.snapshot, testStatuses, a.client)
 			if err != nil {
 				a.logger.Error(err, "Defer: Updating statuses of tests in snapshot failed")
 			}
@@ -244,7 +244,7 @@ func (a *Adapter) EnsureIntegrationPipelineRunsExist() (controller.OperationResu
 			}
 		}
 
-		err = gitops.WriteIntegrationTestStatusesIntoSnapshot(a.snapshot, testStatuses, a.client, a.context)
+		err = gitops.WriteIntegrationTestStatusesIntoSnapshot(a.context, a.snapshot, testStatuses, a.client)
 		if err != nil {
 			a.logger.Error(err, "Failed to update test status in snapshot annotation")
 			errsForPLRCreation = errors.Join(errsForPLRCreation, err)
@@ -255,7 +255,7 @@ func (a *Adapter) EnsureIntegrationPipelineRunsExist() (controller.OperationResu
 		}
 	}
 
-	requiredIntegrationTestScenarios, err := a.loader.GetRequiredIntegrationTestScenariosForApplication(a.client, a.context, a.application)
+	requiredIntegrationTestScenarios, err := a.loader.GetRequiredIntegrationTestScenariosForApplication(a.context, a.client, a.application)
 	if err != nil {
 		a.logger.Error(err, "Failed to get all required IntegrationTestScenarios")
 		patch := client.MergeFrom(a.snapshot.DeepCopy())
@@ -265,7 +265,7 @@ func (a *Adapter) EnsureIntegrationPipelineRunsExist() (controller.OperationResu
 		return controller.RequeueOnErrorOrStop(a.client.Status().Patch(a.context, a.snapshot, patch))
 	}
 	if len(*requiredIntegrationTestScenarios) == 0 && !gitops.IsSnapshotMarkedAsPassed(a.snapshot) {
-		err := gitops.MarkSnapshotAsPassed(a.client, a.context, a.snapshot, "No required IntegrationTestScenarios found, skipped testing")
+		err := gitops.MarkSnapshotAsPassed(a.context, a.client, a.snapshot, "No required IntegrationTestScenarios found, skipped testing")
 		if err != nil {
 			a.logger.Error(err, "Failed to update Snapshot status")
 			return controller.RequeueWithError(err)
@@ -326,7 +326,7 @@ func (a *Adapter) EnsureGlobalCandidateImageUpdated() (controller.OperationResul
 
 	// Mark the Snapshot as already added to global candidate list to prevent it from getting added again when the Snapshot
 	// gets reconciled at a later time
-	err := gitops.MarkSnapshotAsAddedToGlobalCandidateList(a.client, a.context, a.snapshot, "The Snapshot's component was added to the global candidate list")
+	err := gitops.MarkSnapshotAsAddedToGlobalCandidateList(a.context, a.client, a.snapshot, "The Snapshot's component was added to the global candidate list")
 	if err != nil {
 		a.logger.Error(err, "Failed to update the Snapshot's status to AddedToGlobalCandidateList")
 		return controller.RequeueWithError(err)
@@ -350,7 +350,7 @@ func (a *Adapter) EnsureAllReleasesExist() (controller.OperationResult, error) {
 		return controller.ContinueProcessing()
 	}
 
-	releasePlans, err := a.loader.GetAutoReleasePlansForApplication(a.client, a.context, a.application)
+	releasePlans, err := a.loader.GetAutoReleasePlansForApplication(a.context, a.client, a.application)
 	if err != nil {
 		a.logger.Error(err, "Failed to get all ReleasePlans")
 		patch := client.MergeFrom(a.snapshot.DeepCopy())
@@ -384,7 +384,7 @@ func (a *Adapter) EnsureAllReleasesExist() (controller.OperationResult, error) {
 
 	// Mark the Snapshot as already auto-released to prevent re-releasing the Snapshot when it gets reconciled
 	// at a later time, especially if new ReleasePlans are introduced or existing ones are renamed
-	err = gitops.MarkSnapshotAsAutoReleased(a.client, a.context, a.snapshot, "The Snapshot was auto-released")
+	err = gitops.MarkSnapshotAsAutoReleased(a.context, a.client, a.snapshot, "The Snapshot was auto-released")
 	if err != nil {
 		a.logger.Error(err, "Failed to update the Snapshot's status to auto-released")
 		return controller.RequeueWithError(err)
@@ -396,7 +396,7 @@ func (a *Adapter) EnsureAllReleasesExist() (controller.OperationResult, error) {
 // createMissingReleasesForReleasePlans checks if there's existing Releases for a given list of ReleasePlans and creates
 // new ones if they are missing. In case the Releases can't be created, an error will be returned.
 func (a *Adapter) createMissingReleasesForReleasePlans(application *applicationapiv1alpha1.Application, releasePlans *[]releasev1alpha1.ReleasePlan, snapshot *applicationapiv1alpha1.Snapshot) error {
-	releases, err := a.loader.GetReleasesWithSnapshot(a.client, a.context, a.snapshot)
+	releases, err := a.loader.GetReleasesWithSnapshot(a.context, a.client, a.snapshot)
 	if err != nil {
 		return err
 	}
@@ -488,7 +488,7 @@ func (a *Adapter) createIntegrationPipelineRun(application *applicationapiv1alph
 	a.logger.LogAuditEvent("IntegrationTestscenario pipeline has been created", pipelineRun, h.LogActionAdd,
 		"integrationTestScenario.Name", integrationTestScenario.Name)
 	if gitops.IsSnapshotNotStarted(a.snapshot) {
-		err := gitops.MarkSnapshotIntegrationStatusAsInProgress(a.client, a.context, a.snapshot, "Snapshot starts being tested by the integrationPipelineRun")
+		err := gitops.MarkSnapshotIntegrationStatusAsInProgress(a.context, a.client, a.snapshot, "Snapshot starts being tested by the integrationPipelineRun")
 		if err != nil {
 			a.logger.Error(err, "Failed to update integration status condition to in progress for snapshot")
 		} else {
@@ -517,7 +517,7 @@ func (a *Adapter) HandlePipelineCreationError(err error, integrationTestScenario
 		testStatuses.UpdateTestStatusIfChanged(
 			integrationTestScenario.Name, intgteststat.IntegrationTestStatusTestInvalid,
 			fmt.Sprintf("Creation of pipelineRun failed during creation due to invalid resource: %s.", err))
-		itsErr := gitops.WriteIntegrationTestStatusesIntoSnapshot(a.snapshot, testStatuses, a.client, a.context)
+		itsErr := gitops.WriteIntegrationTestStatusesIntoSnapshot(a.context, a.snapshot, testStatuses, a.client)
 		if itsErr != nil {
 			a.logger.Error(err, "Failed to write Test Status into Snapshot")
 			return controller.RequeueWithError(err)

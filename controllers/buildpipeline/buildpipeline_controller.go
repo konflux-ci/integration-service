@@ -82,12 +82,12 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 
 	var component *applicationapiv1alpha1.Component
 	err = retry.OnError(retry.DefaultRetry, func(_ error) bool { return true }, func() error {
-		component, err = loader.GetComponentFromPipelineRun(r.Client, ctx, pipelineRun)
+		component, err = loader.GetComponentFromPipelineRun(ctx, r.Client, pipelineRun)
 		return err
 	})
 	if err != nil {
 		if errors.IsNotFound(err) {
-			if err := helpers.RemoveFinalizerFromPipelineRun(r.Client, logger, ctx, pipelineRun, helpers.IntegrationPipelineRunFinalizer); err != nil {
+			if err := helpers.RemoveFinalizerFromPipelineRun(ctx, r.Client, logger, pipelineRun, helpers.IntegrationPipelineRunFinalizer); err != nil {
 				return ctrl.Result{}, err
 			}
 		}
@@ -99,7 +99,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{}, nil
 	}
 
-	application, err := loader.GetApplicationFromComponent(r.Client, ctx, component)
+	application, err := loader.GetApplicationFromComponent(ctx, r.Client, component)
 	if err != nil {
 		logger.Error(err, "Failed to get Application from Component",
 			"Component.Name ", component.Name, "Component.Namespace ", component.Namespace)
@@ -113,7 +113,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 
 	logger = logger.WithApp(*application)
 
-	adapter := NewAdapter(pipelineRun, component, application, logger, loader, r.Client, ctx)
+	adapter := NewAdapter(ctx, pipelineRun, component, application, logger, loader, r.Client)
 
 	return controller.ReconcileHandler([]controller.Operation{
 		adapter.EnsurePipelineIsFinalized,

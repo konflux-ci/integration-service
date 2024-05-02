@@ -19,10 +19,11 @@ package buildpipeline
 import (
 	"context"
 	"fmt"
-	"k8s.io/client-go/util/retry"
 	"strconv"
 	"strings"
 	"time"
+
+	"k8s.io/client-go/util/retry"
 
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/gitops"
@@ -49,8 +50,9 @@ type Adapter struct {
 }
 
 // NewAdapter creates and returns an Adapter instance.
-func NewAdapter(pipelineRun *tektonv1.PipelineRun, component *applicationapiv1alpha1.Component, application *applicationapiv1alpha1.Application, logger h.IntegrationLogger, loader loader.ObjectLoader, client client.Client,
-	context context.Context) *Adapter {
+func NewAdapter(context context.Context, pipelineRun *tektonv1.PipelineRun, component *applicationapiv1alpha1.Component, application *applicationapiv1alpha1.Application,
+	logger h.IntegrationLogger, loader loader.ObjectLoader, client client.Client,
+) *Adapter {
 	return &Adapter{
 		pipelineRun: pipelineRun,
 		component:   component,
@@ -107,7 +109,7 @@ func (a *Adapter) EnsureSnapshotExists() (result controller.OperationResult, err
 		return controller.ContinueProcessing()
 	}
 
-	existingSnapshots, err := a.loader.GetAllSnapshotsForBuildPipelineRun(a.client, a.context, a.pipelineRun)
+	existingSnapshots, err := a.loader.GetAllSnapshotsForBuildPipelineRun(a.context, a.client, a.pipelineRun)
 	if err != nil {
 		a.logger.Error(err, "Failed to fetch Snapshots for the build pipelineRun")
 		return controller.RequeueWithError(err)
@@ -178,7 +180,7 @@ func (a *Adapter) EnsurePipelineIsFinalized() (controller.OperationResult, error
 		return controller.ContinueProcessing()
 	}
 
-	err := h.AddFinalizerToPipelineRun(a.client, a.logger, a.context, a.pipelineRun, h.IntegrationPipelineRunFinalizer)
+	err := h.AddFinalizerToPipelineRun(a.context, a.client, a.logger, a.pipelineRun, h.IntegrationPipelineRunFinalizer)
 	if err != nil {
 		a.logger.Error(err, fmt.Sprintf("Could not add finalizer %s to build pipeline %s", h.IntegrationPipelineRunFinalizer, a.pipelineRun.Name))
 		return controller.RequeueWithError(err)
@@ -236,12 +238,12 @@ func (a *Adapter) prepareSnapshotForPipelineRun(pipelineRun *tektonv1.PipelineRu
 		return nil, err
 	}
 
-	applicationComponents, err := a.loader.GetAllApplicationComponents(a.client, a.context, application)
+	applicationComponents, err := a.loader.GetAllApplicationComponents(a.context, a.client, application)
 	if err != nil {
 		return nil, err
 	}
 
-	snapshot, err := gitops.PrepareSnapshot(a.client, a.context, application, applicationComponents, component, newContainerImage, componentSource)
+	snapshot, err := gitops.PrepareSnapshot(a.context, a.client, application, applicationComponents, component, newContainerImage, componentSource)
 	if err != nil {
 		return nil, err
 	}
@@ -261,7 +263,7 @@ func (a *Adapter) prepareSnapshotForPipelineRun(pipelineRun *tektonv1.PipelineRu
 func (a *Adapter) annotateBuildPipelineRunWithSnapshot(snapshot *applicationapiv1alpha1.Snapshot) error {
 	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		var err error
-		a.pipelineRun, err = a.loader.GetPipelineRun(a.client, a.context, a.pipelineRun.Name, a.pipelineRun.Namespace)
+		a.pipelineRun, err = a.loader.GetPipelineRun(a.context, a.client, a.pipelineRun.Name, a.pipelineRun.Namespace)
 		if err != nil {
 			return err
 		}
@@ -280,7 +282,7 @@ func (a *Adapter) annotateBuildPipelineRunWithSnapshot(snapshot *applicationapiv
 func (a *Adapter) updateBuildPipelineRunWithFinalInfo(canRemoveFinalizer bool) error {
 	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		var err error
-		a.pipelineRun, err = a.loader.GetPipelineRun(a.client, a.context, a.pipelineRun.Name, a.pipelineRun.Namespace)
+		a.pipelineRun, err = a.loader.GetPipelineRun(a.context, a.client, a.pipelineRun.Name, a.pipelineRun.Namespace)
 		if err != nil {
 			return err
 		}
@@ -295,7 +297,7 @@ func (a *Adapter) updateBuildPipelineRunWithFinalInfo(canRemoveFinalizer bool) e
 		}
 
 		if canRemoveFinalizer {
-			err = h.RemoveFinalizerFromPipelineRun(a.client, a.logger, a.context, a.pipelineRun, h.IntegrationPipelineRunFinalizer)
+			err = h.RemoveFinalizerFromPipelineRun(a.context, a.client, a.logger, a.pipelineRun, h.IntegrationPipelineRunFinalizer)
 			if err != nil {
 				return err
 			}

@@ -109,13 +109,13 @@ var _ = Describe("Component Adapter", Ordered, func() {
 	})
 
 	It("can create a new Adapter instance", func() {
-		Expect(reflect.TypeOf(NewAdapter(hasComp, hasApp, logger, loader.NewMockLoader(), k8sClient, ctx))).To(Equal(reflect.TypeOf(&Adapter{})))
+		Expect(reflect.TypeOf(NewAdapter(ctx, hasComp, hasApp, logger, loader.NewMockLoader(), k8sClient))).To(Equal(reflect.TypeOf(&Adapter{})))
 	})
 	It("ensures removing a component will result in a new snapshot being created", func() {
 		buf := bytes.Buffer{}
 
 		log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
-		adapter = NewAdapter(hasComp, hasApp, log, loader.NewMockLoader(), k8sClient, ctx)
+		adapter = NewAdapter(ctx, hasComp, hasApp, log, loader.NewMockLoader(), k8sClient)
 		adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 			{
 				ContextKey: loader.ApplicationContextKey,
