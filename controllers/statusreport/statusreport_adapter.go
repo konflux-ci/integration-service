@@ -54,8 +54,9 @@ type Adapter struct {
 }
 
 // NewAdapter creates and returns an Adapter instance.
-func NewAdapter(snapshot *applicationapiv1alpha1.Snapshot, application *applicationapiv1alpha1.Application, logger helpers.IntegrationLogger, loader loader.ObjectLoader, client client.Client,
-	context context.Context) *Adapter {
+func NewAdapter(context context.Context, snapshot *applicationapiv1alpha1.Snapshot, application *applicationapiv1alpha1.Application,
+	logger helpers.IntegrationLogger, loader loader.ObjectLoader, client client.Client,
+) *Adapter {
 	return &Adapter{
 		snapshot:    snapshot,
 		application: application,
@@ -110,7 +111,7 @@ func (a *Adapter) EnsureSnapshotTestStatusReportedToGitProvider() (controller.Op
 				continue
 			}
 
-			err = helpers.RemoveFinalizerFromPipelineRun(a.client, a.logger, a.context, pipelineRun, helpers.IntegrationPipelineRunFinalizer)
+			err = helpers.RemoveFinalizerFromPipelineRun(a.context, a.client, a.logger, pipelineRun, helpers.IntegrationPipelineRunFinalizer)
 			if err != nil {
 				return controller.RequeueWithError(err)
 			}
@@ -126,7 +127,7 @@ func (a *Adapter) EnsureSnapshotTestStatusReportedToGitProvider() (controller.Op
 func (a *Adapter) EnsureSnapshotFinishedAllTests() (controller.OperationResult, error) {
 	// Get all required integrationTestScenarios for the Application and then use the Snapshot status annotation
 	// to check if all Integration tests were finished for that Snapshot
-	integrationTestScenarios, err := a.loader.GetRequiredIntegrationTestScenariosForApplication(a.client, a.context, a.application)
+	integrationTestScenarios, err := a.loader.GetRequiredIntegrationTestScenariosForApplication(a.context, a.client, a.application)
 	if err != nil {
 		return controller.RequeueWithError(err)
 	}
@@ -153,7 +154,7 @@ func (a *Adapter) EnsureSnapshotFinishedAllTests() (controller.OperationResult, 
 		if integrationTestScenarioNotTriggered != "" {
 			a.logger.Info("Detected an integrationTestScenario was not triggered, applying snapshot reconcilation",
 				"integrationTestScenario.Name", integrationTestScenarioNotTriggered)
-			if err = gitops.AddIntegrationTestRerunLabel(a.client, a.context, a.snapshot, integrationTestScenarioNotTriggered); err != nil {
+			if err = gitops.AddIntegrationTestRerunLabel(a.context, a.client, a.snapshot, integrationTestScenarioNotTriggered); err != nil {
 				return controller.RequeueWithError(err)
 			}
 
@@ -168,7 +169,7 @@ func (a *Adapter) EnsureSnapshotFinishedAllTests() (controller.OperationResult, 
 	}
 
 	if !gitops.IsSnapshotIntegrationStatusMarkedAsFinished(a.snapshot) {
-		err = gitops.MarkSnapshotIntegrationStatusAsFinished(a.client, a.context, a.snapshot, finishedStatusMessage)
+		err = gitops.MarkSnapshotIntegrationStatusAsFinished(a.context, a.client, a.snapshot, finishedStatusMessage)
 		if err != nil {
 			a.logger.Error(err, "Failed to Update Snapshot AppStudioIntegrationStatus status")
 			return controller.RequeueWithError(err)
@@ -181,7 +182,7 @@ func (a *Adapter) EnsureSnapshotFinishedAllTests() (controller.OperationResult, 
 	if metadata.HasLabelWithValue(a.snapshot, gitops.SnapshotTypeLabel, gitops.SnapshotComponentType) && gitops.IsSnapshotCreatedByPACPushEvent(a.snapshot) {
 		var component *applicationapiv1alpha1.Component
 		err = retry.OnError(retry.DefaultRetry, func(_ error) bool { return true }, func() error {
-			component, err = a.loader.GetComponentFromSnapshot(a.client, a.context, a.snapshot)
+			component, err = a.loader.GetComponentFromSnapshot(a.context, a.client, a.snapshot)
 			return err
 		})
 		if err != nil {
@@ -202,7 +203,7 @@ func (a *Adapter) EnsureSnapshotFinishedAllTests() (controller.OperationResult, 
 			a.logger.Info("The global component list has changed in the meantime, marking snapshot as Invalid",
 				"snapshot.Name", a.snapshot.Name)
 			if !gitops.IsSnapshotMarkedAsInvalid(a.snapshot) {
-				err = gitops.MarkSnapshotAsInvalid(a.client, a.context, a.snapshot,
+				err = gitops.MarkSnapshotAsInvalid(a.context, a.client, a.snapshot,
 					"The global component list has changed in the meantime, superseding with a composite snapshot")
 				if err != nil {
 					a.logger.Error(err, "Failed to update the status to Invalid for the snapshot",
@@ -220,7 +221,7 @@ func (a *Adapter) EnsureSnapshotFinishedAllTests() (controller.OperationResult, 
 	// This updates the Snapshot resource on the cluster
 	if allIntegrationTestsPassed {
 		if !gitops.IsSnapshotMarkedAsPassed(a.snapshot) {
-			err = gitops.MarkSnapshotAsPassed(a.client, a.context, a.snapshot, "All Integration Pipeline tests passed")
+			err = gitops.MarkSnapshotAsPassed(a.context, a.client, a.snapshot, "All Integration Pipeline tests passed")
 			if err != nil {
 				a.logger.Error(err, "Failed to Update Snapshot AppStudioTestSucceeded status")
 				return controller.RequeueWithError(err)
@@ -230,7 +231,7 @@ func (a *Adapter) EnsureSnapshotFinishedAllTests() (controller.OperationResult, 
 		}
 	} else {
 		if !gitops.IsSnapshotMarkedAsFailed(a.snapshot) {
-			err = gitops.MarkSnapshotAsFailed(a.client, a.context, a.snapshot, "Some Integration pipeline tests failed")
+			err = gitops.MarkSnapshotAsFailed(a.context, a.client, a.snapshot, "Some Integration pipeline tests failed")
 			if err != nil {
 				a.logger.Error(err, "Failed to Update Snapshot AppStudioTestSucceeded status")
 				return controller.RequeueWithError(err)
@@ -264,12 +265,12 @@ func (a *Adapter) determineIfAllIntegrationTestsFinishedAndPassed(integrationTes
 // prepareCompositeSnapshot prepares the Composite Snapshot for a given application,
 // component, containerImage and containerSource. In case the Snapshot can't be created, an error will be returned.
 func (a *Adapter) prepareCompositeSnapshot(application *applicationapiv1alpha1.Application, component *applicationapiv1alpha1.Component, newContainerImage string, newComponentSource *applicationapiv1alpha1.ComponentSource) (*applicationapiv1alpha1.Snapshot, error) {
-	applicationComponents, err := a.loader.GetAllApplicationComponents(a.client, a.context, application)
+	applicationComponents, err := a.loader.GetAllApplicationComponents(a.context, a.client, application)
 	if err != nil {
 		return nil, err
 	}
 
-	snapshot, err := gitops.PrepareSnapshot(a.client, a.context, application, applicationComponents, component, newContainerImage, newComponentSource)
+	snapshot, err := gitops.PrepareSnapshot(a.context, a.client, application, applicationComponents, component, newContainerImage, newComponentSource)
 	if err != nil {
 		return nil, err
 	}
@@ -304,7 +305,7 @@ func (a *Adapter) createCompositeSnapshotsIfConflictExists(application *applicat
 
 	// Create the new composite snapshot if it doesn't exist already
 	if !gitops.CompareSnapshots(compositeSnapshot, testedSnapshot) {
-		allSnapshots, err := a.loader.GetAllSnapshots(a.client, a.context, application)
+		allSnapshots, err := a.loader.GetAllSnapshots(a.context, a.client, application)
 		if err != nil {
 			return nil, err
 		}

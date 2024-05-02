@@ -69,10 +69,10 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	}
 
 	var application *applicationapiv1alpha1.Application
-	application, err = loader.GetApplicationFromComponent(r.Client, ctx, component)
+	application, err = loader.GetApplicationFromComponent(ctx, r.Client, component)
 	if err != nil {
 		if errors.IsNotFound(err) {
-			if err := helpers.RemoveFinalizerFromComponent(r.Client, logger, ctx, component, helpers.ComponentFinalizer); err != nil {
+			if err := helpers.RemoveFinalizerFromComponent(ctx, r.Client, logger, component, helpers.ComponentFinalizer); err != nil {
 				return ctrl.Result{}, err
 			}
 		}
@@ -86,7 +86,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	}
 	logger = logger.WithApp(*application)
 
-	adapter := NewAdapter(component, application, logger, loader, r.Client, ctx)
+	adapter := NewAdapter(ctx, component, application, logger, loader, r.Client)
 
 	return controller.ReconcileHandler([]controller.Operation{
 		adapter.EnsureComponentHasFinalizer,

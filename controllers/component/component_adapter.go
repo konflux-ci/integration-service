@@ -43,8 +43,9 @@ type Adapter struct {
 }
 
 // NewAdapter creates and returns an Adapter instance.
-func NewAdapter(component *applicationapiv1alpha1.Component, application *applicationapiv1alpha1.Application, logger h.IntegrationLogger, loader loader.ObjectLoader, client client.Client,
-	context context.Context) *Adapter {
+func NewAdapter(context context.Context, component *applicationapiv1alpha1.Component, application *applicationapiv1alpha1.Application,
+	logger h.IntegrationLogger, loader loader.ObjectLoader, client client.Client,
+) *Adapter {
 	return &Adapter{
 		component:   component,
 		application: application,
@@ -60,7 +61,7 @@ func NewAdapter(component *applicationapiv1alpha1.Component, application *applic
 func (a *Adapter) EnsureComponentHasFinalizer() (controller.OperationResult, error) {
 	if !isComponentMarkedForDeletion(a.component) {
 		if !controllerutil.ContainsFinalizer(a.component, h.ComponentFinalizer) {
-			err := h.AddFinalizerToComponent(a.client, a.logger, a.context, a.component, h.ComponentFinalizer)
+			err := h.AddFinalizerToComponent(a.context, a.client, a.logger, a.component, h.ComponentFinalizer)
 			if err != nil {
 				return controller.RequeueWithError(fmt.Errorf("failed to add the finalizer: %w", err))
 			}
@@ -77,7 +78,7 @@ func (a *Adapter) EnsureComponentIsCleanedUp() (controller.OperationResult, erro
 		return controller.ContinueProcessing()
 	}
 
-	applicationComponents, err := a.loader.GetAllApplicationComponents(a.client, a.context, a.application)
+	applicationComponents, err := a.loader.GetAllApplicationComponents(a.context, a.client, a.application)
 	if err != nil {
 		a.logger.Error(err, "Failed to load application components")
 		return controller.RequeueWithError(err)
@@ -105,7 +106,7 @@ func (a *Adapter) EnsureComponentIsCleanedUp() (controller.OperationResult, erro
 			return controller.RequeueWithError(err)
 		}
 	}
-	err = h.RemoveFinalizerFromComponent(a.client, a.logger, a.context, a.component, h.ComponentFinalizer)
+	err = h.RemoveFinalizerFromComponent(a.context, a.client, a.logger, a.component, h.ComponentFinalizer)
 	if err != nil {
 		return controller.RequeueWithError(fmt.Errorf("failed to remove the finalizer: %w", err))
 	}

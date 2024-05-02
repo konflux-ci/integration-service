@@ -48,8 +48,9 @@ type Adapter struct {
 }
 
 // NewAdapter creates and returns an Adapter instance.
-func NewAdapter(pipelineRun *tektonv1.PipelineRun, application *applicationapiv1alpha1.Application, snapshot *applicationapiv1alpha1.Snapshot, logger h.IntegrationLogger, loader loader.ObjectLoader, client client.Client,
-	context context.Context) *Adapter {
+func NewAdapter(context context.Context, pipelineRun *tektonv1.PipelineRun, application *applicationapiv1alpha1.Application,
+	snapshot *applicationapiv1alpha1.Snapshot, logger h.IntegrationLogger, loader loader.ObjectLoader, client client.Client,
+) *Adapter {
 	return &Adapter{
 		pipelineRun: pipelineRun,
 		application: application,
@@ -72,7 +73,7 @@ func (a *Adapter) EnsureStatusReportedInSnapshot() (controller.OperationResult, 
 	// thus `RetryOnConflict` is easy solution here, given the snapshot must be loaded specifically here
 	err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
 
-		a.snapshot, err = a.loader.GetSnapshotFromPipelineRun(a.client, a.context, a.pipelineRun)
+		a.snapshot, err = a.loader.GetSnapshotFromPipelineRun(a.context, a.client, a.pipelineRun)
 		if err != nil {
 			return err
 		}
@@ -82,7 +83,7 @@ func (a *Adapter) EnsureStatusReportedInSnapshot() (controller.OperationResult, 
 			return err
 		}
 
-		pipelinerunStatus, detail, err = a.GetIntegrationPipelineRunStatus(a.client, a.context, a.pipelineRun)
+		pipelinerunStatus, detail, err = a.GetIntegrationPipelineRunStatus(a.context, a.client, a.pipelineRun)
 		if err != nil {
 			return err
 		}
@@ -92,7 +93,7 @@ func (a *Adapter) EnsureStatusReportedInSnapshot() (controller.OperationResult, 
 		}
 
 		// don't return wrapped err for retries
-		err = gitops.WriteIntegrationTestStatusesIntoSnapshot(a.snapshot, statuses, a.client, a.context)
+		err = gitops.WriteIntegrationTestStatusesIntoSnapshot(a.context, a.snapshot, statuses, a.client)
 		return err
 	})
 	if err != nil {
@@ -103,7 +104,7 @@ func (a *Adapter) EnsureStatusReportedInSnapshot() (controller.OperationResult, 
 	// Remove the finalizer from Integration PLRs only if they are related to Snapshots created by Push event
 	// If they are related, then the statusreport controller removes the finalizers from these PLRs
 	if gitops.IsSnapshotCreatedByPACPushEvent(a.snapshot) && (h.HasPipelineRunFinished(a.pipelineRun) || pipelinerunStatus == intgteststat.IntegrationTestStatusDeleted) {
-		err = h.RemoveFinalizerFromPipelineRun(a.client, a.logger, a.context, a.pipelineRun, h.IntegrationPipelineRunFinalizer)
+		err = h.RemoveFinalizerFromPipelineRun(a.context, a.client, a.logger, a.pipelineRun, h.IntegrationPipelineRunFinalizer)
 		if err != nil {
 			return controller.RequeueWithError(fmt.Errorf("failed to remove the finalizer: %w", err))
 		}
@@ -119,7 +120,7 @@ func (a *Adapter) EnsureEphemeralEnvironmentsCleanedUp() (controller.OperationRe
 		return controller.ContinueProcessing()
 	}
 
-	testEnvironment, err := a.loader.GetEnvironmentFromIntegrationPipelineRun(a.client, a.context, a.pipelineRun)
+	testEnvironment, err := a.loader.GetEnvironmentFromIntegrationPipelineRun(a.context, a.client, a.pipelineRun)
 	if err != nil && !errors.IsNotFound(err) {
 		a.logger.Error(err, "Failed to find the environment for the pipelineRun")
 		return controller.RequeueWithError(err)
@@ -132,19 +133,19 @@ func (a *Adapter) EnsureEphemeralEnvironmentsCleanedUp() (controller.OperationRe
 	isEphemeral := h.IsEnvironmentEphemeral(testEnvironment)
 
 	if isEphemeral {
-		dtc, err := a.loader.GetDeploymentTargetClaimForEnvironment(a.client, a.context, testEnvironment)
+		dtc, err := a.loader.GetDeploymentTargetClaimForEnvironment(a.context, a.client, testEnvironment)
 		if err != nil || dtc == nil {
 			a.logger.Error(err, "Failed to find deploymentTargetClaim defined in environment", "environment.Name", testEnvironment.Name)
 			return controller.RequeueWithError(err)
 		}
 
-		binding, err := a.loader.FindExistingSnapshotEnvironmentBinding(a.client, a.context, a.application, testEnvironment)
+		binding, err := a.loader.FindExistingSnapshotEnvironmentBinding(a.context, a.client, a.application, testEnvironment)
 		if err != nil || binding == nil {
 			a.logger.Error(err, "Failed to find snapshotEnvironmentBinding associated with environment", "environment.Name", testEnvironment.Name)
 			return controller.RequeueWithError(err)
 		}
 
-		err = h.CleanUpEphemeralEnvironments(a.client, &a.logger, a.context, testEnvironment, dtc)
+		err = h.CleanUpEphemeralEnvironments(a.context, a.client, &a.logger, testEnvironment, dtc)
 		if err != nil {
 			a.logger.Error(err, "Failed to delete the Ephemeral Environment")
 			return controller.RequeueWithError(err)
@@ -155,7 +156,7 @@ func (a *Adapter) EnsureEphemeralEnvironmentsCleanedUp() (controller.OperationRe
 }
 
 // GetIntegrationPipelineRunStatus checks the Tekton results for a given PipelineRun and returns status of test.
-func (a *Adapter) GetIntegrationPipelineRunStatus(adapterClient client.Client, ctx context.Context, pipelineRun *tektonv1.PipelineRun) (intgteststat.IntegrationTestStatus, string, error) {
+func (a *Adapter) GetIntegrationPipelineRunStatus(ctx context.Context, adapterClient client.Client, pipelineRun *tektonv1.PipelineRun) (intgteststat.IntegrationTestStatus, string, error) {
 	// Check if the pipelineRun finished from the condition of status
 	if !h.HasPipelineRunFinished(pipelineRun) {
 		// Mark the pipelineRun's status as "Deleted" if its not finished yet and is marked for deletion (with a non-nil deletionTimestamp)
@@ -166,7 +167,7 @@ func (a *Adapter) GetIntegrationPipelineRunStatus(adapterClient client.Client, c
 		}
 	}
 
-	taskRuns, err := a.loader.GetAllTaskRunsWithMatchingPipelineRunLabel(adapterClient, ctx, pipelineRun)
+	taskRuns, err := a.loader.GetAllTaskRunsWithMatchingPipelineRunLabel(ctx, adapterClient, pipelineRun)
 	if err != nil {
 		return intgteststat.IntegrationTestStatusTestInvalid, fmt.Sprintf("Unable to get all the TaskRun(s) related to the pipelineRun '%s'", pipelineRun.Name), err
 	}
@@ -180,7 +181,7 @@ func (a *Adapter) GetIntegrationPipelineRunStatus(adapterClient client.Client, c
 			pipelineRun.Name, taskRunsInClusterCount, taskRunsInChildRefCount), nil
 	}
 
-	outcome, err := h.GetIntegrationPipelineRunOutcome(adapterClient, ctx, pipelineRun)
+	outcome, err := h.GetIntegrationPipelineRunOutcome(ctx, adapterClient, pipelineRun)
 	if err != nil {
 		return intgteststat.IntegrationTestStatusTestFail, "", fmt.Errorf("failed to evaluate integration test results: %w", err)
 	}

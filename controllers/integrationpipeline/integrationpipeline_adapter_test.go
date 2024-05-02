@@ -398,13 +398,13 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 
 	When("NewAdapter is called", func() {
 		It("creates and return a new adapter", func() {
-			Expect(reflect.TypeOf(NewAdapter(integrationPipelineRunComponent, hasApp, hasSnapshot, logger, loader.NewMockLoader(), k8sClient, ctx))).To(Equal(reflect.TypeOf(&Adapter{})))
+			Expect(reflect.TypeOf(NewAdapter(ctx, integrationPipelineRunComponent, hasApp, hasSnapshot, logger, loader.NewMockLoader(), k8sClient))).To(Equal(reflect.TypeOf(&Adapter{})))
 		})
 	})
 
 	When("Snapshot already exists", func() {
 		BeforeEach(func() {
-			adapter = NewAdapter(integrationPipelineRunComponent, hasApp, hasSnapshot, logger, loader.NewMockLoader(), k8sClient, ctx)
+			adapter = NewAdapter(ctx, integrationPipelineRunComponent, hasApp, hasSnapshot, logger, loader.NewMockLoader(), k8sClient)
 			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
 					ContextKey: loader.ApplicationContextKey,
@@ -435,7 +435,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 					Resource:   []tektonv1.TaskRun{*successfulTaskRun},
 				},
 			})
-			existingSnapshot, err := adapter.loader.GetSnapshotFromPipelineRun(adapter.client, adapter.context, integrationPipelineRunComponent)
+			existingSnapshot, err := adapter.loader.GetSnapshotFromPipelineRun(adapter.context, adapter.client, integrationPipelineRunComponent)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(existingSnapshot).ToNot(BeNil())
 		})
@@ -553,7 +553,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				}
 				Expect(k8sClient.Status().Update(ctx, integrationPipelineRunComponentFailed)).Should(Succeed())
 
-				adapter = NewAdapter(integrationPipelineRunComponentFailed, hasApp, hasSnapshot, logger, loader.NewMockLoader(), k8sClient, ctx)
+				adapter = NewAdapter(ctx, integrationPipelineRunComponentFailed, hasApp, hasSnapshot, logger, loader.NewMockLoader(), k8sClient)
 				adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 					{
 						ContextKey: loader.ApplicationContextKey,
@@ -676,7 +676,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		It("ensures ephemeral environment is deleted for the given pipelineRun ", func() {
 			var buf bytes.Buffer
 			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
-			adapter = NewAdapter(integrationPipelineRunComponent, hasApp, hasSnapshot, log, loader.NewMockLoader(), k8sClient, ctx)
+			adapter = NewAdapter(ctx, integrationPipelineRunComponent, hasApp, hasSnapshot, log, loader.NewMockLoader(), k8sClient)
 			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
 					ContextKey: loader.ApplicationContextKey,
@@ -704,13 +704,13 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				},
 			})
 
-			dtc, _ := adapter.loader.GetDeploymentTargetClaimForEnvironment(k8sClient, adapter.context, hasEnv)
+			dtc, _ := adapter.loader.GetDeploymentTargetClaimForEnvironment(adapter.context, k8sClient, hasEnv)
 			Expect(dtc).NotTo(BeNil())
 
-			dt, _ := adapter.loader.GetDeploymentTargetForDeploymentTargetClaim(k8sClient, adapter.context, dtc)
+			dt, _ := adapter.loader.GetDeploymentTargetForDeploymentTargetClaim(adapter.context, k8sClient, dtc)
 			Expect(dt).NotTo(BeNil())
 
-			binding, _ := adapter.loader.FindExistingSnapshotEnvironmentBinding(k8sClient, adapter.context, hasApp, hasEnv)
+			binding, _ := adapter.loader.FindExistingSnapshotEnvironmentBinding(adapter.context, k8sClient, hasApp, hasEnv)
 			Expect(binding).NotTo(BeNil())
 
 			result, err := adapter.EnsureEphemeralEnvironmentsCleanedUp()
@@ -851,7 +851,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			}
 			Expect(k8sClient.Status().Update(ctx, integrationPipelineRunComponentFailed)).Should(Succeed())
 
-			adapter = NewAdapter(integrationPipelineRunComponentFailed, hasApp, hasSnapshot, logger, loader.NewMockLoader(), k8sClient, ctx)
+			adapter = NewAdapter(ctx, integrationPipelineRunComponentFailed, hasApp, hasSnapshot, logger, loader.NewMockLoader(), k8sClient)
 			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
 					ContextKey: loader.ApplicationContextKey,
@@ -942,7 +942,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			now := metav1.NewTime(metav1.Now().Add(time.Second * 1))
 			intgPipelineRunWithDeletionTimestamp.SetDeletionTimestamp(&now)
 
-			adapter = NewAdapter(intgPipelineRunWithDeletionTimestamp, hasApp, hasSnapshot, logger, loader.NewMockLoader(), k8sClient, ctx)
+			adapter = NewAdapter(ctx, intgPipelineRunWithDeletionTimestamp, hasApp, hasSnapshot, logger, loader.NewMockLoader(), k8sClient)
 		})
 
 		AfterEach(func() {
@@ -951,7 +951,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		})
 
 		It("ensures test status in snapshot is updated to failed", func() {
-			status, detail, err := adapter.GetIntegrationPipelineRunStatus(adapter.client, adapter.context, intgPipelineRunWithDeletionTimestamp)
+			status, detail, err := adapter.GetIntegrationPipelineRunStatus(adapter.context, adapter.client, intgPipelineRunWithDeletionTimestamp)
 
 			Expect(err).ToNot(HaveOccurred())
 			Expect(status).To(Equal(intgteststat.IntegrationTestStatusDeleted))
@@ -1062,7 +1062,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			}
 			Expect(k8sClient.Status().Update(ctx, intgPipelineInvalidResult)).Should(Succeed())
 
-			adapter = NewAdapter(intgPipelineInvalidResult, hasApp, hasSnapshot, logger, loader.NewMockLoader(), k8sClient, ctx)
+			adapter = NewAdapter(ctx, intgPipelineInvalidResult, hasApp, hasSnapshot, logger, loader.NewMockLoader(), k8sClient)
 			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
 					ContextKey: loader.AllTaskRunsWithMatchingPipelineRunLabelContextKey,
@@ -1079,7 +1079,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		})
 
 		It("ensures test status in snapshot is updated to failed", func() {
-			status, detail, err := adapter.GetIntegrationPipelineRunStatus(adapter.client, adapter.context, intgPipelineInvalidResult)
+			status, detail, err := adapter.GetIntegrationPipelineRunStatus(adapter.context, adapter.client, intgPipelineInvalidResult)
 
 			Expect(err).ToNot(HaveOccurred())
 			Expect(status).To(Equal(intgteststat.IntegrationTestStatusTestFail))
@@ -1089,11 +1089,11 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 
 	When("GetIntegrationPipelineRunStatus is called with a PLR with TaskRun, mentioned in its ChildReferences field, missing from the cluster", func() {
 		BeforeEach(func() {
-			adapter = NewAdapter(integrationPipelineRunComponent, hasApp, hasSnapshot, logger, loader.NewMockLoader(), k8sClient, ctx)
+			adapter = NewAdapter(ctx, integrationPipelineRunComponent, hasApp, hasSnapshot, logger, loader.NewMockLoader(), k8sClient)
 		})
 
 		It("ensures test status in snapshot is updated to failed", func() {
-			status, detail, err := adapter.GetIntegrationPipelineRunStatus(adapter.client, adapter.context, integrationPipelineRunComponent)
+			status, detail, err := adapter.GetIntegrationPipelineRunStatus(adapter.context, adapter.client, integrationPipelineRunComponent)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(status).To(Equal(intgteststat.IntegrationTestStatusTestInvalid))
 			Expect(detail).To(ContainSubstring(fmt.Sprintf("Failed to determine status of pipelinerun '%s', due to mismatch"+
@@ -1103,7 +1103,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 
 	When("GetIntegrationPipelineRunStatus is called with a PLR with TaskRun, mentioned in its ChildReferences field, present within the cluster", func() {
 		BeforeEach(func() {
-			adapter = NewAdapter(integrationPipelineRunComponent, hasApp, hasSnapshot, logger, loader.NewMockLoader(), k8sClient, ctx)
+			adapter = NewAdapter(ctx, integrationPipelineRunComponent, hasApp, hasSnapshot, logger, loader.NewMockLoader(), k8sClient)
 			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
 					ContextKey: loader.AllTaskRunsWithMatchingPipelineRunLabelContextKey,
@@ -1113,7 +1113,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		})
 
 		It("ensures test status in snapshot is updated to failed", func() {
-			status, detail, err := adapter.GetIntegrationPipelineRunStatus(adapter.client, adapter.context, integrationPipelineRunComponent)
+			status, detail, err := adapter.GetIntegrationPipelineRunStatus(adapter.context, adapter.client, integrationPipelineRunComponent)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(status).To(Equal(intgteststat.IntegrationTestStatusTestPassed))
 			Expect(detail).To(ContainSubstring("Integration test passed"))

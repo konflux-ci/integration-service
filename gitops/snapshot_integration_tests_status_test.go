@@ -169,7 +169,7 @@ var _ = Describe("Snapshot integration test statuses", func() {
 			It("Test results are written into snapshot", func() {
 				sits.UpdateTestStatusIfChanged(testScenarioName, intgteststat.IntegrationTestStatusInProgress, testDetails)
 
-				err := gitops.WriteIntegrationTestStatusesIntoSnapshot(snapshot, sits, k8sClient, ctx)
+				err := gitops.WriteIntegrationTestStatusesIntoSnapshot(ctx, snapshot, sits, k8sClient)
 				Expect(err).To(BeNil())
 				Expect(sits.IsDirty()).To(BeFalse())
 
