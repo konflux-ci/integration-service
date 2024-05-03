@@ -1,6 +1,6 @@
-# AppStudio Integration Service
-The AppStudio Integration Service is a Kubernetes operator to control the integration and testing of AppStudio-managed 
-Application Component builds in Red Hat AppStudio.
+# Konflux Integration Service
+The Konflux Integration Service is a Kubernetes operator to control the integration and testing of Konflux-managed
+Application Component builds in Red Hat Konflux.
 
 ## Running, building and testing the operator
 
