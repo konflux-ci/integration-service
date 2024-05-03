@@ -108,8 +108,15 @@ fmt: ## Run go fmt against code.
 vet: ## Run go vet against code.
 	go vet ./...
 
+.PHONY: download-crds
+download-crds: ## Vendoring doesn't fetch CRDs yaml files due pruning of dependencies, for testing we need to download full content of these modules with CRDs
+	# Ugly hack to download CRDs for tests, better solution is welcome
+	go mod download github.com/redhat-appstudio/application-api
+	go mod download github.com/redhat-appstudio/release-service
+	go mod download github.com/tektoncd/pipeline
+
 .PHONY: test
-test: manifests generate fmt vet envtest ## Run tests.
+test: manifests generate fmt vet envtest download-crds ## Run tests.
 	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) -p path)" go test ./... -coverprofile cover.out
 
 ##@ Build
