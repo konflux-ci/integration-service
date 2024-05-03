@@ -66,7 +66,6 @@ type TestContext struct {
 	Description string `json:"description,omitempty"`
 }
 
-// +kubebuilder:unservedversion
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="Application",type=string,JSONPath=`.spec.application`
@@ -88,4 +87,8 @@ type IntegrationTestScenarioList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []IntegrationTestScenario `json:"items"`
+}
+
+func init() {
+	SchemeBuilder.Register(&IntegrationTestScenario{}, &IntegrationTestScenarioList{})
 }
