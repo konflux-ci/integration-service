@@ -18,12 +18,13 @@ package tekton_test
 
 import (
 	"bytes"
-
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/redhat-appstudio/integration-service/api/v1beta2"
 	"github.com/redhat-appstudio/integration-service/helpers"
 	"github.com/tonglil/buflogr"
+	"os"
+	"time"
 
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/gitops"
@@ -304,6 +305,10 @@ var _ = Describe("Integration pipeline", func() {
 			WithExtraParams(enterpriseContractTestScenario.Spec.Params).
 			WithApplicationAndComponent(hasApp, hasComp)
 		Expect(k8sClient.Create(ctx, enterpriseContractPipelineRun.AsPipelineRun())).Should(Succeed())
+
+		os.Setenv("PIPELINE_TIMEOUT", "2h")
+		os.Setenv("TASKS_TIMEOUT", "2h")
+		os.Setenv("FINALLY_TIMEOUT", "2h")
 	})
 
 	AfterEach(func() {
@@ -320,6 +325,10 @@ var _ = Describe("Integration pipeline", func() {
 		_ = k8sClient.Delete(ctx, deploymentTargetClaim)
 		_ = k8sClient.Delete(ctx, deploymentTarget)
 		_ = k8sClient.Delete(ctx, newIntegrationPipelineRun.AsPipelineRun())
+
+		os.Setenv("PIPELINE_TIMEOUT", "")
+		os.Setenv("TASKS_TIMEOUT", "")
+		os.Setenv("FINALLY_TIMEOUT", "")
 	})
 
 	Context("When managing a new IntegrationPipelineRun", func() {
@@ -328,6 +337,41 @@ var _ = Describe("Integration pipeline", func() {
 				Should(HavePrefix(prefix))
 			Expect(newIntegrationPipelineRun.ObjectMeta.Namespace).To(Equal(namespace))
 			Expect(string(enterpriseContractPipelineRun.Spec.PipelineRef.ResolverRef.Resolver)).To(Equal("git"))
+		})
+
+		It("can add timeouts to the IntegrationPipelineRun according to the environment variables", func() {
+			var buf bytes.Buffer
+			expectedDuration, _ := time.ParseDuration("2h")
+			newIntegrationPipelineRun.WithDefaultIntegrationTimeouts(buflogr.NewWithBuffer(&buf))
+
+			Expect(newIntegrationPipelineRun.Spec.Timeouts.Pipeline.Duration).To(Equal(expectedDuration))
+			Expect(newIntegrationPipelineRun.Spec.Timeouts.Tasks.Duration).To(Equal(expectedDuration))
+			Expect(newIntegrationPipelineRun.Spec.Timeouts.Finally.Duration).To(Equal(expectedDuration))
+
+			// The pipelineRun timeouts should be empty if environment vars are not set
+			os.Setenv("PIPELINE_TIMEOUT", "")
+			os.Setenv("TASKS_TIMEOUT", "")
+			os.Setenv("FINALLY_TIMEOUT", "")
+			newIntegrationPipelineRun.WithDefaultIntegrationTimeouts(buflogr.NewWithBuffer(&buf))
+
+			Expect(newIntegrationPipelineRun.Spec.Timeouts.Pipeline).To(BeNil())
+			Expect(newIntegrationPipelineRun.Spec.Timeouts.Tasks).To(BeNil())
+			Expect(newIntegrationPipelineRun.Spec.Timeouts.Finally).To(BeNil())
+
+			// Set the timeouts to invalid strings, which should skip setting the timeouts
+			os.Setenv("PIPELINE_TIMEOUT", "thisIsNotAValidDuration!")
+			os.Setenv("TASKS_TIMEOUT", "thisIsNotAValidDuration!")
+			os.Setenv("FINALLY_TIMEOUT", "thisIsNotAValidDuration!")
+			newIntegrationPipelineRun.WithDefaultIntegrationTimeouts(buflogr.NewWithBuffer(&buf))
+
+			Expect(newIntegrationPipelineRun.Spec.Timeouts.Pipeline).To(BeNil())
+			Expect(newIntegrationPipelineRun.Spec.Timeouts.Tasks).To(BeNil())
+			Expect(newIntegrationPipelineRun.Spec.Timeouts.Finally).To(BeNil())
+
+			expectedLogEntryPrefix := "failed to parse default"
+			Expect(buf.String()).Should(ContainSubstring(expectedLogEntryPrefix + " PIPELINE_TIMEOUT"))
+			Expect(buf.String()).Should(ContainSubstring(expectedLogEntryPrefix + " TASKS_TIMEOUT"))
+			Expect(buf.String()).Should(ContainSubstring(expectedLogEntryPrefix + " FINALLY_TIMEOUT"))
 		})
 
 		It("can add and remove finalizer from IntegrationPipelineRun", func() {

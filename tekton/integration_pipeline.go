@@ -22,13 +22,16 @@ import (
 	"reflect"
 	"strings"
 
+	"github.com/go-logr/logr"
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	"github.com/redhat-appstudio/integration-service/api/v1beta2"
 	"github.com/redhat-appstudio/operator-toolkit/metadata"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"os"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"time"
 )
 
 const (
@@ -243,6 +246,41 @@ func (r *IntegrationPipelineRun) WithEnvironmentAndDeploymentTarget(dt *applicat
 		r.ObjectMeta.Labels = map[string]string{}
 	}
 	r.ObjectMeta.Labels[EnvironmentNameLabel] = environmentName
+
+	return r
+}
+
+// WithDefaultIntegrationTimeouts fetches the default Integration timeouts from the environment variables and adds them
+// to the integration PipelineRun.
+func (r *IntegrationPipelineRun) WithDefaultIntegrationTimeouts(logger logr.Logger) *IntegrationPipelineRun {
+	pipelineTimeoutStr := os.Getenv("PIPELINE_TIMEOUT")
+	taskTimeoutStr := os.Getenv("TASKS_TIMEOUT")
+	finallyTimeoutStr := os.Getenv("FINALLY_TIMEOUT")
+	r.Spec.Timeouts = &tektonv1.TimeoutFields{}
+	if pipelineTimeoutStr != "" {
+		pipelineRunTimeout, err := time.ParseDuration(pipelineTimeoutStr)
+		if err == nil {
+			r.Spec.Timeouts.Pipeline = &metav1.Duration{Duration: pipelineRunTimeout}
+		} else {
+			logger.Error(err, "failed to parse default PIPELINE_TIMEOUT")
+		}
+	}
+	if taskTimeoutStr != "" {
+		taskTimeout, err := time.ParseDuration(taskTimeoutStr)
+		if err == nil {
+			r.Spec.Timeouts.Tasks = &metav1.Duration{Duration: taskTimeout}
+		} else {
+			logger.Error(err, "failed to parse default TASKS_TIMEOUT")
+		}
+	}
+	if finallyTimeoutStr != "" {
+		finallyTimeout, err := time.ParseDuration(finallyTimeoutStr)
+		if err == nil {
+			r.Spec.Timeouts.Finally = &metav1.Duration{Duration: finallyTimeout}
+		} else {
+			logger.Error(err, "failed to parse default FINALLY_TIMEOUT")
+		}
+	}
 
 	return r
 }
