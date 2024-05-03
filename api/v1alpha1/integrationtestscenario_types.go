@@ -66,7 +66,6 @@ type TestContext struct {
 	Description string `json:"description,omitempty"`
 }
 
-// +kubebuilder:unservedversion
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="Application",type=string,JSONPath=`.spec.application`
