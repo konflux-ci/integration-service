@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package buildpipeline
+package scenario
 
 import (
 	"context"
@@ -23,6 +23,9 @@ import (
 	"testing"
 
 	"sigs.k8s.io/controller-runtime/pkg/metrics/server"
+
+	"github.com/redhat-appstudio/integration-service/api/v1beta2"
+	toolkit "github.com/redhat-appstudio/operator-toolkit/test"
 
 	"k8s.io/client-go/rest"
 
@@ -34,9 +37,6 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
-	"github.com/redhat-appstudio/integration-service/api/v1beta2"
-
-	toolkit "github.com/redhat-appstudio/operator-toolkit/test"
 	releasev1alpha1 "github.com/redhat-appstudio/release-service/api/v1alpha1"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	clientsetscheme "k8s.io/client-go/kubernetes/scheme"
@@ -52,9 +52,9 @@ var (
 	cancel    context.CancelFunc
 )
 
-func TestControllerPipeline(t *testing.T) {
+func TestControllerSnapshot(t *testing.T) {
 	RegisterFailHandler(Fail)
-	RunSpecs(t, "Build Pipeline Controller Test Suite")
+	RunSpecs(t, "Snapshot Controller Test Suite")
 }
 
 var _ = BeforeSuite(func() {
@@ -64,7 +64,7 @@ var _ = BeforeSuite(func() {
 	//adding required CRDs, including tekton for PipelineRun Kind
 	testEnv = &envtest.Environment{
 		CRDDirectoryPaths: []string{
-			filepath.Join("..", "..", "config", "crd", "bases"),
+			filepath.Join("..", "..", "..", "config", "crd", "bases"),
 			filepath.Join(
 				build.Default.GOPATH,
 				"pkg", "mod", toolkit.GetRelativeDependencyPath("tektoncd/pipeline"), "config",
