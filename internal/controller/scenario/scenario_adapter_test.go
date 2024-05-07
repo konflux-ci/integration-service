@@ -17,21 +17,16 @@ limitations under the License.
 package scenario
 
 import (
-	"bytes"
 	"reflect"
 	"time"
 
 	"github.com/konflux-ci/integration-service/loader"
-	"github.com/tonglil/buflogr"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
-
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
 	ctrl "sigs.k8s.io/controller-runtime"
 
 	"github.com/konflux-ci/integration-service/api/v1beta2"
-	"github.com/konflux-ci/integration-service/gitops"
 	"github.com/konflux-ci/integration-service/helpers"
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 
@@ -204,85 +199,5 @@ var _ = Describe("Scenario Adapter", Ordered, func() {
 			result, err := adapter.EnsureCreatedScenarioIsValid()
 			return !result.CancelRequest && err == nil
 		}, time.Second*20).Should(BeTrue())
-	})
-
-	When("IntegrationTestScenario is deleted while environment resources are still on the cluster", func() {
-		var (
-			ephemeralEnvironment  *applicationapiv1alpha1.Environment
-			deploymentTargetClaim *applicationapiv1alpha1.DeploymentTargetClaim
-		)
-
-		BeforeEach(func() {
-			deploymentTargetClaim = &applicationapiv1alpha1.DeploymentTargetClaim{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "dtcname",
-					Namespace: "default",
-				},
-				Spec: applicationapiv1alpha1.DeploymentTargetClaimSpec{
-					DeploymentTargetClassName: "dtcls-name",
-					TargetName:                "deploymentTarget",
-				},
-			}
-			Expect(k8sClient.Create(ctx, deploymentTargetClaim)).Should(Succeed())
-
-			ephemeralEnvironment = &applicationapiv1alpha1.Environment{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "ephemeral-env",
-					Namespace: "default",
-					Labels: map[string]string{
-						gitops.SnapshotTestScenarioLabel: integrationTestScenario.Name,
-					},
-				},
-				Spec: applicationapiv1alpha1.EnvironmentSpec{
-					Type:               "POC",
-					DisplayName:        "my-environment",
-					DeploymentStrategy: applicationapiv1alpha1.DeploymentStrategy_Manual,
-					ParentEnvironment:  "",
-					Tags:               []string{"ephemeral"},
-					Configuration: applicationapiv1alpha1.EnvironmentConfiguration{
-						Env: []applicationapiv1alpha1.EnvVarPair{
-							{
-								Name:  "var_name",
-								Value: "test",
-							},
-						},
-						Target: applicationapiv1alpha1.EnvironmentTarget{
-							DeploymentTargetClaim: applicationapiv1alpha1.DeploymentTargetClaimConfig{
-								ClaimName: deploymentTargetClaim.Name,
-							},
-						},
-					},
-				},
-			}
-			Expect(k8sClient.Create(ctx, ephemeralEnvironment)).Should(Succeed())
-		})
-
-		AfterEach(func() {
-			err := k8sClient.Delete(ctx, deploymentTargetClaim)
-			Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
-			err = k8sClient.Delete(ctx, ephemeralEnvironment)
-			Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
-		})
-
-		It("ensures the integrationTestScenario deletion cleans up related environment resources", func() {
-			var buf bytes.Buffer
-			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
-
-			deletedIntegrationTestScenario := integrationTestScenario.DeepCopy()
-			controllerutil.AddFinalizer(deletedIntegrationTestScenario, helpers.IntegrationTestScenarioFinalizer)
-			now := metav1.NewTime(metav1.Now().Add(time.Second * 1))
-			deletedIntegrationTestScenario.SetDeletionTimestamp(&now)
-			adapter = NewAdapter(ctx, hasApp, deletedIntegrationTestScenario, log, loader.NewMockLoader(), k8sClient)
-
-			Eventually(func() bool {
-				result, err := adapter.EnsureDeletedScenarioResourcesAreCleanedUp()
-				return !result.CancelRequest && err == nil
-			}, time.Second*20).Should(BeTrue())
-
-			expectedLogEntry := "Removed Finalizer from the IntegrationTestScenario"
-			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
-
-			Expect(controllerutil.ContainsFinalizer(deletedIntegrationTestScenario, helpers.IntegrationTestScenarioFinalizer)).To(BeFalse())
-		})
 	})
 })

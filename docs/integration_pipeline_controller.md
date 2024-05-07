@@ -16,15 +16,11 @@ flowchart TD
   is_snapshot_of_pr_event{Is <br> Snapshot created<br> for Pull requests?}
   is_plr_finished_or_getting_deleted{Is <br> Integration PLR <br> finished or marked for<br> deletion?}
   remove_finalizer(Remove <br> `test.appstudio.openshift.io/pipelinerun`<br> finalizer)
-  clean_environment(Clean up ephemeral environment <br> if testing finished)
   error(Return error)
-  requeue(Requeue)
   continue1(Continue processing)
-  continue2(Continue processing)
 
   %% Node connections
   predicate                                   --> get_resources
-  predicate                                   --> clean_environment
   get_resources     --No                      --> error
   get_resources     --Yes                     --> report_status_snapshot
   report_status_snapshot                      --> is_snapshot_of_pr_event
@@ -33,8 +29,6 @@ flowchart TD
   is_plr_finished_or_getting_deleted --Yes    --> remove_finalizer
   is_plr_finished_or_getting_deleted --No     --> continue1
   remove_finalizer                            --> continue1
-  clean_environment --No                      --> requeue
-  clean_environment --yes                     ---> continue2
 
   %% Assigning styles to nodes
   class predicate Amber;
