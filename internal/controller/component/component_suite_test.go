@@ -1,5 +1,5 @@
 /*
-Copyright 2022 Red Hat Inc.
+Copyright 2022.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package snapshot
+package component
 
 import (
 	"context"
@@ -52,9 +52,9 @@ var (
 	cancel    context.CancelFunc
 )
 
-func TestControllerSnapshot(t *testing.T) {
+func TestControllerComponent(t *testing.T) {
 	RegisterFailHandler(Fail)
-	RunSpecs(t, "Snapshot Controller Test Suite")
+	RunSpecs(t, "Component Controller Test Suite")
 }
 
 var _ = BeforeSuite(func() {
@@ -64,7 +64,7 @@ var _ = BeforeSuite(func() {
 	//adding required CRDs, including tekton for PipelineRun Kind
 	testEnv = &envtest.Environment{
 		CRDDirectoryPaths: []string{
-			filepath.Join("..", "..", "config", "crd", "bases"),
+			filepath.Join("..", "..", "..", "config", "crd", "bases"),
 			filepath.Join(
 				build.Default.GOPATH,
 				"pkg", "mod", toolkit.GetRelativeDependencyPath("tektoncd/pipeline"), "config",
