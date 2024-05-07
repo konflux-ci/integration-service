@@ -21,8 +21,6 @@ import (
 	"fmt"
 	"strings"
 
-	"k8s.io/apimachinery/pkg/api/errors"
-
 	"github.com/konflux-ci/integration-service/gitops"
 	h "github.com/konflux-ci/integration-service/helpers"
 	"github.com/konflux-ci/integration-service/loader"
@@ -107,48 +105,6 @@ func (a *Adapter) EnsureStatusReportedInSnapshot() (controller.OperationResult, 
 		err = h.RemoveFinalizerFromPipelineRun(a.context, a.client, a.logger, a.pipelineRun, h.IntegrationPipelineRunFinalizer)
 		if err != nil {
 			return controller.RequeueWithError(fmt.Errorf("failed to remove the finalizer: %w", err))
-		}
-	}
-
-	return controller.ContinueProcessing()
-}
-
-// EnsureEphemeralEnvironmentsCleanedUp will ensure that ephemeral environment(s) associated with the
-// integration PipelineRun are cleaned up.
-func (a *Adapter) EnsureEphemeralEnvironmentsCleanedUp() (controller.OperationResult, error) {
-	if !h.HasPipelineRunFinished(a.pipelineRun) {
-		return controller.ContinueProcessing()
-	}
-
-	testEnvironment, err := a.loader.GetEnvironmentFromIntegrationPipelineRun(a.context, a.client, a.pipelineRun)
-	if err != nil && !errors.IsNotFound(err) {
-		a.logger.Error(err, "Failed to find the environment for the pipelineRun")
-		return controller.RequeueWithError(err)
-	}
-	if testEnvironment == nil {
-		a.logger.Info("The pipelineRun does not have any test Environments associated with it, skipping cleanup.")
-		return controller.ContinueProcessing()
-	}
-
-	isEphemeral := h.IsEnvironmentEphemeral(testEnvironment)
-
-	if isEphemeral {
-		dtc, err := a.loader.GetDeploymentTargetClaimForEnvironment(a.context, a.client, testEnvironment)
-		if err != nil || dtc == nil {
-			a.logger.Error(err, "Failed to find deploymentTargetClaim defined in environment", "environment.Name", testEnvironment.Name)
-			return controller.RequeueWithError(err)
-		}
-
-		binding, err := a.loader.FindExistingSnapshotEnvironmentBinding(a.context, a.client, a.application, testEnvironment)
-		if err != nil || binding == nil {
-			a.logger.Error(err, "Failed to find snapshotEnvironmentBinding associated with environment", "environment.Name", testEnvironment.Name)
-			return controller.RequeueWithError(err)
-		}
-
-		err = h.CleanUpEphemeralEnvironments(a.context, a.client, &a.logger, testEnvironment, dtc)
-		if err != nil {
-			a.logger.Error(err, "Failed to delete the Ephemeral Environment")
-			return controller.RequeueWithError(err)
 		}
 	}
 

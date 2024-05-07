@@ -20,11 +20,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/konflux-ci/integration-service/api/v1beta2"
 	"reflect"
 	"sort"
 	"time"
 
-	"github.com/konflux-ci/integration-service/api/v1beta2"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"k8s.io/apimachinery/pkg/types"
@@ -378,36 +378,6 @@ func HasPipelineRunFinished(object client.Object) bool {
 	return false
 }
 
-func IsEnvironmentEphemeral(testEnvironment *applicationapiv1alpha1.Environment) bool {
-	isEphemeral := false
-	for _, tag := range testEnvironment.Spec.Tags {
-		if tag == "ephemeral" {
-			isEphemeral = true
-			break
-		}
-	}
-	return isEphemeral
-}
-
-func CleanUpEphemeralEnvironments(ctx context.Context, client client.Client, logger *IntegrationLogger, env *applicationapiv1alpha1.Environment, dtc *applicationapiv1alpha1.DeploymentTargetClaim) error {
-	logger.Info("Deleting deploymentTargetClaim", "deploymentTargetClaim.Name", dtc.Name)
-	err := client.Delete(ctx, dtc)
-	if err != nil {
-		logger.Error(err, "Failed to delete the deploymentTargetClaim")
-		return err
-	}
-	logger.LogAuditEvent("DeploymentTargetClaim deleted", dtc, LogActionDelete)
-
-	logger.Info("Deleting environment", "environment.Name", env.Name)
-	err = client.Delete(ctx, env)
-	if err != nil {
-		logger.Error(err, "Failed to delete the test ephemeral environment and its owning snapshotEnvironmentBinding", "environment.Name", env.Name)
-		return err
-	}
-	logger.LogAuditEvent("Ephemeral environment is deleted and its owning SnapshotEnvironmentBinding is in the process of being deleted", env, LogActionDelete)
-	return nil
-}
-
 // RemoveFinalizerFromAllIntegrationPipelineRunsOfSnapshot fetches all the Integration
 // PipelineRuns associated with the given Snapshot. After fetching them, it removes the
 // finalizer from the PipelineRun, and returns error if any.
@@ -518,22 +488,6 @@ func RemoveFinalizerFromScenario(ctx context.Context, adapterClient client.Clien
 		}
 
 		logger.LogAuditEvent("Removed Finalizer from the IntegrationTestScenario", scenario, LogActionUpdate, "finalizer", finalizer)
-	}
-
-	return nil
-}
-
-// AddFinalizerToScenario adds the finalizer to the IntegrationTestScenario.
-// If finalizer was not added successfully, a non-nil error is returned.
-func AddFinalizerToScenario(ctx context.Context, adapterClient client.Client, logger IntegrationLogger, scenario *v1beta2.IntegrationTestScenario, finalizer string) error {
-	patch := client.MergeFrom(scenario.DeepCopy())
-	if ok := controllerutil.AddFinalizer(scenario, finalizer); ok {
-		err := adapterClient.Patch(ctx, scenario, patch)
-		if err != nil {
-			return fmt.Errorf("error occurred while patching the updated IntegrationTestScenario after finalizer addition: %w", err)
-		}
-
-		logger.LogAuditEvent("Added Finalizer to the IntegrationTestScenario", scenario, LogActionUpdate, "finalizer", finalizer)
 	}
 
 	return nil

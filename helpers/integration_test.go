@@ -19,6 +19,7 @@ package helpers_test
 import (
 	"bytes"
 	"fmt"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"time"
 
 	"github.com/konflux-ci/integration-service/api/v1beta2"
@@ -35,6 +36,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"knative.dev/pkg/apis"
 	v1 "knative.dev/pkg/apis/duck/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 var _ = Describe("Pipeline Adapter", Ordered, func() {
@@ -1032,20 +1034,20 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		Expect(taskRuns).To(BeNil())
 	})
 
-	It("can add and remove finalizer from an IntegrationTestScenario", func() {
+	It("can remove finalizer from an IntegrationTestScenario", func() {
 		var buf bytes.Buffer
 
-		// calling AddFinalizerToScenario() when the IntegrationTestScenario doesn't contain the finalizer
-		log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
-		Expect(helpers.AddFinalizerToScenario(ctx, k8sClient, log, integrationTestScenario, helpers.IntegrationTestScenarioFinalizer)).To(Succeed())
+		var patch = client.MergeFrom(integrationTestScenario.DeepCopy())
+		if ok := controllerutil.AddFinalizer(integrationTestScenario, helpers.IntegrationTestScenarioFinalizer); ok {
+			_ = k8sClient.Patch(ctx, integrationTestScenario, patch)
+		}
 		Expect(integrationTestScenario.Finalizers).To(ContainElement(ContainSubstring(helpers.IntegrationTestScenarioFinalizer)))
-		logEntry := "Added Finalizer to the IntegrationTestScenario"
-		Expect(buf.String()).Should(ContainSubstring(logEntry))
 
 		// calling RemoveFinalizerFromScenario() when the IntegrationTestScenario contains the finalizer
+		log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
 		Expect(helpers.RemoveFinalizerFromScenario(ctx, k8sClient, log, integrationTestScenario, helpers.IntegrationTestScenarioFinalizer)).To(Succeed())
 		Expect(integrationTestScenario.Finalizers).NotTo(ContainElement(ContainSubstring(helpers.IntegrationTestScenarioFinalizer)))
-		logEntry = "Removed Finalizer from the IntegrationTestScenario"
+		logEntry := "Removed Finalizer from the IntegrationTestScenario"
 		Expect(buf.String()).Should(ContainSubstring(logEntry))
 	})
 

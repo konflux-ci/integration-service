@@ -17,7 +17,6 @@ limitations under the License.
 package integrationpipeline
 
 import (
-	"bytes"
 	"fmt"
 	"reflect"
 	"time"
@@ -41,7 +40,6 @@ import (
 
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
-	"github.com/tonglil/buflogr"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -61,10 +59,6 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		hasSnapshot                           *applicationapiv1alpha1.Snapshot
 		snapshotPREvent                       *applicationapiv1alpha1.Snapshot
 		hasEnv                                *applicationapiv1alpha1.Environment
-		deploymentTarget                      *applicationapiv1alpha1.DeploymentTarget
-		deploymentTargetClaim                 *applicationapiv1alpha1.DeploymentTargetClaim
-		deploymentTargetClass                 *applicationapiv1alpha1.DeploymentTargetClass
-		snapshotEnvironmentBinding            *applicationapiv1alpha1.SnapshotEnvironmentBinding
 		integrationTestScenario               *v1beta2.IntegrationTestScenario
 		integrationTestScenarioFailed         *v1beta2.IntegrationTestScenario
 	)
@@ -609,119 +603,6 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			})
 		})
 
-	})
-
-	When("EnsureEphemeralEnvironmentsCleanedUp is called", func() {
-		BeforeEach(func() {
-			deploymentTargetClass = &applicationapiv1alpha1.DeploymentTargetClass{
-				ObjectMeta: metav1.ObjectMeta{
-					GenerateName: "dtcls" + "-",
-				},
-				Spec: applicationapiv1alpha1.DeploymentTargetClassSpec{
-					Provisioner: applicationapiv1alpha1.Provisioner_Devsandbox,
-				},
-			}
-			Expect(k8sClient.Create(ctx, deploymentTargetClass)).Should(Succeed())
-
-			deploymentTarget = &applicationapiv1alpha1.DeploymentTarget{
-				ObjectMeta: metav1.ObjectMeta{
-					GenerateName: "dt" + "-",
-					Namespace:    "default",
-				},
-				Spec: applicationapiv1alpha1.DeploymentTargetSpec{
-					DeploymentTargetClassName: "dtcls-name",
-					KubernetesClusterCredentials: applicationapiv1alpha1.DeploymentTargetKubernetesClusterCredentials{
-						DefaultNamespace:           "default",
-						APIURL:                     "https://url",
-						ClusterCredentialsSecret:   "secret-sample",
-						AllowInsecureSkipTLSVerify: false,
-					},
-				},
-			}
-			Expect(k8sClient.Create(ctx, deploymentTarget)).Should(Succeed())
-
-			deploymentTargetClaim = &applicationapiv1alpha1.DeploymentTargetClaim{
-				ObjectMeta: metav1.ObjectMeta{
-					GenerateName: "dtc" + "-",
-					Namespace:    "default",
-				},
-				Spec: applicationapiv1alpha1.DeploymentTargetClaimSpec{
-					DeploymentTargetClassName: applicationapiv1alpha1.DeploymentTargetClassName("dtcls-name"),
-					TargetName:                deploymentTarget.Name,
-				},
-			}
-			Expect(k8sClient.Create(ctx, deploymentTargetClaim)).Should(Succeed())
-
-			snapshotEnvironmentBinding = &applicationapiv1alpha1.SnapshotEnvironmentBinding{
-				ObjectMeta: metav1.ObjectMeta{
-					GenerateName: "binding" + "-",
-					Namespace:    "default",
-				},
-				Spec: applicationapiv1alpha1.SnapshotEnvironmentBindingSpec{
-					Application: hasApp.Name,
-					Environment: hasEnv.Name,
-					Snapshot:    hasSnapshot.Name,
-					Components:  []applicationapiv1alpha1.BindingComponent{},
-				},
-			}
-			Expect(k8sClient.Create(ctx, snapshotEnvironmentBinding)).Should(Succeed())
-
-			hasEnv.Spec.Configuration.Target = applicationapiv1alpha1.EnvironmentTarget{
-				DeploymentTargetClaim: applicationapiv1alpha1.DeploymentTargetClaimConfig{
-					ClaimName: deploymentTargetClaim.Name,
-				},
-			}
-			Expect(k8sClient.Update(ctx, hasEnv)).Should(Succeed())
-		})
-		It("ensures ephemeral environment is deleted for the given pipelineRun ", func() {
-			var buf bytes.Buffer
-			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
-			adapter = NewAdapter(ctx, integrationPipelineRunComponent, hasApp, hasSnapshot, log, loader.NewMockLoader(), k8sClient)
-			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
-				{
-					ContextKey: loader.ApplicationContextKey,
-					Resource:   hasApp,
-				},
-				{
-					ContextKey: loader.EnvironmentContextKey,
-					Resource:   hasEnv,
-				},
-				{
-					ContextKey: loader.PipelineRunsContextKey,
-					Resource:   []tektonv1.PipelineRun{*integrationPipelineRunComponent},
-				},
-				{
-					ContextKey: loader.SnapshotEnvironmentBindingContextKey,
-					Resource:   snapshotEnvironmentBinding,
-				},
-				{
-					ContextKey: loader.DeploymentTargetContextKey,
-					Resource:   deploymentTarget,
-				},
-				{
-					ContextKey: loader.DeploymentTargetClaimContextKey,
-					Resource:   deploymentTargetClaim,
-				},
-			})
-
-			dtc, _ := adapter.loader.GetDeploymentTargetClaimForEnvironment(adapter.context, k8sClient, hasEnv)
-			Expect(dtc).NotTo(BeNil())
-
-			dt, _ := adapter.loader.GetDeploymentTargetForDeploymentTargetClaim(adapter.context, k8sClient, dtc)
-			Expect(dt).NotTo(BeNil())
-
-			binding, _ := adapter.loader.FindExistingSnapshotEnvironmentBinding(adapter.context, k8sClient, hasApp, hasEnv)
-			Expect(binding).NotTo(BeNil())
-
-			result, err := adapter.EnsureEphemeralEnvironmentsCleanedUp()
-			Expect(!result.CancelRequest && err == nil).To(BeTrue())
-
-			expectedLogEntry := "DeploymentTargetClaim deleted"
-			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
-
-			expectedLogEntry = "Ephemeral environment is deleted and its owning SnapshotEnvironmentBinding is in the process of being deleted"
-			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
-		})
 	})
 
 	When("EnsureStatusReportedInSnapshot is called with a PLR related to PR event", func() {
