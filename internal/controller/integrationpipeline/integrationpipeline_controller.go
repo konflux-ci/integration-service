@@ -118,14 +118,12 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 
 	return controller.ReconcileHandler([]controller.Operation{
 		adapter.EnsureStatusReportedInSnapshot,
-		adapter.EnsureEphemeralEnvironmentsCleanedUp,
 	})
 }
 
 // AdapterInterface is an interface defining all the operations that should be defined in an Integration adapter.
 type AdapterInterface interface {
 	EnsureStatusReportedInSnapshot() (controller.OperationResult, error)
-	EnsureEphemeralEnvironmentsCleanedUp() (controller.OperationResult, error)
 }
 
 // SetupController creates a new Integration controller and adds it to the Manager.
