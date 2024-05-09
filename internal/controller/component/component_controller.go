@@ -72,7 +72,12 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	application, err = loader.GetApplicationFromComponent(ctx, r.Client, component)
 	if err != nil {
 		if errors.IsNotFound(err) {
-			if err := helpers.RemoveFinalizerFromComponent(ctx, r.Client, logger, component, helpers.ComponentFinalizer); err != nil {
+			if isComponentMarkedForDeletion(component) {
+				component, err = loader.GetComponent(ctx, r.Client, component.Name, component.Namespace)
+				if err := helpers.RemoveFinalizerFromComponent(ctx, r.Client, logger, component, helpers.ComponentFinalizer); err != nil {
+					return ctrl.Result{}, err
+				}
+			} else {
 				return ctrl.Result{}, err
 			}
 		}
