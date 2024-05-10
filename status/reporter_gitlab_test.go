@@ -21,6 +21,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
+
 	"github.com/go-logr/logr"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -28,11 +32,8 @@ import (
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	"github.com/tonglil/buflogr"
 	gitlab "github.com/xanzy/go-gitlab"
-	"io"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"net/http"
-	"net/http/httptest"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/redhat-appstudio/integration-service/gitops"
@@ -208,6 +209,27 @@ var _ = Describe("GitLabReporter", func() {
 					Status:       integrationteststatus.IntegrationTestStatusEnvironmentProvisionError_Deprecated,
 					Summary:      summary,
 					Text:         "detailed text here",
+				})).To(Succeed())
+		})
+
+		It("creates a commit status for snapshot with TargetURL in CommitStatus", func() {
+
+			PipelineRunName := "TestPipeline"
+			expectedURL := status.FormatPipelineURL(PipelineRunName, hasSnapshot.Namespace, logr.Discard())
+
+			muxCommitStatusPost(mux, sourceProjectID, digest, expectedURL)
+			muxMergeNotes(mux, sourceProjectID, mergeRequest, "")
+			muxCommitStatusesGet(mux, sourceProjectID, digest, nil)
+
+			Expect(reporter.ReportStatus(
+				context.TODO(),
+				status.TestReport{
+					FullName:            "fullname/scenario1",
+					ScenarioName:        "scenario1",
+					TestPipelineRunName: PipelineRunName,
+					Status:              integrationteststatus.IntegrationTestStatusInProgress,
+					Summary:             "summary",
+					Text:                "detailed text here",
 				})).To(Succeed())
 		})
 
