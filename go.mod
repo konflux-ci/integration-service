@@ -11,7 +11,7 @@ require (
 	github.com/onsi/ginkgo/v2 v2.17.3
 	github.com/onsi/gomega v1.33.1
 	github.com/openshift-pipelines/pipelines-as-code v0.17.2
-	github.com/prometheus/client_golang v1.19.0
+	github.com/prometheus/client_golang v1.19.1
 	github.com/redhat-appstudio/application-api v0.0.0-20231025105224-2790bb451725
 	github.com/redhat-appstudio/operator-toolkit v0.0.0-20231201124606-2087182322ae
 	github.com/redhat-appstudio/release-service v0.0.0-20231107140301-56ac66b56719
