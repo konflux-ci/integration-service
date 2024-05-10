@@ -58,9 +58,13 @@ func (src *IntegrationTestScenario) ConvertTo(dstRaw conversion.Hub) error {
 
 	if src.Spec.ResolverRef.Params != nil {
 		for _, par := range src.Spec.ResolverRef.Params {
-			dst.Spec.ResolverRef.Params = append(dst.Spec.ResolverRef.Params, v1beta2.ResolverParameter(par))
+			dst.Spec.ResolverRef.Params = append(dst.Spec.ResolverRef.Params, v1beta2.ResolverParameter{
+				Name:  par.Name,
+				Value: par.Value,
+			})
 		}
 	}
+
 	return nil
 }
 
@@ -83,12 +87,15 @@ func (dst *IntegrationTestScenario) ConvertFrom(srcRaw conversion.Hub) error {
 	if src.Status.Conditions != nil {
 		dst.Status.Conditions = append(dst.Status.Conditions, src.Status.Conditions...)
 	}
-	src.Spec.ResolverRef = v1beta2.ResolverRef{
-		Resolver: dst.Spec.ResolverRef.Resolver,
+	dst.Spec.ResolverRef = ResolverRef{
+		Resolver: src.Spec.ResolverRef.Resolver,
 	}
 	if src.Spec.ResolverRef.Params != nil {
 		for _, par := range src.Spec.ResolverRef.Params {
-			dst.Spec.ResolverRef.Params = append(dst.Spec.ResolverRef.Params, ResolverParameter(par))
+			dst.Spec.ResolverRef.Params = append(dst.Spec.ResolverRef.Params, ResolverParameter{
+				Name:  par.Name,
+				Value: par.Value,
+			})
 		}
 	}
 
