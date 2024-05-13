@@ -131,13 +131,14 @@ func (a *Adapter) EnsureSnapshotFinishedAllTests() (controller.OperationResult, 
 	if err != nil {
 		return controller.RequeueWithError(err)
 	}
+	a.logger.Info("Found %d required integration test scenarios", len(*integrationTestScenarios))
 
 	testStatuses, err := gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(a.snapshot)
 	if err != nil {
 		return controller.RequeueWithError(err)
 	}
 
-	allIntegrationTestsFinished, allIntegrationTestsPassed := a.determineIfAllIntegrationTestsFinishedAndPassed(integrationTestScenarios, testStatuses)
+	allIntegrationTestsFinished, allIntegrationTestsPassed := a.determineIfAllRequiredIntegrationTestsFinishedAndPassed(integrationTestScenarios, testStatuses)
 	if err != nil {
 		a.logger.Error(err, "Failed to determine outcomes for Integration Tests",
 			"snapshot.Name", a.snapshot.Name)
@@ -244,21 +245,29 @@ func (a *Adapter) EnsureSnapshotFinishedAllTests() (controller.OperationResult, 
 	return controller.ContinueProcessing()
 }
 
-// determineIfAllIntegrationTestsFinishedAndPassed checks if all Integration tests finished and passed for the given
+// determineIfAllRequiredIntegrationTestsFinishedAndPassed checks if all Integration tests finished and passed for the given
 // list of integrationTestScenarios.
-func (a *Adapter) determineIfAllIntegrationTestsFinishedAndPassed(integrationTestScenarios *[]v1beta2.IntegrationTestScenario, testStatuses *intgteststat.SnapshotIntegrationTestStatuses) (bool, bool) {
+func (a *Adapter) determineIfAllRequiredIntegrationTestsFinishedAndPassed(integrationTestScenarios *[]v1beta2.IntegrationTestScenario, testStatuses *intgteststat.SnapshotIntegrationTestStatuses) (bool, bool) {
 	allIntegrationTestsFinished, allIntegrationTestsPassed := true, true
+	integrationTestsFinished := 0
+	integrationTestsPassed := 0
+
 	for _, integrationTestScenario := range *integrationTestScenarios {
 		integrationTestScenario := integrationTestScenario // G601
 		testDetails, ok := testStatuses.GetScenarioStatus(integrationTestScenario.Name)
 		if !ok || !testDetails.Status.IsFinal() {
 			allIntegrationTestsFinished = false
+		} else {
+			integrationTestsFinished++
 		}
 		if ok && testDetails.Status != intgteststat.IntegrationTestStatusTestPassed {
 			allIntegrationTestsPassed = false
+		} else {
+			integrationTestsPassed++
 		}
 
 	}
+	a.logger.Info(fmt.Sprintf("%[1]d out of %[3]d required integration tests finished, %[2]d out of %[3]d required integration tests passed", integrationTestsFinished, integrationTestsPassed, len(*integrationTestScenarios)))
 	return allIntegrationTestsFinished, allIntegrationTestsPassed
 }
 
