@@ -21,7 +21,7 @@ import (
 	"reflect"
 	"time"
 
-	"github.com/redhat-appstudio/integration-service/loader"
+	"github.com/konflux-ci/integration-service/loader"
 	"github.com/tonglil/buflogr"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
@@ -30,10 +30,10 @@ import (
 
 	ctrl "sigs.k8s.io/controller-runtime"
 
+	"github.com/konflux-ci/integration-service/api/v1beta2"
+	"github.com/konflux-ci/integration-service/gitops"
+	"github.com/konflux-ci/integration-service/helpers"
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
-	"github.com/redhat-appstudio/integration-service/api/v1beta2"
-	"github.com/redhat-appstudio/integration-service/gitops"
-	"github.com/redhat-appstudio/integration-service/helpers"
 
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"

@@ -25,10 +25,10 @@ import (
 	"time"
 
 	"github.com/google/go-containerregistry/pkg/name"
+	"github.com/konflux-ci/integration-service/helpers"
+	"github.com/konflux-ci/integration-service/metrics"
+	"github.com/konflux-ci/integration-service/tekton"
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
-	"github.com/redhat-appstudio/integration-service/helpers"
-	"github.com/redhat-appstudio/integration-service/metrics"
-	"github.com/redhat-appstudio/integration-service/tekton"
 	"github.com/redhat-appstudio/operator-toolkit/metadata"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"

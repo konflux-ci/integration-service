@@ -21,7 +21,7 @@ import (
 	"flag"
 	"os"
 
-	"github.com/redhat-appstudio/integration-service/internal/controller"
+	"github.com/konflux-ci/integration-service/internal/controller"
 	"sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	crwebhook "sigs.k8s.io/controller-runtime/pkg/webhook"
 
@@ -38,11 +38,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
+	integrationv1alpha1 "github.com/konflux-ci/integration-service/api/v1alpha1"
+	integrationv1beta1 "github.com/konflux-ci/integration-service/api/v1beta1"
+	integrationv1beta2 "github.com/konflux-ci/integration-service/api/v1beta2"
 	pacv1alpha1 "github.com/openshift-pipelines/pipelines-as-code/pkg/apis/pipelinesascode/v1alpha1"
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
-	integrationv1alpha1 "github.com/redhat-appstudio/integration-service/api/v1alpha1"
-	integrationv1beta1 "github.com/redhat-appstudio/integration-service/api/v1beta1"
-	integrationv1beta2 "github.com/redhat-appstudio/integration-service/api/v1beta2"
 	releasev1alpha1 "github.com/redhat-appstudio/release-service/api/v1alpha1"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	//+kubebuilder:scaffold:imports

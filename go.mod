@@ -1,4 +1,4 @@
-module github.com/redhat-appstudio/integration-service
+module github.com/konflux-ci/integration-service
 
 go 1.20
 
