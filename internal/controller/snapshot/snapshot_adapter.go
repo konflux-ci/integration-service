@@ -220,15 +220,14 @@ func (a *Adapter) EnsureIntegrationPipelineRunsExist() (controller.OperationResu
 			} else {
 				pipelineRun, err := a.createIntegrationPipelineRun(a.application, &integrationTestScenario, a.snapshot)
 				if err != nil {
-					if clienterrors.IsInvalid(err) {
-						a.logger.Error(err, "pipelineRun failed during creation due to invalid resource",
-							"integrationScenario.Name", integrationTestScenario.Name)
-						testStatuses.UpdateTestStatusIfChanged(
-							integrationTestScenario.Name, intgteststat.IntegrationTestStatusTestInvalid,
-							fmt.Sprintf("Creation of pipelineRun failed during creation due to invalid resource: %s.", err))
-					} else {
-						a.logger.Error(err, "Failed to create pipelineRun for snapshot and scenario",
-							"integrationScenario.Name", integrationTestScenario.Name)
+					a.logger.Error(err, "Failed to create pipelineRun for snapshot and scenario",
+						"integrationScenario.Name", integrationTestScenario.Name)
+
+					testStatuses.UpdateTestStatusIfChanged(
+						integrationTestScenario.Name, intgteststat.IntegrationTestStatusTestInvalid,
+						fmt.Sprintf("Creation of pipelineRun failed during creation due to: %s.", err))
+
+					if !clienterrors.IsInvalid(err) {
 						errsForPLRCreation = errors.Join(errsForPLRCreation, err)
 					}
 					continue
