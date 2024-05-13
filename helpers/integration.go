@@ -24,7 +24,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/redhat-appstudio/integration-service/api/v1beta2"
+	"github.com/konflux-ci/integration-service/api/v1beta2"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"k8s.io/apimachinery/pkg/types"

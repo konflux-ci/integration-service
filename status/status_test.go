@@ -31,8 +31,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"github.com/redhat-appstudio/integration-service/pkg/integrationteststatus"
-	"github.com/redhat-appstudio/integration-service/status"
+	"github.com/konflux-ci/integration-service/pkg/integrationteststatus"
+	"github.com/konflux-ci/integration-service/status"
 )
 
 // Custom matcher for gomock, to match expected summary in TestReport

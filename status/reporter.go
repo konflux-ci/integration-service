@@ -16,7 +16,7 @@ limitations under the License.
 
 package status
 
-//go:generate mockgen -destination mock_reporter.go -package status github.com/redhat-appstudio/integration-service/status ReporterInterface
+//go:generate mockgen -destination mock_reporter.go -package status github.com/konflux-ci/integration-service/status ReporterInterface
 
 import (
 	"context"
@@ -29,8 +29,8 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"github.com/redhat-appstudio/integration-service/gitops"
-	intgteststat "github.com/redhat-appstudio/integration-service/pkg/integrationteststatus"
+	"github.com/konflux-ci/integration-service/gitops"
+	intgteststat "github.com/konflux-ci/integration-service/pkg/integrationteststatus"
 )
 
 type TestReport struct {

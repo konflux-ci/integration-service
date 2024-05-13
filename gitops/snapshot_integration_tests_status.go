@@ -21,8 +21,8 @@ import (
 	"encoding/json"
 	"fmt"
 
+	intgteststat "github.com/konflux-ci/integration-service/pkg/integrationteststatus"
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
-	intgteststat "github.com/redhat-appstudio/integration-service/pkg/integrationteststatus"
 	"github.com/redhat-appstudio/operator-toolkit/metadata"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )

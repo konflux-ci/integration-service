@@ -21,10 +21,10 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/konflux-ci/integration-service/api/v1beta2"
+	"github.com/konflux-ci/integration-service/gitops"
+	"github.com/konflux-ci/integration-service/tekton"
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
-	"github.com/redhat-appstudio/integration-service/api/v1beta2"
-	"github.com/redhat-appstudio/integration-service/gitops"
-	"github.com/redhat-appstudio/integration-service/tekton"
 	toolkit "github.com/redhat-appstudio/operator-toolkit/loader"
 	releasev1alpha1 "github.com/redhat-appstudio/release-service/api/v1alpha1"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"

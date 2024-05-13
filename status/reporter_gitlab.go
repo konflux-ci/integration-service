@@ -29,8 +29,8 @@ import (
 	gitlab "github.com/xanzy/go-gitlab"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"github.com/redhat-appstudio/integration-service/gitops"
-	intgteststat "github.com/redhat-appstudio/integration-service/pkg/integrationteststatus"
+	"github.com/konflux-ci/integration-service/gitops"
+	intgteststat "github.com/konflux-ci/integration-service/pkg/integrationteststatus"
 )
 
 type GitLabReporter struct {

@@ -25,10 +25,10 @@ import (
 
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
-	"github.com/redhat-appstudio/integration-service/gitops"
-	"github.com/redhat-appstudio/integration-service/helpers"
-	"github.com/redhat-appstudio/integration-service/loader"
-	"github.com/redhat-appstudio/integration-service/tekton"
+	"github.com/konflux-ci/integration-service/gitops"
+	"github.com/konflux-ci/integration-service/helpers"
+	"github.com/konflux-ci/integration-service/loader"
+	"github.com/konflux-ci/integration-service/tekton"
 	"knative.dev/pkg/apis"
 	v1 "knative.dev/pkg/apis/duck/v1"
 

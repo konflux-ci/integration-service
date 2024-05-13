@@ -23,8 +23,8 @@ import (
 	"strings"
 
 	"github.com/go-logr/logr"
+	"github.com/konflux-ci/integration-service/api/v1beta2"
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
-	"github.com/redhat-appstudio/integration-service/api/v1beta2"
 	"github.com/redhat-appstudio/operator-toolkit/metadata"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	corev1 "k8s.io/api/core/v1"
