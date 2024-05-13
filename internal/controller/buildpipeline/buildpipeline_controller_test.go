@@ -17,7 +17,7 @@ limitations under the License.
 package buildpipeline
 
 import (
-	"github.com/redhat-appstudio/integration-service/helpers"
+	"github.com/konflux-ci/integration-service/helpers"
 	"reflect"
 	"sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	crwebhook "sigs.k8s.io/controller-runtime/pkg/webhook"

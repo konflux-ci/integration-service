@@ -17,10 +17,10 @@ limitations under the License.
 package release_test
 
 import (
+	integrationservicerelease "github.com/konflux-ci/integration-service/release"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
-	integrationservicerelease "github.com/redhat-appstudio/integration-service/release"
 	releasev1alpha1 "github.com/redhat-appstudio/release-service/api/v1alpha1"
 	releasemetadata "github.com/redhat-appstudio/release-service/metadata"
 	"k8s.io/apimachinery/pkg/api/errors"

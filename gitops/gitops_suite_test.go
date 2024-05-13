@@ -24,8 +24,8 @@ import (
 
 	"sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
-	"github.com/redhat-appstudio/integration-service/api/v1beta2"
-	"github.com/redhat-appstudio/integration-service/cache"
+	"github.com/konflux-ci/integration-service/api/v1beta2"
+	"github.com/konflux-ci/integration-service/cache"
 	toolkit "github.com/redhat-appstudio/operator-toolkit/test"
 
 	"k8s.io/client-go/rest"

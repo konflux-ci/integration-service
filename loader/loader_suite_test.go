@@ -24,7 +24,7 @@ import (
 
 	"sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
-	"github.com/redhat-appstudio/integration-service/cache"
+	"github.com/konflux-ci/integration-service/cache"
 
 	toolkit "github.com/redhat-appstudio/operator-toolkit/test"
 
@@ -38,8 +38,8 @@ import (
 
 	ctrl "sigs.k8s.io/controller-runtime"
 
+	integrationbeta2 "github.com/konflux-ci/integration-service/api/v1beta2"
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
-	integrationbeta2 "github.com/redhat-appstudio/integration-service/api/v1beta2"
 	releasev1alpha1 "github.com/redhat-appstudio/release-service/api/v1alpha1"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	clientsetscheme "k8s.io/client-go/kubernetes/scheme"

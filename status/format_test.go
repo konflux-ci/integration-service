@@ -21,10 +21,10 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
+	"github.com/konflux-ci/integration-service/helpers"
+	"github.com/konflux-ci/integration-service/status"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"github.com/redhat-appstudio/integration-service/helpers"
-	"github.com/redhat-appstudio/integration-service/status"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )

@@ -24,10 +24,10 @@ import (
 
 	"github.com/go-logr/logr"
 	ghapi "github.com/google/go-github/v45/github"
+	"github.com/konflux-ci/integration-service/git/github"
+	"github.com/konflux-ci/integration-service/gitops"
+	intgteststat "github.com/konflux-ci/integration-service/pkg/integrationteststatus"
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
-	"github.com/redhat-appstudio/integration-service/git/github"
-	"github.com/redhat-appstudio/integration-service/gitops"
-	intgteststat "github.com/redhat-appstudio/integration-service/pkg/integrationteststatus"
 
 	"github.com/redhat-appstudio/operator-toolkit/metadata"
 	v1 "k8s.io/api/core/v1"

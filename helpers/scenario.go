@@ -20,7 +20,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"github.com/redhat-appstudio/integration-service/api/v1beta2"
+	"github.com/konflux-ci/integration-service/api/v1beta2"
 )
 
 const (

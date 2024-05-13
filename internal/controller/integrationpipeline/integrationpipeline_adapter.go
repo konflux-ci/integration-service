@@ -23,12 +23,12 @@ import (
 
 	"k8s.io/apimachinery/pkg/api/errors"
 
+	"github.com/konflux-ci/integration-service/gitops"
+	h "github.com/konflux-ci/integration-service/helpers"
+	"github.com/konflux-ci/integration-service/loader"
+	intgteststat "github.com/konflux-ci/integration-service/pkg/integrationteststatus"
+	"github.com/konflux-ci/integration-service/tekton"
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
-	"github.com/redhat-appstudio/integration-service/gitops"
-	h "github.com/redhat-appstudio/integration-service/helpers"
-	"github.com/redhat-appstudio/integration-service/loader"
-	intgteststat "github.com/redhat-appstudio/integration-service/pkg/integrationteststatus"
-	"github.com/redhat-appstudio/integration-service/tekton"
 
 	"github.com/redhat-appstudio/operator-toolkit/controller"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"

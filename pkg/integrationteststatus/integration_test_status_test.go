@@ -24,7 +24,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	intgteststat "github.com/redhat-appstudio/integration-service/pkg/integrationteststatus"
+	intgteststat "github.com/konflux-ci/integration-service/pkg/integrationteststatus"
 )
 
 var _ = Describe("integrationteststatus library unittests", func() {
