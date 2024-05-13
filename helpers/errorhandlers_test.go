@@ -20,9 +20,9 @@ import (
 	"bytes"
 	"fmt"
 
+	"github.com/konflux-ci/integration-service/helpers"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"github.com/redhat-appstudio/integration-service/helpers"
 	"github.com/tonglil/buflogr"
 	"k8s.io/apimachinery/pkg/api/errors"
 

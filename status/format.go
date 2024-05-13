@@ -24,7 +24,7 @@ import (
 	"text/template"
 
 	"github.com/go-logr/logr"
-	"github.com/redhat-appstudio/integration-service/helpers"
+	"github.com/konflux-ci/integration-service/helpers"
 )
 
 const commentTemplate = `### {{ .Title }}

@@ -16,7 +16,7 @@ limitations under the License.
 
 package status
 
-//go:generate mockgen -destination mock_status.go -package status github.com/redhat-appstudio/integration-service/status StatusInterface
+//go:generate mockgen -destination mock_status.go -package status github.com/konflux-ci/integration-service/status StatusInterface
 
 import (
 	"context"
@@ -25,10 +25,10 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
+	"github.com/konflux-ci/integration-service/gitops"
+	"github.com/konflux-ci/integration-service/helpers"
+	intgteststat "github.com/konflux-ci/integration-service/pkg/integrationteststatus"
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
-	"github.com/redhat-appstudio/integration-service/gitops"
-	"github.com/redhat-appstudio/integration-service/helpers"
-	intgteststat "github.com/redhat-appstudio/integration-service/pkg/integrationteststatus"
 	"github.com/redhat-appstudio/operator-toolkit/metadata"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	"k8s.io/apimachinery/pkg/api/errors"

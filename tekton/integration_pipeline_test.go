@@ -18,17 +18,17 @@ package tekton_test
 
 import (
 	"bytes"
+	"github.com/konflux-ci/integration-service/api/v1beta2"
+	"github.com/konflux-ci/integration-service/helpers"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"github.com/redhat-appstudio/integration-service/api/v1beta2"
-	"github.com/redhat-appstudio/integration-service/helpers"
 	"github.com/tonglil/buflogr"
 	"os"
 	"time"
 
+	"github.com/konflux-ci/integration-service/gitops"
+	tekton "github.com/konflux-ci/integration-service/tekton"
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
-	"github.com/redhat-appstudio/integration-service/gitops"
-	tekton "github.com/redhat-appstudio/integration-service/tekton"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )

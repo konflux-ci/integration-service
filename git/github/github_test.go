@@ -22,9 +22,9 @@ import (
 
 	"github.com/go-logr/logr"
 	ghapi "github.com/google/go-github/v45/github"
+	"github.com/konflux-ci/integration-service/git/github"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"github.com/redhat-appstudio/integration-service/git/github"
 )
 
 const samplePrivateKey = `-----BEGIN RSA PRIVATE KEY-----

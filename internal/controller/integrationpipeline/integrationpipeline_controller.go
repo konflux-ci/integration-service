@@ -19,14 +19,14 @@ package integrationpipeline
 import (
 	"context"
 	"fmt"
+	"github.com/konflux-ci/integration-service/cache"
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
-	"github.com/redhat-appstudio/integration-service/cache"
 	"k8s.io/client-go/util/retry"
 
 	"github.com/go-logr/logr"
-	"github.com/redhat-appstudio/integration-service/helpers"
-	"github.com/redhat-appstudio/integration-service/loader"
-	"github.com/redhat-appstudio/integration-service/tekton"
+	"github.com/konflux-ci/integration-service/helpers"
+	"github.com/konflux-ci/integration-service/loader"
+	"github.com/konflux-ci/integration-service/tekton"
 	"github.com/redhat-appstudio/operator-toolkit/controller"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	"k8s.io/apimachinery/pkg/api/errors"

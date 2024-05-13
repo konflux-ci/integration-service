@@ -21,11 +21,11 @@ import (
 
 	"fmt"
 
+	"github.com/konflux-ci/integration-service/gitops"
+	h "github.com/konflux-ci/integration-service/helpers"
+	"github.com/konflux-ci/integration-service/loader"
+	"github.com/konflux-ci/integration-service/metrics"
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
-	"github.com/redhat-appstudio/integration-service/gitops"
-	h "github.com/redhat-appstudio/integration-service/helpers"
-	"github.com/redhat-appstudio/integration-service/loader"
-	"github.com/redhat-appstudio/integration-service/metrics"
 	"github.com/redhat-appstudio/operator-toolkit/controller"
 	"k8s.io/apimachinery/pkg/api/errors"
 	ctrl "sigs.k8s.io/controller-runtime"
