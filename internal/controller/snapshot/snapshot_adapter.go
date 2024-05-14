@@ -511,7 +511,7 @@ func (a *Adapter) RequeueIfYoungerThanThreshold(retErr error) (controller.Operat
 }
 
 func (a *Adapter) HandlePipelineCreationError(err error, integrationTestScenario *v1beta2.IntegrationTestScenario, testStatuses *intgteststat.SnapshotIntegrationTestStatuses) (controller.OperationResult, error) {
-	a.logger.Error(err, "pipelineRun failed during creation due to",
+	a.logger.Error(err, "Failed to create pipelineRun for snapshot and scenario",
 		"integrationScenario.Name", integrationTestScenario.Name)
 	testStatuses.UpdateTestStatusIfChanged(
 		integrationTestScenario.Name, intgteststat.IntegrationTestStatusTestInvalid,
