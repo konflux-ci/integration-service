@@ -56,7 +56,8 @@ var _ ReporterInterface = (*GitLabReporter)(nil)
 
 // Detect if snapshot has been created from gitlab provider
 func (r *GitLabReporter) Detect(snapshot *applicationapiv1alpha1.Snapshot) bool {
-	return metadata.HasLabelWithValue(snapshot, gitops.PipelineAsCodeGitProviderLabel, gitops.PipelineAsCodeGitLabProviderType)
+	return metadata.HasAnnotationWithValue(snapshot, gitops.PipelineAsCodeGitProviderLabel, gitops.PipelineAsCodeGitLabProviderType) ||
+		metadata.HasLabelWithValue(snapshot, gitops.PipelineAsCodeGitProviderAnnotation, gitops.PipelineAsCodeGitLabProviderType)
 }
 
 // GetReporterName returns the reporter name
