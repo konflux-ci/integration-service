@@ -69,7 +69,6 @@ var _ = Describe("GitLabReporter", func() {
 					"test.appstudio.openshift.io/type":               "component",
 					"appstudio.openshift.io/component":               "component-sample",
 					"build.appstudio.redhat.com/pipeline":            "enterprise-contract",
-					"pac.test.appstudio.openshift.io/git-provider":   "gitlab",
 					"pac.test.appstudio.openshift.io/url-org":        "devfile-sample",
 					"pac.test.appstudio.openshift.io/url-repository": "devfile-sample-go-basic",
 					"pac.test.appstudio.openshift.io/sha":            "12a4a35ccd08194595179815e4646c3a6c08bb77",
@@ -78,6 +77,7 @@ var _ = Describe("GitLabReporter", func() {
 				Annotations: map[string]string{
 					"build.appstudio.redhat.com/commit_sha":             digest,
 					"appstudio.redhat.com/updateComponentOnSuccess":     "false",
+					"pac.test.appstudio.openshift.io/git-provider":      "gitlab",
 					"pac.test.appstudio.openshift.io/repo-url":          repoUrl,
 					"pac.test.appstudio.openshift.io/target-project-id": targetProjectID,
 					"pac.test.appstudio.openshift.io/source-project-id": sourceProjectID,
@@ -111,6 +111,12 @@ var _ = Describe("GitLabReporter", func() {
 
 	It("can detect if gitlab reporter should be used", func() {
 		reporter := status.NewGitLabReporter(log, mockK8sClient)
+		hasSnapshot.Annotations["pac.test.appstudio.openshift.io/git-provider"] = "gitlab"
+		Expect(reporter.Detect(hasSnapshot)).To(BeTrue())
+
+		hasSnapshot.Annotations["pac.test.appstudio.openshift.io/git-provider"] = "not-gitlab"
+		Expect(reporter.Detect(hasSnapshot)).To(BeFalse())
+
 		hasSnapshot.Labels["pac.test.appstudio.openshift.io/git-provider"] = "gitlab"
 		Expect(reporter.Detect(hasSnapshot)).To(BeTrue())
 
