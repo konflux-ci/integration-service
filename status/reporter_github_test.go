@@ -198,7 +198,6 @@ var _ = Describe("GitHubReporter", func() {
 					"test.appstudio.openshift.io/type":               "component",
 					"appstudio.openshift.io/component":               "component-sample",
 					"build.appstudio.redhat.com/pipeline":            "enterprise-contract",
-					"pac.test.appstudio.openshift.io/git-provider":   "github",
 					"pac.test.appstudio.openshift.io/url-org":        "devfile-sample",
 					"pac.test.appstudio.openshift.io/url-repository": "devfile-sample-go-basic",
 					"pac.test.appstudio.openshift.io/sha":            "12a4a35ccd08194595179815e4646c3a6c08bb77",
@@ -207,6 +206,7 @@ var _ = Describe("GitHubReporter", func() {
 				Annotations: map[string]string{
 					"build.appstudio.redhat.com/commit_sha":         "6c65b2fcaea3e1a0a92476c8b5dc89e92a85f025",
 					"appstudio.redhat.com/updateComponentOnSuccess": "false",
+					"pac.test.appstudio.openshift.io/git-provider":  "github",
 					"pac.test.appstudio.openshift.io/repo-url":      "https://github.com/devfile-sample/devfile-sample-go-basic",
 				},
 			},
@@ -257,6 +257,12 @@ var _ = Describe("GitHubReporter", func() {
 		})
 
 		It("can detect if github reporter should be used", func() {
+			hasSnapshot.Annotations["pac.test.appstudio.openshift.io/git-provider"] = "github"
+			Expect(reporter.Detect(hasSnapshot)).To(BeTrue())
+
+			hasSnapshot.Annotations["pac.test.appstudio.openshift.io/git-provider"] = "not-github"
+			Expect(reporter.Detect(hasSnapshot)).To(BeFalse())
+
 			hasSnapshot.Labels["pac.test.appstudio.openshift.io/git-provider"] = "github"
 			Expect(reporter.Detect(hasSnapshot)).To(BeTrue())
 

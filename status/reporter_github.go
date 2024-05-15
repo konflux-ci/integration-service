@@ -537,7 +537,8 @@ func generateGithubCommitState(state intgteststat.IntegrationTestStatus) (string
 
 // Detect if GitHubReporter can be used
 func (r *GitHubReporter) Detect(snapshot *applicationapiv1alpha1.Snapshot) bool {
-	return metadata.HasLabelWithValue(snapshot, gitops.PipelineAsCodeGitProviderLabel, gitops.PipelineAsCodeGitHubProviderType)
+	return metadata.HasAnnotationWithValue(snapshot, gitops.PipelineAsCodeGitProviderAnnotation, gitops.PipelineAsCodeGitHubProviderType) ||
+		metadata.HasLabelWithValue(snapshot, gitops.PipelineAsCodeGitProviderLabel, gitops.PipelineAsCodeGitHubProviderType)
 }
 
 // Initialize github reporter. Must be called before updating status

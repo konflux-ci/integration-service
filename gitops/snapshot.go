@@ -89,6 +89,9 @@ const (
 	// PipelineAsCodeGitProviderLabel is the git provider which triggered the pipelinerun in build service.
 	PipelineAsCodeGitProviderLabel = PipelinesAsCodePrefix + "/git-provider"
 
+	// PipelineAsCodeGitProviderAnnotation is the git provider which triggered the pipelinerun in build service.
+	PipelineAsCodeGitProviderAnnotation = PipelinesAsCodePrefix + "/git-provider"
+
 	// PipelineAsCodeSHALabel is the commit which triggered the pipelinerun in build service.
 	PipelineAsCodeSHALabel = PipelinesAsCodePrefix + "/sha"
 
