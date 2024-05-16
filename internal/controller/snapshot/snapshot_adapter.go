@@ -279,14 +279,10 @@ func (a *Adapter) EnsureIntegrationPipelineRunsExist() (controller.OperationResu
 }
 
 // EnsureGlobalCandidateImageUpdated is an operation that ensure the ContainerImage in the Global Candidate List
-// being updated when the Snapshot passed all the integration tests
+// being updated when the Snapshot is created
 func (a *Adapter) EnsureGlobalCandidateImageUpdated() (controller.OperationResult, error) {
 	if a.component == nil || !gitops.IsSnapshotCreatedByPACPushEvent(a.snapshot) {
 		a.logger.Info("The Snapshot wasn't created for a single component push event, not updating the global candidate list.")
-		return controller.ContinueProcessing()
-	}
-	if !gitops.HaveAppStudioTestsSucceeded(a.snapshot) {
-		a.logger.Info("The Snapshot hasn't yet passed all required integration tests, not updating the global candidate list.")
 		return controller.ContinueProcessing()
 	}
 	if gitops.IsSnapshotMarkedAsAddedToGlobalCandidateList(a.snapshot) {
