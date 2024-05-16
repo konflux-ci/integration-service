@@ -131,7 +131,7 @@ func (a *Adapter) EnsureSnapshotFinishedAllTests() (controller.OperationResult, 
 	if err != nil {
 		return controller.RequeueWithError(err)
 	}
-	a.logger.Info("Found %d required integration test scenarios", len(*integrationTestScenarios))
+	a.logger.Info(fmt.Sprintf("Found %d required integration test scenarios", len(*integrationTestScenarios)))
 
 	testStatuses, err := gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(a.snapshot)
 	if err != nil {
