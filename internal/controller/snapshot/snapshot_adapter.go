@@ -522,9 +522,14 @@ func (a *Adapter) HandlePipelineCreationError(err error, integrationTestScenario
 		return controller.RequeueWithError(itsErr)
 	}
 
+	if strings.Contains(err.Error(), "admission webhook") && strings.Contains(err.Error(), "denied the request") {
+		//Stop processing in case the error runs in admission webhook validation error:
+		//failed to call client.Create to create pipelineRun for snapshot
+		//<snapshot-name>: admission webhook \"validation.webhook.pipeline.tekton.dev\" denied the request: validation failed: <reason>
+		return controller.StopProcessing()
+	}
 	if clienterrors.IsInvalid(err) {
 		return controller.StopProcessing()
 	}
-
 	return controller.RequeueWithError(err)
 }
