@@ -761,7 +761,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			Expect(result.CancelRequest).To(BeFalse())
 			Expect(err).ToNot(HaveOccurred())
 
-			expectedLogEntry := "failed during creation due to invalid resource"
+			expectedLogEntry := "Failed to create pipelineRun for snapshot and scenario"
 			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
 		})
 
