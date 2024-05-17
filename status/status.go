@@ -265,11 +265,12 @@ func (s *Status) ReportSnapshotStatus(ctx context.Context, reporter ReporterInte
 			return fmt.Errorf("failed to update status: %w", err)
 		}
 		srs.SetLastUpdateTime(integrationTestStatusDetail.ScenarioName, integrationTestStatusDetail.LastUpdateTime)
-
 	}
 	if err := WriteSnapshotReportStatus(ctx, s.client, snapshot, srs); err != nil {
 		return fmt.Errorf("failed to write snapshot report status metadata: %w", err)
 	}
+
+	s.logger.Info(fmt.Sprintf("Successfully updated the %s annotation", gitops.SnapshotStatusReportAnnotation), "snapshotReportStatus.value", srs)
 
 	return nil
 }
