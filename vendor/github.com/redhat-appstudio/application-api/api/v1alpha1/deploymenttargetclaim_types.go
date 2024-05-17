@@ -33,6 +33,9 @@ type DeploymentTargetClassName string
 // DeploymentTargetClaimStatus defines the observed state of DeploymentTargetClaim
 type DeploymentTargetClaimStatus struct {
 	Phase DeploymentTargetClaimPhase `json:"phase,omitempty"`
+
+	// Conditions is an array of the DeploymentTargetClaim's status conditions
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
 
 type DeploymentTargetClaimPhase string
