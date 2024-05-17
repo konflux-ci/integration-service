@@ -220,15 +220,14 @@ func (a *Adapter) EnsureIntegrationPipelineRunsExist() (controller.OperationResu
 			} else {
 				pipelineRun, err := a.createIntegrationPipelineRun(a.application, &integrationTestScenario, a.snapshot)
 				if err != nil {
-					if clienterrors.IsInvalid(err) {
-						a.logger.Error(err, "pipelineRun failed during creation due to invalid resource",
-							"integrationScenario.Name", integrationTestScenario.Name)
-						testStatuses.UpdateTestStatusIfChanged(
-							integrationTestScenario.Name, intgteststat.IntegrationTestStatusTestInvalid,
-							fmt.Sprintf("Creation of pipelineRun failed during creation due to invalid resource: %s.", err))
-					} else {
-						a.logger.Error(err, "Failed to create pipelineRun for snapshot and scenario",
-							"integrationScenario.Name", integrationTestScenario.Name)
+					a.logger.Error(err, "Failed to create pipelineRun for snapshot and scenario",
+						"integrationScenario.Name", integrationTestScenario.Name)
+
+					testStatuses.UpdateTestStatusIfChanged(
+						integrationTestScenario.Name, intgteststat.IntegrationTestStatusTestInvalid,
+						fmt.Sprintf("Creation of pipelineRun failed during creation due to: %s.", err))
+
+					if !clienterrors.IsInvalid(err) {
 						errsForPLRCreation = errors.Join(errsForPLRCreation, err)
 					}
 					continue
@@ -512,20 +511,20 @@ func (a *Adapter) RequeueIfYoungerThanThreshold(retErr error) (controller.Operat
 }
 
 func (a *Adapter) HandlePipelineCreationError(err error, integrationTestScenario *v1beta2.IntegrationTestScenario, testStatuses *intgteststat.SnapshotIntegrationTestStatuses) (controller.OperationResult, error) {
-	if clienterrors.IsInvalid(err) {
-		a.logger.Error(err, "pipelineRun failed during creation due to invalid resource",
-			"integrationScenario.Name", integrationTestScenario.Name)
-		testStatuses.UpdateTestStatusIfChanged(
-			integrationTestScenario.Name, intgteststat.IntegrationTestStatusTestInvalid,
-			fmt.Sprintf("Creation of pipelineRun failed during creation due to invalid resource: %s.", err))
-		itsErr := gitops.WriteIntegrationTestStatusesIntoSnapshot(a.context, a.snapshot, testStatuses, a.client)
-		if itsErr != nil {
-			a.logger.Error(err, "Failed to write Test Status into Snapshot")
-			return controller.RequeueWithError(err)
-		}
-		return controller.StopProcessing()
-	}
 	a.logger.Error(err, "Failed to create pipelineRun for snapshot and scenario",
 		"integrationScenario.Name", integrationTestScenario.Name)
+	testStatuses.UpdateTestStatusIfChanged(
+		integrationTestScenario.Name, intgteststat.IntegrationTestStatusTestInvalid,
+		fmt.Sprintf("Creation of pipelineRun failed during creation due to: %s.", err))
+	itsErr := gitops.WriteIntegrationTestStatusesIntoSnapshot(a.context, a.snapshot, testStatuses, a.client)
+	if itsErr != nil {
+		a.logger.Error(err, "Failed to write Test Status into Snapshot")
+		return controller.RequeueWithError(itsErr)
+	}
+
+	if clienterrors.IsInvalid(err) {
+		return controller.StopProcessing()
+	}
+
 	return controller.RequeueWithError(err)
 }
