@@ -171,6 +171,14 @@ github.com/josharian/intern
 # github.com/json-iterator/go v1.1.12
 ## explicit; go 1.12
 github.com/json-iterator/go
+# github.com/konflux-ci/operator-toolkit v0.0.0-20240402130556-ef6dcbeca69d
+## explicit; go 1.19
+github.com/konflux-ci/operator-toolkit/controller
+github.com/konflux-ci/operator-toolkit/loader
+github.com/konflux-ci/operator-toolkit/metadata
+github.com/konflux-ci/operator-toolkit/predicates
+github.com/konflux-ci/operator-toolkit/test
+github.com/konflux-ci/operator-toolkit/utils
 # github.com/mailru/easyjson v0.7.7
 ## explicit; go 1.12
 github.com/mailru/easyjson/buffer
@@ -261,15 +269,9 @@ github.com/prometheus/statsd_exporter/pkg/mapper/fsm
 # github.com/redhat-appstudio/application-api v0.0.0-20231025105224-2790bb451725
 ## explicit; go 1.19
 github.com/redhat-appstudio/application-api/api/v1alpha1
-# github.com/redhat-appstudio/operator-toolkit v0.0.0-20231201124606-2087182322ae
+# github.com/redhat-appstudio/operator-toolkit v0.0.0-20230913085326-6c5e9d368a6a
 ## explicit; go 1.19
 github.com/redhat-appstudio/operator-toolkit/conditions
-github.com/redhat-appstudio/operator-toolkit/controller
-github.com/redhat-appstudio/operator-toolkit/loader
-github.com/redhat-appstudio/operator-toolkit/metadata
-github.com/redhat-appstudio/operator-toolkit/predicates
-github.com/redhat-appstudio/operator-toolkit/test
-github.com/redhat-appstudio/operator-toolkit/utils
 # github.com/redhat-appstudio/release-service v0.0.0-20231107140301-56ac66b56719
 ## explicit; go 1.20
 github.com/redhat-appstudio/release-service/api/v1alpha1

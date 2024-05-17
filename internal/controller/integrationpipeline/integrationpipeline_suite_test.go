@@ -36,7 +36,7 @@ import (
 	"github.com/konflux-ci/integration-service/api/v1beta2"
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 
-	toolkit "github.com/redhat-appstudio/operator-toolkit/test"
+	toolkit "github.com/konflux-ci/operator-toolkit/test"
 	releasev1alpha1 "github.com/redhat-appstudio/release-service/api/v1alpha1"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	clientsetscheme "k8s.io/client-go/kubernetes/scheme"

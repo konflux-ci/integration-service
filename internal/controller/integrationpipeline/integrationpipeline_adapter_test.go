@@ -27,7 +27,7 @@ import (
 	"github.com/konflux-ci/integration-service/helpers"
 	"github.com/konflux-ci/integration-service/loader"
 	intgteststat "github.com/konflux-ci/integration-service/pkg/integrationteststatus"
-	toolkit "github.com/redhat-appstudio/operator-toolkit/loader"
+	toolkit "github.com/konflux-ci/operator-toolkit/loader"
 
 	"knative.dev/pkg/apis"
 	v1 "knative.dev/pkg/apis/duck/v1"

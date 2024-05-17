@@ -17,7 +17,7 @@ limitations under the License.
 package predicates
 
 import (
-	"github.com/redhat-appstudio/operator-toolkit/utils"
+	"github.com/konflux-ci/operator-toolkit/utils"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 )

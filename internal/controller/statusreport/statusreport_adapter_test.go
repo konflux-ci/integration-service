@@ -33,8 +33,8 @@ import (
 	"github.com/konflux-ci/integration-service/loader"
 	intgteststat "github.com/konflux-ci/integration-service/pkg/integrationteststatus"
 	"github.com/konflux-ci/integration-service/status"
+	toolkit "github.com/konflux-ci/operator-toolkit/loader"
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
-	toolkit "github.com/redhat-appstudio/operator-toolkit/loader"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
