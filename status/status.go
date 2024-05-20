@@ -21,6 +21,7 @@ package status
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -31,7 +32,7 @@ import (
 	intgteststat "github.com/redhat-appstudio/integration-service/pkg/integrationteststatus"
 	"github.com/redhat-appstudio/operator-toolkit/metadata"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -255,14 +256,18 @@ func (s *Status) ReportSnapshotStatus(ctx context.Context, reporter ReporterInte
 			//integration test contains no changes
 			continue
 		}
-		testReport, err := s.generateTestReport(ctx, *integrationTestStatusDetail, snapshot)
-		if err != nil {
-			_ = WriteSnapshotReportStatus(ctx, s.client, snapshot, srs) // try to write what was already written
-			return fmt.Errorf("failed to generate test report: %w", err)
+		testReport, reportErr := s.generateTestReport(ctx, *integrationTestStatusDetail, snapshot)
+		if reportErr != nil {
+			if writeErr := WriteSnapshotReportStatus(ctx, s.client, snapshot, srs); writeErr != nil { // try to write what was already written
+				return fmt.Errorf("failed to generate test report AND write snapshot report status metadata: %w", errors.Join(reportErr, writeErr))
+			}
+			return fmt.Errorf("failed to generate test report: %w", reportErr)
 		}
-		if err := reporter.ReportStatus(ctx, *testReport); err != nil {
-			_ = WriteSnapshotReportStatus(ctx, s.client, snapshot, srs) // try to write what was already written
-			return fmt.Errorf("failed to update status: %w", err)
+		if reportStatusErr := reporter.ReportStatus(ctx, *testReport); reportStatusErr != nil {
+			if writeErr := WriteSnapshotReportStatus(ctx, s.client, snapshot, srs); writeErr != nil { // try to write what was already written
+				return fmt.Errorf("failed to report status AND write snapshot report status metadata: %w", errors.Join(reportStatusErr, writeErr))
+			}
+			return fmt.Errorf("failed to update status: %w", reportStatusErr)
 		}
 		srs.SetLastUpdateTime(integrationTestStatusDetail.ScenarioName, integrationTestStatusDetail.LastUpdateTime)
 	}
@@ -270,7 +275,7 @@ func (s *Status) ReportSnapshotStatus(ctx context.Context, reporter ReporterInte
 		return fmt.Errorf("failed to write snapshot report status metadata: %w", err)
 	}
 
-	s.logger.Info(fmt.Sprintf("Successfully updated the %s annotation", gitops.SnapshotStatusReportAnnotation), "snapshotReportStatus.value", srs)
+	s.logger.Info(fmt.Sprintf("Successfully updated the %s annotation", gitops.SnapshotStatusReportAnnotation), "snapshotReporterStatus.value", srs)
 
 	return nil
 }
@@ -318,7 +323,7 @@ func (s *Status) generateText(ctx context.Context, integrationTestStatusDetail i
 		}, pipelineRun)
 
 		if err != nil {
-			if errors.IsNotFound(err) {
+			if apierrors.IsNotFound(err) {
 				s.logger.Error(err, "Failed to fetch pipelineRun", "pipelineRun.Name", pipelineRunName)
 				text := fmt.Sprintf("%s\n\n\n(Failed to fetch test result details.)", integrationTestStatusDetail.Details)
 				return text, nil
