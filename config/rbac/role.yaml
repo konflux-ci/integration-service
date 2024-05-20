@@ -42,6 +42,7 @@ rules:
   resources:
   - components
   verbs:
+  - delete
   - get
   - list
   - patch
