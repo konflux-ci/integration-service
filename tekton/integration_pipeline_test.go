@@ -160,7 +160,7 @@ var _ = Describe("Integration pipeline", func() {
 					Params: []v1beta2.ResolverParameter{
 						{
 							Name:  "url",
-							Value: "https://github.com/redhat-appstudio/build-definitions.git",
+							Value: "https://github.com/konflux-ci/build-definitions.git",
 						},
 						{
 							Name:  "revision",
