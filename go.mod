@@ -5,7 +5,7 @@ go 1.21
 require (
 	github.com/agiledragon/gomonkey/v2 v2.11.0
 	github.com/bradleyfalzon/ghinstallation/v2 v2.10.0
-	github.com/go-logr/logr v1.4.1
+	github.com/go-logr/logr v1.4.2
 	github.com/google/go-containerregistry v0.19.1
 	github.com/google/go-github/v45 v45.2.0
 	github.com/konflux-ci/operator-toolkit v0.0.0-20240402130556-ef6dcbeca69d
