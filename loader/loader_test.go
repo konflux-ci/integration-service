@@ -168,7 +168,7 @@ var _ = Describe("Loader", Ordered, func() {
 						Name: "HACBS_TEST_OUTPUT",
 						Value: *tektonv1.NewStructuredValues(`{
 											"result": "SUCCESS",
-											"timestamp": "1665405318",
+											"timestamp": "2024-05-22T06:42:21+00:00",
 											"failures": 0,
 											"successes": 10,
 											"warnings": 0
