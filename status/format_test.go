@@ -89,7 +89,7 @@ var _ = Describe("Formatters", func() {
 				now.Add(time.Minute*5).Add(time.Second*30),
 				`{
 					"result": "SUCCESS",
-					"timestamp": "1665405318",
+					"timestamp": "2024-05-22T06:42:21+00:00",
 					"namespace": "example-namespace-1",
 					"successes": 2,
 					"warnings": 1,
@@ -107,7 +107,7 @@ var _ = Describe("Formatters", func() {
 				now.Add(time.Second*4),
 				`{
 					"result": "FAILURE",
-					"timestamp": "1665405318",
+					"timestamp": "2024-05-22T06:42:21+00:00",
 					"namespace": "example-namespace-3",
 					"successes": 0,
 					"warnings": 0,
@@ -121,7 +121,7 @@ var _ = Describe("Formatters", func() {
 				now.Add(time.Second*5),
 				`{
 					"result": "WARNING",
-					"timestamp": "1665405318",
+					"timestamp": "2024-05-22T06:42:21+00:00",
 					"namespace": "example-namespace-4",
 					"successes": 0,
 					"warnings": 1,
@@ -135,7 +135,7 @@ var _ = Describe("Formatters", func() {
 				now,
 				`{
 					"result": "SKIPPED",
-					"timestamp": "1665405318",
+					"timestamp": "2024-05-22T06:42:21+00:00",
 					"namespace": "example-namespace-5",
 					"successes": 0,
 					"warnings": 0,
@@ -148,7 +148,7 @@ var _ = Describe("Formatters", func() {
 				now.Add(time.Second*7),
 				`{
 					"result": "ERROR",
-					"timestamp": "1665405318",
+					"timestamp": "2024-05-22T06:42:21+00:00",
 					"namespace": "example-namespace-6",
 					"successes": 0,
 					"warnings": 0,

@@ -163,7 +163,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 						Name: "TEST_OUTPUT",
 						Value: *tektonv1.NewStructuredValues(`{
 											"result": "SUCCESS",
-											"timestamp": "1665405318",
+											"timestamp": "2024-05-22T06:42:21+00:00",
 											"failures": 0,
 											"successes": 10,
 											"warnings": 0
@@ -208,7 +208,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 						Name: "TEST_OUTPUT",
 						Value: *tektonv1.NewStructuredValues(`{
 											"result": "FAILURE",
-											"timestamp": "1665405317",
+											"timestamp": "2024-05-22T06:42:21+00:00",
 											"failures": 1,
 											"successes": 0,
 											"warnings": 0
@@ -246,6 +246,8 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 
 		Expect(k8sClient.Create(ctx, skippedTaskRun)).Should(Succeed())
 
+		// The skipped taskRun uses the deprecated UNIX timestamp format which
+		// needs to be supported for backwards compatibility
 		skippedTaskRun.Status = tektonv1.TaskRunStatus{
 			TaskRunStatusFields: tektonv1.TaskRunStatusFields{
 				StartTime:      &metav1.Time{Time: now.Add(5 * time.Minute)},
@@ -301,7 +303,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 						Name: "TEST_OUTPUT",
 						Value: *tektonv1.NewStructuredValues(`{
 							"result": "WARNING",
-							"timestamp": "1665405320",
+							"timestamp": "2024-05-22T06:42:21+00:00",
 							"failures": 0,
 							"successes": 0,
 							"warnings": 1
