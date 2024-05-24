@@ -62,6 +62,9 @@ const (
 	// (Deprecated) SnapshotPRLastUpdate contains timestamp of last time PR was updated
 	SnapshotPRLastUpdate = "test.appstudio.openshift.io/pr-last-update"
 
+	// SnapshotGitSourceRepoURLAnnotation contains URL of the git source repository (usually needed for forks)
+	SnapshotGitSourceRepoURLAnnotation = "test.appstudio.openshift.io/source-repo-url"
+
 	// SnapshotStatusReportAnnotation contains metadata of tests related to status reporting to git provider
 	SnapshotStatusReportAnnotation = "test.appstudio.openshift.io/git-reporter-status"
 
@@ -695,6 +698,13 @@ func PrepareSnapshot(ctx context.Context, adapterClient client.Client, applicati
 		return nil, helpers.NewMissingValidComponentError(component.Name)
 	}
 	snapshot := NewSnapshot(application, &snapshotComponents)
+
+	// expose the source repo URL in the snapshot as annotation do we don't have to do lookup in integration tests
+	if newComponentSource.GitSource != nil {
+		if err := metadata.SetAnnotation(snapshot, SnapshotGitSourceRepoURLAnnotation, newComponentSource.GitSource.URL); err != nil {
+			return nil, fmt.Errorf("failed to set annotation %s: %w", SnapshotGitSourceRepoURLAnnotation, err)
+		}
+	}
 
 	err := ctrl.SetControllerReference(application, snapshot, adapterClient.Scheme())
 	if err != nil {

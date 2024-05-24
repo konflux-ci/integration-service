@@ -453,6 +453,7 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 		Expect(err).To(BeNil())
 		Expect(snapshot.Spec.Components).To(HaveLen(1), "One component should have been added to snapshot.  Other component should have been omited due to empty ContainerImage field or missing valid digest")
 		Expect(snapshot.Spec.Components[0].Name).To(Equal(hasComp.Name), "The built component should have been added to the snapshot")
+		Expect(snapshot.GetAnnotations()).To(HaveKeyWithValue(gitops.SnapshotGitSourceRepoURLAnnotation, componentSource.GitSource.URL), "The git source repo URL annotation is added")
 	})
 
 	It("ensure error is returned if the ContainerImage digest is invalid", func() {
