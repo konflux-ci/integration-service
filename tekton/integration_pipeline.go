@@ -47,6 +47,15 @@ const (
 
 	// PipelineTypeTest is the type for PipelineRuns created to run an integration Pipeline
 	PipelineTypeTest = "test"
+
+	// Name of tekton resolver for git
+	TektonResolverGit = "git"
+
+	// Name of tekton git resolver param url
+	TektonResolverGitParamURL = "url"
+
+	// Name of tekton git resolver param revision
+	TektonResolverGitParamRevision = "revision"
 )
 
 var (
@@ -116,6 +125,24 @@ func NewIntegrationPipelineRun(prefix, namespace string, integrationTestScenario
 		},
 	}
 	return &IntegrationPipelineRun{pipelineRun}
+}
+
+// Updates git resolver values parameters with values of params specified in the input map
+// updates only exsitings parameters, doens't create new ones
+func (iplr *IntegrationPipelineRun) WithUpdatedTestsGitResolver(params map[string]string) *IntegrationPipelineRun {
+	if iplr.Spec.PipelineRef.ResolverRef.Resolver != TektonResolverGit {
+		// if the resolver is not git-resolver, we cannot update the git ref
+		return iplr
+	}
+
+	for originalParamIndex, originalParam := range iplr.Spec.PipelineRef.ResolverRef.Params {
+		if _, ok := params[originalParam.Name]; ok {
+			// remeber to use the original index to update the value, we cannot update value given by range directly
+			iplr.Spec.PipelineRef.ResolverRef.Params[originalParamIndex].Value.StringVal = params[originalParam.Name]
+		}
+	}
+
+	return iplr
 }
 
 // WithFinalizer adds a Finalizer on the Integration PipelineRun

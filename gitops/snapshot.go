@@ -119,6 +119,9 @@ const (
 	// PipelineAsCodeTargetProjectIDAnnotation is the target project ID for gitlab
 	PipelineAsCodeTargetProjectIDAnnotation = PipelinesAsCodePrefix + "/target-project-id"
 
+	// PipelineAsCodeSHAAnnotation is the commit which triggered the pipelinerun in build service.
+	PipelineAsCodeSHAAnnotation = PipelinesAsCodePrefix + "/sha"
+
 	// PipelineAsCodePushType is the type of push event which triggered the pipelinerun in build service
 	PipelineAsCodePushType = "push"
 

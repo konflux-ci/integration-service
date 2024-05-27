@@ -447,21 +447,77 @@ func (a *Adapter) createMissingReleasesForReleasePlans(application *applicationa
 	return nil
 }
 
+func resolverParamsToMap(params []v1beta2.ResolverParameter) map[string]string {
+	result := make(map[string]string)
+	for _, param := range params {
+		result[param.Name] = param.Value
+	}
+	return result
+}
+
+// urlToGitUrl appends `.git` to the URL if it doesn't already have it
+func urlToGitUrl(url string) string {
+	if strings.HasSuffix(url, ".git") {
+		return url
+	}
+	return url + ".git"
+}
+
+// shouldUpdateIntegrationTestGitResolver checks if the integration test resolver should be updated based on the source repo
+func shouldUpdateIntegrationTestGitResolver(integrationTestScenario *v1beta2.IntegrationTestScenario, snapshot *applicationapiv1alpha1.Snapshot) bool {
+
+	// only "pull-requests" are applicable
+	if gitops.IsSnapshotCreatedByPACPushEvent(snapshot) {
+		return false
+	}
+
+	testResolverRef := integrationTestScenario.Spec.ResolverRef
+
+	// only tekton git resolver is applicable
+	if testResolverRef.Resolver != tekton.TektonResolverGit {
+		return false
+	}
+
+	annotations := snapshot.GetAnnotations()
+	params := resolverParamsToMap(testResolverRef.Params)
+
+	if urlVal, ok := params[tekton.TektonResolverGitParamURL]; ok {
+		// urlVal may or may not have git suffix specified :')
+		return urlToGitUrl(urlVal) == urlToGitUrl(annotations[gitops.PipelineAsCodeRepoURLAnnotation])
+	}
+
+	// undefined state, no idea what was configured in resolver, don't touch it
+	return false
+}
+
+func getGitResolverUpdateMap(snapshot *applicationapiv1alpha1.Snapshot) map[string]string {
+	annotations := snapshot.GetAnnotations()
+	return map[string]string{
+		tekton.TektonResolverGitParamURL:      urlToGitUrl(annotations[gitops.SnapshotGitSourceRepoURLAnnotation]), // should have .git in url for consistency and compatibility
+		tekton.TektonResolverGitParamRevision: annotations[gitops.PipelineAsCodeSHAAnnotation],
+	}
+}
+
 // createIntegrationPipelineRun creates and returns a new integration PipelineRun. The Pipeline information and the parameters to it
 // will be extracted from the given integrationScenario. The integration's Snapshot will also be passed to the integration PipelineRun.
 func (a *Adapter) createIntegrationPipelineRun(application *applicationapiv1alpha1.Application, integrationTestScenario *v1beta2.IntegrationTestScenario, snapshot *applicationapiv1alpha1.Snapshot) (*tektonv1.PipelineRun, error) {
 	a.logger.Info("Creating new pipelinerun for integrationTestscenario",
 		"integrationTestScenario.Name", integrationTestScenario.Name)
 
-	pipelineRun := tekton.NewIntegrationPipelineRun(snapshot.Name, application.Namespace, *integrationTestScenario).
+	pipelineRunBuilder := tekton.NewIntegrationPipelineRun(snapshot.Name, application.Namespace, *integrationTestScenario).
 		WithSnapshot(snapshot).
 		WithIntegrationLabels(integrationTestScenario).
 		WithIntegrationAnnotations(integrationTestScenario).
 		WithApplicationAndComponent(a.application, a.component).
 		WithExtraParams(integrationTestScenario.Spec.Params).
 		WithFinalizer(h.IntegrationPipelineRunFinalizer).
-		WithDefaultIntegrationTimeouts(a.logger.Logger).
-		AsPipelineRun()
+		WithDefaultIntegrationTimeouts(a.logger.Logger)
+
+	if shouldUpdateIntegrationTestGitResolver(integrationTestScenario, snapshot) {
+		pipelineRunBuilder.WithUpdatedTestsGitResolver(getGitResolverUpdateMap(snapshot))
+	}
+
+	pipelineRun := pipelineRunBuilder.AsPipelineRun()
 	// copy PipelineRun PAC annotations/labels from snapshot to integration test PipelineRuns
 	_ = metadata.CopyAnnotationsByPrefix(&snapshot.ObjectMeta, &pipelineRun.ObjectMeta, gitops.PipelinesAsCodePrefix)
 	_ = metadata.CopyLabelsByPrefix(&snapshot.ObjectMeta, &pipelineRun.ObjectMeta, gitops.PipelinesAsCodePrefix)
