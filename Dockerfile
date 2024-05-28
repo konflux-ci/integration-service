@@ -38,6 +38,9 @@ FROM registry.access.redhat.com/ubi8/ubi-minimal:8.10-896
 COPY --from=builder /opt/app-root/src/manager /
 COPY --from=builder /opt/app-root/src/snapshotgc /
 
+# workaround, fixing glibc CVE which prevents us to release; remove this when new parent image is released
+RUN microdnf upgrade -y glibc && microdnf clean all
+
 # It is mandatory to set these labels
 LABEL name="integration-service"
 LABEL com.redhat.component="konflux-integration-service"
