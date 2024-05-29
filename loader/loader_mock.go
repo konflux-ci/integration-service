@@ -63,15 +63,6 @@ func NewMockLoader() ObjectLoader {
 	}
 }
 
-// GetAllEnvironments returns the resource and error passed as values of the context.
-func (l *mockLoader) GetAllEnvironments(ctx context.Context, c client.Client, application *applicationapiv1alpha1.Application) (*[]applicationapiv1alpha1.Environment, error) {
-	if ctx.Value(EnvironmentContextKey) == nil {
-		return l.loader.GetAllEnvironments(ctx, c, application)
-	}
-	environment, err := toolkit.GetMockedResourceAndErrorFromContext(ctx, EnvironmentContextKey, &applicationapiv1alpha1.Environment{})
-	return &[]applicationapiv1alpha1.Environment{*environment}, err
-}
-
 // GetReleasesWithSnapshot returns the resource and error passed as values of the context.
 func (l *mockLoader) GetReleasesWithSnapshot(ctx context.Context, c client.Client, snapshot *applicationapiv1alpha1.Snapshot) (*[]releasev1alpha1.Release, error) {
 	if ctx.Value(ReleaseContextKey) == nil {
@@ -130,14 +121,6 @@ func (l *mockLoader) GetApplicationFromComponent(ctx context.Context, c client.C
 	return toolkit.GetMockedResourceAndErrorFromContext(ctx, ApplicationContextKey, &applicationapiv1alpha1.Application{})
 }
 
-// GetEnvironmentFromIntegrationPipelineRun returns the resource and error passed as values of the context.
-func (l *mockLoader) GetEnvironmentFromIntegrationPipelineRun(ctx context.Context, c client.Client, pipelineRun *tektonv1.PipelineRun) (*applicationapiv1alpha1.Environment, error) {
-	if ctx.Value(EnvironmentContextKey) == nil {
-		return l.loader.GetEnvironmentFromIntegrationPipelineRun(ctx, c, pipelineRun)
-	}
-	return toolkit.GetMockedResourceAndErrorFromContext(ctx, EnvironmentContextKey, &applicationapiv1alpha1.Environment{})
-}
-
 // GetSnapshotFromPipelineRun returns the resource and error passed as values of the context.
 func (l *mockLoader) GetSnapshotFromPipelineRun(ctx context.Context, c client.Client, pipelineRun *tektonv1.PipelineRun) (*applicationapiv1alpha1.Snapshot, error) {
 	if ctx.Value(SnapshotContextKey) == nil {
@@ -162,30 +145,6 @@ func (l *mockLoader) GetRequiredIntegrationTestScenariosForApplication(ctx conte
 	}
 	integrationTestScenarios, err := toolkit.GetMockedResourceAndErrorFromContext(ctx, RequiredIntegrationTestScenariosContextKey, []v1beta2.IntegrationTestScenario{})
 	return &integrationTestScenarios, err
-}
-
-// GetDeploymentTargetClaimForEnvironment returns the resource and error passed as values of the context.
-func (l *mockLoader) GetDeploymentTargetClaimForEnvironment(ctx context.Context, c client.Client, environment *applicationapiv1alpha1.Environment) (*applicationapiv1alpha1.DeploymentTargetClaim, error) {
-	if ctx.Value(DeploymentTargetClaimContextKey) == nil {
-		return l.loader.GetDeploymentTargetClaimForEnvironment(ctx, c, environment)
-	}
-	return toolkit.GetMockedResourceAndErrorFromContext(ctx, DeploymentTargetClaimContextKey, &applicationapiv1alpha1.DeploymentTargetClaim{})
-}
-
-// GetDeploymentTargetForDeploymentTargetClaim returns the resource and error passed as values of the context.
-func (l *mockLoader) GetDeploymentTargetForDeploymentTargetClaim(ctx context.Context, c client.Client, dtc *applicationapiv1alpha1.DeploymentTargetClaim) (*applicationapiv1alpha1.DeploymentTarget, error) {
-	if ctx.Value(DeploymentTargetContextKey) == nil {
-		return l.loader.GetDeploymentTargetForDeploymentTargetClaim(ctx, c, dtc)
-	}
-	return toolkit.GetMockedResourceAndErrorFromContext(ctx, DeploymentTargetContextKey, &applicationapiv1alpha1.DeploymentTarget{})
-}
-
-// FindExistingSnapshotEnvironmentBinding returns the resource and error passed as values of the context.
-func (l *mockLoader) FindExistingSnapshotEnvironmentBinding(ctx context.Context, c client.Client, application *applicationapiv1alpha1.Application, environment *applicationapiv1alpha1.Environment) (*applicationapiv1alpha1.SnapshotEnvironmentBinding, error) {
-	if ctx.Value(SnapshotEnvironmentBindingContextKey) == nil {
-		return l.loader.FindExistingSnapshotEnvironmentBinding(ctx, c, application, environment)
-	}
-	return toolkit.GetMockedResourceAndErrorFromContext(ctx, SnapshotEnvironmentBindingContextKey, &applicationapiv1alpha1.SnapshotEnvironmentBinding{})
 }
 
 // GetAllPipelineRunsForSnapshotAndScenario returns the resource and error passed as values of the context.
@@ -221,14 +180,6 @@ func (l *mockLoader) GetScenario(ctx context.Context, c client.Client, name, nam
 		return l.loader.GetScenario(ctx, c, name, namespace)
 	}
 	return toolkit.GetMockedResourceAndErrorFromContext(ctx, GetScenarioContextKey, &v1beta2.IntegrationTestScenario{})
-}
-
-func (l *mockLoader) GetAllEnvironmentsForScenario(ctx context.Context, c client.Client, integrationTestScenario *v1beta2.IntegrationTestScenario) (*[]applicationapiv1alpha1.Environment, error) {
-	if ctx.Value(AllEnvironmentsForScenarioContextKey) == nil {
-		return l.loader.GetAllEnvironmentsForScenario(ctx, c, integrationTestScenario)
-	}
-	environments, err := toolkit.GetMockedResourceAndErrorFromContext(ctx, AllEnvironmentsForScenarioContextKey, []applicationapiv1alpha1.Environment{})
-	return &environments, err
 }
 
 func (l *mockLoader) GetAllSnapshotsForBuildPipelineRun(ctx context.Context, c client.Client, pipelineRun *tektonv1.PipelineRun) (*[]applicationapiv1alpha1.Snapshot, error) {

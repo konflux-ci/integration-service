@@ -19,7 +19,6 @@ package tekton
 import (
 	"encoding/json"
 	"fmt"
-	"reflect"
 	"strings"
 
 	"os"
@@ -30,7 +29,6 @@ import (
 	"github.com/konflux-ci/operator-toolkit/metadata"
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
-	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
@@ -245,37 +243,6 @@ func (r *IntegrationPipelineRun) WithApplication(application *applicationapiv1al
 		r.ObjectMeta.Labels = map[string]string{}
 	}
 	r.ObjectMeta.Labels[ApplicationNameLabel] = application.Name
-
-	return r
-}
-
-// WithEnvironmentAndDeploymentTarget adds a param containing the DeploymentTarget connection details and Environment name
-// to the integration PipelineRun.
-func (r *IntegrationPipelineRun) WithEnvironmentAndDeploymentTarget(dt *applicationapiv1alpha1.DeploymentTarget, environmentName string) *IntegrationPipelineRun {
-	if !reflect.ValueOf(dt.Spec.KubernetesClusterCredentials).IsZero() {
-		// Add the NAMESPACE parameter to the pipeline
-		r.WithExtraParam("NAMESPACE", tektonv1.ParamValue{
-			Type:      tektonv1.ParamTypeString,
-			StringVal: dt.Spec.KubernetesClusterCredentials.DefaultNamespace,
-		})
-
-		// Create a new Workspace binding which will allow mounting the ClusterCredentialsSecret in the Tekton pipelineRun
-		workspace := tektonv1.WorkspaceBinding{
-			Name:   "cluster-credentials",
-			Secret: &corev1.SecretVolumeSource{SecretName: dt.Spec.KubernetesClusterCredentials.ClusterCredentialsSecret},
-		}
-		// Add the new workspace to the pipelineRun Spec
-		if r.Spec.Workspaces == nil {
-			r.Spec.Workspaces = []tektonv1.WorkspaceBinding{}
-		}
-		r.Spec.Workspaces = append(r.Spec.Workspaces, workspace)
-	}
-
-	// Add the environment label to the pipelineRun
-	if r.ObjectMeta.Labels == nil {
-		r.ObjectMeta.Labels = map[string]string{}
-	}
-	r.ObjectMeta.Labels[EnvironmentNameLabel] = environmentName
 
 	return r
 }

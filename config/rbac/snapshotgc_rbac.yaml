@@ -14,7 +14,6 @@ rules:
   - appstudio.redhat.com
   resources:
   - releases
-  - snapshotenvironmentbindings
   verbs:
   - get
   - list
