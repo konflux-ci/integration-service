@@ -16,8 +16,7 @@ flowchart TD
   
   application_exists{"Application for scenario <br>was found?"}
   set_owner_reference(Set owner reference to <br>IntegrationTestScenario <br> if not already existing)
-  environment_defined{"IntegrationTestScenario <br>has environment defined?"}
-  environment_exists{"Environment exists <br> in same namespace <br> as IntegrationTestScenario?"}
+  status_check{"IntegrationTestScenario <br>has status<br>IntegrationTestScenarioValid<br>condition undefined<br>or false"}
   update_scenario_status_valid(Update IntegrationTestScenario <br>status to valid)
   update_scenario_status_invalid(Update IntegrationTestScenario <br>status to invalid)
   remove_historical_finalizer(Check for and remove<br>historical IntegrationTestScenario <br> finalizer)
@@ -30,11 +29,9 @@ flowchart TD
   remove_historical_finalizer      -->      application_exists
   application_exists               --No-->  update_scenario_status_invalid
   application_exists               --Yes--> set_owner_reference
-  set_owner_reference              -->      environment_defined
-  environment_defined              --Yes--> environment_exists
-  environment_defined              --No-->  update_scenario_status_valid
-  environment_exists               --No-->  update_scenario_status_invalid
-  environment_exists               --Yes--> update_scenario_status_valid
+  set_owner_reference              -->      status_check
+  status_check                     --No-->  update_scenario_status_invalid
+  status_check                     --Yes--> update_scenario_status_valid
   update_scenario_status_valid     -->      complete_reconciliation
   complete_reconciliation          -->      continue_reconciliation
   update_scenario_status_invalid   -->      continue_reconciliation

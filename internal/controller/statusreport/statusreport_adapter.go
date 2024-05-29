@@ -68,7 +68,7 @@ func NewAdapter(context context.Context, snapshot *applicationapiv1alpha1.Snapsh
 	}
 }
 
-// EnsureSnapshotTestStatusReportedToGitProvider will ensure that integration test status including env provision and snapshotEnvironmentBinding error is reported to the git provider
+// EnsureSnapshotTestStatusReportedToGitProvider will ensure that integration test status is reported to the git provider
 // which (indirectly) triggered its execution.
 func (a *Adapter) EnsureSnapshotTestStatusReportedToGitProvider() (controller.OperationResult, error) {
 	if gitops.IsSnapshotCreatedByPACPushEvent(a.snapshot) {

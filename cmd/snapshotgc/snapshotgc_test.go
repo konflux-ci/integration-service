@@ -17,8 +17,6 @@ import (
 	core "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
-	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
@@ -125,105 +123,6 @@ var _ = Describe("Test garbage collection for snapshots", func() {
 			Expect(err).Should(HaveOccurred())
 			Expect(err).To(MatchError(ContainSubstring(
 				"no kind is registered for the type v1alpha1.ReleaseList in scheme",
-			)))
-		})
-	})
-
-	Describe("Test getSnapshotsForNSBindings", func() {
-		It("Finds no snapshot when there are no bindings", func() {
-
-			cl := fake.NewClientBuilder().
-				WithScheme(scheme).
-				WithLists(
-					&applicationapiv1alpha1.SnapshotEnvironmentBindingList{
-						Items: []applicationapiv1alpha1.SnapshotEnvironmentBinding{},
-					}).Build()
-			snapToData := make(map[string]snapshotData)
-			output, err := getSnapshotsForNSBindings(cl, snapToData, "ns1", logger)
-
-			Expect(err).ShouldNot(HaveOccurred())
-			Expect(output).To(BeEmpty())
-		})
-
-		It("Finds a snapshot for a single binding", func() {
-			bind1 := &applicationapiv1alpha1.SnapshotEnvironmentBinding{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "my-binding",
-					Namespace: "ns1",
-				},
-				Spec: applicationapiv1alpha1.SnapshotEnvironmentBindingSpec{
-					Snapshot: "my-snapshot",
-				},
-			}
-			bind2 := &applicationapiv1alpha1.SnapshotEnvironmentBinding{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "another-ns-binding",
-					Namespace: "another-ns",
-				},
-				Spec: applicationapiv1alpha1.SnapshotEnvironmentBindingSpec{
-					Snapshot: "another-snapshot",
-				},
-			}
-
-			cl := fake.NewClientBuilder().
-				WithScheme(scheme).
-				WithLists(
-					&applicationapiv1alpha1.SnapshotEnvironmentBindingList{
-						Items: []applicationapiv1alpha1.SnapshotEnvironmentBinding{*bind1, *bind2},
-					}).Build()
-			snapToData := make(map[string]snapshotData)
-			output, err := getSnapshotsForNSBindings(cl, snapToData, "ns1", logger)
-
-			Expect(err).ShouldNot(HaveOccurred())
-			Expect(output).To(HaveLen(1))
-			Expect(output["my-snapshot"].environmentBinding.Name).To(Equal("my-binding"))
-		})
-
-		It("Finds multiple snapshots for multiple bindings", func() {
-			bind1 := &applicationapiv1alpha1.SnapshotEnvironmentBinding{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "bind1",
-					Namespace: "ns1",
-				},
-				Spec: applicationapiv1alpha1.SnapshotEnvironmentBindingSpec{
-					Snapshot: "snap1",
-				},
-			}
-			bind2 := &applicationapiv1alpha1.SnapshotEnvironmentBinding{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "bind2",
-					Namespace: "ns1",
-				},
-				Spec: applicationapiv1alpha1.SnapshotEnvironmentBindingSpec{
-					Snapshot: "snap2",
-				},
-			}
-
-			cl := fake.NewClientBuilder().
-				WithScheme(scheme).
-				WithLists(
-					&applicationapiv1alpha1.SnapshotEnvironmentBindingList{
-						Items: []applicationapiv1alpha1.SnapshotEnvironmentBinding{*bind1, *bind2},
-					}).Build()
-			snapToData := make(map[string]snapshotData)
-			output, err := getSnapshotsForNSBindings(cl, snapToData, "ns1", logger)
-
-			Expect(err).ShouldNot(HaveOccurred())
-			Expect(output).To(HaveLen(2))
-			Expect(output["snap1"].environmentBinding.Name).To(Equal("bind1"))
-			Expect(output["snap2"].environmentBinding.Name).To(Equal("bind2"))
-		})
-
-		It("Returns error when fails API call", func() {
-
-			cl := fake.NewClientBuilder().Build()
-			snapToData := make(map[string]snapshotData)
-			_, err := getSnapshotsForNSBindings(cl, snapToData, "ns1", logger)
-
-			Expect(err).Should(HaveOccurred())
-			Expect(err).To(MatchError(ContainSubstring(
-				"no kind is registered for the type " +
-					"v1alpha1.SnapshotEnvironmentBindingList in scheme",
 			)))
 		})
 	})
@@ -769,25 +668,6 @@ var _ = Describe("Test garbage collection for snapshots", func() {
 				},
 			}
 
-			bind3 := &applicationapiv1alpha1.SnapshotEnvironmentBinding{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "bind3",
-					Namespace: "ns1",
-				},
-				Spec: applicationapiv1alpha1.SnapshotEnvironmentBindingSpec{
-					Snapshot: "keep31",
-				},
-			}
-			bind4 := &applicationapiv1alpha1.SnapshotEnvironmentBinding{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "bind4",
-					Namespace: "ns1",
-				},
-				Spec: applicationapiv1alpha1.SnapshotEnvironmentBindingSpec{
-					Snapshot: "keep41",
-				},
-			}
-
 			currentTime := time.Now()
 			keep11 := &applicationapiv1alpha1.Snapshot{
 				ObjectMeta: metav1.ObjectMeta{
@@ -916,11 +796,6 @@ var _ = Describe("Test garbage collection for snapshots", func() {
 					&releasev1alpha1.ReleaseList{
 						Items: []releasev1alpha1.Release{*rel1, *rel2},
 					},
-					&applicationapiv1alpha1.SnapshotEnvironmentBindingList{
-						Items: []applicationapiv1alpha1.SnapshotEnvironmentBinding{
-							*bind3, *bind4,
-						},
-					},
 					&applicationapiv1alpha1.SnapshotList{
 						Items: []applicationapiv1alpha1.Snapshot{
 							*newerPRSnap, *olderPRSnap,
@@ -965,7 +840,7 @@ var _ = Describe("Test garbage collection for snapshots", func() {
 				Namespace: "ns1",
 			})
 			Expect(err).ShouldNot(HaveOccurred())
-			Expect(snapsAfter.Items).To(HaveLen(6))
+			Expect(snapsAfter.Items).To(HaveLen(4))
 			err = cl.List(context.Background(), snapsAfter, &client.ListOptions{
 				Namespace: "ns2",
 			})
@@ -1011,32 +886,6 @@ var _ = Describe("Test garbage collection for snapshots", func() {
 			logLines := strings.Split(buf.String(), "\n")
 			Expect(logLines[len(logLines)-2]).Should(ContainSubstring(
 				"Failed getting releases associated with snapshots.",
-			))
-		})
-
-		It("Does not fail if getSnapshotsForNSBindings fails for namespace", func() {
-			ns1 := &core.Namespace{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "ns1",
-					Labels: map[string]string{
-						"toolchain.dev.openshift.com/type": "tenant",
-					},
-				},
-			}
-
-			// using scheme with release, but without binding
-			noBindsScheme := runtime.NewScheme()
-			utilruntime.Must(clientgoscheme.AddToScheme(noBindsScheme))
-			utilruntime.Must(releasev1alpha1.AddToScheme(noBindsScheme))
-			cl := fake.NewClientBuilder().WithScheme(noBindsScheme).WithLists(
-				&core.NamespaceList{Items: []core.Namespace{*ns1}},
-			).Build()
-
-			err := garbageCollectSnapshots(cl, logger, 1, 1)
-			Expect(err).ShouldNot(HaveOccurred())
-			logLines := strings.Split(buf.String(), "\n")
-			Expect(logLines[len(logLines)-2]).Should(ContainSubstring(
-				"Failed getting bindings associated with snapshots.",
 			))
 		})
 

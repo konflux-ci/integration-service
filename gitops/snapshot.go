@@ -155,10 +155,6 @@ const (
 	// LegacyIntegrationStatusCondition is the condition for marking the AppStudio integration status of the Snapshot.
 	LegacyIntegrationStatusCondition = "HACBSIntegrationStatus"
 
-	// SnapshotDeployedToRootEnvironmentsCondition is the condition for marking if Snapshot was deployed to root environments
-	// within the user's workspace.
-	SnapshotDeployedToRootEnvironmentsCondition = "DeployedToRootEnvironments"
-
 	// SnapshotAutoReleasedCondition is the condition for marking if Snapshot was auto-released released with AppStudio.
 	SnapshotAutoReleasedCondition = "AutoReleased"
 

@@ -58,7 +58,6 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		hasApp                                *applicationapiv1alpha1.Application
 		hasSnapshot                           *applicationapiv1alpha1.Snapshot
 		snapshotPREvent                       *applicationapiv1alpha1.Snapshot
-		hasEnv                                *applicationapiv1alpha1.Environment
 		integrationTestScenario               *v1beta2.IntegrationTestScenario
 		integrationTestScenarioFailed         *v1beta2.IntegrationTestScenario
 	)
@@ -71,29 +70,6 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 	)
 
 	BeforeAll(func() {
-		hasEnv = &applicationapiv1alpha1.Environment{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "test-env",
-				Namespace: "default",
-			},
-			Spec: applicationapiv1alpha1.EnvironmentSpec{
-				Type:               "POC",
-				DisplayName:        "my-environment",
-				DeploymentStrategy: applicationapiv1alpha1.DeploymentStrategy_Manual,
-				ParentEnvironment:  "",
-				Tags:               []string{"ephemeral"},
-				Configuration: applicationapiv1alpha1.EnvironmentConfiguration{
-					Env: []applicationapiv1alpha1.EnvVarPair{
-						{
-							Name:  "var_name",
-							Value: "test",
-						},
-					},
-				},
-			},
-		}
-		Expect(k8sClient.Create(ctx, hasEnv)).Should(Succeed())
-
 		hasApp = &applicationapiv1alpha1.Application{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "application-sample",
@@ -314,7 +290,6 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 					"pac.test.appstudio.openshift.io/repository":      "build-service-pac",
 					"appstudio.openshift.io/snapshot":                 hasSnapshot.Name,
 					"test.appstudio.openshift.io/scenario":            integrationTestScenario.Name,
-					"appstudio.openshift.io/environment":              hasEnv.Name,
 					"appstudio.openshift.io/application":              hasApp.Name,
 					"appstudio.openshift.io/component":                hasComp.Name,
 				},
@@ -384,8 +359,6 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		Expect(err == nil || k8serrors.IsNotFound(err)).To(BeTrue())
 		err = k8sClient.Delete(ctx, successfulTaskRun)
 		Expect(err == nil || k8serrors.IsNotFound(err)).To(BeTrue())
-		err = k8sClient.Delete(ctx, hasEnv)
-		Expect(err == nil || k8serrors.IsNotFound(err)).To(BeTrue())
 		err = k8sClient.Delete(ctx, failedTaskRun)
 		Expect(err == nil || k8serrors.IsNotFound(err)).To(BeTrue())
 	})
@@ -415,10 +388,6 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				{
 					ContextKey: loader.TaskRunContextKey,
 					Resource:   successfulTaskRun,
-				},
-				{
-					ContextKey: loader.EnvironmentContextKey,
-					Resource:   hasEnv,
 				},
 				{
 					ContextKey: loader.ApplicationComponentsContextKey,
@@ -495,7 +464,6 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 							"pac.test.appstudio.openshift.io/repository":      "build-service-pac",
 							"appstudio.openshift.io/snapshot":                 hasSnapshot.Name,
 							"test.appstudio.openshift.io/scenario":            integrationTestScenarioFailed.Name,
-							"appstudio.openshift.io/environment":              hasEnv.Name,
 							"appstudio.openshift.io/application":              hasApp.Name,
 							"appstudio.openshift.io/component":                hasComp.Name,
 						},
@@ -677,7 +645,6 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 						"pac.test.appstudio.openshift.io/repository":      "build-service-pac",
 						"appstudio.openshift.io/snapshot":                 snapshotPREvent.Name,
 						"test.appstudio.openshift.io/scenario":            integrationTestScenarioFailed.Name,
-						"appstudio.openshift.io/environment":              hasEnv.Name,
 						"appstudio.openshift.io/application":              hasApp.Name,
 						"appstudio.openshift.io/component":                hasComp.Name,
 					},

@@ -35,18 +35,12 @@ import (
 )
 
 var _ = Describe("Scenario Adapter", Ordered, func() {
-	const (
-		DefaultNamespace = "default"
-		SampleRepoLink   = "https://github.com/devfile-samples/devfile-sample-java-springboot-basic"
-	)
 	var (
 		adapter                 *Adapter
 		hasApp                  *applicationapiv1alpha1.Application
 		integrationTestScenario *v1beta2.IntegrationTestScenario
 		invalidScenario         *v1beta2.IntegrationTestScenario
 		logger                  helpers.IntegrationLogger
-		envNamespace            string = DefaultNamespace
-		env                     applicationapiv1alpha1.Environment
 	)
 
 	BeforeAll(func() {
@@ -133,37 +127,8 @@ var _ = Describe("Scenario Adapter", Ordered, func() {
 	})
 
 	JustBeforeEach(func() {
-
-		env = applicationapiv1alpha1.Environment{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "envname",
-				Namespace: envNamespace,
-			},
-			Spec: applicationapiv1alpha1.EnvironmentSpec{
-				Type:               "POC",
-				DisplayName:        "my-environment",
-				DeploymentStrategy: applicationapiv1alpha1.DeploymentStrategy_Manual,
-				ParentEnvironment:  "",
-				Tags:               []string{},
-				Configuration: applicationapiv1alpha1.EnvironmentConfiguration{
-					Env: []applicationapiv1alpha1.EnvVarPair{
-						{
-							Name:  "var_name",
-							Value: "test",
-						},
-					},
-				},
-			},
-		}
-		Expect(k8sClient.Create(ctx, &env)).Should(Succeed())
-
 		adapter = NewAdapter(ctx, hasApp, integrationTestScenario, logger, loader.NewMockLoader(), k8sClient)
 		Expect(reflect.TypeOf(adapter)).To(Equal(reflect.TypeOf(&Adapter{})))
-	})
-
-	AfterEach(func() {
-		err := k8sClient.Delete(ctx, &env)
-		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 	})
 
 	AfterAll(func() {

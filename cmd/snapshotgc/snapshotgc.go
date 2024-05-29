@@ -35,8 +35,7 @@ func init() {
 
 // Stores pointers to resources to which the snapshot is associated
 type snapshotData struct {
-	environmentBinding applicationapiv1alpha1.SnapshotEnvironmentBinding
-	release            releasev1alpha1.Release
+	release releasev1alpha1.Release
 }
 
 // Iterates tenant namespaces and garbage-collect their snapshots
@@ -60,17 +59,6 @@ func garbageCollectSnapshots(
 			logger.Error(
 				err,
 				"Failed getting releases associated with snapshots. Skipping namespace",
-				"namespace",
-				ns.Name,
-			)
-			continue
-		}
-
-		snapToData, err = getSnapshotsForNSBindings(cl, snapToData, ns.Name, logger)
-		if err != nil {
-			logger.Error(
-				err,
-				"Failed getting bindings associated with snapshots. Skipping namespace",
 				"namespace",
 				ns.Name,
 			)
@@ -147,36 +135,6 @@ func getSnapshotsForNSReleases(
 	return snapToData, nil
 }
 
-// Gets a map to allow to tell with direct lookup if a snapshot is associated with
-// a SnapshotEnvironmentBinding resource
-func getSnapshotsForNSBindings(
-	cl client.Client,
-	snapToData map[string]snapshotData,
-	namespace string,
-	logger logr.Logger,
-) (map[string]snapshotData, error) {
-	binds := &applicationapiv1alpha1.SnapshotEnvironmentBindingList{}
-	err := cl.List(
-		context.Background(),
-		binds,
-		&client.ListOptions{Namespace: namespace},
-	)
-	if err != nil {
-		logger.Error(err, "Failed to list bindings")
-		return nil, err
-	}
-
-	for _, bind := range binds.Items {
-		data, ok := snapToData[bind.Spec.Snapshot]
-		if !ok {
-			data = snapshotData{}
-		}
-		data.environmentBinding = bind
-		snapToData[bind.Spec.Snapshot] = data
-	}
-	return snapToData, nil
-}
-
 // Gets all namespace snapshots that aren't associated with a release/binding
 func getUnassociatedNSSnapshots(
 	cl client.Client,
@@ -200,7 +158,7 @@ func getUnassociatedNSSnapshots(
 	for _, snap := range snaps.Items {
 		if _, found := snapToData[snap.Name]; found {
 			logger.V(1).Info(
-				"Skipping snapshot as it's associated with release/binding",
+				"Skipping snapshot as it's associated with release",
 				"namespace", snap.Namespace,
 				"snapshot.name", snap.Name,
 			)

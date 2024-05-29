@@ -53,9 +53,6 @@ var _ = Describe("Integration pipeline", func() {
 		newIntegrationPipelineRun       *tekton.IntegrationPipelineRun
 		newIntegrationBundlePipelineRun *tekton.IntegrationPipelineRun
 		enterpriseContractPipelineRun   *tekton.IntegrationPipelineRun
-		hasEnv                          *applicationapiv1alpha1.Environment
-		deploymentTargetClaim           *applicationapiv1alpha1.DeploymentTargetClaim
-		deploymentTarget                *applicationapiv1alpha1.DeploymentTarget
 		integrationTestScenarioGit      *v1beta2.IntegrationTestScenario
 		integrationTestScenarioBundle   *v1beta2.IntegrationTestScenario
 		enterpriseContractTestScenario  *v1beta2.IntegrationTestScenario
@@ -194,63 +191,6 @@ var _ = Describe("Integration pipeline", func() {
 		}
 		Expect(k8sClient.Create(ctx, hasApp)).Should(Succeed())
 
-		deploymentTargetClaim = &applicationapiv1alpha1.DeploymentTargetClaim{
-			ObjectMeta: metav1.ObjectMeta{
-				GenerateName: "dtc" + "-",
-				Namespace:    namespace,
-			},
-			Spec: applicationapiv1alpha1.DeploymentTargetClaimSpec{
-				DeploymentTargetClassName: applicationapiv1alpha1.DeploymentTargetClassName("dtcls-name"),
-			},
-		}
-		Expect(k8sClient.Create(ctx, deploymentTargetClaim)).Should(Succeed())
-
-		deploymentTarget = &applicationapiv1alpha1.DeploymentTarget{
-			ObjectMeta: metav1.ObjectMeta{
-				GenerateName: "dt" + "-",
-				Namespace:    namespace,
-			},
-			Spec: applicationapiv1alpha1.DeploymentTargetSpec{
-				ClaimRef:                  deploymentTargetClaim.Name,
-				DeploymentTargetClassName: "dtcls-name",
-				KubernetesClusterCredentials: applicationapiv1alpha1.DeploymentTargetKubernetesClusterCredentials{
-					DefaultNamespace:           "default",
-					APIURL:                     "https://url",
-					ClusterCredentialsSecret:   "secret-sample",
-					AllowInsecureSkipTLSVerify: false,
-				},
-			},
-		}
-		Expect(k8sClient.Create(ctx, deploymentTarget)).Should(Succeed())
-
-		hasEnv = &applicationapiv1alpha1.Environment{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "envname",
-				Namespace: "default",
-			},
-			Spec: applicationapiv1alpha1.EnvironmentSpec{
-				Type:               "POC",
-				DisplayName:        "my-environment",
-				DeploymentStrategy: applicationapiv1alpha1.DeploymentStrategy_Manual,
-				ParentEnvironment:  "",
-				Tags:               []string{},
-				Configuration: applicationapiv1alpha1.EnvironmentConfiguration{
-					Env: []applicationapiv1alpha1.EnvVarPair{
-						{
-							Name:  "var_name",
-							Value: "test",
-						},
-					},
-					Target: applicationapiv1alpha1.EnvironmentTarget{
-						DeploymentTargetClaim: applicationapiv1alpha1.DeploymentTargetClaimConfig{
-							ClaimName: deploymentTargetClaim.Name,
-						},
-					},
-				},
-			},
-		}
-		Expect(k8sClient.Create(ctx, hasEnv)).Should(Succeed())
-
 		hasSnapshot = &applicationapiv1alpha1.Snapshot{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "snapshot-sample",
@@ -321,9 +261,6 @@ var _ = Describe("Integration pipeline", func() {
 		_ = k8sClient.Delete(ctx, hasApp)
 		_ = k8sClient.Delete(ctx, hasSnapshot)
 		_ = k8sClient.Delete(ctx, hasComp)
-		_ = k8sClient.Delete(ctx, hasEnv)
-		_ = k8sClient.Delete(ctx, deploymentTargetClaim)
-		_ = k8sClient.Delete(ctx, deploymentTarget)
 		_ = k8sClient.Delete(ctx, newIntegrationPipelineRun.AsPipelineRun())
 
 		os.Setenv("PIPELINE_TIMEOUT", "")
@@ -426,23 +363,6 @@ var _ = Describe("Integration pipeline", func() {
 			newIntegrationPipelineRun.WithApplication(hasApp)
 			Expect(newIntegrationPipelineRun.Labels["appstudio.openshift.io/application"]).
 				To(Equal(hasApp.Name))
-		})
-
-		It("can append labels, workspaces and parameters that comes from Environment to IntegrationPipelineRun", func() {
-			newIntegrationPipelineRun.WithEnvironmentAndDeploymentTarget(deploymentTarget, hasEnv.Name)
-			Expect(newIntegrationPipelineRun.Labels["appstudio.openshift.io/environment"]).
-				To(Equal(hasEnv.Name))
-
-			Expect(newIntegrationPipelineRun.Spec.Workspaces).NotTo(BeNil())
-			Expect(newIntegrationPipelineRun.Spec.Workspaces).NotTo(BeEmpty())
-			Expect(newIntegrationPipelineRun.Spec.Workspaces[0].Name).To(Equal("cluster-credentials"))
-			Expect(newIntegrationPipelineRun.Spec.Workspaces[0].Secret.SecretName).
-				To(Equal(deploymentTarget.Spec.KubernetesClusterCredentials.ClusterCredentialsSecret))
-
-			Expect(newIntegrationPipelineRun.Spec.Params).NotTo(BeEmpty())
-			Expect(newIntegrationPipelineRun.Spec.Params[0].Name).To(Equal("NAMESPACE"))
-			Expect(newIntegrationPipelineRun.Spec.Params[0].Value.StringVal).
-				To(Equal(deploymentTarget.Spec.KubernetesClusterCredentials.DefaultNamespace))
 		})
 
 		It("provides parameters from IntegrationTestScenario to the PipelineRun", func() {
