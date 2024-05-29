@@ -310,9 +310,12 @@ var _ = Describe("Status Adapter", func() {
 		ctrl := gomock.NewController(GinkgoT())
 		mockReporter = status.NewMockReporterInterface(ctrl)
 		mockReporter.EXPECT().GetReporterName().Return("mocked-reporter").AnyTimes()
+
+		os.Setenv("CONSOLE_NAME", "Red Hat Konflux")
 	})
 	AfterEach(func() {
 		os.Setenv("CONSOLE_URL", "")
+		os.Setenv("CONSOLE_NAME", "")
 	})
 
 	It("can get reporters from a snapshot", func() {
@@ -381,11 +384,12 @@ var _ = Describe("Status Adapter", func() {
 	})
 
 	It("report expected textual data for InProgress test scenario", func() {
+		os.Setenv("CONSOLE_NAME", "Konflux Staging")
 		hasSnapshot.Annotations["test.appstudio.openshift.io/status"] = "[{\"scenario\":\"scenario1\",\"status\":\"InProgress\",\"testPipelineRunName\":\"test-pipelinerun\",\"startTime\":\"2023-07-26T16:57:49+02:00\",\"lastUpdateTime\":\"2023-08-26T17:57:50+02:00\",\"details\":\"Test in progress\"}]"
 		t, err := time.Parse(time.RFC3339, "2023-07-26T16:57:49+02:00")
 		Expect(err).NotTo(HaveOccurred())
 		expectedTestReport := status.TestReport{
-			FullName:            "Red Hat Konflux / scenario1 / component-sample",
+			FullName:            "Konflux Staging / scenario1 / component-sample",
 			ScenarioName:        "scenario1",
 			SnapshotName:        "snapshot-sample",
 			ComponentName:       "component-sample",

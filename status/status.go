@@ -22,6 +22,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -35,9 +36,6 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
-
-// NamePrefix is a common name prefix for this service.
-const NamePrefix = "Red Hat Konflux"
 
 // ScenarioReportStatus keep report status of git provider for the particular scenario
 type ScenarioReportStatus struct {
@@ -286,7 +284,9 @@ func (s *Status) generateTestReport(ctx context.Context, detail intgteststat.Int
 		return nil, fmt.Errorf("failed to generate summary message: %w", err)
 	}
 
-	fullName := fmt.Sprintf("%s / %s", NamePrefix, detail.ScenarioName)
+	consoleName := getConsoleName()
+
+	fullName := fmt.Sprintf("%s / %s", consoleName, detail.ScenarioName)
 	if snapshot.Labels[gitops.SnapshotComponentLabel] != "" {
 		fullName = fmt.Sprintf("%s / %s", fullName, snapshot.Labels[gitops.SnapshotComponentLabel])
 	}
@@ -370,4 +370,12 @@ func GenerateSummary(state intgteststat.IntegrationTestStatus, snapshotName, sce
 	summary = fmt.Sprintf("Integration test for snapshot %s and scenario %s %s", snapshotName, scenarioName, statusDesc)
 
 	return summary, nil
+}
+
+func getConsoleName() string {
+	consoleName := os.Getenv("CONSOLE_NAME")
+	if consoleName == "" {
+		return "Integration Service"
+	}
+	return consoleName
 }
