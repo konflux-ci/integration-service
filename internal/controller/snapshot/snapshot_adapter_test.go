@@ -31,6 +31,7 @@ import (
 
 	"github.com/konflux-ci/integration-service/api/v1beta2"
 	"github.com/konflux-ci/integration-service/loader"
+	"github.com/konflux-ci/integration-service/tekton"
 	toolkit "github.com/konflux-ci/operator-toolkit/loader"
 	releasev1alpha1 "github.com/konflux-ci/release-service/api/v1alpha1"
 	releasemetadata "github.com/konflux-ci/release-service/metadata"
@@ -540,6 +541,43 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			_, found = pipelineRun.GetLabels()[gitops.SnapshotTypeLabel]
 			Expect(found).To(BeFalse())
 
+		})
+
+		When("pull request updates repo with integration test", func() {
+
+			const (
+				sourceRepoUrl = "https://test-repo.example.com" // is without .git suffix
+				sourceRepoRef = "db2c043b72b3f8d292ee0e38768d0a94859a308b"
+				targetRepoUrl = "https://github.com/redhat-appstudio/integration-examples" // is without .git suffix
+			)
+
+			BeforeEach(func() {
+				hasSnapshotPR.Annotations[gitops.SnapshotGitSourceRepoURLAnnotation] = sourceRepoUrl
+				hasSnapshotPR.Annotations[gitops.PipelineAsCodeSHAAnnotation] = sourceRepoRef
+				hasSnapshotPR.Annotations[gitops.PipelineAsCodeRepoURLAnnotation] = targetRepoUrl
+			})
+
+			It("pullrequest repo reference and URL should be used", func() {
+				pipelineRun, err := adapter.createIntegrationPipelineRun(hasApp, integrationTestScenario, hasSnapshotPR)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(pipelineRun).ToNot(BeNil())
+
+				foundUrl := false
+				foundRevision := false
+
+				for _, param := range pipelineRun.Spec.PipelineRef.Params {
+					if param.Name == tekton.TektonResolverGitParamURL {
+						foundUrl = true
+						Expect(param.Value.StringVal).To(Equal(sourceRepoUrl + ".git")) // must have .git suffix
+					}
+					if param.Name == tekton.TektonResolverGitParamRevision {
+						foundRevision = true
+						Expect(param.Value.StringVal).To(Equal(sourceRepoRef))
+					}
+				}
+				Expect(foundUrl).To(BeTrue())
+				Expect(foundRevision).To(BeTrue())
+			})
 		})
 
 		It("Ensure error is logged when experiencing error when fetching ITS for application", func() {
