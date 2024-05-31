@@ -83,17 +83,7 @@ func (a *Adapter) EnsureSnapshotExists() (result controller.OperationResult, err
 	}()
 
 	if !h.HasPipelineRunSucceeded(a.pipelineRun) {
-		if h.HasPipelineRunFinished(a.pipelineRun) || a.pipelineRun.GetDeletionTimestamp() != nil {
-			// The pipeline run has failed
-			// OR pipeline has been deleted but it's still in running state (tekton bug/feature?)
-			a.logger.Info("Finished processing of unsuccessful build PLR",
-				"statusCondition", a.pipelineRun.GetStatusCondition(),
-				"deletionTimestamp", a.pipelineRun.GetDeletionTimestamp(),
-			)
-			canRemoveFinalizer = true
-			return controller.ContinueProcessing()
-		}
-		// The build pipeline run has not finished yet
+		a.handleUnsuccessfulPipelineRun(&canRemoveFinalizer)
 		return controller.ContinueProcessing()
 	}
 
@@ -115,48 +105,20 @@ func (a *Adapter) EnsureSnapshotExists() (result controller.OperationResult, err
 		return controller.RequeueWithError(err)
 	}
 	if len(*existingSnapshots) > 0 {
-		if len(*existingSnapshots) == 1 {
-			existingSnapshot := (*existingSnapshots)[0]
-			a.logger.Info("There is an existing Snapshot associated with this build pipelineRun, but the pipelineRun is not yet annotated",
-				"snapshot.Name", existingSnapshot.Name)
-			err := a.annotateBuildPipelineRunWithSnapshot(&existingSnapshot)
-			if err != nil {
-				a.logger.Error(err, "Failed to update the build pipelineRun with snapshot name",
-					"pipelineRun.Name", a.pipelineRun.Name)
-				return controller.RequeueWithError(err)
-			}
-		} else {
-			a.logger.Info("The build pipelineRun is already associated with more than one existing Snapshot")
-		}
-		canRemoveFinalizer = true
-		return controller.ContinueProcessing()
+		result, err = a.ensureBuildPLRSWithSnapshotAnnotation(&canRemoveFinalizer, existingSnapshots)
+		return result, err
 	}
 
 	expectedSnapshot, err := a.prepareSnapshotForPipelineRun(a.pipelineRun, a.component, a.application)
 	if err != nil {
-		// If PipelineRun result returns cusomized error update PLR annotation and exit
-		if h.IsMissingInfoInPipelineRunError(err) || h.IsInvalidImageDigestError(err) || h.IsMissingValidComponentError(err) {
-			// update the build PLR annotation with the error cusomized Reason and Value
-			if annotateErr := tekton.AnnotateBuildPipelineRunWithCreateSnapshotAnnotation(a.context, a.pipelineRun, a.client, err); annotateErr != nil {
-				a.logger.Error(annotateErr, "Could not add create snapshot annotation to build pipelineRun", h.CreateSnapshotAnnotationName, a.pipelineRun)
-			}
-			a.logger.Error(err, "Build PipelineRun failed with error, should be fixed and re-run manually", "pipelineRun.Name", a.pipelineRun.Name)
-			canRemoveFinalizer = true
-			return controller.ContinueProcessing()
-		}
-
+		result, err = a.updatePipelineRunWithCustomizedError(&canRemoveFinalizer, err, a.context, a.pipelineRun, a.client, a.logger)
 		return controller.RequeueWithError(err)
 	}
 
 	err = a.client.Create(a.context, expectedSnapshot)
 	if err != nil {
-		a.logger.Error(err, "Failed to create Snapshot")
-		if errors.IsForbidden(err) {
-			// we cannot create a snapshot (possibly because the snapshot quota is hit) and we don't want to block resources, user has to retry
-			canRemoveFinalizer = true
-			return controller.StopProcessing()
-		}
-		return controller.RequeueWithError(err)
+		result, err = a.handleSnapshotCreationFailure(&canRemoveFinalizer, err)
+		return result, err
 	}
 	go metrics.RegisterNewSnapshot()
 
@@ -304,4 +266,67 @@ func (a *Adapter) updateBuildPipelineRunWithFinalInfo(canRemoveFinalizer bool) e
 		}
 		return nil
 	})
+}
+
+// checkForSnapshotsCount makes sure that only one snapshot is associated with build pipelinerun and annotate that PLR with snapshot
+// informs about fact when PLR is associated with more existing snapshots
+func (a *Adapter) ensureBuildPLRSWithSnapshotAnnotation(canRemoveFinalizer *bool, existingSnapshots *[]applicationapiv1alpha1.Snapshot) (result controller.OperationResult, err error) {
+	if len(*existingSnapshots) == 1 {
+		existingSnapshot := (*existingSnapshots)[0]
+		a.logger.Info("There is an existing Snapshot associated with this build pipelineRun, but the pipelineRun is not yet annotated",
+			"snapshot.Name", existingSnapshot.Name)
+		err := a.annotateBuildPipelineRunWithSnapshot(&existingSnapshot)
+		if err != nil {
+			a.logger.Error(err, "Failed to update the build pipelineRun with snapshot name",
+				"pipelineRun.Name", a.pipelineRun.Name)
+			return controller.RequeueWithError(err)
+		}
+	} else {
+		a.logger.Info("The build pipelineRun is already associated with more than one existing Snapshot")
+	}
+	*canRemoveFinalizer = true
+	return controller.ContinueProcessing()
+}
+
+// failedOrDeletedPLR checks for pipelinerun state and proceeds according to it,
+// failed or in running state > report this into a logger and set canRemoveFinalizer flag to true
+func (a *Adapter) handleUnsuccessfulPipelineRun(canRemoveFinalizer *bool) {
+	// The build pipelinerun has not finished
+	if h.HasPipelineRunFinished(a.pipelineRun) || a.pipelineRun.GetDeletionTimestamp() != nil {
+		// The pipeline run has failed
+		// OR pipeline has been deleted but it's still in running state (tekton bug/feature?)
+		a.logger.Info("Finished processing of unsuccessful build PLR",
+			"statusCondition", a.pipelineRun.GetStatusCondition(),
+			"deletionTimestamp", a.pipelineRun.GetDeletionTimestamp(),
+		)
+		*canRemoveFinalizer = true
+	}
+}
+
+// failedToCreateSnapshot stops reconcilation immediately when snapshot cannot be created
+func (a *Adapter) handleSnapshotCreationFailure(canRemoveFinalizer *bool, cerr error) (result controller.OperationResult, err error) {
+	a.logger.Error(cerr, "Failed to create Snapshot")
+	if errors.IsForbidden(cerr) {
+		// we cannot create a snapshot (possibly because the snapshot quota is hit) and we don't want to block resources, user has to retry
+		*canRemoveFinalizer = true
+		return controller.StopProcessing()
+	}
+	return controller.RequeueWithError(cerr)
+}
+
+// plrWithCustomizedError checks for customized error returned by PipelineRun result,
+// updates build PipelineRun annotation with this error and exits
+func (a *Adapter) updatePipelineRunWithCustomizedError(canRemoveFinalizer *bool, cerr error, context context.Context, pipelineRun *tektonv1.PipelineRun, client client.Client, logger h.IntegrationLogger) (result controller.OperationResult, err error) {
+	// If PipelineRun result returns cusomized error update PLR annotation and exit
+	if h.IsMissingInfoInPipelineRunError(cerr) || h.IsInvalidImageDigestError(cerr) || h.IsMissingValidComponentError(cerr) {
+		// update the build PLR annotation with the error cusomized Reason and Value
+		if annotateErr := tekton.AnnotateBuildPipelineRunWithCreateSnapshotAnnotation(context, pipelineRun, client, cerr); annotateErr != nil {
+			logger.Error(annotateErr, "Could not add create snapshot annotation to build pipelineRun", h.CreateSnapshotAnnotationName, pipelineRun)
+		}
+		logger.Error(cerr, "Build PipelineRun failed with error, should be fixed and re-run manually", "pipelineRun.Name", pipelineRun.Name)
+		*canRemoveFinalizer = true
+		return controller.ContinueProcessing()
+	}
+	return controller.RequeueOnErrorOrContinue(cerr)
+
 }
