@@ -183,8 +183,8 @@ func (r *IntegrationPipelineRun) WithExtraParams(params []v1beta2.PipelineParame
 	return r
 }
 
-// WithSnapshot adds a param containing the Snapshot as a json string
-// to the integration PipelineRun.
+// WithSnapshot adds a param containing the Snapshot as a json string to the integration PipelineRun.
+// It also adds the Snapshot name label and copies the Component name label if it exists
 func (r *IntegrationPipelineRun) WithSnapshot(snapshot *applicationapiv1alpha1.Snapshot) *IntegrationPipelineRun {
 	// We ignore the error here because none should be raised when marshalling the spec of a CRD.
 	// If we end up deciding it is useful, we will need to pass the errors through the chain and
@@ -200,6 +200,11 @@ func (r *IntegrationPipelineRun) WithSnapshot(snapshot *applicationapiv1alpha1.S
 		r.ObjectMeta.Labels = map[string]string{}
 	}
 	r.ObjectMeta.Labels[SnapshotNameLabel] = snapshot.Name
+
+	componentLabel, found := snapshot.GetLabels()[ComponentNameLabel]
+	if found {
+		r.ObjectMeta.Labels[ComponentNameLabel] = componentLabel
+	}
 
 	return r
 }
@@ -234,13 +239,10 @@ func (r *IntegrationPipelineRun) WithIntegrationAnnotations(its *v1beta2.Integra
 	return r
 }
 
-// WithApplicationAndComponent adds the name of both application and component as lables to the Integration PipelineRun.
-func (r *IntegrationPipelineRun) WithApplicationAndComponent(application *applicationapiv1alpha1.Application, component *applicationapiv1alpha1.Component) *IntegrationPipelineRun {
+// WithApplication adds the name of application as a label to the Integration PipelineRun.
+func (r *IntegrationPipelineRun) WithApplication(application *applicationapiv1alpha1.Application) *IntegrationPipelineRun {
 	if r.ObjectMeta.Labels == nil {
 		r.ObjectMeta.Labels = map[string]string{}
-	}
-	if component != nil {
-		r.ObjectMeta.Labels[ComponentNameLabel] = component.Name
 	}
 	r.ObjectMeta.Labels[ApplicationNameLabel] = application.Name
 

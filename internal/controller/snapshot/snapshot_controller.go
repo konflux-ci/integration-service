@@ -20,10 +20,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/konflux-ci/integration-service/cache"
-	"github.com/konflux-ci/integration-service/tekton"
-
 	"github.com/go-logr/logr"
+	"github.com/konflux-ci/integration-service/cache"
 	"github.com/konflux-ci/integration-service/gitops"
 	"github.com/konflux-ci/integration-service/helpers"
 	"github.com/konflux-ci/integration-service/loader"
@@ -123,16 +121,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 
 	logger = logger.WithApp(*application)
 
-	var component *applicationapiv1alpha1.Component
-	err = retry.OnError(retry.DefaultRetry, func(_ error) bool { return true }, func() error {
-		component, err = loader.GetComponentFromSnapshot(ctx, r.Client, snapshot)
-		return err
-	})
-	if err != nil {
-		return helpers.HandleLoaderError(logger, err, fmt.Sprintf("Component or '%s' label", tekton.ComponentNameLabel), "Snapshot")
-	}
-
-	adapter := NewAdapter(ctx, snapshot, application, component, logger, loader, r.Client)
+	adapter := NewAdapter(ctx, snapshot, application, logger, loader, r.Client)
 
 	return controller.ReconcileHandler([]controller.Operation{
 		adapter.EnsureAllReleasesExist,
