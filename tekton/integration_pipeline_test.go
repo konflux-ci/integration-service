@@ -295,7 +295,7 @@ var _ = Describe("Integration pipeline", func() {
 		newIntegrationBundlePipelineRun = tekton.NewIntegrationPipelineRun(prefix, namespace, *integrationTestScenarioBundle).
 			WithIntegrationLabels(integrationTestScenarioBundle).
 			WithSnapshot(hasSnapshot).
-			WithApplicationAndComponent(hasApp, hasComp)
+			WithApplication(hasApp)
 		Expect(k8sClient.Create(ctx, newIntegrationBundlePipelineRun.AsPipelineRun())).Should(Succeed())
 
 		enterpriseContractPipelineRun = tekton.NewIntegrationPipelineRun(prefix, namespace, *enterpriseContractTestScenario).
@@ -303,7 +303,7 @@ var _ = Describe("Integration pipeline", func() {
 			WithIntegrationAnnotations(enterpriseContractTestScenario).
 			WithSnapshot(hasSnapshot).
 			WithExtraParams(enterpriseContractTestScenario.Spec.Params).
-			WithApplicationAndComponent(hasApp, hasComp)
+			WithApplication(hasApp)
 		Expect(k8sClient.Create(ctx, enterpriseContractPipelineRun.AsPipelineRun())).Should(Succeed())
 
 		os.Setenv("PIPELINE_TIMEOUT", "2h")
@@ -414,16 +414,16 @@ var _ = Describe("Integration pipeline", func() {
 				To(Equal(integrationTestScenarioGit.Namespace))
 		})
 
-		It("can append labels that comes from Snapshot to IntegrationPipelineRun and make sure that label value matches the snapshot name", func() {
+		It("can append labels that comes from Snapshot to IntegrationPipelineRun and make sure that label value matches the snapshot and component names", func() {
 			newIntegrationPipelineRun.WithSnapshot(hasSnapshot)
 			Expect(newIntegrationPipelineRun.Labels["appstudio.openshift.io/snapshot"]).
 				To(Equal(hasSnapshot.Name))
-		})
-
-		It("can append labels coming from Application and Component to IntegrationPipelineRun and making sure that label values matches application and component names", func() {
-			newIntegrationPipelineRun.WithApplicationAndComponent(hasApp, hasComp)
 			Expect(newIntegrationPipelineRun.Labels["appstudio.openshift.io/component"]).
 				To(Equal(hasComp.Name))
+		})
+
+		It("can append labels coming from Application to IntegrationPipelineRun and making sure that label values matches application", func() {
+			newIntegrationPipelineRun.WithApplication(hasApp)
 			Expect(newIntegrationPipelineRun.Labels["appstudio.openshift.io/application"]).
 				To(Equal(hasApp.Name))
 		})

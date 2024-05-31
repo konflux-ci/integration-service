@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"k8s.io/client-go/util/retry"
 	"reflect"
 	"strings"
 	"time"
@@ -56,7 +57,6 @@ type ScenarioOptions struct {
 type Adapter struct {
 	snapshot    *applicationapiv1alpha1.Snapshot
 	application *applicationapiv1alpha1.Application
-	component   *applicationapiv1alpha1.Component
 	logger      h.IntegrationLogger
 	loader      loader.ObjectLoader
 	client      client.Client
@@ -64,12 +64,11 @@ type Adapter struct {
 }
 
 // NewAdapter creates and returns an Adapter instance.
-func NewAdapter(context context.Context, snapshot *applicationapiv1alpha1.Snapshot, application *applicationapiv1alpha1.Application, component *applicationapiv1alpha1.Component, logger h.IntegrationLogger, loader loader.ObjectLoader, client client.Client,
+func NewAdapter(context context.Context, snapshot *applicationapiv1alpha1.Snapshot, application *applicationapiv1alpha1.Application, logger h.IntegrationLogger, loader loader.ObjectLoader, client client.Client,
 ) *Adapter {
 	return &Adapter{
 		snapshot:    snapshot,
 		application: application,
-		component:   component,
 		logger:      logger,
 		loader:      loader,
 		client:      client,
@@ -280,7 +279,7 @@ func (a *Adapter) EnsureIntegrationPipelineRunsExist() (controller.OperationResu
 // EnsureGlobalCandidateImageUpdated is an operation that ensure the ContainerImage in the Global Candidate List
 // being updated when the Snapshot is created
 func (a *Adapter) EnsureGlobalCandidateImageUpdated() (controller.OperationResult, error) {
-	if a.component == nil || !gitops.IsSnapshotCreatedByPACPushEvent(a.snapshot) {
+	if a.snapshot.GetLabels()[gitops.SnapshotTypeLabel] != gitops.SnapshotComponentType || !gitops.IsSnapshotCreatedByPACPushEvent(a.snapshot) {
 		a.logger.Info("The Snapshot wasn't created for a single component push event, not updating the global candidate list.")
 		return controller.ContinueProcessing()
 	}
@@ -289,31 +288,45 @@ func (a *Adapter) EnsureGlobalCandidateImageUpdated() (controller.OperationResul
 		return controller.ContinueProcessing()
 	}
 
-	for _, component := range a.snapshot.Spec.Components {
-		if component.Name == a.component.Name {
-			patch := client.MergeFrom(a.component.DeepCopy())
-			a.component.Spec.ContainerImage = component.ContainerImage
-			err := a.client.Patch(a.context, a.component, patch)
+	var componentToUpdate *applicationapiv1alpha1.Component
+	var err error
+	err = retry.OnError(retry.DefaultRetry, func(_ error) bool { return true }, func() error {
+		componentToUpdate, err = a.loader.GetComponentFromSnapshot(a.context, a.client, a.snapshot)
+		return err
+	})
+	if err != nil {
+		_, loaderError := h.HandleLoaderError(a.logger, err, fmt.Sprintf("Component or '%s' label", tekton.ComponentNameLabel), "Snapshot")
+		if loaderError != nil {
+			return controller.RequeueWithError(loaderError)
+		}
+		return controller.ContinueProcessing()
+	}
+
+	for _, snapshotComponent := range a.snapshot.Spec.Components {
+		if snapshotComponent.Name == componentToUpdate.Name {
+			patch := client.MergeFrom(componentToUpdate.DeepCopy())
+			componentToUpdate.Spec.ContainerImage = snapshotComponent.ContainerImage
+			err := a.client.Patch(a.context, componentToUpdate, patch)
 			if err != nil {
 				a.logger.Error(err, "Failed to update .Spec.ContainerImage of Global Candidate for the Component",
-					"component.Name", a.component.Name)
+					"component.Name", componentToUpdate.Name)
 				return controller.RequeueWithError(err)
 			}
 			a.logger.LogAuditEvent("Updated .Spec.ContainerImage of Global Candidate for the Component",
-				a.component, h.LogActionUpdate,
-				"containerImage", component.ContainerImage)
-			if reflect.ValueOf(component.Source).IsValid() && component.Source.GitSource != nil && component.Source.GitSource.Revision != "" {
-				patch := client.MergeFrom(a.component.DeepCopy())
-				a.component.Status.LastBuiltCommit = component.Source.GitSource.Revision
-				err = a.client.Status().Patch(a.context, a.component, patch)
+				componentToUpdate, h.LogActionUpdate,
+				"containerImage", snapshotComponent.ContainerImage)
+			if reflect.ValueOf(snapshotComponent.Source).IsValid() && snapshotComponent.Source.GitSource != nil && snapshotComponent.Source.GitSource.Revision != "" {
+				patch := client.MergeFrom(componentToUpdate.DeepCopy())
+				componentToUpdate.Status.LastBuiltCommit = snapshotComponent.Source.GitSource.Revision
+				err = a.client.Status().Patch(a.context, componentToUpdate, patch)
 				if err != nil {
 					a.logger.Error(err, "Failed to update .Status.LastBuiltCommit of Global Candidate for the Component",
-						"component.Name", a.component.Name)
+						"component.Name", componentToUpdate.Name)
 					return controller.RequeueWithError(err)
 				}
 				a.logger.LogAuditEvent("Updated .Status.LastBuiltCommit of Global Candidate for the Component",
-					a.component, h.LogActionUpdate,
-					"lastBuildCommit", a.component.Status.LastBuiltCommit)
+					componentToUpdate, h.LogActionUpdate,
+					"lastBuildCommit", componentToUpdate.Status.LastBuiltCommit)
 			}
 			break
 		}
@@ -321,7 +334,7 @@ func (a *Adapter) EnsureGlobalCandidateImageUpdated() (controller.OperationResul
 
 	// Mark the Snapshot as already added to global candidate list to prevent it from getting added again when the Snapshot
 	// gets reconciled at a later time
-	err := gitops.MarkSnapshotAsAddedToGlobalCandidateList(a.context, a.client, a.snapshot, "The Snapshot's component was added to the global candidate list")
+	err = gitops.MarkSnapshotAsAddedToGlobalCandidateList(a.context, a.client, a.snapshot, "The Snapshot's component was added to the global candidate list")
 	if err != nil {
 		a.logger.Error(err, "Failed to update the Snapshot's status to AddedToGlobalCandidateList")
 		return controller.RequeueWithError(err)
@@ -508,7 +521,7 @@ func (a *Adapter) createIntegrationPipelineRun(application *applicationapiv1alph
 		WithSnapshot(snapshot).
 		WithIntegrationLabels(integrationTestScenario).
 		WithIntegrationAnnotations(integrationTestScenario).
-		WithApplicationAndComponent(a.application, a.component).
+		WithApplication(a.application).
 		WithExtraParams(integrationTestScenario.Spec.Params).
 		WithFinalizer(h.IntegrationPipelineRunFinalizer).
 		WithDefaultIntegrationTimeouts(a.logger.Logger)
