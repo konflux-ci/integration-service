@@ -86,6 +86,9 @@ const (
 	// SnapshotCompositeType is the type of Snapshot which was created for multiple components.
 	SnapshotCompositeType = "composite"
 
+	// SnapshotOverrideType is the type of Snapshot which was created for override Global Candidate List.
+	SnapshotOverrideType = "override"
+
 	// PipelineAsCodeEventTypeLabel is the type of event which triggered the pipelinerun in build service
 	PipelineAsCodeEventTypeLabel = PipelinesAsCodePrefix + "/event-type"
 
@@ -842,4 +845,17 @@ func CopySnapshotLabelsAndAnnotation(application *applicationapiv1alpha1.Applica
 	_ = metadata.CopyLabelsByPrefix(source, &snapshot.ObjectMeta, prefix)
 	_ = metadata.CopyAnnotationsByPrefix(source, &snapshot.ObjectMeta, prefix)
 
+}
+
+// IsOverrideSnapshot returns true if snapshot label 'test.appstudio.openshift.io/type' is 'override'
+func IsOverrideSnapshot(snapshot *applicationapiv1alpha1.Snapshot) bool {
+	return metadata.HasLabelWithValue(snapshot, SnapshotTypeLabel, SnapshotOverrideType)
+}
+
+func IsComponentSnapshot(snapshot *applicationapiv1alpha1.Snapshot) bool {
+	return metadata.HasLabelWithValue(snapshot, SnapshotTypeLabel, SnapshotComponentType)
+}
+
+func IsComponentSnapshotCreatedByPACPushEvent(snapshot *applicationapiv1alpha1.Snapshot) bool {
+	return IsComponentSnapshot(snapshot) && IsSnapshotCreatedByPACPushEvent(snapshot)
 }
