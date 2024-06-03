@@ -82,4 +82,10 @@ var _ = Describe("IntegrationTestScenario webhook", func() {
 		integrationTestScenario.Name = "this-name-is-too-long-it-has-64-characters-and-we-allow-max-63ch"
 		Expect(k8sClient.Create(ctx, integrationTestScenario)).ShouldNot(Succeed())
 	})
+
+	It("should fail to create scenario with snapshot parameter set", func() {
+		integrationTestScenario.Spec.Params = append(integrationTestScenario.Spec.Params, PipelineParameter{Name: "SNAPSHOT"})
+		Expect(k8sClient.Create(ctx, integrationTestScenario)).ShouldNot(Succeed())
+	})
+
 })

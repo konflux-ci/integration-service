@@ -38,13 +38,23 @@ var _ webhook.Validator = &IntegrationTestScenario{}
 // ValidateCreate implements webhook.Validator so a webhook will be registered for the type
 func (r *IntegrationTestScenario) ValidateCreate() (warnings admission.Warnings, err error) {
 	// We use the DNS-1035 format for application names, so ensure it conforms to that specification
-
 	if len(validation.IsDNS1035Label(r.Name)) != 0 {
 		return nil, field.Invalid(field.NewPath("metadata").Child("name"), r.Name,
 			"an IntegrationTestScenario resource name must start with a lower case "+
 				"alphabetical character, be under 63 characters, and can only consist "+
 				"of lower case alphanumeric characters or ‘-’")
 	}
+
+	// see stoneintg-896
+	for _, param := range r.Spec.Params {
+		if param.Name == "SNAPSHOT" {
+			return nil, field.Invalid(field.NewPath("Spec").Child("Params"), param.Name,
+				"an IntegrationTestScenario resource should not have the SNAPSHOT "+
+					"param manually defined because it will be automatically generated"+
+					"by the integration service")
+		}
+	}
+
 	return nil, nil
 }
 
