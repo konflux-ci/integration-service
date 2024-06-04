@@ -858,7 +858,7 @@ knative.dev/pkg/metrics
 knative.dev/pkg/metrics/metricskey
 knative.dev/pkg/tracker
 knative.dev/pkg/webhook/resourcesemantics
-# sigs.k8s.io/controller-runtime v0.17.3
+# sigs.k8s.io/controller-runtime v0.17.5
 ## explicit; go 1.21
 sigs.k8s.io/controller-runtime
 sigs.k8s.io/controller-runtime/pkg/builder
