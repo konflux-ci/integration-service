@@ -12,7 +12,7 @@ require (
 	github.com/konflux-ci/release-service v0.0.0-20240514150425-d25d533f66ba
 	github.com/onsi/ginkgo/v2 v2.19.0
 	github.com/onsi/gomega v1.33.1
-	github.com/openshift-pipelines/pipelines-as-code v0.27.0
+	github.com/openshift-pipelines/pipelines-as-code v0.27.1
 	github.com/prometheus/client_golang v1.19.1
 	github.com/redhat-appstudio/application-api v0.0.0-20240106104232-18f545e48a03
 	github.com/santhosh-tekuri/jsonschema/v5 v5.3.1
