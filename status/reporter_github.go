@@ -180,8 +180,7 @@ func (cru *CheckRunStatusUpdater) createCheckRunAdapterForSnapshot(report TestRe
 	}
 
 	if report.TestPipelineRunName == "" {
-		cru.logger.Info(" TestPipelineRunName is not set for CheckRun")
-
+		cru.logger.Info("TestPipelineRunName is not set for CheckRun", "ExternalID", externalID)
 	} else {
 		detailsURL = FormatPipelineURL(report.TestPipelineRunName, snapshot.Namespace, *cru.logger)
 	}
@@ -221,7 +220,7 @@ func (cru *CheckRunStatusUpdater) UpdateStatus(ctx context.Context, report TestR
 		return err
 	}
 
-	checkRun, err := cru.createCheckRunAdapterForSnapshot(report)
+	checkRunAdapter, err := cru.createCheckRunAdapterForSnapshot(report)
 	if err != nil {
 		cru.logger.Error(err, "failed to create checkRunAdapter for scenario, skipping update",
 			"snapshot.NameSpace", cru.snapshot.Namespace, "snapshot.Name", cru.snapshot.Name,
@@ -230,23 +229,23 @@ func (cru *CheckRunStatusUpdater) UpdateStatus(ctx context.Context, report TestR
 		return nil
 	}
 
-	existingCheckrun := cru.ghClient.GetExistingCheckRun(allCheckRuns, checkRun)
+	existingCheckrun := cru.ghClient.GetExistingCheckRun(allCheckRuns, checkRunAdapter)
 
 	if existingCheckrun == nil {
 		cru.logger.Info("creating checkrun for scenario test status of snapshot",
 			"snapshot.NameSpace", cru.snapshot.Namespace, "snapshot.Name", cru.snapshot.Name, "scenarioName", report.ScenarioName)
-		_, err = cru.ghClient.CreateCheckRun(ctx, checkRun)
+		_, err = cru.ghClient.CreateCheckRun(ctx, checkRunAdapter)
 		if err != nil {
 			cru.logger.Error(err, "failed to create checkrun",
-				"checkRun", checkRun)
+				"checkRunAdapter", checkRunAdapter)
 			return err
 		}
 	} else {
 		cru.logger.Info("found existing checkrun", "existingCheckRun", existingCheckrun)
-		err = cru.ghClient.UpdateCheckRun(ctx, *existingCheckrun.ID, checkRun)
+		err = cru.ghClient.UpdateCheckRun(ctx, *existingCheckrun.ID, checkRunAdapter)
 		if err != nil {
 			cru.logger.Error(err, "failed to update checkrun",
-				"checkRun", checkRun)
+				"checkRunAdapter", checkRunAdapter)
 			return err
 		}
 
@@ -325,8 +324,7 @@ func (csu *CommitStatusUpdater) createCommitStatusAdapterForSnapshot(report Test
 	}
 
 	if report.TestPipelineRunName == "" {
-
-		csu.logger.Info("TestPipelineRunName is not set for SommitStatus")
+		csu.logger.Info("TestPipelineRunName is not set for CommitStatus")
 	} else {
 		targetURL = FormatPipelineURL(report.TestPipelineRunName, snapshot.Namespace, *csu.logger)
 	}
@@ -387,7 +385,7 @@ func (csu *CommitStatusUpdater) UpdateStatus(ctx context.Context, report TestRep
 		return err
 	}
 
-	commitStatus, err := csu.createCommitStatusAdapterForSnapshot(report)
+	commitStatusAdapter, err := csu.createCommitStatusAdapterForSnapshot(report)
 	if err != nil {
 		csu.logger.Error(err, "failed to create CommitStatusAdapter for scenario, skipping update",
 			"snapshot.NameSpace", csu.snapshot.Namespace, "snapshot.Name", csu.snapshot.Name,
@@ -396,7 +394,7 @@ func (csu *CommitStatusUpdater) UpdateStatus(ctx context.Context, report TestRep
 		return nil
 	}
 
-	commitStatusExist, err := csu.ghClient.CommitStatusExists(allCommitStatuses, commitStatus)
+	commitStatusExist, err := csu.ghClient.CommitStatusExists(allCommitStatuses, commitStatusAdapter)
 	if err != nil {
 		return err
 	}
@@ -404,7 +402,7 @@ func (csu *CommitStatusUpdater) UpdateStatus(ctx context.Context, report TestRep
 	if !commitStatusExist {
 		csu.logger.Info("creating commit status for scenario test status of snapshot",
 			"snapshot.NameSpace", csu.snapshot.Namespace, "snapshot.Name", csu.snapshot.Name, "scenarioName", report.ScenarioName)
-		_, err = csu.ghClient.CreateCommitStatus(ctx, commitStatus.Owner, commitStatus.Repository, commitStatus.SHA, commitStatus.State, commitStatus.Description, commitStatus.Context, commitStatus.TargetURL)
+		_, err = csu.ghClient.CreateCommitStatus(ctx, commitStatusAdapter.Owner, commitStatusAdapter.Repository, commitStatusAdapter.SHA, commitStatusAdapter.State, commitStatusAdapter.Description, commitStatusAdapter.Context, commitStatusAdapter.TargetURL)
 		if err != nil {
 			return err
 		}
