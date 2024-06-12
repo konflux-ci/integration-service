@@ -279,10 +279,11 @@ func (a *Adapter) EnsureIntegrationPipelineRunsExist() (controller.OperationResu
 // EnsureGlobalCandidateImageUpdated is an operation that ensure the ContainerImage in the Global Candidate List
 // being updated when the Snapshot is created
 func (a *Adapter) EnsureGlobalCandidateImageUpdated() (controller.OperationResult, error) {
-	if a.snapshot.GetLabels()[gitops.SnapshotTypeLabel] != gitops.SnapshotComponentType || !gitops.IsSnapshotCreatedByPACPushEvent(a.snapshot) {
-		a.logger.Info("The Snapshot wasn't created for a single component push event, not updating the global candidate list.")
+	if !gitops.IsComponentSnapshotCreatedByPACPushEvent(a.snapshot) && !gitops.IsOverrideSnapshot(a.snapshot) {
+		a.logger.Info("The Snapshot was neither created for a single component push event nor override type, not updating the global candidate list.")
 		return controller.ContinueProcessing()
 	}
+
 	if gitops.IsSnapshotMarkedAsAddedToGlobalCandidateList(a.snapshot) {
 		a.logger.Info("The Snapshot's component was previously added to the global candidate list, skipping adding it.")
 		return controller.ContinueProcessing()
@@ -290,51 +291,77 @@ func (a *Adapter) EnsureGlobalCandidateImageUpdated() (controller.OperationResul
 
 	var componentToUpdate *applicationapiv1alpha1.Component
 	var err error
-	err = retry.OnError(retry.DefaultRetry, func(_ error) bool { return true }, func() error {
-		componentToUpdate, err = a.loader.GetComponentFromSnapshot(a.context, a.client, a.snapshot)
-		return err
-	})
-	if err != nil {
-		_, loaderError := h.HandleLoaderError(a.logger, err, fmt.Sprintf("Component or '%s' label", tekton.ComponentNameLabel), "Snapshot")
-		if loaderError != nil {
-			return controller.RequeueWithError(loaderError)
-		}
-		return controller.ContinueProcessing()
-	}
 
-	for _, snapshotComponent := range a.snapshot.Spec.Components {
-		if snapshotComponent.Name == componentToUpdate.Name {
-			patch := client.MergeFrom(componentToUpdate.DeepCopy())
-			componentToUpdate.Spec.ContainerImage = snapshotComponent.ContainerImage
-			err := a.client.Patch(a.context, componentToUpdate, patch)
-			if err != nil {
-				a.logger.Error(err, "Failed to update .Spec.ContainerImage of Global Candidate for the Component",
-					"component.Name", componentToUpdate.Name)
-				return controller.RequeueWithError(err)
+	// get component from component snapshot
+	if gitops.IsComponentSnapshot(a.snapshot) {
+		err = retry.OnError(retry.DefaultRetry, func(_ error) bool { return true }, func() error {
+			componentToUpdate, err = a.loader.GetComponentFromSnapshot(a.context, a.client, a.snapshot)
+			return err
+		})
+		if err != nil {
+			_, loaderError := h.HandleLoaderError(a.logger, err, fmt.Sprintf("Component or '%s' label", tekton.ComponentNameLabel), "Snapshot")
+			if loaderError != nil {
+				return controller.RequeueWithError(loaderError)
 			}
-			a.logger.LogAuditEvent("Updated .Spec.ContainerImage of Global Candidate for the Component",
-				componentToUpdate, h.LogActionUpdate,
-				"containerImage", snapshotComponent.ContainerImage)
-			if reflect.ValueOf(snapshotComponent.Source).IsValid() && snapshotComponent.Source.GitSource != nil && snapshotComponent.Source.GitSource.Revision != "" {
-				patch := client.MergeFrom(componentToUpdate.DeepCopy())
-				componentToUpdate.Status.LastBuiltCommit = snapshotComponent.Source.GitSource.Revision
-				err = a.client.Status().Patch(a.context, componentToUpdate, patch)
+			return controller.ContinueProcessing()
+		}
+
+		// look for the expected snapshotComponnet and update
+		for _, snapshotComponent := range a.snapshot.Spec.Components {
+			snapshotComponent := snapshotComponent //G601
+			if snapshotComponent.Name == componentToUpdate.Name {
+				//update .Spec.ContainerImage for the component included in component snapshot
+				err = a.updateComponentContainerImage(a.context, a.client, componentToUpdate, &snapshotComponent)
 				if err != nil {
-					a.logger.Error(err, "Failed to update .Status.LastBuiltCommit of Global Candidate for the Component",
-						"component.Name", componentToUpdate.Name)
 					return controller.RequeueWithError(err)
 				}
-				a.logger.LogAuditEvent("Updated .Status.LastBuiltCommit of Global Candidate for the Component",
-					componentToUpdate, h.LogActionUpdate,
-					"lastBuildCommit", componentToUpdate.Status.LastBuiltCommit)
+
+				// update .Status.LastBuiltCommit for the component included in component snapshot
+				err = a.updateComponentSource(a.context, a.client, componentToUpdate, &snapshotComponent)
+				if err != nil {
+					return controller.RequeueWithError(err)
+				}
+				// Updated the component for component snapshot, break
+				break
+			} else {
+				// expected component not found, continue
+				continue
 			}
-			break
+		}
+	} else if gitops.IsOverrideSnapshot(a.snapshot) {
+		// update Spec.ContainerImage for each component in override snapshot
+		for _, snapshotComponent := range a.snapshot.Spec.Components {
+			snapshotComponent := snapshotComponent //G601
+			// get component for each snapshotComponent in override snapshot
+			componentToUpdate, err = a.loader.GetComponent(a.context, a.client, snapshotComponent.Name, a.snapshot.Namespace)
+			if err != nil {
+				a.logger.Error(err, "Failed to get component from applicaion, won't update global candidate list for this component", "application.Name", a.application.Name, "component.Name", snapshotComponent.Name)
+				_, loaderError := h.HandleLoaderError(a.logger, err, snapshotComponent.Name, a.application.Name)
+				if loaderError != nil {
+					return controller.RequeueWithError(loaderError)
+				}
+				continue
+			}
+
+			// if the containerImage in snapshotComponent doesn't have a valid digest, the containerImage
+			// will not be added to component Global Candidate List
+			err = gitops.ValidateImageDigest(snapshotComponent.ContainerImage)
+			if err != nil {
+				a.logger.Error(err, "containerImage cannot be updated to component Global Candidate List due to invalid digest in containerImage", "component.Name", snapshotComponent.Name, "snapshotComponent.ContainerImage", snapshotComponent.ContainerImage)
+				continue
+			}
+
+			//update component.Spec.ContainerImage for each snapshotComponent in override snapshot
+			err = a.updateComponentContainerImage(a.context, a.client, componentToUpdate, &snapshotComponent)
+			if err != nil {
+				return controller.RequeueWithError(err)
+			}
 		}
 	}
 
 	// Mark the Snapshot as already added to global candidate list to prevent it from getting added again when the Snapshot
 	// gets reconciled at a later time
-	err = gitops.MarkSnapshotAsAddedToGlobalCandidateList(a.context, a.client, a.snapshot, "The Snapshot's component was added to the global candidate list")
+	err = gitops.MarkSnapshotAsAddedToGlobalCandidateList(a.context, a.client, a.snapshot, "The Snapshot's component(s) was/were added to the global candidate list")
 	if err != nil {
 		a.logger.Error(err, "Failed to update the Snapshot's status to AddedToGlobalCandidateList")
 		return controller.RequeueWithError(err)
@@ -597,4 +624,36 @@ func (a *Adapter) HandlePipelineCreationError(err error, integrationTestScenario
 		return controller.StopProcessing()
 	}
 	return controller.RequeueWithError(err)
+}
+
+func (a *Adapter) updateComponentContainerImage(ctx context.Context, c client.Client, component *applicationapiv1alpha1.Component, snapshotComponent *applicationapiv1alpha1.SnapshotComponent) error {
+	patch := client.MergeFrom(component.DeepCopy())
+	component.Spec.ContainerImage = snapshotComponent.ContainerImage
+	err := a.client.Patch(a.context, component, patch)
+	if err != nil {
+		a.logger.Error(err, "Failed to update .Spec.ContainerImage of Global Candidate for the Component",
+			"component.Name", component.Name)
+		return err
+	}
+	a.logger.LogAuditEvent("Updated .Spec.ContainerImage of Global Candidate for the Component",
+		component, h.LogActionUpdate,
+		"containerImage", snapshotComponent.ContainerImage)
+	return nil
+}
+
+func (a *Adapter) updateComponentSource(ctx context.Context, c client.Client, component *applicationapiv1alpha1.Component, snapshotComponent *applicationapiv1alpha1.SnapshotComponent) error {
+	if reflect.ValueOf(snapshotComponent.Source).IsValid() && snapshotComponent.Source.GitSource != nil && snapshotComponent.Source.GitSource.Revision != "" {
+		patch := client.MergeFrom(component.DeepCopy())
+		component.Status.LastBuiltCommit = snapshotComponent.Source.GitSource.Revision
+		err := a.client.Status().Patch(a.context, component, patch)
+		if err != nil {
+			a.logger.Error(err, "Failed to update .Status.LastBuiltCommit of Global Candidate for the Component",
+				"component.Name", component.Name)
+			return err
+		}
+		a.logger.LogAuditEvent("Updated .Status.LastBuiltCommit of Global Candidate for the Component",
+			component, h.LogActionUpdate,
+			"lastBuildCommit", component.Status.LastBuiltCommit)
+	}
+	return nil
 }

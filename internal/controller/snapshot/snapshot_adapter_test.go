@@ -57,8 +57,10 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		testReleasePlan                           *releasev1alpha1.ReleasePlan
 		hasApp                                    *applicationapiv1alpha1.Application
 		hasComp                                   *applicationapiv1alpha1.Component
+		hasCompMissingImageDigest                 *applicationapiv1alpha1.Component
 		hasSnapshot                               *applicationapiv1alpha1.Snapshot
 		hasSnapshotPR                             *applicationapiv1alpha1.Snapshot
+		hasOverRideSnapshot                       *applicationapiv1alpha1.Snapshot
 		hasInvalidSnapshot                        *applicationapiv1alpha1.Snapshot
 		deploymentTargetClass                     *applicationapiv1alpha1.DeploymentTargetClass
 		integrationTestScenario                   *v1beta2.IntegrationTestScenario
@@ -69,6 +71,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		SampleRepoLink  = "https://github.com/devfile-samples/devfile-sample-java-springboot-basic"
 		sample_image    = "quay.io/redhat-appstudio/sample-image"
 		sample_revision = "random-value"
+		sampleDigest    = "sha256:841328df1b9f8c4087adbdcfec6cc99ac8308805dea83f6d415d6fb8d40227c1"
 	)
 
 	BeforeAll(func() {
@@ -159,6 +162,18 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		}
 		Expect(k8sClient.Create(ctx, hasComp)).Should(Succeed())
 
+		hasCompMissingImageDigest = &applicationapiv1alpha1.Component{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "component-sample-missing-image",
+				Namespace: "default",
+			},
+			Spec: applicationapiv1alpha1.ComponentSpec{
+				ComponentName: "component-sample-missing-image",
+				Application:   "application-sample",
+			},
+		}
+		Expect(k8sClient.Create(ctx, hasCompMissingImageDigest)).Should(Succeed())
+
 		deploymentTargetClass = &applicationapiv1alpha1.DeploymentTargetClass{
 			ObjectMeta: metav1.ObjectMeta{
 				GenerateName: "dtcls" + "-",
@@ -234,6 +249,33 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		}
 		Expect(k8sClient.Create(ctx, hasSnapshotPR)).Should(Succeed())
 
+		hasOverRideSnapshot = &applicationapiv1alpha1.Snapshot{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "snapshotpr-sample-override",
+				Namespace: "default",
+				Labels: map[string]string{
+					gitops.SnapshotTypeLabel: gitops.SnapshotOverrideType,
+				},
+			},
+			Spec: applicationapiv1alpha1.SnapshotSpec{
+				Application: hasApp.Name,
+				Components: []applicationapiv1alpha1.SnapshotComponent{
+					{
+						Name:           hasComp.Name,
+						ContainerImage: sample_image + "@" + sampleDigest,
+					},
+					{
+						Name: "nonexisting-component",
+					},
+					{
+						Name:           hasCompMissingImageDigest.Name,
+						ContainerImage: sample_image,
+					},
+				},
+			},
+		}
+		Expect(k8sClient.Create(ctx, hasOverRideSnapshot)).Should(Succeed())
+
 		Eventually(func() error {
 			err := k8sClient.Get(ctx, types.NamespacedName{
 				Name:      hasSnapshot.Name,
@@ -248,6 +290,8 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 		err = k8sClient.Delete(ctx, hasSnapshot)
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
+		err = k8sClient.Delete(ctx, hasOverRideSnapshot)
+		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 	})
 
 	AfterAll(func() {
@@ -256,6 +300,8 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		err = k8sClient.Delete(ctx, deploymentTargetClass)
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 		err = k8sClient.Delete(ctx, hasComp)
+		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
+		err = k8sClient.Delete(ctx, hasCompMissingImageDigest)
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 		err = k8sClient.Delete(ctx, integrationTestScenario)
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
@@ -358,6 +404,9 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		})
 
 		It("ensures global Component Image updated when AppStudio Tests failed", func() {
+			var buf bytes.Buffer
+			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+			adapter.logger = log
 			err := gitops.MarkSnapshotAsFailed(ctx, k8sClient, hasSnapshot, "test failed")
 			Expect(err).To(Succeed())
 			Expect(gitops.HaveAppStudioTestsSucceeded(hasSnapshot)).To(BeFalse())
@@ -366,11 +415,16 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			Expect(err).ShouldNot(HaveOccurred())
 			Expect(result.CancelRequest).To(BeFalse())
 
-			Expect(hasComp.Spec.ContainerImage).To(Equal(sample_image))
-			Expect(hasComp.Status.LastBuiltCommit).To(Equal(sample_revision))
+			expectedLogEntry := "Updated .Spec.ContainerImage of Global Candidate for the Component"
+			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
+			expectedLogEntry = "Updated .Status.LastBuiltCommit of Global Candidate for the Component"
+			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
 		})
 
 		It("ensures global Component Image updated when AppStudio Tests succeeded", func() {
+			var buf bytes.Buffer
+			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+			adapter.logger = log
 			err := gitops.MarkSnapshotAsPassed(ctx, k8sClient, hasSnapshot, "test passed")
 			Expect(err).To(Succeed())
 			Expect(gitops.HaveAppStudioTestsSucceeded(hasSnapshot)).To(BeTrue())
@@ -380,8 +434,10 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			Expect(err).ShouldNot(HaveOccurred())
 			Expect(result.CancelRequest).To(BeFalse())
 
-			Expect(hasComp.Spec.ContainerImage).To(Equal(sample_image))
-			Expect(hasComp.Status.LastBuiltCommit).To(Equal(sample_revision))
+			expectedLogEntry := "Updated .Spec.ContainerImage of Global Candidate for the Component"
+			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
+			expectedLogEntry = "Updated .Status.LastBuiltCommit of Global Candidate for the Component"
+			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
 
 			Eventually(func() bool {
 				err := k8sClient.Get(ctx, types.NamespacedName{
@@ -396,7 +452,37 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			Expect(err).ShouldNot(HaveOccurred())
 			Expect(result.CancelRequest).To(BeFalse())
 
-			expectedLogEntry := "The Snapshot's component was previously added to the global candidate list, skipping adding it."
+			expectedLogEntry = "The Snapshot's component was previously added to the global candidate list, skipping adding it."
+			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
+		})
+
+		It("ensures global Component Image updated when AppStudio Tests succeeded for override snapshot", func() {
+			var buf bytes.Buffer
+			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+			adapter.logger = log
+			adapter.snapshot = hasOverRideSnapshot
+
+			// don't update Global Candidate List for a snapshot if it is neither component snapshot nor override snapshot
+			hasOverRideSnapshot.Labels[gitops.SnapshotTypeLabel] = ""
+			result, err := adapter.EnsureGlobalCandidateImageUpdated()
+			Expect(err).ShouldNot(HaveOccurred())
+			Expect(result.CancelRequest).To(BeFalse())
+			Expect(result.RequeueRequest).To(BeFalse())
+			expectedLogEntry := "The Snapshot was neither created for a single component push event nor override type, not updating the global candidate list."
+			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
+
+			// update Glocal Candidate List for the component in a override snapshot
+			hasOverRideSnapshot.Labels[gitops.SnapshotTypeLabel] = gitops.SnapshotOverrideType
+			adapter.snapshot = hasOverRideSnapshot
+			result, err = adapter.EnsureGlobalCandidateImageUpdated()
+			Expect(err).ShouldNot(HaveOccurred())
+			Expect(result.CancelRequest).To(BeFalse())
+			expectedLogEntry = "Updated .Spec.ContainerImage of Global Candidate for the Component"
+			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
+			// don't update Glocal Candidate List for the component included in a override snapshot but doesn't existw
+			expectedLogEntry = "Failed to get component from applicaion, won't update global candidate list for this component"
+			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
+			expectedLogEntry = "containerImage cannot be updated to component Global Candidate List due to invalid digest in containerImage"
 			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
 		})
 
