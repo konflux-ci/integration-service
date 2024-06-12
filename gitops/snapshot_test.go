@@ -241,6 +241,7 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 
 	It("ensures the Snapshots status can be marked as component added to global candidate list", func() {
 		Expect(gitops.IsSnapshotMarkedAsAddedToGlobalCandidateList(hasSnapshot)).To(BeFalse())
+		Expect(gitops.IsComponentSnapshotCreatedByPACPushEvent(hasSnapshot)).To(BeTrue())
 
 		err := gitops.MarkSnapshotAsAddedToGlobalCandidateList(ctx, k8sClient, hasSnapshot, "Test message")
 		Expect(err).To(BeNil())
@@ -558,4 +559,19 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 
 	})
 
+	Context("Override snapshot tests", func() {
+		When("Snapshot has snapshot type label", func() {
+			var overrideSnapshot *applicationapiv1alpha1.Snapshot
+			BeforeEach(func() {
+				overrideSnapshot = hasSnapshot.DeepCopy()
+				overrideSnapshot.Labels[gitops.SnapshotTypeLabel] = gitops.SnapshotOverrideType
+			})
+
+			It("make sure correct label is returned in overrideSnapshot", func() {
+				isOverrideSnapshot := gitops.IsOverrideSnapshot(overrideSnapshot)
+				Expect(isOverrideSnapshot).To(BeTrue())
+			})
+		})
+
+	})
 })
