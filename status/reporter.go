@@ -59,7 +59,7 @@ type TestReport struct {
 type ReporterInterface interface {
 	// Detect if the reporter can be used with the snapshot
 	Detect(*applicationapiv1alpha1.Snapshot) bool
-	// Initialize reporter to be able update statuses (authenticate, fetching metadata)
+	// Initialize reporter to be able to update statuses (authenticate, fetching metadata)
 	Initialize(context.Context, *applicationapiv1alpha1.Snapshot) error
 	// Get plain reporter name
 	GetReporterName() string
