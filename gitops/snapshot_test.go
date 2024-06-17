@@ -474,6 +474,49 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 		Expect(err.Error()).Should(ContainSubstring("quay.io/redhat-appstudio/sample-image@invaliDigest is invalid container image digest from component component-sample"))
 	})
 
+	It("ensure that an existing component with invalid image won't be added to the new Snapshot", func() {
+		validImagePullSpec := "quay.io/redhat-appstudio/sample-image@sha256:841328df1b9f8c4087adbdcfec6cc99ac8308805dea83f6d415d6fb8d40227c1"
+		invalidImagePullSpec := "quay.io/redhat-appstudio/sample-image"
+
+		hasComp2 := &applicationapiv1alpha1.Component{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "second-component",
+				Namespace: namespace,
+			},
+			Spec: applicationapiv1alpha1.ComponentSpec{
+				ComponentName:  "second-component",
+				Application:    applicationName,
+				ContainerImage: invalidImagePullSpec,
+				Source: applicationapiv1alpha1.ComponentSource{
+					ComponentSourceUnion: applicationapiv1alpha1.ComponentSourceUnion{
+						GitSource: &applicationapiv1alpha1.GitSource{
+							URL:      SampleRepoLink,
+							Revision: SampleCommit,
+						},
+					},
+				},
+			},
+		}
+		componentSource := &applicationapiv1alpha1.ComponentSource{
+			ComponentSourceUnion: applicationapiv1alpha1.ComponentSourceUnion{
+				GitSource: &applicationapiv1alpha1.GitSource{
+					URL:      SampleRepoLink,
+					Revision: SampleCommit,
+				},
+			},
+		}
+		allApplicationComponents := &[]applicationapiv1alpha1.Component{*hasComp, *hasComp2}
+		snapshot, err := gitops.PrepareSnapshot(ctx, k8sClient, hasApp, allApplicationComponents, hasComp, validImagePullSpec, componentSource)
+		Expect(snapshot).NotTo(BeNil())
+		Expect(err).NotTo(HaveOccurred())
+
+		Expect(snapshot.Spec.Components).To(HaveLen(1))
+		for _, snapshotComponent := range snapshot.Spec.Components {
+			snapshotComponent := snapshotComponent
+			Expect(snapshotComponent.ContainerImage).NotTo(Equal(invalidImagePullSpec))
+		}
+	})
+
 	It("Return false when the image url contains invalid digest", func() {
 		imageUrl := "quay.io/redhat-appstudio/sample-image:latest"
 		Expect(gitops.ValidateImageDigest(imageUrl)).NotTo(BeNil())

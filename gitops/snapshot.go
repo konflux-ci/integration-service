@@ -670,6 +670,15 @@ func PrepareSnapshot(ctx context.Context, adapterClient client.Client, applicati
 
 		var componentSource *applicationapiv1alpha1.ComponentSource
 		if applicationComponent.Name == component.Name {
+			// if the containerImage doesn't have a valid digest, we cannot construct a Snapshot
+			// for the given component
+			err := ValidateImageDigest(newContainerImage)
+			if err != nil {
+				log.Error(err, "component cannot be added to snapshot for application due to invalid digest in containerImage",
+					"component.Name", applicationComponent.Name,
+					"newContainerImage", newContainerImage)
+				return nil, errors.Join(helpers.NewInvalidImageDigestError(component.Name, newContainerImage), err)
+			}
 			containerImage = newContainerImage
 			componentSource = newComponentSource
 		} else {
@@ -690,7 +699,7 @@ func PrepareSnapshot(ctx context.Context, adapterClient client.Client, applicati
 			err := ValidateImageDigest(containerImage)
 			if err != nil {
 				log.Error(err, "component cannot be added to snapshot for application due to invalid digest in containerImage", "component.Name", applicationComponent.Name)
-				return nil, errors.Join(helpers.NewInvalidImageDigestError(component.Name, containerImage), err)
+				continue
 			}
 			snapshotComponents = append(snapshotComponents, applicationapiv1alpha1.SnapshotComponent{
 				Name:           applicationComponent.Name,
