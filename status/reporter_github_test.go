@@ -232,9 +232,15 @@ var _ = Describe("GitHubReporter", func() {
 	Context("when provided GitHub app credentials (CheckRun)", func() {
 
 		var secretData map[string][]byte
+		var expectedLogEntry string
+		var buf bytes.Buffer
+		var log logr.Logger
 
 		BeforeEach(func() {
 			hasSnapshot.Annotations["pac.test.appstudio.openshift.io/installation-id"] = "123"
+
+			buf.Reset()
+			log = buflogr.NewWithBuffer(&buf)
 
 			secretData = map[string][]byte{
 				"github-application-id": []byte("456"),
@@ -251,7 +257,7 @@ var _ = Describe("GitHubReporter", func() {
 			}
 
 			mockGitHubClient = &MockGitHubClient{}
-			reporter = status.NewGitHubReporter(logr.Discard(), mockK8sClient, status.WithGitHubClient(mockGitHubClient))
+			reporter = status.NewGitHubReporter(log, mockK8sClient, status.WithGitHubClient(mockGitHubClient))
 			err := reporter.Initialize(context.TODO(), hasSnapshot)
 			Expect(err).To(Succeed())
 		})
@@ -390,7 +396,6 @@ var _ = Describe("GitHubReporter", func() {
 			var id int64 = 1
 			var externalID string = "example-external-id"
 			conclusion := ""
-			mockGitHubClient.GetCheckRunResult.cr = &ghapi.CheckRun{ID: &id, ExternalID: &externalID, Conclusion: &conclusion}
 
 			// Update existing CheckRun w/failure
 			mockGitHubClient.GetCheckRunResult.cr = &ghapi.CheckRun{ID: &id, ExternalID: &externalID, Conclusion: &conclusion}
@@ -416,6 +421,38 @@ var _ = Describe("GitHubReporter", func() {
 			Expect(mockGitHubClient.UpdateCheckRunResult.cra.Name).To(Equal("test-name"))
 			Expect(mockGitHubClient.UpdateCheckRunResult.cra.StartTime.IsZero()).To(BeFalse())
 			Expect(mockGitHubClient.UpdateCheckRunResult.cra.CompletionTime.IsZero()).To(BeFalse())
+		})
+
+		It("creates a new checkrun when there exists a CheckRun with same External ID and with 'completed' status", func() {
+			var id int64 = 1
+			now := time.Now()
+			var externalID string = "scenario1-component-sample"
+			checkrunStatus := "completed"
+
+			// Create a pre-existing CheckRun with "completed" status
+			mockGitHubClient.GetCheckRunResult.cr = &ghapi.CheckRun{ID: &id, ExternalID: &externalID, Status: &checkrunStatus}
+
+			Expect(reporter.ReportStatus(
+				context.TODO(),
+				status.TestReport{
+					FullName:      "test-name",
+					ScenarioName:  "scenario1",
+					SnapshotName:  "snapshot-sample",
+					ComponentName: "component-sample",
+					Status:        integrationteststatus.IntegrationTestStatusInProgress,
+					Summary:       "Integration test for snapshot snapshot-sample and scenario scenario1 is in progress",
+					StartTime:     &now,
+				})).To(Succeed())
+
+			expectedLogEntry = "found existing checkrun"
+			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
+			expectedLogEntry = "The existing checkrun is already in completed state, re-creating a new checkrun for scenario test status of snapshot"
+			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
+			Expect(mockGitHubClient.CreateCheckRunResult.cra).NotTo(BeNil())
+			Expect(mockGitHubClient.CreateCheckRunResult.cra.GetStatus()).To(Equal("in_progress"))
+			Expect(mockGitHubClient.CreateCheckRunResult.cra.Conclusion).To(Equal(""))
+			Expect(mockGitHubClient.CreateCheckRunResult.cra.ExternalID).To(Equal("scenario1-component-sample"))
+			Expect(mockGitHubClient.CreateCheckRunResult.cra.CompletionTime.IsZero()).To(BeTrue())
 		})
 	})
 

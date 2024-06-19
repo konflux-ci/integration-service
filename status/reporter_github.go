@@ -238,19 +238,32 @@ func (cru *CheckRunStatusUpdater) UpdateStatus(ctx context.Context, report TestR
 		if err != nil {
 			cru.logger.Error(err, "failed to create checkrun",
 				"checkRunAdapter", checkRunAdapter)
-			return err
 		}
-	} else {
-		cru.logger.Info("found existing checkrun", "existingCheckRun", existingCheckrun)
-		err = cru.ghClient.UpdateCheckRun(ctx, *existingCheckrun.ID, checkRunAdapter)
-		if err != nil {
-			cru.logger.Error(err, "failed to update checkrun",
-				"checkRunAdapter", checkRunAdapter)
-			return err
-		}
-
+		return err
 	}
-	return nil
+
+	cru.logger.Info("found existing checkrun", "existingCheckRun", existingCheckrun)
+
+	// If pre-existing checkrun is already completed, then create a
+	// new checkrun with same external ID, rather than updating it
+	if existingCheckrun.GetStatus() == "completed" {
+		cru.logger.Info("The existing checkrun is already in completed state, re-creating a new checkrun for scenario test status of snapshot",
+			"snapshot.NameSpace", cru.snapshot.Namespace, "snapshot.Name", cru.snapshot.Name, "scenarioName", report.ScenarioName)
+		_, err = cru.ghClient.CreateCheckRun(ctx, checkRunAdapter)
+		if err != nil {
+			cru.logger.Error(err, "failed to create checkrun",
+				"checkRunAdapter", checkRunAdapter)
+		}
+		return err
+	}
+
+	err = cru.ghClient.UpdateCheckRun(ctx, *existingCheckrun.ID, checkRunAdapter)
+	if err != nil {
+		cru.logger.Error(err, "failed to update checkrun",
+			"checkRunAdapter", checkRunAdapter)
+	}
+
+	return err
 }
 
 // CommitStatusUpdater updates PR using Commit/RepoStatus (without application integration enabled)
