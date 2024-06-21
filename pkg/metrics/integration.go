@@ -17,11 +17,13 @@ limitations under the License.
 package metrics
 
 import (
+	"context"
+	"fmt"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"sigs.k8s.io/controller-runtime/pkg/metrics"
+	ctrllog "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 var (
@@ -90,6 +92,16 @@ var (
 	)
 )
 
+// IntegrationMetrics represents a collection of metrics to be registered on a
+// Prometheus metrics registry for a integration service.
+type IntegrationMetrics struct {
+	probes []AvailabilityProbe
+}
+
+func NewIntegrationMetrics(probes []AvailabilityProbe) *IntegrationMetrics {
+	return &IntegrationMetrics{probes: probes}
+}
+
 func RegisterCompletedSnapshot(conditiontype, reason string, startTime metav1.Time, completionTime *metav1.Time) {
 	labels := prometheus.Labels{
 		"type":   conditiontype,
@@ -131,8 +143,8 @@ func RegisterReleaseLatency(startTime metav1.Time) {
 	ReleaseLatencySeconds.Observe(latency)
 }
 
-func init() {
-	metrics.Registry.MustRegister(
+func (m *IntegrationMetrics) InitMetrics(registerer prometheus.Registerer) error {
+	registerer.MustRegister(
 		SnapshotCreatedToPipelineRunStartedStaticEnvSeconds,
 		SnapshotCreatedToPipelineRunStartedSeconds,
 		IntegrationSvcResponseSeconds,
@@ -142,4 +154,45 @@ func init() {
 		SnapshotTotal,
 		ReleaseLatencySeconds,
 	)
+	for _, probe := range m.probes {
+		if err := registerer.Register(probe.AvailabilityGauge()); err != nil {
+			return fmt.Errorf("failed to register the availability metric: %w", err)
+		}
+	}
+
+	return nil
+}
+
+func (m *IntegrationMetrics) StartAvailabilityProbes(ctx context.Context) {
+	ticker := time.NewTicker(time.Minute)
+	log := ctrllog.FromContext(ctx)
+	log.Info("starting availability probes")
+	go func() {
+		for {
+			select {
+			case <-ctx.Done(): // Shutdown if context is canceled
+				log.Info("Shutting down metrics")
+				ticker.Stop()
+				return
+			case <-ticker.C:
+				m.checkProbes(ctx)
+			}
+		}
+	}()
+}
+
+func (m *IntegrationMetrics) checkProbes(ctx context.Context) {
+	for _, probe := range m.probes {
+		if probe.CheckAvailability(ctx) {
+			probe.AvailabilityGauge().Set(1)
+		} else {
+			probe.AvailabilityGauge().Set(0)
+		}
+	}
+}
+
+// AvailabilityProbe represents a probe that checks the availability of a certain aspects of the service
+type AvailabilityProbe interface {
+	CheckAvailability(ctx context.Context) bool
+	AvailabilityGauge() prometheus.Gauge
 }

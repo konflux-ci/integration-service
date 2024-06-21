@@ -19,7 +19,6 @@ COPY helpers/ helpers/
 COPY gitops/ gitops/
 COPY pkg/ pkg/
 COPY release/ release/
-COPY metrics/ metrics/
 COPY status/ status/
 COPY git/ git/
 COPY loader/ loader/
