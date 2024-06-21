@@ -20,10 +20,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/konflux-ci/integration-service/api/v1beta2"
 	"reflect"
 	"sort"
 	"time"
+
+	"github.com/konflux-ci/integration-service/api/v1beta2"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
@@ -139,6 +140,11 @@ func (t *TaskRun) GetStartTime() time.Time {
 		return time.Time{}
 	}
 	return t.trStatus.StartTime.Time
+}
+
+// GetStatusCondition returns the status condition of the TaskRun.
+func (t *TaskRun) GetStatusCondition(conditionName string) *apis.Condition {
+	return t.trStatus.GetCondition(apis.ConditionType(conditionName))
 }
 
 // GetDuration returns the time it took to execute the Task.
