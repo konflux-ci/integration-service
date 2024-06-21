@@ -25,6 +25,7 @@ import (
 
 	"github.com/go-logr/logr"
 	"github.com/konflux-ci/integration-service/helpers"
+	"knative.dev/pkg/apis"
 )
 
 const commentTemplate = `### {{ .Title }}
@@ -105,11 +106,20 @@ func FormatStatus(taskRun *helpers.TaskRun) (string, error) {
 		return "", err
 	}
 
+	var emoji string
 	if result == nil || result.TestOutput == nil {
-		return "", nil
+		taskSucceededReason := taskRun.GetStatusCondition(string(apis.ConditionSucceeded)).GetReason()
+		switch taskSucceededReason {
+		case "Succeeded":
+			emoji = ":heavy_check_mark:"
+		case "Failed":
+			emoji = ":x:"
+		default:
+			emoji = ":question:"
+		}
+		return fmt.Sprintf(emoji+" Reason: %s", taskSucceededReason), nil
 	}
 
-	var emoji string
 	switch result.TestOutput.Result {
 	case helpers.AppStudioTestOutputSuccess:
 		emoji = ":heavy_check_mark:"
@@ -154,7 +164,6 @@ func FormatNamespace(taskRun *helpers.TaskRun) (string, error) {
 	if err != nil {
 		return "", err
 	}
-
 	if result == nil || result.TestOutput == nil {
 		return "", nil
 	}
@@ -170,19 +179,23 @@ func FormatDetails(taskRun *helpers.TaskRun) (string, error) {
 	}
 
 	if result == nil {
-		return "", nil
+		var emoji string
+		taskSucceededReason := taskRun.GetStatusCondition(string(apis.ConditionSucceeded)).GetReason()
+		switch taskSucceededReason {
+		case "Succeeded":
+			emoji = ":heavy_check_mark:"
+		case "Failed":
+			emoji = ":x:"
+		default:
+			emoji = ":question:"
+		}
+		return fmt.Sprintf(emoji+" Reason: %s", taskSucceededReason), nil
 	}
 
 	if result.ValidationError != nil {
 		return fmt.Sprintf("Invalid result: %s", result.ValidationError), nil
 	}
-
-	if result.TestOutput == nil {
-		return "", nil
-	}
-
 	details := []string{}
-
 	if result.TestOutput.Successes > 0 {
 		details = append(details, fmt.Sprint(":heavy_check_mark: ", result.TestOutput.Successes, " success(es)"))
 	}
