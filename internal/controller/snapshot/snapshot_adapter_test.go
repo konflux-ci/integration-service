@@ -263,6 +263,14 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 					{
 						Name:           hasComp.Name,
 						ContainerImage: sample_image + "@" + sampleDigest,
+						Source: applicationapiv1alpha1.ComponentSource{
+							ComponentSourceUnion: applicationapiv1alpha1.ComponentSourceUnion{
+								GitSource: &applicationapiv1alpha1.GitSource{
+									URL:      SampleRepoLink,
+									Revision: sample_revision,
+								},
+							},
+						},
 					},
 					{
 						Name: "nonexisting-component",
@@ -270,6 +278,14 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 					{
 						Name:           hasCompMissingImageDigest.Name,
 						ContainerImage: sample_image,
+						Source: applicationapiv1alpha1.ComponentSource{
+							ComponentSourceUnion: applicationapiv1alpha1.ComponentSourceUnion{
+								GitSource: &applicationapiv1alpha1.GitSource{
+									URL:      SampleRepoLink,
+									Revision: sample_revision,
+								},
+							},
+						},
 					},
 				},
 			},
@@ -479,7 +495,9 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			Expect(result.CancelRequest).To(BeFalse())
 			expectedLogEntry = "Updated .Spec.ContainerImage of Global Candidate for the Component"
 			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
-			// don't update Glocal Candidate List for the component included in a override snapshot but doesn't existw
+			expectedLogEntry = "Updated .Status.LastBuiltCommit of Global Candidate for the Component"
+			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
+			// don't update Global Candidate List for the component included in a override snapshot but doesn't existw
 			expectedLogEntry = "Failed to get component from applicaion, won't update global candidate list for this component"
 			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
 			expectedLogEntry = "containerImage cannot be updated to component Global Candidate List due to invalid digest in containerImage"

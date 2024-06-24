@@ -356,6 +356,11 @@ func (a *Adapter) EnsureGlobalCandidateImageUpdated() (controller.OperationResul
 			if err != nil {
 				return controller.RequeueWithError(err)
 			}
+			// update .Status.LastBuiltCommit for each snapshotComponent in override snapshot
+			err = a.updateComponentSource(a.context, a.client, componentToUpdate, &snapshotComponent)
+			if err != nil {
+				return controller.RequeueWithError(err)
+			}
 		}
 	}
 
