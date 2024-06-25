@@ -27,6 +27,8 @@ import (
 	. "github.com/onsi/gomega"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"knative.dev/pkg/apis"
+	v1 "knative.dev/pkg/apis/duck/v1"
 )
 
 const expectedSummary = `<ul>
@@ -37,7 +39,7 @@ const expectedSummary = `<ul>
 | Task | Duration | Test Suite | Status | Details |
 | --- | --- | --- | --- | --- |
 | <a href="https://definetly.not.prod/preview/application-pipeline/ns/default/pipelinerun/pipelinerun-component-sample/logs/example-task-1">example-task-1</a> | 5m30s | example-namespace-1 | :heavy_check_mark: SUCCESS | :heavy_check_mark: 2 success(es)<br>:warning: 1 warning(s) |
-| <a href="https://definetly.not.prod/preview/application-pipeline/ns/default/pipelinerun/pipelinerun-component-sample/logs/example-task-2">example-task-2</a> | 2m0s |  |  |  |
+| <a href="https://definetly.not.prod/preview/application-pipeline/ns/default/pipelinerun/pipelinerun-component-sample/logs/example-task-2">example-task-2</a> | 2m0s |  | :heavy_check_mark: Reason: Succeeded | :heavy_check_mark: Reason: Succeeded |
 | <a href="https://definetly.not.prod/preview/application-pipeline/ns/default/pipelinerun/pipelinerun-component-sample/logs/example-task-3">example-task-3[^example-task-3]</a> | 1s | example-namespace-3 | :x: FAILURE | :x: 1 failure(s) |
 | <a href="https://definetly.not.prod/preview/application-pipeline/ns/default/pipelinerun/pipelinerun-component-sample/logs/example-task-4">example-task-4[^example-task-4]</a> | 1s | example-namespace-4 | :warning: WARNING | :warning: 1 warning(s) |
 | <a href="https://definetly.not.prod/preview/application-pipeline/ns/default/pipelinerun/pipelinerun-component-sample/logs/example-task-5">example-task-5</a> | 5m0s | example-namespace-5 | :white_check_mark: SKIPPED |  |
@@ -48,8 +50,17 @@ const expectedSummary = `<ul>
 
 const expectedTaskLogURL = `https://definetly.not.prod/preview/application-pipeline/ns/default/pipelinerun/pipelinerun-component-sample/logs/example-task-1`
 
+var message = "Taskrun Succeeded, lucky you!"
+
 func newTaskRun(name string, startTime time.Time, completionTime time.Time) *helpers.TaskRun {
 	return helpers.NewTaskRunFromTektonTaskRun(name, &tektonv1.TaskRunStatus{
+		Status: v1.Status{
+			Conditions: v1.Conditions{apis.Condition{
+				Type:    apis.ConditionType("Succeeded"),
+				Reason:  string(apis.ConditionSucceeded),
+				Message: message,
+			}},
+		},
 		TaskRunStatusFields: tektonv1.TaskRunStatusFields{
 			StartTime:      &metav1.Time{Time: startTime},
 			CompletionTime: &metav1.Time{Time: completionTime},
@@ -60,6 +71,13 @@ func newTaskRun(name string, startTime time.Time, completionTime time.Time) *hel
 
 func newTaskRunWithAppStudioTestOutput(name string, startTime time.Time, completionTime time.Time, output string) *helpers.TaskRun {
 	return helpers.NewTaskRunFromTektonTaskRun(name, &tektonv1.TaskRunStatus{
+		Status: v1.Status{
+			Conditions: v1.Conditions{apis.Condition{
+				Type:    apis.ConditionType("Succeeded"),
+				Reason:  string(apis.ConditionSucceeded),
+				Message: message,
+			}},
+		},
 		TaskRunStatusFields: tektonv1.TaskRunStatusFields{
 			StartTime:      &metav1.Time{Time: startTime},
 			CompletionTime: &metav1.Time{Time: completionTime},
@@ -69,6 +87,23 @@ func newTaskRunWithAppStudioTestOutput(name string, startTime time.Time, complet
 					Value: *tektonv1.NewStructuredValues(output),
 				},
 			},
+		},
+	})
+}
+
+func newTaskRunWithoutAppStudioTestOutput(name string, startTime time.Time, completionTime time.Time) *helpers.TaskRun {
+	return helpers.NewTaskRunFromTektonTaskRun(name, &tektonv1.TaskRunStatus{
+		Status: v1.Status{
+			Conditions: v1.Conditions{apis.Condition{
+				Type:    apis.ConditionType("Succeeded"),
+				Reason:  string(apis.ConditionSucceeded),
+				Message: message,
+			}},
+		},
+		TaskRunStatusFields: tektonv1.TaskRunStatusFields{
+			StartTime:      &metav1.Time{Time: startTime},
+			CompletionTime: &metav1.Time{Time: completionTime},
+			Results:        []tektonv1.TaskRunResult{},
 		},
 	})
 }
@@ -228,7 +263,7 @@ var _ = Describe("Formatters", func() {
 		Expect(err).To(BeNil())
 		Expect(summary).To(Equal(expectedSummary))
 	})
-
+	//when TEST_OUTPUT == "" is also invalid
 	When("task TEST_OUTPUT is invalid", func() {
 
 		var taskRun *helpers.TaskRun
@@ -252,6 +287,28 @@ var _ = Describe("Formatters", func() {
 		})
 
 		It("won't fail when summary is generated from invalid result", func() {
+			_, err := status.FormatTestsSummary([]*helpers.TaskRun{taskRun}, pipelineRun.Name, pipelineRun.Namespace, logr.Discard())
+			Expect(err).To(Succeed())
+		})
+	})
+	When("task TEST_OUTPUT is nil", func() {
+		var taskRun *helpers.TaskRun
+
+		BeforeEach(func() {
+			now := time.Now()
+			taskRun = newTaskRunWithoutAppStudioTestOutput(
+				"example-task-1",
+				now,
+				now.Add(time.Minute*5).Add(time.Second*30),
+			)
+		})
+		It("can construct a detail from an taskrun without TEST_OUTPUT", func() {
+			detail, err := status.FormatDetails(taskRun)
+			Expect(err).To(Succeed())
+			Expect(detail).Should(ContainSubstring("Reason: Succeeded"))
+		})
+
+		It("won't fail when summary is generated from taskrun without TEST_OUTPUT", func() {
 			_, err := status.FormatTestsSummary([]*helpers.TaskRun{taskRun}, pipelineRun.Name, pipelineRun.Namespace, logr.Discard())
 			Expect(err).To(Succeed())
 		})
