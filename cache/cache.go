@@ -47,26 +47,6 @@ func SetupReleaseCache(mgr ctrl.Manager) error {
 		"spec.snapshot", releaseIndexFunc)
 }
 
-// SetupBindingEnvironmentCache adds a new index field to be able to search SnapshotEnvironmentBindings by Environment.
-func SetupBindingEnvironmentCache(mgr ctrl.Manager) error {
-	bindingEnvironmentIndexFunc := func(obj client.Object) []string {
-		return []string{obj.(*applicationapiv1alpha1.SnapshotEnvironmentBinding).Spec.Environment}
-	}
-
-	return mgr.GetCache().IndexField(context.Background(), &applicationapiv1alpha1.SnapshotEnvironmentBinding{},
-		"spec.environment", bindingEnvironmentIndexFunc)
-}
-
-// SetupBindingApplicationCache adds a new index field to be able to search SnapshotEnvironmentBindings by Application.
-func SetupBindingApplicationCache(mgr ctrl.Manager) error {
-	bindingApplicationIndexFunc := func(obj client.Object) []string {
-		return []string{obj.(*applicationapiv1alpha1.SnapshotEnvironmentBinding).Spec.Application}
-	}
-
-	return mgr.GetCache().IndexField(context.Background(), &applicationapiv1alpha1.SnapshotEnvironmentBinding{},
-		"spec.application", bindingApplicationIndexFunc)
-}
-
 // SetupApplicationComponentCache adds a new index field to be able to search Components by application.
 func SetupApplicationComponentCache(mgr ctrl.Manager) error {
 	applicationComponentIndexFunc := func(obj client.Object) []string {
