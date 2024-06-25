@@ -138,7 +138,7 @@ var _ = Describe("Predicates", Ordered, func() {
 			},
 		}
 
-		// Set the binding statuses after they are created
+		// Set the snapshot statuses after they are created
 		hasSnapshotUnknownStatus.Status.Conditions = []metav1.Condition{
 			{
 				Type:   gitops.AppStudioTestSucceededCondition,

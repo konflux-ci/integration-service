@@ -36,21 +36,6 @@ var _ = Describe("Release Adapter", Ordered, func() {
 		loader = NewMockLoader()
 	})
 
-	Context("When calling GetAllEnvironments", func() {
-		It("returns resource and error from the context", func() {
-			environment := &applicationapiv1alpha1.Environment{}
-			mockContext := toolkit.GetMockedContext(ctx, []toolkit.MockData{
-				{
-					ContextKey: EnvironmentContextKey,
-					Resource:   environment,
-				},
-			})
-			resource, err := loader.GetAllEnvironments(mockContext, nil, nil)
-			Expect(resource).To(Equal(&[]applicationapiv1alpha1.Environment{*environment}))
-			Expect(err).To(BeNil())
-		})
-	})
-
 	Context("When calling GetReleasesWithSnapshot", func() {
 		It("returns resource and error from the context", func() {
 			release := &releasev1alpha1.Release{}
@@ -156,21 +141,6 @@ var _ = Describe("Release Adapter", Ordered, func() {
 		})
 	})
 
-	Context("When calling GetEnvironmentFromIntegrationPipelineRun", func() {
-		It("returns resource and error from the context", func() {
-			environment := &applicationapiv1alpha1.Environment{}
-			mockContext := toolkit.GetMockedContext(ctx, []toolkit.MockData{
-				{
-					ContextKey: EnvironmentContextKey,
-					Resource:   environment,
-				},
-			})
-			resource, err := loader.GetEnvironmentFromIntegrationPipelineRun(mockContext, nil, nil)
-			Expect(resource).To(Equal(environment))
-			Expect(err).To(BeNil())
-		})
-	})
-
 	Context("When calling GetSnapshotFromPipelineRun", func() {
 		It("returns resource and error from the context", func() {
 			snapshot := &applicationapiv1alpha1.Snapshot{}
@@ -231,51 +201,6 @@ var _ = Describe("Release Adapter", Ordered, func() {
 		})
 	})
 
-	Context("When calling GetDeploymentTargetClaimForEnvironment", func() {
-		It("returns deploymentTargetClaim and error from the context", func() {
-			dtc := &applicationapiv1alpha1.DeploymentTargetClaim{}
-			mockContext := toolkit.GetMockedContext(ctx, []toolkit.MockData{
-				{
-					ContextKey: DeploymentTargetClaimContextKey,
-					Resource:   dtc,
-				},
-			})
-			resource, err := loader.GetDeploymentTargetClaimForEnvironment(mockContext, nil, nil)
-			Expect(resource).To(Equal(dtc))
-			Expect(err).To(BeNil())
-		})
-	})
-
-	Context("When calling GetDeploymentTargetForDeploymentTargetClaim", func() {
-		It("returns deploymentTargetClaim and error from the context", func() {
-			dt := &applicationapiv1alpha1.DeploymentTarget{}
-			mockContext := toolkit.GetMockedContext(ctx, []toolkit.MockData{
-				{
-					ContextKey: DeploymentTargetContextKey,
-					Resource:   dt,
-				},
-			})
-			resource, err := loader.GetDeploymentTargetForDeploymentTargetClaim(mockContext, nil, nil)
-			Expect(resource).To(Equal(dt))
-			Expect(err).To(BeNil())
-		})
-	})
-
-	Context("When calling FindExistingSnapshotEnvironmentBinding", func() {
-		It("returns existing snapshotEnvironmentBinding and error from the context", func() {
-			binding := &applicationapiv1alpha1.SnapshotEnvironmentBinding{}
-			mockContext := toolkit.GetMockedContext(ctx, []toolkit.MockData{
-				{
-					ContextKey: SnapshotEnvironmentBindingContextKey,
-					Resource:   binding,
-				},
-			})
-			resource, err := loader.FindExistingSnapshotEnvironmentBinding(mockContext, nil, nil, nil)
-			Expect(resource).To(Equal(binding))
-			Expect(err).To(BeNil())
-		})
-	})
-
 	Context("When calling GetAllPipelineRunsForSnapshotAndScenario", func() {
 		It("returns pipelineRuns and error from the context", func() {
 			prs := []tektonv1.PipelineRun{}
@@ -318,21 +243,6 @@ var _ = Describe("Release Adapter", Ordered, func() {
 			resource, err := loader.GetAutoReleasePlansForApplication(mockContext, nil, nil)
 			Expect(resource).To(Equal(&releasePlans))
 			Expect(err).To(BeNil())
-		})
-	})
-
-	Context("When calling GetAllSnapshotEnvironmentBindingsForScenario", func() {
-		It("returns snapshotEnvironmentBindings and error from the context", func() {
-			environments := []applicationapiv1alpha1.Environment{}
-			mockContext := toolkit.GetMockedContext(ctx, []toolkit.MockData{
-				{
-					ContextKey: AllEnvironmentsForScenarioContextKey,
-					Resource:   environments,
-				},
-			})
-			resource, err := loader.GetAllEnvironmentsForScenario(mockContext, nil, nil)
-			Expect(resource).To(Equal(&environments))
-			Expect(err).ToNot(HaveOccurred())
 		})
 	})
 
