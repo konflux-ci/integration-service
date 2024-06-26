@@ -22,6 +22,7 @@ updates:
       - "sonam1412"
       - "dheerajodha"
       - "14rcole"
+      - "chipspeak"
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
@@ -37,6 +38,7 @@ updates:
       - "sonam1412"
       - "dheerajodha"
       - "14rcole"
+      - "chipspeak"
   - package-ecosystem: "gomod"
     directory: "/"
     schedule:
@@ -52,3 +54,4 @@ updates:
       - "sonam1412"
       - "dheerajodha"
       - "14rcole"
+      - "chipspeak"
