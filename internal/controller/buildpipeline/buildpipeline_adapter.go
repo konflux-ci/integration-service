@@ -28,7 +28,7 @@ import (
 	"github.com/konflux-ci/integration-service/gitops"
 	h "github.com/konflux-ci/integration-service/helpers"
 	"github.com/konflux-ci/integration-service/loader"
-	"github.com/konflux-ci/integration-service/metrics"
+	"github.com/konflux-ci/integration-service/pkg/metrics"
 	"github.com/konflux-ci/integration-service/tekton"
 	"github.com/konflux-ci/operator-toolkit/controller"
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
