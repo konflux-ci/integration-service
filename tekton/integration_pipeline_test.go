@@ -196,8 +196,9 @@ var _ = Describe("Integration pipeline", func() {
 				Name:      "snapshot-sample",
 				Namespace: "default",
 				Labels: map[string]string{
-					gitops.SnapshotTypeLabel:      "component",
-					gitops.SnapshotComponentLabel: "component-sample",
+					gitops.SnapshotTypeLabel:                   "component",
+					gitops.SnapshotComponentLabel:              "component-sample",
+					gitops.CustomLabelPrefix + "/custom-label": "custom-label",
 				},
 			},
 			Spec: applicationapiv1alpha1.SnapshotSpec{
@@ -357,6 +358,10 @@ var _ = Describe("Integration pipeline", func() {
 				To(Equal(hasSnapshot.Name))
 			Expect(newIntegrationPipelineRun.Labels["appstudio.openshift.io/component"]).
 				To(Equal(hasComp.Name))
+			Expect(newIntegrationPipelineRun.Labels[gitops.CustomLabelPrefix+"/custom_label"]).
+				To(Equal(hasSnapshot.Labels[gitops.CustomLabelPrefix+"/custom_label"]))
+			Expect(newIntegrationPipelineRun.Labels[gitops.SnapshotTypeLabel]).
+				To(Equal(hasSnapshot.Labels[gitops.SnapshotTypeLabel]))
 		})
 
 		It("can append labels coming from Application to IntegrationPipelineRun and making sure that label values matches application", func() {

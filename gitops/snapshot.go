@@ -41,6 +41,12 @@ const (
 	// PipelinesAsCodePrefix contains the prefix applied to labels and annotations copied from Pipelines as Code resources.
 	PipelinesAsCodePrefix = "pac.test.appstudio.openshift.io"
 
+	// TestLabelPrefix contains the prefix applied to labels and annotations related to testing.
+	TestLabelPrefix = "test.appstudio.openshift.io"
+
+	// CustomLabelPrefix contains the prefix applied to custom user-defined labels and annotations.
+	CustomLabelPrefix = "custom.appstudio.openshift.io"
+
 	// SnapshotTypeLabel contains the type of the Snapshot.
 	SnapshotTypeLabel = "test.appstudio.openshift.io/type"
 
@@ -819,9 +825,9 @@ func ResetSnapshotStatusConditions(ctx context.Context, adapterClient client.Cli
 	return nil
 }
 
-// CopySnapshotLabelsAndAnnotation coppies labels and annotations from build pipelineRun or tested snapshot
+// CopySnapshotLabelsAndAnnotations coppies labels and annotations from build pipelineRun or tested snapshot
 // into regular snapshot
-func CopySnapshotLabelsAndAnnotation(application *applicationapiv1alpha1.Application, snapshot *applicationapiv1alpha1.Snapshot, componentName string, source *metav1.ObjectMeta, prefix string) {
+func CopySnapshotLabelsAndAnnotations(application *applicationapiv1alpha1.Application, snapshot *applicationapiv1alpha1.Snapshot, componentName string, source *metav1.ObjectMeta, prefixes []string) {
 
 	if snapshot.Labels == nil {
 		snapshot.Labels = map[string]string{}
@@ -839,9 +845,11 @@ func CopySnapshotLabelsAndAnnotation(application *applicationapiv1alpha1.Applica
 	_ = metadata.CopyLabelsWithPrefixReplacement(source, &snapshot.ObjectMeta, "pipelinesascode.tekton.dev", PipelinesAsCodePrefix)
 	_ = metadata.CopyAnnotationsWithPrefixReplacement(source, &snapshot.ObjectMeta, "pipelinesascode.tekton.dev", PipelinesAsCodePrefix)
 
-	// Copy labels and annotations prefixed with defined prefix
-	_ = metadata.CopyLabelsByPrefix(source, &snapshot.ObjectMeta, prefix)
-	_ = metadata.CopyAnnotationsByPrefix(source, &snapshot.ObjectMeta, prefix)
+	for _, prefix := range prefixes {
+		// Copy labels and annotations prefixed with defined prefix
+		_ = metadata.CopyLabelsByPrefix(source, &snapshot.ObjectMeta, prefix)
+		_ = metadata.CopyAnnotationsByPrefix(source, &snapshot.ObjectMeta, prefix)
+	}
 
 }
 
