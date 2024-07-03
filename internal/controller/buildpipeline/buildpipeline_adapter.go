@@ -28,7 +28,6 @@ import (
 	"github.com/konflux-ci/integration-service/gitops"
 	h "github.com/konflux-ci/integration-service/helpers"
 	"github.com/konflux-ci/integration-service/loader"
-	"github.com/konflux-ci/integration-service/pkg/metrics"
 	"github.com/konflux-ci/integration-service/tekton"
 	"github.com/konflux-ci/operator-toolkit/controller"
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
@@ -120,7 +119,6 @@ func (a *Adapter) EnsureSnapshotExists() (result controller.OperationResult, err
 		result, err = a.handleSnapshotCreationFailure(&canRemoveFinalizer, err)
 		return result, err
 	}
-	go metrics.RegisterNewSnapshot()
 
 	a.logger.LogAuditEvent("Created new Snapshot", expectedSnapshot, h.LogActionAdd,
 		"snapshot.Name", expectedSnapshot.Name,
