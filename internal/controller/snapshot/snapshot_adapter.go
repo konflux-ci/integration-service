@@ -379,6 +379,8 @@ func (a *Adapter) EnsureGlobalCandidateImageUpdated() (controller.OperationResul
 // to the Snapshot and the Application's ReleasePlans exist.
 // Otherwise, it will create new Releases for each ReleasePlan.
 func (a *Adapter) EnsureAllReleasesExist() (controller.OperationResult, error) {
+	autoReleaseFieldMessage := "The Snapshot was auto-released"
+
 	canSnapshotBePromoted, reasons := gitops.CanSnapshotBePromoted(a.snapshot)
 	if !canSnapshotBePromoted {
 		a.logger.Info("The Snapshot won't be released.",
@@ -406,25 +408,29 @@ func (a *Adapter) EnsureAllReleasesExist() (controller.OperationResult, error) {
 		return a.RequeueIfYoungerThanThreshold(err)
 	}
 
-	err = a.createMissingReleasesForReleasePlans(a.application, releasePlans, a.snapshot)
-	if err != nil {
-		a.logger.Error(err, "Failed to create new Releases")
-		patch := client.MergeFrom(a.snapshot.DeepCopy())
-		gitops.SetSnapshotIntegrationStatusAsError(a.snapshot, "Failed to create new Releases: "+err.Error())
-		a.logger.LogAuditEvent("Snapshot integration status marked as Invalid. Failed to create new Releases",
-			a.snapshot, h.LogActionUpdate)
-		er := a.client.Status().Patch(a.context, a.snapshot, patch)
-		if er != nil {
-			a.logger.Error(er, "Failed to mark snapshot integration status as invalid",
-				"snapshot.Name", a.snapshot.Name)
-			return a.RequeueIfYoungerThanThreshold(errors.Join(err, er))
+	if len(*releasePlans) > 0 {
+		err = a.createMissingReleasesForReleasePlans(a.application, releasePlans, a.snapshot)
+		if err != nil {
+			a.logger.Error(err, "Failed to create new Releases")
+			patch := client.MergeFrom(a.snapshot.DeepCopy())
+			gitops.SetSnapshotIntegrationStatusAsError(a.snapshot, "Failed to create new Releases: "+err.Error())
+			a.logger.LogAuditEvent("Snapshot integration status marked as Invalid. Failed to create new Releases",
+				a.snapshot, h.LogActionUpdate)
+			patchErr := a.client.Status().Patch(a.context, a.snapshot, patch)
+			if patchErr != nil {
+				a.logger.Error(patchErr, "Failed to mark snapshot integration status as invalid",
+					"snapshot.Name", a.snapshot.Name)
+				return a.RequeueIfYoungerThanThreshold(errors.Join(err, patchErr))
+			}
+			return a.RequeueIfYoungerThanThreshold(err)
 		}
-		return a.RequeueIfYoungerThanThreshold(err)
+	} else {
+		autoReleaseFieldMessage = "Skipping auto-release of the Snapshot because no ReleasePlans have the 'auto-release' label set to 'true'"
 	}
 
 	// Mark the Snapshot as already auto-released to prevent re-releasing the Snapshot when it gets reconciled
 	// at a later time, especially if new ReleasePlans are introduced or existing ones are renamed
-	err = gitops.MarkSnapshotAsAutoReleased(a.context, a.client, a.snapshot, "The Snapshot was auto-released")
+	err = gitops.MarkSnapshotAsAutoReleased(a.context, a.client, a.snapshot, autoReleaseFieldMessage)
 	if err != nil {
 		a.logger.Error(err, "Failed to update the Snapshot's status to auto-released")
 		return controller.RequeueWithError(err)
