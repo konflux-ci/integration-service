@@ -117,6 +117,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	adapter := NewAdapter(ctx, snapshot, application, logger, loader, r.Client)
 
 	return controller.ReconcileHandler([]controller.Operation{
+		adapter.EnsureOverrideSnapshotValid,
 		adapter.EnsureAllReleasesExist,
 		adapter.EnsureGlobalCandidateImageUpdated,
 		adapter.EnsureRerunPipelineRunsExist,
@@ -130,6 +131,7 @@ type AdapterInterface interface {
 	EnsureRerunPipelineRunsExist() (controller.OperationResult, error)
 	EnsureIntegrationPipelineRunsExist() (controller.OperationResult, error)
 	EnsureGlobalCandidateImageUpdated() (controller.OperationResult, error)
+	EnsureOverrideSnapshotValid() (controller.OperationResult, error)
 }
 
 // SetupController creates a new Integration controller and adds it to the Manager.
