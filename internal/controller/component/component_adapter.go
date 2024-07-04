@@ -134,11 +134,6 @@ func (a *Adapter) createUpdatedSnapshot(snapshotComponents *[]applicationapiv1al
 	if snapshot.Labels == nil {
 		snapshot.Labels = map[string]string{}
 	}
-	snapshotType := gitops.SnapshotCompositeType
-	if len(*snapshotComponents) == 1 {
-		snapshotType = gitops.SnapshotComponentType
-	}
-	snapshot.Labels[gitops.SnapshotTypeLabel] = snapshotType
 
 	err := ctrl.SetControllerReference(a.application, snapshot, a.client.Scheme())
 	if err != nil {
