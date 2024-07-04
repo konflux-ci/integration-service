@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/tonglil/buflogr"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -62,6 +63,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		hasSnapshotPR                             *applicationapiv1alpha1.Snapshot
 		hasOverRideSnapshot                       *applicationapiv1alpha1.Snapshot
 		hasInvalidSnapshot                        *applicationapiv1alpha1.Snapshot
+		hasInvalidOverrideSnapshot                *applicationapiv1alpha1.Snapshot
 		integrationTestScenario                   *v1beta2.IntegrationTestScenario
 		integrationTestScenarioForInvalidSnapshot *v1beta2.IntegrationTestScenario
 		env                                       *applicationapiv1alpha1.Environment
@@ -281,6 +283,45 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		}
 		Expect(k8sClient.Create(ctx, hasOverRideSnapshot)).Should(Succeed())
 
+		hasInvalidOverrideSnapshot = &applicationapiv1alpha1.Snapshot{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "snapshotpr-sample-override-invalid",
+				Namespace: "default",
+				Labels: map[string]string{
+					gitops.SnapshotTypeLabel: gitops.SnapshotOverrideType,
+				},
+			},
+			Spec: applicationapiv1alpha1.SnapshotSpec{
+				Application: hasApp.Name,
+				Components: []applicationapiv1alpha1.SnapshotComponent{
+					{
+						Name:           hasComp.Name,
+						ContainerImage: sample_image + "@" + sampleDigest,
+						Source: applicationapiv1alpha1.ComponentSource{
+							ComponentSourceUnion: applicationapiv1alpha1.ComponentSourceUnion{
+								GitSource: &applicationapiv1alpha1.GitSource{
+									Revision: sample_revision,
+								},
+							},
+						},
+					},
+					{
+						Name:           hasCompMissingImageDigest.Name,
+						ContainerImage: sample_image,
+						Source: applicationapiv1alpha1.ComponentSource{
+							ComponentSourceUnion: applicationapiv1alpha1.ComponentSourceUnion{
+								GitSource: &applicationapiv1alpha1.GitSource{
+									URL:      SampleRepoLink,
+									Revision: sample_revision,
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+		Expect(k8sClient.Create(ctx, hasInvalidOverrideSnapshot)).Should(Succeed())
+
 		Eventually(func() error {
 			err := k8sClient.Get(ctx, types.NamespacedName{
 				Name:      hasSnapshot.Name,
@@ -296,6 +337,8 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		err = k8sClient.Delete(ctx, hasSnapshot)
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 		err = k8sClient.Delete(ctx, hasOverRideSnapshot)
+		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
+		err = k8sClient.Delete(ctx, hasInvalidOverrideSnapshot)
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 	})
 
@@ -1141,6 +1184,47 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		})
 	})
 
+	When("Adapter is created for override snapshot", func() {
+		var buf bytes.Buffer
+
+		It("ensures override snapshot with invalid snapshotComponent is marked as invalid", func() {
+			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+			Expect(gitops.IsSnapshotValid(hasInvalidOverrideSnapshot)).To(BeTrue())
+			Expect(controllerutil.HasControllerReference(hasInvalidOverrideSnapshot)).To(BeFalse())
+			adapter = NewAdapter(ctx, hasInvalidOverrideSnapshot, hasApp, log, loader.NewMockLoader(), k8sClient)
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: loader.ApplicationContextKey,
+					Resource:   hasApp,
+				},
+				{
+					ContextKey: loader.ComponentContextKey,
+					Resource:   hasComp,
+				},
+				{
+					ContextKey: loader.SnapshotContextKey,
+					Resource:   hasInvalidOverrideSnapshot,
+				},
+				{
+					ContextKey: loader.SnapshotComponentsContextKey,
+					Resource:   []applicationapiv1alpha1.Component{*hasComp, *hasCompMissingImageDigest},
+				},
+			})
+
+			result, err := adapter.EnsureOverrideSnapshotValid()
+			Expect(result.CancelRequest).To(BeFalse())
+			Expect(result.RequeueRequest).To(BeFalse())
+			Expect(controllerutil.HasControllerReference(hasInvalidOverrideSnapshot)).To(BeTrue())
+			Expect(buf.String()).Should(ContainSubstring("Snapshot has been marked as invalid"))
+			Expect(err).ToNot(HaveOccurred())
+
+			result, err = adapter.EnsureOverrideSnapshotValid()
+			Expect(buf.String()).Should(ContainSubstring("The override snapshot has been marked as invalid, skipping"))
+			Expect(err).ToNot(HaveOccurred())
+			Expect(result.CancelRequest).To(BeFalse())
+			Expect(result.RequeueRequest).To(BeFalse())
+		})
+	})
 })
 
 func getAllIntegrationPipelineRunsForSnapshot(ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot) ([]tektonv1.PipelineRun, error) {
