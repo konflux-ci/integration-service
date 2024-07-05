@@ -3,7 +3,7 @@ module github.com/konflux-ci/integration-service
 go 1.21
 
 require (
-	github.com/agiledragon/gomonkey/v2 v2.11.0
+	github.com/agiledragon/gomonkey/v2 v2.12.0
 	github.com/bradleyfalzon/ghinstallation/v2 v2.11.0
 	github.com/go-logr/logr v1.4.2
 	github.com/google/go-containerregistry v0.19.2
