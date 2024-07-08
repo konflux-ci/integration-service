@@ -436,7 +436,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 9
+        "y": 17
       },
       "type": "graph",
       "title": "#5 Latency of Release Creation",
@@ -541,7 +541,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 9
+        "y": 17
       },
       "type": "timeseries",
       "title": "[Violations] #5 Latency of Release Creation",
@@ -633,7 +633,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 17
+        "y": 25
       },
       "id": 16,
       "panels": [],
@@ -687,10 +687,10 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 9,
+        "h": 8,
         "w": 12,
         "x": 0,
-        "y": 18
+        "y": 26
       },
       "id": 2,
       "options": {
@@ -736,7 +736,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 18
+        "y": 26
       },
       "hiddenSeries": false,
       "id": 4,
@@ -838,7 +838,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 27
+        "y": 34
       },
       "heatmap": {},
       "hideZeroBuckets": true,
@@ -887,101 +887,6 @@
       "yBucketSize": null
     },
     {
-      "aliasColors": {},
-      "bars": false,
-      "dashLength": 10,
-      "dashes": false,
-      "description": "Total number of concurrent snapshot attempts",
-      "fieldConfig": {
-        "defaults": {},
-        "overrides": []
-      },
-      "fill": 1,
-      "fillGradient": 0,
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 34
-      },
-      "hiddenSeries": false,
-      "id": 12,
-      "legend": {
-        "avg": false,
-        "current": false,
-        "max": false,
-        "min": false,
-        "show": true,
-        "total": false,
-        "values": false
-      },
-      "lines": true,
-      "linewidth": 1,
-      "nullPointMode": "null",
-      "options": {
-        "alertThreshold": true
-      },
-      "percentage": false,
-      "pluginVersion": "7.5.17",
-      "pointradius": 2,
-      "points": false,
-      "renderer": "flot",
-      "seriesOverrides": [],
-      "spaceLength": 10,
-      "stack": false,
-      "steppedLine": false,
-      "targets": [
-        {
-          "exemplar": true,
-          "expr": "integration_svc_snapshot_attempt_concurrent_requests",
-          "instant": false,
-          "interval": "",
-          "legendFormat": "{{ pod }}",
-          "refId": "A"
-        }
-      ],
-      "thresholds": [],
-      "timeFrom": null,
-      "timeRegions": [],
-      "timeShift": null,
-      "title": "Snapshot Attempt Concurrent Requests",
-      "tooltip": {
-        "shared": true,
-        "sort": 0,
-        "value_type": "individual"
-      },
-      "type": "graph",
-      "xaxis": {
-        "buckets": null,
-        "mode": "time",
-        "name": null,
-        "show": true,
-        "values": []
-      },
-      "yaxes": [
-        {
-          "format": "short",
-          "label": null,
-          "logBase": 1,
-          "max": null,
-          "min": null,
-          "show": true
-        },
-        {
-          "format": "short",
-          "label": null,
-          "logBase": 1,
-          "max": null,
-          "min": null,
-          "show": true
-        }
-      ],
-      "yaxis": {
-        "align": false,
-        "alignLevel": null
-      }
-    },
-    {
       "cards": {
         "cardPadding": null,
         "cardRound": null
@@ -1003,7 +908,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 42
+        "y": 34
       },
       "heatmap": {},
       "hideZeroBuckets": true,
@@ -1072,8 +977,8 @@
       "gridPos": {
         "h": 8,
         "w": 12,
-        "x": 12,
-        "y": 50
+        "x": 0,
+        "y": 42
       },
       "heatmap": {},
       "hideZeroBuckets": true,
@@ -1126,7 +1031,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 26
+        "y": 42
       },
       "type": "graph",
       "title": "Work Queue Depth",
@@ -1227,8 +1132,8 @@
       "gridPos": {
         "h": 8,
         "w": 12,
-        "x": 12,
-        "y": 26
+        "x": 0,
+        "y": 50
       },
       "type": "graph",
       "title": "Work Queue Duration Seconds",
@@ -1332,7 +1237,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 66
+        "y": 50
       },
       "type": "heatmap",
       "title": "Latency of Release Creation in Seconds",
