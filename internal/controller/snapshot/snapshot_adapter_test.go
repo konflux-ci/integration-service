@@ -45,6 +45,7 @@ import (
 	intgteststat "github.com/konflux-ci/integration-service/pkg/integrationteststatus"
 
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -545,6 +546,9 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 
 			expectedLogEntry := "The Snapshot was previously auto-released, skipping auto-release."
 			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
+
+			condition := meta.FindStatusCondition(hasSnapshot.Status.Conditions, gitops.SnapshotAutoReleasedCondition)
+			Expect(condition.Message).To(Equal("The Snapshot was auto-released"))
 		})
 
 		It("ensures Snapshot labels/annotations prefixed with 'appstudio.openshift.io' are propagated to the release", func() {
@@ -994,6 +998,53 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(result).NotTo(BeNil())
 			Expect(result.RequeueRequest).To(BeFalse())
+		})
+	})
+
+	When("there are no ReleasePlans available", func() {
+		var buf bytes.Buffer
+
+		BeforeAll(func() {
+			err := gitops.MarkSnapshotAsPassed(ctx, k8sClient, hasSnapshot, "test passed")
+			Expect(err).To(Succeed())
+			Expect(gitops.HaveAppStudioTestsSucceeded(hasSnapshot)).To(BeTrue())
+		})
+
+		It("ensures that the AutoRelease condition of Snapshot mentions the absence of ReleasePlan", func() {
+			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+
+			adapter = NewAdapter(ctx, hasSnapshot, hasApp, log, loader.NewMockLoader(), k8sClient)
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: loader.ApplicationContextKey,
+					Resource:   hasApp,
+				},
+				{
+					ContextKey: loader.ComponentContextKey,
+					Resource:   hasComp,
+				},
+				{
+					ContextKey: loader.SnapshotContextKey,
+					Resource:   hasSnapshot,
+				},
+				{
+					ContextKey: loader.AutoReleasePlansContextKey,
+					Resource:   []releasev1alpha1.ReleasePlan{},
+				},
+			})
+
+			result, err := adapter.EnsureAllReleasesExist()
+			Expect(result.CancelRequest).To(BeFalse())
+			Expect(result.RequeueRequest).To(BeFalse())
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(hasSnapshot.Status.Conditions).NotTo(BeNil())
+			Expect(gitops.IsSnapshotStatusConditionSet(hasSnapshot, gitops.SnapshotAutoReleasedCondition,
+				metav1.ConditionTrue, gitops.SnapshotAutoReleasedCondition)).To(BeTrue())
+
+			// Verify that the message field of "AutoRelease" condition mentions the absence of ReleasePlans
+			condition := meta.FindStatusCondition(hasSnapshot.Status.Conditions, gitops.SnapshotAutoReleasedCondition)
+			Expect(condition.Message).To(Equal("Skipping auto-release of the Snapshot because no ReleasePlans have the 'auto-release' label set to 'true'"))
 		})
 	})
 
