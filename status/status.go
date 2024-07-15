@@ -35,6 +35,7 @@ import (
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -247,30 +248,36 @@ func (s *Status) ReportSnapshotStatus(ctx context.Context, reporter ReporterInte
 		srs, _ = NewSnapshotReportStatus("")
 	}
 
-	for _, integrationTestStatusDetail := range integrationTestStatusDetails {
-		if srs.IsNewer(integrationTestStatusDetail.ScenarioName, integrationTestStatusDetail.LastUpdateTime) {
-			s.logger.Info("Integration Test contains new status updates", "scenario.Name", integrationTestStatusDetail.ScenarioName)
-		} else {
-			//integration test contains no changes
-			continue
-		}
-		testReport, reportErr := s.generateTestReport(ctx, *integrationTestStatusDetail, snapshot)
-		if reportErr != nil {
-			if writeErr := WriteSnapshotReportStatus(ctx, s.client, snapshot, srs); writeErr != nil { // try to write what was already written
-				return fmt.Errorf("failed to generate test report AND write snapshot report status metadata: %w", errors.Join(reportErr, writeErr))
+	err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		for _, integrationTestStatusDetail := range integrationTestStatusDetails {
+			if srs.IsNewer(integrationTestStatusDetail.ScenarioName, integrationTestStatusDetail.LastUpdateTime) {
+				s.logger.Info("Integration Test contains new status updates", "scenario.Name", integrationTestStatusDetail.ScenarioName)
+			} else {
+				//integration test contains no changes
+				continue
 			}
-			return fmt.Errorf("failed to generate test report: %w", reportErr)
-		}
-		if reportStatusErr := reporter.ReportStatus(ctx, *testReport); reportStatusErr != nil {
-			if writeErr := WriteSnapshotReportStatus(ctx, s.client, snapshot, srs); writeErr != nil { // try to write what was already written
-				return fmt.Errorf("failed to report status AND write snapshot report status metadata: %w", errors.Join(reportStatusErr, writeErr))
+			testReport, reportErr := s.generateTestReport(ctx, *integrationTestStatusDetail, snapshot)
+			if reportErr != nil {
+				if writeErr := WriteSnapshotReportStatus(ctx, s.client, snapshot, srs); writeErr != nil { // try to write what was already written
+					return fmt.Errorf("failed to generate test report AND write snapshot report status metadata: %w", errors.Join(reportErr, writeErr))
+				}
+				return fmt.Errorf("failed to generate test report: %w", reportErr)
 			}
-			return fmt.Errorf("failed to update status: %w", reportStatusErr)
+			if reportStatusErr := reporter.ReportStatus(ctx, *testReport); reportStatusErr != nil {
+				if writeErr := WriteSnapshotReportStatus(ctx, s.client, snapshot, srs); writeErr != nil { // try to write what was already written
+					return fmt.Errorf("failed to report status AND write snapshot report status metadata: %w", errors.Join(reportStatusErr, writeErr))
+				}
+				return fmt.Errorf("failed to update status: %w", reportStatusErr)
+			}
+			srs.SetLastUpdateTime(integrationTestStatusDetail.ScenarioName, integrationTestStatusDetail.LastUpdateTime)
 		}
-		srs.SetLastUpdateTime(integrationTestStatusDetail.ScenarioName, integrationTestStatusDetail.LastUpdateTime)
-	}
-	if err := WriteSnapshotReportStatus(ctx, s.client, snapshot, srs); err != nil {
-		return fmt.Errorf("failed to write snapshot report status metadata: %w", err)
+		if err := WriteSnapshotReportStatus(ctx, s.client, snapshot, srs); err != nil {
+			return fmt.Errorf("failed to write snapshot report status metadata: %w", err)
+		}
+		return err
+	})
+	if err != nil {
+		return fmt.Errorf("issue occured during generating or updating report status: %w", err)
 	}
 
 	s.logger.Info(fmt.Sprintf("Successfully updated the %s annotation", gitops.SnapshotStatusReportAnnotation), "snapshotReporterStatus.value", srs)
