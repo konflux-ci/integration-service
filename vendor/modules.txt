@@ -313,7 +313,7 @@ github.com/tektoncd/pipeline/pkg/substitution
 # github.com/tonglil/buflogr v1.1.1
 ## explicit; go 1.17
 github.com/tonglil/buflogr
-# github.com/xanzy/go-gitlab v0.106.0
+# github.com/xanzy/go-gitlab v0.107.0
 ## explicit; go 1.19
 github.com/xanzy/go-gitlab
 # go.opencensus.io v0.24.0
