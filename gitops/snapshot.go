@@ -476,6 +476,13 @@ func ValidateImageDigest(imageUrl string) error {
 	return err
 }
 
+// HaveGitSource checks if snapshotComponent contains non-empty source.git field
+// and have both url and revision fields defined
+func HaveGitSource(snapshotComponent applicationapiv1alpha1.SnapshotComponent) bool {
+	return reflect.ValueOf(snapshotComponent.Source).IsValid() && snapshotComponent.Source.GitSource != nil &&
+		snapshotComponent.Source.GitSource.Revision != "" && snapshotComponent.Source.GitSource.URL != ""
+}
+
 // HaveAppStudioTestsFinished checks if the AppStudio tests have finished by checking if the AppStudio Test Succeeded condition is set.
 func HaveAppStudioTestsFinished(snapshot *applicationapiv1alpha1.Snapshot) bool {
 	statusCondition := meta.FindStatusCondition(snapshot.Status.Conditions, AppStudioTestSucceededCondition)
@@ -864,4 +871,17 @@ func IsComponentSnapshot(snapshot *applicationapiv1alpha1.Snapshot) bool {
 
 func IsComponentSnapshotCreatedByPACPushEvent(snapshot *applicationapiv1alpha1.Snapshot) bool {
 	return IsComponentSnapshot(snapshot) && IsSnapshotCreatedByPACPushEvent(snapshot)
+}
+
+func SetOwnerReference(ctx context.Context, adapterClient client.Client, snapshot *applicationapiv1alpha1.Snapshot, owner *applicationapiv1alpha1.Application) (*applicationapiv1alpha1.Snapshot, error) {
+	patch := client.MergeFrom(snapshot.DeepCopy())
+	err := ctrl.SetControllerReference(owner, snapshot, adapterClient.Scheme())
+	if err != nil {
+		return snapshot, err
+	}
+	err = adapterClient.Patch(ctx, snapshot, patch)
+	if err != nil {
+		return snapshot, err
+	}
+	return snapshot, nil
 }

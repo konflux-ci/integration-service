@@ -98,6 +98,22 @@ flowchart TD
   rerun_static_env                ---->    remove_rerun_label
 
 
+  %%%%%%%%%%%%%%%%%%%%%%% Drawing EnsureOverrideSnapshotValid() function
+
+  %% Node definitions
+  ensure4(Process further if: Snapshot has override type label)
+  validate_override_valid{Is the override snapshot <br>defined with valid snapshotComponents, <br>image digest, and git source?}
+  mark_snapshot_invalid(<b>Mark</b> override snapshot as invalid)
+  continue_processing4(Controller continues processing...)
+
+  %% Node connections
+  predicate                       ---->    |"EnsureOverrideSnapshotValid()"|ensure4
+  ensure4                         -->      validate_override_valid
+  validate_override_valid         --Yes--> continue_processing4
+  validate_override_valid         --No-->  mark_snapshot_invalid
+  mark_snapshot_invalid           -->      continue_processing4
+
+
   %% Assigning styles to nodes
   class predicate Amber;
   class encountered_error1,encountered_error31,encountered_error32,encountered_error5 Red;
