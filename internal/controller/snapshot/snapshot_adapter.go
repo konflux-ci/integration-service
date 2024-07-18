@@ -28,6 +28,7 @@ import (
 	clienterrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	"github.com/konflux-ci/integration-service/api/v1beta2"
 	"github.com/konflux-ci/integration-service/gitops"
@@ -387,6 +388,7 @@ func (a *Adapter) EnsureAllReleasesExist() (controller.OperationResult, error) {
 			"reasons", strings.Join(reasons, ","))
 		return controller.ContinueProcessing()
 	}
+
 	if gitops.IsSnapshotMarkedAsAutoReleased(a.snapshot) {
 		a.logger.Info("The Snapshot was previously auto-released, skipping auto-release.")
 		return controller.ContinueProcessing()
@@ -436,6 +438,70 @@ func (a *Adapter) EnsureAllReleasesExist() (controller.OperationResult, error) {
 		return controller.RequeueWithError(err)
 	}
 
+	return controller.ContinueProcessing()
+}
+
+// EnsureOverrideSnapshotValid is an operation that ensure the manually created override snapshot have valid
+// digest and git source in snapshotComponents, mark it as invalid otherwise
+func (a *Adapter) EnsureOverrideSnapshotValid() (controller.OperationResult, error) {
+	if !gitops.IsOverrideSnapshot(a.snapshot) {
+		a.logger.Info("The snapshot was not override snapshot, skipping")
+		return controller.ContinueProcessing()
+	}
+
+	if gitops.IsSnapshotMarkedAsInvalid(a.snapshot) {
+		a.logger.Info("The override snapshot has been marked as invalid, skipping")
+		return controller.ContinueProcessing()
+	}
+
+	var err error
+	if !controllerutil.HasControllerReference(a.snapshot) {
+		a.snapshot, err = gitops.SetOwnerReference(a.context, a.client, a.snapshot, a.application)
+		if err != nil {
+			a.logger.Error(err, fmt.Sprintf("Failed to set owner reference for snapshot %s/%s", a.snapshot.Namespace, a.snapshot.Name))
+			return controller.RequeueWithError(err)
+		}
+		a.logger.Info("Owner reference has been set to snapshot")
+	}
+
+	// validate all snapshotComponents' containerImages/source in snapshot, make all errors joined
+	var errsForSnapshot error
+	for _, snapshotComponent := range a.snapshot.Spec.Components {
+		snapshotComponent := snapshotComponent //G601
+		_, err := a.loader.GetComponent(a.context, a.client, snapshotComponent.Name, a.snapshot.Namespace)
+		if err != nil {
+			a.logger.Error(err, "Failed to get component from applicaion", "application.Name", a.application.Name, "component.Name", snapshotComponent.Name)
+			_, loaderError := h.HandleLoaderError(a.logger, err, snapshotComponent.Name, a.application.Name)
+			if loaderError != nil {
+				return controller.RequeueWithError(loaderError)
+			} else {
+				errsForSnapshot = errors.Join(errsForSnapshot, fmt.Errorf("snapshotComponent %s defined in snapshot %s doesn't exist under application %s/%s", snapshotComponent.Name, a.snapshot.Name, a.application.Namespace, a.application.Name))
+			}
+		}
+
+		err = gitops.ValidateImageDigest(snapshotComponent.ContainerImage)
+		if err != nil {
+			a.logger.Error(err, "containerImage in snapshotComponent has invalid digest", "snapshotComponent.Name", snapshotComponent.Name, "snapshotComponent.ContainerImage", snapshotComponent.ContainerImage)
+			errsForSnapshot = errors.Join(errsForSnapshot, err)
+		}
+
+		if !gitops.HaveGitSource(snapshotComponent) {
+			a.logger.Error(err, "snapshotComponent has no git url/revision fields defined", "snapshotComponent.Name", snapshotComponent.Name, "snapshotComponent.ContainerImage", snapshotComponent.ContainerImage)
+			errsForSnapshot = errors.Join(errsForSnapshot, err)
+		}
+	}
+
+	if errsForSnapshot != nil {
+		a.logger.Error(errsForSnapshot, "mark the override snapshot as invalid due to invalid snapshotComponent")
+		err = gitops.MarkSnapshotAsInvalid(a.context, a.client, a.snapshot, errsForSnapshot.Error())
+		if err != nil {
+			a.logger.Error(err, "Failed to update snapshot to Invalid",
+				"snapshot.Namespace", a.snapshot.Namespace, "snapshot.Name", a.snapshot.Name)
+			return controller.RequeueWithError(err)
+		}
+		a.logger.Info("Snapshot has been marked as invalid due to invalid snapshotComponent",
+			"snapshot.Namespace", a.snapshot.Namespace, "snapshot.Name", a.snapshot.Name)
+	}
 	return controller.ContinueProcessing()
 }
 

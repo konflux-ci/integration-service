@@ -30,6 +30,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -608,11 +609,18 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 			BeforeEach(func() {
 				overrideSnapshot = hasSnapshot.DeepCopy()
 				overrideSnapshot.Labels[gitops.SnapshotTypeLabel] = gitops.SnapshotOverrideType
+				Expect(controllerutil.HasControllerReference(overrideSnapshot)).To(BeFalse())
 			})
 
 			It("make sure correct label is returned in overrideSnapshot", func() {
 				isOverrideSnapshot := gitops.IsOverrideSnapshot(overrideSnapshot)
 				Expect(isOverrideSnapshot).To(BeTrue())
+			})
+
+			It("Can set owner reference for override snapshot", func() {
+				overrideSnapshot, err := gitops.SetOwnerReference(ctx, k8sClient, overrideSnapshot, hasApp)
+				Expect(controllerutil.HasControllerReference(overrideSnapshot)).To(BeTrue())
+				Expect(err).ToNot(HaveOccurred())
 			})
 		})
 
