@@ -198,6 +198,15 @@ var _ = Describe("SnapshotController", func() {
 		hasSnapshot.Spec.Application = string("im-a-ghost")
 		Expect(k8sClient.Update(ctx, hasSnapshot)).Should(Succeed())
 
+		// Use Eventually to ensure the update has been applied
+		Eventually(func() bool {
+			err := k8sClient.Get(ctx, types.NamespacedName{
+				Namespace: hasSnapshot.Namespace,
+				Name:      hasSnapshot.Name,
+			}, hasSnapshot)
+			return err == nil && hasSnapshot.Spec.Application == "im-a-ghost"
+		}, time.Second*20, time.Second*2).Should(BeTrue())
+
 		result, err := snapshotReconciler.Reconcile(ctx, req)
 		Expect(result).To(Equal(ctrl.Result{}))
 		Expect(err).To(BeNil())
