@@ -163,13 +163,14 @@ func (a *Adapter) EnsureIntegrationPipelineRunsExist() (controller.OperationResu
 		return controller.ContinueProcessing()
 	}
 
-	integrationTestScenarios, err := a.loader.GetAllIntegrationTestScenariosForApplication(a.context, a.client, a.application)
+	allIntegrationTestScenarios, err := a.loader.GetAllIntegrationTestScenariosForApplication(a.context, a.client, a.application)
 	if err != nil {
 		a.logger.Error(err, "Failed to get Integration test scenarios for the following application",
 			"Application.Namespace", a.application.Namespace)
 	}
 
-	if integrationTestScenarios != nil {
+	if allIntegrationTestScenarios != nil {
+		integrationTestScenarios := gitops.FilterIntegrationTestScenariosWithContext(allIntegrationTestScenarios, a.snapshot)
 		a.logger.Info(
 			fmt.Sprintf("Found %d IntegrationTestScenarios for application", len(*integrationTestScenarios)),
 			"Application.Name", a.application.Name,
@@ -254,7 +255,7 @@ func (a *Adapter) EnsureIntegrationPipelineRunsExist() (controller.OperationResu
 		}
 	}
 
-	requiredIntegrationTestScenarios, err := a.loader.GetRequiredIntegrationTestScenariosForApplication(a.context, a.client, a.application)
+	allRequiredIntegrationTestScenarios, err := a.loader.GetRequiredIntegrationTestScenariosForApplication(a.context, a.client, a.application)
 	if err != nil {
 		a.logger.Error(err, "Failed to get all required IntegrationTestScenarios")
 		patch := client.MergeFrom(a.snapshot.DeepCopy())
@@ -263,6 +264,7 @@ func (a *Adapter) EnsureIntegrationPipelineRunsExist() (controller.OperationResu
 			a.snapshot, h.LogActionUpdate)
 		return controller.RequeueOnErrorOrStop(a.client.Status().Patch(a.context, a.snapshot, patch))
 	}
+	requiredIntegrationTestScenarios := gitops.FilterIntegrationTestScenariosWithContext(allRequiredIntegrationTestScenarios, a.snapshot)
 	if len(*requiredIntegrationTestScenarios) == 0 && !gitops.IsSnapshotMarkedAsPassed(a.snapshot) {
 		err := gitops.MarkSnapshotAsPassed(a.context, a.client, a.snapshot, "No required IntegrationTestScenarios found, skipped testing")
 		if err != nil {
