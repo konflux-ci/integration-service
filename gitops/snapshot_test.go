@@ -17,6 +17,7 @@ limitations under the License.
 package gitops_test
 
 import (
+	"github.com/konflux-ci/integration-service/api/v1beta2"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	. "github.com/onsi/gomega/gstruct"
@@ -623,6 +624,92 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 				Expect(err).ToNot(HaveOccurred())
 			})
 		})
-
 	})
+
+	Context("Filter integration tests for a given Snapshot based on their context", func() {
+		When("There are a number of integration test scenarios with different contexts", func() {
+			integrationTestScenario := &v1beta2.IntegrationTestScenario{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "example-pass",
+					Namespace: "default",
+
+					Labels: map[string]string{
+						"test.appstudio.openshift.io/optional": "false",
+					},
+				},
+				Spec: v1beta2.IntegrationTestScenarioSpec{
+					Application: "application-sample",
+					ResolverRef: v1beta2.ResolverRef{
+						Resolver: "git",
+						Params: []v1beta2.ResolverParameter{
+							{
+								Name:  "url",
+								Value: "https://github.com/redhat-appstudio/integration-examples.git",
+							},
+							{
+								Name:  "revision",
+								Value: "main",
+							},
+							{
+								Name:  "pathInRepo",
+								Value: "pipelineruns/integration_pipelinerun_pass.yaml",
+							},
+						},
+					},
+				},
+			}
+			applicationScenario := integrationTestScenario.DeepCopy()
+			applicationScenario.Spec.Contexts = []v1beta2.TestContext{{Name: "application", Description: "Application Testing"}}
+			componentScenario := integrationTestScenario.DeepCopy()
+			componentScenario.Spec.Contexts = []v1beta2.TestContext{{Name: "component", Description: "Component"}}
+			componentSampleScenario := integrationTestScenario.DeepCopy()
+			componentSampleScenario.Spec.Contexts = []v1beta2.TestContext{{Name: "component_component-sample", Description: "Component component-sample"}}
+			componentSample2Scenario := integrationTestScenario.DeepCopy()
+			componentSample2Scenario.Spec.Contexts = []v1beta2.TestContext{{Name: "component_component-sample-2", Description: "Component component-sample-2"}}
+			pullRequestScenario := integrationTestScenario.DeepCopy()
+			pullRequestScenario.Spec.Contexts = []v1beta2.TestContext{{Name: "pull_request", Description: "Pull Request"}}
+			pushScenario := integrationTestScenario.DeepCopy()
+			pushScenario.Spec.Contexts = []v1beta2.TestContext{{Name: "push", Description: "Component"}}
+			groupScenario := integrationTestScenario.DeepCopy()
+			groupScenario.Spec.Contexts = []v1beta2.TestContext{{Name: "group", Description: "PR Group Testing"}}
+			overrideScenario := integrationTestScenario.DeepCopy()
+			overrideScenario.Spec.Contexts = []v1beta2.TestContext{{Name: "override", Description: "Override Snapshot testing"}}
+			componentAndGroupScenario := integrationTestScenario.DeepCopy()
+			componentAndGroupScenario.Spec.Contexts = []v1beta2.TestContext{{Name: "group"}, {Name: "component"}}
+			unsupportedScenario := integrationTestScenario.DeepCopy()
+			unsupportedScenario.Spec.Contexts = []v1beta2.TestContext{{Name: "n/a"}}
+
+			allScenarios := []v1beta2.IntegrationTestScenario{*integrationTestScenario, *applicationScenario,
+				*componentScenario, *componentSampleScenario, *componentSample2Scenario, *pullRequestScenario,
+				*pushScenario, *groupScenario, *componentAndGroupScenario, *unsupportedScenario}
+
+			It("Returns only the scenarios matching the context for a given kind of Snapshot", func() {
+				// A component Snapshot for a push event referencing the component-sample
+				filteredScenarios := gitops.FilterIntegrationTestScenariosWithContext(&allScenarios, hasSnapshot)
+				Expect(*filteredScenarios).To(HaveLen(6))
+
+				// A component Snapshot for pull request event referencing the component-sample
+				hasSnapshot.Labels[gitops.PipelineAsCodeEventTypeLabel] = gitops.PipelineAsCodePullRequestType
+				filteredScenarios = gitops.FilterIntegrationTestScenariosWithContext(&allScenarios, hasSnapshot)
+				Expect(*filteredScenarios).To(HaveLen(6))
+
+				// A group Snapshot for pull request event referencing component-sample-2
+				hasSnapshot.Labels[gitops.SnapshotComponentLabel] = "component-sample-2"
+				filteredScenarios = gitops.FilterIntegrationTestScenariosWithContext(&allScenarios, hasSnapshot)
+				Expect(*filteredScenarios).To(HaveLen(6))
+
+				// A group Snapshot for pull request event for a PR group
+				hasSnapshot.Labels[gitops.SnapshotTypeLabel] = "group"
+				hasSnapshot.Labels[gitops.SnapshotComponentLabel] = ""
+				filteredScenarios = gitops.FilterIntegrationTestScenariosWithContext(&allScenarios, hasSnapshot)
+				Expect(*filteredScenarios).To(HaveLen(5))
+
+				// An override Snapshot
+				hasSnapshot.Labels[gitops.SnapshotTypeLabel] = "override"
+				filteredScenarios = gitops.FilterIntegrationTestScenariosWithContext(&allScenarios, hasSnapshot)
+				Expect(*filteredScenarios).To(HaveLen(3))
+			})
+		})
+	})
+
 })

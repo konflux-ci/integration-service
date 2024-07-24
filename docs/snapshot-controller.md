@@ -17,7 +17,7 @@ flowchart TD
   are_there_any_ITS{"Are there any <br>IntegrationTestScenario <br>present for the given <br>Application?"}
   create_new_test_PLR(<b>Create a new Test PipelineRun</b> for each <br>of the above ITS, if it doesn't exists already)
   mark_snapshot_InProgress(<b>Mark</b> Snapshot's Integration-testing <br>status as 'InProgress')
-  fetch_all_required_ITS("Fetch all the required <br>(non-optional) IntegrationTestScenario <br>for the given Application")
+  fetch_all_required_ITS("Fetch all the required <br>(non-optional) IntegrationTestScenario <br>for the given Application <br> filtered by ITS context(s)")
   encountered_error1{Encountered error?}
   mark_snapshot_Invalid1(<b>Mark</b> the Snapshot as Invalid)
   is_atleast_1_required_ITS{Is there atleast <br>1 required ITS?}
