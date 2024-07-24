@@ -121,10 +121,11 @@ func (a *Adapter) EnsureSnapshotTestStatusReportedToGitProvider() (controller.Op
 func (a *Adapter) EnsureSnapshotFinishedAllTests() (controller.OperationResult, error) {
 	// Get all required integrationTestScenarios for the Application and then use the Snapshot status annotation
 	// to check if all Integration tests were finished for that Snapshot
-	integrationTestScenarios, err := a.loader.GetRequiredIntegrationTestScenariosForApplication(a.context, a.client, a.application)
+	allRequiredIntegrationTestScenarios, err := a.loader.GetRequiredIntegrationTestScenariosForApplication(a.context, a.client, a.application)
 	if err != nil {
 		return controller.RequeueWithError(err)
 	}
+	integrationTestScenarios := gitops.FilterIntegrationTestScenariosWithContext(allRequiredIntegrationTestScenarios, a.snapshot)
 	a.logger.Info(fmt.Sprintf("Found %d required integration test scenarios", len(*integrationTestScenarios)))
 
 	testStatuses, err := gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(a.snapshot)
