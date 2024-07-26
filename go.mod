@@ -10,7 +10,7 @@ require (
 	github.com/google/go-github/v45 v45.2.0
 	github.com/konflux-ci/operator-toolkit v0.0.0-20240402130556-ef6dcbeca69d
 	github.com/konflux-ci/release-service v0.0.0-20240514150425-d25d533f66ba
-	github.com/onsi/ginkgo/v2 v2.19.0
+	github.com/onsi/ginkgo/v2 v2.19.1
 	github.com/onsi/gomega v1.34.0
 	github.com/openshift-pipelines/pipelines-as-code v0.27.1
 	github.com/prometheus/client_golang v1.19.1
