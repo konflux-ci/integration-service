@@ -12,46 +12,15 @@ updates:
     commit-message:
       # Prefix all commit messages with "chore(Dockerfile): "
       prefix: "chore(Dockerfile): "
-    # Add reviewers
-    reviewers:
-      - "dirgim"
-      - "hongweiliu17"
-      - "jsztuka"
-      - "Josh-Everett"
-      - "kasemAlem"
-      - "sonam1412"
-      - "dheerajodha"
-      - "14rcole"
-      - "chipspeak"
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "weekly"
     commit-message:
       prefix: "chore(actions): "
-    reviewers:
-      - "dirgim"
-      - "hongweiliu17"
-      - "jsztuka"
-      - "Josh-Everett"
-      - "kasemAlem"
-      - "sonam1412"
-      - "dheerajodha"
-      - "14rcole"
-      - "chipspeak"
   - package-ecosystem: "gomod"
     directory: "/"
     schedule:
       interval: daily
     commit-message:
       prefix: "chore(go): "
-    reviewers:
-      - "dirgim"
-      - "hongweiliu17"
-      - "jsztuka"
-      - "Josh-Everett"
-      - "kasemAlem"
-      - "sonam1412"
-      - "dheerajodha"
-      - "14rcole"
-      - "chipspeak"
