@@ -1,5 +1,5 @@
 # Konflux Integration Service
-The Konflux Integration Service is a Kubernetes operator to control the integration and testing of Konflux-managed
+The magnificent Konflux Integration Service is a Kubernetes operator to control the integration and testing of Konflux-managed
 Application Component builds in Red Hat Konflux.
 
 ## Running, building and testing the operator
