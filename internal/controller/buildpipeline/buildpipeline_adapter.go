@@ -30,6 +30,7 @@ import (
 	"github.com/konflux-ci/integration-service/loader"
 	"github.com/konflux-ci/integration-service/tekton"
 	"github.com/konflux-ci/operator-toolkit/controller"
+	"github.com/konflux-ci/operator-toolkit/metadata"
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -149,6 +150,33 @@ func (a *Adapter) EnsurePipelineIsFinalized() (controller.OperationResult, error
 	return controller.ContinueProcessing()
 }
 
+// EnsurePRGroupAnnotated is an operation that will ensure that the pr group info
+// is added to build pipelineRun metadata label and annotation once it is created,
+// then these label and annotation will be copied to component snapshot when it is created
+func (a *Adapter) EnsurePRGroupAnnotated() (controller.OperationResult, error) {
+	if metadata.HasLabel(a.pipelineRun, gitops.PRGroupHashLabel) && metadata.HasAnnotation(a.pipelineRun, gitops.PRGroupAnnotation) {
+		a.logger.Info("build pipelineRun has had pr group info in metadata, no need to update")
+		return controller.ContinueProcessing()
+	}
+
+	err := a.addPRGroupToBuildPLRMetadata(a.pipelineRun)
+	if err != nil {
+		if errors.IsNotFound(err) {
+			a.logger.Error(err, "failed to add pr group info to build pipelineRun metadata due to notfound pipelineRun")
+			return controller.StopProcessing()
+		} else {
+			a.logger.Error(err, "failed to add pr group info to build pipelineRun metadata")
+			return controller.RequeueWithError(err)
+		}
+
+	}
+
+	a.logger.LogAuditEvent("pr group info is updated to build pipelineRun metadata", a.pipelineRun, h.LogActionUpdate,
+		"pipelineRun.Name", a.pipelineRun.Name)
+
+	return controller.ContinueProcessing()
+}
+
 // getImagePullSpecFromPipelineRun gets the full image pullspec from the given build PipelineRun,
 // In case the Image pullspec can't be composed, an error will be returned.
 func (a *Adapter) getImagePullSpecFromPipelineRun(pipelineRun *tektonv1.PipelineRun) (string, error) {
@@ -216,6 +244,10 @@ func (a *Adapter) prepareSnapshotForPipelineRun(pipelineRun *tektonv1.PipelineRu
 		snapshot.Labels[gitops.BuildPipelineRunFinishTimeLabel] = strconv.FormatInt(pipelineRun.Status.CompletionTime.Time.Unix(), 10)
 	} else {
 		snapshot.Labels[gitops.BuildPipelineRunFinishTimeLabel] = strconv.FormatInt(time.Now().Unix(), 10)
+	}
+
+	if pipelineRun.Status.StartTime != nil {
+		snapshot.Annotations[gitops.BuildPipelineRunStartTime] = strconv.FormatInt(pipelineRun.Status.StartTime.Time.Unix(), 10)
 	}
 
 	return snapshot, nil
@@ -328,4 +360,30 @@ func (a *Adapter) updatePipelineRunWithCustomizedError(canRemoveFinalizer *bool,
 	}
 	return controller.RequeueOnErrorOrContinue(cerr)
 
+}
+
+// addPRGroupToBuildPLRMetadata will add pr-group info gotten from souce-branch to annotation
+// and also the string in sha format to metadata label
+func (a *Adapter) addPRGroupToBuildPLRMetadata(pipelineRun *tektonv1.PipelineRun) error {
+	prGroupName := tekton.GetPRGroupNameFromBuildPLR(pipelineRun)
+	if prGroupName != "" {
+		prGroupHashName := tekton.GenerateSHA(prGroupName)
+
+		return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+			var err error
+			pipelineRun, err = a.loader.GetPipelineRun(a.context, a.client, pipelineRun.Name, pipelineRun.Namespace)
+			if err != nil {
+				return err
+			}
+
+			patch := client.MergeFrom(pipelineRun.DeepCopy())
+
+			_ = metadata.SetAnnotation(&pipelineRun.ObjectMeta, gitops.PRGroupAnnotation, prGroupName)
+			_ = metadata.SetLabel(&pipelineRun.ObjectMeta, gitops.PRGroupHashLabel, prGroupHashName)
+
+			return a.client.Patch(a.context, pipelineRun, patch)
+		})
+	}
+	a.logger.Info("can't find source branch info in build PLR, not need to update build pipelineRun metadata")
+	return nil
 }

@@ -76,6 +76,15 @@ const (
 	// SnapshotStatusReportAnnotation contains metadata of tests related to status reporting to git provider
 	SnapshotStatusReportAnnotation = "test.appstudio.openshift.io/git-reporter-status"
 
+	// PRGroupAnnotation contains the pr group name
+	PRGroupAnnotation = "test.appstudio.openshift.io/pr-group"
+
+	// PRGroupHashLabel contains the pr group name in sha format
+	PRGroupHashLabel = "test.appstudio.openshift.io/pr-group-sha"
+
+	// BuildPipelineRunStartTime contains the start time of build pipelineRun
+	BuildPipelineRunStartTime = "test.appstudio.openshift.io/pipelinerunstarttime"
+
 	// BuildPipelineRunPrefix contains the build pipeline run related labels and annotations
 	BuildPipelineRunPrefix = "build.appstudio"
 
