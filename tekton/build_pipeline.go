@@ -18,8 +18,10 @@ package tekton
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	h "github.com/konflux-ci/integration-service/helpers"
 	"github.com/konflux-ci/operator-toolkit/metadata"
@@ -27,11 +29,38 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
+const (
+	// master branch in github/gitlab
+	MasterBranch = "master"
+
+	// main branch in github/gitlab
+	MainBranch = "main"
+
+	// PipelineAsCodeSourceBranchAnnotation is the branch name of the the pull request is created from
+	PipelineAsCodeSourceBranchAnnotation = "pipelinesascode.tekton.dev/source-branch"
+
+	// PipelineAsCodeSourceRepoOrg is the repo org build PLR is triggered by
+	PipelineAsCodeSourceRepoOrg = "pipelinesascode.tekton.dev/url-org"
+)
+
 // AnnotateBuildPipelineRun sets annotation for a build pipelineRun in defined context and returns that pipeline
 func AnnotateBuildPipelineRun(ctx context.Context, pipelineRun *tektonv1.PipelineRun, key, value string, cl client.Client) error {
 	patch := client.MergeFrom(pipelineRun.DeepCopy())
 
 	_ = metadata.SetAnnotation(&pipelineRun.ObjectMeta, key, value)
+
+	err := cl.Patch(ctx, pipelineRun, patch)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+// LabelBuildPipelineRun sets annotation for a build pipelineRun in defined context and returns that pipeline
+func LabelBuildPipelineRun(ctx context.Context, pipelineRun *tektonv1.PipelineRun, key, value string, cl client.Client) error {
+	patch := client.MergeFrom(pipelineRun.DeepCopy())
+
+	_ = metadata.SetLabel(&pipelineRun.ObjectMeta, key, value)
 
 	err := cl.Patch(ctx, pipelineRun, patch)
 	if err != nil {
@@ -66,4 +95,22 @@ func AnnotateBuildPipelineRunWithCreateSnapshotAnnotation(ctx context.Context, p
 		return err
 	}
 	return AnnotateBuildPipelineRun(ctx, pipelineRun, h.CreateSnapshotAnnotationName, string(jsonResult), cl)
+}
+
+// GetPRGroupNameFromBuildPLR gets the PR group from the substring before @ from
+// the source-branch pac annotation, for main, it generate PR group with {source-branch}-{url-org}
+func GetPRGroupNameFromBuildPLR(pipelineRun *tektonv1.PipelineRun) string {
+	if prGroup, found := pipelineRun.ObjectMeta.Annotations[PipelineAsCodeSourceBranchAnnotation]; found {
+		if prGroup == MainBranch || prGroup == MasterBranch && metadata.HasAnnotation(pipelineRun, PipelineAsCodeSourceRepoOrg) {
+			prGroup = prGroup + "-" + pipelineRun.ObjectMeta.Annotations[PipelineAsCodeSourceRepoOrg]
+		}
+		return strings.Split(prGroup, "@")[0]
+	}
+	return ""
+}
+
+// GenerateSHA generate a 63 charactors sha string used by pipelineRun and snapshot label
+func GenerateSHA(str string) string {
+	hash := sha256.Sum256([]byte(str))
+	return fmt.Sprintf("%x", hash)[0:62]
 }
