@@ -76,7 +76,7 @@ spec:
                       GitOps repository resources.
                     properties:
                       env:
-                        description: Env is an array of standard environment vairables
+                        description: Env is an array of standard environment variables
                         items:
                           description: EnvVarPair describes environment variables
                             to use for the component
@@ -285,7 +285,7 @@ spec:
                       GitOps repository resources.
                     properties:
                       env:
-                        description: Env is an array of standard environment vairables
+                        description: Env is an array of standard environment variables
                         items:
                           description: EnvVarPair describes environment variables
                             to use for the component
