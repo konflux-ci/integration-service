@@ -6,12 +6,12 @@ require (
 	github.com/agiledragon/gomonkey/v2 v2.12.0
 	github.com/bradleyfalzon/ghinstallation/v2 v2.11.0
 	github.com/go-logr/logr v1.4.2
-	github.com/google/go-containerregistry v0.20.0
+	github.com/google/go-containerregistry v0.20.1
 	github.com/google/go-github/v45 v45.2.0
 	github.com/konflux-ci/operator-toolkit v0.0.0-20240402130556-ef6dcbeca69d
 	github.com/konflux-ci/release-service v0.0.0-20240514150425-d25d533f66ba
-	github.com/onsi/ginkgo/v2 v2.19.0
-	github.com/onsi/gomega v1.33.1
+	github.com/onsi/ginkgo/v2 v2.19.1
+	github.com/onsi/gomega v1.34.0
 	github.com/openshift-pipelines/pipelines-as-code v0.27.1
 	github.com/prometheus/client_golang v1.19.1
 	github.com/redhat-appstudio/application-api v0.0.0-20240106104232-18f545e48a03

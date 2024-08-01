@@ -20,8 +20,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/konflux-ci/integration-service/api/v1beta2"
 	"reflect"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/google/go-containerregistry/pkg/name"
@@ -91,6 +93,9 @@ const (
 
 	// SnapshotOverrideType is the type of Snapshot which was created for override Global Candidate List.
 	SnapshotOverrideType = "override"
+
+	// SnapshotGroupType is the type of Snapshot which was created for pull request groups.
+	SnapshotGroupType = "group"
 
 	// PipelineAsCodeEventTypeLabel is the type of event which triggered the pipelinerun in build service
 	PipelineAsCodeEventTypeLabel = PipelinesAsCodePrefix + "/event-type"
@@ -869,6 +874,10 @@ func IsComponentSnapshot(snapshot *applicationapiv1alpha1.Snapshot) bool {
 	return metadata.HasLabelWithValue(snapshot, SnapshotTypeLabel, SnapshotComponentType)
 }
 
+func IsGroupSnapshot(snapshot *applicationapiv1alpha1.Snapshot) bool {
+	return metadata.HasLabelWithValue(snapshot, SnapshotTypeLabel, SnapshotGroupType)
+}
+
 func IsComponentSnapshotCreatedByPACPushEvent(snapshot *applicationapiv1alpha1.Snapshot) bool {
 	return IsComponentSnapshot(snapshot) && IsSnapshotCreatedByPACPushEvent(snapshot)
 }
@@ -884,4 +893,57 @@ func SetOwnerReference(ctx context.Context, adapterClient client.Client, snapsho
 		return snapshot, err
 	}
 	return snapshot, nil
+}
+
+// IsContextValidForSnapshot checks the context and compares it against the Snapshot to determine if it applies
+func IsContextValidForSnapshot(scenarioContextName string, snapshot *applicationapiv1alpha1.Snapshot) bool {
+	// `application` context is supported for backwards-compatibility and considered the same as `all`
+	if scenarioContextName == "application" || scenarioContextName == "all" {
+		return true
+	} else if scenarioContextName == "component" && IsComponentSnapshot(snapshot) {
+		return true
+	} else if strings.HasPrefix(scenarioContextName, "component_") {
+		componentName := strings.TrimPrefix(scenarioContextName, "component_")
+		if metadata.HasLabelWithValue(snapshot, SnapshotComponentLabel, componentName) {
+			return true
+		}
+	} else if scenarioContextName == "group" && IsGroupSnapshot(snapshot) {
+		return true
+	} else if scenarioContextName == "override" && IsOverrideSnapshot(snapshot) {
+		return true
+	} else if scenarioContextName == "push" && IsSnapshotCreatedByPACPushEvent(snapshot) {
+		return true
+	} else if scenarioContextName == "pull_request" && !IsSnapshotCreatedByPACPushEvent(snapshot) {
+		return true
+	}
+	return false
+}
+
+// IsScenarioApplicableToSnapshotsContext checks the contexts list for a given IntegrationTestScenario and
+// compares it against the Snapshot to determine if the scenario applies to it
+func IsScenarioApplicableToSnapshotsContext(scenario *v1beta2.IntegrationTestScenario, snapshot *applicationapiv1alpha1.Snapshot) bool {
+	// If the contexts list is empty, we assume that the scenario applies to all contexts by default
+	if len(scenario.Spec.Contexts) == 0 {
+		return true
+	}
+	for _, scenarioContext := range scenario.Spec.Contexts {
+		scenarioContext := scenarioContext //G601
+		if IsContextValidForSnapshot(scenarioContext.Name, snapshot) {
+			return true
+		}
+	}
+	return false
+}
+
+// FilterIntegrationTestScenariosWithContext returns a filtered list of IntegrationTestScenario from the given list
+// of IntegrationTestScenarios compared against the given Snapshot based on individual IntegrationTestScenario contexts
+func FilterIntegrationTestScenariosWithContext(scenarios *[]v1beta2.IntegrationTestScenario, snapshot *applicationapiv1alpha1.Snapshot) *[]v1beta2.IntegrationTestScenario {
+	var filteredScenarioList []v1beta2.IntegrationTestScenario
+	for _, scenario := range *scenarios {
+		scenario := scenario //G601
+		if IsScenarioApplicableToSnapshotsContext(&scenario, snapshot) {
+			filteredScenarioList = append(filteredScenarioList, scenario)
+		}
+	}
+	return &filteredScenarioList
 }
