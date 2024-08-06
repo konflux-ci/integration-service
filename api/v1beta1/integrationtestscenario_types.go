@@ -17,8 +17,51 @@ limitations under the License.
 package v1beta1
 
 import (
-	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+)
+
+// EnvVarPair describes environment variables to use for the component
+type EnvVarPair struct {
+
+	// Name is the environment variable name
+	Name string `json:"name"`
+
+	// Value is the environment variable value
+	Value string `json:"value"`
+}
+
+// DeploymentTargetClaimConfig specifies the DeploymentTargetClaim details for a given Environment.
+type DeploymentTargetClaimConfig struct {
+	ClaimName string `json:"claimName"`
+}
+
+// EnvironmentTarget provides the configuration for a deployment target.
+type EnvironmentTarget struct {
+	DeploymentTargetClaim DeploymentTargetClaimConfig `json:"deploymentTargetClaim"`
+}
+
+// EnvironmentConfiguration contains Environment-specific configurations details, to be used when generating
+// Component/Application GitOps repository resources.
+type DeprecatedEnvironmentConfiguration struct {
+	// Env is an array of standard environment variables
+	Env []EnvVarPair `json:"env,omitempty"`
+
+	// Target is used to reference a DeploymentTargetClaim for a target Environment.
+	// The Environment controller uses the referenced DeploymentTargetClaim to access its bounded
+	// DeploymentTarget with cluster credential secret.
+	Target EnvironmentTarget `json:"target,omitempty"`
+}
+
+// DEPRECATED: EnvironmentType should no longer be used, and has no replacement.
+// - It's original purpose was to indicate whether an environment is POC/Non-POC, but these data were ultimately not required.
+type DeprecatedEnvironmentType string
+
+const (
+	// DEPRECATED: EnvironmentType_POC should no longer be used, and has no replacement.
+	EnvironmentType_POC DeprecatedEnvironmentType = "POC"
+
+	// DEPRECATED: EnvironmentType_NonPOC should no longer be used, and has no replacement.
+	EnvironmentType_NonPOC DeprecatedEnvironmentType = "Non-POC"
 )
 
 // IntegrationTestScenarioSpec defines the desired state of IntegrationScenario
@@ -52,9 +95,9 @@ type PipelineParameter struct {
 
 // TestEnvironment contains the name and values of a Test environment
 type TestEnvironment struct {
-	Name          string                                           `json:"name"`
-	Type          applicationapiv1alpha1.EnvironmentType           `json:"type"`
-	Configuration *applicationapiv1alpha1.EnvironmentConfiguration `json:"configuration,omitempty"`
+	Name          string                              `json:"name"`
+	Type          DeprecatedEnvironmentType           `json:"type"`
+	Configuration *DeprecatedEnvironmentConfiguration `json:"configuration,omitempty"`
 }
 
 // TestContext contains the name and values of a Test context
