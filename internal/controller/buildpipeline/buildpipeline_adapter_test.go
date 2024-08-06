@@ -29,6 +29,7 @@ import (
 	"github.com/konflux-ci/integration-service/helpers"
 	"github.com/konflux-ci/integration-service/loader"
 	"github.com/konflux-ci/integration-service/tekton"
+	"github.com/konflux-ci/operator-toolkit/metadata"
 	"knative.dev/pkg/apis"
 	v1 "knative.dev/pkg/apis/duck/v1"
 
@@ -267,6 +268,8 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 					"build.appstudio.openshift.io/repo":             "https://github.com/devfile-samples/devfile-sample-go-basic?rev=c713067b0e65fb3de50d1f7c457eb51c2ab0dbb0",
 					"foo":                                           "bar",
 					"chains.tekton.dev/signed":                      "true",
+					"pipelinesascode.tekton.dev/source-branch":      "sourceBranch",
+					"pipelinesascode.tekton.dev/url-org":            "redhat",
 				},
 			},
 			Spec: tektonv1.PipelineRunSpec{
@@ -317,6 +320,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 						Value: *tektonv1.NewStructuredValues(SampleCommit),
 					},
 				},
+				StartTime: &metav1.Time{Time: time.Now()},
 			},
 			Status: v1.Status{
 				Conditions: v1.Conditions{
@@ -410,6 +414,8 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			Expect(expectedSnapshot.Labels).NotTo(BeNil())
 			Expect(expectedSnapshot.Labels).Should(HaveKeyWithValue(Equal(gitops.BuildPipelineRunNameLabel), Equal(buildPipelineRun.Name)))
 			Expect(expectedSnapshot.Labels).Should(HaveKeyWithValue(Equal(gitops.ApplicationNameLabel), Equal(hasApp.Name)))
+			Expect(metadata.HasAnnotation(expectedSnapshot, gitops.BuildPipelineRunStartTime)).To(BeTrue())
+			Expect(expectedSnapshot.Annotations[gitops.BuildPipelineRunStartTime]).NotTo(BeNil())
 		})
 
 		It("ensures that Labels and Annotations were copied to snapshot from pipelinerun", func() {
@@ -1012,6 +1018,38 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				}, time.Second*20).Should(BeTrue())
 			})
 
+		})
+
+		When("add pr group to the build pipelineRun annotations and labels", func() {
+			BeforeEach(func() {
+				adapter = NewAdapter(ctx, buildPipelineRun, hasComp, hasApp, logger, loader.NewMockLoader(), k8sClient)
+			})
+			It("add pr group to the build pipelineRun annotations and labels", func() {
+				existingBuildPLR := new(tektonv1.PipelineRun)
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Namespace: buildPipelineRun.Namespace,
+					Name:      buildPipelineRun.Name,
+				}, existingBuildPLR)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(metadata.HasAnnotation(existingBuildPLR, gitops.PRGroupAnnotation)).To(BeFalse())
+				Expect(metadata.HasLabel(existingBuildPLR, gitops.PRGroupHashLabel)).To(BeFalse())
+
+				// Add label and annotation to PLR
+				result, err := adapter.EnsurePRGroupAnnotated()
+				Expect(err).NotTo(HaveOccurred())
+				Expect(result.CancelRequest).To(BeFalse())
+				Expect(result.RequeueRequest).To(BeFalse())
+
+				err = adapter.client.Get(adapter.context, types.NamespacedName{
+					Namespace: buildPipelineRun.Namespace,
+					Name:      buildPipelineRun.Name,
+				}, existingBuildPLR)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(metadata.HasAnnotation(existingBuildPLR, gitops.PRGroupAnnotation)).To(BeTrue())
+				Expect(existingBuildPLR.Annotations).Should(HaveKeyWithValue(Equal(gitops.PRGroupAnnotation), Equal("sourceBranch")))
+				Expect(metadata.HasLabel(existingBuildPLR, gitops.PRGroupHashLabel)).To(BeTrue())
+				Expect(existingBuildPLR.Labels[gitops.PRGroupHashLabel]).NotTo(BeNil())
+			})
 		})
 
 		When("running pipeline with deletion timestamp is processed", func() {
