@@ -1040,14 +1040,15 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				Expect(result.CancelRequest).To(BeFalse())
 				Expect(result.RequeueRequest).To(BeFalse())
 
-				err = adapter.client.Get(adapter.context, types.NamespacedName{
-					Namespace: buildPipelineRun.Namespace,
-					Name:      buildPipelineRun.Name,
-				}, existingBuildPLR)
-				Expect(err).NotTo(HaveOccurred())
-				Expect(metadata.HasAnnotation(existingBuildPLR, gitops.PRGroupAnnotation)).To(BeTrue())
+				Eventually(func() bool {
+					_ = adapter.client.Get(adapter.context, types.NamespacedName{
+						Namespace: buildPipelineRun.Namespace,
+						Name:      buildPipelineRun.Name,
+					}, existingBuildPLR)
+					return metadata.HasAnnotation(existingBuildPLR, gitops.PRGroupAnnotation) && metadata.HasLabel(existingBuildPLR, gitops.PRGroupHashLabel)
+				}, time.Second*10).Should(BeTrue())
+
 				Expect(existingBuildPLR.Annotations).Should(HaveKeyWithValue(Equal(gitops.PRGroupAnnotation), Equal("sourceBranch")))
-				Expect(metadata.HasLabel(existingBuildPLR, gitops.PRGroupHashLabel)).To(BeTrue())
 				Expect(existingBuildPLR.Labels[gitops.PRGroupHashLabel]).NotTo(BeNil())
 			})
 		})

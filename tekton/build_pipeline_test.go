@@ -111,6 +111,7 @@ var _ = Describe("build pipeline", func() {
 
 	Context("When a build pipelineRun exists", func() {
 		It("can get PR group from build pipelineRun", func() {
+			Expect(tekton.IsPLRCreatedByPACPushEvent(buildPipelineRun)).To(BeFalse())
 			prGroup := tekton.GetPRGroupNameFromBuildPLR(buildPipelineRun)
 			Expect(prGroup).To(Equal("sourceBranch"))
 			Expect(tekton.GenerateSHA(prGroup)).NotTo(BeNil())
