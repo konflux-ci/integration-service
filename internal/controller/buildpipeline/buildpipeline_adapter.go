@@ -154,6 +154,11 @@ func (a *Adapter) EnsurePipelineIsFinalized() (controller.OperationResult, error
 // is added to build pipelineRun metadata label and annotation once it is created,
 // then these label and annotation will be copied to component snapshot when it is created
 func (a *Adapter) EnsurePRGroupAnnotated() (controller.OperationResult, error) {
+	if tekton.IsPLRCreatedByPACPushEvent(a.pipelineRun) {
+		a.logger.Info("build pipelineRun is not created by pull/merge request, no need to annotate")
+		return controller.ContinueProcessing()
+	}
+
 	if metadata.HasLabel(a.pipelineRun, gitops.PRGroupHashLabel) && metadata.HasAnnotation(a.pipelineRun, gitops.PRGroupAnnotation) {
 		a.logger.Info("build pipelineRun has had pr group info in metadata, no need to update")
 		return controller.ContinueProcessing()
