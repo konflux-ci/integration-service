@@ -85,7 +85,7 @@ func NewCheckRunStatusUpdater(
 	}
 }
 
-func (cru *CheckRunStatusUpdater) getAppCredentials(ctx context.Context, object client.Object) (*appCredentials, error) {
+func GetAppCredentials(ctx context.Context, k8sclient client.Client, object client.Object) (*appCredentials, error) {
 	var err error
 	var found bool
 	appInfo := appCredentials{}
@@ -97,7 +97,7 @@ func (cru *CheckRunStatusUpdater) getAppCredentials(ctx context.Context, object 
 
 	// Get the global pipelines as code secret
 	pacSecret := v1.Secret{}
-	err = cru.k8sClient.Get(ctx, types.NamespacedName{Namespace: integrationNS, Name: PACSecret}, &pacSecret)
+	err = k8sclient.Get(ctx, types.NamespacedName{Namespace: integrationNS, Name: PACSecret}, &pacSecret)
 	if err != nil {
 		return nil, err
 	}
@@ -124,7 +124,7 @@ func (cru *CheckRunStatusUpdater) getAppCredentials(ctx context.Context, object 
 
 // Authenticate Github Client with application credentials
 func (cru *CheckRunStatusUpdater) Authenticate(ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot) error {
-	creds, err := cru.getAppCredentials(ctx, snapshot)
+	creds, err := GetAppCredentials(ctx, cru.k8sClient, snapshot)
 	cru.creds = creds
 
 	if err != nil {

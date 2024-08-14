@@ -18,10 +18,12 @@ package gitops
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/konflux-ci/integration-service/api/v1beta2"
 	"reflect"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -34,6 +36,7 @@ import (
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -82,6 +85,9 @@ const (
 	// PRGroupHashLabel contains the pr group name in sha format
 	PRGroupHashLabel = "test.appstudio.openshift.io/pr-group-sha"
 
+	// PRGroupCreationAnnotation contains the info of groupsnapshot creation
+	PRGroupCreationAnnotation = "test.appstudio.openshift.io/create-groupsnapshot-status"
+
 	// BuildPipelineRunStartTime contains the start time of build pipelineRun
 	BuildPipelineRunStartTime = "test.appstudio.openshift.io/pipelinerunstarttime"
 
@@ -90,6 +96,9 @@ const (
 
 	// BuildPipelineRunFinishTimeLabel contains the build PipelineRun finish time of the Snapshot.
 	BuildPipelineRunFinishTimeLabel = "test.appstudio.openshift.io/pipelinerunfinishtime"
+
+	// GroupSnapshotInfoAnnotation contains the component snapshot info included in group snapshot
+	GroupSnapshotInfoAnnotation = "test.appstudio.openshift.io/group-test-info"
 
 	// BuildPipelineRunNameLabel contains the build PipelineRun name
 	BuildPipelineRunNameLabel = AppstudioLabelPrefix + "/build-pipelinerun"
@@ -223,6 +232,18 @@ var (
 	// SnapshotComponentLabel contains the name of the updated Snapshot component - it should match the pipeline label.
 	SnapshotComponentLabel = tekton.ComponentNameLabel
 )
+
+// ComponentSnapshotInfo contains data about the component snapshots' info in group snapshot
+type ComponentSnapshotInfo struct {
+	// Namespace
+	Namespace string `json:"namespace"`
+	// Component name
+	Component string `json:"component"`
+	// The build PLR name building the container image triggered by pull request
+	BuildPipelineRun string `json:"buildPipelineRun"`
+	// The built component snapshot from build PLR
+	Snapshot string `json:"snapshot"`
+}
 
 // IsSnapshotMarkedAsPassed returns true if snapshot is marked as passed
 func IsSnapshotMarkedAsPassed(snapshot *applicationapiv1alpha1.Snapshot) bool {
@@ -752,7 +773,7 @@ func PrepareSnapshot(ctx context.Context, adapterClient client.Client, applicati
 	return snapshot, nil
 }
 
-// FindMatchingSnapshot tries to find the expected Snapshot with the same set of images.
+// FindMatchingSnapshot tries to finds the expected Snapshot with the same set of images.
 func FindMatchingSnapshot(application *applicationapiv1alpha1.Application, allSnapshots *[]applicationapiv1alpha1.Snapshot, expectedSnapshot *applicationapiv1alpha1.Snapshot) *applicationapiv1alpha1.Snapshot {
 	for _, foundSnapshot := range *allSnapshots {
 		foundSnapshot := foundSnapshot
@@ -958,4 +979,108 @@ func FilterIntegrationTestScenariosWithContext(scenarios *[]v1beta2.IntegrationT
 		}
 	}
 	return &filteredScenarioList
+}
+
+// HasPRGroupProcessed checks if the pr group has been handled by snapshot adapter
+// to avoid duplicate check, if yes, won't handle the snapshot again
+func HasPRGroupProcessed(snapshot *applicationapiv1alpha1.Snapshot) bool {
+	return metadata.HasAnnotation(snapshot, PRGroupCreationAnnotation)
+}
+
+// GetPRGroupHashFromSnapshot gets the value of label test.appstudio.openshift.io/pr-group-sha from component snapshot
+func GetPRGroupHashFromSnapshot(snapshot *applicationapiv1alpha1.Snapshot) string {
+	if metadata.HasLabel(snapshot, PRGroupHashLabel) {
+		return snapshot.Labels[PRGroupHashLabel]
+	}
+	return ""
+}
+
+// GetPRGroupFromSnapshot gets the value of annotation test.appstudio.openshift.io/pr-group from component snapshot
+func GetPRGroupFromSnapshot(snapshot *applicationapiv1alpha1.Snapshot) string {
+	if metadata.HasAnnotation(snapshot, PRGroupAnnotation) {
+		return snapshot.Annotations[PRGroupAnnotation]
+	}
+	return ""
+}
+
+// FindMatchingSnapshotComponent find the snapshot component from the given snapshot according to the name of the given component name
+func FindMatchingSnapshotComponent(snapshot *applicationapiv1alpha1.Snapshot, component *applicationapiv1alpha1.Component) applicationapiv1alpha1.SnapshotComponent {
+	for _, snapshotComponent := range snapshot.Spec.Components {
+		if snapshotComponent.Name == component.Name {
+			return snapshotComponent
+		}
+	}
+	return applicationapiv1alpha1.SnapshotComponent{}
+
+}
+
+// SortSnapshots sorts the snapshots according to the snapshot annotation BuildPipelineRunStartTime
+func SortSnapshots(snapshots []applicationapiv1alpha1.Snapshot) []applicationapiv1alpha1.Snapshot {
+	sort.Slice(snapshots, func(i, j int) bool {
+		// sorting snapshots according to the annotation BuildPipelineRunStartTime which
+		// represents the start time of build PLR
+		// when BuildPipelineRunStartTime is not set, the value of Atoi is 0
+		time_i, _ := strconv.Atoi(snapshots[i].Annotations[BuildPipelineRunStartTime])
+		time_j, _ := strconv.Atoi(snapshots[j].Annotations[BuildPipelineRunStartTime])
+
+		return time_i > time_j
+	})
+	return snapshots
+}
+
+// AnnotateSnapshot sets annotation for a snapshot in defined context, return error if meeting it
+func AnnotateSnapshot(ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot, key, value string, cl client.Client) error {
+	patch := client.MergeFrom(snapshot.DeepCopy())
+
+	_ = metadata.SetAnnotation(&snapshot.ObjectMeta, key, value)
+
+	err := cl.Patch(ctx, snapshot, patch)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+// NotifyComponentSnapshotsInGroupSnapshot annotate the msg to the given component snapshots in componentSnapshotInfos
+func NotifyComponentSnapshotsInGroupSnapshot(ctx context.Context, cl client.Client, componentSnapshotInfos []ComponentSnapshotInfo, msg string) error {
+	log := log.FromContext(ctx)
+	for _, componentSnapshotInfo := range componentSnapshotInfos {
+		snapshot := &applicationapiv1alpha1.Snapshot{}
+		err := cl.Get(ctx, types.NamespacedName{
+			Namespace: componentSnapshotInfo.Namespace,
+			Name:      componentSnapshotInfo.Snapshot,
+		}, snapshot)
+		if err != nil {
+			log.Error(err, fmt.Sprintf("error while getting snapshot %s from namespace: %s", componentSnapshotInfo.Snapshot, componentSnapshotInfo.Namespace))
+			return err
+		}
+
+		err = AnnotateSnapshot(ctx, snapshot, PRGroupCreationAnnotation, msg, cl)
+		if err != nil {
+			log.Error(err, fmt.Sprintf("Failed to annotate group snapshot creation status to component snapshot %s/%s", componentSnapshotInfo.Namespace, componentSnapshotInfo.Snapshot))
+			return err
+		}
+	}
+	return nil
+}
+
+func SetAnnotationAndLabelForGroupSnapshot(groupSnapshot *applicationapiv1alpha1.Snapshot, componentSnapshot *applicationapiv1alpha1.Snapshot, componentSnapshotInfos []ComponentSnapshotInfo) (*applicationapiv1alpha1.Snapshot, error) {
+	err := metadata.SetAnnotation(groupSnapshot, PRGroupAnnotation, componentSnapshot.Annotations[PRGroupAnnotation])
+	if err != nil {
+		return nil, err
+	}
+	annotationJson, err := json.Marshal(componentSnapshotInfos)
+	if err != nil {
+		return nil, err
+	}
+	groupSnapshot.Annotations[GroupSnapshotInfoAnnotation] = string(annotationJson)
+
+	err = metadata.SetLabel(groupSnapshot, PipelineAsCodeEventTypeLabel, componentSnapshot.Labels[PipelineAsCodeEventTypeLabel])
+	if err != nil {
+		return nil, err
+	}
+	groupSnapshot.Labels[SnapshotTypeLabel] = SnapshotGroupType
+	groupSnapshot.Labels[ApplicationNameLabel] = componentSnapshot.Spec.Application
+
+	return groupSnapshot, nil
 }

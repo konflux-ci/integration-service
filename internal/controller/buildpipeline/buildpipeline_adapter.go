@@ -369,9 +369,9 @@ func (a *Adapter) updatePipelineRunWithCustomizedError(canRemoveFinalizer *bool,
 // addPRGroupToBuildPLRMetadata will add pr-group info gotten from souce-branch to annotation
 // and also the string in sha format to metadata label
 func (a *Adapter) addPRGroupToBuildPLRMetadata(pipelineRun *tektonv1.PipelineRun) error {
-	prGroupName := tekton.GetPRGroupNameFromBuildPLR(pipelineRun)
-	if prGroupName != "" {
-		prGroupHashName := tekton.GenerateSHA(prGroupName)
+	prGroup := tekton.GetPRGroupFromBuildPLR(pipelineRun)
+	if prGroup != "" {
+		prGroupHash := tekton.GenerateSHA(prGroup)
 
 		return retry.RetryOnConflict(retry.DefaultRetry, func() error {
 			var err error
@@ -382,8 +382,8 @@ func (a *Adapter) addPRGroupToBuildPLRMetadata(pipelineRun *tektonv1.PipelineRun
 
 			patch := client.MergeFrom(pipelineRun.DeepCopy())
 
-			_ = metadata.SetAnnotation(&pipelineRun.ObjectMeta, gitops.PRGroupAnnotation, prGroupName)
-			_ = metadata.SetLabel(&pipelineRun.ObjectMeta, gitops.PRGroupHashLabel, prGroupHashName)
+			_ = metadata.SetAnnotation(&pipelineRun.ObjectMeta, gitops.PRGroupAnnotation, prGroup)
+			_ = metadata.SetLabel(&pipelineRun.ObjectMeta, gitops.PRGroupHashLabel, prGroupHash)
 
 			return a.client.Patch(a.context, pipelineRun, patch)
 		})
