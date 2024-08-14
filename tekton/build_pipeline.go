@@ -106,9 +106,9 @@ func AnnotateBuildPipelineRunWithCreateSnapshotAnnotation(ctx context.Context, p
 	return AnnotateBuildPipelineRun(ctx, pipelineRun, h.CreateSnapshotAnnotationName, string(jsonResult), cl)
 }
 
-// GetPRGroupNameFromBuildPLR gets the PR group from the substring before @ from
+// GetPRGroupFromBuildPLR gets the PR group from the substring before @ from
 // the source-branch pac annotation, for main, it generate PR group with {source-branch}-{url-org}
-func GetPRGroupNameFromBuildPLR(pipelineRun *tektonv1.PipelineRun) string {
+func GetPRGroupFromBuildPLR(pipelineRun *tektonv1.PipelineRun) string {
 	if prGroup, found := pipelineRun.ObjectMeta.Annotations[PipelineAsCodeSourceBranchAnnotation]; found {
 		if prGroup == MainBranch || prGroup == MasterBranch && metadata.HasAnnotation(pipelineRun, PipelineAsCodeSourceRepoOrg) {
 			prGroup = prGroup + "-" + pipelineRun.ObjectMeta.Annotations[PipelineAsCodeSourceRepoOrg]

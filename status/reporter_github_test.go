@@ -182,6 +182,13 @@ func (c *MockGitHubClient) GetAllCommitStatusesForRef(
 	return []*ghapi.RepoStatus{repoStatus}, nil
 }
 
+func (c *MockGitHubClient) GetPullRequest(ctx context.Context, owner string, repo string, prID int) (*ghapi.PullRequest, error) {
+	var id int64 = 60
+	var state = "opened"
+	pullRequest := &ghapi.PullRequest{ID: &id, State: &state}
+	return pullRequest, nil
+}
+
 var _ = Describe("GitHubReporter", func() {
 
 	var reporter *status.GitHubReporter

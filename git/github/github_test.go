@@ -149,6 +149,20 @@ func (MockRepositoriesService) ListStatuses(
 	return []*ghapi.RepoStatus{repoStatus}, nil, nil
 }
 
+type MockPullRequestsService struct {
+	GetPullRequestResult *ghapi.PullRequest
+}
+
+// MockPullRequestsService implements github.PullRequestsService
+func (MockPullRequestsService) Get(
+	ctx context.Context, owner string, repo string, prID int,
+) (*ghapi.PullRequest, *ghapi.Response, error) {
+	var id int64 = 60
+	var state = "opened"
+	GetPullRequestResult := &ghapi.PullRequest{ID: &id, State: &state}
+	return GetPullRequestResult, nil, nil
+}
+
 var _ = Describe("CheckRunAdapter", func() {
 	It("can compute status", func() {
 		adapter := &github.CheckRunAdapter{Conclusion: "success", StartTime: time.Time{}}
@@ -165,11 +179,12 @@ var _ = Describe("CheckRunAdapter", func() {
 var _ = Describe("Client", func() {
 
 	var (
-		client        *github.Client
-		mockAppsSvc   MockAppsService
-		mockChecksSvc MockChecksService
-		mockIssuesSvc MockIssuesService
-		mockReposSvc  MockRepositoriesService
+		client              *github.Client
+		mockAppsSvc         MockAppsService
+		mockChecksSvc       MockChecksService
+		mockIssuesSvc       MockIssuesService
+		mockReposSvc        MockRepositoriesService
+		mockPullRequestsSvc MockPullRequestsService
 	)
 
 	var checkRunAdapter = &github.CheckRunAdapter{
@@ -202,12 +217,14 @@ var _ = Describe("Client", func() {
 		mockChecksSvc = MockChecksService{}
 		mockIssuesSvc = MockIssuesService{}
 		mockReposSvc = MockRepositoriesService{}
+		mockPullRequestsSvc = MockPullRequestsService{}
 		client = github.NewClient(
 			logr.Discard(),
 			github.WithAppsService(mockAppsSvc),
 			github.WithChecksService(mockChecksSvc),
 			github.WithIssuesService(mockIssuesSvc),
 			github.WithRepositoriesService(mockReposSvc),
+			github.WithPullRequestsService(mockPullRequestsSvc),
 		)
 	})
 
@@ -223,6 +240,7 @@ var _ = Describe("Client", func() {
 		Expect(client.GetChecksService()).To(Equal(mockChecksSvc))
 		Expect(client.GetIssuesService()).To(Equal(mockIssuesSvc))
 		Expect(client.GetRepositoriesService()).To(Equal(mockReposSvc))
+		Expect(client.GetPullRequestsService()).To(Equal(mockPullRequestsSvc))
 
 		client = github.NewClient(logr.Discard())
 		client.SetOAuthToken(context.TODO(), "example-token")
@@ -230,6 +248,7 @@ var _ = Describe("Client", func() {
 		Expect(client.GetChecksService()).ToNot(Equal(mockChecksSvc))
 		Expect(client.GetIssuesService()).ToNot(Equal(mockIssuesSvc))
 		Expect(client.GetRepositoriesService()).ToNot(Equal(mockReposSvc))
+		Expect(client.GetPullRequestsService()).ToNot(Equal(mockPullRequestsSvc))
 	})
 
 	It("can create comments", func() {
@@ -334,5 +353,11 @@ var _ = Describe("Client", func() {
 		id, err := client.EditComment(context.TODO(), "", "", 1, "example-comment")
 		Expect(err).To(BeNil())
 		Expect(id).To(Equal(int64(1)))
+	})
+
+	It("can get pull request", func() {
+		pullRequest, err := client.GetPullRequest(context.TODO(), "", "", 60)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(*pullRequest.State).To(Equal("opened"))
 	})
 })
