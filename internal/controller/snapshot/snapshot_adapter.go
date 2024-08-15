@@ -600,6 +600,13 @@ func shouldUpdateIntegrationTestGitResolver(integrationTestScenario *v1beta2.Int
 	annotations := snapshot.GetAnnotations()
 	params := resolverParamsToMap(testResolverRef.Params)
 
+	// if target revision sha differs from source revision sha we do not want to overwrite it
+	targetRevision := annotations[gitops.PipelineAsCodeTargetBranchAnnotation]
+	sourceRevision := params[tekton.TektonResolverGitParamRevision]
+	if targetRevision != sourceRevision {
+		return false
+	}
+
 	if urlVal, ok := params[tekton.TektonResolverGitParamURL]; ok {
 		// urlVal may or may not have git suffix specified :')
 		return urlToGitUrl(urlVal) == urlToGitUrl(annotations[gitops.PipelineAsCodeRepoURLAnnotation])

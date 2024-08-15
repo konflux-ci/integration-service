@@ -127,6 +127,9 @@ const (
 	// PipelineAsCodeRepoURLAnnotation is the URL to the git repository which triggered the pipelinerun in build service.
 	PipelineAsCodeRepoURLAnnotation = PipelinesAsCodePrefix + "/repo-url"
 
+	// PipelineAsCodeTargetBranchAnnotation is the SHA of the git revision which triggered the pipelinerun in build service.
+	PipelineAsCodeTargetBranchAnnotation = PipelinesAsCodePrefix + "/branch"
+
 	// PipelineAsCodeInstallationIDAnnotation is the GitHub App installation ID for the git repo which triggered the pipelinerun in build service.
 	PipelineAsCodeInstallationIDAnnotation = PipelinesAsCodePrefix + "/installation-id"
 
@@ -734,7 +737,7 @@ func PrepareSnapshot(ctx context.Context, adapterClient client.Client, applicati
 	}
 	snapshot := NewSnapshot(application, &snapshotComponents)
 
-	// expose the source repo URL in the snapshot as annotation do we don't have to do lookup in integration tests
+	// expose the source repo URL and SHA in the snapshot as annotation do we don't have to do lookup in integration tests
 	if newComponentSource.GitSource != nil {
 		if err := metadata.SetAnnotation(snapshot, SnapshotGitSourceRepoURLAnnotation, newComponentSource.GitSource.URL); err != nil {
 			return nil, fmt.Errorf("failed to set annotation %s: %w", SnapshotGitSourceRepoURLAnnotation, err)
