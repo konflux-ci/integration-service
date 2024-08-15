@@ -75,6 +75,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		sample_revision = "random-value"
 		sampleDigest    = "sha256:841328df1b9f8c4087adbdcfec6cc99ac8308805dea83f6d415d6fb8d40227c1"
 		customLabel     = "custom.appstudio.openshift.io/custom-label"
+		sourceRepoRef   = "db2c043b72b3f8d292ee0e38768d0a94859a308b"
 	)
 
 	BeforeAll(func() {
@@ -114,7 +115,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 						},
 						{
 							Name:  "revision",
-							Value: "main",
+							Value: sourceRepoRef,
 						},
 						{
 							Name:  "pathInRepo",
@@ -702,8 +703,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		When("pull request updates repo with integration test", func() {
 
 			const (
-				sourceRepoUrl = "https://test-repo.example.com" // is without .git suffix
-				sourceRepoRef = "db2c043b72b3f8d292ee0e38768d0a94859a308b"
+				sourceRepoUrl = "https://test-repo.example.com"                            // is without .git suffix
 				targetRepoUrl = "https://github.com/redhat-appstudio/integration-examples" // is without .git suffix
 			)
 
@@ -711,9 +711,10 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 				hasSnapshotPR.Annotations[gitops.SnapshotGitSourceRepoURLAnnotation] = sourceRepoUrl
 				hasSnapshotPR.Annotations[gitops.PipelineAsCodeSHAAnnotation] = sourceRepoRef
 				hasSnapshotPR.Annotations[gitops.PipelineAsCodeRepoURLAnnotation] = targetRepoUrl
+				hasSnapshotPR.Annotations[gitops.PipelineAsCodeTargetBranchAnnotation] = "main"
 			})
 
-			It("pullrequest repo reference and URL should be used", func() {
+			It("pullrequest source repo reference and URL should be used", func() {
 				pipelineRun, err := adapter.createIntegrationPipelineRun(hasApp, integrationTestScenario, hasSnapshotPR)
 				Expect(err).ToNot(HaveOccurred())
 				Expect(pipelineRun).ToNot(BeNil())
@@ -724,7 +725,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 				for _, param := range pipelineRun.Spec.PipelineRef.Params {
 					if param.Name == tekton.TektonResolverGitParamURL {
 						foundUrl = true
-						Expect(param.Value.StringVal).To(Equal(sourceRepoUrl + ".git")) // must have .git suffix
+						Expect(param.Value.StringVal).To(Equal(targetRepoUrl + ".git")) // must have .git suffix
 					}
 					if param.Name == tekton.TektonResolverGitParamRevision {
 						foundRevision = true
@@ -734,6 +735,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 				Expect(foundUrl).To(BeTrue())
 				Expect(foundRevision).To(BeTrue())
 			})
+
 		})
 
 		It("Ensure error is logged when experiencing error when fetching ITS for application", func() {
