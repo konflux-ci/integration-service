@@ -1080,4 +1080,35 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		Expect(result).To(BeFalse())
 	})
 
+	It("can add and remove finalizer from IntegrationPipelineRun", func() {
+		var buf bytes.Buffer
+		logEntry := "Removed Finalizer from the PipelineRun"
+		log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+
+		err := helpers.AddFinalizerToPipelineRun(ctx, k8sClient, log, integrationPipelineRun, helpers.IntegrationPipelineRunFinalizer)
+		Expect(err).NotTo(HaveOccurred())
+
+		Eventually(func() bool {
+			err := k8sClient.Get(ctx, types.NamespacedName{
+				Name:      integrationPipelineRun.Name,
+				Namespace: "default",
+			}, integrationPipelineRun)
+			return err == nil && controllerutil.ContainsFinalizer(integrationPipelineRun, helpers.IntegrationPipelineRunFinalizer)
+		}, time.Second*20).Should(BeTrue())
+
+		Expect(integrationPipelineRun.Finalizers).To(ContainElement(ContainSubstring(helpers.IntegrationPipelineRunFinalizer)))
+
+		// calling RemoveFinalizerFromPipelineRun() when the PipelineRun contains the finalizer
+		Expect(helpers.RemoveFinalizerFromPipelineRun(ctx, k8sClient, log, integrationPipelineRun, helpers.IntegrationPipelineRunFinalizer)).To(Succeed())
+		Expect(integrationPipelineRun.Finalizers).To(BeNil())
+		Expect(buf.String()).Should(ContainSubstring(logEntry))
+
+		// calling RemoveFinalizerFromPipelineRun() when the PipelineRun doesn't contain the finalizer
+		buf = bytes.Buffer{}
+		log = helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+		Expect(helpers.RemoveFinalizerFromPipelineRun(ctx, k8sClient, log, integrationPipelineRun, helpers.IntegrationPipelineRunFinalizer)).To(Succeed())
+		Expect(integrationPipelineRun.Finalizers).To(BeNil())
+		Expect(buf.String()).ShouldNot(ContainSubstring(logEntry))
+	})
+
 })

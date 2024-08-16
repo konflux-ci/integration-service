@@ -20,6 +20,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/client-go/util/retry"
 	"reflect"
 	"sort"
 	"time"
@@ -384,56 +387,41 @@ func HasPipelineRunFinished(object client.Object) bool {
 	return false
 }
 
-// RemoveFinalizerFromAllIntegrationPipelineRunsOfSnapshot fetches all the Integration
-// PipelineRuns associated with the given Snapshot. After fetching them, it removes the
-// finalizer from the PipelineRun, and returns error if any.
-func RemoveFinalizerFromAllIntegrationPipelineRunsOfSnapshot(ctx context.Context, adapterClient client.Client, logger IntegrationLogger, snapshot applicationapiv1alpha1.Snapshot, finalizer string) error {
-	integrationPipelineRuns := &tektonv1.PipelineRunList{}
-	opts := []client.ListOption{
-		client.InNamespace(snapshot.Namespace),
-		client.MatchingLabels{
-			"appstudio.openshift.io/snapshot": snapshot.Name,
-		},
-	}
-
-	err := adapterClient.List(ctx, integrationPipelineRuns, opts...)
-	if err != nil {
-		return err
-	}
-
-	// Remove finalizer from each of the PipelineRuns
-	for _, pipelineRun := range integrationPipelineRuns.Items {
-		pipelineRun := pipelineRun
-		err = RemoveFinalizerFromPipelineRun(ctx, adapterClient, logger, &pipelineRun, finalizer)
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
 // RemoveFinalizerFromPipelineRun removes the finalizer from the PipelineRun.
 // If finalizer was not removed successfully, a non-nil error is returned.
+// This function uses RetryOnForbidden because of a high possibility of another
+// service modifying the list of finalizers resulting in a Forbidden error
 func RemoveFinalizerFromPipelineRun(ctx context.Context, adapterClient client.Client, logger IntegrationLogger, pipelineRun *tektonv1.PipelineRun, finalizer string) error {
 	if !controllerutil.ContainsFinalizer(pipelineRun, finalizer) {
 		return nil
 	}
 
-	patch := client.MergeFrom(pipelineRun.DeepCopy())
-	if ok := controllerutil.RemoveFinalizer(pipelineRun, finalizer); ok {
-		err := adapterClient.Patch(ctx, pipelineRun, patch)
+	err := RetryOnForbidden(retry.DefaultRetry, func() error {
+		err := adapterClient.Get(ctx, types.NamespacedName{
+			Name:      pipelineRun.Name,
+			Namespace: pipelineRun.Namespace,
+		}, pipelineRun)
 		if err != nil {
-			logger.Error(err, "error occurred while patching the updated PipelineRun after finalizer removal",
+			logger.Error(err, "error occurred while fetching the PipelineRun before finalizer removal",
 				"pipelineRun.Name", pipelineRun.Name)
-			// don't return wrapped err, so we can use RetryOnConflict
 			return err
 		}
 
-		logger.LogAuditEvent("Removed Finalizer from the PipelineRun", pipelineRun, LogActionUpdate, "finalizer", finalizer)
-	}
+		patch := client.MergeFrom(pipelineRun.DeepCopy())
+		if ok := controllerutil.RemoveFinalizer(pipelineRun, finalizer); ok {
+			patchErr := adapterClient.Patch(ctx, pipelineRun, patch)
+			if patchErr != nil {
+				logger.Error(patchErr, "error occurred while patching the updated PipelineRun after finalizer removal",
+					"pipelineRun.Name", pipelineRun.Name)
+				// don't return wrapped err, so we can use RetryOnConflict
+				return patchErr
+			}
 
-	return nil
+			logger.LogAuditEvent("Removed Finalizer from the PipelineRun", pipelineRun, LogActionUpdate, "finalizer", finalizer)
+		}
+		return nil
+	})
+	return err
 }
 
 // AddFinalizerToPipelineRun adds the finalizer to the PipelineRun.
@@ -504,4 +492,13 @@ func IsObjectYoungerThanThreshold(obj metav1.Object, threshold time.Duration) bo
 	durationSinceObjectCreation := time.Since(objectCreationTime)
 
 	return durationSinceObjectCreation < threshold
+}
+
+// RetryOnForbidden is used to make an update to a resource when you have to worry about
+// forbidden errors caused by the changed nature of the resource making the update forbidden
+// e.g. updating finalizers at the same time.
+// fn should fetch the resource to be modified, make appropriate changes to it, try
+// to update it, and return (unmodified) the error from the update function.
+func RetryOnForbidden(backoff wait.Backoff, fn func() error) error {
+	return retry.OnError(backoff, errors.IsForbidden, fn)
 }

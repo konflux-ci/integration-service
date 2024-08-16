@@ -19,7 +19,6 @@ package tekton_test
 import (
 	"bytes"
 	"github.com/konflux-ci/integration-service/api/v1beta2"
-	"github.com/konflux-ci/integration-service/helpers"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/tonglil/buflogr"
@@ -310,27 +309,6 @@ var _ = Describe("Integration pipeline", func() {
 			Expect(buf.String()).Should(ContainSubstring(expectedLogEntryPrefix + " PIPELINE_TIMEOUT"))
 			Expect(buf.String()).Should(ContainSubstring(expectedLogEntryPrefix + " TASKS_TIMEOUT"))
 			Expect(buf.String()).Should(ContainSubstring(expectedLogEntryPrefix + " FINALLY_TIMEOUT"))
-		})
-
-		It("can add and remove finalizer from IntegrationPipelineRun", func() {
-			var buf bytes.Buffer
-			logEntry := "Removed Finalizer from the PipelineRun"
-
-			newIntegrationPipelineRun.WithFinalizer(helpers.IntegrationPipelineRunFinalizer)
-			Expect(newIntegrationPipelineRun.Finalizers).To(ContainElement(ContainSubstring(helpers.IntegrationPipelineRunFinalizer)))
-
-			// calling RemoveFinalizerFromPipelineRun() when the PipelineRun contains the finalizer
-			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
-			Expect(helpers.RemoveFinalizerFromPipelineRun(ctx, k8sClient, log, &newIntegrationPipelineRun.PipelineRun, helpers.IntegrationPipelineRunFinalizer)).To(Succeed())
-			Expect(newIntegrationPipelineRun.Finalizers).To(BeNil())
-			Expect(buf.String()).Should(ContainSubstring(logEntry))
-
-			// calling RemoveFinalizerFromPipelineRun() when the PipelineRun doesn't contain the finalizer
-			buf = bytes.Buffer{}
-			log = helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
-			Expect(helpers.RemoveFinalizerFromPipelineRun(ctx, k8sClient, log, &newIntegrationPipelineRun.PipelineRun, helpers.IntegrationPipelineRunFinalizer)).To(Succeed())
-			Expect(newIntegrationPipelineRun.Finalizers).To(BeNil())
-			Expect(buf.String()).ShouldNot(ContainSubstring(logEntry))
 		})
 
 		It("can append extra params to IntegrationPipelineRun and these parameters are present in the object Specs", func() {
