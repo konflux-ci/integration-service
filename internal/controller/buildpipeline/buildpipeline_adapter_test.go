@@ -662,7 +662,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			Expect(helpers.IsInvalidImageDigestError(err)).To(BeTrue())
 			Eventually(func() bool {
 				result, err := adapter.EnsureSnapshotExists()
-				return !result.CancelRequest && err == nil
+				return result.CancelRequest && err == nil
 			}, time.Second*10).Should(BeTrue())
 			Expect(adapter.pipelineRun.GetAnnotations()[helpers.CreateSnapshotAnnotationName]).ToNot(BeNil())
 			var info map[string]string
@@ -1005,7 +1005,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 
 				Eventually(func() bool {
 					result, err := adapter.EnsureSnapshotExists()
-					return !result.CancelRequest && err == nil
+					return result.CancelRequest && err == nil
 				}, time.Second*10).Should(BeTrue())
 				// Ensure the PLR on the control plane does not have finalizer
 				Eventually(func() bool {

@@ -111,8 +111,7 @@ func (a *Adapter) EnsureSnapshotExists() (result controller.OperationResult, err
 
 	expectedSnapshot, err := a.prepareSnapshotForPipelineRun(a.pipelineRun, a.component, a.application)
 	if err != nil {
-		result, err = a.updatePipelineRunWithCustomizedError(&canRemoveFinalizer, err, a.context, a.pipelineRun, a.client, a.logger)
-		return controller.RequeueWithError(err)
+		return a.updatePipelineRunWithCustomizedError(&canRemoveFinalizer, err, a.context, a.pipelineRun, a.client, a.logger)
 	}
 
 	err = a.client.Create(a.context, expectedSnapshot)
@@ -361,7 +360,7 @@ func (a *Adapter) updatePipelineRunWithCustomizedError(canRemoveFinalizer *bool,
 		}
 		logger.Error(cerr, "Build PipelineRun failed with error, should be fixed and re-run manually", "pipelineRun.Name", pipelineRun.Name)
 		*canRemoveFinalizer = true
-		return controller.ContinueProcessing()
+		return controller.StopProcessing()
 	}
 	return controller.RequeueOnErrorOrContinue(cerr)
 
