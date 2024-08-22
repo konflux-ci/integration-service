@@ -53,6 +53,7 @@ func NewGitLabReporter(logger logr.Logger, k8sClient client.Client) *GitLabRepor
 
 // check if interface has been correctly implemented
 var _ ReporterInterface = (*GitLabReporter)(nil)
+var existingCommitStatus *gitlab.CommitStatus
 
 // Detect if snapshot has been created from gitlab provider
 func (r *GitLabReporter) Detect(snapshot *applicationapiv1alpha1.Snapshot) bool {
@@ -151,16 +152,22 @@ func (r *GitLabReporter) setCommitStatus(report TestReport) error {
 		opt.TargetURL = gitlab.Ptr(url)
 	}
 
-	// Special case for gitLab `running` state because of a bug where it can't be updated to the same state again
-	if glState == gitlab.Running {
+	// Fetch commit statuses only if necessary
+	if glState == gitlab.Running || glState == gitlab.Pending {
 		allCommitStatuses, _, err := r.client.Commits.GetCommitStatuses(r.sourceProjectID, r.sha, nil)
 		if err != nil {
 			return fmt.Errorf("error while getting all commitStatuses for sha %s: %w", r.sha, err)
 		}
-		existingCommitStatus := r.GetExistingCommitStatus(allCommitStatuses, report.FullName)
-		if existingCommitStatus != nil && existingCommitStatus.Status == string(gitlab.Running) {
-			r.logger.Info("Will not update the existing commit status from `running` to `running`",
-				"scenario.name", report.ScenarioName, "commitStatus.ID", existingCommitStatus.ID)
+		existingCommitStatus = r.GetExistingCommitStatus(allCommitStatuses, report.FullName)
+
+		// special case, we want to skip updating commit status if the status from running to running, from enque to pending
+		if existingCommitStatus != nil && (existingCommitStatus.Status == "enqueue" ||
+			existingCommitStatus.Status == string(gitlab.Running)) {
+			r.logger.Info("Skipping commit status update",
+				"scenario.name", report.ScenarioName,
+				"commitStatus.ID", existingCommitStatus.ID,
+				"current_status", existingCommitStatus.Status,
+				"new_status", glState)
 			return nil
 		}
 	}
