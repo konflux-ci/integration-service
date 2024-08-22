@@ -150,6 +150,8 @@ func (a *Adapter) createUpdatedSnapshot(snapshotComponents *[]applicationapiv1al
 	return snapshot, nil
 }
 
+// isComponentMarkedForDeletion returns true if the given object has a
+// non-zero deletionTimestamp on it, and return false otherwise.
 func isComponentMarkedForDeletion(object client.Object) bool {
 	if comp, ok := object.(*applicationapiv1alpha1.Component); ok {
 		return !comp.ObjectMeta.DeletionTimestamp.IsZero()
