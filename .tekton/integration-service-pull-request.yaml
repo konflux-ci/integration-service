@@ -16,6 +16,16 @@ metadata:
   name: integration-service-on-pull-request
   namespace: rhtap-integration-tenant
 spec:
+  taskRunSpecs:
+    - pipelineTaskName: build-container
+      stepSpecs:
+        - name: build
+          computeResources:
+            requests:
+              memory: 512Mi
+              cpu: 250m
+            limits:
+              memory: 4Gi
   params:
   - name: dockerfile
     value: Dockerfile
