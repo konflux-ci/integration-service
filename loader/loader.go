@@ -56,6 +56,8 @@ type ObjectLoader interface {
 	GetAllTaskRunsWithMatchingPipelineRunLabel(ctx context.Context, c client.Client, pipelineRun *tektonv1.PipelineRun) (*[]tektonv1.TaskRun, error)
 	GetPipelineRun(ctx context.Context, c client.Client, name, namespace string) (*tektonv1.PipelineRun, error)
 	GetComponent(ctx context.Context, c client.Client, name, namespace string) (*applicationapiv1alpha1.Component, error)
+	GetPipelineRunsWithPRGroupHash(ctx context.Context, c client.Client, snapshot *applicationapiv1alpha1.Snapshot, prGroupHash string) (*[]tektonv1.PipelineRun, error)
+	GetMatchingComponentSnapshotsForComponentAndPRGroupHash(ctx context.Context, c client.Client, snapshot *applicationapiv1alpha1.Snapshot, componentName, prGroupHash string) (*[]applicationapiv1alpha1.Snapshot, error)
 }
 
 type loader struct{}
@@ -380,4 +382,77 @@ func (l *loader) GetPipelineRun(ctx context.Context, c client.Client, name, name
 func (l *loader) GetComponent(ctx context.Context, c client.Client, name, namespace string) (*applicationapiv1alpha1.Component, error) {
 	component := &applicationapiv1alpha1.Component{}
 	return component, toolkit.GetObject(name, namespace, c, ctx, component)
+}
+
+// GetPipelineRunsWithPRGroupHash gets the build pipelineRun with the given pr group hash string and the the same namespace with the given snapshot
+func (l *loader) GetPipelineRunsWithPRGroupHash(ctx context.Context, adapterClient client.Client, snapshot *applicationapiv1alpha1.Snapshot, prGroupHash string) (*[]tektonv1.PipelineRun, error) {
+	buildPipelineRuns := &tektonv1.PipelineRunList{}
+
+	evnentTypeLabelRequirement, err := labels.NewRequirement("pipelinesascode.tekton.dev/event-type", selection.NotIn, []string{"push", "Push"})
+	if err != nil {
+		return nil, err
+	}
+	prGroupLabelRequirement, err := labels.NewRequirement("test.appstudio.openshift.io/pr-group-sha", selection.In, []string{prGroupHash})
+	if err != nil {
+		return nil, err
+	}
+	plrTypeLabelRequirement, err := labels.NewRequirement("pipelines.appstudio.openshift.io/type", selection.In, []string{"build"})
+	if err != nil {
+		return nil, err
+	}
+
+	labelSelector := labels.NewSelector().
+		Add(*evnentTypeLabelRequirement).
+		Add(*prGroupLabelRequirement).
+		Add(*plrTypeLabelRequirement)
+
+	opts := &client.ListOptions{
+		Namespace:     snapshot.Namespace,
+		LabelSelector: labelSelector,
+	}
+
+	err = adapterClient.List(ctx, buildPipelineRuns, opts)
+	if err != nil {
+		return nil, err
+	}
+	return &buildPipelineRuns.Items, nil
+}
+
+// GetMatchingComponentSnapshotsForComponentAndPRGroupHash gets the component snapshot with the given pr group hash string and the the same namespace with the given snapshot
+func (l *loader) GetMatchingComponentSnapshotsForComponentAndPRGroupHash(ctx context.Context, c client.Client, snapshot *applicationapiv1alpha1.Snapshot, componentName, prGroupHash string) (*[]applicationapiv1alpha1.Snapshot, error) {
+	snapshots := &applicationapiv1alpha1.SnapshotList{}
+
+	eventTypeLabelRequirement, err := labels.NewRequirement("pac.test.appstudio.openshift.io/event-type", selection.NotIn, []string{"push", "Push"})
+	if err != nil {
+		return nil, err
+	}
+	componentLabelRequirement, err := labels.NewRequirement("appstudio.openshift.io/component", selection.In, []string{componentName})
+	if err != nil {
+		return nil, err
+	}
+	prGroupLabelRequirement, err := labels.NewRequirement("test.appstudio.openshift.io/pr-group-sha", selection.In, []string{prGroupHash})
+	if err != nil {
+		return nil, err
+	}
+	snapshotTypeLabelRequirement, err := labels.NewRequirement("test.appstudio.openshift.io/type", selection.In, []string{"component"})
+	if err != nil {
+		return nil, err
+	}
+
+	labelSelector := labels.NewSelector().
+		Add(*eventTypeLabelRequirement).
+		Add(*componentLabelRequirement).
+		Add(*prGroupLabelRequirement).
+		Add(*snapshotTypeLabelRequirement)
+
+	opts := &client.ListOptions{
+		Namespace:     snapshot.Namespace,
+		LabelSelector: labelSelector,
+	}
+
+	err = c.List(ctx, snapshots, opts)
+	if err != nil {
+		return nil, err
+	}
+	return &snapshots.Items, nil
 }

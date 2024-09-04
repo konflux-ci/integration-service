@@ -99,9 +99,11 @@ var _ = Describe("Loader", Ordered, func() {
 				Name:      snapshotName,
 				Namespace: "default",
 				Labels: map[string]string{
-					gitops.SnapshotTypeLabel:         "component",
-					gitops.SnapshotComponentLabel:    "component-sample",
-					gitops.BuildPipelineRunNameLabel: "pipelinerun-sample",
+					gitops.SnapshotTypeLabel:            "component",
+					gitops.SnapshotComponentLabel:       "component-sample",
+					gitops.BuildPipelineRunNameLabel:    "pipelinerun-sample",
+					gitops.PRGroupHashLabel:             "featuresha",
+					gitops.PipelineAsCodeEventTypeLabel: "pull_request",
 				},
 				Annotations: map[string]string{
 					gitops.PipelineAsCodeInstallationIDAnnotation: "123",
@@ -211,14 +213,16 @@ var _ = Describe("Loader", Ordered, func() {
 				Name:      "pipelinerun-sample",
 				Namespace: "default",
 				Labels: map[string]string{
-					"pipelines.appstudio.openshift.io/type": "build",
-					"pipelines.openshift.io/used-by":        "build-cloud",
-					"pipelines.openshift.io/runtime":        "nodejs",
-					"pipelines.openshift.io/strategy":       "s2i",
-					"appstudio.openshift.io/component":      "component-sample",
-					"appstudio.openshift.io/application":    applicationName,
-					"appstudio.openshift.io/snapshot":       snapshotName,
-					"test.appstudio.openshift.io/scenario":  integrationTestScenario.Name,
+					"pipelines.appstudio.openshift.io/type":    "build",
+					"pipelines.openshift.io/used-by":           "build-cloud",
+					"pipelines.openshift.io/runtime":           "nodejs",
+					"pipelines.openshift.io/strategy":          "s2i",
+					"appstudio.openshift.io/component":         "component-sample",
+					"appstudio.openshift.io/application":       applicationName,
+					"appstudio.openshift.io/snapshot":          snapshotName,
+					"test.appstudio.openshift.io/scenario":     integrationTestScenario.Name,
+					"pipelinesascode.tekton.dev/event-type":    "pull_request",
+					"test.appstudio.openshift.io/pr-group-sha": "featuresha",
 				},
 				Annotations: map[string]string{
 					"appstudio.redhat.com/updateComponentOnSuccess": "false",
@@ -636,6 +640,22 @@ var _ = Describe("Loader", Ordered, func() {
 			Expect(fetchedBuildComponent.Name).To(Equal(hasComp.Spec.ComponentName))
 			Expect(fetchedBuildComponent.Namespace).To(Equal(hasComp.Namespace))
 			Expect(fetchedBuildComponent.Spec).To(Equal(hasComp.Spec))
+		})
+
+		It("Can get build plr with pr group hash", func() {
+			fetchedBuildPLRs, err := loader.GetPipelineRunsWithPRGroupHash(ctx, k8sClient, hasSnapshot, "featuresha")
+			Expect(err).To(Succeed())
+			Expect((*fetchedBuildPLRs)[0].Name).To(Equal(buildPipelineRun.Name))
+			Expect((*fetchedBuildPLRs)[0].Namespace).To(Equal(buildPipelineRun.Namespace))
+			Expect((*fetchedBuildPLRs)[0].Spec).To(Equal(buildPipelineRun.Spec))
+		})
+
+		It("Can get matching snapshot for component and pr group hash", func() {
+			fetchedSnapshots, err := loader.GetMatchingComponentSnapshotsForComponentAndPRGroupHash(ctx, k8sClient, hasSnapshot, hasComp.Name, "featuresha")
+			Expect(err).To(Succeed())
+			Expect((*fetchedSnapshots)[0].Name).To(Equal(hasSnapshot.Name))
+			Expect((*fetchedSnapshots)[0].Namespace).To(Equal(hasSnapshot.Namespace))
+			Expect((*fetchedSnapshots)[0].Spec).To(Equal(hasSnapshot.Spec))
 		})
 	})
 })
