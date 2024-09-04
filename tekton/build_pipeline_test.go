@@ -47,6 +47,7 @@ var _ = Describe("build pipeline", func() {
 					"pipelines.openshift.io/strategy":          "s2i",
 					"appstudio.openshift.io/component":         "component-sample",
 					"build.appstudio.redhat.com/target_branch": "main",
+					"pipelinesascode.tekton.dev/pull-request":  "1",
 					"pipelinesascode.tekton.dev/event-type":    "pull_request",
 				},
 				Annotations: map[string]string{

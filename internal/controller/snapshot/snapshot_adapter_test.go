@@ -285,9 +285,10 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 				Name:      "snapshotpr-sample",
 				Namespace: "default",
 				Labels: map[string]string{
-					gitops.SnapshotTypeLabel:            "component",
-					gitops.SnapshotComponentLabel:       "component-sample",
-					gitops.PipelineAsCodeEventTypeLabel: "pull_request",
+					gitops.SnapshotTypeLabel:                   "component",
+					gitops.SnapshotComponentLabel:              "component-sample",
+					gitops.PipelineAsCodeEventTypeLabel:        "pull_request",
+					gitops.PipelineAsCodePullRequestAnnotation: "1",
 				},
 				Annotations: map[string]string{
 					gitops.PipelineAsCodeInstallationIDAnnotation: "123",
@@ -410,6 +411,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 					"pac.test.appstudio.openshift.io/url-org":        "testorg",
 					"pac.test.appstudio.openshift.io/url-repository": "testrepo",
 					gitops.PipelineAsCodeSHALabel:                    "sha",
+					gitops.PipelineAsCodePullRequestAnnotation:       "1",
 				},
 				Annotations: map[string]string{
 					"test.appstudio.openshift.io/pr-last-update":  "2023-08-26T17:57:50+02:00",
@@ -456,6 +458,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 					"pac.test.appstudio.openshift.io/url-org":        "testorg",
 					"pac.test.appstudio.openshift.io/url-repository": "testrepo",
 					gitops.PipelineAsCodeSHALabel:                    "sha",
+					gitops.PipelineAsCodePullRequestAnnotation:       "1",
 				},
 				Annotations: map[string]string{
 					"test.appstudio.openshift.io/pr-last-update":  "2023-08-26T17:57:50+02:00",
@@ -492,6 +495,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 					"pac.test.appstudio.openshift.io/url-org":        "testorg",
 					"pac.test.appstudio.openshift.io/url-repository": "testrepo",
 					gitops.PipelineAsCodeSHALabel:                    "sha",
+					gitops.PipelineAsCodePullRequestAnnotation:       "1",
 				},
 				Annotations: map[string]string{
 					"test.appstudio.openshift.io/pr-last-update":  "2023-08-26T17:57:50+02:00",
@@ -876,6 +880,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			Expect(err).ShouldNot(HaveOccurred())
 			gitops.SetSnapshotIntegrationStatusAsInvalid(hasSnapshot, "snapshot invalid")
 			hasSnapshot.Labels[gitops.PipelineAsCodeEventTypeLabel] = gitops.PipelineAsCodePullRequestType
+			hasSnapshot.Labels[gitops.PipelineAsCodePullRequestAnnotation] = "1"
 			Expect(gitops.HaveAppStudioTestsSucceeded(hasSnapshot)).To(BeFalse())
 			Expect(gitops.IsSnapshotValid(hasSnapshot)).To(BeFalse())
 

@@ -119,9 +119,10 @@ var _ = Describe("Predicates", Ordered, func() {
 				Name:      snapshotAnnotationNew,
 				Namespace: namespace,
 				Labels: map[string]string{
-					gitops.SnapshotTypeLabel:                     gitops.SnapshotComponentType,
-					gitops.SnapshotComponentLabel:                componentName,
-					"pac.test.appstudio.openshift.io/event-type": "pull_request",
+					gitops.SnapshotTypeLabel:                       gitops.SnapshotComponentType,
+					gitops.SnapshotComponentLabel:                  componentName,
+					"pac.test.appstudio.openshift.io/event-type":   "pull_request",
+					"pac.test.appstudio.openshift.io/pull-request": "1",
 				},
 				Annotations: map[string]string{
 					gitops.SnapshotTestsStatusAnnotation: "[{\"scenario\":\"scenario-1\",\"status\":\"TestPassed\",\"startTime\":\"2023-07-26T16:57:49+02:00\",\"completionTime\":\"2023-07-26T17:57:49+02:00\",\"details\": \"test pass\"}]",
