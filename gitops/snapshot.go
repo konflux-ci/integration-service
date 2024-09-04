@@ -633,7 +633,8 @@ func CompareSnapshots(expectedSnapshot *applicationapiv1alpha1.Snapshot, foundSn
 func IsSnapshotCreatedByPACPushEvent(snapshot *applicationapiv1alpha1.Snapshot) bool {
 	return metadata.HasLabelWithValue(snapshot, PipelineAsCodeEventTypeLabel, PipelineAsCodePushType) ||
 		metadata.HasLabelWithValue(snapshot, PipelineAsCodeEventTypeLabel, PipelineAsCodeGLPushType) ||
-		!metadata.HasLabel(snapshot, PipelineAsCodeEventTypeLabel)
+		!metadata.HasLabel(snapshot, PipelineAsCodeEventTypeLabel) ||
+		!metadata.HasLabel(snapshot, PipelineAsCodePullRequestAnnotation)
 }
 
 // IsSnapshotCreatedBySamePACEvent checks if the two snapshot are created by the same PAC event

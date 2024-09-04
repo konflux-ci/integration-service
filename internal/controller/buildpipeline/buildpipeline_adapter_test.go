@@ -136,9 +136,10 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				Name:      "snapshot-sample",
 				Namespace: "default",
 				Labels: map[string]string{
-					gitops.SnapshotTypeLabel:            "component",
-					gitops.SnapshotComponentLabel:       hasComp.Name,
-					gitops.PipelineAsCodeEventTypeLabel: gitops.PipelineAsCodePullRequestType,
+					gitops.SnapshotTypeLabel:                   "component",
+					gitops.SnapshotComponentLabel:              hasComp.Name,
+					gitops.PipelineAsCodeEventTypeLabel:        gitops.PipelineAsCodePullRequestType,
+					gitops.PipelineAsCodePullRequestAnnotation: "1",
 				},
 				Annotations: map[string]string{
 					gitops.PipelineAsCodeInstallationIDAnnotation: "123",
@@ -260,7 +261,8 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 					"appstudio.openshift.io/component":         "component-sample",
 					"build.appstudio.redhat.com/target_branch": "main",
 					"pipelinesascode.tekton.dev/event-type":    "pull_request",
-					customLabel:                                "custom-label",
+					"pipelinesascode.tekton.dev/pull-request":  "1",
+					customLabel: "custom-label",
 				},
 				Annotations: map[string]string{
 					"appstudio.redhat.com/updateComponentOnSuccess": "false",
