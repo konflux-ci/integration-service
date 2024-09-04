@@ -91,6 +91,11 @@ type RepositoriesService interface {
 	ListStatuses(ctx context.Context, owner, repo, ref string, opts *ghapi.ListOptions) ([]*ghapi.RepoStatus, *ghapi.Response, error)
 }
 
+// PullRequestsService defines the methods used in the github PullRequests service.
+type PullRequestsService interface {
+	Get(ctx context.Context, owner string, repo string, prID int) (*ghapi.PullRequest, *ghapi.Response, error)
+}
+
 // ClientInterface defines the methods that should be implemented by a GitHub client
 type ClientInterface interface {
 	CreateAppInstallationToken(ctx context.Context, appID int64, installationID int64, privateKey []byte) (string, error)
@@ -107,6 +112,7 @@ type ClientInterface interface {
 	CommitStatusExists(res []*ghapi.RepoStatus, commitStatus *CommitStatusAdapter) (bool, error)
 	GetExistingCommentID(comments []*ghapi.IssueComment, snapshotName, scenarioName string) *int64
 	EditComment(ctx context.Context, owner string, repo string, commentID int64, body string) (int64, error)
+	GetPullRequest(ctx context.Context, owner string, repo string, prID int) (*ghapi.PullRequest, error)
 }
 
 // Client is an abstraction around the API client.
@@ -117,6 +123,7 @@ type Client struct {
 	checks ChecksService
 	issues IssuesService
 	repos  RepositoriesService
+	pulls  PullRequestsService
 }
 
 // GetAppsService returns either the default or custom Apps service.
@@ -151,6 +158,14 @@ func (c *Client) GetRepositoriesService() RepositoriesService {
 	return c.repos
 }
 
+// GetPullRequestsService returns either the default or custom PullRequest service.
+func (c *Client) GetPullRequestsService() PullRequestsService {
+	if c.pulls == nil {
+		return c.gh.PullRequests
+	}
+	return c.pulls
+}
+
 // ClientOption is used to extend Client with optional parameters.
 type ClientOption = func(c *Client)
 
@@ -179,6 +194,13 @@ func WithIssuesService(svc IssuesService) ClientOption {
 func WithRepositoriesService(svc RepositoriesService) ClientOption {
 	return func(c *Client) {
 		c.repos = svc
+	}
+}
+
+// WithPullRequestsService is an option which allows for overriding the github client's default PullRequests service.
+func WithPullRequestsService(svc PullRequestsService) ClientOption {
+	return func(c *Client) {
+		c.pulls = svc
 	}
 }
 
@@ -501,4 +523,14 @@ func (c *Client) CreateCommitStatus(ctx context.Context, owner string, repo stri
 	)
 
 	return *status.ID, nil
+}
+
+// GetPullRequest returns pull request according to the owner, repo and pull request number
+func (c *Client) GetPullRequest(ctx context.Context, owner string, repo string, prID int) (*ghapi.PullRequest, error) {
+	pr, _, err := c.GetPullRequestsService().Get(ctx, owner, repo, prID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get pull request for GitHub owner/repo/pull %s/%s/%d: %w", owner, repo, prID, err)
+	}
+
+	return pr, err
 }

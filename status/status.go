@@ -23,20 +23,25 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/go-logr/logr"
+	"github.com/konflux-ci/integration-service/git/github"
 	"github.com/konflux-ci/integration-service/gitops"
 	"github.com/konflux-ci/integration-service/helpers"
 	intgteststat "github.com/konflux-ci/integration-service/pkg/integrationteststatus"
 	"github.com/konflux-ci/operator-toolkit/metadata"
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
+	gitlab "github.com/xanzy/go-gitlab"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 // ScenarioReportStatus keep report status of git provider for the particular scenario
@@ -183,6 +188,12 @@ func MigrateSnapshotToReportStatus(s *applicationapiv1alpha1.Snapshot, testStatu
 type StatusInterface interface {
 	GetReporter(*applicationapiv1alpha1.Snapshot) ReporterInterface
 	ReportSnapshotStatus(context.Context, ReporterInterface, *applicationapiv1alpha1.Snapshot) error
+	// Check if PR/MR is opened
+	IsPRMRInSnapshotOpened(context.Context, *applicationapiv1alpha1.Snapshot) (bool, error)
+	// Check if github PR is open
+	IsPRInSnapshotOpened(context.Context, ReporterInterface, *applicationapiv1alpha1.Snapshot) (bool, error)
+	// Check if gitlab MR is open
+	IsMRInSnapshotOpened(context.Context, ReporterInterface, *applicationapiv1alpha1.Snapshot) (bool, error)
 }
 
 type Status struct {
@@ -391,4 +402,134 @@ func getConsoleName() string {
 		return "Integration Service"
 	}
 	return consoleName
+}
+
+func (s Status) IsPRMRInSnapshotOpened(ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot) (bool, error) {
+	// need to rework reporter.Detect() function and reuse it here
+	githubReporter := NewGitHubReporter(s.logger, s.client)
+	if githubReporter.Detect(snapshot) {
+		err := githubReporter.Initialize(ctx, snapshot)
+		if err != nil {
+			return false, err
+		}
+		return s.IsPRInSnapshotOpened(ctx, githubReporter, snapshot)
+	}
+
+	gitlabReporter := NewGitLabReporter(s.logger, s.client)
+	if gitlabReporter.Detect(snapshot) {
+		err := gitlabReporter.Initialize(ctx, snapshot)
+		if err != nil {
+			return false, err
+		}
+		return s.IsMRInSnapshotOpened(ctx, gitlabReporter, snapshot)
+	}
+
+	return false, fmt.Errorf("invalid git provier, valid git provider must be one of github and gitlab")
+}
+
+// IsMRInSnapshotOpened check if the gitlab merge request triggering snapshot is opened
+func (s Status) IsMRInSnapshotOpened(ctx context.Context, reporter ReporterInterface, snapshot *applicationapiv1alpha1.Snapshot) (bool, error) {
+	log := log.FromContext(ctx)
+	token, err := GetPACGitProviderToken(ctx, s.client, snapshot)
+	if err != nil {
+		log.Error(err, "failed to get token from snapshot",
+			"snapshot.NameSpace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
+		return false, fmt.Errorf("failed to get PAC token for gitlab provider: %w", err)
+	}
+
+	annotations := snapshot.GetAnnotations()
+	repoUrl, ok := annotations[gitops.PipelineAsCodeRepoURLAnnotation]
+	if !ok {
+		return false, fmt.Errorf("failed to get value of %s annotation from the snapshot %s", gitops.PipelineAsCodeRepoURLAnnotation, snapshot.Name)
+	}
+
+	burl, err := url.Parse(repoUrl)
+	if err != nil {
+		return false, fmt.Errorf("failed to parse repo-url: %w", err)
+	}
+	apiURL := fmt.Sprintf("%s://%s", burl.Scheme, burl.Host)
+
+	gitLabClient, err := gitlab.NewClient(token, gitlab.WithBaseURL(apiURL))
+	if err != nil {
+		return false, fmt.Errorf("failed to create gitlab client: %w", err)
+	}
+
+	targetProjectIDstr, found := annotations[gitops.PipelineAsCodeTargetProjectIDAnnotation]
+	if !found {
+		return false, fmt.Errorf("target project ID annotation not found %q", gitops.PipelineAsCodeTargetProjectIDAnnotation)
+	}
+	targetProjectID, err := strconv.Atoi(targetProjectIDstr)
+	if err != nil {
+		return false, fmt.Errorf("failed to convert project ID '%s' to integer: %w", targetProjectIDstr, err)
+	}
+
+	mergeRequestStr, found := annotations[gitops.PipelineAsCodePullRequestAnnotation]
+	if !found {
+		return false, fmt.Errorf("pull-request annotation not found %q", gitops.PipelineAsCodePullRequestAnnotation)
+	}
+	mergeRequest, err := strconv.Atoi(mergeRequestStr)
+	if err != nil {
+		return false, fmt.Errorf("failed to convert merge request number '%s' to integer: %w", mergeRequestStr, err)
+	}
+
+	log.Info(fmt.Sprintf("try to find the status of merge request projectID/pulls %d/%d", targetProjectID, mergeRequest))
+	getOpts := gitlab.GetMergeRequestsOptions{}
+	mr, _, err := gitLabClient.MergeRequests.GetMergeRequest(targetProjectID, mergeRequest, &getOpts)
+	if mr != nil {
+		log.Info(fmt.Sprintf("found merge request projectID/pulls %d/%d", targetProjectID, mergeRequest))
+		return mr.State == "opened", err
+	}
+	log.Info(fmt.Sprintf("can not find merge request projectID/pulls %d/%d", targetProjectID, mergeRequest))
+	return false, err
+}
+
+// IsPRInSnapshotOpened check if the github pull request triggering snapshot is opened
+func (s Status) IsPRInSnapshotOpened(ctx context.Context, reporter ReporterInterface, snapshot *applicationapiv1alpha1.Snapshot) (bool, error) {
+	log := log.FromContext(ctx)
+	ghClient := github.NewClient(s.logger)
+	githubAppCreds, err := GetAppCredentials(ctx, s.client, snapshot)
+
+	if err != nil {
+		log.Error(err, "failed to get app credentials from Snapshot",
+			"snapshot.NameSpace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
+		return false, err
+	}
+
+	token, err := ghClient.CreateAppInstallationToken(ctx, githubAppCreds.AppID, githubAppCreds.InstallationID, githubAppCreds.PrivateKey)
+	if err != nil {
+		log.Error(err, "failed to create app installation token",
+			"githubAppCreds.AppID", githubAppCreds.AppID, "githubAppCreds.InstallationID", githubAppCreds.InstallationID)
+		return false, err
+	}
+
+	ghClient.SetOAuthToken(ctx, token)
+
+	labels := snapshot.GetLabels()
+
+	owner, found := labels[gitops.PipelineAsCodeURLOrgLabel]
+	if !found {
+		return false, fmt.Errorf("org label not found %q", gitops.PipelineAsCodeURLOrgLabel)
+	}
+
+	repo, found := labels[gitops.PipelineAsCodeURLRepositoryLabel]
+	if !found {
+		return false, fmt.Errorf("repository label not found %q", gitops.PipelineAsCodeURLRepositoryLabel)
+	}
+
+	pullRequestStr, found := labels[gitops.PipelineAsCodePullRequestAnnotation]
+	if !found {
+		return false, fmt.Errorf("pull request label not found %q", gitops.PipelineAsCodePullRequestAnnotation)
+	}
+
+	pullRequest, err := strconv.Atoi(pullRequestStr)
+	if err != nil {
+		return false, fmt.Errorf("failed to convert pull request number '%s' to integer: %w", pullRequestStr, err)
+	}
+
+	log.Info(fmt.Sprintf("try to find the status of pull request owner/repo/pulls %s/%s/%d", owner, repo, pullRequest))
+	pr, err := ghClient.GetPullRequest(ctx, owner, repo, pullRequest)
+	if pr != nil {
+		return *pr.State == "open", nil
+	}
+	return false, err
 }

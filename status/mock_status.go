@@ -54,6 +54,51 @@ func (mr *MockStatusInterfaceMockRecorder) GetReporter(arg0 any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetReporter", reflect.TypeOf((*MockStatusInterface)(nil).GetReporter), arg0)
 }
 
+// IsMRInSnapshotOpened mocks base method.
+func (m *MockStatusInterface) IsMRInSnapshotOpened(arg0 context.Context, arg1 ReporterInterface, arg2 *v1alpha1.Snapshot) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "IsMRInSnapshotOpened", arg0, arg1, arg2)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// IsMRInSnapshotOpened indicates an expected call of IsMRInSnapshotOpened.
+func (mr *MockStatusInterfaceMockRecorder) IsMRInSnapshotOpened(arg0, arg1, arg2 any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsMRInSnapshotOpened", reflect.TypeOf((*MockStatusInterface)(nil).IsMRInSnapshotOpened), arg0, arg1, arg2)
+}
+
+// IsPRInSnapshotOpened mocks base method.
+func (m *MockStatusInterface) IsPRInSnapshotOpened(arg0 context.Context, arg1 ReporterInterface, arg2 *v1alpha1.Snapshot) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "IsPRInSnapshotOpened", arg0, arg1, arg2)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// IsPRInSnapshotOpened indicates an expected call of IsPRInSnapshotOpened.
+func (mr *MockStatusInterfaceMockRecorder) IsPRInSnapshotOpened(arg0, arg1, arg2 any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsPRInSnapshotOpened", reflect.TypeOf((*MockStatusInterface)(nil).IsPRInSnapshotOpened), arg0, arg1, arg2)
+}
+
+// IsPRMRInSnapshotOpened mocks base method.
+func (m *MockStatusInterface) IsPRMRInSnapshotOpened(arg0 context.Context, arg1 *v1alpha1.Snapshot) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "IsPRMRInSnapshotOpened", arg0, arg1)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// IsPRMRInSnapshotOpened indicates an expected call of IsPRMRInSnapshotOpened.
+func (mr *MockStatusInterfaceMockRecorder) IsPRMRInSnapshotOpened(arg0, arg1 any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsPRMRInSnapshotOpened", reflect.TypeOf((*MockStatusInterface)(nil).IsPRMRInSnapshotOpened), arg0, arg1)
+}
+
 // ReportSnapshotStatus mocks base method.
 func (m *MockStatusInterface) ReportSnapshotStatus(arg0 context.Context, arg1 ReporterInterface, arg2 *v1alpha1.Snapshot) error {
 	m.ctrl.T.Helper()
@@ -62,7 +107,7 @@ func (m *MockStatusInterface) ReportSnapshotStatus(arg0 context.Context, arg1 Re
 	return ret0
 }
 
-// ReportSnapshotStatus indicates an expected call of ReportSnapshotStatus.
+// ReportSnapshotStatus indicates an expected call of ReportSnapshot
 func (mr *MockStatusInterfaceMockRecorder) ReportSnapshotStatus(arg0, arg1, arg2 any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReportSnapshotStatus", reflect.TypeOf((*MockStatusInterface)(nil).ReportSnapshotStatus), arg0, arg1, arg2)

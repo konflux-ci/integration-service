@@ -22,6 +22,7 @@ import (
 	. "github.com/onsi/gomega"
 	. "github.com/onsi/gomega/gstruct"
 
+	"strconv"
 	"time"
 
 	"github.com/konflux-ci/integration-service/gitops"
@@ -39,19 +40,26 @@ import (
 var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 
 	var (
-		hasApp      *applicationapiv1alpha1.Application
-		hasComp     *applicationapiv1alpha1.Component
-		hasSnapshot *applicationapiv1alpha1.Snapshot
-		sampleImage string
+		hasApp          *applicationapiv1alpha1.Application
+		hasComp         *applicationapiv1alpha1.Component
+		hasSnapshot     *applicationapiv1alpha1.Snapshot
+		hasComSnapshot1 *applicationapiv1alpha1.Snapshot
+		hasComSnapshot2 *applicationapiv1alpha1.Snapshot
+		hasComSnapshot3 *applicationapiv1alpha1.Snapshot
+		sampleImage     string
 	)
 
 	const (
-		SampleRepoLink  = "https://github.com/devfile-samples/devfile-sample-java-springboot-basic"
-		namespace       = "default"
-		applicationName = "application-sample"
-		componentName   = "component-sample"
-		snapshotName    = "snapshot-sample"
-		SampleCommit    = "a2ba645d50e471d5f084b"
+		SampleRepoLink      = "https://github.com/devfile-samples/devfile-sample-java-springboot-basic"
+		namespace           = "default"
+		applicationName     = "application-sample"
+		componentName       = "component-sample"
+		snapshotName        = "snapshot-sample"
+		hasComSnapshot1Name = "hascomsnapshot1-sample"
+		hasComSnapshot2Name = "hascomsnapshot2-sample"
+		hasComSnapshot3Name = "hascomsnapshot3-sample"
+		SampleCommit        = "a2ba645d50e471d5f084b"
+		plrstarttime        = 1775992257
 	)
 	BeforeAll(func() {
 		hasApp = &applicationapiv1alpha1.Application{
@@ -123,12 +131,132 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 			}, hasSnapshot)
 			return err
 		}, time.Second*10).ShouldNot(HaveOccurred())
+
+		hasComSnapshot1 = &applicationapiv1alpha1.Snapshot{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      hasComSnapshot1Name,
+				Namespace: namespace,
+				Labels: map[string]string{
+					gitops.SnapshotTypeLabel:            gitops.SnapshotComponentType,
+					gitops.SnapshotComponentLabel:       hasComSnapshot1Name,
+					gitops.PipelineAsCodeEventTypeLabel: gitops.PipelineAsCodePullRequestType,
+				},
+				Annotations: map[string]string{
+					"test.appstudio.openshift.io/pr-last-update": "2023-08-26T17:57:50+02:00",
+					gitops.BuildPipelineRunStartTime:             strconv.Itoa(plrstarttime),
+				},
+			},
+			Spec: applicationapiv1alpha1.SnapshotSpec{
+				Application: hasApp.Name,
+				Components: []applicationapiv1alpha1.SnapshotComponent{
+					{
+						Name:           "component1",
+						ContainerImage: "test-image",
+					},
+					{
+						Name:           componentName,
+						ContainerImage: sampleImage,
+					},
+				},
+			},
+		}
+		Expect(k8sClient.Create(ctx, hasComSnapshot1)).Should(Succeed())
+
+		Eventually(func() error {
+			err := k8sClient.Get(ctx, types.NamespacedName{
+				Name:      hasComSnapshot1.Name,
+				Namespace: namespace,
+			}, hasComSnapshot1)
+			return err
+		}, time.Second*10).ShouldNot(HaveOccurred())
+
+		hasComSnapshot2 = &applicationapiv1alpha1.Snapshot{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      hasComSnapshot2Name,
+				Namespace: namespace,
+				Labels: map[string]string{
+					gitops.SnapshotTypeLabel:            gitops.SnapshotComponentType,
+					gitops.SnapshotComponentLabel:       hasComSnapshot2Name,
+					gitops.PipelineAsCodeEventTypeLabel: gitops.PipelineAsCodePullRequestType,
+				},
+				Annotations: map[string]string{
+					"test.appstudio.openshift.io/pr-last-update": "2023-08-26T17:57:50+02:00",
+					gitops.BuildPipelineRunStartTime:             strconv.Itoa(plrstarttime + 100),
+				},
+			},
+			Spec: applicationapiv1alpha1.SnapshotSpec{
+				Application: hasApp.Name,
+				Components: []applicationapiv1alpha1.SnapshotComponent{
+					{
+						Name:           "component1",
+						ContainerImage: "test-image",
+					},
+					{
+						Name:           componentName,
+						ContainerImage: sampleImage,
+					},
+				},
+			},
+		}
+		Expect(k8sClient.Create(ctx, hasComSnapshot2)).Should(Succeed())
+
+		Eventually(func() error {
+			err := k8sClient.Get(ctx, types.NamespacedName{
+				Name:      hasComSnapshot2.Name,
+				Namespace: namespace,
+			}, hasComSnapshot2)
+			return err
+		}, time.Second*10).ShouldNot(HaveOccurred())
+
+		hasComSnapshot3 = &applicationapiv1alpha1.Snapshot{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      hasComSnapshot3Name,
+				Namespace: namespace,
+				Labels: map[string]string{
+					gitops.SnapshotTypeLabel:            gitops.SnapshotComponentType,
+					gitops.SnapshotComponentLabel:       hasComSnapshot3Name,
+					gitops.PipelineAsCodeEventTypeLabel: gitops.PipelineAsCodePullRequestType,
+				},
+				Annotations: map[string]string{
+					"test.appstudio.openshift.io/pr-last-update": "2023-08-26T17:57:50+02:00",
+					gitops.BuildPipelineRunStartTime:             strconv.Itoa(plrstarttime + 200),
+				},
+			},
+			Spec: applicationapiv1alpha1.SnapshotSpec{
+				Application: hasApp.Name,
+				Components: []applicationapiv1alpha1.SnapshotComponent{
+					{
+						Name:           "component1",
+						ContainerImage: "test-image",
+					},
+					{
+						Name:           componentName,
+						ContainerImage: sampleImage,
+					},
+				},
+			},
+		}
+		Expect(k8sClient.Create(ctx, hasComSnapshot3)).Should(Succeed())
+
+		Eventually(func() error {
+			err := k8sClient.Get(ctx, types.NamespacedName{
+				Name:      hasComSnapshot3.Name,
+				Namespace: namespace,
+			}, hasComSnapshot3)
+			return err
+		}, time.Second*10).ShouldNot(HaveOccurred())
 	})
 
 	AfterEach(func() {
 		err := k8sClient.Delete(ctx, hasComp)
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 		err = k8sClient.Delete(ctx, hasSnapshot)
+		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
+		err = k8sClient.Delete(ctx, hasComSnapshot1)
+		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
+		err = k8sClient.Delete(ctx, hasComSnapshot2)
+		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
+		err = k8sClient.Delete(ctx, hasComSnapshot3)
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 	})
 
@@ -712,4 +840,71 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 		})
 	})
 
+	Context("Group snapshot creation tests", func() {
+		When("Snapshot has snapshot type label", func() {
+			prGroup := "feature1"
+			prGroupSha := "feature1hash"
+			BeforeEach(func() {
+				hasComSnapshot1.Labels[gitops.PRGroupHashLabel] = prGroupSha
+				hasComSnapshot1.Annotations[gitops.PRGroupAnnotation] = prGroup
+				hasComSnapshot1.Annotations[gitops.PRGroupCreationAnnotation] = "group snapshot is created"
+			})
+
+			It("make sure pr group annotation/label can be found in group", func() {
+				Expect(gitops.GetPRGroupFromSnapshot(hasComSnapshot1)).To(Equal(prGroup))
+				Expect(gitops.GetPRGroupHashFromSnapshot(hasComSnapshot1)).To(Equal(prGroupSha))
+				Expect(gitops.HasPRGroupProcessed(hasComSnapshot1)).To(BeTrue())
+			})
+
+			It("Can find the correct snapshotComponent for the given component name", func() {
+				FoundSnapshotComponent := gitops.FindMatchingSnapshotComponent(hasComSnapshot1, hasComp)
+				Expect(FoundSnapshotComponent.Name).To(Equal(hasComp.Name))
+			})
+
+			It("Can sort the snapshots according to annotation test.appstudio.openshift.io/pipelinerunstarttime", func() {
+				snapshots := []applicationapiv1alpha1.Snapshot{*hasComSnapshot1, *hasComSnapshot2, *hasComSnapshot3}
+				sortedSnapshots := gitops.SortSnapshots(snapshots)
+				Expect(sortedSnapshots[0].Name).To(Equal(hasComSnapshot3.Name))
+				snapshots = []applicationapiv1alpha1.Snapshot{*hasComSnapshot2, *hasComSnapshot1, *hasComSnapshot3}
+				sortedSnapshots = gitops.SortSnapshots(snapshots)
+				Expect(sortedSnapshots[0].Name).To(Equal(hasComSnapshot3.Name))
+			})
+
+			It("Can notify all component snapshots group snapshot creation status", func() {
+				Expect(metadata.HasAnnotation(hasComSnapshot2, gitops.PRGroupCreationAnnotation)).To(BeFalse())
+				Expect(metadata.HasAnnotation(hasComSnapshot3, gitops.PRGroupCreationAnnotation)).To(BeFalse())
+				componentSnapshotInfos := []gitops.ComponentSnapshotInfo{
+					{
+						Namespace:        "default",
+						Component:        hasComSnapshot2Name,
+						BuildPipelineRun: "plr2",
+						Snapshot:         hasComSnapshot2.Name,
+					},
+					{
+						Namespace:        "default",
+						Component:        hasComSnapshot1Name,
+						BuildPipelineRun: "plr3",
+						Snapshot:         hasComSnapshot3.Name,
+					},
+				}
+				err := gitops.NotifyComponentSnapshotsInGroupSnapshot(ctx, k8sClient, componentSnapshotInfos, "group snapshot created")
+
+				Eventually(func() bool {
+					_ = k8sClient.Get(ctx, types.NamespacedName{
+						Name:      hasComSnapshot2.Name,
+						Namespace: namespace,
+					}, hasComSnapshot2)
+					return metadata.HasAnnotationWithValue(hasComSnapshot2, gitops.PRGroupCreationAnnotation, "group snapshot created")
+				}, time.Second*10).Should(BeTrue())
+				Eventually(func() bool {
+					_ = k8sClient.Get(ctx, types.NamespacedName{
+						Name:      hasComSnapshot3.Name,
+						Namespace: namespace,
+					}, hasComSnapshot3)
+					return metadata.HasAnnotationWithValue(hasComSnapshot3, gitops.PRGroupCreationAnnotation, "group snapshot created")
+				}, time.Second*10).Should(BeTrue())
+				Expect(err).ShouldNot(HaveOccurred())
+			})
+		})
+	})
 })

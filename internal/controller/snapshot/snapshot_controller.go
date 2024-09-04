@@ -117,6 +117,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	adapter := NewAdapter(ctx, snapshot, application, logger, loader, r.Client)
 
 	return controller.ReconcileHandler([]controller.Operation{
+		adapter.EnsureGroupSnapshotExist,
 		adapter.EnsureOverrideSnapshotValid,
 		adapter.EnsureAllReleasesExist,
 		adapter.EnsureGlobalCandidateImageUpdated,
@@ -127,6 +128,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 
 // AdapterInterface is an interface defining all the operations that should be defined in an Integration adapter.
 type AdapterInterface interface {
+	EnsureGroupSnapshotExist() (controller.OperationResult, error)
 	EnsureAllReleasesExist() (controller.OperationResult, error)
 	EnsureRerunPipelineRunsExist() (controller.OperationResult, error)
 	EnsureIntegrationPipelineRunsExist() (controller.OperationResult, error)
