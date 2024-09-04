@@ -24,6 +24,7 @@ import (
 	"text/template"
 
 	"github.com/go-logr/logr"
+	"github.com/konflux-ci/integration-service/gitops"
 	"github.com/konflux-ci/integration-service/helpers"
 	"knative.dev/pkg/apis"
 )
@@ -45,14 +46,23 @@ const summaryTemplate = `
 | <a href="{{ formatTaskLogURL $tr $pipelineRunName $namespace $logger }}">{{ formatTaskName $tr }}</a> | {{ $tr.GetDuration.String }} | {{ formatNamespace $tr }} | {{ formatStatus $tr }} | {{ formatDetails $tr }} |
 {{- end }}
 
-{{ formatFootnotes .TaskRuns }}`
+{{ formatFootnotes .TaskRuns }}
+{{ if .ComponentSnapshotInfos}}
+The group snapshot is generated for the component snasphots as below:
+| Component | Snapshot | BuildPipelineRun |
+| --- | --- | --- |
+{{- range $cs := .ComponentSnapshotInfos }}
+| {{ $cs.Component }} | {{ $cs.Snapshot }} | <a href="{{ formatPipelineURL $cs.BuildPipelineRun $namespace $logger }}">{{ $cs.BuildPipelineRun }}</a> |
+{{- end }}
+{{end}}`
 
 // SummaryTemplateData holds the data necessary to construct a PipelineRun summary.
 type SummaryTemplateData struct {
-	TaskRuns        []*helpers.TaskRun
-	PipelineRunName string
-	Namespace       string
-	Logger          logr.Logger
+	TaskRuns               []*helpers.TaskRun
+	PipelineRunName        string
+	Namespace              string
+	ComponentSnapshotInfos []*gitops.ComponentSnapshotInfo
+	Logger                 logr.Logger
 }
 
 // TaskLogTemplateData holds the data necessary to construct a Task log URL.
@@ -69,7 +79,7 @@ type CommentTemplateData struct {
 }
 
 // FormatTestsSummary builds a markdown summary for a list of integration TaskRuns.
-func FormatTestsSummary(taskRuns []*helpers.TaskRun, pipelineRunName string, namespace string, logger logr.Logger) (string, error) {
+func FormatTestsSummary(taskRuns []*helpers.TaskRun, pipelineRunName string, namespace string, componentSnapshotInfos []*gitops.ComponentSnapshotInfo, logger logr.Logger) (string, error) {
 	funcMap := template.FuncMap{
 		"formatTaskName":    FormatTaskName,
 		"formatNamespace":   FormatNamespace,
@@ -80,7 +90,7 @@ func FormatTestsSummary(taskRuns []*helpers.TaskRun, pipelineRunName string, nam
 		"formatFootnotes":   FormatFootnotes,
 	}
 	buf := bytes.Buffer{}
-	data := SummaryTemplateData{TaskRuns: taskRuns, PipelineRunName: pipelineRunName, Namespace: namespace, Logger: logger}
+	data := SummaryTemplateData{TaskRuns: taskRuns, PipelineRunName: pipelineRunName, Namespace: namespace, ComponentSnapshotInfos: componentSnapshotInfos, Logger: logger}
 	t := template.Must(template.New("").Funcs(funcMap).Parse(summaryTemplate))
 	if err := t.Execute(&buf, data); err != nil {
 		return "", err

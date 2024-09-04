@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
+	"github.com/konflux-ci/integration-service/gitops"
 	"github.com/konflux-ci/integration-service/helpers"
 	"github.com/konflux-ci/integration-service/status"
 	. "github.com/onsi/ginkgo/v2"
@@ -46,11 +47,13 @@ const expectedSummary = `<ul>
 | <a href="https://definetly.not.prod/preview/application-pipeline/ns/default/pipelinerun/pipelinerun-component-sample/logs/example-task-6">example-task-6</a> | 1s | example-namespace-6 | :heavy_exclamation_mark: ERROR |  |
 
 [^example-task-3]: example note 3
-[^example-task-4]: example note 4`
+[^example-task-4]: example note 4
+`
 
 const expectedTaskLogURL = `https://definetly.not.prod/preview/application-pipeline/ns/default/pipelinerun/pipelinerun-component-sample/logs/example-task-1`
 
 var message = "Taskrun Succeeded, lucky you!"
+var componentSnapshotInfos = []*gitops.ComponentSnapshotInfo{}
 
 func newTaskRun(name string, startTime time.Time, completionTime time.Time) *helpers.TaskRun {
 	return helpers.NewTaskRunFromTektonTaskRun(name, &tektonv1.TaskRunStatus{
@@ -233,7 +236,7 @@ var _ = Describe("Formatters", func() {
 
 	It("CONSOLE_URL env var not set", func() {
 		os.Setenv("CONSOLE_URL", "")
-		text, err := status.FormatTestsSummary(taskRuns, pipelineRun.Name, pipelineRun.Namespace, logr.Discard())
+		text, err := status.FormatTestsSummary(taskRuns, pipelineRun.Name, pipelineRun.Namespace, componentSnapshotInfos, logr.Discard())
 		Expect(err).To(Succeed())
 		Expect(text).To(ContainSubstring("https://CONSOLE_URL_NOT_AVAILABLE"))
 	})
@@ -245,7 +248,7 @@ var _ = Describe("Formatters", func() {
 	})
 
 	It("can construct a comment", func() {
-		text, err := status.FormatTestsSummary(taskRuns, pipelineRun.Name, pipelineRun.Namespace, logr.Discard())
+		text, err := status.FormatTestsSummary(taskRuns, pipelineRun.Name, pipelineRun.Namespace, componentSnapshotInfos, logr.Discard())
 		Expect(err).To(Succeed())
 		comment, err := status.FormatComment("example-title", text)
 		Expect(err).To(BeNil())
@@ -259,7 +262,7 @@ var _ = Describe("Formatters", func() {
 	})
 
 	It("can construct a summary", func() {
-		summary, err := status.FormatTestsSummary(taskRuns, pipelineRun.Name, pipelineRun.Namespace, logr.Discard())
+		summary, err := status.FormatTestsSummary(taskRuns, pipelineRun.Name, pipelineRun.Namespace, componentSnapshotInfos, logr.Discard())
 		Expect(err).To(BeNil())
 		Expect(summary).To(Equal(expectedSummary))
 	})
@@ -287,7 +290,7 @@ var _ = Describe("Formatters", func() {
 		})
 
 		It("won't fail when summary is generated from invalid result", func() {
-			_, err := status.FormatTestsSummary([]*helpers.TaskRun{taskRun}, pipelineRun.Name, pipelineRun.Namespace, logr.Discard())
+			_, err := status.FormatTestsSummary([]*helpers.TaskRun{taskRun}, pipelineRun.Name, pipelineRun.Namespace, componentSnapshotInfos, logr.Discard())
 			Expect(err).To(Succeed())
 		})
 	})
@@ -309,9 +312,45 @@ var _ = Describe("Formatters", func() {
 		})
 
 		It("won't fail when summary is generated from taskrun without TEST_OUTPUT", func() {
-			_, err := status.FormatTestsSummary([]*helpers.TaskRun{taskRun}, pipelineRun.Name, pipelineRun.Namespace, logr.Discard())
+			_, err := status.FormatTestsSummary([]*helpers.TaskRun{taskRun}, pipelineRun.Name, pipelineRun.Namespace, componentSnapshotInfos, logr.Discard())
 			Expect(err).To(Succeed())
 		})
 	})
 
+	When("componentSnapshotInfos is not nil", func() {
+		var taskRun *helpers.TaskRun
+		BeforeEach(func() {
+			now := time.Now()
+			taskRun = newTaskRunWithoutAppStudioTestOutput(
+				"example-task-1",
+				now,
+				now.Add(time.Minute*5).Add(time.Second*30),
+			)
+		})
+		componentSnapshotInfos := []*gitops.ComponentSnapshotInfo{
+			{
+				Component:        "com1",
+				Snapshot:         "snapshot1",
+				BuildPipelineRun: "buildPLR1",
+				Namespace:        "default",
+			},
+			{
+				Component:        "com2",
+				Snapshot:         "snapshot2",
+				BuildPipelineRun: "buildPLR2",
+				Namespace:        "default",
+			},
+			{
+				Component:        "com3",
+				Snapshot:         "snapshot3",
+				BuildPipelineRun: "buildPLR3",
+				Namespace:        "default",
+			},
+		}
+		It("component snapshot info is generated", func() {
+			text, err := status.FormatTestsSummary([]*helpers.TaskRun{taskRun}, pipelineRun.Name, pipelineRun.Namespace, componentSnapshotInfos, logr.Discard())
+			Expect(text).To(ContainSubstring("| com1 | snapshot1 |"))
+			Expect(err).To(Succeed())
+		})
+	})
 })

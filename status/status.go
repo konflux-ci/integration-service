@@ -298,7 +298,16 @@ func (s *Status) ReportSnapshotStatus(ctx context.Context, reporter ReporterInte
 
 // generateTestReport generates TestReport to be used by all reporters
 func (s *Status) generateTestReport(ctx context.Context, detail intgteststat.IntegrationTestStatusDetail, snapshot *applicationapiv1alpha1.Snapshot) (*TestReport, error) {
-	text, err := s.generateText(ctx, detail, snapshot.Namespace)
+	var componentSnapshotInfos []*gitops.ComponentSnapshotInfo
+	var err error
+	if componentSnapshotInfoString, ok := snapshot.Annotations[gitops.GroupSnapshotInfoAnnotation]; ok {
+		componentSnapshotInfos, err = gitops.UnmarshalJSON([]byte(componentSnapshotInfoString))
+		if err != nil {
+			return nil, fmt.Errorf("failed to unmarshal JSON string: %w", err)
+		}
+	}
+
+	text, err := s.generateText(ctx, detail, snapshot.Namespace, componentSnapshotInfos)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate text message: %w", err)
 	}
@@ -331,7 +340,7 @@ func (s *Status) generateTestReport(ctx context.Context, detail intgteststat.Int
 }
 
 // generateText generates a text with details for the given state
-func (s *Status) generateText(ctx context.Context, integrationTestStatusDetail intgteststat.IntegrationTestStatusDetail, namespace string) (string, error) {
+func (s *Status) generateText(ctx context.Context, integrationTestStatusDetail intgteststat.IntegrationTestStatusDetail, namespace string, componentSnapshotInfos []*gitops.ComponentSnapshotInfo) (string, error) {
 	if integrationTestStatusDetail.Status == intgteststat.IntegrationTestStatusTestPassed || integrationTestStatusDetail.Status == intgteststat.IntegrationTestStatusTestFail {
 		pipelineRunName := integrationTestStatusDetail.TestPipelineRunName
 		pipelineRun := &tektonv1.PipelineRun{}
@@ -354,7 +363,7 @@ func (s *Status) generateText(ctx context.Context, integrationTestStatusDetail i
 		if err != nil {
 			return "", fmt.Errorf("error while getting all child taskRuns from pipelineRun %s: %w", pipelineRunName, err)
 		}
-		text, err := FormatTestsSummary(taskRuns, pipelineRunName, namespace, s.logger)
+		text, err := FormatTestsSummary(taskRuns, pipelineRunName, namespace, componentSnapshotInfos, s.logger)
 		if err != nil {
 			return "", err
 		}
