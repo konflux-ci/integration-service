@@ -366,6 +366,7 @@ var _ = Describe("Status Adapter", func() {
 
 		hasSnapshot.Annotations["test.appstudio.openshift.io/status"] = "[{\"scenario\":\"scenario1\",\"status\":\"InProgress\",\"startTime\":\"2023-07-26T16:57:49+02:00\",\"lastUpdateTime\":\"2023-08-26T17:57:50+02:00\",\"details\":\"Test in progress\"}]"
 		hasSnapshot.Annotations["test.appstudio.openshift.io/git-reporter-status"] = "{\"scenarios\":{\"scenario1\":{\"lastUpdateTime\":\"2023-08-26T17:57:49+02:00\"}}}"
+		hasSnapshot.Annotations["test.appstudio.openshift.io/group-test-info"] = "[{\"namespace\":\"default\",\"component\":\"devfile-sample-java-springboot-basic-8969\",\"buildPipelineRun\":\"build-plr-java-qjfxz\",\"snapshot\":\"app-8969-bbn7d\"},{\"namespace\":\"default\",\"component\":\"devfile-sample-go-basic-8969\",\"buildPipelineRun\":\"build-plr-go-jmsjq\",\"snapshot\":\"app-8969-kzq2l\"}]"
 		st := status.NewStatus(logr.Discard(), mockK8sClient)
 		err := st.ReportSnapshotStatus(context.Background(), mockReporter, hasSnapshot)
 		Expect(err).NotTo(HaveOccurred())
@@ -423,6 +424,7 @@ var _ = Describe("Status Adapter", func() {
 | --- | --- | --- | --- | --- |
 | <a href="https://definetly.not.prod/preview/application-pipeline/ns/default/pipelinerun/test-pipelinerun/logs/pipeline1-task1">pipeline1-task1</a> | 5m0s |  | :heavy_check_mark: SUCCESS | :heavy_check_mark: 10 success(es) |
 | <a href="https://definetly.not.prod/preview/application-pipeline/ns/default/pipelinerun/test-pipelinerun/logs/pipeline1-task2">pipeline1-task2</a> | 5m0s |  | :white_check_mark: SKIPPED |  |
+
 
 `
 		expectedTestReport := status.TestReport{
