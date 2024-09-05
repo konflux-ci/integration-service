@@ -718,7 +718,9 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
 		})
 
-		It("ensures global Component Image updated when AppStudio Tests succeeded", func() {
+		It("ensures global Component Image and lastPromotedImage updated when AppStudio Tests succeeded", func() {
+			// ensure last promoted image is empty string
+			hasComp.Status.LastPromotedImage = ""
 			var buf bytes.Buffer
 			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
 			adapter.logger = log
@@ -734,6 +736,8 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			expectedLogEntry := "Updated .Spec.ContainerImage of Global Candidate for the Component"
 			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
 			expectedLogEntry = "Updated .Status.LastBuiltCommit of Global Candidate for the Component"
+			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
+			expectedLogEntry = "Updated .Status.LastPromotedImage of Global Candidate for the Component"
 			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
 
 			Eventually(func() bool {
