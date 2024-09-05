@@ -42,14 +42,8 @@ const (
 	// PipelineAsCodeSourceRepoOrg is the repo org build PLR is triggered by
 	PipelineAsCodeSourceRepoOrg = "pipelinesascode.tekton.dev/url-org"
 
-	// PipelineAsCodeEventTypeLabel is the type of event which triggered the pipelinerun in build service
-	PipelineAsCodeEventTypeLabel = "pipelinesascode.tekton.dev/event-type"
-
-	// PipelineAsCodePushType is the type of push event which triggered the pipelinerun in build service
-	PipelineAsCodePushType = "push"
-
-	// PipelineAsCodeGLPushType is the type of gitlab push event which triggered the pipelinerun in build service
-	PipelineAsCodeGLPushType = "Push"
+	// PipelineAsCodePullRequestLabel is the type of event which triggered the pipelinerun in build service
+	PipelineAsCodePullRequestLabel = "pipelinesascode.tekton.dev/pull-request"
 )
 
 // AnnotateBuildPipelineRun sets annotation for a build pipelineRun in defined context and returns that pipeline
@@ -126,7 +120,5 @@ func GenerateSHA(str string) string {
 
 // IsPLRCreatedByPACPushEvent checks if a PLR has label PipelineAsCodeEventTypeLabel and with push or Push value
 func IsPLRCreatedByPACPushEvent(plr *tektonv1.PipelineRun) bool {
-	return metadata.HasLabelWithValue(plr, PipelineAsCodeEventTypeLabel, PipelineAsCodePushType) ||
-		metadata.HasLabelWithValue(plr, PipelineAsCodeEventTypeLabel, PipelineAsCodeGLPushType) ||
-		!metadata.HasLabel(plr, PipelineAsCodeEventTypeLabel)
+	return !metadata.HasLabel(plr, PipelineAsCodePullRequestLabel)
 }

@@ -161,6 +161,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 					gitops.SnapshotComponentLabel:                    "component-sample",
 					"build.appstudio.redhat.com/pipeline":            "enterprise-contract",
 					gitops.PipelineAsCodeEventTypeLabel:              "pull_request",
+					gitops.PipelineAsCodePullRequestAnnotation:       "1",
 					"pac.test.appstudio.openshift.io/url-org":        "testorg",
 					"pac.test.appstudio.openshift.io/url-repository": "testrepo",
 					"pac.test.appstudio.openshift.io/sha":            "testsha",

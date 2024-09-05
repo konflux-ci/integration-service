@@ -99,11 +99,12 @@ var _ = Describe("Loader", Ordered, func() {
 				Name:      snapshotName,
 				Namespace: "default",
 				Labels: map[string]string{
-					gitops.SnapshotTypeLabel:            "component",
-					gitops.SnapshotComponentLabel:       "component-sample",
-					gitops.BuildPipelineRunNameLabel:    "pipelinerun-sample",
-					gitops.PRGroupHashLabel:             "featuresha",
-					gitops.PipelineAsCodeEventTypeLabel: "pull_request",
+					gitops.SnapshotTypeLabel:                   "component",
+					gitops.SnapshotComponentLabel:              "component-sample",
+					gitops.BuildPipelineRunNameLabel:           "pipelinerun-sample",
+					gitops.PRGroupHashLabel:                    "featuresha",
+					gitops.PipelineAsCodeEventTypeLabel:        "pull_request",
+					gitops.PipelineAsCodePullRequestAnnotation: "1",
 				},
 				Annotations: map[string]string{
 					gitops.PipelineAsCodeInstallationIDAnnotation: "123",
