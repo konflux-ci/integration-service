@@ -137,9 +137,10 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 				Name:      hasComSnapshot1Name,
 				Namespace: namespace,
 				Labels: map[string]string{
-					gitops.SnapshotTypeLabel:            gitops.SnapshotComponentType,
-					gitops.SnapshotComponentLabel:       hasComSnapshot1Name,
-					gitops.PipelineAsCodeEventTypeLabel: gitops.PipelineAsCodePullRequestType,
+					gitops.SnapshotTypeLabel:                   gitops.SnapshotComponentType,
+					gitops.SnapshotComponentLabel:              hasComSnapshot1Name,
+					gitops.PipelineAsCodeEventTypeLabel:        gitops.PipelineAsCodePullRequestType,
+					gitops.PipelineAsCodePullRequestAnnotation: "1",
 				},
 				Annotations: map[string]string{
 					"test.appstudio.openshift.io/pr-last-update": "2023-08-26T17:57:50+02:00",
@@ -175,9 +176,10 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 				Name:      hasComSnapshot2Name,
 				Namespace: namespace,
 				Labels: map[string]string{
-					gitops.SnapshotTypeLabel:            gitops.SnapshotComponentType,
-					gitops.SnapshotComponentLabel:       hasComSnapshot2Name,
-					gitops.PipelineAsCodeEventTypeLabel: gitops.PipelineAsCodePullRequestType,
+					gitops.SnapshotTypeLabel:                   gitops.SnapshotComponentType,
+					gitops.SnapshotComponentLabel:              hasComSnapshot2Name,
+					gitops.PipelineAsCodeEventTypeLabel:        gitops.PipelineAsCodePullRequestType,
+					gitops.PipelineAsCodePullRequestAnnotation: "1",
 				},
 				Annotations: map[string]string{
 					"test.appstudio.openshift.io/pr-last-update": "2023-08-26T17:57:50+02:00",
@@ -213,9 +215,10 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 				Name:      hasComSnapshot3Name,
 				Namespace: namespace,
 				Labels: map[string]string{
-					gitops.SnapshotTypeLabel:            gitops.SnapshotComponentType,
-					gitops.SnapshotComponentLabel:       hasComSnapshot3Name,
-					gitops.PipelineAsCodeEventTypeLabel: gitops.PipelineAsCodePullRequestType,
+					gitops.SnapshotTypeLabel:                   gitops.SnapshotComponentType,
+					gitops.SnapshotComponentLabel:              hasComSnapshot3Name,
+					gitops.PipelineAsCodeEventTypeLabel:        gitops.PipelineAsCodePullRequestType,
+					gitops.PipelineAsCodePullRequestAnnotation: "1",
 				},
 				Annotations: map[string]string{
 					"test.appstudio.openshift.io/pr-last-update": "2023-08-26T17:57:50+02:00",
@@ -547,6 +550,7 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 		Expect(reasons).To(HaveLen(1))
 
 		hasSnapshot.Labels[gitops.PipelineAsCodeEventTypeLabel] = gitops.PipelineAsCodePullRequestType
+		hasSnapshot.Labels[gitops.PipelineAsCodePullRequestAnnotation] = "1"
 		canBePromoted, reasons = gitops.CanSnapshotBePromoted(hasSnapshot)
 		Expect(canBePromoted).To(BeFalse())
 		Expect(reasons).To(HaveLen(2))
@@ -818,6 +822,7 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 
 				// A component Snapshot for pull request event referencing the component-sample
 				hasSnapshot.Labels[gitops.PipelineAsCodeEventTypeLabel] = gitops.PipelineAsCodePullRequestType
+				hasSnapshot.Labels[gitops.PipelineAsCodePullRequestAnnotation] = "1"
 				filteredScenarios = gitops.FilterIntegrationTestScenariosWithContext(&allScenarios, hasSnapshot)
 				Expect(*filteredScenarios).To(HaveLen(6))
 
