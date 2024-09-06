@@ -18,19 +18,225 @@
     ]
   },
   "editable": true,
-  "gnetId": null,
+  "fiscalYearStartMonth": 0,
   "graphTooltip": 0,
-  "id": 17,
+  "id": 26,
   "links": [],
   "panels": [
+    {
+      "aliasColors": {},
+      "bars": false,
+      "dashLength": 10,
+      "dashes": false,
+      "description": "Measure the uptime for Integration Service",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "fill": 1,
+      "fillGradient": 0,
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      },
+      "hiddenSeries": false,
+      "id": 31,
+      "legend": {
+        "avg": false,
+        "current": false,
+        "max": false,
+        "min": false,
+        "show": true,
+        "total": false,
+        "values": false
+      },
+      "lines": true,
+      "linewidth": 1,
+      "nullPointMode": "null",
+      "options": {
+        "alertThreshold": true
+      },
+      "percentage": false,
+      "pluginVersion": "10.4.3",
+      "pointradius": 1,
+      "points": true,
+      "renderer": "flot",
+      "seriesOverrides": [
+        {
+          "$$hashKey": "object:408"
+        }
+      ],
+      "spaceLength": 10,
+      "stack": false,
+      "steppedLine": false,
+      "targets": [
+        {
+          "editorMode": "code",
+          "exemplar": true,
+          "expr": "avg_over_time(redhat_appstudio_integrationservice_global_github_app_available[1h]) * 100\n",
+          "instant": false,
+          "interval": "",
+          "legendFormat": "99% uptime required",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "thresholds": [
+        {
+          "$$hashKey": "object:1130",
+          "colorMode": "critical",
+          "fill": true,
+          "line": true,
+          "op": "gt",
+          "value": 30,
+          "yaxis": "left"
+        }
+      ],
+      "timeRegions": [],
+      "title": "Integration Service Availability ",
+      "tooltip": {
+        "shared": true,
+        "sort": 0,
+        "value_type": "individual"
+      },
+      "type": "graph",
+      "xaxis": {
+        "mode": "time",
+        "show": true,
+        "values": []
+      },
+      "yaxes": [
+        {
+          "$$hashKey": "object:1223",
+          "format": "short",
+          "label": "%",
+          "logBase": 1,
+          "max": "100",
+          "min": "90",
+          "show": true
+        },
+        {
+          "$$hashKey": "object:1224",
+          "format": "short",
+          "label": "",
+          "logBase": 1,
+          "show": true
+        }
+      ],
+      "yaxis": {
+        "align": false
+      }
+    },
+    {
+      "description": "Uptime of 99%",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "%",
+            "axisPlacement": "left",
+            "axisSoftMax": 100,
+            "axisSoftMin": 90,
+            "barAlignment": 0,
+            "drawStyle": "bars",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "normal"
+            },
+            "thresholdsStyle": {
+              "mode": "dashed+area"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "percentage",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "transparent",
+                "value": 99
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      },
+      "id": 32,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "9.1.6",
+      "targets": [
+        {
+          "editorMode": "code",
+          "exemplar": true,
+          "expr": "avg_over_time(redhat_appstudio_integrationservice_global_github_app_available[1h]) * 100\n",
+          "interval": "",
+          "legendFormat": "% uptime",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "[Violations] Integration Service Availability",
+      "type": "timeseries"
+    },
     {
       "gridPos": {
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 0
+        "y": 8
       },
       "id": 18,
+      "targets": [
+        {
+          "refId": "A"
+        }
+      ],
       "title": "SLOs",
       "type": "row"
     },
@@ -52,7 +258,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 1
+        "y": 9
       },
       "hiddenSeries": false,
       "id": 20,
@@ -72,7 +278,7 @@
         "alertThreshold": true
       },
       "percentage": false,
-      "pluginVersion": "7.5.17",
+      "pluginVersion": "10.4.3",
       "pointradius": 1,
       "points": true,
       "renderer": "flot",
@@ -100,9 +306,7 @@
           "yaxis": "left"
         }
       ],
-      "timeFrom": null,
       "timeRegions": [],
-      "timeShift": null,
       "title": "#1 Latency - Percentile Service Response (in-progress change)",
       "tooltip": {
         "shared": true,
@@ -111,9 +315,7 @@
       },
       "type": "graph",
       "xaxis": {
-        "buckets": null,
         "mode": "time",
-        "name": null,
         "show": true,
         "values": []
       },
@@ -123,83 +325,69 @@
           "format": "short",
           "label": "sec",
           "logBase": 1,
-          "max": null,
-          "min": null,
           "show": true
         },
         {
           "$$hashKey": "object:1224",
           "format": "short",
-          "label": null,
           "logBase": 1,
-          "max": null,
-          "min": null,
           "show": true
         }
       ],
       "yaxis": {
-        "align": false,
-        "alignLevel": null
+        "align": false
       }
     },
     {
-      "id": 24,
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 1
-      },
-      "type": "timeseries",
-      "title": "[Violations] #1 Latency - Percentile Service Response (in-progress change)",
-      "pluginVersion": "9.1.6",
       "description": "90% of requests must take less than 30sec",
       "fieldConfig": {
         "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
           "custom": {
-            "drawStyle": "bars",
-            "lineInterpolation": "linear",
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "%",
+            "axisPlacement": "auto",
             "barAlignment": 0,
-            "lineWidth": 1,
+            "drawStyle": "bars",
             "fillOpacity": 10,
             "gradientMode": "none",
-            "spanNulls": false,
-            "showPoints": "never",
-            "pointSize": 5,
-            "stacking": {
-              "mode": "none",
-              "group": "A"
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
             },
-            "axisPlacement": "auto",
-            "axisLabel": "%",
-            "axisColorMode": "text",
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
             "scaleDistribution": {
               "type": "linear"
             },
-            "axisCenteredZero": false,
-            "hideFrom": {
-              "tooltip": false,
-              "viz": false,
-              "legend": false
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
             },
             "thresholdsStyle": {
               "mode": "line+area"
             }
-          },
-          "color": {
-            "mode": "palette-classic"
           },
           "mappings": [],
           "thresholds": {
             "mode": "absolute",
             "steps": [
               {
-                "value": null,
-                "color": "red"
+                "color": "red",
+                "value": null
               },
               {
-                "value": 90,
-                "color": "transparent"
+                "color": "transparent",
+                "value": 90
               }
             ]
           },
@@ -207,31 +395,39 @@
         },
         "overrides": []
       },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 9
+      },
+      "id": 24,
       "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
         "tooltip": {
           "mode": "multi",
           "sort": "none"
-        },
-        "legend": {
-          "showLegend": true,
-          "displayMode": "list",
-          "placement": "bottom",
-          "calcs": []
         }
       },
+      "pluginVersion": "9.1.6",
       "targets": [
         {
+          "editorMode": "code",
           "exemplar": true,
           "expr": "sum(rate(integration_svc_response_seconds_bucket{le=\"30\"}[$__rate_interval])) by (job)\n/\nsum(rate(integration_svc_response_seconds_count[$__rate_interval]) > 0) by (job)\n*100",
           "interval": "",
           "legendFormat": "% of requests within required latency time",
-          "refId": "A",
-          "editorMode": "code",
-          "range": true
+          "range": true,
+          "refId": "A"
         }
       ],
-      "timeFrom": null,
-      "timeShift": null
+      "title": "[Violations] #1 Latency - Percentile Service Response (in-progress change)",
+      "type": "timeseries"
     },
     {
       "aliasColors": {},
@@ -239,17 +435,13 @@
       "dashLength": 10,
       "dashes": false,
       "description": "Measure the time between ApplicationSnapshot creation to pipelineRun creation in a static env. \n",
-      "fieldConfig": {
-        "defaults": {},
-        "overrides": []
-      },
       "fill": 1,
       "fillGradient": 0,
       "gridPos": {
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 9
+        "y": 17
       },
       "hiddenSeries": false,
       "id": 22,
@@ -269,7 +461,7 @@
         "alertThreshold": true
       },
       "percentage": false,
-      "pluginVersion": "7.5.17",
+      "pluginVersion": "10.4.3",
       "pointradius": 2,
       "points": false,
       "renderer": "flot",
@@ -297,9 +489,7 @@
           "yaxis": "left"
         }
       ],
-      "timeFrom": null,
       "timeRegions": [],
-      "timeShift": null,
       "title": "#2A Time to Start PipelineRun",
       "tooltip": {
         "shared": true,
@@ -308,9 +498,7 @@
       },
       "type": "graph",
       "xaxis": {
-        "buckets": null,
         "mode": "time",
-        "name": null,
         "show": true,
         "values": []
       },
@@ -320,267 +508,57 @@
           "format": "short",
           "label": "sec",
           "logBase": 1,
-          "max": null,
-          "min": null,
           "show": true
         },
         {
           "$$hashKey": "object:1284",
           "format": "short",
-          "label": null,
           "logBase": 1,
-          "max": null,
-          "min": null,
           "show": true
         }
       ],
       "yaxis": {
-        "align": false,
-        "alignLevel": null
+        "align": false
       }
     },
     {
-      "id": 25,
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 9
-      },
-      "type": "timeseries",
-      "title": "[Violations] #2A Time to Start PipelineRun",
-      "pluginVersion": "9.1.6",
       "description": "90% of requests must take less than 5sec",
       "fieldConfig": {
         "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
           "custom": {
-            "drawStyle": "bars",
-            "lineInterpolation": "linear",
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "%",
+            "axisPlacement": "auto",
             "barAlignment": 0,
-            "lineWidth": 1,
+            "drawStyle": "bars",
             "fillOpacity": 10,
             "gradientMode": "none",
-            "spanNulls": false,
-            "showPoints": "never",
-            "pointSize": 5,
-            "stacking": {
-              "mode": "none",
-              "group": "A"
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
             },
-            "axisPlacement": "auto",
-            "axisLabel": "%",
-            "axisColorMode": "text",
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
             "scaleDistribution": {
               "type": "linear"
             },
-            "axisCenteredZero": false,
-            "hideFrom": {
-              "tooltip": false,
-              "viz": false,
-              "legend": false
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
             },
             "thresholdsStyle": {
               "mode": "line+area"
             }
-          },
-          "color": {
-            "mode": "palette-classic"
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "value": null,
-                "color": "red"
-              },
-              {
-                "value": 90,
-                "color": "transparent"
-              }
-            ]
-          },
-          "unit": "short"
-        },
-        "overrides": []
-      },
-      "options": {
-        "tooltip": {
-          "mode": "multi",
-          "sort": "none"
-        },
-        "legend": {
-          "showLegend": true,
-          "displayMode": "list",
-          "placement": "bottom",
-          "calcs": []
-        }
-      },
-      "targets": [
-        {
-          "exemplar": true,
-          "expr": "sum(rate(integration_svc_snapshot_created_to_pipelinerun_with_static_env_started_seconds_bucket{le=\"5\"}[$__rate_interval])) by (job)\n/\nsum(rate(integration_svc_snapshot_created_to_pipelinerun_with_static_env_started_seconds_count[$__rate_interval]) > 0) by (job)\n*100",
-          "interval": "",
-          "legendFormat": "% of requests within required latency time",
-          "refId": "A",
-          "editorMode": "code",
-          "range": true
-        }
-      ],
-      "timeFrom": null,
-      "timeShift": null
-    },
-    {
-      "id": 23,
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 0,
-        "y": 17
-      },
-      "type": "graph",
-      "title": "#5 Latency of Release Creation",
-      "thresholds": [
-        {
-          "$$hashKey": "object:1475",
-          "colorMode": "critical",
-          "fill": true,
-          "line": true,
-          "op": "gt",
-          "value": 10,
-          "yaxis": "left"
-        }
-      ],
-      "pluginVersion": "9.1.6",
-      "description": "Measure release creation latency from end of testing to release created \n",
-      "legend": {
-        "avg": false,
-        "current": false,
-        "max": false,
-        "min": false,
-        "show": true,
-        "total": false,
-        "values": false
-      },
-      "aliasColors": {},
-      "dashLength": 10,
-      "fill": 1,
-      "lines": true,
-      "linewidth": 1,
-      "nullPointMode": "null",
-      "options": {
-        "alertThreshold": true
-      },
-      "pointradius": 2,
-      "renderer": "flot",
-      "seriesOverrides": [],
-      "spaceLength": 10,
-      "targets": [
-        {
-          "exemplar": true,
-          "expr": "histogram_quantile(0.90, sum(rate(integration_svc_release_latency_seconds_bucket[$__rate_interval])) by (le))",
-          "interval": "",
-          "legendFormat": "percentile90",
-          "refId": "A",
-          "editorMode": "code",
-          "range": true
-        }
-      ],
-      "timeRegions": [],
-      "tooltip": {
-        "shared": true,
-        "sort": 0,
-        "value_type": "individual"
-      },
-      "xaxis": {
-        "buckets": null,
-        "mode": "time",
-        "name": null,
-        "show": true,
-        "values": []
-      },
-      "yaxes": [
-        {
-          "$$hashKey": "object:1283",
-          "format": "short",
-          "label": "sec",
-          "logBase": 1,
-          "max": null,
-          "min": null,
-          "show": true
-        },
-        {
-          "$$hashKey": "object:1284",
-          "format": "short",
-          "label": null,
-          "logBase": 1,
-          "max": null,
-          "min": null,
-          "show": true
-        }
-      ],
-      "yaxis": {
-        "align": false,
-        "alignLevel": null
-      },
-
-      "bars": false,
-      "dashes": false,
-      "fillGradient": 0,
-      "hiddenSeries": false,
-      "percentage": false,
-      "points": false,
-      "stack": false,
-      "steppedLine": false,
-      "timeFrom": null,
-      "timeShift": null
-    },
-    {
-      "id": 26,
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 17
-      },
-      "type": "timeseries",
-      "title": "[Violations] #5 Latency of Release Creation",
-      "pluginVersion": "9.1.6",
-      "description": "90% of requests must take less than 10 sec. Measure release creation latency from end of testing to release created ",
-      "fieldConfig": {
-        "defaults": {
-          "custom": {
-            "drawStyle": "bars",
-            "lineInterpolation": "linear",
-            "barAlignment": 0,
-            "lineWidth": 1,
-            "fillOpacity": 10,
-            "gradientMode": "none",
-            "spanNulls": false,
-            "showPoints": "never",
-            "pointSize": 5,
-            "stacking": {
-              "mode": "none",
-              "group": "A"
-            },
-            "axisPlacement": "auto",
-            "axisLabel": "%",
-            "axisColorMode": "text",
-            "scaleDistribution": {
-              "type": "linear"
-            },
-            "axisCenteredZero": false,
-            "hideFrom": {
-              "tooltip": false,
-              "viz": false,
-              "legend": false
-            },
-            "thresholdsStyle": {
-              "mode": "line+area"
-            }
-          },
-          "color": {
-            "mode": "palette-classic"
           },
           "mappings": [],
           "thresholds": {
@@ -600,18 +578,211 @@
         },
         "overrides": []
       },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 17
+      },
+      "id": 25,
       "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
         "tooltip": {
           "mode": "multi",
           "sort": "none"
-        },
-        "legend": {
-          "showLegend": true,
-          "displayMode": "list",
-          "placement": "bottom",
-          "calcs": []
         }
       },
+      "pluginVersion": "9.1.6",
+      "targets": [
+        {
+          "editorMode": "code",
+          "exemplar": true,
+          "expr": "sum(rate(integration_svc_snapshot_created_to_pipelinerun_with_static_env_started_seconds_bucket{le=\"5\"}[$__rate_interval])) by (job)\n/\nsum(rate(integration_svc_snapshot_created_to_pipelinerun_with_static_env_started_seconds_count[$__rate_interval]) > 0) by (job)\n*100",
+          "interval": "",
+          "legendFormat": "% of requests within required latency time",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "[Violations] #2A Time to Start PipelineRun",
+      "type": "timeseries"
+    },
+    {
+      "aliasColors": {},
+      "bars": false,
+      "dashLength": 10,
+      "dashes": false,
+      "description": "Measure release creation latency from end of testing to release created \n",
+      "fill": 1,
+      "fillGradient": 0,
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 25
+      },
+      "hiddenSeries": false,
+      "id": 23,
+      "legend": {
+        "avg": false,
+        "current": false,
+        "max": false,
+        "min": false,
+        "show": true,
+        "total": false,
+        "values": false
+      },
+      "lines": true,
+      "linewidth": 1,
+      "nullPointMode": "null",
+      "options": {
+        "alertThreshold": true
+      },
+      "percentage": false,
+      "pluginVersion": "10.4.3",
+      "pointradius": 2,
+      "points": false,
+      "renderer": "flot",
+      "seriesOverrides": [],
+      "spaceLength": 10,
+      "stack": false,
+      "steppedLine": false,
+      "targets": [
+        {
+          "editorMode": "code",
+          "exemplar": true,
+          "expr": "histogram_quantile(0.90, sum(rate(integration_svc_release_latency_seconds_bucket[$__rate_interval])) by (le))",
+          "interval": "",
+          "legendFormat": "percentile90",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "thresholds": [
+        {
+          "$$hashKey": "object:1475",
+          "colorMode": "critical",
+          "fill": true,
+          "line": true,
+          "op": "gt",
+          "value": 10,
+          "yaxis": "left"
+        }
+      ],
+      "timeRegions": [],
+      "title": "#5 Latency of Release Creation",
+      "tooltip": {
+        "shared": true,
+        "sort": 0,
+        "value_type": "individual"
+      },
+      "type": "graph",
+      "xaxis": {
+        "mode": "time",
+        "show": true,
+        "values": []
+      },
+      "yaxes": [
+        {
+          "$$hashKey": "object:1283",
+          "format": "short",
+          "label": "sec",
+          "logBase": 1,
+          "show": true
+        },
+        {
+          "$$hashKey": "object:1284",
+          "format": "short",
+          "logBase": 1,
+          "show": true
+        }
+      ],
+      "yaxis": {
+        "align": false
+      }
+    },
+    {
+      "description": "90% of requests must take less than 10 sec. Measure release creation latency from end of testing to release created ",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "%",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "bars",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "line+area"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "transparent",
+                "value": 90
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 25
+      },
+      "id": 26,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "9.1.6",
       "targets": [
         {
           "editorMode": "code",
@@ -623,9 +794,8 @@
           "refId": "A"
         }
       ],
-
-      "timeFrom": null,
-      "timeShift": null
+      "title": "[Violations] #5 Latency of Release Creation",
+      "type": "timeseries"
     },
     {
       "collapsed": false,
@@ -633,10 +803,15 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 25
+        "y": 33
       },
       "id": 16,
       "panels": [],
+      "targets": [
+        {
+          "refId": "A"
+        }
+      ],
       "title": "SLIs",
       "type": "row"
     },
@@ -648,6 +823,9 @@
             "mode": "palette-classic"
           },
           "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
             "axisLabel": "",
             "axisPlacement": "auto",
             "barAlignment": 0,
@@ -660,6 +838,7 @@
               "tooltip": false,
               "viz": false
             },
+            "insertNulls": false,
             "lineInterpolation": "linear",
             "lineWidth": 1,
             "pointSize": 5,
@@ -667,7 +846,14 @@
               "type": "linear"
             },
             "showPoints": "auto",
-            "spanNulls": false
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
           },
           "mappings": [],
           "thresholds": {
@@ -690,7 +876,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 26
+        "y": 34
       },
       "id": 2,
       "options": {
@@ -703,9 +889,6 @@
         "tooltip": {
           "mode": "single",
           "sort": "none"
-        },
-        "tooltipOptions": {
-          "mode": "single"
         }
       },
       "targets": [
@@ -726,17 +909,13 @@
       "dashLength": 10,
       "dashes": false,
       "description": "Total number of snapshots processed by the operator",
-      "fieldConfig": {
-        "defaults": {},
-        "overrides": []
-      },
       "fill": 1,
       "fillGradient": 0,
       "gridPos": {
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 26
+        "y": 34
       },
       "hiddenSeries": false,
       "id": 4,
@@ -756,7 +935,7 @@
         "alertThreshold": true
       },
       "percentage": false,
-      "pluginVersion": "7.5.17",
+      "pluginVersion": "10.4.3",
       "pointradius": 2,
       "points": false,
       "renderer": "flot",
@@ -774,9 +953,7 @@
         }
       ],
       "thresholds": [],
-      "timeFrom": null,
       "timeRegions": [],
-      "timeShift": null,
       "title": "Snapshot Attempts Total",
       "tooltip": {
         "shared": true,
@@ -785,9 +962,7 @@
       },
       "type": "graph",
       "xaxis": {
-        "buckets": null,
         "mode": "time",
-        "name": null,
         "show": true,
         "values": []
       },
@@ -795,32 +970,22 @@
         {
           "$$hashKey": "object:170",
           "format": "short",
-          "label": null,
           "logBase": 1,
-          "max": null,
-          "min": null,
           "show": true
         },
         {
           "$$hashKey": "object:171",
           "format": "short",
-          "label": null,
           "logBase": 1,
-          "max": null,
-          "min": null,
           "show": true
         }
       ],
       "yaxis": {
-        "align": false,
-        "alignLevel": null
+        "align": false
       }
     },
     {
-      "cards": {
-        "cardPadding": null,
-        "cardRound": null
-      },
+      "cards": {},
       "color": {
         "cardColor": "#b4ff00",
         "colorScale": "sqrt",
@@ -831,14 +996,25 @@
       "dataFormat": "tsbuckets",
       "description": "Integration service response time from the moment the buildPipelineRun is completed till the snapshot is marked as in progress status",
       "fieldConfig": {
-        "defaults": {},
+        "defaults": {
+          "custom": {
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "scaleDistribution": {
+              "type": "linear"
+            }
+          }
+        },
         "overrides": []
       },
       "gridPos": {
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 34
+        "y": 42
       },
       "heatmap": {},
       "hideZeroBuckets": true,
@@ -848,7 +1024,45 @@
         "show": false
       },
       "maxDataPoints": 25,
-      "pluginVersion": "7.5.17",
+      "options": {
+        "calculate": false,
+        "calculation": {},
+        "cellGap": 2,
+        "cellValues": {},
+        "color": {
+          "exponent": 0.5,
+          "fill": "#b4ff00",
+          "mode": "scheme",
+          "reverse": false,
+          "scale": "exponential",
+          "scheme": "Oranges",
+          "steps": 128
+        },
+        "exemplars": {
+          "color": "rgba(255,0,255,0.7)"
+        },
+        "filterValues": {
+          "le": 1e-9
+        },
+        "legend": {
+          "show": false
+        },
+        "rowsFrame": {
+          "layout": "auto"
+        },
+        "showValue": "never",
+        "tooltip": {
+          "mode": "single",
+          "showColorScale": false,
+          "yHistogram": false
+        },
+        "yAxis": {
+          "axisPlacement": "left",
+          "reverse": false,
+          "unit": "short"
+        }
+      },
+      "pluginVersion": "10.4.3",
       "reverseYBuckets": false,
       "targets": [
         {
@@ -860,8 +1074,6 @@
           "refId": "A"
         }
       ],
-      "timeFrom": null,
-      "timeShift": null,
       "title": "Integration Service Response Seconds",
       "tooltip": {
         "show": true,
@@ -871,26 +1083,15 @@
       "xAxis": {
         "show": true
       },
-      "xBucketNumber": null,
-      "xBucketSize": null,
       "yAxis": {
-        "decimals": null,
         "format": "short",
         "logBase": 1,
-        "max": null,
-        "min": null,
-        "show": true,
-        "splitFactor": null
+        "show": true
       },
-      "yBucketBound": "auto",
-      "yBucketNumber": null,
-      "yBucketSize": null
+      "yBucketBound": "auto"
     },
     {
-      "cards": {
-        "cardPadding": null,
-        "cardRound": null
-      },
+      "cards": {},
       "color": {
         "cardColor": "#b4ff00",
         "colorScale": "sqrt",
@@ -901,14 +1102,25 @@
       "dataFormat": "tsbuckets",
       "description": "Time duration from the moment the snapshot resource was created till a integration pipelineRun is started",
       "fieldConfig": {
-        "defaults": {},
+        "defaults": {
+          "custom": {
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "scaleDistribution": {
+              "type": "linear"
+            }
+          }
+        },
         "overrides": []
       },
       "gridPos": {
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 34
+        "y": 42
       },
       "heatmap": {},
       "hideZeroBuckets": true,
@@ -918,7 +1130,45 @@
         "show": false
       },
       "maxDataPoints": 25,
-      "pluginVersion": "7.5.17",
+      "options": {
+        "calculate": false,
+        "calculation": {},
+        "cellGap": 2,
+        "cellValues": {},
+        "color": {
+          "exponent": 0.5,
+          "fill": "#b4ff00",
+          "mode": "scheme",
+          "reverse": false,
+          "scale": "exponential",
+          "scheme": "Oranges",
+          "steps": 128
+        },
+        "exemplars": {
+          "color": "rgba(255,0,255,0.7)"
+        },
+        "filterValues": {
+          "le": 1e-9
+        },
+        "legend": {
+          "show": false
+        },
+        "rowsFrame": {
+          "layout": "auto"
+        },
+        "showValue": "never",
+        "tooltip": {
+          "mode": "single",
+          "showColorScale": false,
+          "yHistogram": false
+        },
+        "yAxis": {
+          "axisPlacement": "left",
+          "reverse": false,
+          "unit": "short"
+        }
+      },
+      "pluginVersion": "10.4.3",
       "reverseYBuckets": false,
       "targets": [
         {
@@ -930,8 +1180,6 @@
           "refId": "A"
         }
       ],
-      "timeFrom": null,
-      "timeShift": null,
       "title": "Snapshot Created to PipelineRun",
       "tooltip": {
         "show": true,
@@ -941,26 +1189,15 @@
       "xAxis": {
         "show": true
       },
-      "xBucketNumber": null,
-      "xBucketSize": null,
       "yAxis": {
-        "decimals": null,
         "format": "short",
         "logBase": 1,
-        "max": null,
-        "min": null,
-        "show": true,
-        "splitFactor": null
+        "show": true
       },
-      "yBucketBound": "auto",
-      "yBucketNumber": null,
-      "yBucketSize": null
+      "yBucketBound": "auto"
     },
     {
-      "cards": {
-        "cardPadding": null,
-        "cardRound": null
-      },
+      "cards": {},
       "color": {
         "cardColor": "#b4ff00",
         "colorScale": "sqrt",
@@ -970,15 +1207,11 @@
       },
       "dataFormat": "tsbuckets",
       "description": "Snapshot durations from the moment the Snapshot was created till the Snapshot is marked as finished",
-      "fieldConfig": {
-        "defaults": {},
-        "overrides": []
-      },
       "gridPos": {
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 42
+        "y": 50
       },
       "heatmap": {},
       "hideZeroBuckets": true,
@@ -1009,34 +1242,30 @@
       "xAxis": {
         "show": true
       },
-      "xBucketNumber": null,
-      "xBucketSize": null,
       "yAxis": {
-        "decimals": null,
         "format": "short",
         "logBase": 1,
-        "max": null,
-        "min": null,
-        "show": true,
-        "splitFactor": null
+        "show": true
       },
-      "yBucketBound": "auto",
-      "yBucketNumber": null,
-      "yBucketSize": null
+      "yBucketBound": "auto"
     },
-
     {
-      "id": 26,
+      "aliasColors": {},
+      "bars": false,
+      "dashLength": 10,
+      "dashes": false,
+      "description": "",
+      "fill": 1,
+      "fillGradient": 0,
       "gridPos": {
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 42
+        "y": 50
       },
-      "type": "graph",
-      "title": "Work Queue Depth",
-      "thresholds": [],
-      "pluginVersion": "9.1.6",
+      "hiddenSeries": false,
+      "id": 30,
+      "interval": "5m",
       "legend": {
         "avg": false,
         "current": false,
@@ -1046,100 +1275,87 @@
         "total": false,
         "values": false
       },
-      "aliasColors": {},
-      "dashLength": 10,
-      "fill": 1,
       "lines": true,
       "linewidth": 1,
       "nullPointMode": "null",
       "options": {
         "alertThreshold": true
       },
+      "percentage": false,
+      "pluginVersion": "9.1.6",
       "pointradius": 2,
+      "points": false,
       "renderer": "flot",
       "seriesOverrides": [],
       "spaceLength": 10,
+      "stack": false,
+      "steppedLine": false,
       "targets": [
         {
+          "editorMode": "builder",
           "exemplar": true,
           "expr": "workqueue_depth{name=\"snapshot\", namespace=\"integration-service\"}",
           "instant": false,
           "interval": "",
           "legendFormat": "{{name}}",
-          "refId": "A",
-          "editorMode": "builder"
+          "refId": "A"
         },
         {
-          "refId": "B",
-          "hide": false,
           "editorMode": "builder",
           "expr": "workqueue_depth{name=\"integrationtestscenario\", namespace=\"integration-service\"}",
+          "hide": false,
           "legendFormat": "{{name}}",
-          "range": true
+          "range": true,
+          "refId": "B"
         }
       ],
+      "thresholds": [],
       "timeRegions": [],
+      "title": "Work Queue Depth",
       "tooltip": {
         "shared": true,
         "sort": 0,
         "value_type": "individual"
       },
+      "type": "graph",
       "xaxis": {
-        "buckets": null,
         "mode": "time",
-        "name": null,
         "show": true,
         "values": []
       },
       "yaxes": [
         {
           "format": "short",
-          "label": null,
           "logBase": 1,
-          "max": null,
-          "min": null,
           "show": true
         },
         {
           "format": "short",
-          "label": null,
           "logBase": 1,
-          "max": null,
-          "min": null,
           "show": true
         }
       ],
       "yaxis": {
-        "align": false,
-        "alignLevel": null
-      },
-      "interval": "5m",
-      "description": "",
-      "bars": false,
-      "dashes": false,
-      "fillGradient": 0,
-      "hiddenSeries": false,
-      "percentage": false,
-      "points": false,
-      "stack": false,
-      "steppedLine": false,
-      "timeFrom": null,
-      "timeShift": null
+        "align": false
+      }
     },
-
     {
-      "id": 27,
+      "aliasColors": {},
+      "bars": false,
+      "dashLength": 10,
+      "dashes": false,
+      "description": "",
+      "fill": 1,
+      "fillGradient": 0,
       "gridPos": {
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 50
+        "y": 58
       },
-      "type": "graph",
-      "title": "Work Queue Duration Seconds",
-      "thresholds": [],
-      "pluginVersion": "9.1.6",
-      "description": "",
+      "hiddenSeries": false,
+      "id": 27,
+      "interval": "5m",
       "legend": {
         "avg": false,
         "current": false,
@@ -1149,108 +1365,74 @@
         "total": false,
         "values": false
       },
-      "aliasColors": {},
-      "dashLength": 10,
-      "fill": 1,
       "lines": true,
       "linewidth": 1,
       "nullPointMode": "null",
       "options": {
         "alertThreshold": true
       },
+      "percentage": false,
+      "pluginVersion": "9.1.6",
       "pointradius": 2,
+      "points": false,
       "renderer": "flot",
       "seriesOverrides": [],
       "spaceLength": 10,
+      "stack": false,
+      "steppedLine": false,
       "targets": [
         {
+          "editorMode": "code",
           "exemplar": true,
           "expr": "histogram_quantile(0.95, sum by(le) (rate(workqueue_queue_duration_seconds_bucket{name=\"snapshot\", namespace=\"integration-service\"}[$__rate_interval])))",
           "instant": false,
           "interval": "",
           "legendFormat": "",
-          "refId": "A",
-          "editorMode": "code"
+          "refId": "A"
         },
         {
+          "editorMode": "code",
           "exemplar": true,
           "expr": "histogram_quantile(0.95, sum by(le) (rate(workqueue_queue_duration_seconds_bucket{name=\"integrationtestscenario\", namespace=\"integration-service\"}[$__rate_interval])))",
+          "hide": false,
           "instant": false,
           "interval": "",
           "legendFormat": "",
-          "refId": "B",
-          "editorMode": "code",
-          "hide": false
+          "refId": "B"
         }
       ],
+      "thresholds": [],
       "timeRegions": [],
+      "title": "Work Queue Duration Seconds",
       "tooltip": {
         "shared": true,
         "sort": 0,
         "value_type": "individual"
       },
+      "type": "graph",
       "xaxis": {
-        "buckets": null,
         "mode": "time",
-        "name": null,
         "show": true,
         "values": []
       },
       "yaxes": [
         {
           "format": "short",
-          "label": null,
           "logBase": 1,
-          "max": null,
-          "min": null,
           "show": true
         },
         {
           "format": "short",
-          "label": null,
           "logBase": 1,
-          "max": null,
-          "min": null,
           "show": true
         }
       ],
       "yaxis": {
-        "align": false,
-        "alignLevel": null
-      },
-      "interval": "5m",
-      "bars": false,
-      "dashes": false,
-      "fillGradient": 0,
-      "hiddenSeries": false,
-      "percentage": false,
-      "points": false,
-      "stack": false,
-      "steppedLine": false,
-      "timeFrom": null,
-      "timeShift": null
+        "align": false
+      }
     },
-
     {
-      "id": 29,
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 50
-      },
-      "type": "heatmap",
-      "title": "Latency of Release Creation in Seconds",
-      "pluginVersion": "9.1.6",
-      "maxDataPoints": 25,
-      "description": "Measure release creation latency from end of testing to release created ",
-      "legend": {
-        "show": false
-      },
-      "cards": {
-        "cardPadding": null,
-        "cardRound": null
-      },
+      "cards": {},
       "color": {
         "cardColor": "#b4ff00",
         "colorScale": "sqrt",
@@ -1259,24 +1441,75 @@
         "mode": "spectrum"
       },
       "dataFormat": "tsbuckets",
+      "description": "Measure release creation latency from end of testing to release created ",
       "fieldConfig": {
         "defaults": {
           "custom": {
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
             "scaleDistribution": {
               "type": "linear"
-            },
-            "hideFrom": {
-              "tooltip": false,
-              "viz": false,
-              "legend": false
             }
           }
         },
         "overrides": []
       },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 58
+      },
       "heatmap": {},
       "hideZeroBuckets": true,
       "highlightCards": true,
+      "id": 29,
+      "legend": {
+        "show": false
+      },
+      "maxDataPoints": 25,
+      "options": {
+        "calculate": false,
+        "calculation": {},
+        "cellGap": 2,
+        "cellValues": {},
+        "color": {
+          "exponent": 0.5,
+          "fill": "#b4ff00",
+          "mode": "scheme",
+          "reverse": false,
+          "scale": "exponential",
+          "scheme": "Oranges",
+          "steps": 128
+        },
+        "exemplars": {
+          "color": "rgba(255,0,255,0.7)"
+        },
+        "filterValues": {
+          "le": 1e-9
+        },
+        "legend": {
+          "show": false,
+          "showLegend": true
+        },
+        "rowsFrame": {
+          "layout": "auto"
+        },
+        "showValue": "never",
+        "tooltip": {
+          "show": true,
+          "yHistogram": false
+        },
+        "yAxis": {
+          "axisPlacement": "left",
+          "reverse": false,
+          "unit": "short"
+        }
+      },
+      "pluginVersion": "9.1.6",
       "reverseYBuckets": false,
       "targets": [
         {
@@ -1288,71 +1521,24 @@
           "refId": "A"
         }
       ],
+      "title": "Latency of Release Creation in Seconds",
       "tooltip": {
         "show": true,
         "showHistogram": false
       },
+      "type": "heatmap",
       "xAxis": {
         "show": true
       },
-      "xBucketNumber": null,
-      "xBucketSize": null,
       "yAxis": {
-        "decimals": null,
         "format": "short",
         "logBase": 1,
-        "max": null,
-        "min": null,
-        "show": true,
-        "splitFactor": null
+        "show": true
       },
-      "yBucketBound": "auto",
-      "yBucketNumber": null,
-      "yBucketSize": null,
-      "options": {
-        "calculate": false,
-        "yAxis": {
-          "axisPlacement": "left",
-          "reverse": false,
-          "min": null,
-          "max": null,
-          "unit": "short",
-          "decimals": null
-        },
-        "rowsFrame": {
-          "layout": "auto"
-        },
-        "color": {
-          "mode": "scheme",
-          "fill": "#b4ff00",
-          "scale": "exponential",
-          "exponent": 0.5,
-          "scheme": "Oranges",
-          "steps": 128,
-          "reverse": false
-        },
-        "cellGap": 2,
-        "filterValues": {
-          "le": 1e-9
-        },
-        "tooltip": {
-          "show": true,
-          "yHistogram": false
-        },
-        "legend": {
-          "show": false
-        },
-        "exemplars": {
-          "color": "rgba(255,0,255,0.7)"
-        },
-        "calculation": {},
-        "cellValues": {},
-        "showValue": "never"
-      }
+      "yBucketBound": "auto"
     }
   ],
-  "schemaVersion": 27,
-  "style": "dark",
+  "schemaVersion": 39,
   "tags": [],
   "templating": {
     "list": []
@@ -1365,5 +1551,6 @@
   "timezone": "",
   "title": "Integration Service",
   "uid": "b1fac0453848b1e7ce9377a6eb38d7ec3b8a23d9",
-  "version": 5
+  "version": 1,
+  "weekStart": ""
 }
