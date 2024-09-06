@@ -47,6 +47,7 @@ var _ = Describe("build pipeline", func() {
 					"pipelines.openshift.io/strategy":          "s2i",
 					"appstudio.openshift.io/component":         "component-sample",
 					"build.appstudio.redhat.com/target_branch": "main",
+					"pipelinesascode.tekton.dev/pull-request":  "1",
 					"pipelinesascode.tekton.dev/event-type":    "pull_request",
 				},
 				Annotations: map[string]string{
@@ -111,21 +112,22 @@ var _ = Describe("build pipeline", func() {
 
 	Context("When a build pipelineRun exists", func() {
 		It("can get PR group from build pipelineRun", func() {
-			prGroup := tekton.GetPRGroupNameFromBuildPLR(buildPipelineRun)
+			Expect(tekton.IsPLRCreatedByPACPushEvent(buildPipelineRun)).To(BeFalse())
+			prGroup := tekton.GetPRGroupFromBuildPLR(buildPipelineRun)
 			Expect(prGroup).To(Equal("sourceBranch"))
 			Expect(tekton.GenerateSHA(prGroup)).NotTo(BeNil())
 		})
 
 		It("can get PR group from build pipelineRun is source branch is main", func() {
 			buildPipelineRun.Annotations[tekton.PipelineAsCodeSourceBranchAnnotation] = "main"
-			prGroup := tekton.GetPRGroupNameFromBuildPLR(buildPipelineRun)
+			prGroup := tekton.GetPRGroupFromBuildPLR(buildPipelineRun)
 			Expect(prGroup).To(Equal("main-redhat"))
 			Expect(tekton.GenerateSHA(prGroup)).NotTo(BeNil())
 		})
 
 		It("can get PR group from build pipelineRun is source branch has @ charactor", func() {
 			buildPipelineRun.Annotations[tekton.PipelineAsCodeSourceBranchAnnotation] = "myfeature@change1"
-			prGroup := tekton.GetPRGroupNameFromBuildPLR(buildPipelineRun)
+			prGroup := tekton.GetPRGroupFromBuildPLR(buildPipelineRun)
 			Expect(prGroup).To(Equal("myfeature"))
 			Expect(tekton.GenerateSHA(prGroup)).NotTo(BeNil())
 		})

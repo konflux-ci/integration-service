@@ -114,6 +114,34 @@ flowchart TD
   mark_snapshot_invalid           -->      continue_processing4
 
 
+  %%%%%%%%%%%%%%%%%%%%%%% Drawing EnsureGroupSnapshotExist() function
+
+  %% Node definitions
+  ensure5(Process further if: Snapshot has <b>neither</b> push event type label <br><b>nor</b> PRGroupCreation annotation)
+  validate_build_pipelinerun{Did all gotten build pipelineRun <br>under the same group <br>succeed <b>and</b> <br>component snapshot are already created?}
+  annotate_component_snapshot(<b>Annotate</b> component snapshot)
+  get_component_snapshots_and_sort(<b>Iterate</b> all application components and <br><b>get<b/> all component snapshots <br>for each component under the same pr group sha <br>then <b>sort</b> snapshots)
+  can_find_snapshotComponent_from_latest_snapshot(<b>Can</b> find the latest snapshot with open pull/merge request?)
+  add_snapshot_to_group_snapshot_candidate(<b>Add</b> snapshotComponent of component <br>to group snapshot components candidate)
+  get_snapshotComponent_from_gcl(<b>Get</b> snapshotComponent from <br>Global Candidate List)
+  create_group_snapshot(<b>Create</b> group snapshot for snasphotComponents)
+  annotate_component_snapshots_under_prgroupsha(<b>Annotate<b> component snapshots which <b>have</b> <br>snapshotComponent added to group snapshot)
+  continue_processing5(Controller continues processing...)
+
+  %% Node connections
+  predicate                              ---->    |"EnsureGroupSnapshotExist()"|ensure5
+  ensure5                                -->      validate_build_pipelinerun
+  validate_build_pipelinerun             --Yes--> get_component_snapshots_and_sort
+  validate_build_pipelinerun             --No-->  annotate_component_snapshot
+  get_component_snapshots_and_sort       -->      can_find_snapshotComponent_from_latest_snapshot
+  can_find_snapshotComponent_from_latest_snapshot  --Yes--> add_snapshot_group_snapshot_candidate
+  can_find_snapshotComponent_from_latest_snapshot  --No-->  get_snapshotComponent_from_gcl
+  add_snapshot_to_group_snapshot_candidate   -->        create_group_snapshot
+  get_snapshotComponent_from_gcl             -->        create_group_snapshot
+  create_group_snapshot                   -->        annotate_component_snapshots_under_prgroupsha
+  annotate_component_snapshots_under_prgroupsha -->  continue_processing5
+  annotate_component_snapshot                   -->  continue_processing5
+
   %% Assigning styles to nodes
   class predicate Amber;
   class encountered_error1,encountered_error31,encountered_error32,encountered_error5 Red;

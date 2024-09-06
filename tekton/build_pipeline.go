@@ -41,6 +41,9 @@ const (
 
 	// PipelineAsCodeSourceRepoOrg is the repo org build PLR is triggered by
 	PipelineAsCodeSourceRepoOrg = "pipelinesascode.tekton.dev/url-org"
+
+	// PipelineAsCodePullRequestLabel is the type of event which triggered the pipelinerun in build service
+	PipelineAsCodePullRequestLabel = "pipelinesascode.tekton.dev/pull-request"
 )
 
 // AnnotateBuildPipelineRun sets annotation for a build pipelineRun in defined context and returns that pipeline
@@ -97,9 +100,9 @@ func AnnotateBuildPipelineRunWithCreateSnapshotAnnotation(ctx context.Context, p
 	return AnnotateBuildPipelineRun(ctx, pipelineRun, h.CreateSnapshotAnnotationName, string(jsonResult), cl)
 }
 
-// GetPRGroupNameFromBuildPLR gets the PR group from the substring before @ from
+// GetPRGroupFromBuildPLR gets the PR group from the substring before @ from
 // the source-branch pac annotation, for main, it generate PR group with {source-branch}-{url-org}
-func GetPRGroupNameFromBuildPLR(pipelineRun *tektonv1.PipelineRun) string {
+func GetPRGroupFromBuildPLR(pipelineRun *tektonv1.PipelineRun) string {
 	if prGroup, found := pipelineRun.ObjectMeta.Annotations[PipelineAsCodeSourceBranchAnnotation]; found {
 		if prGroup == MainBranch || prGroup == MasterBranch && metadata.HasAnnotation(pipelineRun, PipelineAsCodeSourceRepoOrg) {
 			prGroup = prGroup + "-" + pipelineRun.ObjectMeta.Annotations[PipelineAsCodeSourceRepoOrg]
@@ -113,4 +116,9 @@ func GetPRGroupNameFromBuildPLR(pipelineRun *tektonv1.PipelineRun) string {
 func GenerateSHA(str string) string {
 	hash := sha256.Sum256([]byte(str))
 	return fmt.Sprintf("%x", hash)[0:62]
+}
+
+// IsPLRCreatedByPACPushEvent checks if a PLR has label PipelineAsCodeEventTypeLabel and with push or Push value
+func IsPLRCreatedByPACPushEvent(plr *tektonv1.PipelineRun) bool {
+	return !metadata.HasLabel(plr, PipelineAsCodePullRequestLabel)
 }

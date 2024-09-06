@@ -583,6 +583,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 						gitops.SnapshotTypeLabel:                     "component",
 						gitops.SnapshotComponentLabel:                hasComp.Name,
 						"pac.test.appstudio.openshift.io/event-type": "pull_request",
+						gitops.PipelineAsCodePullRequestAnnotation:   "1",
 					},
 					Annotations: map[string]string{
 						gitops.PipelineAsCodeInstallationIDAnnotation: "123",

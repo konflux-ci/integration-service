@@ -111,8 +111,7 @@ func (a *Adapter) EnsureSnapshotExists() (result controller.OperationResult, err
 
 	expectedSnapshot, err := a.prepareSnapshotForPipelineRun(a.pipelineRun, a.component, a.application)
 	if err != nil {
-		result, err = a.updatePipelineRunWithCustomizedError(&canRemoveFinalizer, err, a.context, a.pipelineRun, a.client, a.logger)
-		return controller.RequeueWithError(err)
+		return a.updatePipelineRunWithCustomizedError(&canRemoveFinalizer, err, a.context, a.pipelineRun, a.client, a.logger)
 	}
 
 	err = a.client.Create(a.context, expectedSnapshot)
@@ -154,6 +153,11 @@ func (a *Adapter) EnsurePipelineIsFinalized() (controller.OperationResult, error
 // is added to build pipelineRun metadata label and annotation once it is created,
 // then these label and annotation will be copied to component snapshot when it is created
 func (a *Adapter) EnsurePRGroupAnnotated() (controller.OperationResult, error) {
+	if tekton.IsPLRCreatedByPACPushEvent(a.pipelineRun) {
+		a.logger.Info("build pipelineRun is not created by pull/merge request, no need to annotate")
+		return controller.ContinueProcessing()
+	}
+
 	if metadata.HasLabel(a.pipelineRun, gitops.PRGroupHashLabel) && metadata.HasAnnotation(a.pipelineRun, gitops.PRGroupAnnotation) {
 		a.logger.Info("build pipelineRun has had pr group info in metadata, no need to update")
 		return controller.ContinueProcessing()
@@ -356,7 +360,7 @@ func (a *Adapter) updatePipelineRunWithCustomizedError(canRemoveFinalizer *bool,
 		}
 		logger.Error(cerr, "Build PipelineRun failed with error, should be fixed and re-run manually", "pipelineRun.Name", pipelineRun.Name)
 		*canRemoveFinalizer = true
-		return controller.ContinueProcessing()
+		return controller.StopProcessing()
 	}
 	return controller.RequeueOnErrorOrContinue(cerr)
 
@@ -365,9 +369,9 @@ func (a *Adapter) updatePipelineRunWithCustomizedError(canRemoveFinalizer *bool,
 // addPRGroupToBuildPLRMetadata will add pr-group info gotten from souce-branch to annotation
 // and also the string in sha format to metadata label
 func (a *Adapter) addPRGroupToBuildPLRMetadata(pipelineRun *tektonv1.PipelineRun) error {
-	prGroupName := tekton.GetPRGroupNameFromBuildPLR(pipelineRun)
-	if prGroupName != "" {
-		prGroupHashName := tekton.GenerateSHA(prGroupName)
+	prGroup := tekton.GetPRGroupFromBuildPLR(pipelineRun)
+	if prGroup != "" {
+		prGroupHash := tekton.GenerateSHA(prGroup)
 
 		return retry.RetryOnConflict(retry.DefaultRetry, func() error {
 			var err error
@@ -378,8 +382,8 @@ func (a *Adapter) addPRGroupToBuildPLRMetadata(pipelineRun *tektonv1.PipelineRun
 
 			patch := client.MergeFrom(pipelineRun.DeepCopy())
 
-			_ = metadata.SetAnnotation(&pipelineRun.ObjectMeta, gitops.PRGroupAnnotation, prGroupName)
-			_ = metadata.SetLabel(&pipelineRun.ObjectMeta, gitops.PRGroupHashLabel, prGroupHashName)
+			_ = metadata.SetAnnotation(&pipelineRun.ObjectMeta, gitops.PRGroupAnnotation, prGroup)
+			_ = metadata.SetLabel(&pipelineRun.ObjectMeta, gitops.PRGroupHashLabel, prGroupHash)
 
 			return a.client.Patch(a.context, pipelineRun, patch)
 		})

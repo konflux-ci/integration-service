@@ -136,9 +136,10 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				Name:      "snapshot-sample",
 				Namespace: "default",
 				Labels: map[string]string{
-					gitops.SnapshotTypeLabel:            "component",
-					gitops.SnapshotComponentLabel:       hasComp.Name,
-					gitops.PipelineAsCodeEventTypeLabel: gitops.PipelineAsCodePullRequestType,
+					gitops.SnapshotTypeLabel:                   "component",
+					gitops.SnapshotComponentLabel:              hasComp.Name,
+					gitops.PipelineAsCodeEventTypeLabel:        gitops.PipelineAsCodePullRequestType,
+					gitops.PipelineAsCodePullRequestAnnotation: "1",
 				},
 				Annotations: map[string]string{
 					gitops.PipelineAsCodeInstallationIDAnnotation: "123",
@@ -260,7 +261,8 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 					"appstudio.openshift.io/component":         "component-sample",
 					"build.appstudio.redhat.com/target_branch": "main",
 					"pipelinesascode.tekton.dev/event-type":    "pull_request",
-					customLabel:                                "custom-label",
+					"pipelinesascode.tekton.dev/pull-request":  "1",
+					customLabel: "custom-label",
 				},
 				Annotations: map[string]string{
 					"appstudio.redhat.com/updateComponentOnSuccess": "false",
@@ -662,7 +664,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			Expect(helpers.IsInvalidImageDigestError(err)).To(BeTrue())
 			Eventually(func() bool {
 				result, err := adapter.EnsureSnapshotExists()
-				return !result.CancelRequest && err == nil
+				return result.CancelRequest && err == nil
 			}, time.Second*10).Should(BeTrue())
 			Expect(adapter.pipelineRun.GetAnnotations()[helpers.CreateSnapshotAnnotationName]).ToNot(BeNil())
 			var info map[string]string
@@ -1005,7 +1007,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 
 				Eventually(func() bool {
 					result, err := adapter.EnsureSnapshotExists()
-					return !result.CancelRequest && err == nil
+					return result.CancelRequest && err == nil
 				}, time.Second*10).Should(BeTrue())
 				// Ensure the PLR on the control plane does not have finalizer
 				Eventually(func() bool {
@@ -1040,14 +1042,15 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				Expect(result.CancelRequest).To(BeFalse())
 				Expect(result.RequeueRequest).To(BeFalse())
 
-				err = adapter.client.Get(adapter.context, types.NamespacedName{
-					Namespace: buildPipelineRun.Namespace,
-					Name:      buildPipelineRun.Name,
-				}, existingBuildPLR)
-				Expect(err).NotTo(HaveOccurred())
-				Expect(metadata.HasAnnotation(existingBuildPLR, gitops.PRGroupAnnotation)).To(BeTrue())
+				Eventually(func() bool {
+					_ = adapter.client.Get(adapter.context, types.NamespacedName{
+						Namespace: buildPipelineRun.Namespace,
+						Name:      buildPipelineRun.Name,
+					}, existingBuildPLR)
+					return metadata.HasAnnotation(existingBuildPLR, gitops.PRGroupAnnotation) && metadata.HasLabel(existingBuildPLR, gitops.PRGroupHashLabel)
+				}, time.Second*10).Should(BeTrue())
+
 				Expect(existingBuildPLR.Annotations).Should(HaveKeyWithValue(Equal(gitops.PRGroupAnnotation), Equal("sourceBranch")))
-				Expect(metadata.HasLabel(existingBuildPLR, gitops.PRGroupHashLabel)).To(BeTrue())
 				Expect(existingBuildPLR.Labels[gitops.PRGroupHashLabel]).NotTo(BeNil())
 			})
 		})
