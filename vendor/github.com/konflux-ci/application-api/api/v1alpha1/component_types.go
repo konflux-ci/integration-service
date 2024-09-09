@@ -165,6 +165,10 @@ type ComponentStatus struct {
 	// Example: 41fbdb124775323f58fd5ce93c70bb7d79c20650.
 	LastBuiltCommit string `json:"lastBuiltCommit,omitempty"`
 
+	// The last digest image component promoted with.
+	// Example: quay.io/someorg/somerepository@sha256:5ca85b7f7b9da18a9c4101e81ee1d9bac35ac2b0b0221908ff7389204660a262.
+	LastPromotedImage string `json:"lastPromotedImage,omitempty"`
+
 	// The list of names of Components whose builds nudge this resource (their spec.build-nudges-ref[] references this component)
 	BuildNudgedBy []string `json:"build-nudged-by,omitempty"`
 }
