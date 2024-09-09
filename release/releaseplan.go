@@ -17,9 +17,9 @@ limitations under the License.
 package release
 
 import (
+	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
 	releasev1alpha1 "github.com/konflux-ci/release-service/api/v1alpha1"
 	releasemetadata "github.com/konflux-ci/release-service/metadata"
-	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 

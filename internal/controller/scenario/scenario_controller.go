@@ -22,10 +22,10 @@ import (
 	"github.com/konflux-ci/integration-service/loader"
 
 	"github.com/go-logr/logr"
+	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
 	"github.com/konflux-ci/integration-service/api/v1beta2"
 	"github.com/konflux-ci/integration-service/helpers"
 	"github.com/konflux-ci/operator-toolkit/controller"
-	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"

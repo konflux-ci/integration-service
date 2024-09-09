@@ -19,8 +19,8 @@ package cache
 import (
 	"context"
 
+	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
 	"github.com/konflux-ci/integration-service/api/v1beta2"
-	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 
 	releasev1alpha1 "github.com/konflux-ci/release-service/api/v1alpha1"
 	ctrl "sigs.k8s.io/controller-runtime"

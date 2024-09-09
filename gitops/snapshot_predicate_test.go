@@ -22,7 +22,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
+	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
 
 	"sigs.k8s.io/controller-runtime/pkg/event"
 

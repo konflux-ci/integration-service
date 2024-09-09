@@ -21,12 +21,12 @@ import (
 	"context"
 	"fmt"
 
+	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
 	"github.com/konflux-ci/integration-service/api/v1beta2"
 	"github.com/konflux-ci/integration-service/gitops"
 	"github.com/konflux-ci/integration-service/tekton"
 	toolkit "github.com/konflux-ci/operator-toolkit/loader"
 	releasev1alpha1 "github.com/konflux-ci/release-service/api/v1alpha1"
-	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/fields"
@@ -182,26 +182,6 @@ func (l *loader) GetApplicationFromComponent(ctx context.Context, c client.Clien
 	}
 
 	return application, nil
-}
-
-// GetEnvironmentFromIntegrationPipelineRun loads from the cluster the Environment referenced in the given PipelineRun.
-// If the PipelineRun doesn't specify an Environment or this is not found in the cluster, an error will be returned.
-func (l *loader) GetEnvironmentFromIntegrationPipelineRun(ctx context.Context, c client.Client, pipelineRun *tektonv1.PipelineRun) (*applicationapiv1alpha1.Environment, error) {
-	if environmentLabel, ok := pipelineRun.Labels[tekton.EnvironmentNameLabel]; ok {
-		environment := &applicationapiv1alpha1.Environment{}
-		err := c.Get(ctx, types.NamespacedName{
-			Namespace: pipelineRun.Namespace,
-			Name:      environmentLabel,
-		}, environment)
-
-		if err != nil {
-			return nil, err
-		}
-
-		return environment, nil
-	} else {
-		return nil, nil
-	}
 }
 
 // GetSnapshotFromPipelineRun loads from the cluster the Snapshot referenced in the given PipelineRun.

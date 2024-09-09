@@ -32,8 +32,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
+	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
 	"github.com/konflux-ci/integration-service/api/v1beta2"
-	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	crwebhook "sigs.k8s.io/controller-runtime/pkg/webhook"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
