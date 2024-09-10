@@ -936,6 +936,7 @@ func IsComponentSnapshot(snapshot *applicationapiv1alpha1.Snapshot) bool {
 	return metadata.HasLabelWithValue(snapshot, SnapshotTypeLabel, SnapshotComponentType)
 }
 
+// IsGroupSnapshot returns true if snapshot label 'test.appstudio.openshift.io/type' is 'group'
 func IsGroupSnapshot(snapshot *applicationapiv1alpha1.Snapshot) bool {
 	return metadata.HasLabelWithValue(snapshot, SnapshotTypeLabel, SnapshotGroupType)
 }
