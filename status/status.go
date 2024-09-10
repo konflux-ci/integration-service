@@ -21,7 +21,6 @@ package status
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/url"
 	"os"
@@ -39,7 +38,6 @@ import (
 	gitlab "github.com/xanzy/go-gitlab"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
@@ -187,7 +185,6 @@ func MigrateSnapshotToReportStatus(s *applicationapiv1alpha1.Snapshot, testStatu
 
 type StatusInterface interface {
 	GetReporter(*applicationapiv1alpha1.Snapshot) ReporterInterface
-	ReportSnapshotStatus(context.Context, ReporterInterface, *applicationapiv1alpha1.Snapshot) error
 	// Check if PR/MR is opened
 	IsPRMRInSnapshotOpened(context.Context, *applicationapiv1alpha1.Snapshot) (bool, error)
 	// Check if github PR is open
@@ -226,93 +223,23 @@ func (s *Status) GetReporter(snapshot *applicationapiv1alpha1.Snapshot) Reporter
 	return nil
 }
 
-// ReportSnapshotStatus reports status of all integration tests into Pull Request
-func (s *Status) ReportSnapshotStatus(ctx context.Context, reporter ReporterInterface, snapshot *applicationapiv1alpha1.Snapshot) error {
-
-	statuses, err := gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(snapshot)
-	if err != nil {
-		s.logger.Error(err, "failed to get test status annotations from snapshot",
-			"snapshot.Namespace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
-		return err
-	}
-
-	integrationTestStatusDetails := statuses.GetStatuses()
-	if len(integrationTestStatusDetails) == 0 {
-		// no tests to report, skip
-		s.logger.Info("No test result to report to GitHub, skipping",
-			"snapshot.Namespace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
-		return nil
-	}
-
-	if err := reporter.Initialize(ctx, snapshot); err != nil {
-		s.logger.Error(err, "Failed to initialize reporter", "reporter", reporter.GetReporterName())
-		return fmt.Errorf("failed to initialize reporter: %w", err)
-	}
-	s.logger.Info("Reporter initialized", "reporter", reporter.GetReporterName())
-
-	MigrateSnapshotToReportStatus(snapshot, integrationTestStatusDetails)
-
-	srs, err := NewSnapshotReportStatusFromSnapshot(snapshot)
-	if err != nil {
-		s.logger.Error(err, "failed to get latest snapshot write metadata annotation for snapshot",
-			"snapshot.NameSpace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
-		srs, _ = NewSnapshotReportStatus("")
-	}
-
-	err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		for _, integrationTestStatusDetail := range integrationTestStatusDetails {
-			if srs.IsNewer(integrationTestStatusDetail.ScenarioName, integrationTestStatusDetail.LastUpdateTime) {
-				s.logger.Info("Integration Test contains new status updates", "scenario.Name", integrationTestStatusDetail.ScenarioName)
-			} else {
-				//integration test contains no changes
-				continue
-			}
-			testReport, reportErr := s.generateTestReport(ctx, *integrationTestStatusDetail, snapshot)
-			if reportErr != nil {
-				if writeErr := WriteSnapshotReportStatus(ctx, s.client, snapshot, srs); writeErr != nil { // try to write what was already written
-					return fmt.Errorf("failed to generate test report AND write snapshot report status metadata: %w", errors.Join(reportErr, writeErr))
-				}
-				return fmt.Errorf("failed to generate test report: %w", reportErr)
-			}
-			if reportStatusErr := reporter.ReportStatus(ctx, *testReport); reportStatusErr != nil {
-				if writeErr := WriteSnapshotReportStatus(ctx, s.client, snapshot, srs); writeErr != nil { // try to write what was already written
-					return fmt.Errorf("failed to report status AND write snapshot report status metadata: %w", errors.Join(reportStatusErr, writeErr))
-				}
-				return fmt.Errorf("failed to update status: %w", reportStatusErr)
-			}
-			srs.SetLastUpdateTime(integrationTestStatusDetail.ScenarioName, integrationTestStatusDetail.LastUpdateTime)
-		}
-		if err := WriteSnapshotReportStatus(ctx, s.client, snapshot, srs); err != nil {
-			return fmt.Errorf("failed to write snapshot report status metadata: %w", err)
-		}
-		return err
-	})
-	if err != nil {
-		return fmt.Errorf("issue occured during generating or updating report status: %w", err)
-	}
-
-	s.logger.Info(fmt.Sprintf("Successfully updated the %s annotation", gitops.SnapshotStatusReportAnnotation), "snapshotReporterStatus.value", srs)
-
-	return nil
-}
-
-// generateTestReport generates TestReport to be used by all reporters
-func (s *Status) generateTestReport(ctx context.Context, detail intgteststat.IntegrationTestStatusDetail, snapshot *applicationapiv1alpha1.Snapshot) (*TestReport, error) {
+// GenerateTestReport generates TestReport to be used by all reporters
+func GenerateTestReport(ctx context.Context, client client.Client, detail intgteststat.IntegrationTestStatusDetail, testedSnapshot *applicationapiv1alpha1.Snapshot, componentName string) (*TestReport, error) {
 	var componentSnapshotInfos []*gitops.ComponentSnapshotInfo
 	var err error
-	if componentSnapshotInfoString, ok := snapshot.Annotations[gitops.GroupSnapshotInfoAnnotation]; ok {
+	if componentSnapshotInfoString, ok := testedSnapshot.Annotations[gitops.GroupSnapshotInfoAnnotation]; ok {
 		componentSnapshotInfos, err = gitops.UnmarshalJSON([]byte(componentSnapshotInfoString))
 		if err != nil {
 			return nil, fmt.Errorf("failed to unmarshal JSON string: %w", err)
 		}
 	}
 
-	text, err := s.generateText(ctx, detail, snapshot.Namespace, componentSnapshotInfos)
+	text, err := generateText(ctx, client, detail, testedSnapshot.Namespace, componentSnapshotInfos)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate text message: %w", err)
 	}
 
-	summary, err := GenerateSummary(detail.Status, snapshot.Name, detail.ScenarioName)
+	summary, err := GenerateSummary(detail.Status, testedSnapshot.Name, detail.ScenarioName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate summary message: %w", err)
 	}
@@ -320,16 +247,16 @@ func (s *Status) generateTestReport(ctx context.Context, detail intgteststat.Int
 	consoleName := getConsoleName()
 
 	fullName := fmt.Sprintf("%s / %s", consoleName, detail.ScenarioName)
-	if snapshot.Labels[gitops.SnapshotComponentLabel] != "" {
-		fullName = fmt.Sprintf("%s / %s", fullName, snapshot.Labels[gitops.SnapshotComponentLabel])
+	if componentName != "" {
+		fullName = fmt.Sprintf("%s / %s", fullName, componentName)
 	}
 
 	report := TestReport{
 		Text:                text,
 		FullName:            fullName,
 		ScenarioName:        detail.ScenarioName,
-		SnapshotName:        snapshot.Name,
-		ComponentName:       snapshot.Labels[gitops.SnapshotComponentLabel],
+		SnapshotName:        testedSnapshot.Name,
+		ComponentName:       componentName,
 		Status:              detail.Status,
 		Summary:             summary,
 		StartTime:           detail.StartTime,
@@ -340,18 +267,19 @@ func (s *Status) generateTestReport(ctx context.Context, detail intgteststat.Int
 }
 
 // generateText generates a text with details for the given state
-func (s *Status) generateText(ctx context.Context, integrationTestStatusDetail intgteststat.IntegrationTestStatusDetail, namespace string, componentSnapshotInfos []*gitops.ComponentSnapshotInfo) (string, error) {
+func generateText(ctx context.Context, client client.Client, integrationTestStatusDetail intgteststat.IntegrationTestStatusDetail, namespace string, componentSnapshotInfos []*gitops.ComponentSnapshotInfo) (string, error) {
+	log := log.FromContext(ctx)
 	if integrationTestStatusDetail.Status == intgteststat.IntegrationTestStatusTestPassed || integrationTestStatusDetail.Status == intgteststat.IntegrationTestStatusTestFail {
 		pipelineRunName := integrationTestStatusDetail.TestPipelineRunName
 		pipelineRun := &tektonv1.PipelineRun{}
-		err := s.client.Get(ctx, types.NamespacedName{
+		err := client.Get(ctx, types.NamespacedName{
 			Namespace: namespace,
 			Name:      pipelineRunName,
 		}, pipelineRun)
 
 		if err != nil {
 			if apierrors.IsNotFound(err) {
-				s.logger.Error(err, "Failed to fetch pipelineRun", "pipelineRun.Name", pipelineRunName)
+				log.Error(err, "Failed to fetch pipelineRun", "pipelineRun.Name", pipelineRunName)
 				text := fmt.Sprintf("%s\n\n\n(Failed to fetch test result details because pipelineRun %s/%s can not be found.)", integrationTestStatusDetail.Details, namespace, pipelineRunName)
 				return text, nil
 			}
@@ -359,11 +287,11 @@ func (s *Status) generateText(ctx context.Context, integrationTestStatusDetail i
 			return "", fmt.Errorf("error while getting the pipelineRun %s: %w", pipelineRunName, err)
 		}
 
-		taskRuns, err := helpers.GetAllChildTaskRunsForPipelineRun(ctx, s.client, pipelineRun)
+		taskRuns, err := helpers.GetAllChildTaskRunsForPipelineRun(ctx, client, pipelineRun)
 		if err != nil {
 			return "", fmt.Errorf("error while getting all child taskRuns from pipelineRun %s: %w", pipelineRunName, err)
 		}
-		text, err := FormatTestsSummary(taskRuns, pipelineRunName, namespace, componentSnapshotInfos, s.logger)
+		text, err := FormatTestsSummary(taskRuns, pipelineRunName, namespace, componentSnapshotInfos, log)
 		if err != nil {
 			return "", err
 		}
@@ -541,4 +469,33 @@ func (s Status) IsPRInSnapshotOpened(ctx context.Context, reporter ReporterInter
 		return *pr.State == "open", nil
 	}
 	return false, err
+}
+
+// GetComponentSnapshotsFromGroupSnapshot return the component snapshot list which component snapshot is created from
+func GetComponentSnapshotsFromGroupSnapshot(ctx context.Context, c client.Client, groupSnapshot *applicationapiv1alpha1.Snapshot) ([]*applicationapiv1alpha1.Snapshot, error) {
+	log := log.FromContext(ctx)
+	var componentSnapshotInfos []*gitops.ComponentSnapshotInfo
+	var componentSnapshots []*applicationapiv1alpha1.Snapshot
+	var err error
+	if componentSnapshotInfoString, ok := groupSnapshot.Annotations[gitops.GroupSnapshotInfoAnnotation]; ok {
+		componentSnapshotInfos, err = gitops.UnmarshalJSON([]byte(componentSnapshotInfoString))
+		if err != nil {
+			return nil, fmt.Errorf("failed to unmarshal JSON string: %w", err)
+		}
+	}
+
+	for _, componentSnapshotInfo := range componentSnapshotInfos {
+		componentSnapshot := &applicationapiv1alpha1.Snapshot{}
+		err = c.Get(ctx, types.NamespacedName{
+			Namespace: groupSnapshot.Namespace,
+			Name:      componentSnapshotInfo.Snapshot,
+		}, componentSnapshot)
+		if err != nil {
+			log.Error(err, fmt.Sprintf("failed to find component snapshot %s included in group snapshot %s/%s", componentSnapshotInfo.Snapshot, groupSnapshot.Namespace, groupSnapshot.Name))
+			continue
+		}
+		componentSnapshots = append(componentSnapshots, componentSnapshot)
+	}
+	return componentSnapshots, nil
+
 }

@@ -19,7 +19,10 @@ package statusreport
 import (
 	"bytes"
 	"fmt"
+	"os"
 	"reflect"
+	"strconv"
+	"time"
 
 	"github.com/konflux-ci/integration-service/api/v1beta2"
 	"github.com/tonglil/buflogr"
@@ -44,22 +47,34 @@ import (
 
 var _ = Describe("Snapshot Adapter", Ordered, func() {
 	var (
-		adapter *Adapter
-		logger  helpers.IntegrationLogger
-		buf     bytes.Buffer
+		adapter      *Adapter
+		logger       helpers.IntegrationLogger
+		buf          bytes.Buffer
+		mockReporter *status.MockReporterInterface
+		mockStatus   *status.MockStatusInterface
 
 		hasComp                 *applicationapiv1alpha1.Component
 		hasComp2                *applicationapiv1alpha1.Component
 		hasApp                  *applicationapiv1alpha1.Application
 		hasSnapshot             *applicationapiv1alpha1.Snapshot
 		hasPRSnapshot           *applicationapiv1alpha1.Snapshot
+		hasComSnapshot2         *applicationapiv1alpha1.Snapshot
+		hasComSnapshot3         *applicationapiv1alpha1.Snapshot
+		groupSnapshot           *applicationapiv1alpha1.Snapshot
+		githubSnapshot          *applicationapiv1alpha1.Snapshot
 		integrationTestScenario *v1beta2.IntegrationTestScenario
 	)
 	const (
-		SampleRepoLink = "https://github.com/devfile-samples/devfile-sample-java-springboot-basic"
-		SampleImage    = "quay.io/redhat-appstudio/sample-image@sha256:841328df1b9f8c4087adbdcfec6cc99ac8308805dea83f6d415d6fb8d40227c1"
-		SampleCommit   = "a2ba645d50e471d5f084b"
-		SampleRevision = "random-value"
+		SampleRepoLink      = "https://github.com/devfile-samples/devfile-sample-java-springboot-basic"
+		SampleImage         = "quay.io/redhat-appstudio/sample-image@sha256:841328df1b9f8c4087adbdcfec6cc99ac8308805dea83f6d415d6fb8d40227c1"
+		SampleDigest        = "sha256:841328df1b9f8c4087adbdcfec6cc99ac8308805dea83f6d415d6fb8d40227c1"
+		SampleCommit        = "a2ba645d50e471d5f084b"
+		SampleRevision      = "random-value"
+		hasComSnapshot2Name = "hascomsnapshot2-sample"
+		hasComSnapshot3Name = "hascomsnapshot3-sample"
+		prGroup             = "feature1"
+		prGroupSha          = "feature1hash"
+		plrstarttime        = 1775992257
 	)
 
 	BeforeAll(func() {
@@ -116,6 +131,114 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			},
 		}
 		Expect(k8sClient.Create(ctx, hasComp2)).Should(Succeed())
+
+		hasComSnapshot2 = &applicationapiv1alpha1.Snapshot{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      hasComSnapshot2Name,
+				Namespace: "default",
+				Labels: map[string]string{
+					gitops.SnapshotTypeLabel:                         gitops.SnapshotComponentType,
+					gitops.SnapshotComponentLabel:                    hasComSnapshot2Name,
+					gitops.PipelineAsCodeEventTypeLabel:              gitops.PipelineAsCodePullRequestType,
+					gitops.PRGroupHashLabel:                          prGroupSha,
+					"pac.test.appstudio.openshift.io/url-org":        "testorg",
+					"pac.test.appstudio.openshift.io/url-repository": "testrepo",
+					gitops.PipelineAsCodeSHALabel:                    "sha",
+					gitops.PipelineAsCodePullRequestAnnotation:       "1",
+				},
+				Annotations: map[string]string{
+					"test.appstudio.openshift.io/pr-last-update":  "2023-08-26T17:57:50+02:00",
+					gitops.BuildPipelineRunStartTime:              strconv.Itoa(plrstarttime + 100),
+					gitops.PRGroupAnnotation:                      prGroup,
+					gitops.PipelineAsCodeGitProviderAnnotation:    "github",
+					gitops.PipelineAsCodeInstallationIDAnnotation: "123",
+				},
+			},
+			Spec: applicationapiv1alpha1.SnapshotSpec{
+				Application: hasApp.Name,
+				Components: []applicationapiv1alpha1.SnapshotComponent{
+					{
+						Name:           hasComSnapshot3Name,
+						ContainerImage: SampleImage + "@" + SampleDigest,
+					},
+					{
+						Name:           hasComSnapshot2Name,
+						ContainerImage: SampleImage + "@" + SampleDigest,
+					},
+				},
+			},
+		}
+		Expect(k8sClient.Create(ctx, hasComSnapshot2)).Should(Succeed())
+
+		hasComSnapshot3 = &applicationapiv1alpha1.Snapshot{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      hasComSnapshot3Name,
+				Namespace: "default",
+				Labels: map[string]string{
+					gitops.SnapshotTypeLabel:                         gitops.SnapshotComponentType,
+					gitops.SnapshotComponentLabel:                    hasComSnapshot3Name,
+					gitops.PipelineAsCodeEventTypeLabel:              gitops.PipelineAsCodePullRequestType,
+					gitops.PRGroupHashLabel:                          prGroupSha,
+					"pac.test.appstudio.openshift.io/url-org":        "testorg",
+					"pac.test.appstudio.openshift.io/url-repository": "testrepo",
+					gitops.PipelineAsCodeSHALabel:                    "sha",
+					gitops.PipelineAsCodePullRequestAnnotation:       "1",
+				},
+				Annotations: map[string]string{
+					"test.appstudio.openshift.io/pr-last-update":  "2023-08-26T17:57:50+02:00",
+					gitops.BuildPipelineRunStartTime:              strconv.Itoa(plrstarttime + 200),
+					gitops.PRGroupAnnotation:                      prGroup,
+					gitops.PipelineAsCodeGitProviderAnnotation:    "github",
+					gitops.PipelineAsCodePullRequestAnnotation:    "1",
+					gitops.PipelineAsCodeInstallationIDAnnotation: "123",
+				},
+			},
+			Spec: applicationapiv1alpha1.SnapshotSpec{
+				Application: hasApp.Name,
+				Components: []applicationapiv1alpha1.SnapshotComponent{
+					{
+						Name:           hasComSnapshot2Name,
+						ContainerImage: SampleImage + "@" + SampleDigest,
+					},
+					{
+						Name:           hasComSnapshot3Name,
+						ContainerImage: SampleImage + "@" + SampleDigest,
+					},
+				},
+			},
+		}
+		Expect(k8sClient.Create(ctx, hasComSnapshot3)).Should(Succeed())
+
+		groupSnapshot = &applicationapiv1alpha1.Snapshot{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "groupsnapshot",
+				Namespace: "default",
+				Labels: map[string]string{
+					gitops.SnapshotTypeLabel:            gitops.SnapshotGroupType,
+					gitops.PipelineAsCodeEventTypeLabel: gitops.PipelineAsCodePullRequestType,
+					gitops.PRGroupHashLabel:             prGroupSha,
+				},
+				Annotations: map[string]string{
+					gitops.PRGroupAnnotation:             prGroup,
+					gitops.GroupSnapshotInfoAnnotation:   "[{\"namespace\":\"default\",\"component\":\"component1-sample\",\"buildPipelineRun\":\"\",\"snapshot\":\"hascomsnapshot2-sample\"},{\"namespace\":\"default\",\"component\":\"component3-sample\",\"buildPipelineRun\":\"\",\"snapshot\":\"hascomsnapshot3-sample\"}]",
+					gitops.SnapshotTestsStatusAnnotation: "[{\"scenario\":\"scenario-1\",\"status\":\"EnvironmentProvisionError\",\"startTime\":\"2023-07-26T16:57:49+02:00\",\"completionTime\":\"2023-07-26T17:57:49+02:00\",\"lastUpdateTime\":\"2023-08-26T17:57:49+02:00\",\"details\":\"Failed to find deploymentTargetClass with right provisioner for copy of existingEnvironment\"}]",
+				},
+			},
+			Spec: applicationapiv1alpha1.SnapshotSpec{
+				Application: hasApp.Name,
+				Components: []applicationapiv1alpha1.SnapshotComponent{
+					{
+						Name:           hasComSnapshot2Name,
+						ContainerImage: SampleImage + "@" + SampleDigest,
+					},
+					{
+						Name:           hasComSnapshot3Name,
+						ContainerImage: SampleImage + "@" + SampleDigest,
+					},
+				},
+			},
+		}
+		Expect(k8sClient.Create(ctx, groupSnapshot)).Should(Succeed())
 	})
 
 	AfterAll(func() {
@@ -124,6 +247,12 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		err = k8sClient.Delete(ctx, hasComp)
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 		err = k8sClient.Delete(ctx, hasComp2)
+		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
+		err = k8sClient.Delete(ctx, groupSnapshot)
+		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
+		err = k8sClient.Delete(ctx, hasComSnapshot2)
+		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
+		err = k8sClient.Delete(ctx, hasComSnapshot3)
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 	})
 
@@ -151,10 +280,11 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 				},
 			},
 		}
+		Expect(k8sClient.Create(ctx, hasSnapshot)).Should(Succeed())
 
 		hasPRSnapshot = &applicationapiv1alpha1.Snapshot{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      "snapshot-PR-sample",
+				Name:      "snapshot-pr-sample",
 				Namespace: "default",
 				Labels: map[string]string{
 					gitops.SnapshotTypeLabel:                         "component",
@@ -172,6 +302,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 					"build.appstudio.redhat.com/commit_sha":         "6c65b2fcaea3e1a0a92476c8b5dc89e92a85f025",
 					"appstudio.redhat.com/updateComponentOnSuccess": "false",
 					gitops.SnapshotTestsStatusAnnotation:            "[{\"scenario\":\"scenario-1\",\"status\":\"EnvironmentProvisionError\",\"startTime\":\"2023-07-26T16:57:49+02:00\",\"completionTime\":\"2023-07-26T17:57:49+02:00\",\"lastUpdateTime\":\"2023-08-26T17:57:49+02:00\",\"details\":\"Failed to find deploymentTargetClass with right provisioner for copy of existingEnvironment\"}]",
+					gitops.PipelineAsCodeGitProviderAnnotation:      gitops.PipelineAsCodeGitHubProviderType,
 				},
 			},
 			Spec: applicationapiv1alpha1.SnapshotSpec{
@@ -191,7 +322,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 				},
 			},
 		}
-		Expect(k8sClient.Create(ctx, hasSnapshot)).Should(Succeed())
+		Expect(k8sClient.Create(ctx, hasPRSnapshot)).Should(Succeed())
 
 		integrationTestScenario = &v1beta2.IntegrationTestScenario{
 			ObjectMeta: metav1.ObjectMeta{
@@ -223,6 +354,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 				},
 			},
 		}
+
 		Expect(k8sClient.Create(ctx, integrationTestScenario)).Should(Succeed())
 	})
 
@@ -240,17 +372,17 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			Expect(reflect.TypeOf(NewAdapter(ctx, hasSnapshot, hasApp, logger, loader.NewMockLoader(), k8sClient))).To(Equal(reflect.TypeOf(&Adapter{})))
 		})
 
-		It("ensures the statusReport is called", func() {
+		It("ensures the statusReport is called for component snapshot", func() {
 
 			ctrl := gomock.NewController(GinkgoT())
-			mockReporter := status.NewMockReporterInterface(ctrl)
+			mockReporter = status.NewMockReporterInterface(ctrl)
 			mockStatus := status.NewMockStatusInterface(ctrl)
-
-			mockReporter.EXPECT().GetReporterName().Return("mocked_reporter")
-
+			mockReporter.EXPECT().GetReporterName().Return("mocked-reporter").AnyTimes()
 			mockStatus.EXPECT().GetReporter(gomock.Any()).Return(mockReporter)
-			// ReportSnapshotStatus must be called once
-			mockStatus.EXPECT().ReportSnapshotStatus(gomock.Any(), gomock.Any(), gomock.Any()).Times(1)
+			mockStatus.EXPECT().GetReporter(gomock.Any()).AnyTimes()
+			mockReporter.EXPECT().GetReporterName().AnyTimes()
+			mockReporter.EXPECT().Initialize(gomock.Any(), gomock.Any()).Times(1)
+			mockReporter.EXPECT().ReportStatus(gomock.Any(), gomock.Any()).Times(1)
 
 			mockScenarios := []v1beta2.IntegrationTestScenario{}
 			adapter = NewAdapter(ctx, hasPRSnapshot, hasApp, logger, loader.NewMockLoader(), k8sClient)
@@ -272,6 +404,37 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			result, err := adapter.EnsureSnapshotTestStatusReportedToGitProvider()
 			fmt.Fprintf(GinkgoWriter, "-------err: %v\n", err)
 			fmt.Fprintf(GinkgoWriter, "-------result: %v\n", result)
+			Expect(!result.CancelRequest && err == nil).To(BeTrue())
+		})
+
+		It("ensures the statusReport is called for group snapshot", func() {
+			buf = bytes.Buffer{}
+			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+			ctrl := gomock.NewController(GinkgoT())
+			mockReporter = status.NewMockReporterInterface(ctrl)
+			mockStatus := status.NewMockStatusInterface(ctrl)
+			mockReporter.EXPECT().GetReporterName().Return("mocked-reporter").AnyTimes()
+			mockStatus.EXPECT().GetReporter(gomock.Any()).Return(mockReporter)
+			mockStatus.EXPECT().GetReporter(gomock.Any()).AnyTimes()
+			mockReporter.EXPECT().GetReporterName().AnyTimes()
+			mockReporter.EXPECT().Initialize(gomock.Any(), gomock.Any()).Times(1)
+			mockReporter.EXPECT().ReportStatus(gomock.Any(), gomock.Any()).Times(1)
+
+			mockScenarios := []v1beta2.IntegrationTestScenario{}
+			adapter = NewAdapter(ctx, groupSnapshot, hasApp, log, loader.NewMockLoader(), k8sClient)
+			adapter.status = mockStatus
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: loader.ApplicationContextKey,
+					Resource:   hasApp,
+				},
+				{
+					ContextKey: loader.RequiredIntegrationTestScenariosContextKey,
+					Resource:   mockScenarios,
+				},
+			})
+			result, err := adapter.EnsureSnapshotTestStatusReportedToGitProvider()
+			fmt.Fprintf(GinkgoWriter, "-------test: %v\n", buf.String())
 			Expect(!result.CancelRequest && err == nil).To(BeTrue())
 		})
 	})
@@ -534,5 +697,114 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			})
 		})
 
+	})
+
+	When("testing ReportSnapshotStatus", func() {
+		BeforeEach(func() {
+			buf = bytes.Buffer{}
+
+			githubSnapshot = &applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: map[string]string{
+						"pac.test.appstudio.openshift.io/git-provider": "github",
+					},
+				},
+			}
+
+			ctrl := gomock.NewController(GinkgoT())
+			mockReporter = status.NewMockReporterInterface(ctrl)
+			mockReporter.EXPECT().GetReporterName().Return("mocked-reporter").AnyTimes()
+			mockStatus = status.NewMockStatusInterface(ctrl)
+		})
+		It("doesn't report anything when there are not test results", func() {
+			mockReporter.EXPECT().Initialize(gomock.Any(), gomock.Any()).Times(0)   // without test results reporter shouldn't be initialized
+			mockReporter.EXPECT().ReportStatus(gomock.Any(), gomock.Any()).Times(0) // without test results reported shouldn't report status
+
+			adapter = NewAdapter(ctx, githubSnapshot, hasApp, logger, loader.NewMockLoader(), k8sClient)
+			adapter.status = mockStatus
+			err := adapter.ReportSnapshotStatus(githubSnapshot)
+			Expect(err).NotTo(HaveOccurred())
+		})
+
+		It("doesn't report anything when data are older", func() {
+			mockStatus.EXPECT().GetReporter(gomock.Any()).Return(mockReporter)
+			mockStatus.EXPECT().GetReporter(gomock.Any()).AnyTimes()
+			mockReporter.EXPECT().GetReporterName().AnyTimes()
+
+			mockReporter.EXPECT().Initialize(gomock.Any(), gomock.Any()).Times(1)
+			mockReporter.EXPECT().ReportStatus(gomock.Any(), gomock.Any()).Times(0) // data are older, status shouldn't be reported
+
+			hasPRSnapshot.Annotations["test.appstudio.openshift.io/status"] = "[{\"scenario\":\"scenario1\",\"status\":\"InProgress\",\"startTime\":\"2023-07-26T16:57:49+02:00\",\"lastUpdateTime\":\"2023-08-26T17:57:50+02:00\",\"details\":\"Test in progress\"}]"
+			hasPRSnapshot.Annotations["test.appstudio.openshift.io/git-reporter-status"] = "{\"scenarios\":{\"scenario1\":{\"lastUpdateTime\":\"2023-08-26T17:57:50+02:00\"}}}"
+			adapter = NewAdapter(ctx, hasPRSnapshot, hasApp, logger, loader.NewMockLoader(), k8sClient)
+			adapter.status = mockStatus
+			err := adapter.ReportSnapshotStatus(adapter.snapshot)
+			Expect(err).NotTo(HaveOccurred())
+		})
+
+		It("Report new status if it was updated", func() {
+			mockStatus.EXPECT().GetReporter(gomock.Any()).Return(mockReporter)
+			mockStatus.EXPECT().GetReporter(gomock.Any()).AnyTimes()
+			mockReporter.EXPECT().GetReporterName().AnyTimes()
+
+			mockReporter.EXPECT().Initialize(gomock.Any(), gomock.Any()).Times(1)
+			mockReporter.EXPECT().ReportStatus(gomock.Any(), gomock.Any()).Times(1)
+
+			hasPRSnapshot.Annotations["test.appstudio.openshift.io/status"] = "[{\"scenario\":\"scenario1\",\"status\":\"InProgress\",\"startTime\":\"2023-07-26T16:57:49+02:00\",\"lastUpdateTime\":\"2023-08-26T17:57:50+02:00\",\"details\":\"Test in progress\"}]"
+			hasPRSnapshot.Annotations["test.appstudio.openshift.io/git-reporter-status"] = "{\"scenarios\":{\"scenario1\":{\"lastUpdateTime\":\"2023-08-26T17:57:49+02:00\"}}}"
+			hasPRSnapshot.Annotations["test.appstudio.openshift.io/group-test-info"] = "[{\"namespace\":\"default\",\"component\":\"devfile-sample-java-springboot-basic-8969\",\"buildPipelineRun\":\"build-plr-java-qjfxz\",\"snapshot\":\"app-8969-bbn7d\"},{\"namespace\":\"default\",\"component\":\"devfile-sample-go-basic-8969\",\"buildPipelineRun\":\"build-plr-go-jmsjq\",\"snapshot\":\"app-8969-kzq2l\"}]"
+			adapter = NewAdapter(ctx, hasPRSnapshot, hasApp, logger, loader.NewMockLoader(), k8sClient)
+			adapter.status = mockStatus
+			err := adapter.ReportSnapshotStatus(adapter.snapshot)
+			Expect(err).NotTo(HaveOccurred())
+		})
+
+		It("Report new status if it was updated (old way - migration test)", func() {
+			mockStatus.EXPECT().GetReporter(gomock.Any()).Return(mockReporter)
+			mockStatus.EXPECT().GetReporter(gomock.Any()).AnyTimes()
+			mockReporter.EXPECT().GetReporterName().AnyTimes()
+
+			mockReporter.EXPECT().Initialize(gomock.Any(), gomock.Any()).Times(1)
+			mockReporter.EXPECT().ReportStatus(gomock.Any(), gomock.Any()).Times(1)
+
+			hasPRSnapshot.Annotations["test.appstudio.openshift.io/status"] = "[{\"scenario\":\"scenario1\",\"status\":\"InProgress\",\"startTime\":\"2023-07-26T16:57:49+02:00\",\"lastUpdateTime\":\"2023-08-26T17:57:50+02:00\",\"details\":\"Test in progress\"}]"
+			hasPRSnapshot.Annotations["test.appstudio.openshift.io/pr-last-update"] = "2023-08-26T17:57:49+02:00"
+			adapter = NewAdapter(ctx, hasPRSnapshot, hasApp, logger, loader.NewMockLoader(), k8sClient)
+			adapter.status = mockStatus
+			err := adapter.ReportSnapshotStatus(adapter.snapshot)
+			fmt.Fprintf(GinkgoWriter, "-------test: %v\n", "")
+			Expect(err).NotTo(HaveOccurred())
+		})
+
+		It("report expected textual data for InProgress test scenario", func() {
+			os.Setenv("CONSOLE_NAME", "Konflux Staging")
+			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+
+			mockStatus.EXPECT().GetReporter(gomock.Any()).Return(mockReporter)
+			mockStatus.EXPECT().GetReporter(gomock.Any()).AnyTimes()
+			mockReporter.EXPECT().GetReporterName().AnyTimes()
+
+			hasPRSnapshot.Annotations["test.appstudio.openshift.io/status"] = "[{\"scenario\":\"scenario1\",\"status\":\"InProgress\",\"testPipelineRunName\":\"test-pipelinerun\",\"startTime\":\"2023-07-26T16:57:49+02:00\",\"lastUpdateTime\":\"2023-08-26T17:57:50+02:00\",\"details\":\"Test in progress\"}]"
+			t, err := time.Parse(time.RFC3339, "2023-07-26T16:57:49+02:00")
+			Expect(err).NotTo(HaveOccurred())
+			expectedTestReport := status.TestReport{
+				FullName:            "Konflux Staging / scenario1 / component-sample",
+				ScenarioName:        "scenario1",
+				SnapshotName:        "snapshot-pr-sample",
+				ComponentName:       "component-sample",
+				Text:                "Test in progress",
+				Summary:             "Integration test for snapshot snapshot-pr-sample and scenario scenario1 is in progress",
+				Status:              intgteststat.IntegrationTestStatusInProgress,
+				StartTime:           &t,
+				TestPipelineRunName: "test-pipelinerun",
+			}
+			mockReporter.EXPECT().Initialize(gomock.Any(), gomock.Any()).Times(1)
+			mockReporter.EXPECT().ReportStatus(gomock.Any(), gomock.Eq(expectedTestReport)).Times(1)
+			adapter = NewAdapter(ctx, hasPRSnapshot, hasApp, log, loader.NewMockLoader(), k8sClient)
+			adapter.status = mockStatus
+			err = adapter.ReportSnapshotStatus(adapter.snapshot)
+			fmt.Fprintf(GinkgoWriter, "-------test: %v\n", buf.String())
+			Expect(err).NotTo(HaveOccurred())
+		})
 	})
 })
