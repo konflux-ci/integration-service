@@ -211,6 +211,8 @@ spec:
           value: $(tasks.status)
         - name: test-event-type
           value: $(tasks.test-metadata.results.test-event-type)
+        - name: test-name
+          value: $(context.pipelineRun.name)
     - name: pull-request-status-message
       when:
         - input: $(tasks.test-metadata.results.test-event-type)
