@@ -581,6 +581,10 @@ func CanSnapshotBePromoted(snapshot *applicationapiv1alpha1.Snapshot) (bool, []s
 			canBePromoted = false
 			reasons = append(reasons, "the Snapshot was created for a PaC pull request event")
 		}
+		if IsGroupSnapshot(snapshot) {
+			canBePromoted = false
+			reasons = append(reasons, "the Snapshot is group snapshot")
+		}
 	}
 	return canBePromoted, reasons
 }
@@ -1081,6 +1085,7 @@ func SetAnnotationAndLabelForGroupSnapshot(groupSnapshot *applicationapiv1alpha1
 		return nil, err
 	}
 	groupSnapshot.Labels[SnapshotTypeLabel] = SnapshotGroupType
+	groupSnapshot.Labels[PRGroupHashLabel] = componentSnapshot.Labels[PRGroupHashLabel]
 	groupSnapshot.Labels[ApplicationNameLabel] = componentSnapshot.Spec.Application
 
 	return groupSnapshot, nil
