@@ -81,7 +81,7 @@ func BuildPipelineRunFailedPredicate() predicate.Predicate {
 		},
 		UpdateFunc: func(e event.UpdateEvent) bool {
 			return IsBuildPipelineRun(e.ObjectNew) &&
-				isChainsDoneWithPipelineRun(e.ObjectNew) &&
+				helpers.HasPipelineRunFinished(e.ObjectNew) &&
 				!helpers.HasPipelineRunSucceeded(e.ObjectNew)
 		},
 	}
