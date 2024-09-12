@@ -32,6 +32,7 @@ import (
 	. "github.com/onsi/gomega"
 	. "github.com/onsi/gomega/gstruct"
 
+	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
 	"github.com/konflux-ci/integration-service/api/v1beta2"
 	"github.com/konflux-ci/integration-service/loader"
 	"github.com/konflux-ci/integration-service/status"
@@ -40,7 +41,6 @@ import (
 	"github.com/konflux-ci/operator-toolkit/metadata"
 	releasev1alpha1 "github.com/konflux-ci/release-service/api/v1alpha1"
 	releasemetadata "github.com/konflux-ci/release-service/metadata"
-	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	"knative.dev/pkg/apis"
 	v1 "knative.dev/pkg/apis/duck/v1"
@@ -78,7 +78,6 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		hasComSnapshot3                           *applicationapiv1alpha1.Snapshot
 		integrationTestScenario                   *v1beta2.IntegrationTestScenario
 		integrationTestScenarioForInvalidSnapshot *v1beta2.IntegrationTestScenario
-		env                                       *applicationapiv1alpha1.Environment
 		buildPipelineRun1                         *tektonv1.PipelineRun
 	)
 	const (
@@ -1228,10 +1227,6 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 					Resource:   hasSnapshot,
 				},
 				{
-					ContextKey: loader.EnvironmentContextKey,
-					Resource:   env,
-				},
-				{
 					ContextKey: loader.SnapshotComponentsContextKey,
 					Resource:   []applicationapiv1alpha1.Component{*hasComp},
 				},
@@ -1389,10 +1384,6 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 						Resource:   hasSnapshot,
 					},
 					{
-						ContextKey: loader.EnvironmentContextKey,
-						Resource:   env,
-					},
-					{
 						ContextKey: loader.SnapshotComponentsContextKey,
 						Resource:   []applicationapiv1alpha1.Component{*hasComp},
 					},
@@ -1465,10 +1456,6 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 					{
 						ContextKey: loader.SnapshotContextKey,
 						Resource:   hasSnapshot,
-					},
-					{
-						ContextKey: loader.EnvironmentContextKey,
-						Resource:   env,
 					},
 					{
 						ContextKey: loader.SnapshotComponentsContextKey,

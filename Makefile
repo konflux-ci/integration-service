@@ -111,7 +111,7 @@ vet: ## Run go vet against code.
 .PHONY: download-crds
 download-crds: ## Vendoring doesn't fetch CRDs yaml files due pruning of dependencies, for testing we need to download full content of these modules with CRDs
 	# Ugly hack to download CRDs for tests, better solution is welcome
-	go mod download github.com/redhat-appstudio/application-api
+	go mod download github.com/konflux-ci/application-api
 	go mod download github.com/konflux-ci/release-service
 	go mod download github.com/tektoncd/pipeline
 

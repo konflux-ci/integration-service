@@ -27,9 +27,9 @@ import (
 	. "github.com/onsi/gomega"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 
+	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
 	"github.com/konflux-ci/integration-service/gitops"
 	"github.com/konflux-ci/integration-service/helpers"
-	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	"github.com/tonglil/buflogr"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"

@@ -18,11 +18,11 @@ package scenario
 
 import (
 	"context"
+	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
 	"github.com/konflux-ci/integration-service/api/v1beta2"
 	h "github.com/konflux-ci/integration-service/helpers"
 	"github.com/konflux-ci/integration-service/loader"
 	"github.com/konflux-ci/operator-toolkit/controller"
-	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"reflect"
 	ctrl "sigs.k8s.io/controller-runtime"
