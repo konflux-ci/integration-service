@@ -24,6 +24,17 @@
   "links": [],
   "panels": [
     {
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "id": 18,
+      "title": "SLOs",
+      "type": "row"
+    },
+    {
       "aliasColors": {},
       "bars": false,
       "dashLength": 10,
@@ -41,7 +52,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 0
+        "y": 1
       },
       "hiddenSeries": false,
       "id": 31,
@@ -77,10 +88,10 @@
         {
           "editorMode": "code",
           "exemplar": true,
-          "expr": "avg_over_time(redhat_appstudio_integrationservice_global_github_app_available[1h]) * 100\n",
+          "expr": "avg_over_time(redhat_appstudio_integrationservice_global_github_app_available[24h]) * 100\n",
           "instant": false,
           "interval": "",
-          "legendFormat": "99% uptime required",
+          "legendFormat": "__auto",
           "range": true,
           "refId": "A"
         }
@@ -194,7 +205,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 0
+        "y": 1
       },
       "id": 32,
       "options": {
@@ -214,31 +225,15 @@
         {
           "editorMode": "code",
           "exemplar": true,
-          "expr": "avg_over_time(redhat_appstudio_integrationservice_global_github_app_available[1h]) * 100\n",
+          "expr": "avg_over_time(redhat_appstudio_integrationservice_global_github_app_available[24h]) * 100\n",
           "interval": "",
-          "legendFormat": "% uptime",
+          "legendFormat": "__auto",
           "range": true,
           "refId": "A"
         }
       ],
       "title": "[Violations] Integration Service Availability",
       "type": "timeseries"
-    },
-    {
-      "gridPos": {
-        "h": 1,
-        "w": 24,
-        "x": 0,
-        "y": 8
-      },
-      "id": 18,
-      "targets": [
-        {
-          "refId": "A"
-        }
-      ],
-      "title": "SLOs",
-      "type": "row"
     },
     {
       "aliasColors": {},
@@ -565,8 +560,7 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "red",
-                "value": null
+                "color": "red"
               },
               {
                 "color": "transparent",
@@ -750,8 +744,7 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "red",
-                "value": null
+                "color": "red"
               },
               {
                 "color": "transparent",
@@ -807,11 +800,6 @@
       },
       "id": 16,
       "panels": [],
-      "targets": [
-        {
-          "refId": "A"
-        }
-      ],
       "title": "SLIs",
       "type": "row"
     },
@@ -860,8 +848,7 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "green",
-                "value": null
+                "color": "green"
               },
               {
                 "color": "red",
@@ -1551,6 +1538,6 @@
   "timezone": "",
   "title": "Integration Service",
   "uid": "b1fac0453848b1e7ce9377a6eb38d7ec3b8a23d9",
-  "version": 1,
+  "version": 2,
   "weekStart": ""
 }
