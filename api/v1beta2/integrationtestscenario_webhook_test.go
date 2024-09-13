@@ -26,7 +26,7 @@ import (
 
 var _ = Describe("IntegrationTestScenario webhook", func() {
 
-	var integrationTestScenario *IntegrationTestScenario
+	var integrationTestScenario, integrationTestScenarioInvalidGitResolver *IntegrationTestScenario
 
 	BeforeEach(func() {
 		integrationTestScenario = &IntegrationTestScenario{
@@ -86,6 +86,60 @@ var _ = Describe("IntegrationTestScenario webhook", func() {
 	It("should fail to create scenario with snapshot parameter set", func() {
 		integrationTestScenario.Spec.Params = append(integrationTestScenario.Spec.Params, PipelineParameter{Name: "SNAPSHOT"})
 		Expect(k8sClient.Create(ctx, integrationTestScenario)).ShouldNot(Succeed())
+	})
+
+	It("should success to create scenario when only url in git reolver params", func() {
+		integrationTestScenarioInvalidGitResolver = &IntegrationTestScenario{
+			TypeMeta: metav1.TypeMeta{
+				APIVersion: "appstudio.redhat.com/v1beta2",
+				Kind:       "IntegrationTestScenario",
+			},
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "integrationtestscenario",
+				Namespace: "default",
+			},
+			Spec: IntegrationTestScenarioSpec{
+				Application: "application-sample",
+				Params: []PipelineParameter{
+					{
+						Name:  "pipeline-param-name",
+						Value: "pipeline-param-value",
+					},
+				},
+				Contexts: []TestContext{
+					{
+						Name:        "test-ctx",
+						Description: "test-ctx-description",
+					},
+				},
+				ResolverRef: ResolverRef{
+					Resolver: "git",
+					Params: []ResolverParameter{
+						{
+							Name:  "url",
+							Value: "http://url",
+						},
+						{
+							Name:  "revision",
+							Value: "main",
+						},
+						{
+							Name:  "pathInRepo",
+							Value: "pipeline/helloworld.yaml",
+						},
+					},
+				},
+			},
+		}
+
+		Expect(k8sClient.Create(ctx, integrationTestScenarioInvalidGitResolver)).Should(Succeed())
+	})
+
+	It("should fail to create scenario when in git resolver params url+repo", func() {
+
+		integrationTestScenarioInvalidGitResolver.Spec.ResolverRef.Params = append(integrationTestScenarioInvalidGitResolver.Spec.ResolverRef.Params, ResolverParameter{Name: "repo", Value: "my-repository-name"})
+		integrationTestScenarioInvalidGitResolver.Spec.ResolverRef.Params = append(integrationTestScenarioInvalidGitResolver.Spec.ResolverRef.Params, ResolverParameter{Name: "org", Value: "my-org-name"})
+		Expect(k8sClient.Create(ctx, integrationTestScenarioInvalidGitResolver)).ShouldNot(Succeed())
 	})
 
 })
