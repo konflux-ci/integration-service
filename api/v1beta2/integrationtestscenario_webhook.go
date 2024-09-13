@@ -53,6 +53,39 @@ func (r *IntegrationTestScenario) ValidateCreate() (warnings admission.Warnings,
 					"param manually defined because it will be automatically generated"+
 					"by the integration service")
 		}
+		// we won't enable ITS if git resolver with url & repo+org
+		urlResolverExist := false
+		repoResolverExist := false
+		orgResolverExist := false
+
+		for _, gitResolverParam := range r.Spec.ResolverRef.Params {
+			if gitResolverParam.Name == "url" && gitResolverParam.Value != "" {
+				urlResolverExist = true
+			}
+			if gitResolverParam.Name == "repo" && gitResolverParam.Value != "" {
+				repoResolverExist = true
+			}
+			if gitResolverParam.Name == "org" && gitResolverParam.Value != "" {
+				orgResolverExist = true
+			}
+		}
+
+		if urlResolverExist {
+			if repoResolverExist || orgResolverExist {
+				return nil, field.Invalid(field.NewPath("Spec").Child("ResolverRef").Child("Params"), param.Name,
+					"an IntegrationTestScenario resource can only have one of the gitResolver parameters,"+
+						"either url or repo (with org), but not both.")
+
+			}
+		} else {
+			if !repoResolverExist || !orgResolverExist {
+				return nil, field.Invalid(field.NewPath("Spec").Child("ResolverRef").Child("Params"), param.Name,
+					"IntegrationTestScenario is invalid: missing mandatory repo or org parameters."+
+						"If both are absent, a valid url is highly recommended.")
+
+			}
+		}
+
 	}
 
 	return nil, nil
