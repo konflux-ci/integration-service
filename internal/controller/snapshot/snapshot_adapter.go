@@ -312,10 +312,16 @@ func (a *Adapter) EnsureGlobalCandidateImageUpdated() (controller.OperationResul
 			return controller.ContinueProcessing()
 		}
 
-		// look for the expected snapshotComponnet and update
+		// update PromotedImage for all Components of GCL
+		// then look for the expected snapshotComponent and update
 		for _, snapshotComponent := range a.snapshot.Spec.Components {
 			snapshotComponent := snapshotComponent //G601
 			if snapshotComponent.Name == componentToUpdate.Name {
+				// update .Status.LastPromotedImage for the component included in component snapshot
+				err = a.updateComponentLastPromotedImage(a.context, a.client, componentToUpdate, &snapshotComponent)
+				if err != nil {
+					return controller.RequeueWithError(err)
+				}
 				//update .Spec.ContainerImage for the component included in component snapshot
 				err = a.updateComponentContainerImage(a.context, a.client, componentToUpdate, &snapshotComponent)
 				if err != nil {
@@ -356,7 +362,11 @@ func (a *Adapter) EnsureGlobalCandidateImageUpdated() (controller.OperationResul
 				a.logger.Error(err, "containerImage cannot be updated to component Global Candidate List due to invalid digest in containerImage", "component.Name", snapshotComponent.Name, "snapshotComponent.ContainerImage", snapshotComponent.ContainerImage)
 				continue
 			}
-
+			// update .Status.LastPromotedImage for the component included in override snapshot
+			err = a.updateComponentLastPromotedImage(a.context, a.client, componentToUpdate, &snapshotComponent)
+			if err != nil {
+				return controller.RequeueWithError(err)
+			}
 			//update component.Spec.ContainerImage for each snapshotComponent in override snapshot
 			err = a.updateComponentContainerImage(a.context, a.client, componentToUpdate, &snapshotComponent)
 			if err != nil {
@@ -850,6 +860,24 @@ func (a *Adapter) updateComponentSource(ctx context.Context, c client.Client, co
 			component, h.LogActionUpdate,
 			"lastBuildCommit", component.Status.LastBuiltCommit)
 	}
+	return nil
+}
+
+func (a *Adapter) updateComponentLastPromotedImage(ctx context.Context, c client.Client, component *applicationapiv1alpha1.Component, snapshotComponent *applicationapiv1alpha1.SnapshotComponent) error {
+	if component.Status.LastPromotedImage == snapshotComponent.ContainerImage {
+		return nil
+	}
+	patch := client.MergeFrom(component.DeepCopy())
+	component.Status.LastPromotedImage = snapshotComponent.ContainerImage
+	err := a.client.Status().Patch(a.context, component, patch)
+	if err != nil {
+		a.logger.Error(err, "Failed to update .Status.LastPromotedImage of Global Candidate for the Component",
+			"component.Name", component.Name)
+		return err
+	}
+	a.logger.LogAuditEvent("Updated .Status.LastPromotedImage of Global Candidate for the Component",
+		component, h.LogActionUpdate,
+		"LastPromotedImage", component.Status.LastPromotedImage)
 	return nil
 }
 
