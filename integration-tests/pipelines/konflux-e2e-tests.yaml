@@ -84,10 +84,6 @@ spec:
         - name: oci-container-tag
           value: $(context.pipelineRun.name)
     - name: provision-rosa
-      when:
-        - input: $(tasks.test-metadata.results.test-event-type)
-          operator: in
-          values: ["pull_request"]
       runAfter:
         - rosa-hcp-metadata
         - test-metadata
@@ -116,10 +112,6 @@ spec:
           value: $(params.cloud-credential-key)
     - name: konflux-e2e-tests
       timeout: 2h
-      when:
-        - input: $(tasks.test-metadata.results.test-event-type)
-          operator: in
-          values: ["pull_request"]
       runAfter:
         - provision-rosa
       taskRef:
@@ -150,10 +142,6 @@ spec:
           value: $(tasks.test-metadata.results.container-image)
   finally:
     - name: deprovision-rosa-collect-artifacts
-      when:
-        - input: $(tasks.test-metadata.results.test-event-type)
-          operator: in
-          values: ["pull_request"]
       taskRef:
         resolver: git
         params:
@@ -189,10 +177,6 @@ spec:
         - name: pipeline-aggregate-status
           value: $(tasks.status)
     - name: quality-dashboard-upload
-      when:
-        - input: $(tasks.test-metadata.results.test-event-type)
-          operator: in
-          values: ["pull_request"]
       taskRef:
         resolver: git
         params:
@@ -214,10 +198,6 @@ spec:
         - name: test-name
           value: $(context.pipelineRun.name)
     - name: pull-request-status-message
-      when:
-        - input: $(tasks.test-metadata.results.test-event-type)
-          operator: in
-          values: ["pull_request"]
       taskRef:
         resolver: git
         params:
