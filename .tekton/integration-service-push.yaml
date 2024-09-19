@@ -183,7 +183,7 @@ spec:
         - name: name
           value: prefetch-dependencies
         - name: bundle
-          value: quay.io/redhat-appstudio-tekton-catalog/task-prefetch-dependencies:0.1@sha256:4067e332949e005bd8782013de463078b8914d81e0333c85908bbf4db745d5aa
+          value: quay.io/redhat-appstudio-tekton-catalog/task-prefetch-dependencies:0.1@sha256:69af2302a0a579f428ea196a2787013d58a6bec503d231d3ef860af7e82b96e9
         - name: kind
           value: task
         resolver: bundles
@@ -292,7 +292,7 @@ spec:
         - name: name
           value: clair-scan
         - name: bundle
-          value: quay.io/redhat-appstudio-tekton-catalog/task-clair-scan:0.2@sha256:77f18ffeb96a9c8f5767ea3c789b66b2521e8416d8160a8e38ad9c3f5fc78676
+          value: quay.io/redhat-appstudio-tekton-catalog/task-clair-scan:0.2@sha256:2d0ad97ddccf5b1921438f63c2001e330c2307de9fda21877678ca98a1bdeac3
         - name: kind
           value: task
         resolver: bundles
