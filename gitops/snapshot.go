@@ -21,7 +21,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/konflux-ci/integration-service/api/v1beta2"
 	"reflect"
 	"sort"
 	"strconv"
@@ -30,10 +29,12 @@ import (
 
 	"github.com/google/go-containerregistry/pkg/name"
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
+	"github.com/konflux-ci/integration-service/api/v1beta2"
 	"github.com/konflux-ci/integration-service/helpers"
 	"github.com/konflux-ci/integration-service/pkg/metrics"
 	"github.com/konflux-ci/integration-service/tekton"
 	"github.com/konflux-ci/operator-toolkit/metadata"
+	"github.com/santhosh-tekuri/jsonschema/v5"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -244,6 +245,29 @@ type ComponentSnapshotInfo struct {
 	// The built component snapshot from build PLR
 	Snapshot string `json:"snapshot"`
 }
+
+const componentSnapshotInfosSchema = `{
+	"$schema": "http://json-schema.org/draft/2020-12/schema#",
+	"type":  "array",
+	"items": {
+	  "type": "object",
+      "properties": {
+        "namespace": {
+          "type": "string"
+        },
+        "component": {
+          "type": "string"
+        },
+        "buildPipelineRun": {
+          "type": "string"
+        },
+        "snapshot": {
+          "type": "string"
+        }
+      },
+	  "required": ["namespace", "component", "buildPipelineRun", "snapshot"]
+	}
+  }`
 
 // IsSnapshotMarkedAsPassed returns true if snapshot is marked as passed
 func IsSnapshotMarkedAsPassed(snapshot *applicationapiv1alpha1.Snapshot) bool {
@@ -912,6 +936,7 @@ func IsComponentSnapshot(snapshot *applicationapiv1alpha1.Snapshot) bool {
 	return metadata.HasLabelWithValue(snapshot, SnapshotTypeLabel, SnapshotComponentType)
 }
 
+// IsGroupSnapshot returns true if snapshot label 'test.appstudio.openshift.io/type' is 'group'
 func IsGroupSnapshot(snapshot *applicationapiv1alpha1.Snapshot) bool {
 	return metadata.HasLabelWithValue(snapshot, SnapshotTypeLabel, SnapshotGroupType)
 }
@@ -1089,4 +1114,27 @@ func SetAnnotationAndLabelForGroupSnapshot(groupSnapshot *applicationapiv1alpha1
 	groupSnapshot.Labels[ApplicationNameLabel] = componentSnapshot.Spec.Application
 
 	return groupSnapshot, nil
+}
+
+// UnmarshalJSON load data from JSON
+func UnmarshalJSON(b []byte) ([]*ComponentSnapshotInfo, error) {
+	var componentSnapshotInfos []*ComponentSnapshotInfo
+
+	sch, err := jsonschema.CompileString("schema.json", componentSnapshotInfosSchema)
+	if err != nil {
+		return nil, fmt.Errorf("error while compiling json data for schema validation: %w", err)
+	}
+	var v interface{}
+	if err := json.Unmarshal(b, &v); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal json data raw: %w", err)
+	}
+	if err = sch.Validate(v); err != nil {
+		return nil, fmt.Errorf("error validating snapshot info: %w", err)
+	}
+	err = json.Unmarshal(b, &componentSnapshotInfos)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unmarshal json data: %w", err)
+	}
+
+	return componentSnapshotInfos, nil
 }

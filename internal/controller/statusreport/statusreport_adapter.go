@@ -18,11 +18,13 @@ package statusreport
 
 import (
 	"context"
+	e "errors"
 	"fmt"
 	"time"
 
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
 	"github.com/konflux-ci/operator-toolkit/controller"
+	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/konflux-ci/integration-service/api/v1beta2"
@@ -66,19 +68,14 @@ func NewAdapter(context context.Context, snapshot *applicationapiv1alpha1.Snapsh
 
 // EnsureSnapshotTestStatusReportedToGitProvider will ensure that integration test status is reported to the git provider
 // which (indirectly) triggered its execution.
+// The status is reported to git provider if it is a component snapshot
+// Or reported to git providers which trigger component snapshots included in group snapshot if it is a group snapshot
 func (a *Adapter) EnsureSnapshotTestStatusReportedToGitProvider() (controller.OperationResult, error) {
-	if gitops.IsSnapshotCreatedByPACPushEvent(a.snapshot) {
+	if gitops.IsSnapshotCreatedByPACPushEvent(a.snapshot) && !gitops.IsGroupSnapshot(a.snapshot) {
 		return controller.ContinueProcessing()
 	}
 
-	reporter := a.status.GetReporter(a.snapshot)
-	if reporter == nil {
-		a.logger.Info("No suitable reporter found, skipping report")
-		return controller.ContinueProcessing()
-	}
-	a.logger.Info(fmt.Sprintf("Detected reporter: %s", reporter.GetReporterName()))
-
-	err := a.status.ReportSnapshotStatus(a.context, reporter, a.snapshot)
+	err := a.ReportSnapshotStatus(a.snapshot)
 	if err != nil {
 		a.logger.Error(err, "failed to report test status to git provider for snapshot",
 			"snapshot.Namespace", a.snapshot.Namespace, "snapshot.Name", a.snapshot.Name)
@@ -237,4 +234,146 @@ func (a *Adapter) findUntriggeredIntegrationTestFromStatus(integrationTestScenar
 
 	}
 	return ""
+}
+
+// ReportSnapshotStatus reports status of all integration tests into Pull Requests from component snapshot or group snapshot
+func (a *Adapter) ReportSnapshotStatus(testedSnapshot *applicationapiv1alpha1.Snapshot) error {
+
+	statuses, err := gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(testedSnapshot)
+	if err != nil {
+		a.logger.Error(err, "failed to get test status annotations from snapshot",
+			"snapshot.Namespace", testedSnapshot.Namespace, "snapshot.Name", testedSnapshot.Name)
+		return err
+	}
+
+	integrationTestStatusDetails := statuses.GetStatuses()
+	if len(integrationTestStatusDetails) == 0 {
+		// no tests to report, skip
+		a.logger.Info("No test result to report to GitHub, skipping",
+			"snapshot.Namespace", testedSnapshot.Namespace, "snapshot.Name", testedSnapshot.Name)
+		return nil
+	}
+
+	// get the component snapshot list that include the git provider info the report will be reported to
+	destinationSnapshots, err := a.getDestinationSnapshots(testedSnapshot)
+	if err != nil {
+		a.logger.Error(err, "failed to get component snapshots from group snapshot",
+			"snapshot.NameSpace", testedSnapshot.Namespace, "snapshot.Name", testedSnapshot.Name)
+		return fmt.Errorf("failed to get component snapshots from snapshot %s/%s", testedSnapshot.Namespace, testedSnapshot.Name)
+	}
+
+	status.MigrateSnapshotToReportStatus(testedSnapshot, integrationTestStatusDetails)
+
+	srs, err := status.NewSnapshotReportStatusFromSnapshot(testedSnapshot)
+	if err != nil {
+		a.logger.Error(err, "failed to get latest snapshot write metadata annotation for snapshot",
+			"snapshot.NameSpace", testedSnapshot.Namespace, "snapshot.Name", testedSnapshot.Name)
+		srs, _ = status.NewSnapshotReportStatus("")
+	}
+
+	// Report the integration test status to pr/commit included in the tested component snapshot
+	// or the component snapshot included in group snapshot
+	for _, destinationComponentSnapshot := range destinationSnapshots {
+		reporter := a.status.GetReporter(destinationComponentSnapshot)
+		if reporter == nil {
+			a.logger.Info("No suitable reporter found, skipping report")
+			continue
+		}
+		a.logger.Info(fmt.Sprintf("Detected reporter: %s", reporter.GetReporterName()), "destinationComponentSnapshot.Name", destinationComponentSnapshot.Name, "testedSnapshot", testedSnapshot.Name)
+
+		if err := reporter.Initialize(a.context, destinationComponentSnapshot); err != nil {
+			a.logger.Error(err, "Failed to initialize reporter", "reporter", reporter.GetReporterName())
+			return fmt.Errorf("failed to initialize reporter: %w", err)
+		}
+		a.logger.Info("Reporter initialized", "reporter", reporter.GetReporterName())
+
+		err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
+			err := a.iterateIntegrationTestStatusDetailsInStatusReport(reporter, integrationTestStatusDetails, testedSnapshot, destinationComponentSnapshot, srs)
+			if err != nil {
+				a.logger.Error(err, fmt.Sprintf("failed to report integration test status for snapshot %s/%s",
+					destinationComponentSnapshot.Namespace, destinationComponentSnapshot.Name))
+				return fmt.Errorf("failed to report integration test status for snapshot %s/%s: %w",
+					destinationComponentSnapshot.Namespace, destinationComponentSnapshot.Name, err)
+			}
+			if err := status.WriteSnapshotReportStatus(a.context, a.client, testedSnapshot, srs); err != nil {
+				a.logger.Error(err, "failed to write snapshot report status metadata")
+				return fmt.Errorf("failed to write snapshot report status metadata: %w", err)
+			}
+			return err
+		})
+
+	}
+
+	if err != nil {
+		return fmt.Errorf("issue occured during generating or updating report status: %w", err)
+	}
+
+	a.logger.Info(fmt.Sprintf("Successfully updated the %s annotation", gitops.SnapshotStatusReportAnnotation), "snapshot.Name", testedSnapshot.Name)
+
+	return nil
+}
+
+// iterates iterateIntegrationTestStatusDetails to report to destination snapshot for them
+func (a *Adapter) iterateIntegrationTestStatusDetailsInStatusReport(reporter status.ReporterInterface,
+	integrationTestStatusDetails []*intgteststat.IntegrationTestStatusDetail,
+	testedSnapshot *applicationapiv1alpha1.Snapshot,
+	destinationSnapshot *applicationapiv1alpha1.Snapshot,
+	srs *status.SnapshotReportStatus) error {
+	// set componentName to component name of component snapshot or pr group name of group snapshot when reporting status to git provider
+	componentName := ""
+	if gitops.IsGroupSnapshot(testedSnapshot) {
+		componentName = "pr group " + testedSnapshot.Annotations[gitops.PRGroupAnnotation]
+	} else if gitops.IsComponentSnapshot(testedSnapshot) {
+		componentName = testedSnapshot.Labels[gitops.SnapshotComponentLabel]
+	} else {
+		return fmt.Errorf("unsupported snapshot type: %s", testedSnapshot.Annotations[gitops.SnapshotTypeLabel])
+	}
+
+	for _, integrationTestStatusDetail := range integrationTestStatusDetails {
+		if srs.IsNewer(integrationTestStatusDetail.ScenarioName, integrationTestStatusDetail.LastUpdateTime) {
+			a.logger.Info("Integration Test contains new status updates", "scenario.Name", integrationTestStatusDetail.ScenarioName, "destinationSnapshot.Name", destinationSnapshot.Name, "testedSnapshot", testedSnapshot.Name)
+		} else {
+			//integration test contains no changes
+			a.logger.Info("Integration Test doen't contain new status updates", "scenario.Name", integrationTestStatusDetail.ScenarioName)
+			continue
+		}
+		testReport, reportErr := status.GenerateTestReport(a.context, a.client, *integrationTestStatusDetail, testedSnapshot, componentName)
+		if reportErr != nil {
+			if writeErr := status.WriteSnapshotReportStatus(a.context, a.client, testedSnapshot, srs); writeErr != nil { // try to write what was already written
+				return fmt.Errorf("failed to generate test report AND write snapshot report status metadata: %w", e.Join(reportErr, writeErr))
+			}
+			return fmt.Errorf("failed to generate test report: %w", reportErr)
+		}
+		if reportStatusErr := reporter.ReportStatus(a.context, *testReport); reportStatusErr != nil {
+			if writeErr := status.WriteSnapshotReportStatus(a.context, a.client, testedSnapshot, srs); writeErr != nil { // try to write what was already written
+				return fmt.Errorf("failed to report status AND write snapshot report status metadata: %w", e.Join(reportStatusErr, writeErr))
+			}
+			return fmt.Errorf("failed to update status: %w", reportStatusErr)
+		}
+		a.logger.Info("Successfully report integration test status for snapshot",
+			"testedSnapshot.Name", testedSnapshot.Name,
+			"destinationSnapshot.Name", destinationSnapshot.Name,
+			"testStatus", integrationTestStatusDetail.Status)
+		srs.SetLastUpdateTime(integrationTestStatusDetail.ScenarioName, integrationTestStatusDetail.LastUpdateTime)
+	}
+	return nil
+}
+
+// getDestinationSnapshots gets the component snapshots that include the git provider info the report will be reported to
+func (a *Adapter) getDestinationSnapshots(testedSnapshot *applicationapiv1alpha1.Snapshot) ([]*applicationapiv1alpha1.Snapshot, error) {
+	destinationSnapshots := make([]*applicationapiv1alpha1.Snapshot, 0)
+	if gitops.IsComponentSnapshot(testedSnapshot) {
+		destinationSnapshots = append(destinationSnapshots, testedSnapshot)
+		return destinationSnapshots, nil
+	} else if gitops.IsGroupSnapshot(testedSnapshot) {
+		// get component snapshots from group snapshot annotation GroupSnapshotInfoAnnotation
+		destinationSnapshots, err := status.GetComponentSnapshotsFromGroupSnapshot(a.context, a.client, testedSnapshot)
+		if err != nil {
+			a.logger.Error(err, "failed to get component snapshots included in group snapshot",
+				"snapshot.NameSpace", testedSnapshot.Namespace, "snapshot.Name", testedSnapshot.Name)
+			return nil, fmt.Errorf("failed to get component snapshots included in group snapshot %s/%s", testedSnapshot.Namespace, testedSnapshot.Name)
+		}
+		return destinationSnapshots, nil
+	}
+	return nil, fmt.Errorf("unsupported snapshot type in snapshot %s/%s", testedSnapshot.Namespace, testedSnapshot.Name)
 }

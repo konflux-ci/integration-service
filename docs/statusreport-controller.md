@@ -34,6 +34,7 @@ flowchart TD
   %% Node definitions
   ensure(Process further if: Snapshot has label <br>pac.test.appstudio.openshift.io/git-provider:github <br>defined)
   get_annotation_value(Get integration test status from annotation <br>test.appstudio.openshift.io/status <br>from Snapshot)
+  get_destination_snapshot(Get destination snapshots from <br>component snapshot or group snapshot <br>to collect git provider info)
 
   detect_git_provider{Detect git provider}
 
@@ -70,7 +71,8 @@ flowchart TD
   %% Node connections
   predicate                      ---->    |"EnsureSnapshotTestStatusReportedToGitProvider()"|ensure
   ensure                         -->      get_annotation_value
-  get_annotation_value           -->      detect_git_provider
+  get_annotation_value           -->      get_destination_snapshot
+  get_destination_snapshot       -->      detect_git_provider
   detect_git_provider            --github--> collect_commit_info_gh
   detect_git_provider            --gitlab--> collect_commit_info_gl
   collect_commit_info_gh         --> is_installation_defined
