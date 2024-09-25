@@ -233,7 +233,7 @@ func (cru *CheckRunStatusUpdater) UpdateStatus(ctx context.Context, report TestR
 
 	if existingCheckrun == nil {
 		cru.logger.Info("creating checkrun for scenario test status of snapshot",
-			"snapshot.NameSpace", cru.snapshot.Namespace, "snapshot.Name", cru.snapshot.Name, "scenarioName", report.ScenarioName)
+			"snapshot.NameSpace", cru.snapshot.Namespace, "snapshot.Name", cru.snapshot.Name, "scenarioName", report.ScenarioName, "externalID", checkRunAdapter.ExternalID)
 		_, err = cru.ghClient.CreateCheckRun(ctx, checkRunAdapter)
 		if err != nil {
 			cru.logger.Error(err, "failed to create checkrun",
@@ -248,7 +248,7 @@ func (cru *CheckRunStatusUpdater) UpdateStatus(ctx context.Context, report TestR
 	// new checkrun with same external ID, rather than updating it
 	if existingCheckrun.GetStatus() == "completed" {
 		cru.logger.Info("The existing checkrun is already in completed state, re-creating a new checkrun for scenario test status of snapshot",
-			"snapshot.NameSpace", cru.snapshot.Namespace, "snapshot.Name", cru.snapshot.Name, "scenarioName", report.ScenarioName)
+			"snapshot.NameSpace", cru.snapshot.Namespace, "snapshot.Name", cru.snapshot.Name, "scenarioName", report.ScenarioName, "externalID", checkRunAdapter.ExternalID)
 		_, err = cru.ghClient.CreateCheckRun(ctx, checkRunAdapter)
 		if err != nil {
 			cru.logger.Error(err, "failed to create checkrun",

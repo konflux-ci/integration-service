@@ -842,6 +842,35 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 				filteredScenarios = gitops.FilterIntegrationTestScenariosWithContext(&allScenarios, hasSnapshot)
 				Expect(*filteredScenarios).To(HaveLen(3))
 			})
+
+			It("Testing annotating snapshot", func() {
+				componentSnapshotInfos := []gitops.ComponentSnapshotInfo{
+					{
+						Component:        "com1",
+						Snapshot:         "snapshot1",
+						BuildPipelineRun: "buildPLR1",
+						Namespace:        "default",
+					},
+					{
+						Component:        "com2",
+						Snapshot:         "snapshot2",
+						BuildPipelineRun: "buildPLR2",
+						Namespace:        "default",
+					},
+				}
+				snapshot, err := gitops.SetAnnotationAndLabelForGroupSnapshot(hasSnapshot, hasSnapshot, componentSnapshotInfos)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(componentSnapshotInfos).To(HaveLen(2))
+				Expect(snapshot.Labels[gitops.SnapshotTypeLabel]).To(Equal("group"))
+			})
+
+			It("Testing UnmarshalJSON", func() {
+				infoString := "[{\"namespace\":\"default\",\"component\":\"devfile-sample-java-springboot-basic-8969\",\"buildPipelineRun\":\"build-plr-java-qjfxz\",\"snapshot\":\"app-8969-bbn7d\"},{\"namespace\":\"default\",\"component\":\"devfile-sample-go-basic-8969\",\"buildPipelineRun\":\"build-plr-go-jmsjq\",\"snapshot\":\"app-8969-kzq2l\"}]"
+				componentSnapshotInfos, err := gitops.UnmarshalJSON([]byte(infoString))
+				Expect(err).ToNot(HaveOccurred())
+				Expect(componentSnapshotInfos[0].Namespace).To(Equal("default"))
+				Expect(componentSnapshotInfos).To(HaveLen(2))
+			})
 		})
 	})
 
