@@ -330,7 +330,7 @@ func (a *Adapter) iterateIntegrationTestStatusDetailsInStatusReport(reporter sta
 	}
 
 	for _, integrationTestStatusDetail := range integrationTestStatusDetails {
-		if srs.IsNewer(integrationTestStatusDetail.ScenarioName, integrationTestStatusDetail.LastUpdateTime) {
+		if srs.IsNewer(integrationTestStatusDetail.ScenarioName, destinationSnapshot.Name, integrationTestStatusDetail.LastUpdateTime) {
 			a.logger.Info("Integration Test contains new status updates", "scenario.Name", integrationTestStatusDetail.ScenarioName, "destinationSnapshot.Name", destinationSnapshot.Name, "testedSnapshot", testedSnapshot.Name)
 		} else {
 			//integration test contains no changes
@@ -354,7 +354,7 @@ func (a *Adapter) iterateIntegrationTestStatusDetailsInStatusReport(reporter sta
 			"testedSnapshot.Name", testedSnapshot.Name,
 			"destinationSnapshot.Name", destinationSnapshot.Name,
 			"testStatus", integrationTestStatusDetail.Status)
-		srs.SetLastUpdateTime(integrationTestStatusDetail.ScenarioName, integrationTestStatusDetail.LastUpdateTime)
+		srs.SetLastUpdateTime(integrationTestStatusDetail.ScenarioName, destinationSnapshot.Name, integrationTestStatusDetail.LastUpdateTime)
 	}
 	return nil
 }

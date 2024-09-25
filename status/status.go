@@ -53,22 +53,25 @@ type SnapshotReportStatus struct {
 	dirty     bool
 }
 
-// SetLastUpdateTime updates the last udpate time of the given scenario to the given time
-func (srs *SnapshotReportStatus) SetLastUpdateTime(scenarioName string, t time.Time) {
+// SetLastUpdateTime updates the last udpate time of the given scenario and snapshot to the given time
+func (srs *SnapshotReportStatus) SetLastUpdateTime(scenarioName string, snapshotName string, t time.Time) {
 	srs.dirty = true
-	if scenario, ok := srs.Scenarios[scenarioName]; ok {
+	//use scenarioName and snapshotName as the key to support group snapshot status report
+	keyName := scenarioName + "-" + snapshotName
+	if scenario, ok := srs.Scenarios[keyName]; ok {
 		scenario.LastUpdateTime = &t
 		return
 	}
 
-	srs.Scenarios[scenarioName] = &ScenarioReportStatus{
+	srs.Scenarios[keyName] = &ScenarioReportStatus{
 		LastUpdateTime: &t,
 	}
 }
 
-// IsNewer returns true if given scenario has newer time than the last updated
-func (srs *SnapshotReportStatus) IsNewer(scenarioName string, t time.Time) bool {
-	if scenario, ok := srs.Scenarios[scenarioName]; ok {
+// IsNewer returns true if given scenario and snapshot has newer time than the last updated
+func (srs *SnapshotReportStatus) IsNewer(scenarioName string, snapshotName string, t time.Time) bool {
+	key := scenarioName + "-" + snapshotName
+	if scenario, ok := srs.Scenarios[key]; ok {
 		return scenario.LastUpdateTime.Before(t)
 	}
 
@@ -177,7 +180,7 @@ func MigrateSnapshotToReportStatus(s *applicationapiv1alpha1.Snapshot, testStatu
 	}
 
 	for _, testStatDetail := range testStatuses {
-		srs.SetLastUpdateTime(testStatDetail.ScenarioName, oldLastUpdateTime)
+		srs.SetLastUpdateTime(testStatDetail.ScenarioName, s.Name, oldLastUpdateTime)
 	}
 
 	annotations[gitops.SnapshotStatusReportAnnotation], _ = srs.ToAnnotationString()

@@ -735,7 +735,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			mockReporter.EXPECT().ReportStatus(gomock.Any(), gomock.Any()).Times(0) // data are older, status shouldn't be reported
 
 			hasPRSnapshot.Annotations["test.appstudio.openshift.io/status"] = "[{\"scenario\":\"scenario1\",\"status\":\"InProgress\",\"startTime\":\"2023-07-26T16:57:49+02:00\",\"lastUpdateTime\":\"2023-08-26T17:57:50+02:00\",\"details\":\"Test in progress\"}]"
-			hasPRSnapshot.Annotations["test.appstudio.openshift.io/git-reporter-status"] = "{\"scenarios\":{\"scenario1\":{\"lastUpdateTime\":\"2023-08-26T17:57:50+02:00\"}}}"
+			hasPRSnapshot.Annotations["test.appstudio.openshift.io/git-reporter-status"] = "{\"scenarios\":{\"scenario1-snapshot-pr-sample\":{\"lastUpdateTime\":\"2023-08-26T17:57:50+02:00\"}}}"
 			adapter = NewAdapter(ctx, hasPRSnapshot, hasApp, logger, loader.NewMockLoader(), k8sClient)
 			adapter.status = mockStatus
 			err := adapter.ReportSnapshotStatus(adapter.snapshot)
@@ -751,7 +751,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			mockReporter.EXPECT().ReportStatus(gomock.Any(), gomock.Any()).Times(1)
 
 			hasPRSnapshot.Annotations["test.appstudio.openshift.io/status"] = "[{\"scenario\":\"scenario1\",\"status\":\"InProgress\",\"startTime\":\"2023-07-26T16:57:49+02:00\",\"lastUpdateTime\":\"2023-08-26T17:57:50+02:00\",\"details\":\"Test in progress\"}]"
-			hasPRSnapshot.Annotations["test.appstudio.openshift.io/git-reporter-status"] = "{\"scenarios\":{\"scenario1\":{\"lastUpdateTime\":\"2023-08-26T17:57:49+02:00\"}}}"
+			hasPRSnapshot.Annotations["test.appstudio.openshift.io/git-reporter-status"] = "{\"scenarios\":{\"scenarios-snapshot-pr-sample\":{\"lastUpdateTime\":\"2023-08-26T17:57:49+02:00\"}}}"
 			hasPRSnapshot.Annotations["test.appstudio.openshift.io/group-test-info"] = "[{\"namespace\":\"default\",\"component\":\"devfile-sample-java-springboot-basic-8969\",\"buildPipelineRun\":\"build-plr-java-qjfxz\",\"snapshot\":\"app-8969-bbn7d\",\"pullRuestNumber\":\"1\",\"repoUrl\":\"https://example.com\"},{\"namespace\":\"default\",\"component\":\"devfile-sample-go-basic-8969\",\"buildPipelineRun\":\"build-plr-go-jmsjq\",\"snapshot\":\"app-8969-kzq2l\",\"pullRuestNumber\":\"1\",\"repoUrl\":\"https://example.com\"}]"
 			adapter = NewAdapter(ctx, hasPRSnapshot, hasApp, logger, loader.NewMockLoader(), k8sClient)
 			adapter.status = mockStatus
