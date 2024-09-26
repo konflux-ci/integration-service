@@ -20,10 +20,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"k8s.io/client-go/util/retry"
 	"reflect"
 	"strings"
 	"time"
+
+	"k8s.io/client-go/util/retry"
 
 	clienterrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -756,7 +757,7 @@ func (a *Adapter) createIntegrationPipelineRun(application *applicationapiv1alph
 	a.logger.Info("Creating new pipelinerun for integrationTestscenario",
 		"integrationTestScenario.Name", integrationTestScenario.Name)
 
-	pipelineRunBuilder := tekton.NewIntegrationPipelineRun(snapshot.Name, application.Namespace, *integrationTestScenario).
+	pipelineRunBuilder := tekton.NewIntegrationPipelineRun(integrationTestScenario.Name, application.Namespace, *integrationTestScenario).
 		WithSnapshot(snapshot).
 		WithIntegrationLabels(integrationTestScenario).
 		WithIntegrationAnnotations(integrationTestScenario).
