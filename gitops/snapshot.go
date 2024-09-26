@@ -152,6 +152,9 @@ const (
 	// PipelineAsCodeTargetProjectIDAnnotation is the target project ID for gitlab
 	PipelineAsCodeTargetProjectIDAnnotation = PipelinesAsCodePrefix + "/target-project-id"
 
+	// PipelineAsCodeRepoUrlAnnotation is the target project Repo Url
+	PipelineAsCodeRepoUrlAnnotation = PipelinesAsCodePrefix + "/repo-url"
+
 	// PipelineAsCodeSHAAnnotation is the commit which triggered the pipelinerun in build service.
 	PipelineAsCodeSHAAnnotation = PipelinesAsCodePrefix + "/sha"
 
@@ -244,6 +247,10 @@ type ComponentSnapshotInfo struct {
 	BuildPipelineRun string `json:"buildPipelineRun"`
 	// The built component snapshot from build PLR
 	Snapshot string `json:"snapshot"`
+	// The repo url for each component
+	RepoUrl string `json:"repoUrl"`
+	// Pull/Merge request number for updated component
+	PullRequestNumber string `json:"pullRequestNumber"`
 }
 
 const componentSnapshotInfosSchema = `{
@@ -262,6 +269,12 @@ const componentSnapshotInfosSchema = `{
           "type": "string"
         },
         "snapshot": {
+          "type": "string"
+        },
+        "repoUrl": {
+          "type": "string"
+        },
+        "pullRequestNumber": {
           "type": "string"
         }
       },
