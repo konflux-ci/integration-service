@@ -909,16 +909,20 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 				Expect(metadata.HasAnnotation(hasComSnapshot3, gitops.PRGroupCreationAnnotation)).To(BeFalse())
 				componentSnapshotInfos := []gitops.ComponentSnapshotInfo{
 					{
-						Namespace:        "default",
-						Component:        hasComSnapshot2Name,
-						BuildPipelineRun: "plr2",
-						Snapshot:         hasComSnapshot2.Name,
+						Namespace:         "default",
+						Component:         hasComSnapshot2Name,
+						BuildPipelineRun:  "plr2",
+						Snapshot:          hasComSnapshot2.Name,
+						RepoUrl:           SampleRepoLink,
+						PullRequestNumber: "1",
 					},
 					{
-						Namespace:        "default",
-						Component:        hasComSnapshot1Name,
-						BuildPipelineRun: "plr3",
-						Snapshot:         hasComSnapshot3.Name,
+						Namespace:         "default",
+						Component:         hasComSnapshot1Name,
+						BuildPipelineRun:  "plr3",
+						Snapshot:          hasComSnapshot3.Name,
+						RepoUrl:           SampleRepoLink,
+						PullRequestNumber: "1",
 					},
 				}
 				err := gitops.NotifyComponentSnapshotsInGroupSnapshot(ctx, k8sClient, componentSnapshotInfos, "group snapshot created")
