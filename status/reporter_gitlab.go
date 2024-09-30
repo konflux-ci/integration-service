@@ -249,7 +249,7 @@ func (r *GitLabReporter) ReportStatus(ctx context.Context, report TestReport) er
 	}
 
 	// Create a note when integration test is neither pending nor inprogress since comment for pending/inprogress is less meaningful
-	if report.Status != intgteststat.IntegrationTestStatusPending && report.Status != intgteststat.IntegrationTestStatusInProgress {
+	if report.Status != intgteststat.IntegrationTestStatusPending && report.Status != intgteststat.IntegrationTestStatusInProgress && !gitops.IsSnapshotCreatedByPACPushEvent(r.snapshot) {
 		err := r.updateStatusInComment(report)
 		if err != nil {
 			return err

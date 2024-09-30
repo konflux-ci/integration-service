@@ -420,7 +420,7 @@ func (csu *CommitStatusUpdater) UpdateStatus(ctx context.Context, report TestRep
 			return err
 		}
 		// Create a comment when integration test is neither pending nor inprogress since comment for pending/inprogress is less meaningful and there is commitStatus for all statuses
-		if report.Status != intgteststat.IntegrationTestStatusPending && report.Status != intgteststat.IntegrationTestStatusInProgress {
+		if report.Status != intgteststat.IntegrationTestStatusPending && report.Status != intgteststat.IntegrationTestStatusInProgress && !gitops.IsSnapshotCreatedByPACPushEvent(csu.snapshot) {
 			err = csu.updateStatusInComment(ctx, report)
 			if err != nil {
 				return err
