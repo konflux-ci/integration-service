@@ -77,6 +77,9 @@ const (
 	// SnapshotGitSourceRepoURLAnnotation contains URL of the git source repository (usually needed for forks)
 	SnapshotGitSourceRepoURLAnnotation = "test.appstudio.openshift.io/source-repo-url"
 
+	// PipelineAsCodeGitProviderAnnotation contains the git provider attached via PaC (e.g., github, gitlab)
+	PipelineAsCodeGitSourceURLAnnotation = PipelinesAsCodePrefix + "/source-repo-url"
+
 	// SnapshotStatusReportAnnotation contains metadata of tests related to status reporting to git provider
 	SnapshotStatusReportAnnotation = "test.appstudio.openshift.io/git-reporter-status"
 
