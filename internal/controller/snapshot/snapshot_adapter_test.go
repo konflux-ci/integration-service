@@ -87,6 +87,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		sampleDigest        = "sha256:841328df1b9f8c4087adbdcfec6cc99ac8308805dea83f6d415d6fb8d40227c1"
 		customLabel         = "custom.appstudio.openshift.io/custom-label"
 		sourceRepoRef       = "db2c043b72b3f8d292ee0e38768d0a94859a308b"
+		sourceRepoBranch    = "demo"
 		hasComSnapshot1Name = "hascomsnapshot1-sample"
 		hasComSnapshot2Name = "hascomsnapshot2-sample"
 		hasComSnapshot3Name = "hascomsnapshot3-sample"
@@ -137,6 +138,10 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 						{
 							Name:  "pathInRepo",
 							Value: "pipelineruns/integration_pipelinerun_pass.yaml",
+						},
+						{
+							Name:  "branch",
+							Value: sourceRepoBranch,
 						},
 					},
 				},
@@ -955,15 +960,16 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		When("pull request updates repo with integration test", func() {
 
 			const (
-				sourceRepoUrl = "https://test-repo.example.com"                            // is without .git suffix
-				targetRepoUrl = "https://github.com/redhat-appstudio/integration-examples" // is without .git suffix
+				sourceRepoUrl    = "https://test-repo.example.com"                            // is without .git suffix
+				targetRepoUrl    = "https://github.com/redhat-appstudio/integration-examples" // is without .git suffix
+				sourceRepoBranch = "demo"
 			)
 
 			BeforeEach(func() {
 				hasSnapshotPR.Annotations[gitops.SnapshotGitSourceRepoURLAnnotation] = sourceRepoUrl
 				hasSnapshotPR.Annotations[gitops.PipelineAsCodeSHAAnnotation] = sourceRepoRef
 				hasSnapshotPR.Annotations[gitops.PipelineAsCodeRepoURLAnnotation] = targetRepoUrl
-				hasSnapshotPR.Annotations[gitops.PipelineAsCodeTargetBranchAnnotation] = "main"
+				hasSnapshotPR.Annotations[gitops.PipelineAsCodeTargetBranchAnnotation] = sourceRepoBranch
 			})
 
 			It("pullrequest source repo reference and URL should be used", func() {
@@ -973,6 +979,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 
 				foundUrl := false
 				foundRevision := false
+				foundBranch := false
 
 				for _, param := range pipelineRun.Spec.PipelineRef.Params {
 					if param.Name == tekton.TektonResolverGitParamURL {
@@ -983,9 +990,15 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 						foundRevision = true
 						Expect(param.Value.StringVal).To(Equal(sourceRepoRef))
 					}
+					if param.Name == tekton.TektonResolverGitParamBranch {
+						foundBranch = true
+						Expect(param.Value.StringVal).To(Equal(sourceRepoBranch))
+					}
 				}
 				Expect(foundUrl).To(BeTrue())
 				Expect(foundRevision).To(BeTrue())
+				Expect(foundBranch).To(BeTrue())
+
 			})
 
 		})

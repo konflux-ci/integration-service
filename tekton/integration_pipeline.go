@@ -63,6 +63,9 @@ const (
 
 	// Name of tekton git resolver param revision
 	TektonResolverGitParamRevision = "revision"
+
+	// Name of tekton git resolver param branch
+	TektonResolverGitParamBranch = "branch"
 )
 
 var (
