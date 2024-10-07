@@ -756,7 +756,7 @@ func shouldUpdateIntegrationTestGitResolver(integrationTestScenario *v1beta2.Int
 func getGitResolverUpdateMap(snapshot *applicationapiv1alpha1.Snapshot) map[string]string {
 	annotations := snapshot.GetAnnotations()
 	return map[string]string{
-		tekton.TektonResolverGitParamURL:      urlToGitUrl(annotations[gitops.SnapshotGitSourceRepoURLAnnotation]), // should have .git in url for consistency and compatibility
+		tekton.TektonResolverGitParamURL:      urlToGitUrl(annotations[gitops.PipelineAsCodeGitSourceURLAnnotation]), // should have .git in url for consistency and compatibility
 		tekton.TektonResolverGitParamRevision: annotations[gitops.PipelineAsCodeSHAAnnotation],
 	}
 }

@@ -983,9 +983,11 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 						foundRevision = true
 						Expect(param.Value.StringVal).To(Equal(sourceRepoRef))
 					}
+
 				}
 				Expect(foundUrl).To(BeTrue())
 				Expect(foundRevision).To(BeTrue())
+
 			})
 
 		})
