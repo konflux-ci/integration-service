@@ -603,6 +603,10 @@ func (a *Adapter) EnsureGroupSnapshotExist() (controller.OperationResult, error)
 
 	groupSnapshot, componentSnapshotInfos, err := a.prepareGroupSnapshot(a.application, prGroupHash)
 	if err != nil {
+		if strings.Contains(err.Error(), "failed to get pull request for") {
+			// Stop processing in case the repo was removed/moved, and we reach 404 when trying to find the status of pull request
+			return controller.StopProcessing()
+		}
 		a.logger.Error(err, "Failed to prepare group snapshot")
 		return controller.RequeueWithError(err)
 	}
