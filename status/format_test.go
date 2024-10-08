@@ -319,6 +319,7 @@ var _ = Describe("Formatters", func() {
 
 	When("componentSnapshotInfos is not nil", func() {
 		var taskRun *helpers.TaskRun
+		SampleRepoLink := "https://github.com/example"
 		BeforeEach(func() {
 			now := time.Now()
 			taskRun = newTaskRunWithoutAppStudioTestOutput(
@@ -329,27 +330,33 @@ var _ = Describe("Formatters", func() {
 		})
 		componentSnapshotInfos := []*gitops.ComponentSnapshotInfo{
 			{
-				Component:        "com1",
-				Snapshot:         "snapshot1",
-				BuildPipelineRun: "buildPLR1",
-				Namespace:        "default",
+				Component:         "com1",
+				Snapshot:          "snapshot1",
+				BuildPipelineRun:  "buildPLR1",
+				Namespace:         "default",
+				RepoUrl:           SampleRepoLink,
+				PullRequestNumber: "1",
 			},
 			{
-				Component:        "com2",
-				Snapshot:         "snapshot2",
-				BuildPipelineRun: "buildPLR2",
-				Namespace:        "default",
+				Component:         "com2",
+				Snapshot:          "snapshot2",
+				BuildPipelineRun:  "buildPLR2",
+				Namespace:         "default",
+				RepoUrl:           SampleRepoLink,
+				PullRequestNumber: "1",
 			},
 			{
-				Component:        "com3",
-				Snapshot:         "snapshot3",
-				BuildPipelineRun: "buildPLR3",
-				Namespace:        "default",
+				Component:         "com3",
+				Snapshot:          "snapshot3",
+				BuildPipelineRun:  "buildPLR3",
+				Namespace:         "default",
+				RepoUrl:           SampleRepoLink,
+				PullRequestNumber: "1",
 			},
 		}
 		It("component snapshot info is generated", func() {
 			text, err := status.FormatTestsSummary([]*helpers.TaskRun{taskRun}, pipelineRun.Name, pipelineRun.Namespace, componentSnapshotInfos, logr.Discard())
-			Expect(text).To(ContainSubstring("| com1 | snapshot1 |"))
+			Expect(text).To(ContainSubstring("| com3 | snapshot3 | <a href=\"https://definetly.not.prod/preview/application-pipeline/ns/default/pipelinerun/buildPLR3\">buildPLR3</a> | <a href=\"https://github.com/example/-/merge_requests/1\">example</a> |"))
 			Expect(err).To(Succeed())
 		})
 	})
