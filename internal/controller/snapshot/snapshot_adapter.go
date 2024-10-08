@@ -914,13 +914,15 @@ func (a *Adapter) prepareGroupSnapshot(application *applicationapiv1alpha1.Appli
 				return nil, nil, err
 			}
 			if isPRMROpened {
-				a.logger.Info("PR/MR in snapshot is opend, will find snapshotComponent and add to groupSnapshot")
+				a.logger.Info("PR/MR in snapshot is opened, will find snapshotComponent and add to groupSnapshot")
 				snapshotComponent := gitops.FindMatchingSnapshotComponent(&snapshot, &applicationComponent)
 				componentSnapshotInfos = append(componentSnapshotInfos, gitops.ComponentSnapshotInfo{
-					Component:        applicationComponent.Name,
-					BuildPipelineRun: snapshot.Labels[gitops.BuildPipelineRunNameLabel],
-					Snapshot:         snapshot.Name,
-					Namespace:        a.snapshot.Namespace,
+					Component:         applicationComponent.Name,
+					BuildPipelineRun:  snapshot.Labels[gitops.BuildPipelineRunNameLabel],
+					Snapshot:          snapshot.Name,
+					Namespace:         a.snapshot.Namespace,
+					RepoUrl:           snapshot.Annotations[gitops.PipelineAsCodeRepoUrlAnnotation],
+					PullRequestNumber: snapshot.Annotations[gitops.PipelineAsCodePullRequestAnnotation],
 				})
 				snapshotComponents = append(snapshotComponents, snapshotComponent)
 				break

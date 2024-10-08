@@ -49,10 +49,10 @@ const summaryTemplate = `
 {{ formatFootnotes .TaskRuns }}
 {{ if .ComponentSnapshotInfos}}
 The group snapshot is generated for the component snasphots as below:
-| Component | Snapshot | BuildPipelineRun |
+| Component | Snapshot | BuildPipelineRun | PullRequest |
 | --- | --- | --- |
 {{- range $cs := .ComponentSnapshotInfos }}
-| {{ $cs.Component }} | {{ $cs.Snapshot }} | <a href="{{ formatPipelineURL $cs.BuildPipelineRun $namespace $logger }}">{{ $cs.BuildPipelineRun }}</a> |
+| {{ $cs.Component }} | {{ $cs.Snapshot }} | <a href="{{ formatPipelineURL $cs.BuildPipelineRun $namespace $logger }}">{{ $cs.BuildPipelineRun }}</a> | <a href="{{ formatPullRequestURL $cs.RepoUrl $cs.PullRequestNumber }}">{{ formatRepoURL $cs.RepoUrl }}</a> |
 {{- end }}
 {{end}}`
 
@@ -81,13 +81,15 @@ type CommentTemplateData struct {
 // FormatTestsSummary builds a markdown summary for a list of integration TaskRuns.
 func FormatTestsSummary(taskRuns []*helpers.TaskRun, pipelineRunName string, namespace string, componentSnapshotInfos []*gitops.ComponentSnapshotInfo, logger logr.Logger) (string, error) {
 	funcMap := template.FuncMap{
-		"formatTaskName":    FormatTaskName,
-		"formatNamespace":   FormatNamespace,
-		"formatStatus":      FormatStatus,
-		"formatDetails":     FormatDetails,
-		"formatPipelineURL": FormatPipelineURL,
-		"formatTaskLogURL":  FormatTaskLogURL,
-		"formatFootnotes":   FormatFootnotes,
+		"formatTaskName":       FormatTaskName,
+		"formatNamespace":      FormatNamespace,
+		"formatStatus":         FormatStatus,
+		"formatDetails":        FormatDetails,
+		"formatPipelineURL":    FormatPipelineURL,
+		"formatTaskLogURL":     FormatTaskLogURL,
+		"formatFootnotes":      FormatFootnotes,
+		"formatPullRequestURL": FormatPullRequestURL,
+		"formatRepoURL":        FormatRepoURL,
 	}
 	buf := bytes.Buffer{}
 	data := SummaryTemplateData{TaskRuns: taskRuns, PipelineRunName: pipelineRunName, Namespace: namespace, ComponentSnapshotInfos: componentSnapshotInfos, Logger: logger}
@@ -254,6 +256,27 @@ func FormatPipelineURL(pipelinerun string, namespace string, logger logr.Logger)
 		logger.Error(err, "Error occured when executing template.")
 	}
 	return buf.String()
+}
+
+// FormatPullRequestURL accepts a name of application, pipelinerun, namespace and returns a complete pipelineURL.
+func FormatPullRequestURL(repoUrl string, pullRequestNumber string) string {
+	pullRequestUrl := "https://PULLREQUEST_URL_NOT_AVAILABLE"
+
+	if strings.Contains(repoUrl, "https://gitlab") {
+		pullRequestUrl = repoUrl + "/pull/" + pullRequestNumber
+	} else if strings.Contains(repoUrl, "https://github") {
+		pullRequestUrl = repoUrl + "/-/merge_requests/" + pullRequestNumber
+	}
+	return pullRequestUrl
+}
+
+func FormatRepoURL(repoUrl string) string {
+	repoName := "NOT_AVAILABLE"
+	if repoUrl != "" {
+		repoUrlStrings := strings.Split(repoUrl, "/")
+		repoName = repoUrlStrings[len(repoUrlStrings)-1]
+	}
+	return repoName
 }
 
 // FormatTaskLogURL accepts name of pipelinerun, task, namespace and returns a complete task log URL.
