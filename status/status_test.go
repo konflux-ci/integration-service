@@ -613,7 +613,7 @@ var _ = Describe("Status Adapter", func() {
 
 		It("Reseting dirty bit works", func() {
 			Expect(mockK8sClient.Create(context.Background(), hasSnapshot)).Should(Succeed())
-			hasSRS.SetLastUpdateTime(scenarioName, now)
+			hasSRS.SetLastUpdateTime(scenarioName, hasSnapshot.Name, now)
 			Expect(hasSRS.IsDirty()).To(BeTrue())
 
 			hasSRS.ResetDirty()
@@ -621,7 +621,7 @@ var _ = Describe("Status Adapter", func() {
 
 			// must keep scenarios
 			Expect(hasSRS.Scenarios).To(
-				HaveKeyWithValue(scenarioName, &status.ScenarioReportStatus{
+				HaveKeyWithValue(scenarioName+"-"+hasSnapshot.Name, &status.ScenarioReportStatus{
 					LastUpdateTime: &now,
 				}))
 			Expect(hasSnapshot.Annotations[gitops.SnapshotStatusReportAnnotation]).To(Equal(""))
@@ -634,11 +634,11 @@ var _ = Describe("Status Adapter", func() {
 
 		It("New scenario can be added to SRS", func() {
 			Expect(mockK8sClient.Create(context.Background(), hasSnapshot)).Should(Succeed())
-			hasSRS.SetLastUpdateTime(scenarioName, now)
+			hasSRS.SetLastUpdateTime(scenarioName, hasSnapshot.Name, now)
 			Expect(hasSRS.IsDirty()).To(BeTrue())
 
 			Expect(hasSRS.Scenarios).To(
-				HaveKeyWithValue(scenarioName, &status.ScenarioReportStatus{
+				HaveKeyWithValue(scenarioName+"-"+hasSnapshot.Name, &status.ScenarioReportStatus{
 					LastUpdateTime: &now,
 				}))
 
@@ -652,20 +652,20 @@ var _ = Describe("Status Adapter", func() {
 
 		It("Additional scenario can be added to SRS", func() {
 			extraScenarioName := "test-scenario-2"
-			hasSRS.SetLastUpdateTime(scenarioName, now)
-			hasSRS.SetLastUpdateTime(extraScenarioName, now)
+			hasSRS.SetLastUpdateTime(scenarioName, hasSnapshot.Name, now)
+			hasSRS.SetLastUpdateTime(extraScenarioName, hasSnapshot.Name, now)
 
 			Expect(hasSRS.Scenarios).To(HaveLen(2))
 		})
 
 		It("New last updated time can be assigned to existing scenario", func() {
 			tNew := now.Add(1 * time.Minute)
-			hasSRS.SetLastUpdateTime(scenarioName, now)
+			hasSRS.SetLastUpdateTime(scenarioName, hasSnapshot.Name, now)
 			hasSRS.ResetDirty()
 
-			hasSRS.SetLastUpdateTime(scenarioName, tNew)
+			hasSRS.SetLastUpdateTime(scenarioName, hasSnapshot.Name, tNew)
 			Expect(hasSRS.Scenarios).To(
-				HaveKeyWithValue(scenarioName, &status.ScenarioReportStatus{
+				HaveKeyWithValue(scenarioName+"-"+hasSnapshot.Name, &status.ScenarioReportStatus{
 					LastUpdateTime: &tNew,
 				}))
 			Expect(hasSRS.Scenarios).To(HaveLen(1))
@@ -673,20 +673,20 @@ var _ = Describe("Status Adapter", func() {
 
 		It("Detect newer update", func() {
 			tNew := now.Add(1 * time.Minute)
-			hasSRS.SetLastUpdateTime(scenarioName, now)
+			hasSRS.SetLastUpdateTime(scenarioName, hasSnapshot.Name, now)
 
-			Expect(hasSRS.IsNewer(scenarioName, tNew)).To(BeTrue())
+			Expect(hasSRS.IsNewer(scenarioName, hasSnapshot.Name, tNew)).To(BeTrue())
 		})
 
 		It("Detect no new update", func() {
 			tOld := now.Add(-1 * time.Minute)
-			hasSRS.SetLastUpdateTime(scenarioName, now)
+			hasSRS.SetLastUpdateTime(scenarioName, hasSnapshot.Name, now)
 
-			Expect(hasSRS.IsNewer(scenarioName, tOld)).To(BeFalse())
+			Expect(hasSRS.IsNewer(scenarioName, hasSnapshot.Name, tOld)).To(BeFalse())
 		})
 
 		It("Can export valid annotation", func() {
-			hasSRS.SetLastUpdateTime(scenarioName, now)
+			hasSRS.SetLastUpdateTime(scenarioName, hasSnapshot.Name, now)
 
 			annotation, err := hasSRS.ToAnnotationString()
 			Expect(err).ToNot(HaveOccurred())
@@ -695,18 +695,18 @@ var _ = Describe("Status Adapter", func() {
 			newSRS, err := status.NewSnapshotReportStatus(annotation)
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(newSRS.Scenarios).To(HaveKey(scenarioName))
+			Expect(newSRS.Scenarios).To(HaveKey(scenarioName + "-" + hasSnapshot.Name))
 			// comparing string because it was trying to compare pointer address and it changed
-			Expect(newSRS.Scenarios[scenarioName].LastUpdateTime.UnixMicro()).To(Equal(now.UnixMicro()))
+			Expect(newSRS.Scenarios[scenarioName+"-"+hasSnapshot.Name].LastUpdateTime.UnixMicro()).To(Equal(now.UnixMicro()))
 			Expect(newSRS.Scenarios).To(HaveLen(1))
 		})
 
 		It("Can read annotation from snapshot", func() {
-			hasSnapshot.Annotations["test.appstudio.openshift.io/git-reporter-status"] = "{\"scenarios\":{\"test-scenario\":{\"lastUpdateTime\":\"2023-08-26T17:57:49+02:00\"}}}"
+			hasSnapshot.Annotations["test.appstudio.openshift.io/git-reporter-status"] = "{\"scenarios\":{\"test-scenario-snapshot-sample\":{\"lastUpdateTime\":\"2023-08-26T17:57:49+02:00\"}}}"
 			newSRS, err := status.NewSnapshotReportStatusFromSnapshot(hasSnapshot)
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(newSRS.Scenarios).To(HaveKey(scenarioName))
+			Expect(newSRS.Scenarios).To(HaveKey(scenarioName + "-" + hasSnapshot.Name))
 			Expect(newSRS.Scenarios).To(HaveLen(1))
 		})
 
