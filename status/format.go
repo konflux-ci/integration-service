@@ -50,7 +50,7 @@ const summaryTemplate = `
 {{ if .ComponentSnapshotInfos}}
 The group snapshot is generated for the component snasphots as below:
 | Component | Snapshot | BuildPipelineRun | PullRequest |
-| --- | --- | --- |
+| --- | --- | --- | --- |
 {{- range $cs := .ComponentSnapshotInfos }}
 | {{ $cs.Component }} | {{ $cs.Snapshot }} | <a href="{{ formatPipelineURL $cs.BuildPipelineRun $namespace $logger }}">{{ $cs.BuildPipelineRun }}</a> | <a href="{{ formatPullRequestURL $cs.RepoUrl $cs.PullRequestNumber }}">{{ formatRepoURL $cs.RepoUrl }}</a> |
 {{- end }}
