@@ -356,7 +356,7 @@ var _ = Describe("Formatters", func() {
 		}
 		It("component snapshot info is generated", func() {
 			text, err := status.FormatTestsSummary([]*helpers.TaskRun{taskRun}, pipelineRun.Name, pipelineRun.Namespace, componentSnapshotInfos, logr.Discard())
-			Expect(text).To(ContainSubstring("| com3 | snapshot3 | <a href=\"https://definetly.not.prod/preview/application-pipeline/ns/default/pipelinerun/buildPLR3\">buildPLR3</a> | <a href=\"https://github.com/example/-/merge_requests/1\">example</a> |"))
+			Expect(text).To(ContainSubstring("| com3 | snapshot3 | <a href=\"https://definetly.not.prod/preview/application-pipeline/ns/default/pipelinerun/buildPLR3\">buildPLR3</a> | <a href=\"https://github.com/example/pull/1\">example</a> |"))
 			Expect(err).To(Succeed())
 		})
 	})

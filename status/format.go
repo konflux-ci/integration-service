@@ -262,9 +262,9 @@ func FormatPipelineURL(pipelinerun string, namespace string, logger logr.Logger)
 func FormatPullRequestURL(repoUrl string, pullRequestNumber string) string {
 	pullRequestUrl := "https://PULLREQUEST_URL_NOT_AVAILABLE"
 
-	if strings.Contains(repoUrl, "https://gitlab") {
+	if strings.Contains(repoUrl, "https://github") {
 		pullRequestUrl = repoUrl + "/pull/" + pullRequestNumber
-	} else if strings.Contains(repoUrl, "https://github") {
+	} else if strings.Contains(repoUrl, "https://gitlab") {
 		pullRequestUrl = repoUrl + "/-/merge_requests/" + pullRequestNumber
 	}
 	return pullRequestUrl
