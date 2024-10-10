@@ -746,7 +746,8 @@ func shouldUpdateIntegrationTestGitResolver(integrationTestScenario *v1beta2.Int
 
 	if urlVal, ok := params[tekton.TektonResolverGitParamURL]; ok {
 		// urlVal may or may not have git suffix specified :')
-		return urlToGitUrl(urlVal) == urlToGitUrl(annotations[gitops.PipelineAsCodeRepoURLAnnotation])
+		return urlToGitUrl(urlVal) == urlToGitUrl(annotations[gitops.PipelineAsCodeRepoURLAnnotation]) &&
+			params[tekton.TektonResolverGitParamBranch] == annotations[gitops.PipelineAsCodeTargetBranchAnnotation]
 	}
 
 	// undefined state, no idea what was configured in resolver, don't touch it
@@ -758,6 +759,7 @@ func getGitResolverUpdateMap(snapshot *applicationapiv1alpha1.Snapshot) map[stri
 	return map[string]string{
 		tekton.TektonResolverGitParamURL:      urlToGitUrl(annotations[gitops.SnapshotGitSourceRepoURLAnnotation]), // should have .git in url for consistency and compatibility
 		tekton.TektonResolverGitParamRevision: annotations[gitops.PipelineAsCodeSHAAnnotation],
+		tekton.TektonResolverGitParamBranch:   annotations[gitops.PipelineAsCodeTargetBranchAnnotation],
 	}
 }
 
