@@ -608,7 +608,12 @@ func (a *Adapter) EnsureGroupSnapshotExist() (controller.OperationResult, error)
 			return controller.StopProcessing()
 		}
 		a.logger.Error(err, "Failed to prepare group snapshot")
-		return controller.RequeueWithError(err)
+		// stop reconciliation directly when meeting error before STONEINTG-1048 is resolved
+		err = gitops.AnnotateSnapshot(a.context, a.snapshot, gitops.PRGroupCreationAnnotation, fmt.Sprintf("failed to prepare group snapshot for pr group %s, skipping group snapshot creation", prGroup), a.client)
+		if err != nil {
+			return controller.RequeueWithError(err)
+		}
+		return controller.StopProcessing()
 	}
 
 	if groupSnapshot == nil {
