@@ -30,6 +30,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/konflux-ci/integration-service/gitops"
+	"github.com/konflux-ci/integration-service/helpers"
 	intgteststat "github.com/konflux-ci/integration-service/pkg/integrationteststatus"
 )
 
@@ -69,7 +70,7 @@ type ReporterInterface interface {
 
 // GetPACGitProviderToken lookup for configured repo and fetch token from namespace
 func GetPACGitProviderToken(ctx context.Context, k8sClient client.Client, snapshot *applicationapiv1alpha1.Snapshot) (string, error) {
-	var err error
+	var err, unRecoverableError error
 
 	// List all the Repository CRs in the namespace
 	repos := pacv1alpha1.RepositoryList{}
@@ -80,7 +81,8 @@ func GetPACGitProviderToken(ctx context.Context, k8sClient client.Client, snapsh
 	// Get the full repo URL
 	url, found := snapshot.GetAnnotations()[gitops.PipelineAsCodeRepoURLAnnotation]
 	if !found {
-		return "", fmt.Errorf("object annotation not found %q", gitops.PipelineAsCodeRepoURLAnnotation)
+		unRecoverableError = helpers.NewUnrecoverableMetadataError(fmt.Sprintf("object annotation not found %q", gitops.PipelineAsCodeRepoURLAnnotation))
+		return "", unRecoverableError
 	}
 
 	// Find a Repository CR with a matching URL and get its secret details
@@ -93,7 +95,8 @@ func GetPACGitProviderToken(ctx context.Context, k8sClient client.Client, snapsh
 	}
 
 	if repoSecret == nil {
-		return "", fmt.Errorf("failed to find a Repository matching URL: %q", url)
+		unRecoverableError = helpers.NewUnrecoverableMetadataError(fmt.Sprintf("failed to find a Repository matching URL: %q", url))
+		return "", unRecoverableError
 	}
 
 	// Get the pipelines as code secret from the PipelineRun's namespace
@@ -106,7 +109,8 @@ func GetPACGitProviderToken(ctx context.Context, k8sClient client.Client, snapsh
 	// Get the personal access token from the secret
 	token, found := pacSecret.Data[repoSecret.Key]
 	if !found {
-		return "", fmt.Errorf("failed to find %s secret key", repoSecret.Key)
+		unRecoverableError = helpers.NewUnrecoverableMetadataError(fmt.Sprintf("failed to find %s secret key", repoSecret.Key))
+		return "", unRecoverableError
 	}
 
 	return string(token), nil
