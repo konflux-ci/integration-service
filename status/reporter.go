@@ -28,8 +28,10 @@ import (
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	"github.com/konflux-ci/integration-service/gitops"
+	"github.com/konflux-ci/integration-service/helpers"
 	intgteststat "github.com/konflux-ci/integration-service/pkg/integrationteststatus"
 )
 
@@ -69,18 +71,22 @@ type ReporterInterface interface {
 
 // GetPACGitProviderToken lookup for configured repo and fetch token from namespace
 func GetPACGitProviderToken(ctx context.Context, k8sClient client.Client, snapshot *applicationapiv1alpha1.Snapshot) (string, error) {
-	var err error
+	log := log.FromContext(ctx)
+	var err, unRecoverableError error
 
 	// List all the Repository CRs in the namespace
 	repos := pacv1alpha1.RepositoryList{}
 	if err = k8sClient.List(ctx, &repos, &client.ListOptions{Namespace: snapshot.Namespace}); err != nil {
+		log.Error(err, fmt.Sprintf("failed to get repo from namespace %s", snapshot.Namespace))
 		return "", err
 	}
 
 	// Get the full repo URL
 	url, found := snapshot.GetAnnotations()[gitops.PipelineAsCodeRepoURLAnnotation]
 	if !found {
-		return "", fmt.Errorf("object annotation not found %q", gitops.PipelineAsCodeRepoURLAnnotation)
+		unRecoverableError = helpers.NewUnrecoverableMetadataError(fmt.Sprintf("object annotation not found %q", gitops.PipelineAsCodeRepoURLAnnotation))
+		log.Error(unRecoverableError, fmt.Sprintf("object annotation not found %q", gitops.PipelineAsCodeRepoURLAnnotation))
+		return "", unRecoverableError
 	}
 
 	// Find a Repository CR with a matching URL and get its secret details
@@ -93,20 +99,25 @@ func GetPACGitProviderToken(ctx context.Context, k8sClient client.Client, snapsh
 	}
 
 	if repoSecret == nil {
-		return "", fmt.Errorf("failed to find a Repository matching URL: %q", url)
+		unRecoverableError = helpers.NewUnrecoverableMetadataError(fmt.Sprintf("failed to find a Repository matching URL: %q", url))
+		log.Error(unRecoverableError, fmt.Sprintf("failed to find a Repository matching URL: %q", url))
+		return "", unRecoverableError
 	}
 
 	// Get the pipelines as code secret from the PipelineRun's namespace
 	pacSecret := v1.Secret{}
 	err = k8sClient.Get(ctx, types.NamespacedName{Namespace: snapshot.Namespace, Name: repoSecret.Name}, &pacSecret)
 	if err != nil {
+		log.Error(err, fmt.Sprintf("failed to get secret %s/%s", snapshot.Namespace, repoSecret.Name))
 		return "", err
 	}
 
 	// Get the personal access token from the secret
 	token, found := pacSecret.Data[repoSecret.Key]
 	if !found {
-		return "", fmt.Errorf("failed to find %s secret key", repoSecret.Key)
+		unRecoverableError = helpers.NewUnrecoverableMetadataError(fmt.Sprintf("failed to find %s secret key", repoSecret.Key))
+		log.Error(unRecoverableError, fmt.Sprintf("failed to find %s secret key", repoSecret.Key))
+		return "", unRecoverableError
 	}
 
 	return string(token), nil
