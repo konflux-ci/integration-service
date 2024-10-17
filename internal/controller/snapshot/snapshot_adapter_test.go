@@ -1636,7 +1636,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			Expect(metadata.HasAnnotation(hasComSnapshot1, gitops.PRGroupCreationAnnotation)).To(BeTrue())
 		})
 
-		It("Calling en when there is running build PLR belonging to the same pr group sha", func() {
+		It("Calling EnsureGroupSnapshotExist when there is running build PLR belonging to the same pr group sha", func() {
 			buildPipelineRun1.Status = tektonv1.PipelineRunStatus{
 				PipelineRunStatusFields: tektonv1.PipelineRunStatusFields{
 					Results: []tektonv1.PipelineRunResult{},
@@ -1679,7 +1679,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			Expect(metadata.HasAnnotation(hasComSnapshot1, gitops.PRGroupCreationAnnotation)).To(BeTrue())
 		})
 
-		It("Calling en when there is failed build PLR belonging to the same pr group sha", func() {
+		It("Calling EnsureGroupSnapshotExist when there is failed build PLR belonging to the same pr group sha", func() {
 			buildPipelineRun1.Status = tektonv1.PipelineRunStatus{
 				PipelineRunStatusFields: tektonv1.PipelineRunStatusFields{
 					Results: []tektonv1.PipelineRunResult{},
@@ -1761,6 +1761,36 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			Expect(result.CancelRequest).To(BeFalse())
 			Expect(result.RequeueRequest).To(BeFalse())
 			Expect(buf.String()).Should(ContainSubstring("has succeeded but component snapshot has not been created now"))
+			Expect(err).ToNot(HaveOccurred())
+		})
+
+		It("Stop processing when there is no annotationID in snapshot", func() {
+			var buf bytes.Buffer
+			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+			adapter = NewAdapter(ctx, hasComSnapshot1, hasApp, log, loader.NewMockLoader(), k8sClient)
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: loader.ApplicationContextKey,
+					Resource:   hasApp,
+				},
+				{
+					ContextKey: loader.SnapshotContextKey,
+					Resource:   hasComSnapshot1,
+				},
+				{
+					ContextKey: loader.GetBuildPLRContextKey,
+					Resource:   []tektonv1.PipelineRun{},
+				},
+				{
+					ContextKey: loader.ApplicationComponentsContextKey,
+					Resource:   []applicationapiv1alpha1.Component{*hasCom1, *hasCom3},
+				},
+			})
+
+			result, err := adapter.EnsureGroupSnapshotExist()
+			Expect(result.CancelRequest).To(BeFalse())
+			Expect(result.RequeueRequest).To(BeFalse())
+			Expect(buf.String()).Should(ContainSubstring("failed to get app credentials from Snapshot"))
 			Expect(err).ToNot(HaveOccurred())
 		})
 

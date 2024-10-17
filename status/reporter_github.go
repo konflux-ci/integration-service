@@ -18,7 +18,6 @@ package status
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strconv"
 
@@ -27,12 +26,14 @@ import (
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
 	"github.com/konflux-ci/integration-service/git/github"
 	"github.com/konflux-ci/integration-service/gitops"
+	"github.com/konflux-ci/integration-service/helpers"
 	intgteststat "github.com/konflux-ci/integration-service/pkg/integrationteststatus"
 
 	"github.com/konflux-ci/operator-toolkit/metadata"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 // Used by statusReport to get pipelines-as-code-secret under NS integration-service
@@ -86,37 +87,46 @@ func NewCheckRunStatusUpdater(
 }
 
 func GetAppCredentials(ctx context.Context, k8sclient client.Client, object client.Object) (*appCredentials, error) {
-	var err error
+	log := log.FromContext(ctx)
+	var err, unRecoverableError error
 	var found bool
 	appInfo := appCredentials{}
 
 	appInfo.InstallationID, err = strconv.ParseInt(object.GetAnnotations()[gitops.PipelineAsCodeInstallationIDAnnotation], 10, 64)
 	if err != nil {
-		return nil, err
+		unRecoverableError = helpers.NewUnrecoverableMetadataError(fmt.Sprintf("Error %s when parsing string annotation %s: %s", err.Error(), gitops.PipelineAsCodeInstallationIDAnnotation, object.GetAnnotations()[gitops.PipelineAsCodeInstallationIDAnnotation]))
+		log.Error(unRecoverableError, fmt.Sprintf("Error %s when parsing string annotation %s: %s", err.Error(), gitops.PipelineAsCodeInstallationIDAnnotation, object.GetAnnotations()[gitops.PipelineAsCodeInstallationIDAnnotation]))
+		return nil, unRecoverableError
 	}
 
 	// Get the global pipelines as code secret
 	pacSecret := v1.Secret{}
 	err = k8sclient.Get(ctx, types.NamespacedName{Namespace: integrationNS, Name: PACSecret}, &pacSecret)
 	if err != nil {
+		log.Error(err, fmt.Sprintf("failed to get pac secret %s/%s", integrationNS, PACSecret))
 		return nil, err
 	}
 
 	// Get the App ID from the secret
 	ghAppIDBytes, found := pacSecret.Data[gitHubApplicationID]
 	if !found {
-		return nil, errors.New("failed to find github-application-id secret key")
+		unRecoverableError = helpers.NewUnrecoverableMetadataError("failed to find github-application-id secret key")
+		log.Error(unRecoverableError, "failed to find github-application-id secret key")
+		return nil, unRecoverableError
 	}
 
 	appInfo.AppID, err = strconv.ParseInt(string(ghAppIDBytes), 10, 64)
 	if err != nil {
-		return nil, err
+		unRecoverableError = helpers.NewUnrecoverableMetadataError(fmt.Sprintf("Error %s when parsing ghAppIDBytes", err.Error()))
+		log.Error(unRecoverableError, "failed to parse gitHub App ID")
+		return nil, unRecoverableError
 	}
 
 	// Get the App's private key from the secret
 	appInfo.PrivateKey, found = pacSecret.Data[gitHubPrivateKey]
 	if !found {
-		return nil, errors.New("failed to find github-private-key secret key")
+		unRecoverableError = helpers.NewUnrecoverableMetadataError("failed to find github-private-key secret key")
+		return nil, unRecoverableError
 	}
 
 	return &appInfo, nil
@@ -166,12 +176,14 @@ func (cru *CheckRunStatusUpdater) createCheckRunAdapterForSnapshot(report TestRe
 
 	conclusion, err := generateCheckRunConclusion(report.Status)
 	if err != nil {
+		cru.logger.Error(err, fmt.Sprintf("failed to generate conclusion for integrationTestScenario %s and snapshot %s/%s", report.ScenarioName, snapshot.Namespace, snapshot.Name))
 		return nil, fmt.Errorf("unknown status %s for integrationTestScenario %s and snapshot %s/%s", report.Status, report.ScenarioName, snapshot.Namespace, snapshot.Name)
 	}
 
 	title, err := generateCheckRunTitle(report.Status)
 	if err != nil {
-		return nil, fmt.Errorf("unknown status %s for integrationTestScenario %s and snapshot %s/%s", report.Status, report.ScenarioName, snapshot.Namespace, snapshot.Name)
+		cru.logger.Error(err, fmt.Sprintf("failed to generate title for integrationTestScenario %s and snapshot %s/%s", report.ScenarioName, snapshot.Namespace, snapshot.Name))
+		return nil, fmt.Errorf("failed to generate title for integrationTestScenario %s and snapshot %s/%s", report.ScenarioName, snapshot.Namespace, snapshot.Name)
 	}
 
 	externalID := report.ScenarioName
@@ -217,6 +229,7 @@ func (cru *CheckRunStatusUpdater) UpdateStatus(ctx context.Context, report TestR
 	allCheckRuns, err := cru.getAllCheckRuns(ctx)
 
 	if err != nil {
+		cru.logger.Error(err, "failed to get all checkruns")
 		return err
 	}
 
@@ -333,6 +346,7 @@ func (csu *CommitStatusUpdater) createCommitStatusAdapterForSnapshot(report Test
 
 	state, err := generateGithubCommitState(report.Status)
 	if err != nil {
+		csu.logger.Error(err, fmt.Sprintf("failed to generate commitStatus for integrationTestScenario %s and snapshot %s/%s", report.ScenarioName, snapshot.Namespace, snapshot.Name))
 		return nil, fmt.Errorf("unknown status %s for integrationTestScenario %s and snapshot %s/%s", report.Status, report.ScenarioName, snapshot.Namespace, snapshot.Name)
 	}
 
@@ -355,34 +369,44 @@ func (csu *CommitStatusUpdater) createCommitStatusAdapterForSnapshot(report Test
 
 // updateStatusInComment will create/update a comment in PR which creates snapshot
 func (csu *CommitStatusUpdater) updateStatusInComment(ctx context.Context, report TestReport) error {
+	var unRecoverableError error
 	issueNumberStr, found := csu.snapshot.GetAnnotations()[gitops.PipelineAsCodePullRequestAnnotation]
 	if !found {
-		return fmt.Errorf("pull-request annotation not found %q", gitops.PipelineAsCodePullRequestAnnotation)
+		unRecoverableError = helpers.NewUnrecoverableMetadataError(fmt.Sprintf("pull-request annotation not found %q", gitops.PipelineAsCodePullRequestAnnotation))
+		csu.logger.Error(unRecoverableError, "snapshot.Name", report.SnapshotName)
+		return unRecoverableError
 	}
 
 	issueNumber, err := strconv.Atoi(issueNumberStr)
 	if err != nil {
-		return err
+		unRecoverableError = helpers.NewUnrecoverableMetadataError(fmt.Sprintf("failed to convert string issueNumberStr %s to int：%s", issueNumberStr, err.Error()))
+		csu.logger.Error(unRecoverableError, "snapshot.Name", report.SnapshotName)
+		return unRecoverableError
 	}
 
 	comment, err := FormatComment(report.Summary, report.Text)
 	if err != nil {
-		return fmt.Errorf("failed to generate comment for pull-request %d: %w", issueNumber, err)
+		unRecoverableError = helpers.NewUnrecoverableMetadataError(fmt.Sprintf("failed to format comment for pull-request %d: %s", issueNumber, err.Error()))
+		csu.logger.Error(unRecoverableError, "snapshot.Name", report.SnapshotName)
+		return unRecoverableError
 	}
 
 	allComments, err := csu.ghClient.GetAllCommentsForPR(ctx, csu.owner, csu.repo, issueNumber)
 	if err != nil {
+		csu.logger.Error(err, fmt.Sprintf("error while getting all comments for pull-request %s", issueNumberStr))
 		return fmt.Errorf("error while getting all comments for pull-request %s: %w", issueNumberStr, err)
 	}
 	existingCommentId := csu.ghClient.GetExistingCommentID(allComments, csu.snapshot.Name, report.ScenarioName)
 	if existingCommentId == nil {
 		_, err = csu.ghClient.CreateComment(ctx, csu.owner, csu.repo, issueNumber, comment)
 		if err != nil {
+			csu.logger.Error(err, fmt.Sprintf("error while creating comment for pull-request %s", issueNumberStr))
 			return fmt.Errorf("error while creating comment for pull-request %s: %w", issueNumberStr, err)
 		}
 	} else {
 		_, err = csu.ghClient.EditComment(ctx, csu.owner, csu.repo, *existingCommentId, comment)
 		if err != nil {
+			csu.logger.Error(err, fmt.Sprintf("error while updating comment for pull-request %s", issueNumberStr))
 			return fmt.Errorf("error while updating comment for pull-request %s: %w", issueNumberStr, err)
 		}
 	}
@@ -395,6 +419,9 @@ func (csu *CommitStatusUpdater) UpdateStatus(ctx context.Context, report TestRep
 
 	allCommitStatuses, err := csu.getAllCommitStatuses(ctx)
 	if err != nil {
+		csu.logger.Error(err, "failed to get all CommitStatuses for scenario",
+			"snapshot.NameSpace", csu.snapshot.Namespace, "snapshot.Name", csu.snapshot.Name,
+			"scenario.Name", report.ScenarioName)
 		return err
 	}
 
@@ -409,6 +436,7 @@ func (csu *CommitStatusUpdater) UpdateStatus(ctx context.Context, report TestRep
 
 	commitStatusExist, err := csu.ghClient.CommitStatusExists(allCommitStatuses, commitStatusAdapter)
 	if err != nil {
+		csu.logger.Error(err, "failed to check existing commitStatus")
 		return err
 	}
 
@@ -417,12 +445,14 @@ func (csu *CommitStatusUpdater) UpdateStatus(ctx context.Context, report TestRep
 			"snapshot.NameSpace", csu.snapshot.Namespace, "snapshot.Name", csu.snapshot.Name, "scenarioName", report.ScenarioName)
 		_, err = csu.ghClient.CreateCommitStatus(ctx, commitStatusAdapter.Owner, commitStatusAdapter.Repository, commitStatusAdapter.SHA, commitStatusAdapter.State, commitStatusAdapter.Description, commitStatusAdapter.Context, commitStatusAdapter.TargetURL)
 		if err != nil {
+			csu.logger.Error(err, "failed to create commitStatus", "snapshot.NameSpace", csu.snapshot.Namespace, "snapshot.Name", csu.snapshot.Name, "scenarioName", report.ScenarioName)
 			return err
 		}
 		// Create a comment when integration test is neither pending nor inprogress since comment for pending/inprogress is less meaningful and there is commitStatus for all statuses
 		if report.Status != intgteststat.IntegrationTestStatusPending && report.Status != intgteststat.IntegrationTestStatusInProgress {
 			err = csu.updateStatusInComment(ctx, report)
 			if err != nil {
+				csu.logger.Error(err, "failed to update comment", "snapshot.NameSpace", csu.snapshot.Namespace, "snapshot.Name", csu.snapshot.Name, "scenarioName", report.ScenarioName)
 				return err
 			}
 		}
@@ -554,21 +584,27 @@ func (r *GitHubReporter) Detect(snapshot *applicationapiv1alpha1.Snapshot) bool 
 
 // Initialize github reporter. Must be called before updating status
 func (r *GitHubReporter) Initialize(ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot) error {
+	var unRecoverableError error
 	labels := snapshot.GetLabels()
-
 	owner, found := labels[gitops.PipelineAsCodeURLOrgLabel]
 	if !found {
-		return fmt.Errorf("org label not found %q", gitops.PipelineAsCodeURLOrgLabel)
+		unRecoverableError = helpers.NewUnrecoverableMetadataError(fmt.Sprintf("org label not found %q", gitops.PipelineAsCodeURLOrgLabel))
+		r.logger.Error(unRecoverableError, "snapshot.NameSpace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
+		return unRecoverableError
 	}
 
 	repo, found := labels[gitops.PipelineAsCodeURLRepositoryLabel]
 	if !found {
-		return fmt.Errorf("repository label not found %q", gitops.PipelineAsCodeURLRepositoryLabel)
+		unRecoverableError = helpers.NewUnrecoverableMetadataError(fmt.Sprintf("repository label not found %q", gitops.PipelineAsCodeURLRepositoryLabel))
+		r.logger.Error(unRecoverableError, "snapshot.NameSpace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
+		return unRecoverableError
 	}
 
 	sha, found := labels[gitops.PipelineAsCodeSHALabel]
 	if !found {
-		return fmt.Errorf("sha label not found %q", gitops.PipelineAsCodeSHALabel)
+		unRecoverableError = helpers.NewUnrecoverableMetadataError(fmt.Sprintf("sha label not found %q", gitops.PipelineAsCodeSHALabel))
+		r.logger.Error(unRecoverableError, "snapshot.NameSpace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
+		return unRecoverableError
 	}
 
 	// Existence of the Pipelines as Code installation ID annotation signals configuration using GitHub App integration.
@@ -580,9 +616,9 @@ func (r *GitHubReporter) Initialize(ctx context.Context, snapshot *applicationap
 	}
 
 	if err := r.updater.Authenticate(ctx, snapshot); err != nil {
-		return fmt.Errorf("authentication failed: %w", err)
+		r.logger.Error(err, fmt.Sprintf("failed to authenticate for snapshot %s/%s", snapshot.Namespace, snapshot.Name))
+		return err
 	}
-
 	return nil
 }
 
@@ -594,11 +630,13 @@ func (r *GitHubReporter) GetReporterName() string {
 // Update status in Github
 func (r *GitHubReporter) ReportStatus(ctx context.Context, report TestReport) error {
 	if r.updater == nil {
+		r.logger.Error(nil, fmt.Sprintf("reporter is not initialized for snapshot %s", report.SnapshotName))
 		return fmt.Errorf("reporter is not initialized")
 	}
 
 	if err := r.updater.UpdateStatus(ctx, report); err != nil {
-		return fmt.Errorf("failed to update status: %w", err)
+		r.logger.Error(err, fmt.Sprintf("failed to update status for snapshot %s", report.SnapshotName))
+		return err
 	}
 	return nil
 }

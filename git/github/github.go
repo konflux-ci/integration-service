@@ -529,7 +529,8 @@ func (c *Client) CreateCommitStatus(ctx context.Context, owner string, repo stri
 func (c *Client) GetPullRequest(ctx context.Context, owner string, repo string, prID int) (*ghapi.PullRequest, error) {
 	pr, _, err := c.GetPullRequestsService().Get(ctx, owner, repo, prID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get pull request for owner/repo/pull %s/%s/%d: %w", owner, repo, prID, err)
+		c.logger.Error(err, "failed to get pull request for owner/repo/pull %s/%s/%d", owner, repo, prID)
+		return nil, err
 	}
 
 	return pr, err

@@ -30,6 +30,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/konflux-ci/integration-service/gitops"
+	"github.com/konflux-ci/integration-service/helpers"
 	intgteststat "github.com/konflux-ci/integration-service/pkg/integrationteststatus"
 )
 
@@ -68,64 +69,84 @@ func (r *GitLabReporter) GetReporterName() string {
 
 // Initialize initializes gitlab reporter
 func (r *GitLabReporter) Initialize(ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot) error {
+	var unRecoverableError error
 	token, err := GetPACGitProviderToken(ctx, r.k8sClient, snapshot)
 	if err != nil {
-		r.logger.Error(err, "failed to get token from snapshot",
+		r.logger.Error(err, "failed to get PAC token from snapshot",
 			"snapshot.NameSpace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
-		return fmt.Errorf("failed to get PAC token for gitlab provider: %w", err)
+		return err
 	}
 
 	annotations := snapshot.GetAnnotations()
 	repoUrl, ok := annotations[gitops.PipelineAsCodeRepoURLAnnotation]
 	if !ok {
-		return fmt.Errorf("failed to get value of %s annotation from the snapshot %s", gitops.PipelineAsCodeRepoURLAnnotation, snapshot.Name)
+		unRecoverableError = helpers.NewUnrecoverableMetadataError(fmt.Sprintf("failed to get value of %s annotation from the snapshot %s", gitops.PipelineAsCodeRepoURLAnnotation, snapshot.Name))
+		r.logger.Error(unRecoverableError, "snapshot.NameSpace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
+		return unRecoverableError
 	}
 
 	burl, err := url.Parse(repoUrl)
 	if err != nil {
-		return fmt.Errorf("failed to parse repo-url: %w", err)
+		unRecoverableError = helpers.NewUnrecoverableMetadataError(fmt.Sprintf("failed to parse repo-url %s: %s", repoUrl, err.Error()))
+		r.logger.Error(unRecoverableError, "snapshot.NameSpace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
+		return unRecoverableError
 	}
 	apiURL := fmt.Sprintf("%s://%s", burl.Scheme, burl.Host)
 
 	r.client, err = gitlab.NewClient(token, gitlab.WithBaseURL(apiURL))
 	if err != nil {
-		return fmt.Errorf("failed to create gitlab client: %w", err)
+		r.logger.Error(err, "failed to create gitlab client", "apiURL", apiURL, "snapshot.NameSpace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
+		return err
 	}
 
 	labels := snapshot.GetLabels()
 	sha, found := labels[gitops.PipelineAsCodeSHALabel]
 	if !found {
-		return fmt.Errorf("sha label not found %q", gitops.PipelineAsCodeSHALabel)
+		unRecoverableError = helpers.NewUnrecoverableMetadataError(fmt.Sprintf("sha label not found %q", gitops.PipelineAsCodeSHALabel))
+		r.logger.Error(unRecoverableError, "snapshot.NameSpace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
+		return unRecoverableError
 	}
 	r.sha = sha
 
 	targetProjectIDstr, found := annotations[gitops.PipelineAsCodeTargetProjectIDAnnotation]
 	if !found {
-		return fmt.Errorf("target project ID annotation not found %q", gitops.PipelineAsCodeTargetProjectIDAnnotation)
+		unRecoverableError = helpers.NewUnrecoverableMetadataError(fmt.Sprintf("target project ID annotation not found %q", gitops.PipelineAsCodeTargetProjectIDAnnotation))
+		r.logger.Error(unRecoverableError, "snapshot.NameSpace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
+		return unRecoverableError
 	}
 
 	r.targetProjectID, err = strconv.Atoi(targetProjectIDstr)
 	if err != nil {
-		return fmt.Errorf("failed to convert project ID '%s' to integer: %w", targetProjectIDstr, err)
+		unRecoverableError = helpers.NewUnrecoverableMetadataError(fmt.Sprintf("failed to convert project ID '%s' to integer: %s", targetProjectIDstr, err.Error()))
+		r.logger.Error(unRecoverableError, "snapshot.NameSpace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
+		return unRecoverableError
 	}
 
 	sourceProjectIDstr, found := annotations[gitops.PipelineAsCodeSourceProjectIDAnnotation]
 	if !found {
-		return fmt.Errorf("source project ID annotation not found %q", gitops.PipelineAsCodeSourceProjectIDAnnotation)
+		unRecoverableError = helpers.NewUnrecoverableMetadataError(fmt.Sprintf("source project ID annotation not found %q", gitops.PipelineAsCodeSourceProjectIDAnnotation))
+		r.logger.Error(unRecoverableError, "snapshot.NameSpace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
+		return unRecoverableError
 	}
 
 	r.sourceProjectID, err = strconv.Atoi(sourceProjectIDstr)
 	if err != nil {
-		return fmt.Errorf("failed to convert project ID '%s' to integer: %w", sourceProjectIDstr, err)
+		unRecoverableError = helpers.NewUnrecoverableMetadataError(fmt.Sprintf("failed to convert project ID '%s' to integer: %s", sourceProjectIDstr, err.Error()))
+		r.logger.Error(unRecoverableError, "snapshot.NameSpace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
+		return unRecoverableError
 	}
 
 	mergeRequestStr, found := annotations[gitops.PipelineAsCodePullRequestAnnotation]
 	if !found {
-		return fmt.Errorf("pull-request annotation not found %q", gitops.PipelineAsCodePullRequestAnnotation)
+		unRecoverableError = helpers.NewUnrecoverableMetadataError(fmt.Sprintf("pull-request annotation not found %q", gitops.PipelineAsCodePullRequestAnnotation))
+		r.logger.Error(unRecoverableError, "snapshot.NameSpace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
+		return unRecoverableError
 	}
 	r.mergeRequest, err = strconv.Atoi(mergeRequestStr)
 	if err != nil {
-		return fmt.Errorf("failed to convert merge request number '%s' to integer: %w", mergeRequestStr, err)
+		unRecoverableError = helpers.NewUnrecoverableMetadataError(fmt.Sprintf("failed to convert merge request number '%s' to integer: %s", mergeRequestStr, err.Error()))
+		r.logger.Error(unRecoverableError, "snapshot.NameSpace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
+		return unRecoverableError
 	}
 
 	r.snapshot = snapshot
@@ -188,11 +209,14 @@ func (r *GitLabReporter) setCommitStatus(report TestReport) error {
 func (r *GitLabReporter) updateStatusInComment(report TestReport) error {
 	comment, err := FormatComment(report.Summary, report.Text)
 	if err != nil {
-		return fmt.Errorf("failed to generate comment for merge-request %d: %w", r.mergeRequest, err)
+		unRecoverableError := helpers.NewUnrecoverableMetadataError(fmt.Sprintf("failed to generate comment for merge-request %d: %s", r.mergeRequest, err.Error()))
+		r.logger.Error(unRecoverableError, "report.SnapshotName", report.SnapshotName)
+		return unRecoverableError
 	}
 
 	allNotes, _, err := r.client.Notes.ListMergeRequestNotes(r.targetProjectID, r.mergeRequest, nil)
 	if err != nil {
+		r.logger.Error(err, "error while getting all comments for merge-request", "mergeRequest", r.mergeRequest, "report.SnapshotName", report.SnapshotName)
 		return fmt.Errorf("error while getting all comments for merge-request %d: %w", r.mergeRequest, err)
 	}
 	existingCommentId := r.GetExistingNoteID(allNotes, report.ScenarioName, report.SnapshotName)
