@@ -25,6 +25,7 @@ import (
 	"net/url"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -364,67 +365,89 @@ func (s Status) IsPRMRInSnapshotOpened(ctx context.Context, snapshot *applicatio
 		return s.IsMRInSnapshotOpened(ctx, gitlabReporter, snapshot)
 	}
 
-	return false, fmt.Errorf("invalid git provier, valid git provider must be one of github and gitlab")
+	return false, fmt.Errorf("invalid git provider, valid git provider must be one of github and gitlab")
 }
 
 // IsMRInSnapshotOpened check if the gitlab merge request triggering snapshot is opened
 func (s Status) IsMRInSnapshotOpened(ctx context.Context, reporter ReporterInterface, snapshot *applicationapiv1alpha1.Snapshot) (bool, error) {
+	var unRecoverableError error
 	log := log.FromContext(ctx)
 	token, err := GetPACGitProviderToken(ctx, s.client, snapshot)
 	if err != nil {
-		log.Error(err, "failed to get token from snapshot",
+		log.Error(err, "failed to get PAC token from snapshot",
 			"snapshot.NameSpace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
-		return false, fmt.Errorf("failed to get PAC token for gitlab provider: %w", err)
+		return false, err
 	}
 
 	annotations := snapshot.GetAnnotations()
 	repoUrl, ok := annotations[gitops.PipelineAsCodeRepoURLAnnotation]
 	if !ok {
-		return false, fmt.Errorf("failed to get value of %s annotation from the snapshot %s", gitops.PipelineAsCodeRepoURLAnnotation, snapshot.Name)
+		unRecoverableError = helpers.NewUnrecoverableMetadataError(fmt.Sprintf("failed to get value of %s annotation from the snapshot %s", gitops.PipelineAsCodeRepoURLAnnotation, snapshot.Name))
+		log.Error(unRecoverableError, fmt.Sprintf("failed to get value of %s annotation from the snapshot %s", gitops.PipelineAsCodeRepoURLAnnotation, snapshot.Name))
+		return false, unRecoverableError
 	}
 
 	burl, err := url.Parse(repoUrl)
 	if err != nil {
-		return false, fmt.Errorf("failed to parse repo-url: %w", err)
+		unRecoverableError = helpers.NewUnrecoverableMetadataError(fmt.Sprintf("failed to parse repo-url: %s", err.Error()))
+		log.Error(unRecoverableError, fmt.Sprintf("failed to parse repo-url: %s", err.Error()))
+		return false, unRecoverableError
 	}
 	apiURL := fmt.Sprintf("%s://%s", burl.Scheme, burl.Host)
 
 	gitLabClient, err := gitlab.NewClient(token, gitlab.WithBaseURL(apiURL))
 	if err != nil {
+		log.Error(err, "failed to create gitLabClient")
 		return false, fmt.Errorf("failed to create gitlab client: %w", err)
 	}
 
 	targetProjectIDstr, found := annotations[gitops.PipelineAsCodeTargetProjectIDAnnotation]
 	if !found {
-		return false, fmt.Errorf("target project ID annotation not found %q", gitops.PipelineAsCodeTargetProjectIDAnnotation)
+		unRecoverableError = helpers.NewUnrecoverableMetadataError(fmt.Sprintf("target project ID annotation not found %q", gitops.PipelineAsCodeTargetProjectIDAnnotation))
+		log.Error(unRecoverableError, fmt.Sprintf("target project ID annotation not found %q", gitops.PipelineAsCodeTargetProjectIDAnnotation))
+		return false, unRecoverableError
 	}
 	targetProjectID, err := strconv.Atoi(targetProjectIDstr)
 	if err != nil {
-		return false, fmt.Errorf("failed to convert project ID '%s' to integer: %w", targetProjectIDstr, err)
+		unRecoverableError = helpers.NewUnrecoverableMetadataError(fmt.Sprintf("failed to convert project ID '%s' to integer: %s", targetProjectIDstr, err.Error()))
+		log.Error(unRecoverableError, "failed to convert project ID '%s' to integer", targetProjectIDstr)
+		return false, unRecoverableError
 	}
 
 	mergeRequestStr, found := annotations[gitops.PipelineAsCodePullRequestAnnotation]
 	if !found {
-		return false, fmt.Errorf("pull-request annotation not found %q", gitops.PipelineAsCodePullRequestAnnotation)
+		unRecoverableError = helpers.NewUnrecoverableMetadataError(fmt.Sprintf("pull-request annotation not found %q", gitops.PipelineAsCodePullRequestAnnotation))
+		log.Error(unRecoverableError, fmt.Sprintf("pull-request annotation not found %q", gitops.PipelineAsCodePullRequestAnnotation))
+		return false, unRecoverableError
 	}
 	mergeRequest, err := strconv.Atoi(mergeRequestStr)
 	if err != nil {
-		return false, fmt.Errorf("failed to convert merge request number '%s' to integer: %w", mergeRequestStr, err)
+		unRecoverableError = helpers.NewUnrecoverableMetadataError(fmt.Sprintf("failed to convert merge request number '%s' to integer: %s", mergeRequestStr, err.Error()))
+		log.Error(unRecoverableError, fmt.Sprintf("failed to convert merge request number '%s' to integer", mergeRequestStr))
+		return false, unRecoverableError
 	}
 
 	log.Info(fmt.Sprintf("try to find the status of merge request projectID/pulls %d/%d", targetProjectID, mergeRequest))
 	getOpts := gitlab.GetMergeRequestsOptions{}
 	mr, _, err := gitLabClient.MergeRequests.GetMergeRequest(targetProjectID, mergeRequest, &getOpts)
-	if mr != nil {
-		log.Info(fmt.Sprintf("found merge request projectID/pulls %d/%d", targetProjectID, mergeRequest))
-		return mr.State == "opened", err
+
+	if err != nil && strings.Contains(err.Error(), "Not Found") {
+		log.Info(fmt.Sprintf("not found merge request projectID/pulls %d/%d, it might be deleted", targetProjectID, mergeRequest))
+		return false, nil
 	}
-	log.Info(fmt.Sprintf("can not find merge request projectID/pulls %d/%d", targetProjectID, mergeRequest))
+
+	if mr != nil && err == nil {
+		log.Info(fmt.Sprintf("found merge request projectID/pulls %d/%d", targetProjectID, mergeRequest))
+		return mr.State == "opened", nil
+	}
+
+	log.Error(err, fmt.Sprintf("can not find merge request projectID/pulls %d/%d", targetProjectID, mergeRequest))
 	return false, err
 }
 
 // IsPRInSnapshotOpened check if the github pull request triggering snapshot is opened
 func (s Status) IsPRInSnapshotOpened(ctx context.Context, reporter ReporterInterface, snapshot *applicationapiv1alpha1.Snapshot) (bool, error) {
+	var unRecoverableError error
 	log := log.FromContext(ctx)
 	ghClient := github.NewClient(s.logger)
 	githubAppCreds, err := GetAppCredentials(ctx, s.client, snapshot)
@@ -448,29 +471,45 @@ func (s Status) IsPRInSnapshotOpened(ctx context.Context, reporter ReporterInter
 
 	owner, found := labels[gitops.PipelineAsCodeURLOrgLabel]
 	if !found {
-		return false, fmt.Errorf("org label not found %q", gitops.PipelineAsCodeURLOrgLabel)
+		unRecoverableError = helpers.NewUnrecoverableMetadataError(fmt.Sprintf("org label not found %q", gitops.PipelineAsCodeURLOrgLabel))
+		log.Error(unRecoverableError, fmt.Sprintf("org label not found %q", gitops.PipelineAsCodeURLOrgLabel))
+		return false, unRecoverableError
 	}
 
 	repo, found := labels[gitops.PipelineAsCodeURLRepositoryLabel]
 	if !found {
-		return false, fmt.Errorf("repository label not found %q", gitops.PipelineAsCodeURLRepositoryLabel)
+		unRecoverableError = helpers.NewUnrecoverableMetadataError(fmt.Sprintf("repository label not found %q", gitops.PipelineAsCodeURLRepositoryLabel))
+		log.Error(unRecoverableError, fmt.Sprintf("repository label not found %q", gitops.PipelineAsCodeURLRepositoryLabel))
+		return false, unRecoverableError
 	}
 
 	pullRequestStr, found := labels[gitops.PipelineAsCodePullRequestAnnotation]
 	if !found {
-		return false, fmt.Errorf("pull request label not found %q", gitops.PipelineAsCodePullRequestAnnotation)
+		unRecoverableError = helpers.NewUnrecoverableMetadataError(fmt.Sprintf("pull request label not found %q", gitops.PipelineAsCodePullRequestAnnotation))
+		log.Error(unRecoverableError, fmt.Sprintf("pull request label not found %q", gitops.PipelineAsCodePullRequestAnnotation))
+		return false, unRecoverableError
 	}
 
 	pullRequest, err := strconv.Atoi(pullRequestStr)
 	if err != nil {
-		return false, fmt.Errorf("failed to convert pull request number '%s' to integer: %w", pullRequestStr, err)
+		unRecoverableError = helpers.NewUnrecoverableMetadataError(fmt.Sprintf("failed to convert pull request number '%s' to integer: %s", pullRequestStr, err.Error()))
+		log.Error(unRecoverableError, fmt.Sprintf("failed to convert pull request number '%s' to integer", pullRequestStr))
+		return false, unRecoverableError
 	}
 
 	log.Info(fmt.Sprintf("try to find the status of pull request owner/repo/pulls %s/%s/%d", owner, repo, pullRequest))
 	pr, err := ghClient.GetPullRequest(ctx, owner, repo, pullRequest)
+
+	if err != nil && strings.Contains(err.Error(), "Not Found") {
+		log.Error(err, fmt.Sprintf("not found pull request owner/repo/pulls %s/%s/%d, it might be deleted", owner, repo, pullRequest))
+		return false, nil
+	}
+
 	if pr != nil {
 		return *pr.State == "open", nil
 	}
+
+	log.Error(err, fmt.Sprintf("cannot find pull request owner/repo/pulls %s/%s/%d", owner, repo, pullRequest))
 	return false, err
 }
 
