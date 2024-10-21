@@ -323,6 +323,11 @@ func (a *Adapter) EnsureGlobalCandidateImageUpdated() (controller.OperationResul
 				if err != nil {
 					return controller.RequeueWithError(err)
 				}
+				//update .Spec.ContainerImage for the component included in component snapshot
+				err = a.updateComponentContainerImage(a.context, a.client, componentToUpdate, &snapshotComponent)
+				if err != nil {
+					return controller.RequeueWithError(err)
+				}
 
 				// update .Status.LastBuiltCommit for the component included in component snapshot
 				err = a.updateComponentSource(a.context, a.client, componentToUpdate, &snapshotComponent)
@@ -360,6 +365,11 @@ func (a *Adapter) EnsureGlobalCandidateImageUpdated() (controller.OperationResul
 			}
 			// update .Status.LastPromotedImage for the component included in override snapshot
 			err = a.updateComponentLastPromotedImage(a.context, a.client, componentToUpdate, &snapshotComponent)
+			if err != nil {
+				return controller.RequeueWithError(err)
+			}
+			//update component.Spec.ContainerImage for each snapshotComponent in override snapshot
+			err = a.updateComponentContainerImage(a.context, a.client, componentToUpdate, &snapshotComponent)
 			if err != nil {
 				return controller.RequeueWithError(err)
 			}
@@ -835,6 +845,21 @@ func (a *Adapter) HandlePipelineCreationError(err error, integrationTestScenario
 		return controller.StopProcessing()
 	}
 	return controller.RequeueWithError(err)
+}
+
+func (a *Adapter) updateComponentContainerImage(ctx context.Context, c client.Client, component *applicationapiv1alpha1.Component, snapshotComponent *applicationapiv1alpha1.SnapshotComponent) error {
+	patch := client.MergeFrom(component.DeepCopy())
+	component.Spec.ContainerImage = snapshotComponent.ContainerImage
+	err := a.client.Patch(a.context, component, patch)
+	if err != nil {
+		a.logger.Error(err, "Failed to update .Spec.ContainerImage of Global Candidate for the Component",
+			"component.Name", component.Name)
+		return err
+	}
+	a.logger.LogAuditEvent("Updated .Spec.ContainerImage of Global Candidate for the Component",
+		component, h.LogActionUpdate,
+		"containerImage", snapshotComponent.ContainerImage)
+	return nil
 }
 
 func (a *Adapter) updateComponentSource(ctx context.Context, c client.Client, component *applicationapiv1alpha1.Component, snapshotComponent *applicationapiv1alpha1.SnapshotComponent) error {
