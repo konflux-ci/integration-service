@@ -330,6 +330,15 @@ func (a *Adapter) handleUnsuccessfulPipelineRun(canRemoveFinalizer *bool) {
 	if h.HasPipelineRunFinished(a.pipelineRun) || a.pipelineRun.GetDeletionTimestamp() != nil {
 		// The pipeline run has failed
 		// OR pipeline has been deleted but it's still in running state (tekton bug/feature?)
+
+		// Add a failure annotation.  Used to propagate failure information to other PRs in group
+		FailureAnnotation := fmt.Sprintf("%s/%s", tekton.ResourceLabelSuffix, "failure")
+		FailureAnnotationValue := fmt.Sprintf("The pipeline %s failed", a.pipelineRun.Name)
+		err := tekton.AnnotateBuildPipelineRun(a.context, a.pipelineRun, FailureAnnotation, FailureAnnotationValue, a.client)
+		if err != nil {
+			return
+		}
+
 		a.logger.Info("Finished processing of unsuccessful build PLR",
 			"statusCondition", a.pipelineRun.GetStatusCondition(),
 			"deletionTimestamp", a.pipelineRun.GetDeletionTimestamp(),
