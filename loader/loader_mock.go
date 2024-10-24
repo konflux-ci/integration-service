@@ -140,10 +140,10 @@ func (l *mockLoader) GetAllIntegrationTestScenariosForApplication(ctx context.Co
 	return &integrationTestScenarios, err
 }
 
-// GetRequiredIntegrationTestScenariosForApplication returns the resource and error passed as values of the context.
-func (l *mockLoader) GetRequiredIntegrationTestScenariosForApplication(ctx context.Context, c client.Client, application *applicationapiv1alpha1.Application) (*[]v1beta2.IntegrationTestScenario, error) {
+// GetRequiredIntegrationTestScenariosForSnapshot returns the resource and error passed as values of the context.
+func (l *mockLoader) GetRequiredIntegrationTestScenariosForSnapshot(ctx context.Context, c client.Client, application *applicationapiv1alpha1.Application, snapshot *applicationapiv1alpha1.Snapshot) (*[]v1beta2.IntegrationTestScenario, error) {
 	if ctx.Value(RequiredIntegrationTestScenariosContextKey) == nil {
-		return l.loader.GetRequiredIntegrationTestScenariosForApplication(ctx, c, application)
+		return l.loader.GetRequiredIntegrationTestScenariosForSnapshot(ctx, c, application, snapshot)
 	}
 	integrationTestScenarios, err := toolkit.GetMockedResourceAndErrorFromContext(ctx, RequiredIntegrationTestScenariosContextKey, []v1beta2.IntegrationTestScenario{})
 	return &integrationTestScenarios, err
