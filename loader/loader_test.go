@@ -469,7 +469,7 @@ var _ = Describe("Loader", Ordered, func() {
 	})
 
 	It("can fetch required integrationTestScenario for application", func() {
-		integrationTestScenarios, err := loader.GetRequiredIntegrationTestScenariosForApplication(ctx, k8sClient, hasApp)
+		integrationTestScenarios, err := loader.GetRequiredIntegrationTestScenariosForSnapshot(ctx, k8sClient, hasApp, hasSnapshot)
 		Expect(err).To(BeNil())
 		Expect(integrationTestScenarios).NotTo(BeNil())
 		Expect(*integrationTestScenarios).To(HaveLen(1))

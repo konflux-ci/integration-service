@@ -116,13 +116,12 @@ func (a *Adapter) EnsureSnapshotTestStatusReportedToGitProvider() (controller.Op
 // EnsureSnapshotFinishedAllTests is an operation that will ensure that a pipeline Snapshot
 // to the PipelineRun being processed finished and passed all tests for all defined required IntegrationTestScenarios.
 func (a *Adapter) EnsureSnapshotFinishedAllTests() (controller.OperationResult, error) {
-	// Get all required integrationTestScenarios for the Application and then use the Snapshot status annotation
+	// Get all required integrationTestScenarios for the Snapshot and then use the Snapshot status annotation
 	// to check if all Integration tests were finished for that Snapshot
-	allRequiredIntegrationTestScenarios, err := a.loader.GetRequiredIntegrationTestScenariosForApplication(a.context, a.client, a.application)
+	integrationTestScenarios, err := a.loader.GetRequiredIntegrationTestScenariosForSnapshot(a.context, a.client, a.application, a.snapshot)
 	if err != nil {
 		return controller.RequeueWithError(err)
 	}
-	integrationTestScenarios := gitops.FilterIntegrationTestScenariosWithContext(allRequiredIntegrationTestScenarios, a.snapshot)
 	a.logger.Info(fmt.Sprintf("Found %d required integration test scenarios", len(*integrationTestScenarios)))
 
 	testStatuses, err := gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(a.snapshot)
@@ -131,26 +130,16 @@ func (a *Adapter) EnsureSnapshotFinishedAllTests() (controller.OperationResult, 
 	}
 
 	allIntegrationTestsFinished, allIntegrationTestsPassed := a.determineIfAllRequiredIntegrationTestsFinishedAndPassed(integrationTestScenarios, testStatuses)
-	if err != nil {
-		a.logger.Error(err, "Failed to determine outcomes for Integration Tests",
-			"snapshot.Name", a.snapshot.Name)
-		return controller.RequeueWithError(err)
-	}
 
 	// Skip doing anything if not all Integration tests were finished for all integrationTestScenarios
 	if !allIntegrationTestsFinished {
 		a.logger.Info("Not all required Integration PipelineRuns finished",
 			"snapshot.Name", a.snapshot.Name)
 
-		// If for the snapshot there is an IntegrationTestScenario that is not triggered, it will add run labebl to snapshot
-		integrationTestScenarioNotTriggered := a.findUntriggeredIntegrationTestFromStatus(integrationTestScenarios, testStatuses)
-		if integrationTestScenarioNotTriggered != "" {
-			a.logger.Info("Detected an integrationTestScenario was not triggered, applying snapshot reconcilation",
-				"integrationTestScenario.Name", integrationTestScenarioNotTriggered)
-			if err = gitops.AddIntegrationTestRerunLabel(a.context, a.client, a.snapshot, integrationTestScenarioNotTriggered); err != nil {
-				return controller.RequeueWithError(err)
-			}
-
+		// If for the snapshot there are IntegrationTestScenarios that are not triggered, it will add run labebl to snapshot to trigger them
+		err = a.labelSnapshotToTriggerUntriggeredTest(integrationTestScenarios, testStatuses)
+		if err != nil {
+			return controller.RequeueWithError(err)
 		}
 
 		return controller.ContinueProcessing()
@@ -182,16 +171,14 @@ func (a *Adapter) EnsureSnapshotFinishedAllTests() (controller.OperationResult, 
 			a.logger.LogAuditEvent(fmt.Sprintf("Snapshot integration status condition marked as passed, all of %d required Integration PipelineRuns succeeded", len(*integrationTestScenarios)),
 				a.snapshot, helpers.LogActionUpdate)
 		}
-	} else {
-		if !gitops.IsSnapshotMarkedAsFailed(a.snapshot) {
-			err = gitops.MarkSnapshotAsFailed(a.context, a.client, a.snapshot, "Some Integration pipeline tests failed")
-			if err != nil {
-				a.logger.Error(err, "Failed to Update Snapshot AppStudioTestSucceeded status")
-				return controller.RequeueWithError(err)
-			}
-			a.logger.LogAuditEvent("Snapshot integration status condition marked as failed, some tests within Integration PipelineRuns failed",
-				a.snapshot, helpers.LogActionUpdate)
+	} else if !gitops.IsSnapshotMarkedAsFailed(a.snapshot) {
+		err = gitops.MarkSnapshotAsFailed(a.context, a.client, a.snapshot, "Some Integration pipeline tests failed")
+		if err != nil {
+			a.logger.Error(err, "Failed to Update Snapshot AppStudioTestSucceeded status")
+			return controller.RequeueWithError(err)
 		}
+		a.logger.LogAuditEvent("Snapshot integration status condition marked as failed, some tests within Integration PipelineRuns failed",
+			a.snapshot, helpers.LogActionUpdate)
 	}
 
 	return controller.ContinueProcessing()
@@ -376,4 +363,16 @@ func (a *Adapter) getDestinationSnapshots(testedSnapshot *applicationapiv1alpha1
 		return destinationSnapshots, nil
 	}
 	return nil, fmt.Errorf("unsupported snapshot type in snapshot %s/%s", testedSnapshot.Namespace, testedSnapshot.Name)
+}
+
+// labelSnapshotToTriggerUntriggeredTest get the untriggered integration test and add label to snapshot to trigger them
+// return error if annotating meet error
+func (a *Adapter) labelSnapshotToTriggerUntriggeredTest(integrationTestScenarios *[]v1beta2.IntegrationTestScenario, testStatuses *intgteststat.SnapshotIntegrationTestStatuses) error {
+	integrationTestScenarioNotTriggered := a.findUntriggeredIntegrationTestFromStatus(integrationTestScenarios, testStatuses)
+	if integrationTestScenarioNotTriggered != "" {
+		a.logger.Info("Detected an integrationTestScenario was not triggered, applying snapshot reconcilation",
+			"integrationTestScenario.Name", integrationTestScenarioNotTriggered)
+		return gitops.AddIntegrationTestRerunLabel(a.context, a.client, a.snapshot, integrationTestScenarioNotTriggered)
+	}
+	return nil
 }
