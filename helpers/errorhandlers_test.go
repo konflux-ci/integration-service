@@ -106,5 +106,10 @@ var _ = Describe("Helpers for error handlers", Ordered, func() {
 			Expect(helpers.IsMissingInfoInPipelineRunError(err)).To(BeFalse())
 		})
 
+		It("Can define UnrecoverableMetadataError", func() {
+			err := helpers.NewUnrecoverableMetadataError("undefined annotation")
+			Expect(helpers.IsUnrecoverableMetadataError(err)).To(BeTrue())
+			Expect(err.Error()).To(Equal("Meeting metadata data error: undefined annotation"))
+		})
 	})
 })

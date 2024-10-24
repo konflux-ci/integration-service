@@ -603,17 +603,16 @@ func (a *Adapter) EnsureGroupSnapshotExist() (controller.OperationResult, error)
 
 	groupSnapshot, componentSnapshotInfos, err := a.prepareGroupSnapshot(a.application, prGroupHash)
 	if err != nil {
-		if strings.Contains(err.Error(), "failed to get pull request for") {
-			// Stop processing in case the repo was removed/moved, and we reach 404 when trying to find the status of pull request
-			return controller.StopProcessing()
+		a.logger.Error(err, "failed to prepare group snapshot")
+		if h.IsUnrecoverableMetadataError(err) || clienterrors.IsNotFound(err) {
+			err = gitops.AnnotateSnapshot(a.context, a.snapshot, gitops.PRGroupCreationAnnotation, fmt.Sprintf("failed to prepare group snapshot for pr group %s due to error %s, skipping group snapshot creation", prGroup, err.Error()), a.client)
+			if err != nil {
+				return controller.RequeueWithError(err)
+			}
+			return controller.ContinueProcessing()
 		}
-		a.logger.Error(err, "Failed to prepare group snapshot")
-		// stop reconciliation directly when meeting error before STONEINTG-1048 is resolved
-		err = gitops.AnnotateSnapshot(a.context, a.snapshot, gitops.PRGroupCreationAnnotation, fmt.Sprintf("failed to prepare group snapshot for pr group %s, skipping group snapshot creation", prGroup), a.client)
-		if err != nil {
-			return controller.RequeueWithError(err)
-		}
-		return controller.StopProcessing()
+		return controller.RequeueWithError(err)
+
 	}
 
 	if groupSnapshot == nil {
