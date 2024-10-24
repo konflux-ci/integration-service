@@ -27,6 +27,7 @@ const (
 	ReasonInvalidImageDigestError       = "InvalidImageDigest"
 	ReasonMissingValidComponentError    = "MissingValidComponentError"
 	ReasonUnknownError                  = "UnknownError"
+	ReasonUnrecoverableMetadataError    = "UnrecoverableMetadataError"
 )
 
 type IntegrationError struct {
@@ -98,4 +99,15 @@ func HandleLoaderError(logger IntegrationLogger, err error, resource, from strin
 
 	logger.Error(err, fmt.Sprintf("Failed to get %s from the %s", resource, from))
 	return ctrl.Result{}, err
+}
+
+func NewUnrecoverableMetadataError(msg string) error {
+	return &IntegrationError{
+		Reason:  ReasonUnrecoverableMetadataError,
+		Message: fmt.Sprintf("Meeting metadata data error: %s", msg),
+	}
+}
+
+func IsUnrecoverableMetadataError(err error) bool {
+	return getReason(err) == ReasonUnrecoverableMetadataError
 }

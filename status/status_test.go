@@ -25,14 +25,17 @@ import (
 
 	"github.com/go-logr/logr"
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
+	"github.com/konflux-ci/operator-toolkit/metadata"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	pacv1alpha1 "github.com/openshift-pipelines/pipelines-as-code/pkg/apis/pipelinesascode/v1alpha1"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	"go.uber.org/mock/gomock"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/konflux-ci/integration-service/gitops"
+	"github.com/konflux-ci/integration-service/helpers"
 	"github.com/konflux-ci/integration-service/pkg/integrationteststatus"
 	"github.com/konflux-ci/integration-service/status"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -91,6 +94,7 @@ var _ = Describe("Status Adapter", func() {
 		failedTaskRun     *tektonv1.TaskRun
 		skippedTaskRun    *tektonv1.TaskRun
 		mockK8sClient     *MockK8sClient
+		repo              pacv1alpha1.Repository
 
 		hasComSnapshot2Name = "hascomsnapshot2-sample"
 		hasComSnapshot3Name = "hascomsnapshot3-sample"
@@ -438,7 +442,11 @@ var _ = Describe("Status Adapter", func() {
 					}
 				}
 			},
-			listInterceptor: func(list client.ObjectList) {},
+			listInterceptor: func(list client.ObjectList) {
+				if repoList, ok := list.(*pacv1alpha1.RepositoryList); ok {
+					repoList.Items = []pacv1alpha1.Repository{repo}
+				}
+			},
 		}
 
 		hasSnapshot = &applicationapiv1alpha1.Snapshot{
@@ -710,6 +718,42 @@ var _ = Describe("Status Adapter", func() {
 			Expect(newSRS.Scenarios).To(HaveLen(1))
 		})
 
+		It("can return unrecoverable error when label is not defined for githubReporter", func() {
+			err := metadata.DeleteLabel(hasSnapshot, gitops.PipelineAsCodeURLOrgLabel)
+			Expect(err).ToNot(HaveOccurred())
+			githubReporter := status.NewGitHubReporter(logr.Discard(), mockK8sClient)
+			err = githubReporter.Initialize(context.Background(), hasSnapshot)
+			Expect(helpers.IsUnrecoverableMetadataError(err)).To(BeTrue())
+
+			err = metadata.SetLabel(hasSnapshot, gitops.PipelineAsCodeURLOrgLabel, "org")
+			Expect(err).ToNot(HaveOccurred())
+			err = metadata.DeleteLabel(hasSnapshot, gitops.PipelineAsCodeURLRepositoryLabel)
+			Expect(err).ToNot(HaveOccurred())
+			err = githubReporter.Initialize(context.Background(), hasSnapshot)
+			Expect(helpers.IsUnrecoverableMetadataError(err)).To(BeTrue())
+
+			err = metadata.SetLabel(hasSnapshot, gitops.PipelineAsCodeURLRepositoryLabel, "repo")
+			Expect(err).ToNot(HaveOccurred())
+			err = metadata.DeleteLabel(hasSnapshot, gitops.PipelineAsCodeSHALabel)
+			Expect(err).ToNot(HaveOccurred())
+			err = githubReporter.Initialize(context.Background(), hasSnapshot)
+			Expect(helpers.IsUnrecoverableMetadataError(err)).To(BeTrue())
+		})
+
+		It("can return unrecoverable error when label/annotation is not defined for gitlabReporter", func() {
+			err := metadata.DeleteAnnotation(hasSnapshot, gitops.PipelineAsCodeRepoURLAnnotation)
+			Expect(err).ToNot(HaveOccurred())
+			gitlabReporter := status.NewGitLabReporter(logr.Discard(), mockK8sClient)
+			err = gitlabReporter.Initialize(context.Background(), hasSnapshot)
+			Expect(helpers.IsUnrecoverableMetadataError(err)).To(BeTrue())
+
+			err = metadata.SetAnnotation(hasSnapshot, gitops.PipelineAsCodeRepoURLAnnotation, "https://test-repo.example.com")
+			Expect(err).ToNot(HaveOccurred())
+			err = metadata.SetAnnotation(hasSnapshot, gitops.PipelineAsCodeSourceProjectIDAnnotation, "qqq")
+			Expect(err).ToNot(HaveOccurred())
+			err = gitlabReporter.Initialize(context.Background(), hasSnapshot)
+			Expect(helpers.IsUnrecoverableMetadataError(err)).To(BeTrue())
+		})
 	})
 
 })

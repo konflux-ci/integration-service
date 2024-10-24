@@ -573,6 +573,5 @@ var _ = Describe("GitHubReporter", func() {
 			expectedLogEntry := "found existing commitStatus for scenario test status of snapshot, no need to create new commit status"
 			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
 		})
-
 	})
 })
