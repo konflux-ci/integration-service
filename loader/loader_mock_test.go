@@ -201,6 +201,21 @@ var _ = Describe("Release Adapter", Ordered, func() {
 		})
 	})
 
+	Context("When calling GetAllIntegrationTestScenariosForSnapshot", func() {
+		It("returns all integrationTestScenario and error from the context", func() {
+			scenarios := []v1beta2.IntegrationTestScenario{}
+			mockContext := toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: AllIntegrationTestScenariosForSnapshotContextKey,
+					Resource:   scenarios,
+				},
+			})
+			resource, err := loader.GetAllIntegrationTestScenariosForSnapshot(mockContext, nil, nil, nil)
+			Expect(resource).To(Equal(&scenarios))
+			Expect(err).ToNot(HaveOccurred())
+		})
+	})
+
 	Context("When calling GetAllPipelineRunsForSnapshotAndScenario", func() {
 		It("returns pipelineRuns and error from the context", func() {
 			prs := []tektonv1.PipelineRun{}
