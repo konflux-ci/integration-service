@@ -91,73 +91,125 @@ func scenariosNamesToList(integrationTestScenarios *[]v1beta2.IntegrationTestSce
 	return &result
 }
 
-// EnsureRerunPipelineRunsExist is responsible for recreating integration test pipelines triggered by users
+// EnsureRerunPipelineRunsExist is responsible for recreating integration test pipelineruns triggered by users
 func (a *Adapter) EnsureRerunPipelineRunsExist() (controller.OperationResult, error) {
-
-	scenarioName, ok := gitops.GetIntegrationTestRunLabelValue(a.snapshot)
+	runLabelValue, ok := gitops.GetIntegrationTestRunLabelValue(a.snapshot)
 	if !ok {
-		// no test rerun triggered
 		return controller.ContinueProcessing()
 	}
-	integrationTestScenario, err := a.loader.GetScenario(a.context, a.client, scenarioName, a.application.Namespace)
 
-	if err != nil {
-		if clienterrors.IsNotFound(err) {
-			a.logger.Error(err, "scenario for integration test re-run not found", "scenario", scenarioName)
-			// scenario doesn't exist just remove label and continue
-			if err = gitops.RemoveIntegrationTestRerunLabel(a.context, a.client, a.snapshot); err != nil {
-				return controller.RequeueWithError(err)
-			}
-			return controller.ContinueProcessing()
-		}
-		return controller.RequeueWithError(fmt.Errorf("failed to fetch requested scenario %s: %w", scenarioName, err))
+	integrationTestScenarios, opResult, err := a.getScenariosToRerun(runLabelValue)
+	if integrationTestScenarios == nil {
+		return opResult, err
 	}
-
-	a.logger.Info("Re-running integration test for scenario", "scenario", scenarioName)
 
 	testStatuses, err := gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(a.snapshot)
 	if err != nil {
 		return controller.RequeueWithError(err)
 	}
 
-	integrationTestScenarioStatus, ok := testStatuses.GetScenarioStatus(integrationTestScenario.Name)
-	if ok && (integrationTestScenarioStatus.Status == intgteststat.IntegrationTestStatusInProgress ||
-		integrationTestScenarioStatus.Status == intgteststat.IntegrationTestStatusPending) {
-		a.logger.Info(fmt.Sprintf("Found existing test in %s status, skipping re-run", integrationTestScenarioStatus.Status),
-			"integrationTestScenario.Name", integrationTestScenario.Name)
-		if err = gitops.RemoveIntegrationTestRerunLabel(a.context, a.client, a.snapshot); err != nil {
-			return controller.RequeueWithError(err)
-		}
-		return controller.ContinueProcessing()
-	}
-	testStatuses.ResetStatus(scenarioName)
-
-	pipelineRun, err := a.createIntegrationPipelineRun(a.application, integrationTestScenario, a.snapshot)
-	if err != nil {
-		return a.HandlePipelineCreationError(err, integrationTestScenario, testStatuses)
-	}
-	testStatuses.UpdateTestStatusIfChanged(
-		integrationTestScenario.Name, intgteststat.IntegrationTestStatusInProgress,
-		fmt.Sprintf("IntegrationTestScenario pipeline '%s' has been created", pipelineRun.Name))
-	if err = testStatuses.UpdateTestPipelineRunName(integrationTestScenario.Name, pipelineRun.Name); err != nil {
-		// it doesn't make sense to restart reconciliation here, it will be eventually updated by integrationpipeline adapter
-		a.logger.Error(err, "Failed to update pipelinerun name in test status")
+	skipScenarioRerunCount, opResult, err := a.handleScenarioReruns(integrationTestScenarios, testStatuses)
+	if opResult.CancelRequest || err != nil {
+		return opResult, err
 	}
 
-	if err = gitops.WriteIntegrationTestStatusesIntoSnapshot(a.context, a.snapshot, testStatuses, a.client); err != nil {
-		return controller.RequeueWithError(err)
-	}
-
-	if err = gitops.ResetSnapshotStatusConditions(a.context, a.client, a.snapshot, "Integration test is being rerun for snapshot"); err != nil {
-		a.logger.Error(err, "Failed to reset snapshot status conditions")
-		return controller.RequeueWithError(err)
-	}
-
-	if err = gitops.RemoveIntegrationTestRerunLabel(a.context, a.client, a.snapshot); err != nil {
+	if err = a.cleanupRerunLabelAndUpdateStatus(skipScenarioRerunCount, len(*integrationTestScenarios), runLabelValue, testStatuses); err != nil {
 		return controller.RequeueWithError(err)
 	}
 
 	return controller.ContinueProcessing()
+}
+
+// getScenariosToRerun fetches and filters the IntegrationTestScenarios based on runLabelValue.
+func (a *Adapter) getScenariosToRerun(runLabelValue string) (*[]v1beta2.IntegrationTestScenario, controller.OperationResult, error) {
+	if runLabelValue == "all" {
+		scenarios, err := a.loader.GetAllIntegrationTestScenariosForSnapshot(a.context, a.client, a.application, a.snapshot)
+		if err != nil {
+			a.logger.Error(err, "Failed to get IntegrationTestScenarios", "Application.Namespace", a.application.Namespace)
+			opResult, err := controller.RequeueWithError(err)
+			return nil, opResult, err
+		}
+		if scenarios == nil {
+			a.logger.Info("None of the Scenarios' context are applicable to the Snapshot, nothing to re-run")
+		}
+
+		return scenarios, controller.OperationResult{}, nil
+	}
+
+	scenario, err := a.loader.GetScenario(a.context, a.client, runLabelValue, a.application.Namespace)
+	if err != nil {
+		if clienterrors.IsNotFound(err) {
+			a.logger.Error(err, "IntegrationTestScenario not found", "Scenario", runLabelValue)
+			if err = gitops.RemoveIntegrationTestRerunLabel(a.context, a.client, a.snapshot); err != nil {
+				opResult, err := controller.RequeueWithError(err)
+				return nil, opResult, err
+			}
+			opResult, _ := controller.ContinueProcessing()
+			return nil, opResult, nil
+		}
+		opResult, err := controller.RequeueWithError(fmt.Errorf("failed to fetch scenario %s: %w", runLabelValue, err))
+		return nil, opResult, err
+	}
+	return &[]v1beta2.IntegrationTestScenario{*scenario}, controller.OperationResult{}, nil
+}
+
+// handleScenarioReruns iterates through scenarios, rerunning tests as needed and updating test statuses.
+func (a *Adapter) handleScenarioReruns(scenarios *[]v1beta2.IntegrationTestScenario, testStatuses *intgteststat.SnapshotIntegrationTestStatuses) (int, controller.OperationResult, error) {
+	skipScenarioRerunCount := 0
+	for _, scenario := range *scenarios {
+		scenario := scenario
+		status, found := testStatuses.GetScenarioStatus(scenario.Name)
+		if found && (status.Status == intgteststat.IntegrationTestStatusInProgress || status.Status == intgteststat.IntegrationTestStatusPending) {
+			a.logger.Info("Skipping re-run for IntegrationTestScenario since it's in 'InProgress' or 'Pending' state", "Scenario", scenario.Name)
+			skipScenarioRerunCount++
+			continue
+		}
+
+		testStatuses.ResetStatus(scenario.Name)
+		if opResult, err := a.rerunIntegrationPipelinerunForScenario(&scenario, testStatuses); opResult.CancelRequest || err != nil {
+			a.logger.Error(err, "Failed to create rerun pipelinerun for IntegrationTestScenario", "Scenario", scenario.Name)
+			return -1, opResult, err
+		}
+	}
+	return skipScenarioRerunCount, controller.OperationResult{}, nil
+}
+
+// rerunIntegrationPipelinerunForScenario creates a pipelinerun for the given scenario and updates its status.
+func (a *Adapter) rerunIntegrationPipelinerunForScenario(scenario *v1beta2.IntegrationTestScenario, testStatuses *intgteststat.SnapshotIntegrationTestStatuses) (controller.OperationResult, error) {
+	pipelineRun, err := a.createIntegrationPipelineRun(a.application, scenario, a.snapshot)
+	if err != nil {
+		return a.HandlePipelineCreationError(err, scenario, testStatuses)
+	}
+
+	testStatuses.UpdateTestStatusIfChanged(scenario.Name, intgteststat.IntegrationTestStatusInProgress, fmt.Sprintf("PipelineRun '%s' created", pipelineRun.Name))
+	if err := testStatuses.UpdateTestPipelineRunName(scenario.Name, pipelineRun.Name); err != nil {
+		// it doesn't make sense to restart reconciliation here, it will be eventually updated by integrationpipeline adapter
+		a.logger.Error(err, "Failed to update pipeline run name in test status")
+	}
+	return controller.OperationResult{}, nil
+}
+
+// cleanupRerunLabelAndUpdateStatus removes rerun labels and updates snapshot status.
+func (a *Adapter) cleanupRerunLabelAndUpdateStatus(skipCount, totalScenarios int, runLabelValue string, testStatuses *intgteststat.SnapshotIntegrationTestStatuses) error {
+	if err := gitops.RemoveIntegrationTestRerunLabel(a.context, a.client, a.snapshot); err != nil {
+		return err
+	}
+
+	if skipCount == totalScenarios {
+		a.logger.Info(fmt.Sprintf("%[1]d out of %[1]d requested IntegrationTestScenario(s) are either in 'InProgress' or 'Pending' state, skipping their re-runs", totalScenarios), "Label", runLabelValue)
+		return nil
+	}
+
+	if err := gitops.WriteIntegrationTestStatusesIntoSnapshot(a.context, a.snapshot, testStatuses, a.client); err != nil {
+		return err
+	}
+
+	if err := gitops.ResetSnapshotStatusConditions(a.context, a.client, a.snapshot, "Integration test re-run initiated for Snapshot"); err != nil {
+		a.logger.Error(err, "Failed to reset snapshot status conditions")
+		return err
+	}
+
+	return nil
 }
 
 // EnsureIntegrationPipelineRunsExist is an operation that will ensure that all Integration pipeline runs

@@ -36,15 +36,16 @@ import (
 
 var _ = Describe("Loader", Ordered, func() {
 	var (
-		loader                  ObjectLoader
-		hasSnapshot             *applicationapiv1alpha1.Snapshot
-		hasApp                  *applicationapiv1alpha1.Application
-		hasComp                 *applicationapiv1alpha1.Component
-		integrationTestScenario *v1beta2.IntegrationTestScenario
-		successfulTaskRun       *tektonv1.TaskRun
-		taskRunSample           *tektonv1.TaskRun
-		buildPipelineRun        *tektonv1.PipelineRun
-		integrationPipelineRun  *tektonv1.PipelineRun
+		loader                     ObjectLoader
+		hasSnapshot                *applicationapiv1alpha1.Snapshot
+		hasApp                     *applicationapiv1alpha1.Application
+		hasComp                    *applicationapiv1alpha1.Component
+		integrationTestScenario    *v1beta2.IntegrationTestScenario
+		integrationTestScenarioOpt *v1beta2.IntegrationTestScenario
+		successfulTaskRun          *tektonv1.TaskRun
+		taskRunSample              *tektonv1.TaskRun
+		buildPipelineRun           *tektonv1.PipelineRun
+		integrationPipelineRun     *tektonv1.PipelineRun
 	)
 
 	const (
@@ -208,6 +209,41 @@ var _ = Describe("Loader", Ordered, func() {
 			},
 		}
 		Expect(k8sClient.Create(ctx, integrationTestScenario)).Should(Succeed())
+
+		integrationTestScenarioOpt = &v1beta2.IntegrationTestScenario{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "example-pass-optional",
+				Namespace: "default",
+
+				Labels: map[string]string{
+					"test.appstudio.openshift.io/optional": "true",
+				},
+			},
+			Spec: v1beta2.IntegrationTestScenarioSpec{
+				Application: hasApp.Name,
+				ResolverRef: v1beta2.ResolverRef{
+					Resolver: "git",
+					Params: []v1beta2.ResolverParameter{
+						{
+							Name:  "url",
+							Value: "https://github.com/redhat-appstudio/integration-examples.git",
+						},
+						{
+							Name:  "revision",
+							Value: "main",
+						},
+						{
+							Name:  "pathInRepo",
+							Value: "pipelineruns/integration_pipelinerun_pass.yaml",
+						},
+					},
+				},
+				Contexts: []v1beta2.TestContext{
+					{Name: "component_non-existent-component", Description: "Single component testing"},
+				},
+			},
+		}
+		Expect(k8sClient.Create(ctx, integrationTestScenarioOpt)).Should(Succeed())
 
 		buildPipelineRun = &tektonv1.PipelineRun{
 			ObjectMeta: metav1.ObjectMeta{
@@ -464,13 +500,20 @@ var _ = Describe("Loader", Ordered, func() {
 		integrationTestScenarios, err := loader.GetAllIntegrationTestScenariosForApplication(ctx, k8sClient, hasApp)
 		Expect(err).To(BeNil())
 		Expect(integrationTestScenarios).NotTo(BeNil())
-		Expect(*integrationTestScenarios).To(HaveLen(1))
-		Expect((*integrationTestScenarios)[0].Name).To(Equal(integrationTestScenario.Name))
+		Expect(*integrationTestScenarios).To(HaveLen(2))
 	})
 
 	It("can fetch required integrationTestScenario for application", func() {
 		integrationTestScenarios, err := loader.GetRequiredIntegrationTestScenariosForSnapshot(ctx, k8sClient, hasApp, hasSnapshot)
 		Expect(err).To(BeNil())
+		Expect(integrationTestScenarios).NotTo(BeNil())
+		Expect(*integrationTestScenarios).To(HaveLen(1))
+		Expect((*integrationTestScenarios)[0].Name).To(Equal(integrationTestScenario.Name))
+	})
+
+	It("can fetch all integrationTestScenario for Snapshot, based on the context", func() {
+		integrationTestScenarios, err := loader.GetAllIntegrationTestScenariosForSnapshot(ctx, k8sClient, hasApp, hasSnapshot)
+		Expect(err).ToNot(HaveOccurred())
 		Expect(integrationTestScenarios).NotTo(BeNil())
 		Expect(*integrationTestScenarios).To(HaveLen(1))
 		Expect((*integrationTestScenarios)[0].Name).To(Equal(integrationTestScenario.Name))

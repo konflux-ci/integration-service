@@ -47,6 +47,7 @@ const (
 	PipelineRunsContextKey
 	AllIntegrationTestScenariosContextKey
 	RequiredIntegrationTestScenariosContextKey
+	AllIntegrationTestScenariosForSnapshotContextKey
 	AllSnapshotsContextKey
 	AutoReleasePlansContextKey
 	GetScenarioContextKey
@@ -147,6 +148,15 @@ func (l *mockLoader) GetRequiredIntegrationTestScenariosForSnapshot(ctx context.
 		return l.loader.GetRequiredIntegrationTestScenariosForSnapshot(ctx, c, application, snapshot)
 	}
 	integrationTestScenarios, err := toolkit.GetMockedResourceAndErrorFromContext(ctx, RequiredIntegrationTestScenariosContextKey, []v1beta2.IntegrationTestScenario{})
+	return &integrationTestScenarios, err
+}
+
+// GetAllIntegrationTestScenariosForSnapshot returns the resource and error passed as values of the context.
+func (l *mockLoader) GetAllIntegrationTestScenariosForSnapshot(ctx context.Context, c client.Client, application *applicationapiv1alpha1.Application, snapshot *applicationapiv1alpha1.Snapshot) (*[]v1beta2.IntegrationTestScenario, error) {
+	if ctx.Value(AllIntegrationTestScenariosForSnapshotContextKey) == nil {
+		return l.loader.GetAllIntegrationTestScenariosForSnapshot(ctx, c, application, snapshot)
+	}
+	integrationTestScenarios, err := toolkit.GetMockedResourceAndErrorFromContext(ctx, AllIntegrationTestScenariosForSnapshotContextKey, []v1beta2.IntegrationTestScenario{})
 	return &integrationTestScenarios, err
 }
 
