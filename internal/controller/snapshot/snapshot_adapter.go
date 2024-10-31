@@ -968,7 +968,7 @@ func isLatestBuildPipelineRunInComponent(pipelineRun *tektonv1.PipelineRun, pipe
 
 // haveAllPipelineRunProcessedForPrGroup checks if all build plr has been processed for the given pr group
 func (a *Adapter) haveAllPipelineRunProcessedForPrGroup(prGroup, prGroupHash string) (bool, error) {
-	pipelineRuns, err := a.loader.GetPipelineRunsWithPRGroupHash(a.context, a.client, a.snapshot, prGroupHash)
+	pipelineRuns, err := a.loader.GetPipelineRunsWithPRGroupHash(a.context, a.client, a.snapshot.Namespace, prGroupHash)
 	if err != nil {
 		a.logger.Error(err, fmt.Sprintf("Failed to get build pipelineRuns for given pr group hash %s", prGroupHash))
 		return false, err
@@ -1031,7 +1031,7 @@ func (a *Adapter) getComponentsForPRGroup(prGroup, prGroupHash string) ([]string
 }
 
 func (a *Adapter) findSnapshotWithOpenedPR(snapshot *applicationapiv1alpha1.Snapshot, applicationComponent *applicationapiv1alpha1.Component, prGroupHash string) (*applicationapiv1alpha1.Snapshot, error) {
-	snapshots, err := a.loader.GetMatchingComponentSnapshotsForComponentAndPRGroupHash(a.context, a.client, a.snapshot, applicationComponent.Name, prGroupHash)
+	snapshots, err := a.loader.GetMatchingComponentSnapshotsForComponentAndPRGroupHash(a.context, a.client, a.snapshot.Namespace, applicationComponent.Name, prGroupHash)
 	if err != nil {
 		a.logger.Error(err, "Failed to fetch Snapshots for component", "component.Name", applicationComponent.Name)
 		return nil, err
