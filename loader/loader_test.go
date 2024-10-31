@@ -644,7 +644,7 @@ var _ = Describe("Loader", Ordered, func() {
 		})
 
 		It("Can get build plr with pr group hash", func() {
-			fetchedBuildPLRs, err := loader.GetPipelineRunsWithPRGroupHash(ctx, k8sClient, hasSnapshot, "featuresha")
+			fetchedBuildPLRs, err := loader.GetPipelineRunsWithPRGroupHash(ctx, k8sClient, hasSnapshot.Namespace, "featuresha")
 			Expect(err).To(Succeed())
 			Expect((*fetchedBuildPLRs)[0].Name).To(Equal(buildPipelineRun.Name))
 			Expect((*fetchedBuildPLRs)[0].Namespace).To(Equal(buildPipelineRun.Namespace))
@@ -652,7 +652,7 @@ var _ = Describe("Loader", Ordered, func() {
 		})
 
 		It("Can get matching snapshot for component and pr group hash", func() {
-			fetchedSnapshots, err := loader.GetMatchingComponentSnapshotsForComponentAndPRGroupHash(ctx, k8sClient, hasSnapshot, hasComp.Name, "featuresha")
+			fetchedSnapshots, err := loader.GetMatchingComponentSnapshotsForComponentAndPRGroupHash(ctx, k8sClient, hasSnapshot.Namespace, hasComp.Name, "featuresha")
 			Expect(err).To(Succeed())
 			Expect((*fetchedSnapshots)[0].Name).To(Equal(hasSnapshot.Name))
 			Expect((*fetchedSnapshots)[0].Namespace).To(Equal(hasSnapshot.Namespace))

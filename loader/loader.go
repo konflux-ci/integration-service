@@ -56,9 +56,9 @@ type ObjectLoader interface {
 	GetAllTaskRunsWithMatchingPipelineRunLabel(ctx context.Context, c client.Client, pipelineRun *tektonv1.PipelineRun) (*[]tektonv1.TaskRun, error)
 	GetPipelineRun(ctx context.Context, c client.Client, name, namespace string) (*tektonv1.PipelineRun, error)
 	GetComponent(ctx context.Context, c client.Client, name, namespace string) (*applicationapiv1alpha1.Component, error)
-	GetPipelineRunsWithPRGroupHash(ctx context.Context, c client.Client, snapshot *applicationapiv1alpha1.Snapshot, prGroupHash string) (*[]tektonv1.PipelineRun, error)
-	GetMatchingComponentSnapshotsForComponentAndPRGroupHash(ctx context.Context, c client.Client, snapshot *applicationapiv1alpha1.Snapshot, componentName, prGroupHash string) (*[]applicationapiv1alpha1.Snapshot, error)
 	GetMatchingComponentSnapshotsForPRGroupHash(ctx context.Context, c client.Client, snapshot *applicationapiv1alpha1.Snapshot, prGroupHash string) (*[]applicationapiv1alpha1.Snapshot, error)
+	GetPipelineRunsWithPRGroupHash(ctx context.Context, c client.Client, namespace, prGroupHash string) (*[]tektonv1.PipelineRun, error)
+	GetMatchingComponentSnapshotsForComponentAndPRGroupHash(ctx context.Context, c client.Client, snapshot, componentName, prGroupHash string) (*[]applicationapiv1alpha1.Snapshot, error)
 }
 
 type loader struct{}
@@ -366,8 +366,8 @@ func (l *loader) GetComponent(ctx context.Context, c client.Client, name, namesp
 	return component, toolkit.GetObject(name, namespace, c, ctx, component)
 }
 
-// GetPipelineRunsWithPRGroupHash gets the build pipelineRun with the given pr group hash string and the the same namespace with the given snapshot
-func (l *loader) GetPipelineRunsWithPRGroupHash(ctx context.Context, adapterClient client.Client, snapshot *applicationapiv1alpha1.Snapshot, prGroupHash string) (*[]tektonv1.PipelineRun, error) {
+// GetPipelineRunsWithPRGroupHash gets the build pipelineRun with the given pr group hash string and the same namespace with the given snapshot
+func (l *loader) GetPipelineRunsWithPRGroupHash(ctx context.Context, adapterClient client.Client, namespace, prGroupHash string) (*[]tektonv1.PipelineRun, error) {
 	buildPipelineRuns := &tektonv1.PipelineRunList{}
 
 	evnentTypeLabelRequirement, err := labels.NewRequirement("pipelinesascode.tekton.dev/event-type", selection.NotIn, []string{"push", "Push"})
@@ -389,7 +389,7 @@ func (l *loader) GetPipelineRunsWithPRGroupHash(ctx context.Context, adapterClie
 		Add(*plrTypeLabelRequirement)
 
 	opts := &client.ListOptions{
-		Namespace:     snapshot.Namespace,
+		Namespace:     namespace,
 		LabelSelector: labelSelector,
 	}
 
@@ -401,7 +401,7 @@ func (l *loader) GetPipelineRunsWithPRGroupHash(ctx context.Context, adapterClie
 }
 
 // GetMatchingComponentSnapshotsForComponentAndPRGroupHash gets the component snapshot with the given pr group hash string and the the same namespace with the given snapshot
-func (l *loader) GetMatchingComponentSnapshotsForComponentAndPRGroupHash(ctx context.Context, c client.Client, snapshot *applicationapiv1alpha1.Snapshot, componentName, prGroupHash string) (*[]applicationapiv1alpha1.Snapshot, error) {
+func (l *loader) GetMatchingComponentSnapshotsForComponentAndPRGroupHash(ctx context.Context, c client.Client, namespace, componentName, prGroupHash string) (*[]applicationapiv1alpha1.Snapshot, error) {
 	snapshots := &applicationapiv1alpha1.SnapshotList{}
 
 	eventTypeLabelRequirement, err := labels.NewRequirement("pac.test.appstudio.openshift.io/event-type", selection.NotIn, []string{"push", "Push"})
@@ -428,7 +428,7 @@ func (l *loader) GetMatchingComponentSnapshotsForComponentAndPRGroupHash(ctx con
 		Add(*snapshotTypeLabelRequirement)
 
 	opts := &client.ListOptions{
-		Namespace:     snapshot.Namespace,
+		Namespace:     namespace,
 		LabelSelector: labelSelector,
 	}
 

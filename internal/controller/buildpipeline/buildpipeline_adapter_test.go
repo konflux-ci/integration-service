@@ -20,6 +20,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"reflect"
 	"time"
 
@@ -72,6 +73,8 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		SampleImage              = SampleImageWithoutDigest + "@" + SampleDigest
 		invalidDigest            = "invalidDigest"
 		customLabel              = "custom.appstudio.openshift.io/custom-label"
+		prGroup                  = "feature1"
+		prGroupSha               = "feature1hash"
 	)
 
 	BeforeAll(func() {
@@ -140,9 +143,11 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 					gitops.SnapshotComponentLabel:              hasComp.Name,
 					gitops.PipelineAsCodeEventTypeLabel:        gitops.PipelineAsCodePullRequestType,
 					gitops.PipelineAsCodePullRequestAnnotation: "1",
+					gitops.PRGroupHashLabel:                    prGroupSha,
 				},
 				Annotations: map[string]string{
 					gitops.PipelineAsCodeInstallationIDAnnotation: "123",
+					gitops.PRGroupAnnotation:                      prGroup,
 				},
 			},
 			Spec: applicationapiv1alpha1.SnapshotSpec{
@@ -1275,6 +1280,134 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		})
 	})
 
+	When("A Build pipelineRun has failed", func() {
+		BeforeEach(func() {
+			// Update build PLR as failed
+			buildPipelineRun.Status = tektonv1.PipelineRunStatus{
+				PipelineRunStatusFields: tektonv1.PipelineRunStatusFields{
+					ChildReferences: []tektonv1.ChildStatusReference{
+						{
+							Name:             failedTaskRun.Name,
+							PipelineTaskName: "task1",
+						},
+					},
+					Results: []tektonv1.PipelineRunResult{
+						{
+							Name:  "CHAINS-GIT_URL",
+							Value: *tektonv1.NewStructuredValues(SampleRepoLink),
+						},
+						{
+							Name:  "IMAGE_URL",
+							Value: *tektonv1.NewStructuredValues(SampleImageWithoutDigest),
+						},
+					},
+				},
+				Status: v1.Status{
+					Conditions: v1.Conditions{
+						apis.Condition{
+							Reason: "Failed",
+							Status: "False",
+							Type:   apis.ConditionSucceeded,
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Status().Update(ctx, buildPipelineRun)).Should(Succeed())
+
+			Eventually(func() bool {
+				updatedBuildPLR := new(tektonv1.PipelineRun)
+				_ = k8sClient.Get(ctx, types.NamespacedName{
+					Namespace: buildPipelineRun.Namespace,
+					Name:      buildPipelineRun.Name,
+				}, updatedBuildPLR)
+				return helpers.HasPipelineRunFinished(buildPipelineRun) && !helpers.HasPipelineRunSucceeded(buildPipelineRun)
+			}, time.Second*20).Should(BeTrue())
+		})
+
+		When("add pr group to the build pipelineRun annotations and labels", func() {
+			BeforeEach(func() {
+				// Add label and annotation to PLR
+				err := metadata.AddLabels(buildPipelineRun, map[string]string{gitops.PRGroupHashLabel: prGroupSha})
+				Expect(err).NotTo(HaveOccurred())
+				err = metadata.AddAnnotations(buildPipelineRun, map[string]string{gitops.PRGroupAnnotation: prGroup})
+				Expect(err).NotTo(HaveOccurred())
+				Expect(k8sClient.Update(ctx, buildPipelineRun)).Should(Succeed())
+
+				Eventually(func() bool {
+					_ = k8sClient.Get(ctx, types.NamespacedName{
+						Namespace: buildPipelineRun.Namespace,
+						Name:      buildPipelineRun.Name,
+					}, buildPipelineRun)
+					return metadata.HasAnnotation(buildPipelineRun, gitops.PRGroupAnnotation) && metadata.HasLabel(buildPipelineRun, gitops.PRGroupHashLabel)
+				}, time.Second*10).Should(BeTrue())
+
+				Expect(helpers.HasPipelineRunFinished(buildPipelineRun)).Should(BeTrue())
+				Expect(helpers.HasPipelineRunSucceeded(buildPipelineRun)).Should(BeFalse())
+
+				// Mock an in-flight component build PLR that belongs to the same PR group
+				inFlightBuildPLR := buildPipelineRun.DeepCopy()
+				inFlightBuildPLR.Labels[tekton.ComponentNameLabel] = "other-component"
+				inFlightBuildPLR.Status = tektonv1.PipelineRunStatus{
+					PipelineRunStatusFields: tektonv1.PipelineRunStatusFields{
+						Results: []tektonv1.PipelineRunResult{},
+					},
+					Status: v1.Status{
+						Conditions: v1.Conditions{
+							apis.Condition{
+								Reason: "Running",
+								Status: "Unknown",
+								Type:   apis.ConditionSucceeded,
+							},
+						},
+					},
+				}
+
+				adapter = NewAdapter(ctx, buildPipelineRun, hasComp, hasApp, logger, loader.NewMockLoader(), k8sClient)
+				adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+					{
+						ContextKey: loader.ApplicationComponentsContextKey,
+						Resource:   []applicationapiv1alpha1.Component{*hasComp},
+					},
+					{
+						ContextKey: loader.GetComponentSnapshotsKey,
+						Resource:   []applicationapiv1alpha1.Snapshot{*hasSnapshot},
+					},
+					{
+						ContextKey: loader.GetBuildPLRContextKey,
+						Resource:   []tektonv1.PipelineRun{*inFlightBuildPLR},
+					},
+				})
+			})
+			It("notifies all latest Snapshots and in-flight builds in the PR group about the build pipeline failure", func() {
+				result, err := adapter.EnsurePRGroupAnnotated()
+				Expect(err).NotTo(HaveOccurred())
+				Expect(result.CancelRequest).To(BeFalse())
+				Expect(result.RequeueRequest).To(BeFalse())
+
+				Eventually(func() bool {
+					_ = adapter.client.Get(adapter.context, types.NamespacedName{
+						Namespace: hasSnapshot.Namespace,
+						Name:      hasSnapshot.Name,
+					}, hasSnapshot)
+					return metadata.HasAnnotation(hasSnapshot, gitops.PRGroupCreationAnnotation)
+				}, time.Second*10).Should(BeTrue())
+
+				expectedBuildFailureMsg := fmt.Sprintf("build PLR %s failed for component %s so it can't be added to the group Snapshot for PR group %s", buildPipelineRun.Name, hasComp.Name, prGroup)
+				Expect(hasSnapshot.ObjectMeta.Annotations[gitops.PRGroupCreationAnnotation]).Should(ContainSubstring(expectedBuildFailureMsg))
+
+				Eventually(func() bool {
+					_ = adapter.client.Get(adapter.context, types.NamespacedName{
+						Namespace: buildPipelineRun.Namespace,
+						Name:      buildPipelineRun.Name,
+					}, buildPipelineRun)
+					return metadata.HasAnnotation(buildPipelineRun, gitops.PRGroupCreationAnnotation)
+				}, time.Second*10).Should(BeTrue())
+
+				Expect(buildPipelineRun.ObjectMeta.Annotations[gitops.PRGroupCreationAnnotation]).Should(ContainSubstring(expectedBuildFailureMsg))
+			})
+		})
+
+	})
 	createAdapter = func() *Adapter {
 		adapter = NewAdapter(ctx, buildPipelineRun, hasComp, hasApp, logger, loader.NewMockLoader(), k8sClient)
 		return adapter
