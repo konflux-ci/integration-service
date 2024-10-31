@@ -26,6 +26,8 @@ remove_finalizer(Remove finalizer from build PLR)
 error[Return error]
 continue[Continue processing]
 update_metadata(add PR group info to build pipelineRun metadata)
+notify_pr_group_failure(annotate Snapshots and in-flight builds in PR group with failure message)
+failed_group_pipeline_run{Pipeline failed?}
 
 %% Node connections
 predicate                        --> get_pipeline_run
@@ -37,8 +39,11 @@ finalizer_exists           --No-->   add_finalizer
 add_finalizer                    --> continue
 failed_pipeline_run        --Yes --> remove_finalizer
 new_pipeline_run_without_prgroup --No  --> update_metadata
-new_pipeline_run_without_prgroup --Yes  --> continue
-update_metadata                    --> continue
+new_pipeline_run_without_prgroup --Yes  --> failed_group_pipeline_run
+failed_group_pipeline_run  --Yes --> notify_pr_group_failure
+failed_group_pipeline_run   --No --> continue
+notify_pr_group_failure          --> continue
+update_metadata                  --> continue
 get_pipeline_run           --Yes --> retrieve_associated_entity
 get_pipeline_run           --No  --> error
 retrieve_associated_entity --No  --> error
