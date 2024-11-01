@@ -29,6 +29,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -73,9 +74,16 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{}, err
 	}
 
-	application, err := r.getApplicationFromScenario(ctx, scenario)
+	var application *applicationapiv1alpha1.Application
+	err = retry.OnError(retry.DefaultRetry, func(_ error) bool { return true }, func() error {
+		application, err = r.getApplicationFromScenario(ctx, scenario)
+		if err != nil {
+			logger.Info("Failed to get Application from the IntegrationTestScenario, try again", "error:", err)
+		}
+		return err
+	})
 	if err != nil {
-		logger.Info("Failed to get Application from the IntegrationTestScenario", "error:", err)
+		logger.Error(err, "Failed to get Application from the IntegrationTestScenario after retry", "application", scenario.Spec.Application)
 	}
 
 	adapter := NewAdapter(ctx, application, scenario, logger, loader, r.Client)
