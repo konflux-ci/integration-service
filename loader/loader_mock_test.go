@@ -320,4 +320,19 @@ var _ = Describe("Release Adapter", Ordered, func() {
 			Expect(err).ToNot(HaveOccurred())
 		})
 	})
+
+	Context("When calling GetMatchingComponentSnapshotsForPRGroupHash", func() {
+		It("returns resource and error from the context", func() {
+			snapshots := []applicationapiv1alpha1.Snapshot{}
+			mockContext := toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: GetPRSnapshotsKey,
+					Resource:   snapshots,
+				},
+			})
+			resource, err := loader.GetMatchingComponentSnapshotsForPRGroupHash(mockContext, nil, nil, "")
+			Expect(resource).To(Equal(&snapshots))
+			Expect(err).ToNot(HaveOccurred())
+		})
+	})
 })

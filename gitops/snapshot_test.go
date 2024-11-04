@@ -876,17 +876,18 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 
 	Context("Group snapshot creation tests", func() {
 		When("Snapshot has snapshot type label", func() {
-			prGroup := "feature1"
-			prGroupSha := "feature1hash"
+			expectedPRGroup := "feature1"
+			expectedPRGoupSha := "feature1hash"
 			BeforeEach(func() {
-				hasComSnapshot1.Labels[gitops.PRGroupHashLabel] = prGroupSha
-				hasComSnapshot1.Annotations[gitops.PRGroupAnnotation] = prGroup
+				hasComSnapshot1.Labels[gitops.PRGroupHashLabel] = expectedPRGoupSha
+				hasComSnapshot1.Annotations[gitops.PRGroupAnnotation] = expectedPRGroup
 				hasComSnapshot1.Annotations[gitops.PRGroupCreationAnnotation] = "group snapshot is created"
 			})
 
 			It("make sure pr group annotation/label can be found in group", func() {
-				Expect(gitops.GetPRGroupFromSnapshot(hasComSnapshot1)).To(Equal(prGroup))
-				Expect(gitops.GetPRGroupHashFromSnapshot(hasComSnapshot1)).To(Equal(prGroupSha))
+				prGroupSha, prGroup := gitops.GetPRGroupFromSnapshot(hasComSnapshot1)
+				Expect(prGroup).To(Equal(expectedPRGroup))
+				Expect(prGroupSha).To(Equal(expectedPRGoupSha))
 				Expect(gitops.HasPRGroupProcessed(hasComSnapshot1)).To(BeTrue())
 			})
 
