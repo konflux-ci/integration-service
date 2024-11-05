@@ -1817,7 +1817,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			Expect(err).ToNot(HaveOccurred())
 		})
 
-		It("Stop processing when there is only one affected for pr group", func() {
+		It("Stop processing when there is only one component affected for pr group", func() {
 			var buf bytes.Buffer
 			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
 			adapter = NewAdapter(ctx, hasComSnapshot1, hasApp, log, loader.NewMockLoader(), k8sClient)
@@ -1843,7 +1843,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			result, err := adapter.EnsureGroupSnapshotExist()
 			Expect(result.CancelRequest).To(BeFalse())
 			Expect(result.RequeueRequest).To(BeFalse())
-			Expect(buf.String()).Should(ContainSubstring("The number 1 of component affected by this pr group feature1 is less than 2, skipping group snapshot creation"))
+			Expect(buf.String()).Should(ContainSubstring("The number 1 of components affected by this PR group feature1 is less than 2, skipping group snapshot creation"))
 			Expect(err).ToNot(HaveOccurred())
 		})
 

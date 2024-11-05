@@ -855,7 +855,7 @@ func (a *Adapter) updateComponentLastPromotedImage(ctx context.Context, c client
 }
 
 func (a *Adapter) prepareGroupSnapshot(application *applicationapiv1alpha1.Application, prGroup, prGroupHash string) (*applicationapiv1alpha1.Snapshot, []gitops.ComponentSnapshotInfo, error) {
-	componentsToCheck, err := a.getComponentsForPRGroup(application, prGroup, prGroupHash)
+	componentsToCheck, err := a.getComponentsForPRGroup(prGroup, prGroupHash)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -872,47 +872,30 @@ func (a *Adapter) prepareGroupSnapshot(application *applicationapiv1alpha1.Appli
 	snapshotComponents := make([]applicationapiv1alpha1.SnapshotComponent, 0)
 	componentSnapshotInfos := make([]gitops.ComponentSnapshotInfo, 0)
 	for _, applicationComponent := range *applicationComponents {
-		var isPRMROpened bool
 		applicationComponent := applicationComponent // G601
 
+		var foundSnapshotWithOpenedPR *applicationapiv1alpha1.Snapshot
 		if slices.Contains(componentsToCheck, applicationComponent.Name) {
-			snapshots, err := a.loader.GetMatchingComponentSnapshotsForComponentAndPRGroupHash(a.context, a.client, a.snapshot, applicationComponent.Name, prGroupHash)
+			foundSnapshotWithOpenedPR, err = a.findSnapshotWithOpenedPR(a.snapshot, &applicationComponent, prGroupHash)
 			if err != nil {
-				a.logger.Error(err, "Failed to fetch Snapshots for component", "component.Name", applicationComponent.Name)
 				return nil, nil, err
 			}
-
-			sortedSnapshots := gitops.SortSnapshots(*snapshots)
-			// find the latest component snapshot created for open PR/MR
-			for _, snapshot := range sortedSnapshots {
-				snapshot := snapshot
-				// find the built image for pull/merge request build PLR from the latest opened pull request component snapshot
-				isPRMROpened, err = a.status.IsPRMRInSnapshotOpened(a.context, &snapshot)
-				if err != nil {
-					a.logger.Error(err, "Failed to fetch PR/MR status for component snapshot", "snapshot.Name", a.snapshot.Name)
-					return nil, nil, err
-				}
-				if isPRMROpened {
-					a.logger.Info("PR/MR in snapshot is opened, will find snapshotComponent and add to groupSnapshot")
-					snapshotComponent := gitops.FindMatchingSnapshotComponent(&snapshot, &applicationComponent)
-					componentSnapshotInfos = append(componentSnapshotInfos, gitops.ComponentSnapshotInfo{
-						Component:         applicationComponent.Name,
-						BuildPipelineRun:  snapshot.Labels[gitops.BuildPipelineRunNameLabel],
-						Snapshot:          snapshot.Name,
-						Namespace:         a.snapshot.Namespace,
-						RepoUrl:           snapshot.Annotations[gitops.PipelineAsCodeRepoUrlAnnotation],
-						PullRequestNumber: snapshot.Annotations[gitops.PipelineAsCodePullRequestAnnotation],
-					})
-					snapshotComponents = append(snapshotComponents, snapshotComponent)
-					break
-				}
+			if foundSnapshotWithOpenedPR != nil {
+				a.logger.Info("PR/MR in snapshot is opened, will find snapshotComponent and add to groupSnapshot")
+				snapshotComponent := gitops.FindMatchingSnapshotComponent(foundSnapshotWithOpenedPR, &applicationComponent)
+				componentSnapshotInfos = append(componentSnapshotInfos, gitops.ComponentSnapshotInfo{
+					Component:         applicationComponent.Name,
+					BuildPipelineRun:  foundSnapshotWithOpenedPR.Labels[gitops.BuildPipelineRunNameLabel],
+					Snapshot:          foundSnapshotWithOpenedPR.Name,
+					Namespace:         a.snapshot.Namespace,
+					RepoUrl:           foundSnapshotWithOpenedPR.Annotations[gitops.PipelineAsCodeRepoUrlAnnotation],
+					PullRequestNumber: foundSnapshotWithOpenedPR.Annotations[gitops.PipelineAsCodePullRequestAnnotation],
+				})
+				snapshotComponents = append(snapshotComponents, snapshotComponent)
+				continue
 			}
 		}
-		// isPRMROpened represents snapshotComponent can be gottent from PR component snapshot
-		// so continue next applicationComponent
-		if isPRMROpened {
-			continue
-		}
+
 		a.logger.Info("can't find snapshot with open pull/merge request for component, try to find snapshotComponent from Global Candidate List", "component", applicationComponent.Name)
 		// if there is no component snapshot found for open PR/MR, we get snapshotComponent from gcl
 		componentSource := gitops.GetComponentSourceFromComponent(&applicationComponent)
@@ -1028,11 +1011,11 @@ func (a *Adapter) haveAllPipelineRunProcessedForPrGroup(prGroup, prGroupHash str
 	return true, nil
 }
 
-// getComponentsAffectedPrGroup returns the component names affected by the given pr group hash
-func (a *Adapter) getComponentsForPRGroup(application *applicationapiv1alpha1.Application, prGroup, prGroupHash string) ([]string, error) {
+// getComponentsForPRGroup returns the component names affected by the given pr group hash
+func (a *Adapter) getComponentsForPRGroup(prGroup, prGroupHash string) ([]string, error) {
 	snapshots, err := a.loader.GetMatchingComponentSnapshotsForPRGroupHash(a.context, a.client, a.snapshot, prGroupHash)
 	if err != nil {
-		a.logger.Error(err, fmt.Sprintf("Failed to fetch Snapshots for pr group %s", prGroupHash))
+		a.logger.Error(err, fmt.Sprintf("Failed to fetch Snapshots for pr group %s", prGroup))
 		return nil, err
 	}
 
@@ -1045,4 +1028,29 @@ func (a *Adapter) getComponentsForPRGroup(application *applicationapiv1alpha1.Ap
 		componentNames = append(componentNames, componentName)
 	}
 	return componentNames, nil
+}
+
+func (a *Adapter) findSnapshotWithOpenedPR(snapshot *applicationapiv1alpha1.Snapshot, applicationComponent *applicationapiv1alpha1.Component, prGroupHash string) (*applicationapiv1alpha1.Snapshot, error) {
+	snapshots, err := a.loader.GetMatchingComponentSnapshotsForComponentAndPRGroupHash(a.context, a.client, a.snapshot, applicationComponent.Name, prGroupHash)
+	if err != nil {
+		a.logger.Error(err, "Failed to fetch Snapshots for component", "component.Name", applicationComponent.Name)
+		return nil, err
+	}
+
+	sortedSnapshots := gitops.SortSnapshots(*snapshots)
+	// find the latest component snapshot created for open PR/MR
+	for _, snapshot := range sortedSnapshots {
+		snapshot := snapshot
+		// find the built image for pull/merge request build PLR from the latest opened pull request component snapshot
+		isPRMROpened, err := a.status.IsPRMRInSnapshotOpened(a.context, &snapshot)
+		if err != nil {
+			a.logger.Error(err, "Failed to fetch PR/MR status for component snapshot", "snapshot.Name", a.snapshot.Name)
+			return nil, err
+		}
+		if isPRMROpened {
+			a.logger.Info("PR/MR in snapshot is opened, will find snapshotComponent and add to groupSnapshot")
+			return &snapshot, nil
+		}
+	}
+	return nil, nil
 }
