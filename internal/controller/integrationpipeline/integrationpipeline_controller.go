@@ -146,6 +146,7 @@ func setupControllerWithManager(manager ctrl.Manager, controller *Reconciler) er
 
 	return ctrl.NewControllerManagedBy(manager).
 		For(&tektonv1.PipelineRun{}).
+		Named("integrationpipelinerun").
 		WithEventFilter(predicate.Or(
 			tekton.IntegrationPipelineRunPredicate())).
 		Complete(controller)
