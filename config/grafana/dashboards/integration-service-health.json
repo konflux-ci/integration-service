@@ -244,7 +244,16 @@
         {
           "datasource": "$datasource",
           "editorMode": "builder",
-          "expr": "controller_runtime_reconcile_errors_total{namespace=\"integration-service\", controller=\"pipelinerun\"}",
+          "expr": "controller_runtime_reconcile_errors_total{namespace=\"integration-service\", controller=\"buildpipelinerun\"}",
+          "interval": "",
+          "legendFormat": "{{controller}}",
+          "range": true,
+          "refId": "B"
+        },
+        {
+          "datasource": "$datasource",
+          "editorMode": "builder",
+          "expr": "controller_runtime_reconcile_errors_total{namespace=\"integration-service\", controller=\"integrationpipelinerun\"}",
           "interval": "",
           "legendFormat": "{{controller}}",
           "range": true,
