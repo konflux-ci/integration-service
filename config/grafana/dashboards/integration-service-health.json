@@ -257,7 +257,7 @@
           "interval": "",
           "legendFormat": "{{controller}}",
           "range": true,
-          "refId": "B"
+          "refId": "C"
         },
         {
           "datasource": "$datasource",
@@ -266,7 +266,7 @@
           "interval": "",
           "legendFormat": "{{controller}}",
           "range": true,
-          "refId": "C"
+          "refId": "D"
         },
         {
           "datasource": "$datasource",
