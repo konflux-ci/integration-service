@@ -66,6 +66,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		hasApp                                    *applicationapiv1alpha1.Application
 		hasComp                                   *applicationapiv1alpha1.Component
 		hasCompMissingImageDigest                 *applicationapiv1alpha1.Component
+		hasCompWithValidImage                     *applicationapiv1alpha1.Component
 		hasCom1                                   *applicationapiv1alpha1.Component
 		hasCom3                                   *applicationapiv1alpha1.Component
 		hasSnapshot                               *applicationapiv1alpha1.Snapshot
@@ -182,6 +183,29 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			},
 		}
 		Expect(k8sClient.Create(ctx, hasComp)).Should(Succeed())
+
+		hasCompWithValidImage = &applicationapiv1alpha1.Component{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "component-sample-valid-image",
+				Namespace: "default",
+			},
+			Spec: applicationapiv1alpha1.ComponentSpec{
+				ComponentName:  "component-sample",
+				Application:    "application-sample",
+				ContainerImage: sample_image + "@" + sampleDigest,
+				Source: applicationapiv1alpha1.ComponentSource{
+					ComponentSourceUnion: applicationapiv1alpha1.ComponentSourceUnion{
+						GitSource: &applicationapiv1alpha1.GitSource{
+							URL: SampleRepoLink,
+						},
+					},
+				},
+			},
+			Status: applicationapiv1alpha1.ComponentStatus{
+				LastBuiltCommit: sourceRepoRef,
+			},
+		}
+		Expect(k8sClient.Create(ctx, hasCompWithValidImage)).Should(Succeed())
 
 		hasCom1 = &applicationapiv1alpha1.Component{
 			ObjectMeta: metav1.ObjectMeta{
@@ -595,6 +619,8 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		err = k8sClient.Delete(ctx, hasComp)
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 		err = k8sClient.Delete(ctx, hasCompMissingImageDigest)
+		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
+		err = k8sClient.Delete(ctx, hasCompWithValidImage)
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 		err = k8sClient.Delete(ctx, integrationTestScenario)
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
@@ -1586,7 +1612,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			Expect(err).ToNot(HaveOccurred())
 		})
 
-		It("ensures component snapshot will not be processed if it has no pr group sha label", func() {
+		It("ensures component snapshot will not be processed if it has no pr group label/annotation", func() {
 			var buf bytes.Buffer
 			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
 			Expect(metadata.DeleteLabel(hasComSnapshot1, gitops.PRGroupHashLabel)).ShouldNot(HaveOccurred())
@@ -1606,32 +1632,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			result, err := adapter.EnsureGroupSnapshotExist()
 			Expect(result.CancelRequest).To(BeFalse())
 			Expect(result.RequeueRequest).To(BeFalse())
-			Expect(buf.String()).Should(ContainSubstring("Failed to get PR group hash from snapshot"))
-			Expect(err).ToNot(HaveOccurred())
-			Expect(metadata.HasAnnotation(hasComSnapshot1, gitops.PRGroupCreationAnnotation)).To(BeTrue())
-		})
-
-		It("ensures component snapshot will not be processed if it has no pr group annotation", func() {
-			var buf bytes.Buffer
-			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
-			Expect(metadata.DeleteAnnotation(hasComSnapshot1, gitops.PRGroupAnnotation)).ShouldNot(HaveOccurred())
-			Expect(metadata.HasAnnotation(hasComSnapshot1, gitops.PRGroupAnnotation)).To(BeFalse())
-			adapter = NewAdapter(ctx, hasComSnapshot1, hasApp, log, loader.NewMockLoader(), k8sClient)
-			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
-				{
-					ContextKey: loader.ApplicationContextKey,
-					Resource:   hasApp,
-				},
-				{
-					ContextKey: loader.SnapshotContextKey,
-					Resource:   hasComSnapshot1,
-				},
-			})
-
-			result, err := adapter.EnsureGroupSnapshotExist()
-			Expect(result.CancelRequest).To(BeFalse())
-			Expect(result.RequeueRequest).To(BeFalse())
-			Expect(buf.String()).Should(ContainSubstring("Failed to get PR group from snapshot"))
+			Expect(buf.String()).Should(ContainSubstring("Failed to get PR group label/annotation from snapshot"))
 			Expect(err).ToNot(HaveOccurred())
 			Expect(metadata.HasAnnotation(hasComSnapshot1, gitops.PRGroupCreationAnnotation)).To(BeTrue())
 		})
@@ -1782,6 +1783,58 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 					Resource:   []tektonv1.PipelineRun{},
 				},
 				{
+					ContextKey: loader.GetPRSnapshotsKey,
+					Resource:   []applicationapiv1alpha1.Snapshot{*hasComSnapshot1, *hasComSnapshot3},
+				},
+				{
+					ContextKey: loader.ApplicationComponentsContextKey,
+					Resource:   []applicationapiv1alpha1.Component{*hasCom1, *hasCom3},
+				},
+			})
+
+			// create 3 snasphots here because we need to get snapshot twice so that we can't use the mocked snapshot
+			Expect(k8sClient.Create(adapter.context, hasComSnapshot2)).Should(Succeed())
+			Eventually(func() error {
+				err := k8sClient.Get(adapter.context, types.NamespacedName{
+					Name:      hasComSnapshot2.Name,
+					Namespace: "default",
+				}, hasComSnapshot2)
+				return err
+			}, time.Second*10).ShouldNot(HaveOccurred())
+			Expect(k8sClient.Create(adapter.context, hasComSnapshot3)).Should(Succeed())
+			Eventually(func() error {
+				err := k8sClient.Get(adapter.context, types.NamespacedName{
+					Name:      hasComSnapshot3.Name,
+					Namespace: "default",
+				}, hasComSnapshot3)
+				return err
+			}, time.Second*10).ShouldNot(HaveOccurred())
+
+			result, err := adapter.EnsureGroupSnapshotExist()
+			Expect(result.CancelRequest).To(BeFalse())
+			Expect(result.RequeueRequest).To(BeFalse())
+			Expect(buf.String()).Should(ContainSubstring("failed to get app credentials from Snapshot"))
+			Expect(err).ToNot(HaveOccurred())
+		})
+
+		It("Stop processing when there is only one component affected for pr group", func() {
+			var buf bytes.Buffer
+			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+			adapter = NewAdapter(ctx, hasComSnapshot1, hasApp, log, loader.NewMockLoader(), k8sClient)
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: loader.ApplicationContextKey,
+					Resource:   hasApp,
+				},
+				{
+					ContextKey: loader.SnapshotContextKey,
+					Resource:   hasComSnapshot1,
+				},
+				{
+					ContextKey: loader.GetBuildPLRContextKey,
+					Resource:   []tektonv1.PipelineRun{},
+				},
+				{
 					ContextKey: loader.ApplicationComponentsContextKey,
 					Resource:   []applicationapiv1alpha1.Component{*hasCom1, *hasCom3},
 				},
@@ -1790,7 +1843,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			result, err := adapter.EnsureGroupSnapshotExist()
 			Expect(result.CancelRequest).To(BeFalse())
 			Expect(result.RequeueRequest).To(BeFalse())
-			Expect(buf.String()).Should(ContainSubstring("failed to get app credentials from Snapshot"))
+			Expect(buf.String()).Should(ContainSubstring("The number 1 of components affected by this PR group feature1 is less than 2, skipping group snapshot creation"))
 			Expect(err).ToNot(HaveOccurred())
 		})
 
@@ -1823,7 +1876,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 				},
 				{
 					ContextKey: loader.ApplicationComponentsContextKey,
-					Resource:   []applicationapiv1alpha1.Component{*hasCom1, *hasCom3},
+					Resource:   []applicationapiv1alpha1.Component{*hasComp, *hasCom1, *hasCom3, *hasCompMissingImageDigest, *hasCompWithValidImage},
 				},
 			})
 
@@ -1848,9 +1901,9 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			result, err := adapter.EnsureGroupSnapshotExist()
 			Expect(result.CancelRequest).To(BeFalse())
 			Expect(result.RequeueRequest).To(BeFalse())
-			Expect(buf.String()).Should(ContainSubstring(""))
-			Expect(err).ToNot(HaveOccurred())
-			fmt.Fprintf(GinkgoWriter, "-------test: %v\n", buf.String())
+			Expect(buf.String()).Should(ContainSubstring("component cannot be added to snapshot for application due to invalid digest in containerImage"))
+			Expect(buf.String()).Should(ContainSubstring("component with containerImage from Global Candidate List will be added to group snapshot"))
+			Expect(err).NotTo(HaveOccurred())
 			Eventually(func() bool {
 				_ = k8sClient.Get(adapter.context, types.NamespacedName{
 					Name:      hasComSnapshot2.Name,

@@ -57,6 +57,7 @@ const (
 	GetComponentContextKey
 	GetBuildPLRContextKey
 	GetComponentSnapshotsKey
+	GetPRSnapshotsKey
 )
 
 func NewMockLoader() ObjectLoader {
@@ -231,5 +232,14 @@ func (l *mockLoader) GetMatchingComponentSnapshotsForComponentAndPRGroupHash(ctx
 		return l.loader.GetMatchingComponentSnapshotsForComponentAndPRGroupHash(ctx, c, snapshot, componentName, prGroupHash)
 	}
 	snapshots, err := toolkit.GetMockedResourceAndErrorFromContext(ctx, GetComponentSnapshotsKey, []applicationapiv1alpha1.Snapshot{})
+	return &snapshots, err
+}
+
+// GetMatchingComponentSnapshotsForPRGroupHash returns the resource and error passed as values of the context
+func (l *mockLoader) GetMatchingComponentSnapshotsForPRGroupHash(ctx context.Context, c client.Client, snapshot *applicationapiv1alpha1.Snapshot, prGroupHash string) (*[]applicationapiv1alpha1.Snapshot, error) {
+	if ctx.Value(GetPRSnapshotsKey) == nil {
+		return l.loader.GetMatchingComponentSnapshotsForPRGroupHash(ctx, c, snapshot, prGroupHash)
+	}
+	snapshots, err := toolkit.GetMockedResourceAndErrorFromContext(ctx, GetPRSnapshotsKey, []applicationapiv1alpha1.Snapshot{})
 	return &snapshots, err
 }

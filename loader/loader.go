@@ -58,6 +58,7 @@ type ObjectLoader interface {
 	GetComponent(ctx context.Context, c client.Client, name, namespace string) (*applicationapiv1alpha1.Component, error)
 	GetPipelineRunsWithPRGroupHash(ctx context.Context, c client.Client, snapshot *applicationapiv1alpha1.Snapshot, prGroupHash string) (*[]tektonv1.PipelineRun, error)
 	GetMatchingComponentSnapshotsForComponentAndPRGroupHash(ctx context.Context, c client.Client, snapshot *applicationapiv1alpha1.Snapshot, componentName, prGroupHash string) (*[]applicationapiv1alpha1.Snapshot, error)
+	GetMatchingComponentSnapshotsForPRGroupHash(ctx context.Context, c client.Client, snapshot *applicationapiv1alpha1.Snapshot, prGroupHash string) (*[]applicationapiv1alpha1.Snapshot, error)
 }
 
 type loader struct{}
@@ -423,6 +424,40 @@ func (l *loader) GetMatchingComponentSnapshotsForComponentAndPRGroupHash(ctx con
 	labelSelector := labels.NewSelector().
 		Add(*eventTypeLabelRequirement).
 		Add(*componentLabelRequirement).
+		Add(*prGroupLabelRequirement).
+		Add(*snapshotTypeLabelRequirement)
+
+	opts := &client.ListOptions{
+		Namespace:     snapshot.Namespace,
+		LabelSelector: labelSelector,
+	}
+
+	err = c.List(ctx, snapshots, opts)
+	if err != nil {
+		return nil, err
+	}
+	return &snapshots.Items, nil
+}
+
+// GetMatchingComponentSnapshotsForPRGroupHash gets the component snapshot with the given pr group hash string and the the same namespace with the given snapshot
+func (l *loader) GetMatchingComponentSnapshotsForPRGroupHash(ctx context.Context, c client.Client, snapshot *applicationapiv1alpha1.Snapshot, prGroupHash string) (*[]applicationapiv1alpha1.Snapshot, error) {
+	snapshots := &applicationapiv1alpha1.SnapshotList{}
+
+	eventTypeLabelRequirement, err := labels.NewRequirement("pac.test.appstudio.openshift.io/event-type", selection.NotIn, []string{"push", "Push"})
+	if err != nil {
+		return nil, err
+	}
+	prGroupLabelRequirement, err := labels.NewRequirement("test.appstudio.openshift.io/pr-group-sha", selection.In, []string{prGroupHash})
+	if err != nil {
+		return nil, err
+	}
+	snapshotTypeLabelRequirement, err := labels.NewRequirement("test.appstudio.openshift.io/type", selection.In, []string{"component"})
+	if err != nil {
+		return nil, err
+	}
+
+	labelSelector := labels.NewSelector().
+		Add(*eventTypeLabelRequirement).
 		Add(*prGroupLabelRequirement).
 		Add(*snapshotTypeLabelRequirement)
 
