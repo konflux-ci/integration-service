@@ -1033,20 +1033,12 @@ func HasPRGroupProcessed(snapshot *applicationapiv1alpha1.Snapshot) bool {
 	return metadata.HasAnnotation(snapshot, PRGroupCreationAnnotation)
 }
 
-// GetPRGroupHashFromSnapshot gets the value of label test.appstudio.openshift.io/pr-group-sha from component snapshot
-func GetPRGroupHashFromSnapshot(snapshot *applicationapiv1alpha1.Snapshot) string {
-	if metadata.HasLabel(snapshot, PRGroupHashLabel) {
-		return snapshot.Labels[PRGroupHashLabel]
+// GetPRGroupFromSnapshot gets the value of label test.appstudio.openshift.io/pr-group-sha and annotation from component snapshot
+func GetPRGroupFromSnapshot(snapshot *applicationapiv1alpha1.Snapshot) (string, string) {
+	if metadata.HasLabel(snapshot, PRGroupHashLabel) && metadata.HasAnnotation(snapshot, PRGroupAnnotation) {
+		return snapshot.Labels[PRGroupHashLabel], snapshot.Annotations[PRGroupAnnotation]
 	}
-	return ""
-}
-
-// GetPRGroupFromSnapshot gets the value of annotation test.appstudio.openshift.io/pr-group from component snapshot
-func GetPRGroupFromSnapshot(snapshot *applicationapiv1alpha1.Snapshot) string {
-	if metadata.HasAnnotation(snapshot, PRGroupAnnotation) {
-		return snapshot.Annotations[PRGroupAnnotation]
-	}
-	return ""
+	return "", ""
 }
 
 // FindMatchingSnapshotComponent find the snapshot component from the given snapshot according to the name of the given component name

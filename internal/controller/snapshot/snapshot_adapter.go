@@ -26,6 +26,7 @@ import (
 
 	"k8s.io/client-go/util/retry"
 
+	"golang.org/x/exp/slices"
 	clienterrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -538,69 +539,27 @@ func (a *Adapter) EnsureGroupSnapshotExist() (controller.OperationResult, error)
 		return controller.ContinueProcessing()
 	}
 
-	prGroupHash := gitops.GetPRGroupHashFromSnapshot(a.snapshot)
-	if prGroupHash == "" {
-		a.logger.Error(fmt.Errorf("NotFound"), fmt.Sprintf("Failed to get PR group hash from snapshot %s/%s", a.snapshot.Namespace, a.snapshot.Name))
-		err := gitops.AnnotateSnapshot(a.context, a.snapshot, gitops.PRGroupCreationAnnotation, fmt.Sprintf("Failed to get PR group hash from snapshot %s/%s", a.snapshot.Namespace, a.snapshot.Name), a.client)
+	prGroupHash, prGroup := gitops.GetPRGroupFromSnapshot(a.snapshot)
+	if prGroupHash == "" || prGroup == "" {
+		a.logger.Error(fmt.Errorf("NotFound"), fmt.Sprintf("Failed to get PR group label/annotation from snapshot %s/%s", a.snapshot.Namespace, a.snapshot.Name))
+		err := gitops.AnnotateSnapshot(a.context, a.snapshot, gitops.PRGroupCreationAnnotation, fmt.Sprintf("Failed to get PR group label/annotation from snapshot %s/%s", a.snapshot.Namespace, a.snapshot.Name), a.client)
 		if err != nil {
 			return controller.RequeueWithError(err)
 		}
 		return controller.ContinueProcessing()
 	}
 
-	prGroup := gitops.GetPRGroupFromSnapshot(a.snapshot)
-	if prGroup == "" {
-		a.logger.Error(fmt.Errorf("NotFound"), fmt.Sprintf("Failed to get PR group from snapshot %s/%s", a.snapshot.Namespace, a.snapshot.Name))
-		err := gitops.AnnotateSnapshot(a.context, a.snapshot, gitops.PRGroupCreationAnnotation, fmt.Sprintf("Failed to get PR group from snapshot %s/%s", a.snapshot.Namespace, a.snapshot.Name), a.client)
-		if err != nil {
-			return controller.RequeueWithError(err)
-		}
-		return controller.ContinueProcessing()
-	}
-
-	pipelineRuns, err := a.loader.GetPipelineRunsWithPRGroupHash(a.context, a.client, a.snapshot, prGroupHash)
+	// check if all build plr have been processed for the given pr group
+	haveAllPipelineRunProcessedForPrGroup, err := a.haveAllPipelineRunProcessedForPrGroup(prGroup, prGroupHash)
 	if err != nil {
-		a.logger.Error(err, fmt.Sprintf("Failed to get build pipelineRuns for given pr group hash %s", prGroupHash))
 		return controller.RequeueWithError(err)
 	}
-
-	for _, pipelineRun := range *pipelineRuns {
-		pipelineRun := pipelineRun
-
-		// check if the build PLR is the latest existing one
-		if !isLatestBuildPipelineRunInComponent(&pipelineRun, pipelineRuns) {
-			a.logger.Info(fmt.Sprintf("The build pipelineRun %s/%s with pr group %s is not the latest for its component, skipped", pipelineRun.Namespace, pipelineRun.Name, prGroup))
-			continue
-		}
-
-		// check if build PLR finishes
-		if !h.HasPipelineRunFinished(&pipelineRun) {
-			a.logger.Info(fmt.Sprintf("The build pipelineRun %s/%s with pr group %s is still running, won't create group snapshot", pipelineRun.Namespace, pipelineRun.Name, prGroup))
-			err := gitops.AnnotateSnapshot(a.context, a.snapshot, gitops.PRGroupCreationAnnotation, fmt.Sprintf("The build pipelineRun %s/%s with pr group %s is still running, won't create group snapshot", pipelineRun.Namespace, pipelineRun.Name, prGroup), a.client)
-			if err != nil {
-				return controller.RequeueWithError(err)
-			}
-			return controller.ContinueProcessing()
-		}
-
-		// check if build PLR succeeds
-		if !h.HasPipelineRunSucceeded(&pipelineRun) {
-			a.logger.Info(fmt.Sprintf("The build pipelineRun %s/%s with pr group %s failed, won't create group snapshot", pipelineRun.Namespace, pipelineRun.Name, prGroup))
-			err := gitops.AnnotateSnapshot(a.context, a.snapshot, gitops.PRGroupCreationAnnotation, fmt.Sprintf("The build pipelineRun %s/%s with pr group %s failed, won't create group snapshot", pipelineRun.Namespace, pipelineRun.Name, prGroup), a.client)
-			if err != nil {
-				return controller.RequeueWithError(err)
-			}
-			return controller.ContinueProcessing()
-		}
-
-		// check if build PLR has component snapshot created except the build that snapshot is created from because the build plr has not been labeled with snapshot name
-		if !metadata.HasAnnotation(&pipelineRun, tekton.SnapshotNameLabel) && !metadata.HasLabelWithValue(a.snapshot, gitops.BuildPipelineRunNameLabel, pipelineRun.Name) {
-			a.logger.Info(fmt.Sprintf("The build pipelineRun %s/%s with pr group %s has succeeded but component snapshot has not been created now", pipelineRun.Namespace, pipelineRun.Name, prGroup))
-			return controller.ContinueProcessing()
-		}
+	// don't need to create group snapshot if there is any unready pipelinerun for pr group
+	if !haveAllPipelineRunProcessedForPrGroup {
+		return controller.ContinueProcessing()
 	}
 
-	groupSnapshot, componentSnapshotInfos, err := a.prepareGroupSnapshot(a.application, prGroupHash)
+	groupSnapshot, componentSnapshotInfos, err := a.prepareGroupSnapshot(a.application, prGroup, prGroupHash)
 	if err != nil {
 		a.logger.Error(err, "failed to prepare group snapshot")
 		if h.IsUnrecoverableMetadataError(err) || clienterrors.IsNotFound(err) {
@@ -895,7 +854,16 @@ func (a *Adapter) updateComponentLastPromotedImage(ctx context.Context, c client
 	return nil
 }
 
-func (a *Adapter) prepareGroupSnapshot(application *applicationapiv1alpha1.Application, prGroupHash string) (*applicationapiv1alpha1.Snapshot, []gitops.ComponentSnapshotInfo, error) {
+func (a *Adapter) prepareGroupSnapshot(application *applicationapiv1alpha1.Application, prGroup, prGroupHash string) (*applicationapiv1alpha1.Snapshot, []gitops.ComponentSnapshotInfo, error) {
+	componentsToCheck, err := a.getComponentsForPRGroup(prGroup, prGroupHash)
+	if err != nil {
+		return nil, nil, err
+	}
+	if len(componentsToCheck) < 2 {
+		a.logger.Info(fmt.Sprintf("The number %d of components affected by this PR group %s is less than 2, skipping group snapshot creation", len(componentsToCheck), prGroup))
+		return nil, nil, err
+	}
+
 	applicationComponents, err := a.loader.GetAllApplicationComponents(a.context, a.client, application)
 	if err != nil {
 		return nil, nil, err
@@ -904,44 +872,30 @@ func (a *Adapter) prepareGroupSnapshot(application *applicationapiv1alpha1.Appli
 	snapshotComponents := make([]applicationapiv1alpha1.SnapshotComponent, 0)
 	componentSnapshotInfos := make([]gitops.ComponentSnapshotInfo, 0)
 	for _, applicationComponent := range *applicationComponents {
-		var isPRMROpened bool
 		applicationComponent := applicationComponent // G601
-		snapshots, err := a.loader.GetMatchingComponentSnapshotsForComponentAndPRGroupHash(a.context, a.client, a.snapshot, applicationComponent.Name, prGroupHash)
-		if err != nil {
-			a.logger.Error(err, "Failed to fetch Snapshots for component", "component.Name", applicationComponent.Name)
-			return nil, nil, err
-		}
 
-		sortedSnapshots := gitops.SortSnapshots(*snapshots)
-		// find the latest component snapshot created for open PR/MR
-		for _, snapshot := range sortedSnapshots {
-			snapshot := snapshot
-			// find the built image for pull/merge request build PLR from the latest opened pull request component snapshot
-			isPRMROpened, err = a.status.IsPRMRInSnapshotOpened(a.context, &snapshot)
+		var foundSnapshotWithOpenedPR *applicationapiv1alpha1.Snapshot
+		if slices.Contains(componentsToCheck, applicationComponent.Name) {
+			foundSnapshotWithOpenedPR, err = a.findSnapshotWithOpenedPR(a.snapshot, &applicationComponent, prGroupHash)
 			if err != nil {
-				a.logger.Error(err, "Failed to fetch PR/MR status for component snapshot", "snapshot.Name", a.snapshot.Name)
 				return nil, nil, err
 			}
-			if isPRMROpened {
+			if foundSnapshotWithOpenedPR != nil {
 				a.logger.Info("PR/MR in snapshot is opened, will find snapshotComponent and add to groupSnapshot")
-				snapshotComponent := gitops.FindMatchingSnapshotComponent(&snapshot, &applicationComponent)
+				snapshotComponent := gitops.FindMatchingSnapshotComponent(foundSnapshotWithOpenedPR, &applicationComponent)
 				componentSnapshotInfos = append(componentSnapshotInfos, gitops.ComponentSnapshotInfo{
 					Component:         applicationComponent.Name,
-					BuildPipelineRun:  snapshot.Labels[gitops.BuildPipelineRunNameLabel],
-					Snapshot:          snapshot.Name,
+					BuildPipelineRun:  foundSnapshotWithOpenedPR.Labels[gitops.BuildPipelineRunNameLabel],
+					Snapshot:          foundSnapshotWithOpenedPR.Name,
 					Namespace:         a.snapshot.Namespace,
-					RepoUrl:           snapshot.Annotations[gitops.PipelineAsCodeRepoUrlAnnotation],
-					PullRequestNumber: snapshot.Annotations[gitops.PipelineAsCodePullRequestAnnotation],
+					RepoUrl:           foundSnapshotWithOpenedPR.Annotations[gitops.PipelineAsCodeRepoUrlAnnotation],
+					PullRequestNumber: foundSnapshotWithOpenedPR.Annotations[gitops.PipelineAsCodePullRequestAnnotation],
 				})
 				snapshotComponents = append(snapshotComponents, snapshotComponent)
-				break
+				continue
 			}
 		}
-		// isPRMROpened represents snapshotComponent can be gottent from PR component snapshot
-		// so continue next applicationComponent
-		if isPRMROpened {
-			continue
-		}
+
 		a.logger.Info("can't find snapshot with open pull/merge request for component, try to find snapshotComponent from Global Candidate List", "component", applicationComponent.Name)
 		// if there is no component snapshot found for open PR/MR, we get snapshotComponent from gcl
 		componentSource := gitops.GetComponentSourceFromComponent(&applicationComponent)
@@ -962,6 +916,7 @@ func (a *Adapter) prepareGroupSnapshot(application *applicationapiv1alpha1.Appli
 				ContainerImage: containerImage,
 				Source:         *componentSource,
 			}
+			a.logger.Info("component with containerImage from Global Candidate List will be added to group snapshot", "component.Name", snapshotComponent.Name)
 			snapshotComponents = append(snapshotComponents, snapshotComponent)
 		}
 	}
@@ -1009,4 +964,93 @@ func isLatestBuildPipelineRunInComponent(pipelineRun *tektonv1.PipelineRun, pipe
 		}
 	}
 	return true
+}
+
+// haveAllPipelineRunProcessedForPrGroup checks if all build plr has been processed for the given pr group
+func (a *Adapter) haveAllPipelineRunProcessedForPrGroup(prGroup, prGroupHash string) (bool, error) {
+	pipelineRuns, err := a.loader.GetPipelineRunsWithPRGroupHash(a.context, a.client, a.snapshot, prGroupHash)
+	if err != nil {
+		a.logger.Error(err, fmt.Sprintf("Failed to get build pipelineRuns for given pr group hash %s", prGroupHash))
+		return false, err
+	}
+
+	for _, pipelineRun := range *pipelineRuns {
+		pipelineRun := pipelineRun //G601
+		// check if the build PLR is the latest existing one
+		if !isLatestBuildPipelineRunInComponent(&pipelineRun, pipelineRuns) {
+			a.logger.Info(fmt.Sprintf("The build pipelineRun %s/%s with pr group %s is not the latest for its component, skipped", pipelineRun.Namespace, pipelineRun.Name, prGroup))
+			continue
+		}
+
+		// check if build PLR finishes
+		if !h.HasPipelineRunFinished(&pipelineRun) {
+			a.logger.Info(fmt.Sprintf("The build pipelineRun %s/%s with pr group %s is still running, won't create group snapshot", pipelineRun.Namespace, pipelineRun.Name, prGroup))
+			err := gitops.AnnotateSnapshot(a.context, a.snapshot, gitops.PRGroupCreationAnnotation, fmt.Sprintf("The build pipelineRun %s/%s with pr group %s is still running, won't create group snapshot", pipelineRun.Namespace, pipelineRun.Name, prGroup), a.client)
+			if err != nil {
+				return false, err
+			}
+			return false, nil
+		}
+
+		// check if build PLR succeeds
+		if !h.HasPipelineRunSucceeded(&pipelineRun) {
+			a.logger.Info(fmt.Sprintf("The build pipelineRun %s/%s with pr group %s failed, won't create group snapshot", pipelineRun.Namespace, pipelineRun.Name, prGroup))
+			err := gitops.AnnotateSnapshot(a.context, a.snapshot, gitops.PRGroupCreationAnnotation, fmt.Sprintf("The build pipelineRun %s/%s with pr group %s failed, won't create group snapshot", pipelineRun.Namespace, pipelineRun.Name, prGroup), a.client)
+			if err != nil {
+				return false, err
+			}
+			return false, nil
+		}
+
+		// check if build PLR has component snapshot created except the build that snapshot is created from because the build plr has not been labeled with snapshot name
+		if !metadata.HasAnnotation(&pipelineRun, tekton.SnapshotNameLabel) && !metadata.HasLabelWithValue(a.snapshot, gitops.BuildPipelineRunNameLabel, pipelineRun.Name) {
+			a.logger.Info(fmt.Sprintf("The build pipelineRun %s/%s with pr group %s has succeeded but component snapshot has not been created now", pipelineRun.Namespace, pipelineRun.Name, prGroup))
+			return false, nil
+		}
+	}
+	return true, nil
+}
+
+// getComponentsForPRGroup returns the component names affected by the given pr group hash
+func (a *Adapter) getComponentsForPRGroup(prGroup, prGroupHash string) ([]string, error) {
+	snapshots, err := a.loader.GetMatchingComponentSnapshotsForPRGroupHash(a.context, a.client, a.snapshot, prGroupHash)
+	if err != nil {
+		a.logger.Error(err, fmt.Sprintf("Failed to fetch Snapshots for pr group %s", prGroup))
+		return nil, err
+	}
+
+	var componentNames []string
+	for _, snapshot := range *snapshots {
+		componentName := snapshot.Labels[gitops.SnapshotComponentLabel]
+		if slices.Contains(componentNames, componentName) {
+			continue
+		}
+		componentNames = append(componentNames, componentName)
+	}
+	return componentNames, nil
+}
+
+func (a *Adapter) findSnapshotWithOpenedPR(snapshot *applicationapiv1alpha1.Snapshot, applicationComponent *applicationapiv1alpha1.Component, prGroupHash string) (*applicationapiv1alpha1.Snapshot, error) {
+	snapshots, err := a.loader.GetMatchingComponentSnapshotsForComponentAndPRGroupHash(a.context, a.client, a.snapshot, applicationComponent.Name, prGroupHash)
+	if err != nil {
+		a.logger.Error(err, "Failed to fetch Snapshots for component", "component.Name", applicationComponent.Name)
+		return nil, err
+	}
+
+	sortedSnapshots := gitops.SortSnapshots(*snapshots)
+	// find the latest component snapshot created for open PR/MR
+	for _, snapshot := range sortedSnapshots {
+		snapshot := snapshot
+		// find the built image for pull/merge request build PLR from the latest opened pull request component snapshot
+		isPRMROpened, err := a.status.IsPRMRInSnapshotOpened(a.context, &snapshot)
+		if err != nil {
+			a.logger.Error(err, "Failed to fetch PR/MR status for component snapshot", "snapshot.Name", a.snapshot.Name)
+			return nil, err
+		}
+		if isPRMROpened {
+			a.logger.Info("PR/MR in snapshot is opened, will find snapshotComponent and add to groupSnapshot")
+			return &snapshot, nil
+		}
+	}
+	return nil, nil
 }

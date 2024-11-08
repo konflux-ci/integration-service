@@ -658,5 +658,13 @@ var _ = Describe("Loader", Ordered, func() {
 			Expect((*fetchedSnapshots)[0].Namespace).To(Equal(hasSnapshot.Namespace))
 			Expect((*fetchedSnapshots)[0].Spec).To(Equal(hasSnapshot.Spec))
 		})
+
+		It("Can get matching snapshot for pr group hash", func() {
+			fetchedSnapshots, err := loader.GetMatchingComponentSnapshotsForPRGroupHash(ctx, k8sClient, hasSnapshot, "featuresha")
+			Expect(err).To(Succeed())
+			Expect((*fetchedSnapshots)[0].Name).To(Equal(hasSnapshot.Name))
+			Expect((*fetchedSnapshots)[0].Namespace).To(Equal(hasSnapshot.Namespace))
+			Expect((*fetchedSnapshots)[0].Spec).To(Equal(hasSnapshot.Spec))
+		})
 	})
 })
