@@ -137,16 +137,19 @@ func (r *GitLabReporter) Initialize(ctx context.Context, snapshot *applicationap
 	}
 
 	mergeRequestStr, found := annotations[gitops.PipelineAsCodePullRequestAnnotation]
-	if !found {
+	if !found && !gitops.IsSnapshotCreatedByPACPushEvent(snapshot) {
 		unRecoverableError = helpers.NewUnrecoverableMetadataError(fmt.Sprintf("pull-request annotation not found %q", gitops.PipelineAsCodePullRequestAnnotation))
 		r.logger.Error(unRecoverableError, "snapshot.NameSpace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
 		return unRecoverableError
 	}
-	r.mergeRequest, err = strconv.Atoi(mergeRequestStr)
-	if err != nil {
-		unRecoverableError = helpers.NewUnrecoverableMetadataError(fmt.Sprintf("failed to convert merge request number '%s' to integer: %s", mergeRequestStr, err.Error()))
-		r.logger.Error(unRecoverableError, "snapshot.NameSpace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
-		return unRecoverableError
+
+	if found {
+		r.mergeRequest, err = strconv.Atoi(mergeRequestStr)
+		if err != nil && !gitops.IsSnapshotCreatedByPACPushEvent(snapshot) {
+			unRecoverableError = helpers.NewUnrecoverableMetadataError(fmt.Sprintf("failed to convert merge request number '%s' to integer: %s", mergeRequestStr, err.Error()))
+			r.logger.Error(unRecoverableError, "snapshot.NameSpace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
+			return unRecoverableError
+		}
 	}
 
 	r.snapshot = snapshot
@@ -273,7 +276,8 @@ func (r *GitLabReporter) ReportStatus(ctx context.Context, report TestReport) er
 	}
 
 	// Create a note when integration test is neither pending nor inprogress since comment for pending/inprogress is less meaningful
-	if report.Status != intgteststat.IntegrationTestStatusPending && report.Status != intgteststat.IntegrationTestStatusInProgress {
+	_, isMergeRequest := r.snapshot.GetAnnotations()[gitops.PipelineAsCodePullRequestAnnotation]
+	if report.Status != intgteststat.IntegrationTestStatusPending && report.Status != intgteststat.IntegrationTestStatusInProgress && isMergeRequest {
 		err := r.updateStatusInComment(report)
 		if err != nil {
 			return err

@@ -218,6 +218,33 @@ var _ = Describe("GitLabReporter", func() {
 				})).To(Succeed())
 		})
 
+		It("creates a commit status for push snapshot with correct textual data without comments", func() {
+
+			pushSnapshot := hasSnapshot.DeepCopy()
+			// Removing the pull request annotation and adding the push label
+			delete(pushSnapshot.Annotations, gitops.PipelineAsCodePullRequestAnnotation)
+			pushSnapshot.Annotations[gitops.PipelineAsCodeEventTypeLabel] = "Push"
+
+			pushEventReporter := status.NewGitLabReporter(log, mockK8sClient)
+
+			err := pushEventReporter.Initialize(context.TODO(), pushSnapshot)
+			Expect(err).To(Succeed())
+
+			summary := "Integration test for snapshot snapshot-sample and scenario scenario1 failed"
+
+			muxCommitStatusPost(mux, sourceProjectID, digest, summary)
+
+			Expect(pushEventReporter.ReportStatus(
+				context.TODO(),
+				status.TestReport{
+					FullName:     "fullname/scenario1",
+					ScenarioName: "scenario1",
+					Status:       integrationteststatus.IntegrationTestStatusEnvironmentProvisionError_Deprecated,
+					Summary:      summary,
+					Text:         "detailed text here",
+				})).To(Succeed())
+		})
+
 		It("creates a commit status for snapshot with TargetURL in CommitStatus", func() {
 
 			PipelineRunName := "TestPipeline"

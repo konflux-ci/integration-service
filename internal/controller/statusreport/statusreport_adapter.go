@@ -71,10 +71,9 @@ func NewAdapter(context context.Context, snapshot *applicationapiv1alpha1.Snapsh
 // The status is reported to git provider if it is a component snapshot
 // Or reported to git providers which trigger component snapshots included in group snapshot if it is a group snapshot
 func (a *Adapter) EnsureSnapshotTestStatusReportedToGitProvider() (controller.OperationResult, error) {
-	if gitops.IsSnapshotCreatedByPACPushEvent(a.snapshot) && !gitops.IsGroupSnapshot(a.snapshot) {
+	if gitops.IsOverrideSnapshot(a.snapshot) {
 		return controller.ContinueProcessing()
 	}
-
 	err := a.ReportSnapshotStatus(a.snapshot)
 	if err != nil {
 		a.logger.Error(err, "failed to report test status to git provider for snapshot",

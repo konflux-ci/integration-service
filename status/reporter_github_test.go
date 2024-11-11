@@ -512,6 +512,7 @@ var _ = Describe("GitHubReporter", func() {
 		})
 
 		It("creates a commit status for snapshot with correct textual data", func() {
+			hasSnapshot.Labels["pac.test.appstudio.openshift.io/pull-request"] = "999"
 			Expect(reporter.ReportStatus(
 				context.TODO(),
 				status.TestReport{
@@ -527,6 +528,27 @@ var _ = Describe("GitHubReporter", func() {
 			Expect(mockGitHubClient.CreateCommitStatusResult.description).To(Equal("Integration test for snapshot snapshot-sample and scenario scenario1 failed"))
 			Expect(mockGitHubClient.CreateCommitStatusResult.statusContext).To(Equal("fullname/scenario1"))
 			Expect(mockGitHubClient.CreateCommentResult.body).To(Equal("### Integration test for snapshot snapshot-sample and scenario scenario1 failed\n\ndetailed text here"))
+		})
+
+		It("creates a commit status for snapshot with correct textual data, but does not create a comment for push event", func() {
+			delete(hasSnapshot.Annotations, "pac.test.appstudio.openshift.io/pull-request")
+			hasSnapshot.Labels["pac.test.appstudio.openshift.io/event-type"] = "push"
+			Expect(reporter.ReportStatus(
+				context.TODO(),
+				status.TestReport{
+					FullName:      "fullname/scenario1",
+					ScenarioName:  "scenario1",
+					SnapshotName:  "snapshot-sample",
+					ComponentName: "component-sample",
+					Status:        integrationteststatus.IntegrationTestStatusEnvironmentProvisionError_Deprecated,
+					Summary:       "Integration test for snapshot snapshot-sample and scenario scenario1 failed",
+					Text:          "detailed text here",
+				})).To(Succeed(), "ReportStatus should succeed")
+
+			Expect(mockGitHubClient.CreateCommitStatusResult.state).To(Equal(gitops.IntegrationTestStatusErrorGithub))
+			Expect(mockGitHubClient.CreateCommitStatusResult.description).To(Equal("Integration test for snapshot snapshot-sample and scenario scenario1 failed"))
+			Expect(mockGitHubClient.CreateCommitStatusResult.statusContext).To(Equal("fullname/scenario1"))
+			Expect(mockGitHubClient.CreateCommentResult.body).To(BeEmpty(), "Expected no comment to be created for PAC push event")
 		})
 
 		DescribeTable(
