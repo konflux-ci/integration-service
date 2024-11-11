@@ -246,11 +246,14 @@ func (a *Adapter) notifySnapshotsInGroupAboutFailedBuild(pipelineRun *tektonv1.P
 			a.logger.Error(err, "Failed to fetch Snapshots for component", "component.Name", applicationComponent.Name)
 			return err
 		}
-		latestSnapshot := gitops.SortSnapshots(*allComponentSnapshotsInGroup)[0]
-		err = gitops.AnnotateSnapshot(a.context, &latestSnapshot, gitops.PRGroupCreationAnnotation,
-			buildPLRFailureMsg, a.client)
-		if err != nil {
-			return err
+
+		if len(*allComponentSnapshotsInGroup) > 0 {
+			latestSnapshot := gitops.SortSnapshots(*allComponentSnapshotsInGroup)[0]
+			err = gitops.AnnotateSnapshot(a.context, &latestSnapshot, gitops.PRGroupCreationAnnotation,
+				buildPLRFailureMsg, a.client)
+			if err != nil {
+				return err
+			}
 		}
 	}
 
