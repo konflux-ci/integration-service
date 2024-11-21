@@ -71,7 +71,7 @@ func (a *Adapter) EnsureSnapshotExists() (result controller.OperationResult, err
 	var canRemoveFinalizer bool
 
 	defer func() {
-		updateErr := a.updateBuildPipelineRunWithFinalInfo(canRemoveFinalizer)
+		updateErr := a.updateBuildPipelineRunWithFinalInfo(canRemoveFinalizer, err)
 		if updateErr != nil {
 			if errors.IsNotFound(updateErr) {
 				result, err = controller.ContinueProcessing()
@@ -335,7 +335,7 @@ func (a *Adapter) annotateBuildPipelineRunWithSnapshot(snapshot *applicationapiv
 
 // updateBuildPipelineRunWithFinalInfo adds the final pieces of information to the pipelineRun in order to ensure
 // that anything that happened during the reconciliation is reflected in the CR
-func (a *Adapter) updateBuildPipelineRunWithFinalInfo(canRemoveFinalizer bool) error {
+func (a *Adapter) updateBuildPipelineRunWithFinalInfo(canRemoveFinalizer bool, cerr error) error {
 	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		var err error
 		a.pipelineRun, err = a.loader.GetPipelineRun(a.context, a.client, a.pipelineRun.Name, a.pipelineRun.Namespace)
@@ -343,18 +343,21 @@ func (a *Adapter) updateBuildPipelineRunWithFinalInfo(canRemoveFinalizer bool) e
 			return err
 		}
 
-		if a.pipelineRun.GetDeletionTimestamp() != nil {
-			err = tekton.AnnotateBuildPipelineRunWithCreateSnapshotAnnotation(a.context, a.pipelineRun, a.client, err)
+		if a.pipelineRun.GetDeletionTimestamp() == nil {
+			err = tekton.AnnotateBuildPipelineRunWithCreateSnapshotAnnotation(a.context, a.pipelineRun, a.client, cerr)
 			if err != nil {
+				a.logger.Error(err, "Failed to annotate build pipelinerun with the snapshot creation status")
 				return err
 			}
 			a.logger.LogAuditEvent("Updated build pipelineRun", a.pipelineRun, h.LogActionUpdate,
 				h.CreateSnapshotAnnotationName, a.pipelineRun.Annotations[h.CreateSnapshotAnnotationName])
+		} else {
+			a.logger.Info("Cannot annotate build pipelinerun annotation with the snapshot creation status since it has been marked as deleted")
 		}
-
 		if canRemoveFinalizer {
 			err = h.RemoveFinalizerFromPipelineRun(a.context, a.client, a.logger, a.pipelineRun, h.IntegrationPipelineRunFinalizer)
 			if err != nil {
+				a.logger.Error(err, "Failed to remove finalizer from build pipelinerun")
 				return err
 			}
 		}
@@ -402,8 +405,8 @@ func (a *Adapter) handleSnapshotCreationFailure(canRemoveFinalizer *bool, cerr e
 	a.logger.Error(cerr, "Failed to create Snapshot")
 	if errors.IsForbidden(cerr) {
 		// we cannot create a snapshot (possibly because the snapshot quota is hit) and we don't want to block resources, user has to retry
+		// we still return the error to make build PLR annotated when meeting quota limitation issue
 		*canRemoveFinalizer = true
-		return controller.StopProcessing()
 	}
 	return controller.RequeueWithError(cerr)
 }
