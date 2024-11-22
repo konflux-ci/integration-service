@@ -78,6 +78,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		hasComSnapshot2                           *applicationapiv1alpha1.Snapshot
 		hasComSnapshot3                           *applicationapiv1alpha1.Snapshot
 		integrationTestScenario                   *v1beta2.IntegrationTestScenario
+		integrationTestScenario1                  *v1beta2.IntegrationTestScenario
 		integrationTestScenarioForInvalidSnapshot *v1beta2.IntegrationTestScenario
 		buildPipelineRun1                         *tektonv1.PipelineRun
 	)
@@ -145,6 +146,43 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		}
 		Expect(k8sClient.Create(ctx, integrationTestScenario)).Should(Succeed())
 		helpers.SetScenarioIntegrationStatusAsValid(integrationTestScenario, "valid")
+
+		integrationTestScenario1 = &v1beta2.IntegrationTestScenario{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "example-pass-1",
+				Namespace: "default",
+
+				Labels: map[string]string{
+					"test.appstudio.openshift.io/optional": "false",
+				},
+
+				Annotations: map[string]string{
+					"test.appstudio.openshift.io/kind": "kind",
+				},
+			},
+			Spec: v1beta2.IntegrationTestScenarioSpec{
+				Application: "application-sample",
+				ResolverRef: v1beta2.ResolverRef{
+					Resolver: "git",
+					Params: []v1beta2.ResolverParameter{
+						{
+							Name:  "url",
+							Value: "https://github.com/redhat-appstudio/integration-examples.git",
+						},
+						{
+							Name:  "revision",
+							Value: sourceRepoRef,
+						},
+						{
+							Name:  "pathInRepo",
+							Value: "pipelineruns/integration_pipelinerun_pass.yaml",
+						},
+					},
+				},
+			},
+		}
+		Expect(k8sClient.Create(ctx, integrationTestScenario1)).Should(Succeed())
+		helpers.SetScenarioIntegrationStatusAsValid(integrationTestScenario1, "valid")
 
 		testReleasePlan = &releasev1alpha1.ReleasePlan{
 			ObjectMeta: metav1.ObjectMeta{
@@ -1519,6 +1557,340 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 				})
 				Expect(hasSnapshot.GetLabels()).ShouldNot(m, "shouln't have re-run label after re-running scenario")
 
+			})
+		})
+
+		When("the run label has the value 'all'", func() {
+			var (
+				buf bytes.Buffer
+			)
+
+			const (
+				fakePLRName string = "pipelinerun-test"
+				fakeDetails string = "Lorem ipsum sit dolor mit amet"
+			)
+
+			BeforeEach(func() {
+				err := gitops.MarkSnapshotAsPassed(ctx, k8sClient, hasSnapshot, "test passed")
+				Expect(err).To(Succeed())
+				Expect(gitops.HaveAppStudioTestsSucceeded(hasSnapshot)).To(BeTrue())
+
+				// mock that test for scenario is already in progress by setting it in annotation
+				statuses, err := intgteststat.NewSnapshotIntegrationTestStatuses("")
+				Expect(err).To(Succeed())
+				statuses.UpdateTestStatusIfChanged(integrationTestScenario.Name, intgteststat.IntegrationTestStatusInProgress, fakeDetails)
+				Expect(statuses.UpdateTestPipelineRunName(integrationTestScenario.Name, fakePLRName)).To(Succeed())
+				Expect(gitops.WriteIntegrationTestStatusesIntoSnapshot(ctx, hasSnapshot, statuses, k8sClient)).Should(Succeed())
+
+				// add rerun label
+				// we cannot update it into k8s DB via patch, it would trigger reconciliation in background
+				// and test wouldn't test anything
+				hasSnapshot.Labels[gitops.SnapshotIntegrationTestRun] = "all"
+
+				log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+				adapter = NewAdapter(ctx, hasSnapshot, hasApp, log, loader.NewMockLoader(), k8sClient)
+				adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+					{
+						ContextKey: loader.ApplicationContextKey,
+						Resource:   hasApp,
+					},
+					{
+						ContextKey: loader.ComponentContextKey,
+						Resource:   hasComp,
+					},
+					{
+						ContextKey: loader.SnapshotContextKey,
+						Resource:   hasSnapshot,
+					},
+					{
+						ContextKey: loader.SnapshotComponentsContextKey,
+						Resource:   []applicationapiv1alpha1.Component{*hasComp},
+					},
+					{
+						ContextKey: loader.AllIntegrationTestScenariosForSnapshotContextKey,
+						Resource:   []v1beta2.IntegrationTestScenario{*integrationTestScenario, *integrationTestScenario1},
+					},
+				})
+			})
+
+			It("creates Integration PLR for the new ITS and skips for the one that's already InProgress", func() {
+				statuses, err := gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(hasSnapshot)
+				Expect(err).To(Succeed())
+				_, ok := statuses.GetScenarioStatus(integrationTestScenario1.Name)
+				Expect(ok).To(BeFalse()) // no entry for 'integrationTestScenario1' yet, because it wasn't run before
+
+				result, err := adapter.EnsureRerunPipelineRunsExist()
+				Expect(err).To(Succeed())
+				Expect(result.CancelRequest).To(BeFalse())
+
+				Expect(buf.String()).Should(ContainSubstring(fmt.Sprintf("Skipping re-run for IntegrationTestScenario since it's in 'InProgress' or 'Pending' state Scenario %s", integrationTestScenario.Name)))
+
+				statuses, err = gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(hasSnapshot)
+				Expect(err).To(Succeed())
+				detail, ok := statuses.GetScenarioStatus(integrationTestScenario1.Name)
+				Expect(ok).To(BeTrue()) // 'integrationTestScenario1' has a status now
+				Expect(detail).ToNot(BeNil())
+				Expect(detail.TestPipelineRunName).ToNot(BeEmpty())
+
+				m := MatchKeys(IgnoreExtras, Keys{
+					gitops.SnapshotIntegrationTestRun: Equal("all"),
+				})
+				Expect(hasSnapshot.GetLabels()).ShouldNot(m, "shouln't have 'run' label after running scenario")
+
+				// We reset Snapshot's status since we created a new Intg PLR for the ITS
+				Expect(hasSnapshot.Status.Conditions).NotTo(BeNil())
+				Expect(gitops.IsSnapshotStatusConditionSet(hasSnapshot, gitops.AppStudioTestSucceededCondition,
+					metav1.ConditionUnknown, "InProgress")).To(BeTrue())
+
+				// Verify that the message field of "AppStudioIntegrationStatusCondition" condition mentions the re-run initiation
+				condition := meta.FindStatusCondition(hasSnapshot.Status.Conditions, gitops.AppStudioIntegrationStatusCondition)
+				Expect(condition.Message).To(Equal("Integration test re-run initiated for Snapshot"))
+			})
+		})
+
+		When("the run label has the value 'all' but with a component-type context on an ITS", func() {
+			var (
+				buf bytes.Buffer
+			)
+
+			const (
+				fakePLRName string = "pipelinerun-test"
+				fakeDetails string = "Lorem ipsum sit dolor mit amet"
+			)
+
+			BeforeEach(func() {
+				err := gitops.MarkSnapshotAsPassed(ctx, k8sClient, hasSnapshot, "test passed")
+				Expect(err).To(Succeed())
+				Expect(gitops.HaveAppStudioTestsSucceeded(hasSnapshot)).To(BeTrue())
+
+				// Setting the context of 'integrationTestScenario1' to NOT match the current Component
+				integrationTestScenario1.Spec.Contexts = append(integrationTestScenario1.Spec.Contexts, v1beta2.TestContext{Name: "component_my-comp", Description: "Single component testing for 'my-comp' specifically"})
+				Expect(k8sClient.Update(ctx, integrationTestScenario1)).Should(Succeed())
+
+				// mock that test for scenario is already in progress by setting it in annotation
+				statuses, err := intgteststat.NewSnapshotIntegrationTestStatuses("")
+				Expect(err).To(Succeed())
+				statuses.UpdateTestStatusIfChanged(integrationTestScenario.Name, intgteststat.IntegrationTestStatusInProgress, fakeDetails)
+				Expect(statuses.UpdateTestPipelineRunName(integrationTestScenario.Name, fakePLRName)).To(Succeed())
+				Expect(gitops.WriteIntegrationTestStatusesIntoSnapshot(ctx, hasSnapshot, statuses, k8sClient)).Should(Succeed())
+
+				// add rerun label
+				// we cannot update it into k8s DB via patch, it would trigger reconciliation in background
+				// and test wouldn't test anything
+				hasSnapshot.Labels[gitops.SnapshotIntegrationTestRun] = "all"
+
+				log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+				adapter = NewAdapter(ctx, hasSnapshot, hasApp, log, loader.NewMockLoader(), k8sClient)
+				adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+					{
+						ContextKey: loader.ApplicationContextKey,
+						Resource:   hasApp,
+					},
+					{
+						ContextKey: loader.ComponentContextKey,
+						Resource:   hasComp,
+					},
+					{
+						ContextKey: loader.SnapshotContextKey,
+						Resource:   hasSnapshot,
+					},
+					{
+						ContextKey: loader.SnapshotComponentsContextKey,
+						Resource:   []applicationapiv1alpha1.Component{*hasComp},
+					},
+					{
+						ContextKey: loader.AllIntegrationTestScenariosForSnapshotContextKey,
+						Resource:   []v1beta2.IntegrationTestScenario{*integrationTestScenario},
+					},
+				})
+			})
+
+			It("does not create Integration PLR for the new ITS since its context doesn't match with the Snapshot", func() {
+				statuses, err := gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(hasSnapshot)
+				Expect(err).To(Succeed())
+				_, ok := statuses.GetScenarioStatus(integrationTestScenario1.Name)
+				Expect(ok).To(BeFalse()) // no entry for 'integrationTestScenario1' yet, because it wasn't run before
+
+				result, err := adapter.EnsureRerunPipelineRunsExist()
+				Expect(err).To(Succeed())
+				Expect(result.CancelRequest).To(BeFalse())
+
+				Expect(buf.String()).Should(ContainSubstring(fmt.Sprintf("Skipping re-run for IntegrationTestScenario since it's in 'InProgress' or 'Pending' state Scenario %s", integrationTestScenario.Name)))
+				Expect(buf.String()).Should(ContainSubstring("1 out of 1 requested IntegrationTestScenario(s) are either in 'InProgress' or 'Pending' state, skipping their re-runs Label all"))
+
+				statuses, err = gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(hasSnapshot)
+				Expect(err).To(Succeed())
+				_, ok = statuses.GetScenarioStatus(integrationTestScenario1.Name)
+				Expect(ok).To(BeFalse()) // 'integrationTestScenario1' does NOT has a status because it's context doesn't match with the 'hasSnapshot'
+
+				m := MatchKeys(IgnoreExtras, Keys{
+					gitops.SnapshotIntegrationTestRun: Equal("all"),
+				})
+				Expect(hasSnapshot.GetLabels()).ShouldNot(m, "shouln't have 'run' label after running scenario")
+
+				// Snapshot status is True because no new Integration PLRS were created
+				Expect(hasSnapshot.Status.Conditions).NotTo(BeNil())
+				Expect(gitops.IsSnapshotStatusConditionSet(hasSnapshot, gitops.AppStudioTestSucceededCondition,
+					metav1.ConditionTrue, "Passed")).To(BeTrue()) // Because we didn't reset Snapshot's status since 1 ITS has mismatching context, other one is "InProgress"
+			})
+		})
+
+		When("the run label has the name of an ITS with a component-type context", func() {
+			var (
+				buf bytes.Buffer
+			)
+
+			BeforeEach(func() {
+				err := gitops.MarkSnapshotAsPassed(ctx, k8sClient, hasSnapshot, "test passed")
+				Expect(err).To(Succeed())
+				Expect(gitops.HaveAppStudioTestsSucceeded(hasSnapshot)).To(BeTrue())
+
+				// Setting the context of 'integrationTestScenario1' to NOT match the current Component
+				integrationTestScenario1.Spec.Contexts = append(integrationTestScenario1.Spec.Contexts, v1beta2.TestContext{Name: "component_my-comp", Description: "Single component testing for 'my-comp' specifically"})
+				Expect(k8sClient.Update(ctx, integrationTestScenario1)).Should(Succeed())
+
+				// add rerun label
+				// we cannot update it into k8s DB via patch, it would trigger reconciliation in background
+				// and test wouldn't test anything
+				hasSnapshot.Labels[gitops.SnapshotIntegrationTestRun] = integrationTestScenario1.Name
+
+				log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+				adapter = NewAdapter(ctx, hasSnapshot, hasApp, log, loader.NewMockLoader(), k8sClient)
+				adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+					{
+						ContextKey: loader.ApplicationContextKey,
+						Resource:   hasApp,
+					},
+					{
+						ContextKey: loader.ComponentContextKey,
+						Resource:   hasComp,
+					},
+					{
+						ContextKey: loader.SnapshotContextKey,
+						Resource:   hasSnapshot,
+					},
+					{
+						ContextKey: loader.SnapshotComponentsContextKey,
+						Resource:   []applicationapiv1alpha1.Component{*hasComp},
+					},
+				})
+			})
+
+			It("does creates Integration PLR for the new ITS even though its context doesn't match with the Snapshot", func() {
+				statuses, err := gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(hasSnapshot)
+				Expect(err).To(Succeed())
+				_, ok := statuses.GetScenarioStatus(integrationTestScenario1.Name)
+				Expect(ok).To(BeFalse()) // no entry for 'integrationTestScenario1' yet, because it wasn't run before
+
+				result, err := adapter.EnsureRerunPipelineRunsExist()
+				Expect(err).To(Succeed())
+				Expect(result.CancelRequest).To(BeFalse())
+
+				statuses, err = gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(hasSnapshot)
+				Expect(err).To(Succeed())
+				detail, ok := statuses.GetScenarioStatus(integrationTestScenario1.Name)
+				// 'integrationTestScenario1' does have a status because the run was requested specifically with the ITS name.
+				// When users explicitly request run of a specific ITS, then we ignore the context of that ITS and process it.
+				Expect(ok).To(BeTrue())
+				Expect(detail).ToNot(BeNil())
+				Expect(detail.TestPipelineRunName).ToNot(BeEmpty())
+
+				m := MatchKeys(IgnoreExtras, Keys{
+					gitops.SnapshotIntegrationTestRun: Equal(integrationTestScenario1.Name),
+				})
+				Expect(hasSnapshot.GetLabels()).ShouldNot(m, "shouln't have 'run' label after running scenario")
+
+				// We reset Snapshot's status since we created a new Intg PLR for the ITS
+				Expect(hasSnapshot.Status.Conditions).NotTo(BeNil())
+				Expect(gitops.IsSnapshotStatusConditionSet(hasSnapshot, gitops.AppStudioTestSucceededCondition,
+					metav1.ConditionUnknown, "InProgress")).To(BeTrue())
+
+				// Verify that the message field of "AppStudioIntegrationStatusCondition" condition mentions the re-run initiation
+				condition := meta.FindStatusCondition(hasSnapshot.Status.Conditions, gitops.AppStudioIntegrationStatusCondition)
+				Expect(condition.Message).To(Equal("Integration test re-run initiated for Snapshot"))
+			})
+		})
+
+		When("the run label has the name of an ITS that was already executed before", func() {
+			var (
+				buf bytes.Buffer
+			)
+
+			const (
+				fakePLRName string = "pipelinerun-test"
+				fakeDetails string = "Lorem ipsum sit dolor mit amet"
+			)
+
+			BeforeEach(func() {
+				err := gitops.MarkSnapshotAsPassed(ctx, k8sClient, hasSnapshot, "test passed")
+				Expect(err).To(Succeed())
+				Expect(gitops.HaveAppStudioTestsSucceeded(hasSnapshot)).To(BeTrue())
+
+				// mock that test for scenario is already in progress by setting it in annotation
+				statuses, err := intgteststat.NewSnapshotIntegrationTestStatuses("")
+				Expect(err).To(Succeed())
+				statuses.UpdateTestStatusIfChanged(integrationTestScenario.Name, intgteststat.IntegrationTestStatusTestPassed, fakeDetails)
+				Expect(statuses.UpdateTestPipelineRunName(integrationTestScenario.Name, fakePLRName)).To(Succeed())
+				Expect(gitops.WriteIntegrationTestStatusesIntoSnapshot(ctx, hasSnapshot, statuses, k8sClient)).Should(Succeed())
+
+				// add rerun label
+				// we cannot update it into k8s DB via patch, it would trigger reconciliation in background
+				// and test wouldn't test anything
+				hasSnapshot.Labels[gitops.SnapshotIntegrationTestRun] = integrationTestScenario.Name
+
+				log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+				adapter = NewAdapter(ctx, hasSnapshot, hasApp, log, loader.NewMockLoader(), k8sClient)
+				adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+					{
+						ContextKey: loader.ApplicationContextKey,
+						Resource:   hasApp,
+					},
+					{
+						ContextKey: loader.ComponentContextKey,
+						Resource:   hasComp,
+					},
+					{
+						ContextKey: loader.SnapshotContextKey,
+						Resource:   hasSnapshot,
+					},
+					{
+						ContextKey: loader.SnapshotComponentsContextKey,
+						Resource:   []applicationapiv1alpha1.Component{*hasComp},
+					},
+				})
+			})
+
+			It("does create a new Integration PLR for the ITS which was already executed before", func() {
+				statuses, err := gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(hasSnapshot)
+				Expect(err).To(Succeed())
+				detail, ok := statuses.GetScenarioStatus(integrationTestScenario.Name)
+				Expect(ok).To(BeTrue()) // Entry exists for 'integrationTestScenario' because it was run before
+				Expect(detail).ToNot(BeNil())
+				Expect(detail.TestPipelineRunName).To(Equal(fakePLRName))
+
+				result, err := adapter.EnsureRerunPipelineRunsExist()
+				Expect(err).To(Succeed())
+				Expect(result.CancelRequest).To(BeFalse())
+
+				Expect(buf.String()).Should(ContainSubstring(fmt.Sprintf("Creating new pipelinerun for integrationTestscenario integrationTestScenario.Name %s", integrationTestScenario.Name)))
+
+				statuses, err = gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(hasSnapshot)
+				Expect(err).To(Succeed())
+				detail, ok = statuses.GetScenarioStatus(integrationTestScenario.Name)
+				Expect(ok).To(BeTrue())
+				Expect(detail).ToNot(BeNil())
+				// The name of the PLR is updated to match the latest one
+				Expect(detail.TestPipelineRunName).ToNot(Equal(fakePLRName))
+
+				m := MatchKeys(IgnoreExtras, Keys{
+					gitops.SnapshotIntegrationTestRun: Equal(integrationTestScenario.Name),
+				})
+				Expect(hasSnapshot.GetLabels()).ShouldNot(m, "shouln't have 'run' label after running scenario")
+
+				// We reset Snapshot's status since we created a new Intg PLR for the ITS
+				Expect(hasSnapshot.Status.Conditions).NotTo(BeNil())
+				Expect(gitops.IsSnapshotStatusConditionSet(hasSnapshot, gitops.AppStudioTestSucceededCondition,
+					metav1.ConditionUnknown, "InProgress")).To(BeTrue())
 			})
 		})
 	})
