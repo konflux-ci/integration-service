@@ -1146,3 +1146,12 @@ func UnmarshalJSON(b []byte) ([]*ComponentSnapshotInfo, error) {
 
 	return componentSnapshotInfos, nil
 }
+
+func GetSourceRepoOwnerFromSnapshot(snapshot *applicationapiv1alpha1.Snapshot) string {
+	sourceRepoUrlAnnotation, found := snapshot.GetAnnotations()[PipelineAsCodeGitSourceURLAnnotation]
+	if found {
+		arr := strings.Split(sourceRepoUrlAnnotation, "/")
+		return arr[len(arr)-2]
+	}
+	return ""
+}
