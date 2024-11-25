@@ -271,8 +271,15 @@ func (r *GitLabReporter) ReportStatus(ctx context.Context, report TestReport) er
 		return fmt.Errorf("gitlab reporter is not initialized")
 	}
 
-	if err := r.setCommitStatus(report); err != nil {
-		return fmt.Errorf("failed to set gitlab commit status: %w", err)
+	// We only create/update commitStatus when source project and target project are
+	// the same one due to the access limitation for forked repo
+	// refer to the same issue in pipelines-as-code https://github.com/openshift-pipelines/pipelines-as-code/blob/2f78eb8fd04d149b266ba93f2bea706b4b026403/pkg/provider/gitlab/gitlab.go#L207
+	if r.sourceProjectID == r.targetProjectID {
+		if err := r.setCommitStatus(report); err != nil {
+			return fmt.Errorf("failed to set gitlab commit status: %w", err)
+		}
+	} else {
+		r.logger.Info("Won't create/update commitStatus due to the access limitation for forked repo", "r.sourceProjectID", r.sourceProjectID, "r.targetProjectID", r.targetProjectID)
 	}
 
 	// Create a note when integration test is neither pending nor inprogress since comment for pending/inprogress is less meaningful
