@@ -54,13 +54,13 @@ flowchart TD
   get_all_commitStatuses_from_gh(Get all commitStatuses from github <br>according to commit owner, repo and SHA)
   create_commitStatusAdapter(Create commitStatusAdapter according to <br>commit owner, repo, SHA <br>and integration test status)
   does_commitStatus_exist{Does commitStatus exist <br>on github already?}
-  create_new_commitStatus_on_gh(Create new commitStatus on github)
+  create_new_commitStatus_on_gh(Create new commitStatus on github<br>if PR is not from forked repo)
   does_comment_exist(Does a comment exist for snapshot and scenario?)
   update_existing_comment(Update the existing comment for <br>snapshot and scenario</br>)
   create_new_comment(Create a new comment for <br>snapshot and scenario</br>)
 
   collect_commit_info_gl(Collect commit projectID, repo-url and SHA from Snapshot)
-  report_commit_status_gl(Create/update commitStatus on Gitlab)
+  report_commit_status_gl(Create/update commitStatus on Gitlab<br>if MR is not from forked repo)
 
   test_iterate(Iterate across all existing related testStatuses)
   is_test_final{Is <br> the test in it's <br>final state?}

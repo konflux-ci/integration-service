@@ -24,6 +24,7 @@ import (
 	"github.com/go-logr/logr"
 	ghapi "github.com/google/go-github/v45/github"
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
+	"github.com/konflux-ci/operator-toolkit/metadata"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	pacv1alpha1 "github.com/openshift-pipelines/pipelines-as-code/pkg/apis/pipelinesascode/v1alpha1"
@@ -211,10 +212,11 @@ var _ = Describe("GitHubReporter", func() {
 					"pac.test.appstudio.openshift.io/event-type":     "pull_request",
 				},
 				Annotations: map[string]string{
-					"build.appstudio.redhat.com/commit_sha":         "6c65b2fcaea3e1a0a92476c8b5dc89e92a85f025",
-					"appstudio.redhat.com/updateComponentOnSuccess": "false",
-					"pac.test.appstudio.openshift.io/git-provider":  "github",
-					"pac.test.appstudio.openshift.io/repo-url":      "https://github.com/devfile-sample/devfile-sample-go-basic",
+					"build.appstudio.redhat.com/commit_sha":           "6c65b2fcaea3e1a0a92476c8b5dc89e92a85f025",
+					"appstudio.redhat.com/updateComponentOnSuccess":   "false",
+					"pac.test.appstudio.openshift.io/git-provider":    "github",
+					"pac.test.appstudio.openshift.io/repo-url":        "https://github.com/devfile-sample/devfile-sample-go-basic",
+					"pac.test.appstudio.openshift.io/source-repo-url": "https://github.com/devfile-sample/devfile-sample-go-basic",
 				},
 			},
 			Spec: applicationapiv1alpha1.SnapshotSpec{
@@ -593,6 +595,19 @@ var _ = Describe("GitHubReporter", func() {
 			}
 			Expect(reporter.ReportStatus(context.TODO(), testReport)).To(Succeed())
 			expectedLogEntry := "found existing commitStatus for scenario test status of snapshot, no need to create new commit status"
+			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
+		})
+
+		It("don't create commit status when source and target repo owner are different", func() {
+			Expect(metadata.DeleteAnnotation(hasSnapshot, gitops.PipelineAsCodeGitSourceURLAnnotation)).To(Succeed())
+			testReport := status.TestReport{
+				ScenarioName: "scenario2",
+				FullName:     "test/scenario2",
+				Status:       integrationteststatus.IntegrationTestStatusPending,
+				Summary:      "Integration test for snapshot snapshot-sample and scenario scenario2 is pending",
+			}
+			Expect(reporter.ReportStatus(context.TODO(), testReport)).To(Succeed())
+			expectedLogEntry := "Won't create/update commitStatus since there is access limitation for different source and target Repo Owner"
 			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
 		})
 	})

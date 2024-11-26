@@ -944,6 +944,14 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 				}, time.Second*10).Should(BeTrue())
 				Expect(err).ShouldNot(HaveOccurred())
 			})
+
+			It("Can return correct source repo owner for snapshot", func() {
+				sourceRepoOwner := gitops.GetSourceRepoOwnerFromSnapshot(hasSnapshot)
+				Expect(sourceRepoOwner).To(Equal(""))
+				Expect(metadata.SetAnnotation(hasSnapshot, gitops.PipelineAsCodeGitSourceURLAnnotation, "https://github.com/devfile-sample/devfile-sample-go-basic")).To(Succeed())
+				sourceRepoOwner = gitops.GetSourceRepoOwnerFromSnapshot(hasSnapshot)
+				Expect(sourceRepoOwner).To(Equal("devfile-sample"))
+			})
 		})
 	})
 })
