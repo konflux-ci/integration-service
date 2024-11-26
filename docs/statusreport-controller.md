@@ -56,7 +56,7 @@ flowchart TD
   does_commitStatus_exist{Does commitStatus exist <br>on github already?}
   create_new_commitStatus_on_gh(Create new commitStatus on github<br>if PR is not from forked repo)
   does_comment_exist(Does a comment exist for snapshot and scenario?)
-  update_existing_comment(Update the existing comment for <br>snapshot and scenario</br><br>if PR is not from forked repo)
+  update_existing_comment(Update the existing comment for <br>snapshot and scenario</br>)
   create_new_comment(Create a new comment for <br>snapshot and scenario</br>)
 
   collect_commit_info_gl(Collect commit projectID, repo-url and SHA from Snapshot)

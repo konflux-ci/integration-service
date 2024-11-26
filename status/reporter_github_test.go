@@ -607,7 +607,7 @@ var _ = Describe("GitHubReporter", func() {
 				Summary:      "Integration test for snapshot snapshot-sample and scenario scenario2 is pending",
 			}
 			Expect(reporter.ReportStatus(context.TODO(), testReport)).To(Succeed())
-			expectedLogEntry := "Won't create/update commitStatus since there is access limimation for different source and target Repo Owner"
+			expectedLogEntry := "Won't create/update commitStatus since there is access limitation for different source and target Repo Owner"
 			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
 		})
 	})

@@ -456,7 +456,7 @@ func (csu *CommitStatusUpdater) UpdateStatus(ctx context.Context, report TestRep
 				"snapshot.NameSpace", csu.snapshot.Namespace, "snapshot.Name", csu.snapshot.Name, "scenarioName", report.ScenarioName)
 		}
 	} else {
-		csu.logger.Info("Won't create/update commitStatus since there is access limimation for different source and target Repo Owner",
+		csu.logger.Info("Won't create/update commitStatus since there is access limitation for different source and target Repo Owner",
 			"snapshot.NameSpace", csu.snapshot.Namespace, "snapshot.Name", csu.snapshot.Name, "sourceRepoOwner", sourceRepoOwner, "targetRepoOwner", csu.owner)
 	}
 	// Create a comment when integration test is neither pending nor inprogress since comment for pending/inprogress is less meaningful and there is commitStatus for all statuses
