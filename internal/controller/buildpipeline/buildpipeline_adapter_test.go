@@ -1033,11 +1033,14 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			})
 			It("add pr group to the build pipelineRun annotations and labels", func() {
 				existingBuildPLR := new(tektonv1.PipelineRun)
-				err := k8sClient.Get(ctx, types.NamespacedName{
-					Namespace: buildPipelineRun.Namespace,
-					Name:      buildPipelineRun.Name,
-				}, existingBuildPLR)
-				Expect(err).NotTo(HaveOccurred())
+				Eventually(func() bool {
+					err := k8sClient.Get(ctx, types.NamespacedName{
+						Namespace: buildPipelineRun.Namespace,
+						Name:      buildPipelineRun.Name,
+					}, existingBuildPLR)
+					return err == nil
+				}, time.Second*10).Should(BeTrue())
+
 				Expect(metadata.HasAnnotation(existingBuildPLR, gitops.PRGroupAnnotation)).To(BeFalse())
 				Expect(metadata.HasLabel(existingBuildPLR, gitops.PRGroupHashLabel)).To(BeFalse())
 
