@@ -417,49 +417,56 @@ func (csu *CommitStatusUpdater) updateStatusInComment(ctx context.Context, repor
 // UpdateStatus updates commit status in PR
 func (csu *CommitStatusUpdater) UpdateStatus(ctx context.Context, report TestReport) error {
 
-	allCommitStatuses, err := csu.getAllCommitStatuses(ctx)
-	if err != nil {
-		csu.logger.Error(err, "failed to get all CommitStatuses for scenario",
-			"snapshot.NameSpace", csu.snapshot.Namespace, "snapshot.Name", csu.snapshot.Name,
-			"scenario.Name", report.ScenarioName)
-		return err
-	}
-
-	commitStatusAdapter, err := csu.createCommitStatusAdapterForSnapshot(report)
-	if err != nil {
-		csu.logger.Error(err, "failed to create CommitStatusAdapter for scenario, skipping update",
-			"snapshot.NameSpace", csu.snapshot.Namespace, "snapshot.Name", csu.snapshot.Name,
-			"scenario.Name", report.ScenarioName,
-		)
-		return nil
-	}
-
-	commitStatusExist, err := csu.ghClient.CommitStatusExists(allCommitStatuses, commitStatusAdapter)
-	if err != nil {
-		csu.logger.Error(err, "failed to check existing commitStatus")
-		return err
-	}
-
-	if !commitStatusExist {
-		csu.logger.Info("creating commit status for scenario test status of snapshot",
-			"snapshot.NameSpace", csu.snapshot.Namespace, "snapshot.Name", csu.snapshot.Name, "scenarioName", report.ScenarioName)
-		_, err = csu.ghClient.CreateCommitStatus(ctx, commitStatusAdapter.Owner, commitStatusAdapter.Repository, commitStatusAdapter.SHA, commitStatusAdapter.State, commitStatusAdapter.Description, commitStatusAdapter.Context, commitStatusAdapter.TargetURL)
+	sourceRepoOwner := gitops.GetSourceRepoOwnerFromSnapshot(csu.snapshot)
+	// we create/update commitStatus only when the source and target repo owner are the same
+	if csu.owner == sourceRepoOwner {
+		allCommitStatuses, err := csu.getAllCommitStatuses(ctx)
 		if err != nil {
-			csu.logger.Error(err, "failed to create commitStatus", "snapshot.NameSpace", csu.snapshot.Namespace, "snapshot.Name", csu.snapshot.Name, "scenarioName", report.ScenarioName)
+			csu.logger.Error(err, "failed to get all CommitStatuses for scenario",
+				"snapshot.NameSpace", csu.snapshot.Namespace, "snapshot.Name", csu.snapshot.Name,
+				"scenario.Name", report.ScenarioName)
 			return err
 		}
-		// Create a comment when integration test is neither pending nor inprogress since comment for pending/inprogress is less meaningful and there is commitStatus for all statuses
-		_, isPullRequest := csu.snapshot.GetAnnotations()[gitops.PipelineAsCodePullRequestAnnotation]
-		if report.Status != intgteststat.IntegrationTestStatusPending && report.Status != intgteststat.IntegrationTestStatusInProgress && isPullRequest {
-			err = csu.updateStatusInComment(ctx, report)
+
+		commitStatusAdapter, err := csu.createCommitStatusAdapterForSnapshot(report)
+		if err != nil {
+			csu.logger.Error(err, "failed to create CommitStatusAdapter for scenario, skipping update",
+				"snapshot.NameSpace", csu.snapshot.Namespace, "snapshot.Name", csu.snapshot.Name,
+				"scenario.Name", report.ScenarioName,
+			)
+			return nil
+		}
+
+		commitStatusExist, err := csu.ghClient.CommitStatusExists(allCommitStatuses, commitStatusAdapter)
+		if err != nil {
+			csu.logger.Error(err, "failed to check existing commitStatus")
+			return err
+		}
+
+		if !commitStatusExist {
+			csu.logger.Info("creating commit status for scenario test status of snapshot",
+				"snapshot.NameSpace", csu.snapshot.Namespace, "snapshot.Name", csu.snapshot.Name, "scenarioName", report.ScenarioName)
+			_, err = csu.ghClient.CreateCommitStatus(ctx, commitStatusAdapter.Owner, commitStatusAdapter.Repository, commitStatusAdapter.SHA, commitStatusAdapter.State, commitStatusAdapter.Description, commitStatusAdapter.Context, commitStatusAdapter.TargetURL)
 			if err != nil {
-				csu.logger.Error(err, "failed to update comment", "snapshot.NameSpace", csu.snapshot.Namespace, "snapshot.Name", csu.snapshot.Name, "scenarioName", report.ScenarioName)
+				csu.logger.Error(err, "failed to create commitStatus", "snapshot.NameSpace", csu.snapshot.Namespace, "snapshot.Name", csu.snapshot.Name, "scenarioName", report.ScenarioName)
 				return err
 			}
+		} else {
+			csu.logger.Info("found existing commitStatus for scenario test status of snapshot, no need to create new commit status",
+				"snapshot.NameSpace", csu.snapshot.Namespace, "snapshot.Name", csu.snapshot.Name, "scenarioName", report.ScenarioName)
 		}
 	} else {
-		csu.logger.Info("found existing commitStatus for scenario test status of snapshot, no need to create new commit status",
-			"snapshot.NameSpace", csu.snapshot.Namespace, "snapshot.Name", csu.snapshot.Name, "scenarioName", report.ScenarioName)
+		csu.logger.Info("Won't create/update commitStatus since there is access limitation for different source and target Repo Owner",
+			"snapshot.NameSpace", csu.snapshot.Namespace, "snapshot.Name", csu.snapshot.Name, "sourceRepoOwner", sourceRepoOwner, "targetRepoOwner", csu.owner)
+	}
+	// Create a comment when integration test is neither pending nor inprogress since comment for pending/inprogress is less meaningful and there is commitStatus for all statuses
+	_, isPullRequest := csu.snapshot.GetAnnotations()[gitops.PipelineAsCodePullRequestAnnotation]
+	if report.Status != intgteststat.IntegrationTestStatusPending && report.Status != intgteststat.IntegrationTestStatusInProgress && isPullRequest {
+		err := csu.updateStatusInComment(ctx, report)
+		if err != nil {
+			csu.logger.Error(err, "failed to update comment", "snapshot.NameSpace", csu.snapshot.Namespace, "snapshot.Name", csu.snapshot.Name, "scenarioName", report.ScenarioName)
+			return err
+		}
 	}
 
 	return nil
