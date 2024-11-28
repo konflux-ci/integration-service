@@ -29,7 +29,7 @@ BUNDLE_METADATA_OPTS ?= $(BUNDLE_CHANNELS) $(BUNDLE_DEFAULT_CHANNEL)
 #
 # For example, running 'make bundle-build bundle-push catalog-build catalog-push' will build and push both
 # redhat.com/integration-service-bundle:$VERSION and my.domain/integration-service-catalog:$VERSION.
-IMAGE_TAG_BASE ?= quay.io/redhat-appstudio/integration-service
+IMAGE_TAG_BASE ?= quay.io/konflux-ci/integration-service
 
 # TAG_NAME defines the tag for the new image
 TAG_NAME ?= next

@@ -11,7 +11,7 @@ spec:
           containers:
             - name: test-gc
               image: >-
-                quay.io/redhat-appstudio/integration-service:latest
+                quay.io/konflux-ci/integration-service:latest
               command:
                 - /snapshotgc
                 - --zap-log-level=debug
