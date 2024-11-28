@@ -189,6 +189,20 @@ func (a *Adapter) EnsurePRGroupAnnotated() (controller.OperationResult, error) {
 	return controller.ContinueProcessing()
 }
 
+// EnsureIntegrationTestInitialized is an operation that will ensure that the integration test is initialized as pending
+// state when build PLR is triggered
+// or snapshot creation fail when failing to create snapshot
+func (a *Adapter) EnsureIntegrationTestInitialized() (controller.OperationResult, error) {
+	if metadata.HasAnnotation(a.pipelineRun, tekton.SnapshotNameLabel) {
+		a.logger.Info("snapshot has been created for build pipelineRun, no need to report integration status from build pipelinerun")
+		return controller.ContinueProcessing()
+	}
+
+	if h.InitializedIntegrationTestReport(a.pipelineRun) || !h.IsSnapshotCreationFailureReported(a.pipelineRun)
+
+
+}
+
 // getImagePullSpecFromPipelineRun gets the full image pullspec from the given build PipelineRun,
 // In case the Image pullspec can't be composed, an error will be returned.
 func (a *Adapter) getImagePullSpecFromPipelineRun(pipelineRun *tektonv1.PipelineRun) (string, error) {

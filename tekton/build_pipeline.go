@@ -44,6 +44,10 @@ const (
 
 	// PipelineAsCodePullRequestLabel is the type of event which triggered the pipelinerun in build service
 	PipelineAsCodePullRequestLabel = "pipelinesascode.tekton.dev/pull-request"
+
+	// SnapshotCreationReportAnnotation contains metadata of snapshot creation status reporting to git provider
+	// to initialize integration test
+	SnapshotCreationReportAnnotation = "test.appstudio.openshift.io/snapshot-creation-report"
 )
 
 // AnnotateBuildPipelineRun sets annotation for a build pipelineRun in defined context and returns that pipeline
@@ -121,4 +125,12 @@ func GenerateSHA(str string) string {
 // IsPLRCreatedByPACPushEvent checks if a PLR has label PipelineAsCodeEventTypeLabel and with push or Push value
 func IsPLRCreatedByPACPushEvent(plr *tektonv1.PipelineRun) bool {
 	return !metadata.HasLabel(plr, PipelineAsCodePullRequestLabel)
+}
+
+func IsIntegrationTestReportInitialized(plr *tektonv1.PipelineRun) bool {
+	return metadata.HasAnnotation(plr, SnapshotCreationReportAnnotation) && !h.HasPipelineRunFinished(plr)
+}
+
+func IsSnapshotCreationFailureReported(plr *tektonv1.PipelineRun) bool {
+	return metadata.HasAnnotationWithValue(plr, SnapshotCreationReportAnnotation, "") && h.HasPipelineRunSucceeded(plr)
 }
