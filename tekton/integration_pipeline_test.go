@@ -280,7 +280,7 @@ var _ = Describe("Integration pipeline", func() {
 		It("can add timeouts to the IntegrationPipelineRun according to the environment variables", func() {
 			var buf bytes.Buffer
 			expectedDuration, _ := time.ParseDuration("2h")
-			newIntegrationPipelineRun.WithDefaultIntegrationTimeouts(buflogr.NewWithBuffer(&buf))
+			newIntegrationPipelineRun.WithIntegrationTimeouts(integrationTestScenarioGit, buflogr.NewWithBuffer(&buf))
 
 			Expect(newIntegrationPipelineRun.Spec.Timeouts.Pipeline.Duration).To(Equal(expectedDuration))
 			Expect(newIntegrationPipelineRun.Spec.Timeouts.Tasks.Duration).To(Equal(expectedDuration))
@@ -290,7 +290,7 @@ var _ = Describe("Integration pipeline", func() {
 			os.Setenv("PIPELINE_TIMEOUT", "")
 			os.Setenv("TASKS_TIMEOUT", "")
 			os.Setenv("FINALLY_TIMEOUT", "")
-			newIntegrationPipelineRun.WithDefaultIntegrationTimeouts(buflogr.NewWithBuffer(&buf))
+			newIntegrationPipelineRun.WithIntegrationTimeouts(integrationTestScenarioGit, buflogr.NewWithBuffer(&buf))
 
 			Expect(newIntegrationPipelineRun.Spec.Timeouts.Pipeline).To(BeNil())
 			Expect(newIntegrationPipelineRun.Spec.Timeouts.Tasks).To(BeNil())
@@ -300,13 +300,51 @@ var _ = Describe("Integration pipeline", func() {
 			os.Setenv("PIPELINE_TIMEOUT", "thisIsNotAValidDuration!")
 			os.Setenv("TASKS_TIMEOUT", "thisIsNotAValidDuration!")
 			os.Setenv("FINALLY_TIMEOUT", "thisIsNotAValidDuration!")
-			newIntegrationPipelineRun.WithDefaultIntegrationTimeouts(buflogr.NewWithBuffer(&buf))
+			newIntegrationPipelineRun.WithIntegrationTimeouts(integrationTestScenarioGit, buflogr.NewWithBuffer(&buf))
 
 			Expect(newIntegrationPipelineRun.Spec.Timeouts.Pipeline).To(BeNil())
 			Expect(newIntegrationPipelineRun.Spec.Timeouts.Tasks).To(BeNil())
 			Expect(newIntegrationPipelineRun.Spec.Timeouts.Finally).To(BeNil())
 
-			expectedLogEntryPrefix := "failed to parse default"
+			expectedLogEntryPrefix := "failed to parse the"
+			Expect(buf.String()).Should(ContainSubstring(expectedLogEntryPrefix + " PIPELINE_TIMEOUT"))
+			Expect(buf.String()).Should(ContainSubstring(expectedLogEntryPrefix + " TASKS_TIMEOUT"))
+			Expect(buf.String()).Should(ContainSubstring(expectedLogEntryPrefix + " FINALLY_TIMEOUT"))
+		})
+
+		It("can add timeouts to the IntegrationPipelineRun according to the integrationTestScenario annotations", func() {
+			var buf bytes.Buffer
+			// Use the environment variables by default, override if annotations are set
+			expectedDurationFromEnv, _ := time.ParseDuration("2h")
+			expectedDurationFromScenario, _ := time.ParseDuration("8h")
+			integrationTestScenarioGit.Annotations = map[string]string{}
+			integrationTestScenarioGit.Annotations[v1beta2.PipelineTimeoutAnnotation] = "8h"
+			newIntegrationPipelineRun.WithIntegrationTimeouts(integrationTestScenarioGit, buflogr.NewWithBuffer(&buf))
+
+			Expect(newIntegrationPipelineRun.Spec.Timeouts.Pipeline.Duration).To(Equal(expectedDurationFromScenario))
+			Expect(newIntegrationPipelineRun.Spec.Timeouts.Tasks.Duration).To(Equal(expectedDurationFromEnv))
+			Expect(newIntegrationPipelineRun.Spec.Timeouts.Finally.Duration).To(Equal(expectedDurationFromEnv))
+
+			// Override the environment if all annotations are set
+			integrationTestScenarioGit.Annotations[v1beta2.TasksTimeoutAnnotation] = "8h"
+			integrationTestScenarioGit.Annotations[v1beta2.FinallyTimeoutAnnotation] = "8h"
+			newIntegrationPipelineRun.WithIntegrationTimeouts(integrationTestScenarioGit, buflogr.NewWithBuffer(&buf))
+
+			Expect(newIntegrationPipelineRun.Spec.Timeouts.Pipeline.Duration).To(Equal(expectedDurationFromScenario))
+			Expect(newIntegrationPipelineRun.Spec.Timeouts.Tasks.Duration).To(Equal(expectedDurationFromScenario))
+			Expect(newIntegrationPipelineRun.Spec.Timeouts.Finally.Duration).To(Equal(expectedDurationFromScenario))
+
+			// Set the timeouts to invalid strings, which should skip setting the timeouts
+			integrationTestScenarioGit.Annotations[v1beta2.PipelineTimeoutAnnotation] = "thisIsNotAValidDuration!"
+			integrationTestScenarioGit.Annotations[v1beta2.TasksTimeoutAnnotation] = "thisIsNotAValidDuration!"
+			integrationTestScenarioGit.Annotations[v1beta2.FinallyTimeoutAnnotation] = "thisIsNotAValidDuration!"
+			newIntegrationPipelineRun.WithIntegrationTimeouts(integrationTestScenarioGit, buflogr.NewWithBuffer(&buf))
+
+			Expect(newIntegrationPipelineRun.Spec.Timeouts.Pipeline).To(BeNil())
+			Expect(newIntegrationPipelineRun.Spec.Timeouts.Tasks).To(BeNil())
+			Expect(newIntegrationPipelineRun.Spec.Timeouts.Finally).To(BeNil())
+
+			expectedLogEntryPrefix := "failed to parse the"
 			Expect(buf.String()).Should(ContainSubstring(expectedLogEntryPrefix + " PIPELINE_TIMEOUT"))
 			Expect(buf.String()).Should(ContainSubstring(expectedLogEntryPrefix + " TASKS_TIMEOUT"))
 			Expect(buf.String()).Should(ContainSubstring(expectedLogEntryPrefix + " FINALLY_TIMEOUT"))
