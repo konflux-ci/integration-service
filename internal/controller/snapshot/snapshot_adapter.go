@@ -30,7 +30,6 @@ import (
 	clienterrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
 	"github.com/konflux-ci/integration-service/api/v1beta2"
@@ -522,18 +521,8 @@ func (a *Adapter) EnsureOverrideSnapshotValid() (controller.OperationResult, err
 		return controller.ContinueProcessing()
 	}
 
-	var err error
-	if !controllerutil.HasControllerReference(a.snapshot) {
-		a.snapshot, err = gitops.SetOwnerReference(a.context, a.client, a.snapshot, a.application)
-		if err != nil {
-			a.logger.Error(err, fmt.Sprintf("Failed to set owner reference for snapshot %s/%s", a.snapshot.Namespace, a.snapshot.Name))
-			return controller.RequeueWithError(err)
-		}
-		a.logger.Info("Owner reference has been set to snapshot")
-	}
-
 	// validate all snapshotComponents' containerImages/source in snapshot, make all errors joined
-	var errsForSnapshot error
+	var err, errsForSnapshot error
 	for _, snapshotComponent := range a.snapshot.Spec.Components {
 		snapshotComponent := snapshotComponent //G601
 		_, err := a.loader.GetComponent(a.context, a.client, snapshotComponent.Name, a.snapshot.Namespace)
