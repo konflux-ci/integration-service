@@ -788,7 +788,7 @@ func (a *Adapter) createIntegrationPipelineRun(application *applicationapiv1alph
 		WithApplication(a.application).
 		WithExtraParams(integrationTestScenario.Spec.Params).
 		WithFinalizer(h.IntegrationPipelineRunFinalizer).
-		WithDefaultIntegrationTimeouts(a.logger.Logger)
+		WithIntegrationTimeouts(integrationTestScenario, a.logger.Logger)
 
 	if shouldUpdateIntegrationTestGitResolver(integrationTestScenario, snapshot) {
 		pipelineRunBuilder.WithUpdatedTestsGitResolver(getGitResolverUpdateMap(snapshot))

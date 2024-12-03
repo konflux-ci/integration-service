@@ -264,19 +264,29 @@ func (r *IntegrationPipelineRun) WithApplication(application *applicationapiv1al
 	return r
 }
 
-// WithDefaultIntegrationTimeouts fetches the default Integration timeouts from the environment variables and adds them
-// to the integration PipelineRun.
-func (r *IntegrationPipelineRun) WithDefaultIntegrationTimeouts(logger logr.Logger) *IntegrationPipelineRun {
+// WithIntegrationTimeouts fetches the Integration timeouts from either the integrationTestScenario annotations or
+// the environment variables and adds them to the integration PipelineRun.
+func (r *IntegrationPipelineRun) WithIntegrationTimeouts(integrationTestScenario *v1beta2.IntegrationTestScenario, logger logr.Logger) *IntegrationPipelineRun {
 	pipelineTimeoutStr := os.Getenv("PIPELINE_TIMEOUT")
+	if metadata.HasAnnotation(integrationTestScenario, v1beta2.PipelineTimeoutAnnotation) {
+		pipelineTimeoutStr = integrationTestScenario.Annotations[v1beta2.PipelineTimeoutAnnotation]
+	}
 	taskTimeoutStr := os.Getenv("TASKS_TIMEOUT")
+	if metadata.HasAnnotation(integrationTestScenario, v1beta2.TasksTimeoutAnnotation) {
+		taskTimeoutStr = integrationTestScenario.Annotations[v1beta2.TasksTimeoutAnnotation]
+	}
 	finallyTimeoutStr := os.Getenv("FINALLY_TIMEOUT")
+	if metadata.HasAnnotation(integrationTestScenario, v1beta2.FinallyTimeoutAnnotation) {
+		finallyTimeoutStr = integrationTestScenario.Annotations[v1beta2.FinallyTimeoutAnnotation]
+	}
+
 	r.Spec.Timeouts = &tektonv1.TimeoutFields{}
 	if pipelineTimeoutStr != "" {
 		pipelineRunTimeout, err := time.ParseDuration(pipelineTimeoutStr)
 		if err == nil {
 			r.Spec.Timeouts.Pipeline = &metav1.Duration{Duration: pipelineRunTimeout}
 		} else {
-			logger.Error(err, "failed to parse default PIPELINE_TIMEOUT")
+			logger.Error(err, "failed to parse the PIPELINE_TIMEOUT")
 		}
 	}
 	if taskTimeoutStr != "" {
@@ -284,7 +294,7 @@ func (r *IntegrationPipelineRun) WithDefaultIntegrationTimeouts(logger logr.Logg
 		if err == nil {
 			r.Spec.Timeouts.Tasks = &metav1.Duration{Duration: taskTimeout}
 		} else {
-			logger.Error(err, "failed to parse default TASKS_TIMEOUT")
+			logger.Error(err, "failed to parse the TASKS_TIMEOUT")
 		}
 	}
 	if finallyTimeoutStr != "" {
@@ -292,7 +302,7 @@ func (r *IntegrationPipelineRun) WithDefaultIntegrationTimeouts(logger logr.Logg
 		if err == nil {
 			r.Spec.Timeouts.Finally = &metav1.Duration{Duration: finallyTimeout}
 		} else {
-			logger.Error(err, "failed to parse default FINALLY_TIMEOUT")
+			logger.Error(err, "failed to parse the FINALLY_TIMEOUT")
 		}
 	}
 
