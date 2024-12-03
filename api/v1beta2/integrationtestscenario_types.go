@@ -20,6 +20,20 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+const (
+	// TestLabelPrefix contains the prefix applied to labels and annotations related to testing.
+	TestLabelPrefix = "test.appstudio.openshift.io"
+
+	// PipelineTimeoutAnnotation contains the name of the application
+	PipelineTimeoutAnnotation = TestLabelPrefix + "/pipeline_timeout"
+
+	// TasksTimeoutAnnotation contains the name of the application
+	TasksTimeoutAnnotation = TestLabelPrefix + "/tasks_timeout"
+
+	// FinallyTimeoutAnnotation contains the name of the application
+	FinallyTimeoutAnnotation = TestLabelPrefix + "/finally_timeout"
+)
+
 // IntegrationTestScenarioSpec defines the desired state of IntegrationScenario
 type IntegrationTestScenarioSpec struct {
 	// Application that's associated with the IntegrationTestScenario
