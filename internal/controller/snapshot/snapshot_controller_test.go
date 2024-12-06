@@ -178,6 +178,30 @@ var _ = Describe("SnapshotController", func() {
 		Expect(err).To(BeNil())
 	})
 
+	It("can add the Application as a Controller OwnerReference on Snapshot", func() {
+		Expect(hasSnapshot.ObjectMeta.OwnerReferences).To(BeNil())
+
+		req := ctrl.Request{
+			NamespacedName: types.NamespacedName{
+				Name:      hasSnapshot.Name,
+				Namespace: "default",
+			},
+		}
+		result, err := snapshotReconciler.Reconcile(ctx, req)
+		Expect(reflect.TypeOf(result)).To(Equal(reflect.TypeOf(reconcile.Result{})))
+		Expect(err).ToNot(HaveOccurred())
+
+		Eventually(func() bool {
+			err := k8sClient.Get(ctx, types.NamespacedName{
+				Namespace: hasSnapshot.Namespace,
+				Name:      hasSnapshot.Name,
+			}, hasSnapshot)
+			return err == nil
+		}).Should(BeTrue())
+		Expect(hasSnapshot.ObjectMeta.OwnerReferences).ToNot(BeNil())
+		Expect(hasSnapshot.ObjectMeta.GetOwnerReferences()[0].Name).To(Equal(hasApp.Name))
+	})
+
 	It("Does not return an error if the component cannot be found", func() {
 		err := k8sClient.Delete(ctx, hasComp)
 		Eventually(func() bool {
