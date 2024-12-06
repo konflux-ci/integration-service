@@ -1925,7 +1925,6 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			result, err := adapter.EnsureOverrideSnapshotValid()
 			Expect(result.CancelRequest).To(BeFalse())
 			Expect(result.RequeueRequest).To(BeFalse())
-			Expect(controllerutil.HasControllerReference(hasInvalidOverrideSnapshot)).To(BeTrue())
 			Expect(buf.String()).Should(ContainSubstring("Snapshot has been marked as invalid"))
 			Expect(err).ToNot(HaveOccurred())
 

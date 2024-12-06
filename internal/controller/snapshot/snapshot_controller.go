@@ -34,6 +34,7 @@ import (
 	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 )
 
@@ -110,6 +111,16 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 			}
 		}
 		return helpers.HandleLoaderError(logger, err, "Application", "Snapshot")
+	}
+
+	if !controllerutil.HasControllerReference(snapshot) {
+		snapshot, err = gitops.SetOwnerReference(ctx, r.Client, snapshot, application)
+		if err != nil {
+			logger.Error(err, fmt.Sprintf("Failed to set owner reference for snapshot %s/%s", snapshot.Namespace, snapshot.Name))
+			return ctrl.Result{}, err
+		}
+		logger.LogAuditEvent(fmt.Sprintf("Application %s has been set as a Controller OwnerReference on Snapshot %s", application.Name, snapshot.Name),
+			snapshot, helpers.LogActionUpdate)
 	}
 
 	logger = logger.WithApp(*application)
