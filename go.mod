@@ -1,6 +1,6 @@
 module github.com/konflux-ci/integration-service
 
-go 1.21
+go 1.22
 
 require (
 	github.com/agiledragon/gomonkey/v2 v2.12.0
