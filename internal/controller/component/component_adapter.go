@@ -90,9 +90,6 @@ func (a *Adapter) EnsureComponentIsCleanedUp() (controller.OperationResult, erro
 		component := individualComponent
 		if a.component.Name != component.Name {
 			containerImage := component.Status.LastPromotedImage
-			if containerImage == "" {
-				containerImage = component.Spec.ContainerImage
-			}
 			componentSource := gitops.GetComponentSourceFromComponent(&component)
 			snapshotComponents = append(snapshotComponents, applicationapiv1alpha1.SnapshotComponent{
 				Name:           component.Name,

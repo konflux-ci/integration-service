@@ -83,7 +83,7 @@ func IsInvalidImageDigestError(err error) bool {
 func NewMissingValidComponentError(componentName string) error {
 	return &IntegrationError{
 		Reason:  ReasonMissingValidComponentError,
-		Message: fmt.Sprintf("The only one component %s is invalid, valid .Spec.ContainerImage is missing", componentName),
+		Message: fmt.Sprintf("The only one component %s is invalid, valid .Status.LastPromotedImage is missing", componentName),
 	}
 }
 
