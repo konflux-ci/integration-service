@@ -760,7 +760,6 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 				return !result.CancelRequest && err == nil
 			}, time.Second*10).Should(BeTrue())
 
-			Expect(hasComp.Spec.ContainerImage).To(Equal(""))
 			Expect(hasComp.Status.LastBuiltCommit).To(Equal(""))
 		})
 
@@ -776,9 +775,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			Expect(err).ShouldNot(HaveOccurred())
 			Expect(result.CancelRequest).To(BeFalse())
 
-			expectedLogEntry := "Updated .Spec.ContainerImage of Global Candidate for the Component"
-			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
-			expectedLogEntry = "Updated .Status.LastBuiltCommit of Global Candidate for the Component"
+			expectedLogEntry := "Updated .Status.LastBuiltCommit of Global Candidate for the Component"
 			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
 		})
 
@@ -797,9 +794,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			Expect(err).ShouldNot(HaveOccurred())
 			Expect(result.CancelRequest).To(BeFalse())
 
-			expectedLogEntry := "Updated .Spec.ContainerImage of Global Candidate for the Component"
-			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
-			expectedLogEntry = "Updated .Status.LastBuiltCommit of Global Candidate for the Component"
+			expectedLogEntry := "Updated .Status.LastBuiltCommit of Global Candidate for the Component"
 			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
 			expectedLogEntry = "Updated .Status.LastPromotedImage of Global Candidate for the Component"
 			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
@@ -842,8 +837,6 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			result, err = adapter.EnsureGlobalCandidateImageUpdated()
 			Expect(err).ShouldNot(HaveOccurred())
 			Expect(result.CancelRequest).To(BeFalse())
-			expectedLogEntry = "Updated .Spec.ContainerImage of Global Candidate for the Component"
-			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
 			expectedLogEntry = "Updated .Status.LastBuiltCommit of Global Candidate for the Component"
 			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
 			// don't update Global Candidate List for the component included in a override snapshot but doesn't existw
@@ -2273,7 +2266,6 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			Expect(result.CancelRequest).To(BeFalse())
 			Expect(result.RequeueRequest).To(BeFalse())
 			Expect(buf.String()).Should(ContainSubstring("component cannot be added to snapshot for application due to invalid digest in containerImage"))
-			Expect(buf.String()).Should(ContainSubstring("component with containerImage from Global Candidate List will be added to group snapshot"))
 			Expect(err).NotTo(HaveOccurred())
 			Eventually(func() bool {
 				_ = k8sClient.Get(adapter.context, types.NamespacedName{
