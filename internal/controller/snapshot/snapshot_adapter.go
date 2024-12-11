@@ -374,11 +374,6 @@ func (a *Adapter) EnsureGlobalCandidateImageUpdated() (controller.OperationResul
 				if err != nil {
 					return controller.RequeueWithError(err)
 				}
-				//update .Spec.ContainerImage for the component included in component snapshot
-				err = a.updateComponentContainerImage(a.context, a.client, componentToUpdate, &snapshotComponent)
-				if err != nil {
-					return controller.RequeueWithError(err)
-				}
 
 				// update .Status.LastBuiltCommit for the component included in component snapshot
 				err = a.updateComponentSource(a.context, a.client, componentToUpdate, &snapshotComponent)
@@ -393,7 +388,7 @@ func (a *Adapter) EnsureGlobalCandidateImageUpdated() (controller.OperationResul
 			}
 		}
 	} else if gitops.IsOverrideSnapshot(a.snapshot) {
-		// update Spec.ContainerImage for each component in override snapshot
+		// update Status.LastPromotedImage for each component in override snapshot
 		for _, snapshotComponent := range a.snapshot.Spec.Components {
 			snapshotComponent := snapshotComponent //G601
 			// get component for each snapshotComponent in override snapshot
@@ -416,11 +411,6 @@ func (a *Adapter) EnsureGlobalCandidateImageUpdated() (controller.OperationResul
 			}
 			// update .Status.LastPromotedImage for the component included in override snapshot
 			err = a.updateComponentLastPromotedImage(a.context, a.client, componentToUpdate, &snapshotComponent)
-			if err != nil {
-				return controller.RequeueWithError(err)
-			}
-			//update component.Spec.ContainerImage for each snapshotComponent in override snapshot
-			err = a.updateComponentContainerImage(a.context, a.client, componentToUpdate, &snapshotComponent)
 			if err != nil {
 				return controller.RequeueWithError(err)
 			}
@@ -845,21 +835,6 @@ func (a *Adapter) HandlePipelineCreationError(err error, integrationTestScenario
 	return controller.RequeueWithError(err)
 }
 
-func (a *Adapter) updateComponentContainerImage(ctx context.Context, c client.Client, component *applicationapiv1alpha1.Component, snapshotComponent *applicationapiv1alpha1.SnapshotComponent) error {
-	patch := client.MergeFrom(component.DeepCopy())
-	component.Spec.ContainerImage = snapshotComponent.ContainerImage
-	err := a.client.Patch(a.context, component, patch)
-	if err != nil {
-		a.logger.Error(err, "Failed to update .Spec.ContainerImage of Global Candidate for the Component",
-			"component.Name", component.Name)
-		return err
-	}
-	a.logger.LogAuditEvent("Updated .Spec.ContainerImage of Global Candidate for the Component",
-		component, h.LogActionUpdate,
-		"containerImage", snapshotComponent.ContainerImage)
-	return nil
-}
-
 func (a *Adapter) updateComponentSource(ctx context.Context, c client.Client, component *applicationapiv1alpha1.Component, snapshotComponent *applicationapiv1alpha1.SnapshotComponent) error {
 	if reflect.ValueOf(snapshotComponent.Source).IsValid() && snapshotComponent.Source.GitSource != nil && snapshotComponent.Source.GitSource.Revision != "" {
 		patch := client.MergeFrom(component.DeepCopy())
@@ -941,9 +916,6 @@ func (a *Adapter) prepareGroupSnapshot(application *applicationapiv1alpha1.Appli
 		// if there is no component snapshot found for open PR/MR, we get snapshotComponent from gcl
 		componentSource := gitops.GetComponentSourceFromComponent(&applicationComponent)
 		containerImage := applicationComponent.Status.LastPromotedImage
-		if containerImage == "" {
-			containerImage = applicationComponent.Spec.ContainerImage
-		}
 		if containerImage == "" {
 			a.logger.Info("component cannot be added to snapshot for application due to missing containerImage", "component.Name", applicationComponent.Name)
 			continue

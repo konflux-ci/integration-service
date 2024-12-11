@@ -98,7 +98,7 @@ var _ = Describe("Helpers for error handlers", Ordered, func() {
 		It("Can define MissingValidComponentError", func() {
 			err := helpers.NewMissingValidComponentError("componentName")
 			Expect(helpers.IsMissingValidComponentError(err)).To(BeTrue())
-			Expect(err.Error()).To(Equal("The only one component componentName is invalid, valid .Spec.ContainerImage is missing"))
+			Expect(err.Error()).To(Equal("The only one component componentName is invalid, valid .Status.LastPromotedImage is missing"))
 		})
 
 		It("Can handle non integration error", func() {
