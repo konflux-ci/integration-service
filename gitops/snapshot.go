@@ -756,9 +756,6 @@ func PrepareSnapshot(ctx context.Context, adapterClient client.Client, applicati
 	for _, applicationComponent := range *applicationComponents {
 		applicationComponent := applicationComponent // G601
 		containerImage := applicationComponent.Status.LastPromotedImage
-		if containerImage == "" {
-			containerImage = applicationComponent.Spec.ContainerImage
-		}
 
 		var componentSource *applicationapiv1alpha1.ComponentSource
 		if applicationComponent.Name == component.Name {
