@@ -15,6 +15,7 @@ import (
 
 	v1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
 	gomock "go.uber.org/mock/gomock"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // MockStatusInterface is a mock of StatusInterface interface.
@@ -41,7 +42,7 @@ func (m *MockStatusInterface) EXPECT() *MockStatusInterfaceMockRecorder {
 }
 
 // GetReporter mocks base method.
-func (m *MockStatusInterface) GetReporter(arg0 *v1alpha1.Snapshot) ReporterInterface {
+func (m *MockStatusInterface) GetReporter(arg0 metav1.Object) ReporterInterface {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetReporter", arg0)
 	ret0, _ := ret[0].(ReporterInterface)

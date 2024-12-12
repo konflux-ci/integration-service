@@ -115,6 +115,7 @@ var _ = Describe("Formatters", func() {
 
 	var taskRuns []*helpers.TaskRun
 	var pipelineRun *tektonv1.PipelineRun
+	var buildPipelineRun *tektonv1.PipelineRun
 
 	BeforeEach(func() {
 		now := time.Now()
@@ -225,6 +226,35 @@ var _ = Describe("Formatters", func() {
 							},
 						},
 					},
+				},
+			},
+		}
+
+		buildPipelineRun = &tektonv1.PipelineRun{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "pipelinerun-build-sample",
+				Namespace: "default",
+				Labels: map[string]string{
+					"pipelines.appstudio.openshift.io/type":     "build",
+					"pipelines.openshift.io/used-by":            "build-cloud",
+					"pipelines.openshift.io/runtime":            "nodejs",
+					"pipelines.openshift.io/strategy":           "s2i",
+					"appstudio.openshift.io/component":          "component-sample",
+					"build.appstudio.redhat.com/target_branch":  "main",
+					"pipelinesascode.tekton.dev/event-type":     "pull_request",
+					"pipelinesascode.tekton.dev/pull-request":   "1",
+					"pipelinesascode.tekton.dev/url-org":        "testorg",
+					"pipelinesascode.tekton.dev/url-repository": "testrepo",
+				},
+				Annotations: map[string]string{
+					"appstudio.redhat.com/updateComponentOnSuccess": "false",
+					"pipelinesascode.tekton.dev/on-target-branch":   "[main,master]",
+					"build.appstudio.openshift.io/repo":             "https://github.com/devfile-samples/devfile-sample-go-basic?rev=c713067b0e65fb3de50d1f7c457eb51c2ab0dbb0",
+					"foo":                                           "bar",
+					"chains.tekton.dev/signed":                      "true",
+					"pipelinesascode.tekton.dev/source-branch":      "sourceBranch",
+					"pipelinesascode.tekton.dev/url-org":            "redhat",
+					"pipelinesascode.tekton.dev/installation-id":    "123",
 				},
 			},
 		}
@@ -358,6 +388,18 @@ var _ = Describe("Formatters", func() {
 			text, err := status.FormatTestsSummary([]*helpers.TaskRun{taskRun}, pipelineRun.Name, pipelineRun.Namespace, componentSnapshotInfos, logr.Discard())
 			Expect(text).To(ContainSubstring("| com3 | snapshot3 | <a href=\"https://definetly.not.prod/preview/application-pipeline/ns/default/pipelinerun/buildPLR3\">buildPLR3</a> | <a href=\"https://github.com/example/pull/1\">example</a> |"))
 			Expect(err).To(Succeed())
+		})
+
+		It("correct pac label can be returned from build pipelinerun", func() {
+			org, bool := status.GetPACLabel(buildPipelineRun, buildPipelineRun.GetLabels(), gitops.URLOrgLabel)
+			Expect(org).To(Equal("testorg"))
+			Expect(bool).To(BeTrue())
+		})
+
+		It("correct pac annotation can be returned from build pipelinerun", func() {
+			installationID, bool := status.GetPACAnnotation(buildPipelineRun, buildPipelineRun.GetAnnotations(), gitops.InstallationIDAnnotationSuffix)
+			Expect(installationID).To(Equal("123"))
+			Expect(bool).To(BeTrue())
 		})
 	})
 })

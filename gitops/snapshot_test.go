@@ -27,7 +27,9 @@ import (
 
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
 	"github.com/konflux-ci/integration-service/gitops"
+	"github.com/konflux-ci/integration-service/tekton"
 	"github.com/konflux-ci/operator-toolkit/metadata"
+	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/types"
@@ -40,13 +42,14 @@ import (
 var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 
 	var (
-		hasApp          *applicationapiv1alpha1.Application
-		hasComp         *applicationapiv1alpha1.Component
-		hasSnapshot     *applicationapiv1alpha1.Snapshot
-		hasComSnapshot1 *applicationapiv1alpha1.Snapshot
-		hasComSnapshot2 *applicationapiv1alpha1.Snapshot
-		hasComSnapshot3 *applicationapiv1alpha1.Snapshot
-		sampleImage     string
+		hasApp           *applicationapiv1alpha1.Application
+		hasComp          *applicationapiv1alpha1.Component
+		hasSnapshot      *applicationapiv1alpha1.Snapshot
+		hasComSnapshot1  *applicationapiv1alpha1.Snapshot
+		hasComSnapshot2  *applicationapiv1alpha1.Snapshot
+		hasComSnapshot3  *applicationapiv1alpha1.Snapshot
+		buildPipelineRun *tektonv1.PipelineRun
+		sampleImage      string
 	)
 
 	const (
@@ -93,6 +96,33 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 			},
 		}
 		Expect(k8sClient.Create(ctx, hasComp)).Should(Succeed())
+
+		buildPipelineRun = &tektonv1.PipelineRun{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "pipelinerun-build-sample",
+				Namespace: "default",
+				Labels: map[string]string{
+					"pipelines.appstudio.openshift.io/type":    "build",
+					"pipelines.openshift.io/used-by":           "build-cloud",
+					"pipelines.openshift.io/runtime":           "nodejs",
+					"pipelines.openshift.io/strategy":          "s2i",
+					"appstudio.openshift.io/component":         "component-sample",
+					"build.appstudio.redhat.com/target_branch": "main",
+					"pipelinesascode.tekton.dev/event-type":    "pull_request",
+					"pipelinesascode.tekton.dev/pull-request":  "1",
+				},
+				Annotations: map[string]string{
+					"appstudio.redhat.com/updateComponentOnSuccess": "false",
+					"pipelinesascode.tekton.dev/on-target-branch":   "[main,master]",
+					"build.appstudio.openshift.io/repo":             "https://github.com/devfile-samples/devfile-sample-go-basic?rev=c713067b0e65fb3de50d1f7c457eb51c2ab0dbb0",
+					"foo":                                           "bar",
+					"chains.tekton.dev/signed":                      "true",
+					"pipelinesascode.tekton.dev/source-branch":      "sourceBranch",
+					"pipelinesascode.tekton.dev/url-org":            "redhat",
+				},
+			},
+		}
+		Expect(k8sClient.Create(ctx, buildPipelineRun)).Should(Succeed())
 	})
 
 	BeforeEach(func() {
@@ -260,6 +290,8 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 		err = k8sClient.Delete(ctx, hasComSnapshot2)
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 		err = k8sClient.Delete(ctx, hasComSnapshot3)
+		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
+		err = k8sClient.Delete(ctx, buildPipelineRun)
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 	})
 
@@ -843,6 +875,22 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 				Expect(*filteredScenarios).To(HaveLen(3))
 			})
 
+			It("Returns only the scenarios matching the context for a given kind of build PLR", func() {
+				// A build plr Snapshot for a pull request
+				filteredScenarios := gitops.FilterIntegrationTestScenariosWithContext(&allScenarios, buildPipelineRun)
+				Expect(*filteredScenarios).To(HaveLen(6))
+
+				// A build plr for pull request event and component
+				buildPipelineRun.Labels[tekton.ComponentNameLabel] = "component-sample-2"
+				filteredScenarios = gitops.FilterIntegrationTestScenariosWithContext(&allScenarios, buildPipelineRun)
+				Expect(*filteredScenarios).To(HaveLen(6))
+
+				// A group Snapshot for pull request event referencing nonexisting component-sample-2
+				buildPipelineRun.Labels[tekton.ComponentNameLabel] = "component-sample-3"
+				filteredScenarios = gitops.FilterIntegrationTestScenariosWithContext(&allScenarios, buildPipelineRun)
+				Expect(*filteredScenarios).To(HaveLen(5))
+			})
+
 			It("Testing annotating snapshot", func() {
 				componentSnapshotInfos := []gitops.ComponentSnapshotInfo{
 					{
@@ -946,11 +994,16 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 			})
 
 			It("Can return correct source repo owner for snapshot", func() {
-				sourceRepoOwner := gitops.GetSourceRepoOwnerFromSnapshot(hasSnapshot)
+				sourceRepoOwner := gitops.GetSourceRepoOwnerFromObject(hasSnapshot)
 				Expect(sourceRepoOwner).To(Equal(""))
 				Expect(metadata.SetAnnotation(hasSnapshot, gitops.PipelineAsCodeGitSourceURLAnnotation, "https://github.com/devfile-sample/devfile-sample-go-basic")).To(Succeed())
-				sourceRepoOwner = gitops.GetSourceRepoOwnerFromSnapshot(hasSnapshot)
+				sourceRepoOwner = gitops.GetSourceRepoOwnerFromObject(hasSnapshot)
 				Expect(sourceRepoOwner).To(Equal("devfile-sample"))
+			})
+
+			It("Can check if object is created by pac push event", func() {
+				Expect(gitops.IsObjectCreatedByPACPushEvent(buildPipelineRun)).To(BeFalse())
+				Expect(gitops.IsObjectCreatedByPACPushEvent(hasComSnapshot1)).To(BeFalse())
 			})
 		})
 	})

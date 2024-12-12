@@ -547,7 +547,7 @@ var _ = Describe("Status Adapter", func() {
 		expectedTestReport := status.TestReport{
 			FullName:            "Red Hat Konflux / scenario1",
 			ScenarioName:        "scenario1",
-			SnapshotName:        "snapshot-sample",
+			ObjectName:          "snapshot-sample",
 			ComponentName:       "",
 			Text:                text,
 			Summary:             "Integration test for snapshot snapshot-sample and scenario scenario1 has passed",
@@ -581,6 +581,22 @@ var _ = Describe("Status Adapter", func() {
 		Entry("Pending", integrationteststatus.IntegrationTestStatusPending, "is pending"),
 		Entry("In progress", integrationteststatus.IntegrationTestStatusInProgress, "is in progress"),
 		Entry("Invalid", integrationteststatus.IntegrationTestStatusTestInvalid, "is invalid"),
+	)
+
+	DescribeTable(
+		"report right summary per status",
+		func(expectedScenarioStatus integrationteststatus.IntegrationTestStatus, expectedTextEnding string) {
+
+			integrationTestStatusDetail := newIntegrationTestStatusDetail(expectedScenarioStatus)
+
+			expectedSummary := fmt.Sprintf("Integration test for scenario scenario1 %s", expectedTextEnding)
+			testReport, err := status.GenerateTestReport(context.Background(), mockK8sClient, integrationTestStatusDetail, hasSnapshot, "component-sample")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(testReport.Summary).To(Equal(expectedSummary))
+		},
+		Entry("BuildPLRInProgress", integrationteststatus.BuildPLRInProgress, "is pending because build pipelinerun is still running"),
+		Entry("SnapshotCreationFailed", integrationteststatus.SnapshotCreationFailed, "is not run and then considered as failure because snapshot is not created"),
+		Entry("BuildPLRFailed", integrationteststatus.BuildPLRFailed, "is not run and then considered as failure because snapshot is not created for failing build pipelinerun"),
 	)
 
 	It("check if GenerateSummary supports all integration test statuses", func() {

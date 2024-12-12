@@ -23,9 +23,9 @@ import (
 	"fmt"
 	"time"
 
-	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
 	pacv1alpha1 "github.com/openshift-pipelines/pipelines-as-code/pkg/apis/pipelinesascode/v1alpha1"
 	v1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -36,12 +36,12 @@ import (
 )
 
 type TestReport struct {
-	// FullName describing the snapshot and integration test
+	// FullName describing the snapshot/buildPLR and integration test
 	FullName string
 	// Name of scenario
 	ScenarioName string
-	// Name of snapshot
-	SnapshotName string
+	// Name of snapshot or build pipelinerun
+	ObjectName string
 	// Name of Component that triggered snapshot creation (optional)
 	ComponentName string
 	// text with details of test results
@@ -59,10 +59,10 @@ type TestReport struct {
 }
 
 type ReporterInterface interface {
-	// Detect if the reporter can be used with the snapshot
-	Detect(*applicationapiv1alpha1.Snapshot) bool
-	// Initialize reporter to be able to update statuses (authenticate, fetching metadata)
-	Initialize(context.Context, *applicationapiv1alpha1.Snapshot) error
+	// Detect if the reporter can be used with the snapshot or build pipelineRun
+	Detect(metav1.Object) bool
+	// Initialize reporter to be able to update statuses (authenticate, fetching snapshot or build PLR metadata)
+	Initialize(context.Context, metav1.Object) error
 	// Get plain reporter name
 	GetReporterName() string
 	// Update status of the integration test
@@ -70,22 +70,22 @@ type ReporterInterface interface {
 }
 
 // GetPACGitProviderToken lookup for configured repo and fetch token from namespace
-func GetPACGitProviderToken(ctx context.Context, k8sClient client.Client, snapshot *applicationapiv1alpha1.Snapshot) (string, error) {
+func GetPACGitProviderToken(ctx context.Context, k8sClient client.Client, obj metav1.Object) (string, error) {
 	log := log.FromContext(ctx)
 	var err, unRecoverableError error
 
 	// List all the Repository CRs in the namespace
 	repos := pacv1alpha1.RepositoryList{}
-	if err = k8sClient.List(ctx, &repos, &client.ListOptions{Namespace: snapshot.Namespace}); err != nil {
-		log.Error(err, fmt.Sprintf("failed to get repo from namespace %s", snapshot.Namespace))
+	if err = k8sClient.List(ctx, &repos, &client.ListOptions{Namespace: obj.GetNamespace()}); err != nil {
+		log.Error(err, fmt.Sprintf("failed to get repo from namespace %s", obj.GetNamespace()))
 		return "", err
 	}
 
 	// Get the full repo URL
-	url, found := snapshot.GetAnnotations()[gitops.PipelineAsCodeRepoURLAnnotation]
+	url, found := GetPACAnnotation(obj, obj.GetAnnotations(), gitops.RepoURLAnnotationSuffix)
 	if !found {
-		unRecoverableError = helpers.NewUnrecoverableMetadataError(fmt.Sprintf("object annotation not found %q", gitops.PipelineAsCodeRepoURLAnnotation))
-		log.Error(unRecoverableError, fmt.Sprintf("object annotation not found %q", gitops.PipelineAsCodeRepoURLAnnotation))
+		unRecoverableError = helpers.NewUnrecoverableMetadataError("object annotation PipelineAsCodeRepoURLAnnotation not found")
+		log.Error(unRecoverableError, fmt.Sprintf("object annotation PipelineAsCodeRepoURLAnnotation not found /%s", gitops.RepoURLAnnotationSuffix))
 		return "", unRecoverableError
 	}
 
@@ -106,9 +106,9 @@ func GetPACGitProviderToken(ctx context.Context, k8sClient client.Client, snapsh
 
 	// Get the pipelines as code secret from the PipelineRun's namespace
 	pacSecret := v1.Secret{}
-	err = k8sClient.Get(ctx, types.NamespacedName{Namespace: snapshot.Namespace, Name: repoSecret.Name}, &pacSecret)
+	err = k8sClient.Get(ctx, types.NamespacedName{Namespace: obj.GetNamespace(), Name: repoSecret.Name}, &pacSecret)
 	if err != nil {
-		log.Error(err, fmt.Sprintf("failed to get secret %s/%s", snapshot.Namespace, repoSecret.Name))
+		log.Error(err, fmt.Sprintf("failed to get secret %s/%s", obj.GetNamespace(), repoSecret.Name))
 		return "", err
 	}
 

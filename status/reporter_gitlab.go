@@ -24,9 +24,9 @@ import (
 	"strings"
 
 	"github.com/go-logr/logr"
-	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
 	"github.com/konflux-ci/operator-toolkit/metadata"
 	gitlab "github.com/xanzy/go-gitlab"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/konflux-ci/integration-service/gitops"
@@ -42,7 +42,7 @@ type GitLabReporter struct {
 	sourceProjectID int
 	targetProjectID int
 	mergeRequest    int
-	snapshot        *applicationapiv1alpha1.Snapshot
+	object          metav1.Object
 }
 
 func NewGitLabReporter(logger logr.Logger, k8sClient client.Client) *GitLabReporter {
@@ -56,10 +56,12 @@ func NewGitLabReporter(logger logr.Logger, k8sClient client.Client) *GitLabRepor
 var _ ReporterInterface = (*GitLabReporter)(nil)
 var existingCommitStatus *gitlab.CommitStatus
 
-// Detect if snapshot has been created from gitlab provider
-func (r *GitLabReporter) Detect(snapshot *applicationapiv1alpha1.Snapshot) bool {
-	return metadata.HasAnnotationWithValue(snapshot, gitops.PipelineAsCodeGitProviderLabel, gitops.PipelineAsCodeGitLabProviderType) ||
-		metadata.HasLabelWithValue(snapshot, gitops.PipelineAsCodeGitProviderAnnotation, gitops.PipelineAsCodeGitLabProviderType)
+// Detect if object has label/annotation for gitlab provider
+func (r *GitLabReporter) Detect(obj metav1.Object) bool {
+	return metadata.HasAnnotationWithValue(obj, gitops.PipelineAsCodeGitProviderLabel, gitops.PipelineAsCodeGitLabProviderType) ||
+		metadata.HasLabelWithValue(obj, gitops.PipelineAsCodeGitProviderAnnotation, gitops.PipelineAsCodeGitLabProviderType) ||
+		metadata.HasAnnotationWithValue(obj, gitops.BuildPipelineAsCodeGitProviderLabel, gitops.PipelineAsCodeGitLabProviderType) ||
+		metadata.HasLabelWithValue(obj, gitops.BuildPipelineAsCodeGitProviderAnnotation, gitops.PipelineAsCodeGitLabProviderType)
 }
 
 // GetReporterName returns the reporter name
@@ -67,92 +69,93 @@ func (r *GitLabReporter) GetReporterName() string {
 	return "GitlabReporter"
 }
 
-// Initialize initializes gitlab reporter
-func (r *GitLabReporter) Initialize(ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot) error {
+// Initialize initializes gitlab reporter for snapshot or build pipelinerun
+func (r *GitLabReporter) Initialize(ctx context.Context, object metav1.Object) error {
 	var unRecoverableError error
-	token, err := GetPACGitProviderToken(ctx, r.k8sClient, snapshot)
+	objectKind := GetObjectKind(object)
+	token, err := GetPACGitProviderToken(ctx, r.k8sClient, object)
 	if err != nil {
-		r.logger.Error(err, "failed to get PAC token from snapshot",
-			"snapshot.NameSpace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
+		r.logger.Error(err, "failed to get PAC token from object", "object.Kind", objectKind,
+			"object.NameSpace", object.GetNamespace(), "object.Name", object.GetName())
 		return err
 	}
 
-	annotations := snapshot.GetAnnotations()
-	repoUrl, ok := annotations[gitops.PipelineAsCodeRepoURLAnnotation]
+	annotations := object.GetAnnotations()
+	repoUrl, ok := GetPACAnnotation(object, annotations, gitops.RepoURLAnnotationSuffix)
 	if !ok {
-		unRecoverableError = helpers.NewUnrecoverableMetadataError(fmt.Sprintf("failed to get value of %s annotation from the snapshot %s", gitops.PipelineAsCodeRepoURLAnnotation, snapshot.Name))
-		r.logger.Error(unRecoverableError, "snapshot.NameSpace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
+		unRecoverableError = helpers.NewUnrecoverableMetadataError(fmt.Sprintf("failed to get value of PipelineAsCodeRepoURLAnnotation annotation from the %s %s", objectKind, object.GetName()))
+		r.logger.Error(unRecoverableError, "object.Kind", objectKind, "object.Namespace", object.GetNamespace(), "object.Name", object.GetName())
 		return unRecoverableError
 	}
 
 	burl, err := url.Parse(repoUrl)
 	if err != nil {
 		unRecoverableError = helpers.NewUnrecoverableMetadataError(fmt.Sprintf("failed to parse repo-url %s: %s", repoUrl, err.Error()))
-		r.logger.Error(unRecoverableError, "snapshot.NameSpace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
+		r.logger.Error(unRecoverableError, "object.Kind", objectKind, "object.NameSpace", object.GetNamespace(), "object.Name", object.GetName())
 		return unRecoverableError
 	}
 	apiURL := fmt.Sprintf("%s://%s", burl.Scheme, burl.Host)
 
 	r.client, err = gitlab.NewClient(token, gitlab.WithBaseURL(apiURL))
 	if err != nil {
-		r.logger.Error(err, "failed to create gitlab client", "apiURL", apiURL, "snapshot.NameSpace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
+		r.logger.Error(err, "failed to create gitlab client", "apiURL", apiURL, "object.Kind", objectKind, "object.NameSpace", object.GetNamespace(), "object.Name", object.GetName())
 		return err
 	}
 
-	labels := snapshot.GetLabels()
-	sha, found := labels[gitops.PipelineAsCodeSHALabel]
+	labels := object.GetLabels()
+	sha, found := GetPACLabel(object, labels, gitops.SHALabelSuffix)
 	if !found {
-		unRecoverableError = helpers.NewUnrecoverableMetadataError(fmt.Sprintf("sha label not found %q", gitops.PipelineAsCodeSHALabel))
-		r.logger.Error(unRecoverableError, "snapshot.NameSpace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
+		unRecoverableError = helpers.NewUnrecoverableMetadataError(fmt.Sprintf("pipelines as code sha label not found %s", gitops.SHALabelSuffix))
+		r.logger.Error(unRecoverableError, "object.Kind", objectKind, "object.NameSpace", object.GetNamespace(), "object.Name", object.GetName())
 		return unRecoverableError
 	}
 	r.sha = sha
 
-	targetProjectIDstr, found := annotations[gitops.PipelineAsCodeTargetProjectIDAnnotation]
+	targetProjectIDstr, found := GetPACAnnotation(object, annotations, gitops.TargetProjectIDAnnotationSuffix)
 	if !found {
-		unRecoverableError = helpers.NewUnrecoverableMetadataError(fmt.Sprintf("target project ID annotation not found %q", gitops.PipelineAsCodeTargetProjectIDAnnotation))
-		r.logger.Error(unRecoverableError, "snapshot.NameSpace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
+		unRecoverableError = helpers.NewUnrecoverableMetadataError(fmt.Sprintf("pipelines as code target project ID annotation not found %s", object.GetAnnotations()))
+		r.logger.Error(unRecoverableError, "object.Kind", objectKind, "object.NameSpace", object.GetNamespace(), "object.Name", object.GetName())
 		return unRecoverableError
 	}
 
 	r.targetProjectID, err = strconv.Atoi(targetProjectIDstr)
 	if err != nil {
 		unRecoverableError = helpers.NewUnrecoverableMetadataError(fmt.Sprintf("failed to convert project ID '%s' to integer: %s", targetProjectIDstr, err.Error()))
-		r.logger.Error(unRecoverableError, "snapshot.NameSpace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
+		r.logger.Error(unRecoverableError, "object.Kind", objectKind, "object.NameSpace", object.GetNamespace(), "object.Name", object.GetName())
 		return unRecoverableError
 	}
 
-	sourceProjectIDstr, found := annotations[gitops.PipelineAsCodeSourceProjectIDAnnotation]
+	sourceProjectIDstr, found := GetPACAnnotation(object, annotations, gitops.SourceProjectIDAnnotationSuffix)
 	if !found {
-		unRecoverableError = helpers.NewUnrecoverableMetadataError(fmt.Sprintf("source project ID annotation not found %q", gitops.PipelineAsCodeSourceProjectIDAnnotation))
-		r.logger.Error(unRecoverableError, "snapshot.NameSpace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
+		unRecoverableError = helpers.NewUnrecoverableMetadataError(fmt.Sprintf("pipelines as code source project ID annotation not found %q", gitops.SourceProjectIDAnnotationSuffix))
+		r.logger.Error(unRecoverableError, "object.Kind", objectKind, "object.NameSpace", object.GetNamespace(), "object.Name", object.GetName())
 		return unRecoverableError
 	}
 
 	r.sourceProjectID, err = strconv.Atoi(sourceProjectIDstr)
 	if err != nil {
 		unRecoverableError = helpers.NewUnrecoverableMetadataError(fmt.Sprintf("failed to convert project ID '%s' to integer: %s", sourceProjectIDstr, err.Error()))
-		r.logger.Error(unRecoverableError, "snapshot.NameSpace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
+		r.logger.Error(unRecoverableError, "object.Kind", objectKind, "object.NameSpace", object.GetNamespace(), "object.Name", object.GetName())
 		return unRecoverableError
 	}
 
-	mergeRequestStr, found := annotations[gitops.PipelineAsCodePullRequestAnnotation]
-	if !found && !gitops.IsSnapshotCreatedByPACPushEvent(snapshot) {
-		unRecoverableError = helpers.NewUnrecoverableMetadataError(fmt.Sprintf("pull-request annotation not found %q", gitops.PipelineAsCodePullRequestAnnotation))
-		r.logger.Error(unRecoverableError, "snapshot.NameSpace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
+	mergeRequestStr, found := GetPACAnnotation(object, annotations, gitops.PullRequestAnnotationSuffix)
+	if !found && !gitops.IsObjectCreatedByPACPushEvent(object) {
+		unRecoverableError = helpers.NewUnrecoverableMetadataError(fmt.Sprintf("pipelines as code pull-request annotation not found %s", gitops.PullRequestAnnotationSuffix))
+		r.logger.Error(unRecoverableError, "object.Kind", objectKind, "object.NameSpace", object.GetNamespace(), "object.Name", object.GetName())
 		return unRecoverableError
 	}
 
 	if found {
 		r.mergeRequest, err = strconv.Atoi(mergeRequestStr)
-		if err != nil && !gitops.IsSnapshotCreatedByPACPushEvent(snapshot) {
+		if err != nil && !gitops.IsObjectCreatedByPACPushEvent(object) {
 			unRecoverableError = helpers.NewUnrecoverableMetadataError(fmt.Sprintf("failed to convert merge request number '%s' to integer: %s", mergeRequestStr, err.Error()))
-			r.logger.Error(unRecoverableError, "snapshot.NameSpace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
+			r.logger.Error(unRecoverableError, "object.Kind", objectKind, "object.NameSpace", object.GetNamespace(), "object.Name", object.GetName())
 			return unRecoverableError
 		}
 	}
 
-	r.snapshot = snapshot
+	r.object = object
 	return nil
 }
 
@@ -172,7 +175,7 @@ func (r *GitLabReporter) setCommitStatus(report TestReport) error {
 	if report.TestPipelineRunName == "" {
 		r.logger.Info("TestPipelineRunName is not set, cannot add URL to message")
 	} else {
-		url := FormatPipelineURL(report.TestPipelineRunName, r.snapshot.Namespace, *r.logger)
+		url := FormatPipelineURL(report.TestPipelineRunName, r.object.GetNamespace(), *r.logger)
 		opt.TargetURL = gitlab.Ptr(url)
 	}
 
@@ -196,7 +199,7 @@ func (r *GitLabReporter) setCommitStatus(report TestReport) error {
 		}
 	}
 
-	r.logger.Info("creating commit status for scenario test status of snapshot",
+	r.logger.Info("creating commit status for scenario test status of object",
 		"scenarioName", report.ScenarioName)
 
 	commitStatus, _, err := r.client.Commits.SetCommitStatus(r.sourceProjectID, r.sha, &opt)
@@ -208,21 +211,21 @@ func (r *GitLabReporter) setCommitStatus(report TestReport) error {
 	return nil
 }
 
-// updateStatusInComment will create/update a comment in the MR which creates snapshot
+// updateStatusInComment will create/update a comment in the MR which creates snapshot or build pipelineRun
 func (r *GitLabReporter) updateStatusInComment(report TestReport) error {
 	comment, err := FormatComment(report.Summary, report.Text)
 	if err != nil {
 		unRecoverableError := helpers.NewUnrecoverableMetadataError(fmt.Sprintf("failed to generate comment for merge-request %d: %s", r.mergeRequest, err.Error()))
-		r.logger.Error(unRecoverableError, "report.SnapshotName", report.SnapshotName)
+		r.logger.Error(unRecoverableError, "report.ObjectName", report.ObjectName)
 		return unRecoverableError
 	}
 
 	allNotes, _, err := r.client.Notes.ListMergeRequestNotes(r.targetProjectID, r.mergeRequest, nil)
 	if err != nil {
-		r.logger.Error(err, "error while getting all comments for merge-request", "mergeRequest", r.mergeRequest, "report.SnapshotName", report.SnapshotName)
+		r.logger.Error(err, "error while getting all comments for merge-request", "mergeRequest", r.mergeRequest, "report.ObjectName", report.ObjectName)
 		return fmt.Errorf("error while getting all comments for merge-request %d: %w", r.mergeRequest, err)
 	}
-	existingCommentId := r.GetExistingNoteID(allNotes, report.ScenarioName, report.SnapshotName)
+	existingCommentId := r.GetExistingNoteID(allNotes, report.ScenarioName, report.ObjectName)
 	if existingCommentId == nil {
 		noteOptions := gitlab.CreateMergeRequestNoteOptions{Body: &comment}
 		_, _, err := r.client.Notes.CreateMergeRequestNote(r.targetProjectID, r.mergeRequest, &noteOptions)
@@ -245,7 +248,7 @@ func (r *GitLabReporter) GetExistingCommitStatus(commitStatuses []*gitlab.Commit
 	for _, commitStatus := range commitStatuses {
 		if commitStatus.Name == statusName {
 			r.logger.Info("found matching existing commitStatus",
-				"commitStatus.Name", commitStatus.Name, "commitStatus.ID", commitStatus.ID)
+				"commitName", commitStatus.Name, "commitID", commitStatus.ID)
 			return commitStatus
 		}
 	}
@@ -254,9 +257,9 @@ func (r *GitLabReporter) GetExistingCommitStatus(commitStatuses []*gitlab.Commit
 }
 
 // GetExistingNoteID returns existing GitLab note for the scenario of ref.
-func (r *GitLabReporter) GetExistingNoteID(notes []*gitlab.Note, scenarioName, snapshotName string) *int {
+func (r *GitLabReporter) GetExistingNoteID(notes []*gitlab.Note, scenarioName, objectName string) *int {
 	for _, note := range notes {
-		if strings.Contains(note.Body, snapshotName) && strings.Contains(note.Body, scenarioName) {
+		if strings.Contains(note.Body, objectName) && strings.Contains(note.Body, scenarioName) {
 			r.logger.Info("found note ID with a matching scenarioName", "scenarioName", scenarioName, "noteID", &note.ID)
 			return &note.ID
 		}
@@ -283,8 +286,8 @@ func (r *GitLabReporter) ReportStatus(ctx context.Context, report TestReport) er
 	}
 
 	// Create a note when integration test is neither pending nor inprogress since comment for pending/inprogress is less meaningful
-	_, isMergeRequest := r.snapshot.GetAnnotations()[gitops.PipelineAsCodePullRequestAnnotation]
-	if report.Status != intgteststat.IntegrationTestStatusPending && report.Status != intgteststat.IntegrationTestStatusInProgress && isMergeRequest {
+	_, isMergeRequest := r.object.GetAnnotations()[gitops.PipelineAsCodePullRequestAnnotation]
+	if report.Status != intgteststat.IntegrationTestStatusPending && report.Status != intgteststat.IntegrationTestStatusInProgress && report.Status != intgteststat.SnapshotCreationFailed && isMergeRequest {
 		err := r.updateStatusInComment(report)
 		if err != nil {
 			return err
@@ -299,7 +302,7 @@ func GenerateGitlabCommitState(state intgteststat.IntegrationTestStatus) (gitlab
 	glState := gitlab.Failed
 
 	switch state {
-	case intgteststat.IntegrationTestStatusPending:
+	case intgteststat.IntegrationTestStatusPending, intgteststat.BuildPLRInProgress:
 		glState = gitlab.Pending
 	case intgteststat.IntegrationTestStatusInProgress:
 		glState = gitlab.Running
@@ -307,7 +310,8 @@ func GenerateGitlabCommitState(state intgteststat.IntegrationTestStatus) (gitlab
 		intgteststat.IntegrationTestStatusDeploymentError_Deprecated,
 		intgteststat.IntegrationTestStatusTestInvalid:
 		glState = gitlab.Failed
-	case intgteststat.IntegrationTestStatusDeleted:
+	case intgteststat.IntegrationTestStatusDeleted,
+		intgteststat.BuildPLRFailed, intgteststat.SnapshotCreationFailed:
 		glState = gitlab.Canceled
 	case intgteststat.IntegrationTestStatusTestPassed:
 		glState = gitlab.Success

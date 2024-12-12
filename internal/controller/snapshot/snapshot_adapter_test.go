@@ -2177,7 +2177,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			result, err := adapter.EnsureGroupSnapshotExist()
 			Expect(result.CancelRequest).To(BeFalse())
 			Expect(result.RequeueRequest).To(BeFalse())
-			Expect(buf.String()).Should(ContainSubstring("failed to get app credentials from Snapshot"))
+			Expect(buf.String()).Should(ContainSubstring("failed to get app credentials from Object"))
 			Expect(err).ToNot(HaveOccurred())
 		})
 

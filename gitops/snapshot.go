@@ -35,6 +35,7 @@ import (
 	"github.com/konflux-ci/integration-service/tekton"
 	"github.com/konflux-ci/operator-toolkit/metadata"
 	"github.com/santhosh-tekuri/jsonschema/v5"
+	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -44,6 +45,9 @@ import (
 )
 
 const (
+	// BuildPipelinesAsCodePrefix contains the prefix applied to labels and annotations Pipelines as Code build pipelineRun.
+	BuildPipelinesAsCodePrefix = "pipelinesascode.tekton.dev"
+
 	// PipelinesAsCodePrefix contains the prefix applied to labels and annotations copied from Pipelines as Code resources.
 	PipelinesAsCodePrefix = "pac.test.appstudio.openshift.io"
 
@@ -77,8 +81,12 @@ const (
 	// SnapshotGitSourceRepoURLAnnotation contains URL of the git source repository (usually needed for forks)
 	SnapshotGitSourceRepoURLAnnotation = "test.appstudio.openshift.io/source-repo-url"
 
+	SourceURL = "/source-repo-url"
 	// PipelineAsCodeGitProviderAnnotation contains the git provider attached via PaC (e.g., github, gitlab)
-	PipelineAsCodeGitSourceURLAnnotation = PipelinesAsCodePrefix + "/source-repo-url"
+	PipelineAsCodeGitSourceURLAnnotation = PipelinesAsCodePrefix + SourceURL
+
+	// BuildPipelineAsCodeGitProviderAnnotation contains the git provider attached via PaC (e.g., github, gitlab)
+	BuildPipelineAsCodeGitSourceURLAnnotation = BuildPipelinesAsCodePrefix + SourceURL
 
 	// SnapshotStatusReportAnnotation contains metadata of tests related to status reporting to git provider
 	SnapshotStatusReportAnnotation = "test.appstudio.openshift.io/git-reporter-status"
@@ -122,38 +130,62 @@ const (
 	// PipelineAsCodeEventTypeLabel is the type of event which triggered the pipelinerun in build service
 	PipelineAsCodeEventTypeLabel = PipelinesAsCodePrefix + "/event-type"
 
+	GitProviderSuffix = "/git-provider"
+
 	// PipelineAsCodeGitProviderLabel is the git provider which triggered the pipelinerun in build service.
-	PipelineAsCodeGitProviderLabel = PipelinesAsCodePrefix + "/git-provider"
+	PipelineAsCodeGitProviderLabel = PipelinesAsCodePrefix + GitProviderSuffix
 
 	// PipelineAsCodeGitProviderAnnotation is the git provider which triggered the pipelinerun in build service.
-	PipelineAsCodeGitProviderAnnotation = PipelinesAsCodePrefix + "/git-provider"
+	PipelineAsCodeGitProviderAnnotation = PipelinesAsCodePrefix + GitProviderSuffix
+
+	// BuildPipelineAsCodeGitProviderAnnotation is the git provider which triggered the pipelinerun in build service.
+	BuildPipelineAsCodeGitProviderAnnotation = BuildPipelinesAsCodePrefix + GitProviderSuffix
+
+	// BuildPipelineAsCodeGitProviderLabel is the git provider which triggered the pipelinerun in build service.
+	BuildPipelineAsCodeGitProviderLabel = BuildPipelinesAsCodePrefix + GitProviderSuffix
+
+	SHALabelSuffix = "/sha"
 
 	// PipelineAsCodeSHALabel is the commit which triggered the pipelinerun in build service.
-	PipelineAsCodeSHALabel = PipelinesAsCodePrefix + "/sha"
+	PipelineAsCodeSHALabel = PipelinesAsCodePrefix + SHALabelSuffix
+
+	URLOrgLabel = "/url-org"
 
 	// PipelineAsCodeURLOrgLabel is the organization for the git repo which triggered the pipelinerun in build service.
-	PipelineAsCodeURLOrgLabel = PipelinesAsCodePrefix + "/url-org"
+	PipelineAsCodeURLOrgLabel = PipelinesAsCodePrefix + URLOrgLabel
+
+	URLRepositoryLabelSuffix = "/url-repository"
 
 	// PipelineAsCodeURLRepositoryLabel is the git repository which triggered the pipelinerun in build service.
-	PipelineAsCodeURLRepositoryLabel = PipelinesAsCodePrefix + "/url-repository"
+	PipelineAsCodeURLRepositoryLabel = PipelinesAsCodePrefix + URLRepositoryLabelSuffix
+
+	RepoURLAnnotationSuffix = "/repo-url"
 
 	// PipelineAsCodeRepoURLAnnotation is the URL to the git repository which triggered the pipelinerun in build service.
-	PipelineAsCodeRepoURLAnnotation = PipelinesAsCodePrefix + "/repo-url"
+	PipelineAsCodeRepoURLAnnotation = PipelinesAsCodePrefix + RepoURLAnnotationSuffix
 
 	// PipelineAsCodeTargetBranchAnnotation is the SHA of the git revision which triggered the pipelinerun in build service.
 	PipelineAsCodeTargetBranchAnnotation = PipelinesAsCodePrefix + "/branch"
 
+	InstallationIDAnnotationSuffix = "/installation-id"
+
 	// PipelineAsCodeInstallationIDAnnotation is the GitHub App installation ID for the git repo which triggered the pipelinerun in build service.
-	PipelineAsCodeInstallationIDAnnotation = PipelinesAsCodePrefix + "/installation-id"
+	PipelineAsCodeInstallationIDAnnotation = PipelinesAsCodePrefix + InstallationIDAnnotationSuffix
+
+	PullRequestAnnotationSuffix = "/pull-request"
 
 	// PipelineAsCodePullRequestAnnotation is the git repository's pull request identifier
-	PipelineAsCodePullRequestAnnotation = PipelinesAsCodePrefix + "/pull-request"
+	PipelineAsCodePullRequestAnnotation = PipelinesAsCodePrefix + PullRequestAnnotationSuffix
+
+	SourceProjectIDAnnotationSuffix = "/source-project-id"
 
 	// PipelineAsCodeSourceProjectIDAnnotation is the source project ID for gitlab
-	PipelineAsCodeSourceProjectIDAnnotation = PipelinesAsCodePrefix + "/source-project-id"
+	PipelineAsCodeSourceProjectIDAnnotation = PipelinesAsCodePrefix + SourceProjectIDAnnotationSuffix
+
+	TargetProjectIDAnnotationSuffix = "/target-project-id"
 
 	// PipelineAsCodeTargetProjectIDAnnotation is the target project ID for gitlab
-	PipelineAsCodeTargetProjectIDAnnotation = PipelinesAsCodePrefix + "/target-project-id"
+	PipelineAsCodeTargetProjectIDAnnotation = PipelinesAsCodePrefix + TargetProjectIDAnnotationSuffix
 
 	// PipelineAsCodeRepoUrlAnnotation is the target project Repo Url
 	PipelineAsCodeRepoUrlAnnotation = PipelinesAsCodePrefix + "/repo-url"
@@ -233,6 +265,9 @@ const (
 
 	//IntegrationTestStatusInProgressGithub is the status reported to github when integration test is in progress
 	IntegrationTestStatusInProgressGithub = "in_progress"
+
+	//IntegrationTestStatusCancelledGithub is the status reported to github when integration test is in progress
+	IntegrationTestStatusCancelledGithub = "cancelled"
 )
 
 var (
@@ -998,29 +1033,58 @@ func IsContextValidForSnapshot(scenarioContextName string, snapshot *application
 	return false
 }
 
-// IsScenarioApplicableToSnapshotsContext checks the contexts list for a given IntegrationTestScenario and
-// compares it against the Snapshot to determine if the scenario applies to it
-func IsScenarioApplicableToSnapshotsContext(scenario *v1beta2.IntegrationTestScenario, snapshot *applicationapiv1alpha1.Snapshot) bool {
-	// If the contexts list is empty, we assume that the scenario applies to all contexts by default
-	if len(scenario.Spec.Contexts) == 0 {
+// IsContextValidForBuildPLR checks the context and compares it against the snapshot which will be created for build PLR to determine if it applies
+func IsContextValidForBuildPLR(scenarioContextName string, plr *tektonv1.PipelineRun) bool {
+	// `application` context is supported for backwards-compatibility and considered the same as `all`
+	if scenarioContextName == "application" || scenarioContextName == "all" {
 		return true
-	}
-	for _, scenarioContext := range scenario.Spec.Contexts {
-		scenarioContext := scenarioContext //G601
-		if IsContextValidForSnapshot(scenarioContext.Name, snapshot) {
+	} else if scenarioContextName == "component" {
+		return true
+	} else if strings.HasPrefix(scenarioContextName, "component_") {
+		componentName := strings.TrimPrefix(scenarioContextName, "component_")
+		if metadata.HasLabelWithValue(plr, SnapshotComponentLabel, componentName) {
 			return true
 		}
+	} else if scenarioContextName == "pull_request" && !tekton.IsPLRCreatedByPACPushEvent(plr) {
+		return true
 	}
 	return false
 }
 
+// IsScenarioApplicableToObjectContext checks the contexts list for a given IntegrationTestScenario and
+// compares it against the Snapshot/Build pipelinerun to determine if the scenario applies to it
+func IsScenarioApplicableToObjectContext(scenario *v1beta2.IntegrationTestScenario, object metav1.Object) bool {
+	// If the contexts list is empty, we assume that the scenario applies to all contexts by default
+	if len(scenario.Spec.Contexts) == 0 {
+		return true
+	}
+	if snapshot, ok := object.(*applicationapiv1alpha1.Snapshot); ok {
+		for _, scenarioContext := range scenario.Spec.Contexts {
+			scenarioContext := scenarioContext //G601
+			if IsContextValidForSnapshot(scenarioContext.Name, snapshot) {
+				return true
+			}
+		}
+	} else if plr, ok := object.(*tektonv1.PipelineRun); ok {
+		for _, scenarioContext := range scenario.Spec.Contexts {
+			scenarioContext := scenarioContext //G601
+			if IsContextValidForBuildPLR(scenarioContext.Name, plr) {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
 // FilterIntegrationTestScenariosWithContext returns a filtered list of IntegrationTestScenario from the given list
-// of IntegrationTestScenarios compared against the given Snapshot based on individual IntegrationTestScenario contexts
-func FilterIntegrationTestScenariosWithContext(scenarios *[]v1beta2.IntegrationTestScenario, snapshot *applicationapiv1alpha1.Snapshot) *[]v1beta2.IntegrationTestScenario {
+// of IntegrationTestScenarios compared against the given Snapshot or build PLR based on individual IntegrationTestScenario contexts
+func FilterIntegrationTestScenariosWithContext(scenarios *[]v1beta2.IntegrationTestScenario, object metav1.Object) *[]v1beta2.IntegrationTestScenario {
 	var filteredScenarioList []v1beta2.IntegrationTestScenario
+
 	for _, scenario := range *scenarios {
 		scenario := scenario //G601
-		if IsScenarioApplicableToSnapshotsContext(&scenario, snapshot) {
+		if IsScenarioApplicableToObjectContext(&scenario, object) {
 			filteredScenarioList = append(filteredScenarioList, scenario)
 		}
 	}
@@ -1147,11 +1211,30 @@ func UnmarshalJSON(b []byte) ([]*ComponentSnapshotInfo, error) {
 	return componentSnapshotInfos, nil
 }
 
-func GetSourceRepoOwnerFromSnapshot(snapshot *applicationapiv1alpha1.Snapshot) string {
-	sourceRepoUrlAnnotation, found := snapshot.GetAnnotations()[PipelineAsCodeGitSourceURLAnnotation]
+func GetSourceRepoOwnerFromObject(object metav1.Object) string {
+	sourceRepoUrlAnnotation := ""
+	found := false
+
+	if snapshot, ok := object.(*applicationapiv1alpha1.Snapshot); ok {
+		sourceRepoUrlAnnotation, found = snapshot.GetAnnotations()[PipelineAsCodeGitSourceURLAnnotation]
+	}
+	if plr, ok := object.(*tektonv1.PipelineRun); ok {
+		sourceRepoUrlAnnotation, found = plr.GetAnnotations()[BuildPipelineAsCodeGitSourceURLAnnotation]
+	}
+
 	if found {
 		arr := strings.Split(sourceRepoUrlAnnotation, "/")
 		return arr[len(arr)-2]
 	}
 	return ""
+}
+
+func IsObjectCreatedByPACPushEvent(object metav1.Object) bool {
+	if snapshot, ok := object.(*applicationapiv1alpha1.Snapshot); ok {
+		return IsSnapshotCreatedByPACPushEvent(snapshot)
+	}
+	if plr, ok := object.(*tektonv1.PipelineRun); ok {
+		return tekton.IsPLRCreatedByPACPushEvent(plr)
+	}
+	return false
 }

@@ -13,8 +13,8 @@ import (
 	context "context"
 	reflect "reflect"
 
-	v1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
 	gomock "go.uber.org/mock/gomock"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // MockReporterInterface is a mock of ReporterInterface interface.
@@ -41,7 +41,7 @@ func (m *MockReporterInterface) EXPECT() *MockReporterInterfaceMockRecorder {
 }
 
 // Detect mocks base method.
-func (m *MockReporterInterface) Detect(arg0 *v1alpha1.Snapshot) bool {
+func (m *MockReporterInterface) Detect(arg0 metav1.Object) bool {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Detect", arg0)
 	ret0, _ := ret[0].(bool)
@@ -69,7 +69,7 @@ func (mr *MockReporterInterfaceMockRecorder) GetReporterName() *gomock.Call {
 }
 
 // Initialize mocks base method.
-func (m *MockReporterInterface) Initialize(arg0 context.Context, arg1 *v1alpha1.Snapshot) error {
+func (m *MockReporterInterface) Initialize(arg0 context.Context, arg1 metav1.Object) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Initialize", arg0, arg1)
 	ret0, _ := ret[0].(error)

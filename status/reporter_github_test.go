@@ -150,7 +150,7 @@ func (c *MockGitHubClient) GetAllCommentsForPR(ctx context.Context, owner string
 	return comments, nil
 }
 
-func (c *MockGitHubClient) GetExistingCommentID(comments []*ghapi.IssueComment, snapshotName, scenarioName string) *int64 {
+func (c *MockGitHubClient) GetExistingCommentID(comments []*ghapi.IssueComment, ObjectName, scenarioName string) *int64 {
 	return nil
 }
 
@@ -354,7 +354,7 @@ var _ = Describe("GitHubReporter", func() {
 				status.TestReport{
 					FullName:       "test-name",
 					ScenarioName:   "scenario1",
-					SnapshotName:   "snapshot-sample",
+					ObjectName:     "snapshot-sample",
 					ComponentName:  "component-sample",
 					Status:         integrationteststatus.IntegrationTestStatusTestFail,
 					Summary:        "Integration test for snapshot snapshot-sample and scenario scenario1 experienced an error when provisioning environment",
@@ -381,7 +381,7 @@ var _ = Describe("GitHubReporter", func() {
 				status.TestReport{
 					FullName:       "test-name",
 					ScenarioName:   "scenario1",
-					SnapshotName:   "snapshot-sample",
+					ObjectName:     "snapshot-sample",
 					Status:         integrationteststatus.IntegrationTestStatusTestFail,
 					Summary:        "Integration test for snapshot snapshot-sample and scenario scenario1 experienced an error when provisioning environment",
 					StartTime:      &now,
@@ -413,7 +413,7 @@ var _ = Describe("GitHubReporter", func() {
 				status.TestReport{
 					FullName:       "test-name",
 					ScenarioName:   "scenario1",
-					SnapshotName:   "snapshot-sample",
+					ObjectName:     "snapshot-sample",
 					ComponentName:  "component-sample",
 					Status:         integrationteststatus.IntegrationTestStatusTestFail,
 					Summary:        "Integration test for snapshot snapshot-sample and scenario scenario1 experienced an error when provisioning environment",
@@ -446,7 +446,7 @@ var _ = Describe("GitHubReporter", func() {
 				status.TestReport{
 					FullName:      "test-name",
 					ScenarioName:  "scenario1",
-					SnapshotName:  "snapshot-sample",
+					ObjectName:    "snapshot-sample",
 					ComponentName: "component-sample",
 					Status:        integrationteststatus.IntegrationTestStatusInProgress,
 					Summary:       "Integration test for snapshot snapshot-sample and scenario scenario1 is in progress",
@@ -520,7 +520,7 @@ var _ = Describe("GitHubReporter", func() {
 				status.TestReport{
 					FullName:      "fullname/scenario1",
 					ScenarioName:  "scenario1",
-					SnapshotName:  "snapshot-sample",
+					ObjectName:    "snapshot-sample",
 					ComponentName: "component-sample",
 					Status:        integrationteststatus.IntegrationTestStatusEnvironmentProvisionError_Deprecated,
 					Summary:       "Integration test for snapshot snapshot-sample and scenario scenario1 failed",
@@ -540,7 +540,7 @@ var _ = Describe("GitHubReporter", func() {
 				status.TestReport{
 					FullName:      "fullname/scenario1",
 					ScenarioName:  "scenario1",
-					SnapshotName:  "snapshot-sample",
+					ObjectName:    "snapshot-sample",
 					ComponentName: "component-sample",
 					Status:        integrationteststatus.IntegrationTestStatusEnvironmentProvisionError_Deprecated,
 					Summary:       "Integration test for snapshot snapshot-sample and scenario scenario1 failed",

@@ -38,6 +38,7 @@ import (
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	gitlab "github.com/xanzy/go-gitlab"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -188,7 +189,7 @@ func MigrateSnapshotToReportStatus(s *applicationapiv1alpha1.Snapshot, testStatu
 }
 
 type StatusInterface interface {
-	GetReporter(*applicationapiv1alpha1.Snapshot) ReporterInterface
+	GetReporter(metav1.Object) ReporterInterface
 	// Check if PR/MR is opened
 	IsPRMRInSnapshotOpened(context.Context, *applicationapiv1alpha1.Snapshot) (bool, error)
 	// Check if github PR is open
@@ -213,14 +214,14 @@ func NewStatus(logger logr.Logger, client client.Client) *Status {
 }
 
 // GetReporter returns reporter to process snapshot using the right git provider, nil means no suitable reporter found
-func (s *Status) GetReporter(snapshot *applicationapiv1alpha1.Snapshot) ReporterInterface {
+func (s *Status) GetReporter(obj metav1.Object) ReporterInterface {
 	githubReporter := NewGitHubReporter(s.logger, s.client)
-	if githubReporter.Detect(snapshot) {
+	if githubReporter.Detect(obj) {
 		return githubReporter
 	}
 
 	gitlabReporter := NewGitLabReporter(s.logger, s.client)
-	if gitlabReporter.Detect(snapshot) {
+	if gitlabReporter.Detect(obj) {
 		return gitlabReporter
 	}
 
@@ -228,22 +229,22 @@ func (s *Status) GetReporter(snapshot *applicationapiv1alpha1.Snapshot) Reporter
 }
 
 // GenerateTestReport generates TestReport to be used by all reporters
-func GenerateTestReport(ctx context.Context, client client.Client, detail intgteststat.IntegrationTestStatusDetail, testedSnapshot *applicationapiv1alpha1.Snapshot, componentName string) (*TestReport, error) {
+func GenerateTestReport(ctx context.Context, client client.Client, detail intgteststat.IntegrationTestStatusDetail, object metav1.Object, componentName string) (*TestReport, error) {
 	var componentSnapshotInfos []*gitops.ComponentSnapshotInfo
 	var err error
-	if componentSnapshotInfoString, ok := testedSnapshot.Annotations[gitops.GroupSnapshotInfoAnnotation]; ok {
+	if componentSnapshotInfoString, ok := object.GetAnnotations()[gitops.GroupSnapshotInfoAnnotation]; ok {
 		componentSnapshotInfos, err = gitops.UnmarshalJSON([]byte(componentSnapshotInfoString))
 		if err != nil {
 			return nil, fmt.Errorf("failed to unmarshal JSON string: %w", err)
 		}
 	}
 
-	text, err := generateText(ctx, client, detail, testedSnapshot.Namespace, componentSnapshotInfos)
+	text, err := generateText(ctx, client, detail, object.GetNamespace(), componentSnapshotInfos)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate text message: %w", err)
 	}
 
-	summary, err := GenerateSummary(detail.Status, testedSnapshot.Name, detail.ScenarioName)
+	summary, err := GenerateSummary(detail.Status, object.GetName(), detail.ScenarioName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate summary message: %w", err)
 	}
@@ -259,7 +260,7 @@ func GenerateTestReport(ctx context.Context, client client.Client, detail intgte
 		Text:                text,
 		FullName:            fullName,
 		ScenarioName:        detail.ScenarioName,
-		SnapshotName:        testedSnapshot.Name,
+		ObjectName:          object.GetName(),
 		ComponentName:       componentName,
 		Status:              detail.Status,
 		Summary:             summary,
@@ -328,11 +329,21 @@ func GenerateSummary(state intgteststat.IntegrationTestStatus, snapshotName, sce
 		statusDesc = "has failed"
 	case intgteststat.IntegrationTestStatusTestInvalid:
 		statusDesc = "is invalid"
+	case intgteststat.BuildPLRInProgress:
+		statusDesc = "is pending because build pipelinerun is still running"
+	case intgteststat.SnapshotCreationFailed:
+		statusDesc = "is not run and then considered as failure because snapshot is not created"
+	case intgteststat.BuildPLRFailed:
+		statusDesc = "is not run and then considered as failure because snapshot is not created for failing build pipelinerun"
 	default:
 		return summary, fmt.Errorf("unknown status")
 	}
 
-	summary = fmt.Sprintf("Integration test for snapshot %s and scenario %s %s", snapshotName, scenarioName, statusDesc)
+	if state == intgteststat.BuildPLRInProgress || state == intgteststat.SnapshotCreationFailed || state == intgteststat.BuildPLRFailed {
+		summary = fmt.Sprintf("Integration test for scenario %s %s", scenarioName, statusDesc)
+	} else {
+		summary = fmt.Sprintf("Integration test for snapshot %s and scenario %s %s", snapshotName, scenarioName, statusDesc)
+	}
 
 	return summary, nil
 }
