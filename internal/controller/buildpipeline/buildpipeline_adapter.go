@@ -407,6 +407,7 @@ func (a *Adapter) handleSnapshotCreationFailure(canRemoveFinalizer *bool, cerr e
 		// we cannot create a snapshot (possibly because the snapshot quota is hit) and we don't want to block resources, user has to retry
 		// we still return the error to make build PLR annotated when meeting quota limitation issue
 		*canRemoveFinalizer = true
+		return controller.RequeueAfter(time.Hour, cerr)
 	}
 	return controller.RequeueWithError(cerr)
 }
