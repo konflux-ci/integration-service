@@ -24,8 +24,11 @@ import (
 	"text/template"
 
 	"github.com/go-logr/logr"
+	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
 	"github.com/konflux-ci/integration-service/gitops"
 	"github.com/konflux-ci/integration-service/helpers"
+	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"knative.dev/pkg/apis"
 )
 
@@ -294,4 +297,40 @@ func FormatTaskLogURL(taskRun *helpers.TaskRun, pipelinerun string, namespace st
 		logger.Error(err, "Error occured when executing task log template.")
 	}
 	return buf.String()
+}
+
+// GetEquivalentLabel gets the lable from snapshot or plr since they have Equivalent pac label
+func GetPACLabel(obj metav1.Object, labels map[string]string, labelSufix string) (string, bool) {
+	if _, ok := obj.(*applicationapiv1alpha1.Snapshot); ok {
+		label, ok := labels[gitops.PipelinesAsCodePrefix+labelSufix]
+		return label, ok
+	}
+	if _, ok := obj.(*tektonv1.PipelineRun); ok {
+		label, ok := labels[gitops.BuildPipelinesAsCodePrefix+labelSufix]
+		return label, ok
+	}
+	return "", false
+}
+
+// GetPACAnnotation gets the annotation from snapshot or plr since they have Equivalent pac label
+func GetPACAnnotation(obj metav1.Object, annotations map[string]string, annotationSuffix string) (string, bool) {
+	if _, ok := obj.(*applicationapiv1alpha1.Snapshot); ok {
+		annotation, ok := annotations[gitops.PipelinesAsCodePrefix+annotationSuffix]
+		return annotation, ok
+	}
+	if _, ok := obj.(*tektonv1.PipelineRun); ok {
+		annotation, ok := annotations[gitops.BuildPipelinesAsCodePrefix+annotationSuffix]
+		return annotation, ok
+	}
+	return "", false
+}
+
+func GetObjectKind(obj metav1.Object) string {
+	if _, ok := obj.(*applicationapiv1alpha1.Snapshot); ok {
+		return "Snapshot"
+	}
+	if _, ok := obj.(*tektonv1.PipelineRun); ok {
+		return "PipelineRun"
+	}
+	return ""
 }
