@@ -790,7 +790,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			expectedTestReport := status.TestReport{
 				FullName:            "Konflux Staging / scenario1 / component-sample",
 				ScenarioName:        "scenario1",
-				SnapshotName:        "snapshot-pr-sample",
+				ObjectName:          "snapshot-pr-sample",
 				ComponentName:       "component-sample",
 				Text:                "Test in progress",
 				Summary:             "Integration test for snapshot snapshot-pr-sample and scenario scenario1 is in progress",

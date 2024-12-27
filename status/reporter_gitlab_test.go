@@ -315,7 +315,7 @@ var _ = Describe("GitLabReporter", func() {
 			report := status.TestReport{
 				FullName:     "fullname/scenario1",
 				ScenarioName: "scenario1",
-				SnapshotName: "snapshot-sample",
+				ObjectName:   "snapshot-sample",
 				Status:       integrationteststatus.IntegrationTestStatusTestPassed,
 				Summary:      summary,
 				Text:         "detailed text here",
@@ -330,7 +330,7 @@ var _ = Describe("GitLabReporter", func() {
 			notes := []*gitlab.Note{
 				&note,
 			}
-			existingNoteID := reporter.GetExistingNoteID(notes, report.ScenarioName, report.SnapshotName)
+			existingNoteID := reporter.GetExistingNoteID(notes, report.ScenarioName, report.ObjectName)
 
 			Expect(*existingNoteID).To(Equal(note.ID))
 		})

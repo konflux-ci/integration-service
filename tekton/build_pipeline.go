@@ -36,6 +36,8 @@ const (
 	// main branch in github/gitlab
 	MainBranch = "main"
 
+	PipelineAsCodeInstallationIDAnnotation = "pipelinesascode.tekton.dev/installation-id"
+
 	// PipelineAsCodeSourceBranchAnnotation is the branch name of the the pull request is created from
 	PipelineAsCodeSourceBranchAnnotation = "pipelinesascode.tekton.dev/source-branch"
 
