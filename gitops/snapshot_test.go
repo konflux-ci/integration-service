@@ -844,6 +844,7 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 			})
 
 			It("Testing annotating snapshot", func() {
+				hasSnapshot.Labels[gitops.PipelineAsCodeEventTypeLabel] = gitops.PipelineAsCodePullRequestType
 				componentSnapshotInfos := []gitops.ComponentSnapshotInfo{
 					{
 						Component:        "com1",
@@ -862,6 +863,8 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 				Expect(err).ToNot(HaveOccurred())
 				Expect(componentSnapshotInfos).To(HaveLen(2))
 				Expect(snapshot.Labels[gitops.SnapshotTypeLabel]).To(Equal("group"))
+				Expect(gitops.IsSnapshotCreatedByPACPushEvent(snapshot)).To(BeFalse())
+
 			})
 
 			It("Testing UnmarshalJSON", func() {
