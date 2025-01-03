@@ -678,7 +678,7 @@ func IsSnapshotCreatedByPACPushEvent(snapshot *applicationapiv1alpha1.Snapshot) 
 	return metadata.HasLabelWithValue(snapshot, PipelineAsCodeEventTypeLabel, PipelineAsCodePushType) ||
 		metadata.HasLabelWithValue(snapshot, PipelineAsCodeEventTypeLabel, PipelineAsCodeGLPushType) ||
 		!metadata.HasLabel(snapshot, PipelineAsCodeEventTypeLabel) ||
-		!metadata.HasLabel(snapshot, PipelineAsCodePullRequestAnnotation)
+		!metadata.HasLabel(snapshot, PipelineAsCodePullRequestAnnotation) && !IsGroupSnapshot(snapshot)
 }
 
 // IsSnapshotCreatedBySamePACEvent checks if the two snapshot are created by the same PAC event
