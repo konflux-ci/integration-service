@@ -18,6 +18,7 @@ package tekton_test
 
 import (
 	"bytes"
+	"fmt"
 	"github.com/konflux-ci/integration-service/api/v1beta2"
 	"github.com/konflux-ci/integration-service/helpers"
 	. "github.com/onsi/ginkgo/v2"
@@ -282,9 +283,10 @@ var _ = Describe("Integration pipeline", func() {
 			expectedDuration, _ := time.ParseDuration("2h")
 			newIntegrationPipelineRun.WithIntegrationTimeouts(integrationTestScenarioGit, buflogr.NewWithBuffer(&buf))
 
-			Expect(newIntegrationPipelineRun.Spec.Timeouts.Pipeline.Duration).To(Equal(expectedDuration))
 			Expect(newIntegrationPipelineRun.Spec.Timeouts.Tasks.Duration).To(Equal(expectedDuration))
 			Expect(newIntegrationPipelineRun.Spec.Timeouts.Finally.Duration).To(Equal(expectedDuration))
+			// Pipeline timeout duration should be set to be the sum of tasks + finally
+			Expect(newIntegrationPipelineRun.Spec.Timeouts.Pipeline.Duration).To(Equal(expectedDuration + expectedDuration))
 
 			// The pipelineRun timeouts should be empty if environment vars are not set
 			os.Setenv("PIPELINE_TIMEOUT", "")
@@ -330,11 +332,26 @@ var _ = Describe("Integration pipeline", func() {
 			integrationTestScenarioGit.Annotations[v1beta2.FinallyTimeoutAnnotation] = "8h"
 			newIntegrationPipelineRun.WithIntegrationTimeouts(integrationTestScenarioGit, buflogr.NewWithBuffer(&buf))
 
-			Expect(newIntegrationPipelineRun.Spec.Timeouts.Pipeline.Duration).To(Equal(expectedDurationFromScenario))
 			Expect(newIntegrationPipelineRun.Spec.Timeouts.Tasks.Duration).To(Equal(expectedDurationFromScenario))
 			Expect(newIntegrationPipelineRun.Spec.Timeouts.Finally.Duration).To(Equal(expectedDurationFromScenario))
+			// Pipeline timeout duration should be set to be the sum of tasks + finally
+			Expect(newIntegrationPipelineRun.Spec.Timeouts.Pipeline.Duration).To(Equal(expectedDurationFromScenario + expectedDurationFromScenario))
 
-			// Set the timeouts to invalid strings, which should skip setting the timeouts
+			expectedLogEntry := fmt.Sprintf("to be the sum of tasks + finally: %.1f hours", (expectedDurationFromScenario + expectedDurationFromScenario).Hours())
+			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
+
+			// Set the task timeout to invalid strings, which should skip setting the timeout for it
+			integrationTestScenarioGit.Annotations[v1beta2.TasksTimeoutAnnotation] = "thisIsNotAValidDuration!"
+			newIntegrationPipelineRun.WithIntegrationTimeouts(integrationTestScenarioGit, buflogr.NewWithBuffer(&buf))
+
+			Expect(newIntegrationPipelineRun.Spec.Timeouts.Tasks).To(BeNil())
+			Expect(newIntegrationPipelineRun.Spec.Timeouts.Finally.Duration).To(Equal(expectedDurationFromScenario))
+			Expect(newIntegrationPipelineRun.Spec.Timeouts.Pipeline.Duration).To(Equal(expectedDurationFromScenario))
+
+			expectedLogEntryPrefix := "failed to parse the"
+			Expect(buf.String()).Should(ContainSubstring(expectedLogEntryPrefix + " TASKS_TIMEOUT"))
+
+			// Set all timeouts to invalid strings, which should skip setting the timeouts entirely
 			integrationTestScenarioGit.Annotations[v1beta2.PipelineTimeoutAnnotation] = "thisIsNotAValidDuration!"
 			integrationTestScenarioGit.Annotations[v1beta2.TasksTimeoutAnnotation] = "thisIsNotAValidDuration!"
 			integrationTestScenarioGit.Annotations[v1beta2.FinallyTimeoutAnnotation] = "thisIsNotAValidDuration!"
@@ -344,7 +361,6 @@ var _ = Describe("Integration pipeline", func() {
 			Expect(newIntegrationPipelineRun.Spec.Timeouts.Tasks).To(BeNil())
 			Expect(newIntegrationPipelineRun.Spec.Timeouts.Finally).To(BeNil())
 
-			expectedLogEntryPrefix := "failed to parse the"
 			Expect(buf.String()).Should(ContainSubstring(expectedLogEntryPrefix + " PIPELINE_TIMEOUT"))
 			Expect(buf.String()).Should(ContainSubstring(expectedLogEntryPrefix + " TASKS_TIMEOUT"))
 			Expect(buf.String()).Should(ContainSubstring(expectedLogEntryPrefix + " FINALLY_TIMEOUT"))
