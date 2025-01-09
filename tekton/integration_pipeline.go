@@ -306,5 +306,14 @@ func (r *IntegrationPipelineRun) WithIntegrationTimeouts(integrationTestScenario
 		}
 	}
 
+	// If the sum of tasks and finally timeout durations is greater than the pipeline timeout duration,
+	// increase the pipeline timeout to prevent a pipelineRun validation failure
+	if r.Spec.Timeouts.Tasks != nil && r.Spec.Timeouts.Finally != nil && r.Spec.Timeouts.Pipeline != nil &&
+		r.Spec.Timeouts.Tasks.Duration+r.Spec.Timeouts.Finally.Duration > r.Spec.Timeouts.Pipeline.Duration {
+		r.Spec.Timeouts.Pipeline = &metav1.Duration{Duration: r.Spec.Timeouts.Tasks.Duration + r.Spec.Timeouts.Finally.Duration}
+		logger.Info(fmt.Sprintf("Setting the pipeline timeout for %s to be the sum of tasks + finally: %.1f hours", r.Name,
+			r.Spec.Timeouts.Pipeline.Duration.Hours()))
+	}
+
 	return r
 }
