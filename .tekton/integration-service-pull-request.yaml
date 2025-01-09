@@ -175,6 +175,62 @@ spec:
         workspace: workspace
       - name: basic-auth
         workspace: git-auth
+    - name: clone-repository-oci
+      params:
+      - name: url
+        value: $(params.git-url)
+      - name: revision
+        value: $(params.revision)
+      - name: ociStorage
+        value: $(params.output-image).git
+      - name: ociArtifactExpiresAfter
+        value: $(params.image-expires-after)
+      runAfter:
+      - init
+      taskRef:
+        params:
+        - name: name
+          value: git-clone-oci-ta
+        - name: bundle
+          value: quay.io/konflux-ci/tekton-catalog/task-git-clone-oci-ta:0.1@sha256:4bf48d038ff12d25bdeb5ab3e98dc2271818056f454c83d7393ebbd413028147
+        - name: kind
+          value: task
+        resolver: bundles
+      when:
+      - input: $(tasks.init.results.build)
+        operator: in
+        values:
+        - "true"
+      workspaces:
+      - name: basic-auth
+        workspace: git-auth
+    - name: sealights-instrumentation
+      runAfter:
+        - clone-repository-oci
+      taskRef:
+        resolver: git
+        params:
+          - name: url
+            value: https://github.com/flacatus/tekton-integration-catalog.git
+          - name: revision
+            value: t_event
+          - name: pathInRepo
+            value: tasks/sealights/sealights-go-instrumentation/0.1/sealights-go-instrumentation.yaml
+      params:
+        - name: source-artifact
+          value: $(tasks.clone-repository-oci.results.SOURCE_ARTIFACT)
+        - name: go-version
+          value: "1.22"
+        - name: sealights-secret
+          value: "sealights-credentials"
+        - name: component
+          value: '{{ repo_name }}'
+        - name: branch
+          value: '{{ source_branch }}'
+        - name: revision
+          value: '{{ revision }}'
+        - name: oci-storage
+          value: $(params.output-image).sealights.git
     - name: prefetch-dependencies
       params:
       - name: input
