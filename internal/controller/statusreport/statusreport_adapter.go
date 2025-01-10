@@ -291,7 +291,7 @@ func (a *Adapter) ReportSnapshotStatus(testedSnapshot *applicationapiv1alpha1.Sn
 	}
 
 	if err != nil {
-		return fmt.Errorf("issue occured during generating or updating report status: %w", err)
+		return fmt.Errorf("issue occurred during generating or updating report status: %w", err)
 	}
 
 	a.logger.Info(fmt.Sprintf("Successfully updated the %s annotation", gitops.SnapshotStatusReportAnnotation), "snapshot.Name", testedSnapshot.Name)

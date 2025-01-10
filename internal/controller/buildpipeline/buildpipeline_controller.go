@@ -119,6 +119,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		adapter.EnsurePipelineIsFinalized,
 		adapter.EnsurePRGroupAnnotated,
 		adapter.EnsureSnapshotExists,
+		adapter.EnsureIntegrationTestReportedToGitProvider,
 	})
 }
 
@@ -127,6 +128,7 @@ type AdapterInterface interface {
 	EnsurePipelineIsFinalized() (controller.OperationResult, error)
 	EnsurePRGroupAnnotated() (controller.OperationResult, error)
 	EnsureSnapshotExists() (controller.OperationResult, error)
+	EnsureIntegrationTestReportedToGitProvider() (controller.OperationResult, error)
 }
 
 // SetupController creates a new Integration controller and adds it to the Manager.

@@ -284,7 +284,7 @@ func (r *GitLabReporter) ReportStatus(ctx context.Context, report TestReport) er
 
 	// Create a note when integration test is neither pending nor inprogress since comment for pending/inprogress is less meaningful
 	_, isMergeRequest := r.snapshot.GetAnnotations()[gitops.PipelineAsCodePullRequestAnnotation]
-	if report.Status != intgteststat.IntegrationTestStatusPending && report.Status != intgteststat.IntegrationTestStatusInProgress && isMergeRequest {
+	if report.Status != intgteststat.IntegrationTestStatusPending && report.Status != intgteststat.IntegrationTestStatusInProgress && report.Status != intgteststat.SnapshotCreationFailed && isMergeRequest {
 		err := r.updateStatusInComment(report)
 		if err != nil {
 			return err
@@ -299,7 +299,7 @@ func GenerateGitlabCommitState(state intgteststat.IntegrationTestStatus) (gitlab
 	glState := gitlab.Failed
 
 	switch state {
-	case intgteststat.IntegrationTestStatusPending:
+	case intgteststat.IntegrationTestStatusPending, intgteststat.BuildPLRInProgress:
 		glState = gitlab.Pending
 	case intgteststat.IntegrationTestStatusInProgress:
 		glState = gitlab.Running
@@ -307,7 +307,8 @@ func GenerateGitlabCommitState(state intgteststat.IntegrationTestStatus) (gitlab
 		intgteststat.IntegrationTestStatusDeploymentError_Deprecated,
 		intgteststat.IntegrationTestStatusTestInvalid:
 		glState = gitlab.Failed
-	case intgteststat.IntegrationTestStatusDeleted:
+	case intgteststat.IntegrationTestStatusDeleted,
+		intgteststat.BuildPLRFailed, intgteststat.SnapshotCreationFailed:
 		glState = gitlab.Canceled
 	case intgteststat.IntegrationTestStatusTestPassed:
 		glState = gitlab.Success
