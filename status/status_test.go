@@ -583,6 +583,22 @@ var _ = Describe("Status Adapter", func() {
 		Entry("Invalid", integrationteststatus.IntegrationTestStatusTestInvalid, "is invalid"),
 	)
 
+	DescribeTable(
+		"report right summary per status",
+		func(expectedScenarioStatus integrationteststatus.IntegrationTestStatus, expectedTextEnding string) {
+
+			integrationTestStatusDetail := newIntegrationTestStatusDetail(expectedScenarioStatus)
+
+			expectedSummary := fmt.Sprintf("Integration test for scenario scenario1 %s", expectedTextEnding)
+			testReport, err := status.GenerateTestReport(context.Background(), mockK8sClient, integrationTestStatusDetail, hasSnapshot, "component-sample")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(testReport.Summary).To(Equal(expectedSummary))
+		},
+		Entry("BuildPLRInProgress", integrationteststatus.BuildPLRInProgress, "is pending because build pipelinerun is still running and snapshot has not been created"),
+		Entry("SnapshotCreationFailed", integrationteststatus.SnapshotCreationFailed, "has not run and is considered as failed because the snapshot was not created"),
+		Entry("BuildPLRFailed", integrationteststatus.BuildPLRFailed, "has not run and is considered as failed because the build pipelinerun failed and snapshot was not created"),
+	)
+
 	It("check if GenerateSummary supports all integration test statuses", func() {
 		for _, teststatus := range integrationteststatus.IntegrationTestStatusValues() {
 			_, err := status.GenerateSummary(teststatus, "yolo", "yolo")

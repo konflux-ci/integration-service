@@ -328,11 +328,21 @@ func GenerateSummary(state intgteststat.IntegrationTestStatus, snapshotName, sce
 		statusDesc = "has failed"
 	case intgteststat.IntegrationTestStatusTestInvalid:
 		statusDesc = "is invalid"
+	case intgteststat.BuildPLRInProgress:
+		statusDesc = "is pending because build pipelinerun is still running and snapshot has not been created"
+	case intgteststat.SnapshotCreationFailed:
+		statusDesc = "has not run and is considered as failed because the snapshot was not created"
+	case intgteststat.BuildPLRFailed:
+		statusDesc = "has not run and is considered as failed because the build pipelinerun failed and snapshot was not created"
 	default:
 		return summary, fmt.Errorf("unknown status")
 	}
 
-	summary = fmt.Sprintf("Integration test for snapshot %s and scenario %s %s", snapshotName, scenarioName, statusDesc)
+	if state == intgteststat.BuildPLRInProgress || state == intgteststat.SnapshotCreationFailed || state == intgteststat.BuildPLRFailed {
+		summary = fmt.Sprintf("Integration test for scenario %s %s", scenarioName, statusDesc)
+	} else {
+		summary = fmt.Sprintf("Integration test for snapshot %s and scenario %s %s", snapshotName, scenarioName, statusDesc)
+	}
 
 	return summary, nil
 }

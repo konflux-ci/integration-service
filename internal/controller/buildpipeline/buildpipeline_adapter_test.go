@@ -26,14 +26,18 @@ import (
 
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
+	"github.com/konflux-ci/integration-service/api/v1beta2"
 	"github.com/konflux-ci/integration-service/gitops"
 	"github.com/konflux-ci/integration-service/helpers"
 	"github.com/konflux-ci/integration-service/loader"
+	intgteststat "github.com/konflux-ci/integration-service/pkg/integrationteststatus"
+	"github.com/konflux-ci/integration-service/status"
 	"github.com/konflux-ci/integration-service/tekton"
 	"github.com/konflux-ci/operator-toolkit/metadata"
 	"knative.dev/pkg/apis"
 	v1 "knative.dev/pkg/apis/duck/v1"
 
+	"go.uber.org/mock/gomock"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/utils/strings/slices"
@@ -54,16 +58,20 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 	var (
 		adapter       *Adapter
 		createAdapter func() *Adapter
+		buf           bytes.Buffer
 		logger        helpers.IntegrationLogger
+		mockReporter  *status.MockReporterInterface
+		mockStatus    *status.MockStatusInterface
 
-		successfulTaskRun *tektonv1.TaskRun
-		failedTaskRun     *tektonv1.TaskRun
-		buildPipelineRun  *tektonv1.PipelineRun
-		buildPipelineRun2 *tektonv1.PipelineRun
-		hasComp           *applicationapiv1alpha1.Component
-		hasComp2          *applicationapiv1alpha1.Component
-		hasApp            *applicationapiv1alpha1.Application
-		hasSnapshot       *applicationapiv1alpha1.Snapshot
+		successfulTaskRun       *tektonv1.TaskRun
+		failedTaskRun           *tektonv1.TaskRun
+		buildPipelineRun        *tektonv1.PipelineRun
+		buildPipelineRun2       *tektonv1.PipelineRun
+		hasComp                 *applicationapiv1alpha1.Component
+		hasComp2                *applicationapiv1alpha1.Component
+		hasApp                  *applicationapiv1alpha1.Application
+		hasSnapshot             *applicationapiv1alpha1.Snapshot
+		integrationTestScenario *v1beta2.IntegrationTestScenario
 	)
 	const (
 		SampleRepoLink           = "https://github.com/devfile-samples/devfile-sample-java-springboot-basic"
@@ -251,6 +259,39 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			},
 		}
 		Expect(k8sClient.Status().Update(ctx, failedTaskRun)).Should(Succeed())
+
+		integrationTestScenario = &v1beta2.IntegrationTestScenario{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "example-its",
+				Namespace: "default",
+
+				Labels: map[string]string{
+					"test.appstudio.openshift.io/optional": "false",
+				},
+			},
+			Spec: v1beta2.IntegrationTestScenarioSpec{
+				Application: hasApp.Name,
+				ResolverRef: v1beta2.ResolverRef{
+					Resolver: "git",
+					Params: []v1beta2.ResolverParameter{
+						{
+							Name:  "url",
+							Value: "https://github.com/redhat-appstudio/integration-examples.git",
+						},
+						{
+							Name:  "revision",
+							Value: "main",
+						},
+						{
+							Name:  "pathInRepo",
+							Value: "pipelineruns/integration_pipelinerun_pass.yaml",
+						},
+					},
+				},
+			},
+		}
+
+		Expect(k8sClient.Create(ctx, integrationTestScenario)).Should(Succeed())
 	})
 
 	BeforeEach(func() {
@@ -357,6 +398,8 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		err = k8sClient.Delete(ctx, successfulTaskRun)
 		Expect(err == nil || k8serrors.IsNotFound(err)).To(BeTrue())
 		err = k8sClient.Delete(ctx, failedTaskRun)
+		Expect(err == nil || k8serrors.IsNotFound(err)).To(BeTrue())
+		err = k8sClient.Delete(ctx, integrationTestScenario)
 		Expect(err == nil || k8serrors.IsNotFound(err)).To(BeTrue())
 	})
 
@@ -1410,6 +1453,165 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			})
 		})
 
+	})
+
+	When("a build PLR is triggered or retirggered, succeeded or failed", func() {
+		BeforeEach(func() {
+			ctrl := gomock.NewController(GinkgoT())
+			mockReporter = status.NewMockReporterInterface(ctrl)
+			mockStatus = status.NewMockStatusInterface(ctrl)
+			mockReporter.EXPECT().GetReporterName().Return("mocked-reporter").AnyTimes()
+			mockStatus.EXPECT().GetReporter(gomock.Any()).Return(mockReporter)
+			mockStatus.EXPECT().GetReporter(gomock.Any()).AnyTimes()
+			mockReporter.EXPECT().GetReporterName().AnyTimes()
+			mockReporter.EXPECT().Initialize(gomock.Any(), gomock.Any()).Times(1)
+			mockReporter.EXPECT().ReportStatus(gomock.Any(), gomock.Any()).Times(1)
+		})
+		It("ensure integration test is initialized from build PLR", func() {
+			buildPipelineRun.Status = tektonv1.PipelineRunStatus{
+				Status: v1.Status{
+					Conditions: v1.Conditions{
+						apis.Condition{
+							Reason: "Running",
+							Status: "Unknown",
+							Type:   apis.ConditionSucceeded,
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Status().Update(ctx, buildPipelineRun)).Should(Succeed())
+
+			buf = bytes.Buffer{}
+			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+			adapter = NewAdapter(ctx, buildPipelineRun, hasComp, hasApp, log, loader.NewMockLoader(), k8sClient)
+			adapter.status = mockStatus
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: loader.ApplicationContextKey,
+					Resource:   hasApp,
+				},
+				{
+					ContextKey: loader.AllIntegrationTestScenariosContextKey,
+					Resource:   []v1beta2.IntegrationTestScenario{*integrationTestScenario},
+				},
+			})
+
+			result, err := adapter.EnsureIntegrationTestReportedToGitProvider()
+			Expect(!result.CancelRequest && err == nil).To(BeTrue())
+			Expect(metadata.HasAnnotationWithValue(buildPipelineRun, helpers.SnapshotCreationReportAnnotation, intgteststat.BuildPLRInProgress.String())).To(BeTrue())
+
+			result, err = adapter.EnsureIntegrationTestReportedToGitProvider()
+			Expect(!result.CancelRequest && err == nil).To(BeTrue())
+			expectedLogEntry := "integration test has been set correctly or is being processed, no need to set integration test status from build pipelinerun"
+			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
+		})
+
+		It("ensure integration test is set from build PLR when build PLR fails", func() {
+			buildPipelineRun.Status = tektonv1.PipelineRunStatus{
+				Status: v1.Status{
+					Conditions: v1.Conditions{
+						apis.Condition{
+							Reason: "Failed",
+							Status: "False",
+							Type:   apis.ConditionSucceeded,
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Status().Update(ctx, buildPipelineRun)).Should(Succeed())
+
+			buf = bytes.Buffer{}
+			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+			adapter = NewAdapter(ctx, buildPipelineRun, hasComp, hasApp, log, loader.NewMockLoader(), k8sClient)
+			adapter.status = mockStatus
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: loader.ApplicationContextKey,
+					Resource:   hasApp,
+				},
+				{
+					ContextKey: loader.AllIntegrationTestScenariosContextKey,
+					Resource:   []v1beta2.IntegrationTestScenario{*integrationTestScenario},
+				},
+			})
+
+			result, err := adapter.EnsureIntegrationTestReportedToGitProvider()
+			Expect(!result.CancelRequest && err == nil).To(BeTrue())
+			Expect(metadata.HasAnnotationWithValue(buildPipelineRun, helpers.SnapshotCreationReportAnnotation, intgteststat.BuildPLRFailed.String())).To(BeTrue())
+
+			result, err = adapter.EnsureIntegrationTestReportedToGitProvider()
+			Expect(!result.CancelRequest && err == nil).To(BeTrue())
+			expectedLogEntry := "integration test has been set correctly or is being processed, no need to set integration test status from build pipelinerun"
+			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
+		})
+
+		It("ensure integration test is set from build PLR when build PLR succeeded but snapshot is not created", func() {
+			Expect(metadata.SetAnnotation(buildPipelineRun, helpers.CreateSnapshotAnnotationName, "failed to create snapshot due to error")).ShouldNot(HaveOccurred())
+			buf = bytes.Buffer{}
+			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+			adapter = NewAdapter(ctx, buildPipelineRun, hasComp, hasApp, log, loader.NewMockLoader(), k8sClient)
+			adapter.status = mockStatus
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: loader.ApplicationContextKey,
+					Resource:   hasApp,
+				},
+				{
+					ContextKey: loader.AllIntegrationTestScenariosContextKey,
+					Resource:   []v1beta2.IntegrationTestScenario{*integrationTestScenario},
+				},
+			})
+
+			result, err := adapter.EnsureIntegrationTestReportedToGitProvider()
+			Expect(!result.CancelRequest && err == nil).To(BeTrue())
+			Expect(metadata.HasAnnotationWithValue(buildPipelineRun, helpers.SnapshotCreationReportAnnotation, intgteststat.SnapshotCreationFailed.String())).To(BeTrue())
+
+			result, err = adapter.EnsureIntegrationTestReportedToGitProvider()
+			Expect(!result.CancelRequest && err == nil).To(BeTrue())
+			expectedLogEntry := "integration test has been set correctly or is being processed, no need to set integration test status from build pipelinerun"
+			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
+		})
+	})
+
+	When("integration status should not be set from build PLR", func() {
+		It("integration test will not be set from build PLR when build PLR succeeded and snapshot is created", func() {
+			Expect(metadata.SetAnnotation(buildPipelineRun, tekton.SnapshotNameLabel, "snashot-sample")).ShouldNot(HaveOccurred())
+			buf = bytes.Buffer{}
+			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+			adapter = NewAdapter(ctx, buildPipelineRun, hasComp, hasApp, log, loader.NewMockLoader(), k8sClient)
+			adapter.status = mockStatus
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: loader.ApplicationContextKey,
+					Resource:   hasApp,
+				},
+			})
+
+			result, err := adapter.EnsureIntegrationTestReportedToGitProvider()
+			Expect(!result.CancelRequest && err == nil).To(BeTrue())
+			Expect(metadata.HasAnnotationWithValue(buildPipelineRun, helpers.SnapshotCreationReportAnnotation, "SnapshotCreated")).To(BeTrue())
+			expectedLogEntry := "snapshot has been created for build pipelineRun, no need to report integration status from build pipelinerun status"
+			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
+		})
+
+		It("integration test will not be set from build PLR when build PLR is not from pac pull request event", func() {
+			Expect(metadata.DeleteLabel(buildPipelineRun, tekton.PipelineAsCodePullRequestLabel)).ShouldNot(HaveOccurred())
+			buf = bytes.Buffer{}
+			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+			adapter = NewAdapter(ctx, buildPipelineRun, hasComp, hasApp, log, loader.NewMockLoader(), k8sClient)
+			adapter.status = mockStatus
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: loader.ApplicationContextKey,
+					Resource:   hasApp,
+				},
+			})
+
+			result, err := adapter.EnsureIntegrationTestReportedToGitProvider()
+			Expect(!result.CancelRequest && err == nil).To(BeTrue())
+			expectedLogEntry := "build pipelineRun is not created by pull/merge request, no need to set integration test status in git provider"
+			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
+		})
 	})
 	createAdapter = func() *Adapter {
 		adapter = NewAdapter(ctx, buildPipelineRun, hasComp, hasApp, logger, loader.NewMockLoader(), k8sClient)

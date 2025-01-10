@@ -233,6 +233,9 @@ const (
 
 	//IntegrationTestStatusInProgressGithub is the status reported to github when integration test is in progress
 	IntegrationTestStatusInProgressGithub = "in_progress"
+
+	//IntegrationTestStatusCancelledGithub is the status reported to github when integration test is cancelled
+	IntegrationTestStatusCancelledGithub = "cancelled"
 )
 
 var (
