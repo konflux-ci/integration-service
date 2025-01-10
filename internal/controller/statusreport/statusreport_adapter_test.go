@@ -699,6 +699,64 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 
 	})
 
+	When("New Adapter is created for a manual override Snapshot", func() {
+		BeforeEach(func() {
+			buf = bytes.Buffer{}
+			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+
+			ctrl := gomock.NewController(GinkgoT())
+			mockReporter = status.NewMockReporterInterface(ctrl)
+			mockStatus = status.NewMockStatusInterface(ctrl)
+			mockStatus.EXPECT().GetReporter(gomock.Any()).AnyTimes()
+			mockReporter.EXPECT().GetReporterName().AnyTimes()
+			mockReporter.EXPECT().Initialize(gomock.Any(), gomock.Any()).Times(0)
+			mockReporter.EXPECT().ReportStatus(gomock.Any(), gomock.Any()).Times(0)
+
+			overrideSnapshot := hasSnapshot.DeepCopy()
+			overrideSnapshot.Labels[gitops.SnapshotTypeLabel] = gitops.SnapshotOverrideType
+			overrideSnapshot.Annotations[gitops.SnapshotTestsStatusAnnotation] = hasPRSnapshot.Annotations[gitops.SnapshotTestsStatusAnnotation]
+
+			adapter = NewAdapter(ctx, overrideSnapshot, hasApp, log, loader.NewMockLoader(), k8sClient)
+			adapter.status = mockStatus
+			Expect(reflect.TypeOf(adapter)).To(Equal(reflect.TypeOf(&Adapter{})))
+		})
+
+		It("ensures test status reporting is skipped", func() {
+			result, err := adapter.EnsureSnapshotTestStatusReportedToGitProvider()
+			Expect(result.CancelRequest).To(BeFalse())
+			Expect(err).ToNot(HaveOccurred())
+		})
+	})
+
+	When("New Adapter is created for a manual Snapshot", func() {
+		BeforeEach(func() {
+			buf = bytes.Buffer{}
+			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+
+			ctrl := gomock.NewController(GinkgoT())
+			mockReporter = status.NewMockReporterInterface(ctrl)
+			mockStatus = status.NewMockStatusInterface(ctrl)
+			mockStatus.EXPECT().GetReporter(gomock.Any()).AnyTimes()
+			mockReporter.EXPECT().GetReporterName().AnyTimes()
+			mockReporter.EXPECT().Initialize(gomock.Any(), gomock.Any()).Times(0)
+			mockReporter.EXPECT().ReportStatus(gomock.Any(), gomock.Any()).Times(0)
+
+			manualSnapshot := hasSnapshot.DeepCopy()
+			manualSnapshot.Labels[gitops.SnapshotTypeLabel] = ""
+			manualSnapshot.Annotations[gitops.SnapshotTestsStatusAnnotation] = hasPRSnapshot.Annotations[gitops.SnapshotTestsStatusAnnotation]
+
+			adapter = NewAdapter(ctx, manualSnapshot, hasApp, log, loader.NewMockLoader(), k8sClient)
+			adapter.status = mockStatus
+			Expect(reflect.TypeOf(adapter)).To(Equal(reflect.TypeOf(&Adapter{})))
+		})
+
+		It("ensures test status reporting is skipped", func() {
+			result, err := adapter.EnsureSnapshotTestStatusReportedToGitProvider()
+			Expect(result.CancelRequest).To(BeFalse())
+			Expect(err).ToNot(HaveOccurred())
+		})
+	})
+
 	When("testing ReportSnapshotStatus", func() {
 		BeforeEach(func() {
 			buf = bytes.Buffer{}
