@@ -48,7 +48,7 @@ const summaryTemplate = `
 
 {{ formatFootnotes .TaskRuns }}
 {{ if .ComponentSnapshotInfos}}
-The group snapshot is generated for the component snasphots as below:
+The group snapshot is generated for pr group {{ .PRGroup }} and the component snasphots as below:
 | Component | Snapshot | BuildPipelineRun | PullRequest |
 | --- | --- | --- | --- |
 {{- range $cs := .ComponentSnapshotInfos }}
@@ -61,6 +61,7 @@ type SummaryTemplateData struct {
 	TaskRuns               []*helpers.TaskRun
 	PipelineRunName        string
 	Namespace              string
+	PRGroup                string
 	ComponentSnapshotInfos []*gitops.ComponentSnapshotInfo
 	Logger                 logr.Logger
 }
@@ -79,7 +80,7 @@ type CommentTemplateData struct {
 }
 
 // FormatTestsSummary builds a markdown summary for a list of integration TaskRuns.
-func FormatTestsSummary(taskRuns []*helpers.TaskRun, pipelineRunName string, namespace string, componentSnapshotInfos []*gitops.ComponentSnapshotInfo, logger logr.Logger) (string, error) {
+func FormatTestsSummary(taskRuns []*helpers.TaskRun, pipelineRunName string, namespace string, componentSnapshotInfos []*gitops.ComponentSnapshotInfo, pr_group string, logger logr.Logger) (string, error) {
 	funcMap := template.FuncMap{
 		"formatTaskName":       FormatTaskName,
 		"formatNamespace":      FormatNamespace,
@@ -92,7 +93,7 @@ func FormatTestsSummary(taskRuns []*helpers.TaskRun, pipelineRunName string, nam
 		"formatRepoURL":        FormatRepoURL,
 	}
 	buf := bytes.Buffer{}
-	data := SummaryTemplateData{TaskRuns: taskRuns, PipelineRunName: pipelineRunName, Namespace: namespace, ComponentSnapshotInfos: componentSnapshotInfos, Logger: logger}
+	data := SummaryTemplateData{TaskRuns: taskRuns, PipelineRunName: pipelineRunName, Namespace: namespace, PRGroup: pr_group, ComponentSnapshotInfos: componentSnapshotInfos, Logger: logger}
 	t := template.Must(template.New("").Funcs(funcMap).Parse(summaryTemplate))
 	if err := t.Execute(&buf, data); err != nil {
 		return "", err

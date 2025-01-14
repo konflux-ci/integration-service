@@ -229,16 +229,9 @@ func (s *Status) GetReporter(snapshot *applicationapiv1alpha1.Snapshot) Reporter
 
 // GenerateTestReport generates TestReport to be used by all reporters
 func GenerateTestReport(ctx context.Context, client client.Client, detail intgteststat.IntegrationTestStatusDetail, testedSnapshot *applicationapiv1alpha1.Snapshot, componentName string) (*TestReport, error) {
-	var componentSnapshotInfos []*gitops.ComponentSnapshotInfo
 	var err error
-	if componentSnapshotInfoString, ok := testedSnapshot.Annotations[gitops.GroupSnapshotInfoAnnotation]; ok {
-		componentSnapshotInfos, err = gitops.UnmarshalJSON([]byte(componentSnapshotInfoString))
-		if err != nil {
-			return nil, fmt.Errorf("failed to unmarshal JSON string: %w", err)
-		}
-	}
 
-	text, err := generateText(ctx, client, detail, testedSnapshot.Namespace, componentSnapshotInfos)
+	text, err := generateText(ctx, client, detail, testedSnapshot)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate text message: %w", err)
 	}
@@ -271,20 +264,32 @@ func GenerateTestReport(ctx context.Context, client client.Client, detail intgte
 }
 
 // generateText generates a text with details for the given state
-func generateText(ctx context.Context, client client.Client, integrationTestStatusDetail intgteststat.IntegrationTestStatusDetail, namespace string, componentSnapshotInfos []*gitops.ComponentSnapshotInfo) (string, error) {
+func generateText(ctx context.Context, client client.Client, integrationTestStatusDetail intgteststat.IntegrationTestStatusDetail, snapshot *applicationapiv1alpha1.Snapshot) (string, error) {
 	log := log.FromContext(ctx)
+
+	var componentSnapshotInfos []*gitops.ComponentSnapshotInfo
+	var err error
+	if componentSnapshotInfoString, ok := snapshot.Annotations[gitops.GroupSnapshotInfoAnnotation]; ok {
+		componentSnapshotInfos, err = gitops.UnmarshalJSON([]byte(componentSnapshotInfoString))
+		if err != nil {
+			return "", fmt.Errorf("failed to unmarshal JSON string: %w", err)
+		}
+	}
+
+	pr_group := snapshot.GetAnnotations()[gitops.PRGroupAnnotation]
+
 	if integrationTestStatusDetail.Status == intgteststat.IntegrationTestStatusTestPassed || integrationTestStatusDetail.Status == intgteststat.IntegrationTestStatusTestFail {
 		pipelineRunName := integrationTestStatusDetail.TestPipelineRunName
 		pipelineRun := &tektonv1.PipelineRun{}
 		err := client.Get(ctx, types.NamespacedName{
-			Namespace: namespace,
+			Namespace: snapshot.Namespace,
 			Name:      pipelineRunName,
 		}, pipelineRun)
 
 		if err != nil {
 			if apierrors.IsNotFound(err) {
 				log.Error(err, "Failed to fetch pipelineRun", "pipelineRun.Name", pipelineRunName)
-				text := fmt.Sprintf("%s\n\n\n(Failed to fetch test result details because pipelineRun %s/%s can not be found.)", integrationTestStatusDetail.Details, namespace, pipelineRunName)
+				text := fmt.Sprintf("%s\n\n\n(Failed to fetch test result details because pipelineRun %s/%s can not be found.)", integrationTestStatusDetail.Details, snapshot.Namespace, pipelineRunName)
 				return text, nil
 			}
 
@@ -295,7 +300,7 @@ func generateText(ctx context.Context, client client.Client, integrationTestStat
 		if err != nil {
 			return "", fmt.Errorf("error while getting all child taskRuns from pipelineRun %s: %w", pipelineRunName, err)
 		}
-		text, err := FormatTestsSummary(taskRuns, pipelineRunName, namespace, componentSnapshotInfos, log)
+		text, err := FormatTestsSummary(taskRuns, pipelineRunName, snapshot.Namespace, componentSnapshotInfos, pr_group, log)
 		if err != nil {
 			return "", err
 		}
