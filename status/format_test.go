@@ -54,6 +54,7 @@ const expectedTaskLogURL = `https://definetly.not.prod/preview/application-pipel
 
 var message = "Taskrun Succeeded, lucky you!"
 var componentSnapshotInfos = []*gitops.ComponentSnapshotInfo{}
+var PRGroup string
 
 func newTaskRun(name string, startTime time.Time, completionTime time.Time) *helpers.TaskRun {
 	return helpers.NewTaskRunFromTektonTaskRun(name, &tektonv1.TaskRunStatus{
@@ -236,7 +237,7 @@ var _ = Describe("Formatters", func() {
 
 	It("CONSOLE_URL env var not set", func() {
 		os.Setenv("CONSOLE_URL", "")
-		text, err := status.FormatTestsSummary(taskRuns, pipelineRun.Name, pipelineRun.Namespace, componentSnapshotInfos, logr.Discard())
+		text, err := status.FormatTestsSummary(taskRuns, pipelineRun.Name, pipelineRun.Namespace, componentSnapshotInfos, PRGroup, logr.Discard())
 		Expect(err).To(Succeed())
 		Expect(text).To(ContainSubstring("https://CONSOLE_URL_NOT_AVAILABLE"))
 	})
@@ -248,7 +249,7 @@ var _ = Describe("Formatters", func() {
 	})
 
 	It("can construct a comment", func() {
-		text, err := status.FormatTestsSummary(taskRuns, pipelineRun.Name, pipelineRun.Namespace, componentSnapshotInfos, logr.Discard())
+		text, err := status.FormatTestsSummary(taskRuns, pipelineRun.Name, pipelineRun.Namespace, componentSnapshotInfos, PRGroup, logr.Discard())
 		Expect(err).To(Succeed())
 		comment, err := status.FormatComment("example-title", text)
 		Expect(err).To(BeNil())
@@ -262,7 +263,7 @@ var _ = Describe("Formatters", func() {
 	})
 
 	It("can construct a summary", func() {
-		summary, err := status.FormatTestsSummary(taskRuns, pipelineRun.Name, pipelineRun.Namespace, componentSnapshotInfos, logr.Discard())
+		summary, err := status.FormatTestsSummary(taskRuns, pipelineRun.Name, pipelineRun.Namespace, componentSnapshotInfos, PRGroup, logr.Discard())
 		Expect(err).To(BeNil())
 		Expect(summary).To(Equal(expectedSummary))
 	})
@@ -290,7 +291,7 @@ var _ = Describe("Formatters", func() {
 		})
 
 		It("won't fail when summary is generated from invalid result", func() {
-			_, err := status.FormatTestsSummary([]*helpers.TaskRun{taskRun}, pipelineRun.Name, pipelineRun.Namespace, componentSnapshotInfos, logr.Discard())
+			_, err := status.FormatTestsSummary([]*helpers.TaskRun{taskRun}, pipelineRun.Name, pipelineRun.Namespace, componentSnapshotInfos, PRGroup, logr.Discard())
 			Expect(err).To(Succeed())
 		})
 	})
@@ -312,7 +313,7 @@ var _ = Describe("Formatters", func() {
 		})
 
 		It("won't fail when summary is generated from taskrun without TEST_OUTPUT", func() {
-			_, err := status.FormatTestsSummary([]*helpers.TaskRun{taskRun}, pipelineRun.Name, pipelineRun.Namespace, componentSnapshotInfos, logr.Discard())
+			_, err := status.FormatTestsSummary([]*helpers.TaskRun{taskRun}, pipelineRun.Name, pipelineRun.Namespace, componentSnapshotInfos, PRGroup, logr.Discard())
 			Expect(err).To(Succeed())
 		})
 	})
@@ -354,8 +355,10 @@ var _ = Describe("Formatters", func() {
 				PullRequestNumber: "1",
 			},
 		}
+		PRGroup = "feature-1"
 		It("component snapshot info is generated", func() {
-			text, err := status.FormatTestsSummary([]*helpers.TaskRun{taskRun}, pipelineRun.Name, pipelineRun.Namespace, componentSnapshotInfos, logr.Discard())
+			text, err := status.FormatTestsSummary([]*helpers.TaskRun{taskRun}, pipelineRun.Name, pipelineRun.Namespace, componentSnapshotInfos, PRGroup, logr.Discard())
+			Expect(text).To(ContainSubstring("The group snapshot is generated for pr group feature-1 and the component snasphots as below:"))
 			Expect(text).To(ContainSubstring("| com3 | snapshot3 | <a href=\"https://definetly.not.prod/preview/application-pipeline/ns/default/pipelinerun/buildPLR3\">buildPLR3</a> | <a href=\"https://github.com/example/pull/1\">example</a> |"))
 			Expect(err).To(Succeed())
 		})
