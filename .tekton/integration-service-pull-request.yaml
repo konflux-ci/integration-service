@@ -99,6 +99,10 @@ spec:
       description: Execute the build with network isolation
       name: hermetic
       type: string
+    - default: []
+      description: Array of --build-arg values ("arg=value" strings) for buildah
+      name: build-args
+      type: array
     - default: ""
       description: Build dependencies to be prefetched by Cachi2
       name: prefetch-input
@@ -229,6 +233,14 @@ spec:
           value: '{{ source_branch }}'
         - name: revision
           value: '{{ revision }}'
+        - name: repository-url
+          value: '{{ repo_url }}'
+        - name: test-event
+          value: '{{ event_type }}'
+        - name: pull-request-number
+          value: '{{ pull_request_number }}'
+        - name: target-branch
+          value: '{{ target_branch }}'
         - name: oci-storage
           value: $(params.output-image).sealights.git
     - name: prefetch-dependencies
@@ -236,7 +248,7 @@ spec:
       - name: input
         value: $(params.prefetch-input)
       runAfter:
-      - clone-repository
+      - sealights-instrumentation
       taskRef:
         params:
         - name: name
@@ -289,6 +301,43 @@ spec:
       workspaces:
       - name: source
         workspace: workspace
+    - name: build-sealights-container
+      params:
+      - name: IMAGE
+        value: $(params.output-image).sealights
+      - name: DOCKERFILE
+        value: $(params.dockerfile)
+      - name: CONTEXT
+        value: $(params.path-context)
+      - name: HERMETIC
+        value: $(params.hermetic)
+      - name: PREFETCH_INPUT
+        value: $(params.prefetch-input)
+      - name: IMAGE_EXPIRES_AFTER
+        value: $(params.image-expires-after)
+      - name: COMMIT_SHA
+        value: $(tasks.clone-repository.results.commit)
+      - name: BUILD_ARGS
+        value:
+        - $(params.build-args[*])
+      - name: SOURCE_ARTIFACT
+        value: $(tasks.sealights-instrumentation.results.source-artifact)
+      runAfter:
+      - prefetch-dependencies
+      taskRef:
+        params:
+        - name: name
+          value: buildah-oci-ta
+        - name: bundle
+          value: quay.io/konflux-ci/tekton-catalog/task-buildah-oci-ta:0.2@sha256:937f465189482f3279b9491161fff7720d4c443f27e6d9febbf2344268383011
+        - name: kind
+          value: task
+        resolver: bundles
+      when:
+      - input: $(tasks.init.results.build)
+        operator: in
+        values:
+        - "true"
     - name: rpms-signature-scan
       params:
       - name: image-digest

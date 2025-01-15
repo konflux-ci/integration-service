@@ -2,7 +2,7 @@
 FROM registry.access.redhat.com/ubi9/go-toolset:9.5-1734626445 as builder
 
 WORKDIR /opt/app-root/src
-
+USER root
 # Copy the Go Modules manifests
 COPY go.mod go.mod
 COPY go.sum go.sum
@@ -11,19 +11,7 @@ COPY go.sum go.sum
 RUN go mod download
 
 # Copy the go source
-COPY cmd/main.go cmd/main.go
-COPY api/ api/
-COPY internal/controller/ internal/controller/
-COPY tekton/ tekton/
-COPY helpers/ helpers/
-COPY gitops/ gitops/
-COPY pkg/ pkg/
-COPY release/ release/
-COPY status/ status/
-COPY git/ git/
-COPY loader/ loader/
-COPY cache/ cache/
-COPY cmd/ cmd/
+COPY . .
 
 # Build
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -o manager cmd/main.go \
