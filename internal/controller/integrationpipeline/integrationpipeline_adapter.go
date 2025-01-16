@@ -99,8 +99,9 @@ func (a *Adapter) EnsureStatusReportedInSnapshot() (controller.OperationResult, 
 		return controller.RequeueWithError(fmt.Errorf("failed to update test status in snapshot: %w", err))
 	}
 
-	// Remove the finalizer from Integration PLRs if the snapshot is the override and its PLR has finished
-	if gitops.IsOverrideSnapshot(a.snapshot) && (h.HasPipelineRunFinished(a.pipelineRun) || pipelinerunStatus == intgteststat.IntegrationTestStatusDeleted) {
+	// Remove the finalizer from Integration PLRs if the snapshot is not group or component type and its PLR has finished
+	if (!gitops.IsGroupSnapshot(a.snapshot) && !gitops.IsComponentSnapshot(a.snapshot)) && (h.HasPipelineRunFinished(a.pipelineRun) ||
+		pipelinerunStatus == intgteststat.IntegrationTestStatusDeleted) {
 		err = h.RemoveFinalizerFromPipelineRun(a.context, a.client, a.logger, a.pipelineRun, h.IntegrationPipelineRunFinalizer)
 		if err != nil {
 			return controller.RequeueWithError(fmt.Errorf("failed to remove the finalizer: %w", err))
