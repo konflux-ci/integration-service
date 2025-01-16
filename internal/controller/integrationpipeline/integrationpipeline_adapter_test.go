@@ -18,6 +18,7 @@ package integrationpipeline
 
 import (
 	"fmt"
+	"k8s.io/apimachinery/pkg/types"
 	"reflect"
 	"time"
 
@@ -58,6 +59,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		hasApp                                *applicationapiv1alpha1.Application
 		hasSnapshot                           *applicationapiv1alpha1.Snapshot
 		snapshotPREvent                       *applicationapiv1alpha1.Snapshot
+		overrideSnapshot                      *applicationapiv1alpha1.Snapshot
 		integrationTestScenario               *v1beta2.IntegrationTestScenario
 		integrationTestScenarioFailed         *v1beta2.IntegrationTestScenario
 	)
@@ -756,14 +758,52 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		})
 	})
 
-	When("GetIntegrationPipelineRunStatus is called with an Integration PLR with non-nil Deletion timestamp", func() {
+	When("EnsureStatusReportedInSnapshot is called with an Integration PLR with non-nil Deletion timestamp and an override Snapshot", func() {
 		BeforeEach(func() {
+			overrideSnapshot = &applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "snapshot-override-sample",
+					Namespace: "default",
+					Labels: map[string]string{
+						gitops.SnapshotTypeLabel:      gitops.SnapshotOverrideType,
+						gitops.SnapshotComponentLabel: hasComp.Name,
+					},
+					Annotations: map[string]string{
+						gitops.PipelineAsCodeInstallationIDAnnotation: "123",
+					},
+				},
+				Spec: applicationapiv1alpha1.SnapshotSpec{
+					Application: hasApp.Name,
+					Components: []applicationapiv1alpha1.SnapshotComponent{
+						{
+							Name:           hasComp.Name,
+							ContainerImage: SampleImage,
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, overrideSnapshot)).Should(Succeed())
+
 			intgPipelineRunWithDeletionTimestamp = &tektonv1.PipelineRun{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "pipelinerun-component-sample-deletion-timestamp",
 					Namespace: "default",
+					Labels: map[string]string{
+						"pipelines.appstudio.openshift.io/type":           "test",
+						"pac.test.appstudio.openshift.io/url-org":         "redhat-appstudio",
+						"pac.test.appstudio.openshift.io/original-prname": "build-service-on-push",
+						"pac.test.appstudio.openshift.io/url-repository":  "build-service",
+						"pac.test.appstudio.openshift.io/repository":      "build-service-pac",
+						"appstudio.openshift.io/snapshot":                 overrideSnapshot.Name,
+						"test.appstudio.openshift.io/scenario":            integrationTestScenarioFailed.Name,
+						"appstudio.openshift.io/application":              hasApp.Name,
+						"appstudio.openshift.io/component":                hasComp.Name,
+					},
 					Annotations: map[string]string{
 						"pac.test.appstudio.openshift.io/on-target-branch": "[main]",
+					},
+					Finalizers: []string{
+						"test.appstudio.openshift.io/pipelinerun",
 					},
 				},
 				Spec: tektonv1.PipelineRunSpec{
@@ -791,21 +831,53 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			now := metav1.NewTime(metav1.Now().Add(time.Second * 1))
 			intgPipelineRunWithDeletionTimestamp.SetDeletionTimestamp(&now)
 
-			adapter = NewAdapter(ctx, intgPipelineRunWithDeletionTimestamp, hasApp, hasSnapshot, logger, loader.NewMockLoader(), k8sClient)
+			adapter = NewAdapter(ctx, intgPipelineRunWithDeletionTimestamp, hasApp, overrideSnapshot, logger, loader.NewMockLoader(), k8sClient)
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: loader.SnapshotContextKey,
+					Resource:   overrideSnapshot,
+				},
+				{
+					ContextKey: loader.PipelineRunsContextKey,
+					Resource:   []tektonv1.PipelineRun{*intgPipelineRunWithDeletionTimestamp},
+				},
+			})
 		})
 
 		AfterEach(func() {
 			err := k8sClient.Delete(ctx, intgPipelineRunWithDeletionTimestamp)
 			Expect(err == nil || k8serrors.IsNotFound(err)).To(BeTrue())
+			err = k8sClient.Delete(ctx, overrideSnapshot)
+			Expect(err == nil || k8serrors.IsNotFound(err)).To(BeTrue())
 		})
 
-		It("ensures test status in snapshot is updated to failed", func() {
-			status, detail, err := adapter.GetIntegrationPipelineRunStatus(adapter.context, adapter.client, intgPipelineRunWithDeletionTimestamp)
+		It("ensures test status in snapshot is updated to deleted", func() {
+			status, pipelineRunDetail, err := adapter.GetIntegrationPipelineRunStatus(adapter.context, adapter.client, intgPipelineRunWithDeletionTimestamp)
 
 			Expect(err).ToNot(HaveOccurred())
 			Expect(status).To(Equal(intgteststat.IntegrationTestStatusDeleted))
-			Expect(detail).To(ContainSubstring(fmt.Sprintf("Integration test which is running as pipeline run '%s', has been deleted", intgPipelineRunWithDeletionTimestamp.Name)))
+			Expect(pipelineRunDetail).To(ContainSubstring(fmt.Sprintf("Integration test which is running as pipeline run '%s', has been deleted", intgPipelineRunWithDeletionTimestamp.Name)))
 			Expect(intgPipelineRunWithDeletionTimestamp.DeletionTimestamp).ToNot(BeNil())
+			Expect(intgPipelineRunWithDeletionTimestamp.Finalizers).To(ContainElement(ContainSubstring("test.appstudio.openshift.io/pipelinerun")))
+
+			result, err := adapter.EnsureStatusReportedInSnapshot()
+			Expect(!result.CancelRequest && err == nil).To(BeTrue())
+
+			statuses, err := gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(overrideSnapshot)
+			Expect(err).ToNot(HaveOccurred())
+
+			detail, ok := statuses.GetScenarioStatus(integrationTestScenarioFailed.Name)
+			Expect(ok).To(BeTrue())
+			Expect(detail.Status).To(Equal(intgteststat.IntegrationTestStatusDeleted))
+			Expect(detail.TestPipelineRunName).To(Equal(intgPipelineRunWithDeletionTimestamp.Name))
+
+			Eventually(func() bool {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      intgPipelineRunWithDeletionTimestamp.Name,
+					Namespace: intgPipelineRunWithDeletionTimestamp.Namespace,
+				}, intgPipelineRunWithDeletionTimestamp)
+				return err == nil && !controllerutil.ContainsFinalizer(intgPipelineRunWithDeletionTimestamp, helpers.IntegrationPipelineRunFinalizer)
+			}, time.Second*20).Should(BeTrue())
 		})
 	})
 
