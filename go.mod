@@ -24,7 +24,7 @@ require (
 	go.uber.org/mock v0.4.0
 	go.uber.org/zap v1.27.0
 	golang.org/x/exp v0.0.0-20240719175910-8a7402abbf56
-	golang.org/x/oauth2 v0.24.0
+	golang.org/x/oauth2 v0.25.0
 	k8s.io/api v0.29.6
 	k8s.io/apimachinery v0.29.7
 	k8s.io/client-go v1.5.2
