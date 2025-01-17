@@ -26,14 +26,18 @@ import (
 	"k8s.io/client-go/util/retry"
 
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
+	"github.com/konflux-ci/integration-service/api/v1beta2"
 	"github.com/konflux-ci/integration-service/gitops"
 	h "github.com/konflux-ci/integration-service/helpers"
 	"github.com/konflux-ci/integration-service/loader"
+	intgteststat "github.com/konflux-ci/integration-service/pkg/integrationteststatus"
+	"github.com/konflux-ci/integration-service/status"
 	"github.com/konflux-ci/integration-service/tekton"
 	"github.com/konflux-ci/operator-toolkit/controller"
 	"github.com/konflux-ci/operator-toolkit/metadata"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
@@ -47,6 +51,7 @@ type Adapter struct {
 	logger      h.IntegrationLogger
 	client      client.Client
 	context     context.Context
+	status      status.StatusInterface
 }
 
 // NewAdapter creates and returns an Adapter instance.
@@ -61,6 +66,7 @@ func NewAdapter(context context.Context, pipelineRun *tektonv1.PipelineRun, comp
 		loader:      loader,
 		client:      client,
 		context:     context,
+		status:      status.NewStatus(logger.Logger, client),
 	}
 }
 
@@ -187,6 +193,72 @@ func (a *Adapter) EnsurePRGroupAnnotated() (controller.OperationResult, error) {
 		"pipelineRun.Name", a.pipelineRun.Name)
 
 	return controller.ContinueProcessing()
+}
+
+// EnsureIntegrationTestReportedToGitProvider is an operation that will ensure that the integration test status is initialized as pending
+// state when build PLR is triggered/retriggered or cancelled/failed when failing to create snapshot
+// to prevent PR/MR from being automerged unexpectedly and also show the snapshot creation failure on PR/MR
+func (a *Adapter) EnsureIntegrationTestReportedToGitProvider() (controller.OperationResult, error) {
+	if tekton.IsPLRCreatedByPACPushEvent(a.pipelineRun) {
+		a.logger.Info("build pipelineRun is not created by pull/merge request, no need to set integration test status in git provider")
+		return controller.ContinueProcessing()
+	}
+
+	if metadata.HasAnnotation(a.pipelineRun, tekton.SnapshotNameLabel) {
+		SnapshotCreated := "SnapshotCreated"
+		a.logger.Info("snapshot has been created for build pipelineRun, no need to report integration status from build pipelinerun status")
+		if !metadata.HasAnnotationWithValue(a.pipelineRun, h.SnapshotCreationReportAnnotation, SnapshotCreated) {
+			if err := tekton.AnnotateBuildPipelineRun(a.context, a.pipelineRun, h.SnapshotCreationReportAnnotation, SnapshotCreated, a.client); err != nil {
+				a.logger.Error(err, "failed to annotate build pipelineRun")
+				return controller.RequeueWithError(err)
+			}
+		}
+		return controller.ContinueProcessing()
+	}
+
+	integrationTestStatus := getIntegrationTestStatusFromBuildPLR(a.pipelineRun)
+
+	if integrationTestStatus == intgteststat.IntegrationTestStatus(0) {
+		a.logger.Info("integration test has been set correctly or is being processed, no need to set integration test status from build pipelinerun")
+		return controller.ContinueProcessing()
+	}
+
+	a.logger.Info("try to set integration test status according to the build PLR status")
+	tempSnapshot := a.prepareTemporarySnapshot(a.pipelineRun)
+
+	allIntegrationTestScenarios, err := a.loader.GetAllIntegrationTestScenariosForApplication(a.context, a.client, a.application)
+	if err != nil {
+		a.logger.Error(err, "Failed to get integration test scenarios for the following application",
+			"Application.Namespace", a.application.Namespace, "Application.Name", a.application.Name)
+		return controller.RequeueWithError(err)
+	}
+
+	if allIntegrationTestScenarios != nil {
+		// Handle context in integrationTestScenario, but defer handling of 'group' for now
+		integrationTestScenarios := gitops.FilterIntegrationTestScenariosWithContext(allIntegrationTestScenarios, tempSnapshot)
+		a.logger.Info(
+			fmt.Sprintf("Found %d IntegrationTestScenarios for application", len(*integrationTestScenarios)),
+			"Application.Name", a.application.Name,
+			"IntegrationTestScenarios", len(*integrationTestScenarios))
+		if len(*integrationTestScenarios) == 0 {
+			a.logger.Info("no need to report integration test status since no integrationTestScenario can be applied to snapshot created for build pipelinerun")
+			return controller.ContinueProcessing()
+		}
+
+		err := a.ReportIntegrationTestStatusAccordingToBuildPLR(a.pipelineRun, tempSnapshot, integrationTestScenarios, integrationTestStatus, a.component)
+		if err != nil {
+			a.logger.Error(err, "failed to report snapshot creation status to git provider from build pipelineRun",
+				"pipelineRun.Namespace", a.pipelineRun.Namespace, "pipelineRun.Name", a.pipelineRun.Name)
+			return controller.RequeueWithError(err)
+		}
+
+		if err = tekton.AnnotateBuildPipelineRun(a.context, a.pipelineRun, h.SnapshotCreationReportAnnotation, integrationTestStatus.String(), a.client); err != nil {
+			a.logger.Error(err, fmt.Sprintf("failed to write build plr annotation %s", h.SnapshotCreationReportAnnotation))
+			return controller.RequeueWithError(fmt.Errorf("failed to write snapshot report status metadata for annotation %s: %w", h.SnapshotCreationReportAnnotation, err))
+		}
+	}
+	return controller.ContinueProcessing()
+
 }
 
 // getImagePullSpecFromPipelineRun gets the full image pullspec from the given build PipelineRun,
@@ -453,4 +525,128 @@ func (a *Adapter) addPRGroupToBuildPLRMetadata(pipelineRun *tektonv1.PipelineRun
 	}
 	a.logger.Info("can't find source branch info in build PLR, not need to update build pipelineRun metadata")
 	return nil
+}
+
+// prepareTemporarySnapshot will create a temporary snapshot object to copy the labels/annotations from build pipelinerun
+// and be used to communicate with git provider
+func (a *Adapter) prepareTemporarySnapshot(pipelineRun *tektonv1.PipelineRun) *applicationapiv1alpha1.Snapshot {
+	tempSnapshot := &applicationapiv1alpha1.Snapshot{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "tempSnapshot",
+			Namespace: pipelineRun.Namespace,
+		},
+	}
+	prefixes := []string{gitops.BuildPipelineRunPrefix, gitops.TestLabelPrefix, gitops.CustomLabelPrefix}
+	gitops.CopySnapshotLabelsAndAnnotations(a.application, tempSnapshot, a.component.Name, &pipelineRun.ObjectMeta, prefixes)
+	return tempSnapshot
+}
+
+func (a *Adapter) ReportIntegrationTestStatusAccordingToBuildPLR(pipelineRun *tektonv1.PipelineRun, snapshot *applicationapiv1alpha1.Snapshot, integrationTestScenarios *[]v1beta2.IntegrationTestScenario,
+	integrationTestStatus intgteststat.IntegrationTestStatus, component *applicationapiv1alpha1.Component) error {
+	reporter := a.status.GetReporter(snapshot)
+	if reporter == nil {
+		a.logger.Info("No suitable reporter found, skipping report")
+		return nil
+	}
+	a.logger.Info(fmt.Sprintf("Detected reporter: %s", reporter.GetReporterName()))
+
+	if err := reporter.Initialize(a.context, snapshot); err != nil {
+		a.logger.Error(err, "Failed to initialize reporter", "reporter", reporter.GetReporterName())
+		return fmt.Errorf("failed to initialize reporter: %w", err)
+	}
+	a.logger.Info("Reporter initialized", "reporter", reporter.GetReporterName())
+
+	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		err := a.iterateIntegrationTestInStatusReport(reporter, pipelineRun, snapshot, integrationTestScenarios, integrationTestStatus, component)
+		if err != nil {
+			a.logger.Error(err, fmt.Sprintf("failed to report integration test status according to build pipelinerun %s/%s",
+				pipelineRun.Namespace, pipelineRun.Name))
+			return fmt.Errorf("failed to report integration test status according to build pipelineRun %s/%s: %w",
+				pipelineRun.Namespace, pipelineRun.Name, err)
+		}
+
+		a.logger.Info("Successfully report integration test status for build pipelineRun",
+			"pipelineRun.Namespace", pipelineRun.Namespace,
+			"pipelineRun.Name", pipelineRun.Name,
+			"build pipelineRun Status", integrationTestStatus.String())
+
+		return err
+	})
+
+	if err != nil {
+		return fmt.Errorf("issue occurred during generating or updating report status: %w", err)
+	}
+
+	a.logger.Info(fmt.Sprintf("Successfully updated the %s annotation", gitops.SnapshotStatusReportAnnotation), "pipelinerun.Name", pipelineRun.Name)
+
+	return nil
+}
+
+// iterates integrationTestScenarios to set integration test status in PR/MR
+func (a *Adapter) iterateIntegrationTestInStatusReport(reporter status.ReporterInterface,
+	buildPLR *tektonv1.PipelineRun,
+	snapshot *applicationapiv1alpha1.Snapshot,
+	integrationTestScenarios *[]v1beta2.IntegrationTestScenario,
+	intgteststatus intgteststat.IntegrationTestStatus,
+	component *applicationapiv1alpha1.Component) error {
+
+	details := generateDetails(buildPLR, intgteststatus)
+	integrationTestStatusDetail := intgteststat.IntegrationTestStatusDetail{
+		Status:  intgteststatus,
+		Details: details,
+	}
+	for _, integrationTestScenario := range *integrationTestScenarios {
+		integrationTestScenario := integrationTestScenario //G601
+		integrationTestStatusDetail.ScenarioName = integrationTestScenario.Name
+
+		testReport, reportErr := status.GenerateTestReport(a.context, a.client, integrationTestStatusDetail, snapshot, component.Name)
+		if reportErr != nil {
+			return fmt.Errorf("failed to generate test report: %w", reportErr)
+		}
+		if reportStatusErr := reporter.ReportStatus(a.context, *testReport); reportStatusErr != nil {
+			return fmt.Errorf("failed to report status to git provider: %w", reportStatusErr)
+		}
+	}
+	return nil
+}
+
+// getIntegrationTestStatusFromBuildPLR get the build PLR status to decide the integration test status
+// reported to PR/MR when build PLR is triggered/retriggered, build PLR fails or snapshot can't be created
+func getIntegrationTestStatusFromBuildPLR(plr *tektonv1.PipelineRun) intgteststat.IntegrationTestStatus {
+	var integrationTestStatus intgteststat.IntegrationTestStatus
+	// when build pipeline is triggered/retriggered, we need to set integration test status to pending
+	if !h.HasPipelineRunFinished(plr) && !metadata.HasAnnotationWithValue(plr, h.SnapshotCreationReportAnnotation, intgteststat.BuildPLRInProgress.String()) {
+		integrationTestStatus = intgteststat.BuildPLRInProgress
+		return integrationTestStatus
+	}
+	// when build pipeline fails, we need to set integreation test to canceled or failed
+	if h.HasPipelineRunFinished(plr) && !h.HasPipelineRunSucceeded(plr) && !metadata.HasAnnotationWithValue(plr, h.SnapshotCreationReportAnnotation, intgteststat.BuildPLRFailed.String()) {
+		integrationTestStatus = intgteststat.BuildPLRFailed
+		return integrationTestStatus
+	}
+	// when build pipeline succeeds but snapshot is not created, we need to set integration test to canceled or failed
+	if h.HasPipelineRunSucceeded(plr) && metadata.HasAnnotation(plr, h.CreateSnapshotAnnotationName) && !metadata.HasAnnotation(plr, tekton.SnapshotNameLabel) && !metadata.HasAnnotationWithValue(plr, h.SnapshotCreationReportAnnotation, intgteststat.SnapshotCreationFailed.String()) {
+		integrationTestStatus = intgteststat.SnapshotCreationFailed
+		return integrationTestStatus
+	}
+	return integrationTestStatus
+}
+
+// generateDetails generates details for integrationTestStatusDetail
+func generateDetails(buildPLR *tektonv1.PipelineRun, integrationTestStatus intgteststat.IntegrationTestStatus) string {
+	details := ""
+	if integrationTestStatus == intgteststat.BuildPLRInProgress {
+		details = fmt.Sprintf("build pipelinerun %s/%s is still in progress", buildPLR.Namespace, buildPLR.Name)
+	}
+	if integrationTestStatus == intgteststat.SnapshotCreationFailed {
+		if failureReason, ok := buildPLR.Annotations[h.CreateSnapshotAnnotationName]; ok {
+			details = fmt.Sprintf("build pipelinerun %s/%s succeeds but snapshot is not created due to error: %s", buildPLR.Namespace, buildPLR.Name, failureReason)
+		} else {
+			details = fmt.Sprintf("failed to create snapshot but can't find reason from build plr annotation %s", h.CreateSnapshotAnnotationName)
+		}
+	}
+	if integrationTestStatus == intgteststat.BuildPLRFailed {
+		details = fmt.Sprintf("build pipelinerun %s/%s failed, so that snapshot is not created. Please fix build pipelinerun failure and try again.", buildPLR.Namespace, buildPLR.Name)
+	}
+	return details
 }

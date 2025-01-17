@@ -16,6 +16,7 @@ new_pipeline_run_without_prgroup{PR group is added to pipelineRun metadata?}
 get_pipeline_run{Pipeline updated?}
 failed_pipeline_run{Pipeline failed?}
 finalizer_exists{Does the finalizer already exist?}
+need_to_set_integration_test{Build pipelineRun is newly triggered?<br>Or Build pipelineRun failed?<br> Or Failing to create snapshot?}
 retrieve_associated_entity(Retrieve the entity <br> component/application)
 determine_snapshot{Does a snapshot exist?}
 prep_snapshot(Gather Application components<br> Add new component)
@@ -28,12 +29,15 @@ continue[Continue processing]
 update_metadata(add PR group info to build pipelineRun metadata)
 notify_pr_group_failure(annotate Snapshots and in-flight builds in PR group with failure message)
 failed_group_pipeline_run{Pipeline failed?}
+update_integrationTestStatus_in_git_provider(Create checkRun/commitStatus in<br>git provider)
+update_build_plr_annotation(Update build pipelineRun annotation<br>test.appstudio.openshift.io/snapshot-creation-report<br>with the status)
 
 %% Node connections
 predicate                        --> get_pipeline_run
 predicate                       -->  new_pipeline_run
 predicate                       -->  new_pipeline_run_without_prgroup
 predicate                       -->  failed_pipeline_run
+predicate                       -->  need_to_set_integration_test
 new_pipeline_run           --Yes-->  finalizer_exists
 finalizer_exists           --No-->   add_finalizer
 add_finalizer                    --> continue
@@ -55,6 +59,10 @@ prep_snapshot                    --> check_chains
 check_chains               --Yes --> annotate_pipelineRun
 annotate_pipelineRun       --Yes --> remove_finalizer
 remove_finalizer                 --> continue
+need_to_set_integration_test  --Yes --> update_integrationTestStatus_in_git_provider
+need_to_set_integration_test  --No  --> continue
+update_integrationTestStatus_in_git_provider --> update_build_plr_annotation
+update_build_plr_annotation --> continue
 
 %% Assigning styles to nodes
 class predicate Amber;
