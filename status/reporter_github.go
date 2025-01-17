@@ -518,7 +518,7 @@ func generateCheckRunTitle(state intgteststat.IntegrationTestStatus) (string, er
 	var title string
 
 	switch state {
-	case intgteststat.IntegrationTestStatusPending:
+	case intgteststat.IntegrationTestStatusPending, intgteststat.BuildPLRInProgress:
 		title = "Pending"
 	case intgteststat.IntegrationTestStatusInProgress:
 		title = "In Progress"
@@ -530,7 +530,9 @@ func generateCheckRunTitle(state intgteststat.IntegrationTestStatus) (string, er
 		title = "Deleted"
 	case intgteststat.IntegrationTestStatusTestPassed:
 		title = "Succeeded"
-	case intgteststat.IntegrationTestStatusTestFail:
+	case intgteststat.IntegrationTestStatusTestFail,
+		intgteststat.SnapshotCreationFailed,
+		intgteststat.BuildPLRFailed:
 		title = "Failed"
 	default:
 		return title, fmt.Errorf("unknown status")
@@ -552,8 +554,11 @@ func generateCheckRunConclusion(state intgteststat.IntegrationTestStatus) (strin
 		conclusion = gitops.IntegrationTestStatusFailureGithub
 	case intgteststat.IntegrationTestStatusTestPassed:
 		conclusion = gitops.IntegrationTestStatusSuccessGithub
-	case intgteststat.IntegrationTestStatusPending, intgteststat.IntegrationTestStatusInProgress:
+	case intgteststat.IntegrationTestStatusPending, intgteststat.IntegrationTestStatusInProgress,
+		intgteststat.BuildPLRInProgress:
 		conclusion = ""
+	case intgteststat.SnapshotCreationFailed, intgteststat.BuildPLRFailed:
+		conclusion = gitops.IntegrationTestStatusCancelledGithub
 	default:
 		return conclusion, fmt.Errorf("unknown status")
 	}
@@ -568,14 +573,16 @@ func generateGithubCommitState(state intgteststat.IntegrationTestStatus) (string
 	var commitState string
 
 	switch state {
-	case intgteststat.IntegrationTestStatusTestFail:
+	case intgteststat.IntegrationTestStatusTestFail, intgteststat.SnapshotCreationFailed,
+		intgteststat.BuildPLRFailed:
 		commitState = gitops.IntegrationTestStatusFailureGithub
 	case intgteststat.IntegrationTestStatusEnvironmentProvisionError_Deprecated, intgteststat.IntegrationTestStatusDeploymentError_Deprecated,
 		intgteststat.IntegrationTestStatusDeleted, intgteststat.IntegrationTestStatusTestInvalid:
 		commitState = gitops.IntegrationTestStatusErrorGithub
 	case intgteststat.IntegrationTestStatusTestPassed:
 		commitState = gitops.IntegrationTestStatusSuccessGithub
-	case intgteststat.IntegrationTestStatusPending, intgteststat.IntegrationTestStatusInProgress:
+	case intgteststat.IntegrationTestStatusPending, intgteststat.IntegrationTestStatusInProgress,
+		intgteststat.BuildPLRInProgress:
 		commitState = gitops.IntegrationTestStatusPendingGithub
 	default:
 		return commitState, fmt.Errorf("unknown status")

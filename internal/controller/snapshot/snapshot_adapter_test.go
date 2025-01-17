@@ -1076,7 +1076,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 				},
 			})
 			result, err := adapter.EnsureIntegrationPipelineRunsExist()
-			Expect(buf.String()).Should(ContainSubstring("Failed to get Integration test scenarios for the following application"))
+			Expect(buf.String()).Should(ContainSubstring("Failed to get integration test scenarios for the following application"))
 			Expect(buf.String()).Should(ContainSubstring("Failed to get all required IntegrationTestScenarios"))
 			Expect(result.CancelRequest).To(BeTrue())
 			Expect(result.RequeueRequest).To(BeFalse())

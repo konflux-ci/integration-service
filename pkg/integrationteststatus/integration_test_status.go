@@ -45,6 +45,12 @@ const (
 	IntegrationTestStatusTestPassed // TestPassed
 	// Integration PLR is invalid
 	IntegrationTestStatusTestInvalid // TestInvalid
+	// Build PLR is in progress
+	BuildPLRInProgress // BuildPLRInProgress
+	// Snapshot is not created
+	SnapshotCreationFailed // SnapshotCreationFailed
+	// Build pipelinerun failed
+	BuildPLRFailed // BuildPLRFailed
 )
 
 const integrationTestStatusesSchema = `{
@@ -168,7 +174,7 @@ func (sits *SnapshotIntegrationTestStatuses) UpdateTestStatusIfChanged(scenarioN
 			detail.StartTime = &timestamp
 			// null CompletionTime because testing started again
 			detail.CompletionTime = nil
-		case IntegrationTestStatusPending:
+		case IntegrationTestStatusPending, BuildPLRInProgress:
 			// null all timestamps as test is not inProgress neither in final state
 			detail.StartTime = nil
 			detail.CompletionTime = nil
@@ -177,7 +183,10 @@ func (sits *SnapshotIntegrationTestStatuses) UpdateTestStatusIfChanged(scenarioN
 			IntegrationTestStatusDeleted,
 			IntegrationTestStatusTestFail,
 			IntegrationTestStatusTestPassed,
-			IntegrationTestStatusTestInvalid:
+			IntegrationTestStatusTestInvalid,
+			SnapshotCreationFailed,
+			BuildPLRFailed:
+
 			detail.CompletionTime = &timestamp
 		}
 	}
