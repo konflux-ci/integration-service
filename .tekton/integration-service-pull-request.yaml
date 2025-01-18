@@ -131,9 +131,6 @@ spec:
     - description: ""
       name: CHAINS-GIT_COMMIT
       value: $(tasks.clone-repository.results.commit)
-    - description: ""
-      name: JAVA_COMMUNITY_DEPENDENCIES
-      value: $(tasks.build-container.results.JAVA_COMMUNITY_DEPENDENCIES)
     tasks:
     - name: init
       params:
@@ -243,12 +240,46 @@ spec:
           value: '{{ target_branch }}'
         - name: oci-storage
           value: $(params.output-image).sealights.git
+    - name: sealights-unit-tests
+      runAfter:
+        - sealights-instrumentation
+      taskSpec:
+        volumes:
+          - name: sealights-credentials
+            secret:
+              secretName: sealights-credentials
+          - name: workdir
+            emptyDir: {}
+        stepTemplate:
+          volumeMounts:
+            - mountPath: /var/workdir
+              name: workdir
+            - name: sealights-credentials
+              mountPath: /usr/local/sealights-credentials
+        steps:
+          - name: use-trusted-artifact
+            image: quay.io/redhat-appstudio/build-trusted-artifacts:latest@sha256:52f1391e6f1c472fd10bb838f64fae2ed3320c636f536014978a5ddbdfc6b3af
+            args:
+              - use
+              - $(tasks.sealights-instrumentation.results.source-artifact)=/var/workdir/source
+          - name: unit-tests
+            image: registry.access.redhat.com/ubi8/go-toolset:1.22.7
+            securityContext:
+              runAsUser: 0
+            workingDir: /var/workdir/source
+            script: |
+              #!/bin/bash
+              set -euo pipefail
+
+              export SEALIGHTS_TOKEN="$(cat /usr/local/sealights-credentials/token)"
+
+              make test
     - name: prefetch-dependencies
       params:
       - name: input
         value: $(params.prefetch-input)
       runAfter:
-      - sealights-instrumentation
+      - sealights-unit-tests
       taskRef:
         params:
         - name: name
@@ -304,7 +335,7 @@ spec:
     - name: build-sealights-container
       params:
       - name: IMAGE
-        value: $(params.output-image).sealights
+        value: $(params.output-image)-sealights
       - name: DOCKERFILE
         value: $(params.dockerfile)
       - name: CONTEXT
