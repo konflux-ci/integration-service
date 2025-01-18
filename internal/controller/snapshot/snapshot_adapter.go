@@ -221,7 +221,7 @@ func (a *Adapter) EnsureIntegrationPipelineRunsExist() (controller.OperationResu
 
 	allIntegrationTestScenarios, err := a.loader.GetAllIntegrationTestScenariosForApplication(a.context, a.client, a.application)
 	if err != nil {
-		a.logger.Error(err, "Failed to get Integration test scenarios for the following application",
+		a.logger.Error(err, "Failed to get integration test scenarios for the following application",
 			"Application.Namespace", a.application.Namespace)
 	}
 

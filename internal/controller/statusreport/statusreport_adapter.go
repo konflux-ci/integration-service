@@ -71,7 +71,8 @@ func NewAdapter(context context.Context, snapshot *applicationapiv1alpha1.Snapsh
 // The status is reported to git provider if it is a component snapshot
 // Or reported to git providers which trigger component snapshots included in group snapshot if it is a group snapshot
 func (a *Adapter) EnsureSnapshotTestStatusReportedToGitProvider() (controller.OperationResult, error) {
-	if gitops.IsOverrideSnapshot(a.snapshot) {
+	// Only report status for component or group Snapshots
+	if !gitops.IsGroupSnapshot(a.snapshot) && !gitops.IsComponentSnapshot(a.snapshot) {
 		return controller.ContinueProcessing()
 	}
 	err := a.ReportSnapshotStatus(a.snapshot)
@@ -291,7 +292,7 @@ func (a *Adapter) ReportSnapshotStatus(testedSnapshot *applicationapiv1alpha1.Sn
 	}
 
 	if err != nil {
-		return fmt.Errorf("issue occured during generating or updating report status: %w", err)
+		return fmt.Errorf("issue occurred during generating or updating report status: %w", err)
 	}
 
 	a.logger.Info(fmt.Sprintf("Successfully updated the %s annotation", gitops.SnapshotStatusReportAnnotation), "snapshot.Name", testedSnapshot.Name)
