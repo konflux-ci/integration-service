@@ -99,6 +99,10 @@ spec:
       description: Execute the build with network isolation
       name: hermetic
       type: string
+    - default: []
+      description: Array of --build-arg values ("arg=value" strings) for buildah
+      name: build-args
+      type: array
     - default: ""
       description: Build dependencies to be prefetched by Cachi2
       name: prefetch-input
@@ -172,12 +176,110 @@ spec:
         workspace: workspace
       - name: basic-auth
         workspace: git-auth
+    - name: clone-repository-oci
+      params:
+      - name: url
+        value: $(params.git-url)
+      - name: revision
+        value: $(params.revision)
+      - name: ociStorage
+        value: $(params.output-image).git
+      - name: ociArtifactExpiresAfter
+        value: $(params.image-expires-after)
+      runAfter:
+      - init
+      taskRef:
+        params:
+        - name: name
+          value: git-clone-oci-ta
+        - name: bundle
+          value: quay.io/konflux-ci/tekton-catalog/task-git-clone-oci-ta:0.1@sha256:4bf48d038ff12d25bdeb5ab3e98dc2271818056f454c83d7393ebbd413028147
+        - name: kind
+          value: task
+        resolver: bundles
+      when:
+      - input: $(tasks.init.results.build)
+        operator: in
+        values:
+        - "true"
+      workspaces:
+      - name: basic-auth
+        workspace: git-auth
+    - name: sealights-instrumentation
+      runAfter:
+        - clone-repository-oci
+      taskRef:
+        resolver: git
+        params:
+          - name: url
+            value: https://github.com/flacatus/tekton-integration-catalog.git
+          - name: revision
+            value: t_event
+          - name: pathInRepo
+            value: tasks/sealights/sealights-go-instrumentation/0.1/sealights-go-instrumentation.yaml
+      params:
+        - name: source-artifact
+          value: $(tasks.clone-repository-oci.results.SOURCE_ARTIFACT)
+        - name: go-version
+          value: "1.22"
+        - name: sealights-secret
+          value: "sealights-credentials"
+        - name: component
+          value: '{{ repo_name }}'
+        - name: branch
+          value: '{{ source_branch }}'
+        - name: revision
+          value: '{{ revision }}'
+        - name: repository-url
+          value: '{{ repo_url }}'
+        - name: test-event
+          value: '{{ event_type }}'
+        - name: pull-request-number
+          value: '{{ pull_request_number }}'
+        - name: target-branch
+          value: '{{ target_branch }}'
+        - name: oci-storage
+          value: $(params.output-image).sealights.git
+    - name: sealights-unit-tests
+      runAfter:
+        - sealights-instrumentation
+      taskSpec:
+        volumes:
+          - name: sealights-credentials
+            secret:
+              secretName: sealights-credentials
+          - name: workdir
+            emptyDir: {}
+        stepTemplate:
+          volumeMounts:
+            - mountPath: /var/workdir
+              name: workdir
+            - name: sealights-credentials
+              mountPath: /usr/local/sealights-credentials
+        steps:
+          - name: use-trusted-artifact
+            image: quay.io/redhat-appstudio/build-trusted-artifacts:latest@sha256:52f1391e6f1c472fd10bb838f64fae2ed3320c636f536014978a5ddbdfc6b3af
+            args:
+              - use
+              - $(tasks.sealights-instrumentation.results.source-artifact)=/var/workdir/source
+          - name: unit-tests
+            image: registry.access.redhat.com/ubi8/go-toolset:1.22.7
+            securityContext:
+              runAsUser: 0
+            workingDir: /var/workdir/source
+            script: |
+              #!/bin/bash
+              set -euo pipefail
+
+              export SEALIGHTS_TOKEN="$(cat /usr/local/sealights-credentials/token)"
+
+              make test
     - name: prefetch-dependencies
       params:
       - name: input
         value: $(params.prefetch-input)
       runAfter:
-      - clone-repository
+      - sealights-unit-tests
       taskRef:
         params:
         - name: name
@@ -230,6 +332,43 @@ spec:
       workspaces:
       - name: source
         workspace: workspace
+    - name: build-sealights-container
+      params:
+      - name: IMAGE
+        value: $(params.output-image)-sealights
+      - name: DOCKERFILE
+        value: $(params.dockerfile)
+      - name: CONTEXT
+        value: $(params.path-context)
+      - name: HERMETIC
+        value: $(params.hermetic)
+      - name: PREFETCH_INPUT
+        value: $(params.prefetch-input)
+      - name: IMAGE_EXPIRES_AFTER
+        value: $(params.image-expires-after)
+      - name: COMMIT_SHA
+        value: $(tasks.clone-repository.results.commit)
+      - name: BUILD_ARGS
+        value:
+        - $(params.build-args[*])
+      - name: SOURCE_ARTIFACT
+        value: $(tasks.sealights-instrumentation.results.source-artifact)
+      runAfter:
+      - prefetch-dependencies
+      taskRef:
+        params:
+        - name: name
+          value: buildah-oci-ta
+        - name: bundle
+          value: quay.io/konflux-ci/tekton-catalog/task-buildah-oci-ta:0.2@sha256:937f465189482f3279b9491161fff7720d4c443f27e6d9febbf2344268383011
+        - name: kind
+          value: task
+        resolver: bundles
+      when:
+      - input: $(tasks.init.results.build)
+        operator: in
+        values:
+        - "true"
     - name: rpms-signature-scan
       params:
       - name: image-digest
