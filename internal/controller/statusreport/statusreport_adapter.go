@@ -308,7 +308,7 @@ func (a *Adapter) iterateIntegrationTestStatusDetailsInStatusReport(reporter sta
 	// set componentName to component name of component snapshot or pr group name of group snapshot when reporting status to git provider
 	componentName := ""
 	if gitops.IsGroupSnapshot(testedSnapshot) {
-		componentName = "pr group " + testedSnapshot.Annotations[gitops.PRGroupAnnotation]
+		componentName = "pr group"
 	} else if gitops.IsComponentSnapshot(testedSnapshot) {
 		componentName = testedSnapshot.Labels[gitops.SnapshotComponentLabel]
 	} else {
