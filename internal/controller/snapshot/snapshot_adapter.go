@@ -657,18 +657,6 @@ func (a *Adapter) createMissingReleasesForReleasePlans(application *applicationa
 				"release.Name", existingRelease.Name)
 		} else {
 			newRelease := release.NewReleaseForReleasePlan(&releasePlan, snapshot)
-			// Propagate PAC annotations/labels from Snapshot to Release
-			_ = metadata.CopyAnnotationsByPrefix(&snapshot.ObjectMeta, &newRelease.ObjectMeta, gitops.PipelinesAsCodePrefix)
-			_ = metadata.CopyLabelsByPrefix(&snapshot.ObjectMeta, &newRelease.ObjectMeta, gitops.PipelinesAsCodePrefix)
-
-			// Propagate annotations/labels prefixed with 'appstudio.openshift.io' from Snapshot to Release
-			_ = metadata.CopyLabelsByPrefix(&snapshot.ObjectMeta, &newRelease.ObjectMeta, gitops.AppstudioLabelPrefix)
-			_ = metadata.CopyAnnotationsByPrefix(&snapshot.ObjectMeta, &newRelease.ObjectMeta, gitops.AppstudioLabelPrefix)
-
-			err := ctrl.SetControllerReference(application, newRelease, a.client.Scheme())
-			if err != nil {
-				return err
-			}
 			err = a.client.Create(a.context, newRelease)
 			if err != nil {
 				return err
