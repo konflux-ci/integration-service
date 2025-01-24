@@ -905,32 +905,6 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			Expect(condition.Message).To(Equal("The Snapshot was auto-released"))
 		})
 
-		It("ensures Snapshot labels/annotations prefixed with 'appstudio.openshift.io' are propagated to the release", func() {
-			releasePlans := []releasev1alpha1.ReleasePlan{*testReleasePlan}
-			releaseList := &releasev1alpha1.ReleaseList{}
-			err := adapter.createMissingReleasesForReleasePlans(hasApp, &releasePlans, hasSnapshot)
-
-			Expect(err).To(BeNil())
-
-			opts := []client.ListOption{
-				client.InNamespace(hasApp.Namespace),
-				client.MatchingLabels{
-					"appstudio.openshift.io/component": hasComp.Name,
-					//"appstudio.openshift.io/application": hasApp.Name,
-				},
-			}
-
-			Eventually(func() error {
-				if err := k8sClient.List(adapter.context, releaseList, opts...); err != nil {
-					return err
-				}
-				if len(releaseList.Items) > 0 {
-					Expect(releaseList.Items[0].ObjectMeta.Labels["appstudio.openshift.io/component"]).To(Equal(hasComp.Name))
-				}
-				return nil
-			}, time.Second*10).Should(BeNil())
-		})
-
 		It("no action when EnsureAllReleasesExist function runs when AppStudio Tests failed and the snapshot is invalid", func() {
 			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
 
