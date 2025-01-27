@@ -103,6 +103,8 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{}, nil
 	}
 
+	logger = logger.WithApp(*application)
+
 	adapter := NewAdapter(ctx, application, scenario, logger, loader, r.Client)
 
 	return controller.ReconcileHandler([]controller.Operation{
