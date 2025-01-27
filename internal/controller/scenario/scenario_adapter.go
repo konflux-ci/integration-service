@@ -69,20 +69,6 @@ func (a *Adapter) EnsureCreatedScenarioIsValid() (controller.OperationResult, er
 		return controller.ContinueProcessing()
 	}
 
-	// Check if application exists or not
-	if a.application == nil {
-		a.logger.Info("Application for Scenario was not found.")
-
-		patch := client.MergeFrom(a.scenario.DeepCopy())
-		h.SetScenarioIntegrationStatusAsInvalid(a.scenario, "Failed to get application for Scenario.")
-		err := a.client.Status().Patch(a.context, a.scenario, patch)
-		if err != nil {
-			a.logger.Error(err, "Failed to update Scenario")
-			return controller.RequeueWithError(err)
-		}
-		return controller.ContinueProcessing()
-	}
-
 	// application exist, always log it
 	a.logger = a.logger.WithApp(*a.application)
 	// Checks if scenario has ownerReference assigned to it
