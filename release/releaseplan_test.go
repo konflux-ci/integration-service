@@ -17,7 +17,10 @@ limitations under the License.
 package release_test
 
 import (
+	"strings"
+
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
+	"github.com/konflux-ci/integration-service/gitops"
 	integrationservicerelease "github.com/konflux-ci/integration-service/release"
 	releasev1alpha1 "github.com/konflux-ci/release-service/api/v1alpha1"
 	releasemetadata "github.com/konflux-ci/release-service/metadata"
@@ -91,9 +94,38 @@ var _ = Describe("Release functions for managing Releases", Ordered, func() {
 	})
 
 	It("ensures the Release can be created for ReleasePlan and is labelled as automated", func() {
-		createdRelease := integrationservicerelease.NewReleaseForReleasePlan(releasePlan, hasSnapshot)
+		createdRelease := integrationservicerelease.NewReleaseForReleasePlan(ctx, releasePlan, hasSnapshot)
 		Expect(createdRelease.Spec.ReleasePlan).To(Equal(releasePlan.Name))
 		Expect(createdRelease.GetLabels()[releasemetadata.AutomatedLabel]).To(Equal("true"))
+	})
+
+	It("ensures that due to missing SHA annotation in Snapshot, Release name doesnt contain SHA in it", func() {
+		createdRelease := integrationservicerelease.NewReleaseForReleasePlan(ctx, releasePlan, hasSnapshot)
+		Expect(k8sClient.Create(ctx, createdRelease)).Should(Succeed())
+		Expect(strings.Split(createdRelease.Name, "-")).To(HaveLen(4)) // SHA value missing from Release's name
+	})
+
+	It("ensures that due to presence of SHA annotation in Snapshot, Release name contains SHA in it", func() {
+		ann := map[string]string{}
+		ann[gitops.PipelineAsCodeSHAAnnotation] = "imshahahaha"
+		hasSnapshot.SetAnnotations(ann)
+		Expect(k8sClient.Update(ctx, hasSnapshot)).Should(Succeed())
+
+		createdRelease := integrationservicerelease.NewReleaseForReleasePlan(ctx, releasePlan, hasSnapshot)
+		Expect(k8sClient.Create(ctx, createdRelease)).Should(Succeed())
+		Expect(strings.Split(createdRelease.Name, "-")).To(HaveLen(5)) // must include SHA value in Name
+		Expect(createdRelease.Name).To(ContainSubstring("imshaha"))    // Release name should contain only first 7 chars of SHA
+	})
+
+	It("ensures that due to presence of SHA annotation with empty value, Release name doesn't have SHA in it", func() {
+		ann := map[string]string{}
+		ann[gitops.PipelineAsCodeSHAAnnotation] = ""
+		hasSnapshot.SetAnnotations(ann)
+		Expect(k8sClient.Update(ctx, hasSnapshot)).Should(Succeed())
+
+		createdRelease := integrationservicerelease.NewReleaseForReleasePlan(ctx, releasePlan, hasSnapshot)
+		Expect(k8sClient.Create(ctx, createdRelease)).Should(Succeed())
+		Expect(strings.Split(createdRelease.Name, "-")).To(HaveLen(4)) // SHA value missing from Release's name
 	})
 
 	It("ensures the matching Release can be found for ReleasePlan", func() {

@@ -17,17 +17,25 @@ limitations under the License.
 package release
 
 import (
+	"context"
+
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
+	"github.com/konflux-ci/integration-service/gitops"
 	releasev1alpha1 "github.com/konflux-ci/release-service/api/v1alpha1"
 	releasemetadata "github.com/konflux-ci/release-service/metadata"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // NewReleaseForReleasePlan creates the Release for a given ReleasePlan.
-func NewReleaseForReleasePlan(releasePlan *releasev1alpha1.ReleasePlan, snapshot *applicationapiv1alpha1.Snapshot) *releasev1alpha1.Release {
+func NewReleaseForReleasePlan(ctx context.Context, releasePlan *releasev1alpha1.ReleasePlan, snapshot *applicationapiv1alpha1.Snapshot) *releasev1alpha1.Release {
+	shaShort := gitops.GetShaFromSnapshot(ctx, snapshot)
+	if shaShort != "" {
+		shaShort = "-" + shaShort
+	}
+
 	newRelease := &releasev1alpha1.Release{
 		ObjectMeta: metav1.ObjectMeta{
-			GenerateName: snapshot.Name + "-",
+			GenerateName: snapshot.Name + shaShort + "-",
 			Namespace:    snapshot.Namespace,
 			Labels: map[string]string{
 				releasemetadata.AutomatedLabel: "true",
