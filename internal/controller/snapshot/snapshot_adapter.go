@@ -656,7 +656,7 @@ func (a *Adapter) createMissingReleasesForReleasePlans(application *applicationa
 				"releasePlan.Name", releasePlan.Name,
 				"release.Name", existingRelease.Name)
 		} else {
-			newRelease := release.NewReleaseForReleasePlan(&releasePlan, snapshot)
+			newRelease := release.NewReleaseForReleasePlan(a.context, &releasePlan, snapshot)
 			err = a.client.Create(a.context, newRelease)
 			if err != nil {
 				return err
