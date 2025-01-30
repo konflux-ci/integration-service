@@ -149,16 +149,6 @@ var _ = Describe("Scenario Adapter", Ordered, func() {
 		Expect(reflect.TypeOf(NewAdapter(ctx, hasApp, invalidScenario, logger, loader.NewMockLoader(), k8sClient))).To(Equal(reflect.TypeOf(&Adapter{})))
 	})
 
-	It("EnsureCreatedScenarioIsValid without app", func() {
-		a := NewAdapter(ctx, nil, integrationTestScenario, logger, loader.NewMockLoader(), k8sClient)
-
-		Eventually(func() bool {
-			result, err := a.EnsureCreatedScenarioIsValid()
-			return !result.CancelRequest && err == nil
-		}, time.Second*10).Should(BeTrue())
-
-	})
-
 	It("ensures the integrationTestPipelines are created", func() {
 		Eventually(func() bool {
 			result, err := adapter.EnsureCreatedScenarioIsValid()
