@@ -18,6 +18,7 @@ package scenario
 
 import (
 	"reflect"
+	"time"
 
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -34,6 +35,7 @@ import (
 
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
 	"github.com/konflux-ci/integration-service/api/v1beta2"
+	"github.com/konflux-ci/integration-service/helpers"
 	crwebhook "sigs.k8s.io/controller-runtime/pkg/webhook"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -204,6 +206,14 @@ var _ = Describe("ScenarioController", Ordered, func() {
 			_, err := scenarioReconciler.Reconcile(ctx, reqInvalid)
 			return err
 		}).Should(BeNil())
+
+		Eventually(func() bool {
+			err := k8sClient.Get(ctx, types.NamespacedName{
+				Namespace: failScenario.Namespace,
+				Name:      failScenario.Name,
+			}, failScenario)
+			return err == nil && failScenario.Status.Conditions != nil && !helpers.IsScenarioValid(failScenario)
+		}, time.Second*20).Should(BeTrue())
 	})
 
 	It("can setup a new Controller manager and start it", func() {
