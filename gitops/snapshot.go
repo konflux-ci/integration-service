@@ -1158,3 +1158,27 @@ func GetSourceRepoOwnerFromSnapshot(snapshot *applicationapiv1alpha1.Snapshot) s
 	}
 	return ""
 }
+
+// GetShaFromSnapshot returns the value of "pac.test.appstudio.openshift.io/sha"
+// annotation of length 7 for short SHA from the Snapshot, if it exists.
+// If the SHA is shorter than 7 characters, it returns it as is.
+// If the SHA is empty, it logs an info message and returns an empty string.
+func GetShaFromSnapshot(ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot) string {
+	log := log.FromContext(ctx)
+
+	sha, found := snapshot.GetAnnotations()[PipelineAsCodeSHAAnnotation]
+	if found {
+		if len(sha) == 0 {
+			log.Info(fmt.Sprintf("annotation '%s' in Snapshot '%s' is present but empty", PipelineAsCodeSHAAnnotation, snapshot.Name))
+			return ""
+		}
+		if len(sha) >= 7 {
+			return sha[:7]
+		}
+		return sha // Return as is if shorter than 7 characters
+	}
+
+	log.Info(fmt.Sprintf("annotation '%s' not found in Snapshot '%s', won't add SHA value to the Release name", PipelineAsCodeSHAAnnotation, snapshot.Name))
+
+	return ""
+}
