@@ -184,9 +184,8 @@ func (r *GitLabReporter) setCommitStatus(report TestReport) error {
 		}
 		existingCommitStatus = r.GetExistingCommitStatus(allCommitStatuses, report.FullName)
 
-		// special case, we want to skip updating commit status if the status from running to running, from enque to pending
-		if existingCommitStatus != nil && (existingCommitStatus.Status == "enqueue" ||
-			existingCommitStatus.Status == string(gitlab.Running)) {
+		// special case, we want to skip updating commit status if the status from running to running, from pending to pending
+		if existingCommitStatus != nil && existingCommitStatus.Status == string(glState) {
 			r.logger.Info("Skipping commit status update",
 				"scenario.name", report.ScenarioName,
 				"commitStatus.ID", existingCommitStatus.ID,
@@ -201,7 +200,7 @@ func (r *GitLabReporter) setCommitStatus(report TestReport) error {
 
 	commitStatus, _, err := r.client.Commits.SetCommitStatus(r.sourceProjectID, r.sha, &opt)
 	if err != nil {
-		return fmt.Errorf("failed to set commit status: %w", err)
+		return fmt.Errorf("failed to set commit status to %s: %w", string(glState), err)
 	}
 
 	r.logger.Info("Created gitlab commit status", "scenario.name", report.ScenarioName, "commitStatus.ID", commitStatus.ID, "TargetURL", opt.TargetURL)
