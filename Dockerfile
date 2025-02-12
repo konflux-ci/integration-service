@@ -1,29 +1,19 @@
 # Build the manager binary
 FROM registry.access.redhat.com/ubi9/go-toolset:9.5-1739267472 as builder
 
+USER 1001
+
 WORKDIR /opt/app-root/src
 
 # Copy the Go Modules manifests
-COPY go.mod go.mod
-COPY go.sum go.sum
+COPY --chown=1001:0 go.mod go.mod
+COPY --chown=1001:0 go.sum go.sum
 # cache deps before building and copying source so that we don't need to re-download as much
 # and so that source changes don't invalidate our downloaded layer
 RUN go mod download
 
 # Copy the go source
-COPY cmd/main.go cmd/main.go
-COPY api/ api/
-COPY internal/controller/ internal/controller/
-COPY tekton/ tekton/
-COPY helpers/ helpers/
-COPY gitops/ gitops/
-COPY pkg/ pkg/
-COPY release/ release/
-COPY status/ status/
-COPY git/ git/
-COPY loader/ loader/
-COPY cache/ cache/
-COPY cmd/ cmd/
+COPY --chown=1001:0 . .
 
 # Build
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -o manager cmd/main.go \
