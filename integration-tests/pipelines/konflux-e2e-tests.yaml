@@ -17,6 +17,11 @@ spec:
     - name: test-name
       description: 'The name of the test corresponding to a defined Konflux integration test.'
       default: ''
+    - name: test-stage
+      default: 'integration-service-e2e'
+      description: >-
+        "The name or identifier of the testing phase (e.g., "integration", "e2e") during which the results
+          are being captured. This helps distinguish the test results within Sealights for better reporting and traceability"
     - name: ocp-version
       description: 'The OpenShift version to use for the ephemeral cluster deployment.'
       type: string
@@ -42,7 +47,23 @@ spec:
       default: 'none'
       description: 'Container image built from any konflux git repo. Use this param only when you run Konflux e2e tests
         in another Konflux component repo. Will pass the component built image from the snapshot.'
+    - name: enable-sealights
+      description: "A flag to enable or disable the Sealights integration feature. When set to 'true', test results are sent to Sealights for analysis; otherwise, this feature is skipped."
+      default: "true"
   tasks:
+    - name: sealights-refs
+      taskRef:
+        resolver: git
+        params:
+          - name: url
+            value: https://github.com/konflux-ci/tekton-integration-catalog.git
+          - name: revision
+            value: main
+          - name: pathInRepo
+            value: tasks/sealights/sealights-get-refs/0.1/sealights-get-refs.yaml
+      params:
+        - name: SNAPSHOT
+          value: $(params.SNAPSHOT)
     - name: rosa-hcp-metadata
       taskRef:
         resolver: git
@@ -72,6 +93,7 @@ spec:
       runAfter:
         - rosa-hcp-metadata
         - test-metadata
+        - sealights-refs
       taskRef:
         resolver: git
         params:
@@ -126,6 +148,12 @@ spec:
           value: $(tasks.provision-rosa.results.ocp-login-command)
         - name: component-image
           value: $(tasks.test-metadata.results.container-image)
+        - name: sealights-bsid
+          value: $(tasks.sealights-refs.results.sealights-bsid)
+        - name: test-stage
+          value: $(params.test-stage)
+        - name: enable-sealights
+          value: $(params.enable-sealights)
   finally:
     - name: deprovision-rosa-collect-artifacts
       taskRef:
