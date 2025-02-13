@@ -23,6 +23,12 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
+
+	"errors"
+	"fmt"
+	neturl "net/url"
+	"regexp"
+	"strings"
 )
 
 func (r *IntegrationTestScenario) SetupWebhookWithManager(mgr ctrl.Manager) error {
@@ -88,7 +94,68 @@ func (r *IntegrationTestScenario) ValidateCreate() (warnings admission.Warnings,
 
 	}
 
+	if r.Spec.ResolverRef.Resolver == "git" {
+		var paramErrors error
+		for _, param := range r.Spec.ResolverRef.Params {
+			switch key := param.Name; key {
+			case "url", "serverURL":
+				paramErrors = errors.Join(paramErrors, validateUrl(key, param.Value))
+			case "token":
+				paramErrors = errors.Join(paramErrors, validateToken(param.Value))
+			default:
+				paramErrors = errors.Join(paramErrors, validateNoWhitespace(key, param.Value))
+			}
+		}
+		if paramErrors != nil {
+			return nil, paramErrors
+		}
+	}
+
 	return nil, nil
+}
+
+// Returns an error if 'value' contains leading or trailing whitespace
+func validateNoWhitespace(key, value string) error {
+	r, _ := regexp.Compile(`(^\s+)|(\s+$)`)
+	if r.MatchString(value) {
+		return fmt.Errorf("integration Test Scenario Git resolver param with name '%s', cannot have leading or trailing whitespace", key)
+	}
+	return nil
+}
+
+// Returns an error if the string is not a syntactically valid URL. URL must
+// begin with 'https://'
+func validateUrl(key, url string) error {
+	err := validateNoWhitespace(key, url)
+	if err != nil {
+		// trim whitespace so we can validate the rest of the url
+		url = strings.TrimSpace(url)
+	}
+	_, uriErr := neturl.ParseRequestURI(url)
+	if uriErr != nil {
+		return errors.Join(err, uriErr)
+	}
+
+	if !strings.HasPrefix(url, "https://") {
+		return errors.Join(err, fmt.Errorf("'%s' param value must begin with 'https://'", key))
+	}
+
+	return err
+}
+
+// Returns an error if the string is not a valid name based on RFC1123. See
+// https://kubernetes.io/docs/concepts/overview/working-with-objects/names
+func validateToken(token string) error {
+	validationErrors := validation.IsDNS1123Label(token)
+	if len(validationErrors) > 0 {
+		var err error
+		for _, e := range validationErrors {
+			err = errors.Join(err, errors.New(e))
+		}
+		return err
+	}
+
+	return nil
 }
 
 // ValidateUpdate implements webhook.Validator so a webhook will be registered for the type

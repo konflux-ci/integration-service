@@ -117,7 +117,7 @@ var _ = Describe("IntegrationTestScenario webhook", func() {
 					Params: []ResolverParameter{
 						{
 							Name:  "url",
-							Value: "http://url",
+							Value: "https://url",
 						},
 						{
 							Name:  "revision",
@@ -142,4 +142,57 @@ var _ = Describe("IntegrationTestScenario webhook", func() {
 		Expect(k8sClient.Create(ctx, integrationTestScenarioInvalidGitResolver)).ShouldNot(Succeed())
 	})
 
+	It("should return nil when string contains neither leading nor trailing whitespace", func() {
+		testString := "this is a test string"
+		err := validateNoWhitespace("testString", testString)
+		Expect(err).NotTo(HaveOccurred())
+	})
+
+	It("should return an error when string contains leading whitespace", func() {
+		testString := " this is a test string"
+		err := validateNoWhitespace("testString", testString)
+		Expect(err).To(HaveOccurred())
+	})
+
+	It("should return an error when string contains trailing whitespace", func() {
+		testString := "this is a test string "
+		err := validateNoWhitespace("testString", testString)
+		Expect(err).To(HaveOccurred())
+	})
+
+	It("should return nil when provided with a valid url", func() {
+		url := "https://github.com/konflux-ci/integration-examples"
+		err := validateUrl("serverURL", url)
+		Expect(err).NotTo(HaveOccurred())
+	})
+
+	It("should return an error when provided with an invalid url", func() {
+		url := "konflux-ci/integration-examples"
+		err := validateUrl("serverURL", url)
+		Expect(err).To(HaveOccurred())
+	})
+
+	It("should return an error when provided with a url without 'https://'", func() {
+		url := "http://github.com/konflux-ci/integration-examples"
+		err := validateUrl("serverURL", url)
+		Expect(err).To(HaveOccurred())
+	})
+
+	It("should return an error when url contains whitespace", func() {
+		url := " https://github.com/konflux-ci/integration-examples "
+		err := validateUrl("serverURL", url)
+		Expect(err).To(HaveOccurred())
+	})
+
+	It("should return nil when token is a valid k8s secret name", func() {
+		token := "my-secret"
+		err := validateToken(token)
+		Expect(err).NotTo(HaveOccurred())
+	})
+
+	It("should return nil when token is a valid k8s secret name", func() {
+		token := "My_Secret"
+		err := validateToken(token)
+		Expect(err).To(HaveOccurred())
+	})
 })
