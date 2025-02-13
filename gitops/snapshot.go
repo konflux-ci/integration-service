@@ -182,6 +182,9 @@ const (
 	//AppStudioTestSucceededCondition is the condition for marking if the AppStudio Tests succeeded for the Snapshot.
 	AppStudioTestSucceededCondition = "AppStudioTestSucceeded"
 
+	//AppStudioTestCanceledCondition is the condition for marking if the AppStudio Tests canceled for the Snapshot.
+	AppStudioTestCanceledCondition = "AppStudioTestCanceled"
+
 	//LegacyTestSucceededCondition is the condition for marking if the AppStudio Tests succeeded for the Snapshot.
 	LegacyTestSucceededCondition = "HACBSStudioTestSucceeded"
 
@@ -204,6 +207,9 @@ const (
 	// AppStudioTestSucceededConditionFailed is the reason that's set when the AppStudio tests fail.
 	AppStudioTestSucceededConditionFailed = "Failed"
 
+	// AppStudioTestCanceledConditionSatisfied is the reason that's set when the AppStudio tests cancel.
+	AppStudioIntegrationStatusCanceled = "Canceled"
+
 	// AppStudioIntegrationStatusInvalid is the reason that's set when the AppStudio integration gets into an invalid state.
 	AppStudioIntegrationStatusInvalid = "Invalid"
 
@@ -215,6 +221,9 @@ const (
 
 	//AppStudioIntegrationStatusFinished is the reason that's set when the AppStudio tests finish.
 	AppStudioIntegrationStatusFinished = "Finished"
+
+	//AppStudioIntegrationStatusCancelled is the reason that's set when the AppStudio tests pipelinerun gets cancelled.
+	AppStudioIntegrationStatusCancelled = "CancelledRunFinally"
 
 	// the statuses needed to report to GiHub when creating check run or commit status, see doc
 	// https://docs.github.com/en/rest/guides/using-the-rest-api-to-interact-with-checks?apiVersion=2022-11-28
@@ -328,6 +337,28 @@ func MarkSnapshotAsFailed(ctx context.Context, adapterClient client.Client, snap
 		Type:    AppStudioTestSucceededCondition,
 		Status:  metav1.ConditionFalse,
 		Reason:  AppStudioTestSucceededConditionFailed,
+		Message: message,
+	}
+	meta.SetStatusCondition(&snapshot.Status.Conditions, condition)
+
+	err := adapterClient.Status().Patch(ctx, snapshot, patch)
+	if err != nil {
+		return err
+	}
+
+	snapshotCompletionTime := &metav1.Time{Time: time.Now()}
+	go metrics.RegisterCompletedSnapshot(condition.Type, condition.Reason, snapshot.GetCreationTimestamp(), snapshotCompletionTime)
+	return nil
+}
+
+// MarkSnapshotAsCanceled updates the AppStudio Test canceled condition for the Snapshot to canceled.
+// If the patch command fails, an error will be returned.
+func MarkSnapshotAsCanceled(ctx context.Context, adapterClient client.Client, snapshot *applicationapiv1alpha1.Snapshot, message string) error {
+	patch := client.MergeFrom(snapshot.DeepCopy())
+	condition := metav1.Condition{
+		Type:    AppStudioTestCanceledCondition,
+		Status:  metav1.ConditionTrue,
+		Reason:  AppStudioIntegrationStatusCanceled,
 		Message: message,
 	}
 	meta.SetStatusCondition(&snapshot.Status.Conditions, condition)
@@ -1042,6 +1073,14 @@ func GetPRGroupFromSnapshot(snapshot *applicationapiv1alpha1.Snapshot) (string, 
 		return snapshot.Labels[PRGroupHashLabel], snapshot.Annotations[PRGroupAnnotation]
 	}
 	return "", ""
+}
+
+// GetPipelineAsCodeAnnotation gets the value of input annotaiton
+func GetPipelineAsCodeAnnotation(snapshot *applicationapiv1alpha1.Snapshot, annotation string) string {
+	if metadata.HasAnnotation(snapshot, annotation) {
+		return snapshot.Annotations[annotation]
+	}
+	return ""
 }
 
 // FindMatchingSnapshotComponent find the snapshot component from the given snapshot according to the name of the given component name

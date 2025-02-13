@@ -18,7 +18,6 @@ package snapshot
 
 import (
 	"bytes"
-	"context"
 	"fmt"
 	"reflect"
 	"strconv"
@@ -54,7 +53,6 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/types"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 var _ = Describe("Snapshot Adapter", Ordered, func() {
@@ -729,7 +727,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 
 			integrationPipelineRuns := []tektonv1.PipelineRun{}
 			Eventually(func() error {
-				integrationPipelineRuns, err = getAllIntegrationPipelineRunsForSnapshot(adapter.context, hasSnapshot)
+				integrationPipelineRuns, err = getAllIntegrationPipelineRunsForSnapshot(adapter.context, k8sClient, hasSnapshot)
 				if err != nil {
 					return err
 				}
@@ -2260,17 +2258,3 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		})
 	})
 })
-
-func getAllIntegrationPipelineRunsForSnapshot(ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot) ([]tektonv1.PipelineRun, error) {
-	integrationPipelineRuns := &tektonv1.PipelineRunList{}
-	opts := []client.ListOption{
-		client.InNamespace(snapshot.Namespace),
-		client.MatchingLabels{
-			"pipelines.appstudio.openshift.io/type": "test",
-			"appstudio.openshift.io/snapshot":       snapshot.Name,
-		},
-	}
-	err := k8sClient.List(ctx, integrationPipelineRuns, opts...)
-
-	return integrationPipelineRuns.Items, err
-}
