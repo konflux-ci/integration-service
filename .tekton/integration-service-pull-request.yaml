@@ -160,18 +160,47 @@ spec:
       workspaces:
       - name: basic-auth
         workspace: git-auth
+    - name: sealights-go-instrumentation
+      runAfter:
+        - clone-repository
+      taskRef:
+        params:
+        - name: name
+          value: sealights-go-oci-ta
+        - name: bundle
+          value: quay.io/konflux-ci/tekton-catalog/task-sealights-go-oci-ta:0.1@sha256:5c31f32ea625b3a7419d7a6994bfa2cce477d3050c0c145dc14a47302feb253e
+        - name: kind
+          value: task
+        resolver: bundles
+      params:
+        - name: SOURCE_ARTIFACT
+          value: $(tasks.clone-repository.results.SOURCE_ARTIFACT)
+        - name: component
+          value: '{{ repo_name }}'
+        - name: branch
+          value: '{{ source_branch }}'
+        - name: revision
+          value: '{{ revision }}'
+        - name: repository-url
+          value: '{{ repo_url }}'
+        - name: pull-request-number
+          value: '{{ pull_request_number }}'
+        - name: target-branch
+          value: '{{ target_branch }}'
+        - name: oci-storage
+          value: $(params.output-image).sealights.git
     - name: prefetch-dependencies
       params:
       - name: input
         value: $(params.prefetch-input)
       - name: SOURCE_ARTIFACT
-        value: $(tasks.clone-repository.results.SOURCE_ARTIFACT)
+        value: $(tasks.sealights-go-instrumentation.results.SOURCE_ARTIFACT)
       - name: ociStorage
         value: $(params.output-image).prefetch
       - name: ociArtifactExpiresAfter
         value: $(params.image-expires-after)
       runAfter:
-      - clone-repository
+      - sealights-go-instrumentation
       taskRef:
         params:
         - name: name
