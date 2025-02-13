@@ -54,6 +54,7 @@ type ObjectLoader interface {
 	GetAutoReleasePlansForApplication(ctx context.Context, c client.Client, application *applicationapiv1alpha1.Application) (*[]releasev1alpha1.ReleasePlan, error)
 	GetScenario(ctx context.Context, c client.Client, name, namespace string) (*v1beta2.IntegrationTestScenario, error)
 	GetAllSnapshotsForBuildPipelineRun(ctx context.Context, c client.Client, pipelineRun *tektonv1.PipelineRun) (*[]applicationapiv1alpha1.Snapshot, error)
+	GetAllSnapshotsForGivenRepo(ctx context.Context, c client.Client, application *applicationapiv1alpha1.Application, repoUrl string) (*[]applicationapiv1alpha1.Snapshot, error)
 	GetAllTaskRunsWithMatchingPipelineRunLabel(ctx context.Context, c client.Client, pipelineRun *tektonv1.PipelineRun) (*[]tektonv1.TaskRun, error)
 	GetPipelineRun(ctx context.Context, c client.Client, name, namespace string) (*tektonv1.PipelineRun, error)
 	GetComponent(ctx context.Context, c client.Client, name, namespace string) (*applicationapiv1alpha1.Component, error)
@@ -339,6 +340,25 @@ func (l *loader) GetAllSnapshotsForBuildPipelineRun(ctx context.Context, c clien
 		client.InNamespace(pipelineRun.Namespace),
 		client.MatchingLabels{
 			gitops.BuildPipelineRunNameLabel: pipelineRun.Name,
+		},
+	}
+
+	err := c.List(ctx, snapshots, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &snapshots.Items, nil
+}
+
+// GetAllSnapshotsForGivenRepo returns all Snapshots for the associated Pull Request for the same repo url.
+// In the case the List operation fails, an error will be returned.
+// gitops.PipelineAsCodePullRequestAnnotation is also a label
+func (l *loader) GetAllSnapshotsForGivenRepo(ctx context.Context, c client.Client, application *applicationapiv1alpha1.Application, repoUrl string) (*[]applicationapiv1alpha1.Snapshot, error) {
+	snapshots := &applicationapiv1alpha1.SnapshotList{}
+	opts := []client.ListOption{
+		client.InNamespace(application.Namespace),
+		client.MatchingLabels{
+			gitops.PipelineAsCodeRepoURLAnnotation: repoUrl,
 		},
 	}
 
