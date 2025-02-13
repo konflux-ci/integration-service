@@ -53,12 +53,14 @@ const (
 	GetScenarioContextKey
 	AllEnvironmentsForScenarioContextKey
 	AllSnapshotsForBuildPipelineRunContextKey
+	AllSnapshotsForGivenPRContextKey
 	AllTaskRunsWithMatchingPipelineRunLabelContextKey
 	GetPipelineRunContextKey
 	GetComponentContextKey
 	GetBuildPLRContextKey
 	GetComponentSnapshotsKey
 	GetPRSnapshotsKey
+	GetPipelineRunforSnapshotsKey
 )
 
 func NewMockLoader() ObjectLoader {
@@ -203,6 +205,14 @@ func (l *mockLoader) GetAllSnapshotsForBuildPipelineRun(ctx context.Context, c c
 	return &snapshots, err
 }
 
+func (l *mockLoader) GetAllSnapshotsForPR(ctx context.Context, c client.Client, application *applicationapiv1alpha1.Application, pullRequest string, repoUrl string) (*[]applicationapiv1alpha1.Snapshot, error) {
+	if ctx.Value(AllSnapshotsForGivenPRContextKey) == nil {
+		return l.loader.GetAllSnapshotsForPR(ctx, c, application, pullRequest, repoUrl)
+	}
+	snapshots, err := toolkit.GetMockedResourceAndErrorFromContext(ctx, AllSnapshotsForGivenPRContextKey, []applicationapiv1alpha1.Snapshot{})
+	return &snapshots, err
+}
+
 func (l *mockLoader) GetAllTaskRunsWithMatchingPipelineRunLabel(ctx context.Context, c client.Client, pipelineRun *tektonv1.PipelineRun) (*[]tektonv1.TaskRun, error) {
 	if ctx.Value(AllTaskRunsWithMatchingPipelineRunLabelContextKey) == nil {
 		return l.loader.GetAllTaskRunsWithMatchingPipelineRunLabel(ctx, c, pipelineRun)
@@ -252,4 +262,13 @@ func (l *mockLoader) GetMatchingComponentSnapshotsForPRGroupHash(ctx context.Con
 	}
 	snapshots, err := toolkit.GetMockedResourceAndErrorFromContext(ctx, GetPRSnapshotsKey, []applicationapiv1alpha1.Snapshot{})
 	return &snapshots, err
+}
+
+// GetMatchingComponentSnapshotsForPRGroupHash returns the resource and error passed as values of the context
+func (l *mockLoader) GetAllIntegrationPipelineRunsForSnapshot(ctx context.Context, adapterClient client.Client, snapshot *applicationapiv1alpha1.Snapshot) ([]tektonv1.PipelineRun, error) {
+	if ctx.Value(GetPipelineRunforSnapshotsKey) == nil {
+		return l.loader.GetAllIntegrationPipelineRunsForSnapshot(ctx, adapterClient, snapshot)
+	}
+	pipelineRuns, err := toolkit.GetMockedResourceAndErrorFromContext(ctx, GetPipelineRunforSnapshotsKey, []tektonv1.PipelineRun{})
+	return pipelineRuns, err
 }

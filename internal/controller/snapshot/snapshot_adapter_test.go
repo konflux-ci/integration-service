@@ -18,7 +18,6 @@ package snapshot
 
 import (
 	"bytes"
-	"context"
 	"fmt"
 	"reflect"
 	"strconv"
@@ -54,7 +53,6 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/types"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 var _ = Describe("Snapshot Adapter", Ordered, func() {
@@ -71,6 +69,8 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		hasCom3                                   *applicationapiv1alpha1.Component
 		hasSnapshot                               *applicationapiv1alpha1.Snapshot
 		hasSnapshotPR                             *applicationapiv1alpha1.Snapshot
+		hasOldCompSnapshotPR                      *applicationapiv1alpha1.Snapshot
+		hasNewCompSnapshotPR                      *applicationapiv1alpha1.Snapshot
 		hasOverRideSnapshot                       *applicationapiv1alpha1.Snapshot
 		hasInvalidSnapshot                        *applicationapiv1alpha1.Snapshot
 		hasInvalidOverrideSnapshot                *applicationapiv1alpha1.Snapshot
@@ -81,6 +81,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		integrationTestScenario1                  *v1beta2.IntegrationTestScenario
 		integrationTestScenarioForInvalidSnapshot *v1beta2.IntegrationTestScenario
 		buildPipelineRun1                         *tektonv1.PipelineRun
+		integrationPipelineRunOld                 *tektonv1.PipelineRun
 	)
 	const (
 		SampleRepoLink      = "https://github.com/devfile-samples/devfile-sample-java-springboot-basic"
@@ -370,6 +371,65 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		}
 		Expect(k8sClient.Create(ctx, hasSnapshotPR)).Should(Succeed())
 
+		hasOldCompSnapshotPR = &applicationapiv1alpha1.Snapshot{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "snapshotoldcomppr-sample",
+				Namespace: "default",
+				Labels: map[string]string{
+					gitops.SnapshotTypeLabel:                   gitops.SnapshotComponentType,
+					gitops.SnapshotComponentLabel:              "component-sample",
+					gitops.PipelineAsCodeEventTypeLabel:        "pull_request",
+					gitops.PipelineAsCodeRepoURLAnnotation:     "repo-url",
+					gitops.PipelineAsCodePullRequestAnnotation: "2",
+				},
+				Annotations: map[string]string{
+					gitops.BuildPipelineRunStartTime:              strconv.Itoa(plrstarttime),
+					gitops.PipelineAsCodeInstallationIDAnnotation: "123",
+					gitops.PRGroupHashLabel:                       prGroupSha,
+				},
+			},
+			Spec: applicationapiv1alpha1.SnapshotSpec{
+				Application: hasApp.Name,
+			},
+		}
+		Expect(k8sClient.Create(ctx, hasOldCompSnapshotPR)).Should(Succeed())
+
+		hasNewCompSnapshotPR = &applicationapiv1alpha1.Snapshot{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "snapshotnewcomppr-sample",
+				Namespace: "default",
+				Labels: map[string]string{
+					gitops.SnapshotTypeLabel:                   gitops.SnapshotComponentType,
+					gitops.SnapshotComponentLabel:              "component-sample",
+					gitops.PipelineAsCodeEventTypeLabel:        gitops.PipelineAsCodePullRequestType,
+					gitops.PRGroupHashLabel:                    prGroupSha,
+					gitops.PipelineAsCodeRepoURLAnnotation:     "repo-url",
+					gitops.PipelineAsCodePullRequestAnnotation: "2",
+				},
+				Annotations: map[string]string{
+					gitops.BuildPipelineRunStartTime:              strconv.Itoa(plrstarttime + 100),
+					gitops.PipelineAsCodeInstallationIDAnnotation: "123",
+					gitops.PRGroupHashLabel:                       prGroupSha,
+				},
+			},
+			Spec: applicationapiv1alpha1.SnapshotSpec{
+				Application: hasApp.Name,
+				Components: []applicationapiv1alpha1.SnapshotComponent{
+					{
+						Name:           "component-sample",
+						ContainerImage: sample_image,
+						Source: applicationapiv1alpha1.ComponentSource{
+							ComponentSourceUnion: applicationapiv1alpha1.ComponentSourceUnion{
+								GitSource: &applicationapiv1alpha1.GitSource{
+									Revision: sample_revision,
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+
 		hasOverRideSnapshot = &applicationapiv1alpha1.Snapshot{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "snapshotpr-sample-override",
@@ -630,10 +690,35 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			},
 		}
 		Expect(k8sClient.Create(ctx, buildPipelineRun1)).Should(Succeed())
+
+		integrationPipelineRunOld = &tektonv1.PipelineRun{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "pipelinerun-integration-old-running1",
+				Namespace: "default",
+				Labels: map[string]string{
+					"pipelines.appstudio.openshift.io/type":    "test",
+					"appstudio.openshift.io/snapshot":          hasOldCompSnapshotPR.Name,
+					"pipelinesascode.tekton.dev/event-type":    "pull_request",
+					"build.appstudio.redhat.com/target_branch": "main",
+					"test.appstudio.openshift.io/pr-group-sha": prGroupSha,
+				},
+				Annotations: map[string]string{
+					"appstudio.redhat.com/updateComponentOnSuccess": "false",
+					"pipelinesascode.tekton.dev/on-target-branch":   "[main,master]",
+					"build.appstudio.openshift.io/repo":             "https://github.com/devfile-samples/devfile-sample-go-basic?rev=c713067b0e65fb3de50d1f7c457eb51c2ab0dbb0",
+					"test.appstudio.openshift.io/pr-group":          prGroup,
+				},
+			},
+		}
+		Expect(k8sClient.Create(ctx, integrationPipelineRunOld)).Should(Succeed())
 	})
 
 	AfterEach(func() {
 		err := k8sClient.Delete(ctx, hasSnapshotPR)
+		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
+		err = k8sClient.Delete(ctx, hasOldCompSnapshotPR)
+		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
+		err = k8sClient.Delete(ctx, hasNewCompSnapshotPR)
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 		err = k8sClient.Delete(ctx, hasSnapshot)
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
@@ -648,6 +733,8 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		err = k8sClient.Delete(ctx, hasComSnapshot3)
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 		err = k8sClient.Delete(ctx, buildPipelineRun1)
+		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
+		err = k8sClient.Delete(ctx, integrationPipelineRunOld)
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 	})
 
@@ -729,7 +816,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 
 			integrationPipelineRuns := []tektonv1.PipelineRun{}
 			Eventually(func() error {
-				integrationPipelineRuns, err = getAllIntegrationPipelineRunsForSnapshot(adapter.context, hasSnapshot)
+				integrationPipelineRuns, err = adapter.loader.GetAllIntegrationPipelineRunsForSnapshot(adapter.context, k8sClient, hasSnapshot)
 				if err != nil {
 					return err
 				}
@@ -2259,18 +2346,82 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			}, time.Second*10).Should(BeTrue())
 		})
 	})
+
+	When("old integration pipelinerun gets cancelled because newer pipelinerun gets triggered", func() {
+
+		It("ensures that old component snapshot together with integration pipelinerun has been canceled", func() {
+			integrationPipelineRunOld.Status = tektonv1.PipelineRunStatus{
+				PipelineRunStatusFields: tektonv1.PipelineRunStatusFields{
+					Results: []tektonv1.PipelineRunResult{},
+				},
+				Status: v1.Status{
+					Conditions: v1.Conditions{
+						apis.Condition{
+							Reason: "Running",
+							Status: "Unknown",
+							Type:   apis.ConditionSucceeded,
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Status().Update(ctx, integrationPipelineRunOld)).Should(Succeed())
+			var buf bytes.Buffer
+			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+
+			adapter = NewAdapter(ctx, hasOldCompSnapshotPR, hasApp, log, loader.NewMockLoader(), k8sClient)
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: loader.ApplicationContextKey,
+					Resource:   hasApp,
+				},
+				{
+					ContextKey: loader.ComponentContextKey,
+					Resource:   hasComp,
+				},
+				{
+					ContextKey: loader.SnapshotContextKey,
+					Resource:   hasOldCompSnapshotPR,
+				},
+				{
+					ContextKey: loader.SnapshotComponentsContextKey,
+					Resource:   []applicationapiv1alpha1.Component{*hasComp},
+				},
+				{
+					ContextKey: loader.AllIntegrationTestScenariosContextKey,
+					Resource:   []v1beta2.IntegrationTestScenario{*integrationTestScenario},
+				},
+				{
+					ContextKey: loader.RequiredIntegrationTestScenariosContextKey,
+					Resource:   []v1beta2.IntegrationTestScenario{*integrationTestScenario},
+				},
+			})
+			//create new group snapshot
+			Expect(k8sClient.Create(adapter.context, hasNewCompSnapshotPR)).Should(Succeed())
+			Eventually(func() error {
+				err := k8sClient.Get(adapter.context, types.NamespacedName{
+					Name:      hasNewCompSnapshotPR.Name,
+					Namespace: "default",
+				}, hasNewCompSnapshotPR)
+				return err
+			}, time.Second*10).ShouldNot(HaveOccurred())
+			result, err := adapter.EnsureIntegrationPipelineRunsExist()
+			Expect(result.CancelRequest).To(BeFalse())
+			Expect(result.RequeueRequest).To(BeFalse())
+			foundStatusCondition := meta.FindStatusCondition(hasOldCompSnapshotPR.Status.Conditions, gitops.AppStudioIntegrationStatusCondition)
+			Expect(foundStatusCondition.Reason).To(Equal(gitops.AppStudioIntegrationStatusCanceled))
+			Expect(err).ToNot(HaveOccurred())
+			// Checking for .spec.status cancelledRunFinally
+			loader := loader.NewLoader()
+			plrspecstatus := tektonv1.PipelineRunSpec{
+				Status: tektonv1.PipelineRunSpecStatusCancelledRunFinally,
+			}
+			pipelineRuns, err := loader.GetAllPipelineRunsForSnapshotAndScenario(ctx, k8sClient, hasOldCompSnapshotPR, integrationTestScenario)
+			for _, plr := range *pipelineRuns {
+				Expect(plr.Spec.Status).To(Equal(plrspecstatus.Status))
+			}
+			Expect(err).ToNot(HaveOccurred())
+
+		})
+
+	})
 })
-
-func getAllIntegrationPipelineRunsForSnapshot(ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot) ([]tektonv1.PipelineRun, error) {
-	integrationPipelineRuns := &tektonv1.PipelineRunList{}
-	opts := []client.ListOption{
-		client.InNamespace(snapshot.Namespace),
-		client.MatchingLabels{
-			"pipelines.appstudio.openshift.io/type": "test",
-			"appstudio.openshift.io/snapshot":       snapshot.Name,
-		},
-	}
-	err := k8sClient.List(ctx, integrationPipelineRuns, opts...)
-
-	return integrationPipelineRuns.Items, err
-}
