@@ -58,7 +58,7 @@ var _ = Describe("IntegrationTestScenario type", func() {
 					Params: []ResolverParameter{
 						{
 							Name:  "url",
-							Value: "http://url",
+							Value: "https://url",
 						},
 						{
 							Name:  "revision",
