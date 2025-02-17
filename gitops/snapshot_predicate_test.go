@@ -179,8 +179,35 @@ var _ = Describe("Predicates", Ordered, func() {
 		})
 	})
 
-	Context("when testing IntegrationSnapshotChangePredicate predicate", func() {
+	Context("when testing SnapshotTestAnnotationChangePredicate predicate", func() {
 		instance := gitops.SnapshotTestAnnotationChangePredicate()
+
+		It("returns false when a Snapshot has a create event and doesn't have the status annotation", func() {
+			contextEvent := event.CreateEvent{
+				Object: hasSnapshotUnknownStatus,
+			}
+			Expect(instance.Create(contextEvent)).To(BeFalse())
+		})
+
+		It("returns true when an unfinished Snapshot has a create event and has a valid status annotation", func() {
+			contextEvent := event.CreateEvent{
+				Object: hasSnapshotAnnotationNew,
+			}
+			Expect(instance.Create(contextEvent)).To(BeTrue())
+		})
+
+		It("returns false when a finished Snapshot has a create event and has a valid status annotation", func() {
+			hasSnapshotAnnotationNew.Status.Conditions = []metav1.Condition{
+				{
+					Type:   gitops.AppStudioTestSucceededCondition,
+					Status: metav1.ConditionTrue,
+				},
+			}
+			contextEvent := event.CreateEvent{
+				Object: hasSnapshotAnnotationNew,
+			}
+			Expect(instance.Create(contextEvent)).To(BeFalse())
+		})
 
 		It("returns true when the test status annotation of Snapshot changed ", func() {
 			contextEvent := event.UpdateEvent{
