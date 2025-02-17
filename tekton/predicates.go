@@ -27,8 +27,11 @@ import (
 // integration PipelineRuns that have just started or finished.
 func IntegrationPipelineRunPredicate() predicate.Predicate {
 	return predicate.Funcs{
+		// Create events are triggered upon service re-sync (either every 10hrs or every restart)
+		// This allows for recovery if an event is missed during those times
 		CreateFunc: func(createEvent event.CreateEvent) bool {
-			return false
+			return IsIntegrationPipelineRun(createEvent.Object) &&
+				helpers.HasPipelineRunFinished(createEvent.Object)
 		},
 		DeleteFunc: func(deleteEvent event.DeleteEvent) bool {
 			return false

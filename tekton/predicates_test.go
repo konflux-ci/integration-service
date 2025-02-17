@@ -166,11 +166,22 @@ var _ = Describe("Predicates", func() {
 			newPipelineRun = pipelineRun.DeepCopy()
 		})
 
-		It("should ignore create events", func() {
+		It("should return ignore create events for unfinished pipelineRuns", func() {
 			contextEvent := event.CreateEvent{
 				Object: pipelineRun,
 			}
 			Expect(instance.Create(contextEvent)).To(BeFalse())
+		})
+
+		It("should return true for create events for finished pipelineRuns", func() {
+			pipelineRun.Status.SetCondition(&apis.Condition{
+				Type:   apis.ConditionSucceeded,
+				Status: "True",
+			})
+			contextEvent := event.CreateEvent{
+				Object: pipelineRun,
+			}
+			Expect(instance.Create(contextEvent)).To(BeTrue())
 		})
 
 		It("should ignore delete events", func() {
