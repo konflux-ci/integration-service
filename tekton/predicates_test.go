@@ -166,7 +166,7 @@ var _ = Describe("Predicates", func() {
 			newPipelineRun = pipelineRun.DeepCopy()
 		})
 
-		It("should return ignore create events for unfinished pipelineRuns", func() {
+		It("should ignore create events for unfinished pipelineRuns", func() {
 			contextEvent := event.CreateEvent{
 				Object: pipelineRun,
 			}

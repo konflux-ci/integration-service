@@ -17,6 +17,8 @@ limitations under the License.
 package gitops
 
 import (
+	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
+	"github.com/konflux-ci/operator-toolkit/metadata"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 )
@@ -63,7 +65,12 @@ func SnapshotIntegrationTestRerunTriggerPredicate() predicate.Predicate {
 // when Snapshot annotation "test.appstudio.openshift.io/status" is changed for update events.
 func SnapshotTestAnnotationChangePredicate() predicate.Predicate {
 	return predicate.Funcs{
+		// Create events are triggered upon service re-sync (either every 10hrs or every restart)
+		// This allows for recovery if an event is missed during those times
 		CreateFunc: func(createEvent event.CreateEvent) bool {
+			if snapshot, ok := createEvent.Object.(*applicationapiv1alpha1.Snapshot); ok {
+				return !HaveAppStudioTestsFinished(snapshot) && metadata.HasAnnotation(snapshot, SnapshotTestsStatusAnnotation)
+			}
 			return false
 		},
 		DeleteFunc: func(deleteEvent event.DeleteEvent) bool {
