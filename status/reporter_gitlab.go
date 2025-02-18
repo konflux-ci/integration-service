@@ -200,6 +200,11 @@ func (r *GitLabReporter) setCommitStatus(report TestReport) error {
 
 	commitStatus, _, err := r.client.Commits.SetCommitStatus(r.sourceProjectID, r.sha, &opt)
 	if err != nil {
+		// when commitStatus is created in multiple thread occasionally, we can still see the transition error, so let's ignore it as a workaround
+		if strings.Contains(err.Error(), "Cannot transition status via :enqueue from :pending") {
+			r.logger.Info("Ingoring the error when transition from pending to pending when the commitStatus might be created/updated in multiple threads at the same time occasionally")
+			return nil
+		}
 		return fmt.Errorf("failed to set commit status to %s: %w", string(glState), err)
 	}
 
