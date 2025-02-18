@@ -25,3 +25,4 @@ cover.html
 .DS_Store
 .AppleDouble
 .LSOverride
+vendor/
