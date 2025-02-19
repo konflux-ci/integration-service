@@ -16,7 +16,7 @@ require (
 	github.com/onsi/ginkgo/v2 v2.22.2
 	github.com/onsi/gomega v1.36.2
 	github.com/openshift-pipelines/pipelines-as-code v0.27.2
-	github.com/prometheus/client_golang v1.19.1
+	github.com/prometheus/client_golang v1.21.0
 	github.com/santhosh-tekuri/jsonschema/v5 v5.3.1
 	github.com/tektoncd/pipeline v0.66.0
 	github.com/tonglil/buflogr v1.1.1
@@ -77,6 +77,8 @@ require (
 	github.com/imdario/mergo v0.3.16 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
+	github.com/klauspost/compress v1.17.11 // indirect
+	github.com/kylelemons/godebug v1.1.0 // indirect
 	github.com/mailru/easyjson v0.7.7 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.2 // indirect
@@ -85,8 +87,8 @@ require (
 	github.com/operator-framework/operator-lib v0.13.0 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/prometheus/client_model v0.6.1 // indirect
-	github.com/prometheus/common v0.52.3 // indirect
-	github.com/prometheus/procfs v0.13.0 // indirect
+	github.com/prometheus/common v0.62.0 // indirect
+	github.com/prometheus/procfs v0.15.1 // indirect
 	github.com/prometheus/statsd_exporter v0.26.1 // indirect
 	github.com/spf13/pflag v1.0.6-0.20210604193023-d5e0c0615ace // indirect
 	github.com/stoewer/go-strcase v1.3.0 // indirect
