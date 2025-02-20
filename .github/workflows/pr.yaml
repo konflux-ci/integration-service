@@ -18,7 +18,7 @@ jobs:
           dockerfile: Dockerfile
   go-linters:
     name: Go linters
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-24.04
     steps:
       - name: Set up Go 1.x
         uses: actions/setup-go@v5
@@ -46,7 +46,7 @@ jobs:
           skip-cache: true
   go:
     name: Check sources
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-24.04
     env:
       OPERATOR_SDK_VERSION: v1.18.0
     steps:
@@ -134,7 +134,7 @@ jobs:
         uses: codecov/codecov-action@v5
   gitlint:
     name: Run gitlint checks
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-24.04
     steps:
       - name: Check out code
         uses: actions/checkout@v4
