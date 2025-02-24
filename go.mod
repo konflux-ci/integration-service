@@ -12,11 +12,11 @@ require (
 	github.com/google/go-github/v45 v45.2.0
 	github.com/konflux-ci/application-api v0.0.0-20240812090716-e7eb2ecfb409
 	github.com/konflux-ci/operator-toolkit v0.0.0-20240402130556-ef6dcbeca69d
-	github.com/konflux-ci/release-service v0.0.0-20240514150425-d25d533f66ba
+	github.com/konflux-ci/release-service v0.0.0-20250222152223-2f1b5f6c8f03
 	github.com/onsi/ginkgo/v2 v2.22.2
 	github.com/onsi/gomega v1.36.2
 	github.com/openshift-pipelines/pipelines-as-code v0.27.2
-	github.com/prometheus/client_golang v1.19.1
+	github.com/prometheus/client_golang v1.20.5
 	github.com/santhosh-tekuri/jsonschema/v5 v5.3.1
 	github.com/tektoncd/pipeline v0.66.0
 	github.com/tonglil/buflogr v1.1.1
@@ -25,13 +25,13 @@ require (
 	go.uber.org/zap v1.27.0
 	golang.org/x/exp v0.0.0-20240719175910-8a7402abbf56
 	golang.org/x/oauth2 v0.25.0
-	k8s.io/api v0.29.6
-	k8s.io/apimachinery v0.29.7
+	k8s.io/api v0.29.10
+	k8s.io/apimachinery v0.29.10
 	k8s.io/client-go v1.5.2
 	k8s.io/klog/v2 v2.130.1
 	k8s.io/utils v0.0.0-20240310230437-4693a0247e57
 	knative.dev/pkg v0.0.0-20240416145024-0f34a8815650
-	sigs.k8s.io/controller-runtime v0.17.5
+	sigs.k8s.io/controller-runtime v0.17.6
 )
 
 // Without this replace, go report 'package k8s.io/client-go/XXXX provided by k8s.io/client-go at latest version v0.30.1 but not at required version v1.5.2'
@@ -77,6 +77,8 @@ require (
 	github.com/imdario/mergo v0.3.16 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
+	github.com/klauspost/compress v1.17.9 // indirect
+	github.com/kylelemons/godebug v1.1.0 // indirect
 	github.com/mailru/easyjson v0.7.7 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.2 // indirect
@@ -85,8 +87,8 @@ require (
 	github.com/operator-framework/operator-lib v0.13.0 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/prometheus/client_model v0.6.1 // indirect
-	github.com/prometheus/common v0.52.3 // indirect
-	github.com/prometheus/procfs v0.13.0 // indirect
+	github.com/prometheus/common v0.55.0 // indirect
+	github.com/prometheus/procfs v0.15.1 // indirect
 	github.com/prometheus/statsd_exporter v0.26.1 // indirect
 	github.com/spf13/pflag v1.0.6-0.20210604193023-d5e0c0615ace // indirect
 	github.com/stoewer/go-strcase v1.3.0 // indirect
@@ -109,8 +111,8 @@ require (
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
-	k8s.io/apiextensions-apiserver v0.29.3 // indirect
-	k8s.io/component-base v0.29.3 // indirect
+	k8s.io/apiextensions-apiserver v0.29.10 // indirect
+	k8s.io/component-base v0.29.10 // indirect
 	k8s.io/kube-openapi v0.0.0-20240403164606-bc84c2ddaf99 // indirect
 	sigs.k8s.io/json v0.0.0-20221116044647-bc3834ca7abd // indirect
 	sigs.k8s.io/structured-merge-diff/v4 v4.4.1 // indirect

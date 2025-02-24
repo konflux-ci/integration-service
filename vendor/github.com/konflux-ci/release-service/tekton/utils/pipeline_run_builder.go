@@ -70,6 +70,27 @@ func (b *PipelineRunBuilder) WithAnnotations(annotations map[string]string) *Pip
 	return b
 }
 
+// WithEmptyDirVolume creates and adds a workspace backed by EmptyDir and using the provided
+// workspace name and volume size.
+func (b *PipelineRunBuilder) WithEmptyDirVolume(name, size string) *PipelineRunBuilder {
+	quantity, err := resource.ParseQuantity(size)
+	if err != nil {
+		b.err = multierror.Append(b.err, fmt.Errorf("invalid size format: %v", err))
+		return b
+	}
+
+	workspace := tektonv1.WorkspaceBinding{
+		Name: name,
+		EmptyDir: &corev1.EmptyDirVolumeSource{
+			SizeLimit: &quantity,
+		},
+	}
+
+	b.pipelineRun.Spec.Workspaces = append(b.pipelineRun.Spec.Workspaces, workspace)
+
+	return b
+}
+
 // WithFinalizer adds the given finalizer to the PipelineRun's metadata.
 func (b *PipelineRunBuilder) WithFinalizer(finalizer string) *PipelineRunBuilder {
 	controllerutil.AddFinalizer(b.pipelineRun, finalizer)
@@ -225,6 +246,12 @@ func (b *PipelineRunBuilder) WithPipelineRef(pipelineRef *tektonv1.PipelineRef) 
 func (b *PipelineRunBuilder) WithServiceAccount(serviceAccount string) *PipelineRunBuilder {
 	b.pipelineRun.Spec.TaskRunTemplate.ServiceAccountName = serviceAccount
 
+	return b
+}
+
+// WithTaskRunSpecs sets the provided TaskRunSpecs to the PipelineRun's spec.
+func (b *PipelineRunBuilder) WithTaskRunSpecs(taskRunSpecs ...tektonv1.PipelineTaskRunSpec) *PipelineRunBuilder {
+	b.pipelineRun.Spec.TaskRunSpecs = taskRunSpecs
 	return b
 }
 
