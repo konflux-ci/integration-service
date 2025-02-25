@@ -598,7 +598,7 @@ var _ = Describe("Test garbage collection for snapshots", func() {
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "ns3",
 					Labels: map[string]string{
-						"toolchain.dev.openshift.com/type": "tenant",
+						"konflux.ci/type": "user",
 					},
 				},
 			}
@@ -654,7 +654,7 @@ var _ = Describe("Test garbage collection for snapshots", func() {
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "ns4",
 					Labels: map[string]string{
-						"toolchain.dev.openshift.com/type": "tenant",
+						"konflux.ci/type": "user",
 					},
 				},
 			}
