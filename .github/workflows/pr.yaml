@@ -48,7 +48,7 @@ jobs:
     name: Check sources
     runs-on: ubuntu-20.04
     env:
-      OPERATOR_SDK_VERSION: v1.18.0
+      OPERATOR_SDK_VERSION: v1.24.0
     steps:
       - name: Set up Go 1.x
         uses: actions/setup-go@v5
