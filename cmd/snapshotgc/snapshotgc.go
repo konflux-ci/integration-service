@@ -89,21 +89,42 @@ func garbageCollectSnapshots(
 // Gets all tenant namespaces
 func getTenantNamespaces(
 	cl client.Client, logger logr.Logger) ([]core.Namespace, error) {
+
+	// First get the toolchain-provisioned tenant namespaces
 	req, _ := labels.NewRequirement(
 		"toolchain.dev.openshift.com/type", selection.In, []string{"tenant"},
 	)
 	selector := labels.NewSelector().Add(*req)
-	namespaceList := &core.NamespaceList{}
+	toolChainNamespaceList := &core.NamespaceList{}
 	err := cl.List(
 		context.Background(),
-		namespaceList,
+		toolChainNamespaceList,
 		&client.ListOptions{LabelSelector: selector},
 	)
 	if err != nil {
 		logger.Error(err, "Failed listing namespaces")
 		return nil, err
 	}
-	return namespaceList.Items, nil
+
+	// Then get the Konflux user namespaces
+	req, _ = labels.NewRequirement(
+		"konflux.ci/type", selection.In, []string{"user"},
+	)
+	selector = labels.NewSelector().Add(*req)
+	konfluxNamespaceList := &core.NamespaceList{}
+	err = cl.List(
+		context.Background(),
+		konfluxNamespaceList,
+		&client.ListOptions{LabelSelector: selector},
+	)
+	if err != nil {
+		logger.Error(err, "Failed listing namespaces")
+		return nil, err
+	}
+
+	namespaces := append(toolChainNamespaceList.Items, konfluxNamespaceList.Items...)
+
+	return namespaces, nil
 }
 
 // Gets a map to allow to tell with direct lookup if a snapshot is associated with
