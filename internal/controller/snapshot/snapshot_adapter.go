@@ -179,6 +179,13 @@ func (a *Adapter) rerunIntegrationPipelinerunForScenario(scenario *v1beta2.Integ
 	if err != nil {
 		return a.HandlePipelineCreationError(err, scenario, testStatuses)
 	}
+	if metadata.HasLabelWithValue(a.snapshot, gitops.PipelineAsCodeEventTypeLabel, gitops.PipelineAsCodePullRequestType) {
+		err = a.checkAndCancelOldSnapshotsPipelineRun(a.application, a.snapshot)
+		if err != nil {
+			a.logger.Error(err, "Failed to check and cancel for old snapshots pipelineruns",
+				"snapshot.Name:", a.snapshot.Name)
+		}
+	}
 
 	testStatuses.UpdateTestStatusIfChanged(scenario.Name, intgteststat.IntegrationTestStatusInProgress, fmt.Sprintf("PipelineRun '%s' created", pipelineRun.Name))
 	if err := testStatuses.UpdateTestPipelineRunName(scenario.Name, pipelineRun.Name); err != nil {
@@ -297,6 +304,13 @@ func (a *Adapter) EnsureIntegrationPipelineRunsExist() (controller.OperationResu
 					// it doesn't make sense to restart reconciliation here, it will be eventually updated by integrationpipeline adapter
 					a.logger.Error(err, "Failed to update pipelinerun name in test status")
 				}
+			}
+		}
+		if metadata.HasLabelWithValue(a.snapshot, gitops.PipelineAsCodeEventTypeLabel, gitops.PipelineAsCodePullRequestType) {
+			err = a.checkAndCancelOldSnapshotsPipelineRun(a.application, a.snapshot)
+			if err != nil {
+				a.logger.Error(err, "Failed to check and cancel for old snapshots pipelineruns",
+					"snapshot.Name:", a.snapshot.Name)
 			}
 		}
 
@@ -1057,4 +1071,78 @@ func (a *Adapter) findSnapshotWithOpenedPR(snapshot *applicationapiv1alpha1.Snap
 		}
 	}
 	return nil, nil
+}
+
+// checkOldSnapshotsPipelineRun sorts all snapshots for application and cancells all running interationTest pipelineruns within application
+// removes finalizer before the pipelinerun is set as cancelled run finally to be gracefuly cancelled
+// god please forgive me for this monstrosity of cognitive complexity 40+
+func (a *Adapter) checkAndCancelOldSnapshotsPipelineRun(application *applicationapiv1alpha1.Application, snapshot *applicationapiv1alpha1.Snapshot) error {
+
+	snapshots, err := a.loader.GetAllSnapshotsForGivenRepo(a.context, a.client, application, snapshot.GetLabels()[gitops.PipelineAsCodeRepoURLAnnotation])
+	if err != nil {
+		a.logger.Error(err, "Failed to fetch Snapshots for the application",
+			"application.Name:", application.Name)
+		return err
+	}
+	sortedSnapshots := gitops.SortSnapshots(*snapshots)
+	// check for older snapshots, their current status and type
+	latestSnapshot := sortedSnapshots[0]
+	for i := 1; i < len(sortedSnapshots); i++ {
+
+		if gitops.IsComponentSnapshot(&sortedSnapshots[i]) {
+			if metadata.HasLabelWithValue(&sortedSnapshots[i], gitops.PipelineAsCodePullRequestAnnotation, latestSnapshot.Labels[gitops.PipelineAsCodePullRequestAnnotation]) {
+				err = gitops.MarkSnapshotAsCanceled(a.context, a.client, &sortedSnapshots[i], "Snapshot canceled/superseded")
+				if err != nil {
+					a.logger.Error(err, "Failed to mark snapshot as canceled", "snapshot.Name", snapshot.Name)
+					return err
+				}
+				// get all integration pipelineruns for a snapshot
+				integrationTestPipelineruns, err := getAllIntegrationPipelineRunsForSnapshot(a.context, a.client, &sortedSnapshots[i])
+				if err != nil {
+					a.logger.Error(err, "Failed to get all integration pipelineruns for snapshot", "snapshot.Name", snapshot.Name)
+					return err
+				}
+				for _, plr := range integrationTestPipelineruns {
+					plr := plr
+					pipelinerunStatus, _, err := h.GetRunningIntegrationPipelineRunStatus(a.context, a.client, &plr)
+					if err != nil {
+						a.logger.Error(err, "Failed to get integration test pipelinerun status", "snapshot.Name", plr.Name)
+						return err
+					}
+					if pipelinerunStatus == intgteststat.IntegrationTestStatusInProgress {
+						//remove finalizer and cancel pipelinerun
+						// err = h.RemoveFinalizerFromPipelineRun(a.context, a.client, a.logger, &plr, h.IntegrationPipelineRunFinalizer)
+						// if err != nil {
+						// 	a.logger.Error(err, "Failed to remove finalizer from integration test pipelinerun")
+						// 	return err
+						// }
+						// set "CancelledRunFinally" to PLR status, should gracefully cancel pipelinerun, this is so raw I hate this
+						patch := client.MergeFrom(plr.DeepCopy())
+						plr.Spec.Status = tektonv1.PipelineRunSpecStatusCancelledRunFinally
+						err := a.client.Patch(a.context, &plr, patch)
+						if err != nil {
+							return err
+						}
+
+					}
+				}
+			}
+
+		}
+	}
+	return err
+}
+
+func getAllIntegrationPipelineRunsForSnapshot(ctx context.Context, adapterClient client.Client, snapshot *applicationapiv1alpha1.Snapshot) ([]tektonv1.PipelineRun, error) {
+	integrationPipelineRuns := &tektonv1.PipelineRunList{}
+	opts := []client.ListOption{
+		client.InNamespace(snapshot.Namespace),
+		client.MatchingLabels{
+			"pipelines.appstudio.openshift.io/type": "test",
+			"appstudio.openshift.io/snapshot":       snapshot.Name,
+		},
+	}
+	err := adapterClient.List(ctx, integrationPipelineRuns, opts...)
+
+	return integrationPipelineRuns.Items, err
 }
