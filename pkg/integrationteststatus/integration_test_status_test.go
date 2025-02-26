@@ -35,7 +35,7 @@ var _ = Describe("integrationteststatus library unittests", func() {
 				strRepr := st.String()
 				Expect(strRepr).To(Equal(expectedStr))
 				controlStatus, err := intgteststat.IntegrationTestStatusString(strRepr)
-				Expect(err).To(BeNil())
+				Expect(err).ToNot(HaveOccurred())
 				Expect(controlStatus).To(Equal(st))
 			},
 			Entry("When status is Pending", intgteststat.IntegrationTestStatusPending, "Pending"),
@@ -51,12 +51,12 @@ var _ = Describe("integrationteststatus library unittests", func() {
 		DescribeTable("Status to JSON and vice versa",
 			func(st intgteststat.IntegrationTestStatus, expectedStr string) {
 				jsonRepr, err := st.MarshalJSON()
-				Expect(err).To(BeNil())
+				Expect(err).ToNot(HaveOccurred())
 				Expect(jsonRepr).To(Equal([]byte("\"" + expectedStr + "\"")))
 
 				var controlStatus intgteststat.IntegrationTestStatus
 				err = controlStatus.UnmarshalJSON(jsonRepr)
-				Expect(err).To(BeNil())
+				Expect(err).ToNot(HaveOccurred())
 				Expect(controlStatus).To(Equal(st))
 			},
 			Entry("When status is Pending", intgteststat.IntegrationTestStatusPending, "Pending"),
@@ -85,14 +85,14 @@ var _ = Describe("integrationteststatus library unittests", func() {
 
 		It("Invalid status to type fails with error", func() {
 			_, err := intgteststat.IntegrationTestStatusString("Unknown")
-			Expect(err).NotTo(BeNil())
+			Expect(err).To(HaveOccurred())
 		})
 
 		It("Invalid JSON status to type fails with error", func() {
 			const unknownJson = "\"Unknown\""
 			var controlStatus intgteststat.IntegrationTestStatus
 			err := controlStatus.UnmarshalJSON([]byte(unknownJson))
-			Expect(err).NotTo(BeNil())
+			Expect(err).To(HaveOccurred())
 		})
 	})
 
@@ -108,16 +108,16 @@ var _ = Describe("integrationteststatus library unittests", func() {
 		Describe("JSON operations", func() {
 			It("Struct can be transformed to JSON", func() {
 				jsonData, err := json.Marshal(statusDetailPending)
-				Expect(err).To(BeNil())
+				Expect(err).ToNot(HaveOccurred())
 				Expect(jsonData).Should(ContainSubstring("Pending"))
 			})
 
 			It("From JSON back to struct", func() {
 				jsonData, err := json.Marshal(statusDetailPending)
-				Expect(err).To(BeNil())
+				Expect(err).ToNot(HaveOccurred())
 				var statusDetailFromJSON intgteststat.IntegrationTestStatusDetail
 				err = json.Unmarshal(jsonData, &statusDetailFromJSON)
-				Expect(err).To(BeNil())
+				Expect(err).ToNot(HaveOccurred())
 				Expect(statusDetailFromJSON).Should(Equal(statusDetailPending))
 			})
 		})
@@ -137,7 +137,7 @@ var _ = Describe("integrationteststatus library unittests", func() {
 		BeforeEach(func() {
 			var err error
 			sits, err = intgteststat.NewSnapshotIntegrationTestStatuses("")
-			Expect(err).To(BeNil())
+			Expect(err).ToNot(HaveOccurred())
 		})
 
 		It("Can add new scenario test status", func() {
@@ -231,7 +231,7 @@ var _ = Describe("integrationteststatus library unittests", func() {
 			sits.ResetDirty()
 
 			err := sits.UpdateTestPipelineRunName(testScenarioName, pipelineRunName)
-			Expect(err).To(BeNil())
+			Expect(err).ToNot(HaveOccurred())
 
 			detail, ok := sits.GetScenarioStatus(testScenarioName)
 			Expect(ok).To(BeTrue())
@@ -250,19 +250,19 @@ var _ = Describe("integrationteststatus library unittests", func() {
 			sits.ResetDirty()
 
 			err := sits.UpdateTestPipelineRunName(testScenarioName, pipelineRunName)
-			Expect(err).To(BeNil())
+			Expect(err).ToNot(HaveOccurred())
 			Expect(sits.IsDirty()).To(BeTrue())
 			sits.ResetDirty()
 
 			err = sits.UpdateTestPipelineRunName(testScenarioName, pipelineRunName)
-			Expect(err).To(BeNil())
+			Expect(err).ToNot(HaveOccurred())
 
 			Expect(sits.IsDirty()).To(BeFalse())
 		})
 
 		It("fails to update details with pipeline run name when testScenario doesn't exist", func() {
 			err := sits.UpdateTestPipelineRunName(testScenarioName, pipelineRunName)
-			Expect(err).NotTo(BeNil())
+			Expect(err).To(HaveOccurred())
 		})
 
 		It("Can export valid JSON without start and completion time (Pending)", func() {
@@ -279,7 +279,7 @@ var _ = Describe("integrationteststatus library unittests", func() {
 					}
 				]`
 			marshaledTime, err := detail.LastUpdateTime.MarshalText()
-			Expect(err).To(BeNil())
+			Expect(err).ToNot(HaveOccurred())
 			expectedStr := fmt.Sprintf(expectedFormatStr, testScenarioName, marshaledTime, testDetails)
 			expected := []byte(expectedStr)
 
@@ -302,9 +302,9 @@ var _ = Describe("integrationteststatus library unittests", func() {
 					}
 				]`
 			marshaledTime, err := detail.LastUpdateTime.MarshalText()
-			Expect(err).To(BeNil())
+			Expect(err).ToNot(HaveOccurred())
 			marshaledStartTime, err := detail.StartTime.MarshalText()
-			Expect(err).To(BeNil())
+			Expect(err).ToNot(HaveOccurred())
 			expectedStr := fmt.Sprintf(expectedFormatStr, testScenarioName, marshaledTime, testDetails, marshaledStartTime)
 			expected := []byte(expectedStr)
 
@@ -327,9 +327,9 @@ var _ = Describe("integrationteststatus library unittests", func() {
 					}
 				]`
 			marshaledTime, err := detail.LastUpdateTime.MarshalText()
-			Expect(err).To(BeNil())
+			Expect(err).ToNot(HaveOccurred())
 			marshaledCompletionTime, err := detail.CompletionTime.MarshalText()
-			Expect(err).To(BeNil())
+			Expect(err).ToNot(HaveOccurred())
 			expectedStr := fmt.Sprintf(expectedFormatStr, testScenarioName, marshaledTime, testDetails, marshaledCompletionTime)
 			expected := []byte(expectedStr)
 
@@ -354,11 +354,11 @@ var _ = Describe("integrationteststatus library unittests", func() {
 					}
 				]`
 			marshaledTime, err := detail.LastUpdateTime.MarshalText()
-			Expect(err).To(BeNil())
+			Expect(err).ToNot(HaveOccurred())
 			marshaledStartTime, err := detail.StartTime.MarshalText()
-			Expect(err).To(BeNil())
+			Expect(err).ToNot(HaveOccurred())
 			marshaledCompletionTime, err := detail.CompletionTime.MarshalText()
-			Expect(err).To(BeNil())
+			Expect(err).ToNot(HaveOccurred())
 			expectedStr := fmt.Sprintf(expectedFormatStr, testScenarioName, marshaledTime, testDetails, marshaledStartTime, marshaledCompletionTime)
 			expected := []byte(expectedStr)
 
@@ -368,7 +368,7 @@ var _ = Describe("integrationteststatus library unittests", func() {
 		It("Can export valid JSON with TestPipelineRunName", func() {
 			sits.UpdateTestStatusIfChanged(testScenarioName, intgteststat.IntegrationTestStatusPending, testDetails)
 			err := sits.UpdateTestPipelineRunName(testScenarioName, pipelineRunName)
-			Expect(err).To(BeNil())
+			Expect(err).ToNot(HaveOccurred())
 
 			detail, ok := sits.GetScenarioStatus(testScenarioName)
 			Expect(ok).To(BeTrue())
@@ -383,7 +383,7 @@ var _ = Describe("integrationteststatus library unittests", func() {
 					}
 				]`
 			marshaledTime, err := detail.LastUpdateTime.MarshalText()
-			Expect(err).To(BeNil())
+			Expect(err).ToNot(HaveOccurred())
 			expectedStr := fmt.Sprintf(expectedFormatStr, testScenarioName, marshaledTime, testDetails, pipelineRunName)
 			expected := []byte(expectedStr)
 
@@ -486,7 +486,7 @@ var _ = Describe("integrationteststatus library unittests", func() {
 		When("JSON contains empty test status annotation", func() {
 			It("Returns empty test statuses", func() {
 				statuses, err := intgteststat.NewSnapshotIntegrationTestStatuses("[]")
-				Expect(err).To(BeNil())
+				Expect(err).ToNot(HaveOccurred())
 				Expect(statuses.GetStatuses()).To(BeEmpty())
 			})
 		})
@@ -497,14 +497,14 @@ var _ = Describe("integrationteststatus library unittests", func() {
 			BeforeEach(func() {
 				sits.UpdateTestStatusIfChanged(testScenarioName, intgteststat.IntegrationTestStatusInProgress, testDetails)
 				testAnnotation, err := json.Marshal(sits)
-				Expect(err).To(BeNil())
+				Expect(err).ToNot(HaveOccurred())
 				jsondata = string(testAnnotation)
 
 			})
 
 			It("Returns expected test statuses", func() {
 				statuses, err := intgteststat.NewSnapshotIntegrationTestStatuses(jsondata)
-				Expect(err).To(BeNil())
+				Expect(err).ToNot(HaveOccurred())
 				Expect(statuses.GetStatuses()).To(HaveLen(1))
 
 				statusDetail := statuses.GetStatuses()[0]
@@ -518,7 +518,7 @@ var _ = Describe("integrationteststatus library unittests", func() {
 		When("JSON contains invalid attributes", func() {
 			It("Returns error", func() {
 				_, err := intgteststat.NewSnapshotIntegrationTestStatuses("[{\"invalid\":\"data\"}]")
-				Expect(err).NotTo(BeNil())
+				Expect(err).To(HaveOccurred())
 			})
 		})
 
@@ -526,7 +526,7 @@ var _ = Describe("integrationteststatus library unittests", func() {
 
 			It("Returns error", func() {
 				_, err := intgteststat.NewSnapshotIntegrationTestStatuses("{}")
-				Expect(err).NotTo(BeNil())
+				Expect(err).To(HaveOccurred())
 			})
 		})
 

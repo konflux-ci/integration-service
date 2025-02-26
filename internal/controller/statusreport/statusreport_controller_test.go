@@ -116,7 +116,7 @@ var _ = Describe("StatusReportController", func() {
 			LeaderElection: false,
 		})
 		Expect(err).NotTo(HaveOccurred())
-		Expect(err).To(BeNil())
+		Expect(err).ToNot(HaveOccurred())
 
 		statusReportReconciler = NewStatusReportReconciler(k8sClient, &logf.Log, &scheme)
 	})
@@ -136,7 +136,7 @@ var _ = Describe("StatusReportController", func() {
 		Eventually(func() error {
 			_, err := statusReportReconciler.Reconcile(ctx, req)
 			return err
-		}).Should(BeNil())
+		}).Should(Succeed())
 	})
 
 	It("can Reconcile function prepare the adapter and return the result of the reconcile handling operation", func() {
@@ -148,7 +148,7 @@ var _ = Describe("StatusReportController", func() {
 		}
 		result, err := statusReportReconciler.Reconcile(ctx, req)
 		Expect(reflect.TypeOf(result)).To(Equal(reflect.TypeOf(reconcile.Result{})))
-		Expect(err).To(BeNil())
+		Expect(err).ToNot(HaveOccurred())
 	})
 
 	It("can setup a new controller manager with the given statusReportReconciler", func() {
@@ -158,7 +158,7 @@ var _ = Describe("StatusReportController", func() {
 
 	It("can setup a new Controller manager and start it", func() {
 		err := SetupController(manager, &ctrl.Log)
-		Expect(err).To(BeNil())
+		Expect(err).ToNot(HaveOccurred())
 	})
 
 	When("snapshot is restored from backup", func() {
@@ -179,7 +179,7 @@ var _ = Describe("StatusReportController", func() {
 		It("stops reconciliation without error", func() {
 			result, err := statusReportReconciler.Reconcile(ctx, req)
 			Expect(result).To(Equal(ctrl.Result{}))
-			Expect(err).To(BeNil())
+			Expect(err).ToNot(HaveOccurred())
 		})
 	})
 

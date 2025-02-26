@@ -438,19 +438,19 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 
 		It("ensures the Imagepullspec and ComponentSource from pipelinerun and prepare snapshot can be created", func() {
 			imagePullSpec, err := adapter.getImagePullSpecFromPipelineRun(buildPipelineRun)
-			Expect(err).To(BeNil())
+			Expect(err).ToNot(HaveOccurred())
 			Expect(imagePullSpec).NotTo(BeEmpty())
 
 			componentSource, err := adapter.getComponentSourceFromPipelineRun(buildPipelineRun)
-			Expect(err).To(BeNil())
+			Expect(err).ToNot(HaveOccurred())
 
 			applicationComponents, err := adapter.loader.GetAllApplicationComponents(adapter.context, adapter.client, adapter.application)
-			Expect(err).To(BeNil())
+			Expect(err).ToNot(HaveOccurred())
 			Expect(applicationComponents).NotTo(BeNil())
 
 			snapshot, err := gitops.PrepareSnapshot(adapter.context, adapter.client, hasApp, applicationComponents, hasComp, imagePullSpec, componentSource)
 			Expect(snapshot).NotTo(BeNil())
-			Expect(err).To(BeNil())
+			Expect(err).ToNot(HaveOccurred())
 			Expect(snapshot).NotTo(BeNil())
 			Expect(snapshot.Spec.Components).To(HaveLen(1), "One component should have been added to snapshot.  Other component should have been omited due to empty ContainerImage field or missing valid digest")
 			Expect(snapshot.Spec.Components[0].Name).To(Equal(hasComp.Name), "The built component should have been added to the snapshot")
@@ -458,7 +458,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 
 		It("ensures that snapshot has label pointing to build pipelinerun", func() {
 			expectedSnapshot, err := adapter.prepareSnapshotForPipelineRun(buildPipelineRun, hasComp, hasApp)
-			Expect(err).To(BeNil())
+			Expect(err).ToNot(HaveOccurred())
 			Expect(expectedSnapshot).NotTo(BeNil())
 
 			Expect(expectedSnapshot.Labels).NotTo(BeNil())
@@ -517,7 +517,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 
 			componentSource, err := adapter.getComponentSourceFromPipelineRun(buildPipelineRunNoSource)
 			Expect(componentSource).To(BeNil())
-			Expect(err).ToNot(BeNil())
+			Expect(err).To(HaveOccurred())
 		})
 
 		It("ensure err is returned when pipelinerun doesn't have Result for customized error and build pipelineRun annotated ", func() {
@@ -570,7 +570,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 
 		It("ensures pipelines as code labels and annotations are propagated to the snapshot", func() {
 			snapshot, err := adapter.prepareSnapshotForPipelineRun(buildPipelineRun, hasComp, hasApp)
-			Expect(err).To(BeNil())
+			Expect(err).ToNot(HaveOccurred())
 			Expect(snapshot).ToNot(BeNil())
 			annotation, found := snapshot.GetAnnotations()["pac.test.appstudio.openshift.io/on-target-branch"]
 			Expect(found).To(BeTrue())
@@ -582,7 +582,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 
 		It("ensures non-pipelines as code labels and annotations are NOT propagated to the snapshot", func() {
 			snapshot, err := adapter.prepareSnapshotForPipelineRun(buildPipelineRun, hasComp, hasApp)
-			Expect(err).To(BeNil())
+			Expect(err).ToNot(HaveOccurred())
 			Expect(snapshot).ToNot(BeNil())
 
 			// non-PaC labels are not copied
@@ -600,7 +600,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 
 		It("ensures build labels and annotations prefixed with 'build.appstudio' are propagated to the snapshot", func() {
 			snapshot, err := adapter.prepareSnapshotForPipelineRun(buildPipelineRun, hasComp, hasApp)
-			Expect(err).To(BeNil())
+			Expect(err).ToNot(HaveOccurred())
 			Expect(snapshot).ToNot(BeNil())
 
 			annotation, found := snapshot.GetAnnotations()["build.appstudio.openshift.io/repo"]
@@ -614,7 +614,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 
 		It("ensures build labels and annotations non-prefixed with 'build.appstudio' are NOT propagated to the snapshot", func() {
 			snapshot, err := adapter.prepareSnapshotForPipelineRun(buildPipelineRun, hasComp, hasApp)
-			Expect(err).To(BeNil())
+			Expect(err).ToNot(HaveOccurred())
 			Expect(snapshot).ToNot(BeNil())
 
 			// build annotations non-prefixed with 'build.appstudio' are not copied
@@ -929,7 +929,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		It("can annotate the build pipelineRun with the Snapshot name", func() {
 			adapter = NewAdapter(ctx, buildPipelineRun, hasComp, hasApp, logger, loader.NewMockLoader(), k8sClient)
 			err := adapter.annotateBuildPipelineRunWithSnapshot(hasSnapshot)
-			Expect(err).To(BeNil())
+			Expect(err).ToNot(HaveOccurred())
 			Expect(adapter.pipelineRun.ObjectMeta.Annotations[tekton.SnapshotNameLabel]).To(Equal(hasSnapshot.Name))
 		})
 
@@ -983,7 +983,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				},
 			})
 			allSnapshots, err := adapter.loader.GetAllSnapshots(adapter.context, adapter.client, adapter.application)
-			Expect(err).To(BeNil())
+			Expect(err).ToNot(HaveOccurred())
 			Expect(allSnapshots).NotTo(BeNil())
 			existingSnapshot := gitops.FindMatchingSnapshot(hasApp, allSnapshots, hasSnapshot)
 			Expect(existingSnapshot).NotTo(BeNil())
