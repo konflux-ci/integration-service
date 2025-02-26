@@ -54,7 +54,7 @@ var _ = Describe("Snapshot integration test statuses", func() {
 		BeforeEach(func() {
 			var err error
 			sits, err = intgteststat.NewSnapshotIntegrationTestStatuses("")
-			Expect(err).To(BeNil())
+			Expect(err).ToNot(HaveOccurred())
 
 			snapshot = &applicationapiv1alpha1.Snapshot{
 				ObjectMeta: metav1.ObjectMeta{
@@ -80,7 +80,7 @@ var _ = Describe("Snapshot integration test statuses", func() {
 
 		It("Creates empty statuses when a snaphost doesn't have test status annotation", func() {
 			statuses, err := gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(snapshot)
-			Expect(err).To(BeNil())
+			Expect(err).ToNot(HaveOccurred())
 			Expect(statuses.GetStatuses()).To(BeEmpty())
 		})
 
@@ -88,12 +88,12 @@ var _ = Describe("Snapshot integration test statuses", func() {
 
 			BeforeEach(func() {
 				err := metadata.SetAnnotation(snapshot, gitops.SnapshotTestsStatusAnnotation, "[]")
-				Expect(err).To(BeNil())
+				Expect(err).ToNot(HaveOccurred())
 			})
 
 			It("Returns empty test statuses", func() {
 				statuses, err := gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(snapshot)
-				Expect(err).To(BeNil())
+				Expect(err).ToNot(HaveOccurred())
 				Expect(statuses.GetStatuses()).To(BeEmpty())
 			})
 		})
@@ -102,15 +102,15 @@ var _ = Describe("Snapshot integration test statuses", func() {
 			BeforeEach(func() {
 				sits.UpdateTestStatusIfChanged(testScenarioName, intgteststat.IntegrationTestStatusInProgress, testDetails)
 				testAnnotation, err := json.Marshal(sits)
-				Expect(err).To(BeNil())
+				Expect(err).ToNot(HaveOccurred())
 				err = metadata.SetAnnotation(snapshot, gitops.SnapshotTestsStatusAnnotation, string(testAnnotation))
-				Expect(err).To(BeNil())
+				Expect(err).ToNot(HaveOccurred())
 
 			})
 
 			It("Returns expected test statuses", func() {
 				statuses, err := gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(snapshot)
-				Expect(err).To(BeNil())
+				Expect(err).ToNot(HaveOccurred())
 				Expect(statuses.GetStatuses()).To(HaveLen(1))
 
 				statusDetail := statuses.GetStatuses()[0]
@@ -125,24 +125,24 @@ var _ = Describe("Snapshot integration test statuses", func() {
 			BeforeEach(func() {
 				err := metadata.SetAnnotation(
 					snapshot, gitops.SnapshotTestsStatusAnnotation, "[{\"invalid\":\"data\"}]")
-				Expect(err).To(BeNil())
+				Expect(err).ToNot(HaveOccurred())
 			})
 
 			It("Returns error", func() {
 				_, err := gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(snapshot)
-				Expect(err).NotTo(BeNil())
+				Expect(err).To(HaveOccurred())
 			})
 		})
 
 		When("Snapshot contains invalid JSON test status annotation", func() {
 			BeforeEach(func() {
 				err := metadata.SetAnnotation(snapshot, gitops.SnapshotTestsStatusAnnotation, "{}")
-				Expect(err).To(BeNil())
+				Expect(err).ToNot(HaveOccurred())
 			})
 
 			It("Returns error", func() {
 				_, err := gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(snapshot)
-				Expect(err).NotTo(BeNil())
+				Expect(err).To(HaveOccurred())
 			})
 		})
 
@@ -170,7 +170,7 @@ var _ = Describe("Snapshot integration test statuses", func() {
 				sits.UpdateTestStatusIfChanged(testScenarioName, intgteststat.IntegrationTestStatusInProgress, testDetails)
 
 				err := gitops.WriteIntegrationTestStatusesIntoSnapshot(ctx, snapshot, sits, k8sClient)
-				Expect(err).To(BeNil())
+				Expect(err).ToNot(HaveOccurred())
 				Expect(sits.IsDirty()).To(BeFalse())
 
 				// fetch updated snapshot
@@ -190,7 +190,7 @@ var _ = Describe("Snapshot integration test statuses", func() {
 				}, time.Second*10).ShouldNot(HaveOccurred())
 
 				statuses, err := gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(snapshot)
-				Expect(err).To(BeNil())
+				Expect(err).ToNot(HaveOccurred())
 				Expect(statuses.GetStatuses()).To(HaveLen(1))
 			})
 		})

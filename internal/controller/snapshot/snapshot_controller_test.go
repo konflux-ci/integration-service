@@ -141,7 +141,7 @@ var _ = Describe("SnapshotController", func() {
 			LeaderElection: false,
 		})
 		Expect(err).NotTo(HaveOccurred())
-		Expect(err).To(BeNil())
+		Expect(err).ToNot(HaveOccurred())
 
 		snapshotReconciler = NewSnapshotReconciler(k8sClient, &logf.Log, &scheme)
 	})
@@ -163,7 +163,7 @@ var _ = Describe("SnapshotController", func() {
 		Eventually(func() error {
 			_, err := snapshotReconciler.Reconcile(ctx, req)
 			return err
-		}).Should(BeNil())
+		}).Should(Succeed())
 	})
 
 	It("can Reconcile function prepare the adapter and return the result of the reconcile handling operation", func() {
@@ -175,7 +175,7 @@ var _ = Describe("SnapshotController", func() {
 		}
 		result, err := snapshotReconciler.Reconcile(ctx, req)
 		Expect(reflect.TypeOf(result)).To(Equal(reflect.TypeOf(reconcile.Result{})))
-		Expect(err).To(BeNil())
+		Expect(err).ToNot(HaveOccurred())
 	})
 
 	It("can add the Application as a Controller OwnerReference on Snapshot", func() {
@@ -215,7 +215,7 @@ var _ = Describe("SnapshotController", func() {
 
 		result, err := snapshotReconciler.Reconcile(ctx, req)
 		Expect(result).To(Equal(ctrl.Result{}))
-		Expect(err).To(BeNil())
+		Expect(err).ToNot(HaveOccurred())
 	})
 
 	It("Does not return an error if the application cannot be found", func() {
@@ -233,7 +233,7 @@ var _ = Describe("SnapshotController", func() {
 
 		result, err := snapshotReconciler.Reconcile(ctx, req)
 		Expect(result).To(Equal(ctrl.Result{}))
-		Expect(err).To(BeNil())
+		Expect(err).ToNot(HaveOccurred())
 		Eventually(func() bool {
 			err := k8sClient.Get(ctx, types.NamespacedName{
 				Namespace: hasSnapshot.Namespace,
@@ -255,7 +255,7 @@ var _ = Describe("SnapshotController", func() {
 
 	It("can setup a new Controller manager and start it", func() {
 		err := SetupController(manager, &ctrl.Log)
-		Expect(err).To(BeNil())
+		Expect(err).ToNot(HaveOccurred())
 	})
 
 	When("snapshot is restored from backup", func() {
@@ -276,7 +276,7 @@ var _ = Describe("SnapshotController", func() {
 		It("stops reconciliation without error", func() {
 			result, err := snapshotReconciler.Reconcile(ctx, req)
 			Expect(result).To(Equal(ctrl.Result{}))
-			Expect(err).To(BeNil())
+			Expect(err).ToNot(HaveOccurred())
 		})
 	})
 
