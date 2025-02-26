@@ -252,7 +252,7 @@ var _ = Describe("Formatters", func() {
 		text, err := status.FormatTestsSummary(taskRuns, pipelineRun.Name, pipelineRun.Namespace, componentSnapshotInfos, PRGroup, logr.Discard())
 		Expect(err).To(Succeed())
 		comment, err := status.FormatComment("example-title", text)
-		Expect(err).To(BeNil())
+		Expect(err).ToNot(HaveOccurred())
 		Expect(comment).To(ContainSubstring("### example-title"))
 		Expect(comment).To(ContainSubstring(expectedSummary))
 	})
@@ -264,7 +264,7 @@ var _ = Describe("Formatters", func() {
 
 	It("can construct a summary", func() {
 		summary, err := status.FormatTestsSummary(taskRuns, pipelineRun.Name, pipelineRun.Namespace, componentSnapshotInfos, PRGroup, logr.Discard())
-		Expect(err).To(BeNil())
+		Expect(err).ToNot(HaveOccurred())
 		Expect(summary).To(Equal(expectedSummary))
 	})
 	//when TEST_OUTPUT == "" is also invalid

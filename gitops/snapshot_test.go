@@ -277,7 +277,7 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 
 	It("ensures the Snapshots status can be marked as passed", func() {
 		err := gitops.MarkSnapshotAsPassed(ctx, k8sClient, hasSnapshot, "Test message")
-		Expect(err).To(BeNil())
+		Expect(err).ToNot(HaveOccurred())
 		Expect(hasSnapshot.Status.Conditions).NotTo(BeNil())
 		Expect(meta.IsStatusConditionTrue(hasSnapshot.Status.Conditions, gitops.AppStudioTestSucceededCondition)).To(BeTrue())
 		Expect(gitops.IsSnapshotMarkedAsPassed(hasSnapshot)).To(BeTrue())
@@ -294,7 +294,7 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 		meta.SetStatusCondition(&hasSnapshot.Status.Conditions, condition)
 
 		err := k8sClient.Status().Patch(ctx, hasSnapshot, patch)
-		Expect(err).To(BeNil())
+		Expect(err).ToNot(HaveOccurred())
 		Expect(hasSnapshot).NotTo(BeNil())
 		Expect(hasSnapshot.Status.Conditions).NotTo(BeNil())
 		Expect(meta.IsStatusConditionTrue(hasSnapshot.Status.Conditions, gitops.LegacyTestSucceededCondition)).To(BeTrue())
@@ -313,7 +313,7 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 		meta.SetStatusCondition(&hasSnapshot.Status.Conditions, condition)
 
 		err := k8sClient.Status().Patch(ctx, hasSnapshot, patch)
-		Expect(err).To(BeNil())
+		Expect(err).ToNot(HaveOccurred())
 		Expect(hasSnapshot).NotTo(BeNil())
 		Expect(hasSnapshot.Status.Conditions).NotTo(BeNil())
 		Expect(meta.IsStatusConditionTrue(hasSnapshot.Status.Conditions, gitops.LegacyIntegrationStatusCondition)).To(BeFalse())
@@ -323,7 +323,7 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 
 	It("ensures the Snapshots status can be marked as failed", func() {
 		err := gitops.MarkSnapshotAsFailed(ctx, k8sClient, hasSnapshot, "Test message")
-		Expect(err).To(BeNil())
+		Expect(err).ToNot(HaveOccurred())
 		Expect(hasSnapshot.Status.Conditions).NotTo(BeNil())
 		Expect(meta.IsStatusConditionTrue(hasSnapshot.Status.Conditions, gitops.AppStudioTestSucceededCondition)).To(BeFalse())
 		Expect(gitops.IsSnapshotMarkedAsFailed(hasSnapshot)).To(BeTrue())
@@ -345,7 +345,7 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 
 	It("ensures the Snapshots status can be marked as in progress", func() {
 		err := gitops.MarkSnapshotIntegrationStatusAsInProgress(ctx, k8sClient, hasSnapshot, "Test message")
-		Expect(err).To(BeNil())
+		Expect(err).ToNot(HaveOccurred())
 		Expect(hasSnapshot.Status.Conditions).NotTo(BeNil())
 		foundStatusCondition := meta.FindStatusCondition(hasSnapshot.Status.Conditions, gitops.AppStudioIntegrationStatusCondition)
 		Expect(foundStatusCondition.Reason).To(Equal(gitops.AppStudioIntegrationStatusInProgress))
@@ -353,7 +353,7 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 
 	It("ensures the Snapshots status can be marked as invalid", func() {
 		err := gitops.MarkSnapshotAsInvalid(ctx, k8sClient, hasSnapshot, "Test message")
-		Expect(err).To(BeNil())
+		Expect(err).ToNot(HaveOccurred())
 		Expect(hasSnapshot.Status.Conditions).NotTo(BeNil())
 		Expect(meta.IsStatusConditionTrue(hasSnapshot.Status.Conditions, gitops.AppStudioIntegrationStatusCondition)).To(BeFalse())
 		Expect(gitops.IsSnapshotMarkedAsPassed(hasSnapshot)).To(BeFalse())
@@ -363,7 +363,7 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 		Expect(gitops.IsSnapshotMarkedAsAutoReleased(hasSnapshot)).To(BeFalse())
 
 		err := gitops.MarkSnapshotAsAutoReleased(ctx, k8sClient, hasSnapshot, "Test message")
-		Expect(err).To(BeNil())
+		Expect(err).ToNot(HaveOccurred())
 		Expect(hasSnapshot.Status.Conditions).NotTo(BeNil())
 		foundStatusCondition := meta.FindStatusCondition(hasSnapshot.Status.Conditions, gitops.SnapshotAutoReleasedCondition)
 		Expect(foundStatusCondition.Status).To(Equal(metav1.ConditionTrue))
@@ -377,7 +377,7 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 		Expect(gitops.IsComponentSnapshotCreatedByPACPushEvent(hasSnapshot)).To(BeTrue())
 
 		err := gitops.MarkSnapshotAsAddedToGlobalCandidateList(ctx, k8sClient, hasSnapshot, "Test message")
-		Expect(err).To(BeNil())
+		Expect(err).ToNot(HaveOccurred())
 		Expect(hasSnapshot.Status.Conditions).NotTo(BeNil())
 		foundStatusCondition := meta.FindStatusCondition(hasSnapshot.Status.Conditions, gitops.SnapshotAddedToGlobalCandidateListCondition)
 		Expect(foundStatusCondition.Status).To(Equal(metav1.ConditionTrue))
@@ -527,7 +527,7 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 		Expect(hasSnapshot.Status.Conditions).NotTo(BeNil())
 
 		err = gitops.MarkSnapshotAsPassed(ctx, k8sClient, hasSnapshot, "Test message")
-		Expect(err).To(BeNil())
+		Expect(err).ToNot(HaveOccurred())
 		Expect(hasSnapshot.Status.Conditions).NotTo(BeNil())
 
 		canBePromoted, reasons := gitops.CanSnapshotBePromoted(hasSnapshot)
@@ -542,7 +542,7 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 		Expect(hasSnapshot.Status.Conditions).NotTo(BeNil())
 
 		err = gitops.MarkSnapshotAsFailed(ctx, k8sClient, hasSnapshot, "Test message")
-		Expect(err).To(BeNil())
+		Expect(err).ToNot(HaveOccurred())
 		Expect(hasSnapshot.Status.Conditions).NotTo(BeNil())
 
 		canBePromoted, reasons := gitops.CanSnapshotBePromoted(hasSnapshot)
@@ -563,13 +563,13 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 
 	It("Return false when the image url contains invalid digest", func() {
 		imageUrl := "quay.io/redhat-appstudio/sample-image:latest"
-		Expect(gitops.ValidateImageDigest(imageUrl)).NotTo(BeNil())
+		Expect(gitops.ValidateImageDigest(imageUrl)).NotTo(Succeed())
 	})
 
 	It("Return true when the image url contains valid digest", func() {
 		// Prepare a valid image with digest
 		imageUrl := "quay.io/redhat-appstudio/sample-image@sha256:841328df1b9f8c4087adbdcfec6cc99ac8308805dea83f6d415d6fb8d40227c1"
-		Expect(gitops.ValidateImageDigest(imageUrl)).To(BeNil())
+		Expect(gitops.ValidateImageDigest(imageUrl)).To(Succeed())
 	})
 
 	It("ensure snapshot can be prepared for pipelinerun ", func() {
@@ -585,7 +585,7 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 		allApplicationComponents := &[]applicationapiv1alpha1.Component{*hasComp}
 		snapshot, err := gitops.PrepareSnapshot(ctx, k8sClient, hasApp, allApplicationComponents, hasComp, imagePullSpec, componentSource)
 		Expect(snapshot).NotTo(BeNil())
-		Expect(err).To(BeNil())
+		Expect(err).ToNot(HaveOccurred())
 		Expect(snapshot.Spec.Components).To(HaveLen(1), "One component should have been added to snapshot.  Other component should have been omited due to empty ContainerImage field or missing valid digest")
 		Expect(snapshot.Spec.Components[0].Name).To(Equal(hasComp.Name), "The built component should have been added to the snapshot")
 		Expect(snapshot.GetAnnotations()).To(HaveKeyWithValue(gitops.SnapshotGitSourceRepoURLAnnotation, componentSource.GitSource.URL), "The git source repo URL annotation is added")
@@ -653,7 +653,7 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 
 	It("Return false when the image url contains invalid digest", func() {
 		imageUrl := "quay.io/redhat-appstudio/sample-image:latest"
-		Expect(gitops.ValidateImageDigest(imageUrl)).NotTo(BeNil())
+		Expect(gitops.ValidateImageDigest(imageUrl)).NotTo(Succeed())
 	})
 
 	It("ensure ComponentSource can returned when component have Status.LastBuiltCommit defined or not", func() {
@@ -695,7 +695,7 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 		It("add run label to snapshot", func() {
 			testScenario := "test-scenario"
 			err := gitops.AddIntegrationTestRerunLabel(ctx, k8sClient, hasSnapshot, testScenario)
-			Expect(err).To(BeNil())
+			Expect(err).ToNot(HaveOccurred())
 			val, ok := gitops.GetIntegrationTestRunLabelValue(hasSnapshot)
 			Expect(ok).To(BeTrue())
 			Expect(val).To(Equal(testScenario))

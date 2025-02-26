@@ -47,7 +47,7 @@ var _ = Describe("Release Adapter", Ordered, func() {
 			})
 			resource, err := loader.GetReleasesWithSnapshot(mockContext, nil, nil)
 			Expect(resource).To(Equal(&[]releasev1alpha1.Release{*release}))
-			Expect(err).To(BeNil())
+			Expect(err).ToNot(HaveOccurred())
 		})
 	})
 
@@ -62,7 +62,7 @@ var _ = Describe("Release Adapter", Ordered, func() {
 			})
 			resource, err := loader.GetAllApplicationComponents(mockContext, nil, nil)
 			Expect(resource).To(Equal(&applicationComponents))
-			Expect(err).To(BeNil())
+			Expect(err).ToNot(HaveOccurred())
 		})
 	})
 
@@ -77,7 +77,7 @@ var _ = Describe("Release Adapter", Ordered, func() {
 			})
 			resource, err := loader.GetApplicationFromSnapshot(mockContext, nil, nil)
 			Expect(resource).To(Equal(application))
-			Expect(err).To(BeNil())
+			Expect(err).ToNot(HaveOccurred())
 		})
 	})
 
@@ -92,7 +92,7 @@ var _ = Describe("Release Adapter", Ordered, func() {
 			})
 			resource, err := loader.GetComponentFromSnapshot(mockContext, nil, nil)
 			Expect(resource).To(Equal(component))
-			Expect(err).To(BeNil())
+			Expect(err).ToNot(HaveOccurred())
 		})
 	})
 
@@ -107,7 +107,7 @@ var _ = Describe("Release Adapter", Ordered, func() {
 			})
 			resource, err := loader.GetComponentFromPipelineRun(mockContext, nil, nil)
 			Expect(resource).To(Equal(component))
-			Expect(err).To(BeNil())
+			Expect(err).ToNot(HaveOccurred())
 		})
 	})
 
@@ -122,7 +122,7 @@ var _ = Describe("Release Adapter", Ordered, func() {
 			})
 			resource, err := loader.GetApplicationFromPipelineRun(mockContext, nil, nil)
 			Expect(resource).To(Equal(application))
-			Expect(err).To(BeNil())
+			Expect(err).ToNot(HaveOccurred())
 		})
 	})
 
@@ -137,7 +137,7 @@ var _ = Describe("Release Adapter", Ordered, func() {
 			})
 			resource, err := loader.GetApplicationFromComponent(mockContext, nil, nil)
 			Expect(resource).To(Equal(application))
-			Expect(err).To(BeNil())
+			Expect(err).ToNot(HaveOccurred())
 		})
 	})
 
@@ -152,7 +152,7 @@ var _ = Describe("Release Adapter", Ordered, func() {
 			})
 			resource, err := loader.GetSnapshotFromPipelineRun(mockContext, nil, nil)
 			Expect(resource).To(Equal(snapshot))
-			Expect(err).To(BeNil())
+			Expect(err).ToNot(HaveOccurred())
 		})
 	})
 
@@ -182,7 +182,7 @@ var _ = Describe("Release Adapter", Ordered, func() {
 			})
 			resource, err := loader.GetAllIntegrationTestScenariosForApplication(mockContext, nil, nil)
 			Expect(resource).To(Equal(&scenarios))
-			Expect(err).To(BeNil())
+			Expect(err).ToNot(HaveOccurred())
 		})
 	})
 
@@ -197,7 +197,7 @@ var _ = Describe("Release Adapter", Ordered, func() {
 			})
 			resource, err := loader.GetRequiredIntegrationTestScenariosForSnapshot(mockContext, nil, nil, nil)
 			Expect(resource).To(Equal(&scenarios))
-			Expect(err).To(BeNil())
+			Expect(err).ToNot(HaveOccurred())
 		})
 	})
 
@@ -227,7 +227,7 @@ var _ = Describe("Release Adapter", Ordered, func() {
 			})
 			resource, err := loader.GetAllPipelineRunsForSnapshotAndScenario(mockContext, nil, nil, nil)
 			Expect(resource).To(Equal(&prs))
-			Expect(err).To(BeNil())
+			Expect(err).ToNot(HaveOccurred())
 		})
 	})
 
@@ -242,7 +242,7 @@ var _ = Describe("Release Adapter", Ordered, func() {
 			})
 			resource, err := loader.GetAllSnapshots(mockContext, nil, nil)
 			Expect(resource).To(Equal(&snapshots))
-			Expect(err).To(BeNil())
+			Expect(err).ToNot(HaveOccurred())
 		})
 	})
 
@@ -257,7 +257,7 @@ var _ = Describe("Release Adapter", Ordered, func() {
 			})
 			resource, err := loader.GetAutoReleasePlansForApplication(mockContext, nil, nil)
 			Expect(resource).To(Equal(&releasePlans))
-			Expect(err).To(BeNil())
+			Expect(err).ToNot(HaveOccurred())
 		})
 	})
 

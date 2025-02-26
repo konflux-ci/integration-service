@@ -17,12 +17,13 @@ limitations under the License.
 package integrationpipeline
 
 import (
-	"github.com/konflux-ci/integration-service/helpers"
 	"reflect"
+	"time"
+
+	"github.com/konflux-ci/integration-service/helpers"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	crwebhook "sigs.k8s.io/controller-runtime/pkg/webhook"
-	"time"
 
 	"k8s.io/apimachinery/pkg/api/errors"
 
@@ -263,8 +264,7 @@ var _ = Describe("Integration PipelineController", func() {
 			},
 			LeaderElection: false,
 		})
-		Expect(err).NotTo(HaveOccurred())
-		Expect(err).To(BeNil())
+		Expect(err).ToNot(HaveOccurred())
 
 		pipelineReconciler = NewIntegrationReconciler(k8sClient, &logf.Log, &scheme)
 	})
@@ -291,7 +291,7 @@ var _ = Describe("Integration PipelineController", func() {
 		Eventually(func() error {
 			_, err := pipelineReconciler.Reconcile(ctx, req)
 			return err
-		}).Should(BeNil())
+		}).Should(Succeed())
 	})
 
 	It("can Reconcile function prepare the adapter and return the result of the reconcile handling operation", func() {
@@ -303,7 +303,7 @@ var _ = Describe("Integration PipelineController", func() {
 		}
 		result, err := pipelineReconciler.Reconcile(ctx, req)
 		Expect(reflect.TypeOf(result)).To(Equal(reflect.TypeOf(reconcile.Result{})))
-		Expect(err).To(BeNil())
+		Expect(err).ToNot(HaveOccurred())
 	})
 
 	It("can setup the cache by adding a new index field to search for ReleasePlanAdmissions", func() {
@@ -318,13 +318,13 @@ var _ = Describe("Integration PipelineController", func() {
 
 	It("can setup a new Controller manager and start it", func() {
 		err := SetupController(manager, &ctrl.Log)
-		Expect(err).To(BeNil())
+		Expect(err).ToNot(HaveOccurred())
 	})
 
 	It("Does not return an error if the snapshot cannot be found", func() {
 		controllerutil.AddFinalizer(integrationPipelineRun, helpers.IntegrationPipelineRunFinalizer)
 		err := k8sClient.Update(ctx, integrationPipelineRun)
-		Expect(err).To(BeNil())
+		Expect(err).ToNot(HaveOccurred())
 
 		err = k8sClient.Delete(ctx, hasSnapshot)
 		Eventually(func() bool {
@@ -338,7 +338,7 @@ var _ = Describe("Integration PipelineController", func() {
 
 		result, err := pipelineReconciler.Reconcile(ctx, req)
 		Expect(result).To(Equal(ctrl.Result{}))
-		Expect(err).To(BeNil())
+		Expect(err).ToNot(HaveOccurred())
 
 		Eventually(func() bool {
 			err := k8sClient.Get(ctx, types.NamespacedName{
@@ -410,7 +410,7 @@ var _ = Describe("Integration PipelineController", func() {
 		It("reconcile with application taken from pipelinerun (integration pipeline)", func() {
 			result, err := pipelineReconciler.Reconcile(ctx, reqNoComponent)
 			Expect(reflect.TypeOf(result)).To(Equal(reflect.TypeOf(reconcile.Result{})))
-			Expect(err).To(BeNil())
+			Expect(err).ToNot(HaveOccurred())
 		})
 
 	})
