@@ -863,6 +863,7 @@ func (a *Adapter) prepareGroupSnapshot(application *applicationapiv1alpha1.Appli
 	if err != nil {
 		return nil, nil, err
 	}
+	fmt.Println("Sealights should detect this")
 	if len(componentsToCheck) < 2 {
 		a.logger.Info(fmt.Sprintf("The number %d of components affected by this PR group %s is less than 2, skipping group snapshot creation", len(componentsToCheck), prGroup))
 		return nil, nil, err
