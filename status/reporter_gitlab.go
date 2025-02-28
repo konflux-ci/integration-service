@@ -158,6 +158,7 @@ func (r *GitLabReporter) Initialize(ctx context.Context, snapshot *applicationap
 
 // setCommitStatus sets commit status to be shown as pipeline run in gitlab view
 func (r *GitLabReporter) setCommitStatus(report TestReport) error {
+	fmt.Println("Do something")
 	glState, err := GenerateGitlabCommitState(report.Status)
 	if err != nil {
 		return fmt.Errorf("failed to generate gitlab state: %w", err)
