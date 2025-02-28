@@ -51,21 +51,6 @@ spec:
       description: "A flag to enable or disable the Sealights integration feature. When set to 'true', test results are sent to Sealights for analysis; otherwise, this feature is skipped."
       default: "true"
   tasks:
-    - name: sealights-tests-recommendations
-      taskRef:
-        resolver: git
-        params:
-          - name: url
-            value: https://github.com/flacatus/tekton-integration-catalog.git
-          - name: revision
-            value: sealights_t_r
-          - name: pathInRepo
-            value: tasks/sealights/sealights-tests-recommendation/0.1/sealights-tests-recommendation.yaml
-      params:
-        - name: test-stage
-          value: $(params.test-stage)
-        - name: sealights-bsid
-          value: $(params.ocp-version)
     - name: sealights-refs
       taskRef:
         resolver: git
