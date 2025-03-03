@@ -445,10 +445,10 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
 
 			statuses, err := gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(hasSnapshot)
-			Expect(err).To(BeNil())
+			Expect(err).ToNot(HaveOccurred())
 			statuses.UpdateTestStatusIfChanged(integrationTestScenario.Name, intgteststat.IntegrationTestStatusTestPassed, "testDetails")
 			err = gitops.WriteIntegrationTestStatusesIntoSnapshot(ctx, hasSnapshot, statuses, k8sClient)
-			Expect(err).To(BeNil())
+			Expect(err).ToNot(HaveOccurred())
 
 			adapter = NewAdapter(ctx, hasSnapshot, hasApp, log, loader.NewMockLoader(), k8sClient)
 			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
@@ -533,9 +533,9 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 
 			// Check when all integrationTestScenarion exist in testStatuses of the snapshot
 			testStatuses, err := gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(hasSnapshot)
-			Expect(err).To(BeNil())
+			Expect(err).ToNot(HaveOccurred())
 			integrationTestScenarios, err := adapter.loader.GetRequiredIntegrationTestScenariosForSnapshot(adapter.context, adapter.client, adapter.application, adapter.snapshot)
-			Expect(err).To(BeNil())
+			Expect(err).ToNot(HaveOccurred())
 			result := adapter.findUntriggeredIntegrationTestFromStatus(integrationTestScenarios, testStatuses)
 			Expect(result).To(BeEmpty())
 
@@ -555,10 +555,10 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
 
 			statuses, err := gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(hasSnapshot)
-			Expect(err).To(BeNil())
+			Expect(err).ToNot(HaveOccurred())
 			statuses.UpdateTestStatusIfChanged(integrationTestScenario.Name, intgteststat.IntegrationTestStatusTestFail, "Failed test")
 			err = gitops.WriteIntegrationTestStatusesIntoSnapshot(ctx, hasSnapshot, statuses, k8sClient)
-			Expect(err).To(BeNil())
+			Expect(err).ToNot(HaveOccurred())
 
 			adapter = NewAdapter(ctx, hasSnapshot, hasApp, log, loader.NewMockLoader(), k8sClient)
 			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
@@ -663,10 +663,10 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
 
 			statuses, err := gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(hasSnapshot)
-			Expect(err).To(BeNil())
+			Expect(err).ToNot(HaveOccurred())
 			statuses.UpdateTestStatusIfChanged(integrationTestScenario.Name, intgteststat.IntegrationTestStatusTestPassed, "testDetails")
 			err = gitops.WriteIntegrationTestStatusesIntoSnapshot(ctx, hasSnapshot, statuses, k8sClient)
-			Expect(err).To(BeNil())
+			Expect(err).ToNot(HaveOccurred())
 
 			adapter = NewAdapter(ctx, hasSnapshot, hasApp, log, loader.NewMockLoader(), k8sClient)
 			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
