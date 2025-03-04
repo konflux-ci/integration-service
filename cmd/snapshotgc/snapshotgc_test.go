@@ -930,4 +930,133 @@ var _ = Describe("Test garbage collection for snapshots", func() {
 			))
 		})
 	})
+
+	Describe("Test filterSnapshotsWithKeepSnapshotAnnotation", func() {
+		It("Keeps one PR, one non-pr snapshot and discards the other two", func() {
+			snapKeepNonPR := applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "associated-snapshot",
+					Namespace: "ns1",
+					Labels: map[string]string{
+						"pac.test.appstudio.openshift.io/event-type": "push",
+					},
+					Annotations: map[string]string{
+						"test.appstudio.openshift.io/keep-snapshot": "true",
+					},
+				},
+			}
+			snapDiscardNonPR := applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "associated-snapshot",
+					Namespace: "ns1",
+					Labels: map[string]string{
+						"pac.test.appstudio.openshift.io/type": "push",
+					},
+				},
+			}
+			snapKeepPR := applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "associated-snapshot",
+					Namespace: "ns1",
+					Labels: map[string]string{
+						"pac.test.appstudio.openshift.io/event-type": "pull",
+					},
+					Annotations: map[string]string{
+						"test.appstudio.openshift.io/keep-snapshot": "true",
+					},
+				},
+			}
+			snapDiscardPR := applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "associated-snapshot",
+					Namespace: "ns1",
+					Labels: map[string]string{
+						"pac.test.appstudio.openshift.io/type": "pull",
+					},
+				},
+			}
+
+			filteredSnapshotList, keptPr, keptNonPr := filterSnapshotsWithKeepSnapshotAnnotation([]applicationapiv1alpha1.Snapshot{snapKeepNonPR, snapDiscardNonPR, snapKeepPR, snapDiscardPR})
+			Expect(filteredSnapshotList).Should(ContainElement(snapDiscardNonPR))
+			Expect(filteredSnapshotList).Should(ContainElement(snapDiscardPR))
+			Expect(keptPr).To(Equal(1))
+			Expect(keptNonPr).To(Equal(1))
+
+		})
+	})
+
+	Describe("Test isNonPrSnapshotFunction", func() {
+		It("Returns true if snapshot is override snapshot", func() {
+			snap := applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "associated-snapshot",
+					Namespace: "ns1",
+					Labels: map[string]string{
+						"test.appstudio.openshift.io/type": "override",
+					},
+				},
+			}
+
+			nonPr := isNonPrSnapshot(snap)
+			Expect(nonPr).To(BeTrue())
+
+		})
+
+		It("Returns true if event-type is 'push'", func() {
+			snap := applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "associated-snapshot",
+					Namespace: "ns1",
+					Labels: map[string]string{
+						"pac.test.appstudio.openshift.io/event-type": "push",
+					},
+				},
+			}
+
+			nonPr := isNonPrSnapshot(snap)
+			Expect(nonPr).To(BeTrue())
+		})
+
+		It("Returns true if event-type is 'Push'", func() {
+			snap := applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "associated-snapshot",
+					Namespace: "ns1",
+					Labels: map[string]string{
+						"pac.test.appstudio.openshift.io/event-type": "Push",
+					},
+				},
+			}
+
+			nonPr := isNonPrSnapshot(snap)
+			Expect(nonPr).To(BeTrue())
+		})
+
+		It("Returns true if event-type label does not exist", func() {
+			snap := applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "associated-snapshot",
+					Namespace: "ns1",
+				},
+			}
+
+			nonPr := isNonPrSnapshot(snap)
+			Expect(nonPr).To(BeTrue())
+		})
+
+		It("Returns false if snapshot is not override and event-typep label is not send to 'push' or 'Push'", func() {
+			snap := applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "associated-snapshot",
+					Namespace: "ns1",
+					Labels: map[string]string{
+						"pac.test.appstudio.openshift.io/event-type": "pull",
+					},
+				},
+			}
+
+			nonPr := isNonPrSnapshot(snap)
+			Expect(nonPr).To(BeFalse())
+		})
+	})
 })
