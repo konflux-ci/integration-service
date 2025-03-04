@@ -54,12 +54,14 @@ type ObjectLoader interface {
 	GetAutoReleasePlansForApplication(ctx context.Context, c client.Client, application *applicationapiv1alpha1.Application) (*[]releasev1alpha1.ReleasePlan, error)
 	GetScenario(ctx context.Context, c client.Client, name, namespace string) (*v1beta2.IntegrationTestScenario, error)
 	GetAllSnapshotsForBuildPipelineRun(ctx context.Context, c client.Client, pipelineRun *tektonv1.PipelineRun) (*[]applicationapiv1alpha1.Snapshot, error)
+	GetAllSnapshotsForPR(ctx context.Context, c client.Client, application *applicationapiv1alpha1.Application, pullRequest string, repoUrl string) (*[]applicationapiv1alpha1.Snapshot, error)
 	GetAllTaskRunsWithMatchingPipelineRunLabel(ctx context.Context, c client.Client, pipelineRun *tektonv1.PipelineRun) (*[]tektonv1.TaskRun, error)
 	GetPipelineRun(ctx context.Context, c client.Client, name, namespace string) (*tektonv1.PipelineRun, error)
 	GetComponent(ctx context.Context, c client.Client, name, namespace string) (*applicationapiv1alpha1.Component, error)
 	GetMatchingComponentSnapshotsForPRGroupHash(ctx context.Context, c client.Client, snapshot *applicationapiv1alpha1.Snapshot, prGroupHash string) (*[]applicationapiv1alpha1.Snapshot, error)
 	GetPipelineRunsWithPRGroupHash(ctx context.Context, c client.Client, namespace, prGroupHash string) (*[]tektonv1.PipelineRun, error)
 	GetMatchingComponentSnapshotsForComponentAndPRGroupHash(ctx context.Context, c client.Client, snapshot, componentName, prGroupHash string) (*[]applicationapiv1alpha1.Snapshot, error)
+	GetAllIntegrationPipelineRunsForSnapshot(ctx context.Context, adapterClient client.Client, snapshot *applicationapiv1alpha1.Snapshot) ([]tektonv1.PipelineRun, error)
 }
 
 type loader struct{}
@@ -349,6 +351,26 @@ func (l *loader) GetAllSnapshotsForBuildPipelineRun(ctx context.Context, c clien
 	return &snapshots.Items, nil
 }
 
+// GetAllSnapshotsForPR returns all Snapshots for the associated Pull Request for the same repo url.
+// In the case the List operation fails, an error will be returned.
+// gitops.PipelineAsCodePullRequestAnnotation is also a label
+func (l *loader) GetAllSnapshotsForPR(ctx context.Context, c client.Client, application *applicationapiv1alpha1.Application, pullRequest string, repoUrl string) (*[]applicationapiv1alpha1.Snapshot, error) {
+	snapshots := &applicationapiv1alpha1.SnapshotList{}
+	opts := []client.ListOption{
+		client.InNamespace(application.Namespace),
+		client.MatchingLabels{
+			gitops.PipelineAsCodePullRequestAnnotation: pullRequest,
+			gitops.PipelineAsCodeRepoURLAnnotation:     repoUrl,
+		},
+	}
+
+	err := c.List(ctx, snapshots, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &snapshots.Items, nil
+}
+
 // GetAllTaskRunsWithMatchingPipelineRunLabel finds all Child TaskRuns
 // whose "tekton.dev/pipeline" label points to the given PipelineRun
 func (l *loader) GetAllTaskRunsWithMatchingPipelineRunLabel(ctx context.Context, c client.Client, pipelineRun *tektonv1.PipelineRun) (*[]tektonv1.TaskRun, error) {
@@ -485,4 +507,19 @@ func (l *loader) GetMatchingComponentSnapshotsForPRGroupHash(ctx context.Context
 		return nil, err
 	}
 	return &snapshots.Items, nil
+}
+
+// function GetAllIntegrationPipelineRunsForSnapshot returns list of integration pipelineruns that matches the required labels specified in the function
+func (l *loader) GetAllIntegrationPipelineRunsForSnapshot(ctx context.Context, adapterClient client.Client, snapshot *applicationapiv1alpha1.Snapshot) ([]tektonv1.PipelineRun, error) {
+	integrationPipelineRuns := &tektonv1.PipelineRunList{}
+	opts := []client.ListOption{
+		client.InNamespace(snapshot.Namespace),
+		client.MatchingLabels{
+			"pipelines.appstudio.openshift.io/type": "test",
+			"appstudio.openshift.io/snapshot":       snapshot.Name,
+		},
+	}
+	err := adapterClient.List(ctx, integrationPipelineRuns, opts...)
+
+	return integrationPipelineRuns.Items, err
 }
