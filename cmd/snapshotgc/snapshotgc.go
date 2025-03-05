@@ -28,6 +28,11 @@ var (
 	scheme = runtime.NewScheme()
 )
 
+const (
+	// Annotation that can be manually added by users to preven the deleion of a snapshot
+	KeepSnapshotAnnotation = "test.appstudio.openshift.io/keep-snapshot"
+)
+
 func init() {
 	utilruntime.Must(applicationapiv1alpha1.AddToScheme(scheme))
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
@@ -76,6 +81,10 @@ func garbageCollectSnapshots(
 			)
 			continue
 		}
+
+		candidates, keptPrSnapshots, keptNonPrSnapshots := filterSnapshotsWithKeepSnapshotAnnotation(candidates)
+		prSnapshotsToKeep -= keptPrSnapshots
+		nonPrSnapshotsToKeep -= keptNonPrSnapshots
 
 		candidates = getSnapshotsForRemoval(
 			cl, candidates, prSnapshotsToKeep, nonPrSnapshotsToKeep, logger,
@@ -192,6 +201,42 @@ func getUnassociatedNSSnapshots(
 	return unAssociatedSnaps, nil
 }
 
+// Returns true if snapshot is a push snapshot, override snapshot, or if the
+// event-type annnotation for the snapshot is not set.  Returns false otherwise
+func isNonPrSnapshot(
+	snapshot applicationapiv1alpha1.Snapshot,
+) bool {
+	label, found := snapshot.GetLabels()["pac.test.appstudio.openshift.io/event-type"]
+	isOverrideSnapshot := metadata.HasLabelWithValue(&snapshot, "test.appstudio.openshift.io/type", "override")
+	if !found || label == "push" || label == "Push" || isOverrideSnapshot {
+		return true
+	}
+	return false
+}
+
+// Removes snapshots with the KeepSnapshotAnnotation from the list of candidate
+// snapshots.  Returns a new slice without the reserved snapshots plus the
+// number of PR and non-pr snapshots that were reserved
+func filterSnapshotsWithKeepSnapshotAnnotation(
+	snapshots []applicationapiv1alpha1.Snapshot,
+) ([]applicationapiv1alpha1.Snapshot, int, int) {
+	nonReservedSnapshots := make([]applicationapiv1alpha1.Snapshot, len(snapshots))
+	keptNonPrSnapshots := 0
+	keptPrSnapshots := 0
+	for _, snap := range snapshots {
+		if metadata.HasAnnotationWithValue(&snap, "test.appstudio.openshift.io/keep-snapshot", "true") {
+			if isNonPrSnapshot(snap) {
+				keptNonPrSnapshots++
+			} else {
+				keptPrSnapshots++
+			}
+		} else {
+			nonReservedSnapshots = append(nonReservedSnapshots, snap)
+		}
+	}
+	return nonReservedSnapshots, keptPrSnapshots, keptNonPrSnapshots
+}
+
 // Keep a certain amount of pr/non-pr snapshots
 func getSnapshotsForRemoval(
 	cl client.Client,
@@ -211,10 +256,8 @@ func getSnapshotsForRemoval(
 
 	for _, snap := range snapshots {
 		snap := snap
-		label, found := snap.GetLabels()["pac.test.appstudio.openshift.io/event-type"]
-		isOverrideSnapshot := metadata.HasLabelWithValue(&snap, "test.appstudio.openshift.io/type", "override")
 		// override snapshot does not have the event-type label, but we still want to add it to the cleanup list
-		if !found || label == "push" || label == "Push" || isOverrideSnapshot {
+		if isNonPrSnapshot(snap) {
 			if keptNonPrSnaps < nonPrSnapshotsToKeep {
 				logger.V(1).Info(
 					"Skipping non-PR candidate snapshot",
