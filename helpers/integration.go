@@ -31,6 +31,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 
 	"github.com/go-logr/logr"
+	intgteststat "github.com/konflux-ci/integration-service/pkg/integrationteststatus"
 	"github.com/santhosh-tekuri/jsonschema/v5"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	"knative.dev/pkg/apis"
@@ -504,4 +505,19 @@ func IsObjectYoungerThanThreshold(obj metav1.Object, threshold time.Duration) bo
 	durationSinceObjectCreation := time.Since(objectCreationTime)
 
 	return durationSinceObjectCreation < threshold
+}
+
+// GetRunningIntegrationPipelineRunStatus checks the Tekton results for a given PipelineRun and returns status of test.
+// since we care only about in-progress state we return testpassed in case the test is not running at the moment
+func GetRunningIntegrationPipelineRunStatus(pipelineRun *tektonv1.PipelineRun) (intgteststat.IntegrationTestStatus, string, error) {
+	// Check if the pipelineRun finished from the condition of status
+	if !HasPipelineRunFinished(pipelineRun) {
+		// Mark the pipelineRun's status as "Deleted" if its not finished yet and is marked for deletion (with a non-nil deletionTimestamp)
+		if pipelineRun.GetDeletionTimestamp() != nil {
+			return intgteststat.IntegrationTestStatusDeleted, fmt.Sprintf("Integration test which is running as pipeline run '%s', has been deleted", pipelineRun.Name), nil
+		} else {
+			return intgteststat.IntegrationTestStatusInProgress, fmt.Sprintf("Integration test is running as pipeline run '%s'", pipelineRun.Name), nil
+		}
+	}
+	return intgteststat.IntegrationTestStatusTestPassed, "", nil
 }
