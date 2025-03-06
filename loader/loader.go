@@ -28,6 +28,7 @@ import (
 	toolkit "github.com/konflux-ci/operator-toolkit/loader"
 	releasev1alpha1 "github.com/konflux-ci/release-service/api/v1alpha1"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
+	"golang.org/x/exp/slices"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/labels"
@@ -58,10 +59,11 @@ type ObjectLoader interface {
 	GetAllTaskRunsWithMatchingPipelineRunLabel(ctx context.Context, c client.Client, pipelineRun *tektonv1.PipelineRun) (*[]tektonv1.TaskRun, error)
 	GetPipelineRun(ctx context.Context, c client.Client, name, namespace string) (*tektonv1.PipelineRun, error)
 	GetComponent(ctx context.Context, c client.Client, name, namespace string) (*applicationapiv1alpha1.Component, error)
-	GetMatchingComponentSnapshotsForPRGroupHash(ctx context.Context, c client.Client, snapshot *applicationapiv1alpha1.Snapshot, prGroupHash string) (*[]applicationapiv1alpha1.Snapshot, error)
+	GetMatchingComponentSnapshotsForPRGroupHash(ctx context.Context, c client.Client, nameSpace, prGroupHash string) (*[]applicationapiv1alpha1.Snapshot, error)
 	GetPipelineRunsWithPRGroupHash(ctx context.Context, c client.Client, namespace, prGroupHash string) (*[]tektonv1.PipelineRun, error)
 	GetMatchingComponentSnapshotsForComponentAndPRGroupHash(ctx context.Context, c client.Client, snapshot, componentName, prGroupHash string) (*[]applicationapiv1alpha1.Snapshot, error)
 	GetAllIntegrationPipelineRunsForSnapshot(ctx context.Context, adapterClient client.Client, snapshot *applicationapiv1alpha1.Snapshot) ([]tektonv1.PipelineRun, error)
+	GetComponentsFromSnapshotForPRGroup(ctx context.Context, c client.Client, namespace, prGroup, prGroupHash string) ([]string, error)
 }
 
 type loader struct{}
@@ -476,7 +478,7 @@ func (l *loader) GetMatchingComponentSnapshotsForComponentAndPRGroupHash(ctx con
 }
 
 // GetMatchingComponentSnapshotsForPRGroupHash gets the component snapshot with the given pr group hash string and the the same namespace with the given snapshot
-func (l *loader) GetMatchingComponentSnapshotsForPRGroupHash(ctx context.Context, c client.Client, snapshot *applicationapiv1alpha1.Snapshot, prGroupHash string) (*[]applicationapiv1alpha1.Snapshot, error) {
+func (l *loader) GetMatchingComponentSnapshotsForPRGroupHash(ctx context.Context, c client.Client, namespace, prGroupHash string) (*[]applicationapiv1alpha1.Snapshot, error) {
 	snapshots := &applicationapiv1alpha1.SnapshotList{}
 
 	eventTypeLabelRequirement, err := labels.NewRequirement("pac.test.appstudio.openshift.io/event-type", selection.NotIn, []string{"push", "Push"})
@@ -498,7 +500,7 @@ func (l *loader) GetMatchingComponentSnapshotsForPRGroupHash(ctx context.Context
 		Add(*snapshotTypeLabelRequirement)
 
 	opts := &client.ListOptions{
-		Namespace:     snapshot.Namespace,
+		Namespace:     namespace,
 		LabelSelector: labelSelector,
 	}
 
@@ -522,4 +524,22 @@ func (l *loader) GetAllIntegrationPipelineRunsForSnapshot(ctx context.Context, a
 	err := adapterClient.List(ctx, integrationPipelineRuns, opts...)
 
 	return integrationPipelineRuns.Items, err
+}
+
+// GetComponentsFromSnapshotForPRGroup returns the component names affected by the given pr group hash
+func (l *loader) GetComponentsFromSnapshotForPRGroup(ctx context.Context, client client.Client, namespace, prGroup, prGroupHash string) ([]string, error) {
+	snapshots, err := l.GetMatchingComponentSnapshotsForPRGroupHash(ctx, client, namespace, prGroupHash)
+	if err != nil {
+		return nil, err
+	}
+
+	var componentNames []string
+	for _, snapshot := range *snapshots {
+		componentName := snapshot.Labels[gitops.SnapshotComponentLabel]
+		if slices.Contains(componentNames, componentName) {
+			continue
+		}
+		componentNames = append(componentNames, componentName)
+	}
+	return componentNames, nil
 }

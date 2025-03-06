@@ -242,6 +242,8 @@ const (
 
 	//IntegrationTestStatusCancelledGithub is the status reported to github when integration test is cancelled
 	IntegrationTestStatusCancelledGithub = "cancelled"
+
+	ComponentNameForGroupSnapshot = "pr group"
 )
 
 var (
@@ -974,6 +976,31 @@ func CopySnapshotLabelsAndAnnotations(application *applicationapiv1alpha1.Applic
 
 }
 
+// CopyTempGroupSnapshotLabelsAndAnnotations coppies labels and annotations from build pipelineRun or tested snapshot
+// into regular snapshot
+func CopyTempGroupSnapshotLabelsAndAnnotations(application *applicationapiv1alpha1.Application, snapshot *applicationapiv1alpha1.Snapshot, componentName string, source *metav1.ObjectMeta, prefixes []string) {
+	if snapshot.Labels == nil {
+		snapshot.Labels = map[string]string{}
+	}
+
+	if snapshot.Annotations == nil {
+		snapshot.Annotations = map[string]string{}
+	}
+	snapshot.Labels[SnapshotTypeLabel] = SnapshotGroupType
+
+	snapshot.Labels[ApplicationNameLabel] = application.Name
+
+	// Copy PAC annotations/labels from source(tested snapshot or pipelinerun) to snapshot.
+	_ = metadata.CopyLabelsWithPrefixReplacement(source, &snapshot.ObjectMeta, "pipelinesascode.tekton.dev", PipelinesAsCodePrefix)
+	_ = metadata.CopyAnnotationsWithPrefixReplacement(source, &snapshot.ObjectMeta, "pipelinesascode.tekton.dev", PipelinesAsCodePrefix)
+
+	for _, prefix := range prefixes {
+		// Copy labels and annotations prefixed with defined prefix
+		_ = metadata.CopyLabelsByPrefix(source, &snapshot.ObjectMeta, prefix)
+		_ = metadata.CopyAnnotationsByPrefix(source, &snapshot.ObjectMeta, prefix)
+	}
+}
+
 // IsOverrideSnapshot returns true if snapshot label 'test.appstudio.openshift.io/type' is 'override'
 func IsOverrideSnapshot(snapshot *applicationapiv1alpha1.Snapshot) bool {
 	return metadata.HasLabelWithValue(snapshot, SnapshotTypeLabel, SnapshotOverrideType)
@@ -1064,10 +1091,10 @@ func HasPRGroupProcessed(snapshot *applicationapiv1alpha1.Snapshot) bool {
 	return metadata.HasAnnotation(snapshot, PRGroupCreationAnnotation)
 }
 
-// GetPRGroupFromSnapshot gets the value of label test.appstudio.openshift.io/pr-group-sha and annotation from component snapshot
-func GetPRGroupFromSnapshot(snapshot *applicationapiv1alpha1.Snapshot) (string, string) {
-	if metadata.HasLabel(snapshot, PRGroupHashLabel) && metadata.HasAnnotation(snapshot, PRGroupAnnotation) {
-		return snapshot.Labels[PRGroupHashLabel], snapshot.Annotations[PRGroupAnnotation]
+// GetPRGroup gets the value of label test.appstudio.openshift.io/pr-group-sha and annotation from component snapshot or pipelinerun
+func GetPRGroup(object client.Object) (string, string) {
+	if metadata.HasLabel(object, PRGroupHashLabel) && metadata.HasAnnotation(object, PRGroupAnnotation) {
+		return object.GetLabels()[PRGroupHashLabel], object.GetAnnotations()[PRGroupAnnotation]
 	}
 	return "", ""
 }

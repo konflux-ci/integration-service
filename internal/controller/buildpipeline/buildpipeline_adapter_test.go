@@ -63,15 +63,17 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		mockReporter  *status.MockReporterInterface
 		mockStatus    *status.MockStatusInterface
 
-		successfulTaskRun       *tektonv1.TaskRun
-		failedTaskRun           *tektonv1.TaskRun
-		buildPipelineRun        *tektonv1.PipelineRun
-		buildPipelineRun2       *tektonv1.PipelineRun
-		hasComp                 *applicationapiv1alpha1.Component
-		hasComp2                *applicationapiv1alpha1.Component
-		hasApp                  *applicationapiv1alpha1.Application
-		hasSnapshot             *applicationapiv1alpha1.Snapshot
-		integrationTestScenario *v1beta2.IntegrationTestScenario
+		successfulTaskRun            *tektonv1.TaskRun
+		failedTaskRun                *tektonv1.TaskRun
+		buildPipelineRun             *tektonv1.PipelineRun
+		buildPipelineRun2            *tektonv1.PipelineRun
+		hasComp                      *applicationapiv1alpha1.Component
+		hasComp2                     *applicationapiv1alpha1.Component
+		hasApp                       *applicationapiv1alpha1.Application
+		hasSnapshot                  *applicationapiv1alpha1.Snapshot
+		hasComSnapshot2              *applicationapiv1alpha1.Snapshot
+		integrationTestScenario      *v1beta2.IntegrationTestScenario
+		groupIntegrationTestScenario *v1beta2.IntegrationTestScenario
 	)
 	const (
 		SampleRepoLink           = "https://github.com/devfile-samples/devfile-sample-java-springboot-basic"
@@ -156,6 +158,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				Annotations: map[string]string{
 					gitops.PipelineAsCodeInstallationIDAnnotation: "123",
 					gitops.PRGroupAnnotation:                      prGroup,
+					gitops.PipelineAsCodeGitProviderAnnotation:    "github",
 				},
 			},
 			Spec: applicationapiv1alpha1.SnapshotSpec{
@@ -169,6 +172,32 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			},
 		}
 		Expect(k8sClient.Create(ctx, hasSnapshot)).Should(Succeed())
+
+		hasComSnapshot2 = &applicationapiv1alpha1.Snapshot{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "hasComSnapshot2Name",
+				Namespace: "default",
+				Labels: map[string]string{
+					gitops.SnapshotTypeLabel:                         gitops.SnapshotComponentType,
+					gitops.SnapshotComponentLabel:                    hasComp2.Name,
+					gitops.PipelineAsCodeEventTypeLabel:              gitops.PipelineAsCodePullRequestType,
+					gitops.PRGroupHashLabel:                          prGroupSha,
+					"pac.test.appstudio.openshift.io/url-org":        "testorg",
+					"pac.test.appstudio.openshift.io/url-repository": "testrepo",
+					gitops.PipelineAsCodeSHALabel:                    "sha",
+					gitops.PipelineAsCodePullRequestAnnotation:       "1",
+				},
+				Annotations: map[string]string{
+					gitops.PRGroupAnnotation:                      prGroup,
+					gitops.PipelineAsCodeGitProviderAnnotation:    "github",
+					gitops.PipelineAsCodePullRequestAnnotation:    "1",
+					gitops.PipelineAsCodeInstallationIDAnnotation: "123",
+				},
+			},
+			Spec: applicationapiv1alpha1.SnapshotSpec{
+				Application: hasApp.Name,
+			},
+		}
 
 		successfulTaskRun = &tektonv1.TaskRun{
 			ObjectMeta: metav1.ObjectMeta{
@@ -290,8 +319,44 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				},
 			},
 		}
-
 		Expect(k8sClient.Create(ctx, integrationTestScenario)).Should(Succeed())
+
+		groupIntegrationTestScenario = &v1beta2.IntegrationTestScenario{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "example-its-group",
+				Namespace: "default",
+
+				Labels: map[string]string{
+					"test.appstudio.openshift.io/optional": "false",
+				},
+			},
+			Spec: v1beta2.IntegrationTestScenarioSpec{
+				Application: hasApp.Name,
+				ResolverRef: v1beta2.ResolverRef{
+					Resolver: "git",
+					Params: []v1beta2.ResolverParameter{
+						{
+							Name:  "url",
+							Value: "https://github.com/redhat-appstudio/integration-examples.git",
+						},
+						{
+							Name:  "revision",
+							Value: "main",
+						},
+						{
+							Name:  "pathInRepo",
+							Value: "pipelineruns/integration_pipelinerun_pass.yaml",
+						},
+					},
+				},
+				Contexts: []v1beta2.TestContext{
+					{
+						Name:        "group",
+						Description: "group testing",
+					},
+				},
+			},
+		}
 	})
 
 	BeforeEach(func() {
@@ -1461,11 +1526,11 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			mockReporter = status.NewMockReporterInterface(ctrl)
 			mockStatus = status.NewMockStatusInterface(ctrl)
 			mockReporter.EXPECT().GetReporterName().Return("mocked-reporter").AnyTimes()
-			mockStatus.EXPECT().GetReporter(gomock.Any()).Return(mockReporter)
-			mockStatus.EXPECT().GetReporter(gomock.Any()).AnyTimes()
+			mockStatus.EXPECT().GetReporter(gomock.Any()).Return(mockReporter).AnyTimes()
+			mockStatus.EXPECT().FindSnapshotWithOpenedPR(gomock.Any(), gomock.Any()).Return(hasSnapshot, nil).AnyTimes()
 			mockReporter.EXPECT().GetReporterName().AnyTimes()
-			mockReporter.EXPECT().Initialize(gomock.Any(), gomock.Any()).Times(1)
-			mockReporter.EXPECT().ReportStatus(gomock.Any(), gomock.Any()).Times(1)
+			mockReporter.EXPECT().Initialize(gomock.Any(), gomock.Any()).AnyTimes()
+			mockReporter.EXPECT().ReportStatus(gomock.Any(), gomock.Any()).AnyTimes()
 		})
 		It("ensure integration test is initialized from build PLR", func() {
 			buildPipelineRun.Status = tektonv1.PipelineRunStatus{
@@ -1570,6 +1635,112 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			Expect(!result.CancelRequest && err == nil).To(BeTrue())
 			expectedLogEntry := "integration test has been set correctly or is being processed, no need to set integration test status from build pipelinerun"
 			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
+		})
+
+		It("Ensure group context integration test can be initialized", func() {
+			var buf bytes.Buffer
+			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+			buildPipelineRun = &tektonv1.PipelineRun{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "pipelinerun-build-sample",
+					Namespace: "default",
+					Labels: map[string]string{
+						"pipelines.appstudio.openshift.io/type":    "build",
+						"pipelines.openshift.io/used-by":           "build-cloud",
+						"pipelines.openshift.io/runtime":           "nodejs",
+						"pipelines.openshift.io/strategy":          "s2i",
+						"appstudio.openshift.io/component":         "component-sample",
+						"build.appstudio.redhat.com/target_branch": "main",
+						"pipelinesascode.tekton.dev/event-type":    "pull_request",
+						"pipelinesascode.tekton.dev/pull-request":  "1",
+						"pipelinesascode.tekton.dev/git-provider":  "github",
+						customLabel: "custom-label",
+					},
+					Annotations: map[string]string{
+						"appstudio.redhat.com/updateComponentOnSuccess": "false",
+						"pipelinesascode.tekton.dev/on-target-branch":   "[main,master]",
+						"build.appstudio.openshift.io/repo":             "https://github.com/devfile-samples/devfile-sample-go-basic?rev=c713067b0e65fb3de50d1f7c457eb51c2ab0dbb0",
+						"chains.tekton.dev/signed":                      "true",
+						"pipelinesascode.tekton.dev/source-branch":      "sourceBranch",
+						"pipelinesascode.tekton.dev/url-org":            "redhat",
+						"pipelinesascode.tekton.dev/git-provider":       "github",
+					},
+					CreationTimestamp: metav1.NewTime(time.Now().Add(time.Hour * 1)),
+				},
+				Spec: tektonv1.PipelineRunSpec{},
+			}
+
+			buildPipelineRun2 = &tektonv1.PipelineRun{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "pipelinerun-build-sample-2",
+					Namespace: "default",
+					Labels: map[string]string{
+						"pipelines.appstudio.openshift.io/type":   "build",
+						"pipelines.openshift.io/used-by":          "build-cloud",
+						"pipelines.openshift.io/runtime":          "nodejs",
+						"pipelines.openshift.io/strategy":         "s2i",
+						"appstudio.openshift.io/component":        "component-sample",
+						"pipelinesascode.tekton.dev/event-type":   "pull_request",
+						"pipelinesascode.tekton.dev/git-provider": "github",
+						gitops.PRGroupHashLabel:                   prGroupSha,
+					},
+					Annotations: map[string]string{
+						"appstudio.redhat.com/updateComponentOnSuccess": "false",
+						"pipelinesascode.tekton.dev/on-target-branch":   "[main,master]",
+						gitops.PRGroupAnnotation:                        prGroup,
+						"pipelinesascode.tekton.dev/git-provider":       "github",
+					},
+					CreationTimestamp: metav1.NewTime(time.Now()),
+				},
+				Spec: tektonv1.PipelineRunSpec{},
+			}
+
+			//mockStatus.EXPECT().IsPRMRInSnapshotOpened(gomock.Any(), hasComSnapshot2).Return(true, nil)
+			mockStatus.EXPECT().IsPRMRInSnapshotOpened(gomock.Any(), gomock.Any()).Return(true, nil).AnyTimes()
+
+			adapter = NewAdapter(ctx, buildPipelineRun, hasComp, hasApp, log, loader.NewMockLoader(), k8sClient)
+
+			adapter.status = mockStatus
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: loader.ApplicationContextKey,
+					Resource:   hasApp,
+				},
+				{
+					ContextKey: loader.GetPRSnapshotsKey,
+					Resource:   []applicationapiv1alpha1.Snapshot{*hasSnapshot, *hasComSnapshot2},
+				},
+				{
+					ContextKey: loader.GetComponentSnapshotsKey,
+					Resource:   []applicationapiv1alpha1.Snapshot{*hasSnapshot, *hasComSnapshot2},
+				},
+				{
+					ContextKey: loader.GetBuildPLRContextKey,
+					Resource:   []tektonv1.PipelineRun{*buildPipelineRun, *buildPipelineRun2},
+				},
+				{
+					ContextKey: loader.ApplicationComponentsContextKey,
+					Resource:   []applicationapiv1alpha1.Component{*hasComp, *hasComp2},
+				},
+				{
+					ContextKey: loader.GetComponentsFromSnapshotForPRGroupKey,
+					Resource:   []string{hasComp.Name, hasComp2.Name},
+				},
+				{
+					ContextKey: loader.AllIntegrationTestScenariosContextKey,
+					Resource:   []v1beta2.IntegrationTestScenario{*integrationTestScenario, *groupIntegrationTestScenario},
+				},
+			})
+
+			result, err := adapter.EnsureIntegrationTestReportedToGitProvider()
+			fmt.Fprintf(GinkgoWriter, "-------test: %v\n", buf.String())
+			expectedLogEntry := "Opened PR/MR in snapshot is found"
+			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
+			expectedLogEntry = "group snapshot is expected to be created for build pipelinerun"
+			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
+			Expect(result.CancelRequest).To(BeFalse())
+			Expect(result.RequeueRequest).To(BeFalse())
+			Expect(err).NotTo(HaveOccurred())
 		})
 	})
 
