@@ -2278,8 +2278,8 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 
 			ctrl := gomock.NewController(GinkgoT())
 			mockStatus := status.NewMockStatusInterface(ctrl)
-			mockStatus.EXPECT().IsPRMRInSnapshotOpened(gomock.Any(), hasComSnapshot2).Return(true, nil)
-			mockStatus.EXPECT().IsPRMRInSnapshotOpened(gomock.Any(), hasComSnapshot3).Return(true, nil)
+			mockStatus.EXPECT().FindSnapshotWithOpenedPR(gomock.Any(), gomock.Any()).Return(hasComSnapshot2, nil)
+			mockStatus.EXPECT().FindSnapshotWithOpenedPR(gomock.Any(), gomock.Any()).Return(hasComSnapshot3, nil)
 			// mockStatus.EXPECT().IsPRMRInSnapshotOpened(gomock.Any(), gomock.Any()).Return(true, nil)
 			mockStatus.EXPECT().IsPRMRInSnapshotOpened(gomock.Any(), gomock.Any()).AnyTimes()
 
