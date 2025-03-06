@@ -122,3 +122,27 @@ func GenerateSHA(str string) string {
 func IsPLRCreatedByPACPushEvent(plr *tektonv1.PipelineRun) bool {
 	return !metadata.HasLabel(plr, PipelineAsCodePullRequestLabel)
 }
+
+// IsLatestBuildPipelineRunInComponent return true if pipelineRun is the latest pipelineRun
+// for its component and pr group sha. Pipeline start timestamp is used for comparison because we care about
+// time when pipeline was created.
+func IsLatestBuildPipelineRunInComponent(pipelineRun *tektonv1.PipelineRun, pipelineRuns *[]tektonv1.PipelineRun) bool {
+	pipelineStartTime := pipelineRun.CreationTimestamp.Time
+	componentName := pipelineRun.Labels[PipelineRunComponentLabel]
+	for _, run := range *pipelineRuns {
+		if pipelineRun.Name == run.Name {
+			// it's the same pipeline
+			continue
+		}
+		if componentName != run.Labels[PipelineRunComponentLabel] {
+			continue
+		}
+		timestamp := run.CreationTimestamp.Time
+		if pipelineStartTime.Before(timestamp) {
+			// pipeline is not the latest
+			// 1 second is minimal granularity, if both pipelines started at the same second, we cannot decide
+			return false
+		}
+	}
+	return true
+}

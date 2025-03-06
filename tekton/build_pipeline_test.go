@@ -32,7 +32,7 @@ import (
 var _ = Describe("build pipeline", func() {
 
 	var (
-		buildPipelineRun *tektonv1.PipelineRun
+		buildPipelineRun, buildPipelineRun2 *tektonv1.PipelineRun
 	)
 
 	BeforeEach(func() {
@@ -59,6 +59,7 @@ var _ = Describe("build pipeline", func() {
 					"pipelinesascode.tekton.dev/source-branch":      "sourceBranch",
 					"pipelinesascode.tekton.dev/url-org":            "redhat",
 				},
+				CreationTimestamp: metav1.NewTime(time.Now().Add(time.Hour * 1)),
 			},
 			Spec: tektonv1.PipelineRunSpec{
 				PipelineRef: &tektonv1.PipelineRef{
@@ -103,6 +104,17 @@ var _ = Describe("build pipeline", func() {
 			},
 		}
 		Expect(k8sClient.Status().Update(ctx, buildPipelineRun)).Should(Succeed())
+
+		buildPipelineRun2 = &tektonv1.PipelineRun{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "pipelinerun-build-sample",
+				Namespace: "default",
+				Labels: map[string]string{
+					"appstudio.openshift.io/component": "component-sample",
+				},
+				CreationTimestamp: metav1.NewTime(time.Now()),
+			},
+		}
 	})
 
 	AfterEach(func() {
@@ -130,6 +142,11 @@ var _ = Describe("build pipeline", func() {
 			prGroup := tekton.GetPRGroupFromBuildPLR(buildPipelineRun)
 			Expect(prGroup).To(Equal("myfeature"))
 			Expect(tekton.GenerateSHA(prGroup)).NotTo(BeNil())
+		})
+
+		It("can get the latest build pipelinerun for given component", func() {
+			plrs := []tektonv1.PipelineRun{*buildPipelineRun, *buildPipelineRun2}
+			Expect(tekton.IsLatestBuildPipelineRunInComponent(buildPipelineRun, &plrs)).To(BeTrue())
 		})
 	})
 })
