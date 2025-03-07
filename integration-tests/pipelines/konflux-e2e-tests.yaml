@@ -147,7 +147,7 @@ spec:
         - name: ocp-login-command
           value: $(tasks.provision-rosa.results.ocp-login-command)
         - name: component-image
-          value: $(tasks.test-metadata.results.container-image)
+          value: $(tasks.sealights-refs.results.sealights-container-image)
         - name: sealights-bsid
           value: $(tasks.sealights-refs.results.sealights-bsid)
         - name: test-stage
