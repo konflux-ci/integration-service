@@ -99,7 +99,7 @@ var _ = Describe("ComponentController", Ordered, func() {
 			LeaderElection: false,
 		})
 		Expect(err).NotTo(HaveOccurred())
-		Expect(err).To(BeNil())
+		Expect(err).ToNot(HaveOccurred())
 
 		componentReconciler = NewComponentReconciler(k8sClient, &logf.Log, &scheme)
 	})
@@ -119,7 +119,7 @@ var _ = Describe("ComponentController", Ordered, func() {
 		Eventually(func() error {
 			_, err := componentReconciler.Reconcile(ctx, req)
 			return err
-		}).Should(BeNil())
+		}).Should(Succeed())
 	})
 
 	It("Should stop Reconciliation when Application is not found", func() {
@@ -127,7 +127,7 @@ var _ = Describe("ComponentController", Ordered, func() {
 		Eventually(func() error {
 			_, err := componentReconciler.Reconcile(ctx, req)
 			return err
-		}).Should(BeNil())
+		}).Should(Succeed())
 	})
 
 	It("can Reconcile function prepare the adapter and return the result of the reconcile handling operation", func() {
@@ -139,7 +139,7 @@ var _ = Describe("ComponentController", Ordered, func() {
 		}
 		result, err := componentReconciler.Reconcile(ctx, req)
 		Expect(reflect.TypeOf(result)).To(Equal(reflect.TypeOf(reconcile.Result{})))
-		Expect(err).To(BeNil())
+		Expect(err).ToNot(HaveOccurred())
 	})
 
 	It("can setup a new controller manager with the given componentReconciler", func() {
@@ -149,7 +149,7 @@ var _ = Describe("ComponentController", Ordered, func() {
 
 	It("can setup a new Controller manager and start it", func() {
 		err := SetupController(manager, &ctrl.Log)
-		Expect(err).To(BeNil())
+		Expect(err).ToNot(HaveOccurred())
 	})
 
 })

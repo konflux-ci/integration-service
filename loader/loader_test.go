@@ -413,7 +413,7 @@ var _ = Describe("Loader", Ordered, func() {
 		// importing the snapshot package which causes an import cycle
 
 		releases, err := loader.GetReleasesWithSnapshot(ctx, k8sClient, hasSnapshot)
-		Expect(err).To(BeNil())
+		Expect(err).ToNot(HaveOccurred())
 		Expect(releases).NotTo(BeNil())
 		for _, release := range *releases {
 			Expect(k8sClient.Delete(ctx, &release)).Should(Succeed())
@@ -422,20 +422,20 @@ var _ = Describe("Loader", Ordered, func() {
 
 	It("ensures the Application Components can be found ", func() {
 		applicationComponents, err := loader.GetAllApplicationComponents(ctx, k8sClient, hasApp)
-		Expect(err).To(BeNil())
+		Expect(err).ToNot(HaveOccurred())
 		Expect(applicationComponents).NotTo(BeNil())
 	})
 
 	It("ensures we can get an Application from a Snapshot ", func() {
 		app, err := loader.GetApplicationFromSnapshot(ctx, k8sClient, hasSnapshot)
-		Expect(err).To(BeNil())
+		Expect(err).ToNot(HaveOccurred())
 		Expect(app).NotTo(BeNil())
 		Expect(app.ObjectMeta).To(Equal(hasApp.ObjectMeta))
 	})
 
 	It("ensures we can get a Component from a Snapshot ", func() {
 		comp, err := loader.GetComponentFromSnapshot(ctx, k8sClient, hasSnapshot)
-		Expect(err).To(BeNil())
+		Expect(err).ToNot(HaveOccurred())
 		Expect(comp).NotTo(BeNil())
 		Expect(comp.ObjectMeta).To(Equal(hasComp.ObjectMeta))
 	})
@@ -454,28 +454,28 @@ var _ = Describe("Loader", Ordered, func() {
 
 	It("ensures we can get a Component from a Pipeline Run ", func() {
 		comp, err := loader.GetComponentFromPipelineRun(ctx, k8sClient, buildPipelineRun)
-		Expect(err).To(BeNil())
+		Expect(err).ToNot(HaveOccurred())
 		Expect(comp).NotTo(BeNil())
 		Expect(comp.ObjectMeta).To(Equal(hasComp.ObjectMeta))
 	})
 
 	It("ensures we can get the application from the Pipeline Run", func() {
 		app, err := loader.GetApplicationFromPipelineRun(ctx, k8sClient, buildPipelineRun)
-		Expect(err).To(BeNil())
+		Expect(err).ToNot(HaveOccurred())
 		Expect(app).NotTo(BeNil())
 		Expect(app.ObjectMeta).To(Equal(hasApp.ObjectMeta))
 	})
 
 	It("ensures we can get the Application from a Component", func() {
 		app, err := loader.GetApplicationFromComponent(ctx, k8sClient, hasComp)
-		Expect(err).To(BeNil())
+		Expect(err).ToNot(HaveOccurred())
 		Expect(app).NotTo(BeNil())
 		Expect(app.ObjectMeta).To(Equal(hasApp.ObjectMeta))
 	})
 
 	It("ensures we can get the Snapshot from a Pipeline Run", func() {
 		snapshot, err := loader.GetSnapshotFromPipelineRun(ctx, k8sClient, buildPipelineRun)
-		Expect(err).To(BeNil())
+		Expect(err).ToNot(HaveOccurred())
 		Expect(snapshot).NotTo(BeNil())
 		Expect(snapshot.ObjectMeta).To(Equal(hasSnapshot.ObjectMeta))
 	})
@@ -490,7 +490,7 @@ var _ = Describe("Loader", Ordered, func() {
 
 	It("can fetch all pipelineRuns for snapshot and scenario", func() {
 		pipelineRuns, err := loader.GetAllPipelineRunsForSnapshotAndScenario(ctx, k8sClient, hasSnapshot, integrationTestScenario)
-		Expect(err).To(BeNil())
+		Expect(err).ToNot(HaveOccurred())
 		Expect(pipelineRuns).NotTo(BeNil())
 		Expect(*pipelineRuns).To(HaveLen(1))
 		Expect((*pipelineRuns)[0].Name).To(Equal(integrationPipelineRun.Name))
@@ -498,14 +498,14 @@ var _ = Describe("Loader", Ordered, func() {
 
 	It("can fetch all integrationTestScenario for application", func() {
 		integrationTestScenarios, err := loader.GetAllIntegrationTestScenariosForApplication(ctx, k8sClient, hasApp)
-		Expect(err).To(BeNil())
+		Expect(err).ToNot(HaveOccurred())
 		Expect(integrationTestScenarios).NotTo(BeNil())
 		Expect(*integrationTestScenarios).To(HaveLen(2))
 	})
 
 	It("can fetch required integrationTestScenario for application", func() {
 		integrationTestScenarios, err := loader.GetRequiredIntegrationTestScenariosForSnapshot(ctx, k8sClient, hasApp, hasSnapshot)
-		Expect(err).To(BeNil())
+		Expect(err).ToNot(HaveOccurred())
 		Expect(integrationTestScenarios).NotTo(BeNil())
 		Expect(*integrationTestScenarios).To(HaveLen(1))
 		Expect((*integrationTestScenarios)[0].Name).To(Equal(integrationTestScenario.Name))
@@ -521,13 +521,13 @@ var _ = Describe("Loader", Ordered, func() {
 
 	It("ensures that all Snapshots for a given application can be found", func() {
 		snapshots, err := loader.GetAllSnapshots(ctx, k8sClient, hasApp)
-		Expect(err).To(BeNil())
+		Expect(err).ToNot(HaveOccurred())
 		Expect(*snapshots).To(HaveLen(1))
 	})
 
 	It("ensures the ReleasePlan can be gotten for Application", func() {
 		gottenReleasePlanItems, err := loader.GetAutoReleasePlansForApplication(ctx, k8sClient, hasApp)
-		Expect(err).To(BeNil())
+		Expect(err).ToNot(HaveOccurred())
 		Expect(gottenReleasePlanItems).NotTo(BeNil())
 
 	})
@@ -574,7 +574,7 @@ var _ = Describe("Loader", Ordered, func() {
 		It("ensures the auto-release plans for application are returned correctly when the auto-release label is set to true", func() {
 			// Get auto-release plans for application
 			autoReleasePlans, err := loader.GetAutoReleasePlansForApplication(ctx, k8sClient, hasApp)
-			Expect(err).To(BeNil())
+			Expect(err).ToNot(HaveOccurred())
 			Expect(autoReleasePlans).ToNot(BeNil())
 			Expect(*autoReleasePlans).To(HaveLen(1))
 			Expect((*autoReleasePlans)[0].Name).To(Equal(releasePlanWithLabel.Name))
@@ -614,7 +614,7 @@ var _ = Describe("Loader", Ordered, func() {
 		It("ensures the auto-release plans for application are returned correctly when the auto-release label is missing", func() {
 			// Get auto-release plans for application
 			autoReleasePlans, err := loader.GetAutoReleasePlansForApplication(ctx, k8sClient, hasApp)
-			Expect(err).To(BeNil())
+			Expect(err).ToNot(HaveOccurred())
 			Expect(autoReleasePlans).ToNot(BeNil())
 			Expect(*autoReleasePlans).To(HaveLen(1))
 			Expect((*autoReleasePlans)[0].Name).To(Equal(releasePlanNoLabel.Name))
@@ -657,7 +657,7 @@ var _ = Describe("Loader", Ordered, func() {
 		It("ensures the auto-release plans for application are returned correctly when the auto-release label is set to false", func() {
 			// Get auto-release plans for application
 			autoReleasePlans, err := loader.GetAutoReleasePlansForApplication(ctx, k8sClient, hasApp)
-			Expect(err).To(BeNil())
+			Expect(err).ToNot(HaveOccurred())
 			Expect(autoReleasePlans).ToNot(BeNil())
 			Expect(*autoReleasePlans).To(BeEmpty())
 		})

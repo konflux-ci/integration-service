@@ -52,7 +52,7 @@ var _ = Describe("Helpers for error handlers", Ordered, func() {
 			}
 
 			_, returnedError := helpers.HandleLoaderError(log, err, "Component", "Snapshot")
-			Expect(returnedError).To(BeNil())
+			Expect(returnedError).ToNot(HaveOccurred())
 			Expect(logbuf.String()).Should(ContainSubstring("Declining to proceed with reconciliation"))
 		})
 
@@ -66,7 +66,7 @@ var _ = Describe("Helpers for error handlers", Ordered, func() {
 			}
 
 			_, returnedError := helpers.HandleLoaderError(log, err, "Component", "Snapshot")
-			Expect(returnedError).NotTo(BeNil())
+			Expect(returnedError).To(HaveOccurred())
 			Expect(logbuf.String()).Should(ContainSubstring("Failed to get Component from the Snapshot"))
 		})
 	})

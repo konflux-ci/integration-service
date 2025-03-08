@@ -825,7 +825,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 					return fmt.Errorf("found %d PipelineRuns, expected: %d", got, expected)
 				}
 				return nil
-			}, time.Second*10).Should(BeNil())
+			}, time.Second*10).Should(Succeed())
 
 			Expect(integrationPipelineRuns).To(HaveLen(1))
 			Expect(k8sClient.Delete(adapter.context, &integrationPipelineRuns[0])).Should(Succeed())
@@ -1023,7 +1023,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 
 		It("ensures build, PaC, test, and custom labels/annotations are propagated from snapshot to Integration test PLR", func() {
 			pipelineRun, err := adapter.createIntegrationPipelineRun(hasApp, integrationTestScenario, hasSnapshot)
-			Expect(err).To(BeNil())
+			Expect(err).ToNot(HaveOccurred())
 			Expect(pipelineRun).ToNot(BeNil())
 
 			// build annotations and labels prefixed with `build.appstudio` are copied
@@ -1060,7 +1060,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 
 		It("ensures other labels/annotations are NOT propagated from snapshot to Integration test PLR", func() {
 			pipelineRun, err := adapter.createIntegrationPipelineRun(hasApp, integrationTestScenario, hasSnapshot)
-			Expect(err).To(BeNil())
+			Expect(err).ToNot(HaveOccurred())
 			Expect(pipelineRun).ToNot(BeNil())
 
 			// build annotations non-prefixed with 'build.appstudio' are not copied
@@ -1141,7 +1141,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			Expect(buf.String()).Should(ContainSubstring("Failed to get all required IntegrationTestScenarios"))
 			Expect(result.CancelRequest).To(BeTrue())
 			Expect(result.RequeueRequest).To(BeFalse())
-			Expect(err).To(BeNil())
+			Expect(err).ToNot(HaveOccurred())
 		})
 
 		It("Mark snapshot as pass when required ITS is not found", func() {
@@ -1170,7 +1170,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			Expect(buf.String()).Should(ContainSubstring("Snapshot marked as successful. No required IntegrationTestScenarios found, skipped testing"))
 			Expect(result.CancelRequest).To(BeFalse())
 			Expect(result.RequeueRequest).To(BeFalse())
-			Expect(err).To(BeNil())
+			Expect(err).ToNot(HaveOccurred())
 		})
 
 		It("Skip integration test for passed Snapshot", func() {
@@ -1198,7 +1198,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			Expect(buf.String()).Should(ContainSubstring("The Snapshot has finished testing."))
 			Expect(result.CancelRequest).To(BeFalse())
 			Expect(result.RequeueRequest).To(BeFalse())
-			Expect(err == nil).To(BeTrue())
+			Expect(err).ToNot(HaveOccurred())
 		})
 	})
 

@@ -19,8 +19,9 @@ package helpers_test
 import (
 	"bytes"
 	"fmt"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"time"
+
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	"github.com/konflux-ci/integration-service/api/v1beta2"
 	. "github.com/onsi/ginkgo/v2"
@@ -707,7 +708,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		Expect(k8sClient.Status().Update(ctx, integrationPipelineRun)).Should(Succeed())
 
 		pipelineRunOutcome, err := helpers.GetIntegrationPipelineRunOutcome(ctx, k8sClient, integrationPipelineRun)
-		Expect(err).To(BeNil())
+		Expect(err).ToNot(HaveOccurred())
 		Expect(pipelineRunOutcome.HasPipelineRunPassedTesting()).To(BeTrue())
 		Expect(pipelineRunOutcome.HasPipelineRunValidTestOutputs()).To(BeTrue())
 		Expect(pipelineRunOutcome.GetValidationErrorsList()).Should(BeEmpty())
@@ -744,7 +745,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		Expect(k8sClient.Status().Update(ctx, integrationPipelineRun)).Should(Succeed())
 
 		pipelineRunOutcome, err := helpers.GetIntegrationPipelineRunOutcome(ctx, k8sClient, integrationPipelineRun)
-		Expect(err).To(BeNil())
+		Expect(err).ToNot(HaveOccurred())
 		Expect(pipelineRunOutcome.HasPipelineRunPassedTesting()).To(BeTrue())
 		Expect(pipelineRunOutcome.HasPipelineRunValidTestOutputs()).To(BeTrue())
 		Expect(pipelineRunOutcome.GetValidationErrorsList()).Should(BeEmpty())
@@ -766,7 +767,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		Expect(k8sClient.Status().Update(ctx, integrationPipelineRun)).Should(Succeed())
 
 		pipelineRunOutcome, err := helpers.GetIntegrationPipelineRunOutcome(ctx, k8sClient, integrationPipelineRun)
-		Expect(err).To(BeNil())
+		Expect(err).ToNot(HaveOccurred())
 		Expect(pipelineRunOutcome.HasPipelineRunPassedTesting()).To(BeFalse())
 		Expect(pipelineRunOutcome.HasPipelineRunValidTestOutputs()).To(BeTrue())
 		Expect(pipelineRunOutcome.GetValidationErrorsList()).Should(BeEmpty())
@@ -803,7 +804,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		Expect(k8sClient.Status().Update(ctx, integrationPipelineRun)).Should(Succeed())
 
 		pipelineRunOutcome, err := helpers.GetIntegrationPipelineRunOutcome(ctx, k8sClient, integrationPipelineRun)
-		Expect(err).To(BeNil())
+		Expect(err).ToNot(HaveOccurred())
 		Expect(pipelineRunOutcome.HasPipelineRunPassedTesting()).To(BeFalse())
 		Expect(pipelineRunOutcome.HasPipelineRunValidTestOutputs()).To(BeTrue())
 		Expect(pipelineRunOutcome.GetValidationErrorsList()).Should(BeEmpty())
@@ -844,7 +845,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		Expect(k8sClient.Status().Update(ctx, integrationPipelineRun)).Should(Succeed())
 
 		pipelineRunOutcome, err := helpers.GetIntegrationPipelineRunOutcome(ctx, k8sClient, integrationPipelineRun)
-		Expect(err).To(BeNil())
+		Expect(err).ToNot(HaveOccurred())
 		Expect(pipelineRunOutcome.HasPipelineRunPassedTesting()).To(BeFalse())
 		Expect(pipelineRunOutcome.HasPipelineRunValidTestOutputs()).To(BeTrue())
 		Expect(pipelineRunOutcome.GetValidationErrorsList()).Should(BeEmpty())
@@ -883,7 +884,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		Expect(k8sClient.Status().Update(ctx, integrationPipelineRun)).Should(Succeed())
 
 		pipelineRunOutcome, err := helpers.GetIntegrationPipelineRunOutcome(ctx, k8sClient, integrationPipelineRun)
-		Expect(err).To(BeNil())
+		Expect(err).ToNot(HaveOccurred())
 		Expect(pipelineRunOutcome.HasPipelineRunPassedTesting()).To(BeFalse())
 		Expect(pipelineRunOutcome.HasPipelineRunValidTestOutputs()).To(BeTrue())
 		Expect(pipelineRunOutcome.GetValidationErrorsList()).Should(BeEmpty())
@@ -920,7 +921,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 
 		Expect(k8sClient.Status().Update(ctx, integrationPipelineRun)).Should(Succeed())
 		pipelineRunOutcome, err := helpers.GetIntegrationPipelineRunOutcome(ctx, k8sClient, integrationPipelineRun)
-		Expect(err).To(BeNil())
+		Expect(err).ToNot(HaveOccurred())
 		Expect(pipelineRunOutcome).NotTo(BeNil())
 		Expect(pipelineRunOutcome.HasPipelineRunPassedTesting()).To(BeFalse())
 		Expect(pipelineRunOutcome.HasPipelineRunValidTestOutputs()).To(BeFalse())
@@ -959,7 +960,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 
 		Expect(k8sClient.Status().Update(ctx, integrationPipelineRun)).Should(Succeed())
 		pipelineRunOutcome, err := helpers.GetIntegrationPipelineRunOutcome(ctx, k8sClient, integrationPipelineRun)
-		Expect(err).To(BeNil())
+		Expect(err).ToNot(HaveOccurred())
 		Expect(pipelineRunOutcome).NotTo(BeNil())
 
 		Expect(pipelineRunOutcome.HasPipelineRunValidTestOutputs()).To(BeFalse())
@@ -996,7 +997,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		}
 
 		taskRuns, err := helpers.GetAllChildTaskRunsForPipelineRun(ctx, k8sClient, integrationPipelineRun)
-		Expect(err).To(BeNil())
+		Expect(err).ToNot(HaveOccurred())
 		Expect(taskRuns).To(HaveLen(2))
 
 		// We expect the tasks to be sorted by start time
@@ -1006,13 +1007,13 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		Expect(tr1.GetDuration().Minutes()).To(Equal(5.0))
 
 		result1, err := tr1.GetTestResult()
-		Expect(err).To(BeNil())
+		Expect(err).ToNot(HaveOccurred())
 		Expect(result1).ToNot(BeNil())
 		Expect(result1.TestOutput.Result).To(Equal("SUCCESS"))
 		Expect(result1.TestOutput.Successes).To(Equal(10))
 
 		result2, err := tr1.GetTestResult()
-		Expect(err).To(BeNil())
+		Expect(err).ToNot(HaveOccurred())
 		Expect(result1).To(Equal(result2))
 
 		tr2 := taskRuns[1]
@@ -1020,7 +1021,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		Expect(tr2.GetDuration().Minutes()).To(Equal(5.0))
 
 		result3, err := tr2.GetTestResult()
-		Expect(err).To(BeNil())
+		Expect(err).ToNot(HaveOccurred())
 		Expect(result3).ToNot(BeNil())
 		Expect(result3.TestOutput.Result).To(Equal("SKIPPED"))
 		Expect(result3.TestOutput.Successes).To(Equal(0))
@@ -1032,7 +1033,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		}
 
 		taskRuns, err := helpers.GetAllChildTaskRunsForPipelineRun(ctx, k8sClient, integrationPipelineRun)
-		Expect(err).To(BeNil())
+		Expect(err).ToNot(HaveOccurred())
 		Expect(taskRuns).To(BeNil())
 	})
 

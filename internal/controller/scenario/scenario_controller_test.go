@@ -157,7 +157,7 @@ var _ = Describe("ScenarioController", Ordered, func() {
 			LeaderElection: false,
 		})
 		Expect(err).NotTo(HaveOccurred())
-		Expect(err).To(BeNil())
+		Expect(err).ToNot(HaveOccurred())
 
 		scenarioReconciler = NewScenarioReconciler(k8sClient, &logf.Log, &scheme)
 
@@ -179,7 +179,7 @@ var _ = Describe("ScenarioController", Ordered, func() {
 	It("can Reconcile function prepare the adapter and return the result of the reconcile handling operation", func() {
 		result, err := scenarioReconciler.Reconcile(ctx, req)
 		Expect(reflect.TypeOf(result)).To(Equal(reflect.TypeOf(reconcile.Result{})))
-		Expect(err).To(BeNil())
+		Expect(err).ToNot(HaveOccurred())
 	})
 
 	It("can setup a new controller manager with the given reconciler", func() {
@@ -189,9 +189,8 @@ var _ = Describe("ScenarioController", Ordered, func() {
 
 	It("Run reconciler for scenario", func() {
 		hasApp, err := scenarioReconciler.getApplicationFromScenario(ctx, failScenario)
-		Expect(err).NotTo(BeNil())
-		Expect(hasApp).To(BeNil())
 		Expect(err).To(HaveOccurred())
+		Expect(hasApp).To(BeNil())
 	})
 
 	It("can fail when Reconcile fails to prepare the adapter when app is not found", func() {
@@ -205,7 +204,7 @@ var _ = Describe("ScenarioController", Ordered, func() {
 		Eventually(func() error {
 			_, err := scenarioReconciler.Reconcile(ctx, reqInvalid)
 			return err
-		}).Should(BeNil())
+		}).Should(Succeed())
 
 		Eventually(func() bool {
 			err := k8sClient.Get(ctx, types.NamespacedName{
@@ -218,7 +217,7 @@ var _ = Describe("ScenarioController", Ordered, func() {
 
 	It("can setup a new Controller manager and start it", func() {
 		err := SetupController(manager, &ctrl.Log)
-		Expect(err).To(BeNil())
+		Expect(err).ToNot(HaveOccurred())
 	})
 
 })
