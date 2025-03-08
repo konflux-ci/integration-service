@@ -843,6 +843,11 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 				Expect(*filteredScenarios).To(HaveLen(3))
 			})
 
+			It("Return the matching integration test scenario for the given context", func() {
+				filteredScenarios := gitops.GetRequiredContextIntegrationTestScenario(allScenarios, "group")
+				Expect(*filteredScenarios).To(HaveLen(2))
+			})
+
 			It("Testing annotating snapshot", func() {
 				hasSnapshot.Labels[gitops.PipelineAsCodeEventTypeLabel] = gitops.PipelineAsCodePullRequestType
 				componentSnapshotInfos := []gitops.ComponentSnapshotInfo{
@@ -888,7 +893,7 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 			})
 
 			It("make sure pr group annotation/label can be found in group", func() {
-				prGroupSha, prGroup := gitops.GetPRGroupFromSnapshot(hasComSnapshot1)
+				prGroupSha, prGroup := gitops.GetPRGroup(hasComSnapshot1)
 				Expect(prGroup).To(Equal(expectedPRGroup))
 				Expect(prGroupSha).To(Equal(expectedPRGoupSha))
 				Expect(gitops.HasPRGroupProcessed(hasComSnapshot1)).To(BeTrue())
@@ -954,6 +959,13 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 				Expect(metadata.SetAnnotation(hasSnapshot, gitops.PipelineAsCodeGitSourceURLAnnotation, "https://github.com/devfile-sample/devfile-sample-go-basic")).To(Succeed())
 				sourceRepoOwner = gitops.GetSourceRepoOwnerFromSnapshot(hasSnapshot)
 				Expect(sourceRepoOwner).To(Equal("devfile-sample"))
+			})
+
+			It("Can merge two array and remove duplicate", func() {
+				arr1 := []string{"a", "b", "c"}
+				arr2 := []string{"c", "d", "e"}
+				arr := gitops.MergeAndDeduplicate(arr1, arr2)
+				Expect(arr).To(HaveLen(5))
 			})
 		})
 	})

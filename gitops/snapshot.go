@@ -1058,16 +1058,30 @@ func FilterIntegrationTestScenariosWithContext(scenarios *[]v1beta2.IntegrationT
 	return &filteredScenarioList
 }
 
+func GetRequiredContextIntegrationTestScenario(scenarios []v1beta2.IntegrationTestScenario, contextName string) *[]v1beta2.IntegrationTestScenario {
+	var filteredScenarios []v1beta2.IntegrationTestScenario
+	for i := range scenarios {
+		currentScenario := scenarios[i]
+		for _, scenarioContext := range currentScenario.Spec.Contexts {
+			if scenarioContext.Name == contextName {
+				filteredScenarios = append(filteredScenarios, currentScenario)
+				break
+			}
+		}
+	}
+	return &filteredScenarios
+}
+
 // HasPRGroupProcessed checks if the pr group has been handled by snapshot adapter
 // to avoid duplicate check, if yes, won't handle the snapshot again
 func HasPRGroupProcessed(snapshot *applicationapiv1alpha1.Snapshot) bool {
 	return metadata.HasAnnotation(snapshot, PRGroupCreationAnnotation)
 }
 
-// GetPRGroupFromSnapshot gets the value of label test.appstudio.openshift.io/pr-group-sha and annotation from component snapshot
-func GetPRGroupFromSnapshot(snapshot *applicationapiv1alpha1.Snapshot) (string, string) {
-	if metadata.HasLabel(snapshot, PRGroupHashLabel) && metadata.HasAnnotation(snapshot, PRGroupAnnotation) {
-		return snapshot.Labels[PRGroupHashLabel], snapshot.Annotations[PRGroupAnnotation]
+// GetPRGroup gets the value of label test.appstudio.openshift.io/pr-group-sha and annotation from component snapshot
+func GetPRGroup(object client.Object) (string, string) {
+	if metadata.HasLabel(object, PRGroupHashLabel) && metadata.HasAnnotation(object, PRGroupAnnotation) {
+		return object.GetLabels()[PRGroupHashLabel], object.GetAnnotations()[PRGroupAnnotation]
 	}
 	return "", ""
 }
@@ -1209,4 +1223,22 @@ func GetShaFromSnapshot(ctx context.Context, snapshot *applicationapiv1alpha1.Sn
 	log.Info(fmt.Sprintf("annotation '%s' not found in Snapshot '%s', won't add SHA value to the Release name", PipelineAsCodeSHAAnnotation, snapshot.Name))
 
 	return ""
+}
+
+// MergeAndDeduplicate join two array and remove the duplicate
+func MergeAndDeduplicate(array1, array2 []string) []string {
+	mergedArray := append(array1, array2...)
+
+	elementMap := make(map[string]struct{})
+
+	for _, value := range mergedArray {
+		elementMap[value] = struct{}{}
+	}
+
+	var result []string
+	for key := range elementMap {
+		result = append(result, key)
+	}
+
+	return result
 }
