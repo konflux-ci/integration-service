@@ -520,6 +520,9 @@ func (l *loader) GetAllIntegrationPipelineRunsForSnapshot(ctx context.Context, a
 		},
 	}
 	err := adapterClient.List(ctx, integrationPipelineRuns, opts...)
+	if err != nil {
+		return nil, err
+	}
 
 	return integrationPipelineRuns.Items, err
 }

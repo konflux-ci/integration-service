@@ -179,7 +179,7 @@ func (a *Adapter) rerunIntegrationPipelinerunForScenario(scenario *v1beta2.Integ
 	if err != nil {
 		return a.HandlePipelineCreationError(err, scenario, testStatuses)
 	}
-	if metadata.HasLabelWithValue(a.snapshot, gitops.PipelineAsCodeEventTypeLabel, gitops.PipelineAsCodePullRequestType) {
+	if !gitops.IsSnapshotCreatedByPACPushEvent(a.snapshot) {
 		err = a.checkAndCancelOldSnapshotsPipelineRun(a.application, a.snapshot)
 		if err != nil {
 			a.logger.Error(err, "Failed to check and cancel old snapshot's pipelineruns",
@@ -306,7 +306,7 @@ func (a *Adapter) EnsureIntegrationPipelineRunsExist() (controller.OperationResu
 				}
 			}
 		}
-		if metadata.HasLabelWithValue(a.snapshot, gitops.PipelineAsCodeEventTypeLabel, gitops.PipelineAsCodePullRequestType) {
+		if !gitops.IsSnapshotCreatedByPACPushEvent(a.snapshot) {
 			err = a.checkAndCancelOldSnapshotsPipelineRun(a.application, a.snapshot)
 			if err != nil {
 				a.logger.Error(err, "Failed to check and cancel old snapshot's pipelineruns",
@@ -1115,12 +1115,7 @@ func (a *Adapter) cancelAllPipelineRunsForSnapshot(snapshot *applicationapiv1alp
 	}
 	for _, plr := range integrationTestPipelineruns {
 		plr := plr
-		pipelinerunStatus, _, err := h.GetRunningIntegrationPipelineRunStatus(&plr)
-		if err != nil {
-			a.logger.Error(err, "Failed to get integration test pipelinerun status", "snapshot.Name", plr.Name)
-			return err
-		}
-		if pipelinerunStatus == intgteststat.IntegrationTestStatusInProgress {
+		if !h.HasPipelineRunFinished(&plr) {
 			//remove finalizer and cancel pipelinerun
 			err = h.RemoveFinalizerFromPipelineRun(a.context, a.client, a.logger, &plr, h.IntegrationPipelineRunFinalizer)
 			if err != nil {
