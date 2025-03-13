@@ -379,13 +379,13 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 					gitops.SnapshotTypeLabel:                   gitops.SnapshotComponentType,
 					gitops.SnapshotComponentLabel:              "component-sample",
 					gitops.PipelineAsCodeEventTypeLabel:        "pull_request",
-					gitops.PipelineAsCodeRepoURLAnnotation:     "repo-url",
 					gitops.PipelineAsCodePullRequestAnnotation: "2",
 				},
 				Annotations: map[string]string{
 					gitops.BuildPipelineRunStartTime:              strconv.Itoa(plrstarttime),
 					gitops.PipelineAsCodeInstallationIDAnnotation: "123",
 					gitops.PRGroupHashLabel:                       prGroupSha,
+					gitops.PipelineAsCodeRepoURLAnnotation:        "repo-url",
 				},
 			},
 			Spec: applicationapiv1alpha1.SnapshotSpec{
@@ -403,13 +403,13 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 					gitops.SnapshotComponentLabel:              "component-sample",
 					gitops.PipelineAsCodeEventTypeLabel:        gitops.PipelineAsCodePullRequestType,
 					gitops.PRGroupHashLabel:                    prGroupSha,
-					gitops.PipelineAsCodeRepoURLAnnotation:     "repo-url",
 					gitops.PipelineAsCodePullRequestAnnotation: "2",
 				},
 				Annotations: map[string]string{
 					gitops.BuildPipelineRunStartTime:              strconv.Itoa(plrstarttime + 100),
 					gitops.PipelineAsCodeInstallationIDAnnotation: "123",
 					gitops.PRGroupHashLabel:                       prGroupSha,
+					gitops.PipelineAsCodeRepoURLAnnotation:        "repo-url",
 				},
 			},
 			Spec: applicationapiv1alpha1.SnapshotSpec{
