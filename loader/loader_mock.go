@@ -205,9 +205,9 @@ func (l *mockLoader) GetAllSnapshotsForBuildPipelineRun(ctx context.Context, c c
 	return &snapshots, err
 }
 
-func (l *mockLoader) GetAllSnapshotsForPR(ctx context.Context, c client.Client, application *applicationapiv1alpha1.Application, pullRequest string, repoUrl string) (*[]applicationapiv1alpha1.Snapshot, error) {
+func (l *mockLoader) GetAllSnapshotsForPR(ctx context.Context, c client.Client, application *applicationapiv1alpha1.Application, pullRequest string) (*[]applicationapiv1alpha1.Snapshot, error) {
 	if ctx.Value(AllSnapshotsForGivenPRContextKey) == nil {
-		return l.loader.GetAllSnapshotsForPR(ctx, c, application, pullRequest, repoUrl)
+		return l.loader.GetAllSnapshotsForPR(ctx, c, application, pullRequest)
 	}
 	snapshots, err := toolkit.GetMockedResourceAndErrorFromContext(ctx, AllSnapshotsForGivenPRContextKey, []applicationapiv1alpha1.Snapshot{})
 	return &snapshots, err

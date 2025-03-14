@@ -1076,26 +1076,32 @@ func (a *Adapter) findSnapshotWithOpenedPR(snapshot *applicationapiv1alpha1.Snap
 // checkAndCancelOldSnapshotsPipelineRun sorts all snapshots for application and cancels all running integrationTest pipelineruns within application
 // removes finalizer before the pipelinerun is set as CancelledRunFinally to be gracefully cancelled
 func (a *Adapter) checkAndCancelOldSnapshotsPipelineRun(application *applicationapiv1alpha1.Application, snapshot *applicationapiv1alpha1.Snapshot) error {
-
-	snapshots, err := a.loader.GetAllSnapshotsForPR(a.context, a.client, application, snapshot.GetLabels()[gitops.PipelineAsCodePullRequestAnnotation], snapshot.GetLabels()[gitops.PipelineAsCodeRepoURLAnnotation])
+	snapshots, err := a.loader.GetAllSnapshotsForPR(a.context, a.client, application, snapshot.GetLabels()[gitops.PipelineAsCodePullRequestAnnotation])
 	if err != nil {
 		a.logger.Error(err, "Failed to fetch Snapshots for the application",
 			"application.Name:", application.Name)
 		return err
 	}
 	sortedSnapshots := gitops.SortSnapshots(*snapshots)
+	prSnapshots := []applicationapiv1alpha1.Snapshot{}
+	// no snapshots found that fulfill the condition
 	if len(sortedSnapshots) < 2 {
 		return nil
 	}
-
+	prSnapshots = append(prSnapshots, sortedSnapshots[0])
 	for i := 1; i < len(sortedSnapshots); i++ {
-		if gitops.IsComponentSnapshot(&sortedSnapshots[i]) {
-			err = gitops.MarkSnapshotAsCanceled(a.context, a.client, &sortedSnapshots[i], "Snapshot canceled/superseded")
+		if sortedSnapshots[0].GetAnnotations()[gitops.PipelineAsCodeRepoURLAnnotation] == sortedSnapshots[i].GetAnnotations()[gitops.PipelineAsCodeRepoURLAnnotation] {
+			prSnapshots = append(prSnapshots, sortedSnapshots[i])
+		}
+	}
+	for i := 1; i < len(prSnapshots); i++ {
+		if gitops.IsComponentSnapshot(&prSnapshots[i]) {
+			err = gitops.MarkSnapshotAsCanceled(a.context, a.client, &prSnapshots[i], "Snapshot canceled/superseded")
 			if err != nil {
-				a.logger.Error(err, "Failed to mark snapshot as canceled", "snapshot.Name", &sortedSnapshots[i].Name)
+				a.logger.Error(err, "Failed to mark snapshot as canceled", "snapshot.Name", &prSnapshots[i].Name)
 				return err
 			}
-			err = a.cancelAllPipelineRunsForSnapshot(&sortedSnapshots[i])
+			err = a.cancelAllPipelineRunsForSnapshot(&prSnapshots[i])
 		}
 	}
 	return err
