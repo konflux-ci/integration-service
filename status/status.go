@@ -195,6 +195,8 @@ type StatusInterface interface {
 	IsPRInSnapshotOpened(context.Context, ReporterInterface, *applicationapiv1alpha1.Snapshot) (bool, error)
 	// Check if gitlab MR is open
 	IsMRInSnapshotOpened(context.Context, ReporterInterface, *applicationapiv1alpha1.Snapshot) (bool, error)
+	// find snapshot with opened PR or MR
+	FindSnapshotWithOpenedPR(context.Context, *[]applicationapiv1alpha1.Snapshot) (*applicationapiv1alpha1.Snapshot, error)
 }
 
 type Status struct {
@@ -555,4 +557,25 @@ func GetComponentSnapshotsFromGroupSnapshot(ctx context.Context, c client.Client
 	}
 	return componentSnapshots, nil
 
+}
+
+// FindSnapshotWithOpenedPR find the latest snapshot with opened PR/MR for the given sorted snapshots
+func (s Status) FindSnapshotWithOpenedPR(ctx context.Context, snapshots *[]applicationapiv1alpha1.Snapshot) (*applicationapiv1alpha1.Snapshot, error) {
+	log := log.FromContext(ctx)
+	sortedSnapshots := gitops.SortSnapshots(*snapshots)
+	// find the latest component snapshot created for open PR/MR
+	for _, snapshot := range sortedSnapshots {
+		snapshot := snapshot
+		// find the built image for pull/merge request build PLR from the latest opened pull request component snapshot
+		isPRMROpened, err := s.IsPRMRInSnapshotOpened(ctx, &snapshot)
+		if err != nil {
+			log.Error(err, "Failed to fetch PR/MR status for component snapshot", "snapshot.Name", snapshot.Name)
+			return nil, err
+		}
+		if isPRMROpened {
+			log.Info("PR/MR in snapshot is opened, will find snapshotComponent and add to groupSnapshot")
+			return &snapshot, nil
+		}
+	}
+	return nil, nil
 }

@@ -28,6 +28,7 @@ import (
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
 	"github.com/konflux-ci/integration-service/gitops"
 	"github.com/konflux-ci/operator-toolkit/metadata"
+	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/types"
@@ -888,7 +889,7 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 			})
 
 			It("make sure pr group annotation/label can be found in group", func() {
-				prGroupSha, prGroup := gitops.GetPRGroupFromSnapshot(hasComSnapshot1)
+				prGroupSha, prGroup := gitops.GetPRGroup(hasComSnapshot1)
 				Expect(prGroup).To(Equal(expectedPRGroup))
 				Expect(prGroupSha).To(Equal(expectedPRGoupSha))
 				Expect(gitops.HasPRGroupProcessed(hasComSnapshot1)).To(BeTrue())
@@ -954,6 +955,44 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 				Expect(metadata.SetAnnotation(hasSnapshot, gitops.PipelineAsCodeGitSourceURLAnnotation, "https://github.com/devfile-sample/devfile-sample-go-basic")).To(Succeed())
 				sourceRepoOwner = gitops.GetSourceRepoOwnerFromSnapshot(hasSnapshot)
 				Expect(sourceRepoOwner).To(Equal("devfile-sample"))
+			})
+
+			It("Can copy snapshot labels and annotations", func() {
+				buildPipelineRun := &tektonv1.PipelineRun{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "pipelinerun-build-sample",
+						Namespace: "default",
+						Labels: map[string]string{
+							"pipelines.appstudio.openshift.io/type":    "build",
+							"pipelines.openshift.io/used-by":           "build-cloud",
+							"pipelines.openshift.io/runtime":           "nodejs",
+							"pipelines.openshift.io/strategy":          "s2i",
+							"appstudio.openshift.io/component":         "component-sample",
+							"build.appstudio.redhat.com/target_branch": "main",
+							"pipelinesascode.tekton.dev/event-type":    "pull_request",
+							"pipelinesascode.tekton.dev/pull-request":  "1",
+						},
+						Annotations: map[string]string{
+							"appstudio.redhat.com/updateComponentOnSuccess": "false",
+							"pipelinesascode.tekton.dev/on-target-branch":   "[main,master]",
+							"build.appstudio.openshift.io/repo":             "https://github.com/devfile-samples/devfile-sample-go-basic?rev=c713067b0e65fb3de50d1f7c457eb51c2ab0dbb0",
+							"chains.tekton.dev/signed":                      "true",
+							"pipelinesascode.tekton.dev/source-branch":      "sourceBranch",
+							"pipelinesascode.tekton.dev/url-org":            "redhat",
+						},
+					},
+					Spec: tektonv1.PipelineRunSpec{},
+				}
+				tempGroupSnapshot := &applicationapiv1alpha1.Snapshot{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "tempGroupSnapshot",
+						Namespace: buildPipelineRun.Namespace,
+					},
+				}
+				prefixes := []string{gitops.BuildPipelineRunPrefix}
+				gitops.CopyTempGroupSnapshotLabelsAndAnnotations(hasApp, tempGroupSnapshot, hasComp.Name, &buildPipelineRun.ObjectMeta, prefixes)
+				Expect(metadata.HasLabel(tempGroupSnapshot, "pac.test.appstudio.openshift.io/event-type")).To(BeTrue())
+				Expect(metadata.HasLabel(tempGroupSnapshot, "appstudio.openshift.io/component")).To(BeFalse())
 			})
 		})
 	})

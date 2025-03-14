@@ -345,8 +345,23 @@ var _ = Describe("Release Adapter", Ordered, func() {
 					Resource:   snapshots,
 				},
 			})
-			resource, err := loader.GetMatchingComponentSnapshotsForPRGroupHash(mockContext, nil, nil, "")
+			resource, err := loader.GetMatchingComponentSnapshotsForPRGroupHash(mockContext, nil, "", "")
 			Expect(resource).To(Equal(&snapshots))
+			Expect(err).ToNot(HaveOccurred())
+		})
+	})
+
+	Context("When calling GetComponentsFromSnapshotForPRGroup", func() {
+		It("return resource and error from the context", func() {
+			components := []string{}
+			mockContext := toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: GetComponentsFromSnapshotForPRGroupKey,
+					Resource:   components,
+				},
+			})
+			resource, err := loader.GetComponentsFromSnapshotForPRGroup(mockContext, nil, "", "", "")
+			Expect(resource).To(Equal(components))
 			Expect(err).ToNot(HaveOccurred())
 		})
 	})
