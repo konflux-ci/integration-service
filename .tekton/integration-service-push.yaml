@@ -180,6 +180,8 @@ spec:
           value: '{{ revision }}'
         - name: oci-storage
           value: $(params.output-image).sealights.git
+        - name: disable-token-save
+          value: "true"
     - name: prefetch-dependencies
       params:
       - name: input
