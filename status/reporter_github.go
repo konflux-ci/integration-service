@@ -19,6 +19,7 @@ package status
 import (
 	"context"
 	"fmt"
+	"os"
 	"strconv"
 
 	"github.com/go-logr/logr"
@@ -34,14 +35,6 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
-)
-
-// Used by statusReport to get pipelines-as-code-secret under NS integration-service
-const (
-	integrationNS       = "integration-service"
-	PACSecret           = "pipelines-as-code-secret"
-	gitHubApplicationID = "github-application-id"
-	gitHubPrivateKey    = "github-private-key"
 )
 
 // StatusUpdater is common interface used by status reporter to update PR status
@@ -91,6 +84,24 @@ func GetAppCredentials(ctx context.Context, k8sclient client.Client, object clie
 	var err, unRecoverableError error
 	var found bool
 	appInfo := appCredentials{}
+
+	//get pac secret and private key name from integration-config, use the default values if they cannot be not found
+	integrationNS := os.Getenv("INTEGRATION_NS")
+	if integrationNS == "" {
+		integrationNS = "integration-service"
+	}
+	PACSecret := os.Getenv("PAC_SECRET")
+	if PACSecret == "" {
+		PACSecret = "pipelines-as-code-secret"
+	}
+	gitHubApplicationID := os.Getenv("GITHUBAPPLICATION_ID")
+	if gitHubApplicationID == "" {
+		gitHubApplicationID = "github-application-id"
+	}
+	gitHubPrivateKey := os.Getenv("GITHUBPRIVATE_KEY")
+	if gitHubPrivateKey == "" {
+		gitHubPrivateKey = "github-private-key"
+	}
 
 	appInfo.InstallationID, err = strconv.ParseInt(object.GetAnnotations()[gitops.PipelineAsCodeInstallationIDAnnotation], 10, 64)
 	if err != nil {
