@@ -19,6 +19,7 @@ package status_test
 import (
 	"bytes"
 	"context"
+	"os"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -269,6 +270,19 @@ var _ = Describe("GitHubReporter", func() {
 			reporter = status.NewGitHubReporter(log, mockK8sClient, status.WithGitHubClient(mockGitHubClient))
 			err := reporter.Initialize(context.TODO(), hasSnapshot)
 			Expect(err).To(Succeed())
+		})
+
+		It("failed to initialize when invalid pac secret and private names is not found", func() {
+			os.Setenv("INTEGRATION_NS", "invalid")
+			os.Setenv("PAC_SECRET", "invalid")
+			os.Setenv("GITHUBAPPLICATION_ID", "invalid")
+			os.Setenv("GITHUBPRIVATE_KEY", "invalid")
+			err := reporter.Initialize(context.TODO(), hasSnapshot)
+			Expect(err).To(HaveOccurred())
+			os.Setenv("INTEGRATION_NS", "integration-service")
+			os.Setenv("PAC_SECRET", "pipelines-as-code-secret")
+			os.Setenv("GITHUBAPPLICATION_ID", "github-application-id")
+			os.Setenv("GITHUBPRIVATE_KEY", "github-private-key")
 		})
 
 		It("can detect if github reporter should be used", func() {
