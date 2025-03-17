@@ -141,6 +141,9 @@ func (a *Adapter) EnsureSnapshotExists() (result controller.OperationResult, err
 	return controller.ContinueProcessing()
 }
 
+// EnsurePipelineIsFinalized is an operation that will ensure that all the
+// unfinished build pipelineRuns, that do not contain the finalizer yet,
+// have the finalizer added to them
 func (a *Adapter) EnsurePipelineIsFinalized() (controller.OperationResult, error) {
 	if h.HasPipelineRunFinished(a.pipelineRun) || controllerutil.ContainsFinalizer(a.pipelineRun, h.IntegrationPipelineRunFinalizer) {
 		return controller.ContinueProcessing()
@@ -160,14 +163,14 @@ func (a *Adapter) EnsurePipelineIsFinalized() (controller.OperationResult, error
 // then these label and annotation will be copied to component snapshot when it is created
 func (a *Adapter) EnsurePRGroupAnnotated() (controller.OperationResult, error) {
 	if tekton.IsPLRCreatedByPACPushEvent(a.pipelineRun) {
-		a.logger.Info("build pipelineRun is not created by pull/merge request, no need to annotate")
+		a.logger.Info("build pipelineRun is created by PaC 'push' event, no need to annotate")
 		return controller.ContinueProcessing()
 	}
 
 	if metadata.HasLabel(a.pipelineRun, gitops.PRGroupHashLabel) && metadata.HasAnnotation(a.pipelineRun, gitops.PRGroupAnnotation) {
 		// If the pipeline failed, attempt to notify all component Snapshots in the group about the failure
 		if !h.HasPipelineRunSucceeded(a.pipelineRun) && h.HasPipelineRunFinished(a.pipelineRun) {
-			err := a.notifySnapshotsInGroupAboutFailedBuild(a.pipelineRun)
+			err := a.notifySnapshotsAndBuildPLRsInGroupAboutFailedBuild(a.pipelineRun)
 			if err != nil {
 				return controller.RequeueWithError(err)
 			}
@@ -200,7 +203,7 @@ func (a *Adapter) EnsurePRGroupAnnotated() (controller.OperationResult, error) {
 // to prevent PR/MR from being automerged unexpectedly and also show the snapshot creation failure on PR/MR
 func (a *Adapter) EnsureIntegrationTestReportedToGitProvider() (controller.OperationResult, error) {
 	if tekton.IsPLRCreatedByPACPushEvent(a.pipelineRun) {
-		a.logger.Info("build pipelineRun is not created by pull/merge request, no need to set integration test status in git provider")
+		a.logger.Info("build pipelineRun is created by PaC 'push' event, no need to set integration test status in git provider")
 		return controller.ContinueProcessing()
 	}
 
@@ -223,7 +226,7 @@ func (a *Adapter) EnsureIntegrationTestReportedToGitProvider() (controller.Opera
 		return controller.ContinueProcessing()
 	}
 
-	a.logger.Info("try to set integration test status according to the build PLR status")
+	a.logger.Info("trying to set integration test status according to the build PLR status")
 	tempSnapshot := a.prepareTemporarySnapshot(a.pipelineRun)
 
 	allIntegrationTestScenarios, err := a.loader.GetAllIntegrationTestScenariosForApplication(a.context, a.client, a.application)
@@ -256,9 +259,9 @@ func (a *Adapter) EnsureIntegrationTestReportedToGitProvider() (controller.Opera
 			a.logger.Error(err, fmt.Sprintf("failed to write build plr annotation %s", h.SnapshotCreationReportAnnotation))
 			return controller.RequeueWithError(fmt.Errorf("failed to write snapshot report status metadata for annotation %s: %w", h.SnapshotCreationReportAnnotation, err))
 		}
+		a.logger.Info(fmt.Sprintf("successfully set integration test status to %s", integrationTestStatus.String()))
 	}
 	return controller.ContinueProcessing()
-
 }
 
 // getImagePullSpecFromPipelineRun gets the full image pullspec from the given build PipelineRun,
@@ -298,9 +301,10 @@ func (a *Adapter) getComponentSourceFromPipelineRun(pipelineRun *tektonv1.Pipeli
 	return &componentSource, nil
 }
 
-// notifySnapshotsInGroupAboutFailedBuild tries to find the latest group Snapshot and notify it about the failed build.
+// notifySnapshotsAndBuildPLRsInGroupAboutFailedBuild tries to find the latest group Snapshot
+// and in-progress build PLRs of same group, and notify it about the failed build.
 // If the group Snapshot can't be found, find the component Snapshots that would belong to the same group and notify them instead.
-func (a *Adapter) notifySnapshotsInGroupAboutFailedBuild(pipelineRun *tektonv1.PipelineRun) error {
+func (a *Adapter) notifySnapshotsAndBuildPLRsInGroupAboutFailedBuild(pipelineRun *tektonv1.PipelineRun) error {
 	prGroupHash := pipelineRun.Labels[gitops.PRGroupHashLabel]
 	prGroupName := pipelineRun.Annotations[gitops.PRGroupAnnotation]
 	buildPLRFailureMsg := fmt.Sprintf("build PLR %s failed for component %s so it can't be added to the group Snapshot for PR group %s", pipelineRun.Name, a.component.Name, prGroupName)
@@ -457,8 +461,9 @@ func (a *Adapter) ensureBuildPLRSWithSnapshotAnnotation(canRemoveFinalizer *bool
 	return controller.ContinueProcessing()
 }
 
-// failedOrDeletedPLR checks for pipelinerun state and proceeds according to it,
-// failed or in running state > report this into a logger and set canRemoveFinalizer flag to true
+// handleUnsuccessfulPipelineRun checks for pipelinerun state and proceeds according to it,
+// failed or in running state with deletion timestamp > report this into a logger and
+// set canRemoveFinalizer flag to true
 func (a *Adapter) handleUnsuccessfulPipelineRun(canRemoveFinalizer *bool) {
 	// The build pipelinerun has not finished
 	if h.HasPipelineRunFinished(a.pipelineRun) || a.pipelineRun.GetDeletionTimestamp() != nil {
@@ -487,9 +492,9 @@ func (a *Adapter) handleSnapshotCreationFailure(canRemoveFinalizer *bool, cerr e
 // plrWithCustomizedError checks for customized error returned by PipelineRun result,
 // updates build PipelineRun annotation with this error and exits
 func (a *Adapter) updatePipelineRunWithCustomizedError(canRemoveFinalizer *bool, cerr error, context context.Context, pipelineRun *tektonv1.PipelineRun, client client.Client, logger h.IntegrationLogger) (result controller.OperationResult, err error) {
-	// If PipelineRun result returns cusomized error update PLR annotation and exit
+	// If PipelineRun result returns customized error, update PLR annotation and exit
 	if h.IsMissingInfoInPipelineRunError(cerr) || h.IsInvalidImageDigestError(cerr) || h.IsMissingValidComponentError(cerr) {
-		// update the build PLR annotation with the error cusomized Reason and Value
+		// update the build PLR annotation with the error customized Reason and Value
 		if annotateErr := tekton.AnnotateBuildPipelineRunWithCreateSnapshotAnnotation(context, pipelineRun, client, cerr); annotateErr != nil {
 			logger.Error(annotateErr, "Could not add create snapshot annotation to build pipelineRun", h.CreateSnapshotAnnotationName, pipelineRun)
 		}
@@ -498,7 +503,6 @@ func (a *Adapter) updatePipelineRunWithCustomizedError(canRemoveFinalizer *bool,
 		return controller.StopProcessing()
 	}
 	return controller.RequeueOnErrorOrContinue(cerr)
-
 }
 
 // addPRGroupToBuildPLRMetadata will add pr-group info gotten from souce-branch to annotation
@@ -523,7 +527,7 @@ func (a *Adapter) addPRGroupToBuildPLRMetadata(pipelineRun *tektonv1.PipelineRun
 			return a.client.Patch(a.context, pipelineRun, patch)
 		})
 	}
-	a.logger.Info("can't find source branch info in build PLR, not need to update build pipelineRun metadata")
+	a.logger.Info("can't find source branch info in build PLR, no need to update build pipelineRun metadata")
 	return nil
 }
 
@@ -610,8 +614,11 @@ func (a *Adapter) iterateIntegrationTestInStatusReport(reporter status.ReporterI
 	return nil
 }
 
-// getIntegrationTestStatusFromBuildPLR get the build PLR status to decide the integration test status
-// reported to PR/MR when build PLR is triggered/retriggered, build PLR fails or snapshot can't be created
+// getIntegrationTestStatusFromBuildPLR get the build PLR status to
+// decide the current integration test status reported to PR/MR when:
+// 	* build PLR is triggered/retriggered,
+// 	* build PLR fails or
+// 	* snapshot can't be created
 func getIntegrationTestStatusFromBuildPLR(plr *tektonv1.PipelineRun) intgteststat.IntegrationTestStatus {
 	var integrationTestStatus intgteststat.IntegrationTestStatus
 	// when build pipeline is triggered/retriggered, we need to set integration test status to pending
