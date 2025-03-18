@@ -61,6 +61,7 @@ const (
 	GetComponentSnapshotsKey
 	GetPRSnapshotsKey
 	GetPipelineRunforSnapshotsKey
+	GetComponentsFromSnapshotForPRGroupKey
 )
 
 func NewMockLoader() ObjectLoader {
@@ -256,19 +257,27 @@ func (l *mockLoader) GetMatchingComponentSnapshotsForComponentAndPRGroupHash(ctx
 }
 
 // GetMatchingComponentSnapshotsForPRGroupHash returns the resource and error passed as values of the context
-func (l *mockLoader) GetMatchingComponentSnapshotsForPRGroupHash(ctx context.Context, c client.Client, snapshot *applicationapiv1alpha1.Snapshot, prGroupHash string) (*[]applicationapiv1alpha1.Snapshot, error) {
+func (l *mockLoader) GetMatchingComponentSnapshotsForPRGroupHash(ctx context.Context, c client.Client, nameSpace, prGroupHash string) (*[]applicationapiv1alpha1.Snapshot, error) {
 	if ctx.Value(GetPRSnapshotsKey) == nil {
-		return l.loader.GetMatchingComponentSnapshotsForPRGroupHash(ctx, c, snapshot, prGroupHash)
+		return l.loader.GetMatchingComponentSnapshotsForPRGroupHash(ctx, c, nameSpace, prGroupHash)
 	}
 	snapshots, err := toolkit.GetMockedResourceAndErrorFromContext(ctx, GetPRSnapshotsKey, []applicationapiv1alpha1.Snapshot{})
 	return &snapshots, err
 }
 
-// GetMatchingComponentSnapshotsForPRGroupHash returns the resource and error passed as values of the context
+// GetAllIntegrationPipelineRunsForSnapshot returns the resource and error passed as values of the context
 func (l *mockLoader) GetAllIntegrationPipelineRunsForSnapshot(ctx context.Context, adapterClient client.Client, snapshot *applicationapiv1alpha1.Snapshot) ([]tektonv1.PipelineRun, error) {
 	if ctx.Value(GetPipelineRunforSnapshotsKey) == nil {
 		return l.loader.GetAllIntegrationPipelineRunsForSnapshot(ctx, adapterClient, snapshot)
 	}
 	pipelineRuns, err := toolkit.GetMockedResourceAndErrorFromContext(ctx, GetPipelineRunforSnapshotsKey, []tektonv1.PipelineRun{})
 	return pipelineRuns, err
+}
+
+func (l *mockLoader) GetComponentsFromSnapshotForPRGroup(ctx context.Context, c client.Client, namespace, prGroup, prGroupHash string) ([]string, error) {
+	if ctx.Value(GetComponentsFromSnapshotForPRGroupKey) == nil {
+		return l.loader.GetComponentsFromSnapshotForPRGroup(ctx, c, namespace, prGroup, prGroupHash)
+	}
+	components, err := toolkit.GetMockedResourceAndErrorFromContext(ctx, GetComponentsFromSnapshotForPRGroupKey, []string{})
+	return components, err
 }

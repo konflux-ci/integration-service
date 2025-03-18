@@ -584,7 +584,7 @@ func (a *Adapter) EnsureGroupSnapshotExist() (controller.OperationResult, error)
 		return controller.ContinueProcessing()
 	}
 
-	prGroupHash, prGroup := gitops.GetPRGroupFromSnapshot(a.snapshot)
+	prGroupHash, prGroup := gitops.GetPRGroup(a.snapshot)
 	if prGroupHash == "" || prGroup == "" {
 		a.logger.Error(fmt.Errorf("NotFound"), fmt.Sprintf("Failed to get PR group label/annotation from snapshot %s/%s", a.snapshot.Namespace, a.snapshot.Name))
 		err := gitops.AnnotateSnapshot(a.context, a.snapshot, gitops.PRGroupCreationAnnotation, fmt.Sprintf("Failed to get PR group label/annotation from snapshot %s/%s", a.snapshot.Namespace, a.snapshot.Name), a.client)
@@ -873,7 +873,7 @@ func (a *Adapter) updateComponentLastPromotedImage(ctx context.Context, c client
 }
 
 func (a *Adapter) prepareGroupSnapshot(application *applicationapiv1alpha1.Application, prGroup, prGroupHash string) (*applicationapiv1alpha1.Snapshot, []gitops.ComponentSnapshotInfo, error) {
-	componentsToCheck, err := a.getComponentsForPRGroup(prGroup, prGroupHash)
+	componentsToCheck, err := a.loader.GetComponentsFromSnapshotForPRGroup(a.context, a.client, application.Namespace, prGroup, prGroupHash)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -894,7 +894,12 @@ func (a *Adapter) prepareGroupSnapshot(application *applicationapiv1alpha1.Appli
 
 		var foundSnapshotWithOpenedPR *applicationapiv1alpha1.Snapshot
 		if slices.Contains(componentsToCheck, applicationComponent.Name) {
-			foundSnapshotWithOpenedPR, err = a.findSnapshotWithOpenedPR(a.snapshot, &applicationComponent, prGroupHash)
+			snapshots, err := a.loader.GetMatchingComponentSnapshotsForComponentAndPRGroupHash(a.context, a.client, application.Namespace, applicationComponent.Name, prGroupHash)
+			if err != nil {
+				a.logger.Error(err, "Failed to fetch Snapshots for component", "component.Name", applicationComponent.Name)
+				return nil, nil, err
+			}
+			foundSnapshotWithOpenedPR, err = a.status.FindSnapshotWithOpenedPR(a.context, snapshots)
 			if err != nil {
 				return nil, nil, err
 			}
@@ -960,30 +965,6 @@ func (a *Adapter) prepareGroupSnapshot(application *applicationapiv1alpha1.Appli
 	return groupSnapshot, componentSnapshotInfos, nil
 }
 
-// isLatestBuildPipelineRunInComponent return true if pipelineRun is the latest pipelineRun
-// for its component and pr group sha. Pipeline start timestamp is used for comparison because we care about
-// time when pipeline was created.
-func isLatestBuildPipelineRunInComponent(pipelineRun *tektonv1.PipelineRun, pipelineRuns *[]tektonv1.PipelineRun) bool {
-	pipelineStartTime := pipelineRun.CreationTimestamp.Time
-	componentName := pipelineRun.Labels[tekton.PipelineRunComponentLabel]
-	for _, run := range *pipelineRuns {
-		if pipelineRun.Name == run.Name {
-			// it's the same pipeline
-			continue
-		}
-		if componentName != run.Labels[tekton.PipelineRunComponentLabel] {
-			continue
-		}
-		timestamp := run.CreationTimestamp.Time
-		if pipelineStartTime.Before(timestamp) {
-			// pipeline is not the latest
-			// 1 second is minimal granularity, if both pipelines started at the same second, we cannot decide
-			return false
-		}
-	}
-	return true
-}
-
 // haveAllPipelineRunProcessedForPrGroup checks if all build plr has been processed for the given pr group
 func (a *Adapter) haveAllPipelineRunProcessedForPrGroup(prGroup, prGroupHash string) (bool, error) {
 	pipelineRuns, err := a.loader.GetPipelineRunsWithPRGroupHash(a.context, a.client, a.snapshot.Namespace, prGroupHash)
@@ -995,7 +976,7 @@ func (a *Adapter) haveAllPipelineRunProcessedForPrGroup(prGroup, prGroupHash str
 	for _, pipelineRun := range *pipelineRuns {
 		pipelineRun := pipelineRun //G601
 		// check if the build PLR is the latest existing one
-		if !isLatestBuildPipelineRunInComponent(&pipelineRun, pipelineRuns) {
+		if !tekton.IsLatestBuildPipelineRunInComponent(&pipelineRun, pipelineRuns) {
 			a.logger.Info(fmt.Sprintf("The build pipelineRun %s/%s with pr group %s is not the latest for its component, skipped", pipelineRun.Namespace, pipelineRun.Name, prGroup))
 			continue
 		}
@@ -1027,50 +1008,6 @@ func (a *Adapter) haveAllPipelineRunProcessedForPrGroup(prGroup, prGroupHash str
 		}
 	}
 	return true, nil
-}
-
-// getComponentsForPRGroup returns the component names affected by the given pr group hash
-func (a *Adapter) getComponentsForPRGroup(prGroup, prGroupHash string) ([]string, error) {
-	snapshots, err := a.loader.GetMatchingComponentSnapshotsForPRGroupHash(a.context, a.client, a.snapshot, prGroupHash)
-	if err != nil {
-		a.logger.Error(err, fmt.Sprintf("Failed to fetch Snapshots for pr group %s", prGroup))
-		return nil, err
-	}
-
-	var componentNames []string
-	for _, snapshot := range *snapshots {
-		componentName := snapshot.Labels[gitops.SnapshotComponentLabel]
-		if slices.Contains(componentNames, componentName) {
-			continue
-		}
-		componentNames = append(componentNames, componentName)
-	}
-	return componentNames, nil
-}
-
-func (a *Adapter) findSnapshotWithOpenedPR(snapshot *applicationapiv1alpha1.Snapshot, applicationComponent *applicationapiv1alpha1.Component, prGroupHash string) (*applicationapiv1alpha1.Snapshot, error) {
-	snapshots, err := a.loader.GetMatchingComponentSnapshotsForComponentAndPRGroupHash(a.context, a.client, a.snapshot.Namespace, applicationComponent.Name, prGroupHash)
-	if err != nil {
-		a.logger.Error(err, "Failed to fetch Snapshots for component", "component.Name", applicationComponent.Name)
-		return nil, err
-	}
-
-	sortedSnapshots := gitops.SortSnapshots(*snapshots)
-	// find the latest component snapshot created for open PR/MR
-	for _, snapshot := range sortedSnapshots {
-		snapshot := snapshot
-		// find the built image for pull/merge request build PLR from the latest opened pull request component snapshot
-		isPRMROpened, err := a.status.IsPRMRInSnapshotOpened(a.context, &snapshot)
-		if err != nil {
-			a.logger.Error(err, "Failed to fetch PR/MR status for component snapshot", "snapshot.Name", a.snapshot.Name)
-			return nil, err
-		}
-		if isPRMROpened {
-			a.logger.Info("PR/MR in snapshot is opened, will find snapshotComponent and add to groupSnapshot")
-			return &snapshot, nil
-		}
-	}
-	return nil, nil
 }
 
 // checkAndCancelOldSnapshotsPipelineRun sorts all snapshots for application and cancels all running integrationTest pipelineruns within application

@@ -449,44 +449,6 @@ var _ = Describe("Status Adapter", func() {
 			},
 		}
 
-		hasSnapshot = &applicationapiv1alpha1.Snapshot{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "snapshot-sample",
-				Namespace: "default",
-				Labels: map[string]string{
-					"test.appstudio.openshift.io/type":               "component",
-					"appstudio.openshift.io/component":               "component-sample",
-					"build.appstudio.redhat.com/pipeline":            "enterprise-contract",
-					"pac.test.appstudio.openshift.io/git-provider":   "github",
-					"pac.test.appstudio.openshift.io/url-org":        "devfile-sample",
-					"pac.test.appstudio.openshift.io/url-repository": "devfile-sample-go-basic",
-					"pac.test.appstudio.openshift.io/sha":            "12a4a35ccd08194595179815e4646c3a6c08bb77",
-					"pac.test.appstudio.openshift.io/event-type":     "pull_request",
-				},
-				Annotations: map[string]string{
-					"build.appstudio.redhat.com/commit_sha":         "6c65b2fcaea3e1a0a92476c8b5dc89e92a85f025",
-					"appstudio.redhat.com/updateComponentOnSuccess": "false",
-					"pac.test.appstudio.openshift.io/repo-url":      "https://github.com/devfile-sample/devfile-sample-go-basic",
-				},
-			},
-			Spec: applicationapiv1alpha1.SnapshotSpec{
-				Application: "application-sample",
-				Components: []applicationapiv1alpha1.SnapshotComponent{
-					{
-						Name:           "component-sample",
-						ContainerImage: "sample_image",
-						Source: applicationapiv1alpha1.ComponentSource{
-							ComponentSourceUnion: applicationapiv1alpha1.ComponentSourceUnion{
-								GitSource: &applicationapiv1alpha1.GitSource{
-									Revision: "sample_revision",
-								},
-							},
-						},
-					},
-				},
-			},
-		}
-
 		githubSnapshot = &applicationapiv1alpha1.Snapshot{
 			ObjectMeta: metav1.ObjectMeta{
 				Labels: map[string]string{

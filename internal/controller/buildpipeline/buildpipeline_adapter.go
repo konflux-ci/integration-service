@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"k8s.io/client-go/util/retry"
+	"k8s.io/utils/strings/slices"
 
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
 	"github.com/konflux-ci/integration-service/api/v1beta2"
@@ -224,7 +225,19 @@ func (a *Adapter) EnsureIntegrationTestReportedToGitProvider() (controller.Opera
 	}
 
 	a.logger.Info("try to set integration test status according to the build PLR status")
-	tempSnapshot := a.prepareTemporarySnapshot(a.pipelineRun)
+	tempComponentSnapshot := a.prepareTempComponentSnapshot(a.pipelineRun)
+
+	a.logger.Info("try to check if group snapshot is expected for build PLR")
+	isGroupSnapshotExpected, err := a.isGroupSnapshotExpectedForBuildPLR(a.pipelineRun)
+	if err != nil {
+		a.logger.Error(err, "failed to check if group snapshot is expected")
+		return controller.RequeueWithError(err)
+	}
+	tempGroupSnapshot := &applicationapiv1alpha1.Snapshot{}
+	if isGroupSnapshotExpected {
+		a.logger.Info("group snapshot is expected to be created for build pipelinerun, group integration test should be set for found context scenario", "pipelineRun.Name", a.pipelineRun.Name)
+		tempGroupSnapshot = a.prepareTempGroupSnapshot(a.pipelineRun)
+	}
 
 	allIntegrationTestScenarios, err := a.loader.GetAllIntegrationTestScenariosForApplication(a.context, a.client, a.application)
 	if err != nil {
@@ -234,27 +247,39 @@ func (a *Adapter) EnsureIntegrationTestReportedToGitProvider() (controller.Opera
 	}
 
 	if allIntegrationTestScenarios != nil {
-		// Handle context in integrationTestScenario, but defer handling of 'group' for now
-		integrationTestScenarios := gitops.FilterIntegrationTestScenariosWithContext(allIntegrationTestScenarios, tempSnapshot)
+		var integrationTestScenariosForComponentSnapshot, integrationTestScenariosForGroupSnapshot *[]v1beta2.IntegrationTestScenario
+		integrationTestScenariosForComponentSnapshot = gitops.FilterIntegrationTestScenariosWithContext(allIntegrationTestScenarios, tempComponentSnapshot)
+
 		a.logger.Info(
-			fmt.Sprintf("Found %d IntegrationTestScenarios for application", len(*integrationTestScenarios)),
+			fmt.Sprintf("Found %d IntegrationTestScenarios for application", len(*integrationTestScenariosForComponentSnapshot)),
 			"Application.Name", a.application.Name,
-			"IntegrationTestScenarios", len(*integrationTestScenarios))
-		if len(*integrationTestScenarios) == 0 {
-			a.logger.Info("no need to report integration test status since no integrationTestScenario can be applied to snapshot created for build pipelinerun")
-			return controller.ContinueProcessing()
+			"IntegrationTestScenarios", len(*integrationTestScenariosForComponentSnapshot))
+		if len(*integrationTestScenariosForComponentSnapshot) > 0 {
+			err = a.ReportIntegrationTestStatusAccordingToBuildPLR(a.pipelineRun, tempComponentSnapshot, integrationTestScenariosForComponentSnapshot, integrationTestStatus, a.component.Name)
+			if err != nil {
+				a.logger.Error(err, "failed to initialize integration test status or report snapshot creation status to git provider from build pipelineRun",
+					"pipelineRun.Namespace", a.pipelineRun.Namespace, "pipelineRun.Name", a.pipelineRun.Name)
+				return controller.RequeueWithError(err)
+			}
 		}
 
-		err := a.ReportIntegrationTestStatusAccordingToBuildPLR(a.pipelineRun, tempSnapshot, integrationTestScenarios, integrationTestStatus, a.component)
-		if err != nil {
-			a.logger.Error(err, "failed to report snapshot creation status to git provider from build pipelineRun",
-				"pipelineRun.Namespace", a.pipelineRun.Namespace, "pipelineRun.Name", a.pipelineRun.Name)
-			return controller.RequeueWithError(err)
+		if isGroupSnapshotExpected {
+			integrationTestScenariosForGroupSnapshot = gitops.FilterIntegrationTestScenariosWithContext(allIntegrationTestScenarios, tempGroupSnapshot)
+			if len(*integrationTestScenariosForGroupSnapshot) > 0 {
+				err = a.ReportIntegrationTestStatusAccordingToBuildPLR(a.pipelineRun, tempGroupSnapshot, integrationTestScenariosForGroupSnapshot, integrationTestStatus, gitops.ComponentNameForGroupSnapshot)
+				if err != nil {
+					a.logger.Error(err, "failed to initialize integration test status or report snapshot creation status to git provider from build pipelineRun",
+						"pipelineRun.Namespace", a.pipelineRun.Namespace, "pipelineRun.Name", a.pipelineRun.Name)
+					return controller.RequeueWithError(err)
+				}
+			}
 		}
 
-		if err = tekton.AnnotateBuildPipelineRun(a.context, a.pipelineRun, h.SnapshotCreationReportAnnotation, integrationTestStatus.String(), a.client); err != nil {
-			a.logger.Error(err, fmt.Sprintf("failed to write build plr annotation %s", h.SnapshotCreationReportAnnotation))
-			return controller.RequeueWithError(fmt.Errorf("failed to write snapshot report status metadata for annotation %s: %w", h.SnapshotCreationReportAnnotation, err))
+		if len(*integrationTestScenariosForComponentSnapshot) > 0 || len(*integrationTestScenariosForGroupSnapshot) > 0 {
+			if err = tekton.AnnotateBuildPipelineRun(a.context, a.pipelineRun, h.SnapshotCreationReportAnnotation, integrationTestStatus.String(), a.client); err != nil {
+				a.logger.Error(err, fmt.Sprintf("failed to write build plr annotation %s", h.SnapshotCreationReportAnnotation))
+				return controller.RequeueWithError(fmt.Errorf("failed to write snapshot report status metadata for annotation %s: %w", h.SnapshotCreationReportAnnotation, err))
+			}
 		}
 	}
 	return controller.ContinueProcessing()
@@ -527,22 +552,37 @@ func (a *Adapter) addPRGroupToBuildPLRMetadata(pipelineRun *tektonv1.PipelineRun
 	return nil
 }
 
-// prepareTemporarySnapshot will create a temporary snapshot object to copy the labels/annotations from build pipelinerun
+// prepareTempComponentSnapshot will create a temporary component snapshot object to copy the labels/annotations from build pipelinerun
 // and be used to communicate with git provider
-func (a *Adapter) prepareTemporarySnapshot(pipelineRun *tektonv1.PipelineRun) *applicationapiv1alpha1.Snapshot {
-	tempSnapshot := &applicationapiv1alpha1.Snapshot{
+func (a *Adapter) prepareTempComponentSnapshot(pipelineRun *tektonv1.PipelineRun) *applicationapiv1alpha1.Snapshot {
+	tempComponentSnapshot := &applicationapiv1alpha1.Snapshot{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "tempSnapshot",
+			Name:      "tempComponentSnapshot",
 			Namespace: pipelineRun.Namespace,
 		},
 	}
-	prefixes := []string{gitops.BuildPipelineRunPrefix, gitops.TestLabelPrefix, gitops.CustomLabelPrefix}
-	gitops.CopySnapshotLabelsAndAnnotations(a.application, tempSnapshot, a.component.Name, &pipelineRun.ObjectMeta, prefixes)
-	return tempSnapshot
+	prefixes := []string{gitops.BuildPipelineRunPrefix, gitops.TestLabelPrefix, gitops.CustomLabelPrefix, tekton.ResourceLabelSuffix}
+	gitops.CopySnapshotLabelsAndAnnotations(a.application, tempComponentSnapshot, a.component.Name, &pipelineRun.ObjectMeta, prefixes)
+	return tempComponentSnapshot
+}
+
+// prepareTempGroupSnapshot will create a temporary group snapshot object to copy the labels/annotations from build pipelinerun
+// and be used to communicate with git provider
+func (a *Adapter) prepareTempGroupSnapshot(pipelineRun *tektonv1.PipelineRun) *applicationapiv1alpha1.Snapshot {
+	tempGroupSnapshot := &applicationapiv1alpha1.Snapshot{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "tempGroupSnapshot",
+			Namespace: pipelineRun.Namespace,
+		},
+	}
+	prefixes := []string{gitops.BuildPipelineRunPrefix}
+	gitops.CopyTempGroupSnapshotLabelsAndAnnotations(a.application, tempGroupSnapshot, a.component.Name, &pipelineRun.ObjectMeta, prefixes)
+
+	return tempGroupSnapshot
 }
 
 func (a *Adapter) ReportIntegrationTestStatusAccordingToBuildPLR(pipelineRun *tektonv1.PipelineRun, snapshot *applicationapiv1alpha1.Snapshot, integrationTestScenarios *[]v1beta2.IntegrationTestScenario,
-	integrationTestStatus intgteststat.IntegrationTestStatus, component *applicationapiv1alpha1.Component) error {
+	integrationTestStatus intgteststat.IntegrationTestStatus, componentName string) error {
 	reporter := a.status.GetReporter(snapshot)
 	if reporter == nil {
 		a.logger.Info("No suitable reporter found, skipping report")
@@ -557,7 +597,7 @@ func (a *Adapter) ReportIntegrationTestStatusAccordingToBuildPLR(pipelineRun *te
 	a.logger.Info("Reporter initialized", "reporter", reporter.GetReporterName())
 
 	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		err := a.iterateIntegrationTestInStatusReport(reporter, pipelineRun, snapshot, integrationTestScenarios, integrationTestStatus, component)
+		err := a.iterateIntegrationTestInStatusReport(reporter, pipelineRun, snapshot, integrationTestScenarios, integrationTestStatus, componentName)
 		if err != nil {
 			a.logger.Error(err, fmt.Sprintf("failed to report integration test status according to build pipelinerun %s/%s",
 				pipelineRun.Namespace, pipelineRun.Name))
@@ -588,7 +628,7 @@ func (a *Adapter) iterateIntegrationTestInStatusReport(reporter status.ReporterI
 	snapshot *applicationapiv1alpha1.Snapshot,
 	integrationTestScenarios *[]v1beta2.IntegrationTestScenario,
 	intgteststatus intgteststat.IntegrationTestStatus,
-	component *applicationapiv1alpha1.Component) error {
+	componentName string) error {
 
 	details := generateDetails(buildPLR, intgteststatus)
 	integrationTestStatusDetail := intgteststat.IntegrationTestStatusDetail{
@@ -599,7 +639,7 @@ func (a *Adapter) iterateIntegrationTestInStatusReport(reporter status.ReporterI
 		integrationTestScenario := integrationTestScenario //G601
 		integrationTestStatusDetail.ScenarioName = integrationTestScenario.Name
 
-		testReport, reportErr := status.GenerateTestReport(a.context, a.client, integrationTestStatusDetail, snapshot, component.Name)
+		testReport, reportErr := status.GenerateTestReport(a.context, a.client, integrationTestStatusDetail, snapshot, componentName)
 		if reportErr != nil {
 			return fmt.Errorf("failed to generate test report: %w", reportErr)
 		}
@@ -649,4 +689,79 @@ func generateDetails(buildPLR *tektonv1.PipelineRun, integrationTestStatus intgt
 		details = fmt.Sprintf("build pipelinerun %s/%s failed, so that snapshot is not created. Please fix build pipelinerun failure and try again.", buildPLR.Namespace, buildPLR.Name)
 	}
 	return details
+}
+
+// getComponentFromLatestFlightBuildPLR get the components from the build pipelineruns which have not snapshot created for the given pr group
+// according to the given pr group
+func (a *Adapter) getComponentsFromLatestFlightBuildPLR(prGroup, prGroupHash string) ([]string, error) {
+	pipelineRuns, err := a.loader.GetPipelineRunsWithPRGroupHash(a.context, a.client, a.pipelineRun.Namespace, prGroupHash)
+	if err != nil {
+		a.logger.Error(err, fmt.Sprintf("Failed to get build pipelineRuns for given pr group hash %s", prGroupHash))
+		return nil, err
+	}
+
+	var componentsFromPipelineRun []string
+	for _, pipelineRun := range *pipelineRuns {
+		pipelineRun := pipelineRun //G601
+		// check if the build PLR is the latest existing one
+		if !tekton.IsLatestBuildPipelineRunInComponent(&pipelineRun, pipelineRuns) {
+			a.logger.Info(fmt.Sprintf("The build pipelineRun %s/%s with pr group %s is not the latest for its component, skipped", pipelineRun.Namespace, pipelineRun.Name, prGroup))
+			continue
+		}
+		if metadata.HasAnnotation(&pipelineRun, tekton.SnapshotNameLabel) {
+			a.logger.Info(fmt.Sprintf("The build pipelineRun %s/%s with pr group %s has snapshot created, skipped", pipelineRun.Namespace, pipelineRun.Name, prGroup))
+			continue
+		}
+		componentsFromPipelineRun = append(componentsFromPipelineRun, pipelineRun.Labels[tekton.PipelineRunComponentLabel])
+	}
+	return componentsFromPipelineRun, nil
+}
+
+// isGroupSnapshotExpectedForBuildPLR return group context ITS if group snapshot is expected for the same pr group with the given build PLR
+func (a *Adapter) isGroupSnapshotExpectedForBuildPLR(pipelineRun *tektonv1.PipelineRun) (bool, error) {
+	prGroupHash, prGroup := gitops.GetPRGroup(pipelineRun)
+	componentsWithOpenPRMR, err := a.getComponentsFromLatestFlightBuildPLR(prGroup, prGroupHash)
+	if err != nil {
+		a.logger.Error(err, fmt.Sprintf("failed to get component from build pipelineruns for pr group %s", prGroup))
+		return false, err
+	}
+	if len(componentsWithOpenPRMR) > 1 {
+		a.logger.Info("there is more than 1 component with open pr or mr found, so group snapshot is expected")
+		return true, nil
+	}
+
+	componentsFromSnapshot, err := a.loader.GetComponentsFromSnapshotForPRGroup(a.context, a.client, pipelineRun.Namespace, prGroup, prGroupHash)
+	if err != nil {
+		a.logger.Error(err, fmt.Sprintf("failed to get component from component snapshot for pr group %s", prGroup))
+		return false, err
+	}
+
+	for _, componentName := range componentsFromSnapshot {
+		if slices.Contains(componentsWithOpenPRMR, componentName) {
+			a.logger.Info(fmt.Sprintf("There is in progress build pipelineRun for component %s/%s, won't check its component snapshot's pull/merge request", a.pipelineRun.Namespace, componentName))
+			continue
+		}
+
+		snapshots, err := a.loader.GetMatchingComponentSnapshotsForComponentAndPRGroupHash(a.context, a.client, pipelineRun.Namespace, componentName, prGroupHash)
+		if err != nil {
+			a.logger.Error(err, "Failed to fetch Snapshots for component", "component.Name", componentName)
+			return false, err
+		}
+
+		foundSnapshotWithOpenedPR, err := a.status.FindSnapshotWithOpenedPR(a.context, snapshots)
+		if err != nil {
+			a.logger.Error(err, "failed to find snapshot with open PR or MR")
+			return false, err
+		}
+		if foundSnapshotWithOpenedPR != nil {
+			a.logger.Info("Opened PR/MR in snapshot is found")
+			componentsWithOpenPRMR = append(componentsWithOpenPRMR, componentName)
+		}
+	}
+
+	if len(componentsWithOpenPRMR) < 2 {
+		a.logger.Info(fmt.Sprintf("The number %d of components affected by this PR group %s is less than 2, skipping group snapshot creation", len(componentsWithOpenPRMR), prGroup))
+		return false, nil
+	}
+	return true, nil
 }
