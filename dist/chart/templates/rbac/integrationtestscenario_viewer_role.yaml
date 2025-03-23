@@ -1,0 +1,30 @@
+{{- if .Values.rbac.enable }}
+# This rule is not used by the project integration-service itself.
+# It is provided to allow the cluster admin to help manage permissions for users.
+#
+# Grants read-only access to appstudio.redhat.com resources.
+# This role is intended for users who need visibility into these resources
+# without permissions to modify them. It is ideal for monitoring purposes and limited-access viewing.
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    {{- include "chart.labels" . | nindent 4 }}
+  name: integration-service-integrationtestscenario-viewer-role
+rules:
+- apiGroups:
+  - appstudio.redhat.com
+  resources:
+  - integrationtestscenarios
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - appstudio.redhat.com
+  resources:
+  - integrationtestscenarios/status
+  verbs:
+  - get
+{{- end -}}
