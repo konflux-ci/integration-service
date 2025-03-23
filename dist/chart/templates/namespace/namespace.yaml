@@ -1,0 +1,9 @@
+{{- if .Values.chartCreateNamespace }}
+apiVersion: v1
+kind: Namespace
+metadata:
+  labels:
+    {{- include "chart.labels" . | nindent 4 }}
+    control-plane: controller-manager
+  name: {{ .Values.namespace | default .Release.Namespace }}
+{{- end }}

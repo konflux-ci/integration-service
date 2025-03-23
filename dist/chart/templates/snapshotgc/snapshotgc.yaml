@@ -1,0 +1,28 @@
+{{- if .Values.snapshotgc.enable }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: integration-service-snapshot-garbage-collector
+  namespace: {{ .Values.namespace | default .Release.Namespace }}
+spec:
+  schedule: "0 */6 * * *" # 4 times daily
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: test-gc
+              image: {{ .Values.snapshotgc.image }}
+              command:
+                - /snapshotgc
+                {{- range .Values.snapshotgc.args }}
+                - {{ . }}
+                {{- end }}
+              imagePullPolicy: Always
+              resources:
+                {{- toYaml .Values.snapshotgc.resources | nindent 16 }}
+              securityContext:
+                {{- toYaml .Values.snapshotgc.securityContext | nindent 16 }}
+          restartPolicy: Never
+          serviceAccountName: integration-service-snapshot-garbage-collector
+{{- end }}
