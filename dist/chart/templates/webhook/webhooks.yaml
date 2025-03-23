@@ -1,0 +1,56 @@
+{{- if .Values.webhook.enable }}
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: integration-service-validating-webhook-configuration
+  namespace: {{ .Values.namespace | default .Release.Namespace }}
+  annotations:
+    {{- if .Values.certmanager.enable }}
+    cert-manager.io/inject-ca-from: {{ $.Values.namespace | default $.Release.Namespace }}/serving-cert
+    {{- end }}
+    service.beta.openshift.io/inject-cabundle: "true"
+  labels:
+    {{- include "chart.labels" . | nindent 4 }}
+webhooks:
+  - name: vintegrationtestscenario.kb.io
+    clientConfig:
+      service:
+        name: integration-service-webhook-service
+        namespace: {{ .Values.namespace | default .Release.Namespace }}
+        path: /validate-appstudio-redhat-com-v1beta2-integrationtestscenario
+    failurePolicy: Fail
+    sideEffects: None
+    admissionReviewVersions:
+      - v1
+    rules:
+      - operations:
+          - CREATE
+          - UPDATE
+          - DELETE
+        apiGroups:
+          - appstudio.redhat.com
+        apiVersions:
+          - v1beta2
+        resources:
+          - integrationtestscenarios
+  - name: vintegrationtestscenario-v1beta2.kb.io
+    clientConfig:
+      service:
+        name: integration-service-webhook-service
+        namespace: {{ .Values.namespace | default .Release.Namespace }}
+        path: /validate-appstudio-redhat-com-v1beta2-integrationtestscenario
+    failurePolicy: Fail
+    sideEffects: None
+    admissionReviewVersions:
+      - v1
+    rules:
+      - operations:
+          - CREATE
+          - UPDATE
+        apiGroups:
+          - appstudio.redhat.com
+        apiVersions:
+          - v1beta2
+        resources:
+          - integrationtestscenarios
+{{- end }}

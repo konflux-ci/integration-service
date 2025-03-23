@@ -1,0 +1,21 @@
+{{- if .Values.webhook.enable }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: integration-service-webhook-service
+  namespace: {{ .Values.namespace | default .Release.Namespace }}
+  labels:
+    {{- include "chart.labels" . | nindent 4 }}
+    app.kubernetes.io/component: webhook
+    app.kubernetes.io/created-by: integration-service
+    app.kubernetes.io/part-of: integration-service
+  annotations:
+    service.beta.openshift.io/serving-cert-secret-name: webhook-server-cert
+spec:
+  ports:
+    - port: 443
+      protocol: TCP
+      targetPort: 9443
+  selector:
+    control-plane: controller-manager
+{{- end }}

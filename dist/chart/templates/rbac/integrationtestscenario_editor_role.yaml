@@ -1,0 +1,34 @@
+{{- if .Values.rbac.enable }}
+# This rule is not used by the project integration-service itself.
+# It is provided to allow the cluster admin to help manage permissions for users.
+#
+# Grants permissions to create, update, and delete resources within the appstudio.redhat.com.
+# This role is intended for users who need to manage these resources
+# but should not control RBAC or manage permissions for others.
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    {{- include "chart.labels" . | nindent 4 }}
+  name: integration-service-integrationtestscenario-editor-role
+rules:
+- apiGroups:
+  - appstudio.redhat.com
+  resources:
+  - integrationtestscenarios
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - appstudio.redhat.com
+  resources:
+  - integrationtestscenarios/status
+  verbs:
+  - get
+{{- end -}}

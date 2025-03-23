@@ -1,0 +1,25 @@
+{{- if .Values.prometheus.enable }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  labels:
+    {{- include "chart.labels" . | nindent 4 }}
+    app.kubernetes.io/component: metrics
+    app.kubernetes.io/created-by: integration-service
+    app.kubernetes.io/part-of: integration-service
+  name: integration-service-controller-manager-metrics-monitor
+  namespace: {{ .Values.namespace | default .Release.Namespace }}
+spec:
+  endpoints:
+    - path: /metrics
+      port: https
+      scheme: https
+      bearerTokenSecret:
+        key: token
+        name: "integration-service-metrics-reader"
+      tlsConfig:
+        insecureSkipVerify: true
+  selector:
+    matchLabels:
+      control-plane: controller-manager
+{{- end }}
