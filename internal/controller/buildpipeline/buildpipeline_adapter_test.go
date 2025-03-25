@@ -52,6 +52,7 @@ import (
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	"github.com/tonglil/buflogr"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 var _ = Describe("Pipeline Adapter", Ordered, func() {
@@ -1522,6 +1523,10 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 
 	When("a build PLR is triggered or retirggered, succeeded or failed", func() {
 		BeforeEach(func() {
+			patch := client.MergeFrom(buildPipelineRun.DeepCopy())
+			_ = metadata.SetAnnotation(&buildPipelineRun.ObjectMeta, gitops.PRGroupAnnotation, prGroup)
+			_ = metadata.SetLabel(&buildPipelineRun.ObjectMeta, gitops.PRGroupHashLabel, prGroupSha)
+			Expect(k8sClient.Patch(ctx, buildPipelineRun, patch)).Should(Succeed())
 			ctrl := gomock.NewController(GinkgoT())
 			mockReporter = status.NewMockReporterInterface(ctrl)
 			mockStatus = status.NewMockStatusInterface(ctrl)
@@ -1654,7 +1659,8 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 						"pipelinesascode.tekton.dev/event-type":    "pull_request",
 						"pipelinesascode.tekton.dev/pull-request":  "1",
 						"pipelinesascode.tekton.dev/git-provider":  "github",
-						customLabel: "custom-label",
+						customLabel:             "custom-label",
+						gitops.PRGroupHashLabel: prGroupSha,
 					},
 					Annotations: map[string]string{
 						"appstudio.redhat.com/updateComponentOnSuccess": "false",
@@ -1664,6 +1670,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 						"pipelinesascode.tekton.dev/source-branch":      "sourceBranch",
 						"pipelinesascode.tekton.dev/url-org":            "redhat",
 						"pipelinesascode.tekton.dev/git-provider":       "github",
+						gitops.PRGroupAnnotation:                        prGroup,
 					},
 					CreationTimestamp: metav1.NewTime(time.Now().Add(time.Hour * 1)),
 				},
@@ -1745,6 +1752,12 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 	})
 
 	When("integration status should not be set from build PLR", func() {
+		BeforeAll(func() {
+			patch := client.MergeFrom(buildPipelineRun.DeepCopy())
+			_ = metadata.SetAnnotation(&buildPipelineRun.ObjectMeta, gitops.PRGroupAnnotation, prGroup)
+			_ = metadata.SetLabel(&buildPipelineRun.ObjectMeta, gitops.PRGroupHashLabel, prGroupSha)
+			Expect(k8sClient.Patch(ctx, buildPipelineRun, patch)).Should(Succeed())
+		})
 		It("integration test will not be set from build PLR when build PLR succeeded and snapshot is created", func() {
 			Expect(metadata.SetAnnotation(buildPipelineRun, tekton.SnapshotNameLabel, "snashot-sample")).ShouldNot(HaveOccurred())
 			buf = bytes.Buffer{}
@@ -1782,6 +1795,25 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			Expect(!result.CancelRequest && err == nil).To(BeTrue())
 			expectedLogEntry := "build pipelineRun is not created by pull/merge request, no need to set integration test status in git provider"
 			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
+		})
+
+		It("integration test will not be set from build PLR when pr group is not annotated to build PLR", func() {
+			Expect(metadata.DeleteLabel(buildPipelineRun, gitops.PRGroupHashLabel)).ShouldNot(HaveOccurred())
+			Expect(metadata.DeleteAnnotation(buildPipelineRun, gitops.PRGroupAnnotation)).ShouldNot(HaveOccurred())
+			buf = bytes.Buffer{}
+			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+			adapter = NewAdapter(ctx, buildPipelineRun, hasComp, hasApp, log, loader.NewMockLoader(), k8sClient)
+			adapter.status = mockStatus
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: loader.ApplicationContextKey,
+					Resource:   hasApp,
+				},
+			})
+			result, err := adapter.EnsureIntegrationTestReportedToGitProvider()
+			expectedLogEntry := "pr group info has not been added to build pipelineRun metadata, try again"
+			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
+			Expect(result.RequeueRequest && err != nil).To(BeTrue())
 		})
 	})
 	createAdapter = func() *Adapter {

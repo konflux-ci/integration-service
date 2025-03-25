@@ -205,6 +205,11 @@ func (a *Adapter) EnsureIntegrationTestReportedToGitProvider() (controller.Opera
 		return controller.ContinueProcessing()
 	}
 
+	if !metadata.HasLabel(a.pipelineRun, gitops.PRGroupHashLabel) || !metadata.HasAnnotation(a.pipelineRun, gitops.PRGroupAnnotation) {
+		a.logger.Info("pr group info has not been added to build pipelineRun metadata, try again")
+		return controller.RequeueWithError(fmt.Errorf("pr group has not been added to build pipelineRun metadata, try again"))
+	}
+
 	if metadata.HasAnnotation(a.pipelineRun, tekton.SnapshotNameLabel) {
 		SnapshotCreated := "SnapshotCreated"
 		a.logger.Info("snapshot has been created for build pipelineRun, no need to report integration status from build pipelinerun status")
@@ -224,7 +229,7 @@ func (a *Adapter) EnsureIntegrationTestReportedToGitProvider() (controller.Opera
 		return controller.ContinueProcessing()
 	}
 
-	a.logger.Info("try to set integration test status according to the build PLR status")
+	a.logger.Info(fmt.Sprintf("try to set integration test status according to the build PLR status %s", integrationTestStatus.String()))
 	tempComponentSnapshot := a.prepareTempComponentSnapshot(a.pipelineRun)
 
 	a.logger.Info("try to check if group snapshot is expected for build PLR")
@@ -720,6 +725,11 @@ func (a *Adapter) getComponentsFromLatestFlightBuildPLR(prGroup, prGroupHash str
 // isGroupSnapshotExpectedForBuildPLR return group context ITS if group snapshot is expected for the same pr group with the given build PLR
 func (a *Adapter) isGroupSnapshotExpectedForBuildPLR(pipelineRun *tektonv1.PipelineRun) (bool, error) {
 	prGroupHash, prGroup := gitops.GetPRGroup(pipelineRun)
+	if prGroupHash == "" || prGroup == "" {
+		a.logger.Error(fmt.Errorf("NotFound"), fmt.Sprintf("Failed to get PR group label/annotation from pipelineRun %s/%s", pipelineRun.Namespace, pipelineRun.Name))
+		return false, fmt.Errorf("pr group label/annotation can not be found from build plr")
+	}
+
 	componentsWithOpenPRMR, err := a.getComponentsFromLatestFlightBuildPLR(prGroup, prGroupHash)
 	if err != nil {
 		a.logger.Error(err, fmt.Sprintf("failed to get component from build pipelineruns for pr group %s", prGroup))
@@ -760,7 +770,7 @@ func (a *Adapter) isGroupSnapshotExpectedForBuildPLR(pipelineRun *tektonv1.Pipel
 	}
 
 	if len(componentsWithOpenPRMR) < 2 {
-		a.logger.Info(fmt.Sprintf("The number %d of components affected by this PR group %s is less than 2, skipping group snapshot creation", len(componentsWithOpenPRMR), prGroup))
+		a.logger.Info(fmt.Sprintf("The number %d of components affected by this PR group %s is less than 2, skipping group snapshot status report", len(componentsWithOpenPRMR), prGroup))
 		return false, nil
 	}
 	return true, nil
