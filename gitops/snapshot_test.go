@@ -994,6 +994,17 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 				Expect(metadata.HasLabel(tempGroupSnapshot, "pac.test.appstudio.openshift.io/event-type")).To(BeTrue())
 				Expect(metadata.HasLabel(tempGroupSnapshot, "appstudio.openshift.io/component")).To(BeFalse())
 			})
+
+			It("can mark snapshot as cancelled", func() {
+				Expect(gitops.MarkSnapshotAsCanceled(ctx, k8sClient, hasSnapshot, "Canceled")).Should(Succeed())
+				Eventually(func() bool {
+					_ = k8sClient.Get(ctx, types.NamespacedName{
+						Name:      hasSnapshot.Name,
+						Namespace: namespace,
+					}, hasSnapshot)
+					return gitops.IsSnapshotMarkedAsCanceled(hasSnapshot)
+				}, time.Second*15).Should(BeTrue())
+			})
 		})
 	})
 })

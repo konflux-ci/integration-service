@@ -1013,33 +1013,53 @@ func (a *Adapter) haveAllPipelineRunProcessedForPrGroup(prGroup, prGroupHash str
 // checkAndCancelOldSnapshotsPipelineRun sorts all snapshots for application and cancels all running integrationTest pipelineruns within application
 // removes finalizer before the pipelinerun is set as CancelledRunFinally to be gracefully cancelled
 func (a *Adapter) checkAndCancelOldSnapshotsPipelineRun(application *applicationapiv1alpha1.Application, snapshot *applicationapiv1alpha1.Snapshot) error {
-	snapshots, err := a.loader.GetAllSnapshotsForPR(a.context, a.client, application, snapshot.GetLabels()[gitops.PipelineAsCodePullRequestAnnotation])
-	if err != nil {
-		a.logger.Error(err, "Failed to fetch Snapshots for the application",
-			"application.Name:", application.Name)
-		return err
+	var err error
+	snapshots := &[]applicationapiv1alpha1.Snapshot{}
+	if gitops.IsComponentSnapshot(snapshot) {
+		snapshots, err = a.loader.GetAllSnapshotsForPR(a.context, a.client, application, snapshot.GetLabels()[gitops.SnapshotComponentLabel], snapshot.GetLabels()[gitops.PipelineAsCodePullRequestAnnotation])
+		if err != nil {
+			a.logger.Error(err, "Failed to fetch Snapshots for the application",
+				"application.Name:", application.Name)
+			return err
+		}
 	}
+
+	if gitops.IsGroupSnapshot(snapshot) {
+		prGroupHash, prGroup := gitops.GetPRGroup(snapshot)
+		if prGroupHash == "" || prGroup == "" {
+			a.logger.Error(fmt.Errorf("pr group info can't be found in group snapshot"), "snapshot.Namespace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
+			return fmt.Errorf("pr group info can't be found in group snapshot %s/%s", snapshot.Namespace, snapshot.Name)
+		}
+		snapshots, err = a.loader.GetMatchingGroupSnapshotsForPRGroupHash(a.context, a.client, application.Namespace, prGroupHash)
+		if err != nil {
+			a.logger.Error(fmt.Errorf("failed to get group snapshot for pr group from group snapshot"), "snapshot.Namespace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
+			return err
+		}
+
+	}
+
 	sortedSnapshots := gitops.SortSnapshots(*snapshots)
-	prSnapshots := []applicationapiv1alpha1.Snapshot{}
 	// no snapshots found that fulfill the condition
 	if len(sortedSnapshots) < 2 {
 		return nil
 	}
-	prSnapshots = append(prSnapshots, sortedSnapshots[0])
 	for i := 1; i < len(sortedSnapshots); i++ {
-		if sortedSnapshots[0].GetAnnotations()[gitops.PipelineAsCodeRepoURLAnnotation] == sortedSnapshots[i].GetAnnotations()[gitops.PipelineAsCodeRepoURLAnnotation] {
-			prSnapshots = append(prSnapshots, sortedSnapshots[i])
+		if gitops.IsSnapshotMarkedAsCanceled(&sortedSnapshots[i]) {
+			a.logger.Info("Snapshot has been marked as cancelled previously, skipping marking it", "snapshot.Name", &sortedSnapshots[i].Name)
+			continue
 		}
-	}
-	for i := 1; i < len(prSnapshots); i++ {
-		if gitops.IsComponentSnapshot(&prSnapshots[i]) {
-			err = gitops.MarkSnapshotAsCanceled(a.context, a.client, &prSnapshots[i], "Snapshot canceled/superseded")
-			if err != nil {
-				a.logger.Error(err, "Failed to mark snapshot as canceled", "snapshot.Name", &prSnapshots[i].Name)
-				return err
-			}
-			err = a.cancelAllPipelineRunsForSnapshot(&prSnapshots[i])
+		err = a.cancelAllPipelineRunsForSnapshot(&sortedSnapshots[i])
+		if err != nil {
+			a.logger.Error(err, "failed to cancel all integration pipelinerun for older snapshot", "snapshot.Name", &sortedSnapshots[i].Name)
+			return err
 		}
+		a.logger.Info("integration test pipelineruns have been cancelled for older snapshot")
+		err = gitops.MarkSnapshotAsCanceled(a.context, a.client, &sortedSnapshots[i], "Snapshot canceled/superseded")
+		if err != nil {
+			a.logger.Error(err, "Failed to mark snapshot as canceled", "snapshot.Name", &sortedSnapshots[i].Name)
+			return err
+		}
+		a.logger.Info(fmt.Sprintf("older snapshot %s and its integration pipelinerun have been marked as cancelled", sortedSnapshots[i].Name))
 	}
 	return err
 }
