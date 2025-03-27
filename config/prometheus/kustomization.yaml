@@ -1,6 +1,3 @@
 resources:
 - monitor.yaml
 - secret.yaml
-
-patchesStrategicMerge:
-  - monitor_tls_patch.yaml
