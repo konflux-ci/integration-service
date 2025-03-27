@@ -372,6 +372,11 @@ func MarkSnapshotAsCanceled(ctx context.Context, adapterClient client.Client, sn
 	return nil
 }
 
+// IsSnapshotMarkedAsCanceled returns true if snapshot is marked as AppStudioIntegrationStatusCanceled
+func IsSnapshotMarkedAsCanceled(snapshot *applicationapiv1alpha1.Snapshot) bool {
+	return IsSnapshotStatusConditionSet(snapshot, AppStudioIntegrationStatusCondition, metav1.ConditionTrue, AppStudioIntegrationStatusCanceled)
+}
+
 // MarkSnapshotAsInvalid updates the AppStudio integration status condition for the Snapshot to invalid.
 // If the patch command fails, an error will be returned.
 func MarkSnapshotAsInvalid(ctx context.Context, adapterClient client.Client, snapshot *applicationapiv1alpha1.Snapshot, message string) error {
@@ -1170,6 +1175,7 @@ func SetAnnotationAndLabelForGroupSnapshot(groupSnapshot *applicationapiv1alpha1
 		return nil, err
 	}
 	groupSnapshot.Annotations[GroupSnapshotInfoAnnotation] = string(annotationJson)
+	groupSnapshot.Annotations[PRGroupAnnotation] = componentSnapshot.Annotations[PRGroupAnnotation]
 
 	err = metadata.SetLabel(groupSnapshot, PipelineAsCodeEventTypeLabel, componentSnapshot.Labels[PipelineAsCodeEventTypeLabel])
 	if err != nil {

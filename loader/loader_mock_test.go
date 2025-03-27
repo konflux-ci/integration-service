@@ -365,4 +365,34 @@ var _ = Describe("Release Adapter", Ordered, func() {
 			Expect(err).ToNot(HaveOccurred())
 		})
 	})
+
+	Context("When calling GetMatchingGroupSnapshotsForPRGroupHash", func() {
+		It("return resource and error from the context", func() {
+			snapshots := []applicationapiv1alpha1.Snapshot{}
+			mockContext := toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: GetGroupSnapshotsKey,
+					Resource:   snapshots,
+				},
+			})
+			resource, err := loader.GetMatchingGroupSnapshotsForPRGroupHash(mockContext, nil, "", "")
+			Expect(resource).To(Equal(&snapshots))
+			Expect(err).ToNot(HaveOccurred())
+		})
+	})
+
+	Context("When calling GetAllIntegrationPipelineRunsForSnapshot", func() {
+		It("return resource and error from the context", func() {
+			plrs := []tektonv1.PipelineRun{}
+			mockContext := toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: GetPipelineRunforSnapshotsKey,
+					Resource:   plrs,
+				},
+			})
+			resource, err := loader.GetAllIntegrationPipelineRunsForSnapshot(mockContext, nil, nil)
+			Expect(resource).To(Equal(plrs))
+			Expect(err).ToNot(HaveOccurred())
+		})
+	})
 })

@@ -71,6 +71,8 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		hasSnapshotPR                             *applicationapiv1alpha1.Snapshot
 		hasOldCompSnapshotPR                      *applicationapiv1alpha1.Snapshot
 		hasNewCompSnapshotPR                      *applicationapiv1alpha1.Snapshot
+		hasOldGroupSnapshot                       *applicationapiv1alpha1.Snapshot
+		hasNewGroupSnapshot                       *applicationapiv1alpha1.Snapshot
 		hasOverRideSnapshot                       *applicationapiv1alpha1.Snapshot
 		hasInvalidSnapshot                        *applicationapiv1alpha1.Snapshot
 		hasInvalidOverrideSnapshot                *applicationapiv1alpha1.Snapshot
@@ -384,7 +386,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 				Annotations: map[string]string{
 					gitops.BuildPipelineRunStartTime:              strconv.Itoa(plrstarttime),
 					gitops.PipelineAsCodeInstallationIDAnnotation: "123",
-					gitops.PRGroupHashLabel:                       prGroupSha,
+					gitops.PRGroupAnnotation:                      prGroup,
 					gitops.PipelineAsCodeRepoURLAnnotation:        "repo-url",
 				},
 			},
@@ -408,7 +410,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 				Annotations: map[string]string{
 					gitops.BuildPipelineRunStartTime:              strconv.Itoa(plrstarttime + 100),
 					gitops.PipelineAsCodeInstallationIDAnnotation: "123",
-					gitops.PRGroupHashLabel:                       prGroupSha,
+					gitops.PRGroupAnnotation:                      prGroup,
 					gitops.PipelineAsCodeRepoURLAnnotation:        "repo-url",
 				},
 			},
@@ -429,6 +431,46 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 				},
 			},
 		}
+
+		hasOldGroupSnapshot = &applicationapiv1alpha1.Snapshot{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "snapshotoldgroup-sample",
+				Namespace: "default",
+				Labels: map[string]string{
+					gitops.SnapshotTypeLabel:            gitops.SnapshotGroupType,
+					gitops.PipelineAsCodeEventTypeLabel: "pull_request",
+					gitops.PRGroupHashLabel:             prGroupSha,
+				},
+				Annotations: map[string]string{
+					gitops.BuildPipelineRunStartTime: strconv.Itoa(plrstarttime),
+					gitops.PRGroupAnnotation:         prGroup,
+				},
+			},
+			Spec: applicationapiv1alpha1.SnapshotSpec{
+				Application: hasApp.Name,
+			},
+		}
+		Expect(k8sClient.Create(ctx, hasOldGroupSnapshot)).Should(Succeed())
+
+		hasNewGroupSnapshot = &applicationapiv1alpha1.Snapshot{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "snapshotnewgroup-sample",
+				Namespace: "default",
+				Labels: map[string]string{
+					gitops.SnapshotTypeLabel:            gitops.SnapshotGroupType,
+					gitops.PipelineAsCodeEventTypeLabel: "pull_request",
+					gitops.PRGroupHashLabel:             prGroupSha,
+				},
+				Annotations: map[string]string{
+					gitops.BuildPipelineRunStartTime: strconv.Itoa(plrstarttime + 100),
+					gitops.PRGroupAnnotation:         prGroup,
+				},
+			},
+			Spec: applicationapiv1alpha1.SnapshotSpec{
+				Application: hasApp.Name,
+			},
+		}
+		Expect(k8sClient.Create(ctx, hasNewGroupSnapshot)).Should(Succeed())
 
 		hasOverRideSnapshot = &applicationapiv1alpha1.Snapshot{
 			ObjectMeta: metav1.ObjectMeta{
@@ -719,6 +761,10 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		err = k8sClient.Delete(ctx, hasOldCompSnapshotPR)
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 		err = k8sClient.Delete(ctx, hasNewCompSnapshotPR)
+		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
+		err = k8sClient.Delete(ctx, hasOldGroupSnapshot)
+		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
+		err = k8sClient.Delete(ctx, hasNewGroupSnapshot)
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 		err = k8sClient.Delete(ctx, hasSnapshot)
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
@@ -2423,5 +2469,64 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 
 		})
 
+	})
+
+	When("old integration pipelinerun gets cancelled because newer pipelinerun gets triggered for group snapshot", func() {
+		It("ensures that old group snapshot together with integration pipelinerun can be canceled", func() {
+			integrationPipelineRunOld.Labels["appstudio.openshift.io/snapshot"] = integrationPipelineRunOld.Name
+			Expect(k8sClient.Update(ctx, integrationPipelineRunOld)).Should(Succeed())
+			integrationPipelineRunOld.Status = tektonv1.PipelineRunStatus{
+				PipelineRunStatusFields: tektonv1.PipelineRunStatusFields{
+					Results: []tektonv1.PipelineRunResult{},
+				},
+				Status: v1.Status{
+					Conditions: v1.Conditions{
+						apis.Condition{
+							Reason: "Running",
+							Status: "Unknown",
+							Type:   apis.ConditionSucceeded,
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Status().Update(ctx, integrationPipelineRunOld)).Should(Succeed())
+			var buf bytes.Buffer
+			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+
+			adapter = NewAdapter(ctx, hasNewGroupSnapshot, hasApp, log, loader.NewMockLoader(), k8sClient)
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: loader.ApplicationContextKey,
+					Resource:   hasApp,
+				},
+				{
+					ContextKey: loader.ComponentContextKey,
+					Resource:   hasComp,
+				},
+				{
+					ContextKey: loader.GetGroupSnapshotsKey,
+					Resource:   []applicationapiv1alpha1.Snapshot{*hasOldGroupSnapshot, *hasNewGroupSnapshot},
+				},
+				{
+					ContextKey: loader.AllIntegrationTestScenariosContextKey,
+					Resource:   []v1beta2.IntegrationTestScenario{*integrationTestScenario},
+				},
+				{
+					ContextKey: loader.RequiredIntegrationTestScenariosContextKey,
+					Resource:   []v1beta2.IntegrationTestScenario{*integrationTestScenario},
+				},
+			})
+			result, err := adapter.EnsureIntegrationPipelineRunsExist()
+			Expect(result.CancelRequest).To(BeFalse())
+			Expect(result.RequeueRequest).To(BeFalse())
+			Expect(err).Should(Succeed())
+			Expect(buf.String()).Should(ContainSubstring("integration test pipelineruns have been cancelled"))
+			Expect(buf.String()).Should(ContainSubstring("older snapshot snapshotoldgroup-sample and its integration pipelinerun have been marked as cancelled"))
+			result, err = adapter.EnsureIntegrationPipelineRunsExist()
+			Expect(result.CancelRequest).To(BeFalse())
+			Expect(result.RequeueRequest).To(BeFalse())
+			Expect(err).Should(Succeed())
+			Expect(buf.String()).Should(ContainSubstring("Snapshot has been marked as cancelled previously, skipping marking it"))
+		})
 	})
 })

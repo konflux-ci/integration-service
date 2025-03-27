@@ -62,6 +62,7 @@ const (
 	GetPRSnapshotsKey
 	GetPipelineRunforSnapshotsKey
 	GetComponentsFromSnapshotForPRGroupKey
+	GetGroupSnapshotsKey
 )
 
 func NewMockLoader() ObjectLoader {
@@ -206,9 +207,9 @@ func (l *mockLoader) GetAllSnapshotsForBuildPipelineRun(ctx context.Context, c c
 	return &snapshots, err
 }
 
-func (l *mockLoader) GetAllSnapshotsForPR(ctx context.Context, c client.Client, application *applicationapiv1alpha1.Application, pullRequest string) (*[]applicationapiv1alpha1.Snapshot, error) {
+func (l *mockLoader) GetAllSnapshotsForPR(ctx context.Context, c client.Client, application *applicationapiv1alpha1.Application, componentName, pullRequest string) (*[]applicationapiv1alpha1.Snapshot, error) {
 	if ctx.Value(AllSnapshotsForGivenPRContextKey) == nil {
-		return l.loader.GetAllSnapshotsForPR(ctx, c, application, pullRequest)
+		return l.loader.GetAllSnapshotsForPR(ctx, c, application, componentName, pullRequest)
 	}
 	snapshots, err := toolkit.GetMockedResourceAndErrorFromContext(ctx, AllSnapshotsForGivenPRContextKey, []applicationapiv1alpha1.Snapshot{})
 	return &snapshots, err
@@ -262,6 +263,14 @@ func (l *mockLoader) GetMatchingComponentSnapshotsForPRGroupHash(ctx context.Con
 		return l.loader.GetMatchingComponentSnapshotsForPRGroupHash(ctx, c, nameSpace, prGroupHash)
 	}
 	snapshots, err := toolkit.GetMockedResourceAndErrorFromContext(ctx, GetPRSnapshotsKey, []applicationapiv1alpha1.Snapshot{})
+	return &snapshots, err
+}
+
+func (l *mockLoader) GetMatchingGroupSnapshotsForPRGroupHash(ctx context.Context, c client.Client, nameSpace, prGroupHash string) (*[]applicationapiv1alpha1.Snapshot, error) {
+	if ctx.Value(GetGroupSnapshotsKey) == nil {
+		return l.loader.GetMatchingGroupSnapshotsForPRGroupHash(ctx, c, nameSpace, prGroupHash)
+	}
+	snapshots, err := toolkit.GetMockedResourceAndErrorFromContext(ctx, GetGroupSnapshotsKey, []applicationapiv1alpha1.Snapshot{})
 	return &snapshots, err
 }
 

@@ -38,6 +38,7 @@ var _ = Describe("Loader", Ordered, func() {
 	var (
 		loader                     ObjectLoader
 		hasSnapshot                *applicationapiv1alpha1.Snapshot
+		hasGroupSnapshot           *applicationapiv1alpha1.Snapshot
 		hasApp                     *applicationapiv1alpha1.Application
 		hasComp                    *applicationapiv1alpha1.Component
 		integrationTestScenario    *v1beta2.IntegrationTestScenario
@@ -49,12 +50,15 @@ var _ = Describe("Loader", Ordered, func() {
 	)
 
 	const (
-		SampleRepoLink  = "https://github.com/devfile-samples/devfile-sample-java-springboot-basic"
-		applicationName = "application-sample"
-		snapshotName    = "snapshot-sample"
-		sample_image    = "quay.io/redhat-appstudio/sample-image"
-		sample_revision = "random-value"
-		namespace       = "default"
+		SampleRepoLink    = "https://github.com/devfile-samples/devfile-sample-java-springboot-basic"
+		applicationName   = "application-sample"
+		snapshotName      = "snapshot-sample"
+		groupSnapshotName = "group-snapshot-sample"
+		sample_image      = "quay.io/redhat-appstudio/sample-image"
+		sample_revision   = "random-value"
+		namespace         = "default"
+		prGroupSha        = "featuresha"
+		prGroup           = "feature"
 	)
 
 	BeforeAll(func() {
@@ -103,7 +107,7 @@ var _ = Describe("Loader", Ordered, func() {
 					gitops.SnapshotTypeLabel:                   "component",
 					gitops.SnapshotComponentLabel:              "component-sample",
 					gitops.BuildPipelineRunNameLabel:           "pipelinerun-sample",
-					gitops.PRGroupHashLabel:                    "featuresha",
+					gitops.PRGroupHashLabel:                    prGroupSha,
 					gitops.PipelineAsCodeEventTypeLabel:        "pull_request",
 					gitops.PipelineAsCodePullRequestAnnotation: "1",
 				},
@@ -129,6 +133,38 @@ var _ = Describe("Loader", Ordered, func() {
 			},
 		}
 		Expect(k8sClient.Create(ctx, hasSnapshot)).Should(Succeed())
+
+		hasGroupSnapshot = &applicationapiv1alpha1.Snapshot{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      groupSnapshotName,
+				Namespace: "default",
+				Labels: map[string]string{
+					gitops.SnapshotTypeLabel:            "group",
+					gitops.PRGroupHashLabel:             prGroupSha,
+					gitops.PipelineAsCodeEventTypeLabel: "pull_request",
+				},
+				Annotations: map[string]string{
+					gitops.PRGroupAnnotation: prGroup,
+				},
+			},
+			Spec: applicationapiv1alpha1.SnapshotSpec{
+				Application: hasApp.Name,
+				Components: []applicationapiv1alpha1.SnapshotComponent{
+					{
+						Name:           "component-sample",
+						ContainerImage: sample_image,
+						Source: applicationapiv1alpha1.ComponentSource{
+							ComponentSourceUnion: applicationapiv1alpha1.ComponentSourceUnion{
+								GitSource: &applicationapiv1alpha1.GitSource{
+									Revision: sample_revision,
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+		Expect(k8sClient.Create(ctx, hasGroupSnapshot)).Should(Succeed())
 
 		successfulTaskRun = &tektonv1.TaskRun{
 			ObjectMeta: metav1.ObjectMeta{
@@ -259,7 +295,7 @@ var _ = Describe("Loader", Ordered, func() {
 					"appstudio.openshift.io/snapshot":          snapshotName,
 					"test.appstudio.openshift.io/scenario":     integrationTestScenario.Name,
 					"pipelinesascode.tekton.dev/event-type":    "pull_request",
-					"test.appstudio.openshift.io/pr-group-sha": "featuresha",
+					"test.appstudio.openshift.io/pr-group-sha": prGroupSha,
 				},
 				Annotations: map[string]string{
 					"appstudio.redhat.com/updateComponentOnSuccess": "false",
@@ -522,7 +558,7 @@ var _ = Describe("Loader", Ordered, func() {
 	It("ensures that all Snapshots for a given application can be found", func() {
 		snapshots, err := loader.GetAllSnapshots(ctx, k8sClient, hasApp)
 		Expect(err).ToNot(HaveOccurred())
-		Expect(*snapshots).To(HaveLen(1))
+		Expect(*snapshots).To(HaveLen(2))
 	})
 
 	It("ensures the ReleasePlan can be gotten for Application", func() {
@@ -687,7 +723,7 @@ var _ = Describe("Loader", Ordered, func() {
 		})
 
 		It("Can get build plr with pr group hash", func() {
-			fetchedBuildPLRs, err := loader.GetPipelineRunsWithPRGroupHash(ctx, k8sClient, hasSnapshot.Namespace, "featuresha")
+			fetchedBuildPLRs, err := loader.GetPipelineRunsWithPRGroupHash(ctx, k8sClient, hasSnapshot.Namespace, prGroupSha)
 			Expect(err).To(Succeed())
 			Expect((*fetchedBuildPLRs)[0].Name).To(Equal(buildPipelineRun.Name))
 			Expect((*fetchedBuildPLRs)[0].Namespace).To(Equal(buildPipelineRun.Namespace))
@@ -695,7 +731,7 @@ var _ = Describe("Loader", Ordered, func() {
 		})
 
 		It("Can get matching snapshot for component and pr group hash", func() {
-			fetchedSnapshots, err := loader.GetMatchingComponentSnapshotsForComponentAndPRGroupHash(ctx, k8sClient, hasSnapshot.Namespace, hasComp.Name, "featuresha")
+			fetchedSnapshots, err := loader.GetMatchingComponentSnapshotsForComponentAndPRGroupHash(ctx, k8sClient, hasSnapshot.Namespace, hasComp.Name, prGroupSha)
 			Expect(err).To(Succeed())
 			Expect((*fetchedSnapshots)[0].Name).To(Equal(hasSnapshot.Name))
 			Expect((*fetchedSnapshots)[0].Namespace).To(Equal(hasSnapshot.Namespace))
@@ -703,18 +739,34 @@ var _ = Describe("Loader", Ordered, func() {
 		})
 
 		It("Can get matching snapshot for pr group hash", func() {
-			fetchedSnapshots, err := loader.GetMatchingComponentSnapshotsForPRGroupHash(ctx, k8sClient, "", "featuresha")
+			fetchedSnapshots, err := loader.GetMatchingComponentSnapshotsForPRGroupHash(ctx, k8sClient, "", prGroupSha)
 			Expect(err).To(Succeed())
 			Expect((*fetchedSnapshots)[0].Name).To(Equal(hasSnapshot.Name))
 			Expect((*fetchedSnapshots)[0].Namespace).To(Equal(hasSnapshot.Namespace))
 			Expect((*fetchedSnapshots)[0].Spec).To(Equal(hasSnapshot.Spec))
 		})
 
+		It("Can get matching group snapshot for pr group hash", func() {
+			fetchedSnapshots, err := loader.GetMatchingGroupSnapshotsForPRGroupHash(ctx, k8sClient, "", prGroupSha)
+			Expect(err).To(Succeed())
+			Expect((*fetchedSnapshots)[0].Name).To(Equal(hasGroupSnapshot.Name))
+			Expect((*fetchedSnapshots)[0].Namespace).To(Equal(hasGroupSnapshot.Namespace))
+			Expect((*fetchedSnapshots)[0].Spec).To(Equal(hasGroupSnapshot.Spec))
+		})
+
 		It("Can get matching components from snapshots for pr group hash", func() {
-			components, err := loader.GetComponentsFromSnapshotForPRGroup(ctx, k8sClient, "", "", "featuresha")
+			components, err := loader.GetComponentsFromSnapshotForPRGroup(ctx, k8sClient, "", "", prGroupSha)
 			Expect(err).To(Succeed())
 			Expect((components)[0]).To(Equal(hasComp.Name))
 
+		})
+
+		It("Can get all integration pipelineruns for snapshot", func() {
+			plrs, err := loader.GetAllIntegrationPipelineRunsForSnapshot(ctx, k8sClient, hasSnapshot)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(plrs).NotTo(BeNil())
+			Expect(plrs).To(HaveLen(1))
+			Expect((plrs)[0].Name).To(Equal(integrationPipelineRun.Name))
 		})
 	})
 })

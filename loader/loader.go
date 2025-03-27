@@ -55,7 +55,7 @@ type ObjectLoader interface {
 	GetAutoReleasePlansForApplication(ctx context.Context, c client.Client, application *applicationapiv1alpha1.Application) (*[]releasev1alpha1.ReleasePlan, error)
 	GetScenario(ctx context.Context, c client.Client, name, namespace string) (*v1beta2.IntegrationTestScenario, error)
 	GetAllSnapshotsForBuildPipelineRun(ctx context.Context, c client.Client, pipelineRun *tektonv1.PipelineRun) (*[]applicationapiv1alpha1.Snapshot, error)
-	GetAllSnapshotsForPR(ctx context.Context, c client.Client, application *applicationapiv1alpha1.Application, pullRequest string) (*[]applicationapiv1alpha1.Snapshot, error)
+	GetAllSnapshotsForPR(ctx context.Context, c client.Client, application *applicationapiv1alpha1.Application, componentName, pullRequest string) (*[]applicationapiv1alpha1.Snapshot, error)
 	GetAllTaskRunsWithMatchingPipelineRunLabel(ctx context.Context, c client.Client, pipelineRun *tektonv1.PipelineRun) (*[]tektonv1.TaskRun, error)
 	GetPipelineRun(ctx context.Context, c client.Client, name, namespace string) (*tektonv1.PipelineRun, error)
 	GetComponent(ctx context.Context, c client.Client, name, namespace string) (*applicationapiv1alpha1.Component, error)
@@ -64,6 +64,7 @@ type ObjectLoader interface {
 	GetMatchingComponentSnapshotsForComponentAndPRGroupHash(ctx context.Context, c client.Client, snapshot, componentName, prGroupHash string) (*[]applicationapiv1alpha1.Snapshot, error)
 	GetAllIntegrationPipelineRunsForSnapshot(ctx context.Context, adapterClient client.Client, snapshot *applicationapiv1alpha1.Snapshot) ([]tektonv1.PipelineRun, error)
 	GetComponentsFromSnapshotForPRGroup(ctx context.Context, c client.Client, namespace, prGroup, prGroupHash string) ([]string, error)
+	GetMatchingGroupSnapshotsForPRGroupHash(ctx context.Context, c client.Client, namespace, prGroupHash string) (*[]applicationapiv1alpha1.Snapshot, error)
 }
 
 type loader struct{}
@@ -356,12 +357,13 @@ func (l *loader) GetAllSnapshotsForBuildPipelineRun(ctx context.Context, c clien
 // GetAllSnapshotsForPR returns all Snapshots for the associated Pull Request.
 // In the case the List operation fails, an error will be returned.
 // gitops.PipelineAsCodePullRequestAnnotation is also a label
-func (l *loader) GetAllSnapshotsForPR(ctx context.Context, c client.Client, application *applicationapiv1alpha1.Application, pullRequest string) (*[]applicationapiv1alpha1.Snapshot, error) {
+func (l *loader) GetAllSnapshotsForPR(ctx context.Context, c client.Client, application *applicationapiv1alpha1.Application, componentName, pullRequest string) (*[]applicationapiv1alpha1.Snapshot, error) {
 	snapshots := &applicationapiv1alpha1.SnapshotList{}
 	opts := []client.ListOption{
 		client.InNamespace(application.Namespace),
 		client.MatchingLabels{
 			gitops.PipelineAsCodePullRequestAnnotation: pullRequest,
+			gitops.SnapshotComponentLabel:              componentName,
 		},
 	}
 
@@ -461,6 +463,40 @@ func (l *loader) GetMatchingComponentSnapshotsForComponentAndPRGroupHash(ctx con
 	labelSelector := labels.NewSelector().
 		Add(*eventTypeLabelRequirement).
 		Add(*componentLabelRequirement).
+		Add(*prGroupLabelRequirement).
+		Add(*snapshotTypeLabelRequirement)
+
+	opts := &client.ListOptions{
+		Namespace:     namespace,
+		LabelSelector: labelSelector,
+	}
+
+	err = c.List(ctx, snapshots, opts)
+	if err != nil {
+		return nil, err
+	}
+	return &snapshots.Items, nil
+}
+
+// GetMatchingGroupSnapshotsForPRGroupHash gets the group snapshots with the given pr group hash string and the the same namespace
+func (l *loader) GetMatchingGroupSnapshotsForPRGroupHash(ctx context.Context, c client.Client, namespace, prGroupHash string) (*[]applicationapiv1alpha1.Snapshot, error) {
+	snapshots := &applicationapiv1alpha1.SnapshotList{}
+
+	eventTypeLabelRequirement, err := labels.NewRequirement("pac.test.appstudio.openshift.io/event-type", selection.NotIn, []string{"push", "Push"})
+	if err != nil {
+		return nil, err
+	}
+	prGroupLabelRequirement, err := labels.NewRequirement("test.appstudio.openshift.io/pr-group-sha", selection.In, []string{prGroupHash})
+	if err != nil {
+		return nil, err
+	}
+	snapshotTypeLabelRequirement, err := labels.NewRequirement("test.appstudio.openshift.io/type", selection.In, []string{"group"})
+	if err != nil {
+		return nil, err
+	}
+
+	labelSelector := labels.NewSelector().
+		Add(*eventTypeLabelRequirement).
 		Add(*prGroupLabelRequirement).
 		Add(*snapshotTypeLabelRequirement)
 
