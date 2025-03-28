@@ -280,7 +280,7 @@ func (a *Adapter) EnsureIntegrationTestReportedToGitProvider() (controller.Opera
 			}
 		}
 
-		if len(*integrationTestScenariosForComponentSnapshot) > 0 || len(*integrationTestScenariosForGroupSnapshot) > 0 {
+		if integrationTestScenariosForComponentSnapshot != nil || integrationTestScenariosForGroupSnapshot != nil {
 			if err = tekton.AnnotateBuildPipelineRun(a.context, a.pipelineRun, h.SnapshotCreationReportAnnotation, integrationTestStatus.String(), a.client); err != nil {
 				a.logger.Error(err, fmt.Sprintf("failed to write build plr annotation %s", h.SnapshotCreationReportAnnotation))
 				return controller.RequeueWithError(fmt.Errorf("failed to write snapshot report status metadata for annotation %s: %w", h.SnapshotCreationReportAnnotation, err))
