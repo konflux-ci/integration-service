@@ -147,6 +147,8 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 					"test.appstudio.openshift.io/pr-last-update": "2023-08-26T17:57:50+02:00",
 					gitops.BuildPipelineRunStartTime:             strconv.Itoa(plrstarttime),
 				},
+				// this CreationTimestamp don't take effect when snapshot is created
+				// CreationTimestamp: metav1.NewTime(time.Now().Add(time.Hour * 2)),
 			},
 			Spec: applicationapiv1alpha1.SnapshotSpec{
 				Application: hasApp.Name,
@@ -186,6 +188,8 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 					"test.appstudio.openshift.io/pr-last-update": "2023-08-26T17:57:50+02:00",
 					gitops.BuildPipelineRunStartTime:             strconv.Itoa(plrstarttime + 100),
 				},
+				// this CreationTimestamp don't take effect when snapshot is created
+				// CreationTimestamp: metav1.NewTime(time.Now().Add(time.Hour * 1)),
 			},
 			Spec: applicationapiv1alpha1.SnapshotSpec{
 				Application: hasApp.Name,
@@ -225,6 +229,8 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 					"test.appstudio.openshift.io/pr-last-update": "2023-08-26T17:57:50+02:00",
 					gitops.BuildPipelineRunStartTime:             strconv.Itoa(plrstarttime + 200),
 				},
+				// this CreationTimestamp don't take effect when snapshot is created
+				// CreationTimestamp: metav1.NewTime(time.Now()),
 			},
 			Spec: applicationapiv1alpha1.SnapshotSpec{
 				Application: hasApp.Name,
@@ -907,6 +913,22 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 				snapshots = []applicationapiv1alpha1.Snapshot{*hasComSnapshot2, *hasComSnapshot1, *hasComSnapshot3}
 				sortedSnapshots = gitops.SortSnapshots(snapshots)
 				Expect(sortedSnapshots[0].Name).To(Equal(hasComSnapshot3.Name))
+			})
+
+			It("Can sort the snapshots according to its creation time when it is not component so there is not annotation test.appstudio.openshift.io/pipelinerunstarttime", func() {
+				// CreationTimestamp new>old: 1>2>3
+				hasComSnapshot1.CreationTimestamp = metav1.NewTime(time.Now().Add(time.Hour * 2))
+				hasComSnapshot2.CreationTimestamp = metav1.NewTime(time.Now().Add(time.Hour * 1))
+				hasComSnapshot3.CreationTimestamp = metav1.NewTime(time.Now())
+				Expect(metadata.DeleteAnnotation(hasComSnapshot1, gitops.BuildPipelineRunStartTime)).To(Succeed())
+				Expect(metadata.DeleteAnnotation(hasComSnapshot2, gitops.BuildPipelineRunStartTime)).To(Succeed())
+				Expect(metadata.DeleteAnnotation(hasComSnapshot3, gitops.BuildPipelineRunStartTime)).To(Succeed())
+				snapshots := []applicationapiv1alpha1.Snapshot{*hasComSnapshot1, *hasComSnapshot2, *hasComSnapshot3}
+				sortedSnapshots := gitops.SortSnapshots(snapshots)
+				Expect(sortedSnapshots[0].Name).To(Equal(hasComSnapshot1.Name))
+				snapshots = []applicationapiv1alpha1.Snapshot{*hasComSnapshot2, *hasComSnapshot1, *hasComSnapshot3}
+				sortedSnapshots = gitops.SortSnapshots(snapshots)
+				Expect(sortedSnapshots[0].Name).To(Equal(hasComSnapshot1.Name))
 			})
 
 			It("Can notify all component snapshots group snapshot creation status", func() {

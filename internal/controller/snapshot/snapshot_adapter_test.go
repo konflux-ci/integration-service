@@ -442,8 +442,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 					gitops.PRGroupHashLabel:             prGroupSha,
 				},
 				Annotations: map[string]string{
-					gitops.BuildPipelineRunStartTime: strconv.Itoa(plrstarttime),
-					gitops.PRGroupAnnotation:         prGroup,
+					gitops.PRGroupAnnotation: prGroup,
 				},
 			},
 			Spec: applicationapiv1alpha1.SnapshotSpec{
@@ -462,8 +461,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 					gitops.PRGroupHashLabel:             prGroupSha,
 				},
 				Annotations: map[string]string{
-					gitops.BuildPipelineRunStartTime: strconv.Itoa(plrstarttime + 100),
-					gitops.PRGroupAnnotation:         prGroup,
+					gitops.PRGroupAnnotation: prGroup,
 				},
 			},
 			Spec: applicationapiv1alpha1.SnapshotSpec{
@@ -2474,6 +2472,8 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 	When("old integration pipelinerun gets cancelled because newer pipelinerun gets triggered for group snapshot", func() {
 		It("ensures that old group snapshot together with integration pipelinerun can be canceled", func() {
 			integrationPipelineRunOld.Labels["appstudio.openshift.io/snapshot"] = integrationPipelineRunOld.Name
+			hasOldGroupSnapshot.CreationTimestamp = metav1.NewTime(time.Now())
+			hasNewGroupSnapshot.CreationTimestamp = metav1.NewTime(time.Now().Add(time.Hour * 1))
 			Expect(k8sClient.Update(ctx, integrationPipelineRunOld)).Should(Succeed())
 			integrationPipelineRunOld.Status = tektonv1.PipelineRunStatus{
 				PipelineRunStatusFields: tektonv1.PipelineRunStatusFields{
