@@ -47,7 +47,7 @@ spec:
       default: 'none'
       description: 'Container image built from any konflux git repo. Use this param only when you run Konflux e2e tests
         in another Konflux component repo. Will pass the component built image from the snapshot.'
-    - name: enable-sealights
+    - name: enable-sl-plugin
       description: "A flag to enable or disable the Sealights integration feature. When set to 'true', test results are sent to Sealights for analysis; otherwise, this feature is skipped."
       default: "true"
   tasks:
@@ -152,8 +152,8 @@ spec:
           value: $(tasks.sealights-refs.results.sealights-bsid)
         - name: test-stage
           value: $(params.test-stage)
-        - name: enable-sealights
-          value: $(params.enable-sealights)
+        - name: enable-sl-plugin
+          value: $(params.enable-sl-plugin)
   finally:
     - name: deprovision-rosa-collect-artifacts
       taskRef:
