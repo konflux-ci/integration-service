@@ -1120,10 +1120,15 @@ func SortSnapshots(snapshots []applicationapiv1alpha1.Snapshot) []applicationapi
 	sort.Slice(snapshots, func(i, j int) bool {
 		// sorting snapshots according to the annotation BuildPipelineRunStartTime which
 		// represents the start time of build PLR
-		// when BuildPipelineRunStartTime is not set, the value of Atoi is 0
-		time_i, _ := strconv.Atoi(snapshots[i].Annotations[BuildPipelineRunStartTime])
-		time_j, _ := strconv.Atoi(snapshots[j].Annotations[BuildPipelineRunStartTime])
-
+		// when BuildPipelineRunStartTime is not set, we use its creation time
+		var time_i, time_j int
+		if metadata.HasAnnotation(&snapshots[i], BuildPipelineRunStartTime) && metadata.HasAnnotation(&snapshots[j], BuildPipelineRunStartTime) {
+			time_i, _ = strconv.Atoi(snapshots[i].Annotations[BuildPipelineRunStartTime])
+			time_j, _ = strconv.Atoi(snapshots[j].Annotations[BuildPipelineRunStartTime])
+		} else {
+			time_i = int(snapshots[i].CreationTimestamp.Time.Unix())
+			time_j = int(snapshots[j].CreationTimestamp.Time.Unix())
+		}
 		return time_i > time_j
 	})
 	return snapshots
