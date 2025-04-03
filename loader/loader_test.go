@@ -110,6 +110,7 @@ var _ = Describe("Loader", Ordered, func() {
 					gitops.PRGroupHashLabel:                    prGroupSha,
 					gitops.PipelineAsCodeEventTypeLabel:        "pull_request",
 					gitops.PipelineAsCodePullRequestAnnotation: "1",
+					gitops.ApplicationNameLabel:                hasApp.Name,
 				},
 				Annotations: map[string]string{
 					gitops.PipelineAsCodeInstallationIDAnnotation: "123",
@@ -142,6 +143,7 @@ var _ = Describe("Loader", Ordered, func() {
 					gitops.SnapshotTypeLabel:            "group",
 					gitops.PRGroupHashLabel:             prGroupSha,
 					gitops.PipelineAsCodeEventTypeLabel: "pull_request",
+					gitops.ApplicationNameLabel:         hasApp.Name,
 				},
 				Annotations: map[string]string{
 					gitops.PRGroupAnnotation: prGroup,
@@ -731,7 +733,7 @@ var _ = Describe("Loader", Ordered, func() {
 		})
 
 		It("Can get matching snapshot for component and pr group hash", func() {
-			fetchedSnapshots, err := loader.GetMatchingComponentSnapshotsForComponentAndPRGroupHash(ctx, k8sClient, hasSnapshot.Namespace, hasComp.Name, prGroupSha)
+			fetchedSnapshots, err := loader.GetMatchingComponentSnapshotsForComponentAndPRGroupHash(ctx, k8sClient, hasSnapshot.Namespace, hasComp.Name, prGroupSha, hasApp.Name)
 			Expect(err).To(Succeed())
 			Expect((*fetchedSnapshots)[0].Name).To(Equal(hasSnapshot.Name))
 			Expect((*fetchedSnapshots)[0].Namespace).To(Equal(hasSnapshot.Namespace))
@@ -739,7 +741,7 @@ var _ = Describe("Loader", Ordered, func() {
 		})
 
 		It("Can get matching snapshot for pr group hash", func() {
-			fetchedSnapshots, err := loader.GetMatchingComponentSnapshotsForPRGroupHash(ctx, k8sClient, "", prGroupSha)
+			fetchedSnapshots, err := loader.GetMatchingComponentSnapshotsForPRGroupHash(ctx, k8sClient, "", prGroupSha, hasApp.Name)
 			Expect(err).To(Succeed())
 			Expect((*fetchedSnapshots)[0].Name).To(Equal(hasSnapshot.Name))
 			Expect((*fetchedSnapshots)[0].Namespace).To(Equal(hasSnapshot.Namespace))
@@ -747,7 +749,7 @@ var _ = Describe("Loader", Ordered, func() {
 		})
 
 		It("Can get matching group snapshot for pr group hash", func() {
-			fetchedSnapshots, err := loader.GetMatchingGroupSnapshotsForPRGroupHash(ctx, k8sClient, "", prGroupSha)
+			fetchedSnapshots, err := loader.GetMatchingGroupSnapshotsForPRGroupHash(ctx, k8sClient, "", prGroupSha, hasApp.Name)
 			Expect(err).To(Succeed())
 			Expect((*fetchedSnapshots)[0].Name).To(Equal(hasGroupSnapshot.Name))
 			Expect((*fetchedSnapshots)[0].Namespace).To(Equal(hasGroupSnapshot.Namespace))
@@ -755,7 +757,7 @@ var _ = Describe("Loader", Ordered, func() {
 		})
 
 		It("Can get matching components from snapshots for pr group hash", func() {
-			components, err := loader.GetComponentsFromSnapshotForPRGroup(ctx, k8sClient, "", "", prGroupSha)
+			components, err := loader.GetComponentsFromSnapshotForPRGroup(ctx, k8sClient, "", "", prGroupSha, hasApp.Name)
 			Expect(err).To(Succeed())
 			Expect((components)[0]).To(Equal(hasComp.Name))
 

@@ -573,6 +573,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 					"pac.test.appstudio.openshift.io/url-repository": "testrepo",
 					gitops.PipelineAsCodeSHALabel:                    "sha",
 					gitops.PipelineAsCodePullRequestAnnotation:       "1",
+					gitops.ApplicationNameLabel:                      hasApp.Name,
 				},
 				Annotations: map[string]string{
 					"test.appstudio.openshift.io/pr-last-update":  "2023-08-26T17:57:50+02:00",
@@ -620,6 +621,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 					"pac.test.appstudio.openshift.io/url-repository": "testrepo",
 					gitops.PipelineAsCodeSHALabel:                    "sha",
 					gitops.PipelineAsCodePullRequestAnnotation:       "1",
+					gitops.ApplicationNameLabel:                      hasApp.Name,
 				},
 				Annotations: map[string]string{
 					"test.appstudio.openshift.io/pr-last-update":  "2023-08-26T17:57:50+02:00",
@@ -657,6 +659,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 					"pac.test.appstudio.openshift.io/url-repository": "testrepo",
 					gitops.PipelineAsCodeSHALabel:                    "sha",
 					gitops.PipelineAsCodePullRequestAnnotation:       "1",
+					gitops.ApplicationNameLabel:                      hasApp.Name,
 				},
 				Annotations: map[string]string{
 					"test.appstudio.openshift.io/pr-last-update":  "2023-08-26T17:57:50+02:00",

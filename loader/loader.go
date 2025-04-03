@@ -59,12 +59,12 @@ type ObjectLoader interface {
 	GetAllTaskRunsWithMatchingPipelineRunLabel(ctx context.Context, c client.Client, pipelineRun *tektonv1.PipelineRun) (*[]tektonv1.TaskRun, error)
 	GetPipelineRun(ctx context.Context, c client.Client, name, namespace string) (*tektonv1.PipelineRun, error)
 	GetComponent(ctx context.Context, c client.Client, name, namespace string) (*applicationapiv1alpha1.Component, error)
-	GetMatchingComponentSnapshotsForPRGroupHash(ctx context.Context, c client.Client, nameSpace, prGroupHash string) (*[]applicationapiv1alpha1.Snapshot, error)
+	GetMatchingComponentSnapshotsForPRGroupHash(ctx context.Context, c client.Client, nameSpace, prGroupHash, applicationName string) (*[]applicationapiv1alpha1.Snapshot, error)
 	GetPipelineRunsWithPRGroupHash(ctx context.Context, c client.Client, namespace, prGroupHash, applicationName string) (*[]tektonv1.PipelineRun, error)
-	GetMatchingComponentSnapshotsForComponentAndPRGroupHash(ctx context.Context, c client.Client, snapshot, componentName, prGroupHash string) (*[]applicationapiv1alpha1.Snapshot, error)
+	GetMatchingComponentSnapshotsForComponentAndPRGroupHash(ctx context.Context, c client.Client, snapshot, componentName, prGroupHash, applicationName string) (*[]applicationapiv1alpha1.Snapshot, error)
 	GetAllIntegrationPipelineRunsForSnapshot(ctx context.Context, adapterClient client.Client, snapshot *applicationapiv1alpha1.Snapshot) ([]tektonv1.PipelineRun, error)
-	GetComponentsFromSnapshotForPRGroup(ctx context.Context, c client.Client, namespace, prGroup, prGroupHash string) ([]string, error)
-	GetMatchingGroupSnapshotsForPRGroupHash(ctx context.Context, c client.Client, namespace, prGroupHash string) (*[]applicationapiv1alpha1.Snapshot, error)
+	GetComponentsFromSnapshotForPRGroup(ctx context.Context, c client.Client, namespace, prGroup, prGroupHash, applicationName string) ([]string, error)
+	GetMatchingGroupSnapshotsForPRGroupHash(ctx context.Context, c client.Client, namespace, prGroupHash, applicationName string) (*[]applicationapiv1alpha1.Snapshot, error)
 }
 
 type loader struct{}
@@ -446,9 +446,13 @@ func (l *loader) GetPipelineRunsWithPRGroupHash(ctx context.Context, adapterClie
 }
 
 // GetMatchingComponentSnapshotsForComponentAndPRGroupHash gets the component snapshot with the given pr group hash string and the the same namespace with the given snapshot
-func (l *loader) GetMatchingComponentSnapshotsForComponentAndPRGroupHash(ctx context.Context, c client.Client, namespace, componentName, prGroupHash string) (*[]applicationapiv1alpha1.Snapshot, error) {
+func (l *loader) GetMatchingComponentSnapshotsForComponentAndPRGroupHash(ctx context.Context, c client.Client, namespace, componentName, prGroupHash, applicationName string) (*[]applicationapiv1alpha1.Snapshot, error) {
 	snapshots := &applicationapiv1alpha1.SnapshotList{}
 
+	applicationLabelRequirement, err := labels.NewRequirement("appstudio.openshift.io/application", selection.In, []string{applicationName})
+	if err != nil {
+		return nil, err
+	}
 	eventTypeLabelRequirement, err := labels.NewRequirement("pac.test.appstudio.openshift.io/event-type", selection.NotIn, []string{"push", "Push"})
 	if err != nil {
 		return nil, err
@@ -467,6 +471,7 @@ func (l *loader) GetMatchingComponentSnapshotsForComponentAndPRGroupHash(ctx con
 	}
 
 	labelSelector := labels.NewSelector().
+		Add(*applicationLabelRequirement).
 		Add(*eventTypeLabelRequirement).
 		Add(*componentLabelRequirement).
 		Add(*prGroupLabelRequirement).
@@ -485,9 +490,13 @@ func (l *loader) GetMatchingComponentSnapshotsForComponentAndPRGroupHash(ctx con
 }
 
 // GetMatchingGroupSnapshotsForPRGroupHash gets the group snapshots with the given pr group hash string and the the same namespace
-func (l *loader) GetMatchingGroupSnapshotsForPRGroupHash(ctx context.Context, c client.Client, namespace, prGroupHash string) (*[]applicationapiv1alpha1.Snapshot, error) {
+func (l *loader) GetMatchingGroupSnapshotsForPRGroupHash(ctx context.Context, c client.Client, namespace, prGroupHash, applicationName string) (*[]applicationapiv1alpha1.Snapshot, error) {
 	snapshots := &applicationapiv1alpha1.SnapshotList{}
 
+	applicationLabelRequirement, err := labels.NewRequirement("appstudio.openshift.io/application", selection.In, []string{applicationName})
+	if err != nil {
+		return nil, err
+	}
 	eventTypeLabelRequirement, err := labels.NewRequirement("pac.test.appstudio.openshift.io/event-type", selection.NotIn, []string{"push", "Push"})
 	if err != nil {
 		return nil, err
@@ -502,6 +511,7 @@ func (l *loader) GetMatchingGroupSnapshotsForPRGroupHash(ctx context.Context, c 
 	}
 
 	labelSelector := labels.NewSelector().
+		Add(*applicationLabelRequirement).
 		Add(*eventTypeLabelRequirement).
 		Add(*prGroupLabelRequirement).
 		Add(*snapshotTypeLabelRequirement)
@@ -519,9 +529,13 @@ func (l *loader) GetMatchingGroupSnapshotsForPRGroupHash(ctx context.Context, c 
 }
 
 // GetMatchingComponentSnapshotsForPRGroupHash gets the component snapshot with the given pr group hash string and the the same namespace with the given snapshot
-func (l *loader) GetMatchingComponentSnapshotsForPRGroupHash(ctx context.Context, c client.Client, namespace, prGroupHash string) (*[]applicationapiv1alpha1.Snapshot, error) {
+func (l *loader) GetMatchingComponentSnapshotsForPRGroupHash(ctx context.Context, c client.Client, namespace, prGroupHash, applicationName string) (*[]applicationapiv1alpha1.Snapshot, error) {
 	snapshots := &applicationapiv1alpha1.SnapshotList{}
 
+	applicationLabelRequirement, err := labels.NewRequirement("appstudio.openshift.io/application", selection.In, []string{applicationName})
+	if err != nil {
+		return nil, err
+	}
 	eventTypeLabelRequirement, err := labels.NewRequirement("pac.test.appstudio.openshift.io/event-type", selection.NotIn, []string{"push", "Push"})
 	if err != nil {
 		return nil, err
@@ -536,6 +550,7 @@ func (l *loader) GetMatchingComponentSnapshotsForPRGroupHash(ctx context.Context
 	}
 
 	labelSelector := labels.NewSelector().
+		Add(*applicationLabelRequirement).
 		Add(*eventTypeLabelRequirement).
 		Add(*prGroupLabelRequirement).
 		Add(*snapshotTypeLabelRequirement)
@@ -571,8 +586,8 @@ func (l *loader) GetAllIntegrationPipelineRunsForSnapshot(ctx context.Context, a
 }
 
 // GetComponentsFromSnapshotForPRGroup returns the component names affected by the given pr group hash
-func (l *loader) GetComponentsFromSnapshotForPRGroup(ctx context.Context, client client.Client, namespace, prGroup, prGroupHash string) ([]string, error) {
-	snapshots, err := l.GetMatchingComponentSnapshotsForPRGroupHash(ctx, client, namespace, prGroupHash)
+func (l *loader) GetComponentsFromSnapshotForPRGroup(ctx context.Context, client client.Client, namespace, prGroup, prGroupHash, applicationName string) ([]string, error) {
+	snapshots, err := l.GetMatchingComponentSnapshotsForPRGroupHash(ctx, client, namespace, prGroupHash, applicationName)
 	if err != nil {
 		return nil, err
 	}

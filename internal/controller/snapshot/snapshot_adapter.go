@@ -873,7 +873,7 @@ func (a *Adapter) updateComponentLastPromotedImage(ctx context.Context, c client
 }
 
 func (a *Adapter) prepareGroupSnapshot(application *applicationapiv1alpha1.Application, prGroup, prGroupHash string) (*applicationapiv1alpha1.Snapshot, []gitops.ComponentSnapshotInfo, error) {
-	componentsToCheck, err := a.loader.GetComponentsFromSnapshotForPRGroup(a.context, a.client, application.Namespace, prGroup, prGroupHash)
+	componentsToCheck, err := a.loader.GetComponentsFromSnapshotForPRGroup(a.context, a.client, application.Namespace, prGroup, prGroupHash, application.Name)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -894,7 +894,7 @@ func (a *Adapter) prepareGroupSnapshot(application *applicationapiv1alpha1.Appli
 
 		var foundSnapshotWithOpenedPR *applicationapiv1alpha1.Snapshot
 		if slices.Contains(componentsToCheck, applicationComponent.Name) {
-			snapshots, err := a.loader.GetMatchingComponentSnapshotsForComponentAndPRGroupHash(a.context, a.client, application.Namespace, applicationComponent.Name, prGroupHash)
+			snapshots, err := a.loader.GetMatchingComponentSnapshotsForComponentAndPRGroupHash(a.context, a.client, application.Namespace, applicationComponent.Name, prGroupHash, application.Name)
 			if err != nil {
 				a.logger.Error(err, "Failed to fetch Snapshots for component", "component.Name", applicationComponent.Name)
 				return nil, nil, err
@@ -1030,7 +1030,7 @@ func (a *Adapter) checkAndCancelOldSnapshotsPipelineRun(application *application
 			a.logger.Error(fmt.Errorf("pr group info can't be found in group snapshot"), "snapshot.Namespace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
 			return fmt.Errorf("pr group info can't be found in group snapshot %s/%s", snapshot.Namespace, snapshot.Name)
 		}
-		snapshots, err = a.loader.GetMatchingGroupSnapshotsForPRGroupHash(a.context, a.client, application.Namespace, prGroupHash)
+		snapshots, err = a.loader.GetMatchingGroupSnapshotsForPRGroupHash(a.context, a.client, application.Namespace, prGroupHash, application.Name)
 		if err != nil {
 			a.logger.Error(fmt.Errorf("failed to get group snapshot for pr group from group snapshot"), "snapshot.Namespace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
 			return err
