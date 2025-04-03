@@ -967,7 +967,7 @@ func (a *Adapter) prepareGroupSnapshot(application *applicationapiv1alpha1.Appli
 
 // haveAllPipelineRunProcessedForPrGroup checks if all build plr has been processed for the given pr group
 func (a *Adapter) haveAllPipelineRunProcessedForPrGroup(prGroup, prGroupHash string) (bool, error) {
-	pipelineRuns, err := a.loader.GetPipelineRunsWithPRGroupHash(a.context, a.client, a.snapshot.Namespace, prGroupHash)
+	pipelineRuns, err := a.loader.GetPipelineRunsWithPRGroupHash(a.context, a.client, a.snapshot.Namespace, prGroupHash, a.application.Name)
 	if err != nil {
 		a.logger.Error(err, fmt.Sprintf("Failed to get build pipelineRuns for given pr group hash %s", prGroupHash))
 		return false, err

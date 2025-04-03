@@ -240,9 +240,9 @@ func (l *mockLoader) GetComponent(ctx context.Context, c client.Client, name, na
 }
 
 // GetPipelineRunsWithPRGroupHash returns the resource and error passed as values of the context.
-func (l *mockLoader) GetPipelineRunsWithPRGroupHash(ctx context.Context, c client.Client, namespace, prGroupHash string) (*[]tektonv1.PipelineRun, error) {
+func (l *mockLoader) GetPipelineRunsWithPRGroupHash(ctx context.Context, c client.Client, namespace, prGroupHash, applicationName string) (*[]tektonv1.PipelineRun, error) {
 	if ctx.Value(GetBuildPLRContextKey) == nil {
-		return l.loader.GetPipelineRunsWithPRGroupHash(ctx, c, namespace, prGroupHash)
+		return l.loader.GetPipelineRunsWithPRGroupHash(ctx, c, namespace, prGroupHash, applicationName)
 	}
 	pipelineRuns, err := toolkit.GetMockedResourceAndErrorFromContext(ctx, GetBuildPLRContextKey, []tektonv1.PipelineRun{})
 	return &pipelineRuns, err

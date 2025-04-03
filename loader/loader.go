@@ -60,7 +60,7 @@ type ObjectLoader interface {
 	GetPipelineRun(ctx context.Context, c client.Client, name, namespace string) (*tektonv1.PipelineRun, error)
 	GetComponent(ctx context.Context, c client.Client, name, namespace string) (*applicationapiv1alpha1.Component, error)
 	GetMatchingComponentSnapshotsForPRGroupHash(ctx context.Context, c client.Client, nameSpace, prGroupHash string) (*[]applicationapiv1alpha1.Snapshot, error)
-	GetPipelineRunsWithPRGroupHash(ctx context.Context, c client.Client, namespace, prGroupHash string) (*[]tektonv1.PipelineRun, error)
+	GetPipelineRunsWithPRGroupHash(ctx context.Context, c client.Client, namespace, prGroupHash, applicationName string) (*[]tektonv1.PipelineRun, error)
 	GetMatchingComponentSnapshotsForComponentAndPRGroupHash(ctx context.Context, c client.Client, snapshot, componentName, prGroupHash string) (*[]applicationapiv1alpha1.Snapshot, error)
 	GetAllIntegrationPipelineRunsForSnapshot(ctx context.Context, adapterClient client.Client, snapshot *applicationapiv1alpha1.Snapshot) ([]tektonv1.PipelineRun, error)
 	GetComponentsFromSnapshotForPRGroup(ctx context.Context, c client.Client, namespace, prGroup, prGroupHash string) ([]string, error)
@@ -406,10 +406,15 @@ func (l *loader) GetComponent(ctx context.Context, c client.Client, name, namesp
 }
 
 // GetPipelineRunsWithPRGroupHash gets the build pipelineRun with the given pr group hash string and the same namespace with the given snapshot
-func (l *loader) GetPipelineRunsWithPRGroupHash(ctx context.Context, adapterClient client.Client, namespace, prGroupHash string) (*[]tektonv1.PipelineRun, error) {
+func (l *loader) GetPipelineRunsWithPRGroupHash(ctx context.Context, adapterClient client.Client, namespace, prGroupHash, applicationName string) (*[]tektonv1.PipelineRun, error) {
 	buildPipelineRuns := &tektonv1.PipelineRunList{}
 
-	evnentTypeLabelRequirement, err := labels.NewRequirement("pipelinesascode.tekton.dev/event-type", selection.NotIn, []string{"push", "Push"})
+	applicationLabelRequirement, err := labels.NewRequirement("appstudio.openshift.io/application", selection.In, []string{applicationName})
+	if err != nil {
+		return nil, err
+	}
+
+	eventTypeLabelRequirement, err := labels.NewRequirement("pipelinesascode.tekton.dev/event-type", selection.NotIn, []string{"push", "Push"})
 	if err != nil {
 		return nil, err
 	}
@@ -423,7 +428,8 @@ func (l *loader) GetPipelineRunsWithPRGroupHash(ctx context.Context, adapterClie
 	}
 
 	labelSelector := labels.NewSelector().
-		Add(*evnentTypeLabelRequirement).
+		Add(*applicationLabelRequirement).
+		Add(*eventTypeLabelRequirement).
 		Add(*prGroupLabelRequirement).
 		Add(*plrTypeLabelRequirement)
 
