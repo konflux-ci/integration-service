@@ -723,7 +723,7 @@ var _ = Describe("Loader", Ordered, func() {
 		})
 
 		It("Can get build plr with pr group hash", func() {
-			fetchedBuildPLRs, err := loader.GetPipelineRunsWithPRGroupHash(ctx, k8sClient, hasSnapshot.Namespace, prGroupSha)
+			fetchedBuildPLRs, err := loader.GetPipelineRunsWithPRGroupHash(ctx, k8sClient, hasSnapshot.Namespace, prGroupSha, hasApp.Name)
 			Expect(err).To(Succeed())
 			Expect((*fetchedBuildPLRs)[0].Name).To(Equal(buildPipelineRun.Name))
 			Expect((*fetchedBuildPLRs)[0].Namespace).To(Equal(buildPipelineRun.Namespace))

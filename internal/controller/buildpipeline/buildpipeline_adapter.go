@@ -361,7 +361,7 @@ func (a *Adapter) notifySnapshotsInGroupAboutFailedBuild(pipelineRun *tektonv1.P
 
 	// In case there are in-flight build pipelineRuns, we want to also annotate them to make sure that the failure is propagated
 	// to future Snapshots in the group
-	buildPipelineRuns, err := a.loader.GetPipelineRunsWithPRGroupHash(a.context, a.client, a.pipelineRun.Namespace, prGroupHash)
+	buildPipelineRuns, err := a.loader.GetPipelineRunsWithPRGroupHash(a.context, a.client, a.pipelineRun.Namespace, prGroupHash, a.application.Name)
 	if err != nil {
 		a.logger.Error(err, fmt.Sprintf("Failed to get build pipelineRuns for given pr group hash %s", prGroupHash))
 		return err
@@ -699,7 +699,7 @@ func generateDetails(buildPLR *tektonv1.PipelineRun, integrationTestStatus intgt
 // getComponentFromLatestFlightBuildPLR get the components from the build pipelineruns which have not snapshot created for the given pr group
 // according to the given pr group
 func (a *Adapter) getComponentsFromLatestFlightBuildPLR(prGroup, prGroupHash string) ([]string, error) {
-	pipelineRuns, err := a.loader.GetPipelineRunsWithPRGroupHash(a.context, a.client, a.pipelineRun.Namespace, prGroupHash)
+	pipelineRuns, err := a.loader.GetPipelineRunsWithPRGroupHash(a.context, a.client, a.pipelineRun.Namespace, prGroupHash, a.application.Name)
 	if err != nil {
 		a.logger.Error(err, fmt.Sprintf("Failed to get build pipelineRuns for given pr group hash %s", prGroupHash))
 		return nil, err
@@ -717,7 +717,9 @@ func (a *Adapter) getComponentsFromLatestFlightBuildPLR(prGroup, prGroupHash str
 			a.logger.Info(fmt.Sprintf("The build pipelineRun %s/%s with pr group %s has snapshot created, skipped", pipelineRun.Namespace, pipelineRun.Name, prGroup))
 			continue
 		}
-		componentsFromPipelineRun = append(componentsFromPipelineRun, pipelineRun.Labels[tekton.PipelineRunComponentLabel])
+		if !slices.Contains(componentsFromPipelineRun, pipelineRun.Labels[tekton.PipelineRunComponentLabel]) {
+			componentsFromPipelineRun = append(componentsFromPipelineRun, pipelineRun.Labels[tekton.PipelineRunComponentLabel])
+		}
 	}
 	return componentsFromPipelineRun, nil
 }
