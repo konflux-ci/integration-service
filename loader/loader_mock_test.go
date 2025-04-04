@@ -330,7 +330,7 @@ var _ = Describe("Release Adapter", Ordered, func() {
 					Resource:   snapshots,
 				},
 			})
-			resource, err := loader.GetMatchingComponentSnapshotsForComponentAndPRGroupHash(mockContext, nil, "", "", "")
+			resource, err := loader.GetMatchingComponentSnapshotsForComponentAndPRGroupHash(mockContext, nil, "", "", "", "")
 			Expect(resource).To(Equal(&snapshots))
 			Expect(err).ToNot(HaveOccurred())
 		})
@@ -345,7 +345,7 @@ var _ = Describe("Release Adapter", Ordered, func() {
 					Resource:   snapshots,
 				},
 			})
-			resource, err := loader.GetMatchingComponentSnapshotsForPRGroupHash(mockContext, nil, "", "")
+			resource, err := loader.GetMatchingComponentSnapshotsForPRGroupHash(mockContext, nil, "", "", "")
 			Expect(resource).To(Equal(&snapshots))
 			Expect(err).ToNot(HaveOccurred())
 		})
@@ -360,7 +360,7 @@ var _ = Describe("Release Adapter", Ordered, func() {
 					Resource:   components,
 				},
 			})
-			resource, err := loader.GetComponentsFromSnapshotForPRGroup(mockContext, nil, "", "", "")
+			resource, err := loader.GetComponentsFromSnapshotForPRGroup(mockContext, nil, "", "", "", "")
 			Expect(resource).To(Equal(components))
 			Expect(err).ToNot(HaveOccurred())
 		})
@@ -375,7 +375,7 @@ var _ = Describe("Release Adapter", Ordered, func() {
 					Resource:   snapshots,
 				},
 			})
-			resource, err := loader.GetMatchingGroupSnapshotsForPRGroupHash(mockContext, nil, "", "")
+			resource, err := loader.GetMatchingGroupSnapshotsForPRGroupHash(mockContext, nil, "", "", "")
 			Expect(resource).To(Equal(&snapshots))
 			Expect(err).ToNot(HaveOccurred())
 		})

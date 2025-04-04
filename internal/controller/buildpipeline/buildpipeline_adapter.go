@@ -343,7 +343,7 @@ func (a *Adapter) notifySnapshotsInGroupAboutFailedBuild(pipelineRun *tektonv1.P
 	// Annotate all latest component Snapshots that are part of the PR group
 	for _, applicationComponent := range *applicationComponents {
 		applicationComponent := applicationComponent // G601
-		allComponentSnapshotsInGroup, err := a.loader.GetMatchingComponentSnapshotsForComponentAndPRGroupHash(a.context, a.client, a.pipelineRun.Namespace, applicationComponent.Name, prGroupHash)
+		allComponentSnapshotsInGroup, err := a.loader.GetMatchingComponentSnapshotsForComponentAndPRGroupHash(a.context, a.client, a.pipelineRun.Namespace, applicationComponent.Name, prGroupHash, a.application.Name)
 		if err != nil {
 			a.logger.Error(err, "Failed to fetch Snapshots for component", "component.Name", applicationComponent.Name)
 			return err
@@ -742,7 +742,7 @@ func (a *Adapter) isGroupSnapshotExpectedForBuildPLR(pipelineRun *tektonv1.Pipel
 		return true, nil
 	}
 
-	componentsFromSnapshot, err := a.loader.GetComponentsFromSnapshotForPRGroup(a.context, a.client, pipelineRun.Namespace, prGroup, prGroupHash)
+	componentsFromSnapshot, err := a.loader.GetComponentsFromSnapshotForPRGroup(a.context, a.client, pipelineRun.Namespace, prGroup, prGroupHash, a.application.Name)
 	if err != nil {
 		a.logger.Error(err, fmt.Sprintf("failed to get component from component snapshot for pr group %s", prGroup))
 		return false, err
@@ -754,7 +754,7 @@ func (a *Adapter) isGroupSnapshotExpectedForBuildPLR(pipelineRun *tektonv1.Pipel
 			continue
 		}
 
-		snapshots, err := a.loader.GetMatchingComponentSnapshotsForComponentAndPRGroupHash(a.context, a.client, pipelineRun.Namespace, componentName, prGroupHash)
+		snapshots, err := a.loader.GetMatchingComponentSnapshotsForComponentAndPRGroupHash(a.context, a.client, pipelineRun.Namespace, componentName, prGroupHash, a.application.Name)
 		if err != nil {
 			a.logger.Error(err, "Failed to fetch Snapshots for component", "component.Name", componentName)
 			return false, err
