@@ -68,6 +68,7 @@ func NewSnapshotReconciler(client client.Client, logger *logr.Logger, scheme *ru
 //+kubebuilder:rbac:groups=appstudio.redhat.com,resources=releases,verbs=create;delete;get;list;patch;update;watch
 //+kubebuilder:rbac:groups=appstudio.redhat.com,resources=releaseplans,verbs=get;list;watch
 //+kubebuilder:rbac:groups=appstudio.redhat.com,resources=releaseplans/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=resolution.tekton.dev,resources=resolutionrequests,verbs=create;get;delete
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
