@@ -51,6 +51,8 @@ const (
 	SnapshotCreationFailed // SnapshotCreationFailed
 	// Build pipelinerun failed
 	BuildPLRFailed // BuildPLRFailed
+	// Group snapshot creation failed
+	GroupSnapshotCreationFailed //GroupSnapshotCreationFailed
 )
 
 const integrationTestStatusesSchema = `{
@@ -185,6 +187,7 @@ func (sits *SnapshotIntegrationTestStatuses) UpdateTestStatusIfChanged(scenarioN
 			IntegrationTestStatusTestPassed,
 			IntegrationTestStatusTestInvalid,
 			SnapshotCreationFailed,
+			GroupSnapshotCreationFailed,
 			BuildPLRFailed:
 
 			detail.CompletionTime = &timestamp

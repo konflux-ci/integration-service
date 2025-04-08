@@ -244,6 +244,10 @@ const (
 	IntegrationTestStatusCancelledGithub = "cancelled"
 
 	ComponentNameForGroupSnapshot = "pr group"
+
+	FailedToCreateGroupSnapshotMsg = "Failed to create group snapshot for pr group"
+
+	GroupSnapshotCreationFailureReported = "group snapshot creation failure is reported to git provider"
 )
 
 var (
@@ -751,6 +755,7 @@ func HasSnapshotTestingChangedToFinished(objectOld, objectNew client.Object) boo
 func HasSnapshotTestAnnotationChanged(objectOld, objectNew client.Object) bool {
 	if oldSnapshot, ok := objectOld.(*applicationapiv1alpha1.Snapshot); ok {
 		if newSnapshot, ok := objectNew.(*applicationapiv1alpha1.Snapshot); ok {
+			// update for integration test status change
 			if !metadata.HasAnnotation(oldSnapshot, SnapshotTestsStatusAnnotation) && metadata.HasAnnotation(newSnapshot, SnapshotTestsStatusAnnotation) {
 				return true
 			}
@@ -761,6 +766,18 @@ func HasSnapshotTestAnnotationChanged(objectOld, objectNew client.Object) bool {
 					}
 				}
 			}
+			// update for component snapshot's group snapshot creation status
+			if !metadata.HasAnnotation(oldSnapshot, PRGroupCreationAnnotation) && metadata.HasAnnotation(newSnapshot, PRGroupCreationAnnotation) {
+				return true
+			}
+			if old_value, ok := oldSnapshot.GetAnnotations()[PRGroupCreationAnnotation]; ok {
+				if new_value, ok := newSnapshot.GetAnnotations()[PRGroupCreationAnnotation]; ok {
+					if old_value != new_value {
+						return true
+					}
+				}
+			}
+
 		}
 	}
 	return false
@@ -1247,4 +1264,11 @@ func GetShaFromSnapshot(ctx context.Context, snapshot *applicationapiv1alpha1.Sn
 	log.Info(fmt.Sprintf("annotation '%s' not found in Snapshot '%s', won't add SHA value to the Release name", PipelineAsCodeSHAAnnotation, snapshot.Name))
 
 	return ""
+}
+
+// PrepareTempGroupSnapshot will prepare a temp group snapshot used to check the integration test scenario that should be applied to the group snapshot under that application
+func PrepareTempGroupSnapshot(application *applicationapiv1alpha1.Application, snapshot *applicationapiv1alpha1.Snapshot) *applicationapiv1alpha1.Snapshot {
+	tempGroupSnapshot := NewSnapshot(application, &[]applicationapiv1alpha1.SnapshotComponent{})
+	tempGroupSnapshot, _ = SetAnnotationAndLabelForGroupSnapshot(tempGroupSnapshot, snapshot, []ComponentSnapshotInfo{})
+	return tempGroupSnapshot
 }

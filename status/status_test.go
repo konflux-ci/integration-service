@@ -34,6 +34,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	"github.com/konflux-ci/integration-service/api/v1beta2"
 	"github.com/konflux-ci/integration-service/gitops"
 	"github.com/konflux-ci/integration-service/helpers"
 	"github.com/konflux-ci/integration-service/pkg/integrationteststatus"
@@ -82,12 +83,13 @@ func newIntegrationTestStatusDetail(expectedScenarioStatus integrationteststatus
 var _ = Describe("Status Adapter", func() {
 
 	var (
-		githubSnapshot  *applicationapiv1alpha1.Snapshot
-		hasSnapshot     *applicationapiv1alpha1.Snapshot
-		hasComSnapshot2 *applicationapiv1alpha1.Snapshot
-		hasComSnapshot3 *applicationapiv1alpha1.Snapshot
-		groupSnapshot   *applicationapiv1alpha1.Snapshot
-		mockReporter    *status.MockReporterInterface
+		githubSnapshot          *applicationapiv1alpha1.Snapshot
+		hasSnapshot             *applicationapiv1alpha1.Snapshot
+		hasComSnapshot2         *applicationapiv1alpha1.Snapshot
+		hasComSnapshot3         *applicationapiv1alpha1.Snapshot
+		groupSnapshot           *applicationapiv1alpha1.Snapshot
+		integrationTestScenario *v1beta2.IntegrationTestScenario
+		mockReporter            *status.MockReporterInterface
 
 		pipelineRun       *tektonv1.PipelineRun
 		successfulTaskRun *tektonv1.TaskRun
@@ -457,10 +459,22 @@ var _ = Describe("Status Adapter", func() {
 			},
 		}
 
+		integrationTestScenario = &v1beta2.IntegrationTestScenario{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "example-its",
+				Namespace: "default",
+
+				Labels: map[string]string{
+					"test.appstudio.openshift.io/optional": "false",
+				},
+			},
+		}
+
 		ctrl := gomock.NewController(GinkgoT())
 		mockReporter = status.NewMockReporterInterface(ctrl)
 		mockReporter.EXPECT().GetReporterName().Return("mocked-reporter").AnyTimes()
 		mockReporter.EXPECT().Initialize(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+		mockReporter.EXPECT().ReportStatus(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 
 		os.Setenv("CONSOLE_NAME", "Red Hat Konflux")
 	})
@@ -732,6 +746,14 @@ var _ = Describe("Status Adapter", func() {
 			err = gitlabReporter.Initialize(context.Background(), hasSnapshot)
 			Expect(helpers.IsUnrecoverableMetadataError(err)).To(BeTrue())
 		})
+	})
+
+	It("can report status in IterateIntegrationTestInStatusReport", func() {
+		integrationTestStatusDetail := integrationteststatus.IntegrationTestStatusDetail{
+			Status:  integrationteststatus.GroupSnapshotCreationFailed,
+			Details: "details",
+		}
+		Expect(status.IterateIntegrationTestInStatusReport(context.Background(), mockK8sClient, mockReporter, hasSnapshot, &[]v1beta2.IntegrationTestScenario{*integrationTestScenario}, integrationTestStatusDetail, "test")).Should(Succeed())
 	})
 
 })
