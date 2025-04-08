@@ -312,7 +312,7 @@ func GenerateGitlabCommitState(state intgteststat.IntegrationTestStatus) (gitlab
 		intgteststat.IntegrationTestStatusTestInvalid:
 		glState = gitlab.Failed
 	case intgteststat.IntegrationTestStatusDeleted,
-		intgteststat.BuildPLRFailed, intgteststat.SnapshotCreationFailed:
+		intgteststat.BuildPLRFailed, intgteststat.SnapshotCreationFailed, intgteststat.GroupSnapshotCreationFailed:
 		glState = gitlab.Canceled
 	case intgteststat.IntegrationTestStatusTestPassed:
 		glState = gitlab.Success

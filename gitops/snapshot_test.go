@@ -1027,6 +1027,11 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 					return gitops.IsSnapshotMarkedAsCanceled(hasSnapshot)
 				}, time.Second*15).Should(BeTrue())
 			})
+
+			It("can prepare temp group snapshot", func() {
+				tempGroupSnapshot := gitops.PrepareTempGroupSnapshot(hasApp, hasSnapshot)
+				Expect(metadata.HasLabelWithValue(tempGroupSnapshot, gitops.SnapshotTypeLabel, gitops.SnapshotGroupType)).To(BeTrue())
+			})
 		})
 	})
 })

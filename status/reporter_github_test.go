@@ -347,6 +347,10 @@ var _ = Describe("GitHubReporter", func() {
 			Entry("In progress", integrationteststatus.IntegrationTestStatusInProgress, "In Progress", ""),
 			Entry("Pending", integrationteststatus.IntegrationTestStatusPending, "Pending", ""),
 			Entry("Invalid", integrationteststatus.IntegrationTestStatusTestInvalid, "Errored", gitops.IntegrationTestStatusFailureGithub),
+			Entry("BuildPLRInProgress", integrationteststatus.IntegrationTestStatusPending, "Pending", ""),
+			Entry("BuildPLRFailed", integrationteststatus.IntegrationTestStatusTestFail, "Failed", gitops.IntegrationTestStatusFailureGithub),
+			Entry("SnapshotCreationFailed", integrationteststatus.IntegrationTestStatusTestFail, "Failed", gitops.IntegrationTestStatusFailureGithub),
+			Entry("GroupSnapshotCreationFailed", integrationteststatus.IntegrationTestStatusTestFail, "Failed", gitops.IntegrationTestStatusFailureGithub),
 		)
 
 		It("check if all integration tests statuses are supported", func() {
@@ -587,6 +591,10 @@ var _ = Describe("GitHubReporter", func() {
 			Entry("In progress", integrationteststatus.IntegrationTestStatusInProgress, gitops.IntegrationTestStatusPendingGithub),
 			Entry("Pending", integrationteststatus.IntegrationTestStatusPending, gitops.IntegrationTestStatusPendingGithub),
 			Entry("Invalid", integrationteststatus.IntegrationTestStatusTestInvalid, gitops.IntegrationTestStatusErrorGithub),
+			Entry("BuildPLRInProgress", integrationteststatus.BuildPLRInProgress, gitops.IntegrationTestStatusPendingGithub),
+			Entry("BuildPLRFailed", integrationteststatus.BuildPLRFailed, gitops.IntegrationTestStatusFailureGithub),
+			Entry("SnapshotCreationFailed", integrationteststatus.SnapshotCreationFailed, gitops.IntegrationTestStatusFailureGithub),
+			Entry("GroupSnapshotCreationFailed", integrationteststatus.GroupSnapshotCreationFailed, gitops.IntegrationTestStatusFailureGithub),
 		)
 
 		It("check if all integration tests statuses are supported", func() {

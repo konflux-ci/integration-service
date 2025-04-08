@@ -602,7 +602,11 @@ func (a *Adapter) ReportIntegrationTestStatusAccordingToBuildPLR(pipelineRun *te
 	a.logger.Info("Reporter initialized", "reporter", reporter.GetReporterName())
 
 	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		err := a.iterateIntegrationTestInStatusReport(reporter, pipelineRun, snapshot, integrationTestScenarios, integrationTestStatus, componentName)
+		intgTestStatusDetails, err := generateIntgTestStatusDetails(pipelineRun, integrationTestStatus)
+		if err != nil {
+			return err
+		}
+		err = status.IterateIntegrationTestInStatusReport(a.context, a.client, reporter, snapshot, integrationTestScenarios, intgTestStatusDetails, componentName)
 		if err != nil {
 			a.logger.Error(err, fmt.Sprintf("failed to report integration test status according to build pipelinerun %s/%s",
 				pipelineRun.Namespace, pipelineRun.Name))
@@ -624,34 +628,6 @@ func (a *Adapter) ReportIntegrationTestStatusAccordingToBuildPLR(pipelineRun *te
 
 	a.logger.Info(fmt.Sprintf("Successfully updated the %s annotation", gitops.SnapshotStatusReportAnnotation), "pipelinerun.Name", pipelineRun.Name)
 
-	return nil
-}
-
-// iterates integrationTestScenarios to set integration test status in PR/MR
-func (a *Adapter) iterateIntegrationTestInStatusReport(reporter status.ReporterInterface,
-	buildPLR *tektonv1.PipelineRun,
-	snapshot *applicationapiv1alpha1.Snapshot,
-	integrationTestScenarios *[]v1beta2.IntegrationTestScenario,
-	intgteststatus intgteststat.IntegrationTestStatus,
-	componentName string) error {
-
-	details := generateDetails(buildPLR, intgteststatus)
-	integrationTestStatusDetail := intgteststat.IntegrationTestStatusDetail{
-		Status:  intgteststatus,
-		Details: details,
-	}
-	for _, integrationTestScenario := range *integrationTestScenarios {
-		integrationTestScenario := integrationTestScenario //G601
-		integrationTestStatusDetail.ScenarioName = integrationTestScenario.Name
-
-		testReport, reportErr := status.GenerateTestReport(a.context, a.client, integrationTestStatusDetail, snapshot, componentName)
-		if reportErr != nil {
-			return fmt.Errorf("failed to generate test report: %w", reportErr)
-		}
-		if reportStatusErr := reporter.ReportStatus(a.context, *testReport); reportStatusErr != nil {
-			return fmt.Errorf("failed to report status to git provider: %w", reportStatusErr)
-		}
-	}
 	return nil
 }
 
@@ -677,23 +653,29 @@ func getIntegrationTestStatusFromBuildPLR(plr *tektonv1.PipelineRun) intgteststa
 	return integrationTestStatus
 }
 
-// generateDetails generates details for integrationTestStatusDetail
-func generateDetails(buildPLR *tektonv1.PipelineRun, integrationTestStatus intgteststat.IntegrationTestStatus) string {
+// generateIntgTestStatusDetails generates details for integrationTestStatusDetail according to build pipeline status
+func generateIntgTestStatusDetails(buildPLR *tektonv1.PipelineRun, integrationTestStatus intgteststat.IntegrationTestStatus) (intgteststat.IntegrationTestStatusDetail, error) {
 	details := ""
+	integrationTestStatusDetail := intgteststat.IntegrationTestStatusDetail{}
 	if integrationTestStatus == intgteststat.BuildPLRInProgress {
 		details = fmt.Sprintf("build pipelinerun %s/%s is still in progress", buildPLR.Namespace, buildPLR.Name)
-	}
-	if integrationTestStatus == intgteststat.SnapshotCreationFailed {
+	} else if integrationTestStatus == intgteststat.SnapshotCreationFailed {
 		if failureReason, ok := buildPLR.Annotations[h.CreateSnapshotAnnotationName]; ok {
 			details = fmt.Sprintf("build pipelinerun %s/%s succeeds but snapshot is not created due to error: %s", buildPLR.Namespace, buildPLR.Name, failureReason)
 		} else {
 			details = fmt.Sprintf("failed to create snapshot but can't find reason from build plr annotation %s", h.CreateSnapshotAnnotationName)
 		}
-	}
-	if integrationTestStatus == intgteststat.BuildPLRFailed {
+	} else if integrationTestStatus == intgteststat.BuildPLRFailed {
 		details = fmt.Sprintf("build pipelinerun %s/%s failed, so that snapshot is not created. Please fix build pipelinerun failure and try again.", buildPLR.Namespace, buildPLR.Name)
+	} else {
+		return integrationTestStatusDetail, fmt.Errorf("invalid integration Test Status: %s", integrationTestStatus.String())
 	}
-	return details
+
+	integrationTestStatusDetail = intgteststat.IntegrationTestStatusDetail{
+		Status:  integrationTestStatus,
+		Details: details,
+	}
+	return integrationTestStatusDetail, nil
 }
 
 // getComponentFromLatestFlightBuildPLR get the components from the build pipelineruns which have not snapshot created for the given pr group
