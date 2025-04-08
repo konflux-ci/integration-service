@@ -762,8 +762,12 @@ func (a *Adapter) createIntegrationPipelineRun(application *applicationapiv1alph
 	a.logger.Info("Creating new pipelinerun for integrationTestscenario",
 		"integrationTestScenario.Name", integrationTestScenario.Name)
 
-	pipelineRunBuilder := tekton.NewIntegrationPipelineRun(integrationTestScenario.Name, application.Namespace, *integrationTestScenario).
-		WithSnapshot(snapshot).
+	pipelineRunBuilder, err := tekton.NewIntegrationPipelineRun(a.client, a.context, integrationTestScenario.Name, application.Namespace, *integrationTestScenario)
+	if err != nil {
+		return nil, err
+	}
+
+	pipelineRunBuilder = pipelineRunBuilder.WithSnapshot(snapshot).
 		WithIntegrationLabels(integrationTestScenario).
 		WithIntegrationAnnotations(integrationTestScenario).
 		WithApplication(a.application).
@@ -777,7 +781,7 @@ func (a *Adapter) createIntegrationPipelineRun(application *applicationapiv1alph
 
 	pipelineRun := pipelineRunBuilder.AsPipelineRun()
 
-	err := ctrl.SetControllerReference(snapshot, pipelineRun, a.client.Scheme())
+	err = ctrl.SetControllerReference(snapshot, pipelineRun, a.client.Scheme())
 	if err != nil {
 		return nil, fmt.Errorf("failed to set snapshot %s as ControllerReference of pipelineRun: %w", snapshot.Name, err)
 	}
