@@ -567,12 +567,8 @@ func (a *Adapter) EnsureOverrideSnapshotValid() (controller.OperationResult, err
 }
 
 // EnsureGroupSnapshotExist is an operation that ensure the group snapshot is created for component snapshots
-// once a new component snapshot is created for an pull request and there are multiple existing PRs belonging to the same PR group
+// once a new component snapshot is created for an pull or push request and there are multiple existing PRs belonging to the same PR group
 func (a *Adapter) EnsureGroupSnapshotExist() (controller.OperationResult, error) {
-	if gitops.IsSnapshotCreatedByPACPushEvent(a.snapshot) {
-		a.logger.Info("The snapshot is not created by PAC pull request, no need to create group snapshot")
-		return controller.ContinueProcessing()
-	}
 
 	if !metadata.HasLabelWithValue(a.snapshot, gitops.SnapshotTypeLabel, gitops.SnapshotComponentType) {
 		a.logger.Info("The snapshot is not a component snapshot, no need to create group snapshot for it")
