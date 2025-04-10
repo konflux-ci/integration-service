@@ -1079,14 +1079,17 @@ func (a *Adapter) cancelAllPipelineRunsForSnapshot(snapshot *applicationapiv1alp
 	for _, plr := range integrationTestPipelineruns {
 		plr := plr
 		if !h.HasPipelineRunFinished(&plr) {
-			//remove finalizer and cancel pipelinerun
+			// remove finalizer and cancel pipelinerun
 			err = h.RemoveFinalizerFromPipelineRun(a.context, a.client, a.logger, &plr, h.IntegrationPipelineRunFinalizer)
 			if err != nil {
 				return err
 			}
+
 			// set "CancelledRunFinally" to PLR status, should gracefully cancel pipelinerun, this is so raw I hate this
 			patch := client.MergeFrom(plr.DeepCopy())
 			plr.Spec.Status = tektonv1.PipelineRunSpecStatusCancelledRunFinally
+			plr.Annotations[gitops.PRGroupCancelledAnnotation] = "true"
+
 			err := a.client.Patch(a.context, &plr, patch)
 			if err != nil {
 				return err
