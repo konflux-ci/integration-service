@@ -1,5 +1,5 @@
 # Build the manager binary
-FROM registry.access.redhat.com/ubi9/go-toolset:9.5-1744194661 as builder
+FROM registry.access.redhat.com/ubi9/go-toolset:9.5-1744294473 as builder
 
 USER 1001
 
