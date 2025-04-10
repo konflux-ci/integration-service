@@ -222,6 +222,9 @@ const (
 	//AppStudioIntegrationStatusCancelled is the reason that's set when the AppStudio tests pipelinerun gets cancelled.
 	AppStudioIntegrationStatusCancelled = "CancelledRunFinally"
 
+	// This annotation helps track PipelineRuns that were stopped before completion, enabling better auditability and observability.
+	PRGroupCancelledAnnotation = PipelinesAsCodePrefix + "/cancelled"
+
 	// the statuses needed to report to GiHub when creating check run or commit status, see doc
 	// https://docs.github.com/en/rest/guides/using-the-rest-api-to-interact-with-checks?apiVersion=2022-11-28
 	// https://docs.github.com/en/free-pro-team@latest/rest/checks/runs?apiVersion=2022-11-28#create-a-check-run
