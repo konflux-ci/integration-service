@@ -76,6 +76,9 @@ var _ = Describe("StatusReportController", func() {
 					gitops.SnapshotTypeLabel:      "component",
 					gitops.SnapshotComponentLabel: "component-sample",
 				},
+				Annotations: map[string]string{
+					gitops.PRGroupCreationAnnotation: "failed to create group snapshot due to error",
+				},
 			},
 			Spec: applicationapiv1alpha1.SnapshotSpec{
 				Application: hasApp.Name,

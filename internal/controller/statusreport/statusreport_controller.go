@@ -90,12 +90,14 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	return controller.ReconcileHandler([]controller.Operation{
 		adapter.EnsureSnapshotFinishedAllTests,
 		adapter.EnsureSnapshotTestStatusReportedToGitProvider,
+		adapter.EnsureGroupSnapshotCreationStatusReportedToGitProvider,
 	})
 }
 
 // AdapterInterface is an interface defining all the operations that should be defined in an Integration adapter.
 type AdapterInterface interface {
 	EnsureSnapshotTestStatusReportedToGitHub() (controller.OperationResult, error)
+	EnsureGroupSnapshotCreationStatusReportedToGitProvider(controller.OperationResult, error)
 	EnsureSnapshotFinishedAllTests() (controller.OperationResult, error)
 }
 

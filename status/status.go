@@ -30,6 +30,7 @@ import (
 
 	"github.com/go-logr/logr"
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
+	"github.com/konflux-ci/integration-service/api/v1beta2"
 	"github.com/konflux-ci/integration-service/git/github"
 	"github.com/konflux-ci/integration-service/gitops"
 	"github.com/konflux-ci/integration-service/helpers"
@@ -341,11 +342,13 @@ func GenerateSummary(state intgteststat.IntegrationTestStatus, snapshotName, sce
 		statusDesc = "has not run and is considered as failed because the snapshot was not created"
 	case intgteststat.BuildPLRFailed:
 		statusDesc = "has not run and is considered as failed because the build pipelinerun failed and snapshot was not created"
+	case intgteststat.GroupSnapshotCreationFailed:
+		statusDesc = "has not run and is considered as failed because group snapshot was not created"
 	default:
 		return summary, fmt.Errorf("unknown status")
 	}
 
-	if state == intgteststat.BuildPLRInProgress || state == intgteststat.SnapshotCreationFailed || state == intgteststat.BuildPLRFailed {
+	if state == intgteststat.BuildPLRInProgress || state == intgteststat.SnapshotCreationFailed || state == intgteststat.BuildPLRFailed || state == intgteststat.GroupSnapshotCreationFailed {
 		summary = fmt.Sprintf("Integration test for scenario %s %s", scenarioName, statusDesc)
 	} else {
 		summary = fmt.Sprintf("Integration test for snapshot %s and scenario %s %s", snapshotName, scenarioName, statusDesc)
@@ -578,4 +581,26 @@ func (s Status) FindSnapshotWithOpenedPR(ctx context.Context, snapshots *[]appli
 		}
 	}
 	return nil, nil
+}
+
+// iterates integrationTestScenarios to set integration test status in PR/MR
+func IterateIntegrationTestInStatusReport(ctx context.Context, client client.Client, reporter ReporterInterface,
+	snapshot *applicationapiv1alpha1.Snapshot,
+	integrationTestScenarios *[]v1beta2.IntegrationTestScenario,
+	integrationTestStatusDetail intgteststat.IntegrationTestStatusDetail,
+	componentName string) error {
+
+	for _, integrationTestScenario := range *integrationTestScenarios {
+		integrationTestScenario := integrationTestScenario //G601
+		integrationTestStatusDetail.ScenarioName = integrationTestScenario.Name
+
+		testReport, reportErr := GenerateTestReport(ctx, client, integrationTestStatusDetail, snapshot, componentName)
+		if reportErr != nil {
+			return fmt.Errorf("failed to generate test report: %w", reportErr)
+		}
+		if reportStatusErr := reporter.ReportStatus(ctx, *testReport); reportStatusErr != nil {
+			return fmt.Errorf("failed to report status to git provider: %w", reportStatusErr)
+		}
+	}
+	return nil
 }

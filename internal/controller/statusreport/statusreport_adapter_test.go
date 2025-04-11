@@ -303,6 +303,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 					"appstudio.redhat.com/updateComponentOnSuccess": "false",
 					gitops.SnapshotTestsStatusAnnotation:            "[{\"scenario\":\"scenario-1\",\"status\":\"EnvironmentProvisionError\",\"startTime\":\"2023-07-26T16:57:49+02:00\",\"completionTime\":\"2023-07-26T17:57:49+02:00\",\"lastUpdateTime\":\"2023-08-26T17:57:49+02:00\",\"details\":\"Failed to find deploymentTargetClass with right provisioner for copy of existingEnvironment\"}]",
 					gitops.PipelineAsCodeGitProviderAnnotation:      gitops.PipelineAsCodeGitHubProviderType,
+					gitops.PRGroupCreationAnnotation:                gitops.FailedToCreateGroupSnapshotMsg,
 				},
 			},
 			Spec: applicationapiv1alpha1.SnapshotSpec{
@@ -863,6 +864,53 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			err = adapter.ReportSnapshotStatus(adapter.snapshot)
 			fmt.Fprintf(GinkgoWriter, "-------test: %v\n", buf.String())
 			Expect(err).NotTo(HaveOccurred())
+		})
+	})
+
+	When("Ensure group snapshot creation failure is reported to git provider", func() {
+		BeforeEach(func() {
+			buf = bytes.Buffer{}
+			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+
+			ctrl := gomock.NewController(GinkgoT())
+			mockReporter = status.NewMockReporterInterface(ctrl)
+			mockStatus := status.NewMockStatusInterface(ctrl)
+			mockReporter.EXPECT().GetReporterName().Return("mocked-reporter").AnyTimes()
+			mockStatus.EXPECT().GetReporter(gomock.Any()).Return(mockReporter)
+			mockStatus.EXPECT().GetReporter(gomock.Any()).AnyTimes()
+			mockReporter.EXPECT().GetReporterName().AnyTimes()
+			mockReporter.EXPECT().Initialize(gomock.Any(), gomock.Any()).Times(1)
+			mockReporter.EXPECT().ReportStatus(gomock.Any(), gomock.Any()).Times(1)
+
+			adapter = NewAdapter(ctx, hasPRSnapshot, hasApp, log, loader.NewMockLoader(), k8sClient)
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: loader.ApplicationContextKey,
+					Resource:   hasApp,
+				},
+				{
+					ContextKey: loader.SnapshotContextKey,
+					Resource:   hasPRSnapshot,
+				},
+				{
+					ContextKey: loader.RequiredIntegrationTestScenariosContextKey,
+					Resource:   []v1beta2.IntegrationTestScenario{*integrationTestScenario},
+				},
+				{
+					ContextKey: loader.AllIntegrationTestScenariosContextKey,
+					Resource:   []v1beta2.IntegrationTestScenario{*integrationTestScenario},
+				},
+			})
+			adapter.status = mockStatus
+			Expect(reflect.TypeOf(adapter)).To(Equal(reflect.TypeOf(&Adapter{})))
+		})
+		It("ensure group snapshot create failure is reported to git provider", func() {
+			result, err := adapter.EnsureGroupSnapshotCreationStatusReportedToGitProvider()
+			Expect(result.CancelRequest).To(BeFalse())
+			Expect(result.RequeueRequest).To(BeFalse())
+			Expect(buf.String()).Should(ContainSubstring("Successfully report group snapshot creation failure"))
+			Expect(buf.String()).Should(ContainSubstring("Successfully updated the test.appstudio.openshift.io/create-groupsnapshot-status"))
+			Expect(err).Should(Succeed())
 		})
 	})
 })
