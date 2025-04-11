@@ -21,9 +21,11 @@ import (
 	"k8s.io/apimachinery/pkg/util/validation"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	ctrl "sigs.k8s.io/controller-runtime"
+	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
+	"context"
 	"errors"
 	"fmt"
 	neturl "net/url"
@@ -31,10 +33,21 @@ import (
 	"strings"
 )
 
+// nolint:unused
+// log is for logging in this package.
+var integrationtestscenariolog = logf.Log.WithName("integrationtestscenario-webhook")
+
 func (r *IntegrationTestScenario) SetupWebhookWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewWebhookManagedBy(mgr).
 		For(r).
+		WithDefaulter(&IntegrationTestScenarioCustomDefaulter{
+			DefaultResolverRefResourceKind: "pipeline",
+		}).
 		Complete()
+}
+
+type IntegrationTestScenarioCustomDefaulter struct {
+	DefaultResolverRefResourceKind string
 }
 
 //+kubebuilder:webhook:path=/validate-appstudio-redhat-com-v1beta2-integrationtestscenario,mutating=false,failurePolicy=fail,sideEffects=None,groups=appstudio.redhat.com,resources=integrationtestscenarios,verbs=create;update;delete,versions=v1beta2,name=vintegrationtestscenario.kb.io,admissionReviewVersions=v1
@@ -43,6 +56,7 @@ var _ webhook.Validator = &IntegrationTestScenario{}
 
 // ValidateCreate implements webhook.Validator so a webhook will be registered for the type
 func (r *IntegrationTestScenario) ValidateCreate() (warnings admission.Warnings, err error) {
+	integrationtestscenariolog.Info("Validating IntegrationTestScenario upon creation", "name", r.GetName())
 	// We use the DNS-1035 format for application names, so ensure it conforms to that specification
 	if len(validation.IsDNS1035Label(r.Name)) != 0 {
 		return nil, field.Invalid(field.NewPath("metadata").Child("name"), r.Name,
@@ -166,4 +180,26 @@ func (r *IntegrationTestScenario) ValidateUpdate(old runtime.Object) (warnings a
 // ValidateDelete implements webhook.Validator so a webhook will be registered for the type
 func (r *IntegrationTestScenario) ValidateDelete() (warnings admission.Warnings, err error) {
 	return nil, nil
+}
+
+// +kubebuilder:webhook:path=/mutate-appstudio-redhat-com-v1beta2-integrationtestscenario,mutating=true,failurePolicy=fail,sideEffects=None,groups=appstudio.redhat.com,resources=integrationtestscenarios,verbs=create;update;delete,versions=v1beta2,name=dintegrationtestscenario.kb.io,admissionReviewVersions=v1
+
+var _ webhook.CustomDefaulter = &IntegrationTestScenarioCustomDefaulter{}
+
+func (d *IntegrationTestScenarioCustomDefaulter) Default(ctx context.Context, obj runtime.Object) error {
+	integrationtestscenariolog.Info("In Default() function", "object", obj)
+	scenario, ok := obj.(*IntegrationTestScenario)
+	if !ok {
+		return fmt.Errorf("expected an IntegrationTestScenario but got %T", obj)
+	}
+
+	d.applyDefaults(scenario)
+	return nil
+}
+
+func (d *IntegrationTestScenarioCustomDefaulter) applyDefaults(scenario *IntegrationTestScenario) {
+	integrationtestscenariolog.Info("Applying default resolver type", "name", scenario.GetName())
+	if scenario.Spec.ResolverRef.ResourceKind == "" {
+		scenario.Spec.ResolverRef.ResourceKind = d.DefaultResolverRefResourceKind
+	}
 }

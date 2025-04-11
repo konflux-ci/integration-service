@@ -17,9 +17,12 @@ limitations under the License.
 package v1beta2
 
 import (
+	"fmt"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"k8s.io/apimachinery/pkg/api/errors"
+	types "k8s.io/apimachinery/pkg/types"
+	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -57,7 +60,7 @@ var _ = Describe("IntegrationTestScenario webhook", func() {
 					Params: []ResolverParameter{
 						{
 							Name:  "url",
-							Value: "http://url",
+							Value: "https://url",
 						},
 						{
 							Name:  "revision",
@@ -133,6 +136,44 @@ var _ = Describe("IntegrationTestScenario webhook", func() {
 		}
 
 		Expect(k8sClient.Create(ctx, integrationTestScenarioInvalidGitResolver)).Should(Succeed())
+	})
+
+	It("should set the value of 'Spec.ResovlerRef.ResourceKind' to 'pipeline' if not already set", func() {
+		Expect(k8sClient.Create(ctx, integrationTestScenario)).Should(Succeed())
+		Eventually(func() error {
+			appliedScenario := &IntegrationTestScenario{}
+			err := k8sClient.Get(ctx, types.NamespacedName{
+				Name:      "integrationtestscenario",
+				Namespace: "default",
+			}, appliedScenario)
+			if err != nil {
+				return err
+			}
+			rType := appliedScenario.Spec.ResolverRef.ResourceKind
+			if rType != "pipeline" {
+				return fmt.Errorf("ResourceKind should be 'pipeline', is '%s'", rType)
+			}
+			return nil
+		}, time.Second*10).Should(Succeed())
+	})
+
+	It("should not set the value of 'Spec.ResovlerRef.ResourceKind' if it is already set", func() {
+		integrationTestScenario.Spec.ResolverRef.ResourceKind = "pipelinerun"
+		Expect(k8sClient.Create(ctx, integrationTestScenario)).Should(Succeed())
+		Eventually(func() error {
+			err := k8sClient.Get(ctx, types.NamespacedName{
+				Name:      "integrationtestscenario",
+				Namespace: "default",
+			}, integrationTestScenario)
+			if err != nil {
+				return err
+			}
+			rType := integrationTestScenario.Spec.ResolverRef.ResourceKind
+			if rType != "pipelinerun" {
+				return fmt.Errorf("ResourceKind should be 'pipelinerun', is '%s'", rType)
+			}
+			return nil
+		}, time.Second*10).Should(Succeed())
 	})
 
 	It("should fail to create scenario when in git resolver params url+repo", func() {
