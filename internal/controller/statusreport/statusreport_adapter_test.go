@@ -758,6 +758,36 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		})
 	})
 
+	When("New Adapter is created for a canceled PR Snapshot", func() {
+		BeforeEach(func() {
+			buf = bytes.Buffer{}
+			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+
+			ctrl := gomock.NewController(GinkgoT())
+			mockStatus = status.NewMockStatusInterface(ctrl)
+			mockStatus.EXPECT().GetReporter(gomock.Any()).Times(0)
+
+			canceledSnapshot := hasPRSnapshot.DeepCopy()
+			condition := metav1.Condition{
+				Type:    gitops.AppStudioIntegrationStatusCondition,
+				Status:  metav1.ConditionTrue,
+				Reason:  gitops.AppStudioIntegrationStatusCanceled,
+				Message: "Snapshot canceled/superseded",
+			}
+			meta.SetStatusCondition(&canceledSnapshot.Status.Conditions, condition)
+
+			adapter = NewAdapter(ctx, canceledSnapshot, hasApp, log, loader.NewMockLoader(), k8sClient)
+			adapter.status = mockStatus
+			Expect(reflect.TypeOf(adapter)).To(Equal(reflect.TypeOf(&Adapter{})))
+		})
+
+		It("ensures test status reporting is skipped", func() {
+			result, err := adapter.EnsureSnapshotTestStatusReportedToGitProvider()
+			Expect(result.CancelRequest).To(BeFalse())
+			Expect(err).ToNot(HaveOccurred())
+		})
+	})
+
 	When("testing ReportSnapshotStatus", func() {
 		BeforeEach(func() {
 			buf = bytes.Buffer{}

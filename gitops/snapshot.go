@@ -204,7 +204,7 @@ const (
 	// AppStudioTestSucceededConditionFailed is the reason that's set when the AppStudio tests fail.
 	AppStudioTestSucceededConditionFailed = "Failed"
 
-	// AppStudioIntegrationStatusCanceled is the reason that's set when the AppStudio tests cancel.
+	// AppStudioIntegrationStatusCanceled is the reason that's set when the AppStudio tests cancel because of being superseded by newer Snapshot.
 	AppStudioIntegrationStatusCanceled = "Canceled"
 
 	// AppStudioIntegrationStatusInvalid is the reason that's set when the AppStudio integration gets into an invalid state.

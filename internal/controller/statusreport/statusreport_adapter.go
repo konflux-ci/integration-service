@@ -77,6 +77,12 @@ func (a *Adapter) EnsureSnapshotTestStatusReportedToGitProvider() (controller.Op
 	if !gitops.IsGroupSnapshot(a.snapshot) && !gitops.IsComponentSnapshot(a.snapshot) {
 		return controller.ContinueProcessing()
 	}
+
+	// Don't report status for superseded/canceled Snapshots
+	if gitops.IsSnapshotMarkedAsCanceled(a.snapshot) {
+		return controller.ContinueProcessing()
+	}
+
 	err := a.ReportSnapshotStatus(a.snapshot)
 	if err != nil {
 		a.logger.Error(err, "failed to report test status to git provider for snapshot",
