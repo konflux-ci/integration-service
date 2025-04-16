@@ -380,6 +380,10 @@ var _ = Describe("GitLabReporter", func() {
 			Entry("In progress", integrationteststatus.IntegrationTestStatusInProgress, gitlab.Running),
 			Entry("Pending", integrationteststatus.IntegrationTestStatusPending, gitlab.Pending),
 			Entry("Invalid", integrationteststatus.IntegrationTestStatusTestInvalid, gitlab.Failed),
+			Entry("BuildPLRInProgress", integrationteststatus.BuildPLRInProgress, gitlab.Pending),
+			Entry("BuildPLRFailed", integrationteststatus.BuildPLRFailed, gitlab.Canceled),
+			Entry("SnapshotCreationFailed", integrationteststatus.SnapshotCreationFailed, gitlab.Canceled),
+			Entry("GroupSnapshotCreationFailed", integrationteststatus.GroupSnapshotCreationFailed, gitlab.Canceled),
 		)
 
 		It("check if all integration tests statuses are supported", func() {

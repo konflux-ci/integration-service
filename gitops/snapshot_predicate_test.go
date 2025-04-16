@@ -23,6 +23,7 @@ import (
 	. "github.com/onsi/gomega"
 
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
+	"github.com/konflux-ci/operator-toolkit/metadata"
 
 	"sigs.k8s.io/controller-runtime/pkg/event"
 
@@ -101,6 +102,7 @@ var _ = Describe("Predicates", Ordered, func() {
 				},
 				Annotations: map[string]string{
 					gitops.SnapshotTestsStatusAnnotation: "[{\"scenario\":\"scenario-1\",\"status\":\"EnvironmentProvisionError\",\"startTime\":\"2023-07-26T16:57:49+02:00\",\"sompletionTime\":\"2023-07-26T17:57:49+02:00\",\"details\":\"Failed to find deploymentTargetClass with right provisioner for copy of existingEnvironment\"}]",
+					gitops.PRGroupCreationAnnotation:     "old",
 				},
 			},
 			Spec: applicationapiv1alpha1.SnapshotSpec{
@@ -126,6 +128,7 @@ var _ = Describe("Predicates", Ordered, func() {
 				},
 				Annotations: map[string]string{
 					gitops.SnapshotTestsStatusAnnotation: "[{\"scenario\":\"scenario-1\",\"status\":\"TestPassed\",\"startTime\":\"2023-07-26T16:57:49+02:00\",\"completionTime\":\"2023-07-26T17:57:49+02:00\",\"details\": \"test pass\"}]",
+					gitops.PRGroupCreationAnnotation:     "new",
 				},
 			},
 			Spec: applicationapiv1alpha1.SnapshotSpec{
@@ -239,6 +242,33 @@ var _ = Describe("Predicates", Ordered, func() {
 				ObjectNew: hasSnapshotTrueStatus,
 			}
 			Expect(instance.Update(contextEvent)).To(BeFalse())
+		})
+
+		It("returns false when the pr group annotation doesn't exist in old and new Snapshot", func() {
+			contextEvent := event.UpdateEvent{
+				ObjectOld: hasSnapshotTrueStatus,
+				ObjectNew: hasSnapshotTrueStatus,
+			}
+			Expect(instance.Update(contextEvent)).To(BeFalse())
+		})
+
+		It("returns true when the pr group annotation of old Snapshot doesn't exist but exists in new snapshot ", func() {
+			Expect(metadata.DeleteAnnotation(hasSnapshotAnnotationNew, gitops.SnapshotTestsStatusAnnotation)).Should(Succeed())
+			contextEvent := event.UpdateEvent{
+				ObjectOld: hasSnapshotTrueStatus,
+				ObjectNew: hasSnapshotAnnotationNew,
+			}
+			Expect(instance.Update(contextEvent)).To(BeTrue())
+		})
+
+		It("returns true when the test status annotation of Snapshot changed ", func() {
+			Expect(metadata.DeleteAnnotation(hasSnapshotAnnotationOld, gitops.SnapshotTestsStatusAnnotation)).Should(Succeed())
+			Expect(metadata.DeleteAnnotation(hasSnapshotAnnotationNew, gitops.SnapshotTestsStatusAnnotation)).Should(Succeed())
+			contextEvent := event.UpdateEvent{
+				ObjectOld: hasSnapshotAnnotationOld,
+				ObjectNew: hasSnapshotAnnotationNew,
+			}
+			Expect(instance.Update(contextEvent)).To(BeTrue())
 		})
 
 		It("returns false when the Snapshot is deleted", func() {

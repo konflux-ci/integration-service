@@ -543,7 +543,8 @@ func generateCheckRunTitle(state intgteststat.IntegrationTestStatus) (string, er
 		title = "Succeeded"
 	case intgteststat.IntegrationTestStatusTestFail,
 		intgteststat.SnapshotCreationFailed,
-		intgteststat.BuildPLRFailed:
+		intgteststat.BuildPLRFailed,
+		intgteststat.GroupSnapshotCreationFailed:
 		title = "Failed"
 	default:
 		return title, fmt.Errorf("unknown status")
@@ -568,7 +569,7 @@ func generateCheckRunConclusion(state intgteststat.IntegrationTestStatus) (strin
 	case intgteststat.IntegrationTestStatusPending, intgteststat.IntegrationTestStatusInProgress,
 		intgteststat.BuildPLRInProgress:
 		conclusion = ""
-	case intgteststat.SnapshotCreationFailed, intgteststat.BuildPLRFailed:
+	case intgteststat.SnapshotCreationFailed, intgteststat.BuildPLRFailed, intgteststat.GroupSnapshotCreationFailed:
 		conclusion = gitops.IntegrationTestStatusCancelledGithub
 	default:
 		return conclusion, fmt.Errorf("unknown status")
@@ -585,7 +586,7 @@ func generateGithubCommitState(state intgteststat.IntegrationTestStatus) (string
 
 	switch state {
 	case intgteststat.IntegrationTestStatusTestFail, intgteststat.SnapshotCreationFailed,
-		intgteststat.BuildPLRFailed:
+		intgteststat.BuildPLRFailed, intgteststat.GroupSnapshotCreationFailed:
 		commitState = gitops.IntegrationTestStatusFailureGithub
 	case intgteststat.IntegrationTestStatusEnvironmentProvisionError_Deprecated, intgteststat.IntegrationTestStatusDeploymentError_Deprecated,
 		intgteststat.IntegrationTestStatusDeleted, intgteststat.IntegrationTestStatusTestInvalid:

@@ -632,7 +632,7 @@ func (a *Adapter) EnsureGroupSnapshotExist() (controller.OperationResult, error)
 		a.logger.Error(err, "Failed to create group snapshot")
 		if clienterrors.IsForbidden(err) {
 			// notify all component snapshots that group snapshot is not created for them due to
-			err = gitops.NotifyComponentSnapshotsInGroupSnapshot(a.context, a.client, componentSnapshotInfos, fmt.Sprintf("Failed to create group snapshot for pr group %s due to error %s", prGroup, err.Error()))
+			err = gitops.NotifyComponentSnapshotsInGroupSnapshot(a.context, a.client, componentSnapshotInfos, fmt.Sprintf(gitops.FailedToCreateGroupSnapshotMsg+" %s due to error %s", prGroup, err.Error()))
 			if err != nil {
 				a.logger.Error(err, fmt.Sprintf("Failed to annotate the component snapshots of pr group %s", prGroup))
 				return controller.RequeueWithError(err)

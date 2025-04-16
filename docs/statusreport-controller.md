@@ -109,6 +109,21 @@ flowchart TD
   is_test_final                  --No --> test_iterate
   remove_finalizer_from_plr      -->      continue_processing
 
+%%%%%%%%%%%%%%%%%%%%%%% Drawing EnsureGroupSnapshotCreationStatusReportedToGitProvider() function
+
+%% Node definitions
+  
+  check_snapshot_annotation(Process further if: <br>Group snapshot creation failure is annotated to snapshot)
+  report_groupsnapshotcreation_failure(Report group snapshot creation failure<br>back to git provider)
+  continue_processing(Controller continues processing)
+
+
+%% Node connections
+  predicate                    ---->    |"EnsureGroupSnapshotCreationStatusReportedToGitProvider()"|check_snapshot_annotation
+  check_snapshot_annotation        --Yes-->    report_groupsnapshotcreation_failure
+  check_snapshot_annotation        --No-->     continue_processing
+  report_groupsnapshotcreation_failure     ---->    continue_processing
+
   %% Assigning styles to nodes
   class predicate Amber;
 ```

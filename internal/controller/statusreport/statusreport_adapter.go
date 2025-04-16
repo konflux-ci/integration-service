@@ -20,6 +20,7 @@ import (
 	"context"
 	e "errors"
 	"fmt"
+	"strings"
 	"time"
 
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
@@ -33,6 +34,7 @@ import (
 	"github.com/konflux-ci/integration-service/loader"
 	intgteststat "github.com/konflux-ci/integration-service/pkg/integrationteststatus"
 	"github.com/konflux-ci/integration-service/status"
+	"github.com/konflux-ci/operator-toolkit/metadata"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
@@ -184,6 +186,50 @@ func (a *Adapter) EnsureSnapshotFinishedAllTests() (controller.OperationResult, 
 	return controller.ContinueProcessing()
 }
 
+// EnsureGroupSnapshotCreationStatusReportedToGitProvider is an operation that will ensure the group snapshot creation status is report to component snapshot
+func (a *Adapter) EnsureGroupSnapshotCreationStatusReportedToGitProvider() (controller.OperationResult, error) {
+	// Only report status for group Snapshots
+	if !gitops.IsComponentSnapshot(a.snapshot) || gitops.IsSnapshotCreatedByPACPushEvent(a.snapshot) {
+		return controller.ContinueProcessing()
+	}
+
+	if !metadata.HasAnnotation(a.snapshot, gitops.PRGroupCreationAnnotation) || !strings.Contains(a.snapshot.Annotations[gitops.PRGroupCreationAnnotation], gitops.FailedToCreateGroupSnapshotMsg) {
+		return controller.ContinueProcessing()
+	}
+
+	integrationTestStatus := intgteststat.GroupSnapshotCreationFailed
+
+	allIntegrationTestScenarios, err := a.loader.GetAllIntegrationTestScenariosForApplication(a.context, a.client, a.application)
+	if err != nil {
+		a.logger.Error(err, "Failed to get integration test scenarios for the following application",
+			"Application.Namespace", a.application.Namespace, "Application.Name", a.application.Name)
+		return controller.RequeueWithError(err)
+	}
+
+	if allIntegrationTestScenarios != nil {
+		tempGroupSnapshot := gitops.PrepareTempGroupSnapshot(a.application, a.snapshot)
+		filterIntegrationTestScenarios := gitops.FilterIntegrationTestScenariosWithContext(allIntegrationTestScenarios, tempGroupSnapshot)
+
+		a.logger.Info(
+			fmt.Sprintf("Found %d IntegrationTestScenarios for application", len(*filterIntegrationTestScenarios)),
+			"Application.Name", a.application.Name,
+			"IntegrationTestScenarios", len(*filterIntegrationTestScenarios))
+		if len(*filterIntegrationTestScenarios) > 0 {
+			err = a.ReportGroupSnapshotCreationStatus(a.snapshot, filterIntegrationTestScenarios, integrationTestStatus, gitops.ComponentNameForGroupSnapshot)
+			if err != nil {
+				a.logger.Error(err, "failed to report group snapshot createion status to git provider from component snapshot",
+					"snapshot.Namespace", a.snapshot.Namespace, "snapshot.Name", a.snapshot.Name)
+				return controller.RequeueWithError(err)
+			}
+			if err = gitops.AnnotateSnapshot(a.context, a.snapshot, gitops.PRGroupCreationAnnotation, gitops.GroupSnapshotCreationFailureReported, a.client); err != nil {
+				a.logger.Error(err, fmt.Sprintf("failed to write group snapshot creation status to annotation %s", gitops.PRGroupCreationAnnotation))
+				return controller.RequeueWithError(fmt.Errorf("failed to write group snapshot creation status to annotation %s: %w", gitops.PRGroupCreationAnnotation, err))
+			}
+		}
+	}
+	return controller.ContinueProcessing()
+}
+
 // determineIfAllRequiredIntegrationTestsFinishedAndPassed checks if all Integration tests finished and passed for the given
 // list of integrationTestScenarios.
 func (a *Adapter) determineIfAllRequiredIntegrationTestsFinishedAndPassed(integrationTestScenarios *[]v1beta2.IntegrationTestScenario, testStatuses *intgteststat.SnapshotIntegrationTestStatuses) (bool, bool) {
@@ -300,6 +346,51 @@ func (a *Adapter) ReportSnapshotStatus(testedSnapshot *applicationapiv1alpha1.Sn
 	return nil
 }
 
+// ReportGroupSnapshotCreationStatus report the group snapshot creation status back to the git provider according the filtered integration test scenarios
+func (a *Adapter) ReportGroupSnapshotCreationStatus(snapshot *applicationapiv1alpha1.Snapshot, integrationTestScenarios *[]v1beta2.IntegrationTestScenario,
+	integrationTestStatus intgteststat.IntegrationTestStatus, componentName string) error {
+	reporter := a.status.GetReporter(snapshot)
+	if reporter == nil {
+		a.logger.Info("No suitable reporter found, skipping report")
+		return nil
+	}
+	a.logger.Info(fmt.Sprintf("Detected reporter: %s", reporter.GetReporterName()))
+
+	if err := reporter.Initialize(a.context, snapshot); err != nil {
+		a.logger.Error(err, "Failed to initialize reporter", "reporter", reporter.GetReporterName())
+		return fmt.Errorf("failed to initialize reporter: %w", err)
+	}
+	a.logger.Info("Reporter initialized", "reporter", reporter.GetReporterName())
+
+	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		intgTestStatusDetails, err := generateIntgTestStatusDetails(snapshot, integrationTestStatus)
+		if err != nil {
+			return err
+		}
+		err = status.IterateIntegrationTestInStatusReport(a.context, a.client, reporter, snapshot, integrationTestScenarios, intgTestStatusDetails, componentName)
+		if err != nil {
+			a.logger.Error(err, fmt.Sprintf("failed to report group snapshot creation failure %s/%s",
+				snapshot.Namespace, snapshot.Name))
+			return fmt.Errorf("failed to report group snapshot creation failure %s/%s: %w",
+				snapshot.Namespace, snapshot.Name, err)
+		}
+
+		a.logger.Info("Successfully report group snapshot creation failure",
+			"snapshot.Namespace", snapshot.Namespace,
+			"snapshot.Name", snapshot.Name)
+
+		return err
+	})
+
+	if err != nil {
+		return fmt.Errorf("issue occurred during generating or updating report status: %w", err)
+	}
+
+	a.logger.Info(fmt.Sprintf("Successfully updated the %s annotation", gitops.PRGroupCreationAnnotation), "snapshot.Name", snapshot.Name)
+
+	return nil
+}
+
 // iterates iterateIntegrationTestStatusDetails to report to destination snapshot for them
 func (a *Adapter) iterateIntegrationTestStatusDetailsInStatusReport(reporter status.ReporterInterface,
 	integrationTestStatusDetails []*intgteststat.IntegrationTestStatusDetail,
@@ -379,4 +470,23 @@ func (a *Adapter) labelSnapshotToTriggerUntriggeredTest(integrationTestScenarios
 		return gitops.AddIntegrationTestRerunLabel(a.context, a.client, a.snapshot, integrationTestScenarioNotTriggered)
 	}
 	return nil
+}
+
+// generateIntgTestStatusDetails generates details for integrationTestStatusDetail according to group snapshot creation status
+func generateIntgTestStatusDetails(snapshot *applicationapiv1alpha1.Snapshot, integrationTestStatus intgteststat.IntegrationTestStatus) (intgteststat.IntegrationTestStatusDetail, error) {
+	details := ""
+	integrationTestStatusDetail := intgteststat.IntegrationTestStatusDetail{}
+	if integrationTestStatus == intgteststat.GroupSnapshotCreationFailed {
+		if failureReason, ok := snapshot.Annotations[gitops.PRGroupCreationAnnotation]; ok {
+			details = fmt.Sprintf("group snapshot is not created due to error: %s", failureReason)
+		}
+	} else {
+		return integrationTestStatusDetail, fmt.Errorf("invalid integration Test Status: %s", integrationTestStatus.String())
+	}
+
+	integrationTestStatusDetail = intgteststat.IntegrationTestStatusDetail{
+		Status:  integrationTestStatus,
+		Details: details,
+	}
+	return integrationTestStatusDetail, nil
 }
