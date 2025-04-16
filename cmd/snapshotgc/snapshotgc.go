@@ -120,10 +120,10 @@ func getTenantNamespaces(
 		"konflux.ci/type", selection.In, []string{"user"},
 	)
 	selector = labels.NewSelector().Add(*req)
-	konfluxNamespaceList := &core.NamespaceList{}
+	konfluxUserNamespaceList := &core.NamespaceList{}
 	err = cl.List(
 		context.Background(),
-		konfluxNamespaceList,
+		konfluxUserNamespaceList,
 		&client.ListOptions{LabelSelector: selector},
 	)
 	if err != nil {
@@ -131,7 +131,25 @@ func getTenantNamespaces(
 		return nil, err
 	}
 
-	namespaces := append(toolChainNamespaceList.Items, konfluxNamespaceList.Items...)
+	namespaces := append(toolChainNamespaceList.Items, konfluxUserNamespaceList.Items...)
+
+	// Finally get the new format Konflux tenant namespaces
+	req, _ = labels.NewRequirement(
+		"konflux-ci.dev/type", selection.In, []string{"tenant"},
+	)
+	selector = labels.NewSelector().Add(*req)
+	konfluxTenantNamespaceList := &core.NamespaceList{}
+	err = cl.List(
+		context.Background(),
+		konfluxTenantNamespaceList,
+		&client.ListOptions{LabelSelector: selector},
+	)
+	if err != nil {
+		logger.Error(err, "Failed listing namespaces")
+		return nil, err
+	}
+
+	namespaces = append(namespaces, konfluxTenantNamespaceList.Items...)
 
 	return namespaces, nil
 }
