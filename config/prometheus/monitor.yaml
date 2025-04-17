@@ -16,13 +16,11 @@ metadata:
 spec:
   endpoints:
     - path: /metrics
-      port: https
-      scheme: https
+      port: http
+      scheme: http
       bearerTokenSecret:
         key: token
         name: "integration-service-metrics-reader"
-      tlsConfig:
-        insecureSkipVerify: true
   selector:
     matchLabels:
       control-plane: controller-manager
