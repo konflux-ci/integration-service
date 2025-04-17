@@ -37,6 +37,9 @@ var integrationtestscenariolog = logf.Log.WithName("integrationtestscenario-reso
 func SetupIntegrationTestScenarioWebhookWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewWebhookManagedBy(mgr).For(&appstudiov1beta2.IntegrationTestScenario{}).
 		WithValidator(&IntegrationTestScenarioCustomValidator{}).
+		WithDefaulter(&IntegrationTestScenarioCustomDefaulter{
+			DefaultResolverRefResolverType: "pipeline",
+		}).
 		Complete()
 }
 
@@ -95,4 +98,30 @@ func (v *IntegrationTestScenarioCustomValidator) ValidateDelete(ctx context.Cont
 	// TODO(user): fill in your validation logic upon object deletion.
 
 	return nil, nil
+}
+
+// +kubebuilder:webhook:path=/mutate-appstudio-redhat-com-v1beta2-integrationtestscenario,mutating=true,failurePolicy=fail,sideEffects=None,groups=appstudio.redhat.com,resources=integrationtestscenarios,verbs=create;update;delete,versions=v1beta2,name=dintegrationtestscenario-v1beta2.kb.io,admissionReviewVersions=v1
+type IntegrationTestScenarioCustomDefaulter struct {
+	DefaultResolverRefResolverType string
+}
+
+var _ webhook.CustomDefaulter = &IntegrationTestScenarioCustomDefaulter{}
+
+func (d *IntegrationTestScenarioCustomDefaulter) Default(ctx context.Context, obj runtime.Object) error {
+	integrationtestscenariolog.Info("In Default() function", "object", obj)
+	scenario, ok := obj.(*appstudiov1beta2.IntegrationTestScenario)
+	if !ok {
+		return fmt.Errorf("expected an IntegrationTestScenario but got %T", obj)
+	}
+
+	d.applyDefaults(scenario)
+	return nil
+}
+
+func (d *IntegrationTestScenarioCustomDefaulter) applyDefaults(scenario *appstudiov1beta2.IntegrationTestScenario) {
+	integrationtestscenariolog.Info("Applying default resolver type", "name", scenario.GetName())
+	scenario.Spec.ResolverRef.ResolverType = "applied-default"
+	//if scenario.Spec.ResolverRef.ResolverType == nil || scenario.Spec.ResolverRef.ResolverType == "" {
+	//	scenario.Spec.ResolverRef.ResolverType = d.DefaultResolverRefResolverType
+	//}
 }
