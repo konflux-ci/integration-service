@@ -338,6 +338,11 @@ github.com/tektoncd/pipeline/pkg/list
 github.com/tektoncd/pipeline/pkg/reconciler/pipeline/dag
 github.com/tektoncd/pipeline/pkg/spire/config
 github.com/tektoncd/pipeline/pkg/substitution
+# github.com/tektoncd/resolution v0.0.0-20220901133656-d680719abeaf
+## explicit; go 1.17
+github.com/tektoncd/resolution/pkg/apis/resolution
+github.com/tektoncd/resolution/pkg/apis/resolution/v1alpha1
+github.com/tektoncd/resolution/pkg/common
 # github.com/tonglil/buflogr v1.1.1
 ## explicit; go 1.17
 github.com/tonglil/buflogr

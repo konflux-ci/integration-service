@@ -82,6 +82,14 @@ rules:
   - list
   - watch
 - apiGroups:
+  - resolution.tekton.dev
+  resources:
+  - resolutionrequests
+  verbs:
+  - create
+  - delete
+  - get
+- apiGroups:
   - tekton.dev
   resources:
   - pipelineruns
