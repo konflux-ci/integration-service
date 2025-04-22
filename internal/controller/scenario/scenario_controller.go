@@ -109,6 +109,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 
 	return controller.ReconcileHandler([]controller.Operation{
 		adapter.EnsureCreatedScenarioIsValid,
+		adapter.EnsureScenarioContainsResourceKind,
 	})
 }
 
@@ -131,6 +132,7 @@ func (r *Reconciler) getApplicationFromScenario(context context.Context, scenari
 // AdapterInterface is an interface defining all the operations that should be defined in an Integration adapter.
 type AdapterInterface interface {
 	EnsureCreatedScenarioIsValid() (controller.OperationResult, error)
+	EnsureScenarioContainsResourceKind() (controller.OperationResult, error)
 }
 
 // SetupController creates a new Integration controller and adds it to the Manager.

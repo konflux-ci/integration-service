@@ -53,6 +53,24 @@ func NewAdapter(context context.Context, application *applicationapiv1alpha1.App
 	}
 }
 
+// TODO: Remove after a couple weeks. This is just to add new field to existing scenarios
+// Adds ResourceKind field to existing IntegrationTestScenarios
+func (a *Adapter) EnsureScenarioContainsResourceKind() (controller.OperationResult, error) {
+	a.logger.Info("Adding ResourceKind to ITS if it does not exist", "scenario", a.scenario)
+	if a.scenario.Spec.ResolverRef.ResourceKind == "" {
+		// set ResourceKind to 'pipeline'
+		patch := client.MergeFrom(a.scenario.DeepCopy())
+		a.scenario.Spec.ResolverRef.ResourceKind = "pipeline"
+		err := a.client.Patch(a.context, a.scenario, patch)
+		if err != nil {
+			a.logger.Error(err, "Failed to add ResourceKind to Scenario")
+			return controller.RequeueWithError(err)
+		}
+	}
+
+	return controller.ContinueProcessing()
+}
+
 // EnsureCreatedScenarioIsValid is an operation that ensures created IntegrationTestScenario is valid
 // in case it is, set its owner reference
 func (a *Adapter) EnsureCreatedScenarioIsValid() (controller.OperationResult, error) {
