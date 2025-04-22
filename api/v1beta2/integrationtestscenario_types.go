@@ -103,10 +103,11 @@ type ResolverRef struct {
 	// the chosen resolver.
 	// +required
 	Params []ResolverParameter `json:"params"`
-	// ResolverType defines the type of resolver. It can either be "pipeline" or "pipelinerun"
-	// but defaults to "pipeline" if no value is set
+	// ResourceKind defines the kind of resource being resolved. It can either
+	// be "pipeline" or "pipelinerun" but defaults to "pipeline" if no value is
+	// set
 	// +optional
-	ResolverType string `json:"resolverType"`
+	ResourceKind string `json:"resourceKind"`
 }
 
 // ResolverParameter contains the name and values used to identify the referenced Tekton resource

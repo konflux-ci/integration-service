@@ -546,10 +546,11 @@ spec:
                       perform resolution of the referenced Tekton resource, such as
                       "git" or "bundle"..
                     type: string
-                  resolverType:
+                  resourceKind:
                     description: |-
-                      ResolverType defines the type of resolver. It can either be "pipeline" or "pipelinerun"
-                      but defaults to "pipeline" if no value is set
+                      ResourceKind defines the kind of resource being resolved. It can either
+                      be "pipeline" or "pipelinerun" but defaults to "pipeline" if no value is
+                      set
                     type: string
                 required:
                 - params
