@@ -58,7 +58,7 @@ type CommitStatusAdapter struct {
 
 // GetStatus returns the appropriate status based on conclusion and start time.
 func (s *CheckRunAdapter) GetStatus() string {
-	if s.Conclusion == "success" || s.Conclusion == "failure" {
+	if s.Conclusion == "success" || s.Conclusion == "failure" || s.Conclusion == "cancelled" {
 		return "completed"
 	} else if s.StartTime.IsZero() {
 		return "queued"
