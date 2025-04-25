@@ -1048,15 +1048,15 @@ func (a *Adapter) checkAndCancelOldSnapshotsPipelineRun(application *application
 			a.logger.Info("Snapshot has been marked as cancelled previously, skipping marking it", "snapshot.Name", &sortedSnapshots[i].Name)
 			continue
 		}
-		err = a.cancelAllPipelineRunsForSnapshot(&sortedSnapshots[i])
-		if err != nil {
-			a.logger.Error(err, "failed to cancel all integration pipelinerun for older snapshot", "snapshot.Name", &sortedSnapshots[i].Name)
-			return err
-		}
 		a.logger.Info("integration test pipelineruns have been cancelled for older snapshot")
 		err = gitops.MarkSnapshotAsCanceled(a.context, a.client, &sortedSnapshots[i], "Snapshot canceled/superseded")
 		if err != nil {
 			a.logger.Error(err, "Failed to mark snapshot as canceled", "snapshot.Name", &sortedSnapshots[i].Name)
+			return err
+		}
+		err = a.cancelAllPipelineRunsForSnapshot(&sortedSnapshots[i])
+		if err != nil {
+			a.logger.Error(err, "failed to cancel all integration pipelinerun for older snapshot", "snapshot.Name", &sortedSnapshots[i].Name)
 			return err
 		}
 		a.logger.Info(fmt.Sprintf("older snapshot %s and its integration pipelinerun have been marked as cancelled", sortedSnapshots[i].Name))
