@@ -5,16 +5,22 @@ resources:
 - bases/appstudio.redhat.com_integrationtestscenarios.yaml
 #+kubebuilder:scaffold:crdkustomizeresource
 
-patchesStrategicMerge:
-# [WEBHOOK] To enable webhook, uncomment all the sections with [WEBHOOK] prefix.
-# patches here are for enabling the conversion webhook for each CRD
-- patches/webhook_in_integrationtestscenarios.yaml
-#+kubebuilder:scaffold:crdkustomizewebhookpatch
+patches:
+- path: patches/webhook_in_integrationtestscenarios.yaml
+  target:
+    group: apiextensions.k8s.io
+    version: v1
+    kind: CustomResourceDefinition
+    name: integrationtestscenarios.appstudio.redhat.com
 
 # [CERTMANAGER] To enable cert-manager, uncomment all the sections with [CERTMANAGER] prefix.
 # patches here are for enabling the CA injection for each CRD
-#- patches/cainjection_in_integrationtestscenarios.yaml
-#+kubebuilder:scaffold:crdkustomizecainjectionpatch
+#- path: patches/cainjection_in_integrationtestscenarios.yaml
+#  target:
+#    group: apiextensions.k8s.io
+#    version: v1
+#    kind: CustomResourceDefinition
+#    name: integrationtestscenarios.appstudio.redhat.com
 
 # the following config is for teaching kustomize how to do kustomization for CRDs.
 configurations:
