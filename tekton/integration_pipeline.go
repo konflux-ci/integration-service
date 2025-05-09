@@ -31,7 +31,7 @@ import (
 	"github.com/konflux-ci/integration-service/api/v1beta2"
 	"github.com/konflux-ci/operator-toolkit/metadata"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
-	resolutionv1alpha1 "github.com/tektoncd/resolution/pkg/apis/resolution/v1alpha1"
+	resolutionv1beta1 "github.com/tektoncd/pipeline/pkg/apis/resolution/v1beta1"
 	yaml "gopkg.in/yaml.v3"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -169,13 +169,24 @@ func generateIntegrationPipelineRunFromPipelineResolver(prefix, namespace, resol
 }
 
 func getPipelineRunYamlFromPipelineRunResolver(client client.Client, ctx context.Context, prefix, namespace, resolver string, resolverParams []v1beta2.ResolverParameter) (string, error) {
-	stringResolverParams := map[string]string{}
+	//stringResolverParams := map[string]string{}
 
+	//for _, scenarioParam := range resolverParams {
+	//	stringResolverParams[scenarioParam.Name] = scenarioParam.Value
+	//}
+	tektonResolverParams := []tektonv1.Param{}
 	for _, scenarioParam := range resolverParams {
-		stringResolverParams[scenarioParam.Name] = scenarioParam.Value
+		tektonResolverParam := tektonv1.Param{
+			Name: scenarioParam.Name,
+			Value: tektonv1.ParamValue{
+				Type:      tektonv1.ParamTypeString,
+				StringVal: scenarioParam.Value,
+			},
+		}
+		tektonResolverParams = append(tektonResolverParams, tektonResolverParam)
 	}
 
-	request := resolutionv1alpha1.ResolutionRequest{
+	request := resolutionv1beta1.ResolutionRequest{
 		ObjectMeta: metav1.ObjectMeta{
 			GenerateName: prefix + "-",
 			Namespace:    namespace,
@@ -184,8 +195,8 @@ func getPipelineRunYamlFromPipelineRunResolver(client client.Client, ctx context
 				"konflux-ci.dev/created-by":  "integration-service", // for backup garbage collection
 			},
 		},
-		Spec: resolutionv1alpha1.ResolutionRequestSpec{
-			Parameters: stringResolverParams,
+		Spec: resolutionv1beta1.ResolutionRequestSpec{
+			Params: tektonResolverParams,
 		},
 	}
 
@@ -208,7 +219,7 @@ func getPipelineRunYamlFromPipelineRunResolver(client client.Client, ctx context
 		Factor:   1.0,
 		Jitter:   0.5,
 	}
-	var resolvedRequest resolutionv1alpha1.ResolutionRequest
+	var resolvedRequest resolutionv1beta1.ResolutionRequest
 	err = retry.OnError(resolverBackoff, func(e error) bool { return true }, func() error {
 		err = client.Get(ctx, types.NamespacedName{Namespace: namespace, Name: resolutionRequestName}, &resolvedRequest)
 		if err != nil {
