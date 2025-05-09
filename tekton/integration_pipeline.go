@@ -26,13 +26,13 @@ import (
 	"os"
 	"time"
 
+	"github.com/ghodss/yaml" // used instead of gopkg.in/yaml.v3 because it treats json tags as yaml tags
 	"github.com/go-logr/logr"
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
 	"github.com/konflux-ci/integration-service/api/v1beta2"
 	"github.com/konflux-ci/operator-toolkit/metadata"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
-	resolutionv1alpha1 "github.com/tektoncd/resolution/pkg/apis/resolution/v1alpha1"
-	yaml "gopkg.in/yaml.v3"
+	resolutionv1beta1 "github.com/tektoncd/pipeline/pkg/apis/resolution/v1beta1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -124,20 +124,21 @@ func NewIntegrationPipelineRun(client client.Client, ctx context.Context, prefix
 
 	resolver := integrationTestScenario.Spec.ResolverRef.Resolver
 	resourceKind := integrationTestScenario.Spec.ResolverRef.ResourceKind
+	tektonResolverParams := generateTektonResolverParams(resolverParams)
 	if resourceKind == ResourceKindPipeline || resourceKind == "" {
-		return generateIntegrationPipelineRunFromPipelineResolver(prefix, namespace, resolver, resolverParams), nil
+		return generateIntegrationPipelineRunFromPipelineResolver(prefix, namespace, resolver, tektonResolverParams), nil
 	} else if resourceKind == ResourceKindPipelineRun {
-		base64plr, err := getPipelineRunYamlFromPipelineRunResolver(client, ctx, prefix, namespace, resolver, resolverParams)
+		base64plr, err := getPipelineRunYamlFromPipelineRunResolver(client, ctx, prefix, namespace, resolver, tektonResolverParams)
 		if err != nil {
 			return nil, err
 		}
-		return generateIntegrationPipelineRunFromBase64(base64plr)
+		return generateIntegrationPipelineRunFromBase64(base64plr, namespace, prefix)
 	} else {
 		return nil, fmt.Errorf("unrecognized resolver type '%s'", resourceKind)
 	}
 }
 
-func generateIntegrationPipelineRunFromPipelineResolver(prefix, namespace, resolver string, resolverParams []v1beta2.ResolverParameter) *IntegrationPipelineRun {
+func generateTektonResolverParams(resolverParams []v1beta2.ResolverParameter) []tektonv1.Param {
 	tektonResolverParams := []tektonv1.Param{}
 	for _, scenarioParam := range resolverParams {
 		tektonResolverParam := tektonv1.Param{
@@ -149,7 +150,10 @@ func generateIntegrationPipelineRunFromPipelineResolver(prefix, namespace, resol
 		}
 		tektonResolverParams = append(tektonResolverParams, tektonResolverParam)
 	}
+	return tektonResolverParams
+}
 
+func generateIntegrationPipelineRunFromPipelineResolver(prefix, namespace, resolver string, resolverParams []tektonv1.Param) *IntegrationPipelineRun {
 	pipelineRun := tektonv1.PipelineRun{
 		ObjectMeta: metav1.ObjectMeta{
 			GenerateName: prefix + "-",
@@ -159,7 +163,7 @@ func generateIntegrationPipelineRunFromPipelineResolver(prefix, namespace, resol
 			PipelineRef: &tektonv1.PipelineRef{
 				ResolverRef: tektonv1.ResolverRef{
 					Resolver: tektonv1.ResolverName(resolver),
-					Params:   tektonResolverParams,
+					Params:   resolverParams,
 				},
 			},
 		},
@@ -168,14 +172,8 @@ func generateIntegrationPipelineRunFromPipelineResolver(prefix, namespace, resol
 	return &IntegrationPipelineRun{pipelineRun}
 }
 
-func getPipelineRunYamlFromPipelineRunResolver(client client.Client, ctx context.Context, prefix, namespace, resolver string, resolverParams []v1beta2.ResolverParameter) (string, error) {
-	stringResolverParams := map[string]string{}
-
-	for _, scenarioParam := range resolverParams {
-		stringResolverParams[scenarioParam.Name] = scenarioParam.Value
-	}
-
-	request := resolutionv1alpha1.ResolutionRequest{
+func getPipelineRunYamlFromPipelineRunResolver(client client.Client, ctx context.Context, prefix, namespace, resolver string, resolverParams []tektonv1.Param) (string, error) {
+	request := resolutionv1beta1.ResolutionRequest{
 		ObjectMeta: metav1.ObjectMeta{
 			GenerateName: prefix + "-",
 			Namespace:    namespace,
@@ -184,8 +182,8 @@ func getPipelineRunYamlFromPipelineRunResolver(client client.Client, ctx context
 				"konflux-ci.dev/created-by":  "integration-service", // for backup garbage collection
 			},
 		},
-		Spec: resolutionv1alpha1.ResolutionRequestSpec{
-			Parameters: stringResolverParams,
+		Spec: resolutionv1beta1.ResolutionRequestSpec{
+			Params: resolverParams,
 		},
 	}
 
@@ -195,6 +193,7 @@ func getPipelineRunYamlFromPipelineRunResolver(client client.Client, ctx context
 	if err != nil {
 		return "", err
 	}
+
 	resolutionRequestName := request.ObjectMeta.Name
 	defer func() {
 		_ = retry.OnError(retry.DefaultBackoff, func(e error) bool { return true }, func() error {
@@ -208,7 +207,7 @@ func getPipelineRunYamlFromPipelineRunResolver(client client.Client, ctx context
 		Factor:   1.0,
 		Jitter:   0.5,
 	}
-	var resolvedRequest resolutionv1alpha1.ResolutionRequest
+	var resolvedRequest resolutionv1beta1.ResolutionRequest
 	err = retry.OnError(resolverBackoff, func(e error) bool { return true }, func() error {
 		err = client.Get(ctx, types.NamespacedName{Namespace: namespace, Name: resolutionRequestName}, &resolvedRequest)
 		if err != nil {
@@ -231,17 +230,36 @@ func getPipelineRunYamlFromPipelineRunResolver(client client.Client, ctx context
 	return resolvedRequest.Status.Data, nil
 }
 
-func generateIntegrationPipelineRunFromBase64(base64plr string) (*IntegrationPipelineRun, error) {
+func generateIntegrationPipelineRunFromBase64(base64plr, namespace, defaultPrefix string) (*IntegrationPipelineRun, error) {
 	plrYaml, err := base64.StdEncoding.DecodeString(base64plr)
 	if err != nil {
 		return nil, err
 	}
+
 	var pipelineRun tektonv1.PipelineRun
 	err = yaml.Unmarshal(plrYaml, &pipelineRun)
 	if err != nil {
 		return nil, err
 	}
+
+	pipelineRun.ObjectMeta.Namespace = namespace
+	setGenerateNameForPipelineRun(&pipelineRun, defaultPrefix)
 	return &IntegrationPipelineRun{pipelineRun}, nil
+}
+
+// Ensures that the PipelineRun will use GenerateName rather than name in order
+// to avoid collisions. If the resolved PipelineRun has a GenerateName we use
+// that.  If it has a Name we convert it to a GenerateName.  Otherwise we use
+// the name of the scenario just like with a remote Pipeline
+func setGenerateNameForPipelineRun(pipelineRun *tektonv1.PipelineRun, defaultPrefix string) {
+	if pipelineRun.ObjectMeta.GenerateName == "" {
+		if pipelineRun.ObjectMeta.Name != "" {
+			pipelineRun.ObjectMeta.GenerateName = fmt.Sprintf("%s-", pipelineRun.ObjectMeta.Name)
+			pipelineRun.ObjectMeta.Name = ""
+		} else {
+			pipelineRun.ObjectMeta.GenerateName = defaultPrefix
+		}
+	}
 }
 
 // Updates git resolver values parameters with values of params specified in the input map
