@@ -36,3 +36,12 @@ rules:
       - routes
     apiGroups:
       - route.openshift.io
+  - apiGroups:
+      - resolution.tekton.dev
+    resources:
+      - resolutionrequest
+    verbs:
+      - create
+      - delete
+      - get
+      - list
