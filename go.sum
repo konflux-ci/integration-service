@@ -369,8 +369,6 @@ github.com/stretchr/testify v1.10.0/go.mod h1:r2ic/lqez/lEtzL7wO/rwa5dbSLXVDPFyf
 github.com/stvp/go-udp-testing v0.0.0-20201019212854-469649b16807/go.mod h1:7jxmlfBCDBXRzr0eAQJ48XC1hBu1np4CS5+cHEYfwpc=
 github.com/tektoncd/pipeline v0.68.0 h1:bVzj+HbS/NQAPV2CfEW8HZrREm7uagPCzEggyxVTBdc=
 github.com/tektoncd/pipeline v0.68.0/go.mod h1:MScUtGGW4VeaNcaNrulmNLBSn14EGTXXKy+kh+YZ8Gg=
-github.com/tektoncd/resolution v0.0.0-20220901133656-d680719abeaf h1:IS5bXIlgC6uo61zZP5GBCQ+FoNnRIa0G0ptJh2OFtj4=
-github.com/tektoncd/resolution v0.0.0-20220901133656-d680719abeaf/go.mod h1:kPG4H5o69yaGOWfQ4BwtyykUtPWeSeAhfMWKV0gH+Eo=
 github.com/tonglil/buflogr v1.1.1 h1:CKAjOHBSMmgbRFxpn/RhQHPj5oANc7ekhlsoUDvcZIg=
 github.com/tonglil/buflogr v1.1.1/go.mod h1:WLLtPRLqcFYWQLbA+ytXy5WrFTYnfA+beg1MpvJCxm4=
 github.com/xanzy/go-gitlab v0.109.0 h1:RcRme5w8VpLXTSTTMZdVoQWY37qTJWg+gwdQl4aAttE=
