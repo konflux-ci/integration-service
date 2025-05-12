@@ -82,8 +82,7 @@ var _ = Describe("Integration pipeline", func() {
 			Spec: v1beta2.IntegrationTestScenarioSpec{
 				Application: "application-sample",
 				ResolverRef: v1beta2.ResolverRef{
-					ResourceKind: tekton.ResourceKindPipeline,
-					Resolver:     "git",
+					Resolver: "git",
 					Params: []v1beta2.ResolverParameter{
 						{
 							Name:  "url",
@@ -104,9 +103,7 @@ var _ = Describe("Integration pipeline", func() {
 		Expect(k8sClient.Create(ctx, integrationTestScenarioGit)).Should(Succeed())
 
 		//create new integration pipeline run from integration test scenario
-		var err error
-		newIntegrationPipelineRun, err = tekton.NewIntegrationPipelineRun(k8sClient, ctx, prefix, namespace, *integrationTestScenarioGit)
-		Expect(err).NotTo(HaveOccurred())
+		newIntegrationPipelineRun = tekton.NewIntegrationPipelineRun(prefix, namespace, *integrationTestScenarioGit)
 		Expect(k8sClient.Create(ctx, newIntegrationPipelineRun.AsPipelineRun())).Should(Succeed())
 
 		integrationTestScenarioBundle = &v1beta2.IntegrationTestScenario{
@@ -121,8 +118,7 @@ var _ = Describe("Integration pipeline", func() {
 			Spec: v1beta2.IntegrationTestScenarioSpec{
 				Application: "application-sample",
 				ResolverRef: v1beta2.ResolverRef{
-					ResourceKind: tekton.ResourceKindPipeline,
-					Resolver:     "bundles",
+					Resolver: "bundles",
 					Params: []v1beta2.ResolverParameter{
 						{
 							Name:  "bundle",
@@ -158,8 +154,7 @@ var _ = Describe("Integration pipeline", func() {
 			Spec: v1beta2.IntegrationTestScenarioSpec{
 				Application: "application-sample",
 				ResolverRef: v1beta2.ResolverRef{
-					ResourceKind: tekton.ResourceKindPipeline,
-					Resolver:     "git",
+					Resolver: "git",
 					Params: []v1beta2.ResolverParameter{
 						{
 							Name:  "url",
@@ -239,16 +234,14 @@ var _ = Describe("Integration pipeline", func() {
 		}
 		Expect(k8sClient.Create(ctx, hasComp)).Should(Succeed())
 
-		newIntegrationBundlePipelineRun, err = tekton.NewIntegrationPipelineRun(k8sClient, ctx, prefix, namespace, *integrationTestScenarioBundle)
-		Expect(err).NotTo(HaveOccurred())
-		newIntegrationBundlePipelineRun = newIntegrationBundlePipelineRun.WithIntegrationLabels(integrationTestScenarioBundle).
+		newIntegrationBundlePipelineRun = tekton.NewIntegrationPipelineRun(prefix, namespace, *integrationTestScenarioBundle).
+			WithIntegrationLabels(integrationTestScenarioBundle).
 			WithSnapshot(hasSnapshot).
 			WithApplication(hasApp)
 		Expect(k8sClient.Create(ctx, newIntegrationBundlePipelineRun.AsPipelineRun())).Should(Succeed())
 
-		enterpriseContractPipelineRun, err = tekton.NewIntegrationPipelineRun(k8sClient, ctx, prefix, namespace, *enterpriseContractTestScenario)
-		Expect(err).NotTo(HaveOccurred())
-		enterpriseContractPipelineRun = enterpriseContractPipelineRun.WithIntegrationLabels(enterpriseContractTestScenario).
+		enterpriseContractPipelineRun = tekton.NewIntegrationPipelineRun(prefix, namespace, *enterpriseContractTestScenario).
+			WithIntegrationLabels(enterpriseContractTestScenario).
 			WithIntegrationAnnotations(enterpriseContractTestScenario).
 			WithSnapshot(hasSnapshot).
 			WithExtraParams(enterpriseContractTestScenario.Spec.Params).
@@ -264,26 +257,17 @@ var _ = Describe("Integration pipeline", func() {
 		_ = k8sClient.Delete(ctx, integrationTestScenarioGit)
 		_ = k8sClient.Delete(ctx, integrationTestScenarioBundle)
 		_ = k8sClient.Delete(ctx, enterpriseContractTestScenario)
-		_ = k8sClient.Delete(ctx, newIntegrationPipelineRun.AsPipelineRun())
 		_ = k8sClient.Delete(ctx, newIntegrationPipelineRun)
 		_ = k8sClient.Delete(ctx, newIntegrationBundlePipelineRun)
 		_ = k8sClient.Delete(ctx, enterpriseContractPipelineRun)
 		_ = k8sClient.Delete(ctx, hasApp)
 		_ = k8sClient.Delete(ctx, hasSnapshot)
 		_ = k8sClient.Delete(ctx, hasComp)
+		_ = k8sClient.Delete(ctx, newIntegrationPipelineRun.AsPipelineRun())
 
 		os.Setenv("PIPELINE_TIMEOUT", "")
 		os.Setenv("TASKS_TIMEOUT", "")
 		os.Setenv("FINALLY_TIMEOUT", "")
-	})
-
-	Context("When creating a new IntegrationPipelineRun", func() {
-		It("can create an IntegrationPipelineRun", func() {
-			plr, err := tekton.NewIntegrationPipelineRun(k8sClient, ctx, prefix, namespace, *integrationTestScenarioGit)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(plr).NotTo(BeNil())
-			Expect(k8sClient.Create(ctx, plr.AsPipelineRun())).Should(Succeed())
-		})
 	})
 
 	Context("When managing a new IntegrationPipelineRun", func() {
