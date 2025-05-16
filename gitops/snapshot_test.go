@@ -350,6 +350,17 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 		Expect(gitops.IsSnapshotIntegrationStatusMarkedAsFinished(hasSnapshot)).To(BeTrue())
 	})
 
+	It("ensures the Snapshots status won't be marked as finished if it is canceled", func() {
+		err := gitops.MarkSnapshotAsCanceled(ctx, k8sClient, hasSnapshot, "canceled")
+		Expect(err).ToNot(HaveOccurred())
+		Expect(hasSnapshot.Status.Conditions).NotTo(BeNil())
+		if !gitops.IsSnapshotIntegrationStatusMarkedAsFinished(hasSnapshot) {
+			err := gitops.MarkSnapshotIntegrationStatusAsFinished(ctx, k8sClient, hasSnapshot, "Test message")
+			Expect(err).ToNot(HaveOccurred())
+		}
+		Expect(gitops.IsSnapshotMarkedAsCanceled(hasSnapshot)).To(BeTrue())
+	})
+
 	It("ensures the Snapshots status can be marked as in progress", func() {
 		err := gitops.MarkSnapshotIntegrationStatusAsInProgress(ctx, k8sClient, hasSnapshot, "Test message")
 		Expect(err).ToNot(HaveOccurred())
