@@ -86,5 +86,12 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 			Expect(helpers.IsScenarioValid(integrationTestScenario)).To(BeTrue())
 			Expect(meta.IsStatusConditionTrue(integrationTestScenario.Status.Conditions, helpers.IntegrationTestScenarioValid)).To(BeTrue())
 		})
+
+		It("ensures the Scenario is considered invalid if it doesn't have the required status condition", func() {
+			uncheckedIntegrationTestScenario := integrationTestScenario.DeepCopy()
+			uncheckedIntegrationTestScenario.Status.Conditions = []metav1.Condition{}
+			Expect(uncheckedIntegrationTestScenario).NotTo(BeNil())
+			Expect(helpers.IsScenarioValid(uncheckedIntegrationTestScenario)).To(BeFalse())
+		})
 	})
 })

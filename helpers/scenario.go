@@ -58,5 +58,5 @@ func SetScenarioIntegrationStatusAsValid(scenario *v1beta2.IntegrationTestScenar
 // IsScenarioValid sets the IntegrationTestScenarioValid integration status condition for the Scenario to valid.
 func IsScenarioValid(scenario *v1beta2.IntegrationTestScenario) bool {
 	statusCondition := meta.FindStatusCondition(scenario.Status.Conditions, IntegrationTestScenarioValid)
-	return statusCondition.Status != metav1.ConditionFalse
+	return statusCondition != nil && statusCondition.Status != metav1.ConditionFalse
 }
