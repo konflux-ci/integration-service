@@ -19,13 +19,14 @@ package tekton_test
 import (
 	"bytes"
 	"fmt"
+	"os"
+	"time"
+
 	"github.com/konflux-ci/integration-service/api/v1beta2"
 	"github.com/konflux-ci/integration-service/helpers"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/tonglil/buflogr"
-	"os"
-	"time"
 
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
 	"github.com/konflux-ci/integration-service/gitops"
@@ -82,8 +83,7 @@ var _ = Describe("Integration pipeline", func() {
 			Spec: v1beta2.IntegrationTestScenarioSpec{
 				Application: "application-sample",
 				ResolverRef: v1beta2.ResolverRef{
-					ResourceKind: tekton.ResourceKindPipeline,
-					Resolver:     "git",
+					Resolver: "git",
 					Params: []v1beta2.ResolverParameter{
 						{
 							Name:  "url",
@@ -104,9 +104,7 @@ var _ = Describe("Integration pipeline", func() {
 		Expect(k8sClient.Create(ctx, integrationTestScenarioGit)).Should(Succeed())
 
 		//create new integration pipeline run from integration test scenario
-		var err error
-		newIntegrationPipelineRun, err = tekton.NewIntegrationPipelineRun(k8sClient, ctx, prefix, namespace, *integrationTestScenarioGit)
-		Expect(err).NotTo(HaveOccurred())
+		newIntegrationPipelineRun = tekton.NewIntegrationPipelineRun(prefix, namespace, *integrationTestScenarioGit)
 		Expect(k8sClient.Create(ctx, newIntegrationPipelineRun.AsPipelineRun())).Should(Succeed())
 
 		integrationTestScenarioBundle = &v1beta2.IntegrationTestScenario{
@@ -121,8 +119,7 @@ var _ = Describe("Integration pipeline", func() {
 			Spec: v1beta2.IntegrationTestScenarioSpec{
 				Application: "application-sample",
 				ResolverRef: v1beta2.ResolverRef{
-					ResourceKind: tekton.ResourceKindPipeline,
-					Resolver:     "bundles",
+					Resolver: "bundles",
 					Params: []v1beta2.ResolverParameter{
 						{
 							Name:  "bundle",
@@ -158,8 +155,7 @@ var _ = Describe("Integration pipeline", func() {
 			Spec: v1beta2.IntegrationTestScenarioSpec{
 				Application: "application-sample",
 				ResolverRef: v1beta2.ResolverRef{
-					ResourceKind: tekton.ResourceKindPipeline,
-					Resolver:     "git",
+					Resolver: "git",
 					Params: []v1beta2.ResolverParameter{
 						{
 							Name:  "url",
@@ -239,16 +235,14 @@ var _ = Describe("Integration pipeline", func() {
 		}
 		Expect(k8sClient.Create(ctx, hasComp)).Should(Succeed())
 
-		newIntegrationBundlePipelineRun, err = tekton.NewIntegrationPipelineRun(k8sClient, ctx, prefix, namespace, *integrationTestScenarioBundle)
-		Expect(err).NotTo(HaveOccurred())
-		newIntegrationBundlePipelineRun = newIntegrationBundlePipelineRun.WithIntegrationLabels(integrationTestScenarioBundle).
+		newIntegrationBundlePipelineRun = tekton.NewIntegrationPipelineRun(prefix, namespace, *integrationTestScenarioBundle).
+			WithIntegrationLabels(integrationTestScenarioBundle).
 			WithSnapshot(hasSnapshot).
 			WithApplication(hasApp)
 		Expect(k8sClient.Create(ctx, newIntegrationBundlePipelineRun.AsPipelineRun())).Should(Succeed())
 
-		enterpriseContractPipelineRun, err = tekton.NewIntegrationPipelineRun(k8sClient, ctx, prefix, namespace, *enterpriseContractTestScenario)
-		Expect(err).NotTo(HaveOccurred())
-		enterpriseContractPipelineRun = enterpriseContractPipelineRun.WithIntegrationLabels(enterpriseContractTestScenario).
+		enterpriseContractPipelineRun = tekton.NewIntegrationPipelineRun(prefix, namespace, *enterpriseContractTestScenario).
+			WithIntegrationLabels(enterpriseContractTestScenario).
 			WithIntegrationAnnotations(enterpriseContractTestScenario).
 			WithSnapshot(hasSnapshot).
 			WithExtraParams(enterpriseContractTestScenario.Spec.Params).
@@ -264,26 +258,17 @@ var _ = Describe("Integration pipeline", func() {
 		_ = k8sClient.Delete(ctx, integrationTestScenarioGit)
 		_ = k8sClient.Delete(ctx, integrationTestScenarioBundle)
 		_ = k8sClient.Delete(ctx, enterpriseContractTestScenario)
-		_ = k8sClient.Delete(ctx, newIntegrationPipelineRun.AsPipelineRun())
 		_ = k8sClient.Delete(ctx, newIntegrationPipelineRun)
 		_ = k8sClient.Delete(ctx, newIntegrationBundlePipelineRun)
 		_ = k8sClient.Delete(ctx, enterpriseContractPipelineRun)
 		_ = k8sClient.Delete(ctx, hasApp)
 		_ = k8sClient.Delete(ctx, hasSnapshot)
 		_ = k8sClient.Delete(ctx, hasComp)
+		_ = k8sClient.Delete(ctx, newIntegrationPipelineRun.AsPipelineRun())
 
 		os.Setenv("PIPELINE_TIMEOUT", "")
 		os.Setenv("TASKS_TIMEOUT", "")
 		os.Setenv("FINALLY_TIMEOUT", "")
-	})
-
-	Context("When creating a new IntegrationPipelineRun", func() {
-		It("can create an IntegrationPipelineRun", func() {
-			plr, err := tekton.NewIntegrationPipelineRun(k8sClient, ctx, prefix, namespace, *integrationTestScenarioGit)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(plr).NotTo(BeNil())
-			Expect(k8sClient.Create(ctx, plr.AsPipelineRun())).Should(Succeed())
-		})
 	})
 
 	Context("When managing a new IntegrationPipelineRun", func() {
@@ -432,6 +417,22 @@ var _ = Describe("Integration pipeline", func() {
 				To(Equal(hasSnapshot.Labels[gitops.CustomLabelPrefix+"/custom_label"]))
 			Expect(newIntegrationPipelineRun.Labels[gitops.SnapshotTypeLabel]).
 				To(Equal(hasSnapshot.Labels[gitops.SnapshotTypeLabel]))
+		})
+
+		It("updates the log-url annotation when copied from the snapshot", func() {
+			// Set up a snapshot with the log-url annotation
+			snapshotWithLogURL := hasSnapshot.DeepCopy()
+			if snapshotWithLogURL.Annotations == nil {
+				snapshotWithLogURL.Annotations = make(map[string]string)
+			}
+			snapshotWithLogURL.Annotations["pac.test.appstudio.openshift.io/log-url"] = "https://console.redhat.com/preview/application-pipeline/ns/rhtap-shared-team-tenant/pipelinerun/build-pipeline-run-123"
+
+			// Apply the snapshot to the integration pipeline run
+			newIntegrationPipelineRun.WithSnapshot(snapshotWithLogURL)
+
+			// Verify that the log-url annotation exists but has been reset
+			Expect(newIntegrationPipelineRun.Annotations).To(HaveKey("pac.test.appstudio.openshift.io/log-url"))
+			Expect(newIntegrationPipelineRun.Annotations["pac.test.appstudio.openshift.io/log-url"]).To(Equal("https://console.redhat.com/preview/application-pipeline/ns/rhtap-shared-team-tenant/pipelinerun/build-pipeline-run-123"))
 		})
 
 		It("can append labels coming from Application to IntegrationPipelineRun and making sure that label values matches application", func() {
