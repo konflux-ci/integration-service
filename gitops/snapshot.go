@@ -520,9 +520,9 @@ func IsSnapshotValid(snapshot *applicationapiv1alpha1.Snapshot) bool {
 	return false
 }
 
-// IsSnapshotIntegrationStatusMarkedAsFinished returns true if snapshot is marked as finished
+// IsSnapshotIntegrationStatusMarkedAsFinished returns true if snapshot is marked as finished or canceled
 func IsSnapshotIntegrationStatusMarkedAsFinished(snapshot *applicationapiv1alpha1.Snapshot) bool {
-	return IsSnapshotStatusConditionSet(snapshot, AppStudioIntegrationStatusCondition, metav1.ConditionTrue, AppStudioIntegrationStatusFinished)
+	return IsSnapshotStatusConditionSet(snapshot, AppStudioIntegrationStatusCondition, metav1.ConditionTrue, AppStudioIntegrationStatusFinished) || IsSnapshotStatusConditionSet(snapshot, AppStudioIntegrationStatusCondition, metav1.ConditionTrue, AppStudioIntegrationStatusCanceled)
 }
 
 // IsSnapshotStatusConditionSet checks if the condition with the conditionType in the status of Snapshot has been marked as the conditionStatus and reason.
