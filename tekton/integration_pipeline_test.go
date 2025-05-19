@@ -19,13 +19,14 @@ package tekton_test
 import (
 	"bytes"
 	"fmt"
+	"os"
+	"time"
+
 	"github.com/konflux-ci/integration-service/api/v1beta2"
 	"github.com/konflux-ci/integration-service/helpers"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/tonglil/buflogr"
-	"os"
-	"time"
 
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
 	"github.com/konflux-ci/integration-service/gitops"
@@ -58,6 +59,7 @@ var _ = Describe("Integration pipeline", func() {
 		integrationTestScenarioBundle   *v1beta2.IntegrationTestScenario
 		enterpriseContractTestScenario  *v1beta2.IntegrationTestScenario
 		extraParams                     *ExtraParams
+		buf                             bytes.Buffer
 	)
 
 	BeforeEach(func() {
@@ -242,7 +244,7 @@ var _ = Describe("Integration pipeline", func() {
 		newIntegrationBundlePipelineRun, err = tekton.NewIntegrationPipelineRun(k8sClient, ctx, prefix, namespace, *integrationTestScenarioBundle)
 		Expect(err).NotTo(HaveOccurred())
 		newIntegrationBundlePipelineRun = newIntegrationBundlePipelineRun.WithIntegrationLabels(integrationTestScenarioBundle).
-			WithSnapshot(hasSnapshot).
+			WithSnapshot(hasSnapshot, buflogr.NewWithBuffer(&buf)).
 			WithApplication(hasApp)
 		Expect(k8sClient.Create(ctx, newIntegrationBundlePipelineRun.AsPipelineRun())).Should(Succeed())
 
@@ -250,7 +252,7 @@ var _ = Describe("Integration pipeline", func() {
 		Expect(err).NotTo(HaveOccurred())
 		enterpriseContractPipelineRun = enterpriseContractPipelineRun.WithIntegrationLabels(enterpriseContractTestScenario).
 			WithIntegrationAnnotations(enterpriseContractTestScenario).
-			WithSnapshot(hasSnapshot).
+			WithSnapshot(hasSnapshot, buflogr.NewWithBuffer(&buf)).
 			WithExtraParams(enterpriseContractTestScenario.Spec.Params).
 			WithApplication(hasApp)
 		Expect(k8sClient.Create(ctx, enterpriseContractPipelineRun.AsPipelineRun())).Should(Succeed())
@@ -422,8 +424,25 @@ var _ = Describe("Integration pipeline", func() {
 				To(Equal(integrationTestScenarioGit.Namespace))
 		})
 
+		//
+		It("updates the log-url annotation when copied from the snapshot", func() {
+			// Set up a snapshot with the log-url annotation
+			snapshotWithLogURL := hasSnapshot.DeepCopy()
+			if snapshotWithLogURL.Annotations == nil {
+				snapshotWithLogURL.Annotations = make(map[string]string)
+			}
+			snapshotWithLogURL.Annotations["pac.test.appstudio.openshift.io/log-url"] = "https://console.redhat.com/preview/application-pipeline/ns/rhtap-shared-team-tenant/pipelinerun/build-pipeline-run-123"
+
+			// Apply the snapshot to the integration pipeline run
+			newIntegrationPipelineRun.WithSnapshot(snapshotWithLogURL, buflogr.NewWithBuffer(&buf))
+
+			// Verify that the log-url annotation exists but has been reset
+			Expect(newIntegrationPipelineRun.Annotations).To(HaveKey("pac.test.appstudio.openshift.io/log-url"))
+			Expect(newIntegrationPipelineRun.Annotations["pac.test.appstudio.openshift.io/log-url"]).To(Equal("https://console.redhat.com/openshift/pipelines/ns/" + newIntegrationPipelineRun.GetNamespace() + "/pipelineruns/" + newIntegrationPipelineRun.GetName()))
+		})
+
 		It("can append labels that comes from Snapshot to IntegrationPipelineRun and make sure that label value matches the snapshot and component names", func() {
-			newIntegrationPipelineRun.WithSnapshot(hasSnapshot)
+			newIntegrationPipelineRun.WithSnapshot(hasSnapshot, buflogr.NewWithBuffer(&buf))
 			Expect(newIntegrationPipelineRun.Labels["appstudio.openshift.io/snapshot"]).
 				To(Equal(hasSnapshot.Name))
 			Expect(newIntegrationPipelineRun.Labels["appstudio.openshift.io/component"]).

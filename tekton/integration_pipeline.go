@@ -17,11 +17,16 @@ limitations under the License.
 package tekton
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"strings"
+	"text/template"
+
+	"github.com/konflux-ci/integration-service/gitops"
+	"github.com/konflux-ci/integration-service/helpers"
 
 	"os"
 	"time"
@@ -110,6 +115,16 @@ var (
 // IntegrationPipelineRun is a PipelineRun alias, so we can add new methods to it in this file.
 type IntegrationPipelineRun struct {
 	tektonv1.PipelineRun
+}
+
+// SummaryTemplateData holds the data necessary to construct a PipelineRun summary.
+type SummaryTemplateData struct {
+	TaskRuns               []*helpers.TaskRun
+	PipelineRunName        string
+	Namespace              string
+	PRGroup                string
+	ComponentSnapshotInfos []*gitops.ComponentSnapshotInfo
+	Logger                 logr.Logger
 }
 
 // AsPipelineRun casts the IntegrationPipelineRun to PipelineRun, so it can be used in the Kubernetes client.
@@ -320,7 +335,7 @@ func (r *IntegrationPipelineRun) WithExtraParams(params []v1beta2.PipelineParame
 
 // WithSnapshot adds a param containing the Snapshot as a json string to the integration PipelineRun.
 // It also adds the Snapshot name label and copies the Component name label if it exists
-func (r *IntegrationPipelineRun) WithSnapshot(snapshot *applicationapiv1alpha1.Snapshot) *IntegrationPipelineRun {
+func (r *IntegrationPipelineRun) WithSnapshot(snapshot *applicationapiv1alpha1.Snapshot, logger logr.Logger) *IntegrationPipelineRun {
 	// We ignore the error here because none should be raised when marshalling the spec of a CRD.
 	// If we end up deciding it is useful, we will need to pass the errors through the chain and
 	// add something like a `Complete` function that returns the final object and error.
@@ -349,6 +364,12 @@ func (r *IntegrationPipelineRun) WithSnapshot(snapshot *applicationapiv1alpha1.S
 		_ = metadata.CopyLabelsByPrefix(&snapshot.ObjectMeta, &r.ObjectMeta, prefix)
 	}
 
+	// If the Annotation is PaC log-url, we need to set the value to the console URL of the PipelineRun
+	if metadata.HasAnnotation(r, PipelinesAsCodePrefix+"/log-url") {
+
+		pipelineRunConsoleURL := FormatConsolePipelineURL(r.Name, r.Namespace, logger)
+		_ = metadata.SetAnnotation(r, PipelinesAsCodePrefix+"/log-url", pipelineRunConsoleURL)
+	}
 	return r
 }
 
@@ -444,4 +465,19 @@ func (r *IntegrationPipelineRun) WithIntegrationTimeouts(integrationTestScenario
 	}
 
 	return r
+}
+
+// FormatConsolePipelineURL accepts a name of application, pipelinerun, namespace and returns a complete pipelineURL.
+func FormatConsolePipelineURL(pipelinerun string, namespace string, logger logr.Logger) string {
+	console_url := os.Getenv("CONSOLE_URL")
+	if console_url == "" {
+		return "https://CONSOLE_URL_NOT_AVAILABLE"
+	}
+	buf := bytes.Buffer{}
+	data := SummaryTemplateData{PipelineRunName: pipelinerun, Namespace: namespace}
+	t := template.Must(template.New("").Parse(console_url))
+	if err := t.Execute(&buf, data); err != nil {
+		logger.Error(err, "Error occured when executing template.")
+	}
+	return buf.String()
 }
