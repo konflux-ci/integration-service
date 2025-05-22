@@ -771,6 +771,7 @@ func (a *Adapter) createIntegrationPipelineRun(application *applicationapiv1alph
 		WithIntegrationLabels(integrationTestScenario).
 		WithIntegrationAnnotations(integrationTestScenario).
 		WithApplication(a.application).
+		WithServiceAccount(a.generateServiceAccountNameForSnapshot(snapshot)).
 		WithExtraParams(integrationTestScenario.Spec.Params).
 		WithFinalizer(h.IntegrationPipelineRunFinalizer).
 		WithIntegrationTimeouts(integrationTestScenario, a.logger.Logger)
@@ -1102,4 +1103,10 @@ func (a *Adapter) cancelAllPipelineRunsForSnapshot(snapshot *applicationapiv1alp
 		}
 	}
 	return nil
+}
+
+// generateServiceAccountNameForSnapshot generates the service account name that should be used for
+// integration pipelineRuns for a given snapshot - this function is extracted here to facilitate future changes
+func (a *Adapter) generateServiceAccountNameForSnapshot(snapshot *applicationapiv1alpha1.Snapshot) string {
+	return fmt.Sprintf("%s-pull", snapshot.Spec.Application)
 }
