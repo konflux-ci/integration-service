@@ -1,5 +1,5 @@
 /*
-Copyright 2014 Google Inc. All rights reserved.
+Copyright 2024 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,5 +14,23 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// Package fuzz is a library for populating go objects with random values.
-package fuzz
+package modes
+
+import (
+	"github.com/fxamacker/cbor/v2"
+)
+
+var Diagnostic cbor.DiagMode = func() cbor.DiagMode {
+	opts := Decode.DecOptions()
+	diagnostic, err := cbor.DiagOptions{
+		ByteStringText: true,
+
+		MaxNestedLevels:  opts.MaxNestedLevels,
+		MaxArrayElements: opts.MaxArrayElements,
+		MaxMapPairs:      opts.MaxMapPairs,
+	}.DiagMode()
+	if err != nil {
+		panic(err)
+	}
+	return diagnostic
+}()
