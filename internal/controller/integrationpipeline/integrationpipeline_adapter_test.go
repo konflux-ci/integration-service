@@ -18,9 +18,10 @@ package integrationpipeline
 
 import (
 	"fmt"
-	"k8s.io/apimachinery/pkg/types"
 	"reflect"
 	"time"
+
+	"k8s.io/apimachinery/pkg/types"
 
 	"github.com/konflux-ci/integration-service/api/v1beta2"
 	"github.com/konflux-ci/integration-service/gitops"
@@ -416,6 +417,31 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			detail, ok := statuses.GetScenarioStatus(integrationTestScenario.Name)
 			Expect(ok).To(BeTrue())
 			Expect(detail.Status).To(Equal(intgteststat.IntegrationTestStatusTestPassed))
+		})
+
+		It("ensures pipeline run is annotated with console URL", func() {
+
+			// Setup annotations for testing
+			if integrationPipelineRunComponent.Annotations == nil {
+				integrationPipelineRunComponent.Annotations = make(map[string]string)
+			}
+
+			// First, let's update the client cache with our PipelineRun
+			Expect(k8sClient.Update(ctx, integrationPipelineRunComponent)).Should(Succeed())
+
+			result, err := adapter.EnsureStatusReportedInSnapshot()
+			Expect(!result.CancelRequest && err == nil).To(BeTrue())
+
+			// Verify that the annotation was added
+			updatedPR := &tektonv1.PipelineRun{}
+			err = k8sClient.Get(ctx, types.NamespacedName{
+				Name:      integrationPipelineRunComponent.Name,
+				Namespace: integrationPipelineRunComponent.Namespace,
+			}, updatedPR)
+			Expect(err).ToNot(HaveOccurred())
+
+			// Check for the annotation - it may be empty in tests since FormatPipelineURL might return empty in test env
+			Expect(updatedPR.Annotations).To(HaveKey("pac.test.appstudio.openshift.io/log-url"))
 		})
 
 		When("integration pipeline failed", func() {

@@ -445,3 +445,16 @@ func (r *IntegrationPipelineRun) WithIntegrationTimeouts(integrationTestScenario
 
 	return r
 }
+
+// SetAnnotateIntegrationPipelineRun sets annotation for a build pipelineRun in defined context and returns that pipeline
+func SetAnnotateIntegrationPipelineRun(ctx context.Context, cl client.Client, pipelineRun *tektonv1.PipelineRun, key, value string) error {
+	patch := client.MergeFrom(pipelineRun.DeepCopy())
+
+	_ = metadata.SetAnnotation(&pipelineRun.ObjectMeta, key, value)
+
+	err := cl.Patch(ctx, pipelineRun, patch)
+	if err != nil {
+		return err
+	}
+	return nil
+}
