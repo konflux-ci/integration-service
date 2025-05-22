@@ -18,9 +18,11 @@ package integrationpipeline
 
 import (
 	"fmt"
-	"k8s.io/apimachinery/pkg/types"
+	"os"
 	"reflect"
 	"time"
+
+	"k8s.io/apimachinery/pkg/types"
 
 	"github.com/konflux-ci/integration-service/api/v1beta2"
 	"github.com/konflux-ci/integration-service/gitops"
@@ -1040,4 +1042,60 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			Expect(detail).To(ContainSubstring("Integration test passed"))
 		})
 	})
+
+	When("EnsureIntegrationPipelineRunLogURL is called with a PLR with a log URL", func() {
+		var testPipelineRun *tektonv1.PipelineRun
+		BeforeEach(func() {
+			testPipelineRun = &tektonv1.PipelineRun{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-logurl-pipelinerun",
+					Namespace: "default",
+					Annotations: map[string]string{
+						"some": "annotation",
+					},
+					Labels: map[string]string{
+						"appstudio.openshift.io/application": "application-sample",
+						// Add any other labels your log URL generator expects
+					},
+				},
+				Spec: tektonv1.PipelineRunSpec{
+					PipelineRef: &tektonv1.PipelineRef{
+						Name: "some-pipeline",
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, testPipelineRun)).Should(Succeed())
+			consoleURL := fmt.Sprintf("https://definetly.not.prod/preview/application-pipeline/ns/%s/pipelinerun/%s", testPipelineRun.Namespace, testPipelineRun.Name)
+			os.Setenv("CONSOLE_URL", consoleURL)
+			adapter = NewAdapter(ctx, testPipelineRun, hasApp, hasSnapshot, logger, loader.NewMockLoader(), k8sClient)
+		})
+
+		AfterEach(func() {
+			err := k8sClient.Delete(ctx, testPipelineRun)
+			Expect(err == nil || k8serrors.IsNotFound(err)).To(BeTrue())
+		})
+
+		It("should annotate the PipelineRun with a log URL if available", func() {
+			// Call the new public method under test
+			logURLKey := "pac.test.appstudio.openshift.io/log-url"
+			Eventually(func() map[string]string {
+				// Call the method under test
+				_, err := adapter.EnsureIntegrationPipelineRunLogURL()
+				Expect(err).ToNot(HaveOccurred())
+
+				// Fetch the updated PipelineRun
+				updatedPR := &tektonv1.PipelineRun{}
+				err = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      testPipelineRun.Name,
+					Namespace: testPipelineRun.Namespace,
+				}, updatedPR)
+				Expect(err).ToNot(HaveOccurred())
+
+				return updatedPR.Annotations
+			}).Should(HaveKey(logURLKey))
+
+		})
+
+	})
+
 })
