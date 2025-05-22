@@ -26,6 +26,7 @@ import (
 	h "github.com/konflux-ci/integration-service/helpers"
 	"github.com/konflux-ci/integration-service/loader"
 	intgteststat "github.com/konflux-ci/integration-service/pkg/integrationteststatus"
+	"github.com/konflux-ci/integration-service/status"
 	"github.com/konflux-ci/integration-service/tekton"
 
 	"github.com/konflux-ci/operator-toolkit/controller"
@@ -111,6 +112,25 @@ func (a *Adapter) EnsureStatusReportedInSnapshot() (controller.OperationResult, 
 	return controller.ContinueProcessing()
 }
 
+// EnsureIntegrationPipelineRunLogURL ensures that the integration pipeline run log URL is annotated if available.
+func (a *Adapter) EnsureIntegrationPipelineRunLogURL() (controller.OperationResult, error) {
+	// var err error
+	integrationPipelineRunURL := status.FormatPipelineURL(a.pipelineRun.Name, a.pipelineRun.Namespace, a.logger.Logger)
+	if integrationPipelineRunURL != "" {
+		err := a.annotateIntegrationPipelineRunLogURL(
+			a.context,
+			a.client,
+			a.pipelineRun,
+			tekton.PipelinesAsCodePrefix+"/log-url",
+			integrationPipelineRunURL,
+		)
+		if err != nil {
+			return controller.RequeueWithError(err)
+		}
+	}
+	return controller.ContinueProcessing()
+}
+
 // GetIntegrationPipelineRunStatus checks the Tekton results for a given PipelineRun and returns status of test.
 func (a *Adapter) GetIntegrationPipelineRunStatus(ctx context.Context, adapterClient client.Client, pipelineRun *tektonv1.PipelineRun) (intgteststat.IntegrationTestStatus, string, error) {
 	// Check if the pipelineRun finished from the condition of status
@@ -150,4 +170,27 @@ func (a *Adapter) GetIntegrationPipelineRunStatus(ctx context.Context, adapterCl
 	}
 
 	return intgteststat.IntegrationTestStatusTestPassed, "Integration test passed", nil
+}
+
+// annotateIntegrationPipelineRunLogURL adds to ITS PLR the PaC annotation with the log URL in console
+func (a *Adapter) annotateIntegrationPipelineRunLogURL(ctx context.Context, adapterClient client.Client, pipelineRun *tektonv1.PipelineRun, annotation, value string) error {
+	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		var err error
+		a.pipelineRun, err = a.loader.GetPipelineRun(a.context, a.client, a.pipelineRun.Name, a.pipelineRun.Namespace)
+		if err != nil {
+			return err
+		}
+		patch := client.MergeFrom(a.pipelineRun.DeepCopy())
+		if a.pipelineRun.Annotations == nil {
+			a.pipelineRun.Annotations = make(map[string]string)
+		}
+		a.pipelineRun.Annotations[annotation] = value
+
+		err = adapterClient.Patch(ctx, a.pipelineRun, patch)
+		if err == nil {
+			a.logger.LogAuditEvent("Updated integration pipelineRun", pipelineRun, h.LogActionUpdate,
+				"log-url", value)
+		}
+		return err
+	})
 }
