@@ -517,5 +517,14 @@ var _ = Describe("Integration pipeline", func() {
 				"test.appstudio.openshift.io/future": "future",
 			}))
 		})
+
+		It("sets the service account correctly", func() {
+			serviceAccountName := "application-pull"
+
+			ipr := tekton.IntegrationPipelineRun{}
+			ipr.WithServiceAccount(serviceAccountName)
+
+			Expect(ipr.Spec.TaskRunTemplate.ServiceAccountName).To(Equal(serviceAccountName))
+		})
 	})
 })

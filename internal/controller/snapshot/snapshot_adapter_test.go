@@ -1117,6 +1117,19 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			Expect(found).To(BeFalse())
 		})
 
+		It("ensures serviceAccount is generated correctly for the Integration test PLR", func() {
+			expectedServiceAccountName := fmt.Sprintf("%s-pull", hasApp.Name)
+			serviceAccountName := adapter.generateServiceAccountNameForSnapshot(hasSnapshot)
+			Expect(serviceAccountName).ToNot(BeNil())
+			Expect(serviceAccountName).To(Equal(expectedServiceAccountName))
+
+			pipelineRun, err := adapter.createIntegrationPipelineRun(hasApp, integrationTestScenario, hasSnapshot)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(pipelineRun).ToNot(BeNil())
+
+			Expect(pipelineRun.Spec.TaskRunTemplate.ServiceAccountName).To(Equal(serviceAccountName))
+		})
+
 		When("pull request updates repo with integration test", func() {
 
 			const (
