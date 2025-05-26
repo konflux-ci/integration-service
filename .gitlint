@@ -2,6 +2,7 @@
 contrib=contrib-title-conventional-commits,CC1
 extra-path=.github/gitlint
 ignore=T5
+regex-style-search=True
 
 [title-max-length]
 line-length=72
@@ -14,4 +15,4 @@ line-length=72
 [contrib-title-conventional-commits]
 
 [ignore-by-author-name]
-regex=(.*)(dependabot|red-hat-konflux)(.*)
+regex=.*(dependabot|red-hat-konflux|konflux).*
