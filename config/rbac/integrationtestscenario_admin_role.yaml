@@ -24,4 +24,4 @@ rules:
   resources:
   - integrationtestscenarios/status
   verbs:
-  - get
+  - '*'
