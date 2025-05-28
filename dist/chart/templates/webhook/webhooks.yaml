@@ -20,7 +20,7 @@ webhooks:
         name: webhook-service
         namespace: system
         path: /mutate-appstudio-redhat-com-v1beta2-integrationtestscenario
-    failurePolicy: Fail
+    failurePolicy: Ignore
     rules:
     - apiGroups:
       - appstudio.redhat.com
@@ -53,7 +53,7 @@ webhooks:
         name: integration-service-webhook-service
         namespace: {{ .Values.namespace | default .Release.Namespace }}
         path: /validate-appstudio-redhat-com-v1beta2-integrationtestscenario
-    failurePolicy: Fail
+    failurePolicy: Ignore
     sideEffects: None
     admissionReviewVersions:
       - v1
@@ -74,7 +74,7 @@ webhooks:
         name: integration-service-webhook-service
         namespace: {{ .Values.namespace | default .Release.Namespace }}
         path: /validate-appstudio-redhat-com-v1beta2-integrationtestscenario
-    failurePolicy: Fail
+    failurePolicy: Ignore
     sideEffects: None
     admissionReviewVersions:
       - v1
