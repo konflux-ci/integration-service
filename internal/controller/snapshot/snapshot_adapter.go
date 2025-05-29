@@ -269,9 +269,14 @@ func (a *Adapter) EnsureIntegrationPipelineRunsExist() (controller.OperationResu
 				a.logger.Info("IntegrationTestScenario is invalid, will not create pipelineRun for it",
 					"integrationTestScenario.Name", integrationTestScenario.Name)
 				scenarioStatusCondition := meta.FindStatusCondition(integrationTestScenario.Status.Conditions, h.IntegrationTestScenarioValid)
+				// prevents a race condition where the scenario has not been validated yet when a new snapshot is created
+				message := ""
+				if scenarioStatusCondition != nil {
+					message = scenarioStatusCondition.Message
+				}
 				testStatuses.UpdateTestStatusIfChanged(
 					integrationTestScenario.Name, intgteststat.IntegrationTestStatusTestInvalid,
-					fmt.Sprintf("IntegrationTestScenario '%s' is invalid: %s", integrationTestScenario.Name, scenarioStatusCondition.Message))
+					fmt.Sprintf("IntegrationTestScenario '%s' is invalid: %s", integrationTestScenario.Name, message))
 				continue
 			}
 			// Check if an existing integration pipelineRun is registered in the Snapshot's status
