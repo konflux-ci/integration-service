@@ -125,9 +125,9 @@ func NewIntegrationPipelineRun(client client.Client, ctx context.Context, prefix
 	resolver := integrationTestScenario.Spec.ResolverRef.Resolver
 	resourceKind := integrationTestScenario.Spec.ResolverRef.ResourceKind
 	tektonResolverParams := generateTektonResolverParams(resolverParams)
-	if resourceKind == ResourceKindPipeline || resourceKind == "" {
+	if strings.EqualFold(resourceKind, ResourceKindPipeline) || resourceKind == "" {
 		return generateIntegrationPipelineRunFromPipelineResolver(prefix, namespace, resolver, tektonResolverParams), nil
-	} else if resourceKind == ResourceKindPipelineRun {
+	} else if strings.EqualFold(resourceKind, ResourceKindPipelineRun) {
 		base64plr, err := getPipelineRunYamlFromPipelineRunResolver(client, ctx, prefix, namespace, resolver, tektonResolverParams)
 		if err != nil {
 			return nil, err
