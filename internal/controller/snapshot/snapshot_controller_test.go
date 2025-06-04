@@ -231,7 +231,18 @@ var _ = Describe("SnapshotController", func() {
 			return err == nil && hasSnapshot.Spec.Application == "im-a-ghost"
 		}, time.Second*20, time.Second*2).Should(BeTrue())
 
-		result, err := snapshotReconciler.Reconcile(ctx, req)
+		// Use Eventually to ensure update is reflected in control pane cache
+		var result ctrl.Result
+		var err error
+		Eventually(func() bool {
+			result, err = snapshotReconciler.Reconcile(ctx, req)
+			newSnapshot := &applicationapiv1alpha1.Snapshot{}
+			err = k8sClient.Get(ctx, types.NamespacedName{
+				Namespace: hasSnapshot.Namespace,
+				Name:      hasSnapshot.Name,
+			}, newSnapshot)
+			return newSnapshot.Spec.Application == "im-a-ghost"
+		}, time.Second*20, time.Second*2).Should(BeTrue())
 		Expect(result).To(Equal(ctrl.Result{}))
 		Expect(err).ToNot(HaveOccurred())
 		Eventually(func() bool {
