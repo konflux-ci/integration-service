@@ -133,13 +133,14 @@ func (a *Adapter) EnsureIntegrationPipelineRunLogURL() (controller.OperationResu
 
 // GetIntegrationPipelineRunStatus checks the Tekton results for a given PipelineRun and returns status of test.
 func (a *Adapter) GetIntegrationPipelineRunStatus(ctx context.Context, adapterClient client.Client, pipelineRun *tektonv1.PipelineRun) (intgteststat.IntegrationTestStatus, string, error) {
+	integrationPipelineRunURL := status.FormatPipelineURL(pipelineRun.Name, pipelineRun.Namespace, a.logger.Logger)
 	// Check if the pipelineRun finished from the condition of status
 	if !h.HasPipelineRunFinished(pipelineRun) {
 		// Mark the pipelineRun's status as "Deleted" if its not finished yet and is marked for deletion (with a non-nil deletionTimestamp)
 		if pipelineRun.GetDeletionTimestamp() != nil {
 			return intgteststat.IntegrationTestStatusDeleted, fmt.Sprintf("Integration test which is running as pipeline run '%s', has been deleted", pipelineRun.Name), nil
 		} else {
-			return intgteststat.IntegrationTestStatusInProgress, fmt.Sprintf("Integration test is running as pipeline run '%s'", pipelineRun.Name), nil
+			return intgteststat.IntegrationTestStatusInProgress, fmt.Sprintf("Integration test is running as pipeline run '%s'", integrationPipelineRunURL), nil
 		}
 	}
 
