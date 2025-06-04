@@ -1125,14 +1125,33 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			)
 
 			BeforeEach(func() {
-				hasSnapshotPR.Annotations[gitops.SnapshotGitSourceRepoURLAnnotation] = sourceRepoUrl
+				hasSnapshotPR.Annotations[gitops.PipelineAsCodeGitSourceURLAnnotation] = sourceRepoUrl
 				hasSnapshotPR.Annotations[gitops.PipelineAsCodeSHAAnnotation] = sourceRepoRef
 				hasSnapshotPR.Annotations[gitops.PipelineAsCodeRepoURLAnnotation] = targetRepoUrl
 				hasSnapshotPR.Annotations[gitops.PipelineAsCodeTargetBranchAnnotation] = "main"
 			})
 
 			It("pullrequest source repo reference and URL should be used", func() {
-				pipelineRun, err := adapter.createIntegrationPipelineRun(hasApp, integrationTestScenario, hasSnapshotPR)
+				integrationTestScenarioWithTrailingSlash := integrationTestScenario.DeepCopy()
+				integrationTestScenarioWithTrailingSlash.Spec.ResolverRef = v1beta2.ResolverRef{
+					Resolver: "git",
+					Params: []v1beta2.ResolverParameter{
+						{
+							Name:  "url",
+							Value: targetRepoUrl + "/",
+						},
+						{
+							Name:  "revision",
+							Value: "main",
+						},
+						{
+							Name:  "pathInRepo",
+							Value: "pipelineruns/integration_pipelinerun_pass.yaml",
+						},
+					},
+				}
+
+				pipelineRun, err := adapter.createIntegrationPipelineRun(hasApp, integrationTestScenarioWithTrailingSlash, hasSnapshotPR)
 				Expect(err).ToNot(HaveOccurred())
 				Expect(pipelineRun).ToNot(BeNil())
 
@@ -1142,7 +1161,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 				for _, param := range pipelineRun.Spec.PipelineRef.Params {
 					if param.Name == tekton.TektonResolverGitParamURL {
 						foundUrl = true
-						Expect(param.Value.StringVal).To(Equal(targetRepoUrl + ".git")) // must have .git suffix
+						Expect(param.Value.StringVal).To(Equal(sourceRepoUrl + ".git")) // must have .git suffix
 					}
 					if param.Name == tekton.TektonResolverGitParamRevision {
 						foundRevision = true

@@ -716,7 +716,7 @@ func urlToGitUrl(url string) string {
 	if strings.HasSuffix(url, ".git") {
 		return url
 	}
-	return url + ".git"
+	return strings.TrimSuffix(url, "/") + ".git"
 }
 
 // shouldUpdateIntegrationTestGitResolver checks if the integration test resolver should be updated based on the source repo
