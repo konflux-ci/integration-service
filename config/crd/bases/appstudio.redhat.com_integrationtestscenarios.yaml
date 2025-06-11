@@ -517,6 +517,12 @@ spec:
                   - name
                   type: object
                 type: array
+              requiredBy:
+                description: List of other integration tests which must be completed
+                  prior
+                items:
+                  type: string
+                type: array
               resolverRef:
                 description: Tekton Resolver where to store the Tekton resolverRef
                   trigger Tekton pipeline used to refer to a Pipeline or Task in a
