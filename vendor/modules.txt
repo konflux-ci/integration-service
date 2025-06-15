@@ -200,7 +200,7 @@ github.com/klauspost/compress/internal/cpuinfo
 github.com/klauspost/compress/internal/snapref
 github.com/klauspost/compress/zstd
 github.com/klauspost/compress/zstd/internal/xxhash
-# github.com/konflux-ci/application-api v0.0.0-20240812090716-e7eb2ecfb409
+# github.com/konflux-ci/application-api v0.0.0-20250324201748-5a9670bf7679
 ## explicit; go 1.19
 github.com/konflux-ci/application-api/api/v1alpha1
 # github.com/konflux-ci/operator-toolkit v0.0.0-20240402130556-ef6dcbeca69d
