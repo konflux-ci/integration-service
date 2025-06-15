@@ -194,7 +194,7 @@ type GitOpsStatus struct {
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
 
-// Component is the Schema for the components API.    For a detailed description with examples, refer to <a href="https://github.com/redhat-appstudio/book/blob/main/book/HAS/hybrid-application-service-api.md"> Hybrid Application Service Kube API </a>
+// Component is the Schema for the components API.    For description, refer to <a href="https://konflux-ci.dev/docs/reference/kube-apis/application-api/"> Hybrid Application Service Kube API </a>
 // +kubebuilder:resource:path=components,shortName=hascmp;hc;comp
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 // +kubebuilder:printcolumn:name="Status",type="string",JSONPath=".status.conditions[-1].status"
