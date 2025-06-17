@@ -20,6 +20,7 @@ import (
 	"crypto/tls"
 	"flag"
 	"os"
+	"time"
 
 	"github.com/konflux-ci/integration-service/internal/controller"
 	imetrics "github.com/konflux-ci/integration-service/pkg/metrics"
@@ -72,12 +73,15 @@ func init() {
 
 func main() {
 	var (
-		metricsAddr          string
-		enableHTTP2          bool
-		enableLeaderElection bool
-		probeAddr            string
-		secureMetrics        bool
-		tlsOpts              []func(*tls.Config)
+		metricsAddr              string
+		enableHTTP2              bool
+		enableLeaderElection     bool
+		probeAddr                string
+		leaderRenewDeadline      time.Duration
+		leaseDuration            time.Duration
+		leaderElectorRetryPeriod time.Duration
+		secureMetrics            bool
+		tlsOpts                  []func(*tls.Config)
 	)
 
 	flag.BoolVar(&enableHTTP2, "enable-http2", false,
@@ -87,6 +91,13 @@ func main() {
 	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
 		"Enable leader election for controller manager. "+
 			"Enabling this will ensure there is only one active controller manager.")
+	flag.DurationVar(&leaderRenewDeadline, "leader-renew-deadline", 10*time.Second,
+		"Leader RenewDeadline is the duration that the acting controlplane "+
+			"will retry refreshing leadership before giving up.")
+	flag.DurationVar(&leaseDuration, "lease-duration", 15*time.Second,
+		"Lease Duration is the duration that non-leader candidates will wait to force acquire leadership.")
+	flag.DurationVar(&leaderElectorRetryPeriod, "leader-elector-retry-period", 2*time.Second, "RetryPeriod is the duration the "+
+		"LeaderElector clients should wait between tries of actions.")
 
 	opts := zap.Options{
 		Development: false,
@@ -147,6 +158,9 @@ func main() {
 		LeaderElection:         enableLeaderElection,
 		Metrics:                metricsServerOptions,
 		WebhookServer:          webhookServer,
+		RenewDeadline:          &leaderRenewDeadline,
+		LeaseDuration:          &leaseDuration,
+		RetryPeriod:            &leaderElectorRetryPeriod,
 		LeaderElectionID:       "03c7e15b.redhat.com",
 	})
 	if err != nil {
