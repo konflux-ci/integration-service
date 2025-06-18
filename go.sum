@@ -770,6 +770,8 @@ k8s.io/kube-openapi v0.0.0-20240403164606-bc84c2ddaf99 h1:w6nThEmGo9zcL+xH1Tu6pj
 k8s.io/kube-openapi v0.0.0-20240403164606-bc84c2ddaf99/go.mod h1:yD4MZYeKMBwQKVht279WycxKyM84kkAx2DPrTXaeb98=
 k8s.io/utils v0.0.0-20241210054802-24370beab758 h1:sdbE21q2nlQtFh65saZY+rRM6x6aJJI8IUa1AmH/qa0=
 k8s.io/utils v0.0.0-20241210054802-24370beab758/go.mod h1:OLgZIPagt7ERELqWJFomSt595RzquPNLL48iOWgYOg0=
+k8s.io/utils v0.0.0-20250604170112-4c0f3b243397 h1:hwvWFiBzdWw1FhfY1FooPn3kzWuJ8tmbZBHi4zVsl1Y=
+k8s.io/utils v0.0.0-20250604170112-4c0f3b243397/go.mod h1:OLgZIPagt7ERELqWJFomSt595RzquPNLL48iOWgYOg0=
 knative.dev/pkg v0.0.0-20240416145024-0f34a8815650 h1:m2ahFUO0L2VrgGDYdyOUFdE6xBd3pLXAJozLJwqLRQM=
 knative.dev/pkg v0.0.0-20240416145024-0f34a8815650/go.mod h1:soFw5ss08G4PU3JiFDKqiZRd2U7xoqcfNpJP1coIXkY=
 rsc.io/binaryregexp v0.2.0/go.mod h1:qTv7/COck+e2FymRvadv62gMdZztPaShugOCi3I+8D8=

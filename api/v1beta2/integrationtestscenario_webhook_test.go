@@ -18,18 +18,38 @@ package v1beta2
 
 import (
 	"fmt"
+	"time"
+
+	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"k8s.io/apimachinery/pkg/api/errors"
 	types "k8s.io/apimachinery/pkg/types"
-	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-var _ = Describe("IntegrationTestScenario webhook", func() {
+var _ = Describe("IntegrationTestScenario webhook", Ordered, func() {
 
-	var integrationTestScenario, integrationTestScenarioInvalidGitResolver *IntegrationTestScenario
+	var (
+		integrationTestScenario                   *IntegrationTestScenario
+		integrationTestScenarioInvalidGitResolver *IntegrationTestScenario
+		hasApp                                    *applicationapiv1alpha1.Application
+	)
+
+	BeforeAll(func() {
+		hasApp = &applicationapiv1alpha1.Application{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "application-sample",
+				Namespace: "default",
+			},
+			Spec: applicationapiv1alpha1.ApplicationSpec{
+				DisplayName: "application-sample",
+				Description: "This is an example application",
+			},
+		}
+		Expect(k8sClient.Create(ctx, hasApp)).Should(Succeed())
+	})
 
 	BeforeEach(func() {
 		integrationTestScenario = &IntegrationTestScenario{
@@ -78,6 +98,11 @@ var _ = Describe("IntegrationTestScenario webhook", func() {
 
 	AfterEach(func() {
 		err := k8sClient.Delete(ctx, integrationTestScenario)
+		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
+	})
+
+	AfterAll(func() {
+		err := k8sClient.Delete(ctx, hasApp)
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 	})
 

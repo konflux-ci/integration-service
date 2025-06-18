@@ -28,7 +28,6 @@ import (
 
 	"golang.org/x/exp/slices"
 	clienterrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/api/meta"
 	ctrl "sigs.k8s.io/controller-runtime"
 
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
@@ -265,20 +264,6 @@ func (a *Adapter) EnsureIntegrationPipelineRunsExist() (controller.OperationResu
 		var errsForPLRCreation error
 		for _, integrationTestScenario := range *integrationTestScenarios {
 			integrationTestScenario := integrationTestScenario //G601
-			if !h.IsScenarioValid(&integrationTestScenario) {
-				a.logger.Info("IntegrationTestScenario is invalid, will not create pipelineRun for it",
-					"integrationTestScenario.Name", integrationTestScenario.Name)
-				scenarioStatusCondition := meta.FindStatusCondition(integrationTestScenario.Status.Conditions, h.IntegrationTestScenarioValid)
-				// prevents a race condition where the scenario has not been validated yet when a new snapshot is created
-				message := ""
-				if scenarioStatusCondition != nil {
-					message = scenarioStatusCondition.Message
-				}
-				testStatuses.UpdateTestStatusIfChanged(
-					integrationTestScenario.Name, intgteststat.IntegrationTestStatusTestInvalid,
-					fmt.Sprintf("IntegrationTestScenario '%s' is invalid: %s", integrationTestScenario.Name, message))
-				continue
-			}
 			// Check if an existing integration pipelineRun is registered in the Snapshot's status
 			// We rely on this because the actual pipelineRun CR may have been pruned by this point
 			integrationTestScenarioStatus, ok := testStatuses.GetScenarioStatus(integrationTestScenario.Name)
