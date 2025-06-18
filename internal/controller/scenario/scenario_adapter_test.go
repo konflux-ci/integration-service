@@ -18,7 +18,6 @@ package scenario
 
 import (
 	"reflect"
-	"time"
 
 	"github.com/konflux-ci/integration-service/loader"
 	. "github.com/onsi/ginkgo/v2"
@@ -127,7 +126,7 @@ var _ = Describe("Scenario Adapter", Ordered, func() {
 	})
 
 	JustBeforeEach(func() {
-		adapter = NewAdapter(ctx, hasApp, integrationTestScenario, logger, loader.NewMockLoader(), k8sClient)
+		adapter = NewAdapter(ctx, integrationTestScenario, logger, loader.NewMockLoader(), k8sClient)
 		Expect(reflect.TypeOf(adapter)).To(Equal(reflect.TypeOf(&Adapter{})))
 	})
 
@@ -142,17 +141,10 @@ var _ = Describe("Scenario Adapter", Ordered, func() {
 	})
 
 	It("can create a new Adapter instance", func() {
-		Expect(reflect.TypeOf(NewAdapter(ctx, hasApp, integrationTestScenario, logger, loader.NewMockLoader(), k8sClient))).To(Equal(reflect.TypeOf(&Adapter{})))
+		Expect(reflect.TypeOf(NewAdapter(ctx, integrationTestScenario, logger, loader.NewMockLoader(), k8sClient))).To(Equal(reflect.TypeOf(&Adapter{})))
 	})
 
 	It("can create a new Adapter instance with invalid scenario", func() {
-		Expect(reflect.TypeOf(NewAdapter(ctx, hasApp, invalidScenario, logger, loader.NewMockLoader(), k8sClient))).To(Equal(reflect.TypeOf(&Adapter{})))
-	})
-
-	It("ensures the integrationTestPipelines are created", func() {
-		Eventually(func() bool {
-			result, err := adapter.EnsureCreatedScenarioIsValid()
-			return !result.CancelRequest && err == nil
-		}, time.Second*20).Should(BeTrue())
+		Expect(reflect.TypeOf(NewAdapter(ctx, invalidScenario, logger, loader.NewMockLoader(), k8sClient))).To(Equal(reflect.TypeOf(&Adapter{})))
 	})
 })
