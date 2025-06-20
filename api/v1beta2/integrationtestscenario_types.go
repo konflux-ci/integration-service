@@ -47,6 +47,8 @@ type IntegrationTestScenarioSpec struct {
 	Params []PipelineParameter `json:"params,omitempty"`
 	// Contexts where this IntegrationTestScenario can be applied
 	Contexts []TestContext `json:"contexts,omitempty"`
+	// List of other integration tests which must be completed prior
+	RequiredBy []string `json:"requiredBy,omitempty"`
 }
 
 // IntegrationTestScenarioStatus defines the observed state of IntegrationTestScenario
