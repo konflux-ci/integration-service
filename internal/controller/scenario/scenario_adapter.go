@@ -18,38 +18,32 @@ package scenario
 
 import (
 	"context"
-	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
+
 	"github.com/konflux-ci/integration-service/api/v1beta2"
 	h "github.com/konflux-ci/integration-service/helpers"
 	"github.com/konflux-ci/integration-service/loader"
 	"github.com/konflux-ci/operator-toolkit/controller"
-	"k8s.io/apimachinery/pkg/api/meta"
-	"reflect"
-	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
 // Adapter holds the objects needed to reconcile a Release.
 type Adapter struct {
-	application *applicationapiv1alpha1.Application
-	scenario    *v1beta2.IntegrationTestScenario
-	logger      h.IntegrationLogger
-	loader      loader.ObjectLoader
-	client      client.Client
-	context     context.Context
+	scenario *v1beta2.IntegrationTestScenario
+	logger   h.IntegrationLogger
+	loader   loader.ObjectLoader
+	client   client.Client
+	context  context.Context
 }
 
 // NewAdapter creates and returns an Adapter instance.
-func NewAdapter(context context.Context, application *applicationapiv1alpha1.Application, scenario *v1beta2.IntegrationTestScenario, logger h.IntegrationLogger, loader loader.ObjectLoader, client client.Client,
+func NewAdapter(context context.Context, scenario *v1beta2.IntegrationTestScenario, logger h.IntegrationLogger, loader loader.ObjectLoader, client client.Client,
 ) *Adapter {
 	return &Adapter{
-		application: application,
-		scenario:    scenario,
-		logger:      logger,
-		loader:      loader,
-		client:      client,
-		context:     context,
+		scenario: scenario,
+		logger:   logger,
+		loader:   loader,
+		client:   client,
+		context:  context,
 	}
 }
 
@@ -66,52 +60,6 @@ func (a *Adapter) EnsureScenarioContainsResourceKind() (controller.OperationResu
 			a.logger.Error(err, "Failed to add ResourceKind to Scenario")
 			return controller.RequeueWithError(err)
 		}
-	}
-
-	return controller.ContinueProcessing()
-}
-
-// EnsureCreatedScenarioIsValid is an operation that ensures created IntegrationTestScenario is valid
-// in case it is, set its owner reference
-func (a *Adapter) EnsureCreatedScenarioIsValid() (controller.OperationResult, error) {
-	// remove finalizer artifacts, see STONEINTG-815
-	if controllerutil.ContainsFinalizer(a.scenario, h.IntegrationTestScenarioFinalizer) {
-		err := h.RemoveFinalizerFromScenario(a.context, a.client, a.logger, a.scenario, h.IntegrationTestScenarioFinalizer)
-		if err != nil {
-			a.logger.Error(err, "Failed to remove finalizer from the Scenario")
-			return controller.RequeueWithError(err)
-		}
-	}
-
-	if a.scenario.DeletionTimestamp != nil {
-		return controller.ContinueProcessing()
-	}
-
-	// Checks if scenario has ownerReference assigned to it
-	if a.scenario.OwnerReferences == nil {
-		patch := client.MergeFrom(a.scenario.DeepCopy())
-		err := ctrl.SetControllerReference(a.application, a.scenario, a.client.Scheme())
-		if err != nil {
-			a.logger.Error(err, "Error setting owner reference of Scenario.")
-			return controller.RequeueWithError(err)
-		}
-		err = a.client.Patch(a.context, a.scenario, patch)
-		if err != nil {
-			a.logger.Error(err, "Failed to update Scenario")
-			return controller.RequeueWithError(err)
-		}
-	}
-
-	// If the scenario status IntegrationTestScenarioValid condition is not defined or false, we set it to Valid
-	if reflect.ValueOf(a.scenario.Status).IsZero() || !meta.IsStatusConditionTrue(a.scenario.Status.Conditions, h.IntegrationTestScenarioValid) {
-		patch := client.MergeFrom(a.scenario.DeepCopy())
-		h.SetScenarioIntegrationStatusAsValid(a.scenario, "IntegrationTestScenario is Valid.")
-		err := a.client.Status().Patch(a.context, a.scenario, patch)
-		if err != nil {
-			a.logger.Error(err, "Failed to update Scenario")
-			return controller.RequeueWithError(err)
-		}
-		a.logger.LogAuditEvent("IntegrationTestScenario marked as Valid", a.scenario, h.LogActionUpdate)
 	}
 
 	return controller.ContinueProcessing()

@@ -17,10 +17,14 @@ limitations under the License.
 package v1beta2
 
 import (
+	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/validation"
 	"k8s.io/apimachinery/pkg/util/validation/field"
+	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
@@ -38,16 +42,21 @@ import (
 var integrationtestscenariolog = logf.Log.WithName("integrationtestscenario-webhook")
 
 func (r *IntegrationTestScenario) SetupWebhookWithManager(mgr ctrl.Manager) error {
+	defaulter := &IntegrationTestScenarioCustomDefaulter{
+		DefaultResolverRefResourceKind: "pipeline",
+		client:                         mgr.GetClient(),
+	}
 	return ctrl.NewWebhookManagedBy(mgr).
 		For(r).
-		WithDefaulter(&IntegrationTestScenarioCustomDefaulter{
-			DefaultResolverRefResourceKind: "pipeline",
-		}).
+		WithDefaulter(defaulter).
 		Complete()
 }
 
+// IntegrationTestScenarioCustomDefaulter is a webhook handler and does not need deepcopy methods.
+// +k8s:deepcopy-gen=false
 type IntegrationTestScenarioCustomDefaulter struct {
 	DefaultResolverRefResourceKind string
+	client                         client.Client
 }
 
 //+kubebuilder:webhook:path=/validate-appstudio-redhat-com-v1beta2-integrationtestscenario,mutating=false,failurePolicy=fail,sideEffects=None,groups=appstudio.redhat.com,resources=integrationtestscenarios,verbs=create;update;delete,versions=v1beta2,name=vintegrationtestscenario.kb.io,admissionReviewVersions=v1
@@ -125,6 +134,11 @@ func (r *IntegrationTestScenario) ValidateCreate() (warnings admission.Warnings,
 		}
 	}
 
+	// Ensure the ownerReference was set by the mutating webhook
+	if ref := r.GetOwnerReferences(); len(ref) == 0 {
+		return nil, fmt.Errorf("Owner reference not set for scenario '%s' in namespace '%s'", r.Name, r.Namespace)
+	}
+
 	return nil, nil
 }
 
@@ -182,7 +196,7 @@ func (r *IntegrationTestScenario) ValidateDelete() (warnings admission.Warnings,
 	return nil, nil
 }
 
-// +kubebuilder:webhook:path=/mutate-appstudio-redhat-com-v1beta2-integrationtestscenario,mutating=true,failurePolicy=fail,sideEffects=None,groups=appstudio.redhat.com,resources=integrationtestscenarios,verbs=create;update;delete,versions=v1beta2,name=dintegrationtestscenario.kb.io,admissionReviewVersions=v1
+// +kubebuilder:webhook:path=/mutate-appstudio-redhat-com-v1beta2-integrationtestscenario,mutating=true,failurePolicy=ignore,sideEffects=None,groups=appstudio.redhat.com,resources=integrationtestscenarios,verbs=create;update;delete,versions=v1beta2,name=dintegrationtestscenario.kb.io,admissionReviewVersions=v1
 
 var _ webhook.CustomDefaulter = &IntegrationTestScenarioCustomDefaulter{}
 
@@ -193,7 +207,57 @@ func (d *IntegrationTestScenarioCustomDefaulter) Default(ctx context.Context, ob
 		return fmt.Errorf("expected an IntegrationTestScenario but got %T", obj)
 	}
 
+	err := addOwnerReference(scenario, d.client)
+	if err != nil {
+		return err
+	}
+
 	d.applyDefaults(scenario)
+	return nil
+}
+
+func addOwnerReference(scenario *IntegrationTestScenario, client client.Client) error {
+	if len(scenario.OwnerReferences) == 0 && scenario.DeletionTimestamp.IsZero() {
+		//application := applicationapiv1alpha1.Application{}
+		//err := client.Get(context.Background(), types.NamespacedName{Name: scenario.Spec.Application, Namespace: scenario.Namespace}, &application)
+		//if err != nil {
+		//	if k8serrors.IsNotFound(err) {
+		//		return fmt.Errorf("Could not find application '%s' in namespace '%s'", scenario.Spec.Application, scenario.Namespace)
+		//	}
+		//	return err
+		//} else {
+		// TODO: remove this - only used for testing purposes
+		application := &applicationapiv1alpha1.Application{
+			TypeMeta: metav1.TypeMeta{
+				APIVersion: "appstudio.redhat.com/v1alpha1",
+				Kind:       "Application",
+			},
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "application-sample",
+				Namespace: "default",
+				UID:       "a123-b456-c789-d012",
+			},
+			Spec: applicationapiv1alpha1.ApplicationSpec{
+				DisplayName: "application-sample",
+				Description: "This is an example application",
+			},
+		}
+		ownerReference := metav1.OwnerReference{
+			APIVersion:         application.APIVersion,
+			Kind:               application.Kind,
+			Name:               application.Name,
+			UID:                application.UID,
+			BlockOwnerDeletion: ptr.To(true),
+			Controller:         ptr.To(false),
+		}
+		scenario.SetOwnerReferences(append(scenario.GetOwnerReferences(), ownerReference))
+		//}
+
+		//err = ctrl.SetControllerReference(application, scenario, a.client.Scheme())
+		//if err != nil {
+		//	return err
+		//}
+	}
 	return nil
 }
 
