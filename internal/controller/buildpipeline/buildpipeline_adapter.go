@@ -720,7 +720,7 @@ func (a *Adapter) isGroupSnapshotExpectedForBuildPLR(pipelineRun *tektonv1.Pipel
 		return false, err
 	}
 	if len(componentsWithOpenPRMR) > 1 {
-		a.logger.Info("there is more than 1 component with open pr or mr found, so group snapshot is expected")
+		a.logger.Info(fmt.Sprintf("there is more than 1 component with open pr or mr found, so group snapshot is expected: %s", componentsWithOpenPRMR))
 		return true, nil
 	}
 
@@ -757,5 +757,6 @@ func (a *Adapter) isGroupSnapshotExpectedForBuildPLR(pipelineRun *tektonv1.Pipel
 		a.logger.Info(fmt.Sprintf("The number %d of components affected by this PR group %s is less than 2, skipping group snapshot status report", len(componentsWithOpenPRMR), prGroup))
 		return false, nil
 	}
+	a.logger.Info(fmt.Sprintf("there is more than 1 component with open pr or mr found, so group snapshot is expected: %s", componentsWithOpenPRMR))
 	return true, nil
 }

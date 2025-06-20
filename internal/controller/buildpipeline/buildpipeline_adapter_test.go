@@ -1740,10 +1740,11 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			})
 
 			result, err := adapter.EnsureIntegrationTestReportedToGitProvider()
-			fmt.Fprintf(GinkgoWriter, "-------test: %v\n", buf.String())
 			expectedLogEntry := "Opened PR/MR in snapshot is found"
 			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
 			expectedLogEntry = "group snapshot is expected to be created for build pipelinerun"
+			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
+			expectedLogEntry = "there is more than 1 component with open pr or mr found, so group snapshot is expected: [component-sample another-component-sample]"
 			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
 			Expect(result.CancelRequest).To(BeFalse())
 			Expect(result.RequeueRequest).To(BeFalse())
