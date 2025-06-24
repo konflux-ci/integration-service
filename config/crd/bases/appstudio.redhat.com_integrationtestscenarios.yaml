@@ -499,6 +499,12 @@ spec:
                   - name
                   type: object
                 type: array
+              dependents:
+                description: List of IntegrationTestScenario which are blocked by
+                  the successful completion of this IntegrationTestScenario
+                items:
+                  type: string
+                type: array
               params:
                 description: Params to pass to the pipeline
                 items:
