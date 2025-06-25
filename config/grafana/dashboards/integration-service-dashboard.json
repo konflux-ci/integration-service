@@ -20,7 +20,7 @@
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 0,
-  "id": 14,
+  "id": 24,
   "links": [],
   "panels": [
     {
@@ -81,8 +81,8 @@
             }
           },
           "mappings": [],
-          "max": 100,
-          "min": 90,
+          "max": 1,
+          "min": 0,
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -125,15 +125,15 @@
         {
           "editorMode": "code",
           "exemplar": true,
-          "expr": "avg_over_time(redhat_appstudio_integrationservice_global_github_app_available[24h]) * 100\n",
+          "expr": "clamp_max(\n  label_replace(\n    label_replace(\n      floor(\n        kube_deployment_status_replicas_available{namespace=\"integration-service\"}\n        /\n        kube_deployment_spec_replicas{namespace=\"integration-service\"}\n      ), \"check\", \"replicas-available\", \"\", \"\"\n    ), \"service\", \"$1\", \"deployment\", \"(.*)\"\n  ),\n  1\n)\n\n",
           "instant": false,
           "interval": "",
-          "legendFormat": "__auto",
+          "legendFormat": "Read replica uptime",
           "range": true,
           "refId": "A"
         }
       ],
-      "title": "GithubApp Availability ",
+      "title": "Integration Service Availability - read replicas",
       "type": "timeseries"
     },
     {
@@ -179,12 +179,12 @@
               "mode": "normal"
             },
             "thresholdsStyle": {
-              "mode": "dashed+area"
+              "mode": "line+area"
             }
           },
           "mappings": [],
           "thresholds": {
-            "mode": "percentage",
+            "mode": "absolute",
             "steps": [
               {
                 "color": "red",
@@ -224,17 +224,21 @@
         {
           "editorMode": "code",
           "exemplar": true,
-          "expr": "avg_over_time(redhat_appstudio_integrationservice_global_github_app_available[24h]) * 100\n",
+          "expr": "avg_over_time(\n  clamp_max(\n    label_replace(\n      label_replace(\n        floor(\n          kube_deployment_status_replicas_available{namespace=\"integration-service\"}\n          /\n          kube_deployment_spec_replicas{namespace=\"integration-service\"}\n        ), \"check\", \"replicas-available\", \"\", \"\"\n      ), \"service\", \"$1\", \"deployment\", \"(.*)\"\n    ),\n    1\n  )[24h:5m]\n) * 100\n\n\n",
           "interval": "",
-          "legendFormat": "__auto",
+          "legendFormat": "99% uptime over 24 hrs required",
           "range": true,
           "refId": "A"
         }
       ],
-      "title": "[Violations] GithubApp Availability",
+      "title": "[Violations] Integration Service Availability - read replicas",
       "type": "timeseries"
     },
     {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "064f2b18-a714-4631-997b-1fe80bb695b5"
+      },
       "description": "Measure the response time it takes to successfully mark/update a Integration Service CR in the Integration controller as in progress from the build PipelineRun is finished",
       "fieldConfig": {
         "defaults": {
@@ -326,6 +330,10 @@
       "type": "timeseries"
     },
     {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "064f2b18-a714-4631-997b-1fe80bb695b5"
+      },
       "description": "90% of requests must take less than 30sec",
       "fieldConfig": {
         "defaults": {
@@ -799,6 +807,204 @@
       "type": "row"
     },
     {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "064f2b18-a714-4631-997b-1fe80bb695b5"
+      },
+      "description": "Measure Integration Service connection to Github",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "%",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 4,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "always",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "line+area"
+            }
+          },
+          "mappings": [],
+          "max": 100,
+          "min": 90,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "transparent",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 30
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 34
+      },
+      "id": 33,
+      "options": {
+        "alertThreshold": true,
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "11.3.0",
+      "targets": [
+        {
+          "editorMode": "code",
+          "exemplar": true,
+          "expr": "avg_over_time(redhat_appstudio_integrationservice_global_github_app_available[24h]) * 100\n",
+          "instant": false,
+          "interval": "",
+          "legendFormat": "__auto",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "GithubApp Availability ",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "064f2b18-a714-4631-997b-1fe80bb695b5"
+      },
+      "description": "Uptime of 99%",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "%",
+            "axisPlacement": "left",
+            "axisSoftMax": 100,
+            "axisSoftMin": 90,
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "bars",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "normal"
+            },
+            "thresholdsStyle": {
+              "mode": "dashed+area"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "percentage",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "transparent",
+                "value": 99
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 34
+      },
+      "id": 34,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "11.3.0",
+      "targets": [
+        {
+          "editorMode": "code",
+          "exemplar": true,
+          "expr": "avg_over_time(redhat_appstudio_integrationservice_global_github_app_available[24h]) * 100\n",
+          "interval": "",
+          "legendFormat": "__auto",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "[Violations] GithubApp Availability",
+      "type": "timeseries"
+    },
+    {
       "description": "Total number of integration PipelineRun created",
       "fieldConfig": {
         "defaults": {
@@ -812,6 +1018,7 @@
             "axisLabel": "",
             "axisPlacement": "auto",
             "barAlignment": 0,
+            "barWidthFactor": 0.6,
             "drawStyle": "line",
             "fillOpacity": 0,
             "gradientMode": "none",
@@ -859,7 +1066,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 34
+        "y": 42
       },
       "id": 2,
       "options": {
@@ -874,6 +1081,7 @@
           "sort": "none"
         }
       },
+      "pluginVersion": "11.3.0",
       "targets": [
         {
           "exemplar": true,
@@ -889,14 +1097,65 @@
     {
       "description": "Total number of snapshots processed by the operator",
       "fieldConfig": {
-        "defaults": {},
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          }
+        },
         "overrides": []
       },
       "gridPos": {
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 34
+        "y": 42
       },
       "id": 4,
       "options": {
@@ -912,7 +1171,7 @@
           "sort": "none"
         }
       },
-      "pluginVersion": "10.4.3",
+      "pluginVersion": "11.3.0",
       "targets": [
         {
           "exemplar": true,
@@ -946,7 +1205,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 42
+        "y": 50
       },
       "id": 8,
       "maxDataPoints": 25,
@@ -988,7 +1247,7 @@
           "unit": "short"
         }
       },
-      "pluginVersion": "10.4.3",
+      "pluginVersion": "11.3.0",
       "targets": [
         {
           "exemplar": true,
@@ -1023,7 +1282,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 42
+        "y": 50
       },
       "id": 10,
       "maxDataPoints": 25,
@@ -1065,7 +1324,7 @@
           "unit": "short"
         }
       },
-      "pluginVersion": "10.4.3",
+      "pluginVersion": "11.3.0",
       "targets": [
         {
           "exemplar": true,
@@ -1089,7 +1348,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 50
+        "y": 58
       },
       "id": 14,
       "maxDataPoints": 25,
@@ -1111,14 +1370,65 @@
     {
       "description": "",
       "fieldConfig": {
-        "defaults": {},
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          }
+        },
         "overrides": []
       },
       "gridPos": {
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 50
+        "y": 58
       },
       "id": 30,
       "interval": "5m",
@@ -1135,7 +1445,7 @@
           "sort": "none"
         }
       },
-      "pluginVersion": "9.1.6",
+      "pluginVersion": "11.3.0",
       "targets": [
         {
           "editorMode": "builder",
@@ -1168,7 +1478,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 58
+        "y": 66
       },
       "id": 27,
       "interval": "5m",
@@ -1231,7 +1541,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 58
+        "y": 66
       },
       "id": 29,
       "maxDataPoints": 25,
