@@ -5,7 +5,7 @@ go 1.23.0
 toolchain go1.23.6
 
 require (
-	github.com/agiledragon/gomonkey/v2 v2.12.0
+	github.com/agiledragon/gomonkey/v2 v2.13.0
 	github.com/bradleyfalzon/ghinstallation/v2 v2.16.0
 	github.com/ghodss/yaml v1.0.0
 	github.com/go-logr/logr v1.4.2
