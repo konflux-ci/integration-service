@@ -11,7 +11,7 @@ webhooks:
       name: webhook-service
       namespace: system
       path: /mutate-appstudio-redhat-com-v1beta2-integrationtestscenario
-  failurePolicy: Fail
+  failurePolicy: Ignore
   name: dintegrationtestscenario.kb.io
   rules:
   - apiGroups:

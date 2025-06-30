@@ -20,6 +20,7 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"go/build"
 	"net"
 	"path/filepath"
 	"testing"
@@ -31,6 +32,8 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
+	toolkit "github.com/konflux-ci/operator-toolkit/test"
 	admissionv1 "k8s.io/api/admission/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/rest"
@@ -66,7 +69,13 @@ var _ = BeforeSuite(func() {
 
 	By("bootstrapping test environment")
 	testEnv = &envtest.Environment{
-		CRDDirectoryPaths:     []string{filepath.Join("..", "..", "config", "crd", "bases")},
+		CRDDirectoryPaths: []string{filepath.Join("..", "..", "config", "crd", "bases"),
+			filepath.Join(
+				build.Default.GOPATH,
+				"pkg", "mod", toolkit.GetRelativeDependencyPath("application-api"),
+				"config", "crd", "bases",
+			),
+		},
 		ErrorIfCRDPathMissing: false,
 		WebhookInstallOptions: envtest.WebhookInstallOptions{
 			Paths: []string{filepath.Join("..", "..", "config", "webhook")},
@@ -83,6 +92,9 @@ var _ = BeforeSuite(func() {
 	Expect(AddToScheme(scheme)).To(Succeed())
 
 	err = admissionv1.AddToScheme(scheme)
+	Expect(err).NotTo(HaveOccurred())
+
+	err = applicationapiv1alpha1.AddToScheme(scheme)
 	Expect(err).NotTo(HaveOccurred())
 
 	//+kubebuilder:scaffold:scheme
