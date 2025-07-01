@@ -152,7 +152,7 @@ func (a *Adapter) createUpdatedSnapshot(snapshotComponents *[]applicationapiv1al
 
 func isComponentMarkedForDeletion(object client.Object) bool {
 	if comp, ok := object.(*applicationapiv1alpha1.Component); ok {
-		return !comp.ObjectMeta.DeletionTimestamp.IsZero()
+		return !comp.DeletionTimestamp.IsZero()
 	}
 	return false
 }

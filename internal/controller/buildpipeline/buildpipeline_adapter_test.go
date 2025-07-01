@@ -699,7 +699,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		It("ensure snapshot will not be created in instance when chains is incomplete", func() {
 			var buf bytes.Buffer
 			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
-			buildPipelineRun.ObjectMeta.Annotations = map[string]string{
+			buildPipelineRun.Annotations = map[string]string{
 				"appstudio.redhat.com/updateComponentOnSuccess": "false",
 				"pipelinesascode.tekton.dev/on-target-branch":   "[main,master]",
 				"build.appstudio.openshift.io/repo":             "https://github.com/devfile-samples/devfile-sample-go-basic?rev=c713067b0e65fb3de50d1f7c457eb51c2ab0dbb0",
@@ -989,14 +989,14 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		It("Can add an annotation to the build pipelinerun", func() {
 			err := tekton.AnnotateBuildPipelineRun(adapter.context, buildPipelineRun, "test", "value", adapter.client)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(buildPipelineRun.ObjectMeta.Annotations["test"]).To(Equal("value"))
+			Expect(buildPipelineRun.Annotations["test"]).To(Equal("value"))
 		})
 
 		It("can annotate the build pipelineRun with the Snapshot name", func() {
 			adapter = NewAdapter(ctx, buildPipelineRun, hasComp, hasApp, logger, loader.NewMockLoader(), k8sClient)
 			err := adapter.annotateBuildPipelineRunWithSnapshot(hasSnapshot)
 			Expect(err).ToNot(HaveOccurred())
-			Expect(adapter.pipelineRun.ObjectMeta.Annotations[tekton.SnapshotNameLabel]).To(Equal(hasSnapshot.Name))
+			Expect(adapter.pipelineRun.Annotations[tekton.SnapshotNameLabel]).To(Equal(hasSnapshot.Name))
 		})
 
 		It("Can annotate the build pipelineRun with the CreateSnapshot annotate", func() {
@@ -1009,21 +1009,21 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			// Get pipeline run from cluster
 			newPipelineRun := new(tektonv1.PipelineRun)
 			err = k8sClient.Get(ctx, types.NamespacedName{
-				Namespace: buildPipelineRun.ObjectMeta.Namespace,
-				Name:      buildPipelineRun.ObjectMeta.Name,
+				Namespace: buildPipelineRun.Namespace,
+				Name:      buildPipelineRun.Name,
 			}, newPipelineRun)
 			Expect(err).NotTo(HaveOccurred())
 
 			// Check that annotation from pipelineRun contains the JSON string we expect
-			Expect(newPipelineRun.ObjectMeta.Annotations[helpers.CreateSnapshotAnnotationName]).NotTo(BeNil())
+			Expect(newPipelineRun.Annotations[helpers.CreateSnapshotAnnotationName]).NotTo(BeNil())
 			var info map[string]string
-			err = json.Unmarshal([]byte(newPipelineRun.ObjectMeta.Annotations[helpers.CreateSnapshotAnnotationName]), &info)
+			err = json.Unmarshal([]byte(newPipelineRun.Annotations[helpers.CreateSnapshotAnnotationName]), &info)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(info["status"]).To(Equal("failed"))
 			Expect(info["message"]).To(Equal("Failed to create snapshot. Error: " + sampleErr.Error()))
 
 			// Check that an attempt to modify a pipelineRun that's being deleted doesn't do anything
-			newPipelineRun.ObjectMeta.DeletionTimestamp = &metav1.Time{Time: time.Now()}
+			newPipelineRun.DeletionTimestamp = &metav1.Time{Time: time.Now()}
 			newSampleErr := errors.New("this is a different sample error")
 			err = tekton.AnnotateBuildPipelineRunWithCreateSnapshotAnnotation(adapter.context, newPipelineRun, adapter.client, newSampleErr)
 			Expect(err).NotTo(HaveOccurred())
@@ -1071,8 +1071,8 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				// Ensure PLR does not have finalizer
 				existingBuildPLR := new(tektonv1.PipelineRun)
 				err := k8sClient.Get(ctx, types.NamespacedName{
-					Namespace: buildPipelineRun.ObjectMeta.Namespace,
-					Name:      buildPipelineRun.ObjectMeta.Name,
+					Namespace: buildPipelineRun.Namespace,
+					Name:      buildPipelineRun.Name,
 				}, existingBuildPLR)
 				Expect(err).ToNot(HaveOccurred())
 				Expect(existingBuildPLR.ObjectMeta.Finalizers).To(BeNil())
@@ -1286,7 +1286,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 
 				var buf bytes.Buffer
 				log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
-				buildPipelineRun.ObjectMeta.Annotations[gitops.SnapshotLabel] = hasSnapshot.Name
+				buildPipelineRun.Annotations[gitops.SnapshotLabel] = hasSnapshot.Name
 				adapter = NewAdapter(ctx, buildPipelineRun, hasComp, hasApp, log, loader.NewMockLoader(), k8sClient)
 				adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 					{
@@ -1321,7 +1321,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 
 				var buf bytes.Buffer
 				log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
-				buildPipelineRun.ObjectMeta.Annotations[gitops.SnapshotLabel] = hasSnapshot.Name
+				buildPipelineRun.Annotations[gitops.SnapshotLabel] = hasSnapshot.Name
 				adapter = NewAdapter(ctx, buildPipelineRun, hasComp, hasApp, log, loader.NewMockLoader(), k8sClient)
 				adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 					{
@@ -1505,7 +1505,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				}, time.Second*10).Should(BeTrue())
 
 				expectedBuildFailureMsg := fmt.Sprintf("build PLR %s failed for component %s so it can't be added to the group Snapshot for PR group %s", buildPipelineRun.Name, hasComp.Name, prGroup)
-				Expect(hasSnapshot.ObjectMeta.Annotations[gitops.PRGroupCreationAnnotation]).Should(ContainSubstring(expectedBuildFailureMsg))
+				Expect(hasSnapshot.Annotations[gitops.PRGroupCreationAnnotation]).Should(ContainSubstring(expectedBuildFailureMsg))
 
 				Eventually(func() bool {
 					_ = adapter.client.Get(adapter.context, types.NamespacedName{
@@ -1515,7 +1515,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 					return metadata.HasAnnotation(buildPipelineRun, gitops.PRGroupCreationAnnotation)
 				}, time.Second*10).Should(BeTrue())
 
-				Expect(buildPipelineRun.ObjectMeta.Annotations[gitops.PRGroupCreationAnnotation]).Should(ContainSubstring(expectedBuildFailureMsg))
+				Expect(buildPipelineRun.Annotations[gitops.PRGroupCreationAnnotation]).Should(ContainSubstring(expectedBuildFailureMsg))
 			})
 		})
 

@@ -94,14 +94,14 @@ func (a *Adapter) EnsureSnapshotExists() (result controller.OperationResult, err
 		return controller.ContinueProcessing()
 	}
 
-	if _, found := a.pipelineRun.ObjectMeta.Annotations[tekton.PipelineRunChainsSignedAnnotation]; !found {
+	if _, found := a.pipelineRun.Annotations[tekton.PipelineRunChainsSignedAnnotation]; !found {
 		a.logger.Error(err, "Not processing the pipelineRun because it's not yet signed with Chains")
 		return controller.ContinueProcessing()
 	}
 
-	if _, found := a.pipelineRun.ObjectMeta.Annotations[tekton.SnapshotNameLabel]; found {
+	if _, found := a.pipelineRun.Annotations[tekton.SnapshotNameLabel]; found {
 		a.logger.Info("The build pipelineRun is already associated with existing Snapshot via annotation",
-			"snapshot.Name", a.pipelineRun.ObjectMeta.Annotations[tekton.SnapshotNameLabel])
+			"snapshot.Name", a.pipelineRun.Annotations[tekton.SnapshotNameLabel])
 		canRemoveFinalizer = true
 		return controller.ContinueProcessing()
 	}
@@ -406,13 +406,13 @@ func (a *Adapter) prepareSnapshotForPipelineRun(pipelineRun *tektonv1.PipelineRu
 
 	snapshot.Labels[gitops.BuildPipelineRunNameLabel] = pipelineRun.Name
 	if pipelineRun.Status.CompletionTime != nil {
-		snapshot.Labels[gitops.BuildPipelineRunFinishTimeLabel] = strconv.FormatInt(pipelineRun.Status.CompletionTime.Time.Unix(), 10)
+		snapshot.Labels[gitops.BuildPipelineRunFinishTimeLabel] = strconv.FormatInt(pipelineRun.Status.CompletionTime.Unix(), 10)
 	} else {
 		snapshot.Labels[gitops.BuildPipelineRunFinishTimeLabel] = strconv.FormatInt(time.Now().Unix(), 10)
 	}
 
 	if pipelineRun.Status.StartTime != nil {
-		snapshot.Annotations[gitops.BuildPipelineRunStartTime] = strconv.FormatInt(pipelineRun.Status.StartTime.Time.Unix(), 10)
+		snapshot.Annotations[gitops.BuildPipelineRunStartTime] = strconv.FormatInt(pipelineRun.Status.StartTime.Unix(), 10)
 	}
 
 	return snapshot, nil
@@ -657,17 +657,18 @@ func getIntegrationTestStatusFromBuildPLR(plr *tektonv1.PipelineRun) intgteststa
 func generateIntgTestStatusDetails(buildPLR *tektonv1.PipelineRun, integrationTestStatus intgteststat.IntegrationTestStatus) (intgteststat.IntegrationTestStatusDetail, error) {
 	details := ""
 	integrationTestStatusDetail := intgteststat.IntegrationTestStatusDetail{}
-	if integrationTestStatus == intgteststat.BuildPLRInProgress {
+	switch integrationTestStatus {
+	case intgteststat.BuildPLRInProgress:
 		details = fmt.Sprintf("build pipelinerun %s/%s is still in progress", buildPLR.Namespace, buildPLR.Name)
-	} else if integrationTestStatus == intgteststat.SnapshotCreationFailed {
+	case intgteststat.SnapshotCreationFailed:
 		if failureReason, ok := buildPLR.Annotations[h.CreateSnapshotAnnotationName]; ok {
 			details = fmt.Sprintf("build pipelinerun %s/%s succeeds but snapshot is not created due to error: %s", buildPLR.Namespace, buildPLR.Name, failureReason)
 		} else {
 			details = fmt.Sprintf("failed to create snapshot but can't find reason from build plr annotation %s", h.CreateSnapshotAnnotationName)
 		}
-	} else if integrationTestStatus == intgteststat.BuildPLRFailed {
+	case intgteststat.BuildPLRFailed:
 		details = fmt.Sprintf("build pipelinerun %s/%s failed, so that snapshot is not created. Please fix build pipelinerun failure and try again.", buildPLR.Namespace, buildPLR.Name)
-	} else {
+	default:
 		return integrationTestStatusDetail, fmt.Errorf("invalid integration Test Status: %s", integrationTestStatus.String())
 	}
 

@@ -172,10 +172,10 @@ func (t *TaskRun) GetTestResult() (*IntegrationTestTaskResult, error) {
 		return nil, fmt.Errorf("error while compiling json data for schema validation: %w", err)
 	}
 
-	for _, taskRunResult := range t.trStatus.TaskRunStatusFields.Results {
+	for _, taskRunResult := range t.trStatus.Results {
 		if taskRunResult.Name == LegacyTestOutputName || taskRunResult.Name == TestOutputName {
 			var testOutput AppStudioTestResult
-			var testResult IntegrationTestTaskResult = IntegrationTestTaskResult{}
+			var testResult = IntegrationTestTaskResult{}
 			var v interface{}
 
 			if err := json.Unmarshal([]byte(taskRunResult.Value.StringVal), &testOutput); err != nil {

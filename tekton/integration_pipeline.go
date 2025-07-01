@@ -194,7 +194,7 @@ func getPipelineRunYamlFromPipelineRunResolver(client client.Client, ctx context
 		return "", err
 	}
 
-	resolutionRequestName := request.ObjectMeta.Name
+	resolutionRequestName := request.Name
 	defer func() {
 		_ = retry.OnError(retry.DefaultBackoff, func(e error) bool { return true }, func() error {
 			return client.Delete(ctx, &request)
@@ -242,7 +242,7 @@ func generateIntegrationPipelineRunFromBase64(base64plr, namespace, defaultPrefi
 		return nil, err
 	}
 
-	pipelineRun.ObjectMeta.Namespace = namespace
+	pipelineRun.Namespace = namespace
 	setGenerateNameForPipelineRun(&pipelineRun, defaultPrefix)
 	return &IntegrationPipelineRun{pipelineRun}, nil
 }
@@ -252,12 +252,12 @@ func generateIntegrationPipelineRunFromBase64(base64plr, namespace, defaultPrefi
 // that.  If it has a Name we convert it to a GenerateName.  Otherwise we use
 // the name of the scenario just like with a remote Pipeline
 func setGenerateNameForPipelineRun(pipelineRun *tektonv1.PipelineRun, defaultPrefix string) {
-	if pipelineRun.ObjectMeta.GenerateName == "" {
-		if pipelineRun.ObjectMeta.Name != "" {
-			pipelineRun.ObjectMeta.GenerateName = fmt.Sprintf("%s-", pipelineRun.ObjectMeta.Name)
-			pipelineRun.ObjectMeta.Name = ""
+	if pipelineRun.GenerateName == "" {
+		if pipelineRun.Name != "" {
+			pipelineRun.GenerateName = fmt.Sprintf("%s-", pipelineRun.Name)
+			pipelineRun.Name = ""
 		} else {
-			pipelineRun.ObjectMeta.GenerateName = defaultPrefix
+			pipelineRun.GenerateName = defaultPrefix
 		}
 	}
 }
@@ -265,15 +265,15 @@ func setGenerateNameForPipelineRun(pipelineRun *tektonv1.PipelineRun, defaultPre
 // Updates git resolver values parameters with values of params specified in the input map
 // updates only exsitings parameters, doens't create new ones
 func (iplr *IntegrationPipelineRun) WithUpdatedTestsGitResolver(params map[string]string) *IntegrationPipelineRun {
-	if iplr.Spec.PipelineRef.ResolverRef.Resolver != TektonResolverGit {
+	if iplr.Spec.PipelineRef.Resolver != TektonResolverGit {
 		// if the resolver is not git-resolver, we cannot update the git ref
 		return iplr
 	}
 
-	for originalParamIndex, originalParam := range iplr.Spec.PipelineRef.ResolverRef.Params {
+	for originalParamIndex, originalParam := range iplr.Spec.PipelineRef.Params {
 		if _, ok := params[originalParam.Name]; ok {
 			// remeber to use the original index to update the value, we cannot update value given by range directly
-			iplr.Spec.PipelineRef.ResolverRef.Params[originalParamIndex].Value.StringVal = params[originalParam.Name]
+			iplr.Spec.PipelineRef.Params[originalParamIndex].Value.StringVal = params[originalParam.Name]
 		}
 	}
 
@@ -331,14 +331,14 @@ func (r *IntegrationPipelineRun) WithSnapshot(snapshot *applicationapiv1alpha1.S
 		StringVal: string(snapshotString),
 	})
 
-	if r.ObjectMeta.Labels == nil {
-		r.ObjectMeta.Labels = map[string]string{}
+	if r.Labels == nil {
+		r.Labels = map[string]string{}
 	}
-	r.ObjectMeta.Labels[SnapshotNameLabel] = snapshot.Name
+	r.Labels[SnapshotNameLabel] = snapshot.Name
 
 	componentLabel, found := snapshot.GetLabels()[ComponentNameLabel]
 	if found {
-		r.ObjectMeta.Labels[ComponentNameLabel] = componentLabel
+		r.Labels[ComponentNameLabel] = componentLabel
 	}
 
 	// copy PipelineRun PAC, build, test and custom annotations/labels from Snapshot to integration test PipelineRun
@@ -354,14 +354,14 @@ func (r *IntegrationPipelineRun) WithSnapshot(snapshot *applicationapiv1alpha1.S
 
 // WithIntegrationLabels adds the type, optional flag and IntegrationTestScenario name as labels to the Integration PipelineRun.
 func (r *IntegrationPipelineRun) WithIntegrationLabels(integrationTestScenario *v1beta2.IntegrationTestScenario) *IntegrationPipelineRun {
-	if r.ObjectMeta.Labels == nil {
-		r.ObjectMeta.Labels = map[string]string{}
+	if r.Labels == nil {
+		r.Labels = map[string]string{}
 	}
-	r.ObjectMeta.Labels[PipelinesTypeLabel] = PipelineTypeTest
-	r.ObjectMeta.Labels[ScenarioNameLabel] = integrationTestScenario.Name
+	r.Labels[PipelinesTypeLabel] = PipelineTypeTest
+	r.Labels[ScenarioNameLabel] = integrationTestScenario.Name
 
 	if metadata.HasLabel(integrationTestScenario, OptionalLabel) {
-		r.ObjectMeta.Labels[OptionalLabel] = integrationTestScenario.Labels[OptionalLabel]
+		r.Labels[OptionalLabel] = integrationTestScenario.Labels[OptionalLabel]
 	}
 
 	return r
@@ -384,10 +384,10 @@ func (r *IntegrationPipelineRun) WithIntegrationAnnotations(its *v1beta2.Integra
 
 // WithApplication adds the name of application as a label to the Integration PipelineRun.
 func (r *IntegrationPipelineRun) WithApplication(application *applicationapiv1alpha1.Application) *IntegrationPipelineRun {
-	if r.ObjectMeta.Labels == nil {
-		r.ObjectMeta.Labels = map[string]string{}
+	if r.Labels == nil {
+		r.Labels = map[string]string{}
 	}
-	r.ObjectMeta.Labels[ApplicationNameLabel] = application.Name
+	r.Labels[ApplicationNameLabel] = application.Name
 
 	return r
 }
@@ -440,7 +440,7 @@ func (r *IntegrationPipelineRun) WithIntegrationTimeouts(integrationTestScenario
 		r.Spec.Timeouts.Tasks.Duration+r.Spec.Timeouts.Finally.Duration > r.Spec.Timeouts.Pipeline.Duration {
 		r.Spec.Timeouts.Pipeline = &metav1.Duration{Duration: r.Spec.Timeouts.Tasks.Duration + r.Spec.Timeouts.Finally.Duration}
 		logger.Info(fmt.Sprintf("Setting the pipeline timeout for %s to be the sum of tasks + finally: %.1f hours", r.Name,
-			r.Spec.Timeouts.Pipeline.Duration.Hours()))
+			r.Spec.Timeouts.Pipeline.Hours()))
 	}
 
 	return r

@@ -121,7 +121,7 @@ func NewSnapshotReportStatusFromSnapshot(s *applicationapiv1alpha1.Snapshot) (*S
 		ok               bool
 	)
 
-	if statusAnnotation, ok = s.ObjectMeta.GetAnnotations()[gitops.SnapshotStatusReportAnnotation]; !ok {
+	if statusAnnotation, ok = s.GetAnnotations()[gitops.SnapshotStatusReportAnnotation]; !ok {
 		statusAnnotation = ""
 	}
 
@@ -161,10 +161,10 @@ func WriteSnapshotReportStatus(ctx context.Context, c client.Client, s *applicat
 
 // MigrateSnapshotToReportStatus migrates old way of keeping updates sync to the new way by updating annotations in snapshot
 func MigrateSnapshotToReportStatus(s *applicationapiv1alpha1.Snapshot, testStatuses []*intgteststat.IntegrationTestStatusDetail) {
-	if s.ObjectMeta.GetAnnotations() == nil {
+	if s.GetAnnotations() == nil {
 		return // nothing to migrate
 	}
-	annotations := s.ObjectMeta.GetAnnotations()
+	annotations := s.GetAnnotations()
 	_, ok := annotations[gitops.SnapshotPRLastUpdate]
 	if !ok {
 		return // nothing to migrate

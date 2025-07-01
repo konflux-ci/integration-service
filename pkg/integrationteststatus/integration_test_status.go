@@ -221,7 +221,7 @@ func (sits *SnapshotIntegrationTestStatuses) UpdateTestPipelineRunName(scenarioN
 // InitStatuses creates initial representation all scenarios
 // This function also removes scenarios which are not defined in scenarios param
 func (sits *SnapshotIntegrationTestStatuses) InitStatuses(scenarioNames *[]string) {
-	var expectedScenarios map[string]struct{} = make(map[string]struct{}) // map as a set
+	var expectedScenarios = make(map[string]struct{}) // map as a set
 
 	// if given scenario doesn't exist, create it in pending state
 	for _, name := range *scenarioNames {

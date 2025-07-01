@@ -1044,35 +1044,10 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 	})
 
 	When("EnsureIntegrationPipelineRunLogURL is called with a PLR with a log URL", func() {
-		var testPipelineRun *tektonv1.PipelineRun
 		BeforeEach(func() {
-			testPipelineRun = &tektonv1.PipelineRun{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-logurl-pipelinerun",
-					Namespace: "default",
-					Annotations: map[string]string{
-						"some": "annotation",
-					},
-					Labels: map[string]string{
-						"appstudio.openshift.io/application": "application-sample",
-						// Add any other labels your log URL generator expects
-					},
-				},
-				Spec: tektonv1.PipelineRunSpec{
-					PipelineRef: &tektonv1.PipelineRef{
-						Name: "some-pipeline",
-					},
-				},
-			}
-			Expect(k8sClient.Create(ctx, testPipelineRun)).Should(Succeed())
-			consoleURL := fmt.Sprintf("https://definetly.not.prod/preview/application-pipeline/ns/%s/pipelinerun/%s", testPipelineRun.Namespace, testPipelineRun.Name)
+			consoleURL := fmt.Sprintf("https://definetly.not.prod/preview/application-pipeline/ns/%s/pipelinerun/%s", integrationPipelineRunComponent.Namespace, integrationPipelineRunComponent.Name)
 			os.Setenv("CONSOLE_URL", consoleURL)
-			adapter = NewAdapter(ctx, testPipelineRun, hasApp, hasSnapshot, logger, loader.NewMockLoader(), k8sClient)
-		})
-
-		AfterEach(func() {
-			err := k8sClient.Delete(ctx, testPipelineRun)
-			Expect(err == nil || k8serrors.IsNotFound(err)).To(BeTrue())
+			adapter = NewAdapter(ctx, integrationPipelineRunComponent, hasApp, hasSnapshot, logger, loader.NewMockLoader(), k8sClient)
 		})
 
 		It("should annotate the PipelineRun with a log URL if available", func() {
@@ -1086,8 +1061,8 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				// Fetch the updated PipelineRun
 				updatedPR := &tektonv1.PipelineRun{}
 				err = k8sClient.Get(ctx, types.NamespacedName{
-					Name:      testPipelineRun.Name,
-					Namespace: testPipelineRun.Namespace,
+					Name:      integrationPipelineRunComponent.Name,
+					Namespace: integrationPipelineRunComponent.Namespace,
 				}, updatedPR)
 				Expect(err).ToNot(HaveOccurred())
 

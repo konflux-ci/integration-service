@@ -70,8 +70,8 @@ func (MockChecksService) ListCheckRunsForRef(
 	ctx context.Context, owner string, repo string, ref string, opts *ghapi.ListCheckRunsOptions,
 ) (*ghapi.ListCheckRunsResults, *ghapi.Response, error) {
 	var id int64 = 20
-	var externalID string = "example-external-id"
-	var text string = "example-text-update"
+	var externalID = "example-external-id"
+	var text = "example-text-update"
 	var checkRunOutput = ghapi.CheckRunOutput{Text: &text}
 	conclusion := "failure"
 	checkRuns := []*ghapi.CheckRun{{ID: &id, ExternalID: &externalID, Conclusion: &conclusion, Output: &checkRunOutput}}
@@ -84,8 +84,8 @@ func (MockChecksService) GetAllCheckRunsForRef(
 	ctx context.Context, owner string, repo string, ref string, appID int64,
 ) ([]*ghapi.CheckRun, error) {
 	var id int64 = 20
-	var externalID string = "example-external-id"
-	var text string = "example-text-update"
+	var externalID = "example-external-id"
+	var text = "example-text-update"
 	var checkRunOutput = ghapi.CheckRunOutput{Text: &text}
 	conclusion := "failure"
 	checkRuns := []*ghapi.CheckRun{{ID: &id, ExternalID: &externalID, Conclusion: &conclusion, Output: &checkRunOutput}}
@@ -114,7 +114,7 @@ func (MockIssuesService) CreateComment(
 func (MockIssuesService) ListComments(ctx context.Context, owner string, repo string,
 	number int, opts *ghapi.IssueListCommentsOptions) ([]*ghapi.IssueComment, *ghapi.Response, error) {
 	var id int64 = 40
-	var body string = "Integration test for snapshot snapshotName and scenario scenarioName"
+	var body = "Integration test for snapshot snapshotName and scenario scenarioName"
 	issueComments := []*ghapi.IssueComment{{ID: &id, Body: &body}}
 	return issueComments, nil, nil
 }
