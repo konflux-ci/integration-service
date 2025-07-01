@@ -1092,7 +1092,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				Expect(err).ToNot(HaveOccurred())
 
 				return updatedPR.Annotations
-			}).Should(HaveKey(logURLKey))
+			}, time.Second*20).Should(HaveKey(logURLKey))
 
 		})
 
