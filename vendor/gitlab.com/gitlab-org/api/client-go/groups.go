@@ -776,7 +776,7 @@ func (s *GroupsService) DeleteGroup(gid any, opt *DeleteGroupOptions, options ..
 
 // RestoreGroup restores a previously deleted group
 //
-// GitLap API docs:
+// GitLab API docs:
 // https://docs.gitlab.com/api/groups/#restore-a-group-marked-for-deletion
 func (s *GroupsService) RestoreGroup(gid any, options ...RequestOptionFunc) (*Group, *Response, error) {
 	group, err := parseID(gid)

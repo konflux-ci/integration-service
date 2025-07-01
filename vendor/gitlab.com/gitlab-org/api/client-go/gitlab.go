@@ -335,7 +335,7 @@ func NewOAuthClient(token string, options ...ClientOptionFunc) (*Client, error) 
 	return NewAuthSourceClient(as, options...)
 }
 
-// NewAuthSourceClient returns a new GitLab API client that uses the AuthSouce for authentication.
+// NewAuthSourceClient returns a new GitLab API client that uses the AuthSource for authentication.
 func NewAuthSourceClient(as AuthSource, options ...ClientOptionFunc) (*Client, error) {
 	c := &Client{
 		UserAgent:  userAgent,
