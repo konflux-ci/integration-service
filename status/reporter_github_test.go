@@ -99,7 +99,8 @@ type MockGitHubClient struct {
 }
 
 func (c *MockGitHubClient) CreateAppInstallationToken(ctx context.Context, appID int64, installationID int64, privateKey []byte) (string, error) {
-	return c.Token, c.CreateAppInstallationTokenResult.Error
+	//nolint:staticcheck // Ignore QF1008
+	return c.CreateAppInstallationTokenResult.Token, c.CreateAppInstallationTokenResult.Error
 }
 
 func (c *MockGitHubClient) SetOAuthToken(ctx context.Context, token string) {}
@@ -119,7 +120,8 @@ func (c *MockGitHubClient) GetCheckRunID(context.Context, string, string, string
 }
 
 func (c *MockGitHubClient) GetExistingCheckRun(checkRuns []*ghapi.CheckRun, cra *github.CheckRunAdapter) *ghapi.CheckRun {
-	return c.cr
+	//nolint:staticcheck  // Ignore QF1008
+	return c.GetCheckRunResult.cr
 }
 
 func (c *MockGitHubClient) CommitStatusExists(res []*ghapi.RepoStatus, commitStatus *github.CommitStatusAdapter) (bool, error) {
@@ -133,9 +135,10 @@ func (c *MockGitHubClient) CommitStatusExists(res []*ghapi.RepoStatus, commitSta
 	return false, nil
 }
 
+//nolint:staticcheck // Ignore QF1008
 func (c *MockGitHubClient) CreateComment(ctx context.Context, owner string, repo string, issueNumber int, body string) (int64, error) {
 	c.CreateCommentResult.body = body
-	c.issueNumber = issueNumber
+	c.CreateCommentResult.issueNumber = issueNumber
 	return c.CreateCommentResult.ID, c.CreateCommentResult.Error
 }
 
@@ -155,13 +158,14 @@ func (c *MockGitHubClient) GetExistingCommentID(comments []*ghapi.IssueComment, 
 	return nil
 }
 
+//nolint:staticcheck  // Ignore QF1008
 func (c *MockGitHubClient) CreateCommitStatus(ctx context.Context, owner string, repo string, SHA string, state string, description string, statusContext string, targetURL string) (int64, error) {
 	var id int64 = 60
 	c.CreateCommitStatusResult.ID = id
-	c.state = state
-	c.description = description
-	c.statusContext = statusContext
-	c.targetURL = targetURL
+	c.CreateCommitStatusResult.state = state
+	c.CreateCommitStatusResult.description = description
+	c.CreateCommitStatusResult.statusContext = statusContext
+	c.CreateCommitStatusResult.targetURL = targetURL
 	return c.CreateCommitStatusResult.ID, c.CreateCommitStatusResult.Error
 }
 
@@ -425,7 +429,8 @@ var _ = Describe("GitHubReporter", func() {
 			conclusion := ""
 
 			// Update existing CheckRun w/failure
-			mockGitHubClient.cr = &ghapi.CheckRun{ID: &id, ExternalID: &externalID, Conclusion: &conclusion}
+			//nolint:staticcheck  // Ignore QF1008
+			mockGitHubClient.GetCheckRunResult.cr = &ghapi.CheckRun{ID: &id, ExternalID: &externalID, Conclusion: &conclusion}
 			Expect(reporter.ReportStatus(
 				context.TODO(),
 				status.TestReport{
@@ -457,7 +462,8 @@ var _ = Describe("GitHubReporter", func() {
 			checkrunStatus := "completed"
 
 			// Create a pre-existing CheckRun with "completed" status
-			mockGitHubClient.cr = &ghapi.CheckRun{ID: &id, ExternalID: &externalID, Status: &checkrunStatus}
+			//nolint:staticcheck  // Ignore QF1008
+			mockGitHubClient.GetCheckRunResult.cr = &ghapi.CheckRun{ID: &id, ExternalID: &externalID, Status: &checkrunStatus}
 
 			Expect(reporter.ReportStatus(
 				context.TODO(),

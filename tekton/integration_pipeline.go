@@ -265,15 +265,17 @@ func setGenerateNameForPipelineRun(pipelineRun *tektonv1.PipelineRun, defaultPre
 // Updates git resolver values parameters with values of params specified in the input map
 // updates only exsitings parameters, doens't create new ones
 func (iplr *IntegrationPipelineRun) WithUpdatedTestsGitResolver(params map[string]string) *IntegrationPipelineRun {
-	if iplr.Spec.PipelineRef.Resolver != TektonResolverGit {
+	//nolint:staticcheck  // Ignore QF1008
+	if iplr.Spec.PipelineRef.ResolverRef.Resolver != TektonResolverGit {
 		// if the resolver is not git-resolver, we cannot update the git ref
 		return iplr
 	}
 
-	for originalParamIndex, originalParam := range iplr.Spec.PipelineRef.Params {
+	//nolint:staticcheck  // Ignore QF1008
+	for originalParamIndex, originalParam := range iplr.Spec.PipelineRef.ResolverRef.Params {
 		if _, ok := params[originalParam.Name]; ok {
 			// remeber to use the original index to update the value, we cannot update value given by range directly
-			iplr.Spec.PipelineRef.Params[originalParamIndex].Value.StringVal = params[originalParam.Name]
+			iplr.Spec.PipelineRef.ResolverRef.Params[originalParamIndex].Value.StringVal = params[originalParam.Name]
 		}
 	}
 
@@ -439,8 +441,9 @@ func (r *IntegrationPipelineRun) WithIntegrationTimeouts(integrationTestScenario
 	if r.Spec.Timeouts.Tasks != nil && r.Spec.Timeouts.Finally != nil && r.Spec.Timeouts.Pipeline != nil &&
 		r.Spec.Timeouts.Tasks.Duration+r.Spec.Timeouts.Finally.Duration > r.Spec.Timeouts.Pipeline.Duration {
 		r.Spec.Timeouts.Pipeline = &metav1.Duration{Duration: r.Spec.Timeouts.Tasks.Duration + r.Spec.Timeouts.Finally.Duration}
+		//nolint:staticcheck  // Ignore QF1008
 		logger.Info(fmt.Sprintf("Setting the pipeline timeout for %s to be the sum of tasks + finally: %.1f hours", r.Name,
-			r.Spec.Timeouts.Pipeline.Hours()))
+			r.Spec.Timeouts.Pipeline.Duration.Hours()))
 	}
 
 	return r
