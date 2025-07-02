@@ -401,7 +401,7 @@ func (a *Adapter) prepareSnapshotForPipelineRun(pipelineRun *tektonv1.PipelineRu
 		return nil, err
 	}
 
-	prefixes := []string{gitops.BuildPipelineRunPrefix, gitops.TestLabelPrefix, gitops.CustomLabelPrefix}
+	prefixes := []string{gitops.BuildPipelineRunPrefix, gitops.TestLabelPrefix, gitops.CustomLabelPrefix, gitops.ReleaseLabelPrefix}
 	gitops.CopySnapshotLabelsAndAnnotations(application, snapshot, a.component.Name, &pipelineRun.ObjectMeta, prefixes)
 
 	snapshot.Labels[gitops.BuildPipelineRunNameLabel] = pipelineRun.Name

@@ -1049,6 +1049,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			gitops.SetSnapshotIntegrationStatusAsInvalid(hasSnapshot, "snapshot invalid")
 			hasSnapshot.Labels[gitops.PipelineAsCodeEventTypeLabel] = gitops.PipelineAsCodePullRequestType
 			hasSnapshot.Labels[gitops.PipelineAsCodePullRequestAnnotation] = "1"
+			hasSnapshot.Labels[gitops.AutoReleaseLabel] = "false"
 			Expect(gitops.HaveAppStudioTestsSucceeded(hasSnapshot)).To(BeFalse())
 			Expect(gitops.IsSnapshotValid(hasSnapshot)).To(BeFalse())
 
@@ -1065,6 +1066,8 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			expectedLogEntry = "the Snapshot is invalid"
 			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
 			expectedLogEntry = "the Snapshot was created for a PaC pull request event"
+			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
+			expectedLogEntry = fmt.Sprintf("the Snapshot '%s' label is 'false'", gitops.AutoReleaseLabel)
 			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
 		})
 
