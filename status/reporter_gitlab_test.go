@@ -208,7 +208,7 @@ var _ = Describe("GitLabReporter", func() {
 			muxCommitStatusPost(mux, sourceProjectID, digest, summary)
 			muxMergeNotes(mux, targetProjectID, mergeRequest, summary)
 
-			Expect(reporter.ReportStatus(
+			statusCode, err := reporter.ReportStatus(
 				context.TODO(),
 				status.TestReport{
 					FullName:     "fullname/scenario1",
@@ -216,7 +216,9 @@ var _ = Describe("GitLabReporter", func() {
 					Status:       integrationteststatus.IntegrationTestStatusEnvironmentProvisionError_Deprecated,
 					Summary:      summary,
 					Text:         "detailed text here",
-				})).To(Succeed())
+				})
+			Expect(err).To(Succeed())
+			Expect(statusCode).To(Equal(0))
 		})
 
 		It("creates a commit status for push snapshot with correct textual data without comments", func() {
@@ -235,7 +237,7 @@ var _ = Describe("GitLabReporter", func() {
 
 			muxCommitStatusPost(mux, sourceProjectID, digest, summary)
 
-			Expect(pushEventReporter.ReportStatus(
+			statusCode, err := pushEventReporter.ReportStatus(
 				context.TODO(),
 				status.TestReport{
 					FullName:     "fullname/scenario1",
@@ -243,7 +245,9 @@ var _ = Describe("GitLabReporter", func() {
 					Status:       integrationteststatus.IntegrationTestStatusEnvironmentProvisionError_Deprecated,
 					Summary:      summary,
 					Text:         "detailed text here",
-				})).To(Succeed())
+				})
+			Expect(err).To(Succeed())
+			Expect(statusCode).To(Equal(0))
 		})
 
 		It("creates a commit status for snapshot with TargetURL in CommitStatus", func() {
@@ -255,7 +259,7 @@ var _ = Describe("GitLabReporter", func() {
 			muxMergeNotes(mux, sourceProjectID, mergeRequest, "")
 			muxCommitStatusesGet(mux, sourceProjectID, digest, nil)
 
-			Expect(reporter.ReportStatus(
+			statusCode, err := reporter.ReportStatus(
 				context.TODO(),
 				status.TestReport{
 					FullName:            "fullname/scenario1",
@@ -264,7 +268,9 @@ var _ = Describe("GitLabReporter", func() {
 					Status:              integrationteststatus.IntegrationTestStatusInProgress,
 					Summary:             "summary",
 					Text:                "detailed text here",
-				})).To(Succeed())
+				})
+			Expect(err).To(Succeed())
+			Expect(statusCode).To(Equal(0))
 		})
 
 		It("does not create a commit status or comment for snapshot with existing matching checkRun in running state", func() {
@@ -280,7 +286,9 @@ var _ = Describe("GitLabReporter", func() {
 
 			muxCommitStatusesGet(mux, sourceProjectID, digest, &report)
 
-			Expect(reporter.ReportStatus(context.TODO(), report)).To(Succeed())
+			statusCode, err := reporter.ReportStatus(context.TODO(), report)
+			Expect(err).To(Succeed())
+			Expect(statusCode).To(Equal(0))
 		})
 
 		It("can get an existing commitStatus that matches the report", func() {
@@ -346,7 +354,7 @@ var _ = Describe("GitLabReporter", func() {
 			muxMergeNotes(mux, sourceProjectID, mergeRequest, "")
 			muxCommitStatusesGet(mux, sourceProjectID, digest, nil)
 
-			Expect(reporter.ReportStatus(
+			statusCode, err := reporter.ReportStatus(
 				context.TODO(),
 				status.TestReport{
 					FullName:            "fullname/scenario1",
@@ -355,7 +363,9 @@ var _ = Describe("GitLabReporter", func() {
 					Status:              integrationteststatus.IntegrationTestStatusInProgress,
 					Summary:             "summary",
 					Text:                "detailed text here",
-				})).To(Succeed())
+				})
+			Expect(err).To(Succeed())
+			Expect(statusCode).To(Equal(0))
 
 			expectedLogEntry := "Won't create/update commitStatus due to the access limitation for forked repo"
 			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))

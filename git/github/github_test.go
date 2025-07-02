@@ -229,9 +229,10 @@ var _ = Describe("Client", func() {
 	})
 
 	It("can create app installation tokens", func() {
-		token, err := client.CreateAppInstallationToken(context.TODO(), 1, 1, []byte(samplePrivateKey))
+		token, statusCode, err := client.CreateAppInstallationToken(context.TODO(), 1, 1, []byte(samplePrivateKey))
 		Expect(err).ToNot(HaveOccurred())
 		Expect(token).To(Equal("example-token"))
+		Expect(statusCode).NotTo(BeNil())
 	})
 
 	It("accepts an OAuth token", func() {
@@ -252,15 +253,17 @@ var _ = Describe("Client", func() {
 	})
 
 	It("can create comments", func() {
-		id, err := client.CreateComment(context.TODO(), "", "", 1, "example-comment")
+		id, statusCode, err := client.CreateComment(context.TODO(), "", "", 1, "example-comment")
 		Expect(err).ToNot(HaveOccurred())
 		Expect(id).To(Equal(int64(40)))
+		Expect(statusCode).NotTo(BeNil())
 	})
 
 	It("can create commit statuses", func() {
-		id, err := client.CreateCommitStatus(context.TODO(), "", "", "", "", "", "", "")
+		id, statusCode, err := client.CreateCommitStatus(context.TODO(), "", "", "", "", "", "", "")
 		Expect(err).ToNot(HaveOccurred())
 		Expect(id).To(Equal(int64(50)))
+		Expect(statusCode).NotTo(BeNil())
 	})
 
 	It("can set and get details URL", func() {
@@ -271,26 +274,30 @@ var _ = Describe("Client", func() {
 	})
 
 	It("can create check runs", func() {
-		checkRunID, err := client.CreateCheckRun(context.TODO(), checkRunAdapter)
+		checkRunID, statusCode, err := client.CreateCheckRun(context.TODO(), checkRunAdapter)
 		Expect(err).ToNot(HaveOccurred())
 		Expect(checkRunID).ToNot(BeNil())
 		Expect(*checkRunID).To(Equal(int64(10)))
+		Expect(statusCode).NotTo(BeNil())
 	})
 
 	It("can update check runs", func() {
-		err := client.UpdateCheckRun(context.TODO(), 1, checkRunAdapter)
+		statusCode, err := client.UpdateCheckRun(context.TODO(), 1, checkRunAdapter)
 		Expect(err).ToNot(HaveOccurred())
+		Expect(statusCode).NotTo(BeNil())
 	})
 
 	It("can get a check run ID", func() {
-		checkRunID, err := client.GetCheckRunID(context.TODO(), "", "", "", "example-external-id", 1)
+		checkRunID, statusCode, err := client.GetCheckRunID(context.TODO(), "", "", "", "example-external-id", 1)
 		Expect(err).ToNot(HaveOccurred())
 		Expect(checkRunID).ToNot(BeNil())
 		Expect(*checkRunID).To(Equal(int64(20)))
+		Expect(statusCode).NotTo(BeNil())
 
-		checkRunID, err = client.GetCheckRunID(context.TODO(), "", "", "", "unknown-external-id", 1)
+		checkRunID, statusCode, err = client.GetCheckRunID(context.TODO(), "", "", "", "unknown-external-id", 1)
 		Expect(err).ToNot(HaveOccurred())
 		Expect(checkRunID).To(BeNil())
+		Expect(statusCode).NotTo(BeNil())
 	})
 
 	It("can check if check run updated is needed", func() {
@@ -308,9 +315,10 @@ var _ = Describe("Client", func() {
 			CompletionTime: time.Now(),
 		}
 
-		allCheckRuns, err := client.GetAllCheckRunsForRef(context.TODO(), "", "", "", 1)
+		allCheckRuns, statusCode, err := client.GetAllCheckRunsForRef(context.TODO(), "", "", "", 1)
 		Expect(err).ToNot(HaveOccurred())
 		Expect(allCheckRuns).NotTo(BeEmpty())
+		Expect(statusCode).NotTo(BeNil())
 
 		existingCheckRun := client.GetExistingCheckRun(allCheckRuns, checkRunAdapter)
 		Expect(existingCheckRun).NotTo(BeNil())
@@ -318,9 +326,10 @@ var _ = Describe("Client", func() {
 	})
 
 	It("can check if creating a new commit status is needed", func() {
-		commitStatuses, err := client.GetAllCommitStatusesForRef(context.TODO(), "", "", "")
+		commitStatuses, statusCode, err := client.GetAllCommitStatusesForRef(context.TODO(), "", "", "")
 		Expect(err).ToNot(HaveOccurred())
 		Expect(commitStatuses).NotTo(BeEmpty())
+		Expect(statusCode).NotTo(BeNil())
 
 		commitStatusExist, err := client.CommitStatusExists(commitStatuses, commitStatusAdapter)
 		Expect(commitStatusExist).To(BeTrue())
@@ -341,23 +350,26 @@ var _ = Describe("Client", func() {
 	})
 
 	It("can get existing comment id", func() {
-		comments, err := client.GetAllCommentsForPR(context.TODO(), "", "", 1)
+		comments, statusCode, err := client.GetAllCommentsForPR(context.TODO(), "", "", 1)
 		Expect(err).ToNot(HaveOccurred())
 		Expect(comments).NotTo(BeEmpty())
+		Expect(statusCode).NotTo(BeNil())
 
 		commentID := client.GetExistingCommentID(comments, "snapshotName", "scenarioName")
 		Expect(*commentID).To(Equal(int64(40)))
 	})
 
 	It("can edit comments", func() {
-		id, err := client.EditComment(context.TODO(), "", "", 1, "example-comment")
+		id, statusCode, err := client.EditComment(context.TODO(), "", "", 1, "example-comment")
 		Expect(err).ToNot(HaveOccurred())
 		Expect(id).To(Equal(int64(1)))
+		Expect(statusCode).NotTo(BeNil())
 	})
 
 	It("can get pull request", func() {
-		pullRequest, err := client.GetPullRequest(context.TODO(), "", "", 60)
+		pullRequest, statusCode, err := client.GetPullRequest(context.TODO(), "", "", 60)
 		Expect(err).ToNot(HaveOccurred())
 		Expect(*pullRequest.State).To(Equal("opened"))
+		Expect(statusCode).NotTo(BeNil())
 	})
 })

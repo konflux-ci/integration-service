@@ -478,10 +478,11 @@ func (s Status) IsPRInSnapshotOpened(ctx context.Context, reporter ReporterInter
 		return false, err
 	}
 
-	token, err := ghClient.CreateAppInstallationToken(ctx, githubAppCreds.AppID, githubAppCreds.InstallationID, githubAppCreds.PrivateKey)
+	token, statusCode, err := ghClient.CreateAppInstallationToken(ctx, githubAppCreds.AppID, githubAppCreds.InstallationID, githubAppCreds.PrivateKey)
 	if err != nil {
 		log.Error(err, "failed to create app installation token",
-			"githubAppCreds.AppID", githubAppCreds.AppID, "githubAppCreds.InstallationID", githubAppCreds.InstallationID)
+			"githubAppCreds.AppID", githubAppCreds.AppID, "githubAppCreds.InstallationID", githubAppCreds.InstallationID,
+			"statusCode", statusCode)
 		return false, err
 	}
 
@@ -518,7 +519,7 @@ func (s Status) IsPRInSnapshotOpened(ctx context.Context, reporter ReporterInter
 	}
 
 	log.Info(fmt.Sprintf("try to find the status of pull request owner/repo/pulls %s/%s/%d", owner, repo, pullRequest))
-	pr, err := ghClient.GetPullRequest(ctx, owner, repo, pullRequest)
+	pr, _, err := ghClient.GetPullRequest(ctx, owner, repo, pullRequest)
 
 	if err != nil && strings.Contains(err.Error(), "Not Found") {
 		log.Error(err, fmt.Sprintf("not found pull request owner/repo/pulls %s/%s/%d, it might be deleted", owner, repo, pullRequest))
@@ -588,19 +589,20 @@ func IterateIntegrationTestInStatusReport(ctx context.Context, client client.Cli
 	snapshot *applicationapiv1alpha1.Snapshot,
 	integrationTestScenarios *[]v1beta2.IntegrationTestScenario,
 	integrationTestStatusDetail intgteststat.IntegrationTestStatusDetail,
-	componentName string) error {
+	componentName string) (int, error) {
 
+	var statusCode = 0
 	for _, integrationTestScenario := range *integrationTestScenarios {
 		integrationTestScenario := integrationTestScenario //G601
 		integrationTestStatusDetail.ScenarioName = integrationTestScenario.Name
 
 		testReport, reportErr := GenerateTestReport(ctx, client, integrationTestStatusDetail, snapshot, componentName)
 		if reportErr != nil {
-			return fmt.Errorf("failed to generate test report: %w", reportErr)
+			return statusCode, fmt.Errorf("failed to generate test report: %w", reportErr)
 		}
-		if reportStatusErr := reporter.ReportStatus(ctx, *testReport); reportStatusErr != nil {
-			return fmt.Errorf("failed to report status to git provider: %w", reportStatusErr)
+		if statusCode, reportStatusErr := reporter.ReportStatus(ctx, *testReport); reportStatusErr != nil {
+			return statusCode, fmt.Errorf("failed to report status to git provider, error: %w", reportStatusErr)
 		}
 	}
-	return nil
+	return statusCode, nil
 }
