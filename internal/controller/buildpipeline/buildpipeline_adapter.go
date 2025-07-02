@@ -602,16 +602,22 @@ func (a *Adapter) ReportIntegrationTestStatusAccordingToBuildPLR(pipelineRun *te
 	a.logger.Info("Reporter initialized", "reporter", reporter.GetReporterName())
 
 	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		var statusCode int
 		intgTestStatusDetails, err := generateIntgTestStatusDetails(pipelineRun, integrationTestStatus)
 		if err != nil {
 			return err
 		}
-		err = status.IterateIntegrationTestInStatusReport(a.context, a.client, reporter, snapshot, integrationTestScenarios, intgTestStatusDetails, componentName)
+		statusCode, err = status.IterateIntegrationTestInStatusReport(a.context, a.client, reporter, snapshot, integrationTestScenarios, intgTestStatusDetails, componentName)
 		if err != nil {
 			a.logger.Error(err, fmt.Sprintf("failed to report integration test status according to build pipelinerun %s/%s",
 				pipelineRun.Namespace, pipelineRun.Name))
-			return fmt.Errorf("failed to report integration test status according to build pipelineRun %s/%s: %w",
-				pipelineRun.Namespace, pipelineRun.Name, err)
+			if reporter.ReturnCodeIsUnrecoverable(statusCode) {
+				// We return nil in case the status code is not recoverable by retrying, e.g. when status is 403 unauthorised
+				return nil
+			} else {
+				return fmt.Errorf("failed to report integration test status according to build pipelineRun %s/%s: %w",
+					pipelineRun.Namespace, pipelineRun.Name, err)
+			}
 		}
 
 		a.logger.Info("Successfully report integration test status for build pipelineRun",

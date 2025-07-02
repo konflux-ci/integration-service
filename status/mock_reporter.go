@@ -83,15 +83,26 @@ func (mr *MockReporterInterfaceMockRecorder) Initialize(arg0, arg1 any) *gomock.
 }
 
 // ReportStatus mocks base method.
-func (m *MockReporterInterface) ReportStatus(arg0 context.Context, arg1 TestReport) error {
+func (m *MockReporterInterface) ReportStatus(arg0 context.Context, arg1 TestReport) (int, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ReportStatus", arg0, arg1)
 	ret0, _ := ret[0].(error)
-	return ret0
+	return 200, ret0
 }
 
 // ReportStatus indicates an expected call of ReportStatus.
 func (mr *MockReporterInterfaceMockRecorder) ReportStatus(arg0, arg1 any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReportStatus", reflect.TypeOf((*MockReporterInterface)(nil).ReportStatus), arg0, arg1)
+}
+
+func (mr *MockReporterInterface) ReturnCodeIsUnrecoverable(statusCode int) bool {
+	mr.ctrl.T.Helper()
+	return false
+}
+
+func (mr *MockReporterInterfaceMockRecorder) ReturnCodeIsUnrecoverable(arg0 any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReturnCodeIsUnrecoverable", reflect.TypeOf((*MockReporterInterface)(nil).ReportStatus), arg0)
+
 }
