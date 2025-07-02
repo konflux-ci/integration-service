@@ -475,7 +475,7 @@ var _ = Describe("Status Adapter", func() {
 		mockReporter = status.NewMockReporterInterface(ctrl)
 		mockReporter.EXPECT().GetReporterName().Return("mocked-reporter").AnyTimes()
 		mockReporter.EXPECT().Initialize(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
-		mockReporter.EXPECT().ReportStatus(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+		mockReporter.EXPECT().ReportStatus(gomock.Any(), gomock.Any()).Return(0, nil).AnyTimes()
 
 		os.Setenv("CONSOLE_NAME", "Red Hat Konflux")
 	})
@@ -754,7 +754,9 @@ var _ = Describe("Status Adapter", func() {
 			Status:  integrationteststatus.GroupSnapshotCreationFailed,
 			Details: "details",
 		}
-		Expect(status.IterateIntegrationTestInStatusReport(context.Background(), mockK8sClient, mockReporter, hasSnapshot, &[]v1beta2.IntegrationTestScenario{*integrationTestScenario}, integrationTestStatusDetail, "test")).Should(Succeed())
+		statusCode, err := status.IterateIntegrationTestInStatusReport(context.Background(), mockK8sClient, mockReporter, hasSnapshot, &[]v1beta2.IntegrationTestScenario{*integrationTestScenario}, integrationTestStatusDetail, "test")
+		Expect(err).Should(Succeed())
+		Expect(statusCode).NotTo(BeNil())
 	})
 
 })

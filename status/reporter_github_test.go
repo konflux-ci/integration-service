@@ -98,25 +98,24 @@ type MockGitHubClient struct {
 	EditCommentResult
 }
 
-func (c *MockGitHubClient) CreateAppInstallationToken(ctx context.Context, appID int64, installationID int64, privateKey []byte) (string, error) {
-	//nolint:staticcheck // Ignore QF1008
-	return c.CreateAppInstallationTokenResult.Token, c.CreateAppInstallationTokenResult.Error
+func (c *MockGitHubClient) CreateAppInstallationToken(ctx context.Context, appID int64, installationID int64, privateKey []byte) (string, int, error) {
+	return c.Token, 0, c.CreateAppInstallationTokenResult.Error
 }
 
 func (c *MockGitHubClient) SetOAuthToken(ctx context.Context, token string) {}
 
-func (c *MockGitHubClient) CreateCheckRun(ctx context.Context, cra *github.CheckRunAdapter) (*int64, error) {
+func (c *MockGitHubClient) CreateCheckRun(ctx context.Context, cra *github.CheckRunAdapter) (*int64, int, error) {
 	c.CreateCheckRunResult.cra = cra
-	return c.CreateCheckRunResult.ID, c.CreateCheckRunResult.Error
+	return c.CreateCheckRunResult.ID, 200, c.CreateCheckRunResult.Error
 }
 
-func (c *MockGitHubClient) UpdateCheckRun(ctx context.Context, checkRunID int64, cra *github.CheckRunAdapter) error {
+func (c *MockGitHubClient) UpdateCheckRun(ctx context.Context, checkRunID int64, cra *github.CheckRunAdapter) (int, error) {
 	c.UpdateCheckRunResult.cra = cra
-	return c.UpdateCheckRunResult.Error
+	return 0, c.UpdateCheckRunResult.Error
 }
 
-func (c *MockGitHubClient) GetCheckRunID(context.Context, string, string, string, string, int64) (*int64, error) {
-	return c.GetCheckRunIDResult.ID, c.GetCheckRunIDResult.Error
+func (c *MockGitHubClient) GetCheckRunID(context.Context, string, string, string, string, int64) (*int64, int, error) {
+	return c.GetCheckRunIDResult.ID, 200, c.GetCheckRunIDResult.Error
 }
 
 func (c *MockGitHubClient) GetExistingCheckRun(checkRuns []*ghapi.CheckRun, cra *github.CheckRunAdapter) *ghapi.CheckRun {
@@ -136,22 +135,22 @@ func (c *MockGitHubClient) CommitStatusExists(res []*ghapi.RepoStatus, commitSta
 }
 
 //nolint:staticcheck // Ignore QF1008
-func (c *MockGitHubClient) CreateComment(ctx context.Context, owner string, repo string, issueNumber int, body string) (int64, error) {
+func (c *MockGitHubClient) CreateComment(ctx context.Context, owner string, repo string, issueNumber int, body string) (int64, int, error) {
 	c.CreateCommentResult.body = body
 	c.CreateCommentResult.issueNumber = issueNumber
-	return c.CreateCommentResult.ID, c.CreateCommentResult.Error
+	return c.CreateCommentResult.ID, 200, c.CreateCommentResult.Error
 }
 
-func (c *MockGitHubClient) EditComment(ctx context.Context, owner string, repo string, commentID int64, body string) (int64, error) {
+func (c *MockGitHubClient) EditComment(ctx context.Context, owner string, repo string, commentID int64, body string) (int64, int, error) {
 	c.EditCommentResult.body = body
 	c.EditCommentResult.ID = commentID
-	return c.EditCommentResult.ID, c.EditCommentResult.Error
+	return c.EditCommentResult.ID, 200, c.EditCommentResult.Error
 }
 
-func (c *MockGitHubClient) GetAllCommentsForPR(ctx context.Context, owner string, repo string, pr int) ([]*ghapi.IssueComment, error) {
+func (c *MockGitHubClient) GetAllCommentsForPR(ctx context.Context, owner string, repo string, pr int) ([]*ghapi.IssueComment, int, error) {
 	var id int64 = 20
 	comments := []*ghapi.IssueComment{{ID: &id}}
-	return comments, nil
+	return comments, 200, nil
 }
 
 func (c *MockGitHubClient) GetExistingCommentID(comments []*ghapi.IssueComment, snapshotName, scenarioName string) *int64 {
@@ -159,40 +158,40 @@ func (c *MockGitHubClient) GetExistingCommentID(comments []*ghapi.IssueComment, 
 }
 
 //nolint:staticcheck  // Ignore QF1008
-func (c *MockGitHubClient) CreateCommitStatus(ctx context.Context, owner string, repo string, SHA string, state string, description string, statusContext string, targetURL string) (int64, error) {
+func (c *MockGitHubClient) CreateCommitStatus(ctx context.Context, owner string, repo string, SHA string, state string, description string, statusContext string, targetURL string) (int64, int, error) {
 	var id int64 = 60
 	c.CreateCommitStatusResult.ID = id
 	c.CreateCommitStatusResult.state = state
 	c.CreateCommitStatusResult.description = description
 	c.CreateCommitStatusResult.statusContext = statusContext
 	c.CreateCommitStatusResult.targetURL = targetURL
-	return c.CreateCommitStatusResult.ID, c.CreateCommitStatusResult.Error
+	return c.CreateCommitStatusResult.ID, 200, c.CreateCommitStatusResult.Error
 }
 
 func (c *MockGitHubClient) GetAllCheckRunsForRef(
 	ctx context.Context, owner string, repo string, ref string, appID int64,
-) ([]*ghapi.CheckRun, error) {
+) ([]*ghapi.CheckRun, int, error) {
 	var id int64 = 20
 	var externalID = "example-external-id"
 	checkRuns := []*ghapi.CheckRun{{ID: &id, ExternalID: &externalID}}
-	return checkRuns, nil
+	return checkRuns, 200, nil
 }
 
 func (c *MockGitHubClient) GetAllCommitStatusesForRef(
-	ctx context.Context, owner, repo, sha string) ([]*ghapi.RepoStatus, error) {
+	ctx context.Context, owner, repo, sha string) ([]*ghapi.RepoStatus, int, error) {
 	var id int64 = 60
 	var state = "pending"
 	var description = "Integration test for snapshot snapshot-sample and scenario scenario2 is pending"
 	var statusContext = "test/scenario2"
 	repoStatus := &ghapi.RepoStatus{ID: &id, State: &state, Context: &statusContext, Description: &description}
-	return []*ghapi.RepoStatus{repoStatus}, nil
+	return []*ghapi.RepoStatus{repoStatus}, 200, nil
 }
 
-func (c *MockGitHubClient) GetPullRequest(ctx context.Context, owner string, repo string, prID int) (*ghapi.PullRequest, error) {
+func (c *MockGitHubClient) GetPullRequest(ctx context.Context, owner string, repo string, prID int) (*ghapi.PullRequest, int, error) {
 	var id int64 = 60
 	var state = "opened"
 	pullRequest := &ghapi.PullRequest{ID: &id, State: &state}
-	return pullRequest, nil
+	return pullRequest, 200, nil
 }
 
 var _ = Describe("GitHubReporter", func() {
@@ -332,12 +331,15 @@ var _ = Describe("GitHubReporter", func() {
 			"reports correct github title and conclusion from test statuses",
 			func(teststatus integrationteststatus.IntegrationTestStatus, title string, conclusion string) {
 
-				Expect(reporter.ReportStatus(
+				statusCode, err := reporter.ReportStatus(
 					context.TODO(),
 					status.TestReport{
 						ScenarioName: "scenario1",
 						Status:       teststatus,
-					})).To(Succeed())
+					})
+
+				Expect(err).To(Succeed(), "ReportStatus should succeed")
+				Expect(statusCode).To(Equal(200))
 				Expect(mockGitHubClient.CreateCheckRunResult.cra).NotTo(BeNil())
 				Expect(mockGitHubClient.CreateCheckRunResult.cra.Title).To(Equal(title))
 				Expect(mockGitHubClient.CreateCheckRunResult.cra.Conclusion).To(Equal(conclusion))
@@ -359,19 +361,22 @@ var _ = Describe("GitHubReporter", func() {
 
 		It("check if all integration tests statuses are supported", func() {
 			for _, teststatus := range integrationteststatus.IntegrationTestStatusValues() {
-				Expect(reporter.ReportStatus(
+				statusCode, err := reporter.ReportStatus(
 					context.TODO(),
 					status.TestReport{
 						ScenarioName: "scenario1",
 						Status:       teststatus,
-					})).To(Succeed())
+					})
+
+				Expect(err).To(Succeed(), "ReportStatus should succeed")
+				Expect(statusCode).To(Equal(200))
 			}
 		})
 
 		It("reports all details of snapshot tests status via CheckRuns", func() {
 			now := time.Now()
 
-			Expect(reporter.ReportStatus(
+			statusCode, err := reporter.ReportStatus(
 				context.TODO(),
 				status.TestReport{
 					FullName:       "test-name",
@@ -382,7 +387,10 @@ var _ = Describe("GitHubReporter", func() {
 					Summary:        "Integration test for snapshot snapshot-sample and scenario scenario1 experienced an error when provisioning environment",
 					StartTime:      &now,
 					CompletionTime: &now,
-				})).To(Succeed())
+				})
+
+			Expect(err).To(Succeed(), "ReportStatus should succeed")
+			Expect(statusCode).To(Equal(200))
 			Expect(mockGitHubClient.CreateCheckRunResult.cra).NotTo(BeNil())
 			Expect(mockGitHubClient.CreateCheckRunResult.cra.Summary).To(Equal("Integration test for snapshot snapshot-sample and scenario scenario1 experienced an error when provisioning environment"))
 			Expect(mockGitHubClient.CreateCheckRunResult.cra.Conclusion).To(Equal(gitops.IntegrationTestStatusFailureGithub))
@@ -398,7 +406,7 @@ var _ = Describe("GitHubReporter", func() {
 		It("reports all details of snapshot tests status via CheckRuns for a Snapshot without a component", func() {
 			now := time.Now()
 
-			Expect(reporter.ReportStatus(
+			statusCode, err := reporter.ReportStatus(
 				context.TODO(),
 				status.TestReport{
 					FullName:       "test-name",
@@ -408,7 +416,10 @@ var _ = Describe("GitHubReporter", func() {
 					Summary:        "Integration test for snapshot snapshot-sample and scenario scenario1 experienced an error when provisioning environment",
 					StartTime:      &now,
 					CompletionTime: &now,
-				})).To(Succeed())
+				})
+
+			Expect(err).To(Succeed(), "ReportStatus should succeed")
+			Expect(statusCode).To(Equal(200))
 			Expect(mockGitHubClient.CreateCheckRunResult.cra).NotTo(BeNil())
 			Expect(mockGitHubClient.CreateCheckRunResult.cra.Summary).To(Equal("Integration test for snapshot snapshot-sample and scenario scenario1 experienced an error when provisioning environment"))
 			Expect(mockGitHubClient.CreateCheckRunResult.cra.Conclusion).To(Equal(gitops.IntegrationTestStatusFailureGithub))
@@ -431,7 +442,7 @@ var _ = Describe("GitHubReporter", func() {
 			// Update existing CheckRun w/failure
 			//nolint:staticcheck  // Ignore QF1008
 			mockGitHubClient.GetCheckRunResult.cr = &ghapi.CheckRun{ID: &id, ExternalID: &externalID, Conclusion: &conclusion}
-			Expect(reporter.ReportStatus(
+			statusCode, err := reporter.ReportStatus(
 				context.TODO(),
 				status.TestReport{
 					FullName:       "test-name",
@@ -442,7 +453,10 @@ var _ = Describe("GitHubReporter", func() {
 					Summary:        "Integration test for snapshot snapshot-sample and scenario scenario1 experienced an error when provisioning environment",
 					StartTime:      &now,
 					CompletionTime: &now,
-				})).To(Succeed())
+				})
+
+			Expect(err).To(Succeed(), "ReportStatus should succeed")
+			Expect(statusCode).To(Equal(0))
 			Expect(mockGitHubClient.UpdateCheckRunResult.cra).NotTo(BeNil())
 			Expect(mockGitHubClient.UpdateCheckRunResult.cra.Summary).To(Equal("Integration test for snapshot snapshot-sample and scenario scenario1 experienced an error when provisioning environment"))
 			Expect(mockGitHubClient.UpdateCheckRunResult.cra.Conclusion).To(Equal(gitops.IntegrationTestStatusFailureGithub))
@@ -465,7 +479,7 @@ var _ = Describe("GitHubReporter", func() {
 			//nolint:staticcheck  // Ignore QF1008
 			mockGitHubClient.GetCheckRunResult.cr = &ghapi.CheckRun{ID: &id, ExternalID: &externalID, Status: &checkrunStatus}
 
-			Expect(reporter.ReportStatus(
+			statusCode, err := reporter.ReportStatus(
 				context.TODO(),
 				status.TestReport{
 					FullName:      "test-name",
@@ -475,7 +489,9 @@ var _ = Describe("GitHubReporter", func() {
 					Status:        integrationteststatus.IntegrationTestStatusInProgress,
 					Summary:       "Integration test for snapshot snapshot-sample and scenario scenario1 is in progress",
 					StartTime:     &now,
-				})).To(Succeed())
+				})
+			Expect(err).To(Succeed())
+			Expect(statusCode).To(Equal(200))
 
 			expectedLogEntry = "found existing checkrun"
 			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
@@ -539,7 +555,7 @@ var _ = Describe("GitHubReporter", func() {
 
 		It("creates a commit status for snapshot with correct textual data", func() {
 			hasSnapshot.Labels["pac.test.appstudio.openshift.io/pull-request"] = "999"
-			Expect(reporter.ReportStatus(
+			statusCode, err := reporter.ReportStatus(
 				context.TODO(),
 				status.TestReport{
 					FullName:      "fullname/scenario1",
@@ -549,7 +565,10 @@ var _ = Describe("GitHubReporter", func() {
 					Status:        integrationteststatus.IntegrationTestStatusEnvironmentProvisionError_Deprecated,
 					Summary:       "Integration test for snapshot snapshot-sample and scenario scenario1 failed",
 					Text:          "detailed text here",
-				})).To(Succeed())
+				})
+
+			Expect(err).To(Succeed())
+			Expect(statusCode).To(Equal(0))
 			Expect(mockGitHubClient.CreateCommitStatusResult.state).To(Equal(gitops.IntegrationTestStatusErrorGithub))
 			Expect(mockGitHubClient.CreateCommitStatusResult.description).To(Equal("Integration test for snapshot snapshot-sample and scenario scenario1 failed"))
 			Expect(mockGitHubClient.CreateCommitStatusResult.statusContext).To(Equal("fullname/scenario1"))
@@ -559,7 +578,7 @@ var _ = Describe("GitHubReporter", func() {
 		It("creates a commit status for snapshot with correct textual data, but does not create a comment for push event", func() {
 			delete(hasSnapshot.Annotations, "pac.test.appstudio.openshift.io/pull-request")
 			hasSnapshot.Labels["pac.test.appstudio.openshift.io/event-type"] = "push"
-			Expect(reporter.ReportStatus(
+			statusCode, err := reporter.ReportStatus(
 				context.TODO(),
 				status.TestReport{
 					FullName:      "fullname/scenario1",
@@ -569,8 +588,10 @@ var _ = Describe("GitHubReporter", func() {
 					Status:        integrationteststatus.IntegrationTestStatusEnvironmentProvisionError_Deprecated,
 					Summary:       "Integration test for snapshot snapshot-sample and scenario scenario1 failed",
 					Text:          "detailed text here",
-				})).To(Succeed(), "ReportStatus should succeed")
+				})
 
+			Expect(err).To(Succeed(), "ReportStatus should succeed")
+			Expect(statusCode).To(Equal(0))
 			Expect(mockGitHubClient.CreateCommitStatusResult.state).To(Equal(gitops.IntegrationTestStatusErrorGithub))
 			Expect(mockGitHubClient.CreateCommitStatusResult.description).To(Equal("Integration test for snapshot snapshot-sample and scenario scenario1 failed"))
 			Expect(mockGitHubClient.CreateCommitStatusResult.statusContext).To(Equal("fullname/scenario1"))
@@ -581,12 +602,14 @@ var _ = Describe("GitHubReporter", func() {
 			"reports correct github statuses from test statuses",
 			func(teststatus integrationteststatus.IntegrationTestStatus, ghstatus string) {
 
-				Expect(reporter.ReportStatus(
+				statusCode, err := reporter.ReportStatus(
 					context.TODO(),
 					status.TestReport{
 						ScenarioName: "scenario1",
 						Status:       teststatus,
-					})).To(Succeed())
+					})
+				Expect(err).To(Succeed(), "ReportStatus should succeed")
+				Expect(statusCode).To(Equal(0))
 				Expect(mockGitHubClient.CreateCommitStatusResult.state).To(Equal(ghstatus))
 			},
 			Entry("Provision error", integrationteststatus.IntegrationTestStatusEnvironmentProvisionError_Deprecated, gitops.IntegrationTestStatusErrorGithub),
@@ -605,12 +628,15 @@ var _ = Describe("GitHubReporter", func() {
 
 		It("check if all integration tests statuses are supported", func() {
 			for _, teststatus := range integrationteststatus.IntegrationTestStatusValues() {
-				Expect(reporter.ReportStatus(
+				statusCode, err := reporter.ReportStatus(
 					context.TODO(),
 					status.TestReport{
 						ScenarioName: "scenario1",
 						Status:       teststatus,
-					})).To(Succeed())
+					})
+
+				Expect(err).To(Succeed(), "ReportStatus should succeed")
+				Expect(statusCode).To(Equal(0))
 			}
 		})
 
@@ -621,7 +647,9 @@ var _ = Describe("GitHubReporter", func() {
 				Status:       integrationteststatus.IntegrationTestStatusPending,
 				Summary:      "Integration test for snapshot snapshot-sample and scenario scenario2 is pending",
 			}
-			Expect(reporter.ReportStatus(context.TODO(), testReport)).To(Succeed())
+			statusCode, err := reporter.ReportStatus(context.TODO(), testReport)
+			Expect(err).To(Succeed(), "ReportStatus should succeed")
+			Expect(statusCode).To(Equal(0))
 			expectedLogEntry := "found existing commitStatus for scenario test status of snapshot, no need to create new commit status"
 			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
 		})
@@ -634,7 +662,10 @@ var _ = Describe("GitHubReporter", func() {
 				Status:       integrationteststatus.IntegrationTestStatusPending,
 				Summary:      "Integration test for snapshot snapshot-sample and scenario scenario2 is pending",
 			}
-			Expect(reporter.ReportStatus(context.TODO(), testReport)).To(Succeed())
+			statusCode, err := reporter.ReportStatus(context.TODO(), testReport)
+			Expect(err).To(Succeed(), "ReportStatus should succeed")
+			Expect(statusCode).To(Equal(0))
+
 			expectedLogEntry := "Won't create/update commitStatus since there is access limitation for different source and target Repo Owner"
 			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
 		})

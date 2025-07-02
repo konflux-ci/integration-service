@@ -19,6 +19,7 @@ package status
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"os"
 	"strconv"
 
@@ -40,9 +41,9 @@ import (
 // StatusUpdater is common interface used by status reporter to update PR status
 type StatusUpdater interface {
 	// Authentication of client
-	Authenticate(ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot) error
+	Authenticate(ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot) (int, error)
 	// Update status of PR
-	UpdateStatus(ctx context.Context, report TestReport) error
+	UpdateStatus(ctx context.Context, report TestReport) (int, error)
 }
 
 // CheckRunStatusUpdater updates PR status using CheckRuns (when application integration is enabled in repo)
@@ -144,39 +145,39 @@ func GetAppCredentials(ctx context.Context, k8sclient client.Client, object clie
 }
 
 // Authenticate Github Client with application credentials
-func (cru *CheckRunStatusUpdater) Authenticate(ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot) error {
+func (cru *CheckRunStatusUpdater) Authenticate(ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot) (int, error) {
 	creds, err := GetAppCredentials(ctx, cru.k8sClient, snapshot)
 	cru.creds = creds
 
 	if err != nil {
 		cru.logger.Error(err, "failed to get app credentials from Snapshot",
 			"snapshot.NameSpace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
-		return err
+		return 0, err
 	}
 
-	token, err := cru.ghClient.CreateAppInstallationToken(ctx, creds.AppID, creds.InstallationID, creds.PrivateKey)
+	token, statusCode, err := cru.ghClient.CreateAppInstallationToken(ctx, creds.AppID, creds.InstallationID, creds.PrivateKey)
 	if err != nil {
 		cru.logger.Error(err, "failed to create app installation token",
 			"creds.AppID", creds.AppID, "creds.InstallationID", creds.InstallationID)
-		return err
+		return statusCode, err
 	}
 
 	cru.ghClient.SetOAuthToken(ctx, token)
 
-	return nil
+	return statusCode, nil
 }
 
-func (cru *CheckRunStatusUpdater) getAllCheckRuns(ctx context.Context) ([]*ghapi.CheckRun, error) {
+func (cru *CheckRunStatusUpdater) getAllCheckRuns(ctx context.Context) ([]*ghapi.CheckRun, int, error) {
 	if len(cru.allCheckRunsCache) == 0 {
-		allCheckRuns, err := cru.ghClient.GetAllCheckRunsForRef(ctx, cru.owner, cru.repo, cru.sha, cru.creds.AppID)
+		allCheckRuns, statusCode, err := cru.ghClient.GetAllCheckRunsForRef(ctx, cru.owner, cru.repo, cru.sha, cru.creds.AppID)
 		if err != nil {
 			cru.logger.Error(err, "failed to get all checkruns for ref",
 				"owner", cru.owner, "repo", cru.repo, "creds.AppID", cru.creds.AppID)
-			return nil, err
+			return nil, statusCode, err
 		}
 		cru.allCheckRunsCache = allCheckRuns
 	}
-	return cru.allCheckRunsCache, nil
+	return cru.allCheckRunsCache, 0, nil
 }
 
 // createCheckRunAdapterForSnapshot create a CheckRunAdapter for given snapshot, integrationTestStatusDetail, owner, repo and sha to create a checkRun
@@ -233,15 +234,15 @@ func (cru *CheckRunStatusUpdater) createCheckRunAdapterForSnapshot(report TestRe
 }
 
 // UpdateStatus updates CheckRun status of PR
-func (cru *CheckRunStatusUpdater) UpdateStatus(ctx context.Context, report TestReport) error {
+func (cru *CheckRunStatusUpdater) UpdateStatus(ctx context.Context, report TestReport) (int, error) {
 	if cru.creds == nil {
 		panic("authenticate first")
 	}
-	allCheckRuns, err := cru.getAllCheckRuns(ctx)
+	allCheckRuns, statusCode, err := cru.getAllCheckRuns(ctx)
 
 	if err != nil {
 		cru.logger.Error(err, "failed to get all checkruns")
-		return err
+		return statusCode, err
 	}
 
 	checkRunAdapter, err := cru.createCheckRunAdapterForSnapshot(report)
@@ -250,7 +251,7 @@ func (cru *CheckRunStatusUpdater) UpdateStatus(ctx context.Context, report TestR
 			"snapshot.NameSpace", cru.snapshot.Namespace, "snapshot.Name", cru.snapshot.Name,
 			"scenario.Name", report.ScenarioName,
 		)
-		return nil
+		return 0, nil
 	}
 
 	existingCheckrun := cru.ghClient.GetExistingCheckRun(allCheckRuns, checkRunAdapter)
@@ -258,12 +259,12 @@ func (cru *CheckRunStatusUpdater) UpdateStatus(ctx context.Context, report TestR
 	if existingCheckrun == nil {
 		cru.logger.Info("creating checkrun for scenario test status of snapshot",
 			"snapshot.NameSpace", cru.snapshot.Namespace, "snapshot.Name", cru.snapshot.Name, "scenarioName", report.ScenarioName, "externalID", checkRunAdapter.ExternalID)
-		_, err = cru.ghClient.CreateCheckRun(ctx, checkRunAdapter)
+		_, statusCode, err = cru.ghClient.CreateCheckRun(ctx, checkRunAdapter)
 		if err != nil {
 			cru.logger.Error(err, "failed to create checkrun",
 				"checkRunAdapter", checkRunAdapter)
 		}
-		return err
+		return statusCode, err
 	}
 
 	cru.logger.Info("found existing checkrun", "existingCheckRun", existingCheckrun)
@@ -273,21 +274,21 @@ func (cru *CheckRunStatusUpdater) UpdateStatus(ctx context.Context, report TestR
 	if existingCheckrun.GetStatus() == "completed" {
 		cru.logger.Info("The existing checkrun is already in completed state, re-creating a new checkrun for scenario test status of snapshot",
 			"snapshot.NameSpace", cru.snapshot.Namespace, "snapshot.Name", cru.snapshot.Name, "scenarioName", report.ScenarioName, "externalID", checkRunAdapter.ExternalID)
-		_, err = cru.ghClient.CreateCheckRun(ctx, checkRunAdapter)
+		_, statusCode, err = cru.ghClient.CreateCheckRun(ctx, checkRunAdapter)
 		if err != nil {
 			cru.logger.Error(err, "failed to create checkrun",
 				"checkRunAdapter", checkRunAdapter)
 		}
-		return err
+		return statusCode, err
 	}
 
-	err = cru.ghClient.UpdateCheckRun(ctx, *existingCheckrun.ID, checkRunAdapter)
+	statusCode, err = cru.ghClient.UpdateCheckRun(ctx, *existingCheckrun.ID, checkRunAdapter)
 	if err != nil {
 		cru.logger.Error(err, "failed to update checkrun",
 			"checkRunAdapter", checkRunAdapter)
 	}
 
-	return err
+	return statusCode, err
 }
 
 // CommitStatusUpdater updates PR using Commit/RepoStatus (without application integration enabled)
@@ -323,30 +324,30 @@ func NewCommitStatusUpdater(
 	}
 }
 
-func (csu *CommitStatusUpdater) getAllCommitStatuses(ctx context.Context) ([]*ghapi.RepoStatus, error) {
+func (csu *CommitStatusUpdater) getAllCommitStatuses(ctx context.Context) ([]*ghapi.RepoStatus, int, error) {
 	if len(csu.allCommitStatusesCache) == 0 {
-		allCommitStatuses, err := csu.ghClient.GetAllCommitStatusesForRef(ctx, csu.owner, csu.repo, csu.sha)
+		allCommitStatuses, statusCode, err := csu.ghClient.GetAllCommitStatusesForRef(ctx, csu.owner, csu.repo, csu.sha)
 		if err != nil {
 			csu.logger.Error(err, "failed to get all commitStatuses for snapshot",
 				"snapshot.NameSpace", csu.snapshot.Namespace, "snapshot.Name", csu.snapshot.Name)
-			return nil, err
+			return nil, statusCode, err
 		}
 		csu.allCommitStatusesCache = allCommitStatuses
 	}
-	return csu.allCommitStatusesCache, nil
+	return csu.allCommitStatusesCache, 0, nil
 }
 
 // Authenticate Github Client with token secret ref defined in snapshot
-func (csu *CommitStatusUpdater) Authenticate(ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot) error {
+func (csu *CommitStatusUpdater) Authenticate(ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot) (int, error) {
 	token, err := GetPACGitProviderToken(ctx, csu.k8sClient, snapshot)
 	if err != nil {
 		csu.logger.Error(err, "failed to get token from snapshot",
 			"snapshot.NameSpace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
-		return err
+		return 0, err
 	}
 
 	csu.ghClient.SetOAuthToken(ctx, token)
-	return nil
+	return 0, nil
 }
 
 // createCommitStatusAdapterForSnapshot create a commitStatusAdapter used to create commitStatus on GitHub
@@ -379,64 +380,63 @@ func (csu *CommitStatusUpdater) createCommitStatusAdapterForSnapshot(report Test
 }
 
 // updateStatusInComment will create/update a comment in PR which creates snapshot
-func (csu *CommitStatusUpdater) updateStatusInComment(ctx context.Context, report TestReport) error {
+func (csu *CommitStatusUpdater) updateStatusInComment(ctx context.Context, report TestReport) (int, error) {
 	var unRecoverableError error
 	issueNumberStr, found := csu.snapshot.GetAnnotations()[gitops.PipelineAsCodePullRequestAnnotation]
 	if !found {
 		unRecoverableError = helpers.NewUnrecoverableMetadataError(fmt.Sprintf("pull-request annotation not found %q", gitops.PipelineAsCodePullRequestAnnotation))
 		csu.logger.Error(unRecoverableError, "snapshot.Name", report.SnapshotName)
-		return unRecoverableError
+		return 0, unRecoverableError
 	}
 
 	issueNumber, err := strconv.Atoi(issueNumberStr)
 	if err != nil {
 		unRecoverableError = helpers.NewUnrecoverableMetadataError(fmt.Sprintf("failed to convert string issueNumberStr %s to int：%s", issueNumberStr, err.Error()))
 		csu.logger.Error(unRecoverableError, "snapshot.Name", report.SnapshotName)
-		return unRecoverableError
+		return 0, unRecoverableError
 	}
 
 	comment, err := FormatComment(report.Summary, report.Text)
 	if err != nil {
 		unRecoverableError = helpers.NewUnrecoverableMetadataError(fmt.Sprintf("failed to format comment for pull-request %d: %s", issueNumber, err.Error()))
 		csu.logger.Error(unRecoverableError, "snapshot.Name", report.SnapshotName)
-		return unRecoverableError
+		return 0, unRecoverableError
 	}
 
-	allComments, err := csu.ghClient.GetAllCommentsForPR(ctx, csu.owner, csu.repo, issueNumber)
+	allComments, statusCode, err := csu.ghClient.GetAllCommentsForPR(ctx, csu.owner, csu.repo, issueNumber)
 	if err != nil {
 		csu.logger.Error(err, fmt.Sprintf("error while getting all comments for pull-request %s", issueNumberStr))
-		return fmt.Errorf("error while getting all comments for pull-request %s: %w", issueNumberStr, err)
+		return statusCode, fmt.Errorf("error while getting all comments for pull-request %s: %w", issueNumberStr, err)
 	}
 	existingCommentId := csu.ghClient.GetExistingCommentID(allComments, csu.snapshot.Name, report.ScenarioName)
 	if existingCommentId == nil {
-		_, err = csu.ghClient.CreateComment(ctx, csu.owner, csu.repo, issueNumber, comment)
+		_, statusCode, err = csu.ghClient.CreateComment(ctx, csu.owner, csu.repo, issueNumber, comment)
 		if err != nil {
 			csu.logger.Error(err, fmt.Sprintf("error while creating comment for pull-request %s", issueNumberStr))
-			return fmt.Errorf("error while creating comment for pull-request %s: %w", issueNumberStr, err)
+			return statusCode, fmt.Errorf("error while creating comment for pull-request %s: %w", issueNumberStr, err)
 		}
 	} else {
-		_, err = csu.ghClient.EditComment(ctx, csu.owner, csu.repo, *existingCommentId, comment)
+		_, statusCode, err = csu.ghClient.EditComment(ctx, csu.owner, csu.repo, *existingCommentId, comment)
 		if err != nil {
 			csu.logger.Error(err, fmt.Sprintf("error while updating comment for pull-request %s", issueNumberStr))
-			return fmt.Errorf("error while updating comment for pull-request %s: %w", issueNumberStr, err)
+			return statusCode, fmt.Errorf("error while updating comment for pull-request %s: %w", issueNumberStr, err)
 		}
 	}
 
-	return nil
+	return statusCode, nil
 }
 
 // UpdateStatus updates commit status in PR
-func (csu *CommitStatusUpdater) UpdateStatus(ctx context.Context, report TestReport) error {
-
+func (csu *CommitStatusUpdater) UpdateStatus(ctx context.Context, report TestReport) (int, error) {
 	sourceRepoOwner := gitops.GetSourceRepoOwnerFromSnapshot(csu.snapshot)
 	// we create/update commitStatus only when the source and target repo owner are the same
 	if csu.owner == sourceRepoOwner {
-		allCommitStatuses, err := csu.getAllCommitStatuses(ctx)
+		allCommitStatuses, statusCode, err := csu.getAllCommitStatuses(ctx)
 		if err != nil {
 			csu.logger.Error(err, "failed to get all CommitStatuses for scenario",
 				"snapshot.NameSpace", csu.snapshot.Namespace, "snapshot.Name", csu.snapshot.Name,
 				"scenario.Name", report.ScenarioName)
-			return err
+			return statusCode, err
 		}
 
 		commitStatusAdapter, err := csu.createCommitStatusAdapterForSnapshot(report)
@@ -445,22 +445,22 @@ func (csu *CommitStatusUpdater) UpdateStatus(ctx context.Context, report TestRep
 				"snapshot.NameSpace", csu.snapshot.Namespace, "snapshot.Name", csu.snapshot.Name,
 				"scenario.Name", report.ScenarioName,
 			)
-			return nil
+			return 0, nil
 		}
 
 		commitStatusExist, err := csu.ghClient.CommitStatusExists(allCommitStatuses, commitStatusAdapter)
 		if err != nil {
 			csu.logger.Error(err, "failed to check existing commitStatus")
-			return err
+			return 0, err
 		}
 
 		if !commitStatusExist {
 			csu.logger.Info("creating commit status for scenario test status of snapshot",
 				"snapshot.NameSpace", csu.snapshot.Namespace, "snapshot.Name", csu.snapshot.Name, "scenarioName", report.ScenarioName)
-			_, err = csu.ghClient.CreateCommitStatus(ctx, commitStatusAdapter.Owner, commitStatusAdapter.Repository, commitStatusAdapter.SHA, commitStatusAdapter.State, commitStatusAdapter.Description, commitStatusAdapter.Context, commitStatusAdapter.TargetURL)
+			_, statusCode, err = csu.ghClient.CreateCommitStatus(ctx, commitStatusAdapter.Owner, commitStatusAdapter.Repository, commitStatusAdapter.SHA, commitStatusAdapter.State, commitStatusAdapter.Description, commitStatusAdapter.Context, commitStatusAdapter.TargetURL)
 			if err != nil {
 				csu.logger.Error(err, "failed to create commitStatus", "snapshot.NameSpace", csu.snapshot.Namespace, "snapshot.Name", csu.snapshot.Name, "scenarioName", report.ScenarioName)
-				return err
+				return statusCode, err
 			}
 		} else {
 			csu.logger.Info("found existing commitStatus for scenario test status of snapshot, no need to create new commit status",
@@ -473,14 +473,14 @@ func (csu *CommitStatusUpdater) UpdateStatus(ctx context.Context, report TestRep
 	// Create a comment when integration test is neither pending nor inprogress since comment for pending/inprogress is less meaningful and there is commitStatus for all statuses
 	_, isPullRequest := csu.snapshot.GetAnnotations()[gitops.PipelineAsCodePullRequestAnnotation]
 	if report.Status != intgteststat.IntegrationTestStatusPending && report.Status != intgteststat.IntegrationTestStatusInProgress && isPullRequest {
-		err := csu.updateStatusInComment(ctx, report)
+		statusCode, err := csu.updateStatusInComment(ctx, report)
 		if err != nil {
 			csu.logger.Error(err, "failed to update comment", "snapshot.NameSpace", csu.snapshot.Namespace, "snapshot.Name", csu.snapshot.Name, "scenarioName", report.ScenarioName)
-			return err
+			return statusCode, err
 		}
 	}
 
-	return nil
+	return 0, nil
 }
 
 // GitHubReporter reports status back to GitHub for a Snapshot.
@@ -642,8 +642,8 @@ func (r *GitHubReporter) Initialize(ctx context.Context, snapshot *applicationap
 		r.updater = NewCommitStatusUpdater(r.client, r.k8sClient, r.logger, owner, repo, sha, snapshot)
 	}
 
-	if err := r.updater.Authenticate(ctx, snapshot); err != nil {
-		r.logger.Error(err, fmt.Sprintf("failed to authenticate for snapshot %s/%s", snapshot.Namespace, snapshot.Name))
+	if statusCode, err := r.updater.Authenticate(ctx, snapshot); err != nil {
+		r.logger.Error(err, fmt.Sprintf("failed to authenticate for snapshot %s/%s, got status code %d", snapshot.Namespace, snapshot.Name, statusCode))
 		return err
 	}
 	return nil
@@ -655,15 +655,22 @@ func (r *GitHubReporter) GetReporterName() string {
 }
 
 // Update status in Github
-func (r *GitHubReporter) ReportStatus(ctx context.Context, report TestReport) error {
+func (r *GitHubReporter) ReportStatus(ctx context.Context, report TestReport) (int, error) {
+	var statusCode = 0
+	var err error
+
 	if r.updater == nil {
 		r.logger.Error(nil, fmt.Sprintf("reporter is not initialized for snapshot %s", report.SnapshotName))
-		return fmt.Errorf("reporter is not initialized")
+		return statusCode, fmt.Errorf("reporter is not initialized")
 	}
 
-	if err := r.updater.UpdateStatus(ctx, report); err != nil {
+	if statusCode, err = r.updater.UpdateStatus(ctx, report); err != nil {
 		r.logger.Error(err, fmt.Sprintf("failed to update status for snapshot %s", report.SnapshotName))
-		return err
+		return statusCode, err
 	}
-	return nil
+	return statusCode, nil
+}
+
+func (r *GitHubReporter) ReturnCodeIsUnrecoverable(statusCode int) bool {
+	return statusCode == http.StatusForbidden || statusCode == http.StatusUnauthorized
 }

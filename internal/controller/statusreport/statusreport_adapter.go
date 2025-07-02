@@ -355,6 +355,7 @@ func (a *Adapter) ReportSnapshotStatus(testedSnapshot *applicationapiv1alpha1.Sn
 // ReportGroupSnapshotCreationStatus report the group snapshot creation status back to the git provider according the filtered integration test scenarios
 func (a *Adapter) ReportGroupSnapshotCreationStatus(snapshot *applicationapiv1alpha1.Snapshot, integrationTestScenarios *[]v1beta2.IntegrationTestScenario,
 	integrationTestStatus intgteststat.IntegrationTestStatus, componentName string) error {
+	var statusCode int
 	reporter := a.status.GetReporter(snapshot)
 	if reporter == nil {
 		a.logger.Info("No suitable reporter found, skipping report")
@@ -373,12 +374,16 @@ func (a *Adapter) ReportGroupSnapshotCreationStatus(snapshot *applicationapiv1al
 		if err != nil {
 			return err
 		}
-		err = status.IterateIntegrationTestInStatusReport(a.context, a.client, reporter, snapshot, integrationTestScenarios, intgTestStatusDetails, componentName)
+		statusCode, err = status.IterateIntegrationTestInStatusReport(a.context, a.client, reporter, snapshot, integrationTestScenarios, intgTestStatusDetails, componentName)
 		if err != nil {
 			a.logger.Error(err, fmt.Sprintf("failed to report group snapshot creation failure %s/%s",
 				snapshot.Namespace, snapshot.Name))
-			return fmt.Errorf("failed to report group snapshot creation failure %s/%s: %w",
-				snapshot.Namespace, snapshot.Name, err)
+			if reporter.ReturnCodeIsUnrecoverable(statusCode) {
+				return nil
+			} else {
+				return fmt.Errorf("failed to report group snapshot creation failure %s/%s: %w",
+					snapshot.Namespace, snapshot.Name, err)
+			}
 		}
 
 		a.logger.Info("Successfully report group snapshot creation failure",
@@ -428,7 +433,7 @@ func (a *Adapter) iterateIntegrationTestStatusDetailsInStatusReport(reporter sta
 			}
 			return fmt.Errorf("failed to generate test report: %w", reportErr)
 		}
-		if reportStatusErr := reporter.ReportStatus(a.context, *testReport); reportStatusErr != nil {
+		if statusCode, reportStatusErr := reporter.ReportStatus(a.context, *testReport); reportStatusErr != nil {
 			if integrationTestStatusDetail.Status.IsFinal() && integrationTestStatusDetail.TestPipelineRunName != "" {
 				a.logger.Error(reportStatusErr, fmt.Sprintf("failed to report status to git provider for completed integration pipelinerun %s/%s, then finalizer test.appstudio.openshift.io/pipelinerun might not be removed from it later", testedSnapshot.Namespace, integrationTestStatusDetail.TestPipelineRunName))
 			}
@@ -436,7 +441,13 @@ func (a *Adapter) iterateIntegrationTestStatusDetailsInStatusReport(reporter sta
 			if writeErr := status.WriteSnapshotReportStatus(a.context, a.client, testedSnapshot, srs); writeErr != nil { // try to write what was already written
 				return fmt.Errorf("failed to report status AND write snapshot report status metadata: %w", e.Join(reportStatusErr, writeErr))
 			}
-			return fmt.Errorf("failed to update status: %w", reportStatusErr)
+
+			if reporter.ReturnCodeIsUnrecoverable(statusCode) {
+				a.logger.Error(reportStatusErr, fmt.Sprintf("failed to report status to git provider for integration pipelinerun %s/%s, the statusCode %d is not easily recoverable", testedSnapshot.Namespace, integrationTestStatusDetail.TestPipelineRunName, statusCode))
+				return nil
+			} else {
+				return fmt.Errorf("failed to update status: %w", reportStatusErr)
+			}
 		}
 		a.logger.Info("Successfully report integration test status for snapshot",
 			"testedSnapshot.Name", testedSnapshot.Name,
