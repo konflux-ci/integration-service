@@ -219,7 +219,7 @@ var _ = Describe("Metrics Integration", Ordered, func() {
 		BeforeEach(func() {
 			// Set completion time to current time and start time to 60 seconds prior.
 			completionTime = metav1.Time{Time: time.Now()}
-			startTime = metav1.Time{Time: completionTime.Time.Add(-60 * time.Second)}
+			startTime = metav1.Time{Time: completionTime.Add(-60 * time.Second)}
 		})
 
 		It("adds an observation to ReleaseLatencySeconds", func() {

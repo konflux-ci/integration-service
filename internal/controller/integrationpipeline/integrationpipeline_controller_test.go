@@ -329,8 +329,8 @@ var _ = Describe("Integration PipelineController", func() {
 		err = k8sClient.Delete(ctx, hasSnapshot)
 		Eventually(func() bool {
 			err := k8sClient.Get(ctx, types.NamespacedName{
-				Namespace: hasSnapshot.ObjectMeta.Namespace,
-				Name:      hasSnapshot.ObjectMeta.Name,
+				Namespace: hasSnapshot.Namespace,
+				Name:      hasSnapshot.Name,
 			}, hasSnapshot)
 			return err != nil
 		}).Should(BeTrue())

@@ -30,8 +30,8 @@ import (
 // NewSnapshotIntegrationTestStatusesFromSnapshot creates new SnapshotTestStatus struct from snapshot annotation
 func NewSnapshotIntegrationTestStatusesFromSnapshot(s *applicationapiv1alpha1.Snapshot) (*intgteststat.SnapshotIntegrationTestStatuses, error) {
 	annotations := map[string]string{}
-	if s.ObjectMeta.GetAnnotations() != nil {
-		annotations = s.ObjectMeta.GetAnnotations()
+	if s.GetAnnotations() != nil {
+		annotations = s.GetAnnotations()
 	}
 	statusAnnotation, ok := annotations[SnapshotTestsStatusAnnotation]
 	if !ok {

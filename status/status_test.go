@@ -422,11 +422,12 @@ var _ = Describe("Status Adapter", func() {
 		mockK8sClient = &MockK8sClient{
 			getInterceptor: func(key client.ObjectKey, obj client.Object) {
 				if taskRun, ok := obj.(*tektonv1.TaskRun); ok {
-					if key.Name == successfulTaskRun.Name {
+					switch key.Name {
+					case successfulTaskRun.Name:
 						taskRun.Status = successfulTaskRun.Status
-					} else if key.Name == failedTaskRun.Name {
+					case failedTaskRun.Name:
 						taskRun.Status = failedTaskRun.Status
-					} else if key.Name == skippedTaskRun.Name {
+					case skippedTaskRun.Name:
 						taskRun.Status = skippedTaskRun.Status
 					}
 				}

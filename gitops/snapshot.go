@@ -1146,8 +1146,8 @@ func SortSnapshots(snapshots []applicationapiv1alpha1.Snapshot) []applicationapi
 			time_i, _ = strconv.Atoi(snapshots[i].Annotations[BuildPipelineRunStartTime])
 			time_j, _ = strconv.Atoi(snapshots[j].Annotations[BuildPipelineRunStartTime])
 		} else {
-			time_i = int(snapshots[i].CreationTimestamp.Time.Unix())
-			time_j = int(snapshots[j].CreationTimestamp.Time.Unix())
+			time_i = int(snapshots[i].CreationTimestamp.Unix())
+			time_j = int(snapshots[j].CreationTimestamp.Unix())
 		}
 		return time_i > time_j
 	})

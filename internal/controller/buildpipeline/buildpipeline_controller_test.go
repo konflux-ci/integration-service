@@ -281,8 +281,8 @@ var _ = Describe("PipelineController", func() {
 		err = k8sClient.Delete(ctx, hasComp)
 		Eventually(func() bool {
 			err := k8sClient.Get(ctx, types.NamespacedName{
-				Namespace: hasComp.ObjectMeta.Namespace,
-				Name:      hasComp.ObjectMeta.Name,
+				Namespace: hasComp.Namespace,
+				Name:      hasComp.Name,
 			}, hasComp)
 			return err != nil
 		}).Should(BeTrue())

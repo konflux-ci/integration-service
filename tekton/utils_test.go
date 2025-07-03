@@ -95,7 +95,7 @@ var _ = Describe("Utils", func() {
 	})
 
 	It("can return err when can't find result for CHAINS-GIT_URL", func() {
-		pipelineRun.Status.PipelineRunStatusFields.Results = []tektonv1.PipelineRunResult{}
+		pipelineRun.Status.Results = []tektonv1.PipelineRunResult{}
 		_, err := tekton.GetComponentSourceGitUrl(pipelineRun)
 		Expect(err).To(HaveOccurred())
 	})
@@ -109,7 +109,7 @@ var _ = Describe("Utils", func() {
 	})
 
 	It("can return err when can't find result CHAINS-GIT_COMMIT", func() {
-		pipelineRun.Status.PipelineRunStatusFields.Results = []tektonv1.PipelineRunResult{}
+		pipelineRun.Status.Results = []tektonv1.PipelineRunResult{}
 		_, err := tekton.GetComponentSourceGitCommit(pipelineRun)
 		Expect(err).To(HaveOccurred())
 	})

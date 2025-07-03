@@ -76,7 +76,7 @@ func (il *IntegrationLogger) LogAuditEvent(msg string, obj runtime.Object, actio
 
 // WithApp returns a new logger with application namespacedName key-value
 func (il IntegrationLogger) WithApp(app applicationapiv1alpha1.Application) IntegrationLogger {
-	log := il.Logger.WithValues("application", fmt.Sprintf("%s/%s", app.Namespace, app.Name))
+	log := il.WithValues("application", fmt.Sprintf("%s/%s", app.Namespace, app.Name))
 	il.setLogger(log)
 	return il
 }
