@@ -50,6 +50,12 @@ const (
 	// TestLabelPrefix contains the prefix applied to labels and annotations related to testing.
 	TestLabelPrefix = "test.appstudio.openshift.io"
 
+	// ReleaseLabelPrefix contains the prefix applied to to labels and annotations related to release process.
+	ReleaseLabelPrefix = "release.appstudio.openshift.io"
+
+	// AutoReleaseLabel contains the label that allows users to overwrite the release behaviour of Snapshots
+	AutoReleaseLabel = ReleaseLabelPrefix + "/auto-release"
+
 	// CustomLabelPrefix contains the prefix applied to custom user-defined labels and annotations.
 	CustomLabelPrefix = "custom.appstudio.openshift.io"
 
@@ -666,6 +672,10 @@ func CanSnapshotBePromoted(snapshot *applicationapiv1alpha1.Snapshot) (bool, []s
 			canBePromoted = false
 			reasons = append(reasons, "the Snapshot was created for a PaC pull request event")
 		}
+		if IsSnapshotAutoReleaseDisabled(snapshot) {
+			canBePromoted = false
+			reasons = append(reasons, fmt.Sprintf("the Snapshot '%s' label is 'false'", AutoReleaseLabel))
+		}
 		if IsGroupSnapshot(snapshot) {
 			canBePromoted = false
 			reasons = append(reasons, "the Snapshot is group snapshot")
@@ -724,6 +734,11 @@ func IsSnapshotCreatedByPACPushEvent(snapshot *applicationapiv1alpha1.Snapshot) 
 		metadata.HasLabelWithValue(snapshot, PipelineAsCodeEventTypeLabel, PipelineAsCodeGLPushType) ||
 		!metadata.HasLabel(snapshot, PipelineAsCodeEventTypeLabel) ||
 		!metadata.HasLabel(snapshot, PipelineAsCodePullRequestAnnotation) && !IsGroupSnapshot(snapshot)
+}
+
+// IsSnapshotAutoReleaseDisabled checks if a snapshot has a AutoReleaseLabel label and if its value is "false"
+func IsSnapshotAutoReleaseDisabled(snapshot *applicationapiv1alpha1.Snapshot) bool {
+	return metadata.HasLabelWithValue(snapshot, AutoReleaseLabel, "false")
 }
 
 // IsSnapshotCreatedBySamePACEvent checks if the two snapshot are created by the same PAC event

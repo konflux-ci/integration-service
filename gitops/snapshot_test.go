@@ -577,6 +577,12 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 		canBePromoted, reasons = gitops.CanSnapshotBePromoted(hasSnapshot)
 		Expect(canBePromoted).To(BeFalse())
 		Expect(reasons).To(HaveLen(3))
+
+		hasSnapshot.Labels[gitops.AutoReleaseLabel] = "false"
+		canBePromoted, reasons = gitops.CanSnapshotBePromoted(hasSnapshot)
+		Expect(canBePromoted).To(BeFalse())
+		Expect(reasons).To(HaveLen(4))
+
 	})
 
 	It("Return false when the image url contains invalid digest", func() {
