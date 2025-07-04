@@ -1,5 +1,5 @@
 /*
-Copyright 2025.
+Copyright 2023 Red Hat Inc.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,65 +17,249 @@ limitations under the License.
 package v1beta2
 
 import (
+	"fmt"
+	"time"
+
+	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
+	"github.com/konflux-ci/integration-service/api/v1beta2"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"k8s.io/apimachinery/pkg/api/errors"
+	types "k8s.io/apimachinery/pkg/types"
 
-	appstudiov1beta2 "github.com/konflux-ci/integration-service/api/v1beta2"
-	// TODO (user): Add any additional imports if needed
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-var _ = Describe("IntegrationTestScenario Webhook", func() {
+var _ = Describe("IntegrationTestScenario webhook", Ordered, func() {
+
 	var (
-		obj       *appstudiov1beta2.IntegrationTestScenario
-		oldObj    *appstudiov1beta2.IntegrationTestScenario
-		validator IntegrationTestScenarioCustomValidator
+		integrationTestScenario                   *v1beta2.IntegrationTestScenario
+		integrationTestScenarioInvalidGitResolver *v1beta2.IntegrationTestScenario
+		hasApp                                    *applicationapiv1alpha1.Application
 	)
 
+	BeforeAll(func() {
+		hasApp = &applicationapiv1alpha1.Application{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "application-sample",
+				Namespace: "default",
+			},
+			Spec: applicationapiv1alpha1.ApplicationSpec{
+				DisplayName: "application-sample",
+				Description: "This is an example application",
+			},
+		}
+		Expect(k8sClient.Create(ctx, hasApp)).Should(Succeed())
+	})
+
 	BeforeEach(func() {
-		obj = &appstudiov1beta2.IntegrationTestScenario{}
-		oldObj = &appstudiov1beta2.IntegrationTestScenario{}
-		validator = IntegrationTestScenarioCustomValidator{}
-		Expect(validator).NotTo(BeNil(), "Expected validator to be initialized")
-		Expect(oldObj).NotTo(BeNil(), "Expected oldObj to be initialized")
-		Expect(obj).NotTo(BeNil(), "Expected obj to be initialized")
-		// TODO (user): Add any setup logic common to all tests
+		integrationTestScenario = &v1beta2.IntegrationTestScenario{
+			TypeMeta: metav1.TypeMeta{
+				APIVersion: "appstudio.redhat.com/v1beta2",
+				Kind:       "IntegrationTestScenario",
+			},
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "integrationtestscenario",
+				Namespace: "default",
+			},
+			Spec: v1beta2.IntegrationTestScenarioSpec{
+				Application: "application-sample",
+				Params: []v1beta2.PipelineParameter{
+					{
+						Name:  "pipeline-param-name",
+						Value: "pipeline-param-value",
+					},
+				},
+				Contexts: []v1beta2.TestContext{
+					{
+						Name:        "test-ctx",
+						Description: "test-ctx-description",
+					},
+				},
+				ResolverRef: v1beta2.ResolverRef{
+					Resolver: "git",
+					Params: []v1beta2.ResolverParameter{
+						{
+							Name:  "url",
+							Value: "https://url",
+						},
+						{
+							Name:  "revision",
+							Value: "main",
+						},
+						{
+							Name:  "pathInRepo",
+							Value: "pipeline/helloworld.yaml",
+						},
+					},
+				},
+			},
+		}
 	})
 
 	AfterEach(func() {
-		// TODO (user): Add any teardown logic common to all tests
+		err := k8sClient.Delete(ctx, integrationTestScenario)
+		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 	})
 
-	Context("When creating or updating IntegrationTestScenario under Validating Webhook", func() {
-		// TODO (user): Add logic for validating webhooks
-		// Example:
-		// It("Should deny creation if a required field is missing", func() {
-		//     By("simulating an invalid creation scenario")
-		//     obj.SomeRequiredField = ""
-		//     Expect(validator.ValidateCreate(ctx, obj)).Error().To(HaveOccurred())
-		// })
-		//
-		// It("Should admit creation if all required fields are present", func() {
-		//     By("simulating an invalid creation scenario")
-		//     obj.SomeRequiredField = "valid_value"
-		//     Expect(validator.ValidateCreate(ctx, obj)).To(BeNil())
-		// })
-		//
-		// It("Should validate updates correctly", func() {
-		//     By("simulating a valid update scenario")
-		//     oldObj.SomeRequiredField = "updated_value"
-		//     obj.SomeRequiredField = "updated_value"
-		//     Expect(validator.ValidateUpdate(ctx, oldObj, obj)).To(BeNil())
-		// })
+	AfterAll(func() {
+		err := k8sClient.Delete(ctx, hasApp)
+		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 	})
 
-	Context("When creating IntegrationTestScenario under Conversion Webhook", func() {
-		// TODO (user): Add logic to convert the object to the desired version and verify the conversion
-		// Example:
-		// It("Should convert the object correctly", func() {
-		//     convertedObj := &appstudiov1beta2.IntegrationTestScenario{}
-		//     Expect(obj.ConvertTo(convertedObj)).To(Succeed())
-		//     Expect(convertedObj).ToNot(BeNil())
-		// })
+	It("should fail to create scenario with long name", func() {
+		integrationTestScenario.Name = "this-name-is-too-long-it-has-64-characters-and-we-allow-max-63ch"
+		Expect(k8sClient.Create(ctx, integrationTestScenario)).ShouldNot(Succeed())
 	})
 
+	It("should fail to create scenario with snapshot parameter set", func() {
+		integrationTestScenario.Spec.Params = append(integrationTestScenario.Spec.Params, v1beta2.PipelineParameter{Name: "SNAPSHOT"})
+		Expect(k8sClient.Create(ctx, integrationTestScenario)).ShouldNot(Succeed())
+	})
+
+	It("should success to create scenario when only url in git resolver params", func() {
+		integrationTestScenarioInvalidGitResolver = &v1beta2.IntegrationTestScenario{
+			TypeMeta: metav1.TypeMeta{
+				APIVersion: "appstudio.redhat.com/v1beta2",
+				Kind:       "IntegrationTestScenario",
+			},
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "integrationtestscenario",
+				Namespace: "default",
+			},
+			Spec: v1beta2.IntegrationTestScenarioSpec{
+				Application: "application-sample",
+				Params: []v1beta2.PipelineParameter{
+					{
+						Name:  "pipeline-param-name",
+						Value: "pipeline-param-value",
+					},
+				},
+				Contexts: []v1beta2.TestContext{
+					{
+						Name:        "test-ctx",
+						Description: "test-ctx-description",
+					},
+				},
+				ResolverRef: v1beta2.ResolverRef{
+					Resolver: "git",
+					Params: []v1beta2.ResolverParameter{
+						{
+							Name:  "url",
+							Value: "https://url",
+						},
+						{
+							Name:  "revision",
+							Value: "main",
+						},
+						{
+							Name:  "pathInRepo",
+							Value: "pipeline/helloworld.yaml",
+						},
+					},
+				},
+			},
+		}
+
+		Expect(k8sClient.Create(ctx, integrationTestScenarioInvalidGitResolver)).Should(Succeed())
+	})
+
+	It("should set the value of 'Spec.ResolverRef.ResourceKind' to 'pipeline' if not already set", func() {
+		Expect(k8sClient.Create(ctx, integrationTestScenario)).Should(Succeed())
+		Eventually(func() error {
+			appliedScenario := &v1beta2.IntegrationTestScenario{}
+			err := k8sClient.Get(ctx, types.NamespacedName{
+				Name:      "integrationtestscenario",
+				Namespace: "default",
+			}, appliedScenario)
+			if err != nil {
+				return err
+			}
+			rType := appliedScenario.Spec.ResolverRef.ResourceKind
+			if rType != "pipeline" {
+				return fmt.Errorf("ResourceKind should be 'pipeline', is '%s'", rType)
+			}
+			return nil
+		}, time.Second*10).Should(Succeed())
+	})
+
+	It("should not set the value of 'Spec.ResolverRef.ResourceKind' if it is already set", func() {
+		integrationTestScenario.Spec.ResolverRef.ResourceKind = "pipelinerun"
+		Expect(k8sClient.Create(ctx, integrationTestScenario)).Should(Succeed())
+		Eventually(func() error {
+			err := k8sClient.Get(ctx, types.NamespacedName{
+				Name:      "integrationtestscenario",
+				Namespace: "default",
+			}, integrationTestScenario)
+			if err != nil {
+				return err
+			}
+			rType := integrationTestScenario.Spec.ResolverRef.ResourceKind
+			if rType != "pipelinerun" {
+				return fmt.Errorf("ResourceKind should be 'pipelinerun', is '%s'", rType)
+			}
+			return nil
+		}, time.Second*10).Should(Succeed())
+	})
+
+	It("should fail to create scenario when in git resolver params url+repo", func() {
+
+		integrationTestScenarioInvalidGitResolver.Spec.ResolverRef.Params = append(integrationTestScenarioInvalidGitResolver.Spec.ResolverRef.Params, v1beta2.ResolverParameter{Name: "repo", Value: "my-repository-name"})
+		integrationTestScenarioInvalidGitResolver.Spec.ResolverRef.Params = append(integrationTestScenarioInvalidGitResolver.Spec.ResolverRef.Params, v1beta2.ResolverParameter{Name: "org", Value: "my-org-name"})
+		Expect(k8sClient.Create(ctx, integrationTestScenarioInvalidGitResolver)).ShouldNot(Succeed())
+	})
+
+	It("should return nil when string contains neither leading nor trailing whitespace", func() {
+		testString := "this is a test string"
+		err := validateNoWhitespace("testString", testString)
+		Expect(err).NotTo(HaveOccurred())
+	})
+
+	It("should return an error when string contains leading whitespace", func() {
+		testString := " this is a test string"
+		err := validateNoWhitespace("testString", testString)
+		Expect(err).To(HaveOccurred())
+	})
+
+	It("should return an error when string contains trailing whitespace", func() {
+		testString := "this is a test string "
+		err := validateNoWhitespace("testString", testString)
+		Expect(err).To(HaveOccurred())
+	})
+
+	It("should return nil when provided with a valid url", func() {
+		url := "https://github.com/konflux-ci/integration-examples"
+		err := validateUrl("serverURL", url)
+		Expect(err).NotTo(HaveOccurred())
+	})
+
+	It("should return an error when provided with an invalid url", func() {
+		url := "konflux-ci/integration-examples"
+		err := validateUrl("serverURL", url)
+		Expect(err).To(HaveOccurred())
+	})
+
+	It("should return an error when provided with a url without 'https://'", func() {
+		url := "http://github.com/konflux-ci/integration-examples"
+		err := validateUrl("serverURL", url)
+		Expect(err).To(HaveOccurred())
+	})
+
+	It("should return an error when url contains whitespace", func() {
+		url := " https://github.com/konflux-ci/integration-examples "
+		err := validateUrl("serverURL", url)
+		Expect(err).To(HaveOccurred())
+	})
+
+	It("should return nil when token is a valid k8s secret name", func() {
+		token := "my-secret"
+		err := validateToken(token)
+		Expect(err).NotTo(HaveOccurred())
+	})
+
+	It("should return nil when token is a valid k8s secret name", func() {
+		token := "My_Secret"
+		err := validateToken(token)
+		Expect(err).To(HaveOccurred())
+	})
 })
