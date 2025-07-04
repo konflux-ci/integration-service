@@ -98,21 +98,21 @@ type PullRequestsService interface {
 
 // ClientInterface defines the methods that should be implemented by a GitHub client
 type ClientInterface interface {
-	CreateAppInstallationToken(ctx context.Context, appID int64, installationID int64, privateKey []byte) (string, error)
+	CreateAppInstallationToken(ctx context.Context, appID int64, installationID int64, privateKey []byte) (string, int, error)
 	SetOAuthToken(ctx context.Context, token string)
-	CreateCheckRun(ctx context.Context, cra *CheckRunAdapter) (*int64, error)
-	UpdateCheckRun(ctx context.Context, checkRunID int64, cra *CheckRunAdapter) error
-	GetCheckRunID(ctx context.Context, owner string, repo string, SHA string, externalID string, appID int64) (*int64, error)
-	CreateComment(ctx context.Context, owner string, repo string, issueNumber int, body string) (int64, error)
-	CreateCommitStatus(ctx context.Context, owner string, repo string, SHA string, state string, description string, statusContext string, targetURL string) (int64, error)
-	GetAllCheckRunsForRef(ctx context.Context, owner string, repo string, SHA string, appID int64) ([]*ghapi.CheckRun, error)
+	CreateCheckRun(ctx context.Context, cra *CheckRunAdapter) (*int64, int, error)
+	UpdateCheckRun(ctx context.Context, checkRunID int64, cra *CheckRunAdapter) (int, error)
+	GetCheckRunID(ctx context.Context, owner string, repo string, SHA string, externalID string, appID int64) (*int64, int, error)
+	CreateComment(ctx context.Context, owner string, repo string, issueNumber int, body string) (int64, int, error)
+	CreateCommitStatus(ctx context.Context, owner string, repo string, SHA string, state string, description string, statusContext string, targetURL string) (int64, int, error)
+	GetAllCheckRunsForRef(ctx context.Context, owner string, repo string, SHA string, appID int64) ([]*ghapi.CheckRun, int, error)
 	GetExistingCheckRun(checkRuns []*ghapi.CheckRun, newCheckRun *CheckRunAdapter) *ghapi.CheckRun
-	GetAllCommitStatusesForRef(ctx context.Context, owner, repo, sha string) ([]*ghapi.RepoStatus, error)
-	GetAllCommentsForPR(ctx context.Context, owner string, repo string, pr int) ([]*ghapi.IssueComment, error)
+	GetAllCommitStatusesForRef(ctx context.Context, owner, repo, sha string) ([]*ghapi.RepoStatus, int, error)
+	GetAllCommentsForPR(ctx context.Context, owner string, repo string, pr int) ([]*ghapi.IssueComment, int, error)
 	CommitStatusExists(res []*ghapi.RepoStatus, commitStatus *CommitStatusAdapter) (bool, error)
 	GetExistingCommentID(comments []*ghapi.IssueComment, snapshotName, scenarioName string) *int64
-	EditComment(ctx context.Context, owner string, repo string, commentID int64, body string) (int64, error)
-	GetPullRequest(ctx context.Context, owner string, repo string, prID int) (*ghapi.PullRequest, error)
+	EditComment(ctx context.Context, owner string, repo string, commentID int64, body string) (int64, int, error)
+	GetPullRequest(ctx context.Context, owner string, repo string, prID int) (*ghapi.PullRequest, int, error)
 }
 
 // Client is an abstraction around the API client.
@@ -218,25 +218,29 @@ func NewClient(logger logr.Logger, opts ...ClientOption) *Client {
 }
 
 // CreateAppInstallationToken creates an installation token for a GitHub App.
-func (c *Client) CreateAppInstallationToken(ctx context.Context, appID int64, installationID int64, privateKey []byte) (string, error) {
+func (c *Client) CreateAppInstallationToken(ctx context.Context, appID int64, installationID int64, privateKey []byte) (string, int, error) {
+	var statusCode int
 	transport, err := ghinstallation.NewAppsTransport(http.DefaultTransport, appID, privateKey)
 	if err != nil {
-		return "", err
+		return "", statusCode, err
 	}
 
 	c.gh = ghapi.NewClient(&http.Client{Transport: transport})
 
-	installToken, _, err := c.GetAppsService().CreateInstallationToken(
+	installToken, response, err := c.GetAppsService().CreateInstallationToken(
 		ctx,
 		installationID,
 		&ghapi.InstallationTokenOptions{},
 	)
-
-	if err != nil {
-		return "", err
+	if response != nil {
+		statusCode = response.StatusCode
 	}
 
-	return installToken.GetToken(), nil
+	if err != nil {
+		return "", statusCode, err
+	}
+
+	return installToken.GetToken(), statusCode, nil
 }
 
 // SetOAuthToken configures the client with a GitHub OAuth token.
@@ -249,8 +253,9 @@ func (c *Client) SetOAuthToken(ctx context.Context, token string) {
 }
 
 // CreateCheckRun creates a new CheckRun via the GitHub API.
-func (c *Client) CreateCheckRun(ctx context.Context, cra *CheckRunAdapter) (*int64, error) {
+func (c *Client) CreateCheckRun(ctx context.Context, cra *CheckRunAdapter) (*int64, int, error) {
 	status := cra.GetStatus()
+	var statusCode int
 
 	options := ghapi.CreateCheckRunOptions{
 		Name:       cra.Name,
@@ -281,10 +286,13 @@ func (c *Client) CreateCheckRun(ctx context.Context, cra *CheckRunAdapter) (*int
 		options.DetailsURL = &cra.DetailsURL
 	}
 
-	cr, _, err := c.GetChecksService().CreateCheckRun(ctx, cra.Owner, cra.Repository, options)
+	cr, response, err := c.GetChecksService().CreateCheckRun(ctx, cra.Owner, cra.Repository, options)
+	if response != nil {
+		statusCode = response.StatusCode
+	}
 
 	if err != nil {
-		return nil, fmt.Errorf("failed to create check run for owner/repo/Ref %s/%s/%s: %w", cra.Owner, cra.Repository, cra.SHA, err)
+		return nil, statusCode, fmt.Errorf("failed to create check run for owner/repo/Ref %s/%s/%s: %w", cra.Owner, cra.Repository, cra.SHA, err)
 	}
 
 	c.logger.Info("Created CheckRun",
@@ -294,12 +302,13 @@ func (c *Client) CreateCheckRun(ctx context.Context, cra *CheckRunAdapter) (*int
 		"Conclusion", cr.Conclusion,
 	)
 
-	return cr.ID, nil
+	return cr.ID, statusCode, nil
 }
 
 // UpdateCheckRun updates an existing CheckRun via the GitHub API.
-func (c *Client) UpdateCheckRun(ctx context.Context, checkRunID int64, cra *CheckRunAdapter) error {
+func (c *Client) UpdateCheckRun(ctx context.Context, checkRunID int64, cra *CheckRunAdapter) (int, error) {
 	status := cra.GetStatus()
+	var statusCode int
 
 	options := ghapi.UpdateCheckRunOptions{
 		Name:   cra.Name,
@@ -319,10 +328,13 @@ func (c *Client) UpdateCheckRun(ctx context.Context, checkRunID int64, cra *Chec
 		options.CompletedAt = &ghapi.Timestamp{Time: cra.CompletionTime}
 	}
 
-	cr, _, err := c.GetChecksService().UpdateCheckRun(ctx, cra.Owner, cra.Repository, checkRunID, options)
+	cr, response, err := c.GetChecksService().UpdateCheckRun(ctx, cra.Owner, cra.Repository, checkRunID, options)
+	if response != nil {
+		statusCode = response.StatusCode
+	}
 
 	if err != nil {
-		return err
+		return statusCode, err
 	}
 
 	c.logger.Info("Updated CheckRun",
@@ -331,15 +343,16 @@ func (c *Client) UpdateCheckRun(ctx context.Context, checkRunID int64, cra *Chec
 		"Status", cr.Status,
 		"Conclusion", cr.Conclusion,
 	)
-	return nil
+	return statusCode, nil
 
 }
 
 // GetCheckRunID returns an existing GitHub CheckRun ID if a match is found for the SHA, externalID and appID.
-func (c *Client) GetCheckRunID(ctx context.Context, owner string, repo string, SHA string, externalID string, appID int64) (*int64, error) {
+func (c *Client) GetCheckRunID(ctx context.Context, owner string, repo string, SHA string, externalID string, appID int64) (*int64, int, error) {
 	filter := "all"
+	var statusCode int
 
-	res, _, err := c.GetChecksService().ListCheckRunsForRef(
+	res, response, err := c.GetChecksService().ListCheckRunsForRef(
 		ctx,
 		owner,
 		repo,
@@ -349,31 +362,34 @@ func (c *Client) GetCheckRunID(ctx context.Context, owner string, repo string, S
 			Filter: &filter,
 		},
 	)
+	if response != nil {
+		statusCode = response.StatusCode
+	}
 
 	if err != nil {
-		return nil, fmt.Errorf("failed to list all checks run for GitHub owner/repo/Ref %s/%s/%s: %w", owner, repo, SHA, err)
+		return nil, statusCode, fmt.Errorf("failed to list all checks run for GitHub owner/repo/Ref %s/%s/%s: %w", owner, repo, SHA, err)
 	}
 
 	if *res.Total == 0 {
 		c.logger.Info("Found no CheckRuns for the ref", "SHA", SHA)
-		return nil, nil
+		return nil, statusCode, nil
 	}
 
 	for _, cr := range res.CheckRuns {
 		if *cr.ExternalID == externalID {
-			return cr.ID, nil
+			return cr.ID, statusCode, nil
 		}
 	}
 	c.logger.Info("Found no CheckRuns with a matching ExternalID", "ExternalID", externalID)
 
-	return nil, nil
+	return nil, statusCode, nil
 }
 
 // GetAllCheckRunsForRef returns all existing GitHub CheckRuns if a match for the Owner, Repo, SHA, and appID.
-func (c *Client) GetAllCheckRunsForRef(ctx context.Context, owner string, repo string, SHA string, appID int64) ([]*ghapi.CheckRun, error) {
+func (c *Client) GetAllCheckRunsForRef(ctx context.Context, owner string, repo string, SHA string, appID int64) ([]*ghapi.CheckRun, int, error) {
 	filter := "all"
-
-	res, _, err := c.GetChecksService().ListCheckRunsForRef(
+	var statusCode int
+	res, response, err := c.GetChecksService().ListCheckRunsForRef(
 		ctx,
 		owner,
 		repo,
@@ -383,17 +399,20 @@ func (c *Client) GetAllCheckRunsForRef(ctx context.Context, owner string, repo s
 			Filter: &filter,
 		},
 	)
+	if response != nil {
+		statusCode = response.StatusCode
+	}
 
 	if err != nil {
-		return nil, fmt.Errorf("failed to get all check runs for GitHub owner/repo/Ref %s/%s/%s: %w", owner, repo, SHA, err)
+		return nil, statusCode, fmt.Errorf("failed to get all check runs for GitHub owner/repo/Ref %s/%s/%s: %w", owner, repo, SHA, err)
 	}
 
 	if *res.Total == 0 {
 		c.logger.Info("Found no CheckRuns for the ref", "SHA", SHA)
-		return nil, nil
+		return nil, statusCode, nil
 	}
 
-	return res.CheckRuns, nil
+	return res.CheckRuns, statusCode, nil
 }
 
 // GetExistingCheckRun returns existing GitHub CheckRun for the ExternalID in checkRunAdapter.
@@ -421,33 +440,41 @@ func (c *Client) GetExistingCommentID(comments []*ghapi.IssueComment, snapshotNa
 }
 
 // GetAllCommitStatusesForRef returns all existing GitHub CommitStatuses if a match for the Owner, Repo, and SHA.
-func (c *Client) GetAllCommitStatusesForRef(ctx context.Context, owner, repo, sha string) ([]*ghapi.RepoStatus, error) {
-	res, _, err := c.GetRepositoriesService().ListStatuses(ctx, owner, repo, sha, &ghapi.ListOptions{})
+func (c *Client) GetAllCommitStatusesForRef(ctx context.Context, owner, repo, sha string) ([]*ghapi.RepoStatus, int, error) {
+	var statusCode int
+	res, response, err := c.GetRepositoriesService().ListStatuses(ctx, owner, repo, sha, &ghapi.ListOptions{})
+	if response != nil {
+		statusCode = response.StatusCode
+	}
 	if err != nil {
-		return nil, fmt.Errorf("failed to get all commit statuses for GitHub owner/repo/Ref %s/%s/%s: %w", owner, repo, sha, err)
+		return nil, statusCode, fmt.Errorf("failed to get all commit statuses for GitHub owner/repo/Ref %s/%s/%s: %w", owner, repo, sha, err)
 	}
 
 	if len(res) == 0 {
 		c.logger.Info("Found no commitStatus for the ref", "SHA", sha)
-		return nil, nil
+		return nil, statusCode, nil
 	}
 
-	return res, nil
+	return res, statusCode, nil
 }
 
 // GetAllCommentsForPR returns all existing comment if a match for the Owner, Repo, and PR.
-func (c *Client) GetAllCommentsForPR(ctx context.Context, owner string, repo string, number int) ([]*ghapi.IssueComment, error) {
-	res, _, err := c.GetIssuesService().ListComments(ctx, owner, repo, number, &ghapi.IssueListCommentsOptions{})
+func (c *Client) GetAllCommentsForPR(ctx context.Context, owner string, repo string, number int) ([]*ghapi.IssueComment, int, error) {
+	var statusCode int
+	res, response, err := c.GetIssuesService().ListComments(ctx, owner, repo, number, &ghapi.IssueListCommentsOptions{})
+	if response != nil {
+		statusCode = response.StatusCode
+	}
 	if err != nil {
-		return nil, fmt.Errorf("failed to get all comments for GitHub owner/repo/PR %s/%s/%d: %w", owner, repo, number, err)
+		return nil, statusCode, fmt.Errorf("failed to get all comments for GitHub owner/repo/PR %s/%s/%d: %w", owner, repo, number, err)
 	}
 
 	if len(res) == 0 {
 		c.logger.Info("Found no comments for PR", "PR", number)
-		return nil, nil
+		return nil, statusCode, nil
 	}
 
-	return res, nil
+	return res, statusCode, nil
 }
 
 // CommitStatusExists returns if a match is found for the SHA, state, context and decription.
@@ -464,10 +491,14 @@ func (c *Client) CommitStatusExists(res []*ghapi.RepoStatus, commitStatus *Commi
 }
 
 // CreateComment creates a new issue comment via the GitHub API.
-func (c *Client) CreateComment(ctx context.Context, owner string, repo string, issueNumber int, body string) (int64, error) {
-	comment, _, err := c.GetIssuesService().CreateComment(ctx, owner, repo, issueNumber, &ghapi.IssueComment{Body: &body})
+func (c *Client) CreateComment(ctx context.Context, owner string, repo string, issueNumber int, body string) (int64, int, error) {
+	var statusCode int
+	comment, response, err := c.GetIssuesService().CreateComment(ctx, owner, repo, issueNumber, &ghapi.IssueComment{Body: &body})
+	if response != nil {
+		statusCode = response.StatusCode
+	}
 	if err != nil {
-		return 0, fmt.Errorf("failed to create a comment for GitHub owner/repo/PR %s/%s/%d: %w", owner, repo, issueNumber, err)
+		return 0, statusCode, fmt.Errorf("failed to create a comment for GitHub owner/repo/PR %s/%s/%d: %w", owner, repo, issueNumber, err)
 	}
 
 	c.logger.Info("Created comment",
@@ -476,14 +507,18 @@ func (c *Client) CreateComment(ctx context.Context, owner string, repo string, i
 		"Repository", repo,
 		"IssueNumber", issueNumber,
 	)
-	return *comment.ID, nil
+	return *comment.ID, statusCode, nil
 }
 
 // EditComment edits an existing issue comment via the GitHub API.
-func (c *Client) EditComment(ctx context.Context, owner string, repo string, commentID int64, body string) (int64, error) {
-	comment, _, err := c.GetIssuesService().EditComment(ctx, owner, repo, commentID, &ghapi.IssueComment{Body: &body})
+func (c *Client) EditComment(ctx context.Context, owner string, repo string, commentID int64, body string) (int64, int, error) {
+	var statusCode int
+	comment, response, err := c.GetIssuesService().EditComment(ctx, owner, repo, commentID, &ghapi.IssueComment{Body: &body})
+	if response != nil {
+		statusCode = response.StatusCode
+	}
 	if err != nil {
-		return 0, fmt.Errorf("failed to edit an existing comment for GitHub owner/repo/comment %s/%s/%d: %w", owner, repo, commentID, err)
+		return 0, statusCode, fmt.Errorf("failed to edit an existing comment for GitHub owner/repo/comment %s/%s/%d: %w", owner, repo, commentID, err)
 	}
 
 	c.logger.Info("Edited comment",
@@ -492,11 +527,12 @@ func (c *Client) EditComment(ctx context.Context, owner string, repo string, com
 		"Repository", repo,
 		"commentID", commentID,
 	)
-	return *comment.ID, nil
+	return *comment.ID, statusCode, nil
 }
 
 // CreateCommitStatus creates a repository commit status via the GitHub API.
-func (c *Client) CreateCommitStatus(ctx context.Context, owner string, repo string, SHA string, state string, description string, statusContext string, targetURL string) (int64, error) {
+func (c *Client) CreateCommitStatus(ctx context.Context, owner string, repo string, SHA string, state string, description string, statusContext string, targetURL string) (int64, int, error) {
+	var statusCode int
 	repoStatus := ghapi.RepoStatus{
 		State:       &state,
 		Description: &description,
@@ -507,9 +543,12 @@ func (c *Client) CreateCommitStatus(ctx context.Context, owner string, repo stri
 		repoStatus.TargetURL = &targetURL
 	}
 
-	status, _, err := c.GetRepositoriesService().CreateStatus(ctx, owner, repo, SHA, &repoStatus)
+	status, response, err := c.GetRepositoriesService().CreateStatus(ctx, owner, repo, SHA, &repoStatus)
+	if response != nil {
+		statusCode = response.StatusCode
+	}
 	if err != nil {
-		return 0, fmt.Errorf("failed to create an existing commitStatus for GitHub owner/repo/ref %s/%s/%s: %w", owner, repo, SHA, err)
+		return 0, statusCode, fmt.Errorf("failed to create an existing commitStatus for GitHub owner/repo/ref %s/%s/%s: %w", owner, repo, SHA, err)
 	}
 
 	c.logger.Info("Created commit status",
@@ -522,16 +561,20 @@ func (c *Client) CreateCommitStatus(ctx context.Context, owner string, repo stri
 		"Status", status, // Log the entire status object
 	)
 
-	return *status.ID, nil
+	return *status.ID, statusCode, nil
 }
 
 // GetPullRequest returns pull request according to the owner, repo and pull request number
-func (c *Client) GetPullRequest(ctx context.Context, owner string, repo string, prID int) (*ghapi.PullRequest, error) {
-	pr, _, err := c.GetPullRequestsService().Get(ctx, owner, repo, prID)
+func (c *Client) GetPullRequest(ctx context.Context, owner string, repo string, prID int) (*ghapi.PullRequest, int, error) {
+	var statusCode int
+	pr, response, err := c.GetPullRequestsService().Get(ctx, owner, repo, prID)
+	if response != nil {
+		statusCode = response.StatusCode
+	}
 	if err != nil {
 		c.logger.Error(err, "failed to get pull request for owner/repo/pull %s/%s/%d", owner, repo, prID)
-		return nil, err
+		return nil, statusCode, err
 	}
 
-	return pr, err
+	return pr, statusCode, err
 }

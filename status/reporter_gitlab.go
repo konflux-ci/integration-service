@@ -19,6 +19,7 @@ package status
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
@@ -157,10 +158,11 @@ func (r *GitLabReporter) Initialize(ctx context.Context, snapshot *applicationap
 }
 
 // setCommitStatus sets commit status to be shown as pipeline run in gitlab view
-func (r *GitLabReporter) setCommitStatus(report TestReport) error {
+func (r *GitLabReporter) setCommitStatus(report TestReport) (int, error) {
+	var statusCode = 0
 	glState, err := GenerateGitlabCommitState(report.Status)
 	if err != nil {
-		return fmt.Errorf("failed to generate gitlab state: %w", err)
+		return statusCode, fmt.Errorf("failed to generate gitlab state: %w", err)
 	}
 
 	opt := gitlab.SetCommitStatusOptions{
@@ -178,9 +180,12 @@ func (r *GitLabReporter) setCommitStatus(report TestReport) error {
 
 	// Fetch commit statuses only if necessary
 	if glState == gitlab.Running || glState == gitlab.Pending {
-		allCommitStatuses, _, err := r.client.Commits.GetCommitStatuses(r.sourceProjectID, r.sha, nil)
+		allCommitStatuses, response, err := r.client.Commits.GetCommitStatuses(r.sourceProjectID, r.sha, nil)
+		if response != nil {
+			statusCode = response.StatusCode
+		}
 		if err != nil {
-			return fmt.Errorf("error while getting all commitStatuses for sha %s: %w", r.sha, err)
+			return statusCode, fmt.Errorf("error while getting all commitStatuses for sha %s: %w", r.sha, err)
 		}
 		existingCommitStatus = r.GetExistingCommitStatus(allCommitStatuses, report.FullName)
 
@@ -191,57 +196,70 @@ func (r *GitLabReporter) setCommitStatus(report TestReport) error {
 				"commitStatus.ID", existingCommitStatus.ID,
 				"current_status", existingCommitStatus.Status,
 				"new_status", glState)
-			return nil
+			return statusCode, nil
 		}
 	}
 
 	r.logger.Info("creating commit status for scenario test status of snapshot",
 		"scenarioName", report.ScenarioName)
 
-	commitStatus, _, err := r.client.Commits.SetCommitStatus(r.sourceProjectID, r.sha, &opt)
+	commitStatus, response, err := r.client.Commits.SetCommitStatus(r.sourceProjectID, r.sha, &opt)
+	if response != nil {
+		statusCode = response.StatusCode
+	}
 	if err != nil {
 		// when commitStatus is created in multiple thread occasionally, we can still see the transition error, so let's ignore it as a workaround
 		if strings.Contains(err.Error(), "Cannot transition status via :enqueue from :pending") {
 			r.logger.Info("Ingoring the error when transition from pending to pending when the commitStatus might be created/updated in multiple threads at the same time occasionally")
-			return nil
+			return statusCode, nil
 		}
-		return fmt.Errorf("failed to set commit status to %s: %w", string(glState), err)
+		return statusCode, fmt.Errorf("failed to set commit status to %s: %w", string(glState), err)
 	}
 
 	r.logger.Info("Created gitlab commit status", "scenario.name", report.ScenarioName, "commitStatus.ID", commitStatus.ID, "TargetURL", opt.TargetURL)
-	return nil
+	return statusCode, nil
 }
 
 // updateStatusInComment will create/update a comment in the MR which creates snapshot
-func (r *GitLabReporter) updateStatusInComment(report TestReport) error {
+func (r *GitLabReporter) updateStatusInComment(report TestReport) (int, error) {
+	var statusCode = 0
 	comment, err := FormatComment(report.Summary, report.Text)
 	if err != nil {
 		unRecoverableError := helpers.NewUnrecoverableMetadataError(fmt.Sprintf("failed to generate comment for merge-request %d: %s", r.mergeRequest, err.Error()))
 		r.logger.Error(unRecoverableError, "report.SnapshotName", report.SnapshotName)
-		return unRecoverableError
+		return statusCode, unRecoverableError
 	}
 
-	allNotes, _, err := r.client.Notes.ListMergeRequestNotes(r.targetProjectID, r.mergeRequest, nil)
+	allNotes, response, err := r.client.Notes.ListMergeRequestNotes(r.targetProjectID, r.mergeRequest, nil)
+	if response != nil {
+		statusCode = response.StatusCode
+	}
 	if err != nil {
 		r.logger.Error(err, "error while getting all comments for merge-request", "mergeRequest", r.mergeRequest, "report.SnapshotName", report.SnapshotName)
-		return fmt.Errorf("error while getting all comments for merge-request %d: %w", r.mergeRequest, err)
+		return statusCode, fmt.Errorf("error while getting all comments for merge-request %d: %w", r.mergeRequest, err)
 	}
 	existingCommentId := r.GetExistingNoteID(allNotes, report.ScenarioName, report.SnapshotName)
 	if existingCommentId == nil {
 		noteOptions := gitlab.CreateMergeRequestNoteOptions{Body: &comment}
-		_, _, err := r.client.Notes.CreateMergeRequestNote(r.targetProjectID, r.mergeRequest, &noteOptions)
+		_, response, err := r.client.Notes.CreateMergeRequestNote(r.targetProjectID, r.mergeRequest, &noteOptions)
+		if response != nil {
+			statusCode = response.StatusCode
+		}
 		if err != nil {
-			return fmt.Errorf("error while creating comment for merge-request %d: %w", r.mergeRequest, err)
+			return statusCode, fmt.Errorf("error while creating comment for merge-request %d: %w", r.mergeRequest, err)
 		}
 	} else {
 		noteOptions := gitlab.UpdateMergeRequestNoteOptions{Body: &comment}
-		_, _, err := r.client.Notes.UpdateMergeRequestNote(r.targetProjectID, r.mergeRequest, *existingCommentId, &noteOptions)
+		_, response, err := r.client.Notes.UpdateMergeRequestNote(r.targetProjectID, r.mergeRequest, *existingCommentId, &noteOptions)
+		if response != nil {
+			statusCode = response.StatusCode
+		}
 		if err != nil {
-			return fmt.Errorf("error while creating comment for merge-request %d: %w", r.mergeRequest, err)
+			return statusCode, fmt.Errorf("error while creating comment for merge-request %d: %w", r.mergeRequest, err)
 		}
 	}
 
-	return nil
+	return statusCode, nil
 }
 
 // GetExistingCommitStatus returns existing GitLab commit status that matches .
@@ -270,17 +288,18 @@ func (r *GitLabReporter) GetExistingNoteID(notes []*gitlab.Note, scenarioName, s
 }
 
 // ReportStatus reports test result to gitlab
-func (r *GitLabReporter) ReportStatus(ctx context.Context, report TestReport) error {
+func (r *GitLabReporter) ReportStatus(ctx context.Context, report TestReport) (int, error) {
+	var statusCode = 0
 	if r.client == nil {
-		return fmt.Errorf("gitlab reporter is not initialized")
+		return statusCode, fmt.Errorf("gitlab reporter is not initialized")
 	}
 
 	// We only create/update commitStatus when source project and target project are
 	// the same one due to the access limitation for forked repo
 	// refer to the same issue in pipelines-as-code https://github.com/openshift-pipelines/pipelines-as-code/blob/2f78eb8fd04d149b266ba93f2bea706b4b026403/pkg/provider/gitlab/gitlab.go#L207
 	if r.sourceProjectID == r.targetProjectID {
-		if err := r.setCommitStatus(report); err != nil {
-			return fmt.Errorf("failed to set gitlab commit status: %w", err)
+		if statusCode, err := r.setCommitStatus(report); err != nil {
+			return statusCode, fmt.Errorf("failed to set gitlab commit status: %w", err)
 		}
 	} else {
 		r.logger.Info("Won't create/update commitStatus due to the access limitation for forked repo", "r.sourceProjectID", r.sourceProjectID, "r.targetProjectID", r.targetProjectID)
@@ -289,13 +308,17 @@ func (r *GitLabReporter) ReportStatus(ctx context.Context, report TestReport) er
 	// Create a note when integration test is neither pending nor inprogress since comment for pending/inprogress is less meaningful
 	_, isMergeRequest := r.snapshot.GetAnnotations()[gitops.PipelineAsCodePullRequestAnnotation]
 	if report.Status != intgteststat.IntegrationTestStatusPending && report.Status != intgteststat.IntegrationTestStatusInProgress && report.Status != intgteststat.SnapshotCreationFailed && isMergeRequest {
-		err := r.updateStatusInComment(report)
+		statusCode, err := r.updateStatusInComment(report)
 		if err != nil {
-			return err
+			return statusCode, err
 		}
 	}
 
-	return nil
+	return statusCode, nil
+}
+
+func (r *GitLabReporter) ReturnCodeIsUnrecoverable(statusCode int) bool {
+	return statusCode == http.StatusForbidden || statusCode == http.StatusUnauthorized
 }
 
 // GenerateGitlabCommitState transforms internal integration test state into Gitlab state

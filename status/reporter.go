@@ -66,7 +66,9 @@ type ReporterInterface interface {
 	// Get plain reporter name
 	GetReporterName() string
 	// Update status of the integration test
-	ReportStatus(context.Context, TestReport) error
+	ReportStatus(context.Context, TestReport) (int, error)
+	// Is the return code a recoverable error
+	ReturnCodeIsUnrecoverable(statusCode int) bool
 }
 
 // GetPACGitProviderToken lookup for configured repo and fetch token from namespace
