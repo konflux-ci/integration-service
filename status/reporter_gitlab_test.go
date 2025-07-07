@@ -178,8 +178,9 @@ var _ = Describe("GitLabReporter", func() {
 
 			reporter = status.NewGitLabReporter(log, mockK8sClient)
 
-			err := reporter.Initialize(context.TODO(), hasSnapshot)
+			statusCode, err := reporter.Initialize(context.TODO(), hasSnapshot)
 			Expect(err).To(Succeed())
+			Expect(statusCode).To(Equal(0))
 
 		})
 
@@ -193,7 +194,9 @@ var _ = Describe("GitLabReporter", func() {
 			} else {
 				delete(hasSnapshot.Annotations, missingKey)
 			}
-			Expect(reporter.Initialize(context.TODO(), hasSnapshot)).ToNot(Succeed())
+			statusCode, err := reporter.Initialize(context.TODO(), hasSnapshot)
+			Expect(err).ToNot(Succeed())
+			Expect(statusCode).To(Equal(0))
 		},
 			Entry("Missing repo_url", gitops.PipelineAsCodeRepoURLAnnotation, false),
 			Entry("Missing SHA", gitops.PipelineAsCodeSHALabel, true),
@@ -230,14 +233,15 @@ var _ = Describe("GitLabReporter", func() {
 
 			pushEventReporter := status.NewGitLabReporter(log, mockK8sClient)
 
-			err := pushEventReporter.Initialize(context.TODO(), pushSnapshot)
+			statusCode, err := pushEventReporter.Initialize(context.TODO(), pushSnapshot)
 			Expect(err).To(Succeed())
+			Expect(statusCode).To(Equal(0))
 
 			summary := "Integration test for snapshot snapshot-sample and scenario scenario1 failed"
 
 			muxCommitStatusPost(mux, sourceProjectID, digest, summary)
 
-			statusCode, err := pushEventReporter.ReportStatus(
+			statusCode, err = pushEventReporter.ReportStatus(
 				context.TODO(),
 				status.TestReport{
 					FullName:     "fullname/scenario1",
@@ -345,7 +349,9 @@ var _ = Describe("GitLabReporter", func() {
 
 		It("don't create commit status when source and target project ID are different", func() {
 			Expect(metadata.SetAnnotation(hasSnapshot, gitops.PipelineAsCodeSourceProjectIDAnnotation, "0")).To(Succeed())
-			Expect(reporter.Initialize(context.TODO(), hasSnapshot)).To(Succeed())
+			statusCode, err := reporter.Initialize(context.TODO(), hasSnapshot)
+			Expect(err).To(Succeed())
+			Expect(statusCode).To(Equal(0))
 
 			PipelineRunName := "TestPipeline"
 			expectedURL := status.FormatPipelineURL(PipelineRunName, hasSnapshot.Namespace, logr.Discard())
@@ -354,7 +360,7 @@ var _ = Describe("GitLabReporter", func() {
 			muxMergeNotes(mux, sourceProjectID, mergeRequest, "")
 			muxCommitStatusesGet(mux, sourceProjectID, digest, nil)
 
-			statusCode, err := reporter.ReportStatus(
+			statusCode, err = reporter.ReportStatus(
 				context.TODO(),
 				status.TestReport{
 					FullName:            "fullname/scenario1",

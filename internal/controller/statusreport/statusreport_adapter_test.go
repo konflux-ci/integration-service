@@ -811,8 +811,9 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 
 			adapter = NewAdapter(ctx, githubSnapshot, hasApp, logger, loader.NewMockLoader(), k8sClient)
 			adapter.status = mockStatus
-			err := adapter.ReportSnapshotStatus(githubSnapshot)
+			statusCode, err := adapter.ReportSnapshotStatus(githubSnapshot)
 			Expect(err).NotTo(HaveOccurred())
+			Expect(statusCode).NotTo(BeNil())
 		})
 
 		It("doesn't report anything when data are older", func() {
@@ -827,8 +828,9 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			hasPRSnapshot.Annotations["test.appstudio.openshift.io/git-reporter-status"] = "{\"scenarios\":{\"scenario1-snapshot-pr-sample\":{\"lastUpdateTime\":\"2023-08-26T17:57:50+02:00\"}}}"
 			adapter = NewAdapter(ctx, hasPRSnapshot, hasApp, logger, loader.NewMockLoader(), k8sClient)
 			adapter.status = mockStatus
-			err := adapter.ReportSnapshotStatus(adapter.snapshot)
+			statusCode, err := adapter.ReportSnapshotStatus(adapter.snapshot)
 			Expect(err).NotTo(HaveOccurred())
+			Expect(statusCode).NotTo(BeNil())
 		})
 
 		It("Report new status if it was updated", func() {
@@ -844,8 +846,9 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			hasPRSnapshot.Annotations["test.appstudio.openshift.io/group-test-info"] = "[{\"namespace\":\"default\",\"component\":\"devfile-sample-java-springboot-basic-8969\",\"buildPipelineRun\":\"build-plr-java-qjfxz\",\"snapshot\":\"app-8969-bbn7d\",\"pullRuestNumber\":\"1\",\"repoUrl\":\"https://example.com\"},{\"namespace\":\"default\",\"component\":\"devfile-sample-go-basic-8969\",\"buildPipelineRun\":\"build-plr-go-jmsjq\",\"snapshot\":\"app-8969-kzq2l\",\"pullRuestNumber\":\"1\",\"repoUrl\":\"https://example.com\"}]"
 			adapter = NewAdapter(ctx, hasPRSnapshot, hasApp, logger, loader.NewMockLoader(), k8sClient)
 			adapter.status = mockStatus
-			err := adapter.ReportSnapshotStatus(adapter.snapshot)
+			statusCode, err := adapter.ReportSnapshotStatus(adapter.snapshot)
 			Expect(err).NotTo(HaveOccurred())
+			Expect(statusCode).NotTo(BeNil())
 		})
 
 		It("Report new status if it was updated (old way - migration test)", func() {
@@ -860,9 +863,10 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			hasPRSnapshot.Annotations["test.appstudio.openshift.io/pr-last-update"] = "2023-08-26T17:57:49+02:00"
 			adapter = NewAdapter(ctx, hasPRSnapshot, hasApp, logger, loader.NewMockLoader(), k8sClient)
 			adapter.status = mockStatus
-			err := adapter.ReportSnapshotStatus(adapter.snapshot)
+			statusCode, err := adapter.ReportSnapshotStatus(adapter.snapshot)
 			fmt.Fprintf(GinkgoWriter, "-------test: %v\n", "")
 			Expect(err).NotTo(HaveOccurred())
+			Expect(statusCode).NotTo(BeNil())
 		})
 
 		It("report expected textual data for InProgress test scenario", func() {
@@ -891,9 +895,10 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			mockReporter.EXPECT().ReportStatus(gomock.Any(), gomock.Eq(expectedTestReport)).Times(1)
 			adapter = NewAdapter(ctx, hasPRSnapshot, hasApp, log, loader.NewMockLoader(), k8sClient)
 			adapter.status = mockStatus
-			err = adapter.ReportSnapshotStatus(adapter.snapshot)
+			statusCode, err := adapter.ReportSnapshotStatus(adapter.snapshot)
 			fmt.Fprintf(GinkgoWriter, "-------test: %v\n", buf.String())
 			Expect(err).NotTo(HaveOccurred())
+			Expect(statusCode).NotTo(BeNil())
 		})
 	})
 

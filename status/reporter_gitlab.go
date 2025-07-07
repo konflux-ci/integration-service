@@ -69,13 +69,13 @@ func (r *GitLabReporter) GetReporterName() string {
 }
 
 // Initialize initializes gitlab reporter
-func (r *GitLabReporter) Initialize(ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot) error {
+func (r *GitLabReporter) Initialize(ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot) (int, error) {
 	var unRecoverableError error
 	token, err := GetPACGitProviderToken(ctx, r.k8sClient, snapshot)
 	if err != nil {
 		r.logger.Error(err, "failed to get PAC token from snapshot",
 			"snapshot.NameSpace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
-		return err
+		return 0, err
 	}
 
 	annotations := snapshot.GetAnnotations()
@@ -83,21 +83,21 @@ func (r *GitLabReporter) Initialize(ctx context.Context, snapshot *applicationap
 	if !ok {
 		unRecoverableError = helpers.NewUnrecoverableMetadataError(fmt.Sprintf("failed to get value of %s annotation from the snapshot %s", gitops.PipelineAsCodeRepoURLAnnotation, snapshot.Name))
 		r.logger.Error(unRecoverableError, "snapshot.NameSpace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
-		return unRecoverableError
+		return 0, unRecoverableError
 	}
 
 	burl, err := url.Parse(repoUrl)
 	if err != nil {
 		unRecoverableError = helpers.NewUnrecoverableMetadataError(fmt.Sprintf("failed to parse repo-url %s: %s", repoUrl, err.Error()))
 		r.logger.Error(unRecoverableError, "snapshot.NameSpace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
-		return unRecoverableError
+		return 0, unRecoverableError
 	}
 	apiURL := fmt.Sprintf("%s://%s", burl.Scheme, burl.Host)
 
 	r.client, err = gitlab.NewClient(token, gitlab.WithBaseURL(apiURL))
 	if err != nil {
 		r.logger.Error(err, "failed to create gitlab client", "apiURL", apiURL, "snapshot.NameSpace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
-		return err
+		return 0, err
 	}
 
 	labels := snapshot.GetLabels()
@@ -105,7 +105,7 @@ func (r *GitLabReporter) Initialize(ctx context.Context, snapshot *applicationap
 	if !found {
 		unRecoverableError = helpers.NewUnrecoverableMetadataError(fmt.Sprintf("sha label not found %q", gitops.PipelineAsCodeSHALabel))
 		r.logger.Error(unRecoverableError, "snapshot.NameSpace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
-		return unRecoverableError
+		return 0, unRecoverableError
 	}
 	r.sha = sha
 
@@ -113,35 +113,35 @@ func (r *GitLabReporter) Initialize(ctx context.Context, snapshot *applicationap
 	if !found {
 		unRecoverableError = helpers.NewUnrecoverableMetadataError(fmt.Sprintf("target project ID annotation not found %q", gitops.PipelineAsCodeTargetProjectIDAnnotation))
 		r.logger.Error(unRecoverableError, "snapshot.NameSpace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
-		return unRecoverableError
+		return 0, unRecoverableError
 	}
 
 	r.targetProjectID, err = strconv.Atoi(targetProjectIDstr)
 	if err != nil {
 		unRecoverableError = helpers.NewUnrecoverableMetadataError(fmt.Sprintf("failed to convert project ID '%s' to integer: %s", targetProjectIDstr, err.Error()))
 		r.logger.Error(unRecoverableError, "snapshot.NameSpace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
-		return unRecoverableError
+		return 0, unRecoverableError
 	}
 
 	sourceProjectIDstr, found := annotations[gitops.PipelineAsCodeSourceProjectIDAnnotation]
 	if !found {
 		unRecoverableError = helpers.NewUnrecoverableMetadataError(fmt.Sprintf("source project ID annotation not found %q", gitops.PipelineAsCodeSourceProjectIDAnnotation))
 		r.logger.Error(unRecoverableError, "snapshot.NameSpace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
-		return unRecoverableError
+		return 0, unRecoverableError
 	}
 
 	r.sourceProjectID, err = strconv.Atoi(sourceProjectIDstr)
 	if err != nil {
 		unRecoverableError = helpers.NewUnrecoverableMetadataError(fmt.Sprintf("failed to convert project ID '%s' to integer: %s", sourceProjectIDstr, err.Error()))
 		r.logger.Error(unRecoverableError, "snapshot.NameSpace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
-		return unRecoverableError
+		return 0, unRecoverableError
 	}
 
 	mergeRequestStr, found := annotations[gitops.PipelineAsCodePullRequestAnnotation]
 	if !found && !gitops.IsSnapshotCreatedByPACPushEvent(snapshot) {
 		unRecoverableError = helpers.NewUnrecoverableMetadataError(fmt.Sprintf("pull-request annotation not found %q", gitops.PipelineAsCodePullRequestAnnotation))
 		r.logger.Error(unRecoverableError, "snapshot.NameSpace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
-		return unRecoverableError
+		return 0, unRecoverableError
 	}
 
 	if found {
@@ -149,12 +149,12 @@ func (r *GitLabReporter) Initialize(ctx context.Context, snapshot *applicationap
 		if err != nil && !gitops.IsSnapshotCreatedByPACPushEvent(snapshot) {
 			unRecoverableError = helpers.NewUnrecoverableMetadataError(fmt.Sprintf("failed to convert merge request number '%s' to integer: %s", mergeRequestStr, err.Error()))
 			r.logger.Error(unRecoverableError, "snapshot.NameSpace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
-			return unRecoverableError
+			return 0, unRecoverableError
 		}
 	}
 
 	r.snapshot = snapshot
-	return nil
+	return 0, nil
 }
 
 // setCommitStatus sets commit status to be shown as pipeline run in gitlab view

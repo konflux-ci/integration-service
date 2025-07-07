@@ -191,13 +191,13 @@ func MigrateSnapshotToReportStatus(s *applicationapiv1alpha1.Snapshot, testStatu
 type StatusInterface interface {
 	GetReporter(*applicationapiv1alpha1.Snapshot) ReporterInterface
 	// Check if PR/MR is opened
-	IsPRMRInSnapshotOpened(context.Context, *applicationapiv1alpha1.Snapshot) (bool, error)
+	IsPRMRInSnapshotOpened(context.Context, *applicationapiv1alpha1.Snapshot) (bool, int, error)
 	// Check if github PR is open
-	IsPRInSnapshotOpened(context.Context, ReporterInterface, *applicationapiv1alpha1.Snapshot) (bool, error)
+	IsPRInSnapshotOpened(context.Context, ReporterInterface, *applicationapiv1alpha1.Snapshot) (bool, int, error)
 	// Check if gitlab MR is open
-	IsMRInSnapshotOpened(context.Context, ReporterInterface, *applicationapiv1alpha1.Snapshot) (bool, error)
+	IsMRInSnapshotOpened(context.Context, ReporterInterface, *applicationapiv1alpha1.Snapshot) (bool, int, error)
 	// find snapshot with opened PR or MR
-	FindSnapshotWithOpenedPR(context.Context, *[]applicationapiv1alpha1.Snapshot) (*applicationapiv1alpha1.Snapshot, error)
+	FindSnapshotWithOpenedPR(context.Context, *[]applicationapiv1alpha1.Snapshot) (*applicationapiv1alpha1.Snapshot, int, error)
 }
 
 type Status struct {
@@ -365,38 +365,39 @@ func getConsoleName() string {
 	return consoleName
 }
 
-func (s Status) IsPRMRInSnapshotOpened(ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot) (bool, error) {
+func (s Status) IsPRMRInSnapshotOpened(ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot) (bool, int, error) {
 	// need to rework reporter.Detect() function and reuse it here
 	githubReporter := NewGitHubReporter(s.logger, s.client)
 	if githubReporter.Detect(snapshot) {
-		err := githubReporter.Initialize(ctx, snapshot)
+		statusCode, err := githubReporter.Initialize(ctx, snapshot)
 		if err != nil {
-			return false, err
+			return false, statusCode, err
 		}
 		return s.IsPRInSnapshotOpened(ctx, githubReporter, snapshot)
 	}
 
 	gitlabReporter := NewGitLabReporter(s.logger, s.client)
 	if gitlabReporter.Detect(snapshot) {
-		err := gitlabReporter.Initialize(ctx, snapshot)
+		statusCode, err := gitlabReporter.Initialize(ctx, snapshot)
 		if err != nil {
-			return false, err
+			return false, statusCode, err
 		}
 		return s.IsMRInSnapshotOpened(ctx, gitlabReporter, snapshot)
 	}
 
-	return false, fmt.Errorf("invalid git provider, valid git provider must be one of github and gitlab")
+	return false, 0, fmt.Errorf("invalid git provider, valid git provider must be one of github and gitlab")
 }
 
 // IsMRInSnapshotOpened check if the gitlab merge request triggering snapshot is opened
-func (s Status) IsMRInSnapshotOpened(ctx context.Context, reporter ReporterInterface, snapshot *applicationapiv1alpha1.Snapshot) (bool, error) {
+func (s Status) IsMRInSnapshotOpened(ctx context.Context, reporter ReporterInterface, snapshot *applicationapiv1alpha1.Snapshot) (bool, int, error) {
+	var statusCode = 0
 	var unRecoverableError error
 	log := log.FromContext(ctx)
 	token, err := GetPACGitProviderToken(ctx, s.client, snapshot)
 	if err != nil {
 		log.Error(err, "failed to get PAC token from snapshot",
 			"snapshot.NameSpace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
-		return false, err
+		return false, statusCode, err
 	}
 
 	annotations := snapshot.GetAnnotations()
@@ -404,69 +405,73 @@ func (s Status) IsMRInSnapshotOpened(ctx context.Context, reporter ReporterInter
 	if !ok {
 		unRecoverableError = helpers.NewUnrecoverableMetadataError(fmt.Sprintf("failed to get value of %s annotation from the snapshot %s", gitops.PipelineAsCodeRepoURLAnnotation, snapshot.Name))
 		log.Error(unRecoverableError, fmt.Sprintf("failed to get value of %s annotation from the snapshot %s", gitops.PipelineAsCodeRepoURLAnnotation, snapshot.Name))
-		return false, unRecoverableError
+		return false, statusCode, unRecoverableError
 	}
 
 	burl, err := url.Parse(repoUrl)
 	if err != nil {
 		unRecoverableError = helpers.NewUnrecoverableMetadataError(fmt.Sprintf("failed to parse repo-url: %s", err.Error()))
 		log.Error(unRecoverableError, fmt.Sprintf("failed to parse repo-url: %s", err.Error()))
-		return false, unRecoverableError
+		return false, statusCode, unRecoverableError
 	}
 	apiURL := fmt.Sprintf("%s://%s", burl.Scheme, burl.Host)
 
 	gitLabClient, err := gitlab.NewClient(token, gitlab.WithBaseURL(apiURL))
 	if err != nil {
 		log.Error(err, "failed to create gitLabClient")
-		return false, fmt.Errorf("failed to create gitlab client: %w", err)
+		return false, statusCode, fmt.Errorf("failed to create gitlab client: %w", err)
 	}
 
 	targetProjectIDstr, found := annotations[gitops.PipelineAsCodeTargetProjectIDAnnotation]
 	if !found {
 		unRecoverableError = helpers.NewUnrecoverableMetadataError(fmt.Sprintf("target project ID annotation not found %q", gitops.PipelineAsCodeTargetProjectIDAnnotation))
 		log.Error(unRecoverableError, fmt.Sprintf("target project ID annotation not found %q", gitops.PipelineAsCodeTargetProjectIDAnnotation))
-		return false, unRecoverableError
+		return false, statusCode, unRecoverableError
 	}
 	targetProjectID, err := strconv.Atoi(targetProjectIDstr)
 	if err != nil {
 		unRecoverableError = helpers.NewUnrecoverableMetadataError(fmt.Sprintf("failed to convert project ID '%s' to integer: %s", targetProjectIDstr, err.Error()))
 		log.Error(unRecoverableError, "failed to convert project ID '%s' to integer", targetProjectIDstr)
-		return false, unRecoverableError
+		return false, statusCode, unRecoverableError
 	}
 
 	mergeRequestStr, found := annotations[gitops.PipelineAsCodePullRequestAnnotation]
 	if !found {
 		unRecoverableError = helpers.NewUnrecoverableMetadataError(fmt.Sprintf("pull-request annotation not found %q", gitops.PipelineAsCodePullRequestAnnotation))
 		log.Error(unRecoverableError, fmt.Sprintf("pull-request annotation not found %q", gitops.PipelineAsCodePullRequestAnnotation))
-		return false, unRecoverableError
+		return false, statusCode, unRecoverableError
 	}
 	mergeRequest, err := strconv.Atoi(mergeRequestStr)
 	if err != nil {
 		unRecoverableError = helpers.NewUnrecoverableMetadataError(fmt.Sprintf("failed to convert merge request number '%s' to integer: %s", mergeRequestStr, err.Error()))
 		log.Error(unRecoverableError, fmt.Sprintf("failed to convert merge request number '%s' to integer", mergeRequestStr))
-		return false, unRecoverableError
+		return false, statusCode, unRecoverableError
 	}
 
 	log.Info(fmt.Sprintf("try to find the status of merge request projectID/pulls %d/%d", targetProjectID, mergeRequest))
 	getOpts := gitlab.GetMergeRequestsOptions{}
-	mr, _, err := gitLabClient.MergeRequests.GetMergeRequest(targetProjectID, mergeRequest, &getOpts)
+	mr, response, err := gitLabClient.MergeRequests.GetMergeRequest(targetProjectID, mergeRequest, &getOpts)
+	if response != nil {
+		statusCode = response.StatusCode
+	}
 
 	if err != nil && strings.Contains(err.Error(), "Not Found") {
 		log.Info(fmt.Sprintf("not found merge request projectID/pulls %d/%d, it might be deleted", targetProjectID, mergeRequest))
-		return false, nil
+		return false, statusCode, nil
 	}
 
 	if mr != nil && err == nil {
 		log.Info(fmt.Sprintf("found merge request projectID/pulls %d/%d", targetProjectID, mergeRequest))
-		return mr.State == "opened", nil
+		return mr.State == "opened", statusCode, nil
 	}
 
 	log.Error(err, fmt.Sprintf("can not find merge request projectID/pulls %d/%d", targetProjectID, mergeRequest))
-	return false, err
+	return false, statusCode, err
 }
 
 // IsPRInSnapshotOpened check if the github pull request triggering snapshot is opened
-func (s Status) IsPRInSnapshotOpened(ctx context.Context, reporter ReporterInterface, snapshot *applicationapiv1alpha1.Snapshot) (bool, error) {
+func (s Status) IsPRInSnapshotOpened(ctx context.Context, reporter ReporterInterface, snapshot *applicationapiv1alpha1.Snapshot) (bool, int, error) {
+	var statusCode = 0
 	var unRecoverableError error
 	log := log.FromContext(ctx)
 	ghClient := github.NewClient(s.logger)
@@ -475,7 +480,7 @@ func (s Status) IsPRInSnapshotOpened(ctx context.Context, reporter ReporterInter
 	if err != nil {
 		log.Error(err, "failed to get app credentials from Snapshot",
 			"snapshot.NameSpace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
-		return false, err
+		return false, statusCode, err
 	}
 
 	token, statusCode, err := ghClient.CreateAppInstallationToken(ctx, githubAppCreds.AppID, githubAppCreds.InstallationID, githubAppCreds.PrivateKey)
@@ -483,7 +488,7 @@ func (s Status) IsPRInSnapshotOpened(ctx context.Context, reporter ReporterInter
 		log.Error(err, "failed to create app installation token",
 			"githubAppCreds.AppID", githubAppCreds.AppID, "githubAppCreds.InstallationID", githubAppCreds.InstallationID,
 			"statusCode", statusCode)
-		return false, err
+		return false, statusCode, err
 	}
 
 	ghClient.SetOAuthToken(ctx, token)
@@ -494,44 +499,44 @@ func (s Status) IsPRInSnapshotOpened(ctx context.Context, reporter ReporterInter
 	if !found {
 		unRecoverableError = helpers.NewUnrecoverableMetadataError(fmt.Sprintf("org label not found %q", gitops.PipelineAsCodeURLOrgLabel))
 		log.Error(unRecoverableError, fmt.Sprintf("org label not found %q", gitops.PipelineAsCodeURLOrgLabel))
-		return false, unRecoverableError
+		return false, statusCode, unRecoverableError
 	}
 
 	repo, found := labels[gitops.PipelineAsCodeURLRepositoryLabel]
 	if !found {
 		unRecoverableError = helpers.NewUnrecoverableMetadataError(fmt.Sprintf("repository label not found %q", gitops.PipelineAsCodeURLRepositoryLabel))
 		log.Error(unRecoverableError, fmt.Sprintf("repository label not found %q", gitops.PipelineAsCodeURLRepositoryLabel))
-		return false, unRecoverableError
+		return false, statusCode, unRecoverableError
 	}
 
 	pullRequestStr, found := labels[gitops.PipelineAsCodePullRequestAnnotation]
 	if !found {
 		unRecoverableError = helpers.NewUnrecoverableMetadataError(fmt.Sprintf("pull request label not found %q", gitops.PipelineAsCodePullRequestAnnotation))
 		log.Error(unRecoverableError, fmt.Sprintf("pull request label not found %q", gitops.PipelineAsCodePullRequestAnnotation))
-		return false, unRecoverableError
+		return false, statusCode, unRecoverableError
 	}
 
 	pullRequest, err := strconv.Atoi(pullRequestStr)
 	if err != nil {
 		unRecoverableError = helpers.NewUnrecoverableMetadataError(fmt.Sprintf("failed to convert pull request number '%s' to integer: %s", pullRequestStr, err.Error()))
 		log.Error(unRecoverableError, fmt.Sprintf("failed to convert pull request number '%s' to integer", pullRequestStr))
-		return false, unRecoverableError
+		return false, statusCode, unRecoverableError
 	}
 
 	log.Info(fmt.Sprintf("try to find the status of pull request owner/repo/pulls %s/%s/%d", owner, repo, pullRequest))
-	pr, _, err := ghClient.GetPullRequest(ctx, owner, repo, pullRequest)
+	pr, statusCode, err := ghClient.GetPullRequest(ctx, owner, repo, pullRequest)
 
 	if err != nil && strings.Contains(err.Error(), "Not Found") {
 		log.Error(err, fmt.Sprintf("not found pull request owner/repo/pulls %s/%s/%d, it might be deleted", owner, repo, pullRequest))
-		return false, nil
+		return false, statusCode, nil
 	}
 
 	if pr != nil {
-		return *pr.State == "open", nil
+		return *pr.State == "open", statusCode, nil
 	}
 
 	log.Error(err, fmt.Sprintf("cannot find pull request owner/repo/pulls %s/%s/%d", owner, repo, pullRequest))
-	return false, err
+	return false, statusCode, err
 }
 
 // GetComponentSnapshotsFromGroupSnapshot return the component snapshot list which component snapshot is created from
@@ -564,24 +569,24 @@ func GetComponentSnapshotsFromGroupSnapshot(ctx context.Context, c client.Client
 }
 
 // FindSnapshotWithOpenedPR find the latest snapshot with opened PR/MR for the given sorted snapshots
-func (s Status) FindSnapshotWithOpenedPR(ctx context.Context, snapshots *[]applicationapiv1alpha1.Snapshot) (*applicationapiv1alpha1.Snapshot, error) {
+func (s Status) FindSnapshotWithOpenedPR(ctx context.Context, snapshots *[]applicationapiv1alpha1.Snapshot) (*applicationapiv1alpha1.Snapshot, int, error) {
 	log := log.FromContext(ctx)
 	sortedSnapshots := gitops.SortSnapshots(*snapshots)
 	// find the latest component snapshot created for open PR/MR
 	for _, snapshot := range sortedSnapshots {
 		snapshot := snapshot
 		// find the built image for pull/merge request build PLR from the latest opened pull request component snapshot
-		isPRMROpened, err := s.IsPRMRInSnapshotOpened(ctx, &snapshot)
+		isPRMROpened, statusCode, err := s.IsPRMRInSnapshotOpened(ctx, &snapshot)
 		if err != nil {
 			log.Error(err, "Failed to fetch PR/MR status for component snapshot", "snapshot.Name", snapshot.Name)
-			return nil, err
+			return nil, statusCode, err
 		}
 		if isPRMROpened {
 			log.Info("PR/MR in snapshot is opened, will find snapshotComponent and add to groupSnapshot")
-			return &snapshot, nil
+			return &snapshot, statusCode, nil
 		}
 	}
-	return nil, nil
+	return nil, 0, nil
 }
 
 // iterates integrationTestScenarios to set integration test status in PR/MR

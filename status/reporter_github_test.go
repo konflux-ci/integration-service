@@ -271,8 +271,9 @@ var _ = Describe("GitHubReporter", func() {
 
 			mockGitHubClient = &MockGitHubClient{}
 			reporter = status.NewGitHubReporter(log, mockK8sClient, status.WithGitHubClient(mockGitHubClient))
-			err := reporter.Initialize(context.TODO(), hasSnapshot)
+			statusCode, err := reporter.Initialize(context.TODO(), hasSnapshot)
 			Expect(err).To(Succeed())
+			Expect(statusCode).NotTo(BeNil())
 		})
 
 		It("failed to initialize when invalid pac secret and private names is not found", func() {
@@ -280,8 +281,9 @@ var _ = Describe("GitHubReporter", func() {
 			os.Setenv("PAC_SECRET", "invalid")
 			os.Setenv("GITHUBAPPLICATION_ID", "invalid")
 			os.Setenv("GITHUBPRIVATE_KEY", "invalid")
-			err := reporter.Initialize(context.TODO(), hasSnapshot)
+			statusCode, err := reporter.Initialize(context.TODO(), hasSnapshot)
 			Expect(err).To(HaveOccurred())
+			Expect(statusCode).NotTo(BeNil())
 			os.Setenv("INTEGRATION_NS", "integration-service")
 			os.Setenv("PAC_SECRET", "pipelines-as-code-secret")
 			os.Setenv("GITHUBAPPLICATION_ID", "github-application-id")
@@ -305,26 +307,31 @@ var _ = Describe("GitHubReporter", func() {
 		It("doesn't report status when the credentials are invalid/missing", func() {
 			// Invalid installation ID value
 			hasSnapshot.Annotations["pac.test.appstudio.openshift.io/installation-id"] = "bad-installation-id"
-			err := reporter.Initialize(context.TODO(), hasSnapshot)
+			statusCode, err := reporter.Initialize(context.TODO(), hasSnapshot)
 			Expect(err).To(HaveOccurred())
+			Expect(statusCode).NotTo(BeNil())
+			Expect(statusCode).NotTo(BeNil())
 			hasSnapshot.Annotations["pac.test.appstudio.openshift.io/installation-id"] = "123"
 
 			// Invalid app ID value
 			secretData["github-application-id"] = []byte("bad-app-id")
-			err = reporter.Initialize(context.TODO(), hasSnapshot)
+			statusCode, err = reporter.Initialize(context.TODO(), hasSnapshot)
 			Expect(err).To(HaveOccurred())
+			Expect(statusCode).NotTo(BeNil())
 			secretData["github-application-id"] = []byte("456")
 
 			// Missing app ID value
 			delete(secretData, "github-application-id")
-			err = reporter.Initialize(context.TODO(), hasSnapshot)
+			statusCode, err = reporter.Initialize(context.TODO(), hasSnapshot)
 			Expect(err).To(HaveOccurred())
+			Expect(statusCode).NotTo(BeNil())
 			secretData["github-application-id"] = []byte("456")
 
 			// Missing private key
 			delete(secretData, "github-private-key")
-			err = reporter.Initialize(context.TODO(), hasSnapshot)
+			statusCode, err = reporter.Initialize(context.TODO(), hasSnapshot)
 			Expect(err).To(HaveOccurred())
+			Expect(statusCode).NotTo(BeNil())
 		})
 
 		DescribeTable(
@@ -549,8 +556,9 @@ var _ = Describe("GitHubReporter", func() {
 			mockGitHubClient = &MockGitHubClient{}
 			reporter = status.NewGitHubReporter(log, mockK8sClient, status.WithGitHubClient(mockGitHubClient))
 
-			err := reporter.Initialize(context.TODO(), hasSnapshot)
+			statusCode, err := reporter.Initialize(context.TODO(), hasSnapshot)
 			Expect(err).To(Succeed())
+			Expect(statusCode).NotTo(BeNil())
 		})
 
 		It("creates a commit status for snapshot with correct textual data", func() {

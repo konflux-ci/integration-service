@@ -610,28 +610,29 @@ func (r *GitHubReporter) Detect(snapshot *applicationapiv1alpha1.Snapshot) bool 
 }
 
 // Initialize github reporter. Must be called before updating status
-func (r *GitHubReporter) Initialize(ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot) error {
+func (r *GitHubReporter) Initialize(ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot) (int, error) {
+	var statusCode int
 	var unRecoverableError error
 	labels := snapshot.GetLabels()
 	owner, found := labels[gitops.PipelineAsCodeURLOrgLabel]
 	if !found {
 		unRecoverableError = helpers.NewUnrecoverableMetadataError(fmt.Sprintf("org label not found %q", gitops.PipelineAsCodeURLOrgLabel))
 		r.logger.Error(unRecoverableError, "snapshot.NameSpace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
-		return unRecoverableError
+		return 0, unRecoverableError
 	}
 
 	repo, found := labels[gitops.PipelineAsCodeURLRepositoryLabel]
 	if !found {
 		unRecoverableError = helpers.NewUnrecoverableMetadataError(fmt.Sprintf("repository label not found %q", gitops.PipelineAsCodeURLRepositoryLabel))
 		r.logger.Error(unRecoverableError, "snapshot.NameSpace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
-		return unRecoverableError
+		return 0, unRecoverableError
 	}
 
 	sha, found := labels[gitops.PipelineAsCodeSHALabel]
 	if !found {
 		unRecoverableError = helpers.NewUnrecoverableMetadataError(fmt.Sprintf("sha label not found %q", gitops.PipelineAsCodeSHALabel))
 		r.logger.Error(unRecoverableError, "snapshot.NameSpace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
-		return unRecoverableError
+		return 0, unRecoverableError
 	}
 
 	// Existence of the Pipelines as Code installation ID annotation signals configuration using GitHub App integration.
@@ -642,11 +643,12 @@ func (r *GitHubReporter) Initialize(ctx context.Context, snapshot *applicationap
 		r.updater = NewCommitStatusUpdater(r.client, r.k8sClient, r.logger, owner, repo, sha, snapshot)
 	}
 
-	if statusCode, err := r.updater.Authenticate(ctx, snapshot); err != nil {
+	var err error
+	if statusCode, err = r.updater.Authenticate(ctx, snapshot); err != nil {
 		r.logger.Error(err, fmt.Sprintf("failed to authenticate for snapshot %s/%s, got status code %d", snapshot.Namespace, snapshot.Name, statusCode))
-		return err
+		return statusCode, err
 	}
-	return nil
+	return statusCode, nil
 }
 
 // Return reporter name

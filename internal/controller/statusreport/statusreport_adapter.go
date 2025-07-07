@@ -83,12 +83,14 @@ func (a *Adapter) EnsureSnapshotTestStatusReportedToGitProvider() (controller.Op
 		return controller.ContinueProcessing()
 	}
 
-	err := a.ReportSnapshotStatus(a.snapshot)
+	isErrorRecoverable, err := a.ReportSnapshotStatus(a.snapshot)
 	if err != nil {
 		a.logger.Error(err, "failed to report test status to git provider for snapshot",
-			"snapshot.Namespace", a.snapshot.Namespace, "snapshot.Name", a.snapshot.Name)
-		if helpers.IsObjectYoungerThanThreshold(a.snapshot, SnapshotRetryTimeout) {
+			"snapshot.Namespace", a.snapshot.Namespace, "snapshot.Name", a.snapshot.Name, "isErrorRecoverable", isErrorRecoverable)
+		if helpers.IsObjectYoungerThanThreshold(a.snapshot, SnapshotRetryTimeout) && isErrorRecoverable {
 			return controller.RequeueWithError(err)
+		} else {
+			return controller.ContinueProcessing()
 		}
 	}
 	testStatuses, err := gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(a.snapshot)
@@ -221,11 +223,16 @@ func (a *Adapter) EnsureGroupSnapshotCreationStatusReportedToGitProvider() (cont
 			"Application.Name", a.application.Name,
 			"IntegrationTestScenarios", len(*filterIntegrationTestScenarios))
 		if len(*filterIntegrationTestScenarios) > 0 {
-			err = a.ReportGroupSnapshotCreationStatus(a.snapshot, filterIntegrationTestScenarios, integrationTestStatus, gitops.ComponentNameForGroupSnapshot)
+			isErrorRecoverable, err := a.ReportGroupSnapshotCreationStatus(a.snapshot, filterIntegrationTestScenarios, integrationTestStatus, gitops.ComponentNameForGroupSnapshot)
+
 			if err != nil {
 				a.logger.Error(err, "failed to report group snapshot createion status to git provider from component snapshot",
-					"snapshot.Namespace", a.snapshot.Namespace, "snapshot.Name", a.snapshot.Name)
-				return controller.RequeueWithError(err)
+					"snapshot.Namespace", a.snapshot.Namespace, "snapshot.Name", a.snapshot.Name, "isErrorRecoverable", isErrorRecoverable)
+				if helpers.IsObjectYoungerThanThreshold(a.snapshot, SnapshotRetryTimeout) && isErrorRecoverable {
+					return controller.RequeueWithError(err)
+				} else {
+					return controller.ContinueProcessing()
+				}
 			}
 			if err = gitops.AnnotateSnapshot(a.context, a.snapshot, gitops.PRGroupCreationAnnotation, gitops.GroupSnapshotCreationFailureReported, a.client); err != nil {
 				a.logger.Error(err, fmt.Sprintf("failed to write group snapshot creation status to annotation %s", gitops.PRGroupCreationAnnotation))
@@ -276,13 +283,12 @@ func (a *Adapter) findUntriggeredIntegrationTestFromStatus(integrationTestScenar
 }
 
 // ReportSnapshotStatus reports status of all integration tests into Pull Requests from component snapshot or group snapshot
-func (a *Adapter) ReportSnapshotStatus(testedSnapshot *applicationapiv1alpha1.Snapshot) error {
-
+func (a *Adapter) ReportSnapshotStatus(testedSnapshot *applicationapiv1alpha1.Snapshot) (bool, error) {
 	statuses, err := gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(testedSnapshot)
 	if err != nil {
 		a.logger.Error(err, "failed to get test status annotations from snapshot",
 			"snapshot.Namespace", testedSnapshot.Namespace, "snapshot.Name", testedSnapshot.Name)
-		return err
+		return true, err
 	}
 
 	integrationTestStatusDetails := statuses.GetStatuses()
@@ -290,7 +296,7 @@ func (a *Adapter) ReportSnapshotStatus(testedSnapshot *applicationapiv1alpha1.Sn
 		// no tests to report, skip
 		a.logger.Info("No test result to report to GitHub, skipping",
 			"snapshot.Namespace", testedSnapshot.Namespace, "snapshot.Name", testedSnapshot.Name)
-		return nil
+		return true, nil
 	}
 
 	// get the component snapshot list that include the git provider info the report will be reported to
@@ -298,7 +304,7 @@ func (a *Adapter) ReportSnapshotStatus(testedSnapshot *applicationapiv1alpha1.Sn
 	if err != nil {
 		a.logger.Error(err, "failed to get component snapshots from group snapshot",
 			"snapshot.NameSpace", testedSnapshot.Namespace, "snapshot.Name", testedSnapshot.Name)
-		return fmt.Errorf("failed to get component snapshots from snapshot %s/%s", testedSnapshot.Namespace, testedSnapshot.Name)
+		return true, fmt.Errorf("failed to get component snapshots from snapshot %s/%s", testedSnapshot.Namespace, testedSnapshot.Name)
 	}
 
 	status.MigrateSnapshotToReportStatus(testedSnapshot, integrationTestStatusDetails)
@@ -319,10 +325,10 @@ func (a *Adapter) ReportSnapshotStatus(testedSnapshot *applicationapiv1alpha1.Sn
 			continue
 		}
 		a.logger.Info(fmt.Sprintf("Detected reporter: %s", reporter.GetReporterName()), "destinationComponentSnapshot.Name", destinationComponentSnapshot.Name, "testedSnapshot", testedSnapshot.Name)
-
-		if err := reporter.Initialize(a.context, destinationComponentSnapshot); err != nil {
-			a.logger.Error(err, "Failed to initialize reporter", "reporter", reporter.GetReporterName())
-			return fmt.Errorf("failed to initialize reporter: %w", err)
+		if statusCode, err := reporter.Initialize(a.context, destinationComponentSnapshot); err != nil {
+			a.logger.Error(err, "Failed to initialize reporter", "reporter", reporter.GetReporterName(), "statusCode", statusCode)
+			isErrorRecoverable := !helpers.IsUnrecoverableMetadataError(err) && !reporter.ReturnCodeIsUnrecoverable(statusCode)
+			return isErrorRecoverable, fmt.Errorf("failed to initialize reporter: %w", err)
 		}
 		a.logger.Info("Reporter initialized", "reporter", reporter.GetReporterName())
 
@@ -344,28 +350,30 @@ func (a *Adapter) ReportSnapshotStatus(testedSnapshot *applicationapiv1alpha1.Sn
 	}
 
 	if err != nil {
-		return fmt.Errorf("issue occurred during generating or updating report status: %w", err)
+		return true, fmt.Errorf("issue occurred during generating or updating report status: %w", err)
 	}
 
 	a.logger.Info(fmt.Sprintf("Successfully updated the %s annotation", gitops.SnapshotStatusReportAnnotation), "snapshot.Name", testedSnapshot.Name)
 
-	return nil
+	return true, nil
 }
 
 // ReportGroupSnapshotCreationStatus report the group snapshot creation status back to the git provider according the filtered integration test scenarios
 func (a *Adapter) ReportGroupSnapshotCreationStatus(snapshot *applicationapiv1alpha1.Snapshot, integrationTestScenarios *[]v1beta2.IntegrationTestScenario,
-	integrationTestStatus intgteststat.IntegrationTestStatus, componentName string) error {
-	var statusCode int
+	integrationTestStatus intgteststat.IntegrationTestStatus, componentName string) (bool, error) {
+	var statusCode = 0
+	var isErrorRecoverable = true
 	reporter := a.status.GetReporter(snapshot)
 	if reporter == nil {
 		a.logger.Info("No suitable reporter found, skipping report")
-		return nil
+		return true, nil
 	}
 	a.logger.Info(fmt.Sprintf("Detected reporter: %s", reporter.GetReporterName()))
 
-	if err := reporter.Initialize(a.context, snapshot); err != nil {
-		a.logger.Error(err, "Failed to initialize reporter", "reporter", reporter.GetReporterName())
-		return fmt.Errorf("failed to initialize reporter: %w", err)
+	if statusCode, err := reporter.Initialize(a.context, snapshot); err != nil {
+		a.logger.Error(err, "Failed to initialize reporter", "reporter", reporter.GetReporterName(), "statusCode", statusCode)
+		isErrorRecoverable = !helpers.IsUnrecoverableMetadataError(err) && !reporter.ReturnCodeIsUnrecoverable(statusCode)
+		return isErrorRecoverable, fmt.Errorf("failed to initialize reporter: %w", err)
 	}
 	a.logger.Info("Reporter initialized", "reporter", reporter.GetReporterName())
 
@@ -379,6 +387,7 @@ func (a *Adapter) ReportGroupSnapshotCreationStatus(snapshot *applicationapiv1al
 			a.logger.Error(err, fmt.Sprintf("failed to report group snapshot creation failure %s/%s",
 				snapshot.Namespace, snapshot.Name))
 			if reporter.ReturnCodeIsUnrecoverable(statusCode) {
+				isErrorRecoverable = false
 				return nil
 			} else {
 				return fmt.Errorf("failed to report group snapshot creation failure %s/%s: %w",
@@ -394,12 +403,12 @@ func (a *Adapter) ReportGroupSnapshotCreationStatus(snapshot *applicationapiv1al
 	})
 
 	if err != nil {
-		return fmt.Errorf("issue occurred during generating or updating report status: %w", err)
+		return isErrorRecoverable, fmt.Errorf("issue occurred during generating or updating report status: %w", err)
 	}
 
 	a.logger.Info(fmt.Sprintf("Successfully updated the %s annotation", gitops.PRGroupCreationAnnotation), "snapshot.Name", snapshot.Name)
 
-	return nil
+	return true, nil
 }
 
 // iterates iterateIntegrationTestStatusDetails to report to destination snapshot for them

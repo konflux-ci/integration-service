@@ -902,13 +902,15 @@ func (a *Adapter) prepareGroupSnapshot(application *applicationapiv1alpha1.Appli
 		applicationComponent := applicationComponent // G601
 
 		var foundSnapshotWithOpenedPR *applicationapiv1alpha1.Snapshot
+		var statusCode int
 		if slices.Contains(componentsToCheck, applicationComponent.Name) {
 			snapshots, err := a.loader.GetMatchingComponentSnapshotsForComponentAndPRGroupHash(a.context, a.client, application.Namespace, applicationComponent.Name, prGroupHash, application.Name)
 			if err != nil {
 				a.logger.Error(err, "Failed to fetch Snapshots for component", "component.Name", applicationComponent.Name)
 				return nil, nil, err
 			}
-			foundSnapshotWithOpenedPR, err = a.status.FindSnapshotWithOpenedPR(a.context, snapshots)
+			foundSnapshotWithOpenedPR, statusCode, err = a.status.FindSnapshotWithOpenedPR(a.context, snapshots)
+			a.logger.Error(err, "failed to find snapshot with open PR or MR", "statusCode", statusCode)
 			if err != nil {
 				return nil, nil, err
 			}
