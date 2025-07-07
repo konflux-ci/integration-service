@@ -1532,7 +1532,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			mockStatus = status.NewMockStatusInterface(ctrl)
 			mockReporter.EXPECT().GetReporterName().Return("mocked-reporter").AnyTimes()
 			mockStatus.EXPECT().GetReporter(gomock.Any()).Return(mockReporter).AnyTimes()
-			mockStatus.EXPECT().FindSnapshotWithOpenedPR(gomock.Any(), gomock.Any()).Return(hasSnapshot, nil).AnyTimes()
+			mockStatus.EXPECT().FindSnapshotWithOpenedPR(gomock.Any(), gomock.Any()).Return(hasSnapshot, 0, nil).AnyTimes()
 			mockReporter.EXPECT().GetReporterName().AnyTimes()
 			mockReporter.EXPECT().Initialize(gomock.Any(), gomock.Any()).AnyTimes()
 			mockReporter.EXPECT().ReportStatus(gomock.Any(), gomock.Any()).AnyTimes()
@@ -1703,7 +1703,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			}
 
 			//mockStatus.EXPECT().IsPRMRInSnapshotOpened(gomock.Any(), hasComSnapshot2).Return(true, nil)
-			mockStatus.EXPECT().IsPRMRInSnapshotOpened(gomock.Any(), gomock.Any()).Return(true, nil).AnyTimes()
+			mockStatus.EXPECT().IsPRMRInSnapshotOpened(gomock.Any(), gomock.Any()).Return(true, 0, nil).AnyTimes()
 
 			adapter = NewAdapter(ctx, buildPipelineRun, hasComp, hasApp, log, loader.NewMockLoader(), k8sClient)
 

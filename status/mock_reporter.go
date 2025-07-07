@@ -69,11 +69,11 @@ func (mr *MockReporterInterfaceMockRecorder) GetReporterName() *gomock.Call {
 }
 
 // Initialize mocks base method.
-func (m *MockReporterInterface) Initialize(arg0 context.Context, arg1 *v1alpha1.Snapshot) error {
+func (m *MockReporterInterface) Initialize(arg0 context.Context, arg1 *v1alpha1.Snapshot) (int, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Initialize", arg0, arg1)
 	ret0, _ := ret[0].(error)
-	return ret0
+	return 0, ret0
 }
 
 // Initialize indicates an expected call of Initialize.

@@ -260,22 +260,30 @@ func (a *Adapter) EnsureIntegrationTestReportedToGitProvider() (controller.Opera
 			"Application.Name", a.application.Name,
 			"IntegrationTestScenarios", len(*integrationTestScenariosForComponentSnapshot))
 		if len(*integrationTestScenariosForComponentSnapshot) > 0 {
-			err = a.ReportIntegrationTestStatusAccordingToBuildPLR(a.pipelineRun, tempComponentSnapshot, integrationTestScenariosForComponentSnapshot, integrationTestStatus, a.component.Name)
+			isErrorRecoverable, err := a.ReportIntegrationTestStatusAccordingToBuildPLR(a.pipelineRun, tempComponentSnapshot, integrationTestScenariosForComponentSnapshot, integrationTestStatus, a.component.Name)
 			if err != nil {
 				a.logger.Error(err, "failed to initialize integration test status or report snapshot creation status to git provider from build pipelineRun",
-					"pipelineRun.Namespace", a.pipelineRun.Namespace, "pipelineRun.Name", a.pipelineRun.Name)
-				return controller.RequeueWithError(err)
+					"pipelineRun.Namespace", a.pipelineRun.Namespace, "pipelineRun.Name", a.pipelineRun.Name, "isErrorRecoverable", isErrorRecoverable)
+				if isErrorRecoverable {
+					return controller.RequeueWithError(err)
+				} else {
+					return controller.ContinueProcessing()
+				}
 			}
 		}
 
 		if isGroupSnapshotExpected {
 			integrationTestScenariosForGroupSnapshot = gitops.FilterIntegrationTestScenariosWithContext(allIntegrationTestScenarios, tempGroupSnapshot)
 			if len(*integrationTestScenariosForGroupSnapshot) > 0 {
-				err = a.ReportIntegrationTestStatusAccordingToBuildPLR(a.pipelineRun, tempGroupSnapshot, integrationTestScenariosForGroupSnapshot, integrationTestStatus, gitops.ComponentNameForGroupSnapshot)
+				isErrorRecoverable, err := a.ReportIntegrationTestStatusAccordingToBuildPLR(a.pipelineRun, tempGroupSnapshot, integrationTestScenariosForGroupSnapshot, integrationTestStatus, gitops.ComponentNameForGroupSnapshot)
 				if err != nil {
 					a.logger.Error(err, "failed to initialize integration test status or report snapshot creation status to git provider from build pipelineRun",
-						"pipelineRun.Namespace", a.pipelineRun.Namespace, "pipelineRun.Name", a.pipelineRun.Name)
-					return controller.RequeueWithError(err)
+						"pipelineRun.Namespace", a.pipelineRun.Namespace, "pipelineRun.Name", a.pipelineRun.Name, "isErrorRecoverable", isErrorRecoverable)
+					if isErrorRecoverable {
+						return controller.RequeueWithError(err)
+					} else {
+						return controller.ContinueProcessing()
+					}
 				}
 			}
 		}
@@ -587,17 +595,19 @@ func (a *Adapter) prepareTempGroupSnapshot(pipelineRun *tektonv1.PipelineRun) *a
 }
 
 func (a *Adapter) ReportIntegrationTestStatusAccordingToBuildPLR(pipelineRun *tektonv1.PipelineRun, snapshot *applicationapiv1alpha1.Snapshot, integrationTestScenarios *[]v1beta2.IntegrationTestScenario,
-	integrationTestStatus intgteststat.IntegrationTestStatus, componentName string) error {
+	integrationTestStatus intgteststat.IntegrationTestStatus, componentName string) (bool, error) {
+	var isErrorRecoverable = true
 	reporter := a.status.GetReporter(snapshot)
 	if reporter == nil {
 		a.logger.Info("No suitable reporter found, skipping report")
-		return nil
+		return true, nil
 	}
 	a.logger.Info(fmt.Sprintf("Detected reporter: %s", reporter.GetReporterName()))
 
-	if err := reporter.Initialize(a.context, snapshot); err != nil {
-		a.logger.Error(err, "Failed to initialize reporter", "reporter", reporter.GetReporterName())
-		return fmt.Errorf("failed to initialize reporter: %w", err)
+	if statusCode, err := reporter.Initialize(a.context, snapshot); err != nil {
+		a.logger.Error(err, "Failed to initialize reporter", "reporter", reporter.GetReporterName(), "statusCode", statusCode)
+		isErrorRecoverable = !h.IsUnrecoverableMetadataError(err) && !reporter.ReturnCodeIsUnrecoverable(statusCode)
+		return isErrorRecoverable, fmt.Errorf("failed to initialize reporter: %w", err)
 	}
 	a.logger.Info("Reporter initialized", "reporter", reporter.GetReporterName())
 
@@ -613,6 +623,7 @@ func (a *Adapter) ReportIntegrationTestStatusAccordingToBuildPLR(pipelineRun *te
 				pipelineRun.Namespace, pipelineRun.Name))
 			if reporter.ReturnCodeIsUnrecoverable(statusCode) {
 				// We return nil in case the status code is not recoverable by retrying, e.g. when status is 403 unauthorised
+				isErrorRecoverable = false
 				return nil
 			} else {
 				return fmt.Errorf("failed to report integration test status according to build pipelineRun %s/%s: %w",
@@ -629,12 +640,12 @@ func (a *Adapter) ReportIntegrationTestStatusAccordingToBuildPLR(pipelineRun *te
 	})
 
 	if err != nil {
-		return fmt.Errorf("issue occurred during generating or updating report status: %w", err)
+		return isErrorRecoverable, fmt.Errorf("issue occurred during generating or updating report status: %w", err)
 	}
 
 	a.logger.Info(fmt.Sprintf("Successfully updated the %s annotation", gitops.SnapshotStatusReportAnnotation), "pipelinerun.Name", pipelineRun.Name)
 
-	return nil
+	return true, nil
 }
 
 // getIntegrationTestStatusFromBuildPLR get the build PLR status to decide the integration test status
@@ -749,9 +760,9 @@ func (a *Adapter) isGroupSnapshotExpectedForBuildPLR(pipelineRun *tektonv1.Pipel
 			return false, err
 		}
 
-		foundSnapshotWithOpenedPR, err := a.status.FindSnapshotWithOpenedPR(a.context, snapshots)
+		foundSnapshotWithOpenedPR, statusCode, err := a.status.FindSnapshotWithOpenedPR(a.context, snapshots)
 		if err != nil {
-			a.logger.Error(err, "failed to find snapshot with open PR or MR")
+			a.logger.Error(err, "failed to find snapshot with open PR or MR", "statusCode", statusCode)
 			return false, err
 		}
 		if foundSnapshotWithOpenedPR != nil {
