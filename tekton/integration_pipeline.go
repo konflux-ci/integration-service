@@ -36,7 +36,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/util/retry"
 	knative "knative.dev/pkg/apis"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -201,33 +200,41 @@ func getPipelineRunYamlFromPipelineRunResolver(client client.Client, ctx context
 		})
 	}()
 
-	resolverBackoff := wait.Backoff{
-		Steps:    20,
-		Duration: 1 * time.Second,
-		Factor:   1.25,
-		Jitter:   0.5,
-	}
+	// Watch for changes to the ResolutionRequest using efficient polling
+	ticker := time.NewTicker(1 * time.Second)
+	defer ticker.Stop()
+
 	var resolvedRequest resolutionv1beta1.ResolutionRequest
-	err = retry.OnError(resolverBackoff, func(e error) bool { return true }, func() error {
-		err = client.Get(ctx, types.NamespacedName{Namespace: namespace, Name: resolutionRequestName}, &resolvedRequest)
-		if err != nil {
-			return err
-		}
-		for _, cond := range resolvedRequest.Status.Conditions {
-			if cond.Type == knative.ConditionSucceeded {
-				if cond.Status == corev1.ConditionTrue {
-					// request resolved successfully, we can terminate retry block
-					return nil
+	errCount := 0
+
+	for {
+		select {
+		case <-ticker.C:
+			err = client.Get(ctx, types.NamespacedName{Namespace: namespace, Name: resolutionRequestName}, &resolvedRequest)
+			if err != nil {
+				errCount++
+				if errCount >= 5 {
+					// do not return immediately on error  in case error was a flake in client.Get
+					// instead, return after error has been hit repeatedly.  This keeps something like
+					// a permissions issue from making the whole service hang
+					return "", err
 				}
 			}
-		}
-		return fmt.Errorf("resolution for '%s' in namespace '%s' did not complete", namespace, resolutionRequestName)
-	})
 
-	if err != nil {
-		return "", err
+			for _, cond := range resolvedRequest.Status.Conditions {
+				if cond.Type == knative.ConditionSucceeded {
+					switch cond.Status {
+					case corev1.ConditionTrue:
+						return resolvedRequest.Status.Data, nil
+					case corev1.ConditionFalse:
+						return "", fmt.Errorf("resolution for '%s' in namespace '%s' failed: %s", resolutionRequestName, namespace, cond.Message)
+					}
+				}
+			}
+		case <-ctx.Done():
+			return "", ctx.Err()
+		}
 	}
-	return resolvedRequest.Status.Data, nil
 }
 
 func generateIntegrationPipelineRunFromBase64(base64plr, namespace, defaultPrefix string) (*IntegrationPipelineRun, error) {
