@@ -202,7 +202,7 @@ func getPipelineRunYamlFromPipelineRunResolver(client client.Client, ctx context
 	}()
 
 	resolverBackoff := wait.Backoff{
-		Steps:    60,
+		Steps:    20,
 		Duration: 1 * time.Second,
 		Factor:   1.25,
 		Jitter:   0.5,
