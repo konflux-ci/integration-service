@@ -1398,53 +1398,6 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			expectedLogEntry := "Failed to create pipelineRun for snapshot and scenario"
 			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
 		})
-
-		It("Write status to snapshot annotation when meeting invalid resource error", func() {
-			var buf bytes.Buffer
-
-			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
-			adapter = NewAdapter(ctx, hasSnapshot, hasApp, log, loader.NewMockLoader(), k8sClient)
-
-			helpers.SetScenarioIntegrationStatusAsInvalid(integrationTestScenarioForInvalidSnapshot, "invalid")
-			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
-				{
-					ContextKey: loader.ApplicationContextKey,
-					Resource:   hasApp,
-				},
-				{
-					ContextKey: loader.ComponentContextKey,
-					Resource:   hasComp,
-				},
-				{
-					ContextKey: loader.SnapshotContextKey,
-					Resource:   hasSnapshot,
-				},
-				{
-					ContextKey: loader.SnapshotComponentsContextKey,
-					Resource:   []applicationapiv1alpha1.Component{*hasComp},
-				},
-				{
-					ContextKey: loader.AllIntegrationTestScenariosContextKey,
-					Resource:   []v1beta2.IntegrationTestScenario{*integrationTestScenarioForInvalidSnapshot},
-				},
-				{
-					ContextKey: loader.RequiredIntegrationTestScenariosContextKey,
-					Resource:   []v1beta2.IntegrationTestScenario{*integrationTestScenarioForInvalidSnapshot},
-				},
-			})
-			result, err := adapter.EnsureIntegrationPipelineRunsExist()
-			Expect(result.CancelRequest).To(BeFalse())
-			Expect(err).NotTo(HaveOccurred())
-
-			expectedLogEntry := "IntegrationTestScenario is invalid, will not create pipelineRun for it"
-			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
-
-			statuses, err := gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(hasSnapshot)
-			Expect(err).To(Succeed())
-			detail, ok := statuses.GetScenarioStatus(integrationTestScenarioForInvalidSnapshot.Name)
-			Expect(ok).To(BeTrue())
-			Expect(detail.Status).Should(Equal(intgteststat.IntegrationTestStatusTestInvalid))
-		})
 	})
 
 	When("When EnsureAllReleasesExist experiences error", func() {

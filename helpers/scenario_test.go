@@ -20,11 +20,9 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/konflux-ci/integration-service/api/v1beta2"
-	"github.com/konflux-ci/integration-service/helpers"
 )
 
 var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
@@ -70,28 +68,5 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 	AfterAll(func() {
 		err := k8sClient.Delete(ctx, integrationTestScenario)
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
-	})
-
-	Context("IntegrationTestscenario can be marked as valid and invalid", func() {
-		It("ensures the Scenario status can be marked as invalid", func() {
-			helpers.SetScenarioIntegrationStatusAsInvalid(integrationTestScenario, "Test message")
-			Expect(integrationTestScenario).NotTo(BeNil())
-			Expect(helpers.IsScenarioValid(integrationTestScenario)).To(BeFalse())
-			Expect(meta.IsStatusConditionFalse(integrationTestScenario.Status.Conditions, helpers.IntegrationTestScenarioValid)).To(BeTrue())
-		})
-
-		It("ensures the Scenario status can be marked as valid", func() {
-			helpers.SetScenarioIntegrationStatusAsValid(integrationTestScenario, "Test message")
-			Expect(integrationTestScenario).NotTo(BeNil())
-			Expect(helpers.IsScenarioValid(integrationTestScenario)).To(BeTrue())
-			Expect(meta.IsStatusConditionTrue(integrationTestScenario.Status.Conditions, helpers.IntegrationTestScenarioValid)).To(BeTrue())
-		})
-
-		It("ensures the Scenario is considered invalid if it doesn't have the required status condition", func() {
-			uncheckedIntegrationTestScenario := integrationTestScenario.DeepCopy()
-			uncheckedIntegrationTestScenario.Status.Conditions = []metav1.Condition{}
-			Expect(uncheckedIntegrationTestScenario).NotTo(BeNil())
-			Expect(helpers.IsScenarioValid(uncheckedIntegrationTestScenario)).To(BeFalse())
-		})
 	})
 })

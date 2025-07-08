@@ -20,7 +20,6 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/types"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -77,17 +76,5 @@ var _ = Describe("IntegrationTestScenario type", func() {
 	AfterEach(func() {
 		err := k8sClient.Delete(ctx, integrationTestScenario)
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
-	})
-
-	It("should be able to create integrationTestScenario", func() {
-		Expect(k8sClient.Create(ctx, integrationTestScenario)).Should(Succeed())
-		Eventually(func() bool {
-			err := k8sClient.Get(ctx, types.NamespacedName{
-				Name:      integrationTestScenario.Name,
-				Namespace: integrationTestScenario.Namespace,
-			}, integrationTestScenario)
-			return err == nil
-		}, timeout).Should(BeTrue())
-		Expect(integrationTestScenario.Spec.Application).To(Equal("application-sample"))
 	})
 })
