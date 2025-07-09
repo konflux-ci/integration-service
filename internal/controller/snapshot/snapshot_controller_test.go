@@ -196,7 +196,7 @@ var _ = Describe("SnapshotController", func() {
 				Namespace: hasSnapshot.Namespace,
 				Name:      hasSnapshot.Name,
 			}, hasSnapshot)
-			return err == nil
+			return err == nil && len(hasSnapshot.ObjectMeta.OwnerReferences) > 0
 		}).Should(BeTrue())
 		Expect(hasSnapshot.ObjectMeta.OwnerReferences).ToNot(BeNil())
 		Expect(hasSnapshot.ObjectMeta.GetOwnerReferences()[0].Name).To(Equal(hasApp.Name))

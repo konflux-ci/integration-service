@@ -132,6 +132,9 @@ var _ = BeforeSuite(func() {
 	err = SetupIntegrationTestScenarioWebhookWithManager(mgr)
 	Expect(err).NotTo(HaveOccurred())
 
+	err = SetupSnapshotWebhookWithManager(mgr)
+	Expect(err).NotTo(HaveOccurred())
+
 	// +kubebuilder:scaffold:webhook
 
 	go func() {

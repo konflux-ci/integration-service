@@ -178,6 +178,10 @@ func main() {
 		setupLog.Error(err, "unable to create webhook", "webhook", "IntegrationTestScenario")
 		os.Exit(1)
 	}
+	if err = iswebhook.SetupSnapshotWebhookWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create webhook", "webhook", "Snapshot")
+		os.Exit(1)
+	}
 	//+kubebuilder:scaffold:builder
 
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
