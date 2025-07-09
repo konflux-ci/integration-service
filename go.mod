@@ -22,7 +22,7 @@ require (
 	github.com/tektoncd/pipeline v0.68.0
 	github.com/tektoncd/resolution v0.0.0-20220901133656-d680719abeaf
 	github.com/tonglil/buflogr v1.1.1
-	gitlab.com/gitlab-org/api/client-go v0.133.0
+	gitlab.com/gitlab-org/api/client-go v0.134.0
 	go.uber.org/mock v0.5.2
 	go.uber.org/zap v1.27.0
 	golang.org/x/exp v0.0.0-20250620022241-b7579e27df2b
