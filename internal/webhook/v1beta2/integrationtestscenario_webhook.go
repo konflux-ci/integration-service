@@ -250,7 +250,7 @@ func addOwnerReference(scenario *v1beta2.IntegrationTestScenario, client client.
 			Kind:               application.Kind,
 			Name:               application.Name,
 			UID:                application.UID,
-			BlockOwnerDeletion: ptr.To(true),
+			BlockOwnerDeletion: ptr.To(false),
 			Controller:         ptr.To(false),
 		}
 		scenario.SetOwnerReferences(append(scenario.GetOwnerReferences(), ownerReference))
