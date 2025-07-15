@@ -981,6 +981,7 @@ var _ = Describe("Test garbage collection for snapshots", func() {
 			Expect(filteredSnapshotList).Should(ContainElement(snapDiscardPR))
 			Expect(keptPr).To(Equal(1))
 			Expect(keptNonPr).To(Equal(1))
+			Expect(filteredSnapshotList).To(HaveLen(2))
 
 		})
 	})

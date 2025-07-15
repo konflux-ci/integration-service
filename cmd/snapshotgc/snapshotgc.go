@@ -238,7 +238,7 @@ func isNonPrSnapshot(
 func filterSnapshotsWithKeepSnapshotAnnotation(
 	snapshots []applicationapiv1alpha1.Snapshot,
 ) ([]applicationapiv1alpha1.Snapshot, int, int) {
-	nonReservedSnapshots := make([]applicationapiv1alpha1.Snapshot, len(snapshots))
+	nonReservedSnapshots := make([]applicationapiv1alpha1.Snapshot, 0, len(snapshots))
 	keptNonPrSnapshots := 0
 	keptPrSnapshots := 0
 	for _, snap := range snapshots {
