@@ -12,5 +12,19 @@ metadata:
     app.kubernetes.io/part-of: integration-service
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/created-by: integration-service
+    test.appstudio.openshift.io/optional: "false"
   name: integrationtestscenario-sample
 spec:
+  application: "test-failing-app"
+  resolverRef:
+    resolver: "git"
+    params:
+    - name: "url"
+      value: "https://github.com/redhat-appstudio/integration-examples.git"
+    - name: "revision"
+      value: "main"
+    - name: "pathInRepo"
+      value: "pipelineruns/nonexistent_pipeline.yaml"  # This will cause TestInvalid status
+  contexts:
+  - name: "component"
+    description: "Component testing with invalid pipeline"

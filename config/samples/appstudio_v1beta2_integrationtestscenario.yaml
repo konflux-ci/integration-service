@@ -14,3 +14,16 @@ metadata:
     app.kubernetes.io/created-by: integration-service
   name: integrationtestscenario-sample-v2
 spec:
+  application: "test-failing-app"
+  resolverRef:
+    resolver: "git"
+    params:
+    - name: "url"
+      value: "https://github.com/redhat-appstudio/integration-examples.git"
+    - name: "revision"
+      value: "main"
+    - name: "pathInRepo"
+      value: "pipelineruns/integration_pipelinerun_pas.yaml"  # TYPO: missing 's' in 'pass'
+  contexts:
+  - name: "component"
+    description: "Component testing with typo to cause failure"
