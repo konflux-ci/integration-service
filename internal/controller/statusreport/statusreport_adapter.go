@@ -78,6 +78,13 @@ func (a *Adapter) EnsureSnapshotTestStatusReportedToGitProvider() (controller.Op
 		return controller.ContinueProcessing()
 	}
 
+	// Skip reporting if the snapshot has the label "skip-git-report" set to "true"
+	if snapshotLabel, ok := a.snapshot.Labels["skip-git-report"]; ok && snapshotLabel == "true" {
+		a.logger.Info("Snapshot reporting skipped, skip-git-report label is set to true",
+			"snapshot.Namespace", a.snapshot.Namespace, "snapshot.Name", a.snapshot.Name)
+		return controller.ContinueProcessing()
+	}
+
 	// Don't report status for superseded/canceled Snapshots
 	if gitops.IsSnapshotMarkedAsCanceled(a.snapshot) {
 		return controller.ContinueProcessing()
@@ -284,6 +291,12 @@ func (a *Adapter) findUntriggeredIntegrationTestFromStatus(integrationTestScenar
 
 // ReportSnapshotStatus reports status of all integration tests into Pull Requests from component snapshot or group snapshot
 func (a *Adapter) ReportSnapshotStatus(testedSnapshot *applicationapiv1alpha1.Snapshot) (bool, error) {
+	// Skip reporting if the snapshot has the "integration.ignored" annotation set to "true"
+	if testedSnapshotAnnotation, ok := testedSnapshot.Annotations["integration.ignored"]; ok && testedSnapshotAnnotation == "true" {
+		a.logger.Info("Snapshot reporting skipped due to integration.ignored annotation being set to true",
+			"snapshot.Namespace", testedSnapshot.Namespace, "snapshot.Name", testedSnapshot.Name)
+		return true, nil
+	}
 	statuses, err := gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(testedSnapshot)
 	if err != nil {
 		a.logger.Error(err, "failed to get test status annotations from snapshot",
