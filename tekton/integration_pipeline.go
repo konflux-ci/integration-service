@@ -78,6 +78,9 @@ const (
 
 	// Value of ResourceKind field for remote pipelineruns
 	ResourceKindPipelineRun = "pipelinerun"
+
+	// DefaultIntegrationPipelineServiceAccount denotes the service account which is used by default in integration pipelines
+	DefaultIntegrationPipelineServiceAccount = "konflux-integration-runner"
 )
 
 var (
@@ -397,6 +400,13 @@ func (r *IntegrationPipelineRun) WithApplication(application *applicationapiv1al
 		r.Labels = map[string]string{}
 	}
 	r.Labels[ApplicationNameLabel] = application.Name
+
+	return r
+}
+
+// WithServiceAccount adds the specified service account to the Integration PipelineRun's TaskRunTemplate.
+func (r *IntegrationPipelineRun) WithServiceAccount(serviceAccountName string) *IntegrationPipelineRun {
+	r.Spec.TaskRunTemplate.ServiceAccountName = serviceAccountName
 
 	return r
 }
