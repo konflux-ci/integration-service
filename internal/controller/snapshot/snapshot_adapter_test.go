@@ -1124,6 +1124,16 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			Expect(found).To(BeFalse())
 		})
 
+		It("ensures serviceAccount is generated correctly for the Integration test PLR", func() {
+			serviceAccountName := tektonconsts.DefaultIntegrationPipelineServiceAccount
+
+			pipelineRun, err := adapter.createIntegrationPipelineRun(hasApp, integrationTestScenario, hasSnapshot)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(pipelineRun).ToNot(BeNil())
+
+			Expect(pipelineRun.Spec.TaskRunTemplate.ServiceAccountName).To(Equal(serviceAccountName))
+		})
+
 		When("pull request updates repo with integration test", func() {
 
 			const (

@@ -338,6 +338,13 @@ func (r *IntegrationPipelineRun) WithApplication(application *applicationapiv1al
 	return r
 }
 
+// WithServiceAccount adds the specified service account to the Integration PipelineRun's TaskRunTemplate.
+func (r *IntegrationPipelineRun) WithServiceAccount(serviceAccountName string) *IntegrationPipelineRun {
+	r.Spec.TaskRunTemplate.ServiceAccountName = serviceAccountName
+
+	return r
+}
+
 // WithIntegrationTimeouts fetches the Integration timeouts from either the integrationTestScenario annotations or
 // the environment variables and adds them to the integration PipelineRun.
 func (r *IntegrationPipelineRun) WithIntegrationTimeouts(integrationTestScenario *v1beta2.IntegrationTestScenario, logger logr.Logger) *IntegrationPipelineRun {
