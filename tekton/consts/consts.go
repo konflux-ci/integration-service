@@ -55,6 +55,9 @@ const (
 	// Value of ResourceKind field for remote pipelineruns
 	ResourceKindPipelineRun = "pipelinerun"
 
+	// DefaultIntegrationPipelineServiceAccount denotes the service account which is used by default in integration pipelines
+	DefaultIntegrationPipelineServiceAccount = "konflux-integration-runner"
+
 	/*
 	 * Build PipelineConstants
 	 */
