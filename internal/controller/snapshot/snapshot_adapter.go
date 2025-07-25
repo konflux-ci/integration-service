@@ -917,7 +917,11 @@ func (a *Adapter) prepareGroupSnapshot(application *applicationapiv1alpha1.Appli
 
 		a.logger.Info("can't find snapshot with open pull/merge request for component, try to find snapshotComponent from Global Candidate List", "component", applicationComponent.Name)
 		// if there is no component snapshot found for open PR/MR, we get snapshotComponent from gcl
-		componentSource := gitops.GetComponentSourceFromComponent(&applicationComponent)
+		componentSource, err := gitops.GetComponentSourceFromComponent(&applicationComponent)
+		if err != nil {
+			a.logger.Error(err, "component cannot be added to snapshot for application due to missing git source", "component.Name", applicationComponent.Name)
+			continue
+		}
 		containerImage := applicationComponent.Status.LastPromotedImage
 		if containerImage == "" {
 			a.logger.Info("component cannot be added to snapshot for application due to missing containerImage", "component.Name", applicationComponent.Name)
