@@ -90,7 +90,8 @@ var _ = Describe("Component Adapter", Ordered, func() {
 				Source: applicationapiv1alpha1.ComponentSource{
 					ComponentSourceUnion: applicationapiv1alpha1.ComponentSourceUnion{
 						GitSource: &applicationapiv1alpha1.GitSource{
-							URL: SampleRepoLink,
+							URL:      SampleRepoLink,
+							Revision: "revision",
 						},
 					},
 				},

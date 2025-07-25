@@ -612,6 +612,13 @@ func HaveGitSource(snapshotComponent applicationapiv1alpha1.SnapshotComponent) b
 		snapshotComponent.Source.GitSource.Revision != "" && snapshotComponent.Source.GitSource.URL != ""
 }
 
+// HaveGitSourceInComponent checks if component contains non-empty source.git field
+// and have both url and revision fields defined
+func HaveGitSourceInComponent(component applicationapiv1alpha1.Component) bool {
+	return reflect.ValueOf(component.Spec.Source).IsValid() && component.Spec.Source.GitSource != nil &&
+		component.Spec.Source.GitSource.Revision != "" && component.Spec.Source.GitSource.URL != ""
+}
+
 // HaveAppStudioTestsFinished checks if the AppStudio tests have finished by checking if the AppStudio Test Succeeded condition is set.
 func HaveAppStudioTestsFinished(snapshot *applicationapiv1alpha1.Snapshot) bool {
 	statusCondition := meta.FindStatusCondition(snapshot.Status.Conditions, AppStudioTestSucceededCondition)
@@ -831,10 +838,11 @@ func PrepareSnapshot(ctx context.Context, adapterClient client.Client, applicati
 		containerImage := applicationComponent.Status.LastPromotedImage
 
 		var componentSource *applicationapiv1alpha1.ComponentSource
+		var err error
 		if applicationComponent.Name == component.Name {
 			// if the containerImage doesn't have a valid digest, we cannot construct a Snapshot
 			// for the given component
-			err := ValidateImageDigest(newContainerImage)
+			err = ValidateImageDigest(newContainerImage)
 			if err != nil {
 				log.Error(err, "component cannot be added to snapshot for application due to invalid digest in containerImage",
 					"component.Name", applicationComponent.Name,
@@ -845,7 +853,11 @@ func PrepareSnapshot(ctx context.Context, adapterClient client.Client, applicati
 			componentSource = newComponentSource
 		} else {
 			// Get ComponentSource for the component which is not built in this pipeline
-			componentSource = GetComponentSourceFromComponent(&applicationComponent)
+			componentSource, err = GetComponentSourceFromComponent(&applicationComponent)
+			if err != nil {
+				log.Error(err, "component cannot be added to snapshot for application due to missing git source", "component.Name", applicationComponent.Name)
+				continue
+			}
 		}
 
 		// If containerImage is empty, we have run into a race condition in
@@ -858,7 +870,7 @@ func PrepareSnapshot(ctx context.Context, adapterClient client.Client, applicati
 		} else {
 			// if the containerImage doesn't have a valid digest, the component
 			// will not be added to snapshot
-			err := ValidateImageDigest(containerImage)
+			err = ValidateImageDigest(containerImage)
 			if err != nil {
 				log.Error(err, "component cannot be added to snapshot for application due to invalid digest in containerImage", "component.Name", applicationComponent.Name)
 				continue
@@ -904,12 +916,15 @@ func FindMatchingSnapshot(application *applicationapiv1alpha1.Application, allSn
 
 // GetComponentSourceFromComponent gets the component source from the given Component as Revision
 // and set Component.Status.LastBuiltCommit as Component.Source.GitSource.Revision if it is defined.
-func GetComponentSourceFromComponent(component *applicationapiv1alpha1.Component) *applicationapiv1alpha1.ComponentSource {
+func GetComponentSourceFromComponent(component *applicationapiv1alpha1.Component) (*applicationapiv1alpha1.ComponentSource, error) {
+	if !HaveGitSourceInComponent(*component) {
+		return nil, fmt.Errorf("git source is not defined in component %s/%s", component.Namespace, component.Name)
+	}
 	componentSource := component.Spec.Source.DeepCopy()
 	if component.Status.LastBuiltCommit != "" {
 		componentSource.GitSource.Revision = component.Status.LastBuiltCommit
 	}
-	return componentSource
+	return componentSource, nil
 }
 
 // GetIntegrationTestRunLabelValue returns value of the label responsible for re-running tests

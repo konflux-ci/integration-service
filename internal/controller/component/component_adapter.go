@@ -90,7 +90,11 @@ func (a *Adapter) EnsureComponentIsCleanedUp() (controller.OperationResult, erro
 		component := individualComponent
 		if a.component.Name != component.Name {
 			containerImage := component.Status.LastPromotedImage
-			componentSource := gitops.GetComponentSourceFromComponent(&component)
+			componentSource, err := gitops.GetComponentSourceFromComponent(&component)
+			if err != nil {
+				a.logger.Error(err, "component can not be handle due to missing git source", "component.Name", component.Name)
+				continue
+			}
 			snapshotComponents = append(snapshotComponents, applicationapiv1alpha1.SnapshotComponent{
 				Name:           component.Name,
 				ContainerImage: containerImage,

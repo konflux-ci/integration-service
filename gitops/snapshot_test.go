@@ -43,6 +43,7 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 	var (
 		hasApp          *applicationapiv1alpha1.Application
 		hasComp         *applicationapiv1alpha1.Component
+		badComp         *applicationapiv1alpha1.Component
 		hasSnapshot     *applicationapiv1alpha1.Snapshot
 		hasComSnapshot1 *applicationapiv1alpha1.Snapshot
 		hasComSnapshot2 *applicationapiv1alpha1.Snapshot
@@ -94,6 +95,18 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 			},
 		}
 		Expect(k8sClient.Create(ctx, hasComp)).Should(Succeed())
+
+		badComp = &applicationapiv1alpha1.Component{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "bad-component",
+				Namespace: namespace,
+			},
+			Spec: applicationapiv1alpha1.ComponentSpec{
+				ComponentName: "bad-component",
+				Application:   applicationName,
+			},
+		}
+		Expect(k8sClient.Create(ctx, badComp)).Should(Succeed())
 	})
 
 	BeforeEach(func() {
@@ -271,7 +284,9 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 	})
 
 	AfterAll(func() {
-		err := k8sClient.Delete(ctx, hasApp)
+		err := k8sClient.Delete(ctx, badComp)
+		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
+		err = k8sClient.Delete(ctx, hasApp)
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 	})
 
@@ -681,15 +696,22 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 	})
 
 	It("ensure ComponentSource can returned when component have Status.LastBuiltCommit defined or not", func() {
-		componentSource := gitops.GetComponentSourceFromComponent(hasComp)
+		componentSource, err := gitops.GetComponentSourceFromComponent(hasComp)
 		Expect(componentSource.GitSource.Revision).To(Equal("a2ba645d50e471d5f084b"))
+		Expect(err).ShouldNot(HaveOccurred())
 
 		hasComp.Status = applicationapiv1alpha1.ComponentStatus{
 			LastBuiltCommit: "lastbuildcommit",
 		}
 		//Expect(k8sClient.Status().Update(ctx, hasComp)).Should(Succeed())
-		componentSource = gitops.GetComponentSourceFromComponent(hasComp)
+		componentSource, err = gitops.GetComponentSourceFromComponent(hasComp)
 		Expect(componentSource.GitSource.Revision).To(Equal("lastbuildcommit"))
+		Expect(err).ShouldNot(HaveOccurred())
+	})
+
+	It("ensure ComponentSource can not returned when component have not git source ", func() {
+		_, err := gitops.GetComponentSourceFromComponent(badComp)
+		Expect(err).Should(HaveOccurred())
 	})
 
 	It("ensure existing snapshot can be found", func() {
