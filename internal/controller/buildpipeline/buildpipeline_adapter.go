@@ -168,12 +168,12 @@ func (a *Adapter) EnsurePRGroupAnnotated() (controller.OperationResult, error) {
 
 	if metadata.HasLabel(a.pipelineRun, gitops.PRGroupHashLabel) && metadata.HasAnnotation(a.pipelineRun, gitops.PRGroupAnnotation) {
 		// If the pipeline failed, attempt to notify all component Snapshots in the group about the failure
+
 		if !h.HasPipelineRunSucceeded(a.pipelineRun) && h.HasPipelineRunFinished(a.pipelineRun) {
 			err := a.notifySnapshotsInGroupAboutFailedBuild(a.pipelineRun)
 			if err != nil {
 				return controller.RequeueWithError(err)
 			}
-			a.logger.Info("notified all component snapshots in the pr group about the build pipeline failure")
 		}
 		a.logger.Info("build pipelineRun has had pr group info in metadata, no need to update")
 		return controller.ContinueProcessing()
@@ -344,6 +344,18 @@ func (a *Adapter) notifySnapshotsInGroupAboutFailedBuild(pipelineRun *tektonv1.P
 	prGroupName := pipelineRun.Annotations[gitops.PRGroupAnnotation]
 	buildPLRFailureMsg := fmt.Sprintf("build PLR %s failed for component %s so it can't be added to the group Snapshot for PR group %s", pipelineRun.Name, a.component.Name, prGroupName)
 
+	buildPipelineRuns, err := a.loader.GetPipelineRunsWithPRGroupHash(a.context, a.client, a.pipelineRun.Namespace, prGroupHash, a.application.Name)
+	if err != nil {
+		a.logger.Error(err, fmt.Sprintf("Failed to get build pipelineRuns for given pr group hash %s", prGroupHash))
+		return err
+	}
+
+	// Don't do anything if the build pipelineRun isn't the latest for its component
+	if !tekton.IsLatestBuildPipelineRunInComponent(pipelineRun, buildPipelineRuns) {
+		a.logger.Info("not the latest pipelineRun, skipping notifying the group about the failure")
+		return nil
+	}
+
 	applicationComponents, err := a.loader.GetAllApplicationComponents(a.context, a.client, a.application)
 	if err != nil {
 		return err
@@ -370,11 +382,6 @@ func (a *Adapter) notifySnapshotsInGroupAboutFailedBuild(pipelineRun *tektonv1.P
 
 	// In case there are in-flight build pipelineRuns, we want to also annotate them to make sure that the failure is propagated
 	// to future Snapshots in the group
-	buildPipelineRuns, err := a.loader.GetPipelineRunsWithPRGroupHash(a.context, a.client, a.pipelineRun.Namespace, prGroupHash, a.application.Name)
-	if err != nil {
-		a.logger.Error(err, fmt.Sprintf("Failed to get build pipelineRuns for given pr group hash %s", prGroupHash))
-		return err
-	}
 	for _, buildPipelineRun := range *buildPipelineRuns {
 		buildPipelineRun := buildPipelineRun
 		// check if build PLR finished
@@ -385,6 +392,7 @@ func (a *Adapter) notifySnapshotsInGroupAboutFailedBuild(pipelineRun *tektonv1.P
 			}
 		}
 	}
+	a.logger.Info("notified all component snapshots in the pr group about the build pipeline failure")
 	return nil
 }
 
