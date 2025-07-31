@@ -47,7 +47,7 @@ type SnapshotCustomValidator struct {
 	// TODO(user): Add more fields as needed for validation
 }
 
-// +kubebuilder:webhook:path=/validate-appstudio-redhat-com-v1alpha1-snapshot,mutating=false,failurePolicy=fail,sideEffects=None,groups=appstudio.redhat.com,resources=snapshots,verbs=create;update;delete,versions=v1alpha1,name=vsnapshot.kb.io,admissionReviewVersions=v1
+// +kubebuilder:webhook:path=/validate-appstudio-redhat-com-v1alpha1-snapshot,mutating=false,failurePolicy=ignore,sideEffects=None,groups=appstudio.redhat.com,resources=snapshots,verbs=create;update;delete,versions=v1alpha1,name=vsnapshot.kb.io,admissionReviewVersions=v1
 
 var _ webhook.CustomValidator = &SnapshotCustomValidator{}
 
