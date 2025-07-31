@@ -170,7 +170,9 @@ func (a *Adapter) EnsurePRGroupAnnotated() (controller.OperationResult, error) {
 		// If the pipeline failed, attempt to notify all component Snapshots in the group about the failure
 
 		if !h.HasPipelineRunSucceeded(a.pipelineRun) && h.HasPipelineRunFinished(a.pipelineRun) {
-			err := a.notifySnapshotsInGroupAboutFailedBuild(a.pipelineRun)
+			prGroupName := a.pipelineRun.Annotations[gitops.PRGroupAnnotation]
+			buildPLRFailureMsg := fmt.Sprintf("build PLR %s failed for component %s so it can't be added to the group Snapshot for PR group %s", a.pipelineRun.Name, a.component.Name, prGroupName)
+			err := a.notifySnapshotsInGroupAboutBuild(a.pipelineRun, buildPLRFailureMsg)
 			if err != nil {
 				return controller.RequeueWithError(err)
 			}
@@ -179,7 +181,10 @@ func (a *Adapter) EnsurePRGroupAnnotated() (controller.OperationResult, error) {
 		return controller.ContinueProcessing()
 	}
 
-	err := a.addPRGroupToBuildPLRMetadata(a.pipelineRun)
+	var err error
+	// We have to reassign pipelineRun here because of the retryOnConflict within addPRGroupToBuildPLRMetadata sets the
+	// previous version of the pipelineRun so we don't get the updated pr group metadata
+	a.pipelineRun, err = a.addPRGroupToBuildPLRMetadata(a.pipelineRun)
 	if err != nil {
 		if errors.IsNotFound(err) {
 			a.logger.Error(err, "failed to add pr group info to build pipelineRun metadata due to notfound pipelineRun")
@@ -188,11 +193,20 @@ func (a *Adapter) EnsurePRGroupAnnotated() (controller.OperationResult, error) {
 			a.logger.Error(err, "failed to add pr group info to build pipelineRun metadata")
 			return controller.RequeueWithError(err)
 		}
-
 	}
 
 	a.logger.LogAuditEvent("pr group info is updated to build pipelineRun metadata", a.pipelineRun, h.LogActionUpdate,
-		"pipelineRun.Name", a.pipelineRun.Name)
+		"pipelineRun.Name", a.pipelineRun.Name, "PR group", a.pipelineRun.Annotations[gitops.PRGroupAnnotation])
+
+	// Notify the group Snapshot and other build PLRs in the group about the incoming new build
+	if !h.HasPipelineRunFinished(a.pipelineRun) && metadata.HasAnnotation(a.pipelineRun, gitops.PRGroupAnnotation) {
+		prGroupName := a.pipelineRun.Annotations[gitops.PRGroupAnnotation]
+		buildPLRIncomingMsg := fmt.Sprintf("a new build PLR %s is running for component %s, waiting for it to create a new group Snapshot for PR group %s", a.pipelineRun.Name, a.component.Name, prGroupName)
+		err := a.notifySnapshotsInGroupAboutBuild(a.pipelineRun, buildPLRIncomingMsg)
+		if err != nil {
+			return controller.RequeueWithError(err)
+		}
+	}
 
 	return controller.ContinueProcessing()
 }
@@ -337,12 +351,10 @@ func (a *Adapter) getComponentSourceFromPipelineRun(pipelineRun *tektonv1.Pipeli
 	return &componentSource, nil
 }
 
-// notifySnapshotsInGroupAboutFailedBuild tries to find the latest group Snapshot and notify it about the failed build.
+// notifySnapshotsInGroupAboutBuild tries to find the latest group Snapshot and notify it about the failed build.
 // If the group Snapshot can't be found, find the component Snapshots that would belong to the same group and notify them instead.
-func (a *Adapter) notifySnapshotsInGroupAboutFailedBuild(pipelineRun *tektonv1.PipelineRun) error {
+func (a *Adapter) notifySnapshotsInGroupAboutBuild(pipelineRun *tektonv1.PipelineRun, message string) error {
 	prGroupHash := pipelineRun.Labels[gitops.PRGroupHashLabel]
-	prGroupName := pipelineRun.Annotations[gitops.PRGroupAnnotation]
-	buildPLRFailureMsg := fmt.Sprintf("build PLR %s failed for component %s so it can't be added to the group Snapshot for PR group %s", pipelineRun.Name, a.component.Name, prGroupName)
 
 	buildPipelineRuns, err := a.loader.GetPipelineRunsWithPRGroupHash(a.context, a.client, a.pipelineRun.Namespace, prGroupHash, a.application.Name)
 	if err != nil {
@@ -373,7 +385,7 @@ func (a *Adapter) notifySnapshotsInGroupAboutFailedBuild(pipelineRun *tektonv1.P
 		if len(*allComponentSnapshotsInGroup) > 0 {
 			latestSnapshot := gitops.SortSnapshots(*allComponentSnapshotsInGroup)[0]
 			err = gitops.AnnotateSnapshot(a.context, &latestSnapshot, gitops.PRGroupCreationAnnotation,
-				buildPLRFailureMsg, a.client)
+				message, a.client)
 			if err != nil {
 				return err
 			}
@@ -386,13 +398,15 @@ func (a *Adapter) notifySnapshotsInGroupAboutFailedBuild(pipelineRun *tektonv1.P
 		buildPipelineRun := buildPipelineRun
 		// check if build PLR finished
 		if !h.HasPipelineRunFinished(&buildPipelineRun) && buildPipelineRun.Labels[tektonconsts.ComponentNameLabel] != a.component.Name {
-			err := tekton.AnnotateBuildPipelineRun(a.context, &buildPipelineRun, gitops.PRGroupCreationAnnotation, buildPLRFailureMsg, a.client)
+			err := tekton.AnnotateBuildPipelineRun(a.context, &buildPipelineRun, gitops.PRGroupCreationAnnotation, message, a.client)
 			if err != nil {
 				return err
 			}
 		}
 	}
-	a.logger.Info("notified all component snapshots in the pr group about the build pipeline failure")
+	a.logger.Info("notified all component snapshots and build pipelines in the pr group about the build pipeline status",
+		"prGroup", pipelineRun.Annotations[gitops.PRGroupAnnotation], "prGroupHash", prGroupHash)
+
 	return nil
 }
 
@@ -550,12 +564,11 @@ func (a *Adapter) updatePipelineRunWithCustomizedError(canRemoveFinalizer *bool,
 
 // addPRGroupToBuildPLRMetadata will add pr-group info gotten from souce-branch to annotation
 // and also the string in sha format to metadata label
-func (a *Adapter) addPRGroupToBuildPLRMetadata(pipelineRun *tektonv1.PipelineRun) error {
+func (a *Adapter) addPRGroupToBuildPLRMetadata(pipelineRun *tektonv1.PipelineRun) (*tektonv1.PipelineRun, error) {
 	prGroup := tekton.GetPRGroupFromBuildPLR(pipelineRun)
 	if prGroup != "" {
 		prGroupHash := tekton.GenerateSHA(prGroup)
-
-		return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
 			var err error
 			pipelineRun, err = a.loader.GetPipelineRun(a.context, a.client, pipelineRun.Name, pipelineRun.Namespace)
 			if err != nil {
@@ -567,11 +580,13 @@ func (a *Adapter) addPRGroupToBuildPLRMetadata(pipelineRun *tektonv1.PipelineRun
 			_ = metadata.SetAnnotation(&pipelineRun.ObjectMeta, gitops.PRGroupAnnotation, prGroup)
 			_ = metadata.SetLabel(&pipelineRun.ObjectMeta, gitops.PRGroupHashLabel, prGroupHash)
 
-			return a.client.Patch(a.context, pipelineRun, patch)
+			err = a.client.Patch(a.context, pipelineRun, patch)
+			return err
 		})
+		return pipelineRun, err
 	}
 	a.logger.Info("can't find source branch info in build PLR, not need to update build pipelineRun metadata")
-	return nil
+	return pipelineRun, nil
 }
 
 // prepareTempComponentSnapshot will create a temporary component snapshot object to copy the labels/annotations from build pipelinerun
