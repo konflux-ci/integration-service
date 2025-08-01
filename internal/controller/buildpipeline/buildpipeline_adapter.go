@@ -34,6 +34,7 @@ import (
 	intgteststat "github.com/konflux-ci/integration-service/pkg/integrationteststatus"
 	"github.com/konflux-ci/integration-service/status"
 	"github.com/konflux-ci/integration-service/tekton"
+	tektonconsts "github.com/konflux-ci/integration-service/tekton/consts"
 	"github.com/konflux-ci/operator-toolkit/controller"
 	"github.com/konflux-ci/operator-toolkit/metadata"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
@@ -94,14 +95,14 @@ func (a *Adapter) EnsureSnapshotExists() (result controller.OperationResult, err
 		return controller.ContinueProcessing()
 	}
 
-	if _, found := a.pipelineRun.Annotations[tekton.PipelineRunChainsSignedAnnotation]; !found {
+	if _, found := a.pipelineRun.Annotations[tektonconsts.PipelineRunChainsSignedAnnotation]; !found {
 		a.logger.Error(err, "Not processing the pipelineRun because it's not yet signed with Chains")
 		return controller.ContinueProcessing()
 	}
 
-	if _, found := a.pipelineRun.Annotations[tekton.SnapshotNameLabel]; found {
+	if _, found := a.pipelineRun.Annotations[tektonconsts.SnapshotNameLabel]; found {
 		a.logger.Info("The build pipelineRun is already associated with existing Snapshot via annotation",
-			"snapshot.Name", a.pipelineRun.Annotations[tekton.SnapshotNameLabel])
+			"snapshot.Name", a.pipelineRun.Annotations[tektonconsts.SnapshotNameLabel])
 		canRemoveFinalizer = true
 		return controller.ContinueProcessing()
 	}
@@ -210,7 +211,7 @@ func (a *Adapter) EnsureIntegrationTestReportedToGitProvider() (controller.Opera
 		return controller.RequeueWithError(fmt.Errorf("pr group has not been added to build pipelineRun metadata, try again"))
 	}
 
-	if metadata.HasAnnotation(a.pipelineRun, tekton.SnapshotNameLabel) {
+	if metadata.HasAnnotation(a.pipelineRun, tektonconsts.SnapshotNameLabel) {
 		SnapshotCreated := "SnapshotCreated"
 		a.logger.Info("snapshot has been created for build pipelineRun, no need to report integration status from build pipelinerun status")
 		if !metadata.HasAnnotationWithValue(a.pipelineRun, h.SnapshotCreationReportAnnotation, SnapshotCreated) {
@@ -377,7 +378,7 @@ func (a *Adapter) notifySnapshotsInGroupAboutFailedBuild(pipelineRun *tektonv1.P
 	for _, buildPipelineRun := range *buildPipelineRuns {
 		buildPipelineRun := buildPipelineRun
 		// check if build PLR finished
-		if !h.HasPipelineRunFinished(&buildPipelineRun) && buildPipelineRun.Labels[tekton.ComponentNameLabel] != a.component.Name {
+		if !h.HasPipelineRunFinished(&buildPipelineRun) && buildPipelineRun.Labels[tektonconsts.ComponentNameLabel] != a.component.Name {
 			err := tekton.AnnotateBuildPipelineRun(a.context, &buildPipelineRun, gitops.PRGroupCreationAnnotation, buildPLRFailureMsg, a.client)
 			if err != nil {
 				return err
@@ -434,7 +435,7 @@ func (a *Adapter) annotateBuildPipelineRunWithSnapshot(snapshot *applicationapiv
 			return err
 		}
 
-		err = tekton.AnnotateBuildPipelineRun(a.context, a.pipelineRun, tekton.SnapshotNameLabel, snapshot.Name, a.client)
+		err = tekton.AnnotateBuildPipelineRun(a.context, a.pipelineRun, tektonconsts.SnapshotNameLabel, snapshot.Name, a.client)
 		if err == nil {
 			a.logger.LogAuditEvent("Updated build pipelineRun", a.pipelineRun, h.LogActionUpdate,
 				"snapshot.Name", snapshot.Name)
@@ -574,7 +575,7 @@ func (a *Adapter) prepareTempComponentSnapshot(pipelineRun *tektonv1.PipelineRun
 			Namespace: pipelineRun.Namespace,
 		},
 	}
-	prefixes := []string{gitops.BuildPipelineRunPrefix, gitops.TestLabelPrefix, gitops.CustomLabelPrefix, tekton.ResourceLabelSuffix}
+	prefixes := []string{gitops.BuildPipelineRunPrefix, gitops.TestLabelPrefix, gitops.CustomLabelPrefix, tektonconsts.ResourceLabelSuffix}
 	gitops.CopySnapshotLabelsAndAnnotations(a.application, tempComponentSnapshot, a.component.Name, &pipelineRun.ObjectMeta, prefixes)
 	return tempComponentSnapshot
 }
@@ -663,7 +664,7 @@ func getIntegrationTestStatusFromBuildPLR(plr *tektonv1.PipelineRun) intgteststa
 		return integrationTestStatus
 	}
 	// when build pipeline succeeds but snapshot is not created, we need to set integration test to canceled or failed
-	if h.HasPipelineRunSucceeded(plr) && metadata.HasAnnotation(plr, h.CreateSnapshotAnnotationName) && !metadata.HasAnnotation(plr, tekton.SnapshotNameLabel) && !metadata.HasAnnotationWithValue(plr, h.SnapshotCreationReportAnnotation, intgteststat.SnapshotCreationFailed.String()) {
+	if h.HasPipelineRunSucceeded(plr) && metadata.HasAnnotation(plr, h.CreateSnapshotAnnotationName) && !metadata.HasAnnotation(plr, tektonconsts.SnapshotNameLabel) && !metadata.HasAnnotationWithValue(plr, h.SnapshotCreationReportAnnotation, intgteststat.SnapshotCreationFailed.String()) {
 		integrationTestStatus = intgteststat.SnapshotCreationFailed
 		return integrationTestStatus
 	}
@@ -713,12 +714,12 @@ func (a *Adapter) getComponentsFromLatestFlightBuildPLR(prGroup, prGroupHash str
 			a.logger.Info(fmt.Sprintf("The build pipelineRun %s/%s with pr group %s is not the latest for its component, skipped", pipelineRun.Namespace, pipelineRun.Name, prGroup))
 			continue
 		}
-		if metadata.HasAnnotation(&pipelineRun, tekton.SnapshotNameLabel) {
+		if metadata.HasAnnotation(&pipelineRun, tektonconsts.SnapshotNameLabel) {
 			a.logger.Info(fmt.Sprintf("The build pipelineRun %s/%s with pr group %s has snapshot created, skipped", pipelineRun.Namespace, pipelineRun.Name, prGroup))
 			continue
 		}
-		if !slices.Contains(componentsFromPipelineRun, pipelineRun.Labels[tekton.PipelineRunComponentLabel]) {
-			componentsFromPipelineRun = append(componentsFromPipelineRun, pipelineRun.Labels[tekton.PipelineRunComponentLabel])
+		if !slices.Contains(componentsFromPipelineRun, pipelineRun.Labels[tektonconsts.PipelineRunComponentLabel]) {
+			componentsFromPipelineRun = append(componentsFromPipelineRun, pipelineRun.Labels[tektonconsts.PipelineRunComponentLabel])
 		}
 	}
 	return componentsFromPipelineRun, nil

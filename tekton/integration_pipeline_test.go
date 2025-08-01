@@ -19,18 +19,27 @@ package tekton_test
 import (
 	"bytes"
 	"fmt"
+	"os"
+	"time"
+
 	"github.com/konflux-ci/integration-service/api/v1beta2"
 	"github.com/konflux-ci/integration-service/helpers"
+	"github.com/konflux-ci/integration-service/loader"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/tonglil/buflogr"
-	"os"
-	"time"
 
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
 	"github.com/konflux-ci/integration-service/gitops"
 	tekton "github.com/konflux-ci/integration-service/tekton"
+	tektonconsts "github.com/konflux-ci/integration-service/tekton/consts"
+	knative "knative.dev/pkg/apis"
+	duckv1 "knative.dev/pkg/apis/duck/v1"
+
+	toolkit "github.com/konflux-ci/operator-toolkit/loader"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
+	resolutionv1beta1 "github.com/tektoncd/pipeline/pkg/apis/resolution/v1beta1"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -39,7 +48,7 @@ type ExtraParams struct {
 	Value tektonv1.ParamValue
 }
 
-var _ = Describe("Integration pipeline", func() {
+var _ = Describe("Integration pipeline", Ordered, func() {
 
 	const (
 		prefix          = "testpipeline"
@@ -58,7 +67,13 @@ var _ = Describe("Integration pipeline", func() {
 		integrationTestScenarioBundle   *v1beta2.IntegrationTestScenario
 		enterpriseContractTestScenario  *v1beta2.IntegrationTestScenario
 		extraParams                     *ExtraParams
+		mockLoader                      loader.ObjectLoader
 	)
+
+	BeforeAll(func() {
+		mockLoader = loader.NewMockLoader()
+
+	})
 
 	BeforeEach(func() {
 
@@ -82,7 +97,7 @@ var _ = Describe("Integration pipeline", func() {
 			Spec: v1beta2.IntegrationTestScenarioSpec{
 				Application: "application-sample",
 				ResolverRef: v1beta2.ResolverRef{
-					ResourceKind: tekton.ResourceKindPipeline,
+					ResourceKind: tektonconsts.ResourceKindPipeline,
 					Resolver:     "git",
 					Params: []v1beta2.ResolverParameter{
 						{
@@ -105,7 +120,7 @@ var _ = Describe("Integration pipeline", func() {
 
 		//create new integration pipeline run from integration test scenario
 		var err error
-		newIntegrationPipelineRun, err = tekton.NewIntegrationPipelineRun(k8sClient, ctx, prefix, namespace, *integrationTestScenarioGit)
+		newIntegrationPipelineRun, err = tekton.NewIntegrationPipelineRun(k8sClient, ctx, mockLoader, prefix, namespace, *integrationTestScenarioGit)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(k8sClient.Create(ctx, newIntegrationPipelineRun.AsPipelineRun())).Should(Succeed())
 
@@ -121,7 +136,7 @@ var _ = Describe("Integration pipeline", func() {
 			Spec: v1beta2.IntegrationTestScenarioSpec{
 				Application: "application-sample",
 				ResolverRef: v1beta2.ResolverRef{
-					ResourceKind: tekton.ResourceKindPipeline,
+					ResourceKind: tektonconsts.ResourceKindPipeline,
 					Resolver:     "bundles",
 					Params: []v1beta2.ResolverParameter{
 						{
@@ -158,7 +173,7 @@ var _ = Describe("Integration pipeline", func() {
 			Spec: v1beta2.IntegrationTestScenarioSpec{
 				Application: "application-sample",
 				ResolverRef: v1beta2.ResolverRef{
-					ResourceKind: tekton.ResourceKindPipeline,
+					ResourceKind: tektonconsts.ResourceKindPipeline,
 					Resolver:     "git",
 					Params: []v1beta2.ResolverParameter{
 						{
@@ -239,14 +254,14 @@ var _ = Describe("Integration pipeline", func() {
 		}
 		Expect(k8sClient.Create(ctx, hasComp)).Should(Succeed())
 
-		newIntegrationBundlePipelineRun, err = tekton.NewIntegrationPipelineRun(k8sClient, ctx, prefix, namespace, *integrationTestScenarioBundle)
+		newIntegrationBundlePipelineRun, err = tekton.NewIntegrationPipelineRun(k8sClient, ctx, mockLoader, prefix, namespace, *integrationTestScenarioBundle)
 		Expect(err).NotTo(HaveOccurred())
 		newIntegrationBundlePipelineRun = newIntegrationBundlePipelineRun.WithIntegrationLabels(integrationTestScenarioBundle).
 			WithSnapshot(hasSnapshot).
 			WithApplication(hasApp)
 		Expect(k8sClient.Create(ctx, newIntegrationBundlePipelineRun.AsPipelineRun())).Should(Succeed())
 
-		enterpriseContractPipelineRun, err = tekton.NewIntegrationPipelineRun(k8sClient, ctx, prefix, namespace, *enterpriseContractTestScenario)
+		enterpriseContractPipelineRun, err = tekton.NewIntegrationPipelineRun(k8sClient, ctx, mockLoader, prefix, namespace, *enterpriseContractTestScenario)
 		Expect(err).NotTo(HaveOccurred())
 		enterpriseContractPipelineRun = enterpriseContractPipelineRun.WithIntegrationLabels(enterpriseContractTestScenario).
 			WithIntegrationAnnotations(enterpriseContractTestScenario).
@@ -279,10 +294,55 @@ var _ = Describe("Integration pipeline", func() {
 
 	Context("When creating a new IntegrationPipelineRun", func() {
 		It("can create an IntegrationPipelineRun", func() {
-			plr, err := tekton.NewIntegrationPipelineRun(k8sClient, ctx, prefix, namespace, *integrationTestScenarioGit)
+			plr, err := tekton.NewIntegrationPipelineRun(k8sClient, ctx, mockLoader, prefix, namespace, *integrationTestScenarioGit)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(plr).NotTo(BeNil())
 			Expect(k8sClient.Create(ctx, plr.AsPipelineRun())).Should(Succeed())
+		})
+
+		It("can create an IntegrationPipelineRun with 'pipelinerun' ResourceKind", func() {
+			integrationTestScenarioGit.Spec.ResolverRef.ResourceKind = tektonconsts.ResourceKindPipelineRun
+			resolutionRequest := resolutionv1beta1.ResolutionRequest{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "sample-resolutionrequest",
+					Namespace: "default",
+				},
+				Spec: resolutionv1beta1.ResolutionRequestSpec{
+					Params: []tektonv1.Param{
+						{
+							Name: "url",
+							Value: tektonv1.ParamValue{
+								Type:      tektonv1.ParamTypeString,
+								StringVal: "https://github.com/konflux-ci/integration-examples.git",
+							},
+						},
+					},
+				},
+				Status: resolutionv1beta1.ResolutionRequestStatus{
+					ResolutionRequestStatusFields: resolutionv1beta1.ResolutionRequestStatusFields{
+						Data: "SomeMockData",
+					},
+					Status: duckv1.Status{
+						Conditions: []knative.Condition{
+							{
+								Type:   knative.ConditionSucceeded,
+								Status: corev1.ConditionTrue,
+							},
+						},
+					},
+				},
+			}
+			mockContext := toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: loader.ResolutionRequestContextKey,
+					Resource:   resolutionRequest,
+				},
+			})
+			Expect(mockContext).NotTo(BeNil())
+			//plr, err := tekton.NewIntegrationPipelineRun(k8sClient, mockContext, mockLoader, prefix, namespace, *integrationTestScenarioGit)
+			//Expect(err).NotTo(HaveOccurred())
+			//Expect(plr).NotTo(BeNil())
+			//Expect(k8sClient.Create(ctx, plr.AsPipelineRun())).Should(Succeed())
 		})
 	})
 

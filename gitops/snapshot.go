@@ -32,7 +32,7 @@ import (
 	"github.com/konflux-ci/integration-service/api/v1beta2"
 	"github.com/konflux-ci/integration-service/helpers"
 	"github.com/konflux-ci/integration-service/pkg/metrics"
-	"github.com/konflux-ci/integration-service/tekton"
+	tektonconsts "github.com/konflux-ci/integration-service/tekton/consts"
 	"github.com/konflux-ci/operator-toolkit/metadata"
 	"github.com/santhosh-tekuri/jsonschema/v5"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -261,7 +261,7 @@ const (
 
 var (
 	// SnapshotComponentLabel contains the name of the updated Snapshot component - it should match the pipeline label.
-	SnapshotComponentLabel = tekton.ComponentNameLabel
+	SnapshotComponentLabel = tektonconsts.ComponentNameLabel
 )
 
 // ComponentSnapshotInfo contains data about the component snapshots' info in group snapshot

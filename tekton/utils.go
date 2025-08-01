@@ -20,42 +20,11 @@ import (
 	"fmt"
 
 	h "github.com/konflux-ci/integration-service/helpers"
+	"github.com/konflux-ci/integration-service/tekton/consts"
 	"github.com/konflux-ci/operator-toolkit/metadata"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	"knative.dev/pkg/apis"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-)
-
-const (
-	// PipelineRunTypeLabel contains the type of the PipelineRunTypeLabel.
-	PipelineRunTypeLabel = "pipelines.appstudio.openshift.io/type"
-
-	// PipelineRunBuildType is the type denoting a build PipelineRun.
-	PipelineRunBuildType = "build"
-
-	// PipelineRunTestType is the type denoting a test PipelineRun.
-	PipelineRunTestType = "test"
-
-	// PipelineRunComponentLabel is the label denoting the application.
-	PipelineRunComponentLabel = "appstudio.openshift.io/component"
-
-	// PipelineRunApplicationLabel is the label denoting the application.
-	PipelineRunApplicationLabel = "appstudio.openshift.io/application"
-
-	// PipelineRunChainsSignedAnnotation is the label added by Tekton Chains to signed PipelineRuns
-	PipelineRunChainsSignedAnnotation = "chains.tekton.dev/signed"
-
-	// PipelineRunImageUrlParamName name of image url output param
-	PipelineRunImageUrlParamName = "IMAGE_URL"
-
-	// PipelineRunImageDigestParamName name of image digest in PipelineRun result param
-	PipelineRunImageDigestParamName = "IMAGE_DIGEST"
-
-	// PipelineRunChainsGitUrlParamName name of param chains repo url
-	PipelineRunChainsGitUrlParamName = "CHAINS-GIT_URL"
-
-	// PipelineRunChainsGitCommitParamName name of param repo chains commit
-	PipelineRunChainsGitCommitParamName = "CHAINS-GIT_COMMIT"
 )
 
 // IsBuildPipelineRun returns a boolean indicating whether the object passed is a PipelineRun from
@@ -63,8 +32,8 @@ const (
 func IsBuildPipelineRun(object client.Object) bool {
 	if pipelineRun, ok := object.(*tektonv1.PipelineRun); ok {
 		return metadata.HasLabelWithValue(pipelineRun,
-			PipelineRunTypeLabel,
-			PipelineRunBuildType)
+			consts.PipelineRunTypeLabel,
+			consts.PipelineRunBuildType)
 	}
 
 	return false
@@ -75,8 +44,8 @@ func IsBuildPipelineRun(object client.Object) bool {
 func IsIntegrationPipelineRun(object client.Object) bool {
 	if pipelineRun, ok := object.(*tektonv1.PipelineRun); ok {
 		return metadata.HasLabelWithValue(pipelineRun,
-			PipelineRunTypeLabel,
-			PipelineRunTestType)
+			consts.PipelineRunTypeLabel,
+			consts.PipelineRunTestType)
 	}
 
 	return false
@@ -132,7 +101,7 @@ func isChainsDoneWithPipelineRun(objectNew client.Object) bool {
 		// indefinitely for a condition that may never happen, e.g. "failed" -> "true". Let
 		// downstream verification processes, e.g. Enterprise Contract, deal with the Chains
 		// failure.
-		return metadata.HasAnnotation(newPipelineRun, PipelineRunChainsSignedAnnotation)
+		return metadata.HasAnnotation(newPipelineRun, consts.PipelineRunChainsSignedAnnotation)
 	}
 	return false
 }
@@ -140,7 +109,7 @@ func isChainsDoneWithPipelineRun(objectNew client.Object) bool {
 // GetTypeFromPipelineRun extracts the pipeline type from the pipelineRun labels.
 func GetTypeFromPipelineRun(object client.Object) (string, error) {
 	if pipelineRun, ok := object.(*tektonv1.PipelineRun); ok {
-		if pipelineType, found := pipelineRun.Labels[PipelineRunTypeLabel]; found {
+		if pipelineType, found := pipelineRun.Labels[consts.PipelineRunTypeLabel]; found {
 			return pipelineType, nil
 		}
 	}
@@ -152,13 +121,13 @@ func GetOutputImage(object client.Object) (string, error) {
 	pipelineRun, ok := object.(*tektonv1.PipelineRun)
 	if ok {
 		for _, pipelineResult := range pipelineRun.Status.Results {
-			if pipelineResult.Name == PipelineRunImageUrlParamName {
+			if pipelineResult.Name == consts.PipelineRunImageUrlParamName {
 				return pipelineResult.Value.StringVal, nil
 			}
 		}
 	}
 
-	return "", h.MissingInfoInPipelineRunError(pipelineRun.Name, PipelineRunImageUrlParamName)
+	return "", h.MissingInfoInPipelineRunError(pipelineRun.Name, consts.PipelineRunImageUrlParamName)
 }
 
 // GetOutputImageDigest returns a string containing the IMAGE_DIGEST result value from a given PipelineRun.
@@ -166,12 +135,12 @@ func GetOutputImageDigest(object client.Object) (string, error) {
 	pipelineRun, ok := object.(*tektonv1.PipelineRun)
 	if ok {
 		for _, pipelineResult := range pipelineRun.Status.Results {
-			if pipelineResult.Name == PipelineRunImageDigestParamName {
+			if pipelineResult.Name == consts.PipelineRunImageDigestParamName {
 				return pipelineResult.Value.StringVal, nil
 			}
 		}
 	}
-	return "", h.MissingInfoInPipelineRunError(pipelineRun.Name, PipelineRunImageDigestParamName)
+	return "", h.MissingInfoInPipelineRunError(pipelineRun.Name, consts.PipelineRunImageDigestParamName)
 }
 
 // GetComponentSourceGitUrl returns a string containing the CHAINS-GIT_URL result value from a given PipelineRun.
@@ -179,12 +148,12 @@ func GetComponentSourceGitUrl(object client.Object) (string, error) {
 	pipelineRun, ok := object.(*tektonv1.PipelineRun)
 	if ok {
 		for _, pipelineResult := range pipelineRun.Status.Results {
-			if pipelineResult.Name == PipelineRunChainsGitUrlParamName {
+			if pipelineResult.Name == consts.PipelineRunChainsGitUrlParamName {
 				return pipelineResult.Value.StringVal, nil
 			}
 		}
 	}
-	return "", h.MissingInfoInPipelineRunError(pipelineRun.Name, PipelineRunChainsGitUrlParamName)
+	return "", h.MissingInfoInPipelineRunError(pipelineRun.Name, consts.PipelineRunChainsGitUrlParamName)
 }
 
 // GetComponentSourceGitCommit returns a string containing the CHAINS-GIT_COMMIT result value from a given PipelineRun.
@@ -192,10 +161,10 @@ func GetComponentSourceGitCommit(object client.Object) (string, error) {
 	pipelineRun, ok := object.(*tektonv1.PipelineRun)
 	if ok {
 		for _, pipelineResult := range pipelineRun.Status.Results {
-			if pipelineResult.Name == PipelineRunChainsGitCommitParamName {
+			if pipelineResult.Name == consts.PipelineRunChainsGitCommitParamName {
 				return pipelineResult.Value.StringVal, nil
 			}
 		}
 	}
-	return "", h.MissingInfoInPipelineRunError(pipelineRun.Name, PipelineRunChainsGitCommitParamName)
+	return "", h.MissingInfoInPipelineRunError(pipelineRun.Name, consts.PipelineRunChainsGitCommitParamName)
 }
