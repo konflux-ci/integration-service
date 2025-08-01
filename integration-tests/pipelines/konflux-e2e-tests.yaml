@@ -6,9 +6,9 @@ metadata:
 spec:
   description: |-
     This pipeline automates the process of running end-to-end tests for Konflux
-    using a ROSA (Red Hat OpenShift Service on AWS) cluster. The pipeline provisions
-    the ROSA cluster, installs Konflux using the infra-deployments, runs the tests, collects artifacts,
-    and finally deprovisions the ROSA cluster.
+    using a Kind cluster running on AWS cluster. The pipeline provisions
+    the Kind cluster, installs Konflux using the konflux-ci repository scripts, runs the tests, collects artifacts,
+    and finally deprovisions the Kind cluster.
   params:
     - name: SNAPSHOT
       description: 'The JSON string representing the snapshot of the application under test.'
@@ -28,9 +28,6 @@ spec:
     - name: konflux-test-infra-secret
       description: The name of secret where testing infrastructures credentials are stored.
       type: string
-    - name: cloud-credential-key
-      type: string
-      description: The key secret from konflux-test-infra-secret where all AWS ROSA configurations are stored.
     - name: replicas
       description: 'The number of replicas for the cluster nodes.'
       type: string
@@ -61,16 +58,6 @@ spec:
       params:
         - name: SNAPSHOT
           value: $(params.SNAPSHOT)
-    - name: rosa-hcp-metadata
-      taskRef:
-        resolver: git
-        params:
-          - name: url
-            value: https://github.com/konflux-ci/tekton-integration-catalog.git
-          - name: revision
-            value: main
-          - name: pathInRepo
-            value: common/tasks/rosa/hosted-cp/rosa-hcp-metadata/rosa-hcp-metadata.yaml
     - name: test-metadata
       taskRef:
         resolver: git
@@ -86,11 +73,10 @@ spec:
           value: $(params.SNAPSHOT)
         - name: test-name
           value: $(context.pipelineRun.name)
-    - name: provision-rosa
+    - name: provision-kind-cluster
       runAfter:
-        - rosa-hcp-metadata
-        - test-metadata
         - sealights-refs
+        - test-metadata
       taskRef:
         resolver: git
         params:
@@ -99,26 +85,68 @@ spec:
           - name: revision
             value: main
           - name: pathInRepo
-            value: tasks/rosa/hosted-cp/rosa-hcp-provision/0.2/rosa-hcp-provision.yaml
+            value: tasks/mapt-oci/kind-aws-spot/provision/0.2/kind-aws-provision.yaml
       params:
-        - name: cluster-name
-          value: $(tasks.rosa-hcp-metadata.results.cluster-name)
-        - name: ocp-version
-          value: $(params.ocp-version)
-        - name: replicas
-          value: $(params.replicas)
-        - name: machine-type
-          value: $(params.machine-type)
-        - name: konflux-test-infra-secret
-          value: $(params.konflux-test-infra-secret)
-        - name: cloud-credential-key
-          value: $(params.cloud-credential-key)
-        - name: oci-container
+        - name: secret-aws-credentials
+          value: mapt-kind-secret
+        - name: cluster-access-secret-name
+          value: kfg-$(context.pipelineRun.name)
+        - name: id
+          value: $(context.pipelineRun.name)
+        - name: tags
+          value: env=konflux,user=integration-service
+        - name: debug
+          value: 'false'
+        - name: ownerKind
+          value: PipelineRun
+        - name: ownerName
+          value: $(context.pipelineRun.name)
+        - name: ownerUid
+          value: $(context.pipelineRun.uid)
+        - name: oci-ref
           value: $(params.oci-container-repo):$(context.pipelineRun.name)
+        - name: credentials-secret-name
+          value: $(params.konflux-test-infra-secret)
+        - name: extra-port-mappings
+          value: >-
+            '[{\"containerPort\":30012,\"hostPort\":8180,\"protocol\":\"TCP\"}]'
+        - name: cpus
+          value: 32
+        - name: memory
+          value: 64
+    - name: deploy-konflux
+      runAfter:
+        - provision-kind-cluster
+      taskRef:
+        resolver: git
+        params:
+          - name: url
+            value: https://github.com/konflux-ci/tekton-integration-catalog
+          - name: revision
+            value: main
+          - name: pathInRepo
+            value: tasks/konflux-ci/deploy/0.3/deploy-konflux-ci.yaml
+      params:
+        - name: cluster-access-secret
+          value: kfg-$(context.pipelineRun.name)
+        - name: component-name
+          value: integration-service
+        - name: component-pr-owner
+          value: $(tasks.test-metadata.results.pull-request-author)
+        - name: component-pr-sha
+          value: $(tasks.test-metadata.results.git-revision)
+        - name: component-pr-source-branch
+          value: $(tasks.test-metadata.results.source-repo-branch)
+        - name: oci-ref
+          value: $(params.oci-container-repo):$(context.pipelineRun.name)
+        - name: oci-credentials
+          value: $(params.konflux-test-infra-secret)
+        - name: build-credentials
+          value: "konflux-e2e-secrets"
     - name: konflux-e2e-tests
       timeout: 2h
       runAfter:
-        - provision-rosa
+        - deploy-konflux
       taskRef:
         resolver: git
         params:
@@ -127,7 +155,7 @@ spec:
           - name: revision
             value: main
           - name: pathInRepo
-            value: integration-tests/tasks/konflux-e2e-tests-task.yaml
+            value: integration-tests/tasks/konflux-e2e-tests/0.2/konflux-e2e-tests.yaml
       params:
         - name: test-name
           value: $(context.pipelineRun.name)
@@ -141,8 +169,6 @@ spec:
           value: $(params.oci-container-repo):$(context.pipelineRun.name)
         - name: job-spec
           value: $(tasks.test-metadata.results.job-spec)
-        - name: ocp-login-command
-          value: $(tasks.provision-rosa.results.ocp-login-command)
         - name: component-image
           value: $(tasks.sealights-refs.results.sealights-container-image)
         - name: sealights-bsid
@@ -151,6 +177,10 @@ spec:
           value: $(params.test-stage)
         - name: enable-sl-plugin
           value: $(params.enable-sl-plugin)
+        - name: cluster-access-secret-name
+          value: kfg-$(context.pipelineRun.name)
+        - name: test-environment
+          value: "upstream"
   finally:
     - name: store-pipeline-status
       taskRef:
@@ -171,7 +201,7 @@ spec:
           value: $(context.pipelineRun.name)
         - name: pipeline-aggregate-status
           value: $(tasks.status)
-    - name: deprovision-rosa-collect-artifacts
+    - name: deprovision-kind-cluster
       taskRef:
         resolver: git
         params:
@@ -180,32 +210,18 @@ spec:
           - name: revision
             value: main
           - name: pathInRepo
-            value: tasks/rosa/hosted-cp/rosa-hcp-deprovision/0.2/rosa-hcp-deprovision.yaml
+            value: tasks/mapt-oci/kind-aws-spot/deprovision/0.1/kind-aws-deprovision.yaml
       params:
-        - name: test-name
+        - name: secret-aws-credentials
+          value: mapt-kind-secret
+        - name: id
           value: $(context.pipelineRun.name)
-        - name: ocp-login-command
-          value: $(tasks.provision-rosa.results.ocp-login-command)
+        - name: cluster-access-secret
+          value: kfg-$(context.pipelineRun.name)
         - name: oci-container
           value: $(params.oci-container-repo):$(context.pipelineRun.name)
-        - name: pull-request-author
-          value: $(tasks.test-metadata.results.pull-request-author)
-        - name: git-revision
-          value: $(tasks.test-metadata.results.git-revision)
-        - name: pull-request-number
-          value: $(tasks.test-metadata.results.pull-request-number)
-        - name: git-repo
-          value: $(tasks.test-metadata.results.git-repo)
-        - name: git-org
-          value: $(tasks.test-metadata.results.git-org)
-        - name: cluster-name
-          value: $(tasks.rosa-hcp-metadata.results.cluster-name)
-        - name: konflux-test-infra-secret
-          value: $(params.konflux-test-infra-secret)
-        - name: cloud-credential-key
-          value: $(params.cloud-credential-key)
-        - name: pipeline-aggregate-status
-          value: $(tasks.status)
+        - name: oci-credentials
+          value: konflux-test-infra
     - name: pull-request-status-message
       taskRef:
         resolver: git
@@ -238,6 +254,6 @@ spec:
         - name: e2e-log-name
           value: e2e-tests.log
         - name: cluster-provision-log-name
-          value: cluster-provision.log
+          value: kind-aws-provision.log
         - name: enable-test-results-analysis
           value: "true"
