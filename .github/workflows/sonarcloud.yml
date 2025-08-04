@@ -1,0 +1,94 @@
+name: SonarCloud Analysis
+on:
+  push:
+    branches:
+      - main
+      - develop
+  pull_request:
+    branches:
+      - main
+      - develop
+
+jobs:
+  sonarcloud:
+    name: SonarCloud Analysis
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Shallow clones should be disabled for a better relevancy of analysis
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.24.4"
+
+      - name: Cache Go modules
+        uses: actions/cache@v4
+        with:
+          path: ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Install tools
+        run: |
+          go install golang.org/x/tools/cmd/cover@latest
+          go install github.com/axw/gocov/gocov@latest
+          go install github.com/AlekSi/gocov-xml@latest
+
+      - name: Run tests with coverage
+        run: |
+          make test
+          # Generate coverage report in XML format for SonarCloud
+          gocov convert cover.out | gocov-xml > coverage.xml
+
+      - name: Generate test report
+        run: |
+          # Generate test report in XML format
+          go test ./... -v -json > test-report.json
+          # Convert to XML format if needed
+          echo '<?xml version="1.0" encoding="UTF-8"?><testsuites>' > test-report.xml
+          echo '</testsuites>' >> test-report.xml
+
+      - name: SonarCloud Scan
+        uses: SonarSource/sonarcloud-github-action@master
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        with:
+          args: >
+            -Dsonar.projectKey=konflux-ci-samples_integration-service
+            -Dsonar.organization=konflux-ci-samples
+            -Dsonar.go.coverage.reportPaths=coverage.out
+            -Dsonar.go.tests.reportPaths=test-report.xml
+            -Dsonar.coverage.exclusions=**/*test*, **/test/**, **/vendor/**, **/zz_generated.*, **/cmd/main.go
+            -Dsonar.test.exclusions=**/*test*, **/test/**, **/vendor/**
+            -Dsonar.coverage.minimum=70
+            -Dsonar.coverage.failOnMissing=true
+            -Dsonar.qualitygate.wait=true
+
+      - name: Comment PR with SonarCloud analysis
+        if: github.event_name == 'pull_request'
+        uses: SonarSource/sonarcloud-github-action@master
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        with:
+          args: >
+            -Dsonar.projectKey=konflux-ci-samples_integration-service
+            -Dsonar.organization=konflux-ci-samples
+            -Dsonar.pullrequest.key=${{ github.event.pull_request.number }}
+            -Dsonar.pullrequest.branch=${{ github.head_ref }}
+            -Dsonar.pullrequest.base=${{ github.base_ref }}
+            -Dsonar.go.coverage.reportPaths=coverage.out
+            -Dsonar.go.tests.reportPaths=test-report.xml
+            -Dsonar.coverage.exclusions=**/*test*, **/test/**, **/vendor/**, **/zz_generated.*, **/cmd/main.go
+            -Dsonar.test.exclusions=**/*test*, **/test/**, **/vendor/**
+            -Dsonar.coverage.minimum=70
+            -Dsonar.coverage.failOnMissing=true
+            -Dsonar.qualitygate.wait=true 
