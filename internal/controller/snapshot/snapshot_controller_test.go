@@ -114,6 +114,14 @@ var _ = Describe("SnapshotController", func() {
 		}
 		Expect(k8sClient.Create(ctx, hasSnapshot)).Should(Succeed())
 
+		Eventually(func() bool {
+			err := k8sClient.Get(ctx, types.NamespacedName{
+				Namespace: hasSnapshot.ObjectMeta.Namespace,
+				Name:      hasSnapshot.ObjectMeta.Name,
+			}, hasSnapshot)
+			return err == nil
+		}, time.Second*30, time.Second*2).Should(BeTrue())
+
 		req = ctrl.Request{
 			NamespacedName: types.NamespacedName{
 				Namespace: "default",
@@ -179,27 +187,48 @@ var _ = Describe("SnapshotController", func() {
 	})
 
 	It("can add the Application as a Controller OwnerReference on Snapshot", func() {
+		// Check that the OwnerReferences is nil/empty
 		Expect(hasSnapshot.ObjectMeta.OwnerReferences).To(BeNil())
 
+		// create a request object to tell controller what to work on
 		req := ctrl.Request{
 			NamespacedName: types.NamespacedName{
 				Name:      hasSnapshot.Name,
 				Namespace: "default",
 			},
 		}
+
+		// tell controller to look at snapshot and application and link them
 		result, err := snapshotReconciler.Reconcile(ctx, req)
+
+		// verify controller done its job and didnt crash or return error
 		Expect(reflect.TypeOf(result)).To(Equal(reflect.TypeOf(reconcile.Result{})))
 		Expect(err).ToNot(HaveOccurred())
 
+		// eventually loop will keep looping until controller has finished all its background work
 		Eventually(func() bool {
+
+			// get latest snapshot from k8s
 			err := k8sClient.Get(ctx, types.NamespacedName{
 				Namespace: hasSnapshot.Namespace,
 				Name:      hasSnapshot.Name,
 			}, hasSnapshot)
-			return err == nil && len(hasSnapshot.ObjectMeta.OwnerReferences) > 0
-		}).Should(BeTrue())
-		Expect(hasSnapshot.ObjectMeta.OwnerReferences).ToNot(BeNil())
-		Expect(hasSnapshot.ObjectMeta.GetOwnerReferences()[0].Name).To(Equal(hasApp.Name))
+
+			// couldnt get latest snapshot try again
+			if err != nil {
+				return false // not ready keep waiting
+			}
+
+			// if owner references is >0 (exists) check if they're correct
+			if len(hasSnapshot.ObjectMeta.OwnerReferences) > 0 {
+				Expect(hasSnapshot.ObjectMeta.OwnerReferences).ToNot(BeNil())
+				Expect(hasSnapshot.ObjectMeta.GetOwnerReferences()[0].Name).To(Equal(hasApp.Name))
+				return true // owner references is correct,  exit the loop
+			}
+
+			return false // no owner references yet restart the loop
+
+		}, time.Second*20, time.Second*2).Should(BeTrue())
 	})
 
 	It("Does not return an error if the component cannot be found", func() {
