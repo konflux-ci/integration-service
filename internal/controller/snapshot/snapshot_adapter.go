@@ -41,6 +41,7 @@ import (
 	"github.com/konflux-ci/integration-service/tekton"
 
 	"github.com/konflux-ci/integration-service/loader"
+	tektonconsts "github.com/konflux-ci/integration-service/tekton/consts"
 	"github.com/konflux-ci/operator-toolkit/controller"
 	"github.com/konflux-ci/operator-toolkit/metadata"
 	releasev1alpha1 "github.com/konflux-ci/release-service/api/v1alpha1"
@@ -361,7 +362,7 @@ func (a *Adapter) EnsureGlobalCandidateImageUpdated() (controller.OperationResul
 			return err
 		})
 		if err != nil {
-			_, loaderError := h.HandleLoaderError(a.logger, err, fmt.Sprintf("Component or '%s' label", tekton.ComponentNameLabel), "Snapshot")
+			_, loaderError := h.HandleLoaderError(a.logger, err, fmt.Sprintf("Component or '%s' label", tektonconsts.ComponentNameLabel), "Snapshot")
 			if loaderError != nil {
 				return controller.RequeueWithError(loaderError)
 			}
@@ -715,7 +716,7 @@ func shouldUpdateIntegrationTestGitResolver(integrationTestScenario *v1beta2.Int
 	testResolverRef := integrationTestScenario.Spec.ResolverRef
 
 	// only tekton git resolver is applicable
-	if testResolverRef.Resolver != tekton.TektonResolverGit {
+	if testResolverRef.Resolver != tektonconsts.TektonResolverGit {
 		return false
 	}
 
@@ -724,12 +725,12 @@ func shouldUpdateIntegrationTestGitResolver(integrationTestScenario *v1beta2.Int
 
 	// if target revision sha differs from source revision sha we do not want to overwrite it
 	targetRevision := annotations[gitops.PipelineAsCodeTargetBranchAnnotation]
-	sourceRevision := params[tekton.TektonResolverGitParamRevision]
+	sourceRevision := params[tektonconsts.TektonResolverGitParamRevision]
 	if targetRevision != sourceRevision {
 		return false
 	}
 
-	if urlVal, ok := params[tekton.TektonResolverGitParamURL]; ok {
+	if urlVal, ok := params[tektonconsts.TektonResolverGitParamURL]; ok {
 		// urlVal may or may not have git suffix specified :')
 		return urlToGitUrl(urlVal) == urlToGitUrl(annotations[gitops.PipelineAsCodeRepoURLAnnotation])
 	}
@@ -741,8 +742,8 @@ func shouldUpdateIntegrationTestGitResolver(integrationTestScenario *v1beta2.Int
 func getGitResolverUpdateMap(snapshot *applicationapiv1alpha1.Snapshot) map[string]string {
 	annotations := snapshot.GetAnnotations()
 	return map[string]string{
-		tekton.TektonResolverGitParamURL:      urlToGitUrl(annotations[gitops.PipelineAsCodeGitSourceURLAnnotation]), // should have .git in url for consistency and compatibility
-		tekton.TektonResolverGitParamRevision: annotations[gitops.PipelineAsCodeSHAAnnotation],
+		tektonconsts.TektonResolverGitParamURL:      urlToGitUrl(annotations[gitops.PipelineAsCodeGitSourceURLAnnotation]), // should have .git in url for consistency and compatibility
+		tektonconsts.TektonResolverGitParamRevision: annotations[gitops.PipelineAsCodeSHAAnnotation],
 	}
 }
 
@@ -752,7 +753,7 @@ func (a *Adapter) createIntegrationPipelineRun(application *applicationapiv1alph
 	a.logger.Info("Creating new pipelinerun for integrationTestscenario",
 		"integrationTestScenario.Name", integrationTestScenario.Name)
 
-	pipelineRunBuilder, err := tekton.NewIntegrationPipelineRun(a.client, a.context, integrationTestScenario.Name, application.Namespace, *integrationTestScenario)
+	pipelineRunBuilder, err := tekton.NewIntegrationPipelineRun(a.client, a.context, a.loader, integrationTestScenario.Name, application.Namespace, *integrationTestScenario)
 	if err != nil {
 		return nil, err
 	}
@@ -1002,7 +1003,7 @@ func (a *Adapter) haveAllPipelineRunProcessedForPrGroup(prGroup, prGroupHash str
 		}
 
 		// check if build PLR has component snapshot created except the build that snapshot is created from because the build plr has not been labeled with snapshot name
-		if !metadata.HasAnnotation(&pipelineRun, tekton.SnapshotNameLabel) && !metadata.HasLabelWithValue(a.snapshot, gitops.BuildPipelineRunNameLabel, pipelineRun.Name) {
+		if !metadata.HasAnnotation(&pipelineRun, tektonconsts.SnapshotNameLabel) && !metadata.HasLabelWithValue(a.snapshot, gitops.BuildPipelineRunNameLabel, pipelineRun.Name) {
 			a.logger.Info(fmt.Sprintf("The build pipelineRun %s/%s with pr group %s has succeeded but component snapshot has not been created now", pipelineRun.Namespace, pipelineRun.Name, prGroup))
 			return false, nil
 		}

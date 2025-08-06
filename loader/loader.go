@@ -24,10 +24,11 @@ import (
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
 	"github.com/konflux-ci/integration-service/api/v1beta2"
 	"github.com/konflux-ci/integration-service/gitops"
-	"github.com/konflux-ci/integration-service/tekton"
+	tektonconsts "github.com/konflux-ci/integration-service/tekton/consts"
 	toolkit "github.com/konflux-ci/operator-toolkit/loader"
 	releasev1alpha1 "github.com/konflux-ci/release-service/api/v1alpha1"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
+	resolutionv1beta1 "github.com/tektoncd/pipeline/pkg/apis/resolution/v1beta1"
 	"golang.org/x/exp/slices"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/fields"
@@ -65,6 +66,7 @@ type ObjectLoader interface {
 	GetAllIntegrationPipelineRunsForSnapshot(ctx context.Context, adapterClient client.Client, snapshot *applicationapiv1alpha1.Snapshot) ([]tektonv1.PipelineRun, error)
 	GetComponentsFromSnapshotForPRGroup(ctx context.Context, c client.Client, namespace, prGroup, prGroupHash, applicationName string) ([]string, error)
 	GetMatchingGroupSnapshotsForPRGroupHash(ctx context.Context, c client.Client, namespace, prGroupHash, applicationName string) (*[]applicationapiv1alpha1.Snapshot, error)
+	GetResolutionRequest(ctx context.Context, c client.Client, namespace, name string) (resolutionv1beta1.ResolutionRequest, error)
 }
 
 type loader struct{}
@@ -138,7 +140,7 @@ func (l *loader) GetComponentFromSnapshot(ctx context.Context, c client.Client, 
 // GetComponentFromPipelineRun loads from the cluster the Component referenced in the given PipelineRun. If the PipelineRun doesn't
 // specify a Component or this is not found in the cluster, an error will be returned.
 func (l *loader) GetComponentFromPipelineRun(ctx context.Context, c client.Client, pipelineRun *tektonv1.PipelineRun) (*applicationapiv1alpha1.Component, error) {
-	if componentName, found := pipelineRun.Labels[tekton.PipelineRunComponentLabel]; found {
+	if componentName, found := pipelineRun.Labels[tektonconsts.PipelineRunComponentLabel]; found {
 		component := &applicationapiv1alpha1.Component{}
 		err := c.Get(ctx, types.NamespacedName{
 			Namespace: pipelineRun.Namespace,
@@ -158,7 +160,7 @@ func (l *loader) GetComponentFromPipelineRun(ctx context.Context, c client.Clien
 // GetApplicationFromPipelineRun loads from the cluster the Application referenced in the given PipelineRun. If the PipelineRun doesn't
 // specify an Application or this is not found in the cluster, an error will be returned.
 func (l *loader) GetApplicationFromPipelineRun(ctx context.Context, c client.Client, pipelineRun *tektonv1.PipelineRun) (*applicationapiv1alpha1.Application, error) {
-	if applicationName, found := pipelineRun.Labels[tekton.PipelineRunApplicationLabel]; found {
+	if applicationName, found := pipelineRun.Labels[tektonconsts.PipelineRunApplicationLabel]; found {
 		application := &applicationapiv1alpha1.Application{}
 		err := c.Get(ctx, types.NamespacedName{
 			Namespace: pipelineRun.Namespace,
@@ -194,7 +196,7 @@ func (l *loader) GetApplicationFromComponent(ctx context.Context, c client.Clien
 // GetSnapshotFromPipelineRun loads from the cluster the Snapshot referenced in the given PipelineRun.
 // If the PipelineRun doesn't specify an Snapshot or this is not found in the cluster, an error will be returned.
 func (l *loader) GetSnapshotFromPipelineRun(ctx context.Context, c client.Client, pipelineRun *tektonv1.PipelineRun) (*applicationapiv1alpha1.Snapshot, error) {
-	if snapshotName, found := pipelineRun.Labels[tekton.SnapshotNameLabel]; found {
+	if snapshotName, found := pipelineRun.Labels[tektonconsts.SnapshotNameLabel]; found {
 		snapshot := &applicationapiv1alpha1.Snapshot{}
 		err := c.Get(ctx, types.NamespacedName{
 			Namespace: pipelineRun.Namespace,
@@ -601,4 +603,11 @@ func (l *loader) GetComponentsFromSnapshotForPRGroup(ctx context.Context, client
 		componentNames = append(componentNames, componentName)
 	}
 	return componentNames, nil
+}
+
+func (l *loader) GetResolutionRequest(ctx context.Context, c client.Client, namespace, name string) (resolutionv1beta1.ResolutionRequest, error) {
+	var resolutionRequest resolutionv1beta1.ResolutionRequest
+	err := c.Get(ctx, types.NamespacedName{Namespace: namespace, Name: name}, &resolutionRequest)
+
+	return resolutionRequest, err
 }

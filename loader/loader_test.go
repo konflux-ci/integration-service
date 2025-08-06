@@ -24,6 +24,7 @@ import (
 
 	"github.com/konflux-ci/integration-service/api/v1beta2"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
+	resolutionv1beta1 "github.com/tektoncd/pipeline/pkg/apis/resolution/v1beta1"
 
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -769,6 +770,34 @@ var _ = Describe("Loader", Ordered, func() {
 			Expect(plrs).NotTo(BeNil())
 			Expect(plrs).To(HaveLen(1))
 			Expect((plrs)[0].Name).To(Equal(integrationPipelineRun.Name))
+		})
+
+		It("Can get a resolutionrequest", func() {
+			reqName := "sample-resolutionrequest"
+			reqNamespace := "default"
+			rr := &resolutionv1beta1.ResolutionRequest{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      reqName,
+					Namespace: reqNamespace,
+				},
+				Spec: resolutionv1beta1.ResolutionRequestSpec{
+					Params: []tektonv1.Param{
+						{
+							Name: "url",
+							Value: tektonv1.ParamValue{
+								Type:      tektonv1.ParamTypeString,
+								StringVal: "https://github.com/konflux-ci/integration-examples.git",
+							},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, rr)).Should(Succeed())
+
+			request, err := loader.GetResolutionRequest(ctx, k8sClient, reqNamespace, reqName)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(request).NotTo(BeNil())
+			Expect(request.Name).To(Equal(reqName))
 		})
 	})
 })

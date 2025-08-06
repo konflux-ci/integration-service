@@ -25,6 +25,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
+	resolutionv1beta1 "github.com/tektoncd/pipeline/pkg/apis/resolution/v1beta1"
 )
 
 var _ = Describe("Release Adapter", Ordered, func() {
@@ -392,6 +393,27 @@ var _ = Describe("Release Adapter", Ordered, func() {
 			})
 			resource, err := loader.GetAllIntegrationPipelineRunsForSnapshot(mockContext, nil, nil)
 			Expect(resource).To(Equal(plrs))
+			Expect(err).ToNot(HaveOccurred())
+		})
+	})
+
+	Context("When calling GetResolutionRequest", func() {
+		It("return resource and error from the context", func() {
+			rr := resolutionv1beta1.ResolutionRequest{
+				Status: resolutionv1beta1.ResolutionRequestStatus{
+					ResolutionRequestStatusFields: resolutionv1beta1.ResolutionRequestStatusFields{
+						Data: "SomeMockData",
+					},
+				},
+			}
+			mockContext := toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: ResolutionRequestContextKey,
+					Resource:   rr,
+				},
+			})
+			resource, err := loader.GetResolutionRequest(mockContext, nil, "", "")
+			Expect(resource).To(Equal(rr))
 			Expect(err).ToNot(HaveOccurred())
 		})
 	})

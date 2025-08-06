@@ -24,26 +24,10 @@ import (
 	"strings"
 
 	h "github.com/konflux-ci/integration-service/helpers"
+	"github.com/konflux-ci/integration-service/tekton/consts"
 	"github.com/konflux-ci/operator-toolkit/metadata"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-)
-
-const (
-	// master branch in github/gitlab
-	MasterBranch = "master"
-
-	// main branch in github/gitlab
-	MainBranch = "main"
-
-	// PipelineAsCodeSourceBranchAnnotation is the branch name of the the pull request is created from
-	PipelineAsCodeSourceBranchAnnotation = "pipelinesascode.tekton.dev/source-branch"
-
-	// PipelineAsCodeSourceRepoOrg is the repo org build PLR is triggered by
-	PipelineAsCodeSourceRepoOrg = "pipelinesascode.tekton.dev/url-org"
-
-	// PipelineAsCodePullRequestLabel is the type of event which triggered the pipelinerun in build service
-	PipelineAsCodePullRequestLabel = "pipelinesascode.tekton.dev/pull-request"
 )
 
 // AnnotateBuildPipelineRun sets annotation for a build pipelineRun in defined context and returns that pipeline
@@ -79,11 +63,11 @@ func AnnotateBuildPipelineRunWithCreateSnapshotAnnotation(ctx context.Context, p
 	status := ""
 
 	if ensureSnapshotExistsErr == nil {
-		if !metadata.HasAnnotation(pipelineRun, SnapshotNameLabel) {
+		if !metadata.HasAnnotation(pipelineRun, consts.SnapshotNameLabel) {
 			// do nothing for in progress build PLR
 			return nil
 		}
-		message = fmt.Sprintf("Sucessfully created snapshot. See annotation %s for name", SnapshotNameLabel)
+		message = fmt.Sprintf("Sucessfully created snapshot. See annotation %s for name", consts.SnapshotNameLabel)
 		status = "success"
 	} else {
 		message = fmt.Sprintf("Failed to create snapshot. Error: %s", ensureSnapshotExistsErr.Error())
@@ -103,9 +87,9 @@ func AnnotateBuildPipelineRunWithCreateSnapshotAnnotation(ctx context.Context, p
 // GetPRGroupFromBuildPLR gets the PR group from the substring before @ from
 // the source-branch pac annotation, for main, it generate PR group with {source-branch}-{url-org}
 func GetPRGroupFromBuildPLR(pipelineRun *tektonv1.PipelineRun) string {
-	if prGroup, found := pipelineRun.Annotations[PipelineAsCodeSourceBranchAnnotation]; found {
-		if prGroup == MainBranch || prGroup == MasterBranch && metadata.HasAnnotation(pipelineRun, PipelineAsCodeSourceRepoOrg) {
-			prGroup = prGroup + "-" + pipelineRun.Annotations[PipelineAsCodeSourceRepoOrg]
+	if prGroup, found := pipelineRun.Annotations[consts.PipelineAsCodeSourceBranchAnnotation]; found {
+		if prGroup == consts.MainBranch || prGroup == consts.MasterBranch && metadata.HasAnnotation(pipelineRun, consts.PipelineAsCodeSourceRepoOrg) {
+			prGroup = prGroup + "-" + pipelineRun.Annotations[consts.PipelineAsCodeSourceRepoOrg]
 		}
 		return strings.Split(prGroup, "@")[0]
 	}
@@ -120,7 +104,7 @@ func GenerateSHA(str string) string {
 
 // IsPLRCreatedByPACPushEvent checks if a PLR has label PipelineAsCodeEventTypeLabel and with push or Push value
 func IsPLRCreatedByPACPushEvent(plr *tektonv1.PipelineRun) bool {
-	return !metadata.HasLabel(plr, PipelineAsCodePullRequestLabel)
+	return !metadata.HasLabel(plr, consts.PipelineAsCodePullRequestLabel)
 }
 
 // IsLatestBuildPipelineRunInComponent return true if pipelineRun is the latest pipelineRun
@@ -128,13 +112,13 @@ func IsPLRCreatedByPACPushEvent(plr *tektonv1.PipelineRun) bool {
 // time when pipeline was created.
 func IsLatestBuildPipelineRunInComponent(pipelineRun *tektonv1.PipelineRun, pipelineRuns *[]tektonv1.PipelineRun) bool {
 	pipelineStartTime := pipelineRun.CreationTimestamp.Time
-	componentName := pipelineRun.Labels[PipelineRunComponentLabel]
+	componentName := pipelineRun.Labels[consts.PipelineRunComponentLabel]
 	for _, run := range *pipelineRuns {
 		if pipelineRun.Name == run.Name {
 			// it's the same pipeline
 			continue
 		}
-		if componentName != run.Labels[PipelineRunComponentLabel] {
+		if componentName != run.Labels[consts.PipelineRunComponentLabel] {
 			continue
 		}
 		timestamp := run.CreationTimestamp.Time

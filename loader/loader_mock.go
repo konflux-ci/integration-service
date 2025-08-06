@@ -24,6 +24,7 @@ import (
 	toolkit "github.com/konflux-ci/operator-toolkit/loader"
 	releasev1alpha1 "github.com/konflux-ci/release-service/api/v1alpha1"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
+	resolutionv1beta1 "github.com/tektoncd/pipeline/pkg/apis/resolution/v1beta1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -63,6 +64,7 @@ const (
 	GetPipelineRunforSnapshotsKey
 	GetComponentsFromSnapshotForPRGroupKey
 	GetGroupSnapshotsKey
+	ResolutionRequestContextKey
 )
 
 func NewMockLoader() ObjectLoader {
@@ -289,4 +291,12 @@ func (l *mockLoader) GetComponentsFromSnapshotForPRGroup(ctx context.Context, c 
 	}
 	components, err := toolkit.GetMockedResourceAndErrorFromContext(ctx, GetComponentsFromSnapshotForPRGroupKey, []string{})
 	return components, err
+}
+
+func (l *mockLoader) GetResolutionRequest(ctx context.Context, c client.Client, namespace, name string) (resolutionv1beta1.ResolutionRequest, error) {
+	if ctx.Value(ResolutionRequestContextKey) == nil {
+		return l.loader.GetResolutionRequest(ctx, c, namespace, name)
+	}
+	resolutionRequest, err := toolkit.GetMockedResourceAndErrorFromContext(ctx, ResolutionRequestContextKey, resolutionv1beta1.ResolutionRequest{})
+	return resolutionRequest, err
 }

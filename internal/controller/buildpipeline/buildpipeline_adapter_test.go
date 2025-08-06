@@ -48,6 +48,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
+	tektonconsts "github.com/konflux-ci/integration-service/tekton/consts"
 	toolkit "github.com/konflux-ci/operator-toolkit/loader"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	"github.com/tonglil/buflogr"
@@ -996,7 +997,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			adapter = NewAdapter(ctx, buildPipelineRun, hasComp, hasApp, logger, loader.NewMockLoader(), k8sClient)
 			err := adapter.annotateBuildPipelineRunWithSnapshot(hasSnapshot)
 			Expect(err).ToNot(HaveOccurred())
-			Expect(adapter.pipelineRun.Annotations[tekton.SnapshotNameLabel]).To(Equal(hasSnapshot.Name))
+			Expect(adapter.pipelineRun.Annotations[tektonconsts.SnapshotNameLabel]).To(Equal(hasSnapshot.Name))
 		})
 
 		It("Can annotate the build pipelineRun with the CreateSnapshot annotate", func() {
@@ -1458,7 +1459,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 
 				// Mock an in-flight component build PLR that belongs to the same PR group
 				inFlightBuildPLR := buildPipelineRun.DeepCopy()
-				inFlightBuildPLR.Labels[tekton.ComponentNameLabel] = "other-component"
+				inFlightBuildPLR.Labels[tektonconsts.ComponentNameLabel] = "other-component"
 				inFlightBuildPLR.Status = tektonv1.PipelineRunStatus{
 					PipelineRunStatusFields: tektonv1.PipelineRunStatusFields{
 						Results: []tektonv1.PipelineRunResult{},
@@ -1760,7 +1761,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			Expect(k8sClient.Patch(ctx, buildPipelineRun, patch)).Should(Succeed())
 		})
 		It("integration test will not be set from build PLR when build PLR succeeded and snapshot is created", func() {
-			Expect(metadata.SetAnnotation(buildPipelineRun, tekton.SnapshotNameLabel, "snashot-sample")).ShouldNot(HaveOccurred())
+			Expect(metadata.SetAnnotation(buildPipelineRun, tektonconsts.SnapshotNameLabel, "snashot-sample")).ShouldNot(HaveOccurred())
 			buf = bytes.Buffer{}
 			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
 			adapter = NewAdapter(ctx, buildPipelineRun, hasComp, hasApp, log, loader.NewMockLoader(), k8sClient)
@@ -1780,7 +1781,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		})
 
 		It("integration test will not be set from build PLR when build PLR is not from pac pull request event", func() {
-			Expect(metadata.DeleteLabel(buildPipelineRun, tekton.PipelineAsCodePullRequestLabel)).ShouldNot(HaveOccurred())
+			Expect(metadata.DeleteLabel(buildPipelineRun, tektonconsts.PipelineAsCodePullRequestLabel)).ShouldNot(HaveOccurred())
 			buf = bytes.Buffer{}
 			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
 			adapter = NewAdapter(ctx, buildPipelineRun, hasComp, hasApp, log, loader.NewMockLoader(), k8sClient)

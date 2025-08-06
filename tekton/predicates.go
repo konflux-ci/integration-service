@@ -18,6 +18,7 @@ package tekton
 
 import (
 	"github.com/konflux-ci/integration-service/helpers"
+	"github.com/konflux-ci/integration-service/tekton/consts"
 	"github.com/konflux-ci/operator-toolkit/metadata"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
@@ -64,7 +65,7 @@ func BuildPipelineRunSignedAndSucceededPredicate() predicate.Predicate {
 		UpdateFunc: func(e event.UpdateEvent) bool {
 			return IsBuildPipelineRun(e.ObjectNew) && isChainsDoneWithPipelineRun(e.ObjectNew) &&
 				helpers.HasPipelineRunSucceeded(e.ObjectNew) &&
-				!metadata.HasAnnotation(e.ObjectNew, SnapshotNameLabel)
+				!metadata.HasAnnotation(e.ObjectNew, consts.SnapshotNameLabel)
 		},
 	}
 }

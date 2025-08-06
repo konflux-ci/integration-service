@@ -17,14 +17,16 @@ limitations under the License.
 package tekton_test
 
 import (
+	"time"
+
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"knative.dev/pkg/apis"
 	v1 "knative.dev/pkg/apis/duck/v1"
-	"time"
 
 	tekton "github.com/konflux-ci/integration-service/tekton"
+	tektonconsts "github.com/konflux-ci/integration-service/tekton/consts"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -131,14 +133,14 @@ var _ = Describe("build pipeline", func() {
 		})
 
 		It("can get PR group from build pipelineRun is source branch is main", func() {
-			buildPipelineRun.Annotations[tekton.PipelineAsCodeSourceBranchAnnotation] = "main"
+			buildPipelineRun.Annotations[tektonconsts.PipelineAsCodeSourceBranchAnnotation] = "main"
 			prGroup := tekton.GetPRGroupFromBuildPLR(buildPipelineRun)
 			Expect(prGroup).To(Equal("main-redhat"))
 			Expect(tekton.GenerateSHA(prGroup)).NotTo(BeNil())
 		})
 
 		It("can get PR group from build pipelineRun is source branch has @ charactor", func() {
-			buildPipelineRun.Annotations[tekton.PipelineAsCodeSourceBranchAnnotation] = "myfeature@change1"
+			buildPipelineRun.Annotations[tektonconsts.PipelineAsCodeSourceBranchAnnotation] = "myfeature@change1"
 			prGroup := tekton.GetPRGroupFromBuildPLR(buildPipelineRun)
 			Expect(prGroup).To(Equal("myfeature"))
 			Expect(tekton.GenerateSHA(prGroup)).NotTo(BeNil())

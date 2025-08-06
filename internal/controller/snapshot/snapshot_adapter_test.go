@@ -35,7 +35,7 @@ import (
 	"github.com/konflux-ci/integration-service/api/v1beta2"
 	"github.com/konflux-ci/integration-service/loader"
 	"github.com/konflux-ci/integration-service/status"
-	"github.com/konflux-ci/integration-service/tekton"
+	tektonconsts "github.com/konflux-ci/integration-service/tekton/consts"
 	toolkit "github.com/konflux-ci/operator-toolkit/loader"
 	"github.com/konflux-ci/operator-toolkit/metadata"
 	releasev1alpha1 "github.com/konflux-ci/release-service/api/v1alpha1"
@@ -1166,11 +1166,11 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 				foundRevision := false
 
 				for _, param := range pipelineRun.Spec.PipelineRef.Params {
-					if param.Name == tekton.TektonResolverGitParamURL {
+					if param.Name == tektonconsts.TektonResolverGitParamURL {
 						foundUrl = true
 						Expect(param.Value.StringVal).To(Equal(sourceRepoUrl + ".git")) // must have .git suffix
 					}
-					if param.Name == tekton.TektonResolverGitParamRevision {
+					if param.Name == tektonconsts.TektonResolverGitParamRevision {
 						foundRevision = true
 						Expect(param.Value.StringVal).To(Equal(sourceRepoRef))
 					}

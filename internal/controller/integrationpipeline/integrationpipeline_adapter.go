@@ -27,8 +27,8 @@ import (
 	"github.com/konflux-ci/integration-service/loader"
 	intgteststat "github.com/konflux-ci/integration-service/pkg/integrationteststatus"
 	"github.com/konflux-ci/integration-service/status"
-	"github.com/konflux-ci/integration-service/tekton"
 
+	tektonconsts "github.com/konflux-ci/integration-service/tekton/consts"
 	"github.com/konflux-ci/operator-toolkit/controller"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	"k8s.io/client-go/util/retry"
@@ -86,8 +86,8 @@ func (a *Adapter) EnsureStatusReportedInSnapshot() (controller.OperationResult, 
 		if err != nil {
 			return err
 		}
-		statuses.UpdateTestStatusIfChanged(a.pipelineRun.Labels[tekton.ScenarioNameLabel], pipelinerunStatus, detail)
-		if err = statuses.UpdateTestPipelineRunName(a.pipelineRun.Labels[tekton.ScenarioNameLabel], a.pipelineRun.Name); err != nil {
+		statuses.UpdateTestStatusIfChanged(a.pipelineRun.Labels[tektonconsts.ScenarioNameLabel], pipelinerunStatus, detail)
+		if err = statuses.UpdateTestPipelineRunName(a.pipelineRun.Labels[tektonconsts.ScenarioNameLabel], a.pipelineRun.Name); err != nil {
 			return err
 		}
 
@@ -121,7 +121,7 @@ func (a *Adapter) EnsureIntegrationPipelineRunLogURL() (controller.OperationResu
 			a.context,
 			a.client,
 			a.pipelineRun,
-			tekton.PipelinesAsCodePrefix+"/log-url",
+			tektonconsts.PipelinesAsCodePrefix+"/log-url",
 			integrationPipelineRunURL,
 		)
 		if err != nil {
