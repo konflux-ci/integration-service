@@ -40,7 +40,7 @@ github.com/cespare/xxhash/v2
 # github.com/davecgh/go-spew v1.1.1
 ## explicit
 github.com/davecgh/go-spew/spew
-# github.com/emicklei/go-restful/v3 v3.12.0
+# github.com/emicklei/go-restful/v3 v3.13.0
 ## explicit; go 1.13
 github.com/emicklei/go-restful/v3
 github.com/emicklei/go-restful/v3/log
@@ -336,8 +336,6 @@ github.com/tektoncd/pipeline/pkg/reconciler/pipeline/dag
 github.com/tektoncd/pipeline/pkg/resolution/common
 github.com/tektoncd/pipeline/pkg/spire/config
 github.com/tektoncd/pipeline/pkg/substitution
-# github.com/tektoncd/resolution v0.0.0-20220901133656-d680719abeaf
-## explicit; go 1.17
 # github.com/tonglil/buflogr v1.1.1
 ## explicit; go 1.17
 github.com/tonglil/buflogr
