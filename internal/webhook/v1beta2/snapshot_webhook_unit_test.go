@@ -200,3 +200,147 @@ func TestSnapshotCustomValidator_ValidateDelete(t *testing.T) {
 		}
 	})
 }
+
+func TestSnapshotCustomDefaulter_Default(t *testing.T) {
+	defaulter := &SnapshotCustomDefaulter{}
+	ctx := context.Background()
+
+	t.Run("should handle empty application name", func(t *testing.T) {
+		snapshot := &applicationapiv1alpha1.Snapshot{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "test-snapshot",
+				Namespace: "default",
+			},
+			Spec: applicationapiv1alpha1.SnapshotSpec{
+				Application: "",
+			},
+		}
+
+		err := defaulter.Default(ctx, snapshot)
+
+		if err != nil {
+			t.Errorf("Defaulter should not error: %v", err)
+		}
+
+		if snapshot.Labels == nil {
+			t.Error("Labels map should be initialised")
+		}
+
+		if snapshot.Labels["appstudio.openshift.io/application"] != snapshot.Spec.Application {
+			t.Errorf("Expected label to match spec (%s), got: %v", snapshot.Spec.Application, snapshot.Labels["appstudio.openshift.io/application"])
+		}
+
+	})
+
+	t.Run("should overwrite existing application name", func(t *testing.T) {
+		snapshot := &applicationapiv1alpha1.Snapshot{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "test-snapshot",
+				Namespace: "default",
+				Labels: map[string]string{
+					"appstudio.openshift.io/application": "wrong-name",
+				},
+			},
+			Spec: applicationapiv1alpha1.SnapshotSpec{
+				Application: "correct-name",
+			},
+		}
+
+		err := defaulter.Default(ctx, snapshot)
+
+		if err != nil {
+			t.Errorf("Defaulter should not error: %v", err)
+		}
+
+		if snapshot.Labels == nil {
+			t.Error("Labels map should be initialised")
+		}
+
+		if snapshot.Labels["appstudio.openshift.io/application"] != "correct-name" {
+			t.Errorf("Expected label to be 'correct-name', got: %v",
+				snapshot.Labels["appstudio.openshift.io/application"])
+		}
+
+	})
+
+	t.Run("should add application label when application label map is nil", func(t *testing.T) {
+		snapshot := &applicationapiv1alpha1.Snapshot{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "test-snapshot",
+				Namespace: "default",
+			},
+			Spec: applicationapiv1alpha1.SnapshotSpec{
+				Application: "my-app",
+			},
+		}
+		err := defaulter.Default(ctx, snapshot)
+
+		if err != nil {
+			t.Error("Defaulter should not error")
+		}
+
+		if snapshot.Labels == nil {
+			t.Error("Labels map should be initialised")
+		}
+
+		if snapshot.Labels["appstudio.openshift.io/application"] != "my-app" {
+			t.Errorf("Expected label to be 'my-app', got: %v",
+				snapshot.Labels["appstudio.openshift.io/application"])
+		}
+
+	})
+
+	t.Run("should add application label when labels exist but application label is missing", func(t *testing.T) {
+		snapshot := &applicationapiv1alpha1.Snapshot{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "test-snapshot",
+				Namespace: "default",
+				Labels: map[string]string{
+					"test.label":    "test-value",
+					"testing.label": "testing-value",
+				},
+			},
+			Spec: applicationapiv1alpha1.SnapshotSpec{
+				Application: "my-app",
+			},
+		}
+
+		err := defaulter.Default(ctx, snapshot)
+
+		if err != nil {
+			t.Errorf("Defaulter should not error: %v", err)
+		}
+
+		if snapshot.Labels == nil {
+			t.Error("Labels map should be initialised")
+		}
+
+		if snapshot.Labels["appstudio.openshift.io/application"] != "my-app" {
+			t.Errorf("Expected label to be 'my-app', got: %v",
+				snapshot.Labels["appstudio.openshift.io/application"])
+		}
+
+		if snapshot.Labels["test.label"] != "test-value" {
+			t.Error("Existing labels should be preserved")
+		}
+
+		if snapshot.Labels["testing.label"] != "testing-value" {
+			t.Error("Existing labels should be preserved")
+		}
+
+	})
+
+	t.Run("should reject non-snapshot object", func(t *testing.T) {
+		app := &applicationapiv1alpha1.Application{
+			ObjectMeta: metav1.ObjectMeta{Name: "test-app"},
+		}
+
+		err := defaulter.Default(ctx, app)
+		if err == nil {
+			t.Error("Defaulter should error for non-snapshot object")
+		}
+		if err != nil && err.Error() != "expected a Snapshot object but got *v1alpha1.Application" {
+			t.Errorf("Unexpected error message: %v", err)
+		}
+	})
+}
