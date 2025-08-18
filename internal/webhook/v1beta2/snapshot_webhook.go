@@ -37,11 +37,12 @@ var snapshotlog = logf.Log.WithName("snapshot-webhook")
 func SetupSnapshotWebhookWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewWebhookManagedBy(mgr).
 		For(&applicationapiv1alpha1.Snapshot{}).
+		WithDefaulter(&SnapshotCustomDefaulter{}).
 		WithValidator(&SnapshotCustomValidator{}).
 		Complete()
 }
 
-// SnapshotCustomValidator is a webhook handler and does not need deepcopy methods.
+// SnapshotCustomValidator is a webhook handler and does not need deepcopy methods. (validator = validating webhook)
 // +k8s:deepcopy-gen=false
 type SnapshotCustomValidator struct {
 	// TODO(user): Add more fields as needed for validation
@@ -50,6 +51,35 @@ type SnapshotCustomValidator struct {
 // +kubebuilder:webhook:path=/validate-appstudio-redhat-com-v1alpha1-snapshot,mutating=false,failurePolicy=ignore,sideEffects=None,groups=appstudio.redhat.com,resources=snapshots,verbs=create;update;delete,versions=v1alpha1,name=vsnapshot.kb.io,admissionReviewVersions=v1
 
 var _ webhook.CustomValidator = &SnapshotCustomValidator{}
+
+// SnapshotCustomDefaulter is a webhook handler and does not need deepcopy methods. (defaulter = mutating webhook)
+// +k8s:deepcopy-gen=false
+type SnapshotCustomDefaulter struct {
+	// no fields required at this time
+}
+
+// +kubebuilder:webhook:path=/mutate-appstudio-redhat-com-v1alpha1-snapshot,mutating=true,failurePolicy=ignore,sideEffects=None,groups=appstudio.redhat.com,resources=snapshots,verbs=create,versions=v1alpha1,name=vsnapshot.kb.io,admissionReviewVersions=v1
+
+var _ webhook.CustomDefaulter = &SnapshotCustomDefaulter{}
+
+func (d *SnapshotCustomDefaulter) Default(ctx context.Context, obj runtime.Object) error {
+	snapshot, ok := obj.(*applicationapiv1alpha1.Snapshot)
+	if !ok {
+		return fmt.Errorf("expected a Snapshot object but got %T", obj)
+	}
+
+	snapshotlog.Info("Setting application label on Snapshot", "name", snapshot.GetName())
+
+	if snapshot.Labels == nil {
+		snapshot.Labels = make(map[string]string)
+	}
+
+	snapshot.Labels["appstudio.openshift.io/application"] = snapshot.Spec.Application
+
+	snapshotlog.Info("Set application label", "snapshot", snapshot.GetName(), "application", snapshot.Spec.Application)
+
+	return nil
+}
 
 // ValidateCreate implements webhook.Validator so a webhook will be registered for the type
 func (v *SnapshotCustomValidator) ValidateCreate(ctx context.Context, obj runtime.Object) (warnings admission.Warnings, err error) {
