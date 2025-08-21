@@ -318,7 +318,7 @@ func (r *GitLabReporter) ReportStatus(ctx context.Context, report TestReport) (i
 }
 
 func (r *GitLabReporter) ReturnCodeIsUnrecoverable(statusCode int) bool {
-	return statusCode == http.StatusForbidden || statusCode == http.StatusUnauthorized
+	return statusCode == http.StatusForbidden || statusCode == http.StatusUnauthorized || statusCode == http.StatusBadRequest
 }
 
 // GenerateGitlabCommitState transforms internal integration test state into Gitlab state
