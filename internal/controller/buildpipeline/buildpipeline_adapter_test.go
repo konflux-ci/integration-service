@@ -792,6 +792,142 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		})
 	})
 
+	When("Pipeline creates snapshot with SNAPSHOT result", func() {
+		var (
+			pipelineCreatedSnapshot *applicationapiv1alpha1.Snapshot
+		)
+
+		BeforeEach(func() {
+			// Create a snapshot that would be created by the pipeline
+			pipelineCreatedSnapshot = &applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "pipeline-created-snapshot",
+					Namespace: "default",
+					Annotations: map[string]string{
+						"appstudio.redhat.com/snapshot-status": "pending",
+					},
+				},
+				Spec: applicationapiv1alpha1.SnapshotSpec{
+					Application: hasApp.Name,
+					Components: []applicationapiv1alpha1.SnapshotComponent{
+						{
+							Name:           hasComp.Name,
+							ContainerImage: SampleImage,
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, pipelineCreatedSnapshot)).Should(Succeed())
+
+			// Add SNAPSHOT result to build pipeline run
+			buildPipelineRun.Status.Results = append(buildPipelineRun.Status.Results, tektonv1.PipelineRunResult{
+				Name:  "SNAPSHOT",
+				Value: *tektonv1.NewStructuredValues("pipeline-created-snapshot"),
+			})
+			Expect(k8sClient.Status().Update(ctx, buildPipelineRun)).Should(Succeed())
+		})
+
+		AfterEach(func() {
+			err := k8sClient.Delete(ctx, pipelineCreatedSnapshot)
+			Expect(err == nil || k8serrors.IsNotFound(err)).To(BeTrue())
+		})
+
+		It("processes existing snapshot when SNAPSHOT result is present", func() {
+			var buf bytes.Buffer
+			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+			adapter = NewAdapter(ctx, buildPipelineRun, hasComp, hasApp, log, loader.NewMockLoader(), k8sClient)
+
+			Eventually(func() bool {
+				result, err := adapter.EnsureSnapshotExists()
+				return !result.CancelRequest && err == nil
+			}, time.Second*10).Should(BeTrue())
+
+			expectedLogEntry := "Found SNAPSHOT result in PipelineRun, processing existing snapshot"
+			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
+			expectedLogEntry = "Processed pipeline-created Snapshot"
+			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
+			unexpectedLogEntry := "Created new Snapshot"
+			Expect(buf.String()).ShouldNot(ContainSubstring(unexpectedLogEntry))
+
+			// Verify the pending annotation was removed
+			Eventually(func() bool {
+				updatedSnapshot := &applicationapiv1alpha1.Snapshot{}
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      pipelineCreatedSnapshot.Name,
+					Namespace: pipelineCreatedSnapshot.Namespace,
+				}, updatedSnapshot)
+				if err != nil {
+					return false
+				}
+				_, exists := updatedSnapshot.Annotations["appstudio.redhat.com/snapshot-status"]
+				return !exists
+			}, time.Second*5).Should(BeTrue())
+		})
+
+		It("falls back to traditional workflow when referenced snapshot is not found", func() {
+			// Delete the snapshot to simulate missing reference
+			Expect(k8sClient.Delete(ctx, pipelineCreatedSnapshot)).Should(Succeed())
+
+			var buf bytes.Buffer
+			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+			adapter = NewAdapter(ctx, buildPipelineRun, hasComp, hasApp, log, loader.NewMockLoader(), k8sClient)
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: loader.ApplicationContextKey,
+					Resource:   hasApp,
+				},
+				{
+					ContextKey: loader.ComponentContextKey,
+					Resource:   hasComp,
+				},
+				{
+					ContextKey: loader.ApplicationComponentsContextKey,
+					Resource:   []applicationapiv1alpha1.Component{*hasComp},
+				},
+			})
+
+			Eventually(func() bool {
+				result, err := adapter.EnsureSnapshotExists()
+				return !result.CancelRequest && err == nil
+			}, time.Second*10).Should(BeTrue())
+
+			expectedLogEntry := "Referenced snapshot not found, falling back to traditional workflow"
+			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
+		})
+
+		It("continues with traditional workflow when no SNAPSHOT result is present", func() {
+			// Remove the SNAPSHOT result
+			buildPipelineRun.Status.Results = buildPipelineRun.Status.Results[:len(buildPipelineRun.Status.Results)-1]
+			Expect(k8sClient.Status().Update(ctx, buildPipelineRun)).Should(Succeed())
+
+			var buf bytes.Buffer
+			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+			adapter = NewAdapter(ctx, buildPipelineRun, hasComp, hasApp, log, loader.NewMockLoader(), k8sClient)
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: loader.ApplicationContextKey,
+					Resource:   hasApp,
+				},
+				{
+					ContextKey: loader.ComponentContextKey,
+					Resource:   hasComp,
+				},
+				{
+					ContextKey: loader.ApplicationComponentsContextKey,
+					Resource:   []applicationapiv1alpha1.Component{*hasComp},
+				},
+			})
+
+			Eventually(func() bool {
+				result, err := adapter.EnsureSnapshotExists()
+				return !result.CancelRequest && err == nil
+			}, time.Second*10).Should(BeTrue())
+
+			unexpectedLogEntry := "Found SNAPSHOT result in PipelineRun"
+			Expect(buf.String()).ShouldNot(ContainSubstring(unexpectedLogEntry))
+		})
+	})
+
 	When("Snapshot already exists", func() {
 		It("ensures snapshot creation is skipped when snapshot already exists", func() {
 			var buf bytes.Buffer

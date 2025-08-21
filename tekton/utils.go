@@ -168,3 +168,20 @@ func GetComponentSourceGitCommit(object client.Object) (string, error) {
 	}
 	return "", h.MissingInfoInPipelineRunError(pipelineRun.Name, consts.PipelineRunChainsGitCommitParamName)
 }
+
+// GetSnapshotName returns the name of the snapshot from the SNAPSHOT result in a PipelineRun.
+// Returns empty string if the SNAPSHOT result is not found, which indicates the traditional workflow should be used.
+func GetSnapshotName(object client.Object) string {
+	pipelineRun, ok := object.(*tektonv1.PipelineRun)
+	if !ok {
+		return ""
+	}
+
+	for _, pipelineResult := range pipelineRun.Status.Results {
+		if pipelineResult.Name == "SNAPSHOT" {
+			return pipelineResult.Value.StringVal
+		}
+	}
+
+	return ""
+}
