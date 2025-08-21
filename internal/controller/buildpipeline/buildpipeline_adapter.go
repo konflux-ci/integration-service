@@ -40,6 +40,7 @@ import (
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
@@ -105,6 +106,45 @@ func (a *Adapter) EnsureSnapshotExists() (result controller.OperationResult, err
 			"snapshot.Name", a.pipelineRun.Annotations[tektonconsts.SnapshotNameLabel])
 		canRemoveFinalizer = true
 		return controller.ContinueProcessing()
+	}
+
+	// Check for SNAPSHOT result to see if pipeline created a snapshot
+	snapshotName := tekton.GetSnapshotName(a.pipelineRun)
+	if snapshotName != "" {
+		a.logger.Info("Found SNAPSHOT result in PipelineRun, processing existing snapshot",
+			"snapshot.Name", snapshotName)
+
+		existingSnapshot, err := a.getExistingSnapshot(snapshotName)
+		if err != nil {
+			if errors.IsNotFound(err) {
+				a.logger.Error(err, "Referenced snapshot not found, falling back to traditional workflow",
+					"snapshot.Name", snapshotName)
+				// Fall through to traditional workflow
+			} else {
+				a.logger.Error(err, "Failed to retrieve referenced snapshot")
+				return controller.RequeueWithError(err)
+			}
+		} else {
+			// Process the existing snapshot
+			err = a.processExistingSnapshot(existingSnapshot)
+			if err != nil {
+				a.logger.Error(err, "Failed to process existing snapshot")
+				return controller.RequeueWithError(err)
+			}
+
+			a.logger.LogAuditEvent("Processed pipeline-created Snapshot", existingSnapshot, h.LogActionUpdate,
+				"snapshot.Name", existingSnapshot.Name)
+
+			err = a.annotateBuildPipelineRunWithSnapshot(existingSnapshot)
+			if err != nil {
+				a.logger.Error(err, "Failed to update the build pipelineRun with new annotations",
+					"pipelineRun.Name", a.pipelineRun.Name)
+				return controller.RequeueWithError(err)
+			}
+
+			canRemoveFinalizer = true
+			return controller.ContinueProcessing()
+		}
 	}
 
 	existingSnapshots, err := a.loader.GetAllSnapshotsForBuildPipelineRun(a.context, a.client, a.pipelineRun)
@@ -616,6 +656,85 @@ func (a *Adapter) prepareTempGroupSnapshot(pipelineRun *tektonv1.PipelineRun) *a
 	gitops.CopyTempGroupSnapshotLabelsAndAnnotations(a.application, tempGroupSnapshot, a.component.Name, &pipelineRun.ObjectMeta, prefixes)
 
 	return tempGroupSnapshot
+}
+
+// getExistingSnapshot retrieves a snapshot by name from the cluster
+func (a *Adapter) getExistingSnapshot(snapshotName string) (*applicationapiv1alpha1.Snapshot, error) {
+	snapshot := &applicationapiv1alpha1.Snapshot{}
+	err := a.client.Get(a.context, types.NamespacedName{
+		Name:      snapshotName,
+		Namespace: a.pipelineRun.Namespace,
+	}, snapshot)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return snapshot, nil
+}
+
+// processExistingSnapshot processes a pipeline-created snapshot by removing the pending annotation
+// and adding standard Integration Service metadata
+func (a *Adapter) processExistingSnapshot(snapshot *applicationapiv1alpha1.Snapshot) error {
+	patch := client.MergeFrom(snapshot.DeepCopy())
+
+	// Remove the pending annotation
+	if snapshot.Annotations != nil {
+		delete(snapshot.Annotations, "appstudio.redhat.com/snapshot-status")
+	}
+
+	// Add standard Integration Service annotations and labels
+	a.addStandardSnapshotMetadata(snapshot)
+
+	// Update the snapshot
+	err := a.client.Patch(a.context, snapshot, patch)
+	if err != nil {
+		return err
+	}
+
+	// Update the Component CR based on the snapshot's image information
+	return a.updateComponentFromSnapshot(snapshot)
+}
+
+// addStandardSnapshotMetadata adds the same annotations and labels that would be added
+// in the traditional snapshot creation workflow
+func (a *Adapter) addStandardSnapshotMetadata(snapshot *applicationapiv1alpha1.Snapshot) {
+	if snapshot.Labels == nil {
+		snapshot.Labels = make(map[string]string)
+	}
+
+	if snapshot.Annotations == nil {
+		snapshot.Annotations = make(map[string]string)
+	}
+
+	// Add standard labels
+	snapshot.Labels[gitops.SnapshotTypeLabel] = gitops.SnapshotComponentType
+	snapshot.Labels[gitops.SnapshotComponentLabel] = a.component.Name
+	snapshot.Labels[gitops.ApplicationNameLabel] = a.application.Name
+
+	// Add PR group hash if applicable
+	if prGroupHash := a.pipelineRun.Labels[gitops.PRGroupHashLabel]; prGroupHash != "" {
+		snapshot.Labels[gitops.PRGroupHashLabel] = prGroupHash
+	}
+
+	// Add build pipelinerun reference
+	snapshot.Labels[gitops.BuildPipelineRunNameLabel] = a.pipelineRun.Name
+}
+
+// updateComponentFromSnapshot updates the Component CR with image information from the snapshot
+func (a *Adapter) updateComponentFromSnapshot(snapshot *applicationapiv1alpha1.Snapshot) error {
+	// Find the component in the snapshot's components
+	for _, component := range snapshot.Spec.Components {
+		if component.Name == a.component.Name {
+			// Update the component with the new container image
+			componentPatch := client.MergeFrom(a.component.DeepCopy())
+			a.component.Spec.ContainerImage = component.ContainerImage
+
+			return a.client.Patch(a.context, a.component, componentPatch)
+		}
+	}
+
+	return fmt.Errorf("component %s not found in snapshot %s", a.component.Name, snapshot.Name)
 }
 
 func (a *Adapter) ReportIntegrationTestStatusAccordingToBuildPLR(pipelineRun *tektonv1.PipelineRun, snapshot *applicationapiv1alpha1.Snapshot, integrationTestScenarios *[]v1beta2.IntegrationTestScenario,
