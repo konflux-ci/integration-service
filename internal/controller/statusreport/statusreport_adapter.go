@@ -447,10 +447,6 @@ func (a *Adapter) iterateIntegrationTestStatusDetailsInStatusReport(reporter sta
 				a.logger.Error(reportStatusErr, fmt.Sprintf("failed to report status to git provider for completed integration pipelinerun %s/%s, then finalizer test.appstudio.openshift.io/pipelinerun might not be removed from it later", testedSnapshot.Namespace, integrationTestStatusDetail.TestPipelineRunName))
 			}
 
-			if writeErr := status.WriteSnapshotReportStatus(a.context, a.client, testedSnapshot, srs); writeErr != nil { // try to write what was already written
-				return fmt.Errorf("failed to report status AND write snapshot report status metadata: %w", e.Join(reportStatusErr, writeErr))
-			}
-
 			if reporter.ReturnCodeIsUnrecoverable(statusCode) {
 				a.logger.Error(reportStatusErr, fmt.Sprintf("failed to report status to git provider for integration pipelinerun %s/%s, the statusCode %d is not easily recoverable", testedSnapshot.Namespace, integrationTestStatusDetail.TestPipelineRunName, statusCode))
 				return nil
@@ -458,6 +454,11 @@ func (a *Adapter) iterateIntegrationTestStatusDetailsInStatusReport(reporter sta
 				return fmt.Errorf("failed to update status: %w", reportStatusErr)
 			}
 		}
+
+		if writeErr := status.WriteSnapshotReportStatus(a.context, a.client, testedSnapshot, srs); writeErr != nil { // try to write what was already written
+			return fmt.Errorf("failed to report status AND write snapshot report status metadata: %w", writeErr)
+		}
+
 		a.logger.Info("Successfully report integration test status for snapshot",
 			"testedSnapshot.Name", testedSnapshot.Name,
 			"destinationSnapshot.Name", destinationSnapshot.Name,
