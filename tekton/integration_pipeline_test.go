@@ -577,5 +577,14 @@ var _ = Describe("Integration pipeline", Ordered, func() {
 				"test.appstudio.openshift.io/future": "future",
 			}))
 		})
+
+		It("sets the service account correctly", func() {
+			serviceAccountName := "konflux-integration-runner"
+
+			ipr := tekton.IntegrationPipelineRun{}
+			ipr.WithServiceAccount(serviceAccountName)
+
+			Expect(ipr.Spec.TaskRunTemplate.ServiceAccountName).To(Equal(serviceAccountName))
+		})
 	})
 })
