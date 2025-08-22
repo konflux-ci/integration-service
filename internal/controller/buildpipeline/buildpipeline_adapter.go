@@ -282,6 +282,7 @@ func (a *Adapter) EnsureIntegrationTestReportedToGitProvider() (controller.Opera
 				if isErrorRecoverable {
 					return controller.RequeueWithError(err)
 				} else {
+					a.logger.Error(err, "meeting unrecoverable error, stop reporting build pipelinerun status to git provider integration test scenario")
 					return controller.ContinueProcessing()
 				}
 			}
