@@ -169,6 +169,7 @@ type User struct {
 	AvatarURL                      string             `json:"avatar_url"`
 	CanCreateGroup                 bool               `json:"can_create_group"`
 	CanCreateProject               bool               `json:"can_create_project"`
+	CanCreateOrganization          bool               `json:"can_create_organization"`
 	ProjectsLimit                  int                `json:"projects_limit"`
 	CurrentSignInAt                *time.Time         `json:"current_sign_in_at"`
 	CurrentSignInIP                *net.IP            `json:"current_sign_in_ip"`
