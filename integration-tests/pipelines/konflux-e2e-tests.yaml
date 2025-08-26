@@ -110,6 +110,8 @@ spec:
         - name: extra-port-mappings
           value: >-
             '[{\"containerPort\":30012,\"hostPort\":8180,\"protocol\":\"TCP\"}]'
+        - name: spot
+          value: "false"
         - name: cpus
           value: 48
         - name: memory
