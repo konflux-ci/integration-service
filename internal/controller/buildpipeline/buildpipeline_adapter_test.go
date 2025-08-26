@@ -22,6 +22,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"strconv"
 	"time"
 
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -2190,6 +2191,650 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			Expect(result.RequeueRequest && err != nil).To(BeTrue())
 		})
 	})
+	// Unit tests for refactored pipeline-created snapshot functionality
+	When("Testing refactored snapshot metadata functions", func() {
+		var testSnapshot *applicationapiv1alpha1.Snapshot
+		var testPipelineRun *tektonv1.PipelineRun
+
+		BeforeEach(func() {
+			testSnapshot = &applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-snapshot",
+					Namespace: "default",
+				},
+				Spec: applicationapiv1alpha1.SnapshotSpec{
+					Application: hasApp.Name,
+					Components: []applicationapiv1alpha1.SnapshotComponent{
+						{
+							Name:           hasComp.Name,
+							ContainerImage: SampleImage,
+						},
+					},
+				},
+			}
+
+			testPipelineRun = buildPipelineRun.DeepCopy()
+			testPipelineRun.Status.CompletionTime = &metav1.Time{Time: time.Now()}
+			testPipelineRun.Status.StartTime = &metav1.Time{Time: time.Now().Add(-5 * time.Minute)}
+
+			adapter = NewAdapter(ctx, testPipelineRun, hasComp, hasApp, logger, loader.NewMockLoader(), k8sClient)
+		})
+
+		Describe("applySnapshotMetadata function", func() {
+			It("applies correct metadata to snapshot", func() {
+				adapter.applySnapshotMetadata(testSnapshot, testPipelineRun)
+
+				// Verify build pipeline run labels are set
+				Expect(testSnapshot.Labels[gitops.BuildPipelineRunNameLabel]).To(Equal(testPipelineRun.Name))
+				Expect(testSnapshot.Labels[gitops.BuildPipelineRunFinishTimeLabel]).ToNot(BeEmpty())
+
+				// Verify build pipeline run start time annotation is set
+				Expect(testSnapshot.Annotations[gitops.BuildPipelineRunStartTime]).ToNot(BeEmpty())
+
+				// Verify standard labels are copied from pipeline run
+				Expect(testSnapshot.Labels[gitops.ApplicationNameLabel]).To(Equal(hasApp.Name))
+				Expect(testSnapshot.Labels[gitops.SnapshotComponentLabel]).To(Equal(hasComp.Name))
+			})
+
+			It("handles snapshot with nil labels and annotations", func() {
+				testSnapshot.Labels = nil
+				testSnapshot.Annotations = nil
+
+				adapter.applySnapshotMetadata(testSnapshot, testPipelineRun)
+
+				// Verify maps are initialized and populated
+				Expect(testSnapshot.Labels).ToNot(BeNil())
+				Expect(testSnapshot.Annotations).ToNot(BeNil())
+				Expect(testSnapshot.Labels[gitops.BuildPipelineRunNameLabel]).To(Equal(testPipelineRun.Name))
+			})
+
+			It("uses current time when completion time is nil", func() {
+				testPipelineRun.Status.CompletionTime = nil
+
+				beforeTime := time.Now().Unix()
+				adapter.applySnapshotMetadata(testSnapshot, testPipelineRun)
+				afterTime := time.Now().Unix()
+
+				finishTimeStr := testSnapshot.Labels[gitops.BuildPipelineRunFinishTimeLabel]
+				finishTime, err := strconv.ParseInt(finishTimeStr, 10, 64)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(finishTime).To(BeNumerically(">=", beforeTime))
+				Expect(finishTime).To(BeNumerically("<=", afterTime))
+			})
+
+			It("skips start time annotation when start time is nil", func() {
+				testPipelineRun.Status.StartTime = nil
+
+				adapter.applySnapshotMetadata(testSnapshot, testPipelineRun)
+
+				// Should not have start time annotation
+				_, exists := testSnapshot.Annotations[gitops.BuildPipelineRunStartTime]
+				Expect(exists).To(BeFalse())
+			})
+		})
+
+		Describe("getExistingSnapshot function", func() {
+			var pipelineCreatedSnapshot *applicationapiv1alpha1.Snapshot
+
+			BeforeEach(func() {
+				pipelineCreatedSnapshot = &applicationapiv1alpha1.Snapshot{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "pipeline-created-snapshot-test",
+						Namespace: "default",
+					},
+					Spec: applicationapiv1alpha1.SnapshotSpec{
+						Application: hasApp.Name,
+						Components: []applicationapiv1alpha1.SnapshotComponent{
+							{
+								Name:           hasComp.Name,
+								ContainerImage: SampleImage,
+							},
+						},
+					},
+				}
+				Expect(k8sClient.Create(ctx, pipelineCreatedSnapshot)).Should(Succeed())
+			})
+
+			AfterEach(func() {
+				err := k8sClient.Delete(ctx, pipelineCreatedSnapshot)
+				Expect(err == nil || k8serrors.IsNotFound(err)).To(BeTrue())
+			})
+
+			It("successfully retrieves existing snapshot", func() {
+				snapshot, err := adapter.getExistingSnapshot(pipelineCreatedSnapshot.Name)
+
+				Expect(err).ToNot(HaveOccurred())
+				Expect(snapshot).ToNot(BeNil())
+				Expect(snapshot.Name).To(Equal(pipelineCreatedSnapshot.Name))
+				Expect(snapshot.Namespace).To(Equal(pipelineCreatedSnapshot.Namespace))
+			})
+
+			It("returns not found error for non-existent snapshot", func() {
+				snapshot, err := adapter.getExistingSnapshot("non-existent-snapshot")
+
+				Expect(err).To(HaveOccurred())
+				Expect(k8serrors.IsNotFound(err)).To(BeTrue())
+				Expect(snapshot).To(BeNil())
+			})
+		})
+
+		Describe("processExistingSnapshot function", func() {
+			var pipelineCreatedSnapshot *applicationapiv1alpha1.Snapshot
+
+			BeforeEach(func() {
+				pipelineCreatedSnapshot = &applicationapiv1alpha1.Snapshot{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "pipeline-created-snapshot-process",
+						Namespace: "default",
+						Annotations: map[string]string{
+							"appstudio.redhat.com/snapshot-status": "pending",
+						},
+					},
+					Spec: applicationapiv1alpha1.SnapshotSpec{
+						Application: hasApp.Name,
+						Components: []applicationapiv1alpha1.SnapshotComponent{
+							{
+								Name:           hasComp.Name,
+								ContainerImage: SampleImage,
+							},
+						},
+					},
+				}
+				Expect(k8sClient.Create(ctx, pipelineCreatedSnapshot)).Should(Succeed())
+			})
+
+			AfterEach(func() {
+				err := k8sClient.Delete(ctx, pipelineCreatedSnapshot)
+				Expect(err == nil || k8serrors.IsNotFound(err)).To(BeTrue())
+			})
+
+			It("removes pending annotation and adds standard metadata", func() {
+				err := adapter.processExistingSnapshot(pipelineCreatedSnapshot)
+				Expect(err).ToNot(HaveOccurred())
+
+				// Retrieve updated snapshot to verify changes
+				updatedSnapshot := &applicationapiv1alpha1.Snapshot{}
+				Eventually(func() bool {
+					err := k8sClient.Get(ctx, types.NamespacedName{
+						Name:      pipelineCreatedSnapshot.Name,
+						Namespace: pipelineCreatedSnapshot.Namespace,
+					}, updatedSnapshot)
+					if err != nil {
+						return false
+					}
+					// Check that pending annotation was removed
+					_, exists := updatedSnapshot.Annotations["appstudio.redhat.com/snapshot-status"]
+					return !exists
+				}, time.Second*10).Should(BeTrue())
+
+				// Verify standard metadata was added
+				Expect(updatedSnapshot.Labels[gitops.BuildPipelineRunNameLabel]).To(Equal(testPipelineRun.Name))
+				Expect(updatedSnapshot.Labels[gitops.ApplicationNameLabel]).To(Equal(hasApp.Name))
+				Expect(updatedSnapshot.Labels[gitops.SnapshotComponentLabel]).To(Equal(hasComp.Name))
+			})
+
+			It("initializes labels and annotations if nil", func() {
+				// Create snapshot without labels/annotations
+				snapshotWithoutMeta := &applicationapiv1alpha1.Snapshot{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "snapshot-without-meta",
+						Namespace: "default",
+					},
+					Spec: pipelineCreatedSnapshot.Spec,
+				}
+				Expect(k8sClient.Create(ctx, snapshotWithoutMeta)).Should(Succeed())
+
+				err := adapter.processExistingSnapshot(snapshotWithoutMeta)
+				Expect(err).ToNot(HaveOccurred())
+
+				// Verify maps were initialized and populated
+				Expect(snapshotWithoutMeta.Labels).ToNot(BeNil())
+				Expect(snapshotWithoutMeta.Annotations).ToNot(BeNil())
+				Expect(snapshotWithoutMeta.Labels[gitops.BuildPipelineRunNameLabel]).To(Equal(testPipelineRun.Name))
+
+				// Cleanup
+				err = k8sClient.Delete(ctx, snapshotWithoutMeta)
+				Expect(err == nil || k8serrors.IsNotFound(err)).To(BeTrue())
+			})
+
+			It("preserves existing metadata while adding new metadata", func() {
+				pipelineCreatedSnapshot.Labels = map[string]string{
+					"existing-label": "existing-value",
+				}
+				pipelineCreatedSnapshot.Annotations = map[string]string{
+					"existing-annotation":                  "existing-value",
+					"appstudio.redhat.com/snapshot-status": "pending",
+				}
+				Expect(k8sClient.Update(ctx, pipelineCreatedSnapshot)).Should(Succeed())
+
+				err := adapter.processExistingSnapshot(pipelineCreatedSnapshot)
+				Expect(err).ToNot(HaveOccurred())
+
+				// Verify existing metadata is preserved
+				Expect(pipelineCreatedSnapshot.Labels["existing-label"]).To(Equal("existing-value"))
+				Expect(pipelineCreatedSnapshot.Annotations["existing-annotation"]).To(Equal("existing-value"))
+
+				// Verify new metadata is added
+				Expect(pipelineCreatedSnapshot.Labels[gitops.BuildPipelineRunNameLabel]).To(Equal(testPipelineRun.Name))
+
+				// Verify pending annotation is removed
+				_, exists := pipelineCreatedSnapshot.Annotations["appstudio.redhat.com/snapshot-status"]
+				Expect(exists).To(BeFalse())
+			})
+		})
+	})
+
+	When("Testing end-to-end pipeline-created snapshot workflow", func() {
+		var pipelineCreatedSnapshot *applicationapiv1alpha1.Snapshot
+		var testPipelineRun *tektonv1.PipelineRun
+
+		BeforeEach(func() {
+			// Create a test pipeline run
+			testPipelineRun = buildPipelineRun.DeepCopy()
+			testPipelineRun.Name = "e2e-test-pipeline-run"
+			testPipelineRun.ResourceVersion = ""
+			Expect(k8sClient.Create(ctx, testPipelineRun)).Should(Succeed())
+
+			// Create pipeline status with success
+			testPipelineRun.Status = tektonv1.PipelineRunStatus{
+				PipelineRunStatusFields: tektonv1.PipelineRunStatusFields{
+					Results: []tektonv1.PipelineRunResult{
+						{
+							Name:  "IMAGE_DIGEST",
+							Value: *tektonv1.NewStructuredValues(SampleDigest),
+						},
+						{
+							Name:  "IMAGE_URL",
+							Value: *tektonv1.NewStructuredValues(SampleImageWithoutDigest),
+						},
+						{
+							Name:  "CHAINS-GIT_URL",
+							Value: *tektonv1.NewStructuredValues(SampleRepoLink),
+						},
+						{
+							Name:  "CHAINS-GIT_COMMIT",
+							Value: *tektonv1.NewStructuredValues(SampleCommit),
+						},
+						{
+							Name:  "SNAPSHOT",
+							Value: *tektonv1.NewStructuredValues("e2e-pipeline-snapshot"),
+						},
+					},
+					StartTime:      &metav1.Time{Time: time.Now().Add(-5 * time.Minute)},
+					CompletionTime: &metav1.Time{Time: time.Now()},
+				},
+				Status: v1.Status{
+					Conditions: v1.Conditions{
+						apis.Condition{
+							Reason: "Completed",
+							Status: "True",
+							Type:   apis.ConditionSucceeded,
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Status().Update(ctx, testPipelineRun)).Should(Succeed())
+
+			// Create a snapshot that would be created by the pipeline
+			pipelineCreatedSnapshot = &applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "e2e-pipeline-snapshot",
+					Namespace: "default",
+					Annotations: map[string]string{
+						"appstudio.redhat.com/snapshot-status": "pending",
+					},
+				},
+				Spec: applicationapiv1alpha1.SnapshotSpec{
+					Application: hasApp.Name,
+					Components: []applicationapiv1alpha1.SnapshotComponent{
+						{
+							Name:           hasComp.Name,
+							ContainerImage: SampleImage,
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, pipelineCreatedSnapshot)).Should(Succeed())
+
+			adapter = NewAdapter(ctx, testPipelineRun, hasComp, hasApp, logger, loader.NewMockLoader(), k8sClient)
+		})
+
+		AfterEach(func() {
+			err := k8sClient.Delete(ctx, testPipelineRun)
+			Expect(err == nil || k8serrors.IsNotFound(err)).To(BeTrue())
+			err = k8sClient.Delete(ctx, pipelineCreatedSnapshot)
+			Expect(err == nil || k8serrors.IsNotFound(err)).To(BeTrue())
+		})
+
+		It("processes pipeline-created snapshot successfully", func() {
+			var buf bytes.Buffer
+			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+			adapter = NewAdapter(ctx, testPipelineRun, hasComp, hasApp, log, loader.NewMockLoader(), k8sClient)
+
+			result, err := adapter.EnsureSnapshotExists()
+			Expect(err).ToNot(HaveOccurred())
+			Expect(result.CancelRequest).To(BeFalse())
+
+			// Verify the pipeline-created snapshot workflow was used
+			expectedLogEntry := "Found SNAPSHOT result in PipelineRun, processing existing snapshot"
+			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
+			expectedLogEntry = "Processed pipeline-created Snapshot"
+			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
+
+			// Verify no traditional snapshot was created
+			unexpectedLogEntry := "Created new Snapshot"
+			Expect(buf.String()).ShouldNot(ContainSubstring(unexpectedLogEntry))
+
+			// Verify pipeline run is annotated with snapshot name
+			Eventually(func() bool {
+				updatedPLR := &tektonv1.PipelineRun{}
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      testPipelineRun.Name,
+					Namespace: testPipelineRun.Namespace,
+				}, updatedPLR)
+				if err != nil {
+					return false
+				}
+				return updatedPLR.Annotations[tektonconsts.SnapshotNameLabel] == pipelineCreatedSnapshot.Name
+			}, time.Second*10).Should(BeTrue())
+
+			// Verify pending annotation was removed from snapshot
+			Eventually(func() bool {
+				updatedSnapshot := &applicationapiv1alpha1.Snapshot{}
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      pipelineCreatedSnapshot.Name,
+					Namespace: pipelineCreatedSnapshot.Namespace,
+				}, updatedSnapshot)
+				if err != nil {
+					return false
+				}
+				_, exists := updatedSnapshot.Annotations["appstudio.redhat.com/snapshot-status"]
+				return !exists
+			}, time.Second*10).Should(BeTrue())
+		})
+
+		It("verifies component updates are NOT performed by build pipeline controller", func() {
+			// This test ensures the refactoring goal: component updates should be handled by snapshot controller
+			var buf bytes.Buffer
+			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+			adapter = NewAdapter(ctx, testPipelineRun, hasComp, hasApp, log, loader.NewMockLoader(), k8sClient)
+
+			result, err := adapter.EnsureSnapshotExists()
+			Expect(err).ToNot(HaveOccurred())
+			Expect(result.CancelRequest).To(BeFalse())
+
+			// Verify no component update logic is called
+			// The comment in processExistingSnapshot should indicate this
+			// We expect the snapshot controller to handle component updates, not the build pipeline controller
+			Expect(buf.String()).ShouldNot(ContainSubstring("updateComponentOnSuccess"))
+			Expect(buf.String()).ShouldNot(ContainSubstring("Updating component"))
+		})
+	})
+
+	When("Testing error scenarios and edge cases", func() {
+		var testPipelineRun *tektonv1.PipelineRun
+
+		BeforeEach(func() {
+			testPipelineRun = buildPipelineRun.DeepCopy()
+			testPipelineRun.Name = "error-test-pipeline-run"
+			testPipelineRun.ResourceVersion = ""
+			testPipelineRun.Status = tektonv1.PipelineRunStatus{
+				PipelineRunStatusFields: tektonv1.PipelineRunStatusFields{
+					Results: []tektonv1.PipelineRunResult{
+						{
+							Name:  "SNAPSHOT",
+							Value: *tektonv1.NewStructuredValues("non-existent-snapshot"),
+						},
+					},
+				},
+				Status: v1.Status{
+					Conditions: v1.Conditions{
+						apis.Condition{
+							Reason: "Completed",
+							Status: "True",
+							Type:   apis.ConditionSucceeded,
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, testPipelineRun)).Should(Succeed())
+			Expect(k8sClient.Status().Update(ctx, testPipelineRun)).Should(Succeed())
+
+			adapter = NewAdapter(ctx, testPipelineRun, hasComp, hasApp, logger, loader.NewMockLoader(), k8sClient)
+		})
+
+		AfterEach(func() {
+			err := k8sClient.Delete(ctx, testPipelineRun)
+			Expect(err == nil || k8serrors.IsNotFound(err)).To(BeTrue())
+		})
+
+		It("falls back to traditional workflow when referenced snapshot is not found", func() {
+			var buf bytes.Buffer
+			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+			adapter = NewAdapter(ctx, testPipelineRun, hasComp, hasApp, log, loader.NewMockLoader(), k8sClient)
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: loader.ApplicationContextKey,
+					Resource:   hasApp,
+				},
+				{
+					ContextKey: loader.ComponentContextKey,
+					Resource:   hasComp,
+				},
+				{
+					ContextKey: loader.ApplicationComponentsContextKey,
+					Resource:   []applicationapiv1alpha1.Component{*hasComp},
+				},
+			})
+
+			result, err := adapter.EnsureSnapshotExists()
+			Expect(err).ToNot(HaveOccurred())
+			Expect(result.CancelRequest).To(BeFalse())
+
+			// Verify fallback message is logged
+			expectedLogEntry := "Referenced snapshot not found, falling back to traditional workflow"
+			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
+
+			// Verify traditional workflow creates snapshot
+			expectedLogEntry = "Created new Snapshot"
+			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
+		})
+
+		It("handles malformed SNAPSHOT result gracefully", func() {
+			// Update pipeline run with empty SNAPSHOT result
+			testPipelineRun.Status.Results[0].Value = *tektonv1.NewStructuredValues("")
+			Expect(k8sClient.Status().Update(ctx, testPipelineRun)).Should(Succeed())
+
+			var buf bytes.Buffer
+			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+			adapter = NewAdapter(ctx, testPipelineRun, hasComp, hasApp, log, loader.NewMockLoader(), k8sClient)
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: loader.ApplicationContextKey,
+					Resource:   hasApp,
+				},
+				{
+					ContextKey: loader.ComponentContextKey,
+					Resource:   hasComp,
+				},
+				{
+					ContextKey: loader.ApplicationComponentsContextKey,
+					Resource:   []applicationapiv1alpha1.Component{*hasComp},
+				},
+			})
+
+			result, err := adapter.EnsureSnapshotExists()
+			Expect(err).ToNot(HaveOccurred())
+			Expect(result.CancelRequest).To(BeFalse())
+
+			// Should proceed with traditional workflow since SNAPSHOT result is empty
+			expectedLogEntry := "Created new Snapshot"
+			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
+
+			// Should not try to process pipeline-created snapshot
+			unexpectedLogEntry := "Found SNAPSHOT result in PipelineRun"
+			Expect(buf.String()).ShouldNot(ContainSubstring(unexpectedLogEntry))
+		})
+
+		It("handles processExistingSnapshot failure correctly", func() {
+			// Create a snapshot but don't give adapter permissions to update it
+			// This simulates a scenario where processExistingSnapshot would fail
+			pipelineCreatedSnapshot := &applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "process-failure-snapshot",
+					Namespace: "default",
+					Annotations: map[string]string{
+						"appstudio.redhat.com/snapshot-status": "pending",
+					},
+				},
+				Spec: applicationapiv1alpha1.SnapshotSpec{
+					Application: hasApp.Name,
+					Components: []applicationapiv1alpha1.SnapshotComponent{
+						{
+							Name:           hasComp.Name,
+							ContainerImage: SampleImage,
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, pipelineCreatedSnapshot)).Should(Succeed())
+
+			// Update pipeline run to reference this snapshot
+			testPipelineRun.Status.Results[0].Value = *tektonv1.NewStructuredValues(pipelineCreatedSnapshot.Name)
+			Expect(k8sClient.Status().Update(ctx, testPipelineRun)).Should(Succeed())
+
+			var buf bytes.Buffer
+			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+			adapter = NewAdapter(ctx, testPipelineRun, hasComp, hasApp, log, loader.NewMockLoader(), k8sClient)
+
+			result, err := adapter.EnsureSnapshotExists()
+			// Should succeed because processExistingSnapshot should work with proper permissions
+			Expect(err).ToNot(HaveOccurred())
+			Expect(result.CancelRequest).To(BeFalse())
+
+			expectedLogEntry := "Processed pipeline-created Snapshot"
+			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
+
+			// Cleanup
+			err = k8sClient.Delete(ctx, pipelineCreatedSnapshot)
+			Expect(err == nil || k8serrors.IsNotFound(err)).To(BeTrue())
+		})
+	})
+
+	When("Testing regression scenarios for traditional snapshot creation", func() {
+		var testPipelineRun *tektonv1.PipelineRun
+
+		BeforeEach(func() {
+			testPipelineRun = buildPipelineRun.DeepCopy()
+			testPipelineRun.Name = "regression-test-pipeline-run"
+			testPipelineRun.ResourceVersion = ""
+			testPipelineRun.Status = tektonv1.PipelineRunStatus{
+				PipelineRunStatusFields: tektonv1.PipelineRunStatusFields{
+					Results: []tektonv1.PipelineRunResult{
+						{
+							Name:  "IMAGE_DIGEST",
+							Value: *tektonv1.NewStructuredValues(SampleDigest),
+						},
+						{
+							Name:  "IMAGE_URL",
+							Value: *tektonv1.NewStructuredValues(SampleImageWithoutDigest),
+						},
+						{
+							Name:  "CHAINS-GIT_URL",
+							Value: *tektonv1.NewStructuredValues(SampleRepoLink),
+						},
+						{
+							Name:  "CHAINS-GIT_COMMIT",
+							Value: *tektonv1.NewStructuredValues(SampleCommit),
+						},
+						// Notably NO SNAPSHOT result to trigger traditional workflow
+					},
+					StartTime: &metav1.Time{Time: time.Now()},
+				},
+				Status: v1.Status{
+					Conditions: v1.Conditions{
+						apis.Condition{
+							Reason: "Completed",
+							Status: "True",
+							Type:   apis.ConditionSucceeded,
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, testPipelineRun)).Should(Succeed())
+			Expect(k8sClient.Status().Update(ctx, testPipelineRun)).Should(Succeed())
+
+			adapter = NewAdapter(ctx, testPipelineRun, hasComp, hasApp, logger, loader.NewMockLoader(), k8sClient)
+		})
+
+		AfterEach(func() {
+			err := k8sClient.Delete(ctx, testPipelineRun)
+			Expect(err == nil || k8serrors.IsNotFound(err)).To(BeTrue())
+		})
+
+		It("traditional snapshot creation still works after refactoring", func() {
+			var buf bytes.Buffer
+			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+			adapter = NewAdapter(ctx, testPipelineRun, hasComp, hasApp, log, loader.NewMockLoader(), k8sClient)
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: loader.ApplicationContextKey,
+					Resource:   hasApp,
+				},
+				{
+					ContextKey: loader.ComponentContextKey,
+					Resource:   hasComp,
+				},
+				{
+					ContextKey: loader.ApplicationComponentsContextKey,
+					Resource:   []applicationapiv1alpha1.Component{*hasComp},
+				},
+			})
+
+			result, err := adapter.EnsureSnapshotExists()
+			Expect(err).ToNot(HaveOccurred())
+			Expect(result.CancelRequest).To(BeFalse())
+
+			// Verify traditional workflow is used
+			expectedLogEntry := "Created new Snapshot"
+			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
+
+			// Verify pipeline-created workflow is NOT used
+			unexpectedLogEntry := "Found SNAPSHOT result in PipelineRun"
+			Expect(buf.String()).ShouldNot(ContainSubstring(unexpectedLogEntry))
+		})
+
+		It("prepareSnapshotForPipelineRun uses applySnapshotMetadata correctly", func() {
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: loader.ApplicationContextKey,
+					Resource:   hasApp,
+				},
+				{
+					ContextKey: loader.ComponentContextKey,
+					Resource:   hasComp,
+				},
+				{
+					ContextKey: loader.ApplicationComponentsContextKey,
+					Resource:   []applicationapiv1alpha1.Component{*hasComp},
+				},
+			})
+
+			snapshot, err := adapter.prepareSnapshotForPipelineRun(testPipelineRun, hasComp, hasApp)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(snapshot).ToNot(BeNil())
+
+			// Verify the shared applySnapshotMetadata function was used
+			Expect(snapshot.Labels[gitops.BuildPipelineRunNameLabel]).To(Equal(testPipelineRun.Name))
+			Expect(snapshot.Labels[gitops.ApplicationNameLabel]).To(Equal(hasApp.Name))
+			Expect(snapshot.Labels[gitops.SnapshotComponentLabel]).To(Equal(hasComp.Name))
+
+			// Verify metadata logic that's shared between traditional and pipeline-created snapshots
+			Expect(snapshot.Labels[gitops.BuildPipelineRunFinishTimeLabel]).ToNot(BeEmpty())
+			Expect(snapshot.Annotations[gitops.BuildPipelineRunStartTime]).ToNot(BeEmpty())
+		})
+	})
+
 	createAdapter = func() *Adapter {
 		adapter = NewAdapter(ctx, buildPipelineRun, hasComp, hasApp, logger, loader.NewMockLoader(), k8sClient)
 		return adapter
