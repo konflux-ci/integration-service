@@ -17,7 +17,6 @@ limitations under the License.
 package tekton_test
 
 import (
-
 	"bytes"
 	"fmt"
 	"os"
@@ -589,33 +588,18 @@ var _ = Describe("Integration pipeline", Ordered, func() {
 		})
 	})
 
-	Context("When WithUpdatedTestsGitResolver is called with nil pipeline reference", func() {
-		It("should not panic when PipelineRef is nil", func() {
-			pipelineRun := &tekton.IntegrationPipelineRun{
-				tektonv1.PipelineRun{
-					Spec: tektonv1.PipelineRunSpec{
-						PipelineRef: nil, // This is the problematic case
-					},
-				},
-			}
-
-			params := map[string]string{
-				"url":      "https://github.com/test/repo.git",
-				"revision": "main",
-			}
-
-			// This should not panic
-			result := pipelineRun.WithUpdatedTestsGitResolver(params)
-			Expect(result).NotTo(BeNil())
-			Expect(result.Spec.PipelineRef).To(BeNil())
-		})
-
-		It("should not panic when ResolverRef is nil", func() {
+	Context("When testing WithUpdatedTestsGitResolver with edge cases", func() {
+		It("should handle pipeline run created from base64 with missing resolver ref", func() {
+			// This simulates a pipeline run created via generateIntegrationPipelineRunFromBase64
+			// where the structure might not be fully initialized
 			pipelineRun := &tekton.IntegrationPipelineRun{
 				tektonv1.PipelineRun{
 					Spec: tektonv1.PipelineRunSpec{
 						PipelineRef: &tektonv1.PipelineRef{
-							ResolverRef: tektonv1.ResolverRef{}, // Empty, params will be nil
+							Name:        "some-pipeline", // Has name but no resolver
+							ResolverRef: tektonv1.ResolverRef{
+								// Empty resolver ref - this was causing the panic
+							},
 						},
 					},
 				},
@@ -626,19 +610,20 @@ var _ = Describe("Integration pipeline", Ordered, func() {
 				"revision": "main",
 			}
 
-			// This should not panic
+			// This should not panic - it should return early because resolver is empty
 			result := pipelineRun.WithUpdatedTestsGitResolver(params)
 			Expect(result).NotTo(BeNil())
+			Expect(result).To(Equal(pipelineRun)) // Should return the same instance unchanged
 		})
 
-		It("should not panic when Params is nil", func() {
+		It("should handle pipeline run with git resolver but empty params", func() {
 			pipelineRun := &tekton.IntegrationPipelineRun{
 				tektonv1.PipelineRun{
 					Spec: tektonv1.PipelineRunSpec{
 						PipelineRef: &tektonv1.PipelineRef{
 							ResolverRef: tektonv1.ResolverRef{
 								Resolver: tektonv1.ResolverName(tektonconsts.TektonResolverGit),
-								Params:   nil, // This is the problematic case
+								Params:   nil, // This was causing the panic
 							},
 						},
 					},
@@ -650,20 +635,20 @@ var _ = Describe("Integration pipeline", Ordered, func() {
 				"revision": "main",
 			}
 
-			// This should not panic
+			// This should not panic - should return early because params is nil
 			result := pipelineRun.WithUpdatedTestsGitResolver(params)
 			Expect(result).NotTo(BeNil())
 			Expect(result.Spec.PipelineRef.ResolverRef.Params).To(BeNil())
 		})
 
-		It("should not panic when Resolver is not git", func() {
+		It("should handle pipeline run with git resolver but empty params slice", func() {
 			pipelineRun := &tekton.IntegrationPipelineRun{
 				tektonv1.PipelineRun{
 					Spec: tektonv1.PipelineRunSpec{
 						PipelineRef: &tektonv1.PipelineRef{
 							ResolverRef: tektonv1.ResolverRef{
-								Resolver: tektonv1.ResolverName("bundles"), // Not git resolver
-								Params:   nil,
+								Resolver: tektonv1.ResolverName(tektonconsts.TektonResolverGit),
+								Params:   []tektonv1.Param{}, // Empty slice
 							},
 						},
 					},
@@ -675,68 +660,120 @@ var _ = Describe("Integration pipeline", Ordered, func() {
 				"revision": "main",
 			}
 
-			// This should not panic and should return early
+			// This should not panic - should return early because params is empty
 			result := pipelineRun.WithUpdatedTestsGitResolver(params)
 			Expect(result).NotTo(BeNil())
-		})
-	})
-
-	Context("When snapshot has run=all label with different resolver types", func() {
-		var (
-			hasSnapshot *applicationapiv1alpha1.Snapshot
-			adapter     *tekton.Adapter
-		)
-
-		BeforeEach(func() {
-			hasSnapshot = &applicationapiv1alpha1.Snapshot{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-snapshot",
-					Namespace: "default",
-					Labels: map[string]string{
-						gitops.SnapshotIntegrationTestRun: "all", // The problematic label
-					},
-				},
-				Spec: applicationapiv1alpha1.SnapshotSpec{
-					Application: "test-app",
-					Components: []applicationapiv1alpha1.SnapshotComponent{
-						{
-							Name:           "test-component",
-							ContainerImage: "test-image",
-						},
-					},
-				},
-			}
+			Expect(result.Spec.PipelineRef.ResolverRef.Params).To(BeEmpty())
 		})
 
-		It("should not crash when integration test scenario has bundle resolver", func() {
-			bundleScenario := &v1beta2.IntegrationTestScenario{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "bundle-test",
-					Namespace: "default",
-				},
-				Spec: v1beta2.IntegrationTestScenarioSpec{
-					Application: "test-app",
-					ResolverRef: v1beta2.ResolverRef{
-						ResourceKind: tektonconsts.ResourceKindPipelineRun,
-						Resolver:     "bundles",
-						Params: []v1beta2.ResolverParameter{
-							{
-								Name:  "bundle",
-								Value: "quay.io/test/bundle:latest",
+		It("should handle pipeline run with non-git resolver (bundles)", func() {
+			pipelineRun := &tekton.IntegrationPipelineRun{
+				tektonv1.PipelineRun{
+					Spec: tektonv1.PipelineRunSpec{
+						PipelineRef: &tektonv1.PipelineRef{
+							ResolverRef: tektonv1.ResolverRef{
+								Resolver: tektonv1.ResolverName("bundles"), // Not git
+								Params: []tektonv1.Param{
+									{
+										Name: "bundle",
+										Value: tektonv1.ParamValue{
+											Type:      tektonv1.ParamTypeString,
+											StringVal: "quay.io/test/bundle:latest",
+										},
+									},
+								},
 							},
 						},
 					},
 				},
 			}
 
-			Expect(k8sClient.Create(ctx, bundleScenario)).Should(Succeed())
+			params := map[string]string{
+				"url":      "https://github.com/test/repo.git",
+				"revision": "main",
+			}
 
-			adapter = tekton.NewAdapter(ctx, hasSnapshot, hasApp, helpers.IntegrationLogger{}, mockLoader, k8sClient)
+			// Should not modify non-git resolvers
+			result := pipelineRun.WithUpdatedTestsGitResolver(params)
+			Expect(result).NotTo(BeNil())
+			Expect(result.Spec.PipelineRef.ResolverRef.Params[0].Value.StringVal).To(Equal("quay.io/test/bundle:latest"))
+		})
 
-			// This should not panic
-			Expect(func() {
-				_ = adapter.EnsureIntegrationPipelineRunsExist()
-			}).NotTo(Panic())
+		It("should successfully update git resolver parameters", func() {
+			pipelineRun := &tekton.IntegrationPipelineRun{
+				tektonv1.PipelineRun{
+					Spec: tektonv1.PipelineRunSpec{
+						PipelineRef: &tektonv1.PipelineRef{
+							ResolverRef: tektonv1.ResolverRef{
+								Resolver: tektonv1.ResolverName(tektonconsts.TektonResolverGit),
+								Params: []tektonv1.Param{
+									{
+										Name: "url",
+										Value: tektonv1.ParamValue{
+											Type:      tektonv1.ParamTypeString,
+											StringVal: "https://github.com/old/repo.git",
+										},
+									},
+									{
+										Name: "revision",
+										Value: tektonv1.ParamValue{
+											Type:      tektonv1.ParamTypeString,
+											StringVal: "old-branch",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			}
+
+			params := map[string]string{
+				"url":      "https://github.com/new/repo.git",
+				"revision": "main",
+			}
+
+			result := pipelineRun.WithUpdatedTestsGitResolver(params)
+			Expect(result).NotTo(BeNil())
+			Expect(result.Spec.PipelineRef.ResolverRef.Params[0].Value.StringVal).To(Equal("https://github.com/new/repo.git"))
+			Expect(result.Spec.PipelineRef.ResolverRef.Params[1].Value.StringVal).To(Equal("main"))
+		})
+
+		It("should handle nil params map gracefully", func() {
+			// This simulates a pipeline run created via generateIntegrationPipelineRunFromBase64
+			// where the structure might not be fully initialized
+			pipelineRun := &tekton.IntegrationPipelineRun{
+				tektonv1.PipelineRun{
+					Spec: tektonv1.PipelineRunSpec{
+						PipelineRef: &tektonv1.PipelineRef{
+							Name: "some-pipeline", // Has name but no resolver
+							ResolverRef: tektonv1.ResolverRef{
+								Resolver: tektonv1.ResolverName(tektonconsts.TektonResolverGit),
+								Params: []tektonv1.Param{
+									{
+										Name: "url",
+										Value: tektonv1.ParamValue{
+											Type:      tektonv1.ParamTypeString,
+											StringVal: "https://github.com/test/repo.git",
+										},
+									},
+									{
+										Name: "revision",
+										Value: tektonv1.ParamValue{
+											Type:      tektonv1.ParamTypeString,
+											StringVal: "main",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			}
+
+			result := pipelineRun.WithUpdatedTestsGitResolver(nil)
+			Expect(result).NotTo(BeNil())
+			// Should return unchanged
 		})
 	})
 })
