@@ -213,27 +213,28 @@ func (iplr *IntegrationPipelineRun) WithUpdatedTestsGitResolver(params map[strin
 	if iplr.Spec.PipelineRef == nil {
 		return iplr
 	}
-	
-	if iplr.Spec.PipelineRef.ResolverRef == nil {
+
+	// ResolverRef is a struct, not a pointer, so check if Resolver field is empty
+	if iplr.Spec.PipelineRef.Resolver == "" {
 		return iplr
 	}
-	
+
 	//nolint:staticcheck  // Ignore QF1008
-	if iplr.Spec.PipelineRef.ResolverRef.Resolver != consts.TektonResolverGit {
+	if iplr.Spec.PipelineRef.Resolver != consts.TektonResolverGit {
 		// if the resolver is not git-resolver, we cannot update the git ref
 		return iplr
 	}
 
-	// Add nil check for Params
-	if iplr.Spec.PipelineRef.ResolverRef.Params == nil {
+	// Params is a slice, so check if it's empty (len handles nil slices)
+	if len(iplr.Spec.PipelineRef.Params) == 0 {
 		return iplr
 	}
 
 	//nolint:staticcheck  // Ignore QF1008
-	for originalParamIndex, originalParam := range iplr.Spec.PipelineRef.ResolverRef.Params {
+	for originalParamIndex, originalParam := range iplr.Spec.PipelineRef.Params {
 		if _, ok := params[originalParam.Name]; ok {
 			// remeber to use the original index to update the value, we cannot update value given by range directly
-			iplr.Spec.PipelineRef.ResolverRef.Params[originalParamIndex].Value.StringVal = params[originalParam.Name]
+			iplr.Spec.PipelineRef.Params[originalParamIndex].Value.StringVal = params[originalParam.Name]
 		}
 	}
 
