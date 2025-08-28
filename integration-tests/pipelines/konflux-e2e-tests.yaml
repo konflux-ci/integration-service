@@ -81,9 +81,9 @@ spec:
         resolver: git
         params:
           - name: url
-            value: https://github.com/konflux-ci/tekton-integration-catalog.git
+            value: https://github.com/psturc/tekton-integration-catalog.git
           - name: revision
-            value: main
+            value: kind-improvements
           - name: pathInRepo
             value: tasks/mapt-oci/kind-aws-spot/provision/0.2/kind-aws-provision.yaml
       params:
@@ -111,9 +111,11 @@ spec:
           value: >-
             '[{\"containerPort\":30012,\"hostPort\":8180,\"protocol\":\"TCP\"}]'
         - name: cpus
-          value: 32
-        - name: memory
           value: 64
+        - name: memory
+          value: 128
+        - name: spot
+          value: 'false'
     - name: deploy-konflux
       runAfter:
         - provision-kind-cluster
@@ -121,9 +123,9 @@ spec:
         resolver: git
         params:
           - name: url
-            value: https://github.com/konflux-ci/tekton-integration-catalog
+            value: https://github.com/psturc/tekton-integration-catalog
           - name: revision
-            value: main
+            value: kind-improvements
           - name: pathInRepo
             value: tasks/konflux-ci/deploy/0.3/deploy-konflux-ci.yaml
       params:
