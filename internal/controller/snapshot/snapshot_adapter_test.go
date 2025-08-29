@@ -2511,4 +2511,111 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			Expect(buf.String()).Should(ContainSubstring("Snapshot has been marked as cancelled previously, skipping marking it"))
 		})
 	})
+
+	When("Snapshot has pending annotation", func() {
+		var (
+			pendingSnapshot *applicationapiv1alpha1.Snapshot
+			buf             bytes.Buffer
+		)
+
+		BeforeEach(func() {
+			pendingSnapshot = &applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "snapshot-with-pending",
+					Namespace: "default",
+					Labels: map[string]string{
+						gitops.SnapshotTypeLabel:      "component",
+						gitops.SnapshotComponentLabel: "component-sample",
+					},
+					Annotations: map[string]string{
+						"appstudio.redhat.com/snapshot-status": "pending",
+					},
+				},
+				Spec: applicationapiv1alpha1.SnapshotSpec{
+					Application: hasApp.Name,
+					Components: []applicationapiv1alpha1.SnapshotComponent{
+						{
+							Name:           "component-sample",
+							ContainerImage: sample_image,
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, pendingSnapshot)).Should(Succeed())
+		})
+
+		AfterEach(func() {
+			err := k8sClient.Delete(ctx, pendingSnapshot)
+			Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
+		})
+
+		It("skips integration test processing when snapshot has pending annotation", func() {
+			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+			adapter = NewAdapter(ctx, pendingSnapshot, hasApp, log, loader.NewMockLoader(), k8sClient)
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: loader.ApplicationContextKey,
+					Resource:   hasApp,
+				},
+				{
+					ContextKey: loader.ComponentContextKey,
+					Resource:   hasComp,
+				},
+				{
+					ContextKey: loader.SnapshotContextKey,
+					Resource:   pendingSnapshot,
+				},
+			})
+
+			result, err := adapter.EnsureIntegrationPipelineRunsExist()
+			Expect(result.CancelRequest).To(BeFalse())
+			Expect(result.RequeueRequest).To(BeFalse())
+			Expect(err).ToNot(HaveOccurred())
+
+			expectedLogEntry := "Snapshot has pending annotation, skipping integration test processing until pending annotation is removed"
+			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
+		})
+
+		It("processes integration tests normally when snapshot does not have pending annotation", func() {
+			// Remove pending annotation
+			delete(pendingSnapshot.Annotations, "appstudio.redhat.com/snapshot-status")
+			Expect(k8sClient.Update(ctx, pendingSnapshot)).Should(Succeed())
+
+			// Create a new buffer for this test to avoid contamination from previous test
+			var newBuf bytes.Buffer
+			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&newBuf)}
+			adapter = NewAdapter(ctx, pendingSnapshot, hasApp, log, loader.NewMockLoader(), k8sClient)
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: loader.ApplicationContextKey,
+					Resource:   hasApp,
+				},
+				{
+					ContextKey: loader.ComponentContextKey,
+					Resource:   hasComp,
+				},
+				{
+					ContextKey: loader.SnapshotContextKey,
+					Resource:   pendingSnapshot,
+				},
+				{
+					ContextKey: loader.RequiredIntegrationTestScenariosContextKey,
+					Resource:   nil,
+				},
+			})
+
+			result, err := adapter.EnsureIntegrationPipelineRunsExist()
+			Expect(result.CancelRequest).To(BeFalse())
+			Expect(result.RequeueRequest).To(BeFalse())
+			Expect(err).ToNot(HaveOccurred())
+
+			// Should not skip processing (no specific log message about pending annotation)
+			unexpectedLogEntry := "Snapshot has pending annotation, skipping integration test processing until pending annotation is removed"
+			Expect(newBuf.String()).ShouldNot(ContainSubstring(unexpectedLogEntry))
+
+			// Should process normally and mark as successful since no required ITS found
+			expectedLogEntry := "Snapshot marked as successful. No required IntegrationTestScenarios found, skipped testing"
+			Expect(newBuf.String()).Should(ContainSubstring(expectedLogEntry))
+		})
+	})
 })
