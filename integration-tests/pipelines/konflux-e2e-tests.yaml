@@ -110,10 +110,12 @@ spec:
         - name: extra-port-mappings
           value: >-
             '[{\"containerPort\":30012,\"hostPort\":8180,\"protocol\":\"TCP\"}]'
+        - name: spot
+          value: "false"
         - name: cpus
-          value: 32
+          value: 48
         - name: memory
-          value: 64
+          value: 192
     - name: deploy-konflux
       runAfter:
         - provision-kind-cluster
@@ -151,9 +153,9 @@ spec:
         resolver: git
         params:
           - name: url
-            value: https://github.com/konflux-ci/e2e-tests.git
+            value: https://github.com/hongweiliu17/e2e-tests.git
           - name: revision
-            value: main
+            value: test-integration-1261
           - name: pathInRepo
             value: integration-tests/tasks/konflux-e2e-tests/0.2/konflux-e2e-tests.yaml
       params:
