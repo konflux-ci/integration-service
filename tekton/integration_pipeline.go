@@ -209,17 +209,32 @@ func setGenerateNameForPipelineRun(pipelineRun *tektonv1.PipelineRun, defaultPre
 // Updates git resolver values parameters with values of params specified in the input map
 // updates only exsitings parameters, doens't create new ones
 func (iplr *IntegrationPipelineRun) WithUpdatedTestsGitResolver(params map[string]string) *IntegrationPipelineRun {
-	//nolint:staticcheck  // Ignore QF1008
-	if iplr.Spec.PipelineRef.ResolverRef.Resolver != consts.TektonResolverGit {
-		// if the resolver is not git-resolver, we cannot update the git ref
+	// Add nil checks to prevent panic
+	if iplr.Spec.PipelineRef == nil {
+		return iplr
+	}
+
+	// ResolverRef is a struct, not a pointer, so check if Resolver field is empty
+	if iplr.Spec.PipelineRef.Resolver == "" {
 		return iplr
 	}
 
 	//nolint:staticcheck  // Ignore QF1008
-	for originalParamIndex, originalParam := range iplr.Spec.PipelineRef.ResolverRef.Params {
+	if iplr.Spec.PipelineRef.Resolver != consts.TektonResolverGit {
+		// if the resolver is not git-resolver, we cannot update the git ref
+		return iplr
+	}
+
+	// Params is a slice, so check if it's empty (len handles nil slices)
+	if len(iplr.Spec.PipelineRef.Params) == 0 {
+		return iplr
+	}
+
+	//nolint:staticcheck  // Ignore QF1008
+	for originalParamIndex, originalParam := range iplr.Spec.PipelineRef.Params {
 		if _, ok := params[originalParam.Name]; ok {
 			// remeber to use the original index to update the value, we cannot update value given by range directly
-			iplr.Spec.PipelineRef.ResolverRef.Params[originalParamIndex].Value.StringVal = params[originalParam.Name]
+			iplr.Spec.PipelineRef.Params[originalParamIndex].Value.StringVal = params[originalParam.Name]
 		}
 	}
 
