@@ -1140,10 +1140,11 @@ func FilterIntegrationTestScenariosWithContext(scenarios *[]v1beta2.IntegrationT
 	return &filteredScenarioList
 }
 
-// HasPRGroupProcessed checks if the pr group has been handled by snapshot adapter
-// to avoid duplicate check, if yes, won't handle the snapshot again
+// HasPRGroupProcessed checks if the group creation has been handled for this snapshot by snapshot adapter when
+// to avoid duplicate check when reconciling this snapshot, if yes, won't handle the snapshot again
+// the annotation updated from other component pipelinerun should not be counted in
 func HasPRGroupProcessed(snapshot *applicationapiv1alpha1.Snapshot) bool {
-	return metadata.HasAnnotation(snapshot, PRGroupCreationAnnotation)
+	return metadata.HasAnnotation(snapshot, PRGroupCreationAnnotation) && !strings.Contains(snapshot.GetAnnotations()[PRGroupCreationAnnotation], "waiting for it to create a new group Snapshot for PR group")
 }
 
 // GetPRGroup gets the value of label test.appstudio.openshift.io/pr-group-sha and annotation from component snapshot or pipelinerun

@@ -938,6 +938,9 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 				Expect(prGroup).To(Equal(expectedPRGroup))
 				Expect(prGroupSha).To(Equal(expectedPRGoupSha))
 				Expect(gitops.HasPRGroupProcessed(hasComSnapshot1)).To(BeTrue())
+
+				hasComSnapshot1.Annotations[gitops.PRGroupCreationAnnotation] = "a new build PLR component-sample-on-pull-request-jhctk is running for component component-sample, waiting for it to create a new group Snapshot for PR group test-branch"
+				Expect(gitops.HasPRGroupProcessed(hasComSnapshot1)).To(BeFalse())
 			})
 
 			It("Can find the correct snapshotComponent for the given component name", func() {
