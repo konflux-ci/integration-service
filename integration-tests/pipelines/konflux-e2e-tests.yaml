@@ -133,6 +133,10 @@ spec:
           value: kfg-$(context.pipelineRun.name)
         - name: component-name
           value: integration-service
+        - name: component-image-repository
+          value: $(tasks.sealights-refs.results.sealights-container-repo)
+        - name: component-image-tag
+          value: $(tasks.sealights-refs.results.sealights-container-tag)
         - name: component-pr-owner
           value: $(tasks.test-metadata.results.pull-request-author)
         - name: component-pr-sha
