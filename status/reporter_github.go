@@ -674,5 +674,5 @@ func (r *GitHubReporter) ReportStatus(ctx context.Context, report TestReport) (i
 }
 
 func (r *GitHubReporter) ReturnCodeIsUnrecoverable(statusCode int) bool {
-	return statusCode == http.StatusForbidden || statusCode == http.StatusUnauthorized
+	return statusCode == http.StatusForbidden || statusCode == http.StatusUnauthorized || statusCode == http.StatusBadRequest
 }
