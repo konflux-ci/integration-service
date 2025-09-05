@@ -519,9 +519,9 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			snapshot, err := gitops.PrepareSnapshot(adapter.context, adapter.client, hasApp, applicationComponents, hasComp, imagePullSpec, componentSource)
 			Expect(snapshot).NotTo(BeNil())
 			Expect(err).ToNot(HaveOccurred())
-			Expect(snapshot).NotTo(BeNil())
 			Expect(snapshot.Spec.Components).To(HaveLen(1), "One component should have been added to snapshot.  Other component should have been omited due to empty ContainerImage field or missing valid digest")
 			Expect(snapshot.Spec.Components[0].Name).To(Equal(hasComp.Name), "The built component should have been added to the snapshot")
+			Expect(snapshot.Annotations[helpers.CreateSnapshotAnnotationName]).To(Equal("Component(s) 'another-component-sample' is(are) not included in snapshot due to missing valid containerImage or git source"))
 		})
 
 		It("ensures that snapshot has label pointing to build pipelinerun", func() {
