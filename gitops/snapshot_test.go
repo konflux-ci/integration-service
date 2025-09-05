@@ -102,8 +102,9 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 				Namespace: namespace,
 			},
 			Spec: applicationapiv1alpha1.ComponentSpec{
-				ComponentName: "bad-component",
-				Application:   applicationName,
+				ComponentName:  "bad-component",
+				Application:    applicationName,
+				ContainerImage: sampleImage,
 			},
 		}
 		Expect(k8sClient.Create(ctx, badComp)).Should(Succeed())
@@ -678,7 +679,7 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 				},
 			},
 		}
-		allApplicationComponents := &[]applicationapiv1alpha1.Component{*hasComp, *hasComp2}
+		allApplicationComponents := &[]applicationapiv1alpha1.Component{*hasComp, *hasComp2, *badComp}
 		snapshot, err := gitops.PrepareSnapshot(ctx, k8sClient, hasApp, allApplicationComponents, hasComp, validImagePullSpec, componentSource)
 		Expect(snapshot).NotTo(BeNil())
 		Expect(err).NotTo(HaveOccurred())
@@ -688,6 +689,7 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 			snapshotComponent := snapshotComponent
 			Expect(snapshotComponent.ContainerImage).NotTo(Equal(invalidImagePullSpec))
 		}
+		Expect(snapshot.Annotations["test.appstudio.openshift.io/create-snapshot-status"]).To(Equal("Component(s) 'second-component, bad-component' is(are) not included in snapshot due to missing valid containerImage or git source"))
 	})
 
 	It("Return false when the image url contains invalid digest", func() {

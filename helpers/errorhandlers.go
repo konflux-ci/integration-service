@@ -80,10 +80,10 @@ func IsInvalidImageDigestError(err error) bool {
 	return getReason(err) == ReasonInvalidImageDigestError
 }
 
-func NewMissingValidComponentError(componentName string) error {
+func NewMissingValidComponentError(componentNames string) error {
 	return &IntegrationError{
 		Reason:  ReasonMissingValidComponentError,
-		Message: fmt.Sprintf("The only one component %s is invalid, valid .Status.LastPromotedImage is missing", componentName),
+		Message: fmt.Sprintf("The component(s) '%s' is(are) invalid due to missing valid container image or git source", componentNames),
 	}
 }
 

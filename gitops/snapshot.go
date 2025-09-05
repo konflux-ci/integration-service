@@ -833,6 +833,7 @@ func HasSnapshotRerunLabelChanged(objectOld, objectNew client.Object) bool {
 func PrepareSnapshot(ctx context.Context, adapterClient client.Client, application *applicationapiv1alpha1.Application, applicationComponents *[]applicationapiv1alpha1.Component, component *applicationapiv1alpha1.Component, newContainerImage string, newComponentSource *applicationapiv1alpha1.ComponentSource) (*applicationapiv1alpha1.Snapshot, error) {
 	log := log.FromContext(ctx)
 	var snapshotComponents []applicationapiv1alpha1.SnapshotComponent
+	var invalidComponents []string
 	for _, applicationComponent := range *applicationComponents {
 		applicationComponent := applicationComponent // G601
 		containerImage := applicationComponent.Status.LastPromotedImage
@@ -856,6 +857,7 @@ func PrepareSnapshot(ctx context.Context, adapterClient client.Client, applicati
 			componentSource, err = GetComponentSourceFromComponent(&applicationComponent)
 			if err != nil {
 				log.Error(err, "component cannot be added to snapshot for application due to missing git source", "component.Name", applicationComponent.Name)
+				invalidComponents = append(invalidComponents, applicationComponent.Name)
 				continue
 			}
 		}
@@ -866,6 +868,7 @@ func PrepareSnapshot(ctx context.Context, adapterClient client.Client, applicati
 		// including a component that is incomplete.
 		if containerImage == "" {
 			log.Info("component cannot be added to snapshot for application due to missing containerImage", "component.Name", applicationComponent.Name)
+			invalidComponents = append(invalidComponents, applicationComponent.Name)
 			continue
 		} else {
 			// if the containerImage doesn't have a valid digest, the component
@@ -873,6 +876,7 @@ func PrepareSnapshot(ctx context.Context, adapterClient client.Client, applicati
 			err = ValidateImageDigest(containerImage)
 			if err != nil {
 				log.Error(err, "component cannot be added to snapshot for application due to invalid digest in containerImage", "component.Name", applicationComponent.Name)
+				invalidComponents = append(invalidComponents, applicationComponent.Name)
 				continue
 			}
 			snapshotComponents = append(snapshotComponents, applicationapiv1alpha1.SnapshotComponent{
@@ -884,13 +888,19 @@ func PrepareSnapshot(ctx context.Context, adapterClient client.Client, applicati
 	}
 
 	if len(snapshotComponents) == 0 {
-		return nil, helpers.NewMissingValidComponentError(component.Name)
+		return nil, helpers.NewMissingValidComponentError(strings.Join(invalidComponents, ", "))
 	}
 	snapshot := NewSnapshot(application, &snapshotComponents)
 
 	// expose the source repo URL and SHA in the snapshot as annotation do we don't have to do lookup in integration tests
 	if newComponentSource.GitSource != nil {
 		if err := metadata.SetAnnotation(snapshot, SnapshotGitSourceRepoURLAnnotation, newComponentSource.GitSource.URL); err != nil {
+			return nil, fmt.Errorf("failed to set annotation %s: %w", SnapshotGitSourceRepoURLAnnotation, err)
+		}
+	}
+
+	if len(invalidComponents) > 0 {
+		if err := metadata.SetAnnotation(snapshot, helpers.CreateSnapshotAnnotationName, fmt.Sprintf("Component(s) '%s' is(are) not included in snapshot due to missing valid containerImage or git source", strings.Join(invalidComponents, ", "))); err != nil {
 			return nil, fmt.Errorf("failed to set annotation %s: %w", SnapshotGitSourceRepoURLAnnotation, err)
 		}
 	}
