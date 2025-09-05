@@ -587,4 +587,83 @@ var _ = Describe("Integration pipeline", Ordered, func() {
 			Expect(ipr.Spec.TaskRunTemplate.ServiceAccountName).To(Equal(serviceAccountName))
 		})
 	})
+
+	Context("When testing WithUpdatedTestsGitResolver with edge cases", func() {
+		It("should handle pipeline run created from base64 with missing resolver ref", func() {
+			// This simulates a pipeline run created via generateIntegrationPipelineRunFromBase64
+			// where the structure might not be fully initialized
+			pipelineRun := &tekton.IntegrationPipelineRun{
+				tektonv1.PipelineRun{
+					Spec: tektonv1.PipelineRunSpec{
+						PipelineRef: &tektonv1.PipelineRef{
+							Name:        "some-pipeline", // Has name but no resolver
+							ResolverRef: tektonv1.ResolverRef{
+								// Empty resolver ref - this was causing the panic
+							},
+						},
+					},
+				},
+			}
+
+			params := map[string]string{
+				"url":      "https://github.com/test/repo.git",
+				"revision": "main",
+			}
+
+			// This should not panic - it should return early because resolver is empty
+			result := pipelineRun.WithUpdatedTestsGitResolver(params)
+			Expect(result).NotTo(BeNil())
+			Expect(result).To(Equal(pipelineRun)) // Should return the same instance unchanged
+		})
+
+		It("should handle pipeline run with git resolver but empty params", func() {
+			pipelineRun := &tekton.IntegrationPipelineRun{
+				tektonv1.PipelineRun{
+					Spec: tektonv1.PipelineRunSpec{
+						PipelineRef: &tektonv1.PipelineRef{
+							ResolverRef: tektonv1.ResolverRef{
+								Resolver: tektonv1.ResolverName(tektonconsts.TektonResolverGit),
+								Params:   nil, // This was causing the panic
+							},
+						},
+					},
+				},
+			}
+
+			params := map[string]string{
+				"url":      "https://github.com/test/repo.git",
+				"revision": "main",
+			}
+
+			// This should not panic - should return early because params is nil
+			result := pipelineRun.WithUpdatedTestsGitResolver(params)
+			Expect(result).NotTo(BeNil())
+			Expect(result.Spec.PipelineRef.ResolverRef.Params).To(BeNil())
+		})
+
+		It("should handle pipeline run with git resolver but empty params slice", func() {
+			pipelineRun := &tekton.IntegrationPipelineRun{
+				tektonv1.PipelineRun{
+					Spec: tektonv1.PipelineRunSpec{
+						PipelineRef: &tektonv1.PipelineRef{
+							ResolverRef: tektonv1.ResolverRef{
+								Resolver: tektonv1.ResolverName(tektonconsts.TektonResolverGit),
+								Params:   []tektonv1.Param{}, // Empty slice
+							},
+						},
+					},
+				},
+			}
+
+			params := map[string]string{
+				"url":      "https://github.com/test/repo.git",
+				"revision": "main",
+			}
+
+			// This should not panic - should return early because params is empty
+			result := pipelineRun.WithUpdatedTestsGitResolver(params)
+			Expect(result).NotTo(BeNil())
+			Expect(result.Spec.PipelineRef.ResolverRef.Params).To(BeEmpty())
+		})
+	})
 })
