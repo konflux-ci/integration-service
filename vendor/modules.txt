@@ -336,8 +336,6 @@ github.com/tektoncd/pipeline/pkg/reconciler/pipeline/dag
 github.com/tektoncd/pipeline/pkg/resolution/common
 github.com/tektoncd/pipeline/pkg/spire/config
 github.com/tektoncd/pipeline/pkg/substitution
-# github.com/tektoncd/resolution v0.0.0-20220901133656-d680719abeaf
-## explicit; go 1.17
 # github.com/tonglil/buflogr v1.1.1
 ## explicit; go 1.17
 github.com/tonglil/buflogr
@@ -1001,8 +999,8 @@ k8s.io/klog/v2/internal/dbg
 k8s.io/klog/v2/internal/serialize
 k8s.io/klog/v2/internal/severity
 k8s.io/klog/v2/internal/sloghandler
-# k8s.io/kube-openapi v0.0.0-20250701173324-9bd5c66d9911
-## explicit; go 1.22
+# k8s.io/kube-openapi v0.0.0-20250814151709-d7b6acb124c3
+## explicit; go 1.23
 k8s.io/kube-openapi/pkg/cached
 k8s.io/kube-openapi/pkg/common
 k8s.io/kube-openapi/pkg/handler3
@@ -1120,6 +1118,9 @@ sigs.k8s.io/structured-merge-diff/v4/merge
 sigs.k8s.io/structured-merge-diff/v4/schema
 sigs.k8s.io/structured-merge-diff/v4/typed
 sigs.k8s.io/structured-merge-diff/v4/value
+# sigs.k8s.io/structured-merge-diff/v6 v6.2.0
+## explicit; go 1.23
+sigs.k8s.io/structured-merge-diff/v6/schema
 # sigs.k8s.io/yaml v1.4.0
 ## explicit; go 1.12
 sigs.k8s.io/yaml
