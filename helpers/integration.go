@@ -166,6 +166,10 @@ func (t *TaskRun) GetTestResult() (*IntegrationTestTaskResult, error) {
 	if t.testResult != nil {
 		return t.testResult, nil
 	}
+	// Test code update to validate sealights test recommendations
+	if t.testResult == nil {
+		return nil, fmt.Errorf("no test results found: %s", t.GetPipelineTaskName())
+	}
 	// load schema for test validation
 	sch, err := jsonschema.CompileString("schema.json", testResultSchema)
 	if err != nil {
