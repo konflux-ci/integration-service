@@ -226,96 +226,136 @@ func (a *Adapter) EnsureIntegrationPipelineRunsExist() (controller.OperationResu
 		return controller.ContinueProcessing()
 	}
 
+	if err := a.createPipelineRunsForScenarios(); err != nil {
+		return controller.RequeueWithError(err)
+	}
+
+	return a.handleRequiredScenarios()
+}
+
+// createPipelineRunsForScenarios handles the creation of pipeline runs for applicable scenarios
+func (a *Adapter) createPipelineRunsForScenarios() error {
 	allIntegrationTestScenarios, err := a.loader.GetAllIntegrationTestScenariosForApplication(a.context, a.client, a.application)
 	if err != nil {
 		a.logger.Error(err, "Failed to get integration test scenarios for the following application",
 			"Application.Namespace", a.application.Namespace)
+		return nil // Continue processing even if scenarios can't be loaded
 	}
 
-	if allIntegrationTestScenarios != nil {
-		integrationTestScenarios := gitops.FilterIntegrationTestScenariosWithContext(allIntegrationTestScenarios, a.snapshot)
-		a.logger.Info(
-			fmt.Sprintf("Found %d IntegrationTestScenarios for application", len(*integrationTestScenarios)),
-			"Application.Name", a.application.Name,
-			"IntegrationTestScenarios", len(*integrationTestScenarios))
+	if allIntegrationTestScenarios == nil {
+		return nil
+	}
 
-		// Initialize status of all integration tests
-		// This is starting place where integration tests are being initialized
-		testStatuses, err := gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(a.snapshot)
-		if err != nil {
-			return controller.RequeueWithError(err)
+	integrationTestScenarios := gitops.FilterIntegrationTestScenariosWithContext(allIntegrationTestScenarios, a.snapshot)
+	a.logger.Info(
+		fmt.Sprintf("Found %d IntegrationTestScenarios for application", len(*integrationTestScenarios)),
+		"Application.Name", a.application.Name,
+		"IntegrationTestScenarios", len(*integrationTestScenarios))
+
+	return a.withStatusManagement(integrationTestScenarios, func(testStatuses *intgteststat.SnapshotIntegrationTestStatuses) error {
+		return a.processScenariosWithStatus(integrationTestScenarios, testStatuses)
+	})
+}
+
+// withStatusManagement handles status initialization
+func (a *Adapter) withStatusManagement(scenarios *[]v1beta2.IntegrationTestScenario, fn func(*intgteststat.SnapshotIntegrationTestStatuses) error) error {
+	// Initialize status of all integration tests
+	// This is starting place where integration tests are being initialized
+	testStatuses, err := gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(a.snapshot)
+	if err != nil {
+		return err
+	}
+
+	testStatuses.InitStatuses(scenariosNamesToList(scenarios))
+	if err := gitops.WriteIntegrationTestStatusesIntoSnapshot(a.context, a.snapshot, testStatuses, a.client); err != nil {
+		return err
+	}
+
+	// Ensure status is updated even if processing fails
+	defer func() {
+		if err := gitops.WriteIntegrationTestStatusesIntoSnapshot(a.context, a.snapshot, testStatuses, a.client); err != nil {
+			a.logger.Error(err, "Defer: Updating statuses of tests in snapshot failed")
 		}
-		testStatuses.InitStatuses(scenariosNamesToList(integrationTestScenarios))
-		err = gitops.WriteIntegrationTestStatusesIntoSnapshot(a.context, a.snapshot, testStatuses, a.client)
-		if err != nil {
-			return controller.RequeueWithError(err)
-		}
-		defer func() {
-			// Try to update status of test if something failed, because test loop can stop prematurely on error,
-			// we should record current status.
-			// This is only best effort update
-			//
-			// When update of statuses worked fine at the end of function, this is just a no-op
-			err = gitops.WriteIntegrationTestStatusesIntoSnapshot(a.context, a.snapshot, testStatuses, a.client)
-			if err != nil {
-				a.logger.Error(err, "Defer: Updating statuses of tests in snapshot failed")
+	}()
+
+	// Process scenarios with status management
+	if err := fn(testStatuses); err != nil {
+		return err
+	}
+
+	// Final status update
+	if err := gitops.WriteIntegrationTestStatusesIntoSnapshot(a.context, a.snapshot, testStatuses, a.client); err != nil {
+		a.logger.Error(err, "Failed to update test status in snapshot annotation")
+		return err
+	}
+
+	return nil
+}
+
+// processScenariosWithStatus processes each scenario and creates PLRs
+func (a *Adapter) processScenariosWithStatus(scenarios *[]v1beta2.IntegrationTestScenario, testStatuses *intgteststat.SnapshotIntegrationTestStatuses) error {
+	var errsForPLRCreation error
+
+	for _, integrationTestScenario := range *scenarios {
+		integrationTestScenario := integrationTestScenario //G601
+
+		if err := a.processScenario(&integrationTestScenario, testStatuses); err != nil {
+			if !clienterrors.IsInvalid(err) {
+				errsForPLRCreation = errors.Join(errsForPLRCreation, err)
 			}
-		}()
-
-		var errsForPLRCreation error
-		for _, integrationTestScenario := range *integrationTestScenarios {
-			integrationTestScenario := integrationTestScenario //G601
-			// Check if an existing integration pipelineRun is registered in the Snapshot's status
-			// We rely on this because the actual pipelineRun CR may have been pruned by this point
-			integrationTestScenarioStatus, ok := testStatuses.GetScenarioStatus(integrationTestScenario.Name)
-			if ok && integrationTestScenarioStatus.TestPipelineRunName != "" {
-				a.logger.Info("Found existing integrationPipelineRun",
-					"integrationTestScenario.Name", integrationTestScenario.Name,
-					"pipelineRun.Name", integrationTestScenarioStatus.TestPipelineRunName)
-			} else {
-				pipelineRun, err := a.createIntegrationPipelineRun(a.application, &integrationTestScenario, a.snapshot)
-				if err != nil {
-					a.logger.Error(err, "Failed to create pipelineRun for snapshot and scenario",
-						"integrationScenario.Name", integrationTestScenario.Name)
-
-					testStatuses.UpdateTestStatusIfChanged(
-						integrationTestScenario.Name, intgteststat.IntegrationTestStatusTestInvalid,
-						fmt.Sprintf("Creation of pipelineRun failed during creation due to: %s.", err))
-
-					if !clienterrors.IsInvalid(err) {
-						errsForPLRCreation = errors.Join(errsForPLRCreation, err)
-					}
-					continue
-				}
-				gitops.PrepareToRegisterIntegrationPipelineRunStarted(a.snapshot) // don't count re-runs
-				testStatuses.UpdateTestStatusIfChanged(
-					integrationTestScenario.Name, intgteststat.IntegrationTestStatusInProgress,
-					fmt.Sprintf("IntegrationTestScenario pipeline '%s' has been created", pipelineRun.Name))
-				if err = testStatuses.UpdateTestPipelineRunName(integrationTestScenario.Name, pipelineRun.Name); err != nil {
-					// it doesn't make sense to restart reconciliation here, it will be eventually updated by integrationpipeline adapter
-					a.logger.Error(err, "Failed to update pipelinerun name in test status")
-				}
-			}
-		}
-		if !gitops.IsSnapshotCreatedByPACPushEvent(a.snapshot) {
-			err = a.checkAndCancelOldSnapshotsPipelineRun(a.application, a.snapshot)
-			if err != nil {
-				a.logger.Error(err, "Failed to check and cancel old snapshot's pipelineruns",
-					"snapshot.Name:", a.snapshot.Name)
-			}
-		}
-
-		err = gitops.WriteIntegrationTestStatusesIntoSnapshot(a.context, a.snapshot, testStatuses, a.client)
-		if err != nil {
-			a.logger.Error(err, "Failed to update test status in snapshot annotation")
-			errsForPLRCreation = errors.Join(errsForPLRCreation, err)
-		}
-
-		if errsForPLRCreation != nil {
-			return controller.RequeueWithError(errsForPLRCreation)
 		}
 	}
 
+	// cleanup for non-PAC push events
+	if !gitops.IsSnapshotCreatedByPACPushEvent(a.snapshot) {
+		if err := a.checkAndCancelOldSnapshotsPipelineRun(a.application, a.snapshot); err != nil {
+			a.logger.Error(err, "Failed to check and cancel old snapshot's pipelineruns",
+				"snapshot.Name:", a.snapshot.Name)
+		}
+	}
+
+	return errsForPLRCreation
+}
+
+// processScenario handles pipeline run creation for a single scenario
+func (a *Adapter) processScenario(scenario *v1beta2.IntegrationTestScenario, testStatuses *intgteststat.SnapshotIntegrationTestStatuses) error {
+	// Check if an existing integration pipelineRun is registered in the Snapshot's status
+	integrationTestScenarioStatus, ok := testStatuses.GetScenarioStatus(scenario.Name)
+	if ok && integrationTestScenarioStatus.TestPipelineRunName != "" {
+		a.logger.Info("Found existing integrationPipelineRun",
+			"integrationTestScenario.Name", scenario.Name,
+			"pipelineRun.Name", integrationTestScenarioStatus.TestPipelineRunName)
+		return nil
+	}
+
+	// Create new pipeline run
+	pipelineRun, err := a.createIntegrationPipelineRun(a.application, scenario, a.snapshot)
+	if err != nil {
+		a.logger.Error(err, "Failed to create pipelineRun for snapshot and scenario",
+			"integrationScenario.Name", scenario.Name)
+
+		testStatuses.UpdateTestStatusIfChanged(
+			scenario.Name, intgteststat.IntegrationTestStatusTestInvalid,
+			fmt.Sprintf("Creation of pipelineRun failed during creation due to: %s.", err))
+		return err
+	}
+
+	// Update status for successful creation
+	gitops.PrepareToRegisterIntegrationPipelineRunStarted(a.snapshot) // don't count re-runs
+	testStatuses.UpdateTestStatusIfChanged(
+		scenario.Name, intgteststat.IntegrationTestStatusInProgress,
+		fmt.Sprintf("IntegrationTestScenario pipeline '%s' has been created", pipelineRun.Name))
+
+	if err := testStatuses.UpdateTestPipelineRunName(scenario.Name, pipelineRun.Name); err != nil {
+		// it doesn't make sense to restart reconciliation here, it will be eventually updated by integrationpipeline adapter
+		a.logger.Error(err, "Failed to update pipelinerun name in test status")
+	}
+
+	return nil
+}
+
+// handleRequiredScenarios processes required scenarios and marks snapshot as passed if none are found
+func (a *Adapter) handleRequiredScenarios() (controller.OperationResult, error) {
 	requiredIntegrationTestScenarios, err := a.loader.GetRequiredIntegrationTestScenariosForSnapshot(a.context, a.client, a.application, a.snapshot)
 	if err != nil {
 		a.logger.Error(err, "Failed to get all required IntegrationTestScenarios")
@@ -325,6 +365,7 @@ func (a *Adapter) EnsureIntegrationPipelineRunsExist() (controller.OperationResu
 			a.snapshot, h.LogActionUpdate)
 		return controller.RequeueOnErrorOrStop(a.client.Status().Patch(a.context, a.snapshot, patch))
 	}
+
 	if len(*requiredIntegrationTestScenarios) == 0 && !gitops.IsSnapshotMarkedAsPassed(a.snapshot) {
 		err := gitops.MarkSnapshotAsPassed(a.context, a.client, a.snapshot, "No required IntegrationTestScenarios found, skipped testing")
 		if err != nil {
@@ -342,89 +383,19 @@ func (a *Adapter) EnsureIntegrationPipelineRunsExist() (controller.OperationResu
 // EnsureGlobalCandidateImageUpdated is an operation that ensure the ContainerImage in the Global Candidate List
 // being updated when the Snapshot is created
 func (a *Adapter) EnsureGlobalCandidateImageUpdated() (controller.OperationResult, error) {
-	if !gitops.IsComponentSnapshotCreatedByPACPushEvent(a.snapshot) && !gitops.IsOverrideSnapshot(a.snapshot) {
-		a.logger.Info("The Snapshot was neither created for a single component push event nor override type, not updating the global candidate list.")
+	if !a.shouldUpdateGlobalCandidateList() {
 		return controller.ContinueProcessing()
 	}
 
-	if gitops.IsSnapshotMarkedAsAddedToGlobalCandidateList(a.snapshot) {
-		a.logger.Info("The Snapshot's component was previously added to the global candidate list, skipping adding it.")
-		return controller.ContinueProcessing()
-	}
-
-	var componentToUpdate *applicationapiv1alpha1.Component
 	var err error
-
-	// get component from component snapshot
 	if gitops.IsComponentSnapshot(a.snapshot) {
-		err = retry.OnError(retry.DefaultRetry, func(_ error) bool { return true }, func() error {
-			componentToUpdate, err = a.loader.GetComponentFromSnapshot(a.context, a.client, a.snapshot)
-			return err
-		})
-		if err != nil {
-			_, loaderError := h.HandleLoaderError(a.logger, err, fmt.Sprintf("Component or '%s' label", tektonconsts.ComponentNameLabel), "Snapshot")
-			if loaderError != nil {
-				return controller.RequeueWithError(loaderError)
-			}
-			return controller.ContinueProcessing()
-		}
-
-		// update PromotedImage for all Components of GCL
-		// then look for the expected snapshotComponent and update
-		for _, snapshotComponent := range a.snapshot.Spec.Components {
-			snapshotComponent := snapshotComponent //G601
-			if snapshotComponent.Name == componentToUpdate.Name {
-				// update .Status.LastPromotedImage for the component included in component snapshot
-				err = a.updateComponentLastPromotedImage(a.context, a.client, componentToUpdate, &snapshotComponent)
-				if err != nil {
-					return controller.RequeueWithError(err)
-				}
-
-				// update .Status.LastBuiltCommit for the component included in component snapshot
-				err = a.updateComponentSource(a.context, a.client, componentToUpdate, &snapshotComponent)
-				if err != nil {
-					return controller.RequeueWithError(err)
-				}
-				// Updated the component for component snapshot, break
-				break
-			} else {
-				// expected component not found, continue
-				continue
-			}
-		}
+		err = a.updateComponentSnapshot()
 	} else if gitops.IsOverrideSnapshot(a.snapshot) {
-		// update Status.LastPromotedImage for each component in override snapshot
-		for _, snapshotComponent := range a.snapshot.Spec.Components {
-			snapshotComponent := snapshotComponent //G601
-			// get component for each snapshotComponent in override snapshot
-			componentToUpdate, err = a.loader.GetComponent(a.context, a.client, snapshotComponent.Name, a.snapshot.Namespace)
-			if err != nil {
-				a.logger.Error(err, "Failed to get component from applicaion, won't update global candidate list for this component", "application.Name", a.application.Name, "component.Name", snapshotComponent.Name)
-				_, loaderError := h.HandleLoaderError(a.logger, err, snapshotComponent.Name, a.application.Name)
-				if loaderError != nil {
-					return controller.RequeueWithError(loaderError)
-				}
-				continue
-			}
+		err = a.updateOverrideSnapshot()
+	}
 
-			// if the containerImage in snapshotComponent doesn't have a valid digest, the containerImage
-			// will not be added to component Global Candidate List
-			err = gitops.ValidateImageDigest(snapshotComponent.ContainerImage)
-			if err != nil {
-				a.logger.Error(err, "containerImage cannot be updated to component Global Candidate List due to invalid digest in containerImage", "component.Name", snapshotComponent.Name, "snapshotComponent.ContainerImage", snapshotComponent.ContainerImage)
-				continue
-			}
-			// update .Status.LastPromotedImage for the component included in override snapshot
-			err = a.updateComponentLastPromotedImage(a.context, a.client, componentToUpdate, &snapshotComponent)
-			if err != nil {
-				return controller.RequeueWithError(err)
-			}
-			// update .Status.LastBuiltCommit for each snapshotComponent in override snapshot
-			err = a.updateComponentSource(a.context, a.client, componentToUpdate, &snapshotComponent)
-			if err != nil {
-				return controller.RequeueWithError(err)
-			}
-		}
+	if err != nil {
+		return controller.RequeueWithError(err)
 	}
 
 	// Mark the Snapshot as already added to global candidate list to prevent it from getting added again when the Snapshot
@@ -438,69 +409,172 @@ func (a *Adapter) EnsureGlobalCandidateImageUpdated() (controller.OperationResul
 	return controller.ContinueProcessing()
 }
 
+// shouldUpdateGlobalCandidateList checks if the snapshot should update the global candidate list
+func (a *Adapter) shouldUpdateGlobalCandidateList() bool {
+	if !gitops.IsComponentSnapshotCreatedByPACPushEvent(a.snapshot) && !gitops.IsOverrideSnapshot(a.snapshot) {
+		a.logger.Info("The Snapshot was neither created for a single component push event nor override type, not updating the global candidate list.")
+		return false
+	}
+
+	if gitops.IsSnapshotMarkedAsAddedToGlobalCandidateList(a.snapshot) {
+		a.logger.Info("The Snapshot's component was previously added to the global candidate list, skipping adding it.")
+		return false
+	}
+
+	return true
+}
+
+// updateComponentSnapshot updates global candidate list for component snapshots
+func (a *Adapter) updateComponentSnapshot() error {
+	var componentToUpdate *applicationapiv1alpha1.Component
+	var err error
+
+	err = retry.OnError(retry.DefaultRetry, func(_ error) bool { return true }, func() error {
+		componentToUpdate, err = a.loader.GetComponentFromSnapshot(a.context, a.client, a.snapshot)
+		return err
+	})
+	if err != nil {
+		_, loaderError := h.HandleLoaderError(a.logger, err, fmt.Sprintf("Component or '%s' label", tektonconsts.ComponentNameLabel), "Snapshot")
+		if loaderError != nil {
+			return loaderError
+		}
+		return nil // Continue processing if no loader error
+	}
+
+	// Find and update the matching snapshot component
+	for _, snapshotComponent := range a.snapshot.Spec.Components {
+		snapshotComponent := snapshotComponent //G601
+		if snapshotComponent.Name == componentToUpdate.Name {
+			return a.updateComponentImages(componentToUpdate, &snapshotComponent)
+		}
+	}
+
+	return nil
+}
+
+// updateOverrideSnapshot handles updating global candidate list for override snapshots
+func (a *Adapter) updateOverrideSnapshot() error {
+	for _, snapshotComponent := range a.snapshot.Spec.Components {
+		snapshotComponent := snapshotComponent //G601
+
+		componentToUpdate, err := a.loader.GetComponent(a.context, a.client, snapshotComponent.Name, a.snapshot.Namespace)
+		if err != nil {
+			a.logger.Error(err, "Failed to get component from application, won't update global candidate list for this component", "application.Name", a.application.Name, "component.Name", snapshotComponent.Name)
+			_, loaderError := h.HandleLoaderError(a.logger, err, snapshotComponent.Name, a.application.Name)
+			if loaderError != nil {
+				return loaderError
+			}
+			continue
+		}
+
+		// Validate image digest before updating
+		if err := gitops.ValidateImageDigest(snapshotComponent.ContainerImage); err != nil {
+			a.logger.Error(err, "containerImage cannot be updated to component Global Candidate List due to invalid digest in containerImage", "component.Name", snapshotComponent.Name, "snapshotComponent.ContainerImage", snapshotComponent.ContainerImage)
+			continue
+		}
+
+		if err := a.updateComponentImages(componentToUpdate, &snapshotComponent); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// updateComponentImages updates both the promoted image and source for a component
+func (a *Adapter) updateComponentImages(component *applicationapiv1alpha1.Component, snapshotComponent *applicationapiv1alpha1.SnapshotComponent) error {
+	// update .Status.LastPromotedImage for the component
+	if err := a.updateComponentLastPromotedImage(a.context, a.client, component, snapshotComponent); err != nil {
+		return err
+	}
+
+	// update .Status.LastBuiltCommit for the component
+	if err := a.updateComponentSource(a.context, a.client, component, snapshotComponent); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 // EnsureAllReleasesExist is an operation that will ensure that all pipeline Releases associated
 // to the Snapshot and the Application's ReleasePlans exist.
 // Otherwise, it will create new Releases for each ReleasePlan.
 func (a *Adapter) EnsureAllReleasesExist() (controller.OperationResult, error) {
-	autoReleaseFieldMessage := "The Snapshot was auto-released"
-
-	canSnapshotBePromoted, reasons := gitops.CanSnapshotBePromoted(a.snapshot)
-	if !canSnapshotBePromoted {
-		a.logger.Info("The Snapshot won't be released.",
-			"reasons", strings.Join(reasons, ","))
+	if !a.shouldProcessReleases() {
 		return controller.ContinueProcessing()
 	}
 
-	if gitops.IsSnapshotMarkedAsAutoReleased(a.snapshot) {
-		a.logger.Info("The Snapshot was previously auto-released, skipping auto-release.")
-		return controller.ContinueProcessing()
-	}
-
-	releasePlans, err := a.loader.GetAutoReleasePlansForApplication(a.context, a.client, a.application)
+	releasePlans, err := a.getAutoReleasePlans()
 	if err != nil {
-		a.logger.Error(err, "Failed to get all ReleasePlans")
-		patch := client.MergeFrom(a.snapshot.DeepCopy())
-		gitops.SetSnapshotIntegrationStatusAsError(a.snapshot, "Failed to get all ReleasePlans: "+err.Error())
-		a.logger.LogAuditEvent("Snapshot integration status marked as Invalid. Failed to get all ReleasePlans",
-			a.snapshot, h.LogActionUpdate)
-		er := a.client.Status().Patch(a.context, a.snapshot, patch)
-		if er != nil {
-			a.logger.Error(er, "Failed to mark snapshot integration status as invalid",
-				"snapshot.Name", a.snapshot.Name)
-			return a.RequeueIfYoungerThanThreshold(errors.Join(err, er))
-		}
-		return a.RequeueIfYoungerThanThreshold(err)
+		return a.handleReleaseError(err, "Failed to get all ReleasePlans")
 	}
 
-	if len(*releasePlans) > 0 {
-		err = a.createMissingReleasesForReleasePlans(a.application, releasePlans, a.snapshot)
-		if err != nil {
-			a.logger.Error(err, "Failed to create new Releases")
-			patch := client.MergeFrom(a.snapshot.DeepCopy())
-			gitops.SetSnapshotIntegrationStatusAsError(a.snapshot, "Failed to create new Releases: "+err.Error())
-			a.logger.LogAuditEvent("Snapshot integration status marked as Invalid. Failed to create new Releases",
-				a.snapshot, h.LogActionUpdate)
-			patchErr := a.client.Status().Patch(a.context, a.snapshot, patch)
-			if patchErr != nil {
-				a.logger.Error(patchErr, "Failed to mark snapshot integration status as invalid",
-					"snapshot.Name", a.snapshot.Name)
-				return a.RequeueIfYoungerThanThreshold(errors.Join(err, patchErr))
-			}
-			return a.RequeueIfYoungerThanThreshold(err)
-		}
-	} else {
-		autoReleaseFieldMessage = "Skipping auto-release of the Snapshot because no ReleasePlans have the 'auto-release' label set to 'true'"
+	autoReleaseMessage, err := a.processReleasePlans(releasePlans)
+	if err != nil {
+		return a.handleReleaseError(err, "Failed to create new Releases")
 	}
 
-	// Mark the Snapshot as already auto-released to prevent re-releasing the Snapshot when it gets reconciled
-	// at a later time, especially if new ReleasePlans are introduced or existing ones are renamed
-	err = gitops.MarkSnapshotAsAutoReleased(a.context, a.client, a.snapshot, autoReleaseFieldMessage)
+	err = gitops.MarkSnapshotAsAutoReleased(a.context, a.client, a.snapshot, autoReleaseMessage)
 	if err != nil {
 		a.logger.Error(err, "Failed to update the Snapshot's status to auto-released")
 		return controller.RequeueWithError(err)
 	}
 
 	return controller.ContinueProcessing()
+}
+
+// shouldProcessReleases checks if snapshot is ready for release
+func (a *Adapter) shouldProcessReleases() bool {
+	canSnapshotBePromoted, reasons := gitops.CanSnapshotBePromoted(a.snapshot)
+	if !canSnapshotBePromoted {
+		a.logger.Info("The Snapshot won't be released.", "reasons", strings.Join(reasons, ","))
+		return false
+	}
+
+	if gitops.IsSnapshotMarkedAsAutoReleased(a.snapshot) {
+		a.logger.Info("The Snapshot was previously auto-released, skipping auto-release.")
+		return false
+	}
+
+	return true
+}
+
+// getAutoReleasePlans fetch release plans
+func (a *Adapter) getAutoReleasePlans() (*[]releasev1alpha1.ReleasePlan, error) {
+	releasePlans, err := a.loader.GetAutoReleasePlansForApplication(a.context, a.client, a.application)
+	if err != nil {
+		a.logger.Error(err, "Failed to get all ReleasePlans")
+		return nil, err
+	}
+	return releasePlans, nil
+}
+
+// processReleasePlans handles release creation, returns error or result of release
+func (a *Adapter) processReleasePlans(releasePlans *[]releasev1alpha1.ReleasePlan) (string, error) {
+	if len(*releasePlans) > 0 {
+		if err := a.createMissingReleasesForReleasePlans(a.application, releasePlans, a.snapshot); err != nil {
+			return "", err
+		}
+		return "The Snapshot was auto-released", nil
+	}
+
+	return "Skipping auto-release of the Snapshot because no ReleasePlans have the 'auto-release' label set to 'true'", nil
+}
+
+// handleReleaseError updates snapshot status and determine controller op for failure
+func (a *Adapter) handleReleaseError(err error, message string) (controller.OperationResult, error) {
+	a.logger.Error(err, message)
+
+	patch := client.MergeFrom(a.snapshot.DeepCopy())
+	gitops.SetSnapshotIntegrationStatusAsError(a.snapshot, message+": "+err.Error())
+	a.logger.LogAuditEvent("Snapshot integration status marked as Invalid. "+message, a.snapshot, h.LogActionUpdate)
+
+	if patchErr := a.client.Status().Patch(a.context, a.snapshot, patch); patchErr != nil {
+		a.logger.Error(patchErr, "Failed to mark snapshot integration status as invalid", "snapshot.Name", a.snapshot.Name)
+		return a.RequeueIfYoungerThanThreshold(errors.Join(err, patchErr))
+	}
+
+	return a.RequeueIfYoungerThanThreshold(err)
 }
 
 // EnsureOverrideSnapshotValid is an operation that ensure the manually created override snapshot have valid
@@ -522,7 +596,7 @@ func (a *Adapter) EnsureOverrideSnapshotValid() (controller.OperationResult, err
 		snapshotComponent := snapshotComponent //G601
 		_, err := a.loader.GetComponent(a.context, a.client, snapshotComponent.Name, a.snapshot.Namespace)
 		if err != nil {
-			a.logger.Error(err, "Failed to get component from applicaion", "application.Name", a.application.Name, "component.Name", snapshotComponent.Name)
+			a.logger.Error(err, "Failed to get component from application", "application.Name", a.application.Name, "component.Name", snapshotComponent.Name)
 			_, loaderError := h.HandleLoaderError(a.logger, err, snapshotComponent.Name, a.application.Name)
 			if loaderError != nil {
 				return controller.RequeueWithError(loaderError)
@@ -798,7 +872,7 @@ func (a *Adapter) createIntegrationPipelineRun(application *applicationapiv1alph
 	return pipelineRun, nil
 }
 
-// RequeueIfYoungerThanThreshold checks if the adapter' snapshot is younger than the threshold defined
+// RequeueIfYoungerThanThreshold checks if the adapter's snapshot is younger than the threshold defined
 // in the function.  If it is, the function returns an operation result instructing the reconciler
 // to requeue the object and the error message passed to the function.  If not, the function returns
 // an operation result instructing the reconciler NOT to requeue the object.

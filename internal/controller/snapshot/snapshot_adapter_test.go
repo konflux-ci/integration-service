@@ -978,7 +978,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			expectedLogEntry = "Updated .Status.LastBuiltCommit of Global Candidate for the Component"
 			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
 			// don't update Global Candidate List for the component included in a override snapshot but doesn't existw
-			expectedLogEntry = "Failed to get component from applicaion, won't update global candidate list for this component"
+			expectedLogEntry = "Failed to get component from application, won't update global candidate list for this component"
 			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
 			expectedLogEntry = "containerImage cannot be updated to component Global Candidate List due to invalid digest in containerImage"
 			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
@@ -2519,6 +2519,153 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			Expect(result.RequeueRequest).To(BeFalse())
 			Expect(err).Should(Succeed())
 			Expect(buf.String()).Should(ContainSubstring("Snapshot has been marked as cancelled previously, skipping marking it"))
+		})
+	})
+
+	Describe("shouldUpdateGlobalCandidateList", func() {
+		var adapter *Adapter
+		var logger helpers.IntegrationLogger
+		var buf bytes.Buffer
+
+		BeforeEach(func() {
+			buf = bytes.Buffer{}
+			logger = helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+		})
+
+		It("returns false for component snapshot with pull request event (not PAC push)", func() {
+			// Set up snapshot as component type with pull request event (not push)
+			hasSnapshot.Labels[gitops.SnapshotTypeLabel] = gitops.SnapshotComponentType
+			hasSnapshot.Labels[gitops.PipelineAsCodeEventTypeLabel] = gitops.PipelineAsCodePullRequestType
+			hasSnapshot.Labels[gitops.PipelineAsCodePullRequestAnnotation] = "1"
+
+			adapter = NewAdapter(ctx, hasSnapshot, hasApp, logger, loader.NewMockLoader(), k8sClient)
+
+			result := adapter.shouldUpdateGlobalCandidateList()
+			Expect(result).To(BeFalse())
+			Expect(buf.String()).Should(ContainSubstring("The Snapshot was neither created for a single component push event nor override type, not updating the global candidate list."))
+		})
+
+		It("returns false when snapshot already marked as added to global candidate list", func() {
+			// Set up valid snapshot (PAC push + component type)
+			hasSnapshot.Labels[gitops.SnapshotTypeLabel] = gitops.SnapshotComponentType
+			hasSnapshot.Labels[gitops.PipelineAsCodeEventTypeLabel] = gitops.PipelineAsCodePushType
+
+			// Mark it as already added to global candidate list
+			err := gitops.MarkSnapshotAsAddedToGlobalCandidateList(ctx, k8sClient, hasSnapshot, "Test message for already added")
+			Expect(err).ToNot(HaveOccurred())
+
+			adapter = NewAdapter(ctx, hasSnapshot, hasApp, logger, loader.NewMockLoader(), k8sClient)
+
+			result := adapter.shouldUpdateGlobalCandidateList()
+			Expect(result).To(BeFalse())
+			Expect(buf.String()).Should(ContainSubstring("The Snapshot's component was previously added to the global candidate list, skipping adding it."))
+		})
+
+		It("returns true for valid component snapshot PAC push events", func() {
+			// Set up valid snapshot (PAC push + component type)
+			hasSnapshot.Labels[gitops.SnapshotTypeLabel] = gitops.SnapshotComponentType
+			hasSnapshot.Labels[gitops.PipelineAsCodeEventTypeLabel] = gitops.PipelineAsCodePushType
+
+			// Ensure it's NOT marked as already added (clean state)
+			hasSnapshot.Status.Conditions = []metav1.Condition{}
+
+			adapter = NewAdapter(ctx, hasSnapshot, hasApp, logger, loader.NewMockLoader(), k8sClient)
+
+			result := adapter.shouldUpdateGlobalCandidateList()
+			Expect(result).To(BeTrue())
+		})
+
+		It("returns true for override snapshots", func() {
+			// Set up override snapshot
+			hasSnapshot.Labels[gitops.SnapshotTypeLabel] = gitops.SnapshotOverrideType
+
+			// Ensure it's NOT marked as already added (clean state)
+			hasSnapshot.Status.Conditions = []metav1.Condition{}
+
+			adapter = NewAdapter(ctx, hasSnapshot, hasApp, logger, loader.NewMockLoader(), k8sClient)
+
+			result := adapter.shouldUpdateGlobalCandidateList()
+			Expect(result).To(BeTrue())
+		})
+	})
+
+	Describe("shouldProcessReleases", func() {
+		var adapter *Adapter
+		var logger helpers.IntegrationLogger
+		var buf bytes.Buffer
+
+		BeforeEach(func() {
+			buf = bytes.Buffer{}
+			logger = helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+		})
+
+		It("returns false when snapshot cannot be promoted", func() {
+			// Set up snapshot that cannot be promoted (mark as failed)
+			err := gitops.MarkSnapshotAsFailed(ctx, k8sClient, hasSnapshot, "test failed")
+			Expect(err).To(Succeed())
+
+			adapter = NewAdapter(ctx, hasSnapshot, hasApp, logger, loader.NewMockLoader(), k8sClient)
+
+			result := adapter.shouldProcessReleases()
+			Expect(result).To(BeFalse())
+			Expect(buf.String()).Should(ContainSubstring("The Snapshot won't be released."))
+		})
+
+		It("returns false when snapshot already marked as auto-released", func() {
+			// Set up snapshot that can be promoted
+			err := gitops.MarkSnapshotAsPassed(ctx, k8sClient, hasSnapshot, "test passed")
+			Expect(err).To(Succeed())
+
+			// Mark as already auto-released
+			err = gitops.MarkSnapshotAsAutoReleased(ctx, k8sClient, hasSnapshot, "Already released")
+			Expect(err).To(Succeed())
+
+			adapter = NewAdapter(ctx, hasSnapshot, hasApp, logger, loader.NewMockLoader(), k8sClient)
+
+			result := adapter.shouldProcessReleases()
+			Expect(result).To(BeFalse())
+			Expect(buf.String()).Should(ContainSubstring("The Snapshot was previously auto-released, skipping auto-release."))
+		})
+
+		It("returns true for valid snapshot ready for release", func() {
+			// Set up snapshot that can be promoted and hasn't been released
+			err := gitops.MarkSnapshotAsPassed(ctx, k8sClient, hasSnapshot, "test passed")
+			Expect(err).To(Succeed())
+
+			adapter = NewAdapter(ctx, hasSnapshot, hasApp, logger, loader.NewMockLoader(), k8sClient)
+
+			result := adapter.shouldProcessReleases()
+			Expect(result).To(BeTrue())
+		})
+	})
+
+	Describe("processReleasePlans", func() {
+		var adapter *Adapter
+		var logger helpers.IntegrationLogger
+
+		BeforeEach(func() {
+			var buf bytes.Buffer
+			logger = helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+			adapter = NewAdapter(ctx, hasSnapshot, hasApp, logger, loader.NewMockLoader(), k8sClient)
+		})
+
+		It("returns skip message when no release plans exist", func() {
+			// Create empty slice of release plans
+			releasePlans := []releasev1alpha1.ReleasePlan{}
+
+			message, err := adapter.processReleasePlans(&releasePlans)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(message).To(Equal("Skipping auto-release of the Snapshot because no ReleasePlans have the 'auto-release' label set to 'true'"))
+		})
+
+		It("attempts to create releases when release plans exist", func() {
+			// Create a non-empty slice of release plans
+			releasePlans := []releasev1alpha1.ReleasePlan{*testReleasePlan}
+
+			message, err := adapter.processReleasePlans(&releasePlans)
+			// We expect this to fail due to missing mocks/setup, but we can verify the logic path
+			Expect(err).To(HaveOccurred()) // createMissingReleasesForReleasePlans will fail
+			Expect(message).To(Equal(""))  // Empty string returned on error
 		})
 	})
 })
