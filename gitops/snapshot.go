@@ -679,9 +679,13 @@ func CanSnapshotBePromoted(snapshot *applicationapiv1alpha1.Snapshot) (bool, []s
 			canBePromoted = false
 			reasons = append(reasons, "the Snapshot was created for a PaC pull request event")
 		}
-		if IsSnapshotAutoReleaseDisabled(snapshot) {
+		if res, err := DoesSnapshotAutoReleaseAnnotationEvaluateToTrue(snapshot); !res {
 			canBePromoted = false
-			reasons = append(reasons, fmt.Sprintf("the Snapshot '%s' label is 'false'", AutoReleaseLabel))
+			if err == nil {
+				reasons = append(reasons, fmt.Sprintf("the Snapshot '%s' label expression evaluated to 'false'", AutoReleaseLabel))
+			} else {
+				reasons = append(reasons, fmt.Sprintf("there was an error evaluatoring the '%s' label expression: %s", AutoReleaseLabel, err))
+			}
 		}
 		if IsGroupSnapshot(snapshot) {
 			canBePromoted = false
@@ -743,9 +747,15 @@ func IsSnapshotCreatedByPACPushEvent(snapshot *applicationapiv1alpha1.Snapshot) 
 		!metadata.HasLabel(snapshot, PipelineAsCodePullRequestAnnotation) && !IsGroupSnapshot(snapshot)
 }
 
-// IsSnapshotAutoReleaseDisabled checks if a snapshot has a AutoReleaseLabel label and if its value is "false"
-func IsSnapshotAutoReleaseDisabled(snapshot *applicationapiv1alpha1.Snapshot) bool {
-	return metadata.HasLabelWithValue(snapshot, AutoReleaseLabel, "false")
+// DoesSnapshotAutoReleaseAnnotationEvaluateToTrue checks if the auto-release label exists. If so, it evaluates
+// the CEL expression it contains and returns the result
+func DoesSnapshotAutoReleaseAnnotationEvaluateToTrue(snapshot *applicationapiv1alpha1.Snapshot) (bool, error) {
+	labelValue, ok := snapshot.GetLabels()[AutoReleaseLabel]
+	if !ok || labelValue == "" {
+		// if the label doesn't exist we default to true
+		return true, nil
+	}
+	return EvaluateSnapshotAutoReleaseAnnotation(labelValue, snapshot)
 }
 
 // IsSnapshotCreatedBySamePACEvent checks if the two snapshot are created by the same PAC event
