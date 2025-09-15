@@ -1043,6 +1043,66 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			Expect(condition.Message).To(Equal("The Snapshot was auto-released"))
 		})
 
+		It("creates a Release for valid CEL expression", func() {
+			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+
+			hasSnapshot.Labels[gitops.AutoReleaseLabel] = "updatedComponentIs('component-sample')"
+			err := gitops.MarkSnapshotIntegrationStatusAsFinished(ctx, k8sClient, hasSnapshot, "Snapshot integration status condition is finished since all testing pipelines completed")
+			Expect(err).ToNot(HaveOccurred())
+			err = gitops.MarkSnapshotAsPassed(ctx, k8sClient, hasSnapshot, "test passed")
+			Expect(err).To(Succeed())
+			Expect(gitops.HaveAppStudioTestsFinished(hasSnapshot)).To(BeTrue())
+			Expect(gitops.HaveAppStudioTestsSucceeded(hasSnapshot)).To(BeTrue())
+			adapter = NewAdapter(ctx, hasSnapshot, hasApp, log, loader.NewMockLoader(), k8sClient)
+
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: loader.ApplicationContextKey,
+					Resource:   hasApp,
+				},
+				{
+					ContextKey: loader.ComponentContextKey,
+					Resource:   hasComp,
+				},
+				{
+					ContextKey: loader.SnapshotContextKey,
+					Resource:   hasSnapshot,
+				},
+				{
+					ContextKey: loader.AutoReleasePlansContextKey,
+					Resource:   []releasev1alpha1.ReleasePlan{*testReleasePlan},
+				},
+				{
+					ContextKey: loader.ReleaseContextKey,
+					Resource:   &releasev1alpha1.Release{},
+				},
+			})
+
+			Eventually(func() bool {
+				result, err := adapter.EnsureAllReleasesExist()
+				return !result.CancelRequest && err == nil
+			}, time.Second*10).Should(BeTrue())
+
+			Eventually(func() bool {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      hasSnapshot.Name,
+					Namespace: "default",
+				}, hasSnapshot)
+				return err == nil && gitops.IsSnapshotMarkedAsAutoReleased(hasSnapshot)
+			}, time.Second*10).Should(BeTrue())
+
+			// Check if the adapter function detects that it already released the snapshot
+			result, err := adapter.EnsureAllReleasesExist()
+			Expect(err).ShouldNot(HaveOccurred())
+			Expect(result.CancelRequest).To(BeFalse())
+
+			expectedLogEntry := "The Snapshot was previously auto-released, skipping auto-release."
+			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
+
+			condition := meta.FindStatusCondition(hasSnapshot.Status.Conditions, gitops.SnapshotAutoReleasedCondition)
+			Expect(condition.Message).To(Equal("The Snapshot was auto-released"))
+		})
+
 		It("no action when EnsureAllReleasesExist function runs when AppStudio Tests failed and the snapshot is invalid", func() {
 			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
 
@@ -1071,7 +1131,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
 			expectedLogEntry = "the Snapshot was created for a PaC pull request event"
 			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
-			expectedLogEntry = fmt.Sprintf("the Snapshot '%s' label is 'false'", gitops.AutoReleaseLabel)
+			expectedLogEntry = fmt.Sprintf("the Snapshot '%s' label expression evaluated to 'false'", gitops.AutoReleaseLabel)
 			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
 		})
 
