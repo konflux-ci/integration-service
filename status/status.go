@@ -189,7 +189,7 @@ func MigrateSnapshotToReportStatus(s *applicationapiv1alpha1.Snapshot, testStatu
 }
 
 type StatusInterface interface {
-	GetReporter(*applicationapiv1alpha1.Snapshot) ReporterInterface
+	GetReporter(*applicationapiv1alpha1.Snapshot) (ReporterInterface, error)
 	// Check if PR/MR is opened
 	IsPRMRInSnapshotOpened(context.Context, *applicationapiv1alpha1.Snapshot) (bool, int, error)
 	// Check if github PR is open
@@ -216,18 +216,18 @@ func NewStatus(logger logr.Logger, client client.Client) *Status {
 }
 
 // GetReporter returns reporter to process snapshot using the right git provider, nil means no suitable reporter found
-func (s *Status) GetReporter(snapshot *applicationapiv1alpha1.Snapshot) ReporterInterface {
+func (s *Status) GetReporter(snapshot *applicationapiv1alpha1.Snapshot) (ReporterInterface, error) {
 	githubReporter := NewGitHubReporter(s.logger, s.client)
 	if githubReporter.Detect(snapshot) {
-		return githubReporter
+		return githubReporter, nil
 	}
 
 	gitlabReporter := NewGitLabReporter(s.logger, s.client)
 	if gitlabReporter.Detect(snapshot) {
-		return gitlabReporter
+		return gitlabReporter, nil
 	}
 
-	return nil
+	return nil, fmt.Errorf("no suitable git reporter found for snapshot %s/%s - missing required git provider labels/annotations", snapshot.Namespace, snapshot.Name)
 }
 
 // GenerateTestReport generates TestReport to be used by all reporters

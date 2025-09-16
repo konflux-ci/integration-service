@@ -622,12 +622,23 @@ func (a *Adapter) prepareTempGroupSnapshot(pipelineRun *tektonv1.PipelineRun) *a
 func (a *Adapter) ReportIntegrationTestStatusAccordingToBuildPLR(pipelineRun *tektonv1.PipelineRun, snapshot *applicationapiv1alpha1.Snapshot, integrationTestScenarios *[]v1beta2.IntegrationTestScenario,
 	integrationTestStatus intgteststat.IntegrationTestStatus, componentName string) (bool, error) {
 	var isErrorRecoverable = true
-	reporter := a.status.GetReporter(snapshot)
-	if reporter == nil {
-		a.logger.Info("No suitable reporter found, skipping report")
+	reporter, reporterErr := a.status.GetReporter(snapshot)
+	if reporterErr != nil {
+		// This is an unrecoverable error - missing git provider info
+		a.logger.Error(reporterErr, "Failed to get git reporter for snapshot - missing required labels/annotations",
+			"snapshot.Namespace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
+
+		// Annotate the snapshot with the error
+		annotationErr := gitops.AnnotateSnapshot(a.context, snapshot,
+			gitops.GitReportingFailureAnnotation, reporterErr.Error(), a.client)
+		if annotationErr != nil {
+			a.logger.Error(annotationErr, "Failed to annotate snapshot with git reporting failure")
+			return false, fmt.Errorf("failed to annotate snapshot with git reporting failure: %w", annotationErr)
+		}
+
+		// Return true (recoverable) but with the error logged and annotated
 		return true, nil
 	}
-	a.logger.Info(fmt.Sprintf("Detected reporter: %s", reporter.GetReporterName()))
 
 	if statusCode, err := reporter.Initialize(a.context, snapshot); err != nil {
 		a.logger.Error(err, "Failed to initialize reporter", "reporter", reporter.GetReporterName(), "statusCode", statusCode)

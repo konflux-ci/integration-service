@@ -319,12 +319,26 @@ func (a *Adapter) ReportSnapshotStatus(testedSnapshot *applicationapiv1alpha1.Sn
 	// Report the integration test status to pr/commit included in the tested component snapshot
 	// or the component snapshot included in group snapshot
 	for _, destinationComponentSnapshot := range destinationSnapshots {
-		reporter := a.status.GetReporter(destinationComponentSnapshot)
-		if reporter == nil {
-			a.logger.Info("No suitable reporter found, skipping report")
+		reporter, err := a.status.GetReporter(destinationComponentSnapshot)
+		if err != nil {
+			// This is an unrecoverable error - missing git provider info
+			a.logger.Error(err, "Failed to get git reporter for snapshot - missing required labels/annotations",
+				"snapshot.Namespace", destinationComponentSnapshot.Namespace,
+				"snapshot.Name", destinationComponentSnapshot.Name)
+
+			// Annotate the snapshot with the error
+			annotationErr := gitops.AnnotateSnapshot(a.context, destinationComponentSnapshot,
+				gitops.GitReportingFailureAnnotation, err.Error(), a.client)
+			if annotationErr != nil {
+				a.logger.Error(annotationErr, "Failed to annotate snapshot with git reporting failure")
+				return true, fmt.Errorf("failed to annotate snapshot with git reporting failure: %w", annotationErr)
+			}
+
+			// Continue to next snapshot instead of returning error
 			continue
 		}
-		a.logger.Info(fmt.Sprintf("Detected reporter: %s", reporter.GetReporterName()), "destinationComponentSnapshot.Name", destinationComponentSnapshot.Name, "testedSnapshot", testedSnapshot.Name)
+		a.logger.Info(fmt.Sprintf("Detected reporter: %s", reporter.GetReporterName()))
+
 		if statusCode, err := reporter.Initialize(a.context, destinationComponentSnapshot); err != nil {
 			a.logger.Error(err, "Failed to initialize reporter", "reporter", reporter.GetReporterName(), "statusCode", statusCode)
 			isErrorRecoverable := !helpers.IsUnrecoverableMetadataError(err) && !reporter.ReturnCodeIsUnrecoverable(statusCode)
@@ -363,12 +377,24 @@ func (a *Adapter) ReportGroupSnapshotCreationStatus(snapshot *applicationapiv1al
 	integrationTestStatus intgteststat.IntegrationTestStatus, componentName string) (bool, error) {
 	var statusCode = 0
 	var isErrorRecoverable = true
-	reporter := a.status.GetReporter(snapshot)
-	if reporter == nil {
-		a.logger.Info("No suitable reporter found, skipping report")
+	reporter, reporterErr := a.status.GetReporter(snapshot)
+
+	if reporterErr != nil {
+		// This is an unrecoverable error - missing git provider info
+		a.logger.Error(reporterErr, "Failed to get git reporter for snapshot - missing required labels/annotations",
+			"snapshot.Namespace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
+
+		// Annotate the snapshot with the error
+		annotationErr := gitops.AnnotateSnapshot(a.context, snapshot,
+			gitops.GitReportingFailureAnnotation, reporterErr.Error(), a.client)
+		if annotationErr != nil {
+			a.logger.Error(annotationErr, "Failed to annotate snapshot with git reporting failure")
+			return true, fmt.Errorf("failed to annotate snapshot with git reporting failure: %w", annotationErr)
+		}
+
+		// Return true (recoverable) but with the error logged and annotated
 		return true, nil
 	}
-	a.logger.Info(fmt.Sprintf("Detected reporter: %s", reporter.GetReporterName()))
 
 	if statusCode, err := reporter.Initialize(a.context, snapshot); err != nil {
 		a.logger.Error(err, "Failed to initialize reporter", "reporter", reporter.GetReporterName(), "statusCode", statusCode)

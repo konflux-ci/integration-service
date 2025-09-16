@@ -486,7 +486,8 @@ var _ = Describe("Status Adapter", func() {
 
 	It("can get reporters from a snapshot", func() {
 		st := status.NewStatus(logr.Discard(), nil)
-		reporter := st.GetReporter(githubSnapshot)
+		reporter, err := st.GetReporter(githubSnapshot)
+		Expect(err).To(BeNil())
 		Expect(reporter).ToNot(BeNil())
 		Expect(reporter.GetReporterName()).To(Equal("GithubReporter"))
 	})
