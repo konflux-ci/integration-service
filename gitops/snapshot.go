@@ -98,6 +98,9 @@ const (
 	// PRGroupCreationAnnotation contains the info of groupsnapshot creation
 	PRGroupCreationAnnotation = "test.appstudio.openshift.io/create-groupsnapshot-status"
 
+	// GitReportingFailureAnnotation contains information about git reporting failures
+	GitReportingFailureAnnotation = "test.appstudio.openshift.io/git-reporting-failure"
+
 	// BuildPipelineRunStartTime contains the start time of build pipelineRun
 	BuildPipelineRunStartTime = "test.appstudio.openshift.io/pipelinerunstarttime"
 

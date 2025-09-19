@@ -623,15 +623,31 @@ func (a *Adapter) ReportIntegrationTestStatusAccordingToBuildPLR(pipelineRun *te
 	integrationTestStatus intgteststat.IntegrationTestStatus, componentName string) (bool, error) {
 	var isErrorRecoverable = true
 	reporter := a.status.GetReporter(snapshot)
+
 	if reporter == nil {
-		a.logger.Info("No suitable reporter found, skipping report")
+		errMessage := fmt.Sprintf("no suitable git reporter found for snapshot %s/%s - missing required git provider labels/annotations", snapshot.Namespace, snapshot.Name)
+		a.logger.Error(nil, "Failed to get git reporter for snapshot - missing required labels/annotations: snapshot.Namespace ", snapshot.Namespace, "/ snapshot.Name ", snapshot.Name)
+
+		annotationErr := gitops.AnnotateSnapshot(a.context, snapshot, gitops.GitReportingFailureAnnotation, errMessage, a.client)
+		if annotationErr != nil {
+			a.logger.Error(annotationErr, "Failed to annotate snapshot with git reporting failure")
+		}
 		return true, nil
 	}
 	a.logger.Info(fmt.Sprintf("Detected reporter: %s", reporter.GetReporterName()))
 
 	if statusCode, err := reporter.Initialize(a.context, snapshot); err != nil {
 		a.logger.Error(err, "Failed to initialize reporter", "reporter", reporter.GetReporterName(), "statusCode", statusCode)
-		isErrorRecoverable = !h.IsUnrecoverableMetadataError(err) && !reporter.ReturnCodeIsUnrecoverable(statusCode)
+		isErrorRecoverable := !h.IsUnrecoverableMetadataError(err) && !reporter.ReturnCodeIsUnrecoverable(statusCode)
+
+		if h.IsUnrecoverableMetadataError(err) {
+			errMessage := fmt.Sprintf("unrecoverable metadata error during git reporter initialization for snapshot %s/%s: %s", snapshot.Namespace, snapshot.Name, err.Error())
+			annotationErr := gitops.AnnotateSnapshot(a.context, snapshot, gitops.GitReportingFailureAnnotation, errMessage, a.client)
+			if annotationErr != nil {
+				a.logger.Error(annotationErr, "Failed to annotate snapshot with git reporting failure")
+			}
+		}
+
 		return isErrorRecoverable, fmt.Errorf("failed to initialize reporter: %w", err)
 	}
 	a.logger.Info("Reporter initialized", "reporter", reporter.GetReporterName())
