@@ -623,8 +623,15 @@ func (a *Adapter) ReportIntegrationTestStatusAccordingToBuildPLR(pipelineRun *te
 	integrationTestStatus intgteststat.IntegrationTestStatus, componentName string) (bool, error) {
 	var isErrorRecoverable = true
 	reporter := a.status.GetReporter(snapshot)
+
 	if reporter == nil {
-		a.logger.Info("No suitable reporter found, skipping report")
+		errMessage := fmt.Sprintf("no suitable git reporter found for snapshot %s/%s - missing required git provider labels/annotations", snapshot.Namespace, snapshot.Name)
+		a.logger.Error(nil, "Failed to get git reporter for snapshot - missing required labels/annotations: snapshot.Namespace ", snapshot.Namespace, "/ snapshot.Name ", snapshot.Name)
+
+		annotationErr := gitops.AnnotateSnapshot(a.context, snapshot, gitops.GitReportingFailureAnnotation, errMessage, a.client)
+		if annotationErr != nil {
+			a.logger.Error(annotationErr, "Failed to annotate snapshot with git reporting failure")
+		}
 		return true, nil
 	}
 	a.logger.Info(fmt.Sprintf("Detected reporter: %s", reporter.GetReporterName()))
