@@ -906,7 +906,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			statusCode, err := adapter.ReportSnapshotStatus(snapshotWithoutGitProvider)
 
 			// Check results
-			Expect(err).To(BeNil())
+			Expect(err).ToNot(HaveOccurred())
 			Expect(statusCode).To(BeTrue())
 			Expect(snapshotWithoutGitProvider.Annotations).To(HaveKey(gitops.GitReportingFailureAnnotation))
 

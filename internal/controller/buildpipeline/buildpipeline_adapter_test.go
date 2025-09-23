@@ -1912,11 +1912,21 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			adapter = NewAdapter(ctx, buildPipelineRun, hasComp, hasApp, log, loader.NewMockLoader(), k8sClient)
 			adapter.status = mockStatus
 
+			// Create the required test data
+			integrationTestScenarios := []v1beta2.IntegrationTestScenario{*integrationTestScenario}
+			testStatus := intgteststat.IntegrationTestStatusInProgress
+			componentName := "test-component"
+
 			// Call the method
-			statusCode, err := adapter.ReportIntegrationTestStatusAccordingToBuildPLR(buildPipelineRun, snapshotWithoutGitProvider, &integrationTestScenarios, testStatus, testDetails)
+			statusCode, err := adapter.ReportIntegrationTestStatusAccordingToBuildPLR(
+				buildPipelineRun,
+				snapshotWithoutGitProvider,
+				&integrationTestScenarios,
+				testStatus,
+				componentName)
 
 			// Check results
-			Expect(err).To(BeNil())
+			Expect(err).ToNot(HaveOccurred())
 			Expect(statusCode).To(BeTrue())
 			Expect(snapshotWithoutGitProvider.Annotations).To(HaveKey(gitops.GitReportingFailureAnnotation))
 
