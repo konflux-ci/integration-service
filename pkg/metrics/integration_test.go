@@ -31,17 +31,11 @@ import (
 
 var _ = Describe("Metrics Integration", Ordered, func() {
 	BeforeAll(func() {
-		metrics.Registry.Unregister(SnapshotCreatedToPipelineRunStartedStaticEnvSeconds)
 		metrics.Registry.Unregister(SnapshotCreatedToPipelineRunStartedSeconds)
 		metrics.Registry.Unregister(SnapshotDurationSeconds)
 	})
 
 	var (
-		SnapshotPipelineRunStartedStaticEnvSecondsHeader = inputHeader{
-			Name: "integration_svc_snapshot_created_to_pipelinerun_with_static_env_started_seconds",
-			Help: "Time duration from the moment the snapshot resource was created till a integration pipelineRun is started in a static environment",
-		}
-
 		SnapshotCreatedToPipelineRunStartedSecondsHeader = inputHeader{
 			Name: "integration_svc_snapshot_created_to_pipelinerun_started_seconds",
 			Help: "Time duration from the moment the snapshot resource was created till a integration pipelineRun is started in the environment",
@@ -63,13 +57,6 @@ var _ = Describe("Metrics Integration", Ordered, func() {
 			// Mocking metrics to be able to resent data with each tests. Otherwise, we would have to take previous tests into account.
 			//
 			// 'Help' can't be overridden due to 'https://github.com/prometheus/client_golang/blob/83d56b1144a0c2eb10d399e7abbae3333bebc463/prometheus/registry.go#L314'
-			SnapshotCreatedToPipelineRunStartedStaticEnvSeconds = prometheus.NewHistogram(
-				prometheus.HistogramOpts{
-					Name:    "integration_svc_snapshot_created_to_pipelinerun_with_static_env_started_seconds",
-					Help:    "Time duration from the moment the snapshot resource was created till a integration pipelineRun is started in a static environment",
-					Buckets: []float64{1, 5, 10, 30},
-				},
-			)
 			SnapshotCreatedToPipelineRunStartedSeconds = prometheus.NewHistogram(
 				prometheus.HistogramOpts{
 					Name:    "integration_svc_snapshot_created_to_pipelinerun_started_seconds",
@@ -80,7 +67,6 @@ var _ = Describe("Metrics Integration", Ordered, func() {
 		})
 
 		AfterAll(func() {
-			metrics.Registry.Unregister(SnapshotCreatedToPipelineRunStartedStaticEnvSeconds)
 			metrics.Registry.Unregister(SnapshotCreatedToPipelineRunStartedSeconds)
 		})
 
@@ -98,16 +84,13 @@ var _ = Describe("Metrics Integration", Ordered, func() {
 			}
 			// check that the histograms contain data
 			Expect(testutil.CollectAndCount(SnapshotCreatedToPipelineRunStartedSeconds)).To(BeNumerically(">", 0))
-			Expect(testutil.CollectAndCount(SnapshotCreatedToPipelineRunStartedStaticEnvSeconds)).To(BeNumerically(">", 0))
 		})
 
-		It("registers a new observation for 'integration_svc_snapshot_created_to_pipelinerun_with_static_env_started_seconds' with the elapsed time from the moment"+
+		It("registers a new observation for 'integration_svc_snapshot_created_to_pipelinerun_started_seconds' with the elapsed time from the moment"+
 			"the snapshot is created to first integration pipelineRun is started.", func() {
 			// Defined buckets for SnapshotCreatedToPipelineRunStartedSeconds
 			timeBuckets := []string{"1", "5", "10", "30"}
 			data := []int{1, 2, 3, 4}
-			readerDataEnv := createHistogramReader(SnapshotPipelineRunStartedStaticEnvSecondsHeader, timeBuckets, data, "", elapsedSeconds, len(inputSeconds))
-			Expect(testutil.CollectAndCompare(SnapshotCreatedToPipelineRunStartedStaticEnvSeconds, strings.NewReader(readerDataEnv))).To(Succeed())
 			readerData := createHistogramReader(SnapshotCreatedToPipelineRunStartedSecondsHeader, timeBuckets, data, "", elapsedSeconds, len(inputSeconds))
 			Expect(testutil.CollectAndCompare(SnapshotCreatedToPipelineRunStartedSeconds, strings.NewReader(readerData))).To(Succeed())
 		})
@@ -115,13 +98,6 @@ var _ = Describe("Metrics Integration", Ordered, func() {
 
 	Context("When RegisterCompletedSnapshot is called", func() {
 		BeforeAll(func() {
-			SnapshotCreatedToPipelineRunStartedStaticEnvSeconds = prometheus.NewHistogram(
-				prometheus.HistogramOpts{
-					Name:    "integration_svc_snapshot_created_to_pipelinerun_with_static_env_started_seconds",
-					Help:    "Snapshot durations from the moment the snapshot resource was created till a integration pipelineRun is started in static environment",
-					Buckets: []float64{1, 5, 10, 30},
-				},
-			)
 			SnapshotCreatedToPipelineRunStartedSeconds = prometheus.NewHistogram(
 				prometheus.HistogramOpts{
 					Name:    "integration_svc_snapshot_created_to_pipelinerun_started_seconds",
@@ -148,7 +124,6 @@ var _ = Describe("Metrics Integration", Ordered, func() {
 		})
 
 		AfterAll(func() {
-			metrics.Registry.Unregister(SnapshotCreatedToPipelineRunStartedStaticEnvSeconds)
 			metrics.Registry.Unregister(SnapshotCreatedToPipelineRunStartedSeconds)
 			metrics.Registry.Unregister(SnapshotDurationSeconds)
 			metrics.Registry.Unregister(SnapshotTotal)
