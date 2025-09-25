@@ -182,8 +182,11 @@ const (
 	// PipelineAsCodeGitHubProviderType is the git provider type for a GitHub event which triggered the pipelinerun in build service.
 	PipelineAsCodeGitHubProviderType = "github"
 
-	// PipelineAsCodeGitHubProviderType is the git provider type for a GitHub event which triggered the pipelinerun in build service.
+	// PipelineAsCodeGitLabProviderType is the git provider type for a GitLab event which triggered the pipelinerun in build service.
 	PipelineAsCodeGitLabProviderType = "gitlab"
+
+	// PipelineAsCodeForgejoProviderType is the git provider type for a Forgejo event which triggered the pipelinerun in build service.
+	PipelineAsCodeForgejoProviderType = "forgejo"
 
 	//AppStudioTestSucceededCondition is the condition for marking if the AppStudio Tests succeeded for the Snapshot.
 	AppStudioTestSucceededCondition = "AppStudioTestSucceeded"

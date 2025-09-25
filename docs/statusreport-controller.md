@@ -1,5 +1,10 @@
 <div align="center"><h1>StatusReport Controller</h1></div>
 
+> [!NOTE]
+> **Git Provider Support Status:**
+> - **GitHub** and **GitLab** are fully supported and production-ready
+> - **Forgejo** support is experimental and may not fully work yet. Patches welcome!
+
 ```mermaid
 %%{init: {'theme':'forest'}}%%
 flowchart TD
@@ -32,7 +37,7 @@ flowchart TD
   %%%%%%%%%%%%%%%%%%%%%%% Drawing EnsureSnapshotTestStatusReportedToGitProvider() function
 
   %% Node definitions
-  ensure(Process further if: Snapshot has label <br>pac.test.appstudio.openshift.io/git-provider:github <br>defined)
+  ensure(Process further if: Snapshot has label <br>pac.test.appstudio.openshift.io/git-provider <br>defined (github, gitlab, or forgejo))
   get_annotation_value(Get integration test status from annotation <br>test.appstudio.openshift.io/status <br>from Snapshot)
   get_destination_snapshot(Get destination snapshots from <br>component snapshot or group snapshot <br>to collect git provider info)
 
@@ -62,6 +67,9 @@ flowchart TD
   collect_commit_info_gl(Collect commit projectID, repo-url and SHA from Snapshot)
   report_commit_status_gl(Create/update commitStatus on Gitlab<br>if MR is not from forked repo)
 
+  collect_commit_info_forgejo(Collect commit owner, repo and SHA from Snapshot)
+  report_commit_status_forgejo(Create/update commitStatus on Forgejo<br>if PR is not from forked repo)
+
   test_iterate(Iterate across all existing related testStatuses)
   is_test_final{Is <br> the test in it's <br>final state?}
   remove_finalizer_from_plr(Remove the finalizer from <br>the associated PLR)
@@ -75,6 +83,7 @@ flowchart TD
   get_destination_snapshot       -->      detect_git_provider
   detect_git_provider            --github--> collect_commit_info_gh
   detect_git_provider            --gitlab--> collect_commit_info_gl
+  detect_git_provider            --forgejo--> collect_commit_info_forgejo
   collect_commit_info_gh         --> is_installation_defined
   is_installation_defined        --Yes--> create_appInstallation_token
   is_installation_defined        --No--> set_oAuth_token
@@ -102,6 +111,9 @@ flowchart TD
 
   collect_commit_info_gl         --> report_commit_status_gl
   report_commit_status_gl        --> test_iterate
+
+  collect_commit_info_forgejo    --> report_commit_status_forgejo
+  report_commit_status_forgejo   --> test_iterate
 
   test_iterate                   --> is_test_final
 
