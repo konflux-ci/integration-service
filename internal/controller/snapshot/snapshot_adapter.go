@@ -218,6 +218,165 @@ func (a *Adapter) cleanupRerunLabelAndUpdateStatus(skipCount, totalScenarios int
 	return nil
 }
 
+// loadAndFilterIntegrationTestScenarios loads all test scenarios and filters them based on context
+// Returns nil if no scenarios are found, but logs errors and continues processing
+func (a *Adapter) loadAndFilterIntegrationTestScenarios() *[]v1beta2.IntegrationTestScenario {
+	allIntegrationTestScenarios, err := a.loader.GetAllIntegrationTestScenariosForApplication(a.context, a.client, a.application)
+	if err != nil {
+		a.logger.Error(err, "Failed to get integration test scenarios for the following application",
+			"Application.Namespace", a.application.Namespace)
+		// Continue processing like original code - don't return nil on error
+	}
+
+	if allIntegrationTestScenarios == nil {
+		return nil
+	}
+
+	integrationTestScenarios := gitops.FilterIntegrationTestScenariosWithContext(allIntegrationTestScenarios, a.snapshot)
+	a.logger.Info(
+		fmt.Sprintf("Found %d IntegrationTestScenarios for application", len(*integrationTestScenarios)),
+		"Application.Name", a.application.Name,
+		"IntegrationTestScenarios", len(*integrationTestScenarios))
+
+	return integrationTestScenarios
+}
+
+// initializeTestStatusesWithDefer creates and initializes test status tracking with deferred update setup
+// Returns the testStatuses and a cleanup function that should be deferred
+func (a *Adapter) initializeTestStatusesWithDefer(integrationTestScenarios *[]v1beta2.IntegrationTestScenario) (*intgteststat.SnapshotIntegrationTestStatuses, func(), error) {
+	testStatuses, err := gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(a.snapshot)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	testStatuses.InitStatuses(scenariosNamesToList(integrationTestScenarios))
+
+	err = gitops.WriteIntegrationTestStatusesIntoSnapshot(a.context, a.snapshot, testStatuses, a.client)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// Create the deferred function
+	deferFunc := func() {
+		// Try to update status of test if something failed, because test loop can stop prematurely on error,
+		// we should record current status.
+		// This is only best effort update
+		//
+		// When update of statuses worked fine at the end of function, this is just a no-op
+		err := gitops.WriteIntegrationTestStatusesIntoSnapshot(a.context, a.snapshot, testStatuses, a.client)
+		if err != nil {
+			a.logger.Error(err, "Defer: Updating statuses of tests in snapshot failed")
+		}
+	}
+
+	return testStatuses, deferFunc, nil
+}
+
+// processSingleScenario handles pipeline creation for a single test scenario
+func (a *Adapter) processSingleScenario(
+	integrationTestScenario *v1beta2.IntegrationTestScenario,
+	testStatuses *intgteststat.SnapshotIntegrationTestStatuses,
+) error {
+	// Check if an existing integration pipelineRun is registered in the Snapshot's status
+	// We rely on this because the actual pipelineRun CR may have been pruned by this point
+	integrationTestScenarioStatus, ok := testStatuses.GetScenarioStatus(integrationTestScenario.Name)
+	if ok && integrationTestScenarioStatus.TestPipelineRunName != "" {
+		a.logger.Info("Found existing integrationPipelineRun",
+			"integrationTestScenario.Name", integrationTestScenario.Name,
+			"pipelineRun.Name", integrationTestScenarioStatus.TestPipelineRunName)
+		return nil
+	}
+
+	// Create new pipeline run
+	pipelineRun, err := a.createIntegrationPipelineRun(a.application, integrationTestScenario, a.snapshot)
+	if err != nil {
+		a.logger.Error(err, "Failed to create pipelineRun for snapshot and scenario",
+			"integrationScenario.Name", integrationTestScenario.Name)
+
+		testStatuses.UpdateTestStatusIfChanged(
+			integrationTestScenario.Name, intgteststat.IntegrationTestStatusTestInvalid,
+			fmt.Sprintf("Creation of pipelineRun failed during creation due to: %s.", err))
+
+		// Only return error if it's not a validation error
+		if !clienterrors.IsInvalid(err) {
+			return err
+		}
+		return nil
+	}
+
+	// Update status for successful creation
+	gitops.PrepareToRegisterIntegrationPipelineRunStarted(a.snapshot) // don't count re-runs
+	testStatuses.UpdateTestStatusIfChanged(
+		integrationTestScenario.Name, intgteststat.IntegrationTestStatusInProgress,
+		fmt.Sprintf("IntegrationTestScenario pipeline '%s' has been created", pipelineRun.Name))
+
+	if err = testStatuses.UpdateTestPipelineRunName(integrationTestScenario.Name, pipelineRun.Name); err != nil {
+		// it doesn't make sense to restart reconciliation here, it will be eventually updated by integrationpipeline adapter
+		a.logger.Error(err, "Failed to update pipelinerun name in test status")
+	}
+
+	return nil
+}
+
+// processAllScenarios iterates through all scenarios and creates pipelines
+func (a *Adapter) processAllScenarios(
+	integrationTestScenarios *[]v1beta2.IntegrationTestScenario,
+	testStatuses *intgteststat.SnapshotIntegrationTestStatuses,
+) error {
+	var errsForPLRCreation error
+
+	for _, integrationTestScenario := range *integrationTestScenarios {
+		integrationTestScenario := integrationTestScenario //G601
+		err := a.processSingleScenario(&integrationTestScenario, testStatuses)
+		if err != nil {
+			errsForPLRCreation = errors.Join(errsForPLRCreation, err)
+		}
+	}
+
+	return errsForPLRCreation
+}
+
+// cancelOldPipelinesIfNeeded cancels old pipelines for non-push events
+func (a *Adapter) cancelOldPipelinesIfNeeded() {
+	if !gitops.IsSnapshotCreatedByPACPushEvent(a.snapshot) {
+		err := a.checkAndCancelOldSnapshotsPipelineRun(a.application, a.snapshot)
+		if err != nil {
+			a.logger.Error(err, "Failed to check and cancel old snapshot's pipelineruns",
+				"snapshot.Name:", a.snapshot.Name)
+		}
+	}
+}
+
+// markSnapshotPassedIfNoRequiredScenarios checks if required scenarios exist and marks snapshot accordingly.
+// Returns an error if fetching scenarios or updating the snapshot fails.
+func (a *Adapter) markSnapshotPassedIfNoRequiredScenarios() (controller.OperationResult, error) {
+	requiredIntegrationTestScenarios, err := a.loader.GetRequiredIntegrationTestScenariosForSnapshot(
+		a.context, a.client, a.application, a.snapshot)
+	if err != nil {
+		a.logger.Error(err, "Failed to get all required IntegrationTestScenarios")
+		patch := client.MergeFrom(a.snapshot.DeepCopy())
+		gitops.SetSnapshotIntegrationStatusAsError(a.snapshot,
+			"Failed to get all required IntegrationTestScenarios: "+err.Error())
+		a.logger.LogAuditEvent("Snapshot integration status marked as Invalid. Failed to get all required IntegrationTestScenarios",
+			a.snapshot, h.LogActionUpdate)
+		return controller.RequeueOnErrorOrStop(a.client.Status().Patch(a.context, a.snapshot, patch))
+	}
+
+	if len(*requiredIntegrationTestScenarios) == 0 && !gitops.IsSnapshotMarkedAsPassed(a.snapshot) {
+		err := gitops.MarkSnapshotAsPassed(a.context, a.client, a.snapshot,
+			"No required IntegrationTestScenarios found, skipped testing")
+		if err != nil {
+			a.logger.Error(err, "Failed to update Snapshot status")
+			return controller.RequeueWithError(err)
+		}
+		a.logger.LogAuditEvent("Snapshot marked as successful. No required IntegrationTestScenarios found, skipped testing",
+			a.snapshot, h.LogActionUpdate,
+			"snapshot.Status", a.snapshot.Status)
+	}
+
+	return controller.ContinueProcessing()
+}
+
 // EnsureIntegrationPipelineRunsExist is an operation that will ensure that all Integration pipeline runs
 // associated with the Snapshot and the Application's IntegrationTestScenarios exist.
 func (a *Adapter) EnsureIntegrationPipelineRunsExist() (controller.OperationResult, error) {
@@ -226,114 +385,41 @@ func (a *Adapter) EnsureIntegrationPipelineRunsExist() (controller.OperationResu
 		return controller.ContinueProcessing()
 	}
 
-	allIntegrationTestScenarios, err := a.loader.GetAllIntegrationTestScenariosForApplication(a.context, a.client, a.application)
-	if err != nil {
-		a.logger.Error(err, "Failed to get integration test scenarios for the following application",
-			"Application.Namespace", a.application.Namespace)
-	}
+	integrationTestScenarios := a.loadAndFilterIntegrationTestScenarios()
 
-	if allIntegrationTestScenarios != nil {
-		integrationTestScenarios := gitops.FilterIntegrationTestScenariosWithContext(allIntegrationTestScenarios, a.snapshot)
-		a.logger.Info(
-			fmt.Sprintf("Found %d IntegrationTestScenarios for application", len(*integrationTestScenarios)),
-			"Application.Name", a.application.Name,
-			"IntegrationTestScenarios", len(*integrationTestScenarios))
+	var errsForPLRCreation error
 
-		// Initialize status of all integration tests
-		// This is starting place where integration tests are being initialized
-		testStatuses, err := gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(a.snapshot)
+	// Process scenarios if they exist
+	if integrationTestScenarios != nil {
+		testStatuses, deferFunc, err := a.initializeTestStatusesWithDefer(integrationTestScenarios)
 		if err != nil {
 			return controller.RequeueWithError(err)
 		}
-		testStatuses.InitStatuses(scenariosNamesToList(integrationTestScenarios))
-		err = gitops.WriteIntegrationTestStatusesIntoSnapshot(a.context, a.snapshot, testStatuses, a.client)
-		if err != nil {
-			return controller.RequeueWithError(err)
-		}
-		defer func() {
-			// Try to update status of test if something failed, because test loop can stop prematurely on error,
-			// we should record current status.
-			// This is only best effort update
-			//
-			// When update of statuses worked fine at the end of function, this is just a no-op
-			err = gitops.WriteIntegrationTestStatusesIntoSnapshot(a.context, a.snapshot, testStatuses, a.client)
-			if err != nil {
-				a.logger.Error(err, "Defer: Updating statuses of tests in snapshot failed")
-			}
-		}()
+		defer deferFunc()
 
-		var errsForPLRCreation error
-		for _, integrationTestScenario := range *integrationTestScenarios {
-			integrationTestScenario := integrationTestScenario //G601
-			// Check if an existing integration pipelineRun is registered in the Snapshot's status
-			// We rely on this because the actual pipelineRun CR may have been pruned by this point
-			integrationTestScenarioStatus, ok := testStatuses.GetScenarioStatus(integrationTestScenario.Name)
-			if ok && integrationTestScenarioStatus.TestPipelineRunName != "" {
-				a.logger.Info("Found existing integrationPipelineRun",
-					"integrationTestScenario.Name", integrationTestScenario.Name,
-					"pipelineRun.Name", integrationTestScenarioStatus.TestPipelineRunName)
-			} else {
-				pipelineRun, err := a.createIntegrationPipelineRun(a.application, &integrationTestScenario, a.snapshot)
-				if err != nil {
-					a.logger.Error(err, "Failed to create pipelineRun for snapshot and scenario",
-						"integrationScenario.Name", integrationTestScenario.Name)
+		// Process all scenarios
+		errsForPLRCreation = a.processAllScenarios(integrationTestScenarios, testStatuses)
 
-					testStatuses.UpdateTestStatusIfChanged(
-						integrationTestScenario.Name, intgteststat.IntegrationTestStatusTestInvalid,
-						fmt.Sprintf("Creation of pipelineRun failed during creation due to: %s.", err))
+		// Cancel old pipelines if needed
+		a.cancelOldPipelinesIfNeeded()
 
-					if !clienterrors.IsInvalid(err) {
-						errsForPLRCreation = errors.Join(errsForPLRCreation, err)
-					}
-					continue
-				}
-				gitops.PrepareToRegisterIntegrationPipelineRunStarted(a.snapshot) // don't count re-runs
-				testStatuses.UpdateTestStatusIfChanged(
-					integrationTestScenario.Name, intgteststat.IntegrationTestStatusInProgress,
-					fmt.Sprintf("IntegrationTestScenario pipeline '%s' has been created", pipelineRun.Name))
-				if err = testStatuses.UpdateTestPipelineRunName(integrationTestScenario.Name, pipelineRun.Name); err != nil {
-					// it doesn't make sense to restart reconciliation here, it will be eventually updated by integrationpipeline adapter
-					a.logger.Error(err, "Failed to update pipelinerun name in test status")
-				}
-			}
-		}
-		if !gitops.IsSnapshotCreatedByPACPushEvent(a.snapshot) {
-			err = a.checkAndCancelOldSnapshotsPipelineRun(a.application, a.snapshot)
-			if err != nil {
-				a.logger.Error(err, "Failed to check and cancel old snapshot's pipelineruns",
-					"snapshot.Name:", a.snapshot.Name)
-			}
-		}
-
+		// Persist final status
 		err = gitops.WriteIntegrationTestStatusesIntoSnapshot(a.context, a.snapshot, testStatuses, a.client)
 		if err != nil {
 			a.logger.Error(err, "Failed to update test status in snapshot annotation")
 			errsForPLRCreation = errors.Join(errsForPLRCreation, err)
 		}
-
-		if errsForPLRCreation != nil {
-			return controller.RequeueWithError(errsForPLRCreation)
-		}
 	}
 
-	requiredIntegrationTestScenarios, err := a.loader.GetRequiredIntegrationTestScenariosForSnapshot(a.context, a.client, a.application, a.snapshot)
-	if err != nil {
-		a.logger.Error(err, "Failed to get all required IntegrationTestScenarios")
-		patch := client.MergeFrom(a.snapshot.DeepCopy())
-		gitops.SetSnapshotIntegrationStatusAsError(a.snapshot, "Failed to get all required IntegrationTestScenarios: "+err.Error())
-		a.logger.LogAuditEvent("Snapshot integration status marked as Invalid. Failed to get all required IntegrationTestScenarios",
-			a.snapshot, h.LogActionUpdate)
-		return controller.RequeueOnErrorOrStop(a.client.Status().Patch(a.context, a.snapshot, patch))
+	// Always validate required scenarios, even if scenario loading failed
+	result, err := a.markSnapshotPassedIfNoRequiredScenarios()
+	if err != nil || result.CancelRequest {
+		return result, err
 	}
-	if len(*requiredIntegrationTestScenarios) == 0 && !gitops.IsSnapshotMarkedAsPassed(a.snapshot) {
-		err := gitops.MarkSnapshotAsPassed(a.context, a.client, a.snapshot, "No required IntegrationTestScenarios found, skipped testing")
-		if err != nil {
-			a.logger.Error(err, "Failed to update Snapshot status")
-			return controller.RequeueWithError(err)
-		}
-		a.logger.LogAuditEvent("Snapshot marked as successful. No required IntegrationTestScenarios found, skipped testing",
-			a.snapshot, h.LogActionUpdate,
-			"snapshot.Status", a.snapshot.Status)
+
+	// Return any pipeline creation errors after required scenario validation
+	if errsForPLRCreation != nil {
+		return controller.RequeueWithError(errsForPLRCreation)
 	}
 
 	return controller.ContinueProcessing()
