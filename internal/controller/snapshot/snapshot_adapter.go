@@ -342,89 +342,19 @@ func (a *Adapter) EnsureIntegrationPipelineRunsExist() (controller.OperationResu
 // EnsureGlobalCandidateImageUpdated is an operation that ensure the ContainerImage in the Global Candidate List
 // being updated when the Snapshot is created
 func (a *Adapter) EnsureGlobalCandidateImageUpdated() (controller.OperationResult, error) {
-	if !gitops.IsComponentSnapshotCreatedByPACPushEvent(a.snapshot) && !gitops.IsOverrideSnapshot(a.snapshot) {
-		a.logger.Info("The Snapshot was neither created for a single component push event nor override type, not updating the global candidate list.")
+	if !a.shouldUpdateGlobalCandidateList() {
 		return controller.ContinueProcessing()
 	}
 
-	if gitops.IsSnapshotMarkedAsAddedToGlobalCandidateList(a.snapshot) {
-		a.logger.Info("The Snapshot's component was previously added to the global candidate list, skipping adding it.")
-		return controller.ContinueProcessing()
-	}
-
-	var componentToUpdate *applicationapiv1alpha1.Component
 	var err error
-
-	// get component from component snapshot
 	if gitops.IsComponentSnapshot(a.snapshot) {
-		err = retry.OnError(retry.DefaultRetry, func(_ error) bool { return true }, func() error {
-			componentToUpdate, err = a.loader.GetComponentFromSnapshot(a.context, a.client, a.snapshot)
-			return err
-		})
-		if err != nil {
-			_, loaderError := h.HandleLoaderError(a.logger, err, fmt.Sprintf("Component or '%s' label", tektonconsts.ComponentNameLabel), "Snapshot")
-			if loaderError != nil {
-				return controller.RequeueWithError(loaderError)
-			}
-			return controller.ContinueProcessing()
-		}
-
-		// update PromotedImage for all Components of GCL
-		// then look for the expected snapshotComponent and update
-		for _, snapshotComponent := range a.snapshot.Spec.Components {
-			snapshotComponent := snapshotComponent //G601
-			if snapshotComponent.Name == componentToUpdate.Name {
-				// update .Status.LastPromotedImage for the component included in component snapshot
-				err = a.updateComponentLastPromotedImage(a.context, a.client, componentToUpdate, &snapshotComponent)
-				if err != nil {
-					return controller.RequeueWithError(err)
-				}
-
-				// update .Status.LastBuiltCommit for the component included in component snapshot
-				err = a.updateComponentSource(a.context, a.client, componentToUpdate, &snapshotComponent)
-				if err != nil {
-					return controller.RequeueWithError(err)
-				}
-				// Updated the component for component snapshot, break
-				break
-			} else {
-				// expected component not found, continue
-				continue
-			}
-		}
+		err = a.updateGCLForComponentSnapshot()
 	} else if gitops.IsOverrideSnapshot(a.snapshot) {
-		// update Status.LastPromotedImage for each component in override snapshot
-		for _, snapshotComponent := range a.snapshot.Spec.Components {
-			snapshotComponent := snapshotComponent //G601
-			// get component for each snapshotComponent in override snapshot
-			componentToUpdate, err = a.loader.GetComponent(a.context, a.client, snapshotComponent.Name, a.snapshot.Namespace)
-			if err != nil {
-				a.logger.Error(err, "Failed to get component from applicaion, won't update global candidate list for this component", "application.Name", a.application.Name, "component.Name", snapshotComponent.Name)
-				_, loaderError := h.HandleLoaderError(a.logger, err, snapshotComponent.Name, a.application.Name)
-				if loaderError != nil {
-					return controller.RequeueWithError(loaderError)
-				}
-				continue
-			}
+		err = a.updateGCLForOverrideSnapshot()
+	}
 
-			// if the containerImage in snapshotComponent doesn't have a valid digest, the containerImage
-			// will not be added to component Global Candidate List
-			err = gitops.ValidateImageDigest(snapshotComponent.ContainerImage)
-			if err != nil {
-				a.logger.Error(err, "containerImage cannot be updated to component Global Candidate List due to invalid digest in containerImage", "component.Name", snapshotComponent.Name, "snapshotComponent.ContainerImage", snapshotComponent.ContainerImage)
-				continue
-			}
-			// update .Status.LastPromotedImage for the component included in override snapshot
-			err = a.updateComponentLastPromotedImage(a.context, a.client, componentToUpdate, &snapshotComponent)
-			if err != nil {
-				return controller.RequeueWithError(err)
-			}
-			// update .Status.LastBuiltCommit for each snapshotComponent in override snapshot
-			err = a.updateComponentSource(a.context, a.client, componentToUpdate, &snapshotComponent)
-			if err != nil {
-				return controller.RequeueWithError(err)
-			}
-		}
+	if err != nil {
+		return controller.RequeueWithError(err)
 	}
 
 	// Mark the Snapshot as already added to global candidate list to prevent it from getting added again when the Snapshot
@@ -438,69 +368,165 @@ func (a *Adapter) EnsureGlobalCandidateImageUpdated() (controller.OperationResul
 	return controller.ContinueProcessing()
 }
 
+// shouldUpdateGlobalCandidateList checks if the snapshot should update the global candidate list
+func (a *Adapter) shouldUpdateGlobalCandidateList() bool {
+	if !gitops.IsComponentSnapshotCreatedByPACPushEvent(a.snapshot) && !gitops.IsOverrideSnapshot(a.snapshot) {
+		a.logger.Info("The Snapshot was neither created for a single component push event nor override type, not updating the global candidate list.")
+		return false
+	}
+
+	if gitops.IsSnapshotMarkedAsAddedToGlobalCandidateList(a.snapshot) {
+		a.logger.Info("The Snapshot's component was previously added to the global candidate list, skipping adding it.")
+		return false
+	}
+
+	return true
+}
+
+// updateGCLForComponentSnapshot updates global candidate list for component snapshots
+func (a *Adapter) updateGCLForComponentSnapshot() error {
+	var componentToUpdate *applicationapiv1alpha1.Component
+	var err error
+
+	err = retry.OnError(retry.DefaultRetry, func(_ error) bool { return true }, func() error {
+		componentToUpdate, err = a.loader.GetComponentFromSnapshot(a.context, a.client, a.snapshot)
+		return err
+	})
+	if err != nil {
+		_, loaderError := h.HandleLoaderError(a.logger, err, fmt.Sprintf("Component or '%s' label", tektonconsts.ComponentNameLabel), "Snapshot")
+		if loaderError != nil {
+			return loaderError
+		}
+		return nil // Continue processing if no loader error
+	}
+
+	// Find and update the matching snapshot component
+	for _, snapshotComponent := range a.snapshot.Spec.Components {
+		snapshotComponent := snapshotComponent //G601
+		if snapshotComponent.Name == componentToUpdate.Name {
+			return a.updateComponentImageAndSource(componentToUpdate, &snapshotComponent)
+		}
+	}
+
+	return nil
+}
+
+// updateGCLForOverrideSnapshot handles updating global candidate list for override snapshots
+func (a *Adapter) updateGCLForOverrideSnapshot() error {
+	for _, snapshotComponent := range a.snapshot.Spec.Components {
+		snapshotComponent := snapshotComponent //G601
+
+		componentToUpdate, err := a.loader.GetComponent(a.context, a.client, snapshotComponent.Name, a.snapshot.Namespace)
+		if err != nil {
+			a.logger.Error(err, "Failed to get component from application, won't update global candidate list for this component", "application.Name", a.application.Name, "component.Name", snapshotComponent.Name)
+			_, loaderError := h.HandleLoaderError(a.logger, err, snapshotComponent.Name, a.application.Name)
+			if loaderError != nil {
+				return loaderError
+			}
+			continue
+		}
+
+		// Validate image digest before updating
+		if err := gitops.ValidateImageDigest(snapshotComponent.ContainerImage); err != nil {
+			a.logger.Error(err, "containerImage cannot be updated to component Global Candidate List due to invalid digest in containerImage", "component.Name", snapshotComponent.Name, "snapshotComponent.ContainerImage", snapshotComponent.ContainerImage)
+			continue
+		}
+
+		if err := a.updateComponentImageAndSource(componentToUpdate, &snapshotComponent); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// updateComponentImageAndSource updates both the promoted image and source for a component resulting in updating the GCL
+func (a *Adapter) updateComponentImageAndSource(component *applicationapiv1alpha1.Component, snapshotComponent *applicationapiv1alpha1.SnapshotComponent) error {
+	// update .Status.LastPromotedImage for the component
+	if err := a.updateComponentLastPromotedImage(a.context, a.client, component, snapshotComponent); err != nil {
+		return err
+	}
+
+	// update .Status.LastBuiltCommit for the component
+	if err := a.updateComponentSource(a.context, a.client, component, snapshotComponent); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 // EnsureAllReleasesExist is an operation that will ensure that all pipeline Releases associated
 // to the Snapshot and the Application's ReleasePlans exist.
 // Otherwise, it will create new Releases for each ReleasePlan.
 func (a *Adapter) EnsureAllReleasesExist() (controller.OperationResult, error) {
-	autoReleaseFieldMessage := "The Snapshot was auto-released"
-
-	canSnapshotBePromoted, reasons := gitops.CanSnapshotBePromoted(a.snapshot)
-	if !canSnapshotBePromoted {
-		a.logger.Info("The Snapshot won't be released.",
-			"reasons", strings.Join(reasons, ","))
+	if !a.shouldProcessReleases() {
 		return controller.ContinueProcessing()
 	}
 
-	if gitops.IsSnapshotMarkedAsAutoReleased(a.snapshot) {
-		a.logger.Info("The Snapshot was previously auto-released, skipping auto-release.")
-		return controller.ContinueProcessing()
-	}
-
-	releasePlans, err := a.loader.GetAutoReleasePlansForApplication(a.context, a.client, a.application)
+	releasePlans, err := a.getAutoReleasePlans()
 	if err != nil {
-		a.logger.Error(err, "Failed to get all ReleasePlans")
-		patch := client.MergeFrom(a.snapshot.DeepCopy())
-		gitops.SetSnapshotIntegrationStatusAsError(a.snapshot, "Failed to get all ReleasePlans: "+err.Error())
-		a.logger.LogAuditEvent("Snapshot integration status marked as Invalid. Failed to get all ReleasePlans",
-			a.snapshot, h.LogActionUpdate)
-		er := a.client.Status().Patch(a.context, a.snapshot, patch)
-		if er != nil {
-			a.logger.Error(er, "Failed to mark snapshot integration status as invalid",
-				"snapshot.Name", a.snapshot.Name)
-			return a.RequeueIfYoungerThanThreshold(errors.Join(err, er))
-		}
-		return a.RequeueIfYoungerThanThreshold(err)
+		return a.handleReleaseError(err, "Failed to get all ReleasePlans")
 	}
 
+	autoReleaseMessage := ""
 	if len(*releasePlans) > 0 {
-		err = a.createMissingReleasesForReleasePlans(a.application, releasePlans, a.snapshot)
-		if err != nil {
-			a.logger.Error(err, "Failed to create new Releases")
-			patch := client.MergeFrom(a.snapshot.DeepCopy())
-			gitops.SetSnapshotIntegrationStatusAsError(a.snapshot, "Failed to create new Releases: "+err.Error())
-			a.logger.LogAuditEvent("Snapshot integration status marked as Invalid. Failed to create new Releases",
-				a.snapshot, h.LogActionUpdate)
-			patchErr := a.client.Status().Patch(a.context, a.snapshot, patch)
-			if patchErr != nil {
-				a.logger.Error(patchErr, "Failed to mark snapshot integration status as invalid",
-					"snapshot.Name", a.snapshot.Name)
-				return a.RequeueIfYoungerThanThreshold(errors.Join(err, patchErr))
-			}
-			return a.RequeueIfYoungerThanThreshold(err)
+		if err := a.createMissingReleasesForReleasePlans(a.application, releasePlans, a.snapshot); err != nil {
+			return a.handleReleaseError(err, "Failed to create new release")
 		}
+		autoReleaseMessage = "The Snapshot was auto-released"
 	} else {
-		autoReleaseFieldMessage = "Skipping auto-release of the Snapshot because no ReleasePlans have the 'auto-release' label set to 'true'"
+		autoReleaseMessage = "Skipping auto-release of the Snapshot because no ReleasePlans have the 'auto-release' label set to 'true'"
 	}
 
-	// Mark the Snapshot as already auto-released to prevent re-releasing the Snapshot when it gets reconciled
-	// at a later time, especially if new ReleasePlans are introduced or existing ones are renamed
-	err = gitops.MarkSnapshotAsAutoReleased(a.context, a.client, a.snapshot, autoReleaseFieldMessage)
+	err = gitops.MarkSnapshotAsAutoReleased(a.context, a.client, a.snapshot, autoReleaseMessage)
 	if err != nil {
 		a.logger.Error(err, "Failed to update the Snapshot's status to auto-released")
 		return controller.RequeueWithError(err)
 	}
 
 	return controller.ContinueProcessing()
+}
+
+// shouldProcessReleases checks if snapshot is ready for release
+func (a *Adapter) shouldProcessReleases() bool {
+	canSnapshotBePromoted, reasons := gitops.CanSnapshotBePromoted(a.snapshot)
+	if !canSnapshotBePromoted {
+		a.logger.Info("The Snapshot won't be released.", "reasons", strings.Join(reasons, ","))
+		return false
+	}
+
+	if gitops.IsSnapshotMarkedAsAutoReleased(a.snapshot) {
+		a.logger.Info("The Snapshot was previously auto-released, skipping auto-release.")
+		return false
+	}
+
+	return true
+}
+
+// getAutoReleasePlans fetch release plans
+func (a *Adapter) getAutoReleasePlans() (*[]releasev1alpha1.ReleasePlan, error) {
+	releasePlans, err := a.loader.GetAutoReleasePlansForApplication(a.context, a.client, a.application)
+	if err != nil {
+		a.logger.Error(err, "Failed to get all ReleasePlans")
+		return nil, err
+	}
+	return releasePlans, nil
+}
+
+// handleReleaseError updates snapshot status and determine controller op for failure
+func (a *Adapter) handleReleaseError(err error, message string) (controller.OperationResult, error) {
+	a.logger.Error(err, message)
+
+	patch := client.MergeFrom(a.snapshot.DeepCopy())
+	gitops.SetSnapshotIntegrationStatusAsError(a.snapshot, message+": "+err.Error())
+
+	if patchErr := a.client.Status().Patch(a.context, a.snapshot, patch); patchErr != nil {
+		a.logger.Error(patchErr, "Failed to mark snapshot integration status as invalid", "snapshot.Name", a.snapshot.Name)
+		return a.RequeueIfYoungerThanThreshold(errors.Join(err, patchErr))
+	}
+
+	a.logger.LogAuditEvent("Snapshot integration status marked as Invalid. "+message, a.snapshot, h.LogActionUpdate)
+	return a.RequeueIfYoungerThanThreshold(err)
 }
 
 // EnsureOverrideSnapshotValid is an operation that ensure the manually created override snapshot have valid
@@ -522,7 +548,7 @@ func (a *Adapter) EnsureOverrideSnapshotValid() (controller.OperationResult, err
 		snapshotComponent := snapshotComponent //G601
 		_, err := a.loader.GetComponent(a.context, a.client, snapshotComponent.Name, a.snapshot.Namespace)
 		if err != nil {
-			a.logger.Error(err, "Failed to get component from applicaion", "application.Name", a.application.Name, "component.Name", snapshotComponent.Name)
+			a.logger.Error(err, "Failed to get component from application", "application.Name", a.application.Name, "component.Name", snapshotComponent.Name)
 			_, loaderError := h.HandleLoaderError(a.logger, err, snapshotComponent.Name, a.application.Name)
 			if loaderError != nil {
 				return controller.RequeueWithError(loaderError)
@@ -798,7 +824,7 @@ func (a *Adapter) createIntegrationPipelineRun(application *applicationapiv1alph
 	return pipelineRun, nil
 }
 
-// RequeueIfYoungerThanThreshold checks if the adapter' snapshot is younger than the threshold defined
+// RequeueIfYoungerThanThreshold checks if the adapter's snapshot is younger than the threshold defined
 // in the function.  If it is, the function returns an operation result instructing the reconciler
 // to requeue the object and the error message passed to the function.  If not, the function returns
 // an operation result instructing the reconciler NOT to requeue the object.
