@@ -491,6 +491,47 @@ var _ = Describe("Status Adapter", func() {
 		Expect(reporter.GetReporterName()).To(Equal("GithubReporter"))
 	})
 
+	It("can get Forgejo reporter from a snapshot", func() {
+		forgejoSnapshot := &applicationapiv1alpha1.Snapshot{
+			ObjectMeta: metav1.ObjectMeta{
+				Labels: map[string]string{
+					"pac.test.appstudio.openshift.io/git-provider": "forgejo",
+				},
+			},
+		}
+		st := status.NewStatus(logr.Discard(), nil)
+		reporter := st.GetReporter(forgejoSnapshot)
+		Expect(reporter).ToNot(BeNil())
+		Expect(reporter.GetReporterName()).To(Equal("ForgejoReporter"))
+	})
+
+	It("can get GitLab reporter from a snapshot", func() {
+		gitlabSnapshot := &applicationapiv1alpha1.Snapshot{
+			ObjectMeta: metav1.ObjectMeta{
+				Labels: map[string]string{
+					"pac.test.appstudio.openshift.io/git-provider": "gitlab",
+				},
+			},
+		}
+		st := status.NewStatus(logr.Discard(), nil)
+		reporter := st.GetReporter(gitlabSnapshot)
+		Expect(reporter).ToNot(BeNil())
+		Expect(reporter.GetReporterName()).To(Equal("GitlabReporter"))
+	})
+
+	It("returns nil when no suitable reporter found", func() {
+		unknownSnapshot := &applicationapiv1alpha1.Snapshot{
+			ObjectMeta: metav1.ObjectMeta{
+				Labels: map[string]string{
+					"pac.test.appstudio.openshift.io/git-provider": "unknown",
+				},
+			},
+		}
+		st := status.NewStatus(logr.Discard(), nil)
+		reporter := st.GetReporter(unknownSnapshot)
+		Expect(reporter).To(BeNil())
+	})
+
 	It("can migrate snapshot to reportStatus in old way - migration test)", func() {
 		hasSnapshot.Annotations["test.appstudio.openshift.io/status"] = "[{\"scenario\":\"scenario1\",\"status\":\"InProgress\",\"startTime\":\"2023-07-26T16:57:49+02:00\",\"lastUpdateTime\":\"2023-08-26T17:57:50+02:00\",\"details\":\"Test in progress\"}]"
 		hasSnapshot.Annotations["test.appstudio.openshift.io/pr-last-update"] = "2023-08-26T17:57:50+02:00"
@@ -753,6 +794,50 @@ var _ = Describe("Status Adapter", func() {
 			Expect(helpers.IsUnrecoverableMetadataError(err)).To(BeTrue())
 			Expect(statusCode).To(Equal(0))
 		})
+
+		It("can return unrecoverable error when label/annotation is not defined for forgejoReporter", func() {
+			forgejoSnapshot := &applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "forgejo-snapshot",
+					Namespace: "default",
+					Labels: map[string]string{
+						"pac.test.appstudio.openshift.io/git-provider": "forgejo",
+					},
+					Annotations: map[string]string{
+						"pac.test.appstudio.openshift.io/repo-url": "https://codeberg.org/org/repo",
+					},
+				},
+			}
+
+			// Missing repo-url annotation
+			err := metadata.DeleteAnnotation(forgejoSnapshot, gitops.PipelineAsCodeRepoURLAnnotation)
+			Expect(err).ToNot(HaveOccurred())
+			forgejoReporter := status.NewForgejoReporter(logr.Discard(), mockK8sClient)
+			statusCode, err := forgejoReporter.Initialize(context.Background(), forgejoSnapshot)
+			Expect(helpers.IsUnrecoverableMetadataError(err)).To(BeTrue())
+			Expect(statusCode).To(Equal(0))
+
+			// Missing org label
+			err = metadata.SetAnnotation(forgejoSnapshot, gitops.PipelineAsCodeRepoURLAnnotation, "https://codeberg.org/org/repo")
+			Expect(err).ToNot(HaveOccurred())
+			statusCode, err = forgejoReporter.Initialize(context.Background(), forgejoSnapshot)
+			Expect(helpers.IsUnrecoverableMetadataError(err)).To(BeTrue())
+			Expect(statusCode).To(Equal(0))
+
+			// Missing repository label
+			err = metadata.SetLabel(forgejoSnapshot, gitops.PipelineAsCodeURLOrgLabel, "org")
+			Expect(err).ToNot(HaveOccurred())
+			statusCode, err = forgejoReporter.Initialize(context.Background(), forgejoSnapshot)
+			Expect(helpers.IsUnrecoverableMetadataError(err)).To(BeTrue())
+			Expect(statusCode).To(Equal(0))
+
+			// Missing SHA label
+			err = metadata.SetLabel(forgejoSnapshot, gitops.PipelineAsCodeURLRepositoryLabel, "repo")
+			Expect(err).ToNot(HaveOccurred())
+			statusCode, err = forgejoReporter.Initialize(context.Background(), forgejoSnapshot)
+			Expect(helpers.IsUnrecoverableMetadataError(err)).To(BeTrue())
+			Expect(statusCode).To(Equal(0))
+		})
 	})
 
 	It("can report status in IterateIntegrationTestInStatusReport", func() {
@@ -763,6 +848,48 @@ var _ = Describe("Status Adapter", func() {
 		statusCode, err := status.IterateIntegrationTestInStatusReport(context.Background(), mockK8sClient, mockReporter, hasSnapshot, &[]v1beta2.IntegrationTestScenario{*integrationTestScenario}, integrationTestStatusDetail, "test")
 		Expect(err).Should(Succeed())
 		Expect(statusCode).NotTo(BeNil())
+	})
+
+	It("should return error for invalid git provider in IsPRMRInSnapshotOpened", func() {
+		invalidSnapshot := &applicationapiv1alpha1.Snapshot{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "invalid-snapshot",
+				Namespace: "default",
+				Labels: map[string]string{
+					"pac.test.appstudio.openshift.io/git-provider": "unknown",
+				},
+			},
+		}
+		st := status.NewStatus(logr.Discard(), mockK8sClient)
+		isPRMROpened, statusCode, err := st.IsPRMRInSnapshotOpened(context.Background(), invalidSnapshot)
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("invalid git provider, valid git provider must be one of github, gitlab, or forgejo"))
+		Expect(isPRMROpened).To(BeFalse())
+		Expect(statusCode).To(Equal(0))
+	})
+
+	It("should handle Forgejo provider in IsPRMRInSnapshotOpened", func() {
+		forgejoSnapshot := &applicationapiv1alpha1.Snapshot{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "forgejo-snapshot",
+				Namespace: "default",
+				Labels: map[string]string{
+					"pac.test.appstudio.openshift.io/git-provider":   "forgejo",
+					"pac.test.appstudio.openshift.io/url-org":        "testorg",
+					"pac.test.appstudio.openshift.io/url-repository": "testrepo",
+					"pac.test.appstudio.openshift.io/sha":            "abc123",
+				},
+				Annotations: map[string]string{
+					"pac.test.appstudio.openshift.io/repo-url":     "https://codeberg.org/testorg/testrepo",
+					"pac.test.appstudio.openshift.io/pull-request": "45",
+				},
+			},
+		}
+		st := status.NewStatus(logr.Discard(), mockK8sClient)
+		// This will fail during initialization due to missing PAC token, but we're testing the detection path
+		_, statusCode, err := st.IsPRMRInSnapshotOpened(context.Background(), forgejoSnapshot)
+		Expect(err).To(HaveOccurred()) // Expected to fail due to token retrieval
+		Expect(statusCode).To(Equal(0))
 	})
 
 })

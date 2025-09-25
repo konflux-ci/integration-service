@@ -536,6 +536,188 @@ var _ = Describe("ForgejoReporter", func() {
 			Expect(statusCode).To(Equal(0))
 			Expect(err.Error()).To(ContainSubstring("forgejo reporter is not initialized"))
 		})
+
+		It("should handle API errors during status creation", func() {
+			// Mock server that returns errors for status creation
+			errorServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				switch r.URL.Path {
+				case "/api/v1/version":
+					w.Header().Set("Content-Type", "application/json")
+					w.WriteHeader(http.StatusOK)
+					fmt.Fprint(w, `{"version": "1.22.0"}`)
+				case fmt.Sprintf("/api/v1/repos/%s/%s/statuses/%s", orgName, repoName, digest):
+					if r.Method == "POST" {
+						w.WriteHeader(http.StatusInternalServerError)
+						fmt.Fprint(w, "Internal Server Error")
+					}
+				default:
+					w.WriteHeader(http.StatusOK)
+					fmt.Fprint(w, "{}")
+				}
+			}))
+			defer errorServer.Close()
+
+			testURL := errorServer.URL + "/example/example"
+			hasSnapshot.Annotations[gitops.PipelineAsCodeRepoURLAnnotation] = testURL
+
+			repo := &pacv1alpha1.Repository{
+				ObjectMeta: metav1.ObjectMeta{Name: "pac-repo", Namespace: "default"},
+				Spec: pacv1alpha1.RepositorySpec{
+					URL: testURL,
+					GitProvider: &pacv1alpha1.GitProvider{
+						Secret: &pacv1alpha1.Secret{Name: "pac-secret", Key: "password"},
+					},
+				},
+			}
+			secret := &v1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "pac-secret", Namespace: "default"},
+				Data:       map[string][]byte{"password": []byte("my-token")},
+			}
+			mockK8sClient = &MockK8sClient{
+				getInterceptor: func(key client.ObjectKey, obj client.Object) {
+					if s, ok := obj.(*v1.Secret); ok {
+						*s = *secret
+					}
+				},
+				listInterceptor: func(list client.ObjectList) {
+					if repoList, ok := list.(*pacv1alpha1.RepositoryList); ok {
+						repoList.Items = []pacv1alpha1.Repository{*repo}
+					}
+				},
+			}
+
+			errorReporter := status.NewForgejoReporter(log, mockK8sClient)
+			statusCode, err := errorReporter.Initialize(context.TODO(), hasSnapshot)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(statusCode).To(Equal(0))
+
+			testReport := status.TestReport{
+				FullName:            "test-scenario",
+				ScenarioName:        "test-scenario",
+				SnapshotName:        "snapshot-sample",
+				Status:              integrationteststatus.IntegrationTestStatusTestPassed,
+				Summary:             "Test passed",
+				TestPipelineRunName: "test-pipeline-run",
+			}
+
+			statusCode, err = errorReporter.ReportStatus(context.TODO(), testReport)
+			Expect(err).To(HaveOccurred())
+			Expect(statusCode).To(Equal(http.StatusInternalServerError))
+			Expect(err.Error()).To(ContainSubstring("failed to set forgejo commit status"))
+		})
+
+		It("should skip comments for non-pull request snapshots", func() {
+			// Create a push event snapshot (no pull request)
+			pushSnapshot := hasSnapshot.DeepCopy()
+			delete(pushSnapshot.Annotations, gitops.PipelineAsCodePullRequestAnnotation)
+			pushSnapshot.Labels[gitops.PipelineAsCodeEventTypeLabel] = gitops.PipelineAsCodePushType
+
+			testURL := server.URL + "/example/example"
+			pushSnapshot.Annotations[gitops.PipelineAsCodeRepoURLAnnotation] = testURL
+
+			repo := &pacv1alpha1.Repository{
+				ObjectMeta: metav1.ObjectMeta{Name: "pac-repo", Namespace: "default"},
+				Spec: pacv1alpha1.RepositorySpec{
+					URL: testURL,
+					GitProvider: &pacv1alpha1.GitProvider{
+						Secret: &pacv1alpha1.Secret{Name: "pac-secret", Key: "password"},
+					},
+				},
+			}
+			secret := &v1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "pac-secret", Namespace: "default"},
+				Data:       map[string][]byte{"password": []byte("my-token")},
+			}
+			mockK8sClient = &MockK8sClient{
+				getInterceptor: func(key client.ObjectKey, obj client.Object) {
+					if s, ok := obj.(*v1.Secret); ok {
+						*s = *secret
+					}
+				},
+				listInterceptor: func(list client.ObjectList) {
+					if repoList, ok := list.(*pacv1alpha1.RepositoryList); ok {
+						repoList.Items = []pacv1alpha1.Repository{*repo}
+					}
+				},
+			}
+
+			pushReporter := status.NewForgejoReporter(log, mockK8sClient)
+			statusCode, err := pushReporter.Initialize(context.TODO(), pushSnapshot)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(statusCode).To(Equal(0))
+
+			testReport := status.TestReport{
+				FullName:            "test-scenario",
+				ScenarioName:        "test-scenario",
+				SnapshotName:        "snapshot-sample",
+				Status:              integrationteststatus.IntegrationTestStatusTestPassed,
+				Summary:             "Test passed",
+				TestPipelineRunName: "test-pipeline-run",
+			}
+
+			statusCode, err = pushReporter.ReportStatus(context.TODO(), testReport)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(statusCode).To(Equal(http.StatusCreated))
+		})
+
+		It("should skip comment creation for pending status", func() {
+			testReport := status.TestReport{
+				FullName:            "test-scenario",
+				ScenarioName:        "test-scenario",
+				SnapshotName:        "snapshot-sample",
+				Status:              integrationteststatus.IntegrationTestStatusPending,
+				Summary:             "Test is pending",
+				TestPipelineRunName: "test-pipeline-run",
+			}
+
+			statusCode, err := reporter.ReportStatus(context.TODO(), testReport)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(statusCode).To(Equal(http.StatusCreated))
+		})
+
+		It("should skip comment creation for in-progress status", func() {
+			testReport := status.TestReport{
+				FullName:            "test-scenario",
+				ScenarioName:        "test-scenario",
+				SnapshotName:        "snapshot-sample",
+				Status:              integrationteststatus.IntegrationTestStatusInProgress,
+				Summary:             "Test is in progress",
+				TestPipelineRunName: "test-pipeline-run",
+			}
+
+			statusCode, err := reporter.ReportStatus(context.TODO(), testReport)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(statusCode).To(Equal(http.StatusCreated))
+		})
+
+		It("should skip comment creation for snapshot creation failed status", func() {
+			testReport := status.TestReport{
+				FullName:     "test-scenario",
+				ScenarioName: "test-scenario",
+				SnapshotName: "snapshot-sample",
+				Status:       integrationteststatus.SnapshotCreationFailed,
+				Summary:      "Snapshot creation failed",
+			}
+
+			statusCode, err := reporter.ReportStatus(context.TODO(), testReport)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(statusCode).To(Equal(http.StatusCreated))
+		})
+
+		It("should handle missing TestPipelineRunName gracefully", func() {
+			testReport := status.TestReport{
+				FullName:     "test-scenario",
+				ScenarioName: "test-scenario",
+				SnapshotName: "snapshot-sample",
+				Status:       integrationteststatus.IntegrationTestStatusTestPassed,
+				Summary:      "Test passed",
+				// TestPipelineRunName is empty
+			}
+
+			statusCode, err := reporter.ReportStatus(context.TODO(), testReport)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(statusCode).To(Equal(http.StatusCreated))
+		})
 	})
 
 	When("Testing ReturnCodeIsUnrecoverable function", func() {
@@ -572,6 +754,8 @@ var _ = Describe("ForgejoReporter", func() {
 				{integrationteststatus.BuildPLRFailed, gitea.StatusFailure},
 				{integrationteststatus.SnapshotCreationFailed, gitea.StatusFailure},
 				{integrationteststatus.GroupSnapshotCreationFailed, gitea.StatusFailure},
+				{integrationteststatus.IntegrationTestStatusEnvironmentProvisionError_Deprecated, gitea.StatusError},
+				{integrationteststatus.IntegrationTestStatusDeploymentError_Deprecated, gitea.StatusError},
 			}
 
 			for _, testCase := range testCases {
