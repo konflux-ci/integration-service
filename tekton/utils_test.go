@@ -113,4 +113,26 @@ var _ = Describe("Utils", func() {
 		_, err := tekton.GetComponentSourceGitCommit(pipelineRun)
 		Expect(err).To(HaveOccurred())
 	})
+
+	It("can get snapshot name from SNAPSHOT result", func() {
+		// Add SNAPSHOT result to the existing pipelineRun
+		pipelineRun.Status.Results = append(pipelineRun.Status.Results, tektonv1.PipelineRunResult{
+			Name:  "SNAPSHOT",
+			Value: *tektonv1.NewStructuredValues("test-snapshot-name"),
+		})
+
+		snapshotName := tekton.GetSnapshotName(pipelineRun)
+		Expect(snapshotName).To(Equal("test-snapshot-name"))
+	})
+
+	It("returns empty string when SNAPSHOT result is not found", func() {
+		// pipelineRun should not have SNAPSHOT result by default
+		snapshotName := tekton.GetSnapshotName(pipelineRun)
+		Expect(snapshotName).To(Equal(""))
+	})
+
+	It("returns empty string when object is not a PipelineRun", func() {
+		snapshotName := tekton.GetSnapshotName(nil)
+		Expect(snapshotName).To(Equal(""))
+	})
 })

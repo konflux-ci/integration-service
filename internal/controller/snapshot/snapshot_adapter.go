@@ -221,6 +221,14 @@ func (a *Adapter) cleanupRerunLabelAndUpdateStatus(skipCount, totalScenarios int
 // EnsureIntegrationPipelineRunsExist is an operation that will ensure that all Integration pipeline runs
 // associated with the Snapshot and the Application's IntegrationTestScenarios exist.
 func (a *Adapter) EnsureIntegrationPipelineRunsExist() (controller.OperationResult, error) {
+	// Skip processing if snapshot has pending annotation (pipeline-created snapshot)
+	if a.snapshot.Annotations != nil {
+		if status, exists := a.snapshot.Annotations["appstudio.redhat.com/snapshot-status"]; exists && status == "pending" {
+			a.logger.Info("Snapshot has pending annotation, skipping integration test processing until pending annotation is removed")
+			return controller.ContinueProcessing()
+		}
+	}
+
 	if gitops.HaveAppStudioTestsFinished(a.snapshot) {
 		a.logger.Info("The Snapshot has finished testing.")
 		return controller.ContinueProcessing()
