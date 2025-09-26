@@ -869,6 +869,51 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			Expect(statusCode).NotTo(BeNil())
 		})
 
+		It("add annotation to snapshot when no git provider is found", func() {
+			// Create a snapshot WITHOUT git provider info but WITH proper component labels
+			snapshotWithoutGitProvider := &applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-snapshot-no-git",
+					Namespace: "test-namespace",
+					Labels: map[string]string{
+						gitops.SnapshotTypeLabel:      gitops.SnapshotComponentType,
+						gitops.SnapshotComponentLabel: "test-component",
+					},
+					Annotations: map[string]string{
+						"test.appstudio.openshift.io/status": "[{\"scenario\":\"scenario1\",\"status\":\"InProgress\",\"startTime\":\"2023-07-26T16:57:49+02:00\",\"lastUpdateTime\":\"2023-08-26T17:57:50+02:00\",\"details\":\"Test in progress\"}]",
+					},
+					// NO git provider labels!
+				},
+			}
+
+			// Create a buffer for logging
+			buf := bytes.Buffer{}
+			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+
+			// Set up mocks
+			ctrl := gomock.NewController(GinkgoT())
+			mockReporter = status.NewMockReporterInterface(ctrl)
+			mockStatus := status.NewMockStatusInterface(ctrl)
+
+			// Mock GetReporter to return nil (no git provider found)
+			mockStatus.EXPECT().GetReporter(gomock.Any()).Return(nil)
+
+			// Create adapter
+			adapter = NewAdapter(ctx, snapshotWithoutGitProvider, hasApp, log, loader.NewMockLoader(), k8sClient)
+			adapter.status = mockStatus
+
+			// Call the method
+			statusCode, err := adapter.ReportSnapshotStatus(snapshotWithoutGitProvider)
+
+			// Check results
+			Expect(err).ToNot(HaveOccurred())
+			Expect(statusCode).To(BeTrue())
+			Expect(snapshotWithoutGitProvider.Annotations).To(HaveKey(gitops.GitReportingFailureAnnotation))
+
+			// Check that the error was logged
+			Expect(buf.String()).Should(ContainSubstring("Failed to get git reporter for snapshot - missing required labels/annotations"))
+		})
+
 		It("report expected textual data for InProgress test scenario", func() {
 			os.Setenv("CONSOLE_NAME", "Konflux Staging")
 			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}

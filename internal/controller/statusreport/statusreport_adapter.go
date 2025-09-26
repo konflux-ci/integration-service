@@ -320,16 +320,37 @@ func (a *Adapter) ReportSnapshotStatus(testedSnapshot *applicationapiv1alpha1.Sn
 	// or the component snapshot included in group snapshot
 	for _, destinationComponentSnapshot := range destinationSnapshots {
 		reporter := a.status.GetReporter(destinationComponentSnapshot)
+
 		if reporter == nil {
-			a.logger.Info("No suitable reporter found, skipping report")
+			errMessage := fmt.Sprintf("no suitable git reporter found for snapshot %s/%s - missing required git provider labels/annotations", destinationComponentSnapshot.Namespace, destinationComponentSnapshot.Name)
+			a.logger.Error(nil, "Failed to get git reporter for snapshot - missing required labels/annotations", "snapshot.Namespace", destinationComponentSnapshot.Namespace, "snapshot.Name", destinationComponentSnapshot.Name)
+
+			// Annotate the snapshot with the error
+			annotationErr := gitops.AnnotateSnapshot(a.context, destinationComponentSnapshot, gitops.GitReportingFailureAnnotation, errMessage, a.client)
+			if annotationErr != nil {
+				a.logger.Error(annotationErr, "Failed to annotate snapshot with git reporting failure")
+			}
+			// use continue to skip to next snapshot if one fails
 			continue
 		}
+
 		a.logger.Info(fmt.Sprintf("Detected reporter: %s", reporter.GetReporterName()), "destinationComponentSnapshot.Name", destinationComponentSnapshot.Name, "testedSnapshot", testedSnapshot.Name)
+
 		if statusCode, err := reporter.Initialize(a.context, destinationComponentSnapshot); err != nil {
 			a.logger.Error(err, "Failed to initialize reporter", "reporter", reporter.GetReporterName(), "statusCode", statusCode)
 			isErrorRecoverable := !helpers.IsUnrecoverableMetadataError(err) && !reporter.ReturnCodeIsUnrecoverable(statusCode)
+
+			if helpers.IsUnrecoverableMetadataError(err) {
+				errMessage := fmt.Sprintf("unrecoverable metadata error during git reporter initialization for snapshot %s/%s: %s", destinationComponentSnapshot.Namespace, destinationComponentSnapshot.Name, err.Error())
+				annotationErr := gitops.AnnotateSnapshot(a.context, destinationComponentSnapshot, gitops.GitReportingFailureAnnotation, errMessage, a.client)
+				if annotationErr != nil {
+					a.logger.Error(annotationErr, "Failed to annotate snapshot with git reporting failure")
+				}
+			}
+
 			return isErrorRecoverable, fmt.Errorf("failed to initialize reporter: %w", err)
 		}
+
 		a.logger.Info("Reporter initialized", "reporter", reporter.GetReporterName())
 
 		err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
