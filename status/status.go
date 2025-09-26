@@ -227,6 +227,11 @@ func (s *Status) GetReporter(snapshot *applicationapiv1alpha1.Snapshot) Reporter
 		return gitlabReporter
 	}
 
+	forgejoReporter := NewForgejoReporter(s.logger, s.client)
+	if forgejoReporter.Detect(snapshot) {
+		return forgejoReporter
+	}
+
 	return nil
 }
 
@@ -385,7 +390,16 @@ func (s Status) IsPRMRInSnapshotOpened(ctx context.Context, snapshot *applicatio
 		return s.IsMRInSnapshotOpened(ctx, gitlabReporter, snapshot)
 	}
 
-	return false, 0, fmt.Errorf("invalid git provider, valid git provider must be one of github and gitlab")
+	forgejoReporter := NewForgejoReporter(s.logger, s.client)
+	if forgejoReporter.Detect(snapshot) {
+		statusCode, err := forgejoReporter.Initialize(ctx, snapshot)
+		if err != nil {
+			return false, statusCode, err
+		}
+		return s.IsPRInSnapshotOpened(ctx, forgejoReporter, snapshot)
+	}
+
+	return false, 0, fmt.Errorf("invalid git provider, valid git provider must be one of github, gitlab, or forgejo")
 }
 
 // IsMRInSnapshotOpened check if the gitlab merge request triggering snapshot is opened
