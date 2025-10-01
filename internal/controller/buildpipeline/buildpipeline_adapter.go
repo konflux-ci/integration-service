@@ -315,6 +315,48 @@ func (a *Adapter) EnsureIntegrationTestReportedToGitProvider() (controller.Opera
 
 }
 
+// EnsureSupercededSnapshotsCanceled checks for currently running snapshots from the same PR as
+// the build PipelineRun and marks them as canceled.  This will trigger the Snapshot controller
+// to cancel any running pipelines for the canceled snapshot
+func (a *Adapter) EnsureSupercededSnapshotsCanceled() (result controller.OperationResult, err error) {
+	if h.HasPipelineRunFinished(a.pipelineRun) {
+		a.logger.Info(fmt.Sprintf("PipelineRun %s has finished running", a.pipelineRun.Name))
+		return controller.ContinueProcessing()
+	}
+	if tekton.IsPLRCreatedByPACPushEvent(a.pipelineRun) {
+		a.logger.Info(fmt.Sprintf("PipelineRun %s is not associated with a pull request", a.pipelineRun.Name))
+		return controller.ContinueProcessing()
+	}
+
+	// Get Snapshots with matching PR annotation that are not finished
+	pr := a.pipelineRun.Labels[tektonconsts.PipelineAsCodePullRequestLabel]
+	snapshots, err := a.loader.GetAllSnapshotsForPR(a.context, a.client, a.application, a.component.Name, pr)
+	if err != nil {
+		return controller.RequeueWithError(fmt.Errorf("failed to get running snapshots for PR %s: %w", pr, err))
+	}
+
+	// Mark snapshots as cancelled
+	for _, snapshot := range *snapshots {
+		if gitops.HaveAppStudioTestsFinished(&snapshot) {
+			continue
+		}
+
+		err := retry.OnError(retry.DefaultRetry, func(e error) bool { return true }, func() error {
+			a.logger.Info(fmt.Sprintf("Snapshot %s has been superceded by build PLR %s. Canceling snapshot and its pipelineRuns", snapshot.Name, a.pipelineRun.Name))
+			e := a.cancelAllPipelineRunsForSnapshot(&snapshot)
+			if e != nil {
+				return e
+			}
+			e = gitops.MarkSnapshotAsCanceled(a.context, a.client, &snapshot, "Canceled - Superceded by new build")
+			return e
+		})
+		if err != nil {
+			a.logger.Error(err, fmt.Sprintf("Could not cancel test pipelines for snapshot %s", snapshot.Name))
+		}
+	}
+	return controller.ContinueProcessing()
+}
+
 // getImagePullSpecFromPipelineRun gets the full image pullspec from the given build PipelineRun,
 // In case the Image pullspec can't be composed, an error will be returned.
 func (a *Adapter) getImagePullSpecFromPipelineRun(pipelineRun *tektonv1.PipelineRun) (string, error) {
@@ -818,4 +860,18 @@ func (a *Adapter) isGroupSnapshotExpectedForBuildPLR(pipelineRun *tektonv1.Pipel
 	}
 	a.logger.Info(fmt.Sprintf("there is more than 1 component with open pr or mr found, so group snapshot is expected: %s", componentsWithOpenPRMR))
 	return true, nil
+}
+
+func (a *Adapter) cancelAllPipelineRunsForSnapshot(snapshot *applicationapiv1alpha1.Snapshot) error {
+	// get all integration pipelineruns for a snapshot
+	integrationTestPipelineruns, err := a.loader.GetAllIntegrationPipelineRunsForSnapshot(a.context, a.client, snapshot)
+	if err != nil {
+		a.logger.Error(err, "Failed to get all integration pipelineruns for snapshot", "snapshot.Name", snapshot.Name)
+		return err
+	}
+	if len(integrationTestPipelineruns) < 1 {
+		a.logger.Info("No integrationTest pipelineruns were found for snapshot", "snapshot.Name", snapshot.Name)
+		return nil
+	}
+	return gitops.CancelPipelineRuns(a.client, a.context, a.logger, integrationTestPipelineruns)
 }

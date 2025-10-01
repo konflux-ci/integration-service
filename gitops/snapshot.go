@@ -35,6 +35,7 @@ import (
 	tektonconsts "github.com/konflux-ci/integration-service/tekton/consts"
 	"github.com/konflux-ci/operator-toolkit/metadata"
 	"github.com/santhosh-tekuri/jsonschema/v5"
+	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -1331,4 +1332,30 @@ func PrepareTempGroupSnapshot(application *applicationapiv1alpha1.Application, s
 	tempGroupSnapshot := NewSnapshot(application, &[]applicationapiv1alpha1.SnapshotComponent{})
 	tempGroupSnapshot, _ = SetAnnotationAndLabelForGroupSnapshot(tempGroupSnapshot, snapshot, []ComponentSnapshotInfo{})
 	return tempGroupSnapshot
+}
+
+func CancelPipelineRuns(c client.Client, ctx context.Context, logger helpers.IntegrationLogger, integrationTestPipelineRuns []tektonv1.PipelineRun) error {
+	// get all integration pipelineruns for a snapshot
+	for _, plr := range integrationTestPipelineRuns {
+		plr := plr
+		if !helpers.HasPipelineRunFinished(&plr) {
+			// remove finalizer and cancel pipelinerun
+			err := helpers.RemoveFinalizerFromPipelineRun(ctx, c, logger, &plr, helpers.IntegrationPipelineRunFinalizer)
+			if err != nil {
+				return err
+			}
+
+			// set "CancelledRunFinally" to PLR status, should gracefully cancel pipelinerun, this is so raw I hate this
+			patch := client.MergeFrom(plr.DeepCopy())
+			plr.Spec.Status = tektonv1.PipelineRunSpecStatusCancelledRunFinally
+			plr.Annotations[PRGroupCancelledAnnotation] = "true"
+
+			err = c.Patch(ctx, &plr, patch)
+			if err != nil {
+				return err
+			}
+			logger.LogAuditEvent("IntegrationTestscenario pipelineRun has been cancelled.", &plr, helpers.LogActionUpdate)
+		}
+	}
+	return nil
 }
