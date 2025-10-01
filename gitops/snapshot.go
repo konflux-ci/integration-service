@@ -255,6 +255,9 @@ const (
 	//IntegrationTestStatusCancelledGithub is the status reported to github when integration test is cancelled
 	IntegrationTestStatusCancelledGithub = "cancelled"
 
+	//IntegrationTestStatusNeutralGithub is the status reported to github when integration test is neutral
+	IntegrationTestStatusNeutralGithub = "neutral"
+
 	ComponentNameForGroupSnapshot = "pr group"
 
 	FailedToCreateGroupSnapshotMsg = "Failed to create group snapshot for pr group"

@@ -29,6 +29,7 @@ import (
 	"github.com/konflux-ci/integration-service/git/github"
 	"github.com/konflux-ci/integration-service/gitops"
 	"github.com/konflux-ci/integration-service/helpers"
+	"github.com/konflux-ci/integration-service/loader"
 	intgteststat "github.com/konflux-ci/integration-service/pkg/integrationteststatus"
 
 	"github.com/konflux-ci/operator-toolkit/metadata"
@@ -186,7 +187,15 @@ func (cru *CheckRunStatusUpdater) createCheckRunAdapterForSnapshot(report TestRe
 	snapshot := cru.snapshot
 	detailsURL := ""
 
-	conclusion, err := generateCheckRunConclusion(report.Status)
+	l := loader.NewLoader()
+	scenario, err := l.GetScenario(context.Background(), cru.k8sClient, report.ScenarioName, cru.snapshot.Namespace)
+	if err != nil {
+		cru.logger.Error(err, fmt.Sprintf("could not determine whether scenario %s was optional", report.ScenarioName))
+		return nil, fmt.Errorf("could not determine whether scenario %s is optional", report.ScenarioName)
+	}
+	optional := helpers.IsIntegrationTestScenarioOptional(scenario)
+
+	conclusion, err := GenerateCheckRunConclusion(report.Status, optional)
 	if err != nil {
 		cru.logger.Error(err, fmt.Sprintf("failed to generate conclusion for integrationTestScenario %s and snapshot %s/%s", report.ScenarioName, snapshot.Namespace, snapshot.Name))
 		return nil, fmt.Errorf("unknown status %s for integrationTestScenario %s and snapshot %s/%s", report.Status, report.ScenarioName, snapshot.Namespace, snapshot.Name)
@@ -553,16 +562,20 @@ func generateCheckRunTitle(state intgteststat.IntegrationTestStatus) (string, er
 	return title, nil
 }
 
-// generateCheckRunConclusion generate a conclusion as the conclusion of CheckRun
+// GenerateCheckRunConclusion generate a conclusion as the conclusion of CheckRun
 // Can be one of: action_required, cancelled, failure, neutral, success, skipped, stale, timed_out
 // https://docs.github.com/en/rest/checks/runs?apiVersion=2022-11-28#create-a-check-run
-func generateCheckRunConclusion(state intgteststat.IntegrationTestStatus) (string, error) {
+func GenerateCheckRunConclusion(state intgteststat.IntegrationTestStatus, optional bool) (string, error) {
 	var conclusion string
 
 	switch state {
 	case intgteststat.IntegrationTestStatusTestFail, intgteststat.IntegrationTestStatusEnvironmentProvisionError_Deprecated,
 		intgteststat.IntegrationTestStatusDeploymentError_Deprecated, intgteststat.IntegrationTestStatusDeleted,
 		intgteststat.IntegrationTestStatusTestInvalid:
+		if optional {
+			conclusion = gitops.IntegrationTestStatusNeutralGithub
+			break
+		}
 		conclusion = gitops.IntegrationTestStatusFailureGithub
 	case intgteststat.IntegrationTestStatusTestPassed:
 		conclusion = gitops.IntegrationTestStatusSuccessGithub

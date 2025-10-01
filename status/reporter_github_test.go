@@ -678,4 +678,30 @@ var _ = Describe("GitHubReporter", func() {
 			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
 		})
 	})
+
+	Context("Testing GenerateCheckRunConclusion", func() {
+		It("Returns 'success' when optional tests pass", func() {
+			conclusion, err := status.GenerateCheckRunConclusion(integrationteststatus.IntegrationTestStatusTestPassed, true)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(conclusion).To(Equal("success"))
+		})
+
+		It("Returns 'neutral' when optional tests fail", func() {
+			conclusion, err := status.GenerateCheckRunConclusion(integrationteststatus.IntegrationTestStatusTestFail, true)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(conclusion).To(Equal("neutral"))
+		})
+
+		It("Returns 'success' when required tests pass", func() {
+			conclusion, err := status.GenerateCheckRunConclusion(integrationteststatus.IntegrationTestStatusTestPassed, false)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(conclusion).To(Equal("success"))
+		})
+
+		It("Returns 'failure' when required tests fail", func() {
+			conclusion, err := status.GenerateCheckRunConclusion(integrationteststatus.IntegrationTestStatusTestFail, false)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(conclusion).To(Equal("failure"))
+		})
+	})
 })
