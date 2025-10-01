@@ -17,6 +17,7 @@ limitations under the License.
 package helpers
 
 import (
+	"github.com/konflux-ci/operator-toolkit/metadata"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
@@ -53,4 +54,8 @@ func SetScenarioIntegrationStatusAsValid(scenario *v1beta2.IntegrationTestScenar
 		Reason:  AppStudioIntegrationStatusValid,
 		Message: message,
 	})
+}
+
+func IsIntegrationTestScenarioOptional(scenario *v1beta2.IntegrationTestScenario) bool {
+	return metadata.HasLabelWithValue(scenario, "test.appstudio.openshift.io/optional", "true")
 }
