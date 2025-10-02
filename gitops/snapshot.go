@@ -105,6 +105,9 @@ const (
 	// BuildPipelineRunStartTime contains the start time of build pipelineRun
 	BuildPipelineRunStartTime = "test.appstudio.openshift.io/pipelinerunstarttime"
 
+	// BuildPipelineLastBuiltTime contains the time of the last built pipelineRun
+	BuildPipelineLastBuiltTime = "test.appstudio.openshift.io/lastbuilttime"
+
 	// BuildPipelineRunPrefix contains the build pipeline run related labels and annotations
 	BuildPipelineRunPrefix = "build.appstudio"
 

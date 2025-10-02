@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"strconv"
 	"strings"
 	"time"
 
@@ -452,6 +453,16 @@ func (a *Adapter) updateComponentImageAndSource(component *applicationapiv1alpha
 		return err
 	}
 
+	// update the component's last build time annotation
+	if component.Annotations == nil {
+		component.Annotations = make(map[string]string)
+	}
+
+	buildTimeStr := a.snapshot.Annotations[gitops.BuildPipelineRunStartTime]
+	if buildTimeStr == "" {
+		buildTimeStr = strconv.FormatInt(time.Now().Unix(), 10)
+	}
+	component.Annotations[gitops.BuildPipelineLastBuiltTime] = buildTimeStr
 	return nil
 }
 
@@ -470,10 +481,14 @@ func (a *Adapter) EnsureAllReleasesExist() (controller.OperationResult, error) {
 
 	autoReleaseMessage := ""
 	if len(*releasePlans) > 0 {
-		if err := a.createMissingReleasesForReleasePlans(a.application, releasePlans, a.snapshot); err != nil {
-			return a.handleReleaseError(err, "Failed to create new release")
+		if a.isSnapshotOlderThanLastBuild(a.snapshot) {
+			autoReleaseMessage = "Released in newer Snapshot"
+		} else {
+			if err := a.createMissingReleasesForReleasePlans(a.application, releasePlans, a.snapshot); err != nil {
+				return a.handleReleaseError(err, "Failed to create new release")
+			}
+			autoReleaseMessage = "The Snapshot was auto-released"
 		}
-		autoReleaseMessage = "The Snapshot was auto-released"
 	} else {
 		autoReleaseMessage = "Skipping auto-release of the Snapshot because no ReleasePlans have the 'auto-release' label set to 'true'"
 	}
@@ -1105,4 +1120,36 @@ func (a *Adapter) cancelAllPipelineRunsForSnapshot(snapshot *applicationapiv1alp
 		return nil
 	}
 	return gitops.CancelPipelineRuns(a.client, a.context, a.logger, integrationTestPipelineRuns)
+}
+
+func (a *Adapter) isSnapshotOlderThanLastBuild(snapshot *applicationapiv1alpha1.Snapshot) bool {
+	componentName := snapshot.Labels[gitops.SnapshotComponentLabel]
+	if componentName == "" {
+		return false
+	}
+	snapshotBuildStartTime := snapshot.Annotations[gitops.BuildPipelineRunStartTime]
+	if snapshotBuildStartTime == "" {
+		return false
+	}
+	component, err := a.loader.GetComponent(a.context, a.client, componentName, a.snapshot.Namespace)
+	if err != nil {
+		a.logger.Error(err, "Failed to get component from snapshot", "snapshot.Name", snapshot.Name)
+		return false
+	}
+	componentlastBuiltTime := component.Annotations[gitops.BuildPipelineLastBuiltTime]
+	if componentlastBuiltTime == "" {
+		return false
+	}
+	snapshotBuildStartTimeInt, snapshotBuildStartTimeIntErr := strconv.ParseInt(snapshotBuildStartTime, 10, 64)
+	if snapshotBuildStartTimeIntErr != nil {
+		return false
+	}
+	componentlastBuiltTimeInt, componentlastBuiltTimeIntErr := strconv.ParseInt(componentlastBuiltTime, 10, 64)
+	if componentlastBuiltTimeIntErr != nil {
+		return false
+	}
+	if snapshotBuildStartTimeInt < componentlastBuiltTimeInt {
+		return true
+	}
+	return false
 }
