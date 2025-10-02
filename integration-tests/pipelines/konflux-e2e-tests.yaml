@@ -94,7 +94,7 @@ spec:
         - name: id
           value: $(context.pipelineRun.name)
         - name: tags
-          value: env=konflux,user=integration-service
+          value: 'owner=konflux-devprod@redhat.com,project=Konflux,created-by=integration-pipeline,component=integration-service'
         - name: debug
           value: 'false'
         - name: ownerKind
