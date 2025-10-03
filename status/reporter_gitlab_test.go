@@ -27,7 +27,6 @@ import (
 
 	"github.com/go-logr/logr"
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
-	"github.com/konflux-ci/operator-toolkit/metadata"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	pacv1alpha1 "github.com/openshift-pipelines/pipelines-as-code/pkg/apis/pipelinesascode/v1alpha1"
@@ -345,36 +344,6 @@ var _ = Describe("GitLabReporter", func() {
 			existingNoteID := reporter.GetExistingNoteID(notes, report.ScenarioName, report.SnapshotName)
 
 			Expect(*existingNoteID).To(Equal(note.ID))
-		})
-
-		It("don't create commit status when source and target project ID are different", func() {
-			Expect(metadata.SetAnnotation(hasSnapshot, gitops.PipelineAsCodeSourceProjectIDAnnotation, "0")).To(Succeed())
-			statusCode, err := reporter.Initialize(context.TODO(), hasSnapshot)
-			Expect(err).To(Succeed())
-			Expect(statusCode).To(Equal(0))
-
-			PipelineRunName := "TestPipeline"
-			expectedURL := status.FormatPipelineURL(PipelineRunName, hasSnapshot.Namespace, logr.Discard())
-
-			muxCommitStatusPost(mux, sourceProjectID, digest, expectedURL)
-			muxMergeNotes(mux, sourceProjectID, mergeRequest, "")
-			muxCommitStatusesGet(mux, sourceProjectID, digest, nil)
-
-			statusCode, err = reporter.ReportStatus(
-				context.TODO(),
-				status.TestReport{
-					FullName:            "fullname/scenario1",
-					ScenarioName:        "scenario1",
-					TestPipelineRunName: PipelineRunName,
-					Status:              integrationteststatus.IntegrationTestStatusInProgress,
-					Summary:             "summary",
-					Text:                "detailed text here",
-				})
-			Expect(err).To(Succeed())
-			Expect(statusCode).To(Equal(0))
-
-			expectedLogEntry := "Won't create/update commitStatus due to the access limitation for forked repo"
-			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
 		})
 	})
 

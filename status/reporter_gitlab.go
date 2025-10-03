@@ -203,21 +203,30 @@ func (r *GitLabReporter) setCommitStatus(report TestReport) (int, error) {
 	r.logger.Info("creating commit status for scenario test status of snapshot",
 		"scenarioName", report.ScenarioName)
 
-	commitStatus, response, err := r.client.Commits.SetCommitStatus(r.sourceProjectID, r.sha, &opt)
-	if response != nil {
-		statusCode = response.StatusCode
+	sourceProjectCommitStatus, sourceProjectResponse, sourceProjectErr := r.client.Commits.SetCommitStatus(r.sourceProjectID, r.sha, &opt)
+	if sourceProjectResponse != nil {
+		statusCode = sourceProjectResponse.StatusCode
 	}
-	if err != nil {
-		// when commitStatus is created in multiple thread occasionally, we can still see the transition error, so let's ignore it as a workaround
-		if strings.Contains(err.Error(), "Cannot transition status via :enqueue from :pending") {
-			r.logger.Info("Ingoring the error when transition from pending to pending when the commitStatus might be created/updated in multiple threads at the same time occasionally")
-			return statusCode, nil
-		}
-		return statusCode, fmt.Errorf("failed to set commit status to %s: %w", string(glState), err)
+	if sourceProjectErr == nil {
+		r.logger.Info("Created gitlab commit status", "scenario.name", report.ScenarioName, "commitStatus.ID", sourceProjectCommitStatus.ID, "TargetURL", opt.TargetURL)
+		return statusCode, nil
 	}
+	targetProjectCommitStatus, targetProjectResponse, targetProjectErr := r.client.Commits.SetCommitStatus(r.targetProjectID, r.sha, &opt)
+	if targetProjectResponse != nil {
+		statusCode = targetProjectResponse.StatusCode
+	}
+	if targetProjectErr == nil {
+		r.logger.Info("Created gitlab commit status", "scenario.name", report.ScenarioName, "commitStatus2.ID", targetProjectCommitStatus.ID, "TargetURL", opt.TargetURL)
+		return statusCode, nil
+	}
+	// this code will only be reached if both source project and target project cannot be updated
+	// when commitStatus is created in multiple thread occasionally, we can still see the transition error, so let's ignore it as a workaround
+	if strings.Contains(err.Error(), "Cannot transition status via :enqueue from :pending") {
+		r.logger.Info("Ingoring the error when transition from pending to pending when the commitStatus might be created/updated in multiple threads at the same time occasionally")
+		return statusCode, nil
+	}
+	return statusCode, fmt.Errorf("failed to set commit status to %s: %w", string(glState), err)
 
-	r.logger.Info("Created gitlab commit status", "scenario.name", report.ScenarioName, "commitStatus.ID", commitStatus.ID, "TargetURL", opt.TargetURL)
-	return statusCode, nil
 }
 
 // updateStatusInComment will create/update a comment in the MR which creates snapshot
@@ -294,15 +303,8 @@ func (r *GitLabReporter) ReportStatus(ctx context.Context, report TestReport) (i
 		return statusCode, fmt.Errorf("gitlab reporter is not initialized")
 	}
 
-	// We only create/update commitStatus when source project and target project are
-	// the same one due to the access limitation for forked repo
-	// refer to the same issue in pipelines-as-code https://github.com/openshift-pipelines/pipelines-as-code/blob/2f78eb8fd04d149b266ba93f2bea706b4b026403/pkg/provider/gitlab/gitlab.go#L207
-	if r.sourceProjectID == r.targetProjectID {
-		if statusCode, err := r.setCommitStatus(report); err != nil {
-			return statusCode, fmt.Errorf("failed to set gitlab commit status: %w", err)
-		}
-	} else {
-		r.logger.Info("Won't create/update commitStatus due to the access limitation for forked repo", "r.sourceProjectID", r.sourceProjectID, "r.targetProjectID", r.targetProjectID)
+	if statusCode, err := r.setCommitStatus(report); err != nil {
+		return statusCode, fmt.Errorf("failed to set gitlab commit status: %w", err)
 	}
 
 	// Create a note when integration test is neither pending nor inprogress since comment for pending/inprogress is less meaningful
