@@ -1575,6 +1575,119 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		})
 	})
 
+	When("snapshot is older than last build", func() {
+		It("ensures that snapshot as is marked with correct auto-release message", func() {
+			// CREATE COMPONENT WITH NEWER BUILD TIME
+			componentWithNewerBuild := &applicationapiv1alpha1.Component{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-component-older",
+					Namespace: "default",
+					Annotations: map[string]string{
+						gitops.BuildPipelineLastBuiltTime: "1703123456", // Newer timestamp
+					},
+				},
+				Spec: applicationapiv1alpha1.ComponentSpec{
+					ComponentName:  "test-component-older",
+					Application:    hasApp.Name,
+					ContainerImage: sample_image + "@" + sampleDigest,
+					Source: applicationapiv1alpha1.ComponentSource{
+						ComponentSourceUnion: applicationapiv1alpha1.ComponentSourceUnion{
+							GitSource: &applicationapiv1alpha1.GitSource{
+								URL:      SampleRepoLink,
+								Revision: sourceRepoRef,
+							},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, componentWithNewerBuild)).Should(Succeed())
+
+			// CREATE SNAPSHOT WITH OLDER BUILD TIME
+			olderSnapshot := &applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "older-snapshot-test",
+					Namespace: "default",
+					Labels: map[string]string{
+						gitops.SnapshotComponentLabel: "test-component-older",
+					},
+					Annotations: map[string]string{
+						gitops.BuildPipelineRunStartTime: "1703123000", // Older timestamp
+					},
+				},
+				Spec: applicationapiv1alpha1.SnapshotSpec{
+					Application: hasApp.Name,
+					Components: []applicationapiv1alpha1.SnapshotComponent{
+						{
+							Name:           "test-component-older",
+							ContainerImage: sample_image + "@" + sampleDigest,
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, olderSnapshot)).Should(Succeed())
+
+			// MARK SNAPSHOT AS PASSED (required for releases)
+			err := gitops.MarkSnapshotAsPassed(ctx, k8sClient, olderSnapshot, "test passed")
+			Expect(err).To(Succeed())
+			Expect(gitops.HaveAppStudioTestsSucceeded(olderSnapshot)).To(BeTrue())
+
+			// CREATE RELEASE PLAN
+			releasePlan := &releasev1alpha1.ReleasePlan{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-releaseplan-older",
+					Namespace: "default",
+					Labels: map[string]string{
+						releasemetadata.AutoReleaseLabel: "true",
+					},
+				},
+				Spec: releasev1alpha1.ReleasePlanSpec{
+					Application: hasApp.Name,
+					Target:      "default",
+				},
+			}
+			Expect(k8sClient.Create(ctx, releasePlan)).Should(Succeed())
+
+			// RUN THE FUNCTION USING AN ADAPTER WITH MOCKED CONTEXT
+			adapter = NewAdapter(ctx, olderSnapshot, hasApp, logger, loader.NewMockLoader(), k8sClient)
+
+			// Use mocked context like other tests
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: loader.ApplicationContextKey,
+					Resource:   hasApp,
+				},
+				{
+					ContextKey: loader.ComponentContextKey,
+					Resource:   componentWithNewerBuild,
+				},
+				{
+					ContextKey: loader.SnapshotContextKey,
+					Resource:   olderSnapshot,
+				},
+				{
+					ContextKey: loader.AutoReleasePlansContextKey,
+					Resource:   []releasev1alpha1.ReleasePlan{*releasePlan},
+				},
+			})
+
+			result, err := adapter.EnsureAllReleasesExist()
+
+			// ENSURE THAT SNAPSHOT IS MARKED WITH CORRECT AUTO-RELEASE MESSAGE
+			Expect(result.CancelRequest).To(BeFalse())
+			Expect(result.RequeueRequest).To(BeFalse())
+			Expect(err).ToNot(HaveOccurred())
+
+			// Check that snapshot is marked as auto-released
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: olderSnapshot.Name, Namespace: olderSnapshot.Namespace}, olderSnapshot)).Should(Succeed())
+			Expect(gitops.IsSnapshotMarkedAsAutoReleased(olderSnapshot)).To(BeTrue())
+
+			// Verify the message contains "Released in newer Snapshot"
+			condition := meta.FindStatusCondition(olderSnapshot.Status.Conditions, gitops.SnapshotAutoReleasedCondition)
+			Expect(condition).ToNot(BeNil())
+			Expect(condition.Message).To(Equal("Released in newer Snapshot"))
+		})
+	})
+
 	Describe("EnsureRerunPipelineRunsExist", func() {
 
 		When("manual re-run of scenario using static env is trigerred", func() {
