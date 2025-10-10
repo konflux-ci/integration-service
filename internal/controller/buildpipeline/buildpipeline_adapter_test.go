@@ -1392,6 +1392,34 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				Expect(buf.String()).ShouldNot(ContainSubstring(unexpectedLogEntry))
 			})
 		})
+
+		When("There is a snapshot currently being tested for that build pipeline", func() {
+			It("Can cancel the snapshot", func() {
+				duplicateSnapshot := hasSnapshot.DeepCopy()
+				duplicateSnapshot.Name = "duplicate-snapshot"
+				buildPipelineRun.Status.SetCondition(&apis.Condition{
+					Type:   apis.ConditionSucceeded,
+					Status: "Unknown",
+				})
+				var buf bytes.Buffer
+				log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+				adapter = NewAdapter(ctx, buildPipelineRun, hasComp, hasApp, log, loader.NewMockLoader(), k8sClient)
+				adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+					{
+						ContextKey: loader.AllSnapshotsForGivenPRContextKey,
+						Resource:   []applicationapiv1alpha1.Snapshot{*duplicateSnapshot},
+					},
+				})
+
+				result, err := adapter.EnsureSupercededSnapshotsCanceled()
+				Expect(err).NotTo(HaveOccurred())
+				Expect(result.CancelRequest).To(BeFalse())
+				Expect(result.RequeueRequest).To(BeFalse())
+				// Expect snapshot to have been canceled
+				expectedLogEntry := "has been superceded by build PLR"
+				Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
+			})
+		})
 	})
 
 	When("A new Build pipelineRun has started running", func() {
