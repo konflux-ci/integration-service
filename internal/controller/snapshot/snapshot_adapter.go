@@ -1095,35 +1095,14 @@ func (a *Adapter) checkAndCancelOldSnapshotsPipelineRun(application *application
 // cancelAllPipelineRunsForSnapshot gets all integration test pipelieruns for a given snapshot
 func (a *Adapter) cancelAllPipelineRunsForSnapshot(snapshot *applicationapiv1alpha1.Snapshot) error {
 	// get all integration pipelineruns for a snapshot
-	integrationTestPipelineruns, err := a.loader.GetAllIntegrationPipelineRunsForSnapshot(a.context, a.client, snapshot)
+	integrationTestPipelineRuns, err := a.loader.GetAllIntegrationPipelineRunsForSnapshot(a.context, a.client, snapshot)
 	if err != nil {
 		a.logger.Error(err, "Failed to get all integration pipelineruns for snapshot", "snapshot.Name", snapshot.Name)
 		return err
 	}
-	if len(integrationTestPipelineruns) < 1 {
+	if len(integrationTestPipelineRuns) < 1 {
 		a.logger.Info("No integrationTest pipelineruns were found for snapshot", "snapshot.Name", snapshot.Name)
 		return nil
 	}
-	for _, plr := range integrationTestPipelineruns {
-		plr := plr
-		if !h.HasPipelineRunFinished(&plr) {
-			// remove finalizer and cancel pipelinerun
-			err = h.RemoveFinalizerFromPipelineRun(a.context, a.client, a.logger, &plr, h.IntegrationPipelineRunFinalizer)
-			if err != nil {
-				return err
-			}
-
-			// set "CancelledRunFinally" to PLR status, should gracefully cancel pipelinerun, this is so raw I hate this
-			patch := client.MergeFrom(plr.DeepCopy())
-			plr.Spec.Status = tektonv1.PipelineRunSpecStatusCancelledRunFinally
-			plr.Annotations[gitops.PRGroupCancelledAnnotation] = "true"
-
-			err := a.client.Patch(a.context, &plr, patch)
-			if err != nil {
-				return err
-			}
-			a.logger.LogAuditEvent("IntegrationTestscenario pipelineRun has been cancelled.", &plr, h.LogActionUpdate)
-		}
-	}
-	return nil
+	return gitops.CancelPipelineRuns(a.client, a.context, a.logger, integrationTestPipelineRuns)
 }
