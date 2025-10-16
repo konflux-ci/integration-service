@@ -23,7 +23,7 @@ require (
 	github.com/tektoncd/pipeline v0.68.0
 	github.com/tonglil/buflogr v1.1.1
 	gitlab.com/gitlab-org/api/client-go v0.134.0
-	go.uber.org/mock v0.5.2
+	go.uber.org/mock v0.6.0
 	go.uber.org/zap v1.27.0
 	golang.org/x/exp v0.0.0-20251009144603-d2f985daa21b
 	golang.org/x/oauth2 v0.30.0
