@@ -457,8 +457,9 @@ spec:
     name: v1beta2
     schema:
       openAPIV3Schema:
-        description: IntegrationTestScenario is the Schema for the integrationtestscenarios
-          API
+        description: |-
+          IntegrationTestScenario is the Schema for the integrationtestscenarios API, holds a definiton for integration test with specified attributes like pipeline reference,
+          application and environment. It is a test template triggered after successful creation of a snapshot.
         properties:
           apiVersion:
             description: |-
@@ -486,10 +487,11 @@ spec:
                 pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
                 type: string
               contexts:
-                description: Contexts where this IntegrationTestScenario can be applied
+                description: Contexts where this IntegrationTestScenario can be applied,
+                  for specific component for example
                 items:
                   description: TestContext contains the name and values of a Test
-                    context
+                    context, used by IntegrationTestScenarioSpec Contexts
                   properties:
                     description:
                       type: string
@@ -509,7 +511,8 @@ spec:
                 description: Params to pass to the pipeline
                 items:
                   description: PipelineParameter contains the name and values of a
-                    Tekton Pipeline parameter
+                    Tekton Pipeline parameter, used by IntegrationTestScenarioSpec
+                    Params
                   properties:
                     name:
                       type: string
@@ -568,7 +571,7 @@ spec:
             type: object
           status:
             description: IntegrationTestScenarioStatus defines the observed state
-              of IntegrationTestScenario
+              of IntegrationTestScenario described by conditions
             properties:
               conditions:
                 items:
