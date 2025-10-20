@@ -24,13 +24,13 @@ const (
 	// TestLabelPrefix contains the prefix applied to labels and annotations related to testing.
 	TestLabelPrefix = "test.appstudio.openshift.io"
 
-	// PipelineTimeoutAnnotation contains the name of the application
+	// PipelineTimeoutAnnotation contains the pipeline timeout limit, users are allowed to customize this values
 	PipelineTimeoutAnnotation = TestLabelPrefix + "/pipeline_timeout"
 
-	// TasksTimeoutAnnotation contains the name of the application
+	// TasksTimeoutAnnotation contains the task timeout limit, users are allowed to customize this values
 	TasksTimeoutAnnotation = TestLabelPrefix + "/tasks_timeout"
 
-	// FinallyTimeoutAnnotation contains the name of the application
+	// FinallyTimeoutAnnotation contains the finally timeout limit, users are allowed to customize this values
 	FinallyTimeoutAnnotation = TestLabelPrefix + "/finally_timeout"
 )
 
@@ -45,25 +45,25 @@ type IntegrationTestScenarioSpec struct {
 	ResolverRef ResolverRef `json:"resolverRef"`
 	// Params to pass to the pipeline
 	Params []PipelineParameter `json:"params,omitempty"`
-	// Contexts where this IntegrationTestScenario can be applied
+	// Contexts where this IntegrationTestScenario can be applied, for specific component for example
 	Contexts []TestContext `json:"contexts,omitempty"`
 	// List of IntegrationTestScenario which are blocked by the successful completion of this IntegrationTestScenario
 	Dependents []string `json:"dependents,omitempty"`
 }
 
-// IntegrationTestScenarioStatus defines the observed state of IntegrationTestScenario
+// IntegrationTestScenarioStatus defines the observed state of IntegrationTestScenario described by conditions
 type IntegrationTestScenarioStatus struct {
 	Conditions []metav1.Condition `json:"conditions"`
 }
 
-// PipelineParameter contains the name and values of a Tekton Pipeline parameter
+// PipelineParameter contains the name and values of a Tekton Pipeline parameter, used by IntegrationTestScenarioSpec Params
 type PipelineParameter struct {
 	Name   string   `json:"name"`
 	Value  string   `json:"value,omitempty"`
 	Values []string `json:"values,omitempty"`
 }
 
-// TestContext contains the name and values of a Test context
+// TestContext contains the name and values of a Test context, used by IntegrationTestScenarioSpec Contexts
 type TestContext struct {
 	Name        string `json:"name"`
 	Description string `json:"description,omitempty"`
@@ -75,7 +75,8 @@ type TestContext struct {
 // +kubebuilder:printcolumn:name="Application",type=string,JSONPath=`.spec.application`
 // +kubebuilder:storageversion
 
-// IntegrationTestScenario is the Schema for the integrationtestscenarios API
+// IntegrationTestScenario is the Schema for the integrationtestscenarios API, holds a definiton for integration test with specified attributes like pipeline reference,
+// application and environment. It is a test template triggered after successful creation of a snapshot.
 type IntegrationTestScenario struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
@@ -86,7 +87,7 @@ type IntegrationTestScenario struct {
 
 // +kubebuilder:object:root=true
 
-// IntegrationTestScenarioList contains a list of IntegrationTestScenario
+// IntegrationTestScenarioList contains a list of IntegrationTestScenarios
 type IntegrationTestScenarioList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
