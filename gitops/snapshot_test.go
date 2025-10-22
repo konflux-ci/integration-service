@@ -492,6 +492,53 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 		Expect(createdSnapshot).NotTo(BeNil())
 	})
 
+	It("ensures NewSnapshot truncates application name if longer than 57 characters", func() {
+		longAppName := "this-is-a-very-long-application-name-that-exceeds-57-chars"
+		longApp := &applicationapiv1alpha1.Application{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      longAppName,
+				Namespace: namespace,
+			},
+		}
+		snapshotComponents := []applicationapiv1alpha1.SnapshotComponent{
+			{
+				Name:           "component-1",
+				ContainerImage: "registry.io/image1:v1.0.0",
+			},
+		}
+
+		snapshot := gitops.NewSnapshot(longApp, &snapshotComponents)
+
+		// GenerateName should be truncated to 57 characters + "-" = 58 characters
+		expectedPrefix := longAppName[:57] + "-"
+		Expect(snapshot.GenerateName).To(Equal(expectedPrefix))
+		Expect(snapshot.GenerateName).To(HaveLen(58))
+		// the application name in the spec should remain unchanged
+		Expect(snapshot.Spec.Application).To(Equal(longAppName))
+	})
+
+	It("ensures NewSnapshot does not truncate application name at 57 characters", func() {
+		exactAppName := "this-is-application-name-exactly-fifty-seven-characters--" // 57 chars
+		exactApp := &applicationapiv1alpha1.Application{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      exactAppName,
+				Namespace: namespace,
+			},
+		}
+		snapshotComponents := []applicationapiv1alpha1.SnapshotComponent{
+			{
+				Name:           "component-1",
+				ContainerImage: "registry.io/image1:v1.0.0",
+			},
+		}
+
+		snapshot := gitops.NewSnapshot(exactApp, &snapshotComponents)
+
+		Expect(snapshot.GenerateName).To(Equal(exactAppName + "-"))
+		Expect(snapshot.GenerateName).To(HaveLen(58))
+		Expect(snapshot.Spec.Application).To(Equal(exactAppName))
+	})
+
 	It("ensures the same Snapshots can be successfully compared", func() {
 		expectedSnapshot := hasSnapshot.DeepCopy()
 		comparisonResult := gitops.CompareSnapshots(hasSnapshot, expectedSnapshot)

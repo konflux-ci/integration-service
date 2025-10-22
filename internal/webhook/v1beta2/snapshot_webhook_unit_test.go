@@ -63,6 +63,47 @@ func TestSnapshotCustomValidator_ValidateCreate(t *testing.T) {
 			t.Errorf("Unexpected error message: %v", err)
 		}
 	})
+
+	t.Run("should reject Name longer than 63 characters", func(t *testing.T) {
+		// Name with 64 characters (exceeds max of 63)
+		longName := "this-is-a-very-long-override-snapshot-name-that-exceeds-the-max-"
+		snapshotWithLongName := &applicationapiv1alpha1.Snapshot{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      longName,
+				Namespace: "default",
+			},
+			Spec: applicationapiv1alpha1.SnapshotSpec{
+				Application: "test-app",
+			},
+		}
+
+		_, err := validator.ValidateCreate(ctx, snapshotWithLongName)
+		if err == nil {
+			t.Error("ValidateCreate should error for Name longer than 63 characters")
+		}
+		if err != nil && err.Error() != "metadata.name: Invalid value: \"this-is-a-very-long-override-snapshot-name-that-exceeds-the-max-\": name is too long (64 characters); must be at most 63 characters" {
+			t.Errorf("Unexpected error message: %v", err)
+		}
+	})
+
+	t.Run("should allow Name with exactly 63 characters", func(t *testing.T) {
+		// Name with exactly 63 characters (at the limit)
+		maxName := "this-is-a-very-long-override-snapshot-name-that-is-at-max------"
+		snapshotWithMaxName := &applicationapiv1alpha1.Snapshot{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      maxName,
+				Namespace: "default",
+			},
+			Spec: applicationapiv1alpha1.SnapshotSpec{
+				Application: "test-app",
+			},
+		}
+
+		_, err := validator.ValidateCreate(ctx, snapshotWithMaxName)
+		if err != nil {
+			t.Errorf("ValidateCreate should not error for Name with 63 characters, got: %v", err)
+		}
+	})
 }
 
 func TestSnapshotCustomValidator_ValidateUpdate(t *testing.T) {
