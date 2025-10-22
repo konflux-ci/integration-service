@@ -25,7 +25,7 @@ require (
 	gitlab.com/gitlab-org/api/client-go v0.134.0
 	go.uber.org/mock v0.5.2
 	go.uber.org/zap v1.27.0
-	golang.org/x/exp v0.0.0-20251009144603-d2f985daa21b
+	golang.org/x/exp v0.0.0-20251017212417-90e834f514db
 	golang.org/x/oauth2 v0.30.0
 	k8s.io/api v0.30.3
 	k8s.io/apimachinery v0.30.3
