@@ -304,7 +304,9 @@ func (r *GitLabReporter) ReportStatus(ctx context.Context, report TestReport) (i
 	}
 
 	if statusCode, err := r.setCommitStatus(report); err != nil {
-		return statusCode, fmt.Errorf("failed to set gitlab commit status: %w", err)
+		r.logger.Error(err, "failed to set gitlab commit status, will attempt to leave a comment on the MR")
+	} else {
+		return statusCode, nil
 	}
 
 	// Create a note when integration test is neither pending nor inprogress since comment for pending/inprogress is less meaningful
