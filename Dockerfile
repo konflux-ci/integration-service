@@ -16,8 +16,8 @@ COPY --chown=1001:0 go.sum go.sum
 COPY --chown=1001:0 . .
 
 # Build
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -o manager cmd/main.go \
- && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -o snapshotgc cmd/snapshotgc/snapshotgc.go
+RUN CGO_ENABLED=0 go build -a -o manager cmd/main.go \
+ && CGO_ENABLED=0 go build -a -o snapshotgc cmd/snapshotgc/snapshotgc.go
 
 ARG ENABLE_WEBHOOKS=true
 ENV ENABLE_WEBHOOKS=${ENABLE_WEBHOOKS}
