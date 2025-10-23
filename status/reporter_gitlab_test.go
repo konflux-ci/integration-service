@@ -220,7 +220,7 @@ var _ = Describe("GitLabReporter", func() {
 					Text:         "detailed text here",
 				})
 			Expect(err).To(Succeed())
-			Expect(statusCode).To(Equal(0))
+			Expect(statusCode).To(Equal(200))
 		})
 
 		It("creates a commit status for push snapshot with correct textual data without comments", func() {
@@ -250,7 +250,7 @@ var _ = Describe("GitLabReporter", func() {
 					Text:         "detailed text here",
 				})
 			Expect(err).To(Succeed())
-			Expect(statusCode).To(Equal(0))
+			Expect(statusCode).To(Equal(200))
 		})
 
 		It("creates a commit status for snapshot with TargetURL in CommitStatus", func() {
@@ -273,7 +273,7 @@ var _ = Describe("GitLabReporter", func() {
 					Text:                "detailed text here",
 				})
 			Expect(err).To(Succeed())
-			Expect(statusCode).To(Equal(0))
+			Expect(statusCode).To(Equal(200))
 		})
 
 		It("does not create a commit status or comment for snapshot with existing matching checkRun in running state", func() {
@@ -291,7 +291,7 @@ var _ = Describe("GitLabReporter", func() {
 
 			statusCode, err := reporter.ReportStatus(context.TODO(), report)
 			Expect(err).To(Succeed())
-			Expect(statusCode).To(Equal(0))
+			Expect(statusCode).To(Equal(200))
 		})
 
 		It("can get an existing commitStatus that matches the report", func() {

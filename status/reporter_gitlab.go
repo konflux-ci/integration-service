@@ -221,8 +221,8 @@ func (r *GitLabReporter) setCommitStatus(report TestReport) (int, error) {
 	}
 	// this code will only be reached if both source project and target project cannot be updated
 	// when commitStatus is created in multiple thread occasionally, we can still see the transition error, so let's ignore it as a workaround
-	if strings.Contains(err.Error(), "Cannot transition status via :enqueue from :pending") {
-		r.logger.Info("Ingoring the error when transition from pending to pending when the commitStatus might be created/updated in multiple threads at the same time occasionally")
+	if strings.Contains(targetProjectErr.Error(), "Cannot transition status via :enqueue from :pending") {
+		r.logger.Info("Ignoring the error when transition from pending to pending when the commitStatus might be created/updated in multiple threads at the same time occasionally")
 		return statusCode, nil
 	}
 	return statusCode, fmt.Errorf("failed to set commit status to %s: %w", string(glState), err)
@@ -304,7 +304,9 @@ func (r *GitLabReporter) ReportStatus(ctx context.Context, report TestReport) (i
 	}
 
 	if statusCode, err := r.setCommitStatus(report); err != nil {
-		return statusCode, fmt.Errorf("failed to set gitlab commit status: %w", err)
+		r.logger.Error(err, "failed to set gitlab commit status, will attempt to leave a comment on the MR")
+	} else {
+		return statusCode, nil
 	}
 
 	// Create a note when integration test is neither pending nor inprogress since comment for pending/inprogress is less meaningful
