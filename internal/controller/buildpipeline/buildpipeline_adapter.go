@@ -245,19 +245,6 @@ func (a *Adapter) EnsureIntegrationTestReportedToGitProvider() (controller.Opera
 	}
 
 	a.logger.Info(fmt.Sprintf("try to set integration test status according to the build PLR status %s", integrationTestStatus.String()))
-	tempComponentSnapshot := a.prepareTempComponentSnapshot(a.pipelineRun)
-
-	a.logger.Info("try to check if group snapshot is expected for build PLR")
-	isGroupSnapshotExpected, err := a.isGroupSnapshotExpectedForBuildPLR(a.pipelineRun)
-	if err != nil {
-		a.logger.Error(err, "failed to check if group snapshot is expected")
-		return controller.RequeueWithError(err)
-	}
-	tempGroupSnapshot := &applicationapiv1alpha1.Snapshot{}
-	if isGroupSnapshotExpected {
-		a.logger.Info("group snapshot is expected to be created for build pipelinerun, group integration test should be set for found context scenario", "pipelineRun.Name", a.pipelineRun.Name)
-		tempGroupSnapshot = a.prepareTempGroupSnapshot(a.pipelineRun)
-	}
 
 	allIntegrationTestScenarios, err := a.loader.GetAllIntegrationTestScenariosForApplication(a.context, a.client, a.application)
 	if err != nil {
@@ -266,53 +253,63 @@ func (a *Adapter) EnsureIntegrationTestReportedToGitProvider() (controller.Opera
 		return controller.RequeueWithError(err)
 	}
 
-	if allIntegrationTestScenarios != nil {
-		var integrationTestScenariosForComponentSnapshot, integrationTestScenariosForGroupSnapshot *[]v1beta2.IntegrationTestScenario
-		integrationTestScenariosForComponentSnapshot = gitops.FilterIntegrationTestScenariosWithContext(allIntegrationTestScenarios, tempComponentSnapshot)
+	if allIntegrationTestScenarios == nil {
+		return controller.ContinueProcessing()
+	}
 
-		a.logger.Info(
-			fmt.Sprintf("Found %d IntegrationTestScenarios for application", len(*integrationTestScenariosForComponentSnapshot)),
-			"Application.Name", a.application.Name,
-			"IntegrationTestScenarios", len(*integrationTestScenariosForComponentSnapshot))
-		if len(*integrationTestScenariosForComponentSnapshot) > 0 {
-			isErrorRecoverable, err := a.ReportIntegrationTestStatusAccordingToBuildPLR(a.pipelineRun, tempComponentSnapshot, integrationTestScenariosForComponentSnapshot, integrationTestStatus, a.component.Name)
-			if err != nil {
-				a.logger.Error(err, "failed to initialize integration test status or report snapshot creation status to git provider from build pipelineRun",
-					"pipelineRun.Namespace", a.pipelineRun.Namespace, "pipelineRun.Name", a.pipelineRun.Name, "isErrorRecoverable", isErrorRecoverable)
-				if isErrorRecoverable {
-					return controller.RequeueWithError(err)
-				} else {
-					a.logger.Error(err, "meeting unrecoverable error, stop reporting build pipelinerun status to git provider integration test scenario")
-					return controller.ContinueProcessing()
-				}
-			}
+	var numIntegrationTestScenariosForComponentSnapshot, numIntegrationTestScenariosForGroupSnapshot int
+	tempComponentSnapshot := a.prepareTempComponentSnapshot(a.pipelineRun)
+	numIntegrationTestScenariosForComponentSnapshot, err = a.reportStatusForExpectedSnapshot(a.pipelineRun, tempComponentSnapshot, allIntegrationTestScenarios, integrationTestStatus)
+	if err != nil {
+		a.logger.Error(err, "failed to report status for expected group Snapshot")
+		return controller.RequeueWithError(err)
+	}
+
+	a.logger.Info("try to check if group snapshot is expected for build PLR")
+	isGroupSnapshotExpected, err := a.isGroupSnapshotExpectedForBuildPLR(a.pipelineRun)
+	if err != nil {
+		a.logger.Error(err, "failed to check if group snapshot is expected")
+		return controller.RequeueWithError(err)
+	}
+
+	if isGroupSnapshotExpected {
+		a.logger.Info("group snapshot is expected to be created for build pipelinerun, group integration test should be set for found context scenario", "pipelineRun.Name", a.pipelineRun.Name)
+		tempGroupSnapshot := a.prepareTempGroupSnapshot(a.pipelineRun)
+		numIntegrationTestScenariosForGroupSnapshot, err = a.reportStatusForExpectedSnapshot(a.pipelineRun, tempGroupSnapshot, allIntegrationTestScenarios, integrationTestStatus)
+		if err != nil {
+			a.logger.Error(err, "failed to report status for expected group Snapshot")
+			return controller.RequeueWithError(err)
 		}
+	}
 
-		if isGroupSnapshotExpected {
-			integrationTestScenariosForGroupSnapshot = gitops.FilterIntegrationTestScenariosWithContext(allIntegrationTestScenarios, tempGroupSnapshot)
-			if len(*integrationTestScenariosForGroupSnapshot) > 0 {
-				isErrorRecoverable, err := a.ReportIntegrationTestStatusAccordingToBuildPLR(a.pipelineRun, tempGroupSnapshot, integrationTestScenariosForGroupSnapshot, integrationTestStatus, gitops.ComponentNameForGroupSnapshot)
-				if err != nil {
-					a.logger.Error(err, "failed to initialize integration test status or report snapshot creation status to git provider from build pipelineRun",
-						"pipelineRun.Namespace", a.pipelineRun.Namespace, "pipelineRun.Name", a.pipelineRun.Name, "isErrorRecoverable", isErrorRecoverable)
-					if isErrorRecoverable {
-						return controller.RequeueWithError(err)
-					} else {
-						return controller.ContinueProcessing()
-					}
-				}
-			}
-		}
-
-		if integrationTestScenariosForComponentSnapshot != nil || integrationTestScenariosForGroupSnapshot != nil {
-			if err = tekton.AnnotateBuildPipelineRun(a.context, a.pipelineRun, h.SnapshotCreationReportAnnotation, integrationTestStatus.String(), a.client); err != nil {
-				a.logger.Error(err, fmt.Sprintf("failed to write build plr annotation %s", h.SnapshotCreationReportAnnotation))
-				return controller.RequeueWithError(fmt.Errorf("failed to write snapshot report status metadata for annotation %s: %w", h.SnapshotCreationReportAnnotation, err))
-			}
+	if numIntegrationTestScenariosForComponentSnapshot > 0 || numIntegrationTestScenariosForGroupSnapshot > 0 {
+		if err = tekton.AnnotateBuildPipelineRun(a.context, a.pipelineRun, h.SnapshotCreationReportAnnotation, integrationTestStatus.String(), a.client); err != nil {
+			a.logger.Error(err, fmt.Sprintf("failed to write build plr annotation %s", h.SnapshotCreationReportAnnotation))
+			return controller.RequeueWithError(fmt.Errorf("failed to write snapshot report status metadata for annotation %s: %w", h.SnapshotCreationReportAnnotation, err))
 		}
 	}
 	return controller.ContinueProcessing()
 
+}
+
+// reportStatusForGroupSnapshot reports the initial integration test statuses for the expected Snapshot
+func (a *Adapter) reportStatusForExpectedSnapshot(pipelineRun *tektonv1.PipelineRun, snapshot *applicationapiv1alpha1.Snapshot, integrationTestScenarios *[]v1beta2.IntegrationTestScenario,
+	integrationTestStatus intgteststat.IntegrationTestStatus) (int, error) {
+	integrationTestScenariosForSnapshot := gitops.FilterIntegrationTestScenariosWithContext(integrationTestScenarios, snapshot)
+	numIntegrationTestScenarios := len(*integrationTestScenariosForSnapshot)
+	if numIntegrationTestScenarios > 0 {
+		isErrorRecoverable, err := a.ReportIntegrationTestStatusAccordingToBuildPLR(pipelineRun, snapshot, integrationTestScenariosForSnapshot, integrationTestStatus, gitops.ComponentNameForGroupSnapshot)
+		if err != nil {
+			a.logger.Error(err, "failed to initialize integration test status or report snapshot creation status to git provider from build pipelineRun",
+				"pipelineRun.Namespace", a.pipelineRun.Namespace, "pipelineRun.Name", a.pipelineRun.Name, "isErrorRecoverable", isErrorRecoverable)
+			if isErrorRecoverable {
+				return numIntegrationTestScenarios, err
+			} else {
+				a.logger.Error(err, "meeting unrecoverable error, stop reporting build pipelinerun status to git provider integration test scenario")
+			}
+		}
+	}
+	return numIntegrationTestScenarios, nil
 }
 
 // EnsureSupercededSnapshotsCanceled checks for currently running snapshots from the same PR as
