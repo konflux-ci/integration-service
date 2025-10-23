@@ -1073,4 +1073,181 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 
 	})
 
+	When("EnsureStatusReportedInSnapshot is called with a PipelineRun that has no finalizer", func() {
+		BeforeEach(func() {
+			// Create a PipelineRun without the finalizer (simulating the state after finalizer removal)
+			integrationPipelineRunNoFinalizer := &tektonv1.PipelineRun{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-pipeline-no-finalizer",
+					Namespace: "default",
+					Labels: map[string]string{
+						"test.appstudio.openshift.io/scenario": integrationTestScenario.Name,
+					},
+					Finalizers: []string{}, // No finalizer present
+				},
+				Spec: tektonv1.PipelineRunSpec{
+					PipelineRef: &tektonv1.PipelineRef{
+						Name: "test-pipeline",
+					},
+				},
+				Status: tektonv1.PipelineRunStatus{
+					PipelineRunStatusFields: tektonv1.PipelineRunStatusFields{
+						ChildReferences: []tektonv1.ChildStatusReference{
+							{
+								Name:             "test-taskrun",
+								PipelineTaskName: "test-task",
+							},
+						},
+					},
+					Status: v1.Status{
+						Conditions: []apis.Condition{
+							{
+								Type:   apis.ConditionSucceeded,
+								Status: "True",
+							},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, integrationPipelineRunNoFinalizer)).Should(Succeed())
+
+			adapter = NewAdapter(ctx, integrationPipelineRunNoFinalizer, hasApp, hasSnapshot, logger, loader.NewMockLoader(), k8sClient)
+		})
+
+		AfterEach(func() {
+			err := k8sClient.Delete(ctx, &tektonv1.PipelineRun{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-pipeline-no-finalizer",
+					Namespace: "default",
+				},
+			})
+			Expect(err == nil || k8serrors.IsNotFound(err)).To(BeTrue())
+		})
+
+		It("should skip processing and return ContinueProcessing when finalizer is not present", func() {
+			result, err := adapter.EnsureStatusReportedInSnapshot()
+
+			Expect(err).ToNot(HaveOccurred())
+			Expect(result.CancelRequest).To(BeFalse())
+			Expect(result.RequeueRequest).To(BeFalse())
+			Expect(result.RequeueDelay).To(Equal(time.Duration(0)))
+		})
+
+		It("should not call GetIntegrationPipelineRunStatus when finalizer is not present", func() {
+			// This test verifies that the expensive GetIntegrationPipelineRunStatus call is skipped
+			// We can verify this by checking that no TaskRun mismatch error occurs
+			// even though the PipelineRun has ChildReferences but no TaskRuns in the cluster
+
+			result, err := adapter.EnsureStatusReportedInSnapshot()
+
+			Expect(err).ToNot(HaveOccurred())
+			Expect(result.CancelRequest).To(BeFalse())
+
+			// Verify that the snapshot status was not updated (since we skipped processing)
+			statuses, err := gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(hasSnapshot)
+			Expect(err).ToNot(HaveOccurred())
+
+			// The snapshot should not have been updated with this PipelineRun's status
+			// since we skipped processing due to missing finalizer
+			detail, ok := statuses.GetScenarioStatus(integrationTestScenario.Name)
+			if ok {
+				// If there's existing status, it should not be from this PipelineRun
+				Expect(detail.TestPipelineRunName).NotTo(Equal("test-pipeline-no-finalizer"))
+			}
+		})
+	})
+
+	When("EnsureStatusReportedInSnapshot is called with a PipelineRun that has the finalizer", func() {
+		BeforeEach(func() {
+			// Create a PipelineRun with the finalizer (normal case)
+			integrationPipelineRunWithFinalizer := &tektonv1.PipelineRun{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-pipeline-with-finalizer",
+					Namespace: "default",
+					Labels: map[string]string{
+						"test.appstudio.openshift.io/scenario": integrationTestScenario.Name,
+					},
+					Finalizers: []string{helpers.IntegrationPipelineRunFinalizer}, // Finalizer present
+				},
+				Spec: tektonv1.PipelineRunSpec{
+					PipelineRef: &tektonv1.PipelineRef{
+						Name: "test-pipeline",
+					},
+				},
+				Status: tektonv1.PipelineRunStatus{
+					PipelineRunStatusFields: tektonv1.PipelineRunStatusFields{
+						ChildReferences: []tektonv1.ChildStatusReference{
+							{
+								Name:             "test-taskrun",
+								PipelineTaskName: "test-task",
+							},
+						},
+					},
+					Status: v1.Status{
+						Conditions: []apis.Condition{
+							{
+								Type:   apis.ConditionSucceeded,
+								Status: "True",
+							},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, integrationPipelineRunWithFinalizer)).Should(Succeed())
+
+			adapter = NewAdapter(ctx, integrationPipelineRunWithFinalizer, hasApp, hasSnapshot, logger, loader.NewMockLoader(), k8sClient)
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: loader.ApplicationContextKey,
+					Resource:   hasApp,
+				},
+				{
+					ContextKey: loader.ComponentContextKey,
+					Resource:   hasComp,
+				},
+				{
+					ContextKey: loader.SnapshotContextKey,
+					Resource:   hasSnapshot,
+				},
+				{
+					ContextKey: loader.TaskRunContextKey,
+					Resource:   successfulTaskRun,
+				},
+				{
+					ContextKey: loader.ApplicationComponentsContextKey,
+					Resource:   []applicationapiv1alpha1.Component{*hasComp},
+				},
+				{
+					ContextKey: loader.AllTaskRunsWithMatchingPipelineRunLabelContextKey,
+					Resource:   []tektonv1.TaskRun{*successfulTaskRun},
+				},
+			})
+		})
+
+		AfterEach(func() {
+			err := k8sClient.Delete(ctx, &tektonv1.PipelineRun{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-pipeline-with-finalizer",
+					Namespace: "default",
+				},
+			})
+			Expect(err == nil || k8serrors.IsNotFound(err)).To(BeTrue())
+		})
+
+		It("should process normally when finalizer is present", func() {
+			result, err := adapter.EnsureStatusReportedInSnapshot()
+
+			Expect(err).ToNot(HaveOccurred())
+			Expect(result.CancelRequest).To(BeFalse())
+
+			// Verify that the snapshot status was updated (since we processed normally)
+			statuses, err := gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(hasSnapshot)
+			Expect(err).ToNot(HaveOccurred())
+
+			detail, ok := statuses.GetScenarioStatus(integrationTestScenario.Name)
+			Expect(ok).To(BeTrue())
+			Expect(detail.TestPipelineRunName).To(Equal("test-pipeline-with-finalizer"))
+		})
+	})
+
 })
