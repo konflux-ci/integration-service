@@ -33,6 +33,7 @@ import (
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
 // Adapter holds the objects needed to reconcile an integration PipelineRun.
@@ -64,6 +65,14 @@ func NewAdapter(context context.Context, pipelineRun *tektonv1.PipelineRun, appl
 // EnsureStatusReportedInSnapshot will ensure that status of the integration test pipelines is reported to snapshot
 // to be consumed by user
 func (a *Adapter) EnsureStatusReportedInSnapshot() (controller.OperationResult, error) {
+	// Check if the finalizer has been removed - if so, the status has already been reported
+	// and we should skip processing to avoid the TaskRun mismatch error
+	if !controllerutil.ContainsFinalizer(a.pipelineRun, h.IntegrationPipelineRunFinalizer) {
+		a.logger.Info("Integration PipelineRun finalizer has been removed, status already reported, skipping processing",
+			"pipelineRun.Name", a.pipelineRun.Name)
+		return controller.ContinueProcessing()
+	}
+
 	var pipelinerunStatus intgteststat.IntegrationTestStatus
 	var detail string
 	var err error
