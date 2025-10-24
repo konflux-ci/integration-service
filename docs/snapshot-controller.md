@@ -42,7 +42,7 @@ flowchart TD
   %%%%%%%%%%%%%%%%%%%%%%% Drawing EnsureGlobalCandidateImageUpdated() function
 
   %% Node definitions
-  ensure2(Process further if: <br>Snapshot was not created by PAC Pull Request Event OR <br>an override snapshot was created <br>& Snapshot wasn't added to Global Candidate List)
+  ensure2(Process further if: <br>an override snapshot was created <br>& Snapshot wasn't added to Global Candidate List)
   update_container_image("<b>Get</b> all components of snapshot and <br><b>Update</b> the '.status.lastPromotedImage' field of the <br>component with the latest value, taken from <br>given Snapshot's .spec.components[x].containerImage field")
   update_last_built_commit("<b>Update</b> the '.status.lastBuiltCommit' field of the given <br>component with the latest value, taken from <br>given Snapshot's .spec.components[x].source.git.revision field")
   mark_snapshot_added_to_GCL(<b>Mark</b> the Snapshot as AddedToGlobalCandidateList)

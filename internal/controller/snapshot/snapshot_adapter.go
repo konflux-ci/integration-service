@@ -18,14 +18,12 @@ package snapshot
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
-	"reflect"
 	"strconv"
 	"strings"
 	"time"
-
-	"k8s.io/client-go/util/retry"
 
 	"golang.org/x/exp/slices"
 	clienterrors "k8s.io/apimachinery/pkg/api/errors"
@@ -347,20 +345,35 @@ func (a *Adapter) EnsureGlobalCandidateImageUpdated() (controller.OperationResul
 		return controller.ContinueProcessing()
 	}
 
-	var err error
-	if gitops.IsComponentSnapshot(a.snapshot) {
-		err = a.updateGCLForComponentSnapshot()
-	} else if gitops.IsOverrideSnapshot(a.snapshot) {
-		err = a.updateGCLForOverrideSnapshot()
+	var addedToGlobalCandidateListStatus gitops.AddedToGlobalCandidateListStatus
+
+	err := a.updateGCLForOverrideSnapshot()
+	if err != nil {
+		_, loaderError := h.HandleLoaderError(a.logger, err, fmt.Sprintf("Component or '%s' label", tektonconsts.ComponentNameLabel), "Snapshot")
+		if loaderError != nil {
+			return controller.RequeueWithError(err)
+		}
+		addedToGlobalCandidateListStatus = gitops.AddedToGlobalCandidateListStatus{
+			Result:          false,
+			Reason:          fmt.Sprintf("Failed to set Global Candidate List according to override snapshot %s/%s due to error %s", a.snapshot.Namespace, a.snapshot.Name, err.Error()),
+			LastUpdatedTime: time.Now().Format(time.RFC3339),
+		}
+	} else {
+		addedToGlobalCandidateListStatus = gitops.AddedToGlobalCandidateListStatus{
+			Result:          true,
+			Reason:          "The Snapshot's component(s) was/were added to the global candidate list",
+			LastUpdatedTime: time.Now().Format(time.RFC3339),
+		}
 	}
 
+	annotationJson, err := json.Marshal(addedToGlobalCandidateListStatus)
 	if err != nil {
 		return controller.RequeueWithError(err)
 	}
 
 	// Mark the Snapshot as already added to global candidate list to prevent it from getting added again when the Snapshot
 	// gets reconciled at a later time
-	err = gitops.MarkSnapshotAsAddedToGlobalCandidateList(a.context, a.client, a.snapshot, "The Snapshot's component(s) was/were added to the global candidate list")
+	err = gitops.MarkSnapshotAsAddedToGlobalCandidateList(a.context, a.client, a.snapshot, string(annotationJson))
 	if err != nil {
 		a.logger.Error(err, "Failed to update the Snapshot's status to AddedToGlobalCandidateList")
 		return controller.RequeueWithError(err)
@@ -371,8 +384,8 @@ func (a *Adapter) EnsureGlobalCandidateImageUpdated() (controller.OperationResul
 
 // shouldUpdateGlobalCandidateList checks if the snapshot should update the global candidate list
 func (a *Adapter) shouldUpdateGlobalCandidateList() bool {
-	if !gitops.IsComponentSnapshotCreatedByPACPushEvent(a.snapshot) && !gitops.IsOverrideSnapshot(a.snapshot) {
-		a.logger.Info("The Snapshot was neither created for a single component push event nor override type, not updating the global candidate list.")
+	if !gitops.IsOverrideSnapshot(a.snapshot) {
+		a.logger.Info("The Snapshot was not override snapshot, not updating the global candidate list.")
 		return false
 	}
 
@@ -382,34 +395,6 @@ func (a *Adapter) shouldUpdateGlobalCandidateList() bool {
 	}
 
 	return true
-}
-
-// updateGCLForComponentSnapshot updates global candidate list for component snapshots
-func (a *Adapter) updateGCLForComponentSnapshot() error {
-	var componentToUpdate *applicationapiv1alpha1.Component
-	var err error
-
-	err = retry.OnError(retry.DefaultRetry, func(_ error) bool { return true }, func() error {
-		componentToUpdate, err = a.loader.GetComponentFromSnapshot(a.context, a.client, a.snapshot)
-		return err
-	})
-	if err != nil {
-		_, loaderError := h.HandleLoaderError(a.logger, err, fmt.Sprintf("Component or '%s' label", tektonconsts.ComponentNameLabel), "Snapshot")
-		if loaderError != nil {
-			return loaderError
-		}
-		return nil // Continue processing if no loader error
-	}
-
-	// Find and update the matching snapshot component
-	for _, snapshotComponent := range a.snapshot.Spec.Components {
-		snapshotComponent := snapshotComponent //G601
-		if snapshotComponent.Name == componentToUpdate.Name {
-			return a.updateComponentImageAndSource(componentToUpdate, &snapshotComponent)
-		}
-	}
-
-	return nil
 }
 
 // updateGCLForOverrideSnapshot handles updating global candidate list for override snapshots
@@ -433,36 +418,11 @@ func (a *Adapter) updateGCLForOverrideSnapshot() error {
 			continue
 		}
 
-		if err := a.updateComponentImageAndSource(componentToUpdate, &snapshotComponent); err != nil {
+		if err := gitops.UpdateComponentImageAndSource(a.context, a.client, a.snapshot, componentToUpdate, snapshotComponent.Source, snapshotComponent.ContainerImage); err != nil {
 			return err
 		}
 	}
 
-	return nil
-}
-
-// updateComponentImageAndSource updates both the promoted image and source for a component resulting in updating the GCL
-func (a *Adapter) updateComponentImageAndSource(component *applicationapiv1alpha1.Component, snapshotComponent *applicationapiv1alpha1.SnapshotComponent) error {
-	// update .Status.LastPromotedImage for the component
-	if err := a.updateComponentLastPromotedImage(a.context, a.client, component, snapshotComponent); err != nil {
-		return err
-	}
-
-	// update .Status.LastBuiltCommit for the component
-	if err := a.updateComponentSource(a.context, a.client, component, snapshotComponent); err != nil {
-		return err
-	}
-
-	// update the component's last build time annotation
-	if component.Annotations == nil {
-		component.Annotations = make(map[string]string)
-	}
-
-	buildTimeStr := a.snapshot.Annotations[gitops.BuildPipelineRunStartTime]
-	if buildTimeStr == "" {
-		buildTimeStr = strconv.FormatInt(time.Now().Unix(), 10)
-	}
-	component.Annotations[gitops.BuildPipelineLastBuiltTime] = buildTimeStr
 	return nil
 }
 
@@ -872,41 +832,6 @@ func (a *Adapter) HandlePipelineCreationError(err error, integrationTestScenario
 		return controller.StopProcessing()
 	}
 	return controller.RequeueWithError(err)
-}
-
-func (a *Adapter) updateComponentSource(ctx context.Context, c client.Client, component *applicationapiv1alpha1.Component, snapshotComponent *applicationapiv1alpha1.SnapshotComponent) error {
-	if reflect.ValueOf(snapshotComponent.Source).IsValid() && snapshotComponent.Source.GitSource != nil && snapshotComponent.Source.GitSource.Revision != "" {
-		patch := client.MergeFrom(component.DeepCopy())
-		component.Status.LastBuiltCommit = snapshotComponent.Source.GitSource.Revision
-		err := a.client.Status().Patch(a.context, component, patch)
-		if err != nil {
-			a.logger.Error(err, "Failed to update .Status.LastBuiltCommit of Global Candidate for the Component",
-				"component.Name", component.Name)
-			return err
-		}
-		a.logger.LogAuditEvent("Updated .Status.LastBuiltCommit of Global Candidate for the Component",
-			component, h.LogActionUpdate,
-			"lastBuildCommit", component.Status.LastBuiltCommit)
-	}
-	return nil
-}
-
-func (a *Adapter) updateComponentLastPromotedImage(ctx context.Context, c client.Client, component *applicationapiv1alpha1.Component, snapshotComponent *applicationapiv1alpha1.SnapshotComponent) error {
-	if component.Status.LastPromotedImage == snapshotComponent.ContainerImage {
-		return nil
-	}
-	patch := client.MergeFrom(component.DeepCopy())
-	component.Status.LastPromotedImage = snapshotComponent.ContainerImage
-	err := a.client.Status().Patch(a.context, component, patch)
-	if err != nil {
-		a.logger.Error(err, "Failed to update .Status.LastPromotedImage of Global Candidate for the Component",
-			"component.Name", component.Name)
-		return err
-	}
-	a.logger.LogAuditEvent("Updated .Status.LastPromotedImage of Global Candidate for the Component",
-		component, h.LogActionUpdate,
-		"LastPromotedImage", component.Status.LastPromotedImage)
-	return nil
 }
 
 func (a *Adapter) prepareGroupSnapshot(application *applicationapiv1alpha1.Application, prGroup, prGroupHash string) (*applicationapiv1alpha1.Snapshot, []gitops.ComponentSnapshotInfo, error) {

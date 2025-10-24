@@ -18,6 +18,7 @@ package buildpipeline
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
@@ -70,6 +71,50 @@ func NewAdapter(context context.Context, pipelineRun *tektonv1.PipelineRun, comp
 		context:     context,
 		status:      status.NewStatus(logger.Logger, client),
 	}
+}
+
+// EnsureGlobalCandidateImageUpdated is an operation that ensure the ContainerImage in the Global Candidate List
+// being updated when the build pipelinerun from push event succeeds and is signed.
+func (a *Adapter) EnsureGlobalCandidateImageUpdated() (controller.OperationResult, error) {
+	if !a.shouldUpdateGlobalCandidateList() {
+		return controller.ContinueProcessing()
+	}
+
+	var addedToGlobalCandidateListStatus gitops.AddedToGlobalCandidateListStatus
+
+	err := a.updateGCLForBuildPLR()
+	if err != nil {
+		_, loaderError := h.HandleLoaderError(a.logger, err, fmt.Sprintf("Component or '%s' label", tektonconsts.ComponentNameLabel), "Snapshot")
+		if loaderError != nil {
+			return controller.RequeueWithError(err)
+		}
+		addedToGlobalCandidateListStatus = gitops.AddedToGlobalCandidateListStatus{
+			Result:          false,
+			Reason:          fmt.Sprintf("Failed to set Global Candidate List for component %s due to error %s", a.component.Name, err.Error()),
+			LastUpdatedTime: time.Now().Format(time.RFC3339),
+		}
+	} else {
+		a.logger.Info("Global Candidate List has been updated for component", "component.Namespace", a.component.Namespace, "component.Name", a.component.Name)
+		addedToGlobalCandidateListStatus = gitops.AddedToGlobalCandidateListStatus{
+			Result:          true,
+			Reason:          gitops.Success,
+			LastUpdatedTime: time.Now().Format(time.RFC3339),
+		}
+	}
+
+	annotationJson, err := json.Marshal(addedToGlobalCandidateListStatus)
+	if err != nil {
+		return controller.RequeueWithError(err)
+	}
+	// Mark the build PLR as already added to global candidate list to prevent it from getting added again when the Snapshot
+	// gets reconciled at a later time
+	err = tekton.MarkBuildPLRAsAddedToGlobalCandidateList(a.context, a.client, a.pipelineRun, string(annotationJson))
+	if err != nil {
+		a.logger.Error(err, "Failed to update the build pipelinerun's annotation to AddedToGlobalCandidateList")
+		return controller.RequeueWithError(err)
+	}
+
+	return controller.ContinueProcessing()
 }
 
 // EnsureSnapshotExists is an operation that will ensure that a pipeline Snapshot associated
@@ -871,4 +916,63 @@ func (a *Adapter) cancelAllPipelineRunsForSnapshot(snapshot *applicationapiv1alp
 		return nil
 	}
 	return gitops.CancelPipelineRuns(a.client, a.context, a.logger, integrationTestPipelineruns)
+}
+
+// shouldUpdateGlobalCandidateList checks if the build pipelinrun should update the global candidate list
+func (a *Adapter) shouldUpdateGlobalCandidateList() bool {
+	if !tekton.IsPLRCreatedByPACPushEvent(a.pipelineRun) {
+		a.logger.Info("The build pipelineRun wasn't created for a single component push event, not updating the global candidate list.")
+		return false
+	}
+
+	if !h.HasPipelineRunSucceeded(a.pipelineRun) {
+		return false
+	}
+
+	if _, found := a.pipelineRun.Annotations[tektonconsts.PipelineRunChainsSignedAnnotation]; !found {
+		a.logger.Info("Not processing the pipelineRun because it's not yet signed with Chains")
+		return false
+	}
+	if tekton.IsBuildPLRMarkedAsAddedToGlobalCandidateList(a.pipelineRun) {
+		a.logger.Info("The PipelineRun's component was previously added to the global candidate list, skipping adding it.")
+		return false
+	}
+
+	if isBuildPLROlderThanLastBuild(a.pipelineRun, a.component) {
+		a.logger.Info("build pipelineRun start time is older than last built time in component annotation test.appstudio.openshift.io/lastbuilttime, won't update Global Candidate List")
+		return false
+	}
+	return true
+}
+
+// updateGCLForBuildPLR updates global candidate list for component snapshots
+func (a *Adapter) updateGCLForBuildPLR() error {
+	containerImage, err := a.getImagePullSpecFromPipelineRun(a.pipelineRun)
+	if err != nil {
+		return nil
+	}
+
+	componentSource, err := a.getComponentSourceFromPipelineRun(a.pipelineRun)
+	if err != nil {
+		return nil
+	}
+
+	return gitops.UpdateComponentImageAndSource(a.context, a.client, a.pipelineRun, a.component, *componentSource, containerImage)
+}
+
+// isBuildPLROlderThanLastBuild will compare the build plr start time and lastBuiltTime in component annotation
+func isBuildPLROlderThanLastBuild(pipelineRun *tektonv1.PipelineRun, component *applicationapiv1alpha1.Component) bool {
+	componentlastBuiltTime := component.Annotations[gitops.BuildPipelineLastBuiltTime]
+	if componentlastBuiltTime == "" {
+		return false
+	}
+	buildStartTimeStr := pipelineRun.Status.StartTime.Unix()
+	componentlastBuiltTimeInt, componentlastBuiltTimeIntErr := strconv.ParseInt(componentlastBuiltTime, 10, 64)
+	if componentlastBuiltTimeIntErr != nil {
+		return false
+	}
+	if buildStartTimeStr < componentlastBuiltTimeInt {
+		return true
+	}
+	return false
 }
