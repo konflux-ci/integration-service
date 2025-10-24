@@ -17,11 +17,6 @@ spec:
     - name: test-name
       description: 'The name of the test corresponding to a defined Konflux integration test.'
       default: ''
-    - name: test-stage
-      default: 'integration-service-e2e'
-      description: >-
-        "The name or identifier of the testing phase (e.g., "integration", "e2e") during which the results
-          are being captured. This helps distinguish the test results within Sealights for better reporting and traceability"
     - name: ocp-version
       description: 'The OpenShift version to use for the ephemeral cluster deployment.'
       type: string
@@ -41,23 +36,7 @@ spec:
       default: 'none'
       description: 'Container image built from any konflux git repo. Use this param only when you run Konflux e2e tests
         in another Konflux component repo. Will pass the component built image from the snapshot.'
-    - name: enable-sl-plugin
-      description: "A flag to enable or disable the Sealights integration feature. When set to 'true', test results are sent to Sealights for analysis; otherwise, this feature is skipped."
-      default: "true"
   tasks:
-    - name: sealights-refs
-      taskRef:
-        resolver: git
-        params:
-          - name: url
-            value: https://github.com/konflux-ci/tekton-integration-catalog.git
-          - name: revision
-            value: main
-          - name: pathInRepo
-            value: tasks/sealights/sealights-get-refs/0.1/sealights-get-refs.yaml
-      params:
-        - name: SNAPSHOT
-          value: $(params.SNAPSHOT)
     - name: test-metadata
       taskRef:
         resolver: git
@@ -67,7 +46,7 @@ spec:
           - name: revision
             value: main
           - name: pathInRepo
-            value: common/tasks/test-metadata/0.1/test-metadata.yaml
+            value: tasks/test-metadata/0.3/test-metadata.yaml
       params:
         - name: SNAPSHOT
           value: $(params.SNAPSHOT)
@@ -75,7 +54,6 @@ spec:
           value: $(context.pipelineRun.name)
     - name: provision-kind-cluster
       runAfter:
-        - sealights-refs
         - test-metadata
       taskRef:
         resolver: git
@@ -134,9 +112,9 @@ spec:
         - name: component-name
           value: integration-service
         - name: component-image-repository
-          value: $(tasks.sealights-refs.results.sealights-container-repo)
+          value: $(tasks.test-metadata.results.container-repo)
         - name: component-image-tag
-          value: $(tasks.sealights-refs.results.sealights-container-tag)
+          value: $(tasks.test-metadata.results.container-tag)
         - name: component-pr-owner
           value: $(tasks.test-metadata.results.pull-request-author)
         - name: component-pr-sha
@@ -176,13 +154,7 @@ spec:
         - name: job-spec
           value: $(tasks.test-metadata.results.job-spec)
         - name: component-image
-          value: $(tasks.sealights-refs.results.sealights-container-image)
-        - name: sealights-bsid
-          value: $(tasks.sealights-refs.results.sealights-bsid)
-        - name: test-stage
-          value: $(params.test-stage)
-        - name: enable-sl-plugin
-          value: $(params.enable-sl-plugin)
+          value: $(tasks.test-metadata.results.container-image)
         - name: cluster-access-secret-name
           value: kfg-$(context.pipelineRun.name)
         - name: test-environment

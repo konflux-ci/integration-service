@@ -168,31 +168,6 @@ spec:
       workspaces:
       - name: basic-auth
         workspace: git-auth
-    - name: sealights-go-instrumentation
-      params:
-      - name: SOURCE_ARTIFACT
-        value: $(tasks.clone-repository.results.SOURCE_ARTIFACT)
-      - name: component
-        value: '{{ repo_name }}'
-      - name: branch
-        value: '{{ source_branch }}'
-      - name: revision
-        value: '{{ revision }}'
-      - name: oci-storage
-        value: $(params.output-image).sealights.git
-      - name: disable-token-save
-        value: "true"
-      runAfter:
-      - clone-repository
-      taskRef:
-        params:
-        - name: name
-          value: sealights-go-oci-ta
-        - name: bundle
-          value: quay.io/konflux-ci/tekton-catalog/task-sealights-go-oci-ta:0.1@sha256:ce75fd9d498365a9c1e42f8340cc3e7d09a68ab312588905d169964055f092b2
-        - name: kind
-          value: task
-        resolver: bundles
     - name: prefetch-dependencies
       params:
       - name: input
@@ -259,48 +234,6 @@ spec:
           value: buildah-remote-oci-ta
         - name: bundle
           value: quay.io/konflux-ci/tekton-catalog/task-buildah-remote-oci-ta:0.6@sha256:ac05dabe8b6b446f974cf2b6ef1079cfaa9443d7078c2ebe3ec79aa650e1b5b2
-        - name: kind
-          value: task
-        resolver: bundles
-      when:
-      - input: $(tasks.init.results.build)
-        operator: in
-        values:
-        - "true"
-    - name: build-sealights-container
-      params:
-      - name: IMAGE
-        value: $(params.output-image).sealights
-      - name: DOCKERFILE
-        value: $(params.dockerfile)
-      - name: CONTEXT
-        value: $(params.path-context)
-      - name: HERMETIC
-        value: $(params.hermetic)
-      - name: PREFETCH_INPUT
-        value: $(params.prefetch-input)
-      - name: IMAGE_EXPIRES_AFTER
-        value: $(params.image-expires-after)
-      - name: COMMIT_SHA
-        value: $(tasks.clone-repository.results.commit)
-      - name: BUILD_ARGS
-        value:
-        - $(params.build-args[*])
-      - name: BUILD_ARGS_FILE
-        value: $(params.build-args-file)
-      - name: SOURCE_ARTIFACT
-        value: $(tasks.sealights-go-instrumentation.results.SOURCE_ARTIFACT)
-      - name: CACHI2_ARTIFACT
-        value: $(tasks.prefetch-dependencies.results.CACHI2_ARTIFACT)
-      runAfter:
-      - sealights-go-instrumentation
-      - prefetch-dependencies
-      taskRef:
-        params:
-        - name: name
-          value: buildah-oci-ta
-        - name: bundle
-          value: quay.io/konflux-ci/tekton-catalog/task-buildah-oci-ta:0.6@sha256:7b4c101b71e48b267079a5b6331d22de0b25e008c9e1dcaca1c41c4312391e39
         - name: kind
           value: task
         resolver: bundles
