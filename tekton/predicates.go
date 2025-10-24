@@ -17,6 +17,7 @@ limitations under the License.
 package tekton
 
 import (
+	"github.com/konflux-ci/integration-service/gitops"
 	"github.com/konflux-ci/integration-service/helpers"
 	"github.com/konflux-ci/integration-service/tekton/consts"
 	"github.com/konflux-ci/operator-toolkit/metadata"
@@ -65,6 +66,28 @@ func BuildPipelineRunSignedAndSucceededPredicate() predicate.Predicate {
 		UpdateFunc: func(e event.UpdateEvent) bool {
 			return IsBuildPipelineRun(e.ObjectNew) && isChainsDoneWithPipelineRun(e.ObjectNew) &&
 				helpers.HasPipelineRunSucceeded(e.ObjectNew) &&
+				!metadata.HasAnnotation(e.ObjectNew, consts.SnapshotNameLabel)
+		},
+	}
+}
+
+// BuildPipelineRunGroupInfoAddedPredicate returns a predicate which filters out all objects except
+// Build PipelineRuns which have their group information added and haven't had a Snapshot created for them.
+func BuildPipelineRunGroupInfoAddedPredicate() predicate.Predicate {
+	return predicate.Funcs{
+		CreateFunc: func(createEvent event.CreateEvent) bool {
+			return false
+		},
+		DeleteFunc: func(deleteEvent event.DeleteEvent) bool {
+			return false
+		},
+		GenericFunc: func(genericEvent event.GenericEvent) bool {
+			return false
+		},
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			return IsBuildPipelineRun(e.ObjectNew) &&
+				metadata.HasLabel(e.ObjectNew, gitops.PRGroupHashLabel) &&
+				metadata.HasAnnotation(e.ObjectNew, gitops.PRGroupAnnotation) &&
 				!metadata.HasAnnotation(e.ObjectNew, consts.SnapshotNameLabel)
 		},
 	}

@@ -148,6 +148,82 @@ var _ = Describe("Predicates", func() {
 		})
 	})
 
+	Context("when testing BuildPipelineRunGroupInfoAdded", func() {
+		instance := tekton.BuildPipelineRunGroupInfoAddedPredicate()
+
+		BeforeEach(func() {
+
+			pipelineRun = &tektonv1.PipelineRun{
+				ObjectMeta: v1.ObjectMeta{
+					GenerateName: prefix + "-",
+					Namespace:    namespace,
+					Labels: map[string]string{
+						"pipelines.appstudio.openshift.io/type": "build",
+					},
+					Annotations: map[string]string{},
+				},
+				Spec: tektonv1.PipelineRunSpec{},
+			}
+			newPipelineRun = pipelineRun.DeepCopy()
+		})
+
+		It("should ignore creating events", func() {
+			contextEvent := event.CreateEvent{
+				Object: pipelineRun,
+			}
+			Expect(instance.Create(contextEvent)).To(BeFalse())
+		})
+		It("should ignore deleting events", func() {
+			contextEvent := event.DeleteEvent{
+				Object: pipelineRun,
+			}
+			Expect(instance.Delete(contextEvent)).To(BeFalse())
+		})
+
+		It("should ignore generic events", func() {
+			contextEvent := event.GenericEvent{
+				Object: pipelineRun,
+			}
+			Expect(instance.Generic(contextEvent)).To(BeFalse())
+		})
+
+		It("should return true when an update event is received for a pipeline with both group annotations", func() {
+			newPipelineRun.Status.SetCondition(&apis.Condition{
+				Type:   apis.ConditionSucceeded,
+				Status: "True",
+			})
+			contextEvent := event.UpdateEvent{
+				ObjectOld: pipelineRun,
+				ObjectNew: newPipelineRun,
+			}
+			Expect(instance.Update(contextEvent)).To(BeFalse())
+
+			newPipelineRun.Annotations["test.appstudio.openshift.io/pr-group"] = "someGroup"
+			Expect(instance.Update(contextEvent)).To(BeFalse())
+			newPipelineRun.Labels["test.appstudio.openshift.io/pr-group-sha"] = "someSha"
+			Expect(instance.Update(contextEvent)).To(BeTrue())
+		})
+
+		It("should return false when an update event is received for a pipeline with group info but with an existing Snapshot", func() {
+			// also failed pipelines are signed by tekton chains, test it
+			newPipelineRun.Status.SetCondition(&apis.Condition{
+				Type:   apis.ConditionSucceeded,
+				Status: "False",
+			})
+
+			contextEvent := event.UpdateEvent{
+				ObjectOld: pipelineRun,
+				ObjectNew: newPipelineRun,
+			}
+			Expect(instance.Update(contextEvent)).To(BeFalse())
+
+			newPipelineRun.Annotations["test.appstudio.openshift.io/pr-group"] = "someGroup"
+			newPipelineRun.Labels["test.appstudio.openshift.io/pr-group-sha"] = "someSha"
+			newPipelineRun.Annotations["appstudio.openshift.io/snapshot"] = "someSnapshot"
+			Expect(instance.Update(contextEvent)).To(BeFalse())
+		})
+	})
+
 	Context("when testing IntegrationPipelineRunPredicate", func() {
 		instance := tekton.IntegrationPipelineRunPredicate()
 
