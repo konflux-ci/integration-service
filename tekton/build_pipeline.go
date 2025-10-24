@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/konflux-ci/integration-service/gitops"
 	h "github.com/konflux-ci/integration-service/helpers"
 	"github.com/konflux-ci/integration-service/tekton/consts"
 	"github.com/konflux-ci/operator-toolkit/metadata"
@@ -129,4 +130,24 @@ func IsLatestBuildPipelineRunInComponent(pipelineRun *tektonv1.PipelineRun, pipe
 		}
 	}
 	return true
+}
+
+// MarkBuildPLRAsAddedToGlobalCandidateList updates the AddedToGlobalCandidateListAnnotation annotation for the build pipelineRun to true with reason 'Success'.
+// If the patch command fails, an error will be returned.
+func MarkBuildPLRAsAddedToGlobalCandidateList(ctx context.Context, adapterClient client.Client, pipelineRun *tektonv1.PipelineRun, message string) error {
+	return AnnotateBuildPipelineRun(ctx, pipelineRun, gitops.AddedToGlobalCandidateListAnnotation, message, adapterClient)
+}
+
+// IsBuildPLRMarkedAsAddedToGlobalCandidateList returns true if pipelineRun's component is marked as added to global candidate list
+func IsBuildPLRMarkedAsAddedToGlobalCandidateList(pipelineRun *tektonv1.PipelineRun) bool {
+	annotationValue, ok := pipelineRun.GetAnnotations()[gitops.AddedToGlobalCandidateListAnnotation]
+	if !ok || annotationValue == "" {
+		return false
+	}
+
+	var addedToGlobalCandidateListStatus gitops.AddedToGlobalCandidateListStatus
+	if err := json.Unmarshal([]byte(annotationValue), &addedToGlobalCandidateListStatus); err != nil {
+		return false
+	}
+	return addedToGlobalCandidateListStatus.Result
 }

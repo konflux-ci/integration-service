@@ -22,6 +22,7 @@ import (
 	. "github.com/onsi/gomega"
 	. "github.com/onsi/gomega/gstruct"
 
+	"encoding/json"
 	"strconv"
 	"time"
 
@@ -272,9 +273,7 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 	})
 
 	AfterEach(func() {
-		err := k8sClient.Delete(ctx, hasComp)
-		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
-		err = k8sClient.Delete(ctx, hasSnapshot)
+		err := k8sClient.Delete(ctx, hasSnapshot)
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 		err = k8sClient.Delete(ctx, hasComSnapshot1)
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
@@ -286,6 +285,8 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 
 	AfterAll(func() {
 		err := k8sClient.Delete(ctx, badComp)
+		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
+		err = k8sClient.Delete(ctx, hasComp)
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 		err = k8sClient.Delete(ctx, hasApp)
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
@@ -408,16 +409,27 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 
 	It("ensures the Snapshots status can be marked as component added to global candidate list", func() {
 		Expect(gitops.IsSnapshotMarkedAsAddedToGlobalCandidateList(hasSnapshot)).To(BeFalse())
-		Expect(gitops.IsComponentSnapshotCreatedByPACPushEvent(hasSnapshot)).To(BeTrue())
+		addedToGlobalCandidateListStatus := gitops.AddedToGlobalCandidateListStatus{
+			Result:          true,
+			Reason:          "The Snapshot's component(s) was/were added to the global candidate list",
+			LastUpdatedTime: time.Now().Format(time.RFC3339),
+		}
 
-		err := gitops.MarkSnapshotAsAddedToGlobalCandidateList(ctx, k8sClient, hasSnapshot, "Test message")
+		annotationJson, err := json.Marshal(addedToGlobalCandidateListStatus)
+		Expect(err).ShouldNot(HaveOccurred())
+		err = gitops.MarkSnapshotAsAddedToGlobalCandidateList(ctx, k8sClient, hasSnapshot, string(annotationJson))
 		Expect(err).ToNot(HaveOccurred())
-		Expect(hasSnapshot.Status.Conditions).NotTo(BeNil())
-		foundStatusCondition := meta.FindStatusCondition(hasSnapshot.Status.Conditions, gitops.SnapshotAddedToGlobalCandidateListCondition)
-		Expect(foundStatusCondition.Status).To(Equal(metav1.ConditionTrue))
-		Expect(foundStatusCondition.Message).To(Equal("Test message"))
 
-		Expect(gitops.IsSnapshotMarkedAsAddedToGlobalCandidateList(hasSnapshot)).To(BeTrue())
+		Eventually(func() bool {
+			err = k8sClient.Get(ctx, types.NamespacedName{
+				Name:      hasSnapshot.Name,
+				Namespace: namespace,
+			}, hasSnapshot)
+			if err != nil {
+				return false
+			}
+			return gitops.IsSnapshotMarkedAsAddedToGlobalCandidateList(hasSnapshot)
+		}, time.Second*10).Should(BeTrue())
 	})
 
 	It("ensures the Snapshots can be checked for the AppStudioTestSucceededCondition", func() {
@@ -767,6 +779,27 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 		allSnapshots := &[]applicationapiv1alpha1.Snapshot{*hasSnapshot}
 		existingSnapshot := gitops.FindMatchingSnapshot(hasApp, allSnapshots, hasSnapshot)
 		Expect(existingSnapshot.Name).To(Equal(hasSnapshot.Name))
+	})
+
+	It("Ensure UpdateComponentImageAndSource can update component containerImage and source", func() {
+		componentSource := applicationapiv1alpha1.ComponentSource{
+			ComponentSourceUnion: applicationapiv1alpha1.ComponentSourceUnion{
+				GitSource: &applicationapiv1alpha1.GitSource{
+					URL:      SampleRepoLink,
+					Revision: "revision",
+				},
+			},
+		}
+		containerImage := "quay.io/redhat-appstudio/sample-image@sha256:841328df1b9f8c4087adbdcfec6cc99ac8308805dea83f6d415d6fb8d40227c1"
+		err := gitops.UpdateComponentImageAndSource(ctx, k8sClient, hasSnapshot, hasComp, componentSource, containerImage)
+		Expect(err).ShouldNot(HaveOccurred())
+		Eventually(func() bool {
+			_ = k8sClient.Get(ctx, types.NamespacedName{
+				Name:      hasComp.Name,
+				Namespace: namespace,
+			}, hasComp)
+			return hasComp.Status.LastPromotedImage == containerImage && hasComp.Status.LastBuiltCommit == "revision"
+		}, time.Second*15).Should(BeTrue())
 	})
 
 	Context("GetIntegrationTestRunLabelValue tests", func() {

@@ -119,6 +119,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		adapter.EnsurePipelineIsFinalized,
 		adapter.EnsurePRGroupAnnotated,
 		adapter.EnsureIntegrationTestReportedToGitProvider,
+		adapter.EnsureGlobalCandidateImageUpdated,
 		adapter.EnsureSnapshotExists,
 		adapter.EnsureSupercededSnapshotsCanceled,
 	})
@@ -129,6 +130,7 @@ type AdapterInterface interface {
 	EnsurePipelineIsFinalized() (controller.OperationResult, error)
 	EnsurePRGroupAnnotated() (controller.OperationResult, error)
 	EnsureIntegrationTestReportedToGitProvider() (controller.OperationResult, error)
+	EnsureGlobalCandidateImageUpdated() (controller.OperationResult, error)
 	EnsureSnapshotExists() (controller.OperationResult, error)
 	EnsureSupercededSnapshotsCanceled() (controller.OperationResult, error)
 }
