@@ -707,9 +707,16 @@ func CanSnapshotBePromoted(snapshot *applicationapiv1alpha1.Snapshot) (bool, []s
 
 // NewSnapshot creates a new snapshot based on the supplied application and components
 func NewSnapshot(application *applicationapiv1alpha1.Application, snapshotComponents *[]applicationapiv1alpha1.SnapshotComponent) *applicationapiv1alpha1.Snapshot {
+	// truncate the application name so the GenerateName function can accommodate Kubernetes 63-character limit
+	const maxPrefixLength = 57
+	prefix := application.Name
+	if len(prefix) > maxPrefixLength {
+		prefix = prefix[:maxPrefixLength]
+	}
+
 	snapshot := &applicationapiv1alpha1.Snapshot{
 		ObjectMeta: metav1.ObjectMeta{
-			GenerateName: application.Name + "-",
+			GenerateName: prefix + "-",
 			Namespace:    application.Namespace,
 		},
 		Spec: applicationapiv1alpha1.SnapshotSpec{

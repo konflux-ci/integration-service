@@ -90,8 +90,16 @@ func (v *SnapshotCustomValidator) ValidateCreate(ctx context.Context, obj runtim
 
 	snapshotlog.Info("Validating Snapshot upon creation", "name", snapshot.GetName())
 
-	// No specific validation needed for create operations
-	// Components can be set during creation
+	const maxK8sNameLength = 63
+	// validate user created override snapshots do not exceed max name length
+	if snapshot.Name != "" && len(snapshot.Name) > maxK8sNameLength {
+		return nil, field.Invalid(
+			field.NewPath("metadata").Child("name"),
+			snapshot.Name,
+			fmt.Sprintf("name is too long (%d characters); must be at most %d characters",
+				len(snapshot.Name), maxK8sNameLength),
+		)
+	}
 
 	return nil, nil
 }
