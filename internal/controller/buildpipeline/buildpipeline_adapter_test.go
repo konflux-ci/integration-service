@@ -2132,9 +2132,9 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				},
 			})
 			result, err := adapter.EnsureIntegrationTestReportedToGitProvider()
-			expectedLogEntry := "pr group info has not been added to build pipelineRun metadata, try again"
+			expectedLogEntry := "pr group info has not been added to build pipelineRun metadata, skipping reporting tests for the build pipelineRun"
 			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
-			Expect(result.RequeueRequest && err != nil).To(BeTrue())
+			Expect(!result.RequeueRequest && err == nil).To(BeTrue())
 		})
 	})
 	createAdapter = func() *Adapter {
