@@ -77,4 +77,49 @@ var _ = Describe("IntegrationTestScenario type", func() {
 		err := k8sClient.Delete(ctx, integrationTestScenario)
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 	})
+
+	Context("When creating IntegrationTestScenario with Settings", func() {
+		It("should accept empty comment_strategy", func() {
+			integrationTestScenario.Spec.Settings = &Settings{
+				Gitlab: &GitlabSettings{
+					CommentStrategy: "",
+				},
+			}
+			err := k8sClient.Create(ctx, integrationTestScenario)
+			Expect(err).ToNot(HaveOccurred())
+		})
+
+		It("should accept disable_all comment_strategy for GitLab", func() {
+			integrationTestScenario.Name = "its-gitlab-disable-all"
+			integrationTestScenario.Spec.Settings = &Settings{
+				Gitlab: &GitlabSettings{
+					CommentStrategy: "disable_all",
+				},
+			}
+			err := k8sClient.Create(ctx, integrationTestScenario)
+			Expect(err).ToNot(HaveOccurred())
+		})
+
+		It("should accept disable_all comment_strategy for GitHub", func() {
+			integrationTestScenario.Name = "its-github-disable-all"
+			integrationTestScenario.Spec.Settings = &Settings{
+				Github: &GithubSettings{
+					CommentStrategy: "disable_all",
+				},
+			}
+			err := k8sClient.Create(ctx, integrationTestScenario)
+			Expect(err).ToNot(HaveOccurred())
+		})
+
+		It("should reject invalid comment_strategy values", func() {
+			integrationTestScenario.Name = "its-invalid-strategy"
+			integrationTestScenario.Spec.Settings = &Settings{
+				Gitlab: &GitlabSettings{
+					CommentStrategy: "invalid_value",
+				},
+			}
+			err := k8sClient.Create(ctx, integrationTestScenario)
+			Expect(err).To(HaveOccurred())
+		})
+	})
 })

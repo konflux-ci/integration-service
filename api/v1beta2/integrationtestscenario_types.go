@@ -49,6 +49,9 @@ type IntegrationTestScenarioSpec struct {
 	Contexts []TestContext `json:"contexts,omitempty"`
 	// List of IntegrationTestScenario which are blocked by the successful completion of this IntegrationTestScenario
 	Dependents []string `json:"dependents,omitempty"`
+	// Settings contains configuration settings for the IntegrationTestScenario
+	// +optional
+	Settings *Settings `json:"settings,omitempty"`
 }
 
 // IntegrationTestScenarioStatus defines the observed state of IntegrationTestScenario described by conditions
@@ -117,6 +120,39 @@ type ResolverRef struct {
 type ResolverParameter struct {
 	Name  string `json:"name"`
 	Value string `json:"value"`
+}
+
+// Settings contains configuration settings for the IntegrationTestScenario
+type Settings struct {
+	// Gitlab contains GitLab-specific settings
+	// +optional
+	Gitlab *GitlabSettings `json:"gitlab,omitempty"`
+
+	// Github contains GitHub-specific settings
+	// +optional
+	Github *GithubSettings `json:"github,omitempty"`
+}
+
+// GitlabSettings contains GitLab-specific configuration settings
+type GitlabSettings struct {
+	// CommentStrategy defines how GitLab comments are handled for test results.
+	// Options:
+	// - '': Default behavior, comments are enabled
+	// - 'disable_all': Disables all comments on merge requests
+	// +optional
+	// +kubebuilder:validation:Enum="";disable_all
+	CommentStrategy string `json:"comment_strategy,omitempty"`
+}
+
+// GithubSettings contains GitHub-specific configuration settings
+type GithubSettings struct {
+	// CommentStrategy defines how GitHub comments are handled for test results.
+	// Options:
+	// - '': Default behavior, comments are enabled
+	// - 'disable_all': Disables all comments on pull requests
+	// +optional
+	// +kubebuilder:validation:Enum="";disable_all
+	CommentStrategy string `json:"comment_strategy,omitempty"`
 }
 
 func init() {

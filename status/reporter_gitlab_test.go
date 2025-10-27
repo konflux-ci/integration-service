@@ -36,6 +36,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	"github.com/konflux-ci/integration-service/api/v1beta2"
 	"github.com/konflux-ci/integration-service/gitops"
 	"github.com/konflux-ci/integration-service/pkg/integrationteststatus"
 	"github.com/konflux-ci/integration-service/status"
@@ -344,6 +345,108 @@ var _ = Describe("GitLabReporter", func() {
 			existingNoteID := reporter.GetExistingNoteID(notes, report.ScenarioName, report.SnapshotName)
 
 			Expect(*existingNoteID).To(Equal(note.ID))
+		})
+
+		Context("when comment_strategy is set to disable_all", func() {
+			var (
+				integrationTestScenario *v1beta2.IntegrationTestScenario
+				commentPosted           bool
+			)
+
+			BeforeEach(func() {
+				// Create an IntegrationTestScenario with comment_strategy set to disable_all
+				integrationTestScenario = &v1beta2.IntegrationTestScenario{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "test-scenario",
+						Namespace: "default",
+					},
+					Spec: v1beta2.IntegrationTestScenarioSpec{
+						Application: "test-app",
+						Settings: &v1beta2.Settings{
+							Gitlab: &v1beta2.GitlabSettings{
+								CommentStrategy: "disable_all",
+							},
+						},
+					},
+				}
+
+				// Track whether a comment was posted
+				commentPosted = false
+
+				// Set up handler that will fail if a comment is posted
+				path := fmt.Sprintf("/projects/%s/merge_requests/%s/notes", targetProjectID, mergeRequest)
+				mux.HandleFunc(path, func(rw http.ResponseWriter, r *http.Request) {
+					if r.Method == "POST" {
+						commentPosted = true
+						Fail("Comment should not be posted when comment_strategy is disable_all")
+					} else {
+						fmt.Fprintf(rw, "[]")
+					}
+				})
+			})
+
+			It("should not post comments on merge requests", func() {
+				summary := "Integration test for snapshot snapshot-sample and scenario scenario1 failed"
+
+				// Only set up commit status handler, not merge notes handler
+				muxCommitStatusPost(mux, sourceProjectID, digest, summary)
+
+				statusCode, err := reporter.ReportStatus(
+					context.TODO(),
+					status.TestReport{
+						FullName:                "fullname/scenario1",
+						ScenarioName:            "scenario1",
+						Status:                  integrationteststatus.IntegrationTestStatusTestFail,
+						Summary:                 summary,
+						Text:                    "detailed text here",
+						IntegrationTestScenario: integrationTestScenario,
+					})
+				Expect(err).To(Succeed())
+				Expect(statusCode).To(Equal(200))
+				Expect(commentPosted).To(BeFalse())
+			})
+		})
+
+		Context("when comment_strategy is empty or not set", func() {
+			var integrationTestScenario *v1beta2.IntegrationTestScenario
+
+			BeforeEach(func() {
+				// Create an IntegrationTestScenario with no comment_strategy (default behavior)
+				integrationTestScenario = &v1beta2.IntegrationTestScenario{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "test-scenario",
+						Namespace: "default",
+					},
+					Spec: v1beta2.IntegrationTestScenarioSpec{
+						Application: "test-app",
+						Settings: &v1beta2.Settings{
+							Gitlab: &v1beta2.GitlabSettings{
+								CommentStrategy: "",
+							},
+						},
+					},
+				}
+			})
+
+			It("should post comments on merge requests", func() {
+				summary := "Integration test for snapshot snapshot-sample and scenario scenario1 failed"
+
+				muxCommitStatusPost(mux, sourceProjectID, digest, summary)
+				muxMergeNotes(mux, targetProjectID, mergeRequest, summary)
+
+				statusCode, err := reporter.ReportStatus(
+					context.TODO(),
+					status.TestReport{
+						FullName:                "fullname/scenario1",
+						ScenarioName:            "scenario1",
+						Status:                  integrationteststatus.IntegrationTestStatusTestFail,
+						Summary:                 summary,
+						Text:                    "detailed text here",
+						IntegrationTestScenario: integrationTestScenario,
+					})
+				Expect(err).To(Succeed())
+				Expect(statusCode).To(Equal(200))
+			})
 		})
 	})
 
