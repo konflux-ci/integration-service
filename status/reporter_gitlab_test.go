@@ -353,7 +353,7 @@ var _ = Describe("GitLabReporter", func() {
 			"reports correct gitlab statuses from test statuses",
 			func(teststatus integrationteststatus.IntegrationTestStatus, glState gitlab.BuildStateValue) {
 
-				state, err := status.GenerateGitlabCommitState(teststatus)
+				state, err := status.GenerateGitlabCommitState(teststatus, false)
 				Expect(err).ToNot(HaveOccurred())
 				Expect(state).To(Equal(glState))
 			},
@@ -373,9 +373,19 @@ var _ = Describe("GitLabReporter", func() {
 
 		It("check if all integration tests statuses are supported", func() {
 			for _, teststatus := range integrationteststatus.IntegrationTestStatusValues() {
-				_, err := status.GenerateGitlabCommitState(teststatus)
+				_, err := status.GenerateGitlabCommitState(teststatus, false)
 				Expect(err).ToNot(HaveOccurred())
 			}
+		})
+		It("check if optional integration test returns skipped status for failed test", func() {
+			state, err := status.GenerateGitlabCommitState(integrationteststatus.IntegrationTestStatusTestFail, true)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(state).To(Equal(gitlab.Skipped))
+		})
+		It("check if optional integration test returns skipped status for invalid test", func() {
+			state, err := status.GenerateGitlabCommitState(integrationteststatus.IntegrationTestStatusTestInvalid, true)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(state).To(Equal(gitlab.Skipped))
 		})
 	})
 })
