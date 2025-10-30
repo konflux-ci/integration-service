@@ -251,17 +251,32 @@ func GenerateTestReport(ctx context.Context, client client.Client, detail intgte
 		fullName = fmt.Sprintf("%s / %s", fullName, componentName)
 	}
 
+	// Fetch the IntegrationTestScenario to get settings like comment_strategy
+	var its v1beta2.IntegrationTestScenario
+	var integrationTestScenario *v1beta2.IntegrationTestScenario
+	err = client.Get(ctx, types.NamespacedName{
+		Name:      detail.ScenarioName,
+		Namespace: testedSnapshot.Namespace,
+	}, &its)
+	if err != nil {
+		// Log warning but don't fail - allows degraded behavior (default commenting)
+		log.FromContext(ctx).Error(err, "failed to fetch IntegrationTestScenario", "name", detail.ScenarioName)
+	} else {
+		integrationTestScenario = &its
+	}
+
 	report := TestReport{
-		Text:                text,
-		FullName:            fullName,
-		ScenarioName:        detail.ScenarioName,
-		SnapshotName:        testedSnapshot.Name,
-		ComponentName:       componentName,
-		Status:              detail.Status,
-		Summary:             summary,
-		StartTime:           detail.StartTime,
-		CompletionTime:      detail.CompletionTime,
-		TestPipelineRunName: detail.TestPipelineRunName,
+		Text:                    text,
+		FullName:                fullName,
+		ScenarioName:            detail.ScenarioName,
+		SnapshotName:            testedSnapshot.Name,
+		ComponentName:           componentName,
+		Status:                  detail.Status,
+		Summary:                 summary,
+		StartTime:               detail.StartTime,
+		CompletionTime:          detail.CompletionTime,
+		TestPipelineRunName:     detail.TestPipelineRunName,
+		IntegrationTestScenario: integrationTestScenario,
 	}
 	return &report, nil
 }

@@ -436,6 +436,11 @@ var _ = Describe("Status Adapter", func() {
 						plr.Status = pipelineRun.Status
 					}
 				}
+				if _, ok := obj.(*v1beta2.IntegrationTestScenario); ok {
+					// Return NotFound error for IntegrationTestScenario to test graceful degradation
+					mockK8sClient.err = errors.NewNotFound(v1beta2.GroupVersion.WithResource("integrationtestscenarios").GroupResource(), key.Name)
+					return
+				}
 				if snapshot, ok := obj.(*applicationapiv1alpha1.Snapshot); ok {
 					if key.Name == hasComSnapshot2.Name {
 						snapshot.Name = hasComSnapshot2.Name
@@ -522,16 +527,17 @@ var _ = Describe("Status Adapter", func() {
 
 `
 		expectedTestReport := status.TestReport{
-			FullName:            "Red Hat Konflux / scenario1",
-			ScenarioName:        "scenario1",
-			SnapshotName:        "snapshot-sample",
-			ComponentName:       "",
-			Text:                text,
-			Summary:             "Integration test for snapshot snapshot-sample and scenario scenario1 has passed",
-			Status:              integrationteststatus.IntegrationTestStatusTestPassed,
-			StartTime:           &ts,
-			CompletionTime:      &tc,
-			TestPipelineRunName: "test-pipelinerun",
+			FullName:                "Red Hat Konflux / scenario1",
+			ScenarioName:            "scenario1",
+			SnapshotName:            "snapshot-sample",
+			ComponentName:           "",
+			Text:                    text,
+			Summary:                 "Integration test for snapshot snapshot-sample and scenario scenario1 has passed",
+			Status:                  integrationteststatus.IntegrationTestStatusTestPassed,
+			StartTime:               &ts,
+			CompletionTime:          &tc,
+			TestPipelineRunName:     "test-pipelinerun",
+			IntegrationTestScenario: nil,
 		}
 
 		testReport, err := status.GenerateTestReport(context.Background(), mockK8sClient, integrationTestStatusDetail, hasSnapshot, "")

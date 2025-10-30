@@ -34,6 +34,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	"github.com/konflux-ci/integration-service/api/v1beta2"
 	"github.com/konflux-ci/integration-service/git/github"
 	"github.com/konflux-ci/integration-service/gitops"
 	"github.com/konflux-ci/integration-service/pkg/integrationteststatus"
@@ -676,6 +677,234 @@ var _ = Describe("GitHubReporter", func() {
 
 			expectedLogEntry := "Won't create/update commitStatus since there is access limitation for different source and target Repo Owner"
 			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
+		})
+	})
+
+	Context("when comment_strategy is set to disable_all", func() {
+		var (
+			integrationTestScenario *v1beta2.IntegrationTestScenario
+			mockGitHubClient        *MockGitHubClient
+			reporter                *status.GitHubReporter
+			hasSnapshot             *applicationapiv1alpha1.Snapshot
+		)
+
+		BeforeEach(func() {
+			// Create an IntegrationTestScenario with comment_strategy set to disable_all
+			integrationTestScenario = &v1beta2.IntegrationTestScenario{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-scenario",
+					Namespace: "default",
+				},
+				Spec: v1beta2.IntegrationTestScenarioSpec{
+					Application: "test-app",
+					Settings: &v1beta2.Settings{
+						Github: &v1beta2.GithubSettings{
+							CommentStrategy: "disable_all",
+						},
+					},
+				},
+			}
+
+			repo := pacv1alpha1.Repository{
+				Spec: pacv1alpha1.RepositorySpec{
+					URL: "https://github.com/testorg/testrepo",
+					GitProvider: &pacv1alpha1.GitProvider{
+						Secret: &pacv1alpha1.Secret{
+							Name: "example-secret-name",
+							Key:  "example-token",
+						},
+					},
+				},
+			}
+
+			secretData := map[string][]byte{
+				"example-token": []byte("example-personal-access-token"),
+			}
+
+			mockK8sClient = &MockK8sClient{
+				getInterceptor: func(key client.ObjectKey, obj client.Object) {
+					if secret, ok := obj.(*v1.Secret); ok {
+						secret.Data = secretData
+					}
+				},
+				listInterceptor: func(list client.ObjectList) {
+					if repoList, ok := list.(*pacv1alpha1.RepositoryList); ok {
+						repoList.Items = []pacv1alpha1.Repository{repo}
+					}
+				},
+			}
+
+			mockGitHubClient = &MockGitHubClient{
+				CreateAppInstallationTokenResult: CreateAppInstallationTokenResult{
+					Token: "example-token",
+					Error: nil,
+				},
+				CreateCheckRunResult: CreateCheckRunResult{
+					ID:    ghapi.Int64(12345),
+					Error: nil,
+				},
+				CreateCommentResult: CreateCommentResult{
+					ID:    0,
+					Error: nil,
+				},
+			}
+
+			hasSnapshot = &applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "snapshot-sample",
+					Namespace: "default",
+					Labels: map[string]string{
+						"pac.test.appstudio.openshift.io/url-org":        "testorg",
+						"pac.test.appstudio.openshift.io/url-repository": "testrepo",
+						"pac.test.appstudio.openshift.io/sha":            "testsha",
+						"pac.test.appstudio.openshift.io/event-type":     "pull_request",
+					},
+					Annotations: map[string]string{
+						"pac.test.appstudio.openshift.io/repo-url":     "https://github.com/testorg/testrepo",
+						"pac.test.appstudio.openshift.io/pull-request": "1",
+						"pac.test.appstudio.openshift.io/git-provider": "github",
+					},
+				},
+			}
+
+			reporter = status.NewGitHubReporter(logr.Discard(), mockK8sClient, status.WithGitHubClient(mockGitHubClient))
+			statusCode, err := reporter.Initialize(context.TODO(), hasSnapshot)
+			Expect(err).To(Succeed())
+			Expect(statusCode).To(Equal(0))
+		})
+
+		It("should not post comments on pull requests", func() {
+			testReport := status.TestReport{
+				FullName:                "fullname/scenario1",
+				ScenarioName:            "scenario1",
+				SnapshotName:            "snapshot-sample",
+				Status:                  integrationteststatus.IntegrationTestStatusTestFail,
+				Summary:                 "Integration test for snapshot snapshot-sample and scenario scenario1 failed",
+				Text:                    "detailed text here",
+				IntegrationTestScenario: integrationTestScenario,
+			}
+
+			statusCode, err := reporter.ReportStatus(context.TODO(), testReport)
+			Expect(err).To(Succeed())
+			Expect(statusCode).To(Equal(0))
+
+			// Verify that no comment was created
+			Expect(mockGitHubClient.CreateCommentResult.body).To(BeEmpty(), "Expected no comment to be created when comment_strategy is disable_all")
+			Expect(mockGitHubClient.CreateCommentResult.issueNumber).To(Equal(0), "Expected CreateComment to not be called")
+		})
+	})
+
+	Context("when comment_strategy is empty or not set", func() {
+		var (
+			integrationTestScenario *v1beta2.IntegrationTestScenario
+			mockGitHubClient        *MockGitHubClient
+			reporter                *status.GitHubReporter
+			hasSnapshot             *applicationapiv1alpha1.Snapshot
+		)
+
+		BeforeEach(func() {
+			// Create an IntegrationTestScenario with no comment_strategy (default behavior)
+			integrationTestScenario = &v1beta2.IntegrationTestScenario{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-scenario",
+					Namespace: "default",
+				},
+				Spec: v1beta2.IntegrationTestScenarioSpec{
+					Application: "test-app",
+					Settings: &v1beta2.Settings{
+						Github: &v1beta2.GithubSettings{
+							CommentStrategy: "",
+						},
+					},
+				},
+			}
+
+			repo := pacv1alpha1.Repository{
+				Spec: pacv1alpha1.RepositorySpec{
+					URL: "https://github.com/testorg/testrepo",
+					GitProvider: &pacv1alpha1.GitProvider{
+						Secret: &pacv1alpha1.Secret{
+							Name: "example-secret-name",
+							Key:  "example-token",
+						},
+					},
+				},
+			}
+
+			secretData := map[string][]byte{
+				"example-token": []byte("example-personal-access-token"),
+			}
+
+			mockK8sClient = &MockK8sClient{
+				getInterceptor: func(key client.ObjectKey, obj client.Object) {
+					if secret, ok := obj.(*v1.Secret); ok {
+						secret.Data = secretData
+					}
+				},
+				listInterceptor: func(list client.ObjectList) {
+					if repoList, ok := list.(*pacv1alpha1.RepositoryList); ok {
+						repoList.Items = []pacv1alpha1.Repository{repo}
+					}
+				},
+			}
+
+			mockGitHubClient = &MockGitHubClient{
+				CreateAppInstallationTokenResult: CreateAppInstallationTokenResult{
+					Token: "example-token",
+					Error: nil,
+				},
+				CreateCheckRunResult: CreateCheckRunResult{
+					ID:    ghapi.Int64(12345),
+					Error: nil,
+				},
+				CreateCommentResult: CreateCommentResult{
+					ID:    67890,
+					Error: nil,
+				},
+			}
+
+			hasSnapshot = &applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "snapshot-sample",
+					Namespace: "default",
+					Labels: map[string]string{
+						"pac.test.appstudio.openshift.io/url-org":        "testorg",
+						"pac.test.appstudio.openshift.io/url-repository": "testrepo",
+						"pac.test.appstudio.openshift.io/sha":            "testsha",
+						"pac.test.appstudio.openshift.io/event-type":     "pull_request",
+					},
+					Annotations: map[string]string{
+						"pac.test.appstudio.openshift.io/repo-url":     "https://github.com/testorg/testrepo",
+						"pac.test.appstudio.openshift.io/pull-request": "1",
+						"pac.test.appstudio.openshift.io/git-provider": "github",
+					},
+				},
+			}
+
+			reporter = status.NewGitHubReporter(logr.Discard(), mockK8sClient, status.WithGitHubClient(mockGitHubClient))
+			statusCode, err := reporter.Initialize(context.TODO(), hasSnapshot)
+			Expect(err).To(Succeed())
+			Expect(statusCode).To(Equal(0))
+		})
+
+		It("should post comments on pull requests", func() {
+			testReport := status.TestReport{
+				FullName:                "fullname/scenario1",
+				ScenarioName:            "scenario1",
+				SnapshotName:            "snapshot-sample",
+				Status:                  integrationteststatus.IntegrationTestStatusTestFail,
+				Summary:                 "Integration test for snapshot snapshot-sample and scenario scenario1 failed",
+				Text:                    "detailed text here",
+				IntegrationTestScenario: integrationTestScenario,
+			}
+
+			statusCode, err := reporter.ReportStatus(context.TODO(), testReport)
+			Expect(err).To(Succeed())
+			Expect(statusCode).To(Equal(0))
+
+			// Verify that a comment was created
+			Expect(mockGitHubClient.CreateCommentResult.body).ToNot(BeEmpty(), "Expected a comment to be created when comment_strategy is empty")
+			Expect(mockGitHubClient.CreateCommentResult.issueNumber).To(Equal(1), "Expected comment to be posted on PR #1")
 		})
 	})
 

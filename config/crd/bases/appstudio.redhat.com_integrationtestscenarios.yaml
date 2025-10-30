@@ -565,6 +565,38 @@ spec:
                 - params
                 - resolver
                 type: object
+              settings:
+                description: Settings contains configuration settings for the IntegrationTestScenario
+                properties:
+                  github:
+                    description: Github contains GitHub-specific settings
+                    properties:
+                      comment_strategy:
+                        description: |-
+                          CommentStrategy defines how GitHub comments are handled for test results.
+                          Options:
+                          - '': Default behavior, comments are enabled
+                          - 'disable_all': Disables all comments on pull requests
+                        enum:
+                        - ""
+                        - disable_all
+                        type: string
+                    type: object
+                  gitlab:
+                    description: Gitlab contains GitLab-specific settings
+                    properties:
+                      comment_strategy:
+                        description: |-
+                          CommentStrategy defines how GitLab comments are handled for test results.
+                          Options:
+                          - '': Default behavior, comments are enabled
+                          - 'disable_all': Disables all comments on merge requests
+                        enum:
+                        - ""
+                        - disable_all
+                        type: string
+                    type: object
+                type: object
             required:
             - application
             - resolverRef

@@ -30,6 +30,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
+	v1beta2 "github.com/konflux-ci/integration-service/api/v1beta2"
 	"github.com/konflux-ci/integration-service/gitops"
 	"github.com/konflux-ci/integration-service/helpers"
 	intgteststat "github.com/konflux-ci/integration-service/pkg/integrationteststatus"
@@ -56,6 +57,8 @@ type TestReport struct {
 	CompletionTime *time.Time
 	// pipelineRun Name
 	TestPipelineRunName string
+	// IntegrationTestScenario associated with this test report
+	IntegrationTestScenario *v1beta2.IntegrationTestScenario
 }
 
 type ReporterInterface interface {

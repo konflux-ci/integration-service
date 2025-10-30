@@ -311,7 +311,18 @@ func (r *GitLabReporter) ReportStatus(ctx context.Context, report TestReport) (i
 
 	// Create a note when integration test is neither pending nor inprogress since comment for pending/inprogress is less meaningful
 	_, isMergeRequest := r.snapshot.GetAnnotations()[gitops.PipelineAsCodePullRequestAnnotation]
-	if report.Status != intgteststat.IntegrationTestStatusPending && report.Status != intgteststat.IntegrationTestStatusInProgress && report.Status != intgteststat.SnapshotCreationFailed && isMergeRequest {
+
+	// Check if commenting is disabled via comment_strategy setting
+	commentsDisabled := report.IntegrationTestScenario != nil &&
+		report.IntegrationTestScenario.Spec.Settings != nil &&
+		report.IntegrationTestScenario.Spec.Settings.Gitlab != nil &&
+		report.IntegrationTestScenario.Spec.Settings.Gitlab.CommentStrategy == "disable_all"
+
+	if report.Status != intgteststat.IntegrationTestStatusPending &&
+		report.Status != intgteststat.IntegrationTestStatusInProgress &&
+		report.Status != intgteststat.SnapshotCreationFailed &&
+		isMergeRequest &&
+		!commentsDisabled {
 		statusCode, err := r.updateStatusInComment(report)
 		if err != nil {
 			return statusCode, err
