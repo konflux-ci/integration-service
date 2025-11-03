@@ -729,16 +729,8 @@ func resolverParamsToMap(params []v1beta2.ResolverParameter) map[string]string {
 	return result
 }
 
-// urlToGitUrl appends `.git` to the URL if it doesn't already have it
-func urlToGitUrl(url string) string {
-	if strings.HasSuffix(url, ".git") {
-		return url
-	}
-	return strings.TrimSuffix(url, "/") + ".git"
-}
-
-// shouldUpdateIntegrationTestGitResolver checks if the integration test resolver should be updated based on the source repo
-func shouldUpdateIntegrationTestGitResolver(integrationTestScenario *v1beta2.IntegrationTestScenario, snapshot *applicationapiv1alpha1.Snapshot) bool {
+// shouldUpdateIntegrationPipelineGitResolver checks if the integration test resolver should be updated based on the source repo
+func shouldUpdateIntegrationPipelineGitResolver(integrationTestScenario *v1beta2.IntegrationTestScenario, snapshot *applicationapiv1alpha1.Snapshot) bool {
 
 	// only "pull-requests" are applicable
 	if gitops.IsSnapshotCreatedByPACPushEvent(snapshot) {
@@ -758,13 +750,13 @@ func shouldUpdateIntegrationTestGitResolver(integrationTestScenario *v1beta2.Int
 	// if target revision sha differs from source revision sha we do not want to overwrite it
 	targetRevision := annotations[gitops.PipelineAsCodeTargetBranchAnnotation]
 	sourceRevision := params[tektonconsts.TektonResolverGitParamRevision]
-	if targetRevision != sourceRevision {
+	if targetRevision == "" || sourceRevision == "" || targetRevision != sourceRevision {
 		return false
 	}
 
 	if urlVal, ok := params[tektonconsts.TektonResolverGitParamURL]; ok {
-		// urlVal may or may not have git suffix specified :')
-		return urlToGitUrl(urlVal) == urlToGitUrl(annotations[gitops.PipelineAsCodeRepoURLAnnotation])
+		return annotations[gitops.PipelineAsCodeRepoURLAnnotation] != "" &&
+			h.UrlToGitUrl(urlVal) == h.UrlToGitUrl(annotations[gitops.PipelineAsCodeRepoURLAnnotation])
 	}
 
 	// undefined state, no idea what was configured in resolver, don't touch it
@@ -774,9 +766,23 @@ func shouldUpdateIntegrationTestGitResolver(integrationTestScenario *v1beta2.Int
 func getGitResolverUpdateMap(snapshot *applicationapiv1alpha1.Snapshot) map[string]string {
 	annotations := snapshot.GetAnnotations()
 	return map[string]string{
-		tektonconsts.TektonResolverGitParamURL:      urlToGitUrl(annotations[gitops.PipelineAsCodeGitSourceURLAnnotation]), // should have .git in url for consistency and compatibility
+		tektonconsts.TektonResolverGitParamURL:      h.UrlToGitUrl(annotations[gitops.PipelineAsCodeGitSourceURLAnnotation]), // should have .git in url for consistency and compatibility
 		tektonconsts.TektonResolverGitParamRevision: annotations[gitops.PipelineAsCodeSHAAnnotation],
 	}
+}
+
+// shouldUpdateIntegrationTasksGitResolver checks if the integration test resolver should be updated based on the source repo
+func shouldUpdateIntegrationTasksGitResolver(integrationTestScenario *v1beta2.IntegrationTestScenario, snapshot *applicationapiv1alpha1.Snapshot) bool {
+	// only "pull-requests" are applicable
+	if gitops.IsSnapshotCreatedByPACPushEvent(snapshot) {
+		return false
+	}
+
+	// only integrationTestScenarios with the pipelineRun resourceKind can update their task references
+	if integrationTestScenario.Spec.ResolverRef.ResourceKind != tektonconsts.ResourceKindPipelineRun {
+		return false
+	}
+	return true
 }
 
 // createIntegrationPipelineRun creates and returns a new integration PipelineRun. The Pipeline information and the parameters to it
@@ -799,8 +805,12 @@ func (a *Adapter) createIntegrationPipelineRun(application *applicationapiv1alph
 		WithFinalizer(h.IntegrationPipelineRunFinalizer).
 		WithIntegrationTimeouts(integrationTestScenario, a.logger.Logger)
 
-	if shouldUpdateIntegrationTestGitResolver(integrationTestScenario, snapshot) {
-		pipelineRunBuilder.WithUpdatedTestsGitResolver(getGitResolverUpdateMap(snapshot))
+	if shouldUpdateIntegrationPipelineGitResolver(integrationTestScenario, snapshot) {
+		pipelineRunBuilder.WithUpdatedPipelineGitResolver(getGitResolverUpdateMap(snapshot))
+	}
+
+	if shouldUpdateIntegrationTasksGitResolver(integrationTestScenario, snapshot) {
+		pipelineRunBuilder.WithUpdatedTasksGitResolver(snapshot, getGitResolverUpdateMap(snapshot))
 	}
 
 	pipelineRun := pipelineRunBuilder.AsPipelineRun()

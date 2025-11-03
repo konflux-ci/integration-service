@@ -30,6 +30,8 @@ import (
 	"github.com/go-logr/logr"
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
 	"github.com/konflux-ci/integration-service/api/v1beta2"
+	"github.com/konflux-ci/integration-service/gitops"
+	h "github.com/konflux-ci/integration-service/helpers"
 	"github.com/konflux-ci/integration-service/loader"
 	"github.com/konflux-ci/integration-service/tekton/consts"
 	"github.com/konflux-ci/operator-toolkit/metadata"
@@ -206,9 +208,9 @@ func setGenerateNameForPipelineRun(pipelineRun *tektonv1.PipelineRun, defaultPre
 	}
 }
 
-// Updates git resolver values parameters with values of params specified in the input map
+// WithUpdatedPipelineGitResolver updates git resolver values parameters with values of params specified in the input map
 // updates only exsitings parameters, doens't create new ones
-func (iplr *IntegrationPipelineRun) WithUpdatedTestsGitResolver(params map[string]string) *IntegrationPipelineRun {
+func (iplr *IntegrationPipelineRun) WithUpdatedPipelineGitResolver(params map[string]string) *IntegrationPipelineRun {
 
 	if iplr == nil {
 		return iplr
@@ -234,6 +236,76 @@ func (iplr *IntegrationPipelineRun) WithUpdatedTestsGitResolver(params map[strin
 	}
 
 	return iplr
+}
+
+// WithUpdatedTasksGitResolver updates git resolver values parameters for matching tasks with
+// values of params specified in the input map. Updates only existing parameters, doesn't create new ones
+func (iplr *IntegrationPipelineRun) WithUpdatedTasksGitResolver(snapshot *applicationapiv1alpha1.Snapshot, params map[string]string) *IntegrationPipelineRun {
+	if iplr == nil {
+		return iplr
+	}
+
+	// Defensive nil checks for the entire path
+	if iplr.Spec.PipelineSpec == nil || iplr.Spec.PipelineSpec.Tasks == nil {
+		return iplr
+	}
+
+	// We skip if there are no tasks in the pipeline spec
+	if len(iplr.Spec.PipelineSpec.Tasks) == 0 {
+		return iplr
+	}
+
+	for _, originalTask := range iplr.Spec.PipelineSpec.Tasks {
+		if shouldUpdateTaskGitResolver(&originalTask, snapshot) {
+			//nolint:staticcheck  // QF1008: We specifically want ResolverRef.Params, not PipelineRef.Params
+			for originalParamIndex, originalParam := range originalTask.TaskRef.ResolverRef.Params {
+				if _, ok := params[originalParam.Name]; ok {
+					// use the original index to update the value, we cannot update value given by range directly
+					originalTask.TaskRef.ResolverRef.Params[originalParamIndex].Value.StringVal = params[originalParam.Name]
+				}
+			}
+		}
+
+	}
+
+	return iplr
+}
+
+// shouldUpdateTaskGitResolver checks if the task resolver should be updated based on the source repo
+func shouldUpdateTaskGitResolver(task *tektonv1.PipelineTask, snapshot *applicationapiv1alpha1.Snapshot) bool {
+	// only tekton git resolver is applicable
+	//nolint:staticcheck  // QF1008: We specifically want ResolverRef.Params, not PipelineRef.Params
+	if task.TaskRef.ResolverRef.Resolver != consts.TektonResolverGit {
+		return false
+	}
+
+	annotations := snapshot.GetAnnotations()
+	//nolint:staticcheck  // QF1008: We specifically want ResolverRef.Params, not PipelineRef.Params
+	params := resolverParamsToMap(task.TaskRef.ResolverRef.Params)
+
+	// if target revision sha differs from source revision sha we do not want to overwrite it
+	targetRevision := annotations[gitops.PipelineAsCodeTargetBranchAnnotation]
+	sourceRevision := params[consts.TektonResolverGitParamRevision]
+	if targetRevision == "" || sourceRevision == "" || targetRevision != sourceRevision {
+		return false
+	}
+
+	if urlVal, ok := params[consts.TektonResolverGitParamURL]; ok {
+		// urlVal may or may not have git suffix specified :')
+		return annotations[gitops.PipelineAsCodeRepoURLAnnotation] != "" &&
+			h.UrlToGitUrl(urlVal) == h.UrlToGitUrl(annotations[gitops.PipelineAsCodeRepoURLAnnotation])
+	}
+
+	// undefined state, no idea what was configured in resolver, don't touch it
+	return false
+}
+
+func resolverParamsToMap(params []tektonv1.Param) map[string]string {
+	result := make(map[string]string)
+	for _, param := range params {
+		result[param.Name] = param.Value.StringVal
+	}
+	return result
 }
 
 // WithFinalizer adds a Finalizer on the Integration PipelineRun

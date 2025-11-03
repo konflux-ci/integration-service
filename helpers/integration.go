@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"reflect"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/konflux-ci/integration-service/api/v1beta2"
@@ -504,4 +505,12 @@ func IsObjectYoungerThanThreshold(obj metav1.Object, threshold time.Duration) bo
 	durationSinceObjectCreation := time.Since(objectCreationTime)
 
 	return durationSinceObjectCreation < threshold
+}
+
+// UrlToGitUrl appends `.git` to the URL if it doesn't already have it
+func UrlToGitUrl(url string) string {
+	if strings.HasSuffix(url, ".git") {
+		return url
+	}
+	return strings.TrimSuffix(url, "/") + ".git"
 }

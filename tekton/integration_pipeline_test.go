@@ -611,7 +611,7 @@ var _ = Describe("Integration pipeline", Ordered, func() {
 			}
 
 			// This should not panic - it should return early because resolver is empty
-			result := pipelineRun.WithUpdatedTestsGitResolver(params)
+			result := pipelineRun.WithUpdatedPipelineGitResolver(params)
 			Expect(result).NotTo(BeNil())
 			Expect(result).To(Equal(pipelineRun)) // Should return the same instance unchanged
 		})
@@ -636,7 +636,7 @@ var _ = Describe("Integration pipeline", Ordered, func() {
 			}
 
 			// This should not panic - should return early because params is nil
-			result := pipelineRun.WithUpdatedTestsGitResolver(params)
+			result := pipelineRun.WithUpdatedPipelineGitResolver(params)
 			Expect(result).NotTo(BeNil())
 			Expect(result.Spec.PipelineRef.ResolverRef.Params).To(BeNil())
 		})
@@ -661,7 +661,7 @@ var _ = Describe("Integration pipeline", Ordered, func() {
 			}
 
 			// This should not panic - should return early because params is empty
-			result := pipelineRun.WithUpdatedTestsGitResolver(params)
+			result := pipelineRun.WithUpdatedPipelineGitResolver(params)
 			Expect(result).NotTo(BeNil())
 			Expect(result.Spec.PipelineRef.ResolverRef.Params).To(BeEmpty())
 		})
@@ -694,7 +694,7 @@ var _ = Describe("Integration pipeline", Ordered, func() {
 			}
 
 			// Should not modify non-git resolvers
-			result := pipelineRun.WithUpdatedTestsGitResolver(params)
+			result := pipelineRun.WithUpdatedPipelineGitResolver(params)
 			Expect(result).NotTo(BeNil())
 			Expect(result.Spec.PipelineRef.ResolverRef.Params[0].Value.StringVal).To(Equal("quay.io/test/bundle:latest"))
 		})
@@ -733,7 +733,7 @@ var _ = Describe("Integration pipeline", Ordered, func() {
 				"revision": "main",
 			}
 
-			result := pipelineRun.WithUpdatedTestsGitResolver(params)
+			result := pipelineRun.WithUpdatedPipelineGitResolver(params)
 			Expect(result).NotTo(BeNil())
 			Expect(result.Spec.PipelineRef.ResolverRef.Params[0].Value.StringVal).To(Equal("https://github.com/new/repo.git"))
 			Expect(result.Spec.PipelineRef.ResolverRef.Params[1].Value.StringVal).To(Equal("main"))
@@ -771,9 +771,114 @@ var _ = Describe("Integration pipeline", Ordered, func() {
 				},
 			}
 
-			result := pipelineRun.WithUpdatedTestsGitResolver(nil)
+			result := pipelineRun.WithUpdatedPipelineGitResolver(nil)
 			Expect(result).NotTo(BeNil())
 			// Should return unchanged
+		})
+
+		It("should successfully update task git resolver parameters", func() {
+			pipelineRun := &tekton.IntegrationPipelineRun{
+				tektonv1.PipelineRun{
+					Spec: tektonv1.PipelineRunSpec{
+						PipelineSpec: &tektonv1.PipelineSpec{
+							Params: []tektonv1.ParamSpec{},
+							Tasks: []tektonv1.PipelineTask{
+								{
+									Name:   "some-task",
+									Params: []tektonv1.Param{},
+									TaskRef: &tektonv1.TaskRef{
+										Name: "some-task",
+										ResolverRef: tektonv1.ResolverRef{
+											Resolver: tektonv1.ResolverName(tektonconsts.TektonResolverGit),
+											Params: []tektonv1.Param{
+												{
+													Name: "url",
+													Value: tektonv1.ParamValue{
+														Type:      tektonv1.ParamTypeString,
+														StringVal: "https://github.com/test/repo.git",
+													},
+												},
+												{
+													Name: "revision",
+													Value: tektonv1.ParamValue{
+														Type:      tektonv1.ParamTypeString,
+														StringVal: "main",
+													},
+												},
+											},
+										},
+									},
+								},
+								{
+									Name:   "some-task2",
+									Params: []tektonv1.Param{},
+									TaskRef: &tektonv1.TaskRef{
+										Name: "some-task2",
+										ResolverRef: tektonv1.ResolverRef{
+											Resolver: tektonv1.ResolverName(tektonconsts.TektonResolverGit),
+											Params: []tektonv1.Param{
+												{
+													Name: "url",
+													Value: tektonv1.ParamValue{
+														Type:      tektonv1.ParamTypeString,
+														StringVal: "https://github.com/someotherrepo/repo.git",
+													},
+												},
+												{
+													Name: "revision",
+													Value: tektonv1.ParamValue{
+														Type:      tektonv1.ParamTypeString,
+														StringVal: "main",
+													},
+												},
+											},
+										},
+									},
+								},
+								{
+									Name:   "some-task3",
+									Params: []tektonv1.Param{},
+									TaskRef: &tektonv1.TaskRef{
+										Name: "some-task2",
+										ResolverRef: tektonv1.ResolverRef{
+											Resolver: tektonv1.ResolverName(tektonconsts.TektonResolverBundle),
+											Params: []tektonv1.Param{
+												{
+													Name: "bundle",
+													Value: tektonv1.ParamValue{
+														Type:      tektonv1.ParamTypeString,
+														StringVal: "quay.io/somerepo/some-bundle",
+													},
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			}
+
+			params := map[string]string{
+				"url":      "https://github.com/new/repo.git",
+				"revision": "feature-branch",
+			}
+
+			hasSnapshot.Annotations = map[string]string{}
+			hasSnapshot.Annotations[gitops.PipelineAsCodeTargetBranchAnnotation] = "main"
+			hasSnapshot.Annotations[gitops.PipelineAsCodeRepoURLAnnotation] = "https://github.com/test/repo.git"
+
+			result := pipelineRun.WithUpdatedTasksGitResolver(hasSnapshot, params)
+			Expect(result).NotTo(BeNil())
+			// We expect the first task to be updated as it matches the target repo and branch
+			Expect(result.Spec.PipelineSpec.Tasks[0].TaskRef.Params[0].Value.StringVal).To(Equal("https://github.com/new/repo.git"))
+			Expect(result.Spec.PipelineSpec.Tasks[0].TaskRef.Params[1].Value.StringVal).To(Equal("feature-branch"))
+			// We expect the second task to not be updated since it originates from a different repo
+			Expect(result.Spec.PipelineSpec.Tasks[1].TaskRef.Params[0].Value.StringVal).To(Equal("https://github.com/someotherrepo/repo.git"))
+			Expect(result.Spec.PipelineSpec.Tasks[1].TaskRef.Params[1].Value.StringVal).To(Equal("main"))
+			// We expect the third task to not be updated since it uses the bundle resolver
+			Expect(result.Spec.PipelineSpec.Tasks[2].TaskRef.Params[0].Value.StringVal).To(Equal("quay.io/somerepo/some-bundle"))
 		})
 	})
 })

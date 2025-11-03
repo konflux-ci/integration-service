@@ -1081,4 +1081,24 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		Expect(result).To(BeFalse())
 	})
 
+	It("correctly parse and normalize git reference urls", func() {
+		expectedGitUrl := "https://github.com/konflux-ci/integration-service.git"
+		gitUrl := "https://github.com/konflux-ci/integration-service"
+		normalizedGitUrl := helpers.UrlToGitUrl(gitUrl)
+		Expect(normalizedGitUrl).To(Equal(expectedGitUrl))
+
+		gitUrl = "https://github.com/konflux-ci/integration-service/"
+		normalizedGitUrl = helpers.UrlToGitUrl(gitUrl)
+		Expect(normalizedGitUrl).To(Equal(expectedGitUrl))
+
+		gitUrl = "https://github.com/konflux-ci/integration-service.git"
+		normalizedGitUrl = helpers.UrlToGitUrl(gitUrl)
+		Expect(normalizedGitUrl).To(Equal(expectedGitUrl))
+
+		expectedGitUrl = "git@github.com:konflux-ci/integration-service.git"
+		gitUrl = "git@github.com:konflux-ci/integration-service.git"
+		normalizedGitUrl = helpers.UrlToGitUrl(gitUrl)
+		Expect(normalizedGitUrl).To(Equal(expectedGitUrl))
+	})
+
 })
