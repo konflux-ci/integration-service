@@ -17,14 +17,17 @@ limitations under the License.
 package tekton_test
 
 import (
+	"encoding/json"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/types"
 	"knative.dev/pkg/apis"
 	v1 "knative.dev/pkg/apis/duck/v1"
 
+	"github.com/konflux-ci/integration-service/gitops"
 	tekton "github.com/konflux-ci/integration-service/tekton"
 	tektonconsts "github.com/konflux-ci/integration-service/tekton/consts"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
@@ -149,6 +152,28 @@ var _ = Describe("build pipeline", func() {
 		It("can get the latest build pipelinerun for given component", func() {
 			plrs := []tektonv1.PipelineRun{*buildPipelineRun, *buildPipelineRun2}
 			Expect(tekton.IsLatestBuildPipelineRunInComponent(buildPipelineRun, &plrs)).To(BeTrue())
+		})
+
+		It("can mark build PLR as AddedToGlobalCandidateList", func() {
+			addedToGlobalCandidateListStatus := gitops.AddedToGlobalCandidateListStatus{
+				Result:          true,
+				Reason:          gitops.Success,
+				LastUpdatedTime: time.Now().Format(time.RFC3339),
+			}
+
+			annotationJson, err := json.Marshal(addedToGlobalCandidateListStatus)
+			Expect(err).NotTo(HaveOccurred())
+
+			err = tekton.MarkBuildPLRAsAddedToGlobalCandidateList(ctx, k8sClient, buildPipelineRun, string(annotationJson))
+			Expect(err).NotTo(HaveOccurred())
+
+			Eventually(func() bool {
+				_ = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      buildPipelineRun.Name,
+					Namespace: buildPipelineRun.Namespace,
+				}, buildPipelineRun)
+				return tekton.IsBuildPLRMarkedAsAddedToGlobalCandidateList(buildPipelineRun)
+			}, time.Second*15).Should(BeTrue())
 		})
 	})
 })

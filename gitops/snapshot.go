@@ -207,10 +207,6 @@ const (
 	// SnapshotAutoReleasedCondition is the condition for marking if Snapshot was auto-released released with AppStudio.
 	SnapshotAutoReleasedCondition = "AutoReleased"
 
-	// SnapshotAddedToGlobalCandidateListCondition is the condition for marking if Snapshot's component was added to
-	// the global candidate list.
-	SnapshotAddedToGlobalCandidateListCondition = "AddedToGlobalCandidateList"
-
 	// AppStudioTestSucceededConditionSatisfied is the reason that's set when the AppStudio tests succeed.
 	AppStudioTestSucceededConditionSatisfied = "Passed"
 
@@ -267,6 +263,11 @@ const (
 	FailedToCreateGroupSnapshotMsg = "Failed to create group snapshot for pr group"
 
 	GroupSnapshotCreationFailureReported = "group snapshot creation failure is reported to git provider"
+
+	Success = "Success"
+	// AddedToGlobalCandidateListAnnotation is the annotation for marking if Snapshot/build PLR's component was added to
+	// the global candidate list.
+	AddedToGlobalCandidateListAnnotation = "test.appstudio.openshift.io/added-to-global-candidate-list"
 )
 
 var (
@@ -288,6 +289,16 @@ type ComponentSnapshotInfo struct {
 	RepoUrl string `json:"repoUrl"`
 	// Pull/Merge request number for updated component
 	PullRequestNumber string `json:"pullRequestNumber"`
+}
+
+// AddedToGlobalCandidateListStatus contains the information which will be added to build PLR or override snapshot about updating GCL
+type AddedToGlobalCandidateListStatus struct {
+	// Result for AddedToGlobalCandidateList
+	Result bool `json:"result"`
+	// Reason for AddedToGlobalCandidateList result
+	Reason string `json:"reason"`
+	// LastUpdatedTime for AddedToGlobalCandidateList
+	LastUpdatedTime string `json:"lastupdatedtime"`
 }
 
 const componentSnapshotInfosSchema = `{
@@ -584,29 +595,24 @@ func MarkSnapshotAsAutoReleased(ctx context.Context, adapterClient client.Client
 	return nil
 }
 
-// IsSnapshotMarkedAsAddedToGlobalCandidateList returns true if snapshot's component is marked as added to global candidate list
+// IsSnapshotMarkedAsAddedToGlobalCandidateList returns true if snapshot's AddedToGlobalCandidateListAnnotation result is marked as true to global candidate list
 func IsSnapshotMarkedAsAddedToGlobalCandidateList(snapshot *applicationapiv1alpha1.Snapshot) bool {
-	return IsSnapshotStatusConditionSet(snapshot, SnapshotAddedToGlobalCandidateListCondition, metav1.ConditionTrue, "")
+	annotationValue, ok := snapshot.GetAnnotations()[AddedToGlobalCandidateListAnnotation]
+	if !ok || annotationValue == "" {
+		return false
+	}
+
+	var addedToGlobalCandidateListStatus AddedToGlobalCandidateListStatus
+	if err := json.Unmarshal([]byte(annotationValue), &addedToGlobalCandidateListStatus); err != nil {
+		return false
+	}
+	return addedToGlobalCandidateListStatus.Result
 }
 
-// MarkSnapshotAsAddedToGlobalCandidateList updates the SnapshotAddedToGlobalCandidateListCondition for the Snapshot to true with reason 'Added'.
+// MarkSnapshotAsAddedToGlobalCandidateList updates the AddedToGlobalCandidateListAnnotation for the Snapshot.
 // If the patch command fails, an error will be returned.
 func MarkSnapshotAsAddedToGlobalCandidateList(ctx context.Context, adapterClient client.Client, snapshot *applicationapiv1alpha1.Snapshot, message string) error {
-	patch := client.MergeFrom(snapshot.DeepCopy())
-	condition := metav1.Condition{
-		Type:    SnapshotAddedToGlobalCandidateListCondition,
-		Status:  metav1.ConditionTrue,
-		Reason:  "Added",
-		Message: message,
-	}
-	meta.SetStatusCondition(&snapshot.Status.Conditions, condition)
-
-	err := adapterClient.Status().Patch(ctx, snapshot, patch)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return AnnotateSnapshot(ctx, snapshot, AddedToGlobalCandidateListAnnotation, message, adapterClient)
 }
 
 // ValidateImageDigest checks if image url contains valid digest, return error if check fails
@@ -1235,6 +1241,19 @@ func AnnotateSnapshot(ctx context.Context, snapshot *applicationapiv1alpha1.Snap
 	return nil
 }
 
+// AnnotateComponent sets annotation for a component in defined context, return error if meeting it
+func AnnotateComponent(ctx context.Context, component *applicationapiv1alpha1.Component, key, value string, cl client.Client) error {
+	patch := client.MergeFrom(component.DeepCopy())
+
+	_ = metadata.SetAnnotation(&component.ObjectMeta, key, value)
+
+	err := cl.Patch(ctx, component, patch)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 // NotifyComponentSnapshotsInGroupSnapshot annotate the msg to the given component snapshots in componentSnapshotInfos
 func NotifyComponentSnapshotsInGroupSnapshot(ctx context.Context, cl client.Client, componentSnapshotInfos []ComponentSnapshotInfo, msg string) error {
 	log := log.FromContext(ctx)
@@ -1368,4 +1387,41 @@ func CancelPipelineRuns(c client.Client, ctx context.Context, logger helpers.Int
 		}
 	}
 	return nil
+}
+
+// UpdateComponentImageAndSource updates both .Status.LastPromotedImage and .Status.LastBuiltCommit for a component resulting in updating the GCL, as well as annotation test.appstudio.openshift.io/lastbuilttime according to build plr's start time or current time for override snapshot
+func UpdateComponentImageAndSource(ctx context.Context, adapterClient client.Client, object client.Object, component *applicationapiv1alpha1.Component, componentSource applicationapiv1alpha1.ComponentSource, containerImage string) error {
+	log := log.FromContext(ctx)
+	patch := client.MergeFrom(component.DeepCopy())
+
+	// update .Status.LastPromotedImage for the component
+	component.Status.LastPromotedImage = containerImage
+
+	// update .Status.LastBuiltCommit for the component
+	if reflect.ValueOf(componentSource).IsValid() && componentSource.GitSource != nil && componentSource.GitSource.Revision != "" {
+		component.Status.LastBuiltCommit = componentSource.GitSource.Revision
+	}
+
+	err := adapterClient.Status().Patch(ctx, component, patch)
+	if err != nil {
+		log.Error(err, "Failed to update .Status.LastBuiltCommit and .Status.LastPromotedImage of Global Candidate for the Component",
+			"component.Name", component.Name)
+		return err
+	}
+
+	log.Info("Updated .Status.LastBuiltCommit and .Status.LastPromotedImage of Global Candidate for the Component",
+		"Component.Namespace", component.Namespace, "LastPromotedImage", component.Status.LastPromotedImage, "Component.Name", component.Name,
+		"lastBuildCommit", component.Status.LastBuiltCommit)
+
+	// update the component's last build time annotation
+	var buildTimeStr string
+	if pr, ok := object.(*tektonv1.PipelineRun); ok {
+		if pr.Status.StartTime != nil {
+			buildTimeStr = strconv.FormatInt(pr.Status.StartTime.Unix(), 10)
+		}
+	}
+	if _, ok := object.(*applicationapiv1alpha1.Snapshot); ok {
+		buildTimeStr = strconv.FormatInt(time.Now().Unix(), 10)
+	}
+	return AnnotateComponent(ctx, component, BuildPipelineLastBuiltTime, buildTimeStr, adapterClient)
 }

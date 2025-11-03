@@ -22,6 +22,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"strconv"
 	"time"
 
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -2137,6 +2138,78 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			Expect(!result.RequeueRequest && err == nil).To(BeTrue())
 		})
 	})
+
+	When("build pipelineRun succdeds and is signed", func() {
+		BeforeEach(func() {
+			Expect(metadata.DeleteLabel(buildPipelineRun, tektonconsts.PipelineAsCodePullRequestLabel)).ShouldNot(HaveOccurred())
+			adapter = createAdapter()
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: loader.ApplicationContextKey,
+					Resource:   hasApp,
+				},
+				{
+					ContextKey: loader.ComponentContextKey,
+					Resource:   hasComp,
+				},
+				{
+					ContextKey: loader.GetPipelineRunContextKey,
+					Resource:   buildPipelineRun,
+				},
+				{
+					ContextKey: loader.ApplicationComponentsContextKey,
+					Resource:   []applicationapiv1alpha1.Component{*hasComp},
+				},
+			})
+		})
+
+		It("Ensure Global Candidate List can be updated when componet has not updated GCL", func() {
+			result, err := adapter.EnsureGlobalCandidateImageUpdated()
+			Expect(!result.CancelRequest && err == nil).To(BeTrue())
+			Eventually(func() bool {
+				_ = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      hasComp.Name,
+					Namespace: hasComp.Namespace,
+				}, hasComp)
+				fmt.Fprintf(GinkgoWriter, "-------BuildPipelineLastBuiltTime: %v\n", hasComp.Annotations[gitops.BuildPipelineLastBuiltTime])
+				fmt.Fprintf(GinkgoWriter, "-------LastPromotedImage: %v\n", hasComp.Status.LastPromotedImage)
+				return hasComp.Annotations[gitops.BuildPipelineLastBuiltTime] != "" && hasComp.Status.LastPromotedImage != ""
+			}, time.Second*15).Should(BeTrue())
+
+			Eventually(func() bool {
+				_ = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      buildPipelineRun.Name,
+					Namespace: buildPipelineRun.Namespace,
+				}, buildPipelineRun)
+				return tekton.IsBuildPLRMarkedAsAddedToGlobalCandidateList(buildPipelineRun)
+			}, time.Second*15).Should(BeTrue())
+		})
+
+		It("Ensure Global Candidate List can be updated when componet has older lastbuilttime annotation", func() {
+			err := gitops.AnnotateComponent(ctx, hasComp, gitops.BuildPipelineLastBuiltTime, strconv.FormatInt(time.Now().Add(time.Hour*-12).Unix(), 10), k8sClient)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(tekton.IsBuildPLRMarkedAsAddedToGlobalCandidateList(buildPipelineRun)).To(BeFalse())
+			adapter.component = hasComp
+			result, err := adapter.EnsureGlobalCandidateImageUpdated()
+			Expect(!result.CancelRequest && err == nil).To(BeTrue())
+			Eventually(func() bool {
+				_ = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      hasComp.Name,
+					Namespace: hasComp.Namespace,
+				}, hasComp)
+				return hasComp.Annotations[gitops.BuildPipelineLastBuiltTime] != "" && hasComp.Status.LastPromotedImage != ""
+			}, time.Second*15).Should(BeTrue())
+
+			Eventually(func() bool {
+				_ = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      buildPipelineRun.Name,
+					Namespace: buildPipelineRun.Namespace,
+				}, buildPipelineRun)
+				return tekton.IsBuildPLRMarkedAsAddedToGlobalCandidateList(buildPipelineRun)
+			}, time.Second*15).Should(BeTrue())
+		})
+	})
+
 	createAdapter = func() *Adapter {
 		adapter = NewAdapter(ctx, buildPipelineRun, hasComp, hasApp, logger, loader.NewMockLoader(), k8sClient)
 		return adapter
