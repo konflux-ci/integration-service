@@ -43,6 +43,9 @@ const (
 	// Name of tekton resolver for git
 	TektonResolverGit = "git"
 
+	// TektonResolverBundle is the name of Tekton resolver for bundles
+	TektonResolverBundle = "bundle"
+
 	// Name of tekton git resolver param url
 	TektonResolverGitParamURL = "url"
 
