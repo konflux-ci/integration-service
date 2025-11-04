@@ -32,6 +32,7 @@ import (
 
 	"github.com/konflux-ci/integration-service/gitops"
 	"github.com/konflux-ci/integration-service/helpers"
+	"github.com/konflux-ci/integration-service/loader"
 	intgteststat "github.com/konflux-ci/integration-service/pkg/integrationteststatus"
 )
 
@@ -160,7 +161,15 @@ func (r *GitLabReporter) Initialize(ctx context.Context, snapshot *applicationap
 // setCommitStatus sets commit status to be shown as pipeline run in gitlab view
 func (r *GitLabReporter) setCommitStatus(report TestReport) (int, error) {
 	var statusCode = 0
-	glState, err := GenerateGitlabCommitState(report.Status)
+	l := loader.NewLoader()
+	scenario, err := l.GetScenario(context.Background(), r.k8sClient, report.ScenarioName, r.snapshot.Namespace)
+
+	if err != nil {
+		r.logger.Error(err, fmt.Sprintf("could not determine whether scenario %s was optional", report.ScenarioName))
+		return statusCode, fmt.Errorf("could not determine whether scenario %s is optional", report.ScenarioName)
+	}
+	optional := helpers.IsIntegrationTestScenarioOptional(scenario)
+	glState, err := GenerateGitlabCommitState(report.Status, optional)
 	if err != nil {
 		return statusCode, fmt.Errorf("failed to generate gitlab state: %w", err)
 	}
@@ -326,7 +335,7 @@ func (r *GitLabReporter) ReturnCodeIsUnrecoverable(statusCode int) bool {
 }
 
 // GenerateGitlabCommitState transforms internal integration test state into Gitlab state
-func GenerateGitlabCommitState(state intgteststat.IntegrationTestStatus) (gitlab.BuildStateValue, error) {
+func GenerateGitlabCommitState(state intgteststat.IntegrationTestStatus, optional bool) (gitlab.BuildStateValue, error) {
 	glState := gitlab.Failed
 
 	switch state {
@@ -337,6 +346,10 @@ func GenerateGitlabCommitState(state intgteststat.IntegrationTestStatus) (gitlab
 	case intgteststat.IntegrationTestStatusEnvironmentProvisionError_Deprecated,
 		intgteststat.IntegrationTestStatusDeploymentError_Deprecated,
 		intgteststat.IntegrationTestStatusTestInvalid:
+		if optional {
+			glState = gitlab.Skipped
+			break
+		}
 		glState = gitlab.Failed
 	case intgteststat.IntegrationTestStatusDeleted,
 		intgteststat.BuildPLRFailed, intgteststat.SnapshotCreationFailed, intgteststat.GroupSnapshotCreationFailed:
@@ -344,6 +357,10 @@ func GenerateGitlabCommitState(state intgteststat.IntegrationTestStatus) (gitlab
 	case intgteststat.IntegrationTestStatusTestPassed:
 		glState = gitlab.Success
 	case intgteststat.IntegrationTestStatusTestFail:
+		if optional {
+			glState = gitlab.Skipped
+			break
+		}
 		glState = gitlab.Failed
 	default:
 		return glState, fmt.Errorf("unknown status %s", state)
