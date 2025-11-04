@@ -19,7 +19,7 @@ require (
 	github.com/onsi/gomega v1.37.0
 	github.com/openshift-pipelines/pipelines-as-code v0.27.2
 	github.com/prometheus/client_golang v1.22.0
-	github.com/santhosh-tekuri/jsonschema/v5 v5.3.1
+	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2
 	github.com/tektoncd/pipeline v0.68.0
 	github.com/tonglil/buflogr v1.1.1
 	gitlab.com/gitlab-org/api/client-go v0.134.0
