@@ -658,6 +658,13 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 		Expect(canBePromoted).To(BeFalse())
 		Expect(reasons).To(HaveLen(4))
 
+		// Makes sure the auto-release annotation supercedes the label
+		hasSnapshot.Labels[gitops.AutoReleaseLabel] = "true"
+		hasSnapshot.Annotations[gitops.AutoReleaseLabel] = "false"
+		canBePromoted, reasons = gitops.CanSnapshotBePromoted(hasSnapshot)
+		Expect(canBePromoted).To(BeFalse())
+		Expect(reasons).To(HaveLen(4))
+
 	})
 
 	It("Return false when the image url contains invalid digest", func() {
