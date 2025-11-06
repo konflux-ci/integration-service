@@ -60,6 +60,7 @@ var (
 )
 
 func init() {
+
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 	utilruntime.Must(applicationapiv1alpha1.AddToScheme(scheme))
 	utilruntime.Must(integrationv1alpha1.AddToScheme(scheme))
