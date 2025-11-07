@@ -1171,7 +1171,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			Expect(pipelineRun.Spec.TaskRunTemplate.ServiceAccountName).To(Equal(serviceAccountName))
 		})
 
-		When("override sansphot is created", func() {
+		When("snssphot is created", func() {
 			It("ensures global Component Image and lastPromotedImage updated when override snapshot is created", func() {
 				// ensure last promoted image is empty string
 				hasComp.Status.LastPromotedImage = ""
@@ -1243,7 +1243,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(result.CancelRequest).To(BeFalse())
 				Expect(result.RequeueRequest).To(BeFalse())
-				expectedLogEntry := "The Snapshot was not override snapshot, not updating the global candidate list"
+				expectedLogEntry := "The Snapshot was neither created for a single component push event nor override type, not updating the global candidate list."
 				Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
 
 				// update Glocal Candidate List for the component in a override snapshot
@@ -1256,6 +1256,36 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 				expectedLogEntry = "Failed to get component from application, won't update global candidate list for this component"
 				Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
 				expectedLogEntry = "containerImage cannot be updated to component Global Candidate List due to invalid digest in containerImage"
+				Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
+			})
+
+			It("ensures global Component Image and lastPromotedImage updated when push snapshot is created", func() {
+				// ensure last promoted image is empty string
+				hasComp.Status.LastPromotedImage = ""
+				var buf bytes.Buffer
+				log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+				adapter.logger = log
+				adapter.snapshot = hasSnapshot
+				Expect(gitops.IsSnapshotMarkedAsAddedToGlobalCandidateList(hasSnapshot)).To(BeFalse())
+				result, err := adapter.EnsureGlobalCandidateImageUpdated()
+				Expect(err).ShouldNot(HaveOccurred())
+				Expect(result.CancelRequest).To(BeFalse())
+
+				Eventually(func() bool {
+					err := k8sClient.Get(ctx, types.NamespacedName{
+						Name:      hasSnapshot.Name,
+						Namespace: "default",
+					}, hasSnapshot)
+					return err == nil && gitops.IsSnapshotMarkedAsAddedToGlobalCandidateList(hasSnapshot)
+				}, time.Second*10).Should(BeTrue())
+
+				// Check if the adapter function detects that it already promoted the snapshot component
+				result, err = adapter.EnsureGlobalCandidateImageUpdated()
+				Expect(err).ShouldNot(HaveOccurred())
+				Expect(result.CancelRequest).To(BeFalse())
+
+				expectedLogEntry := "The Snapshot's component was previously added to the global candidate list, skipping adding it."
+
 				Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
 			})
 		})

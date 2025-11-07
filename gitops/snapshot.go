@@ -207,6 +207,11 @@ const (
 	// SnapshotAutoReleasedCondition is the condition for marking if Snapshot was auto-released released with AppStudio.
 	SnapshotAutoReleasedCondition = "AutoReleased"
 
+	// SnapshotAddedToGlobalCandidateListCondition is the condition for marking if Snapshot's component was added to
+	// the global candidate list.
+	// Checking statusCondition has been replaced by checking annotation test.appstudio.openshift.io/added-to-global-candidate-list now but this statusCondition is still kept
+	SnapshotAddedToGlobalCandidateListCondition = "AddedToGlobalCandidateList"
+
 	// AppStudioTestSucceededConditionSatisfied is the reason that's set when the AppStudio tests succeed.
 	AppStudioTestSucceededConditionSatisfied = "Passed"
 
@@ -607,6 +612,11 @@ func IsSnapshotMarkedAsAddedToGlobalCandidateList(snapshot *applicationapiv1alph
 		return false
 	}
 	return addedToGlobalCandidateListStatus.Result
+}
+
+// IsSnapshotMarkedAsAddedToGlobalCandidateList_Legacy is old way to track GCL update status by checking statusCondition and returns true if snapshot's component is marked as added to global candidate list
+func IsSnapshotMarkedAsAddedToGlobalCandidateList_Legacy(snapshot *applicationapiv1alpha1.Snapshot) bool {
+	return IsSnapshotStatusConditionSet(snapshot, SnapshotAddedToGlobalCandidateListCondition, metav1.ConditionTrue, "")
 }
 
 // MarkSnapshotAsAddedToGlobalCandidateList updates the AddedToGlobalCandidateListAnnotation for the Snapshot.
