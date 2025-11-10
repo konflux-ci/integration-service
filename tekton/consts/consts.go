@@ -76,6 +76,15 @@ const (
 	// PipelineAsCodePullRequestLabel is the type of event which triggered the pipelinerun in build service
 	PipelineAsCodePullRequestLabel = "pipelinesascode.tekton.dev/pull-request"
 
+	// PipelineAsCodeEventTypeLabel is the type of event which triggered the pipelinerun in build service
+	PipelineAsCodeEventTypeLabel = "pipelinesascode.tekton.dev/event-type"
+
+	// PipelineAsCodePushType is the type of push event which triggered the pipelinerun in build service
+	PipelineAsCodePushType = "push"
+
+	// PipelineAsCodeGLPushType is the type of gitlab push event which triggered the pipelinerun in build service
+	PipelineAsCodeGLPushType = "Push"
+
 	/*
 	 * Utils constants
 	 */
