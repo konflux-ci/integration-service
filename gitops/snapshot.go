@@ -705,13 +705,8 @@ func CanSnapshotBePromoted(snapshot *applicationapiv1alpha1.Snapshot) (bool, []s
 			canBePromoted = false
 			reasons = append(reasons, "the Snapshot was created for a PaC pull request event")
 		}
-		if res, err := DoesSnapshotAutoReleaseEvaluateToTrue(snapshot); !res {
-			canBePromoted = false
-			if err == nil {
-				reasons = append(reasons, fmt.Sprintf("the Snapshot '%s' label expression evaluated to 'false'", AutoReleaseLabel))
-			} else {
-				reasons = append(reasons, fmt.Sprintf("there was an error evaluatoring the '%s' label expression: %s", AutoReleaseLabel, err))
-			}
+		if IsSnapshotAutoReleaseDisabled(snapshot) {
+			reasons = append(reasons, fmt.Sprintf("the Snapshot '%s' label is 'false'", AutoReleaseLabel))
 		}
 		if IsGroupSnapshot(snapshot) {
 			canBePromoted = false
@@ -780,17 +775,9 @@ func IsSnapshotCreatedByPACPushEvent(snapshot *applicationapiv1alpha1.Snapshot) 
 		!metadata.HasLabel(snapshot, PipelineAsCodePullRequestAnnotation) && !IsGroupSnapshot(snapshot)
 }
 
-// DoesSnapshotAutoReleaseEvaluateToTrue checks if the auto-release label annotation exists. If so,
-// it evaluates the CEL expression it contains and returns the result. If not, it checks if the
-// auto-release label exists and is true.
-func DoesSnapshotAutoReleaseEvaluateToTrue(snapshot *applicationapiv1alpha1.Snapshot) (bool, error) {
-	annotationValue, ok := snapshot.GetAnnotations()[AutoReleaseLabel] // label and annotation have same value
-	if ok || annotationValue != "" {
-		// If the annotation exists we evaluate the expression and return that
-		return EvaluateSnapshotAutoReleaseAnnotation(annotationValue, snapshot)
-	}
-	// If the annotation does not exist or is empty we fall back on the label (true/false)
-	return !metadata.HasLabelWithValue(snapshot, AutoReleaseLabel, "false"), nil
+// IsSnapshotAutoReleaseDisabled checks if a snapshot has a AutoReleaseLabel label and if its value is "false"
+func IsSnapshotAutoReleaseDisabled(snapshot *applicationapiv1alpha1.Snapshot) bool {
+	return metadata.HasLabelWithValue(snapshot, AutoReleaseLabel, "false")
 }
 
 // IsSnapshotCreatedBySamePACEvent checks if the two snapshot are created by the same PAC event

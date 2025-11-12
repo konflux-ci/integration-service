@@ -256,7 +256,7 @@ var _ = Describe("Release Adapter", Ordered, func() {
 					Resource:   releasePlans,
 				},
 			})
-			resource, err := loader.GetAutoReleasePlansForApplication(mockContext, nil, nil)
+			resource, err := loader.GetAutoReleasePlansForApplication(mockContext, nil, nil, nil)
 			Expect(resource).To(Equal(&releasePlans))
 			Expect(err).ToNot(HaveOccurred())
 		})

@@ -511,7 +511,7 @@ func (a *Adapter) shouldProcessReleases() bool {
 
 // getAutoReleasePlans fetch release plans
 func (a *Adapter) getAutoReleasePlans() (*[]releasev1alpha1.ReleasePlan, error) {
-	releasePlans, err := a.loader.GetAutoReleasePlansForApplication(a.context, a.client, a.application)
+	releasePlans, err := a.loader.GetAutoReleasePlansForApplication(a.context, a.client, a.application, a.snapshot)
 	if err != nil {
 		a.logger.Error(err, "Failed to get all ReleasePlans")
 		return nil, err
