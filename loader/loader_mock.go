@@ -185,9 +185,9 @@ func (l *mockLoader) GetAllSnapshots(ctx context.Context, c client.Client, appli
 }
 
 // GetAutoReleasePlansForApplication returns the resource and error passed as values of the context.
-func (l *mockLoader) GetAutoReleasePlansForApplication(ctx context.Context, c client.Client, application *applicationapiv1alpha1.Application) (*[]releasev1alpha1.ReleasePlan, error) {
+func (l *mockLoader) GetAutoReleasePlansForApplication(ctx context.Context, c client.Client, application *applicationapiv1alpha1.Application, snapshot *applicationapiv1alpha1.Snapshot) (*[]releasev1alpha1.ReleasePlan, error) {
 	if ctx.Value(AutoReleasePlansContextKey) == nil {
-		return l.loader.GetAutoReleasePlansForApplication(ctx, c, application)
+		return l.loader.GetAutoReleasePlansForApplication(ctx, c, application, snapshot)
 	}
 	autoReleasePlans, err := toolkit.GetMockedResourceAndErrorFromContext(ctx, AutoReleasePlansContextKey, []releasev1alpha1.ReleasePlan{})
 	return &autoReleasePlans, err

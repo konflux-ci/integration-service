@@ -26,6 +26,7 @@ import (
 	"github.com/konflux-ci/integration-service/gitops"
 	tektonconsts "github.com/konflux-ci/integration-service/tekton/consts"
 	toolkit "github.com/konflux-ci/operator-toolkit/loader"
+	"github.com/konflux-ci/operator-toolkit/metadata"
 	releasev1alpha1 "github.com/konflux-ci/release-service/api/v1alpha1"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	resolutionv1beta1 "github.com/tektoncd/pipeline/pkg/apis/resolution/v1beta1"
@@ -53,7 +54,7 @@ type ObjectLoader interface {
 	GetAllIntegrationTestScenariosForSnapshot(ctx context.Context, c client.Client, application *applicationapiv1alpha1.Application, snapshot *applicationapiv1alpha1.Snapshot) (*[]v1beta2.IntegrationTestScenario, error)
 	GetAllPipelineRunsForSnapshotAndScenario(ctx context.Context, c client.Client, snapshot *applicationapiv1alpha1.Snapshot, integrationTestScenario *v1beta2.IntegrationTestScenario) (*[]tektonv1.PipelineRun, error)
 	GetAllSnapshots(ctx context.Context, c client.Client, application *applicationapiv1alpha1.Application) (*[]applicationapiv1alpha1.Snapshot, error)
-	GetAutoReleasePlansForApplication(ctx context.Context, c client.Client, application *applicationapiv1alpha1.Application) (*[]releasev1alpha1.ReleasePlan, error)
+	GetAutoReleasePlansForApplication(ctx context.Context, c client.Client, application *applicationapiv1alpha1.Application, snapshot *applicationapiv1alpha1.Snapshot) (*[]releasev1alpha1.ReleasePlan, error)
 	GetScenario(ctx context.Context, c client.Client, name, namespace string) (*v1beta2.IntegrationTestScenario, error)
 	GetAllSnapshotsForBuildPipelineRun(ctx context.Context, c client.Client, pipelineRun *tektonv1.PipelineRun) (*[]applicationapiv1alpha1.Snapshot, error)
 	GetAllSnapshotsForPR(ctx context.Context, c client.Client, application *applicationapiv1alpha1.Application, componentName, pullRequest string) (*[]applicationapiv1alpha1.Snapshot, error)
@@ -310,26 +311,34 @@ func (l *loader) GetAllSnapshots(ctx context.Context, c client.Client, applicati
 // GetAutoReleasePlansForApplication returns the ReleasePlans used by the application being processed. If matching
 // ReleasePlans are not found, an error will be returned. A ReleasePlan will only be returned if it has the
 // release.appstudio.openshift.io/auto-release label set to true or if it is missing the label entirely.
-func (l *loader) GetAutoReleasePlansForApplication(ctx context.Context, c client.Client, application *applicationapiv1alpha1.Application) (*[]releasev1alpha1.ReleasePlan, error) {
-	releasePlans := &releasev1alpha1.ReleasePlanList{}
-	labelRequirement, err := labels.NewRequirement("release.appstudio.openshift.io/auto-release", selection.NotIn, []string{"false"})
-	if err != nil {
-		return nil, err
-	}
-	labelSelector := labels.NewSelector().Add(*labelRequirement)
+func (l *loader) GetAutoReleasePlansForApplication(ctx context.Context, c client.Client, application *applicationapiv1alpha1.Application, snapshot *applicationapiv1alpha1.Snapshot) (*[]releasev1alpha1.ReleasePlan, error) {
+	allReleasePlans := &releasev1alpha1.ReleasePlanList{}
+	filteredReleasePlans := &releasev1alpha1.ReleasePlanList{}
 
 	opts := &client.ListOptions{
 		Namespace:     application.Namespace,
 		FieldSelector: fields.OneTermEqualSelector("spec.application", application.Name),
-		LabelSelector: labelSelector,
 	}
 
-	err = c.List(ctx, releasePlans, opts)
+	err := c.List(ctx, allReleasePlans, opts)
 	if err != nil {
 		return nil, err
 	}
 
-	return &releasePlans.Items, nil
+	for _, rp := range allReleasePlans.Items {
+		annotationValue, ok := rp.GetAnnotations()[gitops.AutoReleaseLabel] // label and annotation have same value
+		if ok || annotationValue != "" {
+			// If the annotation exists we evaluate the expression and return that
+			canRelease, err := gitops.EvaluateSnapshotAutoReleaseAnnotation(annotationValue, snapshot)
+			if err != nil || !canRelease {
+				filteredReleasePlans.Items = append(filteredReleasePlans.Items, rp)
+			}
+		} else if !metadata.HasLabelWithValue(&rp, gitops.AutoReleaseLabel, "false") {
+			filteredReleasePlans.Items = append(filteredReleasePlans.Items, rp)
+		}
+	}
+
+	return &filteredReleasePlans.Items, nil
 }
 
 // GetScenario returns integration test scenario requested by name and namespace
