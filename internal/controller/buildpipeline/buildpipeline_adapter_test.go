@@ -698,6 +698,34 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			Expect(found).To(BeFalse())
 		})
 
+		It("ensures integration workflow annotation is set to 'pull-request' for pr events", func() {
+			// default buildPipelineRun already has event-type set to pull_request
+			snapshot, err := adapter.prepareSnapshotForPipelineRun(buildPipelineRun, hasComp, hasApp)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(snapshot).ToNot(BeNil())
+
+			annotation, found := snapshot.GetAnnotations()[gitops.IntegrationWorkflowAnnotation]
+			Expect(found).To(BeTrue())
+			Expect(annotation).To(Equal(gitops.IntegrationWorkflowPullRequestValue))
+			Expect(annotation).To(Equal("pull-request"))
+		})
+
+		It("ensures integration workflow annotation is set to 'push' for push events", func() {
+			// copy buildPipelineRun and modify it to be a push event
+			pushPipelineRun := buildPipelineRun.DeepCopy()
+			pushPipelineRun.Labels["pipelinesascode.tekton.dev/event-type"] = "push"
+			delete(pushPipelineRun.Labels, "pipelinesascode.tekton.dev/pull-request")
+
+			snapshot, err := adapter.prepareSnapshotForPipelineRun(pushPipelineRun, hasComp, hasApp)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(snapshot).ToNot(BeNil())
+
+			annotation, found := snapshot.GetAnnotations()[gitops.IntegrationWorkflowAnnotation]
+			Expect(found).To(BeTrue())
+			Expect(annotation).To(Equal(gitops.IntegrationWorkflowPushValue))
+			Expect(annotation).To(Equal("push"))
+		})
+
 		It("ensure snapshot will not be created in instance when chains is incomplete", func() {
 			var buf bytes.Buffer
 			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
