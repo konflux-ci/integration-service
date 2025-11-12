@@ -111,6 +111,9 @@ const (
 	// BuildPipelineLastBuiltTime contains the time of the last built pipelineRun
 	BuildPipelineLastBuiltTime = "test.appstudio.openshift.io/lastbuilttime"
 
+	// IntegrationWorkflowAnnotation contains the workflow type that triggered the snapshot (push or pull-request)
+	IntegrationWorkflowAnnotation = "test.appstudio.openshift.io/integration-workflow"
+
 	// BuildPipelineRunPrefix contains the build pipeline run related labels and annotations
 	BuildPipelineRunPrefix = "build.appstudio"
 
@@ -188,6 +191,12 @@ const (
 
 	// PipelineAsCodeMergeRequestType is the type of merge request event which triggered the pipelinerun in build service
 	PipelineAsCodeMergeRequestType = "merge request"
+
+	// IntegrationWorkflowPushValue is the value for push workflow snapshots
+	IntegrationWorkflowPushValue = "push"
+
+	// IntegrationWorkflowPullRequestValue is the value for pull request workflow snapshots
+	IntegrationWorkflowPullRequestValue = "pull-request"
 
 	// PipelineAsCodeGitHubProviderType is the git provider type for a GitHub event which triggered the pipelinerun in build service.
 	PipelineAsCodeGitHubProviderType = "github"
