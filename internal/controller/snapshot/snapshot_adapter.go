@@ -475,7 +475,7 @@ func (a *Adapter) EnsureAllReleasesExist() (controller.OperationResult, error) {
 		if a.isSnapshotOlderThanLastBuild(a.snapshot) {
 			autoReleaseMessage = "Released in newer Snapshot"
 		} else {
-			if err := a.createMissingReleasesForReleasePlans(a.application, releasePlans, a.snapshot); err != nil {
+			if err := a.createMissingReleasesForReleasePlans(releasePlans, a.snapshot); err != nil {
 				return a.handleReleaseError(err, "Failed to create new release")
 			}
 			autoReleaseMessage = "The Snapshot was auto-released"
@@ -676,14 +676,13 @@ func (a *Adapter) EnsureGroupSnapshotExist() (controller.OperationResult, error)
 
 // createMissingReleasesForReleasePlans checks if there's existing Releases for a given list of ReleasePlans and creates
 // new ones if they are missing. In case the Releases can't be created, an error will be returned.
-func (a *Adapter) createMissingReleasesForReleasePlans(application *applicationapiv1alpha1.Application, releasePlans *[]releasev1alpha1.ReleasePlan, snapshot *applicationapiv1alpha1.Snapshot) error {
+func (a *Adapter) createMissingReleasesForReleasePlans(releasePlans *[]releasev1alpha1.ReleasePlan, snapshot *applicationapiv1alpha1.Snapshot) error {
 	releases, err := a.loader.GetReleasesWithSnapshot(a.context, a.client, a.snapshot)
 	if err != nil {
 		return err
 	}
 
 	firstRelease := true
-
 	for _, releasePlan := range *releasePlans {
 		releasePlan := releasePlan // G601
 		existingRelease := release.FindMatchingReleaseWithReleasePlan(releases, releasePlan)
@@ -693,21 +692,10 @@ func (a *Adapter) createMissingReleasesForReleasePlans(application *applicationa
 				"releasePlan.Name", releasePlan.Name,
 				"release.Name", existingRelease.Name)
 		} else {
-			newRelease := release.NewReleaseForReleasePlan(a.context, &releasePlan, snapshot)
-			err = a.client.Create(a.context, newRelease)
+			err = a.createAutomatedRelease(&releasePlan, snapshot)
 			if err != nil {
 				return err
 			}
-			a.logger.LogAuditEvent("Created a new Release", newRelease, h.LogActionAdd,
-				"releasePlan.Name", releasePlan.Name)
-
-			patch := client.MergeFrom(newRelease.DeepCopy())
-			newRelease.SetAutomated()
-			err = a.client.Status().Patch(a.context, newRelease, patch)
-			if err != nil {
-				return err
-			}
-			a.logger.Info("Marked Release status automated", "release.Name", newRelease.Name)
 		}
 		// Register the first release time for metrics calculation
 		if firstRelease {
@@ -717,6 +705,39 @@ func (a *Adapter) createMissingReleasesForReleasePlans(application *applicationa
 				firstRelease = false
 			}
 		}
+	}
+	return nil
+}
+
+// createAutomatedRelease  creates a new release for a given releasePlan and snapshot and marks it as automated.
+// In case the Releases can't be created or their status can't be updated, an error will be returned.
+func (a *Adapter) createAutomatedRelease(releasePlan *releasev1alpha1.ReleasePlan, snapshot *applicationapiv1alpha1.Snapshot) error {
+	newRelease := release.NewReleaseForReleasePlan(a.context, releasePlan, snapshot)
+	err := retry.OnError(retry.DefaultRetry, func(_ error) bool { return true }, func() error {
+		err := a.client.Create(a.context, newRelease)
+		if err != nil {
+			return err
+		}
+		a.logger.LogAuditEvent("Created a new Release", newRelease, h.LogActionAdd,
+			"releasePlan.Name", releasePlan.Name)
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+
+	patch := client.MergeFrom(newRelease.DeepCopy())
+	newRelease.SetAutomated()
+	err = retry.OnError(retry.DefaultRetry, func(_ error) bool { return true }, func() error {
+		err = a.client.Status().Patch(a.context, newRelease, patch)
+		if err != nil {
+			return err
+		}
+		a.logger.Info("Marked Release status automated", "release.Name", newRelease.Name)
+		return nil
+	})
+	if err != nil {
+		return err
 	}
 	return nil
 }
