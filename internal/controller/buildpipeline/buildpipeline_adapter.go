@@ -193,8 +193,19 @@ func (a *Adapter) EnsurePipelineIsFinalized() (controller.OperationResult, error
 		return controller.ContinueProcessing()
 	}
 
+	// if pipelinerun has been deleted, do not add finalilzer
+	if a.pipelineRun.GetDeletionTimestamp() != nil {
+		return controller.ContinueProcessing()
+	}
+
 	err := h.AddFinalizerToPipelineRun(a.context, a.client, a.logger, a.pipelineRun, h.IntegrationPipelineRunFinalizer)
 	if err != nil {
+		// if IsNotFound error, do not log error or requeue
+		if errors.IsNotFound(err) {
+			a.logger.Info(fmt.Sprintf("Could not add finalizer %s to build pipeline %s.  Build pipeline could not be found.", h.IntegrationPipelineRunFinalizer, a.pipelineRun.Name))
+			return controller.ContinueProcessing()
+		}
+
 		a.logger.Error(err, fmt.Sprintf("Could not add finalizer %s to build pipeline %s", h.IntegrationPipelineRunFinalizer, a.pipelineRun.Name))
 		return controller.RequeueWithError(err)
 	}

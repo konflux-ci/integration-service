@@ -1137,6 +1137,78 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				}, time.Second*20).Should(BeTrue())
 			})
 
+			It("does not remove finalizer if the PLR is being deleted", func() {
+				// Mark build PLR as incomplete
+				buildPipelineRun.Status.Conditions = nil
+				Expect(k8sClient.Status().Update(ctx, buildPipelineRun)).Should(Succeed())
+
+				// Mark build PLR as deleted
+				deletionTime := metav1.Now()
+				buildPipelineRun.SetDeletionTimestamp(&deletionTime)
+
+				// Ensure PLR does not have finalizer
+				existingBuildPLR := new(tektonv1.PipelineRun)
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Namespace: buildPipelineRun.Namespace,
+					Name:      buildPipelineRun.Name,
+				}, existingBuildPLR)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(existingBuildPLR.ObjectMeta.Finalizers).To(BeNil())
+
+				// Attempt to add Finalizer to PLR
+				result, err := adapter.EnsurePipelineIsFinalized()
+				Expect(result.CancelRequest).To(BeFalse())
+				Expect(err).ToNot(HaveOccurred())
+
+				// Ensure PLR does not have finalizer
+				reconciledBuildPLR := new(tektonv1.PipelineRun)
+				err = k8sClient.Get(ctx, types.NamespacedName{
+					Namespace: buildPipelineRun.Namespace,
+					Name:      buildPipelineRun.Name,
+				}, reconciledBuildPLR)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(reconciledBuildPLR.ObjectMeta.Finalizers).To(BeNil())
+
+			})
+
+			It("does not requeue if build pipelinerun does not exist", func() {
+				var buf bytes.Buffer
+				log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+				adapter.logger = log
+				// Mark build PLR as incomplete
+				buildPipelineRun.Status.Conditions = nil
+				Expect(k8sClient.Status().Update(ctx, buildPipelineRun)).Should(Succeed())
+
+				// Ensure PLR does not have finalizer
+				existingBuildPLR := new(tektonv1.PipelineRun)
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Namespace: buildPipelineRun.Namespace,
+					Name:      buildPipelineRun.Name,
+				}, existingBuildPLR)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(existingBuildPLR.ObjectMeta.Finalizers).To(BeNil())
+
+				// Change name of build pipelinrun
+				duplicateBuildPLR := buildPipelineRun.DeepCopy()
+				duplicateBuildPLR.Name = "nonexistent-pipelinerun"
+				adapter.pipelineRun = duplicateBuildPLR
+
+				// Attempt to add Finalizer to PLR
+				result, err := adapter.EnsurePipelineIsFinalized()
+				Expect(result.CancelRequest).To(BeFalse())
+				Expect(err).ToNot(HaveOccurred())
+				expectedLogEntry := "Build pipeline could not be found."
+				Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
+
+				// Ensure PLR does not have finalizer
+				reconciledBuildPLR := new(tektonv1.PipelineRun)
+				err = k8sClient.Get(ctx, types.NamespacedName{
+					Namespace: duplicateBuildPLR.Namespace,
+					Name:      duplicateBuildPLR.Name,
+				}, reconciledBuildPLR)
+				Expect(reconciledBuildPLR.ObjectMeta.Finalizers).To(BeNil())
+
+			})
 		})
 
 		When("add pr group to the build pipelineRun annotations and labels", func() {
