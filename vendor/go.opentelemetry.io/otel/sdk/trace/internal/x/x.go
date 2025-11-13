@@ -1,24 +1,21 @@
 // Copyright The OpenTelemetry Authors
 // SPDX-License-Identifier: Apache-2.0
 
-// Package x contains support for OTel SDK experimental features.
-//
-// This package should only be used for features defined in the specification.
-// It should not be used for experiments or new project ideas.
-package x // import "go.opentelemetry.io/otel/sdk/internal/x"
+// Package x documents experimental features for [go.opentelemetry.io/otel/sdk/trace].
+package x // import "go.opentelemetry.io/otel/sdk/trace/internal/x"
 
 import (
 	"os"
 	"strings"
 )
 
-// Resource is an experimental feature flag that defines if resource detectors
-// should be included experimental semantic conventions.
+// SelfObservability is an experimental feature flag that determines if SDK
+// self-observability metrics are enabled.
 //
-// To enable this feature set the OTEL_GO_X_RESOURCE environment variable
+// To enable this feature set the OTEL_GO_X_SELF_OBSERVABILITY environment variable
 // to the case-insensitive string value of "true" (i.e. "True" and "TRUE"
 // will also enable this).
-var Resource = newFeature("RESOURCE", func(v string) (string, bool) {
+var SelfObservability = newFeature("SELF_OBSERVABILITY", func(v string) (string, bool) {
 	if strings.EqualFold(v, "true") {
 		return v, true
 	}
