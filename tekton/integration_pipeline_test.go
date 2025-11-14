@@ -854,6 +854,16 @@ var _ = Describe("Integration pipeline", Ordered, func() {
 										},
 									},
 								},
+								{
+									Name:   "some-task4",
+									Params: []tektonv1.Param{},
+									TaskSpec: &tektonv1.EmbeddedTask{
+										TaskSpec: tektonv1.TaskSpec{
+											DisplayName: "some-task4",
+											Steps:       []tektonv1.Step{},
+										},
+									},
+								},
 							},
 						},
 					},

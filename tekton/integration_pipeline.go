@@ -275,7 +275,7 @@ func (iplr *IntegrationPipelineRun) WithUpdatedTasksGitResolver(snapshot *applic
 func shouldUpdateTaskGitResolver(task *tektonv1.PipelineTask, snapshot *applicationapiv1alpha1.Snapshot) bool {
 	// only tekton git resolver is applicable
 	//nolint:staticcheck  // QF1008: We specifically want ResolverRef.Params, not PipelineRef.Params
-	if task.TaskRef.ResolverRef.Resolver != consts.TektonResolverGit {
+	if task.TaskRef == nil || task.TaskRef.ResolverRef.Resolver != consts.TektonResolverGit {
 		return false
 	}
 
