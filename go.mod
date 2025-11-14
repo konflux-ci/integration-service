@@ -9,7 +9,7 @@ require (
 	github.com/bradleyfalzon/ghinstallation/v2 v2.16.0
 	github.com/ghodss/yaml v1.0.0
 	github.com/go-logr/logr v1.4.3
-	github.com/google/cel-go v0.23.1
+	github.com/google/cel-go v0.26.1
 	github.com/google/go-containerregistry v0.20.6
 	github.com/google/go-github/v45 v45.2.0
 	github.com/konflux-ci/application-api v0.0.0-20250324201748-5a9670bf7679
@@ -39,12 +39,13 @@ require (
 // Without this replace, go report 'package k8s.io/client-go/XXXX provided by k8s.io/client-go at latest version v0.30.1 but not at required version v1.5.2'
 replace k8s.io/client-go => k8s.io/client-go v0.29.4
 
-replace github.com/google/cel-go => github.com/google/cel-go v0.17.7
+replace github.com/google/cel-go => github.com/google/cel-go v0.26.1
 
 require (
+	cel.dev/expr v0.24.0 // indirect
 	contrib.go.opencensus.io/exporter/ocagent v0.7.1-0.20230502190836-7399e0f8ee5e // indirect
 	contrib.go.opencensus.io/exporter/prometheus v0.4.2 // indirect
-	github.com/antlr/antlr4/runtime/Go/antlr/v4 v4.0.0-20230305170008-8188dc5388df // indirect
+	github.com/antlr4-go/antlr/v4 v4.13.0 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/blang/semver/v4 v4.0.0 // indirect
 	github.com/blendle/zapdriver v1.3.1 // indirect
