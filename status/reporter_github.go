@@ -417,7 +417,7 @@ func (csu *CommitStatusUpdater) updateStatusInComment(ctx context.Context, repor
 		csu.logger.Error(err, fmt.Sprintf("error while getting all comments for pull-request %s", issueNumberStr))
 		return statusCode, fmt.Errorf("error while getting all comments for pull-request %s: %w", issueNumberStr, err)
 	}
-	existingCommentId := csu.ghClient.GetExistingCommentID(allComments, csu.snapshot.Name, report.ScenarioName)
+	existingCommentId := csu.ghClient.GetExistingCommentID(allComments, GenerateComponentNameWithPrefix(report.ComponentName), report.ScenarioName)
 	if existingCommentId == nil {
 		_, statusCode, err = csu.ghClient.CreateComment(ctx, csu.owner, csu.repo, issueNumber, comment)
 		if err != nil {
