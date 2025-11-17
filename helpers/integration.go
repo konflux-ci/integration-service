@@ -444,7 +444,10 @@ func AddFinalizerToPipelineRun(ctx context.Context, adapterClient client.Client,
 	if ok := controllerutil.AddFinalizer(pipelineRun, finalizer); ok {
 		err := adapterClient.Patch(ctx, pipelineRun, patch)
 		if err != nil {
-			return fmt.Errorf("error occurred while patching the updated PipelineRun after finalizer addition: %w", err)
+			logger.Error(err, "error occurred while patching the updated PipelineRun after finalizer addition",
+				"pipelineRun.Name", pipelineRun.Name)
+			// don't return wrapped err, so we can use RetryOnConflict
+			return err
 		}
 
 		logger.LogAuditEvent("Added Finalizer to the PipelineRun", pipelineRun, LogActionUpdate, "finalizer", finalizer)

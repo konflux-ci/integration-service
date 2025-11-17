@@ -193,12 +193,32 @@ func (a *Adapter) EnsurePipelineIsFinalized() (controller.OperationResult, error
 		return controller.ContinueProcessing()
 	}
 
-	// if pipelinerun has been deleted, do not add finalilzer
+	// if pipelinerun has been deleted, do not add finalizer
 	if a.pipelineRun.GetDeletionTimestamp() != nil {
 		return controller.ContinueProcessing()
 	}
 
-	err := h.AddFinalizerToPipelineRun(a.context, a.client, a.logger, a.pipelineRun, h.IntegrationPipelineRunFinalizer)
+	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		var err error
+		// Refetch the PipelineRun to get the latest version before patching
+		a.pipelineRun, err = a.loader.GetPipelineRun(a.context, a.client, a.pipelineRun.Name, a.pipelineRun.Namespace)
+		if err != nil {
+			return err
+		}
+
+		// if pipelinerun has been deleted, do not add finalizer
+		if a.pipelineRun.GetDeletionTimestamp() != nil {
+			return nil
+		}
+
+		// Check again if finalizer was already added (might have been added by another reconcile)
+		if controllerutil.ContainsFinalizer(a.pipelineRun, h.IntegrationPipelineRunFinalizer) {
+			return nil
+		}
+
+		err = h.AddFinalizerToPipelineRun(a.context, a.client, a.logger, a.pipelineRun, h.IntegrationPipelineRunFinalizer)
+		return err
+	})
 	if err != nil {
 		// if IsNotFound error, do not log error or requeue
 		if errors.IsNotFound(err) {
