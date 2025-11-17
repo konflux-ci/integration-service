@@ -87,7 +87,16 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	})
 	if err != nil {
 		if errors.IsNotFound(err) {
-			if err := helpers.RemoveFinalizerFromPipelineRun(ctx, r.Client, logger, pipelineRun, helpers.IntegrationPipelineRunFinalizer); err != nil {
+			// Use retry logic to handle etcd timeouts when removing finalizer
+			err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
+				// Refetch the PipelineRun to get the latest version before removing finalizer
+				err := r.Get(ctx, req.NamespacedName, pipelineRun)
+				if err != nil {
+					return err
+				}
+				return helpers.RemoveFinalizerFromPipelineRun(ctx, r.Client, logger, pipelineRun, helpers.IntegrationPipelineRunFinalizer)
+			})
+			if err != nil {
 				return ctrl.Result{}, err
 			}
 		}

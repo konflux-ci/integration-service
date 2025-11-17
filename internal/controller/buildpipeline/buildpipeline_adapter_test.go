@@ -1087,8 +1087,24 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 
 				// Ensure PLR has finalizer
 				Eventually(func() bool {
-					return slices.Contains(buildPipelineRun.ObjectMeta.Finalizers, helpers.IntegrationPipelineRunFinalizer)
+					// Refetch the PipelineRun from the cluster to get the updated finalizer
+					existingBuildPLR := new(tektonv1.PipelineRun)
+					err := k8sClient.Get(ctx, types.NamespacedName{
+						Namespace: buildPipelineRun.Namespace,
+						Name:      buildPipelineRun.Name,
+					}, existingBuildPLR)
+					if err != nil {
+						return false
+					}
+					return slices.Contains(existingBuildPLR.ObjectMeta.Finalizers, helpers.IntegrationPipelineRunFinalizer)
 				}, time.Second*10).Should(BeTrue())
+
+				// Refetch the PipelineRun to get the latest ResourceVersion before updating status
+				err = k8sClient.Get(ctx, types.NamespacedName{
+					Namespace: buildPipelineRun.Namespace,
+					Name:      buildPipelineRun.Name,
+				}, buildPipelineRun)
+				Expect(err).ToNot(HaveOccurred())
 
 				// Update build PLR as completed
 				buildPipelineRun.Status = tektonv1.PipelineRunStatus{
