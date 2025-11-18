@@ -37,6 +37,21 @@ spec:
       description: 'Container image built from any konflux git repo. Use this param only when you run Konflux e2e tests
         in another Konflux component repo. Will pass the component built image from the snapshot.'
   tasks:
+    - name: test-metadata-1
+      taskRef:
+        resolver: git
+        params:
+          - name: url
+            value: https://github.com/konflux-ci/tekton-integration-catalog.git
+          - name: revision
+            value: main
+          - name: pathInRepo
+            value: tasks/test-metadata/0.3/test-metadata.yaml
+      params:
+        - name: SNAPSHOT
+          value: $(params.SNAPSHOT)
+        - name: test-name
+          value: $(context.pipelineRun.name)
     - name: test-metadata
       taskRef:
         resolver: git
