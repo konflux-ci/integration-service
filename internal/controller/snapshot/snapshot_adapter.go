@@ -821,7 +821,7 @@ func (a *Adapter) createIntegrationPipelineRun(application *applicationapiv1alph
 		WithIntegrationLabels(integrationTestScenario).
 		WithIntegrationAnnotations(integrationTestScenario).
 		WithApplication(a.application).
-		WithServiceAccount(tektonconsts.DefaultIntegrationPipelineServiceAccount).
+		WithDefaultServiceAccount(tektonconsts.DefaultIntegrationPipelineServiceAccount).
 		WithExtraParams(integrationTestScenario.Spec.Params).
 		WithFinalizer(h.IntegrationPipelineRunFinalizer).
 		WithIntegrationTimeouts(integrationTestScenario, a.logger.Logger)
