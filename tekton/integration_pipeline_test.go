@@ -582,9 +582,19 @@ var _ = Describe("Integration pipeline", Ordered, func() {
 			serviceAccountName := "konflux-integration-runner"
 
 			ipr := tekton.IntegrationPipelineRun{}
-			ipr.WithServiceAccount(serviceAccountName)
+			ipr.WithDefaultServiceAccount(serviceAccountName)
 
 			Expect(ipr.Spec.TaskRunTemplate.ServiceAccountName).To(Equal(serviceAccountName))
+		})
+
+		It("doesn't overwrite the service account if it's already set", func() {
+			serviceAccountName := "konflux-integration-runner"
+
+			ipr := tekton.IntegrationPipelineRun{}
+			ipr.Spec.TaskRunTemplate.ServiceAccountName = "someotherserviceaccount"
+			ipr.WithDefaultServiceAccount(serviceAccountName)
+
+			Expect(ipr.Spec.TaskRunTemplate.ServiceAccountName).To(Equal("someotherserviceaccount"))
 		})
 	})
 

@@ -420,10 +420,12 @@ func (r *IntegrationPipelineRun) WithApplication(application *applicationapiv1al
 	return r
 }
 
-// WithServiceAccount adds the specified service account to the Integration PipelineRun's TaskRunTemplate.
-func (r *IntegrationPipelineRun) WithServiceAccount(serviceAccountName string) *IntegrationPipelineRun {
-	r.Spec.TaskRunTemplate.ServiceAccountName = serviceAccountName
-
+// WithDefaultServiceAccount adds the specified service account to the Integration PipelineRun's TaskRunTemplate if
+// it doesn't already have one defined.
+func (r *IntegrationPipelineRun) WithDefaultServiceAccount(serviceAccountName string) *IntegrationPipelineRun {
+	if r.Spec.TaskRunTemplate.ServiceAccountName == "" {
+		r.Spec.TaskRunTemplate.ServiceAccountName = serviceAccountName
+	}
 	return r
 }
 
