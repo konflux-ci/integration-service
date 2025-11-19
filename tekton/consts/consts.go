@@ -88,6 +88,9 @@ const (
 	// PipelineAsCodeGLPushType is the type of gitlab push event which triggered the pipelinerun in build service
 	PipelineAsCodeGLPushType = "Push"
 
+	// PipelineAsCodeGitHubMergeQueueBranchPrefix is the prefix added to temporary branches which are created for merge queues
+	PipelineAsCodeGitHubMergeQueueBranchPrefix = "gh-readonly-queue/"
+
 	/*
 	 * Utils constants
 	 */

@@ -149,6 +149,12 @@ var _ = Describe("build pipeline", func() {
 			Expect(tekton.GenerateSHA(prGroup)).NotTo(BeNil())
 		})
 
+		It("can detect that the build pipelineRun originated from a merge queue and not consider it a push pipelineRun", func() {
+			buildPipelineRun.Labels[tektonconsts.PipelineAsCodeEventTypeLabel] = "push"
+			buildPipelineRun.Annotations[tektonconsts.PipelineAsCodeSourceBranchAnnotation] = "gh-readonly-queue/main/pr-2987-bda9b312bf224a6b5fb1e7ed6ae76dd9e6b1b75b"
+			Expect(tekton.IsPLRCreatedByPACPushEvent(buildPipelineRun)).To(BeFalse())
+		})
+
 		It("can get the latest build pipelinerun for given component", func() {
 			plrs := []tektonv1.PipelineRun{*buildPipelineRun, *buildPipelineRun2}
 			Expect(tekton.IsLatestBuildPipelineRunInComponent(buildPipelineRun, &plrs)).To(BeTrue())

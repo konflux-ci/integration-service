@@ -558,6 +558,14 @@ func (a *Adapter) prepareSnapshotForPipelineRun(pipelineRun *tektonv1.PipelineRu
 		snapshot.Labels[gitops.BuildPipelineRunFinishTimeLabel] = strconv.FormatInt(time.Now().Unix(), 10)
 	}
 
+	if gitops.IsSnapshotCreatedByPACMergeQueueEvent(snapshot) {
+		pullRequestNumber := gitops.ExtractPullRequestNumberFromMergeQueueSnapshot(snapshot)
+		if pullRequestNumber != "" {
+			snapshot.Labels[gitops.PipelineAsCodePullRequestAnnotation] = pullRequestNumber
+			snapshot.Annotations[gitops.PipelineAsCodePullRequestAnnotation] = pullRequestNumber
+		}
+	}
+
 	if pipelineRun.Status.StartTime != nil {
 		snapshot.Annotations[gitops.BuildPipelineRunStartTime] = strconv.FormatInt(pipelineRun.Status.StartTime.Unix(), 10)
 	}
