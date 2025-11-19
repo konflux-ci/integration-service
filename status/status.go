@@ -239,7 +239,7 @@ func GenerateTestReport(ctx context.Context, client client.Client, detail intgte
 		return nil, fmt.Errorf("failed to generate text message: %w", err)
 	}
 
-	summary, err := GenerateSummary(detail.Status, testedSnapshot.Name, detail.ScenarioName)
+	summary, err := GenerateSummary(detail.Status, testedSnapshot.Name, detail.ScenarioName, componentName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate summary message: %w", err)
 	}
@@ -315,7 +315,7 @@ func generateText(ctx context.Context, client client.Client, integrationTestStat
 }
 
 // GenerateSummary returns summary for the given state, snapshotName and scenarioName
-func GenerateSummary(state intgteststat.IntegrationTestStatus, snapshotName, scenarioName string) (string, error) {
+func GenerateSummary(state intgteststat.IntegrationTestStatus, snapshotName, scenarioName, componentName string) (string, error) {
 	var summary string
 	var statusDesc string
 
@@ -348,13 +348,26 @@ func GenerateSummary(state intgteststat.IntegrationTestStatus, snapshotName, sce
 		return summary, fmt.Errorf("unknown status")
 	}
 
+	componentName = GenerateComponentNameWithPrefix(componentName)
+
 	if state == intgteststat.BuildPLRInProgress || state == intgteststat.SnapshotCreationFailed || state == intgteststat.BuildPLRFailed || state == intgteststat.GroupSnapshotCreationFailed {
-		summary = fmt.Sprintf("Integration test for scenario %s %s", scenarioName, statusDesc)
+		summary = fmt.Sprintf("Integration test for %s snapshot scenario %s %s", componentName, scenarioName, statusDesc)
 	} else {
-		summary = fmt.Sprintf("Integration test for snapshot %s and scenario %s %s", snapshotName, scenarioName, statusDesc)
+		summary = fmt.Sprintf("Integration test for %s snapshot %s and scenario %s %s", componentName, snapshotName, scenarioName, statusDesc)
 	}
 
 	return summary, nil
+}
+
+// function GenerateComponentNameWithPrefix to generate component name "pr group" or "component component-sample"
+// to help search it in comment correctly to avoid component name is searched in pr group report
+func GenerateComponentNameWithPrefix(componentName string) string {
+	if componentName == gitops.ComponentNameForGroupSnapshot {
+		componentName = gitops.ComponentNameForGroupSnapshot
+	} else {
+		componentName = "component " + componentName
+	}
+	return componentName
 }
 
 func getConsoleName() string {

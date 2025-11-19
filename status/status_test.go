@@ -522,19 +522,19 @@ var _ = Describe("Status Adapter", func() {
 
 `
 		expectedTestReport := status.TestReport{
-			FullName:            "Red Hat Konflux / scenario1",
+			FullName:            "Red Hat Konflux / scenario1 / component-sample",
 			ScenarioName:        "scenario1",
 			SnapshotName:        "snapshot-sample",
-			ComponentName:       "",
+			ComponentName:       "component-sample",
 			Text:                text,
-			Summary:             "Integration test for snapshot snapshot-sample and scenario scenario1 has passed",
+			Summary:             "Integration test for component component-sample snapshot snapshot-sample and scenario scenario1 has passed",
 			Status:              integrationteststatus.IntegrationTestStatusTestPassed,
 			StartTime:           &ts,
 			CompletionTime:      &tc,
 			TestPipelineRunName: "test-pipelinerun",
 		}
 
-		testReport, err := status.GenerateTestReport(context.Background(), mockK8sClient, integrationTestStatusDetail, hasSnapshot, "")
+		testReport, err := status.GenerateTestReport(context.Background(), mockK8sClient, integrationTestStatusDetail, hasSnapshot, "component-sample")
 		Expect(err).NotTo(HaveOccurred())
 		Expect(testReport).To(Equal(&expectedTestReport))
 	})
@@ -545,7 +545,7 @@ var _ = Describe("Status Adapter", func() {
 
 			integrationTestStatusDetail := newIntegrationTestStatusDetail(expectedScenarioStatus)
 
-			expectedSummary := fmt.Sprintf("Integration test for snapshot snapshot-sample and scenario scenario1 %s", expectedTextEnding)
+			expectedSummary := fmt.Sprintf("Integration test for component component-sample snapshot snapshot-sample and scenario scenario1 %s", expectedTextEnding)
 			testReport, err := status.GenerateTestReport(context.Background(), mockK8sClient, integrationTestStatusDetail, hasSnapshot, "component-sample")
 			Expect(err).NotTo(HaveOccurred())
 			Expect(testReport.Summary).To(Equal(expectedSummary))
@@ -566,7 +566,7 @@ var _ = Describe("Status Adapter", func() {
 
 			integrationTestStatusDetail := newIntegrationTestStatusDetail(expectedScenarioStatus)
 
-			expectedSummary := fmt.Sprintf("Integration test for scenario scenario1 %s", expectedTextEnding)
+			expectedSummary := fmt.Sprintf("Integration test for component component-sample snapshot scenario scenario1 %s", expectedTextEnding)
 			testReport, err := status.GenerateTestReport(context.Background(), mockK8sClient, integrationTestStatusDetail, hasSnapshot, "component-sample")
 			Expect(err).NotTo(HaveOccurred())
 			Expect(testReport.Summary).To(Equal(expectedSummary))
@@ -578,7 +578,7 @@ var _ = Describe("Status Adapter", func() {
 
 	It("check if GenerateSummary supports all integration test statuses", func() {
 		for _, teststatus := range integrationteststatus.IntegrationTestStatusValues() {
-			_, err := status.GenerateSummary(teststatus, "yolo", "yolo")
+			_, err := status.GenerateSummary(teststatus, "yolo", "yolo", "yoyo")
 			Expect(err).NotTo(HaveOccurred())
 		}
 	})

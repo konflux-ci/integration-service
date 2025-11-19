@@ -153,7 +153,7 @@ func (c *MockGitHubClient) GetAllCommentsForPR(ctx context.Context, owner string
 	return comments, 200, nil
 }
 
-func (c *MockGitHubClient) GetExistingCommentID(comments []*ghapi.IssueComment, snapshotName, scenarioName string) *int64 {
+func (c *MockGitHubClient) GetExistingCommentID(comments []*ghapi.IssueComment, componentName, scenarioName string) *int64 {
 	return nil
 }
 

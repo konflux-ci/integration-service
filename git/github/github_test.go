@@ -114,7 +114,7 @@ func (MockIssuesService) CreateComment(
 func (MockIssuesService) ListComments(ctx context.Context, owner string, repo string,
 	number int, opts *ghapi.IssueListCommentsOptions) ([]*ghapi.IssueComment, *ghapi.Response, error) {
 	var id int64 = 40
-	var body = "Integration test for snapshot snapshotName and scenario scenarioName"
+	var body = "Integration test for component component-sample snapshot snapshotName and scenario scenarioName"
 	issueComments := []*ghapi.IssueComment{{ID: &id, Body: &body}}
 	return issueComments, nil, nil
 }
@@ -355,7 +355,7 @@ var _ = Describe("Client", func() {
 		Expect(comments).NotTo(BeEmpty())
 		Expect(statusCode).NotTo(BeNil())
 
-		commentID := client.GetExistingCommentID(comments, "snapshotName", "scenarioName")
+		commentID := client.GetExistingCommentID(comments, "component-sample", "scenarioName")
 		Expect(*commentID).To(Equal(int64(40)))
 	})
 

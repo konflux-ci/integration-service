@@ -110,7 +110,7 @@ type ClientInterface interface {
 	GetAllCommitStatusesForRef(ctx context.Context, owner, repo, sha string) ([]*ghapi.RepoStatus, int, error)
 	GetAllCommentsForPR(ctx context.Context, owner string, repo string, pr int) ([]*ghapi.IssueComment, int, error)
 	CommitStatusExists(res []*ghapi.RepoStatus, commitStatus *CommitStatusAdapter) (bool, error)
-	GetExistingCommentID(comments []*ghapi.IssueComment, snapshotName, scenarioName string) *int64
+	GetExistingCommentID(comments []*ghapi.IssueComment, componentName, scenarioName string) *int64
 	EditComment(ctx context.Context, owner string, repo string, commentID int64, body string) (int64, int, error)
 	GetPullRequest(ctx context.Context, owner string, repo string, prID int) (*ghapi.PullRequest, int, error)
 }
@@ -428,9 +428,9 @@ func (c *Client) GetExistingCheckRun(checkRuns []*ghapi.CheckRun, newCheckRun *C
 }
 
 // GetExistingComment returns existing GitHub comment for the scenario of ref.
-func (c *Client) GetExistingCommentID(comments []*ghapi.IssueComment, snapshotName, scenarioName string) *int64 {
+func (c *Client) GetExistingCommentID(comments []*ghapi.IssueComment, componentName, scenarioName string) *int64 {
 	for _, comment := range comments {
-		if strings.Contains(*comment.Body, snapshotName) && strings.Contains(*comment.Body, scenarioName) {
+		if strings.Contains(*comment.Body, componentName) && strings.Contains(*comment.Body, scenarioName) {
 			c.logger.Info("found comment ID with a matching scenarioName", "scenarioName", scenarioName)
 			return comment.ID
 		}

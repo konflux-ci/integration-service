@@ -256,7 +256,7 @@ func (r *GitLabReporter) updateStatusInComment(report TestReport) (int, error) {
 		r.logger.Error(err, "error while getting all comments for merge-request", "mergeRequest", r.mergeRequest, "report.SnapshotName", report.SnapshotName)
 		return statusCode, fmt.Errorf("error while getting all comments for merge-request %d: %w", r.mergeRequest, err)
 	}
-	existingCommentId := r.GetExistingNoteID(allNotes, report.ScenarioName, report.SnapshotName)
+	existingCommentId := r.GetExistingNoteID(allNotes, report.ScenarioName, GenerateComponentNameWithPrefix(report.ComponentName))
 	if existingCommentId == nil {
 		noteOptions := gitlab.CreateMergeRequestNoteOptions{Body: &comment}
 		_, response, err := r.client.Notes.CreateMergeRequestNote(r.targetProjectID, r.mergeRequest, &noteOptions)
@@ -294,10 +294,10 @@ func (r *GitLabReporter) GetExistingCommitStatus(commitStatuses []*gitlab.Commit
 }
 
 // GetExistingNoteID returns existing GitLab note for the scenario of ref.
-func (r *GitLabReporter) GetExistingNoteID(notes []*gitlab.Note, scenarioName, snapshotName string) *int {
+func (r *GitLabReporter) GetExistingNoteID(notes []*gitlab.Note, scenarioName, componentName string) *int {
 	for _, note := range notes {
-		if strings.Contains(note.Body, snapshotName) && strings.Contains(note.Body, scenarioName) {
-			r.logger.Info("found note ID with a matching scenarioName", "scenarioName", scenarioName, "noteID", &note.ID)
+		if strings.Contains(note.Body, componentName) && strings.Contains(note.Body, scenarioName) {
+			r.logger.Info("found note ID with a matching componentName and scenarioName", "omponentName", componentName, "scenarioName", scenarioName, "noteID", &note.ID)
 			return &note.ID
 		}
 	}
