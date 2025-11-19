@@ -678,6 +678,45 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 		Expect(gitops.ValidateImageDigest(imageUrl)).To(Succeed())
 	})
 
+	It("can determine if the snapshot originated from a merge queue event", func() {
+		mergeQueueSnapshot := hasSnapshot.DeepCopy()
+		mergeQueueSnapshot.Annotations[gitops.PipelineAsCodeSourceBranchAnnotation] = "somebranch"
+		Expect(gitops.IsSnapshotCreatedByPACMergeQueueEvent(mergeQueueSnapshot)).To(BeFalse())
+
+		mergeQueueSnapshot.Annotations[gitops.PipelineAsCodeSourceBranchAnnotation] = "gh-readonly-queue/main/pr-2987-bda9b312bf224a6b5fb1e7ed6ae76dd9e6b1b75b"
+		Expect(gitops.IsSnapshotCreatedByPACMergeQueueEvent(mergeQueueSnapshot)).To(BeTrue())
+	})
+
+	It("can extract the pull request number from a valid merge queue snapshot", func() {
+		mergeQueueSnapshot := hasSnapshot.DeepCopy()
+		pullRequestNumber := gitops.ExtractPullRequestNumberFromMergeQueueSnapshot(mergeQueueSnapshot)
+		Expect(pullRequestNumber).To(Equal(""))
+
+		mergeQueueSnapshot.Annotations[gitops.PipelineAsCodeSourceBranchAnnotation] = "main"
+		pullRequestNumber = gitops.ExtractPullRequestNumberFromMergeQueueSnapshot(mergeQueueSnapshot)
+		Expect(pullRequestNumber).To(Equal(""))
+
+		mergeQueueSnapshot.Annotations[gitops.PipelineAsCodeSourceBranchAnnotation] = "gh-readonly-queue/main"
+		pullRequestNumber = gitops.ExtractPullRequestNumberFromMergeQueueSnapshot(mergeQueueSnapshot)
+		Expect(pullRequestNumber).To(Equal(""))
+
+		mergeQueueSnapshot.Annotations[gitops.PipelineAsCodeSourceBranchAnnotation] = "gh-readonly-queue/main/invalid-suffix"
+		pullRequestNumber = gitops.ExtractPullRequestNumberFromMergeQueueSnapshot(mergeQueueSnapshot)
+		Expect(pullRequestNumber).To(Equal(""))
+
+		mergeQueueSnapshot.Annotations[gitops.PipelineAsCodeSourceBranchAnnotation] = "gh-readonly-queue/main/pr-2987-bda9b312bf224a6b5fb1e7ed6ae76dd9e6b1b75b"
+		pullRequestNumber = gitops.ExtractPullRequestNumberFromMergeQueueSnapshot(mergeQueueSnapshot)
+		Expect(pullRequestNumber).To(Equal("2987"))
+
+		mergeQueueSnapshot.Annotations[gitops.PipelineAsCodePullRequestAnnotation] = "214"
+		pullRequestNumber = gitops.ExtractPullRequestNumberFromMergeQueueSnapshot(mergeQueueSnapshot)
+		Expect(pullRequestNumber).To(Equal("214"))
+
+		mergeQueueSnapshot.Labels[gitops.PipelineAsCodePullRequestAnnotation] = "219"
+		pullRequestNumber = gitops.ExtractPullRequestNumberFromMergeQueueSnapshot(mergeQueueSnapshot)
+		Expect(pullRequestNumber).To(Equal("219"))
+	})
+
 	It("ensure snapshot can be prepared for pipelinerun ", func() {
 		imagePullSpec := "quay.io/redhat-appstudio/sample-image@sha256:841328df1b9f8c4087adbdcfec6cc99ac8308805dea83f6d415d6fb8d40227c1"
 		componentSource := &applicationapiv1alpha1.ComponentSource{
@@ -1000,6 +1039,36 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 				Expect(snapshot.Labels[gitops.SnapshotTypeLabel]).To(Equal("group"))
 				Expect(gitops.IsSnapshotCreatedByPACPushEvent(snapshot)).To(BeFalse())
 
+			})
+
+			It("Testing detecting if the snapshot is created by a PaC push event", func() {
+				snapshot := hasSnapshot.DeepCopy()
+				snapshot.Labels = make(map[string]string)
+				snapshot.Annotations = make(map[string]string)
+
+				// If the Snapshot is manually created and has no PaC annotations or labels, we consider it a push-type
+				Expect(gitops.IsSnapshotCreatedByPACPushEvent(snapshot)).To(BeTrue())
+
+				// If the Snapshot is the group type, we consider it as a pull request type
+				snapshot.Labels[gitops.SnapshotTypeLabel] = "group"
+				Expect(gitops.IsSnapshotCreatedByPACPushEvent(snapshot)).To(BeFalse())
+
+				// If the snapshot has the push event type for both gitHub and gitLab, we consider it a push-type
+				snapshot.Labels = make(map[string]string)
+				snapshot.Labels[gitops.PipelineAsCodeEventTypeLabel] = gitops.PipelineAsCodePushType
+				Expect(gitops.IsSnapshotCreatedByPACPushEvent(snapshot)).To(BeTrue())
+				snapshot.Labels[gitops.PipelineAsCodeEventTypeLabel] = gitops.PipelineAsCodeGLPushType
+				Expect(gitops.IsSnapshotCreatedByPACPushEvent(snapshot)).To(BeTrue())
+				// We disregard the pull request number label if the event type is `push`
+				snapshot.Labels[gitops.PipelineAsCodePullRequestAnnotation] = "12"
+				Expect(gitops.IsSnapshotCreatedByPACPushEvent(snapshot)).To(BeTrue())
+
+				// We consider the merge queue snapshot with the `push` event type to be the pull request type
+				// This is because merge queues are triggered by pushing to a temporary branch
+				snapshot.Labels = make(map[string]string)
+				snapshot.Labels[gitops.PipelineAsCodeEventTypeLabel] = gitops.PipelineAsCodePushType
+				snapshot.Annotations[gitops.PipelineAsCodeSourceBranchAnnotation] = "gh-readonly-queue/main/pr-2987-bda9b312bf224a6b5fb1e7ed6ae76dd9e6b1b75b"
+				Expect(gitops.IsSnapshotCreatedByPACPushEvent(snapshot)).To(BeFalse())
 			})
 
 			It("Testing UnmarshalJSON", func() {

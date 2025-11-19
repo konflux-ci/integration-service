@@ -554,6 +554,24 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 
 		})
 
+		It("ensures that snapshot has Pull request label based on the merge queue's temporary source branch extracted from build pipelinerun", func() {
+			mergeQueueBuildPipelineRun := buildPipelineRun.DeepCopy()
+			mergeQueueBuildPipelineRun.Annotations[tektonconsts.PipelineAsCodeSourceBranchAnnotation] = "gh-readonly-queue/main/pr-2987-bda9b312bf224a6b5fb1e7ed6ae76dd9e6b1b75b"
+			mergeQueueBuildPipelineRun.Labels[tektonconsts.PipelineAsCodeEventTypeLabel] = "push"
+			mergeQueueBuildPipelineRun.Labels[tektonconsts.PipelineAsCodePullRequestLabel] = ""
+			mergeQueueBuildPipelineRun.Annotations[tektonconsts.PipelineAsCodePullRequestLabel] = ""
+			mergeQueueBuildPipelineRun.Name = buildPipelineRun.Name + "-merge"
+			expectedSnapshot, err := adapter.prepareSnapshotForPipelineRun(mergeQueueBuildPipelineRun, hasComp, hasApp)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(expectedSnapshot).NotTo(BeNil())
+
+			Expect(expectedSnapshot.Labels).NotTo(BeNil())
+			Expect(expectedSnapshot.Labels).Should(HaveKeyWithValue(Equal(gitops.BuildPipelineRunNameLabel), Equal(mergeQueueBuildPipelineRun.Name)))
+			Expect(expectedSnapshot.Labels).Should(HaveKeyWithValue(Equal(gitops.ApplicationNameLabel), Equal(hasApp.Name)))
+			Expect(expectedSnapshot.Labels).Should(HaveKeyWithValue(Equal(gitops.PipelineAsCodePullRequestAnnotation), Equal("2987")))
+			Expect(expectedSnapshot.Annotations).Should(HaveKeyWithValue(Equal(gitops.PipelineAsCodePullRequestAnnotation), Equal("2987")))
+		})
+
 		It("ensure err is returned when pipelinerun doesn't have Result for ", func() {
 			// We don't need to update the underlying resource on the control plane,
 			// so we create a copy and modify its status. This prevents update conflicts in other tests.

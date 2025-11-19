@@ -84,8 +84,11 @@ const (
 	// SnapshotGitSourceRepoURLAnnotation contains URL of the git source repository (usually needed for forks)
 	SnapshotGitSourceRepoURLAnnotation = "test.appstudio.openshift.io/source-repo-url"
 
-	// PipelineAsCodeGitProviderAnnotation contains the git provider attached via PaC (e.g., github, gitlab)
+	// PipelineAsCodeGitSourceURLAnnotation contains the source repository url information
 	PipelineAsCodeGitSourceURLAnnotation = PipelinesAsCodePrefix + "/source-repo-url"
+
+	// PipelineAsCodeSourceBranchAnnotation contains the source repository branch information
+	PipelineAsCodeSourceBranchAnnotation = PipelinesAsCodePrefix + "/source-branch"
 
 	// SnapshotStatusReportAnnotation contains metadata of tests related to status reporting to git provider
 	SnapshotStatusReportAnnotation = "test.appstudio.openshift.io/git-reporter-status"
@@ -189,8 +192,11 @@ const (
 	// PipelineAsCodeGitHubProviderType is the git provider type for a GitHub event which triggered the pipelinerun in build service.
 	PipelineAsCodeGitHubProviderType = "github"
 
-	// PipelineAsCodeGitHubProviderType is the git provider type for a GitHub event which triggered the pipelinerun in build service.
+	// PipelineAsCodeGitLabProviderType is the git provider type for a GitLab event which triggered the pipelinerun in build service.
 	PipelineAsCodeGitLabProviderType = "gitlab"
+
+	// PipelineAsCodeGitHubMergeQueueBranchPrefix is the prefix added to temporary branches which are created for merge queues
+	PipelineAsCodeGitHubMergeQueueBranchPrefix = "gh-readonly-queue/"
 
 	//AppStudioTestSucceededCondition is the condition for marking if the AppStudio Tests succeeded for the Snapshot.
 	AppStudioTestSucceededCondition = "AppStudioTestSucceeded"
@@ -766,13 +772,23 @@ func CompareSnapshots(expectedSnapshot *applicationapiv1alpha1.Snapshot, foundSn
 	return true
 }
 
+func IsSnapshotCreatedByPACMergeQueueEvent(snapshot *applicationapiv1alpha1.Snapshot) bool {
+	if branch, found := snapshot.Annotations[PipelineAsCodeSourceBranchAnnotation]; found {
+		if strings.HasPrefix(branch, PipelineAsCodeGitHubMergeQueueBranchPrefix) {
+			return true
+		}
+	}
+	return false
+}
+
 // IsSnapshotCreatedByPACPushEvent checks if a snapshot has label PipelineAsCodeEventTypeLabel and with push value
 // it the label doesn't exist for some manual snapshot
 func IsSnapshotCreatedByPACPushEvent(snapshot *applicationapiv1alpha1.Snapshot) bool {
-	return metadata.HasLabelWithValue(snapshot, PipelineAsCodeEventTypeLabel, PipelineAsCodePushType) ||
-		metadata.HasLabelWithValue(snapshot, PipelineAsCodeEventTypeLabel, PipelineAsCodeGLPushType) ||
-		!metadata.HasLabel(snapshot, PipelineAsCodeEventTypeLabel) ||
-		!metadata.HasLabel(snapshot, PipelineAsCodePullRequestAnnotation) && !IsGroupSnapshot(snapshot)
+	return !IsSnapshotCreatedByPACMergeQueueEvent(snapshot) && !IsGroupSnapshot(snapshot) &&
+		(metadata.HasLabelWithValue(snapshot, PipelineAsCodeEventTypeLabel, PipelineAsCodePushType) ||
+			metadata.HasLabelWithValue(snapshot, PipelineAsCodeEventTypeLabel, PipelineAsCodeGLPushType) ||
+			!metadata.HasLabel(snapshot, PipelineAsCodeEventTypeLabel) ||
+			!metadata.HasLabel(snapshot, PipelineAsCodePullRequestAnnotation))
 }
 
 // IsSnapshotAutoReleaseDisabled checks if a snapshot has a AutoReleaseLabel label and if its value is "false"
@@ -858,6 +874,32 @@ func HasSnapshotRerunLabelChanged(objectOld, objectNew client.Object) bool {
 		}
 	}
 	return false
+}
+
+// ExtractPullRequestNumberFromMergeQueueSnapshot attempts to extract the pull request number for the Snapshot
+// If the pull request annotation is present, it returns it, otherwise it extracts it from the source branch name
+func ExtractPullRequestNumberFromMergeQueueSnapshot(snapshot *applicationapiv1alpha1.Snapshot) string {
+	// Attempt to find the PaC pull request label or annotation first
+	if snapshot.Labels != nil && snapshot.Labels[PipelineAsCodePullRequestAnnotation] != "" {
+		return snapshot.Labels[PipelineAsCodePullRequestAnnotation]
+	}
+	if snapshot.Annotations != nil && snapshot.Annotations[PipelineAsCodePullRequestAnnotation] != "" {
+		return snapshot.Annotations[PipelineAsCodePullRequestAnnotation]
+	}
+
+	// If the PR number is not found above, attempt to extract it from the source branch name of the merge queue
+	// The branch should be in the format of 'gh-readonly-queue/{original_branch_name}/pr-{pull_request_number}-{sha}'
+	if snapshot.Annotations != nil && snapshot.Annotations[PipelineAsCodeSourceBranchAnnotation] != "" {
+		branchWithoutPrefix := strings.Split(snapshot.Annotations[PipelineAsCodeSourceBranchAnnotation], "/")
+		if len(branchWithoutPrefix) > 1 {
+			branchSections := strings.Split(branchWithoutPrefix[len(branchWithoutPrefix)-1], "-")
+			if len(branchSections) > 1 && branchSections[0] == "pr" && branchSections[1] != "" {
+				return branchSections[1]
+			}
+		}
+	}
+
+	return ""
 }
 
 // PrepareSnapshot prepares the Snapshot for a given application, components and the updated component (if any).
