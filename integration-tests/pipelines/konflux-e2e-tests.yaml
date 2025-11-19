@@ -94,6 +94,8 @@ spec:
           value: 48
         - name: memory
           value: 192
+        - name: compute-sizes
+          value: ""
     - name: deploy-konflux
       runAfter:
         - provision-kind-cluster
