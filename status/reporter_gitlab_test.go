@@ -205,7 +205,7 @@ var _ = Describe("GitLabReporter", func() {
 
 		It("creates a commit status for snapshot with correct textual data", func() {
 
-			summary := "Integration test for snapshot snapshot-sample and scenario scenario1 failed"
+			summary := "Integration test for component component-sample snapshot snapshot-sample and scenario scenario1 failed"
 
 			muxCommitStatusPost(mux, sourceProjectID, digest, summary)
 			muxMergeNotes(mux, targetProjectID, mergeRequest, summary)
@@ -236,7 +236,7 @@ var _ = Describe("GitLabReporter", func() {
 			Expect(err).To(Succeed())
 			Expect(statusCode).To(Equal(0))
 
-			summary := "Integration test for snapshot snapshot-sample and scenario scenario1 failed"
+			summary := "Integration test for component component-sample snapshot snapshot-sample and scenario scenario1 failed"
 
 			muxCommitStatusPost(mux, sourceProjectID, digest, summary)
 
@@ -277,7 +277,7 @@ var _ = Describe("GitLabReporter", func() {
 		})
 
 		It("does not create a commit status or comment for snapshot with existing matching checkRun in running state", func() {
-			summary := "Integration test for snapshot snapshot-sample and scenario scenario1 is running"
+			summary := "Integration test for component component-sample snapshot snapshot-sample and scenario scenario1 is running"
 
 			report := status.TestReport{
 				FullName:     "fullname/scenario1",
@@ -295,7 +295,7 @@ var _ = Describe("GitLabReporter", func() {
 		})
 
 		It("can get an existing commitStatus that matches the report", func() {
-			summary := "Integration test for snapshot snapshot-sample and scenario scenario1 failed"
+			summary := "Integration test for component component-sample snapshot snapshot-sample and scenario scenario1 failed"
 			report := status.TestReport{
 				FullName:     "fullname/scenario1",
 				ScenarioName: "scenario1",
@@ -322,14 +322,15 @@ var _ = Describe("GitLabReporter", func() {
 		})
 
 		It("can get an existing mergeRequest note that matches the report", func() {
-			summary := "Integration test for snapshot snapshot-sample and scenario scenario1 failed"
+			summary := "Integration test for component component-sample snapshot snapshot-sample and scenario scenario1 failed"
 			report := status.TestReport{
-				FullName:     "fullname/scenario1",
-				ScenarioName: "scenario1",
-				SnapshotName: "snapshot-sample",
-				Status:       integrationteststatus.IntegrationTestStatusTestPassed,
-				Summary:      summary,
-				Text:         "detailed text here",
+				FullName:      "fullname/scenario1",
+				ScenarioName:  "scenario1",
+				SnapshotName:  "snapshot-sample",
+				Status:        integrationteststatus.IntegrationTestStatusTestPassed,
+				Summary:       summary,
+				ComponentName: "component-sample",
+				Text:          "detailed text here",
 			}
 			comment, err := status.FormatComment(report.Summary, report.Text)
 			Expect(err).ToNot(HaveOccurred())
@@ -341,8 +342,8 @@ var _ = Describe("GitLabReporter", func() {
 			notes := []*gitlab.Note{
 				&note,
 			}
-			existingNoteID := reporter.GetExistingNoteID(notes, report.ScenarioName, report.SnapshotName)
 
+			existingNoteID := reporter.GetExistingNoteID(notes, report.ScenarioName, status.GenerateComponentNameWithPrefix(report.ComponentName))
 			Expect(*existingNoteID).To(Equal(note.ID))
 		})
 	})
