@@ -106,7 +106,7 @@ func GenerateSHA(str string) string {
 // IsPLRCreatedByPACPushEvent checks if a PLR has label PipelineAsCodeEventTypeLabel and with push or Push value
 func IsPLRCreatedByPACPushEvent(plr *tektonv1.PipelineRun) bool {
 	if branch, found := plr.Annotations[consts.PipelineAsCodeSourceBranchAnnotation]; found {
-		if strings.HasPrefix(branch, consts.PipelineAsCodeGitHubMergeQueueBranchPrefix) {
+		if strings.HasPrefix(strings.TrimPrefix(branch, consts.GitRefBranchPrefix), consts.PipelineAsCodeGitHubMergeQueueBranchPrefix) {
 			return false
 		}
 	}

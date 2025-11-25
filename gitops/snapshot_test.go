@@ -708,6 +708,10 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 		pullRequestNumber = gitops.ExtractPullRequestNumberFromMergeQueueSnapshot(mergeQueueSnapshot)
 		Expect(pullRequestNumber).To(Equal("2987"))
 
+		mergeQueueSnapshot.Annotations[gitops.PipelineAsCodeSourceBranchAnnotation] = "refs/heads/gh-readonly-queue/main/pr-7-54e7d2bfec0e0570915f5770c890407c714e6139"
+		pullRequestNumber = gitops.ExtractPullRequestNumberFromMergeQueueSnapshot(mergeQueueSnapshot)
+		Expect(pullRequestNumber).To(Equal("7"))
+
 		mergeQueueSnapshot.Annotations[gitops.PipelineAsCodePullRequestAnnotation] = "214"
 		pullRequestNumber = gitops.ExtractPullRequestNumberFromMergeQueueSnapshot(mergeQueueSnapshot)
 		Expect(pullRequestNumber).To(Equal("214"))
@@ -1068,6 +1072,8 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 				snapshot.Labels = make(map[string]string)
 				snapshot.Labels[gitops.PipelineAsCodeEventTypeLabel] = gitops.PipelineAsCodePushType
 				snapshot.Annotations[gitops.PipelineAsCodeSourceBranchAnnotation] = "gh-readonly-queue/main/pr-2987-bda9b312bf224a6b5fb1e7ed6ae76dd9e6b1b75b"
+				Expect(gitops.IsSnapshotCreatedByPACPushEvent(snapshot)).To(BeFalse())
+				snapshot.Annotations[gitops.PipelineAsCodeSourceBranchAnnotation] = "refs/heads/gh-readonly-queue/main/pr-7-54e7d2bfec0e0570915f5770c890407c714e6139"
 				Expect(gitops.IsSnapshotCreatedByPACPushEvent(snapshot)).To(BeFalse())
 			})
 

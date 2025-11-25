@@ -198,6 +198,9 @@ const (
 	// PipelineAsCodeGitHubMergeQueueBranchPrefix is the prefix added to temporary branches which are created for merge queues
 	PipelineAsCodeGitHubMergeQueueBranchPrefix = "gh-readonly-queue/"
 
+	// GitRefBranchPrefix is the git prefix denoting a reference is a branch
+	GitRefBranchPrefix = "refs/heads/"
+
 	//AppStudioTestSucceededCondition is the condition for marking if the AppStudio Tests succeeded for the Snapshot.
 	AppStudioTestSucceededCondition = "AppStudioTestSucceeded"
 
@@ -774,7 +777,7 @@ func CompareSnapshots(expectedSnapshot *applicationapiv1alpha1.Snapshot, foundSn
 
 func IsSnapshotCreatedByPACMergeQueueEvent(snapshot *applicationapiv1alpha1.Snapshot) bool {
 	if branch, found := snapshot.Annotations[PipelineAsCodeSourceBranchAnnotation]; found {
-		if strings.HasPrefix(branch, PipelineAsCodeGitHubMergeQueueBranchPrefix) {
+		if strings.HasPrefix(strings.TrimPrefix(branch, GitRefBranchPrefix), PipelineAsCodeGitHubMergeQueueBranchPrefix) {
 			return true
 		}
 	}
@@ -889,8 +892,9 @@ func ExtractPullRequestNumberFromMergeQueueSnapshot(snapshot *applicationapiv1al
 
 	// If the PR number is not found above, attempt to extract it from the source branch name of the merge queue
 	// The branch should be in the format of 'gh-readonly-queue/{original_branch_name}/pr-{pull_request_number}-{sha}'
-	if snapshot.Annotations != nil && snapshot.Annotations[PipelineAsCodeSourceBranchAnnotation] != "" {
-		branchWithoutPrefix := strings.Split(snapshot.Annotations[PipelineAsCodeSourceBranchAnnotation], "/")
+	if branch, found := snapshot.Annotations[PipelineAsCodeSourceBranchAnnotation]; found {
+		// remove the refs/heads prefix to get the actual branch name
+		branchWithoutPrefix := strings.Split(strings.TrimPrefix(branch, GitRefBranchPrefix), "/")
 		if len(branchWithoutPrefix) > 1 {
 			branchSections := strings.Split(branchWithoutPrefix[len(branchWithoutPrefix)-1], "-")
 			if len(branchSections) > 1 && branchSections[0] == "pr" && branchSections[1] != "" {

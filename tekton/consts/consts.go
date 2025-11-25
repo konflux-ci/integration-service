@@ -70,6 +70,9 @@ const (
 	// main branch in github/gitlab
 	MainBranch = "main"
 
+	// GitRefBranchPrefix is the git prefix denoting a reference is a branch
+	GitRefBranchPrefix = "refs/heads/"
+
 	// PipelineAsCodeSourceBranchAnnotation is the branch name of the the pull request is created from
 	PipelineAsCodeSourceBranchAnnotation = "pipelinesascode.tekton.dev/source-branch"
 

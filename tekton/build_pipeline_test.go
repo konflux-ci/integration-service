@@ -153,6 +153,8 @@ var _ = Describe("build pipeline", func() {
 			buildPipelineRun.Labels[tektonconsts.PipelineAsCodeEventTypeLabel] = "push"
 			buildPipelineRun.Annotations[tektonconsts.PipelineAsCodeSourceBranchAnnotation] = "gh-readonly-queue/main/pr-2987-bda9b312bf224a6b5fb1e7ed6ae76dd9e6b1b75b"
 			Expect(tekton.IsPLRCreatedByPACPushEvent(buildPipelineRun)).To(BeFalse())
+			buildPipelineRun.Annotations[tektonconsts.PipelineAsCodeSourceBranchAnnotation] = "refs/heads/gh-readonly-queue/main/pr-7-54e7d2bfec0e0570915f5770c890407c714e6139"
+			Expect(tekton.IsPLRCreatedByPACPushEvent(buildPipelineRun)).To(BeFalse())
 		})
 
 		It("can get the latest build pipelinerun for given component", func() {
