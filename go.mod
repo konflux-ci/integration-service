@@ -12,7 +12,7 @@ require (
 	github.com/google/cel-go v0.23.1
 	github.com/google/go-containerregistry v0.20.6
 	github.com/google/go-github/v45 v45.2.0
-	github.com/konflux-ci/application-api v0.0.0-20250324201748-5a9670bf7679
+	github.com/konflux-ci/application-api v0.0.0-20251126155256-d24742e8b026
 	github.com/konflux-ci/operator-toolkit v0.0.0-20240402130556-ef6dcbeca69d
 	github.com/konflux-ci/release-service v0.0.0-20240514150425-d25d533f66ba
 	github.com/onsi/ginkgo/v2 v2.23.4
