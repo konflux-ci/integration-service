@@ -296,8 +296,10 @@ func (r *GitLabReporter) GetExistingCommitStatus(commitStatuses []*gitlab.Commit
 // GetExistingNoteID returns existing GitLab note for the scenario of ref.
 func (r *GitLabReporter) GetExistingNoteID(notes []*gitlab.Note, scenarioName, componentName string) *int {
 	for _, note := range notes {
-		if strings.Contains(note.Body, componentName) && strings.Contains(note.Body, scenarioName) {
-			r.logger.Info("found note ID with a matching componentName and scenarioName", "omponentName", componentName, "scenarioName", scenarioName, "noteID", &note.ID)
+		// get existing note by search "Integration test for componentName" and " scenario scenarioName " in report summary
+		// GetExistingCommentID for github comment has the similar logic
+		if strings.Contains(note.Body, fmt.Sprintf("Integration test for %s ", componentName)) && strings.Contains(note.Body, fmt.Sprintf(" scenario %s ", scenarioName)) {
+			r.logger.Info("found note ID with a matching componentName and scenarioName", "componentName", componentName, "scenarioName", scenarioName, "noteID", &note.ID)
 			return &note.ID
 		}
 	}

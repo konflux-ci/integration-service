@@ -430,7 +430,9 @@ func (c *Client) GetExistingCheckRun(checkRuns []*ghapi.CheckRun, newCheckRun *C
 // GetExistingComment returns existing GitHub comment for the scenario of ref.
 func (c *Client) GetExistingCommentID(comments []*ghapi.IssueComment, componentName, scenarioName string) *int64 {
 	for _, comment := range comments {
-		if strings.Contains(*comment.Body, componentName) && strings.Contains(*comment.Body, scenarioName) {
+		// get existing note by search "Integration test for componentName" and " scenario scenarioName " in report summary
+		// GetExistingNoteID for gitlab comment has the similar logic
+		if strings.Contains(*comment.Body, fmt.Sprintf("Integration test for %s ", componentName)) && strings.Contains(*comment.Body, fmt.Sprintf(" scenario %s ", scenarioName)) {
 			c.logger.Info("found comment ID with a matching scenarioName", "scenarioName", scenarioName)
 			return comment.ID
 		}
