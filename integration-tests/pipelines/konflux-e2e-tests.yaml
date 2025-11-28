@@ -46,7 +46,7 @@ spec:
           - name: revision
             value: main
           - name: pathInRepo
-            value: tasks/test-metadata/0.3/test-metadata.yaml
+            value: tasks/test-metadata/0.4/test-metadata.yaml
       params:
         - name: SNAPSHOT
           value: $(params.SNAPSHOT)
@@ -110,9 +110,9 @@ spec:
         - name: component-name
           value: integration-service
         - name: component-image-repository
-          value: $(tasks.test-metadata.results.container-repo)
+          value: $(tasks.test-metadata.results.instrumented-container-repo)
         - name: component-image-tag
-          value: $(tasks.test-metadata.results.container-tag)
+          value: $(tasks.test-metadata.results.instrumented-container-tag)
         - name: component-pr-owner
           value: $(tasks.test-metadata.results.pull-request-author)
         - name: component-pr-sha
@@ -158,6 +158,35 @@ spec:
         - name: test-environment
           value: "upstream"
   finally:
+    - name: collect-and-upload-coverage
+      params:
+        - name: instrumented-images
+          value: "$(tasks.test-metadata.results.instrumented-container-repo):$(tasks.test-metadata.results.instrumented-container-tag)"
+        - name: cluster-access-secret-name
+          value: kfg-$(context.pipelineRun.name)
+        - name: test-name
+          value: e2e-tests
+        - name: oci-container
+          value: "$(params.oci-container-repo):$(context.pipelineRun.name)-coverport"
+        - name: codecov-flags
+          value: e2e-tests
+        - name: credentials-secret-name
+          value: "integration-service-coverport-secrets"
+      taskRef:
+        resolver: git
+        params:
+          - name: url
+            value: https://github.com/konflux-ci/tekton-integration-catalog.git
+          - name: revision
+            value: main
+          - name: pathInRepo
+            value: tasks/coverport-coverage/0.1/coverport-coverage.yaml
+      when:
+        - input: $(tasks.konflux-e2e-tests.status)
+          operator: in
+          values:
+            - Succeeded
+            - Failed
     - name: store-pipeline-status
       taskRef:
         resolver: git
