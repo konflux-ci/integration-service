@@ -481,7 +481,7 @@ func (csu *CommitStatusUpdater) UpdateStatus(ctx context.Context, report TestRep
 	}
 	// Create a comment when integration test is neither pending nor inprogress since comment for pending/inprogress is less meaningful and there is commitStatus for all statuses
 	_, isPullRequest := csu.snapshot.GetAnnotations()[gitops.PipelineAsCodePullRequestAnnotation]
-	if report.Status != intgteststat.IntegrationTestStatusPending && report.Status != intgteststat.IntegrationTestStatusInProgress && isPullRequest {
+	if isPullRequest {
 		statusCode, err := csu.updateStatusInComment(ctx, report)
 		if err != nil {
 			csu.logger.Error(err, "failed to update comment", "snapshot.NameSpace", csu.snapshot.Namespace, "snapshot.Name", csu.snapshot.Name, "scenarioName", report.ScenarioName)
