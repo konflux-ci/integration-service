@@ -90,12 +90,8 @@ spec:
             '[{\"containerPort\":30012,\"hostPort\":8180,\"protocol\":\"TCP\"}]'
         - name: spot
           value: "false"
-        - name: cpus
-          value: 48
-        - name: memory
-          value: 192
         - name: compute-sizes
-          value: ""
+          value: "m5a.large,m6a.large,m7i-flex.12xlarge,m5.12xlarge,m6i.12xlarge"
     - name: deploy-konflux
       runAfter:
         - provision-kind-cluster
