@@ -23,9 +23,9 @@ import (
 type (
 	GroupMarkdownUploadsServiceInterface interface {
 		ListGroupMarkdownUploads(gid any, opt *ListMarkdownUploadsOptions, options ...RequestOptionFunc) ([]*GroupMarkdownUpload, *Response, error)
-		DownloadGroupMarkdownUploadByID(gid any, uploadID int, options ...RequestOptionFunc) (io.Reader, *Response, error)
+		DownloadGroupMarkdownUploadByID(gid any, uploadID int64, options ...RequestOptionFunc) (io.Reader, *Response, error)
 		DownloadGroupMarkdownUploadBySecretAndFilename(gid any, secret string, filename string, options ...RequestOptionFunc) (io.Reader, *Response, error)
-		DeleteGroupMarkdownUploadByID(gid any, uploadID int, options ...RequestOptionFunc) (*Response, error)
+		DeleteGroupMarkdownUploadByID(gid any, uploadID int64, options ...RequestOptionFunc) (*Response, error)
 		DeleteGroupMarkdownUploadBySecretAndFilename(gid any, secret string, filename string, options ...RequestOptionFunc) (*Response, error)
 	}
 
@@ -58,7 +58,7 @@ func (s *GroupMarkdownUploadsService) ListGroupMarkdownUploads(gid any, opt *Lis
 //
 // GitLab API Docs:
 // https://docs.gitlab.com/api/group_markdown_uploads/#download-an-uploaded-file-by-id
-func (s *GroupMarkdownUploadsService) DownloadGroupMarkdownUploadByID(gid any, uploadID int, options ...RequestOptionFunc) (io.Reader, *Response, error) {
+func (s *GroupMarkdownUploadsService) DownloadGroupMarkdownUploadByID(gid any, uploadID int64, options ...RequestOptionFunc) (io.Reader, *Response, error) {
 	buffer, resp, err := downloadMarkdownUploadByID(s.client, GroupResource, gid, uploadID, options)
 	if err != nil {
 		return nil, resp, err
@@ -83,7 +83,7 @@ func (s *GroupMarkdownUploadsService) DownloadGroupMarkdownUploadBySecretAndFile
 //
 // GitLab API Docs:
 // https://docs.gitlab.com/api/group_markdown_uploads/#delete-an-uploaded-file-by-id
-func (s *GroupMarkdownUploadsService) DeleteGroupMarkdownUploadByID(gid any, uploadID int, options ...RequestOptionFunc) (*Response, error) {
+func (s *GroupMarkdownUploadsService) DeleteGroupMarkdownUploadByID(gid any, uploadID int64, options ...RequestOptionFunc) (*Response, error) {
 	return deleteMarkdownUploadByID(s.client, GroupResource, gid, uploadID, options)
 }
 

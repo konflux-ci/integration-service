@@ -18,25 +18,24 @@ package gitlab
 
 import (
 	"bytes"
-	"fmt"
 	"net/http"
 	"time"
 )
 
 // MarkdownUpload represents a single markdown upload.
 //
-// Gitlab API docs:
+// GitLab API docs:
 // https://docs.gitlab.com/api/project_markdown_uploads/
 // https://docs.gitlab.com/api/group_markdown_uploads/
 type MarkdownUpload struct {
-	ID         int        `json:"id"`
-	Size       int        `json:"size"`
+	ID         int64      `json:"id"`
+	Size       int64      `json:"size"`
 	Filename   string     `json:"filename"`
 	CreatedAt  *time.Time `json:"created_at"`
 	UploadedBy *User      `json:"uploaded_by"`
 }
 
-// Gets a string representation of a MarkdownUpload.
+// String gets a string representation of a MarkdownUpload.
 //
 // GitLab API docs:
 // https://docs.gitlab.com/api/project_markdown_uploads/
@@ -47,10 +46,10 @@ func (m MarkdownUpload) String() string {
 
 // MarkdownUploadedFile represents a single markdown uploaded file.
 //
-// Gitlab API docs:
+// GitLab API docs:
 // https://docs.gitlab.com/api/project_markdown_uploads/
 type MarkdownUploadedFile struct {
-	ID       int    `json:"id"`
+	ID       int64  `json:"id"`
 	Alt      string `json:"alt"`
 	URL      string `json:"url"`
 	FullPath string `json:"full_path"`
@@ -71,98 +70,70 @@ type ListMarkdownUploadsOptions struct {
 
 // listMarkdownUploads gets all markdown uploads for a resource
 func listMarkdownUploads[T any](client *Client, resourceType ResourceType, id any, opt *ListMarkdownUploadsOptions, options []RequestOptionFunc) ([]*T, *Response, error) {
-	resourceID, err := parseID(id)
-	if err != nil {
-		return nil, nil, err
-	}
-	u := fmt.Sprintf("%s/%s/uploads", resourceType, PathEscape(resourceID))
+	resourceID := toResourceID(resourceType, id)
+	return do[[]*T](client,
+		withMethod(http.MethodGet),
+		withPath("%s/%s/uploads", resourceType, resourceID),
+		withAPIOpts(opt),
+		withRequestOpts(options...),
+	)
+}
 
-	req, err := client.NewRequest(http.MethodGet, u, opt, options)
-	if err != nil {
-		return nil, nil, err
+func toResourceID(resourceType ResourceType, id any) any {
+	var resourceID any
+	switch resourceType {
+	case ProjectResource:
+		resourceID = ProjectID{id}
+	case GroupResource:
+		resourceID = GroupID{id}
 	}
-
-	var uploads []*T
-	resp, err := client.Do(req, &uploads)
-	if err != nil {
-		return nil, resp, err
-	}
-
-	return uploads, resp, err
+	return resourceID
 }
 
 // downloadMarkdownUploadByID downloads a specific upload by ID
-func downloadMarkdownUploadByID(client *Client, resourceType ResourceType, id any, uploadID int, options []RequestOptionFunc) (*bytes.Buffer, *Response, error) {
-	resourceID, err := parseID(id)
-	if err != nil {
-		return nil, nil, err
-	}
-	u := fmt.Sprintf("%s/%s/uploads/%d", resourceType, PathEscape(resourceID), uploadID)
-
-	req, err := client.NewRequest(http.MethodGet, u, nil, options)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	var file bytes.Buffer
-	resp, err := client.Do(req, &file)
-	if err != nil {
-		return nil, resp, err
-	}
+func downloadMarkdownUploadByID(client *Client, resourceType ResourceType, id any, uploadID int64, options []RequestOptionFunc) (*bytes.Buffer, *Response, error) {
+	resourceID := toResourceID(resourceType, id)
+	file, resp, err := do[bytes.Buffer](client,
+		withMethod(http.MethodGet),
+		withPath("%s/%s/uploads/%d", resourceType, resourceID, uploadID),
+		withRequestOpts(options...),
+	)
 
 	return &file, resp, err
 }
 
 // downloadMarkdownUploadBySecretAndFilename downloads a specific upload by secret and filename
 func downloadMarkdownUploadBySecretAndFilename(client *Client, resourceType ResourceType, id any, secret string, filename string, options []RequestOptionFunc) (*bytes.Buffer, *Response, error) {
-	resourceID, err := parseID(id)
-	if err != nil {
-		return nil, nil, err
-	}
-	u := fmt.Sprintf("%s/%s/uploads/%s/%s", resourceType, PathEscape(resourceID), PathEscape(secret), PathEscape(filename))
-
-	req, err := client.NewRequest(http.MethodGet, u, nil, options)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	var file bytes.Buffer
-	resp, err := client.Do(req, &file)
-	if err != nil {
-		return nil, resp, err
-	}
+	resourceID := toResourceID(resourceType, id)
+	file, resp, err := do[bytes.Buffer](client,
+		withMethod(http.MethodGet),
+		withPath("%s/%s/uploads/%s/%s", resourceType, resourceID, secret, filename),
+		withRequestOpts(options...),
+	)
 
 	return &file, resp, err
 }
 
 // deleteMarkdownUploadByID deletes an upload by ID
-func deleteMarkdownUploadByID(client *Client, resourceType ResourceType, id any, uploadID int, options []RequestOptionFunc) (*Response, error) {
-	resourceID, err := parseID(id)
-	if err != nil {
-		return nil, err
-	}
-	u := fmt.Sprintf("%s/%s/uploads/%d", resourceType, PathEscape(resourceID), uploadID)
-
-	req, err := client.NewRequest(http.MethodDelete, u, nil, options)
-	if err != nil {
-		return nil, err
-	}
-
-	return client.Do(req, nil)
+func deleteMarkdownUploadByID(client *Client, resourceType ResourceType, id any, uploadID int64, options []RequestOptionFunc) (*Response, error) {
+	resourceID := toResourceID(resourceType, id)
+	_, resp, err := do[none](client,
+		withMethod(http.MethodDelete),
+		withPath("%s/%s/uploads/%d", resourceType, resourceID, uploadID),
+		withAPIOpts(nil),
+		withRequestOpts(options...),
+	)
+	return resp, err
 }
 
 // deleteMarkdownUploadBySecretAndFilename deletes an upload by secret and filename
 func deleteMarkdownUploadBySecretAndFilename(client *Client, resourceType ResourceType, id any, secret string, filename string, options []RequestOptionFunc) (*Response, error) {
-	resourceID, err := parseID(id)
-	if err != nil {
-		return nil, err
-	}
-	u := fmt.Sprintf("%s/%s/uploads/%s/%s", resourceType, PathEscape(resourceID), PathEscape(secret), PathEscape(filename))
-
-	req, err := client.NewRequest(http.MethodDelete, u, nil, options)
-	if err != nil {
-		return nil, err
-	}
-
-	return client.Do(req, nil)
+	resourceID := toResourceID(resourceType, id)
+	_, resp, err := do[none](client,
+		withMethod(http.MethodDelete),
+		withPath("%s/%s/uploads/%s/%s", resourceType, resourceID, secret, filename),
+		withAPIOpts(nil),
+		withRequestOpts(options...),
+	)
+	return resp, err
 }

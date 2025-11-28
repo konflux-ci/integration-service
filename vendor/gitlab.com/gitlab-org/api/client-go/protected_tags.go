@@ -55,9 +55,9 @@ type ProtectedTag struct {
 // GitLab API docs:
 // https://docs.gitlab.com/api/protected_tags/
 type TagAccessDescription struct {
-	ID                     int              `json:"id"`
-	UserID                 int              `json:"user_id"`
-	GroupID                int              `json:"group_id"`
+	ID                     int64            `json:"id"`
+	UserID                 int64            `json:"user_id"`
+	GroupID                int64            `json:"group_id"`
 	AccessLevel            AccessLevelValue `json:"access_level"`
 	AccessLevelDescription string           `json:"access_level_description"`
 }
@@ -67,7 +67,9 @@ type TagAccessDescription struct {
 //
 // GitLab API docs:
 // https://docs.gitlab.com/api/protected_tags/#list-protected-tags
-type ListProtectedTagsOptions ListOptions
+type ListProtectedTagsOptions struct {
+	ListOptions
+}
 
 // ListProtectedTags returns a list of protected tags from a project.
 //
@@ -135,8 +137,8 @@ type ProtectRepositoryTagsOptions struct {
 // GitLab API docs:
 // https://docs.gitlab.com/api/protected_tags/#protect-repository-tags
 type TagsPermissionOptions struct {
-	UserID      *int              `url:"user_id,omitempty" json:"user_id,omitempty"`
-	GroupID     *int              `url:"group_id,omitempty" json:"group_id,omitempty"`
+	UserID      *int64            `url:"user_id,omitempty" json:"user_id,omitempty"`
+	GroupID     *int64            `url:"group_id,omitempty" json:"group_id,omitempty"`
 	AccessLevel *AccessLevelValue `url:"access_level,omitempty" json:"access_level,omitempty"`
 }
 

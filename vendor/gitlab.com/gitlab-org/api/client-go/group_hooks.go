@@ -27,7 +27,7 @@ import (
 // GitLab API docs:
 // https://docs.gitlab.com/api/group_webhooks/
 type GroupHook struct {
-	ID                        int                 `json:"id"`
+	ID                        int64               `json:"id"`
 	URL                       string              `json:"url"`
 	Name                      string              `json:"name"`
 	Description               string              `json:"description"`
@@ -42,7 +42,7 @@ type GroupHook struct {
 	BranchFilterStrategy      string              `json:"branch_filter_strategy"`
 	CustomWebhookTemplate     string              `json:"custom_webhook_template"`
 	CustomHeaders             []*HookCustomHeader `url:"custom_headers,omitempty" json:"custom_headers,omitempty"`
-	GroupID                   int                 `json:"group_id"`
+	GroupID                   int64               `json:"group_id"`
 	IssuesEvents              bool                `json:"issues_events"`
 	ConfidentialIssuesEvents  bool                `json:"confidential_issues_events"`
 	NoteEvents                bool                `json:"note_events"`
@@ -63,7 +63,9 @@ type GroupHook struct {
 //
 // GitLab API docs:
 // https://docs.gitlab.com/api/group_webhooks/#list-group-hooks
-type ListGroupHooksOptions ListOptions
+type ListGroupHooksOptions struct {
+	ListOptions
+}
 
 // ListGroupHooks gets a list of group hooks.
 //
@@ -93,7 +95,7 @@ func (s *GroupsService) ListGroupHooks(gid any, opt *ListGroupHooksOptions, opti
 //
 // GitLab API docs:
 // https://docs.gitlab.com/api/group_webhooks/#get-a-group-hook
-func (s *GroupsService) GetGroupHook(gid any, hook int, options ...RequestOptionFunc) (*GroupHook, *Response, error) {
+func (s *GroupsService) GetGroupHook(gid any, hook int64, options ...RequestOptionFunc) (*GroupHook, *Response, error) {
 	group, err := parseID(gid)
 	if err != nil {
 		return nil, nil, err
@@ -118,7 +120,7 @@ func (s *GroupsService) GetGroupHook(gid any, hook int, options ...RequestOption
 //
 // GitLab API docs:
 // https://docs.gitlab.com/api/group_webhooks/#resend-group-hook-event
-func (s *GroupsService) ResendGroupHookEvent(gid any, hook int, hookEventID int, options ...RequestOptionFunc) (*Response, error) {
+func (s *GroupsService) ResendGroupHookEvent(gid any, hook int64, hookEventID int64, options ...RequestOptionFunc) (*Response, error) {
 	group, err := parseID(gid)
 	if err != nil {
 		return nil, err
@@ -227,9 +229,9 @@ type EditGroupHookOptions struct {
 
 // EditGroupHook edits a hook for a specified group.
 //
-// Gitlab API docs:
+// GitLab API docs:
 // https://docs.gitlab.com/api/group_webhooks/#edit-group-hook
-func (s *GroupsService) EditGroupHook(gid any, hook int, opt *EditGroupHookOptions, options ...RequestOptionFunc) (*GroupHook, *Response, error) {
+func (s *GroupsService) EditGroupHook(gid any, hook int64, opt *EditGroupHookOptions, options ...RequestOptionFunc) (*GroupHook, *Response, error) {
 	group, err := parseID(gid)
 	if err != nil {
 		return nil, nil, err
@@ -255,7 +257,7 @@ func (s *GroupsService) EditGroupHook(gid any, hook int, opt *EditGroupHookOptio
 //
 // GitLab API docs:
 // https://docs.gitlab.com/api/group_webhooks/#delete-a-group-hook
-func (s *GroupsService) DeleteGroupHook(gid any, hook int, options ...RequestOptionFunc) (*Response, error) {
+func (s *GroupsService) DeleteGroupHook(gid any, hook int64, options ...RequestOptionFunc) (*Response, error) {
 	group, err := parseID(gid)
 	if err != nil {
 		return nil, err
@@ -274,7 +276,7 @@ func (s *GroupsService) DeleteGroupHook(gid any, hook int, options ...RequestOpt
 //
 // GitLab API docs:
 // https://docs.gitlab.com/api/group_webhooks/#trigger-a-test-group-hook
-func (s *GroupsService) TriggerTestGroupHook(pid any, hook int, trigger GroupHookTrigger, options ...RequestOptionFunc) (*Response, error) {
+func (s *GroupsService) TriggerTestGroupHook(pid any, hook int64, trigger GroupHookTrigger, options ...RequestOptionFunc) (*Response, error) {
 	group, err := parseID(pid)
 	if err != nil {
 		return nil, err
@@ -293,7 +295,7 @@ func (s *GroupsService) TriggerTestGroupHook(pid any, hook int, trigger GroupHoo
 //
 // GitLab API docs:
 // https://docs.gitlab.com/api/group_webhooks/#set-a-custom-header
-func (s *GroupsService) SetGroupCustomHeader(gid any, hook int, key string, opt *SetHookCustomHeaderOptions, options ...RequestOptionFunc) (*Response, error) {
+func (s *GroupsService) SetGroupCustomHeader(gid any, hook int64, key string, opt *SetHookCustomHeaderOptions, options ...RequestOptionFunc) (*Response, error) {
 	group, err := parseID(gid)
 	if err != nil {
 		return nil, err
@@ -312,7 +314,7 @@ func (s *GroupsService) SetGroupCustomHeader(gid any, hook int, key string, opt 
 //
 // GitLab API docs:
 // https://docs.gitlab.com/api/group_webhooks/#delete-a-custom-header
-func (s *GroupsService) DeleteGroupCustomHeader(gid any, hook int, key string, options ...RequestOptionFunc) (*Response, error) {
+func (s *GroupsService) DeleteGroupCustomHeader(gid any, hook int64, key string, options ...RequestOptionFunc) (*Response, error) {
 	group, err := parseID(gid)
 	if err != nil {
 		return nil, err
@@ -340,7 +342,7 @@ type SetHookURLVariableOptions struct {
 //
 // GitLab API docs:
 // https://docs.gitlab.com/api/group_webhooks/#set-a-url-variable
-func (s *GroupsService) SetGroupHookURLVariable(gid any, hook int, key string, opt *SetHookURLVariableOptions, options ...RequestOptionFunc) (*Response, error) {
+func (s *GroupsService) SetGroupHookURLVariable(gid any, hook int64, key string, opt *SetHookURLVariableOptions, options ...RequestOptionFunc) (*Response, error) {
 	group, err := parseID(gid)
 	if err != nil {
 		return nil, err
@@ -359,7 +361,7 @@ func (s *GroupsService) SetGroupHookURLVariable(gid any, hook int, key string, o
 //
 // GitLab API docs:
 // https://docs.gitlab.com/api/group_webhooks/#delete-a-url-variable
-func (s *GroupsService) DeleteGroupHookURLVariable(gid any, hook int, key string, options ...RequestOptionFunc) (*Response, error) {
+func (s *GroupsService) DeleteGroupHookURLVariable(gid any, hook int64, key string, options ...RequestOptionFunc) (*Response, error) {
 	group, err := parseID(gid)
 	if err != nil {
 		return nil, err

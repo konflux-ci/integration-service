@@ -73,7 +73,9 @@ type VariableFilter struct {
 //
 // GitLab API docs:
 // https://docs.gitlab.com/api/project_level_variables/#list-project-variables
-type ListProjectVariablesOptions ListOptions
+type ListProjectVariablesOptions struct {
+	ListOptions
+}
 
 // ListVariables gets a list of all variables in a project.
 //
