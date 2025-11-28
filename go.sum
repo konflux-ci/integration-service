@@ -278,6 +278,8 @@ github.com/klauspost/compress v1.18.0 h1:c/Cqfb0r+Yi+JtIEq73FWXVkRonBlf0CRNYc8Zt
 github.com/klauspost/compress v1.18.0/go.mod h1:2Pp+KzxcywXVXMr50+X0Q/Lsb43OQHYWRCY2AiWywWQ=
 github.com/konflux-ci/application-api v0.0.0-20250324201748-5a9670bf7679 h1:mtLA7dQ9iIncxYoOLgty2B1l1cucnp/tsbxQaKn9Myw=
 github.com/konflux-ci/application-api v0.0.0-20250324201748-5a9670bf7679/go.mod h1:948Z+a1IbfRT0RtoHzWWSN9YEucSbMJTHaMhz7dVICc=
+github.com/konflux-ci/coverport/instrumentation/go v0.0.0-20251127115143-b5207b335f8b h1:NoriO1KRc+7d2/JA07JizqxP0LlA2oJdD5AuQOvEIjE=
+github.com/konflux-ci/coverport/instrumentation/go v0.0.0-20251127115143-b5207b335f8b/go.mod h1:WVMHU9A2464s/vjH1xOTm4LJDD4xP+VlEiU+KM0gkSU=
 github.com/konflux-ci/operator-toolkit v0.0.0-20240402130556-ef6dcbeca69d h1:z7j3mglNoXvIrw5Vz/Ul+izoITRaqYURPIWrFoEyHgI=
 github.com/konflux-ci/operator-toolkit v0.0.0-20240402130556-ef6dcbeca69d/go.mod h1:AcChx7FjpYSIkDvQgaUKyauuF0PXm3ivB5MqZSC9Eis=
 github.com/konflux-ci/release-service v0.0.0-20240514150425-d25d533f66ba h1:04A7d9bdym9vY6dXqjFE6RaB3elm7sSthnQQA/IBQxk=

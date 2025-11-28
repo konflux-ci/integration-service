@@ -15,8 +15,17 @@ COPY --chown=1001:0 go.sum go.sum
 # Copy the go source
 COPY --chown=1001:0 . .
 
-# Build
-RUN CGO_ENABLED=0 go build -a -o manager cmd/main.go \
+# Build arguments
+ARG ENABLE_COVERAGE=false
+
+# Build with or without coverage instrumentation
+RUN if [ "$ENABLE_COVERAGE" = "true" ]; then \
+        echo "Building with coverage instrumentation..."; \
+        CGO_ENABLED=0 go build -cover -covermode=atomic -tags=coverage -o manager ./cmd; \
+    else \
+        echo "Building production binary..."; \
+        CGO_ENABLED=0 go build -a -o manager ./cmd; \
+    fi \
  && CGO_ENABLED=0 go build -a -o snapshotgc cmd/snapshotgc/snapshotgc.go
 
 ARG ENABLE_WEBHOOKS=true

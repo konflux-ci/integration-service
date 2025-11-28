@@ -132,6 +132,9 @@ jobs:
           make test
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          flags: unit-tests
   gitlint:
     name: Run gitlint checks
     runs-on: ubuntu-24.04
