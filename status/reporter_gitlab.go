@@ -322,7 +322,7 @@ func (r *GitLabReporter) ReportStatus(ctx context.Context, report TestReport) (i
 
 	// Create a note when integration test is neither pending nor inprogress since comment for pending/inprogress is less meaningful
 	_, isMergeRequest := r.snapshot.GetAnnotations()[gitops.PipelineAsCodePullRequestAnnotation]
-	if report.Status != intgteststat.IntegrationTestStatusPending && report.Status != intgteststat.IntegrationTestStatusInProgress && report.Status != intgteststat.SnapshotCreationFailed && isMergeRequest {
+	if isMergeRequest {
 		statusCode, err := r.updateStatusInComment(report)
 		if err != nil {
 			return statusCode, err
