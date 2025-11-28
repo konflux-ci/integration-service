@@ -74,38 +74,32 @@ type ListTopicsOptions struct {
 //
 // GitLab API docs: https://docs.gitlab.com/api/topics/#list-topics
 func (s *TopicsService) ListTopics(opt *ListTopicsOptions, options ...RequestOptionFunc) ([]*Topic, *Response, error) {
-	req, err := s.client.NewRequest(http.MethodGet, "topics", opt, options)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	var t []*Topic
-	resp, err := s.client.Do(req, &t)
+	res, resp, err := do[[]*Topic](s.client,
+		withMethod(http.MethodGet),
+		withPath("topics"),
+		withAPIOpts(opt),
+		withRequestOpts(options...),
+	)
 	if err != nil {
 		return nil, resp, err
 	}
-
-	return t, resp, nil
+	return res, resp, nil
 }
 
 // GetTopic gets a project topic by ID.
 //
 // GitLab API docs: https://docs.gitlab.com/api/topics/#get-a-topic
 func (s *TopicsService) GetTopic(topic int, options ...RequestOptionFunc) (*Topic, *Response, error) {
-	u := fmt.Sprintf("topics/%d", topic)
-
-	req, err := s.client.NewRequest(http.MethodGet, u, nil, options)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	t := new(Topic)
-	resp, err := s.client.Do(req, t)
+	res, resp, err := do[*Topic](s.client,
+		withMethod(http.MethodGet),
+		withPath("topics/%d", topic),
+		withAPIOpts(nil),
+		withRequestOpts(options...),
+	)
 	if err != nil {
 		return nil, resp, err
 	}
-
-	return t, resp, nil
+	return res, resp, nil
 }
 
 // CreateTopicOptions represents the available CreateTopic() options.
@@ -187,17 +181,15 @@ type UpdateTopicOptions struct {
 // GitLab API docs:
 // https://docs.gitlab.com/api/topics/#update-a-project-topic
 func (s *TopicsService) UpdateTopic(topic int, opt *UpdateTopicOptions, options ...RequestOptionFunc) (*Topic, *Response, error) {
-	u := fmt.Sprintf("topics/%d", topic)
-
 	var err error
 	var req *retryablehttp.Request
 
 	if opt.Avatar == nil || (opt.Avatar.Filename == "" && opt.Avatar.Image == nil) {
-		req, err = s.client.NewRequest(http.MethodPut, u, opt, options)
+		req, err = s.client.NewRequest(http.MethodPut, fmt.Sprintf("topics/%d", topic), opt, options)
 	} else {
 		req, err = s.client.UploadRequest(
 			http.MethodPut,
-			u,
+			fmt.Sprintf("topics/%d", topic),
 			opt.Avatar.Image,
 			opt.Avatar.Filename,
 			UploadAvatar,
@@ -223,12 +215,11 @@ func (s *TopicsService) UpdateTopic(topic int, opt *UpdateTopicOptions, options 
 // GitLab API docs:
 // https://docs.gitlab.com/api/topics/#delete-a-project-topic
 func (s *TopicsService) DeleteTopic(topic int, options ...RequestOptionFunc) (*Response, error) {
-	u := fmt.Sprintf("topics/%d", topic)
-
-	req, err := s.client.NewRequest(http.MethodDelete, u, nil, options)
-	if err != nil {
-		return nil, err
-	}
-
-	return s.client.Do(req, nil)
+	_, resp, err := do[none](s.client,
+		withMethod(http.MethodDelete),
+		withPath("topics/%d", topic),
+		withAPIOpts(nil),
+		withRequestOpts(options...),
+	)
+	return resp, err
 }
