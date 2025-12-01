@@ -2,7 +2,7 @@
 controllerManager:
   replicas: 1
   container:
-    image: quay.io/konflux-ci/integration-service:latest@sha256:454bf5d532712613949c2d74ca1bdb4f536d5488f47c16087d98a9fa23b72dbb
+    image: quay.io/konflux-ci/integration-service:latest@sha256:2ebc4f43e177f2fa17ad20940868469eab531b32ce6b23c8d605df5caa5144f1
     args:
       - "--metrics-bind-address=:8443"
       - "--leader-elect"
@@ -87,7 +87,7 @@ networkPolicy:
 # [SNAPSHOT GC]: Snapshot garbage collector configuration
 snapshotgc:
   enable: true
-  image: quay.io/konflux-ci/integration-service:latest@sha256:454bf5d532712613949c2d74ca1bdb4f536d5488f47c16087d98a9fa23b72dbb
+  image: quay.io/konflux-ci/integration-service:latest@sha256:2ebc4f43e177f2fa17ad20940868469eab531b32ce6b23c8d605df5caa5144f1
   args:
     - --zap-log-level=debug
     - --pr-snapshots-to-keep=70
