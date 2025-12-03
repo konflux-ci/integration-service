@@ -566,8 +566,20 @@ func (a *Adapter) prepareSnapshotForPipelineRun(pipelineRun *tektonv1.PipelineRu
 		}
 	}
 
+	// Set BuildPipelineRunStartTime annotation with millisecond precision and override snapshot name
+	var timestampMillis int64
 	if pipelineRun.Status.StartTime != nil {
-		snapshot.Annotations[gitops.BuildPipelineRunStartTime] = strconv.FormatInt(pipelineRun.Status.StartTime.Unix(), 10)
+		// Use UnixMilli() for millisecond precision
+		timestampMillis = pipelineRun.Status.StartTime.UnixMilli()
+		snapshot.Annotations[gitops.BuildPipelineRunStartTime] = strconv.FormatInt(timestampMillis, 10)
+
+		// Override snapshot name with timestamp from BuildPipelineRunStartTime
+		snapshot.Name = gitops.GenerateSnapshotNameWithTimestamp(application.Name, timestampMillis)
+	} else {
+		// Fallback: use current time if BuildPipelineRunStartTime is not available
+		timestampMillis = time.Now().UnixMilli()
+		snapshot.Annotations[gitops.BuildPipelineRunStartTime] = strconv.FormatInt(timestampMillis, 10)
+		snapshot.Name = gitops.GenerateSnapshotNameWithTimestamp(application.Name, timestampMillis)
 	}
 
 	// Set the integration workflow annotation based on the PipelineRun type
