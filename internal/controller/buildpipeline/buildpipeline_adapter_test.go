@@ -533,8 +533,115 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			Expect(expectedSnapshot.Labels).NotTo(BeNil())
 			Expect(expectedSnapshot.Labels).Should(HaveKeyWithValue(Equal(gitops.BuildPipelineRunNameLabel), Equal(buildPipelineRun.Name)))
 			Expect(expectedSnapshot.Labels).Should(HaveKeyWithValue(Equal(gitops.ApplicationNameLabel), Equal(hasApp.Name)))
+
+			// Verify BuildPipelineRunStartTime annotation uses millisecond precision
 			Expect(metadata.HasAnnotation(expectedSnapshot, gitops.BuildPipelineRunStartTime)).To(BeTrue())
 			Expect(expectedSnapshot.Annotations[gitops.BuildPipelineRunStartTime]).NotTo(BeNil())
+
+			// Verify annotation value is in milliseconds (should be > 1000000000000 for recent timestamps)
+			startTimeMillis, err := strconv.ParseInt(expectedSnapshot.Annotations[gitops.BuildPipelineRunStartTime], 10, 64)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(startTimeMillis).To(BeNumerically(">", 1000000000000)) // Millisecond timestamp
+
+			// Verify snapshot name has timestamp format: prefix-YYYYMMDD-HHMMSS-mmm
+			Expect(expectedSnapshot.Name).To(MatchRegexp(`^application-sample-\d{8}-\d{6}-\d{3}$`))
+
+			// Verify the name matches the BuildPipelineRunStartTime annotation
+			expectedName := gitops.GenerateSnapshotNameWithTimestamp(hasApp.Name, startTimeMillis)
+			Expect(expectedSnapshot.Name).To(Equal(expectedName))
+		})
+
+		It("ensures snapshot name is set with fallback timestamp when StartTime is nil", func() {
+			buildPipelineRunNoStartTime := buildPipelineRun.DeepCopy()
+			buildPipelineRunNoStartTime.Status.StartTime = nil
+
+			expectedSnapshot, err := adapter.prepareSnapshotForPipelineRun(buildPipelineRunNoStartTime, hasComp, hasApp)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(expectedSnapshot).NotTo(BeNil())
+
+			// Should still have a valid name with timestamp format
+			Expect(expectedSnapshot.Name).To(MatchRegexp(`^application-sample-\d{8}-\d{6}-\d{3}$`))
+
+			// Should have BuildPipelineRunStartTime annotation set (from fallback)
+			Expect(metadata.HasAnnotation(expectedSnapshot, gitops.BuildPipelineRunStartTime)).To(BeTrue())
+
+			// Verify annotation value is in milliseconds (from fallback)
+			startTimeMillis, err := strconv.ParseInt(expectedSnapshot.Annotations[gitops.BuildPipelineRunStartTime], 10, 64)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(startTimeMillis).To(BeNumerically(">", 1000000000000)) // Millisecond timestamp
+
+			// Verify the name matches the fallback timestamp
+			expectedName := gitops.GenerateSnapshotNameWithTimestamp(hasApp.Name, startTimeMillis)
+			Expect(expectedSnapshot.Name).To(Equal(expectedName))
+		})
+
+		It("ensures snapshot creation handles name collisions with retry and suffix", func() {
+			// Create a snapshot that will collide with the one we're trying to create
+			collidingSnapshot := &applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      gitops.GenerateSnapshotNameWithTimestamp(hasApp.Name, buildPipelineRun.Status.StartTime.UnixMilli()),
+					Namespace: hasApp.Namespace,
+				},
+				Spec: applicationapiv1alpha1.SnapshotSpec{
+					Application: hasApp.Name,
+					Components:  []applicationapiv1alpha1.SnapshotComponent{},
+				},
+			}
+			err := k8sClient.Create(ctx, collidingSnapshot)
+			Expect(err).ToNot(HaveOccurred())
+
+			// Now try to create another snapshot with the same name (will trigger collision)
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: loader.ApplicationContextKey,
+					Resource:   hasApp,
+				},
+				{
+					ContextKey: loader.ComponentContextKey,
+					Resource:   hasComp,
+				},
+				{
+					ContextKey: loader.GetPipelineRunContextKey,
+					Resource:   buildPipelineRun,
+				},
+				{
+					ContextKey: loader.PipelineRunsContextKey,
+					Resource:   []tektonv1.PipelineRun{*buildPipelineRun},
+				},
+				{
+					ContextKey: loader.AllSnapshotsForBuildPipelineRunContextKey,
+					Resource:   []applicationapiv1alpha1.Snapshot{},
+				},
+				{
+					ContextKey: loader.ApplicationComponentsContextKey,
+					Resource:   []applicationapiv1alpha1.Component{*hasComp},
+				},
+			})
+
+			// Should succeed after retry with suffix
+			Eventually(func() bool {
+				result, err := adapter.EnsureSnapshotExists()
+				return !result.CancelRequest && err == nil
+			}, time.Second*10).Should(BeTrue())
+
+			// Get the updated PipelineRun to check the annotation
+			err = k8sClient.Get(ctx, client.ObjectKeyFromObject(buildPipelineRun), buildPipelineRun)
+			Expect(err).ToNot(HaveOccurred())
+
+			// The PipelineRun should be annotated with the snapshot name
+			snapshotName, found := buildPipelineRun.Annotations[tektonconsts.SnapshotNameLabel]
+			Expect(found).To(BeTrue(), "PipelineRun should be annotated with snapshot name")
+
+			// Verify the snapshot name either has a suffix or is different from colliding one
+			// Format: prefix-YYYYMMDD-HHMMSS-mmm or prefix-YYYYMMDD-HHMMSS-mmm-xx
+			Expect(snapshotName).To(MatchRegexp(`^application-sample-\d{8}-\d{6}-\d{3}(-[a-z0-9]{2})?$`))
+			Expect(snapshotName).ToNot(Equal(collidingSnapshot.Name), "New snapshot should have different name than colliding one")
+
+			// Verify the snapshot actually exists
+			newSnapshot := &applicationapiv1alpha1.Snapshot{}
+			err = k8sClient.Get(ctx, client.ObjectKey{Name: snapshotName, Namespace: hasApp.Namespace}, newSnapshot)
+			Expect(err).ToNot(HaveOccurred(), "Snapshot should exist in cluster")
+			Expect(newSnapshot.Name).To(Equal(snapshotName))
 		})
 
 		It("ensures that Labels and Annotations were copied to snapshot from pipelinerun", func() {
@@ -821,6 +928,10 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				{
 					ContextKey: loader.ApplicationComponentsContextKey,
 					Resource:   []applicationapiv1alpha1.Component{*hasComp},
+				},
+				{
+					ContextKey: loader.AllSnapshotsForBuildPipelineRunContextKey,
+					Resource:   []applicationapiv1alpha1.Snapshot{},
 				},
 			})
 			_, err := adapter.prepareSnapshotForPipelineRun(adapter.pipelineRun, adapter.component, adapter.application)
@@ -1183,6 +1294,14 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 					},
 				}
 				Expect(k8sClient.Status().Update(ctx, buildPipelineRun)).Should(Succeed())
+
+				// Mock context to return empty snapshots list so the error path is taken
+				adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+					{
+						ContextKey: loader.AllSnapshotsForBuildPipelineRunContextKey,
+						Resource:   []applicationapiv1alpha1.Snapshot{},
+					},
+				})
 
 				Eventually(func() bool {
 					result, err := adapter.EnsureSnapshotExists()

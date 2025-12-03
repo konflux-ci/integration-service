@@ -18,8 +18,10 @@ package buildpipeline
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"fmt"
+	"math/big"
 	"strconv"
 	"strings"
 	"time"
@@ -141,8 +143,9 @@ func (a *Adapter) EnsureSnapshotExists() (result controller.OperationResult, err
 	}
 
 	if _, found := a.pipelineRun.Annotations[tektonconsts.PipelineRunChainsSignedAnnotation]; !found {
+		err := fmt.Errorf("not processing the pipelineRun because it's not yet signed with Chains")
 		a.logger.Error(err, "Not processing the pipelineRun because it's not yet signed with Chains")
-		return controller.ContinueProcessing()
+		return controller.RequeueOnErrorOrContinue(err)
 	}
 
 	if _, found := a.pipelineRun.Annotations[tektonconsts.SnapshotNameLabel]; found {
@@ -167,7 +170,8 @@ func (a *Adapter) EnsureSnapshotExists() (result controller.OperationResult, err
 		return a.updatePipelineRunWithCustomizedError(&canRemoveFinalizer, err, a.context, a.pipelineRun, a.client, a.logger)
 	}
 
-	err = a.client.Create(a.context, expectedSnapshot)
+	// Try to create snapshot, retry with suffix on collision
+	err = a.createSnapshotWithCollisionHandling(expectedSnapshot)
 	if err != nil {
 		result, err = a.handleSnapshotCreationFailure(&canRemoveFinalizer, err)
 		return result, err
@@ -566,9 +570,17 @@ func (a *Adapter) prepareSnapshotForPipelineRun(pipelineRun *tektonv1.PipelineRu
 		}
 	}
 
+	// Set BuildPipelineRunStartTime annotation with millisecond precision and override snapshot name
+	var timestampMillis int64
+	// Get the time
 	if pipelineRun.Status.StartTime != nil {
-		snapshot.Annotations[gitops.BuildPipelineRunStartTime] = strconv.FormatInt(pipelineRun.Status.StartTime.Unix(), 10)
+		timestampMillis = pipelineRun.Status.StartTime.UnixMilli()
+	} else {
+		timestampMillis = time.Now().UnixMilli()
 	}
+	// Naming once, at the end
+	snapshot.Annotations[gitops.BuildPipelineRunStartTime] = strconv.FormatInt(timestampMillis, 10)
+	snapshot.Name = gitops.GenerateSnapshotNameWithTimestamp(application.Name, timestampMillis)
 
 	// Set the integration workflow annotation based on the PipelineRun type
 	if tekton.IsPLRCreatedByPACPushEvent(pipelineRun) {
@@ -662,6 +674,80 @@ func (a *Adapter) handleUnsuccessfulPipelineRun(canRemoveFinalizer *bool) {
 		)
 		*canRemoveFinalizer = true
 	}
+}
+
+// generateRandomSuffix generates a random 2-character alphanumeric suffix for collision handling
+func (a *Adapter) generateRandomSuffix() (string, error) {
+	const charset = "0123456789abcdefghijklmnopqrstuvwxyz"
+	const suffixLength = 2
+	suffix := make([]byte, suffixLength)
+	for i := range suffix {
+		num, err := rand.Int(rand.Reader, big.NewInt(int64(len(charset))))
+		if err != nil {
+			return "", err
+		}
+		suffix[i] = charset[num.Int64()]
+	}
+	return string(suffix), nil
+}
+
+// createSnapshotWithCollisionHandling attempts to create a snapshot, retrying with a random suffix if collision occurs
+func (a *Adapter) createSnapshotWithCollisionHandling(snapshot *applicationapiv1alpha1.Snapshot) error {
+	originalName := snapshot.Name
+	maxRetries := 5
+
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		err := a.client.Create(a.context, snapshot)
+		if err == nil {
+			// Success
+			if attempt > 0 {
+				a.logger.Info("Successfully created snapshot after collision retry",
+					"originalName", originalName,
+					"finalName", snapshot.Name,
+					"attempts", attempt+1)
+			}
+			return nil
+		}
+
+		// Check if it's an "already exists" error
+		if !errors.IsAlreadyExists(err) {
+			// Not a collision error, return immediately
+			return err
+		}
+
+		// Collision detected - generate new name with suffix
+		if attempt < maxRetries-1 {
+			suffix, suffixErr := a.generateRandomSuffix()
+			if suffixErr != nil {
+				a.logger.Error(suffixErr, "Failed to generate random suffix for snapshot name collision")
+				return err // Return original collision error
+			}
+
+			// Extract timestamp from original name or use current time
+			var timestampMillis int64
+			if a.pipelineRun.Status.StartTime != nil {
+				timestampMillis = a.pipelineRun.Status.StartTime.UnixMilli()
+			} else {
+				timestampMillis = time.Now().UnixMilli()
+			}
+
+			// Regenerate name with suffix
+			snapshot.Name = gitops.GenerateSnapshotNameWithTimestamp(a.application.Name, timestampMillis, suffix)
+			a.logger.Info("Snapshot name collision detected, retrying with suffix",
+				"originalName", originalName,
+				"newName", snapshot.Name,
+				"attempt", attempt+1,
+				"maxRetries", maxRetries)
+		} else {
+			// Max retries reached
+			a.logger.Error(err, "Failed to create snapshot after max retries due to collisions",
+				"originalName", originalName,
+				"attempts", maxRetries)
+			return err
+		}
+	}
+
+	return fmt.Errorf("failed to create snapshot after %d attempts", maxRetries)
 }
 
 // failedToCreateSnapshot stops reconcilation immediately when snapshot cannot be created

@@ -1090,6 +1090,15 @@ func (a *Adapter) isSnapshotOlderThanLastBuild(snapshot *applicationapiv1alpha1.
 	if componentlastBuiltTimeIntErr != nil {
 		return false
 	}
+
+	// Normalize BuildPipelineRunStartTime to seconds if it's in milliseconds
+	// Millisecond timestamps are > 1000000000000 (year 2001 in milliseconds)
+	// Second timestamps are < 10000000000 (year 2286 in seconds)
+	if snapshotBuildStartTimeInt > 10000000000 {
+		// It's in milliseconds, convert to seconds for comparison
+		snapshotBuildStartTimeInt = snapshotBuildStartTimeInt / 1000
+	}
+
 	if snapshotBuildStartTimeInt < componentlastBuiltTimeInt {
 		return true
 	}
