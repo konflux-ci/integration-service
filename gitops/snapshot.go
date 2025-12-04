@@ -291,6 +291,9 @@ const (
 	// AddedToGlobalCandidateListAnnotation is the annotation for marking if Snapshot/build PLR's component was added to
 	// the global candidate list.
 	AddedToGlobalCandidateListAnnotation = "test.appstudio.openshift.io/added-to-global-candidate-list"
+
+	// maxPrefixLength is the maximum length of the prefix for the snapshot name
+	maxPrefixLength = 44
 )
 
 var (
@@ -736,17 +739,14 @@ func CanSnapshotBePromoted(snapshot *applicationapiv1alpha1.Snapshot) (bool, []s
 
 // NewSnapshot creates a new snapshot based on the supplied application and components
 func NewSnapshot(application *applicationapiv1alpha1.Application, snapshotComponents *[]applicationapiv1alpha1.SnapshotComponent) *applicationapiv1alpha1.Snapshot {
-	// truncate the application name so the GenerateName function can accommodate Kubernetes 63-character limit
-	const maxPrefixLength = 57
-	prefix := application.Name
-	if len(prefix) > maxPrefixLength {
-		prefix = prefix[:maxPrefixLength]
-	}
+	// Use fallback timestamp (current time) - will be overridden in prepareSnapshotForPipelineRun
+	// if BuildPipelineRunStartTime is available
+	fallbackTimestamp := time.Now().UnixMilli()
 
 	snapshot := &applicationapiv1alpha1.Snapshot{
 		ObjectMeta: metav1.ObjectMeta{
-			GenerateName: prefix + "-",
-			Namespace:    application.Namespace,
+			Name:      GenerateSnapshotNameWithTimestamp(application.Name, fallbackTimestamp),
+			Namespace: application.Namespace,
 		},
 		Spec: applicationapiv1alpha1.SnapshotSpec{
 			Application: application.Name,
@@ -1266,16 +1266,14 @@ func FindMatchingSnapshotComponent(snapshot *applicationapiv1alpha1.Snapshot, co
 // SortSnapshots sorts the snapshots according to the snapshot annotation BuildPipelineRunStartTime
 func SortSnapshots(snapshots []applicationapiv1alpha1.Snapshot) []applicationapiv1alpha1.Snapshot {
 	sort.Slice(snapshots, func(i, j int) bool {
-		// sorting snapshots according to the annotation BuildPipelineRunStartTime which
-		// represents the start time of build PLR
-		// when BuildPipelineRunStartTime is not set, we use its creation time
-		var time_i, time_j int
+		var time_i, time_j int64
 		if metadata.HasAnnotation(&snapshots[i], BuildPipelineRunStartTime) && metadata.HasAnnotation(&snapshots[j], BuildPipelineRunStartTime) {
-			time_i, _ = strconv.Atoi(snapshots[i].Annotations[BuildPipelineRunStartTime])
-			time_j, _ = strconv.Atoi(snapshots[j].Annotations[BuildPipelineRunStartTime])
+			// Use ParseInt to handle millisecond timestamps (larger values)
+			time_i, _ = strconv.ParseInt(snapshots[i].Annotations[BuildPipelineRunStartTime], 10, 64)
+			time_j, _ = strconv.ParseInt(snapshots[j].Annotations[BuildPipelineRunStartTime], 10, 64)
 		} else {
-			time_i = int(snapshots[i].CreationTimestamp.Unix())
-			time_j = int(snapshots[j].CreationTimestamp.Unix())
+			time_i = snapshots[i].CreationTimestamp.Unix()
+			time_j = snapshots[j].CreationTimestamp.Unix()
 		}
 		return time_i > time_j
 	})
@@ -1478,4 +1476,28 @@ func UpdateComponentImageAndSource(ctx context.Context, adapterClient client.Cli
 		buildTimeStr = strconv.FormatInt(time.Now().Unix(), 10)
 	}
 	return AnnotateComponent(ctx, component, BuildPipelineLastBuiltTime, buildTimeStr, adapterClient)
+}
+
+// GenerateSnapshotNameWithTimestamp generates a snapshot name using the application prefix
+// and a timestamp with millisecond precision. The format is: {prefix}-{YYYYMMDD-HHMMSS-mmm}
+// where prefix is truncated to maxPrefixLength (44 chars) to accommodate the 19-character timestamp
+// within Kubernetes' 63-character limit.
+func GenerateSnapshotNameWithTimestamp(prefix string, unixMilli int64) string {
+
+	if len(prefix) > maxPrefixLength {
+		prefix = prefix[:maxPrefixLength]
+	}
+
+	// Convert Unix milliseconds to time.Time (in UTC for consistent formatting)
+	timestamp := time.UnixMilli(unixMilli).UTC()
+
+	// Format date and time: YYYYMMDD-HHMMSS
+	dateTimeStr := timestamp.Format("20060102-150405")
+
+	// Extract milliseconds from the original UnixMilli value (last 3 digits)
+	milliseconds := unixMilli % 1000
+	millisecondsStr := fmt.Sprintf("%03d", milliseconds)
+
+	// Combine: prefix-YYYYMMDD-HHMMSS-mmm
+	return fmt.Sprintf("%s-%s-%s", prefix, dateTimeStr, millisecondsStr)
 }

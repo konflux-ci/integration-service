@@ -533,8 +533,46 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			Expect(expectedSnapshot.Labels).NotTo(BeNil())
 			Expect(expectedSnapshot.Labels).Should(HaveKeyWithValue(Equal(gitops.BuildPipelineRunNameLabel), Equal(buildPipelineRun.Name)))
 			Expect(expectedSnapshot.Labels).Should(HaveKeyWithValue(Equal(gitops.ApplicationNameLabel), Equal(hasApp.Name)))
+
+			// Verify BuildPipelineRunStartTime annotation uses millisecond precision
 			Expect(metadata.HasAnnotation(expectedSnapshot, gitops.BuildPipelineRunStartTime)).To(BeTrue())
 			Expect(expectedSnapshot.Annotations[gitops.BuildPipelineRunStartTime]).NotTo(BeNil())
+
+			// Verify annotation value is in milliseconds (should be > 1000000000000 for recent timestamps)
+			startTimeMillis, err := strconv.ParseInt(expectedSnapshot.Annotations[gitops.BuildPipelineRunStartTime], 10, 64)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(startTimeMillis).To(BeNumerically(">", 1000000000000)) // Millisecond timestamp
+
+			// Verify snapshot name has timestamp format: prefix-YYYYMMDD-HHMMSS-mmm
+			Expect(expectedSnapshot.Name).To(MatchRegexp(`^application-sample-\d{8}-\d{6}-\d{3}$`))
+
+			// Verify the name matches the BuildPipelineRunStartTime annotation
+			expectedName := gitops.GenerateSnapshotNameWithTimestamp(hasApp.Name, startTimeMillis)
+			Expect(expectedSnapshot.Name).To(Equal(expectedName))
+		})
+
+		It("ensures snapshot name is set with fallback timestamp when StartTime is nil", func() {
+			buildPipelineRunNoStartTime := buildPipelineRun.DeepCopy()
+			buildPipelineRunNoStartTime.Status.StartTime = nil
+
+			expectedSnapshot, err := adapter.prepareSnapshotForPipelineRun(buildPipelineRunNoStartTime, hasComp, hasApp)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(expectedSnapshot).NotTo(BeNil())
+
+			// Should still have a valid name with timestamp format
+			Expect(expectedSnapshot.Name).To(MatchRegexp(`^application-sample-\d{8}-\d{6}-\d{3}$`))
+
+			// Should have BuildPipelineRunStartTime annotation set (from fallback)
+			Expect(metadata.HasAnnotation(expectedSnapshot, gitops.BuildPipelineRunStartTime)).To(BeTrue())
+
+			// Verify annotation value is in milliseconds (from fallback)
+			startTimeMillis, err := strconv.ParseInt(expectedSnapshot.Annotations[gitops.BuildPipelineRunStartTime], 10, 64)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(startTimeMillis).To(BeNumerically(">", 1000000000000)) // Millisecond timestamp
+
+			// Verify the name matches the fallback timestamp
+			expectedName := gitops.GenerateSnapshotNameWithTimestamp(hasApp.Name, startTimeMillis)
+			Expect(expectedSnapshot.Name).To(Equal(expectedName))
 		})
 
 		It("ensures that Labels and Annotations were copied to snapshot from pipelinerun", func() {

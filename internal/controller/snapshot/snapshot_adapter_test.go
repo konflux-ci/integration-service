@@ -89,18 +89,18 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		integrationPipelineRunOld                 *tektonv1.PipelineRun
 	)
 	const (
-		SampleRepoLink      = "https://github.com/devfile-samples/devfile-sample-java-springboot-basic"
-		sample_image        = "quay.io/redhat-appstudio/sample-image"
-		sample_revision     = "random-value"
-		sampleDigest        = "sha256:841328df1b9f8c4087adbdcfec6cc99ac8308805dea83f6d415d6fb8d40227c1"
-		customLabel         = "custom.appstudio.openshift.io/custom-label"
-		sourceRepoRef       = "db2c043b72b3f8d292ee0e38768d0a94859a308b"
-		hasComSnapshot1Name = "hascomsnapshot1-sample"
-		hasComSnapshot2Name = "hascomsnapshot2-sample"
-		hasComSnapshot3Name = "hascomsnapshot3-sample"
-		prGroup             = "feature1"
-		prGroupSha          = "feature1hash"
-		plrstarttime        = 1775992257
+		SampleRepoLink            = "https://github.com/devfile-samples/devfile-sample-java-springboot-basic"
+		sample_image              = "quay.io/redhat-appstudio/sample-image"
+		sample_revision           = "random-value"
+		sampleDigest              = "sha256:841328df1b9f8c4087adbdcfec6cc99ac8308805dea83f6d415d6fb8d40227c1"
+		customLabel               = "custom.appstudio.openshift.io/custom-label"
+		sourceRepoRef             = "db2c043b72b3f8d292ee0e38768d0a94859a308b"
+		hasComSnapshot1Name       = "hascomsnapshot1-sample"
+		hasComSnapshot2Name       = "hascomsnapshot2-sample"
+		hasComSnapshot3Name       = "hascomsnapshot3-sample"
+		prGroup                   = "feature1"
+		prGroupSha                = "feature1hash"
+		plrstarttime        int64 = 1775992257000 // milliseconds (was 1775992257 seconds)
 	)
 
 	BeforeAll(func() {
@@ -391,7 +391,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 					gitops.PipelineAsCodePullRequestAnnotation: "2",
 				},
 				Annotations: map[string]string{
-					gitops.BuildPipelineRunStartTime:              strconv.Itoa(plrstarttime),
+					gitops.BuildPipelineRunStartTime:              strconv.FormatInt(plrstarttime, 10),
 					gitops.PipelineAsCodeInstallationIDAnnotation: "123",
 					gitops.PRGroupAnnotation:                      prGroup,
 					gitops.PipelineAsCodeRepoURLAnnotation:        "repo-url",
@@ -415,7 +415,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 					gitops.PipelineAsCodePullRequestAnnotation: "2",
 				},
 				Annotations: map[string]string{
-					gitops.BuildPipelineRunStartTime:              strconv.Itoa(plrstarttime + 100),
+					gitops.BuildPipelineRunStartTime:              strconv.FormatInt(plrstarttime+100000, 10), // +100 seconds = +100000 milliseconds
 					gitops.PipelineAsCodeInstallationIDAnnotation: "123",
 					gitops.PRGroupAnnotation:                      prGroup,
 					gitops.PipelineAsCodeRepoURLAnnotation:        "repo-url",
@@ -529,7 +529,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 					// SnapshotTypeLabel will be set in each test
 				},
 				Annotations: map[string]string{
-					gitops.BuildPipelineRunStartTime: "1703123000", // OLDER timestamp
+					gitops.BuildPipelineRunStartTime: "1703123000000", // OLDER timestamp (milliseconds)
 				},
 			},
 			Spec: applicationapiv1alpha1.SnapshotSpec{
@@ -635,7 +635,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 				},
 				Annotations: map[string]string{
 					"test.appstudio.openshift.io/pr-last-update":  "2023-08-26T17:57:50+02:00",
-					gitops.BuildPipelineRunStartTime:              strconv.Itoa(plrstarttime),
+					gitops.BuildPipelineRunStartTime:              strconv.FormatInt(plrstarttime, 10),
 					gitops.PRGroupAnnotation:                      prGroup,
 					gitops.PipelineAsCodeGitProviderAnnotation:    "github",
 					gitops.PipelineAsCodePullRequestAnnotation:    "1",
@@ -683,7 +683,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 				},
 				Annotations: map[string]string{
 					"test.appstudio.openshift.io/pr-last-update":  "2023-08-26T17:57:50+02:00",
-					gitops.BuildPipelineRunStartTime:              strconv.Itoa(plrstarttime + 100),
+					gitops.BuildPipelineRunStartTime:              strconv.FormatInt(plrstarttime+100000, 10), // +100 seconds = +100000 milliseconds
 					gitops.PRGroupAnnotation:                      prGroup,
 					gitops.PipelineAsCodeGitProviderAnnotation:    "github",
 					gitops.PipelineAsCodeInstallationIDAnnotation: "123",
@@ -721,7 +721,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 				},
 				Annotations: map[string]string{
 					"test.appstudio.openshift.io/pr-last-update":  "2023-08-26T17:57:50+02:00",
-					gitops.BuildPipelineRunStartTime:              strconv.Itoa(plrstarttime + 200),
+					gitops.BuildPipelineRunStartTime:              strconv.FormatInt(plrstarttime+200000, 10), // +200 seconds = +200000 milliseconds
 					gitops.PRGroupAnnotation:                      prGroup,
 					gitops.PipelineAsCodeGitProviderAnnotation:    "github",
 					gitops.PipelineAsCodePullRequestAnnotation:    "1",

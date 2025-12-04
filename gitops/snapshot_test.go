@@ -53,16 +53,16 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 	)
 
 	const (
-		SampleRepoLink      = "https://github.com/devfile-samples/devfile-sample-java-springboot-basic"
-		namespace           = "default"
-		applicationName     = "application-sample"
-		componentName       = "component-sample"
-		snapshotName        = "snapshot-sample"
-		hasComSnapshot1Name = "hascomsnapshot1-sample"
-		hasComSnapshot2Name = "hascomsnapshot2-sample"
-		hasComSnapshot3Name = "hascomsnapshot3-sample"
-		SampleCommit        = "a2ba645d50e471d5f084b"
-		plrstarttime        = 1775992257
+		SampleRepoLink            = "https://github.com/devfile-samples/devfile-sample-java-springboot-basic"
+		namespace                 = "default"
+		applicationName           = "application-sample"
+		componentName             = "component-sample"
+		snapshotName              = "snapshot-sample"
+		hasComSnapshot1Name       = "hascomsnapshot1-sample"
+		hasComSnapshot2Name       = "hascomsnapshot2-sample"
+		hasComSnapshot3Name       = "hascomsnapshot3-sample"
+		SampleCommit              = "a2ba645d50e471d5f084b"
+		plrstarttime        int64 = 1775992257000 // milliseconds (was 1775992257 seconds)
 	)
 	BeforeAll(func() {
 		hasApp = &applicationapiv1alpha1.Application{
@@ -160,7 +160,7 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 				},
 				Annotations: map[string]string{
 					"test.appstudio.openshift.io/pr-last-update": "2023-08-26T17:57:50+02:00",
-					gitops.BuildPipelineRunStartTime:             strconv.Itoa(plrstarttime),
+					gitops.BuildPipelineRunStartTime:             strconv.FormatInt(plrstarttime, 10),
 				},
 				// this CreationTimestamp don't take effect when snapshot is created
 				// CreationTimestamp: metav1.NewTime(time.Now().Add(time.Hour * 2)),
@@ -201,7 +201,7 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 				},
 				Annotations: map[string]string{
 					"test.appstudio.openshift.io/pr-last-update": "2023-08-26T17:57:50+02:00",
-					gitops.BuildPipelineRunStartTime:             strconv.Itoa(plrstarttime + 100),
+					gitops.BuildPipelineRunStartTime:             strconv.FormatInt(plrstarttime+100000, 10), // +100 seconds = +100000 milliseconds
 				},
 				// this CreationTimestamp don't take effect when snapshot is created
 				// CreationTimestamp: metav1.NewTime(time.Now().Add(time.Hour * 1)),
@@ -242,7 +242,7 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 				},
 				Annotations: map[string]string{
 					"test.appstudio.openshift.io/pr-last-update": "2023-08-26T17:57:50+02:00",
-					gitops.BuildPipelineRunStartTime:             strconv.Itoa(plrstarttime + 200),
+					gitops.BuildPipelineRunStartTime:             strconv.FormatInt(plrstarttime+200000, 10), // +200 seconds = +200000 milliseconds
 				},
 				// this CreationTimestamp don't take effect when snapshot is created
 				// CreationTimestamp: metav1.NewTime(time.Now()),
@@ -502,10 +502,12 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 		snapshotComponents := []applicationapiv1alpha1.SnapshotComponent{}
 		createdSnapshot := gitops.NewSnapshot(hasApp, &snapshotComponents)
 		Expect(createdSnapshot).NotTo(BeNil())
+		// Name should be set with timestamp format
+		Expect(createdSnapshot.Name).To(MatchRegexp(`^application-sample-\d{8}-\d{6}-\d{3}$`))
 	})
 
-	It("ensures NewSnapshot truncates application name if longer than 57 characters", func() {
-		longAppName := "this-is-a-very-long-application-name-that-exceeds-57-chars"
+	It("ensures NewSnapshot truncates application name if longer than 44 characters", func() {
+		longAppName := "this-is-a-very-long-application-name-that-exceeds-44-chars"
 		longApp := &applicationapiv1alpha1.Application{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      longAppName,
@@ -521,16 +523,15 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 
 		snapshot := gitops.NewSnapshot(longApp, &snapshotComponents)
 
-		// GenerateName should be truncated to 57 characters + "-" = 58 characters
-		expectedPrefix := longAppName[:57] + "-"
-		Expect(snapshot.GenerateName).To(Equal(expectedPrefix))
-		Expect(snapshot.GenerateName).To(HaveLen(58))
-		// the application name in the spec should remain unchanged
+		// Name should be truncated to 44 characters + "-" + 19 character timestamp
+		expectedPrefix := longAppName[:44]
+		Expect(snapshot.Name).To(HavePrefix(expectedPrefix + "-"))
+		Expect(snapshot.Name).To(MatchRegexp(`^` + expectedPrefix + `-\d{8}-\d{6}-\d{3}$`))
 		Expect(snapshot.Spec.Application).To(Equal(longAppName))
 	})
 
-	It("ensures NewSnapshot does not truncate application name at 57 characters", func() {
-		exactAppName := "this-is-application-name-exactly-fifty-seven-characters--" // 57 chars
+	It("ensures NewSnapshot does not truncate application name at 44 characters", func() {
+		exactAppName := "this-is-application-name-exactly-44-chars" // 44 chars
 		exactApp := &applicationapiv1alpha1.Application{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      exactAppName,
@@ -546,9 +547,33 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 
 		snapshot := gitops.NewSnapshot(exactApp, &snapshotComponents)
 
-		Expect(snapshot.GenerateName).To(Equal(exactAppName + "-"))
-		Expect(snapshot.GenerateName).To(HaveLen(58))
+		// Name should be exactAppName + "-" + 19 character timestamp
+		Expect(snapshot.Name).To(HavePrefix(exactAppName + "-"))
+		Expect(snapshot.Name).To(MatchRegexp(`^` + exactAppName + `-\d{8}-\d{6}-\d{3}$`))
 		Expect(snapshot.Spec.Application).To(Equal(exactAppName))
+	})
+
+	It("ensures GenerateSnapshotNameWithTimestamp generates correct format", func() {
+		prefix := "application-sample"
+		// Use a known timestamp: 2025-11-09 13:04:05.123 UTC
+		unixMilli := int64(1762693445123) // This represents 2025-11-09 13:04:05.123 UTC
+
+		name := gitops.GenerateSnapshotNameWithTimestamp(prefix, unixMilli)
+
+		// Should match: application-sample-20251109-130405-123
+		Expect(name).To(Equal("application-sample-20251109-130405-123"))
+	})
+
+	It("ensures GenerateSnapshotNameWithTimestamp truncates long prefixes", func() {
+		longPrefix := "this-is-a-very-long-application-name-that-exceeds-44-chars"
+		unixMilli := time.Now().UnixMilli()
+
+		name := gitops.GenerateSnapshotNameWithTimestamp(longPrefix, unixMilli)
+
+		// Should be truncated to 44 chars + "-" + timestamp
+		expectedPrefix := longPrefix[:44]
+		Expect(name).To(HavePrefix(expectedPrefix + "-"))
+		Expect(name).To(MatchRegexp(`^` + expectedPrefix + `-\d{8}-\d{6}-\d{3}$`))
 	})
 
 	It("ensures the same Snapshots can be successfully compared", func() {
