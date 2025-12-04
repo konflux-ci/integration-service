@@ -25,7 +25,7 @@ require (
 	github.com/tonglil/buflogr v1.1.1
 	gitlab.com/gitlab-org/api/client-go v0.134.0
 	go.uber.org/mock v0.5.2
-	go.uber.org/zap v1.27.0
+	go.uber.org/zap v1.27.1
 	golang.org/x/exp v0.0.0-20251125195548-87e1e737ad39
 	golang.org/x/oauth2 v0.30.0
 	k8s.io/api v0.30.3
