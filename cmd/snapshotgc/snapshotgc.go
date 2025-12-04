@@ -84,7 +84,10 @@ func garbageCollectSnapshots(
 
 		candidates, keptPrSnapshots, keptNonPrSnapshots := filterSnapshotsWithKeepSnapshotAnnotation(candidates)
 		prSnapshotsToKeep -= keptPrSnapshots
+		// Both the Snapshots associated with Releases and ones that have been marked with
+		// the keep snapshot annotation count against the non-PR limit
 		nonPrSnapshotsToKeep -= keptNonPrSnapshots
+		nonPrSnapshotsToKeep -= len(snapToData)
 
 		candidates = getSnapshotsForRemoval(
 			cl, candidates, prSnapshotsToKeep, nonPrSnapshotsToKeep, logger,

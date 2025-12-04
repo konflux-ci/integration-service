@@ -850,7 +850,7 @@ var _ = Describe("Test garbage collection for snapshots", func() {
 				Namespace: "ns1",
 			})
 			Expect(err).ShouldNot(HaveOccurred())
-			Expect(snapsAfter.Items).To(HaveLen(4))
+			Expect(snapsAfter.Items).To(HaveLen(3))
 			err = cl.List(context.Background(), snapsAfter, &client.ListOptions{
 				Namespace: "ns2",
 			})
