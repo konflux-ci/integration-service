@@ -25,10 +25,10 @@ import (
 type (
 	GroupRepositoryStorageMoveServiceInterface interface {
 		RetrieveAllStorageMoves(opts RetrieveAllGroupStorageMovesOptions, options ...RequestOptionFunc) ([]*GroupRepositoryStorageMove, *Response, error)
-		RetrieveAllStorageMovesForGroup(group int, opts RetrieveAllGroupStorageMovesOptions, options ...RequestOptionFunc) ([]*GroupRepositoryStorageMove, *Response, error)
-		GetStorageMove(repositoryStorage int, options ...RequestOptionFunc) (*GroupRepositoryStorageMove, *Response, error)
-		GetStorageMoveForGroup(group int, repositoryStorage int, options ...RequestOptionFunc) (*GroupRepositoryStorageMove, *Response, error)
-		ScheduleStorageMoveForGroup(group int, opts ScheduleStorageMoveForGroupOptions, options ...RequestOptionFunc) (*GroupRepositoryStorageMove, *Response, error)
+		RetrieveAllStorageMovesForGroup(group int64, opts RetrieveAllGroupStorageMovesOptions, options ...RequestOptionFunc) ([]*GroupRepositoryStorageMove, *Response, error)
+		GetStorageMove(repositoryStorage int64, options ...RequestOptionFunc) (*GroupRepositoryStorageMove, *Response, error)
+		GetStorageMoveForGroup(group int64, repositoryStorage int64, options ...RequestOptionFunc) (*GroupRepositoryStorageMove, *Response, error)
+		ScheduleStorageMoveForGroup(group int64, opts ScheduleStorageMoveForGroupOptions, options ...RequestOptionFunc) (*GroupRepositoryStorageMove, *Response, error)
 		ScheduleAllStorageMoves(opts ScheduleAllGroupStorageMovesOptions, options ...RequestOptionFunc) (*Response, error)
 	}
 
@@ -47,7 +47,7 @@ type (
 // GitLab API docs:
 // https://docs.gitlab.com/api/group_repository_storage_moves/
 type GroupRepositoryStorageMove struct {
-	ID                     int              `json:"id"`
+	ID                     int64            `json:"id"`
 	CreatedAt              *time.Time       `json:"created_at"`
 	State                  string           `json:"state"`
 	SourceStorageName      string           `json:"source_storage_name"`
@@ -56,7 +56,7 @@ type GroupRepositoryStorageMove struct {
 }
 
 type RepositoryGroup struct {
-	ID     int    `json:"id"`
+	ID     int64  `json:"id"`
 	Name   string `json:"name"`
 	WebURL string `json:"web_url"`
 }
@@ -66,7 +66,9 @@ type RepositoryGroup struct {
 //
 // GitLab API docs:
 // https://docs.gitlab.com/api/group_repository_storage_moves/#retrieve-all-group-repository-storage-moves
-type RetrieveAllGroupStorageMovesOptions ListOptions
+type RetrieveAllGroupStorageMovesOptions struct {
+	ListOptions
+}
 
 // RetrieveAllStorageMoves retrieves all group repository storage moves
 // accessible by the authenticated user.
@@ -93,7 +95,7 @@ func (g GroupRepositoryStorageMoveService) RetrieveAllStorageMoves(opts Retrieve
 //
 // GitLab API docs:
 // https://docs.gitlab.com/api/group_repository_storage_moves/#retrieve-all-repository-storage-moves-for-a-single-group
-func (g GroupRepositoryStorageMoveService) RetrieveAllStorageMovesForGroup(group int, opts RetrieveAllGroupStorageMovesOptions, options ...RequestOptionFunc) ([]*GroupRepositoryStorageMove, *Response, error) {
+func (g GroupRepositoryStorageMoveService) RetrieveAllStorageMovesForGroup(group int64, opts RetrieveAllGroupStorageMovesOptions, options ...RequestOptionFunc) ([]*GroupRepositoryStorageMove, *Response, error) {
 	u := fmt.Sprintf("groups/%d/repository_storage_moves", group)
 
 	req, err := g.client.NewRequest(http.MethodGet, u, opts, options)
@@ -114,7 +116,7 @@ func (g GroupRepositoryStorageMoveService) RetrieveAllStorageMovesForGroup(group
 //
 // GitLab API docs:
 // https://docs.gitlab.com/api/group_repository_storage_moves/#get-a-single-group-repository-storage-move
-func (g GroupRepositoryStorageMoveService) GetStorageMove(repositoryStorage int, options ...RequestOptionFunc) (*GroupRepositoryStorageMove, *Response, error) {
+func (g GroupRepositoryStorageMoveService) GetStorageMove(repositoryStorage int64, options ...RequestOptionFunc) (*GroupRepositoryStorageMove, *Response, error) {
 	u := fmt.Sprintf("group_repository_storage_moves/%d", repositoryStorage)
 
 	req, err := g.client.NewRequest(http.MethodGet, u, nil, options)
@@ -135,7 +137,7 @@ func (g GroupRepositoryStorageMoveService) GetStorageMove(repositoryStorage int,
 //
 // GitLab API docs:
 // https://docs.gitlab.com/api/group_repository_storage_moves/#get-a-single-repository-storage-move-for-a-group
-func (g GroupRepositoryStorageMoveService) GetStorageMoveForGroup(group int, repositoryStorage int, options ...RequestOptionFunc) (*GroupRepositoryStorageMove, *Response, error) {
+func (g GroupRepositoryStorageMoveService) GetStorageMoveForGroup(group int64, repositoryStorage int64, options ...RequestOptionFunc) (*GroupRepositoryStorageMove, *Response, error) {
 	u := fmt.Sprintf("groups/%d/repository_storage_moves/%d", group, repositoryStorage)
 
 	req, err := g.client.NewRequest(http.MethodGet, u, nil, options)
@@ -165,7 +167,7 @@ type ScheduleStorageMoveForGroupOptions struct {
 //
 // GitLab API docs:
 // https://docs.gitlab.com/api/group_repository_storage_moves/#schedule-a-repository-storage-move-for-a-group
-func (g GroupRepositoryStorageMoveService) ScheduleStorageMoveForGroup(group int, opts ScheduleStorageMoveForGroupOptions, options ...RequestOptionFunc) (*GroupRepositoryStorageMove, *Response, error) {
+func (g GroupRepositoryStorageMoveService) ScheduleStorageMoveForGroup(group int64, opts ScheduleStorageMoveForGroupOptions, options ...RequestOptionFunc) (*GroupRepositoryStorageMove, *Response, error) {
 	u := fmt.Sprintf("groups/%d/repository_storage_moves", group)
 
 	req, err := g.client.NewRequest(http.MethodPost, u, opts, options)

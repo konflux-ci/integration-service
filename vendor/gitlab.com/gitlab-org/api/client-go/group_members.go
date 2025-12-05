@@ -24,13 +24,13 @@ import (
 
 type (
 	GroupMembersServiceInterface interface {
-		GetGroupMember(gid any, user int, options ...RequestOptionFunc) (*GroupMember, *Response, error)
-		GetInheritedGroupMember(gid any, user int, options ...RequestOptionFunc) (*GroupMember, *Response, error)
+		GetGroupMember(gid any, user int64, options ...RequestOptionFunc) (*GroupMember, *Response, error)
+		GetInheritedGroupMember(gid any, user int64, options ...RequestOptionFunc) (*GroupMember, *Response, error)
 		AddGroupMember(gid any, opt *AddGroupMemberOptions, options ...RequestOptionFunc) (*GroupMember, *Response, error)
 		ShareWithGroup(gid any, opt *ShareWithGroupOptions, options ...RequestOptionFunc) (*Group, *Response, error)
-		DeleteShareWithGroup(gid any, groupID int, options ...RequestOptionFunc) (*Response, error)
-		EditGroupMember(gid any, user int, opt *EditGroupMemberOptions, options ...RequestOptionFunc) (*GroupMember, *Response, error)
-		RemoveGroupMember(gid any, user int, opt *RemoveGroupMemberOptions, options ...RequestOptionFunc) (*Response, error)
+		DeleteShareWithGroup(gid any, groupID int64, options ...RequestOptionFunc) (*Response, error)
+		EditGroupMember(gid any, user int64, opt *EditGroupMemberOptions, options ...RequestOptionFunc) (*GroupMember, *Response, error)
+		RemoveGroupMember(gid any, user int64, opt *RemoveGroupMemberOptions, options ...RequestOptionFunc) (*Response, error)
 	}
 
 	// GroupMembersService handles communication with the group members
@@ -48,19 +48,21 @@ var _ GroupMembersServiceInterface = (*GroupMembersService)(nil)
 //
 // GitLab API docs: https://docs.gitlab.com/api/members/
 type GroupMember struct {
-	ID                int                      `json:"id"`
+	ID                int64                    `json:"id"`
 	Username          string                   `json:"username"`
 	Name              string                   `json:"name"`
 	State             string                   `json:"state"`
 	AvatarURL         string                   `json:"avatar_url"`
 	WebURL            string                   `json:"web_url"`
 	CreatedAt         *time.Time               `json:"created_at"`
+	CreatedBy         *MemberCreatedBy         `json:"created_by"`
 	ExpiresAt         *ISOTime                 `json:"expires_at"`
 	AccessLevel       AccessLevelValue         `json:"access_level"`
 	Email             string                   `json:"email,omitempty"`
 	PublicEmail       string                   `json:"public_email,omitempty"`
 	GroupSAMLIdentity *GroupMemberSAMLIdentity `json:"group_saml_identity"`
 	MemberRole        *MemberRole              `json:"member_role"`
+	IsUsingSeat       bool                     `json:"is_using_seat,omitempty"`
 }
 
 // GroupMemberSAMLIdentity represents the SAML Identity link for the group member.
@@ -70,7 +72,7 @@ type GroupMember struct {
 type GroupMemberSAMLIdentity struct {
 	ExternUID      string `json:"extern_uid"`
 	Provider       string `json:"provider"`
-	SAMLProviderID int    `json:"saml_provider_id"`
+	SAMLProviderID int64  `json:"saml_provider_id"`
 }
 
 // BillableGroupMember represents a GitLab billable group member.
@@ -78,7 +80,7 @@ type GroupMemberSAMLIdentity struct {
 // GitLab API docs:
 // https://docs.gitlab.com/api/members/#list-all-billable-members-of-a-group
 type BillableGroupMember struct {
-	ID             int        `json:"id"`
+	ID             int64      `json:"id"`
 	Username       string     `json:"username"`
 	Name           string     `json:"name"`
 	State          string     `json:"state"`
@@ -98,8 +100,8 @@ type BillableGroupMember struct {
 // GitLab API docs:
 // https://docs.gitlab.com/api/members/#list-memberships-for-a-billable-member-of-a-group
 type BillableUserMembership struct {
-	ID               int                 `json:"id"`
-	SourceID         int                 `json:"source_id"`
+	ID               int64               `json:"id"`
+	SourceID         int64               `json:"source_id"`
 	SourceFullName   string              `json:"source_full_name"`
 	SourceMembersURL string              `json:"source_members_url"`
 	CreatedAt        *time.Time          `json:"created_at"`
@@ -114,8 +116,9 @@ type BillableUserMembership struct {
 // https://docs.gitlab.com/api/members/#list-all-members-of-a-group-or-project
 type ListGroupMembersOptions struct {
 	ListOptions
-	Query   *string `url:"query,omitempty" json:"query,omitempty"`
-	UserIDs *[]int  `url:"user_ids[],omitempty" json:"user_ids,omitempty"`
+	Query        *string  `url:"query,omitempty" json:"query,omitempty"`
+	UserIDs      *[]int64 `url:"user_ids[],omitempty" json:"user_ids,omitempty"`
+	ShowSeatInfo *bool    `url:"show_seat_info,omitempty" json:"show_seat_info,omitempty"`
 }
 
 // ListGroupMembers get a list of group members viewable by the authenticated
@@ -175,18 +178,18 @@ func (s *GroupsService) ListAllGroupMembers(gid any, opt *ListGroupMembersOption
 // GitLab API docs:
 // https://docs.gitlab.com/api/members/#add-a-member-to-a-group-or-project
 type AddGroupMemberOptions struct {
-	UserID       *int              `url:"user_id,omitempty" json:"user_id,omitempty"`
+	UserID       *int64            `url:"user_id,omitempty" json:"user_id,omitempty"`
 	Username     *string           `url:"username,omitempty" json:"username,omitempty"`
 	AccessLevel  *AccessLevelValue `url:"access_level,omitempty" json:"access_level,omitempty"`
 	ExpiresAt    *string           `url:"expires_at,omitempty" json:"expires_at"`
-	MemberRoleID *int              `url:"member_role_id,omitempty" json:"member_role_id,omitempty"`
+	MemberRoleID *int64            `url:"member_role_id,omitempty" json:"member_role_id,omitempty"`
 }
 
 // GetGroupMember gets a member of a group.
 //
 // GitLab API docs:
 // https://docs.gitlab.com/api/members/#get-a-member-of-a-group-or-project
-func (s *GroupMembersService) GetGroupMember(gid any, user int, options ...RequestOptionFunc) (*GroupMember, *Response, error) {
+func (s *GroupMembersService) GetGroupMember(gid any, user int64, options ...RequestOptionFunc) (*GroupMember, *Response, error) {
 	group, err := parseID(gid)
 	if err != nil {
 		return nil, nil, err
@@ -212,7 +215,7 @@ func (s *GroupMembersService) GetGroupMember(gid any, user int, options ...Reque
 //
 // GitLab API docs:
 // https://docs.gitlab.com/api/members/#get-a-member-of-a-group-or-project-including-inherited-and-invited-members
-func (s *GroupMembersService) GetInheritedGroupMember(gid any, user int, options ...RequestOptionFunc) (*GroupMember, *Response, error) {
+func (s *GroupMembersService) GetInheritedGroupMember(gid any, user int64, options ...RequestOptionFunc) (*GroupMember, *Response, error) {
 	group, err := parseID(gid)
 	if err != nil {
 		return nil, nil, err
@@ -275,14 +278,16 @@ func (s *GroupsService) ListBillableGroupMembers(gid any, opt *ListBillableGroup
 //
 // GitLab API docs:
 // https://docs.gitlab.com/api/members/#list-memberships-for-a-billable-member-of-a-group
-type ListMembershipsForBillableGroupMemberOptions = ListOptions
+type ListMembershipsForBillableGroupMemberOptions struct {
+	ListOptions
+}
 
 // ListMembershipsForBillableGroupMember gets a list of memberships for a
 // billable member of a group.
 //
 // GitLab API docs:
 // https://docs.gitlab.com/api/members/#list-memberships-for-a-billable-member-of-a-group
-func (s *GroupsService) ListMembershipsForBillableGroupMember(gid any, user int, opt *ListMembershipsForBillableGroupMemberOptions, options ...RequestOptionFunc) ([]*BillableUserMembership, *Response, error) {
+func (s *GroupsService) ListMembershipsForBillableGroupMember(gid any, user int64, opt *ListMembershipsForBillableGroupMemberOptions, options ...RequestOptionFunc) ([]*BillableUserMembership, *Response, error) {
 	group, err := parseID(gid)
 	if err != nil {
 		return nil, nil, err
@@ -307,7 +312,7 @@ func (s *GroupsService) ListMembershipsForBillableGroupMember(gid any, user int,
 //
 // GitLab API docs:
 // https://docs.gitlab.com/api/members/#remove-a-billable-member-from-a-group
-func (s *GroupsService) RemoveBillableGroupMember(gid any, user int, options ...RequestOptionFunc) (*Response, error) {
+func (s *GroupsService) RemoveBillableGroupMember(gid any, user int64, options ...RequestOptionFunc) (*Response, error) {
 	group, err := parseID(gid)
 	if err != nil {
 		return nil, err
@@ -376,7 +381,7 @@ func (s *GroupMembersService) ShareWithGroup(gid any, opt *ShareWithGroupOptions
 //
 // GitLab API docs:
 // https://docs.gitlab.com/api/groups/#delete-the-link-that-shares-a-group-with-another-group
-func (s *GroupMembersService) DeleteShareWithGroup(gid any, groupID int, options ...RequestOptionFunc) (*Response, error) {
+func (s *GroupMembersService) DeleteShareWithGroup(gid any, groupID int64, options ...RequestOptionFunc) (*Response, error) {
 	group, err := parseID(gid)
 	if err != nil {
 		return nil, err
@@ -399,14 +404,14 @@ func (s *GroupMembersService) DeleteShareWithGroup(gid any, groupID int, options
 type EditGroupMemberOptions struct {
 	AccessLevel  *AccessLevelValue `url:"access_level,omitempty" json:"access_level,omitempty"`
 	ExpiresAt    *string           `url:"expires_at,omitempty" json:"expires_at,omitempty"`
-	MemberRoleID *int              `url:"member_role_id,omitempty" json:"member_role_id,omitempty"`
+	MemberRoleID *int64            `url:"member_role_id,omitempty" json:"member_role_id,omitempty"`
 }
 
 // EditGroupMember updates a member of a group.
 //
 // GitLab API docs:
 // https://docs.gitlab.com/api/members/#edit-a-member-of-a-group-or-project
-func (s *GroupMembersService) EditGroupMember(gid any, user int, opt *EditGroupMemberOptions, options ...RequestOptionFunc) (*GroupMember, *Response, error) {
+func (s *GroupMembersService) EditGroupMember(gid any, user int64, opt *EditGroupMemberOptions, options ...RequestOptionFunc) (*GroupMember, *Response, error) {
 	group, err := parseID(gid)
 	if err != nil {
 		return nil, nil, err
@@ -440,7 +445,7 @@ type RemoveGroupMemberOptions struct {
 //
 // GitLab API docs:
 // https://docs.gitlab.com/api/members/#remove-a-member-from-a-group-or-project
-func (s *GroupMembersService) RemoveGroupMember(gid any, user int, opt *RemoveGroupMemberOptions, options ...RequestOptionFunc) (*Response, error) {
+func (s *GroupMembersService) RemoveGroupMember(gid any, user int64, opt *RemoveGroupMemberOptions, options ...RequestOptionFunc) (*Response, error) {
 	group, err := parseID(gid)
 	if err != nil {
 		return nil, err
