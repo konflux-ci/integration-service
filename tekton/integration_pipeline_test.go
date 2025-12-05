@@ -118,45 +118,6 @@ var _ = Describe("Integration pipeline", Ordered, func() {
 		}
 		Expect(k8sClient.Create(ctx, integrationTestScenarioGit)).Should(Succeed())
 
-		//create new integration pipeline run from integration test scenario
-		var err error
-		newIntegrationPipelineRun, err = tekton.NewIntegrationPipelineRun(k8sClient, ctx, mockLoader, prefix, namespace, *integrationTestScenarioGit)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(k8sClient.Create(ctx, newIntegrationPipelineRun.AsPipelineRun())).Should(Succeed())
-
-		integrationTestScenarioBundle = &v1beta2.IntegrationTestScenario{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "test-bundle",
-				Namespace: "default",
-
-				Labels: map[string]string{
-					"test.appstudio.openshift.io/optional": "false",
-				},
-			},
-			Spec: v1beta2.IntegrationTestScenarioSpec{
-				Application: "application-sample",
-				ResolverRef: v1beta2.ResolverRef{
-					ResourceKind: tektonconsts.ResourceKindPipeline,
-					Resolver:     "bundles",
-					Params: []v1beta2.ResolverParameter{
-						{
-							Name:  "bundle",
-							Value: "quay.io/redhat-appstudio/example-tekton-bundle:integration-pipeline-pass",
-						},
-						{
-							Name:  "name",
-							Value: "integration-pipeline-pass",
-						},
-						{
-							Name:  "kind",
-							Value: "pipeline",
-						},
-					},
-				},
-			},
-		}
-		Expect(k8sClient.Create(ctx, integrationTestScenarioBundle)).Should(Succeed())
-
 		enterpriseContractTestScenario = &v1beta2.IntegrationTestScenario{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "enterprise-contract",
@@ -221,6 +182,10 @@ var _ = Describe("Integration pipeline", Ordered, func() {
 					gitops.SnapshotComponentLabel:              "component-sample",
 					gitops.CustomLabelPrefix + "/custom-label": "custom-label",
 				},
+				Annotations: map[string]string{
+					gitops.PipelineAsCodeGitSourceURLAnnotation: "https://test-repo.example.com",
+					gitops.PipelineAsCodeSHAAnnotation:          "test-commit",
+				},
 			},
 			Spec: applicationapiv1alpha1.SnapshotSpec{
 				Application: hasApp.Name,
@@ -254,14 +219,53 @@ var _ = Describe("Integration pipeline", Ordered, func() {
 		}
 		Expect(k8sClient.Create(ctx, hasComp)).Should(Succeed())
 
-		newIntegrationBundlePipelineRun, err = tekton.NewIntegrationPipelineRun(k8sClient, ctx, mockLoader, prefix, namespace, *integrationTestScenarioBundle)
+		//create new integration pipeline run from integration test scenario
+		var err error
+		newIntegrationPipelineRun, err = tekton.NewIntegrationPipelineRun(k8sClient, ctx, mockLoader, prefix, namespace, integrationTestScenarioGit, hasSnapshot)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(k8sClient.Create(ctx, newIntegrationPipelineRun.AsPipelineRun())).Should(Succeed())
+
+		integrationTestScenarioBundle = &v1beta2.IntegrationTestScenario{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "test-bundle",
+				Namespace: "default",
+
+				Labels: map[string]string{
+					"test.appstudio.openshift.io/optional": "false",
+				},
+			},
+			Spec: v1beta2.IntegrationTestScenarioSpec{
+				Application: "application-sample",
+				ResolverRef: v1beta2.ResolverRef{
+					ResourceKind: tektonconsts.ResourceKindPipeline,
+					Resolver:     "bundles",
+					Params: []v1beta2.ResolverParameter{
+						{
+							Name:  "bundle",
+							Value: "quay.io/redhat-appstudio/example-tekton-bundle:integration-pipeline-pass",
+						},
+						{
+							Name:  "name",
+							Value: "integration-pipeline-pass",
+						},
+						{
+							Name:  "kind",
+							Value: "pipeline",
+						},
+					},
+				},
+			},
+		}
+		Expect(k8sClient.Create(ctx, integrationTestScenarioBundle)).Should(Succeed())
+
+		newIntegrationBundlePipelineRun, err = tekton.NewIntegrationPipelineRun(k8sClient, ctx, mockLoader, prefix, namespace, integrationTestScenarioBundle, hasSnapshot)
 		Expect(err).NotTo(HaveOccurred())
 		newIntegrationBundlePipelineRun = newIntegrationBundlePipelineRun.WithIntegrationLabels(integrationTestScenarioBundle).
 			WithSnapshot(hasSnapshot).
 			WithApplication(hasApp)
 		Expect(k8sClient.Create(ctx, newIntegrationBundlePipelineRun.AsPipelineRun())).Should(Succeed())
 
-		enterpriseContractPipelineRun, err = tekton.NewIntegrationPipelineRun(k8sClient, ctx, mockLoader, prefix, namespace, *enterpriseContractTestScenario)
+		enterpriseContractPipelineRun, err = tekton.NewIntegrationPipelineRun(k8sClient, ctx, mockLoader, prefix, namespace, enterpriseContractTestScenario, hasSnapshot)
 		Expect(err).NotTo(HaveOccurred())
 		enterpriseContractPipelineRun = enterpriseContractPipelineRun.WithIntegrationLabels(enterpriseContractTestScenario).
 			WithIntegrationAnnotations(enterpriseContractTestScenario).
@@ -294,7 +298,7 @@ var _ = Describe("Integration pipeline", Ordered, func() {
 
 	Context("When creating a new IntegrationPipelineRun", func() {
 		It("can create an IntegrationPipelineRun", func() {
-			plr, err := tekton.NewIntegrationPipelineRun(k8sClient, ctx, mockLoader, prefix, namespace, *integrationTestScenarioGit)
+			plr, err := tekton.NewIntegrationPipelineRun(k8sClient, ctx, mockLoader, prefix, namespace, integrationTestScenarioGit, hasSnapshot)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(plr).NotTo(BeNil())
 			Expect(k8sClient.Create(ctx, plr.AsPipelineRun())).Should(Succeed())

@@ -1244,7 +1244,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 				hasSnapshotPR.Annotations[gitops.PipelineAsCodeTargetBranchAnnotation] = "main"
 			})
 
-			It("pullrequest source repo reference and URL should be used", func() {
+			It("pullrequest source repo reference and URL should be used for pipelinerun resourcekind", func() {
 				integrationTestScenarioWithTrailingSlash := integrationTestScenario.DeepCopy()
 				integrationTestScenarioWithTrailingSlash.Spec.ResolverRef = v1beta2.ResolverRef{
 					Resolver: "git",
@@ -1262,6 +1262,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 							Value: "pipelineruns/integration_pipelinerun_pass.yaml",
 						},
 					},
+					ResourceKind: tektonconsts.ResourceKindPipelineRun,
 				}
 
 				pipelineRun, err := adapter.createIntegrationPipelineRun(hasApp, integrationTestScenarioWithTrailingSlash, hasSnapshotPR)
@@ -1284,7 +1285,49 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 				}
 				Expect(foundUrl).To(BeTrue())
 				Expect(foundRevision).To(BeTrue())
+			})
 
+			It("pullrequest source repo reference and URL should be used for pipeline resourcekind", func() {
+				integrationTestScenarioWithTrailingSlash := integrationTestScenario.DeepCopy()
+				integrationTestScenarioWithTrailingSlash.Spec.ResolverRef = v1beta2.ResolverRef{
+					Resolver: "git",
+					Params: []v1beta2.ResolverParameter{
+						{
+							Name:  "url",
+							Value: targetRepoUrl + "/",
+						},
+						{
+							Name:  "revision",
+							Value: "main",
+						},
+						{
+							Name:  "pathInRepo",
+							Value: "pipelines/integration_pipeline_pass.yaml",
+						},
+					},
+					ResourceKind: tektonconsts.ResourceKindPipeline,
+				}
+
+				pipelineRun, err := adapter.createIntegrationPipelineRun(hasApp, integrationTestScenarioWithTrailingSlash, hasSnapshotPR)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(pipelineRun).ToNot(BeNil())
+
+				foundUrl := false
+				foundRevision := false
+
+				for _, param := range pipelineRun.Spec.PipelineRef.Params {
+					if param.Name == tektonconsts.TektonResolverGitParamURL {
+						foundUrl = true
+						Expect(param.Value.StringVal).To(Equal(sourceRepoUrl + ".git")) // must have .git suffix
+					}
+					if param.Name == tektonconsts.TektonResolverGitParamRevision {
+						foundRevision = true
+						Expect(param.Value.StringVal).To(Equal(sourceRepoRef))
+					}
+
+				}
+				Expect(foundUrl).To(BeTrue())
+				Expect(foundRevision).To(BeTrue())
 			})
 
 		})
