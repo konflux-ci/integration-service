@@ -35,16 +35,18 @@ import (
 	"github.com/konflux-ci/integration-service/api/v1beta2"
 	"github.com/konflux-ci/integration-service/loader"
 	"github.com/konflux-ci/integration-service/status"
+	tekton "github.com/konflux-ci/integration-service/tekton"
 	tektonconsts "github.com/konflux-ci/integration-service/tekton/consts"
 	toolkit "github.com/konflux-ci/operator-toolkit/loader"
 	"github.com/konflux-ci/operator-toolkit/metadata"
 	releasev1alpha1 "github.com/konflux-ci/release-service/api/v1alpha1"
 	releasemetadata "github.com/konflux-ci/release-service/metadata"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
+	resolutionv1beta1 "github.com/tektoncd/pipeline/pkg/apis/resolution/v1beta1"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"knative.dev/pkg/apis"
 	v1 "knative.dev/pkg/apis/duck/v1"
-
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/konflux-ci/integration-service/gitops"
 	"github.com/konflux-ci/integration-service/helpers"
@@ -54,6 +56,23 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/types"
 )
+
+// the pipelinerun yaml gotten from git resolver is prepared for resolutionRequest unittest
+const expectedPipelineYAML = `---
+apiVersion: tekton.dev/v1
+kind: PipelineRun
+metadata:
+  generateName: integration-pipelinerun-
+spec:
+  pipelineRef:
+    resolver: git
+    params:
+      - name: url
+        value: http://github.com/test/integration-examples.git
+      - name: revision
+        value: main
+      - name: pathInRepo
+        value: pipelines/integration_test_app.yaml`
 
 var _ = Describe("Snapshot Adapter", Ordered, func() {
 	var (
@@ -1237,14 +1256,53 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 				targetRepoUrl = "https://github.com/redhat-appstudio/integration-examples" // is without .git suffix
 			)
 
-			BeforeEach(func() {
-				hasSnapshotPR.Annotations[gitops.PipelineAsCodeGitSourceURLAnnotation] = sourceRepoUrl
-				hasSnapshotPR.Annotations[gitops.PipelineAsCodeSHAAnnotation] = sourceRepoRef
+			It("pullrequest source repo reference and URL should be used for pipelinerun resourcekind", func() {
+				resolutionRequest := resolutionv1beta1.ResolutionRequest{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "sample-resolutionrequest",
+						Namespace: "default",
+					},
+					Spec: resolutionv1beta1.ResolutionRequestSpec{
+						Params: []tektonv1.Param{
+							{
+								Name: "url",
+								Value: tektonv1.ParamValue{
+									Type:      tektonv1.ParamTypeString,
+									StringVal: sourceRepoUrl,
+								},
+							},
+							{
+								Name: "pathInRepo",
+								Value: tektonv1.ParamValue{
+									Type:      tektonv1.ParamTypeString,
+									StringVal: "pipelineruns/integration_pipelinerun_pass.yaml",
+								},
+							},
+							{
+								Name: "revision",
+								Value: tektonv1.ParamValue{
+									Type:      tektonv1.ParamTypeString,
+									StringVal: sourceRepoRef,
+								},
+							},
+						},
+					},
+					Status: resolutionv1beta1.ResolutionRequestStatus{
+						ResolutionRequestStatusFields: resolutionv1beta1.ResolutionRequestStatusFields{
+							Data: tekton.GenerateCleanData(expectedPipelineYAML),
+						},
+						Status: v1.Status{
+							Conditions: []apis.Condition{
+								{
+									Type:   apis.ConditionSucceeded,
+									Status: corev1.ConditionTrue,
+								},
+							},
+						},
+					},
+				}
 				hasSnapshotPR.Annotations[gitops.PipelineAsCodeRepoURLAnnotation] = targetRepoUrl
 				hasSnapshotPR.Annotations[gitops.PipelineAsCodeTargetBranchAnnotation] = "main"
-			})
-
-			It("pullrequest source repo reference and URL should be used", func() {
 				integrationTestScenarioWithTrailingSlash := integrationTestScenario.DeepCopy()
 				integrationTestScenarioWithTrailingSlash.Spec.ResolverRef = v1beta2.ResolverRef{
 					Resolver: "git",
@@ -1262,9 +1320,76 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 							Value: "pipelineruns/integration_pipelinerun_pass.yaml",
 						},
 					},
+					ResourceKind: tektonconsts.ResourceKindPipelineRun,
 				}
+				var buf bytes.Buffer
+				log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+				adapter.logger = log
+				adapter.snapshot = hasSnapshotPR
+				adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+					{
+						ContextKey: loader.ResolutionRequestContextKey,
+						Resource:   resolutionRequest,
+					},
+				})
 
 				pipelineRun, err := adapter.createIntegrationPipelineRun(hasApp, integrationTestScenarioWithTrailingSlash, hasSnapshotPR)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(pipelineRun).ToNot(BeNil())
+				Expect(buf.String()).Should(ContainSubstring("using the integration test pipeline/pipelinerun from the pr of snapshot integrationTestScneario.Name example-pass snapshot.Name snapshotpr-sample resourceKind pipelinerun"))
+
+				expectedPipelinerun, err := tekton.ConvertStringToPipelinerun(expectedPipelineYAML)
+				Expect(err).ToNot(HaveOccurred())
+
+				foundUrl := false
+				foundRevision := false
+
+				for _, param := range pipelineRun.Spec.PipelineRef.Params {
+					for _, expectedParam := range expectedPipelinerun.Spec.PipelineRef.Params {
+						if param.Name == "url" && expectedParam.Name == "url" {
+							foundUrl = true
+							Expect(param.Value.StringVal).To(Equal(expectedParam.Value.StringVal)) // must have .git suffix
+						}
+						if param.Name == "revision" && expectedParam.Name == "revision" {
+							foundRevision = true
+							Expect(param.Value.StringVal).To(Equal(expectedParam.Value.StringVal))
+						}
+					}
+				}
+				Expect(foundUrl).To(BeTrue())
+				Expect(foundRevision).To(BeTrue())
+			})
+
+			It("pullrequest source repo reference and URL should be used for pipeline resourcekind", func() {
+				hasSnapshotPR.Annotations[gitops.PipelineAsCodeGitSourceURLAnnotation] = sourceRepoUrl
+				hasSnapshotPR.Annotations[gitops.PipelineAsCodeSHAAnnotation] = sourceRepoRef
+				hasSnapshotPR.Annotations[gitops.PipelineAsCodeRepoURLAnnotation] = targetRepoUrl
+				hasSnapshotPR.Annotations[gitops.PipelineAsCodeTargetBranchAnnotation] = "main"
+				integrationTestScenarioWithTrailingSlash := integrationTestScenario.DeepCopy()
+				integrationTestScenarioWithTrailingSlash.Spec.ResolverRef = v1beta2.ResolverRef{
+					Resolver: "git",
+					Params: []v1beta2.ResolverParameter{
+						{
+							Name:  "url",
+							Value: targetRepoUrl + "/",
+						},
+						{
+							Name:  "revision",
+							Value: "main",
+						},
+						{
+							Name:  "pathInRepo",
+							Value: "pipelines/integration_pipeline_pass.yaml",
+						},
+					},
+					ResourceKind: tektonconsts.ResourceKindPipeline,
+				}
+				var buf bytes.Buffer
+				log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+				adapter.logger = log
+				adapter.snapshot = hasSnapshotPR
+				pipelineRun, err := adapter.createIntegrationPipelineRun(hasApp, integrationTestScenarioWithTrailingSlash, hasSnapshotPR)
+				Expect(buf.String()).Should(ContainSubstring("using the integration test pipeline/pipelinerun from the pr of snapshot integrationTestScneario.Name example-pass snapshot.Name snapshotpr-sample resourceKind pipeline"))
 				Expect(err).ToNot(HaveOccurred())
 				Expect(pipelineRun).ToNot(BeNil())
 
@@ -1284,7 +1409,6 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 				}
 				Expect(foundUrl).To(BeTrue())
 				Expect(foundRevision).To(BeTrue())
-
 			})
 
 		})
