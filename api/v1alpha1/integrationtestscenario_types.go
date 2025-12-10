@@ -43,7 +43,7 @@ type EnvironmentTarget struct {
 // EnvironmentConfiguration contains Environment-specific configurations details, to be used when generating
 // Component/Application GitOps repository resources.
 type DeprecatedEnvironmentConfiguration struct {
-	// Env is an array of standard environment variables
+	// An array of standard environment variables
 	Env []EnvVarPair `json:"env,omitempty"`
 
 	// Target is used to reference a DeploymentTargetClaim for a target Environment.
