@@ -97,7 +97,7 @@ type GroupImportFileOptions struct {
 	Name     *string `url:"name,omitempty" json:"name,omitempty"`
 	Path     *string `url:"path,omitempty" json:"path,omitempty"`
 	File     *string `url:"file,omitempty" json:"file,omitempty"`
-	ParentID *int    `url:"parent_id,omitempty" json:"parent_id,omitempty"`
+	ParentID *int64  `url:"parent_id,omitempty" json:"parent_id,omitempty"`
 }
 
 // ImportFile imports a file.
@@ -163,7 +163,7 @@ func (s *GroupImportExportService) ImportFile(opt *GroupImportFileOptions, optio
 			return nil, err
 		}
 
-		_, err = fw.Write([]byte(strconv.Itoa(*opt.ParentID)))
+		_, err = fw.Write([]byte(strconv.FormatInt(*opt.ParentID, 10)))
 		if err != nil {
 			return nil, err
 		}

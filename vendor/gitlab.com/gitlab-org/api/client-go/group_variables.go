@@ -69,7 +69,9 @@ func (v GroupVariable) String() string {
 //
 // GitLab API docs:
 // https://docs.gitlab.com/api/group_level_variables/#list-group-variables
-type ListGroupVariablesOptions ListOptions
+type ListGroupVariablesOptions struct {
+	ListOptions
+}
 
 // ListVariables gets a list of all variables for a group.
 //

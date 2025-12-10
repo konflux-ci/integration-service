@@ -39,7 +39,7 @@ var _ GroupActivityAnalyticsServiceInterface = (*GroupActivityAnalyticsService)(
 // GitLab API docs:
 // https://docs.gitlab.com/api/group_activity_analytics/#get-count-of-recently-created-issues-for-group
 type IssuesCount struct {
-	IssuesCount int `url:"issues_count" json:"issues_count"`
+	IssuesCount int64 `url:"issues_count" json:"issues_count"`
 }
 
 // GetRecentlyCreatedIssuesCountOptions represents the available
@@ -77,7 +77,7 @@ func (s *GroupActivityAnalyticsService) GetRecentlyCreatedIssuesCount(opt *GetRe
 // GitLab API docs:
 // https://docs.gitlab.com/api/group_activity_analytics/#get-count-of-recently-created-merge-requests-for-group
 type MergeRequestsCount struct {
-	MergeRequestsCount int `url:"merge_requests_count" json:"merge_requests_count"`
+	MergeRequestsCount int64 `url:"merge_requests_count" json:"merge_requests_count"`
 }
 
 // GetRecentlyCreatedMergeRequestsCountOptions represents the available
@@ -115,7 +115,7 @@ func (s *GroupActivityAnalyticsService) GetRecentlyCreatedMergeRequestsCount(opt
 // GitLab API docs:
 // https://docs.gitlab.com/api/group_activity_analytics/#get-count-of-members-recently-added-to-group
 type NewMembersCount struct {
-	NewMembersCount int `url:"new_members_count" json:"new_members_count"`
+	NewMembersCount int64 `url:"new_members_count" json:"new_members_count"`
 }
 
 // GetRecentlyAddedMembersCountOptions represents the available
