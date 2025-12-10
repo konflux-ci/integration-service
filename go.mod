@@ -14,7 +14,7 @@ require (
 	github.com/google/go-github/v45 v45.2.0
 	github.com/konflux-ci/application-api v0.0.0-20250324201748-5a9670bf7679
 	github.com/konflux-ci/coverport/instrumentation/go v0.0.0-20251127115143-b5207b335f8b
-	github.com/konflux-ci/operator-toolkit v0.0.0-20240402130556-ef6dcbeca69d
+	github.com/konflux-ci/operator-toolkit b4f41f073069
 	github.com/konflux-ci/release-service v0.0.0-20240514150425-d25d533f66ba
 	github.com/onsi/ginkgo/v2 v2.23.4
 	github.com/onsi/gomega v1.37.0
