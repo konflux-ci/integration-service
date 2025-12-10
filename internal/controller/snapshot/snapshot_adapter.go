@@ -742,48 +742,6 @@ func (a *Adapter) createAutomatedRelease(releasePlan *releasev1alpha1.ReleasePla
 	return nil
 }
 
-func resolverParamsToMap(params []v1beta2.ResolverParameter) map[string]string {
-	result := make(map[string]string)
-	for _, param := range params {
-		result[param.Name] = param.Value
-	}
-	return result
-}
-
-// shouldUpdateIntegrationPipelineGitResolver checks if the integration test resolver should be updated based on the source repo
-func shouldUpdateIntegrationPipelineGitResolver(integrationTestScenario *v1beta2.IntegrationTestScenario, snapshot *applicationapiv1alpha1.Snapshot) bool {
-
-	// only "pull-requests" are applicable
-	if gitops.IsSnapshotCreatedByPACPushEvent(snapshot) {
-		return false
-	}
-
-	testResolverRef := integrationTestScenario.Spec.ResolverRef
-
-	// only tekton git resolver is applicable
-	if testResolverRef.Resolver != tektonconsts.TektonResolverGit {
-		return false
-	}
-
-	annotations := snapshot.GetAnnotations()
-	params := resolverParamsToMap(testResolverRef.Params)
-
-	// if target revision sha differs from source revision sha we do not want to overwrite it
-	targetRevision := annotations[gitops.PipelineAsCodeTargetBranchAnnotation]
-	sourceRevision := params[tektonconsts.TektonResolverGitParamRevision]
-	if targetRevision == "" || sourceRevision == "" || targetRevision != sourceRevision {
-		return false
-	}
-
-	if urlVal, ok := params[tektonconsts.TektonResolverGitParamURL]; ok {
-		return annotations[gitops.PipelineAsCodeRepoURLAnnotation] != "" &&
-			h.UrlToGitUrl(urlVal) == h.UrlToGitUrl(annotations[gitops.PipelineAsCodeRepoURLAnnotation])
-	}
-
-	// undefined state, no idea what was configured in resolver, don't touch it
-	return false
-}
-
 func getGitResolverUpdateMap(snapshot *applicationapiv1alpha1.Snapshot) map[string]string {
 	annotations := snapshot.GetAnnotations()
 	return map[string]string{
@@ -812,7 +770,7 @@ func (a *Adapter) createIntegrationPipelineRun(application *applicationapiv1alph
 	a.logger.Info("Creating new pipelinerun for integrationTestscenario",
 		"integrationTestScenario.Name", integrationTestScenario.Name)
 
-	pipelineRunBuilder, err := tekton.NewIntegrationPipelineRun(a.client, a.context, a.loader, integrationTestScenario.Name, application.Namespace, *integrationTestScenario)
+	pipelineRunBuilder, err := tekton.NewIntegrationPipelineRun(a.client, a.context, a.loader, a.logger, integrationTestScenario.Name, application.Namespace, integrationTestScenario, a.snapshot)
 	if err != nil {
 		return nil, err
 	}
@@ -826,11 +784,8 @@ func (a *Adapter) createIntegrationPipelineRun(application *applicationapiv1alph
 		WithFinalizer(h.IntegrationPipelineRunFinalizer).
 		WithIntegrationTimeouts(integrationTestScenario, a.logger.Logger)
 
-	if shouldUpdateIntegrationPipelineGitResolver(integrationTestScenario, snapshot) {
-		pipelineRunBuilder.WithUpdatedPipelineGitResolver(getGitResolverUpdateMap(snapshot))
-	}
-
 	if shouldUpdateIntegrationTasksGitResolver(integrationTestScenario, snapshot) {
+		a.logger.Info("use the integration test task/taskrun from the code in the pr of snapshot", "integrationTestScneario.Name", integrationTestScenario.Name)
 		pipelineRunBuilder.WithUpdatedTasksGitResolver(snapshot, getGitResolverUpdateMap(snapshot))
 	}
 
