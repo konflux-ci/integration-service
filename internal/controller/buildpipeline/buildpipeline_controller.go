@@ -18,6 +18,7 @@ package buildpipeline
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/konflux-ci/integration-service/cache"
 	"k8s.io/client-go/util/retry"
@@ -86,6 +87,11 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return err
 	})
 	if err != nil {
+		// Annotate the PipelineRun with the error before handling it
+		tknErr := tekton.AnnotateBuildPipelineRunWithCreateSnapshotAnnotation(ctx, pipelineRun, r.Client, err)
+		if tknErr != nil {
+			return ctrl.Result{}, tknErr
+		}
 		if errors.IsNotFound(err) {
 			// Use retry logic to handle etcd timeouts when removing finalizer
 			err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
@@ -105,6 +111,11 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		// if both component and error are nil then the component label for the pipeline did not exist
 		// in this case we should stop reconciliation
 		logger.Info("Failed to  get component for build pipeline - component label does not exist", "name", pipelineRun.Name, "namespace", pipelineRun.Namespace)
+		componentErr := fmt.Errorf("component label does not exist on pipelineRun %s/%s", pipelineRun.Namespace, pipelineRun.Name)
+		tknErr := tekton.AnnotateBuildPipelineRunWithCreateSnapshotAnnotation(ctx, pipelineRun, r.Client, componentErr)
+		if tknErr != nil {
+			return ctrl.Result{}, tknErr
+		}
 		return ctrl.Result{}, nil
 	}
 
