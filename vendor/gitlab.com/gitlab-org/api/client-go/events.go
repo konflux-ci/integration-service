@@ -17,15 +17,23 @@
 package gitlab
 
 import (
-	"fmt"
-	"net/http"
 	"time"
 )
 
 type (
 	// EventsServiceInterface defines all the API methods for the EventsService
 	EventsServiceInterface interface {
+		// ListCurrentUserContributionEvents  retrieves all events
+		// for the currently authenticated user.
+		//
+		// GitLab API docs:
+		// https://docs.gitlab.com/api/events/#list-all-events
 		ListCurrentUserContributionEvents(opt *ListContributionEventsOptions, options ...RequestOptionFunc) ([]*ContributionEvent, *Response, error)
+
+		// ListProjectVisibleEvents gets the events for the specified project.
+		//
+		// GitLab API docs:
+		// https://docs.gitlab.com/api/events/#list-a-projects-visible-events
 		ListProjectVisibleEvents(pid any, opt *ListProjectVisibleEventsOptions, options ...RequestOptionFunc) ([]*ProjectEvent, *Response, error)
 	}
 
@@ -89,48 +97,25 @@ type ListContributionEventsOptions struct {
 	Sort       *string               `url:"sort,omitempty" json:"sort,omitempty"`
 }
 
-// ListUserContributionEvents retrieves user contribution events
-// for the specified user, sorted from newest to oldest.
-//
-// GitLab API docs:
-// https://docs.gitlab.com/api/events/#get-user-contribution-events
 func (s *UsersService) ListUserContributionEvents(uid any, opt *ListContributionEventsOptions, options ...RequestOptionFunc) ([]*ContributionEvent, *Response, error) {
 	user, err := parseID(uid)
 	if err != nil {
 		return nil, nil, err
 	}
-	u := fmt.Sprintf("users/%s/events", user)
 
-	req, err := s.client.NewRequest(http.MethodGet, u, opt, options)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	var cs []*ContributionEvent
-	resp, err := s.client.Do(req, &cs)
-	if err != nil {
-		return nil, resp, err
-	}
-
-	return cs, resp, nil
+	return do[[]*ContributionEvent](s.client,
+		withPath("users/%s/events", user),
+		withAPIOpts(opt),
+		withRequestOpts(options...),
+	)
 }
 
-// ListCurrentUserContributionEvents gets a list currently authenticated user's events
-//
-// GitLab API docs: https://docs.gitlab.com/api/events/#list-currently-authenticated-users-events
 func (s *EventsService) ListCurrentUserContributionEvents(opt *ListContributionEventsOptions, options ...RequestOptionFunc) ([]*ContributionEvent, *Response, error) {
-	req, err := s.client.NewRequest(http.MethodGet, "events", opt, options)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	var cs []*ContributionEvent
-	resp, err := s.client.Do(req, &cs)
-	if err != nil {
-		return nil, resp, err
-	}
-
-	return cs, resp, nil
+	return do[[]*ContributionEvent](s.client,
+		withPath("events"),
+		withAPIOpts(opt),
+		withRequestOpts(options...),
+	)
 }
 
 // ProjectEvent represents a GitLab project event.
@@ -215,27 +200,10 @@ type ListProjectVisibleEventsOptions struct {
 	Sort       *string               `url:"sort,omitempty" json:"sort,omitempty"`
 }
 
-// ListProjectVisibleEvents gets the events for the specified project.
-//
-// GitLab API docs:
-// https://docs.gitlab.com/api/events/#list-a-projects-visible-events
 func (s *EventsService) ListProjectVisibleEvents(pid any, opt *ListProjectVisibleEventsOptions, options ...RequestOptionFunc) ([]*ProjectEvent, *Response, error) {
-	project, err := parseID(pid)
-	if err != nil {
-		return nil, nil, err
-	}
-	u := fmt.Sprintf("projects/%s/events", PathEscape(project))
-
-	req, err := s.client.NewRequest(http.MethodGet, u, opt, options)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	var p []*ProjectEvent
-	resp, err := s.client.Do(req, &p)
-	if err != nil {
-		return nil, resp, err
-	}
-
-	return p, resp, nil
+	return do[[]*ProjectEvent](s.client,
+		withPath("projects/%s/events", ProjectID{pid}),
+		withAPIOpts(opt),
+		withRequestOpts(options...),
+	)
 }
