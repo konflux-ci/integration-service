@@ -19,6 +19,7 @@ package loader
 import (
 	"time"
 
+	tektonconsts "github.com/konflux-ci/integration-service/tekton/consts"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
@@ -51,15 +52,17 @@ var _ = Describe("Loader", Ordered, func() {
 	)
 
 	const (
-		SampleRepoLink    = "https://github.com/devfile-samples/devfile-sample-java-springboot-basic"
-		applicationName   = "application-sample"
-		snapshotName      = "snapshot-sample"
-		groupSnapshotName = "group-snapshot-sample"
-		sample_image      = "quay.io/redhat-appstudio/sample-image"
-		sample_revision   = "random-value"
-		namespace         = "default"
-		prGroupSha        = "featuresha"
-		prGroup           = "feature"
+		SampleRepoLink         = "https://github.com/devfile-samples/devfile-sample-java-springboot-basic"
+		applicationName        = "application-sample"
+		snapshotName           = "snapshot-sample"
+		groupSnapshotName      = "group-snapshot-sample"
+		sample_image           = "quay.io/redhat-appstudio/sample-image"
+		sample_revision        = "random-value"
+		namespace              = "default"
+		prGroupSha             = "featuresha"
+		prGroup                = "feature"
+		mergeQueueHash         = "merge-queue-hash"
+		mergeQueueSourceBranch = "gh-readonly-queue/main/pr-2987-bda9b312bf224a6b5fb1e7ed6ae76dd9e6b1b75b"
 	)
 
 	BeforeAll(func() {
@@ -440,6 +443,64 @@ var _ = Describe("Loader", Ordered, func() {
 		}, time.Second*10).Should(BeTrue())
 	}
 
+	createPipelineRun := func(pipelineRun *tektonv1.PipelineRun) {
+		Expect(k8sClient.Create(ctx, pipelineRun)).Should(Succeed())
+
+		// Wait for the pipelineRun to be created
+		Eventually(func() bool {
+			tmpPlr := &tektonv1.PipelineRun{}
+			err := k8sClient.Get(ctx, types.NamespacedName{
+				Namespace: pipelineRun.Namespace,
+				Name:      pipelineRun.Name,
+			}, tmpPlr)
+			return err == nil
+		}, time.Second*10).Should(BeTrue())
+	}
+
+	deletePipelineRun := func(pipelineRun *tektonv1.PipelineRun) {
+		err := k8sClient.Delete(ctx, pipelineRun)
+		Expect(err == nil || k8serrors.IsNotFound(err)).To(BeTrue())
+
+		// Wait for the release plan to be removed
+		Eventually(func() bool {
+			tmpPlr := &tektonv1.PipelineRun{}
+			err := k8sClient.Get(ctx, types.NamespacedName{
+				Namespace: pipelineRun.Namespace,
+				Name:      pipelineRun.Name,
+			}, tmpPlr)
+			return k8serrors.IsNotFound(err)
+		}, time.Second*10).Should(BeTrue())
+	}
+
+	createSnapshot := func(snapshot *applicationapiv1alpha1.Snapshot) {
+		Expect(k8sClient.Create(ctx, snapshot)).Should(Succeed())
+
+		// Wait for the pipelineRun plan to be created
+		Eventually(func() bool {
+			tmpSnapshot := &applicationapiv1alpha1.Snapshot{}
+			err := k8sClient.Get(ctx, types.NamespacedName{
+				Namespace: snapshot.Namespace,
+				Name:      snapshot.Name,
+			}, tmpSnapshot)
+			return err == nil
+		}, time.Second*10).Should(BeTrue())
+	}
+
+	deleteSnapshot := func(snapshot *applicationapiv1alpha1.Snapshot) {
+		err := k8sClient.Delete(ctx, snapshot)
+		Expect(err == nil || k8serrors.IsNotFound(err)).To(BeTrue())
+
+		// Wait for the release plan to be removed
+		Eventually(func() bool {
+			tmpSnapshot := &applicationapiv1alpha1.Snapshot{}
+			err := k8sClient.Get(ctx, types.NamespacedName{
+				Namespace: snapshot.Namespace,
+				Name:      snapshot.Name,
+			}, tmpSnapshot)
+			return k8serrors.IsNotFound(err)
+		}, time.Second*10).Should(BeTrue())
+	}
+
 	It("ensures all Releases exists when HACBSTests succeeded", func() {
 		Expect(k8sClient).NotTo(BeNil())
 		Expect(ctx).NotTo(BeNil())
@@ -658,6 +719,123 @@ var _ = Describe("Loader", Ordered, func() {
 			Expect(*autoReleasePlans).To(HaveLen(1))
 			Expect((*autoReleasePlans)[0].Name).To(Equal(releasePlanNoLabel.Name))
 
+		})
+	})
+
+	When("merge queue build pipeline run is created", func() {
+		var (
+			mergeQueueBuildPipelineRun *tektonv1.PipelineRun
+		)
+
+		BeforeEach(func() {
+			mergeQueueBuildPipelineRun = buildPipelineRun.DeepCopy()
+			mergeQueueBuildPipelineRun.Annotations[tektonconsts.PipelineAsCodeSourceBranchAnnotation] = "gh-readonly-queue/main/pr-2987-bda9b312bf224a6b5fb1e7ed6ae76dd9e6b1b75b"
+			mergeQueueBuildPipelineRun.Labels[tektonconsts.PipelineAsCodeEventTypeLabel] = "push"
+			mergeQueueBuildPipelineRun.Labels[tektonconsts.PipelineAsCodePullRequestLabel] = ""
+			mergeQueueBuildPipelineRun.Labels[tektonconsts.ApplicationNameLabel] = applicationName
+			mergeQueueBuildPipelineRun.Labels[gitops.PRGroupHashLabel] = mergeQueueHash
+			mergeQueueBuildPipelineRun.Annotations[tektonconsts.PipelineAsCodePullRequestLabel] = ""
+			mergeQueueBuildPipelineRun.Name = "merge-queue-build"
+			mergeQueueBuildPipelineRun.ResourceVersion = ""
+
+			createPipelineRun(mergeQueueBuildPipelineRun)
+		})
+
+		AfterEach(func() {
+			deletePipelineRun(mergeQueueBuildPipelineRun)
+		})
+
+		It("ensures the merge queue build pipeline runs can be found", func() {
+			groupShaPipelineRuns, err := loader.GetPipelineRunsWithPRGroupHash(ctx, k8sClient, mergeQueueBuildPipelineRun.Namespace, mergeQueueHash, applicationName)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(groupShaPipelineRuns).ToNot(BeNil())
+			Expect(*groupShaPipelineRuns).To(HaveLen(1))
+			Expect((*groupShaPipelineRuns)[0].Name).To(Equal(mergeQueueBuildPipelineRun.Name))
+			Expect((*groupShaPipelineRuns)[0].Labels[gitops.PRGroupHashLabel]).To(Equal(mergeQueueHash))
+		})
+	})
+
+	When("multiple merge queue snapshots are created", func() {
+		var (
+			mergeQueueSnapshot  *applicationapiv1alpha1.Snapshot
+			mergeQueueSnapshot2 *applicationapiv1alpha1.Snapshot
+			mergeQueueSnapshot3 *applicationapiv1alpha1.Snapshot
+			mergeQueueSnapshot4 *applicationapiv1alpha1.Snapshot
+		)
+
+		BeforeEach(func() {
+			mergeQueueSnapshot = hasSnapshot.DeepCopy()
+			mergeQueueSnapshot.Annotations[gitops.PipelineAsCodeSourceBranchAnnotation] = ""
+			mergeQueueSnapshot.Labels[gitops.PipelineAsCodeEventTypeLabel] = "push"
+			mergeQueueSnapshot.Labels[gitops.PipelineAsCodePullRequestAnnotation] = ""
+			mergeQueueSnapshot.Labels[gitops.ApplicationNameLabel] = applicationName
+			mergeQueueSnapshot.Labels[gitops.SnapshotComponentLabel] = hasComp.Name
+			mergeQueueSnapshot.Labels[gitops.PRGroupHashLabel] = mergeQueueHash
+			mergeQueueSnapshot.Annotations[gitops.PipelineAsCodePullRequestAnnotation] = ""
+			mergeQueueSnapshot.Name = "merge-queue-build"
+			mergeQueueSnapshot.ResourceVersion = ""
+
+			createSnapshot(mergeQueueSnapshot)
+
+			mergeQueueSnapshot2 = mergeQueueSnapshot.DeepCopy()
+			mergeQueueSnapshot2.Name = "merge-queue-build2"
+			mergeQueueSnapshot2.ResourceVersion = ""
+
+			createSnapshot(mergeQueueSnapshot2)
+
+			mergeQueueSnapshot3 = mergeQueueSnapshot.DeepCopy()
+			mergeQueueSnapshot3.Name = "merge-queue-build3"
+			mergeQueueSnapshot3.Labels[gitops.SnapshotComponentLabel] = "someothercomponent"
+			mergeQueueSnapshot3.ResourceVersion = ""
+
+			createSnapshot(mergeQueueSnapshot3)
+
+			mergeQueueSnapshot4 = mergeQueueSnapshot.DeepCopy()
+			mergeQueueSnapshot4.Name = "merge-queue-build4"
+			mergeQueueSnapshot4.Labels[gitops.SnapshotComponentLabel] = ""
+			mergeQueueSnapshot4.Labels[gitops.SnapshotTypeLabel] = gitops.SnapshotGroupType
+			mergeQueueSnapshot4.ResourceVersion = ""
+
+			createSnapshot(mergeQueueSnapshot4)
+		})
+
+		AfterEach(func() {
+			deleteSnapshot(mergeQueueSnapshot)
+			deleteSnapshot(mergeQueueSnapshot2)
+			deleteSnapshot(mergeQueueSnapshot3)
+			deleteSnapshot(mergeQueueSnapshot4)
+		})
+
+		It("ensures all merge queue snapshots can be found for a given PR group hash", func() {
+			groupShaComponentSnapshots, err := loader.GetMatchingComponentSnapshotsForPRGroupHash(ctx, k8sClient, mergeQueueSnapshot.Namespace, mergeQueueHash, applicationName)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(groupShaComponentSnapshots).ToNot(BeNil())
+			Expect(*groupShaComponentSnapshots).To(HaveLen(3))
+			Expect((*groupShaComponentSnapshots)[0].Name).To(ContainSubstring(mergeQueueSnapshot.Name))
+			Expect((*groupShaComponentSnapshots)[0].Labels[gitops.PRGroupHashLabel]).To(Equal(mergeQueueHash))
+			Expect((*groupShaComponentSnapshots)[0].Labels[gitops.ApplicationNameLabel]).To(Equal(applicationName))
+		})
+
+		It("ensures all merge queue component snapshots can be found for a given component and PR group hash", func() {
+			groupShaComponentSnapshots, err := loader.GetMatchingComponentSnapshotsForComponentAndPRGroupHash(ctx, k8sClient, mergeQueueSnapshot.Namespace, hasComp.Name, mergeQueueHash, applicationName)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(groupShaComponentSnapshots).ToNot(BeNil())
+			Expect(*groupShaComponentSnapshots).To(HaveLen(2))
+			Expect((*groupShaComponentSnapshots)[0].Name).To(ContainSubstring(mergeQueueSnapshot.Name))
+			Expect((*groupShaComponentSnapshots)[0].Labels[gitops.PRGroupHashLabel]).To(Equal(mergeQueueHash))
+			Expect((*groupShaComponentSnapshots)[0].Labels[gitops.ApplicationNameLabel]).To(Equal(applicationName))
+			Expect((*groupShaComponentSnapshots)[0].Labels[gitops.SnapshotComponentLabel]).To(Equal(hasComp.Name))
+		})
+
+		It("ensures all merge queue group snapshots can be found for a given component and PR group hash", func() {
+			groupShaComponentSnapshots, err := loader.GetMatchingGroupSnapshotsForPRGroupHash(ctx, k8sClient, mergeQueueSnapshot.Namespace, mergeQueueHash, applicationName)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(groupShaComponentSnapshots).ToNot(BeNil())
+			Expect(*groupShaComponentSnapshots).To(HaveLen(1))
+			Expect((*groupShaComponentSnapshots)[0].Name).To(ContainSubstring(mergeQueueSnapshot4.Name))
+			Expect((*groupShaComponentSnapshots)[0].Labels[gitops.PRGroupHashLabel]).To(Equal(mergeQueueHash))
+			Expect((*groupShaComponentSnapshots)[0].Labels[gitops.ApplicationNameLabel]).To(Equal(applicationName))
+			Expect((*groupShaComponentSnapshots)[0].Labels[gitops.SnapshotTypeLabel]).To(Equal(gitops.SnapshotGroupType))
 		})
 	})
 
