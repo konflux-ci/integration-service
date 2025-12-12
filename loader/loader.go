@@ -424,11 +424,6 @@ func (l *loader) GetPipelineRunsWithPRGroupHash(ctx context.Context, adapterClie
 	if err != nil {
 		return nil, err
 	}
-
-	eventTypeLabelRequirement, err := labels.NewRequirement("pipelinesascode.tekton.dev/event-type", selection.NotIn, []string{"push", "Push"})
-	if err != nil {
-		return nil, err
-	}
 	prGroupLabelRequirement, err := labels.NewRequirement("test.appstudio.openshift.io/pr-group-sha", selection.In, []string{prGroupHash})
 	if err != nil {
 		return nil, err
@@ -440,7 +435,6 @@ func (l *loader) GetPipelineRunsWithPRGroupHash(ctx context.Context, adapterClie
 
 	labelSelector := labels.NewSelector().
 		Add(*applicationLabelRequirement).
-		Add(*eventTypeLabelRequirement).
 		Add(*prGroupLabelRequirement).
 		Add(*plrTypeLabelRequirement)
 
@@ -464,10 +458,6 @@ func (l *loader) GetMatchingComponentSnapshotsForComponentAndPRGroupHash(ctx con
 	if err != nil {
 		return nil, err
 	}
-	eventTypeLabelRequirement, err := labels.NewRequirement("pac.test.appstudio.openshift.io/event-type", selection.NotIn, []string{"push", "Push"})
-	if err != nil {
-		return nil, err
-	}
 	componentLabelRequirement, err := labels.NewRequirement("appstudio.openshift.io/component", selection.In, []string{componentName})
 	if err != nil {
 		return nil, err
@@ -483,7 +473,6 @@ func (l *loader) GetMatchingComponentSnapshotsForComponentAndPRGroupHash(ctx con
 
 	labelSelector := labels.NewSelector().
 		Add(*applicationLabelRequirement).
-		Add(*eventTypeLabelRequirement).
 		Add(*componentLabelRequirement).
 		Add(*prGroupLabelRequirement).
 		Add(*snapshotTypeLabelRequirement)
@@ -508,10 +497,6 @@ func (l *loader) GetMatchingGroupSnapshotsForPRGroupHash(ctx context.Context, c 
 	if err != nil {
 		return nil, err
 	}
-	eventTypeLabelRequirement, err := labels.NewRequirement("pac.test.appstudio.openshift.io/event-type", selection.NotIn, []string{"push", "Push"})
-	if err != nil {
-		return nil, err
-	}
 	prGroupLabelRequirement, err := labels.NewRequirement("test.appstudio.openshift.io/pr-group-sha", selection.In, []string{prGroupHash})
 	if err != nil {
 		return nil, err
@@ -523,7 +508,6 @@ func (l *loader) GetMatchingGroupSnapshotsForPRGroupHash(ctx context.Context, c 
 
 	labelSelector := labels.NewSelector().
 		Add(*applicationLabelRequirement).
-		Add(*eventTypeLabelRequirement).
 		Add(*prGroupLabelRequirement).
 		Add(*snapshotTypeLabelRequirement)
 
@@ -547,10 +531,6 @@ func (l *loader) GetMatchingComponentSnapshotsForPRGroupHash(ctx context.Context
 	if err != nil {
 		return nil, err
 	}
-	eventTypeLabelRequirement, err := labels.NewRequirement("pac.test.appstudio.openshift.io/event-type", selection.NotIn, []string{"push", "Push"})
-	if err != nil {
-		return nil, err
-	}
 	prGroupLabelRequirement, err := labels.NewRequirement("test.appstudio.openshift.io/pr-group-sha", selection.In, []string{prGroupHash})
 	if err != nil {
 		return nil, err
@@ -562,7 +542,6 @@ func (l *loader) GetMatchingComponentSnapshotsForPRGroupHash(ctx context.Context
 
 	labelSelector := labels.NewSelector().
 		Add(*applicationLabelRequirement).
-		Add(*eventTypeLabelRequirement).
 		Add(*prGroupLabelRequirement).
 		Add(*snapshotTypeLabelRequirement)
 
@@ -605,6 +584,10 @@ func (l *loader) GetComponentsFromSnapshotForPRGroup(ctx context.Context, client
 
 	var componentNames []string
 	for _, snapshot := range *snapshots {
+		// We skip a push-type workflow Snapshot just in case
+		if snapshot.Annotations[gitops.IntegrationWorkflowAnnotation] == gitops.IntegrationWorkflowPushValue {
+			continue
+		}
 		componentName := snapshot.Labels[gitops.SnapshotComponentLabel]
 		if slices.Contains(componentNames, componentName) {
 			continue
