@@ -36,6 +36,10 @@ spec:
       default: 'none'
       description: 'Container image built from any konflux git repo. Use this param only when you run Konflux e2e tests
         in another Konflux component repo. Will pass the component built image from the snapshot.'
+    - name: artifact-browser-url
+      description: "URL to the artifact browser deployment. If provided, a link will be added to PR comments."
+      default: ""
+      type: string
   tasks:
     - name: test-metadata
       taskRef:
@@ -262,3 +266,5 @@ spec:
           value: kind-aws-provision.log
         - name: enable-test-results-analysis
           value: "true"
+        - name: artifact-browser-url
+          value: $(params.artifact-browser-url)
