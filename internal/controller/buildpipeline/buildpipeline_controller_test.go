@@ -17,6 +17,7 @@ limitations under the License.
 package buildpipeline
 
 import (
+	"encoding/json"
 	"reflect"
 	"time"
 
@@ -297,7 +298,17 @@ var _ = Describe("PipelineController", func() {
 				Namespace: buildPipelineRun.Namespace,
 				Name:      buildPipelineRun.Name,
 			}, buildPipelineRun)
-			return err == nil && !controllerutil.ContainsFinalizer(buildPipelineRun, helpers.IntegrationPipelineRunFinalizer)
+			if err != nil {
+				return false
+			}
+			// Verify the annotation is set
+			if annotation, ok := buildPipelineRun.Annotations[helpers.CreateSnapshotAnnotationName]; ok {
+				var info map[string]string
+				if err := json.Unmarshal([]byte(annotation), &info); err == nil {
+					return info["status"] == "failed" && !controllerutil.ContainsFinalizer(buildPipelineRun, helpers.IntegrationPipelineRunFinalizer)
+				}
+			}
+			return false
 		}, time.Second*20).Should(BeTrue())
 	})
 
@@ -371,7 +382,25 @@ var _ = Describe("PipelineController", func() {
 			result, err := pipelineReconciler.Reconcile(ctx, reqNoComponent)
 			Expect(reflect.TypeOf(result)).To(Equal(reflect.TypeOf(reconcile.Result{})))
 			Expect(err).ToNot(HaveOccurred())
-		})
 
+			// Verify the annotation is set when component is nil
+			Eventually(func() bool {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Namespace: buildPipelineRunNoComponent.Namespace,
+					Name:      buildPipelineRunNoComponent.Name,
+				}, buildPipelineRunNoComponent)
+				if err != nil {
+					return false
+				}
+				if annotation, ok := buildPipelineRunNoComponent.Annotations[helpers.CreateSnapshotAnnotationName]; ok {
+					var info map[string]string
+					if err := json.Unmarshal([]byte(annotation), &info); err == nil {
+						return info["status"] == "failed" &&
+							info["message"] == "Failed to create snapshot. Error: component label does not exist on pipelineRun default/pipelinerun-sample-no-component"
+					}
+				}
+				return false
+			}, time.Second*20).Should(BeTrue())
+		})
 	})
 })
