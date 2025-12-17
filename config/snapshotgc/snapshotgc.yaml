@@ -21,10 +21,10 @@ spec:
               resources:
                 requests:
                   cpu: 1000m
-                  memory: 1000Mi
+                  memory: 2000Mi
                 limits:
                   cpu: 1000m
-                  memory: 1000Mi
+                  memory: 2000Mi
               securityContext:
                 readOnlyRootFilesystem: true
                 runAsNonRoot: true
