@@ -3,6 +3,7 @@
 # It should be run by config/default
 resources:
 - bases/appstudio.redhat.com_integrationtestscenarios.yaml
+- bases/appstudio.redhat.com_componentgroups.yaml
 #+kubebuilder:scaffold:crdkustomizeresource
 
 patches:

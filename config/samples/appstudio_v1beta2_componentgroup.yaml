@@ -1,0 +1,56 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: componentgroup-sample-v2
+---
+apiVersion: appstudio.redhat.com/v1beta2
+kind: ComponentGroup
+metadata:
+  labels:
+    app.kubernetes.io/name: componentgroup-v2
+    app.kubernetes.io/instance: componentgroup-sample-v2
+    app.kubernetes.io/part-of: integration-service
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/created-by: integration-service
+  name: componentgroup-sample-v2
+spec:
+  components:
+    - name: first-component
+      componentBranch:
+        name: "main"
+        lastPromotedImage: quay.io/sampleorg/first-component@sha256:1b29...
+        lastPromotedCommit: 6a7c81802e785aa869f82301afe61f4e9775772b
+        lastBuildTime: "2025-08-13T12:00:00Z"
+    - name: second-component
+      componentBranch:
+        name: "v1"
+        lastPromotedImage: quay.io/sampleorg/second-component@sha256:ae32...
+        lastPromotedCommit: 1359836353b8e249f2fbceba47d82751d7dab902
+        lastBuildTime: "2025-08-13T05:13:25Z"
+    - name: python-component
+      componentBranch:
+        name: "3.12.4"
+        lastPromotedImage: quay.io/sampleorg/python-component@sha256:a93c...
+        lastPromotedCommit: cec5d540d177c5cbe73f58d1628684fa78d35199
+        lastBuildTime: "2025-08-13T05:13:25Z"
+  dependents:
+    # when a snapshot for this ComponentGroup is created,
+    # the integration service will also create one for child-cg
+    - child-cg
+  testGraph:
+    # in this graph clamav-scan, dast-tests, and deployment would run first
+    # e2e-test would start when clamav-scan finishes
+    # verify would run after clamav-scan, dast-tests,
+    # and operator-scorecard finish
+    verify:
+      - name: clamav-scan
+      - name: dast-tests
+        onFail: skip
+      - name: operator-scorecard
+    e2e-test:
+      - name: clamav-scan
+        onFail: run
+    operator-scorecard:
+      - name: deployment
+        onFail: skip
