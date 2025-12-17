@@ -3,4 +3,6 @@ resources:
 - appstudio_v1alpha1_integrationtestscenario.yaml
 - appstudio_v1beta1_integrationtestscenario.yaml
 - appstudio_v1beta2_integrationtestscenario.yaml
+- appstudio_v1beta2_componentgroup.yaml
+- appstudio_v1beta2_componentgroup_minimal.yaml
 #+kubebuilder:scaffold:manifestskustomizesamples
