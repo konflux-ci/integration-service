@@ -21,6 +21,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	"github.com/operator-framework/operator-lib/handler/internal/metrics"
 )
@@ -36,28 +37,28 @@ import (
 // To call the handler use:
 //
 //	&handler.InstrumentedEnqueueRequestForObject{}
-type InstrumentedEnqueueRequestForObject struct {
-	handler.EnqueueRequestForObject
+type InstrumentedEnqueueRequestForObject[T client.Object] struct {
+	handler.TypedEnqueueRequestForObject[T]
 }
 
 // Create implements EventHandler, and creates the metrics.
-func (h InstrumentedEnqueueRequestForObject) Create(ctx context.Context, e event.CreateEvent, q workqueue.RateLimitingInterface) {
+func (h InstrumentedEnqueueRequestForObject[T]) Create(ctx context.Context, e event.TypedCreateEvent[T], q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
 	setResourceMetric(e.Object)
-	h.EnqueueRequestForObject.Create(ctx, e, q)
+	h.TypedEnqueueRequestForObject.Create(ctx, e, q)
 }
 
 // Update implements EventHandler, and updates the metrics.
-func (h InstrumentedEnqueueRequestForObject) Update(ctx context.Context, e event.UpdateEvent, q workqueue.RateLimitingInterface) {
+func (h InstrumentedEnqueueRequestForObject[T]) Update(ctx context.Context, e event.TypedUpdateEvent[T], q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
 	setResourceMetric(e.ObjectOld)
 	setResourceMetric(e.ObjectNew)
 
-	h.EnqueueRequestForObject.Update(ctx, e, q)
+	h.TypedEnqueueRequestForObject.Update(ctx, e, q)
 }
 
 // Delete implements EventHandler, and deletes metrics.
-func (h InstrumentedEnqueueRequestForObject) Delete(ctx context.Context, e event.DeleteEvent, q workqueue.RateLimitingInterface) {
+func (h InstrumentedEnqueueRequestForObject[T]) Delete(ctx context.Context, e event.TypedDeleteEvent[T], q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
 	deleteResourceMetric(e.Object)
-	h.EnqueueRequestForObject.Delete(ctx, e, q)
+	h.TypedEnqueueRequestForObject.Delete(ctx, e, q)
 }
 
 func setResourceMetric(obj client.Object) {

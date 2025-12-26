@@ -29,7 +29,9 @@ import (
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
 	"github.com/konflux-ci/integration-service/gitops"
 	"github.com/konflux-ci/operator-toolkit/metadata"
+	pacv1alpha1 "github.com/openshift-pipelines/pipelines-as-code/pkg/apis/pipelinesascode/v1alpha1"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
+
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/types"
@@ -49,6 +51,7 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 		hasComSnapshot1 *applicationapiv1alpha1.Snapshot
 		hasComSnapshot2 *applicationapiv1alpha1.Snapshot
 		hasComSnapshot3 *applicationapiv1alpha1.Snapshot
+		pacRepository   *pacv1alpha1.Repository
 		sampleImage     string
 	)
 
@@ -1301,6 +1304,43 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 				tempGroupSnapshot := gitops.PrepareTempGroupSnapshot(hasApp, hasSnapshot)
 				Expect(metadata.HasLabelWithValue(tempGroupSnapshot, gitops.SnapshotTypeLabel, gitops.SnapshotGroupType)).To(BeTrue())
 			})
+		})
+	})
+
+	Context("Comment disabled setting", func() {
+		It("can determine if comments are disabled for a pac repository", func() {
+			pacRepository = &pacv1alpha1.Repository{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-repo",
+					Namespace: namespace,
+				},
+				Spec: pacv1alpha1.RepositorySpec{
+					URL: SampleRepoLink,
+					Settings: &pacv1alpha1.Settings{
+						Gitlab: &pacv1alpha1.GitlabSettings{
+							CommentStrategy: gitops.GitCommentPolicyAllDisabled,
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, pacRepository)).Should(Succeed())
+			isAllCommentDisabled, err := gitops.IsAllCommentDisabledForPacRepositoryInComponent(ctx, k8sClient, hasComp)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(isAllCommentDisabled).To(BeTrue())
+			Expect(k8sClient.Delete(ctx, pacRepository)).Should(Succeed())
+		})
+
+		It("can determine if comments are disabled in component annotation", func() {
+			Expect(metadata.SetAnnotation(hasComp, gitops.GitCommentPolicyAnnotation, gitops.GitCommentPolicyAllDisabled)).To(Succeed())
+			isIntegrationCommentDisabled := gitops.IsIntegrationTestCommentDisabledForComponent(hasComp)
+			Expect(isIntegrationCommentDisabled).To(BeTrue())
+		})
+
+		It("can determine if comments are not disabled in pac repository or component annotation", func() {
+			Expect(metadata.DeleteAnnotation(hasComp, gitops.GitCommentPolicyAnnotation)).To(Succeed())
+			isCommentDisabled, err := gitops.IsCommentDisabled(ctx, k8sClient, hasComp)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(isCommentDisabled).To(BeFalse())
 		})
 	})
 })

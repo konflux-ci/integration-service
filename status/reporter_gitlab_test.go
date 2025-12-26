@@ -208,7 +208,6 @@ var _ = Describe("GitLabReporter", func() {
 			summary := "Integration test for component component-sample snapshot snapshot-sample and scenario scenario1 failed"
 
 			muxCommitStatusPost(mux, sourceProjectID, digest, summary)
-			muxMergeNotes(mux, targetProjectID, mergeRequest, summary)
 
 			statusCode, err := reporter.ReportStatus(
 				context.TODO(),
@@ -259,7 +258,6 @@ var _ = Describe("GitLabReporter", func() {
 			expectedURL := status.FormatPipelineURL(PipelineRunName, hasSnapshot.Namespace, logr.Discard())
 
 			muxCommitStatusPost(mux, sourceProjectID, digest, expectedURL)
-			muxMergeNotes(mux, sourceProjectID, mergeRequest, "")
 			muxCommitStatusesGet(mux, sourceProjectID, digest, nil)
 
 			statusCode, err := reporter.ReportStatus(
@@ -321,33 +319,19 @@ var _ = Describe("GitLabReporter", func() {
 			Expect(existingCommitStatus.Status).To(Equal(commitStatus.Status))
 		})
 
-		It("can get an existing mergeRequest note that matches the report", func() {
-			summary := "Integration test for component component-sample snapshot snapshot-sample and scenario scenario1 failed"
-			report := status.TestReport{
-				FullName:      "fullname/scenario1",
-				ScenarioName:  "scenario1",
-				SnapshotName:  "snapshot-sample",
-				Status:        integrationteststatus.IntegrationTestStatusTestPassed,
-				Summary:       summary,
-				ComponentName: "component-sample",
-				Text:          "detailed text here",
-			}
-			comment, err := status.FormatComment(report.Summary, report.Text)
-			Expect(err).ToNot(HaveOccurred())
-
-			note := gitlab.Note{}
-			note.ID = 123
-			note.Body = comment
-
-			notes := []*gitlab.Note{
-				&note,
-			}
-
-			existingNoteID := reporter.GetExistingNoteID(notes, report.ScenarioName, status.GenerateComponentNameWithPrefix(report.ComponentName))
-			Expect(*existingNoteID).To(Equal(note.ID))
+		It("can delete mergeRequest notes that match the report then create a new comment", func() {
+			reporter := status.NewGitLabReporter(log, mockK8sClient)
+			_, err := reporter.Initialize(context.TODO(), hasSnapshot)
+			Expect(err).To(Succeed())
+			commentPrefix := status.GenerateTestSummaryPrefixForComponent("component-sample")
+			commentText, _ := status.GenerateSummaryForAllScenarios(integrationteststatus.IntegrationTestStatusTestPassed, "component-sample")
+			muxMergeNotes(mux, sourceProjectID, mergeRequest, "")
+			muxMergeNotes(mux, targetProjectID, mergeRequest, commentText)
+			statusCode, err := reporter.UpdateStatusInComment(commentPrefix, commentText)
+			Expect(err).To(Succeed())
+			Expect(statusCode).To(Equal(201))
 		})
 	})
-
 	Describe("Test helper functions", func() {
 
 		DescribeTable(
@@ -429,15 +413,38 @@ func muxCommitStatusesGet(mux *http.ServeMux, pid string, sha string, report *st
 func muxMergeNotes(mux *http.ServeMux, pid string, mr string, catchStr string) {
 	path := fmt.Sprintf("/projects/%s/merge_requests/%s/notes", pid, mr)
 	mux.HandleFunc(path, func(rw http.ResponseWriter, r *http.Request) {
-		if r.Method == "POST" {
+		switch r.Method {
+		case "POST":
 			bit, _ := io.ReadAll(r.Body)
 			s := string(bit)
 			if catchStr != "" {
 				Expect(s).To(ContainSubstring(catchStr))
 			}
-			fmt.Fprintf(rw, "{}")
-		} else {
-			fmt.Fprintf(rw, "[]")
+			rw.WriteHeader(http.StatusCreated) // Simulate 201 Created
+			fmt.Fprintf(rw, `{"id": 1000, "body": "new comment"}`)
+
+		case "DELETE":
+			rw.WriteHeader(http.StatusNoContent) // 204 No Content
+			fmt.Fprintf(rw, "")
+
+		case "GET":
+			rw.Header().Set("Content-Type", "application/json")
+			fmt.Fprintf(rw, `[
+				{"id": 1, "body": "Integration test report for component component-sample"},
+				{"id": 2, "body": "Integration test report for component other-component"}
+			]`)
+
+		default:
+			rw.WriteHeader(http.StatusMethodNotAllowed)
+		}
+	})
+
+	deletePath := path + "/"
+	mux.HandleFunc(deletePath, func(rw http.ResponseWriter, r *http.Request) {
+		if r.Method == "DELETE" {
+			// 可以在这里验证是否删除了正确的 ID
+			rw.WriteHeader(http.StatusNoContent)
+			return
 		}
 	})
 }

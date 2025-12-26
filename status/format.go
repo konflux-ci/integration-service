@@ -33,6 +33,11 @@ const commentTemplate = `### {{ .Title }}
 
 {{ .Summary }}`
 
+const commentTemplateForSuccessfulTest = `### :heavy_check_mark: {{ .Title }}
+
+{{ .Summary }}`
+
+// summaryTemplate is a template used to generate a markdown summary for a test details with pipelinerun details and TaskRun details for unsuccessful tests.
 const summaryTemplate = `
 {{- $pipelineRunName := .PipelineRunName -}} {{ $namespace := .Namespace -}} {{ $logger := .Logger -}}
 <ul>
@@ -47,6 +52,23 @@ const summaryTemplate = `
 {{- end }}
 
 {{ formatFootnotes .TaskRuns }}
+{{ if .ComponentSnapshotInfos}}
+The group snapshot is generated for pr group {{ .PRGroup }} and the component snasphots as below:
+| Component | Snapshot | BuildPipelineRun | PullRequest |
+| --- | --- | --- | --- |
+{{- range $cs := .ComponentSnapshotInfos }}
+| {{ $cs.Component }} | {{ $cs.Snapshot }} | <a href="{{ formatPipelineURL $cs.BuildPipelineRun $namespace $logger }}">{{ $cs.BuildPipelineRun }}</a> | <a href="{{ formatPullRequestURL $cs.RepoUrl $cs.PullRequestNumber }}">{{ formatRepoURL $cs.RepoUrl }}</a> |
+{{- end }}
+{{end}}`
+
+// ShortSummaryTemplate is a more concise version of SummaryTemplate with pipelinerun details but without TaskRun details used to show for passed tests.
+const shortSummaryTemplate = `
+{{- $pipelineRunName := .PipelineRunName -}} {{ $namespace := .Namespace -}} {{ $logger := .Logger -}}
+<ul>
+<li><b>Pipelinerun</b>: <a href="{{ formatPipelineURL $pipelineRunName $namespace $logger }}">{{ $pipelineRunName }}</a></li>
+</ul>
+<hr>
+
 {{ if .ComponentSnapshotInfos}}
 The group snapshot is generated for pr group {{ .PRGroup }} and the component snasphots as below:
 | Component | Snapshot | BuildPipelineRun | PullRequest |
@@ -101,11 +123,42 @@ func FormatTestsSummary(taskRuns []*helpers.TaskRun, pipelineRunName string, nam
 	return buf.String(), nil
 }
 
-// FormatComment build a markdown comment with the details in text
+// FormatShortTestsSummary builds a markdown summary for a list of integration TaskRuns.
+func FormatShortTestsSummary(pipelineRunName string, namespace string, componentSnapshotInfos []*gitops.ComponentSnapshotInfo, pr_group string) (string, error) {
+	funcMap := template.FuncMap{
+		"formatNamespace":      FormatNamespace,
+		"formatStatus":         FormatStatus,
+		"formatDetails":        FormatDetails,
+		"formatPipelineURL":    FormatPipelineURL,
+		"formatFootnotes":      FormatFootnotes,
+		"formatPullRequestURL": FormatPullRequestURL,
+		"formatRepoURL":        FormatRepoURL,
+	}
+	buf := bytes.Buffer{}
+	data := SummaryTemplateData{PipelineRunName: pipelineRunName, Namespace: namespace, PRGroup: pr_group, ComponentSnapshotInfos: componentSnapshotInfos}
+	t := template.Must(template.New("").Funcs(funcMap).Parse(shortSummaryTemplate))
+	if err := t.Execute(&buf, data); err != nil {
+		return "", err
+	}
+	return buf.String(), nil
+}
+
+// FormatComment build a markdown comment with the details in text for unsuccessful tests.
 func FormatComment(title, text string) (string, error) {
 	buf := bytes.Buffer{}
 	data := CommentTemplateData{Title: title, Summary: text}
 	t := template.Must(template.New("").Parse(commentTemplate))
+	if err := t.Execute(&buf, data); err != nil {
+		return "", err
+	}
+	return buf.String(), nil
+}
+
+// FormatCommentForSuccessfulTest build a markdown comment with the details in text for successful tests.
+func FormatCommentForSuccessfulTest(title, text string) (string, error) {
+	buf := bytes.Buffer{}
+	data := CommentTemplateData{Title: title, Summary: text}
+	t := template.Must(template.New("").Parse(commentTemplateForSuccessfulTest))
 	if err := t.Execute(&buf, data); err != nil {
 		return "", err
 	}

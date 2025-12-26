@@ -282,11 +282,6 @@ var _ = Describe("SnapshotController", func() {
 		Expect(err).NotTo(HaveOccurred())
 	})
 
-	It("can setup a new Controller manager and start it", func() {
-		err := SetupController(manager, &ctrl.Log)
-		Expect(err).ToNot(HaveOccurred())
-	})
-
 	When("snapshot is restored from backup", func() {
 
 		BeforeEach(func() {

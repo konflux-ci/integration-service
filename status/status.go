@@ -233,8 +233,12 @@ func (s *Status) GetReporter(snapshot *applicationapiv1alpha1.Snapshot) Reporter
 // GenerateTestReport generates TestReport to be used by all reporters
 func GenerateTestReport(ctx context.Context, client client.Client, detail intgteststat.IntegrationTestStatusDetail, testedSnapshot *applicationapiv1alpha1.Snapshot, componentName string) (*TestReport, error) {
 	var err error
-
 	text, err := generateText(ctx, client, detail, testedSnapshot)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate text message: %w", err)
+	}
+
+	shortText, err := generateShortText(detail, testedSnapshot)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate text message: %w", err)
 	}
@@ -253,6 +257,7 @@ func GenerateTestReport(ctx context.Context, client client.Client, detail intgte
 
 	report := TestReport{
 		Text:                text,
+		ShortText:           shortText,
 		FullName:            fullName,
 		ScenarioName:        detail.ScenarioName,
 		SnapshotName:        testedSnapshot.Name,
@@ -314,6 +319,30 @@ func generateText(ctx context.Context, client client.Client, integrationTestStat
 	}
 }
 
+// generateShortText generates a short text with pipeline link when test is successful
+func generateShortText(integrationTestStatusDetail intgteststat.IntegrationTestStatusDetail, snapshot *applicationapiv1alpha1.Snapshot) (string, error) {
+	var componentSnapshotInfos []*gitops.ComponentSnapshotInfo
+	var err error
+	var shortText string
+	if integrationTestStatusDetail.Status == intgteststat.IntegrationTestStatusTestPassed || integrationTestStatusDetail.Status == intgteststat.IntegrationTestStatusTestFail {
+		if componentSnapshotInfoString, ok := snapshot.Annotations[gitops.GroupSnapshotInfoAnnotation]; ok {
+			componentSnapshotInfos, err = gitops.UnmarshalJSON([]byte(componentSnapshotInfoString))
+			if err != nil {
+				return "", fmt.Errorf("failed to unmarshal JSON string: %w", err)
+			}
+		}
+		pr_group := snapshot.GetAnnotations()[gitops.PRGroupAnnotation]
+		shortText, err = FormatShortTestsSummary(integrationTestStatusDetail.TestPipelineRunName, snapshot.Namespace, componentSnapshotInfos, pr_group)
+		if err != nil {
+			return "", err
+		}
+	} else {
+		text := integrationTestStatusDetail.Details
+		return text, nil
+	}
+	return shortText, nil
+}
+
 // GenerateSummary returns summary for the given state, snapshotName and scenarioName
 func GenerateSummary(state intgteststat.IntegrationTestStatus, snapshotName, scenarioName, componentName string) (string, error) {
 	var summary string
@@ -348,12 +377,37 @@ func GenerateSummary(state intgteststat.IntegrationTestStatus, snapshotName, sce
 		return summary, fmt.Errorf("unknown status")
 	}
 
-	componentName = GenerateComponentNameWithPrefix(componentName)
-
 	if state == intgteststat.BuildPLRInProgress || state == intgteststat.SnapshotCreationFailed || state == intgteststat.BuildPLRFailed || state == intgteststat.GroupSnapshotCreationFailed {
-		summary = fmt.Sprintf("Integration test for %s snapshot scenario %s %s", componentName, scenarioName, statusDesc)
+		summary = fmt.Sprintf(GenerateTestSummaryPrefixForComponent(componentName)+" snapshot scenario %s %s", scenarioName, statusDesc)
 	} else {
-		summary = fmt.Sprintf("Integration test for %s snapshot %s and scenario %s %s", componentName, snapshotName, scenarioName, statusDesc)
+		summary = fmt.Sprintf(GenerateTestSummaryPrefixForComponent(componentName)+" snapshot %s and scenario %s %s", snapshotName, scenarioName, statusDesc)
+	}
+
+	return summary, nil
+}
+
+// GenerateSummaryForAllScenarios returns summary for the given state and componentName or PR group when all ITS have the same status because snapshot have not been created due to various reasons
+func GenerateSummaryForAllScenarios(state intgteststat.IntegrationTestStatus, componentNameOrPrGroup string) (string, error) {
+	var summary string
+	var statusDesc string
+
+	switch state {
+	case intgteststat.IntegrationTestStatusPending:
+		statusDesc = "is pending"
+	case intgteststat.BuildPLRInProgress:
+		statusDesc = "is pending because build pipelinerun is still running and snapshot has not been created"
+	case intgteststat.SnapshotCreationFailed:
+		statusDesc = "has not run and is considered as failed because the snapshot was not created"
+	case intgteststat.BuildPLRFailed:
+		statusDesc = "has not run and is considered as failed because the build pipelinerun failed and snapshot was not created"
+	case intgteststat.GroupSnapshotCreationFailed:
+		statusDesc = "has not run and is considered as failed because group snapshot was not created"
+	default:
+		return summary, fmt.Errorf("unsupported status")
+	}
+
+	if state == intgteststat.BuildPLRInProgress || state == intgteststat.SnapshotCreationFailed || state == intgteststat.BuildPLRFailed || state == intgteststat.GroupSnapshotCreationFailed || state == intgteststat.IntegrationTestStatusPending {
+		summary = fmt.Sprintf(GenerateTestSummaryPrefixForComponent(componentNameOrPrGroup)+" and integration test scenarios %s", statusDesc)
 	}
 
 	return summary, nil
@@ -368,6 +422,18 @@ func GenerateComponentNameWithPrefix(componentName string) string {
 		componentName = "component " + componentName
 	}
 	return componentName
+}
+
+// function GenerateTestSummaryPrefixForComponent to generate test summary prefix for component name "pr group" or "component component-sample"
+// to help search it in comment correctly since all comments are posted together
+func GenerateTestSummaryPrefixForComponent(componentName string) string {
+	var commentTitle string
+	if componentName == gitops.ComponentNameForGroupSnapshot {
+		commentTitle = "Integration test for " + gitops.ComponentNameForGroupSnapshot
+	} else {
+		commentTitle = "Integration test for component " + componentName
+	}
+	return commentTitle
 }
 
 func getConsoleName() string {
@@ -602,19 +668,23 @@ func (s Status) FindSnapshotWithOpenedPR(ctx context.Context, snapshots *[]appli
 	return nil, 0, nil
 }
 
-// iterates integrationTestScenarios to set integration test status in PR/MR
-func IterateIntegrationTestInStatusReport(ctx context.Context, client client.Client, reporter ReporterInterface,
+// iterates integrationTestScenarios to set integration test status in PR/MR when integration test has not been triggered due to various reasons
+// the componentName can be the name of component or `pr group` for group snapshot
+func IterateIntegrationTestScenarioWithSameStatus(ctx context.Context, client client.Client, reporter ReporterInterface,
 	snapshot *applicationapiv1alpha1.Snapshot,
 	integrationTestScenarios *[]v1beta2.IntegrationTestScenario,
 	integrationTestStatusDetail intgteststat.IntegrationTestStatusDetail,
-	componentName string) (int, error) {
+	component *applicationapiv1alpha1.Component,
+	componentNameOrPrGroup string) (int, error) {
+
+	log := log.FromContext(ctx)
 
 	var statusCode = 0
 	for _, integrationTestScenario := range *integrationTestScenarios {
 		integrationTestScenario := integrationTestScenario //G601
 		integrationTestStatusDetail.ScenarioName = integrationTestScenario.Name
 
-		testReport, reportErr := GenerateTestReport(ctx, client, integrationTestStatusDetail, snapshot, componentName)
+		testReport, reportErr := GenerateTestReport(ctx, client, integrationTestStatusDetail, snapshot, componentNameOrPrGroup)
 		if reportErr != nil {
 			return statusCode, fmt.Errorf("failed to generate test report: %w", reportErr)
 		}
@@ -622,5 +692,36 @@ func IterateIntegrationTestInStatusReport(ctx context.Context, client client.Cli
 			return statusCode, fmt.Errorf("failed to report status to git provider, error: %w", reportStatusErr)
 		}
 	}
+
+	// if git provider is gitlab, and comment is neither disabled for component nor pac repository, it can extent to more git provider
+	// it delete existing comment and post one new comment with the latest test report summary of all ITS to gitlab merge request for each component
+	if reporter.GetReporterName() == GitLabProvider {
+		_, isMergeRequest := snapshot.GetAnnotations()[gitops.PipelineAsCodePullRequestAnnotation]
+		if isMergeRequest {
+			// get the destination snapshot's component to check if comment is disabled for all comments for pac repository or integration test
+			isCommentDisabled, err := gitops.IsCommentDisabled(ctx, client, component)
+			if err != nil {
+				log.Error(err, fmt.Sprintf("failed to check if comment is disabled for component %s", component.Name))
+				return 0, fmt.Errorf("failed to check if comment is disabled for component or pac repsitory %s: %w", component.Name, err)
+			}
+			if isCommentDisabled {
+				log.Info("All comments are disabled for PAC repository in component or integration test disabled for component, skipping updating integration test status comment", "component.Name", component.Name)
+				return statusCode, nil
+			}
+
+			log.Info("Try to post gitlab merge request comment for the latest test report", "snapshot.Namespace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
+			commentPrefix := GenerateTestSummaryPrefixForComponent(componentNameOrPrGroup)
+			commentText, _ := GenerateSummaryForAllScenarios(integrationTestStatusDetail.Status, componentNameOrPrGroup)
+			commentText, _ = FormatComment(commentText, "")
+			if err != nil {
+				return statusCode, fmt.Errorf("failed to generate summary message: %w", err)
+			}
+			statusCode, err := reporter.UpdateStatusInComment(commentPrefix, commentText)
+			if err != nil {
+				return statusCode, err
+			}
+		}
+	}
+
 	return statusCode, nil
 }
