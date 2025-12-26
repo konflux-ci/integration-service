@@ -403,7 +403,7 @@ func (a *Adapter) ReportGroupSnapshotCreationStatus(snapshot *applicationapiv1al
 		if err != nil {
 			return err
 		}
-		statusCode, err = status.IterateIntegrationTestInStatusReport(a.context, a.client, reporter, snapshot, integrationTestScenarios, intgTestStatusDetails, componentName)
+		statusCode, err = status.IterateIntegrationTestScenarioWithSameStatus(a.context, a.client, reporter, snapshot, integrationTestScenarios, intgTestStatusDetails, componentName)
 		if err != nil {
 			a.logger.Error(err, fmt.Sprintf("failed to report group snapshot creation failure %s/%s",
 				snapshot.Namespace, snapshot.Name))

@@ -602,8 +602,8 @@ func (s Status) FindSnapshotWithOpenedPR(ctx context.Context, snapshots *[]appli
 	return nil, 0, nil
 }
 
-// iterates integrationTestScenarios to set integration test status in PR/MR
-func IterateIntegrationTestInStatusReport(ctx context.Context, client client.Client, reporter ReporterInterface,
+// iterates integrationTestScenarios to set integration test status in PR/MR when build plr is triggered or group snapshot creation fails
+func IterateIntegrationTestScenarioWithSameStatus(ctx context.Context, client client.Client, reporter ReporterInterface,
 	snapshot *applicationapiv1alpha1.Snapshot,
 	integrationTestScenarios *[]v1beta2.IntegrationTestScenario,
 	integrationTestStatusDetail intgteststat.IntegrationTestStatusDetail,

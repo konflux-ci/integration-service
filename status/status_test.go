@@ -755,12 +755,12 @@ var _ = Describe("Status Adapter", func() {
 		})
 	})
 
-	It("can report status in IterateIntegrationTestInStatusReport", func() {
+	It("can report status in IterateIntegrationTestScenarioWithSameStatus", func() {
 		integrationTestStatusDetail := integrationteststatus.IntegrationTestStatusDetail{
 			Status:  integrationteststatus.GroupSnapshotCreationFailed,
 			Details: "details",
 		}
-		statusCode, err := status.IterateIntegrationTestInStatusReport(context.Background(), mockK8sClient, mockReporter, hasSnapshot, &[]v1beta2.IntegrationTestScenario{*integrationTestScenario}, integrationTestStatusDetail, "test")
+		statusCode, err := status.IterateIntegrationTestScenarioWithSameStatus(context.Background(), mockK8sClient, mockReporter, hasSnapshot, &[]v1beta2.IntegrationTestScenario{*integrationTestScenario}, integrationTestStatusDetail, "test")
 		Expect(err).Should(Succeed())
 		Expect(statusCode).NotTo(BeNil())
 	})

@@ -874,7 +874,7 @@ func (a *Adapter) ReportIntegrationTestStatusAccordingToBuildPLR(pipelineRun *te
 		if err != nil {
 			return err
 		}
-		statusCode, err = status.IterateIntegrationTestInStatusReport(a.context, a.client, reporter, snapshot, integrationTestScenarios, intgTestStatusDetails, componentName)
+		statusCode, err = status.IterateIntegrationTestScenarioWithSameStatus(a.context, a.client, reporter, snapshot, integrationTestScenarios, intgTestStatusDetails, componentName)
 		if err != nil {
 			a.logger.Error(err, fmt.Sprintf("failed to report integration test status according to build pipelinerun %s/%s",
 				pipelineRun.Namespace, pipelineRun.Name))
