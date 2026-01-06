@@ -379,6 +379,14 @@ var _ = Describe("PipelineController", func() {
 		})
 
 		It("reconcile with application taken from pipelinerun (build pipeline)", func() {
+			Eventually(func() bool {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Namespace: buildPipelineRunNoComponent.Namespace,
+					Name:      buildPipelineRunNoComponent.Name,
+				}, buildPipelineRunNoComponent)
+				return err == nil
+			}, time.Second*10).Should(BeTrue())
+
 			result, err := pipelineReconciler.Reconcile(ctx, reqNoComponent)
 			Expect(reflect.TypeOf(result)).To(Equal(reflect.TypeOf(reconcile.Result{})))
 			Expect(err).ToNot(HaveOccurred())
