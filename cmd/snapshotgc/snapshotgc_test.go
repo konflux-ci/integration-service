@@ -259,7 +259,7 @@ var _ = Describe("Test garbage collection for snapshots", func() {
 						Items: []applicationapiv1alpha1.Snapshot{},
 					}).Build()
 			candidates := []applicationapiv1alpha1.Snapshot{}
-			output := getSnapshotsForRemoval(cl, candidates, 2, 1, logger)
+			output := getSnapshotsForRemoval(cl, candidates, 2, 1, 0, logger)
 
 			Expect(output).To(BeEmpty())
 		})
@@ -291,7 +291,7 @@ var _ = Describe("Test garbage collection for snapshots", func() {
 						},
 					}).Build()
 			candidates := []applicationapiv1alpha1.Snapshot{*newerSnap, *olderSnap}
-			output := getSnapshotsForRemoval(cl, candidates, 0, 2, logger)
+			output := getSnapshotsForRemoval(cl, candidates, 0, 2, 0, logger)
 
 			Expect(output).To(BeEmpty())
 		})
@@ -326,7 +326,7 @@ var _ = Describe("Test garbage collection for snapshots", func() {
 						},
 					}).Build()
 			candidates := []applicationapiv1alpha1.Snapshot{*newerSnap, *olderSnap}
-			output := getSnapshotsForRemoval(cl, candidates, 1, 0, logger)
+			output := getSnapshotsForRemoval(cl, candidates, 1, 0, 0, logger)
 
 			Expect(output).To(HaveLen(1))
 			Expect(output[0].Name).To(Equal("older-snapshot"))
@@ -399,7 +399,7 @@ var _ = Describe("Test garbage collection for snapshots", func() {
 				*newerPRSnap, *olderPRSnap, *newerNonPRSnap, *olderNonPRSnap,
 				*anotherOldPRSnap, *overrideSnap,
 			}
-			output := getSnapshotsForRemoval(cl, candidates, 1, 1, logger)
+			output := getSnapshotsForRemoval(cl, candidates, 1, 1, 0, logger)
 
 			Expect(output).To(HaveLen(4))
 			Expect(output[0].Name).To(Equal("older-non-pr-snapshot"))
@@ -842,7 +842,7 @@ var _ = Describe("Test garbage collection for snapshots", func() {
 			Expect(err).ShouldNot(HaveOccurred())
 			Expect(snapsBefore.Items).To(HaveLen(2))
 
-			err = garbageCollectSnapshots(cl, logger, 1, 1)
+			err = garbageCollectSnapshots(cl, logger, 1, 1, 0)
 			Expect(err).ShouldNot(HaveOccurred())
 
 			snapsAfter := &applicationapiv1alpha1.SnapshotList{}
@@ -870,7 +870,7 @@ var _ = Describe("Test garbage collection for snapshots", func() {
 
 		It("Fails if cannot list namespaces", func() {
 			cl := fake.NewClientBuilder().WithScheme(runtime.NewScheme()).Build()
-			err := garbageCollectSnapshots(cl, logger, 1, 1)
+			err := garbageCollectSnapshots(cl, logger, 1, 1, 0)
 			Expect(err).Should(HaveOccurred())
 			Expect(err).To(MatchError(ContainSubstring(
 				"no kind is registered for the type v1.NamespaceList in scheme",
@@ -891,7 +891,7 @@ var _ = Describe("Test garbage collection for snapshots", func() {
 				&core.NamespaceList{Items: []core.Namespace{*ns1}},
 			).Build()
 
-			err := garbageCollectSnapshots(cl, logger, 1, 1)
+			err := garbageCollectSnapshots(cl, logger, 1, 1, 0)
 			Expect(err).ShouldNot(HaveOccurred())
 			logLines := strings.Split(buf.String(), "\n")
 			Expect(logLines[len(logLines)-2]).Should(ContainSubstring(
@@ -922,7 +922,7 @@ var _ = Describe("Test garbage collection for snapshots", func() {
 				&core.NamespaceList{Items: []core.Namespace{*ns1}},
 			).Build()
 
-			err := garbageCollectSnapshots(cl, logger, 1, 1)
+			err := garbageCollectSnapshots(cl, logger, 1, 1, 0)
 			Expect(err).ShouldNot(HaveOccurred())
 			logLines := strings.Split(buf.String(), "\n")
 			Expect(logLines[len(logLines)-2]).Should(ContainSubstring(
@@ -1058,6 +1058,362 @@ var _ = Describe("Test garbage collection for snapshots", func() {
 
 			nonPr := isNonPrSnapshot(snap)
 			Expect(nonPr).To(BeFalse())
+		})
+	})
+
+	Describe("Test getSnapshotsForRemoval with minSnapShotsToKeepPerComponent", func() {
+		It("Keeps the latest 5 snapshots per component", func() {
+			currentTime := time.Now()
+
+			// Component A: 11 push snapshots (should preserve latest 5)
+			compASnap0 := &applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:              "comp-a-snap-0",
+					Namespace:         "ns1",
+					CreationTimestamp: metav1.NewTime(currentTime),
+					Labels: map[string]string{
+						"pac.test.appstudio.openshift.io/event-type": "push",
+						"test.appstudio.openshift.io/type":           "component",
+						"appstudio.openshift.io/component":           "component-a"},
+				},
+			}
+
+			compASnap1 := &applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:              "comp-a-snap-1",
+					Namespace:         "ns1",
+					CreationTimestamp: metav1.NewTime(currentTime.Add(time.Hour * 1)),
+					Labels: map[string]string{
+						"pac.test.appstudio.openshift.io/event-type": "push",
+						"test.appstudio.openshift.io/type":           "component",
+						"appstudio.openshift.io/component":           "component-a"},
+				},
+			}
+
+			compASnap2 := &applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:              "comp-a-snap-2",
+					Namespace:         "ns1",
+					CreationTimestamp: metav1.NewTime(currentTime.Add(time.Hour * 2)),
+					Labels: map[string]string{
+						"pac.test.appstudio.openshift.io/event-type": "push",
+						"test.appstudio.openshift.io/type":           "component",
+						"appstudio.openshift.io/component":           "component-a"},
+				},
+			}
+
+			compASnap3 := &applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:              "comp-a-snap-3",
+					Namespace:         "ns1",
+					CreationTimestamp: metav1.NewTime(currentTime.Add(time.Hour * 3)),
+					Labels: map[string]string{
+						"pac.test.appstudio.openshift.io/event-type": "push",
+						"test.appstudio.openshift.io/type":           "component",
+						"appstudio.openshift.io/component":           "component-a"},
+				},
+			}
+
+			compASnap4 := &applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:              "comp-a-snap-4",
+					Namespace:         "ns1",
+					CreationTimestamp: metav1.NewTime(currentTime.Add(time.Hour * 4)),
+					Labels: map[string]string{
+						"pac.test.appstudio.openshift.io/event-type": "push",
+						"test.appstudio.openshift.io/type":           "component",
+						"appstudio.openshift.io/component":           "component-a"},
+				},
+			}
+
+			compASnap5 := &applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:              "comp-a-snap-5",
+					Namespace:         "ns1",
+					CreationTimestamp: metav1.NewTime(currentTime.Add(time.Hour * 5)),
+					Labels: map[string]string{
+						"pac.test.appstudio.openshift.io/event-type": "push",
+						"test.appstudio.openshift.io/type":           "component",
+						"appstudio.openshift.io/component":           "component-a"},
+				},
+			}
+
+			compASnap6 := &applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:              "comp-a-snap-6",
+					Namespace:         "ns1",
+					CreationTimestamp: metav1.NewTime(currentTime.Add(time.Hour * 6)),
+					Labels: map[string]string{
+						"pac.test.appstudio.openshift.io/event-type": "push",
+						"test.appstudio.openshift.io/type":           "component",
+						"appstudio.openshift.io/component":           "component-a"},
+				},
+			}
+
+			compASnap7 := &applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:              "comp-a-snap-7",
+					Namespace:         "ns1",
+					CreationTimestamp: metav1.NewTime(currentTime.Add(time.Hour * 7)),
+					Labels: map[string]string{
+						"pac.test.appstudio.openshift.io/event-type": "push",
+						"test.appstudio.openshift.io/type":           "component",
+						"appstudio.openshift.io/component":           "component-a"},
+				},
+			}
+
+			compASnap8 := &applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:              "comp-a-snap-8",
+					Namespace:         "ns1",
+					CreationTimestamp: metav1.NewTime(currentTime.Add(time.Hour * 8)),
+					Labels: map[string]string{
+						"pac.test.appstudio.openshift.io/event-type": "push",
+						"test.appstudio.openshift.io/type":           "component",
+						"appstudio.openshift.io/component":           "component-a"},
+				},
+			}
+
+			compASnap9 := &applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:              "comp-a-snap-9",
+					Namespace:         "ns1",
+					CreationTimestamp: metav1.NewTime(currentTime.Add(time.Hour * 9)),
+					Labels: map[string]string{
+						"pac.test.appstudio.openshift.io/event-type": "push",
+						"test.appstudio.openshift.io/type":           "component",
+						"appstudio.openshift.io/component":           "component-a"},
+				},
+			}
+
+			compASnap10 := &applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:              "comp-a-snap-10",
+					Namespace:         "ns1",
+					CreationTimestamp: metav1.NewTime(currentTime.Add(time.Hour * 10)),
+					Labels: map[string]string{
+						"pac.test.appstudio.openshift.io/event-type": "push",
+						"test.appstudio.openshift.io/type":           "component",
+						"appstudio.openshift.io/component":           "component-a"},
+				},
+			}
+
+			// Component B has 3 push snapshots
+
+			compBSnap0 := &applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:              "comp-b-snap-0",
+					Namespace:         "ns1",
+					CreationTimestamp: metav1.NewTime(currentTime),
+					Labels: map[string]string{
+						"pac.test.appstudio.openshift.io/event-type": "push",
+						"test.appstudio.openshift.io/type":           "component",
+						"appstudio.openshift.io/component":           "component-b"},
+				},
+			}
+
+			compBSnap1 := &applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:              "comp-b-snap-1",
+					Namespace:         "ns1",
+					CreationTimestamp: metav1.NewTime(currentTime.Add(time.Hour * 1)),
+					Labels: map[string]string{
+						"pac.test.appstudio.openshift.io/event-type": "push",
+						"test.appstudio.openshift.io/type":           "component",
+						"appstudio.openshift.io/component":           "component-b"},
+				},
+			}
+
+			compBSnap2 := &applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:              "comp-b-snap-2",
+					Namespace:         "ns1",
+					CreationTimestamp: metav1.NewTime(currentTime.Add(time.Hour * 2)),
+					Labels: map[string]string{
+						"pac.test.appstudio.openshift.io/event-type": "push",
+						"test.appstudio.openshift.io/type":           "component",
+						"appstudio.openshift.io/component":           "component-b"},
+				},
+			}
+
+			cl := fake.NewClientBuilder().
+				WithScheme(scheme).
+				WithLists(
+					&applicationapiv1alpha1.SnapshotList{
+						Items: []applicationapiv1alpha1.Snapshot{
+							*compASnap0, *compASnap1, *compASnap2, *compASnap3, *compASnap4, *compASnap5, *compASnap6, *compASnap7, *compASnap8, *compASnap9, *compASnap10,
+							*compBSnap0, *compBSnap1, *compBSnap2,
+						},
+					},
+				).Build()
+			candidates := []applicationapiv1alpha1.Snapshot{
+				*compASnap0, *compASnap1, *compASnap2, *compASnap3, *compASnap4, *compASnap5, *compASnap6, *compASnap7, *compASnap8, *compASnap9, *compASnap10,
+				*compBSnap0, *compBSnap1, *compBSnap2,
+			}
+			output := getSnapshotsForRemoval(cl, candidates, 512, 0, 5, logger)
+
+			// Total: 6 snapshots should be marked for deletion (all from Component A)
+			Expect(output).To(HaveLen(6))
+
+			// Component A: oldest 6 should be deleted
+			Expect(output).To(ContainElement(*compASnap0))
+			Expect(output).To(ContainElement(*compASnap1))
+			Expect(output).To(ContainElement(*compASnap2))
+			Expect(output).To(ContainElement(*compASnap3))
+			Expect(output).To(ContainElement(*compASnap4))
+			Expect(output).To(ContainElement(*compASnap5))
+
+			// Component A: latest 5 snapshots should be preserved (NOT in deletion list)
+			Expect(output).NotTo(ContainElement(*compASnap6))
+			Expect(output).NotTo(ContainElement(*compASnap7))
+			Expect(output).NotTo(ContainElement(*compASnap8))
+			Expect(output).NotTo(ContainElement(*compASnap9))
+			Expect(output).NotTo(ContainElement(*compASnap10))
+
+			// Component B: all 3 push snapshots should be preserved (NOT in deletion list)
+			Expect(output).NotTo(ContainElement(*compBSnap0))
+			Expect(output).NotTo(ContainElement(*compBSnap1))
+			Expect(output).NotTo(ContainElement(*compBSnap2))
+
+		})
+
+		// When mixed with pull snapshots, only the latest 5 push snapshots should be preserved
+		// the pull snapshots should follow the global limits which are set when calling getSnapshotsForRemoval()
+		It("Only preserves latest 5 push snapshots when mixed with pull snapshots", func() {
+			currentTime := time.Now()
+			// Component A: Mix of push and PR snapshots
+			// Push snapshots (should be preserved per-component)
+
+			compAPushSnap0 := &applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:              "comp-a-push-0",
+					Namespace:         "ns1",
+					CreationTimestamp: metav1.NewTime(currentTime),
+					Labels: map[string]string{
+						"pac.test.appstudio.openshift.io/event-type": "push",
+						"test.appstudio.openshift.io/type":           "component",
+						"appstudio.openshift.io/component":           "component-a"},
+				},
+			}
+
+			compAPushSnap1 := &applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:              "comp-a-push-1",
+					Namespace:         "ns1",
+					CreationTimestamp: metav1.NewTime(currentTime.Add(time.Hour * 1)),
+					Labels: map[string]string{
+						"pac.test.appstudio.openshift.io/event-type": "push",
+						"test.appstudio.openshift.io/type":           "component",
+						"appstudio.openshift.io/component":           "component-a"},
+				},
+			}
+
+			compAPushSnap2 := &applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:              "comp-a-push-2",
+					Namespace:         "ns1",
+					CreationTimestamp: metav1.NewTime(currentTime.Add(time.Hour * 2)),
+					Labels: map[string]string{
+						"pac.test.appstudio.openshift.io/event-type": "push",
+						"test.appstudio.openshift.io/type":           "component",
+						"appstudio.openshift.io/component":           "component-a"},
+				},
+			}
+
+			compAPushSnap3 := &applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:              "comp-a-push-3",
+					Namespace:         "ns1",
+					CreationTimestamp: metav1.NewTime(currentTime.Add(time.Hour * 3)),
+					Labels: map[string]string{
+						"pac.test.appstudio.openshift.io/event-type": "push",
+						"test.appstudio.openshift.io/type":           "component",
+						"appstudio.openshift.io/component":           "component-a"},
+				},
+			}
+
+			compAPushSnap4 := &applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:              "comp-a-push-4",
+					Namespace:         "ns1",
+					CreationTimestamp: metav1.NewTime(currentTime.Add(time.Hour * 4)),
+					Labels: map[string]string{
+						"pac.test.appstudio.openshift.io/event-type": "push",
+						"test.appstudio.openshift.io/type":           "component",
+						"appstudio.openshift.io/component":           "component-a"},
+				},
+			}
+
+			compAPushSnap5 := &applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:              "comp-a-push-5",
+					Namespace:         "ns1",
+					CreationTimestamp: metav1.NewTime(currentTime.Add(time.Hour * 5)),
+					Labels: map[string]string{
+						"pac.test.appstudio.openshift.io/event-type": "push",
+						"test.appstudio.openshift.io/type":           "component",
+						"appstudio.openshift.io/component":           "component-a"},
+				},
+			}
+
+			// PR snapshots (should NOT be preserved per-component, follow global limits)
+			compAPRSnap0 := &applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:              "comp-a-pr-0",
+					Namespace:         "ns1",
+					CreationTimestamp: metav1.NewTime(currentTime.Add(time.Hour * 6)),
+					Labels: map[string]string{
+						"pac.test.appstudio.openshift.io/event-type": "pull_request",
+						"test.appstudio.openshift.io/type":           "component",
+						"appstudio.openshift.io/component":           "component-a"},
+				},
+			}
+
+			compAPRSnap1 := &applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:              "comp-a-pr-1",
+					Namespace:         "ns1",
+					CreationTimestamp: metav1.NewTime(currentTime.Add(time.Hour * 7)),
+					Labels: map[string]string{
+						"pac.test.appstudio.openshift.io/event-type": "pull_request",
+						"test.appstudio.openshift.io/type":           "component",
+						"appstudio.openshift.io/component":           "component-a"},
+				},
+			}
+
+			cl := fake.NewClientBuilder().
+				WithScheme(scheme).
+				WithLists(
+					&applicationapiv1alpha1.SnapshotList{
+						Items: []applicationapiv1alpha1.Snapshot{
+							*compAPushSnap0, *compAPushSnap1, *compAPushSnap2, *compAPushSnap3, *compAPushSnap4, *compAPushSnap5,
+							*compAPRSnap0, *compAPRSnap1,
+						},
+					},
+				).Build()
+
+			candidates := []applicationapiv1alpha1.Snapshot{
+				*compAPushSnap0, *compAPushSnap1, *compAPushSnap2, *compAPushSnap3, *compAPushSnap4, *compAPushSnap5,
+				*compAPRSnap0, *compAPRSnap1,
+			}
+
+			// Global limits: 0 PR snapshots, 0 non-PR snapshots + per-component limit of 5 push snapshots
+			output := getSnapshotsForRemoval(cl, candidates, 0, 0, 5, logger)
+
+			// Push snapshots: oldest 1 should be deleted (compAPushSnap0), latest 5 preserved (per-component)
+			Expect(output).To(ContainElement(*compAPushSnap0))
+			Expect(output).NotTo(ContainElement(*compAPushSnap1))
+			Expect(output).NotTo(ContainElement(*compAPushSnap2))
+			Expect(output).NotTo(ContainElement(*compAPushSnap3))
+			Expect(output).NotTo(ContainElement(*compAPushSnap4))
+			Expect(output).NotTo(ContainElement(*compAPushSnap5))
+
+			// PR snapshots: both should be deleted (global limit set to 0)
+			Expect(output).To(ContainElement(*compAPRSnap0))
+			Expect(output).To(ContainElement(*compAPRSnap1))
+
+			// Total: 3 snapshots should be deleted (1 oldeest push + 2 PR)
+			Expect(output).To(HaveLen(3))
 		})
 	})
 })
