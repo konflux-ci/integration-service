@@ -1548,10 +1548,7 @@ func IsAllCommentDisabledForPacRepositoryInComponent(ctx context.Context, adapte
 
 // IsIntegrationTestCommentDisabledForComponent checks if all git comments are disabled for the integration test status of given component in snapshot
 func IsIntegrationTestCommentDisabledForComponent(component *applicationapiv1alpha1.Component) bool {
-	if metadata.HasAnnotationWithValue(component, GitCommentPolicyAnnotation, GitCommentPolicyAllDisabled) {
-		return true
-	}
-	return false
+	return metadata.HasAnnotationWithValue(component, GitCommentPolicyAnnotation, GitCommentPolicyAllDisabled)
 }
 
 func IsCommentDisabled(ctx context.Context, adapterClient client.Client, component *applicationapiv1alpha1.Component) (bool, error) {

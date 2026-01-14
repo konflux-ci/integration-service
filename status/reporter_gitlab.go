@@ -258,15 +258,13 @@ func (r *GitLabReporter) UpdateStatusInComment(commentTitle, commentText string)
 		return statusCode, fmt.Errorf("error while getting all comments for merge-request %d: %w", r.mergeRequest, err)
 	}
 	existingCommentIds := r.GetExistingNoteIDs(allNotes, commentTitle)
-	if existingCommentIds != nil {
-		for _, existingCommentId := range existingCommentIds {
-			response, err := r.client.Notes.DeleteMergeRequestNote(r.targetProjectID, r.mergeRequest, *existingCommentId)
-			if response != nil {
-				statusCode = response.StatusCode
-			}
-			if err != nil {
-				return statusCode, fmt.Errorf("error while deleting comment for merge-request %d: %w", r.mergeRequest, err)
-			}
+	for _, existingCommentId := range existingCommentIds {
+		response, err := r.client.Notes.DeleteMergeRequestNote(r.targetProjectID, r.mergeRequest, *existingCommentId)
+		if response != nil {
+			statusCode = response.StatusCode
+		}
+		if err != nil {
+			return statusCode, fmt.Errorf("error while deleting comment for merge-request %d: %w", r.mergeRequest, err)
 		}
 	}
 

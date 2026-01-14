@@ -1,4 +1,4 @@
-# code.gitea.io/sdk/gitea v0.22.1
+# code.gitea.io/sdk/gitea v0.22.0
 ## explicit; go 1.23.0
 code.gitea.io/sdk/gitea
 # contrib.go.opencensus.io/exporter/ocagent v0.7.1-0.20230502190836-7399e0f8ee5e
@@ -62,6 +62,8 @@ github.com/emicklei/go-restful/v3/log
 ## explicit; go 1.18
 github.com/evanphx/json-patch/v5
 github.com/evanphx/json-patch/v5/internal/json
+# github.com/fatih/color v1.18.0
+## explicit; go 1.17
 # github.com/felixge/httpsnoop v1.0.4
 ## explicit; go 1.13
 github.com/felixge/httpsnoop
@@ -314,7 +316,7 @@ github.com/onsi/gomega/types
 # github.com/opencontainers/go-digest v1.0.0
 ## explicit; go 1.13
 github.com/opencontainers/go-digest
-# github.com/openshift-pipelines/pipelines-as-code v0.37.0
+# github.com/openshift-pipelines/pipelines-as-code v0.34.0
 ## explicit; go 1.23.8
 github.com/openshift-pipelines/pipelines-as-code/pkg/apis/pipelinesascode
 github.com/openshift-pipelines/pipelines-as-code/pkg/apis/pipelinesascode/v1alpha1
@@ -1340,3 +1342,5 @@ sigs.k8s.io/yaml/goyaml.v2
 # k8s.io/client-go => k8s.io/client-go v0.31.0
 # k8s.io/component-base => k8s.io/component-base v0.31.0
 # knative.dev/pkg => knative.dev/pkg v0.0.0-20240416145024-0f34a8815650
+# code.gitea.io/gitea => code.gitea.io/gitea v1.25.2
+# github.com/nektos/act => gitea.com/gitea/act v0.2.66-0.20240924153421-39656e186641
