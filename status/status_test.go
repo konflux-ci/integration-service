@@ -89,6 +89,7 @@ var _ = Describe("Status Adapter", func() {
 		hasComSnapshot3         *applicationapiv1alpha1.Snapshot
 		groupSnapshot           *applicationapiv1alpha1.Snapshot
 		integrationTestScenario *v1beta2.IntegrationTestScenario
+		hasComponent            *applicationapiv1alpha1.Component
 		mockReporter            *status.MockReporterInterface
 
 		pipelineRun       *tektonv1.PipelineRun
@@ -419,6 +420,26 @@ var _ = Describe("Status Adapter", func() {
 			},
 		}
 
+		hasComponent = &applicationapiv1alpha1.Component{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "component-sample",
+				Namespace: "default",
+				Labels: map[string]string{
+					"appstudio.openshift.io/application": "application-sample",
+				},
+			},
+			Spec: applicationapiv1alpha1.ComponentSpec{
+				ComponentName: "component-sample",
+				Source: applicationapiv1alpha1.ComponentSource{
+					ComponentSourceUnion: applicationapiv1alpha1.ComponentSourceUnion{
+						GitSource: &applicationapiv1alpha1.GitSource{
+							URL: "",
+						},
+					},
+				},
+			},
+		}
+
 		mockK8sClient = &MockK8sClient{
 			getInterceptor: func(key client.ObjectKey, obj client.Object) {
 				if taskRun, ok := obj.(*tektonv1.TaskRun); ok {
@@ -527,6 +548,7 @@ var _ = Describe("Status Adapter", func() {
 			SnapshotName:        "snapshot-sample",
 			ComponentName:       "component-sample",
 			Text:                text,
+			ShortText:           "<ul>\n<li><b>Pipelinerun</b>: <a href=\"https://definetly.not.prod/preview/application-pipeline/ns/default/pipelinerun/test-pipelinerun\">test-pipelinerun</a></li>\n</ul>\n<hr>\n\n",
 			Summary:             "Integration test for component component-sample snapshot snapshot-sample and scenario scenario1 has passed",
 			Status:              integrationteststatus.IntegrationTestStatusTestPassed,
 			StartTime:           &ts,
@@ -756,11 +778,12 @@ var _ = Describe("Status Adapter", func() {
 	})
 
 	It("can report status in IterateIntegrationTestScenarioWithSameStatus", func() {
+		hasSnapshot.Labels["pac.test.appstudio.openshift.io/git-provider"] = "gitlab"
 		integrationTestStatusDetail := integrationteststatus.IntegrationTestStatusDetail{
 			Status:  integrationteststatus.GroupSnapshotCreationFailed,
 			Details: "details",
 		}
-		statusCode, err := status.IterateIntegrationTestScenarioWithSameStatus(context.Background(), mockK8sClient, mockReporter, hasSnapshot, &[]v1beta2.IntegrationTestScenario{*integrationTestScenario}, integrationTestStatusDetail, "test")
+		statusCode, err := status.IterateIntegrationTestScenarioWithSameStatus(context.Background(), mockK8sClient, mockReporter, hasSnapshot, &[]v1beta2.IntegrationTestScenario{*integrationTestScenario}, integrationTestStatusDetail, hasComponent, "test")
 		Expect(err).Should(Succeed())
 		Expect(statusCode).NotTo(BeNil())
 	})

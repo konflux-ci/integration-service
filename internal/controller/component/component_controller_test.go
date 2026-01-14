@@ -146,10 +146,4 @@ var _ = Describe("ComponentController", Ordered, func() {
 		err := setupControllerWithManager(manager, componentReconciler)
 		Expect(err).NotTo(HaveOccurred())
 	})
-
-	It("can setup a new Controller manager and start it", func() {
-		err := SetupController(manager, &ctrl.Log)
-		Expect(err).ToNot(HaveOccurred())
-	})
-
 })

@@ -56,6 +56,22 @@ The group snapshot is generated for pr group {{ .PRGroup }} and the component sn
 {{- end }}
 {{end}}`
 
+const shortSummaryTemplate = `
+{{- $pipelineRunName := .PipelineRunName -}} {{ $namespace := .Namespace -}} {{ $logger := .Logger -}}
+<ul>
+<li><b>Pipelinerun</b>: <a href="{{ formatPipelineURL $pipelineRunName $namespace $logger }}">{{ $pipelineRunName }}</a></li>
+</ul>
+<hr>
+
+{{ if .ComponentSnapshotInfos}}
+The group snapshot is generated for pr group {{ .PRGroup }} and the component snasphots as below:
+| Component | Snapshot | BuildPipelineRun | PullRequest |
+| --- | --- | --- | --- |
+{{- range $cs := .ComponentSnapshotInfos }}
+| {{ $cs.Component }} | {{ $cs.Snapshot }} | <a href="{{ formatPipelineURL $cs.BuildPipelineRun $namespace $logger }}">{{ $cs.BuildPipelineRun }}</a> | <a href="{{ formatPullRequestURL $cs.RepoUrl $cs.PullRequestNumber }}">{{ formatRepoURL $cs.RepoUrl }}</a> |
+{{- end }}
+{{end}}`
+
 // SummaryTemplateData holds the data necessary to construct a PipelineRun summary.
 type SummaryTemplateData struct {
 	TaskRuns               []*helpers.TaskRun
@@ -95,6 +111,26 @@ func FormatTestsSummary(taskRuns []*helpers.TaskRun, pipelineRunName string, nam
 	buf := bytes.Buffer{}
 	data := SummaryTemplateData{TaskRuns: taskRuns, PipelineRunName: pipelineRunName, Namespace: namespace, PRGroup: pr_group, ComponentSnapshotInfos: componentSnapshotInfos, Logger: logger}
 	t := template.Must(template.New("").Funcs(funcMap).Parse(summaryTemplate))
+	if err := t.Execute(&buf, data); err != nil {
+		return "", err
+	}
+	return buf.String(), nil
+}
+
+// FormatShortTestsSummary builds a markdown summary for a list of integration TaskRuns.
+func FormatShortTestsSummary(pipelineRunName string, namespace string, componentSnapshotInfos []*gitops.ComponentSnapshotInfo, pr_group string) (string, error) {
+	funcMap := template.FuncMap{
+		"formatNamespace":      FormatNamespace,
+		"formatStatus":         FormatStatus,
+		"formatDetails":        FormatDetails,
+		"formatPipelineURL":    FormatPipelineURL,
+		"formatFootnotes":      FormatFootnotes,
+		"formatPullRequestURL": FormatPullRequestURL,
+		"formatRepoURL":        FormatRepoURL,
+	}
+	buf := bytes.Buffer{}
+	data := SummaryTemplateData{PipelineRunName: pipelineRunName, Namespace: namespace, PRGroup: pr_group, ComponentSnapshotInfos: componentSnapshotInfos}
+	t := template.Must(template.New("").Funcs(funcMap).Parse(shortSummaryTemplate))
 	if err := t.Execute(&buf, data); err != nil {
 		return "", err
 	}

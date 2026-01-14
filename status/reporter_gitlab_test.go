@@ -322,7 +322,7 @@ var _ = Describe("GitLabReporter", func() {
 		})
 
 		It("can get an existing mergeRequest note that matches the report", func() {
-			summary := "Integration test for component component-sample snapshot snapshot-sample and scenario scenario1 failed"
+			summary := "Integration test report for component component-sample"
 			report := status.TestReport{
 				FullName:      "fullname/scenario1",
 				ScenarioName:  "scenario1",
@@ -343,8 +343,8 @@ var _ = Describe("GitLabReporter", func() {
 				&note,
 			}
 
-			existingNoteID := reporter.GetExistingNoteID(notes, report.ScenarioName, status.GenerateComponentNameWithPrefix(report.ComponentName))
-			Expect(*existingNoteID).To(Equal(note.ID))
+			existingNoteIDs := reporter.GetExistingNoteIDs(notes, status.GenerateCommentTitleForComponent(report.ComponentName))
+			Expect(*existingNoteIDs[0]).To(Equal(note.ID))
 		})
 	})
 

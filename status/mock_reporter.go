@@ -23,6 +23,15 @@ type MockReporterInterface struct {
 	recorder *MockReporterInterfaceMockRecorder
 }
 
+// UpdateStatusInComment implements [ReporterInterface].
+func (m *MockReporterInterface) UpdateStatusInComment(string, string) (int, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateStatusInComment")
+	ret0, _ := ret[0].(int)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
 // MockReporterInterfaceMockRecorder is the mock recorder for MockReporterInterface.
 type MockReporterInterfaceMockRecorder struct {
 	mock *MockReporterInterface

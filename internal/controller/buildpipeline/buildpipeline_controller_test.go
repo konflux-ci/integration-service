@@ -264,11 +264,6 @@ var _ = Describe("PipelineController", func() {
 		Expect(err).ToNot(HaveOccurred())
 	})
 
-	It("can setup a new Controller manager", func() {
-		err := SetupController(manager, &ctrl.Log)
-		Expect(err).ToNot(HaveOccurred())
-	})
-
 	It("can setup a new controller manager with the given reconciler", func() {
 		err := setupControllerWithManager(manager, pipelineReconciler)
 		Expect(err).NotTo(HaveOccurred())

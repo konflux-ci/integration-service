@@ -34,6 +34,7 @@ import (
 	"github.com/konflux-ci/integration-service/pkg/metrics"
 	tektonconsts "github.com/konflux-ci/integration-service/tekton/consts"
 	"github.com/konflux-ci/operator-toolkit/metadata"
+	pacv1alpha1 "github.com/openshift-pipelines/pipelines-as-code/pkg/apis/pipelinesascode/v1alpha1"
 	"github.com/santhosh-tekuri/jsonschema/v5"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -299,6 +300,11 @@ const (
 	// With suffix: 40 + 1 + 8 + 1 + 6 + 1 + 3 + 1 + 2 = 63 chars
 	maxPrefixLength           = 43
 	maxPrefixLengthWithSuffix = 40 // 43 - 3 (2 for suffix + 1 for extra dash)
+
+	// GitCommentPolicyAnnotation is the annotation to control git comment policy for the component
+	GitCommentPolicyAnnotation = "test.appstudio.openshift.io/comment_strategy"
+	// GitCommentPolicyAllDisabled is the value to disable all test comments for the component
+	GitCommentPolicyAllDisabled = "disable_all"
 )
 
 var (
@@ -1518,4 +1524,50 @@ func GenerateSnapshotNameWithTimestamp(prefix string, unixMilli int64, suffix ..
 	}
 
 	return name
+}
+
+// IsAllCommentDisabledForPacRepositoryInComponent
+func IsAllCommentDisabledForPacRepositoryInComponent(ctx context.Context, adapterClient client.Client, component *applicationapiv1alpha1.Component) (bool, error) {
+	log := log.FromContext(ctx)
+
+	url := component.Spec.Source.GitSource.URL
+	repos := pacv1alpha1.RepositoryList{}
+	if err := adapterClient.List(ctx, &repos, &client.ListOptions{Namespace: component.Namespace}); err != nil {
+		log.Error(err, fmt.Sprintf("failed to get repo from namespace %s", component.Namespace))
+		return false, err
+	}
+	for _, repo := range repos.Items {
+		if url == repo.Spec.URL && repo.Spec.Settings != nil && repo.Spec.Settings.Gitlab != nil {
+			if repo.Spec.Settings.Gitlab.CommentStrategy == GitCommentPolicyAllDisabled {
+				return true, nil
+			}
+		}
+	}
+	return false, nil
+}
+
+// IsIntegrationTestCommentDisabledForComponent checks if all git comments are disabled for the integration test status of given component in snapshot
+func IsIntegrationTestCommentDisabledForComponent(component *applicationapiv1alpha1.Component) bool {
+	if metadata.HasAnnotationWithValue(component, GitCommentPolicyAnnotation, GitCommentPolicyAllDisabled) {
+		return true
+	}
+	return false
+}
+
+func IsCommentDisabled(ctx context.Context, adapterClient client.Client, component *applicationapiv1alpha1.Component) (bool, error) {
+	// check if all comments are disabled for the component's repository in PAC Repository CR
+	allDisabled, err := IsAllCommentDisabledForPacRepositoryInComponent(ctx, adapterClient, component)
+	if err != nil {
+		return false, err
+	}
+	if allDisabled {
+		return true, nil
+	}
+
+	// check if integration test comments are disabled for the component
+	if IsIntegrationTestCommentDisabledForComponent(component) {
+		return true, nil
+	}
+
+	return false, nil
 }
