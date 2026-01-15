@@ -505,7 +505,7 @@ func (a *Adapter) iterateIntegrationTestStatusDetailsInStatusReport(reporter sta
 		}
 
 		// update integration test status comment for gitlab reporter when there is status update and git provider is gitlab and comment is not disabled
-		if hasUpdatedIntegrationTest && reporter.GetReporterName() == "gitlab" {
+		if hasUpdatedIntegrationTest && reporter.GetReporterName() == status.GitLabProvider {
 			loader := loader.NewLoader()
 			// get the destination snapshot's component to check if comment is disabled for all comments for pac repository or integration test
 			component, err := loader.GetComponentFromSnapshot(a.context, a.client, destinationSnapshot)

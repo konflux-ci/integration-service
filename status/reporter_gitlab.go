@@ -54,6 +54,8 @@ func NewGitLabReporter(logger logr.Logger, k8sClient client.Client) *GitLabRepor
 	}
 }
 
+var GitLabProvider = "GitlabReporter"
+
 // check if interface has been correctly implemented
 var _ ReporterInterface = (*GitLabReporter)(nil)
 var existingCommitStatus *gitlab.CommitStatus
@@ -66,7 +68,7 @@ func (r *GitLabReporter) Detect(snapshot *applicationapiv1alpha1.Snapshot) bool 
 
 // GetReporterName returns the reporter name
 func (r *GitLabReporter) GetReporterName() string {
-	return "GitlabReporter"
+	return GitLabProvider
 }
 
 // Initialize initializes gitlab reporter

@@ -583,6 +583,22 @@ var _ = Describe("Status Adapter", func() {
 	)
 
 	DescribeTable(
+		"report right summary when its have the same status per component",
+		func(expectedScenarioStatus integrationteststatus.IntegrationTestStatus, expectedTextEnding string) {
+
+			expectedSummary := fmt.Sprintf("Integration test for component component-sample and integration test scenarios %s", expectedTextEnding)
+			summary, err := status.GenerateSummaryForAllScenarios(expectedScenarioStatus, "component-sample")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(summary).To(Equal(expectedSummary))
+		},
+		Entry("Pending", integrationteststatus.IntegrationTestStatusPending, "is pending"),
+		Entry("BuildPLRInProgress", integrationteststatus.BuildPLRInProgress, "is pending because build pipelinerun is still running and snapshot has not been created"),
+		Entry("SnapshotCreationFailed", integrationteststatus.SnapshotCreationFailed, "has not run and is considered as failed because the snapshot was not created"),
+		Entry("BuildPLRFailed", integrationteststatus.BuildPLRFailed, "has not run and is considered as failed because the build pipelinerun failed and snapshot was not created"),
+		Entry("GroupSnapshotCreationFailed", integrationteststatus.GroupSnapshotCreationFailed, "has not run and is considered as failed because group snapshot was not created"),
+	)
+
+	DescribeTable(
 		"report right summary per status",
 		func(expectedScenarioStatus integrationteststatus.IntegrationTestStatus, expectedTextEnding string) {
 
@@ -778,14 +794,23 @@ var _ = Describe("Status Adapter", func() {
 	})
 
 	It("can report status in IterateIntegrationTestScenarioWithSameStatus", func() {
-		hasSnapshot.Labels["pac.test.appstudio.openshift.io/git-provider"] = "gitlab"
 		integrationTestStatusDetail := integrationteststatus.IntegrationTestStatusDetail{
 			Status:  integrationteststatus.GroupSnapshotCreationFailed,
 			Details: "details",
 		}
-		statusCode, err := status.IterateIntegrationTestScenarioWithSameStatus(context.Background(), mockK8sClient, mockReporter, hasSnapshot, &[]v1beta2.IntegrationTestScenario{*integrationTestScenario}, integrationTestStatusDetail, hasComponent, "test")
+		ctrl := gomock.NewController(GinkgoT())
+		mockReporter = status.NewMockReporterInterface(ctrl)
+		mockReporter.EXPECT().GetReporterName().Return(status.GitLabProvider).AnyTimes()
+		mockReporter.EXPECT().Initialize(gomock.Any(), gomock.Any()).Return(0, nil).AnyTimes()
+		mockReporter.EXPECT().ReportStatus(gomock.Any(), gomock.Any()).Return(0, nil).AnyTimes()
+		commentText, _ := status.GenerateSummaryForAllScenarios(integrationTestStatusDetail.Status, "component-sample")
+		mockReporter.EXPECT().UpdateStatusInComment(status.GenerateCommentTitleForComponent("component-sample"), commentText).Return(0, nil).AnyTimes()
+		hasSnapshot.Labels["pac.test.appstudio.openshift.io/git-provider"] = "gitlab"
+		hasSnapshot.Annotations[gitops.PipelineAsCodePullRequestAnnotation] = "123"
+
+		statusCode, err := status.IterateIntegrationTestScenarioWithSameStatus(context.Background(), mockK8sClient, mockReporter, hasSnapshot, &[]v1beta2.IntegrationTestScenario{*integrationTestScenario}, integrationTestStatusDetail, hasComponent, "component-sample")
 		Expect(err).Should(Succeed())
-		Expect(statusCode).NotTo(BeNil())
+		Expect(statusCode).To(BeZero())
 	})
 
 })
