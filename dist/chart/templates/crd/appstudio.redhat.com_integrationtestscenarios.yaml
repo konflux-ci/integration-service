@@ -475,11 +475,15 @@ spec:
     - jsonPath: .spec.application
       name: Application
       type: string
+    - jsonPath: .spec.componentGroup
+      name: ComponentGroup
+      type: string
     name: v1beta2
     schema:
       openAPIV3Schema:
-        description: IntegrationTestScenario is the Schema for the integrationtestscenarios
-          API
+        description: |-
+          IntegrationTestScenario is the Schema for the integrationtestscenarios API, holds a definiton for integration test with specified attributes like pipeline reference,
+          application and environment. It is a test template triggered after successful creation of a snapshot.
         properties:
           apiVersion:
             description: |-
@@ -499,18 +503,33 @@ spec:
           metadata:
             type: object
           spec:
-            description: IntegrationTestScenarioSpec defines the desired state of
-              IntegrationScenario
+            description: |-
+              IntegrationTestScenarioSpec defines the desired state of IntegrationScenario
+              Exactly one of Application or ComponentGroup must be specified.
+            oneOf:
+            - required:
+              - application
+            - required:
+              - componentGroup
             properties:
               application:
-                description: Application that's associated with the IntegrationTestScenario
+                description: |-
+                  Application that's associated with the IntegrationTestScenario.
+                  Mutually exclusive with ComponentGroup - exactly one must be specified.
+                pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                type: string
+              componentGroup:
+                description: |-
+                  ComponentGroup that's associated with the IntegrationTestScenario.
+                  Mutually exclusive with Application - exactly one must be specified.
                 pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
                 type: string
               contexts:
-                description: Contexts where this IntegrationTestScenario can be applied
+                description: Contexts where this IntegrationTestScenario can be applied,
+                  for specific component for example
                 items:
                   description: TestContext contains the name and values of a Test
-                    context
+                    context, used by IntegrationTestScenarioSpec Contexts
                   properties:
                     description:
                       type: string
@@ -520,11 +539,18 @@ spec:
                   - name
                   type: object
                 type: array
+              dependents:
+                description: List of IntegrationTestScenario which are blocked by
+                  the successful completion of this IntegrationTestScenario
+                items:
+                  type: string
+                type: array
               params:
                 description: Params to pass to the pipeline
                 items:
                   description: PipelineParameter contains the name and values of a
-                    Tekton Pipeline parameter
+                    Tekton Pipeline parameter, used by IntegrationTestScenarioSpec
+                    Params
                   properties:
                     name:
                       type: string
@@ -567,12 +593,17 @@ spec:
                       perform resolution of the referenced Tekton resource, such as
                       "git" or "bundle"..
                     type: string
+                  resourceKind:
+                    description: |-
+                      ResourceKind defines the kind of resource being resolved. It can either
+                      be "pipeline" or "pipelinerun" but defaults to "pipeline" if no value is
+                      set
+                    type: string
                 required:
                 - params
                 - resolver
                 type: object
             required:
-            - application
             - resolverRef
             type: object
           status:

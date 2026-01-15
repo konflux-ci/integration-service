@@ -81,6 +81,12 @@ func (v *IntegrationTestScenarioCustomValidator) ValidateCreate(ctx context.Cont
 	}
 
 	integrationtestscenariolog.Info("Validating IntegrationTestScenario upon creation", "name", scenario.GetName())
+
+	// Validate that exactly one of application or componentGroup is specified
+	if err := validateOwnerField(scenario); err != nil {
+		return nil, err
+	}
+
 	// We use the DNS-1035 format for application names, so ensure it conforms to that specification
 	if len(validation.IsDNS1035Label(scenario.Name)) != 0 {
 		return nil, field.Invalid(field.NewPath("metadata").Child("name"), scenario.Name,
@@ -161,6 +167,25 @@ func (v *IntegrationTestScenarioCustomValidator) ValidateCreate(ctx context.Cont
 	return nil, nil
 }
 
+// validateOwnerField ensures exactly one of application or componentGroup is specified
+func validateOwnerField(scenario *v1beta2.IntegrationTestScenario) error {
+	hasApplication := scenario.Spec.Application != ""
+	hasComponentGroup := scenario.Spec.ComponentGroup != ""
+
+	if hasApplication && hasComponentGroup {
+		return field.Invalid(field.NewPath("spec"),
+			fmt.Sprintf("application=%s, componentGroup=%s", scenario.Spec.Application, scenario.Spec.ComponentGroup),
+			"exactly one of 'application' or 'componentGroup' must be specified, not both")
+	}
+
+	if !hasApplication && !hasComponentGroup {
+		return field.Required(field.NewPath("spec"),
+			"exactly one of 'application' or 'componentGroup' must be specified")
+	}
+
+	return nil
+}
+
 // Returns an error if 'value' contains leading or trailing whitespace
 func validateNoWhitespace(key, value string) error {
 	r, _ := regexp.Compile(`(^\s+)|(\s+$)`)
@@ -235,24 +260,50 @@ func (d *IntegrationTestScenarioCustomDefaulter) Default(ctx context.Context, ob
 	return nil
 }
 
-func addOwnerReference(scenario *v1beta2.IntegrationTestScenario, client client.Client) error {
+func addOwnerReference(scenario *v1beta2.IntegrationTestScenario, c client.Client) error {
 	if len(scenario.OwnerReferences) == 0 && scenario.DeletionTimestamp.IsZero() {
-		application := applicationapiv1alpha1.Application{}
-		err := client.Get(context.Background(), types.NamespacedName{Name: scenario.Spec.Application, Namespace: scenario.Namespace}, &application)
-		if err != nil {
-			if k8serrors.IsNotFound(err) {
-				return fmt.Errorf("could not find application '%s' in namespace '%s'", scenario.Spec.Application, scenario.Namespace)
+		var ownerReference metav1.OwnerReference
+
+		if scenario.HasApplication() {
+			// Set owner reference to Application
+			application := applicationapiv1alpha1.Application{}
+			err := c.Get(context.Background(), types.NamespacedName{Name: scenario.Spec.Application, Namespace: scenario.Namespace}, &application)
+			if err != nil {
+				if k8serrors.IsNotFound(err) {
+					return fmt.Errorf("could not find application '%s' in namespace '%s'", scenario.Spec.Application, scenario.Namespace)
+				}
+				return err
 			}
-			return err
+			ownerReference = metav1.OwnerReference{
+				APIVersion:         application.APIVersion,
+				Kind:               application.Kind,
+				Name:               application.Name,
+				UID:                application.UID,
+				BlockOwnerDeletion: ptr.To(false),
+				Controller:         ptr.To(false),
+			}
+		} else if scenario.HasComponentGroup() {
+			// Set owner reference to ComponentGroup
+			componentGroup := v1beta2.ComponentGroup{}
+			err := c.Get(context.Background(), types.NamespacedName{Name: scenario.Spec.ComponentGroup, Namespace: scenario.Namespace}, &componentGroup)
+			if err != nil {
+				if k8serrors.IsNotFound(err) {
+					return fmt.Errorf("could not find componentGroup '%s' in namespace '%s'", scenario.Spec.ComponentGroup, scenario.Namespace)
+				}
+				return err
+			}
+			ownerReference = metav1.OwnerReference{
+				APIVersion:         componentGroup.APIVersion,
+				Kind:               componentGroup.Kind,
+				Name:               componentGroup.Name,
+				UID:                componentGroup.UID,
+				BlockOwnerDeletion: ptr.To(false),
+				Controller:         ptr.To(false),
+			}
+		} else {
+			return fmt.Errorf("scenario '%s' must specify either application or componentGroup", scenario.Name)
 		}
-		ownerReference := metav1.OwnerReference{
-			APIVersion:         application.APIVersion,
-			Kind:               application.Kind,
-			Name:               application.Name,
-			UID:                application.UID,
-			BlockOwnerDeletion: ptr.To(false),
-			Controller:         ptr.To(false),
-		}
+
 		scenario.SetOwnerReferences(append(scenario.GetOwnerReferences(), ownerReference))
 	}
 	return nil

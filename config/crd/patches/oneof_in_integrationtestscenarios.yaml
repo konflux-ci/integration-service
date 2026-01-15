@@ -1,0 +1,7 @@
+# This patch adds oneOf validation to ensure exactly one of application or componentGroup is specified
+# Using JSON patch format to precisely add oneOf without replacing the entire version schema
+- op: add
+  path: /spec/versions/2/schema/openAPIV3Schema/properties/spec/oneOf
+  value:
+    - required: ["application"]
+    - required: ["componentGroup"]

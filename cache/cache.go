@@ -76,3 +76,13 @@ func SetupIntegrationTestScenarioCache(mgr ctrl.Manager) error {
 	return mgr.GetCache().IndexField(context.Background(), &v1beta2.IntegrationTestScenario{},
 		"spec.application", integrationTestScenariosIndexFunc)
 }
+
+// SetupIntegrationTestScenarioComponentGroupCache adds a new index field to be able to search IntegrationTestScenarios by ComponentGroup.
+func SetupIntegrationTestScenarioComponentGroupCache(mgr ctrl.Manager) error {
+	integrationTestScenariosIndexFunc := func(obj client.Object) []string {
+		return []string{obj.(*v1beta2.IntegrationTestScenario).Spec.ComponentGroup}
+	}
+
+	return mgr.GetCache().IndexField(context.Background(), &v1beta2.IntegrationTestScenario{},
+		"spec.componentGroup", integrationTestScenariosIndexFunc)
+}

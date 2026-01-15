@@ -47,11 +47,13 @@ const (
 	ReleaseContextKey
 	PipelineRunsContextKey
 	AllIntegrationTestScenariosContextKey
+	AllIntegrationTestScenariosForComponentGroupContextKey
 	RequiredIntegrationTestScenariosContextKey
 	AllIntegrationTestScenariosForSnapshotContextKey
 	AllSnapshotsContextKey
 	AutoReleasePlansContextKey
 	GetScenarioContextKey
+	GetComponentGroupContextKey
 	AllEnvironmentsForScenarioContextKey
 	AllSnapshotsForBuildPipelineRunContextKey
 	AllSnapshotsForGivenPRContextKey
@@ -148,6 +150,15 @@ func (l *mockLoader) GetAllIntegrationTestScenariosForApplication(ctx context.Co
 	return &integrationTestScenarios, err
 }
 
+// GetAllIntegrationTestScenariosForComponentGroup returns the resource and error passed as values of the context.
+func (l *mockLoader) GetAllIntegrationTestScenariosForComponentGroup(ctx context.Context, c client.Client, componentGroup *v1beta2.ComponentGroup) (*[]v1beta2.IntegrationTestScenario, error) {
+	if ctx.Value(AllIntegrationTestScenariosForComponentGroupContextKey) == nil {
+		return l.loader.GetAllIntegrationTestScenariosForComponentGroup(ctx, c, componentGroup)
+	}
+	integrationTestScenarios, err := toolkit.GetMockedResourceAndErrorFromContext(ctx, AllIntegrationTestScenariosForComponentGroupContextKey, []v1beta2.IntegrationTestScenario{})
+	return &integrationTestScenarios, err
+}
+
 // GetRequiredIntegrationTestScenariosForSnapshot returns the resource and error passed as values of the context.
 func (l *mockLoader) GetRequiredIntegrationTestScenariosForSnapshot(ctx context.Context, c client.Client, application *applicationapiv1alpha1.Application, snapshot *applicationapiv1alpha1.Snapshot) (*[]v1beta2.IntegrationTestScenario, error) {
 	if ctx.Value(RequiredIntegrationTestScenariosContextKey) == nil {
@@ -199,6 +210,14 @@ func (l *mockLoader) GetScenario(ctx context.Context, c client.Client, name, nam
 		return l.loader.GetScenario(ctx, c, name, namespace)
 	}
 	return toolkit.GetMockedResourceAndErrorFromContext(ctx, GetScenarioContextKey, &v1beta2.IntegrationTestScenario{})
+}
+
+// GetComponentGroup returns the resource and error passed as values of the context.
+func (l *mockLoader) GetComponentGroup(ctx context.Context, c client.Client, name, namespace string) (*v1beta2.ComponentGroup, error) {
+	if ctx.Value(GetComponentGroupContextKey) == nil {
+		return l.loader.GetComponentGroup(ctx, c, name, namespace)
+	}
+	return toolkit.GetMockedResourceAndErrorFromContext(ctx, GetComponentGroupContextKey, &v1beta2.ComponentGroup{})
 }
 
 func (l *mockLoader) GetAllSnapshotsForBuildPipelineRun(ctx context.Context, c client.Client, pipelineRun *tektonv1.PipelineRun) (*[]applicationapiv1alpha1.Snapshot, error) {

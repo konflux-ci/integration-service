@@ -50,12 +50,14 @@ type ObjectLoader interface {
 	GetApplicationFromComponent(ctx context.Context, c client.Client, component *applicationapiv1alpha1.Component) (*applicationapiv1alpha1.Application, error)
 	GetSnapshotFromPipelineRun(ctx context.Context, c client.Client, pipelineRun *tektonv1.PipelineRun) (*applicationapiv1alpha1.Snapshot, error)
 	GetAllIntegrationTestScenariosForApplication(ctx context.Context, c client.Client, application *applicationapiv1alpha1.Application) (*[]v1beta2.IntegrationTestScenario, error)
+	GetAllIntegrationTestScenariosForComponentGroup(ctx context.Context, c client.Client, componentGroup *v1beta2.ComponentGroup) (*[]v1beta2.IntegrationTestScenario, error)
 	GetRequiredIntegrationTestScenariosForSnapshot(ctx context.Context, c client.Client, application *applicationapiv1alpha1.Application, snapshot *applicationapiv1alpha1.Snapshot) (*[]v1beta2.IntegrationTestScenario, error)
 	GetAllIntegrationTestScenariosForSnapshot(ctx context.Context, c client.Client, application *applicationapiv1alpha1.Application, snapshot *applicationapiv1alpha1.Snapshot) (*[]v1beta2.IntegrationTestScenario, error)
 	GetAllPipelineRunsForSnapshotAndScenario(ctx context.Context, c client.Client, snapshot *applicationapiv1alpha1.Snapshot, integrationTestScenario *v1beta2.IntegrationTestScenario) (*[]tektonv1.PipelineRun, error)
 	GetAllSnapshots(ctx context.Context, c client.Client, application *applicationapiv1alpha1.Application) (*[]applicationapiv1alpha1.Snapshot, error)
 	GetAutoReleasePlansForApplication(ctx context.Context, c client.Client, application *applicationapiv1alpha1.Application, snapshot *applicationapiv1alpha1.Snapshot) (*[]releasev1alpha1.ReleasePlan, error)
 	GetScenario(ctx context.Context, c client.Client, name, namespace string) (*v1beta2.IntegrationTestScenario, error)
+	GetComponentGroup(ctx context.Context, c client.Client, name, namespace string) (*v1beta2.ComponentGroup, error)
 	GetAllSnapshotsForBuildPipelineRun(ctx context.Context, c client.Client, pipelineRun *tektonv1.PipelineRun) (*[]applicationapiv1alpha1.Snapshot, error)
 	GetAllSnapshotsForPR(ctx context.Context, c client.Client, application *applicationapiv1alpha1.Application, componentName, pullRequest string) (*[]applicationapiv1alpha1.Snapshot, error)
 	GetAllTaskRunsWithMatchingPipelineRunLabel(ctx context.Context, c client.Client, pipelineRun *tektonv1.PipelineRun) (*[]tektonv1.TaskRun, error)
@@ -231,6 +233,23 @@ func (l *loader) GetAllIntegrationTestScenariosForApplication(ctx context.Contex
 	return &integrationList.Items, nil
 }
 
+// GetAllIntegrationTestScenariosForComponentGroup returns all IntegrationTestScenarios used by the ComponentGroup being processed.
+func (l *loader) GetAllIntegrationTestScenariosForComponentGroup(ctx context.Context, c client.Client, componentGroup *v1beta2.ComponentGroup) (*[]v1beta2.IntegrationTestScenario, error) {
+	integrationList := &v1beta2.IntegrationTestScenarioList{}
+
+	opts := &client.ListOptions{
+		Namespace:     componentGroup.Namespace,
+		FieldSelector: fields.OneTermEqualSelector("spec.componentGroup", componentGroup.Name),
+	}
+
+	err := c.List(ctx, integrationList, opts)
+	if err != nil {
+		return nil, err
+	}
+
+	return &integrationList.Items, nil
+}
+
 // GetRequiredIntegrationTestScenariosForSnapshot returns the IntegrationTestScenarios used by the application and snapshot being processed.
 // An IntegrationTestScenarios will only be returned if it has the test.appstudio.openshift.io/optional
 // label not set to true or if it is missing the label entirely, and have the correct context for the defined snapshot.
@@ -345,6 +364,12 @@ func (l *loader) GetAutoReleasePlansForApplication(ctx context.Context, c client
 func (l *loader) GetScenario(ctx context.Context, c client.Client, name, namespace string) (*v1beta2.IntegrationTestScenario, error) {
 	scenario := &v1beta2.IntegrationTestScenario{}
 	return scenario, toolkit.GetObject(name, namespace, c, ctx, scenario)
+}
+
+// GetComponentGroup returns ComponentGroup requested by name and namespace
+func (l *loader) GetComponentGroup(ctx context.Context, c client.Client, name, namespace string) (*v1beta2.ComponentGroup, error) {
+	componentGroup := &v1beta2.ComponentGroup{}
+	return componentGroup, toolkit.GetObject(name, namespace, c, ctx, componentGroup)
 }
 
 // GetAllSnapshotsForBuildPipelineRun returns all Snapshots for the associated build pipelineRun.
