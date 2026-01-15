@@ -15,7 +15,6 @@
 package gitlab
 
 import (
-	"fmt"
 	"net/http"
 	"time"
 )
@@ -103,18 +102,12 @@ type CreateGeoSitesOptions struct {
 // GitLab API docs:
 // https://docs.gitlab.com/api/geo_sites/#create-a-new-geo-site
 func (s *GeoSitesService) CreateGeoSite(opt *CreateGeoSitesOptions, options ...RequestOptionFunc) (*GeoSite, *Response, error) {
-	req, err := s.client.NewRequest(http.MethodPost, "geo_sites", opt, options)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	site := new(GeoSite)
-	resp, err := s.client.Do(req, site)
-	if err != nil {
-		return nil, resp, err
-	}
-
-	return site, resp, nil
+	return do[*GeoSite](s.client,
+		withMethod(http.MethodPost),
+		withPath("geo_sites"),
+		withAPIOpts(opt),
+		withRequestOpts(options...),
+	)
 }
 
 // ListGeoSitesOptions represents the available ListGeoSites() options.
@@ -128,18 +121,11 @@ type ListGeoSitesOptions ListOptions
 // GitLab API docs:
 // https://docs.gitlab.com/api/geo_sites/#retrieve-configuration-about-all-geo-sites
 func (s *GeoSitesService) ListGeoSites(opt *ListGeoSitesOptions, options ...RequestOptionFunc) ([]*GeoSite, *Response, error) {
-	req, err := s.client.NewRequest(http.MethodGet, "geo_sites", opt, options)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	var sites []*GeoSite
-	resp, err := s.client.Do(req, &sites)
-	if err != nil {
-		return nil, resp, err
-	}
-
-	return sites, resp, nil
+	return do[[]*GeoSite](s.client,
+		withPath("geo_sites"),
+		withAPIOpts(opt),
+		withRequestOpts(options...),
+	)
 }
 
 // GetGeoSite gets a specific geo site.
@@ -147,20 +133,10 @@ func (s *GeoSitesService) ListGeoSites(opt *ListGeoSitesOptions, options ...Requ
 // GitLab API docs:
 // https://docs.gitlab.com/api/geo_sites/#retrieve-configuration-about-a-specific-geo-site
 func (s *GeoSitesService) GetGeoSite(id int, options ...RequestOptionFunc) (*GeoSite, *Response, error) {
-	u := fmt.Sprintf("geo_sites/%d", id)
-
-	req, err := s.client.NewRequest(http.MethodGet, u, nil, options)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	site := new(GeoSite)
-	resp, err := s.client.Do(req, site)
-	if err != nil {
-		return nil, resp, err
-	}
-
-	return site, resp, nil
+	return do[*GeoSite](s.client,
+		withPath("geo_sites/%d", id),
+		withRequestOpts(options...),
+	)
 }
 
 // EditGeoSiteOptions represents the available EditGeoSite() options.
@@ -187,20 +163,12 @@ type EditGeoSiteOptions struct {
 // GitLab API docs:
 // https://docs.gitlab.com/api/geo_sites/#edit-a-geo-site
 func (s *GeoSitesService) EditGeoSite(id int, opt *EditGeoSiteOptions, options ...RequestOptionFunc) (*GeoSite, *Response, error) {
-	u := fmt.Sprintf("geo_sites/%d", id)
-
-	req, err := s.client.NewRequest(http.MethodPut, u, opt, options)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	site := new(GeoSite)
-	resp, err := s.client.Do(req, site)
-	if err != nil {
-		return nil, resp, err
-	}
-
-	return site, resp, nil
+	return do[*GeoSite](s.client,
+		withMethod(http.MethodPut),
+		withPath("geo_sites/%d", id),
+		withAPIOpts(opt),
+		withRequestOpts(options...),
+	)
 }
 
 // DeleteGeoSite removes the Geo site.
@@ -208,14 +176,12 @@ func (s *GeoSitesService) EditGeoSite(id int, opt *EditGeoSiteOptions, options .
 // GitLab API docs:
 // https://docs.gitlab.com/api/geo_sites/#delete-a-geo-site
 func (s *GeoSitesService) DeleteGeoSite(id int, options ...RequestOptionFunc) (*Response, error) {
-	u := fmt.Sprintf("geo_sites/%d", id)
-
-	req, err := s.client.NewRequest(http.MethodDelete, u, nil, options)
-	if err != nil {
-		return nil, err
-	}
-
-	return s.client.Do(req, nil)
+	_, resp, err := do[none](s.client,
+		withMethod(http.MethodDelete),
+		withPath("geo_sites/%d", id),
+		withRequestOpts(options...),
+	)
+	return resp, err
 }
 
 // RepairGeoSite to repair the OAuth authentication of a Geo site.
@@ -223,20 +189,11 @@ func (s *GeoSitesService) DeleteGeoSite(id int, options ...RequestOptionFunc) (*
 // GitLab API docs:
 // https://docs.gitlab.com/api/geo_sites/#repair-a-geo-site
 func (s *GeoSitesService) RepairGeoSite(id int, options ...RequestOptionFunc) (*GeoSite, *Response, error) {
-	u := fmt.Sprintf("geo_sites/%d/repair", id)
-
-	req, err := s.client.NewRequest(http.MethodPost, u, nil, options)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	site := new(GeoSite)
-	resp, err := s.client.Do(req, site)
-	if err != nil {
-		return nil, resp, err
-	}
-
-	return site, resp, nil
+	return do[*GeoSite](s.client,
+		withMethod(http.MethodPost),
+		withPath("geo_sites/%d/repair", id),
+		withRequestOpts(options...),
+	)
 }
 
 // GeoSiteStatus represents the status of Geo Site.
@@ -457,7 +414,7 @@ type GeoSiteStatus struct {
 	Links                                           GeoSiteStatusLink `json:"_links"`
 }
 
-// GeoSiteStatus represents the status of Geo Site.
+// GeoSiteStatusLink represents the links for a GitLab Geo Site status.
 //
 // GitLab API docs:
 // https://docs.gitlab.com/api/geo_sites/#retrieve-status-about-all-geo-sites
@@ -477,18 +434,11 @@ type ListStatusOfAllGeoSitesOptions ListOptions
 // GitLab API docs:
 // https://docs.gitlab.com/api/geo_sites/#retrieve-status-about-all-geo-sites
 func (s *GeoSitesService) ListStatusOfAllGeoSites(opt *ListStatusOfAllGeoSitesOptions, options ...RequestOptionFunc) ([]*GeoSiteStatus, *Response, error) {
-	req, err := s.client.NewRequest(http.MethodGet, "geo_sites/status", nil, options)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	var statuses []*GeoSiteStatus
-	resp, err := s.client.Do(req, &statuses)
-	if err != nil {
-		return nil, resp, err
-	}
-
-	return statuses, resp, nil
+	return do[[]*GeoSiteStatus](s.client,
+		withPath("geo_sites/status"),
+		withAPIOpts(opt),
+		withRequestOpts(options...),
+	)
 }
 
 // GetStatusOfGeoSite get the of status of a specific Geo Sites.
@@ -496,18 +446,8 @@ func (s *GeoSitesService) ListStatusOfAllGeoSites(opt *ListStatusOfAllGeoSitesOp
 // GitLab API docs:
 // https://docs.gitlab.com/api/geo_sites/#retrieve-status-about-a-specific-geo-site
 func (s *GeoSitesService) GetStatusOfGeoSite(id int, options ...RequestOptionFunc) (*GeoSiteStatus, *Response, error) {
-	u := fmt.Sprintf("geo_sites/%d/status", id)
-
-	req, err := s.client.NewRequest(http.MethodGet, u, nil, options)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	status := new(GeoSiteStatus)
-	resp, err := s.client.Do(req, status)
-	if err != nil {
-		return nil, resp, err
-	}
-
-	return status, resp, nil
+	return do[*GeoSiteStatus](s.client,
+		withPath("geo_sites/%d/status", id),
+		withRequestOpts(options...),
+	)
 }
