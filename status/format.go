@@ -33,6 +33,7 @@ const commentTemplate = `### {{ .Title }}
 
 {{ .Summary }}`
 
+// summaryTemplate is a template used to generate a markdown summary for a test details with pipelinerun details and TaskRun details for unsuccessful tests.
 const summaryTemplate = `
 {{- $pipelineRunName := .PipelineRunName -}} {{ $namespace := .Namespace -}} {{ $logger := .Logger -}}
 <ul>
@@ -56,6 +57,7 @@ The group snapshot is generated for pr group {{ .PRGroup }} and the component sn
 {{- end }}
 {{end}}`
 
+// ShortSummaryTemplate is a more concise version of SummaryTemplate with pipelinerun details but without TaskRun details used to show for passed tests.
 const shortSummaryTemplate = `
 {{- $pipelineRunName := .PipelineRunName -}} {{ $namespace := .Namespace -}} {{ $logger := .Logger -}}
 <ul>

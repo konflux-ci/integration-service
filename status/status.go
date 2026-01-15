@@ -388,7 +388,7 @@ func GenerateSummary(state intgteststat.IntegrationTestStatus, snapshotName, sce
 	return summary, nil
 }
 
-// GenerateSummaryForAllScenarios returns summary for the given state and componentName for PR group when all ITS have the same status when snapshot have not been created due to various reasons
+// GenerateSummaryForAllScenarios returns summary for the given state and componentName or PR group when all ITS have the same status because snapshot have not been created due to various reasons
 func GenerateSummaryForAllScenarios(state intgteststat.IntegrationTestStatus, componentNameOrPrGroup string) (string, error) {
 	var summary string
 	var statusDesc string
@@ -431,7 +431,7 @@ func GenerateComponentNameWithPrefix(componentName string) string {
 }
 
 // function GenerateCommentTitleForComponent to generate comment title for component name "pr group" or "component component-sample"
-// to help search it in comment correctly to avoid component name is searched in pr group report
+// to help search it in comment correctly since all comments are posted together
 func GenerateCommentTitleForComponent(componentName string) string {
 	var commentTitle string
 	if componentName == gitops.ComponentNameForGroupSnapshot {

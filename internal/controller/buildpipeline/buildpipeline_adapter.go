@@ -339,7 +339,7 @@ func (a *Adapter) EnsureIntegrationTestReportedToGitProvider() (controller.Opera
 
 	var numComponentSnapshotScenarios, numGroupSnapshotScenarios int
 	tempComponentSnapshot := a.prepareTempComponentSnapshot(a.pipelineRun)
-	numComponentSnapshotScenarios, err = a.reportStatusForExpectedSnapshot(a.pipelineRun, tempComponentSnapshot, allIntegrationTestScenarios, integrationTestStatus, a.component, a.component.Name)
+	numComponentSnapshotScenarios, err = a.reportStatusForExpectedSnapshot(a.pipelineRun, tempComponentSnapshot, allIntegrationTestScenarios, integrationTestStatus, a.component.Name)
 	if err != nil {
 		a.logger.Error(err, "failed to report status for expected group Snapshot")
 		return controller.RequeueWithError(err)
@@ -355,7 +355,7 @@ func (a *Adapter) EnsureIntegrationTestReportedToGitProvider() (controller.Opera
 	if isGroupSnapshotExpected {
 		a.logger.Info("group snapshot is expected to be created for build pipelinerun, group integration test should be set for found context scenario", "pipelineRun.Name", a.pipelineRun.Name)
 		tempGroupSnapshot := a.prepareTempGroupSnapshot(a.pipelineRun)
-		numGroupSnapshotScenarios, err = a.reportStatusForExpectedSnapshot(a.pipelineRun, tempGroupSnapshot, allIntegrationTestScenarios, integrationTestStatus, a.component, gitops.ComponentNameForGroupSnapshot)
+		numGroupSnapshotScenarios, err = a.reportStatusForExpectedSnapshot(a.pipelineRun, tempGroupSnapshot, allIntegrationTestScenarios, integrationTestStatus, gitops.ComponentNameForGroupSnapshot)
 		if err != nil {
 			a.logger.Error(err, "failed to report status for expected group Snapshot")
 			return controller.RequeueWithError(err)
@@ -374,7 +374,7 @@ func (a *Adapter) EnsureIntegrationTestReportedToGitProvider() (controller.Opera
 
 // reportStatusForGroupSnapshot reports the initial integration test statuses for the expected Snapshot
 func (a *Adapter) reportStatusForExpectedSnapshot(pipelineRun *tektonv1.PipelineRun, snapshot *applicationapiv1alpha1.Snapshot, integrationTestScenarios *[]v1beta2.IntegrationTestScenario,
-	integrationTestStatus intgteststat.IntegrationTestStatus, component *applicationapiv1alpha1.Component, componentNameOrPrGroup string) (int, error) {
+	integrationTestStatus intgteststat.IntegrationTestStatus, componentNameOrPrGroup string) (int, error) {
 	integrationTestScenariosForSnapshot := gitops.FilterIntegrationTestScenariosWithContext(integrationTestScenarios, snapshot)
 	numIntegrationTestScenarios := len(*integrationTestScenariosForSnapshot)
 	if numIntegrationTestScenarios > 0 {

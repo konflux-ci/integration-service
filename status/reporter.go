@@ -46,7 +46,7 @@ type TestReport struct {
 	ComponentName string
 	// text with details of test results
 	Text string
-	// short text with pipeline name but without taskrun details
+	// short text with pipelinerun link but without taskrun details
 	ShortText string
 	// test status
 	Status intgteststat.IntegrationTestStatus
@@ -71,7 +71,7 @@ type ReporterInterface interface {
 	ReportStatus(context.Context, TestReport) (int, error)
 	// Is the return code a recoverable error
 	ReturnCodeIsUnrecoverable(statusCode int) bool
-	// Update status comment in the gitlab merge request, declared in reporter_gitlab.go
+	// Update status comment in the gitlab merge request, implemented and used in reporter_gitlab.go
 	UpdateStatusInComment(string, string) (int, error)
 }
 

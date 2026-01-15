@@ -303,7 +303,7 @@ const (
 
 	// GitCommentPolicyAnnotation is the annotation to control git comment policy for the component
 	GitCommentPolicyAnnotation = "test.appstudio.openshift.io/comment_strategy"
-	// GitCommentPolicyAllDisabled is the value to disable all test comments for the component
+	// GitCommentPolicyAllDisabled is the value to disable all test comments for the component got pac repository
 	GitCommentPolicyAllDisabled = "disable_all"
 )
 
@@ -1526,11 +1526,16 @@ func GenerateSnapshotNameWithTimestamp(prefix string, unixMilli int64, suffix ..
 	return name
 }
 
-// IsAllCommentDisabledForPacRepositoryInComponent
+// IsAllCommentDisabledForPacRepositoryInComponent checks if all git comments are disabled in pac repository for the given component
 func IsAllCommentDisabledForPacRepositoryInComponent(ctx context.Context, adapterClient client.Client, component *applicationapiv1alpha1.Component) (bool, error) {
 	log := log.FromContext(ctx)
 
+	if !HaveGitSourceInComponent(*component) {
+		log.Info(fmt.Sprintf("git source is not defined in component %s/%s", component.Namespace, component.Name))
+		return false, nil
+	}
 	url := component.Spec.Source.GitSource.URL
+
 	repos := pacv1alpha1.RepositoryList{}
 	if err := adapterClient.List(ctx, &repos, &client.ListOptions{Namespace: component.Namespace}); err != nil {
 		log.Error(err, fmt.Sprintf("failed to get repo from namespace %s", component.Namespace))
@@ -1546,13 +1551,13 @@ func IsAllCommentDisabledForPacRepositoryInComponent(ctx context.Context, adapte
 	return false, nil
 }
 
-// IsIntegrationTestCommentDisabledForComponent checks if all git comments are disabled for the integration test status of given component in snapshot
+// IsIntegrationTestCommentDisabledForComponent checks if all git comments are disabled for the integration test status of given component
 func IsIntegrationTestCommentDisabledForComponent(component *applicationapiv1alpha1.Component) bool {
 	return metadata.HasAnnotationWithValue(component, GitCommentPolicyAnnotation, GitCommentPolicyAllDisabled)
 }
 
 func IsCommentDisabled(ctx context.Context, adapterClient client.Client, component *applicationapiv1alpha1.Component) (bool, error) {
-	// check if all comments are disabled for the component's repository in PAC Repository CR
+	// check if all comments are disabled for the component's PAC Repository CR
 	allDisabled, err := IsAllCommentDisabledForPacRepositoryInComponent(ctx, adapterClient, component)
 	if err != nil {
 		return false, err
