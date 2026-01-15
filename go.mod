@@ -10,7 +10,7 @@ require (
 	github.com/bradleyfalzon/ghinstallation/v2 v2.16.0
 	github.com/ghodss/yaml v1.0.0
 	github.com/go-logr/logr v1.4.3
-	github.com/google/cel-go v0.23.1
+	github.com/google/cel-go v0.26.1
 	github.com/google/go-containerregistry v0.20.7
 	github.com/google/go-github/v45 v45.2.0
 	github.com/konflux-ci/application-api v0.0.0-20250324201748-5a9670bf7679
@@ -24,8 +24,8 @@ require (
 	github.com/santhosh-tekuri/jsonschema/v5 v5.3.1
 	github.com/tektoncd/pipeline v0.68.0
 	github.com/tonglil/buflogr v1.1.1
-	gitlab.com/gitlab-org/api/client-go v0.134.0
-	go.uber.org/mock v0.5.2
+	gitlab.com/gitlab-org/api/client-go v1.14.0
+	go.uber.org/mock v0.6.0
 	go.uber.org/zap v1.27.0
 	golang.org/x/exp v0.0.0-20260112195511-716be5621a96
 	golang.org/x/oauth2 v0.33.0
@@ -86,7 +86,7 @@ require (
 	github.com/google/gnostic-models v0.7.0 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/google/go-github/v72 v72.0.0 // indirect
-	github.com/google/go-querystring v1.1.0 // indirect
+	github.com/google/go-querystring v1.2.0 // indirect
 	github.com/google/gofuzz v1.2.0 // indirect
 	github.com/google/pprof v0.0.0-20251114195745-4902fdda35c8 // indirect
 	github.com/google/uuid v1.6.0 // indirect
@@ -110,7 +110,7 @@ require (
 	github.com/prometheus/procfs v0.19.2 // indirect
 	github.com/prometheus/statsd_exporter v0.28.0 // indirect
 	github.com/spf13/pflag v1.0.10 // indirect
-	github.com/stoewer/go-strcase v1.3.0 // indirect
+	github.com/stoewer/go-strcase v1.3.1 // indirect
 	go.opencensus.io v0.24.0 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.63.0 // indirect
@@ -138,7 +138,7 @@ require (
 	google.golang.org/genproto/googleapis/api v0.0.0-20251202230838-ff82c1b0f217 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20251202230838-ff82c1b0f217 // indirect
 	google.golang.org/grpc v1.77.0 // indirect
-	google.golang.org/protobuf v1.36.10 // indirect
+	google.golang.org/protobuf v1.36.11 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect

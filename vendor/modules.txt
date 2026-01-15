@@ -147,7 +147,7 @@ github.com/golang/groupcache/lru
 ## explicit; go 1.17
 github.com/golang/protobuf/proto
 github.com/golang/protobuf/ptypes/timestamp
-# github.com/google/cel-go v0.23.1 => github.com/google/cel-go v0.17.7
+# github.com/google/cel-go v0.26.1 => github.com/google/cel-go v0.17.7
 ## explicit; go 1.18
 github.com/google/cel-go/cel
 github.com/google/cel-go/checker
@@ -194,8 +194,8 @@ github.com/google/go-github/v45/github
 # github.com/google/go-github/v72 v72.0.0
 ## explicit; go 1.23.0
 github.com/google/go-github/v72/github
-# github.com/google/go-querystring v1.1.0
-## explicit; go 1.10
+# github.com/google/go-querystring v1.2.0
+## explicit; go 1.13
 github.com/google/go-querystring/query
 # github.com/google/gofuzz v1.2.0
 ## explicit; go 1.12
@@ -353,7 +353,7 @@ github.com/santhosh-tekuri/jsonschema/v5
 # github.com/spf13/pflag v1.0.10
 ## explicit; go 1.12
 github.com/spf13/pflag
-# github.com/stoewer/go-strcase v1.3.0
+# github.com/stoewer/go-strcase v1.3.1
 ## explicit; go 1.11
 github.com/stoewer/go-strcase
 # github.com/tektoncd/pipeline v0.68.0
@@ -379,8 +379,8 @@ github.com/tektoncd/pipeline/pkg/substitution
 # github.com/tonglil/buflogr v1.1.1
 ## explicit; go 1.17
 github.com/tonglil/buflogr
-# gitlab.com/gitlab-org/api/client-go v0.134.0
-## explicit; go 1.23.0
+# gitlab.com/gitlab-org/api/client-go v1.14.0
+## explicit; go 1.24.0
 gitlab.com/gitlab-org/api/client-go
 # go.opencensus.io v0.24.0
 ## explicit; go 1.13
@@ -470,8 +470,8 @@ go.uber.org/automaxprocs
 go.uber.org/automaxprocs/internal/cgroups
 go.uber.org/automaxprocs/internal/runtime
 go.uber.org/automaxprocs/maxprocs
-# go.uber.org/mock v0.5.2
-## explicit; go 1.23
+# go.uber.org/mock v0.6.0
+## explicit; go 1.23.0
 go.uber.org/mock/gomock
 # go.uber.org/multierr v1.11.0
 ## explicit; go 1.19
@@ -667,7 +667,7 @@ google.golang.org/grpc/serviceconfig
 google.golang.org/grpc/stats
 google.golang.org/grpc/status
 google.golang.org/grpc/tap
-# google.golang.org/protobuf v1.36.10
+# google.golang.org/protobuf v1.36.11
 ## explicit; go 1.23
 google.golang.org/protobuf/encoding/protodelim
 google.golang.org/protobuf/encoding/protojson
