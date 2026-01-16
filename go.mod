@@ -2,7 +2,7 @@ module github.com/konflux-ci/integration-service
 
 go 1.24.4
 
-toolchain go1.24.5
+toolchain go1.25.6
 
 require (
 	code.gitea.io/sdk/gitea v0.22.1
