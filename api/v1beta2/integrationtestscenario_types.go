@@ -35,11 +35,18 @@ const (
 )
 
 // IntegrationTestScenarioSpec defines the desired state of IntegrationScenario
+// Exactly one of Application or ComponentGroup must be specified.
 type IntegrationTestScenarioSpec struct {
-	// Application that's associated with the IntegrationTestScenario
+	// Application that's associated with the IntegrationTestScenario.
+	// Mutually exclusive with ComponentGroup - exactly one must be specified.
 	// +kubebuilder:validation:Pattern=^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
-	// +required
-	Application string `json:"application"`
+	// +optional
+	Application string `json:"application,omitempty"`
+	// ComponentGroup that's associated with the IntegrationTestScenario.
+	// Mutually exclusive with Application - exactly one must be specified.
+	// +kubebuilder:validation:Pattern=^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+	// +optional
+	ComponentGroup string `json:"componentGroup,omitempty"`
 	// Tekton Resolver where to store the Tekton resolverRef trigger Tekton pipeline used to refer to a Pipeline or Task in a remote location like a git repo.
 	// +required
 	ResolverRef ResolverRef `json:"resolverRef"`
@@ -73,6 +80,7 @@ type TestContext struct {
 // +kubebuilder:resource:shortName=its
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="Application",type=string,JSONPath=`.spec.application`
+// +kubebuilder:printcolumn:name="ComponentGroup",type=string,JSONPath=`.spec.componentGroup`
 // +kubebuilder:storageversion
 
 // IntegrationTestScenario is the Schema for the integrationtestscenarios API, holds a definiton for integration test with specified attributes like pipeline reference,
@@ -83,6 +91,24 @@ type IntegrationTestScenario struct {
 
 	Spec   IntegrationTestScenarioSpec   `json:"spec,omitempty"`
 	Status IntegrationTestScenarioStatus `json:"status,omitempty"`
+}
+
+// HasApplication returns true if the IntegrationTestScenario is associated with an Application.
+func (its *IntegrationTestScenario) HasApplication() bool {
+	return its.Spec.Application != ""
+}
+
+// HasComponentGroup returns true if the IntegrationTestScenario is associated with a ComponentGroup.
+func (its *IntegrationTestScenario) HasComponentGroup() bool {
+	return its.Spec.ComponentGroup != ""
+}
+
+// OwnerName returns the name of the owner (Application or ComponentGroup).
+func (its *IntegrationTestScenario) OwnerName() string {
+	if its.HasApplication() {
+		return its.Spec.Application
+	}
+	return its.Spec.ComponentGroup
 }
 
 // +kubebuilder:object:root=true

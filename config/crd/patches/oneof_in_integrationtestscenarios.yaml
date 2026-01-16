@@ -1,0 +1,21 @@
+# This patch adds oneOf validation to ensure exactly one of application or componentGroup is specified
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: integrationtestscenarios.appstudio.redhat.com
+spec:
+  versions:
+  - name: v1beta2
+    schema:
+      openAPIV3Schema:
+        properties:
+          spec:
+            oneOf:
+            - required: ["application"]
+              properties:
+                componentGroup:
+                  maxLength: 0
+            - required: ["componentGroup"]
+              properties:
+                application:
+                  maxLength: 0
