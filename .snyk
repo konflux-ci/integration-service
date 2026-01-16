@@ -1,4 +1,12 @@
 exclude:
   code:
     - "**/*_test.go"
-
+ignore:
+  'SNYK-GOLANG-CODEGITEAIOGITEAROUTERSREPO-1061997':
+    - '*':
+        reason: 'Windows-specific issue not affecting our linux'
+        expires: '2026-07-01T12:00:00.000Z'
+  'SNYK-GOLANG-GITHUBCOMCERTMANAGERCERTMANAGER-7558679':
+    - '*':
+        reason: 'secret is not configured to use cert-manager under integration-service'
+        expires: '2026-07-01T12:00:00.000Z'
