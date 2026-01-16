@@ -48,7 +48,7 @@ type snapshotData struct {
 func garbageCollectSnapshots(
 	cl client.Client,
 	logger logr.Logger,
-	prSnapshotsToKeep, nonPrSnapshotsToKeep int,
+	prSnapshotsToKeep, nonPrSnapshotsToKeep, minSnapShotsToKeepPerComponent int,
 ) error {
 	namespaces, err := getTenantNamespaces(cl, logger)
 	if err != nil {
@@ -90,7 +90,7 @@ func garbageCollectSnapshots(
 		nonPrSnapshotsToKeep -= len(snapToData)
 
 		candidates = getSnapshotsForRemoval(
-			cl, candidates, prSnapshotsToKeep, nonPrSnapshotsToKeep, logger,
+			cl, candidates, prSnapshotsToKeep, nonPrSnapshotsToKeep, minSnapShotsToKeepPerComponent, logger,
 		)
 
 		deleteSnapshots(cl, candidates, logger)
@@ -264,6 +264,7 @@ func getSnapshotsForRemoval(
 	snapshots []applicationapiv1alpha1.Snapshot,
 	prSnapshotsToKeep int,
 	nonPrSnapshotsToKeep int,
+	minSnapShotsToKeepPerComponent int,
 	logger logr.Logger,
 ) []applicationapiv1alpha1.Snapshot {
 	sort.Slice(snapshots, func(i, j int) bool {
@@ -271,12 +272,81 @@ func getSnapshotsForRemoval(
 		return snapshots[j].CreationTimestamp.Before(&snapshots[i].CreationTimestamp)
 	})
 
+	// preservedPerComponent is a map to track if a snapshot is preserved from garbage collection
+	preservedPerComponent := make(map[string]bool)
+
+	// Group push snapshots by component
+	componentToPushSnapshots := make(map[string][]applicationapiv1alpha1.Snapshot)
+	for _, snap := range snapshots {
+
+		if !isNonPrSnapshot(snap) {
+			continue
+		}
+
+		if !metadata.HasLabelWithValue(&snap, "test.appstudio.openshift.io/type", "component") {
+			continue
+		}
+
+		componentName := snap.GetLabels()["appstudio.openshift.io/component"]
+
+		if componentName == "" {
+			logger.V(1).Info(
+				"Skipping snapshot as component label is empty",
+				"namespace", snap.Namespace,
+				"snapshot.name", snap.Name,
+			)
+			continue
+		}
+
+		componentToPushSnapshots[componentName] = append(componentToPushSnapshots[componentName], snap)
+
+	}
+
+	// For each component, mark the latest N push snapshots as preserved
+	for componentName, compSnapshots := range componentToPushSnapshots {
+		// sorting in reverse order, so we keep the latest snapshots
+		sort.Slice(compSnapshots, func(i, j int) bool {
+			return compSnapshots[j].CreationTimestamp.Before(&compSnapshots[i].CreationTimestamp)
+		})
+
+		keepCount := minSnapShotsToKeepPerComponent
+		if len(compSnapshots) < keepCount {
+			keepCount = len(compSnapshots)
+		}
+
+		for i := 0; i < keepCount; i++ {
+			preservedPerComponent[compSnapshots[i].Name] = true
+			logger.V(1).Info(
+				"Preserving push snapshot per component minimum",
+				"component", componentName,
+				"snapshot.name", compSnapshots[i].Name,
+			)
+		}
+	}
+
 	shortList := []applicationapiv1alpha1.Snapshot{}
 	keptPrSnaps := 0
 	keptNonPrSnaps := 0
 
 	for _, snap := range snapshots {
 		snap := snap
+		if preservedPerComponent[snap.Name] {
+			logger.V(1).Info(
+				"Skipping snapshot (preserved per component minimum kept count)",
+				"namespace", snap.Namespace,
+				"snapshot.name", snap.Name,
+				"min-snapshots-to-keep-per-component", minSnapShotsToKeepPerComponent,
+			)
+
+			// count the snapshot towards the total number of snapshots to keep / global limits
+			if isNonPrSnapshot(snap) {
+				keptNonPrSnaps++
+			} else {
+				keptPrSnaps++
+			}
+			continue
+		}
+
 		// override snapshot does not have the event-type label, but we still want to add it to the cleanup list
 		if isNonPrSnapshot(snap) {
 			if keptNonPrSnaps < nonPrSnapshotsToKeep {
@@ -340,7 +410,7 @@ func deleteSnapshots(
 }
 
 func main() {
-	var prSnapshotsToKeep, nonPrSnapshotsToKeep int
+	var prSnapshotsToKeep, nonPrSnapshotsToKeep, minSnapShotsToKeepPerComponent int
 	flag.IntVar(
 		&prSnapshotsToKeep,
 		"pr-snapshots-to-keep",
@@ -353,6 +423,13 @@ func main() {
 		512,
 		"Number of non-PR snapshots to keep after garbage collection",
 	)
+	flag.IntVar(
+		&minSnapShotsToKeepPerComponent,
+		"min-snapshots-to-keep-per-component",
+		5,
+		"Number of push snapshots to keep per component",
+	)
+
 	opts := zap.Options{
 		Development: false,
 		TimeEncoder: zapcore.RFC3339TimeEncoder,
@@ -380,6 +457,13 @@ func main() {
 			panic(err.Error())
 		}
 	}
+	if value, ok := os.LookupEnv("MIN_SNAPSHOTS_TO_KEEP_PER_COMPONENT"); ok {
+		minSnapShotsToKeepPerComponent, err = strconv.Atoi(value)
+		if err != nil {
+			logger.Error(err, "Failed parsing env var MIN_SNAPSHOTS_TO_KEEP_PER_COMPONENT")
+			panic(err.Error())
+		}
+	}
 
 	cl, err := client.New(config.GetConfigOrDie(), client.Options{Scheme: scheme})
 	if err != nil {
@@ -387,7 +471,7 @@ func main() {
 		panic(err.Error())
 	}
 
-	err = garbageCollectSnapshots(cl, logger, prSnapshotsToKeep, nonPrSnapshotsToKeep)
+	err = garbageCollectSnapshots(cl, logger, prSnapshotsToKeep, nonPrSnapshotsToKeep, minSnapShotsToKeepPerComponent)
 	if err != nil {
 		logger.Error(err, "Snapshots garbage collection failed")
 		panic(err.Error())
