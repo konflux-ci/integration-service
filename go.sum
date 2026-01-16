@@ -286,8 +286,8 @@ github.com/kisielk/errcheck v1.5.0/go.mod h1:pFxgyoBC7bSaBwPgfKdkLd5X25qrDl4LWUI
 github.com/kisielk/gotool v1.0.0/go.mod h1:XhKaO+MFFWcvkIS/tQcRk01m1F5IRFswLeQ+oQHNcck=
 github.com/klauspost/compress v1.18.1 h1:bcSGx7UbpBqMChDtsF28Lw6v/G94LPrrbMbdC3JH2co=
 github.com/klauspost/compress v1.18.1/go.mod h1:ZQFFVG+MdnR0P+l6wpXgIL4NTtwiKIdBnrBd8Nrxr+0=
-github.com/konflux-ci/application-api v0.0.0-20250324201748-5a9670bf7679 h1:mtLA7dQ9iIncxYoOLgty2B1l1cucnp/tsbxQaKn9Myw=
-github.com/konflux-ci/application-api v0.0.0-20250324201748-5a9670bf7679/go.mod h1:948Z+a1IbfRT0RtoHzWWSN9YEucSbMJTHaMhz7dVICc=
+github.com/konflux-ci/application-api v0.0.0-20251210122215-555a927cf6d9 h1:b4tC2iM/0AUljmLHmo6yMmQpmwW/NE8Av44PjwU9QIQ=
+github.com/konflux-ci/application-api v0.0.0-20251210122215-555a927cf6d9/go.mod h1:948Z+a1IbfRT0RtoHzWWSN9YEucSbMJTHaMhz7dVICc=
 github.com/konflux-ci/coverport/instrumentation/go v0.0.0-20251127115143-b5207b335f8b h1:NoriO1KRc+7d2/JA07JizqxP0LlA2oJdD5AuQOvEIjE=
 github.com/konflux-ci/coverport/instrumentation/go v0.0.0-20251127115143-b5207b335f8b/go.mod h1:WVMHU9A2464s/vjH1xOTm4LJDD4xP+VlEiU+KM0gkSU=
 github.com/konflux-ci/operator-toolkit v0.0.0-20240402130556-ef6dcbeca69d h1:z7j3mglNoXvIrw5Vz/Ul+izoITRaqYURPIWrFoEyHgI=
