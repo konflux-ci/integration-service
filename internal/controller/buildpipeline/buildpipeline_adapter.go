@@ -374,11 +374,11 @@ func (a *Adapter) EnsureIntegrationTestReportedToGitProvider() (controller.Opera
 
 // reportStatusForGroupSnapshot reports the initial integration test statuses for the expected Snapshot
 func (a *Adapter) reportStatusForExpectedSnapshot(pipelineRun *tektonv1.PipelineRun, snapshot *applicationapiv1alpha1.Snapshot, integrationTestScenarios *[]v1beta2.IntegrationTestScenario,
-	integrationTestStatus intgteststat.IntegrationTestStatus, componentName string) (int, error) {
+	integrationTestStatus intgteststat.IntegrationTestStatus, componentNameOrPrGroup string) (int, error) {
 	integrationTestScenariosForSnapshot := gitops.FilterIntegrationTestScenariosWithContext(integrationTestScenarios, snapshot)
 	numIntegrationTestScenarios := len(*integrationTestScenariosForSnapshot)
 	if numIntegrationTestScenarios > 0 {
-		isErrorRecoverable, err := a.ReportIntegrationTestStatusAccordingToBuildPLR(pipelineRun, snapshot, integrationTestScenariosForSnapshot, integrationTestStatus, componentName)
+		isErrorRecoverable, err := a.ReportIntegrationTestStatusAccordingToBuildPLR(pipelineRun, snapshot, integrationTestScenariosForSnapshot, integrationTestStatus, componentNameOrPrGroup)
 		if err != nil {
 			a.logger.Error(err, "failed to initialize integration test status or report snapshot creation status to git provider from build pipelineRun",
 				"pipelineRun.Namespace", a.pipelineRun.Namespace, "pipelineRun.Name", a.pipelineRun.Name, "isErrorRecoverable", isErrorRecoverable)
@@ -836,7 +836,7 @@ func (a *Adapter) prepareTempGroupSnapshot(pipelineRun *tektonv1.PipelineRun) *a
 }
 
 func (a *Adapter) ReportIntegrationTestStatusAccordingToBuildPLR(pipelineRun *tektonv1.PipelineRun, snapshot *applicationapiv1alpha1.Snapshot, integrationTestScenarios *[]v1beta2.IntegrationTestScenario,
-	integrationTestStatus intgteststat.IntegrationTestStatus, componentName string) (bool, error) {
+	integrationTestStatus intgteststat.IntegrationTestStatus, componentNameOrPrGroup string) (bool, error) {
 	var isErrorRecoverable = true
 	reporter := a.status.GetReporter(snapshot)
 
@@ -874,7 +874,7 @@ func (a *Adapter) ReportIntegrationTestStatusAccordingToBuildPLR(pipelineRun *te
 		if err != nil {
 			return err
 		}
-		statusCode, err = status.IterateIntegrationTestInStatusReport(a.context, a.client, reporter, snapshot, integrationTestScenarios, intgTestStatusDetails, componentName)
+		statusCode, err = status.IterateIntegrationTestScenarioWithSameStatus(a.context, a.client, reporter, snapshot, integrationTestScenarios, intgTestStatusDetails, a.component, componentNameOrPrGroup)
 		if err != nil {
 			a.logger.Error(err, fmt.Sprintf("failed to report integration test status according to build pipelinerun %s/%s",
 				pipelineRun.Namespace, pipelineRun.Name))

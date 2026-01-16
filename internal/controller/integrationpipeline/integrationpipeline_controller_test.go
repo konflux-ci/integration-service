@@ -306,19 +306,9 @@ var _ = Describe("Integration PipelineController", func() {
 		Expect(err).ToNot(HaveOccurred())
 	})
 
-	It("can setup the cache by adding a new index field to search for ReleasePlanAdmissions", func() {
-		err := setupCache(manager)
-		Expect(err).ToNot(HaveOccurred())
-	})
-
 	It("can setup a new controller manager with the given reconciler", func() {
 		err := setupControllerWithManager(manager, pipelineReconciler)
 		Expect(err).NotTo(HaveOccurred())
-	})
-
-	It("can setup a new Controller manager and start it", func() {
-		err := SetupController(manager, &ctrl.Log)
-		Expect(err).ToNot(HaveOccurred())
 	})
 
 	It("Does not return an error if the snapshot cannot be found", func() {

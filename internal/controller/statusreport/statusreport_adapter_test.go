@@ -931,6 +931,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 				SnapshotName:        "snapshot-pr-sample",
 				ComponentName:       "component-sample",
 				Text:                "Test in progress",
+				ShortText:           "Test in progress",
 				Summary:             "Integration test for component component-sample snapshot snapshot-pr-sample and scenario scenario1 is in progress",
 				Status:              intgteststat.IntegrationTestStatusInProgress,
 				StartTime:           &t,
