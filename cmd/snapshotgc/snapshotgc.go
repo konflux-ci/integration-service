@@ -59,6 +59,10 @@ func garbageCollectSnapshots(
 	for _, ns := range namespaces {
 		logger.V(1).Info("Processing namespace", "namespace", ns.Name)
 
+		// Use local copies per namespace to prevent cumulative decrease across namespaces
+		localPrSnapshotsToKeep := prSnapshotsToKeep
+		localNonPrSnapshotsToKeep := nonPrSnapshotsToKeep
+
 		snapToData := make(map[string]snapshotData)
 		snapToData, err = getSnapshotsForNSReleases(cl, snapToData, ns.Name, logger)
 		if err != nil {
@@ -83,14 +87,14 @@ func garbageCollectSnapshots(
 		}
 
 		candidates, keptPrSnapshots, keptNonPrSnapshots := filterSnapshotsWithKeepSnapshotAnnotation(candidates)
-		prSnapshotsToKeep -= keptPrSnapshots
+		localPrSnapshotsToKeep -= keptPrSnapshots
 		// Both the Snapshots associated with Releases and ones that have been marked with
 		// the keep snapshot annotation count against the non-PR limit
-		nonPrSnapshotsToKeep -= keptNonPrSnapshots
-		nonPrSnapshotsToKeep -= len(snapToData)
+		localNonPrSnapshotsToKeep -= keptNonPrSnapshots
+		localNonPrSnapshotsToKeep -= len(snapToData)
 
 		candidates = getSnapshotsForRemoval(
-			cl, candidates, prSnapshotsToKeep, nonPrSnapshotsToKeep, minSnapShotsToKeepPerComponent, logger,
+			cl, candidates, localPrSnapshotsToKeep, localNonPrSnapshotsToKeep, minSnapShotsToKeepPerComponent, logger,
 		)
 
 		deleteSnapshots(cl, candidates, logger)
