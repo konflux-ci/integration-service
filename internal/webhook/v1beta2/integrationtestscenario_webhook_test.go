@@ -36,6 +36,7 @@ var _ = Describe("IntegrationTestScenario webhook", Ordered, func() {
 		integrationTestScenario                   *v1beta2.IntegrationTestScenario
 		integrationTestScenarioInvalidGitResolver *v1beta2.IntegrationTestScenario
 		hasApp                                    *applicationapiv1alpha1.Application
+		hasComponentGroup                         *v1beta2.ComponentGroup
 	)
 
 	BeforeAll(func() {
@@ -50,6 +51,24 @@ var _ = Describe("IntegrationTestScenario webhook", Ordered, func() {
 			},
 		}
 		Expect(k8sClient.Create(ctx, hasApp)).Should(Succeed())
+
+		hasComponentGroup = &v1beta2.ComponentGroup{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "componentgroup-sample",
+				Namespace: "default",
+			},
+			Spec: v1beta2.ComponentGroupSpec{
+				Components: []v1beta2.ComponentReference{
+					{
+						Name: "component-a",
+						ComponentBranch: v1beta2.ComponentBranchReference{
+							Name: "main",
+						},
+					},
+				},
+			},
+		}
+		Expect(k8sClient.Create(ctx, hasComponentGroup)).Should(Succeed())
 	})
 
 	BeforeEach(func() {
@@ -104,6 +123,8 @@ var _ = Describe("IntegrationTestScenario webhook", Ordered, func() {
 
 	AfterAll(func() {
 		err := k8sClient.Delete(ctx, hasApp)
+		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
+		err = k8sClient.Delete(ctx, hasComponentGroup)
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 	})
 
@@ -261,5 +282,103 @@ var _ = Describe("IntegrationTestScenario webhook", Ordered, func() {
 		token := "My_Secret"
 		err := validateToken(token)
 		Expect(err).To(HaveOccurred())
+	})
+
+	It("should fail validation when both application and componentGroup are specified", func() {
+		scenario := &v1beta2.IntegrationTestScenario{
+			Spec: v1beta2.IntegrationTestScenarioSpec{
+				Application:    "test-app",
+				ComponentGroup: "test-cg",
+			},
+		}
+		err := validateOwnerField(scenario)
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("exactly one of 'application' or 'componentGroup' must be specified, not both"))
+	})
+
+	It("should fail validation when neither application nor componentGroup is specified", func() {
+		scenario := &v1beta2.IntegrationTestScenario{
+			Spec: v1beta2.IntegrationTestScenarioSpec{},
+		}
+		err := validateOwnerField(scenario)
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("exactly one of 'application' or 'componentGroup' must be specified"))
+	})
+
+	It("should pass validation when only application is specified", func() {
+		scenario := &v1beta2.IntegrationTestScenario{
+			Spec: v1beta2.IntegrationTestScenarioSpec{
+				Application: "test-app",
+			},
+		}
+		err := validateOwnerField(scenario)
+		Expect(err).NotTo(HaveOccurred())
+	})
+
+	It("should pass validation when only componentGroup is specified", func() {
+		scenario := &v1beta2.IntegrationTestScenario{
+			Spec: v1beta2.IntegrationTestScenarioSpec{
+				ComponentGroup: "test-cg",
+			},
+		}
+		err := validateOwnerField(scenario)
+		Expect(err).NotTo(HaveOccurred())
+	})
+
+	It("should create scenario with componentGroup successfully", func() {
+		cgScenario := &v1beta2.IntegrationTestScenario{
+			TypeMeta: metav1.TypeMeta{
+				APIVersion: "appstudio.redhat.com/v1beta2",
+				Kind:       "IntegrationTestScenario",
+			},
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "integrationtestscenario-cg",
+				Namespace: "default",
+			},
+			Spec: v1beta2.IntegrationTestScenarioSpec{
+				ComponentGroup: "componentgroup-sample",
+				ResolverRef: v1beta2.ResolverRef{
+					Resolver: "git",
+					Params: []v1beta2.ResolverParameter{
+						{
+							Name:  "url",
+							Value: "https://url",
+						},
+						{
+							Name:  "revision",
+							Value: "main",
+						},
+						{
+							Name:  "pathInRepo",
+							Value: "pipeline/helloworld.yaml",
+						},
+					},
+				},
+			},
+		}
+		Expect(k8sClient.Create(ctx, cgScenario)).Should(Succeed())
+
+		// Verify owner reference was set to ComponentGroup
+		Eventually(func() error {
+			appliedScenario := &v1beta2.IntegrationTestScenario{}
+			err := k8sClient.Get(ctx, types.NamespacedName{
+				Name:      "integrationtestscenario-cg",
+				Namespace: "default",
+			}, appliedScenario)
+			if err != nil {
+				return err
+			}
+			if len(appliedScenario.OwnerReferences) == 0 {
+				return fmt.Errorf("expected owner reference to be set")
+			}
+			if appliedScenario.OwnerReferences[0].Kind != "ComponentGroup" {
+				return fmt.Errorf("expected owner kind to be ComponentGroup, got %s", appliedScenario.OwnerReferences[0].Kind)
+			}
+			return nil
+		}, time.Second*10).Should(Succeed())
+
+		// Cleanup
+		err := k8sClient.Delete(ctx, cgScenario)
+		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 	})
 })

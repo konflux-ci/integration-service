@@ -74,6 +74,8 @@ func (src *IntegrationTestScenario) ConvertTo(dstRaw conversion.Hub) error {
 func (dst *IntegrationTestScenario) ConvertFrom(srcRaw conversion.Hub) error {
 	src := srcRaw.(*v1beta2.IntegrationTestScenario)
 	dst.ObjectMeta = src.ObjectMeta
+	// Note: v1alpha1 does not support ComponentGroup. If the source ITS uses ComponentGroup,
+	// that information is lost during conversion to v1alpha1. This is expected as v1alpha1 is deprecated.
 	dst.Spec.Application = src.Spec.Application
 	if src.Spec.Params != nil {
 		for _, par := range src.Spec.Params {

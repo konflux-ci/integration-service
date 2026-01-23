@@ -39,8 +39,19 @@ rules:
   - appstudio.redhat.com
   resources:
   - applications/status
+  - componentgroups/status
   verbs:
   - get
+- apiGroups:
+  - appstudio.redhat.com
+  resources:
+  - componentgroups
+  - environments
+  - releaseplans
+  verbs:
+  - get
+  - list
+  - watch
 - apiGroups:
   - appstudio.redhat.com
   resources:
@@ -64,15 +75,6 @@ rules:
   - get
   - patch
   - update
-- apiGroups:
-  - appstudio.redhat.com
-  resources:
-  - environments
-  - releaseplans
-  verbs:
-  - get
-  - list
-  - watch
 - apiGroups:
   - pipelinesascode.tekton.dev
   resources:

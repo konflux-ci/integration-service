@@ -454,6 +454,9 @@ spec:
     - jsonPath: .spec.application
       name: Application
       type: string
+    - jsonPath: .spec.componentGroup
+      name: ComponentGroup
+      type: string
     name: v1beta2
     schema:
       openAPIV3Schema:
@@ -479,11 +482,20 @@ spec:
           metadata:
             type: object
           spec:
-            description: IntegrationTestScenarioSpec defines the desired state of
-              IntegrationScenario
+            description: |-
+              IntegrationTestScenarioSpec defines the desired state of IntegrationScenario
+              Exactly one of Application or ComponentGroup must be specified.
             properties:
               application:
-                description: Application that's associated with the IntegrationTestScenario
+                description: |-
+                  Application that's associated with the IntegrationTestScenario.
+                  Mutually exclusive with ComponentGroup - exactly one must be specified.
+                pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                type: string
+              componentGroup:
+                description: |-
+                  ComponentGroup that's associated with the IntegrationTestScenario.
+                  Mutually exclusive with Application - exactly one must be specified.
                 pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
                 type: string
               contexts:
@@ -566,7 +578,6 @@ spec:
                 - resolver
                 type: object
             required:
-            - application
             - resolverRef
             type: object
           status:

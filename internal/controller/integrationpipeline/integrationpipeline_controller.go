@@ -135,7 +135,11 @@ func setupCache(mgr ctrl.Manager) error {
 		return err
 	}
 
-	return cache.SetupIntegrationTestScenarioCache(mgr)
+	if err := cache.SetupIntegrationTestScenarioCache(mgr); err != nil {
+		return err
+	}
+
+	return cache.SetupIntegrationTestScenarioComponentGroupCache(mgr)
 }
 
 // setupControllerWithManager sets up the controller with the Manager which monitors new PipelineRuns and filters
