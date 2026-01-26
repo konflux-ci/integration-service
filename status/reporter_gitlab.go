@@ -28,6 +28,7 @@ import (
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
 	"github.com/konflux-ci/operator-toolkit/metadata"
 	gitlab "gitlab.com/gitlab-org/api/client-go"
+	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/konflux-ci/integration-service/gitops"
@@ -54,6 +55,8 @@ func NewGitLabReporter(logger logr.Logger, k8sClient client.Client) *GitLabRepor
 	}
 }
 
+var GitLabProvider = "GitlabReporter"
+
 // check if interface has been correctly implemented
 var _ ReporterInterface = (*GitLabReporter)(nil)
 var existingCommitStatus *gitlab.CommitStatus
@@ -66,7 +69,7 @@ func (r *GitLabReporter) Detect(snapshot *applicationapiv1alpha1.Snapshot) bool 
 
 // GetReporterName returns the reporter name
 func (r *GitLabReporter) GetReporterName() string {
-	return "GitlabReporter"
+	return GitLabProvider
 }
 
 // Initialize initializes gitlab reporter
@@ -238,43 +241,31 @@ func (r *GitLabReporter) setCommitStatus(report TestReport) (int, error) {
 
 }
 
-// updateStatusInComment will create/update a comment in the MR which creates snapshot
-func (r *GitLabReporter) updateStatusInComment(report TestReport) (int, error) {
+// UpdateStatusInComment searches and deletes existing comments according to commentPrefix and create a new comment in the MR which creates snapshot
+func (r *GitLabReporter) UpdateStatusInComment(commentPrefix, comment string) (int, error) {
 	var statusCode = 0
-	comment, err := FormatComment(report.Summary, report.Text)
-	if err != nil {
-		unRecoverableError := helpers.NewUnrecoverableMetadataError(fmt.Sprintf("failed to generate comment for merge-request %d: %s", r.mergeRequest, err.Error()))
-		r.logger.Error(unRecoverableError, "report.SnapshotName", report.SnapshotName)
-		return statusCode, unRecoverableError
-	}
-
+	// get all existing integration test comment according to commentPrefix in integration test summary and delete them
 	allNotes, response, err := r.client.Notes.ListMergeRequestNotes(r.targetProjectID, r.mergeRequest, nil)
 	if response != nil {
 		statusCode = response.StatusCode
 	}
 	if err != nil {
-		r.logger.Error(err, "error while getting all comments for merge-request", "mergeRequest", r.mergeRequest, "report.SnapshotName", report.SnapshotName)
+		r.logger.Error(err, "error while getting all comments for merge-request", "mergeRequest", r.mergeRequest, "report.SnapshotName", r.snapshot.Name)
 		return statusCode, fmt.Errorf("error while getting all comments for merge-request %d: %w", r.mergeRequest, err)
 	}
-	existingCommentId := r.GetExistingNoteID(allNotes, report.ScenarioName, GenerateComponentNameWithPrefix(report.ComponentName))
-	if existingCommentId == nil {
-		noteOptions := gitlab.CreateMergeRequestNoteOptions{Body: &comment}
-		_, response, err := r.client.Notes.CreateMergeRequestNote(r.targetProjectID, r.mergeRequest, &noteOptions)
-		if response != nil {
-			statusCode = response.StatusCode
-		}
-		if err != nil {
-			return statusCode, fmt.Errorf("error while creating comment for merge-request %d: %w", r.mergeRequest, err)
-		}
-	} else {
-		noteOptions := gitlab.UpdateMergeRequestNoteOptions{Body: &comment}
-		_, response, err := r.client.Notes.UpdateMergeRequestNote(r.targetProjectID, r.mergeRequest, *existingCommentId, &noteOptions)
-		if response != nil {
-			statusCode = response.StatusCode
-		}
-		if err != nil {
-			return statusCode, fmt.Errorf("error while creating comment for merge-request %d: %w", r.mergeRequest, err)
-		}
+	statusCode, err = r.DeleteExistingNotes(allNotes, commentPrefix)
+	if err != nil {
+		return statusCode, fmt.Errorf("error while deleting existing comments for merge-request %d from project %d : %w", r.mergeRequest, r.targetProjectID, err)
+	}
+
+	// create a new comment
+	noteOptions := gitlab.CreateMergeRequestNoteOptions{Body: &comment}
+	_, response, err = r.client.Notes.CreateMergeRequestNote(r.targetProjectID, r.mergeRequest, &noteOptions)
+	if response != nil {
+		statusCode = response.StatusCode
+	}
+	if err != nil {
+		return statusCode, fmt.Errorf("error while creating comment for merge-request %d: %w", r.mergeRequest, err)
 	}
 
 	return statusCode, nil
@@ -293,18 +284,29 @@ func (r *GitLabReporter) GetExistingCommitStatus(commitStatuses []*gitlab.Commit
 	return nil
 }
 
-// GetExistingNoteID returns existing GitLab note for the scenario of ref.
-func (r *GitLabReporter) GetExistingNoteID(notes []*gitlab.Note, scenarioName, componentName string) *int {
+// DeleteExistingNotes deletes existing GitLab note with given commentPrefix.
+func (r *GitLabReporter) DeleteExistingNotes(notes []*gitlab.Note, commentPrefix string) (int, error) {
+	var statusCode = 0
+	var err error
 	for _, note := range notes {
-		// get existing note by search "Integration test for componentName" and " scenario scenarioName " in report summary
-		// GetExistingCommentID for github comment has the similar logic
-		if strings.Contains(note.Body, fmt.Sprintf("Integration test for %s ", componentName)) && strings.Contains(note.Body, fmt.Sprintf(" scenario %s ", scenarioName)) {
-			r.logger.Info("found note ID with a matching componentName and scenarioName", "componentName", componentName, "scenarioName", scenarioName, "noteID", &note.ID)
-			return &note.ID
+		// get existing note by search commentTitle in report summary
+		// GetExistingCommentIDs for github comment has the similar logic
+		if strings.Contains(note.Body, commentPrefix) {
+			r.logger.Info("found note ID with a matching commentTitle", "commentTitle", commentPrefix, "noteID", &note.ID)
+
+			err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
+				_, err := r.client.Notes.DeleteMergeRequestNote(r.targetProjectID, r.mergeRequest, note.ID)
+				return err
+			})
+			if err != nil {
+				return statusCode, fmt.Errorf("error while deleting comment for merge-request %d: %w", r.mergeRequest, err)
+			}
+			r.logger.Info("existing note deleted", "noteID", note.ID)
 		}
 	}
-	r.logger.Info("found no note with a matching scenarioName", "scenarioName", scenarioName)
-	return nil
+
+	r.logger.Info("found no note with a matching commentTitle", "commentTitle", commentPrefix)
+	return statusCode, err
 }
 
 // ReportStatus reports test result to gitlab
@@ -318,15 +320,6 @@ func (r *GitLabReporter) ReportStatus(ctx context.Context, report TestReport) (i
 		r.logger.Error(err, "failed to set gitlab commit status, will attempt to leave a comment on the MR")
 	} else {
 		return statusCode, nil
-	}
-
-	// Create a note when integration test is neither pending nor inprogress since comment for pending/inprogress is less meaningful
-	_, isMergeRequest := r.snapshot.GetAnnotations()[gitops.PipelineAsCodePullRequestAnnotation]
-	if isMergeRequest {
-		statusCode, err := r.updateStatusInComment(report)
-		if err != nil {
-			return statusCode, err
-		}
 	}
 
 	return statusCode, nil

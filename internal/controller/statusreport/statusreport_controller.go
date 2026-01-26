@@ -110,6 +110,7 @@ func SetupController(manager ctrl.Manager, log *logr.Logger) error {
 func setupControllerWithManager(manager ctrl.Manager, controller *Reconciler) error {
 	return ctrl.NewControllerManagedBy(manager).
 		For(&applicationapiv1alpha1.Snapshot{}).
+		Named("statusreport").
 		WithEventFilter(
 			predicate.And(
 				toolkitpredicates.IgnoreBackups{},

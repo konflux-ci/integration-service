@@ -89,6 +89,7 @@ var _ = Describe("Status Adapter", func() {
 		hasComSnapshot3         *applicationapiv1alpha1.Snapshot
 		groupSnapshot           *applicationapiv1alpha1.Snapshot
 		integrationTestScenario *v1beta2.IntegrationTestScenario
+		hasComponent            *applicationapiv1alpha1.Component
 		mockReporter            *status.MockReporterInterface
 
 		pipelineRun       *tektonv1.PipelineRun
@@ -419,6 +420,26 @@ var _ = Describe("Status Adapter", func() {
 			},
 		}
 
+		hasComponent = &applicationapiv1alpha1.Component{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "component-sample",
+				Namespace: "default",
+				Labels: map[string]string{
+					"appstudio.openshift.io/application": "application-sample",
+				},
+			},
+			Spec: applicationapiv1alpha1.ComponentSpec{
+				ComponentName: "component-sample",
+				Source: applicationapiv1alpha1.ComponentSource{
+					ComponentSourceUnion: applicationapiv1alpha1.ComponentSourceUnion{
+						GitSource: &applicationapiv1alpha1.GitSource{
+							URL: "",
+						},
+					},
+				},
+			},
+		}
+
 		mockK8sClient = &MockK8sClient{
 			getInterceptor: func(key client.ObjectKey, obj client.Object) {
 				if taskRun, ok := obj.(*tektonv1.TaskRun); ok {
@@ -527,6 +548,7 @@ var _ = Describe("Status Adapter", func() {
 			SnapshotName:        "snapshot-sample",
 			ComponentName:       "component-sample",
 			Text:                text,
+			ShortText:           "<ul>\n<li><b>Pipelinerun</b>: <a href=\"https://definetly.not.prod/preview/application-pipeline/ns/default/pipelinerun/test-pipelinerun\">test-pipelinerun</a></li>\n</ul>\n<hr>\n\n",
 			Summary:             "Integration test for component component-sample snapshot snapshot-sample and scenario scenario1 has passed",
 			Status:              integrationteststatus.IntegrationTestStatusTestPassed,
 			StartTime:           &ts,
@@ -558,6 +580,22 @@ var _ = Describe("Status Adapter", func() {
 		Entry("Pending", integrationteststatus.IntegrationTestStatusPending, "is pending"),
 		Entry("In progress", integrationteststatus.IntegrationTestStatusInProgress, "is in progress"),
 		Entry("Invalid", integrationteststatus.IntegrationTestStatusTestInvalid, "is invalid"),
+	)
+
+	DescribeTable(
+		"report right summary when its have the same status per component",
+		func(expectedScenarioStatus integrationteststatus.IntegrationTestStatus, expectedTextEnding string) {
+
+			expectedSummary := fmt.Sprintf("Integration test for component component-sample and integration test scenarios %s", expectedTextEnding)
+			summary, err := status.GenerateSummaryForAllScenarios(expectedScenarioStatus, "component-sample")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(summary).To(Equal(expectedSummary))
+		},
+		Entry("Pending", integrationteststatus.IntegrationTestStatusPending, "is pending"),
+		Entry("BuildPLRInProgress", integrationteststatus.BuildPLRInProgress, "is pending because build pipelinerun is still running and snapshot has not been created"),
+		Entry("SnapshotCreationFailed", integrationteststatus.SnapshotCreationFailed, "has not run and is considered as failed because the snapshot was not created"),
+		Entry("BuildPLRFailed", integrationteststatus.BuildPLRFailed, "has not run and is considered as failed because the build pipelinerun failed and snapshot was not created"),
+		Entry("GroupSnapshotCreationFailed", integrationteststatus.GroupSnapshotCreationFailed, "has not run and is considered as failed because group snapshot was not created"),
 	)
 
 	DescribeTable(
@@ -755,14 +793,25 @@ var _ = Describe("Status Adapter", func() {
 		})
 	})
 
-	It("can report status in IterateIntegrationTestInStatusReport", func() {
+	It("can report status in IterateIntegrationTestScenarioWithSameStatus", func() {
 		integrationTestStatusDetail := integrationteststatus.IntegrationTestStatusDetail{
 			Status:  integrationteststatus.GroupSnapshotCreationFailed,
 			Details: "details",
 		}
-		statusCode, err := status.IterateIntegrationTestInStatusReport(context.Background(), mockK8sClient, mockReporter, hasSnapshot, &[]v1beta2.IntegrationTestScenario{*integrationTestScenario}, integrationTestStatusDetail, "test")
+		ctrl := gomock.NewController(GinkgoT())
+		mockReporter = status.NewMockReporterInterface(ctrl)
+		mockReporter.EXPECT().GetReporterName().Return(status.GitLabProvider).AnyTimes()
+		mockReporter.EXPECT().Initialize(gomock.Any(), gomock.Any()).Return(0, nil).AnyTimes()
+		mockReporter.EXPECT().ReportStatus(gomock.Any(), gomock.Any()).Return(0, nil).AnyTimes()
+		commentText, _ := status.GenerateSummaryForAllScenarios(integrationTestStatusDetail.Status, "component-sample")
+		commentText, _ = status.FormatComment(commentText, "")
+		mockReporter.EXPECT().UpdateStatusInComment(status.GenerateTestSummaryPrefixForComponent("component-sample"), commentText).Return(0, nil).AnyTimes()
+		hasSnapshot.Labels["pac.test.appstudio.openshift.io/git-provider"] = "gitlab"
+		hasSnapshot.Annotations[gitops.PipelineAsCodePullRequestAnnotation] = "123"
+
+		statusCode, err := status.IterateIntegrationTestScenarioWithSameStatus(context.Background(), mockK8sClient, mockReporter, hasSnapshot, &[]v1beta2.IntegrationTestScenario{*integrationTestScenario}, integrationTestStatusDetail, hasComponent, "component-sample")
 		Expect(err).Should(Succeed())
-		Expect(statusCode).NotTo(BeNil())
+		Expect(statusCode).To(BeZero())
 	})
 
 })

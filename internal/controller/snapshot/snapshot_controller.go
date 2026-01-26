@@ -172,6 +172,7 @@ func setupControllerWithManager(manager ctrl.Manager, controller *Reconciler) er
 
 	return ctrl.NewControllerManagedBy(manager).
 		For(&applicationapiv1alpha1.Snapshot{}).
+		Named("snapshot").
 		WithEventFilter(
 			predicate.And(
 				toolkitpredicates.IgnoreBackups{},

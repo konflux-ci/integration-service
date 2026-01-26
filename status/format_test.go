@@ -257,6 +257,15 @@ var _ = Describe("Formatters", func() {
 		Expect(comment).To(ContainSubstring(expectedSummary))
 	})
 
+	It("can construct a comment", func() {
+		text, err := status.FormatTestsSummary(taskRuns, pipelineRun.Name, pipelineRun.Namespace, componentSnapshotInfos, PRGroup, logr.Discard())
+		Expect(err).To(Succeed())
+		comment, err := status.FormatCommentForSuccessfulTest("example-title", text)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(comment).To(ContainSubstring("### :heavy_check_mark: example-title"))
+		Expect(comment).To(ContainSubstring(expectedSummary))
+	})
+
 	It("can construct a taskLogURL", func() {
 		taskLogUrl := status.FormatTaskLogURL(taskRuns[0], pipelineRun.Name, pipelineRun.Namespace, logr.Discard())
 		Expect(taskLogUrl).To(Equal(expectedTaskLogURL))

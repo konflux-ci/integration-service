@@ -622,6 +622,11 @@ func (r *GitHubReporter) Detect(snapshot *applicationapiv1alpha1.Snapshot) bool 
 		metadata.HasLabelWithValue(snapshot, gitops.PipelineAsCodeGitProviderLabel, gitops.PipelineAsCodeGitHubProviderType)
 }
 
+// blank implementation to satisfy ReporterInterface
+func (r *GitHubReporter) UpdateStatusInComment(arg1, arg2 string) (int, error) {
+	return 0, nil
+}
+
 // Initialize github reporter. Must be called before updating status
 func (r *GitHubReporter) Initialize(ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot) (int, error) {
 	var statusCode int

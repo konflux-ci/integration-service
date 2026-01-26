@@ -381,7 +381,7 @@ func (a *Adapter) ReportSnapshotStatus(testedSnapshot *applicationapiv1alpha1.Sn
 
 // ReportGroupSnapshotCreationStatus report the group snapshot creation status back to the git provider according the filtered integration test scenarios
 func (a *Adapter) ReportGroupSnapshotCreationStatus(snapshot *applicationapiv1alpha1.Snapshot, integrationTestScenarios *[]v1beta2.IntegrationTestScenario,
-	integrationTestStatus intgteststat.IntegrationTestStatus, componentName string) (bool, error) {
+	integrationTestStatus intgteststat.IntegrationTestStatus, componentNameOrPrGroup string) (bool, error) {
 	var statusCode = 0
 	var isErrorRecoverable = true
 	reporter := a.status.GetReporter(snapshot)
@@ -403,7 +403,13 @@ func (a *Adapter) ReportGroupSnapshotCreationStatus(snapshot *applicationapiv1al
 		if err != nil {
 			return err
 		}
-		statusCode, err = status.IterateIntegrationTestInStatusReport(a.context, a.client, reporter, snapshot, integrationTestScenarios, intgTestStatusDetails, componentName)
+		// get the component from snapshot to pass into iterateIntegrationTestScenarioWithSameStatus function
+		l := loader.NewLoader()
+		component, err := l.GetComponentFromSnapshot(a.context, a.client, snapshot)
+		if err != nil {
+			return fmt.Errorf("failed to get component from snapshot %s/%s: %w", snapshot.Namespace, snapshot.Name, err)
+		}
+		statusCode, err = status.IterateIntegrationTestScenarioWithSameStatus(a.context, a.client, reporter, snapshot, integrationTestScenarios, intgTestStatusDetails, component, componentNameOrPrGroup)
 		if err != nil {
 			a.logger.Error(err, fmt.Sprintf("failed to report group snapshot creation failure %s/%s",
 				snapshot.Namespace, snapshot.Name))
@@ -432,37 +438,76 @@ func (a *Adapter) ReportGroupSnapshotCreationStatus(snapshot *applicationapiv1al
 	return true, nil
 }
 
-// iterates iterateIntegrationTestStatusDetails to report to destination snapshot for them
+// iterates iterateIntegrationTestStatusDetails to report to destination snapshot when integration test are triggered
 func (a *Adapter) iterateIntegrationTestStatusDetailsInStatusReport(reporter status.ReporterInterface,
 	integrationTestStatusDetails []*intgteststat.IntegrationTestStatusDetail,
 	testedSnapshot *applicationapiv1alpha1.Snapshot,
 	destinationSnapshot *applicationapiv1alpha1.Snapshot,
 	srs *status.SnapshotReportStatus) error {
 	// set componentName to component name of component snapshot or pr group name of group snapshot when reporting status to git provider
-	componentName := ""
+	componentNameOrPrGroup := ""
 	if gitops.IsGroupSnapshot(testedSnapshot) {
-		componentName = gitops.ComponentNameForGroupSnapshot
+		componentNameOrPrGroup = gitops.ComponentNameForGroupSnapshot
 	} else if gitops.IsComponentSnapshot(testedSnapshot) {
-		componentName = testedSnapshot.Labels[gitops.SnapshotComponentLabel]
+		componentNameOrPrGroup = testedSnapshot.Labels[gitops.SnapshotComponentLabel]
 	} else {
 		return fmt.Errorf("unsupported snapshot type: %s", testedSnapshot.Annotations[gitops.SnapshotTypeLabel])
 	}
 
+	var commentForFailingIntegrationTests []string
+	var commentForPassedIntegrationTests []string
+	var reportStatusErr error
+
+	// check if there is any integration test status update to report
+	var hasUpdatedIntegrationTest bool
 	for _, integrationTestStatusDetail := range integrationTestStatusDetails {
 		if srs.IsNewer(integrationTestStatusDetail.ScenarioName, destinationSnapshot.Name, integrationTestStatusDetail.LastUpdateTime) {
+			hasUpdatedIntegrationTest = true
 			a.logger.Info("Integration Test contains new status updates", "scenario.Name", integrationTestStatusDetail.ScenarioName, "destinationSnapshot.Name", destinationSnapshot.Name, "testedSnapshot", testedSnapshot.Name)
-		} else {
-			//integration test contains no changes
-			a.logger.Info("Integration Test doen't contain new status updates", "scenario.Name", integrationTestStatusDetail.ScenarioName)
-			continue
+			break
 		}
-		testReport, reportErr := status.GenerateTestReport(a.context, a.client, *integrationTestStatusDetail, testedSnapshot, componentName)
+	}
+	if !hasUpdatedIntegrationTest {
+		//integration test contains no changes
+		a.logger.Info("Integration Test doen't contain new status updates, no need to update status to git provider")
+		return nil
+	}
+
+	for _, integrationTestStatusDetail := range integrationTestStatusDetails {
+		testReport, reportErr := status.GenerateTestReport(a.context, a.client, *integrationTestStatusDetail, testedSnapshot, componentNameOrPrGroup)
 		if reportErr != nil {
+			a.logger.Error(reportErr, fmt.Sprintf("failed to generate test report for integration test scenario %s/%s",
+				testedSnapshot.Namespace, integrationTestStatusDetail.ScenarioName))
 			if writeErr := status.WriteSnapshotReportStatus(a.context, a.client, testedSnapshot, srs); writeErr != nil { // try to write what was already written
 				return fmt.Errorf("failed to generate test report AND write snapshot report status metadata: %w", e.Join(reportErr, writeErr))
 			}
 			return fmt.Errorf("failed to generate test report: %w", reportErr)
 		}
+		// split passed and failing integration test report in gitlab comment to show failing tests on top
+		if integrationTestStatusDetail.Status == intgteststat.IntegrationTestStatusTestPassed {
+			// generate comment for passed integration test with short text which has pipelinerun link but without task run details
+			commentForEachTest, err := status.FormatCommentForSuccessfulTest(testReport.Summary, testReport.ShortText)
+			if err != nil {
+				return fmt.Errorf("failed to generate comment for status of integration test scenario %s/%s : %w", testedSnapshot.Namespace, testReport.ScenarioName, err)
+			}
+			commentForPassedIntegrationTests = append(commentForPassedIntegrationTests, commentForEachTest)
+		} else {
+			commentForEachTest, err := status.FormatComment(testReport.Summary, testReport.Text)
+			if err != nil {
+				return fmt.Errorf("failed to generate comment for status of integration test scenario %s/%s : %w", testedSnapshot.Namespace, testReport.ScenarioName, err)
+			}
+			commentForFailingIntegrationTests = append(commentForFailingIntegrationTests, commentForEachTest)
+		}
+
+		if srs.IsNewer(integrationTestStatusDetail.ScenarioName, destinationSnapshot.Name, integrationTestStatusDetail.LastUpdateTime) {
+			a.logger.Info("Integration Test contains new status updates", "scenario.Name", integrationTestStatusDetail.ScenarioName, "destinationSnapshot.Name", destinationSnapshot.Name, "testedSnapshot", testedSnapshot.Name)
+
+		} else {
+			//integration test contains no changes
+			a.logger.Info("Integration Test doen't contain new status updates", "scenario.Name", integrationTestStatusDetail.ScenarioName)
+			continue
+		}
+
 		if statusCode, reportStatusErr := reporter.ReportStatus(a.context, *testReport); reportStatusErr != nil {
 			if integrationTestStatusDetail.Status.IsFinal() && integrationTestStatusDetail.TestPipelineRunName != "" {
 				a.logger.Error(reportStatusErr, fmt.Sprintf("failed to report status to git provider for completed integration pipelinerun %s/%s, then finalizer test.appstudio.openshift.io/pipelinerun might not be removed from it later", testedSnapshot.Namespace, integrationTestStatusDetail.TestPipelineRunName))
@@ -485,6 +530,43 @@ func (a *Adapter) iterateIntegrationTestStatusDetailsInStatusReport(reporter sta
 			"destinationSnapshot.Name", destinationSnapshot.Name,
 			"testStatus", integrationTestStatusDetail.Status)
 		srs.SetLastUpdateTime(integrationTestStatusDetail.ScenarioName, destinationSnapshot.Name, integrationTestStatusDetail.LastUpdateTime)
+	}
+
+	// update integration test status comment for gitlab reporter when comment is not disabled
+	if reporter.GetReporterName() == status.GitLabProvider {
+		loader := loader.NewLoader()
+		// get the destination snapshot's component to check if comment is disabled for all comments for pac repository or integration test
+		component, err := loader.GetComponentFromSnapshot(a.context, a.client, destinationSnapshot)
+		if err != nil {
+			a.logger.Error(err, fmt.Sprintf("failed to get component for snapshot %s/%s", destinationSnapshot.Namespace, destinationSnapshot.Name))
+			return fmt.Errorf("failed to get component for snapshot %s/%s: %w", destinationSnapshot.Namespace, destinationSnapshot.Name, err)
+		}
+
+		isCommentDisabled, err := gitops.IsCommentDisabled(a.context, a.client, component)
+		if err != nil {
+			a.logger.Error(err, fmt.Sprintf("failed to check if comment is disabled for component %s/%s", component.Namespace, component.Name))
+			return fmt.Errorf("failed to check if comment is disabled for component %s/%s: %w", component.Namespace, component.Name, err)
+		}
+		if isCommentDisabled {
+			a.logger.Info("All comments are disabled for PAC repository in component or integration test disabled for component, skipping updating integration test status comment", "component.Namespace", component.Namespace, "component.Name", component.Name)
+			return nil
+		}
+
+		_, isMergeRequest := destinationSnapshot.GetAnnotations()[gitops.PipelineAsCodePullRequestAnnotation]
+
+		if isMergeRequest {
+			commentPrefix := status.GenerateTestSummaryPrefixForComponent(componentNameOrPrGroup)
+			commentText := strings.Join(append(commentForFailingIntegrationTests, commentForPassedIntegrationTests...), "<hr><hr>\n\n")
+			statusCode, reportErr := reporter.UpdateStatusInComment(commentPrefix, commentText)
+			if reportErr != nil {
+				if reporter.ReturnCodeIsUnrecoverable(statusCode) {
+					a.logger.Error(reportStatusErr, fmt.Sprintf("failed to create comment to git provider for integration test of snapshot %s/%s, the statusCode %d is not easily recoverable", testedSnapshot.Namespace, testedSnapshot.Name, statusCode))
+					return nil
+				} else {
+					return fmt.Errorf("failed to create comment: %w", reportErr)
+				}
+			}
+		}
 	}
 	return nil
 }
