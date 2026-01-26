@@ -35,6 +35,10 @@ type MockK8sClient struct {
 	err                error
 }
 
+func (m *MockK8sClient) Apply(ctx context.Context, patch runtime.ApplyConfiguration, opts ...client.ApplyOption) error {
+	return nil
+}
+
 func (c *MockK8sClient) GroupVersionKindFor(obj runtime.Object) (schema.GroupVersionKind, error) {
 	return schema.GroupVersionKind{}, nil
 }

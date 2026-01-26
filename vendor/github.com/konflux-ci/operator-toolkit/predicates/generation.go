@@ -17,6 +17,7 @@ limitations under the License.
 package predicates
 
 import (
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 )
@@ -72,4 +73,20 @@ func (GenerationUnchangedOnUpdatePredicate) Update(e event.UpdateEvent) bool {
 	}
 
 	return e.ObjectNew.GetGeneration() == e.ObjectOld.GetGeneration()
+}
+
+// TypedGenerationChangedPredicate implements a default typed predicate function on Generation changes. Because only Update
+// func is defined, Create, Delete, and Generic will return true
+//
+// This predicate will skip any event except updates. In the case of update events that have a change in the
+// object's metadata.generation field, those events will be processed. The metadata.generation field of an object
+// is incremented by the API server when writes are made to the spec field of an object. This allows a controller to
+// only process update events where the spec has changed, ignoring updates where only metadata and/or status fields are changed.
+type TypedGenerationChangedPredicate[T client.Object] struct {
+	predicate.TypedFuncs[T]
+}
+
+// Update implements default TypedUpdateEvent filter for validating generation change.
+func (TypedGenerationChangedPredicate[T]) Update(e event.TypedUpdateEvent[T]) bool {
+	return e.ObjectNew.GetGeneration() != e.ObjectOld.GetGeneration()
 }

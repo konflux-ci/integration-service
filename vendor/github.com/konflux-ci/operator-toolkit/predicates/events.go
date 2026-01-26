@@ -17,6 +17,7 @@ limitations under the License.
 package predicates
 
 import (
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 )
@@ -71,5 +72,28 @@ func (NewObjectsPredicate) Generic(e event.GenericEvent) bool {
 
 // Update implements default UpdateEvent filter to ignore any resource update.
 func (NewObjectsPredicate) Update(e event.UpdateEvent) bool {
+	return false
+}
+
+// TypedNewObjectsPredicate implements a default typed predicate function on new objects only.
+//
+// This predicate will skip update, delete, and generic events, and only trigger on object creation.
+// This is the typed equivalent of NewObjectsPredicate.
+type TypedNewObjectsPredicate[T client.Object] struct {
+	predicate.TypedFuncs[T]
+}
+
+// Delete implements default TypedDeleteEvent filter to ignore any resource delete.
+func (TypedNewObjectsPredicate[T]) Delete(e event.TypedDeleteEvent[T]) bool {
+	return false
+}
+
+// Generic implements default TypedGenericEvent filter to ignore any resource generic.
+func (TypedNewObjectsPredicate[T]) Generic(e event.TypedGenericEvent[T]) bool {
+	return false
+}
+
+// Update implements default TypedUpdateEvent filter to ignore any resource update.
+func (TypedNewObjectsPredicate[T]) Update(e event.TypedUpdateEvent[T]) bool {
 	return false
 }
