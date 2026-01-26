@@ -114,6 +114,7 @@ download-crds: ## Vendoring doesn't fetch CRDs yaml files due pruning of depende
 	go mod download github.com/konflux-ci/application-api
 	go mod download github.com/konflux-ci/release-service
 	go mod download github.com/tektoncd/pipeline
+	go mod download github.com/openshift-pipelines/pipelines-as-code
 
 .PHONY: test
 test: manifests generate fmt vet envtest download-crds ## Run tests.

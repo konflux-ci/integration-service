@@ -804,7 +804,7 @@ var _ = Describe("Status Adapter", func() {
 		mockReporter.EXPECT().Initialize(gomock.Any(), gomock.Any()).Return(0, nil).AnyTimes()
 		mockReporter.EXPECT().ReportStatus(gomock.Any(), gomock.Any()).Return(0, nil).AnyTimes()
 		commentText, _ := status.GenerateSummaryForAllScenarios(integrationTestStatusDetail.Status, "component-sample")
-		commentText, _ = status.FormatComment(commentText, "")
+		commentText, _ = status.FormatComment(commentText, integrationTestStatusDetail.Details)
 		mockReporter.EXPECT().UpdateStatusInComment(status.GenerateTestSummaryPrefixForComponent("component-sample"), commentText).Return(0, nil).AnyTimes()
 		hasSnapshot.Labels["pac.test.appstudio.openshift.io/git-provider"] = "gitlab"
 		hasSnapshot.Annotations[gitops.PipelineAsCodePullRequestAnnotation] = "123"
