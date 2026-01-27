@@ -1,0 +1,54 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended"
+  ],
+  "postUpdateOptions": [
+    "gomodTidy",
+    "gomodVendor"
+  ],
+  "schedule": ["0 0 * * 0,6"],
+  "packageRules": [
+    {
+      "description": "Group Red Hat UBI image updates",
+      "matchPackageNames": [
+        "registry.access.redhat.com/ubi9/go-toolset",
+        "registry.access.redhat.com/ubi9/ubi-minimal"
+      ],
+      "matchUpdateTypes": ["major", "minor", "patch"],
+      "groupName": "ubi image updates"
+    },
+    {
+      "description": "GitHub Actions updates",
+      "matchManagers": [
+        "github-actions"
+      ],
+      "groupName": "github action dependencies"
+    },
+    {
+      "description": "Go major updates (excluding go language version)",
+      "matchManagers": ["gomod"],
+      "matchUpdateTypes": ["major"],
+      "excludePackageNames": ["go", "toolchain"],
+      "groupName": "go major dependencies"
+    },
+    {
+      "description": "Go minor updates",
+      "matchManagers": ["gomod"],
+      "matchUpdateTypes": ["minor"],
+      "groupName": "go minor dependencies"
+    },
+    {
+      "description": "Go patch updates",
+      "matchManagers": ["gomod"],
+      "matchUpdateTypes": ["patch"],
+      "groupName": "go patch dependencies"
+    },
+    {
+      "description": "Go digest updates",
+      "matchManagers": ["gomod"],
+      "matchUpdateTypes": ["digest"],
+      "groupName": "go digest dependencies"
+    }
+  ]
+}
