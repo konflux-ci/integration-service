@@ -18,12 +18,13 @@ package loader
 
 import (
 	"context"
+
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 type (
-	// ContextKey is a kye that will be used within a context to reference a MockData item.
+	// ContextKey is a key that will be used within a context to reference a MockData item.
 	ContextKey int
 
 	// MockData represents the mocked data that will be returned by a mocked loader method.
@@ -34,13 +35,39 @@ type (
 	}
 )
 
+// mockClientCallsKey is the context key for storing client call mocks
+type mockClientCallsKeyType int
+
+const mockClientCallsKey mockClientCallsKeyType = 0
+
 // GetMockedContext creates a new context with the given MockData items.
+// This function now supports both legacy loader mocks (via ContextKey) and
+// new client operation mocks (via ClientCallMock).
 func GetMockedContext(ctx context.Context, data []MockData) context.Context {
 	for _, mockData := range data {
 		ctx = context.WithValue(ctx, mockData.ContextKey, mockData)
 	}
 
 	return ctx
+}
+
+// GetMockedContextWithClient creates a new context with mocked client operations
+// and returns both the context and a mock client that should be used in tests.
+// This is the new enhanced function that supports mocking client operations.
+func GetMockedContextWithClient(ctx context.Context, realClient client.Client, loaderMocks []MockData, clientMocks []ClientCallMock) (context.Context, client.Client) {
+	// Add loader mocks (legacy support)
+	for _, mockData := range loaderMocks {
+		ctx = context.WithValue(ctx, mockData.ContextKey, mockData)
+	}
+
+	// Add client call mocks
+	if len(clientMocks) > 0 {
+		ctx = context.WithValue(ctx, mockClientCallsKey, clientMocks)
+	}
+
+	// Create and return mock client
+	mockClient := NewMockClient(realClient, ctx)
+	return ctx, mockClient
 }
 
 // GetMockedResourceAndErrorFromContext returns the mocked data found in the context passed as an argument. The data is
