@@ -3,7 +3,7 @@ module github.com/konflux-ci/integration-service
 go 1.25.0
 
 require (
-	github.com/konflux-ci/application-api v0.0.0-20250324201748-5a9670bf7679
+	github.com/konflux-ci/application-api v0.0.0-20260120144946-dc5c619fb3f9
 	github.com/konflux-ci/coverport/instrumentation/go v0.0.0-20251127115143-b5207b335f8b
 	github.com/konflux-ci/operator-toolkit v0.0.0-20251118152634-b4f41f073069
 	github.com/konflux-ci/release-service v0.0.0-20240514150425-d25d533f66ba
