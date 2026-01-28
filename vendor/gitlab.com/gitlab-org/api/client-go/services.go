@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
-	"time"
 )
 
 type (
@@ -60,6 +59,9 @@ type (
 		GetJiraService(pid any, options ...RequestOptionFunc) (*JiraService, *Response, error)
 		SetJiraService(pid any, opt *SetJiraServiceOptions, options ...RequestOptionFunc) (*JiraService, *Response, error)
 		DeleteJiraService(pid any, options ...RequestOptionFunc) (*Response, error)
+		GetMatrixService(pid any, options ...RequestOptionFunc) (*MatrixService, *Response, error)
+		SetMatrixService(pid any, opt *SetMatrixServiceOptions, options ...RequestOptionFunc) (*MatrixService, *Response, error)
+		DeleteMatrixService(pid any, options ...RequestOptionFunc) (*Response, error)
 		GetMattermostService(pid any, options ...RequestOptionFunc) (*MattermostService, *Response, error)
 		SetMattermostService(pid any, opt *SetMattermostServiceOptions, options ...RequestOptionFunc) (*MattermostService, *Response, error)
 		DeleteMattermostService(pid any, options ...RequestOptionFunc) (*Response, error)
@@ -103,33 +105,7 @@ var _ ServicesServiceInterface = (*ServicesService)(nil)
 // Service represents a GitLab service.
 //
 // GitLab API docs: https://docs.gitlab.com/api/project_integrations/
-type Service struct {
-	ID                             int        `json:"id"`
-	Title                          string     `json:"title"`
-	Slug                           string     `json:"slug"`
-	CreatedAt                      *time.Time `json:"created_at"`
-	UpdatedAt                      *time.Time `json:"updated_at"`
-	Active                         bool       `json:"active"`
-	AlertEvents                    bool       `json:"alert_events"`
-	CommitEvents                   bool       `json:"commit_events"`
-	ConfidentialIssuesEvents       bool       `json:"confidential_issues_events"`
-	ConfidentialNoteEvents         bool       `json:"confidential_note_events"`
-	DeploymentEvents               bool       `json:"deployment_events"`
-	GroupConfidentialMentionEvents bool       `json:"group_confidential_mention_events"`
-	GroupMentionEvents             bool       `json:"group_mention_events"`
-	IncidentEvents                 bool       `json:"incident_events"`
-	IssuesEvents                   bool       `json:"issues_events"`
-	JobEvents                      bool       `json:"job_events"`
-	MergeRequestsEvents            bool       `json:"merge_requests_events"`
-	NoteEvents                     bool       `json:"note_events"`
-	PipelineEvents                 bool       `json:"pipeline_events"`
-	PushEvents                     bool       `json:"push_events"`
-	TagPushEvents                  bool       `json:"tag_push_events"`
-	VulnerabilityEvents            bool       `json:"vulnerability_events"`
-	WikiPageEvents                 bool       `json:"wiki_page_events"`
-	CommentOnEventEnabled          bool       `json:"comment_on_event_enabled"`
-	Inherited                      bool       `json:"inherited"`
-}
+type Service = Integration
 
 // ListServices gets a list of all active services.
 //
@@ -268,12 +244,14 @@ type DataDogService struct {
 // GitLab API docs:
 // https://docs.gitlab.com/api/project_integrations/#datadog
 type DataDogServiceProperties struct {
-	APIURL             string `url:"api_url,omitempty" json:"api_url,omitempty"`
-	DataDogEnv         string `url:"datadog_env,omitempty" json:"datadog_env,omitempty"`
-	DataDogService     string `url:"datadog_service,omitempty" json:"datadog_service,omitempty"`
-	DataDogSite        string `url:"datadog_site,omitempty" json:"datadog_site,omitempty"`
-	DataDogTags        string `url:"datadog_tags,omitempty" json:"datadog_tags,omitempty"`
-	ArchiveTraceEvents bool   `url:"archive_trace_events,omitempty" json:"archive_trace_events,omitempty"`
+	APIURL               string `url:"api_url,omitempty" json:"api_url,omitempty"`
+	DataDogEnv           string `url:"datadog_env,omitempty" json:"datadog_env,omitempty"`
+	DataDogService       string `url:"datadog_service,omitempty" json:"datadog_service,omitempty"`
+	DataDogSite          string `url:"datadog_site,omitempty" json:"datadog_site,omitempty"`
+	DataDogTags          string `url:"datadog_tags,omitempty" json:"datadog_tags,omitempty"`
+	ArchiveTraceEvents   bool   `url:"archive_trace_events,omitempty" json:"archive_trace_events,omitempty"`
+	DataDogCIVisibility  bool   `url:"datadog_ci_visibility,omitempty" json:"datadog_ci_visibility,omitempty"`
+	UseInheritedSettings bool   `url:"use_inherited_settings,omitempty" json:"use_inherited_settings,omitempty"`
 }
 
 // GetDataDogService gets DataDog service settings for a project.
@@ -285,7 +263,7 @@ func (s *ServicesService) GetDataDogService(pid any, options ...RequestOptionFun
 	if err != nil {
 		return nil, nil, err
 	}
-	u := fmt.Sprintf("projects/%s/services/datadog", PathEscape(project))
+	u := fmt.Sprintf("projects/%s/integrations/datadog", PathEscape(project))
 
 	req, err := s.client.NewRequest(http.MethodGet, u, nil, options)
 	if err != nil {
@@ -307,13 +285,15 @@ func (s *ServicesService) GetDataDogService(pid any, options ...RequestOptionFun
 // GitLab API docs:
 // https://docs.gitlab.com/api/project_integrations/#set-up-datadog
 type SetDataDogServiceOptions struct {
-	APIKey             *string `url:"api_key,omitempty" json:"api_key,omitempty"`
-	APIURL             *string `url:"api_url,omitempty" json:"api_url,omitempty"`
-	DataDogEnv         *string `url:"datadog_env,omitempty" json:"datadog_env,omitempty"`
-	DataDogService     *string `url:"datadog_service,omitempty" json:"datadog_service,omitempty"`
-	DataDogSite        *string `url:"datadog_site,omitempty" json:"datadog_site,omitempty"`
-	DataDogTags        *string `url:"datadog_tags,omitempty" json:"datadog_tags,omitempty"`
-	ArchiveTraceEvents *bool   `url:"archive_trace_events,omitempty" json:"archive_trace_events,omitempty"`
+	APIKey               *string `url:"api_key,omitempty" json:"api_key,omitempty"`
+	APIURL               *string `url:"api_url,omitempty" json:"api_url,omitempty"`
+	DataDogEnv           *string `url:"datadog_env,omitempty" json:"datadog_env,omitempty"`
+	DataDogService       *string `url:"datadog_service,omitempty" json:"datadog_service,omitempty"`
+	DataDogSite          *string `url:"datadog_site,omitempty" json:"datadog_site,omitempty"`
+	DataDogTags          *string `url:"datadog_tags,omitempty" json:"datadog_tags,omitempty"`
+	ArchiveTraceEvents   *bool   `url:"archive_trace_events,omitempty" json:"archive_trace_events,omitempty"`
+	DataDogCIVisibility  *bool   `url:"datadog_ci_visibility,omitempty" json:"datadog_ci_visibility,omitempty"`
+	UseInheritedSettings *bool   `url:"use_inherited_settings,omitempty" json:"use_inherited_settings,omitempty"`
 }
 
 // SetDataDogService sets DataDog service settings for a project.
@@ -325,7 +305,7 @@ func (s *ServicesService) SetDataDogService(pid any, opt *SetDataDogServiceOptio
 	if err != nil {
 		return nil, nil, err
 	}
-	u := fmt.Sprintf("projects/%s/services/datadog", PathEscape(project))
+	u := fmt.Sprintf("projects/%s/integrations/datadog", PathEscape(project))
 
 	req, err := s.client.NewRequest(http.MethodPut, u, opt, options)
 	if err != nil {
@@ -350,7 +330,7 @@ func (s *ServicesService) DeleteDataDogService(pid any, options ...RequestOption
 	if err != nil {
 		return nil, err
 	}
-	u := fmt.Sprintf("projects/%s/services/datadog", PathEscape(project))
+	u := fmt.Sprintf("projects/%s/integrations/datadog", PathEscape(project))
 
 	req, err := s.client.NewRequest(http.MethodDelete, u, nil, options)
 	if err != nil {
@@ -932,13 +912,7 @@ func (s *ServicesService) GetHarborService(pid any, options ...RequestOptionFunc
 //
 // GitLab API docs:
 // https://docs.gitlab.com/api/project_integrations/#set-up-harbor
-type SetHarborServiceOptions struct {
-	URL                  *string `url:"url,omitempty" json:"url,omitempty"`
-	ProjectName          *string `url:"project_name,omitempty" json:"project_name,omitempty"`
-	Username             *string `url:"username,omitempty" json:"username,omitempty"`
-	Password             *string `url:"password,omitempty" json:"password,omitempty"`
-	UseInheritedSettings *bool   `url:"use_inherited_settings,omitempty" json:"use_inherited_settings,omitempty"`
-}
+type SetHarborServiceOptions = SetUpHarborOptions
 
 // SetHarborService sets Harbor service for a project.
 //
@@ -1258,7 +1232,7 @@ type JiraServiceProperties struct {
 	Username                     string   `json:"username" `
 	Password                     string   `json:"password" `
 	Active                       bool     `json:"active"`
-	JiraAuthType                 int      `json:"jira_auth_type"`
+	JiraAuthType                 int64    `json:"jira_auth_type"`
 	JiraIssuePrefix              string   `json:"jira_issue_prefix"`
 	JiraIssueRegex               string   `json:"jira_issue_regex"`
 	JiraIssueTransitionAutomatic bool     `json:"jira_issue_transition_automatic"`
@@ -1293,7 +1267,7 @@ func (p *JiraServiceProperties) UnmarshalJSON(b []byte) error {
 	case string:
 		p.JiraIssueTransitionID = id
 	case float64:
-		p.JiraIssueTransitionID = strconv.Itoa(int(id))
+		p.JiraIssueTransitionID = strconv.FormatInt(int64(id), 10)
 	default:
 		return fmt.Errorf("failed to unmarshal JiraTransitionID of type: %T", id)
 	}
@@ -1337,7 +1311,7 @@ type SetJiraServiceOptions struct {
 	Username                     *string   `url:"username,omitempty" json:"username,omitempty" `
 	Password                     *string   `url:"password,omitempty" json:"password,omitempty" `
 	Active                       *bool     `url:"active,omitempty" json:"active,omitempty"`
-	JiraAuthType                 *int      `url:"jira_auth_type,omitempty" json:"jira_auth_type,omitempty"`
+	JiraAuthType                 *int64    `url:"jira_auth_type,omitempty" json:"jira_auth_type,omitempty"`
 	JiraIssuePrefix              *string   `url:"jira_issue_prefix,omitempty" json:"jira_issue_prefix,omitempty"`
 	JiraIssueRegex               *string   `url:"jira_issue_regex,omitempty" json:"jira_issue_regex,omitempty"`
 	JiraIssueTransitionAutomatic *bool     `url:"jira_issue_transition_automatic,omitempty" json:"jira_issue_transition_automatic,omitempty"`
@@ -1392,6 +1366,89 @@ func (s *ServicesService) DeleteJiraService(pid any, options ...RequestOptionFun
 	}
 
 	return s.client.Do(req, nil)
+}
+
+// MatrixService represents Matrix service settings.
+//
+// GitLab API docs:
+// https://docs.gitlab.com/api/project_integrations/#matrix-notifications
+type MatrixService struct {
+	Service
+	Properties *MatrixServiceProperties `json:"properties"`
+}
+
+// MatrixServiceProperties represents Matrix specific properties.
+//
+// GitLab API docs:
+// https://docs.gitlab.com/api/project_integrations/#matrix-notifications
+type MatrixServiceProperties struct {
+	Hostname                  string    `json:"hostname"`
+	Token                     string    `json:"token"`
+	Room                      string    `json:"room"`
+	NotifyOnlyBrokenPipelines BoolValue `json:"notify_only_broken_pipelines"`
+	BranchesToBeNotified      string    `json:"branches_to_be_notified"`
+	UseInheritedSettings      BoolValue `json:"use_inherited_settings"`
+}
+
+// GetMatrixService gets Matrix service settings for a project.
+//
+// GitLab API docs:
+// https://docs.gitlab.com/api/project_integrations/#get-matrix-notifications-settings
+func (s *ServicesService) GetMatrixService(pid any, options ...RequestOptionFunc) (*MatrixService, *Response, error) {
+	return do[*MatrixService](s.client,
+		withMethod(http.MethodGet),
+		withPath("projects/%s/integrations/matrix", ProjectID{pid}),
+		withRequestOpts(options...),
+	)
+}
+
+// SetMatrixServiceOptions represents the available SetMatrixService()
+// options.
+//
+// GitLab API docs:
+// https://docs.gitlab.com/api/project_integrations/#set-up-matrix-notifications
+type SetMatrixServiceOptions struct {
+	Hostname                  *string `url:"hostname,omitempty" json:"hostname,omitempty"`
+	Token                     *string `url:"token,omitempty" json:"token,omitempty"`
+	Room                      *string `url:"room,omitempty" json:"room,omitempty"`
+	NotifyOnlyBrokenPipelines *bool   `url:"notify_only_broken_pipelines,omitempty" json:"notify_only_broken_pipelines,omitempty"`
+	BranchesToBeNotified      *string `url:"branches_to_be_notified,omitempty" json:"branches_to_be_notified,omitempty"`
+	PushEvents                *bool   `url:"push_events,omitempty" json:"push_events,omitempty"`
+	IssuesEvents              *bool   `url:"issues_events,omitempty" json:"issues_events,omitempty"`
+	ConfidentialIssuesEvents  *bool   `url:"confidential_issues_events,omitempty" json:"confidential_issues_events,omitempty"`
+	MergeRequestsEvents       *bool   `url:"merge_requests_events,omitempty" json:"merge_requests_events,omitempty"`
+	TagPushEvents             *bool   `url:"tag_push_events,omitempty" json:"tag_push_events,omitempty"`
+	NoteEvents                *bool   `url:"note_events,omitempty" json:"note_events,omitempty"`
+	ConfidentialNoteEvents    *bool   `url:"confidential_note_events,omitempty" json:"confidential_note_events,omitempty"`
+	PipelineEvents            *bool   `url:"pipeline_events,omitempty" json:"pipeline_events,omitempty"`
+	WikiPageEvents            *bool   `url:"wiki_page_events,omitempty" json:"wiki_page_events,omitempty"`
+	UseInheritedSettings      *bool   `url:"use_inherited_settings,omitempty" json:"use_inherited_settings,omitempty"`
+}
+
+// SetMatrixService sets Matrix service for a project.
+//
+// GitLab API docs:
+// https://docs.gitlab.com/api/project_integrations/#set-up-matrix-notifications
+func (s *ServicesService) SetMatrixService(pid any, opt *SetMatrixServiceOptions, options ...RequestOptionFunc) (*MatrixService, *Response, error) {
+	return do[*MatrixService](s.client,
+		withMethod(http.MethodPut),
+		withPath("projects/%s/integrations/matrix", ProjectID{pid}),
+		withAPIOpts(opt),
+		withRequestOpts(options...),
+	)
+}
+
+// DeleteMatrixService deletes Matrix service for project.
+//
+// GitLab API docs:
+// https://docs.gitlab.com/api/project_integrations/#disable-matrix-notifications
+func (s *ServicesService) DeleteMatrixService(pid any, options ...RequestOptionFunc) (*Response, error) {
+	_, resp, err := do[none](s.client,
+		withMethod(http.MethodDelete),
+		withPath("projects/%s/integrations/matrix", ProjectID{pid}),
+		withRequestOpts(options...),
+	)
+	return resp, err
 }
 
 // MattermostService represents Mattermost service settings.
@@ -2178,7 +2235,7 @@ func (s *ServicesService) DeleteSlackSlashCommandsService(pid any, options ...Re
 
 // TelegramService represents Telegram service settings.
 //
-// Gitlab API docs:
+// GitLab API docs:
 // https://docs.gitlab.com/api/project_integrations/#telegram
 type TelegramService struct {
 	Service

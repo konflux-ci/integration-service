@@ -9,11 +9,11 @@ require (
 	github.com/konflux-ci/release-service v0.0.0-20260127184035-c36c56a3c440
 	github.com/onsi/ginkgo/v2 v2.27.5
 	github.com/onsi/gomega v1.39.0
-	github.com/openshift-pipelines/pipelines-as-code v0.34.0
+	github.com/openshift-pipelines/pipelines-as-code v0.41.0
 	k8s.io/api v0.35.0
 	k8s.io/apimachinery v0.35.0
 	k8s.io/client-go v11.0.0+incompatible
-	knative.dev/pkg v0.0.0-20250424013628-d5e74d29daa3
+	knative.dev/pkg v0.0.0-20260114161248-8c840449eed2
 	sigs.k8s.io/controller-runtime v0.22.4
 )
 
@@ -43,13 +43,13 @@ require (
 	github.com/santhosh-tekuri/jsonschema/v5 v5.3.1
 	github.com/tektoncd/pipeline v1.7.0
 	github.com/tonglil/buflogr v1.1.1
-	gitlab.com/gitlab-org/api/client-go v0.134.0
-	go.uber.org/mock v0.5.2
+	gitlab.com/gitlab-org/api/client-go v1.14.0
+	go.uber.org/mock v0.6.0
 	go.uber.org/zap v1.27.1
 	golang.org/x/exp v0.0.0-20260112195511-716be5621a96
 	golang.org/x/oauth2 v0.34.0
 	k8s.io/klog/v2 v2.130.1
-	k8s.io/utils v0.0.0-20251002143259-bc988d571ff4
+	k8s.io/utils v0.0.0-20260108192941-914a6e750570
 )
 
 require (

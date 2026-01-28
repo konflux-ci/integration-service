@@ -47,14 +47,14 @@ var _ ResourceGroupServiceInterface = (*ResourceGroupService)(nil)
 // GitLab API docs:
 // https://docs.gitlab.com/api/resource_groups/
 type ResourceGroup struct {
-	ID          int        `json:"id"`
+	ID          int64      `json:"id"`
 	Key         string     `json:"key"`
 	ProcessMode string     `json:"process_mode"`
 	CreatedAt   *time.Time `json:"created_at"`
 	UpdatedAt   *time.Time `json:"updated_at"`
 }
 
-// Gets a string representation of a ResourceGroup
+// String gets a string representation of a ResourceGroup
 //
 // GitLab API docs:
 // https://docs.gitlab.com/api/resource_groups/
