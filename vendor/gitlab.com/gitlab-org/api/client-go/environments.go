@@ -17,7 +17,6 @@
 package gitlab
 
 import (
-	"fmt"
 	"net/http"
 	"time"
 )
@@ -25,11 +24,43 @@ import (
 type (
 	// EnvironmentsServiceInterface defines all the API methods for the EnvironmentsService
 	EnvironmentsServiceInterface interface {
+		// ListEnvironments gets a list of environments from a project, sorted by name
+		// alphabetically.
+		//
+		// GitLab API docs:
+		// https://docs.gitlab.com/api/environments/#list-environments
 		ListEnvironments(pid any, opts *ListEnvironmentsOptions, options ...RequestOptionFunc) ([]*Environment, *Response, error)
+
+		// GetEnvironment gets a specific environment from a project.
+		//
+		// GitLab API docs:
+		// https://docs.gitlab.com/api/environments/#get-a-specific-environment
 		GetEnvironment(pid any, environment int, options ...RequestOptionFunc) (*Environment, *Response, error)
+
+		// CreateEnvironment adds an environment to a project. This method is idempotent
+		// and can be called multiple times with the same parameters. Creating an environment
+		// that already exists does not affect the existing association.
+		//
+		// GitLab API docs:
+		// https://docs.gitlab.com/api/environments/#create-a-new-environment
 		CreateEnvironment(pid any, opt *CreateEnvironmentOptions, options ...RequestOptionFunc) (*Environment, *Response, error)
+
+		// EditEnvironment updates a project team environment to a specified access level.
+		//
+		// GitLab API docs:
+		// https://docs.gitlab.com/api/environments/#update-an-existing-environment
 		EditEnvironment(pid any, environment int, opt *EditEnvironmentOptions, options ...RequestOptionFunc) (*Environment, *Response, error)
+
+		// DeleteEnvironment removes an environment from a project team.
+		//
+		// GitLab API docs:
+		// https://docs.gitlab.com/api/environments/#delete-an-environment
 		DeleteEnvironment(pid any, environment int, options ...RequestOptionFunc) (*Response, error)
+
+		// StopEnvironment stops an environment within a specific project.
+		//
+		// GitLab API docs:
+		// https://docs.gitlab.com/api/environments/#stop-an-environment
 		StopEnvironment(pid any, environmentID int, opt *StopEnvironmentOptions, options ...RequestOptionFunc) (*Environment, *Response, error)
 	}
 
@@ -81,55 +112,19 @@ type ListEnvironmentsOptions struct {
 	States *string `url:"states,omitempty" json:"states,omitempty"`
 }
 
-// ListEnvironments gets a list of environments from a project, sorted by name
-// alphabetically.
-//
-// GitLab API docs:
-// https://docs.gitlab.com/api/environments/#list-environments
 func (s *EnvironmentsService) ListEnvironments(pid any, opts *ListEnvironmentsOptions, options ...RequestOptionFunc) ([]*Environment, *Response, error) {
-	project, err := parseID(pid)
-	if err != nil {
-		return nil, nil, err
-	}
-	u := fmt.Sprintf("projects/%s/environments", PathEscape(project))
-
-	req, err := s.client.NewRequest(http.MethodGet, u, opts, options)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	var envs []*Environment
-	resp, err := s.client.Do(req, &envs)
-	if err != nil {
-		return nil, resp, err
-	}
-
-	return envs, resp, nil
+	return do[[]*Environment](s.client,
+		withPath("projects/%s/environments", ProjectID{pid}),
+		withAPIOpts(opts),
+		withRequestOpts(options...),
+	)
 }
 
-// GetEnvironment gets a specific environment from a project.
-//
-// GitLab API docs:
-// https://docs.gitlab.com/api/environments/#get-a-specific-environment
 func (s *EnvironmentsService) GetEnvironment(pid any, environment int, options ...RequestOptionFunc) (*Environment, *Response, error) {
-	project, err := parseID(pid)
-	if err != nil {
-		return nil, nil, err
-	}
-	u := fmt.Sprintf("projects/%s/environments/%d", PathEscape(project), environment)
-
-	req, err := s.client.NewRequest(http.MethodGet, u, nil, options)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	env := new(Environment)
-	resp, err := s.client.Do(req, env)
-	if err != nil {
-		return nil, resp, err
-	}
-
-	return env, resp, nil
+	return do[*Environment](s.client,
+		withPath("projects/%s/environments/%d", ProjectID{pid}, environment),
+		withRequestOpts(options...),
+	)
 }
 
 // CreateEnvironmentOptions represents the available CreateEnvironment() options.
@@ -147,31 +142,13 @@ type CreateEnvironmentOptions struct {
 	AutoStopSetting     *string `url:"auto_stop_setting,omitempty" json:"auto_stop_setting,omitempty"`
 }
 
-// CreateEnvironment adds an environment to a project. This method is idempotent
-// and can be called multiple times with the same parameters. Creating an environment
-// that already exists does not affect the existing association.
-//
-// GitLab API docs:
-// https://docs.gitlab.com/api/environments/#create-a-new-environment
 func (s *EnvironmentsService) CreateEnvironment(pid any, opt *CreateEnvironmentOptions, options ...RequestOptionFunc) (*Environment, *Response, error) {
-	project, err := parseID(pid)
-	if err != nil {
-		return nil, nil, err
-	}
-	u := fmt.Sprintf("projects/%s/environments", PathEscape(project))
-
-	req, err := s.client.NewRequest(http.MethodPost, u, opt, options)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	env := new(Environment)
-	resp, err := s.client.Do(req, env)
-	if err != nil {
-		return nil, resp, err
-	}
-
-	return env, resp, nil
+	return do[*Environment](s.client,
+		withMethod(http.MethodPost),
+		withPath("projects/%s/environments", ProjectID{pid}),
+		withAPIOpts(opt),
+		withRequestOpts(options...),
+	)
 }
 
 // EditEnvironmentOptions represents the available EditEnvironment() options.
@@ -189,48 +166,22 @@ type EditEnvironmentOptions struct {
 	AutoStopSetting     *string `url:"auto_stop_setting,omitempty" json:"auto_stop_setting,omitempty"`
 }
 
-// EditEnvironment updates a project team environment to a specified access level..
-//
-// GitLab API docs:
-// https://docs.gitlab.com/api/environments/#update-an-existing-environment
 func (s *EnvironmentsService) EditEnvironment(pid any, environment int, opt *EditEnvironmentOptions, options ...RequestOptionFunc) (*Environment, *Response, error) {
-	project, err := parseID(pid)
-	if err != nil {
-		return nil, nil, err
-	}
-	u := fmt.Sprintf("projects/%s/environments/%d", PathEscape(project), environment)
-
-	req, err := s.client.NewRequest(http.MethodPut, u, opt, options)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	env := new(Environment)
-	resp, err := s.client.Do(req, env)
-	if err != nil {
-		return nil, resp, err
-	}
-
-	return env, resp, nil
+	return do[*Environment](s.client,
+		withMethod(http.MethodPut),
+		withPath("projects/%s/environments/%d", ProjectID{pid}, environment),
+		withAPIOpts(opt),
+		withRequestOpts(options...),
+	)
 }
 
-// DeleteEnvironment removes an environment from a project team.
-//
-// GitLab API docs:
-// https://docs.gitlab.com/api/environments/#delete-an-environment
 func (s *EnvironmentsService) DeleteEnvironment(pid any, environment int, options ...RequestOptionFunc) (*Response, error) {
-	project, err := parseID(pid)
-	if err != nil {
-		return nil, err
-	}
-	u := fmt.Sprintf("projects/%s/environments/%d", PathEscape(project), environment)
-
-	req, err := s.client.NewRequest(http.MethodDelete, u, nil, options)
-	if err != nil {
-		return nil, err
-	}
-
-	return s.client.Do(req, nil)
+	_, resp, err := do[none](s.client,
+		withMethod(http.MethodDelete),
+		withPath("projects/%s/environments/%d", ProjectID{pid}, environment),
+		withRequestOpts(options...),
+	)
+	return resp, err
 }
 
 // StopEnvironmentOptions represents the available StopEnvironment() options.
@@ -241,27 +192,11 @@ type StopEnvironmentOptions struct {
 	Force *bool `url:"force,omitempty" json:"force,omitempty"`
 }
 
-// StopEnvironment stops an environment within a specific project.
-//
-// GitLab API docs:
-// https://docs.gitlab.com/api/environments/#stop-an-environment
 func (s *EnvironmentsService) StopEnvironment(pid any, environmentID int, opt *StopEnvironmentOptions, options ...RequestOptionFunc) (*Environment, *Response, error) {
-	project, err := parseID(pid)
-	if err != nil {
-		return nil, nil, err
-	}
-	u := fmt.Sprintf("projects/%s/environments/%d/stop", PathEscape(project), environmentID)
-
-	req, err := s.client.NewRequest(http.MethodPost, u, opt, options)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	env := new(Environment)
-	resp, err := s.client.Do(req, env)
-	if err != nil {
-		return nil, resp, err
-	}
-
-	return env, resp, nil
+	return do[*Environment](s.client,
+		withMethod(http.MethodPost),
+		withPath("projects/%s/environments/%d/stop", ProjectID{pid}, environmentID),
+		withAPIOpts(opt),
+		withRequestOpts(options...),
+	)
 }

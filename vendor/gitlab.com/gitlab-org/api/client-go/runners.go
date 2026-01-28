@@ -155,18 +155,16 @@ type ListRunnersOptions struct {
 // GitLab API docs:
 // https://docs.gitlab.com/api/runners/#list-owned-runners
 func (s *RunnersService) ListRunners(opt *ListRunnersOptions, options ...RequestOptionFunc) ([]*Runner, *Response, error) {
-	req, err := s.client.NewRequest(http.MethodGet, "runners", opt, options)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	var rs []*Runner
-	resp, err := s.client.Do(req, &rs)
+	res, resp, err := do[[]*Runner](s.client,
+		withMethod(http.MethodGet),
+		withPath("runners"),
+		withAPIOpts(opt),
+		withRequestOpts(options...),
+	)
 	if err != nil {
 		return nil, resp, err
 	}
-
-	return rs, resp, nil
+	return res, resp, nil
 }
 
 // ListAllRunners gets a list of all runners in the GitLab instance. Access is
@@ -175,18 +173,16 @@ func (s *RunnersService) ListRunners(opt *ListRunnersOptions, options ...Request
 // GitLab API docs:
 // https://docs.gitlab.com/api/runners/#list-all-runners
 func (s *RunnersService) ListAllRunners(opt *ListRunnersOptions, options ...RequestOptionFunc) ([]*Runner, *Response, error) {
-	req, err := s.client.NewRequest(http.MethodGet, "runners/all", opt, options)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	var rs []*Runner
-	resp, err := s.client.Do(req, &rs)
+	res, resp, err := do[[]*Runner](s.client,
+		withMethod(http.MethodGet),
+		withPath("runners/all"),
+		withAPIOpts(opt),
+		withRequestOpts(options...),
+	)
 	if err != nil {
 		return nil, resp, err
 	}
-
-	return rs, resp, nil
+	return res, resp, nil
 }
 
 // GetRunnerDetails returns details for given runner.
@@ -194,24 +190,16 @@ func (s *RunnersService) ListAllRunners(opt *ListRunnersOptions, options ...Requ
 // GitLab API docs:
 // https://docs.gitlab.com/api/runners/#get-runners-details
 func (s *RunnersService) GetRunnerDetails(rid any, options ...RequestOptionFunc) (*RunnerDetails, *Response, error) {
-	runner, err := parseID(rid)
-	if err != nil {
-		return nil, nil, err
-	}
-	u := fmt.Sprintf("runners/%s", runner)
-
-	req, err := s.client.NewRequest(http.MethodGet, u, nil, options)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	rs := new(RunnerDetails)
-	resp, err := s.client.Do(req, &rs)
+	res, resp, err := do[*RunnerDetails](s.client,
+		withMethod(http.MethodGet),
+		withPath("runners/%s", RunnerID{rid}),
+		withAPIOpts(nil),
+		withRequestOpts(options...),
+	)
 	if err != nil {
 		return nil, resp, err
 	}
-
-	return rs, resp, nil
+	return res, resp, nil
 }
 
 // UpdateRunnerDetailsOptions represents the available UpdateRunnerDetails() options.
@@ -237,24 +225,16 @@ type UpdateRunnerDetailsOptions struct {
 // GitLab API docs:
 // https://docs.gitlab.com/api/runners/#update-runners-details
 func (s *RunnersService) UpdateRunnerDetails(rid any, opt *UpdateRunnerDetailsOptions, options ...RequestOptionFunc) (*RunnerDetails, *Response, error) {
-	runner, err := parseID(rid)
-	if err != nil {
-		return nil, nil, err
-	}
-	u := fmt.Sprintf("runners/%s", runner)
-
-	req, err := s.client.NewRequest(http.MethodPut, u, opt, options)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	rs := new(RunnerDetails)
-	resp, err := s.client.Do(req, &rs)
+	res, resp, err := do[*RunnerDetails](s.client,
+		withMethod(http.MethodPut),
+		withPath("runners/%s", RunnerID{rid}),
+		withAPIOpts(opt),
+		withRequestOpts(options...),
+	)
 	if err != nil {
 		return nil, resp, err
 	}
-
-	return rs, resp, nil
+	return res, resp, nil
 }
 
 // RemoveRunner removes a runner.
@@ -262,18 +242,13 @@ func (s *RunnersService) UpdateRunnerDetails(rid any, opt *UpdateRunnerDetailsOp
 // GitLab API docs:
 // https://docs.gitlab.com/api/runners/#delete-a-runner
 func (s *RunnersService) RemoveRunner(rid any, options ...RequestOptionFunc) (*Response, error) {
-	runner, err := parseID(rid)
-	if err != nil {
-		return nil, err
-	}
-	u := fmt.Sprintf("runners/%s", runner)
-
-	req, err := s.client.NewRequest(http.MethodDelete, u, nil, options)
-	if err != nil {
-		return nil, err
-	}
-
-	return s.client.Do(req, nil)
+	_, resp, err := do[none](s.client,
+		withMethod(http.MethodDelete),
+		withPath("runners/%s", RunnerID{rid}),
+		withAPIOpts(nil),
+		withRequestOpts(options...),
+	)
+	return resp, err
 }
 
 // ListRunnerJobsOptions represents the available ListRunnerJobs()
@@ -293,24 +268,16 @@ type ListRunnerJobsOptions struct {
 // GitLab API docs:
 // https://docs.gitlab.com/api/runners/#list-jobs-processed-by-a-runner
 func (s *RunnersService) ListRunnerJobs(rid any, opt *ListRunnerJobsOptions, options ...RequestOptionFunc) ([]*Job, *Response, error) {
-	runner, err := parseID(rid)
-	if err != nil {
-		return nil, nil, err
-	}
-	u := fmt.Sprintf("runners/%s/jobs", runner)
-
-	req, err := s.client.NewRequest(http.MethodGet, u, opt, options)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	var rs []*Job
-	resp, err := s.client.Do(req, &rs)
+	res, resp, err := do[[]*Job](s.client,
+		withMethod(http.MethodGet),
+		withPath("runners/%s/jobs", RunnerID{rid}),
+		withAPIOpts(opt),
+		withRequestOpts(options...),
+	)
 	if err != nil {
 		return nil, resp, err
 	}
-
-	return rs, resp, nil
+	return res, resp, nil
 }
 
 // ListProjectRunnersOptions represents the available ListProjectRunners()
@@ -325,24 +292,16 @@ type ListProjectRunnersOptions ListRunnersOptions
 // GitLab API docs:
 // https://docs.gitlab.com/api/runners/#list-projects-runners
 func (s *RunnersService) ListProjectRunners(pid any, opt *ListProjectRunnersOptions, options ...RequestOptionFunc) ([]*Runner, *Response, error) {
-	project, err := parseID(pid)
-	if err != nil {
-		return nil, nil, err
-	}
-	u := fmt.Sprintf("projects/%s/runners", PathEscape(project))
-
-	req, err := s.client.NewRequest(http.MethodGet, u, opt, options)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	var rs []*Runner
-	resp, err := s.client.Do(req, &rs)
+	res, resp, err := do[[]*Runner](s.client,
+		withMethod(http.MethodGet),
+		withPath("projects/%s/runners", ProjectID{pid}),
+		withAPIOpts(opt),
+		withRequestOpts(options...),
+	)
 	if err != nil {
 		return nil, resp, err
 	}
-
-	return rs, resp, nil
+	return res, resp, nil
 }
 
 // EnableProjectRunnerOptions represents the available EnableProjectRunner()
@@ -359,24 +318,16 @@ type EnableProjectRunnerOptions struct {
 // GitLab API docs:
 // https://docs.gitlab.com/api/runners/#assign-a-runner-to-project
 func (s *RunnersService) EnableProjectRunner(pid any, opt *EnableProjectRunnerOptions, options ...RequestOptionFunc) (*Runner, *Response, error) {
-	project, err := parseID(pid)
-	if err != nil {
-		return nil, nil, err
-	}
-	u := fmt.Sprintf("projects/%s/runners", PathEscape(project))
-
-	req, err := s.client.NewRequest(http.MethodPost, u, opt, options)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	r := new(Runner)
-	resp, err := s.client.Do(req, &r)
+	res, resp, err := do[*Runner](s.client,
+		withMethod(http.MethodPost),
+		withPath("projects/%s/runners", ProjectID{pid}),
+		withAPIOpts(opt),
+		withRequestOpts(options...),
+	)
 	if err != nil {
 		return nil, resp, err
 	}
-
-	return r, resp, nil
+	return res, resp, nil
 }
 
 // DisableProjectRunner disables a specific runner from project.
@@ -384,18 +335,13 @@ func (s *RunnersService) EnableProjectRunner(pid any, opt *EnableProjectRunnerOp
 // GitLab API docs:
 // https://docs.gitlab.com/api/runners/#unassign-a-runner-from-project
 func (s *RunnersService) DisableProjectRunner(pid any, runner int, options ...RequestOptionFunc) (*Response, error) {
-	project, err := parseID(pid)
-	if err != nil {
-		return nil, err
-	}
-	u := fmt.Sprintf("projects/%s/runners/%d", PathEscape(project), runner)
-
-	req, err := s.client.NewRequest(http.MethodDelete, u, nil, options)
-	if err != nil {
-		return nil, err
-	}
-
-	return s.client.Do(req, nil)
+	_, resp, err := do[none](s.client,
+		withMethod(http.MethodDelete),
+		withPath("projects/%s/runners/%d", ProjectID{pid}, runner),
+		withAPIOpts(nil),
+		withRequestOpts(options...),
+	)
+	return resp, err
 }
 
 // ListGroupsRunnersOptions represents the available ListGroupsRunners() options.
@@ -410,30 +356,22 @@ type ListGroupsRunnersOptions struct {
 }
 
 // ListGroupsRunners lists all runners (specific and shared) available in the
-// group as well it’s ancestor groups. Shared runners are listed if at least one
+// group as well it's ancestor groups. Shared runners are listed if at least one
 // shared runner is defined.
 //
 // GitLab API docs:
 // https://docs.gitlab.com/api/runners/#list-groups-runners
 func (s *RunnersService) ListGroupsRunners(gid any, opt *ListGroupsRunnersOptions, options ...RequestOptionFunc) ([]*Runner, *Response, error) {
-	group, err := parseID(gid)
-	if err != nil {
-		return nil, nil, err
-	}
-	u := fmt.Sprintf("groups/%s/runners", PathEscape(group))
-
-	req, err := s.client.NewRequest(http.MethodGet, u, opt, options)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	var rs []*Runner
-	resp, err := s.client.Do(req, &rs)
+	res, resp, err := do[[]*Runner](s.client,
+		withMethod(http.MethodGet),
+		withPath("groups/%s/runners", GroupID{gid}),
+		withAPIOpts(opt),
+		withRequestOpts(options...),
+	)
 	if err != nil {
 		return nil, resp, err
 	}
-
-	return rs, resp, nil
+	return res, resp, nil
 }
 
 // RegisterNewRunnerOptions represents the available RegisterNewRunner()
@@ -475,18 +413,16 @@ type RegisterNewRunnerInfoOptions struct {
 // GitLab API docs:
 // https://docs.gitlab.com/api/runners/#create-a-runner
 func (s *RunnersService) RegisterNewRunner(opt *RegisterNewRunnerOptions, options ...RequestOptionFunc) (*Runner, *Response, error) {
-	req, err := s.client.NewRequest(http.MethodPost, "runners", opt, options)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	r := new(Runner)
-	resp, err := s.client.Do(req, &r)
+	res, resp, err := do[*Runner](s.client,
+		withMethod(http.MethodPost),
+		withPath("runners"),
+		withAPIOpts(opt),
+		withRequestOpts(options...),
+	)
 	if err != nil {
 		return nil, resp, err
 	}
-
-	return r, resp, nil
+	return res, resp, nil
 }
 
 // DeleteRegisteredRunnerOptions represents the available
@@ -503,12 +439,13 @@ type DeleteRegisteredRunnerOptions struct {
 // GitLab API docs:
 // https://docs.gitlab.com/api/runners/#delete-a-runner-by-authentication-token
 func (s *RunnersService) DeleteRegisteredRunner(opt *DeleteRegisteredRunnerOptions, options ...RequestOptionFunc) (*Response, error) {
-	req, err := s.client.NewRequest(http.MethodDelete, "runners", opt, options)
-	if err != nil {
-		return nil, err
-	}
-
-	return s.client.Do(req, nil)
+	_, resp, err := do[none](s.client,
+		withMethod(http.MethodDelete),
+		withPath("runners"),
+		withAPIOpts(opt),
+		withRequestOpts(options...),
+	)
+	return resp, err
 }
 
 // DeleteRegisteredRunnerByID deletes a runner by ID.
@@ -516,12 +453,13 @@ func (s *RunnersService) DeleteRegisteredRunner(opt *DeleteRegisteredRunnerOptio
 // GitLab API docs:
 // https://docs.gitlab.com/api/runners/#delete-a-runner-by-id
 func (s *RunnersService) DeleteRegisteredRunnerByID(rid int, options ...RequestOptionFunc) (*Response, error) {
-	req, err := s.client.NewRequest(http.MethodDelete, fmt.Sprintf("runners/%d", rid), nil, options)
-	if err != nil {
-		return nil, err
-	}
-
-	return s.client.Do(req, nil)
+	_, resp, err := do[none](s.client,
+		withMethod(http.MethodDelete),
+		withPath(fmt.Sprintf("runners/%d", rid)),
+		withAPIOpts(nil),
+		withRequestOpts(options...),
+	)
+	return resp, err
 }
 
 // VerifyRegisteredRunnerOptions represents the available
@@ -538,12 +476,13 @@ type VerifyRegisteredRunnerOptions struct {
 // GitLab API docs:
 // https://docs.gitlab.com/api/runners/#verify-authentication-for-a-registered-runner
 func (s *RunnersService) VerifyRegisteredRunner(opt *VerifyRegisteredRunnerOptions, options ...RequestOptionFunc) (*Response, error) {
-	req, err := s.client.NewRequest(http.MethodPost, "runners/verify", opt, options)
-	if err != nil {
-		return nil, err
-	}
-
-	return s.client.Do(req, nil)
+	_, resp, err := do[none](s.client,
+		withMethod(http.MethodPost),
+		withPath("runners/verify"),
+		withAPIOpts(opt),
+		withRequestOpts(options...),
+	)
+	return resp, err
 }
 
 type RunnerRegistrationToken struct {
@@ -558,18 +497,16 @@ type RunnerRegistrationToken struct {
 // GitLab API docs:
 // https://docs.gitlab.com/api/runners/#reset-instances-runner-registration-token
 func (s *RunnersService) ResetInstanceRunnerRegistrationToken(options ...RequestOptionFunc) (*RunnerRegistrationToken, *Response, error) {
-	req, err := s.client.NewRequest(http.MethodPost, "runners/reset_registration_token", nil, options)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	r := new(RunnerRegistrationToken)
-	resp, err := s.client.Do(req, &r)
+	res, resp, err := do[*RunnerRegistrationToken](s.client,
+		withMethod(http.MethodPost),
+		withPath("runners/reset_registration_token"),
+		withAPIOpts(nil),
+		withRequestOpts(options...),
+	)
 	if err != nil {
 		return nil, resp, err
 	}
-
-	return r, resp, nil
+	return res, resp, nil
 }
 
 // ResetGroupRunnerRegistrationToken resets a group's runner registration token.
@@ -578,24 +515,16 @@ func (s *RunnersService) ResetInstanceRunnerRegistrationToken(options ...Request
 // GitLab API docs:
 // https://docs.gitlab.com/api/runners/#reset-groups-runner-registration-token
 func (s *RunnersService) ResetGroupRunnerRegistrationToken(gid any, options ...RequestOptionFunc) (*RunnerRegistrationToken, *Response, error) {
-	group, err := parseID(gid)
-	if err != nil {
-		return nil, nil, err
-	}
-	u := fmt.Sprintf("groups/%s/runners/reset_registration_token", PathEscape(group))
-
-	req, err := s.client.NewRequest(http.MethodPost, u, nil, options)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	r := new(RunnerRegistrationToken)
-	resp, err := s.client.Do(req, &r)
+	res, resp, err := do[*RunnerRegistrationToken](s.client,
+		withMethod(http.MethodPost),
+		withPath("groups/%s/runners/reset_registration_token", GroupID{gid}),
+		withAPIOpts(nil),
+		withRequestOpts(options...),
+	)
 	if err != nil {
 		return nil, resp, err
 	}
-
-	return r, resp, nil
+	return res, resp, nil
 }
 
 // ResetProjectRunnerRegistrationToken resets a projects's runner registration token.
@@ -604,23 +533,16 @@ func (s *RunnersService) ResetGroupRunnerRegistrationToken(gid any, options ...R
 // GitLab API docs:
 // https://docs.gitlab.com/api/runners/#reset-projects-runner-registration-token
 func (s *RunnersService) ResetProjectRunnerRegistrationToken(pid any, options ...RequestOptionFunc) (*RunnerRegistrationToken, *Response, error) {
-	project, err := parseID(pid)
-	if err != nil {
-		return nil, nil, err
-	}
-	u := fmt.Sprintf("projects/%s/runners/reset_registration_token", PathEscape(project))
-	req, err := s.client.NewRequest(http.MethodPost, u, nil, options)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	r := new(RunnerRegistrationToken)
-	resp, err := s.client.Do(req, &r)
+	res, resp, err := do[*RunnerRegistrationToken](s.client,
+		withMethod(http.MethodPost),
+		withPath("projects/%s/runners/reset_registration_token", ProjectID{pid}),
+		withAPIOpts(nil),
+		withRequestOpts(options...),
+	)
 	if err != nil {
 		return nil, resp, err
 	}
-
-	return r, resp, nil
+	return res, resp, nil
 }
 
 type RunnerAuthenticationToken struct {
@@ -633,17 +555,14 @@ type RunnerAuthenticationToken struct {
 // GitLab API docs:
 // https://docs.gitlab.com/api/runners/#reset-runners-authentication-token-by-using-the-runner-id
 func (s *RunnersService) ResetRunnerAuthenticationToken(rid int, options ...RequestOptionFunc) (*RunnerAuthenticationToken, *Response, error) {
-	u := fmt.Sprintf("runners/%d/reset_authentication_token", rid)
-	req, err := s.client.NewRequest(http.MethodPost, u, nil, options)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	r := new(RunnerAuthenticationToken)
-	resp, err := s.client.Do(req, &r)
+	res, resp, err := do[*RunnerAuthenticationToken](s.client,
+		withMethod(http.MethodPost),
+		withPath("runners/%d/reset_authentication_token", rid),
+		withAPIOpts(nil),
+		withRequestOpts(options...),
+	)
 	if err != nil {
 		return nil, resp, err
 	}
-
-	return r, resp, nil
+	return res, resp, nil
 }

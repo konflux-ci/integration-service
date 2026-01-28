@@ -15,12 +15,17 @@
 package gitlab
 
 import (
-	"fmt"
 	"net/http"
 )
 
 type (
 	DatabaseMigrationsServiceInterface interface {
+		// MarkMigrationAsSuccessful marks pending migrations as successfully executed
+		// to prevent them from being executed by the db:migrate tasks. Use this API to
+		// skip failing migrations after they are determined to be safe to skip.
+		//
+		// GitLab API docs:
+		// https://docs.gitlab.com/api/database_migrations/#mark-a-migration-as-successful
 		MarkMigrationAsSuccessful(version int, opt *MarkMigrationAsSuccessfulOptions, options ...RequestOptionFunc) (*Response, error)
 	}
 
@@ -44,19 +49,12 @@ type MarkMigrationAsSuccessfulOptions struct {
 	Database string `url:"database,omitempty" json:"database,omitempty"`
 }
 
-// MarkMigrationAsSuccessful marks pending migrations as successfully executed
-// to prevent them from being executed by the db:migrate tasks. Use this API to
-// skip failing migrations after they are determined to be safe to skip.
-//
-// GitLab API docs:
-// https://docs.gitlab.com/api/database_migrations/#mark-a-migration-as-successful
 func (s *DatabaseMigrationsService) MarkMigrationAsSuccessful(version int, opt *MarkMigrationAsSuccessfulOptions, options ...RequestOptionFunc) (*Response, error) {
-	u := fmt.Sprintf("admin/migrations/%d/mark", version)
-
-	req, err := s.client.NewRequest(http.MethodPost, u, opt, options)
-	if err != nil {
-		return nil, err
-	}
-
-	return s.client.Do(req, nil)
+	_, resp, err := do[none](s.client,
+		withMethod(http.MethodPost),
+		withPath("admin/migrations/%d/mark", version),
+		withAPIOpts(opt),
+		withRequestOpts(options...),
+	)
+	return resp, err
 }

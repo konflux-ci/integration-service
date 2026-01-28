@@ -17,7 +17,6 @@
 package gitlab
 
 import (
-	"fmt"
 	"net/http"
 	"time"
 )
@@ -88,24 +87,11 @@ type IssueRelation struct {
 // GitLab API docs:
 // https://docs.gitlab.com/api/issue_links/#list-issue-relations
 func (s *IssueLinksService) ListIssueRelations(pid any, issue int, options ...RequestOptionFunc) ([]*IssueRelation, *Response, error) {
-	project, err := parseID(pid)
-	if err != nil {
-		return nil, nil, err
-	}
-	u := fmt.Sprintf("projects/%s/issues/%d/links", PathEscape(project), issue)
-
-	req, err := s.client.NewRequest(http.MethodGet, u, nil, options)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	var is []*IssueRelation
-	resp, err := s.client.Do(req, &is)
-	if err != nil {
-		return nil, resp, err
-	}
-
-	return is, resp, nil
+	// Use explicit format string for the path
+	return do[[]*IssueRelation](s.client,
+		withPath("projects/%s/issues/%d/links", ProjectID{pid}, issue),
+		withRequestOpts(options...),
+	)
 }
 
 // GetIssueLink gets a specific issue link.
@@ -113,24 +99,11 @@ func (s *IssueLinksService) ListIssueRelations(pid any, issue int, options ...Re
 // GitLab API docs:
 // https://docs.gitlab.com/api/issue_links/#get-an-issue-link
 func (s *IssueLinksService) GetIssueLink(pid any, issue, issueLink int, options ...RequestOptionFunc) (*IssueLink, *Response, error) {
-	project, err := parseID(pid)
-	if err != nil {
-		return nil, nil, err
-	}
-	u := fmt.Sprintf("projects/%s/issues/%d/links/%d", PathEscape(project), issue, issueLink)
-
-	req, err := s.client.NewRequest(http.MethodGet, u, nil, options)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	il := new(IssueLink)
-	resp, err := s.client.Do(req, il)
-	if err != nil {
-		return nil, resp, err
-	}
-
-	return il, resp, nil
+	// Use explicit format string for the path
+	return do[*IssueLink](s.client,
+		withPath("projects/%s/issues/%d/links/%d", ProjectID{pid}, issue, issueLink),
+		withRequestOpts(options...),
+	)
 }
 
 // CreateIssueLinkOptions represents the available CreateIssueLink() options.
@@ -148,24 +121,12 @@ type CreateIssueLinkOptions struct {
 // GitLab API docs:
 // https://docs.gitlab.com/api/issue_links/#create-an-issue-link
 func (s *IssueLinksService) CreateIssueLink(pid any, issue int, opt *CreateIssueLinkOptions, options ...RequestOptionFunc) (*IssueLink, *Response, error) {
-	project, err := parseID(pid)
-	if err != nil {
-		return nil, nil, err
-	}
-	u := fmt.Sprintf("projects/%s/issues/%d/links", PathEscape(project), issue)
-
-	req, err := s.client.NewRequest(http.MethodPost, u, opt, options)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	i := new(IssueLink)
-	resp, err := s.client.Do(req, &i)
-	if err != nil {
-		return nil, resp, err
-	}
-
-	return i, resp, nil
+	return do[*IssueLink](s.client,
+		withMethod(http.MethodPost),
+		withPath("projects/%s/issues/%d/links", ProjectID{pid}, issue),
+		withAPIOpts(opt),
+		withRequestOpts(options...),
+	)
 }
 
 // DeleteIssueLink deletes an issue link, thus removes the two-way relationship.
@@ -173,25 +134,9 @@ func (s *IssueLinksService) CreateIssueLink(pid any, issue int, opt *CreateIssue
 // GitLab API docs:
 // https://docs.gitlab.com/api/issue_links/#delete-an-issue-link
 func (s *IssueLinksService) DeleteIssueLink(pid any, issue, issueLink int, options ...RequestOptionFunc) (*IssueLink, *Response, error) {
-	project, err := parseID(pid)
-	if err != nil {
-		return nil, nil, err
-	}
-	u := fmt.Sprintf("projects/%s/issues/%d/links/%d",
-		PathEscape(project),
-		issue,
-		issueLink)
-
-	req, err := s.client.NewRequest(http.MethodDelete, u, nil, options)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	il := new(IssueLink)
-	resp, err := s.client.Do(req, &il)
-	if err != nil {
-		return nil, resp, err
-	}
-
-	return il, resp, nil
+	return do[*IssueLink](s.client,
+		withMethod(http.MethodDelete),
+		withPath("projects/%s/issues/%d/links/%d", ProjectID{pid}, issue, issueLink),
+		withRequestOpts(options...),
+	)
 }

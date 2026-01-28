@@ -55,12 +55,14 @@ type GroupMember struct {
 	AvatarURL         string                   `json:"avatar_url"`
 	WebURL            string                   `json:"web_url"`
 	CreatedAt         *time.Time               `json:"created_at"`
+	CreatedBy         *MemberCreatedBy         `json:"created_by"`
 	ExpiresAt         *ISOTime                 `json:"expires_at"`
 	AccessLevel       AccessLevelValue         `json:"access_level"`
 	Email             string                   `json:"email,omitempty"`
 	PublicEmail       string                   `json:"public_email,omitempty"`
 	GroupSAMLIdentity *GroupMemberSAMLIdentity `json:"group_saml_identity"`
 	MemberRole        *MemberRole              `json:"member_role"`
+	IsUsingSeat       bool                     `json:"is_using_seat,omitempty"`
 }
 
 // GroupMemberSAMLIdentity represents the SAML Identity link for the group member.
@@ -114,8 +116,9 @@ type BillableUserMembership struct {
 // https://docs.gitlab.com/api/members/#list-all-members-of-a-group-or-project
 type ListGroupMembersOptions struct {
 	ListOptions
-	Query   *string `url:"query,omitempty" json:"query,omitempty"`
-	UserIDs *[]int  `url:"user_ids[],omitempty" json:"user_ids,omitempty"`
+	Query        *string `url:"query,omitempty" json:"query,omitempty"`
+	UserIDs      *[]int  `url:"user_ids[],omitempty" json:"user_ids,omitempty"`
+	ShowSeatInfo *bool   `url:"show_seat_info,omitempty" json:"show_seat_info,omitempty"`
 }
 
 // ListGroupMembers get a list of group members viewable by the authenticated

@@ -17,8 +17,6 @@
 package gitlab
 
 import (
-	"fmt"
-	"net/http"
 	"time"
 )
 
@@ -86,18 +84,11 @@ type GetIssuesStatisticsOptions struct {
 // GitLab API docs:
 // https://docs.gitlab.com/api/issues_statistics/#get-issues-statistics
 func (s *IssuesStatisticsService) GetIssuesStatistics(opt *GetIssuesStatisticsOptions, options ...RequestOptionFunc) (*IssuesStatistics, *Response, error) {
-	req, err := s.client.NewRequest(http.MethodGet, "issues_statistics", opt, options)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	is := new(IssuesStatistics)
-	resp, err := s.client.Do(req, is)
-	if err != nil {
-		return nil, resp, err
-	}
-
-	return is, resp, nil
+	return do[*IssuesStatistics](s.client,
+		withPath("issues_statistics"),
+		withAPIOpts(opt),
+		withRequestOpts(options...),
+	)
 }
 
 // GetGroupIssuesStatisticsOptions represents the available GetGroupIssuesStatistics()
@@ -128,24 +119,11 @@ type GetGroupIssuesStatisticsOptions struct {
 // GitLab API docs:
 // https://docs.gitlab.com/api/issues_statistics/#get-group-issues-statistics
 func (s *IssuesStatisticsService) GetGroupIssuesStatistics(gid any, opt *GetGroupIssuesStatisticsOptions, options ...RequestOptionFunc) (*IssuesStatistics, *Response, error) {
-	group, err := parseID(gid)
-	if err != nil {
-		return nil, nil, err
-	}
-	u := fmt.Sprintf("groups/%s/issues_statistics", PathEscape(group))
-
-	req, err := s.client.NewRequest(http.MethodGet, u, opt, options)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	is := new(IssuesStatistics)
-	resp, err := s.client.Do(req, is)
-	if err != nil {
-		return nil, resp, err
-	}
-
-	return is, resp, nil
+	return do[*IssuesStatistics](s.client,
+		withPath("groups/%s/issues_statistics", GroupID{gid}),
+		withAPIOpts(opt),
+		withRequestOpts(options...),
+	)
 }
 
 // GetProjectIssuesStatisticsOptions represents the available
@@ -176,22 +154,9 @@ type GetProjectIssuesStatisticsOptions struct {
 // GitLab API docs:
 // https://docs.gitlab.com/api/issues_statistics/#get-project-issues-statistics
 func (s *IssuesStatisticsService) GetProjectIssuesStatistics(pid any, opt *GetProjectIssuesStatisticsOptions, options ...RequestOptionFunc) (*IssuesStatistics, *Response, error) {
-	project, err := parseID(pid)
-	if err != nil {
-		return nil, nil, err
-	}
-	u := fmt.Sprintf("projects/%s/issues_statistics", PathEscape(project))
-
-	req, err := s.client.NewRequest(http.MethodGet, u, opt, options)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	is := new(IssuesStatistics)
-	resp, err := s.client.Do(req, is)
-	if err != nil {
-		return nil, resp, err
-	}
-
-	return is, resp, nil
+	return do[*IssuesStatistics](s.client,
+		withPath("projects/%s/issues_statistics", ProjectID{pid}),
+		withAPIOpts(opt),
+		withRequestOpts(options...),
+	)
 }

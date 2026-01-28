@@ -17,21 +17,71 @@
 package gitlab
 
 import (
-	"fmt"
 	"net/http"
 )
 
 type (
 	IssueBoardsServiceInterface interface {
+		// CreateIssueBoard creates a new issue board.
+		//
+		// GitLab API docs:
+		// https://docs.gitlab.com/api/boards/#create-an-issue-board
 		CreateIssueBoard(pid any, opt *CreateIssueBoardOptions, options ...RequestOptionFunc) (*IssueBoard, *Response, error)
+
+		// UpdateIssueBoard update an issue board.
+		//
+		// GitLab API docs:
+		// https://docs.gitlab.com/api/boards/#update-an-issue-board
 		UpdateIssueBoard(pid any, board int, opt *UpdateIssueBoardOptions, options ...RequestOptionFunc) (*IssueBoard, *Response, error)
+
+		// DeleteIssueBoard deletes an issue board.
+		//
+		// GitLab API docs:
+		// https://docs.gitlab.com/api/boards/#delete-an-issue-board
 		DeleteIssueBoard(pid any, board int, options ...RequestOptionFunc) (*Response, error)
+
+		// ListIssueBoards gets a list of all issue boards in a project.
+		//
+		// GitLab API docs:
+		// https://docs.gitlab.com/api/boards/#list-project-issue-boards
 		ListIssueBoards(pid any, opt *ListIssueBoardsOptions, options ...RequestOptionFunc) ([]*IssueBoard, *Response, error)
+
+		// GetIssueBoard gets a single issue board of a project.
+		//
+		// GitLab API docs:
+		// https://docs.gitlab.com/api/boards/#show-a-single-issue-board
 		GetIssueBoard(pid any, board int, options ...RequestOptionFunc) (*IssueBoard, *Response, error)
+
+		// GetIssueBoardLists gets a list of the issue board's lists. Does not include
+		// backlog and closed lists.
+		//
+		// GitLab API docs:
+		// https://docs.gitlab.com/api/boards/#list-board-lists-in-a-project-issue-board
 		GetIssueBoardLists(pid any, board int, opt *GetIssueBoardListsOptions, options ...RequestOptionFunc) ([]*BoardList, *Response, error)
+
+		// GetIssueBoardList gets a single issue board list.
+		//
+		// GitLab API docs:
+		// https://docs.gitlab.com/api/boards/#show-a-single-board-list
 		GetIssueBoardList(pid any, board, list int, options ...RequestOptionFunc) (*BoardList, *Response, error)
+
+		// CreateIssueBoardList creates a new issue board list.
+		//
+		// GitLab API docs:
+		// https://docs.gitlab.com/api/boards/#create-a-board-list
 		CreateIssueBoardList(pid any, board int, opt *CreateIssueBoardListOptions, options ...RequestOptionFunc) (*BoardList, *Response, error)
+
+		// UpdateIssueBoardList updates the position of an existing issue board list.
+		//
+		// GitLab API docs:
+		// https://docs.gitlab.com/api/boards/#reorder-a-list-in-a-board
 		UpdateIssueBoardList(pid any, board, list int, opt *UpdateIssueBoardListOptions, options ...RequestOptionFunc) (*BoardList, *Response, error)
+
+		// DeleteIssueBoardList soft deletes an issue board list. Only for admins and
+		// project owners.
+		//
+		// GitLab API docs:
+		// https://docs.gitlab.com/api/boards/#delete-a-board-list-from-a-board
 		DeleteIssueBoardList(pid any, board, list int, options ...RequestOptionFunc) (*Response, error)
 	}
 
@@ -100,28 +150,13 @@ type CreateIssueBoardOptions struct {
 	Name *string `url:"name,omitempty" json:"name,omitempty"`
 }
 
-// CreateIssueBoard creates a new issue board.
-//
-// GitLab API docs: https://docs.gitlab.com/api/boards/#create-an-issue-board
 func (s *IssueBoardsService) CreateIssueBoard(pid any, opt *CreateIssueBoardOptions, options ...RequestOptionFunc) (*IssueBoard, *Response, error) {
-	project, err := parseID(pid)
-	if err != nil {
-		return nil, nil, err
-	}
-	u := fmt.Sprintf("projects/%s/boards", PathEscape(project))
-
-	req, err := s.client.NewRequest(http.MethodPost, u, opt, options)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	board := new(IssueBoard)
-	resp, err := s.client.Do(req, board)
-	if err != nil {
-		return nil, resp, err
-	}
-
-	return board, resp, nil
+	return do[*IssueBoard](s.client,
+		withMethod(http.MethodPost),
+		withPath("projects/%s/boards", ProjectID{pid}),
+		withAPIOpts(opt),
+		withRequestOpts(options...),
+	)
 }
 
 // UpdateIssueBoardOptions represents the available UpdateIssueBoard() options.
@@ -135,46 +170,22 @@ type UpdateIssueBoardOptions struct {
 	Weight      *int          `url:"weight,omitempty" json:"weight,omitempty"`
 }
 
-// UpdateIssueBoard update an issue board.
-//
-// GitLab API docs: https://docs.gitlab.com/api/boards/#update-an-issue-board
 func (s *IssueBoardsService) UpdateIssueBoard(pid any, board int, opt *UpdateIssueBoardOptions, options ...RequestOptionFunc) (*IssueBoard, *Response, error) {
-	project, err := parseID(pid)
-	if err != nil {
-		return nil, nil, err
-	}
-	u := fmt.Sprintf("projects/%s/boards/%d", PathEscape(project), board)
-
-	req, err := s.client.NewRequest(http.MethodPut, u, opt, options)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	is := new(IssueBoard)
-	resp, err := s.client.Do(req, is)
-	if err != nil {
-		return nil, resp, err
-	}
-
-	return is, resp, nil
+	return do[*IssueBoard](s.client,
+		withMethod(http.MethodPut),
+		withPath("projects/%s/boards/%d", ProjectID{pid}, board),
+		withAPIOpts(opt),
+		withRequestOpts(options...),
+	)
 }
 
-// DeleteIssueBoard deletes an issue board.
-//
-// GitLab API docs: https://docs.gitlab.com/api/boards/#delete-an-issue-board
 func (s *IssueBoardsService) DeleteIssueBoard(pid any, board int, options ...RequestOptionFunc) (*Response, error) {
-	project, err := parseID(pid)
-	if err != nil {
-		return nil, err
-	}
-	u := fmt.Sprintf("projects/%s/boards/%d", PathEscape(project), board)
-
-	req, err := s.client.NewRequest(http.MethodDelete, u, nil, options)
-	if err != nil {
-		return nil, err
-	}
-
-	return s.client.Do(req, nil)
+	_, resp, err := do[none](s.client,
+		withMethod(http.MethodDelete),
+		withPath("projects/%s/boards/%d", ProjectID{pid}, board),
+		withRequestOpts(options...),
+	)
+	return resp, err
 }
 
 // ListIssueBoardsOptions represents the available ListIssueBoards() options.
@@ -182,52 +193,21 @@ func (s *IssueBoardsService) DeleteIssueBoard(pid any, board int, options ...Req
 // GitLab API docs: https://docs.gitlab.com/api/boards/#list-project-issue-boards
 type ListIssueBoardsOptions ListOptions
 
-// ListIssueBoards gets a list of all issue boards in a project.
-//
-// GitLab API docs: https://docs.gitlab.com/api/boards/#list-project-issue-boards
 func (s *IssueBoardsService) ListIssueBoards(pid any, opt *ListIssueBoardsOptions, options ...RequestOptionFunc) ([]*IssueBoard, *Response, error) {
-	project, err := parseID(pid)
-	if err != nil {
-		return nil, nil, err
-	}
-	u := fmt.Sprintf("projects/%s/boards", PathEscape(project))
-
-	req, err := s.client.NewRequest(http.MethodGet, u, opt, options)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	var is []*IssueBoard
-	resp, err := s.client.Do(req, &is)
-	if err != nil {
-		return nil, resp, err
-	}
-
-	return is, resp, nil
+	return do[[]*IssueBoard](s.client,
+		withMethod(http.MethodGet),
+		withPath("projects/%s/boards", ProjectID{pid}),
+		withAPIOpts(opt),
+		withRequestOpts(options...),
+	)
 }
 
-// GetIssueBoard gets a single issue board of a project.
-//
-// GitLab API docs: https://docs.gitlab.com/api/boards/#show-a-single-issue-board
 func (s *IssueBoardsService) GetIssueBoard(pid any, board int, options ...RequestOptionFunc) (*IssueBoard, *Response, error) {
-	project, err := parseID(pid)
-	if err != nil {
-		return nil, nil, err
-	}
-	u := fmt.Sprintf("projects/%s/boards/%d", PathEscape(project), board)
-
-	req, err := s.client.NewRequest(http.MethodGet, u, nil, options)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	ib := new(IssueBoard)
-	resp, err := s.client.Do(req, ib)
-	if err != nil {
-		return nil, resp, err
-	}
-
-	return ib, resp, nil
+	return do[*IssueBoard](s.client,
+		withMethod(http.MethodGet),
+		withPath("projects/%s/boards/%d", ProjectID{pid}, board),
+		withRequestOpts(options...),
+	)
 }
 
 // GetIssueBoardListsOptions represents the available GetIssueBoardLists() options.
@@ -235,57 +215,21 @@ func (s *IssueBoardsService) GetIssueBoard(pid any, board int, options ...Reques
 // GitLab API docs: https://docs.gitlab.com/api/boards/#list-board-lists-in-a-project-issue-board
 type GetIssueBoardListsOptions ListOptions
 
-// GetIssueBoardLists gets a list of the issue board's lists. Does not include
-// backlog and closed lists.
-//
-// GitLab API docs: https://docs.gitlab.com/api/boards/#list-board-lists-in-a-project-issue-board
 func (s *IssueBoardsService) GetIssueBoardLists(pid any, board int, opt *GetIssueBoardListsOptions, options ...RequestOptionFunc) ([]*BoardList, *Response, error) {
-	project, err := parseID(pid)
-	if err != nil {
-		return nil, nil, err
-	}
-	u := fmt.Sprintf("projects/%s/boards/%d/lists", PathEscape(project), board)
-
-	req, err := s.client.NewRequest(http.MethodGet, u, opt, options)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	var bl []*BoardList
-	resp, err := s.client.Do(req, &bl)
-	if err != nil {
-		return nil, resp, err
-	}
-
-	return bl, resp, nil
+	return do[[]*BoardList](s.client,
+		withMethod(http.MethodGet),
+		withPath("projects/%s/boards/%d/lists", ProjectID{pid}, board),
+		withAPIOpts(opt),
+		withRequestOpts(options...),
+	)
 }
 
-// GetIssueBoardList gets a single issue board list.
-//
-// GitLab API docs: https://docs.gitlab.com/api/boards/#show-a-single-board-list
 func (s *IssueBoardsService) GetIssueBoardList(pid any, board, list int, options ...RequestOptionFunc) (*BoardList, *Response, error) {
-	project, err := parseID(pid)
-	if err != nil {
-		return nil, nil, err
-	}
-	u := fmt.Sprintf("projects/%s/boards/%d/lists/%d",
-		PathEscape(project),
-		board,
-		list,
+	return do[*BoardList](s.client,
+		withMethod(http.MethodGet),
+		withPath("projects/%s/boards/%d/lists/%d", ProjectID{pid}, board, list),
+		withRequestOpts(options...),
 	)
-
-	req, err := s.client.NewRequest(http.MethodGet, u, nil, options)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	bl := new(BoardList)
-	resp, err := s.client.Do(req, bl)
-	if err != nil {
-		return nil, resp, err
-	}
-
-	return bl, resp, nil
 }
 
 // CreateIssueBoardListOptions represents the available CreateIssueBoardList()
@@ -299,28 +243,13 @@ type CreateIssueBoardListOptions struct {
 	IterationID *int `url:"iteration_id,omitempty" json:"iteration_id,omitempty"`
 }
 
-// CreateIssueBoardList creates a new issue board list.
-//
-// GitLab API docs: https://docs.gitlab.com/api/boards/#create-a-board-list
 func (s *IssueBoardsService) CreateIssueBoardList(pid any, board int, opt *CreateIssueBoardListOptions, options ...RequestOptionFunc) (*BoardList, *Response, error) {
-	project, err := parseID(pid)
-	if err != nil {
-		return nil, nil, err
-	}
-	u := fmt.Sprintf("projects/%s/boards/%d/lists", PathEscape(project), board)
-
-	req, err := s.client.NewRequest(http.MethodPost, u, opt, options)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	bl := new(BoardList)
-	resp, err := s.client.Do(req, bl)
-	if err != nil {
-		return nil, resp, err
-	}
-
-	return bl, resp, nil
+	return do[*BoardList](s.client,
+		withMethod(http.MethodPost),
+		withPath("projects/%s/boards/%d/lists", ProjectID{pid}, board),
+		withAPIOpts(opt),
+		withRequestOpts(options...),
+	)
 }
 
 // UpdateIssueBoardListOptions represents the available UpdateIssueBoardList()
@@ -331,54 +260,20 @@ type UpdateIssueBoardListOptions struct {
 	Position *int `url:"position" json:"position"`
 }
 
-// UpdateIssueBoardList updates the position of an existing issue board list.
-//
-// GitLab API docs: https://docs.gitlab.com/api/boards/#reorder-a-list-in-a-board
 func (s *IssueBoardsService) UpdateIssueBoardList(pid any, board, list int, opt *UpdateIssueBoardListOptions, options ...RequestOptionFunc) (*BoardList, *Response, error) {
-	project, err := parseID(pid)
-	if err != nil {
-		return nil, nil, err
-	}
-	u := fmt.Sprintf("projects/%s/boards/%d/lists/%d",
-		PathEscape(project),
-		board,
-		list,
+	return do[*BoardList](s.client,
+		withMethod(http.MethodPut),
+		withPath("projects/%s/boards/%d/lists/%d", ProjectID{pid}, board, list),
+		withAPIOpts(opt),
+		withRequestOpts(options...),
 	)
-
-	req, err := s.client.NewRequest(http.MethodPut, u, opt, options)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	bl := new(BoardList)
-	resp, err := s.client.Do(req, bl)
-	if err != nil {
-		return nil, resp, err
-	}
-
-	return bl, resp, nil
 }
 
-// DeleteIssueBoardList soft deletes an issue board list. Only for admins and
-// project owners.
-//
-// GitLab API docs:
-// https://docs.gitlab.com/api/boards/#delete-a-board-list-from-a-board
 func (s *IssueBoardsService) DeleteIssueBoardList(pid any, board, list int, options ...RequestOptionFunc) (*Response, error) {
-	project, err := parseID(pid)
-	if err != nil {
-		return nil, err
-	}
-	u := fmt.Sprintf("projects/%s/boards/%d/lists/%d",
-		PathEscape(project),
-		board,
-		list,
+	_, resp, err := do[none](s.client,
+		withMethod(http.MethodDelete),
+		withPath("projects/%s/boards/%d/lists/%d", ProjectID{pid}, board, list),
+		withRequestOpts(options...),
 	)
-
-	req, err := s.client.NewRequest(http.MethodDelete, u, nil, options)
-	if err != nil {
-		return nil, err
-	}
-
-	return s.client.Do(req, nil)
+	return resp, err
 }
