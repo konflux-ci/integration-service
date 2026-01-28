@@ -34,6 +34,10 @@ type ReleasePlanAdmissionSpec struct {
 	// +required
 	Applications []string `json:"applications"`
 
+	// Collectors contains all the information of the collectors to be executed as part of the release workflow
+	// +optional
+	Collectors *Collectors `json:"collectors,omitempty"`
+
 	// Data is an unstructured key used for providing data for the managed Release Pipeline
 	// +kubebuilder:pruning:PreserveUnknownFields
 	// +optional
@@ -50,8 +54,8 @@ type ReleasePlanAdmissionSpec struct {
 	Origin string `json:"origin"`
 
 	// Pipeline contains all the information about the managed Pipeline
-	// +required
-	Pipeline *tektonutils.Pipeline `json:"pipeline"`
+	// +optional
+	Pipeline *tektonutils.Pipeline `json:"pipeline,omitempty"`
 
 	// Policy to validate before releasing an artifact
 	// +kubebuilder:validation:Pattern=^[a-z0-9]([-a-z0-9]*[a-z0-9])?$

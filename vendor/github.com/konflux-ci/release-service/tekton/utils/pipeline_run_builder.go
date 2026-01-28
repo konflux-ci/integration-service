@@ -20,9 +20,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"strings"
 	"unicode"
 
 	"github.com/hashicorp/go-multierror"
+	"github.com/konflux-ci/release-service/git"
 	libhandler "github.com/operator-framework/operator-lib/handler"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -66,6 +68,27 @@ func (b *PipelineRunBuilder) WithAnnotations(annotations map[string]string) *Pip
 	for key, value := range annotations {
 		b.pipelineRun.ObjectMeta.Annotations[key] = value
 	}
+
+	return b
+}
+
+// WithEmptyDirVolume creates and adds a workspace backed by EmptyDir and using the provided
+// workspace name and volume size.
+func (b *PipelineRunBuilder) WithEmptyDirVolume(name, size string) *PipelineRunBuilder {
+	quantity, err := resource.ParseQuantity(size)
+	if err != nil {
+		b.err = multierror.Append(b.err, fmt.Errorf("invalid size format: %v", err))
+		return b
+	}
+
+	workspace := tektonv1.WorkspaceBinding{
+		Name: name,
+		EmptyDir: &corev1.EmptyDirVolumeSource{
+			SizeLimit: &quantity,
+		},
+	}
+
+	b.pipelineRun.Spec.Workspaces = append(b.pipelineRun.Spec.Workspaces, workspace)
 
 	return b
 }
@@ -194,28 +217,45 @@ func (b *PipelineRunBuilder) WithParamsFromConfigMap(configMap *corev1.ConfigMap
 func (b *PipelineRunBuilder) WithPipelineRef(pipelineRef *tektonv1.PipelineRef) *PipelineRunBuilder {
 	b.pipelineRun.Spec.PipelineRef = pipelineRef
 
-	if pipelineRef.Resolver == "git" {
-		for _, param := range pipelineRef.Params {
-			if param.Name == "revision" {
-				b.WithParams(tektonv1.Param{
-					Name: "taskGitRevision",
-					Value: tektonv1.ParamValue{
-						Type:      tektonv1.ParamTypeString,
-						StringVal: param.Value.StringVal,
-					},
-				})
-			}
+	if pipelineRef != nil && pipelineRef.ResolverRef.Resolver == "git" {
+		var gitURL, revision string
 
-			if param.Name == "url" {
-				b.WithParams(tektonv1.Param{
-					Name: "taskGitUrl",
-					Value: tektonv1.ParamValue{
-						Type:      tektonv1.ParamTypeString,
-						StringVal: param.Value.StringVal,
-					},
-				})
+		for _, param := range pipelineRef.ResolverRef.Params {
+			switch param.Name {
+			case "url":
+				gitURL = param.Value.StringVal
+			case "revision":
+				revision = param.Value.StringVal
 			}
 		}
+
+		resolvedSHA, err := git.ResolveBranchToSHA(gitURL, revision)
+		if err != nil {
+			if strings.Contains(err.Error(), "authentication required") ||
+				strings.Contains(err.Error(), "remote repository access failed") {
+				resolvedSHA = revision
+			} else {
+				b.err = multierror.Append(b.err, fmt.Errorf("git resolution failed: %w", err))
+				return b
+			}
+		}
+
+		b.WithParams(
+			tektonv1.Param{
+				Name: "taskGitUrl",
+				Value: tektonv1.ParamValue{
+					Type:      tektonv1.ParamTypeString,
+					StringVal: gitURL,
+				},
+			},
+			tektonv1.Param{
+				Name: "taskGitRevision",
+				Value: tektonv1.ParamValue{
+					Type:      tektonv1.ParamTypeString,
+					StringVal: resolvedSHA,
+				},
+			},
+		)
 	}
 
 	return b
@@ -225,6 +265,12 @@ func (b *PipelineRunBuilder) WithPipelineRef(pipelineRef *tektonv1.PipelineRef) 
 func (b *PipelineRunBuilder) WithServiceAccount(serviceAccount string) *PipelineRunBuilder {
 	b.pipelineRun.Spec.TaskRunTemplate.ServiceAccountName = serviceAccount
 
+	return b
+}
+
+// WithTaskRunSpecs sets the provided TaskRunSpecs to the PipelineRun's spec.
+func (b *PipelineRunBuilder) WithTaskRunSpecs(taskRunSpecs ...tektonv1.PipelineTaskRunSpec) *PipelineRunBuilder {
+	b.pipelineRun.Spec.TaskRunSpecs = taskRunSpecs
 	return b
 }
 
