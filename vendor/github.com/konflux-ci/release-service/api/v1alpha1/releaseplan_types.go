@@ -35,21 +35,22 @@ type ReleasePlanSpec struct {
 	// +required
 	Application string `json:"application"`
 
+	// Collectors contains all the information of the collectors to be executed as part of the release workflow
+	// +optional
+	Collectors *Collectors `json:"collectors,omitempty"`
+
 	// Data is an unstructured key used for providing data for the managed Release Pipeline
 	// +kubebuilder:pruning:PreserveUnknownFields
 	// +optional
 	Data *runtime.RawExtension `json:"data,omitempty"`
 
-	// PipelineRef is an optional reference to a Pipeline that would be executed
-	// before the managed Release Pipeline
+	// TenantPipeline contains all the information about the tenant Pipeline
 	// +optional
-	PipelineRef *tektonutils.PipelineRef `json:"pipelineRef,omitempty"`
+	TenantPipeline *tektonutils.ParameterizedPipeline `json:"tenantPipeline,omitempty"`
 
-	// ServiceAccount is the name of the service account to use in the
-	// Pipeline to gain elevated privileges
-	// +kubebuilder:validation:Pattern=^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+	// FinalPipeline contains all the information about the final Pipeline
 	// +optional
-	ServiceAccount string `json:"serviceAccount,omitempty"`
+	FinalPipeline *tektonutils.ParameterizedPipeline `json:"finalPipeline,omitempty"`
 
 	// ReleaseGracePeriodDays is the number of days a Release should be kept
 	// This value is used to define the Release ExpirationTime
@@ -59,8 +60,8 @@ type ReleasePlanSpec struct {
 
 	// Target references where to send the release requests
 	// +kubebuilder:validation:Pattern=^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
-	// +required
-	Target string `json:"target"`
+	// +optional
+	Target string `json:"target,omitempty"`
 }
 
 // MatchedReleasePlanAdmission defines the relevant information for a matched ReleasePlanAdmission.
@@ -123,7 +124,7 @@ func (rp *ReleasePlan) setMatchedStatus(releasePlanAdmission *ReleasePlanAdmissi
 	if releasePlanAdmission != nil {
 		rp.Status.ReleasePlanAdmission.Name = fmt.Sprintf("%s%c%s", releasePlanAdmission.GetNamespace(),
 			types.Separator, releasePlanAdmission.GetName())
-		rp.Status.ReleasePlanAdmission.Active = (releasePlanAdmission.GetLabels()[metadata.AutoReleaseLabel] == "true")
+		rp.Status.ReleasePlanAdmission.Active = (releasePlanAdmission.GetLabels()[metadata.BlockReleasesLabel] == "false")
 	}
 
 	conditions.SetCondition(&rp.Status.Conditions, MatchedConditionType, status, MatchedReason)

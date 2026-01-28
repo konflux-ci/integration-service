@@ -3,14 +3,20 @@ package v1alpha1
 import "github.com/konflux-ci/operator-toolkit/conditions"
 
 const (
-	// deployedConditionType is the type used to track the status of a Release deployment
-	deployedConditionType conditions.ConditionType = "Deployed"
+	// finalProcessedConditionType is the type used to track the status of a Release Final Pipeline processing
+	finalProcessedConditionType conditions.ConditionType = "FinalPipelineProcessed"
 
-	// postActionsExecutedConditionType is the type used to track the status of Release post-actions
-	postActionsExecutedConditionType conditions.ConditionType = "PostActionsExecuted"
+	// managedCollectorsProcessedConditionType is the type used to track the status of a Release Managed Collectors Pipeline processing
+	managedCollectorsProcessedConditionType conditions.ConditionType = "ManagedCollectorsPipelineProcessed"
 
-	// processedConditionType is the type used to track the status of a Release processing
-	processedConditionType conditions.ConditionType = "Processed"
+	// managedProcessedConditionType is the type used to track the status of a Release Managed Pipeline processing
+	managedProcessedConditionType conditions.ConditionType = "ManagedPipelineProcessed"
+
+	// tenantCollectorsProcessedConditionType is the type used to track the status of a Release Tenant Collectors Pipeline processing
+	tenantCollectorsProcessedConditionType conditions.ConditionType = "TenantCollectorsPipelineProcessed"
+
+	// tenantProcessedConditionType is the type used to track the status of a Release Tenant Pipeline processing
+	tenantProcessedConditionType conditions.ConditionType = "TenantPipelineProcessed"
 
 	// releasedConditionType is the type used to track the status of a Release
 	releasedConditionType conditions.ConditionType = "Released"
@@ -23,9 +29,12 @@ const (
 	// FailedReason is the reason set when a failure occurs
 	FailedReason conditions.ConditionReason = "Failed"
 
-	// ProgressingReason is the reason set when an action is progressing
+	// ProgressingReason is the reason set when a phase is progressing
 	ProgressingReason conditions.ConditionReason = "Progressing"
 
-	// SucceededReason is the reason set when an action succeeds
+	// SkippedReason is the reason set when a phase is skipped
+	SkippedReason conditions.ConditionReason = "Skipped"
+
+	// SucceededReason is the reason set when a phase succeeds
 	SucceededReason conditions.ConditionReason = "Succeeded"
 )

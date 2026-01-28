@@ -23,18 +23,13 @@ import (
 )
 
 var (
+	hourlyBuckets = []float64{5, 10, 30, 60, 90, 180, 300, 450, 900, 1800, 3600}
+	dailyBuckets  = []float64{60, 300, 600, 1800, 3600, 7200, 14400, 21600, 28800, 36000, 43200, 57600, 72000, 86400}
+
 	ReleaseConcurrentTotal = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "release_concurrent_total",
 			Help: "Total number of concurrent release attempts",
-		},
-		[]string{},
-	)
-
-	ReleaseConcurrentPostActionsExecutionsTotal = prometheus.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Name: "release_concurrent_post_actions_executions_total",
-			Help: "Total number of concurrent release post actions executions attempts",
 		},
 		[]string{},
 	)
@@ -54,11 +49,12 @@ var (
 	releasePreProcessingDurationSecondsLabels = []string{
 		"reason",
 		"target",
+		"type",
 	}
 	releasePreProcessingDurationSecondsOpts = prometheus.HistogramOpts{
 		Name:    "release_pre_processing_duration_seconds",
 		Help:    "How long in seconds a Release takes to start processing",
-		Buckets: []float64{5, 10, 15, 30, 45, 60, 90, 120, 180, 240, 300},
+		Buckets: hourlyBuckets,
 	}
 
 	ReleaseValidationDurationSeconds = prometheus.NewHistogramVec(
@@ -72,37 +68,28 @@ var (
 	releaseValidationDurationSecondsOpts = prometheus.HistogramOpts{
 		Name:    "release_validation_duration_seconds",
 		Help:    "How long in seconds a Release takes to validate",
-		Buckets: []float64{5, 10, 15, 30, 45, 60, 90, 120, 180, 240, 300},
+		Buckets: hourlyBuckets,
 	}
 
 	ReleaseDurationSeconds = prometheus.NewHistogramVec(
 		releaseDurationSecondsOpts,
 		releaseDurationSecondsLabels,
 	)
+	// Prometheus fails if these are not in alphabetical order
 	releaseDurationSecondsLabels = []string{
-		"post_actions_reason",
-		"processing_reason",
+		"final_pipeline_processing_reason",
+		"managed_collectors_pipeline_processing_reason",
+		"managed_pipeline_processing_reason",
 		"release_reason",
 		"target",
+		"tenant_collectors_pipeline_processing_reason",
+		"tenant_pipeline_processing_reason",
 		"validation_reason",
 	}
 	releaseDurationSecondsOpts = prometheus.HistogramOpts{
 		Name:    "release_duration_seconds",
 		Help:    "How long in seconds a Release takes to complete",
-		Buckets: []float64{60, 150, 300, 450, 600, 750, 900, 1050, 1200, 1800, 3600},
-	}
-
-	ReleasePostActionsExecutionDurationSeconds = prometheus.NewHistogramVec(
-		releasePostActionsExecutionDurationSecondsOpts,
-		releasePostActionsExecutionDurationSecondsLabels,
-	)
-	releasePostActionsExecutionDurationSecondsLabels = []string{
-		"reason",
-	}
-	releasePostActionsExecutionDurationSecondsOpts = prometheus.HistogramOpts{
-		Name:    "release_post_actions_execution_duration_seconds",
-		Help:    "How long in seconds Release post-actions take to complete",
-		Buckets: []float64{60, 150, 300, 450, 600, 750, 900, 1050, 1200, 1800, 3600},
+		Buckets: dailyBuckets,
 	}
 
 	ReleaseProcessingDurationSeconds = prometheus.NewHistogramVec(
@@ -112,22 +99,27 @@ var (
 	releaseProcessingDurationSecondsLabels = []string{
 		"reason",
 		"target",
+		"type",
 	}
 	releaseProcessingDurationSecondsOpts = prometheus.HistogramOpts{
 		Name:    "release_processing_duration_seconds",
 		Help:    "How long in seconds a Release processing takes to complete",
-		Buckets: []float64{60, 150, 300, 450, 600, 750, 900, 1050, 1200, 1800, 3600},
+		Buckets: dailyBuckets,
 	}
 
 	ReleaseTotal = prometheus.NewCounterVec(
 		releaseTotalOpts,
 		releaseTotalLabels,
 	)
+	// Prometheus fails if these are not in alphabetical order
 	releaseTotalLabels = []string{
-		"post_actions_reason",
-		"processing_reason",
+		"final_pipeline_processing_reason",
+		"managed_collectors_pipeline_processing_reason",
+		"managed_pipeline_processing_reason",
 		"release_reason",
 		"target",
+		"tenant_collectors_pipeline_processing_reason",
+		"tenant_pipeline_processing_reason",
 		"validation_reason",
 	}
 	releaseTotalOpts = prometheus.CounterOpts{
@@ -140,17 +132,23 @@ var (
 // observation for the Release duration and increasing the total number of releases. If either the startTime or the
 // completionTime parameters are nil, no action will be taken.
 func RegisterCompletedRelease(startTime, completionTime *metav1.Time,
-	postActionsReason, processingReason, releaseReason, target, validationReason string) {
+	tenantCollectorsProcessingReason, tenantProcessingReason, managedCollectorsProcessingReason, managedProcessingReason,
+	finalProcessingReason, releaseReason, target, validationReason string) {
 	if startTime == nil || completionTime == nil {
 		return
 	}
 
+	// the label sequence here does not need to be alphabetical, as it is only assigning
+	// the data to the label, so changed to a logical order as the pipelines are executed
 	labels := prometheus.Labels{
-		"post_actions_reason": postActionsReason,
-		"processing_reason":   processingReason,
-		"release_reason":      releaseReason,
-		"target":              target,
-		"validation_reason":   validationReason,
+		"final_pipeline_processing_reason":              finalProcessingReason,
+		"managed_collectors_pipeline_processing_reason": managedCollectorsProcessingReason,
+		"managed_pipeline_processing_reason":            managedProcessingReason,
+		"release_reason":                                releaseReason,
+		"target":                                        target,
+		"tenant_collectors_pipeline_processing_reason":  tenantCollectorsProcessingReason,
+		"tenant_pipeline_processing_reason":             tenantProcessingReason,
+		"validation_reason":                             validationReason,
 	}
 	ReleaseConcurrentTotal.WithLabelValues().Dec()
 	ReleaseDurationSeconds.
@@ -159,26 +157,10 @@ func RegisterCompletedRelease(startTime, completionTime *metav1.Time,
 	ReleaseTotal.With(labels).Inc()
 }
 
-// RegisterCompletedReleasePostActionsExecuted registers a Release post-actions execution as complete, adding a new
-// observation for the Release post-actions execution duration and decreasing the number of concurrent executions.
-// If either the startTime or the completionTime parameters are nil, no action will be taken.
-func RegisterCompletedReleasePostActionsExecuted(startTime, completionTime *metav1.Time, reason string) {
-	if startTime == nil || completionTime == nil {
-		return
-	}
-
-	ReleasePostActionsExecutionDurationSeconds.
-		With(prometheus.Labels{
-			"reason": reason,
-		}).
-		Observe(completionTime.Sub(startTime.Time).Seconds())
-	ReleaseConcurrentPostActionsExecutionsTotal.WithLabelValues().Dec()
-}
-
-// RegisterCompletedReleaseProcessing registers a Release processing as complete, adding a new observation for the
-// Release processing duration and decreasing the number of concurrent processings. If either the startTime or the
-// completionTime parameters are nil, no action will be taken.
-func RegisterCompletedReleaseProcessing(startTime, completionTime *metav1.Time, reason, target string) {
+// RegisterCompletedReleasePipelineProcessing registers a Release pipeline processing as complete, adding a
+// new observation for the Release processing duration with the specific type and decreasing the number of
+// concurent processings. If either the startTime or the completionTime parameters are nil, no action will be taken.
+func RegisterCompletedReleasePipelineProcessing(startTime, completionTime *metav1.Time, reason, target, pipelineType string) {
 	if startTime == nil || completionTime == nil {
 		return
 	}
@@ -187,6 +169,7 @@ func RegisterCompletedReleaseProcessing(startTime, completionTime *metav1.Time, 
 		With(prometheus.Labels{
 			"reason": reason,
 			"target": target,
+			"type":   pipelineType,
 		}).
 		Observe(completionTime.Sub(startTime.Time).Seconds())
 	ReleaseConcurrentProcessingsTotal.WithLabelValues().Dec()
@@ -213,10 +196,10 @@ func RegisterNewRelease() {
 	ReleaseConcurrentTotal.WithLabelValues().Inc()
 }
 
-// RegisterNewReleaseProcessing registers a new Release processing, adding a new observation for the
-// Release start processing duration and increasing the number of concurrent processings. If either the
-// startTime or the processingStartTime are nil, no action will be taken.
-func RegisterNewReleaseProcessing(startTime, processingStartTime *metav1.Time, reason, target string) {
+// RegisterNewReleasePipelineProcessing registers a new Release Pipeline processing, adding a
+// new observation for the Release start pipeline processing duration and increasing the number of
+// concurrent processings. If either the startTime or the processingStartTime are nil, no action will be taken.
+func RegisterNewReleasePipelineProcessing(startTime, processingStartTime *metav1.Time, reason, target, pipelineType string) {
 	if startTime == nil || processingStartTime == nil {
 		return
 	}
@@ -225,27 +208,20 @@ func RegisterNewReleaseProcessing(startTime, processingStartTime *metav1.Time, r
 		With(prometheus.Labels{
 			"reason": reason,
 			"target": target,
+			"type":   pipelineType,
 		}).
 		Observe(processingStartTime.Sub(startTime.Time).Seconds())
 
 	ReleaseConcurrentProcessingsTotal.WithLabelValues().Inc()
 }
 
-// RegisterNewReleasePostActionsExecution register a new Release post-actions execution, increasing the number of
-// concurrent executions.
-func RegisterNewReleasePostActionsExecution() {
-	ReleaseConcurrentPostActionsExecutionsTotal.WithLabelValues().Inc()
-}
-
 func init() {
 	metrics.Registry.MustRegister(
 		ReleaseConcurrentTotal,
 		ReleaseConcurrentProcessingsTotal,
-		ReleaseConcurrentPostActionsExecutionsTotal,
 		ReleasePreProcessingDurationSeconds,
 		ReleaseValidationDurationSeconds,
 		ReleaseDurationSeconds,
-		ReleasePostActionsExecutionDurationSeconds,
 		ReleaseProcessingDurationSeconds,
 		ReleaseTotal,
 	)
