@@ -182,4 +182,4 @@ require (
 
 replace code.gitea.io/gitea => code.gitea.io/gitea v1.25.2
 
-replace github.com/nektos/act => gitea.com/gitea/act v0.2.66-0.20240924153421-39656e186641
+replace github.com/nektos/act => gitea.com/gitea/act v0.261.7
