@@ -17,23 +17,20 @@ metadata:
 spec:
   components:
     - name: first-component
-      componentBranch:
+      # used to match build PLRs. Will attempt to match
+      # `appstudio.openshift.io/version` label to name field. Will fall back
+      # on matching `target_branch` and `context_dir` annotations to revision
+      # and context fields if the revision and context fields are set
+      componentVersion:
         name: "main"
-        lastPromotedImage: quay.io/sampleorg/first-component@sha256:1b29...
-        lastPromotedCommit: 6a7c81802e785aa869f82301afe61f4e9775772b
-        lastBuildTime: "2025-08-13T12:00:00Z"
     - name: second-component
       componentBranch:
         name: "v1"
-        lastPromotedImage: quay.io/sampleorg/second-component@sha256:ae32...
-        lastPromotedCommit: 1359836353b8e249f2fbceba47d82751d7dab902
-        lastBuildTime: "2025-08-13T05:13:25Z"
+        revision: "v1branch"
+        context: "components/second-component"
     - name: python-component
       componentBranch:
         name: "3.12.4"
-        lastPromotedImage: quay.io/sampleorg/python-component@sha256:a93c...
-        lastPromotedCommit: cec5d540d177c5cbe73f58d1628684fa78d35199
-        lastBuildTime: "2025-08-13T05:13:25Z"
   dependents:
     # when a snapshot for this ComponentGroup is created,
     # the integration service will also create one for child-cg
@@ -54,3 +51,18 @@ spec:
     operator-scorecard:
       - name: deployment
         onFail: skip
+status:
+  globalCandidateList:
+    - name: first-component
+      version: main
+      lastPromotedImage: quay.io/sampleorg/first-component@sha256:1b29...
+      lastPromotedCommit: 6a7c81802e785aa869f82301afe61f4e9775772b
+      lastPromotedBuildTime: "2025-08-13T12:00:00Z"
+    - name: second-component
+      version: "v1"
+      lastPromotedImage: quay.io/sampleorg/second-component@sha256:ae32...
+      lastPromotedCommit: 1359836353b8e249f2fbceba47d82751d7dab902
+      lastBuildTime: "2025-08-13T05:13:25Z"
+      # python-component has not been promoted yet
+    - name: python-component
+      version: "3.12.4"

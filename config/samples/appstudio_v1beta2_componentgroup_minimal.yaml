@@ -19,19 +19,24 @@ spec:
     - name: first-component
       componentBranch:
         name: "main"
-        lastPromotedImage: quay.io/sampleorg/first-component@sha256:1b29...
-        lastPromotedCommit: 6a7c81802e785aa869f82301afe61f4e9775772b
-        lastBuildTime: "2025-08-13T05:13:25Z"
     - name: second-component
       componentBranch:
-        name: "main"
-        lastPromotedImage: quay.io/sampleorg/second-component@sha256:ae32...
-        lastPromotedCommit: 1359836353b8e249f2fbceba47d82751d7dab902
-        lastBuildTime: "2025-08-13T05:13:25Z"
+        name: "v1"
     - name: third-component
       componentBranch:
         name: "main"
-        # if a component has not been built yet these fields will be empty
-        lastPromotedImage: ""
-        lastPromotedCommit: ""
-        lastBuildTime: ""
+status:
+  globalCandidateList:
+    - name: first-component
+      version: main
+      lastPromotedImage: quay.io/sampleorg/first-component@sha256:1b29...
+      lastPromotedCommit: 6a7c81802e785aa869f82301afe61f4e9775772b
+      lastPromotedBuildTime: "2025-08-13T12:00:00Z"
+    - name: second-component
+      version: "v1"
+      lastPromotedImage: quay.io/sampleorg/second-component@sha256:ae32...
+      lastPromotedCommit: 1359836353b8e249f2fbceba47d82751d7dab902
+      lastBuildTime: "2025-08-13T05:13:25Z"
+      # third-component has not been promoted yet
+    - name: third-component
+      version: "main"

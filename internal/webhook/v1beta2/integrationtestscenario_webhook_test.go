@@ -61,7 +61,7 @@ var _ = Describe("IntegrationTestScenario webhook", Ordered, func() {
 				Components: []v1beta2.ComponentReference{
 					{
 						Name: "component-a",
-						ComponentBranch: v1beta2.ComponentBranchReference{
+						ComponentVersion: v1beta2.ComponentVersionReference{
 							Name: "main",
 						},
 					},

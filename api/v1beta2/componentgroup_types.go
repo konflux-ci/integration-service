@@ -65,35 +65,30 @@ type ComponentReference struct {
 	// +required
 	Name string `json:"name"`
 
-	// ComponentBranch references the ComponentBranch for this Component.
-	// The ComponentBranch CRD will be implemented by the build team as part of STONEBLD-3604.
+	// ComponentVersion references the ComponentVersion for this Component.
+	// The ComponentVersion CRD will be implemented by the build team as part of STONEBLD-3604.
 	// For now, this contains the branch name and GCL (Global Candidate List) information.
 	// +required
-	ComponentBranch ComponentBranchReference `json:"componentBranch"`
+	ComponentVersion ComponentVersionReference `json:"componentVersion"`
 }
 
-// ComponentBranchReference contains information about a Component's branch and its latest promoted image
-type ComponentBranchReference struct {
-	// Name is the name of the ComponentBranch (typically the branch name like "main", "v1", etc.)
-	// This will reference the ComponentBranch CRD once it's implemented.
+// ComponentVersionReference contains information about a Component's branch and its latest promoted image
+type ComponentVersionReference struct {
+	// Name is the name of the ComponentVersion (typically the branch name like "main", "v1", etc.)
+	// This will reference the ComponentVersion CRD once it's implemented.
 	// +required
 	Name string `json:"name"`
 
-	// LastPromotedImage is the latest "good" container image for this ComponentBranch.
-	// This is part of the Global Candidate List (GCL) tracking.
-	// Example: quay.io/sampleorg/first-component@sha256:1b29...
+	// Name of the git revision for the component version. Used as a
+	// fallback if the `appstudio.openshift.io/version` label is not
+	// set on the build PLR
 	// +optional
-	LastPromotedImage string `json:"lastPromotedImage,omitempty"`
+	Revision string `json:"version"`
 
-	// LastPromotedCommit is the git commit SHA of the last promoted image.
-	// Example: 6a7c81802e785aa869f82301afe61f4e9775772b
+	// Name of the context directory for the component version. Used
+	// with Revision
 	// +optional
-	LastPromotedCommit string `json:"lastPromotedCommit,omitempty"`
-
-	// LastBuildTime is the timestamp when the last build was completed.
-	// Format: RFC3339 (e.g., "2025-08-13T12:00:00Z")
-	// +optional
-	LastBuildTime *metav1.Time `json:"lastBuildTime,omitempty"`
+	Context string `json:"context"`
 }
 
 // TestGraphNode represents a node in the test serialization graph
@@ -130,10 +125,40 @@ type TaskRef struct {
 	Params []ResolverParameter `json:"params"`
 }
 
+type ComponentState struct {
+	// Name of the Component
+	// +required
+	Name string `json:"name"`
+
+	// Version of the Component. Only required if multiple version of the same
+	// Component are in the ComponentGroup
+	// +optional
+	Version string `json:"version"`
+
+	// Location of the last image for this Component to be promoted. If no
+	// image has been promoted then the field will be blank
+	// +optional
+	LastPromotedImage string `json:"lastPromotedImage"`
+
+	// Git commit associated with the build of LastPromotedImage
+	// +optional
+	LastPromotedCommit string `json:"lastPromotedCommit"`
+
+	// Timestamp for build of the LastPromotedImage.  Used to prevent
+	// regressions resulting from race conditions
+	// Format: RFC3339 (e.g., "2025-08-13T12:00:00Z")
+	// +optional
+	LastPromotedBuildTime *metav1.Time `json:"lastPromotedBuildTime"`
+}
+
 // ComponentGroupStatus defines the observed state of ComponentGroup
 type ComponentGroupStatus struct {
 	// Conditions is an array of the ComponentGroup's status conditions
 	Conditions []metav1.Condition `json:"conditions"`
+
+	// The list of recently promoted Components which the integration service
+	// uses to create Snapshots
+	GlobalCandidateList []ComponentState `json:"globalCandidateList,omitempty"`
 }
 
 // +kubebuilder:object:root=true
