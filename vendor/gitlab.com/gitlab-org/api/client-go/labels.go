@@ -49,16 +49,16 @@ var _ LabelsServiceInterface = (*LabelsService)(nil)
 //
 // GitLab API docs: https://docs.gitlab.com/api/labels/
 type Label struct {
-	ID                     int    `json:"id"`
+	ID                     int64  `json:"id"`
 	Name                   string `json:"name"`
 	Color                  string `json:"color"`
 	TextColor              string `json:"text_color"`
 	Description            string `json:"description"`
-	OpenIssuesCount        int    `json:"open_issues_count"`
-	ClosedIssuesCount      int    `json:"closed_issues_count"`
-	OpenMergeRequestsCount int    `json:"open_merge_requests_count"`
+	OpenIssuesCount        int64  `json:"open_issues_count"`
+	ClosedIssuesCount      int64  `json:"closed_issues_count"`
+	OpenMergeRequestsCount int64  `json:"open_merge_requests_count"`
 	Subscribed             bool   `json:"subscribed"`
-	Priority               int    `json:"priority"`
+	Priority               int64  `json:"priority"`
 	IsProjectLabel         bool   `json:"is_project_label"`
 }
 
@@ -100,52 +100,21 @@ type ListLabelsOptions struct {
 //
 // GitLab API docs: https://docs.gitlab.com/api/labels/#list-labels
 func (s *LabelsService) ListLabels(pid any, opt *ListLabelsOptions, options ...RequestOptionFunc) ([]*Label, *Response, error) {
-	project, err := parseID(pid)
-	if err != nil {
-		return nil, nil, err
-	}
-	u := fmt.Sprintf("projects/%s/labels", PathEscape(project))
-
-	req, err := s.client.NewRequest(http.MethodGet, u, opt, options)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	var l []*Label
-	resp, err := s.client.Do(req, &l)
-	if err != nil {
-		return nil, resp, err
-	}
-
-	return l, resp, nil
+	return do[[]*Label](s.client,
+		withPath("projects/%s/labels", ProjectID{pid}),
+		withAPIOpts(opt),
+		withRequestOpts(options...),
+	)
 }
 
 // GetLabel get a single label for a given project.
 //
 // GitLab API docs: https://docs.gitlab.com/api/labels/#get-a-single-project-label
 func (s *LabelsService) GetLabel(pid any, lid any, options ...RequestOptionFunc) (*Label, *Response, error) {
-	project, err := parseID(pid)
-	if err != nil {
-		return nil, nil, err
-	}
-	label, err := parseID(lid)
-	if err != nil {
-		return nil, nil, err
-	}
-	u := fmt.Sprintf("projects/%s/labels/%s", PathEscape(project), PathEscape(label))
-
-	req, err := s.client.NewRequest(http.MethodGet, u, nil, options)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	var l *Label
-	resp, err := s.client.Do(req, &l)
-	if err != nil {
-		return nil, resp, err
-	}
-
-	return l, resp, nil
+	return do[*Label](s.client,
+		withPath("projects/%s/labels/%s", ProjectID{pid}, LabelID{lid}),
+		withRequestOpts(options...),
+	)
 }
 
 // CreateLabelOptions represents the available CreateLabel() options.
@@ -155,7 +124,7 @@ type CreateLabelOptions struct {
 	Name        *string `url:"name,omitempty" json:"name,omitempty"`
 	Color       *string `url:"color,omitempty" json:"color,omitempty"`
 	Description *string `url:"description,omitempty" json:"description,omitempty"`
-	Priority    *int    `url:"priority,omitempty" json:"priority,omitempty"`
+	Priority    *int64  `url:"priority,omitempty" json:"priority,omitempty"`
 }
 
 // CreateLabel creates a new label for given repository with given name and
@@ -163,24 +132,12 @@ type CreateLabelOptions struct {
 //
 // GitLab API docs: https://docs.gitlab.com/api/labels/#create-a-new-label
 func (s *LabelsService) CreateLabel(pid any, opt *CreateLabelOptions, options ...RequestOptionFunc) (*Label, *Response, error) {
-	project, err := parseID(pid)
-	if err != nil {
-		return nil, nil, err
-	}
-	u := fmt.Sprintf("projects/%s/labels", PathEscape(project))
-
-	req, err := s.client.NewRequest(http.MethodPost, u, opt, options)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	l := new(Label)
-	resp, err := s.client.Do(req, l)
-	if err != nil {
-		return nil, resp, err
-	}
-
-	return l, resp, nil
+	return do[*Label](s.client,
+		withMethod(http.MethodPost),
+		withPath("projects/%s/labels", ProjectID{pid}),
+		withAPIOpts(opt),
+		withRequestOpts(options...),
+	)
 }
 
 // DeleteLabelOptions represents the available DeleteLabel() options.
@@ -224,7 +181,7 @@ type UpdateLabelOptions struct {
 	NewName     *string `url:"new_name,omitempty" json:"new_name,omitempty"`
 	Color       *string `url:"color,omitempty" json:"color,omitempty"`
 	Description *string `url:"description,omitempty" json:"description,omitempty"`
-	Priority    *int    `url:"priority,omitempty" json:"priority,omitempty"`
+	Priority    *int64  `url:"priority,omitempty" json:"priority,omitempty"`
 }
 
 // UpdateLabel updates an existing label with new name or now color. At least
@@ -267,28 +224,11 @@ func (s *LabelsService) UpdateLabel(pid any, lid any, opt *UpdateLabelOptions, o
 // GitLab API docs:
 // https://docs.gitlab.com/api/labels/#subscribe-to-a-label
 func (s *LabelsService) SubscribeToLabel(pid any, lid any, options ...RequestOptionFunc) (*Label, *Response, error) {
-	project, err := parseID(pid)
-	if err != nil {
-		return nil, nil, err
-	}
-	label, err := parseID(lid)
-	if err != nil {
-		return nil, nil, err
-	}
-	u := fmt.Sprintf("projects/%s/labels/%s/subscribe", PathEscape(project), PathEscape(label))
-
-	req, err := s.client.NewRequest(http.MethodPost, u, nil, options)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	l := new(Label)
-	resp, err := s.client.Do(req, l)
-	if err != nil {
-		return nil, resp, err
-	}
-
-	return l, resp, nil
+	return do[*Label](s.client,
+		withMethod(http.MethodPost),
+		withPath("projects/%s/labels/%s/subscribe", ProjectID{pid}, LabelID{lid}),
+		withRequestOpts(options...),
+	)
 }
 
 // UnsubscribeFromLabel unsubscribes the authenticated user from a label to not
@@ -298,22 +238,12 @@ func (s *LabelsService) SubscribeToLabel(pid any, lid any, options ...RequestOpt
 // GitLab API docs:
 // https://docs.gitlab.com/api/labels/#unsubscribe-from-a-label
 func (s *LabelsService) UnsubscribeFromLabel(pid any, lid any, options ...RequestOptionFunc) (*Response, error) {
-	project, err := parseID(pid)
-	if err != nil {
-		return nil, err
-	}
-	label, err := parseID(lid)
-	if err != nil {
-		return nil, err
-	}
-	u := fmt.Sprintf("projects/%s/labels/%s/unsubscribe", PathEscape(project), PathEscape(label))
-
-	req, err := s.client.NewRequest(http.MethodPost, u, nil, options)
-	if err != nil {
-		return nil, err
-	}
-
-	return s.client.Do(req, nil)
+	_, resp, err := do[none](s.client,
+		withMethod(http.MethodPost),
+		withPath("projects/%s/labels/%s/unsubscribe", ProjectID{pid}, LabelID{lid}),
+		withRequestOpts(options...),
+	)
+	return resp, err
 }
 
 // PromoteLabel Promotes a project label to a group label.
@@ -321,20 +251,10 @@ func (s *LabelsService) UnsubscribeFromLabel(pid any, lid any, options ...Reques
 // GitLab API docs:
 // https://docs.gitlab.com/api/labels/#promote-a-project-label-to-a-group-label
 func (s *LabelsService) PromoteLabel(pid any, lid any, options ...RequestOptionFunc) (*Response, error) {
-	project, err := parseID(pid)
-	if err != nil {
-		return nil, err
-	}
-	label, err := parseID(lid)
-	if err != nil {
-		return nil, err
-	}
-	u := fmt.Sprintf("projects/%s/labels/%s/promote", PathEscape(project), PathEscape(label))
-
-	req, err := s.client.NewRequest(http.MethodPut, u, nil, options)
-	if err != nil {
-		return nil, err
-	}
-
-	return s.client.Do(req, nil)
+	_, resp, err := do[none](s.client,
+		withMethod(http.MethodPut),
+		withPath("projects/%s/labels/%s/promote", ProjectID{pid}, LabelID{lid}),
+		withRequestOpts(options...),
+	)
+	return resp, err
 }

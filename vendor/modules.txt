@@ -534,8 +534,8 @@ github.com/x448/float16
 # github.com/xanzy/ssh-agent v0.3.3
 ## explicit; go 1.16
 github.com/xanzy/ssh-agent
-# gitlab.com/gitlab-org/api/client-go v0.134.0
-## explicit; go 1.23.0
+# gitlab.com/gitlab-org/api/client-go v1.24.0
+## explicit; go 1.24.0
 gitlab.com/gitlab-org/api/client-go
 # go.opencensus.io v0.24.0
 ## explicit; go 1.13
@@ -619,8 +619,8 @@ go.opentelemetry.io/proto/otlp/collector/trace/v1
 go.opentelemetry.io/proto/otlp/common/v1
 go.opentelemetry.io/proto/otlp/resource/v1
 go.opentelemetry.io/proto/otlp/trace/v1
-# go.uber.org/mock v0.5.2
-## explicit; go 1.23
+# go.uber.org/mock v0.6.0
+## explicit; go 1.23.0
 go.uber.org/mock/gomock
 # go.uber.org/multierr v1.11.0
 ## explicit; go 1.19

@@ -24,10 +24,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"maps"
 	"math"
 	"math/rand"
 	"mime/multipart"
+	"net"
 	"net/http"
 	"net/url"
 	"sort"
@@ -49,11 +51,11 @@ const (
 	apiVersionPath = "api/v4/"
 	userAgent      = "go-gitlab"
 
-	headerRateLimit = "RateLimit-Limit"
-	headerRateReset = "RateLimit-Reset"
+	headerRateLimit = "Ratelimit-Limit"
+	headerRateReset = "Ratelimit-Reset"
 
-	AccessTokenHeaderName = "PRIVATE-TOKEN"
-	JobTokenHeaderName    = "JOB-TOKEN"
+	AccessTokenHeaderName = "Private-Token"
+	JobTokenHeaderName    = "Job-Token"
 )
 
 // AuthType represents an authentication type within GitLab.
@@ -72,6 +74,21 @@ const (
 )
 
 var ErrNotFound = errors.New("404 Not Found")
+
+// URLValidationError wraps URL parsing errors with helpful context
+type URLValidationError struct {
+	URL  string
+	Err  error
+	Hint string
+}
+
+func (e *URLValidationError) Error() string {
+	msg := fmt.Sprintf("invalid base URL %q: %v", e.URL, e.Err)
+	if e.Hint != "" {
+		msg += fmt.Sprintf(" (hint: %s)", e.Hint)
+	}
+	return msg
+}
 
 // A Client manages communication with the GitLab API.
 type Client struct {
@@ -100,8 +117,18 @@ type Client struct {
 	// once.
 	authSourceInit sync.Once
 
+	// jar is the cookie jar to use with the HTTP client
+	jar http.CookieJar
+
 	// Default request options applied to every request.
 	defaultRequestOptions []RequestOptionFunc
+
+	// interceptors contain the stack of *http.Client round tripper builder func
+	// which are used to decorate the http.Client#Transport value.
+	interceptors []Interceptor
+
+	// urlWarningLogger is used to print URL validation warnings
+	urlWarningLogger *slog.Logger
 
 	// User agent used when communicating with the GitLab API.
 	UserAgent string
@@ -111,10 +138,12 @@ type Client struct {
 
 	// Services used for talking to different parts of the GitLab API.
 	AccessRequests                   AccessRequestsServiceInterface
+	AdminCompliancePolicySettings    AdminCompliancePolicySettingsServiceInterface
 	AlertManagement                  AlertManagementServiceInterface
 	Appearance                       AppearanceServiceInterface
 	Applications                     ApplicationsServiceInterface
 	ApplicationStatistics            ApplicationStatisticsServiceInterface
+	Attestations                     AttestationsServiceInterface
 	AuditEvents                      AuditEventsServiceInterface
 	Avatar                           AvatarRequestsServiceInterface
 	AwardEmoji                       AwardEmojiServiceInterface
@@ -158,8 +187,10 @@ type Client struct {
 	GroupActivityAnalytics           GroupActivityAnalyticsServiceInterface
 	GroupBadges                      GroupBadgesServiceInterface
 	GroupCluster                     GroupClustersServiceInterface
+	GroupCredentials                 GroupCredentialsServiceInterface
 	GroupEpicBoards                  GroupEpicBoardsServiceInterface
 	GroupImportExport                GroupImportExportServiceInterface
+	Integrations                     IntegrationsServiceInterface
 	GroupIssueBoards                 GroupIssueBoardsServiceInterface
 	GroupIterations                  GroupIterationsServiceInterface
 	GroupLabels                      GroupLabelsServiceInterface
@@ -167,6 +198,8 @@ type Client struct {
 	GroupMembers                     GroupMembersServiceInterface
 	GroupMilestones                  GroupMilestonesServiceInterface
 	GroupProtectedEnvironments       GroupProtectedEnvironmentsServiceInterface
+	GroupProtectedBranches           GroupProtectedBranchesServiceInterface
+	GroupRelationsExport             GroupRelationsExportServiceInterface
 	GroupReleases                    GroupReleasesServiceInterface
 	GroupRepositoryStorageMove       GroupRepositoryStorageMoveServiceInterface
 	GroupSCIM                        GroupSCIMServiceInterface
@@ -192,10 +225,12 @@ type Client struct {
 	MemberRolesService               MemberRolesServiceInterface
 	MergeRequestApprovals            MergeRequestApprovalsServiceInterface
 	MergeRequestApprovalSettings     MergeRequestApprovalSettingsServiceInterface
+	MergeRequestContextCommits       MergeRequestContextCommitsServiceInterface
 	MergeRequests                    MergeRequestsServiceInterface
 	MergeTrains                      MergeTrainsServiceInterface
 	Metadata                         MetadataServiceInterface
 	Milestones                       MilestonesServiceInterface
+	ModelRegistry                    ModelRegistryServiceInterface
 	Namespaces                       NamespacesServiceInterface
 	Notes                            NotesServiceInterface
 	NotificationSettings             NotificationSettingsServiceInterface
@@ -208,6 +243,7 @@ type Client struct {
 	Pipelines                        PipelinesServiceInterface
 	PlanLimits                       PlanLimitsServiceInterface
 	ProjectAccessTokens              ProjectAccessTokensServiceInterface
+	ProjectAliases                   ProjectAliasesServiceInterface
 	ProjectBadges                    ProjectBadgesServiceInterface
 	ProjectCluster                   ProjectClustersServiceInterface
 	ProjectFeatureFlags              ProjectFeatureFlagServiceInterface
@@ -219,12 +255,14 @@ type Client struct {
 	ProjectRepositoryStorageMove     ProjectRepositoryStorageMoveServiceInterface
 	ProjectSecuritySettings          ProjectSecuritySettingsServiceInterface
 	ProjectSnippets                  ProjectSnippetsServiceInterface
+	ProjectStatistics                ProjectStatisticsServiceInterface
 	ProjectTemplates                 ProjectTemplatesServiceInterface
 	ProjectVariables                 ProjectVariablesServiceInterface
 	ProjectVulnerabilities           ProjectVulnerabilitiesServiceInterface
 	Projects                         ProjectsServiceInterface
 	ProtectedBranches                ProtectedBranchesServiceInterface
 	ProtectedEnvironments            ProtectedEnvironmentsServiceInterface
+	ProtectedPackages                ProtectedPackagesServiceInterface
 	ProtectedTags                    ProtectedTagsServiceInterface
 	ReleaseLinks                     ReleaseLinksServiceInterface
 	Releases                         ReleasesServiceInterface
@@ -237,6 +275,8 @@ type Client struct {
 	ResourceMilestoneEvents          ResourceMilestoneEventsServiceInterface
 	ResourceStateEvents              ResourceStateEventsServiceInterface
 	ResourceWeightEvents             ResourceWeightEventsServiceInterface
+	RunnerControllers                RunnerControllersServiceInterface
+	RunnerControllerTokens           RunnerControllerTokensServiceInterface
 	Runners                          RunnersServiceInterface
 	Search                           SearchServiceInterface
 	SecureFiles                      SecureFilesServiceInterface
@@ -257,15 +297,41 @@ type Client struct {
 	Wikis                            WikisServiceInterface
 }
 
+// Interceptor is used to build a *http.Client request pipeline,
+//
+// It receives the next RoundTripper in the chain and returns a new one that
+// will be used for the request.
+//
+// This next RoundTripper might or might not be the actual transporter,
+// which actually does the request call,
+// but it is safe to assume that calling the next will result in the expected HTTP call.
+//
+// Example:
+//
+//	// Simple logger interceptor.
+//	logger := func(next http.RoundTripper) http.RoundTripper {
+//	    return roundtripperFunc(func(req *http.Request) (*http.Response, error) {
+//	        fmt.Printf("Request: %s %s\n", req.Method, req.URL)
+//	        resp, err := next.RoundTrip(req)
+//	        if err == nil {
+//	            fmt.Printf("Response status: %d\n", resp.StatusCode)
+//	        }
+//	        return resp, err
+//	    })
+//	}
+//
+// The Interceptor type lets you add such middlewares to a client by chaining them.
+type Interceptor func(next http.RoundTripper) http.RoundTripper
+
 // ListOptions specifies the optional parameters to various List methods that
 // support pagination.
 type ListOptions struct {
 	// For keyset-based paginated result sets, the value must be `"keyset"`
 	Pagination string `url:"pagination,omitempty" json:"pagination,omitempty"`
 	// For offset-based and keyset-based paginated result sets, the number of results to include per page.
-	PerPage int `url:"per_page,omitempty" json:"per_page,omitempty"`
+	PerPage int64 `url:"per_page,omitempty" json:"per_page,omitempty"`
 	// For offset-based paginated result sets, page of results to retrieve.
-	Page int `url:"page,omitempty" json:"page,omitempty"`
+	Page int64 `url:"page,omitempty" json:"page,omitempty"`
 	// For keyset-based paginated result sets, tree record ID at which to fetch the next page.
 	PageToken string `url:"page_token,omitempty" json:"page_token,omitempty"`
 	// For keyset-based paginated result sets, name of the column by which to order
@@ -299,9 +365,9 @@ func NewClient(token string, options ...ClientOptionFunc) (*Client, error) {
 //
 // Deprecated: GitLab recommends against using this authentication method.
 func NewBasicAuthClient(username, password string, options ...ClientOptionFunc) (*Client, error) {
-	as := &passwordCredentialsAuthSource{
-		username: username,
-		password: password,
+	as := &PasswordCredentialsAuthSource{
+		Username: username,
+		Password: password,
 	}
 
 	return NewAuthSourceClient(as, options...)
@@ -333,8 +399,9 @@ func NewOAuthClient(token string, options ...ClientOptionFunc) (*Client, error) 
 // NewAuthSourceClient returns a new GitLab API client that uses the AuthSource for authentication.
 func NewAuthSourceClient(as AuthSource, options ...ClientOptionFunc) (*Client, error) {
 	c := &Client{
-		UserAgent:  userAgent,
-		authSource: as,
+		UserAgent:        userAgent,
+		authSource:       as,
+		urlWarningLogger: slog.Default(),
 	}
 
 	// Configure the HTTP client.
@@ -361,6 +428,20 @@ func NewAuthSourceClient(as AuthSource, options ...ClientOptionFunc) (*Client, e
 		}
 	}
 
+	decorateHTTPClientTransportWithInterceptors(c)
+
+	// Wire up the cookie jar.
+	// The ClientOptionFunc can't do it directly,
+	// because the user may also specify HTTPClient
+	// and we want the order of passing those to matter
+	// as little as possible.
+	if c.jar != nil {
+		if c.client.HTTPClient.Jar != nil {
+			return nil, errors.New("conflicting option functions when creating client. The provided HTTP Client already has a Jar configured, therefore you can't use gitlab.WithCookieJar")
+		}
+		c.client.HTTPClient.Jar = c.jar
+	}
+
 	// If no custom limiter was set using a client option, configure
 	// the default rate limiter with values that implicitly disable
 	// rate limiting until an initial HTTP call is done and we can
@@ -377,10 +458,12 @@ func NewAuthSourceClient(as AuthSource, options ...ClientOptionFunc) (*Client, e
 
 	// Create all the public services.
 	c.AccessRequests = &AccessRequestsService{client: c}
+	c.AdminCompliancePolicySettings = &AdminCompliancePolicySettingsService{client: c}
 	c.AlertManagement = &AlertManagementService{client: c}
 	c.Appearance = &AppearanceService{client: c}
 	c.Applications = &ApplicationsService{client: c}
 	c.ApplicationStatistics = &ApplicationStatisticsService{client: c}
+	c.Attestations = &AttestationsService{client: c}
 	c.AuditEvents = &AuditEventsService{client: c}
 	c.Avatar = &AvatarRequestsService{client: c}
 	c.AwardEmoji = &AwardEmojiService{client: c}
@@ -424,8 +507,10 @@ func NewAuthSourceClient(as AuthSource, options ...ClientOptionFunc) (*Client, e
 	c.GroupActivityAnalytics = &GroupActivityAnalyticsService{client: c}
 	c.GroupBadges = &GroupBadgesService{client: c}
 	c.GroupCluster = &GroupClustersService{client: c}
+	c.GroupCredentials = &GroupCredentialsService{client: c}
 	c.GroupEpicBoards = &GroupEpicBoardsService{client: c}
 	c.GroupImportExport = &GroupImportExportService{client: c}
+	c.Integrations = &IntegrationsService{client: c}
 	c.GroupIssueBoards = &GroupIssueBoardsService{client: c}
 	c.GroupIterations = &GroupIterationsService{client: c}
 	c.GroupLabels = &GroupLabelsService{client: c}
@@ -433,6 +518,8 @@ func NewAuthSourceClient(as AuthSource, options ...ClientOptionFunc) (*Client, e
 	c.GroupMembers = &GroupMembersService{client: c}
 	c.GroupMilestones = &GroupMilestonesService{client: c}
 	c.GroupProtectedEnvironments = &GroupProtectedEnvironmentsService{client: c}
+	c.GroupProtectedBranches = &GroupProtectedBranchesService{client: c}
+	c.GroupRelationsExport = &GroupRelationsExportService{client: c}
 	c.GroupReleases = &GroupReleasesService{client: c}
 	c.GroupRepositoryStorageMove = &GroupRepositoryStorageMoveService{client: c}
 	c.GroupSCIM = &GroupSCIMService{client: c}
@@ -458,10 +545,12 @@ func NewAuthSourceClient(as AuthSource, options ...ClientOptionFunc) (*Client, e
 	c.MemberRolesService = &MemberRolesService{client: c}
 	c.MergeRequestApprovals = &MergeRequestApprovalsService{client: c}
 	c.MergeRequestApprovalSettings = &MergeRequestApprovalSettingsService{client: c}
+	c.MergeRequestContextCommits = &MergeRequestContextCommitsService{client: c}
 	c.MergeRequests = &MergeRequestsService{client: c, timeStats: timeStats}
 	c.MergeTrains = &MergeTrainsService{client: c}
 	c.Metadata = &MetadataService{client: c}
 	c.Milestones = &MilestonesService{client: c}
+	c.ModelRegistry = &ModelRegistryService{client: c}
 	c.Namespaces = &NamespacesService{client: c}
 	c.Notes = &NotesService{client: c}
 	c.NotificationSettings = &NotificationSettingsService{client: c}
@@ -474,6 +563,7 @@ func NewAuthSourceClient(as AuthSource, options ...ClientOptionFunc) (*Client, e
 	c.Pipelines = &PipelinesService{client: c}
 	c.PlanLimits = &PlanLimitsService{client: c}
 	c.ProjectAccessTokens = &ProjectAccessTokensService{client: c}
+	c.ProjectAliases = &ProjectAliasesService{client: c}
 	c.ProjectBadges = &ProjectBadgesService{client: c}
 	c.ProjectCluster = &ProjectClustersService{client: c}
 	c.ProjectFeatureFlags = &ProjectFeatureFlagService{client: c}
@@ -485,12 +575,14 @@ func NewAuthSourceClient(as AuthSource, options ...ClientOptionFunc) (*Client, e
 	c.ProjectRepositoryStorageMove = &ProjectRepositoryStorageMoveService{client: c}
 	c.ProjectSecuritySettings = &ProjectSecuritySettingsService{client: c}
 	c.ProjectSnippets = &ProjectSnippetsService{client: c}
+	c.ProjectStatistics = &ProjectStatisticsService{client: c}
 	c.ProjectTemplates = &ProjectTemplatesService{client: c}
 	c.ProjectVariables = &ProjectVariablesService{client: c}
 	c.ProjectVulnerabilities = &ProjectVulnerabilitiesService{client: c}
 	c.Projects = &ProjectsService{client: c}
 	c.ProtectedBranches = &ProtectedBranchesService{client: c}
 	c.ProtectedEnvironments = &ProtectedEnvironmentsService{client: c}
+	c.ProtectedPackages = &ProtectedPackagesService{client: c}
 	c.ProtectedTags = &ProtectedTagsService{client: c}
 	c.ReleaseLinks = &ReleaseLinksService{client: c}
 	c.Releases = &ReleasesService{client: c}
@@ -503,6 +595,8 @@ func NewAuthSourceClient(as AuthSource, options ...ClientOptionFunc) (*Client, e
 	c.ResourceMilestoneEvents = &ResourceMilestoneEventsService{client: c}
 	c.ResourceStateEvents = &ResourceStateEventsService{client: c}
 	c.ResourceWeightEvents = &ResourceWeightEventsService{client: c}
+	c.RunnerControllers = &RunnerControllersService{client: c}
+	c.RunnerControllerTokens = &RunnerControllerTokensService{client: c}
 	c.Runners = &RunnersService{client: c}
 	c.Search = &SearchService{client: c}
 	c.SecureFiles = &SecureFilesService{client: c}
@@ -525,18 +619,119 @@ func NewAuthSourceClient(as AuthSource, options ...ClientOptionFunc) (*Client, e
 	return c, nil
 }
 
+func decorateHTTPClientTransportWithInterceptors(c *Client) {
+	if len(c.interceptors) == 0 {
+		return
+	}
+	c.client.HTTPClient.Transport = chainInterceptors(c.client.HTTPClient.Transport, c.interceptors...)
+}
+
+func chainInterceptors(rt http.RoundTripper, interceptors ...Interceptor) http.RoundTripper {
+	for i := len(interceptors) - 1; i >= 0; i-- {
+		rt = interceptors[i](rt)
+	}
+	return rt
+}
+
+func (c *Client) HTTPClient() *http.Client {
+	return c.client.HTTPClient
+}
+
 // retryHTTPCheck provides a callback for Client.CheckRetry which
-// will retry both rate limit (429) and server (>= 500) errors.
+// respects default retries and retries what is safe to retry.
 func (c *Client) retryHTTPCheck(ctx context.Context, resp *http.Response, err error) (bool, error) {
+	// do not retry if retries are disabled completely
+	if c.disableRetries {
+		return false, nil
+	}
+
+	// do not retry on context.Canceled or context.DeadlineExceeded
 	if ctx.Err() != nil {
 		return false, ctx.Err()
 	}
+
 	if err != nil {
-		return false, err
+		// We should be able to retry requests with assumed idempotent HTTP methods.
+		// In a future iteration we might want to annotate requests that are idempotent
+		// to further improve this logic here.
+		if resp != nil && resp.Request != nil {
+			switch resp.Request.Method {
+			case http.MethodConnect, http.MethodOptions, http.MethodTrace, http.MethodHead, http.MethodGet:
+				return true, nil
+			}
+		}
+
+		// Only retry errors that we know happened before writing to the wire
+		var urlErr *url.Error
+		var netOpErr *net.OpError
+		var dnsErr *net.DNSError
+		// see Go src/net/http/transport.go
+		var potentialTLSHandshakeErr interface {
+			Timeout() bool
+			Temporary() bool
+		}
+
+		switch {
+		// DNS errors are safe - they happen before any connection
+		case errors.As(err, &dnsErr):
+			// NXDOMAIN should not be retried
+			if dnsErr.IsNotFound {
+				return false, err
+			}
+			// Other DNS errors are safe to retry
+			return true, nil
+
+		// Direct net.OpError for dial operations
+		case errors.As(err, &netOpErr):
+			// from the comments in the implementation of net.OpError.Temporary
+			// it seems that it's safe to retry temporary OpErrors.
+			if netOpErr.Temporary() {
+				return true, nil
+			}
+
+			if strings.EqualFold(netOpErr.Op, "dial") {
+				return true, nil
+			}
+
+		// Connection refused errors are safe - they happen at TCP establishment
+		case errors.As(err, &urlErr):
+			if strings.Contains(urlErr.Error(), "connection refused") {
+				return true, nil
+			}
+
+		// TLS handshake errors are safe if we can identify them
+		case errors.As(err, &potentialTLSHandshakeErr):
+			// Check if this is a TLS handshake timeout specifically
+			if strings.Contains(err.Error(), "net/http: TLS handshake timeout") {
+				return true, nil
+			}
+		}
+
+		// we are conservative here and do not want to retry any "unknown" errors, because
+		// they could have happened when the connection was already established and the request
+		// partially fulfilled. We don't have the insights here if the request
+		// was idempotent or not, so we reject a retry.
+		return false, nil
 	}
-	if !c.disableRetries && (resp.StatusCode == 429 || resp.StatusCode >= 500) {
+
+	// 429 Too Many Requests is recoverable. Sometimes the server puts
+	// a Retry-After response header to indicate when the server is
+	// available to start processing request from client.
+	if resp.StatusCode == http.StatusTooManyRequests {
 		return true, nil
 	}
+
+	// Check the response code. We retry on 500-range responses to allow
+	// the server time to recover, as 500's are typically not permanent
+	// errors and may relate to outages on the server side. This will catch
+	// invalid response codes as well, like 0 and 999.
+	// Status code 0 is especially important for AWS ALB:
+	// https://docs.aws.amazon.com/elasticloadbalancing/latest/application/load-balancer-troubleshooting.html#response-code-000
+	if resp.StatusCode == 0 || (resp.StatusCode >= 500 && resp.StatusCode != http.StatusNotImplemented) {
+		// return true, fmt.Errorf("unexpected HTTP status %s", resp.Status)
+		return true, nil
+	}
+
 	return false, nil
 }
 
@@ -556,7 +751,7 @@ func (c *Client) retryHTTPBackoff(min, max time.Duration, attemptNum int, resp *
 }
 
 // rateLimitBackoff provides a callback for Client.Backoff which will use the
-// RateLimit-Reset header to determine the time to wait. We add some jitter
+// Ratelimit-Reset header to determine the time to wait. We add some jitter
 // to prevent a thundering herd.
 //
 // min and max are mainly used for bounding the jitter that will be added to
@@ -578,7 +773,7 @@ func rateLimitBackoff(min, max time.Duration, attemptNum int, resp *http.Respons
 				}
 			}
 		} else {
-			// In case the RateLimit-Reset header is not set, back off an additional
+			// In case the Ratelimit-Reset header is not set, back off an additional
 			// 100% exponentially. With the default milliseconds being set to 100 for
 			// `min`, this makes the 5th retry wait 3.2 seconds (3,200 ms) by default.
 			min = time.Duration(float64(min) * math.Pow(2, float64(attemptNum)))
@@ -625,16 +820,71 @@ func (c *Client) BaseURL() *url.URL {
 	return &u
 }
 
+// validateBaseURL checks for common real-world mistakes and returns them as errors.
+// Returns the parsed URL if validation succeeds.
+func validateBaseURL(baseURL string) (*url.URL, error) {
+	if baseURL == "" {
+		return nil, &URLValidationError{
+			URL:  baseURL,
+			Err:  errors.New("empty URL"),
+			Hint: `provide a valid GitLab instance URL (e.g., "https://gitlab.com")`,
+		}
+	}
+
+	if !strings.Contains(baseURL, "://") {
+		return nil, &URLValidationError{
+			URL:  baseURL,
+			Err:  errors.New("missing scheme"),
+			Hint: fmt.Sprintf(`try "https://%s"`, baseURL),
+		}
+	}
+
+	parsedURL, err := url.Parse(baseURL)
+	if err != nil {
+		return nil, &URLValidationError{
+			URL: baseURL,
+			Err: err,
+			Hint: `possible issues:
+		  - missing hostname
+		  - invalid characters/spaces
+		  - invalid port (must be 1-65535)
+		  - query parameters (?)
+		  - fragments (#)
+		  - invalid URL encoding`,
+		}
+	}
+
+	if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
+		return nil, &URLValidationError{
+			URL:  baseURL,
+			Err:  fmt.Errorf("unsupported scheme %q", parsedURL.Scheme),
+			Hint: fmt.Sprintf(`GitLab API requires http or https (try "https://%s")`, parsedURL.Host),
+		}
+	}
+
+	return parsedURL, nil
+}
+
 // setBaseURL sets the base URL for API requests to a custom endpoint.
 func (c *Client) setBaseURL(urlStr string) error {
-	// Make sure the given URL end with a slash
+	// Make sure the given URL ends with a slash
 	if !strings.HasSuffix(urlStr, "/") {
 		urlStr += "/"
 	}
 
-	baseURL, err := url.Parse(urlStr)
+	// Validate and parse
+	baseURL, err := validateBaseURL(urlStr)
 	if err != nil {
-		return err
+		// Log the validation warning
+		c.urlWarningLogger.Warn("URL validation warning", "error", err)
+
+		// Don't return the error - just warn and continue
+		// Try to parse anyway as a fallback
+		baseURL, err = url.Parse(urlStr)
+		if err != nil {
+			// If we really can't parse it, we have to give up
+			return fmt.Errorf("failed to parse base URL: %w", err)
+		}
 	}
 
 	if !strings.HasSuffix(baseURL.Path, apiVersionPath) {
@@ -663,6 +913,14 @@ func (c *Client) NewRequest(method, path string, opt any, options []RequestOptio
 	u.RawPath = c.baseURL.Path + path
 	u.Path = c.baseURL.Path + unescaped
 
+	return c.NewRequestToURL(method, &u, opt, options)
+}
+
+func (c *Client) NewRequestToURL(method string, u *url.URL, opt any, options []RequestOptionFunc) (*retryablehttp.Request, error) {
+	if u.Scheme != c.baseURL.Scheme || u.Host != c.baseURL.Host {
+		return nil, fmt.Errorf("client only allows requests to URLs matching the clients configured base URL. Got %q, base URL is %q", u.String(), c.baseURL.String())
+	}
+
 	// Create a request specific headers map.
 	reqHeaders := make(http.Header)
 	reqHeaders.Set("Accept", "application/json")
@@ -677,10 +935,11 @@ func (c *Client) NewRequest(method, path string, opt any, options []RequestOptio
 		reqHeaders.Set("Content-Type", "application/json")
 
 		if opt != nil {
-			body, err = json.Marshal(opt)
+			b, err := json.Marshal(opt)
 			if err != nil {
 				return nil, err
 			}
+			body = b
 		}
 	case opt != nil:
 		q, err := query.Values(opt)
@@ -791,12 +1050,12 @@ type Response struct {
 	*http.Response
 
 	// Fields used for offset-based pagination.
-	TotalItems   int
-	TotalPages   int
-	ItemsPerPage int
-	CurrentPage  int
-	NextPage     int
-	PreviousPage int
+	TotalItems   int64
+	TotalPages   int64
+	ItemsPerPage int64
+	CurrentPage  int64
+	NextPage     int64
+	PreviousPage int64
 
 	// Fields used for keyset-based pagination.
 	PreviousLink string
@@ -833,28 +1092,28 @@ const (
 // various pagination link values in the Response.
 func (r *Response) populatePageValues() {
 	if totalItems := r.Header.Get(xTotal); totalItems != "" {
-		r.TotalItems, _ = strconv.Atoi(totalItems)
+		r.TotalItems, _ = strconv.ParseInt(totalItems, 10, 64)
 	}
 	if totalPages := r.Header.Get(xTotalPages); totalPages != "" {
-		r.TotalPages, _ = strconv.Atoi(totalPages)
+		r.TotalPages, _ = strconv.ParseInt(totalPages, 10, 64)
 	}
 	if itemsPerPage := r.Header.Get(xPerPage); itemsPerPage != "" {
-		r.ItemsPerPage, _ = strconv.Atoi(itemsPerPage)
+		r.ItemsPerPage, _ = strconv.ParseInt(itemsPerPage, 10, 64)
 	}
 	if currentPage := r.Header.Get(xPage); currentPage != "" {
-		r.CurrentPage, _ = strconv.Atoi(currentPage)
+		r.CurrentPage, _ = strconv.ParseInt(currentPage, 10, 64)
 	}
 	if nextPage := r.Header.Get(xNextPage); nextPage != "" {
-		r.NextPage, _ = strconv.Atoi(nextPage)
+		r.NextPage, _ = strconv.ParseInt(nextPage, 10, 64)
 	}
 	if previousPage := r.Header.Get(xPrevPage); previousPage != "" {
-		r.PreviousPage, _ = strconv.Atoi(previousPage)
+		r.PreviousPage, _ = strconv.ParseInt(previousPage, 10, 64)
 	}
 }
 
 func (r *Response) populateLinkValues() {
 	if link := r.Header.Get("Link"); link != "" {
-		for _, link := range strings.Split(link, ",") {
+		for link := range strings.SplitSeq(link, ",") {
 			parts := strings.Split(link, ";")
 			if len(parts) < 2 {
 				continue
@@ -877,11 +1136,25 @@ func (r *Response) populateLinkValues() {
 	}
 }
 
+// bodyPreserver is a special type that signals to Client.Do that we want to
+// preserve the response body without copying it. The body field will be set
+// to the actual response body, and the caller is responsible for closing it.
+type bodyPreserver struct {
+	body io.ReadCloser
+}
+
+// Write implements io.Writer but does nothing. This prevents Client.Do from
+// copying the body content.
+func (bp *bodyPreserver) Write(_ []byte) (n int, err error) {
+	return 0, nil
+}
+
 // Do sends an API request and returns the API response. The API response is
 // JSON decoded and stored in the value pointed to by v, or returned as an
 // error if an API error has occurred. If v implements the io.Writer
 // interface, the raw response body will be written to v, without attempting to
-// first decode it.
+// first decode it. If v is a *bodyPreserver, the response body is preserved
+// without copying and the caller is responsible for closing it.
 func (c *Client) Do(req *retryablehttp.Request, v any) (*Response, error) {
 	// Wait will block until the limiter can obtain a new token.
 	err := c.limiter.Wait(req.Context())
@@ -917,10 +1190,14 @@ func (c *Client) Do(req *retryablehttp.Request, v any) (*Response, error) {
 		return nil, err
 	}
 
-	defer func() {
-		io.Copy(io.Discard, resp.Body)
-		resp.Body.Close()
-	}()
+	// Check if v is a bodyPreserver before setting up the defer
+	preserver, isPreserver := v.(*bodyPreserver)
+	if !isPreserver {
+		defer func() {
+			io.Copy(io.Discard, resp.Body)
+			resp.Body.Close()
+		}()
+	}
 
 	// If not yet configured, try to configure the rate limiter
 	// using the response headers we just received. Fail silently
@@ -933,11 +1210,19 @@ func (c *Client) Do(req *retryablehttp.Request, v any) (*Response, error) {
 	if err != nil {
 		// Even though there was an error, we still return the response
 		// in case the caller wants to inspect it further.
+		// If using bodyPreserver, still need to close the body on error
+		if isPreserver {
+			io.Copy(io.Discard, resp.Body)
+			resp.Body.Close()
+		}
 		return response, err
 	}
 
 	if v != nil {
-		if w, ok := v.(io.Writer); ok {
+		if isPreserver {
+			// Preserve the body without copying
+			preserver.body = resp.Body
+		} else if w, ok := v.(io.Writer); ok {
 			_, err = io.Copy(w, resp.Body)
 		} else {
 			err = json.NewDecoder(resp.Body).Decode(v)
@@ -969,6 +1254,8 @@ func parseID(id any) (string, error) {
 	switch v := id.(type) {
 	case int:
 		return strconv.Itoa(v), nil
+	case int64:
+		return strconv.FormatInt(v, 10), nil
 	case string:
 		return v, nil
 	default:
@@ -976,7 +1263,7 @@ func parseID(id any) (string, error) {
 	}
 }
 
-// Helper function to escape a project identifier.
+// PathEscape is a helper function to escape a project identifier.
 func PathEscape(s string) string {
 	return strings.ReplaceAll(url.PathEscape(s), ".", "%2E")
 }
@@ -1003,6 +1290,10 @@ func (e *ErrorResponse) Error() string {
 	} else {
 		return fmt.Sprintf("%s %s: %d %s", e.Response.Request.Method, url, e.Response.StatusCode, e.Message)
 	}
+}
+
+func (e *ErrorResponse) HasStatusCode(statusCode int) bool {
+	return e != nil && e.Response != nil && e.Response.StatusCode == statusCode
 }
 
 // CheckResponse checks the API response for errors, and returns them if present.
@@ -1073,6 +1364,15 @@ func parseError(raw any) string {
 	default:
 		return fmt.Sprintf("failed to parse unexpected error type: %T", raw)
 	}
+}
+
+func HasStatusCode(err error, statusCode int) bool {
+	var errResponse *ErrorResponse
+	if !errors.As(err, &errResponse) {
+		return false
+	}
+
+	return errResponse.HasStatusCode(statusCode)
 }
 
 // newRetryableHTTPClientWithRetryCheck returns a `retryablehttp.Client` clone of itself with the given CheckRetry function
@@ -1147,25 +1447,25 @@ func (s AccessTokenAuthSource) Header(_ context.Context) (string, string, error)
 	return AccessTokenHeaderName, s.Token, nil
 }
 
-// passwordTokenSource implements the AuthSource interface for the OAuth 2.0
+// PasswordCredentialsAuthSource implements the AuthSource interface for the OAuth 2.0
 // resource owner password credentials flow.
-type passwordCredentialsAuthSource struct {
-	username string
-	password string
+type PasswordCredentialsAuthSource struct {
+	Username string
+	Password string
 
 	AuthSource
 }
 
-func (as *passwordCredentialsAuthSource) Init(ctx context.Context, client *Client) error {
+func (as *PasswordCredentialsAuthSource) Init(ctx context.Context, client *Client) error {
 	ctx = context.WithValue(ctx, oauth2.HTTPClient, client.client.HTTPClient)
 
 	config := &oauth2.Config{
 		Endpoint: client.endpoint(),
 	}
 
-	pct, err := config.PasswordCredentialsToken(ctx, as.username, as.password)
+	pct, err := config.PasswordCredentialsToken(ctx, as.Username, as.Password)
 	if err != nil {
-		return fmt.Errorf("PasswordCredentialsToken(%q, ******): %w", as.username, err)
+		return fmt.Errorf("PasswordCredentialsToken(%q, ******): %w", as.Username, err)
 	}
 
 	as.AuthSource = OAuthTokenSource{
