@@ -369,7 +369,7 @@ github.com/konflux-ci/operator-toolkit/metadata
 github.com/konflux-ci/operator-toolkit/predicates
 github.com/konflux-ci/operator-toolkit/test
 github.com/konflux-ci/operator-toolkit/utils
-# github.com/konflux-ci/release-service v0.0.0-20260127184035-c36c56a3c440
+# github.com/konflux-ci/release-service v0.0.0-20260128114607-5d53be92857a
 ## explicit; go 1.25.0
 github.com/konflux-ci/release-service/api/v1alpha1
 github.com/konflux-ci/release-service/git
@@ -766,14 +766,14 @@ golang.org/x/tools/internal/versions
 # gomodules.xyz/jsonpatch/v2 v2.5.0
 ## explicit; go 1.20
 gomodules.xyz/jsonpatch/v2
-# google.golang.org/api v0.262.0
+# google.golang.org/api v0.263.0
 ## explicit; go 1.24.0
 google.golang.org/api/support/bundler
-# google.golang.org/genproto/googleapis/api v0.0.0-20260126211449-d11affda4bed
+# google.golang.org/genproto/googleapis/api v0.0.0-20260128011058-8636f8732409
 ## explicit; go 1.24.0
 google.golang.org/genproto/googleapis/api/expr/v1alpha1
 google.golang.org/genproto/googleapis/api/httpbody
-# google.golang.org/genproto/googleapis/rpc v0.0.0-20260120221211-b8f7ae30c516
+# google.golang.org/genproto/googleapis/rpc v0.0.0-20260122232226-8e98ce8d340d
 ## explicit; go 1.24.0
 google.golang.org/genproto/googleapis/rpc/errdetails
 google.golang.org/genproto/googleapis/rpc/status
