@@ -13,7 +13,7 @@ metadata:
     {{- if .Values.crd.keep }}
     "helm.sh/resource-policy": keep
     {{- end }}
-    controller-gen.kubebuilder.io/version: v0.16.1
+    controller-gen.kubebuilder.io/version: v0.17.2
   name: integrationtestscenarios.appstudio.redhat.com
 spec:
   {{- if .Values.webhook.enable }}

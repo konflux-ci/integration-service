@@ -39,21 +39,16 @@ func TestComponentGroupSpec(t *testing.T) {
 			Components: []ComponentReference{
 				{
 					Name: "first-component",
-					ComponentBranch: ComponentBranchReference{
-						Name:               "main",
-						LastPromotedImage:  "quay.io/sampleorg/first-component@sha256:1b29",
-						LastPromotedCommit: "6a7c81802e785aa869f82301afe61f4e9775772b",
-						LastBuildTime: &metav1.Time{
-							Time: time.Date(2025, 8, 13, 12, 0, 0, 0, time.UTC),
-						},
+					ComponentVersion: ComponentVersionReference{
+						Name: "main",
 					},
 				},
 				{
 					Name: "second-component",
-					ComponentBranch: ComponentBranchReference{
-						Name:               "v1",
-						LastPromotedImage:  "quay.io/sampleorg/second-component@sha256:ae32",
-						LastPromotedCommit: "1359836353b8e249f2fbceba47d82751d7dab902",
+					ComponentVersion: ComponentVersionReference{
+						Name:     "v1",
+						Revision: "v1branch",
+						Context:  "components/second-component",
 					},
 				},
 			},
@@ -71,6 +66,21 @@ func TestComponentGroupSpec(t *testing.T) {
 		},
 		Status: ComponentGroupStatus{
 			Conditions: []metav1.Condition{},
+			GlobalCandidateList: []ComponentState{
+				ComponentState{
+					Name:               "first-component",
+					Version:            "main",
+					LastPromotedImage:  "quay.io/sampleorg/first-component@sha256:1b29",
+					LastPromotedCommit: "6a7c81802e785aa869f82301afe61f4e9775772b",
+					LastPromotedBuildTime: &metav1.Time{
+						Time: time.Date(2025, 8, 13, 12, 0, 0, 0, time.UTC),
+					},
+				},
+				ComponentState{
+					Name:    "second-component",
+					Version: "v1",
+				},
+			},
 		},
 	}
 
@@ -87,21 +97,23 @@ func TestComponentGroupSpec(t *testing.T) {
 	if cg.Spec.Components[0].Name != "first-component" {
 		t.Errorf("Expected first component name 'first-component', got '%s'", cg.Spec.Components[0].Name)
 	}
-	if cg.Spec.Components[0].ComponentBranch.Name != "main" {
-		t.Errorf("Expected first component branch 'main', got '%s'", cg.Spec.Components[0].ComponentBranch.Name)
-	}
-	if cg.Spec.Components[0].ComponentBranch.LastPromotedImage != "quay.io/sampleorg/first-component@sha256:1b29" {
-		t.Errorf("Expected LastPromotedImage 'quay.io/sampleorg/first-component@sha256:1b29', got '%s'", cg.Spec.Components[0].ComponentBranch.LastPromotedImage)
-	}
-	if cg.Spec.Components[0].ComponentBranch.LastBuildTime == nil {
-		t.Error("Expected LastBuildTime to be set")
+	if cg.Spec.Components[0].ComponentVersion.Name != "main" {
+		t.Errorf("Expected first component branch 'main', got '%s'", cg.Spec.Components[0].ComponentVersion.Name)
 	}
 
 	if cg.Spec.Components[1].Name != "second-component" {
 		t.Errorf("Expected second component name 'second-component', got '%s'", cg.Spec.Components[1].Name)
 	}
-	if cg.Spec.Components[1].ComponentBranch.LastBuildTime != nil {
-		t.Error("Expected LastBuildTime to be nil for second component")
+	if cg.Spec.Components[1].ComponentVersion.Name != "v1" {
+		t.Errorf("Expected second component branch 'v1', got '%s'", cg.Spec.Components[1].ComponentVersion.Name)
+	}
+
+	if cg.Spec.Components[1].ComponentVersion.Revision != "v1branch" {
+		t.Errorf("Expected second component branch 'v1branch', got '%s'", cg.Spec.Components[1].ComponentVersion.Name)
+	}
+
+	if cg.Spec.Components[1].ComponentVersion.Context != "components/second-component" {
+		t.Errorf("Expected second component branch 'components/second-component', got '%s'", cg.Spec.Components[1].ComponentVersion.Name)
 	}
 
 	if len(cg.Spec.Dependents) != 2 {
@@ -123,6 +135,27 @@ func TestComponentGroupSpec(t *testing.T) {
 	if cg.Spec.TestGraph["verify"][1].OnFail != "skip" {
 		t.Errorf("Expected OnFail 'skip', got '%s'", cg.Spec.TestGraph["verify"][1].OnFail)
 	}
+
+	if len(cg.Status.GlobalCandidateList) != 2 {
+		t.Errorf("Expected 2 items in GlobalCandidateList, got %d", len(cg.Status.GlobalCandidateList))
+	}
+
+	if cg.Status.GlobalCandidateList[0].Name != "first-component" {
+		t.Errorf("Expected first item in GlobalCandidateList to be '%s', got '%s'", "first-component", cg.Status.GlobalCandidateList[0].Name)
+	}
+	if cg.Status.GlobalCandidateList[0].Version != "main" {
+		t.Errorf("Expected version of first item in GlobalCandidateList to be '%s', got '%s'", "main", cg.Status.GlobalCandidateList[0].Version)
+	}
+	if cg.Status.GlobalCandidateList[0].LastPromotedImage != "quay.io/sampleorg/first-component@sha256:1b29" {
+		t.Errorf("Expected LastPromotedImage 'quay.io/sampleorg/first-component@sha256:1b29', got '%s'", cg.Status.GlobalCandidateList[0].LastPromotedImage)
+	}
+	if cg.Status.GlobalCandidateList[0].LastPromotedCommit != "6a7c81802e785aa869f82301afe61f4e9775772b" {
+		t.Errorf("Expected LastPromotedCommit '%s', got '%s'", "6a7c81802e785aa869f82301afe61f4e9775772b", cg.Status.GlobalCandidateList[0].LastPromotedCommit)
+	}
+	if cg.Status.GlobalCandidateList[0].LastPromotedBuildTime == nil {
+		t.Error("Expected LastBuildTime to be set")
+	}
+
 }
 
 func TestComponentGroupMinimalSpec(t *testing.T) {
@@ -136,7 +169,7 @@ func TestComponentGroupMinimalSpec(t *testing.T) {
 			Components: []ComponentReference{
 				{
 					Name: "test-component",
-					ComponentBranch: ComponentBranchReference{
+					ComponentVersion: ComponentVersionReference{
 						Name: "main",
 					},
 				},
@@ -153,11 +186,11 @@ func TestComponentGroupMinimalSpec(t *testing.T) {
 	if cg.Spec.Components[0].Name != "test-component" {
 		t.Errorf("Expected component name 'test-component', got '%s'", cg.Spec.Components[0].Name)
 	}
-	if cg.Spec.Components[0].ComponentBranch.Name != "main" {
-		t.Errorf("Expected branch name 'main', got '%s'", cg.Spec.Components[0].ComponentBranch.Name)
+	if cg.Spec.Components[0].ComponentVersion.Name != "main" {
+		t.Errorf("Expected branch name 'main', got '%s'", cg.Spec.Components[0].ComponentVersion.Name)
 	}
-	if cg.Spec.Components[0].ComponentBranch.LastPromotedImage != "" {
-		t.Errorf("Expected empty LastPromotedImage, got '%s'", cg.Spec.Components[0].ComponentBranch.LastPromotedImage)
+	if cg.Spec.Components[0].ComponentVersion.Revision != "" {
+		t.Errorf("Expected empty Revision, got '%s'", cg.Spec.Components[0].ComponentVersion.Revision)
 	}
 	if len(cg.Spec.Dependents) != 0 {
 		t.Errorf("Expected 0 dependents, got %d", len(cg.Spec.Dependents))
@@ -177,7 +210,7 @@ func TestComponentGroupWithSnapshotCreator(t *testing.T) {
 			Components: []ComponentReference{
 				{
 					Name: "test-component",
-					ComponentBranch: ComponentBranchReference{
+					ComponentVersion: ComponentVersionReference{
 						Name: "main",
 					},
 				},
@@ -219,9 +252,8 @@ func TestComponentGroupDeepCopy(t *testing.T) {
 			Components: []ComponentReference{
 				{
 					Name: "test-component",
-					ComponentBranch: ComponentBranchReference{
-						Name:              "main",
-						LastPromotedImage: "quay.io/test/image@sha256:abc",
+					ComponentVersion: ComponentVersionReference{
+						Name: "main",
 					},
 				},
 			},
@@ -256,7 +288,7 @@ func TestComponentGroupListDeepCopy(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{Name: "cg-1"},
 				Spec: ComponentGroupSpec{
 					Components: []ComponentReference{
-						{Name: "comp-1", ComponentBranch: ComponentBranchReference{Name: "main"}},
+						{Name: "comp-1", ComponentVersion: ComponentVersionReference{Name: "main"}},
 					},
 				},
 			},
@@ -264,7 +296,7 @@ func TestComponentGroupListDeepCopy(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{Name: "cg-2"},
 				Spec: ComponentGroupSpec{
 					Components: []ComponentReference{
-						{Name: "comp-2", ComponentBranch: ComponentBranchReference{Name: "v1"}},
+						{Name: "comp-2", ComponentVersion: ComponentVersionReference{Name: "v1"}},
 					},
 				},
 			},
@@ -326,7 +358,7 @@ func TestComponentGroupConstants(t *testing.T) {
 func TestComponentGroupSpecDeepCopy(t *testing.T) {
 	original := ComponentGroupSpec{
 		Components: []ComponentReference{
-			{Name: "comp-1", ComponentBranch: ComponentBranchReference{Name: "main"}},
+			{Name: "comp-1", ComponentVersion: ComponentVersionReference{Name: "main"}},
 		},
 		Dependents: []string{"dep-1"},
 		TestGraph: map[string][]TestGraphNode{
