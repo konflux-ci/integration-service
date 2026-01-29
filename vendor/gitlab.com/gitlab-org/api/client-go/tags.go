@@ -21,6 +21,7 @@ import (
 	"math/big"
 	"net/http"
 	"net/url"
+	"time"
 )
 
 type (
@@ -53,6 +54,7 @@ type Tag struct {
 	Message   string       `json:"message"`
 	Protected bool         `json:"protected"`
 	Target    string       `json:"target"`
+	CreatedAt *time.Time   `json:"created_at"`
 }
 
 // X509Signature represents a GitLab Tag Signature object.
@@ -65,7 +67,7 @@ type X509Signature struct {
 }
 
 type X509Certificate struct {
-	ID                   int        `json:"id"`
+	ID                   int64      `json:"id"`
 	Subject              string     `json:"subject"`
 	SubjectKeyIdentifier string     `json:"subject_key_identifier"`
 	Email                string     `json:"email"`
@@ -75,10 +77,10 @@ type X509Certificate struct {
 }
 
 type X509Issuer struct {
-	ID                   int    `json:"id"`
+	ID                   int64  `json:"id"`
 	Subject              string `json:"subject"`
 	SubjectKeyIdentifier string `json:"subject_key_identifier"`
-	CrlUrl               string `json:"crl_url"`
+	CrlURL               string `json:"crl_url"`
 }
 
 // ReleaseNote represents a GitLab version release.
