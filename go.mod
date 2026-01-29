@@ -49,7 +49,7 @@ require (
 	golang.org/x/exp v0.0.0-20260112195511-716be5621a96
 	golang.org/x/oauth2 v0.34.0
 	k8s.io/klog/v2 v2.130.1
-	k8s.io/utils v0.0.0-20251002143259-bc988d571ff4
+	k8s.io/utils v0.0.0-20260108192941-914a6e750570
 )
 
 require (
