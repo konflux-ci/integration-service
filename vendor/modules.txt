@@ -1526,4 +1526,4 @@ sigs.k8s.io/yaml
 # k8s.io/component-base => k8s.io/component-base v0.35.0
 # knative.dev/pkg => knative.dev/pkg v0.0.0-20240416145024-0f34a8815650
 # code.gitea.io/gitea => code.gitea.io/gitea v1.25.2
-# github.com/nektos/act => gitea.com/gitea/act v0.2.66-0.20240924153421-39656e186641
+# github.com/nektos/act => gitea.com/gitea/act v0.261.7
