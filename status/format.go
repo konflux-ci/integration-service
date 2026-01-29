@@ -67,7 +67,6 @@ const shortSummaryTemplate = `
 <ul>
 <li><b>Pipelinerun</b>: <a href="{{ formatPipelineURL $pipelineRunName $namespace $logger }}">{{ $pipelineRunName }}</a></li>
 </ul>
-<hr>
 
 {{ if .ComponentSnapshotInfos}}
 The group snapshot is generated for pr group {{ .PRGroup }} and the component snasphots as below:
