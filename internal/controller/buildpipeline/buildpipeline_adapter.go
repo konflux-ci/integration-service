@@ -305,6 +305,15 @@ func (a *Adapter) EnsureIntegrationTestReportedToGitProvider() (controller.Opera
 		return controller.ContinueProcessing()
 	}
 
+	isLatestBuildPlr, err := a.IsLatestBuildPipelineRunInComponentWithPRGroupHash(a.pipelineRun)
+	if err != nil {
+		a.logger.Error(err, "failed to check if build pipelineRun is the latest one")
+	}
+	if !isLatestBuildPlr {
+		a.logger.Info("build plr %s/%s is not the latest one, skipp reporting integration test status to git provider", a.pipelineRun.Namespace, a.pipelineRun.Name)
+		return controller.ContinueProcessing()
+	}
+
 	if metadata.HasAnnotation(a.pipelineRun, tektonconsts.SnapshotNameLabel) {
 		SnapshotCreated := "SnapshotCreated"
 		a.logger.Info("snapshot has been created for build pipelineRun, no need to report integration status from build pipelinerun status")
@@ -1107,4 +1116,21 @@ func isBuildPLROlderThanLastBuild(pipelineRun *tektonv1.PipelineRun, component *
 		return true
 	}
 	return false
+}
+
+func (a *Adapter) IsLatestBuildPipelineRunInComponentWithPRGroupHash(buildPlr *tektonv1.PipelineRun) (bool, error) {
+	prGroupHash := buildPlr.Labels[gitops.PRGroupHashLabel]
+	prGroupName := buildPlr.Annotations[gitops.PRGroupAnnotation]
+	pipelineRuns, err := a.loader.GetPipelineRunsWithPRGroupHash(a.context, a.client, buildPlr.Namespace, prGroupHash, a.application.Name)
+	if err != nil {
+		a.logger.Error(err, fmt.Sprintf("Failed to get build pipelineRuns for given pr group hash %s", prGroupHash))
+		return false, err
+	}
+
+	if tekton.IsLatestBuildPipelineRunInComponent(buildPlr, pipelineRuns) {
+		return true, nil
+	}
+
+	a.logger.Info(fmt.Sprintf("The build pipelineRun %s/%s with pr group %s is not the latest for its component, skipped", buildPlr.Namespace, buildPlr.Name, prGroupName))
+	return false, nil
 }
