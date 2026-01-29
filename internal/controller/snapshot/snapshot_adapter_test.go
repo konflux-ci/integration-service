@@ -68,7 +68,7 @@ spec:
     resolver: git
     params:
       - name: url
-        value: http://github.com/test/integration-examples.git
+        value: https://github.com/test/integration-examples.git
       - name: revision
         value: main
       - name: pathInRepo
@@ -1252,7 +1252,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		When("pull request updates repo with integration test", func() {
 
 			const (
-				sourceRepoUrl = "https://test-repo.example.com"                            // is without .git suffix
+				sourceRepoUrl = "https://github.com/test/integration-examples"             // is without .git suffix
 				targetRepoUrl = "https://github.com/redhat-appstudio/integration-examples" // is without .git suffix
 			)
 
@@ -1303,6 +1303,9 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 				}
 				hasSnapshotPR.Annotations[gitops.PipelineAsCodeRepoURLAnnotation] = targetRepoUrl
 				hasSnapshotPR.Annotations[gitops.PipelineAsCodeTargetBranchAnnotation] = "main"
+				hasSnapshotPR.Annotations[gitops.PipelineAsCodeGitSourceURLAnnotation] = sourceRepoUrl
+				hasSnapshotPR.Annotations[gitops.PipelineAsCodeSHAAnnotation] = "main"
+
 				integrationTestScenarioWithTrailingSlash := integrationTestScenario.DeepCopy()
 				integrationTestScenarioWithTrailingSlash.Spec.ResolverRef = v1beta2.ResolverRef{
 					Resolver: "git",
@@ -2884,6 +2887,295 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			Expect(result.RequeueRequest).To(BeFalse())
 			Expect(err).Should(Succeed())
 			Expect(buf.String()).Should(ContainSubstring("Snapshot has been marked as cancelled previously, skipping marking it"))
+		})
+	})
+
+	Context("When testing shouldUpdateIntegrationGitResolver", func() {
+		It("should return true for PR snapshots with PipelineRun ResourceKind", func() {
+			snapshotPR := &applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "snapshot-pr",
+					Namespace: "default",
+					Labels: map[string]string{
+						gitops.PipelineAsCodePullRequestAnnotation: "1",
+						gitops.PipelineAsCodeEventTypeLabel:        "pull_request",
+					},
+				},
+			}
+
+			integrationTestScenario := &v1beta2.IntegrationTestScenario{
+				Spec: v1beta2.IntegrationTestScenarioSpec{
+					ResolverRef: v1beta2.ResolverRef{
+						ResourceKind: tektonconsts.ResourceKindPipelineRun,
+					},
+				},
+			}
+
+			result := shouldUpdateIntegrationGitResolver(integrationTestScenario, snapshotPR)
+			Expect(result).To(BeTrue())
+		})
+
+		It("should return false for push event snapshots", func() {
+			snapshotPush := &applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "snapshot-push",
+					Namespace: "default",
+					Labels: map[string]string{
+						gitops.PipelineAsCodeEventTypeLabel: "push",
+					},
+				},
+			}
+
+			integrationTestScenario := &v1beta2.IntegrationTestScenario{
+				Spec: v1beta2.IntegrationTestScenarioSpec{
+					ResolverRef: v1beta2.ResolverRef{
+						ResourceKind: tektonconsts.ResourceKindPipelineRun,
+					},
+				},
+			}
+
+			result := shouldUpdateIntegrationGitResolver(integrationTestScenario, snapshotPush)
+			Expect(result).To(BeFalse())
+		})
+
+		It("should return false for snapshots with Pipeline ResourceKind instead of PipelineRun", func() {
+			snapshotPR := &applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "snapshot-pr",
+					Namespace: "default",
+					Labels: map[string]string{
+						gitops.PipelineAsCodePullRequestAnnotation: "1",
+						gitops.PipelineAsCodeEventTypeLabel:        "pull_request",
+					},
+				},
+			}
+
+			integrationTestScenario := &v1beta2.IntegrationTestScenario{
+				Spec: v1beta2.IntegrationTestScenarioSpec{
+					ResolverRef: v1beta2.ResolverRef{
+						ResourceKind: tektonconsts.ResourceKindPipeline,
+					},
+				},
+			}
+
+			result := shouldUpdateIntegrationGitResolver(integrationTestScenario, snapshotPR)
+			Expect(result).To(BeFalse())
+		})
+
+		It("should return false for snapshots without PR labels", func() {
+			snapshotRegular := &applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "snapshot-regular",
+					Namespace: "default",
+				},
+			}
+
+			integrationTestScenario := &v1beta2.IntegrationTestScenario{
+				Spec: v1beta2.IntegrationTestScenarioSpec{
+					ResolverRef: v1beta2.ResolverRef{
+						ResourceKind: tektonconsts.ResourceKindPipelineRun,
+					},
+				},
+			}
+
+			result := shouldUpdateIntegrationGitResolver(integrationTestScenario, snapshotRegular)
+			Expect(result).To(BeFalse())
+		})
+	})
+
+	Context("When testing createIntegrationPipelineRun with pipeline resolver updates", func() {
+		const (
+			testSourceRepoUrl = "https://github.com/someuser/integration-examples" // is without .git suffix
+			testTargetRepoUrl = "https://github.com/test/integration-examples"     // is without .git suffix
+		)
+
+		It("should call WithUpdatedPipelineGitResolver for PR snapshots with PipelineRun ResourceKind", func() {
+			hasSnapshotPR.Annotations = map[string]string{
+				gitops.PipelineAsCodeRepoURLAnnotation:      testTargetRepoUrl,
+				gitops.PipelineAsCodeTargetBranchAnnotation: "main",
+				gitops.PipelineAsCodeGitSourceURLAnnotation: testSourceRepoUrl,
+				gitops.PipelineAsCodeSHAAnnotation:          sourceRepoRef,
+			}
+			hasSnapshotPR.Labels = map[string]string{
+				gitops.PipelineAsCodePullRequestAnnotation: "1",
+				gitops.PipelineAsCodeEventTypeLabel:        "pull_request",
+			}
+
+			integrationTestScenarioPR := integrationTestScenario.DeepCopy()
+			integrationTestScenarioPR.Spec.ResolverRef = v1beta2.ResolverRef{
+				Resolver:     "git",
+				ResourceKind: tektonconsts.ResourceKindPipelineRun,
+				Params: []v1beta2.ResolverParameter{
+					{
+						Name:  "url",
+						Value: testTargetRepoUrl,
+					},
+					{
+						Name:  "revision",
+						Value: "main",
+					},
+					{
+						Name:  "pathInRepo",
+						Value: "pipelineruns/integration_pipelinerun_pass.yaml",
+					},
+				},
+			}
+
+			resolutionRequest := resolutionv1beta1.ResolutionRequest{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "sample-resolutionrequest",
+					Namespace: "default",
+				},
+				Spec: resolutionv1beta1.ResolutionRequestSpec{
+					Params: []tektonv1.Param{
+						{
+							Name: "url",
+							Value: tektonv1.ParamValue{
+								Type:      tektonv1.ParamTypeString,
+								StringVal: testTargetRepoUrl,
+							},
+						},
+						{
+							Name: "pathInRepo",
+							Value: tektonv1.ParamValue{
+								Type:      tektonv1.ParamTypeString,
+								StringVal: "pipelineruns/integration_pipelinerun_pass.yaml",
+							},
+						},
+						{
+							Name: "revision",
+							Value: tektonv1.ParamValue{
+								Type:      tektonv1.ParamTypeString,
+								StringVal: "main",
+							},
+						},
+					},
+				},
+				Status: resolutionv1beta1.ResolutionRequestStatus{
+					ResolutionRequestStatusFields: resolutionv1beta1.ResolutionRequestStatusFields{
+						Data: tekton.GenerateCleanData(expectedPipelineYAML),
+					},
+					Status: v1.Status{
+						Conditions: []apis.Condition{
+							{
+								Type:   apis.ConditionSucceeded,
+								Status: corev1.ConditionTrue,
+							},
+						},
+					},
+				},
+			}
+
+			var buf bytes.Buffer
+			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+			adapter.logger = log
+			adapter.snapshot = hasSnapshotPR
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: loader.ResolutionRequestContextKey,
+					Resource:   resolutionRequest,
+				},
+			})
+
+			pipelineRun, err := adapter.createIntegrationPipelineRun(hasApp, integrationTestScenarioPR, hasSnapshotPR)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(pipelineRun).ToNot(BeNil())
+
+			// Verify that the log message indicates both task and pipeline resolver updates
+			Expect(buf.String()).Should(ContainSubstring("use the integration test task/taskrun from the code in the pr of snapshot"))
+
+			// Verify that pipeline resolver params are updated (not just task resolvers)
+			// The pipeline ref should have the source repo URL and SHA
+			foundSourceUrl := false
+			foundSourceRevision := false
+
+			for _, param := range pipelineRun.Spec.PipelineRef.Params {
+				if param.Name == tektonconsts.TektonResolverGitParamURL {
+					foundSourceUrl = true
+					Expect(helpers.UrlToGitUrl(param.Value.StringVal)).To(Equal(helpers.UrlToGitUrl(testSourceRepoUrl + ".git")))
+				}
+				if param.Name == tektonconsts.TektonResolverGitParamRevision {
+					foundSourceRevision = true
+					Expect(param.Value.StringVal).To(Equal(sourceRepoRef))
+				}
+			}
+
+			Expect(foundSourceUrl).To(BeTrue(), "Pipeline resolver URL should be updated to source repo")
+			Expect(foundSourceRevision).To(BeTrue(), "Pipeline resolver revision should be updated to source SHA")
+		})
+
+		It("should NOT call WithUpdatedPipelineGitResolver for push event snapshots", func() {
+			hasSnapshotPush := hasSnapshot.DeepCopy()
+			hasSnapshotPush.Labels = map[string]string{
+				gitops.PipelineAsCodeEventTypeLabel: "push",
+			}
+
+			integrationTestScenarioPR := integrationTestScenario.DeepCopy()
+			integrationTestScenarioPR.Spec.ResolverRef = v1beta2.ResolverRef{
+				Resolver:     "git",
+				ResourceKind: tektonconsts.ResourceKindPipelineRun,
+				Params: []v1beta2.ResolverParameter{
+					{
+						Name:  "url",
+						Value: testTargetRepoUrl,
+					},
+					{
+						Name:  "revision",
+						Value: "main",
+					},
+				},
+			}
+
+			var buf bytes.Buffer
+			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+			adapter.logger = log
+			adapter.snapshot = hasSnapshotPush
+
+			pipelineRun, err := adapter.createIntegrationPipelineRun(hasApp, integrationTestScenarioPR, hasSnapshotPush)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(pipelineRun).ToNot(BeNil())
+
+			// Verify that the log message does NOT indicate resolver updates
+			Expect(buf.String()).ShouldNot(ContainSubstring("use the integration test task/taskrun from the code in the pr of snapshot"))
+		})
+
+		It("should NOT call WithUpdatedPipelineGitResolver for Pipeline ResourceKind scenarios", func() {
+			hasSnapshotPR.Annotations = map[string]string{
+				gitops.PipelineAsCodeRepoURLAnnotation:      testTargetRepoUrl,
+				gitops.PipelineAsCodeTargetBranchAnnotation: "main",
+			}
+			hasSnapshotPR.Labels = map[string]string{
+				gitops.PipelineAsCodePullRequestAnnotation: "1",
+				gitops.PipelineAsCodeEventTypeLabel:        "pull_request",
+			}
+
+			integrationTestScenarioPipeline := integrationTestScenario.DeepCopy()
+			integrationTestScenarioPipeline.Spec.ResolverRef = v1beta2.ResolverRef{
+				Resolver:     "git",
+				ResourceKind: tektonconsts.ResourceKindPipeline, // Not PipelineRun
+				Params: []v1beta2.ResolverParameter{
+					{
+						Name:  "url",
+						Value: testTargetRepoUrl,
+					},
+					{
+						Name:  "revision",
+						Value: "main",
+					},
+				},
+			}
+
+			var buf bytes.Buffer
+			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+			adapter.logger = log
+			adapter.snapshot = hasSnapshotPR
+
+			pipelineRun, err := adapter.createIntegrationPipelineRun(hasApp, integrationTestScenarioPipeline, hasSnapshotPR)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(pipelineRun).ToNot(BeNil())
+
+			// Verify that the log message does NOT indicate resolver updates
+			Expect(buf.String()).ShouldNot(ContainSubstring("use the integration test task/taskrun from the code in the pr of snapshot"))
 		})
 	})
 

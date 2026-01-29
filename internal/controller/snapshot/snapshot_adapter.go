@@ -828,16 +828,8 @@ func (a *Adapter) createAutomatedRelease(releasePlan *releasev1alpha1.ReleasePla
 	return nil
 }
 
-func getGitResolverUpdateMap(snapshot *applicationapiv1alpha1.Snapshot) map[string]string {
-	annotations := snapshot.GetAnnotations()
-	return map[string]string{
-		tektonconsts.TektonResolverGitParamURL:      h.UrlToGitUrl(annotations[gitops.PipelineAsCodeGitSourceURLAnnotation]), // should have .git in url for consistency and compatibility
-		tektonconsts.TektonResolverGitParamRevision: annotations[gitops.PipelineAsCodeSHAAnnotation],
-	}
-}
-
-// shouldUpdateIntegrationTasksGitResolver checks if the integration test resolver should be updated based on the source repo
-func shouldUpdateIntegrationTasksGitResolver(integrationTestScenario *v1beta2.IntegrationTestScenario, snapshot *applicationapiv1alpha1.Snapshot) bool {
+// shouldUpdateIntegrationGitResolver checks if the integration test resolver should be updated based on the source repo
+func shouldUpdateIntegrationGitResolver(integrationTestScenario *v1beta2.IntegrationTestScenario, snapshot *applicationapiv1alpha1.Snapshot) bool {
 	// only "pull-requests" are applicable
 	if gitops.IsSnapshotCreatedByPACPushEvent(snapshot) {
 		return false
@@ -870,9 +862,10 @@ func (a *Adapter) createIntegrationPipelineRun(application *applicationapiv1alph
 		WithFinalizer(h.IntegrationPipelineRunFinalizer).
 		WithIntegrationTimeouts(integrationTestScenario, a.logger.Logger)
 
-	if shouldUpdateIntegrationTasksGitResolver(integrationTestScenario, snapshot) {
+	if shouldUpdateIntegrationGitResolver(integrationTestScenario, snapshot) {
 		a.logger.Info("use the integration test task/taskrun from the code in the pr of snapshot", "integrationTestScneario.Name", integrationTestScenario.Name)
-		pipelineRunBuilder.WithUpdatedTasksGitResolver(snapshot, getGitResolverUpdateMap(snapshot))
+		pipelineRunBuilder.WithUpdatedTasksGitResolver(snapshot)
+		pipelineRunBuilder.WithUpdatedPipelineGitResolver(snapshot)
 	}
 
 	pipelineRun := pipelineRunBuilder.AsPipelineRun()

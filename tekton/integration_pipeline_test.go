@@ -698,13 +698,12 @@ var _ = Describe("Integration pipeline", Ordered, func() {
 				},
 			}
 
-			params := map[string]string{
-				"url":      "https://github.com/test/repo.git",
-				"revision": "main",
-			}
+			hasSnapshot.Annotations = map[string]string{}
+			hasSnapshot.Annotations[gitops.PipelineAsCodeGitSourceURLAnnotation] = "https://github.com/test/repo.git"
+			hasSnapshot.Annotations[gitops.PipelineAsCodeSHAAnnotation] = "main"
 
 			// This should not panic - it should return early because resolver is empty
-			result := pipelineRun.WithUpdatedPipelineGitResolver(params)
+			result := pipelineRun.WithUpdatedPipelineGitResolver(hasSnapshot)
 			Expect(result).NotTo(BeNil())
 			Expect(result).To(Equal(pipelineRun)) // Should return the same instance unchanged
 		})
@@ -723,13 +722,12 @@ var _ = Describe("Integration pipeline", Ordered, func() {
 				},
 			}
 
-			params := map[string]string{
-				"url":      "https://github.com/test/repo.git",
-				"revision": "main",
-			}
+			hasSnapshot.Annotations = map[string]string{}
+			hasSnapshot.Annotations[gitops.PipelineAsCodeGitSourceURLAnnotation] = "https://github.com/test/repo.git"
+			hasSnapshot.Annotations[gitops.PipelineAsCodeSHAAnnotation] = "main"
 
 			// This should not panic - should return early because params is nil
-			result := pipelineRun.WithUpdatedPipelineGitResolver(params)
+			result := pipelineRun.WithUpdatedPipelineGitResolver(hasSnapshot)
 			Expect(result).NotTo(BeNil())
 			Expect(result.Spec.PipelineRef.ResolverRef.Params).To(BeNil())
 		})
@@ -748,13 +746,12 @@ var _ = Describe("Integration pipeline", Ordered, func() {
 				},
 			}
 
-			params := map[string]string{
-				"url":      "https://github.com/test/repo.git",
-				"revision": "main",
-			}
+			hasSnapshot.Annotations = map[string]string{}
+			hasSnapshot.Annotations[gitops.PipelineAsCodeGitSourceURLAnnotation] = "https://github.com/test/repo.git"
+			hasSnapshot.Annotations[gitops.PipelineAsCodeSHAAnnotation] = "main"
 
 			// This should not panic - should return early because params is empty
-			result := pipelineRun.WithUpdatedPipelineGitResolver(params)
+			result := pipelineRun.WithUpdatedPipelineGitResolver(hasSnapshot)
 			Expect(result).NotTo(BeNil())
 			Expect(result.Spec.PipelineRef.ResolverRef.Params).To(BeEmpty())
 		})
@@ -781,13 +778,12 @@ var _ = Describe("Integration pipeline", Ordered, func() {
 				},
 			}
 
-			params := map[string]string{
-				"url":      "https://github.com/test/repo.git",
-				"revision": "main",
-			}
+			hasSnapshot.Annotations = map[string]string{}
+			hasSnapshot.Annotations[gitops.PipelineAsCodeGitSourceURLAnnotation] = "https://github.com/test/repo.git"
+			hasSnapshot.Annotations[gitops.PipelineAsCodeSHAAnnotation] = "main"
 
 			// Should not modify non-git resolvers
-			result := pipelineRun.WithUpdatedPipelineGitResolver(params)
+			result := pipelineRun.WithUpdatedPipelineGitResolver(hasSnapshot)
 			Expect(result).NotTo(BeNil())
 			Expect(result.Spec.PipelineRef.ResolverRef.Params[0].Value.StringVal).To(Equal("quay.io/test/bundle:latest"))
 		})
@@ -821,15 +817,57 @@ var _ = Describe("Integration pipeline", Ordered, func() {
 				},
 			}
 
-			params := map[string]string{
-				"url":      "https://github.com/new/repo.git",
-				"revision": "main",
-			}
+			hasSnapshot.Annotations = map[string]string{}
+			hasSnapshot.Annotations[gitops.PipelineAsCodeGitSourceURLAnnotation] = "https://github.com/new/repo.git"
+			hasSnapshot.Annotations[gitops.PipelineAsCodeSHAAnnotation] = "main"
+			hasSnapshot.Annotations[gitops.PipelineAsCodeTargetBranchAnnotation] = "old-branch"
+			hasSnapshot.Annotations[gitops.PipelineAsCodeRepoURLAnnotation] = "https://github.com/old/repo.git"
 
-			result := pipelineRun.WithUpdatedPipelineGitResolver(params)
+			result := pipelineRun.WithUpdatedPipelineGitResolver(hasSnapshot)
 			Expect(result).NotTo(BeNil())
 			Expect(result.Spec.PipelineRef.ResolverRef.Params[0].Value.StringVal).To(Equal("https://github.com/new/repo.git"))
 			Expect(result.Spec.PipelineRef.ResolverRef.Params[1].Value.StringVal).To(Equal("main"))
+		})
+
+		It("should skip updating git resolver parameters if source and target repos don't match", func() {
+			pipelineRun := &tekton.IntegrationPipelineRun{
+				tektonv1.PipelineRun{
+					Spec: tektonv1.PipelineRunSpec{
+						PipelineRef: &tektonv1.PipelineRef{
+							ResolverRef: tektonv1.ResolverRef{
+								Resolver: tektonv1.ResolverName(tektonconsts.TektonResolverGit),
+								Params: []tektonv1.Param{
+									{
+										Name: "url",
+										Value: tektonv1.ParamValue{
+											Type:      tektonv1.ParamTypeString,
+											StringVal: "https://github.com/old/repo.git",
+										},
+									},
+									{
+										Name: "revision",
+										Value: tektonv1.ParamValue{
+											Type:      tektonv1.ParamTypeString,
+											StringVal: "old-branch",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			}
+
+			hasSnapshot.Annotations = map[string]string{}
+			hasSnapshot.Annotations[gitops.PipelineAsCodeGitSourceURLAnnotation] = "https://github.com/new/repo.git"
+			hasSnapshot.Annotations[gitops.PipelineAsCodeSHAAnnotation] = "main"
+			hasSnapshot.Annotations[gitops.PipelineAsCodeTargetBranchAnnotation] = "main"
+			hasSnapshot.Annotations[gitops.PipelineAsCodeRepoURLAnnotation] = "https://github.com/test/repo.git"
+
+			result := pipelineRun.WithUpdatedPipelineGitResolver(hasSnapshot)
+			Expect(result).NotTo(BeNil())
+			Expect(result.Spec.PipelineRef.ResolverRef.Params[0].Value.StringVal).To(Equal("https://github.com/old/repo.git"))
+			Expect(result.Spec.PipelineRef.ResolverRef.Params[1].Value.StringVal).To(Equal("old-branch"))
 		})
 
 		It("should handle nil params map gracefully", func() {
@@ -864,7 +902,8 @@ var _ = Describe("Integration pipeline", Ordered, func() {
 				},
 			}
 
-			result := pipelineRun.WithUpdatedPipelineGitResolver(nil)
+			hasSnapshot.Annotations = map[string]string{}
+			result := pipelineRun.WithUpdatedPipelineGitResolver(hasSnapshot)
 			Expect(result).NotTo(BeNil())
 			// Should return unchanged
 		})
@@ -963,16 +1002,13 @@ var _ = Describe("Integration pipeline", Ordered, func() {
 				},
 			}
 
-			params := map[string]string{
-				"url":      "https://github.com/new/repo.git",
-				"revision": "feature-branch",
-			}
-
 			hasSnapshot.Annotations = map[string]string{}
+			hasSnapshot.Annotations[gitops.PipelineAsCodeGitSourceURLAnnotation] = "https://github.com/new/repo.git"
+			hasSnapshot.Annotations[gitops.PipelineAsCodeSHAAnnotation] = "feature-branch"
 			hasSnapshot.Annotations[gitops.PipelineAsCodeTargetBranchAnnotation] = "main"
 			hasSnapshot.Annotations[gitops.PipelineAsCodeRepoURLAnnotation] = "https://github.com/test/repo.git"
 
-			result := pipelineRun.WithUpdatedTasksGitResolver(hasSnapshot, params)
+			result := pipelineRun.WithUpdatedTasksGitResolver(hasSnapshot)
 			Expect(result).NotTo(BeNil())
 			// We expect the first task to be updated as it matches the target repo and branch
 			Expect(result.Spec.PipelineSpec.Tasks[0].TaskRef.Params[0].Value.StringVal).To(Equal("https://github.com/new/repo.git"))
