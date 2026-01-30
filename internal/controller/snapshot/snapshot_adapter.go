@@ -861,7 +861,7 @@ func (a *Adapter) createIntegrationPipelineRun(application *applicationapiv1alph
 		return nil, err
 	}
 
-	pipelineRunBuilder = pipelineRunBuilder.WithSnapshot(snapshot).
+	pipelineRunBuilder = pipelineRunBuilder.WithSnapshot(snapshot, integrationTestScenario).
 		WithIntegrationLabels(integrationTestScenario).
 		WithIntegrationAnnotations(integrationTestScenario).
 		WithApplication(a.application).
