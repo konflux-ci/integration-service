@@ -1542,7 +1542,7 @@ func IsAllCommentDisabledForPacRepositoryInComponent(ctx context.Context, adapte
 		return false, err
 	}
 	for _, repo := range repos.Items {
-		if url == repo.Spec.URL && repo.Spec.Settings != nil && repo.Spec.Settings.Gitlab != nil {
+		if helpers.UrlToGitUrl(url) == helpers.UrlToGitUrl(repo.Spec.URL) && repo.Spec.Settings != nil && repo.Spec.Settings.Gitlab != nil {
 			if repo.Spec.Settings.Gitlab.CommentStrategy == GitCommentPolicyAllDisabled {
 				return true, nil
 			}
