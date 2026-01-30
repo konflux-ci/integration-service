@@ -10,6 +10,7 @@ import (
 	gomonkey "github.com/agiledragon/gomonkey/v2"
 	"github.com/go-logr/logr"
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
+	"github.com/konflux-ci/integration-service/gitops"
 	releasev1alpha1 "github.com/konflux-ci/release-service/api/v1alpha1"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -249,6 +250,107 @@ var _ = Describe("Test garbage collection for snapshots", func() {
 			)))
 		})
 	})
+
+	Describe("Test extractCancelledPRSnapshots", func() {
+		cancelledCondition := metav1.Condition{
+			Type:   gitops.AppStudioIntegrationStatusCondition,
+			Status: metav1.ConditionTrue,
+			Reason: gitops.AppStudioIntegrationStatusCanceled,
+		}
+
+		It("Returns empty when no snapshots", func() {
+			output := extractCancelledPRSnapshots([]applicationapiv1alpha1.Snapshot{})
+			Expect(output).To(BeEmpty())
+		})
+
+		It("Returns empty when no PR snapshots", func() {
+			pushSnap := applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "push-snap",
+					Namespace: "ns1",
+					Labels:    map[string]string{"pac.test.appstudio.openshift.io/event-type": "push"},
+				},
+				Status: applicationapiv1alpha1.SnapshotStatus{
+					Conditions: []metav1.Condition{cancelledCondition},
+				},
+			}
+			output := extractCancelledPRSnapshots([]applicationapiv1alpha1.Snapshot{pushSnap})
+			Expect(output).To(BeEmpty())
+		})
+
+		It("Returns empty when PR snapshots are not cancelled", func() {
+			prSnap := applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "pr-snap",
+					Namespace: "ns1",
+					Labels:    map[string]string{"pac.test.appstudio.openshift.io/event-type": "pull_request"},
+				},
+			}
+			output := extractCancelledPRSnapshots([]applicationapiv1alpha1.Snapshot{prSnap})
+			Expect(output).To(BeEmpty())
+		})
+
+		It("Returns names of cancelled PR snapshots without keep-snapshot annotation", func() {
+			cancelledPRSnap := applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "cancelled-pr-snap",
+					Namespace: "ns1",
+					Labels:    map[string]string{"pac.test.appstudio.openshift.io/event-type": "pull_request"},
+				},
+				Status: applicationapiv1alpha1.SnapshotStatus{Conditions: []metav1.Condition{cancelledCondition}},
+			}
+			output := extractCancelledPRSnapshots([]applicationapiv1alpha1.Snapshot{cancelledPRSnap})
+			Expect(output).To(HaveLen(1))
+			Expect(output).To(ContainElement("cancelled-pr-snap"))
+		})
+
+		It("Excludes cancelled PR snapshots that have keep-snapshot annotation", func() {
+			keptCancelledPRSnap := applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        "kept-cancelled-pr-snap",
+					Namespace:   "ns1",
+					Annotations: map[string]string{"test.appstudio.openshift.io/keep-snapshot": "true"},
+					Labels:      map[string]string{"pac.test.appstudio.openshift.io/event-type": "pull_request"},
+				},
+				Status: applicationapiv1alpha1.SnapshotStatus{Conditions: []metav1.Condition{cancelledCondition}},
+			}
+			output := extractCancelledPRSnapshots([]applicationapiv1alpha1.Snapshot{keptCancelledPRSnap})
+			Expect(output).To(BeEmpty())
+		})
+
+		It("Returns multiple cancelled PR snapshot names and excludes non-PR and kept", func() {
+			cancelledPR1 := applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "cancelled-pr-1",
+					Namespace: "ns1",
+					Labels:    map[string]string{"pac.test.appstudio.openshift.io/event-type": "pull_request"},
+				},
+				Status: applicationapiv1alpha1.SnapshotStatus{Conditions: []metav1.Condition{cancelledCondition}},
+			}
+			cancelledPR2 := applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "cancelled-pr-2",
+					Namespace: "ns1",
+					Labels:    map[string]string{"pac.test.appstudio.openshift.io/event-type": "Merge Request"},
+				},
+				Status: applicationapiv1alpha1.SnapshotStatus{Conditions: []metav1.Condition{cancelledCondition}},
+			}
+			pushSnap := applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "push-snap",
+					Namespace: "ns1",
+					Labels:    map[string]string{"pac.test.appstudio.openshift.io/event-type": "push"},
+				},
+				Status: applicationapiv1alpha1.SnapshotStatus{Conditions: []metav1.Condition{cancelledCondition}},
+			}
+			output := extractCancelledPRSnapshots([]applicationapiv1alpha1.Snapshot{cancelledPR1, cancelledPR2, pushSnap})
+			Expect(output).To(HaveLen(2))
+			Expect(output).To(ContainElement("cancelled-pr-1"))
+			Expect(output).To(ContainElement("cancelled-pr-2"))
+			Expect(output).NotTo(ContainElement("push-snap"))
+		})
+	})
+
 	Describe("Test getSnapshotsForRemoval", func() {
 		It("Handles no snapshots", func() {
 
@@ -330,6 +432,88 @@ var _ = Describe("Test garbage collection for snapshots", func() {
 
 			Expect(output).To(HaveLen(1))
 			Expect(output[0].Name).To(Equal("older-snapshot"))
+		})
+
+		It("Cancelled PR snapshots are marked for removal even when prSnapshotsToKeep would allow keeping them", func() {
+			cancelledCondition := metav1.Condition{
+				Type:   gitops.AppStudioIntegrationStatusCondition,
+				Status: metav1.ConditionTrue,
+				Reason: gitops.AppStudioIntegrationStatusCanceled,
+			}
+			currentTime := time.Now()
+
+			// Cancelled PR snapshot (superseded) - should be deleted first
+			cancelledPRSnap := &applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "cancelled-pr-snapshot",
+					Labels: map[string]string{
+						"pac.test.appstudio.openshift.io/event-type": "pull_request",
+					},
+					CreationTimestamp: metav1.NewTime(currentTime),
+				},
+				Status: applicationapiv1alpha1.SnapshotStatus{
+					Conditions: []metav1.Condition{cancelledCondition},
+				},
+			}
+			// Non-cancelled PR snapshot - should be kept when prSnapshotsToKeep >= 1
+			activePRSnap := &applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "active-pr-snapshot",
+					Labels: map[string]string{
+						"pac.test.appstudio.openshift.io/event-type": "pull_request",
+					},
+					CreationTimestamp: metav1.NewTime(currentTime.Add(time.Hour * 1)),
+				},
+			}
+
+			cl := fake.NewClientBuilder().
+				WithScheme(scheme).
+				WithLists(
+					&applicationapiv1alpha1.SnapshotList{
+						Items: []applicationapiv1alpha1.Snapshot{*cancelledPRSnap, *activePRSnap},
+					}).Build()
+			candidates := []applicationapiv1alpha1.Snapshot{*cancelledPRSnap, *activePRSnap}
+			// prSnapshotsToKeep=1: we have room to keep 1 PR snapshot, but cancelled one should still be removed
+			output := getSnapshotsForRemoval(cl, candidates, 1, 0, 0, logger)
+
+			Expect(output).To(HaveLen(1))
+			Expect(output[0].Name).To(Equal("cancelled-pr-snapshot"))
+		})
+
+		It("Cancelled PR snapshot with keep-snapshot annotation is not in removal list", func() {
+			cancelledCondition := metav1.Condition{
+				Type:   gitops.AppStudioIntegrationStatusCondition,
+				Status: metav1.ConditionTrue,
+				Reason: gitops.AppStudioIntegrationStatusCanceled,
+			}
+			currentTime := time.Now()
+
+			// Cancelled PR snapshot but with keep-snapshot - should NOT be in extractCancelledPRSnapshots, so normal logic applies
+			keptCancelledPRSnap := &applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "kept-cancelled-pr-snapshot",
+					Labels: map[string]string{
+						"pac.test.appstudio.openshift.io/event-type": "pull_request",
+					},
+					Annotations:       map[string]string{"test.appstudio.openshift.io/keep-snapshot": "true"},
+					CreationTimestamp: metav1.NewTime(currentTime),
+				},
+				Status: applicationapiv1alpha1.SnapshotStatus{
+					Conditions: []metav1.Condition{cancelledCondition},
+				},
+			}
+
+			cl := fake.NewClientBuilder().
+				WithScheme(scheme).
+				WithLists(
+					&applicationapiv1alpha1.SnapshotList{
+						Items: []applicationapiv1alpha1.Snapshot{*keptCancelledPRSnap},
+					}).Build()
+			candidates := []applicationapiv1alpha1.Snapshot{*keptCancelledPRSnap}
+			output := getSnapshotsForRemoval(cl, candidates, 1, 0, 0, logger)
+
+			// With keep-snapshot it is not in canceledPRSnapshots, so it is kept (prSnapshotsToKeep=1)
+			Expect(output).To(BeEmpty())
 		})
 
 		It("Snapshots of both types to be GCed", func() {
