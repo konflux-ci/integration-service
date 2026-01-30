@@ -4,11 +4,13 @@ import (
 	"context"
 	"flag"
 	"os"
+	"slices"
 	"sort"
 	"strconv"
 
 	"github.com/go-logr/logr"
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
+	"github.com/konflux-ci/integration-service/gitops"
 	"github.com/konflux-ci/operator-toolkit/metadata"
 	releasev1alpha1 "github.com/konflux-ci/release-service/api/v1alpha1"
 	zap2 "go.uber.org/zap"
@@ -226,6 +228,20 @@ func getUnassociatedNSSnapshots(
 	return unAssociatedSnaps, nil
 }
 
+// extractCancelledPRSnapshots gets all namespace PR snapshots which were marked as cancelled
+func extractCancelledPRSnapshots(snapshots []applicationapiv1alpha1.Snapshot) []string {
+	var cancelledPRSnapshots []string
+
+	for _, snap := range snapshots {
+		if !isNonPrSnapshot(snap) && gitops.IsSnapshotMarkedAsCanceled(&snap) &&
+			!metadata.HasAnnotationWithValue(&snap, "test.appstudio.openshift.io/keep-snapshot", "true") {
+			cancelledPRSnapshots = append(cancelledPRSnapshots, snap.Name)
+		}
+	}
+
+	return cancelledPRSnapshots
+}
+
 // Returns true if snapshot is a push snapshot, override snapshot, or if the
 // event-type annnotation for the snapshot is not set.  Returns false otherwise
 func isNonPrSnapshot(
@@ -332,6 +348,10 @@ func getSnapshotsForRemoval(
 	keptPrSnaps := 0
 	keptNonPrSnaps := 0
 
+	// First extract canceled PR Snapshots since these should be deleted first
+	// as they were superseded by newer Snapshots for that same PR
+	canceledPRSnapshots := extractCancelledPRSnapshots(snapshots)
+
 	for _, snap := range snapshots {
 		snap := snap
 		if preservedPerComponent[snap.Name] {
@@ -373,7 +393,7 @@ func getSnapshotsForRemoval(
 				shortList = append(shortList, snap)
 			}
 		} else {
-			if keptPrSnaps < prSnapshotsToKeep {
+			if keptPrSnaps < prSnapshotsToKeep && !slices.Contains(canceledPRSnapshots, snap.Name) {
 				logger.V(1).Info(
 					"Skipping PR candidate snapshot",
 					"namespace", snap.Namespace,
