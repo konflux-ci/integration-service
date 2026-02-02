@@ -1081,7 +1081,7 @@ func (a *Adapter) checkAndCancelOldSnapshotsPipelineRun(application *application
 	var err error
 	snapshots := &[]applicationapiv1alpha1.Snapshot{}
 	if gitops.IsComponentSnapshot(snapshot) {
-		snapshots, err = a.loader.GetAllSnapshotsForPR(a.context, a.client, application, snapshot.GetLabels()[gitops.SnapshotComponentLabel], snapshot.GetLabels()[gitops.PipelineAsCodePullRequestAnnotation])
+		snapshots, err = a.loader.GetAllSnapshotsForPR(a.context, a.client, application.ObjectMeta, snapshot.GetLabels()[gitops.SnapshotComponentLabel], snapshot.GetLabels()[gitops.PipelineAsCodePullRequestAnnotation])
 		if err != nil {
 			a.logger.Error(err, "Failed to fetch Snapshots for the application",
 				"application.Name:", application.Name)

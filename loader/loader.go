@@ -32,6 +32,7 @@ import (
 	resolutionv1beta1 "github.com/tektoncd/pipeline/pkg/apis/resolution/v1beta1"
 	"golang.org/x/exp/slices"
 	"k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -48,9 +49,11 @@ type ObjectLoader interface {
 	GetComponentFromPipelineRun(ctx context.Context, c client.Client, pipelineRun *tektonv1.PipelineRun) (*applicationapiv1alpha1.Component, error)
 	GetApplicationFromPipelineRun(ctx context.Context, c client.Client, pipelineRun *tektonv1.PipelineRun) (*applicationapiv1alpha1.Application, error)
 	GetApplicationFromComponent(ctx context.Context, c client.Client, component *applicationapiv1alpha1.Component) (*applicationapiv1alpha1.Application, error)
+	GetComponentGroupsForComponentVersion(ctx context.Context, c client.Client, component *applicationapiv1alpha1.Component, version string) (*[]v1beta2.ComponentGroup, error)
 	GetSnapshotFromPipelineRun(ctx context.Context, c client.Client, pipelineRun *tektonv1.PipelineRun) (*applicationapiv1alpha1.Snapshot, error)
 	GetAllIntegrationTestScenariosForApplication(ctx context.Context, c client.Client, application *applicationapiv1alpha1.Application) (*[]v1beta2.IntegrationTestScenario, error)
 	GetAllIntegrationTestScenariosForComponentGroup(ctx context.Context, c client.Client, componentGroup *v1beta2.ComponentGroup) (*[]v1beta2.IntegrationTestScenario, error)
+	GetAllIntegrationTestScenariosForComponentGroups(ctx context.Context, c client.Client, componentGroups *[]v1beta2.ComponentGroup) (*[]v1beta2.IntegrationTestScenario, error)
 	GetRequiredIntegrationTestScenariosForSnapshot(ctx context.Context, c client.Client, application *applicationapiv1alpha1.Application, snapshot *applicationapiv1alpha1.Snapshot) (*[]v1beta2.IntegrationTestScenario, error)
 	GetAllIntegrationTestScenariosForSnapshot(ctx context.Context, c client.Client, application *applicationapiv1alpha1.Application, snapshot *applicationapiv1alpha1.Snapshot) (*[]v1beta2.IntegrationTestScenario, error)
 	GetAllPipelineRunsForSnapshotAndScenario(ctx context.Context, c client.Client, snapshot *applicationapiv1alpha1.Snapshot, integrationTestScenario *v1beta2.IntegrationTestScenario) (*[]tektonv1.PipelineRun, error)
@@ -59,7 +62,7 @@ type ObjectLoader interface {
 	GetScenario(ctx context.Context, c client.Client, name, namespace string) (*v1beta2.IntegrationTestScenario, error)
 	GetComponentGroup(ctx context.Context, c client.Client, name, namespace string) (*v1beta2.ComponentGroup, error)
 	GetAllSnapshotsForBuildPipelineRun(ctx context.Context, c client.Client, pipelineRun *tektonv1.PipelineRun) (*[]applicationapiv1alpha1.Snapshot, error)
-	GetAllSnapshotsForPR(ctx context.Context, c client.Client, application *applicationapiv1alpha1.Application, componentName, pullRequest string) (*[]applicationapiv1alpha1.Snapshot, error)
+	GetAllSnapshotsForPR(ctx context.Context, c client.Client, object metav1.ObjectMeta, componentName, pullRequest string) (*[]applicationapiv1alpha1.Snapshot, error)
 	GetAllTaskRunsWithMatchingPipelineRunLabel(ctx context.Context, c client.Client, pipelineRun *tektonv1.PipelineRun) (*[]tektonv1.TaskRun, error)
 	GetPipelineRun(ctx context.Context, c client.Client, name, namespace string) (*tektonv1.PipelineRun, error)
 	GetComponent(ctx context.Context, c client.Client, name, namespace string) (*applicationapiv1alpha1.Component, error)
@@ -197,6 +200,40 @@ func (l *loader) GetApplicationFromComponent(ctx context.Context, c client.Clien
 	return application, nil
 }
 
+// GetComponentGroupsForComponentVersion loads from the cluster a list of ComponentGroups that use the given ComponentVerison. If
+// the Component does not belong to any ComponentGroups then an empty list will be returned
+func (l *loader) GetComponentGroupsForComponentVersion(ctx context.Context, c client.Client, component *applicationapiv1alpha1.Component, version string) (*[]v1beta2.ComponentGroup, error) {
+	componentGroupList := &v1beta2.ComponentGroupList{}
+
+	// Kubernetes FieldSelector cannot filter by "spec.components contains item where name=X and componentBranch.name=Y"
+	// (only top-level or CRD selectableFields are supported, not array containment). List all in namespace and filter in Go.
+	options := &client.ListOptions{
+		Namespace: component.Namespace,
+	}
+
+	err := c.List(ctx, componentGroupList, options)
+	if err != nil {
+		return nil, err
+	}
+
+	// Fields inside of arrays are not selectable, so we need to filter in code. This means we will be querying etcd for large
+	// amounts of data every time a build pipeline completes.  If this becomes a performance issue we can implement an annotation
+	// that contains a list of all components in the ComponentGroup. Then we just have to filter the (smaller) list of
+	// ComponentGroups for matching versions.
+	var result []v1beta2.ComponentGroup
+	for i := range componentGroupList.Items {
+		cg := &componentGroupList.Items[i]
+		for j := range cg.Spec.Components {
+			ref := &cg.Spec.Components[j]
+			if ref.Name == component.Name && ref.ComponentVersion.Name == version {
+				result = append(result, *cg)
+				break
+			}
+		}
+	}
+	return &result, nil
+}
+
 // GetSnapshotFromPipelineRun loads from the cluster the Snapshot referenced in the given PipelineRun.
 // If the PipelineRun doesn't specify an Snapshot or this is not found in the cluster, an error will be returned.
 func (l *loader) GetSnapshotFromPipelineRun(ctx context.Context, c client.Client, pipelineRun *tektonv1.PipelineRun) (*applicationapiv1alpha1.Snapshot, error) {
@@ -234,7 +271,7 @@ func (l *loader) GetAllIntegrationTestScenariosForApplication(ctx context.Contex
 	return &integrationList.Items, nil
 }
 
-// GetAllIntegrationTestScenariosForComponentGroup returns all IntegrationTestScenarios used by the ComponentGroup being processed.
+// GetAllIntegrationTestScenariosForComponentGroup returns all IntegrationTestScenarios used by a single ComponentGroup
 func (l *loader) GetAllIntegrationTestScenariosForComponentGroup(ctx context.Context, c client.Client, componentGroup *v1beta2.ComponentGroup) (*[]v1beta2.IntegrationTestScenario, error) {
 	integrationList := &v1beta2.IntegrationTestScenarioList{}
 
@@ -249,6 +286,21 @@ func (l *loader) GetAllIntegrationTestScenariosForComponentGroup(ctx context.Con
 	}
 
 	return &integrationList.Items, nil
+}
+
+// GetAllIntegrationTestScenariosForComponentGroup returns all IntegrationTestScenarios used by all ComponentGroups in the list. No deduplication is required since an ITS can only belong to one ComponentGroup
+func (l *loader) GetAllIntegrationTestScenariosForComponentGroups(ctx context.Context, c client.Client, componentGroups *[]v1beta2.ComponentGroup) (*[]v1beta2.IntegrationTestScenario, error) {
+	scenarios := []v1beta2.IntegrationTestScenario{}
+	for _, componentGroup := range *componentGroups {
+		items, err := l.GetAllIntegrationTestScenariosForComponentGroup(ctx, c, &componentGroup)
+		if err != nil {
+			return nil, err
+		}
+
+		scenarios = append(scenarios, *items...)
+	}
+
+	return &scenarios, nil
 }
 
 // GetRequiredIntegrationTestScenariosForSnapshot returns the IntegrationTestScenarios used by the application and snapshot being processed.
@@ -393,11 +445,12 @@ func (l *loader) GetAllSnapshotsForBuildPipelineRun(ctx context.Context, c clien
 
 // GetAllSnapshotsForPR returns all Snapshots for the associated Pull Request.
 // In the case the List operation fails, an error will be returned.
-// gitops.PipelineAsCodePullRequestAnnotation is also a label
-func (l *loader) GetAllSnapshotsForPR(ctx context.Context, c client.Client, application *applicationapiv1alpha1.Application, componentName, pullRequest string) (*[]applicationapiv1alpha1.Snapshot, error) {
+// PipelineAsCodePullRequestAnnotation is also a label
+// TODO: make this function take ObjectMeta rather than application
+func (l *loader) GetAllSnapshotsForPR(ctx context.Context, c client.Client, object metav1.ObjectMeta, componentName, pullRequest string) (*[]applicationapiv1alpha1.Snapshot, error) {
 	snapshots := &applicationapiv1alpha1.SnapshotList{}
 	opts := []client.ListOption{
-		client.InNamespace(application.Namespace),
+		client.InNamespace(object.Namespace),
 		client.MatchingLabels{
 			gitops.PipelineAsCodePullRequestAnnotation: pullRequest,
 			gitops.SnapshotComponentLabel:              componentName,

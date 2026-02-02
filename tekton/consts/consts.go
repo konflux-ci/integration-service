@@ -109,6 +109,11 @@ const (
 	// PipelineRunComponentLabel is the label denoting the application.
 	PipelineRunComponentLabel = "appstudio.openshift.io/component"
 
+	// PipelineRunComponentVersionAnnotation denotes the componentVersion for the build
+	PipelineRunComponentVersionAnnotation = "appstudio.openshift.io/version"
+
+	PipelineRunComponentVersionContextAnnotation = "appstudio.openshift.io/context"
+
 	// PipelineRunApplicationLabel is the label denoting the application.
 	PipelineRunApplicationLabel = "appstudio.openshift.io/application"
 
