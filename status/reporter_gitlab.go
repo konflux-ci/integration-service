@@ -244,6 +244,7 @@ func (r *GitLabReporter) setCommitStatus(report TestReport) (int, error) {
 // UpdateStatusInComment searches and deletes existing comments according to commentPrefix and create a new comment in the MR which creates snapshot
 func (r *GitLabReporter) UpdateStatusInComment(commentPrefix, comment string) (int, error) {
 	var statusCode = 0
+
 	// get all existing integration test comment according to commentPrefix in integration test summary and delete them
 	allNotes, response, err := r.client.Notes.ListMergeRequestNotes(r.targetProjectID, r.mergeRequest, nil)
 	if response != nil {
@@ -253,17 +254,48 @@ func (r *GitLabReporter) UpdateStatusInComment(commentPrefix, comment string) (i
 		r.logger.Error(err, "error while getting all comments for merge-request", "mergeRequest", r.mergeRequest, "report.SnapshotName", r.snapshot.Name)
 		return statusCode, fmt.Errorf("error while getting all comments for merge-request %d: %w", r.mergeRequest, err)
 	}
-	statusCode, err = r.DeleteExistingNotes(allNotes, commentPrefix)
-	if err != nil {
-		return statusCode, fmt.Errorf("error while deleting existing comments for merge-request %d from project %d : %w", r.mergeRequest, r.targetProjectID, err)
+
+	noteIDs := r.GetExistingCommentIDs(allNotes, commentPrefix)
+
+	if len(noteIDs) > 0 {
+		// update the first existing comment but delete others because sometimes there might be multiple existing comments for the same component due to previous intermittent errors
+		r.logger.Info("found multiple existing notes for the same component, updating the first one but delete others", "commentPrefix", commentPrefix, "count", len(allNotes))
+		noteIdToBeUpdated := noteIDs[0]
+
+		if len(noteIDs) > 1 {
+			r.logger.Info("deleting other existing notes since we will update the first one", "noteIDsToBeDeleted", noteIDs[1:])
+			statusCode, err = r.DeleteExistingNotes(noteIDs[1:])
+			if err != nil {
+				return statusCode, fmt.Errorf("error while deleting existing comments for merge-request %d from project %d : %w", r.mergeRequest, r.targetProjectID, err)
+			}
+		}
+
+		// update the first existing comment
+		noteOptions := gitlab.UpdateMergeRequestNoteOptions{Body: &comment}
+		err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
+			_, response, err = r.client.Notes.UpdateMergeRequestNote(r.targetProjectID, r.mergeRequest, noteIdToBeUpdated, &noteOptions)
+			return err
+		})
+		if response != nil {
+			statusCode = response.StatusCode
+		}
+		if err != nil {
+			return statusCode, fmt.Errorf("error while updating comment %d for merge-request %d: %w", noteIdToBeUpdated, r.mergeRequest, err)
+		}
+		r.logger.Info("updated existing note with matching commentPrefix", "noteID", noteIdToBeUpdated, "commentPrefix", commentPrefix)
+	} else {
+		// create a new comment
+		r.logger.Info("no existing notes found with matching commentPrefix, creating a new note", "commentPrefix", commentPrefix)
+		noteOptions := gitlab.CreateMergeRequestNoteOptions{Body: &comment}
+		_, response, err = r.client.Notes.CreateMergeRequestNote(r.targetProjectID, r.mergeRequest, &noteOptions)
+		if response != nil {
+			statusCode = response.StatusCode
+		}
+		if err != nil {
+			return statusCode, fmt.Errorf("error while creating comment for merge-request %d: %w", r.mergeRequest, err)
+		}
 	}
 
-	// create a new comment
-	noteOptions := gitlab.CreateMergeRequestNoteOptions{Body: &comment}
-	_, response, err = r.client.Notes.CreateMergeRequestNote(r.targetProjectID, r.mergeRequest, &noteOptions)
-	if response != nil {
-		statusCode = response.StatusCode
-	}
 	if err != nil {
 		return statusCode, fmt.Errorf("error while creating comment for merge-request %d: %w", r.mergeRequest, err)
 	}
@@ -284,29 +316,48 @@ func (r *GitLabReporter) GetExistingCommitStatus(commitStatuses []*gitlab.Commit
 	return nil
 }
 
-// DeleteExistingNotes deletes existing GitLab note with given commentPrefix.
-func (r *GitLabReporter) DeleteExistingNotes(notes []*gitlab.Note, commentPrefix string) (int, error) {
-	var statusCode = 0
-	var err error
+func (r *GitLabReporter) GetExistingCommentIDs(notes []*gitlab.Note, commentPrefix string) []int {
+	var commentIDs []int
 	for _, note := range notes {
 		// get existing note by search commentTitle in report summary
 		// GetExistingCommentIDs for github comment has the similar logic
 		if strings.Contains(note.Body, commentPrefix) {
 			r.logger.Info("found note ID with a matching commentTitle", "commentTitle", commentPrefix, "noteID", &note.ID)
-
-			err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
-				_, err := r.client.Notes.DeleteMergeRequestNote(r.targetProjectID, r.mergeRequest, note.ID)
-				return err
-			})
-			if err != nil {
-				return statusCode, fmt.Errorf("error while deleting comment for merge-request %d: %w", r.mergeRequest, err)
-			}
-			r.logger.Info("existing note deleted", "noteID", note.ID)
+			commentIDs = append(commentIDs, note.ID)
 		}
 	}
 
 	r.logger.Info("found no note with a matching commentTitle", "commentTitle", commentPrefix)
-	return statusCode, err
+	return commentIDs
+}
+
+// DeleteExistingNotes deletes existing GitLab note with given noteIDs.
+func (r *GitLabReporter) DeleteExistingNotes(noteIDs []int) (int, error) {
+	var lastStatusCode = 0
+	var errs []error // collect errors during deletion
+
+	for _, noteID := range noteIDs {
+		err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+			response, err := r.client.Notes.DeleteMergeRequestNote(r.targetProjectID, r.mergeRequest, noteID)
+			if response != nil {
+				lastStatusCode = response.StatusCode
+			}
+			return err
+		})
+
+		if err != nil {
+			r.logger.Error(err, "failed to delete note", "noteID", noteID)
+			errs = append(errs, fmt.Errorf("noteID %d: %w", noteID, err))
+			continue // continue to delete next note
+		}
+		r.logger.Info("existing note deleted", "noteID", noteID)
+	}
+
+	if len(errs) > 0 {
+		return lastStatusCode, fmt.Errorf("errors occurred during deletion existing notes on mergerequest %d of target project %d: %v", r.mergeRequest, r.targetProjectID, errs)
+	}
+
+	return lastStatusCode, nil
 }
 
 // ReportStatus reports test result to gitlab
