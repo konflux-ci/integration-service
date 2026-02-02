@@ -17,11 +17,13 @@ limitations under the License.
 package loader
 
 import (
+	"sort"
 	"time"
 
 	tektonconsts "github.com/konflux-ci/integration-service/tekton/consts"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/onsi/gomega/gstruct"
 
 	"github.com/konflux-ci/integration-service/api/v1beta2"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
@@ -42,6 +44,8 @@ var _ = Describe("Loader", Ordered, func() {
 		hasSnapshot                *applicationapiv1alpha1.Snapshot
 		hasGroupSnapshot           *applicationapiv1alpha1.Snapshot
 		hasApp                     *applicationapiv1alpha1.Application
+		hasComponentGroup1         *v1beta2.ComponentGroup
+		hasComponentGroup2         *v1beta2.ComponentGroup
 		hasComp                    *applicationapiv1alpha1.Component
 		integrationTestScenario    *v1beta2.IntegrationTestScenario
 		integrationTestScenarioOpt *v1beta2.IntegrationTestScenario
@@ -79,6 +83,42 @@ var _ = Describe("Loader", Ordered, func() {
 			},
 		}
 		Expect(k8sClient.Create(ctx, hasApp)).Should(Succeed())
+
+		hasComponentGroup1 = &v1beta2.ComponentGroup{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "componentgroup-1",
+				Namespace: "default",
+			},
+			Spec: v1beta2.ComponentGroupSpec{
+				Components: []v1beta2.ComponentReference{
+					{
+						Name: "component-sample",
+						ComponentVersion: v1beta2.ComponentVersionReference{
+							Name: "main",
+						},
+					},
+				},
+			},
+		}
+		Expect(k8sClient.Create(ctx, hasComponentGroup1)).Should(Succeed())
+
+		hasComponentGroup2 = &v1beta2.ComponentGroup{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "componentgroup-2",
+				Namespace: "default",
+			},
+			Spec: v1beta2.ComponentGroupSpec{
+				Components: []v1beta2.ComponentReference{
+					{
+						Name: "component-sample",
+						ComponentVersion: v1beta2.ComponentVersionReference{
+							Name: "main",
+						},
+					},
+				},
+			},
+		}
+		Expect(k8sClient.Create(ctx, hasComponentGroup2)).Should(Succeed())
 
 		hasComp = &applicationapiv1alpha1.Component{
 			ObjectMeta: metav1.ObjectMeta{
@@ -580,12 +620,69 @@ var _ = Describe("Loader", Ordered, func() {
 		Expect(snapshot.ObjectMeta).To(Equal(hasSnapshot.ObjectMeta))
 	})
 
-	It("ensures we can get the Snapshot from a Pipeline Run", func() {
-		snapshots, err := loader.GetAllSnapshotsForBuildPipelineRun(ctx, k8sClient, buildPipelineRun)
+	It("ensures we can get the Snapshot from a Pipeline Run [APPLICATION]", func() {
+		snapshots, err := loader.GetAllSnapshotsForBuildPipelineRunApplication(ctx, k8sClient, buildPipelineRun)
 		Expect(err).ToNot(HaveOccurred())
 		Expect(snapshots).NotTo(BeNil())
 		Expect(*snapshots).To(HaveLen(1))
 		Expect((*snapshots)[0].Name).To(Equal(hasSnapshot.Name))
+	})
+
+	It("ensures we can get the Snapshot from a Pipeline Run", func() {
+		componentGroupNames := []string{hasComponentGroup1.Name, hasComponentGroup2.Name}
+		hasCGSnapshot := &applicationapiv1alpha1.Snapshot{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "component-group-sample-snapshot",
+				Namespace: "default",
+				Labels: map[string]string{
+					gitops.SnapshotTypeLabel:                   "component",
+					gitops.SnapshotComponentLabel:              "component-sample",
+					gitops.BuildPipelineRunNameLabel:           "pipelinerun-sample",
+					gitops.PRGroupHashLabel:                    prGroupSha,
+					gitops.PipelineAsCodeEventTypeLabel:        "pull_request",
+					gitops.PipelineAsCodePullRequestAnnotation: "1",
+					gitops.ComponentGroupNameLabel:             hasComponentGroup1.Name,
+				},
+				Annotations: map[string]string{
+					gitops.PipelineAsCodeInstallationIDAnnotation: "123",
+				},
+			},
+			Spec: applicationapiv1alpha1.SnapshotSpec{
+				Application: hasApp.Name,
+				Components: []applicationapiv1alpha1.SnapshotComponent{
+					{
+						Name:           "component-sample",
+						ContainerImage: sample_image,
+						Source: applicationapiv1alpha1.ComponentSource{
+							ComponentSourceUnion: applicationapiv1alpha1.ComponentSourceUnion{
+								GitSource: &applicationapiv1alpha1.GitSource{
+									Revision: sample_revision,
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+		Expect(k8sClient.Create(ctx, hasCGSnapshot)).Should(Succeed())
+		Eventually(func() error {
+			err := k8sClient.Get(ctx, types.NamespacedName{
+				Name:      hasCGSnapshot.Name,
+				Namespace: hasCGSnapshot.Namespace,
+			}, hasCGSnapshot)
+			return err
+		}, time.Second*10).ShouldNot(HaveOccurred())
+
+		snapshots, err := loader.GetAllSnapshotsForBuildPipelineRun(ctx, k8sClient, buildPipelineRun, componentGroupNames)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(snapshots).NotTo(BeNil())
+		Expect(*snapshots).To(HaveKey(hasComponentGroup1.Name))
+		Expect((*snapshots)[hasComponentGroup1.Name]).To(HaveLen(1))
+		Expect((*snapshots)[hasComponentGroup1.Name][0].Name).To(Equal(hasCGSnapshot.Name))
+		Expect(*snapshots).To(HaveKey(hasComponentGroup2.Name))
+		Expect((*snapshots)[hasComponentGroup2.Name]).To(BeEmpty())
+
+		_ = k8sClient.Delete(ctx, hasCGSnapshot)
 	})
 
 	It("can fetch all pipelineRuns for snapshot and scenario", func() {
@@ -840,6 +937,124 @@ var _ = Describe("Loader", Ordered, func() {
 	})
 
 	When("release plan with auto-release label is set to false", func() {
+		var (
+			hasCompGroup1  *v1beta2.ComponentGroup
+			hasCompGroup2  *v1beta2.ComponentGroup
+			hasCGSnapshot1 *applicationapiv1alpha1.Snapshot
+			hasCGSnapshot2 *applicationapiv1alpha1.Snapshot
+		)
+
+		BeforeAll(func() {
+			hasCompGroup1 = &v1beta2.ComponentGroup{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "component-group-sample",
+					Namespace: "default",
+				},
+				Spec: v1beta2.ComponentGroupSpec{
+					Components: []v1beta2.ComponentReference{
+						v1beta2.ComponentReference{
+							Name: "component-sample",
+							ComponentVersion: v1beta2.ComponentVersionReference{
+								Name:     "v1",
+								Revision: "main",
+							},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, hasCompGroup1)).Should(Succeed())
+
+			hasCompGroup2 = &v1beta2.ComponentGroup{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "another-component-group-sample",
+					Namespace: "default",
+				},
+				Spec: v1beta2.ComponentGroupSpec{
+					Components: []v1beta2.ComponentReference{
+						v1beta2.ComponentReference{
+							Name: "another-component-sample",
+							ComponentVersion: v1beta2.ComponentVersionReference{
+								Name:     "v1",
+								Revision: "main",
+							},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, hasCompGroup2)).Should(Succeed())
+
+			hasCGSnapshot1 = &applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "component-group-sample-snapshot",
+					Namespace: "default",
+					Labels: map[string]string{
+						gitops.SnapshotTypeLabel:                   "component",
+						gitops.SnapshotComponentLabel:              "component-sample",
+						gitops.BuildPipelineRunNameLabel:           "pipelinerun-sample",
+						gitops.PRGroupHashLabel:                    prGroupSha,
+						gitops.PipelineAsCodeEventTypeLabel:        "pull_request",
+						gitops.PipelineAsCodePullRequestAnnotation: "1",
+						gitops.ComponentGroupNameLabel:             hasCompGroup1.Name,
+					},
+					Annotations: map[string]string{
+						gitops.PipelineAsCodeInstallationIDAnnotation: "123",
+					},
+				},
+				Spec: applicationapiv1alpha1.SnapshotSpec{
+					Application: hasApp.Name,
+					Components: []applicationapiv1alpha1.SnapshotComponent{
+						{
+							Name:           "component-sample",
+							ContainerImage: sample_image,
+							Source: applicationapiv1alpha1.ComponentSource{
+								ComponentSourceUnion: applicationapiv1alpha1.ComponentSourceUnion{
+									GitSource: &applicationapiv1alpha1.GitSource{
+										Revision: sample_revision,
+									},
+								},
+							},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, hasCGSnapshot1)).Should(Succeed())
+
+			hasCGSnapshot2 = &applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "another-component-group-sample-snapshot",
+					Namespace: "default",
+					Labels: map[string]string{
+						gitops.SnapshotTypeLabel:                   "component",
+						gitops.SnapshotComponentLabel:              "component-sample",
+						gitops.BuildPipelineRunNameLabel:           "pipelinerun-sample",
+						gitops.PRGroupHashLabel:                    prGroupSha,
+						gitops.PipelineAsCodeEventTypeLabel:        "pull_request",
+						gitops.PipelineAsCodePullRequestAnnotation: "1",
+						gitops.ComponentGroupNameLabel:             hasCompGroup2.Name,
+					},
+					Annotations: map[string]string{
+						gitops.PipelineAsCodeInstallationIDAnnotation: "123",
+					},
+				},
+				Spec: applicationapiv1alpha1.SnapshotSpec{
+					Application: hasApp.Name,
+					Components: []applicationapiv1alpha1.SnapshotComponent{
+						{
+							Name:           "another-component-sample",
+							ContainerImage: sample_image,
+							Source: applicationapiv1alpha1.ComponentSource{
+								ComponentSourceUnion: applicationapiv1alpha1.ComponentSourceUnion{
+									GitSource: &applicationapiv1alpha1.GitSource{
+										Revision: sample_revision,
+									},
+								},
+							},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, hasCGSnapshot2)).Should(Succeed())
+		})
 
 		const (
 			releasePlanName = "test-release-plan-false-label"
@@ -978,9 +1193,36 @@ var _ = Describe("Loader", Ordered, func() {
 			Expect(request.Name).To(Equal(reqName))
 		})
 
-		It("can get pull request component snapshot for specific compoent and PR number", func() {
+		It("can get pull request component snapshot for specific component and PR number", func() {
 			prNumber := "1"
-			snapshots, err := loader.GetPRComponentSnapshotsForComponent(ctx, k8sClient, hasSnapshot.Namespace, hasApp.Name, hasComp.Name, prNumber)
+			componentGroupNames := []string{hasCompGroup1.Name, hasCompGroup2.Name}
+			// TODO: create hasCompGroup1, hasCompGroup2, hasCGSnapshot1, hasCGSnapshot2
+			snapshots, err := loader.GetPRComponentSnapshotsForComponent(ctx, k8sClient, componentGroupNames, hasCGSnapshot1.Namespace, hasComp.Name, prNumber)
+
+			sort.Slice(*snapshots, func(i, j int) bool {
+				return (*snapshots)[i].CreationTimestamp.After((*snapshots)[j].CreationTimestamp.Time)
+			})
+			Expect(err).To(Succeed())
+			Expect(*snapshots).To(HaveLen(2))
+			Expect(*snapshots).To(ContainElement(gstruct.MatchFields(gstruct.IgnoreExtras, gstruct.Fields{
+				"ObjectMeta": gstruct.MatchFields(gstruct.IgnoreExtras, gstruct.Fields{
+					"Name":      Equal(hasCGSnapshot1.Name),
+					"Namespace": Equal(hasCGSnapshot1.Namespace),
+				}),
+				"Spec": Equal(hasCGSnapshot1.Spec),
+			})))
+			Expect(*snapshots).To(ContainElement(gstruct.MatchFields(gstruct.IgnoreExtras, gstruct.Fields{
+				"ObjectMeta": gstruct.MatchFields(gstruct.IgnoreExtras, gstruct.Fields{
+					"Name":      Equal(hasCGSnapshot2.Name),
+					"Namespace": Equal(hasCGSnapshot2.Namespace),
+				}),
+				"Spec": Equal(hasCGSnapshot2.Spec),
+			})))
+		})
+
+		It("can get pull request component snapshot for specific component and PR number [APPLICATION]", func() {
+			prNumber := "1"
+			snapshots, err := loader.GetPRComponentSnapshotsForComponentApplication(ctx, k8sClient, hasSnapshot.Namespace, hasApp.Name, hasComp.Name, prNumber)
 			Expect(err).To(Succeed())
 			Expect(*snapshots).To(HaveLen(1))
 			Expect((*snapshots)[0].Name).To(Equal(hasSnapshot.Name))

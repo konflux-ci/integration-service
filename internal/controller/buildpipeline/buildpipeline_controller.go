@@ -28,6 +28,7 @@ import (
 	"github.com/konflux-ci/integration-service/helpers"
 	"github.com/konflux-ci/integration-service/loader"
 	"github.com/konflux-ci/integration-service/tekton"
+	tektonconsts "github.com/konflux-ci/integration-service/tekton/consts"
 	"github.com/konflux-ci/operator-toolkit/controller"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -119,21 +120,41 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{}, nil
 	}
 
-	application, err := loader.GetApplicationFromComponent(ctx, r.Client, component)
-	if err != nil {
-		logger.Error(err, "Failed to get Application from Component",
-			"Component.Name ", component.Name, "Component.Namespace ", component.Namespace)
-		tknErr := tekton.AnnotateBuildPipelineRunWithCreateSnapshotAnnotation(ctx, pipelineRun, r.Client, err)
-		if tknErr != nil {
-			return ctrl.Result{}, tknErr
+	var adapter *Adapter
+	// Get version and context from pipelinerun
+	// if version does not exist, we must be using an application
+	// otherwise we are using a componentGroup
+	version, ok := pipelineRun.Annotations[tektonconsts.PipelineRunComponentVersionAnnotation]
+	if !ok || version == "" {
+		application, err := loader.GetApplicationFromComponent(ctx, r.Client, component)
+		if err != nil {
+			logger.Error(err, "Failed to get Application from Component",
+				"Component.Name ", component.Name, "Component.Namespace ", component.Namespace)
+			tknErr := tekton.AnnotateBuildPipelineRunWithCreateSnapshotAnnotation(ctx, pipelineRun, r.Client, err)
+			if tknErr != nil {
+				return ctrl.Result{}, tknErr
+			}
+			return helpers.HandleLoaderError(logger, err, "application", "component")
+
 		}
-		return helpers.HandleLoaderError(logger, err, "application", "component")
 
+		logger = logger.WithApp(*application)
+
+		adapter = NewAdapterWithApplication(ctx, pipelineRun, component, application, logger, loader, r.Client)
+	} else {
+		componentGroups, err := loader.GetComponentGroupsForComponentVersion(ctx, r.Client, component, version)
+		if err != nil {
+			logger.Error(err, "Failed to get ComponentGroups for Component",
+				"Component.Name ", component.Name, "Component.Namespace ", component.Namespace)
+			tknErr := tekton.AnnotateBuildPipelineRunWithCreateSnapshotAnnotation(ctx, pipelineRun, r.Client, err)
+			if tknErr != nil {
+				return ctrl.Result{}, tknErr
+			}
+			return helpers.HandleLoaderError(logger, err, "componentgroups", "component")
+		}
+
+		adapter = NewAdapter(ctx, pipelineRun, component, componentGroups, logger, loader, r.Client)
 	}
-
-	logger = logger.WithApp(*application)
-
-	adapter := NewAdapter(ctx, pipelineRun, component, application, logger, loader, r.Client)
 
 	return controller.ReconcileHandler([]controller.Operation{
 		adapter.EnsurePipelineIsFinalized,
@@ -142,6 +163,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		adapter.EnsureIntegrationTestReportedToGitProvider,
 		adapter.EnsureGlobalCandidateImageUpdated,
 		adapter.EnsureSnapshotExists,
+		adapter.EnsureSnapshotExistsApplication,
 		adapter.EnsureSupercededSnapshotsCanceled,
 	})
 }
@@ -154,6 +176,7 @@ type AdapterInterface interface {
 	EnsureIntegrationTestReportedToGitProvider() (controller.OperationResult, error)
 	EnsureGlobalCandidateImageUpdated() (controller.OperationResult, error)
 	EnsureSnapshotExists() (controller.OperationResult, error)
+	EnsureSnapshotExistsApplication() (controller.OperationResult, error)
 	EnsureSupercededSnapshotsCanceled() (controller.OperationResult, error)
 }
 
