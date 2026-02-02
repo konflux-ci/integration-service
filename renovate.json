@@ -7,7 +7,6 @@
     "gomodTidy",
     "gomodVendor"
   ],
-  "schedule": ["0 0 * * 0,6"],
   "packageRules": [
     {
       "description": "Group Red Hat UBI image updates",
