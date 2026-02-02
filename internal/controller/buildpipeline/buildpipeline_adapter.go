@@ -421,19 +421,18 @@ func (a *Adapter) EnsureSupercededSnapshotsCanceled() (result controller.Operati
 		return controller.RequeueWithError(fmt.Errorf("failed to get running snapshots for PR %s: %w", pr, err))
 	}
 
-	// Mark snapshots as cancelled
+	// Mark snapshots as canceled
 	for _, snapshot := range *snapshots {
-		if gitops.HaveAppStudioTestsFinished(&snapshot) {
-			continue
-		}
-
 		err := retry.OnError(retry.DefaultRetry, func(e error) bool { return true }, func() error {
-			a.logger.Info(fmt.Sprintf("Snapshot %s has been superceded by build PLR %s. Canceling snapshot and its pipelineRuns", snapshot.Name, a.pipelineRun.Name))
-			e := a.cancelAllPipelineRunsForSnapshot(&snapshot)
-			if e != nil {
-				return e
+			var e error
+			if !gitops.HaveAppStudioTestsFinished(&snapshot) {
+				a.logger.Info(fmt.Sprintf("Snapshot %s has been superseded by build PLR %s. Canceling snapshot and its pipelineRuns", snapshot.Name, a.pipelineRun.Name))
+				e = a.cancelAllPipelineRunsForSnapshot(&snapshot)
+				if e != nil {
+					return e
+				}
 			}
-			e = gitops.MarkSnapshotAsCanceled(a.context, a.client, &snapshot, "Canceled - Superceded by new build")
+			e = gitops.MarkSnapshotAsCanceled(a.context, a.client, &snapshot, "Canceled - Superseded by new build")
 			return e
 		})
 		if err != nil {
