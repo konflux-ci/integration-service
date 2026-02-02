@@ -18,6 +18,7 @@ package tekton_test
 
 import (
 	"encoding/json"
+	"fmt"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -34,11 +35,70 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-var _ = Describe("build pipeline", func() {
+var _ = Describe("build pipeline", Ordered, func() {
 
 	var (
 		buildPipelineRun, buildPipelineRun2 *tektonv1.PipelineRun
+		successfulTaskRun                   *tektonv1.TaskRun
 	)
+	const (
+		SampleRepoLink           = "https://github.com/devfile-samples/devfile-sample-java-springboot-basic"
+		SampleCommit             = "a2ba645d50e471d5f084b"
+		SampleDigest             = "sha256:841328df1b9f8c4087adbdcfec6cc99ac8308805dea83f6d415d6fb8d40227c1"
+		SampleImageWithoutDigest = "quay.io/redhat-appstudio/sample-image"
+	)
+
+	BeforeAll(func() {
+		successfulTaskRun = &tektonv1.TaskRun{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "test-taskrun-pass",
+				Namespace: "default",
+			},
+			Spec: tektonv1.TaskRunSpec{
+				TaskRef: &tektonv1.TaskRef{
+					Name: "test-taskrun-pass",
+					ResolverRef: tektonv1.ResolverRef{
+						Resolver: "bundle",
+						Params: tektonv1.Params{
+							{Name: "bundle",
+								Value: tektonv1.ParamValue{Type: "string", StringVal: "quay.io/redhat-appstudio/example-tekton-bundle:test"},
+							},
+							{Name: "name",
+								Value: tektonv1.ParamValue{Type: "string", StringVal: "test-task"},
+							},
+						},
+					},
+				},
+			},
+		}
+		Expect(k8sClient.Create(ctx, successfulTaskRun)).Should(Succeed())
+
+		now := time.Now()
+		successfulTaskRun.Status = tektonv1.TaskRunStatus{
+			TaskRunStatusFields: tektonv1.TaskRunStatusFields{
+				StartTime:      &metav1.Time{Time: now},
+				CompletionTime: &metav1.Time{Time: now.Add(5 * time.Minute)},
+				Results: []tektonv1.TaskRunResult{
+					{
+						Name: "TEST_OUTPUT",
+						Value: *tektonv1.NewStructuredValues(`{
+											"result": "SUCCESS",
+											"timestamp": "2024-05-22T06:42:21+00:00",
+											"failures": 0,
+											"successes": 10,
+											"warnings": 0
+										}`),
+					},
+				},
+			},
+		}
+		Expect(k8sClient.Status().Update(ctx, successfulTaskRun)).Should(Succeed())
+	})
+
+	AfterAll(func() {
+		err := k8sClient.Delete(ctx, successfulTaskRun)
+		Expect(err == nil || k8serrors.IsNotFound(err)).To(BeTrue())
+	})
 
 	BeforeEach(func() {
 		buildPipelineRun = &tektonv1.PipelineRun{
@@ -56,13 +116,14 @@ var _ = Describe("build pipeline", func() {
 					"pipelinesascode.tekton.dev/event-type":    "pull_request",
 				},
 				Annotations: map[string]string{
-					"appstudio.redhat.com/updateComponentOnSuccess": "false",
-					"pipelinesascode.tekton.dev/on-target-branch":   "[main,master]",
-					"build.appstudio.openshift.io/repo":             "https://github.com/devfile-samples/devfile-sample-go-basic?rev=c713067b0e65fb3de50d1f7c457eb51c2ab0dbb0",
-					"foo":                                           "bar",
-					"chains.tekton.dev/signed":                      "true",
-					"pipelinesascode.tekton.dev/source-branch":      "sourceBranch",
-					"pipelinesascode.tekton.dev/url-org":            "redhat",
+					"appstudio.redhat.com/updateComponentOnSuccess":    "false",
+					"pipelinesascode.tekton.dev/on-target-branch":      "[main,master]",
+					"build.appstudio.openshift.io/repo":                "https://github.com/devfile-samples/devfile-sample-go-basic?rev=c713067b0e65fb3de50d1f7c457eb51c2ab0dbb0",
+					"foo":                                              "bar",
+					"chains.tekton.dev/signed":                         "true",
+					"pipelinesascode.tekton.dev/source-branch":         "sourceBranch",
+					"pipelinesascode.tekton.dev/url-org":               "redhat",
+					tektonconsts.PipelineRunComponentVersionAnnotation: "v1",
 				},
 				CreationTimestamp: metav1.NewTime(time.Now().Add(time.Hour * 1)),
 			},
@@ -96,6 +157,24 @@ var _ = Describe("build pipeline", func() {
 
 		buildPipelineRun.Status = tektonv1.PipelineRunStatus{
 			PipelineRunStatusFields: tektonv1.PipelineRunStatusFields{
+				Results: []tektonv1.PipelineRunResult{
+					{
+						Name:  "IMAGE_DIGEST",
+						Value: *tektonv1.NewStructuredValues(SampleDigest),
+					},
+					{
+						Name:  "IMAGE_URL",
+						Value: *tektonv1.NewStructuredValues(SampleImageWithoutDigest),
+					},
+					{
+						Name:  "CHAINS-GIT_URL",
+						Value: *tektonv1.NewStructuredValues(SampleRepoLink),
+					},
+					{
+						Name:  "CHAINS-GIT_COMMIT",
+						Value: *tektonv1.NewStructuredValues(SampleCommit),
+					},
+				},
 				StartTime: &metav1.Time{Time: time.Now()},
 			},
 			Status: v1.Status{
@@ -183,5 +262,65 @@ var _ = Describe("build pipeline", func() {
 				return tekton.IsBuildPLRMarkedAsAddedToGlobalCandidateList(buildPipelineRun)
 			}, time.Second*15).Should(BeTrue())
 		})
+
+		It("ensure err is returned when pipelinerun doesn't have Result for ", func() {
+			// We don't need to update the underlying resource on the control plane,
+			// so we create a copy and modify its status. This prevents update conflicts in other tests.
+			buildPipelineRunNoSource := buildPipelineRun.DeepCopy()
+			buildPipelineRunNoSource.Status = tektonv1.PipelineRunStatus{
+				PipelineRunStatusFields: tektonv1.PipelineRunStatusFields{
+					ChildReferences: []tektonv1.ChildStatusReference{
+						{
+							Name:             successfulTaskRun.Name,
+							PipelineTaskName: "task1",
+						},
+					},
+					Results: []tektonv1.PipelineRunResult{
+						{
+							Name:  "CHAINS-GIT_URL",
+							Value: *tektonv1.NewStructuredValues(SampleRepoLink),
+						},
+					},
+				},
+				Status: v1.Status{
+					Conditions: v1.Conditions{
+						apis.Condition{
+							Reason: "Completed",
+							Status: "True",
+							Type:   apis.ConditionSucceeded,
+						},
+					},
+				},
+			}
+
+			componentSource, err := tekton.GetComponentSourceFromPipelineRun(buildPipelineRunNoSource)
+			Expect(componentSource).To(BeNil())
+			Expect(err).To(HaveOccurred())
+		})
+
+		It("ensures the Imagepullspec and ComponentSource from pipelinerun can be accessed", func() {
+			imagePullSpec, err := tekton.GetImagePullSpecFromPipelineRun(buildPipelineRun)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(imagePullSpec).NotTo(BeEmpty())
+
+			componentSource, err := tekton.GetComponentSourceFromPipelineRun(buildPipelineRun)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(componentSource).NotTo(BeNil())
+		})
+
+		It("ensures the component version can be accessed", func() {
+			version, err := tekton.GetComponentVersionFromPipelineRun(buildPipelineRun)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(version).NotTo(BeEmpty())
+			Expect(version).To(Equal("v1"))
+		})
+
+		It("ensures error is returned when pipelinerun does not have component version annotation", func() {
+			version, err := tekton.GetComponentVersionFromPipelineRun(buildPipelineRun2)
+			Expect(err).To(HaveOccurred())
+			Expect(version).To(BeEmpty())
+			Expect(err.Error()).To(ContainSubstring(fmt.Sprintf("does not have '%s' annotation", tektonconsts.PipelineRunComponentVersionAnnotation)))
+		})
 	})
+
 })
