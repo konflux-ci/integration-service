@@ -18,6 +18,7 @@ package tekton_test
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"os"
 	"time"
@@ -37,6 +38,7 @@ import (
 	duckv1 "knative.dev/pkg/apis/duck/v1"
 
 	toolkit "github.com/konflux-ci/operator-toolkit/loader"
+	"github.com/konflux-ci/operator-toolkit/metadata"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	resolutionv1beta1 "github.com/tektoncd/pipeline/pkg/apis/resolution/v1beta1"
 	corev1 "k8s.io/api/core/v1"
@@ -63,6 +65,15 @@ spec:
 type ExtraParams struct {
 	Name  string
 	Value tektonv1.ParamValue
+}
+
+func getParamValue(params tektonv1.Params, name string) string {
+	for _, p := range params {
+		if p.Name == name {
+			return p.Value.StringVal
+		}
+	}
+	return ""
 }
 
 var _ = Describe("Integration pipeline", Ordered, func() {
@@ -282,18 +293,24 @@ var _ = Describe("Integration pipeline", Ordered, func() {
 		newIntegrationBundlePipelineRun, err = tekton.NewIntegrationPipelineRun(k8sClient, ctx, mockLoader, log, prefix, namespace, integrationTestScenarioBundle, hasSnapshot)
 		Expect(err).NotTo(HaveOccurred())
 		newIntegrationBundlePipelineRun = newIntegrationBundlePipelineRun.WithIntegrationLabels(integrationTestScenarioBundle).
-			WithSnapshot(hasSnapshot).
+			WithSnapshot(hasSnapshot, integrationTestScenarioBundle).
 			WithApplication(hasApp)
+		snapshotString, _ := json.Marshal(hasSnapshot.Spec)
 		Expect(k8sClient.Create(ctx, newIntegrationBundlePipelineRun.AsPipelineRun())).Should(Succeed())
+		actualValue := getParamValue(newIntegrationBundlePipelineRun.Spec.Params, "SNAPSHOT")
+		Expect(actualValue).To(Equal(string(snapshotString)))
 
+		Expect(metadata.SetAnnotation(enterpriseContractTestScenario, tekton.SnapshotParamAsNameAnnotation, "true")).Should(Succeed())
 		enterpriseContractPipelineRun, err = tekton.NewIntegrationPipelineRun(k8sClient, ctx, mockLoader, log, prefix, namespace, enterpriseContractTestScenario, hasSnapshot)
 		Expect(err).NotTo(HaveOccurred())
 		enterpriseContractPipelineRun = enterpriseContractPipelineRun.WithIntegrationLabels(enterpriseContractTestScenario).
 			WithIntegrationAnnotations(enterpriseContractTestScenario).
-			WithSnapshot(hasSnapshot).
+			WithSnapshot(hasSnapshot, enterpriseContractTestScenario).
 			WithExtraParams(enterpriseContractTestScenario.Spec.Params).
 			WithApplication(hasApp)
 		Expect(k8sClient.Create(ctx, enterpriseContractPipelineRun.AsPipelineRun())).Should(Succeed())
+		actualValue = getParamValue(enterpriseContractPipelineRun.Spec.Params, "SNAPSHOT")
+		Expect(actualValue).To(Equal(string(hasSnapshot.Name)))
 
 		os.Setenv("PIPELINE_TIMEOUT", "2h")
 		os.Setenv("TASKS_TIMEOUT", "2h")
@@ -549,7 +566,7 @@ var _ = Describe("Integration pipeline", Ordered, func() {
 		})
 
 		It("can append labels that comes from Snapshot to IntegrationPipelineRun and make sure that label value matches the snapshot and component names", func() {
-			newIntegrationPipelineRun.WithSnapshot(hasSnapshot)
+			newIntegrationPipelineRun.WithSnapshot(hasSnapshot, integrationTestScenarioGit)
 			Expect(newIntegrationPipelineRun.Labels["appstudio.openshift.io/snapshot"]).
 				To(Equal(hasSnapshot.Name))
 			Expect(newIntegrationPipelineRun.Labels["appstudio.openshift.io/component"]).

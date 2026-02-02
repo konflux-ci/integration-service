@@ -46,6 +46,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
+const (
+	SnapshotParamAsNameAnnotation = "test.appstudio.openshift.io/snapshot-param-as-name"
+)
+
 // IntegrationPipelineRun is a PipelineRun alias, so we can add new methods to it in this file.
 type IntegrationPipelineRun struct {
 	tektonv1.PipelineRun
@@ -411,18 +415,25 @@ func (r *IntegrationPipelineRun) WithExtraParams(params []v1beta2.PipelineParame
 	return r
 }
 
-// WithSnapshot adds a param containing the Snapshot as a json string to the integration PipelineRun.
+// WithSnapshot adds a param containing the Snapshot as a json string or the name of Snapshot as a string to the integration PipelineRun.
 // It also adds the Snapshot name label and copies the Component name label if it exists
-func (r *IntegrationPipelineRun) WithSnapshot(snapshot *applicationapiv1alpha1.Snapshot) *IntegrationPipelineRun {
+func (r *IntegrationPipelineRun) WithSnapshot(snapshot *applicationapiv1alpha1.Snapshot, integrationTestScenario *v1beta2.IntegrationTestScenario) *IntegrationPipelineRun {
 	// We ignore the error here because none should be raised when marshalling the spec of a CRD.
 	// If we end up deciding it is useful, we will need to pass the errors through the chain and
 	// add something like a `Complete` function that returns the final object and error.
-	snapshotString, _ := json.Marshal(snapshot.Spec)
+	if metadata.HasAnnotationWithValue(integrationTestScenario, SnapshotParamAsNameAnnotation, "true") {
+		r.WithExtraParam("SNAPSHOT", tektonv1.ParamValue{
+			Type:      tektonv1.ParamTypeString,
+			StringVal: string(snapshot.Name),
+		})
+	} else {
+		snapshotString, _ := json.Marshal(snapshot.Spec)
 
-	r.WithExtraParam("SNAPSHOT", tektonv1.ParamValue{
-		Type:      tektonv1.ParamTypeString,
-		StringVal: string(snapshotString),
-	})
+		r.WithExtraParam("SNAPSHOT", tektonv1.ParamValue{
+			Type:      tektonv1.ParamTypeString,
+			StringVal: string(snapshotString),
+		})
+	}
 
 	if r.Labels == nil {
 		r.Labels = map[string]string{}
