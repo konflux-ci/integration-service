@@ -248,6 +248,11 @@ spec:
                     name:
                       description: Name of the Component
                       type: string
+                    url:
+                      description: |-
+                        Git URL for the component. Needed by Release service. Can be used along
+                        with LastPromotedCommit to access the code that has been promoted
+                      type: string
                     version:
                       description: |-
                         Version of the Component. Only required if multiple version of the same

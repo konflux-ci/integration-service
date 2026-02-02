@@ -620,7 +620,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 
 			// Should succeed after retry with suffix
 			Eventually(func() bool {
-				result, err := adapter.EnsureSnapshotExists()
+				result, err := adapter.EnsureSnapshotExistsApplication()
 				return !result.CancelRequest && err == nil
 			}, time.Second*10).Should(BeTrue())
 
@@ -864,7 +864,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			adapter = NewAdapter(ctx, buildPipelineRun, hasComp, hasApp, log, loader.NewMockLoader(), k8sClient)
 
 			Eventually(func() bool {
-				result, err := adapter.EnsureSnapshotExists()
+				result, err := adapter.EnsureSnapshotExistsApplication()
 				return !result.CancelRequest && err != nil
 			}, time.Second*10).Should(BeTrue())
 
@@ -937,7 +937,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			_, err := adapter.prepareSnapshotForPipelineRun(adapter.pipelineRun, adapter.component, adapter.application)
 			Expect(helpers.IsInvalidImageDigestError(err)).To(BeTrue())
 			Eventually(func() bool {
-				result, err := adapter.EnsureSnapshotExists()
+				result, err := adapter.EnsureSnapshotExistsApplication()
 				return result.CancelRequest && err == nil
 			}, time.Second*10).Should(BeTrue())
 			Expect(adapter.pipelineRun.GetAnnotations()[helpers.CreateSnapshotAnnotationName]).ToNot(BeNil())
@@ -989,7 +989,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			})
 
 			Eventually(func() bool {
-				result, err := adapter.EnsureSnapshotExists()
+				result, err := adapter.EnsureSnapshotExistsApplication()
 				return !result.CancelRequest && err == nil
 			}, time.Second*10).Should(BeTrue())
 
@@ -1031,7 +1031,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			})
 
 			Eventually(func() bool {
-				result, err := adapter.EnsureSnapshotExists()
+				result, err := adapter.EnsureSnapshotExistsApplication()
 				return !result.CancelRequest && err == nil
 			}, time.Second*10).Should(BeTrue())
 
@@ -1045,7 +1045,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			// The previous call should have added the Snapshot annotation to the buildPipelineRun
 			// now we test if that is detected correctly
 			Eventually(func() bool {
-				result, err := adapter.EnsureSnapshotExists()
+				result, err := adapter.EnsureSnapshotExistsApplication()
 				return !result.CancelRequest && err == nil
 			}, time.Second*10).Should(BeTrue())
 
@@ -1304,7 +1304,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				})
 
 				Eventually(func() bool {
-					result, err := adapter.EnsureSnapshotExists()
+					result, err := adapter.EnsureSnapshotExistsApplication()
 					return result.CancelRequest && err == nil
 				}, time.Second*10).Should(BeTrue())
 				// Ensure the PLR on the control plane does not have finalizer
@@ -1522,7 +1522,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				// deletionTimestamp must be set here, create client call in BeforeEach() removes it
 				runningDeletingBuildPipeline.DeletionTimestamp = &metav1.Time{Time: time.Now()}
 				Eventually(func() bool {
-					result, err := adapter.EnsureSnapshotExists()
+					result, err := adapter.EnsureSnapshotExistsApplication()
 					return !result.CancelRequest && err == nil
 				}, time.Second*10).Should(BeTrue())
 				Expect(controllerutil.ContainsFinalizer(runningDeletingBuildPipeline, helpers.IntegrationPipelineRunFinalizer)).To(BeFalse())
@@ -1553,7 +1553,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				})
 
 				Eventually(func() bool {
-					result, err := adapter.EnsureSnapshotExists()
+					result, err := adapter.EnsureSnapshotExistsApplication()
 					return !result.RequeueRequest && err == nil
 				}, time.Second*10).Should(BeTrue())
 
@@ -1588,7 +1588,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				})
 
 				Eventually(func() bool {
-					result, err := adapter.EnsureSnapshotExists()
+					result, err := adapter.EnsureSnapshotExistsApplication()
 					return result.RequeueRequest && err != nil
 				}, time.Second*10).Should(BeTrue())
 
@@ -1629,7 +1629,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				})
 
 				Eventually(func() bool {
-					result, err := adapter.EnsureSnapshotExists()
+					result, err := adapter.EnsureSnapshotExistsApplication()
 					return result.RequeueRequest && err != nil
 				}, time.Second*10).Should(BeTrue())
 
