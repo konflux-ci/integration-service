@@ -1670,8 +1670,63 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				Expect(result.CancelRequest).To(BeFalse())
 				Expect(result.RequeueRequest).To(BeFalse())
 				// Expect snapshot to have been canceled
-				expectedLogEntry := "has been superceded by build PLR"
+				expectedLogEntry := "has been superseded by build PLR"
 				Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
+			})
+
+			It("Marks superseded snapshot as canceled even when tests have finished", func() {
+				// Snapshot that has already finished testing (superseded by a newer build for same PR)
+				finishedSnapshot := hasSnapshot.DeepCopy()
+				finishedSnapshot.Name = "superseded-finished-snapshot"
+				finishedSnapshot.ResourceVersion = ""
+
+				Expect(k8sClient.Create(ctx, finishedSnapshot)).Should(Succeed())
+				defer func() {
+					_ = k8sClient.Delete(ctx, finishedSnapshot)
+				}()
+
+				finishedSnapshot.Status.Conditions = []metav1.Condition{
+					{
+						Type:               gitops.AppStudioTestSucceededCondition,
+						Status:             metav1.ConditionTrue,
+						Reason:             gitops.AppStudioTestSucceededConditionSatisfied,
+						LastTransitionTime: metav1.NewTime(time.Now()),
+					},
+				}
+				Expect(gitops.HaveAppStudioTestsFinished(finishedSnapshot)).To(BeTrue())
+
+				Expect(k8sClient.Status().Update(ctx, finishedSnapshot)).Should(Succeed())
+
+				buildPipelineRun.Status.SetCondition(&apis.Condition{
+					Type:   apis.ConditionSucceeded,
+					Status: "Unknown",
+				})
+				var buf bytes.Buffer
+				log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+				adapter = NewAdapter(ctx, buildPipelineRun, hasComp, hasApp, log, loader.NewMockLoader(), k8sClient)
+				adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+					{
+						ContextKey: loader.AllSnapshotsForGivenPRContextKey,
+						Resource:   []applicationapiv1alpha1.Snapshot{*finishedSnapshot},
+					},
+				})
+
+				result, err := adapter.EnsureSupercededSnapshotsCanceled()
+				Expect(err).NotTo(HaveOccurred())
+				Expect(result.CancelRequest).To(BeFalse())
+				Expect(result.RequeueRequest).To(BeFalse())
+
+				Eventually(func() bool {
+					updatedSnapshot := &applicationapiv1alpha1.Snapshot{}
+					err = k8sClient.Get(ctx, types.NamespacedName{
+						Namespace: finishedSnapshot.Namespace,
+						Name:      finishedSnapshot.Name,
+					}, updatedSnapshot)
+					return err == nil && gitops.IsSnapshotMarkedAsCanceled(updatedSnapshot)
+				}, time.Second*20).Should(BeTrue())
+
+				// We do not cancel pipeline runs for finished snapshots, so this log should not appear
+				Expect(buf.String()).ShouldNot(ContainSubstring("has been superseded by build PLR"))
 			})
 		})
 	})
