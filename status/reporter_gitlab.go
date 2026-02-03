@@ -18,6 +18,7 @@ package status
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -169,12 +170,12 @@ func (r *GitLabReporter) setCommitStatus(report TestReport) (int, error) {
 
 	if err != nil {
 		r.logger.Error(err, fmt.Sprintf("could not determine whether scenario %s was optional", report.ScenarioName))
-		return statusCode, fmt.Errorf("could not determine whether scenario %s is optional", report.ScenarioName)
+		return 0, fmt.Errorf("could not determine whether scenario %s is optional, %w", report.ScenarioName, err)
 	}
 	optional := helpers.IsIntegrationTestScenarioOptional(scenario)
 	glState, err := GenerateGitlabCommitState(report.Status, optional)
 	if err != nil {
-		return statusCode, fmt.Errorf("failed to generate gitlab state: %w", err)
+		return 0, fmt.Errorf("failed to generate gitlab state: %w", err)
 	}
 
 	opt := gitlab.SetCommitStatusOptions{
@@ -203,7 +204,7 @@ func (r *GitLabReporter) setCommitStatus(report TestReport) (int, error) {
 
 		// special case, we want to skip updating commit status if the status from running to running, from pending to pending
 		if existingCommitStatus != nil && existingCommitStatus.Status == string(glState) {
-			r.logger.Info("Skipping commit status update",
+			r.logger.Info("Skipping redundant status update since the existing commit status has the same state",
 				"scenario.name", report.ScenarioName,
 				"commitStatus.ID", existingCommitStatus.ID,
 				"current_status", existingCommitStatus.Status,
@@ -222,7 +223,13 @@ func (r *GitLabReporter) setCommitStatus(report TestReport) (int, error) {
 	if sourceProjectErr == nil {
 		r.logger.Info("Created gitlab commit status", "scenario.name", report.ScenarioName, "commitStatus.ID", sourceProjectCommitStatus.ID, "TargetURL", opt.TargetURL)
 		return statusCode, nil
+	} else if strings.Contains(sourceProjectErr.Error(), "Cannot transition status via :enqueue from :pending") {
+		r.logger.Info("Ignoring the error when transition from pending to pending when the commitStatus might be created/updated in multiple threads at the same time occasionally")
+		return statusCode, nil
+	} else {
+		r.logger.Error(sourceProjectErr, "failed to set commit status to gitlab source project, try to set commit status to gitlab target project", "sourceProjectID", r.sourceProjectID, "targetProjectID", r.targetProjectID, "sha", r.sha, "scenario.name", report.ScenarioName)
 	}
+
 	targetProjectCommitStatus, targetProjectResponse, targetProjectErr := r.client.Commits.SetCommitStatus(r.targetProjectID, r.sha, &opt)
 	if targetProjectResponse != nil {
 		statusCode = targetProjectResponse.StatusCode
@@ -237,8 +244,9 @@ func (r *GitLabReporter) setCommitStatus(report TestReport) (int, error) {
 		r.logger.Info("Ignoring the error when transition from pending to pending when the commitStatus might be created/updated in multiple threads at the same time occasionally")
 		return statusCode, nil
 	}
-	return statusCode, fmt.Errorf("failed to set commit status to %s: %w", string(glState), err)
 
+	r.logger.Error(errors.Join(targetProjectErr, sourceProjectErr), "failed to set commit status to gitlab source project and target project", "sourceProjectID", r.sourceProjectID, "targetProjectID", r.targetProjectID, "sha", r.sha, "scenario.name", report.ScenarioName)
+	return statusCode, fmt.Errorf("failed to set commit status to %s with returned statusCode %d: %w", string(glState), statusCode, errors.Join(targetProjectErr, sourceProjectErr))
 }
 
 // UpdateStatusInComment searches and deletes existing comments according to commentPrefix and create a new comment in the MR which creates snapshot
@@ -367,13 +375,18 @@ func (r *GitLabReporter) ReportStatus(ctx context.Context, report TestReport) (i
 		return statusCode, fmt.Errorf("gitlab reporter is not initialized")
 	}
 
-	if statusCode, err := r.setCommitStatus(report); err != nil {
-		r.logger.Error(err, "failed to set gitlab commit status, will attempt to leave a comment on the MR")
-	} else {
-		return statusCode, nil
-	}
+	var err error
+	err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		statusCode, err = r.setCommitStatus(report)
+		return err
+	})
 
+	if err != nil {
+		r.logger.Error(err, "failed to set gitlab commit status, please refer to the comment created on the MR")
+		return statusCode, err
+	}
 	return statusCode, nil
+
 }
 
 func (r *GitLabReporter) ReturnCodeIsUnrecoverable(statusCode int) bool {
