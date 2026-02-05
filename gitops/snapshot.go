@@ -205,6 +205,13 @@ const (
 	// PipelineAsCodeGitLabProviderType is the git provider type for a GitLab event which triggered the pipelinerun in build service.
 	PipelineAsCodeGitLabProviderType = "gitlab"
 
+	// PipelineAsCodeForgejoProviderType is the git provider type for a Forgejo event which triggered the pipelinerun in build service.
+	PipelineAsCodeForgejoProviderType = "forgejo"
+
+	// PipelineAsCodeGiteaProviderType is the git provider type for Gitea. PaC uses this when targeting Forgejo until PaC adds full Forgejo support.
+	// TODO: Remove this once PaC adds full Forgejo support expected March 2026
+	PipelineAsCodeGiteaProviderType = "gitea"
+
 	// PipelineAsCodeGitHubMergeQueueBranchPrefix is the prefix added to temporary branches which are created for merge queues
 	PipelineAsCodeGitHubMergeQueueBranchPrefix = "gh-readonly-queue/"
 
