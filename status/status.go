@@ -711,10 +711,13 @@ func IterateIntegrationTestScenarioWithSameStatus(ctx context.Context, client cl
 
 			log.Info("Try to post gitlab merge request comment for the latest test report", "snapshot.Namespace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
 			commentPrefix := GenerateTestSummaryPrefixForComponent(componentNameOrPrGroup)
-			commentText, _ := GenerateSummaryForAllScenarios(integrationTestStatusDetail.Status, componentNameOrPrGroup)
-			commentText, _ = FormatComment(commentText, integrationTestStatusDetail.Details)
+			commentText, err := GenerateSummaryForAllScenarios(integrationTestStatusDetail.Status, componentNameOrPrGroup)
 			if err != nil {
 				return statusCode, fmt.Errorf("failed to generate summary message: %w", err)
+			}
+			commentText, err = FormatComment(commentText, integrationTestStatusDetail.Details)
+			if err != nil {
+				return statusCode, fmt.Errorf("failed to format summary message: %w", err)
 			}
 			statusCode, err := reporter.UpdateStatusInComment(commentPrefix, commentText)
 			if err != nil {
