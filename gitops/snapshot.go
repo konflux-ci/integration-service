@@ -124,6 +124,9 @@ const (
 	// GroupSnapshotInfoAnnotation contains the component snapshot info included in group snapshot
 	GroupSnapshotInfoAnnotation = "test.appstudio.openshift.io/group-test-info"
 
+	// PRStatusAnnotation contains the status of the PR
+	PRStatusAnnotation = "test.appstudio.openshift.io/pr-status"
+
 	// BuildPipelineRunNameLabel contains the build PipelineRun name
 	BuildPipelineRunNameLabel = AppstudioLabelPrefix + "/build-pipelinerun"
 
@@ -192,6 +195,12 @@ const (
 
 	// PipelineAsCodeMergeRequestType is the type of merge request event which triggered the pipelinerun in build service
 	PipelineAsCodeMergeRequestType = "merge request"
+
+	// PipelineAsCodeGLMergeRequestType is the type of gitlab merge request event marked in label which triggered the pipelinerun in build service
+	PipelineAsCodeMergeUnderscoreRequestType = "Merge_Request"
+
+	// PipelineAsCodeRetestType is the type of retest event which triggered the pipelinerun in build service by commenting /retest
+	PipelineAsCodeRetestType = "retest-all-comment"
 
 	// IntegrationWorkflowPushValue is the value for push workflow snapshots
 	IntegrationWorkflowPushValue = "push"
@@ -287,6 +296,9 @@ const (
 	FailedToCreateGroupSnapshotMsg = "Failed to create group snapshot for pr group"
 
 	GroupSnapshotCreationFailureReported = "group snapshot creation failure is reported to git provider"
+
+	// PRStatusMerged indicates that the PR has been merged
+	PRStatusMerged = "merged"
 
 	Success = "Success"
 	// AddedToGlobalCandidateListAnnotation is the annotation for marking if Snapshot/build PLR's component was added to

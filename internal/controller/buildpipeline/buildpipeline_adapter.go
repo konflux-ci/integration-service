@@ -381,6 +381,43 @@ func (a *Adapter) EnsureIntegrationTestReportedToGitProvider() (controller.Opera
 
 }
 
+// EnsureComponentSnapshotAnnotatedForMergedPR annotates all component snapshots when push build PLR is triggered for the same PR since the PR/MR are merged
+func (a *Adapter) EnsurePRSnapshotAnnotatedForMergedPR() (controller.OperationResult, error) {
+	if !tekton.IsPLRCreatedByPACPushEvent(a.pipelineRun) {
+		a.logger.Info("build pipelineRun is not created by pull/merge request, no need to annotate PR component snapshot")
+		return controller.ContinueProcessing()
+	}
+	if !metadata.HasLabel(a.pipelineRun, tektonconsts.PipelineAsCodePullRequestLabel) {
+		a.logger.Info("build pipelineRun has no pull request label, no need to annotate PR component snapshots")
+		return controller.ContinueProcessing()
+	}
+
+	if metadata.HasAnnotationWithValue(a.pipelineRun, gitops.PRStatusAnnotation, gitops.PRStatusMerged) {
+		a.logger.Info("build pipelineRun PR status is annotated as merged, we consider component snapshots have been annotated as well")
+		return controller.ContinueProcessing()
+	}
+
+	prComponentSnapshots, err := a.loader.GetPRComponentSnapshotsForComponent(a.context, a.client, a.pipelineRun.Namespace, a.application.Name, a.component.Name, a.pipelineRun.Labels[tektonconsts.PipelineAsCodePullRequestLabel])
+	if err != nil {
+		a.logger.Error(err, "failed to get all pull request component snapshots for PR", "pr.Number", a.pipelineRun.Labels[tektonconsts.PipelineAsCodePullRequestLabel])
+		return controller.RequeueWithError(err)
+	}
+	for _, snapshot := range *prComponentSnapshots {
+		if err = gitops.AnnotateSnapshot(a.context, &snapshot, gitops.PRStatusAnnotation, gitops.PRStatusMerged, a.client); err != nil {
+			a.logger.Error(err, "failed to annotate snapshot with PR status annotation", "snapshot.Name", snapshot.Name)
+			return controller.RequeueWithError(fmt.Errorf("failed to annotate snapshot %s with annotation %s: %w", snapshot.Name, gitops.PRStatusAnnotation, err))
+		}
+	}
+	// annotate build PLR to avoid re-checking build plr and re-annotating component snapshot again
+	if err = tekton.AnnotateBuildPipelineRun(a.context, a.pipelineRun, gitops.PRStatusAnnotation, gitops.PRStatusMerged, a.client); err != nil {
+		a.logger.Error(err, "failed to annotate build pipelineRun with PR status annotation")
+		return controller.RequeueWithError(fmt.Errorf("failed to annotate build pipelineRun %s with annotation %s: %w", a.pipelineRun.Name, gitops.PRStatusAnnotation, err))
+	}
+	a.logger.Info("all component snapshots for the PR have been annotated with merged status")
+	return controller.ContinueProcessing()
+
+}
+
 // reportStatusForGroupSnapshot reports the initial integration test statuses for the expected Snapshot
 func (a *Adapter) reportStatusForExpectedSnapshot(pipelineRun *tektonv1.PipelineRun, snapshot *applicationapiv1alpha1.Snapshot, integrationTestScenarios *[]v1beta2.IntegrationTestScenario,
 	integrationTestStatus intgteststat.IntegrationTestStatus, componentNameOrPrGroup string) (int, error) {

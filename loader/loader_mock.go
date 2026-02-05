@@ -67,6 +67,7 @@ const (
 	GetComponentsFromSnapshotForPRGroupKey
 	GetGroupSnapshotsKey
 	ResolutionRequestContextKey
+	GetPRComponentSnapshotsForComponentContextKey
 )
 
 func NewMockLoader() ObjectLoader {
@@ -318,4 +319,12 @@ func (l *mockLoader) GetResolutionRequest(ctx context.Context, c client.Client, 
 	}
 	resolutionRequest, err := toolkit.GetMockedResourceAndErrorFromContext(ctx, ResolutionRequestContextKey, resolutionv1beta1.ResolutionRequest{})
 	return resolutionRequest, err
+}
+
+func (l *mockLoader) GetPRComponentSnapshotsForComponent(ctx context.Context, c client.Client, namespace, applicationName, componentName, prNumber string) (*[]applicationapiv1alpha1.Snapshot, error) {
+	if ctx.Value(GetPRComponentSnapshotsForComponentContextKey) == nil {
+		return l.loader.GetPRComponentSnapshotsForComponent(ctx, c, namespace, applicationName, componentName, prNumber)
+	}
+	snapshots, err := toolkit.GetMockedResourceAndErrorFromContext(ctx, GetPRComponentSnapshotsForComponentContextKey, []applicationapiv1alpha1.Snapshot{})
+	return &snapshots, err
 }

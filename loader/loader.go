@@ -70,6 +70,7 @@ type ObjectLoader interface {
 	GetComponentsFromSnapshotForPRGroup(ctx context.Context, c client.Client, namespace, prGroup, prGroupHash, applicationName string) ([]string, error)
 	GetMatchingGroupSnapshotsForPRGroupHash(ctx context.Context, c client.Client, namespace, prGroupHash, applicationName string) (*[]applicationapiv1alpha1.Snapshot, error)
 	GetResolutionRequest(ctx context.Context, c client.Client, namespace, name string) (resolutionv1beta1.ResolutionRequest, error)
+	GetPRComponentSnapshotsForComponent(ctx context.Context, c client.Client, namespace, applicationName, componentName, prNumber string) (*[]applicationapiv1alpha1.Snapshot, error)
 }
 
 type loader struct{}
@@ -627,4 +628,49 @@ func (l *loader) GetResolutionRequest(ctx context.Context, c client.Client, name
 	err := c.Get(ctx, types.NamespacedName{Namespace: namespace, Name: name}, &resolutionRequest)
 
 	return resolutionRequest, err
+}
+
+// GetPRComponentSnapshotsForComponent gets the pull request component snapshots for a specific component and PR number
+func (l *loader) GetPRComponentSnapshotsForComponent(ctx context.Context, c client.Client, namespace, applicationName, componentName, prNumber string) (*[]applicationapiv1alpha1.Snapshot, error) {
+	snapshots := &applicationapiv1alpha1.SnapshotList{}
+
+	applicationLabelRequirement, err := labels.NewRequirement("appstudio.openshift.io/application", selection.In, []string{applicationName})
+	if err != nil {
+		return nil, err
+	}
+	componentLabelRequirement, err := labels.NewRequirement("appstudio.openshift.io/component", selection.In, []string{componentName})
+	if err != nil {
+		return nil, err
+	}
+	prNumberLabelRequirement, err := labels.NewRequirement(gitops.PipelineAsCodePullRequestAnnotation, selection.In, []string{prNumber})
+	if err != nil {
+		return nil, err
+	}
+	snapshotTypeLabelRequirement, err := labels.NewRequirement("test.appstudio.openshift.io/type", selection.In, []string{"component"})
+	if err != nil {
+		return nil, err
+	}
+
+	snapshotEventTypeLabelRequirement, err := labels.NewRequirement(gitops.PipelineAsCodeEventTypeLabel, selection.In, []string{gitops.PipelineAsCodePullRequestType, gitops.PipelineAsCodeRetestType, gitops.PipelineAsCodeMergeUnderscoreRequestType})
+	if err != nil {
+		return nil, err
+	}
+
+	labelSelector := labels.NewSelector().
+		Add(*applicationLabelRequirement).
+		Add(*componentLabelRequirement).
+		Add(*prNumberLabelRequirement).
+		Add(*snapshotTypeLabelRequirement).
+		Add(*snapshotEventTypeLabelRequirement)
+
+	opts := &client.ListOptions{
+		Namespace:     namespace,
+		LabelSelector: labelSelector,
+	}
+
+	err = c.List(ctx, snapshots, opts)
+	if err != nil {
+		return nil, err
+	}
+	return &snapshots.Items, nil
 }

@@ -137,6 +137,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 
 	return controller.ReconcileHandler([]controller.Operation{
 		adapter.EnsurePipelineIsFinalized,
+		adapter.EnsurePRSnapshotAnnotatedForMergedPR,
 		adapter.EnsurePRGroupAnnotated,
 		adapter.EnsureIntegrationTestReportedToGitProvider,
 		adapter.EnsureGlobalCandidateImageUpdated,
@@ -147,6 +148,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 
 // AdapterInterface is an interface defining all the operations that should be defined in an Integration adapter.
 type AdapterInterface interface {
+	EnsurePRSnapshotAnnotatedForMergedPR() (controller.OperationResult, error)
 	EnsurePipelineIsFinalized() (controller.OperationResult, error)
 	EnsurePRGroupAnnotated() (controller.OperationResult, error)
 	EnsureIntegrationTestReportedToGitProvider() (controller.OperationResult, error)

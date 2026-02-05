@@ -7,6 +7,7 @@ import (
 	"slices"
 	"sort"
 	"strconv"
+	"strings"
 
 	"github.com/go-logr/logr"
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
@@ -16,6 +17,7 @@ import (
 	zap2 "go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	core "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/selection"
@@ -33,6 +35,12 @@ var (
 const (
 	// Annotation that can be manually added by users to preven the deleion of a snapshot
 	KeepSnapshotAnnotation = "test.appstudio.openshift.io/keep-snapshot"
+	// PRStatusAnnotation contains the status of the PR, it is marked as "merged" when the push build pipelinerun is triggered
+	PRStatusAnnotation = "test.appstudio.openshift.io/pr-status"
+	// PRStatusMerged indicates that the PR has been merged
+	PRStatusMerged = "merged"
+	// PRGroupCreationAnnotation is the annotation used to indicate whether the group snapshot has been created for the PR snapshot or not, or will be created
+	PRGroupCreationAnnotation = "test.appstudio.openshift.io/create-groupsnapshot-status"
 )
 
 func init() {
@@ -87,6 +95,11 @@ func garbageCollectSnapshots(
 			)
 			continue
 		}
+		logger.V(1).Info(
+			"Found unassociated snapshots not associated with releases",
+			"namespace", ns.Name,
+			"count of unassociated snapshots", len(candidates),
+		)
 
 		candidates, keptPrSnapshots, keptNonPrSnapshots := filterSnapshotsWithKeepSnapshotAnnotation(candidates)
 		localPrSnapshotsToKeep -= keptPrSnapshots
@@ -99,7 +112,13 @@ func garbageCollectSnapshots(
 			cl, candidates, localPrSnapshotsToKeep, localNonPrSnapshotsToKeep, minSnapShotsToKeepPerComponent, logger,
 		)
 
+		logger.V(1).Info(
+			"Deleting snapshots",
+			"namespace", ns.Name,
+			"count of snapshots to delete", len(candidates),
+		)
 		deleteSnapshots(cl, candidates, logger)
+		logger.V(1).Info("Finished processing namespace", "namespace", ns.Name)
 	}
 	return nil
 }
@@ -228,18 +247,32 @@ func getUnassociatedNSSnapshots(
 	return unAssociatedSnaps, nil
 }
 
-// extractCancelledPRSnapshots gets all namespace PR snapshots which were marked as cancelled
-func extractCancelledPRSnapshots(snapshots []applicationapiv1alpha1.Snapshot) []string {
-	var cancelledPRSnapshots []string
+// extractCancelledOrMergedPRSnapshots gets all namespace PR snapshots which were marked as cancelled or its PR is merged, and are not annotated with the keep snapshot annotation
+func extractCancelledOrMergedPRSnapshots(snapshots []applicationapiv1alpha1.Snapshot) []string {
+	var cancelledOrMergedPRSnapshots []string
 
 	for _, snap := range snapshots {
-		if !isNonPrSnapshot(snap) && gitops.IsSnapshotMarkedAsCanceled(&snap) &&
+		if !isNonPrSnapshot(snap) &&
+			(gitops.IsSnapshotMarkedAsCanceled(&snap) || metadata.HasAnnotationWithValue(&snap, PRStatusAnnotation, PRStatusMerged)) &&
 			!metadata.HasAnnotationWithValue(&snap, "test.appstudio.openshift.io/keep-snapshot", "true") {
-			cancelledPRSnapshots = append(cancelledPRSnapshots, snap.Name)
+			cancelledOrMergedPRSnapshots = append(cancelledOrMergedPRSnapshots, snap.Name)
 		}
 	}
 
-	return cancelledPRSnapshots
+	return cancelledOrMergedPRSnapshots
+}
+
+// Returns true if the snapshot's age is longer than specific (in seconds)
+func isLongerThanSpecificTime(snap applicationapiv1alpha1.Snapshot, specificTime int64) bool {
+	creationTime := snap.GetCreationTimestamp().Time
+	if creationTime.IsZero() {
+		return false
+	}
+
+	currentTime := metav1.Now().Time
+	elapsedTime := currentTime.Sub(creationTime).Seconds()
+
+	return int64(elapsedTime) > specificTime
 }
 
 // Returns true if snapshot is a push snapshot, override snapshot, or if the
@@ -294,6 +327,9 @@ func getSnapshotsForRemoval(
 
 	// preservedPerComponent is a map to track if a snapshot is preserved from garbage collection
 	preservedPerComponent := make(map[string]bool)
+	shortList := []applicationapiv1alpha1.Snapshot{}
+	keptPrSnaps := 0
+	keptNonPrSnaps := 0
 
 	// Group push snapshots by component
 	componentToPushSnapshots := make(map[string][]applicationapiv1alpha1.Snapshot)
@@ -344,13 +380,9 @@ func getSnapshotsForRemoval(
 		}
 	}
 
-	shortList := []applicationapiv1alpha1.Snapshot{}
-	keptPrSnaps := 0
-	keptNonPrSnaps := 0
-
 	// First extract canceled PR Snapshots since these should be deleted first
 	// as they were superseded by newer Snapshots for that same PR
-	canceledPRSnapshots := extractCancelledPRSnapshots(snapshots)
+	cancelledOrMergedPRSnapshots := extractCancelledOrMergedPRSnapshots(snapshots)
 
 	for _, snap := range snapshots {
 		snap := snap
@@ -393,9 +425,24 @@ func getSnapshotsForRemoval(
 				shortList = append(shortList, snap)
 			}
 		} else {
-			if keptPrSnaps < prSnapshotsToKeep && !slices.Contains(canceledPRSnapshots, snap.Name) {
+			if keptPrSnaps < prSnapshotsToKeep && !slices.Contains(cancelledOrMergedPRSnapshots, snap.Name) {
 				logger.V(1).Info(
 					"Skipping PR candidate snapshot",
+					"namespace", snap.Namespace,
+					"snapshot.name", snap.Name,
+					"pr-snapshot-kept", keptPrSnaps+1,
+					"pr-snapshots-to-keep", prSnapshotsToKeep,
+				)
+				keptPrSnaps++
+			} else if !slices.Contains(cancelledOrMergedPRSnapshots, snap.Name) &&
+				metadata.HasAnnotation(&snap, PRGroupCreationAnnotation) &&
+				strings.Contains(snap.GetAnnotations()[PRGroupCreationAnnotation], "is still running, won't create group snapshot") &&
+				!isLongerThanSpecificTime(snap, 1*24*60*60) {
+				// when we have reached the number of nonPrSnapshotToKeep
+				// we still try to keep the component snapshot if it is created in one day, unmerged and expecting group snapshot creation but waiting for some other inprogress pipelineruns to finish
+				// the message "is still running, won't create group snapshot" comes from integration-service when it decides not to create group snapshot yet
+				logger.V(1).Info(
+					"Skipping PR candidate snapshot as it is expecting group snapshot creation and is created within one day",
 					"namespace", snap.Namespace,
 					"snapshot.name", snap.Name,
 					"pr-snapshot-kept", keptPrSnaps+1,

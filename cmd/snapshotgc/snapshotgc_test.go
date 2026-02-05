@@ -259,7 +259,7 @@ var _ = Describe("Test garbage collection for snapshots", func() {
 		}
 
 		It("Returns empty when no snapshots", func() {
-			output := extractCancelledPRSnapshots([]applicationapiv1alpha1.Snapshot{})
+			output := extractCancelledOrMergedPRSnapshots([]applicationapiv1alpha1.Snapshot{})
 			Expect(output).To(BeEmpty())
 		})
 
@@ -274,7 +274,7 @@ var _ = Describe("Test garbage collection for snapshots", func() {
 					Conditions: []metav1.Condition{cancelledCondition},
 				},
 			}
-			output := extractCancelledPRSnapshots([]applicationapiv1alpha1.Snapshot{pushSnap})
+			output := extractCancelledOrMergedPRSnapshots([]applicationapiv1alpha1.Snapshot{pushSnap})
 			Expect(output).To(BeEmpty())
 		})
 
@@ -286,7 +286,7 @@ var _ = Describe("Test garbage collection for snapshots", func() {
 					Labels:    map[string]string{"pac.test.appstudio.openshift.io/event-type": "pull_request"},
 				},
 			}
-			output := extractCancelledPRSnapshots([]applicationapiv1alpha1.Snapshot{prSnap})
+			output := extractCancelledOrMergedPRSnapshots([]applicationapiv1alpha1.Snapshot{prSnap})
 			Expect(output).To(BeEmpty())
 		})
 
@@ -299,7 +299,7 @@ var _ = Describe("Test garbage collection for snapshots", func() {
 				},
 				Status: applicationapiv1alpha1.SnapshotStatus{Conditions: []metav1.Condition{cancelledCondition}},
 			}
-			output := extractCancelledPRSnapshots([]applicationapiv1alpha1.Snapshot{cancelledPRSnap})
+			output := extractCancelledOrMergedPRSnapshots([]applicationapiv1alpha1.Snapshot{cancelledPRSnap})
 			Expect(output).To(HaveLen(1))
 			Expect(output).To(ContainElement("cancelled-pr-snap"))
 		})
@@ -314,7 +314,7 @@ var _ = Describe("Test garbage collection for snapshots", func() {
 				},
 				Status: applicationapiv1alpha1.SnapshotStatus{Conditions: []metav1.Condition{cancelledCondition}},
 			}
-			output := extractCancelledPRSnapshots([]applicationapiv1alpha1.Snapshot{keptCancelledPRSnap})
+			output := extractCancelledOrMergedPRSnapshots([]applicationapiv1alpha1.Snapshot{keptCancelledPRSnap})
 			Expect(output).To(BeEmpty())
 		})
 
@@ -343,11 +343,64 @@ var _ = Describe("Test garbage collection for snapshots", func() {
 				},
 				Status: applicationapiv1alpha1.SnapshotStatus{Conditions: []metav1.Condition{cancelledCondition}},
 			}
-			output := extractCancelledPRSnapshots([]applicationapiv1alpha1.Snapshot{cancelledPR1, cancelledPR2, pushSnap})
+			output := extractCancelledOrMergedPRSnapshots([]applicationapiv1alpha1.Snapshot{cancelledPR1, cancelledPR2, pushSnap})
 			Expect(output).To(HaveLen(2))
 			Expect(output).To(ContainElement("cancelled-pr-1"))
 			Expect(output).To(ContainElement("cancelled-pr-2"))
 			Expect(output).NotTo(ContainElement("push-snap"))
+		})
+
+		It("Returns expired snapshots and snapshot with merged annotation", func() {
+			currentTime := time.Now()
+			olderSnap := &applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:              "older-snapshot",
+					CreationTimestamp: metav1.NewTime(currentTime.Add(-time.Hour * 24 * 2)),
+				},
+			}
+
+			mergedSnap := &applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "merged-snapshot",
+					Labels: map[string]string{
+						"pac.test.appstudio.openshift.io/event-type": "pull_request",
+					},
+					Annotations: map[string]string{
+						PRStatusAnnotation: PRStatusMerged,
+					},
+					CreationTimestamp: metav1.NewTime(currentTime.Add(time.Hour * 1)),
+				},
+			}
+
+			groupSnapshotCandidate := &applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "group-snapshot-candidate",
+					Labels: map[string]string{
+						"pac.test.appstudio.openshift.io/event-type": "pull_request",
+					},
+					Annotations: map[string]string{
+						PRGroupCreationAnnotation: "test build pipelinerun is still running, won't create group snapshot",
+					},
+					CreationTimestamp: metav1.NewTime(currentTime.Add(-time.Hour * 12)),
+				},
+			}
+
+			cl := fake.NewClientBuilder().
+				WithScheme(scheme).
+				WithLists(
+					&applicationapiv1alpha1.SnapshotList{
+						Items: []applicationapiv1alpha1.Snapshot{
+							*olderSnap,
+							*mergedSnap,
+							*groupSnapshotCandidate,
+						},
+					}).Build()
+			candidates := []applicationapiv1alpha1.Snapshot{*olderSnap, *mergedSnap, *groupSnapshotCandidate}
+			output := getSnapshotsForRemoval(cl, candidates, 0, 0, 0, logger)
+
+			Expect(output).To(HaveLen(2))
+			Expect(output[0].Name).To(Equal("merged-snapshot"))
+			Expect(output[1].Name).To(Equal("older-snapshot"))
 		})
 	})
 
