@@ -21,7 +21,6 @@ import (
 	"github.com/konflux-ci/integration-service/internal/controller/buildpipeline"
 	"github.com/konflux-ci/integration-service/internal/controller/component"
 	"github.com/konflux-ci/integration-service/internal/controller/integrationpipeline"
-	"github.com/konflux-ci/integration-service/internal/controller/scenario"
 	"github.com/konflux-ci/integration-service/internal/controller/snapshot"
 	"github.com/konflux-ci/integration-service/internal/controller/statusreport"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
@@ -33,7 +32,7 @@ var setupFunctions = []func(manager.Manager, *logr.Logger) error{
 	integrationpipeline.SetupController,
 	buildpipeline.SetupController,
 	snapshot.SetupController,
-	scenario.SetupController,
+	//scenario.SetupController,
 	statusreport.SetupController,
 	component.SetupController,
 }
