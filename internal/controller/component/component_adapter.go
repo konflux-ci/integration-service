@@ -139,6 +139,8 @@ func (a *Adapter) createUpdatedSnapshot(snapshotComponents *[]applicationapiv1al
 		snapshot.Labels = map[string]string{}
 	}
 
+	snapshot.Labels[gitops.AutoReleaseLabel] = "false"
+
 	err := ctrl.SetControllerReference(a.application, snapshot, a.client.Scheme())
 	if err != nil {
 		a.logger.Error(err, "Failed to set controller reference")
