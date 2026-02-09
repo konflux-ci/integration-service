@@ -977,5 +977,15 @@ var _ = Describe("Loader", Ordered, func() {
 			Expect(request).NotTo(BeNil())
 			Expect(request.Name).To(Equal(reqName))
 		})
+
+		It("can get pull request component snapshot for specific compoent and PR number", func() {
+			prNumber := "1"
+			snapshots, err := loader.GetPRComponentSnapshotsForComponent(ctx, k8sClient, hasSnapshot.Namespace, hasApp.Name, hasComp.Name, prNumber)
+			Expect(err).To(Succeed())
+			Expect(*snapshots).To(HaveLen(1))
+			Expect((*snapshots)[0].Name).To(Equal(hasSnapshot.Name))
+			Expect((*snapshots)[0].Namespace).To(Equal(hasSnapshot.Namespace))
+			Expect((*snapshots)[0].Spec).To(Equal(hasSnapshot.Spec))
+		})
 	})
 })

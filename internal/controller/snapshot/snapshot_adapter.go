@@ -1048,6 +1048,7 @@ func (a *Adapter) haveAllPipelineRunProcessedForPrGroup(prGroup, prGroupHash str
 		// check if build PLR finishes
 		if !h.HasPipelineRunFinished(&pipelineRun) {
 			a.logger.Info(fmt.Sprintf("The build pipelineRun %s/%s with pr group %s is still running, won't create group snapshot", pipelineRun.Namespace, pipelineRun.Name, prGroup))
+			// snapshot Gabage Collector will also check this annotation to decide whether to delete the snapshot or not when it is waiting for group snapshot creation
 			err := gitops.AnnotateSnapshot(a.context, a.snapshot, gitops.PRGroupCreationAnnotation, fmt.Sprintf("The build pipelineRun %s/%s with pr group %s is still running, won't create group snapshot", pipelineRun.Namespace, pipelineRun.Name, prGroup), a.client)
 			if err != nil {
 				return false, err

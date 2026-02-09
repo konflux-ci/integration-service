@@ -417,4 +417,19 @@ var _ = Describe("Release Adapter", Ordered, func() {
 			Expect(err).ToNot(HaveOccurred())
 		})
 	})
+
+	Context("When calling GetPRComponentSnapshotsForComponent", func() {
+		It("returns resource and error from the context", func() {
+			snapshots := []applicationapiv1alpha1.Snapshot{}
+			mockContext := toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: GetPRComponentSnapshotsForComponentContextKey,
+					Resource:   snapshots,
+				},
+			})
+			resource, err := loader.GetPRComponentSnapshotsForComponent(mockContext, nil, "", "", "", "")
+			Expect(resource).To(Equal(&snapshots))
+			Expect(err).ToNot(HaveOccurred())
+		})
+	})
 })

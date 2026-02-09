@@ -652,19 +652,20 @@ func (s Status) FindSnapshotWithOpenedPR(ctx context.Context, snapshots *[]appli
 	log := log.FromContext(ctx)
 	sortedSnapshots := gitops.SortSnapshots(*snapshots)
 	// find the latest component snapshot created for open PR/MR
-	for _, snapshot := range sortedSnapshots {
-		snapshot := snapshot
-		// find the built image for pull/merge request build PLR from the latest opened pull request component snapshot
-		isPRMROpened, statusCode, err := s.IsPRMRInSnapshotOpened(ctx, &snapshot)
-		if err != nil {
-			log.Error(err, "Failed to fetch PR/MR status for component snapshot", "snapshot.Name", snapshot.Name)
-			return nil, statusCode, err
-		}
-		if isPRMROpened {
-			log.Info("PR/MR in snapshot is opened, will find snapshotComponent and add to groupSnapshot")
-			return &snapshot, statusCode, nil
-		}
+	// find the built image for pull/merge request build PLR from the latest opened pull request component snapshot
+	latestSnapshot := sortedSnapshots[0]
+
+	log.Info("Try to find if the latest snapshot has opened PR/MR", "snapshot.Name", sortedSnapshots[0].Name)
+	isPRMROpened, statusCode, err := s.IsPRMRInSnapshotOpened(ctx, &latestSnapshot)
+	if err != nil {
+		log.Error(err, "Failed to fetch PR/MR status for component snapshot", "snapshot.Name", latestSnapshot.Name)
+		return nil, statusCode, err
 	}
+	if isPRMROpened {
+		log.Info("PR/MR in snapshot is opened, will find snapshotComponent and add to groupSnapshot")
+		return &latestSnapshot, statusCode, nil
+	}
+
 	return nil, 0, nil
 }
 

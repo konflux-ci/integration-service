@@ -625,7 +625,7 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 
 	It("ensures the different Snapshots can be successfully compared if they have different event-type", func() {
 		expectedSnapshot := hasSnapshot.DeepCopy()
-		expectedSnapshot.Labels[gitops.PipelineAsCodeEventTypeLabel] = gitops.PipelineAsCodeMergeRequestType
+		expectedSnapshot.Labels[gitops.PipelineAsCodeEventTypeLabel] = gitops.PipelineAsCodeMergeUnderscoreRequestType
 		comparisonResult := gitops.CompareSnapshots(hasSnapshot, expectedSnapshot)
 		Expect(comparisonResult).To(BeFalse())
 	})

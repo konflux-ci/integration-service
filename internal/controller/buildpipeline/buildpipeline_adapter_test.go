@@ -2518,6 +2518,62 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		})
 	})
 
+	When("a Build pipelineRun is created from a push event for a merged PR/MR", func() {
+		BeforeEach(func() {
+			buildPipelineRun.Labels[tektonconsts.PipelineAsCodeEventTypeLabel] = gitops.PipelineAsCodePushType
+			adapter = createAdapter()
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: loader.ApplicationContextKey,
+					Resource:   hasApp,
+				},
+				{
+					ContextKey: loader.ComponentContextKey,
+					Resource:   hasComp,
+				},
+				{
+					ContextKey: loader.GetPipelineRunContextKey,
+					Resource:   buildPipelineRun,
+				},
+				{
+					ContextKey: loader.ApplicationComponentsContextKey,
+					Resource:   []applicationapiv1alpha1.Component{*hasComp},
+				},
+				{
+					ContextKey: loader.GetPRComponentSnapshotsForComponentContextKey,
+					Resource:   []applicationapiv1alpha1.Snapshot{*hasSnapshot},
+				},
+			})
+		})
+
+		It("Ensure Snapshot is created for a build pipelineRun", func() {
+			buf = bytes.Buffer{}
+			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+			adapter.logger = log
+			result, err := adapter.EnsurePRSnapshotAnnotatedForMergedPR()
+			Expect(!result.CancelRequest && err == nil).To(BeTrue())
+			expectedLogEntry := "all component snapshots for the PR have been annotated with merged status"
+			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
+
+			Eventually(func() bool {
+				err := adapter.client.Get(adapter.context, types.NamespacedName{
+					Namespace: hasSnapshot.Namespace,
+					Name:      hasSnapshot.Name,
+				}, hasSnapshot)
+				return err == nil && metadata.HasAnnotationWithValue(hasSnapshot, gitops.PRStatusAnnotation, gitops.PRStatusMerged)
+			}, time.Second*10).Should(BeTrue())
+
+			Eventually(func() bool {
+				err = adapter.client.Get(adapter.context, types.NamespacedName{
+					Namespace: buildPipelineRun.Namespace,
+					Name:      buildPipelineRun.Name,
+				}, buildPipelineRun)
+				return err == nil && metadata.HasAnnotationWithValue(buildPipelineRun, gitops.PRStatusAnnotation, gitops.PRStatusMerged)
+			}, time.Second*10).Should(BeTrue())
+		})
+
+	})
+
 	createAdapter = func() *Adapter {
 		adapter = NewAdapter(ctx, buildPipelineRun, hasComp, hasApp, logger, loader.NewMockLoader(), k8sClient)
 		return adapter
