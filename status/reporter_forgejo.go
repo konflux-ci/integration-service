@@ -148,6 +148,34 @@ func (r *ForgejoReporter) Initialize(ctx context.Context, snapshot *applicationa
 	return 0, nil
 }
 
+// IsPullRequestOpen returns whether the snapshot's pull request is still open.
+// Used by status.IsPRMRInSnapshotOpened. For push snapshots (no PR) returns false.
+func (r *ForgejoReporter) IsPullRequestOpen(ctx context.Context) (bool, int, error) {
+	var statusCode int
+	if r.client == nil {
+		return false, 0, fmt.Errorf("forgejo reporter not initialized")
+	}
+	if r.pullRequest == 0 {
+		return false, 0, nil
+	}
+	pr, resp, err := r.client.GetPullRequest(r.owner, r.repo, int64(r.pullRequest))
+	if resp != nil {
+		statusCode = resp.StatusCode
+	}
+	if err != nil && strings.Contains(err.Error(), "Not Found") {
+		r.logger.Info("pull request not found, it may have been deleted",
+			"owner", r.owner, "repo", r.repo, "pullRequest", r.pullRequest)
+		return false, statusCode, nil
+	}
+	if err != nil {
+		return false, statusCode, err
+	}
+	if pr == nil {
+		return false, statusCode, nil
+	}
+	return pr.State == forgejo.StateOpen, statusCode, nil
+}
+
 // setCommitStatus sets commit status to be shown as pipeline run in forgejo view
 func (r *ForgejoReporter) setCommitStatus(report TestReport) (int, error) {
 	var statusCode = 0
