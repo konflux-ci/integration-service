@@ -35,6 +35,7 @@ import (
 	"github.com/konflux-ci/integration-service/gitops"
 	"github.com/konflux-ci/integration-service/helpers"
 	"github.com/konflux-ci/integration-service/loader"
+	"github.com/konflux-ci/integration-service/pkg/common"
 	intgteststat "github.com/konflux-ci/integration-service/pkg/integrationteststatus"
 )
 
@@ -99,7 +100,7 @@ func (r *GitLabReporter) Initialize(ctx context.Context, snapshot *applicationap
 	}
 	apiURL := fmt.Sprintf("%s://%s", burl.Scheme, burl.Host)
 
-	r.client, err = gitlab.NewClient(token, gitlab.WithBaseURL(apiURL))
+	r.client, err = gitlab.NewClient(token, gitlab.WithBaseURL(apiURL), gitlab.WithUserAgent(common.IntegrationServiceUserAgent))
 	if err != nil {
 		r.logger.Error(err, "failed to create gitlab client", "apiURL", apiURL, "snapshot.NameSpace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
 		return 0, err
