@@ -34,6 +34,7 @@ import (
 	"github.com/konflux-ci/integration-service/gitops"
 	"github.com/konflux-ci/integration-service/helpers"
 	"github.com/konflux-ci/integration-service/loader"
+	"github.com/konflux-ci/integration-service/pkg/common"
 	intgteststat "github.com/konflux-ci/integration-service/pkg/integrationteststatus"
 )
 
@@ -112,7 +113,7 @@ func (r *ForgejoReporter) Initialize(ctx context.Context, snapshot *applicationa
 	// Construct API base URL (forgejo client automatically adds /api/v1 to all paths)
 	apiURL := fmt.Sprintf("%s://%s", burl.Scheme, burl.Host)
 
-	r.client, err = forgejo.NewClient(apiURL, forgejo.SetToken(token))
+	r.client, err = forgejo.NewClient(apiURL, forgejo.SetToken(token), forgejo.SetUserAgent(common.IntegrationServiceUserAgent))
 	if err != nil {
 		r.logger.Error(err, "failed to create forgejo client", "apiURL", apiURL, "snapshot.NameSpace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
 		return 0, err

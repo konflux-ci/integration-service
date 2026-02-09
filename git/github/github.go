@@ -27,6 +27,8 @@ import (
 	"github.com/go-logr/logr"
 	ghapi "github.com/google/go-github/v45/github"
 	"golang.org/x/oauth2"
+
+	"github.com/konflux-ci/integration-service/pkg/common"
 )
 
 // CheckRunAdapter is an abstraction for the github.CheckRun struct.
@@ -226,6 +228,7 @@ func (c *Client) CreateAppInstallationToken(ctx context.Context, appID int64, in
 	}
 
 	c.gh = ghapi.NewClient(&http.Client{Transport: transport})
+	c.gh.UserAgent = common.IntegrationServiceUserAgent
 
 	installToken, response, err := c.GetAppsService().CreateInstallationToken(
 		ctx,
@@ -250,6 +253,7 @@ func (c *Client) SetOAuthToken(ctx context.Context, token string) {
 	)
 
 	c.gh = ghapi.NewClient(oauth2.NewClient(ctx, ts))
+	c.gh.UserAgent = common.IntegrationServiceUserAgent
 }
 
 // CreateCheckRun creates a new CheckRun via the GitHub API.
