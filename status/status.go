@@ -197,7 +197,7 @@ type StatusInterface interface {
 	// Check if gitlab MR is open
 	IsMRInSnapshotOpened(context.Context, ReporterInterface, *applicationapiv1alpha1.Snapshot) (bool, int, error)
 	// find snapshot with opened PR or MR
-	FindSnapshotWithOpenedPR(context.Context, *[]applicationapiv1alpha1.Snapshot) (*applicationapiv1alpha1.Snapshot, int, error)
+	FindSnapshotWithOpenedPR(context.Context, *[]applicationapiv1alpha1.Snapshot, *applicationapiv1alpha1.Snapshot) (*applicationapiv1alpha1.Snapshot, int, error)
 }
 
 type Status struct {
@@ -550,7 +550,7 @@ func (s Status) IsMRInSnapshotOpened(ctx context.Context, reporter ReporterInter
 
 	if err != nil && strings.Contains(err.Error(), "Not Found") {
 		log.Info(fmt.Sprintf("not found merge request projectID/pulls %d/%d, it might be deleted", targetProjectID, mergeRequest))
-		return false, statusCode, nil
+		return false, statusCode, err
 	}
 
 	if mr != nil && err == nil {
@@ -662,14 +662,21 @@ func GetComponentSnapshotsFromGroupSnapshot(ctx context.Context, c client.Client
 }
 
 // FindSnapshotWithOpenedPR find the latest snapshot with opened PR/MR for the given sorted snapshots
-func (s Status) FindSnapshotWithOpenedPR(ctx context.Context, snapshots *[]applicationapiv1alpha1.Snapshot) (*applicationapiv1alpha1.Snapshot, int, error) {
+func (s Status) FindSnapshotWithOpenedPR(ctx context.Context, snapshots *[]applicationapiv1alpha1.Snapshot, processedSnapshot *applicationapiv1alpha1.Snapshot) (*applicationapiv1alpha1.Snapshot, int, error) {
 	log := log.FromContext(ctx)
 	sortedSnapshots := gitops.SortSnapshots(*snapshots)
+
 	// find the latest component snapshot created for open PR/MR
 	// find the built image for pull/merge request build PLR from the latest opened pull request component snapshot
 	latestSnapshot := sortedSnapshots[0]
 
 	log.Info("Try to find if the latest snapshot has opened PR/MR", "snapshot.Name", sortedSnapshots[0].Name)
+	// consider PR as open state if the latest snapshot has the same git url and PR/MR number
+	if gitops.HasSameGitSourceAndPRWithProcessedSnapshot(&latestSnapshot, processedSnapshot) {
+		log.Info("The latest snapshot is the same as the processed snapshot or has the same target git repo and PR/MR number as the processed snapshot, skip checking PR/MR status", "latestSnapshot.Name", latestSnapshot.Name, "processedSnapshot.Name", processedSnapshot.Name)
+		return &latestSnapshot, 0, nil
+	}
+
 	isPRMROpened, statusCode, err := s.IsPRMRInSnapshotOpened(ctx, &latestSnapshot)
 	if err != nil {
 		log.Error(err, "Failed to fetch PR/MR status for component snapshot", "snapshot.Name", latestSnapshot.Name)

@@ -18,7 +18,10 @@ package status_test
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"strconv"
 	"time"
@@ -31,6 +34,7 @@ import (
 	pacv1alpha1 "github.com/openshift-pipelines/pipelines-as-code/pkg/apis/pipelinesascode/v1alpha1"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	"go.uber.org/mock/gomock"
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -78,6 +82,29 @@ func newIntegrationTestStatusDetail(expectedScenarioStatus integrationteststatus
 		CompletionTime:      &tc,
 		TestPipelineRunName: "test-pipelinerun",
 	}
+}
+
+// muxMergeRequestGet mocks a GET request for a specific Merge Request.
+// It returns a MergeRequest object with the specified state.
+func muxMergeRequestGet(mux *http.ServeMux, pid, mrIID int, state string) {
+	path := fmt.Sprintf("/projects/%d/merge_requests/%d", pid, mrIID)
+
+	mux.HandleFunc(path, func(rw http.ResponseWriter, r *http.Request) {
+		mrData := map[string]interface{}{
+			"id":         1001,
+			"iid":        mrIID,
+			"project_id": pid,
+			"state":      state,
+			"sha":        "deadbeef",
+			"title":      "Mock MR",
+		}
+
+		rw.Header().Set("Content-Type", "application/json")
+		rw.WriteHeader(http.StatusOK)
+
+		jsonMR, _ := json.Marshal(mrData)
+		fmt.Fprint(rw, string(jsonMR))
+	})
 }
 
 var _ = Describe("Status Adapter", func() {
@@ -295,6 +322,7 @@ var _ = Describe("Status Adapter", func() {
 					"build.appstudio.redhat.com/commit_sha":         "6c65b2fcaea3e1a0a92476c8b5dc89e92a85f025",
 					"appstudio.redhat.com/updateComponentOnSuccess": "false",
 					"pac.test.appstudio.openshift.io/repo-url":      "https://github.com/devfile-sample/devfile-sample-go-basic",
+					gitops.BuildPipelineRunStartTime:                strconv.FormatInt(plrstarttime+100000, 10),
 				},
 			},
 			Spec: applicationapiv1alpha1.SnapshotSpec{
@@ -330,11 +358,14 @@ var _ = Describe("Status Adapter", func() {
 					gitops.PipelineAsCodePullRequestAnnotation:       "1",
 				},
 				Annotations: map[string]string{
-					"test.appstudio.openshift.io/pr-last-update":  "2023-08-26T17:57:50+02:00",
-					gitops.BuildPipelineRunStartTime:              strconv.FormatInt(plrstarttime+100000, 10), // +100 seconds = +100000 milliseconds
-					gitops.PRGroupAnnotation:                      prGroup,
-					gitops.PipelineAsCodeGitProviderAnnotation:    "github",
-					gitops.PipelineAsCodeInstallationIDAnnotation: "123",
+					"test.appstudio.openshift.io/pr-last-update":   "2023-08-26T17:57:50+02:00",
+					gitops.BuildPipelineRunStartTime:               strconv.FormatInt(plrstarttime+150000, 10), // +100 seconds = +100000 milliseconds
+					gitops.PRGroupAnnotation:                       prGroup,
+					gitops.PipelineAsCodeGitProviderAnnotation:     "github",
+					gitops.PipelineAsCodeInstallationIDAnnotation:  "123",
+					gitops.PipelineAsCodeTargetProjectIDAnnotation: "142237",
+					gitops.PipelineAsCodeSourceProjectIDAnnotation: "142237",
+					gitops.PipelineAsCodePullRequestAnnotation:     "5",
 				},
 			},
 			Spec: applicationapiv1alpha1.SnapshotSpec{
@@ -845,5 +876,80 @@ var _ = Describe("Status Adapter", func() {
 		Expect(err).Should(Succeed())
 		Expect(statusCode).To(BeZero())
 	})
+	Context("can get correct MR status", func() {
+		var (
+			defaultAPIURL = "/api/v4"
+			mux           *http.ServeMux
+			server        *httptest.Server
+			secretData    map[string][]byte
+		)
+		BeforeEach(func() {
+			mux = http.NewServeMux()
+			apiHandler := http.NewServeMux()
+			apiHandler.Handle(defaultAPIURL+"/", http.StripPrefix(defaultAPIURL, mux))
 
+			// server is a test HTTP server used to provide mock API responses
+			server = httptest.NewServer(apiHandler)
+
+			repo = pacv1alpha1.Repository{
+				Spec: pacv1alpha1.RepositorySpec{
+					URL: server.URL, // mocked URL
+					GitProvider: &pacv1alpha1.GitProvider{
+						Secret: &pacv1alpha1.Secret{
+							Name: "example-secret-name",
+							Key:  "example-token",
+						},
+					},
+				},
+			}
+
+			mockK8sClient = &MockK8sClient{
+				getInterceptor: func(key client.ObjectKey, obj client.Object) {
+					if secret, ok := obj.(*v1.Secret); ok {
+						secret.Data = secretData
+					}
+				},
+				listInterceptor: func(list client.ObjectList) {
+					if repoList, ok := list.(*pacv1alpha1.RepositoryList); ok {
+						repoList.Items = []pacv1alpha1.Repository{repo}
+					}
+				},
+			}
+
+			secretData = map[string][]byte{
+				"example-token": []byte("example-personal-access-token"),
+			}
+		})
+		AfterEach(func() {
+			server.Close()
+		})
+
+		It("can get correct MR status when processed snapshot is in the snapshot list", func() {
+			// mock URL with httptest server URL
+			hasComSnapshot3.Annotations[gitops.PipelineAsCodeRepoURLAnnotation] = server.URL
+			st := status.NewStatus(logr.Discard(), mockK8sClient)
+			hasComSnapshot2.Annotations[gitops.PipelineAsCodePullRequestAnnotation] = hasComSnapshot3.Annotations[gitops.PipelineAsCodePullRequestAnnotation]
+			hasComSnapshot2.Annotations[gitops.PipelineAsCodeRepoURLAnnotation] = hasComSnapshot3.Annotations[gitops.PipelineAsCodeRepoURLAnnotation]
+			tmpSnapshot, statusCode, err := st.FindSnapshotWithOpenedPR(context.Background(), &[]applicationapiv1alpha1.Snapshot{*hasSnapshot, *hasComSnapshot2, *hasComSnapshot3}, hasComSnapshot3)
+			Expect(err).Should(Succeed())
+			Expect(statusCode).To(BeZero())
+			Expect(tmpSnapshot.Name).To(Equal(hasComSnapshot3.Name))
+		})
+
+		It("can get correct MR status when processed snapshot is not in the snapshot list", func() {
+			hasComSnapshot2.Annotations[gitops.PipelineAsCodeRepoURLAnnotation] = server.URL
+			hasComSnapshot2.Annotations[gitops.PipelineAsCodeGitProviderLabel] = gitops.PipelineAsCodeGitLabProviderType
+			st := status.NewStatus(logr.Discard(), mockK8sClient)
+			reporter := status.NewGitLabReporter(logr.Discard(), mockK8sClient)
+			_, err := reporter.Initialize(context.TODO(), hasComSnapshot2)
+			Expect(err).Should(Succeed())
+			pid := 142237
+			mrIID := 5
+			muxMergeRequestGet(mux, pid, mrIID, "opened")
+			tmpSnapshot, statusCode, err := st.FindSnapshotWithOpenedPR(context.Background(), &[]applicationapiv1alpha1.Snapshot{*hasSnapshot, *hasComSnapshot2}, hasComSnapshot3)
+			Expect(err).Should(Succeed())
+			Expect(statusCode).To(Equal(200))
+			Expect(tmpSnapshot.Name).To(Equal(hasComSnapshot2.Name))
+		})
+	})
 })

@@ -194,7 +194,7 @@ const (
 	PipelineAsCodePullRequestType = "pull_request"
 
 	// PipelineAsCodeMergeRequestType is the type of merge request event which triggered the pipelinerun in build service
-	PipelineAsCodeMergeRequestType = "merge request"
+	PipelineAsCodeMergeRequestType = "Merge Request"
 
 	// PipelineAsCodeGLMergeRequestType is the type of gitlab merge request event marked in label which triggered the pipelinerun in build service
 	PipelineAsCodeMergeUnderscoreRequestType = "Merge_Request"
@@ -1591,4 +1591,24 @@ func IsCommentDisabled(ctx context.Context, adapterClient client.Client, compone
 	}
 
 	return false, nil
+}
+
+// HasSameGitSourceAndPRWithProcessedSnapshot checks if the given snapshot has the same git source and pull request number as the latest snapshot, which means the same PR, to avoid processing the same PR with multiple snapshots or pipelineruns
+func HasSameGitSourceAndPRWithProcessedSnapshot(latestSnapshot, snapshot *applicationapiv1alpha1.Snapshot) bool {
+	if latestSnapshot.GetName() == snapshot.GetName() {
+		return true
+	}
+
+	if !metadata.HasAnnotation(latestSnapshot, PipelineAsCodeRepoURLAnnotation) ||
+		!metadata.HasAnnotation(snapshot, PipelineAsCodeRepoURLAnnotation) ||
+		!metadata.HasLabel(latestSnapshot, PipelineAsCodePullRequestAnnotation) ||
+		!metadata.HasLabel(snapshot, PipelineAsCodePullRequestAnnotation) {
+		return false
+	}
+	if helpers.UrlToGitUrl(latestSnapshot.GetAnnotations()[PipelineAsCodeRepoURLAnnotation]) == helpers.UrlToGitUrl(snapshot.GetAnnotations()[PipelineAsCodeRepoURLAnnotation]) &&
+		latestSnapshot.GetLabels()[PipelineAsCodePullRequestAnnotation] == snapshot.GetLabels()[PipelineAsCodePullRequestAnnotation] {
+		return true
+	}
+
+	return false
 }

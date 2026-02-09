@@ -1343,4 +1343,31 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 			Expect(isCommentDisabled).To(BeFalse())
 		})
 	})
+
+	Context("Can check if two snapshot have the same git source and mr/pr", func() {
+		BeforeEach(func() {
+			hasSnapshot.Labels[gitops.PipelineAsCodePullRequestAnnotation] = "1"
+			hasSnapshot.Annotations[gitops.PipelineAsCodeRepoUrlAnnotation] = "https://example.com/repo"
+			hasComSnapshot1.Labels[gitops.PipelineAsCodePullRequestAnnotation] = "1"
+			hasComSnapshot1.Annotations[gitops.PipelineAsCodeRepoUrlAnnotation] = "https://example.com/repo"
+		})
+
+		It("when the same snapshot are compared", func() {
+			Expect(gitops.HasSameGitSourceAndPRWithProcessedSnapshot(hasSnapshot, hasSnapshot)).To(BeTrue())
+		})
+
+		It("When two snapshots have the same git url and pull request number", func() {
+			Expect(gitops.HasSameGitSourceAndPRWithProcessedSnapshot(hasSnapshot, hasComSnapshot1)).To(BeTrue())
+		})
+
+		It("when the snapshot have different git source repo url", func() {
+			hasComSnapshot1.Annotations[gitops.PipelineAsCodeRepoUrlAnnotation] = "https://github.com/different/repo"
+			Expect(gitops.HasSameGitSourceAndPRWithProcessedSnapshot(hasSnapshot, hasComSnapshot1)).To(BeFalse())
+		})
+
+		It("when the snapshot have different pull request number", func() {
+			hasComSnapshot1.Labels[gitops.PipelineAsCodePullRequestAnnotation] = "3"
+			Expect(gitops.HasSameGitSourceAndPRWithProcessedSnapshot(hasSnapshot, hasComSnapshot1)).To(BeFalse())
+		})
+	})
 })

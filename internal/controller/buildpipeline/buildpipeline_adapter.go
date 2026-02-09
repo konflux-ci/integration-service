@@ -355,7 +355,7 @@ func (a *Adapter) EnsureIntegrationTestReportedToGitProvider() (controller.Opera
 	}
 
 	a.logger.Info("try to check if group snapshot is expected for build PLR")
-	isGroupSnapshotExpected, err := a.isGroupSnapshotExpectedForBuildPLR(a.pipelineRun)
+	isGroupSnapshotExpected, err := a.isGroupSnapshotExpectedForBuildPLR(a.pipelineRun, tempComponentSnapshot)
 	if err != nil {
 		a.logger.Error(err, "failed to check if group snapshot is expected")
 		return controller.RequeueWithError(err)
@@ -1027,7 +1027,7 @@ func (a *Adapter) getComponentsFromLatestFlightBuildPLR(prGroup, prGroupHash str
 }
 
 // isGroupSnapshotExpectedForBuildPLR return group context ITS if group snapshot is expected for the same pr group with the given build PLR
-func (a *Adapter) isGroupSnapshotExpectedForBuildPLR(pipelineRun *tektonv1.PipelineRun) (bool, error) {
+func (a *Adapter) isGroupSnapshotExpectedForBuildPLR(pipelineRun *tektonv1.PipelineRun, tempComponentSnapshot *applicationapiv1alpha1.Snapshot) (bool, error) {
 	prGroupHash, prGroup := gitops.GetPRGroup(pipelineRun)
 	if prGroupHash == "" || prGroup == "" {
 		a.logger.Error(fmt.Errorf("NotFound"), fmt.Sprintf("Failed to get PR group label/annotation from pipelineRun %s/%s", pipelineRun.Namespace, pipelineRun.Name))
@@ -1062,7 +1062,7 @@ func (a *Adapter) isGroupSnapshotExpectedForBuildPLR(pipelineRun *tektonv1.Pipel
 			return false, err
 		}
 
-		foundSnapshotWithOpenedPR, statusCode, err := a.status.FindSnapshotWithOpenedPR(a.context, snapshots)
+		foundSnapshotWithOpenedPR, statusCode, err := a.status.FindSnapshotWithOpenedPR(a.context, snapshots, tempComponentSnapshot)
 		if err != nil {
 			a.logger.Error(err, "failed to find snapshot with open PR or MR", "statusCode", statusCode)
 			return false, err

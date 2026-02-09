@@ -2106,7 +2106,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			mockStatus = status.NewMockStatusInterface(ctrl)
 			mockReporter.EXPECT().GetReporterName().Return("mocked-reporter").AnyTimes()
 			mockStatus.EXPECT().GetReporter(gomock.Any()).Return(mockReporter).AnyTimes()
-			mockStatus.EXPECT().FindSnapshotWithOpenedPR(gomock.Any(), gomock.Any()).Return(hasSnapshot, 0, nil).AnyTimes()
+			mockStatus.EXPECT().FindSnapshotWithOpenedPR(gomock.Any(), gomock.Any(), gomock.Any()).Return(hasSnapshot, 0, nil).AnyTimes()
 			mockReporter.EXPECT().GetReporterName().AnyTimes()
 			mockReporter.EXPECT().Initialize(gomock.Any(), gomock.Any()).AnyTimes()
 			mockReporter.EXPECT().ReportStatus(gomock.Any(), gomock.Any()).AnyTimes()
