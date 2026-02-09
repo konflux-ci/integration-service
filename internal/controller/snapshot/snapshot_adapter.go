@@ -692,6 +692,10 @@ func (a *Adapter) EnsureGroupSnapshotExist() (controller.OperationResult, error)
 		a.logger.Info("The PR group info has been processed for this component snapshot, no need to process it again")
 		return controller.ContinueProcessing()
 	}
+	if gitops.IsSnapshotMarkedAsCanceled(a.snapshot) {
+		a.logger.Info("The snapshot has been marked as canceled, no need to create group snapshot")
+		return controller.ContinueProcessing()
+	}
 
 	prGroupHash, prGroup := gitops.GetPRGroup(a.snapshot)
 	if prGroupHash == "" || prGroup == "" {
@@ -958,9 +962,9 @@ func (a *Adapter) prepareGroupSnapshot(application *applicationapiv1alpha1.Appli
 				a.logger.Error(err, "Failed to fetch Snapshots for component", "component.Name", applicationComponent.Name)
 				return nil, nil, err
 			}
-			foundSnapshotWithOpenedPR, statusCode, err = a.status.FindSnapshotWithOpenedPR(a.context, snapshots)
-			a.logger.Error(err, "failed to find snapshot with open PR or MR", "statusCode", statusCode)
+			foundSnapshotWithOpenedPR, statusCode, err = a.status.FindSnapshotWithOpenedPR(a.context, snapshots, a.snapshot)
 			if err != nil {
+				a.logger.Error(err, "failed to find snapshot with open PR or MR", "statusCode", statusCode)
 				return nil, nil, err
 			}
 			if foundSnapshotWithOpenedPR != nil {
