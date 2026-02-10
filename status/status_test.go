@@ -512,6 +512,38 @@ var _ = Describe("Status Adapter", func() {
 		Expect(reporter.GetReporterName()).To(Equal("GithubReporter"))
 	})
 
+	It("returns ForgejoReporter when snapshot has gitea provider label", func() {
+		giteaSnapshot := &applicationapiv1alpha1.Snapshot{
+			ObjectMeta: metav1.ObjectMeta{
+				Labels: map[string]string{
+					gitops.PipelineAsCodeGitProviderLabel: gitops.PipelineAsCodeGiteaProviderType,
+				},
+			},
+		}
+		st := status.NewStatus(logr.Discard(), nil)
+		reporter := st.GetReporter(giteaSnapshot)
+		Expect(reporter).ToNot(BeNil())
+		Expect(reporter.GetReporterName()).To(Equal(status.ForgejoProvider))
+		_, ok := reporter.(*status.ForgejoReporter)
+		Expect(ok).To(BeTrue())
+	})
+
+	It("returns ForgejoReporter when snapshot has forgejo provider label", func() {
+		forgejoSnapshot := &applicationapiv1alpha1.Snapshot{
+			ObjectMeta: metav1.ObjectMeta{
+				Labels: map[string]string{
+					gitops.PipelineAsCodeGitProviderLabel: gitops.PipelineAsCodeForgejoProviderType,
+				},
+			},
+		}
+		st := status.NewStatus(logr.Discard(), nil)
+		reporter := st.GetReporter(forgejoSnapshot)
+		Expect(reporter).ToNot(BeNil())
+		Expect(reporter.GetReporterName()).To(Equal(status.ForgejoProvider))
+		_, ok := reporter.(*status.ForgejoReporter)
+		Expect(ok).To(BeTrue())
+	})
+
 	It("can migrate snapshot to reportStatus in old way - migration test)", func() {
 		hasSnapshot.Annotations["test.appstudio.openshift.io/status"] = "[{\"scenario\":\"scenario1\",\"status\":\"InProgress\",\"startTime\":\"2023-07-26T16:57:49+02:00\",\"lastUpdateTime\":\"2023-08-26T17:57:50+02:00\",\"details\":\"Test in progress\"}]"
 		hasSnapshot.Annotations["test.appstudio.openshift.io/pr-last-update"] = "2023-08-26T17:57:50+02:00"
