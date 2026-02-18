@@ -530,7 +530,7 @@ func NewGitHubReporter(logger logr.Logger, k8sClient client.Client, opts ...GitH
 type appCredentials struct {
 	AppID          int64
 	InstallationID int64
-	PrivateKey     []byte
+	PrivateKey     []byte // #nosec
 }
 
 // generateTitle generate a Title of checkRun for the given state
