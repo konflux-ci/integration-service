@@ -29,20 +29,6 @@
       "groupName": "github action dependencies"
     },
     {
-      "description": "Go major updates (excluding go language version)",
-      "matchManagers": [
-        "gomod"
-      ],
-      "matchUpdateTypes": [
-        "major"
-      ],
-      "groupName": "go major dependencies",
-      "matchPackageNames": [
-        "!go",
-        "!toolchain"
-      ]
-    },
-    {
       "description": "Go minor updates",
       "matchManagers": [
         "gomod"
