@@ -1369,5 +1369,25 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 			hasComSnapshot1.Labels[gitops.PipelineAsCodePullRequestAnnotation] = "3"
 			Expect(gitops.HasSameGitSourceAndPRWithProcessedSnapshot(hasSnapshot, hasComSnapshot1)).To(BeFalse())
 		})
+
+	})
+
+	Context("The IgnoreSupersessionAnnotation works as expected", func() {
+		BeforeEach(func() {
+			delete(hasSnapshot.Annotations, gitops.IgnoreSupersessionAnnotation)
+		})
+		It("when the snapshot does not have the IgnoreSupersessionAnnotation", func() {
+			Expect(gitops.IgnoreSupersession(hasSnapshot.ObjectMeta)).To(BeFalse())
+		})
+
+		It("when the snapshot's IgnoreSupersessionAnnotation is 'false'", func() {
+			hasSnapshot.Annotations[gitops.IgnoreSupersessionAnnotation] = "false"
+			Expect(gitops.IgnoreSupersession(hasSnapshot.ObjectMeta)).To(BeFalse())
+		})
+
+		It("when the snapshot's IgnoreSupersessionAnnotation is 'true'", func() {
+			hasSnapshot.Annotations[gitops.IgnoreSupersessionAnnotation] = "true"
+			Expect(gitops.IgnoreSupersession(hasSnapshot.ObjectMeta)).To(BeTrue())
+		})
 	})
 })

@@ -304,6 +304,9 @@ const (
 
 	GroupSnapshotCreationFailureReported = "group snapshot creation failure is reported to git provider"
 
+	// Annotation that tells the integration service to skip checks for whether a build or snapshot is superseded
+	IgnoreSupersessionAnnotation = TestLabelPrefix + "/ignore-supersession"
+
 	// PRStatusMerged indicates that the PR has been merged
 	PRStatusMerged = "merged"
 
@@ -1610,5 +1613,16 @@ func HasSameGitSourceAndPRWithProcessedSnapshot(latestSnapshot, snapshot *applic
 		return true
 	}
 
+	return false
+}
+
+func IgnoreSupersession(object metav1.ObjectMeta) bool {
+	if val, ok := object.GetAnnotations()[IgnoreSupersessionAnnotation]; ok {
+		annotation, err := strconv.ParseBool(val)
+		if err != nil {
+			return false
+		}
+		return annotation
+	}
 	return false
 }

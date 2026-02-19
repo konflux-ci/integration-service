@@ -558,7 +558,7 @@ func (a *Adapter) EnsureAllReleasesExist() (controller.OperationResult, error) {
 
 	autoReleaseMessage := ""
 	if len(*releasePlans) > 0 {
-		if a.isSnapshotOlderThanLastBuild(a.snapshot) {
+		if !gitops.IgnoreSupersession(a.snapshot.ObjectMeta) && a.isSnapshotOlderThanLastBuild(a.snapshot) {
 			autoReleaseMessage = "Released in newer Snapshot"
 		} else {
 			if err := a.createMissingReleasesForReleasePlans(releasePlans, a.snapshot); err != nil {

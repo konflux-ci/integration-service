@@ -1815,6 +1815,77 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			Expect(condition.Message).To(Equal("Released in newer Snapshot"))
 		})
 
+		It("ensures that superseded snapshots with the IgnoreSupersessionAnnotation are released", func() {
+			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+
+			// WAIT for snapshot status to be properly updated, eventually helps stop test flakiness
+			Eventually(func() bool {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      hasOldSnapshot.Name,
+					Namespace: hasOldSnapshot.Namespace,
+				}, hasOldSnapshot)
+				if err != nil {
+					return false
+				}
+				return gitops.HaveAppStudioTestsFinished(hasOldSnapshot) &&
+					gitops.HaveAppStudioTestsSucceeded(hasOldSnapshot)
+			}, time.Second*10).Should(BeTrue())
+
+			metav1.SetMetaDataAnnotation(&hasOldSnapshot.ObjectMeta, gitops.IgnoreSupersessionAnnotation, "true")
+
+			//Set up mocked context
+			adapter = NewAdapter(ctx, hasOldSnapshot, hasApp, log, loader.NewMockLoader(), k8sClient)
+			//Verify that the annotation exists
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: loader.ApplicationContextKey,
+					Resource:   hasApp,
+				},
+				{
+					ContextKey: loader.GetComponentContextKey,
+					Resource:   hasCompWithNewerBuild,
+				},
+				{
+					ContextKey: loader.SnapshotContextKey,
+					Resource:   hasOldSnapshot,
+				},
+				{
+					ContextKey: loader.AutoReleasePlansContextKey,
+					Resource:   []releasev1alpha1.ReleasePlan{*hasReleasePlan},
+				},
+				{
+					ContextKey: loader.ReleaseContextKey,
+					Resource:   &releasev1alpha1.Release{},
+				},
+			})
+
+			// Execute function under test
+			result, err := adapter.EnsureAllReleasesExist()
+			//Verify that the annotation exists
+
+			// Verify execution results
+			Expect(result.CancelRequest).To(BeFalse())
+			Expect(result.RequeueRequest).To(BeFalse())
+			Expect(err).ToNot(HaveOccurred())
+
+			// WAIT for snapshot to be marked as auto-released, eventually helps stop test flakiness
+			Eventually(func() bool {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      hasOldSnapshot.Name,
+					Namespace: hasOldSnapshot.Namespace,
+				}, hasOldSnapshot)
+				if err != nil {
+					return false
+				}
+				return gitops.IsSnapshotMarkedAsAutoReleased(hasOldSnapshot)
+			}, time.Second*10).Should(BeTrue())
+
+			// Verify the message does not contain "Released in newer Snapshot"
+			condition := meta.FindStatusCondition(hasOldSnapshot.Status.Conditions, gitops.SnapshotAutoReleasedCondition)
+			Expect(condition).ToNot(BeNil())
+			Expect(condition.Message).NotTo(Equal("Released in newer Snapshot"))
+		})
+
 		It("ensures that override snapshot is marked with correct auto-release message", func() {
 			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
 
