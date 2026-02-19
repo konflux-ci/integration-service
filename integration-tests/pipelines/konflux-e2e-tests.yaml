@@ -67,7 +67,7 @@ spec:
           - name: revision
             value: protect-control-plane
           - name: pathInRepo
-            value: tasks/mapt-oci/kind-aws-spot/provision/0.3/kind-aws-provision.yaml
+            value: tasks/mapt-oci/kind-aws-spot/provision/0.2/kind-aws-provision.yaml
       params:
         - name: secret-aws-credentials
           value: mapt-kind-secret
@@ -105,9 +105,9 @@ spec:
         resolver: git
         params:
           - name: url
-            value: https://github.com/konflux-ci/tekton-integration-catalog
+            value: https://github.com/flacatus/tekton-integration-catalog.git
           - name: revision
-            value: main
+            value: protect-control-plane
           - name: pathInRepo
             value: tasks/konflux-ci/deploy/0.3/deploy-konflux-ci.yaml
       params:
@@ -131,6 +131,8 @@ spec:
           value: $(params.konflux-test-infra-secret)
         - name: build-credentials
           value: "konflux-e2e-secrets"
+        - name: harden-kyverno
+          value: "true"
     - name: konflux-e2e-tests
       timeout: 2h
       runAfter:
