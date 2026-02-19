@@ -4,7 +4,7 @@ go 1.25.0
 
 require (
 	codeberg.org/mvdkleijn/forgejo-sdk/forgejo/v2 v2.2.0
-	github.com/konflux-ci/application-api v0.0.0-20260120144946-dc5c619fb3f9
+	github.com/konflux-ci/application-api v0.0.0-20260213151620-9ac61f5d7ca0
 	github.com/konflux-ci/coverport/instrumentation/go v0.0.0-20251127115143-b5207b335f8b
 	github.com/konflux-ci/operator-toolkit v0.0.0-20251118152634-b4f41f073069
 	github.com/konflux-ci/release-service v0.0.0-20260127184035-c36c56a3c440

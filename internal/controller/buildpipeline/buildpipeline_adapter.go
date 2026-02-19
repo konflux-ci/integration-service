@@ -23,7 +23,6 @@ import (
 	"fmt"
 	"math/big"
 	"strconv"
-	"strings"
 	"time"
 
 	"k8s.io/client-go/util/retry"
@@ -35,6 +34,7 @@ import (
 	h "github.com/konflux-ci/integration-service/helpers"
 	"github.com/konflux-ci/integration-service/loader"
 	intgteststat "github.com/konflux-ci/integration-service/pkg/integrationteststatus"
+	"github.com/konflux-ci/integration-service/snapshot"
 	"github.com/konflux-ci/integration-service/status"
 	"github.com/konflux-ci/integration-service/tekton"
 	tektonconsts "github.com/konflux-ci/integration-service/tekton/consts"
@@ -49,34 +49,54 @@ import (
 
 // Adapter holds the objects needed to reconcile a build PipelineRun.
 type Adapter struct {
-	pipelineRun *tektonv1.PipelineRun
-	component   *applicationapiv1alpha1.Component
-	application *applicationapiv1alpha1.Application
-	loader      loader.ObjectLoader
-	logger      h.IntegrationLogger
-	client      client.Client
-	context     context.Context
-	status      status.StatusInterface
+	pipelineRun     *tektonv1.PipelineRun
+	component       *applicationapiv1alpha1.Component
+	application     *applicationapiv1alpha1.Application
+	componentGroups *[]v1beta2.ComponentGroup
+	loader          loader.ObjectLoader
+	logger          h.IntegrationLogger
+	client          client.Client
+	context         context.Context
+	status          status.StatusInterface
 }
 
-// NewAdapter creates and returns an Adapter instance.
-func NewAdapter(context context.Context, pipelineRun *tektonv1.PipelineRun, component *applicationapiv1alpha1.Component, application *applicationapiv1alpha1.Application,
+// NewAdapterFromApplication creates and returns an Adapter instance when the component belongs to an Application
+func NewAdapterFromApplication(context context.Context, pipelineRun *tektonv1.PipelineRun, component *applicationapiv1alpha1.Component, application *applicationapiv1alpha1.Application,
 	logger h.IntegrationLogger, loader loader.ObjectLoader, client client.Client,
 ) *Adapter {
 	return &Adapter{
-		pipelineRun: pipelineRun,
-		component:   component,
-		application: application,
-		logger:      logger,
-		loader:      loader,
-		client:      client,
-		context:     context,
-		status:      status.NewStatus(logger.Logger, client),
+		pipelineRun:     pipelineRun,
+		component:       component,
+		application:     application,
+		componentGroups: nil,
+		logger:          logger,
+		loader:          loader,
+		client:          client,
+		context:         context,
+		status:          status.NewStatus(logger.Logger, client),
+	}
+}
+
+// NewAdapter creates and returns an Adapter instance
+func NewAdapter(context context.Context, pipelineRun *tektonv1.PipelineRun, component *applicationapiv1alpha1.Component, componentGroups *[]v1beta2.ComponentGroup,
+	logger h.IntegrationLogger, loader loader.ObjectLoader, client client.Client,
+) *Adapter {
+	return &Adapter{
+		pipelineRun:     pipelineRun,
+		component:       component,
+		application:     nil,
+		componentGroups: componentGroups,
+		logger:          logger,
+		loader:          loader,
+		client:          client,
+		context:         context,
+		status:          status.NewStatus(logger.Logger, client),
 	}
 }
 
 // EnsureGlobalCandidateImageUpdated is an operation that ensure the ContainerImage in the Global Candidate List
 // being updated when the build pipelinerun from push event succeeds and is signed.
+// TODO: run only for old component.  Move to snapshot adapter for new component
 func (a *Adapter) EnsureGlobalCandidateImageUpdated() (controller.OperationResult, error) {
 	if !a.shouldUpdateGlobalCandidateList() {
 		return controller.ContinueProcessing()
@@ -122,6 +142,94 @@ func (a *Adapter) EnsureGlobalCandidateImageUpdated() (controller.OperationResul
 // EnsureSnapshotExists is an operation that will ensure that a pipeline Snapshot associated
 // to the build PipelineRun being processed exists. Otherwise, it will create a new pipeline Snapshot.
 func (a *Adapter) EnsureSnapshotExists() (result controller.OperationResult, err error) {
+	// If we are not using ComponentGroups, skip this method
+	// TODO: remove check after migration
+	if a.application != nil {
+		return controller.ContinueProcessing()
+	}
+	// a marker if we should remove finalizer from build PLR
+	var canRemoveFinalizer bool
+
+	defer func() {
+		updateErr := a.updateBuildPipelineRunWithFinalInfo(canRemoveFinalizer, err)
+		if updateErr != nil {
+			if errors.IsNotFound(updateErr) {
+				result, err = controller.ContinueProcessing()
+			} else {
+				a.logger.Error(updateErr, "Failed to update build pipelineRun")
+				result, err = controller.RequeueWithError(updateErr)
+			}
+		}
+	}()
+
+	if !h.HasPipelineRunSucceeded(a.pipelineRun) {
+		a.handleUnsuccessfulPipelineRun(&canRemoveFinalizer)
+		return controller.ContinueProcessing()
+	}
+
+	if _, found := a.pipelineRun.Annotations[tektonconsts.PipelineRunChainsSignedAnnotation]; !found {
+		err := fmt.Errorf("not processing the pipelineRun because it's not yet signed with Chains")
+		a.logger.Error(err, "Not processing the pipelineRun because it's not yet signed with Chains")
+		return controller.RequeueOnErrorOrContinue(err)
+	}
+
+	if _, found := a.pipelineRun.Annotations[tektonconsts.SnapshotNameLabel]; found {
+		a.logger.Info("The build pipelineRun is already associated with existing Snapshot via annotation",
+			"snapshot.Name", a.pipelineRun.Annotations[tektonconsts.SnapshotNameLabel])
+		canRemoveFinalizer = true
+		return controller.ContinueProcessing()
+	}
+
+	existingSnapshots, err := a.loader.GetAllSnapshotsForBuildPipelineRun(a.context, a.client, a.pipelineRun)
+	if err != nil {
+		a.logger.Error(err, "Failed to fetch Snapshots for the build pipelineRun")
+		return controller.RequeueWithError(err)
+	}
+	if len(*existingSnapshots) > 0 {
+		result, err = a.ensureBuildPLRSWithSnapshotAnnotation(&canRemoveFinalizer, existingSnapshots)
+		return result, err
+	}
+
+	for _, componentGroup := range *a.componentGroups {
+		expectedSnapshot, err := snapshot.PrepareSnapshotForPipelineRun(a.context, a.client, a.pipelineRun, a.component.Name, &componentGroup, a.loader)
+		if err != nil {
+			return a.updatePipelineRunWithCustomizedError(&canRemoveFinalizer, err, a.context, a.pipelineRun, a.client, a.logger)
+		}
+
+		// Try to create snapshot, retry with suffix on collision
+		err = snapshot.CreateSnapshotWithCollisionHandling(a.context, a.client, a.pipelineRun, expectedSnapshot, a.logger)
+		if err != nil {
+			result, err = a.handleSnapshotCreationFailure(&canRemoveFinalizer, err)
+			return result, err
+		}
+
+		a.logger.LogAuditEvent("Created new Snapshot", expectedSnapshot, h.LogActionAdd,
+			"snapshot.Name", expectedSnapshot.Name,
+			"snapshot.Spec.Components", expectedSnapshot.Spec.Components)
+
+		// TODO: update this function to make annotation a list rather than a single value
+		err = a.annotateBuildPipelineRunWithSnapshot(expectedSnapshot)
+		if err != nil {
+			a.logger.Error(err, "Failed to update the build pipelineRun with new annotations",
+				"pipelineRun.Name", a.pipelineRun.Name)
+			return controller.RequeueWithError(err)
+		}
+	}
+
+	canRemoveFinalizer = true
+	return controller.ContinueProcessing()
+}
+
+// EnsureSnapshotExistsApplication is an operation that will ensure that a pipeline Snapshot associated
+// to the build PipelineRun being processed exists. Otherwise, it will create a new pipeline Snapshot.
+// NOTE: This method is for the old (component/application) model. PLRS associated with the new model
+// will run EnsureSnapshotExists() instead.
+// TODO: remove after migration
+func (a *Adapter) EnsureSnapshotExistsApplication() (result controller.OperationResult, err error) {
+	// If we are using ComponentGroups, skip this method
+	if a.application == nil {
+		return controller.ContinueProcessing()
+	}
 	// a marker if we should remove finalizer from build PLR
 	var canRemoveFinalizer bool
 
@@ -335,11 +443,28 @@ func (a *Adapter) EnsureIntegrationTestReportedToGitProvider() (controller.Opera
 
 	a.logger.Info(fmt.Sprintf("try to set integration test status according to the build PLR status %s", integrationTestStatus.String()))
 
-	allIntegrationTestScenarios, err := a.loader.GetAllIntegrationTestScenariosForApplication(a.context, a.client, a.application)
-	if err != nil {
-		a.logger.Error(err, "Failed to get integration test scenarios for the following application",
-			"Application.Namespace", a.application.Namespace, "Application.Name", a.application.Name)
-		return controller.RequeueWithError(err)
+	// TODO: remove application section after migration
+	var allIntegrationTestScenarios *[]v1beta2.IntegrationTestScenario
+	if a.application != nil {
+		allIntegrationTestScenarios, err = a.loader.GetAllIntegrationTestScenariosForApplication(a.context, a.client, a.application)
+		if err != nil {
+			a.logger.Error(err, "Failed to get integration test scenarios for the following application",
+				"Application.Namespace", a.application.Namespace, "Application.Name", a.application.Name)
+			return controller.RequeueWithError(err)
+		}
+	} else {
+		// TODO: Create loader function
+		allIntegrationTestScenarios, err = a.loader.GetAllIntegrationTestScenariosForComponentGroups(a.context, a.client, a.componentGroups)
+		if err != nil {
+			ns := a.componentGroups[0].Namespace
+			componentGroupNames := []string{}
+			for _, c := range *a.componentGroups {
+				componentGroupNames = append(componentGroupNames, c.Name)
+			}
+			a.logger.Error(err, "Failed to get integration test scenarios for the following componentGroups",
+				"Application.Namespace", ns, "ComponentGroups", componentGroupNames)
+			return controller.RequeueWithError(err)
+		}
 	}
 
 	if allIntegrationTestScenarios == nil {
@@ -479,43 +604,6 @@ func (a *Adapter) EnsureSupercededSnapshotsCanceled() (result controller.Operati
 	return controller.ContinueProcessing()
 }
 
-// getImagePullSpecFromPipelineRun gets the full image pullspec from the given build PipelineRun,
-// In case the Image pullspec can't be composed, an error will be returned.
-func (a *Adapter) getImagePullSpecFromPipelineRun(pipelineRun *tektonv1.PipelineRun) (string, error) {
-	outputImage, err := tekton.GetOutputImage(pipelineRun)
-	if err != nil {
-		return "", err
-	}
-	imageDigest, err := tekton.GetOutputImageDigest(pipelineRun)
-	if err != nil {
-		return "", err
-	}
-	return fmt.Sprintf("%s@%s", strings.Split(outputImage, ":")[0], imageDigest), nil
-}
-
-// getComponentSourceFromPipelineRun gets the component Git Source for the Component built in the given build PipelineRun,
-// In case the Git Source can't be composed, an error will be returned.
-func (a *Adapter) getComponentSourceFromPipelineRun(pipelineRun *tektonv1.PipelineRun) (*applicationapiv1alpha1.ComponentSource, error) {
-	componentSourceGitUrl, err := tekton.GetComponentSourceGitUrl(pipelineRun)
-	if err != nil {
-		return nil, err
-	}
-	componentSourceGitCommit, err := tekton.GetComponentSourceGitCommit(pipelineRun)
-	if err != nil {
-		return nil, err
-	}
-	componentSource := applicationapiv1alpha1.ComponentSource{
-		ComponentSourceUnion: applicationapiv1alpha1.ComponentSourceUnion{
-			GitSource: &applicationapiv1alpha1.GitSource{
-				URL:      componentSourceGitUrl,
-				Revision: componentSourceGitCommit,
-			},
-		},
-	}
-
-	return &componentSource, nil
-}
-
 // notifySnapshotsInGroupAboutBuild tries to find the latest group Snapshot and notify it about the failed build.
 // If the group Snapshot can't be found, find the component Snapshots that would belong to the same group and notify them instead.
 func (a *Adapter) notifySnapshotsInGroupAboutBuild(pipelineRun *tektonv1.PipelineRun, message string) error {
@@ -578,11 +666,11 @@ func (a *Adapter) notifySnapshotsInGroupAboutBuild(pipelineRun *tektonv1.Pipelin
 // prepareSnapshotForPipelineRun prepares the Snapshot for a given PipelineRun,
 // component and application. In case the Snapshot can't be created, an error will be returned.
 func (a *Adapter) prepareSnapshotForPipelineRun(pipelineRun *tektonv1.PipelineRun, component *applicationapiv1alpha1.Component, application *applicationapiv1alpha1.Application) (*applicationapiv1alpha1.Snapshot, error) {
-	newContainerImage, err := a.getImagePullSpecFromPipelineRun(pipelineRun)
+	newContainerImage, err := tekton.GetImagePullSpecFromPipelineRun(pipelineRun)
 	if err != nil {
 		return nil, err
 	}
-	componentSource, err := a.getComponentSourceFromPipelineRun(pipelineRun)
+	componentSource, err := tekton.GetComponentSourceFromPipelineRun(pipelineRun)
 	if err != nil {
 		return nil, err
 	}
@@ -598,7 +686,7 @@ func (a *Adapter) prepareSnapshotForPipelineRun(pipelineRun *tektonv1.PipelineRu
 	}
 
 	prefixes := []string{gitops.BuildPipelineRunPrefix, gitops.TestLabelPrefix, gitops.CustomLabelPrefix, gitops.ReleaseLabelPrefix}
-	gitops.CopySnapshotLabelsAndAnnotations(application, snapshot, a.component.Name, &pipelineRun.ObjectMeta, prefixes)
+	gitops.CopySnapshotLabelsAndAnnotations(application, snapshot, a.component.Name, &pipelineRun.ObjectMeta, prefixes, true)
 
 	snapshot.Labels[gitops.BuildPipelineRunNameLabel] = pipelineRun.Name
 	if pipelineRun.Status.CompletionTime != nil {
@@ -861,7 +949,7 @@ func (a *Adapter) prepareTempComponentSnapshot(pipelineRun *tektonv1.PipelineRun
 		},
 	}
 	prefixes := []string{gitops.BuildPipelineRunPrefix, gitops.TestLabelPrefix, gitops.CustomLabelPrefix, tektonconsts.ResourceLabelSuffix}
-	gitops.CopySnapshotLabelsAndAnnotations(a.application, tempComponentSnapshot, a.component.Name, &pipelineRun.ObjectMeta, prefixes)
+	gitops.CopySnapshotLabelsAndAnnotations(a.application.ObjectMeta, tempComponentSnapshot, a.component.Name, &pipelineRun.ObjectMeta, prefixes, true)
 	return tempComponentSnapshot
 }
 
@@ -1124,12 +1212,12 @@ func (a *Adapter) shouldUpdateGlobalCandidateList() bool {
 
 // updateGCLForBuildPLR updates global candidate list for component snapshots
 func (a *Adapter) updateGCLForBuildPLR() error {
-	containerImage, err := a.getImagePullSpecFromPipelineRun(a.pipelineRun)
+	containerImage, err := tekton.GetImagePullSpecFromPipelineRun(a.pipelineRun)
 	if err != nil {
 		return nil
 	}
 
-	componentSource, err := a.getComponentSourceFromPipelineRun(a.pipelineRun)
+	componentSource, err := tekton.GetComponentSourceFromPipelineRun(a.pipelineRun)
 	if err != nil {
 		return nil
 	}

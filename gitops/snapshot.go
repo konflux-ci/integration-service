@@ -76,7 +76,7 @@ const (
 	// SnapshotTestScenarioLabel contains the name of the Snapshot test scenario.
 	SnapshotTestScenarioLabel = "test.appstudio.openshift.io/scenario"
 
-	// SnapshotTestScenarioLabel contains json data with test results of the particular snapshot
+	// SnapshotTestsStatusAnnotation contains json data with test results of the particular snapshot
 	SnapshotTestsStatusAnnotation = "test.appstudio.openshift.io/status"
 
 	// (Deprecated) SnapshotPRLastUpdate contains timestamp of last time PR was updated
@@ -132,6 +132,9 @@ const (
 
 	// ApplicationNameLabel contains the name of the application
 	ApplicationNameLabel = AppstudioLabelPrefix + "/application"
+
+	// ComponentGroupNameLabel contains the name of the ComponentGroup
+	ComponentGroupNameLabel = AppstudioLabelPrefix + "/component-group"
 
 	// SnapshotComponentType is the type of Snapshot which was created for a single component build.
 	SnapshotComponentType = "component"
@@ -227,10 +230,10 @@ const (
 	// GitRefBranchPrefix is the git prefix denoting a reference is a branch
 	GitRefBranchPrefix = "refs/heads/"
 
-	//AppStudioTestSucceededCondition is the condition for marking if the AppStudio Tests succeeded for the Snapshot.
+	// AppStudioTestSucceededCondition is the condition for marking if the AppStudio Tests succeeded for the Snapshot.
 	AppStudioTestSucceededCondition = "AppStudioTestSucceeded"
 
-	//LegacyTestSucceededCondition is the condition for marking if the AppStudio Tests succeeded for the Snapshot.
+	// LegacyTestSucceededCondition is the condition for marking if the AppStudio Tests succeeded for the Snapshot.
 	LegacyTestSucceededCondition = "HACBSStudioTestSucceeded"
 
 	// AppStudioIntegrationStatusCondition is the condition for marking the AppStudio integration status of the Snapshot.
@@ -244,7 +247,6 @@ const (
 
 	// SnapshotAddedToGlobalCandidateListCondition is the condition for marking if Snapshot's component was added to
 	// the global candidate list.
-	// Checking statusCondition has been replaced by checking annotation test.appstudio.openshift.io/added-to-global-candidate-list now but this statusCondition is still kept
 	SnapshotAddedToGlobalCandidateListCondition = "AddedToGlobalCandidateList"
 
 	// AppStudioTestSucceededConditionSatisfied is the reason that's set when the AppStudio tests succeed.
@@ -262,63 +264,56 @@ const (
 	// AppStudioIntegrationStatusErrorOccured is the reason that's set when the AppStudio integration gets into an error state.
 	AppStudioIntegrationStatusErrorOccured = "ErrorOccured"
 
-	//AppStudioIntegrationStatusInProgress is the reason that's set when the AppStudio tests gets into an in progress state.
+	// AppStudioIntegrationStatusInProgress is the reason that's set when the AppStudio tests gets into an in progress state.
 	AppStudioIntegrationStatusInProgress = "InProgress"
 
-	//AppStudioIntegrationStatusFinished is the reason that's set when the AppStudio tests finish.
+	// AppStudioIntegrationStatusFinished is the reason that's set when the AppStudio tests finish.
 	AppStudioIntegrationStatusFinished = "Finished"
 
-	//AppStudioIntegrationStatusCancelled is the reason that's set when the AppStudio tests pipelinerun gets cancelled.
+	// AppStudioIntegrationStatusCancelled is the reason that's set when the AppStudio tests pipelinerun gets cancelled.
 	AppStudioIntegrationStatusCancelled = "CancelledRunFinally"
 
-	// This annotation helps track PipelineRuns that were stopped before completion, enabling better auditability and observability.
+	// PRGroupCancelledAnnotation helps track PipelineRuns that were stopped before completion.
 	PRGroupCancelledAnnotation = PipelinesAsCodePrefix + "/cancelled"
 
-	// the statuses needed to report to GiHub when creating check run or commit status, see doc
-	// https://docs.github.com/en/rest/guides/using-the-rest-api-to-interact-with-checks?apiVersion=2022-11-28
-	// https://docs.github.com/en/free-pro-team@latest/rest/checks/runs?apiVersion=2022-11-28#create-a-check-run
-	//IntegrationTestStatusPendingGithub is the status reported to github when integration test is in a queue
+	// IntegrationTestStatusPendingGithub is the status reported to github when integration test is in a queue
 	IntegrationTestStatusPendingGithub = "pending"
 
-	//IntegrationTestStatusSuccessGithub is the status reported to github when integration test succeed
+	// IntegrationTestStatusSuccessGithub is the status reported to github when integration test succeed
 	IntegrationTestStatusSuccessGithub = "success"
 
-	//IntegrationTestStatusFailureGithub is the status reported to github when integration test fail
+	// IntegrationTestStatusFailureGithub is the status reported to github when integration test fail
 	IntegrationTestStatusFailureGithub = "failure"
 
-	//IntegrationTestStatusErrorGithub is the status reported to github when integration test experience error
+	// IntegrationTestStatusErrorGithub is the status reported to github when integration test experience error
 	IntegrationTestStatusErrorGithub = "error"
 
-	//IntegrationTestStatusInProgressGithub is the status reported to github when integration test is in progress
+	// IntegrationTestStatusInProgressGithub is the status reported to github when integration test is in progress
 	IntegrationTestStatusInProgressGithub = "in_progress"
 
-	//IntegrationTestStatusCancelledGithub is the status reported to github when integration test is cancelled
+	// IntegrationTestStatusCancelledGithub is the status reported to github when integration test is cancelled
 	IntegrationTestStatusCancelledGithub = "cancelled"
 
-	//IntegrationTestStatusNeutralGithub is the status reported to github when integration test is neutral
+	// IntegrationTestStatusNeutralGithub is the status reported to github when integration test is neutral
 	IntegrationTestStatusNeutralGithub = "neutral"
 
+	// ComponentNameForGroupSnapshot is the component name used for group snapshots
 	ComponentNameForGroupSnapshot = "pr group"
 
+	// FailedToCreateGroupSnapshotMsg is the message when group snapshot creation fails
 	FailedToCreateGroupSnapshotMsg = "Failed to create group snapshot for pr group"
 
+	// GroupSnapshotCreationFailureReported is the message when group snapshot creation failure is reported to git provider
 	GroupSnapshotCreationFailureReported = "group snapshot creation failure is reported to git provider"
 
 	// PRStatusMerged indicates that the PR has been merged
 	PRStatusMerged = "merged"
 
+	// Success is the success status value
 	Success = "Success"
-	// AddedToGlobalCandidateListAnnotation is the annotation for marking if Snapshot/build PLR's component was added to
-	// the global candidate list.
-	AddedToGlobalCandidateListAnnotation = "test.appstudio.openshift.io/added-to-global-candidate-list"
 
-	// maxPrefixLength is the maximum length of the prefix for the snapshot name
-	// When a suffix is used for collision handling, reduce by 3 to accommodate the 2-char suffix and extra dash
-	// Format: {prefix}-{YYYYMMDD}-{HHMMSS}-{mmm}[-{suffix}]
-	// Without suffix: 43 + 1 + 8 + 1 + 6 + 1 + 3 = 63 chars
-	// With suffix: 40 + 1 + 8 + 1 + 6 + 1 + 3 + 1 + 2 = 63 chars
-	maxPrefixLength           = 43
-	maxPrefixLengthWithSuffix = 40 // 43 - 3 (2 for suffix + 1 for extra dash)
+	// AddedToGlobalCandidateListAnnotation is the annotation for marking if Snapshot/build PLR's component was added to the global candidate list.
+	AddedToGlobalCandidateListAnnotation = "test.appstudio.openshift.io/added-to-global-candidate-list"
 
 	// GitCommentPolicyAnnotation is the annotation to control git comment policy for the component
 	GitCommentPolicyAnnotation = "test.appstudio.openshift.io/comment_strategy"
@@ -329,6 +324,16 @@ const (
 var (
 	// SnapshotComponentLabel contains the name of the updated Snapshot component - it should match the pipeline label.
 	SnapshotComponentLabel = tektonconsts.ComponentNameLabel
+)
+
+const (
+	// maxPrefixLength is the maximum length of the prefix for the snapshot name
+	// When a suffix is used for collision handling, reduce by 3 to accommodate the 2-char suffix and extra dash
+	// Format: {prefix}-{YYYYMMDD}-{HHMMSS}-{mmm}[-{suffix}]
+	// Without suffix: 43 + 1 + 8 + 1 + 6 + 1 + 3 = 63 chars
+	// With suffix: 40 + 1 + 8 + 1 + 6 + 1 + 3 + 1 + 2 = 63 chars
+	maxPrefixLength           = 43
+	maxPrefixLengthWithSuffix = 40 // 43 - 3 (2 for suffix + 1 for extra dash)
 )
 
 // ComponentSnapshotInfo contains data about the component snapshots' info in group snapshot
@@ -824,7 +829,7 @@ func IsSnapshotCreatedByPACMergeQueueEvent(snapshot *applicationapiv1alpha1.Snap
 }
 
 // IsSnapshotCreatedByPACPushEvent checks if a snapshot has label PipelineAsCodeEventTypeLabel and with push value
-// it the label doesn't exist for some manual snapshot
+// it te label doesn't exist for some manual snapshot
 func IsSnapshotCreatedByPACPushEvent(snapshot *applicationapiv1alpha1.Snapshot) bool {
 	return !IsSnapshotCreatedByPACMergeQueueEvent(snapshot) && !IsGroupSnapshot(snapshot) &&
 		(metadata.HasLabelWithValue(snapshot, PipelineAsCodeEventTypeLabel, PipelineAsCodePushType) ||
@@ -1132,7 +1137,9 @@ func ResetSnapshotStatusConditions(ctx context.Context, adapterClient client.Cli
 
 // CopySnapshotLabelsAndAnnotations coppies labels and annotations from build pipelineRun or tested snapshot
 // into regular snapshot
-func CopySnapshotLabelsAndAnnotations(application *applicationapiv1alpha1.Application, snapshot *applicationapiv1alpha1.Snapshot, componentName string, source *metav1.ObjectMeta, prefixes []string) {
+// ObjectMeta: metav1.ObjectMeta{
+// TODO: replace 'object' with 'componentGroup' after application is deprecated. Also delete Application bool
+func CopySnapshotLabelsAndAnnotations(object *metav1.ObjectMeta, snapshot *applicationapiv1alpha1.Snapshot, componentName string, source *metav1.ObjectMeta, prefixes []string, objectIsApplication bool) {
 
 	if snapshot.Labels == nil {
 		snapshot.Labels = map[string]string{}
@@ -1144,7 +1151,12 @@ func CopySnapshotLabelsAndAnnotations(application *applicationapiv1alpha1.Applic
 	snapshot.Labels[SnapshotTypeLabel] = SnapshotComponentType
 
 	snapshot.Labels[SnapshotComponentLabel] = componentName
-	snapshot.Labels[ApplicationNameLabel] = application.Name
+	if objectIsApplication {
+		snapshot.Labels[ApplicationNameLabel] = object.Name
+	} else {
+		// the object is a ComponentGroup
+		snapshot.Labels[ComponentGroupNameLabel] = object.Name
+	}
 
 	// Copy PAC annotations/labels from source(tested snapshot or pipelinerun) to snapshot.
 	_ = metadata.CopyLabelsWithPrefixReplacement(source, &snapshot.ObjectMeta, "pipelinesascode.tekton.dev", PipelinesAsCodePrefix)
