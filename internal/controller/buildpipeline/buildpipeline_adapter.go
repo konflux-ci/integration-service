@@ -462,7 +462,7 @@ func (a *Adapter) EnsureSupercededSnapshotsCanceled() (result controller.Operati
 	for _, snapshot := range *snapshots {
 		err := retry.OnError(retry.DefaultRetry, func(e error) bool { return true }, func() error {
 			var e error
-			if !gitops.HaveAppStudioTestsFinished(&snapshot) {
+			if !gitops.HaveAppStudioTestsFinished(&snapshot) && !gitops.IgnoreSupersession(snapshot.ObjectMeta) {
 				a.logger.Info(fmt.Sprintf("Snapshot %s has been superseded by build PLR %s. Canceling snapshot and its pipelineRuns", snapshot.Name, a.pipelineRun.Name))
 				e = a.cancelAllPipelineRunsForSnapshot(&snapshot)
 				if e != nil {
