@@ -24,6 +24,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
+	"time"
 
 	forgejo "codeberg.org/mvdkleijn/forgejo-sdk/forgejo/v2"
 	"github.com/go-logr/logr"
@@ -34,6 +36,7 @@ import (
 	"github.com/tonglil/buflogr"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/konflux-ci/integration-service/gitops"
@@ -357,6 +360,195 @@ var _ = Describe("ForgejoReporter", func() {
 			statusCode, err := reporter.UpdateStatusInComment(commentPrefix, commentText)
 			Expect(err).To(Succeed())
 			Expect(statusCode).To(Equal(201))
+		})
+	})
+
+	Context("when testing retry behavior", func() {
+		var (
+			secretData    map[string][]byte
+			repoCR        pacv1alpha1.Repository
+			reporter      *status.ForgejoReporter
+			defaultAPIURL = "/api/v1"
+			mux           *http.ServeMux
+			server        *httptest.Server
+			savedBackoff  wait.Backoff
+		)
+
+		BeforeEach(func() {
+			buf.Reset()
+
+			savedBackoff = status.GetReporterRetryBackoff()
+			status.SetReporterRetryBackoff(wait.Backoff{
+				Steps:    5,
+				Duration: 1 * time.Millisecond,
+				Factor:   1.0,
+				Jitter:   0.0,
+			})
+
+			mux = http.NewServeMux()
+			apiHandler := http.NewServeMux()
+			apiHandler.Handle(defaultAPIURL+"/", http.StripPrefix(defaultAPIURL, mux))
+
+			mux.HandleFunc("/version", func(rw http.ResponseWriter, r *http.Request) {
+				rw.Header().Set("Content-Type", "application/json")
+				fmt.Fprintf(rw, `{"version": "1.20.0"}`)
+			})
+
+			server = httptest.NewServer(apiHandler)
+
+			mockRepoURL := fmt.Sprintf("%s/%s/%s", server.URL, owner, repo)
+			hasSnapshot.Annotations[gitops.PipelineAsCodeRepoURLAnnotation] = mockRepoURL
+
+			repoCR = pacv1alpha1.Repository{
+				Spec: pacv1alpha1.RepositorySpec{
+					URL: mockRepoURL,
+					GitProvider: &pacv1alpha1.GitProvider{
+						Secret: &pacv1alpha1.Secret{
+							Name: "example-secret-name",
+							Key:  "example-token",
+						},
+					},
+				},
+			}
+
+			secretData = map[string][]byte{
+				"example-token": []byte("example-personal-access-token"),
+			}
+
+			mockK8sClient = &MockK8sClient{
+				getInterceptor: func(key client.ObjectKey, obj client.Object) {
+					if secret, ok := obj.(*v1.Secret); ok {
+						secret.Data = secretData
+					}
+				},
+				listInterceptor: func(list client.ObjectList) {
+					if repoList, ok := list.(*pacv1alpha1.RepositoryList); ok {
+						repoList.Items = []pacv1alpha1.Repository{repoCR}
+					}
+				},
+			}
+
+			reporter = status.NewForgejoReporter(log, mockK8sClient)
+			statusCode, err := reporter.Initialize(context.TODO(), hasSnapshot)
+			Expect(err).To(Succeed())
+			Expect(statusCode).To(Equal(0))
+		})
+
+		AfterEach(func() {
+			server.Close()
+			status.SetReporterRetryBackoff(savedBackoff)
+		})
+
+		It("retries on transient 500 error and succeeds on retry", func() {
+			var callCount int32
+
+			path := fmt.Sprintf("/repos/%s/%s/statuses/%s", owner, repo, digest)
+			mux.HandleFunc(path, func(rw http.ResponseWriter, r *http.Request) {
+				if r.Method != "POST" {
+					rw.WriteHeader(http.StatusMethodNotAllowed)
+					return
+				}
+				call := atomic.AddInt32(&callCount, 1)
+				if call == 1 {
+					rw.WriteHeader(http.StatusInternalServerError)
+					fmt.Fprintf(rw, `{"error": "internal server error"}`)
+					return
+				}
+				rw.WriteHeader(http.StatusOK)
+				rw.Header().Set("Content-Type", "application/json")
+				fmt.Fprintf(rw, `{"id": 123, "state": "success", "context": "test"}`)
+			})
+
+			statusCode, err := reporter.ReportStatus(context.TODO(), status.TestReport{
+				FullName:     "fullname/scenario1",
+				ScenarioName: "scenario1",
+				Status:       integrationteststatus.IntegrationTestStatusTestPassed,
+				Summary:      "test passed",
+			})
+
+			Expect(err).To(Succeed())
+			Expect(statusCode).To(Equal(http.StatusOK))
+			Expect(atomic.LoadInt32(&callCount)).To(BeNumerically("==", 2))
+			Expect(buf.String()).To(ContainSubstring("retrying to set forgejo commit status after transient error"))
+		})
+
+		It("does not retry on 401 Unauthorized", func() {
+			var callCount int32
+
+			path := fmt.Sprintf("/repos/%s/%s/statuses/%s", owner, repo, digest)
+			mux.HandleFunc(path, func(rw http.ResponseWriter, r *http.Request) {
+				if r.Method != "POST" {
+					rw.WriteHeader(http.StatusMethodNotAllowed)
+					return
+				}
+				atomic.AddInt32(&callCount, 1)
+				rw.WriteHeader(http.StatusUnauthorized)
+				fmt.Fprintf(rw, `{"error": "unauthorized"}`)
+			})
+
+			statusCode, err := reporter.ReportStatus(context.TODO(), status.TestReport{
+				FullName:     "fullname/scenario1",
+				ScenarioName: "scenario1",
+				Status:       integrationteststatus.IntegrationTestStatusTestPassed,
+				Summary:      "test passed",
+			})
+
+			Expect(err).To(HaveOccurred())
+			Expect(statusCode).To(Equal(http.StatusUnauthorized))
+			Expect(atomic.LoadInt32(&callCount)).To(BeNumerically("==", 1))
+		})
+
+		It("does not retry on 403 Forbidden", func() {
+			var callCount int32
+
+			path := fmt.Sprintf("/repos/%s/%s/statuses/%s", owner, repo, digest)
+			mux.HandleFunc(path, func(rw http.ResponseWriter, r *http.Request) {
+				if r.Method != "POST" {
+					rw.WriteHeader(http.StatusMethodNotAllowed)
+					return
+				}
+				atomic.AddInt32(&callCount, 1)
+				rw.WriteHeader(http.StatusForbidden)
+				fmt.Fprintf(rw, `{"error": "forbidden"}`)
+			})
+
+			statusCode, err := reporter.ReportStatus(context.TODO(), status.TestReport{
+				FullName:     "fullname/scenario1",
+				ScenarioName: "scenario1",
+				Status:       integrationteststatus.IntegrationTestStatusTestPassed,
+				Summary:      "test passed",
+			})
+
+			Expect(err).To(HaveOccurred())
+			Expect(statusCode).To(Equal(http.StatusForbidden))
+			Expect(atomic.LoadInt32(&callCount)).To(BeNumerically("==", 1))
+		})
+
+		It("exhausts all retries on persistent 500 errors", func() {
+			var callCount int32
+
+			path := fmt.Sprintf("/repos/%s/%s/statuses/%s", owner, repo, digest)
+			mux.HandleFunc(path, func(rw http.ResponseWriter, r *http.Request) {
+				if r.Method != "POST" {
+					rw.WriteHeader(http.StatusMethodNotAllowed)
+					return
+				}
+				atomic.AddInt32(&callCount, 1)
+				rw.WriteHeader(http.StatusInternalServerError)
+				fmt.Fprintf(rw, `{"error": "internal server error"}`)
+			})
+
+			statusCode, err := reporter.ReportStatus(context.TODO(), status.TestReport{
+				FullName:     "fullname/scenario1",
+				ScenarioName: "scenario1",
+				Status:       integrationteststatus.IntegrationTestStatusTestPassed,
+				Summary:      "test passed",
+			})
+
+			Expect(err).To(HaveOccurred())
+			Expect(statusCode).To(Equal(http.StatusInternalServerError))
+			Expect(atomic.LoadInt32(&callCount)).To(BeNumerically("==", 5))
+			Expect(buf.String()).To(ContainSubstring("failed to set forgejo commit status after all retries"))
 		})
 	})
 
