@@ -432,18 +432,7 @@ func (a *Adapter) EnsureGlobalCandidateImageUpdated() (controller.OperationResul
 		return controller.ContinueProcessing()
 	}
 
-	var err error
-
-	if gitops.IsComponentSnapshot(a.snapshot) {
-		if a.isSnapshotOlderThanLastBuild(a.snapshot) {
-			a.logger.Info("The Glocal Candidate list was updated in newer build pipelinerun or snapshot")
-		} else {
-			err = a.updateGCLForComponentSnapshot()
-		}
-	} else if gitops.IsOverrideSnapshot(a.snapshot) {
-		err = a.updateGCLForOverrideSnapshot()
-	}
-
+	err := a.updateGCLForOverrideSnapshot()
 	if err != nil {
 		return controller.RequeueWithError(err)
 	}
@@ -472,8 +461,8 @@ func (a *Adapter) EnsureGlobalCandidateImageUpdated() (controller.OperationResul
 
 // shouldUpdateGlobalCandidateList checks if the snapshot should update the global candidate list
 func (a *Adapter) shouldUpdateGlobalCandidateList() bool {
-	if !gitops.IsComponentSnapshotCreatedByPACPushEvent(a.snapshot) && !gitops.IsOverrideSnapshot(a.snapshot) {
-		a.logger.Info("The Snapshot was neither created for a single component push event nor override type, not updating the global candidate list.")
+	if !gitops.IsOverrideSnapshot(a.snapshot) {
+		a.logger.Info("The Snapshot was not override type, will not update the global candidate list.")
 		return false
 	}
 
@@ -484,34 +473,6 @@ func (a *Adapter) shouldUpdateGlobalCandidateList() bool {
 	}
 
 	return true
-}
-
-// updateGCLForComponentSnapshot updates global candidate list for component snapshots
-func (a *Adapter) updateGCLForComponentSnapshot() error {
-	var componentToUpdate *applicationapiv1alpha1.Component
-	var err error
-
-	err = retry.OnError(retry.DefaultRetry, func(_ error) bool { return true }, func() error {
-		componentToUpdate, err = a.loader.GetComponentFromSnapshot(a.context, a.client, a.snapshot)
-		return err
-	})
-	if err != nil {
-		_, loaderError := h.HandleLoaderError(a.logger, err, fmt.Sprintf("Component or '%s' label", tektonconsts.ComponentNameLabel), "Snapshot")
-		if loaderError != nil {
-			return loaderError
-		}
-		return nil // Continue processing if no loader error
-	}
-
-	// Find and update the matching snapshot component
-	for _, snapshotComponent := range a.snapshot.Spec.Components {
-		snapshotComponent := snapshotComponent //G601
-		if snapshotComponent.Name == componentToUpdate.Name {
-			return gitops.UpdateComponentImageAndSource(a.context, a.client, a.snapshot, componentToUpdate, snapshotComponent.Source, snapshotComponent.ContainerImage)
-		}
-	}
-
-	return nil
 }
 
 // updateGCLForOverrideSnapshot handles updating global candidate list for override snapshots
