@@ -369,13 +369,23 @@ func (r *ForgejoReporter) ReportStatus(ctx context.Context, report TestReport) (
 	}
 
 	var err error
-	err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
+	err = retry.OnError(reporterRetryBackoff, func(err error) bool {
+		// statusCode 0 means no HTTP response was received (network/timeout error), always retry
+		retryable := statusCode == 0 || !r.ReturnCodeIsUnrecoverable(statusCode)
+		if retryable {
+			r.logger.Info("retrying to set forgejo commit status after transient error",
+				"scenario.name", report.ScenarioName, "statusCode", statusCode, "error", err.Error())
+		}
+		return retryable
+	}, func() error {
+		statusCode = 0 // reset before each attempt to avoid stale values
 		statusCode, err = r.setCommitStatus(report)
 		return err
 	})
 
 	if err != nil {
-		r.logger.Error(err, "failed to set forgejo commit status, please refer to the comment created on the PR")
+		r.logger.Error(err, "failed to set forgejo commit status after all retries, please refer to the comment created on the PR",
+			"scenario.name", report.ScenarioName, "statusCode", statusCode)
 		return statusCode, err
 	}
 	return statusCode, nil
