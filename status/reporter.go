@@ -27,6 +27,7 @@ import (
 	pacv1alpha1 "github.com/openshift-pipelines/pipelines-as-code/pkg/apis/pipelinesascode/v1alpha1"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
@@ -34,6 +35,15 @@ import (
 	"github.com/konflux-ci/integration-service/helpers"
 	intgteststat "github.com/konflux-ci/integration-service/pkg/integrationteststatus"
 )
+
+// reporterRetryBackoff defines the retry backoff for transient git provider API errors (GitLab, GitHub, Forgejo).
+// Retries up to 5 times with exponential backoff: ~1s, ~2s, ~4s, ~8s, ~16s.
+var reporterRetryBackoff = wait.Backoff{
+	Steps:    5,
+	Duration: 1 * time.Second,
+	Factor:   2.0,
+	Jitter:   0.1,
+}
 
 type TestReport struct {
 	// FullName describing the snapshot and integration test

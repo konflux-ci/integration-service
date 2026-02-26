@@ -24,6 +24,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
+	"time"
 
 	"github.com/go-logr/logr"
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
@@ -34,6 +36,7 @@ import (
 	gitlab "gitlab.com/gitlab-org/api/client-go"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/konflux-ci/integration-service/gitops"
@@ -332,6 +335,198 @@ var _ = Describe("GitLabReporter", func() {
 			Expect(statusCode).To(Equal(201))
 		})
 	})
+	Context("when testing retry behavior", func() {
+		var (
+			secretData    map[string][]byte
+			repo          pacv1alpha1.Repository
+			reporter      *status.GitLabReporter
+			defaultAPIURL = "/api/v4"
+			mux           *http.ServeMux
+			server        *httptest.Server
+			savedBackoff  wait.Backoff
+		)
+
+		BeforeEach(func() {
+			buf.Reset()
+
+			savedBackoff = status.GetReporterRetryBackoff()
+			status.SetReporterRetryBackoff(wait.Backoff{
+				Steps:    5,
+				Duration: 1 * time.Millisecond,
+				Factor:   1.0,
+				Jitter:   0.0,
+			})
+
+			mux = http.NewServeMux()
+			apiHandler := http.NewServeMux()
+			apiHandler.Handle(defaultAPIURL+"/", http.StripPrefix(defaultAPIURL, mux))
+			server = httptest.NewServer(apiHandler)
+
+			hasSnapshot.Annotations[gitops.PipelineAsCodeRepoURLAnnotation] = server.URL
+
+			repo = pacv1alpha1.Repository{
+				Spec: pacv1alpha1.RepositorySpec{
+					URL: server.URL,
+					GitProvider: &pacv1alpha1.GitProvider{
+						Secret: &pacv1alpha1.Secret{
+							Name: "example-secret-name",
+							Key:  "example-token",
+						},
+					},
+				},
+			}
+
+			secretData = map[string][]byte{
+				"example-token": []byte("example-personal-access-token"),
+			}
+
+			mockK8sClient = &MockK8sClient{
+				getInterceptor: func(key client.ObjectKey, obj client.Object) {
+					if secret, ok := obj.(*v1.Secret); ok {
+						secret.Data = secretData
+					}
+				},
+				listInterceptor: func(list client.ObjectList) {
+					if repoList, ok := list.(*pacv1alpha1.RepositoryList); ok {
+						repoList.Items = []pacv1alpha1.Repository{repo}
+					}
+				},
+			}
+
+			reporter = status.NewGitLabReporter(log, mockK8sClient)
+			statusCode, err := reporter.Initialize(context.TODO(), hasSnapshot)
+			Expect(err).To(Succeed())
+			Expect(statusCode).To(Equal(0))
+		})
+
+		AfterEach(func() {
+			server.Close()
+			status.SetReporterRetryBackoff(savedBackoff)
+		})
+
+		// Note: GitLab Go client has internal retryablehttp that retries on >= 500,
+		// so we use 422 (not in the unrecoverable list) to test our retry.OnError logic
+		// without interference from the client's internal retries.
+		It("retries on recoverable error and succeeds on retry", func() {
+			var sourceCallCount int32
+
+			sourcePath := fmt.Sprintf("/projects/%s/statuses/%s", sourceProjectID, digest)
+			mux.HandleFunc(sourcePath, func(rw http.ResponseWriter, r *http.Request) {
+				call := atomic.AddInt32(&sourceCallCount, 1)
+				if call == 1 {
+					rw.WriteHeader(http.StatusUnprocessableEntity)
+					fmt.Fprintf(rw, `{"error": "unprocessable"}`)
+					return
+				}
+				rw.WriteHeader(http.StatusOK)
+				fmt.Fprintf(rw, `{"id": 1, "status": "success"}`)
+			})
+
+			targetPath := fmt.Sprintf("/projects/%s/statuses/%s", targetProjectID, digest)
+			mux.HandleFunc(targetPath, func(rw http.ResponseWriter, r *http.Request) {
+				rw.WriteHeader(http.StatusUnprocessableEntity)
+				fmt.Fprintf(rw, `{"error": "unprocessable"}`)
+			})
+
+			statusCode, err := reporter.ReportStatus(context.TODO(), status.TestReport{
+				FullName:     "fullname/scenario1",
+				ScenarioName: "scenario1",
+				Status:       integrationteststatus.IntegrationTestStatusTestPassed,
+				Summary:      "test passed",
+			})
+
+			Expect(err).To(Succeed())
+			Expect(statusCode).To(Equal(http.StatusOK))
+			Expect(atomic.LoadInt32(&sourceCallCount)).To(BeNumerically("==", 2))
+			Expect(buf.String()).To(ContainSubstring("retrying to set gitlab commit status after transient error"))
+		})
+
+		It("does not retry on 401 Unauthorized", func() {
+			var sourceCallCount int32
+
+			sourcePath := fmt.Sprintf("/projects/%s/statuses/%s", sourceProjectID, digest)
+			mux.HandleFunc(sourcePath, func(rw http.ResponseWriter, r *http.Request) {
+				atomic.AddInt32(&sourceCallCount, 1)
+				rw.WriteHeader(http.StatusUnauthorized)
+				fmt.Fprintf(rw, `{"error": "unauthorized"}`)
+			})
+
+			targetPath := fmt.Sprintf("/projects/%s/statuses/%s", targetProjectID, digest)
+			mux.HandleFunc(targetPath, func(rw http.ResponseWriter, r *http.Request) {
+				rw.WriteHeader(http.StatusUnauthorized)
+				fmt.Fprintf(rw, `{"error": "unauthorized"}`)
+			})
+
+			statusCode, err := reporter.ReportStatus(context.TODO(), status.TestReport{
+				FullName:     "fullname/scenario1",
+				ScenarioName: "scenario1",
+				Status:       integrationteststatus.IntegrationTestStatusTestPassed,
+				Summary:      "test passed",
+			})
+
+			Expect(err).To(HaveOccurred())
+			Expect(statusCode).To(Equal(http.StatusUnauthorized))
+			Expect(atomic.LoadInt32(&sourceCallCount)).To(BeNumerically("==", 1))
+		})
+
+		It("does not retry on 403 Forbidden", func() {
+			var sourceCallCount int32
+
+			sourcePath := fmt.Sprintf("/projects/%s/statuses/%s", sourceProjectID, digest)
+			mux.HandleFunc(sourcePath, func(rw http.ResponseWriter, r *http.Request) {
+				atomic.AddInt32(&sourceCallCount, 1)
+				rw.WriteHeader(http.StatusForbidden)
+				fmt.Fprintf(rw, `{"error": "forbidden"}`)
+			})
+
+			targetPath := fmt.Sprintf("/projects/%s/statuses/%s", targetProjectID, digest)
+			mux.HandleFunc(targetPath, func(rw http.ResponseWriter, r *http.Request) {
+				rw.WriteHeader(http.StatusForbidden)
+				fmt.Fprintf(rw, `{"error": "forbidden"}`)
+			})
+
+			statusCode, err := reporter.ReportStatus(context.TODO(), status.TestReport{
+				FullName:     "fullname/scenario1",
+				ScenarioName: "scenario1",
+				Status:       integrationteststatus.IntegrationTestStatusTestPassed,
+				Summary:      "test passed",
+			})
+
+			Expect(err).To(HaveOccurred())
+			Expect(statusCode).To(Equal(http.StatusForbidden))
+			Expect(atomic.LoadInt32(&sourceCallCount)).To(BeNumerically("==", 1))
+		})
+
+		It("exhausts all retries on persistent recoverable errors", func() {
+			var sourceCallCount int32
+
+			sourcePath := fmt.Sprintf("/projects/%s/statuses/%s", sourceProjectID, digest)
+			mux.HandleFunc(sourcePath, func(rw http.ResponseWriter, r *http.Request) {
+				atomic.AddInt32(&sourceCallCount, 1)
+				rw.WriteHeader(http.StatusUnprocessableEntity)
+				fmt.Fprintf(rw, `{"error": "unprocessable"}`)
+			})
+
+			targetPath := fmt.Sprintf("/projects/%s/statuses/%s", targetProjectID, digest)
+			mux.HandleFunc(targetPath, func(rw http.ResponseWriter, r *http.Request) {
+				rw.WriteHeader(http.StatusUnprocessableEntity)
+				fmt.Fprintf(rw, `{"error": "unprocessable"}`)
+			})
+
+			statusCode, err := reporter.ReportStatus(context.TODO(), status.TestReport{
+				FullName:     "fullname/scenario1",
+				ScenarioName: "scenario1",
+				Status:       integrationteststatus.IntegrationTestStatusTestPassed,
+				Summary:      "test passed",
+			})
+
+			Expect(err).To(HaveOccurred())
+			Expect(statusCode).To(Equal(http.StatusUnprocessableEntity))
+			Expect(atomic.LoadInt32(&sourceCallCount)).To(BeNumerically("==", 5))
+			Expect(buf.String()).To(ContainSubstring("failed to set gitlab commit status after all retries"))
+		})
+	})
+
 	Describe("Test helper functions", func() {
 
 		DescribeTable(
