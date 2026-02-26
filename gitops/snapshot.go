@@ -1505,7 +1505,11 @@ func UpdateComponentImageAndSource(ctx context.Context, adapterClient client.Cli
 			buildTimeStr = strconv.FormatInt(pr.Status.StartTime.Unix(), 10)
 		}
 	}
-	if _, ok := object.(*applicationapiv1alpha1.Snapshot); ok {
+	// set the last build time annotation according to the time.Now() when the GCL is updated by override snapshot not build pipelinerun
+	if snapshot, ok := object.(*applicationapiv1alpha1.Snapshot); ok {
+		if !IsOverrideSnapshot(snapshot) {
+			return fmt.Errorf("snapshot %s/%s is not an override snapshot, GCL can be updated from build pipelinerun for push event or override snapshot only", snapshot.Namespace, snapshot.Name)
+		}
 		buildTimeStr = strconv.FormatInt(time.Now().Unix(), 10)
 	}
 	return AnnotateComponent(ctx, component, BuildPipelineLastBuiltTime, buildTimeStr, adapterClient)

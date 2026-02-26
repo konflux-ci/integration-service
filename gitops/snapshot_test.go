@@ -898,6 +898,7 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 	})
 
 	It("Ensure UpdateComponentImageAndSource can update component containerImage and source", func() {
+		hasSnapshot.Labels[gitops.SnapshotTypeLabel] = "override"
 		componentSource := applicationapiv1alpha1.ComponentSource{
 			ComponentSourceUnion: applicationapiv1alpha1.ComponentSourceUnion{
 				GitSource: &applicationapiv1alpha1.GitSource{
