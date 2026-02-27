@@ -81,15 +81,6 @@ func NewAdapter(context context.Context, snapshot *applicationapiv1alpha1.Snapsh
 	}
 }
 
-func scenariosNamesToList(integrationTestScenarios *[]v1beta2.IntegrationTestScenario) *[]string {
-	// transform list of structs into list of strings
-	result := make([]string, 0, len(*integrationTestScenarios))
-	for _, v := range *integrationTestScenarios {
-		result = append(result, v.Name)
-	}
-	return &result
-}
-
 // EnsureRerunPipelineRunsExist is responsible for recreating integration test pipelineruns triggered by users
 func (a *Adapter) EnsureRerunPipelineRunsExist() (controller.OperationResult, error) {
 	runLabelValue, ok := gitops.GetIntegrationTestRunLabelValue(a.snapshot)
@@ -164,7 +155,8 @@ func (a *Adapter) handleScenarioReruns(scenarios *[]v1beta2.IntegrationTestScena
 			continue
 		}
 
-		testStatuses.ResetStatus(scenario.Name)
+		isOptionalScenario := h.IsIntegrationTestScenarioOptional(&scenario)
+		testStatuses.ResetStatus(scenario.Name, isOptionalScenario)
 		if opResult, err := a.rerunIntegrationPipelinerunForScenario(&scenario, testStatuses); opResult.CancelRequest || err != nil {
 			a.logger.Error(err, "Failed to create rerun pipelinerun for IntegrationTestScenario", "Scenario", scenario.Name)
 			return -1, opResult, err
@@ -249,7 +241,7 @@ func (a *Adapter) initializeTestStatusesWithDefer(integrationTestScenarios *[]v1
 		return nil, nil, err
 	}
 
-	testStatuses.InitStatuses(scenariosNamesToList(integrationTestScenarios))
+	testStatuses.InitStatuses(integrationTestScenarios)
 
 	err = gitops.WriteIntegrationTestStatusesIntoSnapshot(a.context, a.snapshot, testStatuses, a.client)
 	if err != nil {

@@ -70,7 +70,7 @@ func HasSummary(value string) gomock.Matcher {
 	return hasSummary{expectedSummary: value}
 }
 
-func newIntegrationTestStatusDetail(expectedScenarioStatus integrationteststatus.IntegrationTestStatus) integrationteststatus.IntegrationTestStatusDetail {
+func newIntegrationTestStatusDetail(expectedScenarioStatus integrationteststatus.IntegrationTestStatus, isOptionalScenario bool) integrationteststatus.IntegrationTestStatusDetail {
 	ts, _ := time.Parse(time.RFC3339, "2023-07-26T16:57:49+02:00")
 	tc, _ := time.Parse(time.RFC3339, "2023-07-26T17:57:49+02:00")
 	return integrationteststatus.IntegrationTestStatusDetail{
@@ -81,6 +81,7 @@ func newIntegrationTestStatusDetail(expectedScenarioStatus integrationteststatus
 		StartTime:           &ts,
 		CompletionTime:      &tc,
 		TestPipelineRunName: "test-pipelinerun",
+		IsOptionalScenario:  isOptionalScenario,
 	}
 }
 
@@ -110,14 +111,15 @@ func muxMergeRequestGet(mux *http.ServeMux, pid, mrIID int, state string) {
 var _ = Describe("Status Adapter", func() {
 
 	var (
-		githubSnapshot          *applicationapiv1alpha1.Snapshot
-		hasSnapshot             *applicationapiv1alpha1.Snapshot
-		hasComSnapshot2         *applicationapiv1alpha1.Snapshot
-		hasComSnapshot3         *applicationapiv1alpha1.Snapshot
-		groupSnapshot           *applicationapiv1alpha1.Snapshot
-		integrationTestScenario *v1beta2.IntegrationTestScenario
-		hasComponent            *applicationapiv1alpha1.Component
-		mockReporter            *status.MockReporterInterface
+		githubSnapshot                  *applicationapiv1alpha1.Snapshot
+		hasSnapshot                     *applicationapiv1alpha1.Snapshot
+		hasComSnapshot2                 *applicationapiv1alpha1.Snapshot
+		hasComSnapshot3                 *applicationapiv1alpha1.Snapshot
+		groupSnapshot                   *applicationapiv1alpha1.Snapshot
+		integrationTestScenario         *v1beta2.IntegrationTestScenario
+		optionalIntegrationTestScenario *v1beta2.IntegrationTestScenario
+		hasComponent                    *applicationapiv1alpha1.Component
+		mockReporter                    *status.MockReporterInterface
 
 		pipelineRun       *tektonv1.PipelineRun
 		successfulTaskRun *tektonv1.TaskRun
@@ -522,6 +524,16 @@ var _ = Describe("Status Adapter", func() {
 				},
 			},
 		}
+		optionalIntegrationTestScenario = &v1beta2.IntegrationTestScenario{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "example-its-optional",
+				Namespace: "default",
+
+				Labels: map[string]string{
+					"test.appstudio.openshift.io/optional": "true",
+				},
+			},
+		}
 
 		ctrl := gomock.NewController(GinkgoT())
 		mockReporter = status.NewMockReporterInterface(ctrl)
@@ -587,7 +599,8 @@ var _ = Describe("Status Adapter", func() {
 
 	It("report status for TestPassed test scenario", func() {
 		hasSnapshot.Annotations["test.appstudio.openshift.io/status"] = "[{\"scenario\":\"scenario1\",\"status\":\"TestPassed\",\"testPipelineRunName\":\"test-pipelinerun\",\"startTime\":\"2023-07-26T16:57:49+02:00\",\"completionTime\":\"2023-07-26T17:57:49+02:00\",\"lastUpdateTime\":\"2023-08-26T17:57:55+02:00\",\"details\":\"failed\"}]"
-		integrationTestStatusDetail := newIntegrationTestStatusDetail(integrationteststatus.IntegrationTestStatusTestPassed)
+		integrationTestStatusDetail := newIntegrationTestStatusDetail(integrationteststatus.IntegrationTestStatusTestPassed, false)
+		Expect(integrationTestStatusDetail.IsOptionalScenario).To(BeFalse())
 		delete(hasSnapshot.Labels, "appstudio.openshift.io/component")
 		ts, err := time.Parse(time.RFC3339, "2023-07-26T16:57:49+02:00")
 		Expect(err).NotTo(HaveOccurred())
@@ -624,11 +637,52 @@ var _ = Describe("Status Adapter", func() {
 		Expect(testReport).To(Equal(&expectedTestReport))
 	})
 
+	It("report status for optional TestPassed test scenario", func() {
+		hasSnapshot.Annotations["test.appstudio.openshift.io/status"] = "[{\"scenario\":\"scenario1\",\"status\":\"TestPassed\",\"testPipelineRunName\":\"test-pipelinerun\",\"startTime\":\"2023-07-26T16:57:49+02:00\",\"completionTime\":\"2023-07-26T17:57:49+02:00\",\"lastUpdateTime\":\"2023-08-26T17:57:55+02:00\",\"details\":\"failed\", \"isOptionalScenario\":\"true\"}]"
+		integrationTestStatusDetail := newIntegrationTestStatusDetail(integrationteststatus.IntegrationTestStatusTestPassed, true)
+		Expect(integrationTestStatusDetail.IsOptionalScenario).To(BeTrue())
+		delete(hasSnapshot.Labels, "appstudio.openshift.io/component")
+		ts, err := time.Parse(time.RFC3339, "2023-07-26T16:57:49+02:00")
+		Expect(err).NotTo(HaveOccurred())
+		tc, err := time.Parse(time.RFC3339, "2023-07-26T17:57:49+02:00")
+		Expect(err).NotTo(HaveOccurred())
+		text := `<ul>
+<li><b>Pipelinerun</b>: <a href="https://definetly.not.prod/preview/application-pipeline/ns/default/pipelinerun/test-pipelinerun">test-pipelinerun</a></li>
+</ul>
+<hr>
+
+| Task | Duration | Test Suite | Status | Details |
+| --- | --- | --- | --- | --- |
+| <a href="https://definetly.not.prod/preview/application-pipeline/ns/default/pipelinerun/test-pipelinerun/logs/pipeline1-task1">pipeline1-task1</a> | 5m0s |  | :heavy_check_mark: SUCCESS | :heavy_check_mark: 10 success(es) |
+| <a href="https://definetly.not.prod/preview/application-pipeline/ns/default/pipelinerun/test-pipelinerun/logs/pipeline1-task2">pipeline1-task2</a> | 5m0s |  | :white_check_mark: SKIPPED |  |
+
+
+`
+		expectedTestReport := status.TestReport{
+			FullName:            "Red Hat Konflux / scenario1 / component-sample",
+			ScenarioName:        "scenario1",
+			SnapshotName:        "snapshot-sample",
+			ComponentName:       "component-sample",
+			Text:                text,
+			ShortText:           "<ul>\n<li><b>Pipelinerun</b>: <a href=\"https://definetly.not.prod/preview/application-pipeline/ns/default/pipelinerun/test-pipelinerun\">test-pipelinerun</a></li>\n</ul>\n\n",
+			Summary:             "Integration test for component component-sample snapshot snapshot-sample and optional scenario scenario1 has passed",
+			Status:              integrationteststatus.IntegrationTestStatusTestPassed,
+			StartTime:           &ts,
+			CompletionTime:      &tc,
+			TestPipelineRunName: "test-pipelinerun",
+		}
+
+		testReport, err := status.GenerateTestReport(context.Background(), mockK8sClient, integrationTestStatusDetail, hasSnapshot, "component-sample")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(testReport).To(Equal(&expectedTestReport))
+	})
+
 	DescribeTable(
 		"report right summary per status",
 		func(expectedScenarioStatus integrationteststatus.IntegrationTestStatus, expectedTextEnding string) {
 
-			integrationTestStatusDetail := newIntegrationTestStatusDetail(expectedScenarioStatus)
+			integrationTestStatusDetail := newIntegrationTestStatusDetail(expectedScenarioStatus, false)
+			Expect(integrationTestStatusDetail.IsOptionalScenario).To(BeFalse())
 
 			expectedSummary := fmt.Sprintf("Integration test for component component-sample snapshot snapshot-sample and scenario scenario1 %s", expectedTextEnding)
 			testReport, err := status.GenerateTestReport(context.Background(), mockK8sClient, integrationTestStatusDetail, hasSnapshot, "component-sample")
@@ -665,7 +719,7 @@ var _ = Describe("Status Adapter", func() {
 		"report right summary per status",
 		func(expectedScenarioStatus integrationteststatus.IntegrationTestStatus, expectedTextEnding string) {
 
-			integrationTestStatusDetail := newIntegrationTestStatusDetail(expectedScenarioStatus)
+			integrationTestStatusDetail := newIntegrationTestStatusDetail(expectedScenarioStatus, false)
 
 			expectedSummary := fmt.Sprintf("Integration test for component component-sample snapshot scenario scenario1 %s", expectedTextEnding)
 			testReport, err := status.GenerateTestReport(context.Background(), mockK8sClient, integrationTestStatusDetail, hasSnapshot, "component-sample")
@@ -679,7 +733,7 @@ var _ = Describe("Status Adapter", func() {
 
 	It("check if GenerateSummary supports all integration test statuses", func() {
 		for _, teststatus := range integrationteststatus.IntegrationTestStatusValues() {
-			_, err := status.GenerateSummary(teststatus, "yolo", "yolo", "yoyo")
+			_, err := status.GenerateSummary(teststatus, "yolo", "yolo", "yoyo", false)
 			Expect(err).NotTo(HaveOccurred())
 		}
 	})
@@ -858,21 +912,33 @@ var _ = Describe("Status Adapter", func() {
 
 	It("can report status in IterateIntegrationTestScenarioWithSameStatus", func() {
 		integrationTestStatusDetail := integrationteststatus.IntegrationTestStatusDetail{
-			Status:  integrationteststatus.GroupSnapshotCreationFailed,
-			Details: "details",
+			Status:       integrationteststatus.GroupSnapshotCreationFailed,
+			ScenarioName: integrationTestScenario.Name,
+			Details:      "details",
 		}
+
+		optionalTestStatusDetail := integrationteststatus.IntegrationTestStatusDetail{
+			Status:             integrationteststatus.GroupSnapshotCreationFailed,
+			ScenarioName:       optionalIntegrationTestScenario.Name,
+			Details:            "details",
+			IsOptionalScenario: true,
+		}
+		testResportForTestStatusDetail, _ := status.GenerateTestReport(context.Background(), mockK8sClient, integrationTestStatusDetail, hasSnapshot, "component-sample")
+		testReportForOptionalTestStatusScenario, _ := status.GenerateTestReport(context.Background(), mockK8sClient, optionalTestStatusDetail, hasSnapshot, "component-sample")
+
 		ctrl := gomock.NewController(GinkgoT())
 		mockReporter = status.NewMockReporterInterface(ctrl)
 		mockReporter.EXPECT().GetReporterName().Return(status.GitLabProvider).AnyTimes()
 		mockReporter.EXPECT().Initialize(gomock.Any(), gomock.Any()).Return(0, nil).AnyTimes()
-		mockReporter.EXPECT().ReportStatus(gomock.Any(), gomock.Any()).Return(0, nil).AnyTimes()
+		mockReporter.EXPECT().ReportStatus(gomock.Any(), *testResportForTestStatusDetail).Return(0, nil).Times(1)
+		mockReporter.EXPECT().ReportStatus(gomock.Any(), *testReportForOptionalTestStatusScenario).Return(0, nil).Times(1)
 		commentText, _ := status.GenerateSummaryForAllScenarios(integrationTestStatusDetail.Status, "component-sample")
 		commentText, _ = status.FormatComment(commentText, integrationTestStatusDetail.Details)
 		mockReporter.EXPECT().UpdateStatusInComment(status.GenerateTestSummaryPrefixForComponent("component-sample"), commentText).Return(0, nil).AnyTimes()
 		hasSnapshot.Labels["pac.test.appstudio.openshift.io/git-provider"] = "gitlab"
 		hasSnapshot.Annotations[gitops.PipelineAsCodePullRequestAnnotation] = "123"
 
-		statusCode, err := status.IterateIntegrationTestScenarioWithSameStatus(context.Background(), mockK8sClient, mockReporter, hasSnapshot, &[]v1beta2.IntegrationTestScenario{*integrationTestScenario}, integrationTestStatusDetail, hasComponent, "component-sample")
+		statusCode, err := status.IterateIntegrationTestScenarioWithSameStatus(context.Background(), mockK8sClient, mockReporter, hasSnapshot, &[]v1beta2.IntegrationTestScenario{*integrationTestScenario, *optionalIntegrationTestScenario}, integrationTestStatusDetail, hasComponent, "component-sample")
 		Expect(err).Should(Succeed())
 		Expect(statusCode).To(BeZero())
 	})
