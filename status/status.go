@@ -248,7 +248,7 @@ func GenerateTestReport(ctx context.Context, client client.Client, detail intgte
 		return nil, fmt.Errorf("failed to generate text message: %w", err)
 	}
 
-	summary, err := GenerateSummary(detail.Status, testedSnapshot.Name, detail.ScenarioName, componentName)
+	summary, err := GenerateSummary(detail.Status, testedSnapshot.Name, detail.ScenarioName, componentName, detail.IsOptionalScenario)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate summary message: %w", err)
 	}
@@ -349,7 +349,7 @@ func generateShortText(integrationTestStatusDetail intgteststat.IntegrationTestS
 }
 
 // GenerateSummary returns summary for the given state, snapshotName and scenarioName
-func GenerateSummary(state intgteststat.IntegrationTestStatus, snapshotName, scenarioName, componentName string) (string, error) {
+func GenerateSummary(state intgteststat.IntegrationTestStatus, snapshotName, scenarioName, componentName string, isOptionalScenario bool) (string, error) {
 	var summary string
 	var statusDesc string
 
@@ -382,10 +382,18 @@ func GenerateSummary(state intgteststat.IntegrationTestStatus, snapshotName, sce
 		return summary, fmt.Errorf("unknown status")
 	}
 
-	if state == intgteststat.BuildPLRInProgress || state == intgteststat.SnapshotCreationFailed || state == intgteststat.BuildPLRFailed || state == intgteststat.GroupSnapshotCreationFailed {
-		summary = fmt.Sprintf(GenerateTestSummaryPrefixForComponent(componentName)+" snapshot scenario %s %s", scenarioName, statusDesc)
+	if isOptionalScenario {
+		if state == intgteststat.BuildPLRInProgress || state == intgteststat.SnapshotCreationFailed || state == intgteststat.BuildPLRFailed || state == intgteststat.GroupSnapshotCreationFailed {
+			summary = fmt.Sprintf(GenerateTestSummaryPrefixForComponent(componentName)+" snapshot optional scenario %s %s", scenarioName, statusDesc)
+		} else {
+			summary = fmt.Sprintf(GenerateTestSummaryPrefixForComponent(componentName)+" snapshot %s and optional scenario %s %s", snapshotName, scenarioName, statusDesc)
+		}
 	} else {
-		summary = fmt.Sprintf(GenerateTestSummaryPrefixForComponent(componentName)+" snapshot %s and scenario %s %s", snapshotName, scenarioName, statusDesc)
+		if state == intgteststat.BuildPLRInProgress || state == intgteststat.SnapshotCreationFailed || state == intgteststat.BuildPLRFailed || state == intgteststat.GroupSnapshotCreationFailed {
+			summary = fmt.Sprintf(GenerateTestSummaryPrefixForComponent(componentName)+" snapshot scenario %s %s", scenarioName, statusDesc)
+		} else {
+			summary = fmt.Sprintf(GenerateTestSummaryPrefixForComponent(componentName)+" snapshot %s and scenario %s %s", snapshotName, scenarioName, statusDesc)
+		}
 	}
 
 	return summary, nil

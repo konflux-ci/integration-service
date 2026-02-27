@@ -143,6 +143,7 @@ var _ = Describe("Component Adapter", Ordered, func() {
 			Expect(k8sClient.List(ctx, snapshots, &client.ListOptions{Namespace: hasApp.Namespace})).To(Succeed())
 
 			// check if the snapshot is labeled with auto-release=false
+			Expect(snapshots.Items).To(HaveLen(1))
 			Expect(snapshots.Items[0].Labels[gitops.AutoReleaseLabel]).To(Equal("false"))
 
 			return !result.CancelRequest && len(snapshots.Items) == 1 && err == nil
