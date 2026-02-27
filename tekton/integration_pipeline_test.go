@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/konflux-ci/integration-service/api/v1beta2"
+	"github.com/konflux-ci/integration-service/gitops"
 	"github.com/konflux-ci/integration-service/helpers"
 	"github.com/konflux-ci/integration-service/loader"
 	. "github.com/onsi/ginkgo/v2"
@@ -31,7 +32,6 @@ import (
 	"github.com/tonglil/buflogr"
 
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
-	"github.com/konflux-ci/integration-service/gitops"
 	tekton "github.com/konflux-ci/integration-service/tekton"
 	tektonconsts "github.com/konflux-ci/integration-service/tekton/consts"
 	knative "knative.dev/pkg/apis"

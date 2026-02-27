@@ -135,6 +135,11 @@ type ComponentState struct {
 	// +optional
 	Version string `json:"version"`
 
+	// Git URL for the component. Needed by Release service. Can be used along
+	// with LastPromotedCommit to access the code that has been promoted
+	// +optional
+	URL string `json:"url"`
+
 	// Location of the last image for this Component to be promoted. If no
 	// image has been promoted then the field will be blank
 	// +optional
@@ -154,7 +159,8 @@ type ComponentState struct {
 // ComponentGroupStatus defines the observed state of ComponentGroup
 type ComponentGroupStatus struct {
 	// Conditions is an array of the ComponentGroup's status conditions
-	Conditions []metav1.Condition `json:"conditions"`
+	// +optional
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
 
 	// The list of recently promoted Components which the integration service
 	// uses to create Snapshots
