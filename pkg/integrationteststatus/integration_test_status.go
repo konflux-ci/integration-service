@@ -21,6 +21,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/konflux-ci/integration-service/api/v1beta2"
+	"github.com/konflux-ci/integration-service/helpers"
 	"github.com/santhosh-tekuri/jsonschema/v5"
 )
 
@@ -103,6 +105,8 @@ type IntegrationTestStatusDetail struct {
 	CompletionTime *time.Time `json:"completionTime,omitempty"` // pointer to make omitempty work
 	// TestPipelineName name of testing pipelineRun
 	TestPipelineRunName string `json:"testPipelineRunName,omitempty"`
+	// IsOptionalScenario defines if the scenario is optional, which means that test failure should not block promotion of snapshot
+	IsOptionalScenario bool `json:"isOptionalScenario,omitempty"`
 }
 
 // SnapshotIntegrationTestStatuses type handles details about snapshot tests
@@ -139,10 +143,11 @@ func (sits *SnapshotIntegrationTestStatuses) ResetDirty() {
 }
 
 // ResetStatus reset status of test back to initial Pending status and removes invalidated values
-func (sits *SnapshotIntegrationTestStatuses) ResetStatus(scenarioName string) {
+func (sits *SnapshotIntegrationTestStatuses) ResetStatus(scenarioName string, isOptionalScenario bool) {
 	sits.UpdateTestStatusIfChanged(scenarioName, IntegrationTestStatusPending, "Pending")
 	detail := sits.statuses[scenarioName]
 	detail.TestPipelineRunName = ""
+	detail.IsOptionalScenario = isOptionalScenario
 	sits.dirty = true
 }
 
@@ -220,16 +225,19 @@ func (sits *SnapshotIntegrationTestStatuses) UpdateTestPipelineRunName(scenarioN
 
 // InitStatuses creates initial representation all scenarios
 // This function also removes scenarios which are not defined in scenarios param
-func (sits *SnapshotIntegrationTestStatuses) InitStatuses(scenarioNames *[]string) {
+func (sits *SnapshotIntegrationTestStatuses) InitStatuses(integrationTestScenarios *[]v1beta2.IntegrationTestScenario) {
 	var expectedScenarios = make(map[string]struct{}) // map as a set
 
 	// if given scenario doesn't exist, create it in pending state
-	for _, name := range *scenarioNames {
+	for _, scenario := range *integrationTestScenarios {
+		scenario := scenario
+		name := scenario.Name
 		expectedScenarios[name] = struct{}{}
 		_, ok := sits.statuses[name]
 		if !ok {
 			// init test statuses only if they doesn't exist
 			sits.UpdateTestStatusIfChanged(name, IntegrationTestStatusPending, "Pending")
+			sits.statuses[name].IsOptionalScenario = helpers.IsIntegrationTestScenarioOptional(&scenario)
 		}
 	}
 

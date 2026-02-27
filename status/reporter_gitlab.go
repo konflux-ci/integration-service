@@ -398,32 +398,41 @@ func (r *GitLabReporter) ReturnCodeIsUnrecoverable(statusCode int) bool {
 func GenerateGitlabCommitState(state intgteststat.IntegrationTestStatus, optional bool) (gitlab.BuildStateValue, error) {
 	glState := gitlab.Failed
 
-	switch state {
-	case intgteststat.IntegrationTestStatusPending, intgteststat.BuildPLRInProgress:
-		glState = gitlab.Pending
-	case intgteststat.IntegrationTestStatusInProgress:
-		glState = gitlab.Running
-	case intgteststat.IntegrationTestStatusEnvironmentProvisionError_Deprecated,
-		intgteststat.IntegrationTestStatusDeploymentError_Deprecated,
-		intgteststat.IntegrationTestStatusTestInvalid:
-		if optional {
+	if optional {
+		switch state {
+		case intgteststat.IntegrationTestStatusPending, intgteststat.BuildPLRInProgress, intgteststat.IntegrationTestStatusInProgress:
+			glState = gitlab.Pending
+		case intgteststat.IntegrationTestStatusTestPassed:
+			glState = gitlab.Success
+		case intgteststat.IntegrationTestStatusEnvironmentProvisionError_Deprecated, intgteststat.IntegrationTestStatusDeploymentError_Deprecated,
+			intgteststat.IntegrationTestStatusTestInvalid, intgteststat.IntegrationTestStatusTestFail:
 			glState = gitlab.Skipped
-			break
+		case intgteststat.IntegrationTestStatusDeleted, intgteststat.BuildPLRFailed,
+			intgteststat.SnapshotCreationFailed, intgteststat.GroupSnapshotCreationFailed:
+			glState = gitlab.Canceled
+		default:
+			return glState, fmt.Errorf("unknown status %s", state)
 		}
-		glState = gitlab.Failed
-	case intgteststat.IntegrationTestStatusDeleted,
-		intgteststat.BuildPLRFailed, intgteststat.SnapshotCreationFailed, intgteststat.GroupSnapshotCreationFailed:
-		glState = gitlab.Canceled
-	case intgteststat.IntegrationTestStatusTestPassed:
-		glState = gitlab.Success
-	case intgteststat.IntegrationTestStatusTestFail:
-		if optional {
-			glState = gitlab.Skipped
-			break
+	} else {
+		switch state {
+		case intgteststat.IntegrationTestStatusPending, intgteststat.BuildPLRInProgress:
+			glState = gitlab.Pending
+		case intgteststat.IntegrationTestStatusInProgress:
+			glState = gitlab.Running
+		case intgteststat.IntegrationTestStatusEnvironmentProvisionError_Deprecated,
+			intgteststat.IntegrationTestStatusDeploymentError_Deprecated,
+			intgteststat.IntegrationTestStatusTestInvalid:
+			glState = gitlab.Failed
+		case intgteststat.IntegrationTestStatusDeleted,
+			intgteststat.BuildPLRFailed, intgteststat.SnapshotCreationFailed, intgteststat.GroupSnapshotCreationFailed:
+			glState = gitlab.Canceled
+		case intgteststat.IntegrationTestStatusTestPassed:
+			glState = gitlab.Success
+		case intgteststat.IntegrationTestStatusTestFail:
+			glState = gitlab.Failed
+		default:
+			return glState, fmt.Errorf("unknown status %s", state)
 		}
-		glState = gitlab.Failed
-	default:
-		return glState, fmt.Errorf("unknown status %s", state)
 	}
 
 	return glState, nil

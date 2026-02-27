@@ -679,7 +679,7 @@ var _ = Describe("Status Adapter", func() {
 
 	It("check if GenerateSummary supports all integration test statuses", func() {
 		for _, teststatus := range integrationteststatus.IntegrationTestStatusValues() {
-			_, err := status.GenerateSummary(teststatus, "yolo", "yolo", "yoyo")
+			_, err := status.GenerateSummary(teststatus, "yolo", "yolo", "yoyo", false)
 			Expect(err).NotTo(HaveOccurred())
 		}
 	})

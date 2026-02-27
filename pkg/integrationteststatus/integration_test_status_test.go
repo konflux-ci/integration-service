@@ -23,12 +23,13 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	"github.com/konflux-ci/integration-service/api/v1beta2"
 	intgteststat "github.com/konflux-ci/integration-service/pkg/integrationteststatus"
 )
 
 var _ = Describe("integrationteststatus library unittests", func() {
-
 	Describe("IntegrationTestStatus type tests", func() {
 		DescribeTable("Status to string and vice versa",
 			func(st intgteststat.IntegrationTestStatus, expectedStr string) {
@@ -133,7 +134,36 @@ var _ = Describe("integrationteststatus library unittests", func() {
 		var (
 			sits *intgteststat.SnapshotIntegrationTestStatuses
 		)
+		integrationTestScenario := &v1beta2.IntegrationTestScenario{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      testScenarioName,
+				Namespace: "default",
 
+				Labels: map[string]string{
+					"test.appstudio.openshift.io/optional": "false",
+				},
+			},
+			Spec: v1beta2.IntegrationTestScenarioSpec{
+				Application: "application-sample",
+				ResolverRef: v1beta2.ResolverRef{
+					Resolver: "git",
+					Params: []v1beta2.ResolverParameter{
+						{
+							Name:  "url",
+							Value: "https://github.com/redhat-appstudio/integration-examples.git",
+						},
+						{
+							Name:  "revision",
+							Value: "revision",
+						},
+						{
+							Name:  "pathInRepo",
+							Value: "pipelineruns/integration_pipelinerun_pass.yaml",
+						},
+					},
+				},
+			},
+		}
 		BeforeEach(func() {
 			var err error
 			sits, err = intgteststat.NewSnapshotIntegrationTestStatuses("")
@@ -463,7 +493,7 @@ var _ = Describe("integrationteststatus library unittests", func() {
 
 			It("Initialization with empty scenario list will remove data", func() {
 				sits.ResetDirty()
-				sits.InitStatuses(&[]string{})
+				sits.InitStatuses(&[]v1beta2.IntegrationTestScenario{})
 				Expect(sits.GetStatuses()).To(BeEmpty())
 				Expect(sits.IsDirty()).To(BeTrue())
 			})
@@ -472,7 +502,7 @@ var _ = Describe("integrationteststatus library unittests", func() {
 
 		It("Initialization with new test scenario creates pending status", func() {
 			sits.ResetDirty()
-			sits.InitStatuses(&[]string{testScenarioName})
+			sits.InitStatuses(&[]v1beta2.IntegrationTestScenario{*integrationTestScenario})
 
 			Expect(sits.IsDirty()).To(BeTrue())
 			Expect(sits.GetStatuses()).To(HaveLen(1))
