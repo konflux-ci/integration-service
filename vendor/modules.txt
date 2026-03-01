@@ -277,7 +277,7 @@ github.com/golang/protobuf/ptypes/timestamp
 # github.com/google/btree v1.1.3
 ## explicit; go 1.18
 github.com/google/btree
-# github.com/google/cel-go v0.26.1 => github.com/google/cel-go v0.26.1
+# github.com/google/cel-go v0.27.0 => github.com/google/cel-go v0.26.1
 ## explicit; go 1.22.0
 github.com/google/cel-go/cel
 github.com/google/cel-go/checker
@@ -549,8 +549,8 @@ github.com/x448/float16
 # github.com/xanzy/ssh-agent v0.3.3
 ## explicit; go 1.16
 github.com/xanzy/ssh-agent
-# gitlab.com/gitlab-org/api/client-go v0.134.0
-## explicit; go 1.23.0
+# gitlab.com/gitlab-org/api/client-go v1.45.0
+## explicit; go 1.24.0
 gitlab.com/gitlab-org/api/client-go
 # go.opencensus.io v0.24.0
 ## explicit; go 1.13
