@@ -10,11 +10,12 @@ import (
 
 type (
 	TerraformStatesServiceInterface interface {
-		List(projectFullPath string) ([]TerraformState, *Response, error)
-		Get(projectFullPath string, name string) (*TerraformState, *Response, error)
+		List(projectFullPath string, options ...RequestOptionFunc) ([]TerraformState, *Response, error)
+		Get(projectFullPath string, name string, options ...RequestOptionFunc) (*TerraformState, *Response, error)
 		Download(pid any, name string, serial uint64, options ...RequestOptionFunc) (io.Reader, *Response, error)
 		DownloadLatest(pid any, name string, options ...RequestOptionFunc) (io.Reader, *Response, error)
 		Delete(pid any, name string, options ...RequestOptionFunc) (*Response, error)
+		DeleteVersion(pid any, name string, serial uint64, options ...RequestOptionFunc) (*Response, error)
 		Lock(pid any, name string, options ...RequestOptionFunc) (*Response, error)
 		Unlock(pid any, name string, options ...RequestOptionFunc) (*Response, error)
 	}
@@ -29,6 +30,8 @@ type (
 
 var _ TerraformStatesServiceInterface = (*TerraformStatesService)(nil)
 
+// TerraformState represents a Terraform state.
+//
 // GitLab API docs: https://docs.gitlab.com/api/graphql/reference/#terraformstate
 type TerraformState struct {
 	Name          string                `json:"name"`
@@ -39,6 +42,8 @@ type TerraformState struct {
 	LockedAt      time.Time             `json:"lockedAt"`
 }
 
+// TerraformStateVersion represents a Terraform state version.
+//
 // GitLab API docs: https://docs.gitlab.com/api/graphql/reference/#terraformstateversion
 type TerraformStateVersion struct {
 	Serial       uint64    `json:"serial"`
@@ -48,7 +53,7 @@ type TerraformStateVersion struct {
 }
 
 // List returns all Terraform states
-func (s *TerraformStatesService) List(projectFullPath string) ([]TerraformState, *Response, error) {
+func (s *TerraformStatesService) List(projectFullPath string, options ...RequestOptionFunc) ([]TerraformState, *Response, error) {
 	query := GraphQLQuery{
 		Query: fmt.Sprintf(`
 			query {
@@ -82,7 +87,7 @@ func (s *TerraformStatesService) List(projectFullPath string) ([]TerraformState,
 			} `json:"project"`
 		} `json:"data"`
 	}
-	resp, err := s.client.GraphQL.Do(query, &response)
+	resp, err := s.client.GraphQL.Do(query, &response, options...)
 	if err != nil {
 		return nil, resp, err
 	}
@@ -94,7 +99,7 @@ func (s *TerraformStatesService) List(projectFullPath string) ([]TerraformState,
 }
 
 // Get returns a single Terraform state
-func (s *TerraformStatesService) Get(projectFullPath string, name string) (*TerraformState, *Response, error) {
+func (s *TerraformStatesService) Get(projectFullPath string, name string, options ...RequestOptionFunc) (*TerraformState, *Response, error) {
 	query := GraphQLQuery{
 		Query: fmt.Sprintf(`
 			query {
@@ -124,7 +129,7 @@ func (s *TerraformStatesService) Get(projectFullPath string, name string) (*Terr
 			} `json:"project"`
 		} `json:"data"`
 	}
-	resp, err := s.client.GraphQL.Do(query, &response)
+	resp, err := s.client.GraphQL.Do(query, &response, options...)
 	if err != nil {
 		return nil, resp, err
 	}
@@ -136,97 +141,71 @@ func (s *TerraformStatesService) Get(projectFullPath string, name string) (*Terr
 }
 
 func (s *TerraformStatesService) DownloadLatest(pid any, name string, options ...RequestOptionFunc) (io.Reader, *Response, error) {
-	project, err := parseID(pid)
-	if err != nil {
-		return nil, nil, err
-	}
-	uri := fmt.Sprintf("projects/%s/terraform/state/%s", PathEscape(project), PathEscape(name))
-
-	req, err := s.client.NewRequest(http.MethodGet, uri, nil, options)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	var b bytes.Buffer
-	resp, err := s.client.Do(req, &b)
+	buf, resp, err := do[bytes.Buffer](s.client,
+		withPath("projects/%s/terraform/state/%s", ProjectID{pid}, name),
+		withRequestOpts(options...),
+	)
 	if err != nil {
 		return nil, resp, err
 	}
-
-	return &b, resp, nil
+	return &buf, resp, nil
 }
 
 func (s *TerraformStatesService) Download(pid any, name string, serial uint64, options ...RequestOptionFunc) (io.Reader, *Response, error) {
-	project, err := parseID(pid)
-	if err != nil {
-		return nil, nil, err
-	}
-	uri := fmt.Sprintf("projects/%s/terraform/state/%s/versions/%d", PathEscape(project), PathEscape(name), serial)
-
-	req, err := s.client.NewRequest(http.MethodGet, uri, nil, options)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	var b bytes.Buffer
-	resp, err := s.client.Do(req, &b)
+	buf, resp, err := do[bytes.Buffer](s.client,
+		withPath("projects/%s/terraform/state/%s/versions/%d", ProjectID{pid}, name, serial),
+		withRequestOpts(options...),
+	)
 	if err != nil {
 		return nil, resp, err
 	}
-
-	return &b, resp, nil
+	return &buf, resp, nil
 }
 
 // Delete deletes a single Terraform state
 //
 // GitLab API docs: https://docs.gitlab.com/user/infrastructure/iac/terraform_state/
 func (s *TerraformStatesService) Delete(pid any, name string, options ...RequestOptionFunc) (*Response, error) {
-	project, err := parseID(pid)
-	if err != nil {
-		return nil, err
-	}
-	uri := fmt.Sprintf("projects/%s/terraform/state/%s", PathEscape(project), PathEscape(name))
+	_, resp, err := do[none](s.client,
+		withMethod(http.MethodDelete),
+		withPath("projects/%s/terraform/state/%s", ProjectID{pid}, name),
+		withRequestOpts(options...),
+	)
+	return resp, err
+}
 
-	req, err := s.client.NewRequest(http.MethodDelete, uri, nil, options)
-	if err != nil {
-		return nil, err
-	}
-
-	return s.client.Do(req, nil)
+// DeleteVersion deletes a single Terraform state version
+//
+// GitLab API docs: https://docs.gitlab.com/user/infrastructure/iac/terraform_state/
+func (s *TerraformStatesService) DeleteVersion(pid any, name string, serial uint64, options ...RequestOptionFunc) (*Response, error) {
+	_, resp, err := do[none](s.client,
+		withMethod(http.MethodDelete),
+		withPath("projects/%s/terraform/state/%s/versions/%d", ProjectID{pid}, name, serial),
+		withRequestOpts(options...),
+	)
+	return resp, err
 }
 
 // Lock locks a single Terraform state
 //
 // GitLab API docs: https://docs.gitlab.com/user/infrastructure/iac/terraform_state/
 func (s *TerraformStatesService) Lock(pid any, name string, options ...RequestOptionFunc) (*Response, error) {
-	project, err := parseID(pid)
-	if err != nil {
-		return nil, err
-	}
-	uri := fmt.Sprintf("projects/%s/terraform/state/%s/lock", PathEscape(project), PathEscape(name))
-
-	req, err := s.client.NewRequest(http.MethodPost, uri, nil, options)
-	if err != nil {
-		return nil, err
-	}
-
-	return s.client.Do(req, nil)
+	_, resp, err := do[none](s.client,
+		withMethod(http.MethodPost),
+		withPath("projects/%s/terraform/state/%s/lock", ProjectID{pid}, name),
+		withRequestOpts(options...),
+	)
+	return resp, err
 }
 
 // Unlock unlocks a single Terraform state
 //
 // GitLab API docs: https://docs.gitlab.com/user/infrastructure/iac/terraform_state/
 func (s *TerraformStatesService) Unlock(pid any, name string, options ...RequestOptionFunc) (*Response, error) {
-	project, err := parseID(pid)
-	if err != nil {
-		return nil, err
-	}
-	uri := fmt.Sprintf("projects/%s/terraform/state/%s/lock", PathEscape(project), PathEscape(name))
-
-	req, err := s.client.NewRequest(http.MethodDelete, uri, nil, options)
-	if err != nil {
-		return nil, err
-	}
-
-	return s.client.Do(req, nil)
+	_, resp, err := do[none](s.client,
+		withMethod(http.MethodDelete),
+		withPath("projects/%s/terraform/state/%s/lock", ProjectID{pid}, name),
+		withRequestOpts(options...),
+	)
+	return resp, err
 }

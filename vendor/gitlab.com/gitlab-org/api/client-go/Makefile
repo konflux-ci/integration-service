@@ -8,24 +8,22 @@ help: ## Display this help
 
 reviewable: setup generate fmt lint test ## Run before committing.
 
-fmt: install-gofumpt ## Format code
-	@gofumpt -l -w *.go testing/*.go examples/*.go
+fmt: ## Format code
+	@buf format -w
+	@gofumpt -l -w *.go testing/*.go
 
-lint: install-golangci-lint ## Run linter
+lint: ## Run linter
 	@golangci-lint run
+	@buf format --exit-code
+	@buf lint
 
 .PHONY: setup
-setup: install-golangci-lint install-gofumpt ## Setup your local environment
+setup: ## Setup your local environment
 	go mod tidy
 
-install-golangci-lint:
-	@go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
-
-install-gofumpt:
-	@go install mvdan.cc/gofumpt@latest
-
 .PHONY: generate
-generate: install-gofumpt ## Generate files
+generate: ## Generate files
+	buf generate # install from .tool-versions
 	./scripts/generate_testing_client.sh
 	./scripts/generate_service_interface_map.sh
 	./scripts/generate_mock_api.sh
@@ -39,3 +37,18 @@ clean: ## Remove generated files
 
 test: ## Run tests
 	go test ./... -race
+
+test-integration: ## Run integration tests
+	go test ./... -race -tags=integration
+
+testacc-up: ## Launch a GitLab instance.
+	GITLAB_TOKEN=$(GITLAB_TOKEN) $(CONTAINER_COMPOSE_ENGINE) up -d $(SERVICE)
+	GITLAB_BASE_URL=$(GITLAB_BASE_URL) GITLAB_TOKEN=$(GITLAB_TOKEN) ./scripts/await_healthy.sh
+
+testacc-down: ## Teardown a GitLab instance.
+	$(CONTAINER_COMPOSE_ENGINE) down --volumes
+
+SERVICE ?= gitlab-ee-no-license
+GITLAB_TOKEN ?= glpat-ACCTEST1234567890123
+GITLAB_BASE_URL ?= http://127.0.0.1:8095/api/v4
+CONTAINER_COMPOSE_ENGINE ?= $(shell docker compose version >/dev/null 2>&1 && echo 'docker compose' || echo 'docker-compose')
