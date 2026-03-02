@@ -307,10 +307,11 @@ var _ = Describe("Test garbage collection for snapshots", func() {
 		It("Excludes cancelled PR snapshots that have keep-snapshot annotation", func() {
 			keptCancelledPRSnap := applicationapiv1alpha1.Snapshot{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:        "kept-cancelled-pr-snap",
-					Namespace:   "ns1",
-					Annotations: map[string]string{"test.appstudio.openshift.io/keep-snapshot": "true"},
-					Labels:      map[string]string{"pac.test.appstudio.openshift.io/event-type": "pull_request"},
+					Name:              "kept-cancelled-pr-snap",
+					Namespace:         "ns1",
+					Annotations:       map[string]string{"test.appstudio.openshift.io/keep-snapshot": "true"},
+					Labels:            map[string]string{"pac.test.appstudio.openshift.io/event-type": "pull_request"},
+					CreationTimestamp: metav1.NewTime(time.Now()),
 				},
 				Status: applicationapiv1alpha1.SnapshotStatus{Conditions: []metav1.Condition{cancelledCondition}},
 			}
@@ -1033,6 +1034,52 @@ var _ = Describe("Test garbage collection for snapshots", func() {
 					CreationTimestamp: metav1.NewTime(currentTime),
 				},
 			}
+			ttlPastPRSnapNs4 := &applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "my-time-here-is-done-snapshot",
+					Namespace: "ns4",
+					Labels: map[string]string{
+						"pac.test.appstudio.openshift.io/event-type": "pull_request",
+					},
+					Annotations: map[string]string{
+						"test.appstudio.openshift.io/keep-snapshot": "2m",
+					},
+					CreationTimestamp: metav1.NewTime(currentTime.Add(-time.Hour * 24 * 2)),
+				},
+			}
+			ttlBeforePRSnapNs3 := &applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "i-will-live",
+					Namespace: "ns3",
+					Annotations: map[string]string{
+						"test.appstudio.openshift.io/keep-snapshot": "20h5m1s",
+					},
+					CreationTimestamp: metav1.NewTime(currentTime),
+				},
+			}
+			ttlWrongPRSnapNs4 := &applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "wrong-is-my-first-name",
+					Namespace: "ns4",
+					Labels: map[string]string{
+						"pac.test.appstudio.openshift.io/event-type": "pull_request",
+					},
+					Annotations: map[string]string{
+						"test.appstudio.openshift.io/keep-snapshot": "bust",
+					},
+					CreationTimestamp: metav1.NewTime(currentTime),
+				},
+			}
+			ttlWrongKeepPRSnapNs4 := &applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "wrong-but-kept",
+					Namespace: "ns4",
+					Annotations: map[string]string{
+						"test.appstudio.openshift.io/keep-snapshot": "iWillBekeptbcsImnotPullRequest",
+					},
+					CreationTimestamp: metav1.NewTime(currentTime),
+				},
+			}
 
 			cl := fake.NewClientBuilder().
 				WithScheme(scheme).
@@ -1051,6 +1098,8 @@ var _ = Describe("Test garbage collection for snapshots", func() {
 							*newerPRSnapNs2, *olderPRSnapNs2,
 							*newerNonPRSnapNs3, *olderNonPRSnapNs3,
 							*newerPRSnapNs4, *olderPRSnapNs4,
+							*ttlPastPRSnapNs4, *ttlBeforePRSnapNs3,
+							*ttlWrongPRSnapNs4, *ttlWrongKeepPRSnapNs4,
 						},
 					},
 				).Build()
@@ -1072,12 +1121,12 @@ var _ = Describe("Test garbage collection for snapshots", func() {
 				Namespace: "ns3",
 			})
 			Expect(err).ShouldNot(HaveOccurred())
-			Expect(snapsBefore.Items).To(HaveLen(2))
+			Expect(snapsBefore.Items).To(HaveLen(3))
 			err = cl.List(context.Background(), snapsBefore, &client.ListOptions{
 				Namespace: "ns4",
 			})
 			Expect(err).ShouldNot(HaveOccurred())
-			Expect(snapsBefore.Items).To(HaveLen(2))
+			Expect(snapsBefore.Items).To(HaveLen(5))
 
 			err = garbageCollectSnapshots(cl, logger, 1, 1, 0)
 			Expect(err).ShouldNot(HaveOccurred())
@@ -1097,12 +1146,12 @@ var _ = Describe("Test garbage collection for snapshots", func() {
 				Namespace: "ns3",
 			})
 			Expect(err).ShouldNot(HaveOccurred())
-			Expect(snapsAfter.Items).To(HaveLen(2))
+			Expect(snapsAfter.Items).To(HaveLen(3))
 			err = cl.List(context.Background(), snapsAfter, &client.ListOptions{
 				Namespace: "ns4",
 			})
 			Expect(err).ShouldNot(HaveOccurred())
-			Expect(snapsAfter.Items).To(HaveLen(1))
+			Expect(snapsAfter.Items).To(HaveLen(2))
 		})
 
 		It("Fails if cannot list namespaces", func() {
@@ -1180,6 +1229,7 @@ var _ = Describe("Test garbage collection for snapshots", func() {
 					Annotations: map[string]string{
 						"test.appstudio.openshift.io/keep-snapshot": "true",
 					},
+					CreationTimestamp: metav1.NewTime(time.Now()),
 				},
 			}
 			snapDiscardNonPR := applicationapiv1alpha1.Snapshot{
@@ -1201,6 +1251,7 @@ var _ = Describe("Test garbage collection for snapshots", func() {
 					Annotations: map[string]string{
 						"test.appstudio.openshift.io/keep-snapshot": "true",
 					},
+					CreationTimestamp: metav1.NewTime(time.Now()),
 				},
 			}
 			snapDiscardPR := applicationapiv1alpha1.Snapshot{
@@ -1213,7 +1264,7 @@ var _ = Describe("Test garbage collection for snapshots", func() {
 				},
 			}
 
-			filteredSnapshotList, keptPr, keptNonPr := filterSnapshotsWithKeepSnapshotAnnotation([]applicationapiv1alpha1.Snapshot{snapKeepNonPR, snapDiscardNonPR, snapKeepPR, snapDiscardPR})
+			filteredSnapshotList, keptPr, keptNonPr := filterSnapshotsWithKeepSnapshotAnnotation([]applicationapiv1alpha1.Snapshot{snapKeepNonPR, snapDiscardNonPR, snapKeepPR, snapDiscardPR}, logger)
 			Expect(filteredSnapshotList).Should(ContainElement(snapDiscardNonPR))
 			Expect(filteredSnapshotList).Should(ContainElement(snapDiscardPR))
 			Expect(keptPr).To(Equal(1))
