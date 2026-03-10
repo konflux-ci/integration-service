@@ -430,7 +430,6 @@ func RemoveFinalizerFromPipelineRun(ctx context.Context, adapterClient client.Cl
 			// don't return wrapped err, so we can use RetryOnConflict
 			return err
 		}
-
 		logger.LogAuditEvent("Removed Finalizer from the PipelineRun", pipelineRun, LogActionUpdate, "finalizer", finalizer)
 	}
 

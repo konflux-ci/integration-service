@@ -18,9 +18,12 @@ package gitops_test
 
 import (
 	"github.com/konflux-ci/integration-service/api/v1beta2"
+	"github.com/konflux-ci/integration-service/helpers"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	. "github.com/onsi/gomega/gstruct"
+	"knative.dev/pkg/apis"
+	v1 "knative.dev/pkg/apis/duck/v1"
 
 	"encoding/json"
 	"strconv"
@@ -44,15 +47,17 @@ import (
 var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 
 	var (
-		hasApp          *applicationapiv1alpha1.Application
-		hasComp         *applicationapiv1alpha1.Component
-		badComp         *applicationapiv1alpha1.Component
-		hasSnapshot     *applicationapiv1alpha1.Snapshot
-		hasComSnapshot1 *applicationapiv1alpha1.Snapshot
-		hasComSnapshot2 *applicationapiv1alpha1.Snapshot
-		hasComSnapshot3 *applicationapiv1alpha1.Snapshot
-		pacRepository   *pacv1alpha1.Repository
-		sampleImage     string
+		hasApp                 *applicationapiv1alpha1.Application
+		hasComp                *applicationapiv1alpha1.Component
+		badComp                *applicationapiv1alpha1.Component
+		hasSnapshot            *applicationapiv1alpha1.Snapshot
+		hasComSnapshot1        *applicationapiv1alpha1.Snapshot
+		hasComSnapshot2        *applicationapiv1alpha1.Snapshot
+		hasComSnapshot3        *applicationapiv1alpha1.Snapshot
+		pacRepository          *pacv1alpha1.Repository
+		sampleImage            string
+		logger                 helpers.IntegrationLogger
+		integrationPipelinerun *tektonv1.PipelineRun
 	)
 
 	const (
@@ -112,6 +117,32 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 			},
 		}
 		Expect(k8sClient.Create(ctx, badComp)).Should(Succeed())
+
+		integrationPipelinerun = &tektonv1.PipelineRun{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:        "integration-pipeline-run",
+				Namespace:   namespace,
+				Annotations: make(map[string]string),
+			},
+		}
+		Expect(k8sClient.Create(ctx, integrationPipelinerun)).Should(Succeed())
+
+		integrationPipelinerun.Status = tektonv1.PipelineRunStatus{
+			PipelineRunStatusFields: tektonv1.PipelineRunStatusFields{
+				Results: []tektonv1.PipelineRunResult{},
+			},
+			Status: v1.Status{
+				Conditions: v1.Conditions{
+					apis.Condition{
+						Reason: "succeeded",
+						Status: "True",
+						Type:   apis.ConditionSucceeded,
+					},
+				},
+			},
+		}
+		Expect(k8sClient.Status().Update(ctx, integrationPipelinerun)).Should(Succeed())
+
 	})
 
 	BeforeEach(func() {
@@ -293,6 +324,8 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 		err = k8sClient.Delete(ctx, hasApp)
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
+		err = k8sClient.Delete(ctx, integrationPipelinerun)
+		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 	})
 
 	It("ensures the a decision can be made to NOT promote when the snaphot has not been marked as passed/failed", func() {
@@ -379,6 +412,12 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 			Expect(err).ToNot(HaveOccurred())
 		}
 		Expect(gitops.IsSnapshotMarkedAsCanceled(hasSnapshot)).To(BeTrue())
+	})
+
+	It("ensures finalizer can be removed from the finished pipelineruns", func() {
+		err := gitops.CancelPipelineRuns(k8sClient, ctx, logger, []tektonv1.PipelineRun{*integrationPipelinerun})
+		Expect(err).ToNot(HaveOccurred())
+		Expect(integrationPipelinerun.Finalizers).To(BeEmpty())
 	})
 
 	It("ensures the Snapshots status can be marked as in progress", func() {

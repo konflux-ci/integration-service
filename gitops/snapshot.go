@@ -1450,15 +1450,10 @@ func PrepareTempGroupSnapshot(application *applicationapiv1alpha1.Application, s
 
 func CancelPipelineRuns(c client.Client, ctx context.Context, logger helpers.IntegrationLogger, integrationTestPipelineRuns []tektonv1.PipelineRun) error {
 	// get all integration pipelineruns for a snapshot
+	var err error
 	for _, plr := range integrationTestPipelineRuns {
 		plr := plr
 		if !helpers.HasPipelineRunFinished(&plr) {
-			// remove finalizer and cancel pipelinerun
-			err := helpers.RemoveFinalizerFromPipelineRun(ctx, c, logger, &plr, helpers.IntegrationPipelineRunFinalizer)
-			if err != nil {
-				return err
-			}
-
 			// set "CancelledRunFinally" to PLR status, should gracefully cancel pipelinerun, this is so raw I hate this
 			patch := client.MergeFrom(plr.DeepCopy())
 			plr.Spec.Status = tektonv1.PipelineRunSpecStatusCancelledRunFinally
@@ -1470,6 +1465,12 @@ func CancelPipelineRuns(c client.Client, ctx context.Context, logger helpers.Int
 			}
 			logger.LogAuditEvent("IntegrationTestscenario pipelineRun has been cancelled.", &plr, helpers.LogActionUpdate)
 		}
+		// remove finalizer so it can be pruned gracefully
+		err = helpers.RemoveFinalizerFromPipelineRun(ctx, c, logger, &plr, helpers.IntegrationPipelineRunFinalizer)
+		if err != nil {
+			return err
+		}
+		logger.LogAuditEvent("finalizer has been removed from IntegrationTestscenario pipelineRun", &plr, helpers.LogActionUpdate)
 	}
 	return nil
 }
