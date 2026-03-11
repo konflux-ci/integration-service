@@ -81,12 +81,14 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 
 		testReleasePlan                           *releasev1alpha1.ReleasePlan
 		hasApp                                    *applicationapiv1alpha1.Application
+		hasCompGroup                              *v1beta2.ComponentGroup
 		hasComp                                   *applicationapiv1alpha1.Component
 		hasCompMissingImageDigest                 *applicationapiv1alpha1.Component
 		hasCompWithValidImage                     *applicationapiv1alpha1.Component
 		hasCom1                                   *applicationapiv1alpha1.Component
 		hasCom3                                   *applicationapiv1alpha1.Component
 		hasSnapshot                               *applicationapiv1alpha1.Snapshot
+		hasCGSnapshot                             *applicationapiv1alpha1.Snapshot
 		hasSnapshotPR                             *applicationapiv1alpha1.Snapshot
 		hasOldCompSnapshotPR                      *applicationapiv1alpha1.Snapshot
 		hasNewCompSnapshotPR                      *applicationapiv1alpha1.Snapshot
@@ -111,18 +113,23 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		SampleRepoLink            = "https://github.com/devfile-samples/devfile-sample-java-springboot-basic"
 		sample_image              = "quay.io/redhat-appstudio/sample-image"
 		sample_revision           = "random-value"
+		sample_commit             = "a2ba645d50e471d5f084b"
 		sampleDigest              = "sha256:841328df1b9f8c4087adbdcfec6cc99ac8308805dea83f6d415d6fb8d40227c1"
 		customLabel               = "custom.appstudio.openshift.io/custom-label"
 		sourceRepoRef             = "db2c043b72b3f8d292ee0e38768d0a94859a308b"
 		hasComSnapshot1Name       = "hascomsnapshot1-sample"
 		hasComSnapshot2Name       = "hascomsnapshot2-sample"
 		hasComSnapshot3Name       = "hascomsnapshot3-sample"
+		cgSnapshotName            = "componentgroup-snapshot-sample"
 		prGroup                   = "feature1"
 		prGroupSha                = "feature1hash"
 		plrstarttime        int64 = 1775992257000 // milliseconds (was 1775992257 seconds)
 	)
 
 	BeforeAll(func() {
+		// TODO: some resources have Application and ComponentGroup fields set for simplicity.
+		// remove the Application field when we remove support for the application model
+		// Also remove hasApp
 		hasApp = &applicationapiv1alpha1.Application{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "application-sample",
@@ -134,6 +141,48 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			},
 		}
 		Expect(k8sClient.Create(ctx, hasApp)).Should(Succeed())
+
+		hasCompGroup = &v1beta2.ComponentGroup{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "component-group-sample",
+				Namespace: "default",
+			},
+			Spec: v1beta2.ComponentGroupSpec{
+				Components: []v1beta2.ComponentReference{
+					v1beta2.ComponentReference{
+						Name: "component-sample",
+						ComponentVersion: v1beta2.ComponentVersionReference{
+							Name:     "v1",
+							Revision: "main",
+						},
+					},
+				},
+			},
+		}
+		Expect(k8sClient.Create(ctx, hasCompGroup)).Should(Succeed())
+
+		hasCompGroup.Status = v1beta2.ComponentGroupStatus{
+			Conditions: []metav1.Condition{
+				metav1.Condition{
+					Type:               "Succeeded",
+					Status:             metav1.ConditionTrue,
+					Reason:             "testing",
+					Message:            "test condition",
+					LastTransitionTime: metav1.Time{Time: time.Now()},
+				},
+			},
+			GlobalCandidateList: []v1beta2.ComponentState{
+				v1beta2.ComponentState{
+					Name:                  "component-sample",
+					Version:               "v1",
+					URL:                   SampleRepoLink,
+					LastPromotedImage:     sample_image,
+					LastPromotedCommit:    sample_commit,
+					LastPromotedBuildTime: &metav1.Time{Time: time.Now()},
+				},
+			},
+		}
+		Expect(k8sClient.Status().Update(ctx, hasCompGroup)).Should(Succeed())
 
 		integrationTestScenario = &v1beta2.IntegrationTestScenario{
 			ObjectMeta: metav1.ObjectMeta{
@@ -149,7 +198,8 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 				},
 			},
 			Spec: v1beta2.IntegrationTestScenarioSpec{
-				Application: "application-sample",
+				Application:    "application-sample",
+				ComponentGroup: "component-group-sample",
 				ResolverRef: v1beta2.ResolverRef{
 					Resolver: "git",
 					Params: []v1beta2.ResolverParameter{
@@ -370,6 +420,42 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		}
 		Expect(k8sClient.Create(ctx, hasSnapshot)).Should(Succeed())
 
+		hasCGSnapshot = &applicationapiv1alpha1.Snapshot{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      cgSnapshotName,
+				Namespace: "default",
+				Labels: map[string]string{
+					gitops.SnapshotTypeLabel:              "component",
+					gitops.SnapshotComponentLabel:         "component-sample",
+					"build.appstudio.redhat.com/pipeline": "enterprise-contract",
+					gitops.PipelineAsCodeEventTypeLabel:   "push",
+					customLabel:                           "custom-label",
+				},
+				Annotations: map[string]string{
+					gitops.PipelineAsCodeInstallationIDAnnotation:   "123",
+					"build.appstudio.redhat.com/commit_sha":         "6c65b2fcaea3e1a0a92476c8b5dc89e92a85f025",
+					"appstudio.redhat.com/updateComponentOnSuccess": "false",
+				},
+			},
+			Spec: applicationapiv1alpha1.SnapshotSpec{
+				ComponentGroup: hasCompGroup.Name,
+				Components: []applicationapiv1alpha1.SnapshotComponent{
+					{
+						Name:           "component-sample",
+						ContainerImage: sample_image,
+						Source: applicationapiv1alpha1.ComponentSource{
+							ComponentSourceUnion: applicationapiv1alpha1.ComponentSourceUnion{
+								GitSource: &applicationapiv1alpha1.GitSource{
+									Revision: sample_revision,
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+		Expect(k8sClient.Create(ctx, hasCGSnapshot)).Should(Succeed())
+
 		hasSnapshotPR = &applicationapiv1alpha1.Snapshot{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "snapshotpr-sample",
@@ -385,7 +471,8 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 				},
 			},
 			Spec: applicationapiv1alpha1.SnapshotSpec{
-				Application: hasApp.Name,
+				Application:    hasApp.Name,
+				ComponentGroup: hasCompGroup.Name,
 				Components: []applicationapiv1alpha1.SnapshotComponent{
 					{
 						Name:           "component-sample",
@@ -418,7 +505,8 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 				},
 			},
 			Spec: applicationapiv1alpha1.SnapshotSpec{
-				Application: hasApp.Name,
+				Application:    hasApp.Name,
+				ComponentGroup: hasCompGroup.Name,
 			},
 		}
 		Expect(k8sClient.Create(ctx, hasOldCompSnapshotPR)).Should(Succeed())
@@ -554,7 +642,8 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 				},
 			},
 			Spec: applicationapiv1alpha1.SnapshotSpec{
-				Application: hasApp.Name,
+				Application:    hasApp.Name,
+				ComponentGroup: hasCompGroup.Name,
 				Components: []applicationapiv1alpha1.SnapshotComponent{
 					{
 						Name:           "test-component-older",
@@ -573,7 +662,8 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 				},
 			},
 			Spec: applicationapiv1alpha1.SnapshotSpec{
-				Application: hasApp.Name,
+				Application:    hasApp.Name,
+				ComponentGroup: hasCompGroup.Name,
 				Components: []applicationapiv1alpha1.SnapshotComponent{
 					{
 						Name:           hasComp.Name,
@@ -601,7 +691,8 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 				},
 			},
 			Spec: applicationapiv1alpha1.SnapshotSpec{
-				Application: hasApp.Name,
+				Application:    hasApp.Name,
+				ComponentGroup: hasCompGroup.Name,
 				Components: []applicationapiv1alpha1.SnapshotComponent{
 					{
 						Name:           hasComp.Name,
@@ -848,6 +939,8 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 		err = k8sClient.Delete(ctx, hasSnapshot)
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
+		err = k8sClient.Delete(ctx, hasCGSnapshot)
+		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 		err = k8sClient.Delete(ctx, hasOverRideSnapshot)
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 		err = k8sClient.Delete(ctx, hasOldSnapshot)
@@ -892,17 +985,21 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 	When("adapter is created for Snapshot hasSnapshot", func() {
 		var buf bytes.Buffer
 
+		It("can create a new Adapter instance [APPLICATION]", func() {
+			Expect(reflect.TypeOf(NewAdapterWithApplication(ctx, hasSnapshot, hasApp, logger, loader.NewMockLoader(), k8sClient))).To(Equal(reflect.TypeOf(&Adapter{})))
+		})
+
 		It("can create a new Adapter instance", func() {
-			Expect(reflect.TypeOf(NewAdapter(ctx, hasSnapshot, hasApp, logger, loader.NewMockLoader(), k8sClient))).To(Equal(reflect.TypeOf(&Adapter{})))
+			Expect(reflect.TypeOf(NewAdapter(ctx, hasCGSnapshot, hasCompGroup, logger, loader.NewMockLoader(), k8sClient))).To(Equal(reflect.TypeOf(&Adapter{})))
 		})
 
 		It("ensures the integrationTestPipelines are created", func() {
 			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
-			adapter = NewAdapter(ctx, hasSnapshot, hasApp, log, loader.NewMockLoader(), k8sClient)
+			adapter = NewAdapter(ctx, hasCGSnapshot, hasCompGroup, log, loader.NewMockLoader(), k8sClient)
 			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
-					ContextKey: loader.ApplicationContextKey,
-					Resource:   hasApp,
+					ContextKey: loader.ComponentGroupContextKey,
+					Resource:   hasCompGroup,
 				},
 				{
 					ContextKey: loader.ComponentContextKey,
@@ -910,18 +1007,18 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 				},
 				{
 					ContextKey: loader.SnapshotContextKey,
-					Resource:   hasSnapshot,
+					Resource:   hasCGSnapshot,
 				},
 				{
 					ContextKey: loader.SnapshotComponentsContextKey,
 					Resource:   []applicationapiv1alpha1.Component{*hasComp},
 				},
 				{
-					ContextKey: loader.AllIntegrationTestScenariosContextKey,
+					ContextKey: loader.AllIntegrationTestScenariosForComponentGroupContextKey,
 					Resource:   []v1beta2.IntegrationTestScenario{*integrationTestScenario},
 				},
 				{
-					ContextKey: loader.RequiredIntegrationTestScenariosForSnapshotApplicationContextKey,
+					ContextKey: loader.RequiredIntegrationTestScenariosForSnapshotContextKey,
 					Resource:   []v1beta2.IntegrationTestScenario{*integrationTestScenario},
 				},
 			})
@@ -931,7 +1028,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			Expect(result.RequeueRequest).To(BeFalse())
 			Expect(err).ToNot(HaveOccurred())
 
-			requiredIntegrationTestScenarios, err := adapter.loader.GetRequiredIntegrationTestScenariosForSnapshotApplication(adapter.context, k8sClient, hasApp, hasSnapshot)
+			requiredIntegrationTestScenarios, err := adapter.loader.GetRequiredIntegrationTestScenariosForSnapshot(adapter.context, k8sClient, hasCompGroup, hasCGSnapshot)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(requiredIntegrationTestScenarios).NotTo(BeNil())
 			expectedLogEntry := "Creating new pipelinerun for integrationTestscenario integrationTestScenario.Name example-pass"
@@ -940,7 +1037,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
 
 			// Snapshot must have InProgress tests
-			statuses, err := gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(hasSnapshot)
+			statuses, err := gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(hasCGSnapshot)
 			Expect(err).ToNot(HaveOccurred())
 			detail, ok := statuses.GetScenarioStatus(integrationTestScenario.Name)
 			Expect(ok).To(BeTrue())
@@ -948,7 +1045,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 
 			integrationPipelineRuns := []tektonv1.PipelineRun{}
 			Eventually(func() error {
-				integrationPipelineRuns, err = adapter.loader.GetAllIntegrationPipelineRunsForSnapshot(adapter.context, k8sClient, hasSnapshot)
+				integrationPipelineRuns, err = adapter.loader.GetAllIntegrationPipelineRunsForSnapshot(adapter.context, k8sClient, hasCGSnapshot)
 				if err != nil {
 					return err
 				}
@@ -985,18 +1082,18 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		It("ensures Release created successfully", func() {
 			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
 
-			err := gitops.MarkSnapshotIntegrationStatusAsFinished(ctx, k8sClient, hasSnapshot, "Snapshot integration status condition is finished since all testing pipelines completed")
+			err := gitops.MarkSnapshotIntegrationStatusAsFinished(ctx, k8sClient, hasCGSnapshot, "Snapshot integration status condition is finished since all testing pipelines completed")
 			Expect(err).ToNot(HaveOccurred())
-			err = gitops.MarkSnapshotAsPassed(ctx, k8sClient, hasSnapshot, "test passed")
+			err = gitops.MarkSnapshotAsPassed(ctx, k8sClient, hasCGSnapshot, "test passed")
 			Expect(err).To(Succeed())
-			Expect(gitops.HaveAppStudioTestsFinished(hasSnapshot)).To(BeTrue())
-			Expect(gitops.HaveAppStudioTestsSucceeded(hasSnapshot)).To(BeTrue())
-			adapter = NewAdapter(ctx, hasSnapshot, hasApp, log, loader.NewMockLoader(), k8sClient)
+			Expect(gitops.HaveAppStudioTestsFinished(hasCGSnapshot)).To(BeTrue())
+			Expect(gitops.HaveAppStudioTestsSucceeded(hasCGSnapshot)).To(BeTrue())
+			adapter = NewAdapter(ctx, hasCGSnapshot, hasCompGroup, log, loader.NewMockLoader(), k8sClient)
 
 			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
-					ContextKey: loader.ApplicationContextKey,
-					Resource:   hasApp,
+					ContextKey: loader.ComponentGroupContextKey,
+					Resource:   hasCompGroup,
 				},
 				{
 					ContextKey: loader.ComponentContextKey,
@@ -1004,7 +1101,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 				},
 				{
 					ContextKey: loader.SnapshotContextKey,
-					Resource:   hasSnapshot,
+					Resource:   hasCGSnapshot,
 				},
 				{
 					ContextKey: loader.AutoReleasePlansContextKey,
@@ -1023,10 +1120,10 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 
 			Eventually(func() bool {
 				err := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      hasSnapshot.Name,
+					Name:      hasCGSnapshot.Name,
 					Namespace: "default",
-				}, hasSnapshot)
-				return err == nil && gitops.IsSnapshotMarkedAsAutoReleased(hasSnapshot)
+				}, hasCGSnapshot)
+				return err == nil && gitops.IsSnapshotMarkedAsAutoReleased(hasCGSnapshot)
 			}, time.Second*10).Should(BeTrue())
 
 			// Check if the adapter function detects that it already released the snapshot
@@ -1037,7 +1134,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			expectedLogEntry := "The Snapshot was previously auto-released, skipping auto-release."
 			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
 
-			condition := meta.FindStatusCondition(hasSnapshot.Status.Conditions, gitops.SnapshotAutoReleasedCondition)
+			condition := meta.FindStatusCondition(hasCGSnapshot.Status.Conditions, gitops.SnapshotAutoReleasedCondition)
 			Expect(condition.Message).To(Equal("The Snapshot was auto-released"))
 		})
 
@@ -1046,16 +1143,16 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 
 			// Set the snapshot up for failure by setting its status as failed and invalid
 			// as well as marking it as PaC pull request event type
-			err := gitops.MarkSnapshotAsFailed(ctx, k8sClient, hasSnapshot, "test failed")
+			err := gitops.MarkSnapshotAsFailed(ctx, k8sClient, hasCGSnapshot, "test failed")
 			Expect(err).ShouldNot(HaveOccurred())
-			gitops.SetSnapshotIntegrationStatusAsInvalid(hasSnapshot, "snapshot invalid")
-			hasSnapshot.Labels[gitops.PipelineAsCodeEventTypeLabel] = gitops.PipelineAsCodePullRequestType
-			hasSnapshot.Labels[gitops.PipelineAsCodePullRequestAnnotation] = "1"
-			hasSnapshot.Labels[gitops.AutoReleaseLabel] = "false"
-			Expect(gitops.HaveAppStudioTestsSucceeded(hasSnapshot)).To(BeFalse())
-			Expect(gitops.IsSnapshotValid(hasSnapshot)).To(BeFalse())
+			gitops.SetSnapshotIntegrationStatusAsInvalid(hasCGSnapshot, "snapshot invalid")
+			hasCGSnapshot.Labels[gitops.PipelineAsCodeEventTypeLabel] = gitops.PipelineAsCodePullRequestType
+			hasCGSnapshot.Labels[gitops.PipelineAsCodePullRequestAnnotation] = "1"
+			hasCGSnapshot.Labels[gitops.AutoReleaseLabel] = "false"
+			Expect(gitops.HaveAppStudioTestsSucceeded(hasCGSnapshot)).To(BeFalse())
+			Expect(gitops.IsSnapshotValid(hasCGSnapshot)).To(BeFalse())
 
-			adapter = NewAdapter(ctx, hasSnapshot, hasApp, log, loader.NewMockLoader(), k8sClient)
+			adapter = NewAdapter(ctx, hasCGSnapshot, hasCompGroup, log, loader.NewMockLoader(), k8sClient)
 			Eventually(func() bool {
 				result, err := adapter.EnsureAllReleasesExist()
 				return !result.CancelRequest && err == nil
@@ -1074,7 +1171,8 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		})
 
 		It("ensures build, PaC, test, and custom labels/annotations are propagated from snapshot to Integration test PLR", func() {
-			pipelineRun, err := adapter.createIntegrationPipelineRun(hasApp, integrationTestScenario, hasSnapshot)
+			adapter = NewAdapter(ctx, hasCGSnapshot, hasCompGroup, logger, loader.NewMockLoader(), k8sClient)
+			pipelineRun, err := adapter.createIntegrationPipelineRun(integrationTestScenario)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(pipelineRun).ToNot(BeNil())
 
@@ -1088,35 +1186,35 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			Expect(label).To(Equal("enterprise-contract"))
 
 			// Pac labels prefixed with 'pac.test.appstudio.openshift.io' are copied
-			_, found = hasSnapshot.GetLabels()[gitops.PipelineAsCodeEventTypeLabel]
+			_, found = hasCGSnapshot.GetLabels()[gitops.PipelineAsCodeEventTypeLabel]
 			Expect(found).To(BeTrue())
 			label, found = pipelineRun.GetLabels()[gitops.PipelineAsCodeEventTypeLabel]
 			Expect(found).To(BeTrue())
-			Expect(label).To(Equal(hasSnapshot.GetLabels()[gitops.PipelineAsCodeEventTypeLabel]))
+			Expect(label).To(Equal(hasCGSnapshot.GetLabels()[gitops.PipelineAsCodeEventTypeLabel]))
 
 			// test labels prefixed with 'test.appstudio.openshift.io' are copied
-			_, found = hasSnapshot.GetLabels()[gitops.SnapshotTypeLabel]
+			_, found = hasCGSnapshot.GetLabels()[gitops.SnapshotTypeLabel]
 			Expect(found).To(BeTrue())
 			label, found = pipelineRun.GetLabels()[gitops.SnapshotTypeLabel]
 			Expect(found).To(BeTrue())
-			Expect(label).To(Equal(hasSnapshot.GetLabels()[gitops.SnapshotTypeLabel]))
+			Expect(label).To(Equal(hasCGSnapshot.GetLabels()[gitops.SnapshotTypeLabel]))
 
 			// custom labels prefixed with 'custom.appstudio.openshift.io' are copied
-			_, found = hasSnapshot.GetLabels()[customLabel]
+			_, found = hasCGSnapshot.GetLabels()[customLabel]
 			Expect(found).To(BeTrue())
 			label, found = pipelineRun.GetLabels()[customLabel]
 			Expect(found).To(BeTrue())
-			Expect(label).To(Equal(hasSnapshot.GetLabels()[customLabel]))
+			Expect(label).To(Equal(hasCGSnapshot.GetLabels()[customLabel]))
 
 		})
 
 		It("ensures other labels/annotations are NOT propagated from snapshot to Integration test PLR", func() {
-			pipelineRun, err := adapter.createIntegrationPipelineRun(hasApp, integrationTestScenario, hasSnapshot)
+			pipelineRun, err := adapter.createIntegrationPipelineRun(integrationTestScenario)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(pipelineRun).ToNot(BeNil())
 
 			// build annotations non-prefixed with 'build.appstudio' are not copied
-			_, found := hasSnapshot.GetAnnotations()["appstudio.redhat.com/updateComponentOnSuccess"]
+			_, found := hasCGSnapshot.GetAnnotations()["appstudio.redhat.com/updateComponentOnSuccess"]
 			Expect(found).To(BeTrue())
 			_, found = pipelineRun.GetAnnotations()["appstudio.redhat.com/updateComponentOnSuccess"]
 			Expect(found).To(BeFalse())
@@ -1125,24 +1223,24 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		It("ensures serviceAccount is generated correctly for the Integration test PLR", func() {
 			serviceAccountName := tektonconsts.DefaultIntegrationPipelineServiceAccount
 
-			pipelineRun, err := adapter.createIntegrationPipelineRun(hasApp, integrationTestScenario, hasSnapshot)
+			pipelineRun, err := adapter.createIntegrationPipelineRun(integrationTestScenario)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(pipelineRun).ToNot(BeNil())
 
 			Expect(pipelineRun.Spec.TaskRunTemplate.ServiceAccountName).To(Equal(serviceAccountName))
 		})
 
-		When("snssphot is created", func() {
+		When("snapshot is created", func() {
 			It("ensures global Component Image and lastPromotedImage updated when override snapshot is created", func() {
 				// ensure last promoted image is empty string
 				hasComp.Status.LastPromotedImage = ""
 				var buf bytes.Buffer
 				log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
-				adapter = NewAdapter(ctx, hasOverRideSnapshot, hasApp, log, loader.NewMockLoader(), k8sClient)
+				adapter = NewAdapter(ctx, hasOverRideSnapshot, hasCompGroup, log, loader.NewMockLoader(), k8sClient)
 				adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 					{
-						ContextKey: loader.ApplicationContextKey,
-						Resource:   hasApp,
+						ContextKey: loader.ComponentGroupContextKey,
+						Resource:   hasCompGroup,
 					},
 					{
 						ContextKey: loader.ComponentContextKey,
@@ -1182,6 +1280,25 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 
 				// don't update Global Candidate List for a snapshot if it is not override snapshot
 				hasOverRideSnapshot.Labels[gitops.SnapshotTypeLabel] = ""
+
+				result, err := adapter.EnsureGlobalCandidateImageUpdated()
+				Expect(err).ShouldNot(HaveOccurred())
+				Expect(result.CancelRequest).To(BeFalse())
+				Expect(result.RequeueRequest).To(BeFalse())
+				expectedLogEntry := "The Snapshot was not override type, will not update the global candidate list"
+				Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
+
+				// update Glocal Candidate List for the component in a override snapshot
+				hasOverRideSnapshot.Labels[gitops.SnapshotTypeLabel] = gitops.SnapshotOverrideType
+				adapter.snapshot = hasOverRideSnapshot
+				result, err = adapter.EnsureGlobalCandidateImageUpdated()
+				Expect(err).ShouldNot(HaveOccurred())
+				Expect(result.CancelRequest).To(BeFalse())
+			})
+
+			It("Doesn't update Global candidate list for the component included in an override snapshot but doesn't exist [APPLICATION]", func() {
+				var buf bytes.Buffer
+				log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
 				hasOverRideSnapshot.Spec.Components = []applicationapiv1alpha1.SnapshotComponent{
 					{
 						Name: "nonexisting-component",
@@ -1199,22 +1316,13 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 						},
 					},
 				}
-
+				adapter = NewAdapterWithApplication(ctx, hasOverRideSnapshot, hasApp, log, loader.NewMockLoader(), k8sClient)
 				result, err := adapter.EnsureGlobalCandidateImageUpdated()
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(result.CancelRequest).To(BeFalse())
 				Expect(result.RequeueRequest).To(BeFalse())
-				expectedLogEntry := "The Snapshot was not override type, will not update the global candidate list"
-				Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
-
-				// update Glocal Candidate List for the component in a override snapshot
-				hasOverRideSnapshot.Labels[gitops.SnapshotTypeLabel] = gitops.SnapshotOverrideType
-				adapter.snapshot = hasOverRideSnapshot
-				result, err = adapter.EnsureGlobalCandidateImageUpdated()
-				Expect(err).ShouldNot(HaveOccurred())
-				Expect(result.CancelRequest).To(BeFalse())
 				// don't update Global Candidate List for the component included in a override snapshot but doesn't existw
-				expectedLogEntry = "Failed to get component from application, won't update global candidate list for this component"
+				expectedLogEntry := "Failed to get component from application, won't update global candidate list for this component"
 				Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
 				expectedLogEntry = "containerImage cannot be updated to component Global Candidate List due to invalid digest in containerImage"
 				Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
@@ -1299,8 +1407,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 				}
 				var buf bytes.Buffer
 				log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
-				adapter.logger = log
-				adapter.snapshot = hasSnapshotPR
+				adapter = NewAdapter(ctx, hasSnapshotPR, hasCompGroup, log, loader.NewMockLoader(), k8sClient)
 				adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 					{
 						ContextKey: loader.ResolutionRequestContextKey,
@@ -1308,7 +1415,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 					},
 				})
 
-				pipelineRun, err := adapter.createIntegrationPipelineRun(hasApp, integrationTestScenarioWithTrailingSlash, hasSnapshotPR)
+				pipelineRun, err := adapter.createIntegrationPipelineRun(integrationTestScenarioWithTrailingSlash)
 				Expect(err).ToNot(HaveOccurred())
 				Expect(pipelineRun).ToNot(BeNil())
 				Expect(buf.String()).Should(ContainSubstring("using the integration test pipeline/pipelinerun from the pr of snapshot integrationTestScneario.Name example-pass snapshot.Name snapshotpr-sample resourceKind pipelinerun"))
@@ -1363,7 +1470,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 				log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
 				adapter.logger = log
 				adapter.snapshot = hasSnapshotPR
-				pipelineRun, err := adapter.createIntegrationPipelineRun(hasApp, integrationTestScenarioWithTrailingSlash, hasSnapshotPR)
+				pipelineRun, err := adapter.createIntegrationPipelineRun(integrationTestScenarioWithTrailingSlash)
 				Expect(buf.String()).Should(ContainSubstring("using the integration test pipeline/pipelinerun from the pr of snapshot integrationTestScneario.Name example-pass snapshot.Name snapshotpr-sample resourceKind pipeline"))
 				Expect(err).ToNot(HaveOccurred())
 				Expect(pipelineRun).ToNot(BeNil())
@@ -1391,11 +1498,11 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		It("Ensure error is logged when experiencing error when fetching ITS for application", func() {
 			var buf bytes.Buffer
 			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
-			adapter = NewAdapter(ctx, hasSnapshot, hasApp, log, loader.NewMockLoader(), k8sClient)
+			adapter = NewAdapter(ctx, hasCGSnapshot, hasCompGroup, log, loader.NewMockLoader(), k8sClient)
 			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
-					ContextKey: loader.ApplicationContextKey,
-					Resource:   hasApp,
+					ContextKey: loader.ComponentGroupContextKey,
+					Resource:   hasCompGroup,
 				},
 				{
 					ContextKey: loader.ComponentContextKey,
@@ -1403,19 +1510,19 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 				},
 				{
 					ContextKey: loader.SnapshotContextKey,
-					Resource:   hasSnapshot,
+					Resource:   hasCGSnapshot,
 				},
 				{
 					ContextKey: loader.AllIntegrationTestScenariosContextKey,
 					Err:        fmt.Errorf("not found"),
 				},
 				{
-					ContextKey: loader.RequiredIntegrationTestScenariosForSnapshotApplicationContextKey,
+					ContextKey: loader.RequiredIntegrationTestScenariosForSnapshotContextKey,
 					Err:        fmt.Errorf("not found"),
 				},
 			})
 			result, err := adapter.EnsureIntegrationPipelineRunsExist()
-			Expect(buf.String()).Should(ContainSubstring("Failed to get integration test scenarios for the following application"))
+			Expect(buf.String()).Should(ContainSubstring("Failed to get integration test scenarios for the following component group"))
 			Expect(buf.String()).Should(ContainSubstring("Failed to get all required IntegrationTestScenarios"))
 			Expect(result.CancelRequest).To(BeTrue())
 			Expect(result.RequeueRequest).To(BeFalse())
@@ -1425,11 +1532,11 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		It("Mark snapshot as pass when required ITS is not found", func() {
 			var buf bytes.Buffer
 			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
-			adapter = NewAdapter(ctx, hasSnapshot, hasApp, log, loader.NewMockLoader(), k8sClient)
+			adapter = NewAdapter(ctx, hasCGSnapshot, hasCompGroup, log, loader.NewMockLoader(), k8sClient)
 			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
-					ContextKey: loader.ApplicationContextKey,
-					Resource:   hasApp,
+					ContextKey: loader.ComponentGroupContextKey,
+					Resource:   hasCompGroup,
 				},
 				{
 					ContextKey: loader.ComponentContextKey,
@@ -1437,10 +1544,10 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 				},
 				{
 					ContextKey: loader.SnapshotContextKey,
-					Resource:   hasSnapshot,
+					Resource:   hasCGSnapshot,
 				},
 				{
-					ContextKey: loader.RequiredIntegrationTestScenariosForSnapshotApplicationContextKey,
+					ContextKey: loader.RequiredIntegrationTestScenariosForSnapshotContextKey,
 					Resource:   nil,
 				},
 			})
@@ -1452,16 +1559,16 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		})
 
 		It("Skip integration test for passed Snapshot", func() {
-			err := gitops.MarkSnapshotAsPassed(ctx, k8sClient, hasSnapshot, "test pass")
+			err := gitops.MarkSnapshotAsPassed(ctx, k8sClient, hasCGSnapshot, "test pass")
 			Expect(err).To(Succeed())
-			Expect(gitops.HaveAppStudioTestsSucceeded(hasSnapshot)).To(BeTrue())
+			Expect(gitops.HaveAppStudioTestsSucceeded(hasCGSnapshot)).To(BeTrue())
 			var buf bytes.Buffer
 			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
-			adapter = NewAdapter(ctx, hasSnapshot, hasApp, log, loader.NewMockLoader(), k8sClient)
+			adapter = NewAdapter(ctx, hasCGSnapshot, hasCompGroup, log, loader.NewMockLoader(), k8sClient)
 			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
-					ContextKey: loader.ApplicationContextKey,
-					Resource:   hasApp,
+					ContextKey: loader.ComponentGroupContextKey,
+					Resource:   hasCompGroup,
 				},
 				{
 					ContextKey: loader.ComponentContextKey,
@@ -1469,7 +1576,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 				},
 				{
 					ContextKey: loader.SnapshotContextKey,
-					Resource:   hasSnapshot,
+					Resource:   hasCGSnapshot,
 				},
 			})
 			result, err := adapter.EnsureIntegrationPipelineRunsExist()
@@ -1500,7 +1607,8 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 					},
 				},
 				Spec: applicationapiv1alpha1.SnapshotSpec{
-					Application: hasApp.Name,
+					Application:    hasApp.Name,
+					ComponentGroup: hasCompGroup.Name,
 					Components: []applicationapiv1alpha1.SnapshotComponent{
 						{
 							Name:           "component-sample",
@@ -1528,7 +1636,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 					},
 				},
 				Spec: v1beta2.IntegrationTestScenarioSpec{
-					Application: "application-sample",
+					ComponentGroup: hasCompGroup.Name,
 					ResolverRef: v1beta2.ResolverRef{
 						Resolver: "git",
 						Params: []v1beta2.ResolverParameter{
@@ -1571,12 +1679,12 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			var buf bytes.Buffer
 
 			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
-			adapter = NewAdapter(ctx, hasInvalidSnapshot, hasApp, log, loader.NewMockLoader(), k8sClient)
+			adapter = NewAdapter(ctx, hasInvalidSnapshot, hasCompGroup, log, loader.NewMockLoader(), k8sClient)
 
 			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
-					ContextKey: loader.ApplicationContextKey,
-					Resource:   hasApp,
+					ContextKey: loader.ComponentGroupContextKey,
+					Resource:   hasCompGroup,
 				},
 				{
 					ContextKey: loader.ComponentContextKey,
@@ -1591,11 +1699,11 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 					Resource:   []applicationapiv1alpha1.Component{*hasComp},
 				},
 				{
-					ContextKey: loader.AllIntegrationTestScenariosContextKey,
+					ContextKey: loader.AllIntegrationTestScenariosForComponentGroupContextKey,
 					Resource:   []v1beta2.IntegrationTestScenario{*integrationTestScenarioForInvalidSnapshot},
 				},
 				{
-					ContextKey: loader.RequiredIntegrationTestScenariosForSnapshotApplicationContextKey,
+					ContextKey: loader.RequiredIntegrationTestScenariosForSnapshotContextKey,
 					Resource:   []v1beta2.IntegrationTestScenario{*integrationTestScenarioForInvalidSnapshot},
 				},
 			})
@@ -1614,13 +1722,13 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
 
 		BeforeAll(func() {
-			err := gitops.MarkSnapshotAsPassed(ctx, k8sClient, hasSnapshot, "test passed")
+			err := gitops.MarkSnapshotAsPassed(ctx, k8sClient, hasCGSnapshot, "test passed")
 			Expect(err).To(Succeed())
-			Expect(gitops.HaveAppStudioTestsSucceeded(hasSnapshot)).To(BeTrue())
+			Expect(gitops.HaveAppStudioTestsSucceeded(hasCGSnapshot)).To(BeTrue())
 		})
 
 		It("Cancel request when GetAutoReleasePlansForApplication returns an error", func() {
-			adapter = NewAdapter(ctx, hasSnapshot, hasApp, log, loader.NewMockLoader(), k8sClient)
+			adapter = NewAdapter(ctx, hasCGSnapshot, hasCompGroup, log, loader.NewMockLoader(), k8sClient)
 			// Mock the context with error for AutoReleasePlansContextKey
 			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
@@ -1637,7 +1745,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		})
 
 		It("Returns RequeueWithError if the snapshot is less than three hours old", func() {
-			adapter = NewAdapter(ctx, hasSnapshot, hasApp, log, loader.NewMockLoader(), k8sClient)
+			adapter = NewAdapter(ctx, hasCGSnapshot, hasCompGroup, log, loader.NewMockLoader(), k8sClient)
 			testErr := fmt.Errorf("something went wrong with the release")
 
 			result, err := adapter.RequeueIfYoungerThanThreshold(testErr)
@@ -1651,9 +1759,9 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			// Set snapshot creation time to 3 hours ago
 			// time.Sub takes a time.Time and returns a time.Duration.  Time.Add takes a time.Duration
 			// and returns a time.Time.  Why?  Who knows.  We want the latter, so we add -3 hours here
-			hasSnapshot.CreationTimestamp = metav1.NewTime(time.Now().Add(-1 * SnapshotRetryTimeout))
+			hasCGSnapshot.CreationTimestamp = metav1.NewTime(time.Now().Add(-1 * SnapshotRetryTimeout))
 
-			adapter = NewAdapter(ctx, hasSnapshot, hasApp, log, loader.NewMockLoader(), k8sClient)
+			adapter = NewAdapter(ctx, hasCGSnapshot, hasCompGroup, log, loader.NewMockLoader(), k8sClient)
 			testErr := fmt.Errorf("something went wrong with the release")
 
 			result, err := adapter.RequeueIfYoungerThanThreshold(testErr)
@@ -1667,19 +1775,19 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		var buf bytes.Buffer
 
 		BeforeAll(func() {
-			err := gitops.MarkSnapshotAsPassed(ctx, k8sClient, hasSnapshot, "test passed")
+			err := gitops.MarkSnapshotAsPassed(ctx, k8sClient, hasCGSnapshot, "test passed")
 			Expect(err).To(Succeed())
-			Expect(gitops.HaveAppStudioTestsSucceeded(hasSnapshot)).To(BeTrue())
+			Expect(gitops.HaveAppStudioTestsSucceeded(hasCGSnapshot)).To(BeTrue())
 		})
 
 		It("ensures that the AutoRelease condition of Snapshot mentions the absence of ReleasePlan", func() {
 			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
 
-			adapter = NewAdapter(ctx, hasSnapshot, hasApp, log, loader.NewMockLoader(), k8sClient)
+			adapter = NewAdapter(ctx, hasCGSnapshot, hasCompGroup, log, loader.NewMockLoader(), k8sClient)
 			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
-					ContextKey: loader.ApplicationContextKey,
-					Resource:   hasApp,
+					ContextKey: loader.ComponentGroupContextKey,
+					Resource:   hasCompGroup,
 				},
 				{
 					ContextKey: loader.ComponentContextKey,
@@ -1687,7 +1795,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 				},
 				{
 					ContextKey: loader.SnapshotContextKey,
-					Resource:   hasSnapshot,
+					Resource:   hasCGSnapshot,
 				},
 				{
 					ContextKey: loader.AutoReleasePlansContextKey,
@@ -1700,12 +1808,12 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			Expect(result.RequeueRequest).To(BeFalse())
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(hasSnapshot.Status.Conditions).NotTo(BeNil())
-			Expect(gitops.IsSnapshotStatusConditionSet(hasSnapshot, gitops.SnapshotAutoReleasedCondition,
+			Expect(hasCGSnapshot.Status.Conditions).NotTo(BeNil())
+			Expect(gitops.IsSnapshotStatusConditionSet(hasCGSnapshot, gitops.SnapshotAutoReleasedCondition,
 				metav1.ConditionTrue, gitops.SnapshotAutoReleasedCondition)).To(BeTrue())
 
 			// Verify that the message field of "AutoRelease" condition mentions the absence of ReleasePlans
-			condition := meta.FindStatusCondition(hasSnapshot.Status.Conditions, gitops.SnapshotAutoReleasedCondition)
+			condition := meta.FindStatusCondition(hasCGSnapshot.Status.Conditions, gitops.SnapshotAutoReleasedCondition)
 			Expect(condition.Message).To(Equal("Skipping auto-release of the Snapshot because no ReleasePlans have the 'auto-release' label set to 'true'"))
 		})
 	})
@@ -1741,11 +1849,11 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			}, time.Second*10).Should(BeTrue())
 
 			//Set up mocked context
-			adapter = NewAdapter(ctx, hasOldSnapshot, hasApp, log, loader.NewMockLoader(), k8sClient)
+			adapter = NewAdapter(ctx, hasOldSnapshot, hasCompGroup, log, loader.NewMockLoader(), k8sClient)
 			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
-					ContextKey: loader.ApplicationContextKey,
-					Resource:   hasApp,
+					ContextKey: loader.ComponentGroupContextKey,
+					Resource:   hasCompGroup,
 				},
 				{
 					ContextKey: loader.GetComponentContextKey,
@@ -1806,12 +1914,12 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			metav1.SetMetaDataAnnotation(&hasOldSnapshot.ObjectMeta, gitops.IgnoreSupersessionAnnotation, "true")
 
 			//Set up mocked context
-			adapter = NewAdapter(ctx, hasOldSnapshot, hasApp, log, loader.NewMockLoader(), k8sClient)
+			adapter = NewAdapter(ctx, hasOldSnapshot, hasCompGroup, log, loader.NewMockLoader(), k8sClient)
 			//Verify that the annotation exists
 			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
-					ContextKey: loader.ApplicationContextKey,
-					Resource:   hasApp,
+					ContextKey: loader.ComponentGroupContextKey,
+					Resource:   hasCompGroup,
 				},
 				{
 					ContextKey: loader.GetComponentContextKey,
@@ -1879,11 +1987,11 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			}, time.Second*10).Should(BeTrue())
 
 			//Set up mocked context
-			adapter = NewAdapter(ctx, hasOldSnapshot, hasApp, log, loader.NewMockLoader(), k8sClient)
+			adapter = NewAdapter(ctx, hasOldSnapshot, hasCompGroup, log, loader.NewMockLoader(), k8sClient)
 			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
-					ContextKey: loader.ApplicationContextKey,
-					Resource:   hasApp,
+					ContextKey: loader.ComponentGroupContextKey,
+					Resource:   hasCompGroup,
 				},
 				{
 					ContextKey: loader.GetComponentContextKey,
@@ -1926,7 +2034,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		})
 	})
 
-	Describe("EnsureRerunPipelineRunsExist", func() {
+	Describe("EnsureRerunPipelineRunsExist [APPLICATION]", func() {
 
 		When("manual re-run of scenario using static env is trigerred", func() {
 			BeforeEach(func() {
@@ -1940,7 +2048,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 				hasSnapshot.Labels[gitops.SnapshotIntegrationTestRun] = integrationTestScenario.Name
 
 				log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
-				adapter = NewAdapter(ctx, hasSnapshot, hasApp, log, loader.NewMockLoader(), k8sClient)
+				adapter = NewAdapterWithApplication(ctx, hasSnapshot, hasApp, log, loader.NewMockLoader(), k8sClient)
 				adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 					{
 						ContextKey: loader.ApplicationContextKey,
@@ -2014,7 +2122,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 				hasSnapshot.Labels[gitops.SnapshotIntegrationTestRun] = integrationTestScenario.Name
 
 				log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
-				adapter = NewAdapter(ctx, hasSnapshot, hasApp, log, loader.NewMockLoader(), k8sClient)
+				adapter = NewAdapterWithApplication(ctx, hasSnapshot, hasApp, log, loader.NewMockLoader(), k8sClient)
 				adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 					{
 						ContextKey: loader.ApplicationContextKey,
@@ -2089,7 +2197,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 				hasSnapshot.Labels[gitops.SnapshotIntegrationTestRun] = "all"
 
 				log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
-				adapter = NewAdapter(ctx, hasSnapshot, hasApp, log, loader.NewMockLoader(), k8sClient)
+				adapter = NewAdapterWithApplication(ctx, hasSnapshot, hasApp, log, loader.NewMockLoader(), k8sClient)
 				adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 					{
 						ContextKey: loader.ApplicationContextKey,
@@ -2181,7 +2289,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 				hasSnapshot.Labels[gitops.SnapshotIntegrationTestRun] = "all"
 
 				log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
-				adapter = NewAdapter(ctx, hasSnapshot, hasApp, log, loader.NewMockLoader(), k8sClient)
+				adapter = NewAdapterWithApplication(ctx, hasSnapshot, hasApp, log, loader.NewMockLoader(), k8sClient)
 				adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 					{
 						ContextKey: loader.ApplicationContextKey,
@@ -2256,7 +2364,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 				hasSnapshot.Labels[gitops.SnapshotIntegrationTestRun] = integrationTestScenario1.Name
 
 				log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
-				adapter = NewAdapter(ctx, hasSnapshot, hasApp, log, loader.NewMockLoader(), k8sClient)
+				adapter = NewAdapterWithApplication(ctx, hasSnapshot, hasApp, log, loader.NewMockLoader(), k8sClient)
 				adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 					{
 						ContextKey: loader.ApplicationContextKey,
@@ -2340,7 +2448,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 				hasSnapshot.Labels[gitops.SnapshotIntegrationTestRun] = integrationTestScenario.Name
 
 				log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
-				adapter = NewAdapter(ctx, hasSnapshot, hasApp, log, loader.NewMockLoader(), k8sClient)
+				adapter = NewAdapterWithApplication(ctx, hasSnapshot, hasApp, log, loader.NewMockLoader(), k8sClient)
 				adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 					{
 						ContextKey: loader.ApplicationContextKey,
@@ -2396,14 +2504,484 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		})
 	})
 
-	When("Adapter is created for override snapshot", func() {
+	Describe("EnsureRerunPipelineRunsExist", func() {
+
+		When("manual re-run of scenario using static env is trigerred", func() {
+			BeforeEach(func() {
+				var (
+					buf bytes.Buffer
+				)
+
+				// add rerun label
+				// we cannot update it into k8s DB via patch, it would trigger reconciliation in background
+				// and test wouldn't test anything
+				hasSnapshot.Labels[gitops.SnapshotIntegrationTestRun] = integrationTestScenario.Name
+
+				log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+				adapter = NewAdapter(ctx, hasSnapshot, hasCompGroup, log, loader.NewMockLoader(), k8sClient)
+				adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+					{
+						ContextKey: loader.ComponentGroupContextKey,
+						Resource:   hasCompGroup,
+					},
+					{
+						ContextKey: loader.ComponentContextKey,
+						Resource:   hasComp,
+					},
+					{
+						ContextKey: loader.SnapshotContextKey,
+						Resource:   hasCGSnapshot,
+					},
+					{
+						ContextKey: loader.SnapshotComponentsContextKey,
+						Resource:   []applicationapiv1alpha1.Component{*hasComp},
+					},
+					{
+						ContextKey: loader.GetScenarioContextKey,
+						Resource:   integrationTestScenario,
+					},
+				})
+			})
+
+			It("creates integration test in static environemnt", func() {
+				statuses, err := gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(hasSnapshot)
+				Expect(err).To(Succeed())
+				_, ok := statuses.GetScenarioStatus(integrationTestScenario.Name)
+				Expect(ok).To(BeFalse()) // no scenario test yet
+
+				result, err := adapter.EnsureRerunPipelineRunsExist()
+				Expect(err).To(Succeed())
+				Expect(result.CancelRequest).To(BeFalse())
+
+				statuses, err = gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(hasSnapshot)
+				Expect(err).To(Succeed())
+				detail, ok := statuses.GetScenarioStatus(integrationTestScenario.Name)
+				Expect(ok).To(BeTrue()) // test restarted has a status now
+				Expect(detail).ToNot(BeNil())
+				Expect(detail.TestPipelineRunName).ToNot(BeEmpty()) // must set PLR name to prevent creation of duplicated PLR
+
+				m := MatchKeys(IgnoreExtras, Keys{
+					gitops.SnapshotIntegrationTestRun: Equal(integrationTestScenario.Name),
+				})
+				Expect(hasSnapshot.GetLabels()).ShouldNot(m, "shouln't have re-run label after re-running scenario")
+
+			})
+		})
+
+		When("test for scenario is alreday in-progress", func() {
+
+			const (
+				fakePLRName string = "pipelinerun-test"
+				fakeDetails string = "Lorem ipsum sit dolor mit amet"
+			)
+			var (
+				buf bytes.Buffer
+			)
+
+			BeforeEach(func() {
+				// mock that test for scenario is already in progress by setting it in annotation
+				statuses, err := intgteststat.NewSnapshotIntegrationTestStatuses("")
+				Expect(err).To(Succeed())
+				statuses.UpdateTestStatusIfChanged(integrationTestScenario.Name, intgteststat.IntegrationTestStatusInProgress, fakeDetails)
+				Expect(statuses.UpdateTestPipelineRunName(integrationTestScenario.Name, fakePLRName)).To(Succeed())
+				Expect(gitops.WriteIntegrationTestStatusesIntoSnapshot(ctx, hasSnapshot, statuses, k8sClient)).Should(Succeed())
+
+				// add rerun label
+				// we cannot update it into k8s DB via patch, it would trigger reconciliation in background
+				// and test wouldn't test anything
+				hasCGSnapshot.Labels[gitops.SnapshotIntegrationTestRun] = integrationTestScenario.Name
+
+				log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+				adapter = NewAdapter(ctx, hasCGSnapshot, hasCompGroup, log, loader.NewMockLoader(), k8sClient)
+				adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+					{
+						ContextKey: loader.ComponentGroupContextKey,
+						Resource:   hasCompGroup,
+					},
+					{
+						ContextKey: loader.ComponentContextKey,
+						Resource:   hasComp,
+					},
+					{
+						ContextKey: loader.SnapshotContextKey,
+						Resource:   hasCGSnapshot,
+					},
+					{
+						ContextKey: loader.SnapshotComponentsContextKey,
+						Resource:   []applicationapiv1alpha1.Component{*hasComp},
+					},
+					{
+						ContextKey: loader.GetScenarioContextKey,
+						Resource:   integrationTestScenario,
+					},
+				})
+			})
+
+			It("doesn't create new test", func() {
+				result, err := adapter.EnsureRerunPipelineRunsExist()
+				Expect(err).To(Succeed())
+				Expect(result.CancelRequest).To(BeFalse())
+
+				// make sure that test details hasn't changed
+				statuses, err := gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(hasSnapshot)
+				Expect(err).To(Succeed())
+				detail, ok := statuses.GetScenarioStatus(integrationTestScenario.Name)
+				Expect(ok).To(BeTrue())
+				Expect(detail.Status).Should(Equal(intgteststat.IntegrationTestStatusInProgress))
+				Expect(detail.Details).Should(Equal(fakeDetails))
+				Expect(detail.TestPipelineRunName).Should(Equal(fakePLRName))
+
+				m := MatchKeys(IgnoreExtras, Keys{
+					gitops.SnapshotIntegrationTestRun: Equal(integrationTestScenario.Name),
+				})
+				Expect(hasSnapshot.GetLabels()).ShouldNot(m, "shouln't have re-run label after re-running scenario")
+
+			})
+		})
+
+		When("the run label has the value 'all'", func() {
+			var (
+				buf bytes.Buffer
+			)
+
+			const (
+				fakePLRName string = "pipelinerun-test"
+				fakeDetails string = "Lorem ipsum sit dolor mit amet"
+			)
+
+			BeforeEach(func() {
+				err := gitops.MarkSnapshotAsPassed(ctx, k8sClient, hasCGSnapshot, "test passed")
+				Expect(err).To(Succeed())
+				Expect(gitops.HaveAppStudioTestsSucceeded(hasCGSnapshot)).To(BeTrue())
+
+				// mock that test for scenario is already in progress by setting it in annotation
+				statuses, err := intgteststat.NewSnapshotIntegrationTestStatuses("")
+				Expect(err).To(Succeed())
+				statuses.UpdateTestStatusIfChanged(integrationTestScenario.Name, intgteststat.IntegrationTestStatusInProgress, fakeDetails)
+				Expect(statuses.UpdateTestPipelineRunName(integrationTestScenario.Name, fakePLRName)).To(Succeed())
+				Expect(gitops.WriteIntegrationTestStatusesIntoSnapshot(ctx, hasCGSnapshot, statuses, k8sClient)).Should(Succeed())
+
+				// add rerun label
+				// we cannot update it into k8s DB via patch, it would trigger reconciliation in background
+				// and test wouldn't test anything
+				hasCGSnapshot.Labels[gitops.SnapshotIntegrationTestRun] = "all"
+
+				log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+				adapter = NewAdapter(ctx, hasCGSnapshot, hasCompGroup, log, loader.NewMockLoader(), k8sClient)
+				adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+					{
+						ContextKey: loader.ComponentGroupContextKey,
+						Resource:   hasCompGroup,
+					},
+					{
+						ContextKey: loader.ComponentContextKey,
+						Resource:   hasComp,
+					},
+					{
+						ContextKey: loader.SnapshotContextKey,
+						Resource:   hasCGSnapshot,
+					},
+					{
+						ContextKey: loader.SnapshotComponentsContextKey,
+						Resource:   []applicationapiv1alpha1.Component{*hasComp},
+					},
+					{
+						ContextKey: loader.AllIntegrationTestScenariosForSnapshotContextKey,
+						Resource:   []v1beta2.IntegrationTestScenario{*integrationTestScenario, *integrationTestScenario1},
+					},
+				})
+			})
+
+			It("creates Integration PLR for the new ITS and skips for the one that's already InProgress", func() {
+				statuses, err := gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(hasCGSnapshot)
+				Expect(err).To(Succeed())
+				_, ok := statuses.GetScenarioStatus(integrationTestScenario1.Name)
+				Expect(ok).To(BeFalse()) // no entry for 'integrationTestScenario1' yet, because it wasn't run before
+
+				result, err := adapter.EnsureRerunPipelineRunsExist()
+				Expect(err).To(Succeed())
+				Expect(result.CancelRequest).To(BeFalse())
+
+				Expect(buf.String()).Should(ContainSubstring(fmt.Sprintf("Skipping re-run for IntegrationTestScenario since it's in 'InProgress' or 'Pending' state Scenario %s", integrationTestScenario.Name)))
+
+				statuses, err = gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(hasCGSnapshot)
+				Expect(err).To(Succeed())
+				detail, ok := statuses.GetScenarioStatus(integrationTestScenario1.Name)
+				Expect(ok).To(BeTrue()) // 'integrationTestScenario1' has a status now
+				Expect(detail).ToNot(BeNil())
+				Expect(detail.TestPipelineRunName).ToNot(BeEmpty())
+
+				m := MatchKeys(IgnoreExtras, Keys{
+					gitops.SnapshotIntegrationTestRun: Equal("all"),
+				})
+				Expect(hasCGSnapshot.GetLabels()).ShouldNot(m, "shouln't have 'run' label after running scenario")
+
+				// We reset Snapshot's status since we created a new Intg PLR for the ITS
+				Expect(hasCGSnapshot.Status.Conditions).NotTo(BeNil())
+				Expect(gitops.IsSnapshotStatusConditionSet(hasCGSnapshot, gitops.AppStudioTestSucceededCondition,
+					metav1.ConditionUnknown, "InProgress")).To(BeTrue())
+
+				// Verify that the message field of "AppStudioIntegrationStatusCondition" condition mentions the re-run initiation
+				condition := meta.FindStatusCondition(hasCGSnapshot.Status.Conditions, gitops.AppStudioIntegrationStatusCondition)
+				Expect(condition.Message).To(Equal("Integration test re-run initiated for Snapshot"))
+			})
+		})
+
+		When("the run label has the value 'all' but with a component-type context on an ITS", func() {
+			var (
+				buf bytes.Buffer
+			)
+
+			const (
+				fakePLRName string = "pipelinerun-test"
+				fakeDetails string = "Lorem ipsum sit dolor mit amet"
+			)
+
+			BeforeEach(func() {
+				err := gitops.MarkSnapshotAsPassed(ctx, k8sClient, hasCGSnapshot, "test passed")
+				Expect(err).To(Succeed())
+				Expect(gitops.HaveAppStudioTestsSucceeded(hasCGSnapshot)).To(BeTrue())
+
+				// Setting the context of 'integrationTestScenario1' to NOT match the current Component
+				integrationTestScenario1.Spec.Contexts = append(integrationTestScenario1.Spec.Contexts, v1beta2.TestContext{Name: "component_my-comp", Description: "Single component testing for 'my-comp' specifically"})
+				Expect(k8sClient.Update(ctx, integrationTestScenario1)).Should(Succeed())
+
+				// mock that test for scenario is already in progress by setting it in annotation
+				statuses, err := intgteststat.NewSnapshotIntegrationTestStatuses("")
+				Expect(err).To(Succeed())
+				statuses.UpdateTestStatusIfChanged(integrationTestScenario.Name, intgteststat.IntegrationTestStatusInProgress, fakeDetails)
+				Expect(statuses.UpdateTestPipelineRunName(integrationTestScenario.Name, fakePLRName)).To(Succeed())
+				Expect(gitops.WriteIntegrationTestStatusesIntoSnapshot(ctx, hasCGSnapshot, statuses, k8sClient)).Should(Succeed())
+
+				// add rerun label
+				// we cannot update it into k8s DB via patch, it would trigger reconciliation in background
+				// and test wouldn't test anything
+				hasCGSnapshot.Labels[gitops.SnapshotIntegrationTestRun] = "all"
+
+				log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+				adapter = NewAdapter(ctx, hasCGSnapshot, hasCompGroup, log, loader.NewMockLoader(), k8sClient)
+				adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+					{
+						ContextKey: loader.ComponentGroupContextKey,
+						Resource:   hasCompGroup,
+					},
+					{
+						ContextKey: loader.ComponentContextKey,
+						Resource:   hasComp,
+					},
+					{
+						ContextKey: loader.SnapshotContextKey,
+						Resource:   hasCGSnapshot,
+					},
+					{
+						ContextKey: loader.SnapshotComponentsContextKey,
+						Resource:   []applicationapiv1alpha1.Component{*hasComp},
+					},
+					{
+						ContextKey: loader.AllIntegrationTestScenariosForSnapshotContextKey,
+						Resource:   []v1beta2.IntegrationTestScenario{*integrationTestScenario},
+					},
+				})
+			})
+
+			It("does not create Integration PLR for the new ITS since its context doesn't match with the Snapshot", func() {
+				statuses, err := gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(hasCGSnapshot)
+				Expect(err).To(Succeed())
+				_, ok := statuses.GetScenarioStatus(integrationTestScenario1.Name)
+				Expect(ok).To(BeFalse()) // no entry for 'integrationTestScenario1' yet, because it wasn't run before
+
+				result, err := adapter.EnsureRerunPipelineRunsExist()
+				Expect(err).To(Succeed())
+				Expect(result.CancelRequest).To(BeFalse())
+
+				Expect(buf.String()).Should(ContainSubstring(fmt.Sprintf("Skipping re-run for IntegrationTestScenario since it's in 'InProgress' or 'Pending' state Scenario %s", integrationTestScenario.Name)))
+				Expect(buf.String()).Should(ContainSubstring("1 out of 1 requested IntegrationTestScenario(s) are either in 'InProgress' or 'Pending' state, skipping their re-runs Label all"))
+
+				statuses, err = gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(hasCGSnapshot)
+				Expect(err).To(Succeed())
+				_, ok = statuses.GetScenarioStatus(integrationTestScenario1.Name)
+				Expect(ok).To(BeFalse()) // 'integrationTestScenario1' does NOT has a status because it's context doesn't match with the 'hasCGSnapshot'
+
+				m := MatchKeys(IgnoreExtras, Keys{
+					gitops.SnapshotIntegrationTestRun: Equal("all"),
+				})
+				Expect(hasCGSnapshot.GetLabels()).ShouldNot(m, "shouln't have 'run' label after running scenario")
+
+				// Snapshot status is True because no new Integration PLRS were created
+				Expect(hasCGSnapshot.Status.Conditions).NotTo(BeNil())
+				Expect(gitops.IsSnapshotStatusConditionSet(hasCGSnapshot, gitops.AppStudioTestSucceededCondition,
+					metav1.ConditionTrue, "Passed")).To(BeTrue()) // Because we didn't reset Snapshot's status since 1 ITS has mismatching context, other one is "InProgress"
+			})
+		})
+
+		When("the run label has the name of an ITS with a component-type context", func() {
+			var (
+				buf bytes.Buffer
+			)
+
+			BeforeEach(func() {
+				err := gitops.MarkSnapshotAsPassed(ctx, k8sClient, hasCGSnapshot, "test passed")
+				Expect(err).To(Succeed())
+				Expect(gitops.HaveAppStudioTestsSucceeded(hasCGSnapshot)).To(BeTrue())
+
+				// Setting the context of 'integrationTestScenario1' to NOT match the current Component
+				integrationTestScenario1.Spec.Contexts = append(integrationTestScenario1.Spec.Contexts, v1beta2.TestContext{Name: "component_my-comp", Description: "Single component testing for 'my-comp' specifically"})
+				Expect(k8sClient.Update(ctx, integrationTestScenario1)).Should(Succeed())
+
+				// add rerun label
+				// we cannot update it into k8s DB via patch, it would trigger reconciliation in background
+				// and test wouldn't test anything
+				hasCGSnapshot.Labels[gitops.SnapshotIntegrationTestRun] = integrationTestScenario1.Name
+
+				log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+				adapter = NewAdapter(ctx, hasCGSnapshot, hasCompGroup, log, loader.NewMockLoader(), k8sClient)
+				adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+					{
+						ContextKey: loader.ComponentGroupContextKey,
+						Resource:   hasCompGroup,
+					},
+					{
+						ContextKey: loader.ComponentContextKey,
+						Resource:   hasComp,
+					},
+					{
+						ContextKey: loader.SnapshotContextKey,
+						Resource:   hasCGSnapshot,
+					},
+					{
+						ContextKey: loader.SnapshotComponentsContextKey,
+						Resource:   []applicationapiv1alpha1.Component{*hasComp},
+					},
+				})
+			})
+
+			It("does creates Integration PLR for the new ITS even though its context doesn't match with the Snapshot", func() {
+				statuses, err := gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(hasCGSnapshot)
+				Expect(err).To(Succeed())
+				_, ok := statuses.GetScenarioStatus(integrationTestScenario1.Name)
+				Expect(ok).To(BeFalse()) // no entry for 'integrationTestScenario1' yet, because it wasn't run before
+
+				result, err := adapter.EnsureRerunPipelineRunsExist()
+				Expect(err).To(Succeed())
+				Expect(result.CancelRequest).To(BeFalse())
+
+				statuses, err = gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(hasCGSnapshot)
+				Expect(err).To(Succeed())
+				detail, ok := statuses.GetScenarioStatus(integrationTestScenario1.Name)
+				// 'integrationTestScenario1' does have a status because the run was requested specifically with the ITS name.
+				// When users explicitly request run of a specific ITS, then we ignore the context of that ITS and process it.
+				Expect(ok).To(BeTrue())
+				Expect(detail).ToNot(BeNil())
+				Expect(detail.TestPipelineRunName).ToNot(BeEmpty())
+
+				m := MatchKeys(IgnoreExtras, Keys{
+					gitops.SnapshotIntegrationTestRun: Equal(integrationTestScenario1.Name),
+				})
+				Expect(hasCGSnapshot.GetLabels()).ShouldNot(m, "shouln't have 'run' label after running scenario")
+
+				// We reset Snapshot's status since we created a new Intg PLR for the ITS
+				Expect(hasCGSnapshot.Status.Conditions).NotTo(BeNil())
+				Expect(gitops.IsSnapshotStatusConditionSet(hasCGSnapshot, gitops.AppStudioTestSucceededCondition,
+					metav1.ConditionUnknown, "InProgress")).To(BeTrue())
+
+				// Verify that the message field of "AppStudioIntegrationStatusCondition" condition mentions the re-run initiation
+				condition := meta.FindStatusCondition(hasCGSnapshot.Status.Conditions, gitops.AppStudioIntegrationStatusCondition)
+				Expect(condition.Message).To(Equal("Integration test re-run initiated for Snapshot"))
+			})
+		})
+
+		When("the run label has the name of an ITS that was already executed before", func() {
+			var (
+				buf bytes.Buffer
+			)
+
+			const (
+				fakePLRName string = "pipelinerun-test"
+				fakeDetails string = "Lorem ipsum sit dolor mit amet"
+			)
+
+			BeforeEach(func() {
+				err := gitops.MarkSnapshotAsPassed(ctx, k8sClient, hasCGSnapshot, "test passed")
+				Expect(err).To(Succeed())
+				Expect(gitops.HaveAppStudioTestsSucceeded(hasCGSnapshot)).To(BeTrue())
+
+				// mock that test for scenario is already in progress by setting it in annotation
+				statuses, err := intgteststat.NewSnapshotIntegrationTestStatuses("")
+				Expect(err).To(Succeed())
+				statuses.UpdateTestStatusIfChanged(integrationTestScenario.Name, intgteststat.IntegrationTestStatusTestPassed, fakeDetails)
+				Expect(statuses.UpdateTestPipelineRunName(integrationTestScenario.Name, fakePLRName)).To(Succeed())
+				Expect(gitops.WriteIntegrationTestStatusesIntoSnapshot(ctx, hasCGSnapshot, statuses, k8sClient)).Should(Succeed())
+
+				// add rerun label
+				// we cannot update it into k8s DB via patch, it would trigger reconciliation in background
+				// and test wouldn't test anything
+				hasCGSnapshot.Labels[gitops.SnapshotIntegrationTestRun] = integrationTestScenario.Name
+
+				log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+				adapter = NewAdapter(ctx, hasCGSnapshot, hasCompGroup, log, loader.NewMockLoader(), k8sClient)
+				adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+					{
+						ContextKey: loader.ComponentGroupContextKey,
+						Resource:   hasCompGroup,
+					},
+					{
+						ContextKey: loader.ComponentContextKey,
+						Resource:   hasComp,
+					},
+					{
+						ContextKey: loader.SnapshotContextKey,
+						Resource:   hasCGSnapshot,
+					},
+					{
+						ContextKey: loader.SnapshotComponentsContextKey,
+						Resource:   []applicationapiv1alpha1.Component{*hasComp},
+					},
+				})
+			})
+
+			It("does create a new Integration PLR for the ITS which was already executed before", func() {
+				statuses, err := gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(hasCGSnapshot)
+				Expect(err).To(Succeed())
+				detail, ok := statuses.GetScenarioStatus(integrationTestScenario.Name)
+				Expect(ok).To(BeTrue()) // Entry exists for 'integrationTestScenario' because it was run before
+				Expect(detail).ToNot(BeNil())
+				Expect(detail.TestPipelineRunName).To(Equal(fakePLRName))
+
+				result, err := adapter.EnsureRerunPipelineRunsExist()
+				Expect(err).To(Succeed())
+				Expect(result.CancelRequest).To(BeFalse())
+
+				Expect(buf.String()).Should(ContainSubstring(fmt.Sprintf("Creating new pipelinerun for integrationTestscenario integrationTestScenario.Name %s", integrationTestScenario.Name)))
+
+				statuses, err = gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(hasCGSnapshot)
+				Expect(err).To(Succeed())
+				detail, ok = statuses.GetScenarioStatus(integrationTestScenario.Name)
+				Expect(ok).To(BeTrue())
+				Expect(detail).ToNot(BeNil())
+				// The name of the PLR is updated to match the latest one
+				Expect(detail.TestPipelineRunName).ToNot(Equal(fakePLRName))
+
+				m := MatchKeys(IgnoreExtras, Keys{
+					gitops.SnapshotIntegrationTestRun: Equal(integrationTestScenario.Name),
+				})
+				Expect(hasCGSnapshot.GetLabels()).ShouldNot(m, "shouln't have 'run' label after running scenario")
+
+				// We reset Snapshot's status since we created a new Intg PLR for the ITS
+				Expect(hasCGSnapshot.Status.Conditions).NotTo(BeNil())
+				Expect(gitops.IsSnapshotStatusConditionSet(hasCGSnapshot, gitops.AppStudioTestSucceededCondition,
+					metav1.ConditionUnknown, "InProgress")).To(BeTrue())
+			})
+		})
+	})
+
+	When("Adapter is created for override snapshot [APPLICATION]", func() {
 		var buf bytes.Buffer
 
 		It("ensures override snapshot with invalid snapshotComponent is marked as invalid", func() {
 			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
 			Expect(gitops.IsSnapshotValid(hasInvalidOverrideSnapshot)).To(BeTrue())
 			Expect(controllerutil.HasControllerReference(hasInvalidOverrideSnapshot)).To(BeFalse())
-			adapter = NewAdapter(ctx, hasInvalidOverrideSnapshot, hasApp, log, loader.NewMockLoader(), k8sClient)
+			adapter = NewAdapterWithApplication(ctx, hasInvalidOverrideSnapshot, hasApp, log, loader.NewMockLoader(), k8sClient)
 			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
 					ContextKey: loader.ApplicationContextKey,
@@ -2437,12 +3015,54 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		})
 	})
 
+	When("Adapter is created for override snapshot", func() {
+		var buf bytes.Buffer
+
+		It("ensures override snapshot with invalid snapshotComponent is marked as invalid", func() {
+			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+			Expect(gitops.IsSnapshotValid(hasInvalidOverrideSnapshot)).To(BeTrue())
+			Expect(controllerutil.HasControllerReference(hasInvalidOverrideSnapshot)).To(BeFalse())
+			adapter = NewAdapter(ctx, hasInvalidOverrideSnapshot, hasCompGroup, log, loader.NewMockLoader(), k8sClient)
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: loader.ComponentGroupContextKey,
+					Resource:   hasCompGroup,
+				},
+				{
+					ContextKey: loader.ComponentContextKey,
+					Resource:   hasComp,
+				},
+				{
+					ContextKey: loader.SnapshotContextKey,
+					Resource:   hasInvalidOverrideSnapshot,
+				},
+				{
+					ContextKey: loader.SnapshotComponentsContextKey,
+					Resource:   []applicationapiv1alpha1.Component{*hasComp, *hasCompMissingImageDigest},
+				},
+			})
+
+			result, err := adapter.EnsureOverrideSnapshotValid()
+			Expect(result.CancelRequest).To(BeFalse())
+			Expect(result.RequeueRequest).To(BeFalse())
+			Expect(buf.String()).Should(ContainSubstring("Snapshot has been marked as invalid"))
+			Expect(err).ToNot(HaveOccurred())
+
+			result, err = adapter.EnsureOverrideSnapshotValid()
+			Expect(buf.String()).Should(ContainSubstring("The override snapshot has been marked as invalid, skipping"))
+			Expect(err).ToNot(HaveOccurred())
+			Expect(result.CancelRequest).To(BeFalse())
+			Expect(result.RequeueRequest).To(BeFalse())
+		})
+	})
+
+	// NOTE: update in group snapshot ticket
 	When("Adapter is created for component snapshot with pr group", func() {
 		It("ensures component snapshot will not be processed if it is not from pull/merge request", func() {
 			var buf bytes.Buffer
 			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
 			hasComSnapshot1.Labels[gitops.PipelineAsCodeEventTypeLabel] = gitops.PipelineAsCodePushType
-			adapter = NewAdapter(ctx, hasComSnapshot1, hasApp, log, loader.NewMockLoader(), k8sClient)
+			adapter = NewAdapterWithApplication(ctx, hasComSnapshot1, hasApp, log, loader.NewMockLoader(), k8sClient)
 			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
 					ContextKey: loader.ApplicationContextKey,
@@ -2465,7 +3085,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			var buf bytes.Buffer
 			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
 			hasComSnapshot1.Annotations[gitops.PRGroupCreationAnnotation] = "processed"
-			adapter = NewAdapter(ctx, hasComSnapshot1, hasApp, log, loader.NewMockLoader(), k8sClient)
+			adapter = NewAdapterWithApplication(ctx, hasComSnapshot1, hasApp, log, loader.NewMockLoader(), k8sClient)
 			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
 					ContextKey: loader.ApplicationContextKey,
@@ -2489,7 +3109,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
 			Expect(metadata.DeleteLabel(hasComSnapshot1, gitops.PRGroupHashLabel)).ShouldNot(HaveOccurred())
 			Expect(metadata.HasLabel(hasComSnapshot1, gitops.PRGroupHashLabel)).To(BeFalse())
-			adapter = NewAdapter(ctx, hasComSnapshot1, hasApp, log, loader.NewMockLoader(), k8sClient)
+			adapter = NewAdapterWithApplication(ctx, hasComSnapshot1, hasApp, log, loader.NewMockLoader(), k8sClient)
 			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
 					ContextKey: loader.ApplicationContextKey,
@@ -2528,7 +3148,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 
 			var buf bytes.Buffer
 			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
-			adapter = NewAdapter(ctx, hasComSnapshot1, hasApp, log, loader.NewMockLoader(), k8sClient)
+			adapter = NewAdapterWithApplication(ctx, hasComSnapshot1, hasApp, log, loader.NewMockLoader(), k8sClient)
 			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
 					ContextKey: loader.ApplicationContextKey,
@@ -2571,7 +3191,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 
 			var buf bytes.Buffer
 			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
-			adapter = NewAdapter(ctx, hasComSnapshot1, hasApp, log, loader.NewMockLoader(), k8sClient)
+			adapter = NewAdapterWithApplication(ctx, hasComSnapshot1, hasApp, log, loader.NewMockLoader(), k8sClient)
 			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
 					ContextKey: loader.ApplicationContextKey,
@@ -2614,7 +3234,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 
 			var buf bytes.Buffer
 			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
-			adapter = NewAdapter(ctx, hasComSnapshot1, hasApp, log, loader.NewMockLoader(), k8sClient)
+			adapter = NewAdapterWithApplication(ctx, hasComSnapshot1, hasApp, log, loader.NewMockLoader(), k8sClient)
 			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
 					ContextKey: loader.ApplicationContextKey,
@@ -2640,7 +3260,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		It("Stop processing when there is no annotationID in snapshot", func() {
 			var buf bytes.Buffer
 			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
-			adapter = NewAdapter(ctx, hasComSnapshot1, hasApp, log, loader.NewMockLoader(), k8sClient)
+			adapter = NewAdapterWithApplication(ctx, hasComSnapshot1, hasApp, log, loader.NewMockLoader(), k8sClient)
 			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
 					ContextKey: loader.ApplicationContextKey,
@@ -2692,7 +3312,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		It("Stop processing when there is only one component affected for pr group", func() {
 			var buf bytes.Buffer
 			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
-			adapter = NewAdapter(ctx, hasComSnapshot1, hasApp, log, loader.NewMockLoader(), k8sClient)
+			adapter = NewAdapterWithApplication(ctx, hasComSnapshot1, hasApp, log, loader.NewMockLoader(), k8sClient)
 			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
 					ContextKey: loader.ApplicationContextKey,
@@ -2730,7 +3350,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			// mockStatus.EXPECT().IsPRMRInSnapshotOpened(gomock.Any(), gomock.Any()).Return(true, nil)
 			mockStatus.EXPECT().IsPRMRInSnapshotOpened(gomock.Any(), gomock.Any()).AnyTimes()
 
-			adapter = NewAdapter(ctx, hasComSnapshot1, hasApp, log, loader.NewMockLoader(), k8sClient)
+			adapter = NewAdapterWithApplication(ctx, hasComSnapshot1, hasApp, log, loader.NewMockLoader(), k8sClient)
 
 			adapter.status = mockStatus
 			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
@@ -2794,7 +3414,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		})
 	})
 
-	When("old integration pipelinerun gets cancelled because newer pipelinerun gets triggered", func() {
+	When("old integration pipelinerun gets cancelled because newer pipelinerun gets triggered [APPLICATION]", func() {
 
 		It("ensures that old component snapshot together with integration pipelinerun has been canceled", func() {
 			integrationPipelineRunOld.Status = tektonv1.PipelineRunStatus{
@@ -2815,7 +3435,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			var buf bytes.Buffer
 			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
 
-			adapter = NewAdapter(ctx, hasOldCompSnapshotPR, hasApp, log, loader.NewMockLoader(), k8sClient)
+			adapter = NewAdapterWithApplication(ctx, hasOldCompSnapshotPR, hasApp, log, loader.NewMockLoader(), k8sClient)
 			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
 					ContextKey: loader.ApplicationContextKey,
@@ -2838,7 +3458,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 					Resource:   []v1beta2.IntegrationTestScenario{*integrationTestScenario},
 				},
 				{
-					ContextKey: loader.RequiredIntegrationTestScenariosForSnapshotApplicationContextKey,
+					ContextKey: loader.RequiredIntegrationTestScenariosForSnapshotContextKey,
 					Resource:   []v1beta2.IntegrationTestScenario{*integrationTestScenario},
 				},
 			})
@@ -2872,6 +3492,86 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 
 	})
 
+	When("old integration pipelinerun gets cancelled because newer pipelinerun gets triggered", func() {
+
+		It("ensures that old component snapshot together with integration pipelinerun has been canceled", func() {
+			integrationPipelineRunOld.Status = tektonv1.PipelineRunStatus{
+				PipelineRunStatusFields: tektonv1.PipelineRunStatusFields{
+					Results: []tektonv1.PipelineRunResult{},
+				},
+				Status: v1.Status{
+					Conditions: v1.Conditions{
+						apis.Condition{
+							Reason: "Running",
+							Status: "Unknown",
+							Type:   apis.ConditionSucceeded,
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Status().Update(ctx, integrationPipelineRunOld)).Should(Succeed())
+			var buf bytes.Buffer
+			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+
+			adapter = NewAdapter(ctx, hasOldCompSnapshotPR, hasCompGroup, log, loader.NewMockLoader(), k8sClient)
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: loader.ComponentGroupContextKey,
+					Resource:   hasCompGroup,
+				},
+				{
+					ContextKey: loader.ComponentContextKey,
+					Resource:   hasComp,
+				},
+				{
+					ContextKey: loader.SnapshotContextKey,
+					Resource:   hasOldCompSnapshotPR,
+				},
+				{
+					ContextKey: loader.SnapshotComponentsContextKey,
+					Resource:   []applicationapiv1alpha1.Component{*hasComp},
+				},
+				{
+					ContextKey: loader.AllIntegrationTestScenariosForComponentGroupContextKey,
+					Resource:   []v1beta2.IntegrationTestScenario{*integrationTestScenario},
+				},
+				{
+					ContextKey: loader.RequiredIntegrationTestScenariosForSnapshotContextKey,
+					Resource:   []v1beta2.IntegrationTestScenario{*integrationTestScenario},
+				},
+			})
+			//create new group snapshot
+			Expect(k8sClient.Create(adapter.context, hasNewCompSnapshotPR)).Should(Succeed())
+			Eventually(func() error {
+				err := k8sClient.Get(adapter.context, types.NamespacedName{
+					Name:      hasNewCompSnapshotPR.Name,
+					Namespace: "default",
+				}, hasNewCompSnapshotPR)
+				return err
+			}, time.Second*10).ShouldNot(HaveOccurred())
+			result, err := adapter.EnsureIntegrationPipelineRunsExist()
+			Expect(result.CancelRequest).To(BeFalse())
+			Expect(result.RequeueRequest).To(BeFalse())
+			foundStatusCondition := meta.FindStatusCondition(hasOldCompSnapshotPR.Status.Conditions, gitops.AppStudioIntegrationStatusCondition)
+			Expect(foundStatusCondition).NotTo(BeNil())
+			Expect(foundStatusCondition.Reason).To(Equal(gitops.AppStudioIntegrationStatusCanceled))
+			Expect(err).ToNot(HaveOccurred())
+			// Checking for .spec.status cancelledRunFinally
+			loader := loader.NewLoader()
+			plrspecstatus := tektonv1.PipelineRunSpec{
+				Status: tektonv1.PipelineRunSpecStatusCancelledRunFinally,
+			}
+			pipelineRuns, err := loader.GetAllPipelineRunsForSnapshotAndScenario(ctx, k8sClient, hasOldCompSnapshotPR, integrationTestScenario)
+			for _, plr := range *pipelineRuns {
+				Expect(plr.Spec.Status).To(Equal(plrspecstatus.Status))
+			}
+			Expect(err).ToNot(HaveOccurred())
+
+		})
+
+	})
+
+	// NOTE: Do this in group snapshot ticket
 	When("old integration pipelinerun gets cancelled because newer pipelinerun gets triggered for group snapshot", func() {
 		It("ensures that old group snapshot together with integration pipelinerun can be canceled", func() {
 			integrationPipelineRunOld.Labels["appstudio.openshift.io/snapshot"] = integrationPipelineRunOld.Name
@@ -2896,7 +3596,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			var buf bytes.Buffer
 			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
 
-			adapter = NewAdapter(ctx, hasNewGroupSnapshot, hasApp, log, loader.NewMockLoader(), k8sClient)
+			adapter = NewAdapterWithApplication(ctx, hasNewGroupSnapshot, hasApp, log, loader.NewMockLoader(), k8sClient)
 			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
 					ContextKey: loader.ApplicationContextKey,
@@ -2915,7 +3615,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 					Resource:   []v1beta2.IntegrationTestScenario{*integrationTestScenario},
 				},
 				{
-					ContextKey: loader.RequiredIntegrationTestScenariosForSnapshotApplicationContextKey,
+					ContextKey: loader.RequiredIntegrationTestScenariosForSnapshotContextKey,
 					Resource:   []v1beta2.IntegrationTestScenario{*integrationTestScenario},
 				},
 			})
@@ -3120,7 +3820,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 				},
 			})
 
-			pipelineRun, err := adapter.createIntegrationPipelineRun(hasApp, integrationTestScenarioPR, hasSnapshotPR)
+			pipelineRun, err := adapter.createIntegrationPipelineRun(integrationTestScenarioPR)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(pipelineRun).ToNot(BeNil())
 
@@ -3174,7 +3874,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			adapter.logger = log
 			adapter.snapshot = hasSnapshotPush
 
-			pipelineRun, err := adapter.createIntegrationPipelineRun(hasApp, integrationTestScenarioPR, hasSnapshotPush)
+			pipelineRun, err := adapter.createIntegrationPipelineRun(integrationTestScenarioPR)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(pipelineRun).ToNot(BeNil())
 
@@ -3213,7 +3913,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			adapter.logger = log
 			adapter.snapshot = hasSnapshotPR
 
-			pipelineRun, err := adapter.createIntegrationPipelineRun(hasApp, integrationTestScenarioPipeline, hasSnapshotPR)
+			pipelineRun, err := adapter.createIntegrationPipelineRun(integrationTestScenarioPipeline)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(pipelineRun).ToNot(BeNil())
 

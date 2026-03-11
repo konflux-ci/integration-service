@@ -108,7 +108,7 @@ func (a *Adapter) EnsureGlobalCandidateImageUpdated() (controller.OperationResul
 	if a.application != nil {
 		err = a.updateGCLForBuildPLR()
 	} else { // ComponentGroup behavior
-		err = snapshot.UpdateGCLForBuildPLR(a.context, a.client, a.componentGroups, a.pipelineRun, a.component.Name)
+		err = snapshot.UpdateGCLForBuildPLR(a.context, a.client, a.loader, a.componentGroups, a.pipelineRun, a.component.Name)
 	}
 	if err != nil {
 		// TODO: remove HandleLoaderError when we remove application-specific code

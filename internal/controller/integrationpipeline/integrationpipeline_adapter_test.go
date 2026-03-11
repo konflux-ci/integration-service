@@ -538,7 +538,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 						Resource:   []tektonv1.PipelineRun{*integrationPipelineRunComponent, *integrationPipelineRunComponentFailed},
 					},
 					{
-						ContextKey: loader.RequiredIntegrationTestScenariosForSnapshotApplicationContextKey,
+						ContextKey: loader.RequiredIntegrationTestScenariosForSnapshotContextKey,
 						Resource:   []v1beta2.IntegrationTestScenario{*integrationTestScenario, *integrationTestScenarioFailed},
 					},
 					{
@@ -723,7 +723,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 					Resource:   []tektonv1.PipelineRun{*integrationPipelineRunComponent, *integrationPipelineRunComponentFailed},
 				},
 				{
-					ContextKey: loader.RequiredIntegrationTestScenariosForSnapshotApplicationContextKey,
+					ContextKey: loader.RequiredIntegrationTestScenariosForSnapshotContextKey,
 					Resource:   []v1beta2.IntegrationTestScenario{*integrationTestScenario, *integrationTestScenarioFailed},
 				},
 				{

@@ -112,9 +112,10 @@ var _ = BeforeSuite(func() {
 	go func() {
 		defer GinkgoRecover()
 		Expect(cache.SetupIntegrationTestScenarioCache(k8sManager)).To(Succeed())
-		Expect(cache.SetupIntegrationTestScenarioComponentGroupCache(k8sManager)).To(Succeed())
+		Expect(cache.SetupIntegrationTestScenarioCacheApplication(k8sManager)).To(Succeed())
 		Expect(cache.SetupReleaseCache(k8sManager)).To(Succeed())
 		Expect(cache.SetupReleasePlanCache(k8sManager)).To(Succeed())
+		Expect(cache.SetupReleasePlanCacheApplication(k8sManager)).To(Succeed())
 		Expect(cache.SetupApplicationComponentCache(k8sManager)).To(Succeed())
 		Expect(cache.SetupSnapshotCache(k8sManager)).To(Succeed())
 		Expect(k8sManager.Start(ctx)).To(Succeed())

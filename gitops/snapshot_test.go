@@ -1034,8 +1034,9 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 				Expect(isOverrideSnapshot).To(BeTrue())
 			})
 
-			It("Can set owner reference for override snapshot", func() {
-				overrideSnapshot, err := gitops.SetOwnerReference(ctx, k8sClient, overrideSnapshot, hasApp)
+			It("Can set owner reference for override snapshot [APPLICATION]", func() {
+				// TODO: create duplication test for ComponentGorup
+				overrideSnapshot, err := gitops.SetOwnerReferenceApplication(ctx, k8sClient, overrideSnapshot, hasApp)
 				Expect(controllerutil.HasControllerReference(overrideSnapshot)).To(BeTrue())
 				Expect(err).ToNot(HaveOccurred())
 			})

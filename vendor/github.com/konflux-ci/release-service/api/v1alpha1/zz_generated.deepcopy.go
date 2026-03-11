@@ -342,6 +342,11 @@ func (in *ReleasePlanAdmissionSpec) DeepCopyInto(out *ReleasePlanAdmissionSpec) 
 		*out = make([]string, len(*in))
 		copy(*out, *in)
 	}
+	if in.ComponentGroups != nil {
+		in, out := &in.ComponentGroups, &out.ComponentGroups
+		*out = make([]string, len(*in))
+		copy(*out, *in)
+	}
 	if in.Collectors != nil {
 		in, out := &in.Collectors, &out.Collectors
 		*out = new(Collectors)

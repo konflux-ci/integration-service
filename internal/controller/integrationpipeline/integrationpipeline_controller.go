@@ -123,8 +123,12 @@ func setupCache(mgr ctrl.Manager) error {
 	if err := cache.SetupIntegrationTestScenarioCache(mgr); err != nil {
 		return err
 	}
+	// TODO: remove when we remove old application model
+	if err := cache.SetupIntegrationTestScenarioCacheApplication(mgr); err != nil {
+		return err
+	}
 
-	return cache.SetupIntegrationTestScenarioComponentGroupCache(mgr)
+	return nil
 }
 
 // setupControllerWithManager sets up the controller with the Manager which monitors new PipelineRuns and filters
