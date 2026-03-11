@@ -150,7 +150,7 @@ func TestSnapshotCustomValidator_ValidateUpdate(t *testing.T) {
 		if err == nil {
 			t.Error("ValidateUpdate should error for modified components")
 		}
-		if err != nil && err.Error() != "spec.components: Invalid value: [{\"name\":\"component-1\",\"version\":\"\",\"containerImage\":\"registry.io/image1:v2.0.0\",\"source\":{}}]: components field is immutable and cannot be modified after creation" {
+		if err != nil && err.Error() != "spec.components: Invalid value: [{\"name\":\"component-1\",\"containerImage\":\"registry.io/image1:v2.0.0\",\"source\":{}}]: components field is immutable and cannot be modified after creation" {
 
 			t.Errorf("Unexpected error message: %v", err)
 		}

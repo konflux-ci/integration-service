@@ -14,6 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+// TODO: remove application caching when we remove old model
 package cache
 
 import (
@@ -29,6 +30,16 @@ import (
 
 // SetupReleasePlanCache adds a new index field to be able to search ReleasePlans by application.
 func SetupReleasePlanCache(mgr ctrl.Manager) error {
+	releasePlanIndexFunc := func(obj client.Object) []string {
+		return []string{obj.(*releasev1alpha1.ReleasePlan).Spec.ComponentGroup}
+	}
+
+	return mgr.GetCache().IndexField(context.Background(), &releasev1alpha1.ReleasePlan{},
+		"spec.componentGroup", releasePlanIndexFunc)
+}
+
+// SetupReleasePlanCacheApplication adds a new index field to be able to search ReleasePlans by application.
+func SetupReleasePlanCacheApplication(mgr ctrl.Manager) error {
 	releasePlanIndexFunc := func(obj client.Object) []string {
 		return []string{obj.(*releasev1alpha1.ReleasePlan).Spec.Application}
 	}
@@ -67,22 +78,22 @@ func SetupSnapshotCache(mgr ctrl.Manager) error {
 		"spec.application", snapshotIndexFunc)
 }
 
-// SetupIntegrationTestScenarioCache adds a new index field to be able to search IntegrationTestScenarios by Application.
+// SetupIntegrationTestScenarioCache adds a new index field to be able to search IntegrationTestScenarios by ComponentGroup.
 func SetupIntegrationTestScenarioCache(mgr ctrl.Manager) error {
-	integrationTestScenariosIndexFunc := func(obj client.Object) []string {
-		return []string{obj.(*v1beta2.IntegrationTestScenario).Spec.Application}
-	}
-
-	return mgr.GetCache().IndexField(context.Background(), &v1beta2.IntegrationTestScenario{},
-		"spec.application", integrationTestScenariosIndexFunc)
-}
-
-// SetupIntegrationTestScenarioComponentGroupCache adds a new index field to be able to search IntegrationTestScenarios by ComponentGroup.
-func SetupIntegrationTestScenarioComponentGroupCache(mgr ctrl.Manager) error {
 	integrationTestScenariosIndexFunc := func(obj client.Object) []string {
 		return []string{obj.(*v1beta2.IntegrationTestScenario).Spec.ComponentGroup}
 	}
 
 	return mgr.GetCache().IndexField(context.Background(), &v1beta2.IntegrationTestScenario{},
 		"spec.componentGroup", integrationTestScenariosIndexFunc)
+}
+
+// SetupIntegrationTestScenarioCacheApplication adds a new index field to be able to search IntegrationTestScenarios by Application
+func SetupIntegrationTestScenarioCacheApplication(mgr ctrl.Manager) error {
+	integrationTestScenariosIndexFunc := func(obj client.Object) []string {
+		return []string{obj.(*v1beta2.IntegrationTestScenario).Spec.Application}
+	}
+
+	return mgr.GetCache().IndexField(context.Background(), &v1beta2.IntegrationTestScenario{},
+		"spec.application", integrationTestScenariosIndexFunc)
 }
