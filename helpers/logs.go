@@ -21,6 +21,7 @@ import (
 
 	"github.com/go-logr/logr"
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
+	"github.com/konflux-ci/integration-service/api/v1beta2"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 )
@@ -77,6 +78,13 @@ func (il *IntegrationLogger) LogAuditEvent(msg string, obj runtime.Object, actio
 // WithApp returns a new logger with application namespacedName key-value
 func (il IntegrationLogger) WithApp(app applicationapiv1alpha1.Application) IntegrationLogger {
 	log := il.WithValues("application", fmt.Sprintf("%s/%s", app.Namespace, app.Name))
+	il.setLogger(log)
+	return il
+}
+
+// WithComponentGroup returns a new logger with componentGroup namespacedName key-value
+func (il IntegrationLogger) WithComponentGroup(cg v1beta2.ComponentGroup) IntegrationLogger {
+	log := il.WithValues("application", fmt.Sprintf("%s/%s", cg.Namespace, cg.Name))
 	il.setLogger(log)
 	return il
 }

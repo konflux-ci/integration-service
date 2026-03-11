@@ -22,6 +22,7 @@ import (
 
 	"github.com/go-logr/logr"
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
+	"github.com/konflux-ci/integration-service/api/v1beta2"
 	"github.com/konflux-ci/integration-service/cache"
 	"github.com/konflux-ci/integration-service/gitops"
 	"github.com/konflux-ci/integration-service/helpers"
@@ -92,41 +93,88 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{}, nil
 	}
 
+	// Get version and context from snapshot
+	// if version does not exist, we must be using an application
+	// otherwise we are using a componentGroup
+	// TODO: remove any '!usingComponentGroups' branches when we deprecate application model
+	usingComponentGroups := false
+	if snapshot.Spec.ComponentGroup != "" {
+		usingComponentGroups = true
+	}
+
 	var application *applicationapiv1alpha1.Application
-	err = retry.OnError(retry.DefaultRetry, func(_ error) bool { return true }, func() error {
-		application, err = loader.GetApplicationFromSnapshot(ctx, r.Client, snapshot)
-		return err
-	})
-	if err != nil {
-		if errors.IsNotFound(err) {
-			if !gitops.IsSnapshotMarkedAsInvalid(snapshot) {
-				err := gitops.MarkSnapshotAsInvalid(ctx, r.Client, snapshot,
-					fmt.Sprintf("The application %s owning this snapshot doesn't exist, try again after creating application", snapshot.Spec.Application))
-				if err != nil {
-					logger.Error(err, "Failed to update the status to Invalid for the snapshot",
+	var componentGroup *v1beta2.ComponentGroup
+	if !usingComponentGroups {
+		err = retry.OnError(retry.DefaultRetry, func(_ error) bool { return true }, func() error {
+			application, err = loader.GetApplicationFromSnapshot(ctx, r.Client, snapshot)
+			return err
+		})
+		if err != nil {
+			if errors.IsNotFound(err) {
+				if !gitops.IsSnapshotMarkedAsInvalid(snapshot) {
+					err := gitops.MarkSnapshotAsInvalid(ctx, r.Client, snapshot,
+						fmt.Sprintf("The application %s owning this snapshot doesn't exist, try again after creating application", snapshot.Spec.Application))
+					if err != nil {
+						logger.Error(err, "Failed to update the status to Invalid for the snapshot",
+							"snapshot.Namespace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
+						return ctrl.Result{}, err
+					}
+					logger.Info("Snapshot integration status condition marked as invalid, the application owning this snapshot cannot be found",
 						"snapshot.Namespace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
-					return ctrl.Result{}, err
 				}
-				logger.Info("Snapshot integration status condition marked as invalid, the application owning this snapshot cannot be found",
-					"snapshot.Namespace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
 			}
+			return helpers.HandleLoaderError(logger, err, "Application", "Snapshot")
 		}
-		return helpers.HandleLoaderError(logger, err, "Application", "Snapshot")
+	} else {
+		err = retry.OnError(retry.DefaultRetry, func(_ error) bool { return true }, func() error {
+			componentGroup, err = loader.GetComponentGroupFromSnapshot(ctx, r.Client, snapshot)
+			return err
+		})
+		if err != nil {
+			if errors.IsNotFound(err) {
+				if !gitops.IsSnapshotMarkedAsInvalid(snapshot) {
+					err := gitops.MarkSnapshotAsInvalid(ctx, r.Client, snapshot,
+						fmt.Sprintf("The component group %s owning this snapshot doesn't exist, try again after creating component group", snapshot.Spec.ComponentGroup))
+					if err != nil {
+						logger.Error(err, "Failed to update the status to Invalid for the snapshot",
+							"snapshot.Namespace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
+						return ctrl.Result{}, err
+					}
+					logger.Info("Snapshot integration status condition marked as invalid, the component group owning this snapshot cannot be found",
+						"snapshot.Namespace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
+				}
+			}
+			return helpers.HandleLoaderError(logger, err, "ComponentGroup", "Snapshot")
+		}
 	}
 
 	if !controllerutil.HasControllerReference(snapshot) {
-		snapshot, err = gitops.SetOwnerReference(ctx, r.Client, snapshot, application)
+		if !usingComponentGroups {
+			snapshot, err = gitops.SetOwnerReferenceApplication(ctx, r.Client, snapshot, application)
+		} else {
+			snapshot, err = gitops.SetOwnerReference(ctx, r.Client, snapshot, componentGroup)
+		}
 		if err != nil {
 			logger.Error(err, fmt.Sprintf("Failed to set owner reference for snapshot %s/%s", snapshot.Namespace, snapshot.Name))
 			return ctrl.Result{}, err
 		}
-		logger.LogAuditEvent(fmt.Sprintf("Application %s has been set as a Controller OwnerReference on Snapshot %s", application.Name, snapshot.Name),
-			snapshot, helpers.LogActionUpdate)
+
+		if !usingComponentGroups {
+			logger.LogAuditEvent(fmt.Sprintf("Application %s has been set as a Controller OwnerReference on Snapshot %s", application.Name, snapshot.Name), snapshot, helpers.LogActionUpdate)
+		} else {
+			logger.LogAuditEvent(fmt.Sprintf("Component Group %s has been set as a Controller OwnerReference on Snapshot %s", componentGroup.Name, snapshot.Name), snapshot, helpers.LogActionUpdate)
+		}
+
 	}
 
-	logger = logger.WithApp(*application)
-
-	adapter := NewAdapter(ctx, snapshot, application, logger, loader, r.Client)
+	var adapter *Adapter
+	if !usingComponentGroups {
+		logger = logger.WithApp(*application)
+		adapter = NewAdapterWithApplication(ctx, snapshot, application, logger, loader, r.Client)
+	} else {
+		logger = logger.WithComponentGroup(*componentGroup)
+		adapter = NewAdapter(ctx, snapshot, componentGroup, logger, loader, r.Client)
+	}
 
 	return controller.ReconcileHandler([]controller.Operation{
 		adapter.EnsureGroupSnapshotExist,

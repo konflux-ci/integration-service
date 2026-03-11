@@ -535,7 +535,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			// Check when all integrationTestScenarion exist in testStatuses of the snapshot
 			testStatuses, err := gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(hasSnapshot)
 			Expect(err).ToNot(HaveOccurred())
-			integrationTestScenarios, err := adapter.loader.GetRequiredIntegrationTestScenariosForSnapshot(adapter.context, adapter.client, adapter.application, adapter.snapshot)
+			integrationTestScenarios, err := adapter.loader.GetRequiredIntegrationTestScenariosForSnapshotApplication(adapter.context, adapter.client, adapter.application, adapter.snapshot)
 			Expect(err).ToNot(HaveOccurred())
 			result := adapter.findUntriggeredIntegrationTestFromStatus(integrationTestScenarios, testStatuses)
 			Expect(result).To(BeEmpty())
