@@ -413,6 +413,8 @@ func GenerateForgejoCommitState(state intgteststat.IntegrationTestStatus, option
 			break
 		}
 		fjState = "error"
+	case intgteststat.IntegrationTestStatusTestWarning:
+		fjState = "warning"
 	default:
 		return fjState, fmt.Errorf("unknown status %s", state)
 	}

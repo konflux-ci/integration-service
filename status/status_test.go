@@ -697,6 +697,7 @@ var _ = Describe("Status Adapter", func() {
 		Entry("Pending", integrationteststatus.IntegrationTestStatusPending, "is pending"),
 		Entry("In progress", integrationteststatus.IntegrationTestStatusInProgress, "is in progress"),
 		Entry("Invalid", integrationteststatus.IntegrationTestStatusTestInvalid, "is invalid"),
+		Entry("Warning", integrationteststatus.IntegrationTestStatusTestWarning, "has warning(s)"),
 	)
 
 	DescribeTable(
