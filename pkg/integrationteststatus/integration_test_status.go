@@ -47,6 +47,8 @@ const (
 	IntegrationTestStatusTestPassed // TestPassed
 	// Integration PLR is invalid
 	IntegrationTestStatusTestInvalid // TestInvalid
+	// Integration test PLR ends with Warning
+	IntegrationTestStatusTestWarning // TestWarning
 	// Build PLR is in progress
 	BuildPLRInProgress // BuildPLRInProgress
 	// Snapshot is not created
@@ -55,6 +57,7 @@ const (
 	BuildPLRFailed // BuildPLRFailed
 	// Group snapshot creation failed
 	GroupSnapshotCreationFailed //GroupSnapshotCreationFailed
+
 )
 
 const integrationTestStatusesSchema = `{
@@ -126,7 +129,8 @@ func (sits *IntegrationTestStatus) IsFinal() bool {
 		IntegrationTestStatusEnvironmentProvisionError_Deprecated,
 		IntegrationTestStatusTestFail,
 		IntegrationTestStatusTestPassed,
-		IntegrationTestStatusTestInvalid:
+		IntegrationTestStatusTestInvalid,
+		IntegrationTestStatusTestWarning:
 		return true
 	}
 	return false
@@ -191,6 +195,7 @@ func (sits *SnapshotIntegrationTestStatuses) UpdateTestStatusIfChanged(scenarioN
 			IntegrationTestStatusTestFail,
 			IntegrationTestStatusTestPassed,
 			IntegrationTestStatusTestInvalid,
+			IntegrationTestStatusTestWarning,
 			SnapshotCreationFailed,
 			GroupSnapshotCreationFailed,
 			BuildPLRFailed:

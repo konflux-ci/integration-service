@@ -370,6 +370,8 @@ func GenerateSummary(state intgteststat.IntegrationTestStatus, snapshotName, sce
 		statusDesc = "has failed"
 	case intgteststat.IntegrationTestStatusTestInvalid:
 		statusDesc = "is invalid"
+	case intgteststat.IntegrationTestStatusTestWarning:
+		statusDesc = "has warning(s)"
 	case intgteststat.BuildPLRInProgress:
 		statusDesc = "is pending because build pipelinerun is still running and snapshot has not been created"
 	case intgteststat.SnapshotCreationFailed:
@@ -415,6 +417,8 @@ func GenerateSummaryForAllScenarios(state intgteststat.IntegrationTestStatus, co
 		statusDesc = "has not run and is considered as failed because the build pipelinerun failed and snapshot was not created"
 	case intgteststat.GroupSnapshotCreationFailed:
 		statusDesc = "has not run and is considered as failed because group snapshot was not created"
+	case intgteststat.IntegrationTestStatusTestWarning:
+		statusDesc = "has passed but has experienced warnings"
 	default:
 		return summary, fmt.Errorf("unsupported status")
 	}

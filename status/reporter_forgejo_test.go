@@ -376,6 +376,7 @@ var _ = Describe("ForgejoReporter", func() {
 			Entry("In progress", integrationteststatus.IntegrationTestStatusInProgress, "pending"),
 			Entry("Pending", integrationteststatus.IntegrationTestStatusPending, "pending"),
 			Entry("Invalid", integrationteststatus.IntegrationTestStatusTestInvalid, "error"),
+			Entry("Warning", integrationteststatus.IntegrationTestStatusTestWarning, "warning"),
 			Entry("BuildPLRInProgress", integrationteststatus.BuildPLRInProgress, "pending"),
 			Entry("BuildPLRFailed", integrationteststatus.BuildPLRFailed, "error"),
 			Entry("SnapshotCreationFailed", integrationteststatus.SnapshotCreationFailed, "error"),

@@ -82,6 +82,7 @@ var _ = Describe("integrationteststatus library unittests", func() {
 			Entry("When status is TestFail", intgteststat.IntegrationTestStatusTestFail, true),
 			Entry("When status is TestPass", intgteststat.IntegrationTestStatusTestPassed, true),
 			Entry("When status is Invalid", intgteststat.IntegrationTestStatusTestInvalid, true),
+			Entry("When status is Warning", intgteststat.IntegrationTestStatusTestWarning, true),
 			Entry("When status is Other", intgteststat.IntegrationTestStatusPending, false),
 		)
 

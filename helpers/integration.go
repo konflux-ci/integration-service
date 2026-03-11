@@ -266,6 +266,23 @@ func (ipro *IntegrationPipelineRunOutcome) HasPipelineRunPassedTesting() bool {
 	return true
 }
 
+// HasPipelineRunWarningTesting returns general outcome
+// If any of the tasks with the TEST_OUTPUT result have the `result` field set to WARNING, it returns true.
+func (ipro *IntegrationPipelineRunOutcome) HasPipelineRunWarningTesting() bool {
+	if !ipro.HasPipelineRunSucceeded() {
+		return false
+	}
+	if !ipro.HasPipelineRunValidTestOutputs() {
+		return false
+	}
+	for _, result := range ipro.results {
+		if result.TestOutput.Result == AppStudioTestOutputWarning {
+			return true
+		}
+	}
+	return false
+}
+
 // LogResults writes tasks names with results into given logger, each task on separate line
 func (ipro *IntegrationPipelineRunOutcome) LogResults(logger logr.Logger) {
 	for k, v := range ipro.results {
