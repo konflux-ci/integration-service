@@ -29,6 +29,7 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
 	toolkit "github.com/konflux-ci/operator-toolkit/test"
@@ -80,6 +81,9 @@ var _ = BeforeSuite(func() {
 	err = applicationapiv1alpha1.AddToScheme(scheme)
 	Expect(err).NotTo(HaveOccurred())
 
+	err = tektonv1.AddToScheme(scheme)
+	Expect(err).NotTo(HaveOccurred())
+
 	// +kubebuilder:scaffold:scheme
 
 	By("bootstrapping test environment")
@@ -89,6 +93,10 @@ var _ = BeforeSuite(func() {
 				build.Default.GOPATH,
 				"pkg", "mod", toolkit.GetRelativeDependencyPath("application-api"),
 				"config", "crd", "bases",
+			),
+			filepath.Join(
+				build.Default.GOPATH,
+				"pkg", "mod", toolkit.GetRelativeDependencyPath("tektoncd/pipeline"), "config", "300-crds",
 			),
 		},
 

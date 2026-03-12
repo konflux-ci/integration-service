@@ -21,11 +21,17 @@ import (
 	"testing"
 
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
+	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
+	"knative.dev/pkg/apis"
+	duckv1 "knative.dev/pkg/apis/duck/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
 func TestSnapshotCustomValidator_ValidateCreate(t *testing.T) {
-	validator := &SnapshotCustomValidator{}
+	validator := &SnapshotCustomValidator{Client: k8sClient}
 	ctx := context.Background()
 
 	snapshot := &applicationapiv1alpha1.Snapshot{
@@ -107,7 +113,7 @@ func TestSnapshotCustomValidator_ValidateCreate(t *testing.T) {
 }
 
 func TestSnapshotCustomValidator_ValidateUpdate(t *testing.T) {
-	validator := &SnapshotCustomValidator{}
+	validator := &SnapshotCustomValidator{Client: k8sClient}
 	ctx := context.Background()
 
 	originalSnapshot := &applicationapiv1alpha1.Snapshot{
@@ -203,8 +209,67 @@ func TestSnapshotCustomValidator_ValidateUpdate(t *testing.T) {
 }
 
 func TestSnapshotCustomValidator_ValidateDelete(t *testing.T) {
-	validator := &SnapshotCustomValidator{}
 	ctx := context.Background()
+	if k8sClient == nil {
+		t.Log("k8sClient is nil, falling back to fake client")
+		scheme := runtime.NewScheme()
+		_ = applicationapiv1alpha1.AddToScheme(scheme)
+		_ = tektonv1.AddToScheme(scheme)
+		k8sClient = fake.NewClientBuilder().WithScheme(scheme).Build()
+	}
+
+	integrationPipelineRun := &tektonv1.PipelineRun{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "pipelinerun-component-sample",
+			Namespace: "default",
+			Labels: map[string]string{
+				"pipelines.appstudio.openshift.io/type": "test",
+				"appstudio.openshift.io/application":    "test-app",
+				"appstudio.openshift.io/snapshot":       "test-snapshot",
+			},
+			Annotations: map[string]string{
+				"pac.test.appstudio.openshift.io/on-target-branch": "[main]",
+			},
+			Finalizers: []string{
+				"test.appstudio.openshift.io/pipelinerun",
+			},
+		},
+		Spec: tektonv1.PipelineRunSpec{
+			PipelineRef: &tektonv1.PipelineRef{
+				Name: "test-pipeline",
+			},
+		},
+		Status: tektonv1.PipelineRunStatus{
+			PipelineRunStatusFields: tektonv1.PipelineRunStatusFields{
+				ChildReferences: []tektonv1.ChildStatusReference{
+					{
+						Name:             "test-taskrun",
+						PipelineTaskName: "test-task",
+					},
+				},
+			},
+			Status: duckv1.Status{
+				Conditions: []apis.Condition{
+					{
+						Type:   apis.ConditionSucceeded,
+						Status: "True",
+					},
+				},
+			},
+		},
+	}
+	err := k8sClient.Create(ctx, integrationPipelineRun)
+	if err != nil {
+		t.Fatalf("Failed to create PipelineRun: %v", err)
+	}
+
+	validator := &SnapshotCustomValidator{Client: k8sClient}
+	if validator.Client == nil {
+		scheme := runtime.NewScheme()
+		_ = applicationapiv1alpha1.AddToScheme(scheme)
+		_ = tektonv1.AddToScheme(scheme)
+		validator.Client = fake.NewClientBuilder().WithScheme(scheme).Build()
+	}
 
 	snapshot := &applicationapiv1alpha1.Snapshot{
 		ObjectMeta: metav1.ObjectMeta{
@@ -223,9 +288,21 @@ func TestSnapshotCustomValidator_ValidateDelete(t *testing.T) {
 	}
 
 	t.Run("should allow snapshot deletion", func(t *testing.T) {
+		if validator == nil || validator.Client == nil {
+			t.Fatal("Validator or Client is nil before calling ValidateDelete")
+		}
 		_, err := validator.ValidateDelete(ctx, snapshot)
 		if err != nil {
 			t.Errorf("ValidateDelete should not error, got: %v", err)
+		}
+
+		updatedPlr := &tektonv1.PipelineRun{}
+		err = validator.Client.Get(ctx, types.NamespacedName{Namespace: integrationPipelineRun.Namespace, Name: integrationPipelineRun.Name}, updatedPlr)
+		if err != nil {
+			t.Errorf("Failed to get PipelineRun after Snapshot deletion: %v", err)
+		}
+		if len(updatedPlr.Finalizers) != 0 {
+			t.Error("Finalizers should be removed from PipelineRun after Snapshot deletion", "finalizers", updatedPlr.Finalizers)
 		}
 	})
 
