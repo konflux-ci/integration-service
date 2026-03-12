@@ -35,6 +35,7 @@ import (
 	"github.com/konflux-ci/operator-toolkit/metadata"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
@@ -684,8 +685,23 @@ func (r *GitHubReporter) ReportStatus(ctx context.Context, report TestReport) (i
 		return statusCode, fmt.Errorf("reporter is not initialized")
 	}
 
-	if statusCode, err = r.updater.UpdateStatus(ctx, report); err != nil {
-		r.logger.Error(err, fmt.Sprintf("failed to update status for snapshot %s", report.SnapshotName))
+	err = retry.OnError(reporterRetryBackoff, func(err error) bool {
+		// statusCode 0 means no HTTP response was received (network/timeout error), always retry
+		retryable := statusCode == 0 || !r.ReturnCodeIsUnrecoverable(statusCode)
+		if retryable {
+			r.logger.Info("retrying to update github status after transient error",
+				"snapshot.name", report.SnapshotName, "statusCode", statusCode, "error", err.Error())
+		}
+		return retryable
+	}, func() error {
+		statusCode = 0 // reset before each attempt to avoid stale values
+		statusCode, err = r.updater.UpdateStatus(ctx, report)
+		return err
+	})
+
+	if err != nil {
+		r.logger.Error(err, "failed to update github status after all retries",
+			"snapshot.name", report.SnapshotName, "statusCode", statusCode)
 		return statusCode, err
 	}
 	return statusCode, nil

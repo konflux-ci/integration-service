@@ -19,6 +19,8 @@ package status_test
 import (
 	"bytes"
 	"context"
+	"fmt"
+	"net/http"
 	"os"
 	"time"
 
@@ -32,6 +34,7 @@ import (
 	"github.com/tonglil/buflogr"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/konflux-ci/integration-service/git/github"
@@ -192,6 +195,28 @@ func (c *MockGitHubClient) GetPullRequest(ctx context.Context, owner string, rep
 	var state = "opened"
 	pullRequest := &ghapi.PullRequest{ID: &id, State: &state}
 	return pullRequest, 200, nil
+}
+
+// MockStatusUpdater implements StatusUpdater for testing retry behavior.
+// statusCodes and errors define the return values for each call.
+// If callCount exceeds the slice length, the last element is reused.
+type MockStatusUpdater struct {
+	callCount   int
+	statusCodes []int
+	errors      []error
+}
+
+func (m *MockStatusUpdater) Authenticate(ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot) (int, error) {
+	return 0, nil
+}
+
+func (m *MockStatusUpdater) UpdateStatus(ctx context.Context, report status.TestReport) (int, error) {
+	idx := m.callCount
+	m.callCount++
+	if idx >= len(m.statusCodes) {
+		idx = len(m.statusCodes) - 1
+	}
+	return m.statusCodes[idx], m.errors[idx]
 }
 
 var _ = Describe("GitHubReporter", func() {
@@ -676,6 +701,129 @@ var _ = Describe("GitHubReporter", func() {
 
 			expectedLogEntry := "Won't create/update commitStatus since there is access limitation for different source and target Repo Owner"
 			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
+		})
+	})
+
+	Context("when testing retry behavior", func() {
+		var (
+			reporter     *status.GitHubReporter
+			mockUpdater  *MockStatusUpdater
+			buf          bytes.Buffer
+			log          logr.Logger
+			savedBackoff wait.Backoff
+		)
+
+		BeforeEach(func() {
+			buf.Reset()
+			log = buflogr.NewWithBuffer(&buf)
+
+			savedBackoff = status.GetReporterRetryBackoff()
+			status.SetReporterRetryBackoff(wait.Backoff{
+				Steps:    5,
+				Duration: 1 * time.Millisecond,
+				Factor:   1.0,
+				Jitter:   0.0,
+			})
+
+			mockUpdater = &MockStatusUpdater{}
+			reporter = status.NewGitHubReporter(log, nil)
+			reporter.SetUpdater(mockUpdater)
+		})
+
+		AfterEach(func() {
+			status.SetReporterRetryBackoff(savedBackoff)
+		})
+
+		It("retries on transient 500 error and succeeds on retry", func() {
+			mockUpdater.statusCodes = []int{http.StatusInternalServerError, http.StatusOK}
+			mockUpdater.errors = []error{fmt.Errorf("internal server error"), nil}
+
+			statusCode, err := reporter.ReportStatus(context.TODO(), status.TestReport{
+				SnapshotName: "test-snapshot",
+				ScenarioName: "test-scenario",
+				Status:       integrationteststatus.IntegrationTestStatusTestPassed,
+			})
+
+			Expect(err).To(Succeed())
+			Expect(statusCode).To(Equal(http.StatusOK))
+			Expect(mockUpdater.callCount).To(Equal(2))
+			Expect(buf.String()).To(ContainSubstring("retrying to update github status after transient error"))
+		})
+
+		It("retries on network error (statusCode 0) and succeeds on retry", func() {
+			mockUpdater.statusCodes = []int{0, http.StatusOK}
+			mockUpdater.errors = []error{fmt.Errorf("connection refused"), nil}
+
+			statusCode, err := reporter.ReportStatus(context.TODO(), status.TestReport{
+				SnapshotName: "test-snapshot",
+				ScenarioName: "test-scenario",
+				Status:       integrationteststatus.IntegrationTestStatusTestPassed,
+			})
+
+			Expect(err).To(Succeed())
+			Expect(statusCode).To(Equal(http.StatusOK))
+			Expect(mockUpdater.callCount).To(Equal(2))
+		})
+
+		It("does not retry on 401 Unauthorized", func() {
+			mockUpdater.statusCodes = []int{http.StatusUnauthorized}
+			mockUpdater.errors = []error{fmt.Errorf("unauthorized")}
+
+			statusCode, err := reporter.ReportStatus(context.TODO(), status.TestReport{
+				SnapshotName: "test-snapshot",
+				ScenarioName: "test-scenario",
+				Status:       integrationteststatus.IntegrationTestStatusTestPassed,
+			})
+
+			Expect(err).To(HaveOccurred())
+			Expect(statusCode).To(Equal(http.StatusUnauthorized))
+			Expect(mockUpdater.callCount).To(Equal(1))
+		})
+
+		It("does not retry on 403 Forbidden", func() {
+			mockUpdater.statusCodes = []int{http.StatusForbidden}
+			mockUpdater.errors = []error{fmt.Errorf("forbidden")}
+
+			statusCode, err := reporter.ReportStatus(context.TODO(), status.TestReport{
+				SnapshotName: "test-snapshot",
+				ScenarioName: "test-scenario",
+				Status:       integrationteststatus.IntegrationTestStatusTestPassed,
+			})
+
+			Expect(err).To(HaveOccurred())
+			Expect(statusCode).To(Equal(http.StatusForbidden))
+			Expect(mockUpdater.callCount).To(Equal(1))
+		})
+
+		It("does not retry on 400 Bad Request", func() {
+			mockUpdater.statusCodes = []int{http.StatusBadRequest}
+			mockUpdater.errors = []error{fmt.Errorf("bad request")}
+
+			statusCode, err := reporter.ReportStatus(context.TODO(), status.TestReport{
+				SnapshotName: "test-snapshot",
+				ScenarioName: "test-scenario",
+				Status:       integrationteststatus.IntegrationTestStatusTestPassed,
+			})
+
+			Expect(err).To(HaveOccurred())
+			Expect(statusCode).To(Equal(http.StatusBadRequest))
+			Expect(mockUpdater.callCount).To(Equal(1))
+		})
+
+		It("exhausts all retries on persistent 500 errors", func() {
+			mockUpdater.statusCodes = []int{http.StatusInternalServerError}
+			mockUpdater.errors = []error{fmt.Errorf("internal server error")}
+
+			statusCode, err := reporter.ReportStatus(context.TODO(), status.TestReport{
+				SnapshotName: "test-snapshot",
+				ScenarioName: "test-scenario",
+				Status:       integrationteststatus.IntegrationTestStatusTestPassed,
+			})
+
+			Expect(err).To(HaveOccurred())
+			Expect(statusCode).To(Equal(http.StatusInternalServerError))
+			Expect(mockUpdater.callCount).To(Equal(5))
+			Expect(buf.String()).To(ContainSubstring("failed to update github status after all retries"))
 		})
 	})
 
