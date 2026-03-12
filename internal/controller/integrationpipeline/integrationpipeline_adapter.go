@@ -179,6 +179,10 @@ func (a *Adapter) GetIntegrationPipelineRunStatus(ctx context.Context, adapterCl
 		return intgteststat.IntegrationTestStatusTestFail, "Integration test failed", nil
 	}
 
+	if outcome.HasPipelineRunWarningTesting() {
+		return intgteststat.IntegrationTestStatusTestPassed, "Integration test passed with warnings", nil
+	}
+
 	return intgteststat.IntegrationTestStatusTestPassed, "Integration test passed", nil
 }
 

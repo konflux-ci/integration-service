@@ -349,6 +349,7 @@ var _ = Describe("GitLabReporter", func() {
 			Entry("Test failure", integrationteststatus.IntegrationTestStatusTestFail, gitlab.Failed),
 			Entry("In progress", integrationteststatus.IntegrationTestStatusInProgress, gitlab.Running),
 			Entry("Pending", integrationteststatus.IntegrationTestStatusPending, gitlab.Pending),
+			Entry("Warning", integrationteststatus.IntegrationTestStatusTestWarning, gitlab.Success),
 			Entry("Invalid", integrationteststatus.IntegrationTestStatusTestInvalid, gitlab.Failed),
 			Entry("BuildPLRInProgress", integrationteststatus.BuildPLRInProgress, gitlab.Pending),
 			Entry("BuildPLRFailed", integrationteststatus.BuildPLRFailed, gitlab.Canceled),
