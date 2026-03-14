@@ -56,6 +56,11 @@ func (in *Pipeline) DeepCopyInto(out *Pipeline) {
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
 	}
+	if in.MaxRetries != nil {
+		in, out := &in.MaxRetries, &out.MaxRetries
+		*out = new(int)
+		**out = **in
+	}
 	in.Timeouts.DeepCopyInto(&out.Timeouts)
 }
 

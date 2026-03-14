@@ -25,7 +25,10 @@ import (
 type SnapshotSpec struct {
 
 	// Application is a reference to the name of an Application resource within the same namespace, which defines the target application for the Snapshot (when used with a Binding).
-	Application string `json:"application"`
+	Application string `json:"application,omitempty"`
+
+	// ComponentGroup is a reference to the name of a ComponentGroup resource within the same namespace, which defines the target ComponentGroup for the Snapshot.
+	ComponentGroup string `json:"componentGroup,omitempty"`
 
 	// DisplayName is a user-visible, user-definable name for the resource (and is not used for any functional behaviour)
 	DisplayName string `json:"displayName,omitempty"`
@@ -46,6 +49,11 @@ type SnapshotComponent struct {
 
 	// Name is the name of the component
 	Name string `json:"name"`
+
+	// Version is the component verison.  Only required if multiple versions of the same
+	// Component are in the Snapshot
+	// +optional
+	Version string `json:"version,omitempty"`
 
 	// ContainerImage is the container image to use when deploying the component, as part of a Snapshot
 	ContainerImage string `json:"containerImage"`

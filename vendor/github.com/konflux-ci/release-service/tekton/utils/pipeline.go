@@ -18,8 +18,11 @@ package utils
 
 import (
 	"fmt"
+	"time"
 
+	"github.com/go-logr/logr"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // Param defines the parameters for a given resolver in PipelineRef
@@ -68,6 +71,13 @@ type Pipeline struct {
 	// TaskRunSpecs is the PipelineTaskRunSpec to be used in the PipelineRun execution
 	// +optional
 	TaskRunSpecs []tektonv1.PipelineTaskRunSpec `json:"taskRunSpecs,omitempty"`
+
+	// MaxRetries sets the retry limit for the pipeline overriding the value in
+	// ReleaseServiceConfig when specified. When unset the ReleaseServiceConfig
+	// value is used and 0 disables retries for the pipeline.
+	// +kubebuilder:validation:Minimum=0
+	// +optional
+	MaxRetries *int `json:"maxRetries,omitempty"`
 
 	// Timeouts defines the different Timeouts to use in the PipelineRun execution
 	// +optional
@@ -197,4 +207,128 @@ func (prp *ParameterizedPipeline) GetTektonParams() []tektonv1.Param {
 // IsClusterScoped returns whether the PipelineRef uses a cluster resolver or not.
 func (pr *PipelineRef) IsClusterScoped() bool {
 	return pr.Resolver == "cluster"
+}
+
+// AdjustTimeouts adjusts the timeout values to ensure they follow the rule: pipeline >= tasks + finally.
+// It modifies the timeouts as needed based on which values are set and logs the action taken.
+// The adjustment buffer is 10 minutes, or half of pipeline timeout if pipeline is less than 20 minutes.
+func AdjustTimeouts(timeouts *tektonv1.TimeoutFields, logger logr.Logger) *tektonv1.TimeoutFields {
+	const defaultAdjustmentBuffer = 10 * time.Minute
+	const shortPipelineThreshold = 20 * time.Minute
+	const minPipelineWarningThreshold = 5 * time.Minute
+
+	// If timeouts is nil, return as is
+	if timeouts == nil {
+		logger.Info("Timeouts not set, returning nil")
+		return nil
+	}
+
+	// Check which fields are set
+	pipelineSet := timeouts.Pipeline != nil && timeouts.Pipeline.Duration > 0
+	tasksSet := timeouts.Tasks != nil && timeouts.Tasks.Duration > 0
+	finallySet := timeouts.Finally != nil && timeouts.Finally.Duration > 0
+
+	// If all are unset, return as is
+	if !pipelineSet && !tasksSet && !finallySet {
+		logger.Info("All timeout fields are unset, returning original timeouts")
+		return timeouts
+	}
+
+	// Create a copy to avoid modifying the original
+	result := &tektonv1.TimeoutFields{}
+	if pipelineSet {
+		result.Pipeline = &metav1.Duration{Duration: timeouts.Pipeline.Duration}
+	}
+	if tasksSet {
+		result.Tasks = &metav1.Duration{Duration: timeouts.Tasks.Duration}
+	}
+	if finallySet {
+		result.Finally = &metav1.Duration{Duration: timeouts.Finally.Duration}
+	}
+
+	// Calculate adjustment buffer: use pipeline/2 if pipeline < 20min, otherwise default 10min
+	adjustmentBuffer := defaultAdjustmentBuffer
+	if pipelineSet && result.Pipeline.Duration < shortPipelineThreshold {
+		adjustmentBuffer = result.Pipeline.Duration / 2
+	}
+
+	// Handle all scenarios
+	switch {
+	case pipelineSet && tasksSet && finallySet:
+		// All three are set
+		if result.Pipeline.Duration >= result.Tasks.Duration+result.Finally.Duration {
+			logger.Info("All timeouts set and valid (pipeline >= tasks + finally), returning original values",
+				"pipeline", result.Pipeline.Duration, "tasks", result.Tasks.Duration, "finally", result.Finally.Duration)
+		} else {
+			// They don't follow the rule: set tasks and finally based on adjustment buffer
+			result.Tasks = &metav1.Duration{Duration: result.Pipeline.Duration - adjustmentBuffer}
+			result.Finally = &metav1.Duration{Duration: adjustmentBuffer}
+			logger.Info("All timeouts set but invalid, adjusted tasks and finally",
+				"pipeline", result.Pipeline.Duration, "tasks", result.Tasks.Duration, "finally", result.Finally.Duration,
+				"adjustmentBuffer", adjustmentBuffer)
+		}
+
+	case pipelineSet && tasksSet && !finallySet:
+		// Only pipeline and tasks are set
+		if result.Tasks.Duration < result.Pipeline.Duration {
+			logger.Info("Pipeline and tasks set, tasks is lower than pipeline, returning original values",
+				"pipeline", result.Pipeline.Duration, "tasks", result.Tasks.Duration)
+		} else {
+			// tasks >= pipeline, set tasks based on adjustment buffer
+			result.Tasks = &metav1.Duration{Duration: result.Pipeline.Duration - adjustmentBuffer}
+			logger.Info("Pipeline and tasks set, tasks was >= pipeline, adjusted tasks",
+				"pipeline", result.Pipeline.Duration, "tasks", result.Tasks.Duration,
+				"adjustmentBuffer", adjustmentBuffer)
+		}
+
+	case pipelineSet && !tasksSet && finallySet:
+		// Only pipeline and finally are set
+		if result.Finally.Duration <= result.Pipeline.Duration/2 {
+			// finally is at most half of pipeline, use current logic
+			result.Tasks = &metav1.Duration{Duration: result.Pipeline.Duration - result.Finally.Duration}
+			logger.Info("Pipeline and finally set (finally <= pipeline/2), calculated tasks as pipeline - finally",
+				"pipeline", result.Pipeline.Duration, "tasks", result.Tasks.Duration, "finally", result.Finally.Duration)
+		} else {
+			// finally is more than half of pipeline, set tasks and finally based on adjustment buffer
+			result.Tasks = &metav1.Duration{Duration: result.Pipeline.Duration - adjustmentBuffer}
+			result.Finally = &metav1.Duration{Duration: adjustmentBuffer}
+			logger.Info("Pipeline and finally set (finally > pipeline/2), adjusted tasks and finally based on adjustment buffer",
+				"pipeline", result.Pipeline.Duration, "tasks", result.Tasks.Duration, "finally", result.Finally.Duration,
+				"adjustmentBuffer", adjustmentBuffer)
+		}
+
+	case pipelineSet && !tasksSet && !finallySet:
+		// Only pipeline is set
+		result.Tasks = &metav1.Duration{Duration: result.Pipeline.Duration - adjustmentBuffer}
+		logger.Info("Only pipeline set, calculated tasks as pipeline - adjustmentBuffer",
+			"pipeline", result.Pipeline.Duration, "tasks", result.Tasks.Duration,
+			"adjustmentBuffer", adjustmentBuffer)
+
+	case !pipelineSet && tasksSet && !finallySet:
+		// Only tasks is set - use default buffer since we don't have pipeline
+		result.Pipeline = &metav1.Duration{Duration: result.Tasks.Duration + adjustmentBuffer}
+		logger.Info("Only tasks set, calculated pipeline as tasks + adjustmentBuffer",
+			"pipeline", result.Pipeline.Duration, "tasks", result.Tasks.Duration,
+			"adjustmentBuffer", adjustmentBuffer)
+
+	case !pipelineSet && !tasksSet && finallySet:
+		// Only finally is set - return empty struct so defaults will be used
+		logger.Info("WARNING: Only finally timeout is set, returning empty timeouts to use defaults",
+			"finally", result.Finally.Duration)
+		return &tektonv1.TimeoutFields{}
+
+	case !pipelineSet && tasksSet && finallySet:
+		// Only finally and tasks are set
+		result.Pipeline = &metav1.Duration{Duration: result.Tasks.Duration + result.Finally.Duration}
+		logger.Info("Tasks and finally set, calculated pipeline as tasks + finally",
+			"pipeline", result.Pipeline.Duration, "tasks", result.Tasks.Duration, "finally", result.Finally.Duration)
+	}
+
+	// Warn if pipeline timeout is less than 5 minutes
+	if result.Pipeline != nil && result.Pipeline.Duration < minPipelineWarningThreshold {
+		logger.Info("WARNING: Pipeline timeout is less than 5 minutes, this may not be enough time for the pipeline to complete",
+			"pipeline", result.Pipeline.Duration)
+	}
+
+	return result
 }
