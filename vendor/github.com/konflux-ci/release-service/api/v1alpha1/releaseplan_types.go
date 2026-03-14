@@ -29,11 +29,21 @@ import (
 )
 
 // ReleasePlanSpec defines the desired state of ReleasePlan.
+// +kubebuilder:validation:XValidation:rule="has(self.application) != has(self.componentGroup)",message="exactly one of application or componentGroup must be specified"
 type ReleasePlanSpec struct {
-	// Application is a reference to the application to be released in the managed namespace
+	// Application is a reference to the application to be released in the managed namespace.
+	// Either application or componentGroup must be specified, but not both.
 	// +kubebuilder:validation:Pattern=^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
-	// +required
-	Application string `json:"application"`
+	// +kubebuilder:validation:MaxLength=63
+	// +optional
+	Application string `json:"application,omitempty"`
+
+	// ComponentGroup is a reference to the component group to be released in the managed namespace.
+	// Either application or componentGroup must be specified, but not both.
+	// +kubebuilder:validation:Pattern=^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+	// +kubebuilder:validation:MaxLength=63
+	// +optional
+	ComponentGroup string `json:"componentGroup,omitempty"`
 
 	// Collectors contains all the information of the collectors to be executed as part of the release workflow
 	// +optional
@@ -92,6 +102,7 @@ type ReleasePlanStatus struct {
 // +kubebuilder:resource:shortName=rp
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="Application",type=string,JSONPath=`.spec.application`
+// +kubebuilder:printcolumn:name="ComponentGroup",type=string,JSONPath=`.spec.componentGroup`
 // +kubebuilder:printcolumn:name="Target",type=string,JSONPath=`.spec.target`
 
 // ReleasePlan is the Schema for the ReleasePlans API.
@@ -101,6 +112,14 @@ type ReleasePlan struct {
 
 	Spec   ReleasePlanSpec   `json:"spec,omitempty"`
 	Status ReleasePlanStatus `json:"status,omitempty"`
+}
+
+// GetGroupName returns the application or componentGroup name.
+func (rp *ReleasePlan) GetGroupName() string {
+	if rp.Spec.Application != "" {
+		return rp.Spec.Application
+	}
+	return rp.Spec.ComponentGroup
 }
 
 // MarkMatched marks the ReleasePlan as matched to a given ReleasePlanAdmission.

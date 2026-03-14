@@ -230,6 +230,18 @@ func (r *Release) HasReleaseFinished() bool {
 	return r.hasPhaseFinished(releasedConditionType)
 }
 
+// AreAllProcessingPhasesFinished returns true when all processing phases (tenant collectors,
+// managed collectors, tenant, managed, and final) have finished, regardless of result or skip.
+// This should be used to gate any stop operation in the release adapter, or else we risk leaving
+// lingering resources around as the release would be ended before cleanups may run.
+func (r *Release) AreAllProcessingPhasesFinished() bool {
+	return r.HasTenantCollectorsPipelineProcessingFinished() &&
+		r.HasManagedCollectorsPipelineProcessingFinished() &&
+		r.HasTenantPipelineProcessingFinished() &&
+		r.HasManagedPipelineProcessingFinished() &&
+		r.HasFinalPipelineProcessingFinished()
+}
+
 // IsAttributed checks whether the Release was marked as attributed.
 func (r *Release) IsAttributed() bool {
 	return r.Status.Attribution.Author != ""
