@@ -519,6 +519,11 @@ spec:
                 items:
                   type: string
                 type: array
+              disabled:
+                description: |-
+                  Disabled indicates whether the IntegrationTestScenario should be skipped.
+                  When set to true, the scenario will not be triggered for any Snapshot.
+                type: boolean
               params:
                 description: Params to pass to the pipeline
                 items:
