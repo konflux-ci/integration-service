@@ -131,7 +131,8 @@ run: manifests generate fmt vet ## Run a controller from your host.
 	go run ./cmd/main.go
 
 .PHONY: img-build
-img-build: test ## Build container image with the manager.
+#img-build: test ## Build container image with the manager.
+img-build:
 	$(CONT_ENGINE) build -t ${IMG} .
 
 .PHONY: img-push

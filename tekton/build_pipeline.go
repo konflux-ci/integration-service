@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"strings"
 
+	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
 	"github.com/konflux-ci/integration-service/gitops"
 	h "github.com/konflux-ci/integration-service/helpers"
 	"github.com/konflux-ci/integration-service/tekton/consts"
@@ -42,6 +43,18 @@ func AnnotateBuildPipelineRun(ctx context.Context, pipelineRun *tektonv1.Pipelin
 		return err
 	}
 	return nil
+}
+
+// AppendBuildPipelineRunAnnotation sets annotation for a build pipelineRun in defined context and
+// returns that pipeline. The value of the annotation is treates as a comma-separated list.  If the
+// annotation already has a value then the value is appended.  Otherwise it is added with no
+// preceding comma
+func AppendBuildPipelineRunAnnotation(ctx context.Context, pipelineRun *tektonv1.PipelineRun, key, value string, cl client.Client) error {
+	newValue := value
+	if existingValue, ok := pipelineRun.Annotations[key]; ok && existingValue != "" {
+		newValue = fmt.Sprintf("%s,%s", existingValue, value)
+	}
+	return AnnotateBuildPipelineRun(ctx, pipelineRun, key, newValue, cl)
 }
 
 // LabelBuildPipelineRun sets annotation for a build pipelineRun in defined context and returns that pipeline
@@ -158,4 +171,48 @@ func IsBuildPLRMarkedAsAddedToGlobalCandidateList(pipelineRun *tektonv1.Pipeline
 		return false
 	}
 	return addedToGlobalCandidateListStatus.Result
+}
+
+// GetImagePullSpecFromPipelineRun gets the full image pullspec from the given build PipelineRun,
+// In case the Image pullspec can't be composed, an error will be returned.
+func GetImagePullSpecFromPipelineRun(pipelineRun *tektonv1.PipelineRun) (string, error) {
+	outputImage, err := GetOutputImage(pipelineRun)
+	if err != nil {
+		return "", err
+	}
+	imageDigest, err := GetOutputImageDigest(pipelineRun)
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%s@%s", strings.Split(outputImage, ":")[0], imageDigest), nil
+}
+
+// GetComponentSourceFromPipelineRun gets the component Git Source for the Component built in the given build PipelineRun,
+// In case the Git Source can't be composed, an error will be returned.
+func GetComponentSourceFromPipelineRun(pipelineRun *tektonv1.PipelineRun) (*applicationapiv1alpha1.ComponentSource, error) {
+	componentSourceGitUrl, err := GetComponentSourceGitUrl(pipelineRun)
+	if err != nil {
+		return nil, err
+	}
+	componentSourceGitCommit, err := GetComponentSourceGitCommit(pipelineRun)
+	if err != nil {
+		return nil, err
+	}
+	componentSource := applicationapiv1alpha1.ComponentSource{
+		ComponentSourceUnion: applicationapiv1alpha1.ComponentSourceUnion{
+			GitSource: &applicationapiv1alpha1.GitSource{
+				URL:      componentSourceGitUrl,
+				Revision: componentSourceGitCommit,
+			},
+		},
+	}
+
+	return &componentSource, nil
+}
+
+func GetComponentVersionFromPipelineRun(pipelineRun *tektonv1.PipelineRun) (string, error) {
+	if version, found := pipelineRun.Annotations[consts.PipelineRunComponentVersionAnnotation]; found {
+		return version, nil
+	}
+	return "", fmt.Errorf("PipelineRun '%s' in namespace '%s' does not have '%s' annotation", pipelineRun.Name, pipelineRun.Namespace, consts.PipelineRunComponentVersionAnnotation)
 }

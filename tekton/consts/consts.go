@@ -109,6 +109,11 @@ const (
 	// PipelineRunComponentLabel is the label denoting the application.
 	PipelineRunComponentLabel = "appstudio.openshift.io/component"
 
+	// PipelineRunComponentVersionAnnotation denotes the componentVersion for the build
+	PipelineRunComponentVersionAnnotation = "appstudio.openshift.io/version"
+
+	PipelineRunComponentVersionContextAnnotation = "appstudio.openshift.io/context"
+
 	// PipelineRunApplicationLabel is the label denoting the application.
 	PipelineRunApplicationLabel = "appstudio.openshift.io/application"
 
@@ -140,6 +145,9 @@ var (
 
 	// SnapshotNameLabel is the label of specific the name of the snapshot associated with PipelineRun
 	SnapshotNameLabel = fmt.Sprintf("%s/%s", ResourceLabelSuffix, "snapshot")
+
+	// SnapshotNamesLabel is the label of the list of snapshots associated with PipelineRun
+	SnapshotNamesLabel = fmt.Sprintf("%s/%s", ResourceLabelSuffix, "snapshots")
 
 	// EnvironmentNameLabel is the label of specific the name of the environment associated with PipelineRun
 	EnvironmentNameLabel = fmt.Sprintf("%s/%s", ResourceLabelSuffix, "environment")
