@@ -79,14 +79,27 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{}, nil
 	}
 
-	application, err := loader.GetApplicationFromSnapshot(ctx, r.Client, snapshot)
-	if err != nil {
-		logger.Error(err, "Failed to get Application from the Snapshot")
-		return ctrl.Result{}, err
+	var adapter *Adapter
+	// TODO: remove Application-specific logic after migration to ComponentGroup model
+	if snapshot.Spec.ComponentGroup != "" {
+		// ComponentGroup scenario
+		componentGroup, err := loader.GetComponentGroupFromSnapshot(ctx, r.Client, snapshot)
+		if err != nil {
+			logger.Error(err, "Failed to get ComponentGroup from the Snapshot",
+				"ComponentGroup.Name", snapshot.Spec.ComponentGroup, "ComponentGroup.Namespace", snapshot.Namespace)
+			return ctrl.Result{}, err
+		}
+		adapter = NewAdapter(ctx, snapshot, componentGroup, logger, loader, r.Client)
+	} else {
+		// Application scenario
+		application, err := loader.GetApplicationFromSnapshot(ctx, r.Client, snapshot)
+		if err != nil {
+			logger.Error(err, "Failed to get Application from the Snapshot")
+			return ctrl.Result{}, err
+		}
+		logger = logger.WithApp(*application)
+		adapter = NewAdapterWithApplication(ctx, snapshot, application, logger, loader, r.Client)
 	}
-	logger = logger.WithApp(*application)
-
-	adapter := NewAdapter(ctx, snapshot, application, logger, loader, r.Client)
 	return controller.ReconcileHandler([]controller.Operation{
 		adapter.EnsureSnapshotFinishedAllTests,
 		adapter.EnsureSnapshotTestStatusReportedToGitProvider,

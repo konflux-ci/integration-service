@@ -367,9 +367,15 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		Expect(err == nil || k8serrors.IsNotFound(err)).To(BeTrue())
 	})
 
-	When("NewAdapter is called", func() {
+	When("NewAdapter is called [APPLICATION]", func() {
 		It("creates and return a new adapter", func() {
 			Expect(reflect.TypeOf(NewAdapter(ctx, integrationPipelineRunComponent, hasApp, hasSnapshot, logger, loader.NewMockLoader(), k8sClient))).To(Equal(reflect.TypeOf(&Adapter{})))
+		})
+	})
+
+	When("NewAdapter is called with nil application for ComponentGroup scenario", func() {
+		It("creates and return a new adapter", func() {
+			Expect(reflect.TypeOf(NewAdapter(ctx, integrationPipelineRunComponent, nil, hasSnapshot, logger, loader.NewMockLoader(), k8sClient))).To(Equal(reflect.TypeOf(&Adapter{})))
 		})
 	})
 

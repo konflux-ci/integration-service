@@ -106,6 +106,14 @@ func (l *mockLoader) GetApplicationFromSnapshot(ctx context.Context, c client.Cl
 	return toolkit.GetMockedResourceAndErrorFromContext(ctx, ApplicationContextKey, &applicationapiv1alpha1.Application{})
 }
 
+// GetComponentGroupFromSnapshot returns the resource and error passed as values of the context.
+func (l *mockLoader) GetComponentGroupFromSnapshot(ctx context.Context, c client.Client, snapshot *applicationapiv1alpha1.Snapshot) (*v1beta2.ComponentGroup, error) {
+	if ctx.Value(ComponentGroupContextKey) == nil {
+		return l.loader.GetComponentGroupFromSnapshot(ctx, c, snapshot)
+	}
+	return toolkit.GetMockedResourceAndErrorFromContext(ctx, ComponentGroupContextKey, &v1beta2.ComponentGroup{})
+}
+
 // GetComponentFromSnapshot returns the resource and error passed as values of the context.
 func (l *mockLoader) GetComponentFromSnapshot(ctx context.Context, c client.Client, snapshot *applicationapiv1alpha1.Snapshot) (*applicationapiv1alpha1.Component, error) {
 	if ctx.Value(ComponentContextKey) == nil {
@@ -180,6 +188,15 @@ func (l *mockLoader) GetAllIntegrationTestScenariosForComponentGroups(ctx contex
 		return l.loader.GetAllIntegrationTestScenariosForComponentGroups(ctx, c, componentGroups)
 	}
 	integrationTestScenarios, err := toolkit.GetMockedResourceAndErrorFromContext(ctx, AllIntegrationTestScenariosForComponentGroupsContextKey, []v1beta2.IntegrationTestScenario{})
+	return &integrationTestScenarios, err
+}
+
+// GetRequiredIntegrationTestScenariosForComponentGroup returns the resource and error passed as values of the context.
+func (l *mockLoader) GetRequiredIntegrationTestScenariosForComponentGroup(ctx context.Context, c client.Client, componentGroup *v1beta2.ComponentGroup, snapshot *applicationapiv1alpha1.Snapshot) (*[]v1beta2.IntegrationTestScenario, error) {
+	if ctx.Value(RequiredIntegrationTestScenariosContextKey) == nil {
+		return l.loader.GetRequiredIntegrationTestScenariosForComponentGroup(ctx, c, componentGroup, snapshot)
+	}
+	integrationTestScenarios, err := toolkit.GetMockedResourceAndErrorFromContext(ctx, RequiredIntegrationTestScenariosContextKey, []v1beta2.IntegrationTestScenario{})
 	return &integrationTestScenarios, err
 }
 

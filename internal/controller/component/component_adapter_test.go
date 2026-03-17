@@ -74,7 +74,8 @@ var _ = Describe("Component Adapter", Ordered, func() {
 				},
 			},
 			Status: applicationapiv1alpha1.ComponentStatus{
-				LastBuiltCommit: "",
+				LastBuiltCommit:   "",
+				LastPromotedImage: SampleImage,
 			},
 		}
 		Expect(k8sClient.Create(ctx, hasComp)).Should(Succeed())
@@ -97,8 +98,21 @@ var _ = Describe("Component Adapter", Ordered, func() {
 					},
 				},
 			},
+			Status: applicationapiv1alpha1.ComponentStatus{
+				LastBuiltCommit:   "",
+				LastPromotedImage: SampleImage,
+			},
 		}
 		Expect(k8sClient.Create(ctx, hasComp2)).Should(Succeed())
+	})
+
+	AfterEach(func() {
+		// Clean up any snapshots created during tests
+		snapshots := &applicationapiv1alpha1.SnapshotList{}
+		Expect(k8sClient.List(ctx, snapshots, &client.ListOptions{Namespace: "default"})).To(Succeed())
+		for _, snapshot := range snapshots.Items {
+			Expect(k8sClient.Delete(ctx, &snapshot)).To(Succeed())
+		}
 	})
 
 	AfterAll(func() {
@@ -110,10 +124,14 @@ var _ = Describe("Component Adapter", Ordered, func() {
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 	})
 
-	It("can create a new Adapter instance", func() {
+	It("can create a new Adapter instance [APPLICATION]", func() {
 		Expect(reflect.TypeOf(NewAdapter(ctx, hasComp, hasApp, logger, loader.NewMockLoader(), k8sClient))).To(Equal(reflect.TypeOf(&Adapter{})))
 	})
-	It("ensures removing a component will result in a new snapshot being created", func() {
+
+	It("can create a new Adapter instance with nil application for ComponentGroup scenario", func() {
+		Expect(reflect.TypeOf(NewAdapter(ctx, hasComp, nil, logger, loader.NewMockLoader(), k8sClient))).To(Equal(reflect.TypeOf(&Adapter{})))
+	})
+	It("ensures removing a component will result in a new snapshot being created [APPLICATION]", func() {
 		buf := bytes.Buffer{}
 
 		log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
@@ -148,6 +166,32 @@ var _ = Describe("Component Adapter", Ordered, func() {
 
 			return !result.CancelRequest && len(snapshots.Items) == 1 && err == nil
 		}, time.Second*30).Should(BeTrue())
+	})
+
+	It("ensures removing a component in ComponentGroup scenario skips Application-specific cleanup", func() {
+		log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&bytes.Buffer{})}
+		adapter = NewAdapter(ctx, hasComp, nil, log, loader.NewMockLoader(), k8sClient)
+
+		snapshots := &applicationapiv1alpha1.SnapshotList{}
+		Eventually(func() bool {
+			Expect(k8sClient.List(ctx, snapshots, &client.ListOptions{Namespace: hasComp.Namespace})).To(Succeed())
+			return len(snapshots.Items) == 0
+		}, time.Second*20).Should(BeTrue())
+
+		now := metav1.NewTime(metav1.Now().Add(time.Second * 1))
+		hasComp.SetDeletionTimestamp(&now)
+
+		result, err := adapter.EnsureComponentIsCleanedUp()
+
+		// Should continue processing without creating snapshots
+		Expect(err).ToNot(HaveOccurred())
+		Expect(result.CancelRequest).To(BeFalse())
+
+		// No snapshots should be created for ComponentGroup scenarios
+		Eventually(func() bool {
+			Expect(k8sClient.List(ctx, snapshots, &client.ListOptions{Namespace: hasComp.Namespace})).To(Succeed())
+			return len(snapshots.Items) == 0
+		}, time.Second*10).Should(BeTrue())
 	})
 
 })

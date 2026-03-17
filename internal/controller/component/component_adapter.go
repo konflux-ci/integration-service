@@ -78,6 +78,12 @@ func (a *Adapter) EnsureComponentIsCleanedUp() (controller.OperationResult, erro
 		return controller.ContinueProcessing()
 	}
 
+	// TODO: remove Application-specific logic after migration to ComponentGroup model
+	if a.application == nil {
+		// ComponentGroup scenario: skip Application-specific cleanup logic
+		return controller.ContinueProcessing()
+	}
+
 	applicationComponents, err := a.loader.GetAllApplicationComponents(a.context, a.client, a.application)
 	if err != nil {
 		a.logger.Error(err, "Failed to load application components")

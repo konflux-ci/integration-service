@@ -69,22 +69,26 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	}
 
 	var application *applicationapiv1alpha1.Application
-	application, err = loader.GetApplicationFromComponent(ctx, r.Client, component)
-	if err != nil {
-		if errors.IsNotFound(err) {
-			if err := helpers.RemoveFinalizerFromComponent(ctx, r.Client, logger, component, helpers.ComponentFinalizer); err != nil {
-				return ctrl.Result{}, err
+	// TODO: remove Application-specific logic after migration to ComponentGroup model
+	if component.Spec.Application != "" {
+		application, err = loader.GetApplicationFromComponent(ctx, r.Client, component)
+		if err != nil {
+			if errors.IsNotFound(err) {
+				if err := helpers.RemoveFinalizerFromComponent(ctx, r.Client, logger, component, helpers.ComponentFinalizer); err != nil {
+					return ctrl.Result{}, err
+				}
 			}
+			return helpers.HandleLoaderError(logger, err, "Application", "Component")
 		}
-		return helpers.HandleLoaderError(logger, err, "Application", "Component")
-	}
 
-	if application == nil {
-		err := fmt.Errorf("failed to get Application")
-		logger.Error(err, "reconcile cannot resolve application")
-		return ctrl.Result{}, err
+		if application == nil {
+			err := fmt.Errorf("failed to get Application")
+			logger.Error(err, "reconcile cannot resolve application")
+			return ctrl.Result{}, err
+		}
+		logger = logger.WithApp(*application)
 	}
-	logger = logger.WithApp(*application)
+	// ComponentGroup scenarios: application will be nil when component.Spec.Application is empty
 
 	adapter := NewAdapter(ctx, component, application, logger, loader, r.Client)
 

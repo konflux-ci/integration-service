@@ -18,7 +18,6 @@ package integrationpipeline
 
 import (
 	"context"
-	"fmt"
 
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
 	"github.com/konflux-ci/integration-service/cache"
@@ -102,12 +101,10 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{}, err
 	}
 
-	if application == nil {
-		err := fmt.Errorf("failed to get Application")
-		logger.Error(err, "reconcile cannot resolve application")
-		return ctrl.Result{}, err
+	// TODO: remove Application-specific logic after migration to ComponentGroup model
+	if application != nil {
+		logger = logger.WithApp(*application)
 	}
-	logger = logger.WithApp(*application)
 
 	adapter := NewAdapter(ctx, pipelineRun, application, snapshot, logger, loader, r.Client)
 

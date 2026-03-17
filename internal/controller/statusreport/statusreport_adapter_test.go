@@ -369,8 +369,18 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 	})
 
 	When("adapter is created", func() {
-		It("can create a new Adapter instance", func() {
-			Expect(reflect.TypeOf(NewAdapter(ctx, hasSnapshot, hasApp, logger, loader.NewMockLoader(), k8sClient))).To(Equal(reflect.TypeOf(&Adapter{})))
+		It("can create a new Adapter instance [APPLICATION]", func() {
+			Expect(reflect.TypeOf(NewAdapterWithApplication(ctx, hasSnapshot, hasApp, logger, loader.NewMockLoader(), k8sClient))).To(Equal(reflect.TypeOf(&Adapter{})))
+		})
+
+		It("can create a new Adapter instance for ComponentGroup scenario", func() {
+			componentGroup := &v1beta2.ComponentGroup{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-componentgroup",
+					Namespace: "default",
+				},
+			}
+			Expect(reflect.TypeOf(NewAdapter(ctx, hasSnapshot, componentGroup, logger, loader.NewMockLoader(), k8sClient))).To(Equal(reflect.TypeOf(&Adapter{})))
 		})
 
 		It("ensures the statusReport is called for component snapshot", func() {
@@ -386,7 +396,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			mockReporter.EXPECT().ReportStatus(gomock.Any(), gomock.Any()).Times(1)
 
 			mockScenarios := []v1beta2.IntegrationTestScenario{}
-			adapter = NewAdapter(ctx, hasPRSnapshot, hasApp, logger, loader.NewMockLoader(), k8sClient)
+			adapter = NewAdapterWithApplication(ctx, hasPRSnapshot, hasApp, logger, loader.NewMockLoader(), k8sClient)
 			adapter.status = mockStatus
 			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
@@ -422,7 +432,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			mockReporter.EXPECT().ReportStatus(gomock.Any(), gomock.Any()).Times(1)
 
 			mockScenarios := []v1beta2.IntegrationTestScenario{}
-			adapter = NewAdapter(ctx, groupSnapshot, hasApp, log, loader.NewMockLoader(), k8sClient)
+			adapter = NewAdapterWithApplication(ctx, groupSnapshot, hasApp, log, loader.NewMockLoader(), k8sClient)
 			adapter.status = mockStatus
 			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
@@ -451,7 +461,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			err = gitops.WriteIntegrationTestStatusesIntoSnapshot(ctx, hasSnapshot, statuses, k8sClient)
 			Expect(err).ToNot(HaveOccurred())
 
-			adapter = NewAdapter(ctx, hasSnapshot, hasApp, log, loader.NewMockLoader(), k8sClient)
+			adapter = NewAdapterWithApplication(ctx, hasSnapshot, hasApp, log, loader.NewMockLoader(), k8sClient)
 			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
 					ContextKey: loader.ApplicationContextKey,
@@ -561,7 +571,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			err = gitops.WriteIntegrationTestStatusesIntoSnapshot(ctx, hasSnapshot, statuses, k8sClient)
 			Expect(err).ToNot(HaveOccurred())
 
-			adapter = NewAdapter(ctx, hasSnapshot, hasApp, log, loader.NewMockLoader(), k8sClient)
+			adapter = NewAdapterWithApplication(ctx, hasSnapshot, hasApp, log, loader.NewMockLoader(), k8sClient)
 			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
 					ContextKey: loader.ApplicationContextKey,
@@ -615,7 +625,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			err = gitops.WriteIntegrationTestStatusesIntoSnapshot(ctx, hasSnapshot, statuses, k8sClient)
 			Expect(err).ToNot(HaveOccurred())
 
-			adapter = NewAdapter(ctx, hasSnapshot, hasApp, log, loader.NewMockLoader(), k8sClient)
+			adapter = NewAdapterWithApplication(ctx, hasSnapshot, hasApp, log, loader.NewMockLoader(), k8sClient)
 			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
 					ContextKey: loader.ApplicationContextKey,
@@ -669,7 +679,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			err = gitops.WriteIntegrationTestStatusesIntoSnapshot(ctx, hasSnapshot, statuses, k8sClient)
 			Expect(err).ToNot(HaveOccurred())
 
-			adapter = NewAdapter(ctx, hasSnapshot, hasApp, log, loader.NewMockLoader(), k8sClient)
+			adapter = NewAdapterWithApplication(ctx, hasSnapshot, hasApp, log, loader.NewMockLoader(), k8sClient)
 			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
 					ContextKey: loader.ApplicationContextKey,
@@ -717,7 +727,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			overrideSnapshot.Labels[gitops.SnapshotTypeLabel] = gitops.SnapshotOverrideType
 			overrideSnapshot.Annotations[gitops.SnapshotTestsStatusAnnotation] = hasPRSnapshot.Annotations[gitops.SnapshotTestsStatusAnnotation]
 
-			adapter = NewAdapter(ctx, overrideSnapshot, hasApp, log, loader.NewMockLoader(), k8sClient)
+			adapter = NewAdapterWithApplication(ctx, overrideSnapshot, hasApp, log, loader.NewMockLoader(), k8sClient)
 			adapter.status = mockStatus
 			Expect(reflect.TypeOf(adapter)).To(Equal(reflect.TypeOf(&Adapter{})))
 		})
@@ -746,7 +756,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			manualSnapshot.Labels[gitops.SnapshotTypeLabel] = ""
 			manualSnapshot.Annotations[gitops.SnapshotTestsStatusAnnotation] = hasPRSnapshot.Annotations[gitops.SnapshotTestsStatusAnnotation]
 
-			adapter = NewAdapter(ctx, manualSnapshot, hasApp, log, loader.NewMockLoader(), k8sClient)
+			adapter = NewAdapterWithApplication(ctx, manualSnapshot, hasApp, log, loader.NewMockLoader(), k8sClient)
 			adapter.status = mockStatus
 			Expect(reflect.TypeOf(adapter)).To(Equal(reflect.TypeOf(&Adapter{})))
 		})
@@ -776,7 +786,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			}
 			meta.SetStatusCondition(&canceledSnapshot.Status.Conditions, condition)
 
-			adapter = NewAdapter(ctx, canceledSnapshot, hasApp, log, loader.NewMockLoader(), k8sClient)
+			adapter = NewAdapterWithApplication(ctx, canceledSnapshot, hasApp, log, loader.NewMockLoader(), k8sClient)
 			adapter.status = mockStatus
 			Expect(reflect.TypeOf(adapter)).To(Equal(reflect.TypeOf(&Adapter{})))
 		})
@@ -809,7 +819,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			mockReporter.EXPECT().Initialize(gomock.Any(), gomock.Any()).Times(0)   // without test results reporter shouldn't be initialized
 			mockReporter.EXPECT().ReportStatus(gomock.Any(), gomock.Any()).Times(0) // without test results reported shouldn't report status
 
-			adapter = NewAdapter(ctx, githubSnapshot, hasApp, logger, loader.NewMockLoader(), k8sClient)
+			adapter = NewAdapterWithApplication(ctx, githubSnapshot, hasApp, logger, loader.NewMockLoader(), k8sClient)
 			adapter.status = mockStatus
 			statusCode, err := adapter.ReportSnapshotStatus(githubSnapshot)
 			Expect(err).NotTo(HaveOccurred())
@@ -826,7 +836,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 
 			hasPRSnapshot.Annotations["test.appstudio.openshift.io/status"] = "[{\"scenario\":\"scenario1\",\"status\":\"InProgress\",\"startTime\":\"2023-07-26T16:57:49+02:00\",\"lastUpdateTime\":\"2023-08-26T17:57:50+02:00\",\"details\":\"Test in progress\"}]"
 			hasPRSnapshot.Annotations["test.appstudio.openshift.io/git-reporter-status"] = "{\"scenarios\":{\"scenario1-snapshot-pr-sample\":{\"lastUpdateTime\":\"2023-08-26T17:57:50+02:00\"}}}"
-			adapter = NewAdapter(ctx, hasPRSnapshot, hasApp, logger, loader.NewMockLoader(), k8sClient)
+			adapter = NewAdapterWithApplication(ctx, hasPRSnapshot, hasApp, logger, loader.NewMockLoader(), k8sClient)
 			adapter.status = mockStatus
 			statusCode, err := adapter.ReportSnapshotStatus(adapter.snapshot)
 			Expect(err).NotTo(HaveOccurred())
@@ -844,7 +854,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			hasPRSnapshot.Annotations["test.appstudio.openshift.io/status"] = "[{\"scenario\":\"scenario1\",\"status\":\"InProgress\",\"startTime\":\"2023-07-26T16:57:49+02:00\",\"lastUpdateTime\":\"2023-08-26T17:57:50+02:00\",\"details\":\"Test in progress\"}]"
 			hasPRSnapshot.Annotations["test.appstudio.openshift.io/git-reporter-status"] = "{\"scenarios\":{\"scenarios-snapshot-pr-sample\":{\"lastUpdateTime\":\"2023-08-26T17:57:49+02:00\"}}}"
 			hasPRSnapshot.Annotations["test.appstudio.openshift.io/group-test-info"] = "[{\"namespace\":\"default\",\"component\":\"devfile-sample-java-springboot-basic-8969\",\"buildPipelineRun\":\"build-plr-java-qjfxz\",\"snapshot\":\"app-8969-bbn7d\",\"pullRuestNumber\":\"1\",\"repoUrl\":\"https://example.com\"},{\"namespace\":\"default\",\"component\":\"devfile-sample-go-basic-8969\",\"buildPipelineRun\":\"build-plr-go-jmsjq\",\"snapshot\":\"app-8969-kzq2l\",\"pullRuestNumber\":\"1\",\"repoUrl\":\"https://example.com\"}]"
-			adapter = NewAdapter(ctx, hasPRSnapshot, hasApp, logger, loader.NewMockLoader(), k8sClient)
+			adapter = NewAdapterWithApplication(ctx, hasPRSnapshot, hasApp, logger, loader.NewMockLoader(), k8sClient)
 			adapter.status = mockStatus
 			statusCode, err := adapter.ReportSnapshotStatus(adapter.snapshot)
 			Expect(err).NotTo(HaveOccurred())
@@ -861,7 +871,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 
 			hasPRSnapshot.Annotations["test.appstudio.openshift.io/status"] = "[{\"scenario\":\"scenario1\",\"status\":\"InProgress\",\"startTime\":\"2023-07-26T16:57:49+02:00\",\"lastUpdateTime\":\"2023-08-26T17:57:50+02:00\",\"details\":\"Test in progress\"}]"
 			hasPRSnapshot.Annotations["test.appstudio.openshift.io/pr-last-update"] = "2023-08-26T17:57:49+02:00"
-			adapter = NewAdapter(ctx, hasPRSnapshot, hasApp, logger, loader.NewMockLoader(), k8sClient)
+			adapter = NewAdapterWithApplication(ctx, hasPRSnapshot, hasApp, logger, loader.NewMockLoader(), k8sClient)
 			adapter.status = mockStatus
 			statusCode, err := adapter.ReportSnapshotStatus(adapter.snapshot)
 			fmt.Fprintf(GinkgoWriter, "-------test: %v\n", "")
@@ -899,7 +909,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			mockStatus.EXPECT().GetReporter(gomock.Any()).Return(nil)
 
 			// Create adapter
-			adapter = NewAdapter(ctx, snapshotWithoutGitProvider, hasApp, log, loader.NewMockLoader(), k8sClient)
+			adapter = NewAdapterWithApplication(ctx, snapshotWithoutGitProvider, hasApp, log, loader.NewMockLoader(), k8sClient)
 			adapter.status = mockStatus
 
 			// Call the method
@@ -939,7 +949,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			}
 			mockReporter.EXPECT().Initialize(gomock.Any(), gomock.Any()).Times(1)
 			mockReporter.EXPECT().ReportStatus(gomock.Any(), gomock.Eq(expectedTestReport)).Times(1)
-			adapter = NewAdapter(ctx, hasPRSnapshot, hasApp, log, loader.NewMockLoader(), k8sClient)
+			adapter = NewAdapterWithApplication(ctx, hasPRSnapshot, hasApp, log, loader.NewMockLoader(), k8sClient)
 			adapter.status = mockStatus
 			statusCode, err := adapter.ReportSnapshotStatus(adapter.snapshot)
 			fmt.Fprintf(GinkgoWriter, "-------test: %v\n", buf.String())
@@ -963,7 +973,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			mockReporter.EXPECT().Initialize(gomock.Any(), gomock.Any()).Times(1)
 			mockReporter.EXPECT().ReportStatus(gomock.Any(), gomock.Any()).Times(1)
 
-			adapter = NewAdapter(ctx, hasPRSnapshot, hasApp, log, loader.NewMockLoader(), k8sClient)
+			adapter = NewAdapterWithApplication(ctx, hasPRSnapshot, hasApp, log, loader.NewMockLoader(), k8sClient)
 			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
 					ContextKey: loader.ApplicationContextKey,
