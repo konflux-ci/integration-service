@@ -410,6 +410,8 @@ func GenerateGitlabCommitState(state intgteststat.IntegrationTestStatus, optiona
 			glState = gitlab.Canceled
 		case intgteststat.IntegrationTestStatusTestPassed:
 			glState = gitlab.Success
+		case intgteststat.IntegrationTestStatusTestWarning:
+			glState = gitlab.Success
 		default:
 			return glState, fmt.Errorf("unknown status %s", state)
 		}
@@ -428,6 +430,8 @@ func GenerateGitlabCommitState(state intgteststat.IntegrationTestStatus, optiona
 			intgteststat.BuildPLRFailed, intgteststat.SnapshotCreationFailed, intgteststat.GroupSnapshotCreationFailed:
 			glState = gitlab.Canceled
 		case intgteststat.IntegrationTestStatusTestPassed:
+			glState = gitlab.Success
+		case intgteststat.IntegrationTestStatusTestWarning:
 			glState = gitlab.Success
 		default:
 			return glState, fmt.Errorf("unknown status %s", state)

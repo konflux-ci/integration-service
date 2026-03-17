@@ -258,7 +258,7 @@ func (a *Adapter) determineIfAllRequiredIntegrationTestsFinishedAndPassed(integr
 		} else {
 			integrationTestsFinished++
 		}
-		if ok && testDetails.Status != intgteststat.IntegrationTestStatusTestPassed {
+		if ok && (testDetails.Status != intgteststat.IntegrationTestStatusTestPassed && testDetails.Status != intgteststat.IntegrationTestStatusTestWarning) {
 			allIntegrationTestsPassed = false
 		} else {
 			integrationTestsPassed++

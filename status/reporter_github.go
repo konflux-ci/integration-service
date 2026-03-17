@@ -550,6 +550,8 @@ func generateCheckRunTitle(state intgteststat.IntegrationTestStatus) (string, er
 		title = "Deleted"
 	case intgteststat.IntegrationTestStatusTestPassed:
 		title = "Succeeded"
+	case intgteststat.IntegrationTestStatusTestWarning:
+		title = "Warning"
 	case intgteststat.IntegrationTestStatusTestFail,
 		intgteststat.SnapshotCreationFailed,
 		intgteststat.BuildPLRFailed,
@@ -584,6 +586,8 @@ func GenerateCheckRunConclusion(state intgteststat.IntegrationTestStatus, option
 		conclusion = ""
 	case intgteststat.SnapshotCreationFailed, intgteststat.BuildPLRFailed, intgteststat.GroupSnapshotCreationFailed:
 		conclusion = gitops.IntegrationTestStatusCancelledGithub
+	case intgteststat.IntegrationTestStatusTestWarning:
+		conclusion = gitops.IntegrationTestStatusNeutralGithub
 	default:
 		return conclusion, fmt.Errorf("unknown status")
 	}
@@ -609,6 +613,8 @@ func generateGithubCommitState(state intgteststat.IntegrationTestStatus) (string
 	case intgteststat.IntegrationTestStatusPending, intgteststat.IntegrationTestStatusInProgress,
 		intgteststat.BuildPLRInProgress:
 		commitState = gitops.IntegrationTestStatusPendingGithub
+	case intgteststat.IntegrationTestStatusTestWarning:
+		commitState = gitops.IntegrationTestStatusSuccessGithub
 	default:
 		return commitState, fmt.Errorf("unknown status")
 	}
