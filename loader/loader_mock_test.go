@@ -202,16 +202,16 @@ var _ = Describe("Release Adapter", Ordered, func() {
 		})
 	})
 
-	Context("When calling GetRequiredIntegrationTestScenariosForSnapshot", func() {
+	Context("When calling GetRequiredIntegrationTestScenariosForSnapshotApplication", func() {
 		It("returns required integrationTestScenario and error from the context", func() {
 			scenarios := []v1beta2.IntegrationTestScenario{}
 			mockContext := toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
-					ContextKey: RequiredIntegrationTestScenariosContextKey,
+					ContextKey: RequiredIntegrationTestScenariosForSnapshotApplicationContextKey,
 					Resource:   scenarios,
 				},
 			})
-			resource, err := loader.GetRequiredIntegrationTestScenariosForSnapshot(mockContext, nil, nil, nil)
+			resource, err := loader.GetRequiredIntegrationTestScenariosForSnapshotApplication(mockContext, nil, nil, nil)
 			Expect(resource).To(Equal(&scenarios))
 			Expect(err).ToNot(HaveOccurred())
 		})

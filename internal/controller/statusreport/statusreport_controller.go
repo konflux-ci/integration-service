@@ -79,14 +79,28 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{}, nil
 	}
 
-	application, err := loader.GetApplicationFromSnapshot(ctx, r.Client, snapshot)
-	if err != nil {
-		logger.Error(err, "Failed to get Application from the Snapshot")
-		return ctrl.Result{}, err
+	var adapter *Adapter
+	// TODO: remove application branch when old application-specific code is removed
+	if snapshot.Spec.Application != "" {
+		application, err := loader.GetApplicationFromSnapshot(ctx, r.Client, snapshot)
+		if err != nil {
+			logger.Error(err, "Failed to get Application from the Snapshot")
+			return ctrl.Result{}, err
+		}
+		if application != nil {
+			logger = logger.WithApp(*application)
+		}
+		adapter = NewAdapterWithApplication(ctx, snapshot, application, logger, loader, r.Client)
+	} else {
+		componentGroup, err := loader.GetComponentGroupFromSnapshot(ctx, r.Client, snapshot)
+		if err != nil {
+			logger.Error(err, "Failed to get ComponentGroup from the Snapshot",
+				"snapshot.Namespace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
+			return ctrl.Result{}, err
+		}
+		adapter = NewAdapter(ctx, snapshot, componentGroup, logger, loader, r.Client)
 	}
-	logger = logger.WithApp(*application)
 
-	adapter := NewAdapter(ctx, snapshot, application, logger, loader, r.Client)
 	return controller.ReconcileHandler([]controller.Operation{
 		adapter.EnsureSnapshotFinishedAllTests,
 		adapter.EnsureSnapshotTestStatusReportedToGitProvider,

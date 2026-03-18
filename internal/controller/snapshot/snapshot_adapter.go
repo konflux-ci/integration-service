@@ -342,7 +342,7 @@ func (a *Adapter) cancelOldPipelinesIfNeeded() {
 // markSnapshotPassedIfNoRequiredScenarios checks if required scenarios exist and marks snapshot accordingly.
 // Returns an error if fetching scenarios or updating the snapshot fails.
 func (a *Adapter) markSnapshotPassedIfNoRequiredScenarios() (controller.OperationResult, error) {
-	requiredIntegrationTestScenarios, err := a.loader.GetRequiredIntegrationTestScenariosForSnapshot(
+	requiredIntegrationTestScenarios, err := a.loader.GetRequiredIntegrationTestScenariosForSnapshotApplication(
 		a.context, a.client, a.application, a.snapshot)
 	if err != nil {
 		a.logger.Error(err, "Failed to get all required IntegrationTestScenarios")
