@@ -18,7 +18,6 @@ package integrationpipeline
 
 import (
 	"context"
-	"fmt"
 
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
 	"github.com/konflux-ci/integration-service/cache"
@@ -95,21 +94,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return helpers.HandleLoaderError(logger, err, "Snapshot", "PipelineRun")
 	}
 
-	application, err := loader.GetApplicationFromPipelineRun(ctx, r.Client, pipelineRun)
-	if err != nil {
-		logger.Error(err, "Failed to get Application from the integration pipelineRun",
-			"PipelineRun.Name", pipelineRun.Name, "PipelineRun.Namespace", pipelineRun.Namespace)
-		return ctrl.Result{}, err
-	}
-
-	if application == nil {
-		err := fmt.Errorf("failed to get Application")
-		logger.Error(err, "reconcile cannot resolve application")
-		return ctrl.Result{}, err
-	}
-	logger = logger.WithApp(*application)
-
-	adapter := NewAdapter(ctx, pipelineRun, application, snapshot, logger, loader, r.Client)
+	adapter := NewAdapter(ctx, pipelineRun, snapshot, logger, loader, r.Client)
 
 	return controller.ReconcileHandler([]controller.Operation{
 		adapter.EnsureStatusReportedInSnapshot,

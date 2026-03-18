@@ -50,7 +50,7 @@ const (
 	AllIntegrationTestScenariosContextKey
 	AllIntegrationTestScenariosForComponentGroupContextKey
 	AllIntegrationTestScenariosForComponentGroupsContextKey
-	RequiredIntegrationTestScenariosContextKey
+	RequiredIntegrationTestScenariosForSnapshotApplicationContextKey
 	AllIntegrationTestScenariosForSnapshotContextKey
 	AllSnapshotsContextKey
 	AutoReleasePlansContextKey
@@ -72,6 +72,8 @@ const (
 	ResolutionRequestContextKey
 	GetPRComponentSnapshotsForComponentContextKey
 	ComponentGroupsContextKey
+	ComponentGroupFromSnapshotContextKey
+	RequiredIntegrationTestScenariosForSnapshotContextKey
 )
 
 func NewMockLoader() ObjectLoader {
@@ -183,12 +185,12 @@ func (l *mockLoader) GetAllIntegrationTestScenariosForComponentGroups(ctx contex
 	return &integrationTestScenarios, err
 }
 
-// GetRequiredIntegrationTestScenariosForSnapshot returns the resource and error passed as values of the context.
-func (l *mockLoader) GetRequiredIntegrationTestScenariosForSnapshot(ctx context.Context, c client.Client, application *applicationapiv1alpha1.Application, snapshot *applicationapiv1alpha1.Snapshot) (*[]v1beta2.IntegrationTestScenario, error) {
-	if ctx.Value(RequiredIntegrationTestScenariosContextKey) == nil {
-		return l.loader.GetRequiredIntegrationTestScenariosForSnapshot(ctx, c, application, snapshot)
+// GetRequiredIntegrationTestScenariosForSnapshotApplication returns the resource and error passed as values of the context.
+func (l *mockLoader) GetRequiredIntegrationTestScenariosForSnapshotApplication(ctx context.Context, c client.Client, application *applicationapiv1alpha1.Application, snapshot *applicationapiv1alpha1.Snapshot) (*[]v1beta2.IntegrationTestScenario, error) {
+	if ctx.Value(RequiredIntegrationTestScenariosForSnapshotApplicationContextKey) == nil {
+		return l.loader.GetRequiredIntegrationTestScenariosForSnapshotApplication(ctx, c, application, snapshot)
 	}
-	integrationTestScenarios, err := toolkit.GetMockedResourceAndErrorFromContext(ctx, RequiredIntegrationTestScenariosContextKey, []v1beta2.IntegrationTestScenario{})
+	integrationTestScenarios, err := toolkit.GetMockedResourceAndErrorFromContext(ctx, RequiredIntegrationTestScenariosForSnapshotApplicationContextKey, []v1beta2.IntegrationTestScenario{})
 	return &integrationTestScenarios, err
 }
 
@@ -359,6 +361,23 @@ func (l *mockLoader) GetPRComponentSnapshotsForComponent(ctx context.Context, c 
 	}
 	snapshots, err := toolkit.GetMockedResourceAndErrorFromContext(ctx, GetPRComponentSnapshotsForComponentContextKey, []applicationapiv1alpha1.Snapshot{})
 	return &snapshots, err
+}
+
+// GetComponentGroupFromSnapshot returns the resource and error passed as values of the context.
+func (l *mockLoader) GetComponentGroupFromSnapshot(ctx context.Context, c client.Client, snapshot *applicationapiv1alpha1.Snapshot) (*v1beta2.ComponentGroup, error) {
+	if ctx.Value(ComponentGroupFromSnapshotContextKey) == nil {
+		return l.loader.GetComponentGroupFromSnapshot(ctx, c, snapshot)
+	}
+	return toolkit.GetMockedResourceAndErrorFromContext(ctx, ComponentGroupFromSnapshotContextKey, &v1beta2.ComponentGroup{})
+}
+
+// GetRequiredIntegrationTestScenariosForSnapshot returns the resource and error passed as values of the context.
+func (l *mockLoader) GetRequiredIntegrationTestScenariosForSnapshot(ctx context.Context, c client.Client, componentGroup *v1beta2.ComponentGroup, snapshot *applicationapiv1alpha1.Snapshot) (*[]v1beta2.IntegrationTestScenario, error) {
+	if ctx.Value(RequiredIntegrationTestScenariosForSnapshotContextKey) == nil {
+		return l.loader.GetRequiredIntegrationTestScenariosForSnapshot(ctx, c, componentGroup, snapshot)
+	}
+	integrationTestScenarios, err := toolkit.GetMockedResourceAndErrorFromContext(ctx, RequiredIntegrationTestScenariosForSnapshotContextKey, []v1beta2.IntegrationTestScenario{})
+	return &integrationTestScenarios, err
 }
 
 func (l *mockLoader) GetPRComponentSnapshotsForComponentApplication(ctx context.Context, c client.Client, namespace, applicationName, componentName, prNumber string) (*[]applicationapiv1alpha1.Snapshot, error) {

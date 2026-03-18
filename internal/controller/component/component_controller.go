@@ -68,6 +68,12 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{}, err
 	}
 
+	// TODO: remove check when old application-specific code is removed
+	if component.Spec.Application == "" {
+		logger.Info("Component does not belong to an Application, skipping", "component.Name", component.Name)
+		return ctrl.Result{}, nil
+	}
+
 	var application *applicationapiv1alpha1.Application
 	application, err = loader.GetApplicationFromComponent(ctx, r.Client, component)
 	if err != nil {

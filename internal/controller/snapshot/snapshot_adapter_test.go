@@ -919,7 +919,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 					Resource:   []v1beta2.IntegrationTestScenario{*integrationTestScenario},
 				},
 				{
-					ContextKey: loader.RequiredIntegrationTestScenariosContextKey,
+					ContextKey: loader.RequiredIntegrationTestScenariosForSnapshotApplicationContextKey,
 					Resource:   []v1beta2.IntegrationTestScenario{*integrationTestScenario},
 				},
 			})
@@ -929,7 +929,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			Expect(result.RequeueRequest).To(BeFalse())
 			Expect(err).ToNot(HaveOccurred())
 
-			requiredIntegrationTestScenarios, err := adapter.loader.GetRequiredIntegrationTestScenariosForSnapshot(adapter.context, k8sClient, hasApp, hasSnapshot)
+			requiredIntegrationTestScenarios, err := adapter.loader.GetRequiredIntegrationTestScenariosForSnapshotApplication(adapter.context, k8sClient, hasApp, hasSnapshot)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(requiredIntegrationTestScenarios).NotTo(BeNil())
 			expectedLogEntry := "Creating new pipelinerun for integrationTestscenario integrationTestScenario.Name example-pass"
@@ -1408,7 +1408,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 					Err:        fmt.Errorf("not found"),
 				},
 				{
-					ContextKey: loader.RequiredIntegrationTestScenariosContextKey,
+					ContextKey: loader.RequiredIntegrationTestScenariosForSnapshotApplicationContextKey,
 					Err:        fmt.Errorf("not found"),
 				},
 			})
@@ -1438,7 +1438,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 					Resource:   hasSnapshot,
 				},
 				{
-					ContextKey: loader.RequiredIntegrationTestScenariosContextKey,
+					ContextKey: loader.RequiredIntegrationTestScenariosForSnapshotApplicationContextKey,
 					Resource:   nil,
 				},
 			})
@@ -1593,7 +1593,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 					Resource:   []v1beta2.IntegrationTestScenario{*integrationTestScenarioForInvalidSnapshot},
 				},
 				{
-					ContextKey: loader.RequiredIntegrationTestScenariosContextKey,
+					ContextKey: loader.RequiredIntegrationTestScenariosForSnapshotApplicationContextKey,
 					Resource:   []v1beta2.IntegrationTestScenario{*integrationTestScenarioForInvalidSnapshot},
 				},
 			})
@@ -2836,7 +2836,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 					Resource:   []v1beta2.IntegrationTestScenario{*integrationTestScenario},
 				},
 				{
-					ContextKey: loader.RequiredIntegrationTestScenariosContextKey,
+					ContextKey: loader.RequiredIntegrationTestScenariosForSnapshotApplicationContextKey,
 					Resource:   []v1beta2.IntegrationTestScenario{*integrationTestScenario},
 				},
 			})
@@ -2913,7 +2913,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 					Resource:   []v1beta2.IntegrationTestScenario{*integrationTestScenario},
 				},
 				{
-					ContextKey: loader.RequiredIntegrationTestScenariosContextKey,
+					ContextKey: loader.RequiredIntegrationTestScenariosForSnapshotApplicationContextKey,
 					Resource:   []v1beta2.IntegrationTestScenario{*integrationTestScenario},
 				},
 			})

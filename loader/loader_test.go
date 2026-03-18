@@ -40,19 +40,21 @@ import (
 
 var _ = Describe("Loader", Ordered, func() {
 	var (
-		loader                     ObjectLoader
-		hasSnapshot                *applicationapiv1alpha1.Snapshot
-		hasGroupSnapshot           *applicationapiv1alpha1.Snapshot
-		hasApp                     *applicationapiv1alpha1.Application
-		hasComponentGroup1         *v1beta2.ComponentGroup
-		hasComponentGroup2         *v1beta2.ComponentGroup
-		hasComp                    *applicationapiv1alpha1.Component
-		integrationTestScenario    *v1beta2.IntegrationTestScenario
-		integrationTestScenarioOpt *v1beta2.IntegrationTestScenario
-		successfulTaskRun          *tektonv1.TaskRun
-		taskRunSample              *tektonv1.TaskRun
-		buildPipelineRun           *tektonv1.PipelineRun
-		integrationPipelineRun     *tektonv1.PipelineRun
+		loader                      ObjectLoader
+		hasSnapshot                 *applicationapiv1alpha1.Snapshot
+		hasGroupSnapshot            *applicationapiv1alpha1.Snapshot
+		hasApp                      *applicationapiv1alpha1.Application
+		hasComponentGroup1          *v1beta2.ComponentGroup
+		hasComponentGroup2          *v1beta2.ComponentGroup
+		hasComp                     *applicationapiv1alpha1.Component
+		integrationTestScenario     *v1beta2.IntegrationTestScenario
+		integrationTestScenarioOpt  *v1beta2.IntegrationTestScenario
+		integrationTestScenarioCG   *v1beta2.IntegrationTestScenario
+		hasCGSnapshotForLoaderTests *applicationapiv1alpha1.Snapshot
+		successfulTaskRun           *tektonv1.TaskRun
+		taskRunSample               *tektonv1.TaskRun
+		buildPipelineRun            *tektonv1.PipelineRun
+		integrationPipelineRun      *tektonv1.PipelineRun
 	)
 
 	const (
@@ -327,6 +329,68 @@ var _ = Describe("Loader", Ordered, func() {
 		}
 		Expect(k8sClient.Create(ctx, integrationTestScenarioOpt)).Should(Succeed())
 
+		integrationTestScenarioCG = &v1beta2.IntegrationTestScenario{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "example-pass-cg",
+				Namespace: "default",
+				Labels: map[string]string{
+					"test.appstudio.openshift.io/optional": "false",
+				},
+			},
+			Spec: v1beta2.IntegrationTestScenarioSpec{
+				ComponentGroup: hasComponentGroup1.Name,
+				ResolverRef: v1beta2.ResolverRef{
+					Resolver: "git",
+					Params: []v1beta2.ResolverParameter{
+						{
+							Name:  "url",
+							Value: "https://github.com/redhat-appstudio/integration-examples.git",
+						},
+						{
+							Name:  "revision",
+							Value: "main",
+						},
+						{
+							Name:  "pathInRepo",
+							Value: "pipelineruns/integration_pipelinerun_pass.yaml",
+						},
+					},
+				},
+			},
+		}
+		Expect(k8sClient.Create(ctx, integrationTestScenarioCG)).Should(Succeed())
+
+		hasCGSnapshotForLoaderTests = &applicationapiv1alpha1.Snapshot{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "cg-snapshot-loader-test",
+				Namespace: "default",
+				Labels: map[string]string{
+					gitops.SnapshotTypeLabel:      gitops.SnapshotComponentType,
+					gitops.SnapshotComponentLabel: "component-sample",
+				},
+			},
+			Spec: applicationapiv1alpha1.SnapshotSpec{
+				ComponentGroup: hasComponentGroup1.Name,
+				Components: []applicationapiv1alpha1.SnapshotComponent{
+					{
+						Name:           "component-sample",
+						ContainerImage: sample_image,
+						Source: applicationapiv1alpha1.ComponentSource{
+							ComponentSourceUnion: applicationapiv1alpha1.ComponentSourceUnion{
+								GitSource: &applicationapiv1alpha1.GitSource{
+									Revision: sample_revision,
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+		Expect(k8sClient.Create(ctx, hasCGSnapshotForLoaderTests)).Should(Succeed())
+		// The Snapshot CRD doesn't yet include the componentGroup field, so the API server
+		// strips it during creation. Re-set it on the local object for tests that read it.
+		hasCGSnapshotForLoaderTests.Spec.ComponentGroup = hasComponentGroup1.Name
+
 		buildPipelineRun = &tektonv1.PipelineRun{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "pipelinerun-sample",
@@ -445,13 +509,14 @@ var _ = Describe("Loader", Ordered, func() {
 
 	AfterAll(func() {
 		_ = k8sClient.Delete(ctx, hasSnapshot)
+		_ = k8sClient.Delete(ctx, hasCGSnapshotForLoaderTests)
 		_ = k8sClient.Delete(ctx, buildPipelineRun)
 		_ = k8sClient.Delete(ctx, integrationPipelineRun)
 		_ = k8sClient.Delete(ctx, successfulTaskRun)
 		_ = k8sClient.Delete(ctx, integrationTestScenario)
+		_ = k8sClient.Delete(ctx, integrationTestScenarioCG)
 		_ = k8sClient.Delete(ctx, hasApp)
 		_ = k8sClient.Delete(ctx, hasComp)
-		_ = k8sClient.Delete(ctx, taskRunSample)
 	})
 
 	createReleasePlan := func(releasePlan *releasev1alpha1.ReleasePlan) {
@@ -571,6 +636,13 @@ var _ = Describe("Loader", Ordered, func() {
 		Expect(err).ToNot(HaveOccurred())
 		Expect(app).NotTo(BeNil())
 		Expect(app.ObjectMeta).To(Equal(hasApp.ObjectMeta))
+	})
+
+	It("ensures we can get a ComponentGroup from a Snapshot", func() {
+		cg, err := loader.GetComponentGroupFromSnapshot(ctx, k8sClient, hasCGSnapshotForLoaderTests)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(cg).NotTo(BeNil())
+		Expect(cg.Name).To(Equal(hasComponentGroup1.Name))
 	})
 
 	It("ensures we can get a Component from a Snapshot ", func() {
@@ -701,11 +773,19 @@ var _ = Describe("Loader", Ordered, func() {
 	})
 
 	It("can fetch required integrationTestScenario for application", func() {
-		integrationTestScenarios, err := loader.GetRequiredIntegrationTestScenariosForSnapshot(ctx, k8sClient, hasApp, hasSnapshot)
+		integrationTestScenarios, err := loader.GetRequiredIntegrationTestScenariosForSnapshotApplication(ctx, k8sClient, hasApp, hasSnapshot)
 		Expect(err).ToNot(HaveOccurred())
 		Expect(integrationTestScenarios).NotTo(BeNil())
 		Expect(*integrationTestScenarios).To(HaveLen(1))
 		Expect((*integrationTestScenarios)[0].Name).To(Equal(integrationTestScenario.Name))
+	})
+
+	It("can fetch required integrationTestScenario for snapshot (ComponentGroup model)", func() {
+		integrationTestScenarios, err := loader.GetRequiredIntegrationTestScenariosForSnapshot(ctx, k8sClient, hasComponentGroup1, hasCGSnapshotForLoaderTests)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(integrationTestScenarios).NotTo(BeNil())
+		Expect(*integrationTestScenarios).To(HaveLen(1))
+		Expect((*integrationTestScenarios)[0].Name).To(Equal(integrationTestScenarioCG.Name))
 	})
 
 	It("can fetch all integrationTestScenario for Snapshot, based on the context", func() {

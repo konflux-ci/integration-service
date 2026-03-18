@@ -54,7 +54,9 @@ type ObjectLoader interface {
 	GetAllIntegrationTestScenariosForApplication(ctx context.Context, c client.Client, application *applicationapiv1alpha1.Application) (*[]v1beta2.IntegrationTestScenario, error)
 	GetAllIntegrationTestScenariosForComponentGroup(ctx context.Context, c client.Client, componentGroup *v1beta2.ComponentGroup) (*[]v1beta2.IntegrationTestScenario, error)
 	GetAllIntegrationTestScenariosForComponentGroups(ctx context.Context, c client.Client, componentGroups *[]v1beta2.ComponentGroup) (*[]v1beta2.IntegrationTestScenario, error)
-	GetRequiredIntegrationTestScenariosForSnapshot(ctx context.Context, c client.Client, application *applicationapiv1alpha1.Application, snapshot *applicationapiv1alpha1.Snapshot) (*[]v1beta2.IntegrationTestScenario, error)
+	GetRequiredIntegrationTestScenariosForSnapshotApplication(ctx context.Context, c client.Client, application *applicationapiv1alpha1.Application, snapshot *applicationapiv1alpha1.Snapshot) (*[]v1beta2.IntegrationTestScenario, error)
+	GetComponentGroupFromSnapshot(ctx context.Context, c client.Client, snapshot *applicationapiv1alpha1.Snapshot) (*v1beta2.ComponentGroup, error)
+	GetRequiredIntegrationTestScenariosForSnapshot(ctx context.Context, c client.Client, componentGroup *v1beta2.ComponentGroup, snapshot *applicationapiv1alpha1.Snapshot) (*[]v1beta2.IntegrationTestScenario, error)
 	GetAllIntegrationTestScenariosForSnapshot(ctx context.Context, c client.Client, application *applicationapiv1alpha1.Application, snapshot *applicationapiv1alpha1.Snapshot) (*[]v1beta2.IntegrationTestScenario, error)
 	GetAllPipelineRunsForSnapshotAndScenario(ctx context.Context, c client.Client, snapshot *applicationapiv1alpha1.Snapshot, integrationTestScenario *v1beta2.IntegrationTestScenario) (*[]tektonv1.PipelineRun, error)
 	GetAllSnapshots(ctx context.Context, c client.Client, application *applicationapiv1alpha1.Application) (*[]applicationapiv1alpha1.Snapshot, error)
@@ -305,10 +307,10 @@ func (l *loader) GetAllIntegrationTestScenariosForComponentGroups(ctx context.Co
 	return &scenarios, nil
 }
 
-// GetRequiredIntegrationTestScenariosForSnapshot returns the IntegrationTestScenarios used by the application and snapshot being processed.
-// An IntegrationTestScenarios will only be returned if it has the test.appstudio.openshift.io/optional
+// GetRequiredIntegrationTestScenariosForSnapshotApplication returns the IntegrationTestScenarios used by the Application and snapshot being processed (legacy Application model).
+// An IntegrationTestScenario will only be returned if it has the test.appstudio.openshift.io/optional
 // label not set to true or if it is missing the label entirely, and have the correct context for the defined snapshot.
-func (l *loader) GetRequiredIntegrationTestScenariosForSnapshot(ctx context.Context, c client.Client, application *applicationapiv1alpha1.Application, snapshot *applicationapiv1alpha1.Snapshot) (*[]v1beta2.IntegrationTestScenario, error) {
+func (l *loader) GetRequiredIntegrationTestScenariosForSnapshotApplication(ctx context.Context, c client.Client, application *applicationapiv1alpha1.Application, snapshot *applicationapiv1alpha1.Snapshot) (*[]v1beta2.IntegrationTestScenario, error) {
 	integrationList := &v1beta2.IntegrationTestScenarioList{}
 	labelRequirement, err := labels.NewRequirement("test.appstudio.openshift.io/optional", selection.NotIn, []string{"true"})
 	if err != nil {
@@ -319,6 +321,39 @@ func (l *loader) GetRequiredIntegrationTestScenariosForSnapshot(ctx context.Cont
 	opts := &client.ListOptions{
 		Namespace:     application.Namespace,
 		FieldSelector: fields.OneTermEqualSelector("spec.application", application.Name),
+		LabelSelector: labelSelector,
+	}
+
+	err = c.List(ctx, integrationList, opts)
+	if err != nil {
+		return nil, err
+	}
+
+	integrationTestScenarios := gitops.FilterIntegrationTestScenariosWithContext(&integrationList.Items, snapshot)
+	return integrationTestScenarios, nil
+}
+
+// GetComponentGroupFromSnapshot loads from the cluster the ComponentGroup referenced in the given Snapshot.
+// If the Snapshot doesn't specify a ComponentGroup or it is not found in the cluster, an error will be returned.
+func (l *loader) GetComponentGroupFromSnapshot(ctx context.Context, c client.Client, snapshot *applicationapiv1alpha1.Snapshot) (*v1beta2.ComponentGroup, error) {
+	componentGroup := &v1beta2.ComponentGroup{}
+	return componentGroup, toolkit.GetObject(snapshot.Spec.ComponentGroup, snapshot.Namespace, c, ctx, componentGroup)
+}
+
+// GetRequiredIntegrationTestScenariosForSnapshot returns the IntegrationTestScenarios used by the ComponentGroup and snapshot being processed.
+// An IntegrationTestScenario will only be returned if it has the test.appstudio.openshift.io/optional
+// label not set to true or if it is missing the label entirely, and has the correct context for the defined snapshot.
+func (l *loader) GetRequiredIntegrationTestScenariosForSnapshot(ctx context.Context, c client.Client, componentGroup *v1beta2.ComponentGroup, snapshot *applicationapiv1alpha1.Snapshot) (*[]v1beta2.IntegrationTestScenario, error) {
+	integrationList := &v1beta2.IntegrationTestScenarioList{}
+	labelRequirement, err := labels.NewRequirement("test.appstudio.openshift.io/optional", selection.NotIn, []string{"true"})
+	if err != nil {
+		return nil, err
+	}
+	labelSelector := labels.NewSelector().Add(*labelRequirement)
+
+	opts := &client.ListOptions{
+		Namespace:     componentGroup.Namespace,
+		FieldSelector: fields.OneTermEqualSelector("spec.componentGroup", componentGroup.Name),
 		LabelSelector: labelSelector,
 	}
 
