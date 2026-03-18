@@ -373,7 +373,12 @@ spec:
           value: task
         resolver: bundles
       timeout: 20m
-    - name: tpa-scan
+    - matrix:
+        params:
+          - name: image-platform
+            value:
+              - $(params.build-platforms)
+      name: tpa-scan
       params:
         - name: image-digest
           value: $(tasks.build-image-index.results.IMAGE_DIGEST)
