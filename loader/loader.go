@@ -65,7 +65,7 @@ type ObjectLoader interface {
 	GetComponentGroup(ctx context.Context, c client.Client, name, namespace string) (*v1beta2.ComponentGroup, error)
 	GetAllSnapshotsForBuildPipelineRunApplication(ctx context.Context, c client.Client, pipelineRun *tektonv1.PipelineRun) (*[]applicationapiv1alpha1.Snapshot, error)
 	GetAllSnapshotsForBuildPipelineRun(ctx context.Context, c client.Client, pipelineRun *tektonv1.PipelineRun, componentGroupNames []string) (*map[string][]applicationapiv1alpha1.Snapshot, error)
-	GetAllSnapshotsForPR(ctx context.Context, c client.Client, object metav1.ObjectMeta, componentName, pullRequest string) (*[]applicationapiv1alpha1.Snapshot, error)
+	GetAllPullSnapshotsForPR(ctx context.Context, c client.Client, object metav1.ObjectMeta, componentName, pullRequest string) (*[]applicationapiv1alpha1.Snapshot, error)
 	GetAllTaskRunsWithMatchingPipelineRunLabel(ctx context.Context, c client.Client, pipelineRun *tektonv1.PipelineRun) (*[]tektonv1.TaskRun, error)
 	GetPipelineRun(ctx context.Context, c client.Client, name, namespace string) (*tektonv1.PipelineRun, error)
 	GetComponent(ctx context.Context, c client.Client, name, namespace string) (*applicationapiv1alpha1.Component, error)
@@ -518,11 +518,13 @@ func (l *loader) GetAllSnapshotsForBuildPipelineRun(ctx context.Context, c clien
 	return &mappedSnapshots, nil
 }
 
-// GetAllSnapshotsForPR returns all Snapshots for the associated Pull Request.
+// GetAllPullSnapshotsForPR returns all pull-request workflow Snapshots for the associated Pull Request.
 // In the case the List operation fails, an error will be returned.
 // PipelineAsCodePullRequestAnnotation is also a label
+// Only snapshots with IntegrationWorkflowAnnotation set to "pull-request" are returned,
+// so on-push snapshots that carry the same PR label are excluded.
 // TODO: make this function take ObjectMeta rather than application
-func (l *loader) GetAllSnapshotsForPR(ctx context.Context, c client.Client, object metav1.ObjectMeta, componentName, pullRequest string) (*[]applicationapiv1alpha1.Snapshot, error) {
+func (l *loader) GetAllPullSnapshotsForPR(ctx context.Context, c client.Client, object metav1.ObjectMeta, componentName, pullRequest string) (*[]applicationapiv1alpha1.Snapshot, error) {
 	snapshots := &applicationapiv1alpha1.SnapshotList{}
 	opts := []client.ListOption{
 		client.InNamespace(object.Namespace),
@@ -536,7 +538,14 @@ func (l *loader) GetAllSnapshotsForPR(ctx context.Context, c client.Client, obje
 	if err != nil {
 		return nil, err
 	}
-	return &snapshots.Items, nil
+
+	pullSnapshots := make([]applicationapiv1alpha1.Snapshot, 0, len(snapshots.Items))
+	for _, s := range snapshots.Items {
+		if s.Annotations != nil && s.Annotations[gitops.IntegrationWorkflowAnnotation] == gitops.IntegrationWorkflowPullRequestValue {
+			pullSnapshots = append(pullSnapshots, s)
+		}
+	}
+	return &pullSnapshots, nil
 }
 
 // GetAllTaskRunsWithMatchingPipelineRunLabel finds all Child TaskRuns

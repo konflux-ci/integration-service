@@ -414,6 +414,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 					gitops.PipelineAsCodeInstallationIDAnnotation: "123",
 					gitops.PRGroupAnnotation:                      prGroup,
 					gitops.PipelineAsCodeRepoURLAnnotation:        "repo-url",
+					gitops.IntegrationWorkflowAnnotation:          gitops.IntegrationWorkflowPullRequestValue,
 				},
 			},
 			Spec: applicationapiv1alpha1.SnapshotSpec{
@@ -438,6 +439,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 					gitops.PipelineAsCodeInstallationIDAnnotation: "123",
 					gitops.PRGroupAnnotation:                      prGroup,
 					gitops.PipelineAsCodeRepoURLAnnotation:        "repo-url",
+					gitops.IntegrationWorkflowAnnotation:          gitops.IntegrationWorkflowPullRequestValue,
 				},
 			},
 			Spec: applicationapiv1alpha1.SnapshotSpec{
