@@ -271,6 +271,26 @@ var _ = Describe("Formatters", func() {
 		Expect(taskLogUrl).To(Equal(expectedTaskLogURL))
 	})
 
+	It("can construct console URLs using documented placeholders (not Go templates)", func() {
+		os.Setenv("CONSOLE_URL", "https://example.com/ns/{{NAMESPACE}}/pipelinerun/{{PIPELINE_RUN_NAME}}")
+		os.Setenv("CONSOLE_URL_TASKLOG", "https://example.com/ns/{{NAMESPACE}}/pipelinerun/{{PIPELINE_RUN_NAME}}/logs/{{TASK_NAME}}")
+		taskLogURL := status.FormatTaskLogURL(taskRuns[0], pipelineRun.Name, pipelineRun.Namespace, logr.Discard())
+		Expect(taskLogURL).To(Equal("https://example.com/ns/default/pipelinerun/pipelinerun-component-sample/logs/example-task-1"))
+		summary, err := status.FormatTestsSummary(taskRuns, pipelineRun.Name, pipelineRun.Namespace, componentSnapshotInfos, PRGroup, logr.Discard())
+		Expect(err).ToNot(HaveOccurred())
+		Expect(summary).To(ContainSubstring(`href="https://example.com/ns/default/pipelinerun/pipelinerun-component-sample"`))
+	})
+
+	It("supports compact legacy placeholders without spaces", func() {
+		os.Setenv("CONSOLE_URL", "https://example.com/ns/{{.Namespace}}/pipelinerun/{{.PipelineRunName}}")
+		os.Setenv("CONSOLE_URL_TASKLOG", "https://example.com/ns/{{.Namespace}}/pipelinerun/{{.PipelineRunName}}/logs/{{.TaskName}}")
+		taskLogURL := status.FormatTaskLogURL(taskRuns[0], pipelineRun.Name, pipelineRun.Namespace, logr.Discard())
+		Expect(taskLogURL).To(Equal("https://example.com/ns/default/pipelinerun/pipelinerun-component-sample/logs/example-task-1"))
+		summary, err := status.FormatTestsSummary(taskRuns, pipelineRun.Name, pipelineRun.Namespace, componentSnapshotInfos, PRGroup, logr.Discard())
+		Expect(err).ToNot(HaveOccurred())
+		Expect(summary).To(ContainSubstring(`href="https://example.com/ns/default/pipelinerun/pipelinerun-component-sample"`))
+	})
+
 	It("can construct a summary", func() {
 		summary, err := status.FormatTestsSummary(taskRuns, pipelineRun.Name, pipelineRun.Namespace, componentSnapshotInfos, PRGroup, logr.Discard())
 		Expect(err).ToNot(HaveOccurred())
