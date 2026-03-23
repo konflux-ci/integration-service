@@ -45,10 +45,10 @@ const summaryTemplate = `
 </ul>
 <hr>
 
-| Task | Duration | Test Suite | Status | Details |
-| --- | --- | --- | --- | --- |
+| Task | Duration | Test Suite | Status | Details | Note |
+| --- | --- | --- | --- | --- | --- |
 {{- range $tr := .TaskRuns }}
-| <a href="{{ formatTaskLogURL $tr $pipelineRunName $namespace $logger }}">{{ formatTaskName $tr }}</a> | {{ $tr.GetDuration.String }} | {{ formatNamespace $tr }} | {{ formatStatus $tr }} | {{ formatDetails $tr }} |
+| <a href="{{ formatTaskLogURL $tr $pipelineRunName $namespace $logger }}">{{ formatTaskName $tr }}</a> | {{ $tr.GetDuration.String }} | {{ formatNamespace $tr }} | {{ formatStatus $tr }} | {{ formatDetails $tr }} | {{ formatNote $tr }} |
 {{- end }}
 
 {{ formatFootnotes .TaskRuns }}
@@ -100,6 +100,7 @@ func FormatTestsSummary(taskRuns []*helpers.TaskRun, pipelineRunName string, nam
 		"formatNamespace":      FormatNamespace,
 		"formatStatus":         FormatStatus,
 		"formatDetails":        FormatDetails,
+		"formatNote":           FormatNote,
 		"formatPipelineURL":    FormatPipelineURL,
 		"formatTaskLogURL":     FormatTaskLogURL,
 		"formatFootnotes":      FormatFootnotes,
@@ -267,6 +268,21 @@ func FormatDetails(taskRun *helpers.TaskRun) (string, error) {
 	}
 
 	return strings.Join(details, "<br>"), nil
+}
+
+// FormatNote accepts a TaskRun and returns its note, if any.
+func FormatNote(taskRun *helpers.TaskRun) (string, error) {
+	result, err := taskRun.GetTestResult()
+
+	if err != nil {
+		return "", err
+	}
+
+	if result == nil || result.TestOutput == nil || result.TestOutput.Note == "" {
+		return "", nil
+	}
+
+	return result.TestOutput.Note, nil
 }
 
 // FormatResults accepts a list of TaskRuns and returns a Markdown friendly representation of their footnotes, if any.
