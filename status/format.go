@@ -87,13 +87,6 @@ type SummaryTemplateData struct {
 	Logger                 logr.Logger
 }
 
-// TaskLogTemplateData holds the data necessary to construct a Task log URL.
-type TaskLogTemplateData struct {
-	TaskName        string
-	PipelineRunName string
-	Namespace       string
-}
-
 // CommentTemplateData holds the data necessary to construct a PipelineRun comment.
 type CommentTemplateData struct {
 	Title   string
@@ -296,19 +289,43 @@ func FormatFootnotes(taskRuns []*helpers.TaskRun) (string, error) {
 	return strings.Join(footnotes, "\n"), nil
 }
 
+// Console URL env vars (CONSOLE_URL, CONSOLE_URL_TASKLOG) use literal placeholder substitution only.
+// Operator-controlled values are not evaluated as Go templates (avoids CWE-94 / server-side template injection).
+//
+// Supported placeholders:
+//
+//	{{NAMESPACE}}         — Kubernetes namespace
+//	{{PIPELINE_RUN_NAME}} — PipelineRun name
+//	{{TASK_NAME}}         — Pipeline task name (CONSOLE_URL_TASKLOG only; empty for CONSOLE_URL)
+//
+// Legacy placeholders (backward compatible with earlier releases):
+//
+//	{{ .Namespace }}, {{ .PipelineRunName }}, {{ .TaskName }}
+func substituteConsoleURLPlaceholders(pattern string, namespace, pipelineRunName, taskName string) string {
+	// Support both documented placeholders and legacy Go-template-ish forms.
+	legacyAndDocumented := strings.NewReplacer(
+		// Legacy forms with/without spaces around field names
+		"{{ .Namespace }}", namespace,
+		"{{.Namespace}}", namespace,
+		"{{ .PipelineRunName }}", pipelineRunName,
+		"{{.PipelineRunName}}", pipelineRunName,
+		"{{ .TaskName }}", taskName,
+		"{{.TaskName}}", taskName,
+		// Documented placeholders
+		"{{NAMESPACE}}", namespace,
+		"{{PIPELINE_RUN_NAME}}", pipelineRunName,
+		"{{TASK_NAME}}", taskName,
+	)
+	return legacyAndDocumented.Replace(pattern)
+}
+
 // FormatPipelineURL accepts a name of application, pipelinerun, namespace and returns a complete pipelineURL.
-func FormatPipelineURL(pipelinerun string, namespace string, logger logr.Logger) string {
-	console_url := os.Getenv("CONSOLE_URL")
-	if console_url == "" {
+func FormatPipelineURL(pipelinerun string, namespace string, _ logr.Logger) string {
+	consoleURL := os.Getenv("CONSOLE_URL")
+	if consoleURL == "" {
 		return "https://CONSOLE_URL_NOT_AVAILABLE"
 	}
-	buf := bytes.Buffer{}
-	data := SummaryTemplateData{PipelineRunName: pipelinerun, Namespace: namespace}
-	t := template.Must(template.New("").Parse(console_url))
-	if err := t.Execute(&buf, data); err != nil {
-		logger.Error(err, "Error occured when executing template.")
-	}
-	return buf.String()
+	return substituteConsoleURLPlaceholders(consoleURL, namespace, pipelinerun, "")
 }
 
 // FormatPullRequestURL accepts a name of application, pipelinerun, namespace and returns a complete pipelineURL.
@@ -333,18 +350,11 @@ func FormatRepoURL(repoUrl string) string {
 }
 
 // FormatTaskLogURL accepts name of pipelinerun, task, namespace and returns a complete task log URL.
-func FormatTaskLogURL(taskRun *helpers.TaskRun, pipelinerun string, namespace string, logger logr.Logger) string {
+func FormatTaskLogURL(taskRun *helpers.TaskRun, pipelinerun string, namespace string, _ logr.Logger) string {
 	consoleTaskLogURL := os.Getenv("CONSOLE_URL_TASKLOG")
 	if consoleTaskLogURL == "" {
 		return "https://CONSOLE_URL_TASKLOG_NOT_AVAILABLE"
 	}
-
 	taskName := taskRun.GetPipelineTaskName()
-	buf := bytes.Buffer{}
-	data := TaskLogTemplateData{PipelineRunName: pipelinerun, TaskName: taskName, Namespace: namespace}
-	t := template.Must(template.New("").Parse(consoleTaskLogURL))
-	if err := t.Execute(&buf, data); err != nil {
-		logger.Error(err, "Error occured when executing task log template.")
-	}
-	return buf.String()
+	return substituteConsoleURLPlaceholders(consoleTaskLogURL, namespace, pipelinerun, taskName)
 }
