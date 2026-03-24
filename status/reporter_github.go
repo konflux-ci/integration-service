@@ -630,7 +630,7 @@ func (r *GitHubReporter) Detect(snapshot *applicationapiv1alpha1.Snapshot) bool 
 }
 
 // blank implementation to satisfy ReporterInterface
-func (r *GitHubReporter) UpdateStatusInComment(arg1, arg2 string) (int, error) {
+func (r *GitHubReporter) UpdateStatusInComment(arg0, arg1 string, arg2 bool) (int, error) {
 	return 0, nil
 }
 

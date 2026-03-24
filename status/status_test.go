@@ -750,9 +750,9 @@ var _ = Describe("Status Adapter", func() {
 </ul>
 <hr>
 
-| Task | Duration | Test Suite | Status | Details |
-| --- | --- | --- | --- | --- |
-| <a href="https://definetly.not.prod/preview/application-pipeline/ns/default/pipelinerun/test-pipelinerun-warning/logs/pipeline2-task1">pipeline2-task1</a> | 5m0s |  | :warning: WARNING | :heavy_check_mark: 10 success(es)<br>:warning: 1 warning(s) |
+| Task | Duration | Test Suite | Status | Details | Note |
+| --- | --- | --- | --- | --- | --- |
+| <a href="https://definetly.not.prod/preview/application-pipeline/ns/default/pipelinerun/test-pipelinerun-warning/logs/pipeline2-task1">pipeline2-task1</a> | 5m0s |  | :warning: WARNING | :heavy_check_mark: 10 success(es)<br>:warning: 1 warning(s) |  |
 
 
 `
@@ -1073,7 +1073,7 @@ var _ = Describe("Status Adapter", func() {
 		mockReporter.EXPECT().ReportStatus(gomock.Any(), *testReportForOptionalTestStatusScenario).Return(0, nil).Times(1)
 		commentText, _ := status.GenerateSummaryForAllScenarios(integrationTestStatusDetail.Status, "component-sample")
 		commentText, _ = status.FormatComment(commentText, integrationTestStatusDetail.Details)
-		mockReporter.EXPECT().UpdateStatusInComment(status.GenerateTestSummaryPrefixForComponent("component-sample"), commentText).Return(0, nil).AnyTimes()
+		mockReporter.EXPECT().UpdateStatusInComment(status.GenerateTestSummaryPrefixForComponent("component-sample"), commentText, integrationTestStatusDetail.Status.IsFinal()).Return(0, nil).AnyTimes()
 		hasSnapshot.Labels["pac.test.appstudio.openshift.io/git-provider"] = "gitlab"
 		hasSnapshot.Annotations[gitops.PipelineAsCodePullRequestAnnotation] = "123"
 

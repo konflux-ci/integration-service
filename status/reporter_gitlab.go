@@ -255,20 +255,44 @@ func (r *GitLabReporter) setCommitStatus(report TestReport) (int, error) {
 }
 
 // UpdateStatusInComment searches and deletes existing comments according to commentPrefix and create a new comment in the MR which creates snapshot
-func (r *GitLabReporter) UpdateStatusInComment(commentPrefix, comment string) (int, error) {
+// retry to get comment if not existing comment is found for final status
+func (r *GitLabReporter) UpdateStatusInComment(commentPrefix, comment string, isFinalStatus bool) (int, error) {
 	var statusCode = 0
+	var response *gitlab.Response
 
-	// get all existing integration test comment according to commentPrefix in integration test summary and delete them
-	allNotes, response, err := r.client.Notes.ListMergeRequestNotes(r.targetProjectID, r.mergeRequest, nil)
-	if response != nil {
-		statusCode = response.StatusCode
-	}
+	var err error
+	var noteIDs []int
+	var allNotes []*gitlab.Note
+	err = retry.OnError(reporterRetryBackoff, func(err error) bool {
+		// statusCode 0 means no HTTP response was received (network/timeout error), always retry
+		retryable := !r.ReturnCodeIsUnrecoverable(statusCode)
+		if retryable {
+			r.logger.Info("failed to find existing comment for final integration test status, retrying")
+		}
+		return retryable
+	}, func() error {
+		statusCode = 0
+		// get all existing integration test comment according to commentPrefix in integration test summary and delete them
+		allNotes, response, err = r.client.Notes.ListMergeRequestNotes(r.targetProjectID, r.mergeRequest, nil)
+		if err != nil {
+			r.logger.Error(err, "error while getting all comments for merge-request", "mergeRequest", r.mergeRequest, "report.SnapshotName", r.snapshot.Name)
+			return err
+		}
+		if response != nil {
+			statusCode = response.StatusCode
+		}
+
+		noteIDs = r.GetExistingCommentIDs(allNotes, commentPrefix)
+		if len(noteIDs) == 0 && isFinalStatus {
+			r.logger.Info("no existing comment found with matching commentPrefix for final status, retrying to get comment", "commentPrefix", commentPrefix)
+			return fmt.Errorf("no existing comment found with matching commentPrefix %s for final status", commentPrefix)
+		}
+		return nil
+	})
+
 	if err != nil {
-		r.logger.Error(err, "error while getting all comments for merge-request", "mergeRequest", r.mergeRequest, "report.SnapshotName", r.snapshot.Name)
-		return statusCode, fmt.Errorf("error while getting all comments for merge-request %d: %w", r.mergeRequest, err)
+		r.logger.Error(err, "failed to get existing comment for final status after retries, will create a new comment without updating existing comments, please refer to the comment created on the MR for details", "commentPrefix", commentPrefix)
 	}
-
-	noteIDs := r.GetExistingCommentIDs(allNotes, commentPrefix)
 
 	if len(noteIDs) > 0 {
 		// update the first existing comment but delete others because sometimes there might be multiple existing comments for the same component due to previous intermittent errors
