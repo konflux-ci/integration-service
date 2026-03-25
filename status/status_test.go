@@ -71,8 +71,10 @@ func HasSummary(value string) gomock.Matcher {
 }
 
 func newIntegrationTestStatusDetail(expectedScenarioStatus integrationteststatus.IntegrationTestStatus, isOptionalScenario bool) integrationteststatus.IntegrationTestStatusDetail {
-	ts, _ := time.Parse(time.RFC3339, "2023-07-26T16:57:49+02:00")
-	tc, _ := time.Parse(time.RFC3339, "2023-07-26T17:57:49+02:00")
+	ts, err := time.Parse(time.RFC3339, "2023-07-26T16:57:49+02:00")
+	Expect(err).NotTo(HaveOccurred())
+	tc, err := time.Parse(time.RFC3339, "2023-07-26T17:57:49+02:00")
+	Expect(err).NotTo(HaveOccurred())
 	return integrationteststatus.IntegrationTestStatusDetail{
 		ScenarioName:        "scenario1",
 		Status:              expectedScenarioStatus,
@@ -81,6 +83,23 @@ func newIntegrationTestStatusDetail(expectedScenarioStatus integrationteststatus
 		StartTime:           &ts,
 		CompletionTime:      &tc,
 		TestPipelineRunName: "test-pipelinerun",
+		IsOptionalScenario:  isOptionalScenario,
+	}
+}
+
+func newIntegrationTestStatusDetailWarning(expectedScenarioStatus integrationteststatus.IntegrationTestStatus, isOptionalScenario bool) integrationteststatus.IntegrationTestStatusDetail {
+	ts, err := time.Parse(time.RFC3339, "2023-07-26T16:57:49+02:00")
+	Expect(err).NotTo(HaveOccurred())
+	tc, err := time.Parse(time.RFC3339, "2023-07-26T17:57:49+02:00")
+	Expect(err).NotTo(HaveOccurred())
+	return integrationteststatus.IntegrationTestStatusDetail{
+		ScenarioName:        "scenario2",
+		Status:              expectedScenarioStatus,
+		LastUpdateTime:      time.Now().UTC(),
+		Details:             "warning",
+		StartTime:           &ts,
+		CompletionTime:      &tc,
+		TestPipelineRunName: "test-pipelinerun-warning",
 		IsOptionalScenario:  isOptionalScenario,
 	}
 }
@@ -122,9 +141,11 @@ var _ = Describe("Status Adapter", func() {
 		mockReporter                    *status.MockReporterInterface
 
 		pipelineRun       *tektonv1.PipelineRun
+		pipelineRunWarn   *tektonv1.PipelineRun
 		successfulTaskRun *tektonv1.TaskRun
 		failedTaskRun     *tektonv1.TaskRun
 		skippedTaskRun    *tektonv1.TaskRun
+		warningTaskRun    *tektonv1.TaskRun
 		mockK8sClient     *MockK8sClient
 		repo              pacv1alpha1.Repository
 
@@ -272,6 +293,49 @@ var _ = Describe("Status Adapter", func() {
 			},
 		}
 
+		warningTaskRun = &tektonv1.TaskRun{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "test-taskrun-warning",
+				Namespace: "default",
+			},
+			Spec: tektonv1.TaskRunSpec{
+				TaskRef: &tektonv1.TaskRef{
+					Name: "test-taskrun-warning",
+					ResolverRef: tektonv1.ResolverRef{
+						Resolver: "bundle",
+						Params: tektonv1.Params{
+							{
+								Name:  "bundle",
+								Value: tektonv1.ParamValue{Type: "string", StringVal: "quay.io/redhat-appstudio/example-tekton-bundle:test"},
+							},
+							{
+								Name:  "name",
+								Value: tektonv1.ParamValue{Type: "string", StringVal: "test-task"},
+							},
+						},
+					},
+				},
+			},
+			Status: tektonv1.TaskRunStatus{
+				TaskRunStatusFields: tektonv1.TaskRunStatusFields{
+					StartTime:      &metav1.Time{Time: now},
+					CompletionTime: &metav1.Time{Time: now.Add(5 * time.Minute)},
+					Results: []tektonv1.TaskRunResult{
+						{
+							Name: "TEST_OUTPUT",
+							Value: *tektonv1.NewStructuredValues(`{
+											"result": "WARNING",
+											"timestamp": "2024-05-22T06:42:21+00:00",
+											"failures": 0,
+											"successes": 10,
+											"warnings": 1
+										}`),
+						},
+					},
+				},
+			},
+		}
+
 		pipelineRun = &tektonv1.PipelineRun{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "test-pipelinerun",
@@ -300,6 +364,37 @@ var _ = Describe("Status Adapter", func() {
 						{
 							Name:             skippedTaskRun.Name,
 							PipelineTaskName: "pipeline1-task2",
+						},
+					},
+				},
+			},
+		}
+
+		pipelineRunWarn = &tektonv1.PipelineRun{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "test-pipelinerun-warning",
+				Namespace: "default",
+				Labels: map[string]string{
+					"appstudio.openshift.io/component":               "devfile-sample-go-basic",
+					"test.appstudio.openshift.io/scenario":           "example-pass",
+					"pac.test.appstudio.openshift.io/git-provider":   "github",
+					"pac.test.appstudio.openshift.io/url-org":        "devfile-sample",
+					"pac.test.appstudio.openshift.io/url-repository": "devfile-sample-go-basic",
+					"pac.test.appstudio.openshift.io/sha":            "12a4a35ccd08194595179815e4646c3a6c08bb77",
+					"pac.test.appstudio.openshift.io/event-type":     "pull_request",
+				},
+				Annotations: map[string]string{
+					"pac.test.appstudio.openshift.io/repo-url": "https://github.com/devfile-sample/devfile-sample-go-basic",
+				},
+			},
+			Status: tektonv1.PipelineRunStatus{
+
+				PipelineRunStatusFields: tektonv1.PipelineRunStatusFields{
+					StartTime: &metav1.Time{Time: time.Now()},
+					ChildReferences: []tektonv1.ChildStatusReference{
+						{
+							Name:             warningTaskRun.Name,
+							PipelineTaskName: "pipeline2-task1",
 						},
 					},
 				},
@@ -483,11 +578,15 @@ var _ = Describe("Status Adapter", func() {
 						taskRun.Status = failedTaskRun.Status
 					case skippedTaskRun.Name:
 						taskRun.Status = skippedTaskRun.Status
+					case warningTaskRun.Name:
+						taskRun.Status = warningTaskRun.Status
 					}
 				}
 				if plr, ok := obj.(*tektonv1.PipelineRun); ok {
 					if key.Name == pipelineRun.Name {
 						plr.Status = pipelineRun.Status
+					} else if key.Name == pipelineRunWarn.Name {
+						plr.Status = pipelineRunWarn.Status
 					}
 				}
 				if snapshot, ok := obj.(*applicationapiv1alpha1.Snapshot); ok {
@@ -630,6 +729,45 @@ var _ = Describe("Status Adapter", func() {
 			StartTime:           &ts,
 			CompletionTime:      &tc,
 			TestPipelineRunName: "test-pipelinerun",
+		}
+
+		testReport, err := status.GenerateTestReport(context.Background(), mockK8sClient, integrationTestStatusDetail, hasSnapshot, "component-sample")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(testReport).To(Equal(&expectedTestReport))
+	})
+
+	It("report status for Warning test scenario", func() {
+		hasSnapshot.Annotations["test.appstudio.openshift.io/status"] = "[{\"scenario\":\"scenario2\",\"status\":\"Warning\",\"testPipelineRunName\":\"test-pipelinerun-warning\",\"startTime\":\"2023-07-26T16:57:49+02:00\",\"completionTime\":\"2023-07-26T17:57:49+02:00\",\"lastUpdateTime\":\"2023-08-26T17:57:55+02:00\",\"details\":\"failed\"}]"
+		integrationTestStatusDetail := newIntegrationTestStatusDetailWarning(integrationteststatus.IntegrationTestStatusTestWarning, false)
+		Expect(integrationTestStatusDetail.IsOptionalScenario).To(BeFalse())
+		delete(hasSnapshot.Labels, "appstudio.openshift.io/component")
+		ts, err := time.Parse(time.RFC3339, "2023-07-26T16:57:49+02:00")
+		Expect(err).NotTo(HaveOccurred())
+		tc, err := time.Parse(time.RFC3339, "2023-07-26T17:57:49+02:00")
+		Expect(err).NotTo(HaveOccurred())
+		text := `<ul>
+<li><b>Pipelinerun</b>: <a href="https://definetly.not.prod/preview/application-pipeline/ns/default/pipelinerun/test-pipelinerun-warning">test-pipelinerun-warning</a></li>
+</ul>
+<hr>
+
+| Task | Duration | Test Suite | Status | Details |
+| --- | --- | --- | --- | --- |
+| <a href="https://definetly.not.prod/preview/application-pipeline/ns/default/pipelinerun/test-pipelinerun-warning/logs/pipeline2-task1">pipeline2-task1</a> | 5m0s |  | :warning: WARNING | :heavy_check_mark: 10 success(es)<br>:warning: 1 warning(s) |
+
+
+`
+		expectedTestReport := status.TestReport{
+			FullName:            "Red Hat Konflux / scenario2 / component-sample",
+			ScenarioName:        "scenario2",
+			SnapshotName:        "snapshot-sample",
+			ComponentName:       "component-sample",
+			Text:                text,
+			ShortText:           "<ul>\n<li><b>Pipelinerun</b>: <a href=\"https://definetly.not.prod/preview/application-pipeline/ns/default/pipelinerun/test-pipelinerun-warning\">test-pipelinerun-warning</a></li>\n</ul>\n\n",
+			Summary:             "Integration test for component component-sample snapshot snapshot-sample and scenario scenario2 has warning(s)",
+			Status:              integrationteststatus.IntegrationTestStatusTestWarning,
+			StartTime:           &ts,
+			CompletionTime:      &tc,
+			TestPipelineRunName: "test-pipelinerun-warning",
 		}
 
 		testReport, err := status.GenerateTestReport(context.Background(), mockK8sClient, integrationTestStatusDetail, hasSnapshot, "component-sample")
