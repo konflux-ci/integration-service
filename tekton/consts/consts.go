@@ -155,6 +155,9 @@ var (
 	// ApplicationNameLabel is the label of specific the name of the Application associated with PipelineRun
 	ApplicationNameLabel = fmt.Sprintf("%s/%s", ResourceLabelSuffix, "application")
 
+	// ComponentGroupNameLabel is the label of specific the name of the ComponentGroup associated with PipelineRun
+	ComponentGroupNameLabel = fmt.Sprintf("%s/%s", ResourceLabelSuffix, "component-group")
+
 	// ComponentNameLabel is the label of specific the name of the component associated with PipelineRun
 	ComponentNameLabel = fmt.Sprintf("%s/%s", ResourceLabelSuffix, "component")
 
