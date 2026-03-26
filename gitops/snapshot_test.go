@@ -1376,6 +1376,33 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 			Expect(isIntegrationCommentDisabled).To(BeTrue())
 		})
 
+		It("can determine if comments are disabled from component spec repository-settings (revised component model)", func() {
+			Expect(metadata.DeleteAnnotation(hasComp, gitops.GitCommentPolicyAnnotation)).To(Succeed())
+			hasComp.Spec.RepositorySettings = applicationapiv1alpha1.RepositorySettings{
+				CommentStrategy: gitops.GitCommentPolicyAllDisabled,
+			}
+			Expect(k8sClient.Update(ctx, hasComp)).Should(Succeed())
+			isCommentDisabled, err := gitops.IsCommentDisabled(ctx, k8sClient, hasComp)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(isCommentDisabled).To(BeTrue())
+
+			hasComp.Spec.RepositorySettings = applicationapiv1alpha1.RepositorySettings{}
+			Expect(k8sClient.Update(ctx, hasComp)).Should(Succeed())
+		})
+
+		It("treats repository-settings comment-strategy as disable_all case-insensitively", func() {
+			hasComp.Spec.RepositorySettings = applicationapiv1alpha1.RepositorySettings{
+				CommentStrategy: "DISABLE_ALL",
+			}
+			Expect(k8sClient.Update(ctx, hasComp)).Should(Succeed())
+			isCommentDisabled, err := gitops.IsCommentDisabled(ctx, k8sClient, hasComp)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(isCommentDisabled).To(BeTrue())
+
+			hasComp.Spec.RepositorySettings = applicationapiv1alpha1.RepositorySettings{}
+			Expect(k8sClient.Update(ctx, hasComp)).Should(Succeed())
+		})
+
 		It("can determine if comments are not disabled in pac repository or component annotation", func() {
 			Expect(metadata.DeleteAnnotation(hasComp, gitops.GitCommentPolicyAnnotation)).To(Succeed())
 			isCommentDisabled, err := gitops.IsCommentDisabled(ctx, k8sClient, hasComp)
