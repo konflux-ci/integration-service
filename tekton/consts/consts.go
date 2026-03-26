@@ -34,6 +34,9 @@ const (
 	// CustomLabelPrefix contains the prefix applied to custom user-defined labels and annotations.
 	CustomLabelPrefix = "custom.appstudio.openshift.io"
 
+	// TektonPrefix contains the prefix for annotations defined by the upstream Tekton project.
+	TektonPrefix = "tekton.dev"
+
 	// resource labels for snapshot, application and component
 	ResourceLabelSuffix = "appstudio.openshift.io"
 
@@ -134,6 +137,12 @@ const (
 
 	// PipelineRunShouldReleaseResultName is the name of the SHOULD_RELEASE result in build PipelineRuns
 	PipelineRunShouldReleaseResultName = "SHOULD_RELEASE"
+
+	// SpanContextAnnotation is the annotation key for the serialized span context.
+	SpanContextAnnotation = TektonPrefix + "/pipelinerunSpanContext"
+
+	// TimingEmittedAnnotation marks that timing spans have been emitted.
+	TimingEmittedAnnotation = TektonPrefix + "/timingEmitted"
 )
 
 var (

@@ -1092,6 +1092,11 @@ func (a *Adapter) prepareGroupSnapshot(application *applicationapiv1alpha1.Appli
 		return nil, nil, err
 	}
 
+	// Propagate span context from triggering snapshot
+	if tp := a.snapshot.Annotations[tektonconsts.SpanContextAnnotation]; tp != "" {
+		groupSnapshot.Annotations[tektonconsts.SpanContextAnnotation] = tp
+	}
+
 	return groupSnapshot, componentSnapshotInfos, nil
 }
 

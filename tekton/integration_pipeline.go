@@ -487,6 +487,11 @@ func (r *IntegrationPipelineRun) WithSnapshot(snapshot *applicationapiv1alpha1.S
 		_ = metadata.CopyLabelsByPrefix(&snapshot.ObjectMeta, &r.ObjectMeta, prefix)
 	}
 
+	// Propagate span context from Snapshot to test PipelineRun for distributed tracing
+	if tp, found := snapshot.Annotations[consts.SpanContextAnnotation]; found && tp != "" {
+		_ = metadata.SetAnnotation(r, consts.SpanContextAnnotation, tp)
+	}
+
 	return r
 }
 

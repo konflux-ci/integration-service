@@ -17,6 +17,7 @@ limitations under the License.
 package main
 
 import (
+	"context"
 	"crypto/tls"
 	"flag"
 	"os"
@@ -25,6 +26,7 @@ import (
 	controllers "github.com/konflux-ci/integration-service/internal/controller"
 	iswebhook "github.com/konflux-ci/integration-service/internal/webhook/v1beta2"
 	imetrics "github.com/konflux-ci/integration-service/pkg/metrics"
+	"github.com/konflux-ci/integration-service/pkg/tracing"
 	"sigs.k8s.io/controller-runtime/pkg/metrics"
 	"sigs.k8s.io/controller-runtime/pkg/metrics/filters"
 	"sigs.k8s.io/controller-runtime/pkg/metrics/server"
@@ -109,6 +111,18 @@ func main() {
 	flag.Parse()
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
+
+	// Initialize tracing
+	ctx := context.Background()
+	tracerProvider, err := tracing.New(ctx)
+	if err != nil {
+		setupLog.Error(err, "failed to initialize tracing")
+	}
+	defer func() {
+		if err := tracerProvider.Shutdown(ctx); err != nil {
+			setupLog.Error(err, "failed to shutdown tracer provider")
+		}
+	}()
 
 	// if the enable-http2 flag is false (the default), http/2 should be disabled
 	// due to its vulnerabilities. More specifically, disabling http/2 will
@@ -197,7 +211,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	ctx := ctrl.SetupSignalHandler()
+	ctx = ctrl.SetupSignalHandler()
 	integrationMetrics := imetrics.NewIntegrationMetrics([]imetrics.AvailabilityProbe{imetrics.NewGithubAppAvailabilityProbe(mgr.GetClient())})
 	if err := integrationMetrics.InitMetrics(metrics.Registry); err != nil {
 		setupLog.Error(err, "unable to initialize metrics")
