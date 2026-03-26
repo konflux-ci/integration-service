@@ -1595,7 +1595,22 @@ func IsIntegrationTestCommentDisabledForComponent(component *applicationapiv1alp
 	return metadata.HasAnnotationWithValue(component, GitCommentPolicyAnnotation, GitCommentPolicyAllDisabled)
 }
 
+// isComponentRepositorySettingsCommentDisabled reports true when spec.repository-settings.comment-strategy
+// is disable_all (revised component model; see konflux-ci/architecture ADR 0056).
+func isComponentRepositorySettingsCommentDisabled(component *applicationapiv1alpha1.Component) bool {
+	if component == nil {
+		return false
+	}
+	return strings.EqualFold(strings.TrimSpace(component.Spec.RepositorySettings.CommentStrategy), GitCommentPolicyAllDisabled)
+}
+
 func IsCommentDisabled(ctx context.Context, adapterClient client.Client, component *applicationapiv1alpha1.Component) (bool, error) {
+	if component == nil {
+		return false, nil
+	}
+	if isComponentRepositorySettingsCommentDisabled(component) {
+		return true, nil
+	}
 	// check if all comments are disabled for the component's PAC Repository CR
 	allDisabled, err := IsAllCommentDisabledForPacRepositoryInComponent(ctx, adapterClient, component)
 	if err != nil {
