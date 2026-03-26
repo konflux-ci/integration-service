@@ -304,6 +304,7 @@ func FormatPipelineURL(pipelinerun string, namespace string, logger logr.Logger)
 	}
 	buf := bytes.Buffer{}
 	data := SummaryTemplateData{PipelineRunName: pipelinerun, Namespace: namespace}
+	// #nosec G708
 	t := template.Must(template.New("").Parse(console_url))
 	if err := t.Execute(&buf, data); err != nil {
 		logger.Error(err, "Error occured when executing template.")
@@ -342,6 +343,7 @@ func FormatTaskLogURL(taskRun *helpers.TaskRun, pipelinerun string, namespace st
 	taskName := taskRun.GetPipelineTaskName()
 	buf := bytes.Buffer{}
 	data := TaskLogTemplateData{PipelineRunName: pipelinerun, TaskName: taskName, Namespace: namespace}
+	// #nosec G708
 	t := template.Must(template.New("").Parse(consoleTaskLogURL))
 	if err := t.Execute(&buf, data); err != nil {
 		logger.Error(err, "Error occured when executing task log template.")
