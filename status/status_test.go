@@ -750,9 +750,9 @@ var _ = Describe("Status Adapter", func() {
 </ul>
 <hr>
 
-| Task | Duration | Test Suite | Status | Details |
-| --- | --- | --- | --- | --- |
-| <a href="https://definetly.not.prod/preview/application-pipeline/ns/default/pipelinerun/test-pipelinerun-warning/logs/pipeline2-task1">pipeline2-task1</a> | 5m0s |  | :warning: WARNING | :heavy_check_mark: 10 success(es)<br>:warning: 1 warning(s) |
+| Task | Duration | Test Suite | Status | Details | Note |
+| --- | --- | --- | --- | --- | --- |
+| <a href="https://definetly.not.prod/preview/application-pipeline/ns/default/pipelinerun/test-pipelinerun-warning/logs/pipeline2-task1">pipeline2-task1</a> | 5m0s |  | :warning: WARNING | :heavy_check_mark: 10 success(es)<br>:warning: 1 warning(s) |  |
 
 
 `
