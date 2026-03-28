@@ -192,6 +192,54 @@ func (r *GitLabReporter) setCommitStatus(report TestReport) (int, error) {
 		opt.TargetURL = gitlab.Ptr(url)
 	}
 
+	// try to find the MR pipeline from target project first since that's the one shown in MR view,
+	// if not found, then try to find the pipeline in source project, if still not found, then create commit status without pipeline association
+	// Give more tries because the integration status reporter is called after build pipeline is triggered
+	var existingMergeRequestPipelineID int
+	var joinedError error
+	err = retry.OnError(reporterRetryBackoff, func(err error) bool {
+		// statusCode 0 means no HTTP response was received (network/timeout error), always retry
+		retryable := !r.ReturnCodeIsUnrecoverable(statusCode)
+		if retryable {
+			r.logger.Info("retrying to get Merge Request pipeline ID", "target project", r.targetProjectID, "source project", r.sourceProjectID, "error", err.Error())
+		}
+		return retryable
+	}, func() error {
+		statusCode = 0 // reset before each attempt to avoid stale values
+		projectIDs := []int{r.targetProjectID, r.sourceProjectID}
+		for _, projectID := range projectIDs {
+			var pID int
+			var getErr error
+			pID, statusCode, getErr = r.GetExistingMergeRequestPipelineID(projectID, r.sha)
+			if getErr != nil {
+				r.logger.Info("failed to get existing Merge Request pipeline", "projectID: ", projectID, "commitSHA", r.sha, "statusCode", statusCode, "error", getErr)
+				joinedError = errors.Join(joinedError, getErr)
+				return getErr
+			}
+			if pID != 0 {
+				existingMergeRequestPipelineID = pID
+				r.logger.Info("found existing merge request pipeline", "projectID", projectID, "pipelineID", pID)
+				return nil
+			}
+		}
+		return fmt.Errorf("can't find existing merge request pipeline for commit %s in both source project %d and target project %d", r.sha, r.sourceProjectID, r.targetProjectID)
+	})
+
+	if existingMergeRequestPipelineID != 0 {
+		opt.PipelineID = gitlab.Ptr(existingMergeRequestPipelineID)
+	} else {
+		logFields := []interface{}{
+			"commitSHA", r.sha,
+			"sourceProjectID", r.sourceProjectID,
+			"targetProjectID", r.targetProjectID,
+		}
+		if err != nil && statusCode != 200 {
+			r.logger.Error(joinedError, "API error while searching for Merge Request pipeline, proceeding without association", logFields...)
+		} else {
+			r.logger.Info("no existing merge request pipeline found after retries, creating commit status without pipeline association", logFields...)
+		}
+	}
+
 	// Fetch commit statuses only if necessary
 	if glState == gitlab.Running || glState == gitlab.Pending {
 		allCommitStatuses, response, err := r.client.Commits.GetCommitStatuses(r.sourceProjectID, r.sha, nil)
@@ -342,6 +390,31 @@ func (r *GitLabReporter) GetExistingCommentIDs(notes []*gitlab.Note, commentPref
 
 	r.logger.Info("found no note with a matching commentTitle", "commentTitle", commentPrefix)
 	return commentIDs
+}
+
+func (r *GitLabReporter) GetExistingMergeRequestPipelineID(sourceProjectID int, sha string) (int, int, error) {
+	opt := &gitlab.ListProjectPipelinesOptions{
+		SHA:     gitlab.Ptr(sha),
+		OrderBy: gitlab.Ptr("id"),
+		Sort:    gitlab.Ptr("desc"),
+	}
+
+	var statusCode int
+	pipelines, response, err := r.client.Pipelines.ListProjectPipelines(sourceProjectID, opt)
+	if response != nil {
+		statusCode = response.StatusCode
+	}
+	if err != nil {
+		r.logger.Error(err, "failed to list Merge Request pipelines", "sourceProjectID", sourceProjectID, "commitSHA", sha)
+		return 0, statusCode, err
+	}
+
+	if len(pipelines) == 0 {
+		r.logger.Info("No Merge Request pipelines found for commit", "commitSHA", sha)
+		return 0, statusCode, nil
+	}
+
+	return pipelines[0].ID, statusCode, nil
 }
 
 // DeleteExistingNotes deletes existing GitLab note with given noteIDs.
