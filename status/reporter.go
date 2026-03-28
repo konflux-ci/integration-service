@@ -82,7 +82,7 @@ type ReporterInterface interface {
 	// Is the return code a recoverable error
 	ReturnCodeIsUnrecoverable(statusCode int) bool
 	// Update status comment in the gitlab merge request, implemented and used in reporter_gitlab.go
-	UpdateStatusInComment(string, string) (int, error)
+	UpdateStatusInComment(string, string, bool) (int, error)
 }
 
 // GetPACGitProviderToken lookup for configured repo and fetch token from namespace

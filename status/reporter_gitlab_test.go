@@ -330,7 +330,7 @@ var _ = Describe("GitLabReporter", func() {
 			commentText, _ := status.GenerateSummaryForAllScenarios(integrationteststatus.IntegrationTestStatusTestPassed, "component-sample")
 			muxMergeNotes(mux, sourceProjectID, mergeRequest, "")
 			muxMergeNotes(mux, targetProjectID, mergeRequest, commentText)
-			statusCode, err := reporter.UpdateStatusInComment(commentPrefix, commentText)
+			statusCode, err := reporter.UpdateStatusInComment(commentPrefix, commentText, true)
 			Expect(err).To(Succeed())
 			Expect(statusCode).To(Equal(201))
 		})

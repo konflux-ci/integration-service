@@ -307,7 +307,7 @@ var _ = Describe("ForgejoReporter", func() {
 			Expect(err).To(Succeed())
 			Expect(statusCode).To(Equal(200))
 
-			statusCode, err = reporter.UpdateStatusInComment(commentPrefix, commentText)
+			statusCode, err = reporter.UpdateStatusInComment(commentPrefix, commentText, true)
 			Expect(err).To(Succeed())
 			Expect(statusCode).To(Equal(201))
 		})
@@ -357,7 +357,7 @@ var _ = Describe("ForgejoReporter", func() {
 			commentPrefix := status.GenerateTestSummaryPrefixForComponent("component-sample")
 			commentText := "Integration test report for component component-sample: All tests passed"
 			muxForgejoIssueComments(mux, owner, repo, pullRequest, commentText)
-			statusCode, err := reporter.UpdateStatusInComment(commentPrefix, commentText)
+			statusCode, err := reporter.UpdateStatusInComment(commentPrefix, commentText, true)
 			Expect(err).To(Succeed())
 			Expect(statusCode).To(Equal(201))
 		})
