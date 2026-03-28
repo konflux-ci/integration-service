@@ -354,6 +354,29 @@ spec:
           value: task
         resolver: bundles
       timeout: 20m
+    - matrix:
+        params:
+          - name: image-platform
+            value:
+              - $(params.build-platforms)
+      name: tpa-scan
+      params:
+        - name: image-digest
+          value: $(tasks.build-image-index.results.IMAGE_DIGEST)
+        - name: image-url
+          value: $(tasks.build-image-index.results.IMAGE_URL)
+      runAfter:
+        - build-image-index
+      taskRef:
+        resolver: git
+        params:
+          - name: url
+            value: https://github.com/dirgim/konflux-test-tasks
+          - name: revision
+            value: STONEINTG-1505
+          - name: pathInRepo
+            value: task/tpa-scan/0.1/tpa-scan.yaml
+      timeout: 1h
     - name: sast-snyk-check
       params:
       - name: image-digest
