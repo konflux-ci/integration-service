@@ -592,12 +592,12 @@ func (a *Adapter) EnsureSupercededSnapshotsCanceled() (result controller.Operati
 	// TODO: remove branch after migration to new model
 	var snapshots *[]applicationapiv1alpha1.Snapshot
 	if a.application != nil {
-		snapshots, err = a.loader.GetAllSnapshotsForPR(a.context, a.client, a.application.ObjectMeta, a.component.Name, pr)
+		snapshots, err = a.loader.GetAllPullSnapshotsForPR(a.context, a.client, a.application.ObjectMeta, a.component.Name, pr)
 	} else {
 		// We only have to pass one ComponentGroup here.  The componentGroup is only used to get
 		// the namespace to search. Since all ComponentGroups have to belong to the same NS, we
 		// don't need to search with each ComponentGroup
-		snapshots, err = a.loader.GetAllSnapshotsForPR(a.context, a.client, (*a.componentGroups)[0].ObjectMeta, a.component.Name, pr)
+		snapshots, err = a.loader.GetAllPullSnapshotsForPR(a.context, a.client, (*a.componentGroups)[0].ObjectMeta, a.component.Name, pr)
 	}
 	if err != nil {
 		return controller.RequeueWithError(fmt.Errorf("failed to get running snapshots for PR %s: %w", pr, err))
