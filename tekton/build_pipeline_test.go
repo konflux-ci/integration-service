@@ -19,6 +19,7 @@ package tekton_test
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -29,6 +30,7 @@ import (
 	v1 "knative.dev/pkg/apis/duck/v1"
 
 	"github.com/konflux-ci/integration-service/gitops"
+	h "github.com/konflux-ci/integration-service/helpers"
 	tekton "github.com/konflux-ci/integration-service/tekton"
 	tektonconsts "github.com/konflux-ci/integration-service/tekton/consts"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
@@ -320,6 +322,53 @@ var _ = Describe("build pipeline", Ordered, func() {
 			Expect(err).To(HaveOccurred())
 			Expect(version).To(BeEmpty())
 			Expect(err.Error()).To(ContainSubstring(fmt.Sprintf("does not have '%s' annotation", tektonconsts.PipelineRunComponentVersionAnnotation)))
+		})
+
+		It("returns 0 when ChainsSignedRetryCount annotation is missing", func() {
+			count := tekton.GetChainsSignedRetryCount(buildPipelineRun)
+			Expect(count).To(Equal(0))
+		})
+
+		It("returns correct count when ChainsSignedRetryCount annotation is set", func() {
+			buildPipelineRun.Annotations[h.ChainsSignedCheckRetryCountAnnotation] = "5"
+			count := tekton.GetChainsSignedRetryCount(buildPipelineRun)
+			Expect(count).To(Equal(5))
+		})
+
+		It("returns 0 when ChainsSignedRetryCount annotation is invalid", func() {
+			buildPipelineRun.Annotations[h.ChainsSignedCheckRetryCountAnnotation] = "invalid"
+			count := tekton.GetChainsSignedRetryCount(buildPipelineRun)
+			Expect(count).To(Equal(0))
+		})
+
+		It("increments ChainsSignedRetryCount from 0 to 1", func() {
+			delete(buildPipelineRun.Annotations, h.ChainsSignedCheckRetryCountAnnotation)
+			err := tekton.IncrementChainsSignedRetryCount(ctx, buildPipelineRun, k8sClient)
+			Expect(err).NotTo(HaveOccurred())
+
+			Eventually(func() string {
+				_ = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      buildPipelineRun.Name,
+					Namespace: buildPipelineRun.Namespace,
+				}, buildPipelineRun)
+				return buildPipelineRun.Annotations[h.ChainsSignedCheckRetryCountAnnotation]
+			}, time.Second*15).Should(Equal("1"))
+		})
+
+		It("increments ChainsSignedRetryCount from 5 to 6", func() {
+			buildPipelineRun.Annotations[h.ChainsSignedCheckRetryCountAnnotation] = strconv.Itoa(5)
+			Expect(k8sClient.Update(ctx, buildPipelineRun)).Should(Succeed())
+
+			err := tekton.IncrementChainsSignedRetryCount(ctx, buildPipelineRun, k8sClient)
+			Expect(err).NotTo(HaveOccurred())
+
+			Eventually(func() string {
+				_ = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      buildPipelineRun.Name,
+					Namespace: buildPipelineRun.Namespace,
+				}, buildPipelineRun)
+				return buildPipelineRun.Annotations[h.ChainsSignedCheckRetryCountAnnotation]
+			}, time.Second*15).Should(Equal("6"))
 		})
 	})
 

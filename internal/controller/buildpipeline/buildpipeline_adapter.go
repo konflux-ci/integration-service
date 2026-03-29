@@ -175,9 +175,7 @@ func (a *Adapter) EnsureSnapshotExists() (result controller.OperationResult, err
 	}
 
 	if _, found := a.pipelineRun.Annotations[tektonconsts.PipelineRunChainsSignedAnnotation]; !found {
-		err := fmt.Errorf("not processing the pipelineRun because it's not yet signed with Chains")
-		a.logger.Error(err, "Not processing the pipelineRun because it's not yet signed with Chains")
-		return controller.RequeueOnErrorOrContinue(err)
+		return a.handleChainsNotSigned()
 	}
 
 	if _, found := a.pipelineRun.Annotations[tektonconsts.SnapshotNamesLabel]; found {
@@ -258,9 +256,7 @@ func (a *Adapter) EnsureSnapshotExistsApplication() (result controller.Operation
 	}
 
 	if _, found := a.pipelineRun.Annotations[tektonconsts.PipelineRunChainsSignedAnnotation]; !found {
-		err := fmt.Errorf("not processing the pipelineRun because it's not yet signed with Chains")
-		a.logger.Error(err, "Not processing the pipelineRun because it's not yet signed with Chains")
-		return controller.RequeueOnErrorOrContinue(err)
+		return a.handleChainsNotSigned()
 	}
 
 	if _, found := a.pipelineRun.Annotations[tektonconsts.SnapshotNameLabel]; found {
@@ -845,6 +841,25 @@ func (a *Adapter) ensureBuildPLRSWithSnapshotAnnotation(canRemoveFinalizer *bool
 	}
 	*canRemoveFinalizer = true
 	return controller.ContinueProcessing()
+}
+
+// handleChainsNotSigned handles the case where the PipelineRun is not yet signed by Chains.
+// It tracks retries via an annotation and requeues with nil error to avoid writing a failure
+// annotation. After exceeding the retry limit, it returns an error to trigger failure handling.
+func (a *Adapter) handleChainsNotSigned() (controller.OperationResult, error) {
+	retryCount := tekton.GetChainsSignedRetryCount(a.pipelineRun)
+	if retryCount >= h.ChainsSignedCheckRetryLimit {
+		err := fmt.Errorf("not processing the pipelineRun because it's not yet signed with Chains after %d retries", retryCount)
+		a.logger.Error(err, "Exceeded max retries waiting for Chains signing")
+		return controller.RequeueOnErrorOrContinue(err)
+	}
+	a.logger.Info("PipelineRun not yet signed by Chains, will requeue",
+		"retryCount", retryCount, "maxRetries", h.ChainsSignedCheckRetryLimit)
+	if err := tekton.IncrementChainsSignedRetryCount(a.context, a.pipelineRun, a.client); err != nil {
+		a.logger.Error(err, "Failed to increment Chains signed retry count")
+		return controller.RequeueWithError(err)
+	}
+	return controller.RequeueAfter(h.ChainsSignedCheckRequeueDelay, nil)
 }
 
 // failedOrDeletedPLR checks for pipelinerun state and proceeds according to it,

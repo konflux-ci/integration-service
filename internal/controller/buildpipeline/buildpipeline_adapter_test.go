@@ -644,13 +644,35 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 
 			Eventually(func() bool {
 				result, err := adapter.EnsureSnapshotExists()
-				return !result.CancelRequest && err != nil
+				return result.RequeueRequest && err == nil
 			}, time.Second*10).Should(BeTrue())
 
-			expectedLogEntry := "Not processing the pipelineRun because it's not yet signed with Chains"
+			expectedLogEntry := "PipelineRun not yet signed by Chains, will requeue"
 			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
 			unexpectedLogEntry := "Created new Snapshot"
 			Expect(buf.String()).ShouldNot(ContainSubstring(unexpectedLogEntry))
+			Expect(buildPipelineRun.Annotations).ShouldNot(HaveKey(helpers.CreateSnapshotAnnotationName))
+		})
+
+		It("ensure snapshot creation fails after exceeding chains retry limit", func() {
+			var buf bytes.Buffer
+			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+			buildPipelineRun.Annotations = map[string]string{
+				"appstudio.redhat.com/updateComponentOnSuccess": "false",
+				"pipelinesascode.tekton.dev/on-target-branch":   "[main,master]",
+				"build.appstudio.openshift.io/repo":             "https://github.com/devfile-samples/devfile-sample-go-basic?rev=c713067b0e65fb3de50d1f7c457eb51c2ab0dbb0",
+				"foo":                                           "bar",
+				helpers.ChainsSignedCheckRetryCountAnnotation:   strconv.Itoa(helpers.ChainsSignedCheckRetryLimit),
+			}
+			adapter = NewAdapter(ctx, buildPipelineRun, hasComp, &[]v1beta2.ComponentGroup{*hasCompGroup}, log, loader.NewMockLoader(), k8sClient)
+
+			Eventually(func() bool {
+				result, err := adapter.EnsureSnapshotExists()
+				return !result.CancelRequest && err != nil
+			}, time.Second*10).Should(BeTrue())
+
+			expectedLogEntry := "Exceeded max retries waiting for Chains signing"
+			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
 		})
 
 		It("ensure error info is added to build pipelineRun annotation", func() {
@@ -1114,13 +1136,35 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 
 			Eventually(func() bool {
 				result, err := adapter.EnsureSnapshotExistsApplication()
-				return !result.CancelRequest && err != nil
+				return result.RequeueRequest && err == nil
 			}, time.Second*10).Should(BeTrue())
 
-			expectedLogEntry := "Not processing the pipelineRun because it's not yet signed with Chains"
+			expectedLogEntry := "PipelineRun not yet signed by Chains, will requeue"
 			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
 			unexpectedLogEntry := "Created new Snapshot"
 			Expect(buf.String()).ShouldNot(ContainSubstring(unexpectedLogEntry))
+			Expect(buildPipelineRun.Annotations).ShouldNot(HaveKey(helpers.CreateSnapshotAnnotationName))
+		})
+
+		It("ensure snapshot creation fails after exceeding chains retry limit (application)", func() {
+			var buf bytes.Buffer
+			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+			buildPipelineRun.Annotations = map[string]string{
+				"appstudio.redhat.com/updateComponentOnSuccess": "false",
+				"pipelinesascode.tekton.dev/on-target-branch":   "[main,master]",
+				"build.appstudio.openshift.io/repo":             "https://github.com/devfile-samples/devfile-sample-go-basic?rev=c713067b0e65fb3de50d1f7c457eb51c2ab0dbb0",
+				"foo":                                           "bar",
+				helpers.ChainsSignedCheckRetryCountAnnotation:   strconv.Itoa(helpers.ChainsSignedCheckRetryLimit),
+			}
+			adapter = NewAdapterWithApplication(ctx, buildPipelineRun, hasComp, hasApp, log, loader.NewMockLoader(), k8sClient)
+
+			Eventually(func() bool {
+				result, err := adapter.EnsureSnapshotExistsApplication()
+				return !result.CancelRequest && err != nil
+			}, time.Second*10).Should(BeTrue())
+
+			expectedLogEntry := "Exceeded max retries waiting for Chains signing"
+			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
 		})
 
 		It("ensure error info is added to build pipelineRun annotation", func() {

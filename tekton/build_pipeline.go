@@ -21,6 +21,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
@@ -29,6 +30,8 @@ import (
 	"github.com/konflux-ci/integration-service/tekton/consts"
 	"github.com/konflux-ci/operator-toolkit/metadata"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -215,4 +218,31 @@ func GetComponentVersionFromPipelineRun(pipelineRun *tektonv1.PipelineRun) (stri
 		return version, nil
 	}
 	return "", fmt.Errorf("PipelineRun '%s' in namespace '%s' does not have '%s' annotation", pipelineRun.Name, pipelineRun.Namespace, consts.PipelineRunComponentVersionAnnotation)
+}
+
+// GetChainsSignedRetryCount reads the retry counter annotation from the PipelineRun.
+// Returns 0 if the annotation is missing or invalid.
+func GetChainsSignedRetryCount(pipelineRun *tektonv1.PipelineRun) int {
+	val, found := pipelineRun.Annotations[h.ChainsSignedCheckRetryCountAnnotation]
+	if !found {
+		return 0
+	}
+	count, err := strconv.Atoi(val)
+	if err != nil {
+		return 0
+	}
+	return count
+}
+
+// IncrementChainsSignedRetryCount increments the Chains signed retry counter annotation on the PipelineRun.
+// Uses RetryOnConflict to handle concurrent modifications to the PipelineRun.
+func IncrementChainsSignedRetryCount(ctx context.Context, pipelineRun *tektonv1.PipelineRun, cl client.Client) error {
+	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		// Refetch the PipelineRun to get the latest version
+		if err := cl.Get(ctx, types.NamespacedName{Name: pipelineRun.Name, Namespace: pipelineRun.Namespace}, pipelineRun); err != nil {
+			return err
+		}
+		count := GetChainsSignedRetryCount(pipelineRun) + 1
+		return AnnotateBuildPipelineRun(ctx, pipelineRun, h.ChainsSignedCheckRetryCountAnnotation, strconv.Itoa(count), cl)
+	})
 }
