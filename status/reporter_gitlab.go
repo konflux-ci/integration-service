@@ -160,7 +160,7 @@ func (r *GitLabReporter) Initialize(ctx context.Context, snapshot *applicationap
 	}
 
 	r.snapshot = snapshot
-	return 0, nil
+	return http.StatusOK, nil
 }
 
 // setCommitStatus sets commit status to be shown as pipeline run in gitlab view
@@ -233,7 +233,7 @@ func (r *GitLabReporter) setCommitStatus(report TestReport) (int, error) {
 			"sourceProjectID", r.sourceProjectID,
 			"targetProjectID", r.targetProjectID,
 		}
-		if err != nil && statusCode != 200 {
+		if err != nil && statusCode != http.StatusOK {
 			r.logger.Error(joinedError, "API error while searching for Merge Request pipeline, proceeding without association", logFields...)
 		} else {
 			r.logger.Info("no existing merge request pipeline found after retries, creating commit status without pipeline association", logFields...)
@@ -265,41 +265,48 @@ func (r *GitLabReporter) setCommitStatus(report TestReport) (int, error) {
 	r.logger.Info("creating commit status for scenario test status of snapshot",
 		"scenarioName", report.ScenarioName)
 
-	sourceProjectCommitStatus, sourceProjectResponse, sourceProjectErr := r.client.Commits.SetCommitStatus(r.sourceProjectID, r.sha, &opt)
-	if sourceProjectResponse != nil {
-		statusCode = sourceProjectResponse.StatusCode
-	}
-	if sourceProjectErr == nil {
-		r.logger.Info("Created gitlab commit status", "scenario.name", report.ScenarioName, "commitStatus.ID", sourceProjectCommitStatus.ID, "TargetURL", opt.TargetURL)
-		return statusCode, nil
-	} else if strings.Contains(sourceProjectErr.Error(), "Cannot transition status via :enqueue from :pending") {
-		r.logger.Info("Ignoring the error when transition from pending to pending when the commitStatus might be created/updated in multiple threads at the same time occasionally")
-		return statusCode, nil
-	} else {
-		r.logger.Error(sourceProjectErr, "failed to set commit status to gitlab source project, try to set commit status to gitlab target project",
-			"sourceProjectID", r.sourceProjectID, "targetProjectID", r.targetProjectID, "sha", r.sha,
-			"scenario.name", report.ScenarioName, "statusCode", statusCode, "targetState", string(glState))
-	}
-
+	var targetProjectStatusCode, sourceProjectStatusCode int
 	targetProjectCommitStatus, targetProjectResponse, targetProjectErr := r.client.Commits.SetCommitStatus(r.targetProjectID, r.sha, &opt)
 	if targetProjectResponse != nil {
-		statusCode = targetProjectResponse.StatusCode
+		targetProjectStatusCode = targetProjectResponse.StatusCode
 	}
 	if targetProjectErr == nil {
 		r.logger.Info("Created gitlab commit status", "scenario.name", report.ScenarioName, "commitStatus2.ID", targetProjectCommitStatus.ID, "TargetURL", opt.TargetURL)
-		return statusCode, nil
-	}
-	// this code will only be reached if both source project and target project cannot be updated
-	// when commitStatus is created in multiple thread occasionally, we can still see the transition error, so let's ignore it as a workaround
-	if strings.Contains(targetProjectErr.Error(), "Cannot transition status via :enqueue from :pending") {
+		return targetProjectStatusCode, nil
+	} else if strings.Contains(targetProjectErr.Error(), "Cannot transition status via :enqueue from :pending") {
 		r.logger.Info("Ignoring the error when transition from pending to pending when the commitStatus might be created/updated in multiple threads at the same time occasionally")
-		return statusCode, nil
+		return http.StatusOK, nil
+	} else {
+		r.logger.Error(targetProjectErr, "failed to set commit status to gitlab target project, will try to set commit status to gitlab source project",
+			"sourceProjectID", r.sourceProjectID, "targetProjectID", r.targetProjectID, "sha", r.sha,
+			"scenario.name", report.ScenarioName, "target project statusCode", targetProjectStatusCode, "targetState", string(glState))
 	}
 
-	r.logger.Error(errors.Join(targetProjectErr, sourceProjectErr), "failed to set commit status to gitlab source project and target project",
+	sourceProjectCommitStatus, sourceProjectResponse, sourceProjectErr := r.client.Commits.SetCommitStatus(r.sourceProjectID, r.sha, &opt)
+	if sourceProjectResponse != nil {
+		sourceProjectStatusCode = sourceProjectResponse.StatusCode
+	}
+	if sourceProjectErr == nil {
+		r.logger.Info("Created gitlab commit status", "scenario.name", report.ScenarioName, "commitStatus.ID", sourceProjectCommitStatus.ID, "TargetURL", opt.TargetURL)
+		return sourceProjectStatusCode, nil
+	}
+	if strings.Contains(sourceProjectErr.Error(), "Cannot transition status via :enqueue from :pending") {
+		r.logger.Info("Ignoring the error when transition from pending to pending when the commitStatus might be created/updated in multiple threads at the same time occasionally")
+		return http.StatusOK, nil
+	}
+
+	r.logger.Error(errors.Join(targetProjectErr, sourceProjectErr), "failed to set commit status to gitlab source project and target project, retry",
 		"sourceProjectID", r.sourceProjectID, "targetProjectID", r.targetProjectID, "sha", r.sha,
-		"scenario.name", report.ScenarioName, "statusCode", statusCode, "targetState", string(glState))
-	return statusCode, fmt.Errorf("failed to set commit status to %s with returned statusCode %d: %w", string(glState), statusCode, errors.Join(targetProjectErr, sourceProjectErr))
+		"scenario.name", report.ScenarioName, "source project statusCode", sourceProjectStatusCode, "target project statusCode", targetProjectStatusCode, "targetState", string(glState))
+	// return targetProjectStatusCode to retry in ReportStatus function if the error is recoverable since the commit status in target project is the one shown in MR view, otherwise return sourceProjectStatusCode to avoid retry in ReportStatus function because the error is unrecoverable for both target and source project
+	if !r.ReturnCodeIsUnrecoverable(targetProjectStatusCode) {
+		return targetProjectStatusCode, targetProjectErr
+	}
+	if !r.ReturnCodeIsUnrecoverable(sourceProjectStatusCode) {
+		return sourceProjectStatusCode, sourceProjectErr
+	}
+	// by default return target project error and status code to have retry in ReportStatus since the commit status in target project is the one shown in MR view
+	return targetProjectStatusCode, targetProjectErr
 }
 
 // UpdateStatusInComment searches and deletes existing comments according to commentPrefix and create a new comment in the MR which creates snapshot
@@ -502,7 +509,7 @@ func (r *GitLabReporter) ReportStatus(ctx context.Context, report TestReport) (i
 }
 
 func (r *GitLabReporter) ReturnCodeIsUnrecoverable(statusCode int) bool {
-	return statusCode == http.StatusForbidden || statusCode == http.StatusUnauthorized || statusCode == http.StatusBadRequest
+	return statusCode == http.StatusForbidden || statusCode == http.StatusUnauthorized || statusCode == http.StatusBadRequest || statusCode == http.StatusNotFound
 }
 
 // GenerateGitlabCommitState transforms internal integration test state into Gitlab state

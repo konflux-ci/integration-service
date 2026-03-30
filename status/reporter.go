@@ -37,9 +37,9 @@ import (
 )
 
 // reporterRetryBackoff defines the retry backoff for transient git provider API errors (GitLab, GitHub, Forgejo).
-// Retries up to 5 times with exponential backoff: ~1s, ~2s, ~4s, ~8s, ~16s.
+// Retries up to 3 times with exponential backoff: ~0s, ~1s, ~2s.
 var reporterRetryBackoff = wait.Backoff{
-	Steps:    5,
+	Steps:    3,
 	Duration: 1 * time.Second,
 	Factor:   2.0,
 	Jitter:   0.1,
