@@ -214,6 +214,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 					gitops.PipelineAsCodeInstallationIDAnnotation: "123",
 					gitops.PRGroupAnnotation:                      prGroup,
 					gitops.PipelineAsCodeGitProviderAnnotation:    "github",
+					gitops.IntegrationWorkflowAnnotation:          gitops.IntegrationWorkflowPullRequestValue,
 				},
 			},
 			Spec: applicationapiv1alpha1.SnapshotSpec{
@@ -611,13 +612,17 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				return !result.CancelRequest && err == nil
 			}, time.Second*10).Should(BeTrue())
 
-			// Get the updated PipelineRun to check the annotation
-			err = k8sClient.Get(ctx, client.ObjectKeyFromObject(buildPipelineRun), buildPipelineRun)
-			Expect(err).ToNot(HaveOccurred())
-
-			// The PipelineRun should be annotated with the snapshot name
-			snapshotName, found := buildPipelineRun.Annotations[tektonconsts.SnapshotNamesLabel]
-			Expect(found).To(BeTrue(), "PipelineRun should be annotated with snapshot name")
+			// Wait for the cache to reflect the updated PipelineRun annotation
+			var snapshotName string
+			Eventually(func() bool {
+				err = k8sClient.Get(ctx, client.ObjectKeyFromObject(buildPipelineRun), buildPipelineRun)
+				if err != nil {
+					return false
+				}
+				var found bool
+				snapshotName, found = buildPipelineRun.Annotations[tektonconsts.SnapshotNamesLabel]
+				return found
+			}, time.Second*10).Should(BeTrue(), "PipelineRun should be annotated with snapshot name")
 
 			// Verify the snapshot name either has a suffix or is different from colliding one
 			// Format: prefix-YYYYMMDD-HHMMSS-mmm or prefix-YYYYMMDD-HHMMSS-mmm-xx
@@ -873,13 +878,17 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				return !result.CancelRequest && err == nil
 			}, time.Second*10).Should(BeTrue())
 
-			// Get the updated PipelineRun to check the annotation
-			err = k8sClient.Get(ctx, client.ObjectKeyFromObject(buildPipelineRun), buildPipelineRun)
-			Expect(err).ToNot(HaveOccurred())
-
-			// The PipelineRun should be annotated with the snapshot name
-			snapshotName, found := buildPipelineRun.Annotations[tektonconsts.SnapshotNameLabel]
-			Expect(found).To(BeTrue(), "PipelineRun should be annotated with snapshot name")
+			// Wait for the cache to reflect the updated PipelineRun annotation
+			var snapshotName string
+			Eventually(func() bool {
+				err = k8sClient.Get(ctx, client.ObjectKeyFromObject(buildPipelineRun), buildPipelineRun)
+				if err != nil {
+					return false
+				}
+				var found bool
+				snapshotName, found = buildPipelineRun.Annotations[tektonconsts.SnapshotNameLabel]
+				return found
+			}, time.Second*10).Should(BeTrue(), "PipelineRun should be annotated with snapshot name")
 
 			// Verify the snapshot name either has a suffix or is different from colliding one
 			// Format: prefix-YYYYMMDD-HHMMSS-mmm or prefix-YYYYMMDD-HHMMSS-mmm-xx
@@ -1989,7 +1998,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				adapter = NewAdapter(ctx, buildPipelineRun, hasComp, &[]v1beta2.ComponentGroup{*hasCompGroup}, log, loader.NewMockLoader(), k8sClient)
 				adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 					{
-						ContextKey: loader.AllSnapshotsForGivenPRContextKey,
+						ContextKey: loader.AllPullSnapshotsForGivenPRContextKey,
 						Resource:   []applicationapiv1alpha1.Snapshot{*duplicateSnapshot},
 					},
 				})
@@ -2035,7 +2044,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				adapter = NewAdapter(ctx, buildPipelineRun, hasComp, &[]v1beta2.ComponentGroup{*hasCompGroup}, log, loader.NewMockLoader(), k8sClient)
 				adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 					{
-						ContextKey: loader.AllSnapshotsForGivenPRContextKey,
+						ContextKey: loader.AllPullSnapshotsForGivenPRContextKey,
 						Resource:   []applicationapiv1alpha1.Snapshot{*finishedSnapshot},
 					},
 				})

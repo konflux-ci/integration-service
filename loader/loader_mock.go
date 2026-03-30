@@ -59,7 +59,7 @@ const (
 	AllEnvironmentsForScenarioContextKey
 	AllSnapshotsForBuildPipelineRunApplicationContextKey
 	AllSnapshotsForBuildPipelineRunContextKey
-	AllSnapshotsForGivenPRContextKey
+	AllPullSnapshotsForGivenPRContextKey
 	AllTaskRunsWithMatchingPipelineRunLabelContextKey
 	GetPipelineRunContextKey
 	GetComponentContextKey
@@ -263,11 +263,11 @@ func (l *mockLoader) GetAllSnapshotsForBuildPipelineRun(ctx context.Context, c c
 	return &snapshots, err
 }
 
-func (l *mockLoader) GetAllSnapshotsForPR(ctx context.Context, c client.Client, object metav1.ObjectMeta, componentName, pullRequest string) (*[]applicationapiv1alpha1.Snapshot, error) {
-	if ctx.Value(AllSnapshotsForGivenPRContextKey) == nil {
-		return l.loader.GetAllSnapshotsForPR(ctx, c, object, componentName, pullRequest)
+func (l *mockLoader) GetAllPullSnapshotsForPR(ctx context.Context, c client.Client, object metav1.ObjectMeta, componentName, pullRequest string) (*[]applicationapiv1alpha1.Snapshot, error) {
+	if ctx.Value(AllPullSnapshotsForGivenPRContextKey) == nil {
+		return l.loader.GetAllPullSnapshotsForPR(ctx, c, object, componentName, pullRequest)
 	}
-	snapshots, err := toolkit.GetMockedResourceAndErrorFromContext(ctx, AllSnapshotsForGivenPRContextKey, []applicationapiv1alpha1.Snapshot{})
+	snapshots, err := toolkit.GetMockedResourceAndErrorFromContext(ctx, AllPullSnapshotsForGivenPRContextKey, []applicationapiv1alpha1.Snapshot{})
 	return &snapshots, err
 }
 
