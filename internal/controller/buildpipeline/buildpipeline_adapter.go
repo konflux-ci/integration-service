@@ -158,7 +158,12 @@ func (a *Adapter) EnsureSnapshotExists() (result controller.OperationResult, err
 	var canRemoveFinalizer bool
 
 	defer func() {
-		updateErr := a.updateBuildPipelineRunWithFinalInfo(canRemoveFinalizer, err)
+		// Don't write a failure annotation for transient Chains-not-signed errors
+		annotationErr := err
+		if h.IsChainsNotSignedError(err) {
+			annotationErr = nil
+		}
+		updateErr := a.updateBuildPipelineRunWithFinalInfo(canRemoveFinalizer, annotationErr)
 		if updateErr != nil {
 			if errors.IsNotFound(updateErr) {
 				result, err = controller.ContinueProcessing()
@@ -175,9 +180,24 @@ func (a *Adapter) EnsureSnapshotExists() (result controller.OperationResult, err
 	}
 
 	if _, found := a.pipelineRun.Annotations[tektonconsts.PipelineRunChainsSignedAnnotation]; !found {
-		err := fmt.Errorf("not processing the pipelineRun because it's not yet signed with Chains")
-		a.logger.Error(err, "Not processing the pipelineRun because it's not yet signed with Chains")
-		return controller.RequeueOnErrorOrContinue(err)
+		completionTime := a.pipelineRun.Status.CompletionTime
+		var referenceTime time.Time
+		if completionTime != nil {
+			referenceTime = completionTime.Time
+		} else {
+			referenceTime = a.pipelineRun.CreationTimestamp.Time
+		}
+		if time.Since(referenceTime) > h.ChainsSignedCheckTimeout {
+			err := fmt.Errorf("not processing the pipelineRun because it's not yet signed with Chains after %s", h.ChainsSignedCheckTimeout)
+			a.logger.Error(err, "Exceeded timeout waiting for Chains signing")
+			return controller.RequeueOnErrorOrContinue(err)
+		}
+		a.logger.Info("PipelineRun not yet signed by Chains, will requeue",
+			"elapsedSinceCompletion", time.Since(referenceTime).String(),
+			"timeout", h.ChainsSignedCheckTimeout.String())
+		return controller.RequeueOnErrorOrContinue(&h.ChainsNotSignedError{
+			Message: "PipelineRun not yet signed by Chains, requeueing",
+		})
 	}
 
 	if _, found := a.pipelineRun.Annotations[tektonconsts.SnapshotNamesLabel]; found {
@@ -241,7 +261,12 @@ func (a *Adapter) EnsureSnapshotExistsApplication() (result controller.Operation
 	var canRemoveFinalizer bool
 
 	defer func() {
-		updateErr := a.updateBuildPipelineRunWithFinalInfo(canRemoveFinalizer, err)
+		// Don't write a failure annotation for transient Chains-not-signed errors
+		annotationErr := err
+		if h.IsChainsNotSignedError(err) {
+			annotationErr = nil
+		}
+		updateErr := a.updateBuildPipelineRunWithFinalInfo(canRemoveFinalizer, annotationErr)
 		if updateErr != nil {
 			if errors.IsNotFound(updateErr) {
 				result, err = controller.ContinueProcessing()
@@ -258,9 +283,24 @@ func (a *Adapter) EnsureSnapshotExistsApplication() (result controller.Operation
 	}
 
 	if _, found := a.pipelineRun.Annotations[tektonconsts.PipelineRunChainsSignedAnnotation]; !found {
-		err := fmt.Errorf("not processing the pipelineRun because it's not yet signed with Chains")
-		a.logger.Error(err, "Not processing the pipelineRun because it's not yet signed with Chains")
-		return controller.RequeueOnErrorOrContinue(err)
+		completionTime := a.pipelineRun.Status.CompletionTime
+		var referenceTime time.Time
+		if completionTime != nil {
+			referenceTime = completionTime.Time
+		} else {
+			referenceTime = a.pipelineRun.CreationTimestamp.Time
+		}
+		if time.Since(referenceTime) > h.ChainsSignedCheckTimeout {
+			err := fmt.Errorf("not processing the pipelineRun because it's not yet signed with Chains after %s", h.ChainsSignedCheckTimeout)
+			a.logger.Error(err, "Exceeded timeout waiting for Chains signing")
+			return controller.RequeueOnErrorOrContinue(err)
+		}
+		a.logger.Info("PipelineRun not yet signed by Chains, will requeue",
+			"elapsedSinceCompletion", time.Since(referenceTime).String(),
+			"timeout", h.ChainsSignedCheckTimeout.String())
+		return controller.RequeueOnErrorOrContinue(&h.ChainsNotSignedError{
+			Message: "PipelineRun not yet signed by Chains, requeueing",
+		})
 	}
 
 	if _, found := a.pipelineRun.Annotations[tektonconsts.SnapshotNameLabel]; found {

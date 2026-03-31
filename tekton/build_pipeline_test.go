@@ -321,6 +321,7 @@ var _ = Describe("build pipeline", Ordered, func() {
 			Expect(version).To(BeEmpty())
 			Expect(err.Error()).To(ContainSubstring(fmt.Sprintf("does not have '%s' annotation", tektonconsts.PipelineRunComponentVersionAnnotation)))
 		})
+
 	})
 
 })
