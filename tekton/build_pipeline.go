@@ -206,6 +206,9 @@ func GetComponentSourceFromPipelineRun(pipelineRun *tektonv1.PipelineRun) (*appl
 			},
 		},
 	}
+	if ctx, ok := pipelineRun.Annotations[consts.PipelineRunComponentVersionContextAnnotation]; ok && ctx != "" {
+		componentSource.GitSource.Context = ctx
+	}
 
 	return &componentSource, nil
 }
