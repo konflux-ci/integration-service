@@ -486,6 +486,7 @@ func (a *Adapter) iterateIntegrationTestStatusDetailsInStatusReport(reporter sta
 	var commentForFailingIntegrationTests []string
 	var commentForPassedIntegrationTests []string
 	var reportStatusErr error
+	var isFinalStatus bool
 
 	// check if there is any integration test status update to report
 	var hasUpdatedIntegrationTest bool
@@ -503,6 +504,10 @@ func (a *Adapter) iterateIntegrationTestStatusDetailsInStatusReport(reporter sta
 	}
 
 	for _, integrationTestStatusDetail := range integrationTestStatusDetails {
+		// set isFinalStatus to true if there is at least one integration test status is in final status, which means the comment for integration test might not be updated again to have only one comment for each component
+		if integrationTestStatusDetail.Status.IsFinal() {
+			isFinalStatus = true
+		}
 		testReport, reportErr := status.GenerateTestReport(a.context, a.client, *integrationTestStatusDetail, testedSnapshot, componentNameOrPrGroup)
 		if reportErr != nil {
 			a.logger.Error(reportErr, fmt.Sprintf("failed to generate test report for integration test scenario %s/%s",
@@ -586,7 +591,7 @@ func (a *Adapter) iterateIntegrationTestStatusDetailsInStatusReport(reporter sta
 		if isMergeRequest {
 			commentPrefix := status.GenerateTestSummaryPrefixForComponent(componentNameOrPrGroup)
 			commentText := strings.Join(append(commentForFailingIntegrationTests, commentForPassedIntegrationTests...), "<hr><hr>\n\n")
-			statusCode, reportErr := reporter.UpdateStatusInComment(commentPrefix, commentText)
+			statusCode, reportErr := reporter.UpdateStatusInComment(commentPrefix, commentText, isFinalStatus)
 			if reportErr != nil {
 				if reporter.ReturnCodeIsUnrecoverable(statusCode) {
 					a.logger.Error(reportStatusErr, fmt.Sprintf("failed to create comment to git provider for integration test of snapshot %s/%s, the statusCode %d is not easily recoverable", testedSnapshot.Namespace, testedSnapshot.Name, statusCode))

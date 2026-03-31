@@ -755,7 +755,7 @@ func IterateIntegrationTestScenarioWithSameStatus(ctx context.Context, client cl
 			if err != nil {
 				return statusCode, fmt.Errorf("failed to format summary message: %w", err)
 			}
-			statusCode, err := reporter.UpdateStatusInComment(commentPrefix, commentText)
+			statusCode, err := reporter.UpdateStatusInComment(commentPrefix, commentText, integrationTestStatusDetail.Status.IsFinal())
 			if err != nil {
 				return statusCode, err
 			}
