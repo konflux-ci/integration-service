@@ -145,7 +145,7 @@ func (r *ForgejoReporter) Initialize(ctx context.Context, snapshot *applicationa
 	}
 
 	r.snapshot = snapshot
-	return 0, nil
+	return http.StatusOK, nil
 }
 
 // IsPullRequestOpen returns whether the snapshot's pull request is still open.
@@ -416,7 +416,7 @@ func (r *ForgejoReporter) ReportStatus(ctx context.Context, report TestReport) (
 }
 
 func (r *ForgejoReporter) ReturnCodeIsUnrecoverable(statusCode int) bool {
-	return statusCode == http.StatusForbidden || statusCode == http.StatusUnauthorized || statusCode == http.StatusBadRequest
+	return statusCode == http.StatusForbidden || statusCode == http.StatusUnauthorized || statusCode == http.StatusBadRequest || statusCode == http.StatusNotFound
 }
 
 // GenerateForgejoCommitState transforms internal integration test state into Forgejo state

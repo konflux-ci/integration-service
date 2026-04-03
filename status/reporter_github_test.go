@@ -371,7 +371,7 @@ var _ = Describe("GitHubReporter", func() {
 					})
 
 				Expect(err).To(Succeed(), "ReportStatus should succeed")
-				Expect(statusCode).To(Equal(200))
+				Expect(statusCode).To(Equal(http.StatusOK))
 				Expect(mockGitHubClient.CreateCheckRunResult.cra).NotTo(BeNil())
 				Expect(mockGitHubClient.CreateCheckRunResult.cra.Title).To(Equal(title))
 				Expect(mockGitHubClient.CreateCheckRunResult.cra.Conclusion).To(Equal(conclusion))
@@ -402,7 +402,7 @@ var _ = Describe("GitHubReporter", func() {
 					})
 
 				Expect(err).To(Succeed(), "ReportStatus should succeed")
-				Expect(statusCode).To(Equal(200))
+				Expect(statusCode).To(Equal(http.StatusOK))
 			}
 		})
 
@@ -423,7 +423,7 @@ var _ = Describe("GitHubReporter", func() {
 				})
 
 			Expect(err).To(Succeed(), "ReportStatus should succeed")
-			Expect(statusCode).To(Equal(200))
+			Expect(statusCode).To(Equal(http.StatusOK))
 			Expect(mockGitHubClient.CreateCheckRunResult.cra).NotTo(BeNil())
 			Expect(mockGitHubClient.CreateCheckRunResult.cra.Summary).To(Equal("Integration test for snapshot snapshot-sample and scenario scenario1 experienced an error when provisioning environment"))
 			Expect(mockGitHubClient.CreateCheckRunResult.cra.Conclusion).To(Equal(gitops.IntegrationTestStatusFailureGithub))
@@ -452,7 +452,7 @@ var _ = Describe("GitHubReporter", func() {
 				})
 
 			Expect(err).To(Succeed(), "ReportStatus should succeed")
-			Expect(statusCode).To(Equal(200))
+			Expect(statusCode).To(Equal(http.StatusOK))
 			Expect(mockGitHubClient.CreateCheckRunResult.cra).NotTo(BeNil())
 			Expect(mockGitHubClient.CreateCheckRunResult.cra.Summary).To(Equal("Integration test for snapshot snapshot-sample and scenario scenario1 experienced an error when provisioning environment"))
 			Expect(mockGitHubClient.CreateCheckRunResult.cra.Conclusion).To(Equal(gitops.IntegrationTestStatusFailureGithub))
@@ -524,7 +524,7 @@ var _ = Describe("GitHubReporter", func() {
 					StartTime:     &now,
 				})
 			Expect(err).To(Succeed())
-			Expect(statusCode).To(Equal(200))
+			Expect(statusCode).To(Equal(http.StatusOK))
 
 			expectedLogEntry = "found existing checkrun"
 			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
@@ -602,7 +602,7 @@ var _ = Describe("GitHubReporter", func() {
 				})
 
 			Expect(err).To(Succeed())
-			Expect(statusCode).To(Equal(0))
+			Expect(statusCode).To(Equal(http.StatusOK))
 			Expect(mockGitHubClient.CreateCommitStatusResult.state).To(Equal(gitops.IntegrationTestStatusErrorGithub))
 			Expect(mockGitHubClient.CreateCommitStatusResult.description).To(Equal("Integration test for snapshot snapshot-sample and scenario scenario1 failed"))
 			Expect(mockGitHubClient.CreateCommitStatusResult.statusContext).To(Equal("fullname/scenario1"))
@@ -625,7 +625,7 @@ var _ = Describe("GitHubReporter", func() {
 				})
 
 			Expect(err).To(Succeed(), "ReportStatus should succeed")
-			Expect(statusCode).To(Equal(0))
+			Expect(statusCode).To(Equal(http.StatusOK))
 			Expect(mockGitHubClient.CreateCommitStatusResult.state).To(Equal(gitops.IntegrationTestStatusErrorGithub))
 			Expect(mockGitHubClient.CreateCommitStatusResult.description).To(Equal("Integration test for snapshot snapshot-sample and scenario scenario1 failed"))
 			Expect(mockGitHubClient.CreateCommitStatusResult.statusContext).To(Equal("fullname/scenario1"))
@@ -643,7 +643,7 @@ var _ = Describe("GitHubReporter", func() {
 						Status:       teststatus,
 					})
 				Expect(err).To(Succeed(), "ReportStatus should succeed")
-				Expect(statusCode).To(Equal(0))
+				Expect(statusCode).To(Equal(http.StatusOK))
 				Expect(mockGitHubClient.CreateCommitStatusResult.state).To(Equal(ghstatus))
 			},
 			Entry("Provision error", integrationteststatus.IntegrationTestStatusEnvironmentProvisionError_Deprecated, gitops.IntegrationTestStatusErrorGithub),
@@ -671,7 +671,7 @@ var _ = Describe("GitHubReporter", func() {
 					})
 
 				Expect(err).To(Succeed(), "ReportStatus should succeed")
-				Expect(statusCode).To(Equal(0))
+				Expect(statusCode).To(Equal(http.StatusOK))
 			}
 		})
 
@@ -684,7 +684,7 @@ var _ = Describe("GitHubReporter", func() {
 			}
 			statusCode, err := reporter.ReportStatus(context.TODO(), testReport)
 			Expect(err).To(Succeed(), "ReportStatus should succeed")
-			Expect(statusCode).To(Equal(0))
+			Expect(statusCode).To(Equal(http.StatusOK))
 			expectedLogEntry := "found existing commitStatus for scenario test status of snapshot, no need to create new commit status"
 			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
 		})
@@ -699,7 +699,7 @@ var _ = Describe("GitHubReporter", func() {
 			}
 			statusCode, err := reporter.ReportStatus(context.TODO(), testReport)
 			Expect(err).To(Succeed(), "ReportStatus should succeed")
-			Expect(statusCode).To(Equal(0))
+			Expect(statusCode).To(Equal(http.StatusOK))
 
 			expectedLogEntry := "Won't create/update commitStatus since there is access limitation for different source and target Repo Owner"
 			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))

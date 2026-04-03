@@ -184,7 +184,7 @@ var _ = Describe("GitLabReporter", func() {
 
 			statusCode, err := reporter.Initialize(context.TODO(), hasSnapshot)
 			Expect(err).To(Succeed())
-			Expect(statusCode).To(Equal(0))
+			Expect(statusCode).To(Equal(http.StatusOK))
 
 		})
 
@@ -226,7 +226,7 @@ var _ = Describe("GitLabReporter", func() {
 					Text:         "detailed text here",
 				})
 			Expect(err).To(Succeed())
-			Expect(statusCode).To(Equal(200))
+			Expect(statusCode).To(Equal(http.StatusCreated))
 		})
 
 		It("creates a commit status for push snapshot with correct textual data without comments", func() {
@@ -240,7 +240,7 @@ var _ = Describe("GitLabReporter", func() {
 
 			statusCode, err := pushEventReporter.Initialize(context.TODO(), pushSnapshot)
 			Expect(err).To(Succeed())
-			Expect(statusCode).To(Equal(0))
+			Expect(statusCode).To(Equal(http.StatusOK))
 
 			summary := "Integration test for component component-sample snapshot snapshot-sample and scenario scenario1 failed"
 
@@ -258,7 +258,7 @@ var _ = Describe("GitLabReporter", func() {
 					Text:         "detailed text here",
 				})
 			Expect(err).To(Succeed())
-			Expect(statusCode).To(Equal(200))
+			Expect(statusCode).To(Equal(http.StatusCreated))
 		})
 
 		It("creates a commit status and comment for snapshot with TargetURL in CommitStatus", func() {
@@ -285,7 +285,7 @@ var _ = Describe("GitLabReporter", func() {
 					Text:                "detailed text here",
 				})
 			Expect(err).To(Succeed())
-			Expect(statusCode).To(Equal(200))
+			Expect(statusCode).To(Equal(http.StatusCreated))
 		})
 
 		It("does not create a commit status or comment for snapshot with existing matching checkRun in running state", func() {
@@ -306,7 +306,7 @@ var _ = Describe("GitLabReporter", func() {
 
 			statusCode, err := reporter.ReportStatus(context.TODO(), report)
 			Expect(err).To(Succeed())
-			Expect(statusCode).To(Equal(200))
+			Expect(statusCode).To(Equal(http.StatusOK))
 		})
 
 		It("can get an existing commitStatus that matches the report", func() {
@@ -346,7 +346,7 @@ var _ = Describe("GitLabReporter", func() {
 			muxMergeNotesForListingNotes(mux, targetProjectID, mergeRequest)
 			statusCode, err := reporter.UpdateStatusInComment(commentPrefix, commentText, true)
 			Expect(err).To(Succeed())
-			Expect(statusCode).To(Equal(200))
+			Expect(statusCode).To(Equal(http.StatusOK))
 		})
 
 		It("can create a new mergeRequest notes when there is no existing comment", func() {
@@ -358,7 +358,7 @@ var _ = Describe("GitLabReporter", func() {
 			muxMergeNotesForCreatingNote(mux, targetProjectID, mergeRequest, commentPrefix)
 			statusCode, err := reporter.UpdateStatusInComment(commentPrefix, commentText, true)
 			Expect(err).To(Succeed())
-			Expect(statusCode).To(Equal(201))
+			Expect(statusCode).To(Equal(http.StatusCreated))
 		})
 	})
 	Context("when testing retry behavior", func() {
@@ -377,7 +377,7 @@ var _ = Describe("GitLabReporter", func() {
 
 			savedBackoff = status.GetReporterRetryBackoff()
 			status.SetReporterRetryBackoff(wait.Backoff{
-				Steps:    5,
+				Steps:    3,
 				Duration: 1 * time.Millisecond,
 				Factor:   1.0,
 				Jitter:   0.0,
@@ -422,7 +422,7 @@ var _ = Describe("GitLabReporter", func() {
 			reporter = status.NewGitLabReporter(log, mockK8sClient)
 			statusCode, err := reporter.Initialize(context.TODO(), hasSnapshot)
 			Expect(err).To(Succeed())
-			Expect(statusCode).To(Equal(0))
+			Expect(statusCode).To(Equal(http.StatusOK))
 		})
 
 		AfterEach(func() {
@@ -447,7 +447,7 @@ var _ = Describe("GitLabReporter", func() {
 					fmt.Fprintf(rw, `{"error": "unprocessable"}`)
 					return
 				}
-				rw.WriteHeader(http.StatusOK)
+				rw.WriteHeader(http.StatusCreated)
 				fmt.Fprintf(rw, `{"id": 1, "status": "success"}`)
 			})
 
@@ -465,7 +465,7 @@ var _ = Describe("GitLabReporter", func() {
 			})
 
 			Expect(err).To(Succeed())
-			Expect(statusCode).To(Equal(http.StatusOK))
+			Expect(statusCode).To(Equal(http.StatusCreated))
 			Expect(atomic.LoadInt32(&sourceCallCount)).To(BeNumerically("==", 2))
 			Expect(buf.String()).To(ContainSubstring("retrying to set gitlab commit status after transient error"))
 		})
@@ -560,7 +560,7 @@ var _ = Describe("GitLabReporter", func() {
 
 			Expect(err).To(HaveOccurred())
 			Expect(statusCode).To(Equal(http.StatusUnprocessableEntity))
-			Expect(atomic.LoadInt32(&sourceCallCount)).To(BeNumerically("==", 5))
+			Expect(atomic.LoadInt32(&sourceCallCount)).To(BeNumerically("==", 3))
 			Expect(buf.String()).To(ContainSubstring("failed to set gitlab commit status after all retries"))
 		})
 	})
@@ -618,6 +618,7 @@ func muxCommitStatusPost(mux *http.ServeMux, pid string, sha string, catchStr st
 		if catchStr != "" {
 			Expect(s).To(ContainSubstring(catchStr))
 		}
+		rw.WriteHeader(http.StatusCreated)
 		fmt.Fprintf(rw, "{}")
 	})
 }
