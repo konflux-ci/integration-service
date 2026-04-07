@@ -308,6 +308,14 @@ var _ = Describe("build pipeline", Ordered, func() {
 			Expect(componentSource).NotTo(BeNil())
 		})
 
+		It("sets git context from PipelineRun annotation when present", func() {
+			plr := buildPipelineRun.DeepCopy()
+			plr.Annotations[tektonconsts.PipelineRunComponentVersionContextAnnotation] = "monorepo/subdir"
+			componentSource, err := tekton.GetComponentSourceFromPipelineRun(plr)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(componentSource.GitSource.Context).To(Equal("monorepo/subdir"))
+		})
+
 		It("ensures the component version can be accessed", func() {
 			version, err := tekton.GetComponentVersionFromPipelineRun(buildPipelineRun)
 			Expect(err).NotTo(HaveOccurred())

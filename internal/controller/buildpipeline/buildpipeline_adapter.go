@@ -734,6 +734,11 @@ func (a *Adapter) prepareSnapshotForPipelineRun(pipelineRun *tektonv1.PipelineRu
 	if err != nil {
 		return nil, err
 	}
+	componentVersion := ""
+	if v, verr := tekton.GetComponentVersionFromPipelineRun(pipelineRun); verr == nil {
+		componentVersion = v
+	}
+	gitops.EnrichBuiltComponentSourceGitContext(componentSource, component, componentVersion)
 
 	applicationComponents, err := a.loader.GetAllApplicationComponents(a.context, a.client, application)
 	if err != nil {

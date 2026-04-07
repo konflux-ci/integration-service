@@ -36,6 +36,11 @@ func PrepareSnapshotForPipelineRun(ctx context.Context, adapterClient client.Cli
 		return nil, err
 	}
 
+	var comp applicationapiv1alpha1.Component
+	if err := adapterClient.Get(ctx, client.ObjectKey{Namespace: componentGroup.Namespace, Name: componentName}, &comp); err == nil {
+		gitops.EnrichBuiltComponentSourceGitContext(&newSnapshotComponent.Source, &comp, newSnapshotComponent.Version)
+	}
+
 	snapshot, err := PrepareSnapshot(ctx, adapterClient, componentGroup, newSnapshotComponent, log)
 	if err != nil {
 		return nil, err

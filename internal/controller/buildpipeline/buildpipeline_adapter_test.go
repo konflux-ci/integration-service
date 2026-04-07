@@ -122,6 +122,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 						GitSource: &applicationapiv1alpha1.GitSource{
 							URL:      SampleRepoLink,
 							Revision: SampleCommit,
+							Context:  "rpms/my-component",
 						},
 					},
 				},
@@ -1133,6 +1134,40 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			Expect(found).To(BeTrue())
 			Expect(annotation).To(Equal(gitops.IntegrationWorkflowPushValue))
 			Expect(annotation).To(Equal("push"))
+		})
+
+		It("ensures built component snapshot includes git context from Component spec", func() {
+			snapshot, err := adapter.prepareSnapshotForPipelineRun(buildPipelineRun, hasComp, hasApp)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(snapshot).ToNot(BeNil())
+			var built *applicationapiv1alpha1.SnapshotComponent
+			for i := range snapshot.Spec.Components {
+				if snapshot.Spec.Components[i].Name == hasComp.Name {
+					built = &snapshot.Spec.Components[i]
+					break
+				}
+			}
+			Expect(built).NotTo(BeNil())
+			Expect(built.Source.GitSource).NotTo(BeNil())
+			Expect(built.Source.GitSource.Context).To(Equal("rpms/my-component"))
+		})
+
+		It("ensures PipelineRun context annotation overrides Component spec git context", func() {
+			plr := buildPipelineRun.DeepCopy()
+			plr.Annotations[tektonconsts.PipelineRunComponentVersionContextAnnotation] = "annotation-context"
+			snapshot, err := adapter.prepareSnapshotForPipelineRun(plr, hasComp, hasApp)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(snapshot).ToNot(BeNil())
+			var built *applicationapiv1alpha1.SnapshotComponent
+			for i := range snapshot.Spec.Components {
+				if snapshot.Spec.Components[i].Name == hasComp.Name {
+					built = &snapshot.Spec.Components[i]
+					break
+				}
+			}
+			Expect(built).NotTo(BeNil())
+			Expect(built.Source.GitSource).NotTo(BeNil())
+			Expect(built.Source.GitSource.Context).To(Equal("annotation-context"))
 		})
 
 		It("ensure snapshot will not be created in instance when chains is incomplete", func() {

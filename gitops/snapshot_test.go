@@ -1458,3 +1458,121 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 		})
 	})
 })
+
+var _ = Describe("EnrichBuiltComponentSourceGitContext", func() {
+	It("copies context from spec.source.git when built source context is empty", func() {
+		src := &applicationapiv1alpha1.ComponentSource{
+			ComponentSourceUnion: applicationapiv1alpha1.ComponentSourceUnion{
+				GitSource: &applicationapiv1alpha1.GitSource{URL: "https://example.com/repo", Revision: "abc"},
+			},
+		}
+		comp := &applicationapiv1alpha1.Component{
+			Spec: applicationapiv1alpha1.ComponentSpec{
+				Source: applicationapiv1alpha1.ComponentSource{
+					ComponentSourceUnion: applicationapiv1alpha1.ComponentSourceUnion{
+						GitSource: &applicationapiv1alpha1.GitSource{
+							URL:      "https://example.com/repo",
+							Revision: "abc",
+							Context:  "ctx-from-cr",
+						},
+					},
+				},
+			},
+		}
+		gitops.EnrichBuiltComponentSourceGitContext(src, comp, "v1")
+		Expect(src.GitSource.Context).To(Equal("ctx-from-cr"))
+	})
+
+	It("prefers matching spec.source.versions context over top-level git when both are set", func() {
+		src := &applicationapiv1alpha1.ComponentSource{
+			ComponentSourceUnion: applicationapiv1alpha1.ComponentSourceUnion{
+				GitSource: &applicationapiv1alpha1.GitSource{URL: "https://example.com/repo", Revision: "abc"},
+			},
+		}
+		comp := &applicationapiv1alpha1.Component{
+			Spec: applicationapiv1alpha1.ComponentSpec{
+				Source: applicationapiv1alpha1.ComponentSource{
+					ComponentSourceUnion: applicationapiv1alpha1.ComponentSourceUnion{
+						GitSource: &applicationapiv1alpha1.GitSource{
+							URL:      "https://example.com/repo",
+							Revision: "abc",
+							Context:  "ctx-top-level",
+						},
+						Versions: []applicationapiv1alpha1.ComponentVersion{
+							{Name: "v1", Revision: "main", Context: "ctx-from-version"},
+						},
+					},
+				},
+			},
+		}
+		gitops.EnrichBuiltComponentSourceGitContext(src, comp, "v1")
+		Expect(src.GitSource.Context).To(Equal("ctx-from-version"))
+	})
+
+	It("copies context from matching spec.source.versions entry when top-level git context is empty", func() {
+		src := &applicationapiv1alpha1.ComponentSource{
+			ComponentSourceUnion: applicationapiv1alpha1.ComponentSourceUnion{
+				GitSource: &applicationapiv1alpha1.GitSource{URL: "https://example.com/repo", Revision: "abc"},
+			},
+		}
+		comp := &applicationapiv1alpha1.Component{
+			Spec: applicationapiv1alpha1.ComponentSpec{
+				Source: applicationapiv1alpha1.ComponentSource{
+					ComponentSourceUnion: applicationapiv1alpha1.ComponentSourceUnion{
+						GitURL: "https://example.com/repo",
+						Versions: []applicationapiv1alpha1.ComponentVersion{
+							{Name: "v1", Revision: "main", Context: "ctx-from-version"},
+						},
+					},
+				},
+			},
+		}
+		gitops.EnrichBuiltComponentSourceGitContext(src, comp, "v1")
+		Expect(src.GitSource.Context).To(Equal("ctx-from-version"))
+	})
+
+	It("uses top-level spec.source.git when componentVersion is empty", func() {
+		src := &applicationapiv1alpha1.ComponentSource{
+			ComponentSourceUnion: applicationapiv1alpha1.ComponentSourceUnion{
+				GitSource: &applicationapiv1alpha1.GitSource{URL: "https://example.com/repo", Revision: "abc"},
+			},
+		}
+		comp := &applicationapiv1alpha1.Component{
+			Spec: applicationapiv1alpha1.ComponentSpec{
+				Source: applicationapiv1alpha1.ComponentSource{
+					ComponentSourceUnion: applicationapiv1alpha1.ComponentSourceUnion{
+						GitSource: &applicationapiv1alpha1.GitSource{
+							URL:      "https://example.com/repo",
+							Revision: "abc",
+							Context:  "ctx-from-cr",
+						},
+						Versions: []applicationapiv1alpha1.ComponentVersion{
+							{Name: "v1", Revision: "main", Context: "ctx-from-version"},
+						},
+					},
+				},
+			},
+		}
+		gitops.EnrichBuiltComponentSourceGitContext(src, comp, "")
+		Expect(src.GitSource.Context).To(Equal("ctx-from-cr"))
+	})
+
+	It("does not overwrite non-empty context", func() {
+		src := &applicationapiv1alpha1.ComponentSource{
+			ComponentSourceUnion: applicationapiv1alpha1.ComponentSourceUnion{
+				GitSource: &applicationapiv1alpha1.GitSource{URL: "u", Revision: "r", Context: "already-set"},
+			},
+		}
+		comp := &applicationapiv1alpha1.Component{
+			Spec: applicationapiv1alpha1.ComponentSpec{
+				Source: applicationapiv1alpha1.ComponentSource{
+					ComponentSourceUnion: applicationapiv1alpha1.ComponentSourceUnion{
+						GitSource: &applicationapiv1alpha1.GitSource{URL: "u", Revision: "r", Context: "other"},
+					},
+				},
+			},
+		}
+		gitops.EnrichBuiltComponentSourceGitContext(src, comp, "v1")
+		Expect(src.GitSource.Context).To(Equal("already-set"))
+	})
+})

@@ -1062,6 +1062,32 @@ func GetComponentSourceFromComponent(component *applicationapiv1alpha1.Component
 	return componentSource, nil
 }
 
+// EnrichBuiltComponentSourceGitContext sets GitSource.Context on the built component source when it is
+// still empty. When componentVersion is set, matching spec.source.versions[].context takes precedence
+// over spec.source.git.context; otherwise top-level git context is used. This aligns the built row with
+// GetComponentSourceFromComponent for sibling components.
+func EnrichBuiltComponentSourceGitContext(componentSource *applicationapiv1alpha1.ComponentSource, component *applicationapiv1alpha1.Component, componentVersion string) {
+	if componentSource == nil || componentSource.GitSource == nil || component == nil {
+		return
+	}
+	if componentSource.GitSource.Context != "" {
+		return
+	}
+	if componentVersion != "" {
+		for i := range component.Spec.Source.Versions {
+			v := &component.Spec.Source.Versions[i]
+			if v.Name == componentVersion && v.Context != "" {
+				componentSource.GitSource.Context = v.Context
+				return
+			}
+		}
+	}
+	if component.Spec.Source.GitSource != nil && component.Spec.Source.GitSource.Context != "" {
+		componentSource.GitSource.Context = component.Spec.Source.GitSource.Context
+		return
+	}
+}
+
 // GetIntegrationTestRunLabelValue returns value of the label responsible for re-running tests
 func GetIntegrationTestRunLabelValue(obj metav1.Object) (string, bool) {
 	labels := obj.GetLabels()
