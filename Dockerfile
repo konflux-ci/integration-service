@@ -1,5 +1,5 @@
 # Build the manager binary
-FROM registry.access.redhat.com/ubi9/go-toolset:9.7-1769430014@sha256:359dd4c6c4255b3f7bce4dc15ffa5a9aa65a401f819048466fa91baa8244a793 as builder
+FROM registry.access.redhat.com/ubi9/go-toolset:9.7-1775724628@sha256:8c5aeac74b4b60dc2e5e44f6b639186b7ec2fec8f0eb9a36d4a32dcf8e255f52 as builder
 
 USER 1001
 
@@ -32,7 +32,7 @@ ARG ENABLE_WEBHOOKS=true
 ENV ENABLE_WEBHOOKS=${ENABLE_WEBHOOKS}
 # Use ubi-minimal as minimal base image to package the manager binary
 # Refer to https://catalog.redhat.com/software/containers/ubi9/ubi-minimal/615bd9b4075b022acc111bf5 for more details
-FROM registry.access.redhat.com/ubi9/ubi-minimal:9.7-1764578379
+FROM registry.access.redhat.com/ubi9/ubi-minimal:9.7-1775623882
 COPY --from=builder /opt/app-root/src/manager /
 COPY --from=builder /opt/app-root/src/snapshotgc /
 
