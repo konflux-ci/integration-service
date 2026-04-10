@@ -14,7 +14,11 @@ limitations under the License.
 */
 package helpers
 
-import "github.com/konflux-ci/integration-service/api/v1beta2"
+import (
+	"fmt"
+
+	"github.com/konflux-ci/integration-service/api/v1beta2"
+)
 
 func GetComponentGroupNames(componentGroups *[]v1beta2.ComponentGroup) []string {
 	names := []string{}
@@ -22,4 +26,12 @@ func GetComponentGroupNames(componentGroups *[]v1beta2.ComponentGroup) []string 
 		names = append(names, componentGroup.Name)
 	}
 	return names
+}
+
+func GetComponentVersionLogString(name, version string) string {
+	return fmt.Sprintf("%s (version %s)", name, version)
+}
+
+func GetComponentVersionString(name, version string) string {
+	return fmt.Sprintf("%s/%s", name, version)
 }

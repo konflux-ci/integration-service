@@ -180,13 +180,24 @@ func PrepareSnapshot(ctx context.Context, adapterClient client.Client, component
 	return snapshot, nil
 }
 
+// This prevents race conditions if EnsureGCLAlignedWithSpecComponents runs late
 func getSnapshotComponentsFromGCL(componentGroup *v1beta2.ComponentGroup, log logr.Logger) ([]applicationapiv1alpha1.SnapshotComponent, []v1beta2.ComponentState) {
 	var snapshotComponents []applicationapiv1alpha1.SnapshotComponent
 	var invalidComponents []v1beta2.ComponentState
+
+	specComponents := getSpecComponentsAndVersionsMap(componentGroup)
 	for _, gclComponent := range componentGroup.Status.GlobalCandidateList {
 		name := gclComponent.Name
 		version := gclComponent.Version
 		image := gclComponent.LastPromotedImage
+
+		// Necessary to prevent race condition if reconciler function has not
+		// cleaned up GCL by the time snapshot is created
+		specVersions, ok := specComponents[name]
+		if !ok || !slices.Contains(specVersions, version) {
+			log.Info("componentVersion was deleted from spec.Components. Will not add to snapshot", "componentGroup", componentGroup.Name, "component.Name", name, "component.Version", version)
+			continue
+		}
 
 		// If containerImage is empty, we have run into a race condition in
 		// which multiple components are being built in close succession.
@@ -217,6 +228,14 @@ func getSnapshotComponentsFromGCL(componentGroup *v1beta2.ComponentGroup, log lo
 		)
 	}
 	return snapshotComponents, invalidComponents
+}
+
+func getSpecComponentsAndVersionsMap(componentGroup *v1beta2.ComponentGroup) map[string][]string {
+	componentVersions := make(map[string][]string)
+	for _, component := range componentGroup.Spec.Components {
+		componentVersions[component.Name] = append(componentVersions[component.Name], component.ComponentVersion.Name)
+	}
+	return componentVersions
 }
 
 // Adds the updated Component to the list of snapshotComponents that will be added to the snapshot.  If a SnapshotComponent with

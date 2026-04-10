@@ -56,11 +56,11 @@ func TestComponentGroupSpec(t *testing.T) {
 			TestGraph: map[string][]TestGraphNode{
 				"verify": {
 					{Name: "clamav-scan"},
-					{Name: "dast-tests", OnFail: "skip"},
+					{Name: "dast-tests", FailFast: true},
 					{Name: "operator-scorecard"},
 				},
 				"e2e-test": {
-					{Name: "clamav-scan", OnFail: "run"},
+					{Name: "clamav-scan", FailFast: false},
 				},
 			},
 		},
@@ -132,8 +132,8 @@ func TestComponentGroupSpec(t *testing.T) {
 	if len(cg.Spec.TestGraph["verify"]) != 3 {
 		t.Errorf("Expected 3 nodes in 'verify' graph, got %d", len(cg.Spec.TestGraph["verify"]))
 	}
-	if cg.Spec.TestGraph["verify"][1].OnFail != "skip" {
-		t.Errorf("Expected OnFail 'skip', got '%s'", cg.Spec.TestGraph["verify"][1].OnFail)
+	if cg.Spec.TestGraph["verify"][1].FailFast != true {
+		t.Errorf("Expected FailFast 'true', got '%t'", cg.Spec.TestGraph["verify"][1].FailFast)
 	}
 
 	if len(cg.Status.GlobalCandidateList) != 2 {
@@ -321,21 +321,21 @@ func TestComponentGroupListDeepCopy(t *testing.T) {
 	}
 }
 
-func TestTestGraphNodeOnFailDefault(t *testing.T) {
+func TestTestGraphNodeFailFastDefault(t *testing.T) {
 	node := TestGraphNode{
 		Name: "test-scenario",
 	}
-	// OnFail should be empty string when not set (default in CRD is "run")
-	if node.OnFail != "" {
-		t.Errorf("Expected empty OnFail, got '%s'", node.OnFail)
+	// FailFast should be false when not set
+	if node.FailFast != false {
+		t.Errorf("Expected false FailFast, got '%t'", node.FailFast)
 	}
 
-	nodeWithOnFail := TestGraphNode{
-		Name:   "test-scenario",
-		OnFail: "skip",
+	nodeWithFailFast := TestGraphNode{
+		Name:     "test-scenario",
+		FailFast: true,
 	}
-	if nodeWithOnFail.OnFail != "skip" {
-		t.Errorf("Expected OnFail 'skip', got '%s'", nodeWithOnFail.OnFail)
+	if nodeWithFailFast.FailFast != true {
+		t.Errorf("Expected FailFast 'true', got '%t'", nodeWithFailFast.FailFast)
 	}
 }
 
@@ -362,7 +362,7 @@ func TestComponentGroupSpecDeepCopy(t *testing.T) {
 		},
 		Dependents: []string{"dep-1"},
 		TestGraph: map[string][]TestGraphNode{
-			"test-1": {{Name: "node-1", OnFail: "skip"}},
+			"test-1": {{Name: "node-1", FailFast: true}},
 		},
 	}
 

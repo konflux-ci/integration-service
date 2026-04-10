@@ -17,6 +17,7 @@ limitations under the License.
 package snapshot
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"strconv"
@@ -33,6 +34,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
+	"github.com/tonglil/buflogr"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"knative.dev/pkg/apis"
@@ -223,6 +225,10 @@ var _ = Describe("Snapshot creation functions", Ordered, func() {
 					Name:    componentName2,
 					Version: "v1",
 					URL:     "",
+				},
+				v1beta2.ComponentState{
+					Name:    "deleted-component",
+					Version: "v1",
 				},
 			},
 		}
@@ -529,13 +535,18 @@ var _ = Describe("Snapshot creation functions", Ordered, func() {
 
 	Context("testing creation of snapshotComponentsList", func() {
 		It("Ensures valid and invalid snapshotComponents can be gathered from the GCL", func() {
-			snapshotComponents, invalidComponents := getSnapshotComponentsFromGCL(hasCompGroup, logger)
+			var buf bytes.Buffer
+			readableLog := buflogr.NewWithBuffer(&buf)
+			snapshotComponents, invalidComponents := getSnapshotComponentsFromGCL(hasCompGroup, readableLog)
 
 			Expect(snapshotComponents).To(HaveLen(1))
 			Expect(snapshotComponents[0].Name).To(Equal(componentName))
 
 			Expect(invalidComponents).To(HaveLen(1))
 			Expect(invalidComponents[0].Name).To(Equal(componentName2))
+
+			Expect(buf.String()).To(ContainSubstring("componentVersion was deleted from spec.Components"))
+
 		})
 
 		It("Ensures built component can replace existing snapshotComponent", func() {

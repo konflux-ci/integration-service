@@ -24,6 +24,7 @@ import (
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
 	"github.com/konflux-ci/integration-service/api/v1beta2"
 	"github.com/konflux-ci/integration-service/gitops"
+	"github.com/konflux-ci/integration-service/helpers"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
@@ -37,16 +38,16 @@ func ValidateOverrideSnapshotComponents(ctx context.Context, snapshot *applicati
 	// Build a set of known (name, version) pairs from the ComponentGroup spec in O(n)
 	knownComponents := make(map[string]bool, len(componentGroup.Spec.Components))
 	for _, component := range componentGroup.Spec.Components {
-		knownComponents[getComponentVersionString(component.Name, component.ComponentVersion.Name)] = true
+		knownComponents[helpers.GetComponentVersionString(component.Name, component.ComponentVersion.Name)] = true
 	}
 
 	var errsForSnapshot error
 	for _, snapshotComponent := range snapshot.Spec.Components {
 		snapshotComponent := snapshotComponent //G601
 
-		key := getComponentVersionString(snapshotComponent.Name, snapshotComponent.Version)
+		key := helpers.GetComponentVersionString(snapshotComponent.Name, snapshotComponent.Version)
 		if _, found := knownComponents[key]; !found {
-			errsForSnapshot = errors.Join(errsForSnapshot, fmt.Errorf("snapshotComponent %s defined in snapshot %s doesn't exist in componentGroup %s/%s", getComponentVersionLogString(snapshotComponent.Name, snapshotComponent.Version), snapshot.Name, componentGroup.Namespace, componentGroup.Name))
+			errsForSnapshot = errors.Join(errsForSnapshot, fmt.Errorf("snapshotComponent %s defined in snapshot %s doesn't exist in componentGroup %s/%s", helpers.GetComponentVersionLogString(snapshotComponent.Name, snapshotComponent.Version), snapshot.Name, componentGroup.Namespace, componentGroup.Name))
 		}
 
 		if err := gitops.ValidateImageDigest(snapshotComponent.ContainerImage); err != nil {
