@@ -396,6 +396,12 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 		Expect(gitops.IsSnapshotError(hasSnapshot)).To(BeTrue())
 	})
 
+	It("returns false if the Snapshot has no integration status condition", func() {
+		snapshot := &applicationapiv1alpha1.Snapshot{}
+
+		Expect(gitops.IsSnapshotError(snapshot)).To(BeFalse())
+	})
+
 	It("ensures the Snapshots status can be marked as finished", func() {
 		err := gitops.MarkSnapshotIntegrationStatusAsFinished(ctx, k8sClient, hasSnapshot, "Test message")
 		Expect(err).ToNot(HaveOccurred())
