@@ -12,18 +12,20 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 */
-package helpers
 
-import "github.com/konflux-ci/integration-service/api/v1beta2"
+package loader
 
-func GetComponentGroupNames(componentGroups *[]v1beta2.ComponentGroup) []string {
-	if componentGroups == nil {
-		return []string{}
-	}
+import (
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
+)
 
-	names := []string{}
-	for _, componentGroup := range *componentGroups {
-		names = append(names, componentGroup.Name)
-	}
-	return names
-}
+var _ = Describe("ComponentGroup loading", func() {
+	It("returns an empty scenario list for nil component groups", func() {
+		l := &loader{}
+		scenarios, err := l.GetAllIntegrationTestScenariosForComponentGroups(ctx, k8sClient, nil)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(scenarios).NotTo(BeNil())
+		Expect(*scenarios).To(BeEmpty())
+	})
+})

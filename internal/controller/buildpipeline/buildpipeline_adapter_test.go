@@ -2071,6 +2071,22 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		})
 
 		When("There is a snapshot currently being tested for that build pipeline", func() {
+			It("skips superseded snapshot cancellation when component groups are nil", func() {
+				buildPipelineRun.Status.SetCondition(&apis.Condition{
+					Type:   apis.ConditionSucceeded,
+					Status: "Unknown",
+				})
+				var buf bytes.Buffer
+				log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+				adapter = NewAdapter(ctx, buildPipelineRun, hasComp, nil, log, loader.NewMockLoader(), k8sClient)
+
+				result, err := adapter.EnsureSupercededSnapshotsCanceled()
+				Expect(err).NotTo(HaveOccurred())
+				Expect(result.CancelRequest).To(BeFalse())
+				Expect(result.RequeueRequest).To(BeFalse())
+				Expect(buf.String()).Should(ContainSubstring("no ComponentGroups found for component version; skipping superseded Snapshot cancellation"))
+			})
+
 			It("skips superseded snapshot cancellation when there are no component groups", func() {
 				buildPipelineRun.Status.SetCondition(&apis.Condition{
 					Type:   apis.ConditionSucceeded,

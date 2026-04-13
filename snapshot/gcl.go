@@ -15,6 +15,10 @@ import (
 
 // updateGCLForBuildPLR updates global candidate list for component snapshots
 func UpdateGCLForBuildPLR(ctx context.Context, client client.Client, componentGroups *[]v1beta2.ComponentGroup, pipelineRun *tektonv1.PipelineRun, componentName string) error {
+	if componentGroups == nil {
+		return nil
+	}
+
 	containerImage, err := tekton.GetImagePullSpecFromPipelineRun(pipelineRun)
 	if err != nil {
 		return nil

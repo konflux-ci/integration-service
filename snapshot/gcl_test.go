@@ -186,6 +186,11 @@ var _ = Describe("GCL manipulation functions", Ordered, func() {
 	})
 
 	Context("testing GCL entry update", func() {
+		It("handles nil component groups in build pipeline GCL update", func() {
+			err := UpdateGCLForBuildPLR(ctx, k8sClient, nil, buildPipelineRun, componentName)
+			Expect(err).NotTo(HaveOccurred())
+		})
+
 		When("an entry matching a componentVersion is added", func() {
 			BeforeAll(func() {
 				updatedComponentGroup = hasCompGroup.DeepCopy()
