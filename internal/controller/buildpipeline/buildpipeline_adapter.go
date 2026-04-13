@@ -634,6 +634,13 @@ func (a *Adapter) EnsureSupercededSnapshotsCanceled() (result controller.Operati
 	if a.application != nil {
 		snapshots, err = a.loader.GetAllPullSnapshotsForPR(a.context, a.client, a.application.ObjectMeta, a.component.Name, pr)
 	} else {
+		if a.componentGroups == nil || len(*a.componentGroups) == 0 {
+			a.logger.Info("no ComponentGroups found for component version; skipping superseded Snapshot cancellation",
+				"pipelineRun.Namespace", a.pipelineRun.Namespace,
+				"pipelineRun.Name", a.pipelineRun.Name,
+				"component.Name", a.component.Name)
+			return controller.ContinueProcessing()
+		}
 		// We only have to pass one ComponentGroup here.  The componentGroup is only used to get
 		// the namespace to search. Since all ComponentGroups have to belong to the same NS, we
 		// don't need to search with each ComponentGroup
