@@ -295,6 +295,10 @@ func (l *loader) GetAllIntegrationTestScenariosForComponentGroup(ctx context.Con
 // GetAllIntegrationTestScenariosForComponentGroup returns all IntegrationTestScenarios used by all ComponentGroups in the list. No deduplication is required since an ITS can only belong to one ComponentGroup
 func (l *loader) GetAllIntegrationTestScenariosForComponentGroups(ctx context.Context, c client.Client, componentGroups *[]v1beta2.ComponentGroup) (*[]v1beta2.IntegrationTestScenario, error) {
 	scenarios := []v1beta2.IntegrationTestScenario{}
+	if componentGroups == nil {
+		return &scenarios, nil
+	}
+
 	for _, componentGroup := range *componentGroups {
 		items, err := l.GetAllIntegrationTestScenariosForComponentGroup(ctx, c, &componentGroup)
 		if err != nil {

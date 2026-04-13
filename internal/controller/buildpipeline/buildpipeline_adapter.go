@@ -81,6 +81,11 @@ func NewAdapterWithApplication(context context.Context, pipelineRun *tektonv1.Pi
 func NewAdapter(context context.Context, pipelineRun *tektonv1.PipelineRun, component *applicationapiv1alpha1.Component, componentGroups *[]v1beta2.ComponentGroup,
 	logger h.IntegrationLogger, loader loader.ObjectLoader, client client.Client,
 ) *Adapter {
+	if componentGroups == nil {
+		emptyComponentGroups := []v1beta2.ComponentGroup{}
+		componentGroups = &emptyComponentGroups
+	}
+
 	return &Adapter{
 		pipelineRun:     pipelineRun,
 		component:       component,
@@ -203,6 +208,15 @@ func (a *Adapter) EnsureSnapshotExists() (result controller.OperationResult, err
 	if _, found := a.pipelineRun.Annotations[tektonconsts.SnapshotNamesLabel]; found {
 		a.logger.Info("The build pipelineRun is already associated with existing Snapshot via annotation",
 			"snapshot.Name", a.pipelineRun.Annotations[tektonconsts.SnapshotNamesLabel])
+		canRemoveFinalizer = true
+		return controller.ContinueProcessing()
+	}
+
+	if a.componentGroups == nil || len(*a.componentGroups) == 0 {
+		a.logger.Info("no ComponentGroups found for component version; skipping Snapshot creation",
+			"pipelineRun.Namespace", a.pipelineRun.Namespace,
+			"pipelineRun.Name", a.pipelineRun.Name,
+			"component.Name", a.component.Name)
 		canRemoveFinalizer = true
 		return controller.ContinueProcessing()
 	}
@@ -480,6 +494,14 @@ func (a *Adapter) EnsureIntegrationTestReportedToGitProvider() (controller.Opera
 		return controller.ContinueProcessing()
 	}
 
+	if a.application == nil && (a.componentGroups == nil || len(*a.componentGroups) == 0) {
+		a.logger.Info("no ComponentGroups found for component version; skipping integration test status reporting",
+			"pipelineRun.Namespace", a.pipelineRun.Namespace,
+			"pipelineRun.Name", a.pipelineRun.Name,
+			"component.Name", a.component.Name)
+		return controller.ContinueProcessing()
+	}
+
 	integrationTestStatus := getIntegrationTestStatusFromBuildPLR(a.pipelineRun)
 
 	if integrationTestStatus == intgteststat.IntegrationTestStatus(0) {
@@ -565,6 +587,14 @@ func (a *Adapter) EnsurePRSnapshotAnnotatedForMergedPR() (controller.OperationRe
 		return controller.ContinueProcessing()
 	}
 
+	if a.application == nil && (a.componentGroups == nil || len(*a.componentGroups) == 0) {
+		a.logger.Info("no ComponentGroups found for component version; skipping PR snapshot annotation",
+			"pipelineRun.Namespace", a.pipelineRun.Namespace,
+			"pipelineRun.Name", a.pipelineRun.Name,
+			"component.Name", a.component.Name)
+		return controller.ContinueProcessing()
+	}
+
 	var prComponentSnapshots *[]applicationapiv1alpha1.Snapshot
 	var err error
 	// TODO: remove application-specific code
@@ -634,6 +664,13 @@ func (a *Adapter) EnsureSupercededSnapshotsCanceled() (result controller.Operati
 	if a.application != nil {
 		snapshots, err = a.loader.GetAllPullSnapshotsForPR(a.context, a.client, a.application.ObjectMeta, a.component.Name, pr)
 	} else {
+		if a.componentGroups == nil || len(*a.componentGroups) == 0 {
+			a.logger.Info("no ComponentGroups found for component version; skipping superseded Snapshot cancellation",
+				"pipelineRun.Namespace", a.pipelineRun.Namespace,
+				"pipelineRun.Name", a.pipelineRun.Name,
+				"component.Name", a.component.Name)
+			return controller.ContinueProcessing()
+		}
 		// We only have to pass one ComponentGroup here.  The componentGroup is only used to get
 		// the namespace to search. Since all ComponentGroups have to belong to the same NS, we
 		// don't need to search with each ComponentGroup
