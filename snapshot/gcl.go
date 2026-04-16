@@ -1,3 +1,19 @@
+/*
+Copyright 2022 Red Hat Inc.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package snapshot
 
 import (
@@ -6,15 +22,19 @@ import (
 	"fmt"
 	"slices"
 
+	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
 	"github.com/konflux-ci/integration-service/api/v1beta2"
+	"github.com/konflux-ci/integration-service/helpers"
+	"github.com/konflux-ci/integration-service/loader"
 	"github.com/konflux-ci/integration-service/tekton"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
+	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 // updateGCLForBuildPLR updates global candidate list for component snapshots
-func UpdateGCLForBuildPLR(ctx context.Context, client client.Client, componentGroups *[]v1beta2.ComponentGroup, pipelineRun *tektonv1.PipelineRun, componentName string) error {
+func UpdateGCLForBuildPLR(ctx context.Context, client client.Client, objectLoader loader.ObjectLoader, componentGroups *[]v1beta2.ComponentGroup, pipelineRun *tektonv1.PipelineRun, componentName string) error {
 	containerImage, err := tekton.GetImagePullSpecFromPipelineRun(pipelineRun)
 	if err != nil {
 		return nil
@@ -42,14 +62,23 @@ func UpdateGCLForBuildPLR(ctx context.Context, client client.Client, componentGr
 	}
 
 	for _, componentGroup := range *componentGroups {
-		err = errors.Join(err, UpdateGCLEntry(ctx, client, &componentGroup, entry))
+		retryError := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+			cg, err := objectLoader.GetComponentGroup(ctx, client, componentGroup.Name, componentGroup.Namespace)
+			if err != nil {
+				return err
+			}
+			err = UpdateGCLEntry(ctx, client, cg, entry)
+			return err
+		})
+		err = errors.Join(err, retryError)
 	}
 	return err
 }
 
+// Updates a single GCL entry for a given componentGroup
 func UpdateGCLEntry(ctx context.Context, adapterClient client.Client, componentGroup *v1beta2.ComponentGroup, newEntry v1beta2.ComponentState) error {
 	log := log.FromContext(ctx)
-	patch := client.MergeFrom(componentGroup.DeepCopy())
+	patch := client.MergeFromWithOptions(componentGroup.DeepCopy(), client.MergeFromWithOptimisticLock{})
 
 	// TODO: add mutating webhook for ComponentGroups that adds blank GCL item when component is added to components list and removes existing GCL entry when component is removed from components list
 	// Find matching GCL entry for ComponentVersion
@@ -75,6 +104,7 @@ func UpdateGCLEntry(ctx context.Context, adapterClient client.Client, componentG
 		return fmt.Errorf("could not find ComponentVersion '%s',%s' in ComponentGroup '%s'", newEntry.Name, newEntry.Version, componentGroup.Name)
 	}
 
+	// TODO: support optimistic locking
 	err := adapterClient.Status().Patch(ctx, componentGroup, patch)
 	if err != nil {
 		log.Error(err, "Failed to updated GCL entry for ComponentVersion", "componentGroup", componentGroup.Name, "component.Name", newEntry.Name, "component.Version", newEntry.Version)
@@ -83,4 +113,53 @@ func UpdateGCLEntry(ctx context.Context, adapterClient client.Client, componentG
 
 	log.Info("Updated Global Candidate List entry for the ComponentVersion", "ComponentGroup", componentGroup.Name, "Component.Name", newEntry.Name, "Component.Version", newEntry.Version, "URL", newEntry.URL, "LastPromotedCommit", newEntry.LastPromotedCommit, "LastPromotedImage", newEntry.LastPromotedImage, "LastPromotedBuildTime", newEntry.LastPromotedBuildTime)
 	return nil
+}
+
+// Updates the GCL for a componentGroup with a list of entries
+func UpdateMultipleGCLEntries(ctx context.Context, adapterClient client.Client, componentGroup *v1beta2.ComponentGroup, componentsToUpdate map[string]v1beta2.ComponentState, logger helpers.IntegrationLogger) error {
+	patch := client.MergeFromWithOptions(componentGroup.DeepCopy(), client.MergeFromWithOptimisticLock{})
+	for i, entry := range componentGroup.Status.GlobalCandidateList {
+		entryKey := getComponentVersionString(entry.Name, entry.Version)
+		newEntry, ok := componentsToUpdate[entryKey]
+		if !ok {
+			// if key doesn't exist then we want to retain the original GCL entry
+			continue
+		}
+		newEntry.LastPromotedBuildTime = entry.LastPromotedBuildTime
+
+		componentGroup.Status.GlobalCandidateList = slices.Replace(componentGroup.Status.GlobalCandidateList, i, i+1, newEntry)
+	}
+
+	err := adapterClient.Status().Patch(ctx, componentGroup, patch)
+	if err != nil {
+		logger.Error(err, "Failed to updated GCL entry for ComponentVersion with components", "componentGroup", componentGroup.Name, "snapshotComponents", componentsToUpdate)
+		return err
+	}
+	return nil
+}
+
+// Update GCL for all Components in snapshot
+func UpdateGCLForOverrideSnapshot(ctx context.Context, adapterClient client.Client, objectLoader loader.ObjectLoader, componentGroup *v1beta2.ComponentGroup, snapshot *applicationapiv1alpha1.Snapshot, logger helpers.IntegrationLogger) error {
+	componentsToAdd := map[string]v1beta2.ComponentState{}
+	for _, component := range snapshot.Spec.Components {
+		component := component //G601
+
+		// Create ComponentState object
+		key := getComponentVersionString(component.Name, component.Version)
+		componentsToAdd[key] = snapshotComponentToComponentState(component)
+	}
+
+	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		cg, err := objectLoader.GetComponentGroup(ctx, adapterClient, componentGroup.Name, componentGroup.Namespace)
+		if err != nil {
+			return err
+		}
+		err = UpdateMultipleGCLEntries(ctx, adapterClient, cg, componentsToAdd, logger)
+		if err == nil {
+			logger.Info("Updated Global Candidate List with override snapshot", "componentGroup.Name", componentGroup.Name, "componentGroup.Namespace", componentGroup.Namespace, "snapshot.Name", snapshot.Name)
+		}
+		return err
+	})
+
+	return err
 }

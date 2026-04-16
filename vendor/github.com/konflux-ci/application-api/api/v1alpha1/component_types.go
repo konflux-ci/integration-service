@@ -61,10 +61,6 @@ type ComponentSourceUnion struct {
 	// Git repository URL for the component.
 	// Optional.
 	// !!! Will be required when we remove old model
-	// TODO replace Optional with Required when switching to the new model.
-	// +kubebuilder:validation:Optional
-	// + kubebuilder:validation:Required
-	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="Git repository URL cannot be changed"
 	GitURL string `json:"url,omitempty"`
 
 	// Dockerfile path for all versions, unless explicitly specified for a version.
@@ -228,9 +224,6 @@ type RepositorySettings struct {
 	// Optional.
 	GithubAppTokenScopeRepos []string `json:"github-app-token-scope-repos,omitempty"`
 }
-
-// EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
-// NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
 // ComponentSpec defines the desired state of Component
 type ComponentSpec struct {

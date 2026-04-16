@@ -1242,7 +1242,22 @@ func IsComponentSnapshotCreatedByPACPushEvent(snapshot *applicationapiv1alpha1.S
 	return IsComponentSnapshot(snapshot) && IsSnapshotCreatedByPACPushEvent(snapshot)
 }
 
-func SetOwnerReference(ctx context.Context, adapterClient client.Client, snapshot *applicationapiv1alpha1.Snapshot, owner *applicationapiv1alpha1.Application) (*applicationapiv1alpha1.Snapshot, error) {
+// TODO: delete when we remove old application-specific code
+func SetOwnerReferenceApplication(ctx context.Context, adapterClient client.Client, snapshot *applicationapiv1alpha1.Snapshot, owner *applicationapiv1alpha1.Application) (*applicationapiv1alpha1.Snapshot, error) {
+	patch := client.MergeFrom(snapshot.DeepCopy())
+	err := ctrl.SetControllerReference(owner, snapshot, adapterClient.Scheme())
+	if err != nil {
+		return snapshot, err
+	}
+	err = adapterClient.Patch(ctx, snapshot, patch)
+	if err != nil {
+		return snapshot, err
+	}
+	return snapshot, nil
+}
+
+// SetOwnerReference sets the ComponentGroup as an owner of the snapshot
+func SetOwnerReference(ctx context.Context, adapterClient client.Client, snapshot *applicationapiv1alpha1.Snapshot, owner *v1beta2.ComponentGroup) (*applicationapiv1alpha1.Snapshot, error) {
 	patch := client.MergeFrom(snapshot.DeepCopy())
 	err := ctrl.SetControllerReference(owner, snapshot, adapterClient.Scheme())
 	if err != nil {

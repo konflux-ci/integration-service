@@ -289,7 +289,7 @@ github.com/golang/protobuf/ptypes/timestamp
 # github.com/google/btree v1.1.3
 ## explicit; go 1.18
 github.com/google/btree
-# github.com/google/cel-go v0.26.1 => github.com/google/cel-go v0.26.1
+# github.com/google/cel-go v0.27.0 => github.com/google/cel-go v0.26.1
 ## explicit; go 1.22.0
 github.com/google/cel-go/cel
 github.com/google/cel-go/checker
@@ -346,7 +346,7 @@ github.com/google/pprof/profile
 # github.com/google/uuid v1.6.0
 ## explicit
 github.com/google/uuid
-# github.com/grpc-ecosystem/grpc-gateway/v2 v2.27.6
+# github.com/grpc-ecosystem/grpc-gateway/v2 v2.27.7
 ## explicit; go 1.24.0
 github.com/grpc-ecosystem/grpc-gateway/v2/internal/httprule
 github.com/grpc-ecosystem/grpc-gateway/v2/runtime
@@ -381,7 +381,7 @@ github.com/kevinburke/ssh_config
 # github.com/klauspost/cpuid/v2 v2.3.0
 ## explicit; go 1.22
 github.com/klauspost/cpuid/v2
-# github.com/konflux-ci/application-api v0.0.0-20260213151620-9ac61f5d7ca0
+# github.com/konflux-ci/application-api v0.0.0-20260312190025-5154ad273e17
 ## explicit; go 1.19
 github.com/konflux-ci/application-api/api/v1alpha1
 # github.com/konflux-ci/coverport/instrumentation/go v0.0.0-20251127115143-b5207b335f8b
@@ -396,7 +396,7 @@ github.com/konflux-ci/operator-toolkit/metadata
 github.com/konflux-ci/operator-toolkit/predicates
 github.com/konflux-ci/operator-toolkit/test
 github.com/konflux-ci/operator-toolkit/utils
-# github.com/konflux-ci/release-service v0.0.0-20260127184035-c36c56a3c440
+# github.com/konflux-ci/release-service v0.0.0-20260130155849-48535a3e5ace
 ## explicit; go 1.25.0
 github.com/konflux-ci/release-service/api/v1alpha1
 github.com/konflux-ci/release-service/git
@@ -809,7 +809,7 @@ golang.org/x/tools/internal/versions
 # gomodules.xyz/jsonpatch/v2 v2.5.0
 ## explicit; go 1.20
 gomodules.xyz/jsonpatch/v2
-# google.golang.org/api v0.262.0
+# google.golang.org/api v0.264.0
 ## explicit; go 1.24.0
 google.golang.org/api/support/bundler
 # google.golang.org/genproto/googleapis/api v0.0.0-20260128011058-8636f8732409

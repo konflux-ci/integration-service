@@ -398,7 +398,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 					Resource:   hasPRSnapshot,
 				},
 				{
-					ContextKey: loader.RequiredIntegrationTestScenariosForSnapshotApplicationContextKey,
+					ContextKey: loader.RequiredIntegrationTestScenariosForSnapshotContextKey,
 					Resource:   mockScenarios,
 				},
 			})
@@ -430,7 +430,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 					Resource:   hasApp,
 				},
 				{
-					ContextKey: loader.RequiredIntegrationTestScenariosForSnapshotApplicationContextKey,
+					ContextKey: loader.RequiredIntegrationTestScenariosForSnapshotContextKey,
 					Resource:   mockScenarios,
 				},
 			})
@@ -473,7 +473,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 					Resource:   []applicationapiv1alpha1.Component{*hasComp},
 				},
 				{
-					ContextKey: loader.RequiredIntegrationTestScenariosForSnapshotApplicationContextKey,
+					ContextKey: loader.RequiredIntegrationTestScenariosForSnapshotContextKey,
 					Resource:   []v1beta2.IntegrationTestScenario{*integrationTestScenario},
 				},
 				{
@@ -576,7 +576,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 					Resource:   hasSnapshot,
 				},
 				{
-					ContextKey: loader.RequiredIntegrationTestScenariosForSnapshotApplicationContextKey,
+					ContextKey: loader.RequiredIntegrationTestScenariosForSnapshotContextKey,
 					Resource:   []v1beta2.IntegrationTestScenario{*integrationTestScenario},
 				},
 				{
@@ -630,7 +630,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 					Resource:   hasSnapshot,
 				},
 				{
-					ContextKey: loader.RequiredIntegrationTestScenariosForSnapshotApplicationContextKey,
+					ContextKey: loader.RequiredIntegrationTestScenariosForSnapshotContextKey,
 					Resource:   []v1beta2.IntegrationTestScenario{},
 				},
 				{
@@ -688,7 +688,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 					Resource:   []applicationapiv1alpha1.Component{*hasComp, *hasComp2},
 				},
 				{
-					ContextKey: loader.RequiredIntegrationTestScenariosForSnapshotApplicationContextKey,
+					ContextKey: loader.RequiredIntegrationTestScenariosForSnapshotContextKey,
 					Resource:   []v1beta2.IntegrationTestScenario{*integrationTestScenario},
 				},
 				{
@@ -974,7 +974,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 					Resource:   hasPRSnapshot,
 				},
 				{
-					ContextKey: loader.RequiredIntegrationTestScenariosForSnapshotApplicationContextKey,
+					ContextKey: loader.RequiredIntegrationTestScenariosForSnapshotContextKey,
 					Resource:   []v1beta2.IntegrationTestScenario{*integrationTestScenario},
 				},
 				{

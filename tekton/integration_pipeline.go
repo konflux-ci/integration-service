@@ -521,11 +521,29 @@ func (r *IntegrationPipelineRun) WithIntegrationAnnotations(its *v1beta2.Integra
 }
 
 // WithApplication adds the name of application as a label to the Integration PipelineRun.
+// TODO: remove once application-specific code is deprecated
 func (r *IntegrationPipelineRun) WithApplication(application *applicationapiv1alpha1.Application) *IntegrationPipelineRun {
+	if application == nil {
+		return r
+	}
 	if r.Labels == nil {
 		r.Labels = map[string]string{}
 	}
 	r.Labels[consts.ApplicationNameLabel] = application.Name
+
+	return r
+}
+
+// WithComponentGroup adds the name of component group as a label to the Integration PipelineRun.
+func (r *IntegrationPipelineRun) WithComponentGroup(componentGroup *v1beta2.ComponentGroup) *IntegrationPipelineRun {
+	// TODO: remove if block once application-specific code is deprecated
+	if componentGroup == nil {
+		return r
+	}
+	if r.Labels == nil {
+		r.Labels = map[string]string{}
+	}
+	r.Labels[consts.ComponentGroupNameLabel] = componentGroup.Name
 
 	return r
 }

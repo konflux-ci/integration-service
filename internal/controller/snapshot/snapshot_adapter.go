@@ -37,6 +37,7 @@ import (
 	intgteststat "github.com/konflux-ci/integration-service/pkg/integrationteststatus"
 	"github.com/konflux-ci/integration-service/pkg/metrics"
 	"github.com/konflux-ci/integration-service/release"
+	"github.com/konflux-ci/integration-service/snapshot"
 	"github.com/konflux-ci/integration-service/status"
 	"github.com/konflux-ci/integration-service/tekton"
 
@@ -58,26 +59,42 @@ type ScenarioOptions struct {
 
 // Adapter holds the objects needed to reconcile a Release.
 type Adapter struct {
-	snapshot    *applicationapiv1alpha1.Snapshot
-	application *applicationapiv1alpha1.Application
-	logger      h.IntegrationLogger
-	loader      loader.ObjectLoader
-	client      client.Client
-	context     context.Context
-	status      status.StatusInterface
+	snapshot       *applicationapiv1alpha1.Snapshot
+	application    *applicationapiv1alpha1.Application
+	componentGroup *v1beta2.ComponentGroup
+	logger         h.IntegrationLogger
+	loader         loader.ObjectLoader
+	client         client.Client
+	context        context.Context
+	status         status.StatusInterface
 }
 
 // NewAdapter creates and returns an Adapter instance.
-func NewAdapter(context context.Context, snapshot *applicationapiv1alpha1.Snapshot, application *applicationapiv1alpha1.Application, logger h.IntegrationLogger, loader loader.ObjectLoader, client client.Client,
+func NewAdapterWithApplication(context context.Context, snapshot *applicationapiv1alpha1.Snapshot, application *applicationapiv1alpha1.Application, logger h.IntegrationLogger, loader loader.ObjectLoader, client client.Client,
 ) *Adapter {
 	return &Adapter{
-		snapshot:    snapshot,
-		application: application,
-		logger:      logger,
-		loader:      loader,
-		client:      client,
-		context:     context,
-		status:      status.NewStatus(logger.Logger, client),
+		snapshot:       snapshot,
+		application:    application,
+		componentGroup: nil,
+		logger:         logger,
+		loader:         loader,
+		client:         client,
+		context:        context,
+		status:         status.NewStatus(logger.Logger, client),
+	}
+}
+
+func NewAdapter(context context.Context, snapshot *applicationapiv1alpha1.Snapshot, componentGroup *v1beta2.ComponentGroup, logger h.IntegrationLogger, loader loader.ObjectLoader, client client.Client,
+) *Adapter {
+	return &Adapter{
+		snapshot:       snapshot,
+		application:    nil,
+		componentGroup: componentGroup,
+		logger:         logger,
+		loader:         loader,
+		client:         client,
+		context:        context,
+		status:         status.NewStatus(logger.Logger, client),
 	}
 }
 
@@ -112,10 +129,25 @@ func (a *Adapter) EnsureRerunPipelineRunsExist() (controller.OperationResult, er
 
 // getScenariosToRerun fetches and filters the IntegrationTestScenarios based on runLabelValue.
 func (a *Adapter) getScenariosToRerun(runLabelValue string) (*[]v1beta2.IntegrationTestScenario, controller.OperationResult, error) {
+	// TODO: remove application-specific branch after deprecation
+	// or remove whole if statement and change `namespace` back to `a.componentGroup.Namespace
+	namespace := ""
+	if a.application != nil {
+		namespace = a.application.Namespace
+	} else {
+		namespace = a.componentGroup.Namespace
+	}
+
 	if runLabelValue == "all" {
-		scenarios, err := a.loader.GetAllIntegrationTestScenariosForSnapshot(a.context, a.client, a.application, a.snapshot)
+		var scenarios *[]v1beta2.IntegrationTestScenario
+		var err error
+		if a.application != nil {
+			scenarios, err = a.loader.GetAllIntegrationTestScenariosForSnapshotApplication(a.context, a.client, a.application, a.snapshot)
+		} else {
+			scenarios, err = a.loader.GetAllIntegrationTestScenariosForSnapshot(a.context, a.client, a.componentGroup, a.snapshot)
+		}
 		if err != nil {
-			a.logger.Error(err, "Failed to get IntegrationTestScenarios", "Application.Namespace", a.application.Namespace)
+			a.logger.Error(err, "Failed to get IntegrationTestScenarios", "Namespace", namespace)
 			opResult, err := controller.RequeueWithError(err)
 			return nil, opResult, err
 		}
@@ -126,7 +158,7 @@ func (a *Adapter) getScenariosToRerun(runLabelValue string) (*[]v1beta2.Integrat
 		return scenarios, controller.OperationResult{}, nil
 	}
 
-	scenario, err := a.loader.GetScenario(a.context, a.client, runLabelValue, a.application.Namespace)
+	scenario, err := a.loader.GetScenario(a.context, a.client, runLabelValue, namespace)
 	if err != nil {
 		if clienterrors.IsNotFound(err) {
 			a.logger.Error(err, "IntegrationTestScenario not found", "Scenario", runLabelValue)
@@ -167,12 +199,12 @@ func (a *Adapter) handleScenarioReruns(scenarios *[]v1beta2.IntegrationTestScena
 
 // rerunIntegrationPipelinerunForScenario creates a pipelinerun for the given scenario and updates its status.
 func (a *Adapter) rerunIntegrationPipelinerunForScenario(scenario *v1beta2.IntegrationTestScenario, testStatuses *intgteststat.SnapshotIntegrationTestStatuses) (controller.OperationResult, error) {
-	pipelineRun, err := a.createIntegrationPipelineRun(a.application, scenario, a.snapshot)
+	pipelineRun, err := a.createIntegrationPipelineRun(scenario)
 	if err != nil {
 		return a.HandlePipelineCreationError(err, scenario, testStatuses)
 	}
 	if !gitops.IsSnapshotCreatedByPACPushEvent(a.snapshot) {
-		err = a.checkAndCancelOldSnapshotsPipelineRun(a.application, a.snapshot)
+		err = a.checkAndCancelOldSnapshotsPipelineRun()
 		if err != nil {
 			a.logger.Error(err, "Failed to check and cancel old snapshot's pipelineruns",
 				"snapshot.Name:", a.snapshot.Name)
@@ -213,11 +245,24 @@ func (a *Adapter) cleanupRerunLabelAndUpdateStatus(skipCount, totalScenarios int
 // loadAndFilterIntegrationTestScenarios loads all test scenarios and filters them based on context
 // Returns nil if no scenarios are found, but logs errors and continues processing
 func (a *Adapter) loadAndFilterIntegrationTestScenarios() *[]v1beta2.IntegrationTestScenario {
-	allIntegrationTestScenarios, err := a.loader.GetAllIntegrationTestScenariosForApplication(a.context, a.client, a.application)
-	if err != nil {
-		a.logger.Error(err, "Failed to get integration test scenarios for the following application",
-			"Application.Namespace", a.application.Namespace)
-		// Continue processing like original code - don't return nil on error
+	var allIntegrationTestScenarios *[]v1beta2.IntegrationTestScenario
+	var err error
+	// TODO: remove branch when we deprecate old application model
+	if a.application != nil {
+		allIntegrationTestScenarios, err = a.loader.GetAllIntegrationTestScenariosForApplication(a.context, a.client, a.application)
+		if err != nil {
+			a.logger.Error(err, "Failed to get integration test scenarios for the following application",
+				"Application.Namespace", a.application.Namespace, "Application.Name", a.application.Name)
+			// Continue processing like original code - don't return nil on error
+		}
+	} else {
+		// NOTE: this is returning nil and causing the panic
+		allIntegrationTestScenarios, err = a.loader.GetAllIntegrationTestScenariosForComponentGroup(a.context, a.client, a.componentGroup)
+		if err != nil {
+			a.logger.Error(err, "Failed to get integration test scenarios for the following component group",
+				"ComponentGroup.Namespace", a.componentGroup.Namespace, "ComponentGroup.Name", a.componentGroup.Name)
+			// Continue processing like original code - don't return nil on error
+		}
 	}
 
 	if allIntegrationTestScenarios == nil {
@@ -225,10 +270,18 @@ func (a *Adapter) loadAndFilterIntegrationTestScenarios() *[]v1beta2.Integration
 	}
 
 	integrationTestScenarios := gitops.FilterIntegrationTestScenariosWithContext(allIntegrationTestScenarios, a.snapshot)
-	a.logger.Info(
-		fmt.Sprintf("Found %d IntegrationTestScenarios for application", len(*integrationTestScenarios)),
-		"Application.Name", a.application.Name,
-		"IntegrationTestScenarios", len(*integrationTestScenarios))
+	// TODO: remove branch when we deprecate old application model
+	if a.application != nil {
+		a.logger.Info(
+			fmt.Sprintf("Found %d IntegrationTestScenarios for application", len(*integrationTestScenarios)),
+			"Application.Name", a.application.Name,
+			"IntegrationTestScenarios", len(*integrationTestScenarios))
+	} else {
+		a.logger.Info(
+			fmt.Sprintf("Found %d IntegrationTestScenarios for componentGroup", len(*integrationTestScenarios)),
+			"ComponentGroup.Name", a.componentGroup.Name,
+			"IntegrationTestScenarios", len(*integrationTestScenarios))
+	}
 
 	return integrationTestScenarios
 }
@@ -280,7 +333,7 @@ func (a *Adapter) processSingleScenario(
 	}
 
 	// Create new pipeline run
-	pipelineRun, err := a.createIntegrationPipelineRun(a.application, integrationTestScenario, a.snapshot)
+	pipelineRun, err := a.createIntegrationPipelineRun(integrationTestScenario)
 	if err != nil {
 		a.logger.Error(err, "Failed to create pipelineRun for snapshot and scenario",
 			"integrationScenario.Name", integrationTestScenario.Name)
@@ -331,7 +384,7 @@ func (a *Adapter) processAllScenarios(
 // cancelOldPipelinesIfNeeded cancels old pipelines for non-push events
 func (a *Adapter) cancelOldPipelinesIfNeeded() {
 	if !gitops.IsSnapshotCreatedByPACPushEvent(a.snapshot) {
-		err := a.checkAndCancelOldSnapshotsPipelineRun(a.application, a.snapshot)
+		err := a.checkAndCancelOldSnapshotsPipelineRun()
 		if err != nil {
 			a.logger.Error(err, "Failed to check and cancel old snapshot's pipelineruns",
 				"snapshot.Name:", a.snapshot.Name)
@@ -342,8 +395,16 @@ func (a *Adapter) cancelOldPipelinesIfNeeded() {
 // markSnapshotPassedIfNoRequiredScenarios checks if required scenarios exist and marks snapshot accordingly.
 // Returns an error if fetching scenarios or updating the snapshot fails.
 func (a *Adapter) markSnapshotPassedIfNoRequiredScenarios() (controller.OperationResult, error) {
-	requiredIntegrationTestScenarios, err := a.loader.GetRequiredIntegrationTestScenariosForSnapshotApplication(
-		a.context, a.client, a.application, a.snapshot)
+	// TODO: remove branch when we deprecate old application model
+	var requiredIntegrationTestScenarios *[]v1beta2.IntegrationTestScenario
+	var err error
+	if a.application != nil {
+		requiredIntegrationTestScenarios, err = a.loader.GetRequiredIntegrationTestScenariosForSnapshotApplication(
+			a.context, a.client, a.application, a.snapshot)
+	} else {
+		requiredIntegrationTestScenarios, err = a.loader.GetRequiredIntegrationTestScenariosForSnapshot(
+			a.context, a.client, a.componentGroup, a.snapshot)
+	}
 	if err != nil {
 		a.logger.Error(err, "Failed to get all required IntegrationTestScenarios")
 		patch := client.MergeFrom(a.snapshot.DeepCopy())
@@ -424,7 +485,14 @@ func (a *Adapter) EnsureGlobalCandidateImageUpdated() (controller.OperationResul
 		return controller.ContinueProcessing()
 	}
 
-	err := a.updateGCLForOverrideSnapshot()
+	// TODO: remove this function call when we deprecate old application model
+	// also remove function `updateGCLForOverrideSnapshot` entirely
+	var err error
+	if a.application != nil {
+		err = a.updateGCLForOverrideSnapshot()
+	} else {
+		err = snapshot.UpdateGCLForOverrideSnapshot(a.context, a.client, a.loader, a.componentGroup, a.snapshot, a.logger)
+	}
 	if err != nil {
 		return controller.RequeueWithError(err)
 	}
@@ -468,6 +536,7 @@ func (a *Adapter) shouldUpdateGlobalCandidateList() bool {
 }
 
 // updateGCLForOverrideSnapshot handles updating global candidate list for override snapshots
+// TODO: remove function once we deprecate old application model
 func (a *Adapter) updateGCLForOverrideSnapshot() error {
 	for _, snapshotComponent := range a.snapshot.Spec.Components {
 		snapshotComponent := snapshotComponent //G601
@@ -550,7 +619,14 @@ func (a *Adapter) shouldProcessReleases() bool {
 
 // getAutoReleasePlans fetch release plans
 func (a *Adapter) getAutoReleasePlans() (*[]releasev1alpha1.ReleasePlan, error) {
-	releasePlans, err := a.loader.GetAutoReleasePlansForApplication(a.context, a.client, a.application, a.snapshot)
+	// TODO: remove application-specific branch
+	var releasePlans *[]releasev1alpha1.ReleasePlan
+	var err error
+	if a.application != nil {
+		releasePlans, err = a.loader.GetAutoReleasePlansForApplication(a.context, a.client, a.application, a.snapshot)
+	} else {
+		releasePlans, err = a.loader.GetAutoReleasePlansForComponentGroup(a.context, a.client, a.componentGroup, a.snapshot)
+	}
 	if err != nil {
 		a.logger.Error(err, "Failed to get all ReleasePlans")
 		return nil, err
@@ -576,6 +652,7 @@ func (a *Adapter) handleReleaseError(err error, message string) (controller.Oper
 
 // EnsureOverrideSnapshotValid is an operation that ensure the manually created override snapshot have valid
 // digest and git source in snapshotComponents, mark it as invalid otherwise
+// TODO: migrate to snapshot package for ComponentGroup version
 func (a *Adapter) EnsureOverrideSnapshotValid() (controller.OperationResult, error) {
 	if !gitops.IsOverrideSnapshot(a.snapshot) {
 		a.logger.Info("The snapshot was not override snapshot, skipping")
@@ -588,7 +665,29 @@ func (a *Adapter) EnsureOverrideSnapshotValid() (controller.OperationResult, err
 	}
 
 	// validate all snapshotComponents' containerImages/source in snapshot, make all errors joined
-	var err, errsForSnapshot error
+	var errsForSnapshot error
+	if a.application != nil {
+		errsForSnapshot = a.validateOverrideSnapshotComponents()
+	} else {
+		errsForSnapshot = snapshot.ValidateOverrideSnapshotComponents(a.context, a.snapshot, a.componentGroup)
+	}
+
+	if errsForSnapshot != nil {
+		a.logger.Error(errsForSnapshot, "mark the override snapshot as invalid due to invalid snapshotComponent")
+		err := gitops.MarkSnapshotAsInvalid(a.context, a.client, a.snapshot, errsForSnapshot.Error())
+		if err != nil {
+			a.logger.Error(err, "Failed to update snapshot to Invalid",
+				"snapshot.Namespace", a.snapshot.Namespace, "snapshot.Name", a.snapshot.Name)
+			return controller.RequeueWithError(err)
+		}
+		a.logger.Info("Snapshot has been marked as invalid due to invalid snapshotComponent",
+			"snapshot.Namespace", a.snapshot.Namespace, "snapshot.Name", a.snapshot.Name)
+	}
+	return controller.ContinueProcessing()
+}
+
+func (a *Adapter) validateOverrideSnapshotComponents() error {
+	var errsForSnapshot error
 	for _, snapshotComponent := range a.snapshot.Spec.Components {
 		snapshotComponent := snapshotComponent //G601
 		_, err := a.loader.GetComponent(a.context, a.client, snapshotComponent.Name, a.snapshot.Namespace)
@@ -596,7 +695,7 @@ func (a *Adapter) EnsureOverrideSnapshotValid() (controller.OperationResult, err
 			a.logger.Error(err, "Failed to get component from application", "application.Name", a.application.Name, "component.Name", snapshotComponent.Name)
 			_, loaderError := h.HandleLoaderError(a.logger, err, snapshotComponent.Name, a.application.Name)
 			if loaderError != nil {
-				return controller.RequeueWithError(loaderError)
+				return loaderError
 			} else {
 				errsForSnapshot = errors.Join(errsForSnapshot, fmt.Errorf("snapshotComponent %s defined in snapshot %s doesn't exist under application %s/%s", snapshotComponent.Name, a.snapshot.Name, a.application.Namespace, a.application.Name))
 			}
@@ -614,18 +713,7 @@ func (a *Adapter) EnsureOverrideSnapshotValid() (controller.OperationResult, err
 		}
 	}
 
-	if errsForSnapshot != nil {
-		a.logger.Error(errsForSnapshot, "mark the override snapshot as invalid due to invalid snapshotComponent")
-		err = gitops.MarkSnapshotAsInvalid(a.context, a.client, a.snapshot, errsForSnapshot.Error())
-		if err != nil {
-			a.logger.Error(err, "Failed to update snapshot to Invalid",
-				"snapshot.Namespace", a.snapshot.Namespace, "snapshot.Name", a.snapshot.Name)
-			return controller.RequeueWithError(err)
-		}
-		a.logger.Info("Snapshot has been marked as invalid due to invalid snapshotComponent",
-			"snapshot.Namespace", a.snapshot.Namespace, "snapshot.Name", a.snapshot.Name)
-	}
-	return controller.ContinueProcessing()
+	return errsForSnapshot
 }
 
 // EnsureGroupSnapshotExist is an operation that ensure the group snapshot is created for component snapshots
@@ -670,6 +758,7 @@ func (a *Adapter) EnsureGroupSnapshotExist() (controller.OperationResult, error)
 		return controller.ContinueProcessing()
 	}
 
+	// TODO: handle group snapshots in STONEINTG-1519
 	groupSnapshot, componentSnapshotInfos, err := a.prepareGroupSnapshot(a.application, prGroup, prGroupHash)
 	if err != nil {
 		a.logger.Error(err, "failed to prepare group snapshot")
@@ -801,39 +890,40 @@ func shouldUpdateIntegrationGitResolver(integrationTestScenario *v1beta2.Integra
 
 // createIntegrationPipelineRun creates and returns a new integration PipelineRun. The Pipeline information and the parameters to it
 // will be extracted from the given integrationScenario. The integration's Snapshot will also be passed to the integration PipelineRun.
-func (a *Adapter) createIntegrationPipelineRun(application *applicationapiv1alpha1.Application, integrationTestScenario *v1beta2.IntegrationTestScenario, snapshot *applicationapiv1alpha1.Snapshot) (*tektonv1.PipelineRun, error) {
+func (a *Adapter) createIntegrationPipelineRun(integrationTestScenario *v1beta2.IntegrationTestScenario) (*tektonv1.PipelineRun, error) {
 	a.logger.Info("Creating new pipelinerun for integrationTestscenario",
 		"integrationTestScenario.Name", integrationTestScenario.Name)
 
-	pipelineRunBuilder, err := tekton.NewIntegrationPipelineRun(a.client, a.context, a.loader, a.logger, integrationTestScenario.Name, application.Namespace, integrationTestScenario, a.snapshot)
+	pipelineRunBuilder, err := tekton.NewIntegrationPipelineRun(a.client, a.context, a.loader, a.logger, integrationTestScenario.Name, a.snapshot.Namespace, integrationTestScenario, a.snapshot)
 	if err != nil {
 		return nil, err
 	}
 
-	pipelineRunBuilder = pipelineRunBuilder.WithSnapshot(snapshot, integrationTestScenario).
+	pipelineRunBuilder = pipelineRunBuilder.WithSnapshot(a.snapshot, integrationTestScenario).
 		WithIntegrationLabels(integrationTestScenario).
 		WithIntegrationAnnotations(integrationTestScenario).
-		WithApplication(a.application).
+		WithApplication(a.application). // TODO: remove once application-specific code is deprecated
+		WithComponentGroup(a.componentGroup).
 		WithDefaultServiceAccount(tektonconsts.DefaultIntegrationPipelineServiceAccount).
 		WithExtraParams(integrationTestScenario.Spec.Params).
 		WithFinalizer(h.IntegrationPipelineRunFinalizer).
 		WithIntegrationTimeouts(integrationTestScenario, a.logger.Logger)
 
-	if shouldUpdateIntegrationGitResolver(integrationTestScenario, snapshot) {
+	if shouldUpdateIntegrationGitResolver(integrationTestScenario, a.snapshot) {
 		a.logger.Info("use the integration test task/taskrun from the code in the pr of snapshot", "integrationTestScneario.Name", integrationTestScenario.Name)
-		pipelineRunBuilder.WithUpdatedTasksGitResolver(snapshot)
-		pipelineRunBuilder.WithUpdatedPipelineGitResolver(snapshot)
+		pipelineRunBuilder.WithUpdatedTasksGitResolver(a.snapshot)
+		pipelineRunBuilder.WithUpdatedPipelineGitResolver(a.snapshot)
 	}
 
 	pipelineRun := pipelineRunBuilder.AsPipelineRun()
 
-	err = ctrl.SetControllerReference(snapshot, pipelineRun, a.client.Scheme())
+	err = ctrl.SetControllerReference(a.snapshot, pipelineRun, a.client.Scheme())
 	if err != nil {
-		return nil, fmt.Errorf("failed to set snapshot %s as ControllerReference of pipelineRun: %w", snapshot.Name, err)
+		return nil, fmt.Errorf("failed to set snapshot %s as ControllerReference of pipelineRun: %w", a.snapshot.Name, err)
 	}
 	err = a.client.Create(a.context, pipelineRun)
 	if err != nil {
-		return nil, fmt.Errorf("failed to call client.Create to create pipelineRun for snapshot %s: %w", snapshot.Name, err)
+		return nil, fmt.Errorf("failed to call client.Create to create pipelineRun for snapshot %s: %w", a.snapshot.Name, err)
 	}
 
 	go metrics.RegisterNewIntegrationPipelineRun()
@@ -887,6 +977,7 @@ func (a *Adapter) HandlePipelineCreationError(err error, integrationTestScenario
 	return controller.RequeueWithError(err)
 }
 
+// TODO: update in STONEINTG-1519
 func (a *Adapter) prepareGroupSnapshot(application *applicationapiv1alpha1.Application, prGroup, prGroupHash string) (*applicationapiv1alpha1.Snapshot, []gitops.ComponentSnapshotInfo, error) {
 	componentsToCheck, err := a.loader.GetComponentsFromSnapshotForPRGroup(a.context, a.client, application.Namespace, prGroup, prGroupHash, application.Name)
 	if err != nil {
@@ -987,6 +1078,7 @@ func (a *Adapter) prepareGroupSnapshot(application *applicationapiv1alpha1.Appli
 }
 
 // haveAllPipelineRunProcessedForPrGroup checks if all build plr has been processed for the given pr group
+// TODO: update in STONEINTG-1519
 func (a *Adapter) haveAllPipelineRunProcessedForPrGroup(prGroup, prGroupHash string) (bool, error) {
 	pipelineRuns, err := a.loader.GetPipelineRunsWithPRGroupHash(a.context, a.client, a.snapshot.Namespace, prGroupHash, a.application.Name)
 	if err != nil {
@@ -1032,29 +1124,43 @@ func (a *Adapter) haveAllPipelineRunProcessedForPrGroup(prGroup, prGroupHash str
 	return true, nil
 }
 
-// checkAndCancelOldSnapshotsPipelineRun sorts all snapshots for application and cancels all running integrationTest pipelineruns within application
+// checkAndCancelOldSnapshotsPipelineRun sorts all snapshots for component group and cancels all running integrationTest pipelineruns within component group
 // removes finalizer before the pipelinerun is set as CancelledRunFinally to be gracefully cancelled
-func (a *Adapter) checkAndCancelOldSnapshotsPipelineRun(application *applicationapiv1alpha1.Application, snapshot *applicationapiv1alpha1.Snapshot) error {
+func (a *Adapter) checkAndCancelOldSnapshotsPipelineRun() error {
 	var err error
 	snapshots := &[]applicationapiv1alpha1.Snapshot{}
-	if gitops.IsComponentSnapshot(snapshot) {
-		snapshots, err = a.loader.GetAllPullSnapshotsForPR(a.context, a.client, application.ObjectMeta, snapshot.GetLabels()[gitops.SnapshotComponentLabel], snapshot.GetLabels()[gitops.PipelineAsCodePullRequestAnnotation])
-		if err != nil {
-			a.logger.Error(err, "Failed to fetch Snapshots for the application",
-				"application.Name:", application.Name)
-			return err
+	if gitops.IsComponentSnapshot(a.snapshot) {
+		if a.application != nil {
+			snapshots, err = a.loader.GetAllSnapshotsForPR(a.context, a.client, a.application.ObjectMeta, a.snapshot.GetLabels()[gitops.SnapshotComponentLabel], a.snapshot.GetLabels()[gitops.PipelineAsCodePullRequestAnnotation])
+			if err != nil {
+				a.logger.Error(err, "Failed to fetch Snapshots for the application",
+					"application.Name:", a.application.Name)
+				return err
+			}
+		} else {
+			snapshots, err = a.loader.GetAllSnapshotsForPR(a.context, a.client, a.componentGroup.ObjectMeta, a.snapshot.GetLabels()[gitops.SnapshotComponentLabel], a.snapshot.GetLabels()[gitops.PipelineAsCodePullRequestAnnotation])
+			if err != nil {
+				a.logger.Error(err, "Failed to fetch Snapshots for the componentGroup",
+					"componentGroup.Name:", a.componentGroup.Name)
+				return err
+			}
 		}
 	}
 
-	if gitops.IsGroupSnapshot(snapshot) {
-		prGroupHash, prGroup := gitops.GetPRGroup(snapshot)
+	if gitops.IsGroupSnapshot(a.snapshot) {
+		prGroupHash, prGroup := gitops.GetPRGroup(a.snapshot)
 		if prGroupHash == "" || prGroup == "" {
-			a.logger.Error(fmt.Errorf("pr group info can't be found in group snapshot"), "snapshot.Namespace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
-			return fmt.Errorf("pr group info can't be found in group snapshot %s/%s", snapshot.Namespace, snapshot.Name)
+			a.logger.Error(fmt.Errorf("pr group info can't be found in group snapshot"), "snapshot.Namespace", a.snapshot.Namespace, "snapshot.Name", a.snapshot.Name)
+			return fmt.Errorf("pr group info can't be found in group snapshot %s/%s", a.snapshot.Namespace, a.snapshot.Name)
 		}
-		snapshots, err = a.loader.GetMatchingGroupSnapshotsForPRGroupHash(a.context, a.client, application.Namespace, prGroupHash, application.Name)
+		// TODO: remove if statement when we deprecated old application model
+		if a.application != nil {
+			snapshots, err = a.loader.GetMatchingGroupSnapshotsForPRGroupHash(a.context, a.client, a.application.Namespace, prGroupHash, a.application.Name)
+		} else {
+			snapshots, err = a.loader.GetMatchingGroupSnapshotsForPRGroupHash(a.context, a.client, a.componentGroup.Namespace, prGroupHash, a.componentGroup.Name)
+		}
 		if err != nil {
-			a.logger.Error(fmt.Errorf("failed to get group snapshot for pr group from group snapshot"), "snapshot.Namespace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
+			a.logger.Error(fmt.Errorf("failed to get group snapshot for pr group from group snapshot"), "snapshot.Namespace", a.snapshot.Namespace, "snapshot.Name", a.snapshot.Name)
 			return err
 		}
 
