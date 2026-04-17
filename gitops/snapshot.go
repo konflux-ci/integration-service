@@ -771,6 +771,7 @@ func CanSnapshotBePromoted(snapshot *applicationapiv1alpha1.Snapshot) (bool, []s
 			reasons = append(reasons, "the Snapshot was created for a PaC pull request event")
 		}
 		if IsSnapshotAutoReleaseDisabled(snapshot) {
+			canBePromoted = false
 			reasons = append(reasons, fmt.Sprintf("the Snapshot '%s' label is 'false'", AutoReleaseLabel))
 		}
 		if IsGroupSnapshot(snapshot) {

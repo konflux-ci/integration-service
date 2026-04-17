@@ -39,6 +39,10 @@ func EvaluateSnapshotAutoReleaseAnnotation(autoReleaseExpr string, snapshot *app
 		return false, nil
 	}
 
+	if IsSnapshotAutoReleaseDisabled(snapshot) {
+		return false, nil
+	}
+
 	// Convert snapshot to a JSON-like map so field selections like
 	// snapshot.metadata.creationTimestamp work naturally with CEL and
 	// to allow custom functions to access the snapshot contents.
