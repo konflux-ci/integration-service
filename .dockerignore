@@ -3,3 +3,5 @@
 bin/
 testbin/
 #vendor/
+e2e-tests/
+integration-tests/
