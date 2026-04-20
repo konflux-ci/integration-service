@@ -1,0 +1,260 @@
+---
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: konflux-e2e-tests
+spec:
+  description: |
+    This task runs integration-service E2E tests by cloning the component repo,
+    building the test binary from e2e-tests/, and executing the tests against
+    a deployed Konflux instance.
+  params:
+    - name: cluster-access-secret-name
+      type: string
+      default: ""
+      description: "The name of the secret containing the kubeconfig to access the target cluster."
+    - name: test-name
+      type: string
+      description: "The name of the test being executed."
+    - name: git-repo
+      type: string
+      default: "integration-service"
+      description: "The name of the Git repository containing the E2E tests."
+    - name: git-url
+      type: string
+      default: "https://github.com/konflux-ci/integration-service.git"
+      description: "The URL of the Git repository containing the E2E tests."
+    - name: git-revision
+      type: string
+      default: "main"
+      description: "The revision (branch or tag) of the Git repository to checkout."
+    - name: oras-container
+      type: string
+      description: "The URI of the OCI container registry to store test artifacts."
+      default: "quay.io/org/rhtap-e2e-artifacts"
+    - name: job-spec
+      type: string
+      description: "The job specification containing details of the test execution."
+    - name: component-image
+      type: string
+      description: "Container image from Konflux Snapshot."
+      default: "none"
+    - name: ginkgo-procs
+      description: "Number of processes to run in parallel in ginkgo"
+      default: "10"
+    - name: e2e-timeout
+      description: "Timeout value for running E2E tests"
+      default: "150m"
+    - name: test-environment
+      type: string
+      description: "Name of the environment: 'upstream' for Kind cluster, 'downstream' for OpenShift CI."
+      default: "downstream"
+    - name: e2e-extra-label-filter
+      type: string
+      description: |
+        Additional Ginkgo label expression to narrow down which tests to run.
+        Combined with the base label filter using '&&'.
+        Leave empty to run all integration-service tests.
+      default: ""
+  volumes:
+    - name: konflux-ci-secrets-volume
+      secret:
+        secretName: konflux-e2e-secrets
+    - name: konflux-infra-secrets-volume
+      secret:
+        secretName: konflux-test-infra
+    - name: cluster-secret-volume
+      secret:
+        optional: true
+        secretName: $(params.cluster-access-secret-name)
+  steps:
+    - name: e2e-test
+      computeResources:
+        requests:
+          cpu: "500m"
+          memory: "1Gi"
+        limits:
+          cpu: "2"
+          memory: "6Gi"
+      image: golang:1.25
+      volumeMounts:
+        - name: konflux-ci-secrets-volume
+          mountPath: /usr/local/konflux-ci-secrets
+        - name: konflux-infra-secrets-volume
+          mountPath: /usr/local/konflux-test-infra
+        - name: cluster-secret-volume
+          mountPath: /tmp/kubeconfig
+          subPath: kubeconfig
+      env:
+        - name: JOB_NAME
+          value: $(params.test-name)
+        - name: GIT_REPO
+          value: $(params.git-repo)
+        - name: GIT_URL
+          value: $(params.git-url)
+        - name: GIT_REVISION
+          value: $(params.git-revision)
+        - name: KONFLUX_CI
+          value: "true"
+        - name: JOB_SPEC
+          value: $(params.job-spec)
+        - name: COMPONENT_IMAGE
+          value: $(params.component-image)
+        - name: GINKGO_PROCS
+          value: $(params.ginkgo-procs)
+        - name: ORAS_CONTAINER
+          value: $(params.oras-container)
+        - name: ARTIFACT_DIR
+          value: /workspace/artifact-dir
+        - name: E2E_TIMEOUT
+          value: $(params.e2e-timeout)
+        - name: TEST_ENVIRONMENT
+          value: $(params.test-environment)
+        - name: KUBECONFIG
+          value: /tmp/kubeconfig
+        - name: E2E_EXTRA_LABEL_FILTER
+          value: $(params.e2e-extra-label-filter)
+      onError: continue
+      script: |
+        #!/bin/bash
+
+        set -euo pipefail
+
+        DEBIAN_FRONTEND=noninteractive apt-get update -qq && apt-get install -y -qq jq > /dev/null 2>&1
+
+        log() {
+          echo -e "[$(date +'%Y-%m-%d %H:%M:%S')] [$1] $2"
+        }
+        export -f log
+
+        # ── Load secrets and environment ──────────────────────────────
+        load_envs() {
+          local konflux_ci_secrets_file="/usr/local/konflux-ci-secrets"
+          local konflux_infra_secrets_file="/usr/local/konflux-test-infra"
+
+          declare -A config_envs=(
+            [ENABLE_SCHEDULING_ON_MASTER_NODES]="false"
+            [UNREGISTER_PAC]="true"
+            [EC_DISABLE_DOWNLOAD_SERVICE]="true"
+            [DEFAULT_QUAY_ORG]="redhat-appstudio-qe"
+            [OCI_STORAGE_USERNAME]="$(jq -r '."quay-username"' ${konflux_infra_secrets_file}/oci-storage)"
+            [OCI_STORAGE_TOKEN]="$(jq -r '."quay-token"' ${konflux_infra_secrets_file}/oci-storage)"
+          )
+
+          declare -A load_envs_from_file=(
+            [DEFAULT_QUAY_ORG_TOKEN]="${konflux_ci_secrets_file}/default-quay-org-token"
+            [QUAY_TOKEN]="${konflux_ci_secrets_file}/quay-token"
+            [QUAY_OAUTH_USER]="${konflux_ci_secrets_file}/quay-oauth-user"
+            [QUAY_OAUTH_TOKEN]="${konflux_ci_secrets_file}/quay-oauth-token"
+            [OFFLINE_TOKEN]="${konflux_ci_secrets_file}/stage_offline_token"
+            [TOOLCHAIN_API_URL]="${konflux_ci_secrets_file}/stage_toolchain_api_url"
+            [KEYLOAK_URL]="${konflux_ci_secrets_file}/stage_keyloak_url"
+            [E2E_PAC_GITHUB_APP_ID]="${konflux_ci_secrets_file}/pac-github-app-id"
+            [E2E_PAC_GITHUB_APP_PRIVATE_KEY]="${konflux_ci_secrets_file}/pac-github-app-private-key"
+            [PAC_GITHUB_APP_WEBHOOK_SECRET]="${konflux_ci_secrets_file}/pac-github-app-webhook-secret"
+            [SLACK_BOT_TOKEN]="${konflux_ci_secrets_file}/slack-bot-token"
+            [DOCKER_IO_AUTH]="${konflux_ci_secrets_file}/docker_io"
+            [GITLAB_BOT_TOKEN]="${konflux_ci_secrets_file}/gitlab-bot-token"
+            [SMEE_CHANNEL]="${konflux_ci_secrets_file}/smee-channel"
+          )
+
+          for var in "${!config_envs[@]}"; do
+            export "$var"="${config_envs[$var]}"
+          done
+
+          for var in "${!load_envs_from_file[@]}"; do
+            local file="${load_envs_from_file[$var]}"
+            if [[ -f "$file" ]]; then
+              export "$var"="$(<"$file")"
+            else
+              log "WARN" "Secret file for $var not found at $file"
+            fi
+          done
+        }
+
+        # ── Select GitHub account with highest rate limit ─────────────
+        export GITHUB_TOKEN
+        PREVIOUS_RATE_REMAINING=0
+
+        IFS=',' read -r -a GITHUB_ACCOUNTS_ARRAY <<< "$(cat /usr/local/konflux-ci-secrets/github_accounts)"
+        for account in "${GITHUB_ACCOUNTS_ARRAY[@]}"; do
+          IFS=':' read -r -a GITHUB_USERNAME_ARRAY <<< "$account"
+
+          GH_RATE_REMAINING=$(curl -s \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${GITHUB_USERNAME_ARRAY[1]}" \
+            https://api.github.com/rate_limit | jq ".rate.remaining")
+
+          log "INFO" "user: ${GITHUB_USERNAME_ARRAY[0]} with rate limit remaining $GH_RATE_REMAINING"
+          if [[ "$GH_RATE_REMAINING" -ge "$PREVIOUS_RATE_REMAINING" ]]; then
+            GITHUB_USER="${GITHUB_USERNAME_ARRAY[0]}"
+            GITHUB_TOKEN="${GITHUB_USERNAME_ARRAY[1]}"
+          fi
+          PREVIOUS_RATE_REMAINING="$GH_RATE_REMAINING"
+        done
+
+        log "INFO" "running tests with github user: ${GITHUB_USER}"
+
+        # ── Clone repo and build ──────────────────────────────────────
+        cd "$(mktemp -d)"
+
+        git config --global user.name "redhat-appstudio-qe-bot"
+        git config --global user.email redhat-appstudio-qe-bot@redhat.com
+
+        mkdir -p "${HOME}/creds"
+        git_creds_path="${HOME}/creds/file"
+        git config --global credential.helper "store --file $git_creds_path"
+        echo "https://${GITHUB_USER}:${GITHUB_TOKEN}@github.com" > "$git_creds_path"
+
+        log "INFO" "Cloning ${GIT_URL} at revision ${GIT_REVISION}"
+        git clone --depth=1 --branch "${GIT_REVISION}" "${GIT_URL}" repo || \
+          git clone "${GIT_URL}" repo && cd repo && git checkout "${GIT_REVISION}" && cd ..
+        cd repo
+
+        log "INFO" "Building e2e test binary..."
+        make e2e-build
+
+        # ── Load environment and run tests ────────────────────────────
+        load_envs
+        mkdir -p "${ARTIFACT_DIR}"
+
+        LABEL_FILTER="integration-service"
+        if [[ -n "${E2E_EXTRA_LABEL_FILTER}" ]]; then
+          LABEL_FILTER="${LABEL_FILTER} && ${E2E_EXTRA_LABEL_FILTER}"
+        fi
+
+        log "INFO" "Running integration-service e2e tests..."
+        timeout "${E2E_TIMEOUT}" ./e2e-tests/bin/e2e-appstudio \
+          --ginkgo.label-filter="${LABEL_FILTER}" \
+          --ginkgo.timeout="${E2E_TIMEOUT}" \
+          --ginkgo.vv \
+          --ginkgo.no-color \
+          --ginkgo.junit-report="${ARTIFACT_DIR}/e2e-report.xml" \
+          2>&1 | tee "${ARTIFACT_DIR}/e2e-tests.log"
+    - name: secure-push-oci
+      ref:
+        resolver: git
+        params:
+          - name: url
+            value: https://github.com/konflux-ci/tekton-integration-catalog.git
+          - name: revision
+            value: main
+          - name: pathInRepo
+            value: stepactions/secure-push-oci/0.1/secure-push-oci.yaml
+      params:
+        - name: workdir-path
+          value: /workspace/artifact-dir
+        - name: oci-ref
+          value: $(params.oras-container)
+        - name: credentials-volume-name
+          value: konflux-infra-secrets-volume
+    - name: fail-if-any-step-failed
+      ref:
+        resolver: git
+        params:
+          - name: url
+            value: https://github.com/konflux-ci/tekton-integration-catalog.git
+          - name: revision
+            value: main
+          - name: pathInRepo
+            value: stepactions/fail-if-any-step-failed/0.1/fail-if-any-step-failed.yaml
