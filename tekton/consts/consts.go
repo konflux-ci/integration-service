@@ -131,6 +131,9 @@ const (
 
 	// PipelineRunChainsGitCommitParamName name of param repo chains commit
 	PipelineRunChainsGitCommitParamName = "CHAINS-GIT_COMMIT"
+
+	// PipelineRunShouldReleaseResultName is the name of the SHOULD_RELEASE result in build PipelineRuns
+	PipelineRunShouldReleaseResultName = "SHOULD_RELEASE"
 )
 
 var (

@@ -286,7 +286,7 @@ var _ = Describe("Release Adapter", Ordered, func() {
 					Resource:   releasePlans,
 				},
 			})
-			resource, err := loader.GetAutoReleasePlansForApplication(mockContext, nil, nil, nil)
+			resource, err := loader.GetAutoReleasePlansForApplication(mockContext, nil, nil, nil, true)
 			Expect(resource).To(Equal(&releasePlans))
 			Expect(err).ToNot(HaveOccurred())
 		})
@@ -301,7 +301,7 @@ var _ = Describe("Release Adapter", Ordered, func() {
 					Resource:   releasePlans,
 				},
 			})
-			resource, err := loader.GetAutoReleasePlansForApplication(mockContext, nil, nil, nil)
+			resource, err := loader.GetAutoReleasePlansForApplication(mockContext, nil, nil, nil, true)
 			Expect(resource).To(Equal(&releasePlans))
 			Expect(err).ToNot(HaveOccurred())
 		})

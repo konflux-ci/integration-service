@@ -168,3 +168,23 @@ func GetComponentSourceGitCommit(object client.Object) (string, error) {
 	}
 	return "", h.MissingInfoInPipelineRunError(pipelineRun.Name, consts.PipelineRunChainsGitCommitParamName)
 }
+
+// GetShouldRelease extracts the SHOULD_RELEASE result from a build PipelineRun.
+// Returns false only when the result is explicitly set to "false".
+// Returns true when the result is unset, empty, "true", or when the PipelineRun is nil.
+// This default-true behavior ensures releases aren't blocked for pipelines that don't
+// produce a SHOULD_RELEASE result. The resolved bool is propagated to the shouldRelease()
+// CEL function in ReleasePlan auto-release expressions.
+func GetShouldRelease(pipelineRun *tektonv1.PipelineRun) bool {
+	// A nil PipelineRun means the snapshot has no build PLR label (e.g. override snapshot)
+	// or the PLR was garbage collected. Default to true so releases aren't blocked.
+	if pipelineRun == nil {
+		return true
+	}
+	for _, pipelineResult := range pipelineRun.Status.Results {
+		if pipelineResult.Name == consts.PipelineRunShouldReleaseResultName {
+			return pipelineResult.Value.StringVal != "false"
+		}
+	}
+	return true
+}

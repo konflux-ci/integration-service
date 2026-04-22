@@ -30,7 +30,10 @@ import (
 
 // EvaluateSnapshotAutoReleaseAnnotation evaluates the provided auto-release annotation CEL-like expression
 // against the given Snapshot and returns whether it allows auto-release.
-func EvaluateSnapshotAutoReleaseAnnotation(autoReleaseExpr string, snapshot *applicationapiv1alpha1.Snapshot) (bool, error) {
+// The shouldRelease parameter is made available via the shouldRelease() CEL function, which reflects
+// the build PipelineRun's SHOULD_RELEASE result. Note: shouldRelease only gates releases if the CEL
+// expression actually calls shouldRelease(). An expression like "true" will bypass gating entirely.
+func EvaluateSnapshotAutoReleaseAnnotation(autoReleaseExpr string, snapshot *applicationapiv1alpha1.Snapshot, shouldRelease bool) (bool, error) {
 	// Empty or missing annotation: do not auto-release
 	if len(autoReleaseExpr) == 0 {
 		return false, nil
@@ -46,7 +49,7 @@ func EvaluateSnapshotAutoReleaseAnnotation(autoReleaseExpr string, snapshot *app
 
 	// Build a CEL environment
 	// The with a dynamic 'snapshot' variable represents the snapshot object
-	funcs := snapshotCELFunctions{snapshot: objMap}
+	funcs := snapshotCELFunctions{snapshot: objMap, shouldReleaseVal: shouldRelease}
 	env, err := cel.NewEnv(
 		cel.DefaultUTCTimeZone(true),
 		cel.Variable("snapshot", cel.DynType),
@@ -57,6 +60,14 @@ func EvaluateSnapshotAutoReleaseAnnotation(autoReleaseExpr string, snapshot *app
 				[]*cel.Type{cel.StringType},
 				cel.BoolType,
 				cel.UnaryBinding(funcs.updatedComponentIs),
+			),
+		),
+		// Register custom function: shouldRelease() -> bool
+		cel.Function("shouldRelease",
+			cel.Overload("shouldRelease_bool",
+				[]*cel.Type{},
+				cel.BoolType,
+				cel.FunctionBinding(funcs.shouldReleaseFn),
 			),
 		),
 	)
@@ -99,7 +110,12 @@ func EvaluateSnapshotAutoReleaseAnnotation(autoReleaseExpr string, snapshot *app
 // This helps avoid global state while keeping a named function.
 
 type snapshotCELFunctions struct {
-	snapshot map[string]any
+	snapshot         map[string]any
+	shouldReleaseVal bool
+}
+
+func (sf snapshotCELFunctions) shouldReleaseFn(args ...ref.Val) ref.Val {
+	return types.Bool(sf.shouldReleaseVal)
 }
 
 func (sf snapshotCELFunctions) updatedComponentIs(arg ref.Val) ref.Val {

@@ -106,6 +106,12 @@ const (
 	// GitReportingFailureAnnotation contains information about git reporting failures
 	GitReportingFailureAnnotation = "test.appstudio.openshift.io/git-reporting-failure"
 
+	// BuildPipelineRunResultAnnotationPrefix is the prefix for annotations derived from build PipelineRun results
+	BuildPipelineRunResultAnnotationPrefix = TestLabelPrefix + "/result-"
+
+	// BuildPipelineRunShouldReleaseAnnotation contains the SHOULD_RELEASE result from the build PipelineRun
+	BuildPipelineRunShouldReleaseAnnotation = BuildPipelineRunResultAnnotationPrefix + "should-release"
+
 	// BuildPipelineRunStartTime contains the start time of build pipelineRun
 	BuildPipelineRunStartTime = "test.appstudio.openshift.io/pipelinerunstarttime"
 
@@ -1197,6 +1203,26 @@ func CopySnapshotLabelsAndAnnotations(object *metav1.ObjectMeta, snapshot *appli
 		_ = metadata.CopyAnnotationsByPrefix(source, &snapshot.ObjectMeta, prefix)
 	}
 
+}
+
+// BuildResultAnnotationKey normalizes a PipelineRun result name into a Snapshot annotation key.
+// e.g. "SHOULD_RELEASE" → "test.appstudio.openshift.io/result-should-release"
+func BuildResultAnnotationKey(resultName string) string {
+	normalized := strings.ToLower(strings.ReplaceAll(resultName, "_", "-"))
+	return BuildPipelineRunResultAnnotationPrefix + normalized
+}
+
+// CopyBuildPipelineRunResultsToSnapshot copies all string-typed results from a build PipelineRun
+// into Snapshot annotations so downstream consumers can access them without loading the PLR.
+func CopyBuildPipelineRunResultsToSnapshot(pipelineRun *tektonv1.PipelineRun, snapshot *applicationapiv1alpha1.Snapshot) {
+	if snapshot.Annotations == nil {
+		snapshot.Annotations = map[string]string{}
+	}
+	for _, result := range pipelineRun.Status.Results {
+		if result.Value.StringVal != "" {
+			snapshot.Annotations[BuildResultAnnotationKey(result.Name)] = result.Value.StringVal
+		}
+	}
 }
 
 // CopyTempGroupSnapshotLabelsAndAnnotations coppies labels and annotations from build pipelineRun or tested snapshot

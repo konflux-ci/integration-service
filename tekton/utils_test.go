@@ -113,4 +113,39 @@ var _ = Describe("Utils", func() {
 		_, err := tekton.GetComponentSourceGitCommit(pipelineRun)
 		Expect(err).To(HaveOccurred())
 	})
+
+	Context("GetShouldRelease", func() {
+		It("returns true when PipelineRun is nil", func() {
+			Expect(tekton.GetShouldRelease(nil)).To(BeTrue())
+		})
+
+		It("returns true when SHOULD_RELEASE result is not present", func() {
+			Expect(tekton.GetShouldRelease(pipelineRun)).To(BeTrue())
+		})
+
+		It("returns true when SHOULD_RELEASE is set to 'true'", func() {
+			pipelineRun.Status.Results = append(pipelineRun.Status.Results, tektonv1.PipelineRunResult{
+				Name:  "SHOULD_RELEASE",
+				Value: *tektonv1.NewStructuredValues("true"),
+			})
+			Expect(tekton.GetShouldRelease(pipelineRun)).To(BeTrue())
+		})
+
+		It("returns true when SHOULD_RELEASE is empty", func() {
+			pipelineRun.Status.Results = append(pipelineRun.Status.Results, tektonv1.PipelineRunResult{
+				Name:  "SHOULD_RELEASE",
+				Value: *tektonv1.NewStructuredValues(""),
+			})
+			Expect(tekton.GetShouldRelease(pipelineRun)).To(BeTrue())
+		})
+
+		It("returns false when SHOULD_RELEASE is set to 'false'", func() {
+			pipelineRun.Status.Results = append(pipelineRun.Status.Results, tektonv1.PipelineRunResult{
+				Name:  "SHOULD_RELEASE",
+				Value: *tektonv1.NewStructuredValues("false"),
+			})
+			Expect(tekton.GetShouldRelease(pipelineRun)).To(BeFalse())
+		})
+
+	})
 })

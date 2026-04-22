@@ -83,6 +83,10 @@ func PrepareSnapshotForPipelineRun(ctx context.Context, adapterClient client.Cli
 	snapshot.Annotations[gitops.BuildPipelineRunStartTime] = strconv.FormatInt(timestampMillis, 10)
 	snapshot.Name = gitops.GenerateSnapshotNameWithTimestamp(componentGroup.Name, timestampMillis)
 
+	// Copy all build PipelineRun results as Snapshot annotations so downstream
+	// consumers can access them without loading the PLR (which may be pruned).
+	gitops.CopyBuildPipelineRunResultsToSnapshot(pipelineRun, snapshot)
+
 	// Set the integration workflow annotation based on the PipelineRun type
 	if tekton.IsPLRCreatedByPACPushEvent(pipelineRun) {
 		snapshot.Annotations[gitops.IntegrationWorkflowAnnotation] = gitops.IntegrationWorkflowPushValue
