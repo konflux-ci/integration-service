@@ -6,7 +6,6 @@ import (
 	"github.com/konflux-ci/integration-service/e2e-tests/pkg/clients/forgejo"
 	"github.com/konflux-ci/integration-service/e2e-tests/pkg/clients/github"
 	"github.com/konflux-ci/integration-service/e2e-tests/pkg/clients/gitlab"
-	kubeCl "github.com/konflux-ci/integration-service/e2e-tests/pkg/clients/kubernetes"
 	"github.com/konflux-ci/integration-service/e2e-tests/pkg/constants"
 	"github.com/konflux-ci/integration-service/e2e-tests/pkg/utils"
 )
@@ -14,7 +13,7 @@ import (
 // Create the struct for kubernetes and github clients.
 type SuiteController struct {
 	// Wrap K8S client go to interact with Kube cluster
-	*kubeCl.CustomClient
+	*CustomClient
 
 	// Github client to interact with GH apis
 	Github *github.Github
@@ -27,7 +26,7 @@ type SuiteController struct {
 Create controller for the common kubernetes API crud operations. This controller should be used only to interact with non RHTAP/AppStudio APIS like routes, deployment, pods etc...
 Check if a github organization env var is set, if not use by default the redhat-appstudio-qe org. See: https://github.com/redhat-appstudio-qe
 */
-func NewSuiteController(kubeC *kubeCl.CustomClient) (*SuiteController, error) {
+func NewSuiteController(kubeC *CustomClient) (*SuiteController, error) {
 	gh, err := github.NewGithubClient(utils.GetEnv(constants.GITHUB_TOKEN_ENV, ""), utils.GetEnv(constants.GITHUB_E2E_ORGANIZATION_ENV, "redhat-appstudio-qe"))
 	if err != nil {
 		return nil, err

@@ -11,6 +11,8 @@ import (
 	"github.com/konflux-ci/integration-service/e2e-tests/pkg/clients/tekton"
 	"github.com/konflux-ci/integration-service/e2e-tests/pkg/constants"
 	"github.com/konflux-ci/integration-service/e2e-tests/pkg/utils"
+	"github.com/konflux-ci/integration-service/gitops"
+	tektonconsts "github.com/konflux-ci/integration-service/tekton/consts"
 	ginkgo "github.com/onsi/ginkgo/v2"
 	pipeline "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	k8sErrors "k8s.io/apimachinery/pkg/api/errors"
@@ -74,9 +76,9 @@ func (h *HasController) GetComponentPipelineRunWithType(componentName string, ap
 
 // GetComponentPipelineRunsWithType returns all pipeline runs for a given component labels with pipeline type within label "pipelines.appstudio.openshift.io/type" ("build", "test")
 func (h *HasController) GetComponentPipelineRunsWithType(componentName string, applicationName string, namespace, pipelineType string, sha string, eventType string) (*[]pipeline.PipelineRun, error) {
-	pipelineRunLabels := map[string]string{"appstudio.openshift.io/component": componentName, "appstudio.openshift.io/application": applicationName}
+	pipelineRunLabels := map[string]string{tektonconsts.PipelineRunComponentLabel: componentName, tektonconsts.PipelineRunApplicationLabel: applicationName}
 	if pipelineType != "" {
-		pipelineRunLabels["pipelines.appstudio.openshift.io/type"] = pipelineType
+		pipelineRunLabels[tektonconsts.PipelineRunTypeLabel] = pipelineType
 	}
 
 	if sha != "" {
@@ -108,7 +110,7 @@ func (h *HasController) GetComponentPipelineRunsWithType(componentName string, a
 
 // GetAllGroupSnapshotsForApplication returns the groupSnapshots for a given application in the namespace
 func (h *HasController) GetAllGroupSnapshotsForApplication(applicationName, namespace string) (*appservice.SnapshotList, error) {
-	snapshotLabels := map[string]string{"appstudio.openshift.io/application": applicationName, "test.appstudio.openshift.io/type": "group"}
+	snapshotLabels := map[string]string{tektonconsts.PipelineRunApplicationLabel: applicationName, gitops.SnapshotTypeLabel: gitops.SnapshotGroupType}
 
 	list := &appservice.SnapshotList{}
 	err := h.KubeRest().List(context.Background(), list, &rclient.ListOptions{LabelSelector: labels.SelectorFromSet(snapshotLabels), Namespace: namespace})
@@ -126,7 +128,7 @@ func (h *HasController) GetAllGroupSnapshotsForApplication(applicationName, name
 
 // GetAllComponentSnapshotsForApplication returns the gcomponentSnapshots for a given application in the namespace
 func (h *HasController) GetAllComponentSnapshotsForApplication(applicationName, namespace string) (*appservice.SnapshotList, error) {
-	snapshotLabels := map[string]string{"appstudio.openshift.io/application": applicationName, "test.appstudio.openshift.io/type": "component"}
+	snapshotLabels := map[string]string{tektonconsts.PipelineRunApplicationLabel: applicationName, gitops.SnapshotTypeLabel: gitops.SnapshotComponentType}
 
 	list := &appservice.SnapshotList{}
 	err := h.KubeRest().List(context.Background(), list, &rclient.ListOptions{LabelSelector: labels.SelectorFromSet(snapshotLabels), Namespace: namespace})
@@ -144,7 +146,7 @@ func (h *HasController) GetAllComponentSnapshotsForApplication(applicationName, 
 
 // GetAllComponentSnapshotsForApplicationAndComponent returns the component Snapshots for a given application and component in the namespace
 func (h *HasController) GetAllComponentSnapshotsForApplicationAndComponent(applicationName, namespace, componentName string) (*[]appservice.Snapshot, error) {
-	snapshotLabels := map[string]string{"appstudio.openshift.io/application": applicationName, "test.appstudio.openshift.io/type": "component", "appstudio.openshift.io/component": componentName}
+	snapshotLabels := map[string]string{tektonconsts.PipelineRunApplicationLabel: applicationName, gitops.SnapshotTypeLabel: gitops.SnapshotComponentType, tektonconsts.PipelineRunComponentLabel: componentName}
 
 	list := &appservice.SnapshotList{}
 	err := h.KubeRest().List(context.Background(), list, &rclient.ListOptions{LabelSelector: labels.SelectorFromSet(snapshotLabels), Namespace: namespace})

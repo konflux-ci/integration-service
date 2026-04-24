@@ -16,6 +16,7 @@ import (
 	"github.com/konflux-ci/integration-service/e2e-tests/pkg/framework"
 	"github.com/konflux-ci/integration-service/e2e-tests/pkg/utils"
 	"github.com/konflux-ci/integration-service/e2e-tests/pkg/utils/build"
+	"github.com/konflux-ci/integration-service/gitops"
 	pipeline "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
@@ -333,7 +334,7 @@ var _ = framework.IntegrationServiceSuiteDescribe("Integration Service E2E tests
 		ginkgo.It("checks if snapshot is marked as failed", ginkgo.FlakeAttempts(3), func() {
 			snapshot, err = f.AsKubeAdmin.IntegrationController.GetSnapshot(snapshot.Name, "", "", testNamespace)
 			gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
-			gomega.Expect(f.AsKubeAdmin.CommonController.HaveTestsSucceeded(snapshot)).To(gomega.BeFalse(), "expected tests to fail for snapshot %s/%s", snapshot.GetNamespace(), snapshot.GetName())
+			gomega.Expect(gitops.HaveAppStudioTestsSucceeded(snapshot)).To(gomega.BeFalse(), "expected tests to fail for snapshot %s/%s", snapshot.GetNamespace(), snapshot.GetName())
 		})
 
 		ginkgo.It("checks if the finalizer was removed from all of the related Integration pipelineRuns", func() {
@@ -398,7 +399,7 @@ var _ = framework.IntegrationServiceSuiteDescribe("Integration Service E2E tests
 			ginkgo.It("checks if snapshot is still marked as failed", func() {
 				snapshot, err = f.AsKubeAdmin.IntegrationController.GetSnapshot(snapshot.Name, "", "", testNamespace)
 				gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
-				gomega.Expect(f.AsKubeAdmin.CommonController.HaveTestsSucceeded(snapshot)).To(gomega.BeFalse(), "expected tests to fail for snapshot %s/%s", snapshot.GetNamespace(), snapshot.GetName())
+				gomega.Expect(gitops.HaveAppStudioTestsSucceeded(snapshot)).To(gomega.BeFalse(), "expected tests to fail for snapshot %s/%s", snapshot.GetNamespace(), snapshot.GetName())
 			})
 		})
 

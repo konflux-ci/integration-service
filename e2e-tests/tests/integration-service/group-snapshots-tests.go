@@ -9,10 +9,10 @@ import (
 
 	"github.com/google/go-github/v45/github"
 	"github.com/konflux-ci/integration-service/e2e-tests/pkg/clients/has"
-	"github.com/konflux-ci/integration-service/e2e-tests/pkg/clients/integration"
 	"github.com/konflux-ci/integration-service/e2e-tests/pkg/constants"
 	"github.com/konflux-ci/integration-service/e2e-tests/pkg/framework"
 	"github.com/konflux-ci/integration-service/e2e-tests/pkg/utils"
+	"github.com/konflux-ci/integration-service/gitops"
 
 	appstudioApi "github.com/konflux-ci/application-api/api/v1alpha1"
 	integrationv1beta2 "github.com/konflux-ci/integration-service/api/v1beta2"
@@ -599,7 +599,7 @@ var _ = framework.IntegrationServiceSuiteDescribe("Creation of group snapshots f
 					for i, snapshot := range groupSnapshots.Items {
 						annotations := snapshot.GetAnnotations()
 						labels := snapshot.GetLabels()
-						ginkgo.GinkgoWriter.Printf("  Group Snapshot %d: %s (type: %s)\n", i, snapshot.Name, labels["test.appstudio.openshift.io/type"])
+						ginkgo.GinkgoWriter.Printf("  Group Snapshot %d: %s (type: %s)\n", i, snapshot.Name, labels[gitops.SnapshotTypeLabel])
 						ginkgo.GinkgoWriter.Printf("    Group Test Info: %s\n", annotations[testGroupSnapshotAnnotation])
 					}
 
@@ -781,7 +781,7 @@ var _ = framework.IntegrationServiceSuiteDescribe("Creation of group snapshots f
 				gomega.Eventually(func() error {
 					err = f.AsKubeAdmin.IntegrationController.AddIntegrationTestRerunLabel(groupSnapshot, invalidIntegrationTestScenario.Name)
 					if err != nil {
-						return fmt.Errorf("failed to set annotation %s to group snapshot %s/%s", integration.SnapshotIntegrationTestRun, groupSnapshot.Namespace, groupSnapshot.Name)
+						return fmt.Errorf("failed to set annotation %s to group snapshot %s/%s", gitops.SnapshotIntegrationTestRun, groupSnapshot.Namespace, groupSnapshot.Name)
 					}
 
 					groupSnapshot, err = f.AsKubeAdmin.IntegrationController.GetSnapshot(groupSnapshot.Name, "", "", testNamespace)

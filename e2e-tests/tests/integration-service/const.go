@@ -6,6 +6,9 @@ import (
 
 	"github.com/konflux-ci/integration-service/e2e-tests/pkg/constants"
 	"github.com/konflux-ci/integration-service/e2e-tests/pkg/utils"
+	"github.com/konflux-ci/integration-service/gitops"
+	"github.com/konflux-ci/integration-service/helpers"
+	tektonconsts "github.com/konflux-ci/integration-service/tekton/consts"
 )
 
 const (
@@ -42,18 +45,17 @@ const (
 	spaceRequestCronJobName                   = "spacerequest-cleaner"
 	spaceRequestNamePrefix                    = "task-spacerequest-"
 
-	snapshotAnnotation                       = "appstudio.openshift.io/snapshot"
-	scenarioAnnotation                       = "test.appstudio.openshift.io/scenario"
-	groupSnapshotAnnotation                  = "test.appstudio.openshift.io/pr-group"
-	testGroupSnapshotAnnotation              = "test.appstudio.openshift.io/group-test-info"
-	snapshotStatusAnnotation                 = "test.appstudio.openshift.io/status"
-	gitReportingFailureAnnotation            = "test.appstudio.openshift.io/git-reporting-failure"
-	pipelinerunFinalizerByIntegrationService = "test.appstudio.openshift.io/pipelinerun"
-	snapshotRerunLabel                       = "test.appstudio.openshift.io/run"
-	snapshotCreationReport                   = "test.appstudio.openshift.io/snapshot-creation-report"
-	pipelinesAsCodeGitProviderAnnotation     = "pac.test.appstudio.openshift.io/git-provider"
-
-	chainsSignedAnnotation = "chains.tekton.dev/signed"
+	snapshotAnnotation                       = gitops.SnapshotLabel
+	scenarioAnnotation                       = gitops.SnapshotTestScenarioLabel
+	groupSnapshotAnnotation                  = gitops.PRGroupAnnotation
+	testGroupSnapshotAnnotation              = gitops.GroupSnapshotInfoAnnotation
+	snapshotStatusAnnotation                 = gitops.SnapshotTestsStatusAnnotation
+	gitReportingFailureAnnotation            = gitops.GitReportingFailureAnnotation
+	pipelinerunFinalizerByIntegrationService = helpers.IntegrationPipelineRunFinalizer
+	snapshotRerunLabel                       = gitops.SnapshotIntegrationTestRun
+	snapshotCreationReport                   = helpers.SnapshotCreationReportAnnotation
+	pipelinesAsCodeGitProviderAnnotation     = gitops.PipelineAsCodeGitProviderAnnotation
+	chainsSignedAnnotation                   = tektonconsts.PipelineRunChainsSignedAnnotation
 
 	shortTimeout     = time.Duration(10 * time.Minute)
 	longTimeout      = time.Duration(15 * time.Minute)

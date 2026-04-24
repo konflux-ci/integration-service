@@ -16,7 +16,6 @@ import (
 	"github.com/konflux-ci/integration-service/e2e-tests/pkg/clients/common"
 	"github.com/konflux-ci/integration-service/e2e-tests/pkg/clients/has"
 	"github.com/konflux-ci/integration-service/e2e-tests/pkg/clients/integration"
-	kubeCl "github.com/konflux-ci/integration-service/e2e-tests/pkg/clients/kubernetes"
 	"github.com/konflux-ci/integration-service/e2e-tests/pkg/clients/release"
 	"github.com/konflux-ci/integration-service/e2e-tests/pkg/clients/tekton"
 	"github.com/konflux-ci/integration-service/e2e-tests/pkg/constants"
@@ -50,7 +49,7 @@ func NewFrameworkWithTimeout(userName string, timeout time.Duration) (*Framework
 		return nil, fmt.Errorf("userName cannot be empty when initializing a new framework instance")
 	}
 
-	client, err := kubeCl.NewAdminKubernetesClient()
+	client, err := common.NewAdminKubernetesClient()
 	if err != nil {
 		return nil, err
 	}
@@ -106,7 +105,7 @@ func NewFrameworkWithTimeout(userName string, timeout time.Duration) (*Framework
 	}, nil
 }
 
-func InitControllerHub(cc *kubeCl.CustomClient) (*ControllerHub, error) {
+func InitControllerHub(cc *common.CustomClient) (*ControllerHub, error) {
 	// Initialize Common controller
 	commonCtrl, err := common.NewSuiteController(cc)
 	if err != nil {

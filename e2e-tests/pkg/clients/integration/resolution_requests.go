@@ -6,6 +6,8 @@ import (
 	"strings"
 
 	integrationv1beta2 "github.com/konflux-ci/integration-service/api/v1beta2"
+	"github.com/konflux-ci/integration-service/gitops"
+	tektonconsts "github.com/konflux-ci/integration-service/tekton/consts"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -57,17 +59,17 @@ func (i *IntegrationController) isResolutionRequestRelated(rr unstructured.Unstr
 	// Check labels for integration test scenario relationship
 	if labels != nil {
 		// Direct scenario name match
-		if scenarioName, exists := labels["test.appstudio.openshift.io/scenario"]; exists && scenarioName == integrationTestScenario.Name {
+		if scenarioName, exists := labels[gitops.SnapshotTestScenarioLabel]; exists && scenarioName == integrationTestScenario.Name {
 			return true
 		}
 
 		// Application name match
-		if appName, exists := labels["appstudio.openshift.io/application"]; exists && appName == integrationTestScenario.Spec.Application {
+		if appName, exists := labels[tektonconsts.PipelineRunApplicationLabel]; exists && appName == integrationTestScenario.Spec.Application {
 			return true
 		}
 
 		// Pipeline type for integration tests
-		if pipelineType, exists := labels["pipelines.appstudio.openshift.io/type"]; exists && pipelineType == "test" {
+		if pipelineType, exists := labels[tektonconsts.PipelineRunTypeLabel]; exists && pipelineType == tektonconsts.PipelineRunTestType {
 			return true
 		}
 	}
@@ -75,7 +77,7 @@ func (i *IntegrationController) isResolutionRequestRelated(rr unstructured.Unstr
 	// Check annotations for integration test scenario relationship
 	if annotations != nil {
 		// Check for scenario annotation
-		if scenarioAnnotation, exists := annotations["test.appstudio.openshift.io/scenario"]; exists && scenarioAnnotation == integrationTestScenario.Name {
+		if scenarioAnnotation, exists := annotations[gitops.SnapshotTestScenarioLabel]; exists && scenarioAnnotation == integrationTestScenario.Name {
 			return true
 		}
 

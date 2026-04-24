@@ -7,6 +7,7 @@ import (
 	integrationv1beta2 "github.com/konflux-ci/integration-service/api/v1beta2"
 	"github.com/konflux-ci/integration-service/e2e-tests/pkg/constants"
 	"github.com/konflux-ci/integration-service/e2e-tests/pkg/utils"
+	tektonconsts "github.com/konflux-ci/integration-service/tekton/consts"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -94,7 +95,7 @@ func (i *IntegrationController) CreateOptionalIntegrationTestScenario(itsName, a
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      itsName,
 			Namespace: namespace,
-			Labels:    map[string]string{"test.appstudio.openshift.io/optional": "true"}, // NEW: Sets optional to true
+			Labels:    map[string]string{tektonconsts.OptionalLabel: "true"},
 		},
 		Spec: integrationv1beta2.IntegrationTestScenarioSpec{
 			Application: applicationName,
