@@ -11,6 +11,7 @@ import (
 	"github.com/konflux-ci/integration-service/e2e-tests/pkg/constants"
 	"github.com/konflux-ci/integration-service/e2e-tests/pkg/framework"
 	"github.com/konflux-ci/integration-service/e2e-tests/pkg/utils"
+	"github.com/konflux-ci/integration-service/gitops"
 
 	appstudioApi "github.com/konflux-ci/application-api/api/v1alpha1"
 	integrationv1beta2 "github.com/konflux-ci/integration-service/api/v1beta2"
@@ -197,7 +198,7 @@ var _ = framework.IntegrationServiceSuiteDescribe("Status Reporting of Integrati
 						return false
 					}
 					snapshot, err = f.AsKubeAdmin.IntegrationController.GetSnapshot("", pipelineRun.Name, "", testNamespace)
-					return err == nil && !f.AsKubeAdmin.CommonController.HaveTestsSucceeded(snapshot)
+					return err == nil && !gitops.HaveAppStudioTestsSucceeded(snapshot)
 				}, time.Minute*3, time.Second*5).Should(gomega.BeTrue(), fmt.Sprintf("Timed out waiting for Snapshot to be marked as failed %s/%s", snapshot.GetNamespace(), snapshot.GetName()))
 			})
 

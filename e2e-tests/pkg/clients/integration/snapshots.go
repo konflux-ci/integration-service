@@ -3,44 +3,19 @@ package integration
 import (
 	"context"
 	"fmt"
-	"sort"
-	"strconv"
 	"time"
 
 	appstudioApi "github.com/konflux-ci/application-api/api/v1alpha1"
 	"github.com/konflux-ci/integration-service/e2e-tests/pkg/constants"
 	"github.com/konflux-ci/integration-service/e2e-tests/pkg/utils"
+	"github.com/konflux-ci/integration-service/gitops"
 	intgteststat "github.com/konflux-ci/integration-service/pkg/integrationteststatus"
-	"github.com/konflux-ci/operator-toolkit/metadata"
+	tektonconsts "github.com/konflux-ci/integration-service/tekton/consts"
 	ginkgo "github.com/onsi/ginkgo/v2"
-	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-)
-
-var (
-	// SnapshotTestsStatusAnnotation is annotation in snapshot where integration test results are stored
-	SnapshotTestsStatusAnnotation = "test.appstudio.openshift.io/status"
-
-	// AppStudioIntegrationStatusCondition is the condition for marking the AppStudio integration status of the Snapshot.
-	AppStudioIntegrationStatusCondition = "AppStudioIntegrationStatus"
-
-	// AppStudioIntegrationStatusCanceled is the reason that's set when the AppStudio tests cancel.
-	AppStudioIntegrationStatusCanceled = "Canceled"
-
-	//AppStudioTestSucceededCondition is the condition for marking if the AppStudio Tests succeeded for the Snapshot.
-	AppStudioTestSucceededCondition = "AppStudioTestSucceeded"
-
-	//LegacyTestSucceededCondition is the condition for marking if the AppStudio Tests succeeded for the Snapshot.
-	LegacyTestSucceededCondition = "HACBSStudioTestSucceeded"
-
-	// LegacyIntegrationStatusCondition is the condition for marking the AppStudio integration status of the Snapshot.
-	LegacyIntegrationStatusCondition = "HACBSIntegrationStatus"
-
-	// BuildPipelineRunStartTime contains the start time of build pipelineRun
-	BuildPipelineRunStartTime = "test.appstudio.openshift.io/pipelinerunstarttime"
 )
 
 // CreateSnapshotWithComponents creates a Snapshot using the given parameters.
@@ -50,9 +25,9 @@ func (i *IntegrationController) CreateSnapshotWithComponents(snapshotName, compo
 			Name:      snapshotName,
 			Namespace: namespace,
 			Labels: map[string]string{
-				"test.appstudio.openshift.io/type":           "component",
-				"appstudio.openshift.io/component":           componentName,
-				"pac.test.appstudio.openshift.io/event-type": "push",
+				gitops.SnapshotTypeLabel:               gitops.SnapshotComponentType,
+				tektonconsts.PipelineRunComponentLabel: componentName,
+				gitops.PipelineAsCodeEventTypeLabel:    gitops.PipelineAsCodePushType,
 			},
 		},
 		Spec: appstudioApi.SnapshotSpec{
@@ -102,11 +77,11 @@ func (i *IntegrationController) GetSnapshot(snapshotName, pipelineRunName, compo
 			return &snapshot, nil
 		}
 		// find snapshot by pipelinerun name
-		if len(pipelineRunName) > 0 && snapshot.Labels["appstudio.openshift.io/build-pipelinerun"] == pipelineRunName {
+		if len(pipelineRunName) > 0 && snapshot.Labels[gitops.BuildPipelineRunNameLabel] == pipelineRunName {
 			return &snapshot, nil
 		}
 		// find snapshot by component name
-		if len(componentName) > 0 && snapshot.Labels["appstudio.openshift.io/component"] == componentName {
+		if len(componentName) > 0 && snapshot.Labels[tektonconsts.PipelineRunComponentLabel] == componentName {
 			return &snapshot, nil
 		}
 	}
@@ -144,7 +119,7 @@ func (i *IntegrationController) WaitForSnapshotToGetCreated(snapshotName, pipeli
 func (i *IntegrationController) GetIntegrationTestStatusDetailFromSnapshot(snapshot *appstudioApi.Snapshot, scenarioName string) (*intgteststat.IntegrationTestStatusDetail, error) {
 	var resultsJson string
 	annotations := snapshot.GetAnnotations()
-	resultsJson = annotations[SnapshotTestsStatusAnnotation]
+	resultsJson = annotations[gitops.SnapshotTestsStatusAnnotation]
 	statuses, err := intgteststat.NewSnapshotIntegrationTestStatuses(resultsJson)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create new SnapshotIntegrationTestStatuses object: %w", err)
@@ -158,44 +133,17 @@ func (i *IntegrationController) GetIntegrationTestStatusDetailFromSnapshot(snaps
 
 // IsSnapshotMarkedAsCanceled returns true if snapshot is marked as AppStudioIntegrationStatusCanceled
 func (i *IntegrationController) IsSnapshotMarkedAsCanceled(snapshot *appstudioApi.Snapshot) bool {
-	return i.IsSnapshotStatusConditionSet(snapshot, AppStudioIntegrationStatusCondition, metav1.ConditionTrue, AppStudioIntegrationStatusCanceled)
+	return gitops.IsSnapshotMarkedAsCanceled(snapshot)
 }
 
 // IsSnapshotStatusConditionSet checks if the condition with the conditionType in the status of Snapshot has been marked as the conditionStatus and reason.
 func (i *IntegrationController) IsSnapshotStatusConditionSet(snapshot *appstudioApi.Snapshot, conditionType string, conditionStatus metav1.ConditionStatus, reason string) bool {
-	condition := meta.FindStatusCondition(snapshot.Status.Conditions, conditionType)
-	if condition == nil && conditionType == AppStudioTestSucceededCondition {
-		condition = meta.FindStatusCondition(snapshot.Status.Conditions, LegacyTestSucceededCondition)
-	}
-	if condition == nil && conditionType == AppStudioIntegrationStatusCondition {
-		condition = meta.FindStatusCondition(snapshot.Status.Conditions, LegacyIntegrationStatusCondition)
-	}
-	if condition == nil || condition.Status != conditionStatus {
-		return false
-	}
-	if reason != "" && reason != condition.Reason {
-		return false
-	}
-	return true
+	return gitops.IsSnapshotStatusConditionSet(snapshot, conditionType, conditionStatus, reason)
 }
 
 // SortSnapshots sorts the snapshots according to the snapshot annotation BuildPipelineRunStartTime
 func (i *IntegrationController) SortSnapshots(snapshots []appstudioApi.Snapshot) []appstudioApi.Snapshot {
-	sort.Slice(snapshots, func(i, j int) bool {
-		// sorting snapshots according to the annotation BuildPipelineRunStartTime which
-		// represents the start time of build PLR
-		// when BuildPipelineRunStartTime is not set, we use its creation time
-		var time_i, time_j int
-		if metadata.HasAnnotation(&snapshots[i], BuildPipelineRunStartTime) && metadata.HasAnnotation(&snapshots[j], BuildPipelineRunStartTime) {
-			time_i, _ = strconv.Atoi(snapshots[i].Annotations[BuildPipelineRunStartTime])
-			time_j, _ = strconv.Atoi(snapshots[j].Annotations[BuildPipelineRunStartTime])
-		} else {
-			time_i = int(snapshots[i].CreationTimestamp.Unix())
-			time_j = int(snapshots[j].CreationTimestamp.Unix())
-		}
-		return time_i > time_j
-	})
-	return snapshots
+	return gitops.SortSnapshots(snapshots)
 }
 
 func (i *IntegrationController) IsOlderSnapshotAndIntegrationPlrCancelled(snapshots []appstudioApi.Snapshot, integrationTestScenarioName string) (bool, error) {

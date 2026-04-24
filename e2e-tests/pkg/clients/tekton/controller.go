@@ -1,16 +1,16 @@
 package tekton
 
 import (
-	kubeCl "github.com/konflux-ci/integration-service/e2e-tests/pkg/clients/kubernetes"
+	"github.com/konflux-ci/integration-service/e2e-tests/pkg/clients/common"
 )
 
 // Create the struct for kubernetes clients
 type TektonController struct {
-	*kubeCl.CustomClient
+	*common.CustomClient
 }
 
 // Create controller for Tekton Task/Pipeline CRUD operations
-func NewSuiteController(kube *kubeCl.CustomClient) *TektonController {
+func NewSuiteController(kube *common.CustomClient) *TektonController {
 	return &TektonController{
 		kube,
 	}

@@ -1,4 +1,4 @@
-package client
+package common
 
 import (
 	appstudioApi "github.com/konflux-ci/application-api/api/v1alpha1"

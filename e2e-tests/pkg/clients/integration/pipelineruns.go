@@ -11,6 +11,9 @@ import (
 	"github.com/konflux-ci/integration-service/e2e-tests/pkg/constants"
 	"github.com/konflux-ci/integration-service/e2e-tests/pkg/utils"
 	"github.com/konflux-ci/integration-service/e2e-tests/pkg/utils/tekton"
+	"github.com/konflux-ci/integration-service/gitops"
+	"github.com/konflux-ci/integration-service/helpers"
+	tektonconsts "github.com/konflux-ci/integration-service/tekton/consts"
 	"github.com/konflux-ci/operator-toolkit/metadata"
 	ginkgo "github.com/onsi/ginkgo/v2"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
@@ -25,8 +28,6 @@ import (
 var (
 	shortTimeout     = time.Duration(10 * time.Minute)
 	superLongTimeout = time.Duration(20 * time.Minute)
-	// SnapshotIntegrationTestRun contains name of test we want to trigger run
-	SnapshotIntegrationTestRun = "test.appstudio.openshift.io/run"
 )
 
 // GetComponentPipeline returns the pipeline for a given component labels.
@@ -35,7 +36,7 @@ func (i *IntegrationController) GetBuildPipelineRun(componentName, applicationNa
 	var pipelineRun *tektonv1.PipelineRun
 
 	err := wait.PollUntilContextTimeout(context.Background(), constants.PipelineRunPollingInterval, superLongTimeout, true, func(ctx context.Context) (done bool, err error) {
-		pipelineRunLabels := map[string]string{"appstudio.openshift.io/component": componentName, "appstudio.openshift.io/application": applicationName, "pipelines.appstudio.openshift.io/type": "build"}
+		pipelineRunLabels := map[string]string{tektonconsts.PipelineRunComponentLabel: componentName, tektonconsts.PipelineRunApplicationLabel: applicationName, tektonconsts.PipelineRunTypeLabel: tektonconsts.PipelineRunBuildType}
 
 		if sha != "" {
 			pipelineRunLabels["pipelinesascode.tekton.dev/sha"] = sha
@@ -73,9 +74,9 @@ func (i *IntegrationController) GetIntegrationPipelineRun(integrationTestScenari
 	opts := []client.ListOption{
 		client.InNamespace(namespace),
 		client.MatchingLabels{
-			"pipelines.appstudio.openshift.io/type": "test",
-			"test.appstudio.openshift.io/scenario":  integrationTestScenarioName,
-			"appstudio.openshift.io/snapshot":       snapshotName,
+			tektonconsts.PipelineRunTypeLabel: tektonconsts.PipelineRunTestType,
+			gitops.SnapshotTestScenarioLabel:  integrationTestScenarioName,
+			gitops.SnapshotLabel:              snapshotName,
 		},
 	}
 
@@ -201,8 +202,8 @@ func (i *IntegrationController) WaitForFinalizerToGetRemovedFromIntegrationPipel
 			ginkgo.GinkgoWriter.Println("PipelineRun has not been created yet for test scenario %s and snapshot %s/%s", testScenario.GetName(), snapshot.GetNamespace(), snapshot.GetName())
 			return false, nil
 		}
-		if controllerutil.ContainsFinalizer(pipelineRun, "test.appstudio.openshift.io/pipelinerun") {
-			ginkgo.GinkgoWriter.Printf("build pipelineRun %s/%s still contains the finalizer: %s", pipelineRun.GetNamespace(), pipelineRun.GetName(), "test.appstudio.openshift.io/pipelinerun")
+		if controllerutil.ContainsFinalizer(pipelineRun, helpers.IntegrationPipelineRunFinalizer) {
+			ginkgo.GinkgoWriter.Printf("build pipelineRun %s/%s still contains the finalizer: %s", pipelineRun.GetNamespace(), pipelineRun.GetName(), helpers.IntegrationPipelineRunFinalizer)
 			return false, nil
 		}
 
@@ -281,10 +282,10 @@ func (i *IntegrationController) IsIntegrationPipelinerunCancelled(integrationTes
 func (i *IntegrationController) AddIntegrationTestRerunLabel(snapshot *appstudioApi.Snapshot, integrationTestScenarioName string) error {
 	patch := client.MergeFrom(snapshot.DeepCopy())
 	newLabel := map[string]string{}
-	newLabel[SnapshotIntegrationTestRun] = integrationTestScenarioName
+	newLabel[gitops.SnapshotIntegrationTestRun] = integrationTestScenarioName
 	err := metadata.AddLabels(snapshot, newLabel)
 	if err != nil {
-		return fmt.Errorf("failed to add label %s: %w", SnapshotIntegrationTestRun, err)
+		return fmt.Errorf("failed to add label %s: %w", gitops.SnapshotIntegrationTestRun, err)
 	}
 	err = i.KubeRest().Patch(context.Background(), snapshot, patch)
 	if err != nil {
