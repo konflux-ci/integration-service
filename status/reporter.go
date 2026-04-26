@@ -37,9 +37,9 @@ import (
 )
 
 // reporterRetryBackoff defines the retry backoff for transient git provider API errors (GitLab, GitHub, Forgejo).
-// Retries up to 5 times with exponential backoff: ~1s, ~2s, ~4s, ~8s, ~16s.
+// Retries up to 3 times with exponential backoff: ~0s, ~1s, ~2s.
 var reporterRetryBackoff = wait.Backoff{
-	Steps:    5,
+	Steps:    3,
 	Duration: 1 * time.Second,
 	Factor:   2.0,
 	Jitter:   0.1,
@@ -82,7 +82,7 @@ type ReporterInterface interface {
 	// Is the return code a recoverable error
 	ReturnCodeIsUnrecoverable(statusCode int) bool
 	// Update status comment in the gitlab merge request, implemented and used in reporter_gitlab.go
-	UpdateStatusInComment(string, string) (int, error)
+	UpdateStatusInComment(string, string, bool) (int, error)
 }
 
 // GetPACGitProviderToken lookup for configured repo and fetch token from namespace

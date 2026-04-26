@@ -291,7 +291,7 @@ func generateText(ctx context.Context, client client.Client, integrationTestStat
 
 	pr_group := snapshot.GetAnnotations()[gitops.PRGroupAnnotation]
 
-	if integrationTestStatusDetail.Status == intgteststat.IntegrationTestStatusTestPassed || integrationTestStatusDetail.Status == intgteststat.IntegrationTestStatusTestFail {
+	if integrationTestStatusDetail.Status == intgteststat.IntegrationTestStatusTestPassed || integrationTestStatusDetail.Status == intgteststat.IntegrationTestStatusTestFail || integrationTestStatusDetail.Status == intgteststat.IntegrationTestStatusTestWarning {
 		pipelineRunName := integrationTestStatusDetail.TestPipelineRunName
 		pipelineRun := &tektonv1.PipelineRun{}
 		err := client.Get(ctx, types.NamespacedName{
@@ -329,7 +329,7 @@ func generateShortText(integrationTestStatusDetail intgteststat.IntegrationTestS
 	var componentSnapshotInfos []*gitops.ComponentSnapshotInfo
 	var err error
 	var shortText string
-	if integrationTestStatusDetail.Status == intgteststat.IntegrationTestStatusTestPassed || integrationTestStatusDetail.Status == intgteststat.IntegrationTestStatusTestFail {
+	if integrationTestStatusDetail.Status == intgteststat.IntegrationTestStatusTestPassed || integrationTestStatusDetail.Status == intgteststat.IntegrationTestStatusTestFail || integrationTestStatusDetail.Status == intgteststat.IntegrationTestStatusTestWarning {
 		if componentSnapshotInfoString, ok := snapshot.Annotations[gitops.GroupSnapshotInfoAnnotation]; ok {
 			componentSnapshotInfos, err = gitops.UnmarshalJSON([]byte(componentSnapshotInfoString))
 			if err != nil {
@@ -755,7 +755,7 @@ func IterateIntegrationTestScenarioWithSameStatus(ctx context.Context, client cl
 			if err != nil {
 				return statusCode, fmt.Errorf("failed to format summary message: %w", err)
 			}
-			statusCode, err := reporter.UpdateStatusInComment(commentPrefix, commentText)
+			statusCode, err := reporter.UpdateStatusInComment(commentPrefix, commentText, integrationTestStatusDetail.Status.IsFinal())
 			if err != nil {
 				return statusCode, err
 			}

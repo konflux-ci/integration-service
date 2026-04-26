@@ -1,3 +1,19 @@
+/*
+Copyright 2022 Red Hat Inc.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package snapshot
 
 import (
@@ -7,6 +23,7 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
+	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
 	"github.com/konflux-ci/integration-service/api/v1beta2"
 	"github.com/konflux-ci/integration-service/gitops"
 	"github.com/konflux-ci/integration-service/helpers"
@@ -28,6 +45,8 @@ var _ = Describe("Snapshot creation functions", Ordered, func() {
 		buildPipelineRun  *tektonv1.PipelineRun
 		successfulTaskRun *tektonv1.TaskRun
 		hasCompGroup      *v1beta2.ComponentGroup
+		hasAppSample      *applicationapiv1alpha1.Application
+		hasCompSample     *applicationapiv1alpha1.Component
 		logger            logr.Logger
 	)
 	const (
@@ -41,6 +60,40 @@ var _ = Describe("Snapshot creation functions", Ordered, func() {
 	)
 
 	BeforeAll(func() {
+		hasAppSample = &applicationapiv1alpha1.Application{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "application-sample",
+				Namespace: "default",
+			},
+			Spec: applicationapiv1alpha1.ApplicationSpec{
+				DisplayName: "application-sample",
+				Description: "This is an example application",
+			},
+		}
+		Expect(k8sClient.Create(ctx, hasAppSample)).Should(Succeed())
+
+		hasCompSample = &applicationapiv1alpha1.Component{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      componentName,
+				Namespace: "default",
+			},
+			Spec: applicationapiv1alpha1.ComponentSpec{
+				ComponentName:  componentName,
+				Application:    "application-sample",
+				ContainerImage: "invalidImage",
+				Source: applicationapiv1alpha1.ComponentSource{
+					ComponentSourceUnion: applicationapiv1alpha1.ComponentSourceUnion{
+						GitSource: &applicationapiv1alpha1.GitSource{
+							URL:      SampleRepoLink,
+							Revision: SampleCommit,
+							Context:  "rpms/my-component",
+						},
+					},
+				},
+			},
+		}
+		Expect(k8sClient.Create(ctx, hasCompSample)).Should(Succeed())
+
 		buildPipelineRun = &tektonv1.PipelineRun{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "pipelinerun-build-sample",
@@ -227,9 +280,29 @@ var _ = Describe("Snapshot creation functions", Ordered, func() {
 		Expect(err == nil || k8serrors.IsNotFound(err)).To(BeTrue())
 		err = k8sClient.Delete(ctx, hasCompGroup)
 		Expect(err == nil || k8serrors.IsNotFound(err)).To(BeTrue())
+		err = k8sClient.Delete(ctx, hasCompSample)
+		Expect(err == nil || k8serrors.IsNotFound(err)).To(BeTrue())
+		err = k8sClient.Delete(ctx, hasAppSample)
+		Expect(err == nil || k8serrors.IsNotFound(err)).To(BeTrue())
 	})
 
 	Context("Testing PrepareSnapshotForPipelineRun()", func() {
+		It("ensures built component includes git context from Component CR", func() {
+			expectedSnapshot, err := PrepareSnapshotForPipelineRun(ctx, k8sClient, buildPipelineRun, componentName, hasCompGroup)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(expectedSnapshot).NotTo(BeNil())
+			var built *applicationapiv1alpha1.SnapshotComponent
+			for i := range expectedSnapshot.Spec.Components {
+				if expectedSnapshot.Spec.Components[i].Name == componentName {
+					built = &expectedSnapshot.Spec.Components[i]
+					break
+				}
+			}
+			Expect(built).NotTo(BeNil())
+			Expect(built.Source.GitSource).NotTo(BeNil())
+			Expect(built.Source.GitSource.Context).To(Equal("rpms/my-component"))
+		})
+
 		It("ensures that snapshot has label pointing to build pipelinerun", func() {
 			expectedSnapshot, err := PrepareSnapshotForPipelineRun(ctx, k8sClient, buildPipelineRun, componentName, hasCompGroup)
 			Expect(err).ToNot(HaveOccurred())

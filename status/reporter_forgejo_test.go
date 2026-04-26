@@ -197,7 +197,7 @@ var _ = Describe("ForgejoReporter", func() {
 
 			statusCode, err := reporter.Initialize(context.TODO(), hasSnapshot)
 			Expect(err).To(Succeed())
-			Expect(statusCode).To(Equal(0))
+			Expect(statusCode).To(Equal(http.StatusOK))
 
 		})
 
@@ -235,7 +235,7 @@ var _ = Describe("ForgejoReporter", func() {
 					Text:         "detailed text here",
 				})
 			Expect(err).To(Succeed())
-			Expect(statusCode).To(Equal(200))
+			Expect(statusCode).To(Equal(http.StatusOK))
 		})
 
 		It("creates a commit status for push snapshot with correct textual data without comments", func() {
@@ -246,7 +246,7 @@ var _ = Describe("ForgejoReporter", func() {
 			pushEventReporter := status.NewForgejoReporter(log, mockK8sClient)
 			statusCode, err := pushEventReporter.Initialize(context.TODO(), pushSnapshot)
 			Expect(err).To(Succeed())
-			Expect(statusCode).To(Equal(0))
+			Expect(statusCode).To(Equal(http.StatusOK))
 
 			summary := "Integration test for component component-sample snapshot snapshot-sample and scenario scenario1 passed"
 			muxForgejoCommitStatusPost(mux, owner, repo, digest, summary, "")
@@ -261,7 +261,7 @@ var _ = Describe("ForgejoReporter", func() {
 					Text:         "detailed text here",
 				})
 			Expect(err).To(Succeed())
-			Expect(statusCode).To(Equal(200))
+			Expect(statusCode).To(Equal(http.StatusOK))
 		})
 
 		It("creates a commit status for snapshot with TargetURL in CommitStatus", func() {
@@ -282,7 +282,7 @@ var _ = Describe("ForgejoReporter", func() {
 					Text:                "detailed text here",
 				})
 			Expect(err).To(Succeed())
-			Expect(statusCode).To(Equal(200))
+			Expect(statusCode).To(Equal(http.StatusOK))
 		})
 
 		It("sends failure commit status payload and comment text body to the API", func() {
@@ -305,11 +305,11 @@ var _ = Describe("ForgejoReporter", func() {
 					Text:         "detailed text here",
 				})
 			Expect(err).To(Succeed())
-			Expect(statusCode).To(Equal(200))
+			Expect(statusCode).To(Equal(http.StatusOK))
 
-			statusCode, err = reporter.UpdateStatusInComment(commentPrefix, commentText)
+			statusCode, err = reporter.UpdateStatusInComment(commentPrefix, commentText, true)
 			Expect(err).To(Succeed())
-			Expect(statusCode).To(Equal(201))
+			Expect(statusCode).To(Equal(http.StatusCreated))
 		})
 
 		It("does not create a commit status for snapshot with existing matching status in pending state", func() {
@@ -325,7 +325,7 @@ var _ = Describe("ForgejoReporter", func() {
 
 			statusCode, err := reporter.ReportStatus(context.TODO(), report)
 			Expect(err).To(Succeed())
-			Expect(statusCode).To(Equal(200))
+			Expect(statusCode).To(Equal(http.StatusOK))
 		})
 
 		It("can get an existing commitStatus that matches the report", func() {
@@ -357,9 +357,9 @@ var _ = Describe("ForgejoReporter", func() {
 			commentPrefix := status.GenerateTestSummaryPrefixForComponent("component-sample")
 			commentText := "Integration test report for component component-sample: All tests passed"
 			muxForgejoIssueComments(mux, owner, repo, pullRequest, commentText)
-			statusCode, err := reporter.UpdateStatusInComment(commentPrefix, commentText)
+			statusCode, err := reporter.UpdateStatusInComment(commentPrefix, commentText, true)
 			Expect(err).To(Succeed())
-			Expect(statusCode).To(Equal(201))
+			Expect(statusCode).To(Equal(http.StatusCreated))
 		})
 	})
 
@@ -431,7 +431,7 @@ var _ = Describe("ForgejoReporter", func() {
 			reporter = status.NewForgejoReporter(log, mockK8sClient)
 			statusCode, err := reporter.Initialize(context.TODO(), hasSnapshot)
 			Expect(err).To(Succeed())
-			Expect(statusCode).To(Equal(0))
+			Expect(statusCode).To(Equal(http.StatusOK))
 		})
 
 		AfterEach(func() {

@@ -160,7 +160,7 @@ func (r *GitLabReporter) Initialize(ctx context.Context, snapshot *applicationap
 	}
 
 	r.snapshot = snapshot
-	return 0, nil
+	return http.StatusOK, nil
 }
 
 // setCommitStatus sets commit status to be shown as pipeline run in gitlab view
@@ -192,6 +192,54 @@ func (r *GitLabReporter) setCommitStatus(report TestReport) (int, error) {
 		opt.TargetURL = gitlab.Ptr(url)
 	}
 
+	// try to find the MR pipeline from target project first since that's the one shown in MR view,
+	// if not found, then try to find the pipeline in source project, if still not found, then create commit status without pipeline association
+	// Give more tries because the integration status reporter is called after build pipeline is triggered
+	var existingMergeRequestPipelineID int
+	var joinedError error
+	err = retry.OnError(reporterRetryBackoff, func(err error) bool {
+		// statusCode 0 means no HTTP response was received (network/timeout error), always retry
+		retryable := !r.ReturnCodeIsUnrecoverable(statusCode)
+		if retryable {
+			r.logger.Info("retrying to get Merge Request pipeline ID", "target project", r.targetProjectID, "source project", r.sourceProjectID, "error", err.Error())
+		}
+		return retryable
+	}, func() error {
+		statusCode = 0 // reset before each attempt to avoid stale values
+		projectIDs := []int{r.targetProjectID, r.sourceProjectID}
+		for _, projectID := range projectIDs {
+			var pID int
+			var getErr error
+			pID, statusCode, getErr = r.GetExistingMergeRequestPipelineID(projectID, r.sha)
+			if getErr != nil {
+				r.logger.Info("failed to get existing Merge Request pipeline", "projectID: ", projectID, "commitSHA", r.sha, "statusCode", statusCode, "error", getErr)
+				joinedError = errors.Join(joinedError, getErr)
+				return getErr
+			}
+			if pID != 0 {
+				existingMergeRequestPipelineID = pID
+				r.logger.Info("found existing merge request pipeline", "projectID", projectID, "pipelineID", pID)
+				return nil
+			}
+		}
+		return fmt.Errorf("can't find existing merge request pipeline for commit %s in both source project %d and target project %d", r.sha, r.sourceProjectID, r.targetProjectID)
+	})
+
+	if existingMergeRequestPipelineID != 0 {
+		opt.PipelineID = gitlab.Ptr(existingMergeRequestPipelineID)
+	} else {
+		logFields := []interface{}{
+			"commitSHA", r.sha,
+			"sourceProjectID", r.sourceProjectID,
+			"targetProjectID", r.targetProjectID,
+		}
+		if err != nil && statusCode != http.StatusOK {
+			r.logger.Error(joinedError, "API error while searching for Merge Request pipeline, proceeding without association", logFields...)
+		} else {
+			r.logger.Info("no existing merge request pipeline found after retries, creating commit status without pipeline association", logFields...)
+		}
+	}
+
 	// Fetch commit statuses only if necessary
 	if glState == gitlab.Running || glState == gitlab.Pending {
 		allCommitStatuses, response, err := r.client.Commits.GetCommitStatuses(r.sourceProjectID, r.sha, nil)
@@ -217,58 +265,89 @@ func (r *GitLabReporter) setCommitStatus(report TestReport) (int, error) {
 	r.logger.Info("creating commit status for scenario test status of snapshot",
 		"scenarioName", report.ScenarioName)
 
-	sourceProjectCommitStatus, sourceProjectResponse, sourceProjectErr := r.client.Commits.SetCommitStatus(r.sourceProjectID, r.sha, &opt)
-	if sourceProjectResponse != nil {
-		statusCode = sourceProjectResponse.StatusCode
-	}
-	if sourceProjectErr == nil {
-		r.logger.Info("Created gitlab commit status", "scenario.name", report.ScenarioName, "commitStatus.ID", sourceProjectCommitStatus.ID, "TargetURL", opt.TargetURL)
-		return statusCode, nil
-	} else if strings.Contains(sourceProjectErr.Error(), "Cannot transition status via :enqueue from :pending") {
-		r.logger.Info("Ignoring the error when transition from pending to pending when the commitStatus might be created/updated in multiple threads at the same time occasionally")
-		return statusCode, nil
-	} else {
-		r.logger.Error(sourceProjectErr, "failed to set commit status to gitlab source project, try to set commit status to gitlab target project",
-			"sourceProjectID", r.sourceProjectID, "targetProjectID", r.targetProjectID, "sha", r.sha,
-			"scenario.name", report.ScenarioName, "statusCode", statusCode, "targetState", string(glState))
-	}
-
+	var targetProjectStatusCode, sourceProjectStatusCode int
 	targetProjectCommitStatus, targetProjectResponse, targetProjectErr := r.client.Commits.SetCommitStatus(r.targetProjectID, r.sha, &opt)
 	if targetProjectResponse != nil {
-		statusCode = targetProjectResponse.StatusCode
+		targetProjectStatusCode = targetProjectResponse.StatusCode
 	}
 	if targetProjectErr == nil {
 		r.logger.Info("Created gitlab commit status", "scenario.name", report.ScenarioName, "commitStatus2.ID", targetProjectCommitStatus.ID, "TargetURL", opt.TargetURL)
-		return statusCode, nil
-	}
-	// this code will only be reached if both source project and target project cannot be updated
-	// when commitStatus is created in multiple thread occasionally, we can still see the transition error, so let's ignore it as a workaround
-	if strings.Contains(targetProjectErr.Error(), "Cannot transition status via :enqueue from :pending") {
+		return targetProjectStatusCode, nil
+	} else if strings.Contains(targetProjectErr.Error(), "Cannot transition status via :enqueue from :pending") {
 		r.logger.Info("Ignoring the error when transition from pending to pending when the commitStatus might be created/updated in multiple threads at the same time occasionally")
-		return statusCode, nil
+		return http.StatusOK, nil
+	} else {
+		r.logger.Error(targetProjectErr, "failed to set commit status to gitlab target project, will try to set commit status to gitlab source project",
+			"sourceProjectID", r.sourceProjectID, "targetProjectID", r.targetProjectID, "sha", r.sha,
+			"scenario.name", report.ScenarioName, "target project statusCode", targetProjectStatusCode, "targetState", string(glState))
 	}
 
-	r.logger.Error(errors.Join(targetProjectErr, sourceProjectErr), "failed to set commit status to gitlab source project and target project",
+	sourceProjectCommitStatus, sourceProjectResponse, sourceProjectErr := r.client.Commits.SetCommitStatus(r.sourceProjectID, r.sha, &opt)
+	if sourceProjectResponse != nil {
+		sourceProjectStatusCode = sourceProjectResponse.StatusCode
+	}
+	if sourceProjectErr == nil {
+		r.logger.Info("Created gitlab commit status", "scenario.name", report.ScenarioName, "commitStatus.ID", sourceProjectCommitStatus.ID, "TargetURL", opt.TargetURL)
+		return sourceProjectStatusCode, nil
+	}
+	if strings.Contains(sourceProjectErr.Error(), "Cannot transition status via :enqueue from :pending") {
+		r.logger.Info("Ignoring the error when transition from pending to pending when the commitStatus might be created/updated in multiple threads at the same time occasionally")
+		return http.StatusOK, nil
+	}
+
+	r.logger.Error(errors.Join(targetProjectErr, sourceProjectErr), "failed to set commit status to gitlab source project and target project, retry",
 		"sourceProjectID", r.sourceProjectID, "targetProjectID", r.targetProjectID, "sha", r.sha,
-		"scenario.name", report.ScenarioName, "statusCode", statusCode, "targetState", string(glState))
-	return statusCode, fmt.Errorf("failed to set commit status to %s with returned statusCode %d: %w", string(glState), statusCode, errors.Join(targetProjectErr, sourceProjectErr))
+		"scenario.name", report.ScenarioName, "source project statusCode", sourceProjectStatusCode, "target project statusCode", targetProjectStatusCode, "targetState", string(glState))
+	// return targetProjectStatusCode to retry in ReportStatus function if the error is recoverable since the commit status in target project is the one shown in MR view, otherwise return sourceProjectStatusCode to avoid retry in ReportStatus function because the error is unrecoverable for both target and source project
+	if !r.ReturnCodeIsUnrecoverable(targetProjectStatusCode) {
+		return targetProjectStatusCode, targetProjectErr
+	}
+	if !r.ReturnCodeIsUnrecoverable(sourceProjectStatusCode) {
+		return sourceProjectStatusCode, sourceProjectErr
+	}
+	// by default return target project error and status code to have retry in ReportStatus since the commit status in target project is the one shown in MR view
+	return targetProjectStatusCode, targetProjectErr
 }
 
 // UpdateStatusInComment searches and deletes existing comments according to commentPrefix and create a new comment in the MR which creates snapshot
-func (r *GitLabReporter) UpdateStatusInComment(commentPrefix, comment string) (int, error) {
+// retry to get comment if not existing comment is found for final status
+func (r *GitLabReporter) UpdateStatusInComment(commentPrefix, comment string, isFinalStatus bool) (int, error) {
 	var statusCode = 0
+	var response *gitlab.Response
 
-	// get all existing integration test comment according to commentPrefix in integration test summary and delete them
-	allNotes, response, err := r.client.Notes.ListMergeRequestNotes(r.targetProjectID, r.mergeRequest, nil)
-	if response != nil {
-		statusCode = response.StatusCode
-	}
+	var err error
+	var noteIDs []int
+	var allNotes []*gitlab.Note
+	err = retry.OnError(reporterRetryBackoff, func(err error) bool {
+		// statusCode 0 means no HTTP response was received (network/timeout error), always retry
+		retryable := !r.ReturnCodeIsUnrecoverable(statusCode)
+		if retryable {
+			r.logger.Info("failed to find existing comment for final integration test status, retrying")
+		}
+		return retryable
+	}, func() error {
+		statusCode = 0
+		// get all existing integration test comment according to commentPrefix in integration test summary and delete them
+		allNotes, response, err = r.client.Notes.ListMergeRequestNotes(r.targetProjectID, r.mergeRequest, nil)
+		if err != nil {
+			r.logger.Error(err, "error while getting all comments for merge-request", "mergeRequest", r.mergeRequest, "report.SnapshotName", r.snapshot.Name)
+			return err
+		}
+		if response != nil {
+			statusCode = response.StatusCode
+		}
+
+		noteIDs = r.GetExistingCommentIDs(allNotes, commentPrefix)
+		if len(noteIDs) == 0 && isFinalStatus {
+			r.logger.Info("no existing comment found with matching commentPrefix for final status, retrying to get comment", "commentPrefix", commentPrefix)
+			return fmt.Errorf("no existing comment found with matching commentPrefix %s for final status", commentPrefix)
+		}
+		return nil
+	})
+
 	if err != nil {
-		r.logger.Error(err, "error while getting all comments for merge-request", "mergeRequest", r.mergeRequest, "report.SnapshotName", r.snapshot.Name)
-		return statusCode, fmt.Errorf("error while getting all comments for merge-request %d: %w", r.mergeRequest, err)
+		r.logger.Error(err, "failed to get existing comment for final status after retries, will create a new comment without updating existing comments, please refer to the comment created on the MR for details", "commentPrefix", commentPrefix)
 	}
-
-	noteIDs := r.GetExistingCommentIDs(allNotes, commentPrefix)
 
 	if len(noteIDs) > 0 {
 		// update the first existing comment but delete others because sometimes there might be multiple existing comments for the same component due to previous intermittent errors
@@ -344,6 +423,31 @@ func (r *GitLabReporter) GetExistingCommentIDs(notes []*gitlab.Note, commentPref
 	return commentIDs
 }
 
+func (r *GitLabReporter) GetExistingMergeRequestPipelineID(sourceProjectID int, sha string) (int, int, error) {
+	opt := &gitlab.ListProjectPipelinesOptions{
+		SHA:     gitlab.Ptr(sha),
+		OrderBy: gitlab.Ptr("id"),
+		Sort:    gitlab.Ptr("desc"),
+	}
+
+	var statusCode int
+	pipelines, response, err := r.client.Pipelines.ListProjectPipelines(sourceProjectID, opt)
+	if response != nil {
+		statusCode = response.StatusCode
+	}
+	if err != nil {
+		r.logger.Error(err, "failed to list Merge Request pipelines", "sourceProjectID", sourceProjectID, "commitSHA", sha)
+		return 0, statusCode, err
+	}
+
+	if len(pipelines) == 0 {
+		r.logger.Info("No Merge Request pipelines found for commit", "commitSHA", sha)
+		return 0, statusCode, nil
+	}
+
+	return pipelines[0].ID, statusCode, nil
+}
+
 // DeleteExistingNotes deletes existing GitLab note with given noteIDs.
 func (r *GitLabReporter) DeleteExistingNotes(noteIDs []int) (int, error) {
 	var lastStatusCode = 0
@@ -405,7 +509,7 @@ func (r *GitLabReporter) ReportStatus(ctx context.Context, report TestReport) (i
 }
 
 func (r *GitLabReporter) ReturnCodeIsUnrecoverable(statusCode int) bool {
-	return statusCode == http.StatusForbidden || statusCode == http.StatusUnauthorized || statusCode == http.StatusBadRequest
+	return statusCode == http.StatusForbidden || statusCode == http.StatusUnauthorized || statusCode == http.StatusBadRequest || statusCode == http.StatusNotFound
 }
 
 // GenerateGitlabCommitState transforms internal integration test state into Gitlab state

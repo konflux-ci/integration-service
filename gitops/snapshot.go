@@ -1062,6 +1062,32 @@ func GetComponentSourceFromComponent(component *applicationapiv1alpha1.Component
 	return componentSource, nil
 }
 
+// EnrichBuiltComponentSourceGitContext sets GitSource.Context on the built component source when it is
+// still empty. When componentVersion is set, matching spec.source.versions[].context takes precedence
+// over spec.source.git.context; otherwise top-level git context is used. This aligns the built row with
+// GetComponentSourceFromComponent for sibling components.
+func EnrichBuiltComponentSourceGitContext(componentSource *applicationapiv1alpha1.ComponentSource, component *applicationapiv1alpha1.Component, componentVersion string) {
+	if componentSource == nil || componentSource.GitSource == nil || component == nil {
+		return
+	}
+	if componentSource.GitSource.Context != "" {
+		return
+	}
+	if componentVersion != "" {
+		for i := range component.Spec.Source.Versions {
+			v := &component.Spec.Source.Versions[i]
+			if v.Name == componentVersion && v.Context != "" {
+				componentSource.GitSource.Context = v.Context
+				return
+			}
+		}
+	}
+	if component.Spec.Source.GitSource != nil && component.Spec.Source.GitSource.Context != "" {
+		componentSource.GitSource.Context = component.Spec.Source.GitSource.Context
+		return
+	}
+}
+
 // GetIntegrationTestRunLabelValue returns value of the label responsible for re-running tests
 func GetIntegrationTestRunLabelValue(obj metav1.Object) (string, bool) {
 	labels := obj.GetLabels()
@@ -1216,7 +1242,22 @@ func IsComponentSnapshotCreatedByPACPushEvent(snapshot *applicationapiv1alpha1.S
 	return IsComponentSnapshot(snapshot) && IsSnapshotCreatedByPACPushEvent(snapshot)
 }
 
-func SetOwnerReference(ctx context.Context, adapterClient client.Client, snapshot *applicationapiv1alpha1.Snapshot, owner *applicationapiv1alpha1.Application) (*applicationapiv1alpha1.Snapshot, error) {
+// TODO: delete when we remove old application-specific code
+func SetOwnerReferenceApplication(ctx context.Context, adapterClient client.Client, snapshot *applicationapiv1alpha1.Snapshot, owner *applicationapiv1alpha1.Application) (*applicationapiv1alpha1.Snapshot, error) {
+	patch := client.MergeFrom(snapshot.DeepCopy())
+	err := ctrl.SetControllerReference(owner, snapshot, adapterClient.Scheme())
+	if err != nil {
+		return snapshot, err
+	}
+	err = adapterClient.Patch(ctx, snapshot, patch)
+	if err != nil {
+		return snapshot, err
+	}
+	return snapshot, nil
+}
+
+// SetOwnerReference sets the ComponentGroup as an owner of the snapshot
+func SetOwnerReference(ctx context.Context, adapterClient client.Client, snapshot *applicationapiv1alpha1.Snapshot, owner *v1beta2.ComponentGroup) (*applicationapiv1alpha1.Snapshot, error) {
 	patch := client.MergeFrom(snapshot.DeepCopy())
 	err := ctrl.SetControllerReference(owner, snapshot, adapterClient.Scheme())
 	if err != nil {
@@ -1595,7 +1636,22 @@ func IsIntegrationTestCommentDisabledForComponent(component *applicationapiv1alp
 	return metadata.HasAnnotationWithValue(component, GitCommentPolicyAnnotation, GitCommentPolicyAllDisabled)
 }
 
+// isComponentRepositorySettingsCommentDisabled reports true when spec.repository-settings.comment-strategy
+// is disable_all (revised component model; see konflux-ci/architecture ADR 0056).
+func isComponentRepositorySettingsCommentDisabled(component *applicationapiv1alpha1.Component) bool {
+	if component == nil {
+		return false
+	}
+	return strings.EqualFold(strings.TrimSpace(component.Spec.RepositorySettings.CommentStrategy), GitCommentPolicyAllDisabled)
+}
+
 func IsCommentDisabled(ctx context.Context, adapterClient client.Client, component *applicationapiv1alpha1.Component) (bool, error) {
+	if component == nil {
+		return false, nil
+	}
+	if isComponentRepositorySettingsCommentDisabled(component) {
+		return true, nil
+	}
 	// check if all comments are disabled for the component's PAC Repository CR
 	allDisabled, err := IsAllCommentDisabledForPacRepositoryInComponent(ctx, adapterClient, component)
 	if err != nil {

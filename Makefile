@@ -120,6 +120,18 @@ download-crds: ## Vendoring doesn't fetch CRDs yaml files due pruning of depende
 test: manifests generate fmt vet envtest download-crds ## Run tests.
 	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) -p path)" go test ./... -coverprofile cover.out
 
+##@ E2E Tests
+
+E2E_BIN := ./e2e-tests/bin/e2e-appstudio
+
+.PHONY: e2e-build
+e2e-build: ## Build e2e test binary.
+	CGO_ENABLED=0 go test -v -tags e2e -c -o $(E2E_BIN) ./e2e-tests/cmd/e2e_test.go
+
+.PHONY: e2e-run
+e2e-run: e2e-build ## Build and run integration-service e2e tests.
+	$(E2E_BIN) --ginkgo.focus="integration-service" --ginkgo.vv
+
 ##@ Build
 
 .PHONY: build

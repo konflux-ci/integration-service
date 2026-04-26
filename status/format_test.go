@@ -37,14 +37,14 @@ const expectedSummary = `<ul>
 </ul>
 <hr>
 
-| Task | Duration | Test Suite | Status | Details |
-| --- | --- | --- | --- | --- |
-| <a href="https://definetly.not.prod/preview/application-pipeline/ns/default/pipelinerun/pipelinerun-component-sample/logs/example-task-1">example-task-1</a> | 5m30s | example-namespace-1 | :heavy_check_mark: SUCCESS | :heavy_check_mark: 2 success(es)<br>:warning: 1 warning(s) |
-| <a href="https://definetly.not.prod/preview/application-pipeline/ns/default/pipelinerun/pipelinerun-component-sample/logs/example-task-2">example-task-2</a> | 2m0s |  | :heavy_check_mark: Reason: Succeeded | :heavy_check_mark: Reason: Succeeded |
-| <a href="https://definetly.not.prod/preview/application-pipeline/ns/default/pipelinerun/pipelinerun-component-sample/logs/example-task-3">example-task-3[^example-task-3]</a> | 1s | example-namespace-3 | :x: FAILURE | :x: 1 failure(s) |
-| <a href="https://definetly.not.prod/preview/application-pipeline/ns/default/pipelinerun/pipelinerun-component-sample/logs/example-task-4">example-task-4[^example-task-4]</a> | 1s | example-namespace-4 | :warning: WARNING | :warning: 1 warning(s) |
-| <a href="https://definetly.not.prod/preview/application-pipeline/ns/default/pipelinerun/pipelinerun-component-sample/logs/example-task-5">example-task-5</a> | 5m0s | example-namespace-5 | :white_check_mark: SKIPPED |  |
-| <a href="https://definetly.not.prod/preview/application-pipeline/ns/default/pipelinerun/pipelinerun-component-sample/logs/example-task-6">example-task-6</a> | 1s | example-namespace-6 | :heavy_exclamation_mark: ERROR |  |
+| Task | Duration | Test Suite | Status | Details | Note |
+| --- | --- | --- | --- | --- | --- |
+| <a href="https://definetly.not.prod/preview/application-pipeline/ns/default/pipelinerun/pipelinerun-component-sample/logs/example-task-1">example-task-1</a> | 5m30s | example-namespace-1 | :heavy_check_mark: SUCCESS | :heavy_check_mark: 2 success(es)<br>:warning: 1 warning(s) |  |
+| <a href="https://definetly.not.prod/preview/application-pipeline/ns/default/pipelinerun/pipelinerun-component-sample/logs/example-task-2">example-task-2</a> | 2m0s |  | :heavy_check_mark: Reason: Succeeded | :heavy_check_mark: Reason: Succeeded |  |
+| <a href="https://definetly.not.prod/preview/application-pipeline/ns/default/pipelinerun/pipelinerun-component-sample/logs/example-task-3">example-task-3[^example-task-3]</a> | 1s | example-namespace-3 | :x: FAILURE | :x: 1 failure(s) | example note 3 |
+| <a href="https://definetly.not.prod/preview/application-pipeline/ns/default/pipelinerun/pipelinerun-component-sample/logs/example-task-4">example-task-4[^example-task-4]</a> | 1s | example-namespace-4 | :warning: WARNING | :warning: 1 warning(s) | example note 4 |
+| <a href="https://definetly.not.prod/preview/application-pipeline/ns/default/pipelinerun/pipelinerun-component-sample/logs/example-task-5">example-task-5</a> | 5m0s | example-namespace-5 | :white_check_mark: SKIPPED |  |  |
+| <a href="https://definetly.not.prod/preview/application-pipeline/ns/default/pipelinerun/pipelinerun-component-sample/logs/example-task-6">example-task-6</a> | 1s | example-namespace-6 | :heavy_exclamation_mark: ERROR |  |  |
 
 [^example-task-3]: example note 3
 [^example-task-4]: example note 4
@@ -269,6 +269,26 @@ var _ = Describe("Formatters", func() {
 	It("can construct a taskLogURL", func() {
 		taskLogUrl := status.FormatTaskLogURL(taskRuns[0], pipelineRun.Name, pipelineRun.Namespace, logr.Discard())
 		Expect(taskLogUrl).To(Equal(expectedTaskLogURL))
+	})
+
+	It("can construct console URLs using documented placeholders (not Go templates)", func() {
+		os.Setenv("CONSOLE_URL", "https://example.com/ns/{{NAMESPACE}}/pipelinerun/{{PIPELINE_RUN_NAME}}")
+		os.Setenv("CONSOLE_URL_TASKLOG", "https://example.com/ns/{{NAMESPACE}}/pipelinerun/{{PIPELINE_RUN_NAME}}/logs/{{TASK_NAME}}")
+		taskLogURL := status.FormatTaskLogURL(taskRuns[0], pipelineRun.Name, pipelineRun.Namespace, logr.Discard())
+		Expect(taskLogURL).To(Equal("https://example.com/ns/default/pipelinerun/pipelinerun-component-sample/logs/example-task-1"))
+		summary, err := status.FormatTestsSummary(taskRuns, pipelineRun.Name, pipelineRun.Namespace, componentSnapshotInfos, PRGroup, logr.Discard())
+		Expect(err).ToNot(HaveOccurred())
+		Expect(summary).To(ContainSubstring(`href="https://example.com/ns/default/pipelinerun/pipelinerun-component-sample"`))
+	})
+
+	It("supports compact legacy placeholders without spaces", func() {
+		os.Setenv("CONSOLE_URL", "https://example.com/ns/{{.Namespace}}/pipelinerun/{{.PipelineRunName}}")
+		os.Setenv("CONSOLE_URL_TASKLOG", "https://example.com/ns/{{.Namespace}}/pipelinerun/{{.PipelineRunName}}/logs/{{.TaskName}}")
+		taskLogURL := status.FormatTaskLogURL(taskRuns[0], pipelineRun.Name, pipelineRun.Namespace, logr.Discard())
+		Expect(taskLogURL).To(Equal("https://example.com/ns/default/pipelinerun/pipelinerun-component-sample/logs/example-task-1"))
+		summary, err := status.FormatTestsSummary(taskRuns, pipelineRun.Name, pipelineRun.Namespace, componentSnapshotInfos, PRGroup, logr.Discard())
+		Expect(err).ToNot(HaveOccurred())
+		Expect(summary).To(ContainSubstring(`href="https://example.com/ns/default/pipelinerun/pipelinerun-component-sample"`))
 	})
 
 	It("can construct a summary", func() {

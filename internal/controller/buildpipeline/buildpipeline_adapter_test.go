@@ -122,6 +122,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 						GitSource: &applicationapiv1alpha1.GitSource{
 							URL:      SampleRepoLink,
 							Revision: SampleCommit,
+							Context:  "rpms/my-component",
 						},
 					},
 				},
@@ -214,6 +215,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 					gitops.PipelineAsCodeInstallationIDAnnotation: "123",
 					gitops.PRGroupAnnotation:                      prGroup,
 					gitops.PipelineAsCodeGitProviderAnnotation:    "github",
+					gitops.IntegrationWorkflowAnnotation:          gitops.IntegrationWorkflowPullRequestValue,
 				},
 			},
 			Spec: applicationapiv1alpha1.SnapshotSpec{
@@ -611,13 +613,17 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				return !result.CancelRequest && err == nil
 			}, time.Second*10).Should(BeTrue())
 
-			// Get the updated PipelineRun to check the annotation
-			err = k8sClient.Get(ctx, client.ObjectKeyFromObject(buildPipelineRun), buildPipelineRun)
-			Expect(err).ToNot(HaveOccurred())
-
-			// The PipelineRun should be annotated with the snapshot name
-			snapshotName, found := buildPipelineRun.Annotations[tektonconsts.SnapshotNamesLabel]
-			Expect(found).To(BeTrue(), "PipelineRun should be annotated with snapshot name")
+			// Wait for the cache to reflect the updated PipelineRun annotation
+			var snapshotName string
+			Eventually(func() bool {
+				err = k8sClient.Get(ctx, client.ObjectKeyFromObject(buildPipelineRun), buildPipelineRun)
+				if err != nil {
+					return false
+				}
+				var found bool
+				snapshotName, found = buildPipelineRun.Annotations[tektonconsts.SnapshotNamesLabel]
+				return found
+			}, time.Second*10).Should(BeTrue(), "PipelineRun should be annotated with snapshot name")
 
 			// Verify the snapshot name either has a suffix or is different from colliding one
 			// Format: prefix-YYYYMMDD-HHMMSS-mmm or prefix-YYYYMMDD-HHMMSS-mmm-xx
@@ -634,6 +640,8 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		It("ensure snapshot will not be created in instance when chains is incomplete", func() {
 			var buf bytes.Buffer
 			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+			// Set CreationTimestamp to recent time so timeout is not exceeded
+			buildPipelineRun.CreationTimestamp = metav1.NewTime(time.Now())
 			buildPipelineRun.Annotations = map[string]string{
 				"appstudio.redhat.com/updateComponentOnSuccess": "false",
 				"pipelinesascode.tekton.dev/on-target-branch":   "[main,master]",
@@ -647,10 +655,33 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				return !result.CancelRequest && err != nil
 			}, time.Second*10).Should(BeTrue())
 
-			expectedLogEntry := "Not processing the pipelineRun because it's not yet signed with Chains"
+			expectedLogEntry := "PipelineRun not yet signed by Chains, will requeue"
 			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
 			unexpectedLogEntry := "Created new Snapshot"
 			Expect(buf.String()).ShouldNot(ContainSubstring(unexpectedLogEntry))
+			Expect(buildPipelineRun.Annotations).ShouldNot(HaveKey(helpers.CreateSnapshotAnnotationName))
+		})
+
+		It("ensure snapshot creation fails after exceeding chains signing timeout", func() {
+			var buf bytes.Buffer
+			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+			// Set CompletionTime far enough in the past to exceed the timeout
+			buildPipelineRun.Status.CompletionTime = &metav1.Time{Time: time.Now().Add(-helpers.ChainsSignedCheckTimeout - time.Minute)}
+			buildPipelineRun.Annotations = map[string]string{
+				"appstudio.redhat.com/updateComponentOnSuccess": "false",
+				"pipelinesascode.tekton.dev/on-target-branch":   "[main,master]",
+				"build.appstudio.openshift.io/repo":             "https://github.com/devfile-samples/devfile-sample-go-basic?rev=c713067b0e65fb3de50d1f7c457eb51c2ab0dbb0",
+				"foo":                                           "bar",
+			}
+			adapter = NewAdapter(ctx, buildPipelineRun, hasComp, &[]v1beta2.ComponentGroup{*hasCompGroup}, log, loader.NewMockLoader(), k8sClient)
+
+			Eventually(func() bool {
+				result, err := adapter.EnsureSnapshotExists()
+				return !result.CancelRequest && err != nil
+			}, time.Second*10).Should(BeTrue())
+
+			expectedLogEntry := "Exceeded timeout waiting for Chains signing"
+			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
 		})
 
 		It("ensure error info is added to build pipelineRun annotation", func() {
@@ -873,13 +904,17 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				return !result.CancelRequest && err == nil
 			}, time.Second*10).Should(BeTrue())
 
-			// Get the updated PipelineRun to check the annotation
-			err = k8sClient.Get(ctx, client.ObjectKeyFromObject(buildPipelineRun), buildPipelineRun)
-			Expect(err).ToNot(HaveOccurred())
-
-			// The PipelineRun should be annotated with the snapshot name
-			snapshotName, found := buildPipelineRun.Annotations[tektonconsts.SnapshotNameLabel]
-			Expect(found).To(BeTrue(), "PipelineRun should be annotated with snapshot name")
+			// Wait for the cache to reflect the updated PipelineRun annotation
+			var snapshotName string
+			Eventually(func() bool {
+				err = k8sClient.Get(ctx, client.ObjectKeyFromObject(buildPipelineRun), buildPipelineRun)
+				if err != nil {
+					return false
+				}
+				var found bool
+				snapshotName, found = buildPipelineRun.Annotations[tektonconsts.SnapshotNameLabel]
+				return found
+			}, time.Second*10).Should(BeTrue(), "PipelineRun should be annotated with snapshot name")
 
 			// Verify the snapshot name either has a suffix or is different from colliding one
 			// Format: prefix-YYYYMMDD-HHMMSS-mmm or prefix-YYYYMMDD-HHMMSS-mmm-xx
@@ -1101,9 +1136,45 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			Expect(annotation).To(Equal("push"))
 		})
 
+		It("ensures built component snapshot includes git context from Component spec", func() {
+			snapshot, err := adapter.prepareSnapshotForPipelineRun(buildPipelineRun, hasComp, hasApp)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(snapshot).ToNot(BeNil())
+			var built *applicationapiv1alpha1.SnapshotComponent
+			for i := range snapshot.Spec.Components {
+				if snapshot.Spec.Components[i].Name == hasComp.Name {
+					built = &snapshot.Spec.Components[i]
+					break
+				}
+			}
+			Expect(built).NotTo(BeNil())
+			Expect(built.Source.GitSource).NotTo(BeNil())
+			Expect(built.Source.GitSource.Context).To(Equal("rpms/my-component"))
+		})
+
+		It("ensures PipelineRun context annotation overrides Component spec git context", func() {
+			plr := buildPipelineRun.DeepCopy()
+			plr.Annotations[tektonconsts.PipelineRunComponentVersionContextAnnotation] = "annotation-context"
+			snapshot, err := adapter.prepareSnapshotForPipelineRun(plr, hasComp, hasApp)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(snapshot).ToNot(BeNil())
+			var built *applicationapiv1alpha1.SnapshotComponent
+			for i := range snapshot.Spec.Components {
+				if snapshot.Spec.Components[i].Name == hasComp.Name {
+					built = &snapshot.Spec.Components[i]
+					break
+				}
+			}
+			Expect(built).NotTo(BeNil())
+			Expect(built.Source.GitSource).NotTo(BeNil())
+			Expect(built.Source.GitSource.Context).To(Equal("annotation-context"))
+		})
+
 		It("ensure snapshot will not be created in instance when chains is incomplete", func() {
 			var buf bytes.Buffer
 			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+			// Set CreationTimestamp to recent time so timeout is not exceeded
+			buildPipelineRun.CreationTimestamp = metav1.NewTime(time.Now())
 			buildPipelineRun.Annotations = map[string]string{
 				"appstudio.redhat.com/updateComponentOnSuccess": "false",
 				"pipelinesascode.tekton.dev/on-target-branch":   "[main,master]",
@@ -1117,10 +1188,33 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				return !result.CancelRequest && err != nil
 			}, time.Second*10).Should(BeTrue())
 
-			expectedLogEntry := "Not processing the pipelineRun because it's not yet signed with Chains"
+			expectedLogEntry := "PipelineRun not yet signed by Chains, will requeue"
 			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
 			unexpectedLogEntry := "Created new Snapshot"
 			Expect(buf.String()).ShouldNot(ContainSubstring(unexpectedLogEntry))
+			Expect(buildPipelineRun.Annotations).ShouldNot(HaveKey(helpers.CreateSnapshotAnnotationName))
+		})
+
+		It("ensure snapshot creation fails after exceeding chains signing timeout (application)", func() {
+			var buf bytes.Buffer
+			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+			// Set CompletionTime far enough in the past to exceed the timeout
+			buildPipelineRun.Status.CompletionTime = &metav1.Time{Time: time.Now().Add(-helpers.ChainsSignedCheckTimeout - time.Minute)}
+			buildPipelineRun.Annotations = map[string]string{
+				"appstudio.redhat.com/updateComponentOnSuccess": "false",
+				"pipelinesascode.tekton.dev/on-target-branch":   "[main,master]",
+				"build.appstudio.openshift.io/repo":             "https://github.com/devfile-samples/devfile-sample-go-basic?rev=c713067b0e65fb3de50d1f7c457eb51c2ab0dbb0",
+				"foo":                                           "bar",
+			}
+			adapter = NewAdapterWithApplication(ctx, buildPipelineRun, hasComp, hasApp, log, loader.NewMockLoader(), k8sClient)
+
+			Eventually(func() bool {
+				result, err := adapter.EnsureSnapshotExistsApplication()
+				return !result.CancelRequest && err != nil
+			}, time.Second*10).Should(BeTrue())
+
+			expectedLogEntry := "Exceeded timeout waiting for Chains signing"
+			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
 		})
 
 		It("ensure error info is added to build pipelineRun annotation", func() {
@@ -1989,7 +2083,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				adapter = NewAdapter(ctx, buildPipelineRun, hasComp, &[]v1beta2.ComponentGroup{*hasCompGroup}, log, loader.NewMockLoader(), k8sClient)
 				adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 					{
-						ContextKey: loader.AllSnapshotsForGivenPRContextKey,
+						ContextKey: loader.AllPullSnapshotsForGivenPRContextKey,
 						Resource:   []applicationapiv1alpha1.Snapshot{*duplicateSnapshot},
 					},
 				})
@@ -2035,7 +2129,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				adapter = NewAdapter(ctx, buildPipelineRun, hasComp, &[]v1beta2.ComponentGroup{*hasCompGroup}, log, loader.NewMockLoader(), k8sClient)
 				adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 					{
-						ContextKey: loader.AllSnapshotsForGivenPRContextKey,
+						ContextKey: loader.AllPullSnapshotsForGivenPRContextKey,
 						Resource:   []applicationapiv1alpha1.Snapshot{*finishedSnapshot},
 					},
 				})

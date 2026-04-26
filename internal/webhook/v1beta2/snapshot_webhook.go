@@ -18,6 +18,7 @@ package v1beta2
 
 import (
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
+	"github.com/konflux-ci/integration-service/gitops"
 	"github.com/konflux-ci/integration-service/helpers"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -72,13 +73,18 @@ func (d *SnapshotCustomDefaulter) Default(ctx context.Context, obj runtime.Objec
 		return fmt.Errorf("expected a Snapshot object but got %T", obj)
 	}
 
-	snapshotlog.Info("Setting application label on Snapshot", "name", snapshot.GetName())
+	// TODO: remove "application or" when we remove old application-specific code
+	snapshotlog.Info("Setting application or componentgroup label on Snapshot", "name", snapshot.GetName())
 
 	if snapshot.Labels == nil {
 		snapshot.Labels = make(map[string]string)
 	}
 
-	snapshot.Labels["appstudio.openshift.io/application"] = snapshot.Spec.Application
+	if snapshot.Spec.Application != "" {
+		snapshot.Labels[gitops.ApplicationNameLabel] = snapshot.Spec.Application
+	} else {
+		snapshot.Labels[gitops.ComponentGroupNameLabel] = snapshot.Spec.ComponentGroup
+	}
 
 	snapshotlog.Info("Set application label", "snapshot", snapshot.GetName(), "application", snapshot.Spec.Application)
 

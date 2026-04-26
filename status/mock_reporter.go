@@ -112,16 +112,16 @@ func (mr *MockReporterInterfaceMockRecorder) ReturnCodeIsUnrecoverable(statusCod
 }
 
 // UpdateStatusInComment mocks base method.
-func (m *MockReporterInterface) UpdateStatusInComment(arg0, arg1 string) (int, error) {
+func (m *MockReporterInterface) UpdateStatusInComment(arg0, arg1 string, arg2 bool) (int, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "UpdateStatusInComment", arg0, arg1)
+	ret := m.ctrl.Call(m, "UpdateStatusInComment", arg0, arg1, arg2)
 	ret0, _ := ret[0].(int)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // UpdateStatusInComment indicates an expected call of UpdateStatusInComment.
-func (mr *MockReporterInterfaceMockRecorder) UpdateStatusInComment(arg0, arg1 interface{}) *gomock.Call {
+func (mr *MockReporterInterfaceMockRecorder) UpdateStatusInComment(arg0, arg1, arg2 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateStatusInComment", reflect.TypeOf((*MockReporterInterface)(nil).UpdateStatusInComment), arg0, arg1)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateStatusInComment", reflect.TypeOf((*MockReporterInterface)(nil).UpdateStatusInComment), arg0, arg1, arg2)
 }

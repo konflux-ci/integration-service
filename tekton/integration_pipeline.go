@@ -310,29 +310,38 @@ func (iplr *IntegrationPipelineRun) WithUpdatedTasksGitResolver(snapshot *applic
 	}
 
 	// Defensive nil checks for the entire path
-	if iplr.Spec.PipelineSpec == nil || iplr.Spec.PipelineSpec.Tasks == nil {
+	if iplr.Spec.PipelineSpec == nil || (iplr.Spec.PipelineSpec.Tasks == nil && iplr.Spec.PipelineSpec.Finally == nil) {
 		return iplr
 	}
 
 	// We skip if there are no tasks in the pipeline spec
-	if len(iplr.Spec.PipelineSpec.Tasks) == 0 {
+	if len(iplr.Spec.PipelineSpec.Tasks) == 0 && len(iplr.Spec.PipelineSpec.Finally) == 0 {
 		return iplr
 	}
 
-	for _, originalTask := range iplr.Spec.PipelineSpec.Tasks {
-		if shouldUpdateTaskGitResolver(&originalTask, snapshot) {
-			//nolint:staticcheck  // QF1008: We specifically want ResolverRef.Params, not PipelineRef.Params
-			for originalParamIndex, originalParam := range originalTask.TaskRef.ResolverRef.Params {
-				if _, ok := params[originalParam.Name]; ok {
-					// use the original index to update the value, we cannot update value given by range directly
-					originalTask.TaskRef.ResolverRef.Params[originalParamIndex].Value.StringVal = params[originalParam.Name]
-				}
-			}
+	for i := range iplr.Spec.PipelineSpec.Tasks {
+		if shouldUpdateTaskGitResolver(&iplr.Spec.PipelineSpec.Tasks[i], snapshot) {
+			updateTaskGitResolver(&iplr.Spec.PipelineSpec.Tasks[i], params)
 		}
-
+	}
+	for i := range iplr.Spec.PipelineSpec.Finally {
+		if shouldUpdateTaskGitResolver(&iplr.Spec.PipelineSpec.Finally[i], snapshot) {
+			updateTaskGitResolver(&iplr.Spec.PipelineSpec.Finally[i], params)
+		}
 	}
 
 	return iplr
+}
+
+// updateTaskGitResolver updates the task's gitResolver parameters to match the ones supplied in the params
+func updateTaskGitResolver(originalTask *tektonv1.PipelineTask, params map[string]string) {
+	//nolint:staticcheck  // QF1008: We specifically want ResolverRef.Params, not PipelineRef.Params
+	for originalParamIndex, originalParam := range originalTask.TaskRef.ResolverRef.Params {
+		if _, ok := params[originalParam.Name]; ok {
+			// use the original index to update the value, we cannot update value given by range directly
+			originalTask.TaskRef.ResolverRef.Params[originalParamIndex].Value.StringVal = params[originalParam.Name]
+		}
+	}
 }
 
 // getGitResolverUpdateMap extracts the git resolver annotations from the Snapshot
@@ -512,11 +521,29 @@ func (r *IntegrationPipelineRun) WithIntegrationAnnotations(its *v1beta2.Integra
 }
 
 // WithApplication adds the name of application as a label to the Integration PipelineRun.
+// TODO: remove once application-specific code is deprecated
 func (r *IntegrationPipelineRun) WithApplication(application *applicationapiv1alpha1.Application) *IntegrationPipelineRun {
+	if application == nil {
+		return r
+	}
 	if r.Labels == nil {
 		r.Labels = map[string]string{}
 	}
 	r.Labels[consts.ApplicationNameLabel] = application.Name
+
+	return r
+}
+
+// WithComponentGroup adds the name of component group as a label to the Integration PipelineRun.
+func (r *IntegrationPipelineRun) WithComponentGroup(componentGroup *v1beta2.ComponentGroup) *IntegrationPipelineRun {
+	// TODO: remove if block once application-specific code is deprecated
+	if componentGroup == nil {
+		return r
+	}
+	if r.Labels == nil {
+		r.Labels = map[string]string{}
+	}
+	r.Labels[consts.ComponentGroupNameLabel] = componentGroup.Name
 
 	return r
 }

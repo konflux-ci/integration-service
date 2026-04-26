@@ -1,14 +1,27 @@
+/*
+Copyright 2022 Red Hat Inc.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package snapshot
 
 import (
 	"context"
-	"crypto/rand"
 	"errors"
 	"fmt"
-	"math/big"
 	"slices"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -36,6 +49,11 @@ func PrepareSnapshotForPipelineRun(ctx context.Context, adapterClient client.Cli
 		return nil, err
 	}
 
+	var comp applicationapiv1alpha1.Component
+	if err := adapterClient.Get(ctx, client.ObjectKey{Namespace: componentGroup.Namespace, Name: componentName}, &comp); err == nil {
+		gitops.EnrichBuiltComponentSourceGitContext(&newSnapshotComponent.Source, &comp, newSnapshotComponent.Version)
+	}
+
 	snapshot, err := PrepareSnapshot(ctx, adapterClient, componentGroup, newSnapshotComponent, log)
 	if err != nil {
 		return nil, err
@@ -60,13 +78,7 @@ func PrepareSnapshotForPipelineRun(ctx context.Context, adapterClient client.Cli
 	}
 
 	// Set BuildPipelineRunStartTime annotation with millisecond precision and override snapshot name
-	var timestampMillis int64
-	// Get the time
-	if pipelineRun.Status.StartTime != nil {
-		timestampMillis = pipelineRun.Status.StartTime.UnixMilli()
-	} else {
-		timestampMillis = time.Now().UnixMilli()
-	}
+	timestampMillis := getPipelineRunStartTimeMillis(pipelineRun)
 	// Naming once, at the end
 	snapshot.Annotations[gitops.BuildPipelineRunStartTime] = strconv.FormatInt(timestampMillis, 10)
 	snapshot.Name = gitops.GenerateSnapshotNameWithTimestamp(componentGroup.Name, timestampMillis)
@@ -113,13 +125,7 @@ func CreateSnapshotWithCollisionHandling(ctx context.Context, client client.Clie
 				return err // Return original collision error
 			}
 
-			// Extract timestamp from original name or use current time
-			var timestampMillis int64
-			if pipelineRun.Status.StartTime != nil {
-				timestampMillis = pipelineRun.Status.StartTime.UnixMilli()
-			} else {
-				timestampMillis = time.Now().UnixMilli()
-			}
+			timestampMillis := getPipelineRunStartTimeMillis(pipelineRun)
 
 			// Regenerate name with suffix
 			snapshot.Name = gitops.GenerateSnapshotNameWithTimestamp(componentGroup.Name, timestampMillis, suffix)
@@ -138,21 +144,6 @@ func CreateSnapshotWithCollisionHandling(ctx context.Context, client client.Clie
 	}
 
 	return fmt.Errorf("failed to create snapshot after %d attempts", maxRetries)
-}
-
-// generateRandomSuffix generates a random 2-character alphanumeric suffix for collision handling
-func generateRandomSuffix() (string, error) {
-	const charset = "0123456789abcdefghijklmnopqrstuvwxyz"
-	const suffixLength = 2
-	suffix := make([]byte, suffixLength)
-	for i := range suffix {
-		num, err := rand.Int(rand.Reader, big.NewInt(int64(len(charset))))
-		if err != nil {
-			return "", err
-		}
-		suffix[i] = charset[num.Int64()]
-	}
-	return string(suffix), nil
 }
 
 // PrepareSnapshot prepares the Snapshot for a given componentGroup, components and the updated component (if any).
@@ -331,12 +322,4 @@ func getSnapshotComponentFromBuildPLR(pipelineRun *tektonv1.PipelineRun, compone
 		ContainerImage: containerImage,
 		Source:         *componentSource,
 	}, nil
-}
-
-func joinInvalidComponentNamesAndVersions(invalidComponents []v1beta2.ComponentState) string {
-	var sb strings.Builder
-	for _, component := range invalidComponents {
-		fmt.Fprintf(&sb, "%s (version %s)", component.Name, component.Version)
-	}
-	return sb.String()
 }

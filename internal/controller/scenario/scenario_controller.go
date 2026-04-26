@@ -22,13 +22,11 @@ import (
 	"github.com/konflux-ci/integration-service/loader"
 
 	"github.com/go-logr/logr"
-	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
 	"github.com/konflux-ci/integration-service/api/v1beta2"
 	"github.com/konflux-ci/integration-service/helpers"
 	"github.com/konflux-ci/operator-toolkit/controller"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -80,22 +78,6 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	return controller.ReconcileHandler([]controller.Operation{
 		adapter.EnsurePlaceholder,
 	})
-}
-
-// getApplicationFromScenario loads from the cluster the Application referenced in the given scenario.
-// If the scenario doesn't specify an application or this is not found in the cluster, an error will be returned.
-func (r *Reconciler) getApplicationFromScenario(context context.Context, scenario *v1beta2.IntegrationTestScenario) (*applicationapiv1alpha1.Application, error) {
-	application := &applicationapiv1alpha1.Application{}
-	err := r.Get(context, types.NamespacedName{
-		Namespace: scenario.Namespace,
-		Name:      scenario.Spec.Application,
-	}, application)
-
-	if err != nil {
-		return nil, err
-	}
-
-	return application, nil
 }
 
 // AdapterInterface is an interface defining all the operations that should be defined in an Integration adapter.

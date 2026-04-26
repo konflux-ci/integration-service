@@ -44,27 +44,46 @@ const SnapshotRetryTimeout = time.Duration(3 * time.Hour)
 
 // Adapter holds the objects needed to reconcile a snapshot's test status report.
 type Adapter struct {
-	snapshot    *applicationapiv1alpha1.Snapshot
-	application *applicationapiv1alpha1.Application
-	logger      helpers.IntegrationLogger
-	loader      loader.ObjectLoader
-	client      client.Client
-	context     context.Context
-	status      status.StatusInterface
+	snapshot       *applicationapiv1alpha1.Snapshot
+	application    *applicationapiv1alpha1.Application // TODO: remove when old application-specific code is removed
+	componentGroup *v1beta2.ComponentGroup
+	logger         helpers.IntegrationLogger
+	loader         loader.ObjectLoader
+	client         client.Client
+	context        context.Context
+	status         status.StatusInterface
 }
 
-// NewAdapter creates and returns an Adapter instance.
-func NewAdapter(context context.Context, snapshot *applicationapiv1alpha1.Snapshot, application *applicationapiv1alpha1.Application,
+// NewAdapter creates and returns an Adapter instance for the ComponentGroup model.
+func NewAdapter(context context.Context, snapshot *applicationapiv1alpha1.Snapshot, componentGroup *v1beta2.ComponentGroup,
 	logger helpers.IntegrationLogger, loader loader.ObjectLoader, client client.Client,
 ) *Adapter {
 	return &Adapter{
-		snapshot:    snapshot,
-		application: application,
-		logger:      logger,
-		loader:      loader,
-		client:      client,
-		context:     context,
-		status:      status.NewStatus(logger.Logger, client),
+		snapshot:       snapshot,
+		application:    nil,
+		componentGroup: componentGroup,
+		logger:         logger,
+		loader:         loader,
+		client:         client,
+		context:        context,
+		status:         status.NewStatus(logger.Logger, client),
+	}
+}
+
+// TODO: remove when old application-specific code is removed
+// NewAdapterWithApplication creates and returns an Adapter instance for the Application model.
+func NewAdapterWithApplication(context context.Context, snapshot *applicationapiv1alpha1.Snapshot, application *applicationapiv1alpha1.Application,
+	logger helpers.IntegrationLogger, loader loader.ObjectLoader, client client.Client,
+) *Adapter {
+	return &Adapter{
+		snapshot:       snapshot,
+		application:    application,
+		componentGroup: nil,
+		logger:         logger,
+		loader:         loader,
+		client:         client,
+		context:        context,
+		status:         status.NewStatus(logger.Logger, client),
 	}
 }
 
@@ -128,7 +147,14 @@ func (a *Adapter) EnsureSnapshotTestStatusReportedToGitProvider() (controller.Op
 func (a *Adapter) EnsureSnapshotFinishedAllTests() (controller.OperationResult, error) {
 	// Get all required integrationTestScenarios for the Snapshot and then use the Snapshot status annotation
 	// to check if all Integration tests were finished for that Snapshot
-	integrationTestScenarios, err := a.loader.GetRequiredIntegrationTestScenariosForSnapshot(a.context, a.client, a.application, a.snapshot)
+	var integrationTestScenarios *[]v1beta2.IntegrationTestScenario
+	var err error
+	// TODO: remove application branch when old application-specific code is removed
+	if a.application != nil {
+		integrationTestScenarios, err = a.loader.GetRequiredIntegrationTestScenariosForSnapshotApplication(a.context, a.client, a.application, a.snapshot)
+	} else {
+		integrationTestScenarios, err = a.loader.GetRequiredIntegrationTestScenariosForSnapshot(a.context, a.client, a.componentGroup, a.snapshot)
+	}
 	if err != nil {
 		return controller.RequeueWithError(err)
 	}
@@ -205,38 +231,41 @@ func (a *Adapter) EnsureGroupSnapshotCreationStatusReportedToGitProvider() (cont
 		return controller.ContinueProcessing()
 	}
 
-	integrationTestStatus := intgteststat.GroupSnapshotCreationFailed
+	// TODO: remove when old application-specific code is removed (see STONEINTG-1519 for ComponentGroup path)
+	if a.application != nil {
+		integrationTestStatus := intgteststat.GroupSnapshotCreationFailed
 
-	allIntegrationTestScenarios, err := a.loader.GetAllIntegrationTestScenariosForApplication(a.context, a.client, a.application)
-	if err != nil {
-		a.logger.Error(err, "Failed to get integration test scenarios for the following application",
-			"Application.Namespace", a.application.Namespace, "Application.Name", a.application.Name)
-		return controller.RequeueWithError(err)
-	}
+		allIntegrationTestScenarios, err := a.loader.GetAllIntegrationTestScenariosForApplication(a.context, a.client, a.application)
+		if err != nil {
+			a.logger.Error(err, "Failed to get integration test scenarios for the following application",
+				"Application.Namespace", a.application.Namespace, "Application.Name", a.application.Name)
+			return controller.RequeueWithError(err)
+		}
 
-	if allIntegrationTestScenarios != nil {
-		tempGroupSnapshot := gitops.PrepareTempGroupSnapshot(a.application, a.snapshot)
-		filterIntegrationTestScenarios := gitops.FilterIntegrationTestScenariosWithContext(allIntegrationTestScenarios, tempGroupSnapshot)
+		if allIntegrationTestScenarios != nil {
+			tempGroupSnapshot := gitops.PrepareTempGroupSnapshot(a.application, a.snapshot)
+			filterIntegrationTestScenarios := gitops.FilterIntegrationTestScenariosWithContext(allIntegrationTestScenarios, tempGroupSnapshot)
 
-		a.logger.Info(
-			fmt.Sprintf("Found %d IntegrationTestScenarios for application", len(*filterIntegrationTestScenarios)),
-			"Application.Name", a.application.Name,
-			"IntegrationTestScenarios", len(*filterIntegrationTestScenarios))
-		if len(*filterIntegrationTestScenarios) > 0 {
-			isErrorRecoverable, err := a.ReportGroupSnapshotCreationStatus(a.snapshot, filterIntegrationTestScenarios, integrationTestStatus, gitops.ComponentNameForGroupSnapshot)
+			a.logger.Info(
+				fmt.Sprintf("Found %d IntegrationTestScenarios for application", len(*filterIntegrationTestScenarios)),
+				"Application.Name", a.application.Name,
+				"IntegrationTestScenarios", len(*filterIntegrationTestScenarios))
+			if len(*filterIntegrationTestScenarios) > 0 {
+				isErrorRecoverable, err := a.ReportGroupSnapshotCreationStatus(a.snapshot, filterIntegrationTestScenarios, integrationTestStatus, gitops.ComponentNameForGroupSnapshot)
 
-			if err != nil {
-				a.logger.Error(err, "failed to report group snapshot createion status to git provider from component snapshot",
-					"snapshot.Namespace", a.snapshot.Namespace, "snapshot.Name", a.snapshot.Name, "isErrorRecoverable", isErrorRecoverable)
-				if helpers.IsObjectYoungerThanThreshold(a.snapshot, SnapshotRetryTimeout) && isErrorRecoverable {
-					return controller.RequeueWithError(err)
-				} else {
-					return controller.ContinueProcessing()
+				if err != nil {
+					a.logger.Error(err, "failed to report group snapshot createion status to git provider from component snapshot",
+						"snapshot.Namespace", a.snapshot.Namespace, "snapshot.Name", a.snapshot.Name, "isErrorRecoverable", isErrorRecoverable)
+					if helpers.IsObjectYoungerThanThreshold(a.snapshot, SnapshotRetryTimeout) && isErrorRecoverable {
+						return controller.RequeueWithError(err)
+					} else {
+						return controller.ContinueProcessing()
+					}
 				}
-			}
-			if err = gitops.AnnotateSnapshot(a.context, a.snapshot, gitops.PRGroupCreationAnnotation, gitops.GroupSnapshotCreationFailureReported, a.client); err != nil {
-				a.logger.Error(err, fmt.Sprintf("failed to write group snapshot creation status to annotation %s", gitops.PRGroupCreationAnnotation))
-				return controller.RequeueWithError(fmt.Errorf("failed to write group snapshot creation status to annotation %s: %w", gitops.PRGroupCreationAnnotation, err))
+				if err = gitops.AnnotateSnapshot(a.context, a.snapshot, gitops.PRGroupCreationAnnotation, gitops.GroupSnapshotCreationFailureReported, a.client); err != nil {
+					a.logger.Error(err, fmt.Sprintf("failed to write group snapshot creation status to annotation %s", gitops.PRGroupCreationAnnotation))
+					return controller.RequeueWithError(fmt.Errorf("failed to write group snapshot creation status to annotation %s: %w", gitops.PRGroupCreationAnnotation, err))
+				}
 			}
 		}
 	}
@@ -457,6 +486,7 @@ func (a *Adapter) iterateIntegrationTestStatusDetailsInStatusReport(reporter sta
 	var commentForFailingIntegrationTests []string
 	var commentForPassedIntegrationTests []string
 	var reportStatusErr error
+	var isFinalStatus bool
 
 	// check if there is any integration test status update to report
 	var hasUpdatedIntegrationTest bool
@@ -474,6 +504,10 @@ func (a *Adapter) iterateIntegrationTestStatusDetailsInStatusReport(reporter sta
 	}
 
 	for _, integrationTestStatusDetail := range integrationTestStatusDetails {
+		// set isFinalStatus to true if there is at least one integration test status is in final status, which means the comment for integration test might not be updated again to have only one comment for each component
+		if integrationTestStatusDetail.Status.IsFinal() {
+			isFinalStatus = true
+		}
 		testReport, reportErr := status.GenerateTestReport(a.context, a.client, *integrationTestStatusDetail, testedSnapshot, componentNameOrPrGroup)
 		if reportErr != nil {
 			a.logger.Error(reportErr, fmt.Sprintf("failed to generate test report for integration test scenario %s/%s",
@@ -557,7 +591,7 @@ func (a *Adapter) iterateIntegrationTestStatusDetailsInStatusReport(reporter sta
 		if isMergeRequest {
 			commentPrefix := status.GenerateTestSummaryPrefixForComponent(componentNameOrPrGroup)
 			commentText := strings.Join(append(commentForFailingIntegrationTests, commentForPassedIntegrationTests...), "<hr><hr>\n\n")
-			statusCode, reportErr := reporter.UpdateStatusInComment(commentPrefix, commentText)
+			statusCode, reportErr := reporter.UpdateStatusInComment(commentPrefix, commentText, isFinalStatus)
 			if reportErr != nil {
 				if reporter.ReturnCodeIsUnrecoverable(statusCode) {
 					a.logger.Error(reportStatusErr, fmt.Sprintf("failed to create comment to git provider for integration test of snapshot %s/%s, the statusCode %d is not easily recoverable", testedSnapshot.Namespace, testedSnapshot.Name, statusCode))

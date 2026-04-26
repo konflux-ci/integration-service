@@ -357,7 +357,7 @@ func (csu *CommitStatusUpdater) Authenticate(ctx context.Context, snapshot *appl
 	}
 
 	csu.ghClient.SetOAuthToken(ctx, token)
-	return 0, nil
+	return http.StatusOK, nil
 }
 
 // createCommitStatusAdapterForSnapshot create a commitStatusAdapter used to create commitStatus on GitHub
@@ -490,7 +490,7 @@ func (csu *CommitStatusUpdater) UpdateStatus(ctx context.Context, report TestRep
 		}
 	}
 
-	return 0, nil
+	return http.StatusOK, nil
 }
 
 // GitHubReporter reports status back to GitHub for a Snapshot.
@@ -630,8 +630,8 @@ func (r *GitHubReporter) Detect(snapshot *applicationapiv1alpha1.Snapshot) bool 
 }
 
 // blank implementation to satisfy ReporterInterface
-func (r *GitHubReporter) UpdateStatusInComment(arg1, arg2 string) (int, error) {
-	return 0, nil
+func (r *GitHubReporter) UpdateStatusInComment(arg0, arg1 string, arg2 bool) (int, error) {
+	return http.StatusCreated, nil
 }
 
 // Initialize github reporter. Must be called before updating status
@@ -714,5 +714,5 @@ func (r *GitHubReporter) ReportStatus(ctx context.Context, report TestReport) (i
 }
 
 func (r *GitHubReporter) ReturnCodeIsUnrecoverable(statusCode int) bool {
-	return statusCode == http.StatusForbidden || statusCode == http.StatusUnauthorized || statusCode == http.StatusBadRequest
+	return statusCode == http.StatusForbidden || statusCode == http.StatusUnauthorized || statusCode == http.StatusBadRequest || statusCode == http.StatusNotFound
 }

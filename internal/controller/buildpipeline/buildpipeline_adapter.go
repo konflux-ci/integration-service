@@ -108,7 +108,7 @@ func (a *Adapter) EnsureGlobalCandidateImageUpdated() (controller.OperationResul
 	if a.application != nil {
 		err = a.updateGCLForBuildPLR()
 	} else { // ComponentGroup behavior
-		err = snapshot.UpdateGCLForBuildPLR(a.context, a.client, a.componentGroups, a.pipelineRun, a.component.Name)
+		err = snapshot.UpdateGCLForBuildPLR(a.context, a.client, a.loader, a.componentGroups, a.pipelineRun, a.component.Name)
 	}
 	if err != nil {
 		// TODO: remove HandleLoaderError when we remove application-specific code
@@ -158,7 +158,12 @@ func (a *Adapter) EnsureSnapshotExists() (result controller.OperationResult, err
 	var canRemoveFinalizer bool
 
 	defer func() {
-		updateErr := a.updateBuildPipelineRunWithFinalInfo(canRemoveFinalizer, err)
+		// Don't write a failure annotation for transient Chains-not-signed errors
+		annotationErr := err
+		if h.IsChainsNotSignedError(err) {
+			annotationErr = nil
+		}
+		updateErr := a.updateBuildPipelineRunWithFinalInfo(canRemoveFinalizer, annotationErr)
 		if updateErr != nil {
 			if errors.IsNotFound(updateErr) {
 				result, err = controller.ContinueProcessing()
@@ -175,9 +180,24 @@ func (a *Adapter) EnsureSnapshotExists() (result controller.OperationResult, err
 	}
 
 	if _, found := a.pipelineRun.Annotations[tektonconsts.PipelineRunChainsSignedAnnotation]; !found {
-		err := fmt.Errorf("not processing the pipelineRun because it's not yet signed with Chains")
-		a.logger.Error(err, "Not processing the pipelineRun because it's not yet signed with Chains")
-		return controller.RequeueOnErrorOrContinue(err)
+		completionTime := a.pipelineRun.Status.CompletionTime
+		var referenceTime time.Time
+		if completionTime != nil {
+			referenceTime = completionTime.Time
+		} else {
+			referenceTime = a.pipelineRun.CreationTimestamp.Time
+		}
+		if time.Since(referenceTime) > h.ChainsSignedCheckTimeout {
+			err := fmt.Errorf("not processing the pipelineRun because it's not yet signed with Chains after %s", h.ChainsSignedCheckTimeout)
+			a.logger.Error(err, "Exceeded timeout waiting for Chains signing")
+			return controller.RequeueOnErrorOrContinue(err)
+		}
+		a.logger.Info("PipelineRun not yet signed by Chains, will requeue",
+			"elapsedSinceCompletion", time.Since(referenceTime).String(),
+			"timeout", h.ChainsSignedCheckTimeout.String())
+		return controller.RequeueOnErrorOrContinue(&h.ChainsNotSignedError{
+			Message: "PipelineRun not yet signed by Chains, requeueing",
+		})
 	}
 
 	if _, found := a.pipelineRun.Annotations[tektonconsts.SnapshotNamesLabel]; found {
@@ -241,7 +261,12 @@ func (a *Adapter) EnsureSnapshotExistsApplication() (result controller.Operation
 	var canRemoveFinalizer bool
 
 	defer func() {
-		updateErr := a.updateBuildPipelineRunWithFinalInfo(canRemoveFinalizer, err)
+		// Don't write a failure annotation for transient Chains-not-signed errors
+		annotationErr := err
+		if h.IsChainsNotSignedError(err) {
+			annotationErr = nil
+		}
+		updateErr := a.updateBuildPipelineRunWithFinalInfo(canRemoveFinalizer, annotationErr)
 		if updateErr != nil {
 			if errors.IsNotFound(updateErr) {
 				result, err = controller.ContinueProcessing()
@@ -258,9 +283,24 @@ func (a *Adapter) EnsureSnapshotExistsApplication() (result controller.Operation
 	}
 
 	if _, found := a.pipelineRun.Annotations[tektonconsts.PipelineRunChainsSignedAnnotation]; !found {
-		err := fmt.Errorf("not processing the pipelineRun because it's not yet signed with Chains")
-		a.logger.Error(err, "Not processing the pipelineRun because it's not yet signed with Chains")
-		return controller.RequeueOnErrorOrContinue(err)
+		completionTime := a.pipelineRun.Status.CompletionTime
+		var referenceTime time.Time
+		if completionTime != nil {
+			referenceTime = completionTime.Time
+		} else {
+			referenceTime = a.pipelineRun.CreationTimestamp.Time
+		}
+		if time.Since(referenceTime) > h.ChainsSignedCheckTimeout {
+			err := fmt.Errorf("not processing the pipelineRun because it's not yet signed with Chains after %s", h.ChainsSignedCheckTimeout)
+			a.logger.Error(err, "Exceeded timeout waiting for Chains signing")
+			return controller.RequeueOnErrorOrContinue(err)
+		}
+		a.logger.Info("PipelineRun not yet signed by Chains, will requeue",
+			"elapsedSinceCompletion", time.Since(referenceTime).String(),
+			"timeout", h.ChainsSignedCheckTimeout.String())
+		return controller.RequeueOnErrorOrContinue(&h.ChainsNotSignedError{
+			Message: "PipelineRun not yet signed by Chains, requeueing",
+		})
 	}
 
 	if _, found := a.pipelineRun.Annotations[tektonconsts.SnapshotNameLabel]; found {
@@ -592,12 +632,12 @@ func (a *Adapter) EnsureSupercededSnapshotsCanceled() (result controller.Operati
 	// TODO: remove branch after migration to new model
 	var snapshots *[]applicationapiv1alpha1.Snapshot
 	if a.application != nil {
-		snapshots, err = a.loader.GetAllSnapshotsForPR(a.context, a.client, a.application.ObjectMeta, a.component.Name, pr)
+		snapshots, err = a.loader.GetAllPullSnapshotsForPR(a.context, a.client, a.application.ObjectMeta, a.component.Name, pr)
 	} else {
 		// We only have to pass one ComponentGroup here.  The componentGroup is only used to get
 		// the namespace to search. Since all ComponentGroups have to belong to the same NS, we
 		// don't need to search with each ComponentGroup
-		snapshots, err = a.loader.GetAllSnapshotsForPR(a.context, a.client, (*a.componentGroups)[0].ObjectMeta, a.component.Name, pr)
+		snapshots, err = a.loader.GetAllPullSnapshotsForPR(a.context, a.client, (*a.componentGroups)[0].ObjectMeta, a.component.Name, pr)
 	}
 	if err != nil {
 		return controller.RequeueWithError(fmt.Errorf("failed to get running snapshots for PR %s: %w", pr, err))
@@ -694,6 +734,11 @@ func (a *Adapter) prepareSnapshotForPipelineRun(pipelineRun *tektonv1.PipelineRu
 	if err != nil {
 		return nil, err
 	}
+	componentVersion := ""
+	if v, verr := tekton.GetComponentVersionFromPipelineRun(pipelineRun); verr == nil {
+		componentVersion = v
+	}
+	gitops.EnrichBuiltComponentSourceGitContext(componentSource, component, componentVersion)
 
 	applicationComponents, err := a.loader.GetAllApplicationComponents(a.context, a.client, application)
 	if err != nil {

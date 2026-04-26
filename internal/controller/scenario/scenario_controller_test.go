@@ -185,9 +185,15 @@ var _ = Describe("ScenarioController", Ordered, func() {
 		Expect(err).NotTo(HaveOccurred())
 	})
 
-	It("Run reconciler for scenario", func() {
-		hasApp, err := scenarioReconciler.getApplicationFromScenario(ctx, failScenario)
-		Expect(err).To(HaveOccurred())
-		Expect(hasApp).To(BeNil())
+	It("can Reconcile when scenario references non-existent application", func() {
+		failReq := ctrl.Request{
+			NamespacedName: types.NamespacedName{
+				Namespace: "default",
+				Name:      failScenario.Name,
+			},
+		}
+		result, err := scenarioReconciler.Reconcile(ctx, failReq)
+		Expect(reflect.TypeOf(result)).To(Equal(reflect.TypeOf(reconcile.Result{})))
+		Expect(err).ToNot(HaveOccurred())
 	})
 })

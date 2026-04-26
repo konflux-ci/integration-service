@@ -114,6 +114,39 @@ var _ = Describe("ComponentController", Ordered, func() {
 		Expect(reflect.TypeOf(componentReconciler)).To(Equal(reflect.TypeOf(&Reconciler{})))
 	})
 
+	It("should skip Reconciliation when Component has no Application (ComponentGroup model)", func() {
+		hasCompNoApp := &applicationapiv1alpha1.Component{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "component-no-app",
+				Namespace: "default",
+			},
+			Spec: applicationapiv1alpha1.ComponentSpec{
+				ComponentName: "component-no-app",
+				Application:   "",
+				Source: applicationapiv1alpha1.ComponentSource{
+					ComponentSourceUnion: applicationapiv1alpha1.ComponentSourceUnion{
+						GitSource: &applicationapiv1alpha1.GitSource{
+							URL: SampleRepoLink,
+						},
+					},
+				},
+			},
+		}
+		Expect(k8sClient.Create(ctx, hasCompNoApp)).Should(Succeed())
+
+		noAppReq := ctrl.Request{
+			NamespacedName: types.NamespacedName{
+				Namespace: "default",
+				Name:      hasCompNoApp.Name,
+			},
+		}
+		result, err := componentReconciler.Reconcile(ctx, noAppReq)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(result).To(Equal(ctrl.Result{}))
+
+		Expect(k8sClient.Delete(ctx, hasCompNoApp)).Should(Succeed())
+	})
+
 	It("can fail when Reconcile fails to prepare the adapter when Component is not found", func() {
 		Expect(k8sClient.Delete(ctx, hasComp)).Should(Succeed())
 		Eventually(func() error {
