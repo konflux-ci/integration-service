@@ -4,6 +4,7 @@ import (
 	appstudioApi "github.com/konflux-ci/application-api/api/v1alpha1"
 	imagecontroller "github.com/konflux-ci/image-controller/api/v1alpha1"
 	integrationservicev1beta2 "github.com/konflux-ci/integration-service/api/v1beta2"
+	pacv1alpha1 "github.com/openshift-pipelines/pipelines-as-code/pkg/apis/pipelinesascode/v1alpha1"
 
 	release "github.com/konflux-ci/release-service/api/v1alpha1"
 	tekton "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
@@ -34,6 +35,7 @@ func init() {
 	utilruntime.Must(release.AddToScheme(scheme))
 	utilruntime.Must(integrationservicev1beta2.AddToScheme(scheme))
 	utilruntime.Must(imagecontroller.AddToScheme(scheme))
+	utilruntime.Must(pacv1alpha1.AddToScheme(scheme))
 }
 
 // Kube returns the clientset for Kubernetes upstream.
