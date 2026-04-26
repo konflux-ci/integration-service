@@ -23,15 +23,17 @@ const (
 	autoReleasePlan                = "auto-releaseplan"
 	targetReleaseNamespace         = "default"
 
-	componentRepoNameForResolution            = "konflux-test-integration-resolution"
-	componentRepoNameForGeneralIntegration    = "konflux-test-integration"
-	componentRepoNameForGroupIntegration      = "konflux-test-integration-clone"
-	componentRepoNameForStatusReporting       = "konflux-test-integration-status-report"
-	multiComponentRepoNameForGroupSnapshot    = "group-snapshot-multi-component"
-	multiComponentDefaultBranch               = "onboarding"
-	multiComponentGitRevision                 = "0d1835404efb8ab7bb1ab5b5b82cda1ebfda4b25"
-	multiRepoComponentGitRevision             = "79402df023e646c5ad108abc879ad1b28799cbc4"
-	gitlabComponentRepoName                   = "hacbs-test-project-integration"
+	componentRepoNameForResolution         = "konflux-test-integration-resolution"
+	componentRepoNameForGeneralIntegration = "konflux-test-integration"
+	componentRepoNameForGroupIntegration   = "konflux-test-integration-clone"
+	componentRepoNameForStatusReporting    = "konflux-test-integration-status-report"
+	multiComponentRepoNameForGroupSnapshot = "group-snapshot-multi-component"
+	multiComponentDefaultBranch            = "onboarding"
+	multiComponentGitRevision              = "0d1835404efb8ab7bb1ab5b5b82cda1ebfda4b25"
+	multiRepoComponentGitRevision          = "79402df023e646c5ad108abc879ad1b28799cbc4"
+	gitlabComponentRepoName                = "hacbs-test-project-integration"
+	// Codeberg template for Forgejo integration status-reporting tests (see https://codeberg.org/konflux-qe/konflux-test-integration).
+	forgejoComponentRepoName                  = "konflux-test-integration"
 	componentDefaultBranch                    = "onboarding"
 	fallbackBranchName                        = "main"
 	componentRevision                         = "79402df023e646c5ad108abc879ad1b28799cbc4"
@@ -72,4 +74,6 @@ var (
 	gitlabOrg                                     = utils.GetEnv(constants.GITLAB_QE_ORG_ENV, constants.DefaultGitLabQEOrg)
 	gitlabProjectIDForStatusReporting             = fmt.Sprintf("%s/%s", gitlabOrg, gitlabComponentRepoName)
 	gitlabComponentGitSourceURLForStatusReporting = fmt.Sprintf("https://gitlab.com/%s/%s", gitlabOrg, gitlabComponentRepoName)
+	forgejoOrg                                    = utils.GetEnv(constants.CODEBERG_QE_ORG_ENV, constants.DefaultCodebergQEOrg)
+	forgejoProjectIDForStatusReporting            = fmt.Sprintf("%s/%s", forgejoOrg, forgejoComponentRepoName)
 )
