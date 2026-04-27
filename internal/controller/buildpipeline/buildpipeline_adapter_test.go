@@ -2800,7 +2800,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
 			expectedLogEntry = "group snapshot is expected to be created for build pipelinerun"
 			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
-			expectedLogEntry = "there is more than 1 component with open pr or mr found, so group snapshot is expected: [component-sample another-component-sample]"
+			expectedLogEntry = "there is more than 1 component with open pr or mr found, so group snapshot is expected for application-sample: [component-sample another-component-sample]"
 			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
 			Expect(result.CancelRequest).To(BeFalse())
 			Expect(result.RequeueRequest).To(BeFalse())

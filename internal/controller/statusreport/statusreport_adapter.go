@@ -231,41 +231,51 @@ func (a *Adapter) EnsureGroupSnapshotCreationStatusReportedToGitProvider() (cont
 		return controller.ContinueProcessing()
 	}
 
-	// TODO: remove when old application-specific code is removed (see STONEINTG-1519 for ComponentGroup path)
-	if a.application != nil {
-		integrationTestStatus := intgteststat.GroupSnapshotCreationFailed
+	var allIntegrationTestScenarios *[]v1beta2.IntegrationTestScenario
+	var tempGroupSnapshot *applicationapiv1alpha1.Snapshot
+	var err error
 
-		allIntegrationTestScenarios, err := a.loader.GetAllIntegrationTestScenariosForApplication(a.context, a.client, a.application)
+	if a.application != nil {
+		tempGroupSnapshot = gitops.PrepareTempGroupApplicationSnapshot(a.application, a.snapshot)
+		allIntegrationTestScenarios, err = a.loader.GetAllIntegrationTestScenariosForApplication(a.context, a.client, a.application)
 		if err != nil {
 			a.logger.Error(err, "Failed to get integration test scenarios for the following application",
 				"Application.Namespace", a.application.Namespace, "Application.Name", a.application.Name)
 			return controller.RequeueWithError(err)
 		}
+	} else {
+		tempGroupSnapshot = gitops.PrepareTempGroupSnapshot(a.componentGroup, a.snapshot)
+		allIntegrationTestScenarios, err = a.loader.GetAllIntegrationTestScenariosForComponentGroup(a.context, a.client, a.componentGroup)
+		if err != nil {
+			a.logger.Error(err, "Failed to get integration test scenarios for the following componentGroup",
+				"Application.Namespace", a.componentGroup.Namespace, "Application.Name", a.componentGroup.Name)
+			return controller.RequeueWithError(err)
+		}
+	}
 
-		if allIntegrationTestScenarios != nil {
-			tempGroupSnapshot := gitops.PrepareTempGroupSnapshot(a.application, a.snapshot)
-			filterIntegrationTestScenarios := gitops.FilterIntegrationTestScenariosWithContext(allIntegrationTestScenarios, tempGroupSnapshot)
+	integrationTestStatus := intgteststat.GroupSnapshotCreationFailed
 
-			a.logger.Info(
-				fmt.Sprintf("Found %d IntegrationTestScenarios for application", len(*filterIntegrationTestScenarios)),
-				"Application.Name", a.application.Name,
-				"IntegrationTestScenarios", len(*filterIntegrationTestScenarios))
-			if len(*filterIntegrationTestScenarios) > 0 {
-				isErrorRecoverable, err := a.ReportGroupSnapshotCreationStatus(a.snapshot, filterIntegrationTestScenarios, integrationTestStatus, gitops.ComponentNameForGroupSnapshot)
+	if allIntegrationTestScenarios != nil {
+		filterIntegrationTestScenarios := gitops.FilterIntegrationTestScenariosWithContext(allIntegrationTestScenarios, tempGroupSnapshot)
 
-				if err != nil {
-					a.logger.Error(err, "failed to report group snapshot createion status to git provider from component snapshot",
-						"snapshot.Namespace", a.snapshot.Namespace, "snapshot.Name", a.snapshot.Name, "isErrorRecoverable", isErrorRecoverable)
-					if helpers.IsObjectYoungerThanThreshold(a.snapshot, SnapshotRetryTimeout) && isErrorRecoverable {
-						return controller.RequeueWithError(err)
-					} else {
-						return controller.ContinueProcessing()
-					}
+		a.logger.Info(
+			fmt.Sprintf("Found %d IntegrationTestScenarios", len(*filterIntegrationTestScenarios)),
+			"IntegrationTestScenarios", len(*filterIntegrationTestScenarios))
+		if len(*filterIntegrationTestScenarios) > 0 {
+			isErrorRecoverable, err := a.ReportGroupSnapshotCreationStatus(a.snapshot, filterIntegrationTestScenarios, integrationTestStatus, gitops.ComponentNameForGroupSnapshot)
+
+			if err != nil {
+				a.logger.Error(err, "failed to report group snapshot createion status to git provider from component snapshot",
+					"snapshot.Namespace", a.snapshot.Namespace, "snapshot.Name", a.snapshot.Name, "isErrorRecoverable", isErrorRecoverable)
+				if helpers.IsObjectYoungerThanThreshold(a.snapshot, SnapshotRetryTimeout) && isErrorRecoverable {
+					return controller.RequeueWithError(err)
+				} else {
+					return controller.ContinueProcessing()
 				}
-				if err = gitops.AnnotateSnapshot(a.context, a.snapshot, gitops.PRGroupCreationAnnotation, gitops.GroupSnapshotCreationFailureReported, a.client); err != nil {
-					a.logger.Error(err, fmt.Sprintf("failed to write group snapshot creation status to annotation %s", gitops.PRGroupCreationAnnotation))
-					return controller.RequeueWithError(fmt.Errorf("failed to write group snapshot creation status to annotation %s: %w", gitops.PRGroupCreationAnnotation, err))
-				}
+			}
+			if err = gitops.AnnotateSnapshot(a.context, a.snapshot, gitops.PRGroupCreationAnnotation, gitops.GroupSnapshotCreationFailureReported, a.client); err != nil {
+				a.logger.Error(err, fmt.Sprintf("failed to write group snapshot creation status to annotation %s", gitops.PRGroupCreationAnnotation))
+				return controller.RequeueWithError(fmt.Errorf("failed to write group snapshot creation status to annotation %s: %w", gitops.PRGroupCreationAnnotation, err))
 			}
 		}
 	}

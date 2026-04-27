@@ -445,7 +445,7 @@ func GenerateComponentNameWithPrefix(componentName string) string {
 // to help search it in comment correctly since all comments are posted together
 func GenerateTestSummaryPrefixForComponent(componentName string) string {
 	var commentTitle string
-	if componentName == gitops.ComponentNameForGroupSnapshot {
+	if strings.HasPrefix(componentName, gitops.ComponentNameForGroupSnapshot) {
 		commentTitle = "Integration test for " + gitops.ComponentNameForGroupSnapshot
 	} else {
 		commentTitle = "Integration test for component " + componentName
