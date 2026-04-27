@@ -542,7 +542,7 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 
 	It("ensures that a new Snapshots can be successfully created", func() {
 		snapshotComponents := []applicationapiv1alpha1.SnapshotComponent{}
-		createdSnapshot := gitops.NewSnapshot(hasApp, &snapshotComponents)
+		createdSnapshot := gitops.NewApplicationSnapshot(hasApp, &snapshotComponents)
 		Expect(createdSnapshot).NotTo(BeNil())
 		// Name should be set with timestamp format
 		Expect(createdSnapshot.Name).To(MatchRegexp(`^application-sample-\d{8}-\d{6}-\d{3}$`))
@@ -563,7 +563,7 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 			},
 		}
 
-		snapshot := gitops.NewSnapshot(longApp, &snapshotComponents)
+		snapshot := gitops.NewApplicationSnapshot(longApp, &snapshotComponents)
 
 		// Name should be truncated to 44 characters + "-" + 19 character timestamp
 		expectedPrefix := longAppName[:43]
@@ -587,7 +587,7 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 			},
 		}
 
-		snapshot := gitops.NewSnapshot(exactApp, &snapshotComponents)
+		snapshot := gitops.NewApplicationSnapshot(exactApp, &snapshotComponents)
 
 		// Name should be exactAppName + "-" + 19 character timestamp
 		Expect(snapshot.Name).To(HavePrefix(exactAppName + "-"))
@@ -1342,7 +1342,7 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 			})
 
 			It("can prepare temp group snapshot", func() {
-				tempGroupSnapshot := gitops.PrepareTempGroupSnapshot(hasApp, hasSnapshot)
+				tempGroupSnapshot := gitops.PrepareTempGroupApplicationSnapshot(hasApp, hasSnapshot)
 				Expect(metadata.HasLabelWithValue(tempGroupSnapshot, gitops.SnapshotTypeLabel, gitops.SnapshotGroupType)).To(BeTrue())
 			})
 		})

@@ -134,7 +134,7 @@ func (a *Adapter) EnsureComponentIsCleanedUp() (controller.OperationResult, erro
 // createUpdatedSnapshot prepares a Snapshot for a given application and component(s).
 // In case the Snapshot can't be created, an error will be returned.
 func (a *Adapter) createUpdatedSnapshot(snapshotComponents *[]applicationapiv1alpha1.SnapshotComponent) (*applicationapiv1alpha1.Snapshot, error) {
-	snapshot := gitops.NewSnapshot(a.application, snapshotComponents)
+	snapshot := gitops.NewApplicationSnapshot(a.application, snapshotComponents)
 	if snapshot.Labels == nil {
 		snapshot.Labels = map[string]string{}
 	}

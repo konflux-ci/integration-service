@@ -537,7 +537,7 @@ var _ = Describe("Snapshot creation functions", Ordered, func() {
 		It("Ensures valid and invalid snapshotComponents can be gathered from the GCL", func() {
 			var buf bytes.Buffer
 			readableLog := buflogr.NewWithBuffer(&buf)
-			snapshotComponents, invalidComponents := getSnapshotComponentsFromGCL(hasCompGroup, readableLog)
+			snapshotComponents, invalidComponents := GetSnapshotComponentsFromGCL(hasCompGroup, readableLog)
 
 			Expect(snapshotComponents).To(HaveLen(1))
 			Expect(snapshotComponents[0].Name).To(Equal(componentName))
@@ -553,7 +553,7 @@ var _ = Describe("Snapshot creation functions", Ordered, func() {
 			newSnapshotComponent, err := getSnapshotComponentFromBuildPLR(buildPipelineRun, componentName, logger)
 			Expect(err).NotTo(HaveOccurred())
 
-			snapshotComponents, invalidComponents := getSnapshotComponentsFromGCL(hasCompGroup, logger)
+			snapshotComponents, invalidComponents := GetSnapshotComponentsFromGCL(hasCompGroup, logger)
 			Expect(snapshotComponents).To(HaveLen(1))
 			Expect(invalidComponents).To(HaveLen(1))
 
@@ -570,7 +570,7 @@ var _ = Describe("Snapshot creation functions", Ordered, func() {
 			newSnapshotComponent, err := getSnapshotComponentFromBuildPLR(buildPipelineRun, componentName, logger)
 			Expect(err).NotTo(HaveOccurred())
 
-			snapshotComponents, invalidComponents := getSnapshotComponentsFromGCL(hasCompGroup, logger)
+			snapshotComponents, invalidComponents := GetSnapshotComponentsFromGCL(hasCompGroup, logger)
 			Expect(snapshotComponents).To(HaveLen(1))
 			Expect(invalidComponents).To(HaveLen(1))
 
@@ -589,7 +589,7 @@ var _ = Describe("Snapshot creation functions", Ordered, func() {
 			Expect(err).NotTo(HaveOccurred())
 			newSnapshotComponent.Name = componentName2
 
-			snapshotComponents, invalidComponents := getSnapshotComponentsFromGCL(hasCompGroup, logger)
+			snapshotComponents, invalidComponents := GetSnapshotComponentsFromGCL(hasCompGroup, logger)
 			Expect(snapshotComponents).To(HaveLen(1))
 			Expect(invalidComponents).To(HaveLen(1))
 
