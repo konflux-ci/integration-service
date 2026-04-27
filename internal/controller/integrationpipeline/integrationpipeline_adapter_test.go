@@ -369,13 +369,13 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 
 	When("NewAdapter is called", func() {
 		It("creates and return a new adapter", func() {
-			Expect(reflect.TypeOf(NewAdapter(ctx, integrationPipelineRunComponent, hasApp, hasSnapshot, logger, loader.NewMockLoader(), k8sClient))).To(Equal(reflect.TypeOf(&Adapter{})))
+			Expect(reflect.TypeOf(NewAdapter(ctx, integrationPipelineRunComponent, hasSnapshot, logger, loader.NewMockLoader(), k8sClient))).To(Equal(reflect.TypeOf(&Adapter{})))
 		})
 	})
 
 	When("Snapshot already exists", func() {
 		BeforeEach(func() {
-			adapter = NewAdapter(ctx, integrationPipelineRunComponent, hasApp, hasSnapshot, logger, loader.NewMockLoader(), k8sClient)
+			adapter = NewAdapter(ctx, integrationPipelineRunComponent, hasSnapshot, logger, loader.NewMockLoader(), k8sClient)
 			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
 					ContextKey: loader.ApplicationContextKey,
@@ -519,7 +519,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				}
 				Expect(k8sClient.Status().Update(ctx, integrationPipelineRunComponentFailed)).Should(Succeed())
 
-				adapter = NewAdapter(ctx, integrationPipelineRunComponentFailed, hasApp, hasSnapshot, logger, loader.NewMockLoader(), k8sClient)
+				adapter = NewAdapter(ctx, integrationPipelineRunComponentFailed, hasSnapshot, logger, loader.NewMockLoader(), k8sClient)
 				adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 					{
 						ContextKey: loader.ApplicationContextKey,
@@ -538,7 +538,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 						Resource:   []tektonv1.PipelineRun{*integrationPipelineRunComponent, *integrationPipelineRunComponentFailed},
 					},
 					{
-						ContextKey: loader.RequiredIntegrationTestScenariosContextKey,
+						ContextKey: loader.RequiredIntegrationTestScenariosForSnapshotContextKey,
 						Resource:   []v1beta2.IntegrationTestScenario{*integrationTestScenario, *integrationTestScenarioFailed},
 					},
 					{
@@ -704,7 +704,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			}
 			Expect(k8sClient.Status().Update(ctx, integrationPipelineRunComponentFailed)).Should(Succeed())
 
-			adapter = NewAdapter(ctx, integrationPipelineRunComponentFailed, hasApp, hasSnapshot, logger, loader.NewMockLoader(), k8sClient)
+			adapter = NewAdapter(ctx, integrationPipelineRunComponentFailed, hasSnapshot, logger, loader.NewMockLoader(), k8sClient)
 			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
 					ContextKey: loader.ApplicationContextKey,
@@ -723,7 +723,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 					Resource:   []tektonv1.PipelineRun{*integrationPipelineRunComponent, *integrationPipelineRunComponentFailed},
 				},
 				{
-					ContextKey: loader.RequiredIntegrationTestScenariosContextKey,
+					ContextKey: loader.RequiredIntegrationTestScenariosForSnapshotContextKey,
 					Resource:   []v1beta2.IntegrationTestScenario{*integrationTestScenario, *integrationTestScenarioFailed},
 				},
 				{
@@ -833,7 +833,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			now := metav1.NewTime(metav1.Now().Add(time.Second * 1))
 			intgPipelineRunWithDeletionTimestamp.SetDeletionTimestamp(&now)
 
-			adapter = NewAdapter(ctx, intgPipelineRunWithDeletionTimestamp, hasApp, overrideSnapshot, logger, loader.NewMockLoader(), k8sClient)
+			adapter = NewAdapter(ctx, intgPipelineRunWithDeletionTimestamp, overrideSnapshot, logger, loader.NewMockLoader(), k8sClient)
 			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
 					ContextKey: loader.SnapshotContextKey,
@@ -985,7 +985,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			}
 			Expect(k8sClient.Status().Update(ctx, intgPipelineInvalidResult)).Should(Succeed())
 
-			adapter = NewAdapter(ctx, intgPipelineInvalidResult, hasApp, hasSnapshot, logger, loader.NewMockLoader(), k8sClient)
+			adapter = NewAdapter(ctx, intgPipelineInvalidResult, hasSnapshot, logger, loader.NewMockLoader(), k8sClient)
 			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
 					ContextKey: loader.AllTaskRunsWithMatchingPipelineRunLabelContextKey,
@@ -1012,7 +1012,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 
 	When("GetIntegrationPipelineRunStatus is called with a PLR with TaskRun, mentioned in its ChildReferences field, missing from the cluster", func() {
 		BeforeEach(func() {
-			adapter = NewAdapter(ctx, integrationPipelineRunComponent, hasApp, hasSnapshot, logger, loader.NewMockLoader(), k8sClient)
+			adapter = NewAdapter(ctx, integrationPipelineRunComponent, hasSnapshot, logger, loader.NewMockLoader(), k8sClient)
 		})
 
 		It("ensures test status in snapshot is updated to failed", func() {
@@ -1026,7 +1026,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 
 	When("GetIntegrationPipelineRunStatus is called with a PLR with TaskRun, mentioned in its ChildReferences field, present within the cluster", func() {
 		BeforeEach(func() {
-			adapter = NewAdapter(ctx, integrationPipelineRunComponent, hasApp, hasSnapshot, logger, loader.NewMockLoader(), k8sClient)
+			adapter = NewAdapter(ctx, integrationPipelineRunComponent, hasSnapshot, logger, loader.NewMockLoader(), k8sClient)
 			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
 					ContextKey: loader.AllTaskRunsWithMatchingPipelineRunLabelContextKey,
@@ -1047,7 +1047,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		BeforeEach(func() {
 			consoleURL := fmt.Sprintf("https://definetly.not.prod/preview/application-pipeline/ns/%s/pipelinerun/%s", integrationPipelineRunComponent.Namespace, integrationPipelineRunComponent.Name)
 			os.Setenv("CONSOLE_URL", consoleURL)
-			adapter = NewAdapter(ctx, integrationPipelineRunComponent, hasApp, hasSnapshot, logger, loader.NewMockLoader(), k8sClient)
+			adapter = NewAdapter(ctx, integrationPipelineRunComponent, hasSnapshot, logger, loader.NewMockLoader(), k8sClient)
 		})
 
 		It("should annotate the PipelineRun with a log URL if available", func() {
@@ -1111,7 +1111,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			}
 			Expect(k8sClient.Create(ctx, integrationPipelineRunNoFinalizer)).Should(Succeed())
 
-			adapter = NewAdapter(ctx, integrationPipelineRunNoFinalizer, hasApp, hasSnapshot, logger, loader.NewMockLoader(), k8sClient)
+			adapter = NewAdapter(ctx, integrationPipelineRunNoFinalizer, hasSnapshot, logger, loader.NewMockLoader(), k8sClient)
 		})
 
 		AfterEach(func() {
@@ -1195,7 +1195,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			}
 			Expect(k8sClient.Create(ctx, integrationPipelineRunWithFinalizer)).Should(Succeed())
 
-			adapter = NewAdapter(ctx, integrationPipelineRunWithFinalizer, hasApp, hasSnapshot, logger, loader.NewMockLoader(), k8sClient)
+			adapter = NewAdapter(ctx, integrationPipelineRunWithFinalizer, hasSnapshot, logger, loader.NewMockLoader(), k8sClient)
 			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
 					ContextKey: loader.ApplicationContextKey,

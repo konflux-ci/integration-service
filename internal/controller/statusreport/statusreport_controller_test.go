@@ -20,6 +20,7 @@ import (
 	"reflect"
 	"time"
 
+	"github.com/konflux-ci/integration-service/gitops"
 	"github.com/konflux-ci/operator-toolkit/metadata"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -32,7 +33,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
-	"github.com/konflux-ci/integration-service/gitops"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"

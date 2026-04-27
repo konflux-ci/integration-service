@@ -25,6 +25,7 @@ import (
 	releasev1alpha1 "github.com/konflux-ci/release-service/api/v1alpha1"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	resolutionv1beta1 "github.com/tektoncd/pipeline/pkg/apis/resolution/v1beta1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -34,6 +35,7 @@ type mockLoader struct {
 
 const (
 	ApplicationContextKey toolkit.ContextKey = iota
+	ComponentGroupContextKey
 	ComponentContextKey
 	SnapshotContextKey
 	SnapshotEnvironmentBindingContextKey
@@ -48,15 +50,16 @@ const (
 	PipelineRunsContextKey
 	AllIntegrationTestScenariosContextKey
 	AllIntegrationTestScenariosForComponentGroupContextKey
-	RequiredIntegrationTestScenariosContextKey
+	AllIntegrationTestScenariosForComponentGroupsContextKey
 	AllIntegrationTestScenariosForSnapshotContextKey
 	AllSnapshotsContextKey
 	AutoReleasePlansContextKey
 	GetScenarioContextKey
-	GetComponentGroupContextKey
 	AllEnvironmentsForScenarioContextKey
+	AllSnapshotsForBuildPipelineRunApplicationContextKey
 	AllSnapshotsForBuildPipelineRunContextKey
 	AllSnapshotsForGivenPRContextKey
+	AllPullSnapshotsForGivenPRContextKey
 	AllTaskRunsWithMatchingPipelineRunLabelContextKey
 	GetPipelineRunContextKey
 	GetComponentContextKey
@@ -68,6 +71,8 @@ const (
 	GetGroupSnapshotsKey
 	ResolutionRequestContextKey
 	GetPRComponentSnapshotsForComponentContextKey
+	ComponentGroupsContextKey
+	RequiredIntegrationTestScenariosForSnapshotContextKey
 )
 
 func NewMockLoader() ObjectLoader {
@@ -134,6 +139,16 @@ func (l *mockLoader) GetApplicationFromComponent(ctx context.Context, c client.C
 	return toolkit.GetMockedResourceAndErrorFromContext(ctx, ApplicationContextKey, &applicationapiv1alpha1.Application{})
 }
 
+// GetComponentGroupsForComponentVersion returns the r esource and error passed as values of the context
+func (l *mockLoader) GetComponentGroupsForComponentVersion(ctx context.Context, c client.Client, component *applicationapiv1alpha1.Component, version string) (*[]v1beta2.ComponentGroup, error) {
+	if ctx.Value(ComponentGroupsContextKey) == nil {
+		return l.loader.GetComponentGroupsForComponentVersion(ctx, c, component, version)
+	}
+	//cg, err := toolkit.GetMockedResourceAndErrorFromContext(ctx, ComponentGroupsContextKey, &v1beta2.ComponentGroup{})
+	//return &[]v1beta2.ComponentGroup{*cg}, err
+	return toolkit.GetMockedResourceAndErrorFromContext(ctx, ComponentGroupsContextKey, &[]v1beta2.ComponentGroup{})
+}
+
 // GetSnapshotFromPipelineRun returns the resource and error passed as values of the context.
 func (l *mockLoader) GetSnapshotFromPipelineRun(ctx context.Context, c client.Client, pipelineRun *tektonv1.PipelineRun) (*applicationapiv1alpha1.Snapshot, error) {
 	if ctx.Value(SnapshotContextKey) == nil {
@@ -160,19 +175,37 @@ func (l *mockLoader) GetAllIntegrationTestScenariosForComponentGroup(ctx context
 	return &integrationTestScenarios, err
 }
 
-// GetRequiredIntegrationTestScenariosForSnapshot returns the resource and error passed as values of the context.
-func (l *mockLoader) GetRequiredIntegrationTestScenariosForSnapshot(ctx context.Context, c client.Client, application *applicationapiv1alpha1.Application, snapshot *applicationapiv1alpha1.Snapshot) (*[]v1beta2.IntegrationTestScenario, error) {
-	if ctx.Value(RequiredIntegrationTestScenariosContextKey) == nil {
-		return l.loader.GetRequiredIntegrationTestScenariosForSnapshot(ctx, c, application, snapshot)
+// GetAllIntegrationTestScenariosForComponentGroups returns the resource and error passed as values of the context.
+func (l *mockLoader) GetAllIntegrationTestScenariosForComponentGroups(ctx context.Context, c client.Client, componentGroups *[]v1beta2.ComponentGroup) (*[]v1beta2.IntegrationTestScenario, error) {
+	if ctx.Value(AllIntegrationTestScenariosForComponentGroupContextKey) == nil {
+		return l.loader.GetAllIntegrationTestScenariosForComponentGroups(ctx, c, componentGroups)
 	}
-	integrationTestScenarios, err := toolkit.GetMockedResourceAndErrorFromContext(ctx, RequiredIntegrationTestScenariosContextKey, []v1beta2.IntegrationTestScenario{})
+	integrationTestScenarios, err := toolkit.GetMockedResourceAndErrorFromContext(ctx, AllIntegrationTestScenariosForComponentGroupsContextKey, []v1beta2.IntegrationTestScenario{})
+	return &integrationTestScenarios, err
+}
+
+// GetRequiredIntegrationTestScenariosForSnapshot returns the resource and error passed as values of the context.
+func (l *mockLoader) GetRequiredIntegrationTestScenariosForSnapshotApplication(ctx context.Context, c client.Client, application *applicationapiv1alpha1.Application, snapshot *applicationapiv1alpha1.Snapshot) (*[]v1beta2.IntegrationTestScenario, error) {
+	if ctx.Value(RequiredIntegrationTestScenariosForSnapshotContextKey) == nil {
+		return l.loader.GetRequiredIntegrationTestScenariosForSnapshotApplication(ctx, c, application, snapshot)
+	}
+	integrationTestScenarios, err := toolkit.GetMockedResourceAndErrorFromContext(ctx, RequiredIntegrationTestScenariosForSnapshotContextKey, []v1beta2.IntegrationTestScenario{})
+	return &integrationTestScenarios, err
+}
+
+// GetAllIntegrationTestScenariosForSnapshotApplication returns the resource and error passed as values of the context.
+func (l *mockLoader) GetAllIntegrationTestScenariosForSnapshotApplication(ctx context.Context, c client.Client, application *applicationapiv1alpha1.Application, snapshot *applicationapiv1alpha1.Snapshot) (*[]v1beta2.IntegrationTestScenario, error) {
+	if ctx.Value(AllIntegrationTestScenariosForSnapshotContextKey) == nil {
+		return l.loader.GetAllIntegrationTestScenariosForSnapshotApplication(ctx, c, application, snapshot)
+	}
+	integrationTestScenarios, err := toolkit.GetMockedResourceAndErrorFromContext(ctx, AllIntegrationTestScenariosForSnapshotContextKey, []v1beta2.IntegrationTestScenario{})
 	return &integrationTestScenarios, err
 }
 
 // GetAllIntegrationTestScenariosForSnapshot returns the resource and error passed as values of the context.
-func (l *mockLoader) GetAllIntegrationTestScenariosForSnapshot(ctx context.Context, c client.Client, application *applicationapiv1alpha1.Application, snapshot *applicationapiv1alpha1.Snapshot) (*[]v1beta2.IntegrationTestScenario, error) {
+func (l *mockLoader) GetAllIntegrationTestScenariosForSnapshot(ctx context.Context, c client.Client, componentGroup *v1beta2.ComponentGroup, snapshot *applicationapiv1alpha1.Snapshot) (*[]v1beta2.IntegrationTestScenario, error) {
 	if ctx.Value(AllIntegrationTestScenariosForSnapshotContextKey) == nil {
-		return l.loader.GetAllIntegrationTestScenariosForSnapshot(ctx, c, application, snapshot)
+		return l.loader.GetAllIntegrationTestScenariosForSnapshot(ctx, c, componentGroup, snapshot)
 	}
 	integrationTestScenarios, err := toolkit.GetMockedResourceAndErrorFromContext(ctx, AllIntegrationTestScenariosForSnapshotContextKey, []v1beta2.IntegrationTestScenario{})
 	return &integrationTestScenarios, err
@@ -205,6 +238,15 @@ func (l *mockLoader) GetAutoReleasePlansForApplication(ctx context.Context, c cl
 	return &autoReleasePlans, err
 }
 
+// GetAutoReleasePlansForComponentGroup returns the resource and error passed as values of the context.
+func (l *mockLoader) GetAutoReleasePlansForComponentGroup(ctx context.Context, c client.Client, componentGroup *v1beta2.ComponentGroup, snapshot *applicationapiv1alpha1.Snapshot) (*[]releasev1alpha1.ReleasePlan, error) {
+	if ctx.Value(AutoReleasePlansContextKey) == nil {
+		return l.loader.GetAutoReleasePlansForComponentGroup(ctx, c, componentGroup, snapshot)
+	}
+	autoReleasePlans, err := toolkit.GetMockedResourceAndErrorFromContext(ctx, AutoReleasePlansContextKey, []releasev1alpha1.ReleasePlan{})
+	return &autoReleasePlans, err
+}
+
 // GetScenario returns the resource and error passed as values of the context.
 func (l *mockLoader) GetScenario(ctx context.Context, c client.Client, name, namespace string) (*v1beta2.IntegrationTestScenario, error) {
 	if ctx.Value(GetScenarioContextKey) == nil {
@@ -215,25 +257,42 @@ func (l *mockLoader) GetScenario(ctx context.Context, c client.Client, name, nam
 
 // GetComponentGroup returns the resource and error passed as values of the context.
 func (l *mockLoader) GetComponentGroup(ctx context.Context, c client.Client, name, namespace string) (*v1beta2.ComponentGroup, error) {
-	if ctx.Value(GetComponentGroupContextKey) == nil {
+	if ctx.Value(ComponentGroupContextKey) == nil {
 		return l.loader.GetComponentGroup(ctx, c, name, namespace)
 	}
-	return toolkit.GetMockedResourceAndErrorFromContext(ctx, GetComponentGroupContextKey, &v1beta2.ComponentGroup{})
+	return toolkit.GetMockedResourceAndErrorFromContext(ctx, ComponentGroupContextKey, &v1beta2.ComponentGroup{})
 }
 
-func (l *mockLoader) GetAllSnapshotsForBuildPipelineRun(ctx context.Context, c client.Client, pipelineRun *tektonv1.PipelineRun) (*[]applicationapiv1alpha1.Snapshot, error) {
-	if ctx.Value(AllSnapshotsForBuildPipelineRunContextKey) == nil {
-		return l.loader.GetAllSnapshotsForBuildPipelineRun(ctx, c, pipelineRun)
+// TODO: remove when we deprecate old application-specific code
+func (l *mockLoader) GetAllSnapshotsForBuildPipelineRunApplication(ctx context.Context, c client.Client, pipelineRun *tektonv1.PipelineRun) (*[]applicationapiv1alpha1.Snapshot, error) {
+	if ctx.Value(AllSnapshotsForBuildPipelineRunApplicationContextKey) == nil {
+		return l.loader.GetAllSnapshotsForBuildPipelineRunApplication(ctx, c, pipelineRun)
 	}
-	snapshots, err := toolkit.GetMockedResourceAndErrorFromContext(ctx, AllSnapshotsForBuildPipelineRunContextKey, []applicationapiv1alpha1.Snapshot{})
+	snapshots, err := toolkit.GetMockedResourceAndErrorFromContext(ctx, AllSnapshotsForBuildPipelineRunApplicationContextKey, []applicationapiv1alpha1.Snapshot{})
 	return &snapshots, err
 }
 
-func (l *mockLoader) GetAllSnapshotsForPR(ctx context.Context, c client.Client, application *applicationapiv1alpha1.Application, componentName, pullRequest string) (*[]applicationapiv1alpha1.Snapshot, error) {
+func (l *mockLoader) GetAllSnapshotsForBuildPipelineRun(ctx context.Context, c client.Client, pipelineRun *tektonv1.PipelineRun, componentNames []string) (*map[string][]applicationapiv1alpha1.Snapshot, error) {
+	if ctx.Value(AllSnapshotsForBuildPipelineRunContextKey) == nil {
+		return l.loader.GetAllSnapshotsForBuildPipelineRun(ctx, c, pipelineRun, componentNames)
+	}
+	snapshots, err := toolkit.GetMockedResourceAndErrorFromContext(ctx, AllSnapshotsForBuildPipelineRunContextKey, map[string][]applicationapiv1alpha1.Snapshot{})
+	return &snapshots, err
+}
+
+func (l *mockLoader) GetAllSnapshotsForPR(ctx context.Context, c client.Client, object metav1.ObjectMeta, componentName, pullRequest string) (*[]applicationapiv1alpha1.Snapshot, error) {
 	if ctx.Value(AllSnapshotsForGivenPRContextKey) == nil {
-		return l.loader.GetAllSnapshotsForPR(ctx, c, application, componentName, pullRequest)
+		return l.loader.GetAllSnapshotsForPR(ctx, c, object, componentName, pullRequest)
 	}
 	snapshots, err := toolkit.GetMockedResourceAndErrorFromContext(ctx, AllSnapshotsForGivenPRContextKey, []applicationapiv1alpha1.Snapshot{})
+	return &snapshots, err
+}
+
+func (l *mockLoader) GetAllPullSnapshotsForPR(ctx context.Context, c client.Client, object metav1.ObjectMeta, componentName, pullRequest string) (*[]applicationapiv1alpha1.Snapshot, error) {
+	if ctx.Value(AllPullSnapshotsForGivenPRContextKey) == nil {
+		return l.loader.GetAllPullSnapshotsForPR(ctx, c, object, componentName, pullRequest)
+	}
+	snapshots, err := toolkit.GetMockedResourceAndErrorFromContext(ctx, AllPullSnapshotsForGivenPRContextKey, []applicationapiv1alpha1.Snapshot{})
 	return &snapshots, err
 }
 
@@ -321,9 +380,34 @@ func (l *mockLoader) GetResolutionRequest(ctx context.Context, c client.Client, 
 	return resolutionRequest, err
 }
 
-func (l *mockLoader) GetPRComponentSnapshotsForComponent(ctx context.Context, c client.Client, namespace, applicationName, componentName, prNumber string) (*[]applicationapiv1alpha1.Snapshot, error) {
+func (l *mockLoader) GetPRComponentSnapshotsForComponent(ctx context.Context, c client.Client, componentGroupNames []string, namespace, componentName, prNumber string) (*[]applicationapiv1alpha1.Snapshot, error) {
 	if ctx.Value(GetPRComponentSnapshotsForComponentContextKey) == nil {
-		return l.loader.GetPRComponentSnapshotsForComponent(ctx, c, namespace, applicationName, componentName, prNumber)
+		return l.loader.GetPRComponentSnapshotsForComponent(ctx, c, componentGroupNames, namespace, componentName, prNumber)
+	}
+	snapshots, err := toolkit.GetMockedResourceAndErrorFromContext(ctx, GetPRComponentSnapshotsForComponentContextKey, []applicationapiv1alpha1.Snapshot{})
+	return &snapshots, err
+}
+
+// GetComponentGroupFromSnapshot returns the resource and error passed as values of the context.
+func (l *mockLoader) GetComponentGroupFromSnapshot(ctx context.Context, c client.Client, snapshot *applicationapiv1alpha1.Snapshot) (*v1beta2.ComponentGroup, error) {
+	if ctx.Value(ComponentGroupContextKey) == nil {
+		return l.loader.GetComponentGroupFromSnapshot(ctx, c, snapshot)
+	}
+	return toolkit.GetMockedResourceAndErrorFromContext(ctx, ComponentGroupContextKey, &v1beta2.ComponentGroup{})
+}
+
+// GetRequiredIntegrationTestScenariosForSnapshot returns the resource and error passed as values of the context.
+func (l *mockLoader) GetRequiredIntegrationTestScenariosForSnapshot(ctx context.Context, c client.Client, componentGroup *v1beta2.ComponentGroup, snapshot *applicationapiv1alpha1.Snapshot) (*[]v1beta2.IntegrationTestScenario, error) {
+	if ctx.Value(RequiredIntegrationTestScenariosForSnapshotContextKey) == nil {
+		return l.loader.GetRequiredIntegrationTestScenariosForSnapshot(ctx, c, componentGroup, snapshot)
+	}
+	integrationTestScenarios, err := toolkit.GetMockedResourceAndErrorFromContext(ctx, RequiredIntegrationTestScenariosForSnapshotContextKey, []v1beta2.IntegrationTestScenario{})
+	return &integrationTestScenarios, err
+}
+
+func (l *mockLoader) GetPRComponentSnapshotsForComponentApplication(ctx context.Context, c client.Client, namespace, applicationName, componentName, prNumber string) (*[]applicationapiv1alpha1.Snapshot, error) {
+	if ctx.Value(GetPRComponentSnapshotsForComponentContextKey) == nil {
+		return l.loader.GetPRComponentSnapshotsForComponentApplication(ctx, c, namespace, applicationName, componentName, prNumber)
 	}
 	snapshots, err := toolkit.GetMockedResourceAndErrorFromContext(ctx, GetPRComponentSnapshotsForComponentContextKey, []applicationapiv1alpha1.Snapshot{})
 	return &snapshots, err

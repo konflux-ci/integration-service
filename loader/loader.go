@@ -32,6 +32,7 @@ import (
 	resolutionv1beta1 "github.com/tektoncd/pipeline/pkg/apis/resolution/v1beta1"
 	"golang.org/x/exp/slices"
 	"k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -44,22 +45,30 @@ type ObjectLoader interface {
 	GetReleasesWithSnapshot(ctx context.Context, c client.Client, snapshot *applicationapiv1alpha1.Snapshot) (*[]releasev1alpha1.Release, error)
 	GetAllApplicationComponents(ctx context.Context, c client.Client, application *applicationapiv1alpha1.Application) (*[]applicationapiv1alpha1.Component, error)
 	GetApplicationFromSnapshot(ctx context.Context, c client.Client, snapshot *applicationapiv1alpha1.Snapshot) (*applicationapiv1alpha1.Application, error)
+	GetComponentGroupFromSnapshot(ctx context.Context, c client.Client, snapshot *applicationapiv1alpha1.Snapshot) (*v1beta2.ComponentGroup, error)
 	GetComponentFromSnapshot(ctx context.Context, c client.Client, snapshot *applicationapiv1alpha1.Snapshot) (*applicationapiv1alpha1.Component, error)
 	GetComponentFromPipelineRun(ctx context.Context, c client.Client, pipelineRun *tektonv1.PipelineRun) (*applicationapiv1alpha1.Component, error)
 	GetApplicationFromPipelineRun(ctx context.Context, c client.Client, pipelineRun *tektonv1.PipelineRun) (*applicationapiv1alpha1.Application, error)
 	GetApplicationFromComponent(ctx context.Context, c client.Client, component *applicationapiv1alpha1.Component) (*applicationapiv1alpha1.Application, error)
+	GetComponentGroupsForComponentVersion(ctx context.Context, c client.Client, component *applicationapiv1alpha1.Component, version string) (*[]v1beta2.ComponentGroup, error)
 	GetSnapshotFromPipelineRun(ctx context.Context, c client.Client, pipelineRun *tektonv1.PipelineRun) (*applicationapiv1alpha1.Snapshot, error)
 	GetAllIntegrationTestScenariosForApplication(ctx context.Context, c client.Client, application *applicationapiv1alpha1.Application) (*[]v1beta2.IntegrationTestScenario, error)
 	GetAllIntegrationTestScenariosForComponentGroup(ctx context.Context, c client.Client, componentGroup *v1beta2.ComponentGroup) (*[]v1beta2.IntegrationTestScenario, error)
-	GetRequiredIntegrationTestScenariosForSnapshot(ctx context.Context, c client.Client, application *applicationapiv1alpha1.Application, snapshot *applicationapiv1alpha1.Snapshot) (*[]v1beta2.IntegrationTestScenario, error)
-	GetAllIntegrationTestScenariosForSnapshot(ctx context.Context, c client.Client, application *applicationapiv1alpha1.Application, snapshot *applicationapiv1alpha1.Snapshot) (*[]v1beta2.IntegrationTestScenario, error)
+	GetAllIntegrationTestScenariosForComponentGroups(ctx context.Context, c client.Client, componentGroups *[]v1beta2.ComponentGroup) (*[]v1beta2.IntegrationTestScenario, error)
+	GetRequiredIntegrationTestScenariosForSnapshotApplication(ctx context.Context, c client.Client, application *applicationapiv1alpha1.Application, snapshot *applicationapiv1alpha1.Snapshot) (*[]v1beta2.IntegrationTestScenario, error)
+	GetRequiredIntegrationTestScenariosForSnapshot(ctx context.Context, c client.Client, componentGroup *v1beta2.ComponentGroup, snapshot *applicationapiv1alpha1.Snapshot) (*[]v1beta2.IntegrationTestScenario, error)
+	GetAllIntegrationTestScenariosForSnapshotApplication(ctx context.Context, c client.Client, application *applicationapiv1alpha1.Application, snapshot *applicationapiv1alpha1.Snapshot) (*[]v1beta2.IntegrationTestScenario, error)
+	GetAllIntegrationTestScenariosForSnapshot(ctx context.Context, c client.Client, componentGroup *v1beta2.ComponentGroup, snapshot *applicationapiv1alpha1.Snapshot) (*[]v1beta2.IntegrationTestScenario, error)
 	GetAllPipelineRunsForSnapshotAndScenario(ctx context.Context, c client.Client, snapshot *applicationapiv1alpha1.Snapshot, integrationTestScenario *v1beta2.IntegrationTestScenario) (*[]tektonv1.PipelineRun, error)
 	GetAllSnapshots(ctx context.Context, c client.Client, application *applicationapiv1alpha1.Application) (*[]applicationapiv1alpha1.Snapshot, error)
 	GetAutoReleasePlansForApplication(ctx context.Context, c client.Client, application *applicationapiv1alpha1.Application, snapshot *applicationapiv1alpha1.Snapshot) (*[]releasev1alpha1.ReleasePlan, error)
+	GetAutoReleasePlansForComponentGroup(ctx context.Context, c client.Client, componentGroup *v1beta2.ComponentGroup, snapshot *applicationapiv1alpha1.Snapshot) (*[]releasev1alpha1.ReleasePlan, error)
 	GetScenario(ctx context.Context, c client.Client, name, namespace string) (*v1beta2.IntegrationTestScenario, error)
 	GetComponentGroup(ctx context.Context, c client.Client, name, namespace string) (*v1beta2.ComponentGroup, error)
-	GetAllSnapshotsForBuildPipelineRun(ctx context.Context, c client.Client, pipelineRun *tektonv1.PipelineRun) (*[]applicationapiv1alpha1.Snapshot, error)
-	GetAllSnapshotsForPR(ctx context.Context, c client.Client, application *applicationapiv1alpha1.Application, componentName, pullRequest string) (*[]applicationapiv1alpha1.Snapshot, error)
+	GetAllSnapshotsForBuildPipelineRunApplication(ctx context.Context, c client.Client, pipelineRun *tektonv1.PipelineRun) (*[]applicationapiv1alpha1.Snapshot, error)
+	GetAllSnapshotsForBuildPipelineRun(ctx context.Context, c client.Client, pipelineRun *tektonv1.PipelineRun, componentGroupNames []string) (*map[string][]applicationapiv1alpha1.Snapshot, error)
+	GetAllSnapshotsForPR(ctx context.Context, c client.Client, object metav1.ObjectMeta, componentName, pullRequest string) (*[]applicationapiv1alpha1.Snapshot, error)
+	GetAllPullSnapshotsForPR(ctx context.Context, c client.Client, object metav1.ObjectMeta, componentName, pullRequest string) (*[]applicationapiv1alpha1.Snapshot, error)
 	GetAllTaskRunsWithMatchingPipelineRunLabel(ctx context.Context, c client.Client, pipelineRun *tektonv1.PipelineRun) (*[]tektonv1.TaskRun, error)
 	GetPipelineRun(ctx context.Context, c client.Client, name, namespace string) (*tektonv1.PipelineRun, error)
 	GetComponent(ctx context.Context, c client.Client, name, namespace string) (*applicationapiv1alpha1.Component, error)
@@ -70,7 +79,8 @@ type ObjectLoader interface {
 	GetComponentsFromSnapshotForPRGroup(ctx context.Context, c client.Client, namespace, prGroup, prGroupHash, applicationName string) ([]string, error)
 	GetMatchingGroupSnapshotsForPRGroupHash(ctx context.Context, c client.Client, namespace, prGroupHash, applicationName string) (*[]applicationapiv1alpha1.Snapshot, error)
 	GetResolutionRequest(ctx context.Context, c client.Client, namespace, name string) (resolutionv1beta1.ResolutionRequest, error)
-	GetPRComponentSnapshotsForComponent(ctx context.Context, c client.Client, namespace, applicationName, componentName, prNumber string) (*[]applicationapiv1alpha1.Snapshot, error)
+	GetPRComponentSnapshotsForComponentApplication(ctx context.Context, c client.Client, namespace, applicationName, componentName, prNumber string) (*[]applicationapiv1alpha1.Snapshot, error)
+	GetPRComponentSnapshotsForComponent(ctx context.Context, c client.Client, componentGroupNames []string, namespace, componentName, prNumber string) (*[]applicationapiv1alpha1.Snapshot, error)
 }
 
 type loader struct{}
@@ -115,6 +125,7 @@ func (l *loader) GetAllApplicationComponents(ctx context.Context, c client.Clien
 
 // GetApplicationFromSnapshot loads from the cluster the Application referenced in the given Snapshot.
 // If the Snapshot doesn't specify an Component or this is not found in the cluster, an error will be returned.
+// TODO: delete when we get rid of application model
 func (l *loader) GetApplicationFromSnapshot(ctx context.Context, c client.Client, snapshot *applicationapiv1alpha1.Snapshot) (*applicationapiv1alpha1.Application, error) {
 	application := &applicationapiv1alpha1.Application{}
 	return application, toolkit.GetObject(snapshot.Spec.Application, snapshot.Namespace, c, ctx, application)
@@ -197,6 +208,40 @@ func (l *loader) GetApplicationFromComponent(ctx context.Context, c client.Clien
 	return application, nil
 }
 
+// GetComponentGroupsForComponentVersion loads from the cluster a list of ComponentGroups that use the given ComponentVerison. If
+// the Component does not belong to any ComponentGroups then an empty list will be returned
+func (l *loader) GetComponentGroupsForComponentVersion(ctx context.Context, c client.Client, component *applicationapiv1alpha1.Component, version string) (*[]v1beta2.ComponentGroup, error) {
+	componentGroupList := &v1beta2.ComponentGroupList{}
+
+	// Kubernetes FieldSelector cannot filter by "spec.components contains item where name=X and componentBranch.name=Y"
+	// (only top-level or CRD selectableFields are supported, not array containment). List all in namespace and filter in Go.
+	options := &client.ListOptions{
+		Namespace: component.Namespace,
+	}
+
+	err := c.List(ctx, componentGroupList, options)
+	if err != nil {
+		return nil, err
+	}
+
+	// Fields inside of arrays are not selectable, so we need to filter in code. This means we will be querying etcd for large
+	// amounts of data every time a build pipeline completes.  If this becomes a performance issue we can implement an annotation
+	// that contains a list of all components in the ComponentGroup. Then we just have to filter the (smaller) list of
+	// ComponentGroups for matching versions.
+	var result []v1beta2.ComponentGroup
+	for i := range componentGroupList.Items {
+		cg := &componentGroupList.Items[i]
+		for j := range cg.Spec.Components {
+			ref := &cg.Spec.Components[j]
+			if ref.Name == component.Name && ref.ComponentVersion.Name == version {
+				result = append(result, *cg)
+				break
+			}
+		}
+	}
+	return &result, nil
+}
+
 // GetSnapshotFromPipelineRun loads from the cluster the Snapshot referenced in the given PipelineRun.
 // If the PipelineRun doesn't specify an Snapshot or this is not found in the cluster, an error will be returned.
 func (l *loader) GetSnapshotFromPipelineRun(ctx context.Context, c client.Client, pipelineRun *tektonv1.PipelineRun) (*applicationapiv1alpha1.Snapshot, error) {
@@ -234,7 +279,7 @@ func (l *loader) GetAllIntegrationTestScenariosForApplication(ctx context.Contex
 	return &integrationList.Items, nil
 }
 
-// GetAllIntegrationTestScenariosForComponentGroup returns all IntegrationTestScenarios used by the ComponentGroup being processed.
+// GetAllIntegrationTestScenariosForComponentGroup returns all IntegrationTestScenarios used by a single ComponentGroup
 func (l *loader) GetAllIntegrationTestScenariosForComponentGroup(ctx context.Context, c client.Client, componentGroup *v1beta2.ComponentGroup) (*[]v1beta2.IntegrationTestScenario, error) {
 	integrationList := &v1beta2.IntegrationTestScenarioList{}
 
@@ -251,10 +296,26 @@ func (l *loader) GetAllIntegrationTestScenariosForComponentGroup(ctx context.Con
 	return &integrationList.Items, nil
 }
 
-// GetRequiredIntegrationTestScenariosForSnapshot returns the IntegrationTestScenarios used by the application and snapshot being processed.
-// An IntegrationTestScenarios will only be returned if it has the test.appstudio.openshift.io/optional
+// GetAllIntegrationTestScenariosForComponentGroup returns all IntegrationTestScenarios used by all ComponentGroups in the list. No deduplication is required since an ITS can only belong to one ComponentGroup
+func (l *loader) GetAllIntegrationTestScenariosForComponentGroups(ctx context.Context, c client.Client, componentGroups *[]v1beta2.ComponentGroup) (*[]v1beta2.IntegrationTestScenario, error) {
+	scenarios := []v1beta2.IntegrationTestScenario{}
+	for _, componentGroup := range *componentGroups {
+		items, err := l.GetAllIntegrationTestScenariosForComponentGroup(ctx, c, &componentGroup)
+		if err != nil {
+			return nil, err
+		}
+
+		scenarios = append(scenarios, *items...)
+	}
+
+	return &scenarios, nil
+}
+
+// GetRequiredIntegrationTestScenariosForSnapshotApplication returns the IntegrationTestScenarios used by the Application and snapshot being processed (legacy Application model).
+// An IntegrationTestScenario will only be returned if it has the test.appstudio.openshift.io/optional
 // label not set to true or if it is missing the label entirely, and have the correct context for the defined snapshot.
-func (l *loader) GetRequiredIntegrationTestScenariosForSnapshot(ctx context.Context, c client.Client, application *applicationapiv1alpha1.Application, snapshot *applicationapiv1alpha1.Snapshot) (*[]v1beta2.IntegrationTestScenario, error) {
+// TODO: delete when we remove old application-specific code
+func (l *loader) GetRequiredIntegrationTestScenariosForSnapshotApplication(ctx context.Context, c client.Client, application *applicationapiv1alpha1.Application, snapshot *applicationapiv1alpha1.Snapshot) (*[]v1beta2.IntegrationTestScenario, error) {
 	integrationList := &v1beta2.IntegrationTestScenarioList{}
 	labelRequirement, err := labels.NewRequirement("test.appstudio.openshift.io/optional", selection.NotIn, []string{"true"})
 	if err != nil {
@@ -277,11 +338,58 @@ func (l *loader) GetRequiredIntegrationTestScenariosForSnapshot(ctx context.Cont
 	return integrationTestScenarios, nil
 }
 
+// GetComponentGroupFromSnapshot loads from the cluster the ComponentGroup referenced in the given Snapshot.
+// If the Snapshot doesn't specify a ComponentGroup or it is not found in the cluster, an error will be returned.
+func (l *loader) GetComponentGroupFromSnapshot(ctx context.Context, c client.Client, snapshot *applicationapiv1alpha1.Snapshot) (*v1beta2.ComponentGroup, error) {
+	componentGroup := &v1beta2.ComponentGroup{}
+	return componentGroup, toolkit.GetObject(snapshot.Spec.ComponentGroup, snapshot.Namespace, c, ctx, componentGroup)
+}
+
+// GetRequiredIntegrationTestScenariosForSnapshot returns the IntegrationTestScenarios used by the ComponentGroup and snapshot being processed.
+// An IntegrationTestScenario will only be returned if it has the test.appstudio.openshift.io/optional
+// label not set to true or if it is missing the label entirely, and has the correct context for the defined snapshot.
+func (l *loader) GetRequiredIntegrationTestScenariosForSnapshot(ctx context.Context, c client.Client, componentGroup *v1beta2.ComponentGroup, snapshot *applicationapiv1alpha1.Snapshot) (*[]v1beta2.IntegrationTestScenario, error) {
+	integrationList := &v1beta2.IntegrationTestScenarioList{}
+	labelRequirement, err := labels.NewRequirement("test.appstudio.openshift.io/optional", selection.NotIn, []string{"true"})
+	if err != nil {
+		return nil, err
+	}
+	labelSelector := labels.NewSelector().Add(*labelRequirement)
+
+	opts := &client.ListOptions{
+		Namespace:     componentGroup.Namespace,
+		FieldSelector: fields.OneTermEqualSelector("spec.componentGroup", componentGroup.Name),
+		LabelSelector: labelSelector,
+	}
+
+	err = c.List(ctx, integrationList, opts)
+	if err != nil {
+		return nil, err
+	}
+
+	integrationTestScenarios := gitops.FilterIntegrationTestScenariosWithContext(&integrationList.Items, snapshot)
+	return integrationTestScenarios, nil
+}
+
+// GetAllIntegrationTestScenariosForSnapshotApplication returns the IntegrationTestScenarios used by the application and snapshot being processed.
+// All the IntegrationTestScenarios will be returned regardless of whether it has the test.appstudio.openshift.io/optional
+// label not set to true or if it is missing the label entirely, but they will have the correct context for the defined snapshot.
+// TODO: delete when we remove old application-specific code
+func (l *loader) GetAllIntegrationTestScenariosForSnapshotApplication(ctx context.Context, c client.Client, application *applicationapiv1alpha1.Application, snapshot *applicationapiv1alpha1.Snapshot) (*[]v1beta2.IntegrationTestScenario, error) {
+	integrationList, err := l.GetAllIntegrationTestScenariosForApplication(ctx, c, application)
+	if err != nil {
+		return nil, err
+	}
+
+	integrationTestScenarios := gitops.FilterIntegrationTestScenariosWithContext(integrationList, snapshot)
+	return integrationTestScenarios, nil
+}
+
 // GetAllIntegrationTestScenariosForSnapshot returns the IntegrationTestScenarios used by the application and snapshot being processed.
 // All the IntegrationTestScenarios will be returned regardless of whether it has the test.appstudio.openshift.io/optional
 // label not set to true or if it is missing the label entirely, but they will have the correct context for the defined snapshot.
-func (l *loader) GetAllIntegrationTestScenariosForSnapshot(ctx context.Context, c client.Client, application *applicationapiv1alpha1.Application, snapshot *applicationapiv1alpha1.Snapshot) (*[]v1beta2.IntegrationTestScenario, error) {
-	integrationList, err := l.GetAllIntegrationTestScenariosForApplication(ctx, c, application)
+func (l *loader) GetAllIntegrationTestScenariosForSnapshot(ctx context.Context, c client.Client, componentGroup *v1beta2.ComponentGroup, snapshot *applicationapiv1alpha1.Snapshot) (*[]v1beta2.IntegrationTestScenario, error) {
+	integrationList, err := l.GetAllIntegrationTestScenariosForComponentGroup(ctx, c, componentGroup)
 	if err != nil {
 		return nil, err
 	}
@@ -331,6 +439,7 @@ func (l *loader) GetAllSnapshots(ctx context.Context, c client.Client, applicati
 // GetAutoReleasePlansForApplication returns the ReleasePlans used by the application being processed. If matching
 // ReleasePlans are not found, an error will be returned. A ReleasePlan will only be returned if it has the
 // release.appstudio.openshift.io/auto-release label set to true or if it is missing the label entirely.
+// TODO: delete function when we remove support for old application model
 func (l *loader) GetAutoReleasePlansForApplication(ctx context.Context, c client.Client, application *applicationapiv1alpha1.Application, snapshot *applicationapiv1alpha1.Snapshot) (*[]releasev1alpha1.ReleasePlan, error) {
 	allReleasePlans := &releasev1alpha1.ReleasePlanList{}
 	filteredReleasePlans := &releasev1alpha1.ReleasePlanList{}
@@ -361,6 +470,39 @@ func (l *loader) GetAutoReleasePlansForApplication(ctx context.Context, c client
 	return &filteredReleasePlans.Items, nil
 }
 
+// GetAutoReleasePlansForComponentGroup returns the ReleasePlans used by the component group being processed. If matching
+// ReleasePlans are not found, an error will be returned. A ReleasePlan will only be returned if it has the
+// release.appstudio.openshift.io/auto-release label set to true or if it is missing the label entirely.
+func (l *loader) GetAutoReleasePlansForComponentGroup(ctx context.Context, c client.Client, componentGroup *v1beta2.ComponentGroup, snapshot *applicationapiv1alpha1.Snapshot) (*[]releasev1alpha1.ReleasePlan, error) {
+	allReleasePlans := &releasev1alpha1.ReleasePlanList{}
+	filteredReleasePlans := &releasev1alpha1.ReleasePlanList{}
+
+	opts := &client.ListOptions{
+		Namespace:     componentGroup.Namespace,
+		FieldSelector: fields.OneTermEqualSelector("spec.componentGroup", componentGroup.Name),
+	}
+
+	err := c.List(ctx, allReleasePlans, opts)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, rp := range allReleasePlans.Items {
+		annotationValue := rp.GetAnnotations()[gitops.AutoReleaseLabel] // label and annotation have same value
+		if annotationValue != "" {
+			// If the annotation exists we evaluate the expression and return that
+			canRelease, err := gitops.EvaluateSnapshotAutoReleaseAnnotation(annotationValue, snapshot)
+			if err != nil || !canRelease {
+				filteredReleasePlans.Items = append(filteredReleasePlans.Items, rp)
+			}
+		} else if !metadata.HasLabelWithValue(&rp, gitops.AutoReleaseLabel, "false") {
+			filteredReleasePlans.Items = append(filteredReleasePlans.Items, rp)
+		}
+	}
+
+	return &filteredReleasePlans.Items, nil
+}
+
 // GetScenario returns integration test scenario requested by name and namespace
 func (l *loader) GetScenario(ctx context.Context, c client.Client, name, namespace string) (*v1beta2.IntegrationTestScenario, error) {
 	scenario := &v1beta2.IntegrationTestScenario{}
@@ -373,9 +515,10 @@ func (l *loader) GetComponentGroup(ctx context.Context, c client.Client, name, n
 	return componentGroup, toolkit.GetObject(name, namespace, c, ctx, componentGroup)
 }
 
-// GetAllSnapshotsForBuildPipelineRun returns all Snapshots for the associated build pipelineRun.
+// GetAllSnapshotsForBuildPipelineRunApplication returns all Snapshots for the associated build pipelineRun.
 // In the case the List operation fails, an error will be returned.
-func (l *loader) GetAllSnapshotsForBuildPipelineRun(ctx context.Context, c client.Client, pipelineRun *tektonv1.PipelineRun) (*[]applicationapiv1alpha1.Snapshot, error) {
+// TODO: remove when we deprecate the old Application model
+func (l *loader) GetAllSnapshotsForBuildPipelineRunApplication(ctx context.Context, c client.Client, pipelineRun *tektonv1.PipelineRun) (*[]applicationapiv1alpha1.Snapshot, error) {
 	snapshots := &applicationapiv1alpha1.SnapshotList{}
 	opts := []client.ListOption{
 		client.InNamespace(pipelineRun.Namespace),
@@ -391,13 +534,50 @@ func (l *loader) GetAllSnapshotsForBuildPipelineRun(ctx context.Context, c clien
 	return &snapshots.Items, nil
 }
 
-// GetAllSnapshotsForPR returns all Snapshots for the associated Pull Request.
-// In the case the List operation fails, an error will be returned.
-// gitops.PipelineAsCodePullRequestAnnotation is also a label
-func (l *loader) GetAllSnapshotsForPR(ctx context.Context, c client.Client, application *applicationapiv1alpha1.Application, componentName, pullRequest string) (*[]applicationapiv1alpha1.Snapshot, error) {
+func (l *loader) GetAllSnapshotsForBuildPipelineRun(ctx context.Context, c client.Client, pipelineRun *tektonv1.PipelineRun, componentGroupNames []string) (*map[string][]applicationapiv1alpha1.Snapshot, error) {
+	mappedSnapshots := make(map[string][]applicationapiv1alpha1.Snapshot)
 	snapshots := &applicationapiv1alpha1.SnapshotList{}
 	opts := []client.ListOption{
-		client.InNamespace(application.Namespace),
+		client.InNamespace(pipelineRun.Namespace),
+		client.MatchingLabels{
+			gitops.BuildPipelineRunNameLabel: pipelineRun.Name,
+		},
+	}
+
+	err := c.List(ctx, snapshots, opts...)
+	if err != nil {
+		return nil, err
+	}
+
+	// Add all componentGroups to the map. This way if any ComponentGroup does not have an associated
+	// snapshot the key will still exist in the map
+	for _, componentGroupName := range componentGroupNames {
+		mappedSnapshots[componentGroupName] = []applicationapiv1alpha1.Snapshot{}
+	}
+
+	for _, snapshot := range snapshots.Items {
+		componentGroup, ok := snapshot.Labels[gitops.ComponentGroupNameLabel]
+		if !ok {
+			// TODO: remove after deprecated application model
+			// We need this so that the existence of application-based snapshots on the cluster
+			// does not cause this function to return an error
+			if _, ok = snapshot.Labels[gitops.ApplicationNameLabel]; ok {
+				continue
+			}
+			return nil, fmt.Errorf("snapshot %s in namespace %s does not contain the ComponentGroupNameLabel", snapshot.Name, snapshot.Namespace)
+		}
+		mappedSnapshots[componentGroup] = append(mappedSnapshots[componentGroup], snapshot)
+	}
+	return &mappedSnapshots, nil
+}
+
+// GetAllSnapshotsForPR returns all Snapshots for the associated Pull Request.
+// In the case the List operation fails, an error will be returned.
+// PipelineAsCodePullRequestAnnotation is also a label
+func (l *loader) GetAllSnapshotsForPR(ctx context.Context, c client.Client, object metav1.ObjectMeta, componentName, pullRequest string) (*[]applicationapiv1alpha1.Snapshot, error) {
+	snapshots := &applicationapiv1alpha1.SnapshotList{}
+	opts := []client.ListOption{
+		client.InNamespace(object.Namespace),
 		client.MatchingLabels{
 			gitops.PipelineAsCodePullRequestAnnotation: pullRequest,
 			gitops.SnapshotComponentLabel:              componentName,
@@ -409,6 +589,36 @@ func (l *loader) GetAllSnapshotsForPR(ctx context.Context, c client.Client, appl
 		return nil, err
 	}
 	return &snapshots.Items, nil
+}
+
+// GetAllPullSnapshotsForPR returns all pull-request workflow Snapshots for the associated Pull Request.
+// In the case the List operation fails, an error will be returned.
+// PipelineAsCodePullRequestAnnotation is also a label
+// Only snapshots with IntegrationWorkflowAnnotation set to "pull-request" are returned,
+// so on-push snapshots that carry the same PR label are excluded.
+// TODO: make this function take ObjectMeta rather than application
+func (l *loader) GetAllPullSnapshotsForPR(ctx context.Context, c client.Client, object metav1.ObjectMeta, componentName, pullRequest string) (*[]applicationapiv1alpha1.Snapshot, error) {
+	snapshots := &applicationapiv1alpha1.SnapshotList{}
+	opts := []client.ListOption{
+		client.InNamespace(object.Namespace),
+		client.MatchingLabels{
+			gitops.PipelineAsCodePullRequestAnnotation: pullRequest,
+			gitops.SnapshotComponentLabel:              componentName,
+		},
+	}
+
+	err := c.List(ctx, snapshots, opts...)
+	if err != nil {
+		return nil, err
+	}
+
+	pullSnapshots := make([]applicationapiv1alpha1.Snapshot, 0, len(snapshots.Items))
+	for _, s := range snapshots.Items {
+		if s.Annotations != nil && s.Annotations[gitops.IntegrationWorkflowAnnotation] == gitops.IntegrationWorkflowPullRequestValue {
+			pullSnapshots = append(pullSnapshots, s)
+		}
+	}
+	return &pullSnapshots, nil
 }
 
 // GetAllTaskRunsWithMatchingPipelineRunLabel finds all Child TaskRuns
@@ -631,7 +841,52 @@ func (l *loader) GetResolutionRequest(ctx context.Context, c client.Client, name
 }
 
 // GetPRComponentSnapshotsForComponent gets the pull request component snapshots for a specific component and PR number
-func (l *loader) GetPRComponentSnapshotsForComponent(ctx context.Context, c client.Client, namespace, applicationName, componentName, prNumber string) (*[]applicationapiv1alpha1.Snapshot, error) {
+func (l *loader) GetPRComponentSnapshotsForComponent(ctx context.Context, c client.Client, componentGroupNames []string, namespace, componentName, prNumber string) (*[]applicationapiv1alpha1.Snapshot, error) {
+	snapshots := &applicationapiv1alpha1.SnapshotList{}
+
+	componentGroupLabelRequirement, err := labels.NewRequirement("appstudio.openshift.io/component-group", selection.In, componentGroupNames)
+	if err != nil {
+		return nil, err
+	}
+	componentLabelRequirement, err := labels.NewRequirement("appstudio.openshift.io/component", selection.In, []string{componentName})
+	if err != nil {
+		return nil, err
+	}
+	prNumberLabelRequirement, err := labels.NewRequirement(gitops.PipelineAsCodePullRequestAnnotation, selection.In, []string{prNumber})
+	if err != nil {
+		return nil, err
+	}
+	snapshotTypeLabelRequirement, err := labels.NewRequirement("test.appstudio.openshift.io/type", selection.In, []string{"component"})
+	if err != nil {
+		return nil, err
+	}
+
+	snapshotEventTypeLabelRequirement, err := labels.NewRequirement(gitops.PipelineAsCodeEventTypeLabel, selection.In, []string{gitops.PipelineAsCodePullRequestType, gitops.PipelineAsCodeRetestType, gitops.PipelineAsCodeMergeUnderscoreRequestType})
+	if err != nil {
+		return nil, err
+	}
+
+	labelSelector := labels.NewSelector().
+		Add(*componentGroupLabelRequirement).
+		Add(*componentLabelRequirement).
+		Add(*prNumberLabelRequirement).
+		Add(*snapshotTypeLabelRequirement).
+		Add(*snapshotEventTypeLabelRequirement)
+
+	opts := &client.ListOptions{
+		Namespace:     namespace,
+		LabelSelector: labelSelector,
+	}
+
+	err = c.List(ctx, snapshots, opts)
+	if err != nil {
+		return nil, err
+	}
+	return &snapshots.Items, nil
+}
+
+// TODO: delete this function when we remove old application-specific code
+func (l *loader) GetPRComponentSnapshotsForComponentApplication(ctx context.Context, c client.Client, namespace, applicationName, componentName, prNumber string) (*[]applicationapiv1alpha1.Snapshot, error) {
 	snapshots := &applicationapiv1alpha1.SnapshotList{}
 
 	applicationLabelRequirement, err := labels.NewRequirement("appstudio.openshift.io/application", selection.In, []string{applicationName})

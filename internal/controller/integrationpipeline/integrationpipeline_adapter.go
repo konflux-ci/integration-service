@@ -39,7 +39,6 @@ import (
 // Adapter holds the objects needed to reconcile an integration PipelineRun.
 type Adapter struct {
 	pipelineRun *tektonv1.PipelineRun
-	application *applicationapiv1alpha1.Application
 	snapshot    *applicationapiv1alpha1.Snapshot
 	loader      loader.ObjectLoader
 	logger      h.IntegrationLogger
@@ -48,12 +47,11 @@ type Adapter struct {
 }
 
 // NewAdapter creates and returns an Adapter instance.
-func NewAdapter(context context.Context, pipelineRun *tektonv1.PipelineRun, application *applicationapiv1alpha1.Application,
+func NewAdapter(context context.Context, pipelineRun *tektonv1.PipelineRun,
 	snapshot *applicationapiv1alpha1.Snapshot, logger h.IntegrationLogger, loader loader.ObjectLoader, client client.Client,
 ) *Adapter {
 	return &Adapter{
 		pipelineRun: pipelineRun,
-		application: application,
 		snapshot:    snapshot,
 		logger:      logger,
 		loader:      loader,
@@ -177,6 +175,10 @@ func (a *Adapter) GetIntegrationPipelineRunStatus(ctx context.Context, adapterCl
 			return intgteststat.IntegrationTestStatusTestFail, strings.Join(outcome.GetValidationErrorsList(), "; "), nil
 		}
 		return intgteststat.IntegrationTestStatusTestFail, "Integration test failed", nil
+	}
+
+	if outcome.HasPipelineRunWarningTesting() {
+		return intgteststat.IntegrationTestStatusTestWarning, "Integration test passed with warnings", nil
 	}
 
 	return intgteststat.IntegrationTestStatusTestPassed, "Integration test passed", nil

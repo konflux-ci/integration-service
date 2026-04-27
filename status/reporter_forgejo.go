@@ -24,7 +24,7 @@ import (
 	"strconv"
 	"strings"
 
-	forgejo "codeberg.org/mvdkleijn/forgejo-sdk/forgejo/v2"
+	forgejo "codeberg.org/mvdkleijn/forgejo-sdk/forgejo/v3"
 	"github.com/go-logr/logr"
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
 	"github.com/konflux-ci/operator-toolkit/metadata"
@@ -145,7 +145,7 @@ func (r *ForgejoReporter) Initialize(ctx context.Context, snapshot *applicationa
 	}
 
 	r.snapshot = snapshot
-	return 0, nil
+	return http.StatusOK, nil
 }
 
 // IsPullRequestOpen returns whether the snapshot's pull request is still open.
@@ -240,21 +240,45 @@ func (r *ForgejoReporter) setCommitStatus(report TestReport) (int, error) {
 }
 
 // UpdateStatusInComment searches and updates existing comments or creates a new comment in the PR which creates snapshot
-func (r *ForgejoReporter) UpdateStatusInComment(commentPrefix, comment string) (int, error) {
+// retry to get comment if no existing comment is found for final status to avoid the duplicate comments are created
+func (r *ForgejoReporter) UpdateStatusInComment(commentPrefix, comment string, isFinalStatus bool) (int, error) {
 	var statusCode = 0
+	var resp *forgejo.Response
 
-	// get all existing integration test comments according to commentPrefix
-	// In Forgejo, PRs are issues, so we use the Issues service
-	allComments, resp, err := r.client.ListIssueComments(r.owner, r.repo, int64(r.pullRequest), forgejo.ListIssueCommentOptions{})
-	if resp != nil {
-		statusCode = resp.StatusCode
-	}
+	var commentIDs []int64
+	var err error
+	var allComments []*forgejo.Comment
+	err = retry.OnError(reporterRetryBackoff, func(err error) bool {
+		// statusCode 0 means no HTTP response was received (network/timeout error), always retry
+		retryable := !r.ReturnCodeIsUnrecoverable(statusCode)
+		if retryable {
+			r.logger.Info("failed to find existing comment for final integration test status, retrying")
+		}
+		return retryable
+	}, func() error {
+		statusCode = 0
+		// get all existing integration test comments according to commentPrefix
+		// In Forgejo, PRs are issues, so we use the Issues service
+		allComments, resp, err = r.client.ListIssueComments(r.owner, r.repo, int64(r.pullRequest), forgejo.ListIssueCommentOptions{})
+		if resp != nil {
+			statusCode = resp.StatusCode
+		}
+		if err != nil {
+			r.logger.Error(err, "error while getting all comments for pull-request", "pullRequest", r.pullRequest, "report.SnapshotName", r.snapshot.Name)
+			return err
+		}
+
+		commentIDs = r.GetExistingCommentIDs(allComments, commentPrefix)
+		if len(commentIDs) == 0 && isFinalStatus {
+			r.logger.Info("no existing comment found for final status, retrying to find comment since it might be created with delay")
+			return fmt.Errorf("no existing comment found for final status with commentPrefix %s", commentPrefix)
+		}
+		return nil
+	})
+
 	if err != nil {
-		r.logger.Error(err, "error while getting all comments for pull-request", "pullRequest", r.pullRequest, "report.SnapshotName", r.snapshot.Name)
-		return statusCode, fmt.Errorf("error while getting all comments for pull-request %d: %w", r.pullRequest, err)
+		r.logger.Error(err, "failed to get existing comment for final status after retries, will create a new comment without updating existing comments, please refer to the comment created on the PR", "commentPrefix", commentPrefix)
 	}
-
-	commentIDs := r.GetExistingCommentIDs(allComments, commentPrefix)
 
 	if len(commentIDs) > 0 {
 		// update the first existing comment but delete others because sometimes there might be multiple existing comments for the same component due to previous intermittent errors
@@ -274,7 +298,7 @@ func (r *ForgejoReporter) UpdateStatusInComment(commentPrefix, comment string) (
 			Body: comment,
 		}
 		err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
-			_, resp, err = r.client.EditIssueComment(r.owner, r.repo, commentIdToBeUpdated, editOpt)
+			_, resp, err := r.client.EditIssueComment(r.owner, r.repo, commentIdToBeUpdated, editOpt)
 			if resp != nil {
 				statusCode = resp.StatusCode
 			}
@@ -290,7 +314,7 @@ func (r *ForgejoReporter) UpdateStatusInComment(commentPrefix, comment string) (
 		createOpt := forgejo.CreateIssueCommentOption{
 			Body: comment,
 		}
-		_, resp, err = r.client.CreateIssueComment(r.owner, r.repo, int64(r.pullRequest), createOpt)
+		_, resp, err := r.client.CreateIssueComment(r.owner, r.repo, int64(r.pullRequest), createOpt)
 		if resp != nil {
 			statusCode = resp.StatusCode
 		}
@@ -369,20 +393,30 @@ func (r *ForgejoReporter) ReportStatus(ctx context.Context, report TestReport) (
 	}
 
 	var err error
-	err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
+	err = retry.OnError(reporterRetryBackoff, func(err error) bool {
+		// statusCode 0 means no HTTP response was received (network/timeout error), always retry
+		retryable := statusCode == 0 || !r.ReturnCodeIsUnrecoverable(statusCode)
+		if retryable {
+			r.logger.Info("retrying to set forgejo commit status after transient error",
+				"scenario.name", report.ScenarioName, "statusCode", statusCode, "error", err.Error())
+		}
+		return retryable
+	}, func() error {
+		statusCode = 0 // reset before each attempt to avoid stale values
 		statusCode, err = r.setCommitStatus(report)
 		return err
 	})
 
 	if err != nil {
-		r.logger.Error(err, "failed to set forgejo commit status, please refer to the comment created on the PR")
+		r.logger.Error(err, "failed to set forgejo commit status after all retries, please refer to the comment created on the PR",
+			"scenario.name", report.ScenarioName, "statusCode", statusCode)
 		return statusCode, err
 	}
 	return statusCode, nil
 }
 
 func (r *ForgejoReporter) ReturnCodeIsUnrecoverable(statusCode int) bool {
-	return statusCode == http.StatusForbidden || statusCode == http.StatusUnauthorized || statusCode == http.StatusBadRequest
+	return statusCode == http.StatusForbidden || statusCode == http.StatusUnauthorized || statusCode == http.StatusBadRequest || statusCode == http.StatusNotFound
 }
 
 // GenerateForgejoCommitState transforms internal integration test state into Forgejo state
@@ -413,6 +447,8 @@ func GenerateForgejoCommitState(state intgteststat.IntegrationTestStatus, option
 			break
 		}
 		fjState = "error"
+	case intgteststat.IntegrationTestStatusTestWarning:
+		fjState = "warning"
 	default:
 		return fjState, fmt.Errorf("unknown status %s", state)
 	}

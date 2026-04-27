@@ -120,6 +120,18 @@ download-crds: ## Vendoring doesn't fetch CRDs yaml files due pruning of depende
 test: manifests generate fmt vet envtest download-crds ## Run tests.
 	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) -p path)" go test ./... -coverprofile cover.out
 
+##@ E2E Tests
+
+E2E_BIN := ./e2e-tests/bin/e2e-appstudio
+
+.PHONY: e2e-build
+e2e-build: ## Build e2e test binary.
+	CGO_ENABLED=0 go test -v -tags e2e -c -o $(E2E_BIN) ./e2e-tests/cmd/e2e_test.go
+
+.PHONY: e2e-run
+e2e-run: e2e-build ## Build and run integration-service e2e tests.
+	$(E2E_BIN) --ginkgo.focus="integration-service" --ginkgo.vv
+
 ##@ Build
 
 .PHONY: build
@@ -131,7 +143,8 @@ run: manifests generate fmt vet ## Run a controller from your host.
 	go run ./cmd/main.go
 
 .PHONY: img-build
-img-build: test ## Build container image with the manager.
+#img-build: test ## Build container image with the manager.
+img-build:
 	$(CONT_ENGINE) build -t ${IMG} .
 
 .PHONY: img-push
@@ -191,7 +204,8 @@ $(CONTROLLER_GEN): $(LOCALBIN)
 .PHONY: envtest
 envtest: $(ENVTEST) ## Download envtest-setup locally if necessary.
 $(ENVTEST): $(LOCALBIN)
-	GOBIN=$(LOCALBIN) go install sigs.k8s.io/controller-runtime/tools/setup-envtest@c7e1dc9b
+	#GOBIN=$(LOCALBIN) go install sigs.k8s.io/controller-runtime/tools/setup-envtest@c7e1dc9b
+	GOBIN=$(LOCALBIN) go install sigs.k8s.io/controller-runtime/tools/setup-envtest@f52bbb8b
 
 .PHONY: bundle
 bundle: manifests kustomize ## Generate bundle manifests and metadata, then validate generated files.

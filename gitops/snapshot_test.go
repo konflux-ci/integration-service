@@ -18,9 +18,12 @@ package gitops_test
 
 import (
 	"github.com/konflux-ci/integration-service/api/v1beta2"
+	"github.com/konflux-ci/integration-service/helpers"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	. "github.com/onsi/gomega/gstruct"
+	"knative.dev/pkg/apis"
+	v1 "knative.dev/pkg/apis/duck/v1"
 
 	"encoding/json"
 	"strconv"
@@ -44,15 +47,17 @@ import (
 var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 
 	var (
-		hasApp          *applicationapiv1alpha1.Application
-		hasComp         *applicationapiv1alpha1.Component
-		badComp         *applicationapiv1alpha1.Component
-		hasSnapshot     *applicationapiv1alpha1.Snapshot
-		hasComSnapshot1 *applicationapiv1alpha1.Snapshot
-		hasComSnapshot2 *applicationapiv1alpha1.Snapshot
-		hasComSnapshot3 *applicationapiv1alpha1.Snapshot
-		pacRepository   *pacv1alpha1.Repository
-		sampleImage     string
+		hasApp                 *applicationapiv1alpha1.Application
+		hasComp                *applicationapiv1alpha1.Component
+		badComp                *applicationapiv1alpha1.Component
+		hasSnapshot            *applicationapiv1alpha1.Snapshot
+		hasComSnapshot1        *applicationapiv1alpha1.Snapshot
+		hasComSnapshot2        *applicationapiv1alpha1.Snapshot
+		hasComSnapshot3        *applicationapiv1alpha1.Snapshot
+		pacRepository          *pacv1alpha1.Repository
+		sampleImage            string
+		logger                 helpers.IntegrationLogger
+		integrationPipelinerun *tektonv1.PipelineRun
 	)
 
 	const (
@@ -112,6 +117,32 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 			},
 		}
 		Expect(k8sClient.Create(ctx, badComp)).Should(Succeed())
+
+		integrationPipelinerun = &tektonv1.PipelineRun{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:        "integration-pipeline-run",
+				Namespace:   namespace,
+				Annotations: make(map[string]string),
+			},
+		}
+		Expect(k8sClient.Create(ctx, integrationPipelinerun)).Should(Succeed())
+
+		integrationPipelinerun.Status = tektonv1.PipelineRunStatus{
+			PipelineRunStatusFields: tektonv1.PipelineRunStatusFields{
+				Results: []tektonv1.PipelineRunResult{},
+			},
+			Status: v1.Status{
+				Conditions: v1.Conditions{
+					apis.Condition{
+						Reason: "succeeded",
+						Status: "True",
+						Type:   apis.ConditionSucceeded,
+					},
+				},
+			},
+		}
+		Expect(k8sClient.Status().Update(ctx, integrationPipelinerun)).Should(Succeed())
+
 	})
 
 	BeforeEach(func() {
@@ -293,6 +324,8 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 		err = k8sClient.Delete(ctx, hasApp)
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
+		err = k8sClient.Delete(ctx, integrationPipelinerun)
+		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 	})
 
 	It("ensures the a decision can be made to NOT promote when the snaphot has not been marked as passed/failed", func() {
@@ -379,6 +412,12 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 			Expect(err).ToNot(HaveOccurred())
 		}
 		Expect(gitops.IsSnapshotMarkedAsCanceled(hasSnapshot)).To(BeTrue())
+	})
+
+	It("ensures finalizer can be removed from the finished pipelineruns", func() {
+		err := gitops.CancelPipelineRuns(k8sClient, ctx, logger, []tektonv1.PipelineRun{*integrationPipelinerun})
+		Expect(err).ToNot(HaveOccurred())
+		Expect(integrationPipelinerun.Finalizers).To(BeEmpty())
 	})
 
 	It("ensures the Snapshots status can be marked as in progress", func() {
@@ -898,6 +937,7 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 	})
 
 	It("Ensure UpdateComponentImageAndSource can update component containerImage and source", func() {
+		hasSnapshot.Labels[gitops.SnapshotTypeLabel] = "override"
 		componentSource := applicationapiv1alpha1.ComponentSource{
 			ComponentSourceUnion: applicationapiv1alpha1.ComponentSourceUnion{
 				GitSource: &applicationapiv1alpha1.GitSource{
@@ -994,8 +1034,9 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 				Expect(isOverrideSnapshot).To(BeTrue())
 			})
 
-			It("Can set owner reference for override snapshot", func() {
-				overrideSnapshot, err := gitops.SetOwnerReference(ctx, k8sClient, overrideSnapshot, hasApp)
+			It("Can set owner reference for override snapshot [APPLICATION]", func() {
+				// TODO: create duplication test for ComponentGorup
+				overrideSnapshot, err := gitops.SetOwnerReferenceApplication(ctx, k8sClient, overrideSnapshot, hasApp)
 				Expect(controllerutil.HasControllerReference(overrideSnapshot)).To(BeTrue())
 				Expect(err).ToNot(HaveOccurred())
 			})
@@ -1336,6 +1377,33 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 			Expect(isIntegrationCommentDisabled).To(BeTrue())
 		})
 
+		It("can determine if comments are disabled from component spec repository-settings (revised component model)", func() {
+			Expect(metadata.DeleteAnnotation(hasComp, gitops.GitCommentPolicyAnnotation)).To(Succeed())
+			hasComp.Spec.RepositorySettings = applicationapiv1alpha1.RepositorySettings{
+				CommentStrategy: gitops.GitCommentPolicyAllDisabled,
+			}
+			Expect(k8sClient.Update(ctx, hasComp)).Should(Succeed())
+			isCommentDisabled, err := gitops.IsCommentDisabled(ctx, k8sClient, hasComp)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(isCommentDisabled).To(BeTrue())
+
+			hasComp.Spec.RepositorySettings = applicationapiv1alpha1.RepositorySettings{}
+			Expect(k8sClient.Update(ctx, hasComp)).Should(Succeed())
+		})
+
+		It("treats repository-settings comment-strategy as disable_all case-insensitively", func() {
+			hasComp.Spec.RepositorySettings = applicationapiv1alpha1.RepositorySettings{
+				CommentStrategy: "DISABLE_ALL",
+			}
+			Expect(k8sClient.Update(ctx, hasComp)).Should(Succeed())
+			isCommentDisabled, err := gitops.IsCommentDisabled(ctx, k8sClient, hasComp)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(isCommentDisabled).To(BeTrue())
+
+			hasComp.Spec.RepositorySettings = applicationapiv1alpha1.RepositorySettings{}
+			Expect(k8sClient.Update(ctx, hasComp)).Should(Succeed())
+		})
+
 		It("can determine if comments are not disabled in pac repository or component annotation", func() {
 			Expect(metadata.DeleteAnnotation(hasComp, gitops.GitCommentPolicyAnnotation)).To(Succeed())
 			isCommentDisabled, err := gitops.IsCommentDisabled(ctx, k8sClient, hasComp)
@@ -1369,5 +1437,143 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 			hasComSnapshot1.Labels[gitops.PipelineAsCodePullRequestAnnotation] = "3"
 			Expect(gitops.HasSameGitSourceAndPRWithProcessedSnapshot(hasSnapshot, hasComSnapshot1)).To(BeFalse())
 		})
+
+	})
+
+	Context("The IgnoreSupersessionAnnotation works as expected", func() {
+		BeforeEach(func() {
+			delete(hasSnapshot.Annotations, gitops.IgnoreSupersessionAnnotation)
+		})
+		It("when the snapshot does not have the IgnoreSupersessionAnnotation", func() {
+			Expect(gitops.IgnoreSupersession(hasSnapshot.ObjectMeta)).To(BeFalse())
+		})
+
+		It("when the snapshot's IgnoreSupersessionAnnotation is 'false'", func() {
+			hasSnapshot.Annotations[gitops.IgnoreSupersessionAnnotation] = "false"
+			Expect(gitops.IgnoreSupersession(hasSnapshot.ObjectMeta)).To(BeFalse())
+		})
+
+		It("when the snapshot's IgnoreSupersessionAnnotation is 'true'", func() {
+			hasSnapshot.Annotations[gitops.IgnoreSupersessionAnnotation] = "true"
+			Expect(gitops.IgnoreSupersession(hasSnapshot.ObjectMeta)).To(BeTrue())
+		})
+	})
+})
+
+var _ = Describe("EnrichBuiltComponentSourceGitContext", func() {
+	It("copies context from spec.source.git when built source context is empty", func() {
+		src := &applicationapiv1alpha1.ComponentSource{
+			ComponentSourceUnion: applicationapiv1alpha1.ComponentSourceUnion{
+				GitSource: &applicationapiv1alpha1.GitSource{URL: "https://example.com/repo", Revision: "abc"},
+			},
+		}
+		comp := &applicationapiv1alpha1.Component{
+			Spec: applicationapiv1alpha1.ComponentSpec{
+				Source: applicationapiv1alpha1.ComponentSource{
+					ComponentSourceUnion: applicationapiv1alpha1.ComponentSourceUnion{
+						GitSource: &applicationapiv1alpha1.GitSource{
+							URL:      "https://example.com/repo",
+							Revision: "abc",
+							Context:  "ctx-from-cr",
+						},
+					},
+				},
+			},
+		}
+		gitops.EnrichBuiltComponentSourceGitContext(src, comp, "v1")
+		Expect(src.GitSource.Context).To(Equal("ctx-from-cr"))
+	})
+
+	It("prefers matching spec.source.versions context over top-level git when both are set", func() {
+		src := &applicationapiv1alpha1.ComponentSource{
+			ComponentSourceUnion: applicationapiv1alpha1.ComponentSourceUnion{
+				GitSource: &applicationapiv1alpha1.GitSource{URL: "https://example.com/repo", Revision: "abc"},
+			},
+		}
+		comp := &applicationapiv1alpha1.Component{
+			Spec: applicationapiv1alpha1.ComponentSpec{
+				Source: applicationapiv1alpha1.ComponentSource{
+					ComponentSourceUnion: applicationapiv1alpha1.ComponentSourceUnion{
+						GitSource: &applicationapiv1alpha1.GitSource{
+							URL:      "https://example.com/repo",
+							Revision: "abc",
+							Context:  "ctx-top-level",
+						},
+						Versions: []applicationapiv1alpha1.ComponentVersion{
+							{Name: "v1", Revision: "main", Context: "ctx-from-version"},
+						},
+					},
+				},
+			},
+		}
+		gitops.EnrichBuiltComponentSourceGitContext(src, comp, "v1")
+		Expect(src.GitSource.Context).To(Equal("ctx-from-version"))
+	})
+
+	It("copies context from matching spec.source.versions entry when top-level git context is empty", func() {
+		src := &applicationapiv1alpha1.ComponentSource{
+			ComponentSourceUnion: applicationapiv1alpha1.ComponentSourceUnion{
+				GitSource: &applicationapiv1alpha1.GitSource{URL: "https://example.com/repo", Revision: "abc"},
+			},
+		}
+		comp := &applicationapiv1alpha1.Component{
+			Spec: applicationapiv1alpha1.ComponentSpec{
+				Source: applicationapiv1alpha1.ComponentSource{
+					ComponentSourceUnion: applicationapiv1alpha1.ComponentSourceUnion{
+						GitURL: "https://example.com/repo",
+						Versions: []applicationapiv1alpha1.ComponentVersion{
+							{Name: "v1", Revision: "main", Context: "ctx-from-version"},
+						},
+					},
+				},
+			},
+		}
+		gitops.EnrichBuiltComponentSourceGitContext(src, comp, "v1")
+		Expect(src.GitSource.Context).To(Equal("ctx-from-version"))
+	})
+
+	It("uses top-level spec.source.git when componentVersion is empty", func() {
+		src := &applicationapiv1alpha1.ComponentSource{
+			ComponentSourceUnion: applicationapiv1alpha1.ComponentSourceUnion{
+				GitSource: &applicationapiv1alpha1.GitSource{URL: "https://example.com/repo", Revision: "abc"},
+			},
+		}
+		comp := &applicationapiv1alpha1.Component{
+			Spec: applicationapiv1alpha1.ComponentSpec{
+				Source: applicationapiv1alpha1.ComponentSource{
+					ComponentSourceUnion: applicationapiv1alpha1.ComponentSourceUnion{
+						GitSource: &applicationapiv1alpha1.GitSource{
+							URL:      "https://example.com/repo",
+							Revision: "abc",
+							Context:  "ctx-from-cr",
+						},
+						Versions: []applicationapiv1alpha1.ComponentVersion{
+							{Name: "v1", Revision: "main", Context: "ctx-from-version"},
+						},
+					},
+				},
+			},
+		}
+		gitops.EnrichBuiltComponentSourceGitContext(src, comp, "")
+		Expect(src.GitSource.Context).To(Equal("ctx-from-cr"))
+	})
+
+	It("does not overwrite non-empty context", func() {
+		src := &applicationapiv1alpha1.ComponentSource{
+			ComponentSourceUnion: applicationapiv1alpha1.ComponentSourceUnion{
+				GitSource: &applicationapiv1alpha1.GitSource{URL: "u", Revision: "r", Context: "already-set"},
+			},
+		}
+		comp := &applicationapiv1alpha1.Component{
+			Spec: applicationapiv1alpha1.ComponentSpec{
+				Source: applicationapiv1alpha1.ComponentSource{
+					ComponentSourceUnion: applicationapiv1alpha1.ComponentSourceUnion{
+						GitSource: &applicationapiv1alpha1.GitSource{URL: "u", Revision: "r", Context: "other"},
+					},
+				},
+			},
+		}
+		gitops.EnrichBuiltComponentSourceGitContext(src, comp, "v1")
+		Expect(src.GitSource.Context).To(Equal("already-set"))
 	})
 })

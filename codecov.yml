@@ -6,6 +6,8 @@ ignore:
   - "gitops/integrationteststatus_enumer.go" # generated file
   - "status/mock_reporter.go" # generated file
   - "status/mock_status.go" # generated file
+  - "e2e-tests/**" # integration tests
+  - "vendor/**" # vendor files
 
 coverage:
     status:

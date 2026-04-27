@@ -17,20 +17,28 @@ limitations under the License.
 package v1beta2
 
 import (
+	"time"
+
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	types "k8s.io/apimachinery/pkg/types"
+	"knative.dev/pkg/apis"
+	duckv1 "knative.dev/pkg/apis/duck/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
 var _ = Describe("Snapshot webhook", Ordered, func() {
 
 	var (
-		snapshot           *applicationapiv1alpha1.Snapshot
-		hasApp             *applicationapiv1alpha1.Application
-		originalComponents []applicationapiv1alpha1.SnapshotComponent
+		snapshot               *applicationapiv1alpha1.Snapshot
+		hasApp                 *applicationapiv1alpha1.Application
+		originalComponents     []applicationapiv1alpha1.SnapshotComponent
+		integrationPipelineRun *tektonv1.PipelineRun
 	)
 
 	BeforeAll(func() {
@@ -45,6 +53,48 @@ var _ = Describe("Snapshot webhook", Ordered, func() {
 			},
 		}
 		Expect(k8sClient.Create(ctx, hasApp)).Should(Succeed())
+
+		integrationPipelineRun = &tektonv1.PipelineRun{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "pipelinerun-component-sample",
+				Namespace: "default",
+				Labels: map[string]string{
+					"pipelines.appstudio.openshift.io/type": "test",
+					"appstudio.openshift.io/application":    hasApp.Name,
+					"appstudio.openshift.io/snapshot":       "test-snapshot",
+				},
+				Annotations: map[string]string{
+					"pac.test.appstudio.openshift.io/on-target-branch": "[main]",
+				},
+				Finalizers: []string{
+					"test.appstudio.openshift.io/pipelinerun",
+				},
+			},
+			Spec: tektonv1.PipelineRunSpec{
+				PipelineRef: &tektonv1.PipelineRef{
+					Name: "test-pipeline",
+				},
+			},
+			Status: tektonv1.PipelineRunStatus{
+				PipelineRunStatusFields: tektonv1.PipelineRunStatusFields{
+					ChildReferences: []tektonv1.ChildStatusReference{
+						{
+							Name:             "test-taskrun",
+							PipelineTaskName: "test-task",
+						},
+					},
+				},
+				Status: duckv1.Status{
+					Conditions: []apis.Condition{
+						{
+							Type:   apis.ConditionSucceeded,
+							Status: "True",
+						},
+					},
+				},
+			},
+		}
+		Expect(k8sClient.Create(ctx, integrationPipelineRun)).Should(Succeed())
 
 		originalComponents = []applicationapiv1alpha1.SnapshotComponent{
 			{
@@ -83,6 +133,8 @@ var _ = Describe("Snapshot webhook", Ordered, func() {
 
 	AfterAll(func() {
 		err := k8sClient.Delete(ctx, hasApp)
+		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
+		err = k8sClient.Delete(ctx, integrationPipelineRun)
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 	})
 
@@ -189,7 +241,13 @@ var _ = Describe("Snapshot webhook", Ordered, func() {
 	})
 
 	It("should directly test validator methods without cluster", func() {
-		validator := &SnapshotCustomValidator{}
+		validator := &SnapshotCustomValidator{Client: k8sClient}
+		if validator.Client == nil {
+			scheme := runtime.NewScheme()
+			_ = applicationapiv1alpha1.AddToScheme(scheme)
+			_ = tektonv1.AddToScheme(scheme)
+			validator.Client = fake.NewClientBuilder().WithScheme(scheme).Build()
+		}
 
 		// Test ValidateCreate directly
 		_, err := validator.ValidateCreate(ctx, snapshot)
@@ -249,5 +307,44 @@ var _ = Describe("Snapshot webhook", Ordered, func() {
 
 		// Verify components remained unchanged
 		Expect(updatedSnapshot.Spec.Components).To(Equal(originalComponents))
+	})
+
+	It("should remove finalizer from integration PipelineRuns when deleting snapshot", func() {
+		// Create the snapshot first
+		Expect(k8sClient.Create(ctx, snapshot)).Should(Succeed())
+
+		// Delete the snapshot
+		Expect(k8sClient.Delete(ctx, snapshot)).Should(Succeed())
+
+		// Verify related PipelineRuns have the finalizer removed (indicating cleanup)
+		Eventually(func() bool {
+			pr := &tektonv1.PipelineRun{}
+			err := k8sClient.Get(ctx, types.NamespacedName{
+				Name:      integrationPipelineRun.Name,
+				Namespace: integrationPipelineRun.Namespace,
+			}, pr)
+			if err != nil && errors.IsNotFound(err) {
+				return true // not found, cleanup successful
+			}
+			if err != nil {
+				return false // other error, keep waiting
+			}
+			// Check if the finalizer has been removed
+			for _, finalizer := range pr.Finalizers {
+				if finalizer == "test.appstudio.io/pipelinerun" {
+					return false // finalizer still exists, keep waiting
+				}
+			}
+			return true // finalizer removed, cleanup successful
+		}, time.Second*20).Should(BeTrue())
+
+		// Verify the snapshot was deleted
+		Eventually(func() bool {
+			err := k8sClient.Get(ctx, types.NamespacedName{
+				Name:      "test-snapshot",
+				Namespace: "default",
+			}, snapshot)
+			return errors.IsNotFound(err)
+		}, time.Second*20).Should(BeTrue())
 	})
 })

@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/konflux-ci/integration-service/api/v1beta2"
+	"github.com/konflux-ci/integration-service/gitops"
 	"github.com/konflux-ci/integration-service/helpers"
 	"github.com/konflux-ci/integration-service/loader"
 	. "github.com/onsi/ginkgo/v2"
@@ -31,7 +32,6 @@ import (
 	"github.com/tonglil/buflogr"
 
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
-	"github.com/konflux-ci/integration-service/gitops"
 	tekton "github.com/konflux-ci/integration-service/tekton"
 	tektonconsts "github.com/konflux-ci/integration-service/tekton/consts"
 	knative "knative.dev/pkg/apis"
@@ -997,6 +997,60 @@ var _ = Describe("Integration pipeline", Ordered, func() {
 									},
 								},
 							},
+							Finally: []tektonv1.PipelineTask{
+								{
+									Name:   "some-finally-task",
+									Params: []tektonv1.Param{},
+									TaskRef: &tektonv1.TaskRef{
+										Name: "some-finally-task",
+										ResolverRef: tektonv1.ResolverRef{
+											Resolver: tektonv1.ResolverName(tektonconsts.TektonResolverGit),
+											Params: []tektonv1.Param{
+												{
+													Name: "url",
+													Value: tektonv1.ParamValue{
+														Type:      tektonv1.ParamTypeString,
+														StringVal: "https://github.com/test/repo.git",
+													},
+												},
+												{
+													Name: "revision",
+													Value: tektonv1.ParamValue{
+														Type:      tektonv1.ParamTypeString,
+														StringVal: "main",
+													},
+												},
+											},
+										},
+									},
+								},
+								{
+									Name:   "some-finally-task2",
+									Params: []tektonv1.Param{},
+									TaskRef: &tektonv1.TaskRef{
+										Name: "some-finally-task2",
+										ResolverRef: tektonv1.ResolverRef{
+											Resolver: tektonv1.ResolverName(tektonconsts.TektonResolverGit),
+											Params: []tektonv1.Param{
+												{
+													Name: "url",
+													Value: tektonv1.ParamValue{
+														Type:      tektonv1.ParamTypeString,
+														StringVal: "https://github.com/someotherrepo/repo.git",
+													},
+												},
+												{
+													Name: "revision",
+													Value: tektonv1.ParamValue{
+														Type:      tektonv1.ParamTypeString,
+														StringVal: "main",
+													},
+												},
+											},
+										},
+									},
+								},
+							},
 						},
 					},
 				},
@@ -1018,6 +1072,13 @@ var _ = Describe("Integration pipeline", Ordered, func() {
 			Expect(result.Spec.PipelineSpec.Tasks[1].TaskRef.Params[1].Value.StringVal).To(Equal("main"))
 			// We expect the third task to not be updated since it uses the bundle resolver
 			Expect(result.Spec.PipelineSpec.Tasks[2].TaskRef.Params[0].Value.StringVal).To(Equal("quay.io/somerepo/some-bundle"))
+
+			// We expect the first task in the finally block to be updated as it matches the target repo and branch
+			Expect(result.Spec.PipelineSpec.Finally[0].TaskRef.Params[0].Value.StringVal).To(Equal("https://github.com/new/repo.git"))
+			Expect(result.Spec.PipelineSpec.Finally[0].TaskRef.Params[1].Value.StringVal).To(Equal("feature-branch"))
+			// We expect the second task in the finally block to not be updated since it originates from a different repo
+			Expect(result.Spec.PipelineSpec.Finally[1].TaskRef.Params[0].Value.StringVal).To(Equal("https://github.com/someotherrepo/repo.git"))
+			Expect(result.Spec.PipelineSpec.Finally[1].TaskRef.Params[1].Value.StringVal).To(Equal("main"))
 		})
 	})
 })

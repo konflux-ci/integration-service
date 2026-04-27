@@ -23,7 +23,9 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	"github.com/konflux-ci/integration-service/api/v1beta2"
 	intgteststat "github.com/konflux-ci/integration-service/pkg/integrationteststatus"
 )
 
@@ -80,6 +82,7 @@ var _ = Describe("integrationteststatus library unittests", func() {
 			Entry("When status is TestFail", intgteststat.IntegrationTestStatusTestFail, true),
 			Entry("When status is TestPass", intgteststat.IntegrationTestStatusTestPassed, true),
 			Entry("When status is Invalid", intgteststat.IntegrationTestStatusTestInvalid, true),
+			Entry("When status is Warning", intgteststat.IntegrationTestStatusTestWarning, true),
 			Entry("When status is Other", intgteststat.IntegrationTestStatusPending, false),
 		)
 
@@ -119,6 +122,7 @@ var _ = Describe("integrationteststatus library unittests", func() {
 				err = json.Unmarshal(jsonData, &statusDetailFromJSON)
 				Expect(err).ToNot(HaveOccurred())
 				Expect(statusDetailFromJSON).Should(Equal(statusDetailPending))
+				Expect(statusDetailFromJSON.IsOptionalScenario).To(BeFalse())
 			})
 		})
 	})
@@ -133,7 +137,32 @@ var _ = Describe("integrationteststatus library unittests", func() {
 		var (
 			sits *intgteststat.SnapshotIntegrationTestStatuses
 		)
-
+		integrationTestScenario := &v1beta2.IntegrationTestScenario{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      testScenarioName,
+				Namespace: "default",
+			},
+			Spec: v1beta2.IntegrationTestScenarioSpec{
+				Application: "application-sample",
+				ResolverRef: v1beta2.ResolverRef{
+					Resolver: "git",
+					Params: []v1beta2.ResolverParameter{
+						{
+							Name:  "url",
+							Value: "https://github.com/redhat-appstudio/integration-examples.git",
+						},
+						{
+							Name:  "revision",
+							Value: "revision",
+						},
+						{
+							Name:  "pathInRepo",
+							Value: "pipelineruns/integration_pipelinerun_pass.yaml",
+						},
+					},
+				},
+			},
+		}
 		BeforeEach(func() {
 			var err error
 			sits, err = intgteststat.NewSnapshotIntegrationTestStatuses("")
@@ -463,7 +492,7 @@ var _ = Describe("integrationteststatus library unittests", func() {
 
 			It("Initialization with empty scenario list will remove data", func() {
 				sits.ResetDirty()
-				sits.InitStatuses(&[]string{})
+				sits.InitStatuses(&[]v1beta2.IntegrationTestScenario{})
 				Expect(sits.GetStatuses()).To(BeEmpty())
 				Expect(sits.IsDirty()).To(BeTrue())
 			})
@@ -472,7 +501,7 @@ var _ = Describe("integrationteststatus library unittests", func() {
 
 		It("Initialization with new test scenario creates pending status", func() {
 			sits.ResetDirty()
-			sits.InitStatuses(&[]string{testScenarioName})
+			sits.InitStatuses(&[]v1beta2.IntegrationTestScenario{*integrationTestScenario})
 
 			Expect(sits.IsDirty()).To(BeTrue())
 			Expect(sits.GetStatuses()).To(HaveLen(1))
@@ -481,6 +510,7 @@ var _ = Describe("integrationteststatus library unittests", func() {
 			Expect(ok).To(BeTrue())
 			Expect(statusDetail.ScenarioName).To(Equal(testScenarioName))
 			Expect(statusDetail.Status).To(Equal(intgteststat.IntegrationTestStatusPending))
+			Expect(statusDetail.IsOptionalScenario).To(BeFalse())
 		})
 
 		When("JSON contains empty test status annotation", func() {

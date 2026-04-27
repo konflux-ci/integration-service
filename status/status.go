@@ -248,7 +248,7 @@ func GenerateTestReport(ctx context.Context, client client.Client, detail intgte
 		return nil, fmt.Errorf("failed to generate text message: %w", err)
 	}
 
-	summary, err := GenerateSummary(detail.Status, testedSnapshot.Name, detail.ScenarioName, componentName)
+	summary, err := GenerateSummary(detail.Status, testedSnapshot.Name, detail.ScenarioName, componentName, detail.IsOptionalScenario)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate summary message: %w", err)
 	}
@@ -291,7 +291,7 @@ func generateText(ctx context.Context, client client.Client, integrationTestStat
 
 	pr_group := snapshot.GetAnnotations()[gitops.PRGroupAnnotation]
 
-	if integrationTestStatusDetail.Status == intgteststat.IntegrationTestStatusTestPassed || integrationTestStatusDetail.Status == intgteststat.IntegrationTestStatusTestFail {
+	if integrationTestStatusDetail.Status == intgteststat.IntegrationTestStatusTestPassed || integrationTestStatusDetail.Status == intgteststat.IntegrationTestStatusTestFail || integrationTestStatusDetail.Status == intgteststat.IntegrationTestStatusTestWarning {
 		pipelineRunName := integrationTestStatusDetail.TestPipelineRunName
 		pipelineRun := &tektonv1.PipelineRun{}
 		err := client.Get(ctx, types.NamespacedName{
@@ -329,7 +329,7 @@ func generateShortText(integrationTestStatusDetail intgteststat.IntegrationTestS
 	var componentSnapshotInfos []*gitops.ComponentSnapshotInfo
 	var err error
 	var shortText string
-	if integrationTestStatusDetail.Status == intgteststat.IntegrationTestStatusTestPassed || integrationTestStatusDetail.Status == intgteststat.IntegrationTestStatusTestFail {
+	if integrationTestStatusDetail.Status == intgteststat.IntegrationTestStatusTestPassed || integrationTestStatusDetail.Status == intgteststat.IntegrationTestStatusTestFail || integrationTestStatusDetail.Status == intgteststat.IntegrationTestStatusTestWarning {
 		if componentSnapshotInfoString, ok := snapshot.Annotations[gitops.GroupSnapshotInfoAnnotation]; ok {
 			componentSnapshotInfos, err = gitops.UnmarshalJSON([]byte(componentSnapshotInfoString))
 			if err != nil {
@@ -349,7 +349,7 @@ func generateShortText(integrationTestStatusDetail intgteststat.IntegrationTestS
 }
 
 // GenerateSummary returns summary for the given state, snapshotName and scenarioName
-func GenerateSummary(state intgteststat.IntegrationTestStatus, snapshotName, scenarioName, componentName string) (string, error) {
+func GenerateSummary(state intgteststat.IntegrationTestStatus, snapshotName, scenarioName, componentName string, isOptionalScenario bool) (string, error) {
 	var summary string
 	var statusDesc string
 
@@ -370,6 +370,8 @@ func GenerateSummary(state intgteststat.IntegrationTestStatus, snapshotName, sce
 		statusDesc = "has failed"
 	case intgteststat.IntegrationTestStatusTestInvalid:
 		statusDesc = "is invalid"
+	case intgteststat.IntegrationTestStatusTestWarning:
+		statusDesc = "has warning(s)"
 	case intgteststat.BuildPLRInProgress:
 		statusDesc = "is pending because build pipelinerun is still running and snapshot has not been created"
 	case intgteststat.SnapshotCreationFailed:
@@ -382,10 +384,18 @@ func GenerateSummary(state intgteststat.IntegrationTestStatus, snapshotName, sce
 		return summary, fmt.Errorf("unknown status")
 	}
 
-	if state == intgteststat.BuildPLRInProgress || state == intgteststat.SnapshotCreationFailed || state == intgteststat.BuildPLRFailed || state == intgteststat.GroupSnapshotCreationFailed {
-		summary = fmt.Sprintf(GenerateTestSummaryPrefixForComponent(componentName)+" snapshot scenario %s %s", scenarioName, statusDesc)
+	if isOptionalScenario {
+		if state == intgteststat.BuildPLRInProgress || state == intgteststat.SnapshotCreationFailed || state == intgteststat.BuildPLRFailed || state == intgteststat.GroupSnapshotCreationFailed {
+			summary = fmt.Sprintf(GenerateTestSummaryPrefixForComponent(componentName)+" snapshot optional scenario %s %s", scenarioName, statusDesc)
+		} else {
+			summary = fmt.Sprintf(GenerateTestSummaryPrefixForComponent(componentName)+" snapshot %s and optional scenario %s %s", snapshotName, scenarioName, statusDesc)
+		}
 	} else {
-		summary = fmt.Sprintf(GenerateTestSummaryPrefixForComponent(componentName)+" snapshot %s and scenario %s %s", snapshotName, scenarioName, statusDesc)
+		if state == intgteststat.BuildPLRInProgress || state == intgteststat.SnapshotCreationFailed || state == intgteststat.BuildPLRFailed || state == intgteststat.GroupSnapshotCreationFailed {
+			summary = fmt.Sprintf(GenerateTestSummaryPrefixForComponent(componentName)+" snapshot scenario %s %s", scenarioName, statusDesc)
+		} else {
+			summary = fmt.Sprintf(GenerateTestSummaryPrefixForComponent(componentName)+" snapshot %s and scenario %s %s", snapshotName, scenarioName, statusDesc)
+		}
 	}
 
 	return summary, nil
@@ -407,6 +417,8 @@ func GenerateSummaryForAllScenarios(state intgteststat.IntegrationTestStatus, co
 		statusDesc = "has not run and is considered as failed because the build pipelinerun failed and snapshot was not created"
 	case intgteststat.GroupSnapshotCreationFailed:
 		statusDesc = "has not run and is considered as failed because group snapshot was not created"
+	case intgteststat.IntegrationTestStatusTestWarning:
+		statusDesc = "has passed but has experienced warnings"
 	default:
 		return summary, fmt.Errorf("unsupported status")
 	}
@@ -704,7 +716,9 @@ func IterateIntegrationTestScenarioWithSameStatus(ctx context.Context, client cl
 	var statusCode = 0
 	for _, integrationTestScenario := range *integrationTestScenarios {
 		integrationTestScenario := integrationTestScenario //G601
+		// set test details' scenarioName and optional for each its
 		integrationTestStatusDetail.ScenarioName = integrationTestScenario.Name
+		integrationTestStatusDetail.IsOptionalScenario = helpers.IsIntegrationTestScenarioOptional(&integrationTestScenario)
 
 		testReport, reportErr := GenerateTestReport(ctx, client, integrationTestStatusDetail, snapshot, componentNameOrPrGroup)
 		if reportErr != nil {
@@ -741,7 +755,7 @@ func IterateIntegrationTestScenarioWithSameStatus(ctx context.Context, client cl
 			if err != nil {
 				return statusCode, fmt.Errorf("failed to format summary message: %w", err)
 			}
-			statusCode, err := reporter.UpdateStatusInComment(commentPrefix, commentText)
+			statusCode, err := reporter.UpdateStatusInComment(commentPrefix, commentText, integrationTestStatusDetail.Status.IsFinal())
 			if err != nil {
 				return statusCode, err
 			}

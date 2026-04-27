@@ -24,6 +24,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
+	"time"
 
 	"github.com/go-logr/logr"
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
@@ -34,6 +36,7 @@ import (
 	gitlab "gitlab.com/gitlab-org/api/client-go"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/konflux-ci/integration-service/gitops"
@@ -44,11 +47,12 @@ import (
 var _ = Describe("GitLabReporter", func() {
 
 	const (
-		repoUrl         = "https://gitlab.com/example/example"
-		digest          = "12a4a35ccd08194595179815e4646c3a6c08bb77"
-		sourceProjectID = "123"
-		targetProjectID = "456"
-		mergeRequest    = "45"
+		repoUrl                = "https://gitlab.com/example/example"
+		digest                 = "12a4a35ccd08194595179815e4646c3a6c08bb77"
+		sourceProjectID        = "123"
+		targetProjectID        = "456"
+		mergeRequest           = "45"
+		mergeRequestPipelineID = "1"
 	)
 
 	var (
@@ -76,6 +80,7 @@ var _ = Describe("GitLabReporter", func() {
 				},
 				Annotations: map[string]string{
 					"build.appstudio.redhat.com/commit_sha":             digest,
+					"pac.test.appstudio.openshift.io/sha":               digest,
 					"appstudio.redhat.com/updateComponentOnSuccess":     "false",
 					"pac.test.appstudio.openshift.io/git-provider":      "gitlab",
 					"pac.test.appstudio.openshift.io/repo-url":          repoUrl,
@@ -179,7 +184,7 @@ var _ = Describe("GitLabReporter", func() {
 
 			statusCode, err := reporter.Initialize(context.TODO(), hasSnapshot)
 			Expect(err).To(Succeed())
-			Expect(statusCode).To(Equal(0))
+			Expect(statusCode).To(Equal(http.StatusOK))
 
 		})
 
@@ -208,6 +213,8 @@ var _ = Describe("GitLabReporter", func() {
 			summary := "Integration test for component component-sample snapshot snapshot-sample and scenario scenario1 failed"
 
 			muxCommitStatusPost(mux, sourceProjectID, digest, summary)
+			pipelines := []*gitlab.Pipeline{{ID: 101, SHA: digest, Status: "success"}}
+			muxMergeRequestPipelineGet(mux, targetProjectID, pipelines)
 
 			statusCode, err := reporter.ReportStatus(
 				context.TODO(),
@@ -219,7 +226,7 @@ var _ = Describe("GitLabReporter", func() {
 					Text:         "detailed text here",
 				})
 			Expect(err).To(Succeed())
-			Expect(statusCode).To(Equal(200))
+			Expect(statusCode).To(Equal(http.StatusCreated))
 		})
 
 		It("creates a commit status for push snapshot with correct textual data without comments", func() {
@@ -233,11 +240,13 @@ var _ = Describe("GitLabReporter", func() {
 
 			statusCode, err := pushEventReporter.Initialize(context.TODO(), pushSnapshot)
 			Expect(err).To(Succeed())
-			Expect(statusCode).To(Equal(0))
+			Expect(statusCode).To(Equal(http.StatusOK))
 
 			summary := "Integration test for component component-sample snapshot snapshot-sample and scenario scenario1 failed"
 
 			muxCommitStatusPost(mux, sourceProjectID, digest, summary)
+			muxMergeRequestPipelineGet(mux, targetProjectID, []*gitlab.Pipeline{{}})
+			muxMergeRequestPipelineGet(mux, sourceProjectID, []*gitlab.Pipeline{{}})
 
 			statusCode, err = pushEventReporter.ReportStatus(
 				context.TODO(),
@@ -249,16 +258,21 @@ var _ = Describe("GitLabReporter", func() {
 					Text:         "detailed text here",
 				})
 			Expect(err).To(Succeed())
-			Expect(statusCode).To(Equal(200))
+			Expect(statusCode).To(Equal(http.StatusCreated))
 		})
 
-		It("creates a commit status for snapshot with TargetURL in CommitStatus", func() {
+		It("creates a commit status and comment for snapshot with TargetURL in CommitStatus", func() {
 
 			PipelineRunName := "TestPipeline"
 			expectedURL := status.FormatPipelineURL(PipelineRunName, hasSnapshot.Namespace, logr.Discard())
+			commentPrefix := status.GenerateTestSummaryPrefixForComponent("component-sample")
 
 			muxCommitStatusPost(mux, sourceProjectID, digest, expectedURL)
 			muxCommitStatusesGet(mux, sourceProjectID, digest, nil)
+			muxMergeNotesForCreatingNote(mux, targetProjectID, mergeRequest, commentPrefix)
+			muxMergeRequestPipelineGet(mux, targetProjectID, []*gitlab.Pipeline{{}})
+			pipelines := []*gitlab.Pipeline{{ID: 101, SHA: digest, Status: "success"}}
+			muxMergeRequestPipelineGet(mux, sourceProjectID, pipelines)
 
 			statusCode, err := reporter.ReportStatus(
 				context.TODO(),
@@ -271,7 +285,7 @@ var _ = Describe("GitLabReporter", func() {
 					Text:                "detailed text here",
 				})
 			Expect(err).To(Succeed())
-			Expect(statusCode).To(Equal(200))
+			Expect(statusCode).To(Equal(http.StatusCreated))
 		})
 
 		It("does not create a commit status or comment for snapshot with existing matching checkRun in running state", func() {
@@ -286,10 +300,13 @@ var _ = Describe("GitLabReporter", func() {
 			}
 
 			muxCommitStatusesGet(mux, sourceProjectID, digest, &report)
+			muxMergeRequestPipelineGet(mux, targetProjectID, []*gitlab.Pipeline{{}})
+			pipelines := []*gitlab.Pipeline{{ID: 101, SHA: digest, Status: "success"}}
+			muxMergeRequestPipelineGet(mux, sourceProjectID, pipelines)
 
 			statusCode, err := reporter.ReportStatus(context.TODO(), report)
 			Expect(err).To(Succeed())
-			Expect(statusCode).To(Equal(200))
+			Expect(statusCode).To(Equal(http.StatusOK))
 		})
 
 		It("can get an existing commitStatus that matches the report", func() {
@@ -325,13 +342,229 @@ var _ = Describe("GitLabReporter", func() {
 			Expect(err).To(Succeed())
 			commentPrefix := status.GenerateTestSummaryPrefixForComponent("component-sample")
 			commentText, _ := status.GenerateSummaryForAllScenarios(integrationteststatus.IntegrationTestStatusTestPassed, "component-sample")
-			muxMergeNotes(mux, sourceProjectID, mergeRequest, "")
-			muxMergeNotes(mux, targetProjectID, mergeRequest, commentText)
-			statusCode, err := reporter.UpdateStatusInComment(commentPrefix, commentText)
+			muxMergeNoteForUpdatingAndDeletingNote(mux, targetProjectID, mergeRequest)
+			muxMergeNotesForListingNotes(mux, targetProjectID, mergeRequest)
+			statusCode, err := reporter.UpdateStatusInComment(commentPrefix, commentText, true)
 			Expect(err).To(Succeed())
-			Expect(statusCode).To(Equal(201))
+			Expect(statusCode).To(Equal(http.StatusOK))
+		})
+
+		It("can create a new mergeRequest notes when there is no existing comment", func() {
+			reporter := status.NewGitLabReporter(log, mockK8sClient)
+			_, err := reporter.Initialize(context.TODO(), hasSnapshot)
+			Expect(err).To(Succeed())
+			commentPrefix := status.GenerateTestSummaryPrefixForComponent("component-sample")
+			commentText, _ := status.GenerateSummaryForAllScenarios(integrationteststatus.BuildPLRInProgress, "component-sample")
+			muxMergeNotesForCreatingNote(mux, targetProjectID, mergeRequest, commentPrefix)
+			statusCode, err := reporter.UpdateStatusInComment(commentPrefix, commentText, true)
+			Expect(err).To(Succeed())
+			Expect(statusCode).To(Equal(http.StatusCreated))
 		})
 	})
+	Context("when testing retry behavior", func() {
+		var (
+			secretData    map[string][]byte
+			repo          pacv1alpha1.Repository
+			reporter      *status.GitLabReporter
+			defaultAPIURL = "/api/v4"
+			mux           *http.ServeMux
+			server        *httptest.Server
+			savedBackoff  wait.Backoff
+		)
+
+		BeforeEach(func() {
+			buf.Reset()
+
+			savedBackoff = status.GetReporterRetryBackoff()
+			status.SetReporterRetryBackoff(wait.Backoff{
+				Steps:    3,
+				Duration: 1 * time.Millisecond,
+				Factor:   1.0,
+				Jitter:   0.0,
+			})
+
+			mux = http.NewServeMux()
+			apiHandler := http.NewServeMux()
+			apiHandler.Handle(defaultAPIURL+"/", http.StripPrefix(defaultAPIURL, mux))
+			server = httptest.NewServer(apiHandler)
+
+			hasSnapshot.Annotations[gitops.PipelineAsCodeRepoURLAnnotation] = server.URL
+
+			repo = pacv1alpha1.Repository{
+				Spec: pacv1alpha1.RepositorySpec{
+					URL: server.URL,
+					GitProvider: &pacv1alpha1.GitProvider{
+						Secret: &pacv1alpha1.Secret{
+							Name: "example-secret-name",
+							Key:  "example-token",
+						},
+					},
+				},
+			}
+
+			secretData = map[string][]byte{
+				"example-token": []byte("example-personal-access-token"),
+			}
+
+			mockK8sClient = &MockK8sClient{
+				getInterceptor: func(key client.ObjectKey, obj client.Object) {
+					if secret, ok := obj.(*v1.Secret); ok {
+						secret.Data = secretData
+					}
+				},
+				listInterceptor: func(list client.ObjectList) {
+					if repoList, ok := list.(*pacv1alpha1.RepositoryList); ok {
+						repoList.Items = []pacv1alpha1.Repository{repo}
+					}
+				},
+			}
+
+			reporter = status.NewGitLabReporter(log, mockK8sClient)
+			statusCode, err := reporter.Initialize(context.TODO(), hasSnapshot)
+			Expect(err).To(Succeed())
+			Expect(statusCode).To(Equal(http.StatusOK))
+		})
+
+		AfterEach(func() {
+			server.Close()
+			status.SetReporterRetryBackoff(savedBackoff)
+		})
+
+		// Note: GitLab Go client has internal retryablehttp that retries on >= 500,
+		// so we use 422 (not in the unrecoverable list) to test our retry.OnError logic
+		// without interference from the client's internal retries.
+		It("retries on recoverable error and succeeds on retry", func() {
+			var sourceCallCount int32
+			muxMergeRequestPipelineGet(mux, targetProjectID, []*gitlab.Pipeline{{}})
+			pipelines := []*gitlab.Pipeline{{ID: 101, SHA: digest, Status: "success"}}
+			muxMergeRequestPipelineGet(mux, sourceProjectID, pipelines)
+
+			sourcePath := fmt.Sprintf("/projects/%s/statuses/%s", sourceProjectID, digest)
+			mux.HandleFunc(sourcePath, func(rw http.ResponseWriter, r *http.Request) {
+				call := atomic.AddInt32(&sourceCallCount, 1)
+				if call == 1 {
+					rw.WriteHeader(http.StatusUnprocessableEntity)
+					fmt.Fprintf(rw, `{"error": "unprocessable"}`)
+					return
+				}
+				rw.WriteHeader(http.StatusCreated)
+				fmt.Fprintf(rw, `{"id": 1, "status": "success"}`)
+			})
+
+			targetPath := fmt.Sprintf("/projects/%s/statuses/%s", targetProjectID, digest)
+			mux.HandleFunc(targetPath, func(rw http.ResponseWriter, r *http.Request) {
+				rw.WriteHeader(http.StatusUnprocessableEntity)
+				fmt.Fprintf(rw, `{"error": "unprocessable"}`)
+			})
+
+			statusCode, err := reporter.ReportStatus(context.TODO(), status.TestReport{
+				FullName:     "fullname/scenario1",
+				ScenarioName: "scenario1",
+				Status:       integrationteststatus.IntegrationTestStatusTestPassed,
+				Summary:      "test passed",
+			})
+
+			Expect(err).To(Succeed())
+			Expect(statusCode).To(Equal(http.StatusCreated))
+			Expect(atomic.LoadInt32(&sourceCallCount)).To(BeNumerically("==", 2))
+			Expect(buf.String()).To(ContainSubstring("retrying to set gitlab commit status after transient error"))
+		})
+
+		It("does not retry on 401 Unauthorized", func() {
+			var sourceCallCount int32
+			muxMergeRequestPipelineGet(mux, targetProjectID, []*gitlab.Pipeline{{}})
+			pipelines := []*gitlab.Pipeline{{ID: 101, SHA: digest, Status: "success"}}
+			muxMergeRequestPipelineGet(mux, sourceProjectID, pipelines)
+
+			sourcePath := fmt.Sprintf("/projects/%s/statuses/%s", sourceProjectID, digest)
+			mux.HandleFunc(sourcePath, func(rw http.ResponseWriter, r *http.Request) {
+				atomic.AddInt32(&sourceCallCount, 1)
+				rw.WriteHeader(http.StatusUnauthorized)
+				fmt.Fprintf(rw, `{"error": "unauthorized"}`)
+			})
+
+			targetPath := fmt.Sprintf("/projects/%s/statuses/%s", targetProjectID, digest)
+			mux.HandleFunc(targetPath, func(rw http.ResponseWriter, r *http.Request) {
+				rw.WriteHeader(http.StatusUnauthorized)
+				fmt.Fprintf(rw, `{"error": "unauthorized"}`)
+			})
+
+			statusCode, err := reporter.ReportStatus(context.TODO(), status.TestReport{
+				FullName:     "fullname/scenario1",
+				ScenarioName: "scenario1",
+				Status:       integrationteststatus.IntegrationTestStatusTestPassed,
+				Summary:      "test passed",
+			})
+
+			Expect(err).To(HaveOccurred())
+			Expect(statusCode).To(Equal(http.StatusUnauthorized))
+			Expect(atomic.LoadInt32(&sourceCallCount)).To(BeNumerically("==", 1))
+		})
+
+		It("does not retry on 403 Forbidden", func() {
+			var sourceCallCount int32
+			muxMergeRequestPipelineGet(mux, targetProjectID, []*gitlab.Pipeline{{}})
+			pipelines := []*gitlab.Pipeline{{ID: 101, SHA: digest, Status: "success"}}
+			muxMergeRequestPipelineGet(mux, sourceProjectID, pipelines)
+
+			sourcePath := fmt.Sprintf("/projects/%s/statuses/%s", sourceProjectID, digest)
+			mux.HandleFunc(sourcePath, func(rw http.ResponseWriter, r *http.Request) {
+				atomic.AddInt32(&sourceCallCount, 1)
+				rw.WriteHeader(http.StatusForbidden)
+				fmt.Fprintf(rw, `{"error": "forbidden"}`)
+			})
+
+			targetPath := fmt.Sprintf("/projects/%s/statuses/%s", targetProjectID, digest)
+			mux.HandleFunc(targetPath, func(rw http.ResponseWriter, r *http.Request) {
+				rw.WriteHeader(http.StatusForbidden)
+				fmt.Fprintf(rw, `{"error": "forbidden"}`)
+			})
+
+			statusCode, err := reporter.ReportStatus(context.TODO(), status.TestReport{
+				FullName:     "fullname/scenario1",
+				ScenarioName: "scenario1",
+				Status:       integrationteststatus.IntegrationTestStatusTestPassed,
+				Summary:      "test passed",
+			})
+
+			Expect(err).To(HaveOccurred())
+			Expect(statusCode).To(Equal(http.StatusForbidden))
+			Expect(atomic.LoadInt32(&sourceCallCount)).To(BeNumerically("==", 1))
+		})
+
+		It("exhausts all retries on persistent recoverable errors", func() {
+			var sourceCallCount int32
+			muxMergeRequestPipelineGet(mux, targetProjectID, []*gitlab.Pipeline{{}})
+			pipelines := []*gitlab.Pipeline{{ID: 101, SHA: digest, Status: "success"}}
+			muxMergeRequestPipelineGet(mux, sourceProjectID, pipelines)
+
+			sourcePath := fmt.Sprintf("/projects/%s/statuses/%s", sourceProjectID, digest)
+			mux.HandleFunc(sourcePath, func(rw http.ResponseWriter, r *http.Request) {
+				atomic.AddInt32(&sourceCallCount, 1)
+				rw.WriteHeader(http.StatusUnprocessableEntity)
+				fmt.Fprintf(rw, `{"error": "unprocessable"}`)
+			})
+
+			targetPath := fmt.Sprintf("/projects/%s/statuses/%s", targetProjectID, digest)
+			mux.HandleFunc(targetPath, func(rw http.ResponseWriter, r *http.Request) {
+				rw.WriteHeader(http.StatusUnprocessableEntity)
+				fmt.Fprintf(rw, `{"error": "unprocessable"}`)
+			})
+
+			statusCode, err := reporter.ReportStatus(context.TODO(), status.TestReport{
+				FullName:     "fullname/scenario1",
+				ScenarioName: "scenario1",
+				Status:       integrationteststatus.IntegrationTestStatusTestPassed,
+				Summary:      "test passed",
+			})
+
+			Expect(err).To(HaveOccurred())
+			Expect(statusCode).To(Equal(http.StatusUnprocessableEntity))
+			Expect(atomic.LoadInt32(&sourceCallCount)).To(BeNumerically("==", 3))
+			Expect(buf.String()).To(ContainSubstring("failed to set gitlab commit status after all retries"))
+		})
+	})
+
 	Describe("Test helper functions", func() {
 
 		DescribeTable(
@@ -349,6 +582,7 @@ var _ = Describe("GitLabReporter", func() {
 			Entry("Test failure", integrationteststatus.IntegrationTestStatusTestFail, gitlab.Failed),
 			Entry("In progress", integrationteststatus.IntegrationTestStatusInProgress, gitlab.Running),
 			Entry("Pending", integrationteststatus.IntegrationTestStatusPending, gitlab.Pending),
+			Entry("Warning", integrationteststatus.IntegrationTestStatusTestWarning, gitlab.Success),
 			Entry("Invalid", integrationteststatus.IntegrationTestStatusTestInvalid, gitlab.Failed),
 			Entry("BuildPLRInProgress", integrationteststatus.BuildPLRInProgress, gitlab.Pending),
 			Entry("BuildPLRFailed", integrationteststatus.BuildPLRFailed, gitlab.Canceled),
@@ -384,6 +618,7 @@ func muxCommitStatusPost(mux *http.ServeMux, pid string, sha string, catchStr st
 		if catchStr != "" {
 			Expect(s).To(ContainSubstring(catchStr))
 		}
+		rw.WriteHeader(http.StatusCreated)
 		fmt.Fprintf(rw, "{}")
 	})
 }
@@ -410,41 +645,96 @@ func muxCommitStatusesGet(mux *http.ServeMux, pid string, sha string, report *st
 }
 
 // muxMergeNotes mocks merge request notes GET and POST requests, if catchStr is non-empty POST request must contain such substring
-func muxMergeNotes(mux *http.ServeMux, pid string, mr string, catchStr string) {
+func muxMergeNotesForCreatingNote(mux *http.ServeMux, pid string, mr string, catchStr string) {
 	path := fmt.Sprintf("/projects/%s/merge_requests/%s/notes", pid, mr)
+
 	mux.HandleFunc(path, func(rw http.ResponseWriter, r *http.Request) {
 		switch r.Method {
-		case "POST":
-			bit, _ := io.ReadAll(r.Body)
-			s := string(bit)
-			if catchStr != "" {
-				Expect(s).To(ContainSubstring(catchStr))
-			}
-			rw.WriteHeader(http.StatusCreated) // Simulate 201 Created
-			fmt.Fprintf(rw, `{"id": 1000, "body": "new comment"}`)
-
-		case "DELETE":
-			rw.WriteHeader(http.StatusNoContent) // 204 No Content
-			fmt.Fprintf(rw, "")
-
-		case "GET":
+		case "GET": // List Notes
 			rw.Header().Set("Content-Type", "application/json")
-			fmt.Fprintf(rw, `[
-				{"id": 1, "body": "Integration test report for component component-sample"},
-				{"id": 2, "body": "Integration test report for component other-component"}
-			]`)
-
+			fmt.Fprint(rw, `[]`)
+		case "POST": // Create Note
+			bit, _ := io.ReadAll(r.Body)
+			defer r.Body.Close()
+			if catchStr != "" {
+				Expect(string(bit)).To(ContainSubstring(catchStr))
+			}
+			rw.WriteHeader(http.StatusCreated) // 201
+			fmt.Fprint(rw, `{"id": 1, "body": "created"}`)
 		default:
-			rw.WriteHeader(http.StatusMethodNotAllowed)
+			rw.WriteHeader(http.StatusMethodNotAllowed) // 405
 		}
 	})
+}
 
-	deletePath := path + "/"
-	mux.HandleFunc(deletePath, func(rw http.ResponseWriter, r *http.Request) {
-		if r.Method == "DELETE" {
-			// 可以在这里验证是否删除了正确的 ID
-			rw.WriteHeader(http.StatusNoContent)
+// muxMergeNotes mocks merge request notes GET request, it will return a list of notes with the provided commentText as body
+func muxMergeNotesForListingNotes(mux *http.ServeMux, pid string, mr string) {
+	path := fmt.Sprintf("/projects/%s/merge_requests/%s/notes", pid, mr)
+
+	mux.HandleFunc(path, func(rw http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case "GET": // List Notes
+			rw.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(rw, `[
+                {"id": 1, "body": "Integration test for component component-sample"},
+                {"id": 2, "body": "Integration test for component component-sample"},
+				{"id": 3, "body": "Integration test for component other-component"}
+            ]`)
+		default:
+			rw.WriteHeader(http.StatusMethodNotAllowed) // 405
+		}
+	})
+}
+
+// muxMergeNoteForUpdatingAndDeletingNote mocks merge request note update and delete operations, for update and delete operations the path must contain note ID, if not it will return 400 bad request
+func muxMergeNoteForUpdatingAndDeletingNote(mux *http.ServeMux, pid string, mr string) {
+	// This function mocks both update and delete operations for merge request notes.
+	path := fmt.Sprintf("/projects/%s/merge_requests/%s/notes/", pid, mr)
+
+	mux.HandleFunc(path, func(rw http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == path {
+			rw.WriteHeader(http.StatusBadRequest)
 			return
 		}
+
+		switch r.Method {
+		case "PUT": // Update Note
+			rw.Header().Set("Content-Type", "application/json")
+			rw.WriteHeader(http.StatusOK) // 200
+			fmt.Fprint(rw, `{"id": 1, "body": "updated"}`)
+		case "DELETE": // Delete Note
+			rw.WriteHeader(http.StatusNoContent) // 204
+		default:
+			rw.WriteHeader(http.StatusMethodNotAllowed) // 405
+		}
+	})
+}
+
+// muxMergeRequestPipelineGet mocks sha pipeline GET request,
+// if report is non-empty GET request will return matching pipelines for the provided sha
+func muxMergeRequestPipelineGet(mux *http.ServeMux, pid string, pipelines []*gitlab.Pipeline) {
+	path := fmt.Sprintf("/projects/%s/pipelines", pid)
+
+	mux.HandleFunc(path, func(rw http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" {
+			rw.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+
+		querySha := r.URL.Query().Get("sha")
+		var result []*gitlab.Pipeline
+		if querySha != "" && pipelines != nil {
+			result = pipelines
+		}
+
+		if result == nil {
+			result = []*gitlab.Pipeline{}
+		}
+
+		rw.Header().Set("Content-Type", "application/json")
+		rw.WriteHeader(http.StatusOK)
+
+		jsonData, _ := json.Marshal(result)
+		fmt.Fprint(rw, string(jsonData))
 	})
 }

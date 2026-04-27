@@ -18,6 +18,7 @@ package v1alpha1
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 
 	"github.com/konflux-ci/operator-toolkit/conditions"
@@ -29,10 +30,19 @@ import (
 )
 
 // ReleasePlanAdmissionSpec defines the desired state of ReleasePlanAdmission.
+// +kubebuilder:validation:XValidation:rule="has(self.applications) != has(self.componentGroups)",message="exactly one of applications or componentGroups must be specified"
 type ReleasePlanAdmissionSpec struct {
-	// Applications is a list of references to applications to be released in the managed namespace
-	// +required
-	Applications []string `json:"applications"`
+	// Applications is a list of references to applications to be released in the managed namespace.
+	// Either applications or componentGroups must be specified, but not both.
+	// +kubebuilder:validation:MinItems=1
+	// +optional
+	Applications []string `json:"applications,omitempty"`
+
+	// ComponentGroups is a list of references to component groups to be released in the managed namespace.
+	// Either applications or componentGroups must be specified, but not both.
+	// +kubebuilder:validation:MinItems=1
+	// +optional
+	ComponentGroups []string `json:"componentGroups,omitempty"`
 
 	// Collectors contains all the information of the collectors to be executed as part of the release workflow
 	// +optional
@@ -100,6 +110,12 @@ type ReleasePlanAdmission struct {
 
 	Spec   ReleasePlanAdmissionSpec   `json:"spec,omitempty"`
 	Status ReleasePlanAdmissionStatus `json:"status,omitempty"`
+}
+
+// MatchesReleasePlan returns true if the given name is in applications or componentGroups.
+func (rpa *ReleasePlanAdmission) MatchesReleasePlan(releasePlan *ReleasePlan) bool {
+	name := releasePlan.GetGroupName()
+	return slices.Contains(rpa.Spec.Applications, name) || slices.Contains(rpa.Spec.ComponentGroups, name)
 }
 
 // ClearMatchingInfo marks the ReleasePlanAdmission as no longer matched to any ReleasePlan.

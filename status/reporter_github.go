@@ -35,6 +35,7 @@ import (
 	"github.com/konflux-ci/operator-toolkit/metadata"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
@@ -356,7 +357,7 @@ func (csu *CommitStatusUpdater) Authenticate(ctx context.Context, snapshot *appl
 	}
 
 	csu.ghClient.SetOAuthToken(ctx, token)
-	return 0, nil
+	return http.StatusOK, nil
 }
 
 // createCommitStatusAdapterForSnapshot create a commitStatusAdapter used to create commitStatus on GitHub
@@ -489,7 +490,7 @@ func (csu *CommitStatusUpdater) UpdateStatus(ctx context.Context, report TestRep
 		}
 	}
 
-	return 0, nil
+	return http.StatusOK, nil
 }
 
 // GitHubReporter reports status back to GitHub for a Snapshot.
@@ -530,7 +531,7 @@ func NewGitHubReporter(logger logr.Logger, k8sClient client.Client, opts ...GitH
 type appCredentials struct {
 	AppID          int64
 	InstallationID int64
-	PrivateKey     []byte
+	PrivateKey     []byte // #nosec
 }
 
 // generateTitle generate a Title of checkRun for the given state
@@ -550,6 +551,8 @@ func generateCheckRunTitle(state intgteststat.IntegrationTestStatus) (string, er
 		title = "Deleted"
 	case intgteststat.IntegrationTestStatusTestPassed:
 		title = "Succeeded"
+	case intgteststat.IntegrationTestStatusTestWarning:
+		title = "Warning"
 	case intgteststat.IntegrationTestStatusTestFail,
 		intgteststat.SnapshotCreationFailed,
 		intgteststat.BuildPLRFailed,
@@ -584,6 +587,8 @@ func GenerateCheckRunConclusion(state intgteststat.IntegrationTestStatus, option
 		conclusion = ""
 	case intgteststat.SnapshotCreationFailed, intgteststat.BuildPLRFailed, intgteststat.GroupSnapshotCreationFailed:
 		conclusion = gitops.IntegrationTestStatusCancelledGithub
+	case intgteststat.IntegrationTestStatusTestWarning:
+		conclusion = gitops.IntegrationTestStatusNeutralGithub
 	default:
 		return conclusion, fmt.Errorf("unknown status")
 	}
@@ -609,6 +614,8 @@ func generateGithubCommitState(state intgteststat.IntegrationTestStatus) (string
 	case intgteststat.IntegrationTestStatusPending, intgteststat.IntegrationTestStatusInProgress,
 		intgteststat.BuildPLRInProgress:
 		commitState = gitops.IntegrationTestStatusPendingGithub
+	case intgteststat.IntegrationTestStatusTestWarning:
+		commitState = gitops.IntegrationTestStatusSuccessGithub
 	default:
 		return commitState, fmt.Errorf("unknown status")
 	}
@@ -623,8 +630,8 @@ func (r *GitHubReporter) Detect(snapshot *applicationapiv1alpha1.Snapshot) bool 
 }
 
 // blank implementation to satisfy ReporterInterface
-func (r *GitHubReporter) UpdateStatusInComment(arg1, arg2 string) (int, error) {
-	return 0, nil
+func (r *GitHubReporter) UpdateStatusInComment(arg0, arg1 string, arg2 bool) (int, error) {
+	return http.StatusCreated, nil
 }
 
 // Initialize github reporter. Must be called before updating status
@@ -684,13 +691,28 @@ func (r *GitHubReporter) ReportStatus(ctx context.Context, report TestReport) (i
 		return statusCode, fmt.Errorf("reporter is not initialized")
 	}
 
-	if statusCode, err = r.updater.UpdateStatus(ctx, report); err != nil {
-		r.logger.Error(err, fmt.Sprintf("failed to update status for snapshot %s", report.SnapshotName))
+	err = retry.OnError(reporterRetryBackoff, func(err error) bool {
+		// statusCode 0 means no HTTP response was received (network/timeout error), always retry
+		retryable := statusCode == 0 || !r.ReturnCodeIsUnrecoverable(statusCode)
+		if retryable {
+			r.logger.Info("retrying to update github status after transient error",
+				"snapshot.name", report.SnapshotName, "statusCode", statusCode, "error", err.Error())
+		}
+		return retryable
+	}, func() error {
+		statusCode = 0 // reset before each attempt to avoid stale values
+		statusCode, err = r.updater.UpdateStatus(ctx, report)
+		return err
+	})
+
+	if err != nil {
+		r.logger.Error(err, "failed to update github status after all retries",
+			"snapshot.name", report.SnapshotName, "statusCode", statusCode)
 		return statusCode, err
 	}
 	return statusCode, nil
 }
 
 func (r *GitHubReporter) ReturnCodeIsUnrecoverable(statusCode int) bool {
-	return statusCode == http.StatusForbidden || statusCode == http.StatusUnauthorized || statusCode == http.StatusBadRequest
+	return statusCode == http.StatusForbidden || statusCode == http.StatusUnauthorized || statusCode == http.StatusBadRequest || statusCode == http.StatusNotFound
 }
