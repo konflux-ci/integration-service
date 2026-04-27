@@ -78,7 +78,7 @@ spec:
         - name: tags
           value: 'owner=konflux-devprod@redhat.com,project=Konflux,created-by=integration-pipeline,component=integration-service'
         - name: debug
-          value: 'false'
+          value: 'true'
         - name: ownerKind
           value: PipelineRun
         - name: ownerName
