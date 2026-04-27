@@ -137,11 +137,9 @@ spec:
         resolver: git
         params:
           - name: url
-            # TODO: change to "https://github.com/konflux-ci/integration-service" after merging PR #1532
-            value: https://github.com/lipka28/integration-service
+            value: https://github.com/konflux-ci/integration-service.git
           - name: revision
-            # TODO: change to "main" after merging PR #1532
-            value: test_migration
+            value: main
           - name: pathInRepo
             value: integration-tests/tasks/konflux-e2e-tests/0.1/konflux-e2e-tests.yaml
       params:
