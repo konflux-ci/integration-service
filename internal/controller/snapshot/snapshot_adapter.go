@@ -1080,8 +1080,12 @@ func (a *Adapter) prepareGroupSnapshot(prGroup, prGroupHash string) (*applicatio
 				a.logger.Error(err, "component cannot be added to snapshot", "component.Name", groupComponent.Name)
 				continue
 			}
-			a.logger.Info("component with containerImage from Global Candidate List will be added to group snapshot", "component.Name", snapshotComponent.Name)
-			snapshotComponents = append(snapshotComponents, *snapshotComponent)
+			if snapshotComponent != nil {
+				a.logger.Info("component with containerImage from Global Candidate List will be added to group snapshot", "component.Name", snapshotComponent.Name)
+				snapshotComponents = append(snapshotComponents, *snapshotComponent)
+			} else {
+				a.logger.Info("component cannot be added to snapshot, no GCL entries found for it", "component.Name", groupComponent.Name)
+			}
 		}
 	}
 

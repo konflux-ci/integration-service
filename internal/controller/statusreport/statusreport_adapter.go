@@ -235,6 +235,7 @@ func (a *Adapter) EnsureGroupSnapshotCreationStatusReportedToGitProvider() (cont
 	var tempGroupSnapshot *applicationapiv1alpha1.Snapshot
 	var err error
 
+	// TODO: remove when old application-specific code is removed
 	if a.application != nil {
 		tempGroupSnapshot = gitops.PrepareTempGroupApplicationSnapshot(a.application, a.snapshot)
 		allIntegrationTestScenarios, err = a.loader.GetAllIntegrationTestScenariosForApplication(a.context, a.client, a.application)
@@ -248,7 +249,7 @@ func (a *Adapter) EnsureGroupSnapshotCreationStatusReportedToGitProvider() (cont
 		allIntegrationTestScenarios, err = a.loader.GetAllIntegrationTestScenariosForComponentGroup(a.context, a.client, a.componentGroup)
 		if err != nil {
 			a.logger.Error(err, "Failed to get integration test scenarios for the following componentGroup",
-				"Application.Namespace", a.componentGroup.Namespace, "Application.Name", a.componentGroup.Name)
+				"ComponentGroup.Namespace", a.componentGroup.Namespace, "ComponentGroup.Name", a.componentGroup.Name)
 			return controller.RequeueWithError(err)
 		}
 	}
@@ -265,7 +266,7 @@ func (a *Adapter) EnsureGroupSnapshotCreationStatusReportedToGitProvider() (cont
 			isErrorRecoverable, err := a.ReportGroupSnapshotCreationStatus(a.snapshot, filterIntegrationTestScenarios, integrationTestStatus, gitops.ComponentNameForGroupSnapshot)
 
 			if err != nil {
-				a.logger.Error(err, "failed to report group snapshot createion status to git provider from component snapshot",
+				a.logger.Error(err, "failed to report group snapshot creation status to git provider from component snapshot",
 					"snapshot.Namespace", a.snapshot.Namespace, "snapshot.Name", a.snapshot.Name, "isErrorRecoverable", isErrorRecoverable)
 				if helpers.IsObjectYoungerThanThreshold(a.snapshot, SnapshotRetryTimeout) && isErrorRecoverable {
 					return controller.RequeueWithError(err)

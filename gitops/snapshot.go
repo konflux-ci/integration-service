@@ -1246,7 +1246,7 @@ func CopyBuildPipelineRunResultsToSnapshot(pipelineRun *tektonv1.PipelineRun, sn
 
 // CopyTempGroupSnapshotLabelsAndAnnotations coppies labels and annotations from build pipelineRun or tested snapshot
 // into regular snapshot
-func CopyTempGroupSnapshotLabelsAndAnnotations(application *applicationapiv1alpha1.Application, snapshot *applicationapiv1alpha1.Snapshot, componentName string, source *metav1.ObjectMeta, prefixes []string) {
+func CopyTempGroupSnapshotLabelsAndAnnotations(object *metav1.ObjectMeta, snapshot *applicationapiv1alpha1.Snapshot, componentName string, source *metav1.ObjectMeta, prefixes []string, objectIsApplication bool) {
 	if snapshot.Labels == nil {
 		snapshot.Labels = map[string]string{}
 	}
@@ -1256,7 +1256,12 @@ func CopyTempGroupSnapshotLabelsAndAnnotations(application *applicationapiv1alph
 	}
 	snapshot.Labels[SnapshotTypeLabel] = SnapshotGroupType
 
-	snapshot.Labels[ApplicationNameLabel] = application.Name
+	if objectIsApplication {
+		snapshot.Labels[ApplicationNameLabel] = object.Name
+	} else {
+		// the object is a ComponentGroup
+		snapshot.Labels[ComponentGroupNameLabel] = object.Name
+	}
 
 	// Copy PAC annotations/labels from source(tested snapshot or pipelinerun) to snapshot.
 	_ = metadata.CopyLabelsWithPrefixReplacement(source, &snapshot.ObjectMeta, "pipelinesascode.tekton.dev", PipelinesAsCodePrefix)

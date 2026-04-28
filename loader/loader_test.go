@@ -671,6 +671,12 @@ var _ = Describe("Loader", Ordered, func() {
 		Expect(applicationComponents).NotTo(BeNil())
 	})
 
+	It("ensures the ComponentGroup Components can be found ", func() {
+		componentGroupComponents, err := loader.GetAllComponentGroupComponents(ctx, k8sClient, hasComponentGroup1)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(componentGroupComponents).NotTo(BeNil())
+	})
+
 	It("ensures we can get an Application from a Snapshot [APPLICATION]", func() {
 		app, err := loader.GetApplicationFromSnapshot(ctx, k8sClient, hasSnapshot)
 		Expect(err).ToNot(HaveOccurred())

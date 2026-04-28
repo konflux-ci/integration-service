@@ -489,6 +489,8 @@ func (a *Adapter) EnsureIntegrationTestReportedToGitProvider() (controller.Opera
 
 	a.logger.Info(fmt.Sprintf("try to set integration test status according to the build PLR status %s", integrationTestStatus.String()))
 
+	var numComponentSnapshotScenarios, numGroupSnapshotScenarios int
+	var tempComponentSnapshot *applicationapiv1alpha1.Snapshot
 	// TODO: remove application section after migration
 	var allIntegrationTestScenarios *[]v1beta2.IntegrationTestScenario
 	if a.application != nil {
@@ -496,6 +498,12 @@ func (a *Adapter) EnsureIntegrationTestReportedToGitProvider() (controller.Opera
 		if err != nil {
 			a.logger.Error(err, "Failed to get integration test scenarios for the following application",
 				"Application.Namespace", a.application.Namespace, "Application.Name", a.application.Name)
+			return controller.RequeueWithError(err)
+		}
+		tempComponentSnapshot = a.prepareTempComponentSnapshot(a.pipelineRun, &a.application.ObjectMeta, true)
+		numComponentSnapshotScenarios, err = a.reportStatusForExpectedSnapshot(a.pipelineRun, tempComponentSnapshot, allIntegrationTestScenarios, integrationTestStatus, a.component.Name)
+		if err != nil {
+			a.logger.Error(err, "failed to report status for expected group Snapshot")
 			return controller.RequeueWithError(err)
 		}
 	} else {
@@ -508,18 +516,19 @@ func (a *Adapter) EnsureIntegrationTestReportedToGitProvider() (controller.Opera
 				"ComponentGroup.Namespace", ns, "ComponentGroups", componentGroupNames)
 			return controller.RequeueWithError(err)
 		}
+		for _, componentGroup := range *a.componentGroups {
+			tempComponentSnapshot = a.prepareTempComponentSnapshot(a.pipelineRun, &componentGroup.ObjectMeta, false)
+			numComponentSnapshotScenarios, err = a.reportStatusForExpectedSnapshot(a.pipelineRun, tempComponentSnapshot, allIntegrationTestScenarios, integrationTestStatus, a.component.Name)
+			if err != nil {
+				a.logger.Error(err, "failed to report status for expected group Snapshot")
+				return controller.RequeueWithError(err)
+			}
+		}
+
 	}
 
 	if allIntegrationTestScenarios == nil {
 		return controller.ContinueProcessing()
-	}
-
-	var numComponentSnapshotScenarios, numGroupSnapshotScenarios int
-	tempComponentSnapshot := a.prepareTempComponentSnapshot(a.pipelineRun)
-	numComponentSnapshotScenarios, err = a.reportStatusForExpectedSnapshot(a.pipelineRun, tempComponentSnapshot, allIntegrationTestScenarios, integrationTestStatus, a.component.Name)
-	if err != nil {
-		a.logger.Error(err, "failed to report status for expected group Snapshot")
-		return controller.RequeueWithError(err)
 	}
 
 	a.logger.Info("try to check if group snapshot is expected for build PLR")
@@ -533,7 +542,7 @@ func (a *Adapter) EnsureIntegrationTestReportedToGitProvider() (controller.Opera
 		}
 		if isGroupSnapshotExpected {
 			a.logger.Info("group snapshot is expected to be created for build pipelinerun, group integration test should be set for found context scenario", "pipelineRun.Name", a.pipelineRun.Name)
-			tempGroupSnapshot := a.prepareTempGroupSnapshot(a.pipelineRun)
+			tempGroupSnapshot := a.prepareTempGroupSnapshot(a.pipelineRun, &a.application.ObjectMeta, true)
 			numGroupSnapshotScenarios, err = a.reportStatusForExpectedSnapshot(a.pipelineRun, tempGroupSnapshot, allIntegrationTestScenarios, integrationTestStatus, gitops.ComponentNameForGroupSnapshot)
 			if err != nil {
 				a.logger.Error(err, "failed to report status for expected group Snapshot")
@@ -549,7 +558,7 @@ func (a *Adapter) EnsureIntegrationTestReportedToGitProvider() (controller.Opera
 			}
 			if isGroupSnapshotExpected {
 				a.logger.Info("group snapshot is expected to be created for build pipelinerun, group integration test should be set for found context scenario", "pipelineRun.Name", a.pipelineRun.Name)
-				tempGroupSnapshot := a.prepareTempGroupSnapshot(a.pipelineRun)
+				tempGroupSnapshot := a.prepareTempGroupSnapshot(a.pipelineRun, &componentGroup.ObjectMeta, false)
 				numGroupSnapshotScenarios, err = a.reportStatusForExpectedSnapshot(a.pipelineRun, tempGroupSnapshot, allIntegrationTestScenarios, integrationTestStatus, fmt.Sprintf("%s %s", gitops.ComponentNameForGroupSnapshot, componentGroup.Name))
 				if err != nil {
 					a.logger.Error(err, "failed to report status for expected group Snapshot")
@@ -1086,7 +1095,7 @@ func (a *Adapter) addPRGroupToBuildPLRMetadata(pipelineRun *tektonv1.PipelineRun
 
 // prepareTempComponentSnapshot will create a temporary component snapshot object to copy the labels/annotations from build pipelinerun
 // and be used to communicate with git provider
-func (a *Adapter) prepareTempComponentSnapshot(pipelineRun *tektonv1.PipelineRun) *applicationapiv1alpha1.Snapshot {
+func (a *Adapter) prepareTempComponentSnapshot(pipelineRun *tektonv1.PipelineRun, object *metav1.ObjectMeta, isApplication bool) *applicationapiv1alpha1.Snapshot {
 	tempComponentSnapshot := &applicationapiv1alpha1.Snapshot{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "tempComponentSnapshot",
@@ -1094,13 +1103,13 @@ func (a *Adapter) prepareTempComponentSnapshot(pipelineRun *tektonv1.PipelineRun
 		},
 	}
 	prefixes := []string{gitops.BuildPipelineRunPrefix, gitops.TestLabelPrefix, gitops.CustomLabelPrefix, tektonconsts.ResourceLabelSuffix}
-	gitops.CopySnapshotLabelsAndAnnotations(&a.application.ObjectMeta, tempComponentSnapshot, a.component.Name, &pipelineRun.ObjectMeta, prefixes, true)
+	gitops.CopySnapshotLabelsAndAnnotations(object, tempComponentSnapshot, a.component.Name, &pipelineRun.ObjectMeta, prefixes, isApplication)
 	return tempComponentSnapshot
 }
 
 // prepareTempGroupSnapshot will create a temporary group snapshot object to copy the labels/annotations from build pipelinerun
 // and be used to communicate with git provider
-func (a *Adapter) prepareTempGroupSnapshot(pipelineRun *tektonv1.PipelineRun) *applicationapiv1alpha1.Snapshot {
+func (a *Adapter) prepareTempGroupSnapshot(pipelineRun *tektonv1.PipelineRun, object *metav1.ObjectMeta, isApplication bool) *applicationapiv1alpha1.Snapshot {
 	tempGroupSnapshot := &applicationapiv1alpha1.Snapshot{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "tempGroupSnapshot",
@@ -1108,7 +1117,7 @@ func (a *Adapter) prepareTempGroupSnapshot(pipelineRun *tektonv1.PipelineRun) *a
 		},
 	}
 	prefixes := []string{gitops.BuildPipelineRunPrefix}
-	gitops.CopyTempGroupSnapshotLabelsAndAnnotations(a.application, tempGroupSnapshot, a.component.Name, &pipelineRun.ObjectMeta, prefixes)
+	gitops.CopyTempGroupSnapshotLabelsAndAnnotations(object, tempGroupSnapshot, a.component.Name, &pipelineRun.ObjectMeta, prefixes, isApplication)
 
 	return tempGroupSnapshot
 }
