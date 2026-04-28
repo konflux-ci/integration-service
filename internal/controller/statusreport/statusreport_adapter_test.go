@@ -1139,6 +1139,17 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 
 		BeforeEach(func() {
 			buf = bytes.Buffer{}
+			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+
+			ctrl := gomock.NewController(GinkgoT())
+			mockReporter = status.NewMockReporterInterface(ctrl)
+			mockStatus := status.NewMockStatusInterface(ctrl)
+			mockReporter.EXPECT().GetReporterName().Return("mocked-reporter").AnyTimes()
+			mockStatus.EXPECT().GetReporter(gomock.Any()).Return(mockReporter)
+			mockStatus.EXPECT().GetReporter(gomock.Any()).AnyTimes()
+			mockReporter.EXPECT().GetReporterName().AnyTimes()
+			mockReporter.EXPECT().Initialize(gomock.Any(), gomock.Any()).Times(1)
+			mockReporter.EXPECT().ReportStatus(gomock.Any(), gomock.Any()).Times(1)
 
 			hasCompGroup = &v1beta2.ComponentGroup{
 				ObjectMeta: metav1.ObjectMeta{
@@ -1147,38 +1158,45 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 				},
 			}
 
-			cgSnapshot = &applicationapiv1alpha1.Snapshot{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "cg-snapshot-noop",
-					Namespace: "default",
-					Labels: map[string]string{
-						gitops.SnapshotTypeLabel:      gitops.SnapshotComponentType,
-						gitops.SnapshotComponentLabel: "component-sample",
-					},
-					Annotations: map[string]string{
-						gitops.PRGroupCreationAnnotation: gitops.FailedToCreateGroupSnapshotMsg + " some error",
-					},
-				},
-				Spec: applicationapiv1alpha1.SnapshotSpec{
-					ComponentGroup: hasCompGroup.Name,
-					Components: []applicationapiv1alpha1.SnapshotComponent{
-						{
-							Name:           "component-sample",
-							ContainerImage: SampleImage,
-						},
-					},
-				},
-			}
+			hasPRSnapshot.Spec.Application = ""
+			hasPRSnapshot.Spec.ComponentGroup = hasCompGroup.Name
+			hasPRSnapshot.Labels[gitops.ComponentGroupNameLabel] = hasCompGroup.Name
+			Expect(k8sClient.Update(ctx, hasPRSnapshot)).Should(Succeed())
 
-			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
-			adapter = NewAdapter(ctx, cgSnapshot, hasCompGroup, log, loader.NewMockLoader(), k8sClient)
+			adapter = NewAdapter(ctx, hasPRSnapshot, hasCompGroup, log, loader.NewMockLoader(), k8sClient)
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: loader.ComponentGroupContextKey,
+					Resource:   hasCompGroup,
+				},
+				{
+					ContextKey: loader.SnapshotContextKey,
+					Resource:   cgSnapshot,
+				},
+				{
+					ContextKey: loader.RequiredIntegrationTestScenariosForSnapshotContextKey,
+					Resource:   []v1beta2.IntegrationTestScenario{*integrationTestScenario},
+				},
+				{
+					ContextKey: loader.AllIntegrationTestScenariosForComponentGroupContextKey,
+					Resource:   []v1beta2.IntegrationTestScenario{*integrationTestScenario},
+				},
+				{
+					ContextKey: loader.AllIntegrationTestScenariosForComponentGroupsContextKey,
+					Resource:   []v1beta2.IntegrationTestScenario{*integrationTestScenario},
+				},
+			})
+			adapter.status = mockStatus
+			Expect(reflect.TypeOf(adapter)).To(Equal(reflect.TypeOf(&Adapter{})))
 		})
 
-		It("should be a no-op for ComponentGroup path (deferred to STONEINTG-1519)", func() {
+		It("ensure group snapshot create failure is reported to git provider", func() {
 			result, err := adapter.EnsureGroupSnapshotCreationStatusReportedToGitProvider()
 			Expect(result.CancelRequest).To(BeFalse())
 			Expect(result.RequeueRequest).To(BeFalse())
-			Expect(err).ToNot(HaveOccurred())
+			Expect(buf.String()).Should(ContainSubstring("Successfully report group snapshot creation failure"))
+			Expect(buf.String()).Should(ContainSubstring("Successfully updated the test.appstudio.openshift.io/create-groupsnapshot-status"))
+			Expect(err).Should(Succeed())
 		})
 	})
 })
