@@ -566,8 +566,9 @@ func (a *Adapter) iterateIntegrationTestStatusDetailsInStatusReport(reporter sta
 		srs.SetLastUpdateTime(integrationTestStatusDetail.ScenarioName, destinationSnapshot.Name, integrationTestStatusDetail.LastUpdateTime)
 	}
 
-	// update integration test status comment for gitlab reporter when comment is not disabled
-	if reporter.GetReporterName() == status.GitLabProvider {
+	// update integration test status comment for gitlab and forgejo reporters when comment is not disabled
+	if reporter.GetReporterName() == status.GitLabProvider ||
+		reporter.GetReporterName() == status.ForgejoProvider {
 		loader := loader.NewLoader()
 		// get the destination snapshot's component to check if comment is disabled for all comments for pac repository or integration test
 		component, err := loader.GetComponentFromSnapshot(a.context, a.client, destinationSnapshot)
