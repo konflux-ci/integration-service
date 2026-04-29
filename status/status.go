@@ -729,9 +729,10 @@ func IterateIntegrationTestScenarioWithSameStatus(ctx context.Context, client cl
 		}
 	}
 
-	// if git provider is gitlab, and comment is neither disabled for component nor pac repository, it can extent to more git provider
-	// it delete existing comment and post one new comment with the latest test report summary of all ITS to gitlab merge request for each component
-	if reporter.GetReporterName() == GitLabProvider {
+	// if git provider is gitlab or forgejo, and comment is neither disabled for component nor pac repository,
+	// delete existing comment and post one new comment with the latest test report summary of all ITS to the merge/pull request for each component
+	if reporter.GetReporterName() == GitLabProvider ||
+		reporter.GetReporterName() == ForgejoProvider {
 		_, isMergeRequest := snapshot.GetAnnotations()[gitops.PipelineAsCodePullRequestAnnotation]
 		if isMergeRequest {
 			// get the destination snapshot's component to check if comment is disabled for all comments for pac repository or integration test
