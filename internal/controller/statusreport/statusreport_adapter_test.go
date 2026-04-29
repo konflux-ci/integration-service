@@ -1134,7 +1134,6 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 	})
 
 	When("EnsureGroupSnapshotCreationStatusReportedToGitProvider is called with ComponentGroup adapter", func() {
-		var cgSnapshot *applicationapiv1alpha1.Snapshot
 		var hasCompGroup *v1beta2.ComponentGroup
 
 		BeforeEach(func() {
@@ -1171,7 +1170,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 				},
 				{
 					ContextKey: loader.SnapshotContextKey,
-					Resource:   cgSnapshot,
+					Resource:   hasPRSnapshot,
 				},
 				{
 					ContextKey: loader.RequiredIntegrationTestScenariosForSnapshotContextKey,

@@ -1233,6 +1233,14 @@ var _ = Describe("Loader", Ordered, func() {
 			Expect((*fetchedBuildPLRs)[0].Spec).To(Equal(buildPipelineRun.Spec))
 		})
 
+		It("Can get build plr with pr group hash [APPLICATION]", func() {
+			fetchedBuildPLRs, err := loader.GetPipelineRunsWithPRGroupHashForApplication(ctx, k8sClient, hasSnapshot.Namespace, prGroupSha, hasApp.Name)
+			Expect(err).To(Succeed())
+			Expect((*fetchedBuildPLRs)[0].Name).To(Equal(buildPipelineRun.Name))
+			Expect((*fetchedBuildPLRs)[0].Namespace).To(Equal(buildPipelineRun.Namespace))
+			Expect((*fetchedBuildPLRs)[0].Spec).To(Equal(buildPipelineRun.Spec))
+		})
+
 		It("Can get matching snapshot for component and pr group hash", func() {
 			fetchedSnapshots, err := loader.GetMatchingComponentSnapshotsForComponentAndPRGroupHash(ctx, k8sClient, hasSnapshot.Namespace, hasComp.Name, prGroupSha, hasApp.Name, gitops.ApplicationNameLabel)
 			Expect(err).To(Succeed())

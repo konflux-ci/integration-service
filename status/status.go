@@ -430,23 +430,21 @@ func GenerateSummaryForAllScenarios(state intgteststat.IntegrationTestStatus, co
 	return summary, nil
 }
 
-// function GenerateComponentNameWithPrefix to generate component name "pr group" or "component component-sample"
+// GenerateComponentNameWithPrefix to generate component name "pr group" or "component component-sample"
 // to help search it in comment correctly to avoid component name is searched in pr group report
 func GenerateComponentNameWithPrefix(componentName string) string {
-	if componentName == gitops.ComponentNameForGroupSnapshot {
-		componentName = gitops.ComponentNameForGroupSnapshot
-	} else {
+	if !strings.HasPrefix(componentName, gitops.ComponentNameForGroupSnapshot) {
 		componentName = "component " + componentName
 	}
 	return componentName
 }
 
-// function GenerateTestSummaryPrefixForComponent to generate test summary prefix for component name "pr group" or "component component-sample"
+// GenerateTestSummaryPrefixForComponent to generate test summary prefix for component name "pr group" or "component component-sample"
 // to help search it in comment correctly since all comments are posted together
 func GenerateTestSummaryPrefixForComponent(componentName string) string {
 	var commentTitle string
 	if strings.HasPrefix(componentName, gitops.ComponentNameForGroupSnapshot) {
-		commentTitle = "Integration test for " + gitops.ComponentNameForGroupSnapshot
+		commentTitle = "Integration test for " + componentName
 	} else {
 		commentTitle = "Integration test for component " + componentName
 	}
