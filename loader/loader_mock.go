@@ -339,6 +339,15 @@ func (l *mockLoader) GetPipelineRunsWithPRGroupHash(ctx context.Context, c clien
 	return &pipelineRuns, err
 }
 
+// GetPipelineRunsWithPRGroupHashForApplication returns the resource and error passed as values of the context.
+func (l *mockLoader) GetPipelineRunsWithPRGroupHashForApplication(ctx context.Context, c client.Client, namespace, prGroupHash, applicationName string) (*[]tektonv1.PipelineRun, error) {
+	if ctx.Value(GetBuildPLRContextKey) == nil {
+		return l.loader.GetPipelineRunsWithPRGroupHashForApplication(ctx, c, namespace, prGroupHash, applicationName)
+	}
+	pipelineRuns, err := toolkit.GetMockedResourceAndErrorFromContext(ctx, GetBuildPLRContextKey, []tektonv1.PipelineRun{})
+	return &pipelineRuns, err
+}
+
 // GetMatchingComponentSnapshotsForComponentAndPRGroupHash returns the resource and error passed as values of the context
 func (l *mockLoader) GetMatchingComponentSnapshotsForComponentAndPRGroupHash(ctx context.Context, c client.Client, namespace, componentName, prGroupHash, ownerName, ownerLabel string) (*[]applicationapiv1alpha1.Snapshot, error) {
 	if ctx.Value(GetComponentSnapshotsKey) == nil {
@@ -374,9 +383,9 @@ func (l *mockLoader) GetAllIntegrationPipelineRunsForSnapshot(ctx context.Contex
 	return pipelineRuns, err
 }
 
-func (l *mockLoader) GetComponentsFromSnapshotForPRGroup(ctx context.Context, c client.Client, namespace, prGroup, prGroupHash, applicationName string) ([]string, error) {
+func (l *mockLoader) GetComponentsFromSnapshotForPRGroup(ctx context.Context, c client.Client, namespace, prGroupHash, ownerName, ownerLabel string) ([]string, error) {
 	if ctx.Value(GetComponentsFromSnapshotForPRGroupKey) == nil {
-		return l.loader.GetComponentsFromSnapshotForPRGroup(ctx, c, namespace, prGroup, prGroupHash, applicationName)
+		return l.loader.GetComponentsFromSnapshotForPRGroup(ctx, c, namespace, prGroupHash, ownerName, ownerLabel)
 	}
 	components, err := toolkit.GetMockedResourceAndErrorFromContext(ctx, GetComponentsFromSnapshotForPRGroupKey, []string{})
 	return components, err

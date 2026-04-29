@@ -555,17 +555,18 @@ func (a *Adapter) reportIntegrationStatusAndHandleGroupsForApplication(integrati
 func (a *Adapter) reportIntegrationStatusAndHandleGroups(integrationTestStatus *intgteststat.IntegrationTestStatus) (int, int, error) {
 	numComponentSnapshotScenarios := 0
 	numGroupSnapshotScenarios := 0
+
 	for _, componentGroup := range *a.componentGroups {
-		allIntegrationTestScenarios, err := a.loader.GetAllIntegrationTestScenariosForComponentGroups(a.context, a.client, a.componentGroups)
+		integrationTestScenariosForGroup, err := a.loader.GetAllIntegrationTestScenariosForComponentGroup(a.context, a.client, &componentGroup)
 		if err != nil {
 			return 0, 0, fmt.Errorf("failed to get integration test scenarios for the componentGroup %s: %w", componentGroup.Name, err)
 		}
-		if allIntegrationTestScenarios == nil {
+		if integrationTestScenariosForGroup == nil || len(*integrationTestScenariosForGroup) == 0 {
 			continue
 		}
 		a.logger.Info(fmt.Sprintf("try to set integration test status according to the build PLR status %s", integrationTestStatus.String()))
 		tempComponentSnapshot := a.prepareTempComponentSnapshot(a.pipelineRun, &componentGroup.ObjectMeta, false)
-		num, err := a.reportStatusForExpectedSnapshot(a.pipelineRun, tempComponentSnapshot, allIntegrationTestScenarios, *integrationTestStatus, a.component.Name)
+		num, err := a.reportStatusForExpectedSnapshot(a.pipelineRun, tempComponentSnapshot, integrationTestScenariosForGroup, *integrationTestStatus, a.component.Name)
 		if err != nil {
 			return 0, 0, fmt.Errorf("failed to report status for expected group Snapshot: %w", err)
 		}
@@ -579,7 +580,8 @@ func (a *Adapter) reportIntegrationStatusAndHandleGroups(integrationTestStatus *
 		if isGroupSnapshotExpected {
 			a.logger.Info("group snapshot is expected to be created for build pipelinerun, group integration test should be set for found context scenario", "pipelineRun.Name", a.pipelineRun.Name)
 			tempGroupSnapshot := a.prepareTempGroupSnapshot(a.pipelineRun, &componentGroup.ObjectMeta, false)
-			numGroup, err := a.reportStatusForExpectedSnapshot(a.pipelineRun, tempGroupSnapshot, allIntegrationTestScenarios, *integrationTestStatus, fmt.Sprintf("%s %s", gitops.ComponentNameForGroupSnapshot, componentGroup.Name))
+			groupName := fmt.Sprintf("%s %s", gitops.ComponentNameForGroupSnapshot, componentGroup.Name)
+			numGroup, err := a.reportStatusForExpectedSnapshot(a.pipelineRun, tempGroupSnapshot, integrationTestScenariosForGroup, *integrationTestStatus, groupName)
 			if err != nil {
 				a.logger.Error(err, "failed to report status for expected group Snapshot")
 				return 0, 0, fmt.Errorf("failed to report status for expected group Snapshot: %w", err)
@@ -710,23 +712,24 @@ func (a *Adapter) EnsureSupercededSnapshotsCanceled() (result controller.Operati
 func (a *Adapter) notifySnapshotsInGroupAboutBuild(pipelineRun *tektonv1.PipelineRun, message string) error {
 	prGroupHash := pipelineRun.Labels[gitops.PRGroupHashLabel]
 
-	buildPipelineRuns, err := a.loader.GetPipelineRunsWithPRGroupHash(a.context, a.client, a.pipelineRun.Namespace, prGroupHash)
-	if err != nil {
-		a.logger.Error(err, fmt.Sprintf("Failed to get build pipelineRuns for given pr group hash %s", prGroupHash))
-		return err
-	}
-
-	// Don't do anything if the build pipelineRun isn't the latest for its component
-	if !tekton.IsLatestBuildPipelineRunInComponent(pipelineRun, buildPipelineRuns) {
-		a.logger.Info("not the latest pipelineRun, skipping notifying the group about the failure")
-		return nil
-	}
-
 	var allComponentSnapshotsInGroup *[]applicationapiv1alpha1.Snapshot
+	var buildPipelineRuns *[]tektonv1.PipelineRun
 	if a.application != nil {
+		var err error
+		buildPipelineRuns, err = a.loader.GetPipelineRunsWithPRGroupHashForApplication(a.context, a.client, a.pipelineRun.Namespace, prGroupHash, a.application.Name)
+		if err != nil {
+			return fmt.Errorf("failed to get build pipelineRuns for given pr group hash %s: %w", prGroupHash, err)
+		}
+
+		// Don't do anything if the build pipelineRun isn't the latest for its component
+		if !tekton.IsLatestBuildPipelineRunInComponent(pipelineRun, buildPipelineRuns) {
+			a.logger.Info("not the latest pipelineRun, skipping notifying the group about the failure")
+			return nil
+		}
+
 		applicationComponents, err := a.loader.GetAllApplicationComponents(a.context, a.client, a.application)
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to get all application components for application %s: %w", a.application.Name, err)
 		}
 
 		// Annotate all latest component Snapshots that are part of the PR group
@@ -735,19 +738,29 @@ func (a *Adapter) notifySnapshotsInGroupAboutBuild(pipelineRun *tektonv1.Pipelin
 			allComponentSnapshotsInGroup, err = a.loader.GetMatchingComponentSnapshotsForComponentAndPRGroupHash(a.context, a.client,
 				a.pipelineRun.Namespace, applicationComponent.Name, prGroupHash, a.application.Name, gitops.ApplicationNameLabel)
 			if err != nil {
-				a.logger.Error(err, "Failed to fetch Snapshots for component", "component.Name", applicationComponent.Name)
-				return err
+				return fmt.Errorf("failed to fetch Snapshots for component %s: %w", applicationComponent.Name, err)
 			}
 			if allComponentSnapshotsInGroup != nil && len(*allComponentSnapshotsInGroup) > 0 {
 				latestSnapshot := gitops.SortSnapshots(*allComponentSnapshotsInGroup)[0]
 				err = gitops.AnnotateSnapshot(a.context, &latestSnapshot, gitops.PRGroupCreationAnnotation,
 					message, a.client)
 				if err != nil {
-					return err
+					return fmt.Errorf("failed to annotate latest snapshot %s of component %s: %w", latestSnapshot.Name, applicationComponent.Name, err)
 				}
 			}
 		}
 	} else {
+		allBuildPipelineRunsWithPRGroupHash, err := a.loader.GetPipelineRunsWithPRGroupHash(a.context, a.client, a.pipelineRun.Namespace, prGroupHash)
+		if err != nil {
+			return fmt.Errorf("failed to get build pipelineRuns for given pr group hash %s: %w", prGroupHash, err)
+		}
+		buildPipelineRuns = a.filterPipelineRunsForComponentGroups(allBuildPipelineRunsWithPRGroupHash, a.componentGroups)
+
+		// Don't do anything if the build pipelineRun isn't the latest for its component
+		if !tekton.IsLatestBuildPipelineRunInComponent(pipelineRun, buildPipelineRuns) {
+			a.logger.Info("not the latest pipelineRun, skipping notifying the group about the failure")
+			return nil
+		}
 		for _, componentGroup := range *a.componentGroups {
 			componentGroup := componentGroup
 			for _, groupComponent := range componentGroup.Spec.Components {
@@ -755,15 +768,15 @@ func (a *Adapter) notifySnapshotsInGroupAboutBuild(pipelineRun *tektonv1.Pipelin
 				allComponentSnapshotsInGroup, err = a.loader.GetMatchingComponentSnapshotsForComponentAndPRGroupHash(a.context, a.client,
 					a.pipelineRun.Namespace, groupComponent.Name, prGroupHash, componentGroup.Name, gitops.ComponentGroupNameLabel)
 				if err != nil {
-					a.logger.Error(err, "Failed to fetch Snapshots for component", "component.Name", groupComponent.Name)
-					return err
+					return fmt.Errorf("failed to fetch Snapshots for component %s and pr group hash %s: %w", groupComponent.Name, prGroupHash, err)
 				}
 				if allComponentSnapshotsInGroup != nil && len(*allComponentSnapshotsInGroup) > 0 {
 					latestSnapshot := gitops.SortSnapshots(*allComponentSnapshotsInGroup)[0]
 					err = gitops.AnnotateSnapshot(a.context, &latestSnapshot, gitops.PRGroupCreationAnnotation,
 						message, a.client)
 					if err != nil {
-						return err
+						return fmt.Errorf("failed to annotate latest snapshot %s of component %s with PR group creation annotation: %w",
+							latestSnapshot.Name, groupComponent.Name, err)
 					}
 				}
 			}
@@ -778,7 +791,7 @@ func (a *Adapter) notifySnapshotsInGroupAboutBuild(pipelineRun *tektonv1.Pipelin
 		if !h.HasPipelineRunFinished(&buildPipelineRun) && buildPipelineRun.Labels[tektonconsts.ComponentNameLabel] != a.component.Name {
 			err := tekton.AnnotateBuildPipelineRun(a.context, &buildPipelineRun, gitops.PRGroupCreationAnnotation, message, a.client)
 			if err != nil {
-				return err
+				return fmt.Errorf("failed to annotate build pipelineRun %s with PR group creation annotation: %w", buildPipelineRun.Name, err)
 			}
 		}
 	}
@@ -786,6 +799,22 @@ func (a *Adapter) notifySnapshotsInGroupAboutBuild(pipelineRun *tektonv1.Pipelin
 		"prGroup", pipelineRun.Annotations[gitops.PRGroupAnnotation], "prGroupHash", prGroupHash)
 
 	return nil
+}
+
+func (a *Adapter) filterPipelineRunsForComponentGroups(allBuildPipelineRuns *[]tektonv1.PipelineRun, componentGroups *[]v1beta2.ComponentGroup) *[]tektonv1.PipelineRun {
+	var filteredBuildPipelineRuns []tektonv1.PipelineRun
+	for _, buildPipelineRun := range *allBuildPipelineRuns {
+		if builtComponentName, found := buildPipelineRun.Labels[tektonconsts.PipelineRunComponentLabel]; found {
+			for _, componentGroup := range *componentGroups {
+				componentNames := h.GetComponentNamesFromComponentGroup(&componentGroup)
+				if slices.Contains(componentNames, builtComponentName) {
+					filteredBuildPipelineRuns = append(filteredBuildPipelineRuns, buildPipelineRun)
+					break
+				}
+			}
+		}
+	}
+	return &filteredBuildPipelineRuns
 }
 
 // prepareSnapshotForPipelineRun prepares the Snapshot for a given PipelineRun,
@@ -1255,10 +1284,20 @@ func generateIntgTestStatusDetails(buildPLR *tektonv1.PipelineRun, integrationTe
 // getComponentFromLatestFlightBuildPLR get the components from the build pipelineruns which have not snapshot created for the given pr group
 // according to the given pr group
 func (a *Adapter) getComponentsFromLatestFlightBuildPLR(prGroup, prGroupHash string) ([]string, error) {
-	pipelineRuns, err := a.loader.GetPipelineRunsWithPRGroupHash(a.context, a.client, a.pipelineRun.Namespace, prGroupHash)
-	if err != nil {
-		a.logger.Error(err, fmt.Sprintf("Failed to get build pipelineRuns for given pr group hash %s", prGroupHash))
-		return nil, err
+	var pipelineRuns *[]tektonv1.PipelineRun
+	var err error
+	if a.application != nil {
+		pipelineRuns, err = a.loader.GetPipelineRunsWithPRGroupHashForApplication(a.context, a.client, a.pipelineRun.Namespace, prGroupHash, a.application.Name)
+		if err != nil {
+			a.logger.Error(err, fmt.Sprintf("Failed to get build pipelineRuns for given pr group hash %s and application %s", prGroupHash, a.application.Name))
+			return nil, err
+		}
+	} else {
+		pipelineRuns, err = a.loader.GetPipelineRunsWithPRGroupHash(a.context, a.client, a.pipelineRun.Namespace, prGroupHash)
+		if err != nil {
+			a.logger.Error(err, fmt.Sprintf("Failed to get build pipelineRuns for given pr group hash %s", prGroupHash))
+			return nil, err
+		}
 	}
 
 	var componentsFromPipelineRun []string

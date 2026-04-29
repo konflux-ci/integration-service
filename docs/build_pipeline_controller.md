@@ -17,9 +17,9 @@ get_pipeline_run{Pipeline updated?}
 failed_pipeline_run{Pipeline failed?}
 finalizer_exists{Does the finalizer already exist?}
 need_to_set_integration_test{Build pipelineRun is newly triggered?<br>Or Build pipelineRun failed?<br> Or Failing to create snapshot?}
-retrieve_associated_entity(Retrieve the entity <br> component/application)
+retrieve_associated_entity(Retrieve the entity <br> component/application or componentGroup)
 determine_snapshot{Does a snapshot exist?}
-prep_snapshot(Gather Application components<br> Add new component)
+prep_snapshot(Gather Application or ComponentGroup components<br> Add new component)
 check_chains{Chains annotation present?}
 annotate_pipelineRun(Annotate pipeline with <br> name of Snapshot)
 add_finalizer(Add finalizer to build PLR)

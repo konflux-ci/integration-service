@@ -22,8 +22,20 @@ import (
 
 func GetComponentGroupNames(componentGroups *[]v1beta2.ComponentGroup) []string {
 	names := []string{}
-	for _, componentGroup := range *componentGroups {
-		names = append(names, componentGroup.Name)
+	if componentGroups != nil {
+		for _, componentGroup := range *componentGroups {
+			names = append(names, componentGroup.Name)
+		}
+	}
+	return names
+}
+
+func GetComponentNamesFromComponentGroup(componentGroup *v1beta2.ComponentGroup) []string {
+	names := []string{}
+	if componentGroup != nil && componentGroup.Spec.Components != nil {
+		for _, component := range componentGroup.Spec.Components {
+			names = append(names, component.Name)
+		}
 	}
 	return names
 }

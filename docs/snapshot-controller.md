@@ -14,10 +14,10 @@ flowchart TD
 
   %% Node definitions
   ensure1(Process further if: Snapshot testing <br>is not finished yet)
-  are_there_any_ITS{"Are there any <br>IntegrationTestScenario <br>present for the given <br>Application?"}
+  are_there_any_ITS{"Are there any <br>IntegrationTestScenario <br>present for the given <br>Application/ComponentGroup?"}
   create_new_test_PLR(<b>Create a new Test PipelineRun</b> for each <br>of the above ITS, if it doesn't exists already)
   mark_snapshot_InProgress(<b>Mark</b> Snapshot's Integration-testing <br>status as 'InProgress')
-  fetch_all_required_ITS("Fetch all the required <br>(non-optional) IntegrationTestScenario <br>for the given Application <br> filtered by ITS context(s)")
+  fetch_all_required_ITS("Fetch all the required <br>(non-optional) IntegrationTestScenario <br>for the given Application/ComponentGroup <br> filtered by ITS context(s)")
   encountered_error1{Encountered error?}
   mark_snapshot_Invalid1(<b>Mark</b> the Snapshot as Invalid)
   is_atleast_1_required_ITS{Is there atleast <br>1 required ITS?}
@@ -60,7 +60,7 @@ flowchart TD
 
   %% Node definitions
   ensure3(Process further if: Snapshot is valid & <br>Snapshot testing succeeded & <br>Snapshot was not created by <br>PAC Pull Request Event & <br> Snapshot wasn't auto-released)
-  fetch_all_ReleasePlans("Fetch ALL the ReleasePlan CRs <br>for the given Application, that have the <br>'release.appstudio.openshift.io/auto-release' <br>label set to 'True'")
+  fetch_all_ReleasePlans("Fetch ALL the ReleasePlan CRs <br>for the given Application/ComponentGroup, that have the <br>'release.appstudio.openshift.io/auto-release' <br>label set to 'True'")
   encountered_error31{Encountered error?}
   create_Release(<b>Create a Release</b> for each of the above <br>ReleasePlan if it doesn't exists already)
   encountered_error32{Encountered error?}
@@ -120,7 +120,7 @@ flowchart TD
   ensure5(Process further if: Snapshot has <b>neither</b> push event type label <br><b>nor</b> PRGroupCreation annotation)
   validate_build_pipelinerun{Did all gotten build pipelineRun <br>under the same group <br>succeed <b>and</b> <br>component snapshot are already created?}
   annotate_component_snapshot(<b>Annotate</b> component snapshot)
-  get_component_snapshots_and_sort(<b>Iterate</b> all application components and <br><b>get<b/> all component snapshots <br>for each component under the same pr group sha <br>then <b>sort</b> snapshots)
+  get_component_snapshots_and_sort(<b>Iterate</b> all application or componentGroup components and <br><b>get<b/> all component snapshots <br>for each component under the same pr group sha <br>then <b>sort</b> snapshots)
   can_find_snapshotComponent_from_latest_snapshot(<b>Can</b> find the latest snapshot with open pull/merge request?)
   add_snapshot_to_group_snapshot_candidate(<b>Add</b> snapshotComponent of component <br>to group snapshot components candidate)
   get_snapshotComponent_from_gcl(<b>Get</b> snapshotComponent from <br>Global Candidate List)

@@ -346,3 +346,10 @@ func getSnapshotComponentFromBuildPLR(pipelineRun *tektonv1.PipelineRun, compone
 		Source:         *componentSource,
 	}, nil
 }
+
+// PrepareTempGroupSnapshot will prepare a temp group snapshot used to check the integration test scenario that should be applied to the group snapshot under that componentGroup
+func PrepareTempGroupSnapshot(componentGroup *v1beta2.ComponentGroup, snapshot *applicationapiv1alpha1.Snapshot) *applicationapiv1alpha1.Snapshot {
+	tempGroupSnapshot := NewSnapshot(componentGroup, &[]applicationapiv1alpha1.SnapshotComponent{})
+	tempGroupSnapshot, _ = gitops.SetAnnotationAndLabelForGroupSnapshot(tempGroupSnapshot, snapshot, []gitops.ComponentSnapshotInfo{})
+	return tempGroupSnapshot
+}
