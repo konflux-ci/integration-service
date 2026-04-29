@@ -542,34 +542,10 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 
 	It("ensures that a new Snapshots can be successfully created", func() {
 		snapshotComponents := []applicationapiv1alpha1.SnapshotComponent{}
-		createdSnapshot := gitops.NewApplicationSnapshot(hasApp, &snapshotComponents)
+		createdSnapshot := gitops.NewSnapshot(hasApp, &snapshotComponents)
 		Expect(createdSnapshot).NotTo(BeNil())
 		// Name should be set with timestamp format
 		Expect(createdSnapshot.Name).To(MatchRegexp(`^application-sample-\d{8}-\d{6}-\d{3}$`))
-	})
-
-	It("ensures NewSnapshot truncates application name if longer than 43 characters", func() {
-		longGroupName := "this-is-a-very-long-application-name-that-exceeds-43-chars"
-		longGroup := &v1beta2.ComponentGroup{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      longGroupName,
-				Namespace: namespace,
-			},
-		}
-		snapshotComponents := []applicationapiv1alpha1.SnapshotComponent{
-			{
-				Name:           "component-1",
-				ContainerImage: "registry.io/image1:v1.0.0",
-			},
-		}
-
-		snapshot := gitops.NewSnapshot(longGroup, &snapshotComponents)
-
-		// Name should be truncated to 44 characters + "-" + 19 character timestamp
-		expectedPrefix := longGroupName[:43]
-		Expect(snapshot.Name).To(HavePrefix(expectedPrefix + "-"))
-		Expect(snapshot.Name).To(MatchRegexp(`^` + expectedPrefix + `-\d{8}-\d{6}-\d{3}$`))
-		Expect(snapshot.Spec.ComponentGroup).To(Equal(longGroupName))
 	})
 
 	It("ensures NewApplicationSnapshot truncates application name if longer than 43 characters [APPLICATION]", func() {
@@ -587,36 +563,13 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 			},
 		}
 
-		snapshot := gitops.NewApplicationSnapshot(longApp, &snapshotComponents)
+		snapshot := gitops.NewSnapshot(longApp, &snapshotComponents)
 
 		// Name should be truncated to 44 characters + "-" + 19 character timestamp
 		expectedPrefix := longAppName[:43]
 		Expect(snapshot.Name).To(HavePrefix(expectedPrefix + "-"))
 		Expect(snapshot.Name).To(MatchRegexp(`^` + expectedPrefix + `-\d{8}-\d{6}-\d{3}$`))
 		Expect(snapshot.Spec.Application).To(Equal(longAppName))
-	})
-
-	It("ensures NewSnapshot does not truncate application name at 43 characters", func() {
-		exactGroupName := "this-is-application-name-exactly-43-chars" // 43 chars
-		exactGroup := &v1beta2.ComponentGroup{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      exactGroupName,
-				Namespace: namespace,
-			},
-		}
-		snapshotComponents := []applicationapiv1alpha1.SnapshotComponent{
-			{
-				Name:           "component-1",
-				ContainerImage: "registry.io/image1:v1.0.0",
-			},
-		}
-
-		snapshot := gitops.NewSnapshot(exactGroup, &snapshotComponents)
-
-		// Name should be exactAppName + "-" + 19 character timestamp
-		Expect(snapshot.Name).To(HavePrefix(exactGroupName + "-"))
-		Expect(snapshot.Name).To(MatchRegexp(`^` + exactGroupName + `-\d{8}-\d{6}-\d{3}$`))
-		Expect(snapshot.Spec.ComponentGroup).To(Equal(exactGroupName))
 	})
 
 	It("ensures NewApplicationSnapshot does not truncate application name at 43 characters [APPLICATION]", func() {
@@ -634,7 +587,7 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 			},
 		}
 
-		snapshot := gitops.NewApplicationSnapshot(exactApp, &snapshotComponents)
+		snapshot := gitops.NewSnapshot(exactApp, &snapshotComponents)
 
 		// Name should be exactAppName + "-" + 19 character timestamp
 		Expect(snapshot.Name).To(HavePrefix(exactAppName + "-"))
@@ -1262,7 +1215,7 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 			})
 
 			It("Can find the correct snapshotComponent for the given component name", func() {
-				FoundSnapshotComponent := gitops.FindMatchingSnapshotComponent(hasComSnapshot1, hasComp)
+				FoundSnapshotComponent := gitops.FindMatchingSnapshotComponent(hasComSnapshot1, hasComp.Name)
 				Expect(FoundSnapshotComponent.Name).To(Equal(hasComp.Name))
 			})
 
@@ -1389,7 +1342,7 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 			})
 
 			It("can prepare temp group snapshot", func() {
-				tempGroupSnapshot := gitops.PrepareTempGroupApplicationSnapshot(hasApp, hasSnapshot)
+				tempGroupSnapshot := gitops.PrepareTempGroupSnapshot(hasApp, hasSnapshot)
 				Expect(metadata.HasLabelWithValue(tempGroupSnapshot, gitops.SnapshotTypeLabel, gitops.SnapshotGroupType)).To(BeTrue())
 			})
 		})

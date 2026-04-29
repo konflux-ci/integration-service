@@ -382,6 +382,21 @@ var _ = Describe("Release Adapter", Ordered, func() {
 		})
 	})
 
+	Context("When calling GetPipelineRunsWithPRGroupHashForApplication", func() {
+		It("returns resource and error from the context", func() {
+			plrs := []tektonv1.PipelineRun{}
+			mockContext := toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: GetBuildPLRContextKey,
+					Resource:   plrs,
+				},
+			})
+			resource, err := loader.GetPipelineRunsWithPRGroupHashForApplication(mockContext, nil, "", "", "")
+			Expect(resource).To(Equal(&plrs))
+			Expect(err).ToNot(HaveOccurred())
+		})
+	})
+
 	Context("When calling GetMatchingComponentSnapshotsForComponentAndPRGroupHash", func() {
 		It("returns resource and error from the context", func() {
 			snapshots := []applicationapiv1alpha1.Snapshot{}

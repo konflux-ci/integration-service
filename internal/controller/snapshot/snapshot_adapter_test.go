@@ -3714,7 +3714,100 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			// mockStatus.EXPECT().IsPRMRInSnapshotOpened(gomock.Any(), gomock.Any()).Return(true, nil)
 			mockStatus.EXPECT().IsPRMRInSnapshotOpened(gomock.Any(), gomock.Any()).AnyTimes()
 
-			adapter = NewAdapter(ctx, hasComSnapshot1, hasCompGroup, log, loader.NewMockLoader(), k8sClient)
+			tmpHasCompGroup := hasCompGroup.DeepCopy()
+			tmpHasCompGroup.Spec = v1beta2.ComponentGroupSpec{
+				Components: []v1beta2.ComponentReference{
+					{
+						Name: hasComp.Name,
+						ComponentVersion: v1beta2.ComponentVersionReference{
+							Name:     "v1",
+							Revision: "main",
+						},
+					},
+					{
+						Name: hasCom1.Name,
+						ComponentVersion: v1beta2.ComponentVersionReference{
+							Name:     "v1",
+							Revision: "main",
+						},
+					},
+					{
+						Name: hasCom3.Name,
+						ComponentVersion: v1beta2.ComponentVersionReference{
+							Name:     "v1",
+							Revision: "main",
+						},
+					},
+					{
+						Name: hasCompMissingImageDigest.Name,
+						ComponentVersion: v1beta2.ComponentVersionReference{
+							Name:     "v1",
+							Revision: "main",
+						},
+					},
+					{
+						Name: hasCompWithValidImage.Name,
+						ComponentVersion: v1beta2.ComponentVersionReference{
+							Name:     "v1",
+							Revision: "main",
+						},
+					},
+				},
+			}
+			tmpHasCompGroup.Status = v1beta2.ComponentGroupStatus{
+				Conditions: []metav1.Condition{
+					metav1.Condition{
+						Type:               "Succeeded",
+						Status:             metav1.ConditionTrue,
+						Reason:             "testing",
+						Message:            "test condition",
+						LastTransitionTime: metav1.Time{Time: time.Now()},
+					},
+				},
+				GlobalCandidateList: []v1beta2.ComponentState{
+					{
+						Name:                  hasComp.Name,
+						Version:               "v1",
+						URL:                   SampleRepoLink,
+						LastPromotedImage:     sample_image,
+						LastPromotedCommit:    sample_commit,
+						LastPromotedBuildTime: &metav1.Time{Time: time.Now()},
+					},
+					{
+						Name:                  hasCom1.Name,
+						Version:               "v1",
+						URL:                   SampleRepoLink,
+						LastPromotedImage:     sample_image,
+						LastPromotedCommit:    sample_commit,
+						LastPromotedBuildTime: &metav1.Time{Time: time.Now()},
+					},
+					{
+						Name:                  hasCom3.Name,
+						Version:               "v1",
+						URL:                   SampleRepoLink,
+						LastPromotedImage:     sample_image,
+						LastPromotedCommit:    sample_commit,
+						LastPromotedBuildTime: &metav1.Time{Time: time.Now()},
+					},
+					{
+						Name:                  hasCompMissingImageDigest.Name,
+						Version:               "v1",
+						URL:                   SampleRepoLink,
+						LastPromotedCommit:    sample_commit,
+						LastPromotedBuildTime: &metav1.Time{Time: time.Now()},
+					},
+					{
+						Name:                  hasCompWithValidImage.Name,
+						Version:               "v1",
+						URL:                   SampleRepoLink,
+						LastPromotedImage:     sample_image,
+						LastPromotedCommit:    sample_commit,
+						LastPromotedBuildTime: &metav1.Time{Time: time.Now()},
+					},
+				},
+			}
+
+			adapter = NewAdapter(ctx, hasComSnapshot1, tmpHasCompGroup, log, loader.NewMockLoader(), k8sClient)
 
 			adapter.status = mockStatus
 			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{

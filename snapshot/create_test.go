@@ -622,4 +622,51 @@ var _ = Describe("Snapshot creation functions", Ordered, func() {
 			Expect(snapshot.Annotations[helpers.CreateSnapshotAnnotationName]).To(Equal("Component(s) 'another-component-sample (version v1)' is(are) not included in snapshot due to missing valid containerImage or git source"))
 		})
 	})
+
+	It("ensures NewSnapshot truncates application name if longer than 43 characters", func() {
+		longGroupName := "this-is-a-very-long-application-name-that-exceeds-43-chars"
+		longGroup := &v1beta2.ComponentGroup{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      longGroupName,
+				Namespace: "namespace",
+			},
+		}
+		snapshotComponents := []applicationapiv1alpha1.SnapshotComponent{
+			{
+				Name:           "component-1",
+				ContainerImage: "registry.io/image1:v1.0.0",
+			},
+		}
+
+		snapshot := NewSnapshot(longGroup, &snapshotComponents)
+
+		// Name should be truncated to 44 characters + "-" + 19 character timestamp
+		expectedPrefix := longGroupName[:43]
+		Expect(snapshot.Name).To(HavePrefix(expectedPrefix + "-"))
+		Expect(snapshot.Name).To(MatchRegexp(`^` + expectedPrefix + `-\d{8}-\d{6}-\d{3}$`))
+		Expect(snapshot.Spec.ComponentGroup).To(Equal(longGroupName))
+	})
+
+	It("ensures NewSnapshot does not truncate application name at 43 characters", func() {
+		exactGroupName := "this-is-application-name-exactly-43-chars" // 43 chars
+		exactGroup := &v1beta2.ComponentGroup{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      exactGroupName,
+				Namespace: "namespace",
+			},
+		}
+		snapshotComponents := []applicationapiv1alpha1.SnapshotComponent{
+			{
+				Name:           "component-1",
+				ContainerImage: "registry.io/image1:v1.0.0",
+			},
+		}
+
+		snapshot := NewSnapshot(exactGroup, &snapshotComponents)
+
+		// Name should be exactAppName + "-" + 19 character timestamp
+		Expect(snapshot.Name).To(HavePrefix(exactGroupName + "-"))
+		Expect(snapshot.Name).To(MatchRegexp(`^` + exactGroupName + `-\d{8}-\d{6}-\d{3}$`))
+		Expect(snapshot.Spec.ComponentGroup).To(Equal(exactGroupName))
+	})
 })

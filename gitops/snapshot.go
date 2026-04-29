@@ -781,27 +781,9 @@ func CanSnapshotBePromoted(snapshot *applicationapiv1alpha1.Snapshot) (bool, []s
 	return canBePromoted, reasons
 }
 
-// NewSnapshot creates a new snapshot based on the supplied componentGroup and components
-func NewSnapshot(componentGroup *v1beta2.ComponentGroup, snapshotComponents *[]applicationapiv1alpha1.SnapshotComponent) *applicationapiv1alpha1.Snapshot {
-	// Use fallback timestamp (current time) - will be overridden in prepareSnapshotForPipelineRun
-	// if BuildPipelineRunStartTime is available
-	fallbackTimestamp := time.Now().UnixMilli()
-
-	snapshot := &applicationapiv1alpha1.Snapshot{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      GenerateSnapshotNameWithTimestamp(componentGroup.Name, fallbackTimestamp),
-			Namespace: componentGroup.Namespace,
-		},
-		Spec: applicationapiv1alpha1.SnapshotSpec{
-			ComponentGroup: componentGroup.Name,
-			Components:     *snapshotComponents,
-		},
-	}
-	return snapshot
-}
-
-// NewApplicationSnapshot creates a new snapshot based on the supplied application and components
-func NewApplicationSnapshot(application *applicationapiv1alpha1.Application, snapshotComponents *[]applicationapiv1alpha1.SnapshotComponent) *applicationapiv1alpha1.Snapshot {
+// NewSnapshot creates a new snapshot based on the supplied application and components
+// TODO: Remove this function once application model is fully deprecated [APPLICATION] - a matching function which supports ComponentGroups is located in the snapshot package
+func NewSnapshot(application *applicationapiv1alpha1.Application, snapshotComponents *[]applicationapiv1alpha1.SnapshotComponent) *applicationapiv1alpha1.Snapshot {
 	// Use fallback timestamp (current time) - will be overridden in prepareSnapshotForPipelineRun
 	// if BuildPipelineRunStartTime is available
 	fallbackTimestamp := time.Now().UnixMilli()
@@ -1040,7 +1022,7 @@ func PrepareSnapshot(ctx context.Context, adapterClient client.Client, applicati
 	if len(snapshotComponents) == 0 {
 		return nil, helpers.NewMissingValidComponentError(strings.Join(invalidComponents, ", "))
 	}
-	snapshot := NewApplicationSnapshot(application, &snapshotComponents)
+	snapshot := NewSnapshot(application, &snapshotComponents)
 
 	// expose the source repo URL and SHA in the snapshot as annotation do we don't have to do lookup in integration tests
 	if newComponentSource.GitSource != nil {
@@ -1389,9 +1371,9 @@ func GetPRGroup(object client.Object) (string, string) {
 }
 
 // FindMatchingSnapshotComponent find the snapshot component from the given snapshot according to the name of the given component name
-func FindMatchingSnapshotComponent(snapshot *applicationapiv1alpha1.Snapshot, component *applicationapiv1alpha1.Component) applicationapiv1alpha1.SnapshotComponent {
+func FindMatchingSnapshotComponent(snapshot *applicationapiv1alpha1.Snapshot, componentName string) applicationapiv1alpha1.SnapshotComponent {
 	for _, snapshotComponent := range snapshot.Spec.Components {
-		if snapshotComponent.Name == component.Name {
+		if snapshotComponent.Name == componentName {
 			return snapshotComponent
 		}
 	}
@@ -1544,16 +1526,10 @@ func GetShaFromSnapshot(ctx context.Context, snapshot *applicationapiv1alpha1.Sn
 	return ""
 }
 
-// PrepareTempGroupSnapshot will prepare a temp group snapshot used to check the integration test scenario that should be applied to the group snapshot under that componentGroup
-func PrepareTempGroupSnapshot(componentGroup *v1beta2.ComponentGroup, snapshot *applicationapiv1alpha1.Snapshot) *applicationapiv1alpha1.Snapshot {
-	tempGroupSnapshot := NewSnapshot(componentGroup, &[]applicationapiv1alpha1.SnapshotComponent{})
-	tempGroupSnapshot, _ = SetAnnotationAndLabelForGroupSnapshot(tempGroupSnapshot, snapshot, []ComponentSnapshotInfo{})
-	return tempGroupSnapshot
-}
-
-// PrepareTempGroupApplicationSnapshot will prepare a temp group snapshot used to check the integration test scenario that should be applied to the group snapshot under that application
-func PrepareTempGroupApplicationSnapshot(application *applicationapiv1alpha1.Application, snapshot *applicationapiv1alpha1.Snapshot) *applicationapiv1alpha1.Snapshot {
-	tempGroupSnapshot := NewApplicationSnapshot(application, &[]applicationapiv1alpha1.SnapshotComponent{})
+// PrepareTempGroupSnapshot will prepare a temp group snapshot used to check the integration test scenario that should be applied to the group snapshot under that application
+// TODO: Remove this function once application model is fully deprecated [APPLICATION] - a matching function which supports ComponentGroups is located in the snapshot package
+func PrepareTempGroupSnapshot(application *applicationapiv1alpha1.Application, snapshot *applicationapiv1alpha1.Snapshot) *applicationapiv1alpha1.Snapshot {
+	tempGroupSnapshot := NewSnapshot(application, &[]applicationapiv1alpha1.SnapshotComponent{})
 	tempGroupSnapshot, _ = SetAnnotationAndLabelForGroupSnapshot(tempGroupSnapshot, snapshot, []ComponentSnapshotInfo{})
 	return tempGroupSnapshot
 }

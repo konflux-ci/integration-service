@@ -75,6 +75,7 @@ type ObjectLoader interface {
 	GetComponent(ctx context.Context, c client.Client, name, namespace string) (*applicationapiv1alpha1.Component, error)
 	GetMatchingComponentSnapshotsForPRGroupHash(ctx context.Context, c client.Client, nameSpace, prGroupHash, ownerName string, ownerLabel string) (*[]applicationapiv1alpha1.Snapshot, error)
 	GetPipelineRunsWithPRGroupHash(ctx context.Context, c client.Client, namespace, prGroupHash string) (*[]tektonv1.PipelineRun, error)
+	GetPipelineRunsWithPRGroupHashForApplication(ctx context.Context, c client.Client, namespace, prGroupHash, applicationName string) (*[]tektonv1.PipelineRun, error)
 	GetMatchingComponentSnapshotsForComponentAndPRGroupHash(ctx context.Context, c client.Client, snapshot, componentName, prGroupHash, ownerName string, ownerLabel string) (*[]applicationapiv1alpha1.Snapshot, error)
 	GetAllIntegrationPipelineRunsForSnapshot(ctx context.Context, adapterClient client.Client, snapshot *applicationapiv1alpha1.Snapshot) ([]tektonv1.PipelineRun, error)
 	GetComponentsFromSnapshotForPRGroup(ctx context.Context, c client.Client, namespace, prGroupHash, ownerName string, ownerLabel string) ([]string, error)
@@ -698,6 +699,40 @@ func (l *loader) GetPipelineRunsWithPRGroupHash(ctx context.Context, adapterClie
 	}
 
 	labelSelector := labels.NewSelector().
+		Add(*prGroupLabelRequirement).
+		Add(*plrTypeLabelRequirement)
+
+	opts := &client.ListOptions{
+		Namespace:     namespace,
+		LabelSelector: labelSelector,
+	}
+
+	err = adapterClient.List(ctx, buildPipelineRuns, opts)
+	if err != nil {
+		return nil, err
+	}
+	return &buildPipelineRuns.Items, nil
+}
+
+// GetPipelineRunsWithPRGroupHashForApplication gets the build pipelineRun with the given pr group hash string, application name and the same namespace with the given snapshot
+func (l *loader) GetPipelineRunsWithPRGroupHashForApplication(ctx context.Context, adapterClient client.Client, namespace, prGroupHash, applicationName string) (*[]tektonv1.PipelineRun, error) {
+	buildPipelineRuns := &tektonv1.PipelineRunList{}
+
+	applicationLabelRequirement, err := labels.NewRequirement("appstudio.openshift.io/application", selection.In, []string{applicationName})
+	if err != nil {
+		return nil, err
+	}
+	prGroupLabelRequirement, err := labels.NewRequirement("test.appstudio.openshift.io/pr-group-sha", selection.In, []string{prGroupHash})
+	if err != nil {
+		return nil, err
+	}
+	plrTypeLabelRequirement, err := labels.NewRequirement("pipelines.appstudio.openshift.io/type", selection.In, []string{"build"})
+	if err != nil {
+		return nil, err
+	}
+
+	labelSelector := labels.NewSelector().
+		Add(*applicationLabelRequirement).
 		Add(*prGroupLabelRequirement).
 		Add(*plrTypeLabelRequirement)
 

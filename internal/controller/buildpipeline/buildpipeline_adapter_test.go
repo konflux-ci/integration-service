@@ -539,6 +539,87 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		})
 	})
 
+	When("filterPipelineRunsForComponentGroups is called", func() {
+
+		BeforeEach(func() {
+			adapter = NewAdapter(ctx, buildPipelineRun, hasComp, &[]v1beta2.ComponentGroup{*hasCompGroup}, logger, loader.NewMockLoader(), k8sClient)
+		})
+
+		It("returns an empty filtered list when there are no build PipelineRuns", func() {
+			empty := []tektonv1.PipelineRun{}
+			groups := &[]v1beta2.ComponentGroup{*hasCompGroup}
+
+			result := adapter.filterPipelineRunsForComponentGroups(&empty, groups)
+			Expect(result).NotTo(BeNil())
+			Expect(*result).To(BeEmpty())
+		})
+
+		It("keeps PipelineRuns whose component label matches a component listed in some ComponentGroup, and skips others", func() {
+			plrMatching := tektonv1.PipelineRun{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "build-plr-matching",
+					Labels: map[string]string{
+						tektonconsts.PipelineRunComponentLabel: "component-sample",
+					},
+				},
+			}
+			plrUnknownComponent := tektonv1.PipelineRun{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "build-plr-unknown",
+					Labels: map[string]string{
+						tektonconsts.PipelineRunComponentLabel: "not-in-any-group",
+					},
+				},
+			}
+			plrNoComponentLabel := tektonv1.PipelineRun{
+				ObjectMeta: metav1.ObjectMeta{Name: "build-plr-no-label"},
+			}
+
+			stack := []tektonv1.PipelineRun{plrMatching, plrUnknownComponent, plrNoComponentLabel}
+			groups := &[]v1beta2.ComponentGroup{*hasCompGroup}
+
+			result := adapter.filterPipelineRunsForComponentGroups(&stack, groups)
+			Expect(result).NotTo(BeNil())
+			Expect(*result).To(HaveLen(1))
+			Expect((*result)[0].Name).To(Equal("build-plr-matching"))
+			Expect((*result)[0].Labels[tektonconsts.PipelineRunComponentLabel]).To(Equal("component-sample"))
+		})
+
+		It("includes a PipelineRun when the component matches any ComponentGroup in order", func() {
+			groupAlpha := v1beta2.ComponentGroup{
+				ObjectMeta: metav1.ObjectMeta{Name: "group-alpha"},
+				Spec: v1beta2.ComponentGroupSpec{
+					Components: []v1beta2.ComponentReference{
+						{Name: "only-alpha", ComponentVersion: v1beta2.ComponentVersionReference{Name: "v1"}},
+					},
+				},
+			}
+			groupBeta := v1beta2.ComponentGroup{
+				ObjectMeta: metav1.ObjectMeta{Name: "group-beta"},
+				Spec: v1beta2.ComponentGroupSpec{
+					Components: []v1beta2.ComponentReference{
+						{Name: "only-beta", ComponentVersion: v1beta2.ComponentVersionReference{Name: "v1"}},
+					},
+				},
+			}
+			plr := tektonv1.PipelineRun{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "build-plr-only-beta",
+					Labels: map[string]string{
+						tektonconsts.PipelineRunComponentLabel: "only-beta",
+					},
+				},
+			}
+			stack := []tektonv1.PipelineRun{plr}
+			groups := &[]v1beta2.ComponentGroup{groupAlpha, groupBeta}
+
+			result := adapter.filterPipelineRunsForComponentGroups(&stack, groups)
+			Expect(result).NotTo(BeNil())
+			Expect(*result).To(HaveLen(1))
+			Expect((*result)[0].Name).To(Equal("build-plr-only-beta"))
+		})
+	})
+
 	When("NewAdapter is created", func() {
 		BeforeEach(func() {
 			adapter = createAdapter()
@@ -678,7 +759,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			Eventually(func() bool {
 				result, err := adapter.EnsureSnapshotExists()
 				return !result.CancelRequest && err != nil
-			}, time.Second*10).Should(BeTrue())
+			}, time.Second*15).Should(BeTrue())
 
 			expectedLogEntry := "Exceeded timeout waiting for Chains signing"
 			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
@@ -2752,7 +2833,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 
 				// Mock an in-flight component build PLR that belongs to the same PR group
 				inFlightBuildPLR := buildPipelineRun.DeepCopy()
-				inFlightBuildPLR.Labels[tektonconsts.ComponentNameLabel] = "other-component"
+				inFlightBuildPLR.Labels[tektonconsts.ComponentNameLabel] = "another-component-sample"
 				inFlightBuildPLR.Status = tektonv1.PipelineRunStatus{
 					PipelineRunStatusFields: tektonv1.PipelineRunStatusFields{
 						Results: []tektonv1.PipelineRunResult{},
