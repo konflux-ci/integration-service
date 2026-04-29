@@ -1131,7 +1131,7 @@ func (a *Adapter) fetchSnapshotComponentFromGCL(component *applicationapiv1alpha
 	}
 	for _, invalidComponent := range invalidComponents {
 		if invalidComponent.Name == component.Name {
-			return nil, fmt.Errorf("component cannot be added to snapshot for application due to invalid digest in containerImage")
+			return nil, fmt.Errorf("component cannot be added to snapshot due to invalid digest in containerImage")
 		}
 	}
 	return nil, nil

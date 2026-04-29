@@ -1815,7 +1815,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		})
 
 		// TODO: Remove after the application model is deprecated
-		When("add pr group to the build pipelineRun annotations and labels in APPLICATION MODEL", func() {
+		When("add pr group to the build pipelineRun annotations and labels [APPLICATION]", func() {
 			BeforeEach(func() {
 				adapter = NewAdapterWithApplication(ctx, buildPipelineRun, hasComp, hasApp, logger, loader.NewMockLoader(), k8sClient)
 			})
@@ -2469,7 +2469,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		})
 
 		// TODO: Remove after application model is deprecated
-		When("add pr group to the build pipelineRun annotations and labels APPLICATION MODE", func() {
+		When("add pr group to the build pipelineRun annotations and labels [APPLICATION]", func() {
 			BeforeEach(func() {
 				// Add label and annotation to PLR
 				err := metadata.AddLabels(buildPipelineRun, map[string]string{gitops.PRGroupHashLabel: prGroupSha})
@@ -2642,7 +2642,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		})
 
 		// TODO: Remove after the application model is deprecated
-		When("add pr group to the build pipelineRun annotations and labels in APPLICATION MODEL", func() {
+		When("add pr group to the build pipelineRun annotations and labels [APPLICATION]", func() {
 			BeforeEach(func() {
 				// Remove the PR group creation Annotation from the group Snapshot
 				delete(hasSnapshot.Annotations, gitops.PRGroupCreationAnnotation)
@@ -2817,7 +2817,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 	})
 
 	// TODO: Remove after the application model is deprecated
-	When("a build PLR is triggered or retirggered, succeeded or failed in APPLICATION MODEL", func() {
+	When("a build PLR is triggered or retriggered, succeeded or failed [APPLICATION]", func() {
 		BeforeEach(func() {
 			patch := client.MergeFrom(buildPipelineRun.DeepCopy())
 			_ = metadata.SetAnnotation(&buildPipelineRun.ObjectMeta, gitops.PRGroupAnnotation, prGroup)
@@ -3358,14 +3358,45 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			//mockStatus.EXPECT().IsPRMRInSnapshotOpened(gomock.Any(), hasComSnapshot2).Return(true, nil)
 			mockStatus.EXPECT().IsPRMRInSnapshotOpened(gomock.Any(), gomock.Any()).Return(true, 0, nil).AnyTimes()
 
-			componentGroups := []v1beta2.ComponentGroup{*hasCompGroup}
+			// Add another componentGroup with only one component
+			hasCompGroup2 := hasCompGroup.DeepCopy()
+			hasCompGroup2.Name = "component-group-sample2"
+			hasCompGroup2.Spec.Components = []v1beta2.ComponentReference{
+				{
+					Name: "component-sample",
+					ComponentVersion: v1beta2.ComponentVersionReference{
+						Name:     "v1",
+						Revision: "main",
+					},
+				},
+			}
+			// Add another componentGroup with two components
+			hasCompGroup3 := hasCompGroup.DeepCopy()
+			hasCompGroup3.Name = "component-group-sample3"
+			hasCompGroup3.Spec.Components = []v1beta2.ComponentReference{
+				{
+					Name: "component-sample",
+					ComponentVersion: v1beta2.ComponentVersionReference{
+						Name:     "v1",
+						Revision: "main",
+					},
+				},
+				{
+					Name: "another-component-sample",
+					ComponentVersion: v1beta2.ComponentVersionReference{
+						Name:     "v1",
+						Revision: "main",
+					},
+				},
+			}
+			componentGroups := []v1beta2.ComponentGroup{*hasCompGroup, *hasCompGroup2, *hasCompGroup3}
 			adapter = NewAdapter(ctx, buildPipelineRun, hasComp, &componentGroups, log, loader.NewMockLoader(), k8sClient)
 
 			adapter.status = mockStatus
 			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
 					ContextKey: loader.ComponentGroupsContextKey,
-					Resource:   hasCompGroup,
+					Resource:   *hasCompGroup,
 				},
 				{
 					ContextKey: loader.GetPRSnapshotsKey,
@@ -3404,6 +3435,12 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
 			expectedLogEntry = "there is more than 1 component with open pr or mr found, so group snapshot is expected for component-group-sample: [component-sample another-component-sample]"
 			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
+			// Since the second componentGroup contains only one component, it should not have an expected group Snapshot
+			expectedLogEntry = "there is more than 1 component with open pr or mr found, so group snapshot is expected for component-group-sample2: [component-sample]"
+			Expect(buf.String()).ShouldNot(ContainSubstring(expectedLogEntry))
+			// Since the thirt componentGroup contains both components, it should have an expected group Snapshot
+			expectedLogEntry = "there is more than 1 component with open pr or mr found, so group snapshot is expected for component-group-sample3: [component-sample another-component-sample]"
+			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
 			Expect(result.CancelRequest).To(BeFalse())
 			Expect(result.RequeueRequest).To(BeFalse())
 			Expect(err).NotTo(HaveOccurred())
@@ -3411,7 +3448,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 	})
 
 	// TODO: Remove after the application model is deprecated
-	When("integration status should not be set from build PLR in APPLICATION MODEL", func() {
+	When("integration status should not be set from build PLR [APPLICATION]", func() {
 		BeforeAll(func() {
 			patch := client.MergeFrom(buildPipelineRun.DeepCopy())
 			_ = metadata.SetAnnotation(&buildPipelineRun.ObjectMeta, gitops.PRGroupAnnotation, prGroup)
@@ -3600,7 +3637,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		})
 	})
 
-	When("build pipelineRun succdeds and is signed [APPLICATION]", func() {
+	When("build pipelineRun succeeds and is signed [APPLICATION]", func() {
 		BeforeEach(func() {
 			Expect(metadata.DeleteLabel(buildPipelineRun, tektonconsts.PipelineAsCodePullRequestLabel)).ShouldNot(HaveOccurred())
 			adapter = createAdapterApplication()

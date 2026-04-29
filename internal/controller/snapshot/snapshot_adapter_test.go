@@ -3058,7 +3058,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 	})
 
 	// TODO: Remove after the Application model is deprecated
-	When("Adapter is created for component snapshot with pr group APPLICATION MODEL", func() {
+	When("Adapter is created for component snapshot with pr group [APPLICATION]", func() {
 		BeforeEach(func() {
 			hasComSnapshot1.Spec.Application = hasApp.Name
 			hasComSnapshot1.Spec.ComponentGroup = ""

@@ -487,84 +487,19 @@ func (a *Adapter) EnsureIntegrationTestReportedToGitProvider() (controller.Opera
 		return controller.ContinueProcessing()
 	}
 
-	a.logger.Info(fmt.Sprintf("try to set integration test status according to the build PLR status %s", integrationTestStatus.String()))
-
 	var numComponentSnapshotScenarios, numGroupSnapshotScenarios int
-	var tempComponentSnapshot *applicationapiv1alpha1.Snapshot
 	// TODO: remove application section after migration
-	var allIntegrationTestScenarios *[]v1beta2.IntegrationTestScenario
 	if a.application != nil {
-		allIntegrationTestScenarios, err = a.loader.GetAllIntegrationTestScenariosForApplication(a.context, a.client, a.application)
+		numComponentSnapshotScenarios, numGroupSnapshotScenarios, err = a.reportIntegrationStatusAndHandleGroupsForApplication(&integrationTestStatus)
 		if err != nil {
-			a.logger.Error(err, "Failed to get integration test scenarios for the following application",
-				"Application.Namespace", a.application.Namespace, "Application.Name", a.application.Name)
-			return controller.RequeueWithError(err)
-		}
-		tempComponentSnapshot = a.prepareTempComponentSnapshot(a.pipelineRun, &a.application.ObjectMeta, true)
-		numComponentSnapshotScenarios, err = a.reportStatusForExpectedSnapshot(a.pipelineRun, tempComponentSnapshot, allIntegrationTestScenarios, integrationTestStatus, a.component.Name)
-		if err != nil {
-			a.logger.Error(err, "failed to report status for expected group Snapshot")
+			a.logger.Error(err, "failed to report status and handle groups")
 			return controller.RequeueWithError(err)
 		}
 	} else {
-		allIntegrationTestScenarios, err = a.loader.GetAllIntegrationTestScenariosForComponentGroups(a.context, a.client, a.componentGroups)
+		numComponentSnapshotScenarios, numGroupSnapshotScenarios, err = a.reportIntegrationStatusAndHandleGroups(&integrationTestStatus)
 		if err != nil {
-			// PipelineRun, ComponentGroups, and IntegrationTestScenarios must be in same namespace
-			ns := a.pipelineRun.Namespace
-			componentGroupNames := h.GetComponentGroupNames(a.componentGroups)
-			a.logger.Error(err, "Failed to get integration test scenarios for the following componentGroups",
-				"ComponentGroup.Namespace", ns, "ComponentGroups", componentGroupNames)
+			a.logger.Error(err, "failed to report status and handle groups")
 			return controller.RequeueWithError(err)
-		}
-		for _, componentGroup := range *a.componentGroups {
-			tempComponentSnapshot = a.prepareTempComponentSnapshot(a.pipelineRun, &componentGroup.ObjectMeta, false)
-			numComponentSnapshotScenarios, err = a.reportStatusForExpectedSnapshot(a.pipelineRun, tempComponentSnapshot, allIntegrationTestScenarios, integrationTestStatus, a.component.Name)
-			if err != nil {
-				a.logger.Error(err, "failed to report status for expected group Snapshot")
-				return controller.RequeueWithError(err)
-			}
-		}
-
-	}
-
-	if allIntegrationTestScenarios == nil {
-		return controller.ContinueProcessing()
-	}
-
-	a.logger.Info("try to check if group snapshot is expected for build PLR")
-
-	// TODO: remove application section after migration
-	if a.application != nil {
-		isGroupSnapshotExpected, err := a.isGroupSnapshotExpectedForBuildPLR(a.pipelineRun, tempComponentSnapshot, a.application.Name, gitops.ApplicationNameLabel)
-		if err != nil {
-			a.logger.Error(err, "failed to check if group snapshot is expected")
-			return controller.RequeueWithError(err)
-		}
-		if isGroupSnapshotExpected {
-			a.logger.Info("group snapshot is expected to be created for build pipelinerun, group integration test should be set for found context scenario", "pipelineRun.Name", a.pipelineRun.Name)
-			tempGroupSnapshot := a.prepareTempGroupSnapshot(a.pipelineRun, &a.application.ObjectMeta, true)
-			numGroupSnapshotScenarios, err = a.reportStatusForExpectedSnapshot(a.pipelineRun, tempGroupSnapshot, allIntegrationTestScenarios, integrationTestStatus, gitops.ComponentNameForGroupSnapshot)
-			if err != nil {
-				a.logger.Error(err, "failed to report status for expected group Snapshot")
-				return controller.RequeueWithError(err)
-			}
-		}
-	} else {
-		for _, componentGroup := range *a.componentGroups {
-			isGroupSnapshotExpected, err := a.isGroupSnapshotExpectedForBuildPLR(a.pipelineRun, tempComponentSnapshot, componentGroup.Name, gitops.ComponentGroupNameLabel)
-			if err != nil {
-				a.logger.Error(err, "failed to check if group snapshot is expected")
-				return controller.RequeueWithError(err)
-			}
-			if isGroupSnapshotExpected {
-				a.logger.Info("group snapshot is expected to be created for build pipelinerun, group integration test should be set for found context scenario", "pipelineRun.Name", a.pipelineRun.Name)
-				tempGroupSnapshot := a.prepareTempGroupSnapshot(a.pipelineRun, &componentGroup.ObjectMeta, false)
-				numGroupSnapshotScenarios, err = a.reportStatusForExpectedSnapshot(a.pipelineRun, tempGroupSnapshot, allIntegrationTestScenarios, integrationTestStatus, fmt.Sprintf("%s %s", gitops.ComponentNameForGroupSnapshot, componentGroup.Name))
-				if err != nil {
-					a.logger.Error(err, "failed to report status for expected group Snapshot")
-					return controller.RequeueWithError(err)
-				}
-			}
 		}
 	}
 
@@ -576,6 +511,83 @@ func (a *Adapter) EnsureIntegrationTestReportedToGitProvider() (controller.Opera
 	}
 	return controller.ContinueProcessing()
 
+}
+
+func (a *Adapter) reportIntegrationStatusAndHandleGroupsForApplication(integrationTestStatus *intgteststat.IntegrationTestStatus) (int, int, error) {
+	numComponentSnapshotScenarios := 0
+	numGroupSnapshotScenarios := 0
+	var tempComponentSnapshot *applicationapiv1alpha1.Snapshot
+
+	allIntegrationTestScenarios, err := a.loader.GetAllIntegrationTestScenariosForApplication(a.context, a.client, a.application)
+	if err != nil {
+		a.logger.Error(err, "Failed to get integration test scenarios for the following application",
+			"Application.Namespace", a.application.Namespace, "Application.Name", a.application.Name)
+		return 0, 0, err
+	}
+
+	if allIntegrationTestScenarios == nil {
+		return 0, 0, nil
+	}
+	a.logger.Info(fmt.Sprintf("try to set integration test status according to the build PLR status %s", integrationTestStatus.String()))
+	tempComponentSnapshot = a.prepareTempComponentSnapshot(a.pipelineRun, &a.application.ObjectMeta, true)
+	numComponentSnapshotScenarios, err = a.reportStatusForExpectedSnapshot(a.pipelineRun, tempComponentSnapshot, allIntegrationTestScenarios, *integrationTestStatus, a.component.Name)
+	if err != nil {
+		return 0, 0, fmt.Errorf("failed to report status for expected group Snapshot: %w", err)
+	}
+
+	a.logger.Info("try to check if group snapshot is expected for build PLR")
+	isGroupSnapshotExpected, err := a.isGroupSnapshotExpectedForBuildPLR(a.pipelineRun, tempComponentSnapshot, a.application.Name, gitops.ApplicationNameLabel)
+	if err != nil {
+		a.logger.Error(err, "failed to check if group snapshot is expected")
+		return 0, 0, fmt.Errorf("failed to check if group snapshot is expected: %w", err)
+	}
+	if isGroupSnapshotExpected {
+		a.logger.Info("group snapshot is expected to be created for build pipelinerun, group integration test should be set for found context scenario", "pipelineRun.Name", a.pipelineRun.Name)
+		tempGroupSnapshot := a.prepareTempGroupSnapshot(a.pipelineRun, &a.application.ObjectMeta, true)
+		numGroupSnapshotScenarios, err = a.reportStatusForExpectedSnapshot(a.pipelineRun, tempGroupSnapshot, allIntegrationTestScenarios, *integrationTestStatus, gitops.ComponentNameForGroupSnapshot)
+		if err != nil {
+			return 0, 0, fmt.Errorf("failed to report status for expected group Snapshot: %w", err)
+		}
+	}
+	return numComponentSnapshotScenarios, numGroupSnapshotScenarios, nil
+}
+
+func (a *Adapter) reportIntegrationStatusAndHandleGroups(integrationTestStatus *intgteststat.IntegrationTestStatus) (int, int, error) {
+	numComponentSnapshotScenarios := 0
+	numGroupSnapshotScenarios := 0
+	for _, componentGroup := range *a.componentGroups {
+		allIntegrationTestScenarios, err := a.loader.GetAllIntegrationTestScenariosForComponentGroups(a.context, a.client, a.componentGroups)
+		if err != nil {
+			return 0, 0, fmt.Errorf("failed to get integration test scenarios for the componentGroup %s: %w", componentGroup.Name, err)
+		}
+		if allIntegrationTestScenarios == nil {
+			continue
+		}
+		a.logger.Info(fmt.Sprintf("try to set integration test status according to the build PLR status %s", integrationTestStatus.String()))
+		tempComponentSnapshot := a.prepareTempComponentSnapshot(a.pipelineRun, &componentGroup.ObjectMeta, false)
+		num, err := a.reportStatusForExpectedSnapshot(a.pipelineRun, tempComponentSnapshot, allIntegrationTestScenarios, *integrationTestStatus, a.component.Name)
+		if err != nil {
+			return 0, 0, fmt.Errorf("failed to report status for expected group Snapshot: %w", err)
+		}
+		numComponentSnapshotScenarios += num
+
+		a.logger.Info("try to check if group snapshot is expected for build PLR")
+		isGroupSnapshotExpected, err := a.isGroupSnapshotExpectedForBuildPLR(a.pipelineRun, tempComponentSnapshot, componentGroup.Name, gitops.ComponentGroupNameLabel)
+		if err != nil {
+			return 0, 0, fmt.Errorf("failed to check if group snapshot is expected: %w", err)
+		}
+		if isGroupSnapshotExpected {
+			a.logger.Info("group snapshot is expected to be created for build pipelinerun, group integration test should be set for found context scenario", "pipelineRun.Name", a.pipelineRun.Name)
+			tempGroupSnapshot := a.prepareTempGroupSnapshot(a.pipelineRun, &componentGroup.ObjectMeta, false)
+			numGroup, err := a.reportStatusForExpectedSnapshot(a.pipelineRun, tempGroupSnapshot, allIntegrationTestScenarios, *integrationTestStatus, fmt.Sprintf("%s %s", gitops.ComponentNameForGroupSnapshot, componentGroup.Name))
+			if err != nil {
+				a.logger.Error(err, "failed to report status for expected group Snapshot")
+				return 0, 0, fmt.Errorf("failed to report status for expected group Snapshot: %w", err)
+			}
+			numGroupSnapshotScenarios += numGroup
+		}
+	}
+	return numComponentSnapshotScenarios, numGroupSnapshotScenarios, nil
 }
 
 // EnsureComponentSnapshotAnnotatedForMergedPR annotates all component snapshots when push build PLR is triggered for the same PR since the PR/MR are merged
@@ -726,13 +738,13 @@ func (a *Adapter) notifySnapshotsInGroupAboutBuild(pipelineRun *tektonv1.Pipelin
 				a.logger.Error(err, "Failed to fetch Snapshots for component", "component.Name", applicationComponent.Name)
 				return err
 			}
-		}
-		if allComponentSnapshotsInGroup != nil && len(*allComponentSnapshotsInGroup) > 0 {
-			latestSnapshot := gitops.SortSnapshots(*allComponentSnapshotsInGroup)[0]
-			err = gitops.AnnotateSnapshot(a.context, &latestSnapshot, gitops.PRGroupCreationAnnotation,
-				message, a.client)
-			if err != nil {
-				return err
+			if allComponentSnapshotsInGroup != nil && len(*allComponentSnapshotsInGroup) > 0 {
+				latestSnapshot := gitops.SortSnapshots(*allComponentSnapshotsInGroup)[0]
+				err = gitops.AnnotateSnapshot(a.context, &latestSnapshot, gitops.PRGroupCreationAnnotation,
+					message, a.client)
+				if err != nil {
+					return err
+				}
 			}
 		}
 	} else {
@@ -746,13 +758,13 @@ func (a *Adapter) notifySnapshotsInGroupAboutBuild(pipelineRun *tektonv1.Pipelin
 					a.logger.Error(err, "Failed to fetch Snapshots for component", "component.Name", groupComponent.Name)
 					return err
 				}
-			}
-			if allComponentSnapshotsInGroup != nil && len(*allComponentSnapshotsInGroup) > 0 {
-				latestSnapshot := gitops.SortSnapshots(*allComponentSnapshotsInGroup)[0]
-				err = gitops.AnnotateSnapshot(a.context, &latestSnapshot, gitops.PRGroupCreationAnnotation,
-					message, a.client)
-				if err != nil {
-					return err
+				if allComponentSnapshotsInGroup != nil && len(*allComponentSnapshotsInGroup) > 0 {
+					latestSnapshot := gitops.SortSnapshots(*allComponentSnapshotsInGroup)[0]
+					err = gitops.AnnotateSnapshot(a.context, &latestSnapshot, gitops.PRGroupCreationAnnotation,
+						message, a.client)
+					if err != nil {
+						return err
+					}
 				}
 			}
 		}
