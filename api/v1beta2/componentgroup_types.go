@@ -97,12 +97,11 @@ type TestGraphNode struct {
 	// +required
 	Name string `json:"name"`
 
-	// OnFail defines how to behave if this IntegrationTestScenario fails.
-	// Options: "run" (default) - continue running dependent tests, "skip" - skip dependent tests
-	// +kubebuilder:validation:Enum=run;skip
-	// +kubebuilder:default=run
+	// FailFast defines how to behave if this IntegrationTestScenario fails.
+	// If true, skip dependent tests.  If false, continue running dependent tests
+	// +kubebuilder:default=false
 	// +optional
-	OnFail string `json:"onFail,omitempty"`
+	FailFast bool `json:"failFast,omitempty"`
 }
 
 // SnapshotCreatorSpec defines custom logic for creating snapshots.

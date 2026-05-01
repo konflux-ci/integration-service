@@ -119,7 +119,7 @@ func UpdateGCLEntry(ctx context.Context, adapterClient client.Client, componentG
 func UpdateMultipleGCLEntries(ctx context.Context, adapterClient client.Client, componentGroup *v1beta2.ComponentGroup, componentsToUpdate map[string]v1beta2.ComponentState, logger helpers.IntegrationLogger) error {
 	patch := client.MergeFromWithOptions(componentGroup.DeepCopy(), client.MergeFromWithOptimisticLock{})
 	for i, entry := range componentGroup.Status.GlobalCandidateList {
-		entryKey := getComponentVersionString(entry.Name, entry.Version)
+		entryKey := helpers.GetComponentVersionString(entry.Name, entry.Version)
 		newEntry, ok := componentsToUpdate[entryKey]
 		if !ok {
 			// if key doesn't exist then we want to retain the original GCL entry
@@ -145,7 +145,7 @@ func UpdateGCLForOverrideSnapshot(ctx context.Context, adapterClient client.Clie
 		component := component //G601
 
 		// Create ComponentState object
-		key := getComponentVersionString(component.Name, component.Version)
+		key := helpers.GetComponentVersionString(component.Name, component.Version)
 		componentsToAdd[key] = snapshotComponentToComponentState(component)
 	}
 

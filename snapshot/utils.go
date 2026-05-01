@@ -18,13 +18,13 @@ package snapshot
 
 import (
 	"crypto/rand"
-	"fmt"
 	"math/big"
 	"strings"
 	"time"
 
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
 	"github.com/konflux-ci/integration-service/api/v1beta2"
+	"github.com/konflux-ci/integration-service/helpers"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 )
 
@@ -43,18 +43,10 @@ func generateRandomSuffix() (string, error) {
 	return string(suffix), nil
 }
 
-func getComponentVersionString(name, version string) string {
-	return fmt.Sprintf("%s/%s", name, version)
-}
-
-func getComponentVersionLogString(name, version string) string {
-	return fmt.Sprintf("%s (version %s)", name, version)
-}
-
 func joinInvalidComponentNamesAndVersions(invalidComponents []v1beta2.ComponentState) string {
 	var sb strings.Builder
 	for _, component := range invalidComponents {
-		sb.WriteString(getComponentVersionLogString(component.Name, component.Version))
+		sb.WriteString(helpers.GetComponentVersionLogString(component.Name, component.Version))
 	}
 	return sb.String()
 }

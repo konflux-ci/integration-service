@@ -174,6 +174,10 @@ func main() {
 		setupLog.Error(err, "unable to setup controllers")
 		os.Exit(1)
 	}
+	if err = iswebhook.SetupComponentGroupWebhookWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create webhook", "webhook", "ComponentGroup")
+		os.Exit(1)
+	}
 	if err = iswebhook.SetupIntegrationTestScenarioWebhookWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create webhook", "webhook", "IntegrationTestScenario")
 		os.Exit(1)

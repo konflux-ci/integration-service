@@ -20,6 +20,7 @@ import (
 	"github.com/go-logr/logr"
 	"github.com/konflux-ci/integration-service/internal/controller/buildpipeline"
 	"github.com/konflux-ci/integration-service/internal/controller/component"
+	"github.com/konflux-ci/integration-service/internal/controller/componentgroup"
 	"github.com/konflux-ci/integration-service/internal/controller/integrationpipeline"
 	"github.com/konflux-ci/integration-service/internal/controller/snapshot"
 	"github.com/konflux-ci/integration-service/internal/controller/statusreport"
@@ -35,6 +36,7 @@ var setupFunctions = []func(manager.Manager, *logr.Logger) error{
 	//scenario.SetupController,
 	statusreport.SetupController,
 	component.SetupController,
+	componentgroup.SetupController,
 }
 
 // SetupControllers invoke all SetupController functions defined in setupFunctions, setting all controllers up and

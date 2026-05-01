@@ -1,5 +1,5 @@
 /*
-Copyright 2022 Red Hat Inc.
+Copyright 2023 Red Hat Inc.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,23 +14,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package snapshot
+package dag
 
 import (
-	"unicode"
+	"testing"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
 
-var _ = Describe("Utility functions", Ordered, func() {
-	Context("Validating generateRandomSuffix", func() {
-		It("Can generate a suffix", func() {
-			suffix, err := generateRandomSuffix()
-			Expect(err).NotTo(HaveOccurred())
-			Expect(suffix).To(HaveLen(2))
-			Expect(unicode.IsDigit(rune(suffix[0])) || unicode.IsLower(rune(suffix[0]))).To(BeTrue())
-			Expect(unicode.IsDigit(rune(suffix[1])) || unicode.IsLower(rune(suffix[1]))).To(BeTrue())
-		})
-	})
-})
+func TestIntegrationteststatus(t *testing.T) {
+	RegisterFailHandler(Fail)
+	RunSpecs(t, "DAG Suite")
+}

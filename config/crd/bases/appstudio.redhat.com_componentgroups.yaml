@@ -139,17 +139,14 @@ spec:
                     description: TestGraphNode represents a node in the test serialization
                       graph
                     properties:
+                      failFast:
+                        default: false
+                        description: |-
+                          FailFast defines how to behave if this IntegrationTestScenario fails.
+                          If true, skip dependent tests.  If false, continue running dependent tests
+                        type: boolean
                       name:
                         description: Name is the name of the IntegrationTestScenario
-                        type: string
-                      onFail:
-                        default: run
-                        description: |-
-                          OnFail defines how to behave if this IntegrationTestScenario fails.
-                          Options: "run" (default) - continue running dependent tests, "skip" - skip dependent tests
-                        enum:
-                        - run
-                        - skip
                         type: string
                     required:
                     - name

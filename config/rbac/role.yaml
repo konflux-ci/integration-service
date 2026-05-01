@@ -31,6 +31,7 @@ rules:
   - appstudio.redhat.com
   resources:
   - applications/finalizers
+  - componentgroups/finalizers
   - components/finalizers
   - snapshots/finalizers
   verbs:
@@ -39,22 +40,12 @@ rules:
   - appstudio.redhat.com
   resources:
   - applications/status
-  - componentgroups/status
   verbs:
   - get
 - apiGroups:
   - appstudio.redhat.com
   resources:
   - componentgroups
-  - environments
-  - releaseplans
-  verbs:
-  - get
-  - list
-  - watch
-- apiGroups:
-  - appstudio.redhat.com
-  resources:
   - components
   verbs:
   - get
@@ -65,6 +56,7 @@ rules:
 - apiGroups:
   - appstudio.redhat.com
   resources:
+  - componentgroups/status
   - components/status
   - environments/status
   - integrationtestscenarios/status
@@ -75,6 +67,15 @@ rules:
   - get
   - patch
   - update
+- apiGroups:
+  - appstudio.redhat.com
+  resources:
+  - environments
+  - releaseplans
+  verbs:
+  - get
+  - list
+  - watch
 - apiGroups:
   - pipelinesascode.tekton.dev
   resources:
