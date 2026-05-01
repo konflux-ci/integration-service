@@ -63,7 +63,7 @@ func snapshotComponentToComponentState(snapshotComponent applicationapiv1alpha1.
 }
 
 func getPipelineRunStartTimeMillis(pipelineRun *tektonv1.PipelineRun) int64 {
-	if pipelineRun.Status.StartTime != nil {
+	if pipelineRun != nil && pipelineRun.Status.StartTime != nil {
 		return pipelineRun.Status.StartTime.UnixMilli()
 	}
 	return time.Now().UnixMilli()

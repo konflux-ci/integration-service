@@ -23,7 +23,6 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/go-logr/logr"
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
 	"github.com/konflux-ci/integration-service/api/v1beta2"
 	"github.com/konflux-ci/integration-service/gitops"
@@ -49,7 +48,8 @@ var _ = Describe("Snapshot creation functions", Ordered, func() {
 		hasCompGroup      *v1beta2.ComponentGroup
 		hasAppSample      *applicationapiv1alpha1.Application
 		hasCompSample     *applicationapiv1alpha1.Component
-		logger            logr.Logger
+		//logger            logr.Logger
+		logger helpers.IntegrationLogger
 	)
 	const (
 		SampleRepoLink           = "https://github.com/devfile-samples/devfile-sample-java-springboot-basic"
@@ -278,7 +278,7 @@ var _ = Describe("Snapshot creation functions", Ordered, func() {
 		}
 		Expect(k8sClient.Status().Update(ctx, successfulTaskRun)).Should(Succeed())
 
-		logger = log.FromContext(ctx)
+		logger = helpers.IntegrationLogger{Logger: log.FromContext(ctx)}
 	})
 
 	AfterAll(func() {
@@ -294,7 +294,7 @@ var _ = Describe("Snapshot creation functions", Ordered, func() {
 
 	Context("Testing PrepareSnapshotForPipelineRun()", func() {
 		It("ensures built component includes git context from Component CR", func() {
-			expectedSnapshot, err := PrepareSnapshotForPipelineRun(ctx, k8sClient, buildPipelineRun, componentName, hasCompGroup)
+			expectedSnapshot, err := PrepareSnapshotForPipelineRun(ctx, k8sClient, buildPipelineRun, componentName, hasCompGroup, logger)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(expectedSnapshot).NotTo(BeNil())
 			var built *applicationapiv1alpha1.SnapshotComponent
@@ -310,7 +310,7 @@ var _ = Describe("Snapshot creation functions", Ordered, func() {
 		})
 
 		It("ensures that snapshot has label pointing to build pipelinerun", func() {
-			expectedSnapshot, err := PrepareSnapshotForPipelineRun(ctx, k8sClient, buildPipelineRun, componentName, hasCompGroup)
+			expectedSnapshot, err := PrepareSnapshotForPipelineRun(ctx, k8sClient, buildPipelineRun, componentName, hasCompGroup, logger)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(expectedSnapshot).NotTo(BeNil())
 
@@ -339,7 +339,7 @@ var _ = Describe("Snapshot creation functions", Ordered, func() {
 			buildPipelineRunNoStartTime := buildPipelineRun.DeepCopy()
 			buildPipelineRunNoStartTime.Status.StartTime = nil
 
-			expectedSnapshot, err := PrepareSnapshotForPipelineRun(ctx, k8sClient, buildPipelineRunNoStartTime, componentName, hasCompGroup)
+			expectedSnapshot, err := PrepareSnapshotForPipelineRun(ctx, k8sClient, buildPipelineRunNoStartTime, componentName, hasCompGroup, logger)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(expectedSnapshot).NotTo(BeNil())
 
@@ -360,7 +360,7 @@ var _ = Describe("Snapshot creation functions", Ordered, func() {
 		})
 
 		It("ensures that Labels and Annotations were copied to snapshot from pipelinerun", func() {
-			copyToSnapshot, err := PrepareSnapshotForPipelineRun(ctx, k8sClient, buildPipelineRun, componentName, hasCompGroup)
+			copyToSnapshot, err := PrepareSnapshotForPipelineRun(ctx, k8sClient, buildPipelineRun, componentName, hasCompGroup, logger)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(copyToSnapshot).NotTo(BeNil())
 
@@ -383,7 +383,7 @@ var _ = Describe("Snapshot creation functions", Ordered, func() {
 			mergeQueueBuildPipelineRun.Labels[tektonconsts.PipelineAsCodePullRequestLabel] = ""
 			mergeQueueBuildPipelineRun.Annotations[tektonconsts.PipelineAsCodePullRequestLabel] = ""
 			mergeQueueBuildPipelineRun.Name = buildPipelineRun.Name + "-merge"
-			expectedSnapshot, err := PrepareSnapshotForPipelineRun(ctx, k8sClient, mergeQueueBuildPipelineRun, componentName, hasCompGroup)
+			expectedSnapshot, err := PrepareSnapshotForPipelineRun(ctx, k8sClient, mergeQueueBuildPipelineRun, componentName, hasCompGroup, logger)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(expectedSnapshot).NotTo(BeNil())
 
@@ -430,7 +430,7 @@ var _ = Describe("Snapshot creation functions", Ordered, func() {
 
 			messageError := "Missing info IMAGE_DIGEST from pipelinerun pipelinerun-build-sample"
 			var info map[string]string
-			expectedSnapshot, err := PrepareSnapshotForPipelineRun(ctx, k8sClient, buildPipelineRunNoSource, componentName, hasCompGroup)
+			expectedSnapshot, err := PrepareSnapshotForPipelineRun(ctx, k8sClient, buildPipelineRunNoSource, componentName, hasCompGroup, logger)
 			Expect(expectedSnapshot).To(BeNil())
 			Expect(err).To(HaveOccurred())
 			err = tekton.AnnotateBuildPipelineRunWithCreateSnapshotAnnotation(ctx, buildPipelineRun, k8sClient, err)
@@ -443,7 +443,7 @@ var _ = Describe("Snapshot creation functions", Ordered, func() {
 		})
 
 		It("ensures pipelines as code labels and annotations are propagated to the snapshot", func() {
-			snapshot, err := PrepareSnapshotForPipelineRun(ctx, k8sClient, buildPipelineRun, componentName, hasCompGroup)
+			snapshot, err := PrepareSnapshotForPipelineRun(ctx, k8sClient, buildPipelineRun, componentName, hasCompGroup, logger)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(snapshot).ToNot(BeNil())
 			annotation, found := snapshot.GetAnnotations()["pac.test.appstudio.openshift.io/on-target-branch"]
@@ -455,7 +455,7 @@ var _ = Describe("Snapshot creation functions", Ordered, func() {
 		})
 
 		It("ensures non-pipelines as code labels and annotations are NOT propagated to the snapshot", func() {
-			snapshot, err := PrepareSnapshotForPipelineRun(ctx, k8sClient, buildPipelineRun, componentName, hasCompGroup)
+			snapshot, err := PrepareSnapshotForPipelineRun(ctx, k8sClient, buildPipelineRun, componentName, hasCompGroup, logger)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(snapshot).ToNot(BeNil())
 
@@ -473,7 +473,7 @@ var _ = Describe("Snapshot creation functions", Ordered, func() {
 		})
 
 		It("ensures build labels and annotations prefixed with 'build.appstudio' are propagated to the snapshot", func() {
-			snapshot, err := PrepareSnapshotForPipelineRun(ctx, k8sClient, buildPipelineRun, componentName, hasCompGroup)
+			snapshot, err := PrepareSnapshotForPipelineRun(ctx, k8sClient, buildPipelineRun, componentName, hasCompGroup, logger)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(snapshot).ToNot(BeNil())
 
@@ -487,7 +487,7 @@ var _ = Describe("Snapshot creation functions", Ordered, func() {
 		})
 
 		It("ensures build labels and annotations non-prefixed with 'build.appstudio' are NOT propagated to the snapshot", func() {
-			snapshot, err := PrepareSnapshotForPipelineRun(ctx, k8sClient, buildPipelineRun, componentName, hasCompGroup)
+			snapshot, err := PrepareSnapshotForPipelineRun(ctx, k8sClient, buildPipelineRun, componentName, hasCompGroup, logger)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(snapshot).ToNot(BeNil())
 
@@ -506,7 +506,7 @@ var _ = Describe("Snapshot creation functions", Ordered, func() {
 
 		It("ensures integration workflow annotation is set to 'pull-request' for pr events", func() {
 			// default buildPipelineRun already has event-type set to pull_request
-			snapshot, err := PrepareSnapshotForPipelineRun(ctx, k8sClient, buildPipelineRun, componentName, hasCompGroup)
+			snapshot, err := PrepareSnapshotForPipelineRun(ctx, k8sClient, buildPipelineRun, componentName, hasCompGroup, logger)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(snapshot).ToNot(BeNil())
 
@@ -522,7 +522,7 @@ var _ = Describe("Snapshot creation functions", Ordered, func() {
 			pushPipelineRun.Labels["pipelinesascode.tekton.dev/event-type"] = "push"
 			delete(pushPipelineRun.Labels, "pipelinesascode.tekton.dev/pull-request")
 
-			snapshot, err := PrepareSnapshotForPipelineRun(ctx, k8sClient, pushPipelineRun, componentName, hasCompGroup)
+			snapshot, err := PrepareSnapshotForPipelineRun(ctx, k8sClient, pushPipelineRun, componentName, hasCompGroup, logger)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(snapshot).ToNot(BeNil())
 
@@ -536,7 +536,7 @@ var _ = Describe("Snapshot creation functions", Ordered, func() {
 	Context("testing creation of snapshotComponentsList", func() {
 		It("Ensures valid and invalid snapshotComponents can be gathered from the GCL", func() {
 			var buf bytes.Buffer
-			readableLog := buflogr.NewWithBuffer(&buf)
+			readableLog := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
 			snapshotComponents, invalidComponents := getSnapshotComponentsFromGCL(hasCompGroup, readableLog)
 
 			Expect(snapshotComponents).To(HaveLen(1))
@@ -614,12 +614,21 @@ var _ = Describe("Snapshot creation functions", Ordered, func() {
 			newSnapshotComponent, err := getSnapshotComponentFromBuildPLR(buildPipelineRun, componentName, logger)
 			Expect(err).NotTo(HaveOccurred())
 
-			snapshot, err := PrepareSnapshot(ctx, k8sClient, hasCompGroup, newSnapshotComponent, logger)
+			snapshot, err := PrepareSnapshot(ctx, k8sClient, hasCompGroup, &newSnapshotComponent, logger)
 			Expect(snapshot).NotTo(BeNil())
 			Expect(err).ToNot(HaveOccurred())
 			Expect(snapshot.Spec.Components).To(HaveLen(1), "One component should have been added to snapshot.  Other component should have been omited due to empty ContainerImage field or missing valid digest")
 			Expect(snapshot.Spec.Components[0].Name).To(Equal(componentName), "The built component should have been added to the snapshot")
 			Expect(snapshot.Annotations[helpers.CreateSnapshotAnnotationName]).To(Equal("Component(s) 'another-component-sample (version v1)' is(are) not included in snapshot due to missing valid containerImage or git source"))
+		})
+	})
+
+	Context("Testing CreateDependentComponentGroupSnapshots()", func() {
+		It("Can create dependent snapshots for a componentGroup with dependents", func() {
+			createdSnapshots, errorsForDependents := CreateDependentComponentGroupSnapshots(ctx, k8sClient, []*v1beta2.ComponentGroup{hasCompGroup}, "parent-snapshot-sample", "origin-snapshot-sample", logger)
+			Expect(createdSnapshots).To(HaveLen(1))
+			Expect(createdSnapshots[hasCompGroup.Name]).To(HavePrefix("component-group-sample-"))
+			Expect(errorsForDependents).NotTo(HaveOccurred())
 		})
 	})
 })

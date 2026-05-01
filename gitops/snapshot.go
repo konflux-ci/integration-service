@@ -328,6 +328,12 @@ const (
 	GitCommentPolicyAnnotation = "test.appstudio.openshift.io/comment_strategy"
 	// GitCommentPolicyAllDisabled is the value to disable all test comments for the component got pac repository
 	GitCommentPolicyAllDisabled = "disable_all"
+
+	// ParentSnapshotAnnotation is the snapshot that created this snapshot from a ComponentGroup dependency chain
+	ParentSnapshotAnnotation = TestLabelPrefix + "/parent-snapshot"
+
+	// OriginSnapshotAnnotation is the snapshot that set off the chain of ComponentGroup dependent snapshot creation
+	OriginSnapshotAnnotation = TestLabelPrefix + "/origin-snapshot"
 )
 
 var (

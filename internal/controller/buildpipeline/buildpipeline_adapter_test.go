@@ -742,7 +742,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 					},
 				},
 			})
-			_, err := snapshot.PrepareSnapshotForPipelineRun(adapter.context, adapter.client, adapter.pipelineRun, adapter.component.Name, hasCompGroup)
+			_, err := snapshot.PrepareSnapshotForPipelineRun(adapter.context, adapter.client, adapter.pipelineRun, adapter.component.Name, hasCompGroup, adapter.logger)
 			Expect(helpers.IsInvalidImageDigestError(err)).To(BeTrue())
 			Eventually(func() bool {
 				result, err := adapter.EnsureSnapshotExists()

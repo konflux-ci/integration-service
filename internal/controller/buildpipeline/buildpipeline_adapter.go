@@ -219,7 +219,7 @@ func (a *Adapter) EnsureSnapshotExists() (result controller.OperationResult, err
 	}
 
 	for _, componentGroup := range *a.componentGroups {
-		expectedSnapshot, err := snapshot.PrepareSnapshotForPipelineRun(a.context, a.client, a.pipelineRun, a.component.Name, &componentGroup)
+		expectedSnapshot, err := snapshot.PrepareSnapshotForPipelineRun(a.context, a.client, a.pipelineRun, a.component.Name, &componentGroup, a.logger)
 		if err != nil {
 			return a.updatePipelineRunWithCustomizedError(&canRemoveFinalizer, err, a.context, a.pipelineRun, a.client, a.logger)
 		}

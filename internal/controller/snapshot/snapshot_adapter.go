@@ -98,6 +98,40 @@ func NewAdapter(context context.Context, snapshot *applicationapiv1alpha1.Snapsh
 	}
 }
 
+func (a *Adapter) EnsureDependentSnapshotsExist() (controller.OperationResult, error) {
+	// Get dependent ComponentGroups from a.componentGroup LOADER
+	dependents, loaderErrs := a.loader.GetDependentComponentGroups(a.context, a.client, a.componentGroup)
+	if len(loaderErrs) != 0 {
+		// if the only errors are IsNotFound errors then we don't want to requeue
+		// A user may have deleted a componentGroup and not removed it from another
+		// componentGroup's dependents list
+		var requeueableError error
+		for cg, err := range loaderErrs {
+			if clienterrors.IsNotFound(err) {
+				continue
+			}
+			requeueableError = errors.Join(requeueableError, fmt.Errorf("error getting componentGroup %s: %v", cg, err))
+		}
+
+		if requeueableError != nil {
+			return controller.RequeueWithError(requeueableError)
+		}
+	}
+
+	// Create snapshot from GCL for each ComponentGroup SNAPSHOT PACKAGE - should return componentGroupName:snapshot map
+	originSnapshot, ok := a.snapshot.GetAnnotations()[gitops.OriginSnapshotAnnotation]
+	if !ok {
+		originSnapshot = a.snapshot.Name
+	}
+	createdSnapshots, err := snapshot.CreateDependentComponentGroupSnapshots(a.context, a.client, dependents, a.snapshot.Name, originSnapshot, a.logger)
+	if err != nil {
+		a.logger.Error(err, "Ran into errors while creating dependent snapshots")
+	}
+	a.logger.Info("Created dependent snapshots for snapshot", "snapshot", a.snapshot.Name, "depedentSnapshots", createdSnapshots)
+
+	return controller.ContinueProcessing()
+}
+
 // EnsureRerunPipelineRunsExist is responsible for recreating integration test pipelineruns triggered by users
 func (a *Adapter) EnsureRerunPipelineRunsExist() (controller.OperationResult, error) {
 	runLabelValue, ok := gitops.GetIntegrationTestRunLabelValue(a.snapshot)

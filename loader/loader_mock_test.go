@@ -477,4 +477,19 @@ var _ = Describe("Release Adapter", Ordered, func() {
 			Expect(err).ToNot(HaveOccurred())
 		})
 	})
+
+	Context("When calling GetDependentComponentGroups", func() {
+		It("returns resource and error from the context", func() {
+			dependents := []*v1beta2.ComponentGroup{}
+			mockContext := toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: ComponentGroupsContextKey,
+					Resource:   dependents,
+				},
+			})
+			resource, err := loader.GetDependentComponentGroups(mockContext, nil, nil)
+			Expect(resource).To(Equal(dependents))
+			Expect(err).To(BeNil())
+		})
+	})
 })

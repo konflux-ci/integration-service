@@ -82,6 +82,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		testReleasePlan                           *releasev1alpha1.ReleasePlan
 		hasApp                                    *applicationapiv1alpha1.Application
 		hasCompGroup                              *v1beta2.ComponentGroup
+		dependentCompGroup                        *v1beta2.ComponentGroup
 		hasComp                                   *applicationapiv1alpha1.Component
 		hasCompMissingImageDigest                 *applicationapiv1alpha1.Component
 		hasCompWithValidImage                     *applicationapiv1alpha1.Component
@@ -157,6 +158,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 						},
 					},
 				},
+				Dependents: []string{"dependent-component-group"},
 			},
 		}
 		Expect(k8sClient.Create(ctx, hasCompGroup)).Should(Succeed())
@@ -183,6 +185,25 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			},
 		}
 		Expect(k8sClient.Status().Update(ctx, hasCompGroup)).Should(Succeed())
+
+		dependentCompGroup = &v1beta2.ComponentGroup{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "dependent-component-group",
+				Namespace: "default",
+			},
+			Spec: v1beta2.ComponentGroupSpec{
+				Components: []v1beta2.ComponentReference{
+					v1beta2.ComponentReference{
+						Name: "component-sample",
+						ComponentVersion: v1beta2.ComponentVersionReference{
+							Name:     "v1",
+							Revision: "main",
+						},
+					},
+				},
+			},
+		}
+		Expect(k8sClient.Create(ctx, dependentCompGroup)).Should(Succeed())
 
 		integrationTestScenario = &v1beta2.IntegrationTestScenario{
 			ObjectMeta: metav1.ObjectMeta{
@@ -3922,4 +3943,13 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		})
 	})
 
+	When("A snapshot with dependents is created", func() {
+		It("Should not return an error", func() {
+			adapter = NewAdapter(ctx, hasCGSnapshot, hasCompGroup, logger, loader.NewMockLoader(), k8sClient)
+			result, err := adapter.EnsureDependentSnapshotsExist()
+			Expect(result.CancelRequest).To(BeFalse())
+			Expect(result.RequeueRequest).To(BeFalse())
+			Expect(err).Should(Succeed())
+		})
+	})
 })

@@ -412,3 +412,18 @@ func (l *mockLoader) GetPRComponentSnapshotsForComponentApplication(ctx context.
 	snapshots, err := toolkit.GetMockedResourceAndErrorFromContext(ctx, GetPRComponentSnapshotsForComponentContextKey, []applicationapiv1alpha1.Snapshot{})
 	return &snapshots, err
 }
+
+func (l *mockLoader) GetDependentComponentGroups(ctx context.Context, c client.Client, componentGroup *v1beta2.ComponentGroup) (dependents []*v1beta2.ComponentGroup, errsForDependents map[string]error) {
+	if ctx.Value(ComponentGroupsContextKey) == nil {
+		return l.loader.GetDependentComponentGroups(ctx, c, componentGroup)
+	}
+	dependents, err := toolkit.GetMockedResourceAndErrorFromContext(ctx, ComponentGroupsContextKey, []*v1beta2.ComponentGroup{})
+	if err == nil {
+		return dependents, nil
+	}
+	name := "error"
+	if componentGroup != nil {
+		name = componentGroup.Name
+	}
+	return dependents, map[string]error{name: err}
+}

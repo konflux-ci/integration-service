@@ -120,6 +120,7 @@ var _ = Describe("Loader", Ordered, func() {
 						},
 					},
 				},
+				Dependents: []string{hasComponentGroup1.Name, "nonexistent-componentgroup"},
 			},
 		}
 		Expect(k8sClient.Create(ctx, hasComponentGroup2)).Should(Succeed())
@@ -1329,5 +1330,15 @@ var _ = Describe("Loader", Ordered, func() {
 			Expect((*snapshots)[0].Namespace).To(Equal(hasSnapshot.Namespace))
 			Expect((*snapshots)[0].Spec).To(Equal(hasSnapshot.Spec))
 		})
+	})
+
+	It("Can get dependents for a componentGroup", func() {
+		dependents, errs := loader.GetDependentComponentGroups(ctx, k8sClient, hasComponentGroup2)
+
+		Expect(dependents).To(HaveLen(1))
+		Expect(dependents[0].Name).To(Equal(hasComponentGroup1.Name))
+
+		Expect(errs).To(HaveLen(1))
+		Expect(errs["nonexistent-componentgroup"].Error()).To(ContainSubstring("ComponentGroup.appstudio.redhat.com \"nonexistent-componentgroup\" not found"))
 	})
 })

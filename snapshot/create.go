@@ -24,7 +24,6 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/go-logr/logr"
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
 	"github.com/konflux-ci/integration-service/api/v1beta2"
 	"github.com/konflux-ci/integration-service/gitops"
@@ -36,15 +35,12 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 // PrepareSnapshotForPipelineRun prepares the Snapshot for a given PipelineRun,
 // component and application. In case the Snapshot can't be created, an error will be returned.
-func PrepareSnapshotForPipelineRun(ctx context.Context, adapterClient client.Client, pipelineRun *tektonv1.PipelineRun, componentName string, componentGroup *v1beta2.ComponentGroup) (*applicationapiv1alpha1.Snapshot, error) {
-	log := log.FromContext(ctx)
-
-	newSnapshotComponent, err := getSnapshotComponentFromBuildPLR(pipelineRun, componentName, log)
+func PrepareSnapshotForPipelineRun(ctx context.Context, adapterClient client.Client, pipelineRun *tektonv1.PipelineRun, componentName string, componentGroup *v1beta2.ComponentGroup, logger helpers.IntegrationLogger) (*applicationapiv1alpha1.Snapshot, error) {
+	newSnapshotComponent, err := getSnapshotComponentFromBuildPLR(pipelineRun, componentName, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -54,7 +50,7 @@ func PrepareSnapshotForPipelineRun(ctx context.Context, adapterClient client.Cli
 		gitops.EnrichBuiltComponentSourceGitContext(&newSnapshotComponent.Source, &comp, newSnapshotComponent.Version)
 	}
 
-	snapshot, err := PrepareSnapshot(ctx, adapterClient, componentGroup, newSnapshotComponent, log)
+	snapshot, err := PrepareSnapshot(ctx, adapterClient, componentGroup, &newSnapshotComponent, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -98,6 +94,7 @@ func PrepareSnapshotForPipelineRun(ctx context.Context, adapterClient client.Cli
 }
 
 // CreateSnapshotWithCollisionHandling attempts to create a snapshot, retrying with a random suffix if collision occurs
+// Uses pipelineRun.StartTime as a fallback for collision handling.  If pipelineRun is nil it will fallback on time.Now
 func CreateSnapshotWithCollisionHandling(ctx context.Context, client client.Client, pipelineRun *tektonv1.PipelineRun, snapshot *applicationapiv1alpha1.Snapshot, componentGroup v1beta2.ComponentGroup, logger helpers.IntegrationLogger) error {
 	originalName := snapshot.Name
 	maxRetries := 5
@@ -152,10 +149,13 @@ func CreateSnapshotWithCollisionHandling(ctx context.Context, client client.Clie
 
 // PrepareSnapshot prepares the Snapshot for a given componentGroup, components and the updated component (if any).
 // In case the Snapshot can't be created, an error will be returned.
-func PrepareSnapshot(ctx context.Context, adapterClient client.Client, componentGroup *v1beta2.ComponentGroup, newSnapshotComponent applicationapiv1alpha1.SnapshotComponent, log logr.Logger) (*applicationapiv1alpha1.Snapshot, error) {
+// If newSnapshotComponent is nil then PrepareSnapshot will return a snapshot whose components match the GCL
+func PrepareSnapshot(ctx context.Context, adapterClient client.Client, componentGroup *v1beta2.ComponentGroup, newSnapshotComponent *applicationapiv1alpha1.SnapshotComponent, logger helpers.IntegrationLogger) (*applicationapiv1alpha1.Snapshot, error) {
 
-	snapshotComponents, invalidComponents := getSnapshotComponentsFromGCL(componentGroup, log)
-	upsertNewComponentImage(&snapshotComponents, &invalidComponents, newSnapshotComponent, log)
+	snapshotComponents, invalidComponents := getSnapshotComponentsFromGCL(componentGroup, logger)
+	if newSnapshotComponent != nil {
+		upsertNewComponentImage(&snapshotComponents, &invalidComponents, *newSnapshotComponent, logger)
+	}
 
 	if len(snapshotComponents) == 0 {
 		return nil, helpers.NewMissingValidComponentError(joinInvalidComponentNamesAndVersions(invalidComponents))
@@ -163,7 +163,7 @@ func PrepareSnapshot(ctx context.Context, adapterClient client.Client, component
 	snapshot := NewSnapshot(componentGroup, &snapshotComponents)
 
 	// expose the source repo URL and SHA in the snapshot as annotation do we don't have to do lookup in integration tests
-	if newSnapshotComponent.Source.GitSource != nil {
+	if newSnapshotComponent != nil && newSnapshotComponent.Source.GitSource != nil {
 		if err := metadata.SetAnnotation(snapshot, gitops.SnapshotGitSourceRepoURLAnnotation, newSnapshotComponent.Source.GitSource.URL); err != nil {
 			return nil, fmt.Errorf("failed to set annotation %s: %w", gitops.SnapshotGitSourceRepoURLAnnotation, err)
 		}
@@ -185,7 +185,7 @@ func PrepareSnapshot(ctx context.Context, adapterClient client.Client, component
 }
 
 // This prevents race conditions if EnsureGCLAlignedWithSpecComponents runs late
-func getSnapshotComponentsFromGCL(componentGroup *v1beta2.ComponentGroup, log logr.Logger) ([]applicationapiv1alpha1.SnapshotComponent, []v1beta2.ComponentState) {
+func getSnapshotComponentsFromGCL(componentGroup *v1beta2.ComponentGroup, log helpers.IntegrationLogger) ([]applicationapiv1alpha1.SnapshotComponent, []v1beta2.ComponentState) {
 	var snapshotComponents []applicationapiv1alpha1.SnapshotComponent
 	var invalidComponents []v1beta2.ComponentState
 
@@ -245,7 +245,7 @@ func getSpecComponentsAndVersionsMap(componentGroup *v1beta2.ComponentGroup) map
 // Adds the updated Component to the list of snapshotComponents that will be added to the snapshot.  If a SnapshotComponent with
 // a matching name and version already exists in the snapshotComponents list then it will be replaced with the updated component.
 // Otherwise the updated component will be appended to the list.
-func upsertNewComponentImage(snapshotComponents *[]applicationapiv1alpha1.SnapshotComponent, invalidComponents *[]v1beta2.ComponentState, updatedComponent applicationapiv1alpha1.SnapshotComponent, log logr.Logger) {
+func upsertNewComponentImage(snapshotComponents *[]applicationapiv1alpha1.SnapshotComponent, invalidComponents *[]v1beta2.ComponentState, updatedComponent applicationapiv1alpha1.SnapshotComponent, log helpers.IntegrationLogger) {
 	for i, snapshotComponent := range *snapshotComponents {
 		if snapshotComponent.Name == updatedComponent.Name {
 			if snapshotComponent.Version == "" || snapshotComponent.Version == updatedComponent.Version {
@@ -320,7 +320,7 @@ func getComponentSourceFromGCLComponent(gclComponent v1beta2.ComponentState) app
 	return componentSource
 }
 
-func getSnapshotComponentFromBuildPLR(pipelineRun *tektonv1.PipelineRun, componentName string, log logr.Logger) (applicationapiv1alpha1.SnapshotComponent, error) {
+func getSnapshotComponentFromBuildPLR(pipelineRun *tektonv1.PipelineRun, componentName string, log helpers.IntegrationLogger) (applicationapiv1alpha1.SnapshotComponent, error) {
 	containerImage, err := tekton.GetImagePullSpecFromPipelineRun(pipelineRun)
 	if err != nil {
 		return applicationapiv1alpha1.SnapshotComponent{}, err
@@ -345,4 +345,36 @@ func getSnapshotComponentFromBuildPLR(pipelineRun *tektonv1.PipelineRun, compone
 		ContainerImage: containerImage,
 		Source:         *componentSource,
 	}, nil
+}
+
+func CreateDependentComponentGroupSnapshots(ctx context.Context, adapterClient client.Client, dependents []*v1beta2.ComponentGroup, parentSnapshot, originSnapshot string, logger helpers.IntegrationLogger) (createdSnapshots map[string]string, errorsForDependents error) {
+	createdSnapshots = make(map[string]string)
+	for _, dependent := range dependents {
+		snapshot, err := PrepareSnapshot(ctx, adapterClient, dependent, nil, logger)
+		if err != nil {
+			logger.Error(err, "Error preparing dependent snapshot for parent", "snapshot.Name", dependent.Name, "parentSnapshot.Name", parentSnapshot)
+			errorsForDependents = errors.Join(errorsForDependents, fmt.Errorf("error preparing dependent snapshot '%s' for parent '%s': %+v", dependent.Name, parentSnapshot, err))
+			continue
+		}
+
+		// NOTE: do we want to copy labels and annotations from parent snapshot?
+		// If so, do we want to include the build labels and annotations?
+		if err = metadata.SetAnnotation(snapshot, gitops.ParentSnapshotAnnotation, parentSnapshot); err != nil {
+			logger.Error(err, "Could not set parent snapshot annotation on snapshot", "snapshot.Name", snapshot.Name, "value", parentSnapshot)
+		}
+		if err = metadata.SetAnnotation(snapshot, gitops.OriginSnapshotAnnotation, originSnapshot); err != nil {
+			logger.Error(err, "Could not set origin snapshot annotation on snapshot", "snapshot.Name", snapshot.Name, "value", originSnapshot)
+		}
+
+		err = CreateSnapshotWithCollisionHandling(ctx, adapterClient, nil, snapshot, *dependent, logger)
+		if err != nil {
+			logger.Error(err, "Error creating dependent snapshot for parent", "snapshot.Name", dependent.Name, "parentSnapshot.Name", parentSnapshot)
+			errorsForDependents = errors.Join(errorsForDependents, fmt.Errorf("error creating dependent snapshot '%s' for parent '%s': %+v", dependent.Name, parentSnapshot, err))
+			continue
+		}
+
+		// add snapshot name to createdSnapshots[componentGroupName]
+		createdSnapshots[dependent.Name] = snapshot.Name
+	}
+	return
 }

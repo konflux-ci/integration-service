@@ -81,6 +81,7 @@ type ObjectLoader interface {
 	GetResolutionRequest(ctx context.Context, c client.Client, namespace, name string) (resolutionv1beta1.ResolutionRequest, error)
 	GetPRComponentSnapshotsForComponentApplication(ctx context.Context, c client.Client, namespace, applicationName, componentName, prNumber string) (*[]applicationapiv1alpha1.Snapshot, error)
 	GetPRComponentSnapshotsForComponent(ctx context.Context, c client.Client, componentGroupNames []string, namespace, componentName, prNumber string) (*[]applicationapiv1alpha1.Snapshot, error)
+	GetDependentComponentGroups(ctx context.Context, c client.Client, componentGroup *v1beta2.ComponentGroup) ([]*v1beta2.ComponentGroup, map[string]error)
 }
 
 type loader struct{}
@@ -940,4 +941,20 @@ func (l *loader) GetPRComponentSnapshotsForComponentApplication(ctx context.Cont
 		return nil, err
 	}
 	return &snapshots.Items, nil
+}
+
+func (l *loader) GetDependentComponentGroups(ctx context.Context, c client.Client, componentGroup *v1beta2.ComponentGroup) (dependents []*v1beta2.ComponentGroup, errsForDependents map[string]error) {
+	errsForDependents = make(map[string]error)
+	dependentNames := componentGroup.Spec.Dependents
+
+	for _, name := range dependentNames {
+		// Get componentGroup
+		dependentCG, err := l.GetComponentGroup(ctx, c, name, componentGroup.Namespace)
+		if err != nil {
+			errsForDependents[name] = err
+			continue
+		}
+		dependents = append(dependents, dependentCG)
+	}
+	return
 }
