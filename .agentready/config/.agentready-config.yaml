@@ -1,0 +1,13 @@
+excluded_attributes:
+  - type_annotations
+  - dbt_project_config
+  - dbt_model_documentation
+  - test_coverage
+  - file_size_limits
+  - inline_documentation
+  - dbt_data_tests
+  - dbt_project_structure
+  - architecture_decisions
+  - semantic_naming
+  - structured_logging
+  - branch_protection
