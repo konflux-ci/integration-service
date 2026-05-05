@@ -573,7 +573,9 @@ func (a *Adapter) EnsureAllReleasesExist() (controller.OperationResult, error) {
 		return controller.ContinueProcessing()
 	}
 
-	releasePlans, err := a.getAutoReleasePlans()
+	shouldRelease := a.getShouldRelease()
+
+	releasePlans, err := a.getAutoReleasePlans(shouldRelease)
 	if err != nil {
 		return a.handleReleaseError(err, "Failed to get all ReleasePlans")
 	}
@@ -589,7 +591,11 @@ func (a *Adapter) EnsureAllReleasesExist() (controller.OperationResult, error) {
 			autoReleaseMessage = "The Snapshot was auto-released"
 		}
 	} else {
-		autoReleaseMessage = "Skipping auto-release of the Snapshot because no ReleasePlans have the 'auto-release' label set to 'true'"
+		if !shouldRelease {
+			autoReleaseMessage = "Skipping auto-release because the build pipeline's SHOULD_RELEASE result is 'false'"
+		} else {
+			autoReleaseMessage = "Skipping auto-release of the Snapshot because no ReleasePlans have the 'auto-release' label set to 'true'"
+		}
 	}
 
 	err = gitops.MarkSnapshotAsAutoReleased(a.context, a.client, a.snapshot, autoReleaseMessage)
@@ -617,15 +623,27 @@ func (a *Adapter) shouldProcessReleases() bool {
 	return true
 }
 
+// getShouldRelease checks the Snapshot's annotation for the SHOULD_RELEASE
+// value that was persisted by the build pipeline adapter at Snapshot creation time.
+// Returns false only when the annotation is explicitly "false"; absence means release normally.
+func (a *Adapter) getShouldRelease() bool {
+	val, ok := a.snapshot.Annotations[gitops.BuildPipelineRunShouldReleaseAnnotation]
+	if ok && val == "false" {
+		a.logger.Info("Snapshot SHOULD_RELEASE annotation is false, releases will be gated")
+		return false
+	}
+	return true
+}
+
 // getAutoReleasePlans fetch release plans
-func (a *Adapter) getAutoReleasePlans() (*[]releasev1alpha1.ReleasePlan, error) {
+func (a *Adapter) getAutoReleasePlans(shouldRelease bool) (*[]releasev1alpha1.ReleasePlan, error) {
 	// TODO: remove application-specific branch
 	var releasePlans *[]releasev1alpha1.ReleasePlan
 	var err error
 	if a.application != nil {
-		releasePlans, err = a.loader.GetAutoReleasePlansForApplication(a.context, a.client, a.application, a.snapshot)
+		releasePlans, err = a.loader.GetAutoReleasePlansForApplication(a.context, a.client, a.application, a.snapshot, shouldRelease)
 	} else {
-		releasePlans, err = a.loader.GetAutoReleasePlansForComponentGroup(a.context, a.client, a.componentGroup, a.snapshot)
+		releasePlans, err = a.loader.GetAutoReleasePlansForComponentGroup(a.context, a.client, a.componentGroup, a.snapshot, shouldRelease)
 	}
 	if err != nil {
 		a.logger.Error(err, "Failed to get all ReleasePlans")

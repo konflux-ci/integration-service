@@ -73,7 +73,7 @@ var _ = Describe("Auto-release annotation evaluation", Ordered, func() {
 	It("returns false when the auto-release annotation is missing", func() {
 		snapshotCopy := hasSnapshot.DeepCopy()
 		autoReleaseAnnotation := ""
-		allowed, err := gitops.EvaluateSnapshotAutoReleaseAnnotation(autoReleaseAnnotation, snapshotCopy)
+		allowed, err := gitops.EvaluateSnapshotAutoReleaseAnnotation(autoReleaseAnnotation, snapshotCopy, true)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(allowed).To(BeFalse())
 	})
@@ -81,7 +81,7 @@ var _ = Describe("Auto-release annotation evaluation", Ordered, func() {
 	It("returns true when the auto-release annotation is 'true'", func() {
 		snapshotCopy := hasSnapshot.DeepCopy()
 		autoReleaseAnnotation := "true"
-		allowed, err := gitops.EvaluateSnapshotAutoReleaseAnnotation(autoReleaseAnnotation, snapshotCopy)
+		allowed, err := gitops.EvaluateSnapshotAutoReleaseAnnotation(autoReleaseAnnotation, snapshotCopy, true)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(allowed).To(BeTrue())
 	})
@@ -89,7 +89,7 @@ var _ = Describe("Auto-release annotation evaluation", Ordered, func() {
 	It("returns false when the auto-release annotation is 'false'", func() {
 		snapshotCopy := hasSnapshot.DeepCopy()
 		autoReleaseAnnotation := "false"
-		allowed, err := gitops.EvaluateSnapshotAutoReleaseAnnotation(autoReleaseAnnotation, snapshotCopy)
+		allowed, err := gitops.EvaluateSnapshotAutoReleaseAnnotation(autoReleaseAnnotation, snapshotCopy, true)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(allowed).To(BeFalse())
 	})
@@ -98,15 +98,15 @@ var _ = Describe("Auto-release annotation evaluation", Ordered, func() {
 		snapshotCopy := hasSnapshot.DeepCopy()
 		snapshotCopy.CreationTimestamp = metav1.NewTime(time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC))
 		autoReleaseAnnotation := "timestamp(snapshot.metadata.creationTimestamp) < (timestamp(now) - duration('168h'))"
-		allowed, err := gitops.EvaluateSnapshotAutoReleaseAnnotation(autoReleaseAnnotation, snapshotCopy)
+		allowed, err := gitops.EvaluateSnapshotAutoReleaseAnnotation(autoReleaseAnnotation, snapshotCopy, true)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(allowed).To(BeTrue())
 	})
 
-	It("returns true  when the updated component is 'component-sample'", func() {
+	It("returns true when the updated component is 'component-sample'", func() {
 		snapshotCopy := hasSnapshot.DeepCopy()
 		autoReleaseAnnotation := "updatedComponentIs('component-sample')"
-		allowed, err := gitops.EvaluateSnapshotAutoReleaseAnnotation(autoReleaseAnnotation, snapshotCopy)
+		allowed, err := gitops.EvaluateSnapshotAutoReleaseAnnotation(autoReleaseAnnotation, snapshotCopy, true)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(allowed).To(BeTrue())
 	})
@@ -114,8 +114,44 @@ var _ = Describe("Auto-release annotation evaluation", Ordered, func() {
 	It("returns error and false when the auto-release annotation is an invalid CEL expression", func() {
 		snapshotCopy := hasSnapshot.DeepCopy()
 		autoReleaseAnnotation := "invalid expression$" // syntactically invalid
-		allowed, err := gitops.EvaluateSnapshotAutoReleaseAnnotation(autoReleaseAnnotation, snapshotCopy)
+		allowed, err := gitops.EvaluateSnapshotAutoReleaseAnnotation(autoReleaseAnnotation, snapshotCopy, true)
 		Expect(err).To(HaveOccurred())
 		Expect(allowed).To(BeFalse())
+	})
+
+	Context("shouldRelease() CEL function", func() {
+		It("returns true when shouldRelease is true", func() {
+			snapshotCopy := hasSnapshot.DeepCopy()
+			allowed, err := gitops.EvaluateSnapshotAutoReleaseAnnotation("shouldRelease()", snapshotCopy, true)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(allowed).To(BeTrue())
+		})
+
+		It("returns false when shouldRelease is false", func() {
+			snapshotCopy := hasSnapshot.DeepCopy()
+			allowed, err := gitops.EvaluateSnapshotAutoReleaseAnnotation("shouldRelease()", snapshotCopy, false)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(allowed).To(BeFalse())
+		})
+
+		It("composes with updatedComponentIs", func() {
+			snapshotCopy := hasSnapshot.DeepCopy()
+			expr := "shouldRelease() && updatedComponentIs('component-sample')"
+			allowed, err := gitops.EvaluateSnapshotAutoReleaseAnnotation(expr, snapshotCopy, true)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(allowed).To(BeTrue())
+
+			allowed, err = gitops.EvaluateSnapshotAutoReleaseAnnotation(expr, snapshotCopy, false)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(allowed).To(BeFalse())
+		})
+
+		It("can be bypassed with a CEL expression that doesn't call it", func() {
+			snapshotCopy := hasSnapshot.DeepCopy()
+			// Even with shouldRelease=false, a "true" expression bypasses gating
+			allowed, err := gitops.EvaluateSnapshotAutoReleaseAnnotation("true", snapshotCopy, false)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(allowed).To(BeTrue())
+		})
 	})
 })

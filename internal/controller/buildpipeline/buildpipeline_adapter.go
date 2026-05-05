@@ -780,6 +780,9 @@ func (a *Adapter) prepareSnapshotForPipelineRun(pipelineRun *tektonv1.PipelineRu
 	snapshot.Annotations[gitops.BuildPipelineRunStartTime] = strconv.FormatInt(timestampMillis, 10)
 	snapshot.Name = gitops.GenerateSnapshotNameWithTimestamp(application.Name, timestampMillis)
 
+	// Copy all build PipelineRun results as Snapshot annotations
+	gitops.CopyBuildPipelineRunResultsToSnapshot(pipelineRun, snapshot)
+
 	// Set the integration workflow annotation based on the PipelineRun type
 	if tekton.IsPLRCreatedByPACPushEvent(pipelineRun) {
 		snapshot.Annotations[gitops.IntegrationWorkflowAnnotation] = gitops.IntegrationWorkflowPushValue

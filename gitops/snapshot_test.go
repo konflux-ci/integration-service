@@ -1577,3 +1577,77 @@ var _ = Describe("EnrichBuiltComponentSourceGitContext", func() {
 		Expect(src.GitSource.Context).To(Equal("already-set"))
 	})
 })
+
+var _ = Describe("BuildResultAnnotationKey", func() {
+	It("lowercases and replaces underscores with hyphens", func() {
+		Expect(gitops.BuildResultAnnotationKey("SHOULD_RELEASE")).To(Equal("test.appstudio.openshift.io/result-should-release"))
+	})
+
+	It("handles result names with hyphens", func() {
+		Expect(gitops.BuildResultAnnotationKey("CHAINS-GIT_URL")).To(Equal("test.appstudio.openshift.io/result-chains-git-url"))
+	})
+})
+
+var _ = Describe("CopyBuildPipelineRunResultsToSnapshot", func() {
+	var (
+		pipelineRun *tektonv1.PipelineRun
+		snapshot    *applicationapiv1alpha1.Snapshot
+	)
+
+	BeforeEach(func() {
+		pipelineRun = &tektonv1.PipelineRun{
+			Status: tektonv1.PipelineRunStatus{
+				PipelineRunStatusFields: tektonv1.PipelineRunStatusFields{
+					Results: []tektonv1.PipelineRunResult{
+						{
+							Name:  "IMAGE_URL",
+							Value: *tektonv1.NewStructuredValues("quay.io/test/image"),
+						},
+						{
+							Name:  "IMAGE_DIGEST",
+							Value: *tektonv1.NewStructuredValues("sha256:abc123"),
+						},
+						{
+							Name:  "CHAINS-GIT_URL",
+							Value: *tektonv1.NewStructuredValues("https://github.com/org/repo"),
+						},
+						{
+							Name:  "SHOULD_RELEASE",
+							Value: *tektonv1.NewStructuredValues("false"),
+						},
+					},
+				},
+			},
+		}
+		snapshot = &applicationapiv1alpha1.Snapshot{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "test-snapshot",
+				Namespace: "default",
+			},
+		}
+	})
+
+	It("copies all string results as annotations", func() {
+		gitops.CopyBuildPipelineRunResultsToSnapshot(pipelineRun, snapshot)
+		Expect(snapshot.Annotations).To(HaveKeyWithValue("test.appstudio.openshift.io/result-image-url", "quay.io/test/image"))
+		Expect(snapshot.Annotations).To(HaveKeyWithValue("test.appstudio.openshift.io/result-image-digest", "sha256:abc123"))
+		Expect(snapshot.Annotations).To(HaveKeyWithValue("test.appstudio.openshift.io/result-chains-git-url", "https://github.com/org/repo"))
+		Expect(snapshot.Annotations).To(HaveKeyWithValue("test.appstudio.openshift.io/result-should-release", "false"))
+	})
+
+	It("skips results with empty StringVal", func() {
+		pipelineRun.Status.Results = append(pipelineRun.Status.Results, tektonv1.PipelineRunResult{
+			Name:  "EMPTY_RESULT",
+			Value: *tektonv1.NewStructuredValues(""),
+		})
+		gitops.CopyBuildPipelineRunResultsToSnapshot(pipelineRun, snapshot)
+		Expect(snapshot.Annotations).NotTo(HaveKey("test.appstudio.openshift.io/result-empty-result"))
+	})
+
+	It("preserves existing annotations", func() {
+		snapshot.Annotations = map[string]string{"existing-key": "existing-value"}
+		gitops.CopyBuildPipelineRunResultsToSnapshot(pipelineRun, snapshot)
+		Expect(snapshot.Annotations).To(HaveKeyWithValue("existing-key", "existing-value"))
+		Expect(snapshot.Annotations).To(HaveKey("test.appstudio.openshift.io/result-image-url"))
+	})
+})

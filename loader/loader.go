@@ -61,8 +61,8 @@ type ObjectLoader interface {
 	GetAllIntegrationTestScenariosForSnapshot(ctx context.Context, c client.Client, componentGroup *v1beta2.ComponentGroup, snapshot *applicationapiv1alpha1.Snapshot) (*[]v1beta2.IntegrationTestScenario, error)
 	GetAllPipelineRunsForSnapshotAndScenario(ctx context.Context, c client.Client, snapshot *applicationapiv1alpha1.Snapshot, integrationTestScenario *v1beta2.IntegrationTestScenario) (*[]tektonv1.PipelineRun, error)
 	GetAllSnapshots(ctx context.Context, c client.Client, application *applicationapiv1alpha1.Application) (*[]applicationapiv1alpha1.Snapshot, error)
-	GetAutoReleasePlansForApplication(ctx context.Context, c client.Client, application *applicationapiv1alpha1.Application, snapshot *applicationapiv1alpha1.Snapshot) (*[]releasev1alpha1.ReleasePlan, error)
-	GetAutoReleasePlansForComponentGroup(ctx context.Context, c client.Client, componentGroup *v1beta2.ComponentGroup, snapshot *applicationapiv1alpha1.Snapshot) (*[]releasev1alpha1.ReleasePlan, error)
+	GetAutoReleasePlansForApplication(ctx context.Context, c client.Client, application *applicationapiv1alpha1.Application, snapshot *applicationapiv1alpha1.Snapshot, shouldRelease bool) (*[]releasev1alpha1.ReleasePlan, error)
+	GetAutoReleasePlansForComponentGroup(ctx context.Context, c client.Client, componentGroup *v1beta2.ComponentGroup, snapshot *applicationapiv1alpha1.Snapshot, shouldRelease bool) (*[]releasev1alpha1.ReleasePlan, error)
 	GetScenario(ctx context.Context, c client.Client, name, namespace string) (*v1beta2.IntegrationTestScenario, error)
 	GetComponentGroup(ctx context.Context, c client.Client, name, namespace string) (*v1beta2.ComponentGroup, error)
 	GetAllSnapshotsForBuildPipelineRunApplication(ctx context.Context, c client.Client, pipelineRun *tektonv1.PipelineRun) (*[]applicationapiv1alpha1.Snapshot, error)
@@ -440,7 +440,7 @@ func (l *loader) GetAllSnapshots(ctx context.Context, c client.Client, applicati
 // ReleasePlans are not found, an error will be returned. A ReleasePlan will only be returned if it has the
 // release.appstudio.openshift.io/auto-release label set to true or if it is missing the label entirely.
 // TODO: delete function when we remove support for old application model
-func (l *loader) GetAutoReleasePlansForApplication(ctx context.Context, c client.Client, application *applicationapiv1alpha1.Application, snapshot *applicationapiv1alpha1.Snapshot) (*[]releasev1alpha1.ReleasePlan, error) {
+func (l *loader) GetAutoReleasePlansForApplication(ctx context.Context, c client.Client, application *applicationapiv1alpha1.Application, snapshot *applicationapiv1alpha1.Snapshot, shouldRelease bool) (*[]releasev1alpha1.ReleasePlan, error) {
 	allReleasePlans := &releasev1alpha1.ReleasePlanList{}
 	filteredReleasePlans := &releasev1alpha1.ReleasePlanList{}
 
@@ -455,15 +455,21 @@ func (l *loader) GetAutoReleasePlansForApplication(ctx context.Context, c client
 	}
 
 	for _, rp := range allReleasePlans.Items {
-		annotationValue, ok := rp.GetAnnotations()[gitops.AutoReleaseLabel] // label and annotation have same value
-		if ok || annotationValue != "" {
-			// If the annotation exists we evaluate the expression and return that
-			canRelease, err := gitops.EvaluateSnapshotAutoReleaseAnnotation(annotationValue, snapshot)
-			if err != nil || !canRelease {
+		annotationValue := rp.GetAnnotations()[gitops.AutoReleaseLabel] // label and annotation have same value
+		if annotationValue != "" {
+			// If the annotation exists we evaluate the CEL expression and include the plan when it allows release
+			canRelease, err := gitops.EvaluateSnapshotAutoReleaseAnnotation(annotationValue, snapshot, shouldRelease)
+			if err != nil {
+				return nil, fmt.Errorf("failed to evaluate auto-release CEL expression for ReleasePlan %s: %w", rp.Name, err)
+			}
+			if canRelease {
 				filteredReleasePlans.Items = append(filteredReleasePlans.Items, rp)
 			}
 		} else if !metadata.HasLabelWithValue(&rp, gitops.AutoReleaseLabel, "false") {
-			filteredReleasePlans.Items = append(filteredReleasePlans.Items, rp)
+			// Label-based plan: apply default SHOULD_RELEASE gating
+			if shouldRelease {
+				filteredReleasePlans.Items = append(filteredReleasePlans.Items, rp)
+			}
 		}
 	}
 
@@ -473,7 +479,7 @@ func (l *loader) GetAutoReleasePlansForApplication(ctx context.Context, c client
 // GetAutoReleasePlansForComponentGroup returns the ReleasePlans used by the component group being processed. If matching
 // ReleasePlans are not found, an error will be returned. A ReleasePlan will only be returned if it has the
 // release.appstudio.openshift.io/auto-release label set to true or if it is missing the label entirely.
-func (l *loader) GetAutoReleasePlansForComponentGroup(ctx context.Context, c client.Client, componentGroup *v1beta2.ComponentGroup, snapshot *applicationapiv1alpha1.Snapshot) (*[]releasev1alpha1.ReleasePlan, error) {
+func (l *loader) GetAutoReleasePlansForComponentGroup(ctx context.Context, c client.Client, componentGroup *v1beta2.ComponentGroup, snapshot *applicationapiv1alpha1.Snapshot, shouldRelease bool) (*[]releasev1alpha1.ReleasePlan, error) {
 	allReleasePlans := &releasev1alpha1.ReleasePlanList{}
 	filteredReleasePlans := &releasev1alpha1.ReleasePlanList{}
 
@@ -490,13 +496,19 @@ func (l *loader) GetAutoReleasePlansForComponentGroup(ctx context.Context, c cli
 	for _, rp := range allReleasePlans.Items {
 		annotationValue := rp.GetAnnotations()[gitops.AutoReleaseLabel] // label and annotation have same value
 		if annotationValue != "" {
-			// If the annotation exists we evaluate the expression and return that
-			canRelease, err := gitops.EvaluateSnapshotAutoReleaseAnnotation(annotationValue, snapshot)
-			if err != nil || !canRelease {
+			// If the annotation exists we evaluate the CEL expression and include the plan when it allows release
+			canRelease, err := gitops.EvaluateSnapshotAutoReleaseAnnotation(annotationValue, snapshot, shouldRelease)
+			if err != nil {
+				return nil, fmt.Errorf("failed to evaluate auto-release CEL expression for ReleasePlan %s: %w", rp.Name, err)
+			}
+			if canRelease {
 				filteredReleasePlans.Items = append(filteredReleasePlans.Items, rp)
 			}
 		} else if !metadata.HasLabelWithValue(&rp, gitops.AutoReleaseLabel, "false") {
-			filteredReleasePlans.Items = append(filteredReleasePlans.Items, rp)
+			// Label-based plan: apply default SHOULD_RELEASE gating
+			if shouldRelease {
+				filteredReleasePlans.Items = append(filteredReleasePlans.Items, rp)
+			}
 		}
 	}
 

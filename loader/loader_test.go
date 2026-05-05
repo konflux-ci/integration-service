@@ -816,14 +816,14 @@ var _ = Describe("Loader", Ordered, func() {
 	})
 
 	It("ensures the ReleasePlan can be gotten for Application [APPLICATION]", func() {
-		gottenReleasePlanItems, err := loader.GetAutoReleasePlansForApplication(ctx, k8sClient, hasApp, hasSnapshot)
+		gottenReleasePlanItems, err := loader.GetAutoReleasePlansForApplication(ctx, k8sClient, hasApp, hasSnapshot, true)
 		Expect(err).ToNot(HaveOccurred())
 		Expect(gottenReleasePlanItems).NotTo(BeNil())
 
 	})
 
 	It("ensures the ReleasePlan can be gotten for ComponentGroup", func() {
-		gottenReleasePlanItems, err := loader.GetAutoReleasePlansForComponentGroup(ctx, k8sClient, hasComponentGroup1, hasSnapshot)
+		gottenReleasePlanItems, err := loader.GetAutoReleasePlansForComponentGroup(ctx, k8sClient, hasComponentGroup1, hasSnapshot, true)
 		Expect(err).ToNot(HaveOccurred())
 		Expect(gottenReleasePlanItems).NotTo(BeNil())
 
@@ -870,7 +870,7 @@ var _ = Describe("Loader", Ordered, func() {
 
 		It("ensures the auto-release plans for application are returned correctly when the auto-release label is set to true", func() {
 			// Get auto-release plans for application
-			autoReleasePlans, err := loader.GetAutoReleasePlansForApplication(ctx, k8sClient, hasApp, hasSnapshot)
+			autoReleasePlans, err := loader.GetAutoReleasePlansForApplication(ctx, k8sClient, hasApp, hasSnapshot, true)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(autoReleasePlans).ToNot(BeNil())
 			Expect(*autoReleasePlans).To(HaveLen(1))
@@ -910,7 +910,7 @@ var _ = Describe("Loader", Ordered, func() {
 
 		It("ensures the auto-release plans for application are returned correctly when the auto-release label is missing", func() {
 			// Get auto-release plans for application
-			autoReleasePlans, err := loader.GetAutoReleasePlansForApplication(ctx, k8sClient, hasApp, hasSnapshot)
+			autoReleasePlans, err := loader.GetAutoReleasePlansForApplication(ctx, k8sClient, hasApp, hasSnapshot, true)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(autoReleasePlans).ToNot(BeNil())
 			Expect(*autoReleasePlans).To(HaveLen(1))
@@ -1188,7 +1188,7 @@ var _ = Describe("Loader", Ordered, func() {
 
 		It("ensures the auto-release plans for application are returned correctly when the auto-release label is set to false", func() {
 			// Get auto-release plans for application
-			autoReleasePlans, err := loader.GetAutoReleasePlansForApplication(ctx, k8sClient, hasApp, hasSnapshot)
+			autoReleasePlans, err := loader.GetAutoReleasePlansForApplication(ctx, k8sClient, hasApp, hasSnapshot, true)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(autoReleasePlans).ToNot(BeNil())
 			Expect(*autoReleasePlans).To(BeEmpty())
