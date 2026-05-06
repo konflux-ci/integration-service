@@ -207,6 +207,10 @@ func setupCache(mgr ctrl.Manager) error {
 	if err := cache.SetupReleasePlanCache(mgr); err != nil {
 		return err
 	}
+	// TODO: remove when we remove old application model
+	if err := cache.SetupReleasePlanCacheApplication(mgr); err != nil {
+		return err
+	}
 
 	return cache.SetupReleaseCache(mgr)
 }
