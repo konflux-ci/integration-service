@@ -41,7 +41,7 @@ require (
 	github.com/gofri/go-github-ratelimit v1.1.1
 	github.com/google/cel-go v0.27.0
 	github.com/google/go-containerregistry v0.20.7
-	github.com/google/go-github/v45 v45.2.0
+	github.com/google/go-github/v85 v85.0.0
 	github.com/prometheus/client_golang v1.23.2
 	github.com/santhosh-tekuri/jsonschema/v5 v5.3.1
 	github.com/tektoncd/pipeline v1.7.0
