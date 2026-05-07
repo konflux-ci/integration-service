@@ -104,10 +104,14 @@ func (v *IntegrationTestScenarioCustomValidator) ValidateCreate(ctx context.Cont
 			integrationtestscenariolog.Info(errString)
 			return nil, field.Invalid(field.NewPath("Spec").Child("Params"), param.Name, errString)
 		}
-		// we won't enable ITS if git resolver with url & repo+org
+	}
+
+	// we won't enable ITS if git resolver with url & repo+org
+	if scenario.Spec.ResolverRef.Resolver == "git" {
 		urlResolverExist := false
 		repoResolverExist := false
 		orgResolverExist := false
+		var paramErrors error
 
 		for _, gitResolverParam := range scenario.Spec.ResolverRef.Params {
 			if gitResolverParam.Name == "url" && gitResolverParam.Value != "" {
@@ -119,44 +123,37 @@ func (v *IntegrationTestScenarioCustomValidator) ValidateCreate(ctx context.Cont
 			if gitResolverParam.Name == "org" && gitResolverParam.Value != "" {
 				orgResolverExist = true
 			}
+
+			switch key := gitResolverParam.Name; key {
+			case "url", "serverURL":
+				paramErrors = errors.Join(paramErrors, validateUrl(key, gitResolverParam.Value))
+			case "token":
+				paramErrors = errors.Join(paramErrors, validateToken(gitResolverParam.Value))
+			default:
+				paramErrors = errors.Join(paramErrors, validateNoWhitespace(key, gitResolverParam.Value))
+			}
 		}
 
 		if urlResolverExist {
 			if repoResolverExist || orgResolverExist {
-				return nil, field.Invalid(field.NewPath("Spec").Child("ResolverRef").Child("Params"), param.Name,
+				return nil, field.Invalid(field.NewPath("Spec").Child("ResolverRef").Child("Params"), scenario.Spec.ResolverRef.Params,
 					"an IntegrationTestScenario resource can only have one of the gitResolver parameters,"+
 						"either url or repo (with org), but not both.")
-
 			}
 		} else {
 			if !repoResolverExist || !orgResolverExist {
-				return nil, field.Invalid(field.NewPath("Spec").Child("ResolverRef").Child("Params"), param.Name,
+				return nil, field.Invalid(field.NewPath("Spec").Child("ResolverRef").Child("Params"), scenario.Spec.ResolverRef.Params,
 					"IntegrationTestScenario is invalid: missing mandatory repo or org parameters."+
 						"If both are absent, a valid url is highly recommended.")
-
 			}
 		}
 
-	}
-
-	integrationtestscenariolog.Info("Validated params")
-
-	if scenario.Spec.ResolverRef.Resolver == "git" {
-		var paramErrors error
-		for _, param := range scenario.Spec.ResolverRef.Params {
-			switch key := param.Name; key {
-			case "url", "serverURL":
-				paramErrors = errors.Join(paramErrors, validateUrl(key, param.Value))
-			case "token":
-				paramErrors = errors.Join(paramErrors, validateToken(param.Value))
-			default:
-				paramErrors = errors.Join(paramErrors, validateNoWhitespace(key, param.Value))
-			}
-		}
 		if paramErrors != nil {
 			return nil, paramErrors
 		}
 	}
+
+	integrationtestscenariolog.Info("Validated params")
 
 	// Ensure the ownerReference was set by the mutating webhook
 	if ref := scenario.GetOwnerReferences(); len(ref) == 0 {
