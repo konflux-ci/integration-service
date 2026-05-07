@@ -183,6 +183,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		adapter.EnsureGlobalCandidateImageUpdated,
 		adapter.EnsureRerunPipelineRunsExist,
 		adapter.EnsureIntegrationPipelineRunsExist,
+		adapter.EnsureParentSnapshotsExist,
 	})
 }
 
@@ -194,6 +195,7 @@ type AdapterInterface interface {
 	EnsureIntegrationPipelineRunsExist() (controller.OperationResult, error)
 	EnsureGlobalCandidateImageUpdated() (controller.OperationResult, error)
 	EnsureOverrideSnapshotValid() (controller.OperationResult, error)
+	EnsureParentSnapshotsExist() (controller.OperationResult, error)
 }
 
 // SetupController creates a new Integration controller and adds it to the Manager.

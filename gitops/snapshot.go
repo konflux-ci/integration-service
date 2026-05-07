@@ -251,6 +251,10 @@ const (
 	// SnapshotAutoReleasedCondition is the condition for marking if Snapshot was auto-released released with AppStudio.
 	SnapshotAutoReleasedCondition = "AutoReleased"
 
+	// ParentSnapshotsCreatedCondition is the condition marking whether snapshots for all parent ComponentGroups for the
+	// ComponentGroup that the snapshot belongs to have been created
+	ParentSnapshotsCreatedCondition = "ParentSnapshotsCreated"
+
 	// SnapshotAddedToGlobalCandidateListCondition is the condition for marking if Snapshot's component was added to
 	// the global candidate list.
 	SnapshotAddedToGlobalCandidateListCondition = "AddedToGlobalCandidateList"
@@ -328,6 +332,10 @@ const (
 	GitCommentPolicyAnnotation = "test.appstudio.openshift.io/comment_strategy"
 	// GitCommentPolicyAllDisabled is the value to disable all test comments for the component got pac repository
 	GitCommentPolicyAllDisabled = "disable_all"
+
+	// ChildSnapshotAnnotation is used in nested snapshots. Denotes the name of the child snapshot whose creation triggered the creation of the snapshot
+	// on which the annotation is set
+	ChildSnapshotAnnotation = TestLabelPrefix + "/child-snapshot"
 )
 
 var (
@@ -668,6 +676,31 @@ func MarkSnapshotAsAutoReleased(ctx context.Context, adapterClient client.Client
 	}
 
 	return nil
+}
+
+func ParentSnapshotsCreated(snapshot *applicationapiv1alpha1.Snapshot) bool {
+	return IsSnapshotStatusConditionSet(snapshot, ParentSnapshotsCreatedCondition, metav1.ConditionTrue, "")
+}
+
+func SetParentSnapshotsCreatedCondition(snapshot *applicationapiv1alpha1.Snapshot, status metav1.ConditionStatus, reason, message string) {
+	condition := metav1.Condition{
+		Type:    ParentSnapshotsCreatedCondition,
+		Status:  status,
+		Reason:  reason,
+		Message: message,
+	}
+	meta.SetStatusCondition(&snapshot.Status.Conditions, condition)
+}
+
+func AddParentSnapshotDataToSnapshotStatus(snapshot *applicationapiv1alpha1.Snapshot, created bool, parentCG, parentSnapshot, message string) {
+	if snapshot.Status.ParentSnapshots == nil {
+		snapshot.Status.ParentSnapshots = make(map[string]applicationapiv1alpha1.ParentSnapshotData)
+	}
+	snapshot.Status.ParentSnapshots[parentCG] = applicationapiv1alpha1.ParentSnapshotData{
+		Created: created,
+		Name:    parentSnapshot,
+		Message: message,
+	}
 }
 
 // IsSnapshotMarkedAsAddedToGlobalCandidateList returns true if snapshot's AddedToGlobalCandidateListAnnotation result is marked as true to global candidate list

@@ -665,6 +665,10 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 					Resource:   hasCompGroup,
 				},
 				{
+					ContextKey: loader.NestedComponentGroupsContextKey,
+					Resource:   []v1beta2.ComponentGroup{},
+				},
+				{
 					ContextKey: loader.ComponentContextKey,
 					Resource:   hasComp,
 				},
@@ -805,6 +809,10 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 					Resource:   hasCompGroup,
 				},
 				{
+					ContextKey: loader.NestedComponentGroupsContextKey,
+					Resource:   []v1beta2.ComponentGroup{},
+				},
+				{
 					ContextKey: loader.ComponentContextKey,
 					Resource:   hasComp,
 				},
@@ -823,7 +831,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 					},
 				},
 			})
-			_, err := snapshot.PrepareSnapshotForPipelineRun(adapter.context, adapter.client, adapter.pipelineRun, adapter.component.Name, hasCompGroup)
+			_, err := snapshot.PrepareSnapshotForPipelineRun(adapter.context, adapter.client, adapter.pipelineRun, adapter.component.Name, hasCompGroup, adapter.loader)
 			Expect(helpers.IsInvalidImageDigestError(err)).To(BeTrue())
 			Eventually(func() bool {
 				result, err := adapter.EnsureSnapshotExists()
@@ -1387,6 +1395,10 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 					Resource:   hasCompGroup,
 				},
 				{
+					ContextKey: loader.NestedComponentGroupsContextKey,
+					Resource:   []v1beta2.ComponentGroup{},
+				},
+				{
 					ContextKey: loader.ComponentContextKey,
 					Resource:   hasComp,
 				},
@@ -1425,6 +1437,10 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				{
 					ContextKey: loader.ComponentGroupContextKey,
 					Resource:   hasCompGroup,
+				},
+				{
+					ContextKey: loader.NestedComponentGroupsContextKey,
+					Resource:   []v1beta2.ComponentGroup{},
 				},
 				{
 					ContextKey: loader.ComponentContextKey,
@@ -1804,6 +1820,10 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 							hasCompGroup.Name: nil,
 						},
 					},
+					{
+						ContextKey: loader.NestedComponentGroupsContextKey,
+						Resource:   []v1beta2.ComponentGroup{},
+					},
 				})
 
 				Eventually(func() bool {
@@ -2091,6 +2111,10 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 						Resource:   nil,
 						Err:        notFoundErr,
 					},
+					{
+						ContextKey: loader.NestedComponentGroupsContextKey,
+						Resource:   []v1beta2.ComponentGroup{},
+					},
 				})
 
 				Eventually(func() bool {
@@ -2125,6 +2149,10 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 						ContextKey: loader.GetPipelineRunContextKey,
 						Resource:   buildPipelineRun,
 						Err:        conflictErr,
+					},
+					{
+						ContextKey: loader.NestedComponentGroupsContextKey,
+						Resource:   []v1beta2.ComponentGroup{},
 					},
 				})
 
@@ -2166,6 +2194,10 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 					{
 						ContextKey: loader.AllSnapshotsContextKey,
 						Resource:   []applicationapiv1alpha1.Snapshot{*hasSnapshot},
+					},
+					{
+						ContextKey: loader.NestedComponentGroupsContextKey,
+						Resource:   []v1beta2.ComponentGroup{},
 					},
 				})
 

@@ -4689,4 +4689,184 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		})
 	})
 
+	When("Adapter is created for EnsureParentSnapshotsExist", func() {
+		var parentCompGroup *v1beta2.ComponentGroup
+
+		BeforeEach(func() {
+			parentCompGroup = &v1beta2.ComponentGroup{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "parent-component-group-sample",
+					Namespace: "default",
+				},
+				Spec: v1beta2.ComponentGroupSpec{
+					Components: []v1beta2.ComponentReference{
+						{
+							Name: "component-sample",
+							ComponentVersion: v1beta2.ComponentVersionReference{
+								Name: "v1",
+							},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, parentCompGroup)).Should(Succeed())
+			parentCompGroup.Status = v1beta2.ComponentGroupStatus{
+				GlobalCandidateList: []v1beta2.ComponentState{
+					{
+						Name:              "component-sample",
+						Version:           "v1",
+						URL:               SampleRepoLink,
+						LastPromotedImage: sample_image + "@" + sampleDigest,
+					},
+				},
+			}
+			Expect(k8sClient.Status().Update(ctx, parentCompGroup)).Should(Succeed())
+		})
+
+		AfterEach(func() {
+			err := k8sClient.Delete(ctx, parentCompGroup)
+			Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
+		})
+
+		It("skips when componentGroup is nil (application model)", func() {
+			adapter = NewAdapterWithApplication(ctx, hasCGSnapshot, hasApp, logger, loader.NewMockLoader(), k8sClient)
+			result, err := adapter.EnsureParentSnapshotsExist()
+			Expect(err).ToNot(HaveOccurred())
+			Expect(result.CancelRequest).To(BeFalse())
+			Expect(result.RequeueRequest).To(BeFalse())
+		})
+
+		It("skips when parent snapshots have already been created", func() {
+			meta.SetStatusCondition(&hasCGSnapshot.Status.Conditions, metav1.Condition{
+				Type:    gitops.ParentSnapshotsCreatedCondition,
+				Status:  metav1.ConditionTrue,
+				Reason:  "SnapshotsCreated",
+				Message: "All parent snapshots have been created",
+			})
+			adapter = NewAdapter(ctx, hasCGSnapshot, hasCompGroup, logger, loader.NewMockLoader(), k8sClient)
+			result, err := adapter.EnsureParentSnapshotsExist()
+			Expect(err).ToNot(HaveOccurred())
+			Expect(result.CancelRequest).To(BeFalse())
+			Expect(result.RequeueRequest).To(BeFalse())
+		})
+
+		It("marks as created and continues when no parent component groups exist", func() {
+			adapter = NewAdapter(ctx, hasCGSnapshot, hasCompGroup, logger, loader.NewMockLoader(), k8sClient)
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: loader.ComponentGroupsContextKey,
+					Resource:   []v1beta2.ComponentGroup{},
+				},
+			})
+
+			result, err := adapter.EnsureParentSnapshotsExist()
+			Expect(err).ToNot(HaveOccurred())
+			Expect(result.CancelRequest).To(BeFalse())
+			Expect(result.RequeueRequest).To(BeFalse())
+
+			// Use Eventually to handle the deferred status patch racing with the Get.
+			Eventually(func() bool {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name: hasCGSnapshot.Name, Namespace: hasCGSnapshot.Namespace,
+				}, hasCGSnapshot)
+				return err == nil && gitops.ParentSnapshotsCreated(hasCGSnapshot)
+			}, time.Second*10).Should(BeTrue())
+		})
+
+		It("creates a parent snapshot for each parent component group and marks as created", func() {
+			adapter = NewAdapter(ctx, hasCGSnapshot, hasCompGroup, logger, loader.NewMockLoader(), k8sClient)
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: loader.ComponentGroupsContextKey,
+					Resource:   []v1beta2.ComponentGroup{*parentCompGroup},
+				},
+				{
+					ContextKey: loader.NestedComponentGroupsContextKey,
+					Resource:   []v1beta2.ComponentGroup{},
+				},
+			})
+
+			result, err := adapter.EnsureParentSnapshotsExist()
+			Expect(err).ToNot(HaveOccurred())
+			Expect(result.CancelRequest).To(BeFalse())
+			Expect(result.RequeueRequest).To(BeFalse())
+
+			// The child snapshot should be marked as having parent snapshots created.
+			// Use Eventually to handle the deferred status patch racing with the Get.
+			Eventually(func() bool {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name: hasCGSnapshot.Name, Namespace: hasCGSnapshot.Namespace,
+				}, hasCGSnapshot)
+				if err != nil {
+					return false
+				}
+				return gitops.ParentSnapshotsCreated(hasCGSnapshot) &&
+					hasCGSnapshot.Status.ParentSnapshots != nil &&
+					hasCGSnapshot.Status.ParentSnapshots[parentCompGroup.Name].Created
+			}, time.Second*10).Should(BeTrue())
+		})
+
+		It("requeuees with error when the loader fails to get parent component groups", func() {
+			adapter = NewAdapter(ctx, hasCGSnapshot, hasCompGroup, logger, loader.NewMockLoader(), k8sClient)
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: loader.ComponentGroupsContextKey,
+					Err:        fmt.Errorf("simulated loader error"),
+				},
+			})
+
+			result, err := adapter.EnsureParentSnapshotsExist()
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("simulated loader error"))
+			Expect(result.RequeueRequest).To(BeTrue())
+			Expect(result.CancelRequest).To(BeFalse())
+		})
+
+		It("requeuees with error when PrepareParentSnapshot fails due to all-invalid GCL components", func() {
+			allInvalidParentCG := &v1beta2.ComponentGroup{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "all-invalid-parent-cg-sample",
+					Namespace: "default",
+				},
+				Spec: v1beta2.ComponentGroupSpec{
+					Components: []v1beta2.ComponentReference{
+						{
+							Name:             "component-sample",
+							ComponentVersion: v1beta2.ComponentVersionReference{Name: "v1"},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, allInvalidParentCG)).Should(Succeed())
+			DeferCleanup(func() {
+				err := k8sClient.Delete(ctx, allInvalidParentCG)
+				Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
+			})
+			allInvalidParentCG.Status = v1beta2.ComponentGroupStatus{
+				GlobalCandidateList: []v1beta2.ComponentState{
+					// empty LastPromotedImage → fails ValidateImageDigest → all invalid → MissingValidComponentError
+					{Name: "component-sample", Version: "v1"},
+				},
+			}
+			Expect(k8sClient.Status().Update(ctx, allInvalidParentCG)).Should(Succeed())
+
+			adapter = NewAdapter(ctx, hasCGSnapshot, hasCompGroup, logger, loader.NewMockLoader(), k8sClient)
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: loader.ComponentGroupsContextKey,
+					Resource:   []v1beta2.ComponentGroup{*allInvalidParentCG},
+				},
+				{
+					ContextKey: loader.NestedComponentGroupsContextKey,
+					Resource:   []v1beta2.ComponentGroup{},
+				},
+			})
+
+			result, err := adapter.EnsureParentSnapshotsExist()
+			Expect(err).To(HaveOccurred())
+			Expect(result.RequeueRequest).To(BeTrue())
+			Expect(result.CancelRequest).To(BeFalse())
+		})
+	})
+
 })

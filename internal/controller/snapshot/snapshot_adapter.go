@@ -47,6 +47,7 @@ import (
 	"github.com/konflux-ci/operator-toolkit/metadata"
 	releasev1alpha1 "github.com/konflux-ci/release-service/api/v1alpha1"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -96,6 +97,88 @@ func NewAdapter(context context.Context, snapshot *applicationapiv1alpha1.Snapsh
 		context:        context,
 		status:         status.NewStatus(logger.Logger, client),
 	}
+}
+
+// EnsureParentSnapshotsExist is responsible for creating snapshots for ComponentGroups that contain the ComponentGroup for this snapshot
+func (a *Adapter) EnsureParentSnapshotsExist() (controller.OperationResult, error) {
+	// TODO: remove when we deprecate old application model
+	if a.componentGroup == nil { // do not run if we're using application model for this snapshot
+		return controller.ContinueProcessing()
+	}
+	if gitops.ParentSnapshotsCreated(a.snapshot) {
+		return controller.ContinueProcessing()
+	}
+
+	patch := client.MergeFrom(a.snapshot.DeepCopy())
+	defer func() {
+		err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+			patchErr := a.client.Status().Patch(a.context, a.snapshot, patch)
+			if clienterrors.IsConflict(patchErr) {
+				latestSnapshot := &applicationapiv1alpha1.Snapshot{}
+				if fetchErr := a.client.Get(a.context, client.ObjectKeyFromObject(a.snapshot), latestSnapshot); fetchErr != nil {
+					return fetchErr
+				}
+				patch = client.MergeFrom(latestSnapshot.DeepCopy())
+				// This is the only function in which we should be modifying the ParentSnapshots status fields, so we
+				// don't need to check if we're overwriting anything from another source
+				latestSnapshot.Status.ParentSnapshots = a.snapshot.Status.ParentSnapshots
+				for _, cond := range a.snapshot.Status.Conditions {
+					if cond.Type == gitops.ParentSnapshotsCreatedCondition {
+						gitops.SetParentSnapshotsCreatedCondition(latestSnapshot, cond.Status, cond.Reason, cond.Message)
+						break
+					}
+				}
+				a.snapshot = latestSnapshot
+			}
+			return patchErr
+		})
+		if err != nil {
+			// NOTE: if we return controller.ContinueProcessing() and the patch fails, the parent snapshots may be created twice.
+			// may be created twice. However, if we return controller.RequeueWithError(err), the parent snapshots will
+			// be created twice. Therefore, its not worth requeueing if the patch fails. The RetryOnConflict statement
+			// should handle most race conditions and instability so this failure should be rare
+			a.logger.Error(err, "warning: could not patch snapshot after creating parent snapshots. As a result, parent snapshots may be created again")
+		}
+	}()
+
+	parentCGs, err := a.loader.GetComponentGroupsContainingComponentGroup(a.context, a.client, a.componentGroup)
+	if err != nil {
+		return controller.RequeueWithError(err)
+	}
+
+	// NOTE: group snapshots WILL NOT WORK if components are part of the same componentGroup but one component is nested and one is not
+	for _, parentComponentGroup := range parentCGs {
+		if snapshot, ok := a.snapshot.Status.ParentSnapshots[parentComponentGroup.Name]; ok {
+			if snapshot.Created {
+				a.logger.Info("Parent snapshot already exists", "parentComponentGroup.Name", parentComponentGroup.Name, "snapshot.Name", snapshot.Name)
+				continue
+			}
+		}
+		parentSnapshot, err := snapshot.PrepareParentSnapshot(a.context, a.client, a.loader, a.logger, &parentComponentGroup, a.snapshot)
+		if err != nil {
+			errMsg := fmt.Sprintf("Could not prepare new snapshot: %s", err.Error())
+			gitops.AddParentSnapshotDataToSnapshotStatus(a.snapshot, false, parentComponentGroup.Name, "", errMsg)
+			return controller.RequeueWithError(err)
+		}
+
+		err = retry.OnError(retry.DefaultRetry, func(_ error) bool { return true }, func() error {
+			return snapshot.CreateSnapshotWithCollisionHandling(a.context, a.client, nil, parentSnapshot, parentComponentGroup, a.logger)
+		})
+		if err != nil {
+			errMsg := fmt.Sprintf("Could not create snapshot in cluster: %s", err.Error())
+			gitops.AddParentSnapshotDataToSnapshotStatus(a.snapshot, false, parentComponentGroup.Name, "", errMsg)
+			return controller.RequeueWithError(err)
+		}
+
+		gitops.AddParentSnapshotDataToSnapshotStatus(a.snapshot, true, parentComponentGroup.Name, parentSnapshot.Name, "successfully created snapshot")
+	}
+	a.logger.Info("Created parent snapshots for snapshot", "snapshot.Name", a.snapshot.Name, "snapshot.Status.ParentSnapshots", a.snapshot.Status.ParentSnapshots)
+
+	// This function sets the condition but does not patch the resource
+	// It gets updated along side the other status patches in the defer instead
+	gitops.SetParentSnapshotsCreatedCondition(a.snapshot, metav1.ConditionTrue, "SnapshotCreated", "All parent snapshots have successfully been created")
+
+	return controller.ContinueProcessing()
 }
 
 // EnsureRerunPipelineRunsExist is responsible for recreating integration test pipelineruns triggered by users
@@ -1009,7 +1092,7 @@ func (a *Adapter) prepareGroupSnapshot(prGroup, prGroupHash string) (*applicatio
 	ownerName := a.componentGroup.Name
 	ownerLabel := gitops.ComponentGroupNameLabel
 	namespace := a.componentGroup.Namespace
-	snapshotComponentsFromGCL, invalidComponents := snapshot.GetSnapshotComponentsFromGCL(a.componentGroup, a.logger.Logger)
+	snapshotComponentsFromGCL, invalidComponents := snapshot.GetSnapshotComponentsFromGCL(a.componentGroup, a.logger)
 
 	componentsToCheck, err := a.loader.GetComponentsFromSnapshotForPRGroup(a.context, a.client, namespace, prGroupHash, ownerName, ownerLabel)
 	if err != nil {
@@ -1060,7 +1143,7 @@ func (a *Adapter) prepareGroupSnapshot(prGroup, prGroupHash string) (*applicatio
 
 		a.logger.Info("can't find snapshot with open pull/merge request for component, try to find snapshotComponent from Global Candidate List", "component", groupComponent.Name)
 		// if there is no component snapshot found for open PR/MR, we get snapshotComponent from gcl
-		snapshotComponent, err := snapshot.FetchSnapshotComponentFromGCL(groupComponent.Name, snapshotComponentsFromGCL, invalidComponents)
+		snapshotComponent, err := snapshot.FetchSnapshotComponentFromGCL(groupComponent.Name, groupComponent.ComponentVersion.Name, snapshotComponentsFromGCL, invalidComponents)
 		if err != nil {
 			a.logger.Error(err, "component cannot be added to snapshot", "component.Name", groupComponent.Name)
 			continue
