@@ -39,7 +39,7 @@ var (
 		prometheus.HistogramOpts{
 			Name:    "integration_svc_snapshot_created_to_pipelinerun_started_seconds",
 			Help:    "Time duration from the moment the snapshot resource was created till a integration pipelineRun is started in the environment",
-			Buckets: []float64{0.05, 0.1, 0.5, 1, 2, 3, 4, 5, 10, 15, 30},
+			Buckets: []float64{0.5, 1, 2, 3, 4, 5, 6, 7, 10, 15, 30, 60, 120, 240, 300, 450, 600, 750, 900, 1050, 1200},
 		},
 	)
 
@@ -71,7 +71,7 @@ var (
 		prometheus.HistogramOpts{
 			Name:    "integration_svc_release_latency_seconds",
 			Help:    "Latency between integration tests completion and release creation",
-			Buckets: []float64{0.05, 0.1, 0.5, 1, 2, 3, 4, 5, 10, 15, 30},
+			Buckets: []float64{0.5, 1, 2, 3, 4, 5, 6, 7, 10, 15, 30, 60, 120, 240, 300, 450, 600, 750, 900, 1050, 1200},
 		},
 	)
 )
