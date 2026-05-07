@@ -18,18 +18,20 @@ package snapshot
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"strconv"
 	"time"
 
-	"github.com/go-logr/logr"
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
 	"github.com/konflux-ci/integration-service/api/v1beta2"
 	"github.com/konflux-ci/integration-service/gitops"
 	"github.com/konflux-ci/integration-service/helpers"
+	"github.com/konflux-ci/integration-service/loader"
 	"github.com/konflux-ci/integration-service/tekton"
 	tektonconsts "github.com/konflux-ci/integration-service/tekton/consts"
+	toolkit "github.com/konflux-ci/operator-toolkit/loader"
 	"github.com/konflux-ci/operator-toolkit/metadata"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -39,8 +41,25 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"knative.dev/pkg/apis"
 	v1 "knative.dev/pkg/apis/duck/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
+
+// nestedGroupsLoader wraps an ObjectLoader and overrides GetNestedComponentGroupsForComponentGroup
+// to return per-ComponentGroup results, allowing tests to control the nesting graph precisely.
+type nestedGroupsLoader struct {
+	loader.ObjectLoader
+	nestedGroupsByParent map[string][]v1beta2.ComponentGroup
+	errByParent          map[string]error
+}
+
+func (l *nestedGroupsLoader) GetNestedComponentGroupsForComponentGroup(_ context.Context, _ client.Client, cg *v1beta2.ComponentGroup) ([]v1beta2.ComponentGroup, error) {
+	if err, ok := l.errByParent[cg.Name]; ok {
+		return nil, err
+	}
+	groups := l.nestedGroupsByParent[cg.Name]
+	return groups, nil
+}
 
 var _ = Describe("Snapshot creation functions", Ordered, func() {
 	var (
@@ -49,7 +68,8 @@ var _ = Describe("Snapshot creation functions", Ordered, func() {
 		hasCompGroup      *v1beta2.ComponentGroup
 		hasAppSample      *applicationapiv1alpha1.Application
 		hasCompSample     *applicationapiv1alpha1.Component
-		logger            logr.Logger
+		logger            helpers.IntegrationLogger
+		mockCtx           context.Context
 	)
 	const (
 		SampleRepoLink           = "https://github.com/devfile-samples/devfile-sample-java-springboot-basic"
@@ -278,7 +298,14 @@ var _ = Describe("Snapshot creation functions", Ordered, func() {
 		}
 		Expect(k8sClient.Status().Update(ctx, successfulTaskRun)).Should(Succeed())
 
-		logger = log.FromContext(ctx)
+		logger = helpers.IntegrationLogger{Logger: log.FromContext(ctx)}
+
+		mockCtx = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+			{
+				ContextKey: loader.NestedComponentGroupsContextKey,
+				Resource:   []v1beta2.ComponentGroup{},
+			},
+		})
 	})
 
 	AfterAll(func() {
@@ -294,7 +321,7 @@ var _ = Describe("Snapshot creation functions", Ordered, func() {
 
 	Context("Testing PrepareSnapshotForPipelineRun()", func() {
 		It("ensures built component includes git context from Component CR", func() {
-			expectedSnapshot, err := PrepareSnapshotForPipelineRun(ctx, k8sClient, buildPipelineRun, componentName, hasCompGroup)
+			expectedSnapshot, err := PrepareSnapshotForPipelineRun(mockCtx, k8sClient, buildPipelineRun, componentName, hasCompGroup, loader.NewMockLoader())
 			Expect(err).ToNot(HaveOccurred())
 			Expect(expectedSnapshot).NotTo(BeNil())
 			var built *applicationapiv1alpha1.SnapshotComponent
@@ -310,7 +337,7 @@ var _ = Describe("Snapshot creation functions", Ordered, func() {
 		})
 
 		It("ensures that snapshot has label pointing to build pipelinerun", func() {
-			expectedSnapshot, err := PrepareSnapshotForPipelineRun(ctx, k8sClient, buildPipelineRun, componentName, hasCompGroup)
+			expectedSnapshot, err := PrepareSnapshotForPipelineRun(mockCtx, k8sClient, buildPipelineRun, componentName, hasCompGroup, loader.NewMockLoader())
 			Expect(err).ToNot(HaveOccurred())
 			Expect(expectedSnapshot).NotTo(BeNil())
 
@@ -339,7 +366,7 @@ var _ = Describe("Snapshot creation functions", Ordered, func() {
 			buildPipelineRunNoStartTime := buildPipelineRun.DeepCopy()
 			buildPipelineRunNoStartTime.Status.StartTime = nil
 
-			expectedSnapshot, err := PrepareSnapshotForPipelineRun(ctx, k8sClient, buildPipelineRunNoStartTime, componentName, hasCompGroup)
+			expectedSnapshot, err := PrepareSnapshotForPipelineRun(mockCtx, k8sClient, buildPipelineRunNoStartTime, componentName, hasCompGroup, loader.NewMockLoader())
 			Expect(err).ToNot(HaveOccurred())
 			Expect(expectedSnapshot).NotTo(BeNil())
 
@@ -360,7 +387,7 @@ var _ = Describe("Snapshot creation functions", Ordered, func() {
 		})
 
 		It("ensures that Labels and Annotations were copied to snapshot from pipelinerun", func() {
-			copyToSnapshot, err := PrepareSnapshotForPipelineRun(ctx, k8sClient, buildPipelineRun, componentName, hasCompGroup)
+			copyToSnapshot, err := PrepareSnapshotForPipelineRun(mockCtx, k8sClient, buildPipelineRun, componentName, hasCompGroup, loader.NewMockLoader())
 			Expect(err).ToNot(HaveOccurred())
 			Expect(copyToSnapshot).NotTo(BeNil())
 
@@ -383,7 +410,7 @@ var _ = Describe("Snapshot creation functions", Ordered, func() {
 			mergeQueueBuildPipelineRun.Labels[tektonconsts.PipelineAsCodePullRequestLabel] = ""
 			mergeQueueBuildPipelineRun.Annotations[tektonconsts.PipelineAsCodePullRequestLabel] = ""
 			mergeQueueBuildPipelineRun.Name = buildPipelineRun.Name + "-merge"
-			expectedSnapshot, err := PrepareSnapshotForPipelineRun(ctx, k8sClient, mergeQueueBuildPipelineRun, componentName, hasCompGroup)
+			expectedSnapshot, err := PrepareSnapshotForPipelineRun(mockCtx, k8sClient, mergeQueueBuildPipelineRun, componentName, hasCompGroup, loader.NewMockLoader())
 			Expect(err).ToNot(HaveOccurred())
 			Expect(expectedSnapshot).NotTo(BeNil())
 
@@ -430,7 +457,7 @@ var _ = Describe("Snapshot creation functions", Ordered, func() {
 
 			messageError := "Missing info IMAGE_DIGEST from pipelinerun pipelinerun-build-sample"
 			var info map[string]string
-			expectedSnapshot, err := PrepareSnapshotForPipelineRun(ctx, k8sClient, buildPipelineRunNoSource, componentName, hasCompGroup)
+			expectedSnapshot, err := PrepareSnapshotForPipelineRun(mockCtx, k8sClient, buildPipelineRunNoSource, componentName, hasCompGroup, loader.NewMockLoader())
 			Expect(expectedSnapshot).To(BeNil())
 			Expect(err).To(HaveOccurred())
 			err = tekton.AnnotateBuildPipelineRunWithCreateSnapshotAnnotation(ctx, buildPipelineRun, k8sClient, err)
@@ -443,7 +470,7 @@ var _ = Describe("Snapshot creation functions", Ordered, func() {
 		})
 
 		It("ensures pipelines as code labels and annotations are propagated to the snapshot", func() {
-			snapshot, err := PrepareSnapshotForPipelineRun(ctx, k8sClient, buildPipelineRun, componentName, hasCompGroup)
+			snapshot, err := PrepareSnapshotForPipelineRun(mockCtx, k8sClient, buildPipelineRun, componentName, hasCompGroup, loader.NewMockLoader())
 			Expect(err).ToNot(HaveOccurred())
 			Expect(snapshot).ToNot(BeNil())
 			annotation, found := snapshot.GetAnnotations()["pac.test.appstudio.openshift.io/on-target-branch"]
@@ -455,7 +482,7 @@ var _ = Describe("Snapshot creation functions", Ordered, func() {
 		})
 
 		It("ensures non-pipelines as code labels and annotations are NOT propagated to the snapshot", func() {
-			snapshot, err := PrepareSnapshotForPipelineRun(ctx, k8sClient, buildPipelineRun, componentName, hasCompGroup)
+			snapshot, err := PrepareSnapshotForPipelineRun(mockCtx, k8sClient, buildPipelineRun, componentName, hasCompGroup, loader.NewMockLoader())
 			Expect(err).ToNot(HaveOccurred())
 			Expect(snapshot).ToNot(BeNil())
 
@@ -473,7 +500,7 @@ var _ = Describe("Snapshot creation functions", Ordered, func() {
 		})
 
 		It("ensures build labels and annotations prefixed with 'build.appstudio' are propagated to the snapshot", func() {
-			snapshot, err := PrepareSnapshotForPipelineRun(ctx, k8sClient, buildPipelineRun, componentName, hasCompGroup)
+			snapshot, err := PrepareSnapshotForPipelineRun(mockCtx, k8sClient, buildPipelineRun, componentName, hasCompGroup, loader.NewMockLoader())
 			Expect(err).ToNot(HaveOccurred())
 			Expect(snapshot).ToNot(BeNil())
 
@@ -487,7 +514,7 @@ var _ = Describe("Snapshot creation functions", Ordered, func() {
 		})
 
 		It("ensures build labels and annotations non-prefixed with 'build.appstudio' are NOT propagated to the snapshot", func() {
-			snapshot, err := PrepareSnapshotForPipelineRun(ctx, k8sClient, buildPipelineRun, componentName, hasCompGroup)
+			snapshot, err := PrepareSnapshotForPipelineRun(mockCtx, k8sClient, buildPipelineRun, componentName, hasCompGroup, loader.NewMockLoader())
 			Expect(err).ToNot(HaveOccurred())
 			Expect(snapshot).ToNot(BeNil())
 
@@ -506,7 +533,7 @@ var _ = Describe("Snapshot creation functions", Ordered, func() {
 
 		It("ensures integration workflow annotation is set to 'pull-request' for pr events", func() {
 			// default buildPipelineRun already has event-type set to pull_request
-			snapshot, err := PrepareSnapshotForPipelineRun(ctx, k8sClient, buildPipelineRun, componentName, hasCompGroup)
+			snapshot, err := PrepareSnapshotForPipelineRun(mockCtx, k8sClient, buildPipelineRun, componentName, hasCompGroup, loader.NewMockLoader())
 			Expect(err).ToNot(HaveOccurred())
 			Expect(snapshot).ToNot(BeNil())
 
@@ -522,7 +549,7 @@ var _ = Describe("Snapshot creation functions", Ordered, func() {
 			pushPipelineRun.Labels["pipelinesascode.tekton.dev/event-type"] = "push"
 			delete(pushPipelineRun.Labels, "pipelinesascode.tekton.dev/pull-request")
 
-			snapshot, err := PrepareSnapshotForPipelineRun(ctx, k8sClient, pushPipelineRun, componentName, hasCompGroup)
+			snapshot, err := PrepareSnapshotForPipelineRun(mockCtx, k8sClient, pushPipelineRun, componentName, hasCompGroup, loader.NewMockLoader())
 			Expect(err).ToNot(HaveOccurred())
 			Expect(snapshot).ToNot(BeNil())
 
@@ -536,14 +563,18 @@ var _ = Describe("Snapshot creation functions", Ordered, func() {
 	Context("testing creation of snapshotComponentsList", func() {
 		It("Ensures valid and invalid snapshotComponents can be gathered from the GCL", func() {
 			var buf bytes.Buffer
-			readableLog := buflogr.NewWithBuffer(&buf)
+			readableLog := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
 			snapshotComponents, invalidComponents := getSnapshotComponentsFromGCL(hasCompGroup, readableLog)
 
 			Expect(snapshotComponents).To(HaveLen(1))
-			Expect(snapshotComponents[0].Name).To(Equal(componentName))
+			Expect(snapshotComponents).To(HaveKey(helpers.GetComponentVersionString(componentName, "v1")))
 
 			Expect(invalidComponents).To(HaveLen(1))
-			Expect(invalidComponents[0].Name).To(Equal(componentName2))
+			var invalidName string
+			for k := range invalidComponents {
+				invalidName = k.Name
+			}
+			Expect(invalidName).To(Equal(componentName2))
 
 			Expect(buf.String()).To(ContainSubstring("componentVersion was deleted from spec.Components"))
 
@@ -557,16 +588,16 @@ var _ = Describe("Snapshot creation functions", Ordered, func() {
 			Expect(snapshotComponents).To(HaveLen(1))
 			Expect(invalidComponents).To(HaveLen(1))
 
-			upsertNewComponentImage(&snapshotComponents, &invalidComponents, newSnapshotComponent, logger)
+			upsertNewComponentImage(snapshotComponents, invalidComponents, newSnapshotComponent, logger)
 
-			// The upserted image should replace the old image
+			// The upserted image should replace the old image (same name+version key)
 			Expect(snapshotComponents).To(HaveLen(1))
-			Expect(snapshotComponents[0].Name).To(Equal(componentName))
+			Expect(snapshotComponents[helpers.GetComponentVersionString(componentName, "v1")].Name).To(Equal(componentName))
 			Expect(invalidComponents).To(HaveLen(1))
 
 		})
 
-		It("Ensures built component can replace existing snapshotComponent when snapshotComponent has no version", func() {
+		It("Ensures built component is added under its version key when an unversioned entry exists", func() {
 			newSnapshotComponent, err := getSnapshotComponentFromBuildPLR(buildPipelineRun, componentName, logger)
 			Expect(err).NotTo(HaveOccurred())
 
@@ -574,12 +605,18 @@ var _ = Describe("Snapshot creation functions", Ordered, func() {
 			Expect(snapshotComponents).To(HaveLen(1))
 			Expect(invalidComponents).To(HaveLen(1))
 
-			snapshotComponents[0].Version = ""
-			upsertNewComponentImage(&snapshotComponents, &invalidComponents, newSnapshotComponent, logger)
+			// Simulate a version-less existing entry by re-keying the map
+			versionedKey := helpers.GetComponentVersionString(componentName, "v1")
+			comp := snapshotComponents[versionedKey]
+			comp.Version = ""
+			delete(snapshotComponents, versionedKey)
+			snapshotComponents[helpers.GetComponentVersionString(componentName, "")] = comp
 
-			// The upserted image should replace the old image
-			Expect(snapshotComponents).To(HaveLen(1))
-			Expect(snapshotComponents[0].Name).To(Equal(componentName))
+			upsertNewComponentImage(snapshotComponents, invalidComponents, newSnapshotComponent, logger)
+
+			// The new versioned entry is added; the unversioned entry remains under its own key
+			Expect(snapshotComponents).To(HaveLen(2))
+			Expect(snapshotComponents).To(HaveKey(helpers.GetComponentVersionString(componentName, "v1")))
 			Expect(invalidComponents).To(HaveLen(1))
 		})
 
@@ -593,13 +630,12 @@ var _ = Describe("Snapshot creation functions", Ordered, func() {
 			Expect(snapshotComponents).To(HaveLen(1))
 			Expect(invalidComponents).To(HaveLen(1))
 
-			snapshotComponents[0].Version = ""
-			upsertNewComponentImage(&snapshotComponents, &invalidComponents, newSnapshotComponent, logger)
+			upsertNewComponentImage(snapshotComponents, invalidComponents, newSnapshotComponent, logger)
 
-			// The upserted image should exist in addition to the old image
+			// The upserted image should exist in addition to the existing component
 			Expect(snapshotComponents).To(HaveLen(2))
-			Expect(snapshotComponents[0].Name).To(Equal(componentName))
-			Expect(snapshotComponents[1].Name).To(Equal(componentName2))
+			Expect(snapshotComponents).To(HaveKey(helpers.GetComponentVersionString(componentName, "v1")))
+			Expect(snapshotComponents).To(HaveKey(helpers.GetComponentVersionString(componentName2, "v1")))
 			Expect(invalidComponents).To(BeEmpty())
 		})
 	})
@@ -609,17 +645,376 @@ var _ = Describe("Snapshot creation functions", Ordered, func() {
 		Expect(true).To(BeTrue())
 	})
 
+	Context("Testing flattenSnapshotComponentsMap()", func() {
+		It("returns an empty slice for an empty map", func() {
+			result := flattenSnapshotComponentsMap(map[string]applicationapiv1alpha1.SnapshotComponent{})
+			Expect(result).To(BeEmpty())
+		})
+
+		It("returns a slice with one entry for a single-element map", func() {
+			comp := applicationapiv1alpha1.SnapshotComponent{
+				Name:           componentName,
+				ContainerImage: fmt.Sprintf("%s@%s", SampleImageWithoutDigest, SampleDigest),
+			}
+			result := flattenSnapshotComponentsMap(map[string]applicationapiv1alpha1.SnapshotComponent{
+				helpers.GetComponentVersionString(componentName, "v1"): comp,
+			})
+			Expect(result).To(HaveLen(1))
+			Expect(result).To(ContainElement(comp))
+		})
+
+		It("returns all entries for a multi-element map", func() {
+			comp1 := applicationapiv1alpha1.SnapshotComponent{Name: componentName, ContainerImage: "image1"}
+			comp2 := applicationapiv1alpha1.SnapshotComponent{Name: componentName2, ContainerImage: "image2"}
+			result := flattenSnapshotComponentsMap(map[string]applicationapiv1alpha1.SnapshotComponent{
+				helpers.GetComponentVersionString(componentName, "v1"):  comp1,
+				helpers.GetComponentVersionString(componentName2, "v1"): comp2,
+			})
+			Expect(result).To(HaveLen(2))
+			Expect(result).To(ContainElements(comp1, comp2))
+		})
+	})
+
+	Context("Testing getNestedSnapshotComponents()", func() {
+		It("returns GCL components from the componentGroup itself when there are no nested groups", func() {
+			snapshotComponents, invalidComponents, err := getNestedSnapshotComponents(hasCompGroup, []string{}, 0, loader.NewMockLoader(), mockCtx, k8sClient, logger)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(snapshotComponents).To(HaveLen(1))
+			Expect(snapshotComponents).To(HaveKey(helpers.GetComponentVersionString(componentName, "v1")))
+			// componentName2 has no containerImage so it ends up as invalid
+			Expect(invalidComponents).To(HaveLen(1))
+		})
+
+		It("returns an error when a cycle is detected in nested componentGroups", func() {
+			_, _, err := getNestedSnapshotComponents(hasCompGroup, []string{hasCompGroup.Name}, 0, loader.NewMockLoader(), mockCtx, k8sClient, logger)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("cycle found"))
+		})
+
+		It("returns an error when the loader fails to get nested component groups", func() {
+			loaderErr := fmt.Errorf("simulated loader error")
+			errLoader := &nestedGroupsLoader{
+				ObjectLoader:         loader.NewMockLoader(),
+				nestedGroupsByParent: map[string][]v1beta2.ComponentGroup{},
+				errByParent:          map[string]error{hasCompGroup.Name: loaderErr},
+			}
+			_, _, err := getNestedSnapshotComponents(hasCompGroup, []string{}, 0, errLoader, ctx, k8sClient, logger)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("simulated loader error"))
+		})
+
+		It("merges components from a nested componentGroup with the parent's own GCL", func() {
+			validImage := fmt.Sprintf("%s@%s", SampleImageWithoutDigest, SampleDigest)
+			nestedCG := &v1beta2.ComponentGroup{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "nested-component-group",
+					Namespace: "default",
+				},
+				Spec: v1beta2.ComponentGroupSpec{
+					Components: []v1beta2.ComponentReference{
+						{
+							Name:             "nested-component",
+							ComponentVersion: v1beta2.ComponentVersionReference{Name: "v1"},
+						},
+					},
+				},
+				Status: v1beta2.ComponentGroupStatus{
+					GlobalCandidateList: []v1beta2.ComponentState{
+						{
+							Name:               "nested-component",
+							Version:            "v1",
+							URL:                SampleRepoLink,
+							LastPromotedImage:  validImage,
+							LastPromotedCommit: SampleCommit,
+						},
+					},
+				},
+			}
+			nestedLoader := &nestedGroupsLoader{
+				ObjectLoader: loader.NewMockLoader(),
+				nestedGroupsByParent: map[string][]v1beta2.ComponentGroup{
+					hasCompGroup.Name: {*nestedCG},
+					nestedCG.Name:     {},
+				},
+				errByParent: map[string]error{},
+			}
+
+			snapshotComponents, _, err := getNestedSnapshotComponents(hasCompGroup, []string{}, 0, nestedLoader, ctx, k8sClient, logger)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(snapshotComponents).To(HaveKey(helpers.GetComponentVersionString(componentName, "v1")))
+			Expect(snapshotComponents).To(HaveKey(helpers.GetComponentVersionString("nested-component", "v1")))
+		})
+
+		It("parent componentGroup GCL overwrites duplicate entries from nested componentGroups", func() {
+			childImage := fmt.Sprintf("quay.io/child-image@%s", SampleDigest)
+			parentImage := fmt.Sprintf("%s@%s", SampleImageWithoutDigest, SampleDigest)
+			nestedCG := &v1beta2.ComponentGroup{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "nested-component-group-conflict",
+					Namespace: "default",
+				},
+				Spec: v1beta2.ComponentGroupSpec{
+					Components: []v1beta2.ComponentReference{
+						{
+							Name:             componentName,
+							ComponentVersion: v1beta2.ComponentVersionReference{Name: "v1"},
+						},
+					},
+				},
+				Status: v1beta2.ComponentGroupStatus{
+					GlobalCandidateList: []v1beta2.ComponentState{
+						{
+							Name:               componentName,
+							Version:            "v1",
+							URL:                SampleRepoLink,
+							LastPromotedImage:  childImage,
+							LastPromotedCommit: SampleCommit,
+						},
+					},
+				},
+			}
+			nestedLoader := &nestedGroupsLoader{
+				ObjectLoader: loader.NewMockLoader(),
+				nestedGroupsByParent: map[string][]v1beta2.ComponentGroup{
+					hasCompGroup.Name: {*nestedCG},
+					nestedCG.Name:     {},
+				},
+				errByParent: map[string]error{},
+			}
+
+			snapshotComponents, _, err := getNestedSnapshotComponents(hasCompGroup, []string{}, 0, nestedLoader, ctx, k8sClient, logger)
+			Expect(err).ToNot(HaveOccurred())
+			key := helpers.GetComponentVersionString(componentName, "v1")
+			Expect(snapshotComponents).To(HaveKey(key))
+			Expect(snapshotComponents[key].ContainerImage).To(Equal(parentImage))
+		})
+	})
+
 	Context("Testing PrepareSnapshot()", func() {
 		It("ensures the Imagepullspec and ComponentSource from pipelinerun and prepare snapshot can be created", func() {
 			newSnapshotComponent, err := getSnapshotComponentFromBuildPLR(buildPipelineRun, componentName, logger)
 			Expect(err).NotTo(HaveOccurred())
 
-			snapshot, err := PrepareSnapshot(ctx, k8sClient, hasCompGroup, newSnapshotComponent, logger)
+			snapshot, err := PrepareSnapshot(mockCtx, k8sClient, hasCompGroup, newSnapshotComponent, loader.NewMockLoader(), logger)
 			Expect(snapshot).NotTo(BeNil())
 			Expect(err).ToNot(HaveOccurred())
 			Expect(snapshot.Spec.Components).To(HaveLen(1), "One component should have been added to snapshot.  Other component should have been omited due to empty ContainerImage field or missing valid digest")
 			Expect(snapshot.Spec.Components[0].Name).To(Equal(componentName), "The built component should have been added to the snapshot")
 			Expect(snapshot.Annotations[helpers.CreateSnapshotAnnotationName]).To(Equal("Component(s) 'another-component-sample (version v1)' is(are) not included in snapshot due to missing valid containerImage or git source"))
+		})
+	})
+
+	Context("Testing upsertMultipleComponentImages()", func() {
+		var (
+			existingSnapshotComponents    map[string]applicationapiv1alpha1.SnapshotComponent
+			expectedNewSnapshotComponents map[string]applicationapiv1alpha1.SnapshotComponent
+			componentsToInsert            []applicationapiv1alpha1.SnapshotComponent
+		)
+		BeforeAll(func() {
+			existingSnapshotComponents = make(map[string]applicationapiv1alpha1.SnapshotComponent)
+			existingSnapshotComponents["component1/main"] = applicationapiv1alpha1.SnapshotComponent{
+				Name:           "component1",
+				Version:        "main",
+				ContainerImage: "quay.io/konflux/component1-main:old",
+				Source: applicationapiv1alpha1.ComponentSource{
+					ComponentSourceUnion: applicationapiv1alpha1.ComponentSourceUnion{
+						GitSource: &applicationapiv1alpha1.GitSource{
+							URL:      SampleRepoLink,
+							Revision: SampleCommit,
+						},
+					},
+				},
+			}
+
+			newSnapshotComponent1 := applicationapiv1alpha1.SnapshotComponent{
+				Name:           "component1",
+				Version:        "main",
+				ContainerImage: "quay.io/konflux/component1-main@sha256:841328df1b9f8c4087adbdcfec6cc99ac8308805dea83f6d415d6fb8d40227c1",
+				Source: applicationapiv1alpha1.ComponentSource{
+					ComponentSourceUnion: applicationapiv1alpha1.ComponentSourceUnion{
+						GitSource: &applicationapiv1alpha1.GitSource{
+							URL:      SampleRepoLink,
+							Revision: SampleCommit,
+						},
+					},
+				},
+			}
+			newSnapshotComponent2 := applicationapiv1alpha1.SnapshotComponent{
+				Name:           "component2",
+				Version:        "main",
+				ContainerImage: "quay.io/konflux/component2-main@sha256:841328df1b9f8c4087adbdcfec6cc99ac8308805dea83f6d415d6fb8d40227c1",
+				Source: applicationapiv1alpha1.ComponentSource{
+					ComponentSourceUnion: applicationapiv1alpha1.ComponentSourceUnion{
+						GitSource: &applicationapiv1alpha1.GitSource{
+							URL:      SampleRepoLink,
+							Revision: SampleCommit,
+						},
+					},
+				},
+			}
+			componentsToInsert = []applicationapiv1alpha1.SnapshotComponent{newSnapshotComponent1, newSnapshotComponent2}
+
+			expectedNewSnapshotComponents = make(map[string]applicationapiv1alpha1.SnapshotComponent)
+			expectedNewSnapshotComponents["component1/main"] = newSnapshotComponent1
+			expectedNewSnapshotComponents["component2/main"] = newSnapshotComponent2
+		})
+
+		It("Can upsert new componentVersions", func() {
+			invalidComponents := make(map[v1beta2.ComponentState]InvalidComponentReason)
+			upsertMultipleComponentImages(existingSnapshotComponents, invalidComponents, componentsToInsert, logger)
+			Expect(existingSnapshotComponents).To(Equal(expectedNewSnapshotComponents))
+			Expect(invalidComponents).To(BeEmpty())
+		})
+
+		It("Can upsert new componentVersions and replace invalid components", func() {
+			invalidComponents := make(map[v1beta2.ComponentState]InvalidComponentReason)
+			invalidComponents[v1beta2.ComponentState{
+				Name:    "component2",
+				Version: "main",
+			}] = InvalidComponentReason{
+				ComponentGroup: "",
+				Reason:         "invalid digest in containerImage",
+			}
+			upsertMultipleComponentImages(existingSnapshotComponents, invalidComponents, componentsToInsert, logger)
+			Expect(existingSnapshotComponents).To(Equal(expectedNewSnapshotComponents))
+			Expect(invalidComponents).To(BeEmpty())
+		})
+	})
+
+	Context("Testing PrepareParentSnapshot()", func() {
+		var (
+			childComponentSnapshot *applicationapiv1alpha1.Snapshot
+			childImageURL          string
+		)
+
+		BeforeEach(func() {
+			childImageURL = fmt.Sprintf("quay.io/child-image@%s", SampleDigest)
+			childComponentSnapshot = &applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "child-component-snapshot",
+					Namespace: "default",
+					Labels: map[string]string{
+						gitops.SnapshotTypeLabel:      gitops.SnapshotComponentType,
+						gitops.SnapshotComponentLabel: componentName,
+					},
+					Annotations: map[string]string{
+						tektonconsts.PipelineRunComponentVersionAnnotation: "v1",
+					},
+				},
+				Spec: applicationapiv1alpha1.SnapshotSpec{
+					Application: hasAppSample.Name,
+					Components: []applicationapiv1alpha1.SnapshotComponent{
+						{
+							Name:           componentName,
+							Version:        "v1",
+							ContainerImage: childImageURL,
+							Source: applicationapiv1alpha1.ComponentSource{
+								ComponentSourceUnion: applicationapiv1alpha1.ComponentSourceUnion{
+									GitSource: &applicationapiv1alpha1.GitSource{
+										URL:      SampleRepoLink,
+										Revision: SampleCommit,
+									},
+								},
+							},
+						},
+					},
+				},
+			}
+		})
+
+		It("returns a snapshot with the child component image overriding the GCL entry", func() {
+			snapshot, err := PrepareParentSnapshot(mockCtx, k8sClient, loader.NewMockLoader(), logger, hasCompGroup, childComponentSnapshot)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(snapshot).NotTo(BeNil())
+
+			var found *applicationapiv1alpha1.SnapshotComponent
+			for i := range snapshot.Spec.Components {
+				if snapshot.Spec.Components[i].Name == componentName {
+					found = &snapshot.Spec.Components[i]
+					break
+				}
+			}
+			Expect(found).NotTo(BeNil())
+			Expect(found.ContainerImage).To(Equal(childImageURL))
+		})
+
+		It("sets the SnapshotGitSourceRepoURLAnnotation from the child snapshot component's git source", func() {
+			snapshot, err := PrepareParentSnapshot(mockCtx, k8sClient, loader.NewMockLoader(), logger, hasCompGroup, childComponentSnapshot)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(snapshot).NotTo(BeNil())
+			Expect(snapshot.Annotations).To(HaveKeyWithValue(gitops.SnapshotGitSourceRepoURLAnnotation, SampleRepoLink))
+		})
+
+		It("sets the invalid component warning annotation when some GCL components remain invalid", func() {
+			snapshot, err := PrepareParentSnapshot(mockCtx, k8sClient, loader.NewMockLoader(), logger, hasCompGroup, childComponentSnapshot)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(snapshot).NotTo(BeNil())
+			// componentName2 has an empty containerImage in the GCL and is not provided by the child snapshot
+			Expect(snapshot.Annotations).To(HaveKey(helpers.CreateSnapshotAnnotationName))
+			Expect(snapshot.Annotations[helpers.CreateSnapshotAnnotationName]).To(ContainSubstring(componentName2))
+		})
+
+		It("sets the controller reference on the snapshot to the componentGroup", func() {
+			snapshot, err := PrepareParentSnapshot(mockCtx, k8sClient, loader.NewMockLoader(), logger, hasCompGroup, childComponentSnapshot)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(snapshot).NotTo(BeNil())
+			ownerRef := metav1.GetControllerOf(snapshot)
+			Expect(ownerRef).NotTo(BeNil())
+			Expect(ownerRef.Name).To(Equal(hasCompGroup.Name))
+		})
+
+		It("returns a wrapped error when the loader fails to get nested component groups", func() {
+			loaderErr := fmt.Errorf("simulated loader error")
+			errLoader := &nestedGroupsLoader{
+				ObjectLoader:         loader.NewMockLoader(),
+				nestedGroupsByParent: map[string][]v1beta2.ComponentGroup{},
+				errByParent:          map[string]error{hasCompGroup.Name: loaderErr},
+			}
+			snapshot, err := PrepareParentSnapshot(ctx, k8sClient, errLoader, logger, hasCompGroup, childComponentSnapshot)
+			Expect(err).To(HaveOccurred())
+			Expect(snapshot).To(BeNil())
+			Expect(err.Error()).To(ContainSubstring("error getting nested snapshot components:"))
+			Expect(err.Error()).To(ContainSubstring("simulated loader error"))
+		})
+
+		It("returns a MissingValidComponentError when no valid components remain after merging", func() {
+			// A group whose entire GCL has no valid images, and a child snapshot that contributes nothing
+			allInvalidGroup := &v1beta2.ComponentGroup{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "all-invalid-prep-group",
+					Namespace: "default",
+				},
+				Spec: v1beta2.ComponentGroupSpec{
+					Components: []v1beta2.ComponentReference{
+						{
+							Name:             componentName2,
+							ComponentVersion: v1beta2.ComponentVersionReference{Name: "v1"},
+						},
+					},
+				},
+				Status: v1beta2.ComponentGroupStatus{
+					GlobalCandidateList: []v1beta2.ComponentState{
+						// empty LastPromotedImage → invalid, omitted from snapshot
+						{Name: componentName2, Version: "v1"},
+					},
+				},
+			}
+
+			// Child snapshot is not a component/group/override type, so GetAllNewComponentsInSnapshot returns empty
+			neutralChildSnapshot := &applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "neutral-child-snapshot",
+					Namespace: "default",
+				},
+				Spec: applicationapiv1alpha1.SnapshotSpec{
+					Application: hasAppSample.Name,
+				},
+			}
+
+			snapshot, err := PrepareParentSnapshot(mockCtx, k8sClient, loader.NewMockLoader(), logger, allInvalidGroup, neutralChildSnapshot)
+			Expect(err).To(HaveOccurred())
+			Expect(snapshot).To(BeNil())
+			Expect(helpers.IsMissingValidComponentError(err)).To(BeTrue())
 		})
 	})
 })

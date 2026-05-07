@@ -72,6 +72,7 @@ const (
 	ResolutionRequestContextKey
 	GetPRComponentSnapshotsForComponentContextKey
 	ComponentGroupsContextKey
+	NestedComponentGroupsContextKey
 	RequiredIntegrationTestScenariosForSnapshotContextKey
 	GetPushComponentSnapshotsForComponentContextKey
 )
@@ -420,4 +421,28 @@ func (l *mockLoader) GetPushComponentSnapshotsForComponent(ctx context.Context, 
 	}
 	snapshots, err := toolkit.GetMockedResourceAndErrorFromContext(ctx, GetPushComponentSnapshotsForComponentContextKey, []applicationapiv1alpha1.Snapshot{})
 	return &snapshots, err
+}
+
+func (l *mockLoader) GetComponentGroupsContainingComponentGroup(ctx context.Context, c client.Client, childComponentGroup *v1beta2.ComponentGroup) ([]v1beta2.ComponentGroup, error) {
+	if ctx.Value(ComponentGroupsContextKey) == nil {
+		return l.loader.GetComponentGroupsContainingComponentGroup(ctx, c, childComponentGroup)
+	}
+	componentGroups, err := toolkit.GetMockedResourceAndErrorFromContext(ctx, ComponentGroupsContextKey, []v1beta2.ComponentGroup{})
+	return componentGroups, err
+}
+
+func (l *mockLoader) GetAllComponentGroupsInNamespace(ctx context.Context, c client.Client, namespace string) ([]v1beta2.ComponentGroup, error) {
+	if ctx.Value(ComponentGroupsContextKey) == nil {
+		return l.loader.GetAllComponentGroupsInNamespace(ctx, c, namespace)
+	}
+	componentGroups, err := toolkit.GetMockedResourceAndErrorFromContext(ctx, ComponentGroupsContextKey, []v1beta2.ComponentGroup{})
+	return componentGroups, err
+}
+
+func (l *mockLoader) GetNestedComponentGroupsForComponentGroup(ctx context.Context, c client.Client, componentGroup *v1beta2.ComponentGroup) ([]v1beta2.ComponentGroup, error) {
+	if ctx.Value(NestedComponentGroupsContextKey) == nil {
+		return l.loader.GetNestedComponentGroupsForComponentGroup(ctx, c, componentGroup)
+	}
+	componentGroups, err := toolkit.GetMockedResourceAndErrorFromContext(ctx, NestedComponentGroupsContextKey, []v1beta2.ComponentGroup{})
+	return componentGroups, err
 }

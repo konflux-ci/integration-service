@@ -52,7 +52,6 @@ func TestComponentGroupSpec(t *testing.T) {
 					},
 				},
 			},
-			Dependents: []string{"child-cg-1", "child-cg-2"},
 			TestGraph: map[string][]TestGraphNode{
 				"verify": {
 					{Name: "clamav-scan"},
@@ -114,10 +113,6 @@ func TestComponentGroupSpec(t *testing.T) {
 
 	if cg.Spec.Components[1].ComponentVersion.Context != "components/second-component" {
 		t.Errorf("Expected second component branch 'components/second-component', got '%s'", cg.Spec.Components[1].ComponentVersion.Name)
-	}
-
-	if len(cg.Spec.Dependents) != 2 {
-		t.Errorf("Expected 2 dependents, got %d", len(cg.Spec.Dependents))
 	}
 
 	if len(cg.Spec.TestGraph) != 2 {
@@ -192,9 +187,6 @@ func TestComponentGroupMinimalSpec(t *testing.T) {
 	if cg.Spec.Components[0].ComponentVersion.Revision != "" {
 		t.Errorf("Expected empty Revision, got '%s'", cg.Spec.Components[0].ComponentVersion.Revision)
 	}
-	if len(cg.Spec.Dependents) != 0 {
-		t.Errorf("Expected 0 dependents, got %d", len(cg.Spec.Dependents))
-	}
 	if cg.Spec.TestGraph != nil {
 		t.Error("Expected nil TestGraph")
 	}
@@ -257,7 +249,6 @@ func TestComponentGroupDeepCopy(t *testing.T) {
 					},
 				},
 			},
-			Dependents: []string{"dependent-1"},
 		},
 	}
 
@@ -360,7 +351,6 @@ func TestComponentGroupSpecDeepCopy(t *testing.T) {
 		Components: []ComponentReference{
 			{Name: "comp-1", ComponentVersion: ComponentVersionReference{Name: "main"}},
 		},
-		Dependents: []string{"dep-1"},
 		TestGraph: map[string][]TestGraphNode{
 			"test-1": {{Name: "node-1", FailFast: true}},
 		},

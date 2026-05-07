@@ -24,6 +24,7 @@ spec:
       componentVersion:
         name: "main"
     - name: second-component
+      kind: component
       componentBranch:
         name: "v1"
         revision: "v1branch"
@@ -31,10 +32,8 @@ spec:
     - name: python-component
       componentBranch:
         name: "3.12.4"
-  dependents:
-    # when a snapshot for this ComponentGroup is created,
-    # the integration service will also create one for child-cg
-    - child-cg
+    - name: child-cg
+      kind: componentGroup
   testGraph:
     # in this graph clamav-scan, dast-tests, and deployment would run first
     # e2e-test would start when clamav-scan finishes
