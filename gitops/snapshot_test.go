@@ -733,6 +733,20 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 		Expect(reasons).To(BeEmpty())
 	})
 
+	It("ensures CanSnapshotBePromoted returns false when auto-release label is 'false', even if tests pass", func() {
+		err := gitops.MarkSnapshotIntegrationStatusAsFinished(ctx, k8sClient, hasSnapshot, "Test message")
+		Expect(err).ToNot(HaveOccurred())
+
+		err = gitops.MarkSnapshotAsPassed(ctx, k8sClient, hasSnapshot, "Test message")
+		Expect(err).ToNot(HaveOccurred())
+
+		hasSnapshot.Labels[gitops.AutoReleaseLabel] = "false"
+		canBePromoted, reasons := gitops.CanSnapshotBePromoted(hasSnapshot)
+		Expect(canBePromoted).To(BeFalse())
+		Expect(reasons).To(HaveLen(1))
+		Expect(reasons[0]).To(ContainSubstring(gitops.AutoReleaseLabel))
+	})
+
 	It("ensures the a decision can be made to NOT promote the Snapshot based on its status", func() {
 		err := gitops.MarkSnapshotIntegrationStatusAsFinished(ctx, k8sClient, hasSnapshot, "Test message")
 		Expect(err).ToNot(HaveOccurred())
