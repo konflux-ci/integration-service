@@ -735,7 +735,7 @@ func (a *Adapter) validateOverrideSnapshotComponents() error {
 }
 
 // EnsureGroupSnapshotExist is an operation that ensure the group snapshot is created for component snapshots
-// once a new component snapshot is created for an pull request and there are multiple existing PRs belonging to the same PR group
+// once a new component snapshot is created for a pull request and there are multiple existing PRs belonging to the same PR group
 func (a *Adapter) EnsureGroupSnapshotExist() (controller.OperationResult, error) {
 	if gitops.IsSnapshotCreatedByPACPushEvent(a.snapshot) {
 		a.logger.Info("The snapshot is not created by PAC pull request, no need to create group snapshot")
@@ -776,8 +776,14 @@ func (a *Adapter) EnsureGroupSnapshotExist() (controller.OperationResult, error)
 		return controller.ContinueProcessing()
 	}
 
-	// TODO: handle group snapshots in STONEINTG-1519
-	groupSnapshot, componentSnapshotInfos, err := a.prepareGroupSnapshot(a.application, prGroup, prGroupHash)
+	var groupSnapshot *applicationapiv1alpha1.Snapshot
+	var componentSnapshotInfos []gitops.ComponentSnapshotInfo
+	// TODO: Remove application branch once the application model is deprecated
+	if a.application != nil {
+		groupSnapshot, componentSnapshotInfos, err = a.prepareGroupSnapshotApplication(prGroup, prGroupHash)
+	} else {
+		groupSnapshot, componentSnapshotInfos, err = a.prepareGroupSnapshot(prGroup, prGroupHash)
+	}
 	if err != nil {
 		a.logger.Error(err, "failed to prepare group snapshot")
 		if h.IsUnrecoverableMetadataError(err) || clienterrors.IsNotFound(err) {
@@ -995,9 +1001,17 @@ func (a *Adapter) HandlePipelineCreationError(err error, integrationTestScenario
 	return controller.RequeueWithError(err)
 }
 
-// TODO: update in STONEINTG-1519
-func (a *Adapter) prepareGroupSnapshot(application *applicationapiv1alpha1.Application, prGroup, prGroupHash string) (*applicationapiv1alpha1.Snapshot, []gitops.ComponentSnapshotInfo, error) {
-	componentsToCheck, err := a.loader.GetComponentsFromSnapshotForPRGroup(a.context, a.client, application.Namespace, prGroup, prGroupHash, application.Name)
+// prepareGroupSnapshot prepares a Group Snapshot based on the existing component Snapshots which belong to the same PR group
+// It contains all of the updated componets from each of the component Snapshots, while the rest of the components are taken from the Global Candidate List
+func (a *Adapter) prepareGroupSnapshot(prGroup, prGroupHash string) (*applicationapiv1alpha1.Snapshot, []gitops.ComponentSnapshotInfo, error) {
+	snapshotComponents := make([]applicationapiv1alpha1.SnapshotComponent, 0)
+	componentSnapshotInfos := make([]gitops.ComponentSnapshotInfo, 0)
+	ownerName := a.componentGroup.Name
+	ownerLabel := gitops.ComponentGroupNameLabel
+	namespace := a.componentGroup.Namespace
+	snapshotComponentsFromGCL, invalidComponents := snapshot.GetSnapshotComponentsFromGCL(a.componentGroup, a.logger.Logger)
+
+	componentsToCheck, err := a.loader.GetComponentsFromSnapshotForPRGroup(a.context, a.client, namespace, prGroupHash, ownerName, ownerLabel)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -1006,32 +1020,112 @@ func (a *Adapter) prepareGroupSnapshot(application *applicationapiv1alpha1.Appli
 		return nil, nil, err
 	}
 
-	applicationComponents, err := a.loader.GetAllApplicationComponents(a.context, a.client, application)
-	if err != nil {
-		return nil, nil, err
-	}
+	for _, groupComponent := range a.componentGroup.Spec.Components {
+		groupComponent := groupComponent // G601
 
-	snapshotComponents := make([]applicationapiv1alpha1.SnapshotComponent, 0)
-	componentSnapshotInfos := make([]gitops.ComponentSnapshotInfo, 0)
-	for _, applicationComponent := range *applicationComponents {
-		applicationComponent := applicationComponent // G601
-
-		var foundSnapshotWithOpenedPR *applicationapiv1alpha1.Snapshot
-		var statusCode int
-		if slices.Contains(componentsToCheck, applicationComponent.Name) {
-			snapshots, err := a.loader.GetMatchingComponentSnapshotsForComponentAndPRGroupHash(a.context, a.client, application.Namespace, applicationComponent.Name, prGroupHash, application.Name)
+		//nolint:govet  // Allow parameter inference
+		if slices.Contains(componentsToCheck, groupComponent.Name) {
+			snapshots, err := a.loader.GetMatchingComponentSnapshotsForComponentAndPRGroupHash(a.context, a.client, namespace, groupComponent.Name, prGroupHash, ownerName, ownerLabel)
 			if err != nil {
-				a.logger.Error(err, "Failed to fetch Snapshots for component", "component.Name", applicationComponent.Name)
+				a.logger.Error(err, "Failed to fetch Snapshots for component", "component.Name", groupComponent.Name)
 				return nil, nil, err
 			}
-			foundSnapshotWithOpenedPR, statusCode, err = a.status.FindSnapshotWithOpenedPR(a.context, snapshots, a.snapshot)
+			foundSnapshotWithOpenedPR, statusCode, err := a.status.FindSnapshotWithOpenedPR(a.context, snapshots, a.snapshot)
 			if err != nil {
 				a.logger.Error(err, "failed to find snapshot with open PR or MR", "statusCode", statusCode)
 				return nil, nil, err
 			}
 			if foundSnapshotWithOpenedPR != nil {
 				a.logger.Info("PR/MR in snapshot is opened, will find snapshotComponent and add to groupSnapshot")
-				snapshotComponent := gitops.FindMatchingSnapshotComponent(foundSnapshotWithOpenedPR, &applicationComponent)
+				snapshotComponent := gitops.FindMatchingSnapshotComponent(foundSnapshotWithOpenedPR, groupComponent.Name)
+				componentSnapshotInfos = append(componentSnapshotInfos, gitops.ComponentSnapshotInfo{
+					Component:         groupComponent.Name,
+					BuildPipelineRun:  foundSnapshotWithOpenedPR.Labels[gitops.BuildPipelineRunNameLabel],
+					Snapshot:          foundSnapshotWithOpenedPR.Name,
+					Namespace:         a.snapshot.Namespace,
+					RepoUrl:           foundSnapshotWithOpenedPR.Annotations[gitops.PipelineAsCodeRepoUrlAnnotation],
+					PullRequestNumber: foundSnapshotWithOpenedPR.Annotations[gitops.PipelineAsCodePullRequestAnnotation],
+				})
+				snapshotComponents = append(snapshotComponents, snapshotComponent)
+				continue
+			}
+		}
+
+		a.logger.Info("can't find snapshot with open pull/merge request for component, try to find snapshotComponent from Global Candidate List", "component", groupComponent.Name)
+		// if there is no component snapshot found for open PR/MR, we get snapshotComponent from gcl
+		snapshotComponent, err := snapshot.FetchSnapshotComponentFromGCL(groupComponent.Name, snapshotComponentsFromGCL, invalidComponents)
+		if err != nil {
+			a.logger.Error(err, "component cannot be added to snapshot", "component.Name", groupComponent.Name)
+			continue
+		}
+		if snapshotComponent != nil {
+			a.logger.Info("component with containerImage from Global Candidate List will be added to group snapshot", "component.Name", snapshotComponent.Name)
+			snapshotComponents = append(snapshotComponents, *snapshotComponent)
+		} else {
+			a.logger.Info("component cannot be added to snapshot, no GCL entries found for it", "component.Name", groupComponent.Name)
+		}
+	}
+
+	// if the valid component snapshot from open MR/PR is less than 2, won't create group snapshot
+	if len(componentSnapshotInfos) < 2 {
+		return nil, componentSnapshotInfos, nil
+	}
+
+	groupSnapshot := snapshot.NewSnapshot(a.componentGroup, &snapshotComponents)
+	err = ctrl.SetControllerReference(a.componentGroup, groupSnapshot, a.client.Scheme())
+	if err != nil {
+		a.logger.Error(err, "failed to set owner reference to group snapshot")
+		return nil, nil, err
+	}
+
+	groupSnapshot, err = gitops.SetAnnotationAndLabelForGroupSnapshot(groupSnapshot, a.snapshot, componentSnapshotInfos)
+	if err != nil {
+		a.logger.Error(err, "failed to annotate group snapshot")
+		return nil, nil, err
+	}
+
+	return groupSnapshot, componentSnapshotInfos, nil
+}
+
+// prepareGroupSnapshotApplication prepares a Group Snapshot based on the existing component Snapshots which belong to the same PR group
+// It contains all of the updated componets from each of the component Snapshots, while the rest of the components are taken from the Global Candidate List
+func (a *Adapter) prepareGroupSnapshotApplication(prGroup, prGroupHash string) (*applicationapiv1alpha1.Snapshot, []gitops.ComponentSnapshotInfo, error) {
+	snapshotComponents := make([]applicationapiv1alpha1.SnapshotComponent, 0)
+	componentSnapshotInfos := make([]gitops.ComponentSnapshotInfo, 0)
+	ownerName := a.application.Name
+	ownerLabel := gitops.ApplicationNameLabel
+	namespace := a.application.Namespace
+	components, err := a.loader.GetAllApplicationComponents(a.context, a.client, a.application)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	componentsToCheck, err := a.loader.GetComponentsFromSnapshotForPRGroup(a.context, a.client, namespace, prGroupHash, ownerName, ownerLabel)
+	if err != nil {
+		return nil, nil, err
+	}
+	if len(componentsToCheck) < 2 {
+		a.logger.Info(fmt.Sprintf("The number %d of components affected by this PR group %s is less than 2, skipping group snapshot creation", len(componentsToCheck), prGroup))
+		return nil, nil, err
+	}
+	for _, applicationComponent := range *components {
+		applicationComponent := applicationComponent // G601
+
+		//nolint:govet  // Allow parameter inference
+		if slices.Contains(componentsToCheck, applicationComponent.Name) {
+			snapshots, err := a.loader.GetMatchingComponentSnapshotsForComponentAndPRGroupHash(a.context, a.client, namespace, applicationComponent.Name, prGroupHash, ownerName, ownerLabel)
+			if err != nil {
+				a.logger.Error(err, "Failed to fetch Snapshots for component", "component.Name", applicationComponent.Name)
+				return nil, nil, err
+			}
+			foundSnapshotWithOpenedPR, statusCode, err := a.status.FindSnapshotWithOpenedPR(a.context, snapshots, a.snapshot)
+			if err != nil {
+				a.logger.Error(err, "failed to find snapshot with open PR or MR", "statusCode", statusCode)
+				return nil, nil, err
+			}
+			if foundSnapshotWithOpenedPR != nil {
+				a.logger.Info("PR/MR in snapshot is opened, will find snapshotComponent and add to groupSnapshot")
+				snapshotComponent := gitops.FindMatchingSnapshotComponent(foundSnapshotWithOpenedPR, applicationComponent.Name)
 				componentSnapshotInfos = append(componentSnapshotInfos, gitops.ComponentSnapshotInfo{
 					Component:         applicationComponent.Name,
 					BuildPipelineRun:  foundSnapshotWithOpenedPR.Labels[gitops.BuildPipelineRunNameLabel],
@@ -1047,31 +1141,13 @@ func (a *Adapter) prepareGroupSnapshot(application *applicationapiv1alpha1.Appli
 
 		a.logger.Info("can't find snapshot with open pull/merge request for component, try to find snapshotComponent from Global Candidate List", "component", applicationComponent.Name)
 		// if there is no component snapshot found for open PR/MR, we get snapshotComponent from gcl
-		componentSource, err := gitops.GetComponentSourceFromComponent(&applicationComponent)
+		snapshotComponent, err := a.fetchSnapshotComponentFromApplicationGCL(&applicationComponent)
 		if err != nil {
-			a.logger.Error(err, "component cannot be added to snapshot for application due to missing git source", "component.Name", applicationComponent.Name)
+			a.logger.Error(err, "component cannot be added to snapshot", "component.Name", applicationComponent.Name)
 			continue
 		}
-		containerImage := applicationComponent.Status.LastPromotedImage
-		if containerImage == "" {
-			a.logger.Info("component cannot be added to snapshot for application due to missing containerImage", "component.Name", applicationComponent.Name)
-			continue
-		} else {
-			// if the containerImage doesn't have a valid digest, the component
-			// will not be added to snapshot
-			err := gitops.ValidateImageDigest(containerImage)
-			if err != nil {
-				a.logger.Error(err, "component cannot be added to snapshot for application due to invalid digest in containerImage", "component.Name", applicationComponent.Name)
-				continue
-			}
-			snapshotComponent := applicationapiv1alpha1.SnapshotComponent{
-				Name:           applicationComponent.Name,
-				ContainerImage: containerImage,
-				Source:         *componentSource,
-			}
-			a.logger.Info("component with containerImage from Global Candidate List will be added to group snapshot", "component.Name", snapshotComponent.Name)
-			snapshotComponents = append(snapshotComponents, snapshotComponent)
-		}
+		a.logger.Info("component with containerImage from Global Candidate List will be added to group snapshot", "component.Name", snapshotComponent.Name)
+		snapshotComponents = append(snapshotComponents, *snapshotComponent)
 	}
 
 	// if the valid component snapshot from open MR/PR is less than 2, won't create group snapshot
@@ -1079,8 +1155,10 @@ func (a *Adapter) prepareGroupSnapshot(application *applicationapiv1alpha1.Appli
 		return nil, componentSnapshotInfos, nil
 	}
 
-	groupSnapshot := gitops.NewSnapshot(application, &snapshotComponents)
-	err = ctrl.SetControllerReference(application, groupSnapshot, a.client.Scheme())
+	var groupSnapshot *applicationapiv1alpha1.Snapshot
+
+	groupSnapshot = gitops.NewSnapshot(a.application, &snapshotComponents)
+	err = ctrl.SetControllerReference(a.application, groupSnapshot, a.client.Scheme())
 	if err != nil {
 		a.logger.Error(err, "failed to set owner reference to group snapshot")
 		return nil, nil, err
@@ -1095,10 +1173,37 @@ func (a *Adapter) prepareGroupSnapshot(application *applicationapiv1alpha1.Appli
 	return groupSnapshot, componentSnapshotInfos, nil
 }
 
+// fetchSnapshotComponentFromApplicationGCL fetches a Snapshot component from the Application's GCL
+// TODO: Remove once the application model is fully deprecated [APPLICATION]
+func (a *Adapter) fetchSnapshotComponentFromApplicationGCL(component *applicationapiv1alpha1.Component) (*applicationapiv1alpha1.SnapshotComponent, error) {
+	var snapshotComponent applicationapiv1alpha1.SnapshotComponent
+	componentSource, err := gitops.GetComponentSourceFromComponent(component)
+	if err != nil {
+		return nil, fmt.Errorf("component cannot be added to snapshot for application due to missing git source")
+	}
+	containerImage := component.Status.LastPromotedImage
+
+	if containerImage == "" {
+		return nil, fmt.Errorf("component cannot be added to snapshot for application due to missing containerImage")
+	}
+
+	// if the containerImage doesn't have a valid digest, the component
+	// will not be added to snapshot
+	err = gitops.ValidateImageDigest(containerImage)
+	if err != nil {
+		return nil, fmt.Errorf("component cannot be added to snapshot for application due to invalid digest in containerImage")
+	}
+	snapshotComponent = applicationapiv1alpha1.SnapshotComponent{
+		Name:           component.Name,
+		ContainerImage: containerImage,
+		Source:         *componentSource,
+	}
+	return &snapshotComponent, nil
+}
+
 // haveAllPipelineRunProcessedForPrGroup checks if all build plr has been processed for the given pr group
-// TODO: update in STONEINTG-1519
 func (a *Adapter) haveAllPipelineRunProcessedForPrGroup(prGroup, prGroupHash string) (bool, error) {
-	pipelineRuns, err := a.loader.GetPipelineRunsWithPRGroupHash(a.context, a.client, a.snapshot.Namespace, prGroupHash, a.application.Name)
+	pipelineRuns, err := a.loader.GetPipelineRunsWithPRGroupHash(a.context, a.client, a.snapshot.Namespace, prGroupHash)
 	if err != nil {
 		a.logger.Error(err, fmt.Sprintf("Failed to get build pipelineRuns for given pr group hash %s", prGroupHash))
 		return false, err
@@ -1173,9 +1278,9 @@ func (a *Adapter) checkAndCancelOldSnapshotsPipelineRun() error {
 		}
 		// TODO: remove if statement when we deprecated old application model
 		if a.application != nil {
-			snapshots, err = a.loader.GetMatchingGroupSnapshotsForPRGroupHash(a.context, a.client, a.application.Namespace, prGroupHash, a.application.Name)
+			snapshots, err = a.loader.GetMatchingGroupSnapshotsForPRGroupHash(a.context, a.client, a.application.Namespace, prGroupHash, a.application.Name, gitops.ApplicationNameLabel)
 		} else {
-			snapshots, err = a.loader.GetMatchingGroupSnapshotsForPRGroupHash(a.context, a.client, a.componentGroup.Namespace, prGroupHash, a.componentGroup.Name)
+			snapshots, err = a.loader.GetMatchingGroupSnapshotsForPRGroupHash(a.context, a.client, a.componentGroup.Namespace, prGroupHash, a.componentGroup.Name, gitops.ComponentGroupNameLabel)
 		}
 		if err != nil {
 			a.logger.Error(fmt.Errorf("failed to get group snapshot for pr group from group snapshot"), "snapshot.Namespace", a.snapshot.Namespace, "snapshot.Name", a.snapshot.Name)

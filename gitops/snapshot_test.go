@@ -548,7 +548,7 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 		Expect(createdSnapshot.Name).To(MatchRegexp(`^application-sample-\d{8}-\d{6}-\d{3}$`))
 	})
 
-	It("ensures NewSnapshot truncates application name if longer than 43 characters", func() {
+	It("ensures NewApplicationSnapshot truncates application name if longer than 43 characters [APPLICATION]", func() {
 		longAppName := "this-is-a-very-long-application-name-that-exceeds-43-chars"
 		longApp := &applicationapiv1alpha1.Application{
 			ObjectMeta: metav1.ObjectMeta{
@@ -572,7 +572,7 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 		Expect(snapshot.Spec.Application).To(Equal(longAppName))
 	})
 
-	It("ensures NewSnapshot does not truncate application name at 43 characters", func() {
+	It("ensures NewApplicationSnapshot does not truncate application name at 43 characters [APPLICATION]", func() {
 		exactAppName := "this-is-application-name-exactly-43-chars" // 43 chars
 		exactApp := &applicationapiv1alpha1.Application{
 			ObjectMeta: metav1.ObjectMeta{
@@ -1215,7 +1215,7 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 			})
 
 			It("Can find the correct snapshotComponent for the given component name", func() {
-				FoundSnapshotComponent := gitops.FindMatchingSnapshotComponent(hasComSnapshot1, hasComp)
+				FoundSnapshotComponent := gitops.FindMatchingSnapshotComponent(hasComSnapshot1, hasComp.Name)
 				Expect(FoundSnapshotComponent.Name).To(Equal(hasComp.Name))
 			})
 
@@ -1325,7 +1325,7 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 					},
 				}
 				prefixes := []string{gitops.BuildPipelineRunPrefix}
-				gitops.CopyTempGroupSnapshotLabelsAndAnnotations(hasApp, tempGroupSnapshot, hasComp.Name, &buildPipelineRun.ObjectMeta, prefixes)
+				gitops.CopyTempGroupSnapshotLabelsAndAnnotations(&hasApp.ObjectMeta, tempGroupSnapshot, hasComp.Name, &buildPipelineRun.ObjectMeta, prefixes, true)
 				Expect(metadata.HasLabel(tempGroupSnapshot, "pac.test.appstudio.openshift.io/event-type")).To(BeTrue())
 				Expect(metadata.HasLabel(tempGroupSnapshot, "appstudio.openshift.io/component")).To(BeFalse())
 			})

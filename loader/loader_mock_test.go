@@ -52,7 +52,7 @@ var _ = Describe("Release Adapter", Ordered, func() {
 		})
 	})
 
-	Context("When calling GetAllApplicationComponents", func() {
+	Context("When calling GetAllApplicationComponents [APPLICATION]", func() {
 		It("returns resource and error from the context", func() {
 			applicationComponents := []applicationapiv1alpha1.Component{}
 			mockContext := toolkit.GetMockedContext(ctx, []toolkit.MockData{
@@ -63,6 +63,21 @@ var _ = Describe("Release Adapter", Ordered, func() {
 			})
 			resource, err := loader.GetAllApplicationComponents(mockContext, nil, nil)
 			Expect(resource).To(Equal(&applicationComponents))
+			Expect(err).ToNot(HaveOccurred())
+		})
+	})
+
+	Context("When calling GetAllComponentGroupComponents", func() {
+		It("returns resource and error from the context", func() {
+			groupComponents := []applicationapiv1alpha1.Component{}
+			mockContext := toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: ComponentGroupComponentsContextKey,
+					Resource:   groupComponents,
+				},
+			})
+			resource, err := loader.GetAllComponentGroupComponents(mockContext, nil, nil)
+			Expect(resource).To(Equal(&groupComponents))
 			Expect(err).ToNot(HaveOccurred())
 		})
 	})
@@ -361,7 +376,22 @@ var _ = Describe("Release Adapter", Ordered, func() {
 					Resource:   plrs,
 				},
 			})
-			resource, err := loader.GetPipelineRunsWithPRGroupHash(mockContext, nil, "", "", "")
+			resource, err := loader.GetPipelineRunsWithPRGroupHash(mockContext, nil, "", "")
+			Expect(resource).To(Equal(&plrs))
+			Expect(err).ToNot(HaveOccurred())
+		})
+	})
+
+	Context("When calling GetPipelineRunsWithPRGroupHashForApplication", func() {
+		It("returns resource and error from the context", func() {
+			plrs := []tektonv1.PipelineRun{}
+			mockContext := toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: GetBuildPLRContextKey,
+					Resource:   plrs,
+				},
+			})
+			resource, err := loader.GetPipelineRunsWithPRGroupHashForApplication(mockContext, nil, "", "", "")
 			Expect(resource).To(Equal(&plrs))
 			Expect(err).ToNot(HaveOccurred())
 		})
@@ -376,7 +406,7 @@ var _ = Describe("Release Adapter", Ordered, func() {
 					Resource:   snapshots,
 				},
 			})
-			resource, err := loader.GetMatchingComponentSnapshotsForComponentAndPRGroupHash(mockContext, nil, "", "", "", "")
+			resource, err := loader.GetMatchingComponentSnapshotsForComponentAndPRGroupHash(mockContext, nil, "", "", "", "", "")
 			Expect(resource).To(Equal(&snapshots))
 			Expect(err).ToNot(HaveOccurred())
 		})
@@ -391,7 +421,7 @@ var _ = Describe("Release Adapter", Ordered, func() {
 					Resource:   snapshots,
 				},
 			})
-			resource, err := loader.GetMatchingComponentSnapshotsForPRGroupHash(mockContext, nil, "", "", "")
+			resource, err := loader.GetMatchingComponentSnapshotsForPRGroupHash(mockContext, nil, "", "", "", "")
 			Expect(resource).To(Equal(&snapshots))
 			Expect(err).ToNot(HaveOccurred())
 		})
@@ -421,7 +451,7 @@ var _ = Describe("Release Adapter", Ordered, func() {
 					Resource:   snapshots,
 				},
 			})
-			resource, err := loader.GetMatchingGroupSnapshotsForPRGroupHash(mockContext, nil, "", "", "")
+			resource, err := loader.GetMatchingGroupSnapshotsForPRGroupHash(mockContext, nil, "", "", "", "")
 			Expect(resource).To(Equal(&snapshots))
 			Expect(err).ToNot(HaveOccurred())
 		})

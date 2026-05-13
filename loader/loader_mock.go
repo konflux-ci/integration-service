@@ -73,6 +73,7 @@ const (
 	GetPRComponentSnapshotsForComponentContextKey
 	ComponentGroupsContextKey
 	RequiredIntegrationTestScenariosForSnapshotContextKey
+	ComponentGroupComponentsContextKey
 )
 
 func NewMockLoader() ObjectLoader {
@@ -96,6 +97,14 @@ func (l *mockLoader) GetAllApplicationComponents(ctx context.Context, c client.C
 		return l.loader.GetAllApplicationComponents(ctx, c, application)
 	}
 	components, err := toolkit.GetMockedResourceAndErrorFromContext(ctx, ApplicationComponentsContextKey, []applicationapiv1alpha1.Component{})
+	return &components, err
+}
+
+func (l *mockLoader) GetAllComponentGroupComponents(ctx context.Context, c client.Client, componentGroup *v1beta2.ComponentGroup) (*[]applicationapiv1alpha1.Component, error) {
+	if ctx.Value(ComponentGroupComponentsContextKey) == nil {
+		return l.loader.GetAllComponentGroupComponents(ctx, c, componentGroup)
+	}
+	components, err := toolkit.GetMockedResourceAndErrorFromContext(ctx, ComponentGroupComponentsContextKey, []applicationapiv1alpha1.Component{})
 	return &components, err
 }
 
@@ -321,35 +330,44 @@ func (l *mockLoader) GetComponent(ctx context.Context, c client.Client, name, na
 }
 
 // GetPipelineRunsWithPRGroupHash returns the resource and error passed as values of the context.
-func (l *mockLoader) GetPipelineRunsWithPRGroupHash(ctx context.Context, c client.Client, namespace, prGroupHash, applicationName string) (*[]tektonv1.PipelineRun, error) {
+func (l *mockLoader) GetPipelineRunsWithPRGroupHash(ctx context.Context, c client.Client, namespace, prGroupHash string) (*[]tektonv1.PipelineRun, error) {
 	if ctx.Value(GetBuildPLRContextKey) == nil {
-		return l.loader.GetPipelineRunsWithPRGroupHash(ctx, c, namespace, prGroupHash, applicationName)
+		return l.loader.GetPipelineRunsWithPRGroupHash(ctx, c, namespace, prGroupHash)
+	}
+	pipelineRuns, err := toolkit.GetMockedResourceAndErrorFromContext(ctx, GetBuildPLRContextKey, []tektonv1.PipelineRun{})
+	return &pipelineRuns, err
+}
+
+// GetPipelineRunsWithPRGroupHashForApplication returns the resource and error passed as values of the context.
+func (l *mockLoader) GetPipelineRunsWithPRGroupHashForApplication(ctx context.Context, c client.Client, namespace, prGroupHash, applicationName string) (*[]tektonv1.PipelineRun, error) {
+	if ctx.Value(GetBuildPLRContextKey) == nil {
+		return l.loader.GetPipelineRunsWithPRGroupHashForApplication(ctx, c, namespace, prGroupHash, applicationName)
 	}
 	pipelineRuns, err := toolkit.GetMockedResourceAndErrorFromContext(ctx, GetBuildPLRContextKey, []tektonv1.PipelineRun{})
 	return &pipelineRuns, err
 }
 
 // GetMatchingComponentSnapshotsForComponentAndPRGroupHash returns the resource and error passed as values of the context
-func (l *mockLoader) GetMatchingComponentSnapshotsForComponentAndPRGroupHash(ctx context.Context, c client.Client, namespace, componentName, prGroupHash, applicationName string) (*[]applicationapiv1alpha1.Snapshot, error) {
+func (l *mockLoader) GetMatchingComponentSnapshotsForComponentAndPRGroupHash(ctx context.Context, c client.Client, namespace, componentName, prGroupHash, ownerName, ownerLabel string) (*[]applicationapiv1alpha1.Snapshot, error) {
 	if ctx.Value(GetComponentSnapshotsKey) == nil {
-		return l.loader.GetMatchingComponentSnapshotsForComponentAndPRGroupHash(ctx, c, namespace, componentName, prGroupHash, applicationName)
+		return l.loader.GetMatchingComponentSnapshotsForComponentAndPRGroupHash(ctx, c, namespace, componentName, prGroupHash, ownerName, ownerLabel)
 	}
 	snapshots, err := toolkit.GetMockedResourceAndErrorFromContext(ctx, GetComponentSnapshotsKey, []applicationapiv1alpha1.Snapshot{})
 	return &snapshots, err
 }
 
 // GetMatchingComponentSnapshotsForPRGroupHash returns the resource and error passed as values of the context
-func (l *mockLoader) GetMatchingComponentSnapshotsForPRGroupHash(ctx context.Context, c client.Client, nameSpace, prGroupHash, applicationName string) (*[]applicationapiv1alpha1.Snapshot, error) {
+func (l *mockLoader) GetMatchingComponentSnapshotsForPRGroupHash(ctx context.Context, c client.Client, nameSpace, prGroupHash, ownerName, ownerLabel string) (*[]applicationapiv1alpha1.Snapshot, error) {
 	if ctx.Value(GetPRSnapshotsKey) == nil {
-		return l.loader.GetMatchingComponentSnapshotsForPRGroupHash(ctx, c, nameSpace, prGroupHash, applicationName)
+		return l.loader.GetMatchingComponentSnapshotsForPRGroupHash(ctx, c, nameSpace, prGroupHash, ownerName, ownerLabel)
 	}
 	snapshots, err := toolkit.GetMockedResourceAndErrorFromContext(ctx, GetPRSnapshotsKey, []applicationapiv1alpha1.Snapshot{})
 	return &snapshots, err
 }
 
-func (l *mockLoader) GetMatchingGroupSnapshotsForPRGroupHash(ctx context.Context, c client.Client, nameSpace, prGroupHash, applicationName string) (*[]applicationapiv1alpha1.Snapshot, error) {
+func (l *mockLoader) GetMatchingGroupSnapshotsForPRGroupHash(ctx context.Context, c client.Client, nameSpace, prGroupHash, ownerName, ownerLabel string) (*[]applicationapiv1alpha1.Snapshot, error) {
 	if ctx.Value(GetGroupSnapshotsKey) == nil {
-		return l.loader.GetMatchingGroupSnapshotsForPRGroupHash(ctx, c, nameSpace, prGroupHash, applicationName)
+		return l.loader.GetMatchingGroupSnapshotsForPRGroupHash(ctx, c, nameSpace, prGroupHash, ownerName, ownerLabel)
 	}
 	snapshots, err := toolkit.GetMockedResourceAndErrorFromContext(ctx, GetGroupSnapshotsKey, []applicationapiv1alpha1.Snapshot{})
 	return &snapshots, err

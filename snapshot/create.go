@@ -154,7 +154,7 @@ func CreateSnapshotWithCollisionHandling(ctx context.Context, client client.Clie
 // In case the Snapshot can't be created, an error will be returned.
 func PrepareSnapshot(ctx context.Context, adapterClient client.Client, componentGroup *v1beta2.ComponentGroup, newSnapshotComponent applicationapiv1alpha1.SnapshotComponent, log logr.Logger) (*applicationapiv1alpha1.Snapshot, error) {
 
-	snapshotComponents, invalidComponents := getSnapshotComponentsFromGCL(componentGroup, log)
+	snapshotComponents, invalidComponents := GetSnapshotComponentsFromGCL(componentGroup, log)
 	upsertNewComponentImage(&snapshotComponents, &invalidComponents, newSnapshotComponent, log)
 
 	if len(snapshotComponents) == 0 {
@@ -185,7 +185,7 @@ func PrepareSnapshot(ctx context.Context, adapterClient client.Client, component
 }
 
 // This prevents race conditions if EnsureGCLAlignedWithSpecComponents runs late
-func getSnapshotComponentsFromGCL(componentGroup *v1beta2.ComponentGroup, log logr.Logger) ([]applicationapiv1alpha1.SnapshotComponent, []v1beta2.ComponentState) {
+func GetSnapshotComponentsFromGCL(componentGroup *v1beta2.ComponentGroup, log logr.Logger) ([]applicationapiv1alpha1.SnapshotComponent, []v1beta2.ComponentState) {
 	var snapshotComponents []applicationapiv1alpha1.SnapshotComponent
 	var invalidComponents []v1beta2.ComponentState
 
@@ -221,7 +221,7 @@ func getSnapshotComponentsFromGCL(componentGroup *v1beta2.ComponentGroup, log lo
 		}
 
 		// Get ComponentSource for the component which is not built in this pipeline
-		componentSource := getComponentSourceFromGCLComponent(gclComponent)
+		componentSource := GetComponentSourceFromGCLComponent(gclComponent)
 
 		snapshotComponents = append(snapshotComponents, applicationapiv1alpha1.SnapshotComponent{
 			Name:           name,
@@ -307,7 +307,7 @@ func NewSnapshot(componentGroup *v1beta2.ComponentGroup, snapshotComponents *[]a
 	return snapshot
 }
 
-func getComponentSourceFromGCLComponent(gclComponent v1beta2.ComponentState) applicationapiv1alpha1.ComponentSource {
+func GetComponentSourceFromGCLComponent(gclComponent v1beta2.ComponentState) applicationapiv1alpha1.ComponentSource {
 	// NOTE: if we need to fall back on data from component CR we can do it in here
 	componentSource := applicationapiv1alpha1.ComponentSource{
 		ComponentSourceUnion: applicationapiv1alpha1.ComponentSourceUnion{
@@ -345,4 +345,11 @@ func getSnapshotComponentFromBuildPLR(pipelineRun *tektonv1.PipelineRun, compone
 		ContainerImage: containerImage,
 		Source:         *componentSource,
 	}, nil
+}
+
+// PrepareTempGroupSnapshot will prepare a temp group snapshot used to check the integration test scenario that should be applied to the group snapshot under that componentGroup
+func PrepareTempGroupSnapshot(componentGroup *v1beta2.ComponentGroup, snapshot *applicationapiv1alpha1.Snapshot) *applicationapiv1alpha1.Snapshot {
+	tempGroupSnapshot := NewSnapshot(componentGroup, &[]applicationapiv1alpha1.SnapshotComponent{})
+	tempGroupSnapshot, _ = gitops.SetAnnotationAndLabelForGroupSnapshot(tempGroupSnapshot, snapshot, []gitops.ComponentSnapshotInfo{})
+	return tempGroupSnapshot
 }
