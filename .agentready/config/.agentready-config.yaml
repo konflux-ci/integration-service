@@ -11,3 +11,4 @@ excluded_attributes:
   - semantic_naming
   - structured_logging
   - branch_protection
+  - openapi_specs
