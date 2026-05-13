@@ -223,6 +223,84 @@ var _ = Describe("IntegrationTestScenario webhook", Ordered, func() {
 		}, time.Second*10).Should(Succeed())
 	})
 
+	It("should succeed to create scenario with bundle resolver and pipeline params", func() {
+		bundleScenario := &v1beta2.IntegrationTestScenario{
+			TypeMeta: metav1.TypeMeta{
+				APIVersion: "appstudio.redhat.com/v1beta2",
+				Kind:       "IntegrationTestScenario",
+			},
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "bundle-scenario",
+				Namespace: "default",
+			},
+			Spec: v1beta2.IntegrationTestScenarioSpec{
+				Application: "application-sample",
+				Params: []v1beta2.PipelineParameter{
+					{
+						Name:  "POLICY_CONFIGURATION",
+						Value: "some-policy",
+					},
+				},
+				ResolverRef: v1beta2.ResolverRef{
+					Resolver: "bundles",
+					Params: []v1beta2.ResolverParameter{
+						{
+							Name:  "bundle",
+							Value: "quay.io/redhat-appstudio/example-tekton-bundle:integration-pipeline-pass",
+						},
+						{
+							Name:  "name",
+							Value: "integration-pipeline-pass",
+						},
+						{
+							Name:  "kind",
+							Value: "pipeline",
+						},
+					},
+				},
+			},
+		}
+		Expect(k8sClient.Create(ctx, bundleScenario)).Should(Succeed())
+		err := k8sClient.Delete(ctx, bundleScenario)
+		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
+	})
+
+	It("should succeed to create scenario with bundle resolver and no pipeline params", func() {
+		bundleScenario := &v1beta2.IntegrationTestScenario{
+			TypeMeta: metav1.TypeMeta{
+				APIVersion: "appstudio.redhat.com/v1beta2",
+				Kind:       "IntegrationTestScenario",
+			},
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "bundle-scenario-no-params",
+				Namespace: "default",
+			},
+			Spec: v1beta2.IntegrationTestScenarioSpec{
+				Application: "application-sample",
+				ResolverRef: v1beta2.ResolverRef{
+					Resolver: "bundles",
+					Params: []v1beta2.ResolverParameter{
+						{
+							Name:  "bundle",
+							Value: "quay.io/redhat-appstudio/example-tekton-bundle:integration-pipeline-pass",
+						},
+						{
+							Name:  "name",
+							Value: "integration-pipeline-pass",
+						},
+						{
+							Name:  "kind",
+							Value: "pipeline",
+						},
+					},
+				},
+			},
+		}
+		Expect(k8sClient.Create(ctx, bundleScenario)).Should(Succeed())
+		err := k8sClient.Delete(ctx, bundleScenario)
+		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
+	})
+
 	It("should fail to create scenario when in git resolver params url+repo", func() {
 
 		integrationTestScenarioInvalidGitResolver.Spec.ResolverRef.Params = append(integrationTestScenarioInvalidGitResolver.Spec.ResolverRef.Params, v1beta2.ResolverParameter{Name: "repo", Value: "my-repository-name"})
