@@ -17,7 +17,6 @@ limitations under the License.
 package snapshot
 
 import (
-	"context"
 	"errors"
 	"fmt"
 
@@ -25,15 +24,14 @@ import (
 	"github.com/konflux-ci/integration-service/api/v1beta2"
 	"github.com/konflux-ci/integration-service/gitops"
 	"github.com/konflux-ci/integration-service/helpers"
-	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 // ValidateOverrideSnapshotComponents checks that every component in an override
 // snapshot is a known (name, version) member of the given ComponentGroup, has a valid image
 // digest, and has git source fields defined. All validation failures are collected and returned
 // as a single joined error so the caller receives a complete picture in one pass.
-func ValidateOverrideSnapshotComponents(ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot, componentGroup *v1beta2.ComponentGroup) error {
-	log := log.FromContext(ctx)
+func ValidateOverrideSnapshotComponents(snapshot *applicationapiv1alpha1.Snapshot, componentGroup *v1beta2.ComponentGroup, opts SnapshotOpts) error {
+	log := opts.logger.Logger
 
 	// Build a set of known (name, version) pairs from the ComponentGroup spec in O(n)
 	knownComponents := make(map[string]bool, len(componentGroup.Spec.Components))

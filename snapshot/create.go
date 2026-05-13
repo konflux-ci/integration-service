@@ -17,7 +17,6 @@ limitations under the License.
 package snapshot
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"slices"
@@ -36,25 +35,22 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 // PrepareSnapshotForPipelineRun prepares the Snapshot for a given PipelineRun,
 // component and application. In case the Snapshot can't be created, an error will be returned.
-func PrepareSnapshotForPipelineRun(ctx context.Context, adapterClient client.Client, pipelineRun *tektonv1.PipelineRun, componentName string, componentGroup *v1beta2.ComponentGroup) (*applicationapiv1alpha1.Snapshot, error) {
-	log := log.FromContext(ctx)
-
-	newSnapshotComponent, err := getSnapshotComponentFromBuildPLR(pipelineRun, componentName, log)
+func PrepareSnapshotForPipelineRun(pipelineRun *tektonv1.PipelineRun, componentName string, componentGroup *v1beta2.ComponentGroup, opts SnapshotOpts) (*applicationapiv1alpha1.Snapshot, error) {
+	newSnapshotComponent, err := getSnapshotComponentFromBuildPLR(pipelineRun, componentName, opts.logger.Logger)
 	if err != nil {
 		return nil, err
 	}
 
 	var comp applicationapiv1alpha1.Component
-	if err := adapterClient.Get(ctx, client.ObjectKey{Namespace: componentGroup.Namespace, Name: componentName}, &comp); err == nil {
+	if err := opts.client.Get(opts.ctx, client.ObjectKey{Namespace: componentGroup.Namespace, Name: componentName}, &comp); err == nil {
 		gitops.EnrichBuiltComponentSourceGitContext(&newSnapshotComponent.Source, &comp, newSnapshotComponent.Version)
 	}
 
-	snapshot, err := PrepareSnapshot(ctx, adapterClient, componentGroup, newSnapshotComponent, log)
+	snapshot, err := PrepareSnapshot(componentGroup, newSnapshotComponent, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -98,16 +94,16 @@ func PrepareSnapshotForPipelineRun(ctx context.Context, adapterClient client.Cli
 }
 
 // CreateSnapshotWithCollisionHandling attempts to create a snapshot, retrying with a random suffix if collision occurs
-func CreateSnapshotWithCollisionHandling(ctx context.Context, client client.Client, pipelineRun *tektonv1.PipelineRun, snapshot *applicationapiv1alpha1.Snapshot, componentGroup v1beta2.ComponentGroup, logger helpers.IntegrationLogger) error {
+func CreateSnapshotWithCollisionHandling(pipelineRun *tektonv1.PipelineRun, snapshot *applicationapiv1alpha1.Snapshot, componentGroup v1beta2.ComponentGroup, opts SnapshotOpts) error {
 	originalName := snapshot.Name
 	maxRetries := 5
 
 	for attempt := 0; attempt < maxRetries; attempt++ {
-		err := client.Create(ctx, snapshot)
+		err := opts.client.Create(opts.ctx, snapshot)
 		if err == nil {
 			// Success
 			if attempt > 0 {
-				logger.Info("Successfully created snapshot after collision retry",
+				opts.logger.Info("Successfully created snapshot after collision retry",
 					"originalName", originalName,
 					"finalName", snapshot.Name,
 					"attempts", attempt+1)
@@ -125,7 +121,7 @@ func CreateSnapshotWithCollisionHandling(ctx context.Context, client client.Clie
 		if attempt < maxRetries-1 {
 			suffix, suffixErr := generateRandomSuffix()
 			if suffixErr != nil {
-				logger.Error(suffixErr, "Failed to generate random suffix for snapshot name collision")
+				opts.logger.Error(suffixErr, "Failed to generate random suffix for snapshot name collision")
 				return err // Return original collision error
 			}
 
@@ -133,14 +129,14 @@ func CreateSnapshotWithCollisionHandling(ctx context.Context, client client.Clie
 
 			// Regenerate name with suffix
 			snapshot.Name = gitops.GenerateSnapshotNameWithTimestamp(componentGroup.Name, timestampMillis, suffix)
-			logger.Info("Snapshot name collision detected, retrying with suffix",
+			opts.logger.Info("Snapshot name collision detected, retrying with suffix",
 				"originalName", originalName,
 				"newName", snapshot.Name,
 				"attempt", attempt+1,
 				"maxRetries", maxRetries)
 		} else {
 			// Max retries reached
-			logger.Error(err, "Failed to create snapshot after max retries due to collisions",
+			opts.logger.Error(err, "Failed to create snapshot after max retries due to collisions",
 				"originalName", originalName,
 				"attempts", maxRetries)
 			return err
@@ -152,7 +148,8 @@ func CreateSnapshotWithCollisionHandling(ctx context.Context, client client.Clie
 
 // PrepareSnapshot prepares the Snapshot for a given componentGroup, components and the updated component (if any).
 // In case the Snapshot can't be created, an error will be returned.
-func PrepareSnapshot(ctx context.Context, adapterClient client.Client, componentGroup *v1beta2.ComponentGroup, newSnapshotComponent applicationapiv1alpha1.SnapshotComponent, log logr.Logger) (*applicationapiv1alpha1.Snapshot, error) {
+func PrepareSnapshot(componentGroup *v1beta2.ComponentGroup, newSnapshotComponent applicationapiv1alpha1.SnapshotComponent, opts SnapshotOpts) (*applicationapiv1alpha1.Snapshot, error) {
+	log := opts.logger.Logger
 
 	snapshotComponents, invalidComponents := getSnapshotComponentsFromGCL(componentGroup, log)
 	upsertNewComponentImage(&snapshotComponents, &invalidComponents, newSnapshotComponent, log)
@@ -176,7 +173,7 @@ func PrepareSnapshot(ctx context.Context, adapterClient client.Client, component
 		}
 	}
 
-	err := ctrl.SetControllerReference(componentGroup, snapshot, adapterClient.Scheme())
+	err := ctrl.SetControllerReference(componentGroup, snapshot, opts.client.Scheme())
 	if err != nil {
 		return nil, err
 	}

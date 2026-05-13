@@ -491,7 +491,7 @@ func (a *Adapter) EnsureGlobalCandidateImageUpdated() (controller.OperationResul
 	if a.application != nil {
 		err = a.updateGCLForOverrideSnapshot()
 	} else {
-		err = snapshot.UpdateGCLForOverrideSnapshot(a.context, a.client, a.loader, a.componentGroup, a.snapshot, a.logger)
+		err = snapshot.UpdateGCLForOverrideSnapshot(a.componentGroup, a.snapshot, snapshot.NewSnapshotOpts(a.context, a.client, a.logger, a.loader))
 	}
 	if err != nil {
 		return controller.RequeueWithError(err)
@@ -687,7 +687,7 @@ func (a *Adapter) EnsureOverrideSnapshotValid() (controller.OperationResult, err
 	if a.application != nil {
 		errsForSnapshot = a.validateOverrideSnapshotComponents()
 	} else {
-		errsForSnapshot = snapshot.ValidateOverrideSnapshotComponents(a.context, a.snapshot, a.componentGroup)
+		errsForSnapshot = snapshot.ValidateOverrideSnapshotComponents(a.snapshot, a.componentGroup, snapshot.NewSnapshotOpts(a.context, a.client, a.logger, a.loader))
 	}
 
 	if errsForSnapshot != nil {

@@ -108,7 +108,7 @@ func (a *Adapter) EnsureGlobalCandidateImageUpdated() (controller.OperationResul
 	if a.application != nil {
 		err = a.updateGCLForBuildPLR()
 	} else { // ComponentGroup behavior
-		err = snapshot.UpdateGCLForBuildPLR(a.context, a.client, a.loader, a.componentGroups, a.pipelineRun, a.component.Name)
+		err = snapshot.UpdateGCLForBuildPLR(a.componentGroups, a.pipelineRun, a.component.Name, snapshot.NewSnapshotOpts(a.context, a.client, a.logger, a.loader))
 	}
 	if err != nil {
 		// TODO: remove HandleLoaderError when we remove application-specific code
@@ -219,13 +219,14 @@ func (a *Adapter) EnsureSnapshotExists() (result controller.OperationResult, err
 	}
 
 	for _, componentGroup := range *a.componentGroups {
-		expectedSnapshot, err := snapshot.PrepareSnapshotForPipelineRun(a.context, a.client, a.pipelineRun, a.component.Name, &componentGroup)
+		snapshotOpts := snapshot.NewSnapshotOpts(a.context, a.client, a.logger, a.loader)
+		expectedSnapshot, err := snapshot.PrepareSnapshotForPipelineRun(a.pipelineRun, a.component.Name, &componentGroup, snapshotOpts)
 		if err != nil {
 			return a.updatePipelineRunWithCustomizedError(&canRemoveFinalizer, err, a.context, a.pipelineRun, a.client, a.logger)
 		}
 
 		// Try to create snapshot, retry with suffix on collision
-		err = snapshot.CreateSnapshotWithCollisionHandling(a.context, a.client, a.pipelineRun, expectedSnapshot, componentGroup, a.logger)
+		err = snapshot.CreateSnapshotWithCollisionHandling(a.pipelineRun, expectedSnapshot, componentGroup, snapshotOpts)
 		if err != nil {
 			result, err = a.handleSnapshotCreationFailure(&canRemoveFinalizer, err)
 			return result, err

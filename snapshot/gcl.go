@@ -17,7 +17,6 @@ limitations under the License.
 package snapshot
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"slices"
@@ -25,16 +24,14 @@ import (
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
 	"github.com/konflux-ci/integration-service/api/v1beta2"
 	"github.com/konflux-ci/integration-service/helpers"
-	"github.com/konflux-ci/integration-service/loader"
 	"github.com/konflux-ci/integration-service/tekton"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
-// updateGCLForBuildPLR updates global candidate list for component snapshots
-func UpdateGCLForBuildPLR(ctx context.Context, client client.Client, objectLoader loader.ObjectLoader, componentGroups *[]v1beta2.ComponentGroup, pipelineRun *tektonv1.PipelineRun, componentName string) error {
+// UpdateGCLForBuildPLR updates global candidate list for component snapshots
+func UpdateGCLForBuildPLR(componentGroups *[]v1beta2.ComponentGroup, pipelineRun *tektonv1.PipelineRun, componentName string, opts SnapshotOpts) error {
 	containerImage, err := tekton.GetImagePullSpecFromPipelineRun(pipelineRun)
 	if err != nil {
 		return nil
@@ -63,11 +60,11 @@ func UpdateGCLForBuildPLR(ctx context.Context, client client.Client, objectLoade
 
 	for _, componentGroup := range *componentGroups {
 		retryError := retry.RetryOnConflict(retry.DefaultRetry, func() error {
-			cg, err := objectLoader.GetComponentGroup(ctx, client, componentGroup.Name, componentGroup.Namespace)
+			cg, err := opts.loader.GetComponentGroup(opts.ctx, opts.client, componentGroup.Name, componentGroup.Namespace)
 			if err != nil {
 				return err
 			}
-			err = UpdateGCLEntry(ctx, client, cg, entry)
+			err = UpdateGCLEntry(cg, entry, opts)
 			return err
 		})
 		err = errors.Join(err, retryError)
@@ -75,9 +72,9 @@ func UpdateGCLForBuildPLR(ctx context.Context, client client.Client, objectLoade
 	return err
 }
 
-// Updates a single GCL entry for a given componentGroup
-func UpdateGCLEntry(ctx context.Context, adapterClient client.Client, componentGroup *v1beta2.ComponentGroup, newEntry v1beta2.ComponentState) error {
-	log := log.FromContext(ctx)
+// UpdateGCLEntry updates a single GCL entry for a given componentGroup
+func UpdateGCLEntry(componentGroup *v1beta2.ComponentGroup, newEntry v1beta2.ComponentState, opts SnapshotOpts) error {
+	log := opts.logger.Logger
 	patch := client.MergeFromWithOptions(componentGroup.DeepCopy(), client.MergeFromWithOptimisticLock{})
 
 	// TODO: add mutating webhook for ComponentGroups that adds blank GCL item when component is added to components list and removes existing GCL entry when component is removed from components list
@@ -105,7 +102,7 @@ func UpdateGCLEntry(ctx context.Context, adapterClient client.Client, componentG
 	}
 
 	// TODO: support optimistic locking
-	err := adapterClient.Status().Patch(ctx, componentGroup, patch)
+	err := opts.client.Status().Patch(opts.ctx, componentGroup, patch)
 	if err != nil {
 		log.Error(err, "Failed to updated GCL entry for ComponentVersion", "componentGroup", componentGroup.Name, "component.Name", newEntry.Name, "component.Version", newEntry.Version)
 		return err
@@ -115,8 +112,8 @@ func UpdateGCLEntry(ctx context.Context, adapterClient client.Client, componentG
 	return nil
 }
 
-// Updates the GCL for a componentGroup with a list of entries
-func UpdateMultipleGCLEntries(ctx context.Context, adapterClient client.Client, componentGroup *v1beta2.ComponentGroup, componentsToUpdate map[string]v1beta2.ComponentState, logger helpers.IntegrationLogger) error {
+// UpdateMultipleGCLEntries updates the GCL for a componentGroup with a list of entries
+func UpdateMultipleGCLEntries(componentGroup *v1beta2.ComponentGroup, componentsToUpdate map[string]v1beta2.ComponentState, opts SnapshotOpts) error {
 	patch := client.MergeFromWithOptions(componentGroup.DeepCopy(), client.MergeFromWithOptimisticLock{})
 	for i, entry := range componentGroup.Status.GlobalCandidateList {
 		entryKey := helpers.GetComponentVersionString(entry.Name, entry.Version)
@@ -130,16 +127,16 @@ func UpdateMultipleGCLEntries(ctx context.Context, adapterClient client.Client, 
 		componentGroup.Status.GlobalCandidateList = slices.Replace(componentGroup.Status.GlobalCandidateList, i, i+1, newEntry)
 	}
 
-	err := adapterClient.Status().Patch(ctx, componentGroup, patch)
+	err := opts.client.Status().Patch(opts.ctx, componentGroup, patch)
 	if err != nil {
-		logger.Error(err, "Failed to updated GCL entry for ComponentVersion with components", "componentGroup", componentGroup.Name, "snapshotComponents", componentsToUpdate)
+		opts.logger.Error(err, "Failed to updated GCL entry for ComponentVersion with components", "componentGroup", componentGroup.Name, "snapshotComponents", componentsToUpdate)
 		return err
 	}
 	return nil
 }
 
-// Update GCL for all Components in snapshot
-func UpdateGCLForOverrideSnapshot(ctx context.Context, adapterClient client.Client, objectLoader loader.ObjectLoader, componentGroup *v1beta2.ComponentGroup, snapshot *applicationapiv1alpha1.Snapshot, logger helpers.IntegrationLogger) error {
+// UpdateGCLForOverrideSnapshot updates the GCL for all Components in snapshot
+func UpdateGCLForOverrideSnapshot(componentGroup *v1beta2.ComponentGroup, snapshot *applicationapiv1alpha1.Snapshot, opts SnapshotOpts) error {
 	componentsToAdd := map[string]v1beta2.ComponentState{}
 	for _, component := range snapshot.Spec.Components {
 		component := component //G601
@@ -150,13 +147,13 @@ func UpdateGCLForOverrideSnapshot(ctx context.Context, adapterClient client.Clie
 	}
 
 	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		cg, err := objectLoader.GetComponentGroup(ctx, adapterClient, componentGroup.Name, componentGroup.Namespace)
+		cg, err := opts.loader.GetComponentGroup(opts.ctx, opts.client, componentGroup.Name, componentGroup.Namespace)
 		if err != nil {
 			return err
 		}
-		err = UpdateMultipleGCLEntries(ctx, adapterClient, cg, componentsToAdd, logger)
+		err = UpdateMultipleGCLEntries(cg, componentsToAdd, opts)
 		if err == nil {
-			logger.Info("Updated Global Candidate List with override snapshot", "componentGroup.Name", componentGroup.Name, "componentGroup.Namespace", componentGroup.Namespace, "snapshot.Name", snapshot.Name)
+			opts.logger.Info("Updated Global Candidate List with override snapshot", "componentGroup.Name", componentGroup.Name, "componentGroup.Namespace", componentGroup.Namespace, "snapshot.Name", snapshot.Name)
 		}
 		return err
 	})
