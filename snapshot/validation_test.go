@@ -26,6 +26,7 @@ import (
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
 	"github.com/konflux-ci/integration-service/api/v1beta2"
 	"github.com/konflux-ci/integration-service/gitops"
+	"github.com/konflux-ci/integration-service/helpers"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -142,7 +143,7 @@ var _ = Describe("Snapshot validation function", Ordered, func() {
 
 	When("A valid override snapshot is created", func() {
 		It("Does not return an error", func() {
-			err := ValidateOverrideSnapshotComponents(ctx, hasSnapshot, hasCompGroup)
+			err := ValidateOverrideSnapshotComponents(hasSnapshot, hasCompGroup, NewSnapshotOpts(ctx, k8sClient, helpers.IntegrationLogger{}, nil))
 			Expect(err).NotTo(HaveOccurred())
 		})
 	})
@@ -167,7 +168,7 @@ var _ = Describe("Snapshot validation function", Ordered, func() {
 			hasSnapshot.Spec.Components = append(hasSnapshot.Spec.Components, nonexistentComponent)
 		})
 		It("Returns an error", func() {
-			err := ValidateOverrideSnapshotComponents(ctx, hasSnapshot, hasCompGroup)
+			err := ValidateOverrideSnapshotComponents(hasSnapshot, hasCompGroup, NewSnapshotOpts(ctx, k8sClient, helpers.IntegrationLogger{}, nil))
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("doesn't exist in componentGroup"))
 		})

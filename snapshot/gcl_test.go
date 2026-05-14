@@ -227,7 +227,7 @@ var _ = Describe("GCL manipulation functions", Ordered, func() {
 					LastPromotedImage:     newImageWithDigest,
 					LastPromotedBuildTime: &metav1.Time{Time: time.Now()},
 				}
-				err := UpdateGCLEntry(ctx, k8sClient, updatedComponentGroup, newEntry)
+				err := UpdateGCLEntry(updatedComponentGroup, newEntry, NewSnapshotOpts(ctx, k8sClient, helpers.IntegrationLogger{}, nil))
 				Expect(err).NotTo(HaveOccurred())
 
 				Eventually(func() error {
@@ -278,7 +278,7 @@ var _ = Describe("GCL manipulation functions", Ordered, func() {
 					GlobalCandidateList: []v1beta2.ComponentState{},
 				}
 
-				err := UpdateGCLEntry(ctx, k8sClient, compGroupNoGCL, newEntry)
+				err := UpdateGCLEntry(compGroupNoGCL, newEntry, NewSnapshotOpts(ctx, k8sClient, helpers.IntegrationLogger{}, nil))
 				Expect(err).To(HaveOccurred())
 				Expect(err.Error()).To(ContainSubstring("could not find ComponentVersion"))
 			})
@@ -289,7 +289,7 @@ var _ = Describe("GCL manipulation functions", Ordered, func() {
 				newEntryOldBuild := newEntry.DeepCopy()
 				newEntryOldBuild.LastPromotedBuildTime = &metav1.Time{Time: time.Date(2025, 12, 31, 12, 0, 0, 0, time.UTC)}
 
-				err := UpdateGCLEntry(ctx, k8sClient, hasCompGroup, *newEntryOldBuild)
+				err := UpdateGCLEntry(hasCompGroup, *newEntryOldBuild, NewSnapshotOpts(ctx, k8sClient, helpers.IntegrationLogger{}, nil))
 				Expect(err).NotTo(HaveOccurred())
 				for _, component := range hasCompGroup.Status.GlobalCandidateList {
 					if component.Name == newEntry.Name && component.Version == newEntry.Version {
@@ -415,14 +415,18 @@ var _ = Describe("GCL manipulation functions", Ordered, func() {
 					return err
 				}, time.Second*10).ShouldNot(HaveOccurred())
 
-				log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&bytes.Buffer{})}
-				mockContext := toolkit.GetMockedContext(ctx, []toolkit.MockData{
-					{
-						ContextKey: loader.ComponentGroupContextKey,
-						Resource:   hasCompGroup,
-					},
-				})
-				err := UpdateGCLForOverrideSnapshot(mockContext, k8sClient, loader.NewLoader(), hasCompGroup, overrideSnapshot, log)
+				overrideOpts := NewSnapshotOpts(
+					toolkit.GetMockedContext(ctx, []toolkit.MockData{
+						{
+							ContextKey: loader.ComponentGroupContextKey,
+							Resource:   hasCompGroup,
+						},
+					}),
+					k8sClient,
+					helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&bytes.Buffer{})},
+					loader.NewLoader(),
+				)
+				err := UpdateGCLForOverrideSnapshot(hasCompGroup, overrideSnapshot, overrideOpts)
 				Expect(err).NotTo(HaveOccurred())
 				time.Sleep(3 * time.Second)
 				Expect(k8sClient.Get(ctx, types.NamespacedName{
