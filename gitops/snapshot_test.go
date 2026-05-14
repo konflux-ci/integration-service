@@ -1124,9 +1124,12 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 			unsupportedScenario := integrationTestScenario.DeepCopy()
 			unsupportedScenario.Spec.Contexts = []v1beta2.TestContext{{Name: "n/a"}}
 
+			disabledScenario := integrationTestScenario.DeepCopy()
+			disabledScenario.Spec.Disabled = true
+
 			allScenarios := []v1beta2.IntegrationTestScenario{*integrationTestScenario, *applicationScenario,
 				*componentScenario, *componentSampleScenario, *componentSample2Scenario, *pullRequestScenario,
-				*pushScenario, *groupScenario, *componentAndGroupScenario, *unsupportedScenario}
+				*pushScenario, *groupScenario, *componentAndGroupScenario, *unsupportedScenario, *disabledScenario}
 
 			It("Returns only the scenarios matching the context for a given kind of Snapshot", func() {
 				// A component Snapshot for a push event referencing the component-sample
@@ -1154,6 +1157,16 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 				hasSnapshot.Labels[gitops.SnapshotTypeLabel] = "override"
 				filteredScenarios = gitops.FilterIntegrationTestScenariosWithContext(&allScenarios, hasSnapshot)
 				Expect(*filteredScenarios).To(HaveLen(3))
+			})
+
+			It("Filters out disabled scenarios regardless of context or snapshot type", func() {
+				Expect(gitops.IsScenarioApplicableToSnapshotsContext(disabledScenario, hasSnapshot)).To(BeFalse())
+
+				// Also ensure a disabled scenario with explicit contexts is still filtered out
+				disabledWithContext := integrationTestScenario.DeepCopy()
+				disabledWithContext.Spec.Disabled = true
+				disabledWithContext.Spec.Contexts = []v1beta2.TestContext{{Name: "application"}}
+				Expect(gitops.IsScenarioApplicableToSnapshotsContext(disabledWithContext, hasSnapshot)).To(BeFalse())
 			})
 
 			It("Testing annotating snapshot", func() {

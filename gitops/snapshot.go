@@ -1324,6 +1324,10 @@ func IsContextValidForSnapshot(scenarioContextName string, snapshot *application
 // IsScenarioApplicableToSnapshotsContext checks the contexts list for a given IntegrationTestScenario and
 // compares it against the Snapshot to determine if the scenario applies to it
 func IsScenarioApplicableToSnapshotsContext(scenario *v1beta2.IntegrationTestScenario, snapshot *applicationapiv1alpha1.Snapshot) bool {
+	// If the scenario is disabled, it should not be triggered for any Snapshot
+	if scenario.Spec.Disabled {
+		return false
+	}
 	// If the contexts list is empty, we assume that the scenario applies to all contexts by default
 	if len(scenario.Spec.Contexts) == 0 {
 		return true
