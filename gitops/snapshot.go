@@ -599,6 +599,9 @@ func IsSnapshotError(snapshot *applicationapiv1alpha1.Snapshot) bool {
 	if condition == nil {
 		condition = meta.FindStatusCondition(snapshot.Status.Conditions, LegacyIntegrationStatusCondition)
 	}
+	if condition == nil {
+		return false
+	}
 	if condition.Reason == AppStudioIntegrationStatusErrorOccured {
 		return true
 	}
