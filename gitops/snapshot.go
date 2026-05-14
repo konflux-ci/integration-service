@@ -715,7 +715,6 @@ func HaveAppStudioTestsFinished(snapshot *applicationapiv1alpha1.Snapshot) bool 
 	statusCondition := meta.FindStatusCondition(snapshot.Status.Conditions, AppStudioTestSucceededCondition)
 	if statusCondition == nil {
 		statusCondition = meta.FindStatusCondition(snapshot.Status.Conditions, LegacyTestSucceededCondition)
-		return statusCondition != nil && statusCondition.Status != metav1.ConditionUnknown
 	}
 	return statusCondition != nil && statusCondition.Status != metav1.ConditionUnknown
 }
