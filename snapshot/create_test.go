@@ -454,6 +454,17 @@ var _ = Describe("Snapshot creation functions", Ordered, func() {
 			Expect(label).To(Equal("pull_request"))
 		})
 
+		It("propagates pipelinerunSpanContext annotation from the build PipelineRun to the Snapshot", func() {
+			const carrier = `{"traceparent":"00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"}`
+			buildPipelineRun.Annotations[tektonconsts.SpanContextAnnotation] = carrier
+			defer delete(buildPipelineRun.Annotations, tektonconsts.SpanContextAnnotation)
+
+			snapshot, err := PrepareSnapshotForPipelineRun(ctx, k8sClient, buildPipelineRun, componentName, hasCompGroup)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(snapshot).ToNot(BeNil())
+			Expect(snapshot.GetAnnotations()[tektonconsts.SpanContextAnnotation]).To(Equal(carrier))
+		})
+
 		It("ensures non-pipelines as code labels and annotations are NOT propagated to the snapshot", func() {
 			snapshot, err := PrepareSnapshotForPipelineRun(ctx, k8sClient, buildPipelineRun, componentName, hasCompGroup)
 			Expect(err).ToNot(HaveOccurred())

@@ -30,6 +30,7 @@ import (
 	"github.com/konflux-ci/integration-service/gitops"
 	"github.com/konflux-ci/integration-service/helpers"
 	"github.com/konflux-ci/integration-service/tekton"
+	"github.com/konflux-ci/integration-service/tekton/consts"
 	"github.com/konflux-ci/operator-toolkit/metadata"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	k8sErrors "k8s.io/apimachinery/pkg/api/errors"
@@ -61,6 +62,10 @@ func PrepareSnapshotForPipelineRun(ctx context.Context, adapterClient client.Cli
 
 	prefixes := []string{gitops.BuildPipelineRunPrefix, gitops.TestLabelPrefix, gitops.CustomLabelPrefix, gitops.ReleaseLabelPrefix}
 	gitops.CopySnapshotLabelsAndAnnotations(&componentGroup.ObjectMeta, snapshot, componentName, &pipelineRun.ObjectMeta, prefixes, false)
+
+	if tp, found := pipelineRun.Annotations[consts.SpanContextAnnotation]; found && tp != "" {
+		snapshot.Annotations[consts.SpanContextAnnotation] = tp
+	}
 
 	snapshot.Labels[gitops.BuildPipelineRunNameLabel] = pipelineRun.Name
 	if pipelineRun.Status.CompletionTime != nil {
