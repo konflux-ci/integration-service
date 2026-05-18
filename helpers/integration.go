@@ -438,7 +438,7 @@ func RemoveFinalizerFromPipelineRun(ctx context.Context, adapterClient client.Cl
 		return nil
 	}
 
-	patch := client.MergeFrom(pipelineRun.DeepCopy())
+	patch := client.MergeFromWithOptions(pipelineRun.DeepCopy(), client.MergeFromWithOptimisticLock{})
 	if ok := controllerutil.RemoveFinalizer(pipelineRun, finalizer); ok {
 		err := adapterClient.Patch(ctx, pipelineRun, patch)
 		if err != nil {
@@ -456,7 +456,10 @@ func RemoveFinalizerFromPipelineRun(ctx context.Context, adapterClient client.Cl
 // AddFinalizerToPipelineRun adds the finalizer to the PipelineRun.
 // If finalizer was not added successfully, a non-nil error is returned.
 func AddFinalizerToPipelineRun(ctx context.Context, adapterClient client.Client, logger IntegrationLogger, pipelineRun *tektonv1.PipelineRun, finalizer string) error {
-	patch := client.MergeFrom(pipelineRun.DeepCopy())
+	if controllerutil.ContainsFinalizer(pipelineRun, finalizer) {
+		return nil
+	}
+	patch := client.MergeFromWithOptions(pipelineRun.DeepCopy(), client.MergeFromWithOptimisticLock{})
 	if ok := controllerutil.AddFinalizer(pipelineRun, finalizer); ok {
 		err := adapterClient.Patch(ctx, pipelineRun, patch)
 		if err != nil {
