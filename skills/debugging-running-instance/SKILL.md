@@ -7,7 +7,7 @@ description: Use when debugging integration-service running on a cluster. Covers
 
 ## Overview
 
-The integration-service runs as a Deployment in the `integration-service-system` namespace. It exposes health probes, Prometheus metrics, and optional webhooks. A separate CronJob handles snapshot garbage collection.
+The integration-service runs as a Deployment in the `integration-service` namespace. It exposes health probes, Prometheus metrics, and optional webhooks. A separate CronJob handles snapshot garbage collection.
 
 ## When to Use
 
@@ -21,8 +21,8 @@ The integration-service runs as a Deployment in the `integration-service-system`
 
 | What | How |
 |------|-----|
-| Controller logs | `kubectl logs -n integration-service-system deploy/controller-manager -f` |
-| Health check | `kubectl get -n integration-service-system deploy/controller-manager -o jsonpath='{.status.conditions}'` |
+| Controller logs | `kubectl logs -n integration-service deploy/controller-manager -f` |
+| Health check | `kubectl get -n integration-service deploy/controller-manager -o jsonpath='{.status.conditions}'` |
 | Readiness probe | HTTP GET `/readyz` on port 8081 |
 | Liveness probe | HTTP GET `/healthz` on port 8081 |
 | Metrics | Port 8080 (HTTPS, self-signed cert), scraped at `/metrics` |
