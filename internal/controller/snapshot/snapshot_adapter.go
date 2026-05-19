@@ -1231,6 +1231,9 @@ func (a *Adapter) cancelAllPipelineRunsForSnapshot(snapshot *applicationapiv1alp
 	return gitops.CancelPipelineRuns(a.client, a.context, a.logger, integrationTestPipelineRuns)
 }
 
+// isSnapshotOlderThanLastBuild queries sibling push snapshots instead of comparing against
+// the component's BuildPipelineLastBuiltTime annotation because that annotation stores seconds
+// while BuildPipelineRunStartTime stores milliseconds, causing false supersession for single-component releases.
 func (a *Adapter) isSnapshotOlderThanLastBuild(snapshot *applicationapiv1alpha1.Snapshot) bool {
 	componentName := snapshot.Labels[gitops.SnapshotComponentLabel]
 	if componentName == "" {
@@ -1240,34 +1243,44 @@ func (a *Adapter) isSnapshotOlderThanLastBuild(snapshot *applicationapiv1alpha1.
 	if snapshotBuildStartTime == "" {
 		return false
 	}
-	component, err := a.loader.GetComponent(a.context, a.client, componentName, a.snapshot.Namespace)
+	snapshotBuildStartTimeInt, err := strconv.ParseInt(snapshotBuildStartTime, 10, 64)
 	if err != nil {
-		a.logger.Error(err, "Failed to get component from snapshot", "snapshot.Name", snapshot.Name)
+		a.logger.Error(err, "Failed to parse BuildPipelineRunStartTime",
+			"snapshot.Name", snapshot.Name, "value", snapshotBuildStartTime)
 		return false
 	}
-	componentlastBuiltTime := component.Annotations[gitops.BuildPipelineLastBuiltTime]
-	if componentlastBuiltTime == "" {
-		return false
-	}
-	snapshotBuildStartTimeInt, snapshotBuildStartTimeIntErr := strconv.ParseInt(snapshotBuildStartTime, 10, 64)
-	if snapshotBuildStartTimeIntErr != nil {
-		return false
-	}
-	componentlastBuiltTimeInt, componentlastBuiltTimeIntErr := strconv.ParseInt(componentlastBuiltTime, 10, 64)
-	if componentlastBuiltTimeIntErr != nil {
-		return false
-	}
-
-	// Normalize BuildPipelineRunStartTime to seconds if it's in milliseconds
+	// Normalize BuildPipelineRunStartTime to milliseconds if it's in seconds
 	// Millisecond timestamps are > 1000000000000 (year 2001 in milliseconds)
 	// Second timestamps are < 10000000000 (year 2286 in seconds)
-	if snapshotBuildStartTimeInt > 10000000000 {
-		// It's in milliseconds, convert to seconds for comparison
-		snapshotBuildStartTimeInt = snapshotBuildStartTimeInt / 1000
+	if snapshotBuildStartTimeInt <= 10000000000 {
+		snapshotBuildStartTimeInt = snapshotBuildStartTimeInt * 1000
 	}
 
-	if snapshotBuildStartTimeInt < componentlastBuiltTimeInt {
-		return true
+	pushSnapshots, err := a.loader.GetPushComponentSnapshotsForComponent(a.context, a.client, snapshot)
+	if err != nil {
+		a.logger.Error(err, "Failed to get push component snapshots for component",
+			"snapshot.Name", snapshot.Name, "componentName", componentName)
+		return false
+	}
+
+	for _, ps := range *pushSnapshots {
+		if ps.Name == snapshot.Name && ps.Namespace == snapshot.Namespace {
+			continue
+		}
+		otherBuildStartTime := ps.Annotations[gitops.BuildPipelineRunStartTime]
+		if otherBuildStartTime == "" {
+			continue
+		}
+		otherBuildStartTimeInt, parseErr := strconv.ParseInt(otherBuildStartTime, 10, 64)
+		if parseErr != nil {
+			continue
+		}
+		if otherBuildStartTimeInt <= 10000000000 {
+			otherBuildStartTimeInt = otherBuildStartTimeInt * 1000
+		}
+		if otherBuildStartTimeInt > snapshotBuildStartTimeInt {
+			return true
+		}
 	}
 	return false
 }

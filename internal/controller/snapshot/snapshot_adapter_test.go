@@ -95,6 +95,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		hasOldGroupSnapshot                       *applicationapiv1alpha1.Snapshot
 		hasNewGroupSnapshot                       *applicationapiv1alpha1.Snapshot
 		hasOldSnapshot                            *applicationapiv1alpha1.Snapshot
+		hasNewerPushSnapshot                      *applicationapiv1alpha1.Snapshot
 		hasCompWithNewerBuild                     *applicationapiv1alpha1.Component
 		hasReleasePlan                            *releasev1alpha1.ReleasePlan
 		hasOverRideSnapshot                       *applicationapiv1alpha1.Snapshot
@@ -653,6 +654,31 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			},
 		}
 
+		hasNewerPushSnapshot = &applicationapiv1alpha1.Snapshot{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "newer-push-snapshot-test",
+				Namespace: "default",
+				Labels: map[string]string{
+					gitops.SnapshotComponentLabel:       "test-component-older",
+					gitops.PipelineAsCodeEventTypeLabel: gitops.PipelineAsCodePushType,
+					gitops.SnapshotTypeLabel:            gitops.SnapshotComponentType,
+				},
+				Annotations: map[string]string{
+					gitops.BuildPipelineRunStartTime: "1703124000000",
+				},
+			},
+			Spec: applicationapiv1alpha1.SnapshotSpec{
+				Application:    hasApp.Name,
+				ComponentGroup: hasCompGroup.Name,
+				Components: []applicationapiv1alpha1.SnapshotComponent{
+					{
+						Name:           "test-component-older",
+						ContainerImage: sample_image + "@" + sampleDigest,
+					},
+				},
+			},
+		}
+
 		hasOverRideSnapshot = &applicationapiv1alpha1.Snapshot{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "snapshotpr-sample-override",
@@ -944,6 +970,8 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		err = k8sClient.Delete(ctx, hasOverRideSnapshot)
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 		err = k8sClient.Delete(ctx, hasOldSnapshot)
+		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
+		err = k8sClient.Delete(ctx, hasNewerPushSnapshot)
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 		err = k8sClient.Delete(ctx, hasCompWithNewerBuild)
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
@@ -1824,6 +1852,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		BeforeEach(func() {
 			hasOldSnapshot.Labels[gitops.SnapshotTypeLabel] = gitops.SnapshotComponentType
 			Expect(k8sClient.Create(ctx, hasOldSnapshot)).Should(Succeed())
+			Expect(k8sClient.Create(ctx, hasNewerPushSnapshot)).Should(Succeed())
 
 			err := gitops.MarkSnapshotAsPassed(ctx, k8sClient, hasOldSnapshot, "test passed")
 			Expect(err).To(Succeed())
@@ -1856,8 +1885,8 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 					Resource:   hasCompGroup,
 				},
 				{
-					ContextKey: loader.GetComponentContextKey,
-					Resource:   hasCompWithNewerBuild,
+					ContextKey: loader.GetPushComponentSnapshotsForComponentContextKey,
+					Resource:   []applicationapiv1alpha1.Snapshot{*hasNewerPushSnapshot},
 				},
 				{
 					ContextKey: loader.SnapshotContextKey,
@@ -1922,8 +1951,8 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 					Resource:   hasCompGroup,
 				},
 				{
-					ContextKey: loader.GetComponentContextKey,
-					Resource:   hasCompWithNewerBuild,
+					ContextKey: loader.GetPushComponentSnapshotsForComponentContextKey,
+					Resource:   []applicationapiv1alpha1.Snapshot{*hasNewerPushSnapshot},
 				},
 				{
 					ContextKey: loader.SnapshotContextKey,
@@ -1941,7 +1970,6 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 
 			// Execute function under test
 			result, err := adapter.EnsureAllReleasesExist()
-			//Verify that the annotation exists
 
 			// Verify execution results
 			Expect(result.CancelRequest).To(BeFalse())
@@ -1994,8 +2022,8 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 					Resource:   hasCompGroup,
 				},
 				{
-					ContextKey: loader.GetComponentContextKey,
-					Resource:   hasCompWithNewerBuild,
+					ContextKey: loader.GetPushComponentSnapshotsForComponentContextKey,
+					Resource:   []applicationapiv1alpha1.Snapshot{*hasNewerPushSnapshot},
 				},
 				{
 					ContextKey: loader.SnapshotContextKey,
@@ -2031,6 +2059,288 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			condition := meta.FindStatusCondition(hasOldSnapshot.Status.Conditions, gitops.SnapshotAutoReleasedCondition)
 			Expect(condition).ToNot(BeNil())
 			Expect(condition.Message).To(Equal("Released in newer Snapshot"))
+		})
+
+		It("ensures snapshot is NOT superseded when no newer push snapshots exist for the same component", func() {
+			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+
+			Eventually(func() bool {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      hasOldSnapshot.Name,
+					Namespace: hasOldSnapshot.Namespace,
+				}, hasOldSnapshot)
+				if err != nil {
+					return false
+				}
+				return gitops.HaveAppStudioTestsFinished(hasOldSnapshot) &&
+					gitops.HaveAppStudioTestsSucceeded(hasOldSnapshot)
+			}, time.Second*10).Should(BeTrue())
+
+			adapter = NewAdapter(ctx, hasOldSnapshot, hasCompGroup, log, loader.NewMockLoader(), k8sClient)
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: loader.ComponentGroupContextKey,
+					Resource:   hasCompGroup,
+				},
+				{
+					ContextKey: loader.GetPushComponentSnapshotsForComponentContextKey,
+					Resource:   []applicationapiv1alpha1.Snapshot{},
+				},
+				{
+					ContextKey: loader.SnapshotContextKey,
+					Resource:   hasOldSnapshot,
+				},
+				{
+					ContextKey: loader.AutoReleasePlansContextKey,
+					Resource:   []releasev1alpha1.ReleasePlan{*hasReleasePlan},
+				},
+				{
+					ContextKey: loader.ReleaseContextKey,
+					Resource:   &releasev1alpha1.Release{},
+				},
+			})
+
+			result, err := adapter.EnsureAllReleasesExist()
+
+			Expect(result.CancelRequest).To(BeFalse())
+			Expect(result.RequeueRequest).To(BeFalse())
+			Expect(err).ToNot(HaveOccurred())
+
+			Eventually(func() bool {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      hasOldSnapshot.Name,
+					Namespace: hasOldSnapshot.Namespace,
+				}, hasOldSnapshot)
+				if err != nil {
+					return false
+				}
+				return gitops.IsSnapshotMarkedAsAutoReleased(hasOldSnapshot)
+			}, time.Second*10).Should(BeTrue())
+
+			condition := meta.FindStatusCondition(hasOldSnapshot.Status.Conditions, gitops.SnapshotAutoReleasedCondition)
+			Expect(condition).ToNot(BeNil())
+			Expect(condition.Message).To(Equal("The Snapshot was auto-released"))
+		})
+
+		It("ensures snapshot is NOT superseded when sibling has an older timestamp", func() {
+			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+
+			Eventually(func() bool {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      hasOldSnapshot.Name,
+					Namespace: hasOldSnapshot.Namespace,
+				}, hasOldSnapshot)
+				if err != nil {
+					return false
+				}
+				return gitops.HaveAppStudioTestsFinished(hasOldSnapshot) &&
+					gitops.HaveAppStudioTestsSucceeded(hasOldSnapshot)
+			}, time.Second*10).Should(BeTrue())
+
+			olderSibling := applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "older-sibling-snap",
+					Namespace: "default",
+					Labels: map[string]string{
+						gitops.SnapshotComponentLabel:       "test-component-older",
+						gitops.PipelineAsCodeEventTypeLabel: gitops.PipelineAsCodePushType,
+						gitops.SnapshotTypeLabel:            gitops.SnapshotComponentType,
+					},
+					Annotations: map[string]string{
+						gitops.BuildPipelineRunStartTime: "1703122000000",
+					},
+				},
+			}
+
+			adapter = NewAdapter(ctx, hasOldSnapshot, hasCompGroup, log, loader.NewMockLoader(), k8sClient)
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: loader.ComponentGroupContextKey,
+					Resource:   hasCompGroup,
+				},
+				{
+					ContextKey: loader.GetPushComponentSnapshotsForComponentContextKey,
+					Resource:   []applicationapiv1alpha1.Snapshot{olderSibling},
+				},
+				{
+					ContextKey: loader.SnapshotContextKey,
+					Resource:   hasOldSnapshot,
+				},
+				{
+					ContextKey: loader.AutoReleasePlansContextKey,
+					Resource:   []releasev1alpha1.ReleasePlan{*hasReleasePlan},
+				},
+				{
+					ContextKey: loader.ReleaseContextKey,
+					Resource:   &releasev1alpha1.Release{},
+				},
+			})
+
+			result, err := adapter.EnsureAllReleasesExist()
+			Expect(result.CancelRequest).To(BeFalse())
+			Expect(err).ToNot(HaveOccurred())
+
+			Eventually(func() bool {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      hasOldSnapshot.Name,
+					Namespace: hasOldSnapshot.Namespace,
+				}, hasOldSnapshot)
+				if err != nil {
+					return false
+				}
+				return gitops.IsSnapshotMarkedAsAutoReleased(hasOldSnapshot)
+			}, time.Second*10).Should(BeTrue())
+
+			condition := meta.FindStatusCondition(hasOldSnapshot.Status.Conditions, gitops.SnapshotAutoReleasedCondition)
+			Expect(condition).ToNot(BeNil())
+			Expect(condition.Message).To(Equal("The Snapshot was auto-released"))
+		})
+
+		It("normalizes seconds to milliseconds: sibling in seconds that is genuinely newer supersedes", func() {
+			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+
+			Eventually(func() bool {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      hasOldSnapshot.Name,
+					Namespace: hasOldSnapshot.Namespace,
+				}, hasOldSnapshot)
+				if err != nil {
+					return false
+				}
+				return gitops.HaveAppStudioTestsFinished(hasOldSnapshot) &&
+					gitops.HaveAppStudioTestsSucceeded(hasOldSnapshot)
+			}, time.Second*10).Should(BeTrue())
+
+			// hasOldSnapshot has "1703123000000" (ms) = Unix second 1703123000.
+			// Sibling in SECONDS: 1703124000 → normalizes to 1703124000000 > 1703123000000.
+			newerSiblingInSeconds := applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "newer-sibling-seconds",
+					Namespace: "default",
+					Labels: map[string]string{
+						gitops.SnapshotComponentLabel:       "test-component-older",
+						gitops.PipelineAsCodeEventTypeLabel: gitops.PipelineAsCodePushType,
+						gitops.SnapshotTypeLabel:            gitops.SnapshotComponentType,
+					},
+					Annotations: map[string]string{
+						gitops.BuildPipelineRunStartTime: "1703124000",
+					},
+				},
+			}
+
+			adapter = NewAdapter(ctx, hasOldSnapshot, hasCompGroup, log, loader.NewMockLoader(), k8sClient)
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: loader.ComponentGroupContextKey,
+					Resource:   hasCompGroup,
+				},
+				{
+					ContextKey: loader.GetPushComponentSnapshotsForComponentContextKey,
+					Resource:   []applicationapiv1alpha1.Snapshot{newerSiblingInSeconds},
+				},
+				{
+					ContextKey: loader.SnapshotContextKey,
+					Resource:   hasOldSnapshot,
+				},
+				{
+					ContextKey: loader.AutoReleasePlansContextKey,
+					Resource:   []releasev1alpha1.ReleasePlan{*hasReleasePlan},
+				},
+			})
+
+			result, err := adapter.EnsureAllReleasesExist()
+			Expect(result.CancelRequest).To(BeFalse())
+			Expect(err).ToNot(HaveOccurred())
+
+			Eventually(func() bool {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      hasOldSnapshot.Name,
+					Namespace: hasOldSnapshot.Namespace,
+				}, hasOldSnapshot)
+				if err != nil {
+					return false
+				}
+				return gitops.IsSnapshotMarkedAsAutoReleased(hasOldSnapshot)
+			}, time.Second*10).Should(BeTrue())
+
+			condition := meta.FindStatusCondition(hasOldSnapshot.Status.Conditions, gitops.SnapshotAutoReleasedCondition)
+			Expect(condition).ToNot(BeNil())
+			Expect(condition.Message).To(Equal("Released in newer Snapshot"))
+		})
+
+		It("does not supersede itself when the candidate appears in the sibling list", func() {
+			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+
+			Eventually(func() bool {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      hasOldSnapshot.Name,
+					Namespace: hasOldSnapshot.Namespace,
+				}, hasOldSnapshot)
+				if err != nil {
+					return false
+				}
+				return gitops.HaveAppStudioTestsFinished(hasOldSnapshot) &&
+					gitops.HaveAppStudioTestsSucceeded(hasOldSnapshot)
+			}, time.Second*10).Should(BeTrue())
+
+			olderSibling := applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "older-sibling-for-self-skip",
+					Namespace: "default",
+					Labels: map[string]string{
+						gitops.SnapshotComponentLabel:       "test-component-older",
+						gitops.PipelineAsCodeEventTypeLabel: gitops.PipelineAsCodePushType,
+						gitops.SnapshotTypeLabel:            gitops.SnapshotComponentType,
+					},
+					Annotations: map[string]string{
+						gitops.BuildPipelineRunStartTime: "1703122000000",
+					},
+				},
+			}
+
+			selfCopy := *hasOldSnapshot
+			adapter = NewAdapter(ctx, hasOldSnapshot, hasCompGroup, log, loader.NewMockLoader(), k8sClient)
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: loader.ComponentGroupContextKey,
+					Resource:   hasCompGroup,
+				},
+				{
+					ContextKey: loader.GetPushComponentSnapshotsForComponentContextKey,
+					Resource:   []applicationapiv1alpha1.Snapshot{selfCopy, olderSibling},
+				},
+				{
+					ContextKey: loader.SnapshotContextKey,
+					Resource:   hasOldSnapshot,
+				},
+				{
+					ContextKey: loader.AutoReleasePlansContextKey,
+					Resource:   []releasev1alpha1.ReleasePlan{*hasReleasePlan},
+				},
+				{
+					ContextKey: loader.ReleaseContextKey,
+					Resource:   &releasev1alpha1.Release{},
+				},
+			})
+
+			result, err := adapter.EnsureAllReleasesExist()
+			Expect(result.CancelRequest).To(BeFalse())
+			Expect(err).ToNot(HaveOccurred())
+
+			Eventually(func() bool {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      hasOldSnapshot.Name,
+					Namespace: hasOldSnapshot.Namespace,
+				}, hasOldSnapshot)
+				if err != nil {
+					return false
+				}
+				return gitops.IsSnapshotMarkedAsAutoReleased(hasOldSnapshot)
+			}, time.Second*10).Should(BeTrue())
+
+			condition := meta.FindStatusCondition(hasOldSnapshot.Status.Conditions, gitops.SnapshotAutoReleasedCondition)
+			Expect(condition).ToNot(BeNil())
+			Expect(condition.Message).To(Equal("The Snapshot was auto-released"))
 		})
 	})
 

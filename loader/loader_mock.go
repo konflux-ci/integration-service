@@ -73,6 +73,7 @@ const (
 	GetPRComponentSnapshotsForComponentContextKey
 	ComponentGroupsContextKey
 	RequiredIntegrationTestScenariosForSnapshotContextKey
+	GetPushComponentSnapshotsForComponentContextKey
 )
 
 func NewMockLoader() ObjectLoader {
@@ -410,5 +411,13 @@ func (l *mockLoader) GetPRComponentSnapshotsForComponentApplication(ctx context.
 		return l.loader.GetPRComponentSnapshotsForComponentApplication(ctx, c, namespace, applicationName, componentName, prNumber)
 	}
 	snapshots, err := toolkit.GetMockedResourceAndErrorFromContext(ctx, GetPRComponentSnapshotsForComponentContextKey, []applicationapiv1alpha1.Snapshot{})
+	return &snapshots, err
+}
+
+func (l *mockLoader) GetPushComponentSnapshotsForComponent(ctx context.Context, c client.Client, snapshot *applicationapiv1alpha1.Snapshot) (*[]applicationapiv1alpha1.Snapshot, error) {
+	if ctx.Value(GetPushComponentSnapshotsForComponentContextKey) == nil {
+		return l.loader.GetPushComponentSnapshotsForComponent(ctx, c, snapshot)
+	}
+	snapshots, err := toolkit.GetMockedResourceAndErrorFromContext(ctx, GetPushComponentSnapshotsForComponentContextKey, []applicationapiv1alpha1.Snapshot{})
 	return &snapshots, err
 }
