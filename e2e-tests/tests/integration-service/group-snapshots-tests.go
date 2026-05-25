@@ -32,6 +32,7 @@ var _ = framework.IntegrationServiceSuiteDescribe("Creation of group snapshots f
 
 	var prNumber int
 	var prHeadSha, mergeResultSha, mergeMultiResultSha, secondFileSha string
+	var prShaMonorepo, prShaMultirepo string
 	var pacBranchNames []string
 	var componentsList []*appstudioApi.Component
 	var snapshot *appstudioApi.Snapshot
@@ -486,12 +487,13 @@ var _ = framework.IntegrationServiceSuiteDescribe("Creation of group snapshots f
 				gomega.Expect(err).ShouldNot(gomega.HaveOccurred(), fmt.Sprintf("error while creating file: %s", fileToCreatePathForCompA))
 
 				fileToCreatePathForCompB := fmt.Sprintf("%s/sample-file-for-componentB.txt", multiComponentContextDirs[1])
-				createdFileSha, err := f.AsKubeAdmin.CommonController.Github.CreateFile(multiComponentRepoNameForGroupSnapshot, fileToCreatePathForCompB, "Sometimes I drink water to surprise my liver", multiComponentPRBranchName)
+				_, err = f.AsKubeAdmin.CommonController.Github.CreateFile(multiComponentRepoNameForGroupSnapshot, fileToCreatePathForCompB, "Sometimes I drink water to surprise my liver", multiComponentPRBranchName)
 				gomega.Expect(err).ShouldNot(gomega.HaveOccurred(), fmt.Sprintf("error while creating file: %s", fileToCreatePathForCompB))
 
 				pr, err := f.AsKubeAdmin.CommonController.Github.CreatePullRequest(multiComponentRepoNameForGroupSnapshot, "SingleRepo multi-component PR", "sample pr body", multiComponentPRBranchName, multiComponentBaseBranchName)
 				gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
-				ginkgo.GinkgoWriter.Printf("PR #%d got created with sha %s\n", pr.GetNumber(), createdFileSha.GetSHA())
+				prShaMonorepo = pr.Head.GetSHA()
+				ginkgo.GinkgoWriter.Printf("PR #%d got created with sha %s\n", pr.GetNumber(), prShaMonorepo)
 			})
 			ginkgo.It("should make change to the multiple-repo", func() {
 				// Delete all the pipelineruns in the namespace before sending PR
@@ -502,19 +504,22 @@ var _ = framework.IntegrationServiceSuiteDescribe("Creation of group snapshots f
 				gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
 
 				fileToCreatePathForCompC := fmt.Sprintf("%s/sample-file-for-componentC.txt", componentC.Name)
-				createdFileSha, err := f.AsKubeAdmin.CommonController.Github.CreateFile(componentRepoNameForGroupIntegration, fileToCreatePathForCompC, "People say nothing is impossible, but I do nothing every day", multiComponentPRBranchName)
+				_, err = f.AsKubeAdmin.CommonController.Github.CreateFile(componentRepoNameForGroupIntegration, fileToCreatePathForCompC, "People say nothing is impossible, but I do nothing every day", multiComponentPRBranchName)
 				gomega.Expect(err).ShouldNot(gomega.HaveOccurred(), fmt.Sprintf("error while creating file in multirepo: %s", fileToCreatePathForCompC))
 
 				pr, err := f.AsKubeAdmin.CommonController.Github.CreatePullRequest(componentRepoNameForGroupIntegration, "Multirepo component PR", "sample pr body", multiComponentPRBranchName, multiComponentBaseBranchName)
 				gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
-				ginkgo.GinkgoWriter.Printf("PR #%d got created with sha %s\n", pr.GetNumber(), createdFileSha.GetSHA())
+				prShaMultirepo = pr.Head.GetSHA()
+				ginkgo.GinkgoWriter.Printf("PR #%d got created with sha %s\n", pr.GetNumber(), prShaMultirepo)
 			})
 			ginkgo.It("wait for the last components build to finish", func() {
 				componentsList = []*appstudioApi.Component{componentA, componentB, componentC}
-				for _, component := range componentsList {
-					gomega.Expect(f.AsKubeDeveloper.HasController.WaitForComponentPipelineToBeFinished(component, "", "", "",
+				for _, component := range []*appstudioApi.Component{componentA, componentB} {
+					gomega.Expect(f.AsKubeDeveloper.HasController.WaitForComponentPipelineToBeFinished(component, "", prShaMonorepo, "",
 						f.AsKubeAdmin.TektonController, &has.RetryOptions{Retries: 2, Always: true}, pipelineRun)).To(gomega.Succeed())
 				}
+				gomega.Expect(f.AsKubeDeveloper.HasController.WaitForComponentPipelineToBeFinished(componentC, "", prShaMultirepo, "",
+					f.AsKubeAdmin.TektonController, &has.RetryOptions{Retries: 2, Always: true}, pipelineRun)).To(gomega.Succeed())
 			})
 
 			ginkgo.It("wait for all component snapshots to be created with proper PR group annotations", func() {
@@ -654,7 +659,7 @@ var _ = framework.IntegrationServiceSuiteDescribe("Creation of group snapshots f
 				ginkgo.GinkgoWriter.Printf("Waiting for build pipelineRun to be created for app %s/%s, sha: %s\n", testNamespace, applicationName, secondFileSha)
 				componentsList = []*appstudioApi.Component{componentA, componentB}
 				for _, component := range componentsList {
-					gomega.Expect(f.AsKubeDeveloper.HasController.WaitForComponentPipelineToBeFinished(component, "", "", "",
+					gomega.Expect(f.AsKubeDeveloper.HasController.WaitForComponentPipelineToBeFinished(component, "", secondFileSha, "",
 						f.AsKubeAdmin.TektonController, &has.RetryOptions{Retries: 2, Always: true}, pipelineRun)).To(gomega.Succeed())
 				}
 			})
