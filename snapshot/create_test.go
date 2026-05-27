@@ -28,6 +28,7 @@ import (
 	"github.com/konflux-ci/integration-service/api/v1beta2"
 	"github.com/konflux-ci/integration-service/gitops"
 	"github.com/konflux-ci/integration-service/helpers"
+	"github.com/konflux-ci/integration-service/pkg/tracing"
 	"github.com/konflux-ci/integration-service/tekton"
 	tektonconsts "github.com/konflux-ci/integration-service/tekton/consts"
 	"github.com/konflux-ci/operator-toolkit/metadata"
@@ -452,6 +453,17 @@ var _ = Describe("Snapshot creation functions", Ordered, func() {
 			label, found := snapshot.GetLabels()["pac.test.appstudio.openshift.io/event-type"]
 			Expect(found).To(BeTrue())
 			Expect(label).To(Equal("pull_request"))
+		})
+
+		It("propagates pipelinerunSpanContext annotation from the build PipelineRun to the Snapshot", func() {
+			const carrier = `{"traceparent":"00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"}`
+			buildPipelineRun.Annotations[tracing.SpanContextAnnotation] = carrier
+			defer delete(buildPipelineRun.Annotations, tracing.SpanContextAnnotation)
+
+			snapshot, err := PrepareSnapshotForPipelineRun(ctx, k8sClient, buildPipelineRun, componentName, hasCompGroup)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(snapshot).ToNot(BeNil())
+			Expect(snapshot.GetAnnotations()[tracing.SpanContextAnnotation]).To(Equal(carrier))
 		})
 
 		It("ensures non-pipelines as code labels and annotations are NOT propagated to the snapshot", func() {
