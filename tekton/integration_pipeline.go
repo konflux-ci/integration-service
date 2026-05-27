@@ -34,6 +34,7 @@ import (
 	"github.com/konflux-ci/integration-service/gitops"
 	h "github.com/konflux-ci/integration-service/helpers"
 	"github.com/konflux-ci/integration-service/loader"
+	"github.com/konflux-ci/integration-service/pkg/tracing"
 	"github.com/konflux-ci/integration-service/tekton/consts"
 	"github.com/konflux-ci/operator-toolkit/metadata"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
@@ -485,6 +486,11 @@ func (r *IntegrationPipelineRun) WithSnapshot(snapshot *applicationapiv1alpha1.S
 		// Copy labels and annotations prefixed with defined prefix
 		_ = metadata.CopyAnnotationsByPrefix(&snapshot.ObjectMeta, &r.ObjectMeta, prefix)
 		_ = metadata.CopyLabelsByPrefix(&snapshot.ObjectMeta, &r.ObjectMeta, prefix)
+	}
+
+	// Propagate span context from Snapshot to test PipelineRun for distributed tracing
+	if tp, found := snapshot.Annotations[tracing.SpanContextAnnotation]; found && tp != "" {
+		_ = metadata.SetAnnotation(r, tracing.SpanContextAnnotation, tp)
 	}
 
 	return r

@@ -29,6 +29,7 @@ import (
 	"github.com/konflux-ci/integration-service/gitops"
 	"github.com/konflux-ci/integration-service/helpers"
 	"github.com/konflux-ci/integration-service/loader"
+	"github.com/konflux-ci/integration-service/pkg/tracing"
 	"github.com/konflux-ci/integration-service/tekton"
 	tektonconsts "github.com/konflux-ci/integration-service/tekton/consts"
 	toolkit "github.com/konflux-ci/operator-toolkit/loader"
@@ -149,10 +150,12 @@ var _ = Describe("Snapshot creation functions", Ordered, func() {
 					ResolverRef: tektonv1.ResolverRef{
 						Resolver: "bundle",
 						Params: tektonv1.Params{
-							{Name: "bundle",
+							{
+								Name:  "bundle",
 								Value: tektonv1.ParamValue{Type: "string", StringVal: "quay.io/redhat-appstudio/example-tekton-bundle:test"},
 							},
-							{Name: "name",
+							{
+								Name:  "name",
 								Value: tektonv1.ParamValue{Type: "string", StringVal: "test-task"},
 							},
 						},
@@ -212,14 +215,14 @@ var _ = Describe("Snapshot creation functions", Ordered, func() {
 			},
 			Spec: v1beta2.ComponentGroupSpec{
 				Components: []v1beta2.ComponentReference{
-					v1beta2.ComponentReference{
+					{
 						Name: componentName,
 						ComponentVersion: v1beta2.ComponentVersionReference{
 							Name:     "v1",
 							Revision: "main",
 						},
 					},
-					v1beta2.ComponentReference{
+					{
 						Name: componentName2,
 						ComponentVersion: v1beta2.ComponentVersionReference{
 							Name:     "v1",
@@ -233,7 +236,7 @@ var _ = Describe("Snapshot creation functions", Ordered, func() {
 
 		hasCompGroup.Status = v1beta2.ComponentGroupStatus{
 			GlobalCandidateList: []v1beta2.ComponentState{
-				v1beta2.ComponentState{
+				{
 					Name:                  componentName,
 					Version:               "v1",
 					URL:                   SampleRepoLink,
@@ -241,12 +244,12 @@ var _ = Describe("Snapshot creation functions", Ordered, func() {
 					LastPromotedCommit:    SampleCommit,
 					LastPromotedBuildTime: nil,
 				},
-				v1beta2.ComponentState{
+				{
 					Name:    componentName2,
 					Version: "v1",
 					URL:     "",
 				},
-				v1beta2.ComponentState{
+				{
 					Name:    "deleted-component",
 					Version: "v1",
 				},
@@ -264,10 +267,12 @@ var _ = Describe("Snapshot creation functions", Ordered, func() {
 					ResolverRef: tektonv1.ResolverRef{
 						Resolver: "bundle",
 						Params: tektonv1.Params{
-							{Name: "bundle",
+							{
+								Name:  "bundle",
 								Value: tektonv1.ParamValue{Type: "string", StringVal: "quay.io/redhat-appstudio/example-tekton-bundle:test"},
 							},
-							{Name: "name",
+							{
+								Name:  "name",
 								Value: tektonv1.ParamValue{Type: "string", StringVal: "test-task"},
 							},
 						},
@@ -400,7 +405,6 @@ var _ = Describe("Snapshot creation functions", Ordered, func() {
 			Expect(copyToSnapshot.Annotations["build.appstudio.openshift.io/repo"]).To(Equal("https://github.com/devfile-samples/devfile-sample-go-basic?rev=c713067b0e65fb3de50d1f7c457eb51c2ab0dbb0"))
 			Expect(copyToSnapshot.Labels[gitops.PipelineAsCodeEventTypeLabel]).To(Equal(buildPipelineRun.Labels["pipelinesascode.tekton.dev/event-type"]))
 			Expect(copyToSnapshot.Labels[customLabel]).To(Equal(buildPipelineRun.Labels[customLabel]))
-
 		})
 
 		It("ensures that snapshot has Pull request label based on the merge queue's temporary source branch extracted from build pipelinerun", func() {
@@ -479,6 +483,17 @@ var _ = Describe("Snapshot creation functions", Ordered, func() {
 			label, found := snapshot.GetLabels()["pac.test.appstudio.openshift.io/event-type"]
 			Expect(found).To(BeTrue())
 			Expect(label).To(Equal("pull_request"))
+		})
+
+		It("propagates pipelinerunSpanContext annotation from the build PipelineRun to the Snapshot", func() {
+			const carrier = `{"traceparent":"00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"}`
+			buildPipelineRun.Annotations[tracing.SpanContextAnnotation] = carrier
+			defer delete(buildPipelineRun.Annotations, tracing.SpanContextAnnotation)
+
+			snapshot, err := PrepareSnapshotForPipelineRun(ctx, k8sClient, buildPipelineRun, componentName, hasCompGroup, loader.NewMockLoader())
+			Expect(err).ToNot(HaveOccurred())
+			Expect(snapshot).ToNot(BeNil())
+			Expect(snapshot.GetAnnotations()[tracing.SpanContextAnnotation]).To(Equal(carrier))
 		})
 
 		It("ensures non-pipelines as code labels and annotations are NOT propagated to the snapshot", func() {
@@ -577,7 +592,6 @@ var _ = Describe("Snapshot creation functions", Ordered, func() {
 			Expect(invalidName).To(Equal(componentName2))
 
 			Expect(buf.String()).To(ContainSubstring("componentVersion was deleted from spec.Components"))
-
 		})
 
 		It("Ensures built component can replace existing snapshotComponent", func() {
@@ -594,7 +608,6 @@ var _ = Describe("Snapshot creation functions", Ordered, func() {
 			Expect(snapshotComponents).To(HaveLen(1))
 			Expect(snapshotComponents[helpers.GetComponentVersionString(componentName, "v1")].Name).To(Equal(componentName))
 			Expect(invalidComponents).To(HaveLen(1))
-
 		})
 
 		It("Ensures built component is added under its version key when an unversioned entry exists", func() {

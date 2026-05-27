@@ -10,6 +10,40 @@ import (
 	"gitlab.com/gitlab-org/api/client-go/v2"
 )
 
+// GitLab pre-receive hooks surface 5xx wrapped in a 4xx; RetryTransport's status-code check misses it.
+func isGitlabTransientError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "Internal API error") ||
+		strings.Contains(msg, "504 Gateway Timeout")
+}
+
+func (gc *GitlabClient) createBranchWithRetry(projectID string, opt *gitlab.CreateBranchOptions) (*gitlab.Response, error) {
+	const maxAttempts = 5
+	const baseDelay = 2 * time.Second
+	var resp *gitlab.Response
+	var err error
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		_, resp, err = gc.client.Branches.CreateBranch(projectID, opt)
+		if err == nil {
+			return resp, nil
+		}
+		if resp != nil && resp.StatusCode == http.StatusConflict {
+			return resp, err
+		}
+		if !isGitlabTransientError(err) || attempt == maxAttempts {
+			return resp, err
+		}
+		delay := baseDelay * time.Duration(1<<(attempt-1))
+		fmt.Printf("[gitlab-retry] CreateBranch attempt %d/%d: %v; retrying in %s\n",
+			attempt, maxAttempts, err, delay)
+		time.Sleep(delay)
+	}
+	return resp, err
+}
+
 // CreateBranch creates a new branch in a GitLab project with the given projectID and newBranchName
 func (gc *GitlabClient) CreateBranch(projectID, newBranchName, defaultBranch string) error {
 	// Prepare the branch creation request
@@ -19,7 +53,7 @@ func (gc *GitlabClient) CreateBranch(projectID, newBranchName, defaultBranch str
 	}
 
 	// Perform the branch creation
-	_, _, err := gc.client.Branches.CreateBranch(projectID, branchOpts)
+	_, err := gc.createBranchWithRetry(projectID, branchOpts)
 	if err != nil {
 		return fmt.Errorf("failed to create branch %s in project %s: %w", newBranchName, projectID, err)
 	}
@@ -77,7 +111,7 @@ func (gc *GitlabClient) CreateGitlabNewBranch(projectID, branchName, sha, baseBr
 		Branch: &branchName,
 		Ref:    &sha,
 	}
-	_, resp, err := gc.client.Branches.CreateBranch(projectID, opt)
+	resp, err := gc.createBranchWithRetry(projectID, opt)
 	if err != nil {
 		// Check if the error is due to the branch already existing
 		if resp != nil && resp.StatusCode == http.StatusConflict {

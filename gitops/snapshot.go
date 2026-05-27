@@ -255,6 +255,10 @@ const (
 	// ComponentGroup that the snapshot belongs to have been created
 	ParentSnapshotsCreatedCondition = "ParentSnapshotsCreated"
 
+	// SnapshotSupersededMessage is the AutoReleased condition message when
+	// an older Snapshot is skipped by a newer Snapshot for the same Application.
+	SnapshotSupersededMessage = "Released in newer Snapshot"
+
 	// SnapshotAddedToGlobalCandidateListCondition is the condition for marking if Snapshot's component was added to
 	// the global candidate list.
 	SnapshotAddedToGlobalCandidateListCondition = "AddedToGlobalCandidateList"
@@ -338,10 +342,8 @@ const (
 	ChildSnapshotAnnotation = TestLabelPrefix + "/child-snapshot"
 )
 
-var (
-	// SnapshotComponentLabel contains the name of the updated Snapshot component - it should match the pipeline label.
-	SnapshotComponentLabel = tektonconsts.ComponentNameLabel
-)
+// SnapshotComponentLabel contains the name of the updated Snapshot component - it should match the pipeline label.
+var SnapshotComponentLabel = tektonconsts.ComponentNameLabel
 
 const (
 	// maxPrefixLength is the maximum length of the prefix for the snapshot name
@@ -769,7 +771,6 @@ func HaveAppStudioTestsSucceeded(snapshot *applicationapiv1alpha1.Snapshot) bool
 
 // GetTestSucceededCondition checks status of tests on the snapshot
 func GetTestSucceededCondition(snapshot *applicationapiv1alpha1.Snapshot) (condition *metav1.Condition, ok bool) {
-
 	condition = meta.FindStatusCondition(snapshot.Status.Conditions, AppStudioTestSucceededCondition)
 	if condition == nil {
 		condition = meta.FindStatusCondition(snapshot.Status.Conditions, LegacyTestSucceededCondition)
@@ -1215,7 +1216,6 @@ func ResetSnapshotStatusConditions(ctx context.Context, adapterClient client.Cli
 // ObjectMeta: metav1.ObjectMeta{
 // TODO: replace 'object' with 'componentGroup' after application is deprecated. Also delete Application bool
 func CopySnapshotLabelsAndAnnotations(object *metav1.ObjectMeta, snapshot *applicationapiv1alpha1.Snapshot, componentName string, source *metav1.ObjectMeta, prefixes []string, objectIsApplication bool) {
-
 	if snapshot.Labels == nil {
 		snapshot.Labels = map[string]string{}
 	}
@@ -1242,7 +1242,6 @@ func CopySnapshotLabelsAndAnnotations(object *metav1.ObjectMeta, snapshot *appli
 		_ = metadata.CopyLabelsByPrefix(source, &snapshot.ObjectMeta, prefix)
 		_ = metadata.CopyAnnotationsByPrefix(source, &snapshot.ObjectMeta, prefix)
 	}
-
 }
 
 // BuildResultAnnotationKey normalizes a PipelineRun result name into a Snapshot annotation key.
@@ -1373,7 +1372,7 @@ func IsScenarioApplicableToSnapshotsContext(scenario *v1beta2.IntegrationTestSce
 		return true
 	}
 	for _, scenarioContext := range scenario.Spec.Contexts {
-		scenarioContext := scenarioContext //G601
+		scenarioContext := scenarioContext // G601
 		if IsContextValidForSnapshot(scenarioContext.Name, snapshot) {
 			return true
 		}
@@ -1386,7 +1385,7 @@ func IsScenarioApplicableToSnapshotsContext(scenario *v1beta2.IntegrationTestSce
 func FilterIntegrationTestScenariosWithContext(scenarios *[]v1beta2.IntegrationTestScenario, snapshot *applicationapiv1alpha1.Snapshot) *[]v1beta2.IntegrationTestScenario {
 	var filteredScenarioList []v1beta2.IntegrationTestScenario
 	for _, scenario := range *scenarios {
-		scenario := scenario //G601
+		scenario := scenario // G601
 		if IsScenarioApplicableToSnapshotsContext(&scenario, snapshot) {
 			filteredScenarioList = append(filteredScenarioList, scenario)
 		}
@@ -1417,7 +1416,6 @@ func FindMatchingSnapshotComponent(snapshot *applicationapiv1alpha1.Snapshot, co
 		}
 	}
 	return applicationapiv1alpha1.SnapshotComponent{}
-
 }
 
 // SortSnapshots sorts the snapshots according to the snapshot annotation BuildPipelineRunStartTime

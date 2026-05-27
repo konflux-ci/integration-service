@@ -5,6 +5,9 @@
 - [build-pipeline-controller](https://github.com/konflux-ci/integration-service/blob/main/docs/build_pipeline_controller.md)
 - [integration-pipeline-controller](https://github.com/konflux-ci/integration-service/blob/main/docs/integration_pipeline_controller.md)
 
+## Operational docs
+- [Distributed tracing](https://github.com/konflux-ci/integration-service/blob/main/docs/tracing.md)
+
 ## Creating or editing Mermaid diagrams
 
 Mermaid is a JS based diagramming tool that renders markdown style syntax to create/modify diagrams. Mermaid has [native support in Github](https://github.com/github/roadmap/issues/372)
