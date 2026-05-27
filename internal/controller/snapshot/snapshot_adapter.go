@@ -26,6 +26,7 @@ import (
 	"strings"
 	"time"
 
+	"go.opentelemetry.io/otel/attribute"
 	clienterrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -36,6 +37,7 @@ import (
 	h "github.com/konflux-ci/integration-service/helpers"
 	intgteststat "github.com/konflux-ci/integration-service/pkg/integrationteststatus"
 	"github.com/konflux-ci/integration-service/pkg/metrics"
+	"github.com/konflux-ci/integration-service/pkg/tracing"
 	"github.com/konflux-ci/integration-service/release"
 	"github.com/konflux-ci/integration-service/snapshot"
 	"github.com/konflux-ci/integration-service/status"
@@ -666,7 +668,7 @@ func (a *Adapter) EnsureAllReleasesExist() (controller.OperationResult, error) {
 	autoReleaseMessage := ""
 	if len(*releasePlans) > 0 {
 		if !gitops.IgnoreSupersession(a.snapshot.ObjectMeta) && a.isSnapshotOlderThanLastBuild(a.snapshot) {
-			autoReleaseMessage = "Released in newer Snapshot"
+			autoReleaseMessage = gitops.SnapshotSupersededMessage
 		} else {
 			if err := a.createMissingReleasesForReleasePlans(releasePlans, a.snapshot); err != nil {
 				return a.handleReleaseError(err, "Failed to create new release")
@@ -687,7 +689,39 @@ func (a *Adapter) EnsureAllReleasesExist() (controller.OperationResult, error) {
 		return controller.RequeueWithError(err)
 	}
 
+	if autoReleaseMessage == gitops.SnapshotSupersededMessage {
+		a.emitSupersededWaitDuration()
+	}
+
 	return controller.ContinueProcessing()
+}
+
+func (a *Adapter) emitSupersededWaitDuration() {
+	if a.snapshot == nil {
+		return
+	}
+	spanContext := ""
+	if a.snapshot.Annotations != nil {
+		spanContext = a.snapshot.Annotations[tracing.SpanContextAnnotation]
+	}
+	start := a.snapshot.CreationTimestamp.Time
+	end := time.Now()
+	for _, cond := range a.snapshot.Status.Conditions {
+		if cond.Type == gitops.SnapshotAutoReleasedCondition {
+			end = cond.LastTransitionTime.Time
+			break
+		}
+	}
+	extraAttrs := []attribute.KeyValue{
+		tracing.NamespaceKey.String(a.snapshot.Namespace),
+		tracing.SnapshotKey.String(a.snapshot.Name),
+	}
+	if app := a.snapshot.Spec.Application; app != "" {
+		extraAttrs = append(extraAttrs, tracing.DeliveryApplicationKey.String(app))
+	}
+	if !tracing.EmitSupersededWaitDuration(spanContext, gitops.SnapshotSupersededMessage, start, end, extraAttrs...) {
+		a.logger.Info("Skipped supersede waitDuration emission", "snapshot.Name", a.snapshot.Name)
+	}
 }
 
 // shouldProcessReleases checks if snapshot is ready for release
@@ -1258,6 +1292,11 @@ func (a *Adapter) prepareGroupSnapshotApplication(prGroup, prGroupHash string) (
 	if err != nil {
 		a.logger.Error(err, "failed to annotate group snapshot")
 		return nil, nil, err
+	}
+
+	// Propagate span context from triggering snapshot
+	if tp := a.snapshot.Annotations[tracing.SpanContextAnnotation]; tp != "" {
+		groupSnapshot.Annotations[tracing.SpanContextAnnotation] = tp
 	}
 
 	return groupSnapshot, componentSnapshotInfos, nil

@@ -26,6 +26,7 @@ import (
 	h "github.com/konflux-ci/integration-service/helpers"
 	"github.com/konflux-ci/integration-service/loader"
 	intgteststat "github.com/konflux-ci/integration-service/pkg/integrationteststatus"
+	"github.com/konflux-ci/integration-service/pkg/tracing"
 	"github.com/konflux-ci/integration-service/status"
 
 	tektonconsts "github.com/konflux-ci/integration-service/tekton/consts"
@@ -107,10 +108,24 @@ func (a *Adapter) EnsureStatusReportedInSnapshot() (controller.OperationResult, 
 		return controller.RequeueWithError(fmt.Errorf("failed to update test status in snapshot: %w", err))
 	}
 
+	if h.HasPipelineRunFinished(a.pipelineRun) {
+		var failureMsg string
+		if pipelinerunStatus == intgteststat.IntegrationTestStatusTestFail {
+			failureMsg = detail
+		}
+		a.emitTestTimingSpans(failureMsg)
+	}
+
 	// Remove the finalizer from Integration PLRs if the snapshot is not group or component type and its PLR has finished
 	if (!gitops.IsGroupSnapshot(a.snapshot) && !gitops.IsComponentSnapshot(a.snapshot)) && (h.HasPipelineRunFinished(a.pipelineRun) ||
 		pipelinerunStatus == intgteststat.IntegrationTestStatusDeleted) {
-		err = h.RemoveFinalizerFromPipelineRun(a.context, a.client, a.logger, a.pipelineRun, h.IntegrationPipelineRunFinalizer)
+		err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
+			latest, fetchErr := a.loader.GetPipelineRun(a.context, a.client, a.pipelineRun.Name, a.pipelineRun.Namespace)
+			if fetchErr != nil {
+				return fetchErr
+			}
+			return h.RemoveFinalizerFromPipelineRun(a.context, a.client, a.logger, latest, h.IntegrationPipelineRunFinalizer)
+		})
 		if err != nil {
 			return controller.RequeueWithError(fmt.Errorf("failed to remove the finalizer: %w", err))
 		}
@@ -205,4 +220,22 @@ func (a *Adapter) annotateIntegrationPipelineRunLogURL(ctx context.Context, adap
 		}
 		return err
 	})
+}
+
+// emitTestTimingSpans emits timing spans for the integration test PipelineRun if not already emitted.
+func (a *Adapter) emitTestTimingSpans(failureMsg string) {
+	spanContext := ""
+	if a.snapshot != nil && a.snapshot.Annotations != nil {
+		spanContext = a.snapshot.Annotations[tracing.SpanContextAnnotation]
+	}
+	patched, err := tracing.EmitAndMarkTimingSpans(a.context, a.pipelineRun, spanContext, failureMsg, a.client, func() (*tektonv1.PipelineRun, error) {
+		return a.loader.GetPipelineRun(a.context, a.client, a.pipelineRun.Name, a.pipelineRun.Namespace)
+	})
+	if err != nil {
+		a.logger.Error(err, "Failed to emit and mark test timing spans")
+		return
+	}
+	if patched != nil {
+		a.pipelineRun = patched
+	}
 }

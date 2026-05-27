@@ -31,6 +31,7 @@ import (
 	"github.com/konflux-ci/integration-service/gitops"
 	"github.com/konflux-ci/integration-service/helpers"
 	"github.com/konflux-ci/integration-service/loader"
+	"github.com/konflux-ci/integration-service/pkg/tracing"
 	"github.com/konflux-ci/integration-service/tekton"
 	"github.com/konflux-ci/operator-toolkit/metadata"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
@@ -68,6 +69,10 @@ func PrepareSnapshotForPipelineRun(ctx context.Context, adapterClient client.Cli
 
 	prefixes := []string{gitops.BuildPipelineRunPrefix, gitops.TestLabelPrefix, gitops.CustomLabelPrefix, gitops.ReleaseLabelPrefix}
 	gitops.CopySnapshotLabelsAndAnnotations(&componentGroup.ObjectMeta, snapshot, componentName, &pipelineRun.ObjectMeta, prefixes, false)
+
+	if tp, found := pipelineRun.Annotations[tracing.SpanContextAnnotation]; found && tp != "" {
+		snapshot.Annotations[tracing.SpanContextAnnotation] = tp
+	}
 
 	snapshot.Labels[gitops.BuildPipelineRunNameLabel] = pipelineRun.Name
 	if pipelineRun.Status.CompletionTime != nil {
@@ -161,7 +166,6 @@ func CreateSnapshotWithCollisionHandling(ctx context.Context, client client.Clie
 // PrepareSnapshot prepares the Snapshot for a given componentGroup, components and the updated component (if any).
 // In case the Snapshot can't be created, an error will be returned.
 func PrepareSnapshot(ctx context.Context, adapterClient client.Client, componentGroup *v1beta2.ComponentGroup, newSnapshotComponent applicationapiv1alpha1.SnapshotComponent, loader loader.ObjectLoader, logger helpers.IntegrationLogger) (*applicationapiv1alpha1.Snapshot, error) {
-
 	// Get nested snapshotComponents
 	snapshotComponentsMap, invalidComponents, err := getAllNestedSnapshotComponents(componentGroup, []string{}, 0, loader, ctx, adapterClient, logger)
 	if err != nil {
@@ -228,7 +232,6 @@ func PrepareParentSnapshot(ctx context.Context, adapterClient client.Client, loa
 				return nil, fmt.Errorf("failed to set annotation %s: %w", gitops.SnapshotGitSourceRepoURLAnnotation, err)
 			}
 		}
-
 	}
 
 	// Annotate snapshot with warning about invalid components

@@ -21,6 +21,7 @@ import (
 
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
 	"github.com/konflux-ci/integration-service/gitops"
+	"github.com/konflux-ci/integration-service/pkg/tracing"
 	releasev1alpha1 "github.com/konflux-ci/release-service/api/v1alpha1"
 	releasemetadata "github.com/konflux-ci/release-service/metadata"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -46,6 +47,17 @@ func NewReleaseForReleasePlan(ctx context.Context, releasePlan *releasev1alpha1.
 			ReleasePlan: releasePlan.Name,
 		},
 	}
+
+	// Propagate span context from snapshot for distributed tracing
+	if snapshot.Annotations != nil {
+		if tp := snapshot.Annotations[tracing.SpanContextAnnotation]; tp != "" {
+			if newRelease.Annotations == nil {
+				newRelease.Annotations = make(map[string]string)
+			}
+			newRelease.Annotations[tracing.SpanContextAnnotation] = tp
+		}
+	}
+
 	return newRelease
 }
 
