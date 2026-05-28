@@ -204,6 +204,10 @@ func SetupController(manager ctrl.Manager, log *logr.Logger) error {
 // setupCache indexes fields for each of the resources used in the release adapter in those cases where filtering by
 // field is required.
 func setupCache(mgr ctrl.Manager) error {
+	if err := cache.SetupReleasePlanCacheApplication(mgr); err != nil {
+		return err
+	}
+
 	if err := cache.SetupReleasePlanCache(mgr); err != nil {
 		return err
 	}
