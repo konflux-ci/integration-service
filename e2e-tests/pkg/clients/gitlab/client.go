@@ -3,7 +3,7 @@ package gitlab
 import (
 	"net/http"
 
-	gitlabClient "gitlab.com/gitlab-org/api/client-go"
+	gitlabClient "gitlab.com/gitlab-org/api/client-go/v2"
 
 	"github.com/konflux-ci/integration-service/e2e-tests/pkg/utils"
 )

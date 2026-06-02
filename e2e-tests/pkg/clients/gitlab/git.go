@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/onsi/gomega"
-	"gitlab.com/gitlab-org/api/client-go"
+	"gitlab.com/gitlab-org/api/client-go/v2"
 )
 
 // CreateBranch creates a new branch in a GitLab project with the given projectID and newBranchName
@@ -109,7 +109,7 @@ func (gc *GitlabClient) GetMergeRequests(projectId string) ([]*gitlab.BasicMerge
 }
 
 // CloseMergeRequest closes merge request in Gitlab repo by given MR IID
-func (gc *GitlabClient) CloseMergeRequest(projectID string, mergeRequestIID int) error {
+func (gc *GitlabClient) CloseMergeRequest(projectID string, mergeRequestIID int64) error {
 
 	// Get merge requests using Gitlab client
 	_, _, err := gc.client.MergeRequests.GetMergeRequest(projectID, mergeRequestIID, nil)
@@ -175,12 +175,12 @@ func (gc *GitlabClient) GetFileMetaData(projectID, pathToFile, branchName string
 	return metadata, err
 }
 
-func (gc *GitlabClient) AcceptMergeRequest(projectID string, mrID int) (*gitlab.MergeRequest, error) {
+func (gc *GitlabClient) AcceptMergeRequest(projectID string, mrID int64) (*gitlab.MergeRequest, error) {
 	mr, _, err := gc.client.MergeRequests.AcceptMergeRequest(projectID, mrID, nil)
 	return mr, err
 }
 
-func (gc *GitlabClient) GetCommitStatusConclusion(statusName, projectID, commitSHA string, mergeRequestID int) string {
+func (gc *GitlabClient) GetCommitStatusConclusion(statusName, projectID, commitSHA string, mergeRequestID int64) string {
 	var matchingStatus *gitlab.CommitStatus
 	timeout := time.Minute * 10
 

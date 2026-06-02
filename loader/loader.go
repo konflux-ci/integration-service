@@ -837,7 +837,7 @@ func (l *loader) GetComponentsFromSnapshotForPRGroup(ctx context.Context, client
 			continue
 		}
 		componentName := snapshot.Labels[gitops.SnapshotComponentLabel]
-		if slices.Contains(componentNames, componentName) {
+		if slices.Contains[[]string, string](componentNames, componentName) {
 			continue
 		}
 		componentNames = append(componentNames, componentName)
