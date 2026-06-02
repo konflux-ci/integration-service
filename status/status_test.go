@@ -583,9 +583,10 @@ var _ = Describe("Status Adapter", func() {
 					}
 				}
 				if plr, ok := obj.(*tektonv1.PipelineRun); ok {
-					if key.Name == pipelineRun.Name {
+					switch key.Name {
+					case pipelineRun.Name:
 						plr.Status = pipelineRun.Status
-					} else if key.Name == pipelineRunWarn.Name {
+					case pipelineRunWarn.Name:
 						plr.Status = pipelineRunWarn.Status
 					}
 				}

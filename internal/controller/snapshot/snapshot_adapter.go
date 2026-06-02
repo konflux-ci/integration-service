@@ -1018,7 +1018,7 @@ func (a *Adapter) prepareGroupSnapshot(application *applicationapiv1alpha1.Appli
 
 		var foundSnapshotWithOpenedPR *applicationapiv1alpha1.Snapshot
 		var statusCode int
-		if slices.Contains(componentsToCheck, applicationComponent.Name) {
+		if slices.Contains[[]string, string](componentsToCheck, applicationComponent.Name) {
 			snapshots, err := a.loader.GetMatchingComponentSnapshotsForComponentAndPRGroupHash(a.context, a.client, application.Namespace, applicationComponent.Name, prGroupHash, application.Name)
 			if err != nil {
 				a.logger.Error(err, "Failed to fetch Snapshots for component", "component.Name", applicationComponent.Name)

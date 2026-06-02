@@ -28,7 +28,7 @@ import (
 	"github.com/go-logr/logr"
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
 	"github.com/konflux-ci/operator-toolkit/metadata"
-	gitlab "gitlab.com/gitlab-org/api/client-go"
+	gitlab "gitlab.com/gitlab-org/api/client-go/v2"
 	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -44,9 +44,9 @@ type GitLabReporter struct {
 	k8sClient       client.Client
 	client          *gitlab.Client
 	sha             string
-	sourceProjectID int
-	targetProjectID int
-	mergeRequest    int
+	sourceProjectID int64
+	targetProjectID int64
+	mergeRequest    int64
 	snapshot        *applicationapiv1alpha1.Snapshot
 }
 
@@ -122,7 +122,7 @@ func (r *GitLabReporter) Initialize(ctx context.Context, snapshot *applicationap
 		return 0, unRecoverableError
 	}
 
-	r.targetProjectID, err = strconv.Atoi(targetProjectIDstr)
+	r.targetProjectID, err = strconv.ParseInt(targetProjectIDstr, 10, 64)
 	if err != nil {
 		unRecoverableError = helpers.NewUnrecoverableMetadataError(fmt.Sprintf("failed to convert project ID '%s' to integer: %s", targetProjectIDstr, err.Error()))
 		r.logger.Error(unRecoverableError, "snapshot.NameSpace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
@@ -136,7 +136,7 @@ func (r *GitLabReporter) Initialize(ctx context.Context, snapshot *applicationap
 		return 0, unRecoverableError
 	}
 
-	r.sourceProjectID, err = strconv.Atoi(sourceProjectIDstr)
+	r.sourceProjectID, err = strconv.ParseInt(sourceProjectIDstr, 10, 64)
 	if err != nil {
 		unRecoverableError = helpers.NewUnrecoverableMetadataError(fmt.Sprintf("failed to convert project ID '%s' to integer: %s", sourceProjectIDstr, err.Error()))
 		r.logger.Error(unRecoverableError, "snapshot.NameSpace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
@@ -151,7 +151,7 @@ func (r *GitLabReporter) Initialize(ctx context.Context, snapshot *applicationap
 	}
 
 	if found {
-		r.mergeRequest, err = strconv.Atoi(mergeRequestStr)
+		r.mergeRequest, err = strconv.ParseInt(mergeRequestStr, 10, 64)
 		if err != nil && !gitops.IsSnapshotCreatedByPACPushEvent(snapshot) {
 			unRecoverableError = helpers.NewUnrecoverableMetadataError(fmt.Sprintf("failed to convert merge request number '%s' to integer: %s", mergeRequestStr, err.Error()))
 			r.logger.Error(unRecoverableError, "snapshot.NameSpace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
@@ -195,7 +195,7 @@ func (r *GitLabReporter) setCommitStatus(report TestReport) (int, error) {
 	// try to find the MR pipeline from target project first since that's the one shown in MR view,
 	// if not found, then try to find the pipeline in source project, if still not found, then create commit status without pipeline association
 	// Give more tries because the integration status reporter is called after build pipeline is triggered
-	var existingMergeRequestPipelineID int
+	var existingMergeRequestPipelineID int64
 	var joinedError error
 	err = retry.OnError(reporterRetryBackoff, func(err error) bool {
 		// statusCode 0 means no HTTP response was received (network/timeout error), always retry
@@ -206,9 +206,9 @@ func (r *GitLabReporter) setCommitStatus(report TestReport) (int, error) {
 		return retryable
 	}, func() error {
 		statusCode = 0 // reset before each attempt to avoid stale values
-		projectIDs := []int{r.targetProjectID, r.sourceProjectID}
+		projectIDs := []int64{r.targetProjectID, r.sourceProjectID}
 		for _, projectID := range projectIDs {
-			var pID int
+			var pID int64
 			var getErr error
 			pID, statusCode, getErr = r.GetExistingMergeRequestPipelineID(projectID, r.sha)
 			if getErr != nil {
@@ -316,7 +316,7 @@ func (r *GitLabReporter) UpdateStatusInComment(commentPrefix, comment string, is
 	var response *gitlab.Response
 
 	var err error
-	var noteIDs []int
+	var noteIDs []int64
 	var allNotes []*gitlab.Note
 	err = retry.OnError(reporterRetryBackoff, func(err error) bool {
 		// statusCode 0 means no HTTP response was received (network/timeout error), always retry
@@ -408,8 +408,8 @@ func (r *GitLabReporter) GetExistingCommitStatus(commitStatuses []*gitlab.Commit
 	return nil
 }
 
-func (r *GitLabReporter) GetExistingCommentIDs(notes []*gitlab.Note, commentPrefix string) []int {
-	var commentIDs []int
+func (r *GitLabReporter) GetExistingCommentIDs(notes []*gitlab.Note, commentPrefix string) []int64 {
+	var commentIDs []int64
 	for _, note := range notes {
 		// get existing note by search commentTitle in report summary
 		// GetExistingCommentIDs for github comment has the similar logic
@@ -423,7 +423,7 @@ func (r *GitLabReporter) GetExistingCommentIDs(notes []*gitlab.Note, commentPref
 	return commentIDs
 }
 
-func (r *GitLabReporter) GetExistingMergeRequestPipelineID(sourceProjectID int, sha string) (int, int, error) {
+func (r *GitLabReporter) GetExistingMergeRequestPipelineID(sourceProjectID int64, sha string) (int64, int, error) {
 	opt := &gitlab.ListProjectPipelinesOptions{
 		SHA:     gitlab.Ptr(sha),
 		OrderBy: gitlab.Ptr("id"),
@@ -449,7 +449,7 @@ func (r *GitLabReporter) GetExistingMergeRequestPipelineID(sourceProjectID int, 
 }
 
 // DeleteExistingNotes deletes existing GitLab note with given noteIDs.
-func (r *GitLabReporter) DeleteExistingNotes(noteIDs []int) (int, error) {
+func (r *GitLabReporter) DeleteExistingNotes(noteIDs []int64) (int, error) {
 	var lastStatusCode = 0
 	var errs []error // collect errors during deletion
 

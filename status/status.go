@@ -37,7 +37,7 @@ import (
 	intgteststat "github.com/konflux-ci/integration-service/pkg/integrationteststatus"
 	"github.com/konflux-ci/operator-toolkit/metadata"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
-	gitlab "gitlab.com/gitlab-org/api/client-go"
+	gitlab "gitlab.com/gitlab-org/api/client-go/v2"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -533,7 +533,7 @@ func (s Status) IsMRInSnapshotOpened(ctx context.Context, reporter ReporterInter
 		log.Error(unRecoverableError, fmt.Sprintf("target project ID annotation not found %q", gitops.PipelineAsCodeTargetProjectIDAnnotation))
 		return false, statusCode, unRecoverableError
 	}
-	targetProjectID, err := strconv.Atoi(targetProjectIDstr)
+	targetProjectID, err := strconv.ParseInt(targetProjectIDstr, 10, 64)
 	if err != nil {
 		unRecoverableError = helpers.NewUnrecoverableMetadataError(fmt.Sprintf("failed to convert project ID '%s' to integer: %s", targetProjectIDstr, err.Error()))
 		log.Error(unRecoverableError, "failed to convert project ID '%s' to integer", targetProjectIDstr)
@@ -546,7 +546,7 @@ func (s Status) IsMRInSnapshotOpened(ctx context.Context, reporter ReporterInter
 		log.Error(unRecoverableError, fmt.Sprintf("pull-request annotation not found %q", gitops.PipelineAsCodePullRequestAnnotation))
 		return false, statusCode, unRecoverableError
 	}
-	mergeRequest, err := strconv.Atoi(mergeRequestStr)
+	mergeRequest, err := strconv.ParseInt(mergeRequestStr, 10, 64)
 	if err != nil {
 		unRecoverableError = helpers.NewUnrecoverableMetadataError(fmt.Sprintf("failed to convert merge request number '%s' to integer: %s", mergeRequestStr, err.Error()))
 		log.Error(unRecoverableError, fmt.Sprintf("failed to convert merge request number '%s' to integer", mergeRequestStr))
