@@ -25,7 +25,6 @@ import (
 	"strings"
 	"time"
 
-	"golang.org/x/exp/slices"
 	clienterrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -1018,7 +1017,14 @@ func (a *Adapter) prepareGroupSnapshot(application *applicationapiv1alpha1.Appli
 
 		var foundSnapshotWithOpenedPR *applicationapiv1alpha1.Snapshot
 		var statusCode int
-		if slices.Contains[[]string, string](componentsToCheck, applicationComponent.Name) {
+		componentInCheck := false
+		for _, c := range componentsToCheck {
+			if c == applicationComponent.Name {
+				componentInCheck = true
+				break
+			}
+		}
+		if componentInCheck {
 			snapshots, err := a.loader.GetMatchingComponentSnapshotsForComponentAndPRGroupHash(a.context, a.client, application.Namespace, applicationComponent.Name, prGroupHash, application.Name)
 			if err != nil {
 				a.logger.Error(err, "Failed to fetch Snapshots for component", "component.Name", applicationComponent.Name)
