@@ -21,7 +21,16 @@ cover.html
 *.swo
 *~
 
-#Mac
+# Mac
 .DS_Store
 .AppleDouble
 .LSOverride
+
+# AI Tooling
+.mcp.json
+.mcp/*
+.gemini/*
+
+# IDE directories
+.vscode/*
+.cursor/*
