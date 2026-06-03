@@ -1026,6 +1026,122 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		Expect(result.TestOutput).To(BeNil())
 	})
 
+	It("rejects TEST_OUTPUT JSON with negative count values", func() {
+		negativeCountsTaskRun := &tektonv1.TaskRun{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "test-taskrun-negative-counts",
+				Namespace: "default",
+			},
+			Spec: tektonv1.TaskRunSpec{
+				TaskRef: &tektonv1.TaskRef{
+					Name: "test-taskrun-negative-counts",
+					ResolverRef: tektonv1.ResolverRef{
+						Resolver: "bundle",
+						Params: tektonv1.Params{
+							{Name: "bundle",
+								Value: tektonv1.ParamValue{Type: "string", StringVal: "quay.io/redhat-appstudio/example-tekton-bundle:test"},
+							},
+							{Name: "name",
+								Value: tektonv1.ParamValue{Type: "string", StringVal: "test-task"},
+							},
+						},
+					},
+				},
+			},
+		}
+
+		Expect(k8sClient.Create(ctx, negativeCountsTaskRun)).Should(Succeed())
+		defer func() {
+			_ = k8sClient.Delete(ctx, negativeCountsTaskRun)
+		}()
+
+		negativeCountsTaskRun.Status = tektonv1.TaskRunStatus{
+			TaskRunStatusFields: tektonv1.TaskRunStatusFields{
+				StartTime:      &metav1.Time{Time: now},
+				CompletionTime: &metav1.Time{Time: now.Add(5 * time.Minute)},
+				Results: []tektonv1.TaskRunResult{
+					{
+						Name: "TEST_OUTPUT",
+						Value: *tektonv1.NewStructuredValues(`{
+							"result": "SUCCESS",
+							"timestamp": "2024-05-22T06:42:21+00:00",
+							"successes": -1,
+							"failures": 0,
+							"warnings": 0
+						}`),
+					},
+				},
+			},
+		}
+		Expect(k8sClient.Status().Update(ctx, negativeCountsTaskRun)).Should(Succeed())
+
+		integrationTaskRun := helpers.NewTaskRunFromTektonTaskRun("task-negative-counts", &negativeCountsTaskRun.Status)
+		result, err := integrationTaskRun.GetTestResult()
+		Expect(err).ToNot(HaveOccurred())
+		Expect(result).ToNot(BeNil())
+		Expect(result.ValidationError).ToNot(BeNil())
+		Expect(result.ValidationError.Error()).To(ContainSubstring("validating results"))
+		Expect(result.TestOutput).To(BeNil())
+	})
+
+	It("rejects TEST_OUTPUT JSON with invalid timestamp format", func() {
+		invalidTimestampTaskRun := &tektonv1.TaskRun{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "test-taskrun-invalid-timestamp",
+				Namespace: "default",
+			},
+			Spec: tektonv1.TaskRunSpec{
+				TaskRef: &tektonv1.TaskRef{
+					Name: "test-taskrun-invalid-timestamp",
+					ResolverRef: tektonv1.ResolverRef{
+						Resolver: "bundle",
+						Params: tektonv1.Params{
+							{Name: "bundle",
+								Value: tektonv1.ParamValue{Type: "string", StringVal: "quay.io/redhat-appstudio/example-tekton-bundle:test"},
+							},
+							{Name: "name",
+								Value: tektonv1.ParamValue{Type: "string", StringVal: "test-task"},
+							},
+						},
+					},
+				},
+			},
+		}
+
+		Expect(k8sClient.Create(ctx, invalidTimestampTaskRun)).Should(Succeed())
+		defer func() {
+			_ = k8sClient.Delete(ctx, invalidTimestampTaskRun)
+		}()
+
+		invalidTimestampTaskRun.Status = tektonv1.TaskRunStatus{
+			TaskRunStatusFields: tektonv1.TaskRunStatusFields{
+				StartTime:      &metav1.Time{Time: now},
+				CompletionTime: &metav1.Time{Time: now.Add(5 * time.Minute)},
+				Results: []tektonv1.TaskRunResult{
+					{
+						Name: "TEST_OUTPUT",
+						Value: *tektonv1.NewStructuredValues(`{
+							"result": "SUCCESS",
+							"timestamp": "not-a-timestamp",
+							"successes": 10,
+							"failures": 0,
+							"warnings": 0
+						}`),
+					},
+				},
+			},
+		}
+		Expect(k8sClient.Status().Update(ctx, invalidTimestampTaskRun)).Should(Succeed())
+
+		integrationTaskRun := helpers.NewTaskRunFromTektonTaskRun("task-invalid-timestamp", &invalidTimestampTaskRun.Status)
+		result, err := integrationTaskRun.GetTestResult()
+		Expect(err).ToNot(HaveOccurred())
+		Expect(result).ToNot(BeNil())
+		Expect(result.ValidationError).ToNot(BeNil())
+		Expect(result.ValidationError.Error()).To(ContainSubstring("validating results"))
+		Expect(result.TestOutput).To(BeNil())
+	})
+
 	It("can get all the TaskRuns for a PipelineRun with childReferences", func() {
 		integrationPipelineRun.Status = tektonv1.PipelineRunStatus{
 			PipelineRunStatusFields: tektonv1.PipelineRunStatusFields{
