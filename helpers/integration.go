@@ -72,9 +72,9 @@ type AppStudioTestResult struct {
 	Namespace string `json:"namespace"`
 	Timestamp string `json:"timestamp" validate:"required,taskrun_timestamp"`
 	Note      string `json:"note"`
-	Successes int    `json:"successes" validate:"min=0"`
-	Failures  int    `json:"failures" validate:"min=0"`
-	Warnings  int    `json:"warnings" validate:"min=0"`
+	Successes *int   `json:"successes" validate:"required,min=0"`
+	Failures  *int   `json:"failures" validate:"required,min=0"`
+	Warnings  *int   `json:"warnings" validate:"required,min=0"`
 }
 
 // IntegrationTestTaskResult provides results from integration test task
