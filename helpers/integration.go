@@ -93,9 +93,11 @@ var testResultValidator *validator.Validate
 func init() {
 	testResultValidator = validator.New()
 	// Register custom validation for taskrun timestamps
-	testResultValidator.RegisterValidation("taskrun_timestamp", func(fl validator.FieldLevel) bool {
+	if err := testResultValidator.RegisterValidation("taskrun_timestamp", func(fl validator.FieldLevel) bool {
 		return timestampRegex.MatchString(fl.Field().String())
-	})
+	}); err != nil {
+		panic(fmt.Sprintf("failed to register taskrun_timestamp validator: %v", err))
+	}
 }
 
 // TaskRun is an integration specific wrapper around the status of a Tekton TaskRun.
