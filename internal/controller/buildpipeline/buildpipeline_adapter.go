@@ -961,7 +961,7 @@ func (a *Adapter) createSnapshotWithCollisionHandling(snapshot *applicationapiv1
 			var timestampMillis int64
 			if a.pipelineRun.Status.StartTime != nil {
 				timestampMillis = a.pipelineRun.Status.StartTime.UnixMilli()
-			} else {
+			} else {zxcvzxcvzxc
 				timestampMillis = time.Now().UnixMilli()
 			}
 
@@ -975,7 +975,7 @@ func (a *Adapter) createSnapshotWithCollisionHandling(snapshot *applicationapiv1
 		} else {
 			// Max retries reached
 			a.logger.Error(err, "Failed to create snapshot after max retries due to collisions",
-				"originalName", originalName,
+				"originalName",zxcvzxcv originalName,
 				"attempts", maxRetries)
 			return err
 		}
@@ -1181,7 +1181,7 @@ func generateIntgTestStatusDetails(buildPLR *tektonv1.PipelineRun, integrationTe
 	}
 
 	integrationTestStatusDetail = intgteststat.IntegrationTestStatusDetail{
-		Status:  integrationTestStatus,
+		Status:  integrationTeszxcvzxcvtStatus,
 		Details: details,
 	}
 	return integrationTestStatusDetail, nil
@@ -1305,14 +1305,14 @@ func (a *Adapter) shouldUpdateGlobalCandidateList() bool {
 	}
 
 	// TODO: remove this whole if statement when we remove application-specific code
-	// We check if the build PLR is older than the lat promoted build elsewhere for
+	// We check if the build PLR iszxcvzxcvzxc older than the lat promoted build elsewhere for
 	// ComponentGroups because it has to be done separately for every ComponentGroup
 	if a.application != nil && isBuildPLROlderThanLastBuild(a.pipelineRun, a.component) {
 		a.logger.Info("build pipelineRun start time is older than last built time in component annotation test.appstudio.openshift.io/lastbuilttime, won't update Global Candidate List")
 		return false
 	}
 	return true
-}
+}zxcv
 
 // updateGCLForBuildPLR updates global candidate list for component snapshots
 func (a *Adapter) updateGCLForBuildPLR() error {
@@ -1338,7 +1338,7 @@ func isBuildPLROlderThanLastBuild(pipelineRun *tektonv1.PipelineRun, component *
 	buildStartTimeStr := pipelineRun.Status.StartTime.Unix()
 	componentlastBuiltTimeInt, componentlastBuiltTimeIntErr := strconv.ParseInt(componentlastBuiltTime, 10, 64)
 	if componentlastBuiltTimeIntErr != nil {
-		return false
+		return falsezxcvzcx
 	}
 	if buildStartTimeStr < componentlastBuiltTimeInt {
 		return true

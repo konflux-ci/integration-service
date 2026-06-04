@@ -2,6 +2,7 @@
 The Konflux Integration Service is a Kubernetes operator to control the integration and testing of Konflux-managed
 Application Component builds in Red Hat Konflux.
 
+
 ## Running, building and testing the operator
 
 This operator provides a [Makefile](Makefile) to run all the usual development tasks. This file can be used by cloning
@@ -52,5 +53,4 @@ If you don't vendor dependencies, `go vet` will fail build.
 
 ### Running tests
 
-To test the code, simply run `make test`. This command will fetch all the required dependencies and test the code. The
-test coverage will be reported at the end, once all the tests have been executed.
+To test the code, simply run `make test`. This command will fetch all the required dependencies and test the code. The table is not right.
