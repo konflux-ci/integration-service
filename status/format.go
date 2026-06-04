@@ -51,7 +51,6 @@ const summaryTemplate = `
 | <a href="{{ formatTaskLogURL $tr $pipelineRunName $namespace $logger }}">{{ formatTaskName $tr }}</a> | {{ $tr.GetDuration.String }} | {{ formatNamespace $tr }} | {{ formatStatus $tr }} | {{ formatDetails $tr }} | {{ formatNote $tr }} |
 {{- end }}
 
-{{ formatFootnotes .TaskRuns }}
 {{ if .ComponentSnapshotInfos}}
 The group snapshot is generated for pr group {{ .PRGroup }} and the component snasphots as below:
 | Component | Snapshot | BuildPipelineRun | PullRequest |
@@ -103,7 +102,6 @@ func FormatTestsSummary(taskRuns []*helpers.TaskRun, pipelineRunName string, nam
 		"formatNote":           FormatNote,
 		"formatPipelineURL":    FormatPipelineURL,
 		"formatTaskLogURL":     FormatTaskLogURL,
-		"formatFootnotes":      FormatFootnotes,
 		"formatPullRequestURL": FormatPullRequestURL,
 		"formatRepoURL":        FormatRepoURL,
 	}
@@ -123,7 +121,6 @@ func FormatShortTestsSummary(pipelineRunName string, namespace string, component
 		"formatStatus":         FormatStatus,
 		"formatDetails":        FormatDetails,
 		"formatPipelineURL":    FormatPipelineURL,
-		"formatFootnotes":      FormatFootnotes,
 		"formatPullRequestURL": FormatPullRequestURL,
 		"formatRepoURL":        FormatRepoURL,
 	}
@@ -197,24 +194,9 @@ func FormatStatus(taskRun *helpers.TaskRun) (string, error) {
 	return emoji + " " + result.TestOutput.Result, nil
 }
 
-// FormatTaskName accepts a TaskRun and returns a Markdown friendly representation of its name.
+// FormatTaskName accepts a TaskRun and returns its name.
 func FormatTaskName(taskRun *helpers.TaskRun) (string, error) {
-	result, err := taskRun.GetTestResult()
-	if err != nil {
-		return "", err
-	}
-
-	name := taskRun.GetPipelineTaskName()
-
-	if result == nil || result.TestOutput == nil {
-		return name, nil
-	}
-
-	if result.TestOutput.Note == "" {
-		return name, nil
-	}
-
-	return name + "[^" + name + "]", nil
+	return taskRun.GetPipelineTaskName(), nil
 }
 
 // FormatNamespace accepts a TaskRun and returns a Markdown friendly representation of its test suite, if any.
@@ -283,26 +265,6 @@ func FormatNote(taskRun *helpers.TaskRun) (string, error) {
 	}
 
 	return result.TestOutput.Note, nil
-}
-
-// FormatResults accepts a list of TaskRuns and returns a Markdown friendly representation of their footnotes, if any.
-func FormatFootnotes(taskRuns []*helpers.TaskRun) (string, error) {
-	footnotes := []string{}
-	for _, tr := range taskRuns {
-		result, err := tr.GetTestResult()
-		if err != nil {
-			return "", err
-		}
-
-		if result == nil || result.TestOutput == nil {
-			continue
-		}
-
-		if result.TestOutput.Note != "" {
-			footnotes = append(footnotes, "[^"+tr.GetPipelineTaskName()+"]: "+result.TestOutput.Note)
-		}
-	}
-	return strings.Join(footnotes, "\n"), nil
 }
 
 // Console URL env vars (CONSOLE_URL, CONSOLE_URL_TASKLOG) use literal placeholder substitution only.
