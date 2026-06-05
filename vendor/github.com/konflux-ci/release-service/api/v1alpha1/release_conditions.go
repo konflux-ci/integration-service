@@ -26,6 +26,23 @@ const (
 )
 
 const (
+	// AttemptSucceededReason is the reason set when an attempt succeeds
+	AttemptSucceededReason = "Succeeded"
+	// AttemptFailedReason is the reason set when an attempt fails
+	AttemptFailedReason = "Failed"
+	// AttemptProgressingReason is the reason set when an attempt is progressing
+	AttemptProgressingReason = "Progressing"
+	// AttemptFailureErrorReason is the reason set when an attempt fails due to an error
+	AttemptFailureErrorReason = "Error"
+	// AttemptFailureOOMKillReason is the reason set when an attempt fails due to OOM kill
+	AttemptFailureOOMKillReason = "OOMKill"
+	// AttemptFailurePipelineRunTimeoutReason is the reason set when an attempt fails due to PipelineRun timeout
+	AttemptFailurePipelineRunTimeoutReason = "PipelineRunTimeout"
+	// AttemptFailureTaskRunTimeoutReason is the reason set when an attempt fails due to TaskRun timeout
+	AttemptFailureTaskRunTimeoutReason = "TaskRunTimeout"
+)
+
+const (
 	// FailedReason is the reason set when a failure occurs
 	FailedReason conditions.ConditionReason = "Failed"
 

@@ -38,6 +38,10 @@ type ReleaseServiceConfigSpec struct {
 	// VolumeOverrides is a map containing the volume type for specific Pipeline git refs
 	// +optional
 	EmptyDirOverrides []EmptyDirOverrides `json:"EmptyDirOverrides,omitempty"`
+
+	// RetryablePipelines is a list of pipelines that are safe to automatically retry on failure.
+	// +optional
+	RetryablePipelines []RetryablePipeline `json:"retryablePipelines,omitempty"`
 }
 
 // EmptyDirOverrides defines the values usually set in a PipelineRef using a git resolver.
