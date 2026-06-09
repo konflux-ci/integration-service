@@ -208,6 +208,42 @@ var _ = Describe("GitLabReporter", func() {
 			Entry("Missing source project ID", gitops.PipelineAsCodeSourceProjectIDAnnotation, false),
 		)
 
+		It("returns error when pull-request annotation is missing for non-push event", func() {
+			delete(hasSnapshot.Annotations, gitops.PipelineAsCodePullRequestAnnotation)
+			// Add pull-request as a label so IsSnapshotCreatedByPACPushEvent returns false
+			hasSnapshot.Labels[gitops.PipelineAsCodePullRequestAnnotation] = "45"
+			statusCode, err := reporter.Initialize(context.TODO(), hasSnapshot)
+			Expect(err).To(HaveOccurred())
+			Expect(statusCode).To(Equal(0))
+			Expect(err.Error()).To(ContainSubstring("pull-request annotation not found"))
+		})
+
+		It("returns error when target project ID is not a valid integer", func() {
+			hasSnapshot.Annotations[gitops.PipelineAsCodeTargetProjectIDAnnotation] = "not-a-number"
+			statusCode, err := reporter.Initialize(context.TODO(), hasSnapshot)
+			Expect(err).To(HaveOccurred())
+			Expect(statusCode).To(Equal(0))
+			Expect(err.Error()).To(ContainSubstring("failed to convert project ID"))
+		})
+
+		It("returns error when source project ID is not a valid integer", func() {
+			hasSnapshot.Annotations[gitops.PipelineAsCodeSourceProjectIDAnnotation] = "not-a-number"
+			statusCode, err := reporter.Initialize(context.TODO(), hasSnapshot)
+			Expect(err).To(HaveOccurred())
+			Expect(statusCode).To(Equal(0))
+			Expect(err.Error()).To(ContainSubstring("failed to convert project ID"))
+		})
+
+		It("returns error when merge request number is not a valid integer for non-push event", func() {
+			hasSnapshot.Annotations[gitops.PipelineAsCodePullRequestAnnotation] = "not-a-number"
+			// Add pull-request as a label so IsSnapshotCreatedByPACPushEvent returns false
+			hasSnapshot.Labels[gitops.PipelineAsCodePullRequestAnnotation] = "not-a-number"
+			statusCode, err := reporter.Initialize(context.TODO(), hasSnapshot)
+			Expect(err).To(HaveOccurred())
+			Expect(statusCode).To(Equal(0))
+			Expect(err.Error()).To(ContainSubstring("failed to convert merge request number"))
+		})
+
 		It("creates a commit status for snapshot with correct textual data", func() {
 
 			summary := "Integration test for component component-sample snapshot snapshot-sample and scenario scenario1 failed"
@@ -596,15 +632,39 @@ var _ = Describe("GitLabReporter", func() {
 				Expect(err).ToNot(HaveOccurred())
 			}
 		})
-		It("check if optional integration test returns skipped status for failed test", func() {
-			state, err := status.GenerateGitlabCommitState(integrationteststatus.IntegrationTestStatusTestFail, true)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(state).To(Equal(gitlab.Skipped))
+		DescribeTable(
+			"reports correct gitlab statuses from test statuses for optional scenarios",
+			func(teststatus integrationteststatus.IntegrationTestStatus, glState gitlab.BuildStateValue) {
+
+				state, err := status.GenerateGitlabCommitState(teststatus, true)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(state).To(Equal(glState))
+			},
+			Entry("Pending (optional)", integrationteststatus.IntegrationTestStatusPending, gitlab.Pending),
+			Entry("BuildPLRInProgress (optional)", integrationteststatus.BuildPLRInProgress, gitlab.Pending),
+			Entry("In progress (optional)", integrationteststatus.IntegrationTestStatusInProgress, gitlab.Pending),
+			Entry("Provision error (optional)", integrationteststatus.IntegrationTestStatusEnvironmentProvisionError_Deprecated, gitlab.Skipped),
+			Entry("Deployment error (optional)", integrationteststatus.IntegrationTestStatusDeploymentError_Deprecated, gitlab.Skipped),
+			Entry("Test failure (optional)", integrationteststatus.IntegrationTestStatusTestFail, gitlab.Skipped),
+			Entry("Invalid (optional)", integrationteststatus.IntegrationTestStatusTestInvalid, gitlab.Skipped),
+			Entry("Deleted (optional)", integrationteststatus.IntegrationTestStatusDeleted, gitlab.Canceled),
+			Entry("BuildPLRFailed (optional)", integrationteststatus.BuildPLRFailed, gitlab.Canceled),
+			Entry("SnapshotCreationFailed (optional)", integrationteststatus.SnapshotCreationFailed, gitlab.Canceled),
+			Entry("GroupSnapshotCreationFailed (optional)", integrationteststatus.GroupSnapshotCreationFailed, gitlab.Canceled),
+			Entry("Success (optional)", integrationteststatus.IntegrationTestStatusTestPassed, gitlab.Success),
+			Entry("Warning (optional)", integrationteststatus.IntegrationTestStatusTestWarning, gitlab.Success),
+		)
+
+		It("returns error for unknown status (non-optional)", func() {
+			_, err := status.GenerateGitlabCommitState(integrationteststatus.IntegrationTestStatus(-1), false)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("unknown status"))
 		})
-		It("check if optional integration test returns skipped status for invalid test", func() {
-			state, err := status.GenerateGitlabCommitState(integrationteststatus.IntegrationTestStatusTestInvalid, true)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(state).To(Equal(gitlab.Skipped))
+
+		It("returns error for unknown status (optional)", func() {
+			_, err := status.GenerateGitlabCommitState(integrationteststatus.IntegrationTestStatus(-1), true)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("unknown status"))
 		})
 	})
 })
