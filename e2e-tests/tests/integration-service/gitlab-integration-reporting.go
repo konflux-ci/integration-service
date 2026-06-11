@@ -5,7 +5,7 @@ import (
 	"os"
 
 	"github.com/konflux-ci/integration-service/e2e-tests/pkg/utils/build"
-	"gitlab.com/gitlab-org/api/client-go"
+	"gitlab.com/gitlab-org/api/client-go/v2"
 
 	"strings"
 	"time"
@@ -28,7 +28,7 @@ var _ = framework.IntegrationServiceSuiteDescribe("Gitlab Status Reporting of In
 	var f *framework.Framework
 	var err error
 
-	var mrID int
+	var mrID int64
 	var mrSha, projectID, gitlabToken string
 	var snapshot *appstudioApi.Snapshot
 	var component *appstudioApi.Component

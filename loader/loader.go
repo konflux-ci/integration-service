@@ -30,7 +30,6 @@ import (
 	releasev1alpha1 "github.com/konflux-ci/release-service/api/v1alpha1"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	resolutionv1beta1 "github.com/tektoncd/pipeline/pkg/apis/resolution/v1beta1"
-	"golang.org/x/exp/slices"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
@@ -837,7 +836,14 @@ func (l *loader) GetComponentsFromSnapshotForPRGroup(ctx context.Context, client
 			continue
 		}
 		componentName := snapshot.Labels[gitops.SnapshotComponentLabel]
-		if slices.Contains(componentNames, componentName) {
+		alreadySeen := false
+		for _, n := range componentNames {
+			if n == componentName {
+				alreadySeen = true
+				break
+			}
+		}
+		if alreadySeen {
 			continue
 		}
 		componentNames = append(componentNames, componentName)
