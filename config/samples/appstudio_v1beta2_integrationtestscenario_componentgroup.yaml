@@ -1,0 +1,28 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: integration-sample-cg
+---
+# Example IntegrationTestScenario with ComponentGroup
+apiVersion: appstudio.redhat.com/v1beta2
+kind: IntegrationTestScenario
+metadata:
+  labels:
+    app.kubernetes.io/name: integrationtestscenario-cg
+    app.kubernetes.io/instance: integrationtestscenario-sample-cg
+    app.kubernetes.io/part-of: integration-service
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/created-by: integration-service
+  name: integrationtestscenario-sample-cg
+  namespace: integration-sample-cg
+spec:
+  componentGroup: sample-component-group
+  resolverRef:
+    resolver: git
+    params:
+    - name: url
+      value: https://github.com/redhat-appstudio/integration-examples
+    - name: revision
+      value: main
+    - name: pathInRepo
+      value: pipelines/integration_pipeline_pass.yaml

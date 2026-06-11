@@ -1,0 +1,74 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: integration-service-controller-manager
+  namespace: {{ .Values.namespace | default .Release.Namespace }}
+  labels:
+    {{- include "chart.labels" . | nindent 4 }}
+    control-plane: controller-manager
+spec:
+  replicas: {{ .Values.controllerManager.replicas }}
+  selector:
+    matchLabels:
+      control-plane: controller-manager
+  template:
+    metadata:
+      annotations:
+        kubectl.kubernetes.io/default-container: manager
+      labels:
+        {{- include "chart.labels" . | nindent 8 }}
+        control-plane: controller-manager
+        {{- if and .Values.controllerManager.pod .Values.controllerManager.pod.labels }}
+        {{- range $key, $value := .Values.controllerManager.pod.labels }}
+        {{ $key }}: {{ $value }}
+        {{- end }}
+        {{- end }}
+    spec:
+      containers:
+        - name: manager
+          args:
+            {{- range .Values.controllerManager.container.args }}
+            - {{ . }}
+            {{- end }}
+          command:
+            - /manager
+          image: {{ .Values.controllerManager.container.image }}
+          {{- if .Values.controllerManager.container.env }}
+          env:
+            {{- range $key, $value := .Values.controllerManager.container.env }}
+            - name: {{ $key }}
+              value: {{ $value }}
+            {{- end }}
+          {{- end }}
+          livenessProbe:
+            {{- toYaml .Values.controllerManager.container.livenessProbe | nindent 12 }}
+          readinessProbe:
+            {{- toYaml .Values.controllerManager.container.readinessProbe | nindent 12 }}
+          ports:
+            {{- toYaml .Values.controllerManager.container.ports.probes | nindent 12 }}
+          {{- if .Values.webhook.enable }}
+            {{- toYaml .Values.controllerManager.container.ports.webhook | nindent 12 }}
+          {{- end }}
+          resources:
+            {{- toYaml .Values.controllerManager.container.resources | nindent 12 }}
+          securityContext:
+            {{- toYaml .Values.controllerManager.container.securityContext | nindent 12 }}
+          {{- if .Values.webhook.enable }}
+          volumeMounts:
+            - name: cert
+              mountPath: /tmp/k8s-webhook-server/serving-certs
+              readOnly: true
+          {{- end }}
+      securityContext:
+        {{- toYaml .Values.controllerManager.securityContext | nindent 8 }}
+      serviceAccountName: {{ .Values.controllerManager.serviceAccountName }}
+      terminationGracePeriodSeconds: {{ .Values.controllerManager.terminationGracePeriodSeconds }}
+      {{- if or .Values.certmanager.enable (or .Values.webhook.enable .Values.metrics.enable) }}
+      volumes:
+        {{- if .Values.webhook.enable }}
+        - name: cert
+          secret:
+            defaultMode: 420
+            secretName: webhook-server-cert
+        {{- end }}
+      {{- end }}

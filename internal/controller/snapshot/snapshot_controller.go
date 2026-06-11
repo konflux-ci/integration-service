@@ -1,0 +1,238 @@
+/*
+Copyright 2022 Red Hat Inc.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions andF
+limitations under the License.
+*/
+
+package snapshot
+
+import (
+	"context"
+	"fmt"
+
+	"github.com/go-logr/logr"
+	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
+	"github.com/konflux-ci/integration-service/api/v1beta2"
+	"github.com/konflux-ci/integration-service/cache"
+	"github.com/konflux-ci/integration-service/gitops"
+	"github.com/konflux-ci/integration-service/helpers"
+	"github.com/konflux-ci/integration-service/loader"
+	"github.com/konflux-ci/operator-toolkit/controller"
+	toolkitpredicates "github.com/konflux-ci/operator-toolkit/predicates"
+	toolkitutils "github.com/konflux-ci/operator-toolkit/utils"
+	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/util/retry"
+	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
+)
+
+// Reconciler reconciles an Snapshot object
+type Reconciler struct {
+	client.Client
+	Log    logr.Logger
+	Scheme *runtime.Scheme
+}
+
+// NewSnapshotReconciler creates and returns a Reconciler.
+func NewSnapshotReconciler(client client.Client, logger *logr.Logger, scheme *runtime.Scheme) *Reconciler {
+	return &Reconciler{
+		Client: client,
+		Log:    logger.WithName("snapshot"),
+		Scheme: scheme,
+	}
+}
+
+//+kubebuilder:rbac:groups=appstudio.redhat.com,resources=snapshots,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=appstudio.redhat.com,resources=snapshots/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=appstudio.redhat.com,resources=snapshots/finalizers,verbs=update
+//+kubebuilder:rbac:groups=tekton.dev,resources=pipelineruns,verbs=get;list;watch;create;update;patch;delete;deletecollection
+//+kubebuilder:rbac:groups=tekton.dev,resources=pipelineruns/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=appstudio.redhat.com,resources=applications/finalizers,verbs=update
+//+kubebuilder:rbac:groups=appstudio.redhat.com,resources=applications,verbs=get;list;watch
+//+kubebuilder:rbac:groups=appstudio.redhat.com,resources=applications/status,verbs=get
+//+kubebuilder:rbac:groups=appstudio.redhat.com,resources=components,verbs=get;list;watch;update;patch
+//+kubebuilder:rbac:groups=appstudio.redhat.com,resources=components/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=appstudio.redhat.com,resources=releases/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=appstudio.redhat.com,resources=releases,verbs=create;delete;get;list;patch;update;watch
+//+kubebuilder:rbac:groups=appstudio.redhat.com,resources=releaseplans,verbs=get;list;watch
+//+kubebuilder:rbac:groups=appstudio.redhat.com,resources=releaseplans/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=resolution.tekton.dev,resources=resolutionrequests,verbs=create;get;delete
+
+// Reconcile is part of the main kubernetes reconciliation loop which aims to
+// move the current state of the cluster closer to the desired state.
+func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+	logger := helpers.IntegrationLogger{Logger: r.Log.WithValues("snapshot", req.NamespacedName)}
+	loader := loader.NewLoader()
+
+	snapshot := &applicationapiv1alpha1.Snapshot{}
+	err := r.Get(ctx, req.NamespacedName, snapshot)
+	if err != nil {
+		logger.Error(err, "Failed to get snapshot for", "req", req.NamespacedName)
+		if errors.IsNotFound(err) {
+			return ctrl.Result{}, nil
+		}
+
+		return ctrl.Result{}, err
+	}
+
+	if toolkitutils.IsObjectRestoredFromBackup(snapshot) {
+		logger.Info("Snapshot restored from backup has been updated, we cannot reconcile it, skipping.")
+		return ctrl.Result{}, nil
+	}
+
+	// Get version and context from snapshot
+	// if version does not exist, we must be using an application
+	// otherwise we are using a componentGroup
+	// TODO: remove any '!usingComponentGroups' branches when we deprecate application model
+	var usingComponentGroups bool
+	if snapshot.Spec.ComponentGroup != "" {
+		usingComponentGroups = true
+	}
+
+	var application *applicationapiv1alpha1.Application
+	var componentGroup *v1beta2.ComponentGroup
+	if !usingComponentGroups {
+		err = retry.OnError(retry.DefaultRetry, func(_ error) bool { return true }, func() error {
+			application, err = loader.GetApplicationFromSnapshot(ctx, r.Client, snapshot)
+			return err
+		})
+		if err != nil {
+			if errors.IsNotFound(err) {
+				if !gitops.IsSnapshotMarkedAsInvalid(snapshot) {
+					err := gitops.MarkSnapshotAsInvalid(ctx, r.Client, snapshot,
+						fmt.Sprintf("The application %s owning this snapshot doesn't exist, try again after creating application", snapshot.Spec.Application))
+					if err != nil {
+						logger.Error(err, "Failed to update the status to Invalid for the snapshot",
+							"snapshot.Namespace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
+						return ctrl.Result{}, err
+					}
+					logger.Info("Snapshot integration status condition marked as invalid, the application owning this snapshot cannot be found",
+						"snapshot.Namespace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
+				}
+			}
+			return helpers.HandleLoaderError(logger, err, "Application", "Snapshot")
+		}
+	} else {
+		err = retry.OnError(retry.DefaultRetry, func(_ error) bool { return true }, func() error {
+			componentGroup, err = loader.GetComponentGroupFromSnapshot(ctx, r.Client, snapshot)
+			return err
+		})
+		if err != nil {
+			if errors.IsNotFound(err) {
+				if !gitops.IsSnapshotMarkedAsInvalid(snapshot) {
+					err := gitops.MarkSnapshotAsInvalid(ctx, r.Client, snapshot,
+						fmt.Sprintf("The component group %s owning this snapshot doesn't exist, try again after creating component group", snapshot.Spec.ComponentGroup))
+					if err != nil {
+						logger.Error(err, "Failed to update the status to Invalid for the snapshot",
+							"snapshot.Namespace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
+						return ctrl.Result{}, err
+					}
+					logger.Info("Snapshot integration status condition marked as invalid, the component group owning this snapshot cannot be found",
+						"snapshot.Namespace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
+				}
+			}
+			return helpers.HandleLoaderError(logger, err, "ComponentGroup", "Snapshot")
+		}
+	}
+
+	if !controllerutil.HasControllerReference(snapshot) {
+		if !usingComponentGroups {
+			snapshot, err = gitops.SetOwnerReferenceApplication(ctx, r.Client, snapshot, application)
+		} else {
+			snapshot, err = gitops.SetOwnerReference(ctx, r.Client, snapshot, componentGroup)
+		}
+		if err != nil {
+			logger.Error(err, fmt.Sprintf("Failed to set owner reference for snapshot %s/%s", snapshot.Namespace, snapshot.Name))
+			return ctrl.Result{}, err
+		}
+
+		if !usingComponentGroups {
+			logger.LogAuditEvent(fmt.Sprintf("Application %s has been set as a Controller OwnerReference on Snapshot %s", application.Name, snapshot.Name), snapshot, helpers.LogActionUpdate)
+		} else {
+			logger.LogAuditEvent(fmt.Sprintf("Component Group %s has been set as a Controller OwnerReference on Snapshot %s", componentGroup.Name, snapshot.Name), snapshot, helpers.LogActionUpdate)
+		}
+
+	}
+
+	var adapter *Adapter
+	if !usingComponentGroups {
+		logger = logger.WithApp(*application)
+		adapter = NewAdapterWithApplication(ctx, snapshot, application, logger, loader, r.Client)
+	} else {
+		logger = logger.WithComponentGroup(*componentGroup)
+		adapter = NewAdapter(ctx, snapshot, componentGroup, logger, loader, r.Client)
+	}
+
+	return controller.ReconcileHandler([]controller.Operation{
+		adapter.EnsureGroupSnapshotExist,
+		adapter.EnsureOverrideSnapshotValid,
+		adapter.EnsureAllReleasesExist,
+		adapter.EnsureGlobalCandidateImageUpdated,
+		adapter.EnsureRerunPipelineRunsExist,
+		adapter.EnsureIntegrationPipelineRunsExist,
+	})
+}
+
+// AdapterInterface is an interface defining all the operations that should be defined in an Integration adapter.
+type AdapterInterface interface {
+	EnsureGroupSnapshotExist() (controller.OperationResult, error)
+	EnsureAllReleasesExist() (controller.OperationResult, error)
+	EnsureRerunPipelineRunsExist() (controller.OperationResult, error)
+	EnsureIntegrationPipelineRunsExist() (controller.OperationResult, error)
+	EnsureGlobalCandidateImageUpdated() (controller.OperationResult, error)
+	EnsureOverrideSnapshotValid() (controller.OperationResult, error)
+}
+
+// SetupController creates a new Integration controller and adds it to the Manager.
+func SetupController(manager ctrl.Manager, log *logr.Logger) error {
+	return setupControllerWithManager(manager, NewSnapshotReconciler(manager.GetClient(), log, manager.GetScheme()))
+}
+
+// setupCache indexes fields for each of the resources used in the release adapter in those cases where filtering by
+// field is required.
+func setupCache(mgr ctrl.Manager) error {
+	if err := cache.SetupReleasePlanCacheApplication(mgr); err != nil {
+		return err
+	}
+
+	if err := cache.SetupReleasePlanCache(mgr); err != nil {
+		return err
+	}
+
+	return cache.SetupReleaseCache(mgr)
+}
+
+// setupControllerWithManager sets up the controller with the Manager which monitors new Snapshots
+func setupControllerWithManager(manager ctrl.Manager, controller *Reconciler) error {
+	err := setupCache(manager)
+	if err != nil {
+		return err
+	}
+
+	return ctrl.NewControllerManagedBy(manager).
+		For(&applicationapiv1alpha1.Snapshot{}).
+		Named("snapshot").
+		WithEventFilter(
+			predicate.And(
+				toolkitpredicates.IgnoreBackups{},
+				predicate.Or(
+					gitops.IntegrationSnapshotChangePredicate(),
+					gitops.SnapshotIntegrationTestRerunTriggerPredicate(),
+				),
+			),
+		).
+		Complete(controller)
+}

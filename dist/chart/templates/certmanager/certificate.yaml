@@ -1,0 +1,37 @@
+{{- if .Values.certmanager.enable }}
+# Self-signed Issuer
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  labels:
+    {{- include "chart.labels" . | nindent 4 }}
+    app.kubernetes.io/component: certificate
+  name: selfsigned-issuer
+  namespace: {{ .Values.namespace | default .Release.Namespace }}
+spec:
+  selfSigned: {}
+{{- if .Values.webhook.enable }}
+---
+# Certificate for the webhook
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  annotations:
+    {{- if .Values.crd.keep }}
+    "helm.sh/resource-policy": keep
+    {{- end }}
+  name: serving-cert
+  namespace: {{ .Values.namespace | default .Release.Namespace }}
+  labels:
+    {{- include "chart.labels" . | nindent 4 }}
+    app.kubernetes.io/component: certificate
+spec:
+  dnsNames:
+    - integration-service-webhook-service.{{ .Values.namespace | default .Release.Namespace }}.svc.cluster.local
+    - integration-service-webhook-service.{{ .Values.namespace | default .Release.Namespace }}.svc
+  issuerRef:
+    kind: Issuer
+    name: selfsigned-issuer
+  secretName: webhook-server-cert
+{{- end }}
+{{- end }}

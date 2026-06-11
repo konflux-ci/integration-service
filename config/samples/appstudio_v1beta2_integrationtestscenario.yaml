@@ -1,0 +1,28 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: integration-sample-v2
+---
+# Example IntegrationTestScenario with Application
+apiVersion: appstudio.redhat.com/v1beta2
+kind: IntegrationTestScenario
+metadata:
+  labels:
+    app.kubernetes.io/name: integrationtestscenario-v2
+    app.kubernetes.io/instance: integrationtestscenario-sample-v2
+    app.kubernetes.io/part-of: integration-service
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/created-by: integration-service
+  name: integrationtestscenario-sample-v2
+  namespace: integration-sample-v2
+spec:
+  application: sample-application
+  resolverRef:
+    resolver: git
+    params:
+    - name: url
+      value: https://github.com/redhat-appstudio/integration-examples
+    - name: revision
+      value: main
+    - name: pathInRepo
+      value: pipelines/integration_pipeline_pass.yaml

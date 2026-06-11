@@ -1,0 +1,339 @@
+{
+    "$schema": "http://json-schema.org/draft-06/schema#",
+    "$ref": "#/definitions/top",
+    "definitions": {
+        "top": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+                "controllerManager": {
+                    "$ref": "#/definitions/ControllerManager"
+                },
+                "rbac": {
+                    "$ref": "#/definitions/Certmanager"
+                },
+                "crd": {
+                    "$ref": "#/definitions/Crd"
+                },
+                "metrics": {
+                    "$ref": "#/definitions/Certmanager"
+                },
+                "webhook": {
+                    "$ref": "#/definitions/Certmanager"
+                },
+                "prometheus": {
+                    "$ref": "#/definitions/Certmanager"
+                },
+                "certmanager": {
+                    "$ref": "#/definitions/Certmanager"
+                },
+                "networkPolicy": {
+                    "$ref": "#/definitions/Certmanager"
+                },
+                "snapshotgc": {
+                    "$ref": "#/definitions/Snapshotgc"
+                },
+                "namespace": {
+                    "type": "string"
+                },
+                "chartCreateNamespace": {
+                    "type": "boolean"
+                }
+            },
+            "required": [
+                "certmanager",
+                "chartCreateNamespace",
+                "controllerManager",
+                "crd",
+                "metrics",
+                "namespace",
+                "networkPolicy",
+                "prometheus",
+                "rbac",
+                "snapshotgc",
+                "webhook"
+            ],
+            "title": "top",
+            "description": "Top level object for the chart's schema"
+        },
+        "Certmanager": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "enable": {
+                    "type": "boolean"
+                }
+            },
+            "required": [
+                "enable"
+            ],
+            "title": "Certmanager",
+            "description": "Cert-manager configurations"
+        },
+        "ControllerManager": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "replicas": {
+                    "type": "integer"
+                },
+                "container": {
+                    "$ref": "#/definitions/Container"
+                },
+                "securityContext": {
+                    "$ref": "#/definitions/SecurityContext"
+                },
+                "terminationGracePeriodSeconds": {
+                    "type": "integer"
+                },
+                "serviceAccountName": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "container",
+                "replicas",
+                "securityContext",
+                "serviceAccountName",
+                "terminationGracePeriodSeconds"
+            ],
+            "title": "ControllerManager",
+            "description": "Controller's top-level object"
+        },
+        "Container": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "image": {
+                    "$ref": "#/definitions/Image"
+                },
+                "args": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "ports": {
+                    "$ref": "#/definitions/ContainerPorts"
+                },
+                "resources": {
+                    "$ref": "#/definitions/Resources"
+                },
+                "livenessProbe": {
+                    "$ref": "#/definitions/Probe"
+                },
+                "readinessProbe": {
+                    "$ref": "#/definitions/Probe"
+                },
+                "securityContext": {
+                    "$ref": "#/definitions/SecurityContext"
+                }
+            },
+            "required": [
+                "args",
+                "image",
+                "livenessProbe",
+                "ports",
+                "readinessProbe",
+                "resources",
+                "securityContext"
+            ],
+            "title": "Container",
+            "description": "Controller's deployment configurations"
+        },
+        "Probe": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "initialDelaySeconds": {
+                    "type": "integer"
+                },
+                "periodSeconds": {
+                    "type": "integer"
+                },
+                "httpGet": {
+                    "$ref": "#/definitions/HTTPGet"
+                }
+            },
+            "required": [
+                "httpGet",
+                "initialDelaySeconds",
+                "periodSeconds"
+            ],
+            "title": "Probe",
+            "description": "Container's probes configurations"
+        },
+        "HTTPGet": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "path": {
+                    "type": "string"
+                },
+                "port": {
+                    "type": "integer"
+                }
+            },
+            "required": [
+                "path",
+                "port"
+            ],
+            "title": "HTTPGet",
+            "description": "Probe's HTTP Get specifications"
+        },
+        "ContainerPorts": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "probes": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/Port"
+                    }
+                },
+                "webhook": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/Port"
+                    }
+                }
+            },
+            "required": [
+                "probes",
+                "webhook"
+            ],
+            "title": "ContainerPorts",
+            "description": "Containers's ports array"
+        },
+        "Port": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "containerPort": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "protocol": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "containerPort",
+                "name",
+                "protocol"
+            ],
+            "title": "Port",
+            "description": "Container's port configurations"
+        },
+        "Resources": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "limits": {
+                    "$ref": "#/definitions/Resource"
+                },
+                "requests": {
+                    "$ref": "#/definitions/Resource"
+                }
+            },
+            "required": [
+                "limits",
+                "requests"
+            ],
+            "title": "Resources",
+            "description": "Container's resource requests and limits"
+        },
+        "Resource": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "cpu": {
+                    "type": "string"
+                },
+                "memory": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "cpu",
+                "memory"
+            ],
+            "title": "Limits",
+            "description": "Container's resource"
+        },
+        "SecurityContext": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "allowPrivilegeEscalation": {
+                    "type": "boolean"
+                },
+                "readOnlyRootFilesystem": {
+                    "type": "boolean"
+                },
+                "runAsNonRoot": {
+                    "type": "boolean"
+                }
+            },
+            "title": "SecurityContext",
+            "description": "Security context configurations"
+        },
+        "Image": {
+            "type": "string",
+            "title": "Image reference"
+        },
+        "Crd": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "enable": {
+                    "type": "boolean"
+                },
+                "keep": {
+                    "type": "boolean"
+                }
+            },
+            "required": [
+                "enable",
+                "keep"
+            ],
+            "title": "Crd",
+            "description": "CRD-related configurations"
+        },
+        "Snapshotgc": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "enable": {
+                    "type": "boolean"
+                },
+                "image": {
+                    "$ref": "#/definitions/Image"
+                },
+                "args": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "resources": {
+                    "$ref": "#/definitions/Resources"
+                },
+                "securityContext": {
+                    "$ref": "#/definitions/SecurityContext"
+                }
+            },
+            "required": [
+                "args",
+                "enable",
+                "image",
+                "resources",
+                "securityContext"
+            ],
+            "title": "Snapshotgc",
+            "description": "Snapshots Garbage Collector top-level object"
+        }
+    }
+}

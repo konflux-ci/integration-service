@@ -1,0 +1,98 @@
+/*
+Copyright 2023 Red Hat Inc.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions andF
+limitations under the License.
+*/
+
+package scenario
+
+import (
+	"context"
+
+	"github.com/konflux-ci/integration-service/loader"
+
+	"github.com/go-logr/logr"
+	"github.com/konflux-ci/integration-service/api/v1beta2"
+	"github.com/konflux-ci/integration-service/helpers"
+	"github.com/konflux-ci/operator-toolkit/controller"
+	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/runtime"
+	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+)
+
+// Reconciler reconciles an scenario object
+type Reconciler struct {
+	client.Client
+	Log    logr.Logger
+	Scheme *runtime.Scheme
+}
+
+// NewScenarioReconciler creates and returns a Reconciler.
+func NewScenarioReconciler(client client.Client, logger *logr.Logger, scheme *runtime.Scheme) *Reconciler {
+	return &Reconciler{
+		Client: client,
+		Log:    logger.WithName("integrationTestScenario"),
+		Scheme: scheme,
+	}
+}
+
+//+kubebuilder:rbac:groups=appstudio.redhat.com,resources=integrationtestscenarios,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=appstudio.redhat.com,resources=integrationtestscenarios/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=appstudio.redhat.com,resources=environments,verbs=get;list;watch;
+//+kubebuilder:rbac:groups=appstudio.redhat.com,resources=environments/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=appstudio.redhat.com,resources=applications,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=appstudio.redhat.com,resources=applications/status,verbs=get
+//+kubebuilder:rbac:groups=appstudio.redhat.com,resources=componentgroups,verbs=get;list;watch
+//+kubebuilder:rbac:groups=appstudio.redhat.com,resources=componentgroups/status,verbs=get
+
+// Reconcile is part of the main kubernetes reconciliation loop which aims to
+// move the current state of the cluster closer to the desired state.
+func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+	logger := helpers.IntegrationLogger{Logger: r.Log.WithValues("integrationTestScenario", req.NamespacedName)}
+	loader := loader.NewLoader()
+
+	scenario := &v1beta2.IntegrationTestScenario{}
+	err := r.Get(ctx, req.NamespacedName, scenario)
+	if err != nil {
+		logger.Error(err, "Failed to get IntegrationTestScenario from request", "req", req.NamespacedName)
+		if errors.IsNotFound(err) {
+			return ctrl.Result{}, nil
+		}
+
+		return ctrl.Result{}, err
+	}
+
+	adapter := NewAdapter(ctx, scenario, logger, loader, r.Client)
+
+	return controller.ReconcileHandler([]controller.Operation{
+		adapter.EnsurePlaceholder,
+	})
+}
+
+// AdapterInterface is an interface defining all the operations that should be defined in an Integration adapter.
+type AdapterInterface interface {
+	EnsurePlaceholder() (controller.OperationResult, error)
+}
+
+// SetupController creates a new Integration controller and adds it to the Manager.
+func SetupController(manager ctrl.Manager, log *logr.Logger) error {
+	return setupControllerWithManager(manager, NewScenarioReconciler(manager.GetClient(), log, manager.GetScheme()))
+}
+
+func setupControllerWithManager(manager ctrl.Manager, controller *Reconciler) error {
+
+	return ctrl.NewControllerManagedBy(manager).
+		For(&v1beta2.IntegrationTestScenario{}).
+		Complete(controller)
+}
