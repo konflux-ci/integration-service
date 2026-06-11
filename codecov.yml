@@ -1,23 +1,27 @@
+# Documentation: https://docs.codecov.io/docs/codecov-yaml
 codecov:
   require_ci_to_pass: false
 
 ignore:
-  - "api/v1alpha1/zz_generated.deepcopy.go"
-  - "api/v1beta1/zz_generated.deepcopy.go"
-  - "api/v1beta2/zz_generated.deepcopy.go"
-  - "gitops/integrationteststatus_enumer.go"
-  - "status/mock_reporter.go"
-  - "status/mock_status.go"
-  - "e2e-tests/**"
-  - "vendor/**"
+  - "api/v1alpha1/zz_generated.deepcopy.go" # generated file
+  - "api/v1beta1/zz_generated.deepcopy.go" # generated file
+  - "api/v1beta2/zz_generated.deepcopy.go" # generated file
+  - "gitops/integrationteststatus_enumer.go" # generated file
+  - "status/mock_reporter.go" # generated file
+  - "status/mock_status.go" # generated file
+  - "e2e-tests/**" # integration tests
+  - "vendor/**" # vendor files
 
 coverage:
   status:
+    # Allows coverage to drop by a 3% when compared against the base commit.
     project:
       default:
         target: auto
         threshold: 1%
         informational: true
+    # Sets the expected status for `codecov/patch` check.
+    # We set this to be only informational hence it does not cause the check to fail.
     patch:
       default:
         target: 80%
