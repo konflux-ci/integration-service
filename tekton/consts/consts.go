@@ -34,6 +34,9 @@ const (
 	// CustomLabelPrefix contains the prefix applied to custom user-defined labels and annotations.
 	CustomLabelPrefix = "custom.appstudio.openshift.io"
 
+	// TektonPrefix contains the prefix for annotations defined by the upstream Tekton project.
+	TektonPrefix = "tekton.dev"
+
 	// resource labels for snapshot, application and component
 	ResourceLabelSuffix = "appstudio.openshift.io"
 

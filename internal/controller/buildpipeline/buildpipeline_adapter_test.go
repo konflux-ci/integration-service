@@ -32,10 +32,13 @@ import (
 	"github.com/konflux-ci/integration-service/helpers"
 	"github.com/konflux-ci/integration-service/loader"
 	intgteststat "github.com/konflux-ci/integration-service/pkg/integrationteststatus"
+	"github.com/konflux-ci/integration-service/pkg/tracing"
 	"github.com/konflux-ci/integration-service/snapshot"
 	"github.com/konflux-ci/integration-service/status"
 	"github.com/konflux-ci/integration-service/tekton"
 	"github.com/konflux-ci/operator-toolkit/metadata"
+	"go.opentelemetry.io/otel"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"knative.dev/pkg/apis"
 	v1 "knative.dev/pkg/apis/duck/v1"
 
@@ -3050,6 +3053,68 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			}, time.Second*10).Should(BeTrue())
 		})
 
+	})
+
+	When("emitBuildTimingSpans is called", func() {
+		BeforeEach(func() {
+			adapter = createAdapter()
+		})
+
+		It("does nothing when the PipelineRun already has the timingEmitted annotation", func() {
+			adapter.pipelineRun.Annotations[tracing.TimingEmittedAnnotation] = "true"
+			adapter.emitBuildTimingSpans()
+			Expect(adapter.pipelineRun.Annotations[tracing.TimingEmittedAnnotation]).To(Equal("true"))
+		})
+
+		It("does not annotate the PipelineRun when the global tracer provider is the noop", func() {
+			adapter.pipelineRun.Status.StartTime = &metav1.Time{Time: time.Now().Add(-time.Minute)}
+			adapter.pipelineRun.Status.CompletionTime = &metav1.Time{Time: time.Now()}
+			Expect(k8sClient.Status().Update(ctx, adapter.pipelineRun)).To(Succeed())
+
+			adapter.emitBuildTimingSpans()
+			Expect(adapter.pipelineRun.GetAnnotations()).NotTo(HaveKey(tracing.TimingEmittedAnnotation))
+		})
+
+		It("does not annotate the PipelineRun when start or completion time is missing", func() {
+			prev := otel.GetTracerProvider()
+			tp := sdktrace.NewTracerProvider()
+			otel.SetTracerProvider(tp)
+			DeferCleanup(func() {
+				otel.SetTracerProvider(prev)
+				_ = tp.Shutdown(ctx)
+			})
+
+			adapter.emitBuildTimingSpans()
+			Expect(adapter.pipelineRun.GetAnnotations()).NotTo(HaveKey(tracing.TimingEmittedAnnotation))
+		})
+
+		It("emits spans and patches the timingEmitted annotation when the run has completed", func() {
+			prev := otel.GetTracerProvider()
+			tp := sdktrace.NewTracerProvider()
+			otel.SetTracerProvider(tp)
+			DeferCleanup(func() {
+				otel.SetTracerProvider(prev)
+				_ = tp.Shutdown(ctx)
+			})
+
+			adapter.pipelineRun.Status.StartTime = &metav1.Time{Time: time.Now().Add(-time.Minute)}
+			adapter.pipelineRun.Status.CompletionTime = &metav1.Time{Time: time.Now()}
+			Expect(k8sClient.Status().Update(ctx, adapter.pipelineRun)).To(Succeed())
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: loader.GetPipelineRunContextKey,
+					Resource:   adapter.pipelineRun,
+				},
+			})
+
+			adapter.emitBuildTimingSpans()
+
+			Eventually(func(g Gomega) {
+				updated := &tektonv1.PipelineRun{}
+				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: adapter.pipelineRun.Name, Namespace: adapter.pipelineRun.Namespace}, updated)).To(Succeed())
+				g.Expect(updated.GetAnnotations()).To(HaveKeyWithValue(tracing.TimingEmittedAnnotation, "true"))
+			}).Should(Succeed())
+		})
 	})
 
 	createAdapter = func() *Adapter {

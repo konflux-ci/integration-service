@@ -251,6 +251,11 @@ const (
 	// SnapshotAutoReleasedCondition is the condition for marking if Snapshot was auto-released released with AppStudio.
 	SnapshotAutoReleasedCondition = "AutoReleased"
 
+	// SnapshotSupersededMessage is the AutoReleased condition message set
+	// when an older Snapshot is skipped because a newer Snapshot for the
+	// same Application has already been released.
+	SnapshotSupersededMessage = "Released in newer Snapshot"
+
 	// SnapshotAddedToGlobalCandidateListCondition is the condition for marking if Snapshot's component was added to
 	// the global candidate list.
 	SnapshotAddedToGlobalCandidateListCondition = "AddedToGlobalCandidateList"

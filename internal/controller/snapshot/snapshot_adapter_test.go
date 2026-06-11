@@ -18,12 +18,18 @@ package snapshot
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"reflect"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/tonglil/buflogr"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/propagation"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	semconv "go.opentelemetry.io/otel/semconv/v1.39.0"
 	"go.uber.org/mock/gomock"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
@@ -34,6 +40,7 @@ import (
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
 	"github.com/konflux-ci/integration-service/api/v1beta2"
 	"github.com/konflux-ci/integration-service/loader"
+	"github.com/konflux-ci/integration-service/pkg/tracing"
 	"github.com/konflux-ci/integration-service/status"
 	tekton "github.com/konflux-ci/integration-service/tekton"
 	tektonconsts "github.com/konflux-ci/integration-service/tekton/consts"
@@ -56,6 +63,26 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/types"
 )
+
+type capturingSpanExporter struct {
+	mu    sync.Mutex
+	spans []sdktrace.ReadOnlySpan
+}
+
+func (e *capturingSpanExporter) ExportSpans(_ context.Context, spans []sdktrace.ReadOnlySpan) error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.spans = append(e.spans, spans...)
+	return nil
+}
+
+func (e *capturingSpanExporter) Shutdown(_ context.Context) error { return nil }
+
+func (e *capturingSpanExporter) GetSpans() []sdktrace.ReadOnlySpan {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.spans
+}
 
 // the pipelinerun yaml gotten from git resolver is prepared for resolutionRequest unittest
 const expectedPipelineYAML = `---
@@ -2031,6 +2058,75 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			condition := meta.FindStatusCondition(hasOldSnapshot.Status.Conditions, gitops.SnapshotAutoReleasedCondition)
 			Expect(condition).ToNot(BeNil())
 			Expect(condition.Message).To(Equal("Released in newer Snapshot"))
+		})
+
+		It("emits a waitDuration span carrying cicd.pipeline.result=skip when the supersede path is taken", func() {
+			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+
+			exporter := &capturingSpanExporter{}
+			provider := sdktrace.NewTracerProvider(sdktrace.WithSyncer(exporter))
+			prev := otel.GetTracerProvider()
+			otel.SetTracerProvider(provider)
+			otel.SetTextMapPropagator(propagation.TraceContext{})
+			defer otel.SetTracerProvider(prev)
+			defer func() { _ = provider.Shutdown(ctx) }()
+
+			Eventually(func() bool {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      hasOldSnapshot.Name,
+					Namespace: hasOldSnapshot.Namespace,
+				}, hasOldSnapshot)
+				if err != nil {
+					return false
+				}
+				return gitops.HaveAppStudioTestsFinished(hasOldSnapshot) &&
+					gitops.HaveAppStudioTestsSucceeded(hasOldSnapshot)
+			}, time.Second*10).Should(BeTrue())
+
+			metav1.SetMetaDataAnnotation(&hasOldSnapshot.ObjectMeta, tracing.SpanContextAnnotation,
+				`{"traceparent":"00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"}`)
+			Expect(k8sClient.Update(ctx, hasOldSnapshot)).Should(Succeed())
+
+			adapter = NewAdapter(ctx, hasOldSnapshot, hasCompGroup, log, loader.NewMockLoader(), k8sClient)
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{ContextKey: loader.ComponentGroupContextKey, Resource: hasCompGroup},
+				{ContextKey: loader.GetComponentContextKey, Resource: hasCompWithNewerBuild},
+				{ContextKey: loader.SnapshotContextKey, Resource: hasOldSnapshot},
+				{ContextKey: loader.AutoReleasePlansContextKey, Resource: []releasev1alpha1.ReleasePlan{*hasReleasePlan}},
+			})
+
+			result, err := adapter.EnsureAllReleasesExist()
+			Expect(result.CancelRequest).To(BeFalse())
+			Expect(result.RequeueRequest).To(BeFalse())
+			Expect(err).ToNot(HaveOccurred())
+
+			var skipSpan sdktrace.ReadOnlySpan
+			for _, s := range exporter.GetSpans() {
+				if s.Name() == tracing.SpanWaitDuration {
+					skipSpan = s
+					break
+				}
+			}
+			Expect(skipSpan).ToNot(BeNil())
+			Expect(skipSpan.Parent().TraceID().String()).To(Equal("4bf92f3577b34da6a3ce929d0e0e4736"))
+
+			var resultVal, messageVal, namespaceVal, snapshotVal string
+			for _, attr := range skipSpan.Attributes() {
+				switch string(attr.Key) {
+				case string(semconv.CICDPipelineResultKey):
+					resultVal = attr.Value.AsString()
+				case string(tracing.DeliveryResultMessageKey):
+					messageVal = attr.Value.AsString()
+				case string(tracing.NamespaceKey):
+					namespaceVal = attr.Value.AsString()
+				case string(tracing.SnapshotKey):
+					snapshotVal = attr.Value.AsString()
+				}
+			}
+			Expect(resultVal).To(Equal(semconv.CICDPipelineResultSkip.Value.AsString()))
+			Expect(messageVal).To(Equal("Released in newer Snapshot"))
+			Expect(namespaceVal).To(Equal(hasOldSnapshot.Namespace))
+			Expect(snapshotVal).To(Equal(hasOldSnapshot.Name))
 		})
 	})
 
