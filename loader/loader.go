@@ -80,6 +80,7 @@ type ObjectLoader interface {
 	GetResolutionRequest(ctx context.Context, c client.Client, namespace, name string) (resolutionv1beta1.ResolutionRequest, error)
 	GetPRComponentSnapshotsForComponentApplication(ctx context.Context, c client.Client, namespace, applicationName, componentName, prNumber string) (*[]applicationapiv1alpha1.Snapshot, error)
 	GetPRComponentSnapshotsForComponent(ctx context.Context, c client.Client, componentGroupNames []string, namespace, componentName, prNumber string) (*[]applicationapiv1alpha1.Snapshot, error)
+	GetPushComponentSnapshotsForComponent(ctx context.Context, c client.Client, snapshot *applicationapiv1alpha1.Snapshot) (*[]applicationapiv1alpha1.Snapshot, error)
 }
 
 type loader struct{}
@@ -901,6 +902,74 @@ func (l *loader) GetPRComponentSnapshotsForComponent(ctx context.Context, c clie
 		return nil, err
 	}
 	return &snapshots.Items, nil
+}
+
+// GetPushComponentSnapshotsForComponent returns all push component snapshots for the same component
+// as the given snapshot, scoped to the same application or component group.
+func (l *loader) GetPushComponentSnapshotsForComponent(ctx context.Context, c client.Client, snapshot *applicationapiv1alpha1.Snapshot) (*[]applicationapiv1alpha1.Snapshot, error) {
+	componentName := snapshot.Labels[gitops.SnapshotComponentLabel]
+	if componentName == "" {
+		empty := []applicationapiv1alpha1.Snapshot{}
+		return &empty, nil
+	}
+
+	componentLabelRequirement, err := labels.NewRequirement(
+		gitops.SnapshotComponentLabel, selection.In, []string{componentName})
+	if err != nil {
+		return nil, err
+	}
+	snapshotTypeLabelRequirement, err := labels.NewRequirement(
+		gitops.SnapshotTypeLabel, selection.In, []string{gitops.SnapshotComponentType})
+	if err != nil {
+		return nil, err
+	}
+
+	labelSelector := labels.NewSelector().
+		Add(*componentLabelRequirement).
+		Add(*snapshotTypeLabelRequirement)
+
+	appName := snapshot.Labels[gitops.ApplicationNameLabel]
+	cgName := snapshot.Labels[gitops.ComponentGroupNameLabel]
+
+	// TODO: remove application scoping when we remove old application-specific code
+	if appName != "" {
+		applicationLabelRequirement, err := labels.NewRequirement(
+			gitops.ApplicationNameLabel, selection.In, []string{appName})
+		if err != nil {
+			return nil, err
+		}
+		labelSelector = labelSelector.Add(*applicationLabelRequirement)
+	} else if cgName != "" {
+		componentGroupLabelRequirement, err := labels.NewRequirement(
+			gitops.ComponentGroupNameLabel, selection.In, []string{cgName})
+		if err != nil {
+			return nil, err
+		}
+		labelSelector = labelSelector.Add(*componentGroupLabelRequirement)
+	} else {
+		empty := []applicationapiv1alpha1.Snapshot{}
+		return &empty, nil
+	}
+
+	snapshotList := &applicationapiv1alpha1.SnapshotList{}
+	listOpts := &client.ListOptions{
+		Namespace:     snapshot.Namespace,
+		LabelSelector: labelSelector,
+	}
+
+	err = c.List(ctx, snapshotList, listOpts)
+	if err != nil {
+		return nil, err
+	}
+
+	pushSnapshots := make([]applicationapiv1alpha1.Snapshot, 0, len(snapshotList.Items))
+	for i := range snapshotList.Items {
+		if gitops.IsSnapshotCreatedByPACPushEvent(&snapshotList.Items[i]) {
+			pushSnapshots = append(pushSnapshots, snapshotList.Items[i])
+		}
+	}
+
+	return &pushSnapshots, nil
 }
 
 // TODO: delete this function when we remove old application-specific code

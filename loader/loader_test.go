@@ -1330,4 +1330,193 @@ var _ = Describe("Loader", Ordered, func() {
 			Expect((*snapshots)[0].Spec).To(Equal(hasSnapshot.Spec))
 		})
 	})
+
+	When("GetPushComponentSnapshotsForComponent is called", func() {
+		const (
+			pushComp   = "push-test-component"
+			pushApp    = "push-test-app"
+			pushCGName = "push-test-cg"
+		)
+
+		var (
+			pushSnapApp      *applicationapiv1alpha1.Snapshot
+			pushSnapCG       *applicationapiv1alpha1.Snapshot
+			inputSnapApp     *applicationapiv1alpha1.Snapshot
+			inputSnapCG      *applicationapiv1alpha1.Snapshot
+			inputSnapNoComp  *applicationapiv1alpha1.Snapshot
+			inputSnapNoScope *applicationapiv1alpha1.Snapshot
+			pushCG           *v1beta2.ComponentGroup
+		)
+
+		BeforeAll(func() {
+			pushCG = &v1beta2.ComponentGroup{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      pushCGName,
+					Namespace: namespace,
+				},
+				Spec: v1beta2.ComponentGroupSpec{
+					Components: []v1beta2.ComponentReference{
+						{Name: pushComp, ComponentVersion: v1beta2.ComponentVersionReference{Name: "main"}},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, pushCG)).Should(Succeed())
+
+			pushSnapApp = &applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "push-snap-app",
+					Namespace: namespace,
+					Labels: map[string]string{
+						gitops.SnapshotTypeLabel:            gitops.SnapshotComponentType,
+						gitops.SnapshotComponentLabel:       pushComp,
+						gitops.PipelineAsCodeEventTypeLabel: gitops.PipelineAsCodePushType,
+						gitops.ApplicationNameLabel:         pushApp,
+					},
+				},
+				Spec: applicationapiv1alpha1.SnapshotSpec{
+					Application: pushApp,
+					Components:  []applicationapiv1alpha1.SnapshotComponent{{Name: pushComp, ContainerImage: sample_image}},
+				},
+			}
+			Expect(k8sClient.Create(ctx, pushSnapApp)).Should(Succeed())
+
+			pushSnapCG = &applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "push-snap-cg",
+					Namespace: namespace,
+					Labels: map[string]string{
+						gitops.SnapshotTypeLabel:            gitops.SnapshotComponentType,
+						gitops.SnapshotComponentLabel:       pushComp,
+						gitops.PipelineAsCodeEventTypeLabel: gitops.PipelineAsCodePushType,
+						gitops.ComponentGroupNameLabel:      pushCGName,
+					},
+				},
+				Spec: applicationapiv1alpha1.SnapshotSpec{
+					ComponentGroup: pushCGName,
+					Components:     []applicationapiv1alpha1.SnapshotComponent{{Name: pushComp, ContainerImage: sample_image}},
+				},
+			}
+			Expect(k8sClient.Create(ctx, pushSnapCG)).Should(Succeed())
+
+			inputSnapApp = &applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "input-snap-app",
+					Namespace: namespace,
+					Labels: map[string]string{
+						gitops.SnapshotTypeLabel:            gitops.SnapshotComponentType,
+						gitops.SnapshotComponentLabel:       pushComp,
+						gitops.PipelineAsCodeEventTypeLabel: gitops.PipelineAsCodePushType,
+						gitops.ApplicationNameLabel:         pushApp,
+					},
+				},
+				Spec: applicationapiv1alpha1.SnapshotSpec{
+					Application: pushApp,
+					Components:  []applicationapiv1alpha1.SnapshotComponent{{Name: pushComp, ContainerImage: sample_image}},
+				},
+			}
+			Expect(k8sClient.Create(ctx, inputSnapApp)).Should(Succeed())
+
+			inputSnapCG = &applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "input-snap-cg",
+					Namespace: namespace,
+					Labels: map[string]string{
+						gitops.SnapshotTypeLabel:            gitops.SnapshotComponentType,
+						gitops.SnapshotComponentLabel:       pushComp,
+						gitops.PipelineAsCodeEventTypeLabel: gitops.PipelineAsCodePushType,
+						gitops.ComponentGroupNameLabel:      pushCGName,
+					},
+				},
+				Spec: applicationapiv1alpha1.SnapshotSpec{
+					ComponentGroup: pushCGName,
+					Components:     []applicationapiv1alpha1.SnapshotComponent{{Name: pushComp, ContainerImage: sample_image}},
+				},
+			}
+			Expect(k8sClient.Create(ctx, inputSnapCG)).Should(Succeed())
+
+			inputSnapNoComp = &applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "input-snap-no-comp",
+					Namespace: namespace,
+					Labels: map[string]string{
+						gitops.SnapshotTypeLabel:    gitops.SnapshotComponentType,
+						gitops.ApplicationNameLabel: pushApp,
+					},
+				},
+				Spec: applicationapiv1alpha1.SnapshotSpec{
+					Application: pushApp,
+					Components:  []applicationapiv1alpha1.SnapshotComponent{{Name: pushComp, ContainerImage: sample_image}},
+				},
+			}
+			Expect(k8sClient.Create(ctx, inputSnapNoComp)).Should(Succeed())
+
+			inputSnapNoScope = &applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "input-snap-no-scope",
+					Namespace: namespace,
+					Labels: map[string]string{
+						gitops.SnapshotTypeLabel:            gitops.SnapshotComponentType,
+						gitops.SnapshotComponentLabel:       pushComp,
+						gitops.PipelineAsCodeEventTypeLabel: gitops.PipelineAsCodePushType,
+					},
+				},
+				Spec: applicationapiv1alpha1.SnapshotSpec{
+					Components: []applicationapiv1alpha1.SnapshotComponent{{Name: pushComp, ContainerImage: sample_image}},
+				},
+			}
+			Expect(k8sClient.Create(ctx, inputSnapNoScope)).Should(Succeed())
+		})
+
+		AfterAll(func() {
+			_ = k8sClient.Delete(ctx, pushSnapApp)
+			_ = k8sClient.Delete(ctx, pushSnapCG)
+			_ = k8sClient.Delete(ctx, inputSnapApp)
+			_ = k8sClient.Delete(ctx, inputSnapCG)
+			_ = k8sClient.Delete(ctx, inputSnapNoComp)
+			_ = k8sClient.Delete(ctx, inputSnapNoScope)
+			_ = k8sClient.Delete(ctx, pushCG)
+		})
+
+		It("[APPLICATION] returns push component snapshots scoped by application", func() {
+			snapshots, err := loader.GetPushComponentSnapshotsForComponent(ctx, k8sClient, inputSnapApp)
+			Expect(err).To(Succeed())
+			Expect(snapshots).ToNot(BeNil())
+
+			names := make([]string, len(*snapshots))
+			for i, s := range *snapshots {
+				names[i] = s.Name
+			}
+			Expect(names).To(ContainElement(pushSnapApp.Name))
+			Expect(names).To(ContainElement(inputSnapApp.Name))
+			Expect(names).ToNot(ContainElement(pushSnapCG.Name))
+		})
+
+		It("returns push component snapshots scoped by component group", func() {
+			snapshots, err := loader.GetPushComponentSnapshotsForComponent(ctx, k8sClient, inputSnapCG)
+			Expect(err).To(Succeed())
+			Expect(snapshots).ToNot(BeNil())
+
+			names := make([]string, len(*snapshots))
+			for i, s := range *snapshots {
+				names[i] = s.Name
+			}
+			Expect(names).To(ContainElement(pushSnapCG.Name))
+			Expect(names).To(ContainElement(inputSnapCG.Name))
+			Expect(names).ToNot(ContainElement(pushSnapApp.Name))
+		})
+
+		It("returns empty non-nil slice when snapshot has no SnapshotComponentLabel", func() {
+			snapshots, err := loader.GetPushComponentSnapshotsForComponent(ctx, k8sClient, inputSnapNoComp)
+			Expect(err).To(Succeed())
+			Expect(snapshots).ToNot(BeNil())
+			Expect(*snapshots).To(BeEmpty())
+		})
+
+		It("returns empty non-nil slice when snapshot has neither application nor component-group label", func() {
+			snapshots, err := loader.GetPushComponentSnapshotsForComponent(ctx, k8sClient, inputSnapNoScope)
+			Expect(err).To(Succeed())
+			Expect(snapshots).ToNot(BeNil())
+			Expect(*snapshots).To(BeEmpty())
+		})
+	})
 })
