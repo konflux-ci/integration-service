@@ -114,28 +114,37 @@ type ComponentBuildPipeline struct {
 	// Pipeline used for pull and push pipeline runs.
 	// Can specify just one of: pipelinespec-from-bundle, pipelineref-by-name, pipelineref-by-git-resolver.
 	// Optional.
-	PullAndPush PipelineDefinition `json:"pull-and-push,omitempty"`
+	// +optional
+	// +nullable
+	PullAndPush *PipelineDefinition `json:"pull-and-push,omitempty"`
 
 	// Pipeline used for pull pipeline run.
 	// Can specify just one of: pipelinespec-from-bundle, pipelineref-by-name, pipelineref-by-git-resolver.
 	// Optional.
-	Pull PipelineDefinition `json:"pull,omitempty"`
+	// +optional
+	// +nullable
+	Pull *PipelineDefinition `json:"pull,omitempty"`
 
 	// Pipeline used for push pipeline run.
 	// Can specify just one of: pipelinespec-from-bundle, pipelineref-by-name, pipelineref-by-git-resolver.
 	// Optional.
-	Push PipelineDefinition `json:"push,omitempty"`
+	// +optional
+	// +nullable
+	Push *PipelineDefinition `json:"push,omitempty"`
 }
 
 type PipelineDefinition struct {
 	// Will be used to fill out PipelineRef in pipeline runs to user specific pipeline via git resolver,
 	// specifying repository with a pipeline definition.
 	// Optional.
-	PipelineRefGit PipelineRefGit `json:"pipelineref-by-git-resolver,omitempty"`
+	// +optional
+	// +nullable
+	PipelineRefGit *PipelineRefGit `json:"pipelineref-by-git-resolver,omitempty"`
 
 	// Will be used to fill out PipelineRef in pipeline runs to user specific pipeline.
 	// Such pipeline definition has to be in .tekton.
 	// Optional.
+	// +optional
 	PipelineRefName string `json:"pipelineref-by-name,omitempty"`
 
 	// Will be used to fetch bundle and fill out PipelineSpec in pipeline runs.
@@ -144,7 +153,9 @@ type PipelineDefinition struct {
 	// When bundle is specified to specific image bundle, then that one will be used
 	// and pipeline name will be used to fetch pipeline from that bundle.
 	// Optional.
-	PipelineSpecFromBundle PipelineSpecFromBundle `json:"pipelinespec-from-bundle,omitempty"`
+	// +optional
+	// +nullable
+	PipelineSpecFromBundle *PipelineSpecFromBundle `json:"pipelinespec-from-bundle,omitempty"`
 }
 
 type PipelineSpecFromBundle struct {
@@ -184,7 +195,9 @@ type ComponentVersion struct {
 	// Used only when sending a PR with build pipeline configuration was requested via 'spec.actions.create-pipeline-configuration-pr'.
 	// Pipeline used for the version; when omitted, the default pipeline will be used from 'spec.default-build-pipeline'.
 	// Optional.
-	BuildPipeline ComponentBuildPipeline `json:"build-pipeline,omitempty"`
+	// +optional
+	// +nullable
+	BuildPipeline *ComponentBuildPipeline `json:"build-pipeline,omitempty"`
 
 	// Context directory for the version.
 	// Used only when sending a PR with build pipeline configuration was requested via 'spec.actions.create-pipeline-configuration-pr'.
@@ -326,7 +339,8 @@ type ComponentSpec struct {
 	// When omitted it has to be specified in all versions.
 	// Optional.
 	// +optional
-	DefaultBuildPipeline ComponentBuildPipeline `json:"default-build-pipeline,omitempty"`
+	// +nullable
+	DefaultBuildPipeline *ComponentBuildPipeline `json:"default-build-pipeline,omitempty"`
 }
 
 // ComponentStatus defines the observed state of Component

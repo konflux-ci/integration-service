@@ -92,11 +92,6 @@ func (in *ComponentGroupSpec) DeepCopyInto(out *ComponentGroupSpec) {
 		*out = make([]ComponentReference, len(*in))
 		copy(*out, *in)
 	}
-	if in.Dependents != nil {
-		in, out := &in.Dependents, &out.Dependents
-		*out = make([]string, len(*in))
-		copy(*out, *in)
-	}
 	if in.TestGraph != nil {
 		in, out := &in.TestGraph, &out.TestGraph
 		*out = make(map[string][]TestGraphNode, len(*in))

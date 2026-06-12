@@ -28,6 +28,11 @@ import (
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 )
 
+type InvalidComponentReason struct {
+	ComponentGroup string
+	Reason         string
+}
+
 // generateRandomSuffix generates a random 2-character alphanumeric suffix for collision handling
 func generateRandomSuffix() (string, error) {
 	const charset = "0123456789abcdefghijklmnopqrstuvwxyz"
@@ -43,9 +48,9 @@ func generateRandomSuffix() (string, error) {
 	return string(suffix), nil
 }
 
-func joinInvalidComponentNamesAndVersions(invalidComponents []v1beta2.ComponentState) string {
+func joinInvalidComponentNamesAndVersions(invalidComponents map[v1beta2.ComponentState]InvalidComponentReason) string {
 	var sb strings.Builder
-	for _, component := range invalidComponents {
+	for component := range invalidComponents {
 		sb.WriteString(helpers.GetComponentVersionLogString(component.Name, component.Version))
 	}
 	return sb.String()
@@ -63,7 +68,7 @@ func snapshotComponentToComponentState(snapshotComponent applicationapiv1alpha1.
 }
 
 func getPipelineRunStartTimeMillis(pipelineRun *tektonv1.PipelineRun) int64 {
-	if pipelineRun.Status.StartTime != nil {
+	if pipelineRun != nil && pipelineRun.Status.StartTime != nil {
 		return pipelineRun.Status.StartTime.UnixMilli()
 	}
 	return time.Now().UnixMilli()

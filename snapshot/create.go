@@ -20,15 +20,17 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
 
-	"github.com/go-logr/logr"
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
 	"github.com/konflux-ci/integration-service/api/v1beta2"
 	"github.com/konflux-ci/integration-service/gitops"
 	"github.com/konflux-ci/integration-service/helpers"
+	"github.com/konflux-ci/integration-service/loader"
 	"github.com/konflux-ci/integration-service/tekton"
 	"github.com/konflux-ci/operator-toolkit/metadata"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
@@ -39,12 +41,16 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
+const (
+	MaxDepth = 15
+)
+
 // PrepareSnapshotForPipelineRun prepares the Snapshot for a given PipelineRun,
 // component and application. In case the Snapshot can't be created, an error will be returned.
-func PrepareSnapshotForPipelineRun(ctx context.Context, adapterClient client.Client, pipelineRun *tektonv1.PipelineRun, componentName string, componentGroup *v1beta2.ComponentGroup) (*applicationapiv1alpha1.Snapshot, error) {
-	log := log.FromContext(ctx)
+func PrepareSnapshotForPipelineRun(ctx context.Context, adapterClient client.Client, pipelineRun *tektonv1.PipelineRun, componentName string, componentGroup *v1beta2.ComponentGroup, loader loader.ObjectLoader) (*applicationapiv1alpha1.Snapshot, error) {
+	logger := helpers.IntegrationLogger{Logger: log.FromContext(ctx)}
 
-	newSnapshotComponent, err := getSnapshotComponentFromBuildPLR(pipelineRun, componentName, log)
+	newSnapshotComponent, err := getSnapshotComponentFromBuildPLR(pipelineRun, componentName, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -54,7 +60,7 @@ func PrepareSnapshotForPipelineRun(ctx context.Context, adapterClient client.Cli
 		gitops.EnrichBuiltComponentSourceGitContext(&newSnapshotComponent.Source, &comp, newSnapshotComponent.Version)
 	}
 
-	snapshot, err := PrepareSnapshot(ctx, adapterClient, componentGroup, newSnapshotComponent, log)
+	snapshot, err := PrepareSnapshot(ctx, adapterClient, componentGroup, newSnapshotComponent, loader, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -129,6 +135,7 @@ func CreateSnapshotWithCollisionHandling(ctx context.Context, client client.Clie
 				return err // Return original collision error
 			}
 
+			// if pipelineRun is nil, this returns time.Now()
 			timestampMillis := getPipelineRunStartTimeMillis(pipelineRun)
 
 			// Regenerate name with suffix
@@ -152,10 +159,15 @@ func CreateSnapshotWithCollisionHandling(ctx context.Context, client client.Clie
 
 // PrepareSnapshot prepares the Snapshot for a given componentGroup, components and the updated component (if any).
 // In case the Snapshot can't be created, an error will be returned.
-func PrepareSnapshot(ctx context.Context, adapterClient client.Client, componentGroup *v1beta2.ComponentGroup, newSnapshotComponent applicationapiv1alpha1.SnapshotComponent, log logr.Logger) (*applicationapiv1alpha1.Snapshot, error) {
+func PrepareSnapshot(ctx context.Context, adapterClient client.Client, componentGroup *v1beta2.ComponentGroup, newSnapshotComponent applicationapiv1alpha1.SnapshotComponent, loader loader.ObjectLoader, logger helpers.IntegrationLogger) (*applicationapiv1alpha1.Snapshot, error) {
 
-	snapshotComponents, invalidComponents := getSnapshotComponentsFromGCL(componentGroup, log)
-	upsertNewComponentImage(&snapshotComponents, &invalidComponents, newSnapshotComponent, log)
+	// Get nested snapshotComponents
+	snapshotComponentsMap, invalidComponents, err := getNestedSnapshotComponents(componentGroup, []string{}, 0, loader, ctx, adapterClient, logger)
+	if err != nil {
+		return nil, fmt.Errorf("error getting nested snapshot components: %+v", err)
+	}
+	upsertNewComponentImage(snapshotComponentsMap, invalidComponents, newSnapshotComponent, logger)
+	snapshotComponents := flattenSnapshotComponentsMap(snapshotComponentsMap)
 
 	if len(snapshotComponents) == 0 {
 		return nil, helpers.NewMissingValidComponentError(joinInvalidComponentNamesAndVersions(invalidComponents))
@@ -174,9 +186,10 @@ func PrepareSnapshot(ctx context.Context, adapterClient client.Client, component
 		if err := metadata.SetAnnotation(snapshot, helpers.CreateSnapshotAnnotationName, fmt.Sprintf("Component(s) '%s' is(are) not included in snapshot due to missing valid containerImage or git source", joinInvalidComponentNamesAndVersions(invalidComponents))); err != nil {
 			return nil, fmt.Errorf("failed to set annotation %s: %w", gitops.SnapshotGitSourceRepoURLAnnotation, err)
 		}
+		logger.Info("Some components were invalid", "invalidComponents", invalidComponents)
 	}
 
-	err := ctrl.SetControllerReference(componentGroup, snapshot, adapterClient.Scheme())
+	err = ctrl.SetControllerReference(componentGroup, snapshot, adapterClient.Scheme())
 	if err != nil {
 		return nil, err
 	}
@@ -184,10 +197,98 @@ func PrepareSnapshot(ctx context.Context, adapterClient client.Client, component
 	return snapshot, nil
 }
 
+// PrepareParentSnapshot creates a snapshot from the parent componentGroup of childSnapshot. The snapshot gathers all GCL images with the parent GCL images overwriting the child GCL images if they conflict.
+// It then replaces the GCL images with all new images in the child snapshot. This can be one or many depending on the type of snapshot.
+func PrepareParentSnapshot(ctx context.Context, adapterClient client.Client, loader loader.ObjectLoader, logger helpers.IntegrationLogger, componentGroup *v1beta2.ComponentGroup, childSnapshot *applicationapiv1alpha1.Snapshot) (*applicationapiv1alpha1.Snapshot, error) {
+	// This should basically work the same as prepareSnapshot EXCEPT that it should use the snapshot's components rather than the component for the corresponding child componentGroup
+
+	snapshotComponentsMap, invalidComponents, err := getNestedSnapshotComponents(componentGroup, []string{}, 0, loader, ctx, adapterClient, logger)
+	if err != nil {
+		return nil, fmt.Errorf("error getting nested snapshot components: %+v", err)
+	}
+	newSnapshotComponents := GetAllNewComponentsInSnapshot(childSnapshot)
+	upsertMultipleComponentImages(snapshotComponentsMap, invalidComponents, newSnapshotComponents, logger)
+	snapshotComponents := flattenSnapshotComponentsMap(snapshotComponentsMap)
+
+	if len(snapshotComponents) == 0 {
+		return nil, helpers.NewMissingValidComponentError(joinInvalidComponentNamesAndVersions(invalidComponents))
+	}
+	snapshot := NewSnapshot(componentGroup, &snapshotComponents)
+
+	// expose the source repo URL and SHA in the snapshot as annotation so we don't have to do lookup in integration tests
+	for _, newSnapshotComponent := range newSnapshotComponents {
+		if newSnapshotComponent.Source.GitSource != nil {
+			// NOTE: should we skip this annotation for override snaphots?
+			if err := metadata.SetAnnotation(snapshot, gitops.SnapshotGitSourceRepoURLAnnotation, newSnapshotComponent.Source.GitSource.URL); err != nil {
+				return nil, fmt.Errorf("failed to set annotation %s: %w", gitops.SnapshotGitSourceRepoURLAnnotation, err)
+			}
+		}
+	}
+
+	// Annotate snapshot with warning about invalid components
+	if len(invalidComponents) > 0 {
+		if err := metadata.SetAnnotation(snapshot, helpers.CreateSnapshotAnnotationName, fmt.Sprintf("Component(s) '%s' is(are) not included in snapshot due to missing valid containerImage or git source", joinInvalidComponentNamesAndVersions(invalidComponents))); err != nil {
+			return nil, fmt.Errorf("failed to set annotation %s: %w", gitops.SnapshotGitSourceRepoURLAnnotation, err)
+		}
+		logger.Info("Some components were invalid", "invalidComponents", invalidComponents)
+	}
+
+	err = ctrl.SetControllerReference(componentGroup, snapshot, adapterClient.Scheme())
+	if err != nil {
+		return nil, err
+	}
+
+	return snapshot, nil
+}
+
+// getNestedSnapshotComponents gets the GCL SnapshotComponents for a ComponentGroup. It recurses into the nested ComponentGroups to get their SnapshotComponents then builds upward from there.
+// As a result, if a parent and child ComponentGroup share a ComponentVersion but have different images, the image in the parent will supersede the one in the child.
+func getNestedSnapshotComponents(componentGroup *v1beta2.ComponentGroup, usedComponentGroups []string, depth int, loader loader.ObjectLoader, ctx context.Context, adapterClient client.Client, logger helpers.IntegrationLogger) (map[string]applicationapiv1alpha1.SnapshotComponent, map[v1beta2.ComponentState]InvalidComponentReason, error) {
+	snapshotComponents := make(map[string]applicationapiv1alpha1.SnapshotComponent)
+	invalidComponents := make(map[v1beta2.ComponentState]InvalidComponentReason)
+
+	// Cycle detection since validation webhook is at risk of a race condition
+	if slices.Contains(usedComponentGroups, componentGroup.Name) {
+		usedComponentGroups = append(usedComponentGroups, componentGroup.Name)
+		return nil, nil, fmt.Errorf("cycle found in nested componentGroups: %+v", usedComponentGroups)
+	}
+	usedComponentGroups = append(usedComponentGroups, componentGroup.Name)
+	if depth > MaxDepth {
+		return nil, nil, fmt.Errorf("nested ComponentGroups exceeded max depth of %d", MaxDepth)
+	}
+
+	nestedComponentGroups, err := loader.GetNestedComponentGroupsForComponentGroup(ctx, adapterClient, componentGroup)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	for _, nestedComponentGroup := range nestedComponentGroups {
+		valid, invalid, err := getNestedSnapshotComponents(&nestedComponentGroup, usedComponentGroups, depth+1, loader, ctx, adapterClient, logger)
+		if err != nil {
+			return nil, nil, err
+		}
+		maps.Copy(snapshotComponents, valid)
+		maps.Copy(invalidComponents, invalid)
+	}
+
+	valid, invalid := getSnapshotComponentsFromGCL(componentGroup, logger)
+	maps.Copy(snapshotComponents, valid) // bottom-up recursion means that parent componentGroup GCL will overwrite duplicates in children
+	maps.Copy(invalidComponents, invalid)
+
+	return snapshotComponents, invalidComponents, nil
+}
+
+func flattenSnapshotComponentsMap(snapshotComponentsMap map[string]applicationapiv1alpha1.SnapshotComponent) (snapshotComponents []applicationapiv1alpha1.SnapshotComponent) {
+	for _, snapshotComponent := range snapshotComponentsMap {
+		snapshotComponents = append(snapshotComponents, snapshotComponent)
+	}
+	return
+}
+
 // This prevents race conditions if EnsureGCLAlignedWithSpecComponents runs late
-func getSnapshotComponentsFromGCL(componentGroup *v1beta2.ComponentGroup, log logr.Logger) ([]applicationapiv1alpha1.SnapshotComponent, []v1beta2.ComponentState) {
-	var snapshotComponents []applicationapiv1alpha1.SnapshotComponent
-	var invalidComponents []v1beta2.ComponentState
+func getSnapshotComponentsFromGCL(componentGroup *v1beta2.ComponentGroup, logger helpers.IntegrationLogger) (map[string]applicationapiv1alpha1.SnapshotComponent, map[v1beta2.ComponentState]InvalidComponentReason) {
+	snapshotComponents := make(map[string]applicationapiv1alpha1.SnapshotComponent)
+	invalidComponents := make(map[v1beta2.ComponentState]InvalidComponentReason)
 
 	specComponents := getSpecComponentsAndVersionsMap(componentGroup)
 	for _, gclComponent := range componentGroup.Status.GlobalCandidateList {
@@ -199,7 +300,7 @@ func getSnapshotComponentsFromGCL(componentGroup *v1beta2.ComponentGroup, log lo
 		// cleaned up GCL by the time snapshot is created
 		specVersions, ok := specComponents[name]
 		if !ok || !slices.Contains(specVersions, version) {
-			log.Info("componentVersion was deleted from spec.Components. Will not add to snapshot", "componentGroup", componentGroup.Name, "component.Name", name, "component.Version", version)
+			logger.Info("componentVersion was deleted from spec.Components. Will not add to snapshot", "componentGroup", componentGroup.Name, "component.Name", name, "component.Version", version)
 			continue
 		}
 
@@ -209,27 +310,32 @@ func getSnapshotComponentsFromGCL(componentGroup *v1beta2.ComponentGroup, log lo
 		// including a component that is incomplete.
 		if image == "" {
 			// skip components that have not been added to GCL yet
-			log.Info("component cannot be added to snapshot for application due to missing containerImage", "component.Name", gclComponent.Name)
-			invalidComponents = append(invalidComponents, gclComponent)
+			logger.Info("component cannot be added to snapshot for application due to missing containerImage", "component.Name", gclComponent.Name)
+			invalidComponents[gclComponent] = InvalidComponentReason{
+				ComponentGroup: componentGroup.Name,
+				Reason:         "missing containerImage",
+			}
 			continue
 		}
 		err := gitops.ValidateImageDigest(image)
 		if err != nil {
-			log.Error(err, "component cannot be added to snapshot for ComponentGroup due to invalid digest in containerImage", "component.Name", gclComponent.Name)
-			invalidComponents = append(invalidComponents, gclComponent)
+			logger.Error(err, "component cannot be added to snapshot for ComponentGroup due to invalid digest in containerImage", "component.Name", gclComponent.Name)
+			invalidComponents[gclComponent] = InvalidComponentReason{
+				ComponentGroup: componentGroup.Name,
+				Reason:         "invalid digest in containerImage",
+			}
 			continue
 		}
 
 		// Get ComponentSource for the component which is not built in this pipeline
 		componentSource := getComponentSourceFromGCLComponent(gclComponent)
 
-		snapshotComponents = append(snapshotComponents, applicationapiv1alpha1.SnapshotComponent{
+		snapshotComponents[helpers.GetComponentVersionString(name, version)] = applicationapiv1alpha1.SnapshotComponent{
 			Name:           name,
 			Version:        version,
 			ContainerImage: image,
 			Source:         componentSource,
-		},
-		)
+		}
 	}
 	return snapshotComponents, invalidComponents
 }
@@ -237,6 +343,9 @@ func getSnapshotComponentsFromGCL(componentGroup *v1beta2.ComponentGroup, log lo
 func getSpecComponentsAndVersionsMap(componentGroup *v1beta2.ComponentGroup) map[string][]string {
 	componentVersions := make(map[string][]string)
 	for _, component := range componentGroup.Spec.Components {
+		if strings.EqualFold(component.Kind, "componentGroup") {
+			continue
+		}
 		componentVersions[component.Name] = append(componentVersions[component.Name], component.ComponentVersion.Name)
 	}
 	return componentVersions
@@ -245,47 +354,39 @@ func getSpecComponentsAndVersionsMap(componentGroup *v1beta2.ComponentGroup) map
 // Adds the updated Component to the list of snapshotComponents that will be added to the snapshot.  If a SnapshotComponent with
 // a matching name and version already exists in the snapshotComponents list then it will be replaced with the updated component.
 // Otherwise the updated component will be appended to the list.
-func upsertNewComponentImage(snapshotComponents *[]applicationapiv1alpha1.SnapshotComponent, invalidComponents *[]v1beta2.ComponentState, updatedComponent applicationapiv1alpha1.SnapshotComponent, log logr.Logger) {
-	for i, snapshotComponent := range *snapshotComponents {
-		if snapshotComponent.Name == updatedComponent.Name {
-			if snapshotComponent.Version == "" || snapshotComponent.Version == updatedComponent.Version {
-				// TODO: can this be removed?
-				err := gitops.ValidateImageDigest(updatedComponent.ContainerImage)
-				if err != nil {
-					log.Error(err, "component cannot be added to snapshot for ComponentGroup due to invalid digest in containerImage", "component.Name", updatedComponent.Name)
-					*invalidComponents = append(*invalidComponents, v1beta2.ComponentState{
-						Name:    updatedComponent.Name,
-						Version: updatedComponent.Version,
-					})
-					continue
+func upsertNewComponentImage(snapshotComponents map[string]applicationapiv1alpha1.SnapshotComponent, invalidComponents map[v1beta2.ComponentState]InvalidComponentReason, updatedComponent applicationapiv1alpha1.SnapshotComponent, logger helpers.IntegrationLogger) {
+	// Before we do anything else, try to validate the digest
+	err := gitops.ValidateImageDigest(updatedComponent.ContainerImage)
+	if err != nil { // the updated component is invalid
+		logger.Error(err, "component cannot be added to snapshot for ComponentGroup due to invalid digest in containerImage", "component.Name", updatedComponent.Name)
+		invalidComponents[v1beta2.ComponentState{
+			Name:    updatedComponent.Name,
+			Version: updatedComponent.Version,
+		}] = InvalidComponentReason{
+			ComponentGroup: "",
+			Reason:         "invalid digest in containerImage",
+		}
+	} else { // the updated component is valid
+		// add to snapshotComponents
+		snapshotComponents[helpers.GetComponentVersionString(updatedComponent.Name, updatedComponent.Version)] = updatedComponent
+		// remove from invalidComponents if it was there (it may have been added for a missing containerImage earlier)
+		maps.DeleteFunc(invalidComponents, func(K v1beta2.ComponentState, V InvalidComponentReason) bool {
+			if K.Name == updatedComponent.Name {
+				if K.Version == "" || K.Version == updatedComponent.Version {
+					return true
 				}
-
-				// replace snapshotComponent
-				*snapshotComponents = slices.Replace(*snapshotComponents, i, i+1, updatedComponent)
-				//(*snapshotComponents)[i] = updatedComponent
-				return
 			}
-		}
+			return false
+		})
 	}
+}
 
-	// if the component is replacing an invalid component, then we don't care that the old component was invalid
-	for i, invalidComponent := range *invalidComponents {
-		if invalidComponent.Name == updatedComponent.Name {
-			if invalidComponent.Version == "" || invalidComponent.Version == updatedComponent.Version {
-				// remove component from invalid list
-				*snapshotComponents = append(*snapshotComponents, updatedComponent)
-				// We don't care about the loop skipping problem here because we always exit
-				// immediately after deleting the component from the list
-				*invalidComponents = slices.Delete(*invalidComponents, i, i+1)
-
-				return
-			}
-		}
+// TODO: add unit tests
+// Accepts a dict of SnapshotComponents representing the current GCL. Updates multiple new SnapshotComponents whose ComponentVersion matches existing ComponentVersions. If no matches exist, the new SnapshotComponents are simply added to the dict
+func upsertMultipleComponentImages(snapshotComponents map[string]applicationapiv1alpha1.SnapshotComponent, invalidComponents map[v1beta2.ComponentState]InvalidComponentReason, componentsToInsert []applicationapiv1alpha1.SnapshotComponent, logger helpers.IntegrationLogger) {
+	for _, component := range componentsToInsert {
+		upsertNewComponentImage(snapshotComponents, invalidComponents, component, logger)
 	}
-
-	// If the component is not in the list this is probably because the component has not been added to the GCL yet
-	// In this case we should append the component
-	*snapshotComponents = append(*snapshotComponents, updatedComponent)
 }
 
 // NewSnapshot creates a new snapshot based on the supplied ComponentGroup and components
@@ -320,14 +421,14 @@ func getComponentSourceFromGCLComponent(gclComponent v1beta2.ComponentState) app
 	return componentSource
 }
 
-func getSnapshotComponentFromBuildPLR(pipelineRun *tektonv1.PipelineRun, componentName string, log logr.Logger) (applicationapiv1alpha1.SnapshotComponent, error) {
+func getSnapshotComponentFromBuildPLR(pipelineRun *tektonv1.PipelineRun, componentName string, logger helpers.IntegrationLogger) (applicationapiv1alpha1.SnapshotComponent, error) {
 	containerImage, err := tekton.GetImagePullSpecFromPipelineRun(pipelineRun)
 	if err != nil {
 		return applicationapiv1alpha1.SnapshotComponent{}, err
 	}
 	err = gitops.ValidateImageDigest(containerImage)
 	if err != nil {
-		log.Error(err, "component cannot be added to snapshot for ComponentGroup due to invalid digest in containerImage", "component.Name", componentName)
+		logger.Error(err, "component cannot be added to snapshot for ComponentGroup due to invalid digest in containerImage", "component.Name", componentName)
 		return applicationapiv1alpha1.SnapshotComponent{}, errors.Join(helpers.NewInvalidImageDigestError(componentName, containerImage), err)
 	}
 	componentSource, err := tekton.GetComponentSourceFromPipelineRun(pipelineRun)

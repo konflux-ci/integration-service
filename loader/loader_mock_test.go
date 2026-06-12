@@ -477,4 +477,49 @@ var _ = Describe("Release Adapter", Ordered, func() {
 			Expect(err).ToNot(HaveOccurred())
 		})
 	})
+
+	Context("When calling GetAllComponentGroupsInNamespace", func() {
+		It("returns resource and error from the context", func() {
+			componentGroups := []v1beta2.ComponentGroup{}
+			mockContext := toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: ComponentGroupsContextKey,
+					Resource:   componentGroups,
+				},
+			})
+			resource, err := loader.GetAllComponentGroupsInNamespace(mockContext, nil, "")
+			Expect(resource).To(Equal(componentGroups))
+			Expect(err).ToNot(HaveOccurred())
+		})
+	})
+
+	Context("When calling GetComponentGroupsContainingComponentGroup", func() {
+		It("returns resource and error from the context", func() {
+			componentGroups := []v1beta2.ComponentGroup{}
+			mockContext := toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: ComponentGroupsContextKey,
+					Resource:   componentGroups,
+				},
+			})
+			resource, err := loader.GetComponentGroupsContainingComponentGroup(mockContext, nil, nil)
+			Expect(resource).To(Equal(componentGroups))
+			Expect(err).ToNot(HaveOccurred())
+		})
+	})
+
+	Context("When calling GetNestedComponentGroupsForComponentGroup", func() {
+		It("returns resource and error from the context", func() {
+			componentGroups := []v1beta2.ComponentGroup{}
+			mockContext := toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: NestedComponentGroupsContextKey,
+					Resource:   componentGroups,
+				},
+			})
+			resource, err := loader.GetNestedComponentGroupsForComponentGroup(mockContext, nil, nil)
+			Expect(resource).To(Equal(componentGroups))
+			Expect(err).ToNot(HaveOccurred())
+		})
+	})
 })

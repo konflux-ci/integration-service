@@ -18,6 +18,7 @@ package v1beta2
 
 import (
 	"reflect"
+	"strings"
 
 	"github.com/konflux-ci/integration-service/api/v1beta2"
 	"github.com/konflux-ci/integration-service/pkg/dag"
@@ -69,6 +70,12 @@ func (v *ComponentGroupCustomValidator) ValidateCreate(ctx context.Context, obj 
 			return nil, fmt.Errorf("error validating test graph: %v", err)
 		}
 	}
+
+	err = validateSpecComponents(componentGroup.Spec.Components, componentGroup.Name)
+	if err != nil {
+		return nil, fmt.Errorf("error validating spec.components: %v", err)
+	}
+
 	return nil, nil
 }
 
@@ -93,7 +100,34 @@ func (v *ComponentGroupCustomValidator) ValidateUpdate(ctx context.Context, oldO
 		}
 	}
 
+	if !reflect.DeepEqual(oldComponentGroup.Spec.Components, newComponentGroup.Spec.Components) {
+		componentgrouplog.Info("validating changes to spec.Components")
+		err := validateSpecComponents(newComponentGroup.Spec.Components, newComponentGroup.Name)
+		if err != nil {
+			return nil, fmt.Errorf("error validating spec.components: %v", err)
+		}
+	}
+
 	return nil, nil
+}
+
+func validateSpecComponents(components []v1beta2.ComponentReference, componentGroupName string) error {
+	for _, component := range components {
+		if strings.EqualFold(component.Kind, "componentGroup") {
+			if component.ComponentVersion != (v1beta2.ComponentVersionReference{}) {
+				return fmt.Errorf("spec.components entries of kind 'componentGroup' cannot have ComponentVersion set")
+			}
+
+			if component.Name == componentGroupName {
+				return fmt.Errorf("a componentGroup cannot contain itself")
+			}
+		} else {
+			if component.ComponentVersion == (v1beta2.ComponentVersionReference{}) {
+				return fmt.Errorf("spec.components entries must contain a ComponentVersion unless they are of kind 'componentGroup'")
+			}
+		}
+	}
+	return nil
 }
 
 // ValidateDelete implements webhook.Validator so a webhook will be registered for the type
