@@ -157,11 +157,12 @@ github.com/go-git/go-billy/v5/helper/polyfill
 github.com/go-git/go-billy/v5/memfs
 github.com/go-git/go-billy/v5/osfs
 github.com/go-git/go-billy/v5/util
-# github.com/go-git/go-git/v5 v5.17.2
-## explicit; go 1.24.0
+# github.com/go-git/go-git/v5 v5.19.1
+## explicit; go 1.25.0
 github.com/go-git/go-git/v5
 github.com/go-git/go-git/v5/config
 github.com/go-git/go-git/v5/internal/path_util
+github.com/go-git/go-git/v5/internal/pathutil
 github.com/go-git/go-git/v5/internal/revision
 github.com/go-git/go-git/v5/internal/url
 github.com/go-git/go-git/v5/plumbing
@@ -474,7 +475,7 @@ github.com/openshift-pipelines/pipelines-as-code/pkg/apis/pipelinesascode/v1alph
 github.com/operator-framework/operator-lib/handler
 github.com/operator-framework/operator-lib/handler/internal/metrics
 github.com/operator-framework/operator-lib/internal/annotation
-# github.com/pjbgf/sha1cd v0.5.0
+# github.com/pjbgf/sha1cd v0.6.0
 ## explicit; go 1.22
 github.com/pjbgf/sha1cd
 github.com/pjbgf/sha1cd/internal
