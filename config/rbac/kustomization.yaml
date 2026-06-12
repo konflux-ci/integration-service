@@ -38,6 +38,9 @@ resources:
 - componentgroup_admin_role.yaml
 - componentgroup_editor_role.yaml
 - componentgroup_viewer_role.yaml
+- nudgeconfig_admin_role.yaml
+- nudgeconfig_editor_role.yaml
+- nudgeconfig_viewer_role.yaml
 - integrationtestscenario_admin_role.yaml
 - integrationtestscenario_editor_role.yaml
 - integrationtestscenario_viewer_role.yaml

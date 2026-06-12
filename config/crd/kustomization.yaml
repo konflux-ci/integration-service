@@ -4,6 +4,7 @@
 resources:
 - bases/appstudio.redhat.com_integrationtestscenarios.yaml
 - bases/appstudio.redhat.com_componentgroups.yaml
+- bases/appstudio.redhat.com_nudgeconfigs.yaml
 #+kubebuilder:scaffold:crdkustomizeresource
 
 patches:
