@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -32,7 +33,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 
 	"github.com/go-logr/logr"
-	"github.com/santhosh-tekuri/jsonschema/v5"
+	"github.com/go-playground/validator/v10"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	"knative.dev/pkg/apis"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -67,13 +68,13 @@ const (
 
 // AppStudioTestResult matches AppStudio TaskRun result contract
 type AppStudioTestResult struct {
-	Result    string `json:"result"`
+	Result    string `json:"result" validate:"required,oneof=SUCCESS FAILURE WARNING SKIPPED ERROR"`
 	Namespace string `json:"namespace"`
-	Timestamp string `json:"timestamp"`
+	Timestamp string `json:"timestamp" validate:"required,taskrun_timestamp"`
 	Note      string `json:"note"`
-	Successes int    `json:"successes"`
-	Failures  int    `json:"failures"`
-	Warnings  int    `json:"warnings"`
+	Successes *int   `json:"successes" validate:"required,min=0"`
+	Failures  *int   `json:"failures" validate:"required,min=0"`
+	Warnings  *int   `json:"warnings" validate:"required,min=0"`
 }
 
 // IntegrationTestTaskResult provides results from integration test task
@@ -83,39 +84,21 @@ type IntegrationTestTaskResult struct {
 	ValidationError error
 }
 
-var testResultSchema = `{
-  "$schema": "http://json-schema.org/draft/2020-12/schema#",
-  "type": "object",
-  "properties": {
-    "result": {
-      "type": "string",
-      "enum": ["SUCCESS", "FAILURE", "WARNING", "SKIPPED", "ERROR"]
-    },
-    "namespace": {
-      "type": "string"
-    },
-    "timestamp": {
-      "type": "string",
-      "pattern": "^[0-9]{10}$|^((?:(\\d{4}-\\d{2}-\\d{2})T(\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?))(Z|[\\+-]\\d{2}:\\d{2})?)$"
-    },
-    "successes": {
-      "type": "integer",
-      "minimum": 0
-    },
-    "note": {
-      "type": "string"
-    },
-    "failures": {
-      "type": "integer",
-      "minimum": 0
-    },
-    "warnings": {
-      "type": "integer",
-      "minimum": 0
-    }
-  },
-  "required": ["result", "timestamp", "successes", "failures", "warnings"]
-}`
+// timestampRegex matches UNIX epoch timestamps (10 digits) or ISO 8601 datetime strings.
+var timestampRegex = regexp.MustCompile(`^[0-9]{10}$|^((?:(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2}:\d{2}(?:\.\d+)?))(Z|[+-]\d{2}:\d{2})?)$`)
+
+// testResultValidator is a singleton validator instance with custom rules for test result validation.
+var testResultValidator *validator.Validate
+
+func init() {
+	testResultValidator = validator.New()
+	// Register custom validation for taskrun timestamps
+	if err := testResultValidator.RegisterValidation("taskrun_timestamp", func(fl validator.FieldLevel) bool {
+		return timestampRegex.MatchString(fl.Field().String())
+	}); err != nil {
+		panic(fmt.Sprintf("failed to register taskrun_timestamp validator: %v", err))
+	}
+}
 
 // TaskRun is an integration specific wrapper around the status of a Tekton TaskRun.
 type TaskRun struct {
@@ -167,24 +150,16 @@ func (t *TaskRun) GetTestResult() (*IntegrationTestTaskResult, error) {
 	if t.testResult != nil {
 		return t.testResult, nil
 	}
-	// load schema for test validation
-	sch, err := jsonschema.CompileString("schema.json", testResultSchema)
-	if err != nil {
-		return nil, fmt.Errorf("error while compiling json data for schema validation: %w", err)
-	}
 
 	for _, taskRunResult := range t.trStatus.Results {
 		if taskRunResult.Name == LegacyTestOutputName || taskRunResult.Name == TestOutputName {
 			var testOutput AppStudioTestResult
 			var testResult = IntegrationTestTaskResult{}
-			var v interface{}
 
 			if err := json.Unmarshal([]byte(taskRunResult.Value.StringVal), &testOutput); err != nil {
 				testResult.ValidationError = fmt.Errorf("error while mapping json data from task %s result %s to AppStudioTestResult: %w", t.GetPipelineTaskName(), taskRunResult.Name, err)
-			} else if err := json.Unmarshal([]byte(taskRunResult.Value.StringVal), &v); err != nil {
-				testResult.ValidationError = fmt.Errorf("error while mapping json data from task %s result %s: %w", t.GetPipelineTaskName(), taskRunResult.Name, err)
-			} else if err = sch.Validate(v); err != nil {
-				testResult.ValidationError = fmt.Errorf("error validating schema of results from task %s result %s: %w", t.GetPipelineTaskName(), taskRunResult.Name, err)
+			} else if err := testResultValidator.Struct(testOutput); err != nil {
+				testResult.ValidationError = fmt.Errorf("error validating results from task %s result %s: %w", t.GetPipelineTaskName(), taskRunResult.Name, err)
 			} else {
 				testResult.TestOutput = &testOutput
 			}
