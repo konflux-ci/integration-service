@@ -81,6 +81,25 @@ type SnapshotStatus struct {
 	// Conditions represent the latest available observations for the Snapshot
 	// +optional
 	Conditions []metav1.Condition `json:"conditions"`
+
+	// ParentSnapshots contains a map of ComponentGroups that are parents of the
+	// ComponentGroup for which the snapshot was created and their corresponding
+	// snapshots
+	ParentSnapshots map[string]ParentSnapshotData `json:"parentSnapshots,omitempty"`
+}
+
+type ParentSnapshotData struct {
+	// Name of the parent snapshot
+	// +optional
+	Name string `json:"name,omitempty"`
+
+	// Whether the Snapshot has been created
+	Created bool `json:"created"`
+
+	// If the snapshot could not be created, this will contain an error string
+	// If it was created, this will contain a success message
+	// +optional
+	Message string `json:"err,omitempty"`
 }
 
 //+kubebuilder:object:root=true

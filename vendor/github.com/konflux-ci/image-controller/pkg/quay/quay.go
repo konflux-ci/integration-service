@@ -30,11 +30,13 @@ import (
 type QuayService interface {
 	CreateRepository(repositoryRequest RepositoryRequest) (*Repository, error)
 	DeleteRepository(organization, imageRepository string) (bool, error)
+	RepositoryExists(organization, imageRepository string) (bool, error)
 	ChangeRepositoryVisibility(organization, imageRepository, visibility string) error
 	GetRobotAccount(organization string, robotName string) (*RobotAccount, error)
 	CreateRobotAccount(organization string, robotName string) (*RobotAccount, error)
 	DeleteRobotAccount(organization string, robotName string) (bool, error)
 	AddPermissionsForRepositoryToAccount(organization, imageRepository, accountName string, isRobot, isWrite bool) error
+	RemovePermissionsForRepositoryFromAccount(organization, imageRepository, accountName string, isRobot bool) error
 	ListPermissionsForRepository(organization, imageRepository string) (map[string]UserAccount, error)
 	AddReadPermissionsForRepositoryToTeam(organization, imageRepository, teamName string) error
 	ListRepositoryPermissionsForTeam(organization, teamName string) ([]TeamPermission, error)
@@ -70,29 +72,30 @@ func NewQuayClient(c *http.Client, authToken, url string) *QuayClient {
 	}
 }
 
-// QuayResponse wraps http.Response in order to provide custom methods, e.g. GetJson
+// QuayResponse holds data from http.Response in order to provide custom methods, e.g. GetJson
 type QuayResponse struct {
-	response *http.Response
+	body       []byte
+	statusCode int
+	status     string
 }
 
-func (r *QuayResponse) GetJson(obj interface{}) error {
-	defer r.response.Body.Close()
-	body, err := io.ReadAll(r.response.Body)
-	if err != nil {
-		return fmt.Errorf("failed to read response body: %s", err)
-	}
-	if err := json.Unmarshal(body, obj); err != nil {
-		return fmt.Errorf("failed to unmarshal response body: %s, got body: %s", err, string(body))
+func (r *QuayResponse) GetJson(obj any) error {
+	if err := json.Unmarshal(r.body, obj); err != nil {
+		return fmt.Errorf("failed to unmarshal response body: %s, got body: %s", err, string(r.body))
 	}
 	return nil
 }
 
 func (r *QuayResponse) GetStatusCode() int {
-	return r.response.StatusCode
+	return r.statusCode
+}
+
+func (r *QuayResponse) GetStatus() string {
+	return r.status
 }
 
 func (c *QuayClient) makeRequest(url, method string, body io.Reader) (*http.Request, error) {
-	req, err := http.NewRequest(method, url, body)
+	req, err := http.NewRequest(method, url, body) // nolint:noctx // No need in context, timeout already set in http client.
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -110,10 +113,21 @@ func (c *QuayClient) doRequest(url, method string, body io.Reader) (*QuayRespons
 	if err != nil {
 		return nil, fmt.Errorf("failed to Do request: %w", err)
 	}
-	return &QuayResponse{response: resp}, nil
+	defer func() { _ = resp.Body.Close() }()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response body: %s", err)
+	}
+
+	return &QuayResponse{
+		body:       respBody,
+		statusCode: resp.StatusCode,
+		status:     resp.Status,
+	}, nil
 }
 
-// CreateRepository creates a new Quay.io image repository.
+// CreateRepository creates a new image repository.
 func (c *QuayClient) CreateRepository(repositoryRequest RepositoryRequest) (*Repository, error) {
 	url := fmt.Sprintf("%s/%s", c.url, "repository")
 
@@ -130,26 +144,41 @@ func (c *QuayClient) CreateRepository(repositoryRequest RepositoryRequest) (*Rep
 	statusCode := resp.GetStatusCode()
 
 	data := &Repository{}
-	if err := resp.GetJson(data); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal response, got response code %d with error: %w", statusCode, err)
+	unmarshallErr := resp.GetJson(data)
+	if unmarshallErr != nil {
+		data = nil
 	}
 
-	if statusCode != 200 {
-		if statusCode == 402 {
-			// Current plan doesn't allow private image repositories
-			return nil, errors.New("payment required")
-		} else if statusCode == 400 && data.ErrorMessage == "Repository already exists" {
-			data.Name = repositoryRequest.Repository
-		} else if data.ErrorMessage != "" {
-			return data, errors.New(data.ErrorMessage)
+	switch statusCode {
+	case 200, 201:
+		return data, unmarshallErr
+	case 400:
+		if unmarshallErr == nil {
+			if data.ErrorMessage == "Repository already exists" {
+				data.Name = repositoryRequest.Repository
+				return data, nil
+			}
+			return nil, fmt.Errorf("400 Bad Request: %s", data.ErrorMessage)
 		}
+		return nil, fmt.Errorf("400 Bad Request. %w", unmarshallErr)
+	case 402:
+		// Current quay plan doesn't allow private image repositories
+		return nil, errors.New("payment required")
+	case 502:
+		if unmarshallErr == nil {
+			return nil, fmt.Errorf("502 Bad Gateway: %s", data.ErrorMessage)
+		}
+		return nil, fmt.Errorf("502 Bad Gateway. %w", unmarshallErr)
+	default:
+		if unmarshallErr == nil {
+			return data, fmt.Errorf("%d status code: %s", statusCode, data.ErrorMessage)
+		}
+		return nil, fmt.Errorf("%d status code. %w", statusCode, unmarshallErr)
 	}
-
-	return data, nil
 }
 
-// DoesRepositoryExist checks if the specified image repository exists in quay.
-func (c *QuayClient) DoesRepositoryExist(organization, imageRepository string) (bool, error) {
+// RepositoryExists checks if the specified image repository exists in quay.
+func (c *QuayClient) RepositoryExists(organization, imageRepository string) (bool, error) {
 	url := fmt.Sprintf("%s/repository/%s/%s", c.url, organization, imageRepository)
 
 	resp, err := c.doRequest(url, http.MethodGet, nil)
@@ -158,7 +187,7 @@ func (c *QuayClient) DoesRepositoryExist(organization, imageRepository string) (
 	}
 
 	if resp.GetStatusCode() == 404 {
-		return false, fmt.Errorf("repository %s does not exist in %s organization", imageRepository, organization)
+		return false, nil
 	} else if resp.GetStatusCode() == 200 {
 		return true, nil
 	}
@@ -269,7 +298,7 @@ func (c *QuayClient) ChangeRepositoryVisibility(organization, imageRepositoryNam
 	if data.ErrorMessage != "" {
 		return errors.New(data.ErrorMessage)
 	}
-	return errors.New(resp.response.Status)
+	return errors.New(resp.GetStatus())
 }
 
 func (c *QuayClient) GetRobotAccount(organization string, robotName string) (*RobotAccount, error) {
@@ -284,15 +313,25 @@ func (c *QuayClient) GetRobotAccount(organization string, robotName string) (*Ro
 	if err := resp.GetJson(data); err != nil {
 		return nil, err
 	}
+	statusCode := resp.GetStatusCode()
 
-	if resp.GetStatusCode() != http.StatusOK {
-		return nil, errors.New(data.Message)
+	if statusCode != http.StatusOK {
+		message := "Failed to get robot account"
+		if data.Message != "" {
+			message = data.Message
+		}
+
+		if statusCode == 400 && strings.Contains(message, "Could not find robot with specified username") {
+			return nil, nil
+		}
+
+		return nil, errors.New(message)
 	}
 
 	return data, nil
 }
 
-// CreateRobotAccount creates a new Quay.io robot account in the organization.
+// CreateRobotAccount creates a new robot account in the organization.
 func (c *QuayClient) CreateRobotAccount(organization string, robotName string) (*RobotAccount, error) {
 	robotName, err := handleRobotName(robotName)
 	if err != nil {
@@ -300,7 +339,7 @@ func (c *QuayClient) CreateRobotAccount(organization string, robotName string) (
 	}
 
 	url := fmt.Sprintf("%s/%s/%s/%s/%s", c.url, "organization", organization, "robots", robotName)
-	payload := strings.NewReader(`{"description": "Robot account for AppStudio Component"}`)
+	payload := strings.NewReader(`{"description": "Robot account for Konflux Component"}`)
 	resp, err := c.doRequest(url, http.MethodPut, payload)
 	if err != nil {
 		return nil, err
@@ -324,20 +363,30 @@ func (c *QuayClient) CreateRobotAccount(organization string, robotName string) (
 			message = data.Message
 		} else if data.ErrorMessage != "" {
 			message = data.ErrorMessage
-		} else {
+		} else if data.Error != "" {
 			message = data.Error
 		}
 	}
 
 	// Handle robot account already exists case
 	if statusCode == 400 && strings.Contains(message, "Existing robot with name") {
-		return c.GetRobotAccount(organization, robotName)
+		robotAccount, err := c.GetRobotAccount(organization, robotName)
+
+		if err != nil {
+			return nil, err
+		}
+
+		if robotAccount == nil {
+			return nil, fmt.Errorf("robot account doesn't exist anymore")
+		}
+
+		return robotAccount, nil
 	}
 
 	return nil, fmt.Errorf("failed to create robot account. Status code: %d, message: %s", statusCode, message)
 }
 
-// DeleteRobotAccount deletes given Quay.io robot account in the organization.
+// DeleteRobotAccount deletes given robot account in the organization.
 func (c *QuayClient) DeleteRobotAccount(organization string, robotName string) (bool, error) {
 	robotName, err := handleRobotName(robotName)
 	if err != nil {
@@ -378,12 +427,12 @@ func (c *QuayClient) ListPermissionsForRepository(organization, imageRepository 
 	}
 
 	if resp.GetStatusCode() != 200 {
-		var message string
+		message := "Failed to list permissions for repository"
 		data := &QuayError{}
 		if err := resp.GetJson(data); err == nil {
 			if data.ErrorMessage != "" {
 				message = data.ErrorMessage
-			} else {
+			} else if data.Error != "" {
 				message = data.Error
 			}
 		}
@@ -411,12 +460,12 @@ func (c *QuayClient) ListRepositoryPermissionsForTeam(organization, teamName str
 	}
 
 	if resp.GetStatusCode() != 200 {
-		var message string
+		message := "Failed to list repository permissions for team"
 		data := &QuayError{}
 		if err := resp.GetJson(data); err == nil {
 			if data.ErrorMessage != "" {
 				message = data.ErrorMessage
-			} else {
+			} else if data.Error != "" {
 				message = data.Error
 			}
 		} else {
@@ -453,12 +502,12 @@ func (c *QuayClient) AddUserToTeam(organization, teamName, userName string) (boo
 			return true, fmt.Errorf("failed to add user: %s, to the team team: %s, user doesn't exist", userName, teamName)
 		}
 
-		var message string
+		message := "Failed to add user to team"
 		data := &QuayError{}
 		if err := resp.GetJson(data); err == nil {
 			if data.ErrorMessage != "" {
 				message = data.ErrorMessage
-			} else {
+			} else if data.Error != "" {
 				message = data.Error
 			}
 		} else {
@@ -469,7 +518,7 @@ func (c *QuayClient) AddUserToTeam(organization, teamName, userName string) (boo
 	return false, nil
 }
 
-// RemoveUserToTeam remove user from the given team
+// RemoveUserFromTeam remove user from the given team
 func (c *QuayClient) RemoveUserFromTeam(organization, teamName, userName string) error {
 	url := fmt.Sprintf("%s/organization/%s/team/%s/members/%s", c.url, organization, teamName, userName)
 
@@ -484,12 +533,12 @@ func (c *QuayClient) RemoveUserFromTeam(organization, teamName, userName string)
 		return nil
 	}
 
-	var message string
+	message := "Failed to remove user from team"
 	data := &QuayError{}
 	if err := resp.GetJson(data); err == nil {
 		if data.ErrorMessage != "" {
 			message = data.ErrorMessage
-		} else {
+		} else if data.Error != "" {
 			message = data.Error
 		}
 	} else {
@@ -512,12 +561,12 @@ func (c *QuayClient) DeleteTeam(organization, teamName string) error {
 		return nil
 	}
 
-	var message string
+	message := "Failed to delete team"
 	data := &QuayError{}
 	if err := resp.GetJson(data); err == nil {
 		if data.ErrorMessage != "" {
 			message = data.ErrorMessage
-		} else {
+		} else if data.Error != "" {
 			message = data.Error
 		}
 	} else {
@@ -548,12 +597,12 @@ func (c *QuayClient) EnsureTeam(organization, teamName string) ([]Member, error)
 	}
 
 	if resp.GetStatusCode() != 200 {
-		var message string
+		message := "Failed to create team"
 		data := &QuayError{}
 		if err := resp.GetJson(data); err == nil {
 			if data.ErrorMessage != "" {
 				message = data.ErrorMessage
-			} else {
+			} else if data.Error != "" {
 				message = data.Error
 			}
 		} else {
@@ -584,12 +633,12 @@ func (c *QuayClient) GetTeamMembers(organization, teamName string) ([]Member, er
 			return nil, nil
 		}
 
-		var message string
+		message := "Failed to get team members"
 		data := &QuayError{}
 		if err := resp.GetJson(data); err == nil {
 			if data.ErrorMessage != "" {
 				message = data.ErrorMessage
-			} else {
+			} else if data.Error != "" {
 				message = data.Error
 			}
 		} else {
@@ -636,20 +685,67 @@ func (c *QuayClient) AddPermissionsForRepositoryToAccount(organization, imageRep
 	if err != nil {
 		return err
 	}
+	statusCode := resp.GetStatusCode()
 
-	if resp.GetStatusCode() != 200 {
-		var message string
+	if statusCode != 200 {
+		message := "Failed to add permissions for repository to account"
 		data := &QuayError{}
 		if err := resp.GetJson(data); err == nil {
 			if data.ErrorMessage != "" {
 				message = data.ErrorMessage
-			} else {
+			} else if data.Error != "" {
 				message = data.Error
 			}
 		}
-		return fmt.Errorf("failed to add permissions to the account: %s. Status code: %d, message: %s", accountFullName, resp.GetStatusCode(), message)
+		return fmt.Errorf("failed to add permissions to the account: %s. Status code: %d, message: %s", accountFullName, statusCode, message)
 	}
 	return nil
+}
+
+// RemovePermissionsForRepositoryFromAccount removes for given account access to the given repository
+func (c *QuayClient) RemovePermissionsForRepositoryFromAccount(organization, imageRepository, accountName string, isRobot bool) error {
+	var accountFullName string
+	if isRobot {
+		if robotName, err := handleRobotName(accountName); err == nil {
+			accountFullName = organization + "+" + robotName
+		} else {
+			return err
+		}
+	} else {
+		accountFullName = accountName
+	}
+
+	url := fmt.Sprintf("%s/repository/%s/%s/permissions/user/%s", c.url, organization, imageRepository, accountFullName)
+
+	resp, err := c.doRequest(url, http.MethodDelete, nil)
+	if err != nil {
+		return err
+	}
+	statusCode := resp.GetStatusCode()
+
+	if statusCode == 204 || statusCode == 404 {
+		return nil
+	}
+
+	data := &QuayError{}
+	if err := resp.GetJson(data); err != nil {
+		return err
+	}
+
+	message := "Failed to remove permissions for user from repository"
+	if data.Message != "" {
+		message = data.Message
+	} else if data.ErrorMessage != "" {
+		message = data.ErrorMessage
+	} else if data.Error != "" {
+		message = data.Error
+	}
+
+	if statusCode == 400 && strings.Contains(message, "User does not have permission for repo") {
+		return nil
+	}
+
+	return errors.New(message)
 }
 
 // AddReadPermissionsForRepositoryToTeam allows given team read access to the given repository.
@@ -663,12 +759,12 @@ func (c *QuayClient) AddReadPermissionsForRepositoryToTeam(organization, imageRe
 	}
 
 	if resp.GetStatusCode() != 200 {
-		var message string
+		message := "Failed to add permissions for repository to team"
 		data := &QuayError{}
 		if err := resp.GetJson(data); err == nil {
 			if data.ErrorMessage != "" {
 				message = data.ErrorMessage
-			} else {
+			} else if data.Error != "" {
 				message = data.Error
 			}
 		} else {
@@ -729,9 +825,15 @@ func (c *QuayClient) GetAllRepositories(organization string) ([]Repository, erro
 			return nil, fmt.Errorf("error getting repositories, got status code %d", res.StatusCode)
 		}
 
-		resp := QuayResponse{response: res}
-		if err := resp.GetJson(&response); err != nil {
-			return nil, err
+		resBody, err := io.ReadAll(res.Body)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read response body: %s", err)
+		}
+		if err := res.Body.Close(); err != nil {
+			return nil, fmt.Errorf("failed to close response body: %s", err)
+		}
+		if err := json.Unmarshal(resBody, &response); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal response body: %s, got body: %s", err, string(resBody))
 		}
 
 		repositories = append(repositories, response.Repositories...)

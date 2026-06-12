@@ -1,5 +1,5 @@
 /*
-Copyright 2023 Red Hat, Inc.
+Copyright 2023-2025 Red Hat, Inc.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -38,7 +38,7 @@ type ImageRepositorySpec struct {
 // ImageParameters describes requested image repository configuration.
 type ImageParameters struct {
 	// Name of the image within configured Quay organization.
-	// If ommited, then defaults to "cr-namespace/cr-name".
+	// If omitted, then defaults to "cr-namespace/cr-name".
 	// This field cannot be changed after the resource creation.
 	// +optional
 	// +kubebuilder:validation:Pattern="^[a-z0-9][.a-z0-9_-]*(/[a-z0-9][.a-z0-9_-]*)*$"
@@ -51,6 +51,7 @@ type ImageParameters struct {
 	Visibility ImageVisibility `json:"visibility,omitempty"`
 }
 
+// ImageVisibility defines image repository visibility on registry side.
 // +kubebuilder:validation:Enum=public;private
 type ImageVisibility string
 
@@ -64,6 +65,9 @@ type ImageCredentials struct {
 	// Refreshes both, push and pull tokens.
 	// The field gets cleared after the refresh.
 	RegenerateToken *bool `json:"regenerate-token,omitempty"`
+	// RegenerateNamespacePullToken defines a request to refresh namespace pull robot credentials.
+	// The field gets cleared after the refresh.
+	RegenerateNamespacePullToken *bool `json:"regenerate-namespace-pull-token,omitempty"`
 	// VerifyLinking defines a request to verify and fix
 	// secret linking in pipeline service account.
 	// The field gets cleared after fixing.
@@ -127,8 +131,11 @@ type ImageRepositoryStatus struct {
 type ImageRepositoryState string
 
 const (
-	ImageRepositoryStateReady  ImageRepositoryState = "ready"
-	ImageRepositoryStateFailed ImageRepositoryState = "failed"
+	ImageRepositoryStateReady   ImageRepositoryState = "ready"
+	ImageRepositoryStateFailed  ImageRepositoryState = "failed"
+	ImageRepositoryStateDamaged ImageRepositoryState = "damaged"
+	ImageRepositoryStateMissing ImageRepositoryState = "missing"
+	ImageRepositoryStateWaiting ImageRepositoryState = "waiting"
 )
 
 // ImageStatus shows actual generated image repository parameters.
@@ -182,7 +189,7 @@ type ImageRepository struct {
 	Status ImageRepositoryStatus `json:"status,omitempty"`
 }
 
-//+kubebuilder:object:root=true
+// +kubebuilder:object:root=true
 
 // ImageRepositoryList contains a list of ImageRepository
 type ImageRepositoryList struct {

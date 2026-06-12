@@ -366,6 +366,9 @@ const (
 	// PipelineRunReasonStopping indicates that no new Tasks will be scheduled by the controller, and the
 	// pipeline will stop once all running tasks complete their work
 	PipelineRunReasonStopping PipelineRunReason = "PipelineRunStopping"
+	// PipelineRunReasonTimedOutRunningFinally indicates that the tasks timeout has been exceeded
+	// and no new DAG tasks will be scheduled, but final tasks are now running
+	PipelineRunReasonTimedOutRunningFinally PipelineRunReason = "PipelineRunTimeoutRunningFinally"
 	// PipelineRunReasonCancelledRunningFinally indicates that pipeline has been gracefully cancelled
 	// and no new Tasks will be scheduled by the controller, but final tasks are now running
 	PipelineRunReasonCancelledRunningFinally PipelineRunReason = "CancelledRunningFinally"
@@ -646,7 +649,7 @@ type PipelineRunList struct {
 	metav1.TypeMeta `json:",inline"`
 	// +optional
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []PipelineRun `json:"items,omitempty"`
+	Items           []PipelineRun `json:"items"`
 }
 
 // PipelineTaskRun reports the results of running a step in the Task. Each
