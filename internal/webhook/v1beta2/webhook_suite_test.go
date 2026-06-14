@@ -146,6 +146,9 @@ var _ = BeforeSuite(func() {
 	err = SetupSnapshotWebhookWithManager(mgr)
 	Expect(err).NotTo(HaveOccurred())
 
+	err = SetupNudgeConfigWebhookWithManager(mgr)
+	Expect(err).NotTo(HaveOccurred())
+
 	// +kubebuilder:scaffold:webhook
 
 	go func() {
