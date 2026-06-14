@@ -19,6 +19,9 @@ package dag
 import (
 	"fmt"
 	"maps"
+	"slices"
+	"sort"
+	"strings"
 
 	"github.com/konflux-ci/integration-service/api/v1beta2"
 )
@@ -73,55 +76,114 @@ func ValidateTestGraph(testGraph map[string][]v1beta2.TestGraphNode, scenarios .
 		}
 	}
 
-	// We're technically checking a reversed version of the graph. Reversing
-	// the graph preserves all cycles so this is acceptable
-	if err := checkGraphForCycles(graphCopy); err != nil {
+	adj := make(map[string][]string, len(graphCopy))
+	for node, parents := range graphCopy {
+		for _, p := range parents {
+			adj[node] = append(adj[node], p.Name)
+		}
+		if _, ok := adj[node]; !ok {
+			adj[node] = nil
+		}
+	}
+
+	if err := checkGraphForCycles(adj); err != nil {
 		return fmt.Errorf("invalid TestGraph - cycle detected: %w", err)
 	}
 	return nil
 }
 
-// checkGraphForCycles uses Kahn's algorithm on the reversed dependency graph to
-// detect cycles.  The testGraph maps each scenario name to the list of parent
-// scenarios it depends on (parents must finish before the keyed scenario starts).
-func checkGraphForCycles(testGraph map[string][]v1beta2.TestGraphNode) error {
-	// indegrees[x] = number of nodes that list x as a parent (i.e. x's child count).
-	indegrees := make(map[string]int)
-	var res []string
+// ValidateNudgeGraph checks that the nudge relationships form a DAG (no cycles).
+func ValidateNudgeGraph(nudges []v1beta2.NudgeRelationship) error {
+	if len(nudges) == 0 {
+		return nil
+	}
 
-	for _, parentNodes := range testGraph {
-		for _, parentNode := range parentNodes {
-			indegrees[parentNode.Name]++
+	adj := make(map[string][]string)
+	for _, n := range nudges {
+		adj[n.From] = append(adj[n.From], n.To)
+		if _, ok := adj[n.To]; !ok {
+			adj[n.To] = nil
 		}
 	}
 
-	// Seed the queue with nodes that have no children (nobody depends on them).
-	var queue []string
-	for node := range testGraph {
-		if indegrees[node] == 0 {
-			queue = append(queue, node)
-			res = append(res, node)
+	if err := checkGraphForCycles(adj); err != nil {
+		return fmt.Errorf("invalid NudgeGraph - cycle detected: %w", err)
+	}
+	return nil
+}
+
+// checkGraphForCycles uses depth-first search (DFS) to detect cycles in a directed graph represented
+// as an adjacency list. Returns an error containing the cycle path if found.
+func checkGraphForCycles(adj map[string][]string) error {
+	if cycle, found := findCycleInAdjacencyList(adj); found {
+		return fmt.Errorf("%s", formatCyclePath(cycle))
+	}
+	return nil
+}
+
+const (
+	colorWhite = 0 // unvisited
+	colorGray  = 1 // in current DFS path
+	colorBlack = 2 // fully processed
+)
+
+// findCycleInAdjacencyList performs DFS to detect cycles and returns the cycle path.
+func findCycleInAdjacencyList(adj map[string][]string) ([]string, bool) {
+	color := make(map[string]int, len(adj))
+	parent := make(map[string]string, len(adj))
+
+	nodes := make([]string, 0, len(adj))
+	for node := range adj {
+		nodes = append(nodes, node)
+	}
+	sort.Strings(nodes)
+
+	for _, node := range nodes {
+		if color[node] == colorWhite {
+			if cycle, found := dfsVisit(node, adj, color, parent); found {
+				return cycle, true
+			}
 		}
 	}
+	return nil, false
+}
 
-	// BFS: for each childless node, decrement its parents' child-counts; enqueue
-	// any parent that reaches zero.
-	for len(queue) > 0 {
-		node := queue[0]
-		queue = queue[1:]
-		for _, parentNode := range testGraph[node] {
-			indegrees[parentNode.Name]--
-			if indegrees[parentNode.Name] == 0 {
-				queue = append(queue, parentNode.Name)
-				res = append(res, parentNode.Name)
+func dfsVisit(node string, adj map[string][]string, color map[string]int, parent map[string]string) ([]string, bool) {
+	color[node] = colorGray
+
+	neighbors := slices.Clone(adj[node])
+	sort.Strings(neighbors)
+
+	for _, next := range neighbors {
+		if color[next] == colorGray {
+			return traceCycle(node, next, parent), true
+		}
+		if color[next] == colorWhite {
+			parent[next] = node
+			if cycle, found := dfsVisit(next, adj, color, parent); found {
+				return cycle, true
 			}
 		}
 	}
 
-	switch {
-	case len(res) < len(testGraph):
-		return fmt.Errorf("cycles found in graph; remaining indegrees: %+v", indegrees)
-	default:
-		return nil
+	color[node] = colorBlack
+	return nil, false
+}
+
+func traceCycle(from, to string, parent map[string]string) []string {
+	// to is the node we found again (back-edge target), from is the current node.
+	// Walk parent chain from `from` back to `to` to reconstruct the cycle.
+	var path []string
+	cur := from
+	for cur != to {
+		path = append([]string{cur}, path...)
+		cur = parent[cur]
 	}
+	path = append([]string{to}, path...)
+	path = append(path, to)
+	return path
+}
+
+func formatCyclePath(path []string) string {
+	return strings.Join(path, " -> ")
 }

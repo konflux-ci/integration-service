@@ -47,6 +47,26 @@ metadata:
   labels:
     {{- include "chart.labels" . | nindent 4 }}
 webhooks:
+  - name: vnudgeconfig.kb.io
+    clientConfig:
+      service:
+        name: integration-service-webhook-service
+        namespace: {{ .Values.namespace | default .Release.Namespace }}
+        path: /validate-appstudio-redhat-com-v1beta2-nudgeconfig
+    failurePolicy: Fail
+    sideEffects: None
+    admissionReviewVersions:
+      - v1
+    rules:
+      - operations:
+          - CREATE
+          - UPDATE
+        apiGroups:
+          - appstudio.redhat.com
+        apiVersions:
+          - v1beta2
+        resources:
+          - nudgeconfigs
   - name: vcomponentgroup.kb.io
     clientConfig:
       service:
