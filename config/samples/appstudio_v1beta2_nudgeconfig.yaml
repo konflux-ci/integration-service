@@ -1,0 +1,28 @@
+---
+apiVersion: appstudio.redhat.com/v1beta2
+kind: NudgeConfig
+metadata:
+  labels:
+    app.kubernetes.io/name: nudgeconfig
+    app.kubernetes.io/instance: nudge-config
+    app.kubernetes.io/part-of: integration-service
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/created-by: integration-service
+  # NudgeConfig is a singleton — must be named "nudge-config" in every namespace
+  name: nudge-config
+  namespace: default
+spec:
+  nudges:
+    # When component-a builds successfully, nudge component-b after integration tests pass
+    - from: component-a
+      to: component-b
+      mode: validated
+      gatingGroup: frontend-group
+    # When component-a builds, immediately nudge component-c (default mode)
+    - from: component-a
+      to: component-c
+    # Backend nudge relationship with gating group
+    - from: component-d
+      to: component-e
+      mode: validated
+      gatingGroup: backend-group
