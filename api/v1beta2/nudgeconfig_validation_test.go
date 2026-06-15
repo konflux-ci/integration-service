@@ -177,6 +177,40 @@ var _ = Describe("NudgeConfig CEL validation", Ordered, func() {
 		Expect(created.Spec.Nudges[0].Mode).To(Equal(NudgeModeValidated))
 	})
 
+	It("should reject invalid component names in from/to fields", func() {
+		nc := &NudgeConfig{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      NudgeConfigSingletonName,
+				Namespace: "default",
+			},
+			Spec: NudgeConfigSpec{
+				Nudges: []NudgeRelationship{
+					{From: "Component_A", To: "component-b"},
+				},
+			},
+		}
+		err := k8sClient.Create(ctx, nc)
+		Expect(err).To(HaveOccurred())
+		Expect(errors.IsInvalid(err)).To(BeTrue())
+	})
+
+	It("should reject an invalid mode value", func() {
+		nc := &NudgeConfig{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      NudgeConfigSingletonName,
+				Namespace: "default",
+			},
+			Spec: NudgeConfigSpec{
+				Nudges: []NudgeRelationship{
+					{From: "component-a", To: "component-b", Mode: NudgeModeType("bogus")},
+				},
+			},
+		}
+		err := k8sClient.Create(ctx, nc)
+		Expect(err).To(HaveOccurred())
+		Expect(errors.IsInvalid(err)).To(BeTrue())
+	})
+
 	It("should reject spec.nudges exceeding 256 items", func() {
 		nudges := make([]NudgeRelationship, 257)
 		for i := range nudges {
