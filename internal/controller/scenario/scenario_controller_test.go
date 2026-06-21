@@ -19,6 +19,9 @@ package scenario
 import (
 	"reflect"
 
+	tektonconsts "github.com/konflux-ci/integration-service/tekton/consts"
+	corev1 "k8s.io/api/core/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -52,7 +55,6 @@ var _ = Describe("ScenarioController", Ordered, func() {
 	)
 
 	BeforeAll(func() {
-
 		applicationName := "application-sample"
 
 		hasApp = &applicationapiv1alpha1.Application{
@@ -65,7 +67,6 @@ var _ = Describe("ScenarioController", Ordered, func() {
 				Description: "This is an example application",
 			},
 		}
-
 		Expect(k8sClient.Create(ctx, hasApp)).Should(Succeed())
 
 		scenarioName := "scenario-sample"
@@ -80,23 +81,13 @@ var _ = Describe("ScenarioController", Ordered, func() {
 				ResolverRef: v1beta2.ResolverRef{
 					Resolver: "git",
 					Params: []v1beta2.ResolverParameter{
-						{
-							Name:  "url",
-							Value: "https://github.com/redhat-appstudio/integration-examples.git",
-						},
-						{
-							Name:  "revision",
-							Value: "main",
-						},
-						{
-							Name:  "pathInRepo",
-							Value: "pipelineruns/integration_pipelinerun_pass.yaml",
-						},
+						{Name: "url", Value: "https://github.com/redhat-appstudio/integration-examples.git"},
+						{Name: "revision", Value: "main"},
+						{Name: "pathInRepo", Value: "pipelineruns/integration_pipelinerun_pass.yaml"},
 					},
 				},
 			},
 		}
-
 		Expect(k8sClient.Create(ctx, hasScenario)).Should(Succeed())
 
 		failScenario = &v1beta2.IntegrationTestScenario{
@@ -109,23 +100,13 @@ var _ = Describe("ScenarioController", Ordered, func() {
 				ResolverRef: v1beta2.ResolverRef{
 					Resolver: "git",
 					Params: []v1beta2.ResolverParameter{
-						{
-							Name:  "url",
-							Value: "https://github.com/redhat-appstudio/integration-examples.git",
-						},
-						{
-							Name:  "revision",
-							Value: "main",
-						},
-						{
-							Name:  "pathInRepo",
-							Value: "pipelineruns/integration_pipelinerun_pass.yaml",
-						},
+						{Name: "url", Value: "https://github.com/redhat-appstudio/integration-examples.git"},
+						{Name: "revision", Value: "main"},
+						{Name: "pathInRepo", Value: "pipelineruns/integration_pipelinerun_pass.yaml"},
 					},
 				},
 			},
 		}
-
 		Expect(k8sClient.Create(ctx, failScenario)).Should(Succeed())
 
 		req = ctrl.Request{
@@ -155,11 +136,10 @@ var _ = Describe("ScenarioController", Ordered, func() {
 			LeaderElection: false,
 		})
 		Expect(err).NotTo(HaveOccurred())
-		Expect(err).ToNot(HaveOccurred())
 
 		scenarioReconciler = NewScenarioReconciler(k8sClient, &logf.Log, &scheme)
-
 	})
+
 	AfterAll(func() {
 		err := k8sClient.Delete(ctx, hasApp)
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
@@ -167,17 +147,52 @@ var _ = Describe("ScenarioController", Ordered, func() {
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 		err = k8sClient.Delete(ctx, failScenario)
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
+
+		sa := &corev1.ServiceAccount{ObjectMeta: metav1.ObjectMeta{Name: tektonconsts.DefaultIntegrationPipelineServiceAccount, Namespace: "default"}}
+		_ = k8sClient.Delete(ctx, sa)
+		secret := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: tektonconsts.DefaultIntegrationPipelineImagePullSecretName, Namespace: "default"}}
+		_ = k8sClient.Delete(ctx, secret)
+		rb := &rbacv1.RoleBinding{ObjectMeta: metav1.ObjectMeta{Name: tektonconsts.DefaultIntegrationPipelineRoleBindingName, Namespace: "default"}}
+		_ = k8sClient.Delete(ctx, rb)
 	})
 
 	It("can create and return a new Reconciler object", func() {
 		Expect(reflect.TypeOf(scenarioReconciler)).To(Equal(reflect.TypeOf(&Reconciler{})))
-		klog.Info("Test First Logic")
 	})
 
-	It("can Reconcile function prepare the adapter and return the result of the reconcile handling operation", func() {
+	It("can Reconcile and creates the integration pipeline ServiceAccount, Secret, and RoleBinding", func() {
 		result, err := scenarioReconciler.Reconcile(ctx, req)
 		Expect(reflect.TypeOf(result)).To(Equal(reflect.TypeOf(reconcile.Result{})))
 		Expect(err).ToNot(HaveOccurred())
+
+		sa := &corev1.ServiceAccount{}
+		err = k8sClient.Get(ctx, types.NamespacedName{
+			Name: tektonconsts.DefaultIntegrationPipelineServiceAccount, Namespace: "default",
+		}, sa)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(sa.ImagePullSecrets).To(ContainElement(
+			corev1.LocalObjectReference{Name: tektonconsts.DefaultIntegrationPipelineImagePullSecretName},
+		))
+
+		secret := &corev1.Secret{}
+		err = k8sClient.Get(ctx, types.NamespacedName{
+			Name: tektonconsts.DefaultIntegrationPipelineImagePullSecretName, Namespace: "default",
+		}, secret)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(secret.Type).To(Equal(corev1.SecretTypeDockerConfigJson))
+
+		Eventually(func() error {
+			rb := &rbacv1.RoleBinding{}
+			return k8sClient.Get(ctx, types.NamespacedName{
+				Name: tektonconsts.DefaultIntegrationPipelineRoleBindingName, Namespace: "default",
+			}, rb)
+		}, "5s").Should(Succeed())
+
+		rb := &rbacv1.RoleBinding{}
+		Expect(k8sClient.Get(ctx, types.NamespacedName{
+			Name: tektonconsts.DefaultIntegrationPipelineRoleBindingName, Namespace: "default",
+		}, rb)).To(Succeed())
+		Expect(rb.RoleRef.Name).To(Equal(tektonconsts.DefaultIntegrationPipelineClusterRoleName))
 	})
 
 	It("can setup a new controller manager with the given reconciler", func() {

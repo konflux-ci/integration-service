@@ -55,6 +55,9 @@ func NewScenarioReconciler(client client.Client, logger *logr.Logger, scheme *ru
 //+kubebuilder:rbac:groups=appstudio.redhat.com,resources=applications/status,verbs=get
 //+kubebuilder:rbac:groups=appstudio.redhat.com,resources=componentgroups,verbs=get;list;watch
 //+kubebuilder:rbac:groups=appstudio.redhat.com,resources=componentgroups/status,verbs=get
+//+kubebuilder:rbac:groups="",resources=serviceaccounts,verbs=get;create;update
+//+kubebuilder:rbac:groups="",resources=secrets,verbs=get;create
+//+kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=rolebindings,verbs=get;create
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -76,13 +79,13 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	adapter := NewAdapter(ctx, scenario, logger, loader, r.Client)
 
 	return controller.ReconcileHandler([]controller.Operation{
-		adapter.EnsurePlaceholder,
+		adapter.EnsureIntegrationPipelineServiceAccountCreated,
 	})
 }
 
 // AdapterInterface is an interface defining all the operations that should be defined in an Integration adapter.
 type AdapterInterface interface {
-	EnsurePlaceholder() (controller.OperationResult, error)
+	EnsureIntegrationPipelineServiceAccountCreated() (controller.OperationResult, error)
 }
 
 // SetupController creates a new Integration controller and adds it to the Manager.
@@ -91,8 +94,8 @@ func SetupController(manager ctrl.Manager, log *logr.Logger) error {
 }
 
 func setupControllerWithManager(manager ctrl.Manager, controller *Reconciler) error {
-
 	return ctrl.NewControllerManagedBy(manager).
 		For(&v1beta2.IntegrationTestScenario{}).
+		WithEventFilter(ScenarioCreatedPredicate()).
 		Complete(controller)
 }
