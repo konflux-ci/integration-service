@@ -9,9 +9,18 @@ rules:
   resources:
   - secrets
   verbs:
+  - create
   - get
   - list
   - watch
+- apiGroups:
+  - ""
+  resources:
+  - serviceaccounts
+  verbs:
+  - create
+  - get
+  - update
 - apiGroups:
   - appstudio.redhat.com
   resources:
@@ -84,6 +93,13 @@ rules:
   - get
   - list
   - watch
+- apiGroups:
+  - rbac.authorization.k8s.io
+  resources:
+  - rolebindings
+  verbs:
+  - create
+  - get
 - apiGroups:
   - resolution.tekton.dev
   resources:

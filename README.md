@@ -15,7 +15,7 @@ The service handles the complete lifecycle of integration testing including grou
 
 ## Architecture
 
-The Integration Service consists of six main controllers:
+The Integration Service consists of seven main controllers:
 
 ### Build Pipeline Controller
 
@@ -51,6 +51,13 @@ Monitors Snapshot CRs and manages the following:
 ### ComponentGroup Controller
 
 Ensures that the ComponentGroup/s Global Candidate List is aligned with its component list.
+
+### Scenario Controller
+
+Monitors IntegrationTestScenario CRs and manages the following:
+- Ensures the `konflux-integration-runner` ServiceAccount exists in the namespace
+- Ensures the `components-namespace-pull` image pull secret exists and is linked to the ServiceAccount
+- Ensures the RoleBinding for the ServiceAccount to the `konflux-integration-runner` ClusterRole exists
 
 ### Component Controller
 

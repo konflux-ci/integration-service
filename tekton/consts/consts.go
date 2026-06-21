@@ -61,6 +61,15 @@ const (
 	// DefaultIntegrationPipelineServiceAccount denotes the service account which is used by default in integration pipelines
 	DefaultIntegrationPipelineServiceAccount = "konflux-integration-runner"
 
+	// DefaultIntegrationPipelineImagePullSecretName is the namespace-scoped image pull secret linked to the integration pipeline service account
+	DefaultIntegrationPipelineImagePullSecretName = "components-namespace-pull"
+
+	// DefaultIntegrationPipelineRoleBindingName is the RoleBinding that grants the integration pipeline service account its permissions
+	DefaultIntegrationPipelineRoleBindingName = "konflux-integration-runner"
+
+	// DefaultIntegrationPipelineClusterRoleName is the ClusterRole referenced by the integration pipeline RoleBinding
+	DefaultIntegrationPipelineClusterRoleName = "konflux-integration-runner"
+
 	/*
 	 * Build PipelineConstants
 	 */

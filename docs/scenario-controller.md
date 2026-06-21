@@ -9,34 +9,36 @@ flowchart TD
   classDef Amber fill:#FFDEAD;
   classDef Green fill:#BDFFA4;
 
-  predicate((PREDICATE: <br>Monitor IntegratonTestScenario <br>& filter created/updated/deleted <br>events for the resource ))
-  %%%%%%%%%%%%%%%%%%%%%%% Drawing EnsureCreatedScenarioIsValid() function
+  predicate((PREDICATE: <br>Monitor IntegrationTestScenario <br>& filter created events))
 
   %% Node definitions
-  
-  application_exists{"Application for scenario <br>was found?"}
-  set_owner_reference(Set owner reference to <br>IntegrationTestScenario <br> if not already existing)
-  status_check{"IntegrationTestScenario <br>has status<br>IntegrationTestScenarioValid<br>condition undefined<br>or false"}
-  update_scenario_status_valid(Update IntegrationTestScenario <br>status to valid)
-  update_scenario_status_invalid(Update IntegrationTestScenario <br>status to invalid)
-  remove_historical_finalizer(Check for and remove<br>historical IntegrationTestScenario <br> finalizer)
-  complete_reconciliation(Complete reconciliation for <br>IntegrationTestScenario)
-  continue_reconciliation(Continue with next reconciliation)
-
+  check_sa{"ServiceAccount<br>konflux-integration-runner<br>exists?"}
+  create_sa(Create ServiceAccount<br>with ImagePullSecrets)
+  check_secret{"Secret<br>components-namespace-pull<br>exists?"}
+  create_secret(Create empty<br>dockerconfigjson Secret)
+  check_linked{"Secret linked to<br>SA ImagePullSecrets?"}
+  link_secret(Update SA to link Secret)
+  check_rb{"RoleBinding<br>konflux-integration-runner<br>exists?"}
+  create_rb(Create RoleBinding to<br>ClusterRole konflux-integration-runner)
+  complete(Complete reconciliation)
 
   %% Node connections
-  predicate                        ---->    |"EnsureCreatedScenarioIsValid()"| remove_historical_finalizer
-  remove_historical_finalizer      -->      application_exists
-  application_exists               --No-->  update_scenario_status_invalid
-  application_exists               --Yes--> set_owner_reference
-  set_owner_reference              -->      status_check
-  status_check                     --No-->  update_scenario_status_invalid
-  status_check                     --Yes--> update_scenario_status_valid
-  update_scenario_status_valid     -->      complete_reconciliation
-  complete_reconciliation          -->      continue_reconciliation
-  update_scenario_status_invalid   -->      continue_reconciliation
+  predicate                  ---->  |"EnsureIntegrationPipelineServiceAccount()"| check_sa
+  check_sa                   --No-->  create_sa
+  check_sa                   --Yes--> check_secret
+  create_sa                  -->      check_secret
+  check_secret               --No-->  create_secret
+  check_secret               --Yes--> check_linked
+  create_secret              -->      check_linked
+  check_linked               --No-->  link_secret
+  check_linked               --Yes--> check_rb
+  link_secret                -->      check_rb
+  check_rb                   --No-->  create_rb
+  check_rb                   --Yes--> complete
+  create_rb                  -->      complete
 
-   %% Assigning styles to nodes
+  %% Assigning styles to nodes
   class predicate Amber;
+  class create_sa,create_secret,link_secret,create_rb Green;
 
   ```
