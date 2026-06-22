@@ -233,6 +233,7 @@ func setupControllerWithManager(manager ctrl.Manager, controller *Reconciler) er
 				predicate.Or(
 					gitops.IntegrationSnapshotChangePredicate(),
 					gitops.SnapshotIntegrationTestRerunTriggerPredicate(),
+					gitops.SnapshotTestAnnotationChangePredicate(),
 				),
 			),
 		).

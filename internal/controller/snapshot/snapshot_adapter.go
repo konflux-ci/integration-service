@@ -27,6 +27,7 @@ import (
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
+	"github.com/konflux-ci/integration-service/pkg/dag"
 	clienterrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -378,8 +379,12 @@ func (a *Adapter) initializeTestStatusesWithDefer(integrationTestScenarios *[]v1
 	if err != nil {
 		return nil, nil, err
 	}
+	runAfterMap := make(map[string][]string)
 
-	testStatuses.InitStatuses(integrationTestScenarios)
+	if a.componentGroup != nil && a.componentGroup.Spec.TestGraph != nil {
+		runAfterMap = dag.GetRunAfterMapForTestGraphNodes(a.componentGroup.Spec.TestGraph, integrationTestScenarios)
+	}
+	testStatuses.InitStatuses(integrationTestScenarios, runAfterMap)
 
 	err = gitops.WriteIntegrationTestStatusesIntoSnapshot(a.context, a.snapshot, testStatuses, a.client)
 	if err != nil {
@@ -448,7 +453,7 @@ func (a *Adapter) processSingleScenario(
 	return nil
 }
 
-// processAllScenarios iterates through all scenarios and creates pipelines
+// processAllScenarios iterates through all scenarios and creates pipelines.
 func (a *Adapter) processAllScenarios(
 	integrationTestScenarios *[]v1beta2.IntegrationTestScenario,
 	testStatuses *intgteststat.SnapshotIntegrationTestStatuses,
@@ -517,9 +522,15 @@ func (a *Adapter) markSnapshotPassedIfNoRequiredScenarios() (controller.Operatio
 
 // EnsureIntegrationPipelineRunsExist is an operation that will ensure that all Integration pipeline runs
 // associated with the Snapshot and the Application's IntegrationTestScenarios exist.
+// If a testGraph is defined in the componentGroup, then only root nodes are processed and started.
 func (a *Adapter) EnsureIntegrationPipelineRunsExist() (controller.OperationResult, error) {
 	if gitops.HaveAppStudioTestsFinished(a.snapshot) {
 		a.logger.Info("The Snapshot has finished testing.")
+		return controller.ContinueProcessing()
+	}
+
+	if metadata.HasAnnotation(a.snapshot, gitops.SnapshotTestsStatusAnnotation) {
+		a.logger.Info("The Snapshot has its test.appstudio.openshift.io/status annotation already defined and has already started testing.")
 		return controller.ContinueProcessing()
 	}
 
@@ -534,6 +545,10 @@ func (a *Adapter) EnsureIntegrationPipelineRunsExist() (controller.OperationResu
 			return controller.RequeueWithError(err)
 		}
 		defer deferFunc()
+
+		if a.componentGroup != nil && a.componentGroup.Spec.TestGraph != nil {
+			integrationTestScenarios = dag.FilterRootIntegrationTestScenarios(a.componentGroup.Spec.TestGraph, integrationTestScenarios)
+		}
 
 		// Process all scenarios
 		errsForPLRCreation = a.processAllScenarios(integrationTestScenarios, testStatuses)
@@ -945,6 +960,85 @@ func (a *Adapter) EnsureGroupSnapshotExist() (controller.OperationResult, error)
 		return controller.RequeueWithError(err)
 	}
 	return controller.ContinueProcessing()
+}
+
+// EnsureDependentPipelineRunsExist ensures any dependent integration tests that are supposed to run after other test pipelines
+// and have their requirements satisfied are started.
+func (a *Adapter) EnsureDependentPipelineRunsExist() (controller.OperationResult, error) {
+	if gitops.HaveAppStudioTestsFinished(a.snapshot) {
+		a.logger.Info("The Snapshot has finished testing.")
+		return controller.ContinueProcessing()
+	}
+
+	// This logic only applies to Snapshots associated with componentGroups which have spec.testGraph defined
+	if a.componentGroup == nil || a.componentGroup.Spec.TestGraph == nil {
+		return controller.ContinueProcessing()
+	}
+
+	var err error
+	var errsForPLRCreation error
+
+	allIntegrationScenariosForComponentGroup, err := a.loader.GetAllIntegrationTestScenariosForComponentGroup(a.context, a.client, a.componentGroup)
+	if err != nil {
+		return controller.RequeueWithError(err)
+	}
+	testStatuses, err := gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(a.snapshot)
+	if err != nil {
+		return controller.RequeueWithError(err)
+	}
+
+	// Find and process dependent scenarios which have runAfter requirements satisfied
+	dependentIntegrationScenariosToRun := a.findPendingScenariosWithSatisfiedRunAfter(allIntegrationScenariosForComponentGroup, testStatuses)
+	if dependentIntegrationScenariosToRun != nil {
+		// Process all scenarios
+		errsForPLRCreation = a.processAllScenarios(dependentIntegrationScenariosToRun, testStatuses)
+
+		// Persist final status
+		err = gitops.WriteIntegrationTestStatusesIntoSnapshot(a.context, a.snapshot, testStatuses, a.client)
+		if err != nil {
+			a.logger.Error(err, "Failed to update test status in snapshot annotation")
+			errsForPLRCreation = errors.Join(errsForPLRCreation, err)
+		}
+	}
+
+	// Return any pipeline creation errors
+	if errsForPLRCreation != nil {
+		return controller.RequeueWithError(errsForPLRCreation)
+	}
+
+	return controller.ContinueProcessing()
+}
+
+// findPendingScenariosWithSatisfiedRunAfter finds all pending IntegrationTestScenarios which have all of the scenarios
+// listed in their runAfter map finished and satisfied the requirements to run the scenario.
+func (a *Adapter) findPendingScenariosWithSatisfiedRunAfter(allIntegrationTestScenarios *[]v1beta2.IntegrationTestScenario, testStatuses *intgteststat.SnapshotIntegrationTestStatuses) *[]v1beta2.IntegrationTestScenario {
+	var dependentIntegrationScenariosToRun []v1beta2.IntegrationTestScenario
+	for _, scenario := range *allIntegrationTestScenarios {
+		scenarioDetail, found := testStatuses.GetScenarioStatus(scenario.Name)
+		// Check if pending test scenarios have runAfter requirements
+		if found && scenarioDetail.Status == intgteststat.IntegrationTestStatusPending && scenarioDetail.RunAfter != nil && len(scenarioDetail.RunAfter) > 0 {
+			numRunAfter := 0
+			// Check if all runAfter scenarios have finished
+			for _, runAfterScenario := range scenarioDetail.RunAfter {
+				testDetails, ok := testStatuses.GetScenarioStatus(runAfterScenario)
+				if ok && testDetails.Status.IsFinal() {
+					if testDetails.Status == intgteststat.IntegrationTestStatusTestPassed {
+						numRunAfter++
+					} else {
+						// Consider the runAfter scenario as finished if failFast option isn't set to true
+						if !dag.ShouldFailFastForScenariosParent(a.componentGroup.Spec.TestGraph, scenario.Name, runAfterScenario) {
+							numRunAfter++
+						}
+					}
+				}
+			}
+			// Iff all runAfter scenarios have finished in the required manner, add it to the list
+			if numRunAfter >= len(scenarioDetail.RunAfter) {
+				dependentIntegrationScenariosToRun = append(dependentIntegrationScenariosToRun, scenario)
+			}
+		}
+	}
+	return &dependentIntegrationScenariosToRun
 }
 
 // createMissingReleasesForReleasePlans checks if there's existing Releases for a given list of ReleasePlans and creates

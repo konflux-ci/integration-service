@@ -86,6 +86,12 @@ const integrationTestStatusesSchema = `{
         },
         "testPipelineRunName": {
           "type": "string"
+        },
+        "runAfter": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
         }
       },
 	  "required": ["scenario", "status", "lastUpdateTime"]
@@ -110,6 +116,8 @@ type IntegrationTestStatusDetail struct {
 	TestPipelineRunName string `json:"testPipelineRunName,omitempty"`
 	// IsOptionalScenario defines if the scenario is optional, which means that test failure should not block promotion of snapshot
 	IsOptionalScenario bool `json:"isOptionalScenario,omitempty"`
+	// RunAfter defines the list of scenarios this scenario is supposed to run after
+	RunAfter []string `json:"runAfter,omitempty"`
 }
 
 // SnapshotIntegrationTestStatuses type handles details about snapshot tests
@@ -221,6 +229,15 @@ func (sits *SnapshotIntegrationTestStatuses) SetTestDetailOptional(name string, 
 	}
 }
 
+// SetTestDetailRunAfterList sets test details runAfter list according to the provided list of scenarios
+func (sits *SnapshotIntegrationTestStatuses) SetTestDetailRunAfterList(name string, runAfter []string) {
+	var detail *IntegrationTestStatusDetail
+	detail, ok := sits.statuses[name]
+	if ok {
+		detail.RunAfter = runAfter
+	}
+}
+
 // UpdateTestPipelineRunName updates TestPipelineRunName if changed
 // scenario must already exist in statuses
 func (sits *SnapshotIntegrationTestStatuses) UpdateTestPipelineRunName(scenarioName string, pipelineRunName string) error {
@@ -239,7 +256,7 @@ func (sits *SnapshotIntegrationTestStatuses) UpdateTestPipelineRunName(scenarioN
 
 // InitStatuses creates initial representation all scenarios
 // This function also removes scenarios which are not defined in scenarios param
-func (sits *SnapshotIntegrationTestStatuses) InitStatuses(integrationTestScenarios *[]v1beta2.IntegrationTestScenario) {
+func (sits *SnapshotIntegrationTestStatuses) InitStatuses(integrationTestScenarios *[]v1beta2.IntegrationTestScenario, runAfterMap map[string][]string) {
 	var expectedScenarios = make(map[string]struct{}) // map as a set
 
 	// if given scenario doesn't exist, create it in pending state
@@ -249,9 +266,12 @@ func (sits *SnapshotIntegrationTestStatuses) InitStatuses(integrationTestScenari
 		expectedScenarios[name] = struct{}{}
 		_, ok := sits.statuses[name]
 		if !ok {
-			// init test statuses and optional value only if they doesn't exist
+			// init test statuses and optional value only if they don't exist
 			sits.UpdateTestStatusIfChanged(name, IntegrationTestStatusPending, "Pending")
 			sits.SetTestDetailOptional(name, helpers.IsIntegrationTestScenarioOptional(&scenario))
+			if _, found := runAfterMap[name]; found {
+				sits.SetTestDetailRunAfterList(name, runAfterMap[name])
+			}
 		}
 	}
 

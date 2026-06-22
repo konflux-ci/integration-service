@@ -492,7 +492,7 @@ var _ = Describe("integrationteststatus library unittests", func() {
 
 			It("Initialization with empty scenario list will remove data", func() {
 				sits.ResetDirty()
-				sits.InitStatuses(&[]v1beta2.IntegrationTestScenario{})
+				sits.InitStatuses(&[]v1beta2.IntegrationTestScenario{}, map[string][]string{})
 				Expect(sits.GetStatuses()).To(BeEmpty())
 				Expect(sits.IsDirty()).To(BeTrue())
 			})
@@ -501,7 +501,7 @@ var _ = Describe("integrationteststatus library unittests", func() {
 
 		It("Initialization with new test scenario creates pending status", func() {
 			sits.ResetDirty()
-			sits.InitStatuses(&[]v1beta2.IntegrationTestScenario{*integrationTestScenario})
+			sits.InitStatuses(&[]v1beta2.IntegrationTestScenario{*integrationTestScenario}, map[string][]string{})
 
 			Expect(sits.IsDirty()).To(BeTrue())
 			Expect(sits.GetStatuses()).To(HaveLen(1))

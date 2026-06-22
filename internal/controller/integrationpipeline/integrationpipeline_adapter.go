@@ -25,6 +25,7 @@ import (
 	"github.com/konflux-ci/integration-service/gitops"
 	h "github.com/konflux-ci/integration-service/helpers"
 	"github.com/konflux-ci/integration-service/loader"
+	"github.com/konflux-ci/integration-service/pkg/dag"
 	intgteststat "github.com/konflux-ci/integration-service/pkg/integrationteststatus"
 	"github.com/konflux-ci/integration-service/pkg/tracing"
 	"github.com/konflux-ci/integration-service/status"
@@ -97,6 +98,13 @@ func (a *Adapter) EnsureStatusReportedInSnapshot() (controller.OperationResult, 
 		statuses.UpdateTestStatusIfChanged(a.pipelineRun.Labels[tektonconsts.ScenarioNameLabel], pipelinerunStatus, detail)
 		if err = statuses.UpdateTestPipelineRunName(a.pipelineRun.Labels[tektonconsts.ScenarioNameLabel], a.pipelineRun.Name); err != nil {
 			return err
+		}
+
+		if h.HasPipelineRunFinished(a.pipelineRun) && !h.HasPipelineRunSucceeded(a.pipelineRun) {
+			err := a.updateStatusForDependentTestsIfTestFailed(a.context, a.client, a.pipelineRun, statuses)
+			if err != nil {
+				return err
+			}
 		}
 
 		// don't return wrapped err for retries
@@ -220,6 +228,38 @@ func (a *Adapter) annotateIntegrationPipelineRunLogURL(ctx context.Context, adap
 		}
 		return err
 	})
+}
+
+// updateStatusForDependentTestsIfTestFailed updates the test status for any dependent tests if this pipelineRun failed
+func (a *Adapter) updateStatusForDependentTestsIfTestFailed(ctx context.Context, adapterClient client.Client, pipelineRun *tektonv1.PipelineRun, testDetails *intgteststat.SnapshotIntegrationTestStatuses) error {
+	// We only run this logic in case the test scenario finished and failed
+	scenarioName := pipelineRun.Labels[tektonconsts.ScenarioNameLabel]
+	componentGroup, err := a.loader.GetComponentGroupFromSnapshot(ctx, adapterClient, a.snapshot)
+	if err != nil {
+		return err
+	}
+	if componentGroup == nil || componentGroup.Spec.TestGraph == nil {
+		return nil
+	}
+
+	for _, testDetail := range testDetails.GetStatuses() {
+		if testDetail.ScenarioName == scenarioName {
+			continue
+		}
+		if testDetail.RunAfter == nil || len(testDetail.RunAfter) == 0 {
+			continue
+		}
+		for _, parentScenario := range testDetail.RunAfter {
+			if parentScenario != scenarioName {
+				continue
+			}
+			if dag.ShouldFailFastForScenariosParent(componentGroup.Spec.TestGraph, testDetail.ScenarioName, scenarioName) {
+				testDetail.Status = intgteststat.IntegrationTestStatusTestFail
+				testDetail.Details = fmt.Sprintf("Cancelled on account of required %s failing", scenarioName)
+			}
+		}
+	}
+	return nil
 }
 
 // emitTestTimingSpans emits timing spans for the integration test PipelineRun if not already emitted.
