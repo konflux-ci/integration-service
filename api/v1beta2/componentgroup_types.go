@@ -41,11 +41,6 @@ type ComponentGroupSpec struct {
 	// +required
 	Components []ComponentReference `json:"components"`
 
-	// Dependents is a list of ComponentGroup names that are dependent on this ComponentGroup.
-	// When a snapshot is created for this ComponentGroup, snapshots will also be created for all dependents.
-	// +optional
-	Dependents []string `json:"dependents,omitempty"`
-
 	// TestGraph describes the desired order in which tests associated with the ComponentGroup should be executed.
 	// If not specified, all tests will run in parallel.
 	// The map key is the test scenario name, and the value is a list of parent test scenarios it depends on.
@@ -58,17 +53,24 @@ type ComponentGroupSpec struct {
 	SnapshotCreator *SnapshotCreatorSpec `json:"snapshotCreator,omitempty"`
 }
 
-// ComponentReference references a Component and its specific branch/version
+// ComponentReference references a Component or ComponentGroup and its specific branch/version
 type ComponentReference struct {
-	// Name is the name of the Component
+	// Name is the name of the Component or ComponentGroup
 	// +kubebuilder:validation:Pattern=^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
 	// +required
 	Name string `json:"name"`
 
+	// Kind is the type of resource  being referenced
+	// Must be 'component' or 'componentGroup', case-insensitive
+	// +kubebuilder:default:="component"
+	// +kubebuilder:validation:Pattern=`(?i)^(component|componentGroup)$`
+	Kind string `json:"kind,omitempty"`
+
 	// ComponentVersion references the ComponentVersion for this Component.
+	// Can only be set if 'Kind' is set to 'Component' or empty
 	// The ComponentVersion CRD will be implemented by the build team as part of STONEBLD-3604.
 	// For now, this contains the branch name and GCL (Global Candidate List) information.
-	// +required
+	// +optional
 	ComponentVersion ComponentVersionReference `json:"componentVersion"`
 }
 

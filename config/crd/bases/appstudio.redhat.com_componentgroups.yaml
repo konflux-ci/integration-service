@@ -54,12 +54,13 @@ spec:
                   Components is a list of Components (name and branch) that belong to the ComponentGroup.
                   This is the source of truth for logical groupings of versioned Components.
                 items:
-                  description: ComponentReference references a Component and its specific
-                    branch/version
+                  description: ComponentReference references a Component or ComponentGroup
+                    and its specific branch/version
                   properties:
                     componentVersion:
                       description: |-
                         ComponentVersion references the ComponentVersion for this Component.
+                        Can only be set if 'Kind' is set to 'Component' or empty
                         The ComponentVersion CRD will be implemented by the build team as part of STONEBLD-3604.
                         For now, this contains the branch name and GCL (Global Candidate List) information.
                       properties:
@@ -82,21 +83,20 @@ spec:
                       required:
                       - name
                       type: object
+                    kind:
+                      default: component
+                      description: |-
+                        Kind is the type of resource  being referenced
+                        Must be 'component' or 'componentGroup', case-insensitive
+                      pattern: (?i)^(component|componentGroup)$
+                      type: string
                     name:
-                      description: Name is the name of the Component
+                      description: Name is the name of the Component or ComponentGroup
                       pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
                       type: string
                   required:
-                  - componentVersion
                   - name
                   type: object
-                type: array
-              dependents:
-                description: |-
-                  Dependents is a list of ComponentGroup names that are dependent on this ComponentGroup.
-                  When a snapshot is created for this ComponentGroup, snapshots will also be created for all dependents.
-                items:
-                  type: string
                 type: array
               snapshotCreator:
                 description: |-

@@ -47,6 +47,7 @@ var _ = Describe("Loader", Ordered, func() {
 		hasApp                      *applicationapiv1alpha1.Application
 		hasComponentGroup1          *v1beta2.ComponentGroup
 		hasComponentGroup2          *v1beta2.ComponentGroup
+		hasContainerCompGroup       *v1beta2.ComponentGroup
 		hasComp                     *applicationapiv1alpha1.Component
 		integrationTestScenario     *v1beta2.IntegrationTestScenario
 		integrationTestScenarioOpt  *v1beta2.IntegrationTestScenario
@@ -124,6 +125,26 @@ var _ = Describe("Loader", Ordered, func() {
 			},
 		}
 		Expect(k8sClient.Create(ctx, hasComponentGroup2)).Should(Succeed())
+
+		hasContainerCompGroup = &v1beta2.ComponentGroup{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "container-componentgroup",
+				Namespace: "default",
+			},
+			Spec: v1beta2.ComponentGroupSpec{
+				Components: []v1beta2.ComponentReference{
+					{
+						Name: "componentgroup-1",
+						Kind: "componentgroup",
+					},
+					{
+						Name: "componentgroup-2",
+						Kind: "componentgroup",
+					},
+				},
+			},
+		}
+		Expect(k8sClient.Create(ctx, hasContainerCompGroup)).Should(Succeed())
 
 		hasComp = &applicationapiv1alpha1.Component{
 			ObjectMeta: metav1.ObjectMeta{
@@ -1311,7 +1332,6 @@ var _ = Describe("Loader", Ordered, func() {
 		It("can get pull request component snapshot for specific component and PR number", func() {
 			prNumber := "1"
 			componentGroupNames := []string{hasCompGroup1.Name, hasCompGroup2.Name}
-			// TODO: create hasCompGroup1, hasCompGroup2, hasCGSnapshot1, hasCGSnapshot2
 			snapshots, err := loader.GetPRComponentSnapshotsForComponent(ctx, k8sClient, componentGroupNames, hasCGSnapshot1.Namespace, hasComp.Name, prNumber)
 
 			sort.Slice(*snapshots, func(i, j int) bool {
@@ -1534,4 +1554,25 @@ var _ = Describe("Loader", Ordered, func() {
 			Expect(*snapshots).To(BeEmpty())
 		})
 	})
+
+	It("can get all componentGroups in the namespace", func() {
+		componentGroups, err := loader.GetAllComponentGroupsInNamespace(ctx, k8sClient, "default")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(componentGroups).To(HaveLen(5))
+	})
+
+	It("can get componentGroups that contain another componentGroup", func() {
+		componentGroups, err := loader.GetComponentGroupsContainingComponentGroup(ctx, k8sClient, hasComponentGroup1)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(componentGroups).To(HaveLen(1))
+		Expect((componentGroups)[0].Name).To(Equal(hasContainerCompGroup.Name))
+	})
+
+	It("can get the componentGroups that are nested in a componentGroup", func() {
+		componentGroups, err := loader.GetNestedComponentGroupsForComponentGroup(ctx, k8sClient, hasContainerCompGroup)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(componentGroups).To(HaveLen(2))
+		Expect((componentGroups)[0].Name).To(Equal(hasComponentGroup1.Name))
+	})
+
 })

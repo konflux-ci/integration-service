@@ -164,15 +164,17 @@ func UpdateGCLForOverrideSnapshot(ctx context.Context, adapterClient client.Clie
 	return err
 }
 
-func FetchSnapshotComponentFromGCL(componentName string, snapshotComponentsFromGCL []applicationapiv1alpha1.SnapshotComponent, invalidComponents []v1beta2.ComponentState) (*applicationapiv1alpha1.SnapshotComponent, error) {
-	for _, snapshotComponentFromGCL := range snapshotComponentsFromGCL {
-		if snapshotComponentFromGCL.Name == componentName {
-			return &snapshotComponentFromGCL, nil
-		}
+func FetchSnapshotComponentFromGCL(componentName, componentVersion string, snapshotComponentsFromGCL map[string]applicationapiv1alpha1.SnapshotComponent, invalidComponents map[v1beta2.ComponentState]InvalidComponentReason) (*applicationapiv1alpha1.SnapshotComponent, error) {
+	componentVersionString := helpers.GetComponentVersionString(componentName, componentVersion)
+	if component, ok := snapshotComponentsFromGCL[componentVersionString]; ok {
+		return &component, nil
 	}
-	for _, invalidComponent := range invalidComponents {
+
+	for invalidComponent, reason := range invalidComponents {
 		if invalidComponent.Name == componentName {
-			return nil, fmt.Errorf("component cannot be added to snapshot due to invalid digest in containerImage")
+			if invalidComponent.Version == "" || invalidComponent.Version == componentVersion {
+				return nil, fmt.Errorf("component cannot be added to snapshot due to %s", reason.Reason)
+			}
 		}
 	}
 	return nil, nil

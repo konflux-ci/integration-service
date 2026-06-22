@@ -20,6 +20,7 @@ package loader
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
 	"github.com/konflux-ci/integration-service/api/v1beta2"
@@ -83,6 +84,9 @@ type ObjectLoader interface {
 	GetPRComponentSnapshotsForComponentApplication(ctx context.Context, c client.Client, namespace, applicationName, componentName, prNumber string) (*[]applicationapiv1alpha1.Snapshot, error)
 	GetPRComponentSnapshotsForComponent(ctx context.Context, c client.Client, componentGroupNames []string, namespace, componentName, prNumber string) (*[]applicationapiv1alpha1.Snapshot, error)
 	GetPushComponentSnapshotsForComponent(ctx context.Context, c client.Client, snapshot *applicationapiv1alpha1.Snapshot) (*[]applicationapiv1alpha1.Snapshot, error)
+	GetComponentGroupsContainingComponentGroup(ctx context.Context, c client.Client, childComponentGroup *v1beta2.ComponentGroup) ([]v1beta2.ComponentGroup, error)
+	GetAllComponentGroupsInNamespace(ctx context.Context, c client.Client, namespace string) ([]v1beta2.ComponentGroup, error)
+	GetNestedComponentGroupsForComponentGroup(ctx context.Context, c client.Client, componentGroup *v1beta2.ComponentGroup) ([]v1beta2.ComponentGroup, error)
 }
 
 type loader struct{}
@@ -233,15 +237,9 @@ func (l *loader) GetApplicationFromComponent(ctx context.Context, c client.Clien
 // GetComponentGroupsForComponentVersion loads from the cluster a list of ComponentGroups that use the given ComponentVerison. If
 // the Component does not belong to any ComponentGroups then an empty list will be returned
 func (l *loader) GetComponentGroupsForComponentVersion(ctx context.Context, c client.Client, component *applicationapiv1alpha1.Component, version string) (*[]v1beta2.ComponentGroup, error) {
-	componentGroupList := &v1beta2.ComponentGroupList{}
-
 	// Kubernetes FieldSelector cannot filter by "spec.components contains item where name=X and componentBranch.name=Y"
 	// (only top-level or CRD selectableFields are supported, not array containment). List all in namespace and filter in Go.
-	options := &client.ListOptions{
-		Namespace: component.Namespace,
-	}
-
-	err := c.List(ctx, componentGroupList, options)
+	componentGroups, err := l.GetAllComponentGroupsInNamespace(ctx, c, component.Namespace)
 	if err != nil {
 		return nil, err
 	}
@@ -251,12 +249,15 @@ func (l *loader) GetComponentGroupsForComponentVersion(ctx context.Context, c cl
 	// that contains a list of all components in the ComponentGroup. Then we just have to filter the (smaller) list of
 	// ComponentGroups for matching versions.
 	var result []v1beta2.ComponentGroup
-	for i := range componentGroupList.Items {
-		cg := &componentGroupList.Items[i]
+	for i := range componentGroups {
+		cg := componentGroups[i]
 		for j := range cg.Spec.Components {
 			ref := &cg.Spec.Components[j]
+			if strings.EqualFold(ref.Kind, "componentgroup") {
+				continue
+			}
 			if ref.Name == component.Name && ref.ComponentVersion.Name == version {
-				result = append(result, *cg)
+				result = append(result, cg)
 				break
 			}
 		}
@@ -1066,4 +1067,55 @@ func (l *loader) GetPRComponentSnapshotsForComponentApplication(ctx context.Cont
 		return nil, err
 	}
 	return &snapshots.Items, nil
+}
+
+// Gets all of the ComponentGroups that contain the ComponentGroup
+func (l *loader) GetComponentGroupsContainingComponentGroup(ctx context.Context, c client.Client, childComponentGroup *v1beta2.ComponentGroup) ([]v1beta2.ComponentGroup, error) {
+	allComponentGroups, err := l.GetAllComponentGroupsInNamespace(ctx, c, childComponentGroup.Namespace)
+	if err != nil {
+		return nil, err
+	}
+
+	var parentComponentGroups []v1beta2.ComponentGroup
+	for _, componentGroup := range allComponentGroups {
+		if componentGroup.Name == childComponentGroup.Name {
+			continue
+		}
+
+		for _, component := range componentGroup.Spec.Components {
+			if strings.EqualFold(component.Kind, "componentgroup") && component.Name == childComponentGroup.Name {
+				parentComponentGroups = append(parentComponentGroups, componentGroup)
+			}
+		}
+	}
+
+	return parentComponentGroups, nil
+}
+
+func (l *loader) GetAllComponentGroupsInNamespace(ctx context.Context, c client.Client, namespace string) ([]v1beta2.ComponentGroup, error) {
+	componentGroupList := &v1beta2.ComponentGroupList{}
+
+	// Kubernetes FieldSelector cannot filter by "spec.components contains item where name=X and componentBranch.name=Y"
+	// (only top-level or CRD selectableFields are supported, not array containment). List all in namespace and filter in Go.
+	options := &client.ListOptions{
+		Namespace: namespace,
+	}
+
+	err := c.List(ctx, componentGroupList, options)
+	return componentGroupList.Items, err
+}
+
+func (l *loader) GetNestedComponentGroupsForComponentGroup(ctx context.Context, c client.Client, componentGroup *v1beta2.ComponentGroup) ([]v1beta2.ComponentGroup, error) {
+	namespace := componentGroup.Namespace
+	var nestedComponentGroups []v1beta2.ComponentGroup
+	for _, component := range componentGroup.Spec.Components {
+		if strings.EqualFold(component.Kind, "componentgroup") {
+			nestedComponentGroup, err := l.GetComponentGroup(ctx, c, component.Name, namespace)
+			if err != nil {
+				return nil, fmt.Errorf("could not get componentGroup %s nested in componentGroup %s: %+v", component.Name, componentGroup.Name, err)
+			}
+			nestedComponentGroups = append(nestedComponentGroups, *nestedComponentGroup)
+		}
+	}
+	return nestedComponentGroups, nil
 }
