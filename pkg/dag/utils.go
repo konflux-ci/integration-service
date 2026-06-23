@@ -17,71 +17,93 @@
 package dag
 
 import (
-	"maps"
+	"fmt"
 
 	"github.com/konflux-ci/integration-service/api/v1beta2"
+	intgteststat "github.com/konflux-ci/integration-service/pkg/integrationteststatus"
 )
 
-// FilterRootIntegrationTestScenarios uses Kahn's algorithm on the reversed dependency graph to
-// get root IntegrationTestScenarios.
-func FilterRootIntegrationTestScenarios(testGraph map[string][]v1beta2.TestGraphNode, scenarios *[]v1beta2.IntegrationTestScenario) *[]v1beta2.IntegrationTestScenario {
-	// indegrees[x] = number of nodes that list x as a parent (i.e. x's child count).
-	var filteredScenarios []v1beta2.IntegrationTestScenario
-	graphCopy := maps.Clone(testGraph)
-
-	for _, scenario := range *scenarios {
-		// Ensure every scenario appears in testGraph even if it has no declared
-		// parents.
-		if _, ok := graphCopy[scenario.Name]; !ok {
-			graphCopy[scenario.Name] = []v1beta2.TestGraphNode{}
-		}
-	}
-
-	// Find root nodes (ones which don't depend on any other nodes) and match them with a scenario.
-	for node := range graphCopy {
-		if len(graphCopy[node]) == 0 {
-			for _, scenario := range *scenarios {
-				if scenario.Name == node {
-					filteredScenarios = append(filteredScenarios, scenario)
-					break
-				}
-			}
-		}
-	}
-	return &filteredScenarios
-}
-
 // GetRunAfterMapForTestGraphNodes generates a RunAfter map which contains the list of scenarios that a given scenario node
-// should run after. It checks if a parentNode is in the list of provided scenarios before appending to the runAfter map
+// should run after. It checks if a child is in the list of provided scenarios before appending to the runAfter map
 func GetRunAfterMapForTestGraphNodes(testGraph map[string][]v1beta2.TestGraphNode, integrationTestScenarios *[]v1beta2.IntegrationTestScenario) map[string][]string {
 	runAfterMap := make(map[string][]string)
+	if integrationTestScenarios == nil {
+		return runAfterMap
+	}
 
-	for node := range testGraph {
+	scenarioSet := make(map[string]struct{}, len(*integrationTestScenarios))
+	for _, scenario := range *integrationTestScenarios {
+		scenarioSet[scenario.Name] = struct{}{}
+	}
+
+	for node, parents := range testGraph {
 		runAfterMap[node] = make([]string, 0)
-		for _, parentNode := range testGraph[node] {
-			for _, integrationTestScenario := range *integrationTestScenarios {
-				if integrationTestScenario.Name == node {
-					runAfterMap[node] = append(runAfterMap[node], parentNode.Name)
-					break
-				}
+		if _, exists := scenarioSet[node]; !exists {
+			continue
+		}
+		for _, parentNode := range parents {
+			if _, exists := scenarioSet[parentNode.Name]; exists {
+				runAfterMap[node] = append(runAfterMap[node], parentNode.Name)
 			}
 		}
 	}
 	return runAfterMap
 }
 
-// ShouldFailFastForScenariosParent find the requested parent's failFast option for a given scenario
-func ShouldFailFastForScenariosParent(testGraph map[string][]v1beta2.TestGraphNode, scenarioName, parentScenarioName string) bool {
-	failFast := false
+// hasParent reports whether parentName appears in the child's declared parent list.
+func hasParent(parents []v1beta2.TestGraphNode, parentName string) bool {
+	for _, parent := range parents {
+		if parent.Name == parentName {
+			return true
+		}
+	}
+	return false
+}
 
-	for node := range testGraph {
-		if node == scenarioName {
-			for _, parentNode := range testGraph[node] {
-				if parentNode.Name == parentScenarioName {
-					failFast = parentNode.FailFast
-				}
+// ShouldFailFastForScenariosParent finds the requested parent's failFast option for a given scenario
+func ShouldFailFastForScenariosParent(testGraph map[string][]v1beta2.TestGraphNode, scenarioName, parentScenarioName string) bool {
+	if parents, ok := testGraph[scenarioName]; ok {
+		for _, parentNode := range parents {
+			if parentNode.Name == parentScenarioName {
+				return parentNode.FailFast
 			}
 		}
 	}
-	return failFast
+	return false
+}
+
+// CascadeFailFastDependents walks the testGraph from failedScenario and marks
+// all transitively blocked dependents as TestFail when each edge has failFast: true.
+func CascadeFailFastDependents(
+	testGraph map[string][]v1beta2.TestGraphNode,
+	statuses *intgteststat.SnapshotIntegrationTestStatuses,
+	failedScenario string,
+) {
+	queue := []string{failedScenario}
+	seen := map[string]struct{}{failedScenario: {}}
+	for len(queue) > 0 {
+		parent := queue[0]
+		queue = queue[1:]
+		for child, parents := range testGraph {
+			if !hasParent(parents, parent) {
+				continue
+			}
+			if !ShouldFailFastForScenariosParent(testGraph, child, parent) {
+				continue
+			}
+			detail, ok := statuses.GetScenarioStatus(child)
+			if !ok || detail.Status.IsFinal() {
+				continue
+			}
+			statuses.UpdateTestStatusIfChanged(
+				child,
+				intgteststat.IntegrationTestStatusTestFail,
+				fmt.Sprintf("Cancelled on account of required %s failing", parent),
+			)
+			if _, already := seen[child]; !already {
+				seen[child] = struct{}{}
+				queue = append(queue, child) // cascade B → C, C → D, ...
+			}
+		}
+	}
 }

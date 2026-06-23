@@ -19,6 +19,7 @@ package integrationteststatus
 import (
 	"encoding/json"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/konflux-ci/integration-service/api/v1beta2"
@@ -144,6 +145,15 @@ func (sits *IntegrationTestStatus) IsFinal() bool {
 	return false
 }
 
+func (sits *IntegrationTestStatus) IsPassed() bool {
+	switch *sits {
+	case IntegrationTestStatusTestPassed,
+		IntegrationTestStatusTestWarning:
+		return true
+	}
+	return false
+}
+
 // IsDirty returns boolean if there are any changes
 func (sits *SnapshotIntegrationTestStatuses) IsDirty() bool {
 	return sits.dirty
@@ -220,22 +230,36 @@ func (sits *SnapshotIntegrationTestStatuses) UpdateTestStatusIfChanged(scenarioN
 
 }
 
-// SetTestDetailOptional set test details optional according to the given value of name and isOptionalScenario
 func (sits *SnapshotIntegrationTestStatuses) SetTestDetailOptional(name string, isOptionalScenario bool) {
-	var detail *IntegrationTestStatusDetail
 	detail, ok := sits.statuses[name]
-	if ok {
-		detail.IsOptionalScenario = isOptionalScenario
+	if !ok {
+		return
 	}
+	if detail.IsOptionalScenario == isOptionalScenario {
+		return
+	}
+	detail.IsOptionalScenario = isOptionalScenario
+	sits.dirty = true
 }
 
-// SetTestDetailRunAfterList sets test details runAfter list according to the provided list of scenarios
-func (sits *SnapshotIntegrationTestStatuses) SetTestDetailRunAfterList(name string, runAfter []string) {
-	var detail *IntegrationTestStatusDetail
-	detail, ok := sits.statuses[name]
-	if ok {
-		detail.RunAfter = runAfter
+func runAfterEqual(existing, updated []string) bool {
+	// Treat nil and empty slice as equivalent (JSON / map init inconsistency).
+	if len(existing) == 0 && len(updated) == 0 {
+		return true
 	}
+	return slices.Equal(existing, updated)
+}
+
+func (sits *SnapshotIntegrationTestStatuses) SetTestDetailRunAfterList(name string, runAfter []string) {
+	detail, ok := sits.statuses[name]
+	if !ok {
+		return
+	}
+	if runAfterEqual(detail.RunAfter, runAfter) {
+		return
+	}
+	detail.RunAfter = runAfter
+	sits.dirty = true
 }
 
 // UpdateTestPipelineRunName updates TestPipelineRunName if changed
@@ -268,10 +292,10 @@ func (sits *SnapshotIntegrationTestStatuses) InitStatuses(integrationTestScenari
 		if !ok {
 			// init test statuses and optional value only if they don't exist
 			sits.UpdateTestStatusIfChanged(name, IntegrationTestStatusPending, "Pending")
-			sits.SetTestDetailOptional(name, helpers.IsIntegrationTestScenarioOptional(&scenario))
-			if _, found := runAfterMap[name]; found {
-				sits.SetTestDetailRunAfterList(name, runAfterMap[name])
-			}
+		}
+		sits.SetTestDetailOptional(name, helpers.IsIntegrationTestScenarioOptional(&scenario))
+		if _, found := runAfterMap[name]; found {
+			sits.SetTestDetailRunAfterList(name, runAfterMap[name])
 		}
 	}
 

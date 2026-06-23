@@ -560,6 +560,29 @@ var _ = Describe("integrationteststatus library unittests", func() {
 			})
 		})
 
+		When("SetTestDetailRunAfterList is called", func() {
+			BeforeEach(func() {
+				sits.InitStatuses(&[]v1beta2.IntegrationTestScenario{*integrationTestScenario},
+					map[string][]string{integrationTestScenario.Name: {"parent-a"}})
+				sits.ResetDirty()
+			})
+			It("marks dirty when runAfter changes", func() {
+				sits.SetTestDetailRunAfterList(integrationTestScenario.Name, []string{"parent-b"})
+				Expect(sits.IsDirty()).To(BeTrue())
+			})
+			It("does not mark dirty when runAfter is unchanged", func() {
+				sits.SetTestDetailRunAfterList(integrationTestScenario.Name, []string{"parent-a"})
+				Expect(sits.IsDirty()).To(BeFalse())
+			})
+			It("does not mark dirty for nil vs empty slice", func() {
+				sits.SetTestDetailRunAfterList(integrationTestScenario.Name, []string{})
+				detail, _ := sits.GetScenarioStatus(integrationTestScenario.Name)
+				detail.RunAfter = nil
+				sits.ResetDirty()
+				sits.SetTestDetailRunAfterList(integrationTestScenario.Name, []string{})
+				Expect(sits.IsDirty()).To(BeFalse())
+			})
+		})
 	})
 
 })

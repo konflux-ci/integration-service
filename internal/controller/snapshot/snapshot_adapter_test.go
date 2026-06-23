@@ -25,6 +25,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/konflux-ci/integration-service/pkg/dag"
 	"github.com/tonglil/buflogr"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
@@ -54,6 +55,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"knative.dev/pkg/apis"
 	v1 "knative.dev/pkg/apis/duck/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/konflux-ci/integration-service/gitops"
 	"github.com/konflux-ci/integration-service/helpers"
@@ -140,20 +142,21 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		integrationPipelineRunOld                 *tektonv1.PipelineRun
 	)
 	const (
-		SampleRepoLink            = "https://github.com/devfile-samples/devfile-sample-java-springboot-basic"
-		sample_image              = "quay.io/redhat-appstudio/sample-image"
-		sample_revision           = "random-value"
-		sample_commit             = "a2ba645d50e471d5f084b"
-		sampleDigest              = "sha256:841328df1b9f8c4087adbdcfec6cc99ac8308805dea83f6d415d6fb8d40227c1"
-		customLabel               = "custom.appstudio.openshift.io/custom-label"
-		sourceRepoRef             = "db2c043b72b3f8d292ee0e38768d0a94859a308b"
-		hasComSnapshot1Name       = "hascomsnapshot1-sample"
-		hasComSnapshot2Name       = "hascomsnapshot2-sample"
-		hasComSnapshot3Name       = "hascomsnapshot3-sample"
-		cgSnapshotName            = "componentgroup-snapshot-sample"
-		prGroup                   = "feature1"
-		prGroupSha                = "feature1hash"
-		plrstarttime        int64 = 1775992257000 // milliseconds (was 1775992257 seconds)
+		SampleRepoLink               = "https://github.com/devfile-samples/devfile-sample-java-springboot-basic"
+		sample_image                 = "quay.io/redhat-appstudio/sample-image"
+		sample_revision              = "random-value"
+		sample_commit                = "a2ba645d50e471d5f084b"
+		sampleDigest                 = "sha256:841328df1b9f8c4087adbdcfec6cc99ac8308805dea83f6d415d6fb8d40227c1"
+		customLabel                  = "custom.appstudio.openshift.io/custom-label"
+		sourceRepoRef                = "db2c043b72b3f8d292ee0e38768d0a94859a308b"
+		hasComSnapshot1Name          = "hascomsnapshot1-sample"
+		hasComSnapshot2Name          = "hascomsnapshot2-sample"
+		hasComSnapshot3Name          = "hascomsnapshot3-sample"
+		cgSnapshotName               = "componentgroup-snapshot-sample"
+		prGroup                      = "feature1"
+		prGroupSha                   = "feature1hash"
+		plrstarttime           int64 = 1775992257000 // milliseconds (was 1775992257 seconds)
+		ensurePLRSourceRepoRef       = "a2ba645d50e471d5f084b"
 	)
 
 	BeforeAll(func() {
@@ -1119,11 +1122,21 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 
 			// It will not re-trigger integration pipelineRuns
 			result, err = adapter.EnsureIntegrationPipelineRunsExist()
-			expectedLogEntry = "Found existing integrationPipelineRun"
-			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
 			Expect(result.CancelRequest).To(BeFalse())
 			Expect(result.RequeueRequest).To(BeFalse())
 			Expect(err).ToNot(HaveOccurred())
+
+			Eventually(func() error {
+				integrationPipelineRuns, err = adapter.loader.GetAllIntegrationPipelineRunsForSnapshot(adapter.context, k8sClient, hasCGSnapshot)
+				if err != nil {
+					return err
+				}
+
+				if expected, got := 1, len(integrationPipelineRuns); expected != got {
+					return fmt.Errorf("found %d PipelineRuns, expected: %d", got, expected)
+				}
+				return nil
+			}, time.Second*10).Should(Succeed())
 		})
 
 		It("ensures global Component Image will not be updated in the PR context", func() {
@@ -4991,5 +5004,530 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			Expect(result.CancelRequest).To(BeFalse())
 		})
 	})
+})
 
+var _ = Describe("Dependent scenarios snapshot adapter scheduling", Ordered, func() {
+	const (
+		sampleRepoLink                     = "https://github.com/devfile-samples/devfile-sample-java-springboot-basic"
+		sampleImage                        = "quay.io/redhat-appstudio/sample-image"
+		samplePRGroup                      = "feature1"
+		samplePLRStartTime           int64 = 1775992257000
+		sampleEnsurePLRSourceRepoRef       = "a2ba645d50e471d5f084b"
+	)
+	var (
+		sampleLogger         helpers.IntegrationLogger
+		sampleAdapter        *Adapter
+		sampleComponent      *applicationapiv1alpha1.Component
+		sampleComponentGroup *v1beta2.ComponentGroup
+		sampleSnapshot       *applicationapiv1alpha1.Snapshot
+		scenarioRoot         *v1beta2.IntegrationTestScenario
+		scenarioDependent    *v1beta2.IntegrationTestScenario
+	)
+
+	createSampleScenario := func(name string) *v1beta2.IntegrationTestScenario {
+		scenario := &v1beta2.IntegrationTestScenario{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      name,
+				Namespace: "default",
+				Labels: map[string]string{
+					"test.appstudio.openshift.io/optional": "false",
+				},
+			},
+			Spec: v1beta2.IntegrationTestScenarioSpec{
+				ComponentGroup: sampleComponentGroup.Name,
+				ResolverRef: v1beta2.ResolverRef{
+					Resolver: "git",
+					Params: []v1beta2.ResolverParameter{
+						{Name: "url", Value: "https://github.com/redhat-appstudio/integration-examples.git"},
+						{Name: "revision", Value: sampleEnsurePLRSourceRepoRef},
+						{Name: "pathInRepo", Value: "pipelineruns/integration_pipelinerun_pass.yaml"},
+					},
+				},
+			},
+		}
+		Expect(k8sClient.Create(ctx, scenario)).To(Succeed())
+		helpers.SetScenarioIntegrationStatusAsValid(scenario, "valid")
+		return scenario
+	}
+
+	newSampleAdapter := func(snapshot *applicationapiv1alpha1.Snapshot, buf *bytes.Buffer) *Adapter {
+		log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(buf)}
+		Expect(k8sClient.Get(ctx, types.NamespacedName{
+			Name:      sampleComponentGroup.Name,
+			Namespace: sampleComponentGroup.Namespace,
+		}, sampleComponentGroup)).To(Succeed())
+		sampleAdapter = NewAdapter(ctx, snapshot, sampleComponentGroup, log, loader.NewMockLoader(), k8sClient)
+		sampleAdapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+			{
+				ContextKey: loader.ComponentGroupContextKey,
+				Resource:   sampleComponentGroup,
+			},
+			{
+				ContextKey: loader.ComponentContextKey,
+				Resource:   sampleComponent,
+			},
+			{
+				ContextKey: loader.SnapshotContextKey,
+				Resource:   snapshot,
+			},
+			{
+				ContextKey: loader.SnapshotComponentsContextKey,
+				Resource:   []applicationapiv1alpha1.Component{*sampleComponent},
+			},
+		})
+		return sampleAdapter
+	}
+
+	refreshSampleSnapshot := func() {
+		Expect(k8sClient.Get(ctx, types.NamespacedName{
+			Name:      sampleSnapshot.Name,
+			Namespace: sampleSnapshot.Namespace,
+		}, sampleSnapshot)).To(Succeed())
+	}
+
+	countSampleIntegrationPLRs := func(snapshot *applicationapiv1alpha1.Snapshot) int {
+		plrLoader := loader.NewLoader()
+		pipelineRuns, err := plrLoader.GetAllIntegrationPipelineRunsForSnapshot(ctx, k8sClient, snapshot)
+		Expect(err).NotTo(HaveOccurred())
+		return len(pipelineRuns)
+	}
+
+	initTestStatuses := func(
+		scenarios []v1beta2.IntegrationTestScenario,
+		testGraph map[string][]v1beta2.TestGraphNode,
+	) *intgteststat.SnapshotIntegrationTestStatuses {
+		statuses, err := intgteststat.NewSnapshotIntegrationTestStatuses("")
+		Expect(err).NotTo(HaveOccurred())
+		runAfterMap := map[string][]string{}
+		if testGraph != nil {
+			scenarioPtrs := make([]v1beta2.IntegrationTestScenario, len(scenarios))
+			copy(scenarioPtrs, scenarios)
+			runAfterMap = dag.GetRunAfterMapForTestGraphNodes(testGraph, &scenarioPtrs)
+		}
+		scenarioPtrs := make([]v1beta2.IntegrationTestScenario, len(scenarios))
+		copy(scenarioPtrs, scenarios)
+		statuses.InitStatuses(&scenarioPtrs, runAfterMap)
+		return statuses
+	}
+
+	BeforeAll(func() {
+		sampleLogger = helpers.IntegrationLogger{Logger: buflogr.New()}
+
+		sampleComponent = &applicationapiv1alpha1.Component{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "sample-component",
+				Namespace: "default",
+			},
+			Spec: applicationapiv1alpha1.ComponentSpec{
+				ComponentName: "sample-component",
+				Application:   "application-sample",
+				Source: applicationapiv1alpha1.ComponentSource{
+					ComponentSourceUnion: applicationapiv1alpha1.ComponentSourceUnion{
+						GitSource: &applicationapiv1alpha1.GitSource{
+							URL:      sampleRepoLink,
+							Revision: "revision",
+						},
+					},
+				},
+			},
+		}
+		Expect(k8sClient.Create(ctx, sampleComponent)).To(Succeed())
+
+		sampleComponentGroup = &v1beta2.ComponentGroup{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "sample-component-group",
+				Namespace: "default",
+			},
+			Spec: v1beta2.ComponentGroupSpec{
+				Components: []v1beta2.ComponentReference{
+					{
+						Name: "sample-component",
+						ComponentVersion: v1beta2.ComponentVersionReference{
+							Name:     "v1",
+							Revision: "main",
+						},
+					},
+				},
+			},
+		}
+		Expect(k8sClient.Create(ctx, sampleComponentGroup)).To(Succeed())
+
+		sampleSnapshot = &applicationapiv1alpha1.Snapshot{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "sample-snapshot",
+				Namespace: "default",
+				Labels: map[string]string{
+					gitops.SnapshotTypeLabel:            gitops.SnapshotComponentType,
+					gitops.SnapshotComponentLabel:       "sample-component",
+					gitops.PipelineAsCodeEventTypeLabel: "push",
+				},
+			},
+			Spec: applicationapiv1alpha1.SnapshotSpec{
+				ComponentGroup: sampleComponentGroup.Name,
+				Components: []applicationapiv1alpha1.SnapshotComponent{
+					{
+						Name:           "sample-component",
+						ContainerImage: sampleImage,
+					},
+				},
+			},
+		}
+		Expect(k8sClient.Create(ctx, sampleSnapshot)).To(Succeed())
+
+		scenarioRoot = createSampleScenario("sample-scenario-root")
+		scenarioDependent = createSampleScenario("sample-scenario-dependent")
+	})
+
+	AfterAll(func() {
+		for _, obj := range []client.Object{
+			sampleSnapshot, scenarioRoot, scenarioDependent, sampleComponentGroup, sampleComponent,
+		} {
+			_ = k8sClient.Delete(ctx, obj)
+		}
+		plrLoader := loader.NewLoader()
+		pipelineRuns, err := plrLoader.GetAllIntegrationPipelineRunsForSnapshot(ctx, k8sClient, sampleSnapshot)
+		if err == nil {
+			for _, pipelineRun := range pipelineRuns {
+				_ = k8sClient.Delete(ctx, &pipelineRun)
+			}
+		}
+	})
+
+	BeforeEach(func() {
+		refreshSampleSnapshot()
+		plrLoader := loader.NewLoader()
+		pipelineRuns, err := plrLoader.GetAllIntegrationPipelineRunsForSnapshot(ctx, k8sClient, sampleSnapshot)
+		Expect(err).NotTo(HaveOccurred())
+		for i := range pipelineRuns {
+			Expect(k8sClient.Delete(ctx, &pipelineRuns[i])).To(Succeed())
+		}
+		if sampleSnapshot.GetAnnotations() != nil {
+			patch := client.MergeFrom(sampleSnapshot.DeepCopy())
+			delete(sampleSnapshot.Annotations, gitops.SnapshotTestsStatusAnnotation)
+			Expect(k8sClient.Patch(ctx, sampleSnapshot, patch)).To(Succeed())
+			refreshSampleSnapshot()
+		}
+	})
+
+	Describe("scheduling helper methods", func() {
+		var (
+			helperAdapter *Adapter
+			testGraph     map[string][]v1beta2.TestGraphNode
+		)
+
+		BeforeEach(func() {
+			testGraph = map[string][]v1beta2.TestGraphNode{
+				"scenario-b": {
+					{Name: "scenario-a", FailFast: false},
+				},
+				"scenario-c": {
+					{Name: "scenario-a", FailFast: true},
+				},
+			}
+			helperAdapter = NewAdapter(ctx, sampleSnapshot, &v1beta2.ComponentGroup{
+				ObjectMeta: metav1.ObjectMeta{Name: "helpers-cg", Namespace: "default"},
+				Spec: v1beta2.ComponentGroupSpec{
+					TestGraph: testGraph,
+				},
+			}, sampleLogger, loader.NewMockLoader(), k8sClient)
+		})
+
+		Describe("isScenarioPendingWithoutPLR", func() {
+			It("returns true when the scenario is unknown", func() {
+				statuses, _ := intgteststat.NewSnapshotIntegrationTestStatuses("")
+				Expect(helperAdapter.isScenarioPendingWithoutPLR("missing", statuses)).To(BeTrue())
+			})
+
+			It("returns true for pending scenarios without a pipelineRun name", func() {
+				statuses := initTestStatuses(
+					[]v1beta2.IntegrationTestScenario{{ObjectMeta: metav1.ObjectMeta{Name: "scenario-a"}}},
+					nil,
+				)
+				Expect(helperAdapter.isScenarioPendingWithoutPLR("scenario-a", statuses)).To(BeTrue())
+			})
+
+			It("returns false when a pipelineRun name is already registered", func() {
+				statuses := initTestStatuses(
+					[]v1beta2.IntegrationTestScenario{{ObjectMeta: metav1.ObjectMeta{Name: "scenario-a"}}},
+					nil,
+				)
+				Expect(statuses.UpdateTestPipelineRunName("scenario-a", "existing-plr")).To(Succeed())
+				Expect(helperAdapter.isScenarioPendingWithoutPLR("scenario-a", statuses)).To(BeFalse())
+			})
+		})
+
+		Describe("areRunAfterRequirementsSatisfiedForScenario", func() {
+			It("treats empty runAfter as satisfied for known scenarios", func() {
+				statuses := initTestStatuses(
+					[]v1beta2.IntegrationTestScenario{{ObjectMeta: metav1.ObjectMeta{Name: "scenario-a"}}},
+					nil,
+				)
+				Expect(helperAdapter.areRunAfterRequirementsSatisfiedForScenario("scenario-a", statuses)).To(BeTrue())
+			})
+
+			It("returns false when a parent is still running", func() {
+				statuses := initTestStatuses(
+					[]v1beta2.IntegrationTestScenario{
+						{ObjectMeta: metav1.ObjectMeta{Name: "scenario-a"}},
+						{ObjectMeta: metav1.ObjectMeta{Name: "scenario-b"}},
+					},
+					testGraph,
+				)
+				Expect(helperAdapter.areRunAfterRequirementsSatisfiedForScenario("scenario-b", statuses)).To(BeFalse())
+			})
+
+			It("returns true when a non-fail-fast parent has failed", func() {
+				statuses := initTestStatuses(
+					[]v1beta2.IntegrationTestScenario{
+						{ObjectMeta: metav1.ObjectMeta{Name: "scenario-a"}},
+						{ObjectMeta: metav1.ObjectMeta{Name: "scenario-b"}},
+					},
+					testGraph,
+				)
+				statuses.UpdateTestStatusIfChanged("scenario-a", intgteststat.IntegrationTestStatusTestFail, "failed")
+				Expect(helperAdapter.areRunAfterRequirementsSatisfiedForScenario("scenario-b", statuses)).To(BeTrue())
+			})
+
+			It("returns false when a fail-fast parent has failed", func() {
+				statuses := initTestStatuses(
+					[]v1beta2.IntegrationTestScenario{
+						{ObjectMeta: metav1.ObjectMeta{Name: "scenario-a"}},
+						{ObjectMeta: metav1.ObjectMeta{Name: "scenario-c"}},
+					},
+					testGraph,
+				)
+				statuses.UpdateTestStatusIfChanged("scenario-a", intgteststat.IntegrationTestStatusTestFail, "failed")
+				Expect(helperAdapter.areRunAfterRequirementsSatisfiedForScenario("scenario-c", statuses)).To(BeFalse())
+			})
+		})
+
+		Describe("findScenariosReadyToRunWithoutPLR", func() {
+			It("returns only root scenarios while parents are still pending", func() {
+				scenarios := []v1beta2.IntegrationTestScenario{
+					{ObjectMeta: metav1.ObjectMeta{Name: scenarioRoot.Name}},
+					{ObjectMeta: metav1.ObjectMeta{Name: scenarioDependent.Name}},
+				}
+				statuses := initTestStatuses(scenarios, map[string][]v1beta2.TestGraphNode{
+					scenarioDependent.Name: {{Name: scenarioRoot.Name, FailFast: false}},
+				})
+				adapterWithGraph := NewAdapter(ctx, sampleSnapshot, &v1beta2.ComponentGroup{
+					Spec: v1beta2.ComponentGroupSpec{TestGraph: map[string][]v1beta2.TestGraphNode{
+						scenarioDependent.Name: {{Name: scenarioRoot.Name, FailFast: false}},
+					}},
+				}, sampleLogger, loader.NewMockLoader(), k8sClient)
+
+				ready := adapterWithGraph.findScenariosReadyToRunWithoutPLR(&scenarios, statuses)
+				Expect(ready).To(HaveLen(1))
+				Expect(ready[0].Name).To(Equal(scenarioRoot.Name))
+			})
+
+			It("returns dependents once every parent has passed", func() {
+				scenarios := []v1beta2.IntegrationTestScenario{
+					{ObjectMeta: metav1.ObjectMeta{Name: scenarioRoot.Name}},
+					{ObjectMeta: metav1.ObjectMeta{Name: scenarioDependent.Name}},
+				}
+				statuses := initTestStatuses(scenarios, map[string][]v1beta2.TestGraphNode{
+					scenarioDependent.Name: {{Name: scenarioRoot.Name, FailFast: false}},
+				})
+				statuses.UpdateTestStatusIfChanged(
+					scenarioRoot.Name, intgteststat.IntegrationTestStatusTestPassed, "passed",
+				)
+				Expect(statuses.UpdateTestPipelineRunName(scenarioRoot.Name, "sample-root-plr")).To(Succeed())
+
+				adapterWithGraph := NewAdapter(ctx, sampleSnapshot, &v1beta2.ComponentGroup{
+					Spec: v1beta2.ComponentGroupSpec{TestGraph: map[string][]v1beta2.TestGraphNode{
+						scenarioDependent.Name: {{Name: scenarioRoot.Name, FailFast: false}},
+					}},
+				}, sampleLogger, loader.NewMockLoader(), k8sClient)
+
+				ready := adapterWithGraph.findScenariosReadyToRunWithoutPLR(&scenarios, statuses)
+				Expect(ready).To(HaveLen(1))
+				Expect(ready[0].Name).To(Equal(scenarioDependent.Name))
+			})
+		})
+
+		Describe("cascadeFailFastFromFailedScenarios", func() {
+			It("marks fail-fast dependents as failed without starting them", func() {
+				statuses := initTestStatuses(
+					[]v1beta2.IntegrationTestScenario{
+						{ObjectMeta: metav1.ObjectMeta{Name: scenarioRoot.Name}},
+						{ObjectMeta: metav1.ObjectMeta{Name: scenarioDependent.Name}},
+					},
+					map[string][]v1beta2.TestGraphNode{
+						scenarioDependent.Name: {{Name: scenarioRoot.Name, FailFast: true}},
+					},
+				)
+				statuses.UpdateTestStatusIfChanged(
+					scenarioRoot.Name, intgteststat.IntegrationTestStatusTestFail, "failed",
+				)
+				adapterWithGraph := NewAdapter(ctx, sampleSnapshot, &v1beta2.ComponentGroup{
+					Spec: v1beta2.ComponentGroupSpec{TestGraph: map[string][]v1beta2.TestGraphNode{
+						scenarioDependent.Name: {{Name: scenarioRoot.Name, FailFast: true}},
+					}},
+				}, sampleLogger, loader.NewMockLoader(), k8sClient)
+
+				adapterWithGraph.cascadeFailFastFromFailedScenarios(statuses)
+
+				dependentDetail, ok := statuses.GetScenarioStatus(scenarioDependent.Name)
+				Expect(ok).To(BeTrue())
+				Expect(dependentDetail.Status).To(Equal(intgteststat.IntegrationTestStatusTestFail))
+				Expect(dependentDetail.Details).To(Equal(
+					fmt.Sprintf("Cancelled on account of required %s failing", scenarioRoot.Name),
+				))
+			})
+		})
+	})
+
+	Describe("isSnapshotSupersededInPRGroup", func() {
+		It("returns false for push snapshots", func() {
+			adapter := newSampleAdapter(sampleSnapshot, &bytes.Buffer{})
+			superseded, err := adapter.isSnapshotSupersededInPRGroup()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(superseded).To(BeFalse())
+		})
+
+		It("returns true when the adapter snapshot is not the newest in the PR group", func() {
+			oldPRSnapshot := &applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "sample-old-pr-snapshot",
+					Namespace: "default",
+					Labels: map[string]string{
+						gitops.SnapshotTypeLabel:                   gitops.SnapshotComponentType,
+						gitops.SnapshotComponentLabel:              "sample-component",
+						gitops.PipelineAsCodeEventTypeLabel:        gitops.PipelineAsCodePullRequestType,
+						gitops.PipelineAsCodePullRequestAnnotation: "99",
+					},
+					Annotations: map[string]string{
+						gitops.BuildPipelineRunStartTime: strconv.FormatInt(samplePLRStartTime, 10),
+					},
+				},
+			}
+			newPRSnapshot := applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "sample-new-pr-snapshot",
+					Namespace: "default",
+					Labels: map[string]string{
+						gitops.SnapshotTypeLabel:                   gitops.SnapshotComponentType,
+						gitops.SnapshotComponentLabel:              "sample-component",
+						gitops.PipelineAsCodeEventTypeLabel:        gitops.PipelineAsCodePullRequestType,
+						gitops.PipelineAsCodePullRequestAnnotation: "99",
+					},
+					Annotations: map[string]string{
+						gitops.BuildPipelineRunStartTime: strconv.FormatInt(samplePLRStartTime+100000, 10),
+					},
+				},
+			}
+
+			adapter := NewAdapter(ctx, oldPRSnapshot, sampleComponentGroup, sampleLogger, loader.NewMockLoader(), k8sClient)
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{{
+				ContextKey: loader.AllSnapshotsForGivenPRContextKey,
+				Resource:   []applicationapiv1alpha1.Snapshot{newPRSnapshot, *oldPRSnapshot},
+			}})
+
+			superseded, err := adapter.isSnapshotSupersededInPRGroup()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(superseded).To(BeTrue())
+		})
+	})
+
+	Describe("ensureMissingIntegrationPipelineRunsExist", func() {
+		It("returns no error when integration test scenarios is nil", func() {
+			adapter := newSampleAdapter(sampleSnapshot, &bytes.Buffer{})
+			Expect(adapter.createEligibleIntegrationPipelineRuns(nil)).NotTo(HaveOccurred())
+		})
+
+		When("no testGraph is defined", func() {
+			It("creates a pipelineRun for a pending scenario", func() {
+				var buf bytes.Buffer
+				adapter := newSampleAdapter(sampleSnapshot, &buf)
+				scenarios := []v1beta2.IntegrationTestScenario{*scenarioRoot}
+
+				Expect(adapter.createEligibleIntegrationPipelineRuns(&scenarios)).NotTo(HaveOccurred())
+				Expect(buf.String()).To(ContainSubstring("Creating new pipelinerun for integrationTestscenario"))
+
+				Eventually(func(g Gomega) {
+					refreshSampleSnapshot()
+					statuses, err := gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(sampleSnapshot)
+					g.Expect(err).NotTo(HaveOccurred())
+					detail, ok := statuses.GetScenarioStatus(scenarioRoot.Name)
+					g.Expect(ok).To(BeTrue())
+					g.Expect(detail.Status).To(Equal(intgteststat.IntegrationTestStatusInProgress))
+					g.Expect(detail.TestPipelineRunName).NotTo(BeEmpty())
+				}).Should(Succeed())
+			})
+		})
+
+		It("skips pipelineRun creation for superseded PR snapshots", func() {
+			oldPRSnapshot := &applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "sample-superseded-pr-snapshot",
+					Namespace: "default",
+					Labels: map[string]string{
+						gitops.SnapshotTypeLabel:                   gitops.SnapshotComponentType,
+						gitops.SnapshotComponentLabel:              "sample-component",
+						gitops.PipelineAsCodeEventTypeLabel:        gitops.PipelineAsCodePullRequestType,
+						gitops.PipelineAsCodePullRequestAnnotation: "100",
+					},
+					Annotations: map[string]string{
+						gitops.BuildPipelineRunStartTime:     strconv.FormatInt(samplePLRStartTime, 10),
+						gitops.PRGroupAnnotation:             samplePRGroup,
+						gitops.IntegrationWorkflowAnnotation: gitops.IntegrationWorkflowPullRequestValue,
+					},
+				},
+				Spec: applicationapiv1alpha1.SnapshotSpec{
+					ComponentGroup: sampleComponentGroup.Name,
+					Components: []applicationapiv1alpha1.SnapshotComponent{
+						{Name: "sample-component", ContainerImage: sampleImage},
+					},
+				},
+			}
+			newPRSnapshot := &applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "sample-newer-pr-snapshot",
+					Namespace: "default",
+					Labels: map[string]string{
+						gitops.SnapshotTypeLabel:                   gitops.SnapshotComponentType,
+						gitops.SnapshotComponentLabel:              "sample-component",
+						gitops.PipelineAsCodeEventTypeLabel:        gitops.PipelineAsCodePullRequestType,
+						gitops.PipelineAsCodePullRequestAnnotation: "100",
+					},
+					Annotations: map[string]string{
+						gitops.BuildPipelineRunStartTime:     strconv.FormatInt(samplePLRStartTime+100000, 10),
+						gitops.PRGroupAnnotation:             samplePRGroup,
+						gitops.IntegrationWorkflowAnnotation: gitops.IntegrationWorkflowPullRequestValue,
+					},
+				},
+				Spec: applicationapiv1alpha1.SnapshotSpec{
+					ComponentGroup: sampleComponentGroup.Name,
+					Components: []applicationapiv1alpha1.SnapshotComponent{
+						{Name: "sample-component", ContainerImage: sampleImage},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, oldPRSnapshot)).To(Succeed())
+			Expect(k8sClient.Create(ctx, newPRSnapshot)).To(Succeed())
+			DeferCleanup(func() {
+				_ = k8sClient.Delete(ctx, oldPRSnapshot)
+				_ = k8sClient.Delete(ctx, newPRSnapshot)
+			})
+
+			var buf bytes.Buffer
+			adapter := NewAdapter(ctx, oldPRSnapshot, sampleComponentGroup, helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}, loader.NewMockLoader(), k8sClient)
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{{
+				ContextKey: loader.AllSnapshotsForGivenPRContextKey,
+				Resource:   []applicationapiv1alpha1.Snapshot{*newPRSnapshot, *oldPRSnapshot},
+			}})
+			scenarios := []v1beta2.IntegrationTestScenario{*scenarioRoot}
+
+			Expect(adapter.createEligibleIntegrationPipelineRuns(&scenarios)).NotTo(HaveOccurred())
+			Expect(buf.String()).NotTo(ContainSubstring("Creating new pipelinerun for integrationTestscenario"))
+			Expect(countSampleIntegrationPLRs(oldPRSnapshot)).To(Equal(0))
+
+			statuses, err := gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(oldPRSnapshot)
+			Expect(err).NotTo(HaveOccurred())
+			detail, ok := statuses.GetScenarioStatus(scenarioRoot.Name)
+			Expect(ok).To(BeTrue())
+			Expect(detail.Status).To(Equal(intgteststat.IntegrationTestStatusPending))
+		})
+	})
 })
