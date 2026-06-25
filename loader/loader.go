@@ -87,6 +87,7 @@ type ObjectLoader interface {
 	GetComponentGroupsContainingComponentGroup(ctx context.Context, c client.Client, childComponentGroup *v1beta2.ComponentGroup) ([]v1beta2.ComponentGroup, error)
 	GetAllComponentGroupsInNamespace(ctx context.Context, c client.Client, namespace string) ([]v1beta2.ComponentGroup, error)
 	GetNestedComponentGroupsForComponentGroup(ctx context.Context, c client.Client, componentGroup *v1beta2.ComponentGroup) ([]v1beta2.ComponentGroup, error)
+	GetNudgeConfig(ctx context.Context, c client.Client, namespace string) (*v1beta2.NudgeConfig, error)
 }
 
 type loader struct{}
@@ -1103,6 +1104,19 @@ func (l *loader) GetAllComponentGroupsInNamespace(ctx context.Context, c client.
 
 	err := c.List(ctx, componentGroupList, options)
 	return componentGroupList.Items, err
+}
+
+// GetNudgeConfig returns the NudgeConfig singleton from the given namespace.
+func (l *loader) GetNudgeConfig(ctx context.Context, c client.Client, namespace string) (*v1beta2.NudgeConfig, error) {
+	nudgeConfig := &v1beta2.NudgeConfig{}
+	err := c.Get(ctx, types.NamespacedName{
+		Namespace: namespace,
+		Name:      v1beta2.NudgeConfigSingletonName,
+	}, nudgeConfig)
+	if err != nil {
+		return nil, err
+	}
+	return nudgeConfig, nil
 }
 
 func (l *loader) GetNestedComponentGroupsForComponentGroup(ctx context.Context, c client.Client, componentGroup *v1beta2.ComponentGroup) ([]v1beta2.ComponentGroup, error) {

@@ -64,6 +64,9 @@ func NewIntegrationReconciler(client client.Client, logger *logr.Logger, scheme 
 //+kubebuilder:rbac:groups=appstudio.redhat.com,resources=applications/status,verbs=get
 //+kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
 //+kubebuilder:rbac:groups=pipelinesascode.tekton.dev,resources=repositories,verbs=get;list;watch
+//+kubebuilder:rbac:groups=appstudio.redhat.com,resources=nudgeconfigs,verbs=get;list;watch
+//+kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch;create
+//+kubebuilder:rbac:groups="",resources=serviceaccounts,verbs=get;list
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -162,6 +165,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		adapter.EnsurePRGroupAnnotated,
 		adapter.EnsureIntegrationTestReportedToGitProvider,
 		adapter.EnsureGlobalCandidateImageUpdated,
+		adapter.EnsureNudgePipelineRunsExist,
 		adapter.EnsureSnapshotExists,
 		adapter.EnsureSnapshotExistsApplication,
 		adapter.EnsureSupercededSnapshotsCanceled,
@@ -175,6 +179,7 @@ type AdapterInterface interface {
 	EnsurePRGroupAnnotated() (controller.OperationResult, error)
 	EnsureIntegrationTestReportedToGitProvider() (controller.OperationResult, error)
 	EnsureGlobalCandidateImageUpdated() (controller.OperationResult, error)
+	EnsureNudgePipelineRunsExist() (controller.OperationResult, error)
 	EnsureSnapshotExists() (controller.OperationResult, error)
 	EnsureSnapshotExistsApplication() (controller.OperationResult, error)
 	EnsureSupercededSnapshotsCanceled() (controller.OperationResult, error)

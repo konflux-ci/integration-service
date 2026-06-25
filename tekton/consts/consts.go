@@ -143,6 +143,102 @@ const (
 
 	// PipelineRunShouldReleaseResultName is the name of the SHOULD_RELEASE result in build PipelineRuns
 	PipelineRunShouldReleaseResultName = "SHOULD_RELEASE"
+
+	/*
+	 * Nudge PipelineRun constants — build-service compatible annotation/label names
+	 */
+
+	// NudgeProcessedAnnotation marks a build PLR as having already been processed for nudging
+	NudgeProcessedAnnotation = "build.appstudio.openshift.io/component-nudge-processed"
+
+	// NudgeSimpleBranchAnnotation on a Component controls simplified branch naming for nudge PRs
+	NudgeSimpleBranchAnnotation = "build.appstudio.openshift.io/build-nudge-simple-branch"
+
+	// NudgeFilesAnnotation on a build PLR restricts which files Renovate updates
+	NudgeFilesAnnotation = "build.appstudio.openshift.io/build-nudge-files"
+
+	// NudgeTypeLabel labels a PipelineRun as a nudge pipeline
+	NudgeTypeLabel = "build.appstudio.redhat.com/type"
+
+	// NudgePipelineRunTypeValue is the value for the nudge type label
+	NudgePipelineRunTypeValue = "nudge"
+
+	// NudgedComponentsAnnotation lists target components being nudged
+	NudgedComponentsAnnotation = "build.appstudio.redhat.com/nudged-components"
+
+	// NudgingCommitAnnotation records the source commit hash
+	NudgingCommitAnnotation = "build.appstudio.redhat.com/nudging-commit"
+
+	// NudgingComponentAnnotation records the source component name
+	NudgingComponentAnnotation = "build.appstudio.redhat.com/nudging-component"
+
+	// NudgingImageAnnotation records the built image reference
+	NudgingImageAnnotation = "build.appstudio.redhat.com/nudging-image"
+
+	// NudgingPipelineAnnotation records the source build PLR name
+	NudgingPipelineAnnotation = "build.appstudio.redhat.com/nudging-pipeline"
+
+	// GitRepoAtShaAnnotation on a build PLR links to the source repo at the built commit
+	GitRepoAtShaAnnotation = "build.appstudio.openshift.io/repo-url-at-sha"
+
+	/*
+	 * Renovate defaults
+	 */
+
+	// RenovateImageEnvName is the env var to override the Renovate image
+	RenovateImageEnvName = "RENOVATE_IMAGE"
+
+	// DefaultRenovateImageUrl is the default Renovate container image
+	DefaultRenovateImageUrl = "quay.io/konflux-ci/mintmaker-renovate-image:29a2f31"
+
+	// DefaultRenovateUser is the default git username for Renovate
+	DefaultRenovateUser = "red-hat-konflux"
+
+	// DefaultRenovateLabel is the label applied to Renovate PRs
+	DefaultRenovateLabel = "konflux-nudge"
+
+	// BranchPrefix is the branch prefix for nudge PRs
+	BranchPrefix = "konflux/component-updates/"
+
+	// DefaultNudgeFiles is the default file match pattern for Renovate
+	DefaultNudgeFiles = ".*Dockerfile.*, .*.yaml, .*Containerfile.*"
+
+	// NamespaceWideRenovateConfigMapName is the name of the namespace-wide custom Renovate config
+	NamespaceWideRenovateConfigMapName = "namespace-wide-nudging-renovate-config"
+
+	// CustomRenovateConfigMapAnnotation on a Component points to a per-component custom Renovate ConfigMap
+	CustomRenovateConfigMapAnnotation = "build.appstudio.openshift.io/nudge_renovate_config_map"
+
+	// CaConfigMapLabel identifies ConfigMaps containing trusted CA bundles
+	CaConfigMapLabel = "config.openshift.io/inject-trusted-cabundle"
+
+	// CaConfigMapKey is the key in CA ConfigMaps
+	CaConfigMapKey = "ca-bundle.crt"
+
+	// CaFilePath is the filename for the CA bundle mount
+	CaFilePath = "tls-ca-bundle.pem"
+
+	// CaMountPath is where the CA bundle is mounted in the Renovate container
+	CaMountPath = "/etc/pki/ca-trust/extracted/pem"
+
+	// CaVolumeMountName is the volume name for the CA bundle
+	CaVolumeMountName = "trusted-ca"
+
+	/*
+	 * Build-service namespace and PaC secret constants (for GitHub App auth)
+	 */
+
+	// BuildServiceNamespaceName is the namespace where build-service is deployed
+	BuildServiceNamespaceName = "build-service"
+
+	// PipelinesAsCodeGitHubAppSecretName is the global PaC secret for GitHub App auth
+	PipelinesAsCodeGitHubAppSecretName = "pipelines-as-code-secret"
+
+	// PipelinesAsCodeGithubAppIdKey is the key for the GitHub App ID in the PaC secret
+	PipelinesAsCodeGithubAppIdKey = "github-application-id"
+
+	// PipelinesAsCodeGithubPrivateKey is the key for the GitHub App private key in the PaC secret
+	PipelinesAsCodeGithubPrivateKey = "github-private-key"
 )
 
 var (
