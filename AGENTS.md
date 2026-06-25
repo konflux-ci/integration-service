@@ -37,6 +37,10 @@ main.go                # Entry point — registers controllers and webhooks
 
 Each controller delegates to an **adapter** (`<controller_name>_adapter.go`) that holds the K8s client, resource under reconciliation, an `ObjectLoader`, and a `IntegrationLogger`. All domain logic lives in adapter methods, not in the controller.
 
+### Dual-Model Architecture
+
+The service supports two parallel resource flows: **ComponentGroup** (new model) and **Application** (legacy, planned for deprecation). Controllers and adapters implement both flows side-by-side (e.g., `EnsureSnapshotExists` vs `EnsureSnapshotExistsApplication` in `buildpipeline_adapter.go`, `NewAdapter` vs `NewAdapterWithApplication` in `snapshot_adapter.go`). Any cross-cutting feature — tracing, metrics, annotations, error handling — **must cover both flows** until the Application model is fully removed. Key dual-path controllers include `buildpipeline`, `snapshot`, and `statusreport`. Look for `TODO: remove when we deprecate old application model` comments to identify Application-model code paths.
+
 ### Resource Loading
 
 `loader.ObjectLoader` centralizes all K8s Gets with error classification (retriable vs permanent) and KubeArchive fallback for deleted resources. A mock implementation exists for tests.
