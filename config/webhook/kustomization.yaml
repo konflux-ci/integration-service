@@ -4,3 +4,6 @@ resources:
 
 configurations:
 - kustomizeconfig.yaml
+
+patches:
+- path: patches/nudgeconfig_namespace_selector.yaml
