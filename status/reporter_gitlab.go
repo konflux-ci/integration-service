@@ -276,6 +276,9 @@ func (r *GitLabReporter) setCommitStatus(report TestReport) (int, error) {
 	} else if strings.Contains(targetProjectErr.Error(), "Cannot transition status via :enqueue from :pending") {
 		r.logger.Info("Ignoring the error when transition from pending to pending when the commitStatus might be created/updated in multiple threads at the same time occasionally")
 		return http.StatusOK, nil
+	} else if strings.Contains(targetProjectErr.Error(), "Cannot transition status via :run from :running") {
+		r.logger.Info("Ignoring redundant running→running commit status update on target project", "scenario.name", report.ScenarioName)
+		return http.StatusOK, nil
 	} else {
 		r.logger.Error(targetProjectErr, "failed to set commit status to gitlab target project, will try to set commit status to gitlab source project",
 			"sourceProjectID", r.sourceProjectID, "targetProjectID", r.targetProjectID, "sha", r.sha,
@@ -292,6 +295,10 @@ func (r *GitLabReporter) setCommitStatus(report TestReport) (int, error) {
 	}
 	if strings.Contains(sourceProjectErr.Error(), "Cannot transition status via :enqueue from :pending") {
 		r.logger.Info("Ignoring the error when transition from pending to pending when the commitStatus might be created/updated in multiple threads at the same time occasionally")
+		return http.StatusOK, nil
+	}
+	if strings.Contains(sourceProjectErr.Error(), "Cannot transition status via :run from :running") {
+		r.logger.Info("Ignoring redundant running→running commit status update on source project", "scenario.name", report.ScenarioName)
 		return http.StatusOK, nil
 	}
 
@@ -509,7 +516,9 @@ func (r *GitLabReporter) ReportStatus(ctx context.Context, report TestReport) (i
 }
 
 func (r *GitLabReporter) ReturnCodeIsUnrecoverable(statusCode int) bool {
-	return statusCode == http.StatusForbidden || statusCode == http.StatusUnauthorized || statusCode == http.StatusBadRequest || statusCode == http.StatusNotFound
+	return statusCode == http.StatusForbidden || statusCode == http.StatusUnauthorized ||
+		statusCode == http.StatusBadRequest || statusCode == http.StatusNotFound ||
+		statusCode == http.StatusUnprocessableEntity
 }
 
 // GenerateGitlabCommitState transforms internal integration test state into Gitlab state

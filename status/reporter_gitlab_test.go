@@ -467,7 +467,7 @@ var _ = Describe("GitLabReporter", func() {
 		})
 
 		// Note: GitLab Go client has internal retryablehttp that retries on >= 500,
-		// so we use 422 (not in the unrecoverable list) to test our retry.OnError logic
+		// so we use 409 (not in the unrecoverable list) to test our retry.OnError logic
 		// without interference from the client's internal retries.
 		It("retries on recoverable error and succeeds on retry", func() {
 			var sourceCallCount int32
@@ -479,8 +479,8 @@ var _ = Describe("GitLabReporter", func() {
 			mux.HandleFunc(sourcePath, func(rw http.ResponseWriter, r *http.Request) {
 				call := atomic.AddInt32(&sourceCallCount, 1)
 				if call == 1 {
-					rw.WriteHeader(http.StatusUnprocessableEntity)
-					fmt.Fprintf(rw, `{"error": "unprocessable"}`)
+					rw.WriteHeader(http.StatusConflict)
+					fmt.Fprintf(rw, `{"error": "conflict"}`)
 					return
 				}
 				rw.WriteHeader(http.StatusCreated)
@@ -489,8 +489,8 @@ var _ = Describe("GitLabReporter", func() {
 
 			targetPath := fmt.Sprintf("/projects/%s/statuses/%s", targetProjectID, digest)
 			mux.HandleFunc(targetPath, func(rw http.ResponseWriter, r *http.Request) {
-				rw.WriteHeader(http.StatusUnprocessableEntity)
-				fmt.Fprintf(rw, `{"error": "unprocessable"}`)
+				rw.WriteHeader(http.StatusConflict)
+				fmt.Fprintf(rw, `{"error": "conflict"}`)
 			})
 
 			statusCode, err := reporter.ReportStatus(context.TODO(), status.TestReport{
@@ -577,14 +577,14 @@ var _ = Describe("GitLabReporter", func() {
 			sourcePath := fmt.Sprintf("/projects/%s/statuses/%s", sourceProjectID, digest)
 			mux.HandleFunc(sourcePath, func(rw http.ResponseWriter, r *http.Request) {
 				atomic.AddInt32(&sourceCallCount, 1)
-				rw.WriteHeader(http.StatusUnprocessableEntity)
-				fmt.Fprintf(rw, `{"error": "unprocessable"}`)
+				rw.WriteHeader(http.StatusConflict)
+				fmt.Fprintf(rw, `{"error": "conflict"}`)
 			})
 
 			targetPath := fmt.Sprintf("/projects/%s/statuses/%s", targetProjectID, digest)
 			mux.HandleFunc(targetPath, func(rw http.ResponseWriter, r *http.Request) {
-				rw.WriteHeader(http.StatusUnprocessableEntity)
-				fmt.Fprintf(rw, `{"error": "unprocessable"}`)
+				rw.WriteHeader(http.StatusConflict)
+				fmt.Fprintf(rw, `{"error": "conflict"}`)
 			})
 
 			statusCode, err := reporter.ReportStatus(context.TODO(), status.TestReport{
@@ -595,7 +595,7 @@ var _ = Describe("GitLabReporter", func() {
 			})
 
 			Expect(err).To(HaveOccurred())
-			Expect(statusCode).To(Equal(http.StatusUnprocessableEntity))
+			Expect(statusCode).To(Equal(http.StatusConflict))
 			Expect(atomic.LoadInt32(&sourceCallCount)).To(BeNumerically("==", 3))
 			Expect(buf.String()).To(ContainSubstring("failed to set gitlab commit status after all retries"))
 		})
