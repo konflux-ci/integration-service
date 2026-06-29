@@ -302,10 +302,11 @@ func generateText(ctx context.Context, client client.Client, integrationTestStat
 		if err != nil {
 			if apierrors.IsNotFound(err) {
 				log.Error(err, "Failed to fetch pipelineRun", "pipelineRun.Name", pipelineRunName)
-				text := fmt.Sprintf("%s\n\n\n(Failed to fetch test result details because pipelineRun %s/%s can not be found.)", integrationTestStatusDetail.Details, snapshot.Namespace, pipelineRunName)
+				pipelineRunURL := FormatPipelineURL(pipelineRunName, snapshot.Namespace, log)
+				text := fmt.Sprintf("%s\n\n\n(Failed to fetch test result details because pipelineRun [%s](%s) can not be found.)",
+					integrationTestStatusDetail.Details, pipelineRunName, pipelineRunURL)
 				return text, nil
 			}
-
 			return "", fmt.Errorf("error while getting the pipelineRun %s: %w", pipelineRunName, err)
 		}
 
