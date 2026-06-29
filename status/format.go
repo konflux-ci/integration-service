@@ -237,16 +237,16 @@ func FormatDetails(taskRun *helpers.TaskRun) (string, error) {
 		return fmt.Sprintf("Invalid result: %s", result.ValidationError), nil
 	}
 	details := []string{}
-	if result.TestOutput.Successes > 0 {
-		details = append(details, fmt.Sprint(":heavy_check_mark: ", result.TestOutput.Successes, " success(es)"))
+	if result.TestOutput.Successes != nil && *result.TestOutput.Successes > 0 {
+		details = append(details, fmt.Sprint(":heavy_check_mark: ", *result.TestOutput.Successes, " success(es)"))
 	}
 
-	if result.TestOutput.Warnings > 0 {
-		details = append(details, fmt.Sprint(":warning: ", result.TestOutput.Warnings, " warning(s)"))
+	if result.TestOutput.Warnings != nil && *result.TestOutput.Warnings > 0 {
+		details = append(details, fmt.Sprint(":warning: ", *result.TestOutput.Warnings, " warning(s)"))
 	}
 
-	if result.TestOutput.Failures > 0 {
-		details = append(details, fmt.Sprint(":x: ", result.TestOutput.Failures, " failure(s)"))
+	if result.TestOutput.Failures != nil && *result.TestOutput.Failures > 0 {
+		details = append(details, fmt.Sprint(":x: ", *result.TestOutput.Failures, " failure(s)"))
 	}
 
 	return strings.Join(details, "<br>"), nil

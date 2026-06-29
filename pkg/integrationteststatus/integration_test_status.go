@@ -21,9 +21,9 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/go-playground/validator/v10"
 	"github.com/konflux-ci/integration-service/api/v1beta2"
 	"github.com/konflux-ci/integration-service/helpers"
-	"github.com/santhosh-tekuri/jsonschema/v5"
 )
 
 // IntegrationTestScenario test runs status
@@ -60,46 +60,17 @@ const (
 
 )
 
-const integrationTestStatusesSchema = `{
-	"$schema": "http://json-schema.org/draft/2020-12/schema#",
-	"type":  "array",
-	"items": {
-	  "type": "object",
-      "properties": {
-        "scenario": {
-          "type": "string"
-        },
-        "status": {
-          "type": "string"
-        },
-        "lastUpdateTime": {
-          "type": "string"
-        },
-        "details": {
-          "type": "string"
-        },
-        "startTime": {
-          "type": "string"
-        },
-        "completionTime": {
-          "type": "string"
-        },
-        "testPipelineRunName": {
-          "type": "string"
-        }
-      },
-	  "required": ["scenario", "status", "lastUpdateTime"]
-	}
-  }`
+// statusDetailValidator is a singleton validator for IntegrationTestStatusDetail.
+var statusDetailValidator = validator.New()
 
 // IntegrationTestStatusDetail contains metadata about the particular scenario testing status
 type IntegrationTestStatusDetail struct {
 	// ScenarioName name
-	ScenarioName string `json:"scenario"`
+	ScenarioName string `json:"scenario" validate:"required"`
 	// The status summary for the ITS and Snapshot
-	Status IntegrationTestStatus `json:"status"`
+	Status IntegrationTestStatus `json:"status" validate:"required"`
 	// The time of reporting the status
-	LastUpdateTime time.Time `json:"lastUpdateTime"`
+	LastUpdateTime time.Time `json:"lastUpdateTime" validate:"required"`
 	// The details of reported status
 	Details string `json:"details"`
 	// Startime when we moved to inProgress
@@ -317,20 +288,15 @@ func (sits *SnapshotIntegrationTestStatuses) MarshalJSON() ([]byte, error) {
 func (sits *SnapshotIntegrationTestStatuses) UnmarshalJSON(b []byte) error {
 	var inputData []*IntegrationTestStatusDetail
 
-	sch, err := jsonschema.CompileString("schema.json", integrationTestStatusesSchema)
-	if err != nil {
-		return fmt.Errorf("error while compiling json data for schema validation: %w", err)
-	}
-	var v interface{}
-	if err := json.Unmarshal(b, &v); err != nil {
-		return fmt.Errorf("failed to unmarshal json data raw: %w", err)
-	}
-	if err = sch.Validate(v); err != nil {
-		return fmt.Errorf("error validating test status: %w", err)
-	}
-	err = json.Unmarshal(b, &inputData)
+	err := json.Unmarshal(b, &inputData)
 	if err != nil {
 		return fmt.Errorf("failed to unmarshal json data: %w", err)
+	}
+
+	for _, item := range inputData {
+		if err := statusDetailValidator.Struct(item); err != nil {
+			return fmt.Errorf("error validating test status: %w", err)
+		}
 	}
 
 	// keep data in map for easier manipulation
