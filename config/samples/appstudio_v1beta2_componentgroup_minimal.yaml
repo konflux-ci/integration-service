@@ -17,13 +17,13 @@ metadata:
 spec:
   components:
     - name: first-component
-      componentBranch:
+      componentVersion:
         name: "main"
     - name: second-component
-      componentBranch:
+      componentVersion:
         name: "v1"
     - name: third-component
-      componentBranch:
+      componentVersion:
         name: "main"
 status:
   globalCandidateList:

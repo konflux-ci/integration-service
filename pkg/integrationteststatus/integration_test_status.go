@@ -19,6 +19,7 @@ package integrationteststatus
 import (
 	"encoding/json"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/konflux-ci/integration-service/api/v1beta2"
@@ -86,6 +87,12 @@ const integrationTestStatusesSchema = `{
         },
         "testPipelineRunName": {
           "type": "string"
+        },
+        "runAfter": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
         }
       },
 	  "required": ["scenario", "status", "lastUpdateTime"]
@@ -110,6 +117,8 @@ type IntegrationTestStatusDetail struct {
 	TestPipelineRunName string `json:"testPipelineRunName,omitempty"`
 	// IsOptionalScenario defines if the scenario is optional, which means that test failure should not block promotion of snapshot
 	IsOptionalScenario bool `json:"isOptionalScenario,omitempty"`
+	// RunAfter defines the list of scenarios this scenario is supposed to run after
+	RunAfter []string `json:"runAfter,omitempty"`
 }
 
 // SnapshotIntegrationTestStatuses type handles details about snapshot tests
@@ -130,6 +139,15 @@ func (sits *IntegrationTestStatus) IsFinal() bool {
 		IntegrationTestStatusTestFail,
 		IntegrationTestStatusTestPassed,
 		IntegrationTestStatusTestInvalid,
+		IntegrationTestStatusTestWarning:
+		return true
+	}
+	return false
+}
+
+func (sits *IntegrationTestStatus) IsPassed() bool {
+	switch *sits {
+	case IntegrationTestStatusTestPassed,
 		IntegrationTestStatusTestWarning:
 		return true
 	}
@@ -212,13 +230,36 @@ func (sits *SnapshotIntegrationTestStatuses) UpdateTestStatusIfChanged(scenarioN
 
 }
 
-// SetTestDetailOptional set test details optional according to the given value of name and isOptionalScenario
 func (sits *SnapshotIntegrationTestStatuses) SetTestDetailOptional(name string, isOptionalScenario bool) {
-	var detail *IntegrationTestStatusDetail
 	detail, ok := sits.statuses[name]
-	if ok {
-		detail.IsOptionalScenario = isOptionalScenario
+	if !ok {
+		return
 	}
+	if detail.IsOptionalScenario == isOptionalScenario {
+		return
+	}
+	detail.IsOptionalScenario = isOptionalScenario
+	sits.dirty = true
+}
+
+func runAfterEqual(existing, updated []string) bool {
+	// Treat nil and empty slice as equivalent (JSON / map init inconsistency).
+	if len(existing) == 0 && len(updated) == 0 {
+		return true
+	}
+	return slices.Equal(existing, updated)
+}
+
+func (sits *SnapshotIntegrationTestStatuses) SetTestDetailRunAfterList(name string, runAfter []string) {
+	detail, ok := sits.statuses[name]
+	if !ok {
+		return
+	}
+	if runAfterEqual(detail.RunAfter, runAfter) {
+		return
+	}
+	detail.RunAfter = runAfter
+	sits.dirty = true
 }
 
 // UpdateTestPipelineRunName updates TestPipelineRunName if changed
@@ -239,7 +280,7 @@ func (sits *SnapshotIntegrationTestStatuses) UpdateTestPipelineRunName(scenarioN
 
 // InitStatuses creates initial representation all scenarios
 // This function also removes scenarios which are not defined in scenarios param
-func (sits *SnapshotIntegrationTestStatuses) InitStatuses(integrationTestScenarios *[]v1beta2.IntegrationTestScenario) {
+func (sits *SnapshotIntegrationTestStatuses) InitStatuses(integrationTestScenarios *[]v1beta2.IntegrationTestScenario, runAfterMap map[string][]string) {
 	var expectedScenarios = make(map[string]struct{}) // map as a set
 
 	// if given scenario doesn't exist, create it in pending state
@@ -249,9 +290,12 @@ func (sits *SnapshotIntegrationTestStatuses) InitStatuses(integrationTestScenari
 		expectedScenarios[name] = struct{}{}
 		_, ok := sits.statuses[name]
 		if !ok {
-			// init test statuses and optional value only if they doesn't exist
+			// init test statuses and optional value only if they don't exist
 			sits.UpdateTestStatusIfChanged(name, IntegrationTestStatusPending, "Pending")
-			sits.SetTestDetailOptional(name, helpers.IsIntegrationTestScenarioOptional(&scenario))
+		}
+		sits.SetTestDetailOptional(name, helpers.IsIntegrationTestScenarioOptional(&scenario))
+		if _, found := runAfterMap[name]; found {
+			sits.SetTestDetailRunAfterList(name, runAfterMap[name])
 		}
 	}
 

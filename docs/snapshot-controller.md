@@ -8,13 +8,13 @@ flowchart TD
     classDef Amber fill:#FFDEAD;
     classDef Green fill:#BDFFA4;
 
-  predicate((PREDICATE: <br>Snapshot got created OR <br> changed to Finished OR <br> re-run label added AND <br> it's not restored from backup))
+  predicate((PREDICATE: <br>Snapshot got created OR <br> changed to Finished OR <br> re-run label added <OR> status annotation changed AND <br> it's not restored from backup))
 
   %%%%%%%%%%%%%%%%%%%%%%% Drawing EnsureIntegrationPipelineRunsExist() function
 
   %% Node definitions
   ensure1(Process further if: Snapshot testing <br>is not finished yet)
-  are_there_any_ITS{"Are there any <br>IntegrationTestScenario <br>present for the given <br>Application/ComponentGroup?"}
+  are_there_any_ITS{"Are there any <br>IntegrationTestScenarios <br>present for the given <br>Application/ComponentGroup <br> which do not depend on <br> other unfinished scenarios?"}
   create_new_test_PLR(<b>Create a new Test PipelineRun</b> for each <br>of the above ITS, if it doesn't exists already)
   mark_snapshot_InProgress(<b>Mark</b> Snapshot's Integration-testing <br>status as 'InProgress')
   fetch_all_required_ITS("Fetch all the required <br>(non-optional) IntegrationTestScenario <br>for the given Application/ComponentGroup <br> filtered by ITS context(s)")

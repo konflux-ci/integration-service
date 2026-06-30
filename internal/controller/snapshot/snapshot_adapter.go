@@ -26,6 +26,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/konflux-ci/integration-service/pkg/dag"
 	"go.opentelemetry.io/otel/attribute"
 	clienterrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/client-go/util/retry"
@@ -371,37 +372,6 @@ func (a *Adapter) loadAndFilterIntegrationTestScenarios() *[]v1beta2.Integration
 	return integrationTestScenarios
 }
 
-// initializeTestStatusesWithDefer creates and initializes test status tracking with deferred update setup
-// Returns the testStatuses and a cleanup function that should be deferred
-func (a *Adapter) initializeTestStatusesWithDefer(integrationTestScenarios *[]v1beta2.IntegrationTestScenario) (*intgteststat.SnapshotIntegrationTestStatuses, func(), error) {
-	testStatuses, err := gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(a.snapshot)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	testStatuses.InitStatuses(integrationTestScenarios)
-
-	err = gitops.WriteIntegrationTestStatusesIntoSnapshot(a.context, a.snapshot, testStatuses, a.client)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	// Create the deferred function
-	deferFunc := func() {
-		// Try to update status of test if something failed, because test loop can stop prematurely on error,
-		// we should record current status.
-		// This is only best effort update
-		//
-		// When update of statuses worked fine at the end of function, this is just a no-op
-		err := gitops.WriteIntegrationTestStatusesIntoSnapshot(a.context, a.snapshot, testStatuses, a.client)
-		if err != nil {
-			a.logger.Error(err, "Defer: Updating statuses of tests in snapshot failed")
-		}
-	}
-
-	return testStatuses, deferFunc, nil
-}
-
 // processSingleScenario handles pipeline creation for a single test scenario
 func (a *Adapter) processSingleScenario(
 	integrationTestScenario *v1beta2.IntegrationTestScenario,
@@ -448,7 +418,7 @@ func (a *Adapter) processSingleScenario(
 	return nil
 }
 
-// processAllScenarios iterates through all scenarios and creates pipelines
+// processAllScenarios iterates through all scenarios and creates pipelines.
 func (a *Adapter) processAllScenarios(
 	integrationTestScenarios *[]v1beta2.IntegrationTestScenario,
 	testStatuses *intgteststat.SnapshotIntegrationTestStatuses,
@@ -515,51 +485,179 @@ func (a *Adapter) markSnapshotPassedIfNoRequiredScenarios() (controller.Operatio
 	return controller.ContinueProcessing()
 }
 
-// EnsureIntegrationPipelineRunsExist is an operation that will ensure that all Integration pipeline runs
-// associated with the Snapshot and the Application's IntegrationTestScenarios exist.
+// areRunAfterRequirementsSatisfiedForScenario returns true if the run requirements are satisfied for a scenario
+// It checks the scenario's runAfter list to see if the scenarios are finished and checks if it should fail fast if they failed.
+func (a *Adapter) areRunAfterRequirementsSatisfiedForScenario(
+	scenarioName string,
+	testStatuses *intgteststat.SnapshotIntegrationTestStatuses,
+) bool {
+	detail, ok := testStatuses.GetScenarioStatus(scenarioName)
+	if !ok || len(detail.RunAfter) == 0 {
+		return ok // empty runAfter => root / no DAG edge
+	}
+	numSatisfied := 0
+	for _, parentName := range detail.RunAfter {
+		parentDetail, ok := testStatuses.GetScenarioStatus(parentName)
+		if !ok {
+			a.logger.Info(fmt.Sprintf("Failed to get scenario status for parent %s in the runAfter list of the %s scenario", parentName, scenarioName))
+			return false
+		}
+		if !parentDetail.Status.IsFinal() {
+			return false
+		}
+		if parentDetail.Status.IsPassed() {
+			numSatisfied++
+		} else {
+			if a.componentGroup == nil || a.componentGroup.Spec.TestGraph == nil {
+				return false
+			}
+			if !dag.ShouldFailFastForScenariosParent(
+				a.componentGroup.Spec.TestGraph, scenarioName, parentName,
+			) {
+				numSatisfied++
+			}
+		}
+	}
+	return numSatisfied >= len(detail.RunAfter)
+}
+
+// isScenarioPendingWithoutPLR returns true if the scenario is in a pending state and does not have
+// an associated test pipelineRun name defined
+func (a *Adapter) isScenarioPendingWithoutPLR(
+	scenarioName string,
+	testStatuses *intgteststat.SnapshotIntegrationTestStatuses,
+) bool {
+	detail, ok := testStatuses.GetScenarioStatus(scenarioName)
+	if !ok {
+		return true
+	}
+	return detail.Status == intgteststat.IntegrationTestStatusPending &&
+		detail.TestPipelineRunName == ""
+}
+
+// findScenariosReadyToRunWithoutPLR returns all applicable scenarios that should
+// have a PipelineRun created now but do not yet.
+func (a *Adapter) findScenariosReadyToRunWithoutPLR(
+	integrationTestScenarios *[]v1beta2.IntegrationTestScenario,
+	testStatuses *intgteststat.SnapshotIntegrationTestStatuses,
+) []v1beta2.IntegrationTestScenario {
+	if integrationTestScenarios == nil {
+		return nil
+	}
+	var ready []v1beta2.IntegrationTestScenario
+	for _, scenario := range *integrationTestScenarios {
+		if a.isScenarioPendingWithoutPLR(scenario.Name, testStatuses) &&
+			a.areRunAfterRequirementsSatisfiedForScenario(scenario.Name, testStatuses) {
+			ready = append(ready, scenario)
+		}
+	}
+	return ready
+}
+
+// cascadeFailFastFromFailedScenarios goes through the scenarios which have runAfter and checks if their parent scenarios
+// have failed testing and marks them as also failed if the failFast option in their testGraph is set to `true`.
+// It will then cascade that failure to their dependents to make sure that the
+// failure is propagated through all levels of the test graph.
+func (a *Adapter) cascadeFailFastFromFailedScenarios(
+	testStatuses *intgteststat.SnapshotIntegrationTestStatuses,
+) {
+	if a.componentGroup == nil || a.componentGroup.Spec.TestGraph == nil {
+		return
+	}
+	for _, detail := range testStatuses.GetStatuses() {
+		if detail.Status.IsFinal() && !detail.Status.IsPassed() {
+			dag.CascadeFailFastDependents(
+				a.componentGroup.Spec.TestGraph, testStatuses, detail.ScenarioName,
+			)
+		}
+	}
+}
+
+// initializeOrLoadTestStatuses checks if the test statuses have been set and initializes them in case they are missing
+// for the given list of integrationTestScenarios
+func (a *Adapter) initializeOrLoadTestStatuses(
+	integrationTestScenarios *[]v1beta2.IntegrationTestScenario,
+) (*intgteststat.SnapshotIntegrationTestStatuses, func(), error) {
+	testStatuses, err := gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(a.snapshot)
+	if err != nil {
+		return nil, nil, err
+	}
+	runAfterMap := map[string][]string{}
+	if a.componentGroup != nil && a.componentGroup.Spec.TestGraph != nil {
+		runAfterMap = dag.GetRunAfterMapForTestGraphNodes(
+			a.componentGroup.Spec.TestGraph, integrationTestScenarios,
+		)
+	}
+	testStatuses.InitStatuses(integrationTestScenarios, runAfterMap)
+	deferFunc := func() {
+		if err := gitops.WriteIntegrationTestStatusesIntoSnapshot(
+			a.context, a.snapshot, testStatuses, a.client,
+		); err != nil {
+			a.logger.Error(err, "Defer: Updating statuses of tests in snapshot failed")
+		}
+	}
+	return testStatuses, deferFunc, nil
+}
+
+// createEligibleIntegrationPipelineRuns creates PipelineRuns for every scenario that is
+// eligible to run now but has not yet been started. Handles both roots and dependents.
+func (a *Adapter) createEligibleIntegrationPipelineRuns(
+	integrationTestScenarios *[]v1beta2.IntegrationTestScenario,
+) error {
+	if integrationTestScenarios == nil {
+		return nil
+	}
+	testStatuses, deferFunc, err := a.initializeOrLoadTestStatuses(integrationTestScenarios)
+	if err != nil {
+		return err
+	}
+	defer deferFunc()
+	a.cascadeFailFastFromFailedScenarios(testStatuses)
+
+	superseded, err := a.isSnapshotSupersededInPRGroup()
+	if err != nil {
+		return err
+	}
+
+	var errsForPLRCreation error
+
+	if !superseded {
+		readyScenarios := a.findScenariosReadyToRunWithoutPLR(integrationTestScenarios, testStatuses)
+		if len(readyScenarios) > 0 {
+			errsForPLRCreation = a.processAllScenarios(&readyScenarios, testStatuses)
+		}
+	}
+
+	a.cancelOldPipelinesIfNeeded()
+
+	if testStatuses.IsDirty() {
+		if err := gitops.WriteIntegrationTestStatusesIntoSnapshot(
+			a.context, a.snapshot, testStatuses, a.client,
+		); err != nil {
+			errsForPLRCreation = errors.Join(errsForPLRCreation, err)
+		}
+	}
+	return errsForPLRCreation
+}
+
 func (a *Adapter) EnsureIntegrationPipelineRunsExist() (controller.OperationResult, error) {
 	if gitops.HaveAppStudioTestsFinished(a.snapshot) {
 		a.logger.Info("The Snapshot has finished testing.")
 		return controller.ContinueProcessing()
 	}
-
 	integrationTestScenarios := a.loadAndFilterIntegrationTestScenarios()
-
 	var errsForPLRCreation error
-
-	// Process scenarios if they exist
 	if integrationTestScenarios != nil {
-		testStatuses, deferFunc, err := a.initializeTestStatusesWithDefer(integrationTestScenarios)
-		if err != nil {
-			return controller.RequeueWithError(err)
-		}
-		defer deferFunc()
-
-		// Process all scenarios
-		errsForPLRCreation = a.processAllScenarios(integrationTestScenarios, testStatuses)
-
-		// Cancel old pipelines if needed
-		a.cancelOldPipelinesIfNeeded()
-
-		// Persist final status
-		err = gitops.WriteIntegrationTestStatusesIntoSnapshot(a.context, a.snapshot, testStatuses, a.client)
-		if err != nil {
-			a.logger.Error(err, "Failed to update test status in snapshot annotation")
-			errsForPLRCreation = errors.Join(errsForPLRCreation, err)
-		}
+		errsForPLRCreation = a.createEligibleIntegrationPipelineRuns(integrationTestScenarios)
 	}
-
-	// Always validate required scenarios, even if scenario loading failed
 	result, err := a.markSnapshotPassedIfNoRequiredScenarios()
 	if err != nil || result.CancelRequest {
 		return result, err
 	}
-
 	// Return any pipeline creation errors after required scenario validation
 	if errsForPLRCreation != nil {
 		return controller.RequeueWithError(errsForPLRCreation)
 	}
-
 	return controller.ContinueProcessing()
 }
 
@@ -1403,9 +1501,13 @@ func (a *Adapter) filterPipelineRunsForComponentGroup(allPipelineRuns *[]tektonv
 	return &filteredPipelineRuns
 }
 
-// checkAndCancelOldSnapshotsPipelineRun sorts all snapshots for component group and cancels all running integrationTest pipelineruns within component group
-// removes finalizer before the pipelinerun is set as CancelledRunFinally to be gracefully cancelled
-func (a *Adapter) checkAndCancelOldSnapshotsPipelineRun() error {
+// getSortedPRSnapshotsForSupersession returns PR component or group snapshots for the
+// current adapter snapshot, sorted newest-first. Returns nil when not applicable
+// (push event, non-PR snapshot, etc.).
+func (a *Adapter) getSortedPRSnapshotsForSupersession() ([]applicationapiv1alpha1.Snapshot, error) {
+	if gitops.IsSnapshotCreatedByPACPushEvent(a.snapshot) {
+		return nil, nil
+	}
 	var err error
 	snapshots := &[]applicationapiv1alpha1.Snapshot{}
 	if gitops.IsComponentSnapshot(a.snapshot) {
@@ -1414,23 +1516,22 @@ func (a *Adapter) checkAndCancelOldSnapshotsPipelineRun() error {
 			if err != nil {
 				a.logger.Error(err, "Failed to fetch Snapshots for the application",
 					"application.Name:", a.application.Name)
-				return err
+				return nil, err
 			}
 		} else {
 			snapshots, err = a.loader.GetAllSnapshotsForPR(a.context, a.client, a.componentGroup.ObjectMeta, a.snapshot.GetLabels()[gitops.SnapshotComponentLabel], a.snapshot.GetLabels()[gitops.PipelineAsCodePullRequestAnnotation])
 			if err != nil {
 				a.logger.Error(err, "Failed to fetch Snapshots for the componentGroup",
 					"componentGroup.Name:", a.componentGroup.Name)
-				return err
+				return nil, err
 			}
 		}
 	}
-
 	if gitops.IsGroupSnapshot(a.snapshot) {
 		prGroupHash, prGroup := gitops.GetPRGroup(a.snapshot)
 		if prGroupHash == "" || prGroup == "" {
 			a.logger.Error(fmt.Errorf("pr group info can't be found in group snapshot"), "snapshot.Namespace", a.snapshot.Namespace, "snapshot.Name", a.snapshot.Name)
-			return fmt.Errorf("pr group info can't be found in group snapshot %s/%s", a.snapshot.Namespace, a.snapshot.Name)
+			return nil, fmt.Errorf("pr group info can't be found in group snapshot %s/%s", a.snapshot.Namespace, a.snapshot.Name)
 		}
 		// TODO: remove if statement when we deprecated old application model
 		if a.application != nil {
@@ -1440,12 +1541,21 @@ func (a *Adapter) checkAndCancelOldSnapshotsPipelineRun() error {
 		}
 		if err != nil {
 			a.logger.Error(fmt.Errorf("failed to get group snapshot for pr group from group snapshot"), "snapshot.Namespace", a.snapshot.Namespace, "snapshot.Name", a.snapshot.Name)
-			return err
+			return nil, err
 		}
 
 	}
+	return gitops.SortSnapshots(*snapshots), nil
+}
 
-	sortedSnapshots := gitops.SortSnapshots(*snapshots)
+// checkAndCancelOldSnapshotsPipelineRun sorts all snapshots for component group and cancels all running integrationTest pipelineruns within component group
+// removes finalizer before the pipelinerun is set as CancelledRunFinally to be gracefully cancelled
+func (a *Adapter) checkAndCancelOldSnapshotsPipelineRun() error {
+	var err error
+	sortedSnapshots, err := a.getSortedPRSnapshotsForSupersession()
+	if err != nil {
+		return err
+	}
 	// no snapshots found that fulfill the condition
 	if len(sortedSnapshots) < 2 {
 		return nil
@@ -1484,6 +1594,17 @@ func (a *Adapter) cancelAllPipelineRunsForSnapshot(snapshot *applicationapiv1alp
 		return nil
 	}
 	return gitops.CancelPipelineRuns(a.client, a.context, a.logger, integrationTestPipelineRuns)
+}
+
+// isSnapshotSupersededInPRGroup reports whether a.snapshot is not the newest
+// snapshot in its PR component/group set.
+func (a *Adapter) isSnapshotSupersededInPRGroup() (bool, error) {
+	sortedSnapshots, err := a.getSortedPRSnapshotsForSupersession()
+	if err != nil || len(sortedSnapshots) == 0 {
+		return false, err
+	}
+	newest := &sortedSnapshots[0]
+	return newest.Name != a.snapshot.Name || newest.Namespace != a.snapshot.Namespace, nil
 }
 
 // isSnapshotOlderThanLastBuild queries sibling push snapshots instead of comparing against

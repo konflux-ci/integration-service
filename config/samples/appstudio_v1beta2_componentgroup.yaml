@@ -25,12 +25,12 @@ spec:
         name: "main"
     - name: second-component
       kind: component
-      componentBranch:
+      componentVersion:
         name: "v1"
         revision: "v1branch"
         context: "components/second-component"
     - name: python-component
-      componentBranch:
+      componentVersion:
         name: "3.12.4"
     - name: child-cg
       kind: componentGroup
@@ -42,14 +42,14 @@ spec:
     verify:
       - name: clamav-scan
       - name: dast-tests
-        onFail: skip
+        failFast: true
       - name: operator-scorecard
     e2e-test:
       - name: clamav-scan
-        onFail: run
+        failFast: false
     operator-scorecard:
       - name: deployment
-        onFail: skip
+        failFast: true
 status:
   globalCandidateList:
     - name: first-component

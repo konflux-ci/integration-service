@@ -492,7 +492,7 @@ var _ = Describe("integrationteststatus library unittests", func() {
 
 			It("Initialization with empty scenario list will remove data", func() {
 				sits.ResetDirty()
-				sits.InitStatuses(&[]v1beta2.IntegrationTestScenario{})
+				sits.InitStatuses(&[]v1beta2.IntegrationTestScenario{}, map[string][]string{})
 				Expect(sits.GetStatuses()).To(BeEmpty())
 				Expect(sits.IsDirty()).To(BeTrue())
 			})
@@ -501,7 +501,7 @@ var _ = Describe("integrationteststatus library unittests", func() {
 
 		It("Initialization with new test scenario creates pending status", func() {
 			sits.ResetDirty()
-			sits.InitStatuses(&[]v1beta2.IntegrationTestScenario{*integrationTestScenario})
+			sits.InitStatuses(&[]v1beta2.IntegrationTestScenario{*integrationTestScenario}, map[string][]string{})
 
 			Expect(sits.IsDirty()).To(BeTrue())
 			Expect(sits.GetStatuses()).To(HaveLen(1))
@@ -560,6 +560,29 @@ var _ = Describe("integrationteststatus library unittests", func() {
 			})
 		})
 
+		When("SetTestDetailRunAfterList is called", func() {
+			BeforeEach(func() {
+				sits.InitStatuses(&[]v1beta2.IntegrationTestScenario{*integrationTestScenario},
+					map[string][]string{integrationTestScenario.Name: {"parent-a"}})
+				sits.ResetDirty()
+			})
+			It("marks dirty when runAfter changes", func() {
+				sits.SetTestDetailRunAfterList(integrationTestScenario.Name, []string{"parent-b"})
+				Expect(sits.IsDirty()).To(BeTrue())
+			})
+			It("does not mark dirty when runAfter is unchanged", func() {
+				sits.SetTestDetailRunAfterList(integrationTestScenario.Name, []string{"parent-a"})
+				Expect(sits.IsDirty()).To(BeFalse())
+			})
+			It("does not mark dirty for nil vs empty slice", func() {
+				sits.SetTestDetailRunAfterList(integrationTestScenario.Name, []string{})
+				detail, _ := sits.GetScenarioStatus(integrationTestScenario.Name)
+				detail.RunAfter = nil
+				sits.ResetDirty()
+				sits.SetTestDetailRunAfterList(integrationTestScenario.Name, []string{})
+				Expect(sits.IsDirty()).To(BeFalse())
+			})
+		})
 	})
 
 })
