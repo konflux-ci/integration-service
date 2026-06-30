@@ -416,7 +416,9 @@ func (r *ForgejoReporter) ReportStatus(ctx context.Context, report TestReport) (
 }
 
 func (r *ForgejoReporter) ReturnCodeIsUnrecoverable(statusCode int) bool {
-	return statusCode == http.StatusForbidden || statusCode == http.StatusUnauthorized || statusCode == http.StatusBadRequest || statusCode == http.StatusNotFound
+	return statusCode == http.StatusForbidden || statusCode == http.StatusUnauthorized ||
+		statusCode == http.StatusBadRequest || statusCode == http.StatusNotFound ||
+		statusCode == http.StatusUnprocessableEntity
 }
 
 // GenerateForgejoCommitState transforms internal integration test state into Forgejo state
