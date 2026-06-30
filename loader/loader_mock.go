@@ -76,6 +76,7 @@ const (
 	RequiredIntegrationTestScenariosForSnapshotContextKey
 	GetPushComponentSnapshotsForComponentContextKey
 	ComponentGroupComponentsContextKey
+	NudgeConfigContextKey
 )
 
 func NewMockLoader() ObjectLoader {
@@ -463,4 +464,12 @@ func (l *mockLoader) GetNestedComponentGroupsForComponentGroup(ctx context.Conte
 	}
 	componentGroups, err := toolkit.GetMockedResourceAndErrorFromContext(ctx, NestedComponentGroupsContextKey, []v1beta2.ComponentGroup{})
 	return componentGroups, err
+}
+
+// GetNudgeConfig returns the resource and error passed as values of the context.
+func (l *mockLoader) GetNudgeConfig(ctx context.Context, c client.Client, namespace string) (*v1beta2.NudgeConfig, error) {
+	if ctx.Value(NudgeConfigContextKey) == nil {
+		return l.loader.GetNudgeConfig(ctx, c, namespace)
+	}
+	return toolkit.GetMockedResourceAndErrorFromContext(ctx, NudgeConfigContextKey, &v1beta2.NudgeConfig{})
 }

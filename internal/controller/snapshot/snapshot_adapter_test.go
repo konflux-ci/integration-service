@@ -2041,8 +2041,17 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
 
 			// update snapshot type label to override type
-			hasOldSnapshot.Labels[gitops.SnapshotTypeLabel] = gitops.SnapshotOverrideType
-			Expect(k8sClient.Update(ctx, hasOldSnapshot)).Should(Succeed())
+			Eventually(func() error {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      hasOldSnapshot.Name,
+					Namespace: hasOldSnapshot.Namespace,
+				}, hasOldSnapshot)
+				if err != nil {
+					return err
+				}
+				hasOldSnapshot.Labels[gitops.SnapshotTypeLabel] = gitops.SnapshotOverrideType
+				return k8sClient.Update(ctx, hasOldSnapshot)
+			}, time.Second*10).Should(Succeed())
 
 			// WAIT for snapshot status to be properly updated, eventually helps stop test flakiness
 			Eventually(func() bool {
@@ -2409,9 +2418,18 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 					gitops.HaveAppStudioTestsSucceeded(hasOldSnapshot)
 			}, time.Second*10).Should(BeTrue())
 
-			metav1.SetMetaDataAnnotation(&hasOldSnapshot.ObjectMeta, tracing.SpanContextAnnotation,
-				`{"traceparent":"00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"}`)
-			Expect(k8sClient.Update(ctx, hasOldSnapshot)).Should(Succeed())
+			Eventually(func() error {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      hasOldSnapshot.Name,
+					Namespace: hasOldSnapshot.Namespace,
+				}, hasOldSnapshot)
+				if err != nil {
+					return err
+				}
+				metav1.SetMetaDataAnnotation(&hasOldSnapshot.ObjectMeta, tracing.SpanContextAnnotation,
+					`{"traceparent":"00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"}`)
+				return k8sClient.Update(ctx, hasOldSnapshot)
+			}, time.Second*10).Should(Succeed())
 
 			newerSibling := applicationapiv1alpha1.Snapshot{
 				ObjectMeta: metav1.ObjectMeta{
