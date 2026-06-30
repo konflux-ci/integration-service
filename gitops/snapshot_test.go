@@ -504,6 +504,16 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 		Expect(gitops.HaveAppStudioTestsSucceeded(hasSnapshot)).To(BeTrue())
 	})
 
+	It("returns true for HaveAppStudioTestsFinished when only LegacyTestSucceededCondition is set", func() {
+		legacyTestSucceededCondition := "HACBSStudioTestSucceeded"
+		condition := metav1.Condition{
+			Type:   legacyTestSucceededCondition,
+			Status: metav1.ConditionTrue,
+		}
+		meta.SetStatusCondition(&hasSnapshot.Status.Conditions, condition)
+		Expect(gitops.HaveAppStudioTestsFinished(hasSnapshot)).To(BeTrue())
+	})
+
 	It("returns the LastTransitionTime when AppStudioTestSucceededCondition is set", func() {
 		appStudioTestSucceededCondition := "AppStudioTestSucceeded" // Local variable
 		testTime := metav1.NewTime(time.Now())
