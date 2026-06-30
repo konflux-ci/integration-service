@@ -63,9 +63,9 @@ spec:
         resolver: git
         params:
           - name: url
-            value: https://github.com/konflux-ci/tekton-integration-catalog.git
+            value: https://github.com/flacatus/tekton-integration-catalog.git
           - name: revision
-            value: main
+            value: protect-control-plane
           - name: pathInRepo
             value: tasks/mapt-oci/kind-aws-spot/provision/0.2/kind-aws-provision.yaml
       params:
@@ -96,6 +96,8 @@ spec:
           value: "false"
         - name: compute-sizes
           value: "m5a.large,m6a.large,m7i-flex.12xlarge,m5.12xlarge,m6i.12xlarge"
+        - name: harden-control-plane
+          value: 'true'
     - name: deploy-konflux
       runAfter:
         - provision-kind-cluster
@@ -103,9 +105,9 @@ spec:
         resolver: git
         params:
           - name: url
-            value: https://github.com/konflux-ci/tekton-integration-catalog
+            value: https://github.com/flacatus/tekton-integration-catalog.git
           - name: revision
-            value: main
+            value: protect-control-plane
           - name: pathInRepo
             value: tasks/konflux-ci/deploy/0.3/deploy-konflux-ci.yaml
       params:
@@ -129,6 +131,8 @@ spec:
           value: $(params.konflux-test-infra-secret)
         - name: build-credentials
           value: "konflux-e2e-secrets"
+        - name: harden-kyverno
+          value: "true"
     - name: konflux-e2e-tests
       timeout: 2h
       runAfter:
