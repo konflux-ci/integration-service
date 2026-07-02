@@ -273,11 +273,8 @@ func (r *GitLabReporter) setCommitStatus(report TestReport) (int, error) {
 	if targetProjectErr == nil {
 		r.logger.Info("Created gitlab commit status", "scenario.name", report.ScenarioName, "commitStatus2.ID", targetProjectCommitStatus.ID, "TargetURL", opt.TargetURL)
 		return targetProjectStatusCode, nil
-	} else if strings.Contains(targetProjectErr.Error(), "Cannot transition status via :enqueue from :pending") {
-		r.logger.Info("Ignoring the error when transition from pending to pending when the commitStatus might be created/updated in multiple threads at the same time occasionally")
-		return http.StatusOK, nil
-	} else if strings.Contains(targetProjectErr.Error(), "Cannot transition status via :run from :running") {
-		r.logger.Info("Ignoring redundant running→running commit status update on target project", "scenario.name", report.ScenarioName)
+	} else if isGitLabRedundantTransitionError(targetProjectErr) {
+		r.logger.Info("Ignoring redundant commit status transition on target project", "scenario.name", report.ScenarioName, "error", targetProjectErr.Error())
 		return http.StatusOK, nil
 	} else {
 		r.logger.Error(targetProjectErr, "failed to set commit status to gitlab target project, will try to set commit status to gitlab source project",
@@ -292,13 +289,8 @@ func (r *GitLabReporter) setCommitStatus(report TestReport) (int, error) {
 	if sourceProjectErr == nil {
 		r.logger.Info("Created gitlab commit status", "scenario.name", report.ScenarioName, "commitStatus.ID", sourceProjectCommitStatus.ID, "TargetURL", opt.TargetURL)
 		return sourceProjectStatusCode, nil
-	}
-	if strings.Contains(sourceProjectErr.Error(), "Cannot transition status via :enqueue from :pending") {
-		r.logger.Info("Ignoring the error when transition from pending to pending when the commitStatus might be created/updated in multiple threads at the same time occasionally")
-		return http.StatusOK, nil
-	}
-	if strings.Contains(sourceProjectErr.Error(), "Cannot transition status via :run from :running") {
-		r.logger.Info("Ignoring redundant running→running commit status update on source project", "scenario.name", report.ScenarioName)
+	} else if isGitLabRedundantTransitionError(sourceProjectErr) {
+		r.logger.Info("Ignoring redundant commit status transition on source project", "scenario.name", report.ScenarioName, "error", sourceProjectErr.Error())
 		return http.StatusOK, nil
 	}
 
@@ -513,6 +505,138 @@ func (r *GitLabReporter) ReportStatus(ctx context.Context, report TestReport) (i
 	}
 	return statusCode, nil
 
+}
+
+// ReportConsolidatedStatus posts a single aggregated commit status that
+// summarises all integration test results. It is used when the number of
+// scenarios exceeds the configured per-pipeline job threshold, preventing
+// GitLab's max_jobs_per_pipeline limit from being exhausted.
+func (r *GitLabReporter) ReportConsolidatedStatus(ctx context.Context, reports []TestReport) (int, error) {
+	if r.client == nil {
+		return 0, fmt.Errorf("gitlab reporter is not initialized")
+	}
+
+	passed := 0
+	total := len(reports)
+	overallState := gitlab.Success
+
+	for _, report := range reports {
+		switch report.Status {
+		case intgteststat.IntegrationTestStatusTestPassed, intgteststat.IntegrationTestStatusTestWarning:
+			passed++
+		case intgteststat.IntegrationTestStatusInProgress:
+			if overallState == gitlab.Success || overallState == gitlab.Pending {
+				overallState = gitlab.Running
+			}
+		case intgteststat.IntegrationTestStatusPending, intgteststat.BuildPLRInProgress:
+			if overallState == gitlab.Success {
+				overallState = gitlab.Pending
+			}
+		case intgteststat.IntegrationTestStatusTestFail,
+			intgteststat.IntegrationTestStatusTestInvalid,
+			intgteststat.IntegrationTestStatusEnvironmentProvisionError_Deprecated,
+			intgteststat.IntegrationTestStatusDeploymentError_Deprecated,
+			intgteststat.BuildPLRFailed,
+			intgteststat.SnapshotCreationFailed,
+			intgteststat.GroupSnapshotCreationFailed:
+			if !report.IsOptional {
+				overallState = gitlab.Failed
+			}
+		case intgteststat.IntegrationTestStatusDeleted:
+			// Deleted maps to Canceled in per-scenario reporting and does not
+			// affect the overall pass/fail outcome of the consolidated status.
+		}
+	}
+
+	consoleName := getConsoleName()
+	opt := gitlab.SetCommitStatusOptions{
+		State:       gitlab.BuildStateValue(overallState),
+		Name:        gitlab.Ptr(fmt.Sprintf("%s / Integration Tests", consoleName)),
+		Description: gitlab.Ptr(fmt.Sprintf("%d/%d passed", passed, total)),
+	}
+	if snapshotURL := FormatSnapshotURL(r.snapshot.Name, r.snapshot.Namespace); snapshotURL != "" {
+		opt.TargetURL = gitlab.Ptr(snapshotURL)
+	}
+
+	var statusCode int
+	var err error
+	err = retry.OnError(reporterRetryBackoff, func(err error) bool {
+		// statusCode 0 means no HTTP response was received (network/timeout error), always retry
+		retryable := statusCode == 0 || !r.ReturnCodeIsUnrecoverable(statusCode)
+		if retryable {
+			r.logger.Info("retrying to set consolidated gitlab commit status after transient error",
+				"statusCode", statusCode, "error", err.Error())
+		}
+		return retryable
+	}, func() error {
+		statusCode = 0
+		statusCode, err = r.setConsolidatedCommitStatus(opt)
+		return err
+	})
+
+	if err != nil {
+		r.logger.Error(err, "failed to set consolidated gitlab commit status after all retries",
+			"statusCode", statusCode)
+		return statusCode, err
+	}
+	r.logger.Info("Created consolidated gitlab commit status",
+		"state", string(overallState), "passed", passed, "total", total)
+	return statusCode, nil
+}
+
+// setConsolidatedCommitStatus posts the consolidated commit status to the target project,
+// falling back to the source project on failure — mirroring the behaviour of setCommitStatus.
+func (r *GitLabReporter) setConsolidatedCommitStatus(opt gitlab.SetCommitStatusOptions) (int, error) {
+	var statusCode int
+
+	_, response, err := r.client.Commits.SetCommitStatus(r.targetProjectID, r.sha, &opt)
+	if response != nil {
+		statusCode = response.StatusCode
+	}
+	if err == nil {
+		return statusCode, nil
+	}
+	if isGitLabRedundantTransitionError(err) {
+		r.logger.Info("Ignoring redundant consolidated commit status transition on target project", "error", err.Error())
+		return http.StatusOK, nil
+	}
+
+	r.logger.Error(err, "failed to set consolidated commit status to target project, trying source project",
+		"targetProjectID", r.targetProjectID, "sha", r.sha, "statusCode", statusCode)
+
+	_, srcResponse, srcErr := r.client.Commits.SetCommitStatus(r.sourceProjectID, r.sha, &opt)
+	var srcStatusCode int
+	if srcResponse != nil {
+		srcStatusCode = srcResponse.StatusCode
+	}
+	if srcErr == nil {
+		return srcStatusCode, nil
+	}
+	if isGitLabRedundantTransitionError(srcErr) {
+		r.logger.Info("Ignoring redundant consolidated commit status transition on source project", "error", srcErr.Error())
+		return http.StatusOK, nil
+	}
+
+	r.logger.Error(errors.Join(err, srcErr), "failed to set consolidated commit status on both projects",
+		"targetProjectID", r.targetProjectID, "sourceProjectID", r.sourceProjectID, "sha", r.sha)
+	if !r.ReturnCodeIsUnrecoverable(statusCode) {
+		return statusCode, err
+	}
+	if !r.ReturnCodeIsUnrecoverable(srcStatusCode) {
+		return srcStatusCode, srcErr
+	}
+	return statusCode, err
+}
+
+// isGitLabRedundantTransitionError returns true when GitLab rejects a commit
+// status update because the status is already in the requested state. These
+// errors are safe to ignore — the desired state is already reflected.
+func isGitLabRedundantTransitionError(err error) bool {
+	if err == nil {
+		return false
+	}
+	return strings.Contains(err.Error(), "Cannot transition status via :enqueue from :pending") ||
+		strings.Contains(err.Error(), "Cannot transition status via :run from :running")
 }
 
 func (r *GitLabReporter) ReturnCodeIsUnrecoverable(statusCode int) bool {

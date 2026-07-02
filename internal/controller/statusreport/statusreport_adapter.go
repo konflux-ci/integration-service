@@ -525,8 +525,12 @@ func (a *Adapter) iterateIntegrationTestStatusDetailsInStatusReport(reporter sta
 		return nil
 	}
 
+	// Build the per-scenario test reports. These are always needed — for comment
+	// text in both paths and for per-scenario commit statuses in the individual path.
+	var allReports []status.TestReport
 	for _, integrationTestStatusDetail := range integrationTestStatusDetails {
-		// set isFinalStatus to true if there is at least one integration test status is in final status, which means the comment for integration test might not be updated again to have only one comment for each component
+		// set isFinalStatus to true if there is at least one integration test status is in final status,
+		// which means the comment for integration test might not be updated again to have only one comment for each component
 		if integrationTestStatusDetail.Status.IsFinal() {
 			isFinalStatus = true
 		}
@@ -534,14 +538,17 @@ func (a *Adapter) iterateIntegrationTestStatusDetailsInStatusReport(reporter sta
 		if reportErr != nil {
 			a.logger.Error(reportErr, fmt.Sprintf("failed to generate test report for integration test scenario %s/%s",
 				testedSnapshot.Namespace, integrationTestStatusDetail.ScenarioName))
-			if writeErr := status.WriteSnapshotReportStatus(a.context, a.client, testedSnapshot, srs); writeErr != nil { // try to write what was already written
+			if writeErr := status.WriteSnapshotReportStatus(a.context, a.client, testedSnapshot, srs); writeErr != nil {
 				return fmt.Errorf("failed to generate test report AND write snapshot report status metadata: %w", e.Join(reportErr, writeErr))
 			}
 			return fmt.Errorf("failed to generate test report: %w", reportErr)
 		}
-		// split passed and failing integration test report in gitlab comment to show failing tests on top
+		allReports = append(allReports, *testReport)
+
+		// Split passed and failing reports into separate slices so failing tests
+		// appear at the top of the GitLab comment.
+		// Passed tests use ShortText (includes the PipelineRun link but omits task run details).
 		if integrationTestStatusDetail.Status == intgteststat.IntegrationTestStatusTestPassed {
-			// generate comment for passed integration test with short text which has pipelinerun link but without task run details
 			commentForEachTest, err := status.FormatCommentForSuccessfulTest(testReport.Summary, testReport.ShortText)
 			if err != nil {
 				return fmt.Errorf("failed to generate comment for status of integration test scenario %s/%s : %w", testedSnapshot.Namespace, testReport.ScenarioName, err)
@@ -554,38 +561,25 @@ func (a *Adapter) iterateIntegrationTestStatusDetailsInStatusReport(reporter sta
 			}
 			commentForFailingIntegrationTests = append(commentForFailingIntegrationTests, commentForEachTest)
 		}
+	}
 
-		if srs.IsNewer(integrationTestStatusDetail.ScenarioName, destinationSnapshot.Name, integrationTestStatusDetail.LastUpdateTime) {
-			a.logger.Info("Integration Test contains new status updates", "scenario.Name", integrationTestStatusDetail.ScenarioName, "destinationSnapshot.Name", destinationSnapshot.Name, "testedSnapshot", testedSnapshot.Name)
+	// When the number of scenarios exceeds the configured threshold for GitLab
+	// reporters, post a single consolidated commit status instead of one per
+	// scenario to avoid exhausting the provider's per-pipeline job limit.
+	useConsolidated := reporter.GetReporterName() == status.GitLabProvider &&
+		len(integrationTestStatusDetails) > status.MaxIndividualStatuses
 
-		} else {
-			//integration test contains no changes
-			a.logger.Info("Integration Test doen't contain new status updates", "scenario.Name", integrationTestStatusDetail.ScenarioName)
-			continue
+	if useConsolidated {
+		a.logger.Info("Scenario count exceeds threshold, using consolidated commit status",
+			"scenarioCount", len(integrationTestStatusDetails), "threshold", status.MaxIndividualStatuses,
+			"reporter", reporter.GetReporterName())
+		if err := a.reportConsolidatedStatuses(reporter, allReports, integrationTestStatusDetails, testedSnapshot, destinationSnapshot, srs); err != nil {
+			return err
 		}
-
-		if statusCode, reportStatusErr := reporter.ReportStatus(a.context, *testReport); reportStatusErr != nil {
-			if integrationTestStatusDetail.Status.IsFinal() && integrationTestStatusDetail.TestPipelineRunName != "" {
-				a.logger.Error(reportStatusErr, fmt.Sprintf("failed to report status to git provider for completed integration pipelinerun %s/%s, then finalizer test.appstudio.openshift.io/pipelinerun might not be removed from it later", testedSnapshot.Namespace, integrationTestStatusDetail.TestPipelineRunName))
-			}
-
-			if reporter.ReturnCodeIsUnrecoverable(statusCode) {
-				a.logger.Error(reportStatusErr, fmt.Sprintf("failed to report status to git provider for integration pipelinerun %s/%s, the statusCode %d is not easily recoverable", testedSnapshot.Namespace, integrationTestStatusDetail.TestPipelineRunName, statusCode))
-				return nil
-			} else {
-				return fmt.Errorf("failed to update status: %w", reportStatusErr)
-			}
+	} else {
+		if err := a.reportPerScenarioStatuses(reporter, integrationTestStatusDetails, allReports, testedSnapshot, destinationSnapshot, srs); err != nil {
+			return err
 		}
-
-		if writeErr := status.WriteSnapshotReportStatus(a.context, a.client, testedSnapshot, srs); writeErr != nil { // try to write what was already written
-			return fmt.Errorf("failed to report status AND write snapshot report status metadata: %w", writeErr)
-		}
-
-		a.logger.Info("Successfully report integration test status for snapshot",
-			"testedSnapshot.Name", testedSnapshot.Name,
-			"destinationSnapshot.Name", destinationSnapshot.Name,
-			"testStatus", integrationTestStatusDetail.Status)
-		srs.SetLastUpdateTime(integrationTestStatusDetail.ScenarioName, destinationSnapshot.Name, integrationTestStatusDetail.LastUpdateTime)
 	}
 
 	// update integration test status comment for gitlab and forgejo reporters when comment is not disabled
@@ -624,6 +618,82 @@ func (a *Adapter) iterateIntegrationTestStatusDetailsInStatusReport(reporter sta
 				}
 			}
 		}
+	}
+	return nil
+}
+
+// reportConsolidatedStatuses posts a single consolidated commit status for all scenarios, then
+// marks every scenario as reported and writes the snapshot report status in one call.
+func (a *Adapter) reportConsolidatedStatuses(
+	reporter status.ReporterInterface,
+	allReports []status.TestReport,
+	integrationTestStatusDetails []*intgteststat.IntegrationTestStatusDetail,
+	testedSnapshot *applicationapiv1alpha1.Snapshot,
+	destinationSnapshot *applicationapiv1alpha1.Snapshot,
+	srs *status.SnapshotReportStatus,
+) error {
+	if statusCode, reportErr := reporter.ReportConsolidatedStatus(a.context, allReports); reportErr != nil {
+		if reporter.ReturnCodeIsUnrecoverable(statusCode) {
+			a.logger.Error(reportErr, "consolidated status report failed with unrecoverable error, skipping",
+				"statusCode", statusCode)
+			return nil
+		}
+		return fmt.Errorf("failed to report consolidated status: %w", reportErr)
+	}
+
+	// Mark all scenarios as reported so they are not re-reported on the next reconcile
+	for _, detail := range integrationTestStatusDetails {
+		srs.SetLastUpdateTime(detail.ScenarioName, destinationSnapshot.Name, detail.LastUpdateTime)
+	}
+	if writeErr := status.WriteSnapshotReportStatus(a.context, a.client, testedSnapshot, srs); writeErr != nil {
+		return fmt.Errorf("failed to write snapshot report status after consolidated status: %w", writeErr)
+	}
+	return nil
+}
+
+// reportPerScenarioStatuses posts one commit status per scenario that has a newer status than what
+// was last reported. The snapshot report status is written after each successful scenario post so
+// that a mid-loop failure does not re-report already-completed scenarios on the next reconcile.
+func (a *Adapter) reportPerScenarioStatuses(
+	reporter status.ReporterInterface,
+	integrationTestStatusDetails []*intgteststat.IntegrationTestStatusDetail,
+	allReports []status.TestReport,
+	testedSnapshot *applicationapiv1alpha1.Snapshot,
+	destinationSnapshot *applicationapiv1alpha1.Snapshot,
+	srs *status.SnapshotReportStatus,
+) error {
+	for i, integrationTestStatusDetail := range integrationTestStatusDetails {
+		testReport := allReports[i]
+
+		if srs.IsNewer(integrationTestStatusDetail.ScenarioName, destinationSnapshot.Name, integrationTestStatusDetail.LastUpdateTime) {
+			a.logger.Info("Integration Test contains new status updates", "scenario.Name", integrationTestStatusDetail.ScenarioName, "destinationSnapshot.Name", destinationSnapshot.Name, "testedSnapshot", testedSnapshot.Name)
+		} else {
+			a.logger.Info("Integration Test doen't contain new status updates", "scenario.Name", integrationTestStatusDetail.ScenarioName)
+			continue
+		}
+
+		if statusCode, reportStatusErr := reporter.ReportStatus(a.context, testReport); reportStatusErr != nil {
+			if integrationTestStatusDetail.Status.IsFinal() && integrationTestStatusDetail.TestPipelineRunName != "" {
+				a.logger.Error(reportStatusErr, fmt.Sprintf("failed to report status to git provider for completed integration pipelinerun %s/%s, then finalizer test.appstudio.openshift.io/pipelinerun might not be removed from it later", testedSnapshot.Namespace, integrationTestStatusDetail.TestPipelineRunName))
+			}
+
+			if reporter.ReturnCodeIsUnrecoverable(statusCode) {
+				a.logger.Error(reportStatusErr, fmt.Sprintf("failed to report status to git provider for integration pipelinerun %s/%s, the statusCode %d is not easily recoverable", testedSnapshot.Namespace, integrationTestStatusDetail.TestPipelineRunName, statusCode))
+				return nil
+			}
+			return fmt.Errorf("failed to update status: %w", reportStatusErr)
+		}
+
+		// Write after each scenario so a mid-loop failure does not re-report already-completed scenarios
+		if writeErr := status.WriteSnapshotReportStatus(a.context, a.client, testedSnapshot, srs); writeErr != nil {
+			return fmt.Errorf("failed to report status AND write snapshot report status metadata: %w", writeErr)
+		}
+
+		a.logger.Info("Successfully report integration test status for snapshot",
+			"testedSnapshot.Name", testedSnapshot.Name,
+			"destinationSnapshot.Name", destinationSnapshot.Name,
+			"testStatus", integrationTestStatusDetail.Status)
+		srs.SetLastUpdateTime(integrationTestStatusDetail.ScenarioName, destinationSnapshot.Name, integrationTestStatusDetail.LastUpdateTime)
 	}
 	return nil
 }

@@ -267,14 +267,16 @@ func FormatNote(taskRun *helpers.TaskRun) (string, error) {
 	return result.TestOutput.Note, nil
 }
 
-// Console URL env vars (CONSOLE_URL, CONSOLE_URL_TASKLOG) use literal placeholder substitution only.
+// Console URL env vars (CONSOLE_URL, CONSOLE_URL_TASKLOG, CONSOLE_URL_SNAPSHOT) use literal
+// placeholder substitution only.
 // Operator-controlled values are not evaluated as Go templates (avoids CWE-94 / server-side template injection).
 //
 // Supported placeholders:
 //
 //	{{NAMESPACE}}         — Kubernetes namespace
-//	{{PIPELINE_RUN_NAME}} — PipelineRun name
+//	{{PIPELINE_RUN_NAME}} — PipelineRun name (CONSOLE_URL, CONSOLE_URL_TASKLOG only)
 //	{{TASK_NAME}}         — Pipeline task name (CONSOLE_URL_TASKLOG only; empty for CONSOLE_URL)
+//	{{SNAPSHOT_NAME}}     — Snapshot name (CONSOLE_URL_SNAPSHOT only)
 //
 // Legacy placeholders (backward compatible with earlier releases):
 //
@@ -304,6 +306,22 @@ func FormatPipelineURL(pipelinerun string, namespace string, _ logr.Logger) stri
 		return "https://CONSOLE_URL_NOT_AVAILABLE"
 	}
 	return substituteConsoleURLPlaceholders(consoleURL, namespace, pipelinerun, "")
+}
+
+// FormatSnapshotURL returns a link to the Konflux snapshot overview page for
+// the given snapshot. The URL template is read from CONSOLE_URL_SNAPSHOT and
+// supports {{NAMESPACE}} and {{SNAPSHOT_NAME}} placeholders. Returns an empty
+// string when the env var is not set so callers can skip setting TargetURL.
+func FormatSnapshotURL(snapshotName, namespace string) string {
+	consoleURL := os.Getenv("CONSOLE_URL_SNAPSHOT")
+	if consoleURL == "" {
+		return ""
+	}
+	r := strings.NewReplacer(
+		"{{NAMESPACE}}", namespace,
+		"{{SNAPSHOT_NAME}}", snapshotName,
+	)
+	return r.Replace(consoleURL)
 }
 
 // FormatPullRequestURL accepts a name of application, pipelinerun, namespace and returns a complete pipelineURL.

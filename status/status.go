@@ -268,6 +268,7 @@ func GenerateTestReport(ctx context.Context, client client.Client, detail intgte
 		SnapshotName:        testedSnapshot.Name,
 		ComponentName:       componentName,
 		Status:              detail.Status,
+		IsOptional:          detail.IsOptionalScenario,
 		Summary:             summary,
 		StartTime:           detail.StartTime,
 		CompletionTime:      detail.CompletionTime,
@@ -458,6 +459,12 @@ func getConsoleName() string {
 	}
 	return consoleName
 }
+
+// MaxIndividualStatuses is the maximum number of per-scenario commit statuses
+// that will be posted to GitLab before switching to a single consolidated
+// status. Above this threshold, one "X/Y passed" status is posted instead to
+// avoid exhausting GitLab's max_jobs_per_pipeline limit.
+const MaxIndividualStatuses = 50
 
 func (s Status) IsPRMRInSnapshotOpened(ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot) (bool, int, error) {
 	// need to rework reporter.Detect() function and reuse it here

@@ -948,6 +948,96 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		})
 	})
 
+	When("consolidated commit status path is triggered in iterateIntegrationTestStatusDetailsInStatusReport", func() {
+		var gitlabTestComp *applicationapiv1alpha1.Component
+		var gitlabTestSnapshot *applicationapiv1alpha1.Snapshot
+
+		BeforeEach(func() {
+			buf = bytes.Buffer{}
+			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+
+			ctrl := gomock.NewController(GinkgoT())
+			mockReporter = status.NewMockReporterInterface(ctrl)
+			mockStatus = status.NewMockStatusInterface(ctrl)
+			mockReporter.EXPECT().GetReporterName().Return(status.GitLabProvider).AnyTimes()
+			mockStatus.EXPECT().GetReporter(gomock.Any()).Return(mockReporter).AnyTimes()
+			mockReporter.EXPECT().Initialize(gomock.Any(), gomock.Any()).Times(1)
+
+			// Component without a GitSource prevents IsAllCommentDisabledForPacRepositoryInComponent
+			// from listing PAC RepositoryList objects (which are not in the envtest scheme).
+			gitlabTestComp = &applicationapiv1alpha1.Component{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "gitlab-threshold-comp",
+					Namespace: "default",
+				},
+				Spec: applicationapiv1alpha1.ComponentSpec{
+					ComponentName:  "gitlab-threshold-comp",
+					Application:    hasApp.Name,
+					ContainerImage: SampleImage,
+				},
+			}
+			Expect(k8sClient.Create(ctx, gitlabTestComp)).Should(Succeed())
+
+			// Build status annotation with MaxIndividualStatuses+1 InProgress scenarios to trigger the consolidated path
+			var scenariosBuf bytes.Buffer
+			scenariosBuf.WriteString("[")
+			for i := 1; i <= status.MaxIndividualStatuses+1; i++ {
+				if i > 1 {
+					scenariosBuf.WriteString(",")
+				}
+				fmt.Fprintf(&scenariosBuf,
+					`{"scenario":"scenario-%d","status":"InProgress","lastUpdateTime":"2023-08-26T17:57:50+02:00","details":"Test in progress"}`,
+					i)
+			}
+			scenariosBuf.WriteString("]")
+
+			// No PipelineAsCodePullRequestAnnotation so isMergeRequest = false and UpdateStatusInComment is not called.
+			gitlabTestSnapshot = &applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "snapshot-gitlab-threshold",
+					Namespace: "default",
+					Labels: map[string]string{
+						gitops.SnapshotTypeLabel:      gitops.SnapshotComponentType,
+						gitops.SnapshotComponentLabel: gitlabTestComp.Name,
+					},
+					Annotations: map[string]string{
+						gitops.SnapshotTestsStatusAnnotation: scenariosBuf.String(),
+					},
+				},
+				Spec: applicationapiv1alpha1.SnapshotSpec{
+					Application: hasApp.Name,
+					Components: []applicationapiv1alpha1.SnapshotComponent{
+						{
+							Name:           gitlabTestComp.Name,
+							ContainerImage: SampleImage,
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, gitlabTestSnapshot)).Should(Succeed())
+
+			adapter = NewAdapterWithApplication(ctx, gitlabTestSnapshot, hasApp, log, loader.NewMockLoader(), k8sClient)
+			adapter.status = mockStatus
+		})
+
+		AfterEach(func() {
+			err := k8sClient.Delete(ctx, gitlabTestComp)
+			Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
+			err = k8sClient.Delete(ctx, gitlabTestSnapshot)
+			Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
+		})
+
+		It("calls ReportConsolidatedStatus and not ReportStatus when scenario count exceeds MaxIndividualStatuses", func() {
+			mockReporter.EXPECT().ReportConsolidatedStatus(gomock.Any(), gomock.Any()).Times(1)
+			mockReporter.EXPECT().ReportStatus(gomock.Any(), gomock.Any()).Times(0)
+
+			statusCode, err := adapter.ReportSnapshotStatus(adapter.snapshot)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(statusCode).To(BeTrue())
+			Expect(buf.String()).To(ContainSubstring("Scenario count exceeds threshold, using consolidated commit status"))
+		})
+	})
+
 	When("Ensure group snapshot creation failure is reported to git provider [APPLICATION]", func() {
 		BeforeEach(func() {
 			buf = bytes.Buffer{}

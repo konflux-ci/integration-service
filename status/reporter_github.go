@@ -634,6 +634,12 @@ func (r *GitHubReporter) UpdateStatusInComment(arg0, arg1 string, arg2 bool) (in
 	return http.StatusCreated, nil
 }
 
+// blank implementation to satisfy ReporterInterface — GitHub does not have a
+// per-pipeline job limit that requires status consolidation.
+func (r *GitHubReporter) ReportConsolidatedStatus(_ context.Context, _ []TestReport) (int, error) {
+	return http.StatusCreated, nil
+}
+
 // Initialize github reporter. Must be called before updating status
 func (r *GitHubReporter) Initialize(ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot) (int, error) {
 	var statusCode int
@@ -714,5 +720,7 @@ func (r *GitHubReporter) ReportStatus(ctx context.Context, report TestReport) (i
 }
 
 func (r *GitHubReporter) ReturnCodeIsUnrecoverable(statusCode int) bool {
-	return statusCode == http.StatusForbidden || statusCode == http.StatusUnauthorized || statusCode == http.StatusBadRequest || statusCode == http.StatusNotFound
+	return statusCode == http.StatusForbidden || statusCode == http.StatusUnauthorized ||
+		statusCode == http.StatusBadRequest || statusCode == http.StatusNotFound ||
+		statusCode == http.StatusUnprocessableEntity
 }

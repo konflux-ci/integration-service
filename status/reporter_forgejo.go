@@ -385,6 +385,13 @@ func (r *ForgejoReporter) DeleteExistingComments(commentIDs []int64) (int, error
 	return lastStatusCode, nil
 }
 
+// blank implementation to satisfy ReporterInterface — consolidated status
+// reporting is not yet needed for Forgejo due to its small user base.
+// Implement when a per-pipeline job limit becomes a practical concern.
+func (r *ForgejoReporter) ReportConsolidatedStatus(_ context.Context, _ []TestReport) (int, error) {
+	return http.StatusCreated, nil
+}
+
 // ReportStatus reports test result to forgejo
 func (r *ForgejoReporter) ReportStatus(ctx context.Context, report TestReport) (int, error) {
 	var statusCode = 0

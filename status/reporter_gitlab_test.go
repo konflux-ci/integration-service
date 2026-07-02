@@ -568,6 +568,66 @@ var _ = Describe("GitLabReporter", func() {
 			Expect(atomic.LoadInt32(&sourceCallCount)).To(BeNumerically("==", 1))
 		})
 
+		It("does not retry and returns OK on :run from :running target project error", func() {
+			var targetCallCount int32
+			// Use TestPassed (-> Success state) to avoid the commit-statuses GET that
+			// happens for Running/Pending states, keeping the mock simple.
+			muxMergeRequestPipelineGet(mux, targetProjectID, []*gitlab.Pipeline{{}})
+			muxMergeRequestPipelineGet(mux, sourceProjectID, []*gitlab.Pipeline{{}})
+
+			targetPath := fmt.Sprintf("/projects/%s/statuses/%s", targetProjectID, digest)
+			mux.HandleFunc(targetPath, func(rw http.ResponseWriter, r *http.Request) {
+				atomic.AddInt32(&targetCallCount, 1)
+				rw.WriteHeader(http.StatusBadRequest)
+				fmt.Fprintf(rw, `{"message":"Cannot transition status via :run from :running"}`)
+			})
+
+			statusCode, err := reporter.ReportStatus(context.TODO(), status.TestReport{
+				FullName:     "fullname/scenario1",
+				ScenarioName: "scenario1",
+				Status:       integrationteststatus.IntegrationTestStatusTestPassed,
+				Summary:      "passed",
+			})
+
+			Expect(err).To(Succeed())
+			Expect(statusCode).To(Equal(http.StatusOK))
+			Expect(atomic.LoadInt32(&targetCallCount)).To(BeNumerically("==", 1))
+			Expect(buf.String()).To(ContainSubstring("Ignoring redundant commit status transition on target project"))
+		})
+
+		It("does not retry and returns OK on :enqueue from :pending source project error", func() {
+			var sourceCallCount int32
+			// Use TestPassed (-> Success state) to avoid the commit-statuses GET that
+			// happens for Running/Pending states, keeping the mock simple.
+			muxMergeRequestPipelineGet(mux, targetProjectID, []*gitlab.Pipeline{{}})
+			muxMergeRequestPipelineGet(mux, sourceProjectID, []*gitlab.Pipeline{{}})
+
+			targetPath := fmt.Sprintf("/projects/%s/statuses/%s", targetProjectID, digest)
+			mux.HandleFunc(targetPath, func(rw http.ResponseWriter, r *http.Request) {
+				rw.WriteHeader(http.StatusConflict)
+				fmt.Fprintf(rw, `{"error": "conflict"}`)
+			})
+
+			sourcePath := fmt.Sprintf("/projects/%s/statuses/%s", sourceProjectID, digest)
+			mux.HandleFunc(sourcePath, func(rw http.ResponseWriter, r *http.Request) {
+				atomic.AddInt32(&sourceCallCount, 1)
+				rw.WriteHeader(http.StatusBadRequest)
+				fmt.Fprintf(rw, `{"message":"Cannot transition status via :enqueue from :pending"}`)
+			})
+
+			statusCode, err := reporter.ReportStatus(context.TODO(), status.TestReport{
+				FullName:     "fullname/scenario1",
+				ScenarioName: "scenario1",
+				Status:       integrationteststatus.IntegrationTestStatusTestPassed,
+				Summary:      "passed",
+			})
+
+			Expect(err).To(Succeed())
+			Expect(statusCode).To(Equal(http.StatusOK))
+			Expect(atomic.LoadInt32(&sourceCallCount)).To(BeNumerically("==", 1))
+			Expect(buf.String()).To(ContainSubstring("Ignoring redundant commit status transition on source project"))
+		})
+
 		It("exhausts all retries on persistent recoverable errors", func() {
 			var sourceCallCount int32
 			muxMergeRequestPipelineGet(mux, targetProjectID, []*gitlab.Pipeline{{}})
@@ -598,6 +658,200 @@ var _ = Describe("GitLabReporter", func() {
 			Expect(statusCode).To(Equal(http.StatusConflict))
 			Expect(atomic.LoadInt32(&sourceCallCount)).To(BeNumerically("==", 3))
 			Expect(buf.String()).To(ContainSubstring("failed to set gitlab commit status after all retries"))
+		})
+	})
+
+	Describe("ReportConsolidatedStatus", func() {
+		var (
+			secretData    map[string][]byte
+			repo          pacv1alpha1.Repository
+			reporter      *status.GitLabReporter
+			defaultAPIURL = "/api/v4"
+			mux           *http.ServeMux
+			server        *httptest.Server
+		)
+
+		BeforeEach(func() {
+			buf.Reset()
+			mux = http.NewServeMux()
+			apiHandler := http.NewServeMux()
+			apiHandler.Handle(defaultAPIURL+"/", http.StripPrefix(defaultAPIURL, mux))
+			server = httptest.NewServer(apiHandler)
+			hasSnapshot.Annotations[gitops.PipelineAsCodeRepoURLAnnotation] = server.URL
+
+			repo = pacv1alpha1.Repository{
+				Spec: pacv1alpha1.RepositorySpec{
+					URL: server.URL,
+					GitProvider: &pacv1alpha1.GitProvider{
+						Secret: &pacv1alpha1.Secret{
+							Name: "example-secret-name",
+							Key:  "example-token",
+						},
+					},
+				},
+			}
+			secretData = map[string][]byte{"example-token": []byte("token")}
+			mockK8sClient = &MockK8sClient{
+				getInterceptor: func(key client.ObjectKey, obj client.Object) {
+					if secret, ok := obj.(*v1.Secret); ok {
+						secret.Data = secretData
+					}
+				},
+				listInterceptor: func(list client.ObjectList) {
+					if repoList, ok := list.(*pacv1alpha1.RepositoryList); ok {
+						repoList.Items = []pacv1alpha1.Repository{repo}
+					}
+				},
+			}
+			reporter = status.NewGitLabReporter(log, mockK8sClient)
+			statusCode, err := reporter.Initialize(context.TODO(), hasSnapshot)
+			Expect(err).To(Succeed())
+			Expect(statusCode).To(Equal(http.StatusOK))
+		})
+
+		AfterEach(func() {
+			server.Close()
+		})
+
+		It("posts a single consolidated status with correct passed/total description", func() {
+			var body string
+			targetPath := fmt.Sprintf("/projects/%s/statuses/%s", targetProjectID, digest)
+			mux.HandleFunc(targetPath, func(rw http.ResponseWriter, r *http.Request) {
+				b, _ := io.ReadAll(r.Body)
+				body = string(b)
+				rw.WriteHeader(http.StatusCreated)
+				fmt.Fprintf(rw, `{"id": 1}`)
+			})
+
+			reports := []status.TestReport{
+				{ScenarioName: "s1", Status: integrationteststatus.IntegrationTestStatusTestPassed},
+				{ScenarioName: "s2", Status: integrationteststatus.IntegrationTestStatusTestPassed},
+				{ScenarioName: "s3", Status: integrationteststatus.IntegrationTestStatusTestFail},
+			}
+
+			statusCode, err := reporter.ReportConsolidatedStatus(context.TODO(), reports)
+			Expect(err).To(Succeed())
+			Expect(statusCode).To(Equal(http.StatusCreated))
+			Expect(body).To(ContainSubstring("2/3 passed"))
+			Expect(buf.String()).To(ContainSubstring("Created consolidated gitlab commit status"))
+		})
+
+		It("sets overall state to failed when a required scenario fails", func() {
+			var body string
+			targetPath := fmt.Sprintf("/projects/%s/statuses/%s", targetProjectID, digest)
+			mux.HandleFunc(targetPath, func(rw http.ResponseWriter, r *http.Request) {
+				b, _ := io.ReadAll(r.Body)
+				body = string(b)
+				rw.WriteHeader(http.StatusCreated)
+				fmt.Fprintf(rw, `{"id": 1}`)
+			})
+
+			reports := []status.TestReport{
+				{ScenarioName: "s1", Status: integrationteststatus.IntegrationTestStatusTestPassed},
+				{ScenarioName: "s2", Status: integrationteststatus.IntegrationTestStatusTestFail, IsOptional: false},
+			}
+
+			statusCode, err := reporter.ReportConsolidatedStatus(context.TODO(), reports)
+			Expect(err).To(Succeed())
+			Expect(statusCode).To(Equal(http.StatusCreated))
+			Expect(body).To(ContainSubstring(`"failed"`))
+		})
+
+		It("does not set overall state to failed when only optional scenarios fail", func() {
+			var body string
+			targetPath := fmt.Sprintf("/projects/%s/statuses/%s", targetProjectID, digest)
+			mux.HandleFunc(targetPath, func(rw http.ResponseWriter, r *http.Request) {
+				b, _ := io.ReadAll(r.Body)
+				body = string(b)
+				rw.WriteHeader(http.StatusCreated)
+				fmt.Fprintf(rw, `{"id": 1}`)
+			})
+
+			reports := []status.TestReport{
+				{ScenarioName: "s1", Status: integrationteststatus.IntegrationTestStatusTestPassed},
+				{ScenarioName: "s2", Status: integrationteststatus.IntegrationTestStatusTestFail, IsOptional: true},
+			}
+
+			statusCode, err := reporter.ReportConsolidatedStatus(context.TODO(), reports)
+			Expect(err).To(Succeed())
+			Expect(statusCode).To(Equal(http.StatusCreated))
+			Expect(body).NotTo(ContainSubstring(`"failed"`))
+		})
+
+		It("falls back to source project when target project fails", func() {
+			var sourceCallCount int32
+			targetPath := fmt.Sprintf("/projects/%s/statuses/%s", targetProjectID, digest)
+			mux.HandleFunc(targetPath, func(rw http.ResponseWriter, r *http.Request) {
+				rw.WriteHeader(http.StatusConflict)
+				fmt.Fprintf(rw, `{"error": "conflict"}`)
+			})
+
+			sourcePath := fmt.Sprintf("/projects/%s/statuses/%s", sourceProjectID, digest)
+			mux.HandleFunc(sourcePath, func(rw http.ResponseWriter, r *http.Request) {
+				atomic.AddInt32(&sourceCallCount, 1)
+				rw.WriteHeader(http.StatusCreated)
+				fmt.Fprintf(rw, `{"id": 1}`)
+			})
+
+			reports := []status.TestReport{
+				{ScenarioName: "s1", Status: integrationteststatus.IntegrationTestStatusTestPassed},
+			}
+
+			statusCode, err := reporter.ReportConsolidatedStatus(context.TODO(), reports)
+			Expect(err).To(Succeed())
+			Expect(statusCode).To(Equal(http.StatusCreated))
+			Expect(atomic.LoadInt32(&sourceCallCount)).To(BeNumerically("==", 1))
+		})
+
+		It("sets overall state to running when Pending appears before InProgress in report slice", func() {
+			var body string
+			targetPath := fmt.Sprintf("/projects/%s/statuses/%s", targetProjectID, digest)
+			mux.HandleFunc(targetPath, func(rw http.ResponseWriter, r *http.Request) {
+				b, _ := io.ReadAll(r.Body)
+				body = string(b)
+				rw.WriteHeader(http.StatusCreated)
+				fmt.Fprintf(rw, `{"id": 1}`)
+			})
+
+			// Pending appears before InProgress — Running must still win regardless of order
+			reports := []status.TestReport{
+				{ScenarioName: "s1", Status: integrationteststatus.IntegrationTestStatusPending},
+				{ScenarioName: "s2", Status: integrationteststatus.IntegrationTestStatusInProgress},
+			}
+
+			statusCode, err := reporter.ReportConsolidatedStatus(context.TODO(), reports)
+			Expect(err).To(Succeed())
+			Expect(statusCode).To(Equal(http.StatusCreated))
+			Expect(body).To(ContainSubstring(`"running"`))
+		})
+
+		It("sets overall state to running when InProgress appears before Pending in report slice", func() {
+			var body string
+			targetPath := fmt.Sprintf("/projects/%s/statuses/%s", targetProjectID, digest)
+			mux.HandleFunc(targetPath, func(rw http.ResponseWriter, r *http.Request) {
+				b, _ := io.ReadAll(r.Body)
+				body = string(b)
+				rw.WriteHeader(http.StatusCreated)
+				fmt.Fprintf(rw, `{"id": 1}`)
+			})
+
+			// InProgress appears before Pending — Running must still win regardless of order
+			reports := []status.TestReport{
+				{ScenarioName: "s1", Status: integrationteststatus.IntegrationTestStatusInProgress},
+				{ScenarioName: "s2", Status: integrationteststatus.IntegrationTestStatusPending},
+			}
+
+			statusCode, err := reporter.ReportConsolidatedStatus(context.TODO(), reports)
+			Expect(err).To(Succeed())
+			Expect(statusCode).To(Equal(http.StatusCreated))
+			Expect(body).To(ContainSubstring(`"running"`))
+		})
+
+		It("returns error when not initialized", func() {
+			uninitializedReporter := status.NewGitLabReporter(log, mockK8sClient)
+			_, err := uninitializedReporter.ReportConsolidatedStatus(context.TODO(), []status.TestReport{})
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("not initialized"))
 		})
 	})
 

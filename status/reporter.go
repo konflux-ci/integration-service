@@ -60,6 +60,8 @@ type TestReport struct {
 	ShortText string
 	// test status
 	Status intgteststat.IntegrationTestStatus
+	// IsOptional is true when the scenario is optional (failure does not block promotion)
+	IsOptional bool
 	// short summary of test results
 	Summary string
 	// time when test started
@@ -79,6 +81,11 @@ type ReporterInterface interface {
 	GetReporterName() string
 	// Update status of the integration test
 	ReportStatus(context.Context, TestReport) (int, error)
+	// ReportConsolidatedStatus posts a single aggregated commit status summarising
+	// all integration test results. Used when the per-scenario count exceeds the
+	// git provider's per-pipeline job limit. Reporters that do not support this
+	// (e.g. GitHub) should return (http.StatusCreated, nil).
+	ReportConsolidatedStatus(context.Context, []TestReport) (int, error)
 	// Is the return code a recoverable error
 	ReturnCodeIsUnrecoverable(statusCode int) bool
 	// Update status comment in the gitlab merge request, implemented and used in reporter_gitlab.go

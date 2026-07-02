@@ -803,6 +803,7 @@ var _ = Describe("Status Adapter", func() {
 			ShortText:           "<ul>\n<li><b>Pipelinerun</b>: <a href=\"https://definetly.not.prod/preview/application-pipeline/ns/default/pipelinerun/test-pipelinerun\">test-pipelinerun</a></li>\n</ul>\n\n",
 			Summary:             "Integration test for component component-sample snapshot snapshot-sample and optional scenario scenario1 has passed",
 			Status:              integrationteststatus.IntegrationTestStatusTestPassed,
+			IsOptional:          true,
 			StartTime:           &ts,
 			CompletionTime:      &tc,
 			TestPipelineRunName: "test-pipelinerun",
