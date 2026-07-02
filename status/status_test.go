@@ -882,6 +882,28 @@ var _ = Describe("Status Adapter", func() {
 
 	})
 
+	// Verifying that pruned PipelineRun produces a fallback message rather than an error
+	It("check that pruned PipelineRun produces a fallback message rather than an error", func() {
+		detail := newIntegrationTestStatusDetail(integrationteststatus.IntegrationTestStatusTestPassed, false)
+		detail.TestPipelineRunName = "pruned-pipelinerun"
+
+		notFoundClient := &MockK8sClient{
+			err: &errors.StatusError{ErrStatus: metav1.Status{Reason: metav1.StatusReasonNotFound}},
+		}
+
+		testReport, err := status.GenerateTestReport(context.Background(), notFoundClient, detail, hasSnapshot, "component-sample")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(testReport.Text).To(ContainSubstring("(Failed to fetch test result details because pipelineRun [pruned-pipelinerun](https://definetly.not.prod/preview/application-pipeline/ns/default/pipelinerun/pruned-pipelinerun) can not be found.)"))
+
+		genericErrorClient := &MockK8sClient{
+			err: fmt.Errorf("unexpected client error"),
+		}
+
+		testReport, err = status.GenerateTestReport(context.Background(), genericErrorClient, detail, hasSnapshot, "component-sample")
+		Expect(err).To(HaveOccurred())
+		Expect(testReport).To(BeNil())
+	})
+
 	Describe("SnapshotReportStatus (SRS)", func() {
 		const (
 			scenarioName = "test-scenario"
