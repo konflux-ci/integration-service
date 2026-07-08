@@ -19,6 +19,9 @@ package consts
 import "fmt"
 
 const (
+	// KonfluxBuildLabelPrefix is the prefix that the build service uses for its labels and annotations
+	KonfluxBuildLabelPrefix = "build.konflux-ci.dev"
+
 	// PipelinesLabelPrefix is the prefix of the pipelines label
 	PipelinesLabelPrefix = "pipelines.appstudio.openshift.io"
 
@@ -119,9 +122,9 @@ const (
 	PipelineRunComponentLabel = "appstudio.openshift.io/component"
 
 	// PipelineRunComponentVersionAnnotation denotes the componentVersion for the build
-	PipelineRunComponentVersionAnnotation = "appstudio.openshift.io/version"
+	PipelineRunComponentVersionAnnotation = KonfluxBuildLabelPrefix + "/version"
 
-	PipelineRunComponentVersionContextAnnotation = "appstudio.openshift.io/context"
+	PipelineRunComponentVersionContextAnnotation = KonfluxBuildLabelPrefix + "/context"
 
 	// PipelineRunApplicationLabel is the label denoting the application.
 	PipelineRunApplicationLabel = "appstudio.openshift.io/application"
