@@ -95,7 +95,7 @@ spec:
         - name: spot
           value: "false"
         - name: compute-sizes
-          value: "m5a.large,m6a.large,m7i-flex.12xlarge,m5.12xlarge,m6i.12xlarge"
+          value: "m7i-flex.12xlarge,m5.12xlarge,m6i.12xlarge"
     - name: deploy-konflux
       runAfter:
         - provision-kind-cluster
