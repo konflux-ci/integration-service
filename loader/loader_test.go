@@ -467,6 +467,7 @@ var _ = Describe("Loader", Ordered, func() {
 					"test.appstudio.openshift.io/scenario":     integrationTestScenario.Name,
 					"pipelinesascode.tekton.dev/event-type":    "pull_request",
 					"test.appstudio.openshift.io/pr-group-sha": prGroupSha,
+					"appstudio.openshift.io/version":           "not-main",
 				},
 				Annotations: map[string]string{
 					"appstudio.redhat.com/updateComponentOnSuccess": "false",
@@ -999,6 +1000,7 @@ var _ = Describe("Loader", Ordered, func() {
 			mergeQueueSnapshot.Annotations[gitops.PipelineAsCodePullRequestAnnotation] = ""
 			mergeQueueSnapshot.Name = "merge-queue-build"
 			mergeQueueSnapshot.ResourceVersion = ""
+			mergeQueueSnapshot.Labels[gitops.SnapshotComponentVersionLabel] = "v1"
 
 			createSnapshot(mergeQueueSnapshot)
 
@@ -1042,7 +1044,7 @@ var _ = Describe("Loader", Ordered, func() {
 		})
 
 		It("ensures all merge queue component snapshots can be found for a given component and PR group hash", func() {
-			groupShaComponentSnapshots, err := loader.GetMatchingComponentSnapshotsForComponentAndPRGroupHash(ctx, k8sClient, mergeQueueSnapshot.Namespace, hasComp.Name, mergeQueueHash, applicationName, gitops.ApplicationNameLabel)
+			groupShaComponentSnapshots, err := loader.GetMatchingComponentSnapshotsForComponentAndPRGroupHash(ctx, k8sClient, mergeQueueSnapshot.Namespace, hasComp.Name, "", mergeQueueHash, applicationName, gitops.ApplicationNameLabel)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(groupShaComponentSnapshots).ToNot(BeNil())
 			Expect(*groupShaComponentSnapshots).To(HaveLen(2))
@@ -1050,6 +1052,18 @@ var _ = Describe("Loader", Ordered, func() {
 			Expect((*groupShaComponentSnapshots)[0].Labels[gitops.PRGroupHashLabel]).To(Equal(mergeQueueHash))
 			Expect((*groupShaComponentSnapshots)[0].Labels[gitops.ApplicationNameLabel]).To(Equal(applicationName))
 			Expect((*groupShaComponentSnapshots)[0].Labels[gitops.SnapshotComponentLabel]).To(Equal(hasComp.Name))
+		})
+
+		It("ensures all merge queue component snapshots can be found for a given component and its version and PR group hash", func() {
+			groupShaComponentSnapshots, err := loader.GetMatchingComponentSnapshotsForComponentAndPRGroupHash(ctx, k8sClient, mergeQueueSnapshot.Namespace, hasComp.Name, "", mergeQueueHash, applicationName, gitops.ApplicationNameLabel)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(groupShaComponentSnapshots).ToNot(BeNil())
+			Expect(*groupShaComponentSnapshots).To(HaveLen(2))
+			Expect((*groupShaComponentSnapshots)[0].Name).To(ContainSubstring(mergeQueueSnapshot.Name))
+			Expect((*groupShaComponentSnapshots)[0].Labels[gitops.PRGroupHashLabel]).To(Equal(mergeQueueHash))
+			Expect((*groupShaComponentSnapshots)[0].Labels[gitops.ApplicationNameLabel]).To(Equal(applicationName))
+			Expect((*groupShaComponentSnapshots)[0].Labels[gitops.SnapshotComponentLabel]).To(Equal(hasComp.Name))
+			Expect((*groupShaComponentSnapshots)[0].Labels[gitops.SnapshotComponentVersionLabel]).To(Equal("v1"))
 		})
 
 		It("ensures all merge queue group snapshots can be found for a given component and PR group hash", func() {
@@ -1263,7 +1277,7 @@ var _ = Describe("Loader", Ordered, func() {
 		})
 
 		It("Can get matching snapshot for component and pr group hash", func() {
-			fetchedSnapshots, err := loader.GetMatchingComponentSnapshotsForComponentAndPRGroupHash(ctx, k8sClient, hasSnapshot.Namespace, hasComp.Name, prGroupSha, hasApp.Name, gitops.ApplicationNameLabel)
+			fetchedSnapshots, err := loader.GetMatchingComponentSnapshotsForComponentAndPRGroupHash(ctx, k8sClient, hasSnapshot.Namespace, hasComp.Name, "", prGroupSha, hasApp.Name, gitops.ApplicationNameLabel)
 			Expect(err).To(Succeed())
 			Expect((*fetchedSnapshots)[0].Name).To(Equal(hasSnapshot.Name))
 			Expect((*fetchedSnapshots)[0].Namespace).To(Equal(hasSnapshot.Namespace))
@@ -1289,7 +1303,7 @@ var _ = Describe("Loader", Ordered, func() {
 		It("Can get matching components from snapshots for pr group hash", func() {
 			components, err := loader.GetComponentsFromSnapshotForPRGroup(ctx, k8sClient, "", prGroupSha, hasApp.Name, gitops.ApplicationNameLabel)
 			Expect(err).To(Succeed())
-			Expect((components)[0]).To(Equal(hasComp.Name))
+			Expect((components[0].ComponentName)).To(Equal(hasComp.Name))
 
 		})
 

@@ -166,6 +166,7 @@ func UpdateGCLForOverrideSnapshot(ctx context.Context, adapterClient client.Clie
 
 func FetchSnapshotComponentFromGCL(componentName, componentVersion string, snapshotComponentsFromGCL map[string]applicationapiv1alpha1.SnapshotComponent, invalidComponents map[v1beta2.ComponentState]InvalidComponentReason) (*applicationapiv1alpha1.SnapshotComponent, error) {
 	componentVersionString := helpers.GetComponentVersionString(componentName, componentVersion)
+
 	if component, ok := snapshotComponentsFromGCL[componentVersionString]; ok {
 		return &component, nil
 	}

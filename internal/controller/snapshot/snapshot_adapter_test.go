@@ -113,6 +113,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		testReleasePlan                           *releasev1alpha1.ReleasePlan
 		hasApp                                    *applicationapiv1alpha1.Application
 		hasCompGroup                              *v1beta2.ComponentGroup
+		hasCompGroup2                             *v1beta2.ComponentGroup
 		hasComp                                   *applicationapiv1alpha1.Component
 		hasCompMissingImageDigest                 *applicationapiv1alpha1.Component
 		hasCompWithValidImage                     *applicationapiv1alpha1.Component
@@ -135,6 +136,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		hasComSnapshot1                           *applicationapiv1alpha1.Snapshot
 		hasComSnapshot2                           *applicationapiv1alpha1.Snapshot
 		hasComSnapshot3                           *applicationapiv1alpha1.Snapshot
+		hasComSnapshot4                           *applicationapiv1alpha1.Snapshot
 		integrationTestScenario                   *v1beta2.IntegrationTestScenario
 		integrationTestScenario1                  *v1beta2.IntegrationTestScenario
 		integrationTestScenarioForInvalidSnapshot *v1beta2.IntegrationTestScenario
@@ -152,6 +154,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		hasComSnapshot1Name          = "hascomsnapshot1-sample"
 		hasComSnapshot2Name          = "hascomsnapshot2-sample"
 		hasComSnapshot3Name          = "hascomsnapshot3-sample"
+		hasComSnapshot4Name          = "hascomsnapshot4-sample"
 		cgSnapshotName               = "componentgroup-snapshot-sample"
 		prGroup                      = "feature1"
 		prGroupSha                   = "feature1hash"
@@ -216,6 +219,63 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			},
 		}
 		Expect(k8sClient.Status().Update(ctx, hasCompGroup)).Should(Succeed())
+
+		hasCompGroup2 = &v1beta2.ComponentGroup{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "component-group-sample-version",
+				Namespace: "default",
+			},
+			Spec: v1beta2.ComponentGroupSpec{
+				Components: []v1beta2.ComponentReference{
+					v1beta2.ComponentReference{
+						Name: "component-sample",
+						ComponentVersion: v1beta2.ComponentVersionReference{
+							Name:     "v1",
+							Revision: "main",
+						},
+					},
+					v1beta2.ComponentReference{
+						Name: "component-sample",
+						ComponentVersion: v1beta2.ComponentVersionReference{
+							Name:     "v2",
+							Revision: "main",
+						},
+					},
+				},
+			},
+		}
+		Expect(k8sClient.Create(ctx, hasCompGroup2)).Should(Succeed())
+
+		hasCompGroup2.Status = v1beta2.ComponentGroupStatus{
+			Conditions: []metav1.Condition{
+				metav1.Condition{
+					Type:               "Succeeded",
+					Status:             metav1.ConditionTrue,
+					Reason:             "testing",
+					Message:            "test condition",
+					LastTransitionTime: metav1.Time{Time: time.Now()},
+				},
+			},
+			GlobalCandidateList: []v1beta2.ComponentState{
+				v1beta2.ComponentState{
+					Name:                  "component-sample",
+					Version:               "v1",
+					URL:                   SampleRepoLink,
+					LastPromotedImage:     sample_image,
+					LastPromotedCommit:    sample_commit,
+					LastPromotedBuildTime: &metav1.Time{Time: time.Now()},
+				},
+				v1beta2.ComponentState{
+					Name:                  "component-sample",
+					Version:               "v2",
+					URL:                   SampleRepoLink,
+					LastPromotedImage:     sample_image,
+					LastPromotedCommit:    sample_commit,
+					LastPromotedBuildTime: &metav1.Time{Time: time.Now()},
+				},
+			},
+		}
+		Expect(k8sClient.Status().Update(ctx, hasCompGroup2)).Should(Succeed())
 
 		integrationTestScenario = &v1beta2.IntegrationTestScenario{
 			ObjectMeta: metav1.ObjectMeta{
@@ -851,6 +911,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 					gitops.PipelineAsCodeSHALabel:                    "sha",
 					gitops.PipelineAsCodePullRequestAnnotation:       "1",
 					gitops.ComponentGroupNameLabel:                   hasCompGroup.Name,
+					gitops.SnapshotComponentVersionLabel:             "v1",
 				},
 				Annotations: map[string]string{
 					"test.appstudio.openshift.io/pr-last-update":  "2023-08-26T17:57:50+02:00",
@@ -904,6 +965,45 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 				Components: []applicationapiv1alpha1.SnapshotComponent{
 					{
 						Name:           hasCom3.Name,
+						ContainerImage: sample_image + "@" + sampleDigest,
+					},
+					{
+						Name:           hasComp.Name,
+						ContainerImage: sample_image + "@" + sampleDigest,
+					},
+				},
+			},
+		}
+
+		hasComSnapshot4 = &applicationapiv1alpha1.Snapshot{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      hasComSnapshot4Name,
+				Namespace: "default",
+				Labels: map[string]string{
+					gitops.SnapshotTypeLabel:                         gitops.SnapshotComponentType,
+					gitops.SnapshotComponentLabel:                    hasComp.Name,
+					gitops.PipelineAsCodeEventTypeLabel:              gitops.PipelineAsCodePullRequestType,
+					gitops.PRGroupHashLabel:                          prGroupSha,
+					"pac.test.appstudio.openshift.io/url-org":        "testorg",
+					"pac.test.appstudio.openshift.io/url-repository": "testrepo",
+					gitops.PipelineAsCodeSHALabel:                    "sha",
+					gitops.PipelineAsCodePullRequestAnnotation:       "1",
+					gitops.ComponentGroupNameLabel:                   hasCompGroup2.Name,
+				},
+				Annotations: map[string]string{
+					"test.appstudio.openshift.io/pr-last-update":  "2023-08-26T17:57:50+02:00",
+					gitops.BuildPipelineRunStartTime:              strconv.FormatInt(plrstarttime+200000, 10), // +200 seconds = +200000 milliseconds
+					gitops.PRGroupAnnotation:                      prGroup,
+					gitops.PipelineAsCodeGitProviderAnnotation:    "github",
+					gitops.PipelineAsCodePullRequestAnnotation:    "1",
+					gitops.PipelineAsCodeInstallationIDAnnotation: "123",
+				},
+			},
+			Spec: applicationapiv1alpha1.SnapshotSpec{
+				ComponentGroup: hasCompGroup2.Name,
+				Components: []applicationapiv1alpha1.SnapshotComponent{
+					{
+						Name:           hasComp.Name,
 						ContainerImage: sample_image + "@" + sampleDigest,
 					},
 					{
@@ -1017,6 +1117,8 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		err = k8sClient.Delete(ctx, hasComSnapshot2)
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 		err = k8sClient.Delete(ctx, hasComSnapshot3)
+		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
+		err = k8sClient.Delete(ctx, hasComSnapshot4)
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 		err = k8sClient.Delete(ctx, buildPipelineRun1)
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())

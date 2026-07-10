@@ -588,6 +588,40 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			Expect((*result)[0].Labels[tektonconsts.PipelineRunComponentLabel]).To(Equal("component-sample"))
 		})
 
+		It("keeps PipelineRuns whose component label matches a component listed in some ComponentGroup and version, and skips others", func() {
+			plrMatching := tektonv1.PipelineRun{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "build-plr-matching",
+					Labels: map[string]string{
+						tektonconsts.PipelineRunComponentLabel: "component-sample",
+					},
+					Annotations: map[string]string{
+						tektonconsts.PipelineRunComponentVersionAnnotation: "v1",
+					},
+				},
+			}
+			plrUnknownComponent := tektonv1.PipelineRun{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "build-plr-unknown",
+					Labels: map[string]string{
+						tektonconsts.PipelineRunComponentLabel: "not-in-any-group",
+					},
+				},
+			}
+			plrNoComponentLabel := tektonv1.PipelineRun{
+				ObjectMeta: metav1.ObjectMeta{Name: "build-plr-no-label"},
+			}
+
+			stack := []tektonv1.PipelineRun{plrMatching, plrUnknownComponent, plrNoComponentLabel}
+			groups := &[]v1beta2.ComponentGroup{*hasCompGroup}
+
+			result := adapter.filterPipelineRunsForComponentGroups(&stack, groups)
+			Expect(result).NotTo(BeNil())
+			Expect(*result).To(HaveLen(1))
+			Expect((*result)[0].Name).To(Equal("build-plr-matching"))
+			Expect((*result)[0].Labels[tektonconsts.PipelineRunComponentLabel]).To(Equal("component-sample"))
+		})
+
 		It("includes a PipelineRun when the component matches any ComponentGroup in order", func() {
 			groupAlpha := v1beta2.ComponentGroup{
 				ObjectMeta: metav1.ObjectMeta{Name: "group-alpha"},
@@ -3174,6 +3208,8 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 
 			adapter = NewAdapterWithApplication(ctx, buildPipelineRun, hasComp, hasApp, log, loader.NewMockLoader(), k8sClient)
 
+			sampleTuple1 := loader.Tuple{ComponentName: hasComp.Name, ComponentVersion: ""}
+			sampleTuple2 := loader.Tuple{ComponentName: hasComp2.Name, ComponentVersion: ""}
 			adapter.status = mockStatus
 			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
@@ -3198,7 +3234,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				},
 				{
 					ContextKey: loader.GetComponentsFromSnapshotForPRGroupKey,
-					Resource:   []string{hasComp.Name, hasComp2.Name},
+					Resource:   []loader.Tuple{sampleTuple1, sampleTuple2},
 				},
 				{
 					ContextKey: loader.AllIntegrationTestScenariosContextKey,
@@ -3508,6 +3544,8 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			componentGroups := []v1beta2.ComponentGroup{*hasCompGroup, *hasCompGroup2, *hasCompGroup3}
 			adapter = NewAdapter(ctx, buildPipelineRun, hasComp, &componentGroups, log, loader.NewMockLoader(), k8sClient)
 
+			sampleTuple1 := loader.Tuple{ComponentName: hasComp.Name, ComponentVersion: ""}
+			sampleTuple2 := loader.Tuple{ComponentName: hasComp2.Name, ComponentVersion: ""}
 			adapter.status = mockStatus
 			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
@@ -3536,7 +3574,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				},
 				{
 					ContextKey: loader.GetComponentsFromSnapshotForPRGroupKey,
-					Resource:   []string{hasComp.Name, hasComp2.Name},
+					Resource:   []loader.Tuple{sampleTuple1, sampleTuple2},
 				},
 				{
 					ContextKey: loader.AllIntegrationTestScenariosForComponentGroupsContextKey,

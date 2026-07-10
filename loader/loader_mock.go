@@ -350,9 +350,9 @@ func (l *mockLoader) GetPipelineRunsWithPRGroupHashForApplication(ctx context.Co
 }
 
 // GetMatchingComponentSnapshotsForComponentAndPRGroupHash returns the resource and error passed as values of the context
-func (l *mockLoader) GetMatchingComponentSnapshotsForComponentAndPRGroupHash(ctx context.Context, c client.Client, namespace, componentName, prGroupHash, ownerName, ownerLabel string) (*[]applicationapiv1alpha1.Snapshot, error) {
+func (l *mockLoader) GetMatchingComponentSnapshotsForComponentAndPRGroupHash(ctx context.Context, c client.Client, namespace, componentName, componentVersion, prGroupHash, ownerName, ownerLabel string) (*[]applicationapiv1alpha1.Snapshot, error) {
 	if ctx.Value(GetComponentSnapshotsKey) == nil {
-		return l.loader.GetMatchingComponentSnapshotsForComponentAndPRGroupHash(ctx, c, namespace, componentName, prGroupHash, ownerName, ownerLabel)
+		return l.loader.GetMatchingComponentSnapshotsForComponentAndPRGroupHash(ctx, c, namespace, componentName, componentVersion, prGroupHash, ownerName, ownerLabel)
 	}
 	snapshots, err := toolkit.GetMockedResourceAndErrorFromContext(ctx, GetComponentSnapshotsKey, []applicationapiv1alpha1.Snapshot{})
 	return &snapshots, err
@@ -384,11 +384,11 @@ func (l *mockLoader) GetAllIntegrationPipelineRunsForSnapshot(ctx context.Contex
 	return pipelineRuns, err
 }
 
-func (l *mockLoader) GetComponentsFromSnapshotForPRGroup(ctx context.Context, c client.Client, namespace, prGroupHash, ownerName, ownerLabel string) ([]string, error) {
+func (l *mockLoader) GetComponentsFromSnapshotForPRGroup(ctx context.Context, c client.Client, namespace, prGroupHash, ownerName, ownerLabel string) ([]Tuple, error) {
 	if ctx.Value(GetComponentsFromSnapshotForPRGroupKey) == nil {
 		return l.loader.GetComponentsFromSnapshotForPRGroup(ctx, c, namespace, prGroupHash, ownerName, ownerLabel)
 	}
-	components, err := toolkit.GetMockedResourceAndErrorFromContext(ctx, GetComponentsFromSnapshotForPRGroupKey, []string{})
+	components, err := toolkit.GetMockedResourceAndErrorFromContext(ctx, GetComponentsFromSnapshotForPRGroupKey, []Tuple{})
 	return components, err
 }
 

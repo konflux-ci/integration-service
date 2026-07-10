@@ -739,7 +739,7 @@ func (a *Adapter) notifySnapshotsInGroupAboutBuild(pipelineRun *tektonv1.Pipelin
 		for _, applicationComponent := range *applicationComponents {
 			applicationComponent := applicationComponent // G601
 			allComponentSnapshotsInGroup, err = a.loader.GetMatchingComponentSnapshotsForComponentAndPRGroupHash(a.context, a.client,
-				a.pipelineRun.Namespace, applicationComponent.Name, prGroupHash, a.application.Name, gitops.ApplicationNameLabel)
+				a.pipelineRun.Namespace, applicationComponent.Name, pipelineRun.Annotations[tektonconsts.PipelineRunComponentVersionAnnotation], prGroupHash, a.application.Name, gitops.ApplicationNameLabel)
 			if err != nil {
 				return fmt.Errorf("failed to fetch Snapshots for component %s: %w", applicationComponent.Name, err)
 			}
@@ -758,7 +758,6 @@ func (a *Adapter) notifySnapshotsInGroupAboutBuild(pipelineRun *tektonv1.Pipelin
 			return fmt.Errorf("failed to get build pipelineRuns for given pr group hash %s: %w", prGroupHash, err)
 		}
 		buildPipelineRuns = a.filterPipelineRunsForComponentGroups(allBuildPipelineRunsWithPRGroupHash, a.componentGroups)
-
 		// Don't do anything if the build pipelineRun isn't the latest for its component
 		if !tekton.IsLatestBuildPipelineRunInComponent(pipelineRun, buildPipelineRuns) {
 			a.logger.Info("not the latest pipelineRun, skipping notifying the group about the failure")
@@ -769,7 +768,7 @@ func (a *Adapter) notifySnapshotsInGroupAboutBuild(pipelineRun *tektonv1.Pipelin
 			for _, groupComponent := range componentGroup.Spec.Components {
 				groupComponent := groupComponent
 				allComponentSnapshotsInGroup, err = a.loader.GetMatchingComponentSnapshotsForComponentAndPRGroupHash(a.context, a.client,
-					a.pipelineRun.Namespace, groupComponent.Name, prGroupHash, componentGroup.Name, gitops.ComponentGroupNameLabel)
+					a.pipelineRun.Namespace, groupComponent.Name, pipelineRun.Annotations[tektonconsts.PipelineRunComponentVersionAnnotation], prGroupHash, componentGroup.Name, gitops.ComponentGroupNameLabel)
 				if err != nil {
 					return fmt.Errorf("failed to fetch Snapshots for component %s and pr group hash %s: %w", groupComponent.Name, prGroupHash, err)
 				}
@@ -809,6 +808,16 @@ func (a *Adapter) filterPipelineRunsForComponentGroups(allBuildPipelineRuns *[]t
 	for _, buildPipelineRun := range *allBuildPipelineRuns {
 		if builtComponentName, found := buildPipelineRun.Labels[tektonconsts.PipelineRunComponentLabel]; found {
 			for _, componentGroup := range *componentGroups {
+				ok, version := h.GetComponentVersionFromComponentGroup(&componentGroup, builtComponentName)
+				if ok {
+					if buildPipelineRun.Annotations[tektonconsts.PipelineRunComponentVersionAnnotation] == version {
+						componentNames := h.GetComponentNamesFromComponentGroup(&componentGroup)
+						if slices.Contains(componentNames, builtComponentName) {
+							filteredBuildPipelineRuns = append(filteredBuildPipelineRuns, buildPipelineRun)
+							break
+						}
+					}
+				}
 				componentNames := h.GetComponentNamesFromComponentGroup(&componentGroup)
 				if slices.Contains(componentNames, builtComponentName) {
 					filteredBuildPipelineRuns = append(filteredBuildPipelineRuns, buildPipelineRun)
@@ -1334,7 +1343,6 @@ func (a *Adapter) isGroupSnapshotExpectedForBuildPLR(pipelineRun *tektonv1.Pipel
 		a.logger.Error(fmt.Errorf("NotFound"), fmt.Sprintf("Failed to get PR group label/annotation from pipelineRun %s/%s", pipelineRun.Namespace, pipelineRun.Name))
 		return false, fmt.Errorf("pr group label/annotation can not be found from build plr")
 	}
-
 	componentsWithOpenPRMR, err := a.getComponentsFromLatestFlightBuildPLR(prGroup, prGroupHash)
 	if err != nil {
 		a.logger.Error(err, fmt.Sprintf("failed to get component from build pipelineruns for pr group %s", prGroup))
@@ -1351,18 +1359,17 @@ func (a *Adapter) isGroupSnapshotExpectedForBuildPLR(pipelineRun *tektonv1.Pipel
 		return false, err
 	}
 
-	for _, componentName := range componentsFromSnapshot {
-		if slices.Contains(componentsWithOpenPRMR, componentName) {
-			a.logger.Info(fmt.Sprintf("There is in progress build pipelineRun for component %s/%s, won't check its component snapshot's pull/merge request", a.pipelineRun.Namespace, componentName))
+	for _, tup := range componentsFromSnapshot {
+		if slices.Contains(componentsWithOpenPRMR, tup.ComponentName) {
+			a.logger.Info(fmt.Sprintf("There is in progress build pipelineRun for component %s/%s, won't check its component snapshot's pull/merge request", a.pipelineRun.Namespace, tup.ComponentName))
 			continue
 		}
 
-		snapshots, err := a.loader.GetMatchingComponentSnapshotsForComponentAndPRGroupHash(a.context, a.client, pipelineRun.Namespace, componentName, prGroupHash, ownerName, ownerLabel)
+		snapshots, err := a.loader.GetMatchingComponentSnapshotsForComponentAndPRGroupHash(a.context, a.client, pipelineRun.Namespace, tup.ComponentName, tup.ComponentVersion, prGroupHash, ownerName, ownerLabel)
 		if err != nil {
-			a.logger.Error(err, "Failed to fetch Snapshots for component", "component.Name", componentName)
+			a.logger.Error(err, "Failed to fetch Snapshots for component", "component.Name", tup.ComponentName)
 			return false, err
 		}
-
 		foundSnapshotWithOpenedPR, statusCode, err := a.status.FindSnapshotWithOpenedPR(a.context, snapshots, tempComponentSnapshot)
 		if err != nil {
 			a.logger.Error(err, "failed to find snapshot with open PR or MR", "statusCode", statusCode)
@@ -1370,7 +1377,7 @@ func (a *Adapter) isGroupSnapshotExpectedForBuildPLR(pipelineRun *tektonv1.Pipel
 		}
 		if foundSnapshotWithOpenedPR != nil {
 			a.logger.Info("Opened PR/MR in snapshot is found")
-			componentsWithOpenPRMR = append(componentsWithOpenPRMR, componentName)
+			componentsWithOpenPRMR = append(componentsWithOpenPRMR, tup.ComponentName)
 		}
 	}
 
