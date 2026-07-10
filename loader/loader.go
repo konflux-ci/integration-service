@@ -77,9 +77,9 @@ type ObjectLoader interface {
 	GetMatchingComponentSnapshotsForPRGroupHash(ctx context.Context, c client.Client, nameSpace, prGroupHash, ownerName string, ownerLabel string) (*[]applicationapiv1alpha1.Snapshot, error)
 	GetPipelineRunsWithPRGroupHash(ctx context.Context, c client.Client, namespace, prGroupHash string) (*[]tektonv1.PipelineRun, error)
 	GetPipelineRunsWithPRGroupHashForApplication(ctx context.Context, c client.Client, namespace, prGroupHash, applicationName string) (*[]tektonv1.PipelineRun, error)
-	GetMatchingComponentSnapshotsForComponentAndPRGroupHash(ctx context.Context, c client.Client, snapshot, componentName, prGroupHash, ownerName string, ownerLabel string) (*[]applicationapiv1alpha1.Snapshot, error)
+	GetMatchingComponentSnapshotsForComponentAndPRGroupHash(ctx context.Context, c client.Client, snapshot, componentName, componentVersion, prGroupHash, ownerName string, ownerLabel string) (*[]applicationapiv1alpha1.Snapshot, error)
 	GetAllIntegrationPipelineRunsForSnapshot(ctx context.Context, adapterClient client.Client, snapshot *applicationapiv1alpha1.Snapshot) ([]tektonv1.PipelineRun, error)
-	GetComponentsFromSnapshotForPRGroup(ctx context.Context, c client.Client, namespace, prGroupHash, ownerName string, ownerLabel string) ([]string, error)
+	GetComponentsFromSnapshotForPRGroup(ctx context.Context, c client.Client, namespace, prGroupHash, ownerName string, ownerLabel string) ([]Tuple, error)
 	GetMatchingGroupSnapshotsForPRGroupHash(ctx context.Context, c client.Client, namespace, prGroupHash, ownerName string, ownerLabel string) (*[]applicationapiv1alpha1.Snapshot, error)
 	GetResolutionRequest(ctx context.Context, c client.Client, namespace, name string) (resolutionv1beta1.ResolutionRequest, error)
 	GetPRComponentSnapshotsForComponentApplication(ctx context.Context, c client.Client, namespace, applicationName, componentName, prNumber string) (*[]applicationapiv1alpha1.Snapshot, error)
@@ -92,6 +92,11 @@ type ObjectLoader interface {
 }
 
 type loader struct{}
+
+type Tuple struct {
+	ComponentName    string `json:"componentName"`
+	ComponentVersion string `json:"componentVersion"`
+}
 
 func NewLoader() ObjectLoader {
 	return &loader{}
@@ -767,7 +772,7 @@ func (l *loader) GetPipelineRunsWithPRGroupHashForApplication(ctx context.Contex
 }
 
 // GetMatchingComponentSnapshotsForComponentAndPRGroupHash gets the component snapshot with the given pr group hash string and the the same namespace with the given snapshot
-func (l *loader) GetMatchingComponentSnapshotsForComponentAndPRGroupHash(ctx context.Context, c client.Client, namespace, componentName, prGroupHash, ownerName, ownerLabel string) (*[]applicationapiv1alpha1.Snapshot, error) {
+func (l *loader) GetMatchingComponentSnapshotsForComponentAndPRGroupHash(ctx context.Context, c client.Client, namespace, componentName, componentVersion, prGroupHash, ownerName, ownerLabel string) (*[]applicationapiv1alpha1.Snapshot, error) {
 	snapshots := &applicationapiv1alpha1.SnapshotList{}
 
 	ownerLabelRequirement, err := labels.NewRequirement(ownerLabel, selection.In, []string{ownerName})
@@ -786,12 +791,20 @@ func (l *loader) GetMatchingComponentSnapshotsForComponentAndPRGroupHash(ctx con
 	if err != nil {
 		return nil, err
 	}
-
 	labelSelector := labels.NewSelector().
 		Add(*ownerLabelRequirement).
 		Add(*componentLabelRequirement).
 		Add(*prGroupLabelRequirement).
 		Add(*snapshotTypeLabelRequirement)
+
+	if componentVersion != "" {
+		componentVersionRequirement, err := labels.NewRequirement(gitops.SnapshotComponentVersionLabel, selection.In, []string{componentVersion})
+		if err != nil {
+			return nil, err
+		}
+
+		labelSelector = labelSelector.Add(*componentVersionRequirement)
+	}
 
 	opts := &client.ListOptions{
 		Namespace:     namespace,
@@ -893,32 +906,45 @@ func (l *loader) GetAllIntegrationPipelineRunsForSnapshot(ctx context.Context, a
 }
 
 // GetComponentsFromSnapshotForPRGroup returns the component names affected by the given pr group hash
-func (l *loader) GetComponentsFromSnapshotForPRGroup(ctx context.Context, client client.Client, namespace, prGroupHash, ownerName string, ownerLabel string) ([]string, error) {
+func (l *loader) GetComponentsFromSnapshotForPRGroup(ctx context.Context, client client.Client, namespace, prGroupHash, ownerName string, ownerLabel string) ([]Tuple, error) {
 	snapshots, err := l.GetMatchingComponentSnapshotsForPRGroupHash(ctx, client, namespace, prGroupHash, ownerName, ownerLabel)
 	if err != nil {
-		return nil, err
+		return []Tuple{}, err
 	}
 
-	var componentNames []string
+	componentTuples := []Tuple{}
 	for _, snapshot := range *snapshots {
 		// We skip a push-type workflow Snapshot just in case
 		if snapshot.Annotations[gitops.IntegrationWorkflowAnnotation] == gitops.IntegrationWorkflowPushValue {
 			continue
 		}
+		componentVersion := ""
 		componentName := snapshot.Labels[gitops.SnapshotComponentLabel]
+		if metadata.HasLabel(&snapshot, gitops.SnapshotComponentVersionLabel) {
+			componentVersion = snapshot.Labels[gitops.SnapshotComponentVersionLabel]
+		}
+		//modify below
 		alreadySeen := false
-		for _, n := range componentNames {
-			if n == componentName {
+		addTup := false
+		for _, tup := range componentTuples {
+			if (tup.ComponentName == componentName && tup.ComponentVersion == componentVersion) || (tup.ComponentName == componentName) {
 				alreadySeen = true
 				break
+			}
+			if tup.ComponentName == componentName && tup.ComponentVersion != componentVersion {
+				addTup = true
 			}
 		}
 		if alreadySeen {
 			continue
 		}
-		componentNames = append(componentNames, componentName)
+		if addTup {
+			componentTuples = append(componentTuples, Tuple{componentName, componentVersion})
+		}
+		componentTuples = append(componentTuples, Tuple{componentName, ""})
 	}
-	return componentNames, nil
+	//return list of tuples
+	return componentTuples, nil
 }
 
 func (l *loader) GetResolutionRequest(ctx context.Context, c client.Client, namespace, name string) (resolutionv1beta1.ResolutionRequest, error) {

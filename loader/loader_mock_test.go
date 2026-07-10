@@ -17,6 +17,8 @@ limitations under the License.
 package loader
 
 import (
+	"reflect"
+
 	toolkit "github.com/konflux-ci/operator-toolkit/loader"
 
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
@@ -421,7 +423,7 @@ var _ = Describe("Release Adapter", Ordered, func() {
 					Resource:   snapshots,
 				},
 			})
-			resource, err := loader.GetMatchingComponentSnapshotsForComponentAndPRGroupHash(mockContext, nil, "", "", "", "", "")
+			resource, err := loader.GetMatchingComponentSnapshotsForComponentAndPRGroupHash(mockContext, nil, "", "", "", "", "", "")
 			Expect(resource).To(Equal(&snapshots))
 			Expect(err).ToNot(HaveOccurred())
 		})
@@ -444,7 +446,7 @@ var _ = Describe("Release Adapter", Ordered, func() {
 
 	Context("When calling GetComponentsFromSnapshotForPRGroup", func() {
 		It("return resource and error from the context", func() {
-			components := []string{}
+			components := []Tuple{}
 			mockContext := toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
 					ContextKey: GetComponentsFromSnapshotForPRGroupKey,
@@ -452,7 +454,7 @@ var _ = Describe("Release Adapter", Ordered, func() {
 				},
 			})
 			resource, err := loader.GetComponentsFromSnapshotForPRGroup(mockContext, nil, "", "", "", "")
-			Expect(resource).To(Equal(components))
+			Expect(reflect.DeepEqual(components, resource)).To(BeTrue())
 			Expect(err).ToNot(HaveOccurred())
 		})
 	})

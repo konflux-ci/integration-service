@@ -54,6 +54,7 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 		hasComSnapshot1        *applicationapiv1alpha1.Snapshot
 		hasComSnapshot2        *applicationapiv1alpha1.Snapshot
 		hasComSnapshot3        *applicationapiv1alpha1.Snapshot
+		hasComSnapshot4        *applicationapiv1alpha1.Snapshot
 		pacRepository          *pacv1alpha1.Repository
 		sampleImage            string
 		logger                 helpers.IntegrationLogger
@@ -61,16 +62,18 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 	)
 
 	const (
-		SampleRepoLink            = "https://github.com/devfile-samples/devfile-sample-java-springboot-basic"
-		namespace                 = "default"
-		applicationName           = "application-sample"
-		componentName             = "component-sample"
-		snapshotName              = "snapshot-sample"
-		hasComSnapshot1Name       = "hascomsnapshot1-sample"
-		hasComSnapshot2Name       = "hascomsnapshot2-sample"
-		hasComSnapshot3Name       = "hascomsnapshot3-sample"
-		SampleCommit              = "a2ba645d50e471d5f084b"
-		plrstarttime        int64 = 1775992257000 // milliseconds (was 1775992257 seconds)
+		SampleRepoLink      = "https://github.com/devfile-samples/devfile-sample-java-springboot-basic"
+		namespace           = "default"
+		applicationName     = "application-sample"
+		componentName       = "component-sample"
+		snapshotName        = "snapshot-sample"
+		hasComSnapshot1Name = "hascomsnapshot1-sample"
+		hasComSnapshot2Name = "hascomsnapshot2-sample"
+		hasComSnapshot3Name = "hascomsnapshot3-sample"
+		hasComSnapshot4Name = "hascomsnapshot4-sample"
+
+		SampleCommit       = "a2ba645d50e471d5f084b"
+		plrstarttime int64 = 1775992257000 // milliseconds (was 1775992257 seconds)
 	)
 	BeforeAll(func() {
 		hasApp = &applicationapiv1alpha1.Application{
@@ -304,6 +307,49 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 			}, hasComSnapshot3)
 			return err
 		}, time.Second*10).ShouldNot(HaveOccurred())
+
+		hasComSnapshot4 = &applicationapiv1alpha1.Snapshot{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      hasComSnapshot4Name,
+				Namespace: namespace,
+				Labels: map[string]string{
+					gitops.SnapshotTypeLabel:                   gitops.SnapshotComponentType,
+					gitops.SnapshotComponentLabel:              hasComSnapshot4Name,
+					gitops.PipelineAsCodeEventTypeLabel:        gitops.PipelineAsCodePullRequestType,
+					gitops.PipelineAsCodePullRequestAnnotation: "1",
+				},
+				Annotations: map[string]string{
+					"test.appstudio.openshift.io/pr-last-update": "2023-08-26T17:57:50+02:00",
+					gitops.BuildPipelineRunStartTime:             strconv.FormatInt(plrstarttime, 10),
+				},
+				// this CreationTimestamp don't take effect when snapshot is created
+				// CreationTimestamp: metav1.NewTime(time.Now().Add(time.Hour * 2)),
+			},
+			Spec: applicationapiv1alpha1.SnapshotSpec{
+				Application: hasApp.Name,
+				Components: []applicationapiv1alpha1.SnapshotComponent{
+					{
+						Name:           "component-sample",
+						ContainerImage: "test-image",
+						Version:        "v1",
+					},
+					{
+						Name:           "component-sample",
+						ContainerImage: "test-image",
+						Version:        "v2",
+					},
+				},
+			},
+		}
+		Expect(k8sClient.Create(ctx, hasComSnapshot4)).Should(Succeed())
+
+		Eventually(func() error {
+			err := k8sClient.Get(ctx, types.NamespacedName{
+				Name:      hasComSnapshot4.Name,
+				Namespace: namespace,
+			}, hasComSnapshot4)
+			return err
+		}, time.Second*10).ShouldNot(HaveOccurred())
 	})
 
 	AfterEach(func() {
@@ -314,6 +360,8 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 		err = k8sClient.Delete(ctx, hasComSnapshot2)
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 		err = k8sClient.Delete(ctx, hasComSnapshot3)
+		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
+		err = k8sClient.Delete(ctx, hasComSnapshot4)
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 	})
 
@@ -1276,8 +1324,20 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 			})
 
 			It("Can find the correct snapshotComponent for the given component name", func() {
-				FoundSnapshotComponent := gitops.FindMatchingSnapshotComponent(hasComSnapshot1, hasComp.Name)
+				FoundSnapshotComponent := gitops.FindMatchingSnapshotComponent(hasComSnapshot1, hasComp.Name, "")
 				Expect(FoundSnapshotComponent.Name).To(Equal(hasComp.Name))
+			})
+
+			It("Can find the correct snapshotComponent for the given component name with component version1", func() {
+				FoundSnapshotComponentWithVersion := gitops.FindMatchingSnapshotComponent(hasComSnapshot4, hasComp.Name, "v1")
+				Expect(FoundSnapshotComponentWithVersion.Name).To(Equal(hasComp.Name))
+				Expect(FoundSnapshotComponentWithVersion.Version).To(Equal("v1"))
+			})
+
+			It("Can find the correct snapshotComponent for the given component name with component version2", func() {
+				FoundSnapshotComponentWithVersion := gitops.FindMatchingSnapshotComponent(hasComSnapshot4, hasComp.Name, "v2")
+				Expect(FoundSnapshotComponentWithVersion.Name).To(Equal(hasComp.Name))
+				Expect(FoundSnapshotComponentWithVersion.Version).To(Equal("v2"))
 			})
 
 			It("Can sort the snapshots according to annotation test.appstudio.openshift.io/pipelinerunstarttime", func() {
