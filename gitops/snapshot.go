@@ -1343,7 +1343,8 @@ func SetOwnerReference(ctx context.Context, adapterClient client.Client, snapsho
 // IsContextValidForSnapshot checks the context and compares it against the Snapshot to determine if it applies
 func IsContextValidForSnapshot(scenarioContextName string, snapshot *applicationapiv1alpha1.Snapshot) bool {
 	// `application` context is supported for backwards-compatibility and considered the same as `all`
-	if scenarioContextName == "application" || scenarioContextName == "all" {
+	// TODO: remove "application" context after migration to componentGroups (ITS's with this context should be switched to "componentGroup")
+	if scenarioContextName == "application" || scenarioContextName == "componentgroup" || scenarioContextName == "all" {
 		return true
 	} else if scenarioContextName == "component" && IsComponentSnapshot(snapshot) {
 		return true
