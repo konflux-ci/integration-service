@@ -684,16 +684,21 @@ func (a *Adapter) reportPerScenarioStatuses(
 			return fmt.Errorf("failed to update status: %w", reportStatusErr)
 		}
 
-		// Write after each scenario so a mid-loop failure does not re-report already-completed scenarios
-		if writeErr := status.WriteSnapshotReportStatus(a.context, a.client, testedSnapshot, srs); writeErr != nil {
-			return fmt.Errorf("failed to report status AND write snapshot report status metadata: %w", writeErr)
-		}
-
 		a.logger.Info("Successfully report integration test status for snapshot",
 			"testedSnapshot.Name", testedSnapshot.Name,
 			"destinationSnapshot.Name", destinationSnapshot.Name,
 			"testStatus", integrationTestStatusDetail.Status)
+
+		// Record the scenario as reported BEFORE writing to the snapshot annotation,
+		// so the persisted state includes this scenario. This matches the ordering
+		// used in reportConsolidatedStatuses and prevents unnecessary re-reporting
+		// after a restart.
 		srs.SetLastUpdateTime(integrationTestStatusDetail.ScenarioName, destinationSnapshot.Name, integrationTestStatusDetail.LastUpdateTime)
+
+		// Write after each scenario so a mid-loop failure does not re-report already-completed scenarios
+		if writeErr := status.WriteSnapshotReportStatus(a.context, a.client, testedSnapshot, srs); writeErr != nil {
+			return fmt.Errorf("failed to report status AND write snapshot report status metadata: %w", writeErr)
+		}
 	}
 	return nil
 }
