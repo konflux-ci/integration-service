@@ -44,6 +44,7 @@ import (
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.uber.org/mock/gomock"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/utils/strings/slices"
 
@@ -4220,6 +4221,270 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(buildPipelineRun), updatedPLR)).To(Succeed())
 				g.Expect(updatedPLR.Annotations[tektonconsts.NudgeProcessedAnnotation]).To(Equal("no-matching-edges"))
 			}, time.Second*5).Should(Succeed())
+		})
+
+		Context("when checking NudgeConfig for stale Component references", func() {
+			var nudgeConfig *v1beta2.NudgeConfig
+
+			BeforeEach(func() {
+				nudgeConfig = &v1beta2.NudgeConfig{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      v1beta2.NudgeConfigSingletonName,
+						Namespace: "default",
+					},
+					Spec: v1beta2.NudgeConfigSpec{
+						Nudges: []v1beta2.NudgeRelationship{
+							{From: "other-component", To: "ghost-component", Mode: v1beta2.NudgeModeImmediate},
+						},
+					},
+				}
+				Expect(k8sClient.Create(ctx, nudgeConfig)).Should(Succeed())
+				Eventually(func(g Gomega) {
+					g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(nudgeConfig), nudgeConfig)).To(Succeed())
+				}, time.Second*5).Should(Succeed())
+			})
+
+			AfterEach(func() {
+				err := k8sClient.Delete(ctx, nudgeConfig)
+				Expect(err == nil || k8serrors.IsNotFound(err)).To(BeTrue())
+			})
+
+			It("sets StaleReferences to True for orphaned references before continuing with no-matching-edges", func() {
+				pushPLR := makePushPLR()
+				adapter = NewAdapter(ctx, pushPLR, hasComp, &[]v1beta2.ComponentGroup{*hasCompGroup}, logger, loader.NewMockLoader(), k8sClient)
+				adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+					{
+						ContextKey: loader.NudgeConfigContextKey,
+						Resource:   nudgeConfig,
+					},
+					{
+						ContextKey: loader.NamespaceComponentsContextKey,
+						Resource: []applicationapiv1alpha1.Component{
+							*hasComp,
+						},
+					},
+				})
+
+				result, err := adapter.EnsureNudgePipelineRunsExist()
+				Expect(err).NotTo(HaveOccurred())
+				Expect(result.CancelRequest).To(BeFalse())
+				Expect(result.RequeueRequest).To(BeFalse())
+
+				Eventually(func(g Gomega) {
+					updated := &v1beta2.NudgeConfig{}
+					g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(nudgeConfig), updated)).To(Succeed())
+					cond := meta.FindStatusCondition(updated.Status.Conditions, helpers.StaleReferencesStatusCondition)
+					g.Expect(cond).NotTo(BeNil())
+					g.Expect(cond.Status).To(Equal(metav1.ConditionTrue))
+					g.Expect(cond.Reason).To(Equal(helpers.StaleReferencesDetectedReason))
+					g.Expect(cond.Message).To(ContainSubstring("missing 'from' component(s): other-component"))
+					g.Expect(cond.Message).To(ContainSubstring("missing 'to' component(s): ghost-component"))
+				}, time.Second*5).Should(Succeed())
+
+				Eventually(func(g Gomega) {
+					updatedPLR := &tektonv1.PipelineRun{}
+					g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(buildPipelineRun), updatedPLR)).To(Succeed())
+					g.Expect(updatedPLR.Annotations[tektonconsts.NudgeProcessedAnnotation]).To(Equal("no-matching-edges"))
+				}, time.Second*5).Should(Succeed())
+			})
+
+			It("continues processing when the stale-references status update fails", func() {
+				pushPLR := makePushPLR()
+				Expect(k8sClient.Delete(ctx, nudgeConfig)).Should(Succeed())
+				Eventually(func() bool {
+					err := k8sClient.Get(ctx, client.ObjectKeyFromObject(nudgeConfig), &v1beta2.NudgeConfig{})
+					return k8serrors.IsNotFound(err)
+				}, time.Second*5).Should(BeTrue())
+
+				adapter = NewAdapter(ctx, pushPLR, hasComp, &[]v1beta2.ComponentGroup{*hasCompGroup}, logger, loader.NewMockLoader(), k8sClient)
+				adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+					{
+						ContextKey: loader.NudgeConfigContextKey,
+						Resource:   nudgeConfig,
+					},
+					{
+						ContextKey: loader.NamespaceComponentsContextKey,
+						Resource: []applicationapiv1alpha1.Component{
+							*hasComp,
+						},
+					},
+				})
+
+				result, err := adapter.EnsureNudgePipelineRunsExist()
+				Expect(err).NotTo(HaveOccurred())
+				Expect(result.CancelRequest).To(BeFalse())
+				Expect(result.RequeueRequest).To(BeFalse())
+
+				Eventually(func(g Gomega) {
+					updatedPLR := &tektonv1.PipelineRun{}
+					g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(buildPipelineRun), updatedPLR)).To(Succeed())
+					g.Expect(updatedPLR.Annotations[tektonconsts.NudgeProcessedAnnotation]).To(Equal("no-matching-edges"))
+				}, time.Second*5).Should(Succeed())
+			})
+		})
+	})
+
+	When("checkNudgeConfigForStaleReferences is called", func() {
+		var nudgeConfig *v1beta2.NudgeConfig
+
+		BeforeEach(func() {
+			nudgeConfig = &v1beta2.NudgeConfig{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      v1beta2.NudgeConfigSingletonName,
+					Namespace: "default",
+				},
+				Spec: v1beta2.NudgeConfigSpec{
+					Nudges: []v1beta2.NudgeRelationship{
+						{From: hasComp.Name, To: hasComp2.Name, Mode: v1beta2.NudgeModeImmediate},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, nudgeConfig)).Should(Succeed())
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(nudgeConfig), nudgeConfig)).To(Succeed())
+			}, time.Second*5).Should(Succeed())
+
+			adapter = NewAdapter(ctx, buildPipelineRun, hasComp, &[]v1beta2.ComponentGroup{*hasCompGroup}, logger, loader.NewMockLoader(), k8sClient)
+		})
+
+		AfterEach(func() {
+			err := k8sClient.Delete(ctx, nudgeConfig)
+			Expect(err == nil || k8serrors.IsNotFound(err)).To(BeTrue())
+		})
+
+		It("sets the initial condition when NudgeConfig has no nudge relationships and no stale references status condition", func() {
+			nudgeConfig.Spec.Nudges = nil
+			Expect(adapter.checkNudgeConfigForStaleReferences(nudgeConfig, "default")).To(Succeed())
+
+			Eventually(func(g Gomega) {
+				updated := &v1beta2.NudgeConfig{}
+				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(nudgeConfig), updated)).To(Succeed())
+				cond := meta.FindStatusCondition(updated.Status.Conditions, helpers.StaleReferencesStatusCondition)
+				g.Expect(cond).NotTo(BeNil())
+				g.Expect(cond.Status).To(Equal(metav1.ConditionFalse))
+				g.Expect(cond.Reason).To(Equal(helpers.NoStaleReferencesReason))
+			}, time.Second*5).Should(Succeed())
+		})
+
+		It("returns nil when NudgeConfig has no nudge relationships and already has the stale references status condition", func() {
+			nudgeConfig.Spec.Nudges = nil
+
+			meta.SetStatusCondition(&nudgeConfig.Status.Conditions, metav1.Condition{
+				Type:    helpers.StaleReferencesStatusCondition,
+				Status:  metav1.ConditionFalse,
+				Reason:  helpers.NoStaleReferencesReason,
+				Message: "All Components referenced in the NudgeConfig are present, no stale references found.",
+			})
+
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: loader.NamespaceComponentsContextKey,
+					Err:        fmt.Errorf("list components failed"),
+				},
+			})
+			Expect(adapter.checkNudgeConfigForStaleReferences(nudgeConfig, "default")).To(Succeed())
+		})
+
+		It("sets the StaleReferences condition to ConditionTrue when orphaned references exist", func() {
+			nudgeConfig.Spec.Nudges = []v1beta2.NudgeRelationship{
+				{From: hasComp.Name, To: "missing-component", Mode: v1beta2.NudgeModeImmediate},
+			}
+			Expect(k8sClient.Update(ctx, nudgeConfig)).Should(Succeed())
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(nudgeConfig), nudgeConfig)).To(Succeed())
+				nudge := nudgeConfig.Spec.Nudges[0]
+				g.Expect(nudge.To).To(Equal("missing-component"))
+			}, time.Second*5).Should(Succeed())
+
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: loader.NamespaceComponentsContextKey,
+					Resource: []applicationapiv1alpha1.Component{
+						*hasComp,
+					},
+				},
+			})
+			Expect(adapter.checkNudgeConfigForStaleReferences(nudgeConfig, "default")).To(Succeed())
+
+			Eventually(func(g Gomega) {
+				updated := &v1beta2.NudgeConfig{}
+				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(nudgeConfig), updated)).To(Succeed())
+				cond := meta.FindStatusCondition(updated.Status.Conditions, helpers.StaleReferencesStatusCondition)
+				g.Expect(cond).NotTo(BeNil())
+				g.Expect(cond.Status).To(Equal(metav1.ConditionTrue))
+				g.Expect(cond.Reason).To(Equal(helpers.StaleReferencesDetectedReason))
+				g.Expect(cond.Message).To(ContainSubstring("missing 'to' component(s): missing-component"))
+			}, time.Second*5).Should(Succeed())
+		})
+
+		It("sets the StaleReferences condition to ConditionFalse when all references are valid", func() {
+			meta.SetStatusCondition(&nudgeConfig.Status.Conditions, metav1.Condition{
+				Type:    helpers.StaleReferencesStatusCondition,
+				Status:  metav1.ConditionTrue,
+				Reason:  "StaleReferences",
+				Message: "previously stale",
+			})
+			Expect(k8sClient.Status().Update(ctx, nudgeConfig)).Should(Succeed())
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(nudgeConfig), nudgeConfig)).To(Succeed())
+				g.Expect(meta.FindStatusCondition(nudgeConfig.Status.Conditions, helpers.StaleReferencesStatusCondition).Status).To(Equal(metav1.ConditionTrue))
+			}, time.Second*5).Should(Succeed())
+
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: loader.NamespaceComponentsContextKey,
+					Resource: []applicationapiv1alpha1.Component{
+						*hasComp,
+						*hasComp2,
+					},
+				},
+			})
+			Expect(adapter.checkNudgeConfigForStaleReferences(nudgeConfig, "default")).To(Succeed())
+
+			Eventually(func(g Gomega) {
+				updated := &v1beta2.NudgeConfig{}
+				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(nudgeConfig), updated)).To(Succeed())
+				cond := meta.FindStatusCondition(updated.Status.Conditions, helpers.StaleReferencesStatusCondition)
+				g.Expect(cond).NotTo(BeNil())
+				g.Expect(cond.Status).To(Equal(metav1.ConditionFalse))
+				g.Expect(cond.Reason).To(Equal(helpers.NoStaleReferencesReason))
+				g.Expect(cond.Message).To(Equal("All Components referenced in the NudgeConfig are present, no stale references found."))
+			}, time.Second*5).Should(Succeed())
+		})
+
+		It("returns an error when listing Components fails", func() {
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: loader.NamespaceComponentsContextKey,
+					Err:        fmt.Errorf("list components failed"),
+				},
+			})
+			err := adapter.checkNudgeConfigForStaleReferences(nudgeConfig, "default")
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring(`failed to list Components in namespace "default"`))
+		})
+
+		It("returns an error when the status patch fails", func() {
+			Expect(k8sClient.Delete(ctx, nudgeConfig)).Should(Succeed())
+			Eventually(func() bool {
+				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(nudgeConfig), &v1beta2.NudgeConfig{})
+				return k8serrors.IsNotFound(err)
+			}, time.Second*5).Should(BeTrue())
+
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: loader.NamespaceComponentsContextKey,
+					Resource: []applicationapiv1alpha1.Component{
+						*hasComp,
+					},
+				},
+			})
+			nudgeConfig.Spec.Nudges = []v1beta2.NudgeRelationship{
+				{From: hasComp.Name, To: "missing-component", Mode: v1beta2.NudgeModeImmediate},
+			}
+			err := adapter.checkNudgeConfigForStaleReferences(nudgeConfig, "default")
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("failed to patch nudge config status"))
 		})
 	})
 

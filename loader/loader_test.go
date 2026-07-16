@@ -692,6 +692,12 @@ var _ = Describe("Loader", Ordered, func() {
 		Expect(applicationComponents).NotTo(BeNil())
 	})
 
+	It("ensures the Components in Namespace can be found ", func() {
+		namespaceComponents, err := loader.GetAllComponentsInNamespace(ctx, k8sClient, namespace)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(namespaceComponents).NotTo(BeNil())
+	})
+
 	It("ensures the ComponentGroup Components can be found ", func() {
 		componentGroupComponents, err := loader.GetAllComponentGroupComponents(ctx, k8sClient, hasComponentGroup1)
 		Expect(err).ToNot(HaveOccurred())

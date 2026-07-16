@@ -77,6 +77,7 @@ const (
 	GetPushComponentSnapshotsForComponentContextKey
 	ComponentGroupComponentsContextKey
 	NudgeConfigContextKey
+	NamespaceComponentsContextKey
 )
 
 func NewMockLoader() ObjectLoader {
@@ -100,6 +101,15 @@ func (l *mockLoader) GetAllApplicationComponents(ctx context.Context, c client.C
 		return l.loader.GetAllApplicationComponents(ctx, c, application)
 	}
 	components, err := toolkit.GetMockedResourceAndErrorFromContext(ctx, ApplicationComponentsContextKey, []applicationapiv1alpha1.Component{})
+	return &components, err
+}
+
+// GetAllComponentsInNamespace returns the resource and error passed as values of the context.
+func (l *mockLoader) GetAllComponentsInNamespace(ctx context.Context, c client.Client, namespace string) (*[]applicationapiv1alpha1.Component, error) {
+	if ctx.Value(NamespaceComponentsContextKey) == nil {
+		return l.loader.GetAllComponentsInNamespace(ctx, c, namespace)
+	}
+	components, err := toolkit.GetMockedResourceAndErrorFromContext(ctx, NamespaceComponentsContextKey, []applicationapiv1alpha1.Component{})
 	return &components, err
 }
 

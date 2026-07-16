@@ -44,6 +44,7 @@ import (
 type ObjectLoader interface {
 	GetReleasesWithSnapshot(ctx context.Context, c client.Client, snapshot *applicationapiv1alpha1.Snapshot) (*[]releasev1alpha1.Release, error)
 	GetAllApplicationComponents(ctx context.Context, c client.Client, application *applicationapiv1alpha1.Application) (*[]applicationapiv1alpha1.Component, error)
+	GetAllComponentsInNamespace(ctx context.Context, c client.Client, namespace string) (*[]applicationapiv1alpha1.Component, error)
 	GetAllComponentGroupComponents(ctx context.Context, c client.Client, componentGroup *v1beta2.ComponentGroup) (*[]applicationapiv1alpha1.Component, error)
 	GetApplicationFromSnapshot(ctx context.Context, c client.Client, snapshot *applicationapiv1alpha1.Snapshot) (*applicationapiv1alpha1.Application, error)
 	GetComponentGroupFromSnapshot(ctx context.Context, c client.Client, snapshot *applicationapiv1alpha1.Snapshot) (*v1beta2.ComponentGroup, error)
@@ -128,6 +129,21 @@ func (l *loader) GetAllApplicationComponents(ctx context.Context, c client.Clien
 	}
 
 	return &applicationComponents.Items, nil
+}
+
+// GetAllComponentsInNamespace loads from the cluster all Components located in the given namespace.
+func (l *loader) GetAllComponentsInNamespace(ctx context.Context, c client.Client, namespace string) (*[]applicationapiv1alpha1.Component, error) {
+	namespaceComponents := &applicationapiv1alpha1.ComponentList{}
+	opts := []client.ListOption{
+		client.InNamespace(namespace),
+	}
+
+	err := c.List(ctx, namespaceComponents, opts...)
+	if err != nil {
+		return nil, err
+	}
+
+	return &namespaceComponents.Items, nil
 }
 
 func (l *loader) GetAllComponentGroupComponents(ctx context.Context, c client.Client, componentGroup *v1beta2.ComponentGroup) (*[]applicationapiv1alpha1.Component, error) {

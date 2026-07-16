@@ -21,10 +21,10 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
-	"strings"
 
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
 	"github.com/konflux-ci/integration-service/api/v1beta2"
+	"github.com/konflux-ci/integration-service/helpers"
 	"github.com/konflux-ci/integration-service/pkg/dag"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -129,41 +129,13 @@ func (v *NudgeConfigCustomValidator) validateComponentsExist(ctx context.Context
 		return fmt.Errorf("failed to list Components in namespace %q: %w", namespace, err)
 	}
 
-	existing := make(map[string]struct{}, len(componentList.Items))
-	for i := range componentList.Items {
-		existing[componentList.Items[i].Name] = struct{}{}
-	}
+	hasStaleReferences, msg := helpers.FindMissingNudgeConfigReferences(componentList.Items, nudges, namespace)
 
-	var missingFrom, missingTo []string
-	seenFrom, seenTo := map[string]struct{}{}, map[string]struct{}{}
-	for _, n := range nudges {
-		if _, ok := existing[n.From]; !ok {
-			if _, dup := seenFrom[n.From]; !dup {
-				seenFrom[n.From] = struct{}{}
-				missingFrom = append(missingFrom, n.From)
-			}
-		}
-		if _, ok := existing[n.To]; !ok {
-			if _, dup := seenTo[n.To]; !dup {
-				seenTo[n.To] = struct{}{}
-				missingTo = append(missingTo, n.To)
-			}
-		}
+	if hasStaleReferences {
+		nudgeconfiglog.V(1).Info(msg)
+		return errors.New(msg)
 	}
-
-	if len(missingFrom) == 0 && len(missingTo) == 0 {
-		return nil
-	}
-
-	msg := fmt.Sprintf("NudgeConfig references non-existent Component(s) in namespace %q", namespace)
-	if len(missingFrom) > 0 {
-		msg += fmt.Sprintf("; missing 'from' component(s): %s", strings.Join(missingFrom, ", "))
-	}
-	if len(missingTo) > 0 {
-		msg += fmt.Sprintf("; missing 'to' component(s): %s", strings.Join(missingTo, ", "))
-	}
-	nudgeconfiglog.V(1).Info(msg)
-	return errors.New(msg)
+	return nil
 }
 
 func nudgeKey(n v1beta2.NudgeRelationship) string { return n.From + "\x00" + n.To }
