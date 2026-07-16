@@ -26,6 +26,7 @@ import (
 	"strings"
 	"time"
 
+	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/client-go/util/retry"
 	"k8s.io/utils/strings/slices"
 
@@ -171,6 +172,12 @@ func (a *Adapter) EnsureNudgePipelineRunsExist() (controller.OperationResult, er
 		}
 		a.logger.Error(err, "Failed to get NudgeConfig")
 		return controller.RequeueWithError(err)
+	}
+
+	// Check the NudgeConfig for stale references and update if possible - best effort.
+	// Done before nudge PipelineRun creation so early returns still refresh status.
+	if staleErr := a.checkNudgeConfigForStaleReferences(nudgeConfig, a.pipelineRun.Namespace); staleErr != nil {
+		a.logger.Error(staleErr, "Failed to check nudge config for stale references, skipping")
 	}
 
 	componentName := a.component.Name
@@ -1604,4 +1611,50 @@ func (a *Adapter) emitBuildTimingSpans() {
 	if patched != nil {
 		a.pipelineRun = patched
 	}
+}
+
+// checkNudgeConfigForStaleReferences checks if the given NudgeConfig has stale references and updates its
+// stale references status condition to reflect that
+func (a *Adapter) checkNudgeConfigForStaleReferences(nudgeConfig *v1beta2.NudgeConfig, namespace string) error {
+	nudges := nudgeConfig.Spec.Nudges
+	existingStatusCondition := meta.FindStatusCondition(nudgeConfig.Status.Conditions, h.StaleReferencesStatusCondition)
+	// Short-circuit only when there is genuinely nothing to do: no nudges to check and no prior True condition to clean up.
+	// We intentionally fall through when existingStatusCondition is nil so that a fresh NudgeConfig gets an explicit
+	// StaleReferences=False condition rather than leaving the field absent. Absent is ambiguous (unknown vs healthy); False is an affirmative health signal.
+	if len(nudges) == 0 && existingStatusCondition != nil && existingStatusCondition.Status == metav1.ConditionFalse {
+		return nil
+	}
+
+	components, err := a.loader.GetAllComponentsInNamespace(a.context, a.client, namespace)
+	if err != nil {
+		return fmt.Errorf("failed to list Components in namespace %q: %w", namespace, err)
+	}
+
+	foundMissing, msg := h.FindMissingNudgeConfigReferences(*components, nudges, namespace)
+	var newConditionStatus metav1.ConditionStatus
+	var newConditionReason string
+	if foundMissing {
+		newConditionStatus = metav1.ConditionTrue
+		newConditionReason = h.StaleReferencesDetectedReason
+	} else {
+		newConditionStatus = metav1.ConditionFalse
+		newConditionReason = h.NoStaleReferencesReason
+		msg = "All Components referenced in the NudgeConfig are present, no stale references found."
+	}
+
+	if existingStatusCondition == nil || (existingStatusCondition.Status != newConditionStatus || existingStatusCondition.Message != msg) {
+		patch := client.MergeFrom(nudgeConfig.DeepCopy())
+		meta.SetStatusCondition(&nudgeConfig.Status.Conditions, metav1.Condition{
+			Type:    h.StaleReferencesStatusCondition,
+			Status:  newConditionStatus,
+			Reason:  newConditionReason,
+			Message: msg,
+		})
+
+		err = a.client.Status().Patch(a.context, nudgeConfig, patch)
+		if err != nil {
+			return fmt.Errorf("failed to patch nudge config status: %w", err)
+		}
+	}
+	return nil
 }

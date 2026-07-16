@@ -90,6 +90,13 @@ rules:
   - list
   - watch
 - apiGroups:
+  - appstudio.redhat.com
+  resources:
+  - nudgeconfigs/status
+  verbs:
+  - get
+  - patch
+- apiGroups:
   - pipelinesascode.tekton.dev
   resources:
   - repositories

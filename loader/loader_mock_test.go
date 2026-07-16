@@ -67,6 +67,21 @@ var _ = Describe("Release Adapter", Ordered, func() {
 		})
 	})
 
+	Context("When calling GetAllComponentsInNamespace", func() {
+		It("returns resource and error from the context", func() {
+			namespaceComponents := []applicationapiv1alpha1.Component{}
+			mockContext := toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: NamespaceComponentsContextKey,
+					Resource:   namespaceComponents,
+				},
+			})
+			resource, err := loader.GetAllComponentsInNamespace(mockContext, nil, "default")
+			Expect(resource).To(Equal(&namespaceComponents))
+			Expect(err).ToNot(HaveOccurred())
+		})
+	})
+
 	Context("When calling GetAllComponentGroupComponents", func() {
 		It("returns resource and error from the context", func() {
 			groupComponents := []applicationapiv1alpha1.Component{}
