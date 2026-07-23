@@ -4427,7 +4427,9 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			Expect(k8sClient.Status().Update(ctx, nudgeConfig)).Should(Succeed())
 			Eventually(func(g Gomega) {
 				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(nudgeConfig), nudgeConfig)).To(Succeed())
-				g.Expect(meta.FindStatusCondition(nudgeConfig.Status.Conditions, helpers.StaleReferencesStatusCondition).Status).To(Equal(metav1.ConditionTrue))
+				cond := meta.FindStatusCondition(nudgeConfig.Status.Conditions, helpers.StaleReferencesStatusCondition)
+				g.Expect(cond).NotTo(BeNil())
+				g.Expect(cond.Status).To(Equal(metav1.ConditionTrue))
 			}, time.Second*5).Should(Succeed())
 
 			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{

@@ -653,7 +653,7 @@ var _ = Describe("Nudge Pipeline", func() {
 		})
 
 		Context("with CA bundle", func() {
-			It("mounts the CA ConfigMap volume when a CA bundle exists in build-service namespace", func() {
+			It("mounts the CA ConfigMap volume when a CA bundle exists in the operator namespace", func() {
 				scheme := nudgeTestScheme()
 
 				sa := &corev1.ServiceAccount{
@@ -663,7 +663,7 @@ var _ = Describe("Nudge Pipeline", func() {
 				caCM := &corev1.ConfigMap{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "trusted-ca-bundle",
-						Namespace: tektonconsts.BuildServiceNamespaceName,
+						Namespace: "integration-service",
 						Labels:    map[string]string{tektonconsts.CaConfigMapLabel: "true"},
 					},
 					Data: map[string]string{
@@ -671,13 +671,9 @@ var _ = Describe("Nudge Pipeline", func() {
 					},
 				}
 
-				buildNS := &corev1.Namespace{
-					ObjectMeta: metav1.ObjectMeta{Name: tektonconsts.BuildServiceNamespaceName},
-				}
-
 				caFakeClient := fake.NewClientBuilder().
 					WithScheme(scheme).
-					WithObjects(sa, caCM, buildNS).
+					WithObjects(sa, caCM).
 					Build()
 
 				err := nudging.CreateNudgePipelineRun(testCtx, caFakeClient, nudgingPLR, targets, buildResult, false)
