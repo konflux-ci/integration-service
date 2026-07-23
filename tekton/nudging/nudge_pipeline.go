@@ -348,13 +348,17 @@ func CreateNudgePipelineRun(ctx context.Context, c client.Client, nudgingPLR *te
 		return nil
 	}
 
-	// Look for a CA bundle ConfigMap in the build-service namespace.
+	operatorNamespace := os.Getenv("INTEGRATION_NS")
+	if operatorNamespace == "" {
+		operatorNamespace = "integration-service"
+	}
+
 	allCaConfigMaps := &corev1.ConfigMapList{}
 	if err := c.List(ctx, allCaConfigMaps,
-		client.InNamespace(tektonconsts.BuildServiceNamespaceName),
+		client.InNamespace(operatorNamespace),
 		client.MatchingLabels{tektonconsts.CaConfigMapLabel: "true"},
 	); err != nil {
-		return fmt.Errorf("listing CA config maps in %s namespace: %w", tektonconsts.BuildServiceNamespaceName, err)
+		return fmt.Errorf("listing CA config maps in %s namespace: %w", operatorNamespace, err)
 	}
 	caConfigData := ""
 	if len(allCaConfigMaps.Items) > 0 {

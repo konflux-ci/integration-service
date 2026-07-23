@@ -225,11 +225,8 @@ const (
 	CaVolumeMountName = "trusted-ca"
 
 	/*
-	 * Build-service namespace and PaC secret constants (for GitHub App auth)
+	 * Build-service PaC secret constants (for GitHub App auth)
 	 */
-
-	// BuildServiceNamespaceName is the namespace where build-service is deployed
-	BuildServiceNamespaceName = "build-service"
 
 	// PipelinesAsCodeGitHubAppSecretName is the global PaC secret for GitHub App auth
 	PipelinesAsCodeGitHubAppSecretName = "pipelines-as-code-secret"
