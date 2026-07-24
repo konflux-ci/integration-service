@@ -34,10 +34,10 @@ replace (
 )
 
 require (
-	github.com/agiledragon/gomonkey/v2 v2.14.0
+	github.com/agiledragon/gomonkey/v2 v2.14.1
 	github.com/bradleyfalzon/ghinstallation/v2 v2.17.0
 	github.com/ghodss/yaml v1.0.0
-	github.com/go-logr/logr v1.4.3
+	github.com/go-logr/logr v1.4.4
 	github.com/gofri/go-github-ratelimit v1.1.1
 	github.com/google/cel-go v0.28.1
 	github.com/google/go-containerregistry v0.20.7
