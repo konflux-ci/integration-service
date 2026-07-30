@@ -20,3 +20,7 @@ package helpers
 const IntegrationPipelineRunFinalizer string = "test.appstudio.openshift.io/pipelinerun"
 const IntegrationTestScenarioFinalizer string = "test.appstudio.openshift.io/scenario"
 const ComponentFinalizer string = "test.appstudio.openshift.io/component"
+
+// NudgePipelineRunFinalizer is the finalizer name added to build PipelineRuns while IS is
+// actively creating a nudge PipelineRun, preventing premature GC before nudging completes.
+const NudgePipelineRunFinalizer string = "test.appstudio.openshift.io/nudge-pipelinerun"
