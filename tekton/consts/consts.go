@@ -145,11 +145,15 @@ const (
 	PipelineRunShouldReleaseResultName = "SHOULD_RELEASE"
 
 	/*
-	 * Nudge PipelineRun constants — build-service compatible annotation/label names
+	 * Nudge PipelineRun constants
 	 */
 
-	// NudgeProcessedAnnotation marks a build PLR as having already been processed for nudging
-	NudgeProcessedAnnotation = "build.appstudio.openshift.io/component-nudge-processed"
+	// NudgeProcessedAnnotation marks a build PLR as having already been processed for nudging.
+	// Renamed from build.appstudio.openshift.io/component-nudge-processed to avoid interference
+	// with build-service, which sets the old key unconditionally. PLRs annotated with the old key
+	// by IS before this change are not recognized by the idempotency guard, but any duplicate
+	// nudge PLR creation is safe because Renovate is idempotent.
+	NudgeProcessedAnnotation = "test.appstudio.openshift.io/component-nudge-processed"
 
 	// NudgeSimpleBranchAnnotation on a Component controls simplified branch naming for nudge PRs
 	NudgeSimpleBranchAnnotation = "build.appstudio.openshift.io/build-nudge-simple-branch"

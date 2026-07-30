@@ -161,7 +161,22 @@ func (a *Adapter) EnsureNudgePipelineRunsExist() (controller.OperationResult, er
 		return controller.ContinueProcessing()
 	}
 
+	// Idempotency guard: nudge already processed. Remove the nudge finalizer if it somehow
+	// survived (e.g. IS crashed between nudge PLR creation and annotation write).
 	if metadata.HasAnnotation(a.pipelineRun, tektonconsts.NudgeProcessedAnnotation) {
+		if err := h.RemoveFinalizerFromPipelineRun(a.context, a.client, a.logger, a.pipelineRun, h.NudgePipelineRunFinalizer); err != nil && !errors.IsNotFound(err) {
+			return controller.RequeueWithError(err)
+		}
+		return controller.ContinueProcessing()
+	}
+
+	// If the PLR is being deleted, nudging can no longer be completed. Remove any stale nudge
+	// finalizer (left by a crash between finalizer add and annotation write) so the PLR is
+	// not stuck in Terminating.
+	if a.pipelineRun.GetDeletionTimestamp() != nil {
+		if err := h.RemoveFinalizerFromPipelineRun(a.context, a.client, a.logger, a.pipelineRun, h.NudgePipelineRunFinalizer); err != nil && !errors.IsNotFound(err) {
+			return controller.RequeueWithError(err)
+		}
 		return controller.ContinueProcessing()
 	}
 
@@ -247,9 +262,16 @@ func (a *Adapter) EnsureNudgePipelineRunsExist() (controller.OperationResult, er
 		return controller.ContinueProcessing()
 	}
 
+	// Add the nudge finalizer just before creating the nudge PLR so the build PLR cannot be
+	// GC'd between PLR creation and the annotation write that marks nudging as complete.
+	if err := h.AddFinalizerToPipelineRun(a.context, a.client, a.logger, a.pipelineRun, h.NudgePipelineRunFinalizer); err != nil {
+		return controller.RequeueWithError(err)
+	}
+
 	err = nudging.CreateNudgePipelineRun(a.context, a.client, a.pipelineRun, targets, buildResult, simpleBranchName)
 	if err != nil {
 		a.logger.Error(err, "Failed to create nudge PipelineRun")
+		// Keep the nudge finalizer so the PLR stays alive for the retry.
 		return controller.RequeueWithError(err)
 	}
 
@@ -261,6 +283,11 @@ func (a *Adapter) EnsureNudgePipelineRunsExist() (controller.OperationResult, er
 	err = tekton.AnnotateBuildPipelineRun(a.context, a.pipelineRun, tektonconsts.NudgeProcessedAnnotation, processedValue, a.client)
 	if err != nil {
 		a.logger.Error(err, "Failed to annotate build PLR as nudge-processed")
+		// Keep the nudge finalizer — the PLR must not be GC'd before the annotation lands.
+		return controller.RequeueWithError(err)
+	}
+
+	if err = h.RemoveFinalizerFromPipelineRun(a.context, a.client, a.logger, a.pipelineRun, h.NudgePipelineRunFinalizer); err != nil && !errors.IsNotFound(err) {
 		return controller.RequeueWithError(err)
 	}
 

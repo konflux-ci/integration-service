@@ -4004,6 +4004,45 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			Expect(result.CancelRequest).To(BeFalse())
 		})
 
+		It("removes the stale nudge finalizer when PLR is already annotated as nudge-processed", func() {
+			// Simulate crash-recovery: IS crashed between nudge PLR creation and annotation
+			// write, leaving the finalizer on a PLR that already has the processed annotation.
+			// We use a unique name that is not on the server so the Patch returns NotFound,
+			// which the idempotency guard path handles gracefully (no requeue). The important
+			// invariant is that the in-memory finalizer is stripped and no error is returned.
+			crashPLR := makePushPLR()
+			crashPLR.Name = "pipelinerun-nudge-crash-nonexistent"
+			crashPLR.ResourceVersion = "1" // MergeFromWithOptimisticLock requires non-empty RV; server returns NotFound (handled gracefully)
+			crashPLR.Annotations[tektonconsts.NudgeProcessedAnnotation] = "component-b"
+			controllerutil.AddFinalizer(crashPLR, helpers.NudgePipelineRunFinalizer)
+			crashPLR.Status = buildPipelineRun.Status
+
+			adapter = NewAdapter(ctx, crashPLR, hasComp, &[]v1beta2.ComponentGroup{*hasCompGroup}, logger, loader.NewMockLoader(), k8sClient)
+			result, err := adapter.EnsureNudgePipelineRunsExist()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.CancelRequest).To(BeFalse())
+			Expect(controllerutil.ContainsFinalizer(crashPLR, helpers.NudgePipelineRunFinalizer)).To(BeFalse())
+		})
+
+		It("removes stale nudge finalizer from a deleting PLR with no nudge-processed annotation", func() {
+			// Simulate crash-recovery: IS crashed after adding the nudge finalizer but before
+			// writing the annotation, and the PLR was subsequently deleted. The PLR is stuck in
+			// Terminating. Verify the adapter removes the stale finalizer and returns without error.
+			deletingPLR := makePushPLR()
+			deletingPLR.Name = "pipelinerun-nudge-deleting-nonexistent"
+			deletingPLR.ResourceVersion = "1"
+			now := metav1.Now()
+			deletingPLR.DeletionTimestamp = &now
+			controllerutil.AddFinalizer(deletingPLR, helpers.NudgePipelineRunFinalizer)
+			deletingPLR.Status = buildPipelineRun.Status
+
+			adapter = NewAdapter(ctx, deletingPLR, hasComp, &[]v1beta2.ComponentGroup{*hasCompGroup}, logger, loader.NewMockLoader(), k8sClient)
+			result, err := adapter.EnsureNudgePipelineRunsExist()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.CancelRequest).To(BeFalse())
+			Expect(controllerutil.ContainsFinalizer(deletingPLR, helpers.NudgePipelineRunFinalizer)).To(BeFalse())
+		})
+
 		It("skips when NudgeConfig is not found", func() {
 			pushPLR := makePushPLR()
 			adapter = NewAdapter(ctx, pushPLR, hasComp, &[]v1beta2.ComponentGroup{*hasCompGroup}, logger, loader.NewMockLoader(), k8sClient)
