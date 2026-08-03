@@ -445,12 +445,12 @@ func lookupSCMCredentials(ctx context.Context, c client.Client, namespace, repoH
 	}
 
 	if len(candidates) == 0 {
-		return "", "", fmt.Errorf("no SCM basic auth secrets found for host %q in namespace %s", repoHost, namespace)
+		return "", "", fmt.Errorf("no SCM basic auth secrets found for host %q in namespace %s; secrets must be BasicAuth and labeled %s=scm and %s=%s", repoHost, namespace, scmCredentialsSecretLabel, scmSecretHostnameLabel, repoHost)
 	}
 
 	best := bestMatchingSCMSecret(ctx, repoPath, candidates)
 	if best == nil {
-		return "", "", fmt.Errorf("no matching SCM secret found for repo %q in namespace %s", repoPath, namespace)
+		return "", "", fmt.Errorf("no matching SCM secret found for repo %q in namespace %s; set the %s annotation to the repository path", repoPath, namespace, scmSecretRepositoryAnnotation)
 	}
 
 	return string(best.Data[corev1.BasicAuthUsernameKey]),
