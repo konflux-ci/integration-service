@@ -1025,6 +1025,12 @@ var _ = Describe("Nudge credentials", func() {
 			scheme = newCredentialScheme()
 		})
 
+		It("keeps operator-facing SCM metadata keys stable", func() {
+			Expect(scmCredentialsSecretLabel).To(Equal("appstudio.redhat.com/credentials"))
+			Expect(scmSecretHostnameLabel).To(Equal("appstudio.redhat.com/scm.host"))
+			Expect(scmSecretRepositoryAnnotation).To(Equal("appstudio.redhat.com/scm.repository"))
+		})
+
 		It("returns credentials from matching BasicAuth secret", func() {
 			scmSecret := &corev1.Secret{
 				ObjectMeta: metav1.ObjectMeta{
@@ -1057,8 +1063,8 @@ var _ = Describe("Nudge credentials", func() {
 			_, _, err := lookupSCMCredentials(ctx, c, testNamespace, "github.com", "org/repo")
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("no SCM basic auth secrets found"))
-			Expect(err.Error()).To(ContainSubstring("appstudio.redhat.com/credentials=scm"))
-			Expect(err.Error()).To(ContainSubstring("appstudio.redhat.com/scm.host=github.com"))
+			Expect(err.Error()).To(ContainSubstring(scmCredentialsSecretLabel + "=scm"))
+			Expect(err.Error()).To(ContainSubstring(scmSecretHostnameLabel + "=github.com"))
 			Expect(err.Error()).To(ContainSubstring("BasicAuth"))
 		})
 
@@ -1107,7 +1113,7 @@ var _ = Describe("Nudge credentials", func() {
 			_, _, err := lookupSCMCredentials(ctx, c, testNamespace, "github.com", "org/repo")
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("no matching SCM secret found"))
-			Expect(err.Error()).To(ContainSubstring("appstudio.redhat.com/scm.repository"))
+			Expect(err.Error()).To(ContainSubstring(scmSecretRepositoryAnnotation))
 		})
 	})
 
