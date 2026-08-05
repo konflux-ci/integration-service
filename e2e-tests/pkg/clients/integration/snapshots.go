@@ -19,7 +19,8 @@ import (
 )
 
 // CreateSnapshotWithComponents creates a Snapshot using the given parameters.
-func (i *IntegrationController) CreateSnapshotWithComponents(snapshotName, componentName, applicationName, namespace string, snapshotComponents []appstudioApi.SnapshotComponent) (*appstudioApi.Snapshot, error) {
+// TODO: When we remove application-specific code, remove usingComponentGroups parameter and rename parentName to componentGroupName
+func (i *IntegrationController) CreateSnapshotWithComponents(snapshotName, componentName, parentName, namespace string, snapshotComponents []appstudioApi.SnapshotComponent, usingComponentGroups bool) (*appstudioApi.Snapshot, error) {
 	snapshot := &appstudioApi.Snapshot{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      snapshotName,
@@ -31,23 +32,36 @@ func (i *IntegrationController) CreateSnapshotWithComponents(snapshotName, compo
 			},
 		},
 		Spec: appstudioApi.SnapshotSpec{
-			Application: applicationName,
-			Components:  snapshotComponents,
+			Components: snapshotComponents,
 		},
+	}
+	if usingComponentGroups {
+		snapshot.Spec.ComponentGroup = parentName
+	} else {
+		snapshot.Spec.Application = parentName
 	}
 	return snapshot, i.KubeRest().Create(context.Background(), snapshot)
 }
 
 // CreateSnapshotWithImage creates a snapshot using an image.
-func (i *IntegrationController) CreateSnapshotWithImage(componentName, applicationName, namespace, containerImage string) (*appstudioApi.Snapshot, error) {
+// version should match the ComponentVersion.Name used for the Component's ComponentReference within its
+// ComponentGroup (usually the component's base branch name); it is required for the GlobalCandidateList entry
+// to be found and updated. It is unused (and can be left blank) for the application model, since Components
+// there aren't versioned.
+// TODO: When we remove application-specific code, remove usingComponentGroups parameter and rename parentName to componentGroupName
+func (i *IntegrationController) CreateSnapshotWithImage(componentName, parentName, namespace, containerImage, version string, usingComponentGroups bool) (*appstudioApi.Snapshot, error) {
 	snapshotComponents := []appstudioApi.SnapshotComponent{
 		{
 			Name:           componentName,
 			ContainerImage: containerImage,
 		},
 	}
+	// TODO: remove if block and put assignment in block above when we remove application support
+	if version != "" {
+		snapshotComponents[0].Version = version
+	}
 	snapshotName := "snapshot-sample-" + utils.GenerateRandomString(4)
-	return i.CreateSnapshotWithComponents(snapshotName, componentName, applicationName, namespace, snapshotComponents)
+	return i.CreateSnapshotWithComponents(snapshotName, componentName, parentName, namespace, snapshotComponents, usingComponentGroups)
 }
 
 // GetSnapshot returns the Snapshot in the namespace and nil if it's not found
@@ -90,7 +104,10 @@ func (i *IntegrationController) GetSnapshot(snapshotName, pipelineRunName, compo
 
 // DeleteSnapshot removes given snapshot from specified namespace.
 func (i *IntegrationController) DeleteSnapshot(hasSnapshot *appstudioApi.Snapshot, namespace string) error {
-	return i.KubeRest().Delete(context.Background(), hasSnapshot)
+	if hasSnapshot != nil {
+		return i.KubeRest().Delete(context.Background(), hasSnapshot)
+	}
+	return nil
 }
 
 // PatchSnapshot patches the given snapshot with the provided patch.

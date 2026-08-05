@@ -6,7 +6,10 @@ The Integration Service manages the lifecycle, deployment, and integration testi
 
 ## Test Suites
 
-### 1. Basic E2E Tests within `integration.go`
+> **Note**: Some of the e2e tests suites have parallel Application and ComponentGroup versions. These will remain until we complete the migration from the Application model
+to the ComponentGroup model. Until then, any changes to _testfile.go_ should also be made to _testfile-application.go_
+
+### 1. Basic E2E Tests within `integration.go` and `integration-application.go`
 These tests cover the end-to-end integration service workflow, verifying the successful execution of key processes such as component creation, pipeline runs, snapshot generation, and release management under ideal conditions.
 
 **Repositories:**
@@ -55,7 +58,7 @@ This suite tests the integration service's pipeline resolution functionality, fo
 
 Happy path testing describes tests that focus on the most common scenarios while assuming there are no exceptions or errors.
 
-### 1. Happy Path Tests within `integration.go`
+### 1. Happy Path Tests within `integration.go` and `integration-application.go`
 Checkpoints:
 - Testing for successful creation of applications and components.
 - Checking if the BuildPipelineRun is successfully triggered, contains the finalizer, and was completed.
@@ -185,7 +188,7 @@ Checkpoints:
 
 - [Prepare the cluster.](https://github.com/redhat-appstudio/e2e-tests#install-appstudio-in-e2e-mode)
 
-- To run service-level E2E test suite: `integration.go`
+- To run service-level E2E test suite: `integration.go` and `integration-application.go`
 
 ```
  ./bin/e2e-appstudio --ginkgo.focus="integration-service-suite" –ginkgo.vv
