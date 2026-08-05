@@ -11,6 +11,13 @@ ignore:
   - "status/mock_status.go" # generated file
   - "e2e-tests/**" # integration tests
   - "vendor/**" # vendor files
+  - ".agents/**"
+  - ".claude/**"
+  - ".cursor/**"
+  - "skills/**"
+  - "docs/**"
+  - "*.md"
+  - "*.toml"
 
 coverage:
   status:
