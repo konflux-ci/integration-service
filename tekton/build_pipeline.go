@@ -135,6 +135,8 @@ func IsPLRCreatedByPACPushEvent(plr *tektonv1.PipelineRun) bool {
 func IsLatestBuildPipelineRunInComponent(pipelineRun *tektonv1.PipelineRun, pipelineRuns *[]tektonv1.PipelineRun) bool {
 	pipelineStartTime := pipelineRun.CreationTimestamp.Time
 	componentName := pipelineRun.Labels[consts.PipelineRunComponentLabel]
+	componentVersion, _ := GetComponentVersionFromPipelineRun(pipelineRun)
+
 	for _, run := range *pipelineRuns {
 		if pipelineRun.Name == run.Name {
 			// it's the same pipeline
@@ -144,6 +146,17 @@ func IsLatestBuildPipelineRunInComponent(pipelineRun *tektonv1.PipelineRun, pipe
 			continue
 		}
 		timestamp := run.CreationTimestamp.Time
+		if componentVersion != "" {
+			if componentVersion == run.Annotations[gitops.SnapshotComponentVersionLabel] {
+				if pipelineStartTime.Before(timestamp) {
+					// pipeline is not the latest
+					// 1 second is minimal granularity, if both pipelines started at the same second, we cannot decide
+					return false
+				}
+			} else {
+				continue
+			}
+		}
 		if pipelineStartTime.Before(timestamp) {
 			// pipeline is not the latest
 			// 1 second is minimal granularity, if both pipelines started at the same second, we cannot decide
@@ -217,5 +230,5 @@ func GetComponentVersionFromPipelineRun(pipelineRun *tektonv1.PipelineRun) (stri
 	if version, found := pipelineRun.Annotations[consts.PipelineRunComponentVersionAnnotation]; found {
 		return version, nil
 	}
-	return "", fmt.Errorf("PipelineRun '%s' in namespace '%s' does not have '%s' annotation", pipelineRun.Name, pipelineRun.Namespace, consts.PipelineRunComponentVersionAnnotation)
+	return "", nil
 }

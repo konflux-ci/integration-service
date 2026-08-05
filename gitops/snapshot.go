@@ -345,6 +345,9 @@ const (
 // SnapshotComponentLabel contains the name of the updated Snapshot component - it should match the pipeline label.
 var SnapshotComponentLabel = tektonconsts.ComponentNameLabel
 
+// SnapshotComponentVersionLabel is the Version of build snapshot component's version.
+var SnapshotComponentVersionLabel = tektonconsts.PipelineRunComponentVersionAnnotation
+
 const (
 	// maxPrefixLength is the maximum length of the prefix for the snapshot name
 	// When a suffix is used for collision handling, reduce by 3 to accommodate the 2-char suffix and extra dash
@@ -1408,11 +1411,15 @@ func GetPRGroup(object client.Object) (string, string) {
 	return "", ""
 }
 
-// FindMatchingSnapshotComponent find the snapshot component from the given snapshot according to the name of the given component name
-func FindMatchingSnapshotComponent(snapshot *applicationapiv1alpha1.Snapshot, componentName string) applicationapiv1alpha1.SnapshotComponent {
+// FindMatchingSnapshotComponent find the snapshot component from the given snapshot according to the name of the given component name and component version
+func FindMatchingSnapshotComponent(snapshot *applicationapiv1alpha1.Snapshot, componentName string, componentVersion string) applicationapiv1alpha1.SnapshotComponent {
 	for _, snapshotComponent := range snapshot.Spec.Components {
 		if snapshotComponent.Name == componentName {
-			return snapshotComponent
+			if componentVersion == "" {
+				return snapshotComponent
+			} else if snapshotComponent.Version == componentVersion {
+				return snapshotComponent
+			}
 		}
 	}
 	return applicationapiv1alpha1.SnapshotComponent{}

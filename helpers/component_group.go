@@ -47,3 +47,15 @@ func GetComponentVersionLogString(name, version string) string {
 func GetComponentVersionString(name, version string) string {
 	return fmt.Sprintf("%s/%s", name, version)
 }
+
+// GetComponentVersionFromComponentGroup returns the component version from the ComponentGroup for the given component name.
+func GetComponentVersionFromComponentGroup(componentGroup *v1beta2.ComponentGroup, componentName string) (bool, string) {
+	if componentGroup != nil && componentGroup.Spec.Components != nil {
+		for _, component := range componentGroup.Spec.Components {
+			if component.Name == componentName && component.ComponentVersion.Name != "" {
+				return true, component.ComponentVersion.Name
+			}
+		}
+	}
+	return false, ""
+}

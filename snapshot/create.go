@@ -186,6 +186,17 @@ func PrepareSnapshot(ctx context.Context, adapterClient client.Client, component
 		}
 	}
 
+	// if the label with pipeline component version is defined, set the label for the snapshot
+	newLabel := map[string]string{}
+	if newSnapshotComponent.Version != "" {
+		newLabel[gitops.SnapshotComponentVersionLabel] = newSnapshotComponent.Version
+	}
+	err = metadata.AddLabels(snapshot, newLabel)
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to add label %s: %w", gitops.SnapshotComponentVersionLabel, err)
+	}
+
 	// Annotate snapshot with warning about invalid components
 	if len(invalidComponents) > 0 {
 		if err := metadata.SetAnnotation(snapshot, helpers.CreateSnapshotAnnotationName, fmt.Sprintf("Component(s) '%s' is(are) not included in snapshot due to missing valid containerImage or git source", joinInvalidComponentNamesAndVersions(invalidComponents))); err != nil {

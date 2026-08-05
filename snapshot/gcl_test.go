@@ -42,12 +42,14 @@ var _ = Describe("GCL manipulation functions", Ordered, func() {
 	var (
 		buildPipelineRun      *tektonv1.PipelineRun
 		hasCompGroup          *v1beta2.ComponentGroup
+		hasCompGroup2         *v1beta2.ComponentGroup
 		updatedComponentGroup *v1beta2.ComponentGroup
 		buildStartTime        *metav1.Time
 		oldEntry              v1beta2.ComponentState
 		newEntry              v1beta2.ComponentState
 		componentReference1   v1beta2.ComponentReference
 		componentReference2   v1beta2.ComponentReference
+		compoSample           *applicationapiv1alpha1.SnapshotComponent
 	)
 	const (
 		componentName           = "component-sample"
@@ -207,12 +209,62 @@ var _ = Describe("GCL manipulation functions", Ordered, func() {
 				},
 			}
 			Expect(k8sClient.Status().Update(ctx, hasCompGroup)).Should(Succeed())
+
+			hasCompGroup2 = &v1beta2.ComponentGroup{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "component-group-sample-version",
+					Namespace: "default",
+				},
+				Spec: v1beta2.ComponentGroupSpec{
+					Components: []v1beta2.ComponentReference{
+						{
+							Name: componentName,
+							ComponentVersion: v1beta2.ComponentVersionReference{
+								Name:     "v1",
+								Revision: "main",
+							},
+						},
+						{
+							Name: componentName,
+							ComponentVersion: v1beta2.ComponentVersionReference{
+								Name:     "v2",
+								Revision: "main",
+							},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, hasCompGroup2)).Should(Succeed())
+
+			hasCompGroup2.Status = v1beta2.ComponentGroupStatus{
+				GlobalCandidateList: []v1beta2.ComponentState{
+					{
+						Name:                  componentName,
+						Version:               "v1",
+						URL:                   "https://github.com/devfile-samples/devfile-sample-java-springboot-basic",
+						LastPromotedImage:     fmt.Sprintf("%s@%s", "quay.io/redhat-appstudio/sample-image", "sha256:841328df1b9f8c4087adbdcfec6cc99ac8308805dea83f6d415d6fb8d40227c1"),
+						LastPromotedCommit:    "a2ba645d50e471d5f084b",
+						LastPromotedBuildTime: nil,
+					},
+					{
+						Name:    componentName,
+						Version: "v1",
+						URL:     "",
+					},
+					{
+						Name:    componentName,
+						Version: "v2",
+					},
+				},
+			}
 		})
 
 		AfterAll(func() {
 			err := k8sClient.Delete(ctx, buildPipelineRun)
 			Expect(err == nil || k8serrors.IsNotFound(err)).To(BeTrue())
 			err = k8sClient.Delete(ctx, hasCompGroup)
+			Expect(err == nil || k8serrors.IsNotFound(err)).To(BeTrue())
+			err = k8sClient.Delete(ctx, hasCompGroup2)
 			Expect(err == nil || k8serrors.IsNotFound(err)).To(BeTrue())
 		})
 
@@ -464,6 +516,38 @@ var _ = Describe("GCL manipulation functions", Ordered, func() {
 				Expect(secondComponent.LastPromotedCommit).To(Equal(anotherGCL.LastPromotedCommit))
 				Expect(secondComponent.LastPromotedImage).To(Equal(anotherGCL.LastPromotedImage))
 				Expect(secondComponent.LastPromotedBuildTime).To(Equal(secondGCLComponentBuildTime))
+			})
+		})
+		When("Test componentgroup with component of the same name but different versions", func() {
+			var err error
+			BeforeEach(func() {
+
+				componentReference1 = v1beta2.ComponentReference{
+					Name: componentName,
+					ComponentVersion: v1beta2.ComponentVersionReference{
+						Name:     "v1",
+						Revision: "main",
+					},
+				}
+				componentReference2 = v1beta2.ComponentReference{
+					Name: componentName,
+					ComponentVersion: v1beta2.ComponentVersionReference{
+						Name:     "v2",
+						Revision: "main",
+					},
+				}
+
+			})
+			It("Component name and component version should match after fetching snapshot component from GCL", func() {
+				var buf bytes.Buffer
+				readableLog := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+				snapshotComponents, invalidComponents := GetSnapshotComponentsFromGCL(hasCompGroup2, readableLog)
+				compoSample, err = FetchSnapshotComponentFromGCL(componentReference1.Name, componentReference1.ComponentVersion.Name, snapshotComponents, invalidComponents)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(compoSample).NotTo(BeNil())
+				Expect(compoSample.Name).To(Equal(componentName))
+				Expect(compoSample.Version).To(Equal(componentReference1.ComponentVersion.Name))
+
 			})
 		})
 
