@@ -24,6 +24,7 @@ import (
 	"time"
 
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
+	"github.com/konflux-ci/integration-service/pkg/metrics"
 	"github.com/konflux-ci/integration-service/snapshot"
 	"github.com/konflux-ci/operator-toolkit/controller"
 	"k8s.io/client-go/util/retry"
@@ -521,7 +522,7 @@ func (a *Adapter) iterateIntegrationTestStatusDetailsInStatusReport(reporter sta
 	}
 	if !hasUpdatedIntegrationTest {
 		//integration test contains no changes
-		a.logger.Info("Integration Test doen't contain new status updates, no need to update status to git provider")
+		a.logger.Info("Integration Test doesn't contain new status updates, no need to update status to git provider")
 		return nil
 	}
 
@@ -632,6 +633,15 @@ func (a *Adapter) reportConsolidatedStatuses(
 	destinationSnapshot *applicationapiv1alpha1.Snapshot,
 	srs *status.SnapshotReportStatus,
 ) error {
+	// If reporter provider is GitLab, we track the number of statuses reported at the same time to gauge usage of the status API
+	if reporter.GetReporterName() == status.GitLabProvider {
+		numStatuses := len(integrationTestStatusDetails)
+		metrics.RegisterConsolidatedGitlabScenarioStatuses(float64(numStatuses))
+
+		defer func() {
+			metrics.UnregisterConsolidatedGitlabScenarioStatuses(float64(numStatuses))
+		}()
+	}
 	if statusCode, reportErr := reporter.ReportConsolidatedStatus(a.context, allReports); reportErr != nil {
 		if reporter.ReturnCodeIsUnrecoverable(statusCode) {
 			a.logger.Error(reportErr, "consolidated status report failed with unrecoverable error, skipping",
@@ -662,13 +672,22 @@ func (a *Adapter) reportPerScenarioStatuses(
 	destinationSnapshot *applicationapiv1alpha1.Snapshot,
 	srs *status.SnapshotReportStatus,
 ) error {
+	// If reporter provider is GitLab, we track the number of statuses reported at the same time to gauge usage of the status API
+	if reporter.GetReporterName() == status.GitLabProvider {
+		numStatuses := len(integrationTestStatusDetails)
+		metrics.RegisterIndividualGitlabScenarioStatuses(float64(numStatuses))
+
+		defer func() {
+			metrics.UnregisterIndividualGitlabScenarioStatuses(float64(numStatuses))
+		}()
+	}
 	for i, integrationTestStatusDetail := range integrationTestStatusDetails {
 		testReport := allReports[i]
 
 		if srs.IsNewer(integrationTestStatusDetail.ScenarioName, destinationSnapshot.Name, integrationTestStatusDetail.LastUpdateTime) {
 			a.logger.Info("Integration Test contains new status updates", "scenario.Name", integrationTestStatusDetail.ScenarioName, "destinationSnapshot.Name", destinationSnapshot.Name, "testedSnapshot", testedSnapshot.Name)
 		} else {
-			a.logger.Info("Integration Test doen't contain new status updates", "scenario.Name", integrationTestStatusDetail.ScenarioName)
+			a.logger.Info("Integration Test doesn't contain new status updates", "scenario.Name", integrationTestStatusDetail.ScenarioName)
 			continue
 		}
 
