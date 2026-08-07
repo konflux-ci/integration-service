@@ -1212,6 +1212,39 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 				Expect(gitops.IsSnapshotCreatedByPACPushEvent(snapshot)).To(BeFalse())
 			})
 
+			It("treats commit-comment Snapshots as push even with a pull-request label", func() {
+				tempSnapshot := hasSnapshot.DeepCopy()
+				tempSnapshot.Labels[gitops.PipelineAsCodeEventTypeLabel] = "test-comment"
+				tempSnapshot.Labels[gitops.PipelineAsCodePullRequestLabel] = "42"
+				tempSnapshot.Annotations[gitops.PipelineAsCodeSourceBranchAnnotation] = "main"
+				tempSnapshot.Annotations[gitops.PipelineAsCodeTargetBranchAnnotation] = "main"
+				Expect(gitops.IsSnapshotCreatedByPACPushEvent(tempSnapshot)).To(BeTrue())
+			})
+			It("does not treat PR-comment Snapshots as push", func() {
+				tempSnapshot := hasSnapshot.DeepCopy()
+				tempSnapshot.Labels[gitops.PipelineAsCodeEventTypeLabel] = "test-comment"
+				tempSnapshot.Labels[gitops.PipelineAsCodePullRequestLabel] = "42"
+				tempSnapshot.Annotations[gitops.PipelineAsCodeSourceBranchAnnotation] = "feature"
+				tempSnapshot.Annotations[gitops.PipelineAsCodeTargetBranchAnnotation] = "main"
+				Expect(gitops.IsSnapshotCreatedByPACPushEvent(tempSnapshot)).To(BeFalse())
+			})
+			It("treats tag commit-comment Snapshots as push", func() {
+				tempSnapshot := hasSnapshot.DeepCopy()
+				tempSnapshot.Labels[gitops.PipelineAsCodeEventTypeLabel] = "retest-all-comment"
+				tempSnapshot.Labels[gitops.PipelineAsCodePullRequestLabel] = "7"
+				tempSnapshot.Annotations[gitops.PipelineAsCodeSourceBranchAnnotation] = "refs/tags/v1.0.0"
+				tempSnapshot.Annotations[gitops.PipelineAsCodeTargetBranchAnnotation] = "refs/tags/v1.0.0"
+				Expect(gitops.IsSnapshotCreatedByPACPushEvent(tempSnapshot)).To(BeTrue())
+			})
+			It("does not treat ok-to-test as push-style even if branches match", func() {
+				tempSnapshot := hasSnapshot.DeepCopy()
+				tempSnapshot.Labels[gitops.PipelineAsCodeEventTypeLabel] = "ok-to-test-comment"
+				tempSnapshot.Labels[gitops.PipelineAsCodePullRequestLabel] = "42"
+				tempSnapshot.Annotations[gitops.PipelineAsCodeSourceBranchAnnotation] = "main"
+				tempSnapshot.Annotations[gitops.PipelineAsCodeTargetBranchAnnotation] = "main"
+				Expect(gitops.IsSnapshotCreatedByPACPushEvent(tempSnapshot)).To(BeFalse())
+			})
+
 			It("Testing UnmarshalJSON", func() {
 				infoString := "[{\"namespace\":\"default\",\"component\":\"devfile-sample-java-springboot-basic-8969\",\"buildPipelineRun\":\"build-plr-java-qjfxz\",\"snapshot\":\"app-8969-bbn7d\"},{\"namespace\":\"default\",\"component\":\"devfile-sample-go-basic-8969\",\"buildPipelineRun\":\"build-plr-go-jmsjq\",\"snapshot\":\"app-8969-kzq2l\"}]"
 				componentSnapshotInfos, err := gitops.UnmarshalJSON([]byte(infoString))
