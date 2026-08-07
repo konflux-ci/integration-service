@@ -103,6 +103,11 @@ const (
 	// PipelineAsCodeGitHubMergeQueueBranchPrefix is the prefix added to temporary branches which are created for merge queues
 	PipelineAsCodeGitHubMergeQueueBranchPrefix = "gh-readonly-queue/"
 
+	// PipelineAsCodeTargetBranchAnnotation is the target/base branch for the event
+	// (pipelinesascode.tekton.dev/branch). For push/commit-comment events this equals
+	// source-branch; for pull_request events it differs.
+	PipelineAsCodeTargetBranchAnnotation = "pipelinesascode.tekton.dev/branch"
+
 	/*
 	 * Utils constants
 	 */

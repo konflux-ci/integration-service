@@ -116,17 +116,21 @@ func GenerateSHA(str string) string {
 	return fmt.Sprintf("%x", hash)[0:62]
 }
 
-// IsPLRCreatedByPACPushEvent checks if a PLR has label PipelineAsCodeEventTypeLabel and with push or Push value
+// IsPLRCreatedByPACPushEvent checks whether a build PipelineRun should follow
+// the push integration workflow (vs pull_request).
 func IsPLRCreatedByPACPushEvent(plr *tektonv1.PipelineRun) bool {
 	if branch, found := plr.Annotations[consts.PipelineAsCodeSourceBranchAnnotation]; found {
 		if strings.HasPrefix(strings.TrimPrefix(branch, consts.GitRefBranchPrefix), consts.PipelineAsCodeGitHubMergeQueueBranchPrefix) {
 			return false
 		}
 	}
-
+	eventType := plr.Labels[consts.PipelineAsCodeEventTypeLabel]
+	targetBranch := plr.Annotations[consts.PipelineAsCodeTargetBranchAnnotation]
+	sourceBranch := plr.Annotations[consts.PipelineAsCodeSourceBranchAnnotation]
 	return !metadata.HasLabel(plr, consts.PipelineAsCodePullRequestLabel) ||
 		metadata.HasLabelWithValue(plr, consts.PipelineAsCodeEventTypeLabel, consts.PipelineAsCodePushType) ||
-		metadata.HasLabelWithValue(plr, consts.PipelineAsCodeEventTypeLabel, consts.PipelineAsCodeGLPushType)
+		metadata.HasLabelWithValue(plr, consts.PipelineAsCodeEventTypeLabel, consts.PipelineAsCodeGLPushType) ||
+		h.IsPACPushStyleGitOpsComment(eventType, targetBranch, sourceBranch)
 }
 
 // IsLatestBuildPipelineRunInComponent return true if pipelineRun is the latest pipelineRun
