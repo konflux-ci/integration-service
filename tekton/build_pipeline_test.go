@@ -236,6 +236,39 @@ var _ = Describe("build pipeline", Ordered, func() {
 			Expect(tekton.IsPLRCreatedByPACPushEvent(buildPipelineRun)).To(BeFalse())
 		})
 
+		It("should treat commit-comment GitOps PipelineRuns as push even with a pull-request label", func() {
+			plr := buildPipelineRun.DeepCopy()
+			plr.Labels[tektonconsts.PipelineAsCodeEventTypeLabel] = "test-comment"
+			plr.Labels[tektonconsts.PipelineAsCodePullRequestLabel] = "42"
+			plr.Annotations[tektonconsts.PipelineAsCodeSourceBranchAnnotation] = "main"
+			plr.Annotations[tektonconsts.PipelineAsCodeTargetBranchAnnotation] = "main"
+			Expect(tekton.IsPLRCreatedByPACPushEvent(plr)).To(BeTrue())
+		})
+		It("should not treat PR-comment GitOps PipelineRuns as push", func() {
+			plr := buildPipelineRun.DeepCopy()
+			plr.Labels[tektonconsts.PipelineAsCodeEventTypeLabel] = "test-comment"
+			plr.Labels[tektonconsts.PipelineAsCodePullRequestLabel] = "42"
+			plr.Annotations[tektonconsts.PipelineAsCodeSourceBranchAnnotation] = "feature"
+			plr.Annotations[tektonconsts.PipelineAsCodeTargetBranchAnnotation] = "main"
+			Expect(tekton.IsPLRCreatedByPACPushEvent(plr)).To(BeFalse())
+		})
+		It("should treat tag commit-comment GitOps as push", func() {
+			plr := buildPipelineRun.DeepCopy()
+			plr.Labels[tektonconsts.PipelineAsCodeEventTypeLabel] = "retest-all-comment"
+			plr.Labels[tektonconsts.PipelineAsCodePullRequestLabel] = "7"
+			plr.Annotations[tektonconsts.PipelineAsCodeSourceBranchAnnotation] = "refs/tags/v1.0.0"
+			plr.Annotations[tektonconsts.PipelineAsCodeTargetBranchAnnotation] = "refs/tags/v1.0.0"
+			Expect(tekton.IsPLRCreatedByPACPushEvent(plr)).To(BeTrue())
+		})
+		It("should not treat ok-to-test as push-style even if branches match", func() {
+			plr := buildPipelineRun.DeepCopy()
+			plr.Labels[tektonconsts.PipelineAsCodeEventTypeLabel] = "ok-to-test-comment"
+			plr.Labels[tektonconsts.PipelineAsCodePullRequestLabel] = "42"
+			plr.Annotations[tektonconsts.PipelineAsCodeSourceBranchAnnotation] = "main"
+			plr.Annotations[tektonconsts.PipelineAsCodeTargetBranchAnnotation] = "main"
+			Expect(tekton.IsPLRCreatedByPACPushEvent(plr)).To(BeFalse())
+		})
+
 		It("can get the latest build pipelinerun for given component", func() {
 			plrs := []tektonv1.PipelineRun{*buildPipelineRun, *buildPipelineRun2}
 			Expect(tekton.IsLatestBuildPipelineRunInComponent(buildPipelineRun, &plrs)).To(BeTrue())

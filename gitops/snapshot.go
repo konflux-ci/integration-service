@@ -181,6 +181,9 @@ const (
 	// PipelineAsCodePullRequestAnnotation is the git repository's pull request identifier
 	PipelineAsCodePullRequestAnnotation = PipelinesAsCodePrefix + "/pull-request"
 
+	// PipelineAsCodePullRequestLabel is the git repository's pull request identifier which has been provided in the label for discoverability
+	PipelineAsCodePullRequestLabel = PipelinesAsCodePrefix + "/pull-request"
+
 	// PipelineAsCodeSourceProjectIDAnnotation is the source project ID for gitlab
 	PipelineAsCodeSourceProjectIDAnnotation = PipelinesAsCodePrefix + "/source-project-id"
 
@@ -878,14 +881,20 @@ func IsSnapshotCreatedByPACMergeQueueEvent(snapshot *applicationapiv1alpha1.Snap
 	return false
 }
 
-// IsSnapshotCreatedByPACPushEvent checks if a snapshot has label PipelineAsCodeEventTypeLabel and with push value
-// if the label doesn't exist for some manual snapshot
+// IsSnapshotCreatedByPACPushEvent checks whether a Snapshot should follow
+// the push integration workflow (vs pull_request).
 func IsSnapshotCreatedByPACPushEvent(snapshot *applicationapiv1alpha1.Snapshot) bool {
-	return !IsSnapshotCreatedByPACMergeQueueEvent(snapshot) && !IsGroupSnapshot(snapshot) &&
-		(metadata.HasLabelWithValue(snapshot, PipelineAsCodeEventTypeLabel, PipelineAsCodePushType) ||
-			metadata.HasLabelWithValue(snapshot, PipelineAsCodeEventTypeLabel, PipelineAsCodeGLPushType) ||
-			!metadata.HasLabel(snapshot, PipelineAsCodeEventTypeLabel) ||
-			!metadata.HasLabel(snapshot, PipelineAsCodePullRequestAnnotation))
+	if IsSnapshotCreatedByPACMergeQueueEvent(snapshot) || IsGroupSnapshot(snapshot) {
+		return false
+	}
+	eventType := snapshot.Labels[PipelineAsCodeEventTypeLabel]
+	targetBranch := snapshot.Annotations[PipelineAsCodeTargetBranchAnnotation]
+	sourceBranch := snapshot.Annotations[PipelineAsCodeSourceBranchAnnotation]
+	return metadata.HasLabelWithValue(snapshot, PipelineAsCodeEventTypeLabel, PipelineAsCodePushType) ||
+		metadata.HasLabelWithValue(snapshot, PipelineAsCodeEventTypeLabel, PipelineAsCodeGLPushType) ||
+		!metadata.HasLabel(snapshot, PipelineAsCodeEventTypeLabel) ||
+		!metadata.HasLabel(snapshot, PipelineAsCodePullRequestAnnotation) ||
+		helpers.IsPACPushStyleGitOpsComment(eventType, targetBranch, sourceBranch)
 }
 
 // IsSnapshotAutoReleaseDisabled checks if a snapshot has a AutoReleaseLabel label and if its value is "false"
