@@ -88,7 +88,7 @@ spec:
                   - from
                   - to
                   type: object
-                maxItems: 256
+                maxItems: 360
                 type: array
             type: object
             x-kubernetes-validations:
