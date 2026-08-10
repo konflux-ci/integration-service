@@ -68,7 +68,7 @@ type NudgeRelationship struct {
 // +kubebuilder:validation:XValidation:rule="!has(self.nudges) || self.nudges.all(i, self.nudges.exists_one(j, i.from == j.from && i.to == j.to))",message="duplicate (from, to) pair not allowed"
 type NudgeConfigSpec struct {
 	// Nudges is the list of component nudge relationships.
-	// +kubebuilder:validation:MaxItems=256
+	// +kubebuilder:validation:MaxItems=360
 	// +optional
 	Nudges []NudgeRelationship `json:"nudges,omitempty"`
 }

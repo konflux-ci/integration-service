@@ -211,8 +211,8 @@ var _ = Describe("NudgeConfig CEL validation", Ordered, func() {
 		Expect(errors.IsInvalid(err)).To(BeTrue())
 	})
 
-	It("should reject spec.nudges exceeding 256 items", func() {
-		nudges := make([]NudgeRelationship, 257)
+	It("should reject spec.nudges exceeding 360 items", func() {
+		nudges := make([]NudgeRelationship, 361)
 		for i := range nudges {
 			nudges[i] = NudgeRelationship{
 				From: fmt.Sprintf("src-%d", i),
