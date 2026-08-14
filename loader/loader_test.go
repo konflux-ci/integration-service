@@ -578,9 +578,9 @@ var _ = Describe("Loader", Ordered, func() {
 		_ = k8sClient.Delete(ctx, integrationTestScenarioCG)
 		_ = k8sClient.Delete(ctx, hasApp)
 		_ = k8sClient.Delete(ctx, hasComp)
-		_ = k8sClient.Delete(ctx, hasComponentGroup1)
-		_ = k8sClient.Delete(ctx, hasComponentGroup2)
-		_ = k8sClient.Delete(ctx, hasContainerCompGroup)
+		deleteComponentGroup(hasComponentGroup1)
+		deleteComponentGroup(hasComponentGroup2)
+		deleteComponentGroup(hasContainerCompGroup)
 	})
 
 	createReleasePlan := func(releasePlan *releasev1alpha1.ReleasePlan) {
@@ -669,6 +669,24 @@ var _ = Describe("Loader", Ordered, func() {
 			return k8serrors.IsNotFound(err)
 		}, time.Second*10).Should(BeTrue())
 	}
+
+	deleteComponentGroup := func (cg *v1beta2.ComponentGroup) {
+		err := k8sClient.Delete(ctx, cg)
+		Expect(err == nil || k8serrors.IsNotFound(err)).To(BeTrue())
+
+		// Wait for the component group to be removed
+		Eventually(func() bool {
+			tmpCg := &v1beta2.ComponentGroup{}
+			err := k8sClient.Get(ctx, types.NamespacedName{
+				Namespace: cg.Namespace,
+				Name:      cg.Name,
+			}, tmpCg)
+			return k8serrors.IsNotFound(err)
+		}, time.Second*10).Should(BeTrue())
+	}
+
+
+
 
 	It("ensures all Releases exists when HACBSTests succeeded", func() {
 		Expect(k8sClient).NotTo(BeNil())
@@ -1193,10 +1211,12 @@ var _ = Describe("Loader", Ordered, func() {
 			Expect(k8sClient.Create(ctx, hasCGSnapshot2)).Should(Succeed())
 		})
 
-		//Deleting Component Groups
+		// Clean up ComponentGroups created in BeforeAll to prevent them leaking into subsequent test blocks
 		AfterAll(func() {
-			_ = k8sClient.Delete(ctx, hasCompGroup1)
-			_ = k8sClient.Delete(ctx, hasCompGroup2)
+			deleteComponentGroup(hasCompGroup1)
+			deleteComponentGroup(hasCompGroup2)
+			deleteSnapshot(hasCGSnapshot1)
+			deleteSnapshot(hasCGSnapshot2)
 		})
 
 		const (
