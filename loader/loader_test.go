@@ -670,7 +670,7 @@ var _ = Describe("Loader", Ordered, func() {
 		}, time.Second*10).Should(BeTrue())
 	}
 
-	deleteComponentGroup := func (cg *v1beta2.ComponentGroup) {
+	deleteComponentGroup := func(cg *v1beta2.ComponentGroup) {
 		err := k8sClient.Delete(ctx, cg)
 		Expect(err == nil || k8serrors.IsNotFound(err)).To(BeTrue())
 
@@ -684,9 +684,6 @@ var _ = Describe("Loader", Ordered, func() {
 			return k8serrors.IsNotFound(err)
 		}, time.Second*10).Should(BeTrue())
 	}
-
-
-
 
 	It("ensures all Releases exists when HACBSTests succeeded", func() {
 		Expect(k8sClient).NotTo(BeNil())
