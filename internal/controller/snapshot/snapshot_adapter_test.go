@@ -5217,13 +5217,27 @@ var _ = Describe("Dependent scenarios snapshot adapter scheduling", Ordered, fun
 		pipelineRuns, err := plrLoader.GetAllIntegrationPipelineRunsForSnapshot(ctx, k8sClient, sampleSnapshot)
 		Expect(err).NotTo(HaveOccurred())
 		for i := range pipelineRuns {
-			Expect(k8sClient.Delete(ctx, &pipelineRuns[i])).To(Succeed())
+			plr := &pipelineRuns[i]
+			if len(plr.Finalizers) > 0 {
+				plr.Finalizers = nil
+				Expect(k8sClient.Update(ctx, plr)).To(Succeed())
+			}
+			Expect(k8sClient.Delete(ctx, plr)).To(Succeed())
 		}
+		Eventually(func(g Gomega) {
+			remaining, err := plrLoader.GetAllIntegrationPipelineRunsForSnapshot(ctx, k8sClient, sampleSnapshot)
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(remaining).To(BeEmpty())
+		}, time.Second*10).Should(Succeed())
 		if sampleSnapshot.GetAnnotations() != nil {
 			patch := client.MergeFrom(sampleSnapshot.DeepCopy())
 			delete(sampleSnapshot.Annotations, gitops.SnapshotTestsStatusAnnotation)
 			Expect(k8sClient.Patch(ctx, sampleSnapshot, patch)).To(Succeed())
-			refreshSampleSnapshot()
+			Eventually(func(g Gomega) {
+				refreshSampleSnapshot()
+				_, hasStatus := sampleSnapshot.GetAnnotations()[gitops.SnapshotTestsStatusAnnotation]
+				g.Expect(hasStatus).To(BeFalse())
+			}, time.Second*10).Should(Succeed())
 		}
 	})
 
@@ -5472,6 +5486,151 @@ var _ = Describe("Dependent scenarios snapshot adapter scheduling", Ordered, fun
 					g.Expect(detail.Status).To(Equal(intgteststat.IntegrationTestStatusInProgress))
 					g.Expect(detail.TestPipelineRunName).NotTo(BeEmpty())
 				}).Should(Succeed())
+			})
+
+			Context("When an orphaned PipelineRun exists without annotation", func() {
+				var (
+					buf           bytes.Buffer
+					scenarios     []v1beta2.IntegrationTestScenario
+					newestPLR     *tektonv1.PipelineRun
+					olderPLR      *tektonv1.PipelineRun
+					newestPLRName string
+				)
+
+				BeforeEach(func() {
+					buf = bytes.Buffer{}
+					adapter := newSampleAdapter(sampleSnapshot, &buf)
+					scenarios = []v1beta2.IntegrationTestScenario{*scenarioRoot}
+
+					Expect(adapter.createEligibleIntegrationPipelineRuns(&scenarios)).NotTo(HaveOccurred())
+
+					Eventually(func(g Gomega) {
+						g.Expect(countSampleIntegrationPLRs(sampleSnapshot)).To(Equal(1))
+						refreshSampleSnapshot()
+						statuses, err := gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(sampleSnapshot)
+						g.Expect(err).NotTo(HaveOccurred())
+						detail, ok := statuses.GetScenarioStatus(scenarioRoot.Name)
+						g.Expect(ok).To(BeTrue())
+						g.Expect(detail.TestPipelineRunName).NotTo(BeEmpty())
+						newestPLRName = detail.TestPipelineRunName
+					}, time.Second*10).Should(Succeed())
+
+					newestPLR = &tektonv1.PipelineRun{}
+					Expect(k8sClient.Get(ctx, types.NamespacedName{
+						Name:      newestPLRName,
+						Namespace: sampleSnapshot.Namespace,
+					}, newestPLR)).To(Succeed())
+
+					// Older PipelineRun for the same snapshot+scenario (e.g. prior run before a re-run).
+					olderPLR = newestPLR.DeepCopy()
+					olderPLR.Name = newestPLRName + "-older"
+					olderPLR.ResourceVersion = ""
+					olderPLR.UID = ""
+					olderPLR.CreationTimestamp = metav1.NewTime(newestPLR.CreationTimestamp.Add(-time.Hour))
+					Expect(k8sClient.Create(ctx, olderPLR)).To(Succeed())
+
+					// Simulate crash between PipelineRun creation and annotation persistence.
+					refreshSampleSnapshot()
+					patch := client.MergeFrom(sampleSnapshot.DeepCopy())
+					delete(sampleSnapshot.Annotations, gitops.SnapshotTestsStatusAnnotation)
+					Expect(k8sClient.Patch(ctx, sampleSnapshot, patch)).To(Succeed())
+					Eventually(func(g Gomega) {
+						refreshSampleSnapshot()
+						_, hasStatus := sampleSnapshot.GetAnnotations()[gitops.SnapshotTestsStatusAnnotation]
+						g.Expect(hasStatus).To(BeFalse())
+					}, time.Second*10).Should(Succeed())
+
+					// CreationTimestamp is immutable in the API server, so set ages on the mocked list.
+					olderPLR.CreationTimestamp = metav1.NewTime(newestPLR.CreationTimestamp.Add(-time.Hour))
+				})
+
+				adoptOrphanedPLRs := func() {
+					buf.Reset()
+					log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+					adapter := NewAdapter(ctx, sampleSnapshot, sampleComponentGroup, log, loader.NewMockLoader(), k8sClient)
+					adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+						{
+							ContextKey: loader.ComponentGroupContextKey,
+							Resource:   sampleComponentGroup,
+						},
+						{
+							ContextKey: loader.ComponentContextKey,
+							Resource:   sampleComponent,
+						},
+						{
+							ContextKey: loader.SnapshotContextKey,
+							Resource:   sampleSnapshot,
+						},
+						{
+							ContextKey: loader.SnapshotComponentsContextKey,
+							Resource:   []applicationapiv1alpha1.Component{*sampleComponent},
+						},
+						{
+							ContextKey: loader.PipelineRunsContextKey,
+							Resource:   []tektonv1.PipelineRun{*olderPLR, *newestPLR},
+						},
+					})
+					Expect(adapter.createEligibleIntegrationPipelineRuns(&scenarios)).NotTo(HaveOccurred())
+					Expect(buf.String()).NotTo(ContainSubstring("Creating new pipelinerun for integrationTestscenario"))
+					Expect(buf.String()).To(ContainSubstring("Found existing integrationPipelineRun in cluster missing from Snapshot status annotation"))
+				}
+
+				It("should adopt the newest unfinished PipelineRun as InProgress", func() {
+					adoptOrphanedPLRs()
+
+					Eventually(func(g Gomega) {
+						g.Expect(countSampleIntegrationPLRs(sampleSnapshot)).To(Equal(2))
+						refreshSampleSnapshot()
+						statuses, err := gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(sampleSnapshot)
+						g.Expect(err).NotTo(HaveOccurred())
+						detail, ok := statuses.GetScenarioStatus(scenarioRoot.Name)
+						g.Expect(ok).To(BeTrue())
+						g.Expect(detail.Status).To(Equal(intgteststat.IntegrationTestStatusInProgress))
+						g.Expect(detail.TestPipelineRunName).To(Equal(newestPLRName))
+					}, time.Second*10).Should(Succeed())
+				})
+
+				It("should adopt a finished successful PipelineRun as TestPassed", func() {
+					newestPLR.Status.SetCondition(&apis.Condition{
+						Type:   apis.ConditionSucceeded,
+						Status: corev1.ConditionTrue,
+						Reason: "Succeeded",
+					})
+
+					adoptOrphanedPLRs()
+
+					Eventually(func(g Gomega) {
+						g.Expect(countSampleIntegrationPLRs(sampleSnapshot)).To(Equal(2))
+						refreshSampleSnapshot()
+						statuses, err := gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(sampleSnapshot)
+						g.Expect(err).NotTo(HaveOccurred())
+						detail, ok := statuses.GetScenarioStatus(scenarioRoot.Name)
+						g.Expect(ok).To(BeTrue())
+						g.Expect(detail.Status).To(Equal(intgteststat.IntegrationTestStatusTestPassed))
+						g.Expect(detail.TestPipelineRunName).To(Equal(newestPLRName))
+					}, time.Second*10).Should(Succeed())
+				})
+
+				It("should adopt a finished failed PipelineRun as TestFail", func() {
+					newestPLR.Status.SetCondition(&apis.Condition{
+						Type:   apis.ConditionSucceeded,
+						Status: corev1.ConditionFalse,
+						Reason: "Failed",
+					})
+
+					adoptOrphanedPLRs()
+
+					Eventually(func(g Gomega) {
+						g.Expect(countSampleIntegrationPLRs(sampleSnapshot)).To(Equal(2))
+						refreshSampleSnapshot()
+						statuses, err := gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(sampleSnapshot)
+						g.Expect(err).NotTo(HaveOccurred())
+						detail, ok := statuses.GetScenarioStatus(scenarioRoot.Name)
+						g.Expect(ok).To(BeTrue())
+						g.Expect(detail.Status).To(Equal(intgteststat.IntegrationTestStatusTestFail))
+						g.Expect(detail.TestPipelineRunName).To(Equal(newestPLRName))
+					}, time.Second*10).Should(Succeed())
+				})
 			})
 		})
 

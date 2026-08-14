@@ -387,6 +387,52 @@ func (a *Adapter) processSingleScenario(
 		return nil
 	}
 
+	// Crash-recovery: a PipelineRun may already exist in the cluster if the controller
+	// restarted after Create but before the Snapshot status annotation was persisted.
+	existingPipelineRuns, err := a.loader.GetAllPipelineRunsForSnapshotAndScenario(
+		a.context, a.client, a.snapshot, integrationTestScenario,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to list existing PipelineRuns for snapshot %s and scenario %s: %w",
+			a.snapshot.Name, integrationTestScenario.Name, err)
+	}
+	if len(*existingPipelineRuns) > 0 {
+		// Prefer the newest PipelineRun so re-runs are adopted over stale earlier runs.
+		slices.SortFunc(*existingPipelineRuns, func(p, q tektonv1.PipelineRun) int {
+			return q.CreationTimestamp.Compare(p.CreationTimestamp.Time)
+		})
+		existingPipelineRun := (*existingPipelineRuns)[0]
+		a.logger.Info("Found existing integrationPipelineRun in cluster missing from Snapshot status annotation; skipping creation",
+			"integrationTestScenario.Name", integrationTestScenario.Name,
+			"pipelineRun.Name", existingPipelineRun.Name,
+			"count", len(*existingPipelineRuns))
+
+		// Don't force InProgress if the orphaned PipelineRun already finished while we were down.
+		var scenarioStatus intgteststat.IntegrationTestStatus
+		var details string
+		if !h.HasPipelineRunFinished(&existingPipelineRun) {
+			scenarioStatus = intgteststat.IntegrationTestStatusInProgress
+			details = fmt.Sprintf("IntegrationTestScenario pipeline '%s' already exists", existingPipelineRun.Name)
+		} else if h.HasPipelineRunSucceeded(&existingPipelineRun) {
+			scenarioStatus = intgteststat.IntegrationTestStatusTestPassed
+			details = fmt.Sprintf("IntegrationTestScenario pipeline '%s' already completed successfully", existingPipelineRun.Name)
+		} else {
+			scenarioStatus = intgteststat.IntegrationTestStatusTestFail
+			details = fmt.Sprintf("IntegrationTestScenario pipeline '%s' already completed with failure", existingPipelineRun.Name)
+		}
+		testStatuses.UpdateTestStatusIfChanged(integrationTestScenario.Name, scenarioStatus, details)
+		if err = testStatuses.UpdateTestPipelineRunName(integrationTestScenario.Name, existingPipelineRun.Name); err != nil {
+			// it doesn't make sense to restart reconciliation here, it will be eventually updated by integrationpipeline adapter
+			a.logger.Error(err, "Failed to update pipelinerun name in test status")
+		}
+		if !h.HasPipelineRunFinished(&existingPipelineRun) && gitops.IsSnapshotNotStarted(a.snapshot) {
+			if err = gitops.MarkSnapshotIntegrationStatusAsInProgress(a.context, a.client, a.snapshot, "Snapshot starts being tested by the integrationPipelineRun"); err != nil {
+				a.logger.Error(err, "Failed to update integration status condition to in progress for snapshot")
+			}
+		}
+		return nil
+	}
+
 	// Create new pipeline run
 	pipelineRun, err := a.createIntegrationPipelineRun(integrationTestScenario)
 	if err != nil {
