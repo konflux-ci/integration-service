@@ -578,6 +578,9 @@ var _ = Describe("Loader", Ordered, func() {
 		_ = k8sClient.Delete(ctx, integrationTestScenarioCG)
 		_ = k8sClient.Delete(ctx, hasApp)
 		_ = k8sClient.Delete(ctx, hasComp)
+		_ = k8sClient.Delete(ctx, hasComponentGroup1)
+		_ = k8sClient.Delete(ctx, hasComponentGroup2)
+		_ = k8sClient.Delete(ctx, hasContainerCompGroup)
 	})
 
 	createReleasePlan := func(releasePlan *releasev1alpha1.ReleasePlan) {
@@ -1188,6 +1191,12 @@ var _ = Describe("Loader", Ordered, func() {
 				},
 			}
 			Expect(k8sClient.Create(ctx, hasCGSnapshot2)).Should(Succeed())
+		})
+
+		//Deleting Component Groups
+		AfterAll(func() {
+			_ = k8sClient.Delete(ctx, hasCompGroup1)
+			_ = k8sClient.Delete(ctx, hasCompGroup2)
 		})
 
 		const (
