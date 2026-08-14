@@ -568,6 +568,21 @@ var _ = Describe("Loader", Ordered, func() {
 		Expect(k8sClient.Create(ctx, taskRunSample)).Should(Succeed())
 	})
 
+	deleteComponentGroup := func(cg *v1beta2.ComponentGroup) {
+		err := k8sClient.Delete(ctx, cg)
+		Expect(err == nil || k8serrors.IsNotFound(err)).To(BeTrue())
+
+		// Wait for the component group to be removed
+		Eventually(func() bool {
+			tmpCg := &v1beta2.ComponentGroup{}
+			err := k8sClient.Get(ctx, types.NamespacedName{
+				Namespace: cg.Namespace,
+				Name:      cg.Name,
+			}, tmpCg)
+			return k8serrors.IsNotFound(err)
+		}, time.Second*10).Should(BeTrue())
+	}
+
 	AfterAll(func() {
 		_ = k8sClient.Delete(ctx, hasSnapshot)
 		_ = k8sClient.Delete(ctx, hasCGSnapshotForLoaderTests)
@@ -578,6 +593,9 @@ var _ = Describe("Loader", Ordered, func() {
 		_ = k8sClient.Delete(ctx, integrationTestScenarioCG)
 		_ = k8sClient.Delete(ctx, hasApp)
 		_ = k8sClient.Delete(ctx, hasComp)
+		deleteComponentGroup(hasComponentGroup1)
+		deleteComponentGroup(hasComponentGroup2)
+		deleteComponentGroup(hasContainerCompGroup)
 	})
 
 	createReleasePlan := func(releasePlan *releasev1alpha1.ReleasePlan) {
@@ -1188,6 +1206,14 @@ var _ = Describe("Loader", Ordered, func() {
 				},
 			}
 			Expect(k8sClient.Create(ctx, hasCGSnapshot2)).Should(Succeed())
+		})
+
+		// Clean up ComponentGroups created in BeforeAll to prevent them leaking into subsequent test blocks
+		AfterAll(func() {
+			deleteComponentGroup(hasCompGroup1)
+			deleteComponentGroup(hasCompGroup2)
+			deleteSnapshot(hasCGSnapshot1)
+			deleteSnapshot(hasCGSnapshot2)
 		})
 
 		const (
