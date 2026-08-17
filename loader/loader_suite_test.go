@@ -38,7 +38,8 @@ import (
 
 	ctrl "sigs.k8s.io/controller-runtime"
 
-	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
+	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/konflux/v1alpha1"
+	oldapplicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
 	integrationbeta2 "github.com/konflux-ci/integration-service/api/v1beta2"
 	releasev1alpha1 "github.com/konflux-ci/release-service/api/v1alpha1"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
@@ -94,6 +95,7 @@ var _ = BeforeSuite(func() {
 	Expect(err).NotTo(HaveOccurred())
 	Expect(cfg).NotTo(BeNil())
 
+	Expect(oldapplicationapiv1alpha1.AddToScheme(clientsetscheme.Scheme)).To(Succeed())
 	Expect(applicationapiv1alpha1.AddToScheme(clientsetscheme.Scheme)).To(Succeed())
 	Expect(tektonv1.AddToScheme(clientsetscheme.Scheme)).To(Succeed())
 	Expect(releasev1alpha1.AddToScheme(clientsetscheme.Scheme)).To(Succeed())
