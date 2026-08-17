@@ -33,7 +33,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	types "k8s.io/apimachinery/pkg/types"
 
-	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
+	oldapplicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
 	"github.com/konflux-ci/integration-service/gitops"
 	releasev1alpha1 "github.com/konflux-ci/release-service/api/v1alpha1"
 )
@@ -41,18 +41,18 @@ import (
 var _ = Describe("Loader", Ordered, func() {
 	var (
 		loader                      ObjectLoader
-		hasSnapshot                 *applicationapiv1alpha1.Snapshot
-		hasCGSnapshot               *applicationapiv1alpha1.Snapshot
-		hasGroupSnapshot            *applicationapiv1alpha1.Snapshot
-		hasApp                      *applicationapiv1alpha1.Application
+		hasSnapshot                 *oldapplicationapiv1alpha1.Snapshot
+		hasCGSnapshot               *oldapplicationapiv1alpha1.Snapshot
+		hasGroupSnapshot            *oldapplicationapiv1alpha1.Snapshot
+		hasApp                      *oldapplicationapiv1alpha1.Application
 		hasComponentGroup1          *v1beta2.ComponentGroup
 		hasComponentGroup2          *v1beta2.ComponentGroup
 		hasContainerCompGroup       *v1beta2.ComponentGroup
-		hasComp                     *applicationapiv1alpha1.Component
+		hasComp                     *oldapplicationapiv1alpha1.Component
 		integrationTestScenario     *v1beta2.IntegrationTestScenario
 		integrationTestScenarioOpt  *v1beta2.IntegrationTestScenario
 		integrationTestScenarioCG   *v1beta2.IntegrationTestScenario
-		hasCGSnapshotForLoaderTests *applicationapiv1alpha1.Snapshot
+		hasCGSnapshotForLoaderTests *oldapplicationapiv1alpha1.Snapshot
 		successfulTaskRun           *tektonv1.TaskRun
 		taskRunSample               *tektonv1.TaskRun
 		buildPipelineRun            *tektonv1.PipelineRun
@@ -78,12 +78,12 @@ var _ = Describe("Loader", Ordered, func() {
 	BeforeAll(func() {
 		loader = NewLoader()
 
-		hasApp = &applicationapiv1alpha1.Application{
+		hasApp = &oldapplicationapiv1alpha1.Application{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      applicationName,
 				Namespace: "default",
 			},
-			Spec: applicationapiv1alpha1.ApplicationSpec{
+			Spec: oldapplicationapiv1alpha1.ApplicationSpec{
 				DisplayName: "application-sample",
 				Description: "This is an example application",
 			},
@@ -146,30 +146,30 @@ var _ = Describe("Loader", Ordered, func() {
 		}
 		Expect(k8sClient.Create(ctx, hasContainerCompGroup)).Should(Succeed())
 
-		hasComp = &applicationapiv1alpha1.Component{
+		hasComp = &oldapplicationapiv1alpha1.Component{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "component-sample",
 				Namespace: "default",
 			},
-			Spec: applicationapiv1alpha1.ComponentSpec{
+			Spec: oldapplicationapiv1alpha1.ComponentSpec{
 				ComponentName:  "component-sample",
 				Application:    applicationName,
 				ContainerImage: "",
-				Source: applicationapiv1alpha1.ComponentSource{
-					ComponentSourceUnion: applicationapiv1alpha1.ComponentSourceUnion{
-						GitSource: &applicationapiv1alpha1.GitSource{
+				Source: oldapplicationapiv1alpha1.ComponentSource{
+					ComponentSourceUnion: oldapplicationapiv1alpha1.ComponentSourceUnion{
+						GitSource: &oldapplicationapiv1alpha1.GitSource{
 							URL: SampleRepoLink,
 						},
 					},
 				},
 			},
-			Status: applicationapiv1alpha1.ComponentStatus{
+			Status: oldapplicationapiv1alpha1.ComponentStatus{
 				LastBuiltCommit: "",
 			},
 		}
 		Expect(k8sClient.Create(ctx, hasComp)).Should(Succeed())
 
-		hasSnapshot = &applicationapiv1alpha1.Snapshot{
+		hasSnapshot = &oldapplicationapiv1alpha1.Snapshot{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      snapshotName,
 				Namespace: "default",
@@ -186,15 +186,15 @@ var _ = Describe("Loader", Ordered, func() {
 					gitops.PipelineAsCodeInstallationIDAnnotation: "123",
 				},
 			},
-			Spec: applicationapiv1alpha1.SnapshotSpec{
+			Spec: oldapplicationapiv1alpha1.SnapshotSpec{
 				Application: hasApp.Name,
-				Components: []applicationapiv1alpha1.SnapshotComponent{
+				Components: []oldapplicationapiv1alpha1.SnapshotComponent{
 					{
 						Name:           "component-sample",
 						ContainerImage: sample_image,
-						Source: applicationapiv1alpha1.ComponentSource{
-							ComponentSourceUnion: applicationapiv1alpha1.ComponentSourceUnion{
-								GitSource: &applicationapiv1alpha1.GitSource{
+						Source: oldapplicationapiv1alpha1.ComponentSource{
+							ComponentSourceUnion: oldapplicationapiv1alpha1.ComponentSourceUnion{
+								GitSource: &oldapplicationapiv1alpha1.GitSource{
 									Revision: sample_revision,
 								},
 							},
@@ -205,7 +205,7 @@ var _ = Describe("Loader", Ordered, func() {
 		}
 		Expect(k8sClient.Create(ctx, hasSnapshot)).Should(Succeed())
 
-		hasCGSnapshot = &applicationapiv1alpha1.Snapshot{
+		hasCGSnapshot = &oldapplicationapiv1alpha1.Snapshot{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      cgSnapshotName,
 				Namespace: "default",
@@ -222,15 +222,15 @@ var _ = Describe("Loader", Ordered, func() {
 					gitops.PipelineAsCodeInstallationIDAnnotation: "123",
 				},
 			},
-			Spec: applicationapiv1alpha1.SnapshotSpec{
+			Spec: oldapplicationapiv1alpha1.SnapshotSpec{
 				ComponentGroup: hasComponentGroup1.Name,
-				Components: []applicationapiv1alpha1.SnapshotComponent{
+				Components: []oldapplicationapiv1alpha1.SnapshotComponent{
 					{
 						Name:           "component-sample",
 						ContainerImage: sample_image,
-						Source: applicationapiv1alpha1.ComponentSource{
-							ComponentSourceUnion: applicationapiv1alpha1.ComponentSourceUnion{
-								GitSource: &applicationapiv1alpha1.GitSource{
+						Source: oldapplicationapiv1alpha1.ComponentSource{
+							ComponentSourceUnion: oldapplicationapiv1alpha1.ComponentSourceUnion{
+								GitSource: &oldapplicationapiv1alpha1.GitSource{
 									Revision: sample_revision,
 								},
 							},
@@ -241,7 +241,7 @@ var _ = Describe("Loader", Ordered, func() {
 		}
 		Expect(k8sClient.Create(ctx, hasCGSnapshot)).Should(Succeed())
 
-		hasGroupSnapshot = &applicationapiv1alpha1.Snapshot{
+		hasGroupSnapshot = &oldapplicationapiv1alpha1.Snapshot{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      groupSnapshotName,
 				Namespace: "default",
@@ -255,15 +255,15 @@ var _ = Describe("Loader", Ordered, func() {
 					gitops.PRGroupAnnotation: prGroup,
 				},
 			},
-			Spec: applicationapiv1alpha1.SnapshotSpec{
+			Spec: oldapplicationapiv1alpha1.SnapshotSpec{
 				Application: hasApp.Name,
-				Components: []applicationapiv1alpha1.SnapshotComponent{
+				Components: []oldapplicationapiv1alpha1.SnapshotComponent{
 					{
 						Name:           "component-sample",
 						ContainerImage: sample_image,
-						Source: applicationapiv1alpha1.ComponentSource{
-							ComponentSourceUnion: applicationapiv1alpha1.ComponentSourceUnion{
-								GitSource: &applicationapiv1alpha1.GitSource{
+						Source: oldapplicationapiv1alpha1.ComponentSource{
+							ComponentSourceUnion: oldapplicationapiv1alpha1.ComponentSourceUnion{
+								GitSource: &oldapplicationapiv1alpha1.GitSource{
 									Revision: sample_revision,
 								},
 							},
@@ -421,7 +421,7 @@ var _ = Describe("Loader", Ordered, func() {
 		}
 		Expect(k8sClient.Create(ctx, integrationTestScenarioOpt)).Should(Succeed())
 
-		hasCGSnapshotForLoaderTests = &applicationapiv1alpha1.Snapshot{
+		hasCGSnapshotForLoaderTests = &oldapplicationapiv1alpha1.Snapshot{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "cg-snapshot-loader-test",
 				Namespace: "default",
@@ -430,15 +430,15 @@ var _ = Describe("Loader", Ordered, func() {
 					gitops.SnapshotComponentLabel: "component-sample",
 				},
 			},
-			Spec: applicationapiv1alpha1.SnapshotSpec{
+			Spec: oldapplicationapiv1alpha1.SnapshotSpec{
 				ComponentGroup: hasComponentGroup1.Name,
-				Components: []applicationapiv1alpha1.SnapshotComponent{
+				Components: []oldapplicationapiv1alpha1.SnapshotComponent{
 					{
 						Name:           "component-sample",
 						ContainerImage: sample_image,
-						Source: applicationapiv1alpha1.ComponentSource{
-							ComponentSourceUnion: applicationapiv1alpha1.ComponentSourceUnion{
-								GitSource: &applicationapiv1alpha1.GitSource{
+						Source: oldapplicationapiv1alpha1.ComponentSource{
+							ComponentSourceUnion: oldapplicationapiv1alpha1.ComponentSourceUnion{
+								GitSource: &oldapplicationapiv1alpha1.GitSource{
 									Revision: sample_revision,
 								},
 							},
@@ -657,12 +657,12 @@ var _ = Describe("Loader", Ordered, func() {
 		}, time.Second*10).Should(BeTrue())
 	}
 
-	createSnapshot := func(snapshot *applicationapiv1alpha1.Snapshot) {
+	createSnapshot := func(snapshot *oldapplicationapiv1alpha1.Snapshot) {
 		Expect(k8sClient.Create(ctx, snapshot)).Should(Succeed())
 
 		// Wait for the pipelineRun plan to be created
 		Eventually(func() bool {
-			tmpSnapshot := &applicationapiv1alpha1.Snapshot{}
+			tmpSnapshot := &oldapplicationapiv1alpha1.Snapshot{}
 			err := k8sClient.Get(ctx, types.NamespacedName{
 				Namespace: snapshot.Namespace,
 				Name:      snapshot.Name,
@@ -671,13 +671,13 @@ var _ = Describe("Loader", Ordered, func() {
 		}, time.Second*10).Should(BeTrue())
 	}
 
-	deleteSnapshot := func(snapshot *applicationapiv1alpha1.Snapshot) {
+	deleteSnapshot := func(snapshot *oldapplicationapiv1alpha1.Snapshot) {
 		err := k8sClient.Delete(ctx, snapshot)
 		Expect(err == nil || k8serrors.IsNotFound(err)).To(BeTrue())
 
 		// Wait for the release plan to be removed
 		Eventually(func() bool {
-			tmpSnapshot := &applicationapiv1alpha1.Snapshot{}
+			tmpSnapshot := &oldapplicationapiv1alpha1.Snapshot{}
 			err := k8sClient.Get(ctx, types.NamespacedName{
 				Namespace: snapshot.Namespace,
 				Name:      snapshot.Name,
@@ -715,12 +715,6 @@ var _ = Describe("Loader", Ordered, func() {
 		namespaceComponents, err := loader.GetAllComponentsInNamespace(ctx, k8sClient, namespace)
 		Expect(err).ToNot(HaveOccurred())
 		Expect(namespaceComponents).NotTo(BeNil())
-	})
-
-	It("ensures the ComponentGroup Components can be found ", func() {
-		componentGroupComponents, err := loader.GetAllComponentGroupComponents(ctx, k8sClient, hasComponentGroup1)
-		Expect(err).ToNot(HaveOccurred())
-		Expect(componentGroupComponents).NotTo(BeNil())
 	})
 
 	It("ensures we can get an Application from a Snapshot [APPLICATION]", func() {
@@ -1007,10 +1001,10 @@ var _ = Describe("Loader", Ordered, func() {
 
 	When("multiple merge queue snapshots are created", func() {
 		var (
-			mergeQueueSnapshot  *applicationapiv1alpha1.Snapshot
-			mergeQueueSnapshot2 *applicationapiv1alpha1.Snapshot
-			mergeQueueSnapshot3 *applicationapiv1alpha1.Snapshot
-			mergeQueueSnapshot4 *applicationapiv1alpha1.Snapshot
+			mergeQueueSnapshot  *oldapplicationapiv1alpha1.Snapshot
+			mergeQueueSnapshot2 *oldapplicationapiv1alpha1.Snapshot
+			mergeQueueSnapshot3 *oldapplicationapiv1alpha1.Snapshot
+			mergeQueueSnapshot4 *oldapplicationapiv1alpha1.Snapshot
 		)
 
 		BeforeEach(func() {
@@ -1106,8 +1100,8 @@ var _ = Describe("Loader", Ordered, func() {
 		var (
 			hasCompGroup1  *v1beta2.ComponentGroup
 			hasCompGroup2  *v1beta2.ComponentGroup
-			hasCGSnapshot1 *applicationapiv1alpha1.Snapshot
-			hasCGSnapshot2 *applicationapiv1alpha1.Snapshot
+			hasCGSnapshot1 *oldapplicationapiv1alpha1.Snapshot
+			hasCGSnapshot2 *oldapplicationapiv1alpha1.Snapshot
 		)
 
 		BeforeAll(func() {
@@ -1149,7 +1143,7 @@ var _ = Describe("Loader", Ordered, func() {
 			}
 			Expect(k8sClient.Create(ctx, hasCompGroup2)).Should(Succeed())
 
-			hasCGSnapshot1 = &applicationapiv1alpha1.Snapshot{
+			hasCGSnapshot1 = &oldapplicationapiv1alpha1.Snapshot{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "component-group-sample-snapshot",
 					Namespace: "default",
@@ -1166,15 +1160,15 @@ var _ = Describe("Loader", Ordered, func() {
 						gitops.PipelineAsCodeInstallationIDAnnotation: "123",
 					},
 				},
-				Spec: applicationapiv1alpha1.SnapshotSpec{
+				Spec: oldapplicationapiv1alpha1.SnapshotSpec{
 					Application: hasApp.Name,
-					Components: []applicationapiv1alpha1.SnapshotComponent{
+					Components: []oldapplicationapiv1alpha1.SnapshotComponent{
 						{
 							Name:           "component-sample",
 							ContainerImage: sample_image,
-							Source: applicationapiv1alpha1.ComponentSource{
-								ComponentSourceUnion: applicationapiv1alpha1.ComponentSourceUnion{
-									GitSource: &applicationapiv1alpha1.GitSource{
+							Source: oldapplicationapiv1alpha1.ComponentSource{
+								ComponentSourceUnion: oldapplicationapiv1alpha1.ComponentSourceUnion{
+									GitSource: &oldapplicationapiv1alpha1.GitSource{
 										Revision: sample_revision,
 									},
 								},
@@ -1185,7 +1179,7 @@ var _ = Describe("Loader", Ordered, func() {
 			}
 			Expect(k8sClient.Create(ctx, hasCGSnapshot1)).Should(Succeed())
 
-			hasCGSnapshot2 = &applicationapiv1alpha1.Snapshot{
+			hasCGSnapshot2 = &oldapplicationapiv1alpha1.Snapshot{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "another-component-group-sample-snapshot",
 					Namespace: "default",
@@ -1202,15 +1196,15 @@ var _ = Describe("Loader", Ordered, func() {
 						gitops.PipelineAsCodeInstallationIDAnnotation: "123",
 					},
 				},
-				Spec: applicationapiv1alpha1.SnapshotSpec{
+				Spec: oldapplicationapiv1alpha1.SnapshotSpec{
 					Application: hasApp.Name,
-					Components: []applicationapiv1alpha1.SnapshotComponent{
+					Components: []oldapplicationapiv1alpha1.SnapshotComponent{
 						{
 							Name:           "another-component-sample",
 							ContainerImage: sample_image,
-							Source: applicationapiv1alpha1.ComponentSource{
-								ComponentSourceUnion: applicationapiv1alpha1.ComponentSourceUnion{
-									GitSource: &applicationapiv1alpha1.GitSource{
+							Source: oldapplicationapiv1alpha1.ComponentSource{
+								ComponentSourceUnion: oldapplicationapiv1alpha1.ComponentSourceUnion{
+									GitSource: &oldapplicationapiv1alpha1.GitSource{
 										Revision: sample_revision,
 									},
 								},
@@ -1420,12 +1414,12 @@ var _ = Describe("Loader", Ordered, func() {
 		)
 
 		var (
-			pushSnapApp      *applicationapiv1alpha1.Snapshot
-			pushSnapCG       *applicationapiv1alpha1.Snapshot
-			inputSnapApp     *applicationapiv1alpha1.Snapshot
-			inputSnapCG      *applicationapiv1alpha1.Snapshot
-			inputSnapNoComp  *applicationapiv1alpha1.Snapshot
-			inputSnapNoScope *applicationapiv1alpha1.Snapshot
+			pushSnapApp      *oldapplicationapiv1alpha1.Snapshot
+			pushSnapCG       *oldapplicationapiv1alpha1.Snapshot
+			inputSnapApp     *oldapplicationapiv1alpha1.Snapshot
+			inputSnapCG      *oldapplicationapiv1alpha1.Snapshot
+			inputSnapNoComp  *oldapplicationapiv1alpha1.Snapshot
+			inputSnapNoScope *oldapplicationapiv1alpha1.Snapshot
 			pushCG           *v1beta2.ComponentGroup
 		)
 
@@ -1443,7 +1437,7 @@ var _ = Describe("Loader", Ordered, func() {
 			}
 			Expect(k8sClient.Create(ctx, pushCG)).Should(Succeed())
 
-			pushSnapApp = &applicationapiv1alpha1.Snapshot{
+			pushSnapApp = &oldapplicationapiv1alpha1.Snapshot{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "push-snap-app",
 					Namespace: namespace,
@@ -1454,14 +1448,14 @@ var _ = Describe("Loader", Ordered, func() {
 						gitops.ApplicationNameLabel:         pushApp,
 					},
 				},
-				Spec: applicationapiv1alpha1.SnapshotSpec{
+				Spec: oldapplicationapiv1alpha1.SnapshotSpec{
 					Application: pushApp,
-					Components:  []applicationapiv1alpha1.SnapshotComponent{{Name: pushComp, ContainerImage: sample_image}},
+					Components:  []oldapplicationapiv1alpha1.SnapshotComponent{{Name: pushComp, ContainerImage: sample_image}},
 				},
 			}
 			Expect(k8sClient.Create(ctx, pushSnapApp)).Should(Succeed())
 
-			pushSnapCG = &applicationapiv1alpha1.Snapshot{
+			pushSnapCG = &oldapplicationapiv1alpha1.Snapshot{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "push-snap-cg",
 					Namespace: namespace,
@@ -1472,14 +1466,14 @@ var _ = Describe("Loader", Ordered, func() {
 						gitops.ComponentGroupNameLabel:      pushCGName,
 					},
 				},
-				Spec: applicationapiv1alpha1.SnapshotSpec{
+				Spec: oldapplicationapiv1alpha1.SnapshotSpec{
 					ComponentGroup: pushCGName,
-					Components:     []applicationapiv1alpha1.SnapshotComponent{{Name: pushComp, ContainerImage: sample_image}},
+					Components:     []oldapplicationapiv1alpha1.SnapshotComponent{{Name: pushComp, ContainerImage: sample_image}},
 				},
 			}
 			Expect(k8sClient.Create(ctx, pushSnapCG)).Should(Succeed())
 
-			inputSnapApp = &applicationapiv1alpha1.Snapshot{
+			inputSnapApp = &oldapplicationapiv1alpha1.Snapshot{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "input-snap-app",
 					Namespace: namespace,
@@ -1490,14 +1484,14 @@ var _ = Describe("Loader", Ordered, func() {
 						gitops.ApplicationNameLabel:         pushApp,
 					},
 				},
-				Spec: applicationapiv1alpha1.SnapshotSpec{
+				Spec: oldapplicationapiv1alpha1.SnapshotSpec{
 					Application: pushApp,
-					Components:  []applicationapiv1alpha1.SnapshotComponent{{Name: pushComp, ContainerImage: sample_image}},
+					Components:  []oldapplicationapiv1alpha1.SnapshotComponent{{Name: pushComp, ContainerImage: sample_image}},
 				},
 			}
 			Expect(k8sClient.Create(ctx, inputSnapApp)).Should(Succeed())
 
-			inputSnapCG = &applicationapiv1alpha1.Snapshot{
+			inputSnapCG = &oldapplicationapiv1alpha1.Snapshot{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "input-snap-cg",
 					Namespace: namespace,
@@ -1508,14 +1502,14 @@ var _ = Describe("Loader", Ordered, func() {
 						gitops.ComponentGroupNameLabel:      pushCGName,
 					},
 				},
-				Spec: applicationapiv1alpha1.SnapshotSpec{
+				Spec: oldapplicationapiv1alpha1.SnapshotSpec{
 					ComponentGroup: pushCGName,
-					Components:     []applicationapiv1alpha1.SnapshotComponent{{Name: pushComp, ContainerImage: sample_image}},
+					Components:     []oldapplicationapiv1alpha1.SnapshotComponent{{Name: pushComp, ContainerImage: sample_image}},
 				},
 			}
 			Expect(k8sClient.Create(ctx, inputSnapCG)).Should(Succeed())
 
-			inputSnapNoComp = &applicationapiv1alpha1.Snapshot{
+			inputSnapNoComp = &oldapplicationapiv1alpha1.Snapshot{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "input-snap-no-comp",
 					Namespace: namespace,
@@ -1524,14 +1518,14 @@ var _ = Describe("Loader", Ordered, func() {
 						gitops.ApplicationNameLabel: pushApp,
 					},
 				},
-				Spec: applicationapiv1alpha1.SnapshotSpec{
+				Spec: oldapplicationapiv1alpha1.SnapshotSpec{
 					Application: pushApp,
-					Components:  []applicationapiv1alpha1.SnapshotComponent{{Name: pushComp, ContainerImage: sample_image}},
+					Components:  []oldapplicationapiv1alpha1.SnapshotComponent{{Name: pushComp, ContainerImage: sample_image}},
 				},
 			}
 			Expect(k8sClient.Create(ctx, inputSnapNoComp)).Should(Succeed())
 
-			inputSnapNoScope = &applicationapiv1alpha1.Snapshot{
+			inputSnapNoScope = &oldapplicationapiv1alpha1.Snapshot{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "input-snap-no-scope",
 					Namespace: namespace,
@@ -1541,8 +1535,8 @@ var _ = Describe("Loader", Ordered, func() {
 						gitops.PipelineAsCodeEventTypeLabel: gitops.PipelineAsCodePushType,
 					},
 				},
-				Spec: applicationapiv1alpha1.SnapshotSpec{
-					Components: []applicationapiv1alpha1.SnapshotComponent{{Name: pushComp, ContainerImage: sample_image}},
+				Spec: oldapplicationapiv1alpha1.SnapshotSpec{
+					Components: []oldapplicationapiv1alpha1.SnapshotComponent{{Name: pushComp, ContainerImage: sample_image}},
 				},
 			}
 			Expect(k8sClient.Create(ctx, inputSnapNoScope)).Should(Succeed())

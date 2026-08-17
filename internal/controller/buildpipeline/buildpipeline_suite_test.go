@@ -33,7 +33,8 @@ import (
 
 	ctrl "sigs.k8s.io/controller-runtime"
 
-	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
+	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/konflux/v1alpha1"
+	oldapplicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
 	"github.com/konflux-ci/integration-service/api/v1beta2"
 
 	toolkit "github.com/konflux-ci/operator-toolkit/test"
@@ -92,6 +93,7 @@ var _ = BeforeSuite(func() {
 	Expect(cfg).NotTo(BeNil())
 
 	Expect(applicationapiv1alpha1.AddToScheme(clientsetscheme.Scheme)).To(Succeed())
+	Expect(oldapplicationapiv1alpha1.AddToScheme(clientsetscheme.Scheme)).To(Succeed())
 	Expect(tektonv1.AddToScheme(clientsetscheme.Scheme)).To(Succeed())
 	Expect(releasev1alpha1.AddToScheme(clientsetscheme.Scheme)).To(Succeed())
 	Expect(v1beta2.AddToScheme(clientsetscheme.Scheme)).To(Succeed())
