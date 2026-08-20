@@ -1285,14 +1285,15 @@ func (a *Adapter) prepareGroupSnapshot(prGroup, prGroupHash string) (*applicatio
 		groupComponent := groupComponent // G601
 
 		componentInCheck := false
-		for _, c := range componentsToCheck {
-			if c == groupComponent.Name {
+		for _, tup := range componentsToCheck {
+			if tup.ComponentName == groupComponent.Name {
 				componentInCheck = true
 				break
 			}
 		}
+
 		if componentInCheck {
-			snapshots, err := a.loader.GetMatchingComponentSnapshotsForComponentAndPRGroupHash(a.context, a.client, namespace, groupComponent.Name, prGroupHash, ownerName, ownerLabel)
+			snapshots, err := a.loader.GetMatchingComponentSnapshotsForComponentAndPRGroupHash(a.context, a.client, namespace, groupComponent.Name, groupComponent.ComponentVersion.Name, prGroupHash, ownerName, ownerLabel)
 			if err != nil {
 				a.logger.Error(err, "Failed to fetch Snapshots for component", "component.Name", groupComponent.Name)
 				return nil, nil, err
@@ -1304,7 +1305,7 @@ func (a *Adapter) prepareGroupSnapshot(prGroup, prGroupHash string) (*applicatio
 			}
 			if foundSnapshotWithOpenedPR != nil {
 				a.logger.Info("PR/MR in snapshot is opened, will find snapshotComponent and add to groupSnapshot")
-				snapshotComponent := gitops.FindMatchingSnapshotComponent(foundSnapshotWithOpenedPR, groupComponent.Name)
+				snapshotComponent := gitops.FindMatchingSnapshotComponent(foundSnapshotWithOpenedPR, groupComponent.Name, groupComponent.ComponentVersion.Name)
 				componentSnapshotInfos = append(componentSnapshotInfos, gitops.ComponentSnapshotInfo{
 					Component:         groupComponent.Name,
 					BuildPipelineRun:  foundSnapshotWithOpenedPR.Labels[gitops.BuildPipelineRunNameLabel],
@@ -1380,8 +1381,14 @@ func (a *Adapter) prepareGroupSnapshotApplication(prGroup, prGroupHash string) (
 		applicationComponent := applicationComponent // G601
 
 		//nolint:govet  // Allow parameter inference
-		if slices.Contains(componentsToCheck, applicationComponent.Name) {
-			snapshots, err := a.loader.GetMatchingComponentSnapshotsForComponentAndPRGroupHash(a.context, a.client, namespace, applicationComponent.Name, prGroupHash, ownerName, ownerLabel)
+		contains := false
+		for _, tup := range componentsToCheck {
+			if tup.ComponentName == applicationComponent.Name {
+				contains = true
+			}
+		}
+		if contains {
+			snapshots, err := a.loader.GetMatchingComponentSnapshotsForComponentAndPRGroupHash(a.context, a.client, namespace, applicationComponent.Name, a.snapshot.Labels[gitops.SnapshotComponentVersionLabel], prGroupHash, ownerName, ownerLabel)
 			if err != nil {
 				a.logger.Error(err, "Failed to fetch Snapshots for component", "component.Name", applicationComponent.Name)
 				return nil, nil, err
@@ -1393,7 +1400,7 @@ func (a *Adapter) prepareGroupSnapshotApplication(prGroup, prGroupHash string) (
 			}
 			if foundSnapshotWithOpenedPR != nil {
 				a.logger.Info("PR/MR in snapshot is opened, will find snapshotComponent and add to groupSnapshot")
-				snapshotComponent := gitops.FindMatchingSnapshotComponent(foundSnapshotWithOpenedPR, applicationComponent.Name)
+				snapshotComponent := gitops.FindMatchingSnapshotComponent(foundSnapshotWithOpenedPR, applicationComponent.Name, "")
 				componentSnapshotInfos = append(componentSnapshotInfos, gitops.ComponentSnapshotInfo{
 					Component:         applicationComponent.Name,
 					BuildPipelineRun:  foundSnapshotWithOpenedPR.Labels[gitops.BuildPipelineRunNameLabel],
@@ -1538,6 +1545,15 @@ func (a *Adapter) filterPipelineRunsForComponentGroup(allPipelineRuns *[]tektonv
 	componentNames := h.GetComponentNamesFromComponentGroup(componentGroup)
 	for _, pipelineRun := range *allPipelineRuns {
 		if builtComponentName, found := pipelineRun.Labels[tektonconsts.PipelineRunComponentLabel]; found {
+			ok, version := h.GetComponentVersionFromComponentGroup(componentGroup, builtComponentName)
+			if ok {
+				if pipelineRun.Annotations[tektonconsts.PipelineRunComponentVersionAnnotation] == version {
+					if slices.Contains(componentNames, builtComponentName) {
+						filteredPipelineRuns = append(filteredPipelineRuns, pipelineRun)
+						continue
+					}
+				}
+			}
 			if slices.Contains(componentNames, builtComponentName) {
 				filteredPipelineRuns = append(filteredPipelineRuns, pipelineRun)
 				continue
