@@ -20,7 +20,9 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 
+	ghapi "github.com/google/go-github/v45/github"
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
 	tektonconsts "github.com/konflux-ci/integration-service/tekton/consts"
 	. "github.com/onsi/ginkgo/v2"
@@ -451,87 +453,251 @@ var _ = Describe("Nudge credentials", func() {
 
 	Describe("GetNudgeTargetsGithubApp", func() {
 		var (
-			ctx    context.Context
-			scheme *runtime.Scheme
+			ctx                 context.Context
+			scheme              *runtime.Scheme
+			savedNewClientFn    func(context.Context, string, []byte) (*ghapi.Client, string, error)
+			savedInstallationFn func(context.Context, *ghapi.Client, string) (*applicationInstallation, error)
+			savedBotIDFn        func(context.Context, string) (int64, error)
 		)
+
+		defaultBranch := "main"
+		repoID := int64(99999)
+		fakeRepo := &ghapi.Repository{
+			DefaultBranch: &defaultBranch,
+			ID:            &repoID,
+		}
+		fakeInstallation := func(_ context.Context, _ *ghapi.Client, _ string) (*applicationInstallation, error) {
+			return &applicationInstallation{
+				Token:        "ghs_test-token",
+				ID:           12345,
+				Repositories: []*ghapi.Repository{fakeRepo},
+			}, nil
+		}
+		fakeBotID := func(_ context.Context, _ string) (int64, error) {
+			return int64(67890), nil
+		}
 
 		BeforeEach(func() {
 			ctx = context.Background()
 			scheme = newCredentialScheme()
+			savedNewClientFn = newGitHubAppClientFn
+			savedInstallationFn = gitHubAppInstallationForRepo
+			savedBotIDFn = getGitHubBotUserIDFn
+			newGitHubAppClientFn = func(_ context.Context, _ string, _ []byte) (*ghapi.Client, string, error) {
+				return nil, "my-app", nil
+			}
+			gitHubAppInstallationForRepo = fakeInstallation
+			getGitHubBotUserIDFn = fakeBotID
 		})
 
-		It("returns nil when PaC secret does not exist", func() {
-			c := fake.NewClientBuilder().WithScheme(scheme).Build()
-			components := []applicationapiv1alpha1.Component{
-				{
-					ObjectMeta: metav1.ObjectMeta{Name: "comp", Namespace: testNamespace},
-					Spec: applicationapiv1alpha1.ComponentSpec{
-						Source: applicationapiv1alpha1.ComponentSource{
-							ComponentSourceUnion: applicationapiv1alpha1.ComponentSourceUnion{
-								GitSource: &applicationapiv1alpha1.GitSource{URL: "https://github.com/org/repo"},
-							},
-						},
-					},
-				},
-			}
-			targets := GetNudgeTargetsGithubApp(ctx, c, components, "quay.io", "user", "pass")
-			Expect(targets).To(BeNil())
+		AfterEach(func() {
+			newGitHubAppClientFn = savedNewClientFn
+			gitHubAppInstallationForRepo = savedInstallationFn
+			getGitHubBotUserIDFn = savedBotIDFn
 		})
 
-		It("returns nil when PaC secret exists but GitHub App is not configured", func() {
-			pacSecret := &corev1.Secret{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      tektonconsts.PipelinesAsCodeGitHubAppSecretName,
-					Namespace: "integration-service",
-				},
-				Data: map[string][]byte{
-					"some-other-key": []byte("some-value"),
-				},
-			}
-			c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(pacSecret).Build()
-			components := []applicationapiv1alpha1.Component{
-				{
-					ObjectMeta: metav1.ObjectMeta{Name: "comp", Namespace: testNamespace},
-					Spec: applicationapiv1alpha1.ComponentSpec{
-						Source: applicationapiv1alpha1.ComponentSource{
-							ComponentSourceUnion: applicationapiv1alpha1.ComponentSourceUnion{
-								GitSource: &applicationapiv1alpha1.GitSource{URL: "https://github.com/org/repo"},
-							},
-						},
-					},
-				},
-			}
-			targets := GetNudgeTargetsGithubApp(ctx, c, components, "quay.io", "user", "pass")
-			Expect(targets).To(BeNil())
-		})
-
-		It("returns nil when PaC secret has GitHub App configured (not yet implemented)", func() {
-			pacSecret := &corev1.Secret{
+		pacSecretWithApp := func(scheme *runtime.Scheme) (*corev1.Secret, *fake.ClientBuilder) {
+			secret := &corev1.Secret{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      tektonconsts.PipelinesAsCodeGitHubAppSecretName,
 					Namespace: "integration-service",
 				},
 				Data: map[string][]byte{
 					tektonconsts.PipelinesAsCodeGithubAppIdKey:   []byte("12345"),
-					tektonconsts.PipelinesAsCodeGithubPrivateKey: []byte("-----BEGIN RSA PRIVATE KEY-----\nfake\n-----END RSA PRIVATE KEY-----"),
+					tektonconsts.PipelinesAsCodeGithubPrivateKey: []byte("fake-key"),
 				},
 			}
-			c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(pacSecret).Build()
-			components := []applicationapiv1alpha1.Component{
-				{
-					ObjectMeta: metav1.ObjectMeta{Name: "comp", Namespace: testNamespace},
-					Spec: applicationapiv1alpha1.ComponentSpec{
-						Source: applicationapiv1alpha1.ComponentSource{
-							ComponentSourceUnion: applicationapiv1alpha1.ComponentSourceUnion{
-								GitSource: &applicationapiv1alpha1.GitSource{URL: "https://github.com/org/repo"},
+			return secret, fake.NewClientBuilder().WithScheme(scheme).WithObjects(secret)
+		}
+
+		githubComponent := func(name, repoURL, revision string) applicationapiv1alpha1.Component {
+			return applicationapiv1alpha1.Component{
+				ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: testNamespace},
+				Spec: applicationapiv1alpha1.ComponentSpec{
+					Source: applicationapiv1alpha1.ComponentSource{
+						ComponentSourceUnion: applicationapiv1alpha1.ComponentSourceUnion{
+							GitSource: &applicationapiv1alpha1.GitSource{
+								URL:      repoURL,
+								Revision: revision,
 							},
 						},
 					},
 				},
 			}
-			// Currently returns nil because the implementation is a TODO stub
-			targets := GetNudgeTargetsGithubApp(ctx, c, components, "quay.io", "user", "pass")
+		}
+
+		It("returns nil when PaC secret does not exist", func() {
+			newGitHubAppClientFn = savedNewClientFn // don't mock — should never reach
+			gitHubAppInstallationForRepo = savedInstallationFn
+			getGitHubBotUserIDFn = savedBotIDFn
+			c := fake.NewClientBuilder().WithScheme(scheme).Build()
+			targets := GetNudgeTargetsGithubApp(ctx, c, []applicationapiv1alpha1.Component{
+				githubComponent("comp", "https://github.com/org/repo", ""),
+			}, "quay.io", "user", "pass")
 			Expect(targets).To(BeNil())
+		})
+
+		It("returns nil when PaC secret exists but GitHub App is not configured", func() {
+			newGitHubAppClientFn = savedNewClientFn
+			gitHubAppInstallationForRepo = savedInstallationFn
+			getGitHubBotUserIDFn = savedBotIDFn
+			unconfiguredSecret := &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      tektonconsts.PipelinesAsCodeGitHubAppSecretName,
+					Namespace: "integration-service",
+				},
+				Data: map[string][]byte{"some-other-key": []byte("value")},
+			}
+			c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(unconfiguredSecret).Build()
+			targets := GetNudgeTargetsGithubApp(ctx, c, []applicationapiv1alpha1.Component{
+				githubComponent("comp", "https://github.com/org/repo", ""),
+			}, "quay.io", "user", "pass")
+			Expect(targets).To(BeNil())
+		})
+
+		It("returns targets for github component with valid installation", func() {
+			_, builder := pacSecretWithApp(scheme)
+			c := builder.Build()
+			targets := GetNudgeTargetsGithubApp(ctx, c, []applicationapiv1alpha1.Component{
+				githubComponent("comp", "https://github.com/org/repo", "main"),
+			}, "quay.io", "img-user", "img-pass")
+			Expect(targets).To(HaveLen(1))
+			Expect(targets[0].ComponentName).To(Equal("comp"))
+			Expect(targets[0].GitProvider).To(Equal("github"))
+			Expect(targets[0].Token).To(Equal("ghs_test-token"))
+			Expect(targets[0].Username).To(Equal("my-app[bot]"))
+			Expect(targets[0].Endpoint).To(Equal("https://api.github.com/"))
+			Expect(targets[0].ImageRepositoryHost).To(Equal("quay.io"))
+			Expect(targets[0].ImageRepositoryUsername).To(Equal("img-user"))
+			Expect(targets[0].ImageRepositoryPassword).To(Equal("img-pass"))
+			Expect(targets[0].Repositories).To(HaveLen(1))
+			Expect(targets[0].Repositories[0].Repository).To(Equal("org/repo"))
+		})
+
+		It("builds correct GitAuthor format", func() {
+			_, builder := pacSecretWithApp(scheme)
+			c := builder.Build()
+			targets := GetNudgeTargetsGithubApp(ctx, c, []applicationapiv1alpha1.Component{
+				githubComponent("comp", "https://github.com/org/repo", ""),
+			}, "quay.io", "u", "p")
+			Expect(targets).To(HaveLen(1))
+			Expect(targets[0].GitAuthor).To(Equal("my-app <67890+my-app[bot]@users.noreply.github.com>"))
+		})
+
+		It("skips non-github components", func() {
+			_, builder := pacSecretWithApp(scheme)
+			c := builder.Build()
+			targets := GetNudgeTargetsGithubApp(ctx, c, []applicationapiv1alpha1.Component{
+				githubComponent("gh-comp", "https://github.com/org/repo", ""),
+				githubComponent("gl-comp", "https://gitlab.com/org/repo", ""),
+			}, "quay.io", "u", "p")
+			Expect(targets).To(HaveLen(1))
+			Expect(targets[0].ComponentName).To(Equal("gh-comp"))
+		})
+
+		It("skips github.com Enterprise Server (non-github.com) components", func() {
+			_, builder := pacSecretWithApp(scheme)
+			c := builder.Build()
+			targets := GetNudgeTargetsGithubApp(ctx, c, []applicationapiv1alpha1.Component{
+				githubComponent("ghe-comp", "https://github.example.com/org/repo", ""),
+				githubComponent("gh-comp", "https://github.com/org/repo", ""),
+			}, "quay.io", "u", "p")
+			Expect(targets).To(HaveLen(1))
+			Expect(targets[0].ComponentName).To(Equal("gh-comp"))
+		})
+
+		It("continues when installation lookup fails for one component", func() {
+			callCount := 0
+			gitHubAppInstallationForRepo = func(_ context.Context, _ *ghapi.Client, _ string) (*applicationInstallation, error) {
+				callCount++
+				if callCount == 1 {
+					return nil, errors.New("installation not found")
+				}
+				return &applicationInstallation{
+					Token:        "ghs_test-token",
+					ID:           12345,
+					Repositories: []*ghapi.Repository{fakeRepo},
+				}, nil
+			}
+			_, builder := pacSecretWithApp(scheme)
+			c := builder.Build()
+			targets := GetNudgeTargetsGithubApp(ctx, c, []applicationapiv1alpha1.Component{
+				githubComponent("comp-a", "https://github.com/org/repo-a", ""),
+				githubComponent("comp-b", "https://github.com/org/repo-b", ""),
+			}, "quay.io", "u", "p")
+			Expect(targets).To(HaveLen(1))
+			Expect(targets[0].ComponentName).To(Equal("comp-b"))
+		})
+
+		It("returns empty slice when installation fails for all components", func() {
+			gitHubAppInstallationForRepo = func(_ context.Context, _ *ghapi.Client, _ string) (*applicationInstallation, error) {
+				return nil, errors.New("no installation")
+			}
+			_, builder := pacSecretWithApp(scheme)
+			c := builder.Build()
+			targets := GetNudgeTargetsGithubApp(ctx, c, []applicationapiv1alpha1.Component{
+				githubComponent("comp", "https://github.com/org/repo", ""),
+			}, "quay.io", "u", "p")
+			Expect(targets).To(BeEmpty())
+		})
+
+		It("uses component revision as branch when set", func() {
+			_, builder := pacSecretWithApp(scheme)
+			c := builder.Build()
+			targets := GetNudgeTargetsGithubApp(ctx, c, []applicationapiv1alpha1.Component{
+				githubComponent("comp", "https://github.com/org/repo", "release-1.0"),
+			}, "quay.io", "u", "p")
+			Expect(targets).To(HaveLen(1))
+			Expect(targets[0].Repositories[0].BaseBranches).To(Equal([]string{"release-1.0"}))
+		})
+
+		It("falls back to installation DefaultBranch when revision is empty", func() {
+			_, builder := pacSecretWithApp(scheme)
+			c := builder.Build()
+			targets := GetNudgeTargetsGithubApp(ctx, c, []applicationapiv1alpha1.Component{
+				githubComponent("comp", "https://github.com/org/repo", ""),
+			}, "quay.io", "u", "p")
+			Expect(targets).To(HaveLen(1))
+			Expect(targets[0].Repositories[0].BaseBranches).To(Equal([]string{"main"}))
+		})
+
+		It("caches slug and bot ID across multiple components", func() {
+			installationCalls := 0
+			botIDCalls := 0
+			gitHubAppInstallationForRepo = func(_ context.Context, _ *ghapi.Client, _ string) (*applicationInstallation, error) {
+				installationCalls++
+				return &applicationInstallation{
+					Token:        "ghs_test-token",
+					ID:           12345,
+					Repositories: []*ghapi.Repository{fakeRepo},
+				}, nil
+			}
+			getGitHubBotUserIDFn = func(_ context.Context, _ string) (int64, error) {
+				botIDCalls++
+				return int64(67890), nil
+			}
+			_, builder := pacSecretWithApp(scheme)
+			c := builder.Build()
+			targets := GetNudgeTargetsGithubApp(ctx, c, []applicationapiv1alpha1.Component{
+				githubComponent("comp-a", "https://github.com/org/repo-a", ""),
+				githubComponent("comp-b", "https://github.com/org/repo-b", ""),
+			}, "quay.io", "u", "p")
+			Expect(targets).To(HaveLen(2))
+			Expect(installationCalls).To(Equal(2))
+			Expect(botIDCalls).To(Equal(1), "bot user ID should be looked up only once")
+		})
+
+		It("continues after bot user ID lookup failure, using ID 0 in GitAuthor", func() {
+			getGitHubBotUserIDFn = func(_ context.Context, _ string) (int64, error) {
+				return 0, errors.New("rate limited")
+			}
+			_, builder := pacSecretWithApp(scheme)
+			c := builder.Build()
+			targets := GetNudgeTargetsGithubApp(ctx, c, []applicationapiv1alpha1.Component{
+				githubComponent("comp", "https://github.com/org/repo", ""),
+			}, "quay.io", "u", "p")
+			Expect(targets).To(HaveLen(1))
+			Expect(targets[0].GitAuthor).To(Equal("my-app <0+my-app[bot]@users.noreply.github.com>"))
 		})
 	})
 

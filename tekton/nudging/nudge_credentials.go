@@ -21,10 +21,14 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 
+	ghinstallation "github.com/bradleyfalzon/ghinstallation/v2"
+	ghapi "github.com/google/go-github/v45/github"
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
 	tektonconsts "github.com/konflux-ci/integration-service/tekton/consts"
 	corev1 "k8s.io/api/core/v1"
@@ -69,17 +73,30 @@ type dockerConfigJSON struct {
 	Auths map[string]repositoryConfigAuth `json:"auths"`
 }
 
+// applicationInstallation holds GitHub App installation data for a specific repository.
+type applicationInstallation struct {
+	Token        string
+	ID           int64
+	Repositories []*ghapi.Repository
+}
+
+// newGitHubAppClientFn creates an authenticated GitHub App client and fetches the App slug.
+// Replaced in tests to avoid real GitHub API calls.
+var newGitHubAppClientFn = newGitHubAppClient
+
+// gitHubAppInstallationForRepo resolves a GitHub App installation token for a given repository URL.
+// Replaced in tests to avoid real GitHub API calls.
+var gitHubAppInstallationForRepo = getGitHubAppInstallation
+
+// getGitHubBotUserIDFn returns the numeric GitHub user ID for an App's bot account.
+// Replaced in tests to avoid real GitHub API calls.
+var getGitHubBotUserIDFn = getGitHubBotUserID
+
 // GetNudgeTargetsGithubApp returns NudgeTargets for components that use GitHub App authentication.
 //
 // It reads the global PaC secret from the integration-service namespace (INTEGRATION_NS env var),
 // verifies that GitHub App credentials are configured, and for each GitHub-hosted component it
-// obtains an installation token via the GitHub App API.
-//
-// TODO(STONEINTG-1671): Implement GitHub App JWT + installation token flow.
-// This requires creating a JWT from the App ID + private key, calling
-// GET /app/installations to find the installation for each repo, then
-// POST /app/installations/{id}/access_tokens to get scoped tokens.
-// For now this returns nil and logs a message. Basic auth covers the majority of use cases.
+// obtains a repo-scoped installation token via the GitHub App JWT + installation token flow.
 func GetNudgeTargetsGithubApp(ctx context.Context, c client.Client, targetComponents []applicationapiv1alpha1.Component, imageRepoHost, imageRepoUser, imageRepoPwd string) []NudgeTarget {
 	log := ctrllog.FromContext(ctx)
 
@@ -107,17 +124,96 @@ func GetNudgeTargetsGithubApp(ctx context.Context, c client.Client, targetCompon
 		return nil
 	}
 
-	// TODO(STONEINTG-1671): Implement GitHub App installation token flow.
-	// The full implementation needs to:
-	// 1. Parse github-application-id and github-private-key from the PaC secret
-	// 2. Create a JWT signed with the private key
-	// 3. For each github-hosted component, call the GitHub API to get an installation token
-	// 4. Build NudgeTargets with those tokens
-	//
-	// For now, return nil. The basic auth path in GetNudgeTargetsBasicAuth handles
-	// most real-world cases since PaC provisions per-repo secrets in the user namespace.
-	log.Info("GitHub App auth path not yet implemented for nudge credential resolution, falling back to basic auth")
-	return nil
+	appIDStr := string(pacSecret.Data[tektonconsts.PipelinesAsCodeGithubAppIdKey])
+	privateKeyPEM := pacSecret.Data[tektonconsts.PipelinesAsCodeGithubPrivateKey]
+
+	appClient, appSlug, err := newGitHubAppClientFn(ctx, appIDStr, privateKeyPEM)
+	if err != nil {
+		log.Error(err, "failed to initialize GitHub App client, skipping GitHub App auth path")
+		return nil
+	}
+
+	var appBotID int64
+	if botID, botErr := getGitHubBotUserIDFn(ctx, appSlug); botErr != nil {
+		log.Error(botErr, "failed to get GitHub App bot user ID, commits will use ID 0 in GitAuthor",
+			"slug", appSlug)
+	} else {
+		appBotID = botID
+	}
+
+	var targets []NudgeTarget
+
+	for i := range targetComponents {
+		component := &targetComponents[i]
+
+		gitProvider, err := getGitProvider(*component)
+		if err != nil || gitProvider != "github" {
+			continue
+		}
+
+		repoURL := getGitRepoURL(component)
+		if repoURL == "" {
+			log.Info("component has no git source URL, skipping", "ComponentName", component.Name)
+			continue
+		}
+
+		// Only github.com is supported for GitHub App auth; ghinstallation connects to api.github.com.
+		repoHost := getGitRepoHost(repoURL)
+		if repoHost != "github.com" {
+			log.Info("skipping GitHub App auth for non-github.com host",
+				"ComponentName", component.Name, "host", repoHost)
+			continue
+		}
+
+		log.Info("getting GitHub App installation token for component",
+			"ComponentName", component.Name,
+			"RepositoryUrl", repoURL)
+		installation, err := gitHubAppInstallationForRepo(ctx, appClient, repoURL)
+		if err != nil {
+			log.Error(err, "failed to get GitHub App installation for component",
+				"ComponentName", component.Name)
+			continue
+		}
+
+		appBotName := fmt.Sprintf("%s[bot]", appSlug)
+		repoPath := parseGitRepoPath(repoURL)
+
+		branch := ""
+		if component.Spec.Source.GitSource != nil && component.Spec.Source.GitSource.Revision != "" {
+			branch = component.Spec.Source.GitSource.Revision
+		} else if len(installation.Repositories) > 0 {
+			branch = installation.Repositories[0].GetDefaultBranch()
+		}
+
+		customOpts, err := ReadCustomRenovateConfigMap(ctx, c, component)
+		if err != nil {
+			log.Error(err, "failed to read custom renovate config map, will still continue with nudging",
+				"ComponentName", component.Name,
+				"ComponentNamespace", component.Namespace)
+		}
+
+		targets = append(targets, NudgeTarget{
+			ComponentName:                  component.Name,
+			ComponentCustomRenovateOptions: customOpts,
+			GitProvider:                    gitProvider,
+			Username:                       appBotName,
+			GitAuthor:                      fmt.Sprintf("%s <%d+%s@users.noreply.github.com>", appSlug, appBotID, appBotName),
+			Token:                          installation.Token,
+			Endpoint:                       buildAPIEndpoint(gitProvider, repoHost),
+			Repositories: []RenovateRepository{{
+				Repository:   repoPath,
+				BaseBranches: branchSlice(branch),
+			}},
+			ImageRepositoryHost:     imageRepoHost,
+			ImageRepositoryUsername: imageRepoUser,
+			ImageRepositoryPassword: imageRepoPwd,
+		})
+		log.Info("component to update via GitHub App",
+			"component", component.Name,
+			"repositories", repoPath)
+	}
+
+	return targets
 }
 
 // GetNudgeTargetsBasicAuth returns NudgeTargets for components using basic auth (token-based) credentials.
@@ -323,6 +419,75 @@ func GetImageRegistryCredentials(ctx context.Context, c client.Client, component
 }
 
 // ---------- Helper functions ----------
+
+// newGitHubAppClient creates an authenticated GitHub App transport and returns a client and the App slug.
+// The transport handles RS256 JWT signing automatically (iss=appID, 10-min expiry).
+func newGitHubAppClient(ctx context.Context, appIDStr string, privateKeyPEM []byte) (*ghapi.Client, string, error) {
+	appID, err := strconv.ParseInt(strings.TrimSpace(appIDStr), 10, 64)
+	if err != nil {
+		return nil, "", fmt.Errorf("invalid GitHub App ID %q: %w", appIDStr, err)
+	}
+	itr, err := ghinstallation.NewAppsTransport(http.DefaultTransport, appID, privateKeyPEM)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to create GitHub App transport: %w", err)
+	}
+	appClient := ghapi.NewClient(&http.Client{Transport: itr})
+	githubApp, _, err := appClient.Apps.Get(ctx, "")
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to get GitHub App metadata: %w", err)
+	}
+	return appClient, githubApp.GetSlug(), nil
+}
+
+// getGitHubAppInstallation finds the installation for repoURL and returns a repo-scoped token.
+//
+// It uses Repositories (name-based) in InstallationTokenOptions rather than RepositoryIDs to avoid
+// implicitly minting a broad installation token via NewFromAppsTransport. The token response
+// includes repository metadata (DefaultBranch) that callers use for branch resolution.
+func getGitHubAppInstallation(ctx context.Context, appClient *ghapi.Client, repoURL string) (*applicationInstallation, error) {
+	repoPath := parseGitRepoPath(repoURL)
+	parts := strings.SplitN(repoPath, "/", 2)
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return nil, fmt.Errorf("cannot parse owner/repo from URL %q", repoURL)
+	}
+	owner, repo := parts[0], parts[1]
+
+	installation, _, err := appClient.Apps.FindRepositoryInstallation(ctx, owner, repo)
+	if err != nil {
+		return nil, fmt.Errorf("GitHub App not installed for %s/%s: %w", owner, repo, err)
+	}
+
+	scopedToken, _, err := appClient.Apps.CreateInstallationToken(ctx, installation.GetID(),
+		&ghapi.InstallationTokenOptions{
+			Repositories: []string{repo},
+			Permissions: &ghapi.InstallationPermissions{
+				Contents:     ghapi.String("write"),
+				PullRequests: ghapi.String("write"),
+			},
+		})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create scoped installation token for %s/%s: %w", owner, repo, err)
+	}
+
+	return &applicationInstallation{
+		Token:        scopedToken.GetToken(),
+		ID:           installation.GetID(),
+		Repositories: scopedToken.Repositories,
+	}, nil
+}
+
+// getGitHubBotUserID returns the numeric GitHub user ID of the App's bot account.
+// The ID is needed for the GitAuthor field format GitHub uses for App commits:
+// "{slug} <{id}+{slug}[bot]@users.noreply.github.com>"
+func getGitHubBotUserID(ctx context.Context, slug string) (int64, error) {
+	c := ghapi.NewClient(nil) // public endpoint, no auth needed
+	botName := fmt.Sprintf("%s[bot]", slug)
+	user, _, err := c.Users.Get(ctx, botName)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get GitHub bot user %q: %w", botName, err)
+	}
+	return user.GetID(), nil
+}
 
 // getGitProvider returns the git provider name (github, gitlab, bitbucket) based on
 // the component's git-provider annotation or by inspecting the repository URL hostname.

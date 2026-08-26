@@ -253,7 +253,20 @@ func (a *Adapter) EnsureNudgePipelineRunsExist() (controller.OperationResult, er
 	githubTargets := nudging.GetNudgeTargetsGithubApp(a.context, a.client, targetComponents, imageRepoHost, imageRepoUser, imageRepoPwd)
 	targets = append(targets, githubTargets...)
 
-	basicAuthTargets := nudging.GetNudgeTargetsBasicAuth(a.context, a.client, targetComponents, imageRepoHost, imageRepoUser, imageRepoPwd)
+	// Exclude components already resolved via GitHub App from the basic-auth path to avoid
+	// running two Renovate jobs for the same component.
+	githubAppResolved := make(map[string]bool, len(githubTargets))
+	for _, t := range githubTargets {
+		githubAppResolved[t.ComponentName] = true
+	}
+	remainingComponents := make([]applicationapiv1alpha1.Component, 0, len(targetComponents))
+	for _, comp := range targetComponents {
+		if !githubAppResolved[comp.Name] {
+			remainingComponents = append(remainingComponents, comp)
+		}
+	}
+
+	basicAuthTargets := nudging.GetNudgeTargetsBasicAuth(a.context, a.client, remainingComponents, imageRepoHost, imageRepoUser, imageRepoPwd)
 	targets = append(targets, basicAuthTargets...)
 
 	if len(targets) == 0 {
