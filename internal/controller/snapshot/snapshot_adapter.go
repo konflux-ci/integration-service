@@ -1271,12 +1271,13 @@ func (a *Adapter) prepareGroupSnapshot(prGroup, prGroupHash string) (*applicatio
 	ownerLabel := gitops.ComponentGroupNameLabel
 	namespace := a.componentGroup.Namespace
 	snapshotComponentsFromGCL, invalidComponents := snapshot.GetSnapshotComponentsFromGCL(a.componentGroup, a.logger)
+	isGroupSnapshotCreationEnforced := metadata.HasAnnotationWithValue(a.componentGroup, h.AlwaysCreateGroupSnapshotAnnotationName, "true")
 
 	componentsToCheck, err := a.loader.GetComponentsFromSnapshotForPRGroup(a.context, a.client, namespace, prGroupHash, ownerName, ownerLabel)
 	if err != nil {
 		return nil, nil, err
 	}
-	if len(componentsToCheck) < 2 {
+	if len(componentsToCheck) < 2 && !isGroupSnapshotCreationEnforced {
 		a.logger.Info(fmt.Sprintf("The number %d of components affected by this PR group %s is less than 2, skipping group snapshot creation", len(componentsToCheck), prGroup))
 		return nil, nil, nil
 	}
@@ -1336,7 +1337,11 @@ func (a *Adapter) prepareGroupSnapshot(prGroup, prGroupHash string) (*applicatio
 	}
 
 	// if the valid component snapshot from open MR/PR is less than 2, won't create group snapshot
-	if len(componentSnapshotInfos) < 2 {
+	requiredComponentSnapshotInfos := 2
+	if isGroupSnapshotCreationEnforced {
+		requiredComponentSnapshotInfos = 1
+	}
+	if len(componentSnapshotInfos) < requiredComponentSnapshotInfos {
 		return nil, componentSnapshotInfos, nil
 	}
 
@@ -1369,11 +1374,13 @@ func (a *Adapter) prepareGroupSnapshotApplication(prGroup, prGroupHash string) (
 		return nil, nil, err
 	}
 
+	isGroupSnapshotCreationEnforced := metadata.HasAnnotationWithValue(a.application, h.AlwaysCreateGroupSnapshotAnnotationName, "true")
+
 	componentsToCheck, err := a.loader.GetComponentsFromSnapshotForPRGroup(a.context, a.client, namespace, prGroupHash, ownerName, ownerLabel)
 	if err != nil {
 		return nil, nil, err
 	}
-	if len(componentsToCheck) < 2 {
+	if len(componentsToCheck) < 2 && !isGroupSnapshotCreationEnforced {
 		a.logger.Info(fmt.Sprintf("The number %d of components affected by this PR group %s is less than 2, skipping group snapshot creation", len(componentsToCheck), prGroup))
 		return nil, nil, nil
 	}
@@ -1426,7 +1433,11 @@ func (a *Adapter) prepareGroupSnapshotApplication(prGroup, prGroupHash string) (
 	}
 
 	// if the valid component snapshot from open MR/PR is less than 2, won't create group snapshot
-	if len(componentSnapshotInfos) < 2 {
+	requiredComponentSnapshotInfos := 2
+	if isGroupSnapshotCreationEnforced {
+		requiredComponentSnapshotInfos = 1
+	}
+	if len(componentSnapshotInfos) < requiredComponentSnapshotInfos {
 		return nil, componentSnapshotInfos, nil
 	}
 

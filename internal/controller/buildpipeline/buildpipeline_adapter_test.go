@@ -3254,6 +3254,50 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			Expect(result.RequeueRequest).To(BeFalse())
 			Expect(err).NotTo(HaveOccurred())
 		})
+
+		It("should report group integration test when always-create-group-snapshots is set on Application", func() {
+			buildPipelineRun.Status = tektonv1.PipelineRunStatus{
+				Status: v1.Status{
+					Conditions: v1.Conditions{
+						apis.Condition{
+							Reason: "Running",
+							Status: "Unknown",
+							Type:   apis.ConditionSucceeded,
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Status().Update(ctx, buildPipelineRun)).Should(Succeed())
+
+			var buf bytes.Buffer
+			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+
+			appWithAnnotation := hasApp.DeepCopy()
+			if appWithAnnotation.Annotations == nil {
+				appWithAnnotation.Annotations = map[string]string{}
+			}
+			appWithAnnotation.Annotations[helpers.AlwaysCreateGroupSnapshotAnnotationName] = "true"
+
+			adapter = NewAdapterWithApplication(ctx, buildPipelineRun, hasComp, appWithAnnotation, log, loader.NewMockLoader(), k8sClient)
+			adapter.status = mockStatus
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: loader.ApplicationContextKey,
+					Resource:   appWithAnnotation,
+				},
+				{
+					ContextKey: loader.AllIntegrationTestScenariosContextKey,
+					Resource:   []v1beta2.IntegrationTestScenario{*integrationTestScenario, *groupIntegrationTestScenario},
+				},
+			})
+
+			result, err := adapter.EnsureIntegrationTestReportedToGitProvider()
+			Expect(result.CancelRequest).To(BeFalse())
+			Expect(result.RequeueRequest).To(BeFalse())
+			Expect(err).NotTo(HaveOccurred())
+			Expect(buf.String()).Should(ContainSubstring("group snapshot is expected to be created for build pipelinerun"))
+			Expect(buf.String()).ShouldNot(ContainSubstring("less than 2, skipping group snapshot status report"))
+		})
 	})
 
 	When("a build PLR is triggered or retriggered, succeeded or failed", func() {
@@ -3599,6 +3643,60 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			Expect(result.CancelRequest).To(BeFalse())
 			Expect(result.RequeueRequest).To(BeFalse())
 			Expect(err).NotTo(HaveOccurred())
+		})
+
+		It("should report group integration test when always-create-group-snapshots is set on ComponentGroup", func() {
+			buildPipelineRun.Status = tektonv1.PipelineRunStatus{
+				Status: v1.Status{
+					Conditions: v1.Conditions{
+						apis.Condition{
+							Reason: "Running",
+							Status: "Unknown",
+							Type:   apis.ConditionSucceeded,
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Status().Update(ctx, buildPipelineRun)).Should(Succeed())
+
+			var buf bytes.Buffer
+			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+
+			compGroupWithAnnotation := hasCompGroup.DeepCopy()
+			if compGroupWithAnnotation.Annotations == nil {
+				compGroupWithAnnotation.Annotations = map[string]string{}
+			}
+			compGroupWithAnnotation.Annotations[helpers.AlwaysCreateGroupSnapshotAnnotationName] = "true"
+			compGroupWithAnnotation.Spec.Components = []v1beta2.ComponentReference{
+				{
+					Name: hasComp.Name,
+					ComponentVersion: v1beta2.ComponentVersionReference{
+						Name:     "v1",
+						Revision: "main",
+					},
+				},
+			}
+			componentGroups := []v1beta2.ComponentGroup{*compGroupWithAnnotation}
+
+			adapter = NewAdapter(ctx, buildPipelineRun, hasComp, &componentGroups, log, loader.NewMockLoader(), k8sClient)
+			adapter.status = mockStatus
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: loader.ComponentGroupsContextKey,
+					Resource:   compGroupWithAnnotation,
+				},
+				{
+					ContextKey: loader.AllIntegrationTestScenariosForComponentGroupContextKey,
+					Resource:   []v1beta2.IntegrationTestScenario{*integrationTestScenario, *groupIntegrationTestScenario},
+				},
+			})
+
+			result, err := adapter.EnsureIntegrationTestReportedToGitProvider()
+			Expect(result.CancelRequest).To(BeFalse())
+			Expect(result.RequeueRequest).To(BeFalse())
+			Expect(err).NotTo(HaveOccurred())
+			Expect(buf.String()).Should(ContainSubstring("group snapshot is expected to be created for build pipelinerun"))
+			Expect(buf.String()).ShouldNot(ContainSubstring("less than 2, skipping group snapshot status report"))
 		})
 	})
 
