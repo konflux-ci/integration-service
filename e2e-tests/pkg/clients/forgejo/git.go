@@ -9,8 +9,6 @@ import (
 
 	"codeberg.org/mvdkleijn/forgejo-sdk/forgejo/v3"
 	gomega "github.com/onsi/gomega"
-
-	"github.com/konflux-ci/integration-service/e2e-tests/pkg/utils"
 )
 
 // CreateBranch creates a new branch in a Forgejo repository.
@@ -232,55 +230,29 @@ func (fc *ForgejoClient) DeleteWebhooks(projectID, clusterAppDomain string) erro
 	return nil
 }
 
-// ForkRepository clones sourceProjectID into a new repository targetProjectID via MigrateRepo.
+// ForkRepository creates a fork of sourceProjectID as targetProjectID using Forgejo's native
+// fork API. Unlike MigrateRepo (which queues an async clone job that is unreliable when source
+// and target are on the same Codeberg instance), CreateFork shares the object store with the
+// source and is ready immediately — no polling required.
 func (fc *ForgejoClient) ForkRepository(sourceProjectID, targetProjectID string) (*forgejo.Repository, error) {
 	sourceOwner, sourceRepo := splitProjectID(sourceProjectID)
 	targetOwner, targetRepo := splitProjectID(targetProjectID)
 
-	cloneAddr := fmt.Sprintf("%s/%s/%s.git", strings.TrimSuffix(fc.apiURL, "/"), sourceOwner, sourceRepo)
-
-	var migratedRepo *forgejo.Repository
-	var lastErr error
-
-	err := utils.WaitUntilWithInterval(func() (bool, error) {
-		var resp *forgejo.Response
-		var migrateErr error
-		migratedRepo, resp, migrateErr = fc.client.MigrateRepo(forgejo.MigrateRepoOption{
-			RepoName:  targetRepo,
-			RepoOwner: targetOwner,
-			CloneAddr: cloneAddr,
-			Service:   forgejo.GitServiceForgejo,
-			AuthToken: fc.token,
-		})
-		if migrateErr != nil {
-			lastErr = migrateErr
-			statusCode := 0
-			if resp != nil && resp.Response != nil {
-				statusCode = resp.StatusCode
-			}
-			if statusCode == http.StatusNotFound || statusCode == http.StatusUnauthorized || statusCode == http.StatusForbidden {
-				return false, fmt.Errorf("error migrating project %s to %s (HTTP %d): %w", sourceProjectID, targetProjectID, statusCode, migrateErr)
-			}
-			if statusCode == http.StatusConflict {
-				existingRepo, _, getErr := fc.client.GetRepo(targetOwner, targetRepo)
-				if getErr != nil {
-					return false, fmt.Errorf("error migrating project %s to %s: repo already exists but failed to fetch it: %w", sourceProjectID, targetProjectID, getErr)
-				}
-				migratedRepo = existingRepo
-				return true, nil
-			}
-			return false, nil
-		}
-		return true, nil
-	}, time.Second*10, time.Minute*5)
-
+	forkedRepo, resp, err := fc.client.CreateFork(sourceOwner, sourceRepo, forgejo.CreateForkOption{
+		Organization: &targetOwner,
+		Name:         &targetRepo,
+	})
 	if err != nil {
-		if lastErr != nil {
-			return nil, fmt.Errorf("error migrating project %s to %s (last error: %v): %w", sourceProjectID, targetProjectID, lastErr, err)
+		if resp != nil && resp.StatusCode == http.StatusConflict {
+			existingRepo, _, getErr := fc.client.GetRepo(targetOwner, targetRepo)
+			if getErr != nil {
+				return nil, fmt.Errorf("fork of %s to %s already exists but failed to fetch: %w", sourceProjectID, targetProjectID, getErr)
+			}
+			return existingRepo, nil
 		}
-		return nil, fmt.Errorf("error migrating project %s to %s: %w", sourceProjectID, targetProjectID, err)
+		return nil, fmt.Errorf("error forking project %s to %s: %w", sourceProjectID, targetProjectID, err)
 	}
-	return migratedRepo, nil
+	return forkedRepo, nil
 }
 
 // DeleteRepository deletes a repository.
