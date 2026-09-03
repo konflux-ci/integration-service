@@ -82,7 +82,7 @@ type ComponentVersionReference struct {
 	Name string `json:"name"`
 
 	// Name of the git revision for the component version. Used as a
-	// fallback if the `appstudio.openshift.io/version` label is not
+	// fallback if the `build.konflux-ci.dev/version` annotation is not
 	// set on the build PLR
 	// +optional
 	Revision string `json:"version"`
