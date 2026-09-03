@@ -22,7 +22,7 @@ internal/webhooks      # Webhooks
 loader/                # ObjectLoader interface — abstracts K8s resource fetching
 tekton/                # PipelineRun builders, status helpers, watch predicates
 gitops/                # Snapshot and Release CR generation and management functions
-pkg/                   # integrationteststatus/ and dag/ contain exported structs, metrics/ contains Prometheus gauges and histograms
+pkg/                   # integrationteststatus/ and dag/ contain exported structs, metrics/ contains Prometheus gauges and histograms, conversion/ contains functions to convert between appstudio.redhat.com and konflux-ci.dev versions of the same resource
 helpers/               # Additional utility functions
 config/                # Kustomize manifests (CRDs, RBAC, webhooks, samples)
 e2e-tests/             # Ginkgo e2e test definitions for the integration service suite

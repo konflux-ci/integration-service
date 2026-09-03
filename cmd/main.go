@@ -45,6 +45,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
+	konfluxv1alpha1 "github.com/konflux-ci/application-api/api/konflux/v1alpha1"
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
 	integrationv1alpha1 "github.com/konflux-ci/integration-service/api/v1alpha1"
 	integrationv1beta1 "github.com/konflux-ci/integration-service/api/v1beta1"
@@ -64,6 +65,7 @@ var (
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 	utilruntime.Must(applicationapiv1alpha1.AddToScheme(scheme))
+	utilruntime.Must(konfluxv1alpha1.AddToScheme(scheme))
 	utilruntime.Must(integrationv1alpha1.AddToScheme(scheme))
 	utilruntime.Must(integrationv1beta1.AddToScheme(scheme))
 	utilruntime.Must(integrationv1beta2.AddToScheme(scheme))

@@ -21,7 +21,7 @@ import (
 
 	toolkit "github.com/konflux-ci/operator-toolkit/loader"
 
-	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
+	oldapplicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
 	"github.com/konflux-ci/integration-service/api/v1beta2"
 	releasev1alpha1 "github.com/konflux-ci/release-service/api/v1alpha1"
 	. "github.com/onsi/ginkgo/v2"
@@ -56,7 +56,7 @@ var _ = Describe("Release Adapter", Ordered, func() {
 
 	Context("When calling GetAllApplicationComponents [APPLICATION]", func() {
 		It("returns resource and error from the context", func() {
-			applicationComponents := []applicationapiv1alpha1.Component{}
+			applicationComponents := []oldapplicationapiv1alpha1.Component{}
 			mockContext := toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
 					ContextKey: ApplicationComponentsContextKey,
@@ -71,7 +71,7 @@ var _ = Describe("Release Adapter", Ordered, func() {
 
 	Context("When calling GetAllComponentsInNamespace", func() {
 		It("returns resource and error from the context", func() {
-			namespaceComponents := []applicationapiv1alpha1.Component{}
+			namespaceComponents := []oldapplicationapiv1alpha1.Component{}
 			mockContext := toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
 					ContextKey: NamespaceComponentsContextKey,
@@ -84,24 +84,9 @@ var _ = Describe("Release Adapter", Ordered, func() {
 		})
 	})
 
-	Context("When calling GetAllComponentGroupComponents", func() {
-		It("returns resource and error from the context", func() {
-			groupComponents := []applicationapiv1alpha1.Component{}
-			mockContext := toolkit.GetMockedContext(ctx, []toolkit.MockData{
-				{
-					ContextKey: ComponentGroupComponentsContextKey,
-					Resource:   groupComponents,
-				},
-			})
-			resource, err := loader.GetAllComponentGroupComponents(mockContext, nil, nil)
-			Expect(resource).To(Equal(&groupComponents))
-			Expect(err).ToNot(HaveOccurred())
-		})
-	})
-
 	Context("When calling GetApplicationFromSnapshot [APPLICATION]", func() {
 		It("returns resource and error from the context", func() {
-			application := &applicationapiv1alpha1.Application{}
+			application := &oldapplicationapiv1alpha1.Application{}
 			mockContext := toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
 					ContextKey: ApplicationContextKey,
@@ -131,7 +116,7 @@ var _ = Describe("Release Adapter", Ordered, func() {
 
 	Context("When calling GetComponentFromSnapshot", func() {
 		It("returns resource and error from the context", func() {
-			component := &applicationapiv1alpha1.Component{}
+			component := &oldapplicationapiv1alpha1.Component{}
 			mockContext := toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
 					ContextKey: ComponentContextKey,
@@ -146,7 +131,7 @@ var _ = Describe("Release Adapter", Ordered, func() {
 
 	Context("When calling GetComponentFromPipelineRun", func() {
 		It("returns resource and error from the context", func() {
-			component := &applicationapiv1alpha1.Component{}
+			component := &oldapplicationapiv1alpha1.Component{}
 			mockContext := toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
 					ContextKey: ComponentContextKey,
@@ -161,7 +146,7 @@ var _ = Describe("Release Adapter", Ordered, func() {
 
 	Context("When calling GetApplicationFromPipelineRun", func() {
 		It("returns resource and error from the context", func() {
-			application := &applicationapiv1alpha1.Application{}
+			application := &oldapplicationapiv1alpha1.Application{}
 			mockContext := toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
 					ContextKey: ApplicationContextKey,
@@ -176,7 +161,7 @@ var _ = Describe("Release Adapter", Ordered, func() {
 
 	Context("When calling GetApplicationFromComponent", func() {
 		It("returns resource and error from the context", func() {
-			application := &applicationapiv1alpha1.Application{}
+			application := &oldapplicationapiv1alpha1.Application{}
 			mockContext := toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
 					ContextKey: ApplicationContextKey,
@@ -191,7 +176,7 @@ var _ = Describe("Release Adapter", Ordered, func() {
 
 	Context("When calling GetSnapshotFromPipelineRun", func() {
 		It("returns resource and error from the context", func() {
-			snapshot := &applicationapiv1alpha1.Snapshot{}
+			snapshot := &oldapplicationapiv1alpha1.Snapshot{}
 			mockContext := toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
 					ContextKey: SnapshotContextKey,
@@ -206,7 +191,7 @@ var _ = Describe("Release Adapter", Ordered, func() {
 
 	Context("When calling GetAllSnapshotsForBuildPipelineRun [APPLICATION]", func() {
 		It("returns resource and error from the context", func() {
-			snapshots := []applicationapiv1alpha1.Snapshot{}
+			snapshots := []oldapplicationapiv1alpha1.Snapshot{}
 			mockContext := toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
 					ContextKey: AllSnapshotsForBuildPipelineRunApplicationContextKey,
@@ -221,7 +206,7 @@ var _ = Describe("Release Adapter", Ordered, func() {
 
 	Context("When calling GetAllSnapshotsForBuildPipelineRun", func() {
 		It("returns resource and error from the context", func() {
-			mappedSnapshots := map[string][]applicationapiv1alpha1.Snapshot{}
+			mappedSnapshots := map[string][]oldapplicationapiv1alpha1.Snapshot{}
 			mockContext := toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
 					ContextKey: AllSnapshotsForBuildPipelineRunContextKey,
@@ -296,7 +281,7 @@ var _ = Describe("Release Adapter", Ordered, func() {
 
 	Context("When calling GetAllSnapshots", func() {
 		It("returns snapshots and error from the context", func() {
-			snapshots := []applicationapiv1alpha1.Snapshot{}
+			snapshots := []oldapplicationapiv1alpha1.Snapshot{}
 			mockContext := toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
 					ContextKey: AllSnapshotsContextKey,
@@ -371,7 +356,7 @@ var _ = Describe("Release Adapter", Ordered, func() {
 
 	Context("When calling GetComponent", func() {
 		It("returns resource and error from the context", func() {
-			component := &applicationapiv1alpha1.Component{}
+			component := &oldapplicationapiv1alpha1.Component{}
 			mockContext := toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
 					ContextKey: GetComponentContextKey,
@@ -416,7 +401,7 @@ var _ = Describe("Release Adapter", Ordered, func() {
 
 	Context("When calling GetMatchingComponentSnapshotsForComponentAndPRGroupHash", func() {
 		It("returns resource and error from the context", func() {
-			snapshots := []applicationapiv1alpha1.Snapshot{}
+			snapshots := []oldapplicationapiv1alpha1.Snapshot{}
 			mockContext := toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
 					ContextKey: GetComponentSnapshotsKey,
@@ -431,7 +416,7 @@ var _ = Describe("Release Adapter", Ordered, func() {
 
 	Context("When calling GetMatchingComponentSnapshotsForPRGroupHash", func() {
 		It("returns resource and error from the context", func() {
-			snapshots := []applicationapiv1alpha1.Snapshot{}
+			snapshots := []oldapplicationapiv1alpha1.Snapshot{}
 			mockContext := toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
 					ContextKey: GetPRSnapshotsKey,
@@ -461,7 +446,7 @@ var _ = Describe("Release Adapter", Ordered, func() {
 
 	Context("When calling GetMatchingGroupSnapshotsForPRGroupHash", func() {
 		It("return resource and error from the context", func() {
-			snapshots := []applicationapiv1alpha1.Snapshot{}
+			snapshots := []oldapplicationapiv1alpha1.Snapshot{}
 			mockContext := toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
 					ContextKey: GetGroupSnapshotsKey,
@@ -512,7 +497,7 @@ var _ = Describe("Release Adapter", Ordered, func() {
 
 	Context("When calling GetPRComponentSnapshotsForComponent", func() {
 		It("returns resource and error from the context", func() {
-			snapshots := []applicationapiv1alpha1.Snapshot{}
+			snapshots := []oldapplicationapiv1alpha1.Snapshot{}
 			mockContext := toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
 					ContextKey: GetPRComponentSnapshotsForComponentContextKey,

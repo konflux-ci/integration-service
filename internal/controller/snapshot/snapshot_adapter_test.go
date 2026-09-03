@@ -4356,10 +4356,6 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 					ContextKey: loader.GetPRSnapshotsKey,
 					Resource:   []applicationapiv1alpha1.Snapshot{*hasComSnapshot1, *hasComSnapshot3},
 				},
-				{
-					ContextKey: loader.ComponentGroupComponentsContextKey,
-					Resource:   []applicationapiv1alpha1.Component{*hasCom1, *hasCom3},
-				},
 			})
 
 			// create 3 snapshots here because we need to get snapshot twice so that we can't use the mocked snapshot
@@ -4403,10 +4399,6 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 				{
 					ContextKey: loader.GetBuildPLRContextKey,
 					Resource:   []tektonv1.PipelineRun{},
-				},
-				{
-					ContextKey: loader.ComponentGroupComponentsContextKey,
-					Resource:   []applicationapiv1alpha1.Component{*hasCom1, *hasCom3},
 				},
 			})
 
@@ -4460,10 +4452,6 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 				{
 					ContextKey: loader.GetComponentsFromSnapshotForPRGroupKey,
 					Resource:   []loader.Tuple{sampleTuple},
-				},
-				{
-					ContextKey: loader.ComponentGroupComponentsContextKey,
-					Resource:   []applicationapiv1alpha1.Component{*hasCom1},
 				},
 			})
 
@@ -4557,10 +4545,6 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 				{
 					ContextKey: loader.GetComponentsFromSnapshotForPRGroupKey,
 					Resource:   []loader.Tuple{sampleTuple},
-				},
-				{
-					ContextKey: loader.ComponentGroupComponentsContextKey,
-					Resource:   []applicationapiv1alpha1.Component{*hasCom1},
 				},
 			})
 
@@ -4702,10 +4686,6 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 				{
 					ContextKey: loader.GetBuildPLRContextKey,
 					Resource:   []tektonv1.PipelineRun{},
-				},
-				{
-					ContextKey: loader.ComponentGroupComponentsContextKey,
-					Resource:   []applicationapiv1alpha1.Component{*hasComp, *hasCom1, *hasCom3, *hasCompMissingImageDigest, *hasCompWithValidImage},
 				},
 			})
 

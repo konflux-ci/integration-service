@@ -164,6 +164,10 @@ var _ = Describe("Component Adapter", Ordered, func() {
 				ContextKey: loader.ApplicationComponentsContextKey,
 				Resource:   mockApplicationComponents,
 			},
+			{
+				ContextKey: loader.GetComponentContextKey,
+				Resource:   hasComp,
+			},
 		})
 
 		result, err := adapter.EnsureComponentIsCleanedUp()

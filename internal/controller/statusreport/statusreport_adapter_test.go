@@ -1016,7 +1016,13 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			}
 			Expect(k8sClient.Create(ctx, gitlabTestSnapshot)).Should(Succeed())
 
-			adapter = NewAdapterWithApplication(ctx, gitlabTestSnapshot, hasApp, log, loader.NewMockLoader(), k8sClient)
+			mockedCtx := toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: loader.ComponentContextKey,
+					Resource:   gitlabTestComp,
+				},
+			})
+			adapter = NewAdapterWithApplication(mockedCtx, gitlabTestSnapshot, hasApp, log, loader.NewMockLoader(), k8sClient)
 			adapter.status = mockStatus
 		})
 
@@ -1058,6 +1064,10 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 				{
 					ContextKey: loader.ApplicationContextKey,
 					Resource:   hasApp,
+				},
+				{
+					ContextKey: loader.ComponentContextKey,
+					Resource:   hasComp,
 				},
 				{
 					ContextKey: loader.SnapshotContextKey,
@@ -1257,6 +1267,10 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 				{
 					ContextKey: loader.ComponentGroupContextKey,
 					Resource:   hasCompGroup,
+				},
+				{
+					ContextKey: loader.ComponentContextKey,
+					Resource:   hasComp,
 				},
 				{
 					ContextKey: loader.SnapshotContextKey,
