@@ -32,11 +32,16 @@ var (
 
 // GetComponentPipeline returns the pipeline for a given component labels.
 // In case of failure, this function retries till it gets timed out.
-func (i *IntegrationController) GetBuildPipelineRun(componentName, applicationName, namespace string, pacBuild bool, sha string) (*tektonv1.PipelineRun, error) {
+// TODO: when we remove the old application-specific code, remove the usingComponentGroups, parentName, and pacBuild parameters
+// NOTE: build PLRs do not set a componentGroup label
+func (i *IntegrationController) GetBuildPipelineRun(componentName, parentName, namespace string, pacBuild bool, sha string, usingComponentGroups bool) (*tektonv1.PipelineRun, error) {
 	var pipelineRun *tektonv1.PipelineRun
 
 	err := wait.PollUntilContextTimeout(context.Background(), constants.PipelineRunPollingInterval, superLongTimeout, true, func(ctx context.Context) (done bool, err error) {
-		pipelineRunLabels := map[string]string{tektonconsts.PipelineRunComponentLabel: componentName, tektonconsts.PipelineRunApplicationLabel: applicationName, tektonconsts.PipelineRunTypeLabel: tektonconsts.PipelineRunBuildType}
+		pipelineRunLabels := map[string]string{tektonconsts.PipelineRunComponentLabel: componentName, tektonconsts.PipelineRunTypeLabel: tektonconsts.PipelineRunBuildType}
+		if !usingComponentGroups {
+			pipelineRunLabels[tektonconsts.PipelineRunApplicationLabel] = parentName
+		}
 
 		if sha != "" {
 			pipelineRunLabels["pipelinesascode.tekton.dev/sha"] = sha
@@ -61,7 +66,7 @@ func (i *IntegrationController) GetBuildPipelineRun(componentName, applicationNa
 		}
 
 		pipelineRun = &tektonv1.PipelineRun{}
-		ginkgo.GinkgoWriter.Printf("no pipelinerun found for component %s %s", componentName, utils.GetAdditionalInfo(applicationName, namespace))
+		ginkgo.GinkgoWriter.Printf("no pipelinerun found for component %s %s", componentName, utils.GetAdditionalInfo(parentName, namespace))
 		return false, nil
 	})
 
@@ -151,10 +156,10 @@ func (i *IntegrationController) isScenarioInExpectedScenarios(testScenario *inte
 }
 
 // WaitForAllIntegrationPipelinesToBeFinished wait for all integration pipelines to finish.
-func (i *IntegrationController) WaitForAllIntegrationPipelinesToBeFinished(testNamespace, applicationName string, snapshot *appstudioApi.Snapshot, expectedTestScenarios []string) error {
-	integrationTestScenarios, err := i.GetIntegrationTestScenarios(applicationName, testNamespace)
+func (i *IntegrationController) WaitForAllIntegrationPipelinesToBeFinished(testNamespace, parentName string, snapshot *appstudioApi.Snapshot, expectedTestScenarios []string, usingComponentGroups bool) error {
+	integrationTestScenarios, err := i.GetIntegrationTestScenarios(parentName, testNamespace, usingComponentGroups)
 	if err != nil {
-		return fmt.Errorf("unable to get IntegrationTestScenarios for Application %s/%s. Error: %v", testNamespace, applicationName, err)
+		return fmt.Errorf("unable to get IntegrationTestScenarios for Application %s/%s. Error: %v", testNamespace, parentName, err)
 	}
 
 	for _, testScenario := range *integrationTestScenarios {
@@ -174,10 +179,10 @@ func (i *IntegrationController) WaitForAllIntegrationPipelinesToBeFinished(testN
 // WaitForFinalizerToGetRemovedFromAllIntegrationPipelineRuns waits for
 // the given finalizer to get removed from all integration pipelinesruns
 // that are related to the given application and namespace.
-func (i *IntegrationController) WaitForFinalizerToGetRemovedFromAllIntegrationPipelineRuns(testNamespace, applicationName string, snapshot *appstudioApi.Snapshot, expectedTestScenarios []string) error {
-	integrationTestScenarios, err := i.GetIntegrationTestScenarios(applicationName, testNamespace)
+func (i *IntegrationController) WaitForFinalizerToGetRemovedFromAllIntegrationPipelineRuns(testNamespace, parentName string, snapshot *appstudioApi.Snapshot, expectedTestScenarios []string, usingComponentGroups bool) error {
+	integrationTestScenarios, err := i.GetIntegrationTestScenarios(parentName, testNamespace, usingComponentGroups)
 	if err != nil {
-		return fmt.Errorf("unable to get IntegrationTestScenarios for Application %s/%s. Error: %v", testNamespace, applicationName, err)
+		return fmt.Errorf("unable to get IntegrationTestScenarios for Application %s/%s. Error: %v", testNamespace, parentName, err)
 	}
 
 	for _, testScenario := range *integrationTestScenarios {
@@ -212,8 +217,8 @@ func (i *IntegrationController) WaitForFinalizerToGetRemovedFromIntegrationPipel
 }
 
 // GetAnnotationIfExists returns the value of a given annotation within a pipelinerun, if it exists.
-func (i *IntegrationController) GetAnnotationIfExists(testNamespace, applicationName, componentName, annotationKey string) (string, error) {
-	pipelineRun, err := i.GetBuildPipelineRun(componentName, applicationName, testNamespace, false, "")
+func (i *IntegrationController) GetAnnotationIfExists(testNamespace, parentName, componentName, annotationKey string, usingComponentGroups bool) (string, error) {
+	pipelineRun, err := i.GetBuildPipelineRun(componentName, parentName, testNamespace, false, "", usingComponentGroups)
 	if err != nil {
 		return "", fmt.Errorf("pipelinerun for Component %s/%s can't be gotten successfully. Error: %v", testNamespace, componentName, err)
 	}
@@ -222,15 +227,15 @@ func (i *IntegrationController) GetAnnotationIfExists(testNamespace, application
 
 // WaitForBuildPipelineRunToGetAnnotated waits for given build pipeline to get annotated with a specific annotation.
 // In case of failure, this function retries till it gets timed out.
-func (i *IntegrationController) WaitForBuildPipelineRunToGetAnnotated(testNamespace, applicationName, componentName, annotationKey string) error {
+func (i *IntegrationController) WaitForBuildPipelineRunToGetAnnotated(testNamespace, parentName, componentName, annotationKey string, usingComponentGroups bool) error {
 	return wait.PollUntilContextTimeout(context.Background(), constants.PipelineRunPollingInterval, 5*time.Minute, true, func(ctx context.Context) (done bool, err error) {
-		pipelineRun, err := i.GetBuildPipelineRun(componentName, applicationName, testNamespace, false, "")
+		pipelineRun, err := i.GetBuildPipelineRun(componentName, parentName, testNamespace, false, "", usingComponentGroups)
 		if err != nil {
 			ginkgo.GinkgoWriter.Printf("pipelinerun for Component %s/%s can't be gotten successfully. Error: %v", testNamespace, componentName, err)
 			return false, nil
 		}
 
-		annotationValue, _ := i.GetAnnotationIfExists(testNamespace, applicationName, componentName, annotationKey)
+		annotationValue, _ := i.GetAnnotationIfExists(testNamespace, parentName, componentName, annotationKey, usingComponentGroups)
 		if annotationValue == "" {
 			ginkgo.GinkgoWriter.Printf("build pipelinerun %s/%s doesn't contain annotation %s yet", testNamespace, pipelineRun.Name, annotationKey)
 			return false, nil
@@ -241,12 +246,12 @@ func (i *IntegrationController) WaitForBuildPipelineRunToGetAnnotated(testNamesp
 
 // WaitForBuildPipelineToBeFinished wait for given build pipeline to finish.
 // It exposes the error message from the failed task to the end user when the pipelineRun failed.
-func (i *IntegrationController) WaitForBuildPipelineToBeFinished(testNamespace, applicationName, componentName, sha string) (string, error) {
+func (i *IntegrationController) WaitForBuildPipelineToBeFinished(testNamespace, parentName, componentName, sha string, usingComponentGroups bool) (string, error) {
 	var logs string
 	return logs, wait.PollUntilContextTimeout(context.Background(), constants.PipelineRunPollingInterval, 30*time.Minute, true, func(ctx context.Context) (done bool, err error) {
-		pipelineRun, err := i.GetBuildPipelineRun(componentName, applicationName, testNamespace, false, sha)
+		pipelineRun, err := i.GetBuildPipelineRun(componentName, parentName, testNamespace, false, sha, usingComponentGroups)
 		if err != nil {
-			ginkgo.GinkgoWriter.Println("Build pipelineRun has not been created yet for app %s/%s, and component %s", testNamespace, applicationName, componentName)
+			ginkgo.GinkgoWriter.Println("Build pipelineRun has not been created yet for app %s/%s, and component %s", testNamespace, parentName, componentName)
 			return false, nil
 		}
 		for _, condition := range pipelineRun.Status.Conditions {
