@@ -20,6 +20,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	neturl "net/url"
 	"reflect"
 	"sort"
 	"strings"
@@ -531,8 +532,60 @@ func IsObjectYoungerThanThreshold(obj metav1.Object, threshold time.Duration) bo
 
 // UrlToGitUrl appends `.git` to the URL if it doesn't already have it
 func UrlToGitUrl(url string) string {
+	url = strings.TrimSuffix(url, "/")
 	if strings.HasSuffix(url, ".git") {
 		return url
 	}
-	return strings.TrimSuffix(url, "/") + ".git"
+	return url + ".git"
+}
+
+// ConstructGitUrl constructs a git URL from server URL, org and repository
+func ConstructGitUrl(serverUrl, org, repo string) string {
+	url := strings.TrimSuffix(serverUrl, "/")
+	return UrlToGitUrl(fmt.Sprintf("%s/%s/%s", url, org, repo))
+}
+
+// IsForkGitRepository reports whether source and target repo URLs refer to different repositories.
+func IsForkGitRepository(sourceRepoUrl, targetRepoUrl string) bool {
+	if sourceRepoUrl == "" || targetRepoUrl == "" {
+		return false
+	}
+	return UrlToGitUrl(sourceRepoUrl) != UrlToGitUrl(targetRepoUrl)
+}
+
+// ParseGitHttpsUrl parses an https git repository URL into server URL, org and repo.
+// For nested GitLab groups, org contains the namespace path (e.g. group/subgroup).
+func ParseGitHttpsUrl(gitUrl string) (serverUrl, org, repo string, err error) {
+	normalized := strings.TrimSuffix(UrlToGitUrl(gitUrl), ".git")
+	parsedUrl, err := neturl.Parse(normalized)
+	if err != nil {
+		return "", "", "", fmt.Errorf("failed to parse git url: %w", err)
+	}
+	if parsedUrl.Scheme != "https" {
+		return "", "", "", fmt.Errorf("unsupported git url scheme: %s", parsedUrl.Scheme)
+	}
+	path := strings.Trim(parsedUrl.Path, "/")
+	if path == "" {
+		return "", "", "", fmt.Errorf("git url path is empty")
+	}
+	segments := strings.Split(path, "/")
+	if len(segments) < 2 {
+		return "", "", "", fmt.Errorf("git url path must contain org and repo")
+	}
+	repo = strings.TrimSuffix(segments[len(segments)-1], ".git")
+	org = strings.Join(segments[:len(segments)-1], "/")
+	serverUrl = fmt.Sprintf("%s://%s", parsedUrl.Scheme, parsedUrl.Host)
+	return serverUrl, org, repo, nil
+}
+
+// ForkGitResolverOrgRepo returns org and repo parsed from the fork source URL when source and target differ.
+func ForkGitResolverOrgRepo(sourceRepoUrl, targetRepoUrl string) (org, repo string, ok bool) {
+	if !IsForkGitRepository(sourceRepoUrl, targetRepoUrl) {
+		return "", "", false
+	}
+	_, org, repo, err := ParseGitHttpsUrl(sourceRepoUrl)
+	if err != nil {
+		return "", "", false
+	}
+	return org, repo, true
 }
