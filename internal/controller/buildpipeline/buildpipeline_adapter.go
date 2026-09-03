@@ -688,12 +688,19 @@ func (a *Adapter) reportIntegrationStatusAndHandleGroupsForApplication(integrati
 		return 0, 0, fmt.Errorf("failed to report status for expected group Snapshot: %w", err)
 	}
 
-	a.logger.Info("try to check if group snapshot is expected for build PLR")
-	isGroupSnapshotExpected, err := a.isGroupSnapshotExpectedForBuildPLR(a.pipelineRun, tempComponentSnapshot, a.application.Name, gitops.ApplicationNameLabel)
-	if err != nil {
-		a.logger.Error(err, "failed to check if group snapshot is expected")
-		return 0, 0, fmt.Errorf("failed to check if group snapshot is expected: %w", err)
+	isGroupSnapshotExpected := false
+	if metadata.HasAnnotationWithValue(a.application, h.AlwaysCreateGroupSnapshotAnnotationName, "true") {
+		a.logger.Info("group snapshot creation enforced by annotation on application")
+		isGroupSnapshotExpected = true
+	} else {
+		a.logger.Info("try to check if group snapshot is expected for build PLR")
+		isGroupSnapshotExpected, err = a.isGroupSnapshotExpectedForBuildPLR(a.pipelineRun, tempComponentSnapshot, a.application.Name, gitops.ApplicationNameLabel)
+		if err != nil {
+			a.logger.Error(err, "failed to check if group snapshot is expected")
+			return 0, 0, fmt.Errorf("failed to check if group snapshot is expected: %w", err)
+		}
 	}
+
 	if isGroupSnapshotExpected {
 		a.logger.Info("group snapshot is expected to be created for build pipelinerun, group integration test should be set for found context scenario", "pipelineRun.Name", a.pipelineRun.Name)
 		tempGroupSnapshot := a.prepareTempGroupSnapshot(a.pipelineRun, &a.application.ObjectMeta, true)
@@ -725,11 +732,18 @@ func (a *Adapter) reportIntegrationStatusAndHandleGroups(integrationTestStatus *
 		}
 		numComponentSnapshotScenarios += num
 
-		a.logger.Info("try to check if group snapshot is expected for build PLR")
-		isGroupSnapshotExpected, err := a.isGroupSnapshotExpectedForBuildPLR(a.pipelineRun, tempComponentSnapshot, componentGroup.Name, gitops.ComponentGroupNameLabel)
-		if err != nil {
-			return 0, 0, fmt.Errorf("failed to check if group snapshot is expected: %w", err)
+		isGroupSnapshotExpected := false
+		if metadata.HasAnnotationWithValue(&componentGroup, h.AlwaysCreateGroupSnapshotAnnotationName, "true") {
+			a.logger.Info("group snapshot creation enforced by annotation on componentGroup")
+			isGroupSnapshotExpected = true
+		} else {
+			a.logger.Info("try to check if group snapshot is expected for build PLR")
+			isGroupSnapshotExpected, err = a.isGroupSnapshotExpectedForBuildPLR(a.pipelineRun, tempComponentSnapshot, componentGroup.Name, gitops.ComponentGroupNameLabel)
+			if err != nil {
+				return 0, 0, fmt.Errorf("failed to check if group snapshot is expected: %w", err)
+			}
 		}
+
 		if isGroupSnapshotExpected {
 			a.logger.Info("group snapshot is expected to be created for build pipelinerun, group integration test should be set for found context scenario", "pipelineRun.Name", a.pipelineRun.Name)
 			tempGroupSnapshot := a.prepareTempGroupSnapshot(a.pipelineRun, &componentGroup.ObjectMeta, false)

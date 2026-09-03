@@ -3846,6 +3846,154 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			Expect(err).ToNot(HaveOccurred())
 		})
 
+		It("should create group snapshot when always-create-group-snapshots is set on Application with single PR component", func() {
+			var buf bytes.Buffer
+			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+
+			ctrl := gomock.NewController(GinkgoT())
+			mockStatus := status.NewMockStatusInterface(ctrl)
+			mockStatus.EXPECT().FindSnapshotWithOpenedPR(gomock.Any(), gomock.Any(), gomock.Any()).Return(hasComSnapshot1, 0, nil)
+			mockStatus.EXPECT().IsPRMRInSnapshotOpened(gomock.Any(), gomock.Any()).AnyTimes()
+
+			appWithAnnotation := hasApp.DeepCopy()
+			if appWithAnnotation.Annotations == nil {
+				appWithAnnotation.Annotations = map[string]string{}
+			}
+			appWithAnnotation.Annotations[helpers.AlwaysCreateGroupSnapshotAnnotationName] = "true"
+
+			sampleTuple := loader.Tuple{ComponentName: hasCom1.Name, ComponentVersion: ""}
+			adapter = NewAdapterWithApplication(ctx, hasComSnapshot1, appWithAnnotation, log, loader.NewMockLoader(), k8sClient)
+			adapter.status = mockStatus
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: loader.ApplicationContextKey,
+					Resource:   appWithAnnotation,
+				},
+				{
+					ContextKey: loader.SnapshotContextKey,
+					Resource:   hasComSnapshot1,
+				},
+				{
+					ContextKey: loader.GetBuildPLRContextKey,
+					Resource:   []tektonv1.PipelineRun{},
+				},
+				{
+					ContextKey: loader.GetComponentsFromSnapshotForPRGroupKey,
+					Resource:   []loader.Tuple{sampleTuple},
+				},
+				{
+					ContextKey: loader.ApplicationComponentsContextKey,
+					Resource:   []applicationapiv1alpha1.Component{*hasCom1},
+				},
+			})
+
+			groupSnapshotsBefore := &applicationapiv1alpha1.SnapshotList{}
+			Expect(k8sClient.List(adapter.context, groupSnapshotsBefore, client.InNamespace("default"), client.MatchingLabels{
+				gitops.SnapshotTypeLabel: gitops.SnapshotGroupType,
+				gitops.PRGroupHashLabel:  prGroupSha,
+			})).Should(Succeed())
+			groupSnapshotCountBefore := len(groupSnapshotsBefore.Items)
+
+			result, err := adapter.EnsureGroupSnapshotExist()
+			Expect(result.CancelRequest).To(BeFalse())
+			Expect(result.RequeueRequest).To(BeFalse())
+			Expect(err).ToNot(HaveOccurred())
+			Expect(buf.String()).ShouldNot(ContainSubstring("less than 2, skipping group snapshot creation"))
+			Eventually(func() int {
+				groupSnapshots := &applicationapiv1alpha1.SnapshotList{}
+				err := k8sClient.List(adapter.context, groupSnapshots, client.InNamespace("default"), client.MatchingLabels{
+					gitops.SnapshotTypeLabel: gitops.SnapshotGroupType,
+					gitops.PRGroupHashLabel:  prGroupSha,
+				})
+				if err != nil {
+					return 0
+				}
+				return len(groupSnapshots.Items)
+			}, time.Second*10).Should(Equal(groupSnapshotCountBefore + 1))
+
+			Eventually(func() bool {
+				err := k8sClient.Get(adapter.context, types.NamespacedName{
+					Name:      hasComSnapshot1.Name,
+					Namespace: "default",
+				}, hasComSnapshot1)
+				return err == nil && gitops.HasPRGroupProcessed(hasComSnapshot1)
+			}, time.Second*10).Should(BeTrue())
+
+			buf.Reset()
+			result, err = adapter.EnsureGroupSnapshotExist()
+			Expect(result.CancelRequest).To(BeFalse())
+			Expect(result.RequeueRequest).To(BeFalse())
+			Expect(err).ToNot(HaveOccurred())
+			Expect(buf.String()).Should(ContainSubstring("The PR group info has been processed for this component snapshot"))
+
+			groupSnapshots := &applicationapiv1alpha1.SnapshotList{}
+			Expect(k8sClient.List(adapter.context, groupSnapshots, client.InNamespace("default"), client.MatchingLabels{
+				gitops.SnapshotTypeLabel: gitops.SnapshotGroupType,
+				gitops.PRGroupHashLabel:  prGroupSha,
+			})).Should(Succeed())
+			Expect(groupSnapshots.Items).To(HaveLen(groupSnapshotCountBefore + 1))
+		})
+
+		It("should not create group snapshot when always-create-group-snapshots is set on Application but no valid PR component snapshot exists", func() {
+			var buf bytes.Buffer
+			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+
+			ctrl := gomock.NewController(GinkgoT())
+			mockStatus := status.NewMockStatusInterface(ctrl)
+			mockStatus.EXPECT().FindSnapshotWithOpenedPR(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, 0, nil)
+			mockStatus.EXPECT().IsPRMRInSnapshotOpened(gomock.Any(), gomock.Any()).AnyTimes()
+
+			appWithAnnotation := hasApp.DeepCopy()
+			if appWithAnnotation.Annotations == nil {
+				appWithAnnotation.Annotations = map[string]string{}
+			}
+			appWithAnnotation.Annotations[helpers.AlwaysCreateGroupSnapshotAnnotationName] = "true"
+
+			sampleTuple := loader.Tuple{ComponentName: hasCom1.Name, ComponentVersion: ""}
+			adapter = NewAdapterWithApplication(ctx, hasComSnapshot1, appWithAnnotation, log, loader.NewMockLoader(), k8sClient)
+			adapter.status = mockStatus
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: loader.ApplicationContextKey,
+					Resource:   appWithAnnotation,
+				},
+				{
+					ContextKey: loader.SnapshotContextKey,
+					Resource:   hasComSnapshot1,
+				},
+				{
+					ContextKey: loader.GetBuildPLRContextKey,
+					Resource:   []tektonv1.PipelineRun{},
+				},
+				{
+					ContextKey: loader.GetComponentsFromSnapshotForPRGroupKey,
+					Resource:   []loader.Tuple{sampleTuple},
+				},
+				{
+					ContextKey: loader.ApplicationComponentsContextKey,
+					Resource:   []applicationapiv1alpha1.Component{*hasCom1},
+				},
+			})
+
+			groupSnapshotsBefore := &applicationapiv1alpha1.SnapshotList{}
+			Expect(k8sClient.List(adapter.context, groupSnapshotsBefore, client.InNamespace("default"), client.MatchingLabels{
+				gitops.SnapshotTypeLabel: gitops.SnapshotGroupType,
+			})).Should(Succeed())
+			groupSnapshotCountBefore := len(groupSnapshotsBefore.Items)
+
+			result, err := adapter.EnsureGroupSnapshotExist()
+			Expect(result.CancelRequest).To(BeFalse())
+			Expect(result.RequeueRequest).To(BeFalse())
+			Expect(err).ToNot(HaveOccurred())
+			Expect(buf.String()).ShouldNot(ContainSubstring("PR/MR in snapshot is opened"))
+
+			groupSnapshotsAfter := &applicationapiv1alpha1.SnapshotList{}
+			Expect(k8sClient.List(adapter.context, groupSnapshotsAfter, client.InNamespace("default"), client.MatchingLabels{
+				gitops.SnapshotTypeLabel: gitops.SnapshotGroupType,
+			})).Should(Succeed())
+			Expect(groupSnapshotsAfter.Items).To(HaveLen(groupSnapshotCountBefore))
+		})
+
 		It("Ensure group snapshot can be created", func() {
 			var buf bytes.Buffer
 			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
@@ -4267,6 +4415,172 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			Expect(result.RequeueRequest).To(BeFalse())
 			Expect(buf.String()).Should(ContainSubstring("The number 1 of components affected by this PR group feature1 is less than 2, skipping group snapshot creation"))
 			Expect(err).ToNot(HaveOccurred())
+		})
+
+		It("should create group snapshot when always-create-group-snapshots is set on ComponentGroup with single PR component", func() {
+			var buf bytes.Buffer
+			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+
+			ctrl := gomock.NewController(GinkgoT())
+			mockStatus := status.NewMockStatusInterface(ctrl)
+			mockStatus.EXPECT().FindSnapshotWithOpenedPR(gomock.Any(), gomock.Any(), gomock.Any()).Return(hasComSnapshot1, 0, nil)
+			mockStatus.EXPECT().IsPRMRInSnapshotOpened(gomock.Any(), gomock.Any()).AnyTimes()
+
+			compGroupWithAnnotation := hasCompGroup.DeepCopy()
+			if compGroupWithAnnotation.Annotations == nil {
+				compGroupWithAnnotation.Annotations = map[string]string{}
+			}
+			compGroupWithAnnotation.Annotations[helpers.AlwaysCreateGroupSnapshotAnnotationName] = "true"
+			compGroupWithAnnotation.Spec.Components = []v1beta2.ComponentReference{
+				{
+					Name: hasCom1.Name,
+					ComponentVersion: v1beta2.ComponentVersionReference{
+						Name:     "v1",
+						Revision: "main",
+					},
+				},
+			}
+
+			sampleTuple := loader.Tuple{ComponentName: hasCom1.Name, ComponentVersion: "v1"}
+			adapter = NewAdapter(ctx, hasComSnapshot1, compGroupWithAnnotation, log, loader.NewMockLoader(), k8sClient)
+			adapter.status = mockStatus
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: loader.ComponentGroupsContextKey,
+					Resource:   compGroupWithAnnotation,
+				},
+				{
+					ContextKey: loader.SnapshotContextKey,
+					Resource:   hasComSnapshot1,
+				},
+				{
+					ContextKey: loader.GetBuildPLRContextKey,
+					Resource:   []tektonv1.PipelineRun{},
+				},
+				{
+					ContextKey: loader.GetComponentsFromSnapshotForPRGroupKey,
+					Resource:   []loader.Tuple{sampleTuple},
+				},
+				{
+					ContextKey: loader.ComponentGroupComponentsContextKey,
+					Resource:   []applicationapiv1alpha1.Component{*hasCom1},
+				},
+			})
+
+			groupSnapshotsBefore := &applicationapiv1alpha1.SnapshotList{}
+			Expect(k8sClient.List(adapter.context, groupSnapshotsBefore, client.InNamespace("default"), client.MatchingLabels{
+				gitops.SnapshotTypeLabel: gitops.SnapshotGroupType,
+				gitops.PRGroupHashLabel:  prGroupSha,
+			})).Should(Succeed())
+			groupSnapshotCountBefore := len(groupSnapshotsBefore.Items)
+
+			result, err := adapter.EnsureGroupSnapshotExist()
+			Expect(result.CancelRequest).To(BeFalse())
+			Expect(result.RequeueRequest).To(BeFalse())
+			Expect(err).ToNot(HaveOccurred())
+			Expect(buf.String()).ShouldNot(ContainSubstring("less than 2, skipping group snapshot creation"))
+			Eventually(func() int {
+				groupSnapshots := &applicationapiv1alpha1.SnapshotList{}
+				err := k8sClient.List(adapter.context, groupSnapshots, client.InNamespace("default"), client.MatchingLabels{
+					gitops.SnapshotTypeLabel: gitops.SnapshotGroupType,
+					gitops.PRGroupHashLabel:  prGroupSha,
+				})
+				if err != nil {
+					return 0
+				}
+				return len(groupSnapshots.Items)
+			}, time.Second*10).Should(Equal(groupSnapshotCountBefore + 1))
+
+			Eventually(func() bool {
+				err := k8sClient.Get(adapter.context, types.NamespacedName{
+					Name:      hasComSnapshot1.Name,
+					Namespace: "default",
+				}, hasComSnapshot1)
+				return err == nil && gitops.HasPRGroupProcessed(hasComSnapshot1)
+			}, time.Second*10).Should(BeTrue())
+
+			buf.Reset()
+			result, err = adapter.EnsureGroupSnapshotExist()
+			Expect(result.CancelRequest).To(BeFalse())
+			Expect(result.RequeueRequest).To(BeFalse())
+			Expect(err).ToNot(HaveOccurred())
+			Expect(buf.String()).Should(ContainSubstring("The PR group info has been processed for this component snapshot"))
+
+			groupSnapshots := &applicationapiv1alpha1.SnapshotList{}
+			Expect(k8sClient.List(adapter.context, groupSnapshots, client.InNamespace("default"), client.MatchingLabels{
+				gitops.SnapshotTypeLabel: gitops.SnapshotGroupType,
+				gitops.PRGroupHashLabel:  prGroupSha,
+			})).Should(Succeed())
+			Expect(groupSnapshots.Items).To(HaveLen(groupSnapshotCountBefore + 1))
+		})
+
+		It("should not create group snapshot when always-create-group-snapshots is set on ComponentGroup but no valid PR component snapshot exists", func() {
+			var buf bytes.Buffer
+			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+
+			ctrl := gomock.NewController(GinkgoT())
+			mockStatus := status.NewMockStatusInterface(ctrl)
+			mockStatus.EXPECT().FindSnapshotWithOpenedPR(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, 0, nil)
+			mockStatus.EXPECT().IsPRMRInSnapshotOpened(gomock.Any(), gomock.Any()).AnyTimes()
+
+			compGroupWithAnnotation := hasCompGroup.DeepCopy()
+			if compGroupWithAnnotation.Annotations == nil {
+				compGroupWithAnnotation.Annotations = map[string]string{}
+			}
+			compGroupWithAnnotation.Annotations[helpers.AlwaysCreateGroupSnapshotAnnotationName] = "true"
+			compGroupWithAnnotation.Spec.Components = []v1beta2.ComponentReference{
+				{
+					Name: hasCom1.Name,
+					ComponentVersion: v1beta2.ComponentVersionReference{
+						Name:     "v1",
+						Revision: "main",
+					},
+				},
+			}
+
+			sampleTuple := loader.Tuple{ComponentName: hasCom1.Name, ComponentVersion: "v1"}
+			adapter = NewAdapter(ctx, hasComSnapshot1, compGroupWithAnnotation, log, loader.NewMockLoader(), k8sClient)
+			adapter.status = mockStatus
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: loader.ComponentGroupsContextKey,
+					Resource:   compGroupWithAnnotation,
+				},
+				{
+					ContextKey: loader.SnapshotContextKey,
+					Resource:   hasComSnapshot1,
+				},
+				{
+					ContextKey: loader.GetBuildPLRContextKey,
+					Resource:   []tektonv1.PipelineRun{},
+				},
+				{
+					ContextKey: loader.GetComponentsFromSnapshotForPRGroupKey,
+					Resource:   []loader.Tuple{sampleTuple},
+				},
+				{
+					ContextKey: loader.ComponentGroupComponentsContextKey,
+					Resource:   []applicationapiv1alpha1.Component{*hasCom1},
+				},
+			})
+
+			groupSnapshotsBefore := &applicationapiv1alpha1.SnapshotList{}
+			Expect(k8sClient.List(adapter.context, groupSnapshotsBefore, client.InNamespace("default"), client.MatchingLabels{
+				gitops.SnapshotTypeLabel: gitops.SnapshotGroupType,
+			})).Should(Succeed())
+			groupSnapshotCountBefore := len(groupSnapshotsBefore.Items)
+
+			result, err := adapter.EnsureGroupSnapshotExist()
+			Expect(result.CancelRequest).To(BeFalse())
+			Expect(result.RequeueRequest).To(BeFalse())
+			Expect(err).ToNot(HaveOccurred())
+			Expect(buf.String()).ShouldNot(ContainSubstring("PR/MR in snapshot is opened"))
+
+			groupSnapshotsAfter := &applicationapiv1alpha1.SnapshotList{}
+			Expect(k8sClient.List(adapter.context, groupSnapshotsAfter, client.InNamespace("default"), client.MatchingLabels{
+				gitops.SnapshotTypeLabel: gitops.SnapshotGroupType,
+			})).Should(Succeed())
+			Expect(groupSnapshotsAfter.Items).To(HaveLen(groupSnapshotCountBefore))
 		})
 
 		It("Ensure group snapshot can be created", func() {

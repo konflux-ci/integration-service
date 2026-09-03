@@ -29,7 +29,10 @@ continue[Continue processing]
 update_metadata(add PR group info to build pipelineRun metadata)
 notify_pr_group_failure(annotate Snapshots and in-flight builds in PR group with failure message)
 failed_group_pipeline_run{Pipeline failed?}
-update_integrationTestStatus_in_git_provider(Create checkRun/commitStatus in<br>git provider)
+report_component_integration_test_status(Report component snapshot<br>integration test status<br>to git provider)
+group_snapshot_enforcement_annotation{Application or ComponentGroup has<br>integration.konflux-ci.dev/always-create-group-snapshots: true?}
+check_group_snapshot_eligibility{Is group snapshot expected<br>for this PR group?<br>(>= 2 components with open PR/MR)}
+report_group_integration_test_status(Report group snapshot<br>integration test status<br>to git provider)
 update_build_plr_annotation(Update build pipelineRun annotation<br>test.appstudio.openshift.io/snapshot-creation-report<br>with the status)
 successful_pipeline(Successful build pipelinerun<br>from push event and is signed)
 update_GCL(Update Global Candidate List for the built component)
@@ -62,9 +65,14 @@ prep_snapshot                    --> check_chains
 check_chains               --Yes --> annotate_pipelineRun
 annotate_pipelineRun       --Yes --> remove_finalizer
 remove_finalizer                 --> continue
-need_to_set_integration_test  --Yes --> update_integrationTestStatus_in_git_provider
+need_to_set_integration_test  --Yes --> report_component_integration_test_status
 need_to_set_integration_test  --No  --> continue
-update_integrationTestStatus_in_git_provider --> update_build_plr_annotation
+report_component_integration_test_status --> group_snapshot_enforcement_annotation
+group_snapshot_enforcement_annotation --Yes--> report_group_integration_test_status
+group_snapshot_enforcement_annotation --No --> check_group_snapshot_eligibility
+check_group_snapshot_eligibility --Yes--> report_group_integration_test_status
+check_group_snapshot_eligibility --No --> update_build_plr_annotation
+report_group_integration_test_status --> update_build_plr_annotation
 update_build_plr_annotation --> continue
 
 successful_pipeline --> update_GCL

@@ -20,6 +20,11 @@ import (
 	"github.com/konflux-ci/integration-service/api/v1beta2"
 )
 
+const (
+	// AlwaysCreateGroupSnapshotAnnotationName controls if the integration service always creates group Snapshots for PRs
+	AlwaysCreateGroupSnapshotAnnotationName = "integration.konflux-ci.dev/always-create-group-snapshots"
+)
+
 func GetComponentGroupNames(componentGroups *[]v1beta2.ComponentGroup) []string {
 	names := []string{}
 	if componentGroups != nil {
