@@ -167,3 +167,4 @@ jobs:
           # Adjust this to the location of kube-linter config you're using, or remove the setting if you'd like to use
           # the default config.
           config: ./.github/.kube-linter-config.yaml
+
