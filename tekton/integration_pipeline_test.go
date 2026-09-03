@@ -76,6 +76,15 @@ func getParamValue(params tektonv1.Params, name string) string {
 	return ""
 }
 
+func getResolverParamValue(params []v1beta2.ResolverParameter, name string) string {
+	for _, p := range params {
+		if p.Name == name {
+			return p.Value
+		}
+	}
+	return ""
+}
+
 var _ = Describe("Integration pipeline", Ordered, func() {
 
 	const (
@@ -1079,6 +1088,274 @@ var _ = Describe("Integration pipeline", Ordered, func() {
 			// We expect the second task in the finally block to not be updated since it originates from a different repo
 			Expect(result.Spec.PipelineSpec.Finally[1].TaskRef.Params[0].Value.StringVal).To(Equal("https://github.com/someotherrepo/repo.git"))
 			Expect(result.Spec.PipelineSpec.Finally[1].TaskRef.Params[1].Value.StringVal).To(Equal("main"))
+		})
+	})
+
+	Context("When testing git resolver updates with org/repo/serverURL params", func() {
+		const (
+			forkSourceRepoUrl  = "https://github.com/test/integration-examples"
+			forkTargetRepoUrl  = "https://github.com/redhat-appstudio/integration-examples"
+			forkTargetOrg      = "redhat-appstudio"
+			forkTargetRepo     = "integration-examples"
+			forkSourceOrg      = "test"
+			forkSourceRevision = "abcdef0123456789abcdef0123456789abcdef01"
+		)
+
+		It("updates org and repo in ReplaceGitResolverUpdateMap for fork PR snapshots", func() {
+			snapshot := &applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Annotations: map[string]string{
+						gitops.PipelineAsCodeGitSourceURLAnnotation: forkSourceRepoUrl,
+						gitops.PipelineAsCodeRepoURLAnnotation:      forkTargetRepoUrl,
+						gitops.PipelineAsCodeSHAAnnotation:          forkSourceRevision,
+					},
+				},
+			}
+			resolverParams := []v1beta2.ResolverParameter{
+				{Name: tektonconsts.TektonResolverGitParamServerUrl, Value: "https://github.com"},
+				{Name: tektonconsts.TektonResolverGitParamOrg, Value: forkTargetOrg},
+				{Name: tektonconsts.TektonResolverGitParamRepo, Value: forkTargetRepo},
+				{Name: tektonconsts.TektonResolverGitParamRevision, Value: "main"},
+			}
+
+			result := tekton.ReplaceGitResolverUpdateMap(snapshot, resolverParams)
+			Expect(getResolverParamValue(result, tektonconsts.TektonResolverGitParamOrg)).To(Equal(forkSourceOrg))
+			Expect(getResolverParamValue(result, tektonconsts.TektonResolverGitParamRepo)).To(Equal(forkTargetRepo))
+			Expect(getResolverParamValue(result, tektonconsts.TektonResolverGitParamRevision)).To(Equal(forkSourceRevision))
+
+			resultAgain := tekton.ReplaceGitResolverUpdateMap(snapshot, result)
+			Expect(resultAgain).To(Equal(result))
+			Expect(getResolverParamValue(resultAgain, tektonconsts.TektonResolverGitParamOrg)).To(Equal(forkSourceOrg))
+			Expect(getResolverParamValue(resultAgain, tektonconsts.TektonResolverGitParamRepo)).To(Equal(forkTargetRepo))
+			Expect(getResolverParamValue(resultAgain, tektonconsts.TektonResolverGitParamRevision)).To(Equal(forkSourceRevision))
+		})
+
+		It("does not update org and repo in ReplaceGitResolverUpdateMap for same-repo PR snapshots", func() {
+			snapshot := &applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Annotations: map[string]string{
+						gitops.PipelineAsCodeGitSourceURLAnnotation: forkTargetRepoUrl,
+						gitops.PipelineAsCodeRepoURLAnnotation:      forkTargetRepoUrl,
+						gitops.PipelineAsCodeSHAAnnotation:          forkSourceRevision,
+					},
+				},
+			}
+			resolverParams := []v1beta2.ResolverParameter{
+				{Name: tektonconsts.TektonResolverGitParamServerUrl, Value: "https://github.com"},
+				{Name: tektonconsts.TektonResolverGitParamOrg, Value: forkTargetOrg},
+				{Name: tektonconsts.TektonResolverGitParamRepo, Value: forkTargetRepo},
+				{Name: tektonconsts.TektonResolverGitParamRevision, Value: "main"},
+			}
+
+			result := tekton.ReplaceGitResolverUpdateMap(snapshot, resolverParams)
+			Expect(getResolverParamValue(result, tektonconsts.TektonResolverGitParamOrg)).To(Equal(forkTargetOrg))
+			Expect(getResolverParamValue(result, tektonconsts.TektonResolverGitParamRepo)).To(Equal(forkTargetRepo))
+			Expect(getResolverParamValue(result, tektonconsts.TektonResolverGitParamRevision)).To(Equal(forkSourceRevision))
+		})
+
+		It("returns true from ShouldUpdateIntegrationPipelineGitResolver when org/repo/serverURL match the target repo", func() {
+			scenario := &v1beta2.IntegrationTestScenario{
+				Spec: v1beta2.IntegrationTestScenarioSpec{
+					ResolverRef: v1beta2.ResolverRef{
+						Resolver: tektonconsts.TektonResolverGit,
+						Params: []v1beta2.ResolverParameter{
+							{Name: tektonconsts.TektonResolverGitParamServerUrl, Value: "https://github.com"},
+							{Name: tektonconsts.TektonResolverGitParamOrg, Value: forkTargetOrg},
+							{Name: tektonconsts.TektonResolverGitParamRepo, Value: forkTargetRepo},
+							{Name: tektonconsts.TektonResolverGitParamRevision, Value: "main"},
+						},
+					},
+				},
+			}
+			snapshot := &applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: map[string]string{
+						gitops.PipelineAsCodePullRequestAnnotation: "1",
+						gitops.PipelineAsCodeEventTypeLabel:        gitops.PipelineAsCodePullRequestType,
+					},
+					Annotations: map[string]string{
+						gitops.PipelineAsCodeRepoURLAnnotation:      forkTargetRepoUrl,
+						gitops.PipelineAsCodeGitSourceURLAnnotation: forkSourceRepoUrl,
+						gitops.PipelineAsCodeTargetBranchAnnotation: "main",
+						gitops.PipelineAsCodeSHAAnnotation:          forkSourceRevision,
+					},
+				},
+			}
+
+			Expect(tekton.ShouldUpdateIntegrationPipelineGitResolver(scenario, snapshot)).To(BeTrue())
+		})
+
+		It("returns false from ShouldUpdateIntegrationPipelineGitResolver when org/repo/serverURL do not match the target repo", func() {
+			scenario := &v1beta2.IntegrationTestScenario{
+				Spec: v1beta2.IntegrationTestScenarioSpec{
+					ResolverRef: v1beta2.ResolverRef{
+						Resolver: tektonconsts.TektonResolverGit,
+						Params: []v1beta2.ResolverParameter{
+							{Name: tektonconsts.TektonResolverGitParamServerUrl, Value: "https://github.com"},
+							{Name: tektonconsts.TektonResolverGitParamOrg, Value: "other-org"},
+							{Name: tektonconsts.TektonResolverGitParamRepo, Value: forkTargetRepo},
+							{Name: tektonconsts.TektonResolverGitParamRevision, Value: "main"},
+						},
+					},
+				},
+			}
+			snapshot := &applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: map[string]string{
+						gitops.PipelineAsCodePullRequestAnnotation: "1",
+						gitops.PipelineAsCodeEventTypeLabel:        gitops.PipelineAsCodePullRequestType,
+					},
+					Annotations: map[string]string{
+						gitops.PipelineAsCodeRepoURLAnnotation:      forkTargetRepoUrl,
+						gitops.PipelineAsCodeGitSourceURLAnnotation: forkSourceRepoUrl,
+						gitops.PipelineAsCodeTargetBranchAnnotation: "main",
+						gitops.PipelineAsCodeSHAAnnotation:          forkSourceRevision,
+					},
+				},
+			}
+
+			Expect(tekton.ShouldUpdateIntegrationPipelineGitResolver(scenario, snapshot)).To(BeFalse())
+		})
+
+		It("updates org and repo in WithUpdatedPipelineGitResolver for fork PR snapshots", func() {
+			pipelineRun := &tekton.IntegrationPipelineRun{
+				tektonv1.PipelineRun{
+					Spec: tektonv1.PipelineRunSpec{
+						PipelineRef: &tektonv1.PipelineRef{
+							ResolverRef: tektonv1.ResolverRef{
+								Resolver: tektonv1.ResolverName(tektonconsts.TektonResolverGit),
+								Params: []tektonv1.Param{
+									{
+										Name: tektonconsts.TektonResolverGitParamServerUrl,
+										Value: tektonv1.ParamValue{
+											Type:      tektonv1.ParamTypeString,
+											StringVal: "https://github.com",
+										},
+									},
+									{
+										Name: tektonconsts.TektonResolverGitParamOrg,
+										Value: tektonv1.ParamValue{
+											Type:      tektonv1.ParamTypeString,
+											StringVal: forkTargetOrg,
+										},
+									},
+									{
+										Name: tektonconsts.TektonResolverGitParamRepo,
+										Value: tektonv1.ParamValue{
+											Type:      tektonv1.ParamTypeString,
+											StringVal: forkTargetRepo,
+										},
+									},
+									{
+										Name: tektonconsts.TektonResolverGitParamRevision,
+										Value: tektonv1.ParamValue{
+											Type:      tektonv1.ParamTypeString,
+											StringVal: "main",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			}
+
+			snapshot := &applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Annotations: map[string]string{
+						gitops.PipelineAsCodeGitSourceURLAnnotation: forkSourceRepoUrl,
+						gitops.PipelineAsCodeRepoURLAnnotation:      forkTargetRepoUrl,
+						gitops.PipelineAsCodeTargetBranchAnnotation: "main",
+						gitops.PipelineAsCodeSHAAnnotation:          forkSourceRevision,
+					},
+				},
+			}
+
+			result := pipelineRun.WithUpdatedPipelineGitResolver(snapshot)
+			Expect(result).NotTo(BeNil())
+			Expect(getParamValue(result.Spec.PipelineRef.ResolverRef.Params, tektonconsts.TektonResolverGitParamOrg)).To(Equal(forkSourceOrg))
+			Expect(getParamValue(result.Spec.PipelineRef.ResolverRef.Params, tektonconsts.TektonResolverGitParamRepo)).To(Equal(forkTargetRepo))
+			Expect(getParamValue(result.Spec.PipelineRef.ResolverRef.Params, tektonconsts.TektonResolverGitParamRevision)).To(Equal(forkSourceRevision))
+
+			resultAgain := result.WithUpdatedPipelineGitResolver(snapshot)
+			Expect(resultAgain).To(BeIdenticalTo(result))
+			Expect(getParamValue(resultAgain.Spec.PipelineRef.ResolverRef.Params, tektonconsts.TektonResolverGitParamOrg)).To(Equal(forkSourceOrg))
+			Expect(getParamValue(resultAgain.Spec.PipelineRef.ResolverRef.Params, tektonconsts.TektonResolverGitParamRepo)).To(Equal(forkTargetRepo))
+			Expect(getParamValue(resultAgain.Spec.PipelineRef.ResolverRef.Params, tektonconsts.TektonResolverGitParamRevision)).To(Equal(forkSourceRevision))
+		})
+
+		It("updates org and repo in WithUpdatedTasksGitResolver for fork PR snapshots", func() {
+			pipelineRun := &tekton.IntegrationPipelineRun{
+				tektonv1.PipelineRun{
+					Spec: tektonv1.PipelineRunSpec{
+						PipelineSpec: &tektonv1.PipelineSpec{
+							Tasks: []tektonv1.PipelineTask{
+								{
+									Name: "some-task",
+									TaskRef: &tektonv1.TaskRef{
+										ResolverRef: tektonv1.ResolverRef{
+											Resolver: tektonv1.ResolverName(tektonconsts.TektonResolverGit),
+											Params: []tektonv1.Param{
+												{
+													Name: tektonconsts.TektonResolverGitParamServerUrl,
+													Value: tektonv1.ParamValue{
+														Type:      tektonv1.ParamTypeString,
+														StringVal: "https://github.com",
+													},
+												},
+												{
+													Name: tektonconsts.TektonResolverGitParamOrg,
+													Value: tektonv1.ParamValue{
+														Type:      tektonv1.ParamTypeString,
+														StringVal: forkTargetOrg,
+													},
+												},
+												{
+													Name: tektonconsts.TektonResolverGitParamRepo,
+													Value: tektonv1.ParamValue{
+														Type:      tektonv1.ParamTypeString,
+														StringVal: forkTargetRepo,
+													},
+												},
+												{
+													Name: tektonconsts.TektonResolverGitParamRevision,
+													Value: tektonv1.ParamValue{
+														Type:      tektonv1.ParamTypeString,
+														StringVal: "main",
+													},
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			}
+
+			snapshot := &applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Annotations: map[string]string{
+						gitops.PipelineAsCodeGitSourceURLAnnotation: forkSourceRepoUrl,
+						gitops.PipelineAsCodeRepoURLAnnotation:      forkTargetRepoUrl,
+						gitops.PipelineAsCodeTargetBranchAnnotation: "main",
+						gitops.PipelineAsCodeSHAAnnotation:          forkSourceRevision,
+					},
+				},
+			}
+
+			result := pipelineRun.WithUpdatedTasksGitResolver(snapshot)
+			Expect(result).NotTo(BeNil())
+			Expect(getParamValue(result.Spec.PipelineSpec.Tasks[0].TaskRef.ResolverRef.Params, tektonconsts.TektonResolverGitParamOrg)).To(Equal(forkSourceOrg))
+			Expect(getParamValue(result.Spec.PipelineSpec.Tasks[0].TaskRef.ResolverRef.Params, tektonconsts.TektonResolverGitParamRepo)).To(Equal(forkTargetRepo))
+			Expect(getParamValue(result.Spec.PipelineSpec.Tasks[0].TaskRef.ResolverRef.Params, tektonconsts.TektonResolverGitParamRevision)).To(Equal(forkSourceRevision))
+
+			resultAgain := result.WithUpdatedTasksGitResolver(snapshot)
+			Expect(resultAgain).To(BeIdenticalTo(result))
+			Expect(getParamValue(resultAgain.Spec.PipelineSpec.Tasks[0].TaskRef.ResolverRef.Params, tektonconsts.TektonResolverGitParamOrg)).To(Equal(forkSourceOrg))
+			Expect(getParamValue(resultAgain.Spec.PipelineSpec.Tasks[0].TaskRef.ResolverRef.Params, tektonconsts.TektonResolverGitParamRepo)).To(Equal(forkTargetRepo))
+			Expect(getParamValue(resultAgain.Spec.PipelineSpec.Tasks[0].TaskRef.ResolverRef.Params, tektonconsts.TektonResolverGitParamRevision)).To(Equal(forkSourceRevision))
 		})
 	})
 })
