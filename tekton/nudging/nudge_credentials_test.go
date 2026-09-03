@@ -1025,6 +1025,12 @@ var _ = Describe("Nudge credentials", func() {
 			scheme = newCredentialScheme()
 		})
 
+		It("keeps operator-facing SCM metadata keys stable", func() {
+			Expect(scmCredentialsSecretLabel).To(Equal("appstudio.redhat.com/credentials"))
+			Expect(scmSecretHostnameLabel).To(Equal("appstudio.redhat.com/scm.host"))
+			Expect(scmSecretRepositoryAnnotation).To(Equal("appstudio.redhat.com/scm.repository"))
+		})
+
 		It("returns credentials from matching BasicAuth secret", func() {
 			scmSecret := &corev1.Secret{
 				ObjectMeta: metav1.ObjectMeta{
@@ -1057,6 +1063,9 @@ var _ = Describe("Nudge credentials", func() {
 			_, _, err := lookupSCMCredentials(ctx, c, testNamespace, "github.com", "org/repo")
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("no SCM basic auth secrets found"))
+			Expect(err.Error()).To(ContainSubstring(scmCredentialsSecretLabel + "=scm"))
+			Expect(err.Error()).To(ContainSubstring(scmSecretHostnameLabel + "=github.com"))
+			Expect(err.Error()).To(ContainSubstring("BasicAuth"))
 		})
 
 		It("skips non-BasicAuth secrets", func() {
@@ -1078,6 +1087,33 @@ var _ = Describe("Nudge credentials", func() {
 			_, _, err := lookupSCMCredentials(ctx, c, testNamespace, "github.com", "org/repo")
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("no SCM basic auth secrets found"))
+		})
+
+		It("explains the repository annotation when no secret matches the repo", func() {
+			scmSecret := &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "scm-secret",
+					Namespace: testNamespace,
+					Labels: map[string]string{
+						scmCredentialsSecretLabel: "scm",
+						scmSecretHostnameLabel:    "github.com",
+					},
+					Annotations: map[string]string{
+						scmSecretRepositoryAnnotation: "other/repo",
+					},
+				},
+				Type: corev1.SecretTypeBasicAuth,
+				Data: map[string][]byte{
+					corev1.BasicAuthUsernameKey: []byte("user"),
+					corev1.BasicAuthPasswordKey: []byte("token"),
+				},
+			}
+			c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(scmSecret).Build()
+
+			_, _, err := lookupSCMCredentials(ctx, c, testNamespace, "github.com", "org/repo")
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("no matching SCM secret found"))
+			Expect(err.Error()).To(ContainSubstring(scmSecretRepositoryAnnotation))
 		})
 	})
 
