@@ -1095,10 +1095,73 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		normalizedGitUrl = helpers.UrlToGitUrl(gitUrl)
 		Expect(normalizedGitUrl).To(Equal(expectedGitUrl))
 
+		gitUrl = "https://github.com/konflux-ci/integration-service.git/"
+		normalizedGitUrl = helpers.UrlToGitUrl(gitUrl)
+		Expect(normalizedGitUrl).To(Equal(expectedGitUrl))
+
 		expectedGitUrl = "git@github.com:konflux-ci/integration-service.git"
 		gitUrl = "git@github.com:konflux-ci/integration-service.git"
 		normalizedGitUrl = helpers.UrlToGitUrl(gitUrl)
 		Expect(normalizedGitUrl).To(Equal(expectedGitUrl))
+	})
+
+	It("constructs git URLs from server URL, org and repo", func() {
+		Expect(helpers.ConstructGitUrl("https://github.com", "konflux-ci", "integration-service")).To(Equal("https://github.com/konflux-ci/integration-service.git"))
+		Expect(helpers.ConstructGitUrl("https://github.com/", "konflux-ci", "integration-service")).To(Equal("https://github.com/konflux-ci/integration-service.git"))
+	})
+
+	It("detects fork git repositories", func() {
+		sourceRepoUrl := "https://github.com/test/integration-examples"
+		targetRepoUrl := "https://github.com/redhat-appstudio/integration-examples"
+
+		Expect(helpers.IsForkGitRepository(sourceRepoUrl, targetRepoUrl)).To(BeTrue())
+		Expect(helpers.IsForkGitRepository(sourceRepoUrl+"/", targetRepoUrl)).To(BeTrue())
+		Expect(helpers.IsForkGitRepository(sourceRepoUrl, sourceRepoUrl)).To(BeFalse())
+		Expect(helpers.IsForkGitRepository(sourceRepoUrl+"/", sourceRepoUrl)).To(BeFalse())
+		Expect(helpers.IsForkGitRepository("", targetRepoUrl)).To(BeFalse())
+		Expect(helpers.IsForkGitRepository(sourceRepoUrl, "")).To(BeFalse())
+	})
+
+	It("parses https git repository URLs", func() {
+		serverUrl, org, repo, err := helpers.ParseGitHttpsUrl("https://github.com/konflux-ci/integration-service")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(serverUrl).To(Equal("https://github.com"))
+		Expect(org).To(Equal("konflux-ci"))
+		Expect(repo).To(Equal("integration-service"))
+
+		serverUrl, org, repo, err = helpers.ParseGitHttpsUrl("https://gitlab.com/group/subgroup/project.git")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(serverUrl).To(Equal("https://gitlab.com"))
+		Expect(org).To(Equal("group/subgroup"))
+		Expect(repo).To(Equal("project"))
+
+		serverUrl, org, repo, err = helpers.ParseGitHttpsUrl("https://github.com/konflux-ci/integration-service.git/")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(serverUrl).To(Equal("https://github.com"))
+		Expect(org).To(Equal("konflux-ci"))
+		Expect(repo).To(Equal("integration-service"))
+
+		_, _, _, err = helpers.ParseGitHttpsUrl("http://github.com/konflux-ci/integration-service")
+		Expect(err).To(HaveOccurred())
+
+		_, _, _, err = helpers.ParseGitHttpsUrl("git@github.com:konflux-ci/integration-service.git")
+		Expect(err).To(HaveOccurred())
+	})
+
+	It("returns fork org and repo from source URL when repos differ", func() {
+		sourceRepoUrl := "https://github.com/test/integration-examples"
+		targetRepoUrl := "https://github.com/redhat-appstudio/integration-examples"
+
+		org, repo, ok := helpers.ForkGitResolverOrgRepo(sourceRepoUrl, targetRepoUrl)
+		Expect(ok).To(BeTrue())
+		Expect(org).To(Equal("test"))
+		Expect(repo).To(Equal("integration-examples"))
+
+		_, _, ok = helpers.ForkGitResolverOrgRepo(sourceRepoUrl, sourceRepoUrl)
+		Expect(ok).To(BeFalse())
+
+		_, _, ok = helpers.ForkGitResolverOrgRepo("git@github.com:test/integration-examples.git", targetRepoUrl)
+		Expect(ok).To(BeFalse())
 	})
 
 })
