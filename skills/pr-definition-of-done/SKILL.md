@@ -40,6 +40,7 @@ Every PR must pass CI checks, follow commit conventions, include tests, and keep
 - [ ] No secrets, keys, or credentials committed
 - [ ] No RBAC wildcards in `config/` (CI checks this)
 - [ ] New resource types: add `+kubebuilder:rbac` markers
+- [ ] All resources accessed via `client.Get()` have `list` and `watch` verbs in RBAC markers (required by cached client informers — see [ci-cd-quirks](../ci-cd-quirks/SKILL.md))
 
 ### Documentation
 - [ ] PR description explains the "why", not just the "what"
@@ -71,3 +72,4 @@ Every PR must pass CI checks, follow commit conventions, include tests, and keep
 | Stale RBAC/CRD manifests | Run `make manifests` after changing `+kubebuilder` markers |
 | Unsigned commit | Use `git commit -s` or amend with `git commit --amend -s` |
 | Coverage dropped | Add tests for new code paths — check `cover.out` for uncovered lines |
+| Reflector retry storms or leader election loss | Missing `list;watch` verbs on RBAC marker for resource accessed via cached client `Get()` — add `list` and `watch` to the marker and run `make manifests` |
