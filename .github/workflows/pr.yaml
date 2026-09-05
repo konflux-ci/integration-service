@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: hadolint/hadolint-action@54c9adbab1582c2ef04b2016b760714a4bfde3cf # v3.1.0
+      - uses: hadolint/hadolint-action@06be81baf89a55ffd0e24b8f04a4185738dd3387 # v3.5.0
         with:
           dockerfile: Dockerfile
   go-linters:
@@ -23,13 +23,13 @@ jobs:
       - name: Set up Go 1.x
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
-          go-version: "1.25.0"
+          go-version: "1.27.1"
       - name: Check out code into the Go module directory
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
       - name: Run Gosec Security Scanner
-        uses: securego/gosec@9e75c0576c9878035d4221392108d458abe10fc3 # v2.28.0
+        uses: securego/gosec@deb54465fea23d19a77f037e11e6589021f8501d # v2.29.0
         with:
           args: -exclude-generated ./...
         env:
@@ -39,7 +39,7 @@ jobs:
         with:
           args: --timeout=10m
           only-new-issues: true
-      - uses: dominikh/staticcheck-action@024238d2898c874f26d723e7d0ff4308c35589a2 # v1.4.0
+      - uses: dominikh/staticcheck-action@9716614d4101e79b4340dd97b10e54d68234e431 # v1.4.1
         with:
           version: "2025.1.1"
           install-go: false
@@ -52,7 +52,7 @@ jobs:
       - name: Set up Go 1.x
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
-          go-version: "1.25.0"
+          go-version: "1.27.1"
       - name: Check out code into the Go module directory
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
