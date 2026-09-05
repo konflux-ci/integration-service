@@ -4,10 +4,10 @@ go 1.25.0
 
 require (
 	codeberg.org/mvdkleijn/forgejo-sdk/forgejo/v3 v3.0.0
-	github.com/konflux-ci/application-api v0.0.0-20260603073049-dd8c9b1a64c2
-	github.com/konflux-ci/coverport/instrumentation/go v0.0.0-20251127115143-b5207b335f8b
+	github.com/konflux-ci/application-api v0.0.0-20260727123715-2999a91451c6
+	github.com/konflux-ci/coverport/instrumentation/go v0.0.0-20260827155954-c914ae07e9f0
 	github.com/konflux-ci/image-controller v0.0.0-20241128141349-9986c9955e05
-	github.com/konflux-ci/operator-toolkit v0.0.0-20251118152634-b4f41f073069
+	github.com/konflux-ci/operator-toolkit v0.0.0-20260312101100-d4e398191a68
 	github.com/konflux-ci/release-service v0.0.0-20260130155849-48535a3e5ace
 	github.com/onsi/ginkgo/v2 v2.28.3
 	github.com/onsi/gomega v1.40.0
@@ -15,7 +15,7 @@ require (
 	k8s.io/api v0.35.3
 	k8s.io/apimachinery v0.35.3
 	k8s.io/client-go v11.0.0+incompatible
-	knative.dev/pkg v0.0.0-20250424013628-d5e74d29daa3
+	knative.dev/pkg v0.0.0-20260825072334-d2a153acc00c
 	sigs.k8s.io/controller-runtime v0.22.4
 )
 
@@ -30,7 +30,7 @@ replace (
 	k8s.io/client-go => k8s.io/client-go v0.35.3
 	k8s.io/component-base => k8s.io/component-base v0.35.3
 
-	knative.dev/pkg => knative.dev/pkg v0.0.0-20240416145024-0f34a8815650
+	knative.dev/pkg => knative.dev/pkg v0.0.0-20260825072334-d2a153acc00c
 )
 
 require (
@@ -55,7 +55,7 @@ require (
 	go.uber.org/zap v1.27.1
 	golang.org/x/oauth2 v0.36.0
 	k8s.io/klog/v2 v2.130.1
-	k8s.io/utils v0.0.0-20251002143259-bc988d571ff4
+	k8s.io/utils v0.0.0-20260707023825-cf1189d6abe3
 	sigs.k8s.io/yaml v1.6.0
 )
 
@@ -162,7 +162,7 @@ require (
 	go.yaml.in/yaml/v2 v2.4.4 // indirect
 	go.yaml.in/yaml/v3 v3.0.5 // indirect
 	golang.org/x/crypto v0.53.0 // indirect
-	golang.org/x/exp v0.0.0-20260410095643-746e56fc9e2f // indirect
+	golang.org/x/exp v0.0.0-20260824195058-e88cd73687aa // indirect
 	golang.org/x/mod v0.37.0 // indirect
 	golang.org/x/net v0.56.0 // indirect
 	golang.org/x/sync v0.21.0 // indirect
