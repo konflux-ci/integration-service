@@ -244,11 +244,48 @@ func (fc *ForgejoClient) ForkRepository(sourceProjectID, targetProjectID string)
 	})
 	if err != nil {
 		if resp != nil && resp.StatusCode == http.StatusConflict {
-			existingRepo, _, getErr := fc.client.GetRepo(targetOwner, targetRepo)
-			if getErr != nil {
-				return nil, fmt.Errorf("fork of %s to %s already exists but failed to fetch: %w", sourceProjectID, targetProjectID, getErr)
+			// Forgejo enforces one fork per org per source repo. A stale fork from a
+			// previous test run exists under a different name. Find and delete it, then
+			// retry so the fork lands at the requested targetRepo name — callers depend on
+			// the name being correct for branch creation and cleanup.
+			prefix := targetOwner + "/"
+			deleted := false
+			for page := 1; !deleted; page++ {
+				forks, _, listErr := fc.client.ListForks(sourceOwner, sourceRepo, forgejo.ListForksOptions{
+					ListOptions: forgejo.ListOptions{Page: page, PageSize: 100},
+				})
+				if listErr != nil {
+					return nil, fmt.Errorf("fork of %s already exists in %s but failed to list forks: %w", sourceProjectID, targetOwner, listErr)
+				}
+				if len(forks) == 0 {
+					break
+				}
+				for _, f := range forks {
+					if strings.HasPrefix(f.FullName, prefix) {
+						staleName := strings.TrimPrefix(f.FullName, prefix)
+						if _, delErr := fc.client.DeleteRepo(targetOwner, staleName); delErr != nil {
+							return nil, fmt.Errorf("failed to delete stale fork %s: %w", f.FullName, delErr)
+						}
+						deleted = true
+						break
+					}
+				}
+				if len(forks) < 100 {
+					break
+				}
 			}
-			return existingRepo, nil
+			if !deleted {
+				return nil, fmt.Errorf("fork of %s conflicts in %s but no matching fork found in fork list", sourceProjectID, targetOwner)
+			}
+			// Retry now that the stale fork is gone.
+			forkedRepo, _, retryErr := fc.client.CreateFork(sourceOwner, sourceRepo, forgejo.CreateForkOption{
+				Organization: &targetOwner,
+				Name:         &targetRepo,
+			})
+			if retryErr != nil {
+				return nil, fmt.Errorf("error forking project %s to %s after removing stale fork: %w", sourceProjectID, targetProjectID, retryErr)
+			}
+			return forkedRepo, nil
 		}
 		return nil, fmt.Errorf("error forking project %s to %s: %w", sourceProjectID, targetProjectID, err)
 	}
