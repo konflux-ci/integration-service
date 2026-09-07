@@ -54,6 +54,7 @@ func NewStatusReportReconciler(client client.Client, logger *logr.Logger, scheme
 //+kubebuilder:rbac:groups=appstudio.redhat.com,resources=snapshots/status,verbs=get
 //+kubebuilder:rbac:groups=appstudio.redhat.com,resources=applications,verbs=get;list;watch
 //+kubebuilder:rbac:groups=appstudio.redhat.com,resources=applications/status,verbs=get
+//+kubebuilder:rbac:groups="",resources=secrets,verbs=get
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.

@@ -60,7 +60,7 @@ func NewIntegrationReconciler(client client.Client, logger *logr.Logger, scheme 
 //+kubebuilder:rbac:groups=appstudio.redhat.com,resources=applications/finalizers,verbs=update
 //+kubebuilder:rbac:groups=appstudio.redhat.com,resources=applications,verbs=get;list;watch
 //+kubebuilder:rbac:groups=appstudio.redhat.com,resources=applications/status,verbs=get
-//+kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
+//+kubebuilder:rbac:groups="",resources=secrets,verbs=get
 //+kubebuilder:rbac:groups=pipelinesascode.tekton.dev,resources=repositories,verbs=get;list;watch
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
