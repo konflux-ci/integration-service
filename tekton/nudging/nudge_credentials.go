@@ -24,6 +24,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -31,24 +32,15 @@ import (
 	ghapi "github.com/google/go-github/v45/github"
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
 	tektonconsts "github.com/konflux-ci/integration-service/tekton/consts"
+	pacv1alpha1 "github.com/openshift-pipelines/pipelines-as-code/pkg/apis/pipelinesascode/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	ctrllog "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 const (
-	// scmCredentialsSecretLabel is the label that marks a Secret as containing SCM credentials.
-	// Matches build-service's appstudio.redhat.com/credentials label.
-	scmCredentialsSecretLabel = "appstudio.redhat.com/credentials"
-
-	// scmSecretHostnameLabel is the label whose value is the SCM hostname this secret applies to.
-	scmSecretHostnameLabel = "appstudio.redhat.com/scm.host"
-
-	// scmSecretRepositoryAnnotation is the annotation whose value is a comma-separated list of
-	// repository paths (org/repo or org/*) this secret applies to.
-	scmSecretRepositoryAnnotation = "appstudio.redhat.com/scm.repository"
-
 	// gitProviderAnnotationName is the annotation on a Component that overrides git provider detection.
 	gitProviderAnnotationName = "git-provider"
 )
@@ -256,7 +248,7 @@ func GetNudgeTargetsBasicAuth(ctx context.Context, c client.Client, targetCompon
 		repoPath := parseGitRepoPath(repoURL)
 
 		// Look up SCM credentials
-		username, token, err := lookupSCMCredentials(ctx, c, component.Namespace, repoHost, repoPath)
+		username, token, err := lookupSCMCredentialsViaRepository(ctx, c, component.Namespace, repoURL)
 		if err != nil {
 			log.Error(err, "error getting basic auth credentials for component",
 				"ComponentName", component.Name,
@@ -339,24 +331,26 @@ func GetImageRegistryCredentials(ctx context.Context, c client.Client, component
 		return "", "", "", fmt.Errorf("failed to read service account %s in namespace %s: %w", saName, namespace, err)
 	}
 
-	// Gather all linked secret names from both .secrets and .imagePullSecrets
-	linkedSecretNames := map[string]bool{}
-	for _, ref := range sa.Secrets {
-		linkedSecretNames[ref.Name] = true
-	}
-	for _, ref := range sa.ImagePullSecrets {
-		linkedSecretNames[ref.Name] = true
-	}
-
+	// Preserve ServiceAccount declaration order so conflicting registry
+	// credentials from multiple linked secrets are resolved deterministically.
+	// .secrets entries take precedence over .imagePullSecrets; first-seen wins.
+	linkedSecretNames := linkedSecretNamesFromServiceAccount(sa)
 	if len(linkedSecretNames) == 0 {
 		return "", "", "", fmt.Errorf("no secrets linked to service account %s in namespace %s", saName, namespace)
 	}
 
 	// Parse credentials from linked docker config secrets
 	var allCreds []repositoryCredentials
-	for linkedSecretName := range linkedSecretNames {
+	for _, linkedSecretName := range linkedSecretNames {
 		linkedSecret := &corev1.Secret{}
 		err = c.Get(ctx, types.NamespacedName{Namespace: namespace, Name: linkedSecretName}, linkedSecret)
+		if err != nil {
+			if errors.IsNotFound(err) {
+				continue
+			}
+			return "", "", "", fmt.Errorf("failed to read secret %s in namespace %s: %w", linkedSecretName, namespace, err)
+		}
+
 		if linkedSecret.Type != corev1.SecretTypeDockerConfigJson {
 			continue
 		}
@@ -371,7 +365,14 @@ func GetImageRegistryCredentials(ctx context.Context, c client.Client, component
 				"secretName", linkedSecret.Name)
 			continue
 		}
-		for repoName, repoAuth := range dockerConfig.Auths {
+		repoNames := make([]string, 0, len(dockerConfig.Auths))
+		for repoName := range dockerConfig.Auths {
+			repoNames = append(repoNames, repoName)
+		}
+		sort.Strings(repoNames)
+
+		for _, repoName := range repoNames {
+			repoAuth := dockerConfig.Auths[repoName]
 			if repoAuth.Username != "" && repoAuth.Password != "" {
 				allCreds = append(allCreds, repositoryCredentials{
 					secretName: linkedSecret.Name,
@@ -408,6 +409,30 @@ func GetImageRegistryCredentials(ctx context.Context, c client.Client, component
 	}
 
 	return host, username, password, nil
+}
+
+// linkedSecretNamesFromServiceAccount returns unique secret names linked on the
+// ServiceAccount, in declaration order: .secrets first, then .imagePullSecrets.
+func linkedSecretNamesFromServiceAccount(sa *corev1.ServiceAccount) []string {
+	names := make([]string, 0, len(sa.Secrets)+len(sa.ImagePullSecrets))
+	seen := make(map[string]struct{}, len(sa.Secrets)+len(sa.ImagePullSecrets))
+	appendUnique := func(name string) {
+		if name == "" {
+			return
+		}
+		if _, exists := seen[name]; exists {
+			return
+		}
+		seen[name] = struct{}{}
+		names = append(names, name)
+	}
+	for _, ref := range sa.Secrets {
+		appendUnique(ref.Name)
+	}
+	for _, ref := range sa.ImagePullSecrets {
+		appendUnique(ref.Name)
+	}
+	return names
 }
 
 // ---------- Helper functions ----------
@@ -529,13 +554,13 @@ func getGitRepoURL(component *applicationapiv1alpha1.Component) string {
 	if component.Spec.Source.GitSource == nil {
 		return ""
 	}
-	return strings.TrimSuffix(strings.TrimSuffix(component.Spec.Source.GitSource.URL, "/"), ".git")
+	return normalizeGitRepoURL(component.Spec.Source.GitSource.URL)
 }
 
 // parseGitRepoPath extracts the "org/repo" path from a full git URL.
 // For example, "https://github.com/org/repo.git" returns "org/repo".
 func parseGitRepoPath(gitURL string) string {
-	u, err := url.Parse(strings.TrimSuffix(strings.TrimSuffix(gitURL, "/"), ".git"))
+	u, err := url.Parse(normalizeGitRepoURL(gitURL))
 	if err != nil {
 		return ""
 	}
@@ -567,129 +592,70 @@ func buildAPIEndpoint(provider, host string) string {
 	}
 }
 
-// lookupSCMCredentials searches for basic auth secrets in the component's namespace
-// that match the given repository host and path.
-//
-// It replicates build-service's GitCredentialProvider.LookupSecret logic:
-//   - Lists secrets with label appstudio.redhat.com/credentials=scm and
-//     appstudio.redhat.com/scm.host=<host>
-//   - Filters for BasicAuth type secrets
-//   - Selects the best match based on the scm.repository annotation
-func lookupSCMCredentials(ctx context.Context, c client.Client, namespace, repoHost, repoPath string) (username, password string, err error) {
-	log := ctrllog.FromContext(ctx)
-
-	secretList := &corev1.SecretList{}
-	if err := c.List(ctx, secretList,
-		client.InNamespace(namespace),
-		client.MatchingLabels{
-			scmCredentialsSecretLabel: "scm",
-			scmSecretHostnameLabel:    repoHost,
-		},
-	); err != nil {
-		return "", "", fmt.Errorf("failed to list SCM secrets in %s namespace: %w", namespace, err)
-	}
-
-	log.Info("found SCM secrets matching host",
-		"count", len(secretList.Items),
-		"host", repoHost)
-
-	// Filter to BasicAuth secrets with data
-	var candidates []corev1.Secret
-	for _, s := range secretList.Items {
-		if s.Type == corev1.SecretTypeBasicAuth && len(s.Data) > 0 {
-			candidates = append(candidates, s)
-		}
-	}
-
-	if len(candidates) == 0 {
-		return "", "", fmt.Errorf("no SCM basic auth secrets found for host %q in namespace %s", repoHost, namespace)
-	}
-
-	best := bestMatchingSCMSecret(ctx, repoPath, candidates)
-	if best == nil {
-		return "", "", fmt.Errorf("no matching SCM secret found for repo %q in namespace %s", repoPath, namespace)
-	}
-
-	return string(best.Data[corev1.BasicAuthUsernameKey]),
-		string(best.Data[corev1.BasicAuthPasswordKey]),
-		nil
+// normalizeGitRepoURL normalizes the git repository URL to not contain the trailing slash or .git suffix
+func normalizeGitRepoURL(gitURL string) string {
+	return strings.TrimSuffix(strings.TrimSuffix(gitURL, "/"), ".git")
 }
 
-// bestMatchingSCMSecret finds the best matching secret for a given repository path.
-// Priority:
-// 1. Direct match of scm.repository annotation to the component repository path
-// 2. Wildcard match (org/*) with the longest intersection
-// 3. Host-only match (no repository annotation)
-func bestMatchingSCMSecret(ctx context.Context, componentRepo string, secrets []corev1.Secret) *corev1.Secret {
-	log := ctrllog.FromContext(ctx)
-
-	var hostOnlySecrets []corev1.Secret
-	// Map from secret index to its best path intersection count
-	potentialMatches := make(map[int]int, len(secrets))
-
-	for idx, secret := range secrets {
-		repoAnnotation, exists := secret.Annotations[scmSecretRepositoryAnnotation]
-		if !exists || repoAnnotation == "" {
-			hostOnlySecrets = append(hostOnlySecrets, secret)
-			continue
+// extractCredentialsFromRepositorySecret extracts the credentials from the repository secret based on its type
+func extractCredentialsFromRepositorySecret(gp *pacv1alpha1.GitProvider, secret *corev1.Secret, key string) (string, string, error) {
+	if secret.Type == corev1.SecretTypeBasicAuth {
+		password, ok := secret.Data[corev1.BasicAuthPasswordKey]
+		if !ok || len(password) == 0 {
+			return "", "", fmt.Errorf("key %q not found in secret %s", corev1.BasicAuthPasswordKey, secret.Name)
 		}
+		return string(secret.Data[corev1.BasicAuthUsernameKey]), string(password), nil
+	}
+	token, ok := secret.Data[key]
+	if !ok || len(token) == 0 {
+		return "", "", fmt.Errorf("key %q not found in secret %s", key, secret.Name)
+	}
+	username := gp.User // GitProvider.user on the Repository CR
+	return username, string(token), nil
+}
 
-		secretRepos := strings.Split(repoAnnotation, ",")
-		for i := range secretRepos {
-			secretRepos[i] = strings.TrimPrefix(strings.TrimSpace(secretRepos[i]), "/")
-		}
-
-		// Check for direct match
-		for _, r := range secretRepos {
-			if r == componentRepo {
-				log.Info("found direct SCM secret match",
-					"secret", secret.Name,
-					"repository", componentRepo)
-				return &secrets[idx]
-			}
-		}
-
-		// Check wildcard matches (e.g., "org/*")
-		componentParts := strings.Split(componentRepo, "/")
-		for _, r := range secretRepos {
-			if !strings.HasSuffix(r, "*") {
-				continue
-			}
-			wildcardParts := strings.Split(strings.TrimSuffix(r, "*"), "/")
-			// Count matching path segments
-			matched := 0
-			for i, part := range wildcardParts {
-				if i < len(componentParts) && part == componentParts[i] {
-					matched++
-				}
-			}
-			if matched > 0 && potentialMatches[idx] < matched {
-				potentialMatches[idx] = matched
-			}
-		}
+// lookupSCMCredentialsViaRepository searches for Repository CRs in the tenant namespace whose Spec.URL matches the component URL.
+// It then reads the secret reference from the Repository CR and extracts credentials from it.
+func lookupSCMCredentialsViaRepository(ctx context.Context, c client.Client, namespace, repoURL string) (username, token string, err error) {
+	repos := pacv1alpha1.RepositoryList{}
+	if err := c.List(ctx, &repos, client.InNamespace(namespace)); err != nil {
+		return "", "", fmt.Errorf("failed to list Repository CRs in %s: %w", namespace, err)
 	}
 
-	if len(potentialMatches) == 0 {
-		if len(hostOnlySecrets) == 0 {
-			return nil
-		}
-		log.Info("using host-only SCM secret",
-			"secret", hostOnlySecrets[0].Name)
-		return &hostOnlySecrets[0]
-	}
-
-	// Find the best wildcard match
-	var bestIdx, bestCount int
-	for idx, count := range potentialMatches {
-		if count > bestCount {
-			bestCount = count
-			bestIdx = idx
+	normalizedTarget := normalizeGitRepoURL(repoURL)
+	var matches []pacv1alpha1.Repository
+	for i := range repos.Items {
+		if normalizeGitRepoURL(repos.Items[i].Spec.URL) == normalizedTarget {
+			matches = append(matches, repos.Items[i])
 		}
 	}
+	if len(matches) == 0 {
+		return "", "", fmt.Errorf("no Repository CR matching URL %q in namespace %s", repoURL, namespace)
+	}
+	if len(matches) > 1 {
+		names := make([]string, len(matches))
+		for i, repo := range matches {
+			names[i] = repo.Name
+		}
+		sort.Strings(names)
+		return "", "", fmt.Errorf("multiple Repository CRs match URL %q in namespace %s: %s", repoURL, namespace, strings.Join(names, ", "))
+	}
+	matched := &matches[0]
+	if matched.Spec.GitProvider == nil || matched.Spec.GitProvider.Secret == nil {
+		return "", "", fmt.Errorf("repository %s has no git_provider.secret configured", matched.Name)
+	}
 
-	log.Info("using best wildcard-matched SCM secret",
-		"secret", secrets[bestIdx].Name)
-	return &secrets[bestIdx]
+	ref := matched.Spec.GitProvider.Secret
+	secret := &corev1.Secret{}
+	if err := c.Get(ctx, types.NamespacedName{Namespace: namespace, Name: ref.Name}, secret); err != nil {
+		return "", "", fmt.Errorf("failed to get secret %s/%s: %w", namespace, ref.Name, err)
+	}
+
+	username, token, err = extractCredentialsFromRepositorySecret(matched.Spec.GitProvider, secret, ref.Key)
+	if err != nil {
+		return "", "", err
+	}
+	return username, token, nil
 }
 
 // parseImageHost extracts the registry host from a container image reference.
@@ -722,6 +688,7 @@ func parseImageHost(image string) string {
 
 // matchCredentialForImage finds the best matching credential for an image reference.
 // It first tries an exact repo path match, then progressively shorter partial matches.
+// When several credentials match at the same specificity, the first entry in creds wins.
 func matchCredentialForImage(ctx context.Context, outputImage string, creds []repositoryCredentials) (string, string, error) {
 	log := ctrllog.FromContext(ctx)
 
