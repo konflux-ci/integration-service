@@ -352,37 +352,29 @@ func GetImageRegistryCredentials(ctx context.Context, c client.Client, component
 		return "", "", "", fmt.Errorf("no secrets linked to service account %s in namespace %s", saName, namespace)
 	}
 
-	// List all secrets in the namespace and filter to dockerconfigjson type
-	allSecrets := &corev1.SecretList{}
-	if err := c.List(ctx, allSecrets, client.InNamespace(namespace)); err != nil {
-		return "", "", "", fmt.Errorf("failed to list secrets in %s namespace: %w", namespace, err)
-	}
-
 	// Parse credentials from linked docker config secrets
 	var allCreds []repositoryCredentials
-	for _, secret := range allSecrets.Items {
-		if secret.Type != corev1.SecretTypeDockerConfigJson {
-			continue
-		}
-		if !linkedSecretNames[secret.Name] {
+	for linkedSecretName := range linkedSecretNames {
+		linkedSecret := &corev1.Secret{}
+		err = c.Get(ctx, types.NamespacedName{Namespace: namespace, Name: linkedSecretName}, linkedSecret)
+		if linkedSecret.Type != corev1.SecretTypeDockerConfigJson {
 			continue
 		}
 
 		dockerConfig := &dockerConfigJSON{}
-		configData, ok := secret.Data[corev1.DockerConfigJsonKey]
+		configData, ok := linkedSecret.Data[corev1.DockerConfigJsonKey]
 		if !ok {
 			continue
 		}
 		if err := json.Unmarshal(configData, dockerConfig); err != nil {
 			log.Error(err, "unable to parse docker json config",
-				"secretName", secret.Name)
+				"secretName", linkedSecret.Name)
 			continue
 		}
-
 		for repoName, repoAuth := range dockerConfig.Auths {
 			if repoAuth.Username != "" && repoAuth.Password != "" {
 				allCreds = append(allCreds, repositoryCredentials{
-					secretName: secret.Name,
+					secretName: linkedSecret.Name,
 					repoName:   repoName,
 					username:   repoAuth.Username,
 					password:   repoAuth.Password,
@@ -392,13 +384,13 @@ func GetImageRegistryCredentials(ctx context.Context, c client.Client, component
 				if err != nil {
 					log.Error(err, "unable to decode docker config json auth",
 						"repository", repoName,
-						"secretName", secret.Name)
+						"secretName", linkedSecret.Name)
 					continue
 				}
 				parts := strings.SplitN(string(decoded), ":", 2)
 				if len(parts) == 2 {
 					allCreds = append(allCreds, repositoryCredentials{
-						secretName: secret.Name,
+						secretName: linkedSecret.Name,
 						repoName:   repoName,
 						username:   parts[0],
 						password:   parts[1],
