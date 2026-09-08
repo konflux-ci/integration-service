@@ -74,6 +74,14 @@ var (
 			Buckets: []float64{0.5, 1, 2, 3, 4, 5, 6, 7, 10, 15, 30, 60, 120, 240, 300, 450, 600, 750, 900, 1050, 1200},
 		},
 	)
+
+	GitLabScenarioStatuses = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "integration_svc_gitlab_scenario_status_gauge",
+			Help: "The current number of concurrent GitLab scenario statuses being reported",
+		},
+		[]string{"reporting_mode"},
+	)
 )
 
 // IntegrationMetrics represents a collection of metrics to be registered on a
@@ -120,6 +128,26 @@ func RegisterReleaseLatency(startTime metav1.Time) {
 	ReleaseLatencySeconds.Observe(latency)
 }
 
+// RegisterConsolidatedGitlabScenarioStatuses registers consolidated GitLab statuses that are being reported to a given MR
+func RegisterConsolidatedGitlabScenarioStatuses(numStatuses float64) {
+	GitLabScenarioStatuses.With(prometheus.Labels{"reporting_mode": "consolidated"}).Add(numStatuses)
+}
+
+// RegisterIndividualGitlabScenarioStatuses registers an individual GitLab status that is being reported to a given MR
+func RegisterIndividualGitlabScenarioStatuses(numStatuses float64) {
+	GitLabScenarioStatuses.With(prometheus.Labels{"reporting_mode": "individual"}).Add(numStatuses)
+}
+
+// UnregisterConsolidatedGitlabScenarioStatuses unregisters consolidated GitLab statuses that are being reported to a given MR
+func UnregisterConsolidatedGitlabScenarioStatuses(numStatuses float64) {
+	GitLabScenarioStatuses.With(prometheus.Labels{"reporting_mode": "consolidated"}).Sub(numStatuses)
+}
+
+// UnregisterIndividualGitlabScenarioStatuses unregisters an individual GitLab status that is being reported to a given MR
+func UnregisterIndividualGitlabScenarioStatuses(numStatuses float64) {
+	GitLabScenarioStatuses.With(prometheus.Labels{"reporting_mode": "individual"}).Sub(numStatuses)
+}
+
 func (m *IntegrationMetrics) InitMetrics(registerer prometheus.Registerer) error {
 	registerer.MustRegister(
 		SnapshotCreatedToPipelineRunStartedSeconds,
@@ -128,6 +156,7 @@ func (m *IntegrationMetrics) InitMetrics(registerer prometheus.Registerer) error
 		SnapshotDurationSeconds,
 		SnapshotTotal,
 		ReleaseLatencySeconds,
+		GitLabScenarioStatuses,
 	)
 	for _, probe := range m.probes {
 		if err := registerer.Register(probe.AvailabilityGauge()); err != nil {
