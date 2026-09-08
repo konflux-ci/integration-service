@@ -54,6 +54,10 @@ type IntegrationTestScenarioSpec struct {
 	Params []PipelineParameter `json:"params,omitempty"`
 	// Contexts where this IntegrationTestScenario can be applied, for specific component for example
 	Contexts []TestContext `json:"contexts,omitempty"`
+	// Disabled indicates whether the IntegrationTestScenario should be skipped.
+	// When set to true, the scenario will not be triggered for any Snapshot.
+	// +optional
+	Disabled bool `json:"disabled,omitempty"`
 	// List of IntegrationTestScenario which are blocked by the successful completion of this IntegrationTestScenario
 	Dependents []string `json:"dependents,omitempty"`
 }
