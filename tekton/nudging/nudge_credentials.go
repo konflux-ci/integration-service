@@ -653,7 +653,7 @@ func lookupSCMCredentialsViaRepository(ctx context.Context, c client.Client, nam
 
 	username, token, err = extractCredentialsFromRepositorySecret(matched.Spec.GitProvider, secret, ref.Key)
 	if err != nil {
-		return "", "", err
+		return "", "", fmt.Errorf("failed to extract credentials from secret %s: %w", secret.Name, err)
 	}
 	return username, token, nil
 }
