@@ -11,7 +11,7 @@ require (
 	github.com/konflux-ci/release-service v0.0.0-20260130155849-48535a3e5ace
 	github.com/onsi/ginkgo/v2 v2.28.3
 	github.com/onsi/gomega v1.40.0
-	github.com/openshift-pipelines/pipelines-as-code v0.34.0
+	github.com/openshift-pipelines/pipelines-as-code v0.37.8
 	k8s.io/api v0.35.3
 	k8s.io/apimachinery v0.35.3
 	k8s.io/client-go v11.0.0+incompatible
