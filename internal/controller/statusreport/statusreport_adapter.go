@@ -624,6 +624,8 @@ func (a *Adapter) iterateIntegrationTestStatusDetailsInStatusReport(reporter sta
 
 // reportConsolidatedStatuses posts a single consolidated commit status for all scenarios, then
 // marks every scenario as reported and writes the snapshot report status in one call.
+// On the first transition from per-scenario to consolidated mode, it also cancels
+// stale per-scenario commit statuses so they no longer clutter the MR view.
 func (a *Adapter) reportConsolidatedStatuses(
 	reporter status.ReporterInterface,
 	allReports []status.TestReport,
@@ -632,6 +634,14 @@ func (a *Adapter) reportConsolidatedStatuses(
 	destinationSnapshot *applicationapiv1alpha1.Snapshot,
 	srs *status.SnapshotReportStatus,
 ) error {
+	// On the first transition to consolidated mode, cancel stale per-scenario
+	// commit statuses that were posted during previous per-scenario reporting
+	// so the MR view is not cluttered with both individual and consolidated statuses.
+	if !srs.ConsolidatedModeActive {
+		a.cancelStalePerScenarioStatuses(reporter, allReports, srs, destinationSnapshot)
+		srs.SetConsolidatedModeActive()
+	}
+
 	if statusCode, reportErr := reporter.ReportConsolidatedStatus(a.context, allReports); reportErr != nil {
 		if reporter.ReturnCodeIsUnrecoverable(statusCode) {
 			a.logger.Error(reportErr, "consolidated status report failed with unrecoverable error, skipping",
@@ -649,6 +659,41 @@ func (a *Adapter) reportConsolidatedStatuses(
 		return fmt.Errorf("failed to write snapshot report status after consolidated status: %w", writeErr)
 	}
 	return nil
+}
+
+// cancelStalePerScenarioStatuses posts a canceled commit status for each
+// scenario that was previously reported individually. This is called once
+// during the transition from per-scenario to consolidated mode so that
+// stale individual statuses do not remain visible alongside the new
+// consolidated status on the MR.
+func (a *Adapter) cancelStalePerScenarioStatuses(
+	reporter status.ReporterInterface,
+	allReports []status.TestReport,
+	srs *status.SnapshotReportStatus,
+	destinationSnapshot *applicationapiv1alpha1.Snapshot,
+) {
+	for _, report := range allReports {
+		// Only cancel scenarios that have a previous per-scenario entry in the
+		// report status — these are the ones that were individually posted.
+		key := report.ScenarioName + "-" + destinationSnapshot.Name
+		if _, exists := srs.Scenarios[key]; !exists {
+			continue
+		}
+
+		canceledReport := report
+		canceledReport.Status = intgteststat.IntegrationTestStatusDeleted
+		canceledReport.Summary = fmt.Sprintf("Superseded by consolidated status for %s", report.ComponentName)
+
+		if statusCode, err := reporter.ReportStatus(a.context, canceledReport); err != nil {
+			a.logger.Error(err, "failed to cancel stale per-scenario commit status, continuing",
+				"scenario.Name", report.ScenarioName,
+				"statusCode", statusCode)
+			// Non-fatal: continue canceling remaining scenarios and posting consolidated status
+		} else {
+			a.logger.Info("Canceled stale per-scenario commit status",
+				"scenario.Name", report.ScenarioName)
+		}
+	}
 }
 
 // reportPerScenarioStatuses posts one commit status per scenario that has a newer status than what

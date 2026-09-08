@@ -1038,6 +1038,116 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		})
 	})
 
+	When("switching from per-scenario to consolidated mode cancels stale per-scenario statuses", func() {
+		var gitlabTransitionComp *applicationapiv1alpha1.Component
+		var gitlabTransitionSnapshot *applicationapiv1alpha1.Snapshot
+		const numPreviouslyReported = 50 // exactly MaxIndividualStatuses
+
+		BeforeEach(func() {
+			buf = bytes.Buffer{}
+			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+
+			ctrl := gomock.NewController(GinkgoT())
+			mockReporter = status.NewMockReporterInterface(ctrl)
+			mockStatus = status.NewMockStatusInterface(ctrl)
+			mockReporter.EXPECT().GetReporterName().Return(status.GitLabProvider).AnyTimes()
+			mockStatus.EXPECT().GetReporter(gomock.Any()).Return(mockReporter).AnyTimes()
+			mockReporter.EXPECT().Initialize(gomock.Any(), gomock.Any()).Times(1)
+
+			gitlabTransitionComp = &applicationapiv1alpha1.Component{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "gitlab-transition-comp",
+					Namespace: "default",
+				},
+				Spec: applicationapiv1alpha1.ComponentSpec{
+					ComponentName:  "gitlab-transition-comp",
+					Application:    hasApp.Name,
+					ContainerImage: SampleImage,
+				},
+			}
+			Expect(k8sClient.Create(ctx, gitlabTransitionComp)).Should(Succeed())
+
+			// Build status annotation with MaxIndividualStatuses+1 scenarios to trigger the consolidated path
+			totalScenarios := status.MaxIndividualStatuses + 1
+			var scenariosBuf bytes.Buffer
+			scenariosBuf.WriteString("[")
+			for i := 1; i <= totalScenarios; i++ {
+				if i > 1 {
+					scenariosBuf.WriteString(",")
+				}
+				fmt.Fprintf(&scenariosBuf,
+					`{"scenario":"scenario-%d","status":"InProgress","lastUpdateTime":"2023-08-26T17:57:50+02:00","details":"Test in progress"}`,
+					i)
+			}
+			scenariosBuf.WriteString("]")
+
+			// Simulate prior per-scenario reporting: build a SnapshotReportStatus
+			// with entries for the first 50 scenarios as if they had been individually reported.
+			srs, err := status.NewSnapshotReportStatus("")
+			Expect(err).ToNot(HaveOccurred())
+			oldTime, err := time.Parse(time.RFC3339, "2023-08-26T17:57:49+02:00")
+			Expect(err).ToNot(HaveOccurred())
+			for i := 1; i <= numPreviouslyReported; i++ {
+				srs.SetLastUpdateTime(fmt.Sprintf("scenario-%d", i), "snapshot-gitlab-transition", oldTime)
+			}
+			srsJSON, err := srs.ToAnnotationString()
+			Expect(err).ToNot(HaveOccurred())
+
+			gitlabTransitionSnapshot = &applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "snapshot-gitlab-transition",
+					Namespace: "default",
+					Labels: map[string]string{
+						gitops.SnapshotTypeLabel:      gitops.SnapshotComponentType,
+						gitops.SnapshotComponentLabel: gitlabTransitionComp.Name,
+					},
+					Annotations: map[string]string{
+						gitops.SnapshotTestsStatusAnnotation:  scenariosBuf.String(),
+						gitops.SnapshotStatusReportAnnotation: srsJSON,
+					},
+				},
+				Spec: applicationapiv1alpha1.SnapshotSpec{
+					Application: hasApp.Name,
+					Components: []applicationapiv1alpha1.SnapshotComponent{
+						{
+							Name:           gitlabTransitionComp.Name,
+							ContainerImage: SampleImage,
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, gitlabTransitionSnapshot)).Should(Succeed())
+
+			adapter = NewAdapterWithApplication(ctx, gitlabTransitionSnapshot, hasApp, log, loader.NewMockLoader(), k8sClient)
+			adapter.status = mockStatus
+		})
+
+		AfterEach(func() {
+			err := k8sClient.Delete(ctx, gitlabTransitionComp)
+			Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
+			err = k8sClient.Delete(ctx, gitlabTransitionSnapshot)
+			Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
+		})
+
+		It("cancels previously reported per-scenario statuses and posts consolidated status", func() {
+			// Expect ReportStatus to be called exactly numPreviouslyReported times
+			// (once per stale per-scenario status to cancel it)
+			mockReporter.EXPECT().ReportStatus(gomock.Any(), gomock.Any()).DoAndReturn(
+				func(ctx interface{}, report status.TestReport) (int, error) {
+					Expect(report.Status).To(Equal(intgteststat.IntegrationTestStatusDeleted))
+					Expect(report.Summary).To(ContainSubstring("Superseded by consolidated status"))
+					return 0, nil
+				}).Times(numPreviouslyReported)
+			mockReporter.EXPECT().ReportConsolidatedStatus(gomock.Any(), gomock.Any()).Times(1)
+
+			statusCode, err := adapter.ReportSnapshotStatus(adapter.snapshot)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(statusCode).To(BeTrue())
+			Expect(buf.String()).To(ContainSubstring("Scenario count exceeds threshold, using consolidated commit status"))
+			Expect(buf.String()).To(ContainSubstring("Canceled stale per-scenario commit status"))
+		})
+	})
+
 	When("Ensure group snapshot creation failure is reported to git provider [APPLICATION]", func() {
 		BeforeEach(func() {
 			buf = bytes.Buffer{}
