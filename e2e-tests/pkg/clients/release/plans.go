@@ -12,7 +12,9 @@ import (
 )
 
 // CreateReleasePlan creates a new ReleasePlan using the given parameters.
-func (r *ReleaseController) CreateReleasePlan(name, namespace, application, targetNamespace, autoReleaseLabel string, data *runtime.RawExtension, tenantPipeline *tektonutils.ParameterizedPipeline, finalPipeline *tektonutils.ParameterizedPipeline) (*releaseApi.ReleasePlan, error) {
+// TODO: when we delete the old application-specific code, go back to setting ComponentGroup in the spec definition
+// Also remove usingComponentGroups parameter and rename parent parameter to componentGroup
+func (r *ReleaseController) CreateReleasePlan(name, namespace, parent, targetNamespace, autoReleaseLabel string, data *runtime.RawExtension, tenantPipeline *tektonutils.ParameterizedPipeline, finalPipeline *tektonutils.ParameterizedPipeline, usingComponentGroups bool) (*releaseApi.ReleasePlan, error) {
 	releasePlan := &releaseApi.ReleasePlan{
 		ObjectMeta: metav1.ObjectMeta{
 			GenerateName: name,
@@ -24,13 +26,18 @@ func (r *ReleaseController) CreateReleasePlan(name, namespace, application, targ
 			},
 		},
 		Spec: releaseApi.ReleasePlanSpec{
-			Application:    application,
 			Data:           data,
 			TenantPipeline: tenantPipeline,
 			FinalPipeline:  finalPipeline,
 			Target:         targetNamespace,
 		},
 	}
+	if usingComponentGroups {
+		releasePlan.Spec.ComponentGroup = parent
+	} else {
+		releasePlan.Spec.Application = parent
+	}
+
 	if autoReleaseLabel == "" || autoReleaseLabel == "true" {
 		releasePlan.Labels[releaseMetadata.AutoReleaseLabel] = "true"
 	} else {
