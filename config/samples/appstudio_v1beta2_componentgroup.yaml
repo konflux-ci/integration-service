@@ -18,7 +18,7 @@ spec:
   components:
     - name: first-component
       # used to match build PLRs. Will attempt to match
-      # `appstudio.openshift.io/version` label to name field. Will fall back
+      # `build.konflux-ci.dev/version` annotation to name field. Will fall back
       # on matching `target_branch` and `context_dir` annotations to revision
       # and context fields if the revision and context fields are set
       componentVersion:
