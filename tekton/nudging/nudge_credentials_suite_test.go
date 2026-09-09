@@ -1,5 +1,5 @@
 /*
-Copyright 2025 Red Hat Inc.
+Copyright 2026 Red Hat Inc.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,6 +14,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+// This dual-suite pattern is architecturally necessary because BeforeSuite sets package-level vars
+// that must be accessible from white-box tests
 package nudging
 
 import (
