@@ -19,6 +19,7 @@ package v1beta2
 import (
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
 	appstudiov1beta2 "github.com/konflux-ci/integration-service/api/v1beta2"
+	"github.com/konflux-ci/integration-service/helpers"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
@@ -386,6 +387,35 @@ var _ = Describe("NudgeConfig webhook - component existence", func() {
 
 			_, err := validator.ValidateUpdate(ctx, oldNC, newNC)
 			Expect(err).NotTo(HaveOccurred())
+		})
+	})
+
+	Describe("batchDefaults admission warnings", func() {
+		It("warns on create when spec.batchDefaults is set", func() {
+			nc := newNudgeConfig(ns.Name, nil)
+			nc.Spec.BatchDefaults = &appstudiov1beta2.BatchDefaults{}
+
+			warnings, err := validator.ValidateCreate(ctx, nc)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(warnings).To(ConsistOf(helpers.BatchDefaultsNotImplementedMessage))
+		})
+
+		It("does not warn on create when spec.batchDefaults is unset", func() {
+			nc := newNudgeConfig(ns.Name, nil)
+
+			warnings, err := validator.ValidateCreate(ctx, nc)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(warnings).To(BeEmpty())
+		})
+
+		It("warns on update when spec.batchDefaults is set", func() {
+			oldNC := newNudgeConfig(ns.Name, nil)
+			newNC := newNudgeConfig(ns.Name, nil)
+			newNC.Spec.BatchDefaults = &appstudiov1beta2.BatchDefaults{}
+
+			warnings, err := validator.ValidateUpdate(ctx, oldNC, newNC)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(warnings).To(ConsistOf(helpers.BatchDefaultsNotImplementedMessage))
 		})
 	})
 
