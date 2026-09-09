@@ -58,7 +58,7 @@ The controller needs these CRDs on the cluster (not just locally for tests):
 | `konflux-ci/release-service` | Release, ReleasePlan, ReleasePlanAdmission |
 | `tektoncd/pipeline` | PipelineRun, TaskRun, Pipeline, Task |
 | `openshift-pipelines/pipelines-as-code` | Repository |
-| This repo | IntegrationTestScenario, ComponentGroup |
+| This repo | IntegrationTestScenario, ComponentGroup, NudgeConfig |
 
 ## Webhook Considerations
 
