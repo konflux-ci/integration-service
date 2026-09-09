@@ -24,12 +24,15 @@ import (
 
 	ghapi "github.com/google/go-github/v45/github"
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
+	"github.com/konflux-ci/integration-service/loader"
 	tektonconsts "github.com/konflux-ci/integration-service/tekton/consts"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	pacv1alpha1 "github.com/openshift-pipelines/pipelines-as-code/pkg/apis/pipelinesascode/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
@@ -39,11 +42,35 @@ var _ = Describe("Nudge credentials", func() {
 		testNamespace = "test-ns"
 	)
 
+	objectLoader := loader.NewLoader()
+
 	newCredentialScheme := func() *runtime.Scheme {
 		scheme := runtime.NewScheme()
 		Expect(corev1.AddToScheme(scheme)).To(Succeed())
 		Expect(applicationapiv1alpha1.AddToScheme(scheme)).To(Succeed())
+		Expect(pacv1alpha1.AddToScheme(scheme)).To(Succeed())
 		return scheme
+	}
+
+	repositoryCredentialObjects := func(namespace, repoName, repoURL, secretName, username, password string) []client.Object {
+		secret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{Name: secretName, Namespace: namespace},
+			Type:       corev1.SecretTypeBasicAuth,
+			Data: map[string][]byte{
+				corev1.BasicAuthUsernameKey: []byte(username),
+				corev1.BasicAuthPasswordKey: []byte(password),
+			},
+		}
+		repo := &pacv1alpha1.Repository{
+			ObjectMeta: metav1.ObjectMeta{Name: repoName, Namespace: namespace},
+			Spec: pacv1alpha1.RepositorySpec{
+				URL: repoURL,
+				GitProvider: &pacv1alpha1.GitProvider{
+					Secret: &pacv1alpha1.Secret{Name: secretName},
+				},
+			},
+		}
+		return []client.Object{secret, repo}
 	}
 
 	// ---------- getGitProvider ----------
@@ -312,140 +339,16 @@ var _ = Describe("Nudge credentials", func() {
 			Expect(u).To(Equal("u1"))
 			Expect(p).To(Equal("p1"))
 		})
-	})
 
-	// ---------- bestMatchingSCMSecret ----------
-
-	Describe("bestMatchingSCMSecret", func() {
-		ctx := context.Background()
-
-		It("returns direct match from scm.repository annotation", func() {
-			secrets := []corev1.Secret{
-				{
-					ObjectMeta: metav1.ObjectMeta{
-						Name: "wildcard-secret",
-						Annotations: map[string]string{
-							scmSecretRepositoryAnnotation: "org/*",
-						},
-					},
-					Data: map[string][]byte{
-						corev1.BasicAuthUsernameKey: []byte("user"),
-						corev1.BasicAuthPasswordKey: []byte("pass"),
-					},
-				},
-				{
-					ObjectMeta: metav1.ObjectMeta{
-						Name: "exact-secret",
-						Annotations: map[string]string{
-							scmSecretRepositoryAnnotation: "org/repo",
-						},
-					},
-					Data: map[string][]byte{
-						corev1.BasicAuthUsernameKey: []byte("user-exact"),
-						corev1.BasicAuthPasswordKey: []byte("pass-exact"),
-					},
-				},
+		It("returns the first credential when several match at the same specificity", func() {
+			creds := []repositoryCredentials{
+				{secretName: "zebra-secret", repoName: "quay.io/org/repo", username: "first", password: "first-pass"},
+				{secretName: "alpha-secret", repoName: "quay.io/org/repo", username: "second", password: "second-pass"},
 			}
-			result := bestMatchingSCMSecret(ctx, "org/repo", secrets)
-			Expect(result).NotTo(BeNil())
-			Expect(result.Name).To(Equal("exact-secret"))
-		})
-
-		It("returns wildcard match when no direct match", func() {
-			secrets := []corev1.Secret{
-				{
-					ObjectMeta: metav1.ObjectMeta{
-						Name: "wildcard-secret",
-						Annotations: map[string]string{
-							scmSecretRepositoryAnnotation: "org/*",
-						},
-					},
-					Data: map[string][]byte{
-						corev1.BasicAuthUsernameKey: []byte("user"),
-						corev1.BasicAuthPasswordKey: []byte("pass"),
-					},
-				},
-			}
-			result := bestMatchingSCMSecret(ctx, "org/other-repo", secrets)
-			Expect(result).NotTo(BeNil())
-			Expect(result.Name).To(Equal("wildcard-secret"))
-		})
-
-		It("returns host-only secret as fallback", func() {
-			secrets := []corev1.Secret{
-				{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:        "host-only-secret",
-						Annotations: map[string]string{},
-					},
-					Data: map[string][]byte{
-						corev1.BasicAuthUsernameKey: []byte("user"),
-						corev1.BasicAuthPasswordKey: []byte("pass"),
-					},
-				},
-			}
-			result := bestMatchingSCMSecret(ctx, "org/repo", secrets)
-			Expect(result).NotTo(BeNil())
-			Expect(result.Name).To(Equal("host-only-secret"))
-		})
-
-		It("returns nil when no secrets match", func() {
-			secrets := []corev1.Secret{
-				{
-					ObjectMeta: metav1.ObjectMeta{
-						Name: "wrong-repo-secret",
-						Annotations: map[string]string{
-							scmSecretRepositoryAnnotation: "other-org/other-repo",
-						},
-					},
-					Data: map[string][]byte{
-						corev1.BasicAuthUsernameKey: []byte("user"),
-						corev1.BasicAuthPasswordKey: []byte("pass"),
-					},
-				},
-			}
-			result := bestMatchingSCMSecret(ctx, "org/repo", secrets)
-			Expect(result).To(BeNil())
-		})
-
-		It("handles leading slashes in repository annotation", func() {
-			secrets := []corev1.Secret{
-				{
-					ObjectMeta: metav1.ObjectMeta{
-						Name: "prefixed-secret",
-						Annotations: map[string]string{
-							scmSecretRepositoryAnnotation: "/org/repo",
-						},
-					},
-					Data: map[string][]byte{
-						corev1.BasicAuthUsernameKey: []byte("user"),
-						corev1.BasicAuthPasswordKey: []byte("pass"),
-					},
-				},
-			}
-			result := bestMatchingSCMSecret(ctx, "org/repo", secrets)
-			Expect(result).NotTo(BeNil())
-			Expect(result.Name).To(Equal("prefixed-secret"))
-		})
-
-		It("handles comma-separated repositories in annotation", func() {
-			secrets := []corev1.Secret{
-				{
-					ObjectMeta: metav1.ObjectMeta{
-						Name: "multi-repo-secret",
-						Annotations: map[string]string{
-							scmSecretRepositoryAnnotation: "org/repo-a, org/repo-b, org/repo-c",
-						},
-					},
-					Data: map[string][]byte{
-						corev1.BasicAuthUsernameKey: []byte("user"),
-						corev1.BasicAuthPasswordKey: []byte("pass"),
-					},
-				},
-			}
-			result := bestMatchingSCMSecret(ctx, "org/repo-b", secrets)
-			Expect(result).NotTo(BeNil())
-			Expect(result.Name).To(Equal("multi-repo-secret"))
+			u, p, err := matchCredentialForImage(ctx, "quay.io/org/repo:latest", creds)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(u).To(Equal("first"))
+			Expect(p).To(Equal("first-pass"))
 		})
 	})
 
@@ -531,7 +434,7 @@ var _ = Describe("Nudge credentials", func() {
 			gitHubAppInstallationForRepo = savedInstallationFn
 			getGitHubBotUserIDFn = savedBotIDFn
 			c := fake.NewClientBuilder().WithScheme(scheme).Build()
-			targets := GetNudgeTargetsGithubApp(ctx, c, []applicationapiv1alpha1.Component{
+			targets := GetNudgeTargetsGithubApp(ctx, c, objectLoader, []applicationapiv1alpha1.Component{
 				githubComponent("comp", "https://github.com/org/repo", ""),
 			}, "quay.io", "user", "pass")
 			Expect(targets).To(BeNil())
@@ -549,7 +452,7 @@ var _ = Describe("Nudge credentials", func() {
 				Data: map[string][]byte{"some-other-key": []byte("value")},
 			}
 			c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(unconfiguredSecret).Build()
-			targets := GetNudgeTargetsGithubApp(ctx, c, []applicationapiv1alpha1.Component{
+			targets := GetNudgeTargetsGithubApp(ctx, c, objectLoader, []applicationapiv1alpha1.Component{
 				githubComponent("comp", "https://github.com/org/repo", ""),
 			}, "quay.io", "user", "pass")
 			Expect(targets).To(BeNil())
@@ -558,7 +461,7 @@ var _ = Describe("Nudge credentials", func() {
 		It("returns targets for github component with valid installation", func() {
 			_, builder := pacSecretWithApp(scheme)
 			c := builder.Build()
-			targets := GetNudgeTargetsGithubApp(ctx, c, []applicationapiv1alpha1.Component{
+			targets := GetNudgeTargetsGithubApp(ctx, c, objectLoader, []applicationapiv1alpha1.Component{
 				githubComponent("comp", "https://github.com/org/repo", "main"),
 			}, "quay.io", "img-user", "img-pass")
 			Expect(targets).To(HaveLen(1))
@@ -577,7 +480,7 @@ var _ = Describe("Nudge credentials", func() {
 		It("builds correct GitAuthor format", func() {
 			_, builder := pacSecretWithApp(scheme)
 			c := builder.Build()
-			targets := GetNudgeTargetsGithubApp(ctx, c, []applicationapiv1alpha1.Component{
+			targets := GetNudgeTargetsGithubApp(ctx, c, objectLoader, []applicationapiv1alpha1.Component{
 				githubComponent("comp", "https://github.com/org/repo", ""),
 			}, "quay.io", "u", "p")
 			Expect(targets).To(HaveLen(1))
@@ -587,7 +490,7 @@ var _ = Describe("Nudge credentials", func() {
 		It("skips non-github components", func() {
 			_, builder := pacSecretWithApp(scheme)
 			c := builder.Build()
-			targets := GetNudgeTargetsGithubApp(ctx, c, []applicationapiv1alpha1.Component{
+			targets := GetNudgeTargetsGithubApp(ctx, c, objectLoader, []applicationapiv1alpha1.Component{
 				githubComponent("gh-comp", "https://github.com/org/repo", ""),
 				githubComponent("gl-comp", "https://gitlab.com/org/repo", ""),
 			}, "quay.io", "u", "p")
@@ -598,7 +501,7 @@ var _ = Describe("Nudge credentials", func() {
 		It("skips github.com Enterprise Server (non-github.com) components", func() {
 			_, builder := pacSecretWithApp(scheme)
 			c := builder.Build()
-			targets := GetNudgeTargetsGithubApp(ctx, c, []applicationapiv1alpha1.Component{
+			targets := GetNudgeTargetsGithubApp(ctx, c, objectLoader, []applicationapiv1alpha1.Component{
 				githubComponent("ghe-comp", "https://github.example.com/org/repo", ""),
 				githubComponent("gh-comp", "https://github.com/org/repo", ""),
 			}, "quay.io", "u", "p")
@@ -621,7 +524,7 @@ var _ = Describe("Nudge credentials", func() {
 			}
 			_, builder := pacSecretWithApp(scheme)
 			c := builder.Build()
-			targets := GetNudgeTargetsGithubApp(ctx, c, []applicationapiv1alpha1.Component{
+			targets := GetNudgeTargetsGithubApp(ctx, c, objectLoader, []applicationapiv1alpha1.Component{
 				githubComponent("comp-a", "https://github.com/org/repo-a", ""),
 				githubComponent("comp-b", "https://github.com/org/repo-b", ""),
 			}, "quay.io", "u", "p")
@@ -635,7 +538,7 @@ var _ = Describe("Nudge credentials", func() {
 			}
 			_, builder := pacSecretWithApp(scheme)
 			c := builder.Build()
-			targets := GetNudgeTargetsGithubApp(ctx, c, []applicationapiv1alpha1.Component{
+			targets := GetNudgeTargetsGithubApp(ctx, c, objectLoader, []applicationapiv1alpha1.Component{
 				githubComponent("comp", "https://github.com/org/repo", ""),
 			}, "quay.io", "u", "p")
 			Expect(targets).To(BeEmpty())
@@ -644,7 +547,7 @@ var _ = Describe("Nudge credentials", func() {
 		It("uses component revision as branch when set", func() {
 			_, builder := pacSecretWithApp(scheme)
 			c := builder.Build()
-			targets := GetNudgeTargetsGithubApp(ctx, c, []applicationapiv1alpha1.Component{
+			targets := GetNudgeTargetsGithubApp(ctx, c, objectLoader, []applicationapiv1alpha1.Component{
 				githubComponent("comp", "https://github.com/org/repo", "release-1.0"),
 			}, "quay.io", "u", "p")
 			Expect(targets).To(HaveLen(1))
@@ -654,7 +557,7 @@ var _ = Describe("Nudge credentials", func() {
 		It("falls back to installation DefaultBranch when revision is empty", func() {
 			_, builder := pacSecretWithApp(scheme)
 			c := builder.Build()
-			targets := GetNudgeTargetsGithubApp(ctx, c, []applicationapiv1alpha1.Component{
+			targets := GetNudgeTargetsGithubApp(ctx, c, objectLoader, []applicationapiv1alpha1.Component{
 				githubComponent("comp", "https://github.com/org/repo", ""),
 			}, "quay.io", "u", "p")
 			Expect(targets).To(HaveLen(1))
@@ -678,7 +581,7 @@ var _ = Describe("Nudge credentials", func() {
 			}
 			_, builder := pacSecretWithApp(scheme)
 			c := builder.Build()
-			targets := GetNudgeTargetsGithubApp(ctx, c, []applicationapiv1alpha1.Component{
+			targets := GetNudgeTargetsGithubApp(ctx, c, objectLoader, []applicationapiv1alpha1.Component{
 				githubComponent("comp-a", "https://github.com/org/repo-a", ""),
 				githubComponent("comp-b", "https://github.com/org/repo-b", ""),
 			}, "quay.io", "u", "p")
@@ -693,7 +596,7 @@ var _ = Describe("Nudge credentials", func() {
 			}
 			_, builder := pacSecretWithApp(scheme)
 			c := builder.Build()
-			targets := GetNudgeTargetsGithubApp(ctx, c, []applicationapiv1alpha1.Component{
+			targets := GetNudgeTargetsGithubApp(ctx, c, objectLoader, []applicationapiv1alpha1.Component{
 				githubComponent("comp", "https://github.com/org/repo", ""),
 			}, "quay.io", "u", "p")
 			Expect(targets).To(HaveLen(1))
@@ -715,25 +618,8 @@ var _ = Describe("Nudge credentials", func() {
 		})
 
 		It("creates a target for a component with matching SCM secret", func() {
-			scmSecret := &corev1.Secret{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "scm-github-secret",
-					Namespace: testNamespace,
-					Labels: map[string]string{
-						scmCredentialsSecretLabel: "scm",
-						scmSecretHostnameLabel:    "github.com",
-					},
-					Annotations: map[string]string{
-						scmSecretRepositoryAnnotation: "org/repo",
-					},
-				},
-				Type: corev1.SecretTypeBasicAuth,
-				Data: map[string][]byte{
-					corev1.BasicAuthUsernameKey: []byte("bot-user"),
-					corev1.BasicAuthPasswordKey: []byte("ghp_secret-token"),
-				},
-			}
-			c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(scmSecret).Build()
+			objects := repositoryCredentialObjects(testNamespace, "github-repo", "https://github.com/org/repo", "scm-github-secret", "bot-user", "ghp_secret-token")
+			c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(objects...).Build()
 			components := []applicationapiv1alpha1.Component{
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "comp", Namespace: testNamespace},
@@ -750,7 +636,7 @@ var _ = Describe("Nudge credentials", func() {
 				},
 			}
 
-			targets := GetNudgeTargetsBasicAuth(ctx, c, components, "quay.io", "img-user", "img-pass")
+			targets := GetNudgeTargetsBasicAuth(ctx, c, objectLoader, components, "quay.io", "img-user", "img-pass")
 			Expect(targets).To(HaveLen(1))
 			Expect(targets[0].ComponentName).To(Equal("comp"))
 			Expect(targets[0].GitProvider).To(Equal("github"))
@@ -766,22 +652,8 @@ var _ = Describe("Nudge credentials", func() {
 		})
 
 		It("uses default username when SCM secret has empty username", func() {
-			scmSecret := &corev1.Secret{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "scm-secret",
-					Namespace: testNamespace,
-					Labels: map[string]string{
-						scmCredentialsSecretLabel: "scm",
-						scmSecretHostnameLabel:    "github.com",
-					},
-				},
-				Type: corev1.SecretTypeBasicAuth,
-				Data: map[string][]byte{
-					corev1.BasicAuthUsernameKey: {},
-					corev1.BasicAuthPasswordKey: []byte("token"),
-				},
-			}
-			c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(scmSecret).Build()
+			objects := repositoryCredentialObjects(testNamespace, "github-repo", "https://github.com/org/repo", "scm-secret", "", "token")
+			c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(objects...).Build()
 			components := []applicationapiv1alpha1.Component{
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "comp", Namespace: testNamespace},
@@ -795,7 +667,7 @@ var _ = Describe("Nudge credentials", func() {
 				},
 			}
 
-			targets := GetNudgeTargetsBasicAuth(ctx, c, components, "quay.io", "u", "p")
+			targets := GetNudgeTargetsBasicAuth(ctx, c, objectLoader, components, "quay.io", "u", "p")
 			Expect(targets).To(HaveLen(1))
 			Expect(targets[0].Username).To(Equal(tektonconsts.DefaultRenovateUser))
 		})
@@ -816,30 +688,13 @@ var _ = Describe("Nudge credentials", func() {
 				},
 			}
 
-			targets := GetNudgeTargetsBasicAuth(ctx, c, components, "quay.io", "u", "p")
+			targets := GetNudgeTargetsBasicAuth(ctx, c, objectLoader, components, "quay.io", "u", "p")
 			Expect(targets).To(BeEmpty())
 		})
 
 		It("handles multiple components where only some have credentials", func() {
-			scmSecret := &corev1.Secret{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "scm-secret",
-					Namespace: testNamespace,
-					Labels: map[string]string{
-						scmCredentialsSecretLabel: "scm",
-						scmSecretHostnameLabel:    "github.com",
-					},
-					Annotations: map[string]string{
-						scmSecretRepositoryAnnotation: "org/repo-a",
-					},
-				},
-				Type: corev1.SecretTypeBasicAuth,
-				Data: map[string][]byte{
-					corev1.BasicAuthUsernameKey: []byte("user"),
-					corev1.BasicAuthPasswordKey: []byte("token"),
-				},
-			}
-			c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(scmSecret).Build()
+			objects := repositoryCredentialObjects(testNamespace, "github-repo-a", "https://github.com/org/repo-a", "scm-secret", "user", "token")
+			c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(objects...).Build()
 			components := []applicationapiv1alpha1.Component{
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "comp-a", Namespace: testNamespace},
@@ -864,7 +719,7 @@ var _ = Describe("Nudge credentials", func() {
 				},
 			}
 
-			targets := GetNudgeTargetsBasicAuth(ctx, c, components, "quay.io", "u", "p")
+			targets := GetNudgeTargetsBasicAuth(ctx, c, objectLoader, components, "quay.io", "u", "p")
 			Expect(targets).To(HaveLen(1))
 			Expect(targets[0].ComponentName).To(Equal("comp-a"))
 		})
@@ -878,27 +733,13 @@ var _ = Describe("Nudge credentials", func() {
 				},
 			}
 
-			targets := GetNudgeTargetsBasicAuth(ctx, c, components, "quay.io", "u", "p")
+			targets := GetNudgeTargetsBasicAuth(ctx, c, objectLoader, components, "quay.io", "u", "p")
 			Expect(targets).To(BeEmpty())
 		})
 
 		It("sets nil BaseBranches when revision is empty", func() {
-			scmSecret := &corev1.Secret{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "scm-secret",
-					Namespace: testNamespace,
-					Labels: map[string]string{
-						scmCredentialsSecretLabel: "scm",
-						scmSecretHostnameLabel:    "github.com",
-					},
-				},
-				Type: corev1.SecretTypeBasicAuth,
-				Data: map[string][]byte{
-					corev1.BasicAuthUsernameKey: []byte("user"),
-					corev1.BasicAuthPasswordKey: []byte("token"),
-				},
-			}
-			c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(scmSecret).Build()
+			objects := repositoryCredentialObjects(testNamespace, "github-repo", "https://github.com/org/repo", "scm-secret", "user", "token")
+			c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(objects...).Build()
 			components := []applicationapiv1alpha1.Component{
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "comp", Namespace: testNamespace},
@@ -915,28 +756,14 @@ var _ = Describe("Nudge credentials", func() {
 				},
 			}
 
-			targets := GetNudgeTargetsBasicAuth(ctx, c, components, "quay.io", "u", "p")
+			targets := GetNudgeTargetsBasicAuth(ctx, c, objectLoader, components, "quay.io", "u", "p")
 			Expect(targets).To(HaveLen(1))
 			Expect(targets[0].Repositories[0].BaseBranches).To(BeNil())
 		})
 
 		It("creates target with correct GitAuthor format", func() {
-			scmSecret := &corev1.Secret{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "scm-secret",
-					Namespace: testNamespace,
-					Labels: map[string]string{
-						scmCredentialsSecretLabel: "scm",
-						scmSecretHostnameLabel:    "github.com",
-					},
-				},
-				Type: corev1.SecretTypeBasicAuth,
-				Data: map[string][]byte{
-					corev1.BasicAuthUsernameKey: []byte("my-bot"),
-					corev1.BasicAuthPasswordKey: []byte("token"),
-				},
-			}
-			c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(scmSecret).Build()
+			objects := repositoryCredentialObjects(testNamespace, "github-repo", "https://github.com/org/repo", "scm-secret", "my-bot", "token")
+			c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(objects...).Build()
 			components := []applicationapiv1alpha1.Component{
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "comp", Namespace: testNamespace},
@@ -950,7 +777,7 @@ var _ = Describe("Nudge credentials", func() {
 				},
 			}
 
-			targets := GetNudgeTargetsBasicAuth(ctx, c, components, "quay.io", "u", "p")
+			targets := GetNudgeTargetsBasicAuth(ctx, c, objectLoader, components, "quay.io", "u", "p")
 			Expect(targets).To(HaveLen(1))
 			expectedAuthor := "my-bot <my-bot@users.noreply.github.com>"
 			Expect(targets[0].GitAuthor).To(Equal(expectedAuthor))
@@ -998,7 +825,7 @@ var _ = Describe("Nudge credentials", func() {
 			}
 
 			c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(dockerSecret, sa).Build()
-			host, username, password, err := GetImageRegistryCredentials(ctx, c, comp, "pipeline-sa")
+			host, username, password, err := GetImageRegistryCredentials(ctx, c, objectLoader, comp, "pipeline-sa")
 			Expect(err).NotTo(HaveOccurred())
 			Expect(host).To(Equal("quay.io"))
 			Expect(username).To(Equal("quay-user"))
@@ -1034,7 +861,7 @@ var _ = Describe("Nudge credentials", func() {
 			}
 
 			c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(dockerSecret, sa).Build()
-			host, username, password, err := GetImageRegistryCredentials(ctx, c, comp, "pipeline-sa")
+			host, username, password, err := GetImageRegistryCredentials(ctx, c, objectLoader, comp, "pipeline-sa")
 			Expect(err).NotTo(HaveOccurred())
 			Expect(host).To(Equal("quay.io"))
 			Expect(username).To(Equal("b64-user"))
@@ -1049,7 +876,7 @@ var _ = Describe("Nudge credentials", func() {
 				},
 			}
 			c := fake.NewClientBuilder().WithScheme(scheme).Build()
-			_, _, _, err := GetImageRegistryCredentials(ctx, c, comp, "nonexistent-sa")
+			_, _, _, err := GetImageRegistryCredentials(ctx, c, objectLoader, comp, "nonexistent-sa")
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("failed to read service account"))
 		})
@@ -1060,7 +887,7 @@ var _ = Describe("Nudge credentials", func() {
 				Spec:       applicationapiv1alpha1.ComponentSpec{},
 			}
 			c := fake.NewClientBuilder().WithScheme(scheme).Build()
-			_, _, _, err := GetImageRegistryCredentials(ctx, c, comp, "sa")
+			_, _, _, err := GetImageRegistryCredentials(ctx, c, objectLoader, comp, "sa")
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("has no container image set"))
 		})
@@ -1093,7 +920,7 @@ var _ = Describe("Nudge credentials", func() {
 			}
 
 			c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(dockerSecret, sa).Build()
-			host, _, _, err := GetImageRegistryCredentials(ctx, c, comp, "pipeline-sa")
+			host, _, _, err := GetImageRegistryCredentials(ctx, c, objectLoader, comp, "pipeline-sa")
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("no credentials found for image"))
 			// Host is still returned even when credentials fail
@@ -1112,7 +939,7 @@ var _ = Describe("Nudge credentials", func() {
 			}
 
 			c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(sa).Build()
-			_, _, _, err := GetImageRegistryCredentials(ctx, c, comp, "empty-sa")
+			_, _, _, err := GetImageRegistryCredentials(ctx, c, objectLoader, comp, "empty-sa")
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("no secrets linked to service account"))
 		})
@@ -1137,7 +964,7 @@ var _ = Describe("Nudge credentials", func() {
 			}
 
 			c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(opaqueSecret, sa).Build()
-			_, _, _, err := GetImageRegistryCredentials(ctx, c, comp, "pipeline-sa")
+			_, _, _, err := GetImageRegistryCredentials(ctx, c, objectLoader, comp, "pipeline-sa")
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("no credentials found for image"))
 		})
@@ -1170,80 +997,321 @@ var _ = Describe("Nudge credentials", func() {
 			}
 
 			c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(dockerSecret, sa).Build()
-			host, username, password, err := GetImageRegistryCredentials(ctx, c, comp, "pipeline-sa")
+			host, username, password, err := GetImageRegistryCredentials(ctx, c, objectLoader, comp, "pipeline-sa")
 			Expect(err).NotTo(HaveOccurred())
 			Expect(host).To(Equal("quay.io"))
 			Expect(username).To(Equal("user"))
 			Expect(password).To(Equal("pass"))
 		})
+
+		It("prefers the first linked dockerconfigjson secret when credentials conflict", func() {
+			firstConfig, err := json.Marshal(dockerConfigJSON{
+				Auths: map[string]repositoryConfigAuth{
+					"quay.io/org/repo": {Username: "first-user", Password: "first-pass"},
+				},
+			})
+			Expect(err).NotTo(HaveOccurred())
+			secondConfig, err := json.Marshal(dockerConfigJSON{
+				Auths: map[string]repositoryConfigAuth{
+					"quay.io/org/repo": {Username: "second-user", Password: "second-pass"},
+				},
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			zebraSecret := &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "zebra-secret", Namespace: testNamespace},
+				Type:       corev1.SecretTypeDockerConfigJson,
+				Data:       map[string][]byte{corev1.DockerConfigJsonKey: firstConfig},
+			}
+			alphaSecret := &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "alpha-secret", Namespace: testNamespace},
+				Type:       corev1.SecretTypeDockerConfigJson,
+				Data:       map[string][]byte{corev1.DockerConfigJsonKey: secondConfig},
+			}
+			sa := &corev1.ServiceAccount{
+				ObjectMeta: metav1.ObjectMeta{Name: "pipeline-sa", Namespace: testNamespace},
+				Secrets: []corev1.ObjectReference{
+					{Name: "zebra-secret"},
+					{Name: "alpha-secret"},
+				},
+				ImagePullSecrets: []corev1.LocalObjectReference{
+					{Name: "zebra-secret"},
+				},
+			}
+			comp := &applicationapiv1alpha1.Component{
+				ObjectMeta: metav1.ObjectMeta{Name: "comp", Namespace: testNamespace},
+				Spec: applicationapiv1alpha1.ComponentSpec{
+					ContainerImage: "quay.io/org/repo:latest",
+				},
+			}
+
+			c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(zebraSecret, alphaSecret, sa).Build()
+			_, username, password, err := GetImageRegistryCredentials(ctx, c, objectLoader, comp, "pipeline-sa")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(username).To(Equal("first-user"))
+			Expect(password).To(Equal("first-pass"))
+		})
 	})
 
-	// ---------- lookupSCMCredentials ----------
+	// ---------- linkedSecretNamesFromServiceAccount ----------
 
-	Describe("lookupSCMCredentials", func() {
-		var (
-			ctx    context.Context
-			scheme *runtime.Scheme
-		)
+	Describe("linkedSecretNamesFromServiceAccount", func() {
+		It("returns unique names in .secrets then .imagePullSecrets order", func() {
+			sa := &corev1.ServiceAccount{
+				Secrets: []corev1.ObjectReference{
+					{Name: "zebra-secret"},
+					{Name: "alpha-secret"},
+				},
+				ImagePullSecrets: []corev1.LocalObjectReference{
+					{Name: "zebra-secret"},
+					{Name: "pull-secret"},
+				},
+			}
+			Expect(linkedSecretNamesFromServiceAccount(sa)).To(Equal([]string{"zebra-secret", "alpha-secret", "pull-secret"}))
+		})
+	})
+
+	// ---------- extractCredentialsFromRepositorySecret ----------
+
+	Describe("extractCredentialsFromRepositorySecret", func() {
+		Context("When the secret is kubernetes.io/basic-auth", func() {
+			It("should return username and password from a BasicAuth secret", func() {
+				secret := &corev1.Secret{
+					Type: corev1.SecretTypeBasicAuth,
+					Data: map[string][]byte{
+						corev1.BasicAuthUsernameKey: []byte("user"),
+						corev1.BasicAuthPasswordKey: []byte("pass"),
+					},
+				}
+
+				username, password, err := extractCredentialsFromRepositorySecret(&pacv1alpha1.GitProvider{}, secret, "ignored-key")
+				Expect(err).NotTo(HaveOccurred())
+				Expect(username).To(Equal("user"))
+				Expect(password).To(Equal("pass"))
+			})
+
+			It("should allow an empty username on a BasicAuth secret", func() {
+				secret := &corev1.Secret{
+					Type: corev1.SecretTypeBasicAuth,
+					Data: map[string][]byte{
+						corev1.BasicAuthPasswordKey: []byte("pass"),
+					},
+				}
+
+				username, password, err := extractCredentialsFromRepositorySecret(&pacv1alpha1.GitProvider{}, secret, "ignored-key")
+				Expect(err).NotTo(HaveOccurred())
+				Expect(username).To(Equal(""))
+				Expect(password).To(Equal("pass"))
+			})
+
+			It("should return error when BasicAuth secret password is missing", func() {
+				secret := &corev1.Secret{
+					ObjectMeta: metav1.ObjectMeta{Name: "scm-secret"},
+					Type:       corev1.SecretTypeBasicAuth,
+					Data: map[string][]byte{
+						corev1.BasicAuthUsernameKey: []byte("user"),
+					},
+				}
+
+				_, _, err := extractCredentialsFromRepositorySecret(&pacv1alpha1.GitProvider{}, secret, "ignored-key")
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring(`key "password" not found in secret scm-secret`))
+			})
+
+			It("should return error when BasicAuth secret password is empty", func() {
+				secret := &corev1.Secret{
+					ObjectMeta: metav1.ObjectMeta{Name: "scm-secret"},
+					Type:       corev1.SecretTypeBasicAuth,
+					Data: map[string][]byte{
+						corev1.BasicAuthUsernameKey: []byte("user"),
+						corev1.BasicAuthPasswordKey: {},
+					},
+				}
+
+				_, _, err := extractCredentialsFromRepositorySecret(&pacv1alpha1.GitProvider{}, secret, "ignored-key")
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring(`key "password" not found in secret scm-secret`))
+			})
+		})
+
+		Context("When the secret is Opaque", func() {
+			It("should return GitProvider user and token from an opaque secret", func() {
+				secret := &corev1.Secret{
+					ObjectMeta: metav1.ObjectMeta{Name: "pac-secret"},
+					Type:       corev1.SecretTypeOpaque,
+					Data: map[string][]byte{
+						"token": []byte("ghp_token"),
+					},
+				}
+
+				username, password, err := extractCredentialsFromRepositorySecret(
+					&pacv1alpha1.GitProvider{User: "pac-bot"},
+					secret,
+					"token",
+				)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(username).To(Equal("pac-bot"))
+				Expect(password).To(Equal("ghp_token"))
+			})
+
+			It("should return error when opaque secret key is missing", func() {
+				secret := &corev1.Secret{
+					ObjectMeta: metav1.ObjectMeta{Name: "pac-secret"},
+					Type:       corev1.SecretTypeOpaque,
+					Data:       map[string][]byte{},
+				}
+
+				_, _, err := extractCredentialsFromRepositorySecret(&pacv1alpha1.GitProvider{User: "pac-bot"}, secret, "token")
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring(`key "token" not found in secret pac-secret`))
+			})
+
+			It("should return error when opaque secret key value is empty", func() {
+				secret := &corev1.Secret{
+					ObjectMeta: metav1.ObjectMeta{Name: "pac-secret"},
+					Type:       corev1.SecretTypeOpaque,
+					Data: map[string][]byte{
+						"token": {},
+					},
+				}
+
+				_, _, err := extractCredentialsFromRepositorySecret(&pacv1alpha1.GitProvider{User: "pac-bot"}, secret, "token")
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring(`key "token" not found in secret pac-secret`))
+			})
+		})
+	})
+
+	// ---------- lookupSCMCredentialsViaRepository ----------
+
+	Describe("lookupSCMCredentialsViaRepository", func() {
+		var lookupNS *corev1.Namespace
+
+		createAndWait := func(obj client.Object) {
+			GinkgoHelper()
+			Expect(k8sClient.Create(ctx, obj)).To(Succeed())
+			Eventually(func() error {
+				return k8sClient.Get(ctx, client.ObjectKeyFromObject(obj), obj)
+			}).Should(Succeed())
+		}
 
 		BeforeEach(func() {
-			ctx = context.Background()
-			scheme = newCredentialScheme()
+			lookupNS = &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{GenerateName: "nudge-lookup-"}}
+			createAndWait(lookupNS)
 		})
 
-		It("returns credentials from matching BasicAuth secret", func() {
-			scmSecret := &corev1.Secret{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "scm-secret",
-					Namespace: testNamespace,
-					Labels: map[string]string{
-						scmCredentialsSecretLabel: "scm",
-						scmSecretHostnameLabel:    "github.com",
-					},
-					Annotations: map[string]string{
-						scmSecretRepositoryAnnotation: "org/repo",
-					},
-				},
-				Type: corev1.SecretTypeBasicAuth,
-				Data: map[string][]byte{
-					corev1.BasicAuthUsernameKey: []byte("user"),
-					corev1.BasicAuthPasswordKey: []byte("token"),
-				},
+		AfterEach(func() {
+			if lookupNS != nil && lookupNS.Name != "" {
+				Expect(k8sClient.Delete(ctx, lookupNS)).To(Succeed())
 			}
-			c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(scmSecret).Build()
-
-			username, password, err := lookupSCMCredentials(ctx, c, testNamespace, "github.com", "org/repo")
-			Expect(err).NotTo(HaveOccurred())
-			Expect(username).To(Equal("user"))
-			Expect(password).To(Equal("token"))
 		})
 
-		It("returns error when no secrets match the host", func() {
-			c := fake.NewClientBuilder().WithScheme(scheme).Build()
-			_, _, err := lookupSCMCredentials(ctx, c, testNamespace, "github.com", "org/repo")
-			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("no SCM basic auth secrets found"))
+		Context("When a matching Repository CR references a BasicAuth secret", func() {
+			It("should return credentials from matching Repository CR with BasicAuth secret", func() {
+				objects := repositoryCredentialObjects(lookupNS.Name, "github-repo", "https://github.com/org/repo", "scm-secret", "user", "token")
+				for _, obj := range objects {
+					createAndWait(obj)
+				}
+
+				username, password, err := lookupSCMCredentialsViaRepository(ctx, k8sClient, objectLoader, lookupNS.Name, "https://github.com/org/repo")
+				Expect(err).NotTo(HaveOccurred())
+				Expect(username).To(Equal("user"))
+				Expect(password).To(Equal("token"))
+			})
 		})
 
-		It("skips non-BasicAuth secrets", func() {
-			opaqueSecret := &corev1.Secret{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "opaque-scm",
-					Namespace: testNamespace,
-					Labels: map[string]string{
-						scmCredentialsSecretLabel: "scm",
-						scmSecretHostnameLabel:    "github.com",
+		Context("When the component URL has a .git suffix", func() {
+			It("should match Repository URL when component URL has a .git suffix", func() {
+				objects := repositoryCredentialObjects(lookupNS.Name, "github-repo", "https://github.com/org/repo", "scm-secret", "user", "token")
+				for _, obj := range objects {
+					createAndWait(obj)
+				}
+
+				username, password, err := lookupSCMCredentialsViaRepository(ctx, k8sClient, objectLoader, lookupNS.Name, "https://github.com/org/repo.git")
+				Expect(err).NotTo(HaveOccurred())
+				Expect(username).To(Equal("user"))
+				Expect(password).To(Equal("token"))
+			})
+		})
+
+		Context("When no Repository CR matches the URL", func() {
+			It("should return error when no Repository CR matches the URL", func() {
+				_, _, err := lookupSCMCredentialsViaRepository(ctx, k8sClient, objectLoader, lookupNS.Name, "https://github.com/org/repo")
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("no Repository CR matching URL"))
+			})
+		})
+
+		Context("When multiple Repository CRs match the same URL", func() {
+			It("should return error when multiple Repository CRs match the same URL", func() {
+				repoA := &pacv1alpha1.Repository{
+					ObjectMeta: metav1.ObjectMeta{Name: "github-repo-a", Namespace: lookupNS.Name},
+					Spec: pacv1alpha1.RepositorySpec{
+						URL: "https://github.com/org/repo",
 					},
-				},
-				Type: corev1.SecretTypeOpaque,
-				Data: map[string][]byte{
-					"token": []byte("some-token"),
-				},
-			}
-			c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(opaqueSecret).Build()
-			_, _, err := lookupSCMCredentials(ctx, c, testNamespace, "github.com", "org/repo")
-			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("no SCM basic auth secrets found"))
+				}
+				repoB := &pacv1alpha1.Repository{
+					ObjectMeta: metav1.ObjectMeta{Name: "github-repo-b", Namespace: lookupNS.Name},
+					Spec: pacv1alpha1.RepositorySpec{
+						URL: "https://github.com/org/repo.git",
+					},
+				}
+				createAndWait(repoA)
+				createAndWait(repoB)
+
+				_, _, err := lookupSCMCredentialsViaRepository(ctx, k8sClient, objectLoader, lookupNS.Name, "https://github.com/org/repo")
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("multiple Repository CRs match URL"))
+				Expect(err.Error()).To(ContainSubstring("github-repo-a, github-repo-b"))
+			})
+		})
+
+		Context("When the Repository CR has no git_provider.secret", func() {
+			It("should return error when Repository CR has no git_provider.secret", func() {
+				repo := &pacv1alpha1.Repository{
+					ObjectMeta: metav1.ObjectMeta{Name: "github-repo", Namespace: lookupNS.Name},
+					Spec: pacv1alpha1.RepositorySpec{
+						URL: "https://github.com/org/repo",
+					},
+				}
+				createAndWait(repo)
+
+				_, _, err := lookupSCMCredentialsViaRepository(ctx, k8sClient, objectLoader, lookupNS.Name, "https://github.com/org/repo")
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("has no git_provider.secret configured"))
+			})
+		})
+
+		Context("When the Repository CR references an opaque secret", func() {
+			It("should return credentials from opaque secret using GitProvider user and secret key", func() {
+				secret := &corev1.Secret{
+					ObjectMeta: metav1.ObjectMeta{Name: "pac-secret", Namespace: lookupNS.Name},
+					Type:       corev1.SecretTypeOpaque,
+					Data: map[string][]byte{
+						"token": []byte("ghp_token"),
+					},
+				}
+				repo := &pacv1alpha1.Repository{
+					ObjectMeta: metav1.ObjectMeta{Name: "github-repo", Namespace: lookupNS.Name},
+					Spec: pacv1alpha1.RepositorySpec{
+						URL: "https://github.com/org/repo",
+						GitProvider: &pacv1alpha1.GitProvider{
+							User: "pac-bot",
+							Secret: &pacv1alpha1.Secret{
+								Name: "pac-secret",
+								Key:  "token",
+							},
+						},
+					},
+				}
+				createAndWait(secret)
+				createAndWait(repo)
+
+				username, password, err := lookupSCMCredentialsViaRepository(ctx, k8sClient, objectLoader, lookupNS.Name, "https://github.com/org/repo")
+				Expect(err).NotTo(HaveOccurred())
+				Expect(username).To(Equal("pac-bot"))
+				Expect(password).To(Equal("ghp_token"))
+			})
 		})
 	})
 

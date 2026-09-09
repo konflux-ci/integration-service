@@ -36,6 +36,8 @@ import (
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
 	"github.com/konflux-ci/integration-service/gitops"
 	releasev1alpha1 "github.com/konflux-ci/release-service/api/v1alpha1"
+	pacv1alpha1 "github.com/openshift-pipelines/pipelines-as-code/pkg/apis/pipelinesascode/v1alpha1"
+	corev1 "k8s.io/api/core/v1"
 )
 
 var _ = Describe("Loader", Ordered, func() {
@@ -1623,4 +1625,78 @@ var _ = Describe("Loader", Ordered, func() {
 		Expect((componentGroups)[0].Name).To(Equal(hasComponentGroup1.Name))
 	})
 
+})
+
+var _ = Describe("Loader secret, service account, and repository fetches", func() {
+	var objectLoader ObjectLoader
+
+	BeforeEach(func() {
+		objectLoader = NewLoader()
+	})
+
+	Context("When fetching a Secret by name", func() {
+		It("should return the Secret from the cluster", func() {
+			secret := &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "loader-test-secret", Namespace: "default"},
+				Type:       corev1.SecretTypeOpaque,
+				Data:       map[string][]byte{"token": []byte("value")},
+			}
+			Expect(k8sClient.Create(ctx, secret)).To(Succeed())
+			defer func() {
+				Expect(k8sClient.Delete(ctx, secret)).To(Succeed())
+			}()
+
+			Eventually(func() error {
+				return k8sClient.Get(ctx, types.NamespacedName{Name: secret.Name, Namespace: secret.Namespace}, &corev1.Secret{})
+			}).Should(Succeed())
+
+			fetched, err := objectLoader.GetSecret(ctx, k8sClient, secret.Name, secret.Namespace)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(fetched.Name).To(Equal(secret.Name))
+			Expect(fetched.Data["token"]).To(Equal([]byte("value")))
+		})
+	})
+
+	Context("When fetching a ServiceAccount by name", func() {
+		It("should return the ServiceAccount from the cluster", func() {
+			sa := &corev1.ServiceAccount{
+				ObjectMeta: metav1.ObjectMeta{Name: "loader-test-sa", Namespace: "default"},
+			}
+			Expect(k8sClient.Create(ctx, sa)).To(Succeed())
+			defer func() {
+				Expect(k8sClient.Delete(ctx, sa)).To(Succeed())
+			}()
+
+			Eventually(func() error {
+				return k8sClient.Get(ctx, types.NamespacedName{Name: sa.Name, Namespace: sa.Namespace}, &corev1.ServiceAccount{})
+			}).Should(Succeed())
+
+			fetched, err := objectLoader.GetServiceAccount(ctx, k8sClient, sa.Name, sa.Namespace)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(fetched.Name).To(Equal(sa.Name))
+		})
+	})
+
+	Context("When listing Repository CRs in a namespace", func() {
+		It("should return the Repository from that namespace", func() {
+			repo := &pacv1alpha1.Repository{
+				ObjectMeta: metav1.ObjectMeta{Name: "loader-test-repo", Namespace: "default"},
+				Spec: pacv1alpha1.RepositorySpec{
+					URL: "https://github.com/org/loader-test-repo",
+				},
+			}
+			Expect(k8sClient.Create(ctx, repo)).To(Succeed())
+			defer func() {
+				Expect(k8sClient.Delete(ctx, repo)).To(Succeed())
+			}()
+
+			Eventually(func() error {
+				return k8sClient.Get(ctx, types.NamespacedName{Name: repo.Name, Namespace: repo.Namespace}, &pacv1alpha1.Repository{})
+			}).Should(Succeed())
+
+			repos, err := objectLoader.GetAllRepositoriesInNamespace(ctx, k8sClient, "default")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(*repos).To(ContainElement(HaveField("Name", repo.Name)))
+		})
+	})
 })

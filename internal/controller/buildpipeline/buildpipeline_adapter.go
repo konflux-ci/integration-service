@@ -241,7 +241,7 @@ func (a *Adapter) EnsureNudgePipelineRunsExist() (controller.OperationResult, er
 	if saName == "" {
 		saName = tektonconsts.DefaultPipelineServiceAccount
 	}
-	imageRepoHost, imageRepoUser, imageRepoPwd, err := nudging.GetImageRegistryCredentials(a.context, a.client, a.component, saName)
+	imageRepoHost, imageRepoUser, imageRepoPwd, err := nudging.GetImageRegistryCredentials(a.context, a.client, a.loader, a.component, saName)
 	if err != nil {
 		a.logger.Error(err, "Failed to get image registry credentials for nudging, skipping")
 		_ = tekton.AnnotateBuildPipelineRun(a.context, a.pipelineRun, tektonconsts.NudgeProcessedAnnotation, "credentials-error", a.client)
@@ -250,7 +250,7 @@ func (a *Adapter) EnsureNudgePipelineRunsExist() (controller.OperationResult, er
 
 	var targets []nudging.NudgeTarget
 
-	githubTargets := nudging.GetNudgeTargetsGithubApp(a.context, a.client, targetComponents, imageRepoHost, imageRepoUser, imageRepoPwd)
+	githubTargets := nudging.GetNudgeTargetsGithubApp(a.context, a.client, a.loader, targetComponents, imageRepoHost, imageRepoUser, imageRepoPwd)
 	targets = append(targets, githubTargets...)
 
 	// Exclude components already resolved via GitHub App from the basic-auth path to avoid
@@ -266,7 +266,7 @@ func (a *Adapter) EnsureNudgePipelineRunsExist() (controller.OperationResult, er
 		}
 	}
 
-	basicAuthTargets := nudging.GetNudgeTargetsBasicAuth(a.context, a.client, remainingComponents, imageRepoHost, imageRepoUser, imageRepoPwd)
+	basicAuthTargets := nudging.GetNudgeTargetsBasicAuth(a.context, a.client, a.loader, remainingComponents, imageRepoHost, imageRepoUser, imageRepoPwd)
 	targets = append(targets, basicAuthTargets...)
 
 	if len(targets) == 0 {

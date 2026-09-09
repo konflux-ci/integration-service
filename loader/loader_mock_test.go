@@ -26,8 +26,10 @@ import (
 	releasev1alpha1 "github.com/konflux-ci/release-service/api/v1alpha1"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	pacv1alpha1 "github.com/openshift-pipelines/pipelines-as-code/pkg/apis/pipelinesascode/v1alpha1"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	resolutionv1beta1 "github.com/tektoncd/pipeline/pkg/apis/resolution/v1beta1"
+	corev1 "k8s.io/api/core/v1"
 )
 
 var _ = Describe("Release Adapter", Ordered, func() {
@@ -566,6 +568,51 @@ var _ = Describe("Release Adapter", Ordered, func() {
 			})
 			resource, err := loader.GetNestedComponentGroupsForComponentGroup(mockContext, nil, nil)
 			Expect(resource).To(Equal(componentGroups))
+			Expect(err).ToNot(HaveOccurred())
+		})
+	})
+
+	Context("When calling GetSecret", func() {
+		It("returns resource and error from the context", func() {
+			secret := &corev1.Secret{}
+			mockContext := toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: SecretContextKey,
+					Resource:   secret,
+				},
+			})
+			resource, err := loader.GetSecret(mockContext, nil, "", "")
+			Expect(resource).To(Equal(secret))
+			Expect(err).ToNot(HaveOccurred())
+		})
+	})
+
+	Context("When calling GetServiceAccount", func() {
+		It("returns resource and error from the context", func() {
+			serviceAccount := &corev1.ServiceAccount{}
+			mockContext := toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: ServiceAccountContextKey,
+					Resource:   serviceAccount,
+				},
+			})
+			resource, err := loader.GetServiceAccount(mockContext, nil, "", "")
+			Expect(resource).To(Equal(serviceAccount))
+			Expect(err).ToNot(HaveOccurred())
+		})
+	})
+
+	Context("When calling GetAllRepositoriesInNamespace", func() {
+		It("returns resource and error from the context", func() {
+			repositories := []pacv1alpha1.Repository{}
+			mockContext := toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: RepositoriesContextKey,
+					Resource:   repositories,
+				},
+			})
+			resource, err := loader.GetAllRepositoriesInNamespace(mockContext, nil, "")
+			Expect(resource).To(Equal(&repositories))
 			Expect(err).ToNot(HaveOccurred())
 		})
 	})

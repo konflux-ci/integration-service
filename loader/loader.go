@@ -29,8 +29,10 @@ import (
 	toolkit "github.com/konflux-ci/operator-toolkit/loader"
 	"github.com/konflux-ci/operator-toolkit/metadata"
 	releasev1alpha1 "github.com/konflux-ci/release-service/api/v1alpha1"
+	pacv1alpha1 "github.com/openshift-pipelines/pipelines-as-code/pkg/apis/pipelinesascode/v1alpha1"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	resolutionv1beta1 "github.com/tektoncd/pipeline/pkg/apis/resolution/v1beta1"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
@@ -89,6 +91,9 @@ type ObjectLoader interface {
 	GetAllComponentGroupsInNamespace(ctx context.Context, c client.Client, namespace string) ([]v1beta2.ComponentGroup, error)
 	GetNestedComponentGroupsForComponentGroup(ctx context.Context, c client.Client, componentGroup *v1beta2.ComponentGroup) ([]v1beta2.ComponentGroup, error)
 	GetNudgeConfigForNamespace(ctx context.Context, c client.Client, namespace string) (*v1beta2.NudgeConfig, error)
+	GetSecret(ctx context.Context, c client.Client, name, namespace string) (*corev1.Secret, error)
+	GetServiceAccount(ctx context.Context, c client.Client, name, namespace string) (*corev1.ServiceAccount, error)
+	GetAllRepositoriesInNamespace(ctx context.Context, c client.Client, namespace string) (*[]pacv1alpha1.Repository, error)
 }
 
 type loader struct{}
@@ -1174,4 +1179,31 @@ func (l *loader) GetNestedComponentGroupsForComponentGroup(ctx context.Context, 
 		}
 	}
 	return nestedComponentGroups, nil
+}
+
+// GetSecret returns the Secret requested by name and namespace.
+func (l *loader) GetSecret(ctx context.Context, c client.Client, name, namespace string) (*corev1.Secret, error) {
+	secret := &corev1.Secret{}
+	return secret, toolkit.GetObject(name, namespace, c, ctx, secret)
+}
+
+// GetServiceAccount returns the ServiceAccount requested by name and namespace.
+func (l *loader) GetServiceAccount(ctx context.Context, c client.Client, name, namespace string) (*corev1.ServiceAccount, error) {
+	serviceAccount := &corev1.ServiceAccount{}
+	return serviceAccount, toolkit.GetObject(name, namespace, c, ctx, serviceAccount)
+}
+
+// GetAllRepositoriesInNamespace returns all Pipelines-as-Code Repository CRs in the given namespace.
+func (l *loader) GetAllRepositoriesInNamespace(ctx context.Context, c client.Client, namespace string) (*[]pacv1alpha1.Repository, error) {
+	repositories := &pacv1alpha1.RepositoryList{}
+	opts := []client.ListOption{
+		client.InNamespace(namespace),
+	}
+
+	err := c.List(ctx, repositories, opts...)
+	if err != nil {
+		return nil, err
+	}
+
+	return &repositories.Items, nil
 }
