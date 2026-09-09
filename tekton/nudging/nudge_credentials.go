@@ -31,11 +31,11 @@ import (
 	ghinstallation "github.com/bradleyfalzon/ghinstallation/v2"
 	ghapi "github.com/google/go-github/v45/github"
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
+	"github.com/konflux-ci/integration-service/loader"
 	tektonconsts "github.com/konflux-ci/integration-service/tekton/consts"
 	pacv1alpha1 "github.com/openshift-pipelines/pipelines-as-code/pkg/apis/pipelinesascode/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	ctrllog "sigs.k8s.io/controller-runtime/pkg/log"
 )
@@ -89,7 +89,7 @@ var getGitHubBotUserIDFn = getGitHubBotUserID
 // It reads the global PaC secret from the integration-service namespace (INTEGRATION_NS env var),
 // verifies that GitHub App credentials are configured, and for each GitHub-hosted component it
 // obtains a repo-scoped installation token via the GitHub App JWT + installation token flow.
-func GetNudgeTargetsGithubApp(ctx context.Context, c client.Client, targetComponents []applicationapiv1alpha1.Component, imageRepoHost, imageRepoUser, imageRepoPwd string) []NudgeTarget {
+func GetNudgeTargetsGithubApp(ctx context.Context, c client.Client, objectLoader loader.ObjectLoader, targetComponents []applicationapiv1alpha1.Component, imageRepoHost, imageRepoUser, imageRepoPwd string) []NudgeTarget {
 	log := ctrllog.FromContext(ctx)
 
 	integrationNS := os.Getenv("INTEGRATION_NS")
@@ -97,15 +97,11 @@ func GetNudgeTargetsGithubApp(ctx context.Context, c client.Client, targetCompon
 		integrationNS = "integration-service"
 	}
 
-	pacSecret := corev1.Secret{}
-	globalPaCSecretKey := types.NamespacedName{
-		Namespace: integrationNS,
-		Name:      tektonconsts.PipelinesAsCodeGitHubAppSecretName,
-	}
-	if err := c.Get(ctx, globalPaCSecretKey, &pacSecret); err != nil {
+	pacSecret, err := objectLoader.GetSecret(ctx, c, tektonconsts.PipelinesAsCodeGitHubAppSecretName, integrationNS)
+	if err != nil {
 		log.Info("GitHub App PaC secret not found, skipping GitHub App auth path",
-			"namespace", globalPaCSecretKey.Namespace,
-			"secret", globalPaCSecretKey.Name,
+			"namespace", integrationNS,
+			"secret", tektonconsts.PipelinesAsCodeGitHubAppSecretName,
 			"error", err.Error())
 		return nil
 	}
@@ -215,7 +211,7 @@ func GetNudgeTargetsGithubApp(ctx context.Context, c client.Client, targetCompon
 // 2. Looks up SCM credentials from namespace Secrets matching the repo host
 // 3. Reads optional custom Renovate configuration
 // 4. Builds a NudgeTarget with the gathered information
-func GetNudgeTargetsBasicAuth(ctx context.Context, c client.Client, targetComponents []applicationapiv1alpha1.Component, imageRepoHost, imageRepoUser, imageRepoPwd string) []NudgeTarget {
+func GetNudgeTargetsBasicAuth(ctx context.Context, c client.Client, objectLoader loader.ObjectLoader, targetComponents []applicationapiv1alpha1.Component, imageRepoHost, imageRepoUser, imageRepoPwd string) []NudgeTarget {
 	log := ctrllog.FromContext(ctx)
 	targets := []NudgeTarget{}
 
@@ -248,7 +244,7 @@ func GetNudgeTargetsBasicAuth(ctx context.Context, c client.Client, targetCompon
 		repoPath := parseGitRepoPath(repoURL)
 
 		// Look up SCM credentials
-		username, token, err := lookupSCMCredentialsViaRepository(ctx, c, component.Namespace, repoURL)
+		username, token, err := lookupSCMCredentialsViaRepository(ctx, c, objectLoader, component.Namespace, repoURL)
 		if err != nil {
 			log.Error(err, "error getting basic auth credentials for component",
 				"ComponentName", component.Name,
@@ -310,7 +306,7 @@ func GetNudgeTargetsBasicAuth(ctx context.Context, c client.Client, targetCompon
 //
 // It parses the component's ContainerImage to determine the registry host, reads the
 // ServiceAccount's linked secrets, and returns matching credentials.
-func GetImageRegistryCredentials(ctx context.Context, c client.Client, component *applicationapiv1alpha1.Component, saName string) (host, username, password string, err error) {
+func GetImageRegistryCredentials(ctx context.Context, c client.Client, objectLoader loader.ObjectLoader, component *applicationapiv1alpha1.Component, saName string) (host, username, password string, err error) {
 	log := ctrllog.FromContext(ctx)
 
 	if component.Spec.ContainerImage == "" {
@@ -325,9 +321,8 @@ func GetImageRegistryCredentials(ctx context.Context, c client.Client, component
 
 	namespace := component.Namespace
 
-	// Read the ServiceAccount
-	sa := &corev1.ServiceAccount{}
-	if err := c.Get(ctx, types.NamespacedName{Name: saName, Namespace: namespace}, sa); err != nil {
+	sa, err := objectLoader.GetServiceAccount(ctx, c, saName, namespace)
+	if err != nil {
 		return "", "", "", fmt.Errorf("failed to read service account %s in namespace %s: %w", saName, namespace, err)
 	}
 
@@ -342,8 +337,7 @@ func GetImageRegistryCredentials(ctx context.Context, c client.Client, component
 	// Parse credentials from linked docker config secrets
 	var allCreds []repositoryCredentials
 	for _, linkedSecretName := range linkedSecretNames {
-		linkedSecret := &corev1.Secret{}
-		err = c.Get(ctx, types.NamespacedName{Namespace: namespace, Name: linkedSecretName}, linkedSecret)
+		linkedSecret, err := objectLoader.GetSecret(ctx, c, linkedSecretName, namespace)
 		if err != nil {
 			if errors.IsNotFound(err) {
 				continue
@@ -616,17 +610,17 @@ func extractCredentialsFromRepositorySecret(gp *pacv1alpha1.GitProvider, secret 
 
 // lookupSCMCredentialsViaRepository searches for Repository CRs in the tenant namespace whose Spec.URL matches the component URL.
 // It then reads the secret reference from the Repository CR and extracts credentials from it.
-func lookupSCMCredentialsViaRepository(ctx context.Context, c client.Client, namespace, repoURL string) (username, token string, err error) {
-	repos := pacv1alpha1.RepositoryList{}
-	if err := c.List(ctx, &repos, client.InNamespace(namespace)); err != nil {
+func lookupSCMCredentialsViaRepository(ctx context.Context, c client.Client, objectLoader loader.ObjectLoader, namespace, repoURL string) (username, token string, err error) {
+	repos, err := objectLoader.GetAllRepositoriesInNamespace(ctx, c, namespace)
+	if err != nil {
 		return "", "", fmt.Errorf("failed to list Repository CRs in %s: %w", namespace, err)
 	}
 
 	normalizedTarget := normalizeGitRepoURL(repoURL)
 	var matches []pacv1alpha1.Repository
-	for i := range repos.Items {
-		if normalizeGitRepoURL(repos.Items[i].Spec.URL) == normalizedTarget {
-			matches = append(matches, repos.Items[i])
+	for i := range *repos {
+		if normalizeGitRepoURL((*repos)[i].Spec.URL) == normalizedTarget {
+			matches = append(matches, (*repos)[i])
 		}
 	}
 	if len(matches) == 0 {
@@ -646,8 +640,8 @@ func lookupSCMCredentialsViaRepository(ctx context.Context, c client.Client, nam
 	}
 
 	ref := matched.Spec.GitProvider.Secret
-	secret := &corev1.Secret{}
-	if err := c.Get(ctx, types.NamespacedName{Namespace: namespace, Name: ref.Name}, secret); err != nil {
+	secret, err := objectLoader.GetSecret(ctx, c, ref.Name, namespace)
+	if err != nil {
 		return "", "", fmt.Errorf("failed to get secret %s/%s: %w", namespace, ref.Name, err)
 	}
 
