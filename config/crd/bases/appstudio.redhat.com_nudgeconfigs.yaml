@@ -47,9 +47,51 @@ spec:
           metadata:
             type: object
           spec:
-            description: NudgeConfigSpec defines the desired nudging relationships
-              between components.
+            description: |-
+              NudgeConfigSpec defines the desired nudging relationships between components
+              and optional namespace-wide batch defaults.
             properties:
+              batchDefaults:
+                description: |-
+                  BatchDefaults are namespace-wide fallback values for batched targets.
+                  When omitted, the field is nil; the controller applies runtime defaults.
+                properties:
+                  debounceTimeout:
+                    description: |-
+                      DebounceTimeout is how long to wait after the last incoming build before firing the batch.
+                      Range: 1m–24h. Runtime default when unset: 30m.
+                      When MaxWaitTime is also specified, DebounceTimeout must be strictly less than MaxWaitTime.
+                    format: duration
+                    type: string
+                    x-kubernetes-validations:
+                    - message: debounceTimeout must be between 1m and 24h
+                      rule: duration(self) >= duration('1m') && duration(self) <=
+                        duration('24h')
+                  failurePolicy:
+                    description: |-
+                      FailurePolicy controls whether a failed member build blocks the batch or allows a partial fire.
+                      Runtime default when unset: Block.
+                    enum:
+                    - Block
+                    - ProceedWithPartial
+                    type: string
+                  maxWaitTime:
+                    description: |-
+                      MaxWaitTime is the hard deadline from the first build event, regardless of debounce resets.
+                      Range: 1m–24h. Runtime default when unset: 4h.
+                      When both MaxWaitTime and DebounceTimeout are set, MaxWaitTime must exceed DebounceTimeout
+                      (enforced by a CEL rule on BatchDefaults).
+                    format: duration
+                    type: string
+                    x-kubernetes-validations:
+                    - message: maxWaitTime must be between 1m and 24h
+                      rule: duration(self) >= duration('1m') && duration(self) <=
+                        duration('24h')
+                type: object
+                x-kubernetes-validations:
+                - message: maxWaitTime must exceed debounceTimeout
+                  rule: '!has(self.debounceTimeout) || !has(self.maxWaitTime) || duration(self.maxWaitTime)
+                    > duration(self.debounceTimeout)'
               nudges:
                 description: Nudges is the list of component nudge relationships.
                 items:

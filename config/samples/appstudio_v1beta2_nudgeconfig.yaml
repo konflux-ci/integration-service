@@ -12,6 +12,12 @@ metadata:
   name: nudge-config
   namespace: default
 spec:
+  # Namespace-wide fallbacks for batched targets. Omitted batchDefaults is nil;
+  # the controller applies runtime defaults (30m / 4h / Block).
+  batchDefaults:
+    debounceTimeout: 30m
+    maxWaitTime: 4h
+    failurePolicy: Block
   nudges:
     # When component-a builds successfully, nudge component-b after integration tests pass
     - from: component-a
