@@ -114,6 +114,8 @@ func SetupController(manager ctrl.Manager, log *logr.Logger) error {
 
 // setupControllerWithManager sets up the controller with the Manager which monitors Components and filters
 // out status updates.
+// NOTE: we do not need to watch for changes to konflux-ci.dev Components here because
+// the Component Adapter is only used in the old model
 func setupControllerWithManager(manager ctrl.Manager, controller *Reconciler) error {
 	return ctrl.NewControllerManagedBy(manager).
 		For(&applicationapiv1alpha1.Component{}).

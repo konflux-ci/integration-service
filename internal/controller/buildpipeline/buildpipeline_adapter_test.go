@@ -2523,10 +2523,6 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				adapter = NewAdapter(ctx, buildPipelineRun2, otherComp, componentGroups, log, loader.NewMockLoader(), k8sClient)
 				adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 					{
-						ContextKey: loader.ComponentGroupComponentsContextKey,
-						Resource:   []applicationapiv1alpha1.Component{*hasComp},
-					},
-					{
 						ContextKey: loader.GetComponentSnapshotsKey,
 						Resource:   []applicationapiv1alpha1.Snapshot{*hasSnapshot},
 					},
@@ -2750,10 +2746,6 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				adapter = NewAdapter(ctx, buildPipelineRun, hasComp, componentGroups, log, loader.NewMockLoader(), k8sClient)
 				adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 					{
-						ContextKey: loader.ComponentGroupComponentsContextKey,
-						Resource:   []applicationapiv1alpha1.Component{*hasComp},
-					},
-					{
 						ContextKey: loader.GetComponentSnapshotsKey,
 						Resource:   []applicationapiv1alpha1.Snapshot{*hasSnapshot},
 					},
@@ -2922,10 +2914,6 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				componentGroups := []v1beta2.ComponentGroup{*hasCompGroup}
 				adapter = NewAdapter(ctx, buildPipelineRun, hasComp, &componentGroups, logger, loader.NewMockLoader(), k8sClient)
 				adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
-					{
-						ContextKey: loader.ComponentGroupComponentsContextKey,
-						Resource:   []applicationapiv1alpha1.Component{*hasComp},
-					},
 					{
 						ContextKey: loader.GetComponentSnapshotsKey,
 						Resource:   []applicationapiv1alpha1.Snapshot{*hasSnapshot},
@@ -3608,10 +3596,6 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				{
 					ContextKey: loader.GetBuildPLRContextKey,
 					Resource:   []tektonv1.PipelineRun{*buildPipelineRun, *buildPipelineRun2},
-				},
-				{
-					ContextKey: loader.ComponentGroupComponentsContextKey,
-					Resource:   []applicationapiv1alpha1.Component{*hasComp, *hasComp2},
 				},
 				{
 					ContextKey: loader.AllIntegrationTestScenariosForComponentGroupContextKey,
