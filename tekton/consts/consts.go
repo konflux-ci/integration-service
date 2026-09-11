@@ -16,26 +16,36 @@ limitations under the License.
 
 package consts
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/konflux-ci/integration-service/pkg/keys"
+)
 
 const (
 	// PipelinesLabelPrefix is the prefix of the pipelines label
-	PipelinesLabelPrefix = "pipelines.appstudio.openshift.io"
+	// remove after componentGroup migration
+	PipelinesLabelPrefix = keys.PrefixPipelinesOld
 
 	// TestLabelPrefix contains the prefix applied to labels and annotations related to testing.
-	TestLabelPrefix = "test.appstudio.openshift.io"
+	// remove after componentGroup migration
+	TestLabelPrefix = keys.PrefixTestOld
 
 	// PipelinesAsCodePrefix contains the prefix applied to labels and annotations copied from Pipelines as Code resources.
-	PipelinesAsCodePrefix = "pac.test.appstudio.openshift.io"
+	// remove after componentGroup migration
+	PipelinesAsCodePrefix = keys.PrefixPAC
 
 	// BuildPipelineRunPrefix contains the build pipeline run related labels and annotations
-	BuildPipelineRunPrefix = "build.appstudio"
+	// remove after componentGroup migration
+	BuildPipelineRunPrefix = keys.PrefixBuildOld
 
 	// CustomLabelPrefix contains the prefix applied to custom user-defined labels and annotations.
-	CustomLabelPrefix = "custom.appstudio.openshift.io"
+	// remove after componentGroup migration
+	CustomLabelPrefix = keys.PrefixCustom
 
 	// resource labels for snapshot, application and component
-	ResourceLabelSuffix = "appstudio.openshift.io"
+	// remove after componentGroup migration
+	ResourceLabelSuffix = keys.PrefixAppstudio
 
 	// PipelineTypeTest is the type for PipelineRuns created to run an integration Pipeline
 	PipelineTypeTest = "test"
@@ -112,7 +122,8 @@ const (
 	 * Utils constants
 	 */
 	// PipelineRunTypeLabel contains the type of the PipelineRunTypeLabel.
-	PipelineRunTypeLabel = "pipelines.appstudio.openshift.io/type"
+	// remove after componentGroup migration
+	PipelineRunTypeLabel = keys.PrefixPipelinesOld + "/type"
 
 	// PipelineRunBuildType is the type denoting a build PipelineRun.
 	PipelineRunBuildType = "build"
@@ -121,15 +132,18 @@ const (
 	PipelineRunTestType = "test"
 
 	// PipelineRunComponentLabel is the label denoting the application.
-	PipelineRunComponentLabel = "appstudio.openshift.io/component"
+	// remove after componentGroup migration
+	PipelineRunComponentLabel = keys.PrefixAppstudio + "/component"
 
 	// PipelineRunComponentVersionAnnotation denotes the componentVersion for the build
 	PipelineRunComponentVersionAnnotation = "appstudio.openshift.io/version"
 
+	// remove after componentGroup migration
 	PipelineRunComponentVersionContextAnnotation = "appstudio.openshift.io/context"
 
 	// PipelineRunApplicationLabel is the label denoting the application.
-	PipelineRunApplicationLabel = "appstudio.openshift.io/application"
+	// remove after componentGroup migration
+	PipelineRunApplicationLabel = keys.PrefixAppstudio + "/application"
 
 	// PipelineRunChainsSignedAnnotation is the label added by Tekton Chains to signed PipelineRuns
 	PipelineRunChainsSignedAnnotation = "chains.tekton.dev/signed"
