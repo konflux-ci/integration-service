@@ -19,12 +19,14 @@ package tekton_test
 import (
 	"fmt"
 
+	"github.com/konflux-ci/integration-service/pkg/keys"
 	"github.com/konflux-ci/integration-service/tekton"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	klog "k8s.io/klog/v2"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 var _ = Describe("Utils", func() {
@@ -147,5 +149,83 @@ var _ = Describe("Utils", func() {
 			Expect(tekton.GetShouldRelease(pipelineRun)).To(BeFalse())
 		})
 
+	})
+
+	When("pipeline type labels are evaluated", func() {
+		plr := func(labels map[string]string) *tektonv1.PipelineRun {
+			return &tektonv1.PipelineRun{ObjectMeta: v1.ObjectMeta{Labels: labels}}
+		}
+
+		DescribeTable("should detect build PipelineRuns from old or new type keys",
+			func(labels map[string]string, want bool) {
+				Expect(tekton.IsBuildPipelineRun(plr(labels))).To(Equal(want))
+			},
+			Entry("old type=build", map[string]string{keys.PipelineType.Old: "build"}, true),
+			Entry("new type=build", map[string]string{keys.PipelineType.New: "build"}, true),
+			Entry("both prefers new build", map[string]string{
+				keys.PipelineType.Old: "test",
+				keys.PipelineType.New: "build",
+			}, true),
+			Entry("old type=test", map[string]string{keys.PipelineType.Old: "test"}, false),
+			Entry("new type=test", map[string]string{keys.PipelineType.New: "test"}, false),
+			Entry("missing type", map[string]string{"unrelated": "x"}, false),
+		)
+
+		It("should return false for IsBuildPipelineRun on a non-PipelineRun", func() {
+			Expect(tekton.IsBuildPipelineRun(&v1.PartialObjectMetadata{})).To(BeFalse())
+		})
+
+		DescribeTable("should detect integration PipelineRuns from old or new type keys",
+			func(labels map[string]string, want bool) {
+				Expect(tekton.IsIntegrationPipelineRun(plr(labels))).To(Equal(want))
+			},
+			Entry("old type=test", map[string]string{keys.PipelineType.Old: "test"}, true),
+			Entry("new type=test", map[string]string{keys.PipelineType.New: "test"}, true),
+			Entry("both prefers new test", map[string]string{
+				keys.PipelineType.Old: "build",
+				keys.PipelineType.New: "test",
+			}, true),
+			Entry("old type=build", map[string]string{keys.PipelineType.Old: "build"}, false),
+			Entry("new type=build", map[string]string{keys.PipelineType.New: "build"}, false),
+		)
+
+		DescribeTable("should resolve pipeline type preferring the new key",
+			func(labels map[string]string, want string, wantErr bool) {
+				got, err := tekton.GetTypeFromPipelineRun(plr(labels))
+				if wantErr {
+					Expect(err).To(HaveOccurred())
+					return
+				}
+				Expect(err).NotTo(HaveOccurred())
+				Expect(got).To(Equal(want))
+			},
+			Entry("old type", map[string]string{keys.PipelineType.Old: "build"}, "build", false),
+			Entry("new type", map[string]string{keys.PipelineType.New: "test"}, "test", false),
+			Entry("both prefers new", map[string]string{
+				keys.PipelineType.Old: "build",
+				keys.PipelineType.New: "test",
+			}, "test", false),
+			Entry("missing", map[string]string{}, "", true),
+		)
+
+		DescribeTable("should detect new-model build PipelineRuns",
+			func(object client.Object, want bool) {
+				Expect(tekton.IsNewModelBuildPipelineRun(object)).To(Equal(want))
+			},
+			Entry("new type=build", plr(map[string]string{
+				keys.PipelineType.New: "build",
+			}), true),
+			Entry("new component label", plr(map[string]string{
+				keys.PipelineType.Old:   "build",
+				keys.BuildComponent.New: "component-sample",
+			}), true),
+			Entry("old ComponentGroup path (no application label)", plr(map[string]string{
+				keys.PipelineType.Old:   "build",
+				keys.BuildComponent.Old: "component-sample",
+			}), false),
+			Entry("new type=test is not a build", plr(map[string]string{
+				keys.PipelineType.New: "test",
+			}), false),
+		)
 	})
 })

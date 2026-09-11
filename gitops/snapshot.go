@@ -31,6 +31,7 @@ import (
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
 	"github.com/konflux-ci/integration-service/api/v1beta2"
 	"github.com/konflux-ci/integration-service/helpers"
+	"github.com/konflux-ci/integration-service/pkg/keys"
 	"github.com/konflux-ci/integration-service/pkg/metrics"
 	tektonconsts "github.com/konflux-ci/integration-service/tekton/consts"
 	"github.com/konflux-ci/operator-toolkit/metadata"
@@ -47,19 +48,23 @@ import (
 
 const (
 	// PipelinesAsCodePrefix contains the prefix applied to labels and annotations copied from Pipelines as Code resources.
-	PipelinesAsCodePrefix = "pac.test.appstudio.openshift.io"
+	// remove after componentGroup migration
+	PipelinesAsCodePrefix = keys.PrefixPAC
 
 	// TestLabelPrefix contains the prefix applied to labels and annotations related to testing.
-	TestLabelPrefix = "test.appstudio.openshift.io"
+	// remove after componentGroup migration
+	TestLabelPrefix = keys.PrefixTestOld
 
 	// ReleaseLabelPrefix contains the prefix applied to to labels and annotations related to release process.
-	ReleaseLabelPrefix = "release.appstudio.openshift.io"
+	// remove after componentGroup migration
+	ReleaseLabelPrefix = keys.PrefixRelease
 
 	// AutoReleaseLabel contains the label that allows users to overwrite the release behaviour of Snapshots
 	AutoReleaseLabel = ReleaseLabelPrefix + "/auto-release"
 
 	// CustomLabelPrefix contains the prefix applied to custom user-defined labels and annotations.
-	CustomLabelPrefix = "custom.appstudio.openshift.io"
+	// remove after componentGroup migration
+	CustomLabelPrefix = keys.PrefixCustom
 
 	// SnapshotTypeLabel contains the type of the Snapshot.
 	SnapshotTypeLabel = "test.appstudio.openshift.io/type"
@@ -68,7 +73,8 @@ const (
 	SnapshotIntegrationTestRun = "test.appstudio.openshift.io/run"
 
 	// AppstudioLabelPrefix contains application, component, build-pipelinerun etc.
-	AppstudioLabelPrefix = "appstudio.openshift.io"
+	// remove after componentGroup migration
+	AppstudioLabelPrefix = keys.PrefixAppstudio
 
 	// SnapshotLabel contains the name of the Snapshot within appstudio
 	SnapshotLabel = "appstudio.openshift.io/snapshot"
@@ -122,7 +128,8 @@ const (
 	IntegrationWorkflowAnnotation = "test.appstudio.openshift.io/integration-workflow"
 
 	// BuildPipelineRunPrefix contains the build pipeline run related labels and annotations
-	BuildPipelineRunPrefix = "build.appstudio"
+	// remove after componentGroup migration
+	BuildPipelineRunPrefix = keys.PrefixBuildOld
 
 	// BuildPipelineRunFinishTimeLabel contains the build PipelineRun finish time of the Snapshot.
 	BuildPipelineRunFinishTimeLabel = "test.appstudio.openshift.io/pipelinerunfinishtime"
