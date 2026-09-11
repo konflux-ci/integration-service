@@ -1,0 +1,40 @@
+# Qodo PR-Agent configuration
+# Docs: https://docs.qodo.ai/install-and-configure/configuration-overview/configuration-file
+
+[github_app]
+ignore_pr_authors = ["red-hat-konflux", "release-service-bot", "dependabot[bot]"]
+
+# Manual trigger via /qodo-review (see .github/workflows/qodo-review.yaml).
+pr_commands = []
+
+# do not re-run Qodo on every push to an open PR.
+handle_push_trigger = false
+
+[review_agent]
+comments_location_policy = "both"
+inline_comments_severity_threshold = 3
+enable_commitable_suggestions = true
+
+# On re-review, focus on changes since the last run instead of the whole PR.
+enable_incremental_review = true
+
+issues_user_guidelines = """
+- Provide up to 3 high-signal inline review comments per PR.
+- Prefer actionable findings over style nits or linter-duplicated feedback.
+- Before suggesting a change, verify whether the PR already includes it.
+- Do not repeat previously rejected suggestions if the thread was resolved without action.
+- Read project conventions and architecture at:
+  https://raw.githubusercontent.com/konflux-ci/integration-service/refs/heads/main/AGENTS.md
+"""
+
+# Repo specific conventions for rule/compliance checks during review.
+compliance_user_guidelines = """
+- Domain logic belongs in adapter methods, not controllers.
+- Use IntegrationLogger for logging and fmt.Errorf("context: %w", err) for error wrapping.
+- API changes require make generate manifests.
+"""
+
+[review_agent_ux]
+finding_overflow_count = 3
+resolved_overflow_count = 3
+show_persistent_review_section = true
