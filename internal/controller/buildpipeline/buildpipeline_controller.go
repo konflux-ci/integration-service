@@ -10,7 +10,7 @@ You may obtain a copy of the License at
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions andF
+See the License for the specific language governing permissions and
 limitations under the License.
 */
 
@@ -25,6 +25,7 @@ import (
 	"github.com/konflux-ci/integration-service/cache"
 	"github.com/konflux-ci/integration-service/helpers"
 	"github.com/konflux-ci/integration-service/loader"
+	"github.com/konflux-ci/integration-service/pkg/keys"
 	"github.com/konflux-ci/integration-service/tekton"
 	tektonconsts "github.com/konflux-ci/integration-service/tekton/consts"
 	"github.com/konflux-ci/operator-toolkit/controller"
@@ -34,6 +35,7 @@ import (
 	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 )
 
@@ -87,10 +89,37 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{}, err
 	}
 
-	componentName := pipelineRun.Labels[tektonconsts.PipelineRunComponentLabel]
-	if componentName == "" {
-		componentName = pipelineRun.Labels["build.konflux-ci.dev/component"]
+	if tekton.IsNewModelBuildPipelineRun(pipelineRun) {
+		logger.Info("Skipping new-model build PipelineRun; Snapshot creation is not enabled yet",
+			"name", pipelineRun.Name, "namespace", pipelineRun.Namespace)
+		// Gated PLRs must not retain either build-pipeline finalizer. Clear them whenever
+		// present so a PLR that gained new-model keys after an earlier reconcile cannot
+		// get stuck terminating behind this gate (cache may also lag DeletionTimestamp).
+		if controllerutil.ContainsFinalizer(pipelineRun, helpers.IntegrationPipelineRunFinalizer) ||
+			controllerutil.ContainsFinalizer(pipelineRun, helpers.NudgePipelineRunFinalizer) {
+			err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
+				err := r.Get(ctx, req.NamespacedName, pipelineRun)
+				if err != nil {
+					return err
+				}
+				for _, finalizer := range []string{
+					helpers.IntegrationPipelineRunFinalizer,
+					helpers.NudgePipelineRunFinalizer,
+				} {
+					if err := helpers.RemoveFinalizerFromPipelineRun(ctx, r.Client, logger, pipelineRun, finalizer); err != nil {
+						return err
+					}
+				}
+				return nil
+			})
+			if err != nil && !errors.IsNotFound(err) {
+				return ctrl.Result{}, err
+			}
+		}
+		return ctrl.Result{}, nil
 	}
+
+	componentName, _ := keys.GetLabel(pipelineRun, keys.BuildComponent())
 	if componentName == "" {
 		componentErr := fmt.Errorf("component label does not exist on pipelineRun %s/%s", pipelineRun.Namespace, pipelineRun.Name)
 		if tknErr := tekton.AnnotateBuildPipelineRunWithCreateSnapshotAnnotation(ctx, pipelineRun, r.Client, componentErr); tknErr != nil {
