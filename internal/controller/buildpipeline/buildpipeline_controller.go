@@ -35,6 +35,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 )
 
@@ -84,6 +85,27 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		}
 
 		return ctrl.Result{}, err
+	}
+
+	if tekton.IsNewModelBuildPipelineRun(pipelineRun) {
+		logger.Info("Skipping new-model build PipelineRun; Snapshot creation is not enabled yet",
+			"name", pipelineRun.Name, "namespace", pipelineRun.Namespace)
+		// Gated PLRs must not retain IntegrationPipelineRunFinalizer. Clear it whenever
+		// present so a PLR that gained new-model keys after an earlier reconcile cannot
+		// get stuck terminating behind this gate (cache may also lag DeletionTimestamp).
+		if controllerutil.ContainsFinalizer(pipelineRun, helpers.IntegrationPipelineRunFinalizer) {
+			err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
+				err := r.Get(ctx, req.NamespacedName, pipelineRun)
+				if err != nil {
+					return err
+				}
+				return helpers.RemoveFinalizerFromPipelineRun(ctx, r.Client, logger, pipelineRun, helpers.IntegrationPipelineRunFinalizer)
+			})
+			if err != nil && !errors.IsNotFound(err) {
+				return ctrl.Result{}, err
+			}
+		}
+		return ctrl.Result{}, nil
 	}
 
 	var component *applicationapiv1alpha1.Component
