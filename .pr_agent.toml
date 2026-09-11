@@ -2,7 +2,12 @@
 # Docs: https://docs.qodo.ai/install-and-configure/configuration-overview/configuration-file
 
 [github_app]
-ignore_pr_authors = ["red-hat-konflux", "release-service-bot", "dependabot[bot]"]
+ignore_pr_authors = [
+  "red-hat-konflux",
+  "release-service-bot",
+  "dependabot[bot]",
+  "fullsend-ai-review[bot]",
+]
 
 # Manual trigger via /qodo-review (see .github/workflows/qodo-review.yaml).
 pr_commands = []
