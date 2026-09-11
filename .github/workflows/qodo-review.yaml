@@ -37,7 +37,7 @@ jobs:
         env:
           USER: ${{ github.event.comment.user.login }}
         run: |
-          owners=$(grep -oE '@[[:alnum:]_-]+' .github/CODEOWNERS | tr -d '@')
+          owners=$(grep '^[*]' .github/CODEOWNERS | grep -oE '@[[:alnum:]_-]+' | tr -d '@')
           if echo "$owners" | grep -Fqx -- "$USER"; then
             echo "authorized=true" >> "$GITHUB_OUTPUT"
           else
@@ -47,9 +47,9 @@ jobs:
       - name: Trigger Qodo Code review
         if: steps.auth.outputs.authorized == 'true'
         env:
-          GH_TOKEN: ${{ github.token}}
-          PR_NUMBER: ${{ github.event.issue.number}}
-          REPO: ${{ github.repository}}
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.issue.number }}
+          REPO: ${{ github.repository }}
         run: |
           gh pr comment "$PR_NUMBER" --repo "$REPO" \
             --body ":white_check_mark: Qodo code review requested.
@@ -58,9 +58,9 @@ jobs:
       - name: Notify unauthorized user
         if: steps.auth.outputs.authorized != 'true'
         env:
-          GH_TOKEN: ${{ github.token}}
-          PR_NUMBER: ${{ github.event.issue.number}}
-          REPO: ${{ github.repository}}
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.issue.number }}
+          REPO: ${{ github.repository }}
         run: |
           gh pr comment "$PR_NUMBER" --repo "$REPO" \
             --body ":no_entry: \`/qodo-review\` is restricted to konflux integration team members."
