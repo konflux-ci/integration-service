@@ -8,7 +8,7 @@ The [Konflux architecture documentation](https://github.com/konflux-ci/architect
 
 - **Language**: Go
 - **Framework:** controller-runtime
-- **CRDs**: IntegrationTestScenario, ComponentGroup
+- **CRDs**: IntegrationTestScenario, ComponentGroup, NudgeConfig
 - **Pipeline engine**: Tekton PipelineRuns
 - **Testing**: Ginkgo/Gomega + envtest (local K8s API server)
 - **Build**: `make test` (unit), `make manifests generate` (codegen)
