@@ -87,6 +87,9 @@ flowchart TD
   if_scenario_exist{Does scenario requested by user exist?}
   remove_rerun_label(Remove rerun label)
   rerun_static_env(Rerun static env pipeline for scenario)
+  rerun_result{PipelineRun creation result?}
+  retry_rerun(Preserve re-run label and requeue)
+  stop_rerun(Preserve re-run label and stop processing)
   continue_processing6(Controller continues processing...)
 
   %% Node connections
@@ -95,7 +98,10 @@ flowchart TD
   if_scenario_exist               --Yes--> rerun_static_env
   if_scenario_exist               --No-->  remove_rerun_label
   remove_rerun_label              ---->    continue_processing6
-  rerun_static_env                ---->    remove_rerun_label
+  rerun_static_env                ---->    rerun_result
+  rerun_result                    --Created--> remove_rerun_label
+  rerun_result                    --Transient error--> retry_rerun
+  rerun_result                    --Permanent validation error--> stop_rerun
 
 
   %%%%%%%%%%%%%%%%%%%%%%% Drawing EnsureOverrideSnapshotValid() function

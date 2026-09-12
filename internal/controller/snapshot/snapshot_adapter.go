@@ -439,14 +439,12 @@ func (a *Adapter) processSingleScenario(
 		a.logger.Error(err, "Failed to create pipelineRun for snapshot and scenario",
 			"integrationScenario.Name", integrationTestScenario.Name)
 
+		if !isPermanentPipelineRunCreationError(err) {
+			return err
+		}
 		testStatuses.UpdateTestStatusIfChanged(
 			integrationTestScenario.Name, intgteststat.IntegrationTestStatusTestInvalid,
 			fmt.Sprintf("Creation of pipelineRun failed during creation due to: %s.", err))
-
-		// Only return error if it's not a validation error
-		if !clienterrors.IsInvalid(err) {
-			return err
-		}
 		return nil
 	}
 
@@ -1238,9 +1236,19 @@ func (a *Adapter) RequeueIfYoungerThanThreshold(retErr error) (controller.Operat
 	return controller.ContinueProcessing()
 }
 
+// isPermanentPipelineRunCreationError reports whether a PipelineRun creation error should not be retried.
+// The API server reports Tekton validation webhook denials as "admission webhook ... denied the request".
+func isPermanentPipelineRunCreationError(err error) bool {
+	return clienterrors.IsInvalid(err) ||
+		(strings.Contains(err.Error(), "admission webhook") && strings.Contains(err.Error(), "denied the request"))
+}
+
 func (a *Adapter) HandlePipelineCreationError(err error, integrationTestScenario *v1beta2.IntegrationTestScenario, testStatuses *intgteststat.SnapshotIntegrationTestStatuses) (controller.OperationResult, error) {
 	a.logger.Error(err, "Failed to create pipelineRun for snapshot and scenario",
 		"integrationScenario.Name", integrationTestScenario.Name)
+	if !isPermanentPipelineRunCreationError(err) {
+		return controller.RequeueWithError(err)
+	}
 	testStatuses.UpdateTestStatusIfChanged(
 		integrationTestScenario.Name, intgteststat.IntegrationTestStatusTestInvalid,
 		fmt.Sprintf("Creation of pipelineRun failed during creation due to: %s.", err))
@@ -1250,16 +1258,7 @@ func (a *Adapter) HandlePipelineCreationError(err error, integrationTestScenario
 		return controller.RequeueWithError(itsErr)
 	}
 
-	if strings.Contains(err.Error(), "admission webhook") && strings.Contains(err.Error(), "denied the request") {
-		//Stop processing in case the error runs in admission webhook validation error:
-		//failed to call client.Create to create pipelineRun for snapshot
-		//<snapshot-name>: admission webhook \"validation.webhook.pipeline.tekton.dev\" denied the request: validation failed: <reason>
-		return controller.StopProcessing()
-	}
-	if clienterrors.IsInvalid(err) {
-		return controller.StopProcessing()
-	}
-	return controller.RequeueWithError(err)
+	return controller.StopProcessing()
 }
 
 // prepareGroupSnapshot prepares a Group Snapshot based on the existing component Snapshots which belong to the same PR group
