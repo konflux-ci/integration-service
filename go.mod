@@ -46,7 +46,7 @@ require (
 	github.com/santhosh-tekuri/jsonschema/v5 v5.3.1
 	github.com/tektoncd/pipeline v1.7.0
 	github.com/tonglil/buflogr v1.1.1
-	gitlab.com/gitlab-org/api/client-go/v2 v2.36.0
+	gitlab.com/gitlab-org/api/client-go/v3 v3.4.0
 	go.opentelemetry.io/otel v1.43.0
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.39.0
 	go.opentelemetry.io/otel/sdk v1.43.0
