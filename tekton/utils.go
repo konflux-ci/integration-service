@@ -20,6 +20,7 @@ import (
 	"fmt"
 
 	h "github.com/konflux-ci/integration-service/helpers"
+	"github.com/konflux-ci/integration-service/pkg/keys"
 	"github.com/konflux-ci/integration-service/tekton/consts"
 	"github.com/konflux-ci/operator-toolkit/metadata"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
@@ -31,9 +32,7 @@ import (
 // the Build service or not.
 func IsBuildPipelineRun(object client.Object) bool {
 	if pipelineRun, ok := object.(*tektonv1.PipelineRun); ok {
-		return metadata.HasLabelWithValue(pipelineRun,
-			consts.PipelineRunTypeLabel,
-			consts.PipelineRunBuildType)
+		return keys.HasLabelValue(pipelineRun, keys.PipelineType, consts.PipelineRunBuildType)
 	}
 
 	return false
@@ -43,9 +42,7 @@ func IsBuildPipelineRun(object client.Object) bool {
 // Component PipelineRun
 func IsIntegrationPipelineRun(object client.Object) bool {
 	if pipelineRun, ok := object.(*tektonv1.PipelineRun); ok {
-		return metadata.HasLabelWithValue(pipelineRun,
-			consts.PipelineRunTypeLabel,
-			consts.PipelineRunTestType)
+		return keys.HasLabelValue(pipelineRun, keys.PipelineType, consts.PipelineRunTestType)
 	}
 
 	return false
@@ -109,11 +106,17 @@ func isChainsDoneWithPipelineRun(objectNew client.Object) bool {
 // GetTypeFromPipelineRun extracts the pipeline type from the pipelineRun labels.
 func GetTypeFromPipelineRun(object client.Object) (string, error) {
 	if pipelineRun, ok := object.(*tektonv1.PipelineRun); ok {
-		if pipelineType, found := pipelineRun.Labels[consts.PipelineRunTypeLabel]; found {
+		if pipelineType, found := keys.GetLabel(pipelineRun, keys.PipelineType); found {
 			return pipelineType, nil
 		}
 	}
 	return "", fmt.Errorf("the pipelineRun has no type associated with it")
+}
+
+// IsNewModelBuildPipelineRun is true for a build PipelineRun that already carries
+// new-model label keys. Snapshot creation for those PLRs is currently gated.
+func IsNewModelBuildPipelineRun(object client.Object) bool {
+	return IsBuildPipelineRun(object) && keys.HasNew(object, keys.PipelineType, keys.BuildComponent)
 }
 
 // GetOutputImage returns a string containing the output-image parameter value from a given PipelineRun.
