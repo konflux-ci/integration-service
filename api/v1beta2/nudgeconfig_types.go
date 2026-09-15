@@ -17,6 +17,8 @@ limitations under the License.
 package v1beta2
 
 import (
+	"time"
+
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -63,10 +65,79 @@ type NudgeRelationship struct {
 	GatingGroup string `json:"gatingGroup,omitempty"`
 }
 
-// NudgeConfigSpec defines the desired nudging relationships between components.
+// FailurePolicyType defines how a batch behaves when a member source build fails.
+// Wire values use PascalCase to align with Kubernetes policy enums (for example admission webhook FailurePolicy).
+// NudgeModeType in this API uses lowercase values and is unchanged for compatibility.
+// +kubebuilder:validation:Enum=Block;ProceedWithPartial
+type FailurePolicyType string
+
+const (
+	// FailurePolicyBlock keeps the batch blocked until the failed component rebuilds
+	// successfully or the user force-fires the batch.
+	FailurePolicyBlock FailurePolicyType = "Block"
+
+	// FailurePolicyProceedWithPartial fires the batch with whatever succeeded when
+	// the debounce timer or hard deadline expires.
+	FailurePolicyProceedWithPartial FailurePolicyType = "ProceedWithPartial"
+)
+
+const (
+	// DefaultBatchDebounceTimeout is applied when BatchDefaults.DebounceTimeout is unset.
+	// CEL rules on BatchDefaults hardcode duration('30m') to match this value;
+	// update those kubebuilder markers and regenerate the CRD if this constant changes.
+	DefaultBatchDebounceTimeout = 30 * time.Minute
+
+	// DefaultBatchMaxWaitTime is applied when BatchDefaults.MaxWaitTime is unset.
+	// CEL rules on BatchDefaults hardcode duration('4h') to match this value;
+	// update those kubebuilder markers and regenerate the CRD if this constant changes.
+	DefaultBatchMaxWaitTime = 4 * time.Hour
+
+	// DefaultBatchFailurePolicy is applied when BatchDefaults.FailurePolicy is unset.
+	DefaultBatchFailurePolicy FailurePolicyType = FailurePolicyBlock
+)
+
+// BatchDefaults defines namespace-wide fallback batch settings.
+// This field is reserved; no controller yet applies these defaults.
+// +kubebuilder:validation:XValidation:rule="!has(self.debounceTimeout) || !has(self.maxWaitTime) || duration(self.maxWaitTime) > duration(self.debounceTimeout)",message="maxWaitTime must exceed debounceTimeout"
+// +kubebuilder:validation:XValidation:rule="!has(self.debounceTimeout) || has(self.maxWaitTime) || duration(self.debounceTimeout) < duration('4h')",message="debounceTimeout must be less than the 4h runtime default for maxWaitTime when maxWaitTime is omitted"
+// +kubebuilder:validation:XValidation:rule="!has(self.maxWaitTime) || has(self.debounceTimeout) || duration(self.maxWaitTime) > duration('30m')",message="maxWaitTime must exceed the 30m runtime default for debounceTimeout when debounceTimeout is omitted"
+type BatchDefaults struct {
+	// DebounceTimeout is how long to wait after the last incoming build before firing the batch.
+	// Range: 1m–24h. Runtime default when unset: 30m.
+	// When MaxWaitTime is also specified, DebounceTimeout must be strictly less than MaxWaitTime.
+	// When MaxWaitTime is omitted, DebounceTimeout must be strictly less than the 4h runtime default.
+	// +kubebuilder:validation:Type=string
+	// +kubebuilder:validation:Format=duration
+	// +kubebuilder:validation:XValidation:rule="duration(self) >= duration('1m') && duration(self) <= duration('24h')",message="debounceTimeout must be between 1m and 24h"
+	// +optional
+	DebounceTimeout *metav1.Duration `json:"debounceTimeout,omitempty"`
+
+	// MaxWaitTime is the hard deadline from the first build event, regardless of debounce resets.
+	// Range: 1m–24h. Runtime default when unset: 4h.
+	// When both MaxWaitTime and DebounceTimeout are set, MaxWaitTime must exceed DebounceTimeout.
+	// When DebounceTimeout is omitted, MaxWaitTime must exceed the 30m runtime default.
+	// +kubebuilder:validation:Type=string
+	// +kubebuilder:validation:Format=duration
+	// +kubebuilder:validation:XValidation:rule="duration(self) >= duration('1m') && duration(self) <= duration('24h')",message="maxWaitTime must be between 1m and 24h"
+	// +optional
+	MaxWaitTime *metav1.Duration `json:"maxWaitTime,omitempty"`
+
+	// FailurePolicy controls whether a failed member build blocks the batch or allows a partial fire.
+	// Runtime default when unset: Block.
+	// +optional
+	FailurePolicy *FailurePolicyType `json:"failurePolicy,omitempty"`
+}
+
+// NudgeConfigSpec defines the desired nudging relationships between components
+// and optional namespace-wide batch defaults.
 // +kubebuilder:validation:XValidation:rule="!has(self.nudges) || self.nudges.all(n, n.from != n.to)",message="self-nudge not allowed: from and to must be different"
 // +kubebuilder:validation:XValidation:rule="!has(self.nudges) || self.nudges.all(i, self.nudges.exists_one(j, i.from == j.from && i.to == j.to))",message="duplicate (from, to) pair not allowed"
 type NudgeConfigSpec struct {
+	// BatchDefaults defines namespace-wide fallback values for batched targets.
+	// This field is reserved; no controller yet applies these defaults.
+	// +optional
+	BatchDefaults *BatchDefaults `json:"batchDefaults,omitempty"`
+
 	// Nudges is the list of component nudge relationships.
 	// +kubebuilder:validation:MaxItems=360
 	// +optional
@@ -76,6 +147,9 @@ type NudgeConfigSpec struct {
 // NudgeConfigStatus defines the observed state of NudgeConfig.
 type NudgeConfigStatus struct {
 	// Conditions represent the latest available observations of the NudgeConfig's state.
+	// Known condition types:
+	// - StaleReferences: True when spec.nudges reference missing Components (set by the build pipeline controller).
+	// - BatchDefaultsSupported: False with reason NotImplemented when spec.batchDefaults is set but not yet applied.
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 
