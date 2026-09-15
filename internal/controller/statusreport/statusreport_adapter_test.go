@@ -42,8 +42,24 @@ import (
 
 	"github.com/konflux-ci/integration-service/gitops"
 	"github.com/konflux-ci/integration-service/helpers"
+	pacv1alpha1 "github.com/openshift-pipelines/pipelines-as-code/pkg/apis/pipelinesascode/v1alpha1"
+	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
+
+// errBoom is a throwaway error tests use to make a mocked client call fail (deliberately not
+// a conflict or NotFound, so the code sees a real failure and won't retry it).
+var errBoom = errors.NewInternalError(fmt.Errorf("boom"))
+
+// wireClientMocks points the adapter at a mock client and context (call it after building the
+// adapter, and pass every loader mock the spec needs — it replaces the adapter's context).
+func wireClientMocks(a *Adapter, loaderMocks []toolkit.MockData, clientMocks []toolkit.ClientCallMock) {
+	mockCtx, mockClient := toolkit.GetMockedContextWithClient(ctx, k8sClient, loaderMocks, clientMocks)
+	a.client = mockClient
+	a.context = mockCtx
+}
 
 var _ = Describe("Snapshot Adapter", Ordered, func() {
 	var (
@@ -75,6 +91,11 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		prGroup                   = "feature1"
 		prGroupSha                = "feature1hash"
 		plrstarttime        int64 = 1775992257000 // milliseconds (was 1775992257 seconds)
+
+		inProgressStatus            = "[{\"scenario\":\"scenario1\",\"status\":\"InProgress\",\"startTime\":\"2023-07-26T16:57:49+02:00\",\"lastUpdateTime\":\"2023-08-26T17:57:50+02:00\",\"details\":\"Test in progress\"}]"
+		inProgressStatusNoStartTime = "[{\"scenario\":\"scenario1\",\"status\":\"InProgress\",\"lastUpdateTime\":\"2023-08-26T17:57:50+02:00\",\"details\":\"Test in progress\"}]"
+		testPassedStatus            = "[{\"scenario\":\"scenario1\",\"status\":\"TestPassed\",\"testPipelineRunName\":\"plr-x\",\"lastUpdateTime\":\"2023-08-26T17:57:50+02:00\",\"details\":\"ok\"}]"
+		olderReporterStatus         = "{\"scenarios\":{\"scenario1-snapshot-pr-sample\":{\"lastUpdateTime\":\"2023-08-26T17:57:50+02:00\"}}}"
 	)
 
 	BeforeAll(func() {
@@ -977,6 +998,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 				},
 			}
 			Expect(k8sClient.Create(ctx, gitlabTestComp)).Should(Succeed())
+			waitForCached(gitlabTestComp)
 
 			// Build status annotation with MaxIndividualStatuses+1 InProgress scenarios to trigger the consolidated path
 			var scenariosBuf bytes.Buffer
@@ -1035,6 +1057,43 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(statusCode).To(BeTrue())
 			Expect(buf.String()).To(ContainSubstring("Scenario count exceeds threshold, using consolidated commit status"))
+		})
+
+		It("skips without error when consolidated report fails unrecoverably", func() {
+			mockReporter.EXPECT().ReportConsolidatedStatus(gomock.Any(), gomock.Any()).Return(500, fmt.Errorf("consolidated failed")).Times(1)
+			mockReporter.EXPECT().ReturnCodeIsUnrecoverable(500).Return(true).Times(1)
+			mockReporter.EXPECT().ReportStatus(gomock.Any(), gomock.Any()).Times(0)
+
+			recoverable, err := adapter.ReportSnapshotStatus(adapter.snapshot)
+			Expect(recoverable).To(BeTrue())
+			Expect(err).ToNot(HaveOccurred())
+			Expect(buf.String()).To(ContainSubstring("consolidated status report failed with unrecoverable error"))
+		})
+
+		It("requeues when consolidated report fails recoverably", func() {
+			mockReporter.EXPECT().ReportConsolidatedStatus(gomock.Any(), gomock.Any()).Return(500, fmt.Errorf("consolidated failed")).Times(1)
+			mockReporter.EXPECT().ReturnCodeIsUnrecoverable(500).Return(false).Times(1)
+			mockReporter.EXPECT().ReportStatus(gomock.Any(), gomock.Any()).Times(0)
+
+			recoverable, err := adapter.ReportSnapshotStatus(adapter.snapshot)
+			Expect(recoverable).To(BeTrue())
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("failed to report consolidated status"))
+		})
+
+		It("requeues when writing report status after consolidated report fails", func() {
+			mockReporter.EXPECT().ReportConsolidatedStatus(gomock.Any(), gomock.Any()).Return(0, nil).Times(1)
+			mockReporter.EXPECT().ReportStatus(gomock.Any(), gomock.Any()).Times(0)
+
+			_, mockClient := toolkit.GetMockedContextWithClient(ctx, k8sClient, nil, []toolkit.ClientCallMock{
+				{Operation: toolkit.OperationPatch, ObjectType: &applicationapiv1alpha1.Snapshot{}, Err: errBoom},
+			})
+			adapter.client = mockClient
+
+			recoverable, err := adapter.ReportSnapshotStatus(adapter.snapshot)
+			Expect(recoverable).To(BeTrue())
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("failed to write snapshot report status after consolidated status"))
 		})
 	})
 
@@ -1286,6 +1345,632 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			Expect(buf.String()).Should(ContainSubstring("Successfully report group snapshot creation failure"))
 			Expect(buf.String()).Should(ContainSubstring("Successfully updated the test.appstudio.openshift.io/create-groupsnapshot-status"))
 			Expect(err).Should(Succeed())
+		})
+	})
+
+	When("EnsureSnapshotFinishedAllTests reaches labelSnapshotToTriggerUntriggeredTest [APPLICATION]", func() {
+		var loaderMocks []toolkit.MockData
+
+		BeforeEach(func() {
+			buf = bytes.Buffer{}
+			loaderMocks = []toolkit.MockData{
+				{ContextKey: loader.ApplicationContextKey, Resource: hasApp},
+				{ContextKey: loader.RequiredIntegrationTestScenariosForSnapshotContextKey, Resource: []v1beta2.IntegrationTestScenario{*integrationTestScenario}},
+			}
+			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+			adapter = NewAdapterWithApplication(ctx, hasSnapshot, hasApp, log, loader.NewMockLoader(), k8sClient)
+			adapter.context = toolkit.GetMockedContext(ctx, loaderMocks)
+		})
+
+		It("adds the run label for an untriggered scenario and patches the snapshot", func() {
+			result, err := adapter.EnsureSnapshotFinishedAllTests()
+			Expect(err).ToNot(HaveOccurred())
+			Expect(result.RequeueRequest).To(BeFalse())
+			Expect(adapter.snapshot.Labels[gitops.SnapshotIntegrationTestRun]).To(Equal(integrationTestScenario.Name))
+			Expect(buf.String()).To(ContainSubstring("Detected an integrationTestScenario was not triggered"))
+		})
+
+		It("requeues with an error when patching the snapshot run label fails", func() {
+			wireClientMocks(adapter, loaderMocks, []toolkit.ClientCallMock{
+				{Operation: toolkit.OperationPatch, ObjectType: &applicationapiv1alpha1.Snapshot{}, Err: errBoom},
+			})
+
+			result, err := adapter.EnsureSnapshotFinishedAllTests()
+			Expect(result.RequeueRequest).To(BeTrue())
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("failed to patch snapshot"))
+		})
+	})
+
+	When("EnsureSnapshotFinishedAllTests encounters client errors", func() {
+		var (
+			loaderMocks []toolkit.MockData
+			log         helpers.IntegrationLogger
+		)
+
+		BeforeEach(func() {
+			buf = bytes.Buffer{}
+			log = helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+			loaderMocks = []toolkit.MockData{
+				{ContextKey: loader.RequiredIntegrationTestScenariosForSnapshotContextKey, Resource: []v1beta2.IntegrationTestScenario{*integrationTestScenario}},
+			}
+		})
+
+		It("requeues when the required integration test scenarios cannot be loaded (application)", func() {
+			adapter = NewAdapterWithApplication(ctx, hasSnapshot, hasApp, log, loader.NewMockLoader(), k8sClient)
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{ContextKey: loader.RequiredIntegrationTestScenariosForSnapshotContextKey, Err: fmt.Errorf("boom")},
+			})
+
+			result, err := adapter.EnsureSnapshotFinishedAllTests()
+			Expect(result.RequeueRequest).To(BeTrue())
+			Expect(err).To(MatchError("boom"))
+		})
+
+		It("requeues when marking the snapshot integration status as finished fails", func() {
+			statuses, err := gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(hasSnapshot)
+			Expect(err).ToNot(HaveOccurred())
+			statuses.UpdateTestStatusIfChanged(integrationTestScenario.Name, intgteststat.IntegrationTestStatusTestPassed, "testDetails")
+			err = gitops.WriteIntegrationTestStatusesIntoSnapshot(ctx, hasSnapshot, statuses, k8sClient)
+			Expect(err).ToNot(HaveOccurred())
+
+			adapter = NewAdapterWithApplication(ctx, hasSnapshot, hasApp, log, loader.NewMockLoader(), k8sClient)
+			wireClientMocks(adapter, loaderMocks, []toolkit.ClientCallMock{
+				{Operation: toolkit.OperationPatch, ObjectType: &applicationapiv1alpha1.Snapshot{}, SubResourceName: "status", Err: errBoom},
+			})
+
+			result, err := adapter.EnsureSnapshotFinishedAllTests()
+			Expect(result.RequeueRequest).To(BeTrue())
+			Expect(err).To(HaveOccurred())
+			Expect(buf.String()).To(ContainSubstring("Failed to Update Snapshot AppStudioIntegrationStatus status"))
+		})
+
+		It("requeues when marking the snapshot as passed fails", func() {
+			statuses, err := gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(hasSnapshot)
+			Expect(err).ToNot(HaveOccurred())
+			statuses.UpdateTestStatusIfChanged(integrationTestScenario.Name, intgteststat.IntegrationTestStatusTestPassed, "testDetails")
+			err = gitops.WriteIntegrationTestStatusesIntoSnapshot(ctx, hasSnapshot, statuses, k8sClient)
+			Expect(err).ToNot(HaveOccurred())
+			meta.SetStatusCondition(&hasSnapshot.Status.Conditions, metav1.Condition{
+				Type:    gitops.AppStudioIntegrationStatusCondition,
+				Status:  metav1.ConditionTrue,
+				Reason:  gitops.AppStudioIntegrationStatusFinished,
+				Message: "already finished",
+			})
+
+			adapter = NewAdapterWithApplication(ctx, hasSnapshot, hasApp, log, loader.NewMockLoader(), k8sClient)
+			wireClientMocks(adapter, loaderMocks, []toolkit.ClientCallMock{
+				{Operation: toolkit.OperationPatch, ObjectType: &applicationapiv1alpha1.Snapshot{}, SubResourceName: "status", Err: errBoom},
+			})
+
+			result, err := adapter.EnsureSnapshotFinishedAllTests()
+			Expect(result.RequeueRequest).To(BeTrue())
+			Expect(err).To(HaveOccurred())
+			Expect(buf.String()).To(ContainSubstring("Failed to Update Snapshot AppStudioTestSucceeded status"))
+			Expect(meta.IsStatusConditionTrue(hasSnapshot.Status.Conditions, gitops.AppStudioTestSucceededCondition)).To(BeTrue())
+			Expect(buf.String()).ToNot(ContainSubstring("marked as passed"))
+		})
+
+		It("requeues when marking the snapshot as failed fails", func() {
+			statuses, err := gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(hasSnapshot)
+			Expect(err).ToNot(HaveOccurred())
+			statuses.UpdateTestStatusIfChanged(integrationTestScenario.Name, intgteststat.IntegrationTestStatusTestFail, "Failed test")
+			err = gitops.WriteIntegrationTestStatusesIntoSnapshot(ctx, hasSnapshot, statuses, k8sClient)
+			Expect(err).ToNot(HaveOccurred())
+			meta.SetStatusCondition(&hasSnapshot.Status.Conditions, metav1.Condition{
+				Type:    gitops.AppStudioIntegrationStatusCondition,
+				Status:  metav1.ConditionTrue,
+				Reason:  gitops.AppStudioIntegrationStatusFinished,
+				Message: "already finished",
+			})
+
+			adapter = NewAdapterWithApplication(ctx, hasSnapshot, hasApp, log, loader.NewMockLoader(), k8sClient)
+			wireClientMocks(adapter, loaderMocks, []toolkit.ClientCallMock{
+				{Operation: toolkit.OperationPatch, ObjectType: &applicationapiv1alpha1.Snapshot{}, SubResourceName: "status", Err: errBoom},
+			})
+
+			result, err := adapter.EnsureSnapshotFinishedAllTests()
+			Expect(result.RequeueRequest).To(BeTrue())
+			Expect(err).To(HaveOccurred())
+			Expect(buf.String()).To(ContainSubstring("Failed to Update Snapshot AppStudioTestSucceeded status"))
+			Expect(meta.IsStatusConditionFalse(hasSnapshot.Status.Conditions, gitops.AppStudioTestSucceededCondition)).To(BeTrue())
+			Expect(buf.String()).ToNot(ContainSubstring("marked as failed"))
+		})
+	})
+
+	When("EnsureSnapshotTestStatusReportedToGitProvider handles PipelineRun finalizers and reporter errors", func() {
+		olderDataStatus := func(plrName string) string {
+			return fmt.Sprintf("[{\"scenario\":\"scenario1\",\"status\":\"TestPassed\",\"testPipelineRunName\":\"%s\",\"startTime\":\"2023-07-26T16:57:49+02:00\",\"completionTime\":\"2023-07-26T17:57:49+02:00\",\"lastUpdateTime\":\"2023-08-26T17:57:50+02:00\",\"details\":\"ok\"}]", plrName)
+		}
+
+		BeforeEach(func() {
+			buf = bytes.Buffer{}
+			ctrl := gomock.NewController(GinkgoT())
+			mockReporter = status.NewMockReporterInterface(ctrl)
+			mockStatus = status.NewMockStatusInterface(ctrl)
+			mockReporter.EXPECT().GetReporterName().Return("mocked-reporter").AnyTimes()
+			mockStatus.EXPECT().GetReporter(gomock.Any()).Return(mockReporter).AnyTimes()
+			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+			adapter = NewAdapterWithApplication(ctx, hasPRSnapshot, hasApp, log, loader.NewMockLoader(), k8sClient)
+			adapter.status = mockStatus
+		})
+
+		It("requeues when getting a completed PipelineRun fails with a non-NotFound error", func() {
+			mockReporter.EXPECT().Initialize(gomock.Any(), gomock.Any()).Times(1)
+			mockReporter.EXPECT().ReportStatus(gomock.Any(), gomock.Any()).Times(0)
+
+			hasPRSnapshot.Annotations[gitops.SnapshotTestsStatusAnnotation] = olderDataStatus("plr-get-error")
+			hasPRSnapshot.Annotations[gitops.SnapshotStatusReportAnnotation] = olderReporterStatus
+
+			wireClientMocks(adapter, nil, []toolkit.ClientCallMock{
+				{Operation: toolkit.OperationGet, ObjectType: &tektonv1.PipelineRun{}, Err: errBoom},
+			})
+
+			result, err := adapter.EnsureSnapshotTestStatusReportedToGitProvider()
+			Expect(result.RequeueRequest).To(BeTrue())
+			Expect(err).To(HaveOccurred())
+			Expect(buf.String()).ToNot(ContainSubstring("failed to report test status to git provider"))
+		})
+
+		It("requeues when removing the finalizer from a completed PipelineRun fails", func() {
+			mockReporter.EXPECT().Initialize(gomock.Any(), gomock.Any()).Times(1)
+			mockReporter.EXPECT().ReportStatus(gomock.Any(), gomock.Any()).Times(0)
+
+			plr := &tektonv1.PipelineRun{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:       "plr-with-finalizer",
+					Namespace:  "default",
+					Finalizers: []string{helpers.IntegrationPipelineRunFinalizer},
+				},
+				Spec: tektonv1.PipelineRunSpec{
+					PipelineRef: &tektonv1.PipelineRef{
+						ResolverRef: tektonv1.ResolverRef{
+							Resolver: "bundle",
+							Params: tektonv1.Params{
+								{Name: "bundle", Value: tektonv1.ParamValue{Type: "string", StringVal: "quay.io/redhat-appstudio/example-tekton-bundle:test"}},
+								{Name: "name", Value: tektonv1.ParamValue{Type: "string", StringVal: "test-task"}},
+							},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, plr)).Should(Succeed())
+			DeferCleanup(func() {
+				fetched := &tektonv1.PipelineRun{}
+				if err := k8sClient.Get(ctx, types.NamespacedName{Namespace: "default", Name: "plr-with-finalizer"}, fetched); err == nil {
+					controllerutil.RemoveFinalizer(fetched, helpers.IntegrationPipelineRunFinalizer)
+					_ = k8sClient.Update(ctx, fetched)
+					_ = k8sClient.Delete(ctx, fetched)
+				}
+			})
+			waitForCached(plr)
+
+			hasPRSnapshot.Annotations[gitops.SnapshotTestsStatusAnnotation] = olderDataStatus("plr-with-finalizer")
+			hasPRSnapshot.Annotations[gitops.SnapshotStatusReportAnnotation] = olderReporterStatus
+
+			wireClientMocks(adapter, nil, []toolkit.ClientCallMock{
+				{Operation: toolkit.OperationPatch, ObjectType: &tektonv1.PipelineRun{}, Err: errBoom},
+			})
+
+			result, err := adapter.EnsureSnapshotTestStatusReportedToGitProvider()
+			Expect(result.RequeueRequest).To(BeTrue())
+			Expect(err).To(HaveOccurred())
+			Expect(buf.String()).To(ContainSubstring("error occurred while patching the updated PipelineRun after finalizer removal"))
+		})
+
+		It("requeues when reporting fails with a recoverable error on a young snapshot", func() {
+			mockReporter.EXPECT().Initialize(gomock.Any(), gomock.Any()).Return(500, fmt.Errorf("init failed")).Times(1)
+			mockReporter.EXPECT().ReturnCodeIsUnrecoverable(500).Return(false).Times(1)
+			mockReporter.EXPECT().ReportStatus(gomock.Any(), gomock.Any()).Times(0)
+
+			hasPRSnapshot.Annotations[gitops.SnapshotTestsStatusAnnotation] = inProgressStatus
+
+			result, err := adapter.EnsureSnapshotTestStatusReportedToGitProvider()
+			Expect(result.RequeueRequest).To(BeTrue())
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("failed to initialize reporter"))
+			Expect(buf.String()).To(ContainSubstring("failed to report test status to git provider for snapshot"))
+			Expect(hasPRSnapshot.Annotations).ToNot(HaveKey(gitops.GitReportingFailureAnnotation))
+		})
+
+		It("continues without error when reporting fails with an unrecoverable error", func() {
+			mockReporter.EXPECT().Initialize(gomock.Any(), gomock.Any()).Return(500, fmt.Errorf("init failed")).Times(1)
+			mockReporter.EXPECT().ReturnCodeIsUnrecoverable(500).Return(true).Times(1)
+			mockReporter.EXPECT().ReportStatus(gomock.Any(), gomock.Any()).Times(0)
+
+			hasPRSnapshot.Annotations[gitops.SnapshotTestsStatusAnnotation] = inProgressStatus
+
+			result, err := adapter.EnsureSnapshotTestStatusReportedToGitProvider()
+			Expect(result.RequeueRequest).To(BeFalse())
+			Expect(err).ToNot(HaveOccurred())
+			Expect(buf.String()).To(ContainSubstring("failed to report test status to git provider for snapshot"))
+		})
+	})
+
+	When("EnsureGroupSnapshotCreationStatusReportedToGitProvider encounters errors", func() {
+		var log helpers.IntegrationLogger
+
+		BeforeEach(func() {
+			buf = bytes.Buffer{}
+			log = helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+			ctrl := gomock.NewController(GinkgoT())
+			mockReporter = status.NewMockReporterInterface(ctrl)
+			mockStatus = status.NewMockStatusInterface(ctrl)
+			mockReporter.EXPECT().GetReporterName().Return("mocked-reporter").AnyTimes()
+			mockStatus.EXPECT().GetReporter(gomock.Any()).Return(mockReporter).AnyTimes()
+			adapter = NewAdapterWithApplication(ctx, hasPRSnapshot, hasApp, log, loader.NewMockLoader(), k8sClient)
+			adapter.status = mockStatus
+		})
+
+		It("requeues when integration test scenarios cannot be loaded for the application", func() {
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{ContextKey: loader.AllIntegrationTestScenariosContextKey, Err: fmt.Errorf("boom")},
+			})
+
+			result, err := adapter.EnsureGroupSnapshotCreationStatusReportedToGitProvider()
+			Expect(result.RequeueRequest).To(BeTrue())
+			Expect(err).To(MatchError("boom"))
+			Expect(buf.String()).To(ContainSubstring("Failed to get integration test scenarios for application application-sample in namespace default"))
+		})
+
+		It("requeues when integration test scenarios cannot be loaded for the component group", func() {
+			adapter = NewAdapter(ctx, hasPRSnapshot, &v1beta2.ComponentGroup{ObjectMeta: metav1.ObjectMeta{Name: "cg-t4", Namespace: "default"}}, log, loader.NewMockLoader(), k8sClient)
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{ContextKey: loader.AllIntegrationTestScenariosForComponentGroupContextKey, Err: fmt.Errorf("boom")},
+			})
+
+			result, err := adapter.EnsureGroupSnapshotCreationStatusReportedToGitProvider()
+			Expect(result.RequeueRequest).To(BeTrue())
+			Expect(err).To(MatchError("boom"))
+			Expect(buf.String()).To(ContainSubstring("Failed to get integration test scenarios for component group cg-t4 in namespace default"))
+		})
+
+		It("requeues when writing the group snapshot creation status annotation fails", func() {
+			mockReporter.EXPECT().Initialize(gomock.Any(), gomock.Any()).Times(1)
+			mockReporter.EXPECT().ReportStatus(gomock.Any(), gomock.Any()).Times(1)
+
+			wireClientMocks(adapter, []toolkit.MockData{
+				{ContextKey: loader.AllIntegrationTestScenariosContextKey, Resource: []v1beta2.IntegrationTestScenario{*integrationTestScenario}},
+			}, []toolkit.ClientCallMock{
+				{Operation: toolkit.OperationPatch, ObjectType: &applicationapiv1alpha1.Snapshot{}, Err: errBoom},
+			})
+
+			result, err := adapter.EnsureGroupSnapshotCreationStatusReportedToGitProvider()
+			Expect(result.RequeueRequest).To(BeTrue())
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("failed to write group snapshot creation status to annotation"))
+		})
+
+		It("requeues when reporting group snapshot creation status fails recoverably", func() {
+			mockReporter.EXPECT().Initialize(gomock.Any(), gomock.Any()).Return(500, fmt.Errorf("init failed")).Times(1)
+			mockReporter.EXPECT().ReturnCodeIsUnrecoverable(500).Return(false).Times(1)
+			mockReporter.EXPECT().ReportStatus(gomock.Any(), gomock.Any()).Times(0)
+
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{ContextKey: loader.AllIntegrationTestScenariosContextKey, Resource: []v1beta2.IntegrationTestScenario{*integrationTestScenario}},
+			})
+
+			result, err := adapter.EnsureGroupSnapshotCreationStatusReportedToGitProvider()
+			Expect(result.RequeueRequest).To(BeTrue())
+			Expect(err).To(HaveOccurred())
+			Expect(buf.String()).To(ContainSubstring("failed to report group snapshot creation status to git provider from component snapshot"))
+		})
+
+		It("continues when reporting group snapshot creation status fails unrecoverably", func() {
+			mockReporter.EXPECT().Initialize(gomock.Any(), gomock.Any()).Return(500, fmt.Errorf("init failed")).Times(1)
+			mockReporter.EXPECT().ReturnCodeIsUnrecoverable(500).Return(true).Times(1)
+			mockReporter.EXPECT().ReportStatus(gomock.Any(), gomock.Any()).Times(0)
+
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{ContextKey: loader.AllIntegrationTestScenariosContextKey, Resource: []v1beta2.IntegrationTestScenario{*integrationTestScenario}},
+			})
+
+			result, err := adapter.EnsureGroupSnapshotCreationStatusReportedToGitProvider()
+			Expect(result.RequeueRequest).To(BeFalse())
+			Expect(err).ToNot(HaveOccurred())
+		})
+	})
+
+	When("ReportSnapshotStatus encounters errors", func() {
+		BeforeEach(func() {
+			buf = bytes.Buffer{}
+			ctrl := gomock.NewController(GinkgoT())
+			mockReporter = status.NewMockReporterInterface(ctrl)
+			mockStatus = status.NewMockStatusInterface(ctrl)
+			mockReporter.EXPECT().GetReporterName().Return("mocked-reporter").AnyTimes()
+			mockStatus.EXPECT().GetReporter(gomock.Any()).Return(mockReporter).AnyTimes()
+			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+			adapter = NewAdapterWithApplication(ctx, hasPRSnapshot, hasApp, log, loader.NewMockLoader(), k8sClient)
+			adapter.status = mockStatus
+		})
+
+		It("annotates the snapshot and does not requeue on an unrecoverable metadata error during initialize", func() {
+			mockReporter.EXPECT().Initialize(gomock.Any(), gomock.Any()).Return(0, helpers.NewUnrecoverableMetadataError("bad metadata")).Times(1)
+			mockReporter.EXPECT().ReportStatus(gomock.Any(), gomock.Any()).Times(0)
+
+			hasPRSnapshot.Annotations[gitops.SnapshotTestsStatusAnnotation] = inProgressStatus
+
+			recoverable, err := adapter.ReportSnapshotStatus(adapter.snapshot)
+			Expect(recoverable).To(BeFalse())
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("failed to initialize reporter"))
+			Expect(hasPRSnapshot.Annotations).To(HaveKey(gitops.GitReportingFailureAnnotation))
+		})
+
+		It("requeues when writing the snapshot report status metadata fails", func() {
+			mockReporter.EXPECT().Initialize(gomock.Any(), gomock.Any()).Times(1)
+			mockReporter.EXPECT().ReportStatus(gomock.Any(), gomock.Any()).Return(0, nil).Times(1)
+
+			hasPRSnapshot.Annotations[gitops.SnapshotTestsStatusAnnotation] = inProgressStatus
+
+			wireClientMocks(adapter, nil, []toolkit.ClientCallMock{
+				{Operation: toolkit.OperationPatch, ObjectType: &applicationapiv1alpha1.Snapshot{}, Err: errBoom},
+			})
+
+			recoverable, err := adapter.ReportSnapshotStatus(adapter.snapshot)
+			Expect(recoverable).To(BeTrue())
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("issue occurred during generating or updating report status"))
+			Expect(err.Error()).To(ContainSubstring("failed to write snapshot report status metadata"))
+		})
+
+		It("returns an error when generating the test report fails", func() {
+			mockReporter.EXPECT().Initialize(gomock.Any(), gomock.Any()).Times(1)
+			mockReporter.EXPECT().ReportStatus(gomock.Any(), gomock.Any()).Times(0)
+
+			hasPRSnapshot.Annotations[gitops.SnapshotTestsStatusAnnotation] = testPassedStatus
+
+			wireClientMocks(adapter, nil, []toolkit.ClientCallMock{
+				{Operation: toolkit.OperationGet, ObjectType: &tektonv1.PipelineRun{}, Err: errBoom},
+			})
+
+			recoverable, err := adapter.ReportSnapshotStatus(adapter.snapshot)
+			Expect(recoverable).To(BeTrue())
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("failed to generate test report"))
+		})
+	})
+
+	When("reportPerScenarioStatuses handles reporter errors", func() {
+		BeforeEach(func() {
+			buf = bytes.Buffer{}
+			ctrl := gomock.NewController(GinkgoT())
+			mockReporter = status.NewMockReporterInterface(ctrl)
+			mockStatus = status.NewMockStatusInterface(ctrl)
+			mockReporter.EXPECT().GetReporterName().Return("mocked-reporter").AnyTimes()
+			mockStatus.EXPECT().GetReporter(gomock.Any()).Return(mockReporter).AnyTimes()
+			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+			adapter = NewAdapterWithApplication(ctx, hasPRSnapshot, hasApp, log, loader.NewMockLoader(), k8sClient)
+			adapter.status = mockStatus
+		})
+
+		It("stops without error when a per-scenario report fails unrecoverably", func() {
+			mockReporter.EXPECT().Initialize(gomock.Any(), gomock.Any()).Times(1)
+			mockReporter.EXPECT().ReportStatus(gomock.Any(), gomock.Any()).Return(500, fmt.Errorf("report failed")).Times(1)
+			mockReporter.EXPECT().ReturnCodeIsUnrecoverable(500).Return(true).Times(1)
+
+			hasPRSnapshot.Annotations[gitops.SnapshotTestsStatusAnnotation] = inProgressStatusNoStartTime
+
+			recoverable, err := adapter.ReportSnapshotStatus(adapter.snapshot)
+			Expect(recoverable).To(BeTrue())
+			Expect(err).ToNot(HaveOccurred())
+		})
+
+		It("requeues when a per-scenario report fails recoverably", func() {
+			mockReporter.EXPECT().Initialize(gomock.Any(), gomock.Any()).Times(1)
+			mockReporter.EXPECT().ReportStatus(gomock.Any(), gomock.Any()).Return(500, fmt.Errorf("report failed")).Times(1)
+			mockReporter.EXPECT().ReturnCodeIsUnrecoverable(500).Return(false).Times(1)
+
+			hasPRSnapshot.Annotations[gitops.SnapshotTestsStatusAnnotation] = inProgressStatusNoStartTime
+
+			recoverable, err := adapter.ReportSnapshotStatus(adapter.snapshot)
+			Expect(recoverable).To(BeTrue())
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("failed to update status"))
+		})
+
+		It("requeues when writing report status after a per-scenario report fails", func() {
+			mockReporter.EXPECT().Initialize(gomock.Any(), gomock.Any()).Times(1)
+			mockReporter.EXPECT().ReportStatus(gomock.Any(), gomock.Any()).Return(0, nil).Times(2)
+
+			hasPRSnapshot.Annotations[gitops.SnapshotTestsStatusAnnotation] = "[{\"scenario\":\"scenario1\",\"status\":\"InProgress\",\"lastUpdateTime\":\"2023-08-26T17:57:50+02:00\",\"details\":\"p\"},{\"scenario\":\"scenario2\",\"status\":\"InProgress\",\"lastUpdateTime\":\"2023-08-26T17:57:50+02:00\",\"details\":\"p\"}]"
+
+			wireClientMocks(adapter, nil, []toolkit.ClientCallMock{
+				{Operation: toolkit.OperationPatch, ObjectType: &applicationapiv1alpha1.Snapshot{}, Err: errBoom},
+			})
+
+			recoverable, err := adapter.ReportSnapshotStatus(adapter.snapshot)
+			Expect(recoverable).To(BeTrue())
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("failed to report status AND write snapshot report status metadata"))
+		})
+	})
+
+	When("iterateIntegrationTestStatusDetailsInStatusReport handles errors", func() {
+		BeforeEach(func() {
+			buf = bytes.Buffer{}
+			ctrl := gomock.NewController(GinkgoT())
+			mockReporter = status.NewMockReporterInterface(ctrl)
+			mockStatus = status.NewMockStatusInterface(ctrl)
+			mockReporter.EXPECT().GetReporterName().Return(status.GitLabProvider).AnyTimes()
+			mockStatus.EXPECT().GetReporter(gomock.Any()).Return(mockReporter).AnyTimes()
+			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+			adapter = NewAdapterWithApplication(ctx, hasPRSnapshot, hasApp, log, loader.NewMockLoader(), k8sClient)
+			adapter.status = mockStatus
+			hasPRSnapshot.Annotations[gitops.SnapshotTestsStatusAnnotation] = inProgressStatus
+		})
+
+		It("returns an error when the component cannot be fetched for the comment update", func() {
+			mockReporter.EXPECT().Initialize(gomock.Any(), gomock.Any()).Times(1)
+			mockReporter.EXPECT().ReportStatus(gomock.Any(), gomock.Any()).Return(0, nil).Times(1)
+
+			wireClientMocks(adapter, nil, []toolkit.ClientCallMock{
+				{Operation: toolkit.OperationGet, ObjectType: &applicationapiv1alpha1.Component{}, Err: errBoom},
+			})
+
+			recoverable, err := adapter.ReportSnapshotStatus(adapter.snapshot)
+			Expect(recoverable).To(BeTrue())
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("failed to get component for snapshot"))
+		})
+
+		It("returns an error when checking if comments are disabled fails", func() {
+			mockReporter.EXPECT().Initialize(gomock.Any(), gomock.Any()).Times(1)
+			mockReporter.EXPECT().ReportStatus(gomock.Any(), gomock.Any()).Return(0, nil).Times(1)
+
+			wireClientMocks(adapter, nil, []toolkit.ClientCallMock{
+				{Operation: toolkit.OperationList, ObjectType: &pacv1alpha1.RepositoryList{}, Err: errBoom},
+			})
+
+			recoverable, err := adapter.ReportSnapshotStatus(adapter.snapshot)
+			Expect(recoverable).To(BeTrue())
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("failed to check if comment is disabled for component"))
+		})
+
+		It("continues without error when the comment update fails unrecoverably", func() {
+			mockReporter.EXPECT().Initialize(gomock.Any(), gomock.Any()).Times(1)
+			mockReporter.EXPECT().ReportStatus(gomock.Any(), gomock.Any()).Return(0, nil).Times(1)
+			mockReporter.EXPECT().UpdateStatusInComment(gomock.Any(), gomock.Any(), gomock.Any()).Return(500, fmt.Errorf("comment failed")).Times(1)
+			mockReporter.EXPECT().ReturnCodeIsUnrecoverable(500).Return(true).Times(1)
+
+			hasPRSnapshot.Annotations[gitops.PipelineAsCodePullRequestAnnotation] = "1"
+
+			wireClientMocks(adapter, nil, []toolkit.ClientCallMock{
+				{Operation: toolkit.OperationList, ObjectType: &pacv1alpha1.RepositoryList{}, Err: nil},
+			})
+
+			recoverable, err := adapter.ReportSnapshotStatus(adapter.snapshot)
+			Expect(recoverable).To(BeTrue())
+			Expect(err).ToNot(HaveOccurred())
+		})
+
+		It("requeues when the comment update fails recoverably", func() {
+			mockReporter.EXPECT().Initialize(gomock.Any(), gomock.Any()).Times(1)
+			mockReporter.EXPECT().ReportStatus(gomock.Any(), gomock.Any()).Return(0, nil).Times(1)
+			mockReporter.EXPECT().UpdateStatusInComment(gomock.Any(), gomock.Any(), gomock.Any()).Return(500, fmt.Errorf("comment failed")).Times(1)
+			mockReporter.EXPECT().ReturnCodeIsUnrecoverable(500).Return(false).Times(1)
+
+			hasPRSnapshot.Annotations[gitops.PipelineAsCodePullRequestAnnotation] = "1"
+
+			wireClientMocks(adapter, nil, []toolkit.ClientCallMock{
+				{Operation: toolkit.OperationList, ObjectType: &pacv1alpha1.RepositoryList{}, Err: nil},
+			})
+
+			recoverable, err := adapter.ReportSnapshotStatus(adapter.snapshot)
+			Expect(recoverable).To(BeTrue())
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("failed to create comment"))
+		})
+
+		It("skips the comment update when comments are disabled for the component", func() {
+			mockReporter.EXPECT().Initialize(gomock.Any(), gomock.Any()).Times(1)
+			mockReporter.EXPECT().ReportStatus(gomock.Any(), gomock.Any()).Return(0, nil).Times(1)
+			mockReporter.EXPECT().UpdateStatusInComment(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+
+			wireClientMocks(adapter, nil, []toolkit.ClientCallMock{
+				{Operation: toolkit.OperationGet, ObjectType: &applicationapiv1alpha1.Component{}, Result: &applicationapiv1alpha1.Component{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:        "component-sample",
+						Namespace:   "default",
+						Annotations: map[string]string{gitops.GitCommentPolicyAnnotation: gitops.GitCommentPolicyAllDisabled},
+					},
+				}},
+			})
+
+			recoverable, err := adapter.ReportSnapshotStatus(adapter.snapshot)
+			Expect(recoverable).To(BeTrue())
+			Expect(err).ToNot(HaveOccurred())
+			Expect(buf.String()).To(ContainSubstring("All comments are disabled for PAC repository in component or integration test disabled for component"))
+		})
+	})
+
+	When("ReportGroupSnapshotCreationStatus encounters errors", func() {
+		var scenarios *[]v1beta2.IntegrationTestScenario
+
+		BeforeEach(func() {
+			buf = bytes.Buffer{}
+			ctrl := gomock.NewController(GinkgoT())
+			mockReporter = status.NewMockReporterInterface(ctrl)
+			mockStatus = status.NewMockStatusInterface(ctrl)
+			mockReporter.EXPECT().GetReporterName().Return("mocked-reporter").AnyTimes()
+			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+			adapter = NewAdapterWithApplication(ctx, hasPRSnapshot, hasApp, log, loader.NewMockLoader(), k8sClient)
+			adapter.status = mockStatus
+			scenarios = &[]v1beta2.IntegrationTestScenario{*integrationTestScenario}
+		})
+
+		It("returns success when no suitable reporter is found", func() {
+			mockStatus.EXPECT().GetReporter(gomock.Any()).Return(nil)
+
+			recoverable, err := adapter.ReportGroupSnapshotCreationStatus(hasPRSnapshot, scenarios, intgteststat.GroupSnapshotCreationFailed, gitops.ComponentNameForGroupSnapshot)
+			Expect(recoverable).To(BeTrue())
+			Expect(err).ToNot(HaveOccurred())
+			Expect(buf.String()).To(ContainSubstring("No suitable reporter found"))
+		})
+
+		It("returns an error when the component cannot be fetched from the snapshot", func() {
+			mockStatus.EXPECT().GetReporter(gomock.Any()).Return(mockReporter).AnyTimes()
+			mockReporter.EXPECT().Initialize(gomock.Any(), gomock.Any()).Return(0, nil).Times(1)
+
+			wireClientMocks(adapter, nil, []toolkit.ClientCallMock{
+				{Operation: toolkit.OperationGet, ObjectType: &applicationapiv1alpha1.Component{}, Err: errBoom},
+			})
+
+			recoverable, err := adapter.ReportGroupSnapshotCreationStatus(hasPRSnapshot, scenarios, intgteststat.GroupSnapshotCreationFailed, gitops.ComponentNameForGroupSnapshot)
+			Expect(recoverable).To(BeTrue())
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("failed to get component from snapshot"))
+		})
+
+		It("returns no error and skips the success log when reporting fails unrecoverably", func() {
+			mockStatus.EXPECT().GetReporter(gomock.Any()).Return(mockReporter).AnyTimes()
+			mockReporter.EXPECT().Initialize(gomock.Any(), gomock.Any()).Return(0, nil).Times(1)
+			mockReporter.EXPECT().ReportStatus(gomock.Any(), gomock.Any()).Return(500, fmt.Errorf("report failed")).Times(1)
+			mockReporter.EXPECT().ReturnCodeIsUnrecoverable(500).Return(true).Times(1)
+
+			_, err := adapter.ReportGroupSnapshotCreationStatus(hasPRSnapshot, scenarios, intgteststat.GroupSnapshotCreationFailed, gitops.ComponentNameForGroupSnapshot)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(buf.String()).To(ContainSubstring("failed to report group snapshot creation failure"))
+			Expect(buf.String()).ToNot(ContainSubstring("Successfully report group snapshot creation failure"))
+		})
+
+		It("requeues when reporting fails recoverably", func() {
+			mockStatus.EXPECT().GetReporter(gomock.Any()).Return(mockReporter).AnyTimes()
+			mockReporter.EXPECT().Initialize(gomock.Any(), gomock.Any()).Return(0, nil).Times(1)
+			mockReporter.EXPECT().ReportStatus(gomock.Any(), gomock.Any()).Return(500, fmt.Errorf("report failed")).Times(1)
+			mockReporter.EXPECT().ReturnCodeIsUnrecoverable(500).Return(false).Times(1)
+
+			recoverable, err := adapter.ReportGroupSnapshotCreationStatus(hasPRSnapshot, scenarios, intgteststat.GroupSnapshotCreationFailed, gitops.ComponentNameForGroupSnapshot)
+			Expect(recoverable).To(BeTrue())
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("failed to report group snapshot creation failure"))
+		})
+	})
+
+	When("getDestinationSnapshots handles a malformed group snapshot", func() {
+		BeforeEach(func() {
+			buf = bytes.Buffer{}
+		})
+
+		It("returns an error when the group snapshot info annotation is not valid JSON", func() {
+			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+			ctrl := gomock.NewController(GinkgoT())
+			mockStatus = status.NewMockStatusInterface(ctrl)
+			mockStatus.EXPECT().GetReporter(gomock.Any()).Times(0)
+
+			snap := groupSnapshot.DeepCopy()
+			snap.Annotations[gitops.GroupSnapshotInfoAnnotation] = "not-json"
+			delete(snap.Annotations, gitops.SnapshotStatusReportAnnotation)
+
+			adapter = NewAdapterWithApplication(ctx, snap, hasApp, log, loader.NewMockLoader(), k8sClient)
+			adapter.status = mockStatus
+
+			recoverable, err := adapter.ReportSnapshotStatus(snap)
+			Expect(recoverable).To(BeTrue())
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("failed to get component snapshots from snapshot"))
+			Expect(buf.String()).To(ContainSubstring("failed to get component snapshots included in group snapshot"))
 		})
 	})
 })
