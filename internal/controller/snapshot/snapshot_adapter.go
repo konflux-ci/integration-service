@@ -434,7 +434,12 @@ func (a *Adapter) processSingleScenario(
 	}
 
 	// Create new pipeline run
-	pipelineRun, err := a.createIntegrationPipelineRun(integrationTestScenario)
+	var pipelineRun *tektonv1.PipelineRun
+
+	err = retry.OnError(retry.DefaultRetry, func(_ error) bool { return true }, func() error {
+		pipelineRun, err = a.createIntegrationPipelineRun(integrationTestScenario)
+		return err
+	})
 	if err != nil {
 		a.logger.Error(err, "Failed to create pipelineRun for snapshot and scenario",
 			"integrationScenario.Name", integrationTestScenario.Name)
@@ -1067,7 +1072,11 @@ func (a *Adapter) EnsureGroupSnapshotExist() (controller.OperationResult, error)
 		return controller.ContinueProcessing()
 	}
 
-	err = a.client.Create(a.context, groupSnapshot)
+	err = retry.OnError(retry.DefaultRetry, func(_ error) bool { return true }, func() error {
+		err = a.client.Create(a.context, groupSnapshot)
+		return err
+	})
+
 	if err != nil {
 		a.logger.Error(err, "Failed to create group snapshot")
 		if clienterrors.IsForbidden(err) {
