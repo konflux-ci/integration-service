@@ -21,7 +21,6 @@ import (
 	"github.com/konflux-ci/integration-service/helpers"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -134,31 +133,6 @@ var _ = Describe("Helpers for nudges", func() {
 			Expect(msg).To(Equal(
 				`NudgeConfig references non-existent Component(s) in namespace "test-namespace"; missing 'from' component(s): comp-a; missing 'to' component(s): comp-b`,
 			))
-		})
-	})
-
-	Context("ApplyBatchDefaultsSupportedStatusCondition", func() {
-		It("adds a NotImplemented condition when batchDefaults is set", func() {
-			conditions := []metav1.Condition{}
-			changed := helpers.ApplyBatchDefaultsSupportedStatusCondition(&conditions, &v1beta2.BatchDefaults{})
-			Expect(changed).To(BeTrue())
-			cond := meta.FindStatusCondition(conditions, helpers.BatchDefaultsSupportedStatusCondition)
-			Expect(cond).NotTo(BeNil())
-			Expect(cond.Status).To(Equal(metav1.ConditionFalse))
-			Expect(cond.Reason).To(Equal(helpers.BatchDefaultsNotImplementedReason))
-		})
-
-		It("removes the condition when batchDefaults is cleared", func() {
-			conditions := []metav1.Condition{}
-			Expect(helpers.ApplyBatchDefaultsSupportedStatusCondition(&conditions, &v1beta2.BatchDefaults{})).To(BeTrue())
-			Expect(helpers.ApplyBatchDefaultsSupportedStatusCondition(&conditions, nil)).To(BeTrue())
-			Expect(meta.FindStatusCondition(conditions, helpers.BatchDefaultsSupportedStatusCondition)).To(BeNil())
-		})
-
-		It("returns false when the desired condition is already present", func() {
-			conditions := []metav1.Condition{}
-			Expect(helpers.ApplyBatchDefaultsSupportedStatusCondition(&conditions, &v1beta2.BatchDefaults{})).To(BeTrue())
-			Expect(helpers.ApplyBatchDefaultsSupportedStatusCondition(&conditions, &v1beta2.BatchDefaults{})).To(BeFalse())
 		})
 	})
 })
