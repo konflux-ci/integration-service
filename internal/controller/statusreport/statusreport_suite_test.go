@@ -18,9 +18,11 @@ package statusreport
 
 import (
 	"context"
+	"fmt"
 	"go/build"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
@@ -36,9 +38,11 @@ import (
 
 	ctrl "sigs.k8s.io/controller-runtime"
 
+	konfluxv1alpha1 "github.com/konflux-ci/application-api/api/konflux/v1alpha1"
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
 	releasev1alpha1 "github.com/konflux-ci/release-service/api/v1alpha1"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	clientsetscheme "k8s.io/client-go/kubernetes/scheme"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
@@ -92,6 +96,7 @@ var _ = BeforeSuite(func() {
 	Expect(cfg).NotTo(BeNil())
 
 	Expect(applicationapiv1alpha1.AddToScheme(clientsetscheme.Scheme)).To(Succeed())
+	Expect(konfluxv1alpha1.AddToScheme(clientsetscheme.Scheme)).To(Succeed())
 	Expect(tektonv1.AddToScheme(clientsetscheme.Scheme)).To(Succeed())
 	Expect(releasev1alpha1.AddToScheme(clientsetscheme.Scheme)).To(Succeed())
 	Expect(v1beta2.AddToScheme(clientsetscheme.Scheme)).To(Succeed())
@@ -117,3 +122,18 @@ var _ = AfterSuite(func() {
 	err := testEnv.Stop()
 	Expect(err).NotTo(HaveOccurred())
 })
+
+// errBoom is a throwaway error tests use to make a mocked client call fail (deliberately not
+// a conflict or NotFound, so the code sees a real failure and won't retry it).
+var errBoom = errors.NewInternalError(fmt.Errorf("boom"))
+
+// waitForCached waits until the cache has this exact object (checked by UID so an old
+// same-named copy can't be mistaken for it) before a test uses it.
+func waitForCached(obj client.Object) {
+	key := client.ObjectKeyFromObject(obj)
+	uid := obj.GetUID()
+	fetched := obj.DeepCopyObject().(client.Object)
+	Eventually(func() bool {
+		return k8sClient.Get(ctx, key, fetched) == nil && fetched.GetUID() == uid
+	}, time.Second*20).Should(BeTrue())
+}
