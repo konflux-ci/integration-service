@@ -19,6 +19,11 @@ spec:
     debounceTimeout: 30m
     maxWaitTime: 4h
     failurePolicy: Block
+  # Per-target batch policies. batchPolicy opts a target into batching; omit it for immediate nudging.
+  targetConfig:
+    - target: component-b
+      batchPolicy:
+        debounceTimeout: 15m
   nudges:
     # When component-a builds successfully, nudge component-b after integration tests pass
     - from: component-a

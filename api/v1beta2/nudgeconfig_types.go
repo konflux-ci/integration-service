@@ -128,15 +128,83 @@ type BatchDefaults struct {
 	FailurePolicy *FailurePolicyType `json:"failurePolicy,omitempty"`
 }
 
+// BatchPolicy defines per-target batch timing and failure behavior overrides.
+// All fields are optional; unset fields fall back to spec.batchDefaults, then runtime defaults.
+// +kubebuilder:validation:XValidation:rule="!has(self.debounceTimeout) || !has(self.maxWaitTime) || duration(self.maxWaitTime) > duration(self.debounceTimeout)",message="maxWaitTime must exceed debounceTimeout"
+// +kubebuilder:validation:XValidation:rule="!has(self.debounceTimeout) || has(self.maxWaitTime) || duration(self.debounceTimeout) < duration('4h')",message="debounceTimeout must be less than the 4h runtime default for maxWaitTime when maxWaitTime is omitted"
+// +kubebuilder:validation:XValidation:rule="!has(self.maxWaitTime) || has(self.debounceTimeout) || duration(self.maxWaitTime) > duration('30m')",message="maxWaitTime must exceed the 30m runtime default for debounceTimeout when debounceTimeout is omitted"
+type BatchPolicy struct {
+	// DebounceTimeout is how long to wait after the last incoming build before firing the batch.
+	// Range: 1m–24h. Runtime default when unset: 30m (after batchDefaults, if any).
+	// When MaxWaitTime is also specified, DebounceTimeout must be strictly less than MaxWaitTime.
+	// When MaxWaitTime is omitted, DebounceTimeout must be strictly less than the 4h runtime default.
+	// +kubebuilder:validation:Type=string
+	// +kubebuilder:validation:Format=duration
+	// +kubebuilder:validation:XValidation:rule="duration(self) >= duration('1m') && duration(self) <= duration('24h')",message="debounceTimeout must be between 1m and 24h"
+	// +optional
+	DebounceTimeout *metav1.Duration `json:"debounceTimeout,omitempty"`
+
+	// MaxWaitTime is the hard deadline from the first build event, regardless of debounce resets.
+	// Range: 1m–24h. Runtime default when unset: 4h (after batchDefaults, if any).
+	// When both MaxWaitTime and DebounceTimeout are set, MaxWaitTime must exceed DebounceTimeout.
+	// When DebounceTimeout is omitted, MaxWaitTime must exceed the 30m runtime default.
+	// +kubebuilder:validation:Type=string
+	// +kubebuilder:validation:Format=duration
+	// +kubebuilder:validation:XValidation:rule="duration(self) >= duration('1m') && duration(self) <= duration('24h')",message="maxWaitTime must be between 1m and 24h"
+	// +optional
+	MaxWaitTime *metav1.Duration `json:"maxWaitTime,omitempty"`
+
+	// FailurePolicy controls whether a failed member build blocks the batch or allows a partial fire.
+	// Runtime default when unset: Block (after batchDefaults, if any).
+	// +optional
+	FailurePolicy *FailurePolicyType `json:"failurePolicy,omitempty"`
+}
+
+// TargetConfig declares per-target batch behavior. Presence of batchPolicy opts the target into batching.
+type TargetConfig struct {
+	// Target is the downstream component name that may receive batched nudges.
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=63
+	// +kubebuilder:validation:Pattern=`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`
+	// +required
+	Target string `json:"target"`
+
+	// BatchPolicy opts this target into batching. When omitted, the target is not batched.
+	// An empty object uses batchDefaults and runtime defaults for all policy fields.
+	// +optional
+	BatchPolicy *BatchPolicy `json:"batchPolicy,omitempty"`
+}
+
+// IsBatched reports whether this target opts into batch nudging.
+func (tc TargetConfig) IsBatched() bool {
+	return tc.BatchPolicy != nil
+}
+
+// IsTargetBatched reports whether the given target component is configured for batch nudging.
+func (spec NudgeConfigSpec) IsTargetBatched(target string) bool {
+	for _, tc := range spec.TargetConfig {
+		if tc.Target == target {
+			return tc.IsBatched()
+		}
+	}
+	return false
+}
+
 // NudgeConfigSpec defines the desired nudging relationships between components
 // and optional namespace-wide batch defaults.
 // +kubebuilder:validation:XValidation:rule="!has(self.nudges) || self.nudges.all(n, n.from != n.to)",message="self-nudge not allowed: from and to must be different"
 // +kubebuilder:validation:XValidation:rule="!has(self.nudges) || self.nudges.all(i, self.nudges.exists_one(j, i.from == j.from && i.to == j.to))",message="duplicate (from, to) pair not allowed"
+// +kubebuilder:validation:XValidation:rule="!has(self.targetConfig) || self.targetConfig.all(i, self.targetConfig.exists_one(j, i.target == j.target))",message="duplicate target not allowed"
 type NudgeConfigSpec struct {
 	// BatchDefaults defines namespace-wide fallback values for batched targets.
 	// This field is reserved; no controller yet applies these defaults.
 	// +optional
 	BatchDefaults *BatchDefaults `json:"batchDefaults,omitempty"`
+
+	// TargetConfig lists per-target batch policies. Targets without batchPolicy are not batched.
+	// +kubebuilder:validation:MaxItems=360
+	// +optional
+	TargetConfig []TargetConfig `json:"targetConfig,omitempty"`
 
 	// Nudges is the list of component nudge relationships.
 	// +kubebuilder:validation:MaxItems=360
