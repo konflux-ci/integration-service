@@ -343,6 +343,12 @@ func TestNudgeConfigSpecDeepCopy(t *testing.T) {
 			DebounceTimeout: durationPtr(30 * time.Minute),
 			FailurePolicy:   failurePolicyPtr(FailurePolicyBlock),
 		},
+		TargetConfig: []TargetConfig{
+			{
+				Target:      "bundle",
+				BatchPolicy: &BatchPolicy{DebounceTimeout: durationPtr(45 * time.Minute)},
+			},
+		},
 		Nudges: []NudgeRelationship{
 			{From: "comp-a", To: "comp-b", Mode: NudgeModeValidated, GatingGroup: "grp-1"},
 		},
@@ -351,6 +357,12 @@ func TestNudgeConfigSpecDeepCopy(t *testing.T) {
 	copied := original.DeepCopy()
 	if copied.Nudges[0].From != "comp-a" {
 		t.Errorf("Expected From 'comp-a', got '%s'", copied.Nudges[0].From)
+	}
+	if len(copied.TargetConfig) != 1 || copied.TargetConfig[0].Target != "bundle" {
+		t.Fatalf("Expected copied targetConfig, got %+v", copied.TargetConfig)
+	}
+	if copied.TargetConfig[0].BatchPolicy == nil || copied.TargetConfig[0].BatchPolicy.DebounceTimeout == nil {
+		t.Fatal("Expected copied TargetConfig.BatchPolicy.DebounceTimeout")
 	}
 	if copied.BatchDefaults == nil || copied.BatchDefaults.DebounceTimeout == nil {
 		t.Fatal("Expected copied BatchDefaults.DebounceTimeout")
@@ -370,6 +382,72 @@ func TestNudgeConfigSpecDeepCopy(t *testing.T) {
 	}
 	if *original.BatchDefaults.FailurePolicy != FailurePolicyBlock {
 		t.Errorf("Original BatchDefaults.FailurePolicy was modified: got %v", *original.BatchDefaults.FailurePolicy)
+	}
+}
+
+func TestTargetConfigBatchRecognition(t *testing.T) {
+	withPolicy := TargetConfig{
+		Target: "bundle",
+		BatchPolicy: &BatchPolicy{
+			DebounceTimeout: durationPtr(10 * time.Minute),
+		},
+	}
+	if !withPolicy.IsBatched() {
+		t.Fatal("expected target with batchPolicy to be batched")
+	}
+	specWithPolicy := NudgeConfigSpec{TargetConfig: []TargetConfig{withPolicy}}
+	if !specWithPolicy.IsTargetBatched("bundle") {
+		t.Fatal("expected IsTargetBatched true for target with batchPolicy")
+	}
+
+	withoutPolicy := TargetConfig{Target: "component-c"}
+	if withoutPolicy.IsBatched() {
+		t.Fatal("expected target without batchPolicy not to be batched")
+	}
+	specWithoutPolicy := NudgeConfigSpec{TargetConfig: []TargetConfig{withoutPolicy}}
+	if specWithoutPolicy.IsTargetBatched("component-c") {
+		t.Fatal("expected IsTargetBatched false when batchPolicy is nil")
+	}
+
+	emptyPolicy := TargetConfig{Target: "bundle", BatchPolicy: &BatchPolicy{}}
+	if !emptyPolicy.IsBatched() {
+		t.Fatal("expected empty batchPolicy object to opt target into batching")
+	}
+	if emptyPolicy.BatchPolicy.DebounceTimeout != nil || emptyPolicy.BatchPolicy.MaxWaitTime != nil || emptyPolicy.BatchPolicy.FailurePolicy != nil {
+		t.Fatal("expected empty batchPolicy to have all-nil overrides")
+	}
+	specEmptyPolicy := NudgeConfigSpec{TargetConfig: []TargetConfig{emptyPolicy}}
+	if !specEmptyPolicy.IsTargetBatched("bundle") {
+		t.Fatal("expected IsTargetBatched true for empty batchPolicy")
+	}
+}
+
+func TestTargetConfigJSONRoundTrip(t *testing.T) {
+	encoded, err := json.Marshal(TargetConfig{Target: "bundle", BatchPolicy: &BatchPolicy{}})
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+
+	var decoded TargetConfig
+	if err := json.Unmarshal(encoded, &decoded); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+	if decoded.Target != "bundle" {
+		t.Errorf("Expected target bundle, got %q", decoded.Target)
+	}
+	if decoded.BatchPolicy == nil {
+		t.Fatal("Expected non-nil batchPolicy after unmarshaling {}")
+	}
+	if decoded.BatchPolicy.DebounceTimeout != nil || decoded.BatchPolicy.MaxWaitTime != nil || decoded.BatchPolicy.FailurePolicy != nil {
+		t.Fatal("Expected empty batchPolicy overrides after round-trip")
+	}
+
+	var omitted TargetConfig
+	if err := json.Unmarshal([]byte(`{"target":"component-a"}`), &omitted); err != nil {
+		t.Fatalf("Unmarshal without batchPolicy: %v", err)
+	}
+	if omitted.BatchPolicy != nil {
+		t.Fatalf("Expected nil batchPolicy when omitted, got %+v", omitted.BatchPolicy)
 	}
 }
 

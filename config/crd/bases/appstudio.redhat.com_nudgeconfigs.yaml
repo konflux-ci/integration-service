@@ -141,6 +141,61 @@ spec:
                   type: object
                 maxItems: 360
                 type: array
+              targetConfig:
+                description: TargetConfig lists per-target batch policies. Targets
+                  without batchPolicy are not batched.
+                items:
+                  description: TargetConfig declares per-target batch behavior. Presence
+                    of batchPolicy opts the target into batching.
+                  properties:
+                    batchPolicy:
+                      description: |-
+                        BatchPolicy opts this target into batching. When omitted, the target is not batched.
+                        An empty object uses batchDefaults and runtime defaults for all policy fields.
+                      properties:
+                        debounceTimeout:
+                          description: |-
+                            DebounceTimeout is how long to wait after the last incoming build before firing the batch.
+                            Range: 1m–24h. Effective value when unset: spec.batchDefaults.debounceTimeout, then 30m.
+                            Effective maxWaitTime must exceed effective debounceTimeout (validated on NudgeConfigSpec).
+                          format: duration
+                          type: string
+                          x-kubernetes-validations:
+                          - message: debounceTimeout must be between 1m and 24h
+                            rule: duration(self) >= duration('1m') && duration(self)
+                              <= duration('24h')
+                        failurePolicy:
+                          description: |-
+                            FailurePolicy controls whether a failed member build blocks the batch or allows a partial fire.
+                            Runtime default when unset: Block (after batchDefaults, if any).
+                          enum:
+                          - Block
+                          - ProceedWithPartial
+                          type: string
+                        maxWaitTime:
+                          description: |-
+                            MaxWaitTime is the hard deadline from the first build event, regardless of debounce resets.
+                            Range: 1m–24h. Effective value when unset: spec.batchDefaults.maxWaitTime, then 4h.
+                            Effective maxWaitTime must exceed effective debounceTimeout (validated on NudgeConfigSpec).
+                          format: duration
+                          type: string
+                          x-kubernetes-validations:
+                          - message: maxWaitTime must be between 1m and 24h
+                            rule: duration(self) >= duration('1m') && duration(self)
+                              <= duration('24h')
+                      type: object
+                    target:
+                      description: Target is the downstream component name that may
+                        receive batched nudges.
+                      maxLength: 63
+                      minLength: 1
+                      pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                      type: string
+                  required:
+                  - target
+                  type: object
+                maxItems: 360
+                type: array
             type: object
             x-kubernetes-validations:
             - message: 'self-nudge not allowed: from and to must be different'
@@ -148,6 +203,19 @@ spec:
             - message: duplicate (from, to) pair not allowed
               rule: '!has(self.nudges) || self.nudges.all(i, self.nudges.exists_one(j,
                 i.from == j.from && i.to == j.to))'
+            - message: duplicate target not allowed
+              rule: '!has(self.targetConfig) || self.targetConfig.all(i, self.targetConfig.exists_one(j,
+                i.target == j.target))'
+            - message: effective maxWaitTime must exceed effective debounceTimeout
+                for each batched target (batchPolicy, then batchDefaults, then runtime
+                defaults)
+              rule: '!has(self.targetConfig) || self.targetConfig.all(tc, !has(tc.batchPolicy)
+                || (has(tc.batchPolicy.maxWaitTime) ? duration(tc.batchPolicy.maxWaitTime)
+                : (has(self.batchDefaults) && has(self.batchDefaults.maxWaitTime)
+                ? duration(self.batchDefaults.maxWaitTime) : duration(''4h''))) >
+                (has(tc.batchPolicy.debounceTimeout) ? duration(tc.batchPolicy.debounceTimeout)
+                : (has(self.batchDefaults) && has(self.batchDefaults.debounceTimeout)
+                ? duration(self.batchDefaults.debounceTimeout) : duration(''30m''))))'
           status:
             description: NudgeConfigStatus defines the observed state of NudgeConfig.
             properties:
