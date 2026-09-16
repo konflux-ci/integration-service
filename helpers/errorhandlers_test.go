@@ -19,6 +19,7 @@ package helpers_test
 import (
 	"bytes"
 	"fmt"
+	"time"
 
 	"github.com/konflux-ci/integration-service/helpers"
 	. "github.com/onsi/ginkgo/v2"
@@ -110,6 +111,20 @@ var _ = Describe("Helpers for error handlers", Ordered, func() {
 			err := helpers.NewUnrecoverableMetadataError("undefined annotation")
 			Expect(helpers.IsUnrecoverableMetadataError(err)).To(BeTrue())
 			Expect(err.Error()).To(Equal("Meeting metadata data error: undefined annotation"))
+		})
+
+		It("RetryOnError runs just once in case of no errors", func() {
+			err := helpers.RetryCreationOnError(func() error {
+				return nil
+			}, 5, 5*time.Second)
+			Expect(err).ToNot(HaveOccurred())
+		})
+		It("RetryOnError runs 2 times in case of errors", func() {
+			err := helpers.RetryCreationOnError(func() error {
+				err := errors.NewBadRequest("math: square root of negative number")
+				return err
+			}, 2, 1*time.Second)
+			Expect(err.Error()).To(Equal("after 2 attempts, last error: math: square root of negative number"))
 		})
 	})
 })
