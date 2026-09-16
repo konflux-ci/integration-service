@@ -1,0 +1,66 @@
+# STONEINTG-1771: manual Qodo review trigger for integration team members.
+# Complements .pr_agent.toml (auto-disable) by gating /qodo-review.
+# Authorization read from .github/CODEOWNERS on the default branch.
+
+name: qodo-review
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  # Single job: authorize commenter, then allow or deny.
+  qodo-review:
+    if: >-
+      github.event_name == 'issue_comment'
+      && github.event.issue.pull_request
+      && github.event.comment.user.type != 'Bot'
+      && github.event.comment.body == '/qodo-review'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+    steps:
+
+      - name: Checkout CODEOWNERS from default branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+
+      - name: Check integration team membership
+        id: auth
+        env:
+          USER: ${{ github.event.comment.user.login }}
+        run: |
+          owners=$(grep '^[*]' .github/CODEOWNERS | grep -oE '@[[:alnum:]_-]+' | tr -d '@')
+          if echo "$owners" | grep -Fqx -- "$USER"; then
+            echo "authorized=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "authorized=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Trigger Qodo Code review
+        if: steps.auth.outputs.authorized == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.issue.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          gh pr comment "$PR_NUMBER" --repo "$REPO" \
+            --body ":white_check_mark: Qodo code review requested.
+          /agentic_review"
+
+      - name: Notify unauthorized user
+        if: steps.auth.outputs.authorized != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.issue.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          gh pr comment "$PR_NUMBER" --repo "$REPO" \
+            --body ":no_entry: \`/qodo-review\` is restricted to konflux integration team members."
