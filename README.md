@@ -9,6 +9,8 @@ The service handles the complete lifecycle of integration testing including grou
 ### Key Features
 
 - **Automated Snapshot Creation**: Automatically creates Snapshots in response to Component builds based on user's Application or ComponentGroup CR configuration
+
+> **Note for contributors:** Snapshot creation supports two parallel model flows — the **Application** model and the **ComponentGroup** model. When adding or modifying logic in `buildpipeline_adapter.go` (e.g. timing/span emission), ensure changes are applied completely to BOTH `EnsureSnapshotExistsApplication` (Application flow) and `EnsureSnapshotExists` (ComponentGroup flow), including all early-return paths.
 - **Integration Testing**: Executes integration testing Tekton pipelines based on the user's configuration provided in IntegrationTestScenario CRs
 - **Status Reporting to Git Providers**: Reports testing outcomes to the supported git providers
 - **Automated Releases**: Automatically releases individual Snapshots based on user's configuration
