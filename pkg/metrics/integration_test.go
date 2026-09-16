@@ -49,6 +49,10 @@ var _ = Describe("Metrics Integration", Ordered, func() {
 			Name: "integration_svc_snapshot_attempt_total",
 			Help: "Total number of snapshots processed by the operator",
 		}
+		GitLabScenarioStatusesHeader = inputHeader{
+			Name: "integration_svc_gitlab_scenario_status_gauge",
+			Help: "The current number of concurrent GitLab scenario statuses being reported",
+		}
 	)
 
 	Context("When RegisterPipelineRunStarted is called", func() {
@@ -211,6 +215,67 @@ var _ = Describe("Metrics Integration", Ordered, func() {
 		It("measures latency for only one release", func() {
 			RegisterReleaseLatency(startTime)
 			Expect(testutil.CollectAndCount(ReleaseLatencySeconds)).To(Equal(1))
+		})
+	})
+
+	Context("When RegisterConsolidatedGitlabScenarioStatuses is called", func() {
+		BeforeAll(func() {
+			GitLabScenarioStatuses = prometheus.NewGaugeVec(
+				prometheus.GaugeOpts{
+					Name: "integration_svc_gitlab_scenario_status_gauge",
+					Help: "The current number of concurrent GitLab scenario statuses being reported",
+				},
+				[]string{"reporting_mode"},
+			)
+			metrics.Registry.MustRegister(GitLabScenarioStatuses)
+		})
+
+		AfterAll(func() {
+			metrics.Registry.Unregister(GitLabScenarioStatuses)
+		})
+
+		labels := fmt.Sprintf(`reporting_mode="%s"`, "consolidated")
+
+		It("increments 'GitLabScenarioStatuses' in consolidated mode", func() {
+			RegisterConsolidatedGitlabScenarioStatuses(20)
+			readerData := createGaugeReader(GitLabScenarioStatusesHeader, labels, true, float64(20))
+			Expect(testutil.CollectAndCompare(GitLabScenarioStatuses, strings.NewReader(readerData))).To(Succeed())
+		})
+
+		It("decrements 'GitLabScenarioStatuses' in consolidated mode", func() {
+			UnregisterConsolidatedGitlabScenarioStatuses(20)
+			readerData := createGaugeReader(GitLabScenarioStatusesHeader, labels, true, float64(0))
+			Expect(testutil.CollectAndCompare(GitLabScenarioStatuses, strings.NewReader(readerData))).To(Succeed())
+		})
+	})
+
+	Context("When RegisterConsolidatedGitlabScenarioStatuses is called", func() {
+		BeforeAll(func() {
+			GitLabScenarioStatuses = prometheus.NewGaugeVec(
+				prometheus.GaugeOpts{
+					Name: "integration_svc_gitlab_scenario_status_gauge",
+					Help: "The current number of concurrent GitLab scenario statuses being reported",
+				},
+				[]string{"reporting_mode"},
+			)
+		})
+
+		AfterAll(func() {
+			metrics.Registry.Unregister(GitLabScenarioStatuses)
+		})
+
+		labels := fmt.Sprintf(`reporting_mode="%s"`, "individual")
+
+		It("increments 'GitLabScenarioStatuses' in individual mode", func() {
+			RegisterIndividualGitlabScenarioStatuses(20)
+			readerData := createGaugeReader(GitLabScenarioStatusesHeader, labels, true, float64(20))
+			Expect(testutil.CollectAndCompare(GitLabScenarioStatuses, strings.NewReader(readerData))).To(Succeed())
+		})
+
+		It("decrements 'GitLabScenarioStatuses' in consolidated mode", func() {
+			UnregisterIndividualGitlabScenarioStatuses(20)
+			readerData := createGaugeReader(GitLabScenarioStatusesHeader, labels, true, float64(0))
+			Expect(testutil.CollectAndCompare(GitLabScenarioStatuses, strings.NewReader(readerData))).To(Succeed())
 		})
 	})
 })
