@@ -1,6 +1,6 @@
 module github.com/konflux-ci/integration-service
 
-go 1.25.0
+go 1.26.0
 
 require (
 	codeberg.org/mvdkleijn/forgejo-sdk/forgejo/v3 v3.0.0
