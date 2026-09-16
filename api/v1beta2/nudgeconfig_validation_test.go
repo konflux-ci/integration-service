@@ -18,6 +18,7 @@ package v1beta2
 
 import (
 	"fmt"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -209,6 +210,302 @@ var _ = Describe("NudgeConfig CEL validation", Ordered, func() {
 		err := k8sClient.Create(ctx, nc)
 		Expect(err).To(HaveOccurred())
 		Expect(errors.IsInvalid(err)).To(BeTrue())
+	})
+
+	Context("When batch defaults are provided", func() {
+		It("should accept a NudgeConfig with valid batchDefaults and round-trip the values", func() {
+			nc := &NudgeConfig{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      NudgeConfigSingletonName,
+					Namespace: "default",
+				},
+				Spec: NudgeConfigSpec{
+					BatchDefaults: &BatchDefaults{
+						DebounceTimeout: &metav1.Duration{Duration: DefaultBatchDebounceTimeout},
+						MaxWaitTime:     &metav1.Duration{Duration: DefaultBatchMaxWaitTime},
+						FailurePolicy:   failurePolicyPtr(FailurePolicyProceedWithPartial),
+					},
+					Nudges: []NudgeRelationship{
+						{From: "component-a", To: "component-b"},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, nc)).To(Succeed())
+
+			created := &NudgeConfig{}
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: NudgeConfigSingletonName, Namespace: "default"}, created)).To(Succeed())
+			Expect(created.Spec.BatchDefaults).NotTo(BeNil())
+			Expect(created.Spec.BatchDefaults.DebounceTimeout).NotTo(BeNil())
+			Expect(created.Spec.BatchDefaults.DebounceTimeout.Duration).To(Equal(DefaultBatchDebounceTimeout))
+			Expect(created.Spec.BatchDefaults.MaxWaitTime).NotTo(BeNil())
+			Expect(created.Spec.BatchDefaults.MaxWaitTime.Duration).To(Equal(DefaultBatchMaxWaitTime))
+			Expect(created.Spec.BatchDefaults.FailurePolicy).NotTo(BeNil())
+			Expect(*created.Spec.BatchDefaults.FailurePolicy).To(Equal(FailurePolicyProceedWithPartial))
+		})
+
+		It("should leave omitted batchDefaults as nil (no schema-level default injection)", func() {
+			nc := &NudgeConfig{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      NudgeConfigSingletonName,
+					Namespace: "default",
+				},
+				Spec: NudgeConfigSpec{
+					Nudges: []NudgeRelationship{
+						{From: "component-a", To: "component-b"},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, nc)).To(Succeed())
+
+			created := &NudgeConfig{}
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: NudgeConfigSingletonName, Namespace: "default"}, created)).To(Succeed())
+			Expect(created.Spec.BatchDefaults).To(BeNil())
+		})
+
+		It("should reject debounceTimeout below 1m", func() {
+			nc := &NudgeConfig{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      NudgeConfigSingletonName,
+					Namespace: "default",
+				},
+				Spec: NudgeConfigSpec{
+					BatchDefaults: &BatchDefaults{
+						DebounceTimeout: &metav1.Duration{Duration: 30 * time.Second},
+					},
+				},
+			}
+			err := k8sClient.Create(ctx, nc)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("debounceTimeout"))
+			Expect(errors.IsInvalid(err)).To(BeTrue())
+		})
+
+		It("should reject debounceTimeout above 24h", func() {
+			nc := &NudgeConfig{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      NudgeConfigSingletonName,
+					Namespace: "default",
+				},
+				Spec: NudgeConfigSpec{
+					BatchDefaults: &BatchDefaults{
+						DebounceTimeout: &metav1.Duration{Duration: 25 * time.Hour},
+					},
+				},
+			}
+			err := k8sClient.Create(ctx, nc)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("debounceTimeout"))
+			Expect(errors.IsInvalid(err)).To(BeTrue())
+		})
+
+		It("should reject an invalid failurePolicy value", func() {
+			nc := &NudgeConfig{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      NudgeConfigSingletonName,
+					Namespace: "default",
+				},
+				Spec: NudgeConfigSpec{
+					BatchDefaults: &BatchDefaults{
+						FailurePolicy: failurePolicyPtr(FailurePolicyType("Ignore")),
+					},
+				},
+			}
+			err := k8sClient.Create(ctx, nc)
+			Expect(err).To(HaveOccurred())
+			Expect(errors.IsInvalid(err)).To(BeTrue())
+		})
+
+		It("should reject maxWaitTime below 1m", func() {
+			nc := &NudgeConfig{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      NudgeConfigSingletonName,
+					Namespace: "default",
+				},
+				Spec: NudgeConfigSpec{
+					BatchDefaults: &BatchDefaults{
+						MaxWaitTime: &metav1.Duration{Duration: 30 * time.Second},
+					},
+				},
+			}
+			err := k8sClient.Create(ctx, nc)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("maxWaitTime"))
+			Expect(errors.IsInvalid(err)).To(BeTrue())
+		})
+
+		It("should reject maxWaitTime above 24h", func() {
+			nc := &NudgeConfig{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      NudgeConfigSingletonName,
+					Namespace: "default",
+				},
+				Spec: NudgeConfigSpec{
+					BatchDefaults: &BatchDefaults{
+						MaxWaitTime: &metav1.Duration{Duration: 25 * time.Hour},
+					},
+				},
+			}
+			err := k8sClient.Create(ctx, nc)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("maxWaitTime"))
+			Expect(errors.IsInvalid(err)).To(BeTrue())
+		})
+
+		It("should reject maxWaitTime that does not exceed debounceTimeout", func() {
+			nc := &NudgeConfig{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      NudgeConfigSingletonName,
+					Namespace: "default",
+				},
+				Spec: NudgeConfigSpec{
+					BatchDefaults: &BatchDefaults{
+						DebounceTimeout: &metav1.Duration{Duration: 1 * time.Hour},
+						MaxWaitTime:     &metav1.Duration{Duration: 30 * time.Minute},
+					},
+				},
+			}
+			err := k8sClient.Create(ctx, nc)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("maxWaitTime must exceed debounceTimeout"))
+			Expect(errors.IsInvalid(err)).To(BeTrue())
+		})
+
+		It("should reject maxWaitTime equal to debounceTimeout", func() {
+			nc := &NudgeConfig{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      NudgeConfigSingletonName,
+					Namespace: "default",
+				},
+				Spec: NudgeConfigSpec{
+					BatchDefaults: &BatchDefaults{
+						DebounceTimeout: &metav1.Duration{Duration: 2 * time.Hour},
+						MaxWaitTime:     &metav1.Duration{Duration: 2 * time.Hour},
+					},
+				},
+			}
+			err := k8sClient.Create(ctx, nc)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("maxWaitTime must exceed debounceTimeout"))
+			Expect(errors.IsInvalid(err)).To(BeTrue())
+		})
+
+		It("should accept maxWaitTime without debounceTimeout when it exceeds the 30m runtime default", func() {
+			nc := &NudgeConfig{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      NudgeConfigSingletonName,
+					Namespace: "default",
+				},
+				Spec: NudgeConfigSpec{
+					BatchDefaults: &BatchDefaults{
+						MaxWaitTime: &metav1.Duration{Duration: 2 * time.Hour},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, nc)).To(Succeed())
+		})
+
+		It("should accept debounceTimeout without maxWaitTime when it is less than the 4h runtime default", func() {
+			nc := &NudgeConfig{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      NudgeConfigSingletonName,
+					Namespace: "default",
+				},
+				Spec: NudgeConfigSpec{
+					BatchDefaults: &BatchDefaults{
+						DebounceTimeout: &metav1.Duration{Duration: DefaultBatchDebounceTimeout},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, nc)).To(Succeed())
+		})
+
+		It("should accept debounceTimeout above 4h when maxWaitTime is set higher", func() {
+			nc := &NudgeConfig{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      NudgeConfigSingletonName,
+					Namespace: "default",
+				},
+				Spec: NudgeConfigSpec{
+					BatchDefaults: &BatchDefaults{
+						DebounceTimeout: &metav1.Duration{Duration: 20 * time.Hour},
+						MaxWaitTime:     &metav1.Duration{Duration: 21 * time.Hour},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, nc)).To(Succeed())
+		})
+
+		It("should reject debounceTimeout that is not less than the 4h runtime default when maxWaitTime is omitted", func() {
+			nc := &NudgeConfig{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      NudgeConfigSingletonName,
+					Namespace: "default",
+				},
+				Spec: NudgeConfigSpec{
+					BatchDefaults: &BatchDefaults{
+						DebounceTimeout: &metav1.Duration{Duration: 20 * time.Hour},
+					},
+				},
+			}
+			err := k8sClient.Create(ctx, nc)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("debounceTimeout must be less than the 4h runtime default"))
+			Expect(errors.IsInvalid(err)).To(BeTrue())
+		})
+
+		It("should reject maxWaitTime that does not exceed the 30m runtime default when debounceTimeout is omitted", func() {
+			nc := &NudgeConfig{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      NudgeConfigSingletonName,
+					Namespace: "default",
+				},
+				Spec: NudgeConfigSpec{
+					BatchDefaults: &BatchDefaults{
+						MaxWaitTime: &metav1.Duration{Duration: 15 * time.Minute},
+					},
+				},
+			}
+			err := k8sClient.Create(ctx, nc)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("maxWaitTime must exceed the 30m runtime default"))
+			Expect(errors.IsInvalid(err)).To(BeTrue())
+		})
+
+		It("should reject debounceTimeout equal to the 4h runtime default when maxWaitTime is omitted", func() {
+			nc := &NudgeConfig{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      NudgeConfigSingletonName,
+					Namespace: "default",
+				},
+				Spec: NudgeConfigSpec{
+					BatchDefaults: &BatchDefaults{
+						DebounceTimeout: &metav1.Duration{Duration: DefaultBatchMaxWaitTime},
+					},
+				},
+			}
+			err := k8sClient.Create(ctx, nc)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("debounceTimeout must be less than the 4h runtime default"))
+			Expect(errors.IsInvalid(err)).To(BeTrue())
+		})
+
+		It("should reject maxWaitTime equal to the 30m runtime default when debounceTimeout is omitted", func() {
+			nc := &NudgeConfig{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      NudgeConfigSingletonName,
+					Namespace: "default",
+				},
+				Spec: NudgeConfigSpec{
+					BatchDefaults: &BatchDefaults{
+						MaxWaitTime: &metav1.Duration{Duration: DefaultBatchDebounceTimeout},
+					},
+				},
+			}
+			err := k8sClient.Create(ctx, nc)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("maxWaitTime must exceed the 30m runtime default"))
+			Expect(errors.IsInvalid(err)).To(BeTrue())
+		})
 	})
 
 	It("should reject spec.nudges exceeding 360 items", func() {
