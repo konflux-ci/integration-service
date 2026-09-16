@@ -34,28 +34,37 @@ const (
 	// CustomLabelPrefix contains the prefix applied to custom user-defined labels and annotations.
 	CustomLabelPrefix = "custom.appstudio.openshift.io"
 
-	// resource labels for snapshot, application and component
+	// ResourceLabelSuffix is the resource label suffix for snapshot, application and component
 	ResourceLabelSuffix = "appstudio.openshift.io"
 
 	// PipelineTypeTest is the type for PipelineRuns created to run an integration Pipeline
 	PipelineTypeTest = "test"
 
-	// Name of tekton resolver for git
+	// TektonResolverGit is the name of tekton resolver for git
 	TektonResolverGit = "git"
 
 	// TektonResolverBundle is the name of Tekton resolver for bundles
 	TektonResolverBundle = "bundle"
 
-	// Name of tekton git resolver param url
+	// TektonResolverGitParamURL is the name  of tekton git resolver param url
 	TektonResolverGitParamURL = "url"
 
-	// Name of tekton git resolver param revision
+	// TektonResolverGitParamServerUrl is the name of tekton git resolver param serverURL
+	TektonResolverGitParamServerUrl = "serverURL"
+
+	// TektonResolverGitParamOrg is the name of tekton git resolver param org
+	TektonResolverGitParamOrg = "org"
+
+	// TektonResolverGitParamRepo is the name of tekton git resolver param repo
+	TektonResolverGitParamRepo = "repo"
+
+	// TektonResolverGitParamRevision is the name  of tekton git resolver param revision
 	TektonResolverGitParamRevision = "revision"
 
-	// Value of ResourceKind field for remote pipelines
+	// ResourceKindPipeline is the value of ResourceKind field for remote pipelines
 	ResourceKindPipeline = "pipeline"
 
-	// Value of ResourceKind field for remote pipelineruns
+	// ResourceKindPipelineRun is the value of ResourceKind field for remote pipelineruns
 	ResourceKindPipelineRun = "pipelinerun"
 
 	// DefaultIntegrationPipelineServiceAccount denotes the service account which is used by default in integration pipelines
