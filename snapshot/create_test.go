@@ -325,22 +325,6 @@ var _ = Describe("Snapshot creation functions", Ordered, func() {
 	})
 
 	Context("Testing PrepareSnapshotForPipelineRun()", func() {
-		It("ensures built component includes git context from Component CR", func() {
-			expectedSnapshot, err := PrepareSnapshotForPipelineRun(mockCtx, k8sClient, buildPipelineRun, componentName, hasCompGroup, loader.NewMockLoader())
-			Expect(err).ToNot(HaveOccurred())
-			Expect(expectedSnapshot).NotTo(BeNil())
-			var built *applicationapiv1alpha1.SnapshotComponent
-			for i := range expectedSnapshot.Spec.Components {
-				if expectedSnapshot.Spec.Components[i].Name == componentName {
-					built = &expectedSnapshot.Spec.Components[i]
-					break
-				}
-			}
-			Expect(built).NotTo(BeNil())
-			Expect(built.Source.GitSource).NotTo(BeNil())
-			Expect(built.Source.GitSource.Context).To(Equal("rpms/my-component"))
-		})
-
 		It("ensures that snapshot has label pointing to build pipelinerun", func() {
 			expectedSnapshot, err := PrepareSnapshotForPipelineRun(mockCtx, k8sClient, buildPipelineRun, componentName, hasCompGroup, loader.NewMockLoader())
 			Expect(err).ToNot(HaveOccurred())

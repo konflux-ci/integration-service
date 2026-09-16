@@ -451,8 +451,7 @@ func (a *Adapter) ReportGroupSnapshotCreationStatus(snapshot *applicationapiv1al
 			return err
 		}
 		// get the component from snapshot to pass into iterateIntegrationTestScenarioWithSameStatus function
-		l := loader.NewLoader()
-		component, err := l.GetComponentFromSnapshot(a.context, a.client, snapshot)
+		component, err := a.loader.GetComponentFromSnapshot(a.context, a.client, snapshot)
 		if err != nil {
 			return fmt.Errorf("failed to get component from snapshot %s/%s: %w", snapshot.Namespace, snapshot.Name, err)
 		}
@@ -585,9 +584,8 @@ func (a *Adapter) iterateIntegrationTestStatusDetailsInStatusReport(reporter sta
 	// update integration test status comment for gitlab and forgejo reporters when comment is not disabled
 	if reporter.GetReporterName() == status.GitLabProvider ||
 		reporter.GetReporterName() == status.ForgejoProvider {
-		loader := loader.NewLoader()
 		// get the destination snapshot's component to check if comment is disabled for all comments for pac repository or integration test
-		component, err := loader.GetComponentFromSnapshot(a.context, a.client, destinationSnapshot)
+		component, err := a.loader.GetComponentFromSnapshot(a.context, a.client, destinationSnapshot)
 		if err != nil {
 			a.logger.Error(err, fmt.Sprintf("failed to get component for snapshot %s/%s", destinationSnapshot.Namespace, destinationSnapshot.Name))
 			return fmt.Errorf("failed to get component for snapshot %s/%s: %w", destinationSnapshot.Namespace, destinationSnapshot.Name, err)
