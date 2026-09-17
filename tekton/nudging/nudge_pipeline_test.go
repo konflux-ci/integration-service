@@ -413,7 +413,7 @@ var _ = Describe("Nudge Pipeline", func() {
 			Expect(plrList.Items).To(HaveLen(1))
 			createdPLR := plrList.Items[0]
 
-			// Verify labels
+			// Verify nudge type label
 			Expect(createdPLR.Labels[tektonconsts.NudgeTypeLabel]).To(Equal(tektonconsts.NudgePipelineRunTypeValue))
 
 			// Verify annotations
