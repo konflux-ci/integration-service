@@ -190,6 +190,9 @@ func (l *mockLoader) GetAllIntegrationTestScenariosForComponentGroup(ctx context
 		return l.loader.GetAllIntegrationTestScenariosForComponentGroup(ctx, c, componentGroup)
 	}
 	integrationTestScenarios, err := toolkit.GetMockedResourceAndErrorFromContext(ctx, AllIntegrationTestScenariosForComponentGroupContextKey, []v1beta2.IntegrationTestScenario{})
+	if integrationTestScenarios == nil {
+		return nil, err
+	}
 	return &integrationTestScenarios, err
 }
 

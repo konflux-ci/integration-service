@@ -272,16 +272,6 @@ var _ = Describe("SnapshotController", func() {
 		}, time.Second*20).Should(BeTrue())
 	})
 
-	It("can setup the cache by adding a new index field to search for ReleasePlanAdmissions", func() {
-		err := setupCache(manager)
-		Expect(err).ToNot(HaveOccurred())
-	})
-
-	It("can setup a new controller manager with the given snapshotReconciler", func() {
-		err := setupControllerWithManager(manager, snapshotReconciler)
-		Expect(err).NotTo(HaveOccurred())
-	})
-
 	When("snapshot is restored from backup", func() {
 
 		BeforeEach(func() {
@@ -301,6 +291,18 @@ var _ = Describe("SnapshotController", func() {
 			result, err := snapshotReconciler.Reconcile(ctx, req)
 			Expect(result).To(Equal(ctrl.Result{}))
 			Expect(err).ToNot(HaveOccurred())
+		})
+	})
+
+	Describe("controller wiring", func() {
+		It("can setup the cache by adding a new index field to search for ReleasePlanAdmissions", func() {
+			err := setupCache(manager)
+			Expect(err).ToNot(HaveOccurred())
+		})
+
+		It("can setup a new controller manager with the given snapshotReconciler", func() {
+			err := setupControllerWithManager(manager, snapshotReconciler)
+			Expect(err).NotTo(HaveOccurred())
 		})
 	})
 
