@@ -21,8 +21,10 @@ import (
 	"github.com/konflux-ci/integration-service/gitops"
 	"github.com/konflux-ci/integration-service/helpers"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/validation/field"
+	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
@@ -163,10 +165,20 @@ func (v *SnapshotCustomValidator) ValidateDelete(ctx context.Context, obj runtim
 	if err != nil {
 		return nil, err
 	}
-	for _, integrationPipeline := range integrationPipelineList.Items {
-		err = helpers.RemoveFinalizerFromPipelineRun(ctx, v.Client, logger, &integrationPipeline, helpers.IntegrationPipelineRunFinalizer)
+	for i := range integrationPipelineList.Items {
+		plr := &integrationPipelineList.Items[i]
+		err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
+			fresh := &tektonv1.PipelineRun{}
+			if getErr := v.Client.Get(ctx, client.ObjectKeyFromObject(plr), fresh); getErr != nil {
+				if apierrors.IsNotFound(getErr) {
+					return nil
+				}
+				return getErr
+			}
+			return helpers.RemoveFinalizerFromPipelineRun(ctx, v.Client, logger, fresh, helpers.IntegrationPipelineRunFinalizer)
+		})
 		if err != nil {
-			snapshotlog.Error(err, "failed to remove finalizer from integration pipelinerun", "integration pipelineRun", integrationPipeline.Name)
+			snapshotlog.Error(err, "failed to remove finalizer from integration pipelinerun", "integration pipelineRun", plr.Name)
 			return nil, err
 		}
 	}
