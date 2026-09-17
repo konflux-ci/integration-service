@@ -413,8 +413,9 @@ var _ = Describe("Nudge Pipeline", func() {
 			Expect(plrList.Items).To(HaveLen(1))
 			createdPLR := plrList.Items[0]
 
-			// Verify labels
+			// Verify labels — both new and legacy label set during transition
 			Expect(createdPLR.Labels[tektonconsts.NudgeTypeLabel]).To(Equal(tektonconsts.NudgePipelineRunTypeValue))
+			Expect(createdPLR.Labels[tektonconsts.NudgeTypeLabelLegacy]).To(Equal(tektonconsts.NudgePipelineRunTypeValue))
 
 			// Verify annotations
 			Expect(createdPLR.Annotations[tektonconsts.NudgingComponentAnnotation]).To(Equal("source-comp"))

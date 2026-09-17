@@ -414,7 +414,8 @@ func CreateNudgePipelineRun(ctx context.Context, c client.Client, nudgingPLR *te
 			Name:      name,
 			Namespace: namespace,
 			Labels: map[string]string{
-				tektonconsts.NudgeTypeLabel: tektonconsts.NudgePipelineRunTypeValue,
+				tektonconsts.NudgeTypeLabel:       tektonconsts.NudgePipelineRunTypeValue,
+				tektonconsts.NudgeTypeLabelLegacy: tektonconsts.NudgePipelineRunTypeValue,
 			},
 			Annotations: map[string]string{
 				tektonconsts.NudgedComponentsAnnotation: joinNudgedComponentNames(targets),

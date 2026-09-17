@@ -166,8 +166,11 @@ const (
 	// NudgeFilesAnnotation on a build PLR restricts which files Renovate updates
 	NudgeFilesAnnotation = "build.appstudio.openshift.io/build-nudge-files"
 
-	// NudgeTypeLabel labels a PipelineRun as a nudge pipeline
-	NudgeTypeLabel = "build.appstudio.redhat.com/type"
+	// NudgeTypeLabel labels a PipelineRun as a nudge pipeline (new domain)
+	NudgeTypeLabel = "build.konflux-ci.dev/type"
+
+	// NudgeTypeLabelLegacy is the old label kept during transition for rollback safety
+	NudgeTypeLabelLegacy = "build.appstudio.redhat.com/type"
 
 	// NudgePipelineRunTypeValue is the value for the nudge type label
 	NudgePipelineRunTypeValue = "nudge"
