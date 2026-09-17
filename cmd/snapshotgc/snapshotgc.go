@@ -13,6 +13,7 @@ import (
 	"github.com/go-logr/logr"
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
 	"github.com/konflux-ci/integration-service/gitops"
+	"github.com/konflux-ci/integration-service/pkg/keys"
 	"github.com/konflux-ci/operator-toolkit/metadata"
 	releasev1alpha1 "github.com/konflux-ci/release-service/api/v1alpha1"
 	zap2 "go.uber.org/zap"
@@ -37,13 +38,16 @@ const (
 	// Annotation that can be manually added by users to preven the deletion of a snapshot, they can also
 	// define the TTL of snapshot by providing time in following format: 10h28m9s
 	// in case the format is not correct the snapshot is considered to deletion
-	KeepSnapshotAnnotation = "test.appstudio.openshift.io/keep-snapshot"
+	// remove after componentGroup migration
+	KeepSnapshotAnnotation = keys.PrefixTestOld + "/keep-snapshot"
 	// PRStatusAnnotation contains the status of the PR, it is marked as "merged" when the push build pipelinerun is triggered
-	PRStatusAnnotation = "test.appstudio.openshift.io/pr-status"
+	// remove after componentGroup migration
+	PRStatusAnnotation = keys.PrefixTestOld + "/pr-status"
 	// PRStatusMerged indicates that the PR has been merged
 	PRStatusMerged = "merged"
 	// PRGroupCreationAnnotation is the annotation used to indicate whether the group snapshot has been created for the PR snapshot or not, or will be created
-	PRGroupCreationAnnotation = "test.appstudio.openshift.io/create-groupsnapshot-status"
+	// remove after componentGroup migration
+	PRGroupCreationAnnotation = keys.PrefixTestOld + "/create-groupsnapshot-status"
 )
 
 func init() {

@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/konflux-ci/integration-service/helpers"
+	"github.com/konflux-ci/integration-service/pkg/keys"
 	"sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	crwebhook "sigs.k8s.io/controller-runtime/pkg/webhook"
 
@@ -32,6 +33,7 @@ import (
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -403,6 +405,96 @@ var _ = Describe("PipelineController", func() {
 					}
 				}
 				return false
+			}, time.Second*20).Should(BeTrue())
+		})
+	})
+
+	When("a new-model build PipelineRun is reconciled", func() {
+		var (
+			newModelPipelineRun *tektonv1.PipelineRun
+			reqNewModel         ctrl.Request
+		)
+
+		BeforeEach(func() {
+			newModelPipelineRun = &tektonv1.PipelineRun{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "pipelinerun-new-model",
+					Namespace: "default",
+					Labels: map[string]string{
+						keys.PipelineType.New:   "build",
+						keys.BuildComponent.New: "component-sample",
+					},
+				},
+				Spec: tektonv1.PipelineRunSpec{
+					PipelineRef: &tektonv1.PipelineRef{
+						Name: "build-pipeline-pass",
+						ResolverRef: tektonv1.ResolverRef{
+							Resolver: "bundle",
+							Params: tektonv1.Params{
+								{
+									Name:  "bundle",
+									Value: tektonv1.ParamValue{Type: "string", StringVal: "quay.io/redhat-appstudio/example-tekton-bundle:test"},
+								},
+								{
+									Name:  "name",
+									Value: tektonv1.ParamValue{Type: "string", StringVal: "test-task"},
+								},
+							},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, newModelPipelineRun)).Should(Succeed())
+
+			reqNewModel = ctrl.Request{
+				NamespacedName: types.NamespacedName{
+					Namespace: newModelPipelineRun.Namespace,
+					Name:      newModelPipelineRun.Name,
+				},
+			}
+		})
+
+		AfterEach(func() {
+			Expect(client.IgnoreNotFound(k8sClient.Delete(ctx, newModelPipelineRun))).To(Succeed())
+		})
+
+		It("should skip Snapshot creation and not write create-snapshot-status", func() {
+			result, err := pipelineReconciler.Reconcile(ctx, reqNewModel)
+			Expect(result).To(Equal(ctrl.Result{}))
+			Expect(err).NotTo(HaveOccurred())
+
+			result2, err2 := pipelineReconciler.Reconcile(ctx, reqNewModel)
+			Expect(err2).NotTo(HaveOccurred())
+			Expect(result2).To(Equal(result))
+
+			Expect(k8sClient.Get(ctx, reqNewModel.NamespacedName, newModelPipelineRun)).To(Succeed())
+			Expect(newModelPipelineRun.GetAnnotations()).NotTo(HaveKey(helpers.CreateSnapshotAnnotationName))
+			Expect(controllerutil.ContainsFinalizer(newModelPipelineRun, helpers.IntegrationPipelineRunFinalizer)).To(BeFalse())
+		})
+
+		It("should remove IntegrationPipelineRunFinalizer when the PipelineRun is deleting", func() {
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, reqNewModel.NamespacedName, newModelPipelineRun)).To(Succeed())
+			}, time.Second*10).Should(Succeed())
+
+			controllerutil.AddFinalizer(newModelPipelineRun, helpers.IntegrationPipelineRunFinalizer)
+			Expect(k8sClient.Update(ctx, newModelPipelineRun)).To(Succeed())
+
+			Expect(k8sClient.Delete(ctx, newModelPipelineRun)).To(Succeed())
+			// Manager client is cached; wait until the delete is visible before reconciling.
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, reqNewModel.NamespacedName, newModelPipelineRun)).To(Succeed())
+				g.Expect(newModelPipelineRun.GetDeletionTimestamp()).NotTo(BeNil())
+				g.Expect(controllerutil.ContainsFinalizer(newModelPipelineRun, helpers.IntegrationPipelineRunFinalizer)).To(BeTrue())
+			}, time.Second*10).Should(Succeed())
+
+			result, err := pipelineReconciler.Reconcile(ctx, reqNewModel)
+			Expect(result).To(Equal(ctrl.Result{}))
+			Expect(err).NotTo(HaveOccurred())
+
+			Eventually(func() bool {
+				err := k8sClient.Get(ctx, reqNewModel.NamespacedName, newModelPipelineRun)
+				return errors.IsNotFound(err)
 			}, time.Second*20).Should(BeTrue())
 		})
 	})
