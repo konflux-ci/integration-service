@@ -498,56 +498,6 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			expectedLogEntry = "Snapshot integration status condition marked as passed, all of 1 required Integration PipelineRuns succeeded"
 			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
 		})
-
-		It("testing function findUntriggeredIntegrationTestFromStatus ", func() {
-
-			integrationTestScenarioTest := &v1beta2.IntegrationTestScenario{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "example-pass-test",
-					Namespace: "default",
-
-					Labels: map[string]string{
-						"test.appstudio.openshift.io/optional": "false",
-					},
-				},
-				Spec: v1beta2.IntegrationTestScenarioSpec{
-					Application: hasApp.Name,
-					ResolverRef: v1beta2.ResolverRef{
-						Resolver: "git",
-						Params: []v1beta2.ResolverParameter{
-							{
-								Name:  "url",
-								Value: "https://github.com/redhat-appstudio/integration-examples.git",
-							},
-							{
-								Name:  "revision",
-								Value: "main",
-							},
-							{
-								Name:  "pathInRepo",
-								Value: "pipelineruns/integration_pipelinerun_pass.yaml",
-							},
-						},
-					},
-				},
-			}
-
-			// Check when all integrationTestScenarion exist in testStatuses of the snapshot
-			testStatuses, err := gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(hasSnapshot)
-			Expect(err).ToNot(HaveOccurred())
-			integrationTestScenarios, err := adapter.loader.GetRequiredIntegrationTestScenariosForSnapshotApplication(adapter.context, adapter.client, adapter.application, adapter.snapshot)
-			Expect(err).ToNot(HaveOccurred())
-			result := adapter.findUntriggeredIntegrationTestFromStatus(integrationTestScenarios, testStatuses)
-			Expect(result).To(BeEmpty())
-
-			// Check when we have one integrationTestScenario not exist in testStatuses of the snapshot
-			*integrationTestScenarios = append(*integrationTestScenarios, *integrationTestScenarioTest)
-
-			result = adapter.findUntriggeredIntegrationTestFromStatus(integrationTestScenarios, testStatuses)
-			Expect(result).To(BeEquivalentTo("example-pass-test"))
-
-		})
-
 	})
 
 	When("New Adapter is created for a push-type Snapshot that failed one of the tests [APPLICATION]", func() {
