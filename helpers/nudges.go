@@ -22,6 +22,8 @@ import (
 
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
 	"github.com/konflux-ci/integration-service/api/v1beta2"
+	"k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 const (
@@ -31,6 +33,12 @@ const (
 	StaleReferencesDetectedReason = "StaleReferencesDetected"
 	// NoStaleReferencesReason is the status condition reason indicating that no stale references were detected in the NudgeConfig
 	NoStaleReferencesReason = "NoStaleReferences"
+
+	// BatchDefaultsSupportedStatusCondition indicates whether spec.batchDefaults is applied by integration-service.
+	BatchDefaultsSupportedStatusCondition = "BatchDefaultsSupported"
+	// BatchDefaultsNotImplementedReason indicates batchDefaults is set but not yet enforced.
+	BatchDefaultsNotImplementedReason  = "NotImplemented"
+	batchDefaultsNotImplementedMessage = "spec.batchDefaults is reserved; integration-service does not apply these defaults yet."
 )
 
 // FindMissingNudgeConfigReferences returns a boolean indicating any missing nudgeConfig references and an accompanying message
@@ -70,4 +78,29 @@ func FindMissingNudgeConfigReferences(components []applicationapiv1alpha1.Compon
 		msg += fmt.Sprintf("; missing 'to' component(s): %s", strings.Join(missingTo, ", "))
 	}
 	return true, msg
+}
+
+// ApplyBatchDefaultsSupportedStatusCondition updates status.conditions for spec.batchDefaults.
+// It returns true when conditions were modified and a status patch is required.
+func ApplyBatchDefaultsSupportedStatusCondition(conditions *[]metav1.Condition, batchDefaults *v1beta2.BatchDefaults) bool {
+	existing := meta.FindStatusCondition(*conditions, BatchDefaultsSupportedStatusCondition)
+	if batchDefaults == nil {
+		return meta.RemoveStatusCondition(conditions, BatchDefaultsSupportedStatusCondition)
+	}
+
+	desired := metav1.Condition{
+		Type:    BatchDefaultsSupportedStatusCondition,
+		Status:  metav1.ConditionFalse,
+		Reason:  BatchDefaultsNotImplementedReason,
+		Message: batchDefaultsNotImplementedMessage,
+	}
+	if existing != nil &&
+		existing.Status == desired.Status &&
+		existing.Reason == desired.Reason &&
+		existing.Message == desired.Message {
+		return false
+	}
+
+	meta.SetStatusCondition(conditions, desired)
+	return true
 }
