@@ -625,6 +625,150 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		})
 	})
 
+	When("a required IntegrationTestScenario is missing from Snapshot statuses [APPLICATION]", func() {
+		BeforeEach(func() {
+			buf = bytes.Buffer{}
+			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+
+			adapter = NewAdapterWithApplication(ctx, hasSnapshot, hasApp, log, loader.NewMockLoader(), k8sClient)
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: loader.ApplicationContextKey,
+					Resource:   hasApp,
+				},
+				{
+					ContextKey: loader.SnapshotContextKey,
+					Resource:   hasSnapshot,
+				},
+				{
+					ContextKey: loader.RequiredIntegrationTestScenariosForSnapshotContextKey,
+					Resource:   []v1beta2.IntegrationTestScenario{*integrationTestScenario},
+				},
+			})
+		})
+
+		It("does not add a rerun label and remains idempotent", func() {
+			assertNoRerunLabel := func() {
+				fetchedSnapshot := &applicationapiv1alpha1.Snapshot{}
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      hasSnapshot.Name,
+					Namespace: hasSnapshot.Namespace,
+				}, fetchedSnapshot)
+				Expect(err).ToNot(HaveOccurred())
+				_, rerunLabelPresent := gitops.GetIntegrationTestRunLabelValue(fetchedSnapshot)
+				Expect(rerunLabelPresent).To(BeFalse())
+			}
+
+			firstResult, firstErr := adapter.EnsureSnapshotFinishedAllTests()
+			Expect(firstErr).ToNot(HaveOccurred())
+			Expect(firstResult.CancelRequest).To(BeFalse())
+			Expect(firstResult.RequeueRequest).To(BeFalse())
+			assertNoRerunLabel()
+
+			secondResult, secondErr := adapter.EnsureSnapshotFinishedAllTests()
+			Expect(secondErr).ToNot(HaveOccurred())
+			Expect(secondResult).To(Equal(firstResult))
+			assertNoRerunLabel()
+
+			Expect(buf.String()).Should(ContainSubstring("Not all required Integration PipelineRuns finished"))
+		})
+	})
+
+	When("a required IntegrationTestScenario is missing from Snapshot statuses [COMPONENTGROUP]", func() {
+		var cgSnapshot *applicationapiv1alpha1.Snapshot
+		var hasCompGroup *v1beta2.ComponentGroup
+
+		BeforeEach(func() {
+			buf = bytes.Buffer{}
+			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+
+			hasCompGroup = &v1beta2.ComponentGroup{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-component-group-missing-status",
+					Namespace: "default",
+				},
+			}
+
+			cgSnapshot = &applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "cg-snapshot-missing-status",
+					Namespace: "default",
+					Labels: map[string]string{
+						gitops.SnapshotTypeLabel:            gitops.SnapshotComponentType,
+						gitops.SnapshotComponentLabel:       hasComp.Name,
+						gitops.PipelineAsCodeEventTypeLabel: gitops.PipelineAsCodePushType,
+					},
+					Annotations: map[string]string{
+						gitops.PipelineAsCodeInstallationIDAnnotation: "123",
+					},
+				},
+				Spec: applicationapiv1alpha1.SnapshotSpec{
+					ComponentGroup: hasCompGroup.Name,
+					Components: []applicationapiv1alpha1.SnapshotComponent{
+						{
+							Name:           "component-sample",
+							ContainerImage: SampleImage,
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, cgSnapshot)).Should(Succeed())
+			Eventually(func() error {
+				return k8sClient.Get(ctx, types.NamespacedName{
+					Name:      cgSnapshot.Name,
+					Namespace: cgSnapshot.Namespace,
+				}, cgSnapshot)
+			}, time.Second*10).Should(Succeed())
+
+			adapter = NewAdapter(ctx, cgSnapshot, hasCompGroup, log, loader.NewMockLoader(), k8sClient)
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: loader.ComponentGroupContextKey,
+					Resource:   hasCompGroup,
+				},
+				{
+					ContextKey: loader.SnapshotContextKey,
+					Resource:   cgSnapshot,
+				},
+				{
+					ContextKey: loader.RequiredIntegrationTestScenariosForSnapshotContextKey,
+					Resource:   []v1beta2.IntegrationTestScenario{*integrationTestScenario},
+				},
+			})
+		})
+
+		AfterEach(func() {
+			err := k8sClient.Delete(ctx, cgSnapshot)
+			Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
+		})
+
+		It("does not add a rerun label and remains idempotent", func() {
+			assertNoRerunLabel := func() {
+				fetchedSnapshot := &applicationapiv1alpha1.Snapshot{}
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      cgSnapshot.Name,
+					Namespace: cgSnapshot.Namespace,
+				}, fetchedSnapshot)
+				Expect(err).ToNot(HaveOccurred())
+				_, rerunLabelPresent := gitops.GetIntegrationTestRunLabelValue(fetchedSnapshot)
+				Expect(rerunLabelPresent).To(BeFalse())
+			}
+
+			firstResult, firstErr := adapter.EnsureSnapshotFinishedAllTests()
+			Expect(firstErr).ToNot(HaveOccurred())
+			Expect(firstResult.CancelRequest).To(BeFalse())
+			Expect(firstResult.RequeueRequest).To(BeFalse())
+			assertNoRerunLabel()
+
+			secondResult, secondErr := adapter.EnsureSnapshotFinishedAllTests()
+			Expect(secondErr).ToNot(HaveOccurred())
+			Expect(secondResult).To(Equal(firstResult))
+			assertNoRerunLabel()
+
+			Expect(buf.String()).Should(ContainSubstring("Not all required Integration PipelineRuns finished"))
+		})
+	})
+
 	When("New Adapter is created for a push-type Snapshot that passed all tests, but has out-of date components", func() {
 		BeforeEach(func() {
 			buf = bytes.Buffer{}
@@ -1304,40 +1448,6 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			Expect(buf.String()).Should(ContainSubstring("Successfully report group snapshot creation failure"))
 			Expect(buf.String()).Should(ContainSubstring("Successfully updated the test.appstudio.openshift.io/create-groupsnapshot-status"))
 			Expect(err).Should(Succeed())
-		})
-	})
-
-	When("EnsureSnapshotFinishedAllTests reaches labelSnapshotToTriggerUntriggeredTest [APPLICATION]", func() {
-		var loaderMocks []toolkit.MockData
-
-		BeforeEach(func() {
-			buf = bytes.Buffer{}
-			loaderMocks = []toolkit.MockData{
-				{ContextKey: loader.ApplicationContextKey, Resource: hasApp},
-				{ContextKey: loader.RequiredIntegrationTestScenariosForSnapshotContextKey, Resource: []v1beta2.IntegrationTestScenario{*integrationTestScenario}},
-			}
-			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
-			adapter = NewAdapterWithApplication(ctx, hasSnapshot, hasApp, log, loader.NewMockLoader(), k8sClient)
-			adapter.context = toolkit.GetMockedContext(ctx, loaderMocks)
-		})
-
-		It("adds the run label for an untriggered scenario and patches the snapshot", func() {
-			result, err := adapter.EnsureSnapshotFinishedAllTests()
-			Expect(err).ToNot(HaveOccurred())
-			Expect(result.RequeueRequest).To(BeFalse())
-			Expect(adapter.snapshot.Labels[gitops.SnapshotIntegrationTestRun]).To(Equal(integrationTestScenario.Name))
-			Expect(buf.String()).To(ContainSubstring("Detected an integrationTestScenario was not triggered"))
-		})
-
-		It("requeues with an error when patching the snapshot run label fails", func() {
-			wireClientMocks(adapter, loaderMocks, []toolkit.ClientCallMock{
-				{Operation: toolkit.OperationPatch, ObjectType: &applicationapiv1alpha1.Snapshot{}, Err: errBoom},
-			})
-
-			result, err := adapter.EnsureSnapshotFinishedAllTests()
-			Expect(result.RequeueRequest).To(BeTrue())
-			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("failed to patch snapshot"))
 		})
 	})
 
