@@ -25,6 +25,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	"github.com/konflux-ci/integration-service/api/v1beta2"
+	"github.com/konflux-ci/integration-service/cache"
 	toolkit "github.com/konflux-ci/operator-toolkit/test"
 
 	"k8s.io/client-go/rest"
@@ -109,6 +110,10 @@ var _ = BeforeSuite(func() {
 	})
 
 	k8sClient = k8sManager.GetClient()
+	Expect(cache.SetupIntegrationTestScenarioCache(k8sManager)).To(Succeed())
+	Expect(cache.SetupIntegrationTestScenarioCacheApplication(k8sManager)).To(Succeed())
+	Expect(cache.SetupApplicationComponentCache(k8sManager)).To(Succeed())
+	Expect(cache.SetupSnapshotCache(k8sManager)).To(Succeed())
 	go func() {
 		defer GinkgoRecover()
 		Expect(k8sManager.Start(ctx)).To(Succeed())
