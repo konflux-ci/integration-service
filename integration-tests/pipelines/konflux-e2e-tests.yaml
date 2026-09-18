@@ -18,24 +18,23 @@ spec:
       description: 'The name of the test corresponding to a defined Konflux integration test.'
       default: ''
     - name: ocp-version
-      description: 'The OpenShift version to use for the ephemeral cluster deployment.'
+      description: 'Unused — kept for ITS compatibility, pending ITS cleanup.'
+      default: ''
+      type: string
+    - name: replicas
+      description: 'Unused — kept for ITS compatibility, pending ITS cleanup.'
+      default: ''
+      type: string
+    - name: machine-type
+      description: 'Unused — kept for ITS compatibility, pending ITS cleanup.'
+      default: ''
       type: string
     - name: konflux-test-infra-secret
       description: The name of secret where testing infrastructures credentials are stored.
       type: string
-    - name: replicas
-      description: 'The number of replicas for the cluster nodes.'
-      type: string
-    - name: machine-type
-      description: 'The type of machine to use for the cluster nodes.'
-      type: string
     - name: oci-container-repo
       default: 'quay.io/konflux-test-storage/konflux-team/integration-service'
       description: The OCI container used to store all test artifacts.
-    - name: component-image
-      default: 'none'
-      description: 'Container image built from any konflux git repo. Use this param only when you run Konflux e2e tests
-        in another Konflux component repo. Will pass the component built image from the snapshot.'
     - name: artifact-browser-url
       description: "URL to the artifact browser deployment. If provided, a link will be added to PR comments."
       default: ""
@@ -92,10 +91,14 @@ spec:
         - name: extra-port-mappings
           value: >-
             '[{\"containerPort\":30012,\"hostPort\":8180,\"protocol\":\"TCP\"}]'
+        - name: cpus
+          value: "32"
+        - name: memory
+          value: "64"
         - name: spot
           value: "false"
-        - name: compute-sizes
-          value: "m7i-flex.12xlarge,m5.12xlarge,m6i.12xlarge"
+        - name: harden-control-plane
+          value: "true"
     - name: deploy-konflux
       runAfter:
         - provision-kind-cluster
@@ -103,32 +106,37 @@ spec:
         resolver: git
         params:
           - name: url
-            value: https://github.com/konflux-ci/tekton-integration-catalog
+            value: https://github.com/konflux-ci/konflux-ci
           - name: revision
-            value: main
+            value: 8a3219a261dca651737a0890c3868c7363af2877
           - name: pathInRepo
-            value: tasks/konflux-ci/deploy/0.3/deploy-konflux-ci.yaml
+            value: .tekton/tasks/deploy-konflux/task.yaml
       params:
         - name: cluster-access-secret
           value: kfg-$(context.pipelineRun.name)
-        - name: component-name
-          value: integration-service
-        - name: component-image-repository
-          value: $(tasks.test-metadata.results.instrumented-container-repo)
-        - name: component-image-tag
-          value: $(tasks.test-metadata.results.instrumented-container-tag)
-        - name: component-pr-owner
-          value: $(tasks.test-metadata.results.pull-request-author)
-        - name: component-pr-sha
-          value: $(tasks.test-metadata.results.git-revision)
-        - name: component-pr-source-branch
-          value: $(tasks.test-metadata.results.source-repo-branch)
-        - name: oci-ref
-          value: $(params.oci-container-repo):$(context.pipelineRun.name)
-        - name: oci-credentials
+        - name: overrides-yaml
+          value: |
+            - name: integration-service
+              git:
+                - sourceRepo: konflux-ci/integration-service
+                  remote:
+                    repo: $(tasks.test-metadata.results.git-url)
+                    ref: $(tasks.test-metadata.results.git-revision)
+              images:
+                - orig: quay.io/konflux-ci/integration-service
+                  replacement: $(tasks.test-metadata.results.instrumented-container-repo):$(tasks.test-metadata.results.instrumented-container-tag)
+        - name: konflux-ready-timeout
+          value: "30m"
+        - name: oci-container-repo
+          value: $(params.oci-container-repo)
+        - name: oci-container-repo-credentials-secret
           value: $(params.konflux-test-infra-secret)
-        - name: build-credentials
-          value: "konflux-e2e-secrets"
+        - name: pipeline-run-name
+          value: $(context.pipelineRun.name)
+        - name: git-url
+          value: https://github.com/konflux-ci/konflux-ci
+        - name: revision
+          value: main
     - name: konflux-e2e-tests
       timeout: 2h
       runAfter:

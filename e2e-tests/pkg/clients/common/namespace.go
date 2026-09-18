@@ -60,19 +60,44 @@ func (s *SuiteController) CreateTestNamespace(name string) (*corev1.Namespace, e
 			return ns, nil
 		}
 	}
-	// Wait for konflux-integration-runner sa to be created
-	err = utils.WaitUntil(func() (bool, error) {
-		_, err := s.KubeInterface().CoreV1().ServiceAccounts(name).Get(context.Background(), constants.DefaultPipelineServiceAccount, metav1.GetOptions{})
-		if err != nil {
-			if k8sErrors.IsNotFound(err) {
-				return false, nil
-			}
-			return false, err
-		}
-		return true, nil
-	}, 5*time.Minute)
+	// Ensure konflux-integration-runner SA exists. In production clusters this is
+	// created by a Kyverno generate rule; in e2e clusters we own the namespace so
+	// we create it directly to avoid a heavy Kyverno dependency.
+	_, err = s.KubeInterface().CoreV1().ServiceAccounts(name).Get(context.Background(), constants.DefaultPipelineServiceAccount, metav1.GetOptions{})
 	if err != nil {
-		return nil, fmt.Errorf("timeout waiting for service account %s to be created in namespace %s with error: %v", constants.DefaultPipelineServiceAccount, name, err)
+		if !k8sErrors.IsNotFound(err) {
+			return nil, fmt.Errorf("error checking for service account %s in namespace %s: %v", constants.DefaultPipelineServiceAccount, name, err)
+		}
+		sa := &corev1.ServiceAccount{
+			ObjectMeta: metav1.ObjectMeta{Name: constants.DefaultPipelineServiceAccount},
+		}
+		if _, err = s.KubeInterface().CoreV1().ServiceAccounts(name).Create(context.Background(), sa, metav1.CreateOptions{}); err != nil && !k8sErrors.IsAlreadyExists(err) {
+			return nil, fmt.Errorf("error creating service account %s in namespace %s: %v", constants.DefaultPipelineServiceAccount, name, err)
+		}
+	}
+	// Ensure the RoleBinding that binds konflux-integration-runner SA to its ClusterRole exists.
+	rbName := constants.DefaultPipelineServiceAccount + "-rolebinding"
+	_, err = s.KubeInterface().RbacV1().RoleBindings(name).Get(context.Background(), rbName, metav1.GetOptions{})
+	if err != nil {
+		if !k8sErrors.IsNotFound(err) {
+			return nil, fmt.Errorf("error checking for rolebinding %s in namespace %s: %v", rbName, name, err)
+		}
+		rb := &rbacv1.RoleBinding{
+			ObjectMeta: metav1.ObjectMeta{Name: rbName},
+			Subjects: []rbacv1.Subject{{
+				Kind:      "ServiceAccount",
+				Name:      constants.DefaultPipelineServiceAccount,
+				Namespace: name,
+			}},
+			RoleRef: rbacv1.RoleRef{
+				APIGroup: "rbac.authorization.k8s.io",
+				Kind:     "ClusterRole",
+				Name:     constants.DefaultPipelineServiceAccount,
+			},
+		}
+		if _, err = s.KubeInterface().RbacV1().RoleBindings(name).Create(context.Background(), rb, metav1.CreateOptions{}); err != nil && !k8sErrors.IsAlreadyExists(err) {
+			return nil, fmt.Errorf("error creating rolebinding %s in namespace %s: %v", rbName, name, err)
+		}
 	}
 
 	// Create a rolebinding to allow default konflux-ci user
