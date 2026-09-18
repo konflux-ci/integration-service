@@ -172,13 +172,6 @@ func (a *Adapter) EnsureSnapshotFinishedAllTests() (controller.OperationResult, 
 	if !allIntegrationTestsFinished {
 		a.logger.Info("Not all required Integration PipelineRuns finished",
 			"snapshot.Name", a.snapshot.Name)
-
-		// If for the snapshot there are IntegrationTestScenarios that are not triggered, it will add run labebl to snapshot to trigger them
-		err = a.labelSnapshotToTriggerUntriggeredTest(integrationTestScenarios, testStatuses)
-		if err != nil {
-			return controller.RequeueWithError(err)
-		}
-
 		return controller.ContinueProcessing()
 	}
 
@@ -314,19 +307,6 @@ func (a *Adapter) determineIfAllRequiredIntegrationTestsFinishedAndPassed(integr
 	}
 	a.logger.Info(fmt.Sprintf("%[1]d out of %[3]d required integration tests finished, %[2]d out of %[3]d required integration tests passed", integrationTestsFinished, integrationTestsPassed, len(*integrationTestScenarios)))
 	return allIntegrationTestsFinished, allIntegrationTestsPassed
-}
-
-// findUntriggeredIntegrationTestFromStatus returns name of integrationTestScenario that is not triggered yet.
-func (a *Adapter) findUntriggeredIntegrationTestFromStatus(integrationTestScenarios *[]v1beta2.IntegrationTestScenario, testStatuses *intgteststat.SnapshotIntegrationTestStatuses) string {
-	for _, integrationTestScenario := range *integrationTestScenarios {
-		integrationTestScenario := integrationTestScenario // G601
-		_, ok := testStatuses.GetScenarioStatus(integrationTestScenario.Name)
-		if !ok {
-			return integrationTestScenario.Name
-		}
-
-	}
-	return ""
 }
 
 // ReportSnapshotStatus reports status of all integration tests into Pull Requests from component snapshot or group snapshot
@@ -713,18 +693,6 @@ func (a *Adapter) getDestinationSnapshots(testedSnapshot *applicationapiv1alpha1
 		return destinationSnapshots, nil
 	}
 	return nil, fmt.Errorf("unsupported snapshot type in snapshot %s/%s", testedSnapshot.Namespace, testedSnapshot.Name)
-}
-
-// labelSnapshotToTriggerUntriggeredTest get the untriggered integration test and add label to snapshot to trigger them
-// return error if annotating meet error
-func (a *Adapter) labelSnapshotToTriggerUntriggeredTest(integrationTestScenarios *[]v1beta2.IntegrationTestScenario, testStatuses *intgteststat.SnapshotIntegrationTestStatuses) error {
-	integrationTestScenarioNotTriggered := a.findUntriggeredIntegrationTestFromStatus(integrationTestScenarios, testStatuses)
-	if integrationTestScenarioNotTriggered != "" {
-		a.logger.Info("Detected an integrationTestScenario was not triggered, applying snapshot reconcilation",
-			"integrationTestScenario.Name", integrationTestScenarioNotTriggered)
-		return gitops.AddIntegrationTestRerunLabel(a.context, a.client, a.snapshot, integrationTestScenarioNotTriggered)
-	}
-	return nil
 }
 
 // generateIntgTestStatusDetails generates details for integrationTestStatusDetail according to group snapshot creation status

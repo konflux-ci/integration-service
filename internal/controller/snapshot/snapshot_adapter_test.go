@@ -1668,7 +1668,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 
 		})
 
-		It("Ensure error is logged when experiencing error when fetching ITS for application", func() {
+		It("Ensure error is logged when experiencing error when fetching required ITS", func() {
 			var buf bytes.Buffer
 			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
 			adapter = NewAdapter(ctx, hasCGSnapshot, hasCompGroup, log, loader.NewMockLoader(), k8sClient)
@@ -1686,8 +1686,8 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 					Resource:   hasCGSnapshot,
 				},
 				{
-					ContextKey: loader.AllIntegrationTestScenariosContextKey,
-					Err:        fmt.Errorf("not found"),
+					ContextKey: loader.AllIntegrationTestScenariosForComponentGroupContextKey,
+					Resource:   []v1beta2.IntegrationTestScenario{},
 				},
 				{
 					ContextKey: loader.RequiredIntegrationTestScenariosForSnapshotContextKey,
@@ -1695,11 +1695,64 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 				},
 			})
 			result, err := adapter.EnsureIntegrationPipelineRunsExist()
-			Expect(buf.String()).Should(ContainSubstring("Failed to get integration test scenarios for the following component group"))
 			Expect(buf.String()).Should(ContainSubstring("Failed to get all required IntegrationTestScenarios"))
 			Expect(result.CancelRequest).To(BeTrue())
 			Expect(result.RequeueRequest).To(BeFalse())
 			Expect(err).ToNot(HaveOccurred())
+		})
+
+		It("requeues when listing IntegrationTestScenarios fails", func() {
+			var buf bytes.Buffer
+			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+			adapter = NewAdapter(ctx, hasCGSnapshot, hasCompGroup, log, loader.NewMockLoader(), k8sClient)
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: loader.ComponentGroupContextKey,
+					Resource:   hasCompGroup,
+				},
+				{
+					ContextKey: loader.SnapshotContextKey,
+					Resource:   hasCGSnapshot,
+				},
+				{
+					ContextKey: loader.AllIntegrationTestScenariosForComponentGroupContextKey,
+					Err:        fmt.Errorf("transient list failure"),
+				},
+			})
+			result, err := adapter.EnsureIntegrationPipelineRunsExist()
+			Expect(err).To(HaveOccurred())
+			Expect(err).To(MatchError(ContainSubstring("transient list failure")))
+			Expect(result.CancelRequest).To(BeFalse())
+			Expect(result.RequeueRequest).To(BeTrue())
+			Expect(buf.String()).Should(ContainSubstring("Failed to get integration test scenarios for the following component group"))
+			Expect(buf.String()).ShouldNot(ContainSubstring("Snapshot marked as successful. No required IntegrationTestScenarios found, skipped testing"))
+		})
+
+		It("requeues when listing IntegrationTestScenarios fails [APPLICATION]", func() {
+			var buf bytes.Buffer
+			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+			adapter = NewAdapterWithApplication(ctx, hasSnapshot, hasApp, log, loader.NewMockLoader(), k8sClient)
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: loader.ApplicationContextKey,
+					Resource:   hasApp,
+				},
+				{
+					ContextKey: loader.SnapshotContextKey,
+					Resource:   hasSnapshot,
+				},
+				{
+					ContextKey: loader.AllIntegrationTestScenariosContextKey,
+					Err:        fmt.Errorf("transient list failure"),
+				},
+			})
+			result, err := adapter.EnsureIntegrationPipelineRunsExist()
+			Expect(err).To(HaveOccurred())
+			Expect(err).To(MatchError(ContainSubstring("transient list failure")))
+			Expect(result.CancelRequest).To(BeFalse())
+			Expect(result.RequeueRequest).To(BeTrue())
+			Expect(buf.String()).Should(ContainSubstring("Failed to get integration test scenarios for the following application"))
+			Expect(buf.String()).ShouldNot(ContainSubstring("Snapshot marked as successful. No required IntegrationTestScenarios found, skipped testing"))
 		})
 
 		It("Mark snapshot as pass when required ITS is not found", func() {
@@ -1718,6 +1771,10 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 				{
 					ContextKey: loader.SnapshotContextKey,
 					Resource:   hasCGSnapshot,
+				},
+				{
+					ContextKey: loader.AllIntegrationTestScenariosForComponentGroupContextKey,
+					Resource:   []v1beta2.IntegrationTestScenario{},
 				},
 				{
 					ContextKey: loader.RequiredIntegrationTestScenariosForSnapshotContextKey,

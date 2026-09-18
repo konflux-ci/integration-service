@@ -44,7 +44,7 @@ import (
 	klog "k8s.io/klog/v2"
 )
 
-var _ = Describe("SnapshotController", func() {
+var _ = Describe("SnapshotController", Ordered, func() {
 	var (
 		manager            ctrl.Manager
 		snapshotReconciler *Reconciler
@@ -162,6 +162,16 @@ var _ = Describe("SnapshotController", func() {
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 	})
 
+	It("can setup the cache by adding a new index field to search for ReleasePlanAdmissions", func() {
+		err := setupCache(manager)
+		Expect(err).ToNot(HaveOccurred())
+	})
+
+	It("can setup a new controller manager with the given snapshotReconciler", func() {
+		err := setupControllerWithManager(manager, snapshotReconciler)
+		Expect(err).NotTo(HaveOccurred())
+	})
+
 	It("can create and return a new Reconciler object", func() {
 		Expect(reflect.TypeOf(snapshotReconciler)).To(Equal(reflect.TypeOf(&Reconciler{})))
 	})
@@ -270,16 +280,6 @@ var _ = Describe("SnapshotController", func() {
 			}, hasSnapshot)
 			return err == nil && gitops.IsSnapshotMarkedAsInvalid(hasSnapshot)
 		}, time.Second*20).Should(BeTrue())
-	})
-
-	It("can setup the cache by adding a new index field to search for ReleasePlanAdmissions", func() {
-		err := setupCache(manager)
-		Expect(err).ToNot(HaveOccurred())
-	})
-
-	It("can setup a new controller manager with the given snapshotReconciler", func() {
-		err := setupControllerWithManager(manager, snapshotReconciler)
-		Expect(err).NotTo(HaveOccurred())
 	})
 
 	When("snapshot is restored from backup", func() {
