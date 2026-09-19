@@ -32,7 +32,6 @@ type RepositoryRequest struct {
 	Visibility  string `json:"visibility"`
 	Repository  string `json:"repository"`
 	Description string `json:"description"`
-	//Kind        string `json:"repo_kind"`
 }
 
 type RobotAccount struct {
@@ -69,6 +68,7 @@ type Member struct {
 	Invited bool   `json:"invited"`
 }
 
+// QuayError represents error responses from Quay.
 // Quay API can sometimes return {"error": "..."} and sometimes {"error_message": "..."} without the field error
 // In some cases the error is send alongside the response in the {"message": "..."} field.
 type QuayError struct {
