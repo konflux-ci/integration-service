@@ -738,7 +738,7 @@ func (l *loader) getComponentWithFallback(ctx context.Context, c client.Client, 
 	// Get the konflux-ci.dev Component
 	konfluxComponent := &applicationapiv1alpha1.Component{}
 	konfluxErr := toolkit.GetObject(name, namespace, c, ctx, konfluxComponent)
-	if konfluxErr != nil && !k8serrors.IsNotFound(konfluxErr) {
+	if konfluxErr != nil && !k8serrors.IsNotFound(konfluxErr) && !k8serrors.IsForbidden(konfluxErr) {
 		return nil, konfluxErr
 	}
 	// Get the redhat.appstudio.io Component

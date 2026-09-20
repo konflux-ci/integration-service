@@ -182,7 +182,7 @@ spec:
                 --timeout=300s
               echo "build-service ready with PAC_WEBHOOK_URL configured"
     - name: konflux-e2e-tests
-      timeout: 2h
+      timeout: 2h30m
       runAfter:
         - configure-pac-webhook-url
       taskRef:

@@ -181,11 +181,12 @@ func main() {
 		LeaseDuration:          &leaseDuration,
 		RetryPeriod:            &leaderElectorRetryPeriod,
 		LeaderElectionID:       "03c7e15b.redhat.com",
-		// Secret Gets must not start a cluster-wide informer (list/watch).
+		// Secret and konflux-ci.dev Component Gets must not start cluster-wide informers.
 		Client: client.Options{
 			Cache: &client.CacheOptions{
 				DisableFor: []client.Object{
 					&corev1.Secret{},
+					&konfluxv1alpha1.Component{},
 				},
 			},
 		},
