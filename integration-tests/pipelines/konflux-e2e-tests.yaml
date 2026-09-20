@@ -156,7 +156,7 @@ spec:
               secretName: $(params.cluster-access-secret-name)
         steps:
           - name: set-pac-webhook-url
-            image: bitnami/kubectl:1.28
+            image: quay.io/openshift/origin-cli:4.16
             volumeMounts:
               - name: konflux-ci-secrets
                 mountPath: /usr/local/konflux-ci-secrets
@@ -170,15 +170,16 @@ spec:
               #!/bin/bash
               set -euo pipefail
               SMEE_CHANNEL=$(cat /usr/local/konflux-ci-secrets/smee-channel)
-              echo "Setting build-service PAC_WEBHOOK_URL to: ${SMEE_CHANNEL}"
               # build-service reads PAC_WEBHOOK_URL to determine the webhook URL it
               # registers with external git providers (GitLab, Forgejo, etc.).
               # Without this, it falls back to the internal service URL which is
               # unreachable from the internet, so no webhook events are ever delivered.
-              kubectl -n build-service set env deployment/build-service-controller-manager \
+              oc --request-timeout=30s -n build-service set env \
+                deployment/build-service-controller-manager \
                 PAC_WEBHOOK_URL="${SMEE_CHANNEL}"
-              kubectl -n build-service rollout status deployment/build-service-controller-manager \
-                --timeout=120s
+              oc --request-timeout=30s -n build-service rollout status \
+                deployment/build-service-controller-manager \
+                --timeout=300s
               echo "build-service ready with PAC_WEBHOOK_URL configured"
     - name: konflux-e2e-tests
       timeout: 2h
