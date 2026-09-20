@@ -31,6 +31,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	crcontroller "sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 )
 
@@ -131,5 +132,6 @@ func setupControllerWithManager(manager ctrl.Manager, controller *Reconciler) er
 				toolkitpredicates.IgnoreBackups{},
 				gitops.SnapshotTestAnnotationChangePredicate(),
 			)).
+		WithOptions(crcontroller.Options{MaxConcurrentReconciles: 2}).
 		Complete(controller)
 }
