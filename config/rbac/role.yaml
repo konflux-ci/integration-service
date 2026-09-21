@@ -103,6 +103,13 @@ rules:
   - get
   - patch
 - apiGroups:
+  - konflux-ci.dev
+  resources:
+  - components
+  verbs:
+  - get
+  - list
+- apiGroups:
   - pipelinesascode.tekton.dev
   resources:
   - repositories
