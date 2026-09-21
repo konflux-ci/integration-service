@@ -59,13 +59,13 @@ func (h *HasController) GetComponentByApplicationName(applicationName string, na
 }
 
 // GetComponentPipeline returns first pipeline run for a given component labels
-func (h *HasController) GetComponentPipelineRun(componentName, applicationName, namespace, sha string) (*pipeline.PipelineRun, error) {
-	return h.GetComponentPipelineRunWithType(componentName, applicationName, namespace, "", sha, "")
+func (h *HasController) GetComponentPipelineRun(componentName, namespace, sha string) (*pipeline.PipelineRun, error) {
+	return h.GetComponentPipelineRunWithType(componentName, namespace, "", sha, "")
 }
 
 // GetComponentPipelineRunWithType returns first pipeline run for a given component labels with pipeline type within label "pipelines.appstudio.openshift.io/type" ("build", "test")
-func (h *HasController) GetComponentPipelineRunWithType(componentName string, applicationName string, namespace, pipelineType string, sha string, eventType string) (*pipeline.PipelineRun, error) {
-	prs, err := h.GetComponentPipelineRunsWithType(componentName, applicationName, namespace, pipelineType, sha, eventType)
+func (h *HasController) GetComponentPipelineRunWithType(componentName string, namespace, pipelineType string, sha string, eventType string) (*pipeline.PipelineRun, error) {
+	prs, err := h.GetComponentPipelineRunsWithType(componentName, namespace, pipelineType, sha, eventType)
 	if err != nil {
 		return nil, err
 	} else {
@@ -75,8 +75,8 @@ func (h *HasController) GetComponentPipelineRunWithType(componentName string, ap
 }
 
 // GetComponentPipelineRunsWithType returns all pipeline runs for a given component labels with pipeline type within label "pipelines.appstudio.openshift.io/type" ("build", "test")
-func (h *HasController) GetComponentPipelineRunsWithType(componentName string, applicationName string, namespace, pipelineType string, sha string, eventType string) (*[]pipeline.PipelineRun, error) {
-	pipelineRunLabels := map[string]string{tektonconsts.PipelineRunComponentLabel: componentName, tektonconsts.PipelineRunApplicationLabel: applicationName}
+func (h *HasController) GetComponentPipelineRunsWithType(componentName string, namespace, pipelineType string, sha string, eventType string) (*[]pipeline.PipelineRun, error) {
+	pipelineRunLabels := map[string]string{tektonconsts.PipelineRunComponentLabel: componentName}
 	if pipelineType != "" {
 		pipelineRunLabels[tektonconsts.PipelineRunTypeLabel] = pipelineType
 	}
@@ -182,7 +182,6 @@ type RetryOptions struct {
 // If there's no intention for using the original PLR object later in the test, use `nil` instead of the pointer.
 func (h *HasController) WaitForComponentPipelineToBeFinished(component *appservice.Component, pipelineType, sha, eventType string, t *tekton.TektonController, r *RetryOptions, prToUpdate *pipeline.PipelineRun) error {
 	attempts := 1
-	app := component.Spec.Application
 	pr := &pipeline.PipelineRun{}
 
 	// Fail fast if the PipelineRun is never created.
@@ -195,7 +194,7 @@ func (h *HasController) WaitForComponentPipelineToBeFinished(component *appservi
 		prFound := false
 
 		err := wait.PollUntilContextTimeout(context.Background(), constants.PipelineRunPollingInterval, 30*time.Minute, true, func(ctx context.Context) (done bool, err error) {
-			pr, err = h.GetComponentPipelineRunWithType(component.GetName(), app, component.GetNamespace(), pipelineType, sha, eventType)
+			pr, err = h.GetComponentPipelineRunWithType(component.GetName(), component.GetNamespace(), pipelineType, sha, eventType)
 
 			if err != nil {
 				if !prFound && time.Now().After(creationDeadline) {
@@ -269,10 +268,10 @@ func (h *HasController) WaitForComponentPipelineToBeFinished(component *appservi
 }
 
 // Universal method to create a component in the kubernetes clusters.
-func (h *HasController) CreateComponent(componentSpec appservice.ComponentSpec, namespace string, outputContainerImage string, secret string, applicationName string, skipInitialChecks bool, annotations map[string]string) (*appservice.Component, error) {
+func (h *HasController) CreateComponent(componentSpec appservice.ComponentSpec, name, namespace string, outputContainerImage string, secret string, applicationName string, skipInitialChecks bool, annotations map[string]string) (*appservice.Component, error) {
 	componentObject := &appservice.Component{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      componentSpec.ComponentName,
+			Name:      name,
 			Namespace: namespace,
 			Annotations: map[string]string{
 				"skip-initial-checks": strconv.FormatBool(skipInitialChecks),
@@ -280,8 +279,12 @@ func (h *HasController) CreateComponent(componentSpec appservice.ComponentSpec, 
 		},
 		Spec: componentSpec,
 	}
-	componentObject.Spec.Secret = secret
-	componentObject.Spec.Application = applicationName
+	// TODO: remove when we remove support for applications
+	// Also remove applicationName and secret parameters from function
+	if applicationName != "" {
+		componentObject.Spec.Application = applicationName
+		componentObject.Spec.Secret = secret
+	}
 
 	if len(annotations) > 0 {
 		componentObject.Annotations = utils.MergeMaps(componentObject.Annotations, annotations)
@@ -308,15 +311,15 @@ func (h *HasController) CreateComponent(componentSpec appservice.ComponentSpec, 
 }
 
 // Create a component and check image repository gets created.
-func (h *HasController) CreateComponentCheckImageRepository(componentSpec appservice.ComponentSpec, namespace string, outputContainerImage string, secret string, applicationName string, skipInitialChecks bool, annotations map[string]string) (*appservice.Component, error) {
-	componentObject, err := h.CreateComponent(componentSpec, namespace, outputContainerImage, secret, applicationName, skipInitialChecks, annotations)
+func (h *HasController) CreateComponentCheckImageRepository(componentSpec appservice.ComponentSpec, name, namespace string, outputContainerImage string, secret string, applicationName string, skipInitialChecks bool, annotations map[string]string) (*appservice.Component, error) {
+	componentObject, err := h.CreateComponent(componentSpec, name, namespace, outputContainerImage, secret, applicationName, skipInitialChecks, annotations)
 	if err != nil {
 		return nil, err
 	}
 
 	// Decrease the timeout to 5 mins, when the issue https://issues.redhat.com/browse/STONEBLD-3552 is fixed
-	if err := utils.WaitUntilWithInterval(h.CheckImageRepositoryExists(namespace, componentSpec.ComponentName), time.Second*10, time.Minute*15); err != nil {
-		return nil, fmt.Errorf("timed out waiting for image repository to be ready for component %s in namespace %s: %+v", componentSpec.ComponentName, namespace, err)
+	if err := utils.WaitUntilWithInterval(h.CheckImageRepositoryExists(namespace, name), time.Second*10, time.Minute*15); err != nil {
+		return nil, fmt.Errorf("timed out waiting for image repository to be ready for component %s in namespace %s: %+v", name, namespace, err)
 	}
 
 	return componentObject, nil

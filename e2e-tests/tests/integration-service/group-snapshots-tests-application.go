@@ -24,7 +24,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-var _ = framework.IntegrationServiceSuiteDescribe("Creation of group snapshots for monorepo and multiple repos", ginkgo.Label("integration-service", "group-snapshot-creation"), func() {
+var _ = framework.IntegrationServiceSuiteDescribe("Creation of group snapshots for monorepo and multiple repos", ginkgo.Label("integration-service", "applications", "group-snapshot-creation"), func() {
 	defer ginkgo.GinkgoRecover()
 
 	var f *framework.Framework
@@ -49,7 +49,7 @@ var _ = framework.IntegrationServiceSuiteDescribe("Creation of group snapshots f
 
 	ginkgo.AfterEach(framework.ReportFailure(&f))
 
-	ginkgo.Describe("with status reporting of Integration tests in CheckRuns", ginkgo.Ordered, func() {
+	ginkgo.Describe("[APPLICATION] with status reporting of Integration tests in CheckRuns", ginkgo.Ordered, func() {
 		// Lock configuration for preventing concurrent test runs from colliding on the same GitHub repository.
 		// Multiple jobs running simultaneously can trigger race condition when registering Repository CRDs
 		// for the same repository URL. This lock ensures only one test uses the repository at a time.
@@ -142,13 +142,13 @@ var _ = framework.IntegrationServiceSuiteDescribe("Creation of group snapshots f
 			//Branch for creating pull request
 			multiComponentPRBranchName = fmt.Sprintf("%s-%s", "pr-branch", utils.GenerateRandomString(6))
 
-			integrationTestScenarioPass, err = f.AsKubeAdmin.IntegrationController.CreateIntegrationTestScenario("", applicationName, testNamespace, gitURL, revision, pathInRepoPassPipelinerun, "pipelinerun", []string{})
+			integrationTestScenarioPass, err = f.AsKubeAdmin.IntegrationController.CreateIntegrationTestScenario("", applicationName, testNamespace, gitURL, revision, pathInRepoPassPipelinerun, "pipelinerun", []string{}, false)
 			gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
 		})
 
 		ginkgo.AfterAll(func() {
 			if !ginkgo.CurrentSpecReport().Failed() {
-				cleanup(*f, testNamespace, applicationName, componentA.Name, snapshot)
+				cleanup(*f, testNamespace, applicationName, componentA.Name, snapshot, false)
 			}
 
 			// Delete new branches created by PaC and a testing branch used as a component's base branch
@@ -201,8 +201,8 @@ var _ = framework.IntegrationServiceSuiteDescribe("Creation of group snapshots f
 		  / /\ \
 		 / ____ \
 		/_/    \_\ */
-		ginkgo.When("we start creation of a new Component A", func() {
-			ginkgo.It("creates the Component A successfully", func() {
+		ginkgo.When("[APPLICATION] we start creation of a new Component A", func() {
+			ginkgo.It("[APPLICATION] creates the Component A successfully", func() {
 				componentA = createComponentWithCustomBranch(*f, testNamespace, applicationName, multiComponentContextDirs[0]+"-"+utils.GenerateRandomString(6), multiComponentGitSourceURLForGroupSnapshotA, multiComponentBaseBranchName, multiComponentContextDirs[0])
 
 				// Record the PaC branch names for cleanup
@@ -210,9 +210,9 @@ var _ = framework.IntegrationServiceSuiteDescribe("Creation of group snapshots f
 				pacBranchNames = append(pacBranchNames, pacBranchName)
 			})
 
-			ginkgo.It(fmt.Sprintf("triggers a Build PipelineRun for componentA %s", multiComponentContextDirs[0]), func() {
+			ginkgo.It(fmt.Sprintf("[APPLICATION] triggers a Build PipelineRun for componentA %s", multiComponentContextDirs[0]), func() {
 				gomega.Eventually(func() error {
-					pipelineRun, err = f.AsKubeAdmin.HasController.GetComponentPipelineRun(componentA.Name, applicationName, testNamespace, "")
+					pipelineRun, err = f.AsKubeAdmin.HasController.GetComponentPipelineRun(componentA.Name, testNamespace, "")
 					if err != nil {
 						ginkgo.GinkgoWriter.Printf("Build PipelineRun has not been created yet for the componentA %s/%s\n", testNamespace, componentA.Name)
 						return err
@@ -224,16 +224,16 @@ var _ = framework.IntegrationServiceSuiteDescribe("Creation of group snapshots f
 				}, longTimeout, constants.PipelineRunPollingInterval).Should(gomega.Succeed(), fmt.Sprintf("timed out when waiting for the build PipelineRun to start for the componentA %s/%s", testNamespace, componentA.Name))
 			})
 
-			ginkgo.It("does not contain an annotation with a Snapshot Name", func() {
+			ginkgo.It("[APPLICATION] does not contain an annotation with a Snapshot Name", func() {
 				gomega.Expect(pipelineRun.Annotations[snapshotAnnotation]).To(gomega.Equal(""))
 			})
 
-			ginkgo.It("should lead to build PipelineRunA finishing successfully", func() {
+			ginkgo.It("[APPLICATION] should lead to build PipelineRunA finishing successfully", func() {
 				gomega.Expect(f.AsKubeDeveloper.HasController.WaitForComponentPipelineToBeFinished(componentA, "", "", "",
 					f.AsKubeAdmin.TektonController, &has.RetryOptions{Retries: 2, Always: true}, pipelineRun)).To(gomega.Succeed())
 			})
 
-			ginkgo.It(fmt.Sprintf("should lead to a PaC PR creation for componentA %s", multiComponentContextDirs[0]), func() {
+			ginkgo.It(fmt.Sprintf("[APPLICATION] should lead to a PaC PR creation for componentA %s", multiComponentContextDirs[0]), func() {
 				gomega.Eventually(func() bool {
 					prs, err := f.AsKubeAdmin.CommonController.Github.ListPullRequests(multiComponentRepoNameForGroupSnapshot)
 					gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
@@ -249,32 +249,32 @@ var _ = framework.IntegrationServiceSuiteDescribe("Creation of group snapshots f
 				}, shortTimeout, constants.PipelineRunPollingInterval).Should(gomega.BeTrue(), fmt.Sprintf("timed out when waiting for init PaC PR (branch name '%s') to be created in %s repository", pacBranchNames[0], multiComponentRepoNameForGroupSnapshot))
 
 				// in case the first pipelineRun attempt has failed and was retried, we need to update the value of pipelineRun variable
-				pipelineRun, err = f.AsKubeAdmin.HasController.GetComponentPipelineRun(componentA.Name, applicationName, testNamespace, prHeadSha)
+				pipelineRun, err = f.AsKubeAdmin.HasController.GetComponentPipelineRun(componentA.Name, testNamespace, prHeadSha)
 				gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
 			})
 		})
 
-		ginkgo.When("the Build PLRA is finished successfully", func() {
-			ginkgo.It("checks if the Snapshot is created", func() {
+		ginkgo.When("[APPLICATION] the Build PLRA is finished successfully", func() {
+			ginkgo.It("[APPLICATION] checks if the Snapshot is created", func() {
 				snapshot, err = f.AsKubeDeveloper.IntegrationController.WaitForSnapshotToGetCreated("", pipelineRun.Name, componentA.Name, testNamespace)
 				gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
 			})
 
-			ginkgo.It("should find the related Integration PipelineRuns", func() {
+			ginkgo.It("[APPLICATION] should find the related Integration PipelineRuns", func() {
 				testPipelinerun, err = f.AsKubeDeveloper.IntegrationController.WaitForIntegrationPipelineToGetStarted(integrationTestScenarioPass.Name, snapshot.Name, testNamespace)
 				gomega.Expect(err).ToNot(gomega.HaveOccurred())
 				gomega.Expect(testPipelinerun.Labels[snapshotAnnotation]).To(gomega.ContainSubstring(snapshot.Name))
 				gomega.Expect(testPipelinerun.Labels[scenarioAnnotation]).To(gomega.ContainSubstring(integrationTestScenarioPass.Name))
 			})
 
-			ginkgo.It("integration pipeline should end up with success", func() {
+			ginkgo.It("[APPLICATION] integration pipeline should end up with success", func() {
 				gomega.Expect(f.AsKubeDeveloper.IntegrationController.WaitForIntegrationPipelineToBeFinished(integrationTestScenarioPass, snapshot, testNamespace)).To(gomega.Succeed(),
 					fmt.Sprintf("timed out waiting for integration pipeline to succeed for componentA %s/%s", testNamespace, componentA.Name))
 			})
 		})
 
-		ginkgo.When("the Snapshot testing is completed successfully", func() {
-			ginkgo.It("should merge the init PaC PR successfully", func() {
+		ginkgo.When("[APPLICATION] the Snapshot testing is completed successfully", func() {
+			ginkgo.It("[APPLICATION] should merge the init PaC PR successfully", func() {
 				gomega.Eventually(func() error {
 					mergeResult, err = f.AsKubeAdmin.CommonController.Github.MergePullRequest(multiComponentRepoNameForGroupSnapshot, prNumber)
 					return err
@@ -292,8 +292,8 @@ var _ = framework.IntegrationServiceSuiteDescribe("Creation of group snapshots f
 		|  _ <
 		| |_) |
 		|____/ */
-		ginkgo.When("we start creation of a new Component B", func() {
-			ginkgo.It("creates the Component B successfully", func() {
+		ginkgo.When("[APPLICATION] we start creation of a new Component B", func() {
+			ginkgo.It("[APPLICATION] creates the Component B successfully", func() {
 				componentB = createComponentWithCustomBranch(*f, testNamespace, applicationName, multiComponentContextDirs[1]+"-"+utils.GenerateRandomString(6), multiComponentGitSourceURLForGroupSnapshotB, multiComponentBaseBranchName, multiComponentContextDirs[1])
 
 				// Recording the PaC branch names so they can cleaned in the AfterAll block
@@ -301,9 +301,9 @@ var _ = framework.IntegrationServiceSuiteDescribe("Creation of group snapshots f
 				pacBranchNames = append(pacBranchNames, pacBranchName)
 			})
 
-			ginkgo.It(fmt.Sprintf("triggers a Build PipelineRun for component %s", multiComponentContextDirs[1]), func() {
+			ginkgo.It(fmt.Sprintf("[APPLICATION] triggers a Build PipelineRun for component %s", multiComponentContextDirs[1]), func() {
 				gomega.Eventually(func() error {
-					pipelineRun, err = f.AsKubeAdmin.HasController.GetComponentPipelineRun(componentB.Name, applicationName, testNamespace, "")
+					pipelineRun, err = f.AsKubeAdmin.HasController.GetComponentPipelineRun(componentB.Name, testNamespace, "")
 					if err != nil {
 						ginkgo.GinkgoWriter.Printf("Build PipelineRun has not been created yet for the componentB %s/%s\n", testNamespace, componentB.Name)
 						return err
@@ -315,16 +315,16 @@ var _ = framework.IntegrationServiceSuiteDescribe("Creation of group snapshots f
 				}, longTimeout, constants.PipelineRunPollingInterval).Should(gomega.Succeed(), fmt.Sprintf("timed out when waiting for the build PipelineRun to start for the componentB %s/%s", testNamespace, componentB.Name))
 			})
 
-			ginkgo.It("does not contain an annotation with a Snapshot Name", func() {
+			ginkgo.It("[APPLICATION] does not contain an annotation with a Snapshot Name", func() {
 				gomega.Expect(pipelineRun.Annotations[snapshotAnnotation]).To(gomega.Equal(""))
 			})
 
-			ginkgo.It("should lead to build PipelineRun finishing successfully", func() {
+			ginkgo.It("[APPLICATION] should lead to build PipelineRun finishing successfully", func() {
 				gomega.Expect(f.AsKubeDeveloper.HasController.WaitForComponentPipelineToBeFinished(componentB, "", "", "",
 					f.AsKubeAdmin.TektonController, &has.RetryOptions{Retries: 2, Always: true}, pipelineRun)).To(gomega.Succeed())
 			})
 
-			ginkgo.It(fmt.Sprintf("should lead to a PaC PR creation for component %s", multiComponentContextDirs[1]), func() {
+			ginkgo.It(fmt.Sprintf("[APPLICATION] should lead to a PaC PR creation for component %s", multiComponentContextDirs[1]), func() {
 				gomega.Eventually(func() bool {
 					prs, err := f.AsKubeAdmin.CommonController.Github.ListPullRequests(multiComponentRepoNameForGroupSnapshot)
 					gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
@@ -340,32 +340,32 @@ var _ = framework.IntegrationServiceSuiteDescribe("Creation of group snapshots f
 				}, shortTimeout, constants.PipelineRunPollingInterval).Should(gomega.BeTrue(), fmt.Sprintf("timed out when waiting for init PaC PR (branch name '%s') to be created in %s repository", pacBranchNames[1], multiComponentRepoNameForGroupSnapshot))
 
 				// in case the first pipelineRun attempt has failed and was retried, we need to update the value of pipelineRun variable
-				pipelineRun, err = f.AsKubeAdmin.HasController.GetComponentPipelineRun(componentB.Name, applicationName, testNamespace, prHeadSha)
+				pipelineRun, err = f.AsKubeAdmin.HasController.GetComponentPipelineRun(componentB.Name, testNamespace, prHeadSha)
 				gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
 			})
 		})
 
-		ginkgo.When("the Build PLR is finished successfully", func() {
-			ginkgo.It("checks if the Snapshot is created", func() {
+		ginkgo.When("[APPLICATION] the Build PLR is finished successfully", func() {
+			ginkgo.It("[APPLICATION] checks if the Snapshot is created", func() {
 				snapshot, err = f.AsKubeDeveloper.IntegrationController.WaitForSnapshotToGetCreated("", pipelineRun.Name, componentB.Name, testNamespace)
 				gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
 			})
 
-			ginkgo.It("should find the related Integration PipelineRuns", func() {
+			ginkgo.It("[APPLICATION] should find the related Integration PipelineRuns", func() {
 				testPipelinerun, err = f.AsKubeDeveloper.IntegrationController.WaitForIntegrationPipelineToGetStarted(integrationTestScenarioPass.Name, snapshot.Name, testNamespace)
 				gomega.Expect(err).ToNot(gomega.HaveOccurred())
 				gomega.Expect(testPipelinerun.Labels[snapshotAnnotation]).To(gomega.ContainSubstring(snapshot.Name))
 				gomega.Expect(testPipelinerun.Labels[scenarioAnnotation]).To(gomega.ContainSubstring(integrationTestScenarioPass.Name))
 			})
 
-			ginkgo.It("integration pipeline should end up with success", func() {
+			ginkgo.It("[APPLICATION] integration pipeline should end up with success", func() {
 				gomega.Expect(f.AsKubeDeveloper.IntegrationController.WaitForIntegrationPipelineToBeFinished(integrationTestScenarioPass, snapshot, testNamespace)).To(gomega.Succeed(),
 					fmt.Sprintf("timed out waiting for integration pipeline to succeed for componentB %s/%s", testNamespace, componentB.Name))
 			})
 		})
 
-		ginkgo.When("the Snapshot testing is completed successfully", func() {
-			ginkgo.It("should merge the init PaC PR successfully", func() {
+		ginkgo.When("[APPLICATION] the Snapshot testing is completed successfully", func() {
+			ginkgo.It("[APPLICATION] should merge the init PaC PR successfully", func() {
 				gomega.Eventually(func() error {
 					mergeResult, err = f.AsKubeAdmin.CommonController.Github.MergePullRequest(multiComponentRepoNameForGroupSnapshot, prNumber)
 					return err
@@ -383,8 +383,8 @@ var _ = framework.IntegrationServiceSuiteDescribe("Creation of group snapshots f
 		//  | |____
 		//   \_____|*/
 
-		ginkgo.When("we start creation of a new Component C", func() {
-			ginkgo.It("creates the Component C successfully", func() {
+		ginkgo.When("[APPLICATION] we start creation of a new Component C", func() {
+			ginkgo.It("[APPLICATION] creates the Component C successfully", func() {
 				componentC = createComponentWithCustomBranch(*f, testNamespace, applicationName, componentRepoNameForGroupIntegration+"-"+utils.GenerateRandomString(6), componentGitSourceURLForGroupIntegration, multiComponentBaseBranchName, "")
 
 				// Recording the PaC branch names so they can cleaned in the AfterAll block
@@ -392,9 +392,9 @@ var _ = framework.IntegrationServiceSuiteDescribe("Creation of group snapshots f
 				pacBranchNames = append(pacBranchNames, pacBranchName)
 			})
 
-			ginkgo.It(fmt.Sprintf("triggers a Build PipelineRun for componentC %s", componentRepoNameForGroupIntegration), func() {
+			ginkgo.It(fmt.Sprintf("[APPLICATION] triggers a Build PipelineRun for componentC %s", componentRepoNameForGroupIntegration), func() {
 				gomega.Eventually(func() error {
-					pipelineRun, err = f.AsKubeAdmin.HasController.GetComponentPipelineRun(componentC.Name, applicationName, testNamespace, "")
+					pipelineRun, err = f.AsKubeAdmin.HasController.GetComponentPipelineRun(componentC.Name, testNamespace, "")
 					if err != nil {
 						ginkgo.GinkgoWriter.Printf("Build PipelineRun has not been created yet for the componentC %s/%s\n", testNamespace, componentC.Name)
 						return err
@@ -406,16 +406,16 @@ var _ = framework.IntegrationServiceSuiteDescribe("Creation of group snapshots f
 				}, longTimeout, constants.PipelineRunPollingInterval).Should(gomega.Succeed(), fmt.Sprintf("timed out when waiting for the build PipelineRun to start for the componentC %s/%s", testNamespace, componentC.Name))
 			})
 
-			ginkgo.It("does not contain an annotation with a Snapshot Name", func() {
+			ginkgo.It("[APPLICATION] does not contain an annotation with a Snapshot Name", func() {
 				gomega.Expect(pipelineRun.Annotations[snapshotAnnotation]).To(gomega.Equal(""))
 			})
 
-			ginkgo.It("should lead to build PipelineRun finishing successfully", func() {
+			ginkgo.It("[APPLICATION] should lead to build PipelineRun finishing successfully", func() {
 				gomega.Expect(f.AsKubeDeveloper.HasController.WaitForComponentPipelineToBeFinished(componentC, "", "", "",
 					f.AsKubeAdmin.TektonController, &has.RetryOptions{Retries: 2, Always: true}, pipelineRun)).To(gomega.Succeed())
 			})
 
-			ginkgo.It(fmt.Sprintf("should lead to a PaC PR creation for componentC %s", componentRepoNameForGroupIntegration), func() {
+			ginkgo.It(fmt.Sprintf("[APPLICATION] should lead to a PaC PR creation for componentC %s", componentRepoNameForGroupIntegration), func() {
 				gomega.Eventually(func() bool {
 					prs, err := f.AsKubeAdmin.CommonController.Github.ListPullRequests(componentRepoNameForGroupIntegration)
 					gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
@@ -431,32 +431,32 @@ var _ = framework.IntegrationServiceSuiteDescribe("Creation of group snapshots f
 				}, shortTimeout, constants.PipelineRunPollingInterval).Should(gomega.BeTrue(), fmt.Sprintf("timed out when waiting for init PaC PR (branch name '%s') to be created in %s repository", pacBranchNames[2], componentRepoNameForGroupIntegration))
 
 				// in case the first pipelineRun attempt has failed and was retried, we need to update the value of pipelineRun variable
-				pipelineRun, err = f.AsKubeAdmin.HasController.GetComponentPipelineRun(componentC.Name, applicationName, testNamespace, prHeadSha)
+				pipelineRun, err = f.AsKubeAdmin.HasController.GetComponentPipelineRun(componentC.Name, testNamespace, prHeadSha)
 				gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
 			})
 		})
 
-		ginkgo.When("the Build PLR is finished successfully", func() {
-			ginkgo.It("checks if the Snapshot is created", func() {
+		ginkgo.When("[APPLICATION] the Build PLR is finished successfully", func() {
+			ginkgo.It("[APPLICATION] checks if the Snapshot is created", func() {
 				snapshot, err = f.AsKubeDeveloper.IntegrationController.WaitForSnapshotToGetCreated("", pipelineRun.Name, componentC.Name, testNamespace)
 				gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
 			})
 
-			ginkgo.It("should find the related Integration PipelineRuns", func() {
+			ginkgo.It("[APPLICATION] should find the related Integration PipelineRuns", func() {
 				testPipelinerun, err = f.AsKubeDeveloper.IntegrationController.WaitForIntegrationPipelineToGetStarted(integrationTestScenarioPass.Name, snapshot.Name, testNamespace)
 				gomega.Expect(err).ToNot(gomega.HaveOccurred())
 				gomega.Expect(testPipelinerun.Labels[snapshotAnnotation]).To(gomega.ContainSubstring(snapshot.Name))
 				gomega.Expect(testPipelinerun.Labels[scenarioAnnotation]).To(gomega.ContainSubstring(integrationTestScenarioPass.Name))
 			})
 
-			ginkgo.It("integration pipeline should end up with success", func() {
+			ginkgo.It("[APPLICATION] integration pipeline should end up with success", func() {
 				gomega.Expect(f.AsKubeDeveloper.IntegrationController.WaitForIntegrationPipelineToBeFinished(integrationTestScenarioPass, snapshot, testNamespace)).To(gomega.Succeed(),
 					fmt.Sprintf("timed out waiting for integration pipeline to succeed for componentC %s/%s", testNamespace, componentC.Name))
 			})
 		})
 
-		ginkgo.When("the Snapshot testing is completed successfully", func() {
-			ginkgo.It("should merge the init PaC PR successfully", func() {
+		ginkgo.When("[APPLICATION] the Snapshot testing is completed successfully", func() {
+			ginkgo.It("[APPLICATION] should merge the init PaC PR successfully", func() {
 				gomega.Eventually(func() error {
 					mergeResult, err = f.AsKubeAdmin.CommonController.Github.MergePullRequest(componentRepoNameForGroupIntegration, prNumber)
 					return err
@@ -475,8 +475,8 @@ var _ = framework.IntegrationServiceSuiteDescribe("Creation of group snapshots f
 		// | |     _| |_| |\  |
 		// |_|    |_____|_| \_|
 
-		ginkgo.When("both the init PaC PRs are merged", func() {
-			ginkgo.It("should make change to the root folder", func() {
+		ginkgo.When("[APPLICATION] both the init PaC PRs are merged", func() {
+			ginkgo.It("[APPLICATION] should make change to the root folder", func() {
 
 				//Create the ref, add the files and create the PR - monorepo
 				err = f.AsKubeAdmin.CommonController.Github.CreateRef(multiComponentRepoNameForGroupSnapshot, multiComponentDefaultBranch, mergeResultSha, multiComponentPRBranchName)
@@ -495,7 +495,7 @@ var _ = framework.IntegrationServiceSuiteDescribe("Creation of group snapshots f
 				prShaMonorepo = pr.Head.GetSHA()
 				ginkgo.GinkgoWriter.Printf("PR #%d got created with sha %s\n", pr.GetNumber(), prShaMonorepo)
 			})
-			ginkgo.It("should make change to the multiple-repo", func() {
+			ginkgo.It("[APPLICATION] should make change to the multiple-repo", func() {
 				// Delete all the pipelineruns in the namespace before sending PR
 				//gomega.Expect(f.AsKubeAdmin.TektonController.DeleteAllPipelineRunsInASpecificNamespace(testNamespace)).To(gomega.Succeed())
 
@@ -512,7 +512,7 @@ var _ = framework.IntegrationServiceSuiteDescribe("Creation of group snapshots f
 				prShaMultirepo = pr.Head.GetSHA()
 				ginkgo.GinkgoWriter.Printf("PR #%d got created with sha %s\n", pr.GetNumber(), prShaMultirepo)
 			})
-			ginkgo.It("wait for the last components build to finish", func() {
+			ginkgo.It("[APPLICATION] wait for the last components build to finish", func() {
 				componentsList = []*appstudioApi.Component{componentA, componentB, componentC}
 				for _, component := range []*appstudioApi.Component{componentA, componentB} {
 					gomega.Expect(f.AsKubeDeveloper.HasController.WaitForComponentPipelineToBeFinished(component, "", prShaMonorepo, "",
@@ -522,7 +522,7 @@ var _ = framework.IntegrationServiceSuiteDescribe("Creation of group snapshots f
 					f.AsKubeAdmin.TektonController, &has.RetryOptions{Retries: 2, Always: true}, pipelineRun)).To(gomega.Succeed())
 			})
 
-			ginkgo.It("wait for all component snapshots to be created with proper PR group annotations", func() {
+			ginkgo.It("[APPLICATION] wait for all component snapshots to be created with proper PR group annotations", func() {
 				gomega.Eventually(func() error {
 					componentSnapshots, err := f.AsKubeAdmin.HasController.GetAllComponentSnapshotsForApplication(applicationName, testNamespace)
 					if err != nil {
@@ -557,7 +557,7 @@ var _ = framework.IntegrationServiceSuiteDescribe("Creation of group snapshots f
 				}, time.Minute*10, 15*time.Second).Should(gomega.Succeed(), "Timeout while waiting for component snapshots with PR group annotations")
 			})
 
-			ginkgo.It("get all group snapshots and check if pr-group annotation contains all components", func() {
+			ginkgo.It("[APPLICATION] get all group snapshots and check if pr-group annotation contains all components", func() {
 				// Wait for group snapshots with enhanced debugging and retry logic
 				gomega.Eventually(func() error {
 					ginkgo.GinkgoWriter.Printf("Attempting to find group snapshots for application %s in namespace %s\n", applicationName, testNamespace)
@@ -636,9 +636,9 @@ var _ = framework.IntegrationServiceSuiteDescribe("Creation of group snapshots f
 
 				ginkgo.GinkgoWriter.Printf("Group snapshot validation completed successfully\n")
 			})
-			ginkgo.It("make sure that group snapshot contains last build pipelinerun for each component", func() {
+			ginkgo.It("[APPLICATION] make sure that group snapshot contains last build pipelinerun for each component", func() {
 				for _, component := range componentsList {
-					pipelineRun, err = f.AsKubeDeveloper.IntegrationController.GetBuildPipelineRun(component.Name, applicationName, testNamespace, false, "")
+					pipelineRun, err = f.AsKubeDeveloper.IntegrationController.GetBuildPipelineRun(component.Name, applicationName, testNamespace, false, "", false)
 					gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
 					annotation := groupSnapshots.Items[0].GetAnnotations()
 					if annotation, ok := annotation[testGroupSnapshotAnnotation]; ok {
@@ -648,14 +648,14 @@ var _ = framework.IntegrationServiceSuiteDescribe("Creation of group snapshots f
 			})
 		})
 
-		ginkgo.When("Older snapshot and integration pipelinerun should be cancelled once new snapshot is created", func() {
-			ginkgo.It("make change to the multiple-repo to trigger a new cycle of testing", func() {
+		ginkgo.When("[APPLICATION] Older snapshot and integration pipelinerun should be cancelled once new snapshot is created", func() {
+			ginkgo.It("[APPLICATION] make change to the multiple-repo to trigger a new cycle of testing", func() {
 				newFile, err := f.AsKubeAdmin.HasController.Github.CreateFile(multiComponentRepoNameForGroupSnapshot, utils.GenerateRandomString(5), "test", multiComponentPRBranchName)
 				secondFileSha = newFile.GetSHA()
 				gomega.Expect(err).ShouldNot(gomega.HaveOccurred(), fmt.Sprintf("error while creating file in multirepo: %s", secondFileSha))
 			})
 
-			ginkgo.It("wait for the components A and B build to finish", func() {
+			ginkgo.It("[APPLICATION] wait for the components A and B build to finish", func() {
 				ginkgo.GinkgoWriter.Printf("Waiting for build pipelineRun to be created for app %s/%s, sha: %s\n", testNamespace, applicationName, secondFileSha)
 				componentsList = []*appstudioApi.Component{componentA, componentB}
 				for _, component := range componentsList {
@@ -664,7 +664,7 @@ var _ = framework.IntegrationServiceSuiteDescribe("Creation of group snapshots f
 				}
 			})
 
-			ginkgo.It("get all component snapshots for component A and check if older snapshot has been cancelled", func() {
+			ginkgo.It("[APPLICATION] get all component snapshots for component A and check if older snapshot has been cancelled", func() {
 				// get all component snapshots for component A
 				gomega.Eventually(func() error {
 					componentSnapshots, err = f.AsKubeAdmin.HasController.GetAllComponentSnapshotsForApplicationAndComponent(applicationName, testNamespace, componentA.Name)
@@ -691,7 +691,7 @@ var _ = framework.IntegrationServiceSuiteDescribe("Creation of group snapshots f
 				}, superLongTimeout, constants.PipelineRunPollingInterval).Should(gomega.Succeed(), "timeout while waiting for component snapshot and integration pipelinerun to be cancelled")
 			})
 
-			ginkgo.It("get all group snapshots and check if older group snapshot is cancelled", func() {
+			ginkgo.It("[APPLICATION] get all group snapshots and check if older group snapshot is cancelled", func() {
 				// get all group snapshots
 				gomega.Eventually(func() error {
 					groupSnapshots, err = f.AsKubeAdmin.HasController.GetAllGroupSnapshotsForApplication(applicationName, testNamespace)
@@ -720,8 +720,8 @@ var _ = framework.IntegrationServiceSuiteDescribe("Creation of group snapshots f
 
 		})
 
-		ginkgo.When("ResolutionRequest is deleted after pipeline completes", func() {
-			ginkgo.It("verifies that ResolutionRequest is deleted after pipeline resolution", func() {
+		ginkgo.When("[APPLICATION] ResolutionRequest is deleted after pipeline completes", func() {
+			ginkgo.It("[APPLICATION] verifies that ResolutionRequest is deleted after pipeline resolution", func() {
 				gomega.Eventually(func() error {
 					relatedResolutionRequests, err := f.AsKubeDeveloper.IntegrationController.GetRelatedResolutionRequests(testNamespace, integrationTestScenarioPass)
 					if err != nil {
@@ -741,7 +741,7 @@ var _ = framework.IntegrationServiceSuiteDescribe("Creation of group snapshots f
 				}, shortTimeout, constants.PipelineRunPollingInterval).Should(gomega.Succeed(), "ResolutionRequest objects should be cleaned up after pipeline resolution is complete")
 			})
 
-			ginkgo.It("verifies that no orphaned ResolutionRequests remain in namespace after test completion", func() {
+			ginkgo.It("[APPLICATION] verifies that no orphaned ResolutionRequests remain in namespace after test completion", func() {
 				// Check for any ResolutionRequests that might have been left behind
 				relatedResolutionRequests, err := f.AsKubeDeveloper.IntegrationController.GetRelatedResolutionRequests(testNamespace, integrationTestScenarioPass)
 				if err != nil {
@@ -775,13 +775,13 @@ var _ = framework.IntegrationServiceSuiteDescribe("Creation of group snapshots f
 			})
 		})
 
-		ginkgo.When("IntegrationTestScenario reference to task as pipelinerun resolution", func() {
+		ginkgo.When("[APPLICATION] IntegrationTestScenario reference to task as pipelinerun resolution", func() {
 			ginkgo.BeforeAll(func() {
-				invalidIntegrationTestScenario, err = f.AsKubeAdmin.IntegrationController.CreateIntegrationTestScenario("", applicationName, testNamespace, gitURL, revision, pathInRepoPass, "pipelinerun", []string{"application"})
+				invalidIntegrationTestScenario, err = f.AsKubeAdmin.IntegrationController.CreateIntegrationTestScenario("", applicationName, testNamespace, gitURL, revision, pathInRepoPass, "pipelinerun", []string{"application"}, false)
 				gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
 			})
 
-			ginkgo.It("trigger pipelinerun for invalid integrationTestScenario by annotating snapshot and verify failing to create integration pipelinerun", func() {
+			ginkgo.It("[APPLICATION] trigger pipelinerun for invalid integrationTestScenario by annotating snapshot and verify failing to create integration pipelinerun", func() {
 				groupSnapshot = &groupSnapshots.Items[0]
 				gomega.Eventually(func() error {
 					err = f.AsKubeAdmin.IntegrationController.AddIntegrationTestRerunLabel(groupSnapshot, invalidIntegrationTestScenario.Name)

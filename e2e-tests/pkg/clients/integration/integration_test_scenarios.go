@@ -13,7 +13,8 @@ import (
 )
 
 // CreateIntegrationTestScenario creates beta1 version integrationTestScenario.
-func (i *IntegrationController) CreateIntegrationTestScenario(itsName, applicationName, namespace, gitURL, revision, pathInRepo, kind string, contexts []string) (*integrationv1beta2.IntegrationTestScenario, error) {
+// TODO: when we remove application-specific code, remove usingComponentGroups param and change parentName to componentGroupName
+func (i *IntegrationController) CreateIntegrationTestScenario(itsName, parentName, namespace, gitURL, revision, pathInRepo, kind string, contexts []string, usingComponentGroups bool) (*integrationv1beta2.IntegrationTestScenario, error) {
 	if itsName == "" {
 		itsName = "integration-test-" + utils.GenerateRandomString(4)
 	}
@@ -40,13 +41,17 @@ func (i *IntegrationController) CreateIntegrationTestScenario(itsName, applicati
 			Labels:    constants.IntegrationTestScenarioDefaultLabels,
 		},
 		Spec: integrationv1beta2.IntegrationTestScenarioSpec{
-			Application: applicationName,
 			ResolverRef: integrationv1beta2.ResolverRef{
 				Resolver: "git",
 				Params:   params,
 			},
 			Contexts: []integrationv1beta2.TestContext{},
 		},
+	}
+	if usingComponentGroups {
+		integrationTestScenario.Spec.ComponentGroup = parentName
+	} else {
+		integrationTestScenario.Spec.Application = parentName
 	}
 
 	// Add kind parameter if provided and is "pipelineRun"
@@ -71,7 +76,8 @@ func (i *IntegrationController) CreateIntegrationTestScenario(itsName, applicati
 
 // CreateOptionalIntegrationTestScenario creates a beta1 version integrationTestScenario with optional: true label.
 // This function is identical to CreateIntegrationTestScenario except it sets the optional label to "true".
-func (i *IntegrationController) CreateOptionalIntegrationTestScenario(itsName, applicationName, namespace, gitURL, revision, pathInRepo, kind string, contexts []string) (*integrationv1beta2.IntegrationTestScenario, error) {
+// TODO: when we remove application-specific code, remove usingComponentGroups param and change parentName to componentGroupName
+func (i *IntegrationController) CreateOptionalIntegrationTestScenario(itsName, parentName, namespace, gitURL, revision, pathInRepo, kind string, contexts []string, usingComponentGroups bool) (*integrationv1beta2.IntegrationTestScenario, error) {
 	if itsName == "" {
 		itsName = "integration-test-" + utils.GenerateRandomString(4)
 	}
@@ -98,13 +104,17 @@ func (i *IntegrationController) CreateOptionalIntegrationTestScenario(itsName, a
 			Labels:    map[string]string{tektonconsts.OptionalLabel: "true"},
 		},
 		Spec: integrationv1beta2.IntegrationTestScenarioSpec{
-			Application: applicationName,
 			ResolverRef: integrationv1beta2.ResolverRef{
 				Resolver: "git",
 				Params:   params,
 			},
 			Contexts: []integrationv1beta2.TestContext{},
 		},
+	}
+	if usingComponentGroups {
+		integrationTestScenario.Spec.ComponentGroup = parentName
+	} else {
+		integrationTestScenario.Spec.Application = parentName
 	}
 
 	// Add kind parameter if provided and is "pipelineRun"
@@ -128,7 +138,8 @@ func (i *IntegrationController) CreateOptionalIntegrationTestScenario(itsName, a
 }
 
 // Get return the status from the Application Custom Resource object.
-func (i *IntegrationController) GetIntegrationTestScenarios(applicationName, namespace string) (*[]integrationv1beta2.IntegrationTestScenario, error) {
+// TODO: when we remove application-specific code, remove usingComponentGroups param and change parentName to componentGroupName
+func (i *IntegrationController) GetIntegrationTestScenarios(parentName, namespace string, usingComponentGroups bool) (*[]integrationv1beta2.IntegrationTestScenario, error) {
 	opts := []client.ListOption{
 		client.InNamespace(namespace),
 	}
@@ -141,8 +152,14 @@ func (i *IntegrationController) GetIntegrationTestScenarios(applicationName, nam
 
 	items := make([]integrationv1beta2.IntegrationTestScenario, 0)
 	for _, t := range integrationTestScenarioList.Items {
-		if t.Spec.Application == applicationName {
-			items = append(items, t)
+		if usingComponentGroups {
+			if t.Spec.ComponentGroup == parentName {
+				items = append(items, t)
+			}
+		} else {
+			if t.Spec.Application == parentName {
+				items = append(items, t)
+			}
 		}
 	}
 	return &items, nil
