@@ -741,6 +741,9 @@ func (l *loader) getComponentWithFallback(ctx context.Context, c client.Client, 
 	if konfluxErr != nil && !k8serrors.IsNotFound(konfluxErr) && !k8serrors.IsForbidden(konfluxErr) {
 		return nil, konfluxErr
 	}
+	if k8serrors.IsForbidden(konfluxErr) {
+		logger.Info("RBAC does not permit GET on konflux-ci.dev Component; falling back to appstudio.redhat.com", "namespace", namespace, "component", name)
+	}
 	// Get the redhat.appstudio.io Component
 	appstudioComponent := &oldapplicationapiv1alpha1.Component{}
 	appstudioErr := toolkit.GetObject(name, namespace, c, ctx, appstudioComponent)
