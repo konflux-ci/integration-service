@@ -132,6 +132,10 @@ func setupControllerWithManager(manager ctrl.Manager, controller *Reconciler) er
 				toolkitpredicates.IgnoreBackups{},
 				gitops.SnapshotTestAnnotationChangePredicate(),
 			)).
+		// 2 workers so a goroutine blocked on an external git-provider API call
+		// (Forgejo/GitHub/GitLab) cannot stall reconciliation of other Snapshots.
+		// Safe: each Reconcile creates its own loader+adapter with no shared mutable state;
+		// controller-runtime never runs two goroutines for the same Snapshot key concurrently.
 		WithOptions(crcontroller.Options{MaxConcurrentReconciles: 2}).
 		Complete(controller)
 }
