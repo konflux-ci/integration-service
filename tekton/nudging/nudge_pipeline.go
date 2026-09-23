@@ -309,6 +309,335 @@ func GenerateRenovateConfig(target NudgeTarget, buildResult *NudgeBuildResult, s
 	}
 }
 
+// BatchedRenovateEntry pairs a source build result with the component that produced it.
+type BatchedRenovateEntry struct {
+	BuildResult *NudgeBuildResult
+}
+
+// GenerateBatchedRenovateConfig produces one Renovate config that updates every source
+// image digest in a batched nudge (ADR 0072 aggregated PipelineRun).
+func GenerateBatchedRenovateConfig(target NudgeTarget, batchTargetName string, entries []BatchedRenovateEntry) RenovateConfig {
+	if len(entries) == 0 {
+		return RenovateConfig{}
+	}
+
+	customOpts := target.ComponentCustomRenovateOptions
+	if customOpts == nil {
+		customOpts = &CustomRenovateOptions{}
+	}
+
+	fileMatchParts := strings.Split(entries[0].BuildResult.FileMatches, ",")
+	for i := range fileMatchParts {
+		fileMatchParts[i] = strings.TrimSpace(fileMatchParts[i])
+	}
+	if customOpts.FileMatch != nil {
+		fileMatchParts = customOpts.FileMatch
+	}
+
+	var customManagers []CustomManager
+	var packageRules []PackageRule
+	registryAliases := make(map[string]string)
+
+	for _, entry := range entries {
+		buildResult := entry.BuildResult
+		var matchStrings []string
+		var matchPackageNames []string
+
+		matchStrings = append(matchStrings, regexp.QuoteMeta(buildResult.BuiltImageRepository)+"(:.*)?@(?<currentDigest>sha256:[a-f0-9]+)")
+		matchPackageNames = append(matchPackageNames, buildResult.BuiltImageRepository)
+
+		for _, drepo := range buildResult.DistributionRepositories {
+			matchStrings = append(matchStrings, regexp.QuoteMeta(drepo)+"(:.*)?@(?<currentDigest>sha256:[a-f0-9]+)")
+			matchPackageNames = append(matchPackageNames, drepo)
+			registryAliases[drepo] = buildResult.BuiltImageRepository
+		}
+
+		customManagers = append(customManagers, CustomManager{
+			FileMatch:            fileMatchParts,
+			CustomType:           "regex",
+			DatasourceTemplate:   "docker",
+			MatchStrings:         matchStrings,
+			CurrentValueTemplate: buildResult.BuiltImageTag,
+			DepNameTemplate:      buildResult.BuiltImageRepository,
+		})
+
+		packageRules = append(packageRules, PackageRule{
+			MatchPackageNames:   matchPackageNames,
+			GroupName:           fmt.Sprintf("Component Update %s", buildResult.SourceComponentName),
+			BranchPrefix:        fmt.Sprintf("%s%s/", tektonconsts.NudgeBatchBranchPrefix, batchTargetName),
+			BranchTopic:         buildResult.SourceComponentName,
+			CommitMessageTopic:  buildResult.SourceComponentName,
+			PRFooter:            "To execute skipped test pipelines write comment `/ok-to-test`",
+			PRHeader:            fmt.Sprintf("Image created from '%s'", buildResult.GitRepoAtShaLink),
+			RecreateWhen:        "always",
+			RebaseWhen:          "behind-base-branch",
+			Enabled:             true,
+			CommitBody:          fmt.Sprintf("Image created from '%s'\n\nSigned-off-by: %s", buildResult.GitRepoAtShaLink, target.GitAuthor),
+			CommitMessagePrefix: customOpts.CommitMessagePrefix,
+			CommitMessageSuffix: customOpts.CommitMessageSuffix,
+		})
+	}
+
+	labels := []string{tektonconsts.DefaultRenovateLabel}
+	if customOpts.Labels != nil {
+		labels = append(labels, customOpts.Labels...)
+	}
+
+	packageRules = append([]PackageRule{DisableAllPackageRules}, packageRules...)
+
+	return RenovateConfig{
+		GitProvider:           target.GitProvider,
+		Username:              target.Username,
+		GitAuthor:             target.GitAuthor,
+		Onboarding:            false,
+		RequireConfig:         "ignored",
+		Repositories:          target.Repositories,
+		EnabledManagers:       []string{"custom.regex"},
+		Endpoint:              target.Endpoint,
+		CustomManagers:        customManagers,
+		RegistryAliases:       registryAliases,
+		PackageRules:          packageRules,
+		ForkProcessing:        "enabled",
+		Extends:               []string{},
+		DependencyDashboard:   false,
+		Labels:                labels,
+		Automerge:             customOpts.Automerge,
+		PlatformAutomerge:     customOpts.PlatformAutomerge,
+		IgnoreTests:           customOpts.IgnoreTests,
+		AutomergeType:         customOpts.AutomergeType,
+		GitLabIgnoreApprovals: customOpts.GitLabIgnoreApprovals,
+		AutomergeSchedule:     customOpts.AutomergeSchedule,
+	}
+}
+
+// CreateBatchedNudgePipelineRun creates a single aggregated Renovate PipelineRun for a batch.
+// It returns the created PipelineRun name.
+func CreateBatchedNudgePipelineRun(
+	ctx context.Context,
+	c client.Client,
+	referencePLR *tektonv1.PipelineRun,
+	target NudgeTarget,
+	entries []BatchedRenovateEntry,
+	batchID string,
+	retryAttempt int32,
+) (string, error) {
+	log := logger.FromContext(ctx)
+
+	if len(entries) == 0 {
+		return "", fmt.Errorf("batched nudge requires at least one build entry")
+	}
+
+	name := batchPipelineRunName(batchID, retryAttempt)
+	namespace := referencePLR.Namespace
+	nameSuffix := deterministicSuffix(batchID)
+	caConfigMapName := fmt.Sprintf("renovate-ca-%s", nameSuffix)
+
+	renovateConfig := GenerateBatchedRenovateConfig(target, target.ComponentName, entries)
+	config, err := json.Marshal(renovateConfig)
+	if err != nil {
+		return "", fmt.Errorf("marshalling batched renovate config: %w", err)
+	}
+
+	configKey := fmt.Sprintf("%s-batch.json", target.ComponentName)
+	tokenKey := "token_0"
+	imageKey := "image_0"
+	secretTokens := map[string]string{
+		tokenKey: target.Token,
+		imageKey: target.ImageRepositoryPassword,
+	}
+	configmaps := map[string]string{configKey: string(config)}
+
+	hostRules := fmt.Sprintf("\"[{'matchHost':'%s','username':'%s','password':'${TOKEN_%s}'}]\"",
+		target.ImageRepositoryHost, target.ImageRepositoryUsername, imageKey)
+	renovateCmd := fmt.Sprintf(
+		"RENOVATE_X_GITLAB_MERGE_REQUEST_DELAY=5000 RENOVATE_X_GITLAB_AUTO_MERGEABLE_CHECK_ATTEMPS=11 RENOVATE_PR_HOURLY_LIMIT=0 RENOVATE_PR_CONCURRENT_LIMIT=0 RENOVATE_TOKEN=$TOKEN_%s RENOVATE_CONFIG_FILE=/configs/%s RENOVATE_HOST_RULES=%s renovate",
+		tokenKey, configKey, hostRules,
+	)
+
+	operatorNamespace := os.Getenv("INTEGRATION_NS")
+	if operatorNamespace == "" {
+		operatorNamespace = "integration-service"
+	}
+
+	allCaConfigMaps := &corev1.ConfigMapList{}
+	if err := c.List(ctx, allCaConfigMaps,
+		client.InNamespace(operatorNamespace),
+		client.MatchingLabels{tektonconsts.CaConfigMapLabel: "true"},
+	); err != nil {
+		return "", fmt.Errorf("listing CA config maps in %s namespace: %w", operatorNamespace, err)
+	}
+	caConfigData := ""
+	if len(allCaConfigMaps.Items) > 0 {
+		log.Info("using CA config map", "name", allCaConfigMaps.Items[0].Name)
+		caConfigData = allCaConfigMaps.Items[0].Data[tektonconsts.CaConfigMapKey]
+	}
+
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: namespace},
+		StringData: secretTokens,
+	}
+	configMap := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: namespace},
+		Data:       configmaps,
+	}
+
+	var caConfigMap *corev1.ConfigMap
+	if caConfigData != "" {
+		caConfigMap = &corev1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{Name: caConfigMapName, Namespace: namespace},
+			Data:       map[string]string{tektonconsts.CaConfigMapKey: caConfigData},
+		}
+	}
+
+	saName := referencePLR.Spec.TaskRunTemplate.ServiceAccountName
+	if saName == "" {
+		saName = tektonconsts.DefaultPipelineServiceAccount
+	}
+	if err := c.Get(ctx, types.NamespacedName{Name: saName, Namespace: namespace}, &corev1.ServiceAccount{}); err != nil {
+		return "", fmt.Errorf("service account %s not found in namespace %s: %w", saName, namespace, err)
+	}
+
+	componentNames := make([]string, 0, len(entries))
+	digestMap := make(map[string]string, len(entries))
+	for _, entry := range entries {
+		componentNames = append(componentNames, entry.BuildResult.SourceComponentName)
+		digestMap[entry.BuildResult.SourceComponentName] = entry.BuildResult.Digest
+	}
+	componentsJSON, err := json.Marshal(componentNames)
+	if err != nil {
+		return "", err
+	}
+	digestsJSON, err := json.Marshal(digestMap)
+	if err != nil {
+		return "", err
+	}
+
+	trueBool := true
+	falseBool := false
+	renovateImageUrl := os.Getenv(tektonconsts.RenovateImageEnvName)
+	if renovateImageUrl == "" {
+		renovateImageUrl = tektonconsts.DefaultRenovateImageUrl
+	}
+
+	pipelineRun := &tektonv1.PipelineRun{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: namespace,
+			Labels: map[string]string{
+				tektonconsts.NudgeTypeLabel: tektonconsts.NudgePipelineRunTypeValue,
+			},
+			Annotations: map[string]string{
+				tektonconsts.NudgedComponentsAnnotation:  target.ComponentName,
+				tektonconsts.NudgingComponentsAnnotation: string(componentsJSON),
+				tektonconsts.NudgingDigestsAnnotation:    string(digestsJSON),
+				tektonconsts.NudgeBatchIDAnnotation:      batchID,
+			},
+		},
+		Spec: tektonv1.PipelineRunSpec{
+			PipelineSpec: &tektonv1.PipelineSpec{
+				Tasks: []tektonv1.PipelineTask{{
+					Name: "renovate",
+					TaskSpec: &tektonv1.EmbeddedTask{
+						TaskSpec: tektonv1.TaskSpec{
+							Steps: []tektonv1.Step{{
+								Name:    "renovate",
+								Image:   renovateImageUrl,
+								Command: []string{"bash", "-c", renovateCmd},
+								EnvFrom: []corev1.EnvFromSource{{
+									Prefix: "TOKEN_",
+									SecretRef: &corev1.SecretEnvSource{
+										LocalObjectReference: corev1.LocalObjectReference{Name: name},
+									},
+								}},
+								VolumeMounts: []corev1.VolumeMount{{
+									Name:      name,
+									MountPath: "/configs",
+								}},
+								SecurityContext: &corev1.SecurityContext{
+									Capabilities:             &corev1.Capabilities{Drop: []corev1.Capability{"ALL"}},
+									RunAsNonRoot:             &trueBool,
+									AllowPrivilegeEscalation: &falseBool,
+									SeccompProfile: &corev1.SeccompProfile{
+										Type: corev1.SeccompProfileTypeRuntimeDefault,
+									},
+								},
+							}},
+							Volumes: []corev1.Volume{{
+								Name: name,
+								VolumeSource: corev1.VolumeSource{
+									ConfigMap: &corev1.ConfigMapVolumeSource{
+										LocalObjectReference: corev1.LocalObjectReference{Name: name},
+									},
+								},
+							}},
+						},
+					},
+				}},
+			},
+			TaskRunTemplate: tektonv1.PipelineTaskRunTemplate{
+				ServiceAccountName: saName,
+			},
+		},
+	}
+
+	if caConfigData != "" {
+		caVolume := corev1.Volume{
+			Name: tektonconsts.CaVolumeMountName,
+			VolumeSource: corev1.VolumeSource{
+				ConfigMap: &corev1.ConfigMapVolumeSource{
+					LocalObjectReference: corev1.LocalObjectReference{Name: caConfigMapName},
+					Items: []corev1.KeyToPath{{
+						Key:  tektonconsts.CaConfigMapKey,
+						Path: tektonconsts.CaFilePath,
+					}},
+				},
+			},
+		}
+		caVolumeMount := corev1.VolumeMount{
+			Name:      tektonconsts.CaVolumeMountName,
+			MountPath: tektonconsts.CaMountPath,
+			ReadOnly:  true,
+		}
+		pipelineRun.Spec.PipelineSpec.Tasks[0].TaskSpec.Volumes = append(
+			pipelineRun.Spec.PipelineSpec.Tasks[0].TaskSpec.Volumes, caVolume)
+		pipelineRun.Spec.PipelineSpec.Tasks[0].TaskSpec.Steps[0].VolumeMounts = append(
+			pipelineRun.Spec.PipelineSpec.Tasks[0].TaskSpec.Steps[0].VolumeMounts, caVolumeMount)
+	}
+
+	if err := createIfNotExists(ctx, c, secret); err != nil {
+		return "", fmt.Errorf("creating Secret %s: %w", name, err)
+	}
+	if err := createIfNotExists(ctx, c, configMap); err != nil {
+		return "", fmt.Errorf("creating ConfigMap %s: %w", name, err)
+	}
+	if caConfigData != "" {
+		if err := createIfNotExists(ctx, c, caConfigMap); err != nil {
+			return "", fmt.Errorf("creating CA ConfigMap %s: %w", caConfigMapName, err)
+		}
+	}
+	if err := createIfNotExists(ctx, c, pipelineRun); err != nil {
+		return "", fmt.Errorf("creating batched nudge PipelineRun %s: %w", name, err)
+	}
+
+	log.Info("batched nudge PipelineRun created", "name", pipelineRun.Name, "sources", len(entries), "batchId", batchID)
+	return name, nil
+}
+
+// BatchedNudgePipelineRunName returns the Tekton PipelineRun name for a fired nudge batch.
+func BatchedNudgePipelineRunName(batchID string, retryAttempt int32) string {
+	return batchPipelineRunName(batchID, retryAttempt)
+}
+
+func batchPipelineRunName(batchID string, retryAttempt int32) string {
+	safe := strings.ToLower(batchID)
+	safe = strings.ReplaceAll(safe, "_", "-")
+	base := fmt.Sprintf("nudge-batch-%s", safe)
+	if retryAttempt > 0 {
+		return fmt.Sprintf("%s-retry%d", base, retryAttempt)
+	}
+	return base
+}
+
 // CreateNudgePipelineRun creates the Renovate PipelineRun plus its supporting
 // Secret and ConfigMap in the build PLR namespace.  The PipelineRun is created
 // first so owner references can point back to it; Secret and ConfigMap are
