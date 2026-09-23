@@ -17,6 +17,7 @@ limitations under the License.
 package v1beta2
 
 import (
+	"fmt"
 	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -187,12 +188,90 @@ func (tc TargetConfig) IsBatched() bool {
 
 // IsTargetBatched reports whether the given target component is configured for batch nudging.
 func (spec NudgeConfigSpec) IsTargetBatched(target string) bool {
-	for _, tc := range spec.TargetConfig {
-		if tc.Target == target {
-			return tc.IsBatched()
+	tc := spec.ResolveTargetConfig(target)
+	return tc != nil && tc.IsBatched()
+}
+
+// EffectiveBatchPolicy returns resolved timing and failure behavior for a batched target.
+func (spec NudgeConfigSpec) EffectiveBatchPolicy(target string) (debounce time.Duration, maxWait time.Duration, failure FailurePolicyType) {
+	debounce = DefaultBatchDebounceTimeout
+	maxWait = DefaultBatchMaxWaitTime
+	failure = DefaultBatchFailurePolicy
+
+	if spec.BatchDefaults != nil {
+		if spec.BatchDefaults.DebounceTimeout != nil {
+			debounce = spec.BatchDefaults.DebounceTimeout.Duration
+		}
+		if spec.BatchDefaults.MaxWaitTime != nil {
+			maxWait = spec.BatchDefaults.MaxWaitTime.Duration
+		}
+		if spec.BatchDefaults.FailurePolicy != nil {
+			failure = *spec.BatchDefaults.FailurePolicy
 		}
 	}
-	return false
+
+	tc := spec.ResolveTargetConfig(target)
+	if tc == nil || tc.BatchPolicy == nil {
+		return debounce, maxWait, failure
+	}
+	policy := tc.BatchPolicy
+	if policy.DebounceTimeout != nil {
+		debounce = policy.DebounceTimeout.Duration
+	}
+	if policy.MaxWaitTime != nil {
+		maxWait = policy.MaxWaitTime.Duration
+	}
+	if policy.FailurePolicy != nil {
+		failure = *policy.FailurePolicy
+	}
+	return debounce, maxWait, failure
+}
+
+// ValidateUniqueTargetConfig returns an error when spec.targetConfig contains duplicate target names.
+func (spec NudgeConfigSpec) ValidateUniqueTargetConfig() error {
+	seen := make(map[string]struct{}, len(spec.TargetConfig))
+	for _, tc := range spec.TargetConfig {
+		if _, dup := seen[tc.Target]; dup {
+			return fmt.Errorf("duplicate targetConfig target %q not allowed", tc.Target)
+		}
+		seen[tc.Target] = struct{}{}
+	}
+	return nil
+}
+
+// ResolveTargetConfig returns the TargetConfig entry for target, or nil when not configured.
+// Duplicate target names are rejected by the validating webhook; at most one entry exists per target.
+func (spec NudgeConfigSpec) ResolveTargetConfig(target string) *TargetConfig {
+	for i := range spec.TargetConfig {
+		if spec.TargetConfig[i].Target == target {
+			return &spec.TargetConfig[i]
+		}
+	}
+	return nil
+}
+
+// Actions holds one-shot operations processed by the NudgeConfig controller and cleared after reconcile.
+// The pattern matches spec.actions on Component (ADR 0056).
+type Actions struct {
+	// ForceFire immediately fires a batched nudge for the given target, bypassing debounce timing.
+	// +optional
+	ForceFire *ForceFireAction `json:"forceFire,omitempty"`
+}
+
+// ForceFireAction requests an immediate batch fire for a target component.
+type ForceFireAction struct {
+	// Target is the downstream component whose active batch should be force-fired.
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=63
+	// +kubebuilder:validation:Pattern=`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`
+	// +required
+	Target string `json:"target"`
+
+	// IncludePartial includes successful members when some batch sources failed and FailurePolicy is Block.
+	// Defaults to true when unset.
+	// +kubebuilder:default=true
+	// +optional
+	IncludePartial *bool `json:"includePartial,omitempty"`
 }
 
 // NudgeConfigSpec defines the desired nudging relationships between components
@@ -206,7 +285,13 @@ type NudgeConfigSpec struct {
 	// +optional
 	BatchDefaults *BatchDefaults `json:"batchDefaults,omitempty"`
 
+	// Actions holds one-shot operations processed by the controller and then cleared from spec.
+	// +optional
+	Actions *Actions `json:"actions,omitempty"`
+
 	// TargetConfig lists per-target batch policies. Targets without batchPolicy are not batched.
+	// Controllers and operators must patch NudgeConfig spec with merge semantics so targetConfig
+	// and actions are not dropped when updating other spec fields.
 	// +kubebuilder:validation:MaxItems=360
 	// +optional
 	TargetConfig []TargetConfig `json:"targetConfig,omitempty"`
