@@ -4373,6 +4373,58 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			}, time.Second*5).Should(Succeed())
 		})
 
+		It("records batched targets on the NudgeConfig without creating a nudge PipelineRun", func() {
+			pushPLR := makePushPLR()
+			nudgeConfig := &v1beta2.NudgeConfig{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      v1beta2.NudgeConfigSingletonName,
+					Namespace: "default",
+				},
+				Spec: v1beta2.NudgeConfigSpec{
+					Nudges: []v1beta2.NudgeRelationship{
+						{From: hasComp.Name, To: hasComp2.Name, Mode: v1beta2.NudgeModeImmediate},
+					},
+					TargetConfig: []v1beta2.TargetConfig{
+						{Target: hasComp2.Name, BatchPolicy: &v1beta2.BatchPolicy{}},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, nudgeConfig)).To(Succeed())
+			defer func() {
+				_ = k8sClient.Delete(ctx, nudgeConfig)
+			}()
+
+			adapter = NewAdapter(ctx, pushPLR, hasComp.Name, &[]v1beta2.ComponentGroup{*hasCompGroup}, logger, loader.NewMockLoader(), k8sClient)
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: loader.NudgeConfigContextKey,
+					Resource:   nudgeConfig,
+				},
+			})
+
+			result, err := adapter.EnsureNudgePipelineRunsExist()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.CancelRequest).To(BeFalse())
+
+			Eventually(func(g Gomega) {
+				updatedPLR := &tektonv1.PipelineRun{}
+				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(buildPipelineRun), updatedPLR)).To(Succeed())
+				g.Expect(updatedPLR.Annotations[tektonconsts.NudgeProcessedAnnotation]).To(Equal(hasComp2.Name))
+			}, time.Second*5).Should(Succeed())
+
+			updatedNC := &v1beta2.NudgeConfig{}
+			Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(nudgeConfig), updatedNC)).To(Succeed())
+			Expect(updatedNC.Status.ActiveBatches).To(HaveLen(1))
+			Expect(updatedNC.Status.ActiveBatches[0].Target).To(Equal(hasComp2.Name))
+			Expect(updatedNC.Status.ActiveBatches[0].Phase).To(Equal(v1beta2.BatchPhaseAccumulating))
+
+			nudgePLRList := &tektonv1.PipelineRunList{}
+			Expect(k8sClient.List(ctx, nudgePLRList, client.InNamespace("default"))).To(Succeed())
+			for _, plr := range nudgePLRList.Items {
+				Expect(plr.Name).NotTo(Equal("nudge-" + pushPLR.Name))
+			}
+		})
+
 		It("skips validated-mode edges and only processes immediate-mode edges", func() {
 			pushPLR := makePushPLR()
 			nudgeConfig := &v1beta2.NudgeConfig{
