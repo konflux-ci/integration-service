@@ -147,6 +147,7 @@ var _ = framework.IntegrationServiceSuiteDescribe("Forgejo Status Reporting of I
 					for _, pr := range prs {
 						if pr.SourceBranch == pacBranchName {
 							mrID = pr.Number
+							mrSha = pr.HeadSHA
 							return true
 						}
 					}
@@ -179,19 +180,9 @@ var _ = framework.IntegrationServiceSuiteDescribe("Forgejo Status Reporting of I
 			})
 
 			ginkgo.It("should have a related PaC init MR created", func() {
-				gomega.Eventually(func() bool {
-					prs, err := git.ListPullRequestsWithRetry(gitClient, reportingRepository)
-					gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
-
-					for _, pr := range prs {
-						if pr.SourceBranch == pacBranchName {
-							mrID = pr.Number
-							mrSha = pr.HeadSHA
-							return true
-						}
-					}
-					return false
-				}, shortTimeout, constants.PipelineRunPollingInterval).Should(gomega.BeTrue(), fmt.Sprintf("timed out when waiting for init PaC MR (branch name '%s') to be created in %s repository", pacBranchName, reportingRepository))
+				// mrID and mrSha are already set by BeforeAll; assert they were found.
+				gomega.Expect(mrID).NotTo(gomega.BeZero(),
+					fmt.Sprintf("PaC init MR (branch '%s') was not found in %s", pacBranchName, reportingRepository))
 
 				buildPipelineRun, err = f.AsKubeAdmin.HasController.GetComponentPipelineRun(componentName, applicationName, testNamespace, mrSha)
 				gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
