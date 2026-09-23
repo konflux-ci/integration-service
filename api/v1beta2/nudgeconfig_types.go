@@ -128,10 +128,38 @@ func (spec NudgeConfigSpec) IsTargetBatched(target string) bool {
 	return false
 }
 
+// Actions holds one-shot operations processed by the NudgeConfig controller and cleared after reconcile.
+// The pattern matches spec.actions on Component (ADR 0056).
+type Actions struct {
+	// ForceFire immediately fires a batched nudge for the given target, bypassing debounce timing.
+	// +optional
+	ForceFire *ForceFireAction `json:"forceFire,omitempty"`
+}
+
+// ForceFireAction requests an immediate batch fire for a target component.
+type ForceFireAction struct {
+	// Target is the downstream component whose active batch should be force-fired.
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=63
+	// +kubebuilder:validation:Pattern=`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`
+	// +required
+	Target string `json:"target"`
+
+	// IncludePartial includes successful members when some batch sources failed and FailurePolicy is Block.
+	// Defaults to true when unset.
+	// +kubebuilder:default=true
+	// +optional
+	IncludePartial *bool `json:"includePartial,omitempty"`
+}
+
 // NudgeConfigSpec defines the desired nudging relationships between components.
 // +kubebuilder:validation:XValidation:rule="!has(self.nudges) || self.nudges.all(n, n.from != n.to)",message="self-nudge not allowed: from and to must be different"
 // +kubebuilder:validation:XValidation:rule="!has(self.nudges) || self.nudges.all(i, self.nudges.exists_one(j, i.from == j.from && i.to == j.to))",message="duplicate (from, to) pair not allowed"
 type NudgeConfigSpec struct {
+	// Actions holds one-shot operations processed by the controller and then cleared from spec.
+	// +optional
+	Actions *Actions `json:"actions,omitempty"`
+
 	// TargetConfig lists per-target batch policies. Targets without batchPolicy are not batched.
 	// +optional
 	TargetConfig []TargetConfig `json:"targetConfig,omitempty"`

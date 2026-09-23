@@ -50,6 +50,31 @@ spec:
             description: NudgeConfigSpec defines the desired nudging relationships
               between components.
             properties:
+              actions:
+                description: Actions holds one-shot operations processed by the controller
+                  and then cleared from spec.
+                properties:
+                  forceFire:
+                    description: ForceFire immediately fires a batched nudge for the
+                      given target, bypassing debounce timing.
+                    properties:
+                      includePartial:
+                        default: true
+                        description: |-
+                          IncludePartial includes successful members when some batch sources failed and FailurePolicy is Block.
+                          Defaults to true when unset.
+                        type: boolean
+                      target:
+                        description: Target is the downstream component whose active
+                          batch should be force-fired.
+                        maxLength: 63
+                        minLength: 1
+                        pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                        type: string
+                    required:
+                    - target
+                    type: object
+                type: object
               nudges:
                 description: Nudges is the list of component nudge relationships.
                 items:

@@ -18,6 +18,7 @@ package v1beta2
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -110,6 +111,9 @@ func TestNudgeConfigMinimalSpec(t *testing.T) {
 	}
 	if nc.Spec.TargetConfig != nil {
 		t.Errorf("Expected nil TargetConfig, got %v", nc.Spec.TargetConfig)
+	}
+	if nc.Spec.Actions != nil {
+		t.Errorf("Expected nil Actions, got %v", nc.Spec.Actions)
 	}
 	if nc.Status.Conditions != nil {
 		t.Errorf("Expected nil Conditions, got %v", nc.Status.Conditions)
@@ -268,6 +272,61 @@ func TestTargetConfigBatchRecognition(t *testing.T) {
 	specEmptyPolicy := NudgeConfigSpec{TargetConfig: []TargetConfig{emptyPolicy}}
 	if !specEmptyPolicy.IsTargetBatched("bundle") {
 		t.Fatal("expected IsTargetBatched true for empty batchPolicy")
+	}
+}
+
+func TestNudgeConfigActionsForceFireJSON(t *testing.T) {
+	includePartial := false
+	spec := NudgeConfigSpec{
+		Actions: &Actions{
+			ForceFire: &ForceFireAction{
+				Target:         "operator-bundle",
+				IncludePartial: &includePartial,
+			},
+		},
+	}
+
+	encoded, err := json.Marshal(spec)
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	jsonStr := string(encoded)
+	if !strings.Contains(jsonStr, `"forceFire"`) {
+		t.Fatalf("expected forceFire in JSON, got %s", jsonStr)
+	}
+	if !strings.Contains(jsonStr, `"target":"operator-bundle"`) {
+		t.Fatalf("expected target in JSON, got %s", jsonStr)
+	}
+	if !strings.Contains(jsonStr, `"includePartial":false`) {
+		t.Fatalf("expected includePartial false in JSON, got %s", jsonStr)
+	}
+
+	var decoded NudgeConfigSpec
+	if err := json.Unmarshal(encoded, &decoded); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+	if decoded.Actions == nil || decoded.Actions.ForceFire == nil {
+		t.Fatal("expected decoded actions.forceFire")
+	}
+	if decoded.Actions.ForceFire.Target != "operator-bundle" {
+		t.Errorf("expected target operator-bundle, got %q", decoded.Actions.ForceFire.Target)
+	}
+	if decoded.Actions.ForceFire.IncludePartial == nil || *decoded.Actions.ForceFire.IncludePartial != false {
+		t.Errorf("expected includePartial false, got %v", decoded.Actions.ForceFire.IncludePartial)
+	}
+}
+
+func TestNudgeConfigNilActionsOmittedFromJSON(t *testing.T) {
+	spec := NudgeConfigSpec{
+		Nudges: []NudgeRelationship{{From: "component-a", To: "component-b"}},
+	}
+
+	encoded, err := json.Marshal(spec)
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	if strings.Contains(string(encoded), "actions") {
+		t.Fatalf("expected actions omitted from JSON, got %s", string(encoded))
 	}
 }
 
