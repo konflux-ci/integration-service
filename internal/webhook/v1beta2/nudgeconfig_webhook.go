@@ -70,6 +70,9 @@ func (v *NudgeConfigCustomValidator) ValidateCreate(ctx context.Context, obj run
 	if err := v.validateComponentsExist(ctx, nudgeConfig.Namespace, nudgeConfig.Spec.Nudges); err != nil {
 		return nil, err
 	}
+	if err := nudgeConfig.Spec.ValidateUniqueTargetConfig(); err != nil {
+		return nil, err
+	}
 
 	return nil, nil
 }
@@ -111,8 +114,22 @@ func (v *NudgeConfigCustomValidator) ValidateUpdate(ctx context.Context, oldObj,
 	if err := v.validateComponentsExist(ctx, newNudgeConfig.Namespace, added); err != nil {
 		return nil, err
 	}
+	if err := newNudgeConfig.Spec.ValidateUniqueTargetConfig(); err != nil {
+		return nil, err
+	}
 
-	return nil, nil
+	var warnings admission.Warnings
+	if len(oldNudgeConfig.Spec.TargetConfig) > 0 && len(newNudgeConfig.Spec.TargetConfig) == 0 {
+		warnings = append(warnings, "update removed spec.targetConfig; automation must patch NudgeConfig with merge semantics or include targetConfig to avoid dropping batch settings")
+	}
+	if oldNudgeConfig.Spec.Actions != nil && newNudgeConfig.Spec.Actions == nil &&
+		reflect.DeepEqual(oldNudgeConfig.Spec.Nudges, newNudgeConfig.Spec.Nudges) &&
+		reflect.DeepEqual(oldNudgeConfig.Spec.TargetConfig, newNudgeConfig.Spec.TargetConfig) {
+		// Likely an operator replace that omitted spec.actions while leaving other fields unchanged.
+		warnings = append(warnings, "update removed spec.actions; automation must patch NudgeConfig with merge semantics or include actions when re-applying spec")
+	}
+
+	return warnings, nil
 }
 
 func (v *NudgeConfigCustomValidator) ValidateDelete(_ context.Context, _ runtime.Object) (admission.Warnings, error) {

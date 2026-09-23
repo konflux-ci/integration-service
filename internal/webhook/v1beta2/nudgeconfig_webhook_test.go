@@ -297,6 +297,17 @@ var _ = Describe("NudgeConfig webhook - component existence", func() {
 			_, err := validator.ValidateCreate(ctx, nc)
 			Expect(err).NotTo(HaveOccurred())
 		})
+
+		It("rejects duplicate targetConfig targets", func() {
+			nc := newNudgeConfig(ns.Name, nil)
+			nc.Spec.TargetConfig = []appstudiov1beta2.TargetConfig{
+				{Target: "bundle", BatchPolicy: &appstudiov1beta2.BatchPolicy{}},
+				{Target: "bundle", BatchPolicy: &appstudiov1beta2.BatchPolicy{}},
+			}
+			_, err := validator.ValidateCreate(ctx, nc)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("duplicate targetConfig target"))
+		})
 	})
 
 	When("updating a NudgeConfig", func() {

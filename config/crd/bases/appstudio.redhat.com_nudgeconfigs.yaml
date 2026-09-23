@@ -50,6 +50,31 @@ spec:
             description: NudgeConfigSpec defines the desired nudging relationships
               between components.
             properties:
+              actions:
+                description: Actions holds one-shot operations processed by the controller
+                  and then cleared from spec.
+                properties:
+                  forceFire:
+                    description: ForceFire immediately fires a batched nudge for the
+                      given target, bypassing debounce timing.
+                    properties:
+                      includePartial:
+                        default: true
+                        description: |-
+                          IncludePartial includes successful members when some batch sources failed and FailurePolicy is Block.
+                          Defaults to true when unset.
+                        type: boolean
+                      target:
+                        description: Target is the downstream component whose active
+                          batch should be force-fired.
+                        maxLength: 63
+                        minLength: 1
+                        pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                        type: string
+                    required:
+                    - target
+                    type: object
+                type: object
               nudges:
                 description: Nudges is the list of component nudge relationships.
                 items:
@@ -91,8 +116,11 @@ spec:
                 maxItems: 360
                 type: array
               targetConfig:
-                description: TargetConfig lists per-target batch policies. Targets
-                  without batchPolicy are not batched.
+                description: |-
+                  TargetConfig lists per-target batch policies. Targets without batchPolicy are not batched.
+                  Controllers and operators must patch NudgeConfig spec with merge semantics so targetConfig
+                  and actions are not dropped when updating other spec fields.
+                  Duplicate target names are rejected by the validating webhook (CEL cost limits preclude a spec rule).
                 items:
                   description: TargetConfig declares per-target batch behavior. Presence
                     of batchPolicy opts the target into batching.
@@ -130,6 +158,7 @@ spec:
                   required:
                   - target
                   type: object
+                maxItems: 360
                 type: array
             type: object
             x-kubernetes-validations:
@@ -141,6 +170,105 @@ spec:
           status:
             description: NudgeConfigStatus defines the observed state of NudgeConfig.
             properties:
+              activeBatches:
+                description: ActiveBatches tracks in-progress nudge batches keyed
+                  by batchId.
+                items:
+                  description: ActiveBatch defines the runtime state of a single nudge
+                    batch.
+                  properties:
+                    accumulated:
+                      description: Accumulated is the list of build events collected
+                        into this batch.
+                      items:
+                        description: AccumulatedEntry defines a build event that has
+                          been collected into a batch.
+                        properties:
+                          buildPipelineRun:
+                            description: BuildPipelineRun is the name of the build
+                              PipelineRun that produced this entry.
+                            minLength: 1
+                            type: string
+                          capturedAt:
+                            description: CapturedAt is the timestamp when this entry
+                              was added to the batch.
+                            format: date-time
+                            type: string
+                          from:
+                            description: From is the source component name whose build
+                              was captured.
+                            maxLength: 63
+                            minLength: 1
+                            pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                            type: string
+                          imageDigest:
+                            description: ImageDigest is the OCI image digest produced
+                              by the build pipeline run.
+                            minLength: 1
+                            type: string
+                        required:
+                        - buildPipelineRun
+                        - capturedAt
+                        - from
+                        - imageDigest
+                        type: object
+                      type: array
+                    batchId:
+                      description: BatchID is a unique identifier for this batch instance.
+                      maxLength: 253
+                      minLength: 1
+                      type: string
+                    createdAt:
+                      description: CreatedAt is the timestamp when this batch was
+                        first created.
+                      format: date-time
+                      type: string
+                    fireAt:
+                      description: FireAt is the scheduled time when this batch will
+                        fire and create the nudge pipeline run.
+                      format: date-time
+                      type: string
+                    hardDeadline:
+                      description: HardDeadline is the absolute deadline by which
+                        an accumulating batch must fire.
+                      format: date-time
+                      type: string
+                    message:
+                      description: Message provides additional human-readable context
+                        about the current batch state.
+                      type: string
+                    nudgePipelineRun:
+                      description: NudgePipelineRun is the name of the nudge PipelineRun
+                        created when this batch fired.
+                      type: string
+                    phase:
+                      description: Phase is the current lifecycle phase of this batch.
+                      enum:
+                      - Accumulating
+                      - Blocked
+                      - Firing
+                      - Failed
+                      - Completed
+                      type: string
+                    target:
+                      description: Target is the component name that will receive
+                        the nudge when the batch fires.
+                      maxLength: 63
+                      minLength: 1
+                      pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                      type: string
+                  required:
+                  - batchId
+                  - createdAt
+                  - hardDeadline
+                  - phase
+                  - target
+                  type: object
+                maxItems: 360
+                type: array
+                x-kubernetes-list-map-keys:
+                - batchId
+                x-kubernetes-list-type: map
               conditions:
                 description: Conditions represent the latest available observations
                   of the NudgeConfig's state.

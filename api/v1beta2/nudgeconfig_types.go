@@ -17,6 +17,9 @@ limitations under the License.
 package v1beta2
 
 import (
+	"fmt"
+	"time"
+
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -78,6 +81,17 @@ const (
 	FailurePolicyProceedWithPartial FailurePolicyType = "ProceedWithPartial"
 )
 
+const (
+	// DefaultBatchDebounceTimeout is applied when a batched target's debounceTimeout is unset.
+	DefaultBatchDebounceTimeout = 30 * time.Minute
+
+	// DefaultBatchMaxWaitTime is applied when a batched target's maxWaitTime is unset.
+	DefaultBatchMaxWaitTime = 4 * time.Hour
+
+	// DefaultBatchFailurePolicy is applied when a batched target's failurePolicy is unset.
+	DefaultBatchFailurePolicy FailurePolicyType = FailurePolicyBlock
+)
+
 // BatchPolicy defines per-target batch timing and failure behavior overrides.
 // Field shape matches the planned BatchDefaults type; unset fields use namespace defaults at runtime.
 type BatchPolicy struct {
@@ -120,19 +134,173 @@ func (tc TargetConfig) IsBatched() bool {
 
 // IsTargetBatched reports whether the given target component is configured for batch nudging.
 func (spec NudgeConfigSpec) IsTargetBatched(target string) bool {
+	tc := spec.ResolveTargetConfig(target)
+	return tc != nil && tc.IsBatched()
+}
+
+// EffectiveBatchPolicy returns resolved timing and failure behavior for a batched target.
+func (spec NudgeConfigSpec) EffectiveBatchPolicy(target string) (debounce time.Duration, maxWait time.Duration, failure FailurePolicyType) {
+	debounce = DefaultBatchDebounceTimeout
+	maxWait = DefaultBatchMaxWaitTime
+	failure = DefaultBatchFailurePolicy
+
+	tc := spec.ResolveTargetConfig(target)
+	if tc == nil || tc.BatchPolicy == nil {
+		return debounce, maxWait, failure
+	}
+	policy := tc.BatchPolicy
+	if policy.DebounceTimeout != nil {
+		debounce = policy.DebounceTimeout.Duration
+	}
+	if policy.MaxWaitTime != nil {
+		maxWait = policy.MaxWaitTime.Duration
+	}
+	if policy.FailurePolicy != nil {
+		failure = *policy.FailurePolicy
+	}
+	return debounce, maxWait, failure
+}
+
+// ValidateUniqueTargetConfig returns an error when spec.targetConfig contains duplicate target names.
+func (spec NudgeConfigSpec) ValidateUniqueTargetConfig() error {
+	seen := make(map[string]struct{}, len(spec.TargetConfig))
 	for _, tc := range spec.TargetConfig {
-		if tc.Target == target {
-			return tc.IsBatched()
+		if _, dup := seen[tc.Target]; dup {
+			return fmt.Errorf("duplicate targetConfig target %q not allowed", tc.Target)
+		}
+		seen[tc.Target] = struct{}{}
+	}
+	return nil
+}
+
+// ResolveTargetConfig returns the TargetConfig entry for target, or nil when not configured.
+// Duplicate target names are rejected by the validating webhook; at most one entry exists per target.
+func (spec NudgeConfigSpec) ResolveTargetConfig(target string) *TargetConfig {
+	for i := range spec.TargetConfig {
+		if spec.TargetConfig[i].Target == target {
+			return &spec.TargetConfig[i]
 		}
 	}
-	return false
+	return nil
+}
+
+// BatchPhase defines the lifecycle phase of an active batch.
+// +kubebuilder:validation:Enum=Accumulating;Blocked;Firing;Failed;Completed
+type BatchPhase string
+
+const (
+	BatchPhaseAccumulating BatchPhase = "Accumulating"
+	BatchPhaseBlocked      BatchPhase = "Blocked"
+	BatchPhaseFiring       BatchPhase = "Firing"
+	BatchPhaseFailed       BatchPhase = "Failed"
+	BatchPhaseCompleted    BatchPhase = "Completed"
+)
+
+// AccumulatedEntry defines a build event that has been collected into a batch.
+type AccumulatedEntry struct {
+	// From is the source component name whose build was captured.
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=63
+	// +kubebuilder:validation:Pattern=`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`
+	// +required
+	From string `json:"from"`
+
+	// ImageDigest is the OCI image digest produced by the build pipeline run.
+	// +kubebuilder:validation:MinLength=1
+	// +required
+	ImageDigest string `json:"imageDigest"`
+
+	// BuildPipelineRun is the name of the build PipelineRun that produced this entry.
+	// +kubebuilder:validation:MinLength=1
+	// +required
+	BuildPipelineRun string `json:"buildPipelineRun"`
+
+	// CapturedAt is the timestamp when this entry was added to the batch.
+	// +required
+	CapturedAt metav1.Time `json:"capturedAt"`
+}
+
+// ActiveBatch defines the runtime state of a single nudge batch.
+type ActiveBatch struct {
+	// Target is the component name that will receive the nudge when the batch fires.
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=63
+	// +kubebuilder:validation:Pattern=`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`
+	// +required
+	Target string `json:"target"`
+
+	// BatchID is a unique identifier for this batch instance.
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=253
+	// +required
+	BatchID string `json:"batchId"`
+
+	// Phase is the current lifecycle phase of this batch.
+	// +required
+	Phase BatchPhase `json:"phase"`
+
+	// CreatedAt is the timestamp when this batch was first created.
+	// +required
+	CreatedAt metav1.Time `json:"createdAt"`
+
+	// FireAt is the scheduled time when this batch will fire and create the nudge pipeline run.
+	// +optional
+	FireAt *metav1.Time `json:"fireAt,omitempty"`
+
+	// HardDeadline is the absolute deadline by which an accumulating batch must fire.
+	// +required
+	HardDeadline metav1.Time `json:"hardDeadline"`
+
+	// Accumulated is the list of build events collected into this batch.
+	// +optional
+	Accumulated []AccumulatedEntry `json:"accumulated,omitempty"`
+
+	// NudgePipelineRun is the name of the nudge PipelineRun created when this batch fired.
+	// +optional
+	NudgePipelineRun string `json:"nudgePipelineRun,omitempty"`
+
+	// Message provides additional human-readable context about the current batch state.
+	// +optional
+	Message string `json:"message,omitempty"`
+}
+
+// Actions holds one-shot operations processed by the NudgeConfig controller and cleared after reconcile.
+// The pattern matches spec.actions on Component (ADR 0056).
+type Actions struct {
+	// ForceFire immediately fires a batched nudge for the given target, bypassing debounce timing.
+	// +optional
+	ForceFire *ForceFireAction `json:"forceFire,omitempty"`
+}
+
+// ForceFireAction requests an immediate batch fire for a target component.
+type ForceFireAction struct {
+	// Target is the downstream component whose active batch should be force-fired.
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=63
+	// +kubebuilder:validation:Pattern=`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`
+	// +required
+	Target string `json:"target"`
+
+	// IncludePartial includes successful members when some batch sources failed and FailurePolicy is Block.
+	// Defaults to true when unset.
+	// +kubebuilder:default=true
+	// +optional
+	IncludePartial *bool `json:"includePartial,omitempty"`
 }
 
 // NudgeConfigSpec defines the desired nudging relationships between components.
 // +kubebuilder:validation:XValidation:rule="!has(self.nudges) || self.nudges.all(n, n.from != n.to)",message="self-nudge not allowed: from and to must be different"
 // +kubebuilder:validation:XValidation:rule="!has(self.nudges) || self.nudges.all(i, self.nudges.exists_one(j, i.from == j.from && i.to == j.to))",message="duplicate (from, to) pair not allowed"
 type NudgeConfigSpec struct {
+	// Actions holds one-shot operations processed by the controller and then cleared from spec.
+	// +optional
+	Actions *Actions `json:"actions,omitempty"`
+
 	// TargetConfig lists per-target batch policies. Targets without batchPolicy are not batched.
+	// Controllers and operators must patch NudgeConfig spec with merge semantics so targetConfig
+	// and actions are not dropped when updating other spec fields.
+	// Duplicate target names are rejected by the validating webhook (CEL cost limits preclude a spec rule).
+	// +kubebuilder:validation:MaxItems=360
 	// +optional
 	TargetConfig []TargetConfig `json:"targetConfig,omitempty"`
 
@@ -151,6 +319,13 @@ type NudgeConfigStatus struct {
 	// LastValidationTime is the timestamp of the last successful validation of the nudge graph.
 	// +optional
 	LastValidationTime *metav1.Time `json:"lastValidationTime,omitempty"`
+
+	// ActiveBatches tracks in-progress nudge batches keyed by batchId.
+	// +listType=map
+	// +listMapKey=batchId
+	// +kubebuilder:validation:MaxItems=360
+	// +optional
+	ActiveBatches []ActiveBatch `json:"activeBatches,omitempty"`
 }
 
 // +kubebuilder:object:root=true

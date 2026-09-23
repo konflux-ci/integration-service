@@ -59,6 +59,7 @@ rules:
   resources:
   - componentgroups
   - components
+  - nudgeconfigs
   verbs:
   - get
   - list
@@ -72,6 +73,7 @@ rules:
   - components/status
   - environments/status
   - integrationtestscenarios/status
+  - nudgeconfigs/status
   - releaseplans/status
   - releases/status
   - snapshots/status
@@ -83,19 +85,11 @@ rules:
   - appstudio.redhat.com
   resources:
   - environments
-  - nudgeconfigs
   - releaseplans
   verbs:
   - get
   - list
   - watch
-- apiGroups:
-  - appstudio.redhat.com
-  resources:
-  - nudgeconfigs/status
-  verbs:
-  - get
-  - patch
 - apiGroups:
   - pipelinesascode.tekton.dev
   resources:
