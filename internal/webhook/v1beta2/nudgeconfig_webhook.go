@@ -49,7 +49,7 @@ type NudgeConfigCustomValidator struct {
 	Client client.Client
 }
 
-// +kubebuilder:webhook:path=/validate-appstudio-redhat-com-v1beta2-nudgeconfig,mutating=false,failurePolicy=fail,sideEffects=None,groups=appstudio.redhat.com,resources=nudgeconfigs,verbs=create;update,versions=v1beta2,name=vnudgeconfig.kb.io,admissionReviewVersions=v1
+// +kubebuilder:webhook:path=/validate-konflux-ci-dev-v1beta2-nudgeconfig,mutating=false,failurePolicy=fail,sideEffects=None,groups=konflux-ci.dev,resources=nudgeconfigs,verbs=create;update,versions=v1beta2,name=vnudgeconfig.kb.io,admissionReviewVersions=v1
 
 var _ webhook.CustomValidator = &NudgeConfigCustomValidator{}
 

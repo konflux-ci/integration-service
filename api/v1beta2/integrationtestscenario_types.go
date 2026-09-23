@@ -18,6 +18,8 @@ package v1beta2
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	konfluxv1beta2 "github.com/konflux-ci/integration-service/api/konflux/v1beta2"
 )
 
 const (
@@ -140,10 +142,7 @@ type ResolverRef struct {
 }
 
 // ResolverParameter contains the name and values used to identify the referenced Tekton resource
-type ResolverParameter struct {
-	Name  string `json:"name"`
-	Value string `json:"value"`
-}
+type ResolverParameter = konfluxv1beta2.ResolverParameter
 
 func init() {
 	SchemeBuilder.Register(&IntegrationTestScenario{}, &IntegrationTestScenarioList{})

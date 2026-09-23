@@ -2,7 +2,7 @@
 # It is provided to allow the cluster admin to help manage permissions
 # for users.
 #
-# Grants read-only access to appstudio.redhat.com ComponentGroup
+# Grants read-only access to konflux-ci.dev ComponentGroup
 # resources. This role is intended for users who need visibility into
 # these resources without permissions to modify them. It is ideal for
 # monitoring purposes and limited-access viewing.
@@ -16,7 +16,7 @@ metadata:
   name: componentgroup-viewer-role
 rules:
 - apiGroups:
-  - appstudio.redhat.com
+  - konflux-ci.dev
   resources:
   - componentgroups
   verbs:
@@ -24,7 +24,7 @@ rules:
   - list
   - watch
 - apiGroups:
-  - appstudio.redhat.com
+  - konflux-ci.dev
   resources:
   - componentgroups/status
   verbs:

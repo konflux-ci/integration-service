@@ -4,7 +4,7 @@ kind: Namespace
 metadata:
   name: componentgroup-sample-minimal-v2
 ---
-apiVersion: appstudio.redhat.com/v1beta2
+apiVersion: konflux-ci.dev/v1beta2
 kind: ComponentGroup
 metadata:
   labels:
@@ -40,3 +40,4 @@ status:
       # third-component has not been promoted yet
     - name: third-component
       version: "main"
+
