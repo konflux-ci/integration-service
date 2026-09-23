@@ -63,10 +63,107 @@ type NudgeRelationship struct {
 	GatingGroup string `json:"gatingGroup,omitempty"`
 }
 
+// FailurePolicyType defines how a batch behaves when a member source build fails.
+// Wire values use PascalCase to align with Kubernetes policy enums (for example admission webhook FailurePolicy).
+// +kubebuilder:validation:Enum=Block;ProceedWithPartial
+type FailurePolicyType string
+
+const (
+	// FailurePolicyBlock keeps the batch blocked until the failed component rebuilds
+	// successfully or the user force-fires the batch.
+	FailurePolicyBlock FailurePolicyType = "Block"
+
+	// FailurePolicyProceedWithPartial fires the batch with whatever succeeded when
+	// the debounce timer or hard deadline expires.
+	FailurePolicyProceedWithPartial FailurePolicyType = "ProceedWithPartial"
+)
+
+// BatchPolicy defines per-target batch timing and failure behavior overrides.
+// Field shape matches the planned BatchDefaults type; unset fields use namespace defaults at runtime.
+type BatchPolicy struct {
+	// DebounceTimeout is how long to wait after the last incoming build before firing the batch.
+	// +kubebuilder:validation:Type=string
+	// +kubebuilder:validation:Format=duration
+	// +optional
+	DebounceTimeout *metav1.Duration `json:"debounceTimeout,omitempty"`
+
+	// MaxWaitTime is the hard deadline from the first build event, regardless of debounce resets.
+	// +kubebuilder:validation:Type=string
+	// +kubebuilder:validation:Format=duration
+	// +optional
+	MaxWaitTime *metav1.Duration `json:"maxWaitTime,omitempty"`
+
+	// FailurePolicy controls whether a failed member build blocks the batch or allows a partial fire.
+	// +optional
+	FailurePolicy *FailurePolicyType `json:"failurePolicy,omitempty"`
+}
+
+// TargetConfig declares per-target batch behavior. Presence of batchPolicy opts the target into batching.
+type TargetConfig struct {
+	// Target is the downstream component name that may receive batched nudges.
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=63
+	// +kubebuilder:validation:Pattern=`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`
+	// +required
+	Target string `json:"target"`
+
+	// BatchPolicy defines per-target batch timing and failure behavior overrides.
+	// When omitted, the target is not batched. An empty object opts into batching with default timing.
+	// +optional
+	BatchPolicy *BatchPolicy `json:"batchPolicy,omitempty"`
+}
+
+// IsBatched reports whether this target opts into batch nudging.
+func (tc TargetConfig) IsBatched() bool {
+	return tc.BatchPolicy != nil
+}
+
+// IsTargetBatched reports whether the given target component is configured for batch nudging.
+func (spec NudgeConfigSpec) IsTargetBatched(target string) bool {
+	for _, tc := range spec.TargetConfig {
+		if tc.Target == target {
+			return tc.IsBatched()
+		}
+	}
+	return false
+}
+
+// Actions holds one-shot operations processed by the NudgeConfig controller and cleared after reconcile.
+// The pattern matches spec.actions on Component (ADR 0056).
+type Actions struct {
+	// ForceFire immediately fires a batched nudge for the given target, bypassing debounce timing.
+	// +optional
+	ForceFire *ForceFireAction `json:"forceFire,omitempty"`
+}
+
+// ForceFireAction requests an immediate batch fire for a target component.
+type ForceFireAction struct {
+	// Target is the downstream component whose active batch should be force-fired.
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=63
+	// +kubebuilder:validation:Pattern=`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`
+	// +required
+	Target string `json:"target"`
+
+	// IncludePartial includes successful members when some batch sources failed and FailurePolicy is Block.
+	// Defaults to true when unset.
+	// +kubebuilder:default=true
+	// +optional
+	IncludePartial *bool `json:"includePartial,omitempty"`
+}
+
 // NudgeConfigSpec defines the desired nudging relationships between components.
 // +kubebuilder:validation:XValidation:rule="!has(self.nudges) || self.nudges.all(n, n.from != n.to)",message="self-nudge not allowed: from and to must be different"
 // +kubebuilder:validation:XValidation:rule="!has(self.nudges) || self.nudges.all(i, self.nudges.exists_one(j, i.from == j.from && i.to == j.to))",message="duplicate (from, to) pair not allowed"
 type NudgeConfigSpec struct {
+	// Actions holds one-shot operations processed by the controller and then cleared from spec.
+	// +optional
+	Actions *Actions `json:"actions,omitempty"`
+
+	// TargetConfig lists per-target batch policies. Targets without batchPolicy are not batched.
+	// +optional
+	TargetConfig []TargetConfig `json:"targetConfig,omitempty"`
+
 	// Nudges is the list of component nudge relationships.
 	// +kubebuilder:validation:MaxItems=360
 	// +optional

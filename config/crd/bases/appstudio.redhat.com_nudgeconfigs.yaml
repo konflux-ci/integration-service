@@ -50,6 +50,31 @@ spec:
             description: NudgeConfigSpec defines the desired nudging relationships
               between components.
             properties:
+              actions:
+                description: Actions holds one-shot operations processed by the controller
+                  and then cleared from spec.
+                properties:
+                  forceFire:
+                    description: ForceFire immediately fires a batched nudge for the
+                      given target, bypassing debounce timing.
+                    properties:
+                      includePartial:
+                        default: true
+                        description: |-
+                          IncludePartial includes successful members when some batch sources failed and FailurePolicy is Block.
+                          Defaults to true when unset.
+                        type: boolean
+                      target:
+                        description: Target is the downstream component whose active
+                          batch should be force-fired.
+                        maxLength: 63
+                        minLength: 1
+                        pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                        type: string
+                    required:
+                    - target
+                    type: object
+                type: object
               nudges:
                 description: Nudges is the list of component nudge relationships.
                 items:
@@ -89,6 +114,47 @@ spec:
                   - to
                   type: object
                 maxItems: 360
+                type: array
+              targetConfig:
+                description: TargetConfig lists per-target batch policies. Targets
+                  without batchPolicy are not batched.
+                items:
+                  description: TargetConfig declares per-target batch behavior. Presence
+                    of batchPolicy opts the target into batching.
+                  properties:
+                    batchPolicy:
+                      description: |-
+                        BatchPolicy defines per-target batch timing and failure behavior overrides.
+                        When omitted, the target is not batched. An empty object opts into batching with default timing.
+                      properties:
+                        debounceTimeout:
+                          description: DebounceTimeout is how long to wait after the
+                            last incoming build before firing the batch.
+                          format: duration
+                          type: string
+                        failurePolicy:
+                          description: FailurePolicy controls whether a failed member
+                            build blocks the batch or allows a partial fire.
+                          enum:
+                          - Block
+                          - ProceedWithPartial
+                          type: string
+                        maxWaitTime:
+                          description: MaxWaitTime is the hard deadline from the first
+                            build event, regardless of debounce resets.
+                          format: duration
+                          type: string
+                      type: object
+                    target:
+                      description: Target is the downstream component name that may
+                        receive batched nudges.
+                      maxLength: 63
+                      minLength: 1
+                      pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                      type: string
+                  required:
+                  - target
+                  type: object
                 type: array
             type: object
             x-kubernetes-validations:

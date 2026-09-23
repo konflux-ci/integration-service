@@ -12,6 +12,11 @@ metadata:
   name: nudge-config
   namespace: default
 spec:
+  # Per-target batch policies. batchPolicy opts a target into batching; omit batchPolicy for immediate nudging.
+  targetConfig:
+    - target: component-b
+      batchPolicy:
+        debounceTimeout: 15m
   nudges:
     # When component-a builds successfully, nudge component-b after integration tests pass
     - from: component-a
