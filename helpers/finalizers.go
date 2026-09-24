@@ -16,11 +16,19 @@ limitations under the License.
 
 package helpers
 
+import "github.com/konflux-ci/integration-service/pkg/keys"
+
 // IntegrationPipelineRunFinalizer is the finalizer name to be added to the Integration PipelineRuns
-const IntegrationPipelineRunFinalizer string = "test.appstudio.openshift.io/pipelinerun"
-const IntegrationTestScenarioFinalizer string = "test.appstudio.openshift.io/scenario"
-const ComponentFinalizer string = "test.appstudio.openshift.io/component"
+// Migration note: retained during ComponentGroup migration; remove after migration is complete.
+const IntegrationPipelineRunFinalizer string = keys.PrefixTestOld + "/pipelinerun"
+
+// Migration note: retained during ComponentGroup migration; remove after migration is complete.
+const IntegrationTestScenarioFinalizer string = keys.PrefixTestOld + "/scenario"
+
+// Migration note: retained during ComponentGroup migration; remove after migration is complete.
+const ComponentFinalizer string = keys.PrefixTestOld + "/component"
 
 // NudgePipelineRunFinalizer is the finalizer name added to build PipelineRuns while IS is
 // actively creating a nudge PipelineRun, preventing premature GC before nudging completes.
-const NudgePipelineRunFinalizer string = "test.appstudio.openshift.io/nudge-pipelinerun"
+// Migration note: retained during ComponentGroup migration; remove after migration is complete.
+const NudgePipelineRunFinalizer string = keys.PrefixTestOld + "/nudge-pipelinerun"
