@@ -24,6 +24,11 @@ func (t *TektonController) CreatePipelineRun(pipelineRun *pipeline.PipelineRun, 
 	return t.PipelineClient().TektonV1().PipelineRuns(ns).Create(context.Background(), pipelineRun, metav1.CreateOptions{})
 }
 
+// UpdatePipelineRunStatus updates the status subresource for a Tekton PipelineRun.
+func (t *TektonController) UpdatePipelineRunStatus(pipelineRun *pipeline.PipelineRun, ns string) (*pipeline.PipelineRun, error) {
+	return t.PipelineClient().TektonV1().PipelineRuns(ns).UpdateStatus(context.Background(), pipelineRun, metav1.UpdateOptions{})
+}
+
 // GetPipelineRun returns a pipelineRun with a given name.
 func (t *TektonController) GetPipelineRun(pipelineRunName, namespace string) (*pipeline.PipelineRun, error) {
 	return t.PipelineClient().TektonV1().PipelineRuns(namespace).Get(context.Background(), pipelineRunName, metav1.GetOptions{})
