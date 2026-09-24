@@ -8,10 +8,12 @@ import (
 
 	"github.com/konflux-ci/integration-service/e2e-tests/pkg/logs"
 	"github.com/konflux-ci/integration-service/e2e-tests/pkg/utils"
+	tektonconsts "github.com/konflux-ci/integration-service/tekton/consts"
 
 	pipeline "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/yaml"
@@ -22,6 +24,123 @@ import (
 // CreatePipelineRun creates a tekton pipelineRun and returns the pipelineRun or error
 func (t *TektonController) CreatePipelineRun(pipelineRun *pipeline.PipelineRun, ns string) (*pipeline.PipelineRun, error) {
 	return t.PipelineClient().TektonV1().PipelineRuns(ns).Create(context.Background(), pipelineRun, metav1.CreateOptions{})
+}
+
+// UpdatePipelineRunStatus updates the status subresource for a Tekton PipelineRun.
+func (t *TektonController) UpdatePipelineRunStatus(pipelineRun *pipeline.PipelineRun, ns string) (*pipeline.PipelineRun, error) {
+	var updated *pipeline.PipelineRun
+	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		latest, err := t.GetPipelineRun(pipelineRun.Name, ns)
+		if err != nil {
+			return err
+		}
+
+		latest.Status = pipelineRun.Status
+		updated, err = t.PipelineClient().TektonV1().PipelineRuns(ns).UpdateStatus(context.Background(), latest, metav1.UpdateOptions{})
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	return updated, nil
+}
+
+// CreatePipelineRunWithStatus creates a PipelineRun, restores a desired status snapshot,
+// and marks the restored PipelineRun as signed for test processing.
+func (t *TektonController) CreatePipelineRunWithStatus(pipelineRun *pipeline.PipelineRun, status pipeline.PipelineRunStatus, ns string) (*pipeline.PipelineRun, error) {
+	updated, err := t.CreatePipelineRunAndRestoreStatus(pipelineRun, status, ns)
+	if err != nil {
+		return nil, err
+	}
+
+	// Annotating the PLR with the chains signed annotation tells the integration service it can begin processing the PLR
+	return t.AnnotatePipelineRunWithRetry(updated.Name, ns, tektonconsts.PipelineRunChainsSignedAnnotation, "true")
+}
+
+// CreatePipelineRunAndRestoreStatus creates a PipelineRun and restores a desired status snapshot.
+func (t *TektonController) CreatePipelineRunAndRestoreStatus(pipelineRun *pipeline.PipelineRun, status pipeline.PipelineRunStatus, ns string) (*pipeline.PipelineRun, error) {
+	created, err := t.CreatePipelineRun(pipelineRun, ns)
+	if err != nil {
+		return nil, err
+	}
+
+	return t.restorePipelineRunStatus(created, status, ns)
+}
+
+// CreatePipelineRunWithStatusAndLabels creates a PipelineRun, restores a desired status snapshot,
+// marks the restored PipelineRun as signed, and then applies the provided labels. This lets tests
+// create pre-built PipelineRuns without labels that trigger controllers until the PipelineRun is
+// fully prepared.
+func (t *TektonController) CreatePipelineRunWithStatusAndLabels(pipelineRun *pipeline.PipelineRun, status pipeline.PipelineRunStatus, ns string, labels map[string]string) (*pipeline.PipelineRun, error) {
+	updated, err := t.CreatePipelineRunWithStatus(pipelineRun, status, ns)
+	if err != nil {
+		return nil, err
+	}
+
+	return t.ApplyPipelineRunLabelsWithRetry(updated.Name, ns, labels)
+}
+
+func (t *TektonController) restorePipelineRunStatus(created *pipeline.PipelineRun, status pipeline.PipelineRunStatus, ns string) (*pipeline.PipelineRun, error) {
+	if created.Spec.Status == pipeline.PipelineRunSpecStatusPending {
+		// Pre-built PipelineRuns are created as Pending so Tekton will not start tasks.
+		// Tekton rejects the combination of spec.status=PipelineRunPending and a
+		// non-empty status.startTime, and spec updates are not allowed once a
+		// PipelineRun reaches a terminal condition. Keep the PipelineRun Pending and
+		// restore the recorded terminal status without startTime.
+		// NOTE: status.startTime will not exist on these pre-built PipelineRuns, so
+		// supersession behavior that depends on build start time cannot be tested in
+		// these e2e tests.
+		status.StartTime = nil
+	}
+
+	created.Status = status
+	return t.UpdatePipelineRunStatus(created, ns)
+}
+
+// ApplyPipelineRunLabelsWithRetry updates PipelineRun labels and retries on resourceVersion conflicts.
+func (t *TektonController) ApplyPipelineRunLabelsWithRetry(pipelineRunName, ns string, labels map[string]string) (*pipeline.PipelineRun, error) {
+	var updated *pipeline.PipelineRun
+	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		latest, err := t.GetPipelineRun(pipelineRunName, ns)
+		if err != nil {
+			return err
+		}
+
+		if latest.Labels == nil {
+			latest.Labels = map[string]string{}
+		}
+		for key, value := range labels {
+			latest.Labels[key] = value
+		}
+		updated, err = t.PipelineClient().TektonV1().PipelineRuns(ns).Update(context.Background(), latest, metav1.UpdateOptions{})
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	return updated, nil
+}
+
+// AnnotatePipelineRunWithRetry updates a PipelineRun annotation and retries on resourceVersion conflicts.
+func (t *TektonController) AnnotatePipelineRunWithRetry(pipelineRunName, ns, annotationKey, annotationValue string) (*pipeline.PipelineRun, error) {
+	var updated *pipeline.PipelineRun
+	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		latest, err := t.GetPipelineRun(pipelineRunName, ns)
+		if err != nil {
+			return err
+		}
+
+		if latest.Annotations == nil {
+			latest.Annotations = map[string]string{}
+		}
+		latest.Annotations[annotationKey] = annotationValue
+		updated, err = t.PipelineClient().TektonV1().PipelineRuns(ns).Update(context.Background(), latest, metav1.UpdateOptions{})
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	return updated, nil
 }
 
 // GetPipelineRun returns a pipelineRun with a given name.

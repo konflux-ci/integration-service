@@ -77,10 +77,13 @@ func (i *IntegrationController) GetSnapshot(snapshotName, pipelineRunName, compo
 			return &snapshot, nil
 		}
 		// find snapshot by pipelinerun name
-		if len(pipelineRunName) > 0 && snapshot.Labels[gitops.BuildPipelineRunNameLabel] == pipelineRunName {
-			return &snapshot, nil
+		if len(pipelineRunName) > 0 {
+			if snapshot.Labels[gitops.BuildPipelineRunNameLabel] == pipelineRunName {
+				return &snapshot, nil
+			}
+			continue
 		}
-		// find snapshot by component name
+		// find snapshot by component name only when a pipelinerun name was not provided
 		if len(componentName) > 0 && snapshot.Labels[tektonconsts.PipelineRunComponentLabel] == componentName {
 			return &snapshot, nil
 		}
