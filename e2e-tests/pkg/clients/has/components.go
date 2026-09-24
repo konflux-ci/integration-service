@@ -322,6 +322,16 @@ func (h *HasController) CreateComponentCheckImageRepository(componentSpec appser
 	return componentObject, nil
 }
 
+// CreateComponentWithoutPACMergeRequest creates a component and PaC repository without opening
+// a PaC merge request, so no automatic build PipelineRun is triggered.
+func (h *HasController) CreateComponentWithoutPACMergeRequest(componentSpec appservice.ComponentSpec, namespace string, applicationName string, additionalAnnotations map[string]string) (*appservice.Component, error) {
+	annotations := utils.MergeMaps(constants.ComponentPaCNoMRRequestAnnotation, constants.ImageControllerAnnotationRequestPublicRepo)
+	if len(additionalAnnotations) > 0 {
+		annotations = utils.MergeMaps(annotations, additionalAnnotations)
+	}
+	return h.CreateComponentCheckImageRepository(componentSpec, namespace, "", "", applicationName, false, annotations)
+}
+
 // DeleteComponent delete an has component from a given name and namespace
 func (h *HasController) DeleteComponent(name string, namespace string, reportErrorOnNotFound bool) error {
 	component := appservice.Component{
