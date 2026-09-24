@@ -20,8 +20,11 @@ limitations under the License.
 package v1beta2
 
 import (
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/controller-runtime/pkg/scheme"
+
+	konfluxv1beta2 "github.com/konflux-ci/integration-service/api/konflux/v1beta2"
 )
 
 var (
@@ -30,7 +33,13 @@ var (
 
 	// SchemeBuilder is used to add go types to the GroupVersionKind scheme
 	SchemeBuilder = &scheme.Builder{GroupVersion: GroupVersion}
-
-	// AddToScheme adds the types in this group-version to the given scheme.
-	AddToScheme = SchemeBuilder.AddToScheme
 )
+
+// AddToScheme adds the old IntegrationTestScenario types and the new
+// ComponentGroup/NudgeConfig types to the given scheme.
+func AddToScheme(scheme *runtime.Scheme) error {
+	if err := SchemeBuilder.AddToScheme(scheme); err != nil {
+		return err
+	}
+	return konfluxv1beta2.AddToScheme(scheme)
+}

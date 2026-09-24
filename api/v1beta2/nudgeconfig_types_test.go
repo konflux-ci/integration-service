@@ -25,7 +25,7 @@ import (
 func TestNudgeConfigSpec(t *testing.T) {
 	nc := &NudgeConfig{
 		TypeMeta: metav1.TypeMeta{
-			APIVersion: "appstudio.redhat.com/v1beta2",
+			APIVersion: "konflux-ci.dev/v1beta2",
 			Kind:       "NudgeConfig",
 		},
 		ObjectMeta: metav1.ObjectMeta{
