@@ -4483,7 +4483,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		})
 	})
 
-	When("checkNudgeConfigForStaleReferences is called", func() {
+	When("updateNudgeConfigStatus is called", func() {
 		var nudgeConfig *v1beta2.NudgeConfig
 
 		BeforeEach(func() {
@@ -4513,7 +4513,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 
 		It("sets the initial condition when NudgeConfig has no nudge relationships and no stale references status condition", func() {
 			nudgeConfig.Spec.Nudges = nil
-			Expect(adapter.checkNudgeConfigForStaleReferences(nudgeConfig, "default")).To(Succeed())
+			Expect(adapter.updateNudgeConfigStatus(nudgeConfig, "default")).To(Succeed())
 
 			Eventually(func(g Gomega) {
 				updated := &v1beta2.NudgeConfig{}
@@ -4541,7 +4541,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 					Err:        fmt.Errorf("list components failed"),
 				},
 			})
-			Expect(adapter.checkNudgeConfigForStaleReferences(nudgeConfig, "default")).To(Succeed())
+			Expect(adapter.updateNudgeConfigStatus(nudgeConfig, "default")).To(Succeed())
 		})
 
 		It("sets the StaleReferences condition to ConditionTrue when orphaned references exist", func() {
@@ -4563,7 +4563,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 					},
 				},
 			})
-			Expect(adapter.checkNudgeConfigForStaleReferences(nudgeConfig, "default")).To(Succeed())
+			Expect(adapter.updateNudgeConfigStatus(nudgeConfig, "default")).To(Succeed())
 
 			Eventually(func(g Gomega) {
 				updated := &v1beta2.NudgeConfig{}
@@ -4600,7 +4600,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 					},
 				},
 			})
-			Expect(adapter.checkNudgeConfigForStaleReferences(nudgeConfig, "default")).To(Succeed())
+			Expect(adapter.updateNudgeConfigStatus(nudgeConfig, "default")).To(Succeed())
 
 			Eventually(func(g Gomega) {
 				updated := &v1beta2.NudgeConfig{}
@@ -4620,9 +4620,33 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 					Err:        fmt.Errorf("list components failed"),
 				},
 			})
-			err := adapter.checkNudgeConfigForStaleReferences(nudgeConfig, "default")
+			err := adapter.updateNudgeConfigStatus(nudgeConfig, "default")
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring(`failed to list Components in namespace "default"`))
+		})
+
+		It("persists BatchDefaultsSupported when listing Components fails", func() {
+			nudgeConfig.Spec.BatchDefaults = &v1beta2.BatchDefaults{}
+			Expect(k8sClient.Update(ctx, nudgeConfig)).Should(Succeed())
+
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: loader.NamespaceComponentsContextKey,
+					Err:        fmt.Errorf("list components failed"),
+				},
+			})
+			err := adapter.updateNudgeConfigStatus(nudgeConfig, "default")
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring(`failed to list Components in namespace "default"`))
+
+			Eventually(func(g Gomega) {
+				updated := &v1beta2.NudgeConfig{}
+				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(nudgeConfig), updated)).To(Succeed())
+				cond := meta.FindStatusCondition(updated.Status.Conditions, helpers.BatchDefaultsSupportedStatusCondition)
+				g.Expect(cond).NotTo(BeNil())
+				g.Expect(cond.Status).To(Equal(metav1.ConditionFalse))
+				g.Expect(cond.Reason).To(Equal(helpers.BatchDefaultsNotImplementedReason))
+			}, time.Second*5).Should(Succeed())
 		})
 
 		It("returns an error when the status patch fails", func() {
@@ -4643,9 +4667,34 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			nudgeConfig.Spec.Nudges = []v1beta2.NudgeRelationship{
 				{From: hasComp.Name, To: "missing-component", Mode: v1beta2.NudgeModeImmediate},
 			}
-			err := adapter.checkNudgeConfigForStaleReferences(nudgeConfig, "default")
+			err := adapter.updateNudgeConfigStatus(nudgeConfig, "default")
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("failed to patch nudge config status"))
+		})
+
+		It("sets BatchDefaultsSupported to False when spec.batchDefaults is configured", func() {
+			nudgeConfig.Spec.BatchDefaults = &v1beta2.BatchDefaults{}
+			Expect(k8sClient.Update(ctx, nudgeConfig)).Should(Succeed())
+
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: loader.NamespaceComponentsContextKey,
+					Resource: []applicationapiv1alpha1.Component{
+						*hasComp,
+						*hasComp2,
+					},
+				},
+			})
+			Expect(adapter.updateNudgeConfigStatus(nudgeConfig, "default")).To(Succeed())
+
+			Eventually(func(g Gomega) {
+				updated := &v1beta2.NudgeConfig{}
+				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(nudgeConfig), updated)).To(Succeed())
+				cond := meta.FindStatusCondition(updated.Status.Conditions, helpers.BatchDefaultsSupportedStatusCondition)
+				g.Expect(cond).NotTo(BeNil())
+				g.Expect(cond.Status).To(Equal(metav1.ConditionFalse))
+				g.Expect(cond.Reason).To(Equal(helpers.BatchDefaultsNotImplementedReason))
+			}, time.Second*5).Should(Succeed())
 		})
 	})
 
