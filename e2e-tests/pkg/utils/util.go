@@ -99,3 +99,9 @@ func GetContainerLogs(ki kubernetes.Interface, podName, containerName, namespace
 	}
 	return buf.String(), nil
 }
+
+// GeneratePipelineRunName generates a unique name for a PipelineRun
+// to avoid conflicts when applying pre-built PLRs
+func GeneratePipelineRunName(prefix string) string {
+	return fmt.Sprintf("%s-%s", prefix, GenerateRandomString(6))
+}

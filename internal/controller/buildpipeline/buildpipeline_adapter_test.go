@@ -4783,3 +4783,18 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		return adapter
 	}
 })
+
+var _ = Describe("isBuildPLROlderThanLastBuild", func() {
+	It("returns false when the PipelineRun has no start time", func() {
+		pipelineRun := &tektonv1.PipelineRun{}
+		component := &applicationapiv1alpha1.Component{
+			ObjectMeta: metav1.ObjectMeta{
+				Annotations: map[string]string{
+					gitops.BuildPipelineLastBuiltTime: strconv.FormatInt(time.Now().Unix(), 10),
+				},
+			},
+		}
+
+		Expect(isBuildPLROlderThanLastBuild(pipelineRun, component)).To(BeFalse())
+	})
+})
