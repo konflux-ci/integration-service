@@ -181,6 +181,18 @@ spec:
                 deployment/build-service-controller-manager \
                 --timeout=300s
               echo "build-service ready with PAC_WEBHOOK_URL configured"
+
+              echo "Waiting for dex to be ready..."
+              oc --request-timeout=30s -n konflux-ui rollout status \
+                deployment/dex \
+                --timeout=120s
+              echo "dex ready"
+
+              echo "Waiting for integration-service to be ready..."
+              oc --request-timeout=30s -n integration-service rollout status \
+                deployment/integration-service-controller-manager \
+                --timeout=120s
+              echo "integration-service ready"
     - name: konflux-e2e-tests
       timeout: 2h30m
       runAfter:
