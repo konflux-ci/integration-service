@@ -14,6 +14,9 @@ flowchart TD
 
   %% Node definitions
   ensure1(Process further if: Snapshot testing <br>is not finished yet)
+  fetch_all_ITS("Fetch all IntegrationTestScenarios <br>for the given Application/ComponentGroup <br> filtered by ITS context(s)")
+  encountered_error0{Encountered error?}
+  requeue_error0(Controller requeues with error)
   are_there_any_ITS{"Are there any <br>IntegrationTestScenarios <br>present for the given <br>Application/ComponentGroup <br> which do not depend on <br> other unfinished scenarios?"}
   create_new_test_PLR(<b>Create a new Test PipelineRun</b> for each <br>of the above ITS, if it doesn't exists already)
   mark_snapshot_InProgress(<b>Mark</b> Snapshot's Integration-testing <br>status as 'InProgress')
@@ -26,7 +29,10 @@ flowchart TD
 
   %% Node connections
   predicate                 ---->    |"EnsureIntegrationPipelineRunsExist()"|ensure1
-  ensure1                   -->      are_there_any_ITS
+  ensure1                   -->      fetch_all_ITS
+  fetch_all_ITS             -->      encountered_error0
+  encountered_error0        --Yes--> requeue_error0
+  encountered_error0        --No-->  are_there_any_ITS
   are_there_any_ITS         --Yes--> create_new_test_PLR
   are_there_any_ITS         --No-->  fetch_all_required_ITS
   create_new_test_PLR       -->      mark_snapshot_InProgress
@@ -152,5 +158,5 @@ flowchart TD
 
   %% Assigning styles to nodes
   class predicate Amber;
-  class encountered_error1,encountered_error31,encountered_error32,encountered_error5 Red;
+  class encountered_error0,encountered_error1,encountered_error31,encountered_error32,encountered_error5 Red;
 ```

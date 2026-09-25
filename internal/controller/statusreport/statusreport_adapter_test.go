@@ -39,6 +39,7 @@ import (
 	toolkit "github.com/konflux-ci/operator-toolkit/loader"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 
 	"github.com/konflux-ci/integration-service/gitops"
 	"github.com/konflux-ci/integration-service/helpers"
@@ -498,56 +499,6 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			expectedLogEntry = "Snapshot integration status condition marked as passed, all of 1 required Integration PipelineRuns succeeded"
 			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
 		})
-
-		It("testing function findUntriggeredIntegrationTestFromStatus ", func() {
-
-			integrationTestScenarioTest := &v1beta2.IntegrationTestScenario{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "example-pass-test",
-					Namespace: "default",
-
-					Labels: map[string]string{
-						"test.appstudio.openshift.io/optional": "false",
-					},
-				},
-				Spec: v1beta2.IntegrationTestScenarioSpec{
-					Application: hasApp.Name,
-					ResolverRef: v1beta2.ResolverRef{
-						Resolver: "git",
-						Params: []v1beta2.ResolverParameter{
-							{
-								Name:  "url",
-								Value: "https://github.com/redhat-appstudio/integration-examples.git",
-							},
-							{
-								Name:  "revision",
-								Value: "main",
-							},
-							{
-								Name:  "pathInRepo",
-								Value: "pipelineruns/integration_pipelinerun_pass.yaml",
-							},
-						},
-					},
-				},
-			}
-
-			// Check when all integrationTestScenarion exist in testStatuses of the snapshot
-			testStatuses, err := gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(hasSnapshot)
-			Expect(err).ToNot(HaveOccurred())
-			integrationTestScenarios, err := adapter.loader.GetRequiredIntegrationTestScenariosForSnapshotApplication(adapter.context, adapter.client, adapter.application, adapter.snapshot)
-			Expect(err).ToNot(HaveOccurred())
-			result := adapter.findUntriggeredIntegrationTestFromStatus(integrationTestScenarios, testStatuses)
-			Expect(result).To(BeEmpty())
-
-			// Check when we have one integrationTestScenario not exist in testStatuses of the snapshot
-			*integrationTestScenarios = append(*integrationTestScenarios, *integrationTestScenarioTest)
-
-			result = adapter.findUntriggeredIntegrationTestFromStatus(integrationTestScenarios, testStatuses)
-			Expect(result).To(BeEquivalentTo("example-pass-test"))
-
-		})
-
 	})
 
 	When("New Adapter is created for a push-type Snapshot that failed one of the tests [APPLICATION]", func() {
@@ -655,6 +606,55 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
 			expectedLogEntry = "Snapshot integration status condition marked as passed, all of 0 required Integration PipelineRuns succeeded"
 			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
+		})
+	})
+
+	When("a required IntegrationTestScenario is missing from Snapshot statuses [APPLICATION]", func() {
+		BeforeEach(func() {
+			buf = bytes.Buffer{}
+			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+
+			adapter = NewAdapterWithApplication(ctx, hasSnapshot, hasApp, log, loader.NewMockLoader(), k8sClient)
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: loader.ApplicationContextKey,
+					Resource:   hasApp,
+				},
+				{
+					ContextKey: loader.SnapshotContextKey,
+					Resource:   hasSnapshot,
+				},
+				{
+					ContextKey: loader.RequiredIntegrationTestScenariosForSnapshotContextKey,
+					Resource:   []v1beta2.IntegrationTestScenario{*integrationTestScenario},
+				},
+			})
+		})
+
+		It("does not add a rerun label and remains idempotent", func() {
+			assertNoRerunLabel := func() {
+				fetchedSnapshot := &applicationapiv1alpha1.Snapshot{}
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      hasSnapshot.Name,
+					Namespace: hasSnapshot.Namespace,
+				}, fetchedSnapshot)
+				Expect(err).ToNot(HaveOccurred())
+				_, rerunLabelPresent := gitops.GetIntegrationTestRunLabelValue(fetchedSnapshot)
+				Expect(rerunLabelPresent).To(BeFalse())
+			}
+
+			firstResult, firstErr := adapter.EnsureSnapshotFinishedAllTests()
+			Expect(firstErr).ToNot(HaveOccurred())
+			Expect(firstResult.CancelRequest).To(BeFalse())
+			Expect(firstResult.RequeueRequest).To(BeFalse())
+			assertNoRerunLabel()
+
+			secondResult, secondErr := adapter.EnsureSnapshotFinishedAllTests()
+			Expect(secondErr).ToNot(HaveOccurred())
+			Expect(secondResult).To(Equal(firstResult))
+			assertNoRerunLabel()
+
+			Expect(buf.String()).Should(ContainSubstring("Not all required Integration PipelineRuns finished"))
 		})
 	})
 

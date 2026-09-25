@@ -328,9 +328,9 @@ func (a *Adapter) cleanupRerunLabelAndUpdateStatus(skipCount, totalScenarios int
 	return nil
 }
 
-// loadAndFilterIntegrationTestScenarios loads all test scenarios and filters them based on context
-// Returns nil if no scenarios are found, but logs errors and continues processing
-func (a *Adapter) loadAndFilterIntegrationTestScenarios() *[]v1beta2.IntegrationTestScenario {
+// loadAndFilterIntegrationTestScenarios loads all test scenarios and filters them based on context.
+// A successful load with no scenarios returns (nil, nil). List failures are returned so the caller can requeue.
+func (a *Adapter) loadAndFilterIntegrationTestScenarios() (*[]v1beta2.IntegrationTestScenario, error) {
 	var allIntegrationTestScenarios *[]v1beta2.IntegrationTestScenario
 	var err error
 	// TODO: remove branch when we deprecate old application model
@@ -339,20 +339,21 @@ func (a *Adapter) loadAndFilterIntegrationTestScenarios() *[]v1beta2.Integration
 		if err != nil {
 			a.logger.Error(err, "Failed to get integration test scenarios for the following application",
 				"Application.Namespace", a.application.Namespace, "Application.Name", a.application.Name)
-			// Continue processing like original code - don't return nil on error
+			return nil, fmt.Errorf("failed to get integration test scenarios for application %s/%s: %w",
+				a.application.Namespace, a.application.Name, err)
 		}
 	} else {
-		// NOTE: this is returning nil and causing the panic
 		allIntegrationTestScenarios, err = a.loader.GetAllIntegrationTestScenariosForComponentGroup(a.context, a.client, a.componentGroup)
 		if err != nil {
 			a.logger.Error(err, "Failed to get integration test scenarios for the following component group",
 				"ComponentGroup.Namespace", a.componentGroup.Namespace, "ComponentGroup.Name", a.componentGroup.Name)
-			// Continue processing like original code - don't return nil on error
+			return nil, fmt.Errorf("failed to get integration test scenarios for component group %s/%s: %w",
+				a.componentGroup.Namespace, a.componentGroup.Name, err)
 		}
 	}
 
 	if allIntegrationTestScenarios == nil {
-		return nil
+		return nil, nil
 	}
 
 	integrationTestScenarios := gitops.FilterIntegrationTestScenariosWithContext(allIntegrationTestScenarios, a.snapshot)
@@ -369,7 +370,7 @@ func (a *Adapter) loadAndFilterIntegrationTestScenarios() *[]v1beta2.Integration
 			"IntegrationTestScenarios", len(*integrationTestScenarios))
 	}
 
-	return integrationTestScenarios
+	return integrationTestScenarios, nil
 }
 
 // processSingleScenario handles pipeline creation for a single test scenario
@@ -691,7 +692,10 @@ func (a *Adapter) EnsureIntegrationPipelineRunsExist() (controller.OperationResu
 		a.logger.Info("The Snapshot has finished testing.")
 		return controller.ContinueProcessing()
 	}
-	integrationTestScenarios := a.loadAndFilterIntegrationTestScenarios()
+	integrationTestScenarios, err := a.loadAndFilterIntegrationTestScenarios()
+	if err != nil {
+		return controller.RequeueWithError(err)
+	}
 	var errsForPLRCreation error
 	if integrationTestScenarios != nil {
 		errsForPLRCreation = a.createEligibleIntegrationPipelineRuns(integrationTestScenarios)
