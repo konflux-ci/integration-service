@@ -36,6 +36,7 @@ import (
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/konflux/v1alpha1"
 	oldapplicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
 	"github.com/konflux-ci/integration-service/api/v1beta2"
+	pacv1alpha1 "github.com/openshift-pipelines/pipelines-as-code/pkg/apis/pipelinesascode/v1alpha1"
 
 	toolkit "github.com/konflux-ci/operator-toolkit/test"
 	releasev1alpha1 "github.com/konflux-ci/release-service/api/v1alpha1"
@@ -83,6 +84,10 @@ var _ = BeforeSuite(func() {
 				build.Default.GOPATH,
 				"pkg", "mod", toolkit.GetRelativeDependencyPath("release-service"), "config", "crd", "bases",
 			),
+			filepath.Join(
+				build.Default.GOPATH,
+				"pkg", "mod", toolkit.GetRelativeDependencyPath("openshift-pipelines"), "config",
+			),
 		},
 		ErrorIfCRDPathMissing: true,
 	}
@@ -97,6 +102,7 @@ var _ = BeforeSuite(func() {
 	Expect(tektonv1.AddToScheme(clientsetscheme.Scheme)).To(Succeed())
 	Expect(releasev1alpha1.AddToScheme(clientsetscheme.Scheme)).To(Succeed())
 	Expect(v1beta2.AddToScheme(clientsetscheme.Scheme)).To(Succeed())
+	Expect(pacv1alpha1.AddToScheme(clientsetscheme.Scheme)).To(Succeed())
 
 	k8sManager, _ := ctrl.NewManager(cfg, ctrl.Options{
 		Scheme: clientsetscheme.Scheme,
