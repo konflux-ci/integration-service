@@ -18,6 +18,8 @@ package github_test
 
 import (
 	"context"
+	"errors"
+	"net/http"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -43,7 +45,9 @@ PM3OGIRKYnFRRtixcaDPioSkOa2orbCE42b/sEm3gFvMNnD9gjs4bTjNDsECQQCq
 WGhfkh9h9Db8xSx4boFcEqwyyHd2E1Hjbp5q3fzp06XecA==
 -----END RSA PRIVATE KEY-----`
 
-type MockAppsService struct{}
+type MockAppsService struct {
+	findRepositoryInstallation func(context.Context, string, string) (*ghapi.Installation, *ghapi.Response, error)
+}
 
 // CreateInstallationToken implements github.AppsService
 func (MockAppsService) CreateInstallationToken(
@@ -51,6 +55,15 @@ func (MockAppsService) CreateInstallationToken(
 ) (*ghapi.InstallationToken, *ghapi.Response, error) {
 	token := "example-token"
 	return &ghapi.InstallationToken{Token: &token}, nil, nil
+}
+func (m MockAppsService) FindRepositoryInstallation(
+	ctx context.Context, owner string, repo string,
+) (*ghapi.Installation, *ghapi.Response, error) {
+	if m.findRepositoryInstallation != nil {
+		return m.findRepositoryInstallation(ctx, owner, repo)
+	}
+	installationID := int64(123)
+	return &ghapi.Installation{ID: &installationID}, nil, nil
 }
 
 type MockChecksService struct {
@@ -233,6 +246,86 @@ var _ = Describe("Client", func() {
 		Expect(err).ToNot(HaveOccurred())
 		Expect(token).To(Equal("example-token"))
 		Expect(statusCode).NotTo(BeNil())
+	})
+
+	Context("when finding a GitHub App installation for a repository", func() {
+		var (
+			installation *ghapi.Installation
+			response     *ghapi.Response
+			lookupError  error
+			lookupCalls  int
+		)
+
+		BeforeEach(func() {
+			installation = &ghapi.Installation{ID: ghapi.Int64(123)}
+			response = &ghapi.Response{Response: &http.Response{StatusCode: http.StatusOK}}
+			lookupError = nil
+			lookupCalls = 0
+			mockAppsSvc.findRepositoryInstallation = func(ctx context.Context, owner, repo string) (*ghapi.Installation, *ghapi.Response, error) {
+				lookupCalls++
+				Expect(owner).To(Equal("example-owner"))
+				Expect(repo).To(Equal("example-repo"))
+				return installation, response, lookupError
+			}
+			client = github.NewClient(logr.Discard(), github.WithAppsService(mockAppsSvc))
+		})
+
+		It("returns the installation ID and HTTP status from GitHub", func() {
+			installationID, statusCode, err := client.FindInstallationForRepo(context.TODO(), 1, []byte(samplePrivateKey), "example-owner", "example-repo")
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(installationID).To(Equal(int64(123)))
+			Expect(statusCode).To(Equal(http.StatusOK))
+			Expect(lookupCalls).To(Equal(1))
+		})
+
+		It("returns a GitHub lookup error and its HTTP status", func() {
+			installation = nil
+			response.StatusCode = http.StatusNotFound
+			lookupError = errors.New("installation not found")
+
+			installationID, statusCode, err := client.FindInstallationForRepo(context.TODO(), 1, []byte(samplePrivateKey), "example-owner", "example-repo")
+
+			Expect(err).To(MatchError(lookupError))
+			Expect(installationID).To(BeZero())
+			Expect(statusCode).To(Equal(http.StatusNotFound))
+		})
+
+		It("handles a lookup failure without an HTTP response", func() {
+			installation = nil
+			response = nil
+			lookupError = errors.New("connection failed")
+
+			installationID, statusCode, err := client.FindInstallationForRepo(context.TODO(), 1, []byte(samplePrivateKey), "example-owner", "example-repo")
+
+			Expect(err).To(MatchError(lookupError))
+			Expect(installationID).To(BeZero())
+			Expect(statusCode).To(BeZero())
+		})
+
+		DescribeTable("rejects a successful response without a valid installation ID",
+			func(result *ghapi.Installation) {
+				installation = result
+
+				installationID, statusCode, err := client.FindInstallationForRepo(context.TODO(), 1, []byte(samplePrivateKey), "example-owner", "example-repo")
+
+				Expect(err).To(HaveOccurred())
+				Expect(installationID).To(BeZero())
+				Expect(statusCode).To(Equal(http.StatusOK))
+			},
+			Entry("zero ID", &ghapi.Installation{ID: ghapi.Int64(0)}),
+			Entry("missing ID", &ghapi.Installation{}),
+			Entry("missing installation", (*ghapi.Installation)(nil)),
+		)
+
+		It("rejects an invalid private key before calling GitHub", func() {
+			installationID, statusCode, err := client.FindInstallationForRepo(context.TODO(), 1, []byte("invalid-private-key"), "example-owner", "example-repo")
+
+			Expect(err).To(HaveOccurred())
+			Expect(installationID).To(BeZero())
+			Expect(statusCode).To(BeZero())
+			Expect(lookupCalls).To(BeZero())
+		})
 	})
 
 	It("accepts an OAuth token", func() {

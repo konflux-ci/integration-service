@@ -71,6 +71,7 @@ func (s *CheckRunAdapter) GetStatus() string {
 // AppsService defines the methods used in the github Apps service.
 type AppsService interface {
 	CreateInstallationToken(ctx context.Context, id int64, opts *ghapi.InstallationTokenOptions) (*ghapi.InstallationToken, *ghapi.Response, error)
+	FindRepositoryInstallation(ctx context.Context, owner, repo string) (*ghapi.Installation, *ghapi.Response, error)
 }
 
 // ChecksService defines the methods used in the github Checks service.
@@ -100,6 +101,7 @@ type PullRequestsService interface {
 
 // ClientInterface defines the methods that should be implemented by a GitHub client
 type ClientInterface interface {
+	FindInstallationForRepo(ctx context.Context, appID int64, privateKey []byte, owner, repo string) (int64, int, error)
 	CreateAppInstallationToken(ctx context.Context, appID int64, installationID int64, privateKey []byte) (string, int, error)
 	SetOAuthToken(ctx context.Context, token string)
 	CreateCheckRun(ctx context.Context, cra *CheckRunAdapter) (*int64, int, error)
@@ -217,6 +219,51 @@ func NewClient(logger logr.Logger, opts ...ClientOption) *Client {
 	}
 
 	return &client
+}
+
+// FindInstallationForRepo returns the GitHub App installation that has access
+// to the requested repository.
+func (c *Client) FindInstallationForRepo(
+	ctx context.Context,
+	appID int64,
+	privateKey []byte,
+	owner string,
+	repo string,
+) (int64, int, error) {
+	var statusCode int
+
+	transport, err := ghinstallation.NewAppsTransport(
+		http.DefaultTransport,
+		appID,
+		privateKey,
+	)
+	if err != nil {
+		return 0, statusCode, err
+	}
+
+	c.gh = ghapi.NewClient(&http.Client{Transport: transport})
+	c.gh.UserAgent = common.IntegrationServiceUserAgent
+
+	installation, response, err := c.GetAppsService().
+		FindRepositoryInstallation(ctx, owner, repo)
+
+	if response != nil {
+		statusCode = response.StatusCode
+	}
+
+	if err != nil {
+		return 0, statusCode, err
+	}
+
+	if installation.GetID() == 0 {
+		return 0, statusCode, fmt.Errorf(
+			"GitHub returned no installation for repository %s/%s",
+			owner,
+			repo,
+		)
+	}
+
+	return installation.GetID(), statusCode, nil
 }
 
 // CreateAppInstallationToken creates an installation token for a GitHub App.
