@@ -8,12 +8,18 @@ rules:
   - ""
   resources:
   - configmaps
-  - secrets
   verbs:
   - create
   - get
   - list
   - watch
+- apiGroups:
+  - ""
+  resources:
+  - secrets
+  verbs:
+  - create
+  - get
 - apiGroups:
   - ""
   resources:
@@ -96,6 +102,13 @@ rules:
   verbs:
   - get
   - patch
+- apiGroups:
+  - konflux-ci.dev
+  resources:
+  - components
+  verbs:
+  - get
+  - list
 - apiGroups:
   - pipelinesascode.tekton.dev
   resources:

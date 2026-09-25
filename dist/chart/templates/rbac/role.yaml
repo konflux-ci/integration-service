@@ -12,9 +12,8 @@ rules:
   resources:
   - secrets
   verbs:
+  - create
   - get
-  - list
-  - watch
 - apiGroups:
   - appstudio.redhat.com
   resources:

@@ -31,8 +31,10 @@ import (
 	toolkit "github.com/konflux-ci/operator-toolkit/loader"
 	"github.com/konflux-ci/operator-toolkit/metadata"
 	releasev1alpha1 "github.com/konflux-ci/release-service/api/v1alpha1"
+	pacv1alpha1 "github.com/openshift-pipelines/pipelines-as-code/pkg/apis/pipelinesascode/v1alpha1"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	resolutionv1beta1 "github.com/tektoncd/pipeline/pkg/apis/resolution/v1beta1"
+	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
@@ -54,7 +56,7 @@ type ObjectLoader interface {
 	GetComponentFromPipelineRun(ctx context.Context, c client.Client, pipelineRun *tektonv1.PipelineRun) (*oldapplicationapiv1alpha1.Component, error)
 	GetApplicationFromPipelineRun(ctx context.Context, c client.Client, pipelineRun *tektonv1.PipelineRun) (*oldapplicationapiv1alpha1.Application, error)
 	GetApplicationFromComponent(ctx context.Context, c client.Client, component *oldapplicationapiv1alpha1.Component) (*oldapplicationapiv1alpha1.Application, error)
-	GetComponentGroupsForComponentVersion(ctx context.Context, c client.Client, component *oldapplicationapiv1alpha1.Component, version string) (*[]v1beta2.ComponentGroup, error)
+	GetComponentGroupsForComponentVersion(ctx context.Context, c client.Client, componentName, namespace, version string) (*[]v1beta2.ComponentGroup, error)
 	GetSnapshotFromPipelineRun(ctx context.Context, c client.Client, pipelineRun *tektonv1.PipelineRun) (*oldapplicationapiv1alpha1.Snapshot, error)
 	GetAllIntegrationTestScenariosForApplication(ctx context.Context, c client.Client, application *oldapplicationapiv1alpha1.Application) (*[]v1beta2.IntegrationTestScenario, error)
 	GetAllIntegrationTestScenariosForComponentGroup(ctx context.Context, c client.Client, componentGroup *v1beta2.ComponentGroup) (*[]v1beta2.IntegrationTestScenario, error)
@@ -92,6 +94,9 @@ type ObjectLoader interface {
 	GetAllComponentGroupsInNamespace(ctx context.Context, c client.Client, namespace string) ([]v1beta2.ComponentGroup, error)
 	GetNestedComponentGroupsForComponentGroup(ctx context.Context, c client.Client, componentGroup *v1beta2.ComponentGroup) ([]v1beta2.ComponentGroup, error)
 	GetNudgeConfigForNamespace(ctx context.Context, c client.Client, namespace string) (*v1beta2.NudgeConfig, error)
+	GetSecret(ctx context.Context, c client.Client, name, namespace string) (*corev1.Secret, error)
+	GetServiceAccount(ctx context.Context, c client.Client, name, namespace string) (*corev1.ServiceAccount, error)
+	GetAllRepositoriesInNamespace(ctx context.Context, c client.Client, namespace string) (*[]pacv1alpha1.Repository, error)
 }
 
 type loader struct{}
@@ -265,10 +270,10 @@ func (l *loader) GetApplicationFromComponent(ctx context.Context, c client.Clien
 
 // GetComponentGroupsForComponentVersion loads from the cluster a list of ComponentGroups that use the given ComponentVerison. If
 // the Component does not belong to any ComponentGroups then an empty list will be returned
-func (l *loader) GetComponentGroupsForComponentVersion(ctx context.Context, c client.Client, component *oldapplicationapiv1alpha1.Component, version string) (*[]v1beta2.ComponentGroup, error) {
+func (l *loader) GetComponentGroupsForComponentVersion(ctx context.Context, c client.Client, componentName, namespace, version string) (*[]v1beta2.ComponentGroup, error) {
 	// Kubernetes FieldSelector cannot filter by "spec.components contains item where name=X and componentBranch.name=Y"
 	// (only top-level or CRD selectableFields are supported, not array containment). List all in namespace and filter in Go.
-	componentGroups, err := l.GetAllComponentGroupsInNamespace(ctx, c, component.Namespace)
+	componentGroups, err := l.GetAllComponentGroupsInNamespace(ctx, c, namespace)
 	if err != nil {
 		return nil, err
 	}
@@ -285,7 +290,7 @@ func (l *loader) GetComponentGroupsForComponentVersion(ctx context.Context, c cl
 			if strings.EqualFold(ref.Kind, "componentgroup") {
 				continue
 			}
-			if ref.Name == component.Name && ref.ComponentVersion.Name == version {
+			if ref.Name == componentName && ref.ComponentVersion.Name == version {
 				result = append(result, cg)
 				break
 			}
@@ -733,8 +738,11 @@ func (l *loader) getComponentWithFallback(ctx context.Context, c client.Client, 
 	// Get the konflux-ci.dev Component
 	konfluxComponent := &applicationapiv1alpha1.Component{}
 	konfluxErr := toolkit.GetObject(name, namespace, c, ctx, konfluxComponent)
-	if konfluxErr != nil && !k8serrors.IsNotFound(konfluxErr) {
+	if konfluxErr != nil && !k8serrors.IsNotFound(konfluxErr) && !k8serrors.IsForbidden(konfluxErr) {
 		return nil, konfluxErr
+	}
+	if k8serrors.IsForbidden(konfluxErr) {
+		logger.Info("RBAC does not permit GET on konflux-ci.dev Component; falling back to appstudio.redhat.com", "namespace", namespace, "component", name)
 	}
 	// Get the redhat.appstudio.io Component
 	appstudioComponent := &oldapplicationapiv1alpha1.Component{}
@@ -1227,4 +1235,31 @@ func (l *loader) GetNestedComponentGroupsForComponentGroup(ctx context.Context, 
 		}
 	}
 	return nestedComponentGroups, nil
+}
+
+// GetSecret returns the Secret requested by name and namespace.
+func (l *loader) GetSecret(ctx context.Context, c client.Client, name, namespace string) (*corev1.Secret, error) {
+	secret := &corev1.Secret{}
+	return secret, toolkit.GetObject(name, namespace, c, ctx, secret)
+}
+
+// GetServiceAccount returns the ServiceAccount requested by name and namespace.
+func (l *loader) GetServiceAccount(ctx context.Context, c client.Client, name, namespace string) (*corev1.ServiceAccount, error) {
+	serviceAccount := &corev1.ServiceAccount{}
+	return serviceAccount, toolkit.GetObject(name, namespace, c, ctx, serviceAccount)
+}
+
+// GetAllRepositoriesInNamespace returns all Pipelines-as-Code Repository CRs in the given namespace.
+func (l *loader) GetAllRepositoriesInNamespace(ctx context.Context, c client.Client, namespace string) (*[]pacv1alpha1.Repository, error) {
+	repositories := &pacv1alpha1.RepositoryList{}
+	opts := []client.ListOption{
+		client.InNamespace(namespace),
+	}
+
+	err := c.List(ctx, repositories, opts...)
+	if err != nil {
+		return nil, err
+	}
+
+	return &repositories.Items, nil
 }

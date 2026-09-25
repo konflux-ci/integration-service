@@ -23,8 +23,10 @@ import (
 	"github.com/konflux-ci/integration-service/api/v1beta2"
 	toolkit "github.com/konflux-ci/operator-toolkit/loader"
 	releasev1alpha1 "github.com/konflux-ci/release-service/api/v1alpha1"
+	pacv1alpha1 "github.com/openshift-pipelines/pipelines-as-code/pkg/apis/pipelinesascode/v1alpha1"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	resolutionv1beta1 "github.com/tektoncd/pipeline/pkg/apis/resolution/v1beta1"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -77,6 +79,9 @@ const (
 	GetPushComponentSnapshotsForComponentContextKey
 	NudgeConfigContextKey
 	NamespaceComponentsContextKey
+	SecretContextKey
+	ServiceAccountContextKey
+	RepositoriesContextKey
 )
 
 func NewMockLoader() ObjectLoader {
@@ -153,9 +158,9 @@ func (l *mockLoader) GetApplicationFromComponent(ctx context.Context, c client.C
 }
 
 // GetComponentGroupsForComponentVersion returns the r esource and error passed as values of the context
-func (l *mockLoader) GetComponentGroupsForComponentVersion(ctx context.Context, c client.Client, component *oldapplicationapiv1alpha1.Component, version string) (*[]v1beta2.ComponentGroup, error) {
+func (l *mockLoader) GetComponentGroupsForComponentVersion(ctx context.Context, c client.Client, componentName, namespace, version string) (*[]v1beta2.ComponentGroup, error) {
 	if ctx.Value(ComponentGroupsContextKey) == nil {
-		return l.loader.GetComponentGroupsForComponentVersion(ctx, c, component, version)
+		return l.loader.GetComponentGroupsForComponentVersion(ctx, c, componentName, namespace, version)
 	}
 	//cg, err := toolkit.GetMockedResourceAndErrorFromContext(ctx, ComponentGroupsContextKey, &v1beta2.ComponentGroup{})
 	//return &[]v1beta2.ComponentGroup{*cg}, err
@@ -481,4 +486,26 @@ func (l *mockLoader) GetNudgeConfigForNamespace(ctx context.Context, c client.Cl
 		return l.loader.GetNudgeConfigForNamespace(ctx, c, namespace)
 	}
 	return toolkit.GetMockedResourceAndErrorFromContext(ctx, NudgeConfigContextKey, &v1beta2.NudgeConfig{})
+}
+
+func (l *mockLoader) GetSecret(ctx context.Context, c client.Client, name, namespace string) (*corev1.Secret, error) {
+	if ctx.Value(SecretContextKey) == nil {
+		return l.loader.GetSecret(ctx, c, name, namespace)
+	}
+	return toolkit.GetMockedResourceAndErrorFromContext(ctx, SecretContextKey, &corev1.Secret{})
+}
+
+func (l *mockLoader) GetServiceAccount(ctx context.Context, c client.Client, name, namespace string) (*corev1.ServiceAccount, error) {
+	if ctx.Value(ServiceAccountContextKey) == nil {
+		return l.loader.GetServiceAccount(ctx, c, name, namespace)
+	}
+	return toolkit.GetMockedResourceAndErrorFromContext(ctx, ServiceAccountContextKey, &corev1.ServiceAccount{})
+}
+
+func (l *mockLoader) GetAllRepositoriesInNamespace(ctx context.Context, c client.Client, namespace string) (*[]pacv1alpha1.Repository, error) {
+	if ctx.Value(RepositoriesContextKey) == nil {
+		return l.loader.GetAllRepositoriesInNamespace(ctx, c, namespace)
+	}
+	repositories, err := toolkit.GetMockedResourceAndErrorFromContext(ctx, RepositoriesContextKey, []pacv1alpha1.Repository{})
+	return &repositories, err
 }

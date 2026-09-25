@@ -182,6 +182,15 @@ var _ = Describe("PipelineController", func() {
 				},
 			},
 		}
+		Eventually(func() bool {
+			existingPLR := &tektonv1.PipelineRun{}
+			err := k8sClient.Get(ctx, types.NamespacedName{
+				Name:      buildPipelineRun.Name,
+				Namespace: buildPipelineRun.Namespace,
+			}, existingPLR)
+			return errors.IsNotFound(err)
+		}, time.Second*10).Should(BeTrue(), "PipelineRun should be fully deleted before creating new one")
+
 		Expect(k8sClient.Create(ctx, buildPipelineRun)).Should(Succeed())
 
 		buildPipelineRun.Status = tektonv1.PipelineRunStatus{

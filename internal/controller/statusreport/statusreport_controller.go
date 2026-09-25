@@ -31,6 +31,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	crcontroller "sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 )
 
@@ -54,6 +55,7 @@ func NewStatusReportReconciler(client client.Client, logger *logr.Logger, scheme
 //+kubebuilder:rbac:groups=appstudio.redhat.com,resources=snapshots/status,verbs=get
 //+kubebuilder:rbac:groups=appstudio.redhat.com,resources=applications,verbs=get;list;watch
 //+kubebuilder:rbac:groups=appstudio.redhat.com,resources=applications/status,verbs=get
+//+kubebuilder:rbac:groups="",resources=secrets,verbs=get
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -130,5 +132,10 @@ func setupControllerWithManager(manager ctrl.Manager, controller *Reconciler) er
 				toolkitpredicates.IgnoreBackups{},
 				gitops.SnapshotTestAnnotationChangePredicate(),
 			)).
+		// 2 workers so a goroutine blocked on an external git-provider API call
+		// (Forgejo/GitHub/GitLab) cannot stall reconciliation of other Snapshots.
+		// Safe: each Reconcile creates its own loader+adapter with no shared mutable state;
+		// controller-runtime never runs two goroutines for the same Snapshot key concurrently.
+		WithOptions(crcontroller.Options{MaxConcurrentReconciles: 2}).
 		Complete(controller)
 }

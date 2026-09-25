@@ -161,6 +161,36 @@ func (gc *GitlabClient) CloseMergeRequest(projectID string, mergeRequestIID int6
 	return nil
 }
 
+// DeleteWebhooksByURL deletes all webhooks in a GitLab repo whose URL contains
+// urlSubstring. Paginates through all pages (100 per page) to handle repos with
+// many webhooks. Used in BeforeAll to remove stale PAC-managed webhooks so PAC
+// can register a fresh one with the correct per-run HMAC token, without
+// affecting any non-matching webhooks on the shared test repo.
+func (gc *GitlabClient) DeleteWebhooksByURL(projectID, urlSubstring string) error {
+	if urlSubstring == "" {
+		return fmt.Errorf("urlSubstring must not be empty")
+	}
+	opts := &gitlab.ListProjectHooksOptions{ListOptions: gitlab.ListOptions{PerPage: 100, Page: 1}}
+	for {
+		webhooks, resp, err := gc.client.Projects.ListProjectHooks(projectID, opts)
+		if err != nil {
+			return fmt.Errorf("failed to list project hooks for project id: %s: %v", projectID, err)
+		}
+		for _, webhook := range webhooks {
+			if strings.Contains(webhook.URL, urlSubstring) {
+				if _, err := gc.client.Projects.DeleteProjectHook(projectID, webhook.ID); err != nil {
+					return fmt.Errorf("failed to delete webhook (ID: %d): %v", webhook.ID, err)
+				}
+			}
+		}
+		if resp.NextPage == 0 {
+			break
+		}
+		opts.Page = resp.NextPage
+	}
+	return nil
+}
+
 // DeleteWebhooks deletes webhooks in Gitlab repo by given project ID,
 // and if the webhook URL contains the cluster's domain name.
 func (gc *GitlabClient) DeleteWebhooks(projectID, clusterAppDomain string) error {

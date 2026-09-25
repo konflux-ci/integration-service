@@ -124,7 +124,7 @@ const (
 	PipelineRunComponentLabel = "appstudio.openshift.io/component"
 
 	// PipelineRunComponentVersionAnnotation denotes the componentVersion for the build
-	PipelineRunComponentVersionAnnotation = "appstudio.openshift.io/version"
+	PipelineRunComponentVersionAnnotation = "build.konflux-ci.dev/version"
 
 	PipelineRunComponentVersionContextAnnotation = "appstudio.openshift.io/context"
 

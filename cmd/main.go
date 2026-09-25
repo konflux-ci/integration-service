@@ -38,10 +38,12 @@ import (
 
 	zap2 "go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
@@ -179,6 +181,15 @@ func main() {
 		LeaseDuration:          &leaseDuration,
 		RetryPeriod:            &leaderElectorRetryPeriod,
 		LeaderElectionID:       "03c7e15b.redhat.com",
+		// Secret and konflux-ci.dev Component Gets must not start cluster-wide informers.
+		Client: client.Options{
+			Cache: &client.CacheOptions{
+				DisableFor: []client.Object{
+					&corev1.Secret{},
+					&konfluxv1alpha1.Component{},
+				},
+			},
+		},
 	})
 	if err != nil {
 		setupLog.Error(err, "unable to start manager")
