@@ -276,24 +276,51 @@ func (a *Adapter) EnsureNudgePipelineRunsExist() (controller.OperationResult, er
 		return controller.ContinueProcessing()
 	}
 
+	// Split targets: batched targets go to batch path (stub), immediate targets proceed to CreateNudgePipelineRun.
+	var immediateTargets []nudging.NudgeTarget
+	var batchedTargetNames []string
+	for _, target := range targets {
+		if nudgeConfig.Spec.IsTargetBatched(target.ComponentName) {
+			a.logger.Info("Target configured for batching, deferring nudge",
+				"target", target.ComponentName)
+			batchedTargetNames = append(batchedTargetNames, target.ComponentName)
+			// Stub: actual batching logic will be implemented in future tickets (KFLUXSE-484+)
+			continue
+		}
+		immediateTargets = append(immediateTargets, target)
+	}
+
+	// If all targets are batched, annotate and return without creating immediate nudge PLR.
+	if len(immediateTargets) == 0 {
+		annotationValue := "batched:" + strings.Join(batchedTargetNames, ",")
+		a.logger.Info("All nudge targets are batched, skipping immediate nudge",
+			"batchedTargets", batchedTargetNames)
+		_ = tekton.AnnotateBuildPipelineRun(a.context, a.pipelineRun, tektonconsts.NudgeProcessedAnnotation, annotationValue, a.client)
+		return controller.ContinueProcessing()
+	}
+
 	// Add the nudge finalizer just before creating the nudge PLR so the build PLR cannot be
 	// GC'd between PLR creation and the annotation write that marks nudging as complete.
 	if err := h.AddFinalizerToPipelineRun(a.context, a.client, a.logger, a.pipelineRun, h.NudgePipelineRunFinalizer); err != nil {
 		return controller.RequeueWithError(err)
 	}
 
-	err = nudging.CreateNudgePipelineRun(a.context, a.client, a.pipelineRun, targets, buildResult, simpleBranchName)
+	err = nudging.CreateNudgePipelineRun(a.context, a.client, a.pipelineRun, immediateTargets, buildResult, simpleBranchName)
 	if err != nil {
 		a.logger.Error(err, "Failed to create nudge PipelineRun")
 		// Keep the nudge finalizer so the PLR stays alive for the retry.
 		return controller.RequeueWithError(err)
 	}
 
-	names := make([]string, len(targets))
-	for i, t := range targets {
+	names := make([]string, len(immediateTargets))
+	for i, t := range immediateTargets {
 		names[i] = t.ComponentName
 	}
 	processedValue := strings.Join(names, ",")
+	// If some targets were batched, append that info to the annotation for observability.
+	if len(batchedTargetNames) > 0 {
+		processedValue += ";batched:" + strings.Join(batchedTargetNames, ",")
+	}
 	err = tekton.AnnotateBuildPipelineRun(a.context, a.pipelineRun, tektonconsts.NudgeProcessedAnnotation, processedValue, a.client)
 	if err != nil {
 		a.logger.Error(err, "Failed to annotate build PLR as nudge-processed")
