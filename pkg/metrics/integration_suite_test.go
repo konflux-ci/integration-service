@@ -19,8 +19,9 @@ package metrics
 import (
 	"context"
 	"fmt"
-	"sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"testing"
+
+	"sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -81,6 +82,18 @@ func createCounterReader(header inputHeader, labels string, renderHeader bool, c
 		readerData = fmt.Sprintf("# HELP %s %s\n# TYPE %s counter\n", header.Name, header.Help, header.Name)
 	}
 	readerData += fmt.Sprintf("%s{%s} %d\n", header.Name, labels, count)
+
+	return readerData
+}
+
+// createGaugeReader creates a prometheus gauge type string with the given parameters to be used as input data
+// for 'strings.NewReader' in Prometheus 'client_golang' function 'testutil.CollectAndCompare'.
+func createGaugeReader(header inputHeader, labels string, renderHeader bool, count float64) string {
+	readerData := ""
+	if renderHeader {
+		readerData = fmt.Sprintf("# HELP %s %s\n# TYPE %s gauge\n", header.Name, header.Help, header.Name)
+	}
+	readerData += fmt.Sprintf("%s{%s} %f\n", header.Name, labels, count)
 
 	return readerData
 }
