@@ -16,10 +16,14 @@ package helpers
 import (
 	"errors"
 	"fmt"
+	"time"
 
+	"github.com/go-logr/logr"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	ctrl "sigs.k8s.io/controller-runtime"
 )
+
+var logger logr.Logger
 
 const (
 	ReasonEnvironmentNotInNamespace     = "EnvironmentNotInNamespace"
@@ -110,4 +114,18 @@ func NewUnrecoverableMetadataError(msg string) error {
 
 func IsUnrecoverableMetadataError(err error) bool {
 	return getReason(err) == ReasonUnrecoverableMetadataError
+}
+
+func RetryCreationOnError(fn func() error, attempts int, sleep time.Duration) (err error) {
+	for i := 0; i < attempts; i++ {
+		if i > 0 {
+			logger.Info("retrying after error", "error", err, "attempt", i)
+			time.Sleep(sleep)
+		}
+		err = fn()
+		if err == nil {
+			return nil
+		}
+	}
+	return fmt.Errorf("after %d attempts, last error: %w", attempts, err)
 }
