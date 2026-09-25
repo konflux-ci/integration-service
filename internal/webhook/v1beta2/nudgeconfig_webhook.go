@@ -71,7 +71,7 @@ func (v *NudgeConfigCustomValidator) ValidateCreate(ctx context.Context, obj run
 		return nil, err
 	}
 
-	return nil, nil
+	return batchDefaultsAdmissionWarnings(nudgeConfig.Spec.BatchDefaults), nil
 }
 
 func (v *NudgeConfigCustomValidator) ValidateUpdate(ctx context.Context, oldObj, newObj runtime.Object) (admission.Warnings, error) {
@@ -112,7 +112,7 @@ func (v *NudgeConfigCustomValidator) ValidateUpdate(ctx context.Context, oldObj,
 		return nil, err
 	}
 
-	return nil, nil
+	return batchDefaultsAdmissionWarnings(newNudgeConfig.Spec.BatchDefaults), nil
 }
 
 func (v *NudgeConfigCustomValidator) ValidateDelete(_ context.Context, _ runtime.Object) (admission.Warnings, error) {
@@ -146,4 +146,11 @@ func nudgeKeySet(nudges []v1beta2.NudgeRelationship) map[string]struct{} {
 		keys[nudgeKey(n)] = struct{}{}
 	}
 	return keys
+}
+
+func batchDefaultsAdmissionWarnings(batchDefaults *v1beta2.BatchDefaults) admission.Warnings {
+	if batchDefaults == nil {
+		return nil
+	}
+	return admission.Warnings{helpers.BatchDefaultsNotImplementedMessage}
 }
