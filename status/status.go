@@ -586,14 +586,23 @@ func (s Status) IsPRInSnapshotOpened(ctx context.Context, reporter ReporterInter
 	var unRecoverableError error
 	log := log.FromContext(ctx)
 	ghClient := github.NewClient(s.logger)
-	githubAppCreds, err := GetAppCredentials(ctx, s.client, snapshot)
+
+	owner, repo, err := resolveSnapshotRepository(ctx, s.client, snapshot)
 
 	if err != nil {
-		log.Error(err, "failed to get app credentials from Snapshot",
+		log.Error(err, "failed to resolve Snapshot repository",
 			"snapshot.NameSpace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
 		return false, statusCode, err
 	}
 
+	githubAppCreds, err := GetAppCredentials(ctx, s.client, ghClient, owner, repo)
+
+	if err != nil {
+		log.Error(err, "failed to get GitHub App credentials",
+			"namespace", snapshot.Namespace,
+			"snapshot", snapshot.Name)
+		return false, statusCode, err
+	}
 	token, statusCode, err := ghClient.CreateAppInstallationToken(ctx, githubAppCreds.AppID, githubAppCreds.InstallationID, githubAppCreds.PrivateKey)
 	if err != nil {
 		log.Error(err, "failed to create app installation token",
@@ -605,20 +614,6 @@ func (s Status) IsPRInSnapshotOpened(ctx context.Context, reporter ReporterInter
 	ghClient.SetOAuthToken(ctx, token)
 
 	labels := snapshot.GetLabels()
-
-	owner, found := labels[gitops.PipelineAsCodeURLOrgLabel]
-	if !found {
-		unRecoverableError = helpers.NewUnrecoverableMetadataError(fmt.Sprintf("org label not found %q", gitops.PipelineAsCodeURLOrgLabel))
-		log.Error(unRecoverableError, fmt.Sprintf("org label not found %q", gitops.PipelineAsCodeURLOrgLabel))
-		return false, statusCode, unRecoverableError
-	}
-
-	repo, found := labels[gitops.PipelineAsCodeURLRepositoryLabel]
-	if !found {
-		unRecoverableError = helpers.NewUnrecoverableMetadataError(fmt.Sprintf("repository label not found %q", gitops.PipelineAsCodeURLRepositoryLabel))
-		log.Error(unRecoverableError, fmt.Sprintf("repository label not found %q", gitops.PipelineAsCodeURLRepositoryLabel))
-		return false, statusCode, unRecoverableError
-	}
 
 	pullRequestStr, found := labels[gitops.PipelineAsCodePullRequestAnnotation]
 	if !found {
