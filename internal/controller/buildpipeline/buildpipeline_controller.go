@@ -20,11 +20,9 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/konflux-ci/integration-service/cache"
-	"k8s.io/client-go/util/retry"
-
 	"github.com/go-logr/logr"
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
+	"github.com/konflux-ci/integration-service/cache"
 	"github.com/konflux-ci/integration-service/helpers"
 	"github.com/konflux-ci/integration-service/loader"
 	"github.com/konflux-ci/integration-service/tekton"
@@ -33,6 +31,7 @@ import (
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
@@ -88,39 +87,13 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{}, err
 	}
 
-	var component *applicationapiv1alpha1.Component
-	err = retry.OnError(retry.DefaultRetry, func(_ error) bool { return true }, func() error {
-		component, err = loader.GetComponentFromPipelineRun(ctx, r.Client, pipelineRun)
-		return err
-	})
-	if err != nil {
-		// Annotate the PipelineRun with the error before handling it
-		tknErr := tekton.AnnotateBuildPipelineRunWithCreateSnapshotAnnotation(ctx, pipelineRun, r.Client, err)
-		if tknErr != nil {
-			return ctrl.Result{}, tknErr
-		}
-		if errors.IsNotFound(err) {
-			// Use retry logic to handle etcd timeouts when removing finalizer
-			err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
-				// Refetch the PipelineRun to get the latest version before removing finalizer
-				err := r.Get(ctx, req.NamespacedName, pipelineRun)
-				if err != nil {
-					return err
-				}
-				return helpers.RemoveFinalizerFromPipelineRun(ctx, r.Client, logger, pipelineRun, helpers.IntegrationPipelineRunFinalizer)
-			})
-			if err != nil {
-				return ctrl.Result{}, err
-			}
-		}
-		return helpers.HandleLoaderError(logger, err, "component", "pipelineRun")
-	} else if component == nil {
-		// if both component and error are nil then the component label for the pipeline did not exist
-		// in this case we should stop reconciliation
-		logger.Info("Failed to  get component for build pipeline - component label does not exist", "name", pipelineRun.Name, "namespace", pipelineRun.Namespace)
+	componentName := pipelineRun.Labels[tektonconsts.PipelineRunComponentLabel]
+	if componentName == "" {
+		componentName = pipelineRun.Labels["build.konflux-ci.dev/component"]
+	}
+	if componentName == "" {
 		componentErr := fmt.Errorf("component label does not exist on pipelineRun %s/%s", pipelineRun.Namespace, pipelineRun.Name)
-		tknErr := tekton.AnnotateBuildPipelineRunWithCreateSnapshotAnnotation(ctx, pipelineRun, r.Client, componentErr)
-		if tknErr != nil {
+		if tknErr := tekton.AnnotateBuildPipelineRunWithCreateSnapshotAnnotation(ctx, pipelineRun, r.Client, componentErr); tknErr != nil {
 			return ctrl.Result{}, tknErr
 		}
 		return ctrl.Result{}, nil
@@ -132,6 +105,32 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	// otherwise we are using a componentGroup
 	version, ok := pipelineRun.Annotations[tektonconsts.PipelineRunComponentVersionAnnotation]
 	if !ok || version == "" {
+		var component *applicationapiv1alpha1.Component
+		err = retry.OnError(retry.DefaultRetry, func(_ error) bool { return true }, func() error {
+			component, err = loader.GetAppstudioComponent(ctx, r.Client, componentName, pipelineRun.Namespace)
+			return err
+		})
+		if err != nil {
+			tknErr := tekton.AnnotateBuildPipelineRunWithCreateSnapshotAnnotation(ctx, pipelineRun, r.Client, err)
+			if tknErr != nil {
+				return ctrl.Result{}, fmt.Errorf("failed to annotate build pipelineRun %s/%s with snapshot creation error: %w", pipelineRun.Namespace, pipelineRun.Name, tknErr)
+			}
+			if errors.IsNotFound(err) {
+				// Use retry logic to handle etcd timeouts when removing finalizer
+				err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
+					// Refetch the PipelineRun to get the latest version before removing finalizer
+					if err := r.Get(ctx, req.NamespacedName, pipelineRun); err != nil {
+						return err
+					}
+					return helpers.RemoveFinalizerFromPipelineRun(ctx, r.Client, logger, pipelineRun, helpers.IntegrationPipelineRunFinalizer)
+				})
+				if err != nil {
+					return ctrl.Result{}, fmt.Errorf("failed to remove finalizer from build pipelineRun %s/%s: %w", pipelineRun.Namespace, pipelineRun.Name, err)
+				}
+				return ctrl.Result{}, nil
+			}
+			return helpers.HandleLoaderError(logger, err, "component", "pipelineRun")
+		}
 		application, err := loader.GetApplicationFromComponent(ctx, r.Client, component)
 		if err != nil {
 			logger.Error(err, "Failed to get Application from Component",
@@ -148,10 +147,10 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 
 		adapter = NewAdapterWithApplication(ctx, pipelineRun, component, application, logger, loader, r.Client)
 	} else {
-		componentGroups, err := loader.GetComponentGroupsForComponentVersion(ctx, r.Client, component, version)
+		componentGroups, err := loader.GetComponentGroupsForComponentVersion(ctx, r.Client, componentName, pipelineRun.Namespace, version)
 		if err != nil {
 			logger.Error(err, "Failed to get ComponentGroups for Component",
-				"Component.Name ", component.Name, "Component.Namespace ", component.Namespace)
+				"Component.Name ", componentName, "Component.Namespace ", pipelineRun.Namespace)
 			tknErr := tekton.AnnotateBuildPipelineRunWithCreateSnapshotAnnotation(ctx, pipelineRun, r.Client, err)
 			if tknErr != nil {
 				return ctrl.Result{}, tknErr
@@ -159,7 +158,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 			return helpers.HandleLoaderError(logger, err, "componentgroups", "component")
 		}
 
-		adapter = NewAdapter(ctx, pipelineRun, component, componentGroups, logger, loader, r.Client)
+		adapter = NewAdapter(ctx, pipelineRun, componentName, componentGroups, logger, loader, r.Client)
 	}
 
 	return controller.ReconcileHandler([]controller.Operation{
