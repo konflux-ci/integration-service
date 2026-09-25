@@ -65,14 +65,24 @@ func (r *IntegrationPipelineRun) AsPipelineRun() *tektonv1.PipelineRun {
 func ReplaceGitResolverUpdateMap(snapshot *applicationapiv1alpha1.Snapshot, resolverParams []v1beta2.ResolverParameter) []v1beta2.ResolverParameter {
 	annotations := snapshot.GetAnnotations()
 
+	sourceRepoUrl := annotations[gitops.PipelineAsCodeGitSourceURLAnnotation]
+	targetRepoUrl := annotations[gitops.PipelineAsCodeRepoURLAnnotation]
+	forkOrg, forkRepo, isFork := h.ForkGitResolverOrgRepo(sourceRepoUrl, targetRepoUrl)
+
 	for paramIndex, param := range resolverParams {
 		if param.Name == consts.TektonResolverGitParamURL {
 			// use the original index to update the value, we cannot update value given by range directly
-			resolverParams[paramIndex].Value = h.UrlToGitUrl(annotations[gitops.PipelineAsCodeGitSourceURLAnnotation]) // should have .git in url for consistency and compatibility
+			resolverParams[paramIndex].Value = h.UrlToGitUrl(sourceRepoUrl) // should have .git in url for consistency and compatibility
 		}
 		if param.Name == consts.TektonResolverGitParamRevision {
 			// use the original index to update the value, we cannot update value given by range directly
 			resolverParams[paramIndex].Value = annotations[gitops.PipelineAsCodeSHAAnnotation]
+		}
+		if isFork && param.Name == consts.TektonResolverGitParamOrg {
+			resolverParams[paramIndex].Value = forkOrg
+		}
+		if isFork && param.Name == consts.TektonResolverGitParamRepo {
+			resolverParams[paramIndex].Value = forkRepo
 		}
 	}
 	return resolverParams
@@ -348,10 +358,18 @@ func updateTaskGitResolver(originalTask *tektonv1.PipelineTask, params map[strin
 // getGitResolverUpdateMap extracts the git resolver annotations from the Snapshot
 func getGitResolverUpdateMap(snapshot *applicationapiv1alpha1.Snapshot) map[string]string {
 	annotations := snapshot.GetAnnotations()
-	return map[string]string{
-		consts.TektonResolverGitParamURL:      h.UrlToGitUrl(annotations[gitops.PipelineAsCodeGitSourceURLAnnotation]), // should have .git in url for consistency and compatibility
+	sourceRepoUrl := annotations[gitops.PipelineAsCodeGitSourceURLAnnotation]
+	targetRepoUrl := annotations[gitops.PipelineAsCodeRepoURLAnnotation]
+
+	updates := map[string]string{
+		consts.TektonResolverGitParamURL:      h.UrlToGitUrl(sourceRepoUrl), // should have .git in url for consistency and compatibility
 		consts.TektonResolverGitParamRevision: annotations[gitops.PipelineAsCodeSHAAnnotation],
 	}
+	if forkOrg, forkRepo, ok := h.ForkGitResolverOrgRepo(sourceRepoUrl, targetRepoUrl); ok {
+		updates[consts.TektonResolverGitParamOrg] = forkOrg
+		updates[consts.TektonResolverGitParamRepo] = forkRepo
+	}
+	return updates
 }
 
 // doTargetAndSourceRevisionParamsMatch checks if the target revision matches the resolver's source parameter
@@ -364,10 +382,21 @@ func doTargetAndSourceRevisionParamsMatch(annotations map[string]string, params 
 		return false
 	}
 
+	// When url parameter is used, normalize the URL and match against the component's git source
 	if urlVal, ok := params[consts.TektonResolverGitParamURL]; ok {
 		// urlVal may or may not have git suffix specified
 		return annotations[gitops.PipelineAsCodeRepoURLAnnotation] != "" &&
 			h.UrlToGitUrl(urlVal) == h.UrlToGitUrl(annotations[gitops.PipelineAsCodeRepoURLAnnotation])
+	}
+
+	// When org/repo/serverURL are used, construct the URL from those params and match against the component's git source
+	if serverUrl, ok := params[consts.TektonResolverGitParamServerUrl]; ok {
+		if orgVal, ok := params[consts.TektonResolverGitParamOrg]; ok {
+			if repoVal, ok := params[consts.TektonResolverGitParamRepo]; ok {
+				return annotations[gitops.PipelineAsCodeRepoURLAnnotation] != "" &&
+					h.ConstructGitUrl(serverUrl, orgVal, repoVal) == h.UrlToGitUrl(annotations[gitops.PipelineAsCodeRepoURLAnnotation])
+			}
+		}
 	}
 
 	// undefined state, no idea what was configured in resolver, don't touch it
