@@ -334,23 +334,26 @@ func (a *Adapter) EnsureNudgePipelineRunsExist() (controller.OperationResult, er
 		return controller.ContinueProcessing()
 	}
 
+	immediateTargets := targets
+
 	// Add the nudge finalizer just before creating the nudge PLR so the build PLR cannot be
 	// GC'd between PLR creation and the annotation write that marks nudging as complete.
 	if err := h.AddFinalizerToPipelineRun(a.context, a.client, a.logger, a.pipelineRun, h.NudgePipelineRunFinalizer); err != nil {
 		return controller.RequeueWithError(err)
 	}
 
-	err = nudging.CreateNudgePipelineRun(a.context, a.client, a.pipelineRun, targets, buildResult, simpleBranchName)
+	err = nudging.CreateNudgePipelineRun(a.context, a.client, a.pipelineRun, immediateTargets, buildResult, simpleBranchName)
 	if err != nil {
 		a.logger.Error(err, "Failed to create nudge PipelineRun")
 		// Keep the nudge finalizer so the PLR stays alive for the retry.
 		return controller.RequeueWithError(err)
 	}
 
-	for _, t := range targets {
-		processedNames = append(processedNames, t.ComponentName)
+	names := make([]string, len(immediateTargets))
+	for i, t := range immediateTargets {
+		names[i] = t.ComponentName
 	}
-	processedValue := strings.Join(processedNames, ",")
+	processedValue := strings.Join(names, ",")
 	err = tekton.AnnotateBuildPipelineRun(a.context, a.pipelineRun, tektonconsts.NudgeProcessedAnnotation, processedValue, a.client)
 	if err != nil {
 		a.logger.Error(err, "Failed to annotate build PLR as nudge-processed")
