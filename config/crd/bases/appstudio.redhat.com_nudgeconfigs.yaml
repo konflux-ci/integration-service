@@ -47,9 +47,60 @@ spec:
           metadata:
             type: object
           spec:
-            description: NudgeConfigSpec defines the desired nudging relationships
-              between components.
+            description: |-
+              NudgeConfigSpec defines the desired nudging relationships between components
+              and optional namespace-wide batch defaults.
             properties:
+              batchDefaults:
+                description: |-
+                  BatchDefaults sets default debounce, max wait, and failure policy for batched nudges
+                  to shared targets in this namespace (see BatchDefaults). Reserved until batching is implemented.
+                properties:
+                  debounceTimeout:
+                    description: |-
+                      DebounceTimeout is how long to wait after the last incoming build before firing the batch.
+                      Range: 1m–24h. Runtime default when unset: 30m.
+                      When MaxWaitTime is also specified, DebounceTimeout must be strictly less than MaxWaitTime.
+                      When MaxWaitTime is omitted, DebounceTimeout must be strictly less than the 4h runtime default.
+                    format: duration
+                    type: string
+                    x-kubernetes-validations:
+                    - message: debounceTimeout must be between 1m and 24h
+                      rule: duration(self) >= duration('1m') && duration(self) <=
+                        duration('24h')
+                  failurePolicy:
+                    description: |-
+                      FailurePolicy controls whether a failed member build blocks the batch or allows a partial fire.
+                      Runtime default when unset: Block.
+                    enum:
+                    - Block
+                    - ProceedWithPartial
+                    type: string
+                  maxWaitTime:
+                    description: |-
+                      MaxWaitTime is the hard deadline from the first build event, regardless of debounce resets.
+                      Range: 1m–24h. Runtime default when unset: 4h.
+                      When both MaxWaitTime and DebounceTimeout are set, MaxWaitTime must exceed DebounceTimeout.
+                      When DebounceTimeout is omitted, MaxWaitTime must exceed the 30m runtime default.
+                    format: duration
+                    type: string
+                    x-kubernetes-validations:
+                    - message: maxWaitTime must be between 1m and 24h
+                      rule: duration(self) >= duration('1m') && duration(self) <=
+                        duration('24h')
+                type: object
+                x-kubernetes-validations:
+                - message: maxWaitTime must exceed debounceTimeout
+                  rule: '!has(self.debounceTimeout) || !has(self.maxWaitTime) || duration(self.maxWaitTime)
+                    > duration(self.debounceTimeout)'
+                - message: debounceTimeout must be less than the 4h runtime default
+                    for maxWaitTime when maxWaitTime is omitted
+                  rule: '!has(self.debounceTimeout) || has(self.maxWaitTime) || duration(self.debounceTimeout)
+                    < duration(''4h'')'
+                - message: maxWaitTime must exceed the 30m runtime default for debounceTimeout
+                    when debounceTimeout is omitted
+                  rule: '!has(self.maxWaitTime) || has(self.debounceTimeout) || duration(self.maxWaitTime)
+                    > duration(''30m'')'
               nudges:
                 description: Nudges is the list of component nudge relationships.
                 items:
@@ -90,6 +141,71 @@ spec:
                   type: object
                 maxItems: 360
                 type: array
+              targetConfig:
+                description: TargetConfig lists per-target batch policies. Targets
+                  without batchPolicy are not batched.
+                items:
+                  description: TargetConfig declares per-target batch behavior. Presence
+                    of batchPolicy opts the target into batching.
+                  properties:
+                    batchPolicy:
+                      description: |-
+                        BatchPolicy defines per-target batch timing and failure behavior overrides.
+                        When omitted, the target is not batched. An empty object opts into batching with inherited defaults.
+                      properties:
+                        debounceTimeout:
+                          description: |-
+                            DebounceTimeout is how long to wait after the last incoming build before firing the batch.
+                            Range: 1m–24h. Inherits from batchDefaults or 30m runtime default when unset.
+                          format: duration
+                          type: string
+                          x-kubernetes-validations:
+                          - message: debounceTimeout must be between 1m and 24h
+                            rule: duration(self) >= duration('1m') && duration(self)
+                              <= duration('24h')
+                        failurePolicy:
+                          description: |-
+                            FailurePolicy controls whether a failed member build blocks the batch or allows a partial fire.
+                            Inherits from batchDefaults or Block runtime default when unset.
+                          enum:
+                          - Block
+                          - ProceedWithPartial
+                          type: string
+                        maxWaitTime:
+                          description: |-
+                            MaxWaitTime is the hard deadline from the first build event, regardless of debounce resets.
+                            Range: 1m–24h. Inherits from batchDefaults or 4h runtime default when unset.
+                          format: duration
+                          type: string
+                          x-kubernetes-validations:
+                          - message: maxWaitTime must be between 1m and 24h
+                            rule: duration(self) >= duration('1m') && duration(self)
+                              <= duration('24h')
+                      type: object
+                      x-kubernetes-validations:
+                      - message: maxWaitTime must exceed debounceTimeout
+                        rule: '!has(self.debounceTimeout) || !has(self.maxWaitTime)
+                          || duration(self.maxWaitTime) > duration(self.debounceTimeout)'
+                      - message: debounceTimeout must be less than the 4h runtime
+                          default for maxWaitTime when maxWaitTime is omitted
+                        rule: '!has(self.debounceTimeout) || has(self.maxWaitTime)
+                          || duration(self.debounceTimeout) < duration(''4h'')'
+                      - message: maxWaitTime must exceed the 30m runtime default for
+                          debounceTimeout when debounceTimeout is omitted
+                        rule: '!has(self.maxWaitTime) || has(self.debounceTimeout)
+                          || duration(self.maxWaitTime) > duration(''30m'')'
+                    target:
+                      description: Target is the downstream component name that may
+                        receive batched nudges.
+                      maxLength: 63
+                      minLength: 1
+                      pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                      type: string
+                  required:
+                  - target
+                  type: object
+                maxItems: 360
+                type: array
             type: object
             x-kubernetes-validations:
             - message: 'self-nudge not allowed: from and to must be different'
@@ -97,12 +213,167 @@ spec:
             - message: duplicate (from, to) pair not allowed
               rule: '!has(self.nudges) || self.nudges.all(i, self.nudges.exists_one(j,
                 i.from == j.from && i.to == j.to))'
+            - message: duplicate target not allowed in targetConfig
+              rule: '!has(self.targetConfig) || self.targetConfig.all(i, self.targetConfig.exists_one(j,
+                i.target == j.target))'
           status:
             description: NudgeConfigStatus defines the observed state of NudgeConfig.
             properties:
+              activeBatches:
+                description: |-
+                  ActiveBatches tracks the runtime state of all in-progress nudge batches.
+                  Batch lifecycle (including removal of terminal entries) is managed by the controller.
+                items:
+                  description: |-
+                    ActiveBatch defines the runtime state of a single nudge batch.
+                    All batch state is persisted here so it survives controller restarts.
+                  properties:
+                    accumulated:
+                      description: Accumulated is the list of build events collected
+                        into this batch.
+                      items:
+                        description: AccumulatedEntry defines a build event that has
+                          been collected into a batch.
+                        properties:
+                          buildPipelineRun:
+                            description: BuildPipelineRun is the name of the build
+                              PipelineRun that produced this entry.
+                            minLength: 1
+                            type: string
+                          capturedAt:
+                            description: CapturedAt is the timestamp when this entry
+                              was added to the batch.
+                            format: date-time
+                            type: string
+                          from:
+                            description: From is the source component name whose build
+                              was captured.
+                            maxLength: 63
+                            minLength: 1
+                            pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                            type: string
+                          imageDigest:
+                            description: ImageDigest is the OCI image digest produced
+                              by the build pipeline run.
+                            minLength: 1
+                            type: string
+                        required:
+                        - buildPipelineRun
+                        - capturedAt
+                        - from
+                        - imageDigest
+                        type: object
+                      maxItems: 360
+                      type: array
+                    batchId:
+                      description: BatchID is a unique identifier for this batch instance.
+                      maxLength: 253
+                      minLength: 1
+                      type: string
+                    createdAt:
+                      description: CreatedAt is the timestamp when this batch was
+                        first created.
+                      format: date-time
+                      type: string
+                    failed:
+                      description: Failed is the list of build events that could not
+                        be accumulated into this batch.
+                      items:
+                        description: FailedEntry defines a build event that could
+                          not be accumulated into the batch.
+                        properties:
+                          buildPipelineRun:
+                            description: BuildPipelineRun is the name of the build
+                              PipelineRun associated with the failure.
+                            minLength: 1
+                            type: string
+                          capturedAt:
+                            description: CapturedAt is the timestamp when this failure
+                              was recorded.
+                            format: date-time
+                            type: string
+                          from:
+                            description: From is the source component name whose build
+                              failed to be accumulated.
+                            maxLength: 63
+                            minLength: 1
+                            pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                            type: string
+                          reason:
+                            description: Reason is a human-readable explanation of
+                              why this entry failed.
+                            minLength: 1
+                            type: string
+                        required:
+                        - buildPipelineRun
+                        - capturedAt
+                        - from
+                        - reason
+                        type: object
+                      maxItems: 100
+                      type: array
+                    fireAt:
+                      description: |-
+                        FireAt is the scheduled time when this batch will fire and create the nudge pipeline run.
+                        Nil when the batch is in Blocked phase. Semantics aligned with ADR 72 (landing in parallel).
+                      format: date-time
+                      type: string
+                    hardDeadline:
+                      description: |-
+                        HardDeadline is the absolute deadline by which an accumulating batch must fire,
+                        regardless of debounce timer resets. If passed while blocked, the batch fires
+                        immediately once unblocked rather than being abandoned.
+                      format: date-time
+                      type: string
+                    message:
+                      description: Message provides additional human-readable context
+                        about the current batch state.
+                      type: string
+                    nudgePipelineRun:
+                      description: NudgePipelineRun is the name of the nudge PipelineRun
+                        created when this batch fired.
+                      type: string
+                    phase:
+                      description: Phase is the current lifecycle phase of this batch.
+                      enum:
+                      - Accumulating
+                      - Blocked
+                      - Firing
+                      - Failed
+                      - Completed
+                      type: string
+                    retryCount:
+                      description: |-
+                        RetryCount is the number of times this batch has been retried after failure.
+                        Persisted to survive controller restarts.
+                      format: int32
+                      type: integer
+                    target:
+                      description: Target is the component name that will receive
+                        the nudge when the batch fires.
+                      maxLength: 63
+                      minLength: 1
+                      pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                      type: string
+                  required:
+                  - batchId
+                  - createdAt
+                  - hardDeadline
+                  - phase
+                  - target
+                  type: object
+                maxItems: 360
+                type: array
+                x-kubernetes-list-map-keys:
+                - batchId
+                x-kubernetes-list-type: map
               conditions:
-                description: Conditions represent the latest available observations
-                  of the NudgeConfig's state.
+                description: |-
+                  Conditions represent the latest available observations of the NudgeConfig's state.
+                  Known condition types:
+                  - StaleReferences: True when spec.nudges reference missing Components (set by the build pipeline controller).
+                  - BatchDefaultsSupported: False with reason NotImplemented when spec.batchDefaults is set but not yet applied.
+                    The validating webhook also warns on create/update when batchDefaults is present.
                 items:
                   description: Condition contains details for one aspect of the current
                     state of this API Resource.

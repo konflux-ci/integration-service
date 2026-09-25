@@ -56,8 +56,10 @@ import (
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
 	tektonconsts "github.com/konflux-ci/integration-service/tekton/consts"
 	toolkit "github.com/konflux-ci/operator-toolkit/loader"
+	pacv1alpha1 "github.com/openshift-pipelines/pipelines-as-code/pkg/apis/pipelinesascode/v1alpha1"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	"github.com/tonglil/buflogr"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -4404,6 +4406,186 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			}, time.Second*5).Should(Succeed())
 		})
 
+		Context("batch routing via TargetConfig", func() {
+			const (
+				nudgeDockerSecretName = "nudge-docker-secret"
+				nudgeSCMSecretName    = "nudge-scm-secret"
+				nudgeRepositoryName   = "nudge-target-repo"
+			)
+
+			var (
+				dockerSecret *corev1.Secret
+				scmSecret    *corev1.Secret
+				pacRepo      *pacv1alpha1.Repository
+				pipelineSA   *corev1.ServiceAccount
+			)
+
+			setupNudgeCredentials := func() {
+				dockerConfigBytes, err := json.Marshal(map[string]interface{}{
+					"auths": map[string]interface{}{
+						"quay.io": map[string]string{
+							"username": "quay-user",
+							"password": "quay-pass",
+						},
+					},
+				})
+				Expect(err).NotTo(HaveOccurred())
+
+				dockerSecret = &corev1.Secret{
+					ObjectMeta: metav1.ObjectMeta{Name: nudgeDockerSecretName, Namespace: "default"},
+					Type:       corev1.SecretTypeDockerConfigJson,
+					Data: map[string][]byte{
+						corev1.DockerConfigJsonKey: dockerConfigBytes,
+					},
+				}
+				Expect(k8sClient.Create(ctx, dockerSecret)).To(Succeed())
+
+				pipelineSA = &corev1.ServiceAccount{
+					ObjectMeta: metav1.ObjectMeta{Name: tektonconsts.DefaultPipelineServiceAccount, Namespace: "default"},
+					Secrets:    []corev1.ObjectReference{{Name: nudgeDockerSecretName}},
+				}
+				Expect(k8sClient.Create(ctx, pipelineSA)).To(Succeed())
+
+				scmSecret = &corev1.Secret{
+					ObjectMeta: metav1.ObjectMeta{Name: nudgeSCMSecretName, Namespace: "default"},
+					Type:       corev1.SecretTypeBasicAuth,
+					Data: map[string][]byte{
+						corev1.BasicAuthUsernameKey: []byte("nudge-bot"),
+						corev1.BasicAuthPasswordKey: []byte("ghp_nudge-token"),
+					},
+				}
+				Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+
+				pacRepo = &pacv1alpha1.Repository{
+					ObjectMeta: metav1.ObjectMeta{Name: nudgeRepositoryName, Namespace: "default"},
+					Spec: pacv1alpha1.RepositorySpec{
+						URL: SampleRepoLink,
+						GitProvider: &pacv1alpha1.GitProvider{
+							Secret: &pacv1alpha1.Secret{Name: nudgeSCMSecretName},
+						},
+					},
+				}
+				Expect(k8sClient.Create(ctx, pacRepo)).To(Succeed())
+			}
+
+			cleanupNudgeCredentials := func() {
+				nudgePLRList := &tektonv1.PipelineRunList{}
+				Expect(k8sClient.List(ctx, nudgePLRList, client.InNamespace("default"),
+					client.MatchingLabels{tektonconsts.NudgeTypeLabel: tektonconsts.NudgePipelineRunTypeValue})).To(Succeed())
+				for i := range nudgePLRList.Items {
+					err := k8sClient.Delete(ctx, &nudgePLRList.Items[i])
+					Expect(err == nil || k8serrors.IsNotFound(err)).To(BeTrue())
+				}
+
+				if pacRepo != nil {
+					err := k8sClient.Delete(ctx, pacRepo)
+					Expect(err == nil || k8serrors.IsNotFound(err)).To(BeTrue())
+				}
+				if scmSecret != nil {
+					err := k8sClient.Delete(ctx, scmSecret)
+					Expect(err == nil || k8serrors.IsNotFound(err)).To(BeTrue())
+				}
+				if pipelineSA != nil {
+					err := k8sClient.Delete(ctx, pipelineSA)
+					Expect(err == nil || k8serrors.IsNotFound(err)).To(BeTrue())
+				}
+				if dockerSecret != nil {
+					err := k8sClient.Delete(ctx, dockerSecret)
+					Expect(err == nil || k8serrors.IsNotFound(err)).To(BeTrue())
+				}
+			}
+
+			nudgeConfigForTarget := func(targetConfig []v1beta2.TargetConfig) *v1beta2.NudgeConfig {
+				return &v1beta2.NudgeConfig{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      v1beta2.NudgeConfigSingletonName,
+						Namespace: "default",
+					},
+					Spec: v1beta2.NudgeConfigSpec{
+						TargetConfig: targetConfig,
+						Nudges: []v1beta2.NudgeRelationship{
+							{From: hasComp.Name, To: hasComp2.Name, Mode: v1beta2.NudgeModeImmediate},
+						},
+					},
+				}
+			}
+
+			BeforeEach(func() {
+				setupNudgeCredentials()
+			})
+
+			AfterEach(func() {
+				cleanupNudgeCredentials()
+			})
+
+			It("does not create a Renovate PLR when the target has a batchPolicy", func() {
+				pushPLR := makePushPLR()
+				buildComp := hasComp.DeepCopy()
+				buildComp.Spec.ContainerImage = SampleImageWithoutDigest + ":latest"
+
+				nudgeConfig := nudgeConfigForTarget([]v1beta2.TargetConfig{
+					{
+						Target:      hasComp2.Name,
+						BatchPolicy: &v1beta2.BatchPolicy{},
+					},
+				})
+
+				adapter = NewAdapter(ctx, pushPLR, buildComp, &[]v1beta2.ComponentGroup{*hasCompGroup}, logger, loader.NewMockLoader(), k8sClient)
+				adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+					{
+						ContextKey: loader.NudgeConfigContextKey,
+						Resource:   nudgeConfig,
+					},
+				})
+
+				result, err := adapter.EnsureNudgePipelineRunsExist()
+				Expect(err).NotTo(HaveOccurred())
+				Expect(result.CancelRequest).To(BeFalse())
+
+				Eventually(func(g Gomega) {
+					nudgePLRList := &tektonv1.PipelineRunList{}
+					g.Expect(k8sClient.List(ctx, nudgePLRList, client.InNamespace("default"),
+						client.MatchingLabels{tektonconsts.NudgeTypeLabel: tektonconsts.NudgePipelineRunTypeValue})).To(Succeed())
+					g.Expect(nudgePLRList.Items).To(BeEmpty())
+
+					updatedPLR := &tektonv1.PipelineRun{}
+					g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(buildPipelineRun), updatedPLR)).To(Succeed())
+					g.Expect(updatedPLR.Annotations[tektonconsts.NudgeProcessedAnnotation]).To(Equal("batched:" + hasComp2.Name))
+				}, time.Second*5).Should(Succeed())
+			})
+
+			It("creates a Renovate PLR when the target has no batchPolicy", func() {
+				pushPLR := makePushPLR()
+				buildComp := hasComp.DeepCopy()
+				buildComp.Spec.ContainerImage = SampleImageWithoutDigest + ":latest"
+
+				nudgeConfig := nudgeConfigForTarget(nil)
+
+				adapter = NewAdapter(ctx, pushPLR, buildComp, &[]v1beta2.ComponentGroup{*hasCompGroup}, logger, loader.NewMockLoader(), k8sClient)
+				adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+					{
+						ContextKey: loader.NudgeConfigContextKey,
+						Resource:   nudgeConfig,
+					},
+				})
+
+				result, err := adapter.EnsureNudgePipelineRunsExist()
+				Expect(err).NotTo(HaveOccurred())
+				Expect(result.CancelRequest).To(BeFalse())
+
+				Eventually(func(g Gomega) {
+					nudgePLRList := &tektonv1.PipelineRunList{}
+					g.Expect(k8sClient.List(ctx, nudgePLRList, client.InNamespace("default"),
+						client.MatchingLabels{tektonconsts.NudgeTypeLabel: tektonconsts.NudgePipelineRunTypeValue})).To(Succeed())
+					g.Expect(nudgePLRList.Items).To(HaveLen(1))
+
+					updatedPLR := &tektonv1.PipelineRun{}
+					g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(buildPipelineRun), updatedPLR)).To(Succeed())
+					g.Expect(updatedPLR.Annotations[tektonconsts.NudgeProcessedAnnotation]).To(Equal(hasComp2.Name))
+				}, time.Second*5).Should(Succeed())
+			})
+		})
+
 		Context("when checking NudgeConfig for stale Component references", func() {
 			var nudgeConfig *v1beta2.NudgeConfig
 
@@ -4505,7 +4687,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		})
 	})
 
-	When("checkNudgeConfigForStaleReferences is called", func() {
+	When("updateNudgeConfigStatus is called", func() {
 		var nudgeConfig *v1beta2.NudgeConfig
 
 		BeforeEach(func() {
@@ -4535,7 +4717,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 
 		It("sets the initial condition when NudgeConfig has no nudge relationships and no stale references status condition", func() {
 			nudgeConfig.Spec.Nudges = nil
-			Expect(adapter.checkNudgeConfigForStaleReferences(nudgeConfig, "default")).To(Succeed())
+			Expect(adapter.updateNudgeConfigStatus(nudgeConfig, "default")).To(Succeed())
 
 			Eventually(func(g Gomega) {
 				updated := &v1beta2.NudgeConfig{}
@@ -4563,7 +4745,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 					Err:        fmt.Errorf("list components failed"),
 				},
 			})
-			Expect(adapter.checkNudgeConfigForStaleReferences(nudgeConfig, "default")).To(Succeed())
+			Expect(adapter.updateNudgeConfigStatus(nudgeConfig, "default")).To(Succeed())
 		})
 
 		It("sets the StaleReferences condition to ConditionTrue when orphaned references exist", func() {
@@ -4585,7 +4767,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 					},
 				},
 			})
-			Expect(adapter.checkNudgeConfigForStaleReferences(nudgeConfig, "default")).To(Succeed())
+			Expect(adapter.updateNudgeConfigStatus(nudgeConfig, "default")).To(Succeed())
 
 			Eventually(func(g Gomega) {
 				updated := &v1beta2.NudgeConfig{}
@@ -4622,7 +4804,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 					},
 				},
 			})
-			Expect(adapter.checkNudgeConfigForStaleReferences(nudgeConfig, "default")).To(Succeed())
+			Expect(adapter.updateNudgeConfigStatus(nudgeConfig, "default")).To(Succeed())
 
 			Eventually(func(g Gomega) {
 				updated := &v1beta2.NudgeConfig{}
@@ -4642,9 +4824,33 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 					Err:        fmt.Errorf("list components failed"),
 				},
 			})
-			err := adapter.checkNudgeConfigForStaleReferences(nudgeConfig, "default")
+			err := adapter.updateNudgeConfigStatus(nudgeConfig, "default")
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring(`failed to list Components in namespace "default"`))
+		})
+
+		It("persists BatchDefaultsSupported when listing Components fails", func() {
+			nudgeConfig.Spec.BatchDefaults = &v1beta2.BatchDefaults{}
+			Expect(k8sClient.Update(ctx, nudgeConfig)).Should(Succeed())
+
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: loader.NamespaceComponentsContextKey,
+					Err:        fmt.Errorf("list components failed"),
+				},
+			})
+			err := adapter.updateNudgeConfigStatus(nudgeConfig, "default")
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring(`failed to list Components in namespace "default"`))
+
+			Eventually(func(g Gomega) {
+				updated := &v1beta2.NudgeConfig{}
+				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(nudgeConfig), updated)).To(Succeed())
+				cond := meta.FindStatusCondition(updated.Status.Conditions, helpers.BatchDefaultsSupportedStatusCondition)
+				g.Expect(cond).NotTo(BeNil())
+				g.Expect(cond.Status).To(Equal(metav1.ConditionFalse))
+				g.Expect(cond.Reason).To(Equal(helpers.BatchDefaultsNotImplementedReason))
+			}, time.Second*5).Should(Succeed())
 		})
 
 		It("returns an error when the status patch fails", func() {
@@ -4665,9 +4871,34 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			nudgeConfig.Spec.Nudges = []v1beta2.NudgeRelationship{
 				{From: hasComp.Name, To: "missing-component", Mode: v1beta2.NudgeModeImmediate},
 			}
-			err := adapter.checkNudgeConfigForStaleReferences(nudgeConfig, "default")
+			err := adapter.updateNudgeConfigStatus(nudgeConfig, "default")
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("failed to patch nudge config status"))
+		})
+
+		It("sets BatchDefaultsSupported to False when spec.batchDefaults is configured", func() {
+			nudgeConfig.Spec.BatchDefaults = &v1beta2.BatchDefaults{}
+			Expect(k8sClient.Update(ctx, nudgeConfig)).Should(Succeed())
+
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: loader.NamespaceComponentsContextKey,
+					Resource: []applicationapiv1alpha1.Component{
+						*hasComp,
+						*hasComp2,
+					},
+				},
+			})
+			Expect(adapter.updateNudgeConfigStatus(nudgeConfig, "default")).To(Succeed())
+
+			Eventually(func(g Gomega) {
+				updated := &v1beta2.NudgeConfig{}
+				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(nudgeConfig), updated)).To(Succeed())
+				cond := meta.FindStatusCondition(updated.Status.Conditions, helpers.BatchDefaultsSupportedStatusCondition)
+				g.Expect(cond).NotTo(BeNil())
+				g.Expect(cond.Status).To(Equal(metav1.ConditionFalse))
+				g.Expect(cond.Reason).To(Equal(helpers.BatchDefaultsNotImplementedReason))
+			}, time.Second*5).Should(Succeed())
 		})
 	})
 

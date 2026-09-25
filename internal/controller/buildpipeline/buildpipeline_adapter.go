@@ -20,6 +20,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math/big"
 	"strconv"
@@ -45,7 +46,7 @@ import (
 	"github.com/konflux-ci/operator-toolkit/controller"
 	"github.com/konflux-ci/operator-toolkit/metadata"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
+	clienterrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -167,7 +168,7 @@ func (a *Adapter) EnsureNudgePipelineRunsExist() (controller.OperationResult, er
 	// Idempotency guard: nudge already processed. Remove the nudge finalizer if it somehow
 	// survived (e.g. IS crashed between nudge PLR creation and annotation write).
 	if metadata.HasAnnotation(a.pipelineRun, tektonconsts.NudgeProcessedAnnotation) {
-		if err := h.RemoveFinalizerFromPipelineRun(a.context, a.client, a.logger, a.pipelineRun, h.NudgePipelineRunFinalizer); err != nil && !errors.IsNotFound(err) {
+		if err := h.RemoveFinalizerFromPipelineRun(a.context, a.client, a.logger, a.pipelineRun, h.NudgePipelineRunFinalizer); err != nil && !clienterrors.IsNotFound(err) {
 			return controller.RequeueWithError(err)
 		}
 		return controller.ContinueProcessing()
@@ -177,7 +178,7 @@ func (a *Adapter) EnsureNudgePipelineRunsExist() (controller.OperationResult, er
 	// finalizer (left by a crash between finalizer add and annotation write) so the PLR is
 	// not stuck in Terminating.
 	if a.pipelineRun.GetDeletionTimestamp() != nil {
-		if err := h.RemoveFinalizerFromPipelineRun(a.context, a.client, a.logger, a.pipelineRun, h.NudgePipelineRunFinalizer); err != nil && !errors.IsNotFound(err) {
+		if err := h.RemoveFinalizerFromPipelineRun(a.context, a.client, a.logger, a.pipelineRun, h.NudgePipelineRunFinalizer); err != nil && !clienterrors.IsNotFound(err) {
 			return controller.RequeueWithError(err)
 		}
 		return controller.ContinueProcessing()
@@ -185,7 +186,7 @@ func (a *Adapter) EnsureNudgePipelineRunsExist() (controller.OperationResult, er
 
 	nudgeConfig, err := a.loader.GetNudgeConfigForNamespace(a.context, a.client, a.pipelineRun.Namespace)
 	if err != nil {
-		if errors.IsNotFound(err) {
+		if clienterrors.IsNotFound(err) {
 			return controller.ContinueProcessing()
 		}
 		a.logger.Error(err, "Failed to get NudgeConfig")
@@ -194,8 +195,8 @@ func (a *Adapter) EnsureNudgePipelineRunsExist() (controller.OperationResult, er
 
 	// Check the NudgeConfig for stale references and update if possible - best effort.
 	// Done before nudge PipelineRun creation so early returns still refresh status.
-	if staleErr := a.checkNudgeConfigForStaleReferences(nudgeConfig, a.pipelineRun.Namespace); staleErr != nil {
-		a.logger.Error(staleErr, "Failed to check nudge config for stale references, skipping")
+	if staleErr := a.updateNudgeConfigStatus(nudgeConfig, a.pipelineRun.Namespace); staleErr != nil {
+		a.logger.Error(staleErr, "Failed to update nudge config status, skipping")
 	}
 
 	componentName := a.componentName
@@ -228,7 +229,7 @@ func (a *Adapter) EnsureNudgePipelineRunsExist() (controller.OperationResult, er
 	for _, name := range targetNames {
 		comp, err := a.loader.GetComponent(a.context, a.client, name, a.pipelineRun.Namespace)
 		if err != nil {
-			if errors.IsNotFound(err) {
+			if clienterrors.IsNotFound(err) {
 				a.logger.Info("Nudge target component not found, skipping", "component.Name", name)
 				continue
 			}
@@ -291,24 +292,51 @@ func (a *Adapter) EnsureNudgePipelineRunsExist() (controller.OperationResult, er
 		return controller.ContinueProcessing()
 	}
 
+	// Split targets: batched targets go to batch path (stub), immediate targets proceed to CreateNudgePipelineRun.
+	var immediateTargets []nudging.NudgeTarget
+	var batchedTargetNames []string
+	for _, target := range targets {
+		if nudgeConfig.Spec.IsTargetBatched(target.ComponentName) {
+			a.logger.Info("Target configured for batching, deferring nudge",
+				"target", target.ComponentName)
+			batchedTargetNames = append(batchedTargetNames, target.ComponentName)
+			// Stub: actual batching logic will be implemented in future tickets (KFLUXSE-484+)
+			continue
+		}
+		immediateTargets = append(immediateTargets, target)
+	}
+
+	// If all targets are batched, annotate and return without creating immediate nudge PLR.
+	if len(immediateTargets) == 0 {
+		annotationValue := "batched:" + strings.Join(batchedTargetNames, ",")
+		a.logger.Info("All nudge targets are batched, skipping immediate nudge",
+			"batchedTargets", batchedTargetNames)
+		_ = tekton.AnnotateBuildPipelineRun(a.context, a.pipelineRun, tektonconsts.NudgeProcessedAnnotation, annotationValue, a.client)
+		return controller.ContinueProcessing()
+	}
+
 	// Add the nudge finalizer just before creating the nudge PLR so the build PLR cannot be
 	// GC'd between PLR creation and the annotation write that marks nudging as complete.
 	if err := h.AddFinalizerToPipelineRun(a.context, a.client, a.logger, a.pipelineRun, h.NudgePipelineRunFinalizer); err != nil {
 		return controller.RequeueWithError(err)
 	}
 
-	err = nudging.CreateNudgePipelineRun(a.context, a.client, a.pipelineRun, targets, buildResult, simpleBranchName)
+	err = nudging.CreateNudgePipelineRun(a.context, a.client, a.pipelineRun, immediateTargets, buildResult, simpleBranchName)
 	if err != nil {
 		a.logger.Error(err, "Failed to create nudge PipelineRun")
 		// Keep the nudge finalizer so the PLR stays alive for the retry.
 		return controller.RequeueWithError(err)
 	}
 
-	names := make([]string, len(targets))
-	for i, t := range targets {
+	names := make([]string, len(immediateTargets))
+	for i, t := range immediateTargets {
 		names[i] = t.ComponentName
 	}
 	processedValue := strings.Join(names, ",")
+	// If some targets were batched, append that info to the annotation for observability.
+	if len(batchedTargetNames) > 0 {
+		processedValue += ";batched:" + strings.Join(batchedTargetNames, ",")
+	}
 	err = tekton.AnnotateBuildPipelineRun(a.context, a.pipelineRun, tektonconsts.NudgeProcessedAnnotation, processedValue, a.client)
 	if err != nil {
 		a.logger.Error(err, "Failed to annotate build PLR as nudge-processed")
@@ -316,7 +344,7 @@ func (a *Adapter) EnsureNudgePipelineRunsExist() (controller.OperationResult, er
 		return controller.RequeueWithError(err)
 	}
 
-	if err = h.RemoveFinalizerFromPipelineRun(a.context, a.client, a.logger, a.pipelineRun, h.NudgePipelineRunFinalizer); err != nil && !errors.IsNotFound(err) {
+	if err = h.RemoveFinalizerFromPipelineRun(a.context, a.client, a.logger, a.pipelineRun, h.NudgePipelineRunFinalizer); err != nil && !clienterrors.IsNotFound(err) {
 		return controller.RequeueWithError(err)
 	}
 
@@ -346,7 +374,7 @@ func (a *Adapter) EnsureSnapshotExists() (result controller.OperationResult, err
 		}
 		updateErr := a.updateBuildPipelineRunWithFinalInfo(canRemoveFinalizer, annotationErr)
 		if updateErr != nil {
-			if errors.IsNotFound(updateErr) {
+			if clienterrors.IsNotFound(updateErr) {
 				result, err = controller.ContinueProcessing()
 			} else {
 				a.logger.Error(updateErr, "Failed to update build pipelineRun")
@@ -450,7 +478,7 @@ func (a *Adapter) EnsureSnapshotExistsApplication() (result controller.Operation
 		}
 		updateErr := a.updateBuildPipelineRunWithFinalInfo(canRemoveFinalizer, annotationErr)
 		if updateErr != nil {
-			if errors.IsNotFound(updateErr) {
+			if clienterrors.IsNotFound(updateErr) {
 				result, err = controller.ContinueProcessing()
 			} else {
 				a.logger.Error(updateErr, "Failed to update build pipelineRun")
@@ -561,7 +589,7 @@ func (a *Adapter) EnsurePipelineIsFinalized() (controller.OperationResult, error
 	})
 	if err != nil {
 		// if IsNotFound error, do not log error or requeue
-		if errors.IsNotFound(err) {
+		if clienterrors.IsNotFound(err) {
 			a.logger.Info(fmt.Sprintf("Could not add finalizer %s to build pipeline %s.  Build pipeline could not be found.", h.IntegrationPipelineRunFinalizer, a.pipelineRun.Name))
 			return controller.ContinueProcessing()
 		}
@@ -602,7 +630,7 @@ func (a *Adapter) EnsurePRGroupAnnotated() (controller.OperationResult, error) {
 	// previous version of the pipelineRun so we don't get the updated pr group metadata
 	a.pipelineRun, err = a.addPRGroupToBuildPLRMetadata(a.pipelineRun)
 	if err != nil {
-		if errors.IsNotFound(err) {
+		if clienterrors.IsNotFound(err) {
 			a.logger.Error(err, "failed to add pr group info to build pipelineRun metadata due to notfound pipelineRun")
 			return controller.StopProcessing()
 		} else {
@@ -1248,7 +1276,7 @@ func (a *Adapter) createSnapshotWithCollisionHandling(snapshot *applicationapiv1
 		}
 
 		// Check if it's an "already exists" error
-		if !errors.IsAlreadyExists(err) {
+		if !clienterrors.IsAlreadyExists(err) {
 			// Not a collision error, return immediately
 			return err
 		}
@@ -1291,7 +1319,7 @@ func (a *Adapter) createSnapshotWithCollisionHandling(snapshot *applicationapiv1
 // failedToCreateSnapshot stops reconcilation immediately when snapshot cannot be created
 func (a *Adapter) handleSnapshotCreationFailure(canRemoveFinalizer *bool, cerr error) (result controller.OperationResult, err error) {
 	a.logger.Error(cerr, "Failed to create Snapshot")
-	if errors.IsForbidden(cerr) {
+	if clienterrors.IsForbidden(cerr) {
 		// we cannot create a snapshot (possibly because the snapshot quota is hit) and we don't want to block resources, user has to retry
 		// we still return the error to make build PLR annotated when meeting quota limitation issue
 		*canRemoveFinalizer = true
@@ -1705,21 +1733,17 @@ func (a *Adapter) emitBuildTimingSpans() {
 	}
 }
 
-// checkNudgeConfigForStaleReferences checks if the given NudgeConfig has stale references and updates its
-// stale references status condition to reflect that
-func (a *Adapter) checkNudgeConfigForStaleReferences(nudgeConfig *v1beta2.NudgeConfig, namespace string) error {
+// applyStaleReferencesStatusCondition updates StaleReferences on nudgeConfig in memory. Returns whether the condition changed.
+func (a *Adapter) applyStaleReferencesStatusCondition(nudgeConfig *v1beta2.NudgeConfig, namespace string) (bool, error) {
 	nudges := nudgeConfig.Spec.Nudges
 	existingStatusCondition := meta.FindStatusCondition(nudgeConfig.Status.Conditions, h.StaleReferencesStatusCondition)
-	// Short-circuit only when there is genuinely nothing to do: no nudges to check and no prior True condition to clean up.
-	// We intentionally fall through when existingStatusCondition is nil so that a fresh NudgeConfig gets an explicit
-	// StaleReferences=False condition rather than leaving the field absent. Absent is ambiguous (unknown vs healthy); False is an affirmative health signal.
 	if len(nudges) == 0 && existingStatusCondition != nil && existingStatusCondition.Status == metav1.ConditionFalse {
-		return nil
+		return false, nil
 	}
 
 	components, err := a.loader.GetAllComponentsInNamespace(a.context, a.client, namespace)
 	if err != nil {
-		return fmt.Errorf("failed to list Components in namespace %q: %w", namespace, err)
+		return false, fmt.Errorf("failed to list Components in namespace %q: %w", namespace, err)
 	}
 
 	foundMissing, msg := h.FindMissingNudgeConfigReferences(*components, nudges, namespace)
@@ -1734,19 +1758,35 @@ func (a *Adapter) checkNudgeConfigForStaleReferences(nudgeConfig *v1beta2.NudgeC
 		msg = "All Components referenced in the NudgeConfig are present, no stale references found."
 	}
 
-	if existingStatusCondition == nil || (existingStatusCondition.Status != newConditionStatus || existingStatusCondition.Message != msg) {
-		patch := client.MergeFrom(nudgeConfig.DeepCopy())
+	staleReferencesChanged := existingStatusCondition == nil || (existingStatusCondition.Status != newConditionStatus || existingStatusCondition.Message != msg)
+	if staleReferencesChanged {
 		meta.SetStatusCondition(&nudgeConfig.Status.Conditions, metav1.Condition{
 			Type:    h.StaleReferencesStatusCondition,
 			Status:  newConditionStatus,
 			Reason:  newConditionReason,
 			Message: msg,
 		})
+	}
+	return staleReferencesChanged, nil
+}
 
-		err = a.client.Status().Patch(a.context, nudgeConfig, patch)
-		if err != nil {
-			return fmt.Errorf("failed to patch nudge config status: %w", err)
+// updateNudgeConfigStatus refreshes NudgeConfig status conditions (stale references, batch defaults support).
+func (a *Adapter) updateNudgeConfigStatus(nudgeConfig *v1beta2.NudgeConfig, namespace string) error {
+	original := nudgeConfig.DeepCopy()
+
+	statusChanged := h.ApplyBatchDefaultsSupportedStatusCondition(&nudgeConfig.Status.Conditions, nudgeConfig.Spec.BatchDefaults)
+	staleReferencesChanged, staleErr := a.applyStaleReferencesStatusCondition(nudgeConfig, namespace)
+	statusChanged = statusChanged || staleReferencesChanged
+
+	if statusChanged {
+		patch := client.MergeFrom(original)
+		if err := a.client.Status().Patch(a.context, nudgeConfig, patch); err != nil {
+			patchErr := fmt.Errorf("failed to patch nudge config status: %w", err)
+			if staleErr != nil {
+				return errors.Join(staleErr, patchErr)
+			}
+			return patchErr
 		}
 	}
-	return nil
+	return staleErr
 }
