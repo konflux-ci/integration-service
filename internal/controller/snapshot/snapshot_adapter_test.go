@@ -3764,7 +3764,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			Expect(err).ToNot(HaveOccurred())
 		})
 
-		It("Stop processing when there is no annotationID in snapshot", func() {
+		It("stops processing when the Snapshot repository cannot be resolved", func() {
 			var buf bytes.Buffer
 			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
 			adapter = NewAdapterWithApplication(ctx, hasComSnapshot1, hasApp, log, loader.NewMockLoader(), k8sClient)
@@ -3812,7 +3812,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			result, err := adapter.EnsureGroupSnapshotExist()
 			Expect(result.CancelRequest).To(BeFalse())
 			Expect(result.RequeueRequest).To(BeFalse())
-			Expect(buf.String()).Should(ContainSubstring("failed to get app credentials from Snapshot"))
+			Expect(buf.String()).Should(ContainSubstring("failed to resolve Snapshot repository"))
 			Expect(err).ToNot(HaveOccurred())
 		})
 
@@ -4335,7 +4335,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			Expect(err).ToNot(HaveOccurred())
 		})
 
-		It("Stop processing when there is no annotationID in snapshot", func() {
+		It("stops processing when the Snapshot repository cannot be resolved", func() {
 			var buf bytes.Buffer
 			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
 			adapter = NewAdapter(ctx, hasComSnapshot1, hasCompGroup, log, loader.NewMockLoader(), k8sClient)
@@ -4379,7 +4379,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			result, err := adapter.EnsureGroupSnapshotExist()
 			Expect(result.CancelRequest).To(BeFalse())
 			Expect(result.RequeueRequest).To(BeFalse())
-			Expect(buf.String()).Should(ContainSubstring("failed to get app credentials from Snapshot"))
+			Expect(buf.String()).Should(ContainSubstring("failed to resolve Snapshot repository"))
 			Expect(err).ToNot(HaveOccurred())
 		})
 

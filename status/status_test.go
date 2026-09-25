@@ -36,7 +36,9 @@ import (
 	"go.uber.org/mock/gomock"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	"github.com/konflux-ci/integration-service/api/v1beta2"
 	"github.com/konflux-ci/integration-service/gitops"
@@ -126,6 +128,98 @@ func muxMergeRequestGet(mux *http.ServeMux, pid, mrIID int, state string) {
 		fmt.Fprint(rw, string(jsonMR))
 	})
 }
+
+var _ = Describe("GitHub PR repository validation", func() {
+	var (
+		snapshot  *applicationapiv1alpha1.Snapshot
+		repo      *pacv1alpha1.Repository
+		k8sClient client.Client
+	)
+
+	BeforeEach(func() {
+		GinkgoT().Setenv("INTEGRATION_NS", "integration-service")
+		GinkgoT().Setenv("PAC_SECRET", "pipelines-as-code-secret")
+		GinkgoT().Setenv("GITHUBAPPLICATION_ID", "github-application-id")
+		GinkgoT().Setenv("GITHUBPRIVATE_KEY", "github-private-key")
+
+		scheme := runtime.NewScheme()
+		Expect(v1.AddToScheme(scheme)).To(Succeed())
+		Expect(pacv1alpha1.AddToScheme(scheme)).To(Succeed())
+		k8sClient = fake.NewClientBuilder().WithScheme(scheme).Build()
+
+		snapshot = &applicationapiv1alpha1.Snapshot{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "snapshot-sample",
+				Namespace: "user-namespace",
+				Labels: map[string]string{
+					gitops.PipelineAsCodeURLOrgLabel:           "forged-owner",
+					gitops.PipelineAsCodeURLRepositoryLabel:    "forged-repo",
+					gitops.PipelineAsCodePullRequestAnnotation: "1",
+				},
+				Annotations: map[string]string{
+					gitops.PipelineAsCodeRepoURLAnnotation:        "https://github.com/example-owner/example-repo",
+					gitops.PipelineAsCodeInstallationIDAnnotation: "999",
+				},
+			},
+		}
+		repo = &pacv1alpha1.Repository{
+			ObjectMeta: metav1.ObjectMeta{Name: "example-repo", Namespace: snapshot.Namespace},
+			Spec:       pacv1alpha1.RepositorySpec{URL: "https://github.com/example-owner/example-repo"},
+		}
+	})
+
+	It("rejects a Snapshot without a matching Repository despite its PAC labels", func() {
+		st := status.NewStatus(logr.Discard(), k8sClient)
+		opened, statusCode, err := st.IsPRInSnapshotOpened(context.Background(), nil, snapshot)
+
+		Expect(helpers.IsUnrecoverableMetadataError(err)).To(BeTrue())
+		Expect(opened).To(BeFalse())
+		Expect(statusCode).To(BeZero())
+	})
+
+	It("rejects a Repository match in another namespace", func() {
+		repo.Namespace = "another-namespace"
+		Expect(k8sClient.Create(context.Background(), repo)).To(Succeed())
+
+		st := status.NewStatus(logr.Discard(), k8sClient)
+		opened, statusCode, err := st.IsPRInSnapshotOpened(context.Background(), nil, snapshot)
+
+		Expect(helpers.IsUnrecoverableMetadataError(err)).To(BeTrue())
+		Expect(opened).To(BeFalse())
+		Expect(statusCode).To(BeZero())
+	})
+
+	It("returns a missing credential error after resolving the Repository", func() {
+		Expect(k8sClient.Create(context.Background(), repo)).To(Succeed())
+
+		st := status.NewStatus(logr.Discard(), k8sClient)
+		opened, statusCode, err := st.IsPRInSnapshotOpened(context.Background(), nil, snapshot)
+
+		Expect(errors.IsNotFound(err)).To(BeTrue())
+		Expect(opened).To(BeFalse())
+		Expect(statusCode).To(BeZero())
+	})
+
+	It("rejects invalid App credentials despite a Snapshot installation ID", func() {
+		Expect(k8sClient.Create(context.Background(), repo)).To(Succeed())
+		secret := &v1.Secret{
+			ObjectMeta: metav1.ObjectMeta{Name: "pipelines-as-code-secret", Namespace: "integration-service"},
+			Data: map[string][]byte{
+				"github-application-id": []byte("456"),
+				"github-private-key":    []byte("invalid-private-key"),
+			},
+		}
+		Expect(k8sClient.Create(context.Background(), secret)).To(Succeed())
+
+		st := status.NewStatus(logr.Discard(), k8sClient)
+		opened, statusCode, err := st.IsPRInSnapshotOpened(context.Background(), nil, snapshot)
+
+		Expect(err).To(HaveOccurred())
+		Expect(errors.IsNotFound(err)).To(BeFalse())
+		Expect(opened).To(BeFalse())
+		Expect(statusCode).To(BeZero())
+	})
+})
 
 var _ = Describe("Status Adapter", func() {
 

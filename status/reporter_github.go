@@ -20,8 +20,10 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/go-logr/logr"
 	ghapi "github.com/google/go-github/v45/github"
@@ -33,6 +35,7 @@ import (
 	intgteststat "github.com/konflux-ci/integration-service/pkg/integrationteststatus"
 
 	"github.com/konflux-ci/operator-toolkit/metadata"
+	pacv1alpha1 "github.com/openshift-pipelines/pipelines-as-code/pkg/apis/pipelinesascode/v1alpha1"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/util/retry"
@@ -82,7 +85,7 @@ func NewCheckRunStatusUpdater(
 	}
 }
 
-func GetAppCredentials(ctx context.Context, k8sclient client.Client, object client.Object) (*appCredentials, error) {
+func GetAppCredentials(ctx context.Context, k8sclient client.Client, ghClient github.ClientInterface, owner string, repo string) (*appCredentials, error) {
 	log := log.FromContext(ctx)
 	var err, unRecoverableError error
 	var found bool
@@ -104,13 +107,6 @@ func GetAppCredentials(ctx context.Context, k8sclient client.Client, object clie
 	gitHubPrivateKey := os.Getenv("GITHUBPRIVATE_KEY")
 	if gitHubPrivateKey == "" {
 		gitHubPrivateKey = "github-private-key"
-	}
-
-	appInfo.InstallationID, err = strconv.ParseInt(object.GetAnnotations()[gitops.PipelineAsCodeInstallationIDAnnotation], 10, 64)
-	if err != nil {
-		unRecoverableError = helpers.NewUnrecoverableMetadataError(fmt.Sprintf("Error %s when parsing string annotation %s: %s", err.Error(), gitops.PipelineAsCodeInstallationIDAnnotation, object.GetAnnotations()[gitops.PipelineAsCodeInstallationIDAnnotation]))
-		log.Error(unRecoverableError, fmt.Sprintf("Error %s when parsing string annotation %s: %s", err.Error(), gitops.PipelineAsCodeInstallationIDAnnotation, object.GetAnnotations()[gitops.PipelineAsCodeInstallationIDAnnotation]))
-		return nil, unRecoverableError
 	}
 
 	// Get the global pipelines as code secret
@@ -143,21 +139,30 @@ func GetAppCredentials(ctx context.Context, k8sclient client.Client, object clie
 		return nil, unRecoverableError
 	}
 
+	installationID, statusCode, err := ghClient.FindInstallationForRepo(ctx, appInfo.AppID, appInfo.PrivateKey, owner, repo)
+	if err != nil {
+		log.Error(err, "failed to find Github App installation for repository", "owner", owner, "repo", repo, "statusCode", statusCode)
+		return nil, err
+	}
+	appInfo.InstallationID = installationID
+
 	return &appInfo, nil
 }
 
 // Authenticate Github Client with application credentials
 func (cru *CheckRunStatusUpdater) Authenticate(ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot) (int, error) {
-	creds, err := GetAppCredentials(ctx, cru.k8sClient, snapshot)
-	cru.creds = creds
+	creds, err := GetAppCredentials(ctx, cru.k8sClient, cru.ghClient, cru.owner, cru.repo)
 
 	if err != nil {
-		cru.logger.Error(err, "failed to get app credentials from Snapshot",
+		cru.logger.Error(err, "failed to get GitHub App credentials",
 			"snapshot.NameSpace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
 		return 0, err
 	}
 
+	cru.creds = creds
+
 	token, statusCode, err := cru.ghClient.CreateAppInstallationToken(ctx, creds.AppID, creds.InstallationID, creds.PrivateKey)
+
 	if err != nil {
 		cru.logger.Error(err, "failed to create app installation token",
 			"creds.AppID", creds.AppID, "creds.InstallationID", creds.InstallationID)
@@ -642,22 +647,18 @@ func (r *GitHubReporter) ReportConsolidatedStatus(_ context.Context, _ []TestRep
 
 // Initialize github reporter. Must be called before updating status
 func (r *GitHubReporter) Initialize(ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot) (int, error) {
+
 	var statusCode int
 	var unRecoverableError error
-	labels := snapshot.GetLabels()
-	owner, found := labels[gitops.PipelineAsCodeURLOrgLabel]
-	if !found {
-		unRecoverableError = helpers.NewUnrecoverableMetadataError(fmt.Sprintf("org label not found %q", gitops.PipelineAsCodeURLOrgLabel))
-		r.logger.Error(unRecoverableError, "snapshot.NameSpace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
-		return 0, unRecoverableError
+
+	owner, repo, err := resolveSnapshotRepository(ctx, r.k8sClient, snapshot)
+	if err != nil {
+		r.logger.Error(err, "failed to resolve Snapshot repository",
+			"namespace", snapshot.Namespace, "snapshot", snapshot.Name)
+		return 0, err
 	}
 
-	repo, found := labels[gitops.PipelineAsCodeURLRepositoryLabel]
-	if !found {
-		unRecoverableError = helpers.NewUnrecoverableMetadataError(fmt.Sprintf("repository label not found %q", gitops.PipelineAsCodeURLRepositoryLabel))
-		r.logger.Error(unRecoverableError, "snapshot.NameSpace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
-		return 0, unRecoverableError
-	}
+	labels := snapshot.GetLabels()
 
 	sha, found := labels[gitops.PipelineAsCodeSHALabel]
 	if !found {
@@ -674,7 +675,6 @@ func (r *GitHubReporter) Initialize(ctx context.Context, snapshot *applicationap
 		r.updater = NewCommitStatusUpdater(r.client, r.k8sClient, r.logger, owner, repo, sha, snapshot)
 	}
 
-	var err error
 	if statusCode, err = r.updater.Authenticate(ctx, snapshot); err != nil {
 		r.logger.Error(err, fmt.Sprintf("failed to authenticate for snapshot %s/%s, got status code %d", snapshot.Namespace, snapshot.Name, statusCode))
 		return statusCode, err
@@ -685,6 +685,57 @@ func (r *GitHubReporter) Initialize(ctx context.Context, snapshot *applicationap
 // Return reporter name
 func (r *GitHubReporter) GetReporterName() string {
 	return "GithubReporter"
+}
+
+// parseOwnerRepoFromURL extracts the owner and repository name from an HTTPS
+// repository URL, removing the optional .git suffix.
+func parseOwnerRepoFromURL(rawURL string) (string, string, error) {
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to parse repository URL %q: %w", rawURL, err)
+	}
+	if parsed.Scheme != "https" || parsed.Host == "" {
+		return "", "", fmt.Errorf("expected an HTTPS repository URL, got %q", rawURL)
+	}
+
+	path := strings.Trim(parsed.Path, "/")
+	parts := strings.Split(path, "/")
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return "", "", fmt.Errorf("expected owner/repo in URL %q", rawURL)
+	}
+
+	owner := parts[0]
+	repo := strings.TrimSuffix(parts[1], ".git")
+	if repo == "" {
+		return "", "", fmt.Errorf("repository name is empty in URL %q", rawURL)
+	}
+	return owner, repo, nil
+}
+
+// resolveSnapshotRepository finds a Repository CR matching the Snapshot's repo URL
+// in the same namespace and returns the owner and repository from its Spec.URL.
+func resolveSnapshotRepository(ctx context.Context, k8sClient client.Client, snapshot *applicationapiv1alpha1.Snapshot) (string, string, error) {
+	repoURL, found := snapshot.GetAnnotations()[gitops.PipelineAsCodeRepoURLAnnotation]
+	if !found || repoURL == "" {
+		return "", "", helpers.NewUnrecoverableMetadataError(fmt.Sprintf("missing or empty annotation %q", gitops.PipelineAsCodeRepoURLAnnotation))
+	}
+
+	repos := pacv1alpha1.RepositoryList{}
+	if err := k8sClient.List(ctx, &repos, &client.ListOptions{Namespace: snapshot.Namespace}); err != nil {
+		return "", "", fmt.Errorf("failed to list Repository CRs in namespace %q: %w", snapshot.Namespace, err)
+	}
+
+	for _, repo := range repos.Items {
+		if repo.Spec.URL == repoURL {
+			owner, repoName, err := parseOwnerRepoFromURL(repo.Spec.URL)
+			if err != nil {
+				return "", "", helpers.NewUnrecoverableMetadataError(fmt.Sprintf("invalid Repository CR URL %q: %v", repo.Spec.URL, err))
+			}
+			return owner, repoName, nil
+		}
+	}
+
+	return "", "", helpers.NewUnrecoverableMetadataError(fmt.Sprintf("no Repository CR in namespace %q matches URL %q", snapshot.Namespace, repoURL))
 }
 
 // Update status in Github

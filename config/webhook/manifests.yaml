@@ -119,7 +119,7 @@ webhooks:
       name: webhook-service
       namespace: system
       path: /validate-appstudio-redhat-com-v1alpha1-snapshot
-  failurePolicy: Ignore
+  failurePolicy: Fail
   name: vsnapshot.kb.io
   rules:
   - apiGroups:
