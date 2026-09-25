@@ -167,7 +167,7 @@ const (
 	NudgeFilesAnnotation = "build.appstudio.openshift.io/build-nudge-files"
 
 	// NudgeTypeLabel labels a PipelineRun as a nudge pipeline
-	NudgeTypeLabel = "build.appstudio.redhat.com/type"
+	NudgeTypeLabel = "build.konflux-ci.dev/type"
 
 	// NudgePipelineRunTypeValue is the value for the nudge type label
 	NudgePipelineRunTypeValue = "nudge"
