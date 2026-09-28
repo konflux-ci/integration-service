@@ -186,7 +186,7 @@ func (a *Adapter) EnsureNudgePipelineRunsExist() (controller.OperationResult, er
 		return controller.ContinueProcessing()
 	}
 	if !succeeded {
-		return a.recordBatchedNudgeBuildFailure()
+		return a.RecordFailedBatchedNudgeBuilds()
 	}
 
 	nudgeConfig, err := a.loader.GetNudgeConfigForNamespace(a.context, a.client, a.pipelineRun.Namespace)
@@ -368,7 +368,7 @@ func (a *Adapter) EnsureNudgePipelineRunsExist() (controller.OperationResult, er
 	return controller.ContinueProcessing()
 }
 
-func (a *Adapter) recordBatchedNudgeBuildFailure() (controller.OperationResult, error) {
+func (a *Adapter) RecordFailedBatchedNudgeBuilds() (controller.OperationResult, error) {
 	if metadata.HasAnnotation(a.pipelineRun, tektonconsts.NudgeProcessedAnnotation) {
 		return controller.ContinueProcessing()
 	}

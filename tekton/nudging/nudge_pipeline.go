@@ -309,6 +309,34 @@ func GenerateRenovateConfig(target NudgeTarget, buildResult *NudgeBuildResult, s
 	}
 }
 
+// GenerateRenovateConfigForBatchedSources merges Renovate configuration for every
+// source build in a fired batch so each accumulated source image is nudged into
+// the target repository in a single PipelineRun.
+func GenerateRenovateConfigForBatchedSources(target NudgeTarget, buildResults []*NudgeBuildResult, simpleBranchName bool) RenovateConfig {
+	if len(buildResults) == 0 {
+		return RenovateConfig{}
+	}
+	if len(buildResults) == 1 {
+		return GenerateRenovateConfig(target, buildResults[0], simpleBranchName)
+	}
+
+	merged := GenerateRenovateConfig(target, buildResults[0], simpleBranchName)
+	for i := 1; i < len(buildResults); i++ {
+		next := GenerateRenovateConfig(target, buildResults[i], simpleBranchName)
+		merged.CustomManagers = append(merged.CustomManagers, next.CustomManagers...)
+		if merged.RegistryAliases == nil {
+			merged.RegistryAliases = make(map[string]string)
+		}
+		for alias, canonical := range next.RegistryAliases {
+			merged.RegistryAliases[alias] = canonical
+		}
+		if len(next.PackageRules) > 1 {
+			merged.PackageRules = append(merged.PackageRules, next.PackageRules[1:]...)
+		}
+	}
+	return merged
+}
+
 // BatchedRenovateEntry pairs a source build result with the component that produced it.
 type BatchedRenovateEntry struct {
 	BuildResult *NudgeBuildResult
