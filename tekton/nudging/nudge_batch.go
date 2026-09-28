@@ -312,6 +312,17 @@ func batchTimerExpired(batch *v1beta2.ActiveBatch, now time.Time) bool {
 	return false
 }
 
+// BatchAllowsScheduledFire reports whether a due batch may fire on the debounce/deadline schedule.
+func BatchAllowsScheduledFire(batch *v1beta2.ActiveBatch, failurePolicy v1beta2.FailurePolicyType) bool {
+	if len(batch.Failed) == 0 {
+		return true
+	}
+	if failurePolicy == v1beta2.FailurePolicyProceedWithPartial {
+		return len(batch.Accumulated) > 0
+	}
+	return false
+}
+
 // NextBatchWakeDuration returns the time until the next accumulating batch should be checked.
 func NextBatchWakeDuration(batches []v1beta2.ActiveBatch) time.Duration {
 	now := time.Now()

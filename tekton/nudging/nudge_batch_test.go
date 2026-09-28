@@ -79,6 +79,31 @@ var _ = Describe("batchShouldFire", func() {
 	})
 })
 
+var _ = Describe("batchAllowsScheduledFire", func() {
+	It("allows fire when there are no failed members", func() {
+		batch := &v1beta2.ActiveBatch{
+			Accumulated: []v1beta2.AccumulatedEntry{{From: "a"}},
+		}
+		Expect(nudging.BatchAllowsScheduledFire(batch, v1beta2.FailurePolicyBlock)).To(BeTrue())
+	})
+
+	It("blocks scheduled fire when failure policy is Block and failures exist", func() {
+		batch := &v1beta2.ActiveBatch{
+			Accumulated: []v1beta2.AccumulatedEntry{{From: "a"}},
+			Failed:      []v1beta2.FailedEntry{{From: "b", BuildPipelineRun: "plr", Reason: "fail", CapturedAt: metav1.Now()}},
+		}
+		Expect(nudging.BatchAllowsScheduledFire(batch, v1beta2.FailurePolicyBlock)).To(BeFalse())
+	})
+
+	It("allows partial scheduled fire when failure policy is ProceedWithPartial", func() {
+		batch := &v1beta2.ActiveBatch{
+			Accumulated: []v1beta2.AccumulatedEntry{{From: "a"}},
+			Failed:      []v1beta2.FailedEntry{{From: "b", BuildPipelineRun: "plr", Reason: "fail", CapturedAt: metav1.Now()}},
+		}
+		Expect(nudging.BatchAllowsScheduledFire(batch, v1beta2.FailurePolicyProceedWithPartial)).To(BeTrue())
+	})
+})
+
 var _ = Describe("nextBatchWakeDuration", func() {
 	It("should return zero when a batch is already due", func() {
 		now := time.Now()
@@ -90,6 +115,13 @@ var _ = Describe("nextBatchWakeDuration", func() {
 			},
 		}
 		Expect(nudging.NextBatchWakeDuration(batches)).To(Equal(time.Duration(0)))
+	})
+
+	It("should return immediately when a batch is in Firing phase", func() {
+		batches := []v1beta2.ActiveBatch{
+			{Phase: v1beta2.BatchPhaseFiring},
+		}
+		Expect(nudging.NextBatchWakeDuration(batches)).To(Equal(time.Nanosecond))
 	})
 
 	It("should return the shortest positive wait among accumulating batches", func() {
