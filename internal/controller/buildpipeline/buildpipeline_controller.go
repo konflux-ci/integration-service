@@ -199,6 +199,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		adapter.EnsureSnapshotExists,
 		adapter.EnsureSnapshotExistsApplication,
 		adapter.EnsureNudgePipelineRunsExist,
+		adapter.RecordFailedBatchedNudgeBuilds,
 		adapter.EnsureSupercededSnapshotsCanceled,
 	})
 }
@@ -211,6 +212,7 @@ type AdapterInterface interface {
 	EnsureIntegrationTestReportedToGitProvider() (controller.OperationResult, error)
 	EnsureGlobalCandidateImageUpdated() (controller.OperationResult, error)
 	EnsureNudgePipelineRunsExist() (controller.OperationResult, error)
+	RecordFailedBatchedNudgeBuilds() (controller.OperationResult, error)
 	EnsureSnapshotExists() (controller.OperationResult, error)
 	EnsureSnapshotExistsApplication() (controller.OperationResult, error)
 	EnsureSupercededSnapshotsCanceled() (controller.OperationResult, error)

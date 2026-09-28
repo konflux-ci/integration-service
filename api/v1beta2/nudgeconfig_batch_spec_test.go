@@ -235,6 +235,115 @@ var _ = Describe("NudgeConfig batch spec helpers", func() {
 			Expect(omitted.BatchPolicy).To(BeNil())
 		})
 	})
+
+	Context("When resolving effective batch policy per target", func() {
+		It("should apply targetConfig overrides on top of batchDefaults", func() {
+			proceed := FailurePolicyProceedWithPartial
+			spec := NudgeConfigSpec{
+				BatchDefaults: &BatchDefaults{
+					DebounceTimeout: durationPtr(45 * time.Minute),
+					MaxWaitTime:     durationPtr(6 * time.Hour),
+					FailurePolicy:   failurePolicyPtr(FailurePolicyBlock),
+				},
+				TargetConfig: []TargetConfig{{
+					Target: "bundle",
+					BatchPolicy: &BatchPolicy{
+						DebounceTimeout: durationPtr(90 * time.Minute),
+						MaxWaitTime:     durationPtr(8 * time.Hour),
+						FailurePolicy:   &proceed,
+					},
+				}},
+			}
+			debounce, maxWait, failure := spec.EffectiveBatchPolicy("bundle")
+			Expect(debounce).To(Equal(90 * time.Minute))
+			Expect(maxWait).To(Equal(8 * time.Hour))
+			Expect(failure).To(Equal(FailurePolicyProceedWithPartial))
+		})
+	})
+
+	Context("When validating resolved batch timing", func() {
+		It("should skip non-batched targets", func() {
+			spec := NudgeConfigSpec{
+				TargetConfig: []TargetConfig{
+					{Target: "immediate-target"},
+					{
+						Target: "bundle",
+						BatchPolicy: &BatchPolicy{
+							DebounceTimeout: durationPtr(15 * time.Minute),
+							MaxWaitTime:     durationPtr(2 * time.Hour),
+						},
+					},
+				},
+			}
+			Expect(spec.ValidateEffectiveBatchPolicies()).To(Succeed())
+		})
+
+		It("should reject maxWait outside the allowed range", func() {
+			spec := NudgeConfigSpec{
+				TargetConfig: []TargetConfig{{
+					Target: "bundle",
+					BatchPolicy: &BatchPolicy{
+						DebounceTimeout: durationPtr(15 * time.Minute),
+						MaxWaitTime:     durationPtr(25 * time.Hour),
+					},
+				}},
+			}
+			err := spec.ValidateEffectiveBatchPolicies()
+			Expect(err).To(MatchError(ContainSubstring("maxWaitTime must be between 1m and 24h")))
+		})
+
+		It("should delegate duplicate and timing checks through ValidateBatchConfig", func() {
+			spec := NudgeConfigSpec{
+				TargetConfig: []TargetConfig{
+					{Target: "bundle", BatchPolicy: &BatchPolicy{}},
+					{Target: "bundle", BatchPolicy: &BatchPolicy{}},
+				},
+			}
+			err := spec.ValidateBatchConfig()
+			Expect(err).To(MatchError(ContainSubstring("duplicate targetConfig target")))
+		})
+
+		It("should accept valid batch configuration through ValidateBatchConfig", func() {
+			spec := NudgeConfigSpec{
+				TargetConfig: []TargetConfig{{
+					Target: "bundle",
+					BatchPolicy: &BatchPolicy{
+						DebounceTimeout: durationPtr(15 * time.Minute),
+						MaxWaitTime:     durationPtr(2 * time.Hour),
+					},
+				}},
+			}
+			Expect(spec.ValidateBatchConfig()).To(Succeed())
+		})
+
+		It("should reject debounce shorter than one minute", func() {
+			spec := NudgeConfigSpec{
+				TargetConfig: []TargetConfig{{
+					Target: "bundle",
+					BatchPolicy: &BatchPolicy{
+						DebounceTimeout: durationPtr(30 * time.Second),
+						MaxWaitTime:     durationPtr(2 * time.Hour),
+					},
+				}},
+			}
+			err := spec.ValidateEffectiveBatchPolicies()
+			Expect(err).To(MatchError(ContainSubstring("debounceTimeout must be between 1m and 24h")))
+		})
+
+		It("should reject maxWait that does not exceed debounce", func() {
+			spec := NudgeConfigSpec{
+				TargetConfig: []TargetConfig{{
+					Target: "bundle",
+					BatchPolicy: &BatchPolicy{
+						DebounceTimeout: durationPtr(2 * time.Hour),
+						MaxWaitTime:     durationPtr(2 * time.Hour),
+					},
+				}},
+			}
+			err := spec.ValidateEffectiveBatchPolicies()
+			Expect(err).To(MatchError(ContainSubstring("maxWaitTime must exceed debounceTimeout")))
+		})
+	})
 })
 
 func assertContainsBatchDefaultCEL(contents, debounceCEL, maxWaitCEL string) {
