@@ -1,6 +1,7 @@
 package v1beta2
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -84,6 +85,76 @@ func TestNudgeConfigTypeHelpers(t *testing.T) {
 		}
 		if err := (NudgeConfigSpec{TargetConfig: []TargetConfig{{Target: "bundle"}, {Target: "bundle"}}}).ValidateUniqueTargetConfig(); err == nil {
 			t.Fatal("expected duplicate target validation error")
+		}
+	})
+
+	t.Run("resolved batch validation", func(t *testing.T) {
+		valid := NudgeConfigSpec{
+			TargetConfig: []TargetConfig{
+				{Target: "immediate-only"},
+				{
+					Target: "bundle",
+					BatchPolicy: &BatchPolicy{
+						DebounceTimeout: &metav1.Duration{Duration: 15 * time.Minute},
+						MaxWaitTime:     &metav1.Duration{Duration: 2 * time.Hour},
+					},
+				},
+			},
+		}
+		if err := valid.ValidateEffectiveBatchPolicies(); err != nil {
+			t.Fatalf("expected valid resolved policy: %v", err)
+		}
+		if err := valid.ValidateBatchConfig(); err != nil {
+			t.Fatalf("expected valid batch config: %v", err)
+		}
+
+		duplicate := NudgeConfigSpec{
+			TargetConfig: []TargetConfig{
+				{Target: "bundle", BatchPolicy: &BatchPolicy{}},
+				{Target: "bundle", BatchPolicy: &BatchPolicy{}},
+			},
+		}
+		if err := duplicate.ValidateBatchConfig(); err == nil || !strings.Contains(err.Error(), "duplicate targetConfig target") {
+			t.Fatalf("expected duplicate target error, got %v", err)
+		}
+
+		shortDebounce := NudgeConfigSpec{
+			TargetConfig: []TargetConfig{{
+				Target: "bundle",
+				BatchPolicy: &BatchPolicy{
+					DebounceTimeout: &metav1.Duration{Duration: 30 * time.Second},
+					MaxWaitTime:     &metav1.Duration{Duration: 2 * time.Hour},
+				},
+			}},
+		}
+		if err := shortDebounce.ValidateEffectiveBatchPolicies(); err == nil || !strings.Contains(err.Error(), "debounceTimeout must be between 1m and 24h") {
+			t.Fatalf("expected debounce range error, got %v", err)
+		}
+
+		longMaxWait := NudgeConfigSpec{
+			TargetConfig: []TargetConfig{{
+				Target: "bundle",
+				BatchPolicy: &BatchPolicy{
+					DebounceTimeout: &metav1.Duration{Duration: 15 * time.Minute},
+					MaxWaitTime:     &metav1.Duration{Duration: 25 * time.Hour},
+				},
+			}},
+		}
+		if err := longMaxWait.ValidateEffectiveBatchPolicies(); err == nil || !strings.Contains(err.Error(), "maxWaitTime must be between 1m and 24h") {
+			t.Fatalf("expected maxWait range error, got %v", err)
+		}
+
+		maxWaitNotGreater := NudgeConfigSpec{
+			TargetConfig: []TargetConfig{{
+				Target: "bundle",
+				BatchPolicy: &BatchPolicy{
+					DebounceTimeout: &metav1.Duration{Duration: 2 * time.Hour},
+					MaxWaitTime:     &metav1.Duration{Duration: 2 * time.Hour},
+				},
+			}},
+		}
+		if err := maxWaitNotGreater.ValidateEffectiveBatchPolicies(); err == nil || !strings.Contains(err.Error(), "maxWaitTime must exceed debounceTimeout") {
+			t.Fatalf("expected maxWait/debounce ordering error, got %v", err)
 		}
 	})
 }

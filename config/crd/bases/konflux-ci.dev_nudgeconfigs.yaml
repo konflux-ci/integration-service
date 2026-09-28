@@ -284,6 +284,11 @@ spec:
                               by the build pipeline run.
                             minLength: 1
                             type: string
+                          serviceAccountName:
+                            description: |-
+                              ServiceAccountName is the build PipelineRun service account, captured at accumulation time
+                              so batch firing can resolve registry credentials if the build PLR was pruned.
+                            type: string
                         required:
                         - buildPipelineRun
                         - capturedAt

@@ -245,6 +245,51 @@ func (spec NudgeConfigSpec) ValidateUniqueTargetConfig() error {
 	return nil
 }
 
+const (
+	minBatchTiming = time.Minute
+	maxBatchTiming = 24 * time.Hour
+)
+
+// ValidateEffectiveBatchPolicies rejects batched targets whose resolved debounce/maxWait violate ADR 0072
+// timing rules after inheriting spec.batchDefaults and runtime defaults.
+func (spec NudgeConfigSpec) ValidateEffectiveBatchPolicies() error {
+	for _, tc := range spec.TargetConfig {
+		if !tc.IsBatched() {
+			continue
+		}
+		debounce, maxWait, _ := spec.EffectiveBatchPolicy(tc.Target)
+		if err := validateResolvedBatchTiming(tc.Target, debounce, maxWait); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// ValidateBatchConfig runs webhook-level batch configuration checks not expressible as per-field CEL
+// (duplicate targets with named errors, resolved timing per batched target).
+func (spec NudgeConfigSpec) ValidateBatchConfig() error {
+	if err := spec.ValidateUniqueTargetConfig(); err != nil {
+		return err
+	}
+	return spec.ValidateEffectiveBatchPolicies()
+}
+
+// validateResolvedBatchTiming checks that debounce and maxWait for a batched target (after
+// batchDefaults and per-target overrides are applied) each lie in 1m–24h and that maxWait
+// is strictly greater than debounce, per ADR 0072. Used by ValidateEffectiveBatchPolicies.
+func validateResolvedBatchTiming(target string, debounce, maxWait time.Duration) error {
+	if debounce < minBatchTiming || debounce > maxBatchTiming {
+		return fmt.Errorf("targetConfig target %q: debounceTimeout must be between 1m and 24h (resolved %s)", target, debounce)
+	}
+	if maxWait < minBatchTiming || maxWait > maxBatchTiming {
+		return fmt.Errorf("targetConfig target %q: maxWaitTime must be between 1m and 24h (resolved %s)", target, maxWait)
+	}
+	if maxWait <= debounce {
+		return fmt.Errorf("targetConfig target %q: maxWaitTime must exceed debounceTimeout (resolved debounce %s, maxWait %s)", target, debounce, maxWait)
+	}
+	return nil
+}
+
 // ResolveTargetConfig returns the TargetConfig entry for target, or nil when not configured.
 // Duplicate target names are rejected by the validating webhook; at most one entry exists per target.
 func (spec NudgeConfigSpec) ResolveTargetConfig(target string) *TargetConfig {
@@ -351,6 +396,11 @@ type AccumulatedEntry struct {
 	// CapturedAt is the timestamp when this entry was added to the batch.
 	// +required
 	CapturedAt metav1.Time `json:"capturedAt"`
+
+	// ServiceAccountName is the build PipelineRun service account, captured at accumulation time
+	// so batch firing can resolve registry credentials if the build PLR was pruned.
+	// +optional
+	ServiceAccountName string `json:"serviceAccountName,omitempty"`
 }
 
 // FailedEntry defines a build event that could not be accumulated into the batch.

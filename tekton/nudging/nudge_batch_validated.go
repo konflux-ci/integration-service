@@ -44,7 +44,7 @@ func RecordValidatedSnapshotForBatchedNudge(
 	if digest == "" {
 		return fmt.Errorf("digest is required for validated batched nudge target %q", targetName)
 	}
-	return recordSuccessForBatchedNudge(ctx, c, nudgeConfig, targetName, sourceComponent, sourceRef, digest)
+	return recordSuccessForBatchedNudge(ctx, c, nudgeConfig, targetName, sourceComponent, sourceRef, digest, "")
 }
 
 // RecordFailedValidatedSnapshotForBatchedNudge records a failing Snapshot for validated-mode batching.
