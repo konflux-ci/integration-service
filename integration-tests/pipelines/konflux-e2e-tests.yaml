@@ -116,7 +116,7 @@ spec:
           value: kfg-$(context.pipelineRun.name)
         - name: overrides-yaml
           value: |
-            - name: integration-service
+            - name: integration
               git:
                 - sourceRepo: konflux-ci/integration-service
                   remote:
