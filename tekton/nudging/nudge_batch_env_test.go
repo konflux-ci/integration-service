@@ -96,8 +96,10 @@ var _ = Describe("Nudge batch client operations", func() {
 			Expect(updated.Status.ActiveBatches).To(HaveLen(1))
 			Expect(updated.Status.ActiveBatches[0].Target).To(Equal(target))
 			Expect(updated.Status.ActiveBatches[0].Phase).To(Equal(v1beta2.BatchPhaseAccumulating))
+			Expect(updated.Status.ActiveBatches[0].NudgePipelineRun).To(Equal(BatchedNudgePipelineRunName(updated.Status.ActiveBatches[0].BatchID, 0)))
 			Expect(updated.Status.ActiveBatches[0].Accumulated).To(HaveLen(1))
 			Expect(updated.Status.ActiveBatches[0].Accumulated[0].BuildPipelineRun).To(Equal(buildPLR.Name))
+			Expect(updated.Status.ActiveBatches[0].Accumulated[0].ServiceAccountName).To(Equal(buildPLR.Spec.TaskRunTemplate.ServiceAccountName))
 		})
 
 		It("should be idempotent when the same build PipelineRun is recorded twice", func() {
