@@ -363,6 +363,51 @@ func (a *Adapter) EnsureNudgePipelineRunsExist() (controller.OperationResult, er
 	return controller.ContinueProcessing()
 }
 
+// RecordFailedBatchedNudgeBuilds records failed source builds against batched nudge targets.
+func (a *Adapter) RecordFailedBatchedNudgeBuilds() (controller.OperationResult, error) {
+	if !tekton.IsPLRCreatedByPACPushEvent(a.pipelineRun) {
+		return controller.ContinueProcessing()
+	}
+	if h.HasPipelineRunSucceeded(a.pipelineRun) || !h.HasPipelineRunFinished(a.pipelineRun) {
+		return controller.ContinueProcessing()
+	}
+
+	nudgeConfig, err := a.loader.GetNudgeConfigForNamespace(a.context, a.client, a.pipelineRun.Namespace)
+	if err != nil {
+		if clienterrors.IsNotFound(err) {
+			return controller.ContinueProcessing()
+		}
+		a.logger.Error(err, "Failed to get NudgeConfig for failed batched nudge recording")
+		return controller.RequeueWithError(err)
+	}
+
+	componentName := a.componentName
+	var batchedTargetNames []string
+	for _, nudge := range nudgeConfig.Spec.Nudges {
+		if nudge.From != componentName || (nudge.Mode != "" && nudge.Mode != v1beta2.NudgeModeImmediate) {
+			continue
+		}
+		if nudgeConfig.Spec.IsTargetBatched(nudge.To) {
+			batchedTargetNames = append(batchedTargetNames, nudge.To)
+		}
+	}
+	if len(batchedTargetNames) == 0 {
+		return controller.ContinueProcessing()
+	}
+
+	reason := fmt.Sprintf("build PipelineRun %s failed", a.pipelineRun.Name)
+	for _, targetName := range batchedTargetNames {
+		if err := nudging.RecordFailedBuildForBatchedNudge(a.context, a.client, nudgeConfig, targetName, componentName, a.pipelineRun, reason); err != nil {
+			a.logger.Error(err, "Failed to record failed build for batched nudge target", "target", targetName)
+			return controller.RequeueWithError(err)
+		}
+	}
+	a.logger.LogAuditEvent("Recorded failed builds for batched nudge targets", a.pipelineRun, h.LogActionAdd,
+		"targets", strings.Join(batchedTargetNames, ","))
+
+	return controller.ContinueProcessing()
+}
+
 // EnsureSnapshotExists is an operation that will ensure that a pipeline Snapshot associated
 // to the build PipelineRun being processed exists. Otherwise, it will create a new pipeline Snapshot.
 func (a *Adapter) EnsureSnapshotExists() (result controller.OperationResult, err error) {

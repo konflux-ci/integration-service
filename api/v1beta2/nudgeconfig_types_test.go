@@ -385,7 +385,7 @@ func TestValidateUniqueTargetConfigRejectsDuplicates(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected duplicate targetConfig error")
 	}
-	if !strings.Contains(err.Error(), "duplicate targetConfig target") {
+	if !strings.Contains(err.Error(), `duplicate targetConfig target "bundle"`) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
@@ -419,6 +419,85 @@ func TestEffectiveBatchPolicyInheritsBatchDefaults(t *testing.T) {
 	debounce, maxWait, failure := spec.EffectiveBatchPolicy("bundle")
 	if debounce != 15*time.Minute || maxWait != 2*time.Hour || failure != FailurePolicyProceedWithPartial {
 		t.Fatalf("unexpected policy: debounce=%v maxWait=%v failure=%v", debounce, maxWait, failure)
+	}
+}
+
+func TestValidateEffectiveBatchPoliciesRejectsResolvedMaxWaitNotExceedingDebounce(t *testing.T) {
+	spec := NudgeConfigSpec{
+		BatchDefaults: &BatchDefaults{
+			DebounceTimeout: durationPtr(2 * time.Hour),
+			MaxWaitTime:     durationPtr(4 * time.Hour),
+		},
+		TargetConfig: []TargetConfig{
+			{
+				Target: "bundle",
+				BatchPolicy: &BatchPolicy{
+					MaxWaitTime: durationPtr(time.Hour),
+				},
+			},
+		},
+	}
+	err := spec.ValidateEffectiveBatchPolicies()
+	if err == nil {
+		t.Fatal("expected resolved timing error")
+	}
+	if !strings.Contains(err.Error(), `targetConfig target "bundle"`) {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(err.Error(), "maxWaitTime must exceed debounceTimeout") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestValidateEffectiveBatchPoliciesRejectsResolvedDebounceOutOfRange(t *testing.T) {
+	spec := NudgeConfigSpec{
+		TargetConfig: []TargetConfig{
+			{
+				Target: "bundle",
+				BatchPolicy: &BatchPolicy{
+					DebounceTimeout: durationPtr(25 * time.Hour),
+					MaxWaitTime:     durationPtr(25*time.Hour + time.Minute),
+				},
+			},
+		},
+	}
+	err := spec.ValidateEffectiveBatchPolicies()
+	if err == nil {
+		t.Fatal("expected resolved debounce out of range error")
+	}
+	if !strings.Contains(err.Error(), "debounceTimeout must be between 1m and 24h") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestValidateEffectiveBatchPoliciesAcceptsValidResolvedPolicy(t *testing.T) {
+	spec := NudgeConfigSpec{
+		BatchDefaults: &BatchDefaults{
+			DebounceTimeout: durationPtr(30 * time.Minute),
+		},
+		TargetConfig: []TargetConfig{
+			{
+				Target: "bundle",
+				BatchPolicy: &BatchPolicy{
+					MaxWaitTime: durationPtr(2 * time.Hour),
+				},
+			},
+		},
+	}
+	if err := spec.ValidateEffectiveBatchPolicies(); err != nil {
+		t.Fatalf("expected valid resolved policy, got %v", err)
+	}
+}
+
+func TestValidateBatchConfigCombinesDuplicateAndEffectiveChecks(t *testing.T) {
+	spec := NudgeConfigSpec{
+		TargetConfig: []TargetConfig{
+			{Target: "bundle", BatchPolicy: &BatchPolicy{}},
+			{Target: "bundle", BatchPolicy: &BatchPolicy{}},
+		},
+	}
+	if err := spec.ValidateBatchConfig(); err == nil {
+		t.Fatal("expected duplicate error from ValidateBatchConfig")
 	}
 }
 

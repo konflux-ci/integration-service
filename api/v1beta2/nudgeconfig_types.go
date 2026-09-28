@@ -227,6 +227,11 @@ func (spec NudgeConfigSpec) EffectiveBatchPolicy(target string) (debounce time.D
 	return debounce, maxWait, failure
 }
 
+const (
+	minBatchTiming = time.Minute
+	maxBatchTiming = 24 * time.Hour
+)
+
 // ValidateUniqueTargetConfig returns an error when spec.targetConfig contains duplicate target names.
 func (spec NudgeConfigSpec) ValidateUniqueTargetConfig() error {
 	seen := make(map[string]struct{}, len(spec.TargetConfig))
@@ -235,6 +240,43 @@ func (spec NudgeConfigSpec) ValidateUniqueTargetConfig() error {
 			return fmt.Errorf("duplicate targetConfig target %q not allowed", tc.Target)
 		}
 		seen[tc.Target] = struct{}{}
+	}
+	return nil
+}
+
+// ValidateEffectiveBatchPolicies rejects batched targets whose resolved debounce/maxWait violate ADR 0072
+// timing rules after inheriting spec.batchDefaults and runtime defaults.
+func (spec NudgeConfigSpec) ValidateEffectiveBatchPolicies() error {
+	for _, tc := range spec.TargetConfig {
+		if !tc.IsBatched() {
+			continue
+		}
+		debounce, maxWait, _ := spec.EffectiveBatchPolicy(tc.Target)
+		if err := validateResolvedBatchTiming(tc.Target, debounce, maxWait); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// ValidateBatchConfig runs webhook-level batch configuration checks not expressible as per-field CEL
+// (duplicate targets with named errors, resolved timing per batched target).
+func (spec NudgeConfigSpec) ValidateBatchConfig() error {
+	if err := spec.ValidateUniqueTargetConfig(); err != nil {
+		return err
+	}
+	return spec.ValidateEffectiveBatchPolicies()
+}
+
+func validateResolvedBatchTiming(target string, debounce, maxWait time.Duration) error {
+	if debounce < minBatchTiming || debounce > maxBatchTiming {
+		return fmt.Errorf("targetConfig target %q: debounceTimeout must be between 1m and 24h (resolved %s)", target, debounce)
+	}
+	if maxWait < minBatchTiming || maxWait > maxBatchTiming {
+		return fmt.Errorf("targetConfig target %q: maxWaitTime must be between 1m and 24h (resolved %s)", target, maxWait)
+	}
+	if maxWait <= debounce {
+		return fmt.Errorf("targetConfig target %q: maxWaitTime must exceed debounceTimeout (resolved debounce %s, maxWait %s)", target, debounce, maxWait)
 	}
 	return nil
 }
