@@ -17,6 +17,7 @@ limitations under the License.
 package nudging
 
 import (
+	"errors"
 	"time"
 
 	"github.com/konflux-ci/integration-service/api/v1beta2"
@@ -96,8 +97,10 @@ var _ = Describe("Nudge batch client operations", func() {
 			Expect(updated.Status.ActiveBatches).To(HaveLen(1))
 			Expect(updated.Status.ActiveBatches[0].Target).To(Equal(target))
 			Expect(updated.Status.ActiveBatches[0].Phase).To(Equal(v1beta2.BatchPhaseAccumulating))
+			Expect(updated.Status.ActiveBatches[0].NudgePipelineRun).To(Equal(BatchedNudgePipelineRunName(updated.Status.ActiveBatches[0].BatchID, 0)))
 			Expect(updated.Status.ActiveBatches[0].Accumulated).To(HaveLen(1))
 			Expect(updated.Status.ActiveBatches[0].Accumulated[0].BuildPipelineRun).To(Equal(buildPLR.Name))
+			Expect(updated.Status.ActiveBatches[0].Accumulated[0].ServiceAccountName).To(Equal(buildPLR.Spec.TaskRunTemplate.ServiceAccountName))
 		})
 
 		It("should be idempotent when the same build PipelineRun is recorded twice", func() {
@@ -139,6 +142,83 @@ var _ = Describe("Nudge batch client operations", func() {
 			Expect(updated.Status.ActiveBatches[0].Phase).To(Equal(v1beta2.BatchPhaseBlocked))
 			Expect(updated.Status.ActiveBatches[0].Failed).To(HaveLen(1))
 			Expect(updated.Status.ActiveBatches[0].FireAt).To(BeNil())
+		})
+
+		It("should default the failure reason when none is provided", func() {
+			c := newClient(nudgeConfig, buildPLR)
+			Expect(RecordFailedBuildForBatchedNudge(ctx, c, nudgeConfig, target, source, buildPLR, "")).To(Succeed())
+
+			updated := &v1beta2.NudgeConfig{}
+			Expect(c.Get(ctx, types.NamespacedName{Name: nudgeConfig.Name, Namespace: namespace}, updated)).To(Succeed())
+			Expect(updated.Status.ActiveBatches[0].Failed[0].Reason).To(Equal("build pipeline failed"))
+		})
+	})
+
+	Context("When handling force-fire conditions and no-op actions", func() {
+		It("should no-op ProcessForceFireAction when spec.actions is nil", func() {
+			c := newClient(nudgeConfig)
+			Expect(ProcessForceFireAction(ctx, c, nudgeConfig)).To(Succeed())
+		})
+
+		It("should return ErrForceFireIgnored when the target batch is already firing", func() {
+			now := metav1.Now()
+			nudgeConfig.Status.ActiveBatches = []v1beta2.ActiveBatch{{
+				Target:           target,
+				BatchID:          "firing",
+				Phase:            v1beta2.BatchPhaseFiring,
+				CreatedAt:        now,
+				NudgePipelineRun: "nudge-batch-firing",
+			}}
+			c := newClient(nudgeConfig)
+			nudgeConfig.Spec.Actions = &v1beta2.Actions{
+				ForceFire: &v1beta2.ForceFireAction{Target: target},
+			}
+			err := ProcessForceFireAction(ctx, c, nudgeConfig)
+			Expect(errors.Is(err, ErrForceFireIgnored)).To(BeTrue())
+		})
+
+		It("should record force-fire rejected conditions", func() {
+			c := newClient(nudgeConfig)
+			Expect(SetForceFireRejectedCondition(ctx, c, nudgeConfig, "rejected")).To(Succeed())
+
+			updated := &v1beta2.NudgeConfig{}
+			Expect(c.Get(ctx, types.NamespacedName{Name: nudgeConfig.Name, Namespace: namespace}, updated)).To(Succeed())
+			Expect(updated.Status.Conditions).To(ContainElement(And(
+				HaveField("Type", v1beta2.NudgeConfigConditionForceFireRejected),
+				HaveField("Status", metav1.ConditionTrue),
+				HaveField("Message", "rejected"),
+			)))
+		})
+
+		It("should no-op when clearing absent force-fire conditions", func() {
+			c := newClient(nudgeConfig)
+			Expect(ClearForceFireRejectedCondition(ctx, c, nudgeConfig)).To(Succeed())
+			Expect(ClearForceFireIgnoredCondition(ctx, c, nudgeConfig)).To(Succeed())
+		})
+
+		It("should record force-fire ignored conditions", func() {
+			c := newClient(nudgeConfig)
+			Expect(SetForceFireIgnoredCondition(ctx, c, nudgeConfig, "ignored")).To(Succeed())
+
+			updated := &v1beta2.NudgeConfig{}
+			Expect(c.Get(ctx, types.NamespacedName{Name: nudgeConfig.Name, Namespace: namespace}, updated)).To(Succeed())
+			Expect(updated.Status.Conditions).To(ContainElement(And(
+				HaveField("Type", v1beta2.NudgeConfigConditionForceFireIgnored),
+				HaveField("Status", metav1.ConditionTrue),
+				HaveField("Message", "ignored"),
+			)))
+		})
+
+		It("should clear force-fire ignored conditions after they were set", func() {
+			c := newClient(nudgeConfig)
+			Expect(SetForceFireIgnoredCondition(ctx, c, nudgeConfig, "ignored")).To(Succeed())
+			Expect(ClearForceFireIgnoredCondition(ctx, c, nudgeConfig)).To(Succeed())
+		})
+
+		It("should clear force-fire rejected conditions after they were set", func() {
+			c := newClient(nudgeConfig)
+			Expect(SetForceFireRejectedCondition(ctx, c, nudgeConfig, "rejected")).To(Succeed())
+			Expect(ClearForceFireRejectedCondition(ctx, c, nudgeConfig)).To(Succeed())
 		})
 	})
 
