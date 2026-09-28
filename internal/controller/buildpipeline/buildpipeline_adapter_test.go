@@ -36,6 +36,7 @@ import (
 	"github.com/konflux-ci/integration-service/snapshot"
 	"github.com/konflux-ci/integration-service/status"
 	"github.com/konflux-ci/integration-service/tekton"
+	"github.com/konflux-ci/integration-service/tekton/nudging"
 	"github.com/konflux-ci/operator-toolkit/metadata"
 	"knative.dev/pkg/apis"
 	v1 "knative.dev/pkg/apis/duck/v1"
@@ -4769,6 +4770,123 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				g.Expect(cond.Status).To(Equal(metav1.ConditionFalse))
 				g.Expect(cond.Reason).To(Equal(helpers.BatchDefaultsNotImplementedReason))
 			}, time.Second*5).Should(Succeed())
+		})
+	})
+
+	When("RecordFailedBatchedNudgeBuilds is called", func() {
+		makeFailedPushPLR := func() *tektonv1.PipelineRun {
+			plr := buildPipelineRun.DeepCopy()
+			plr.Labels["pipelinesascode.tekton.dev/event-type"] = "push"
+			delete(plr.Labels, "pipelinesascode.tekton.dev/pull-request")
+			delete(plr.Annotations, tektonconsts.NudgeProcessedAnnotation)
+			return plr
+		}
+
+		It("skips when PipelineRun is not a push event", func() {
+			adapter = NewAdapter(ctx, buildPipelineRun, hasComp.Name, &[]v1beta2.ComponentGroup{*hasCompGroup}, logger, loader.NewMockLoader(), k8sClient)
+			result, err := adapter.RecordFailedBatchedNudgeBuilds()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.RequeueRequest).To(BeFalse())
+		})
+
+		It("skips when the build PipelineRun has not finished", func() {
+			pushPLR := makeFailedPushPLR()
+			pushPLR.Status.SetCondition(&apis.Condition{Type: apis.ConditionSucceeded, Status: "Unknown"})
+			adapter = NewAdapter(ctx, pushPLR, hasComp.Name, &[]v1beta2.ComponentGroup{*hasCompGroup}, logger, loader.NewMockLoader(), k8sClient)
+			result, err := adapter.RecordFailedBatchedNudgeBuilds()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.RequeueRequest).To(BeFalse())
+		})
+
+		It("skips when the build PipelineRun succeeded", func() {
+			pushPLR := makeFailedPushPLR()
+			adapter = NewAdapter(ctx, pushPLR, hasComp.Name, &[]v1beta2.ComponentGroup{*hasCompGroup}, logger, loader.NewMockLoader(), k8sClient)
+			result, err := adapter.RecordFailedBatchedNudgeBuilds()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.RequeueRequest).To(BeFalse())
+		})
+
+		It("requeues when NudgeConfig load fails with a transient error", func() {
+			pushPLR := makeFailedPushPLR()
+			pushPLR.Status = tektonv1.PipelineRunStatus{
+				Status: v1.Status{
+					Conditions: v1.Conditions{{Type: apis.ConditionSucceeded, Status: "False", Reason: "Failed"}},
+				},
+				PipelineRunStatusFields: tektonv1.PipelineRunStatusFields{
+					CompletionTime: &metav1.Time{Time: time.Now()},
+				},
+			}
+			adapter = NewAdapter(ctx, pushPLR, hasComp.Name, &[]v1beta2.ComponentGroup{*hasCompGroup}, logger, loader.NewMockLoader(), k8sClient)
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{ContextKey: loader.NudgeConfigContextKey, Err: fmt.Errorf("transient API error")},
+			})
+			result, err := adapter.RecordFailedBatchedNudgeBuilds()
+			Expect(err).To(HaveOccurred())
+			Expect(result.RequeueRequest).To(BeTrue())
+		})
+
+		It("records failed builds against batched nudge targets", func() {
+			pushPLR := makeFailedPushPLR()
+			pushPLR.Name = "failed-batched-nudge-build-plr"
+			pushPLR.ResourceVersion = ""
+			pushPLR.Status = tektonv1.PipelineRunStatus{
+				Status: v1.Status{
+					Conditions: v1.Conditions{
+						{
+							Type:   apis.ConditionSucceeded,
+							Status: "False",
+							Reason: "Failed",
+						},
+					},
+				},
+				PipelineRunStatusFields: tektonv1.PipelineRunStatusFields{
+					CompletionTime: &metav1.Time{Time: time.Now()},
+				},
+			}
+
+			nudgeConfig := &v1beta2.NudgeConfig{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      v1beta2.NudgeConfigSingletonName,
+					Namespace: "default",
+				},
+				Spec: v1beta2.NudgeConfigSpec{
+					Nudges: []v1beta2.NudgeRelationship{
+						{From: hasComp.Name, To: hasComp2.Name, Mode: v1beta2.NudgeModeImmediate},
+					},
+					TargetConfig: []v1beta2.TargetConfig{
+						{Target: hasComp2.Name, BatchPolicy: &v1beta2.BatchPolicy{}},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, nudgeConfig)).To(Succeed())
+			defer func() {
+				_ = k8sClient.Delete(ctx, nudgeConfig)
+			}()
+
+			createdNC := &v1beta2.NudgeConfig{}
+			Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(nudgeConfig), createdNC)).To(Succeed())
+
+			Expect(tekton.IsPLRCreatedByPACPushEvent(pushPLR)).To(BeTrue())
+			Expect(helpers.HasPipelineRunFinished(pushPLR)).To(BeTrue())
+			Expect(helpers.HasPipelineRunSucceeded(pushPLR)).To(BeFalse())
+
+			adapter = NewAdapter(ctx, pushPLR, hasComp.Name, &[]v1beta2.ComponentGroup{*hasCompGroup}, logger, loader.NewMockLoader(), k8sClient)
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{ContextKey: loader.NudgeConfigContextKey, Resource: createdNC},
+			})
+
+			Expect(nudging.RecordFailedBuildForBatchedNudge(ctx, k8sClient, createdNC, hasComp2.Name, hasComp.Name, pushPLR, "build failed")).To(Succeed())
+
+			result, err := adapter.RecordFailedBatchedNudgeBuilds()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.RequeueRequest).To(BeFalse())
+
+			updatedNC := &v1beta2.NudgeConfig{}
+			Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(nudgeConfig), updatedNC)).To(Succeed())
+			Expect(updatedNC.Status.ActiveBatches).To(HaveLen(1))
+			Expect(updatedNC.Status.ActiveBatches[0].Target).To(Equal(hasComp2.Name))
+			Expect(updatedNC.Status.ActiveBatches[0].Failed).To(HaveLen(1))
+			Expect(updatedNC.Status.ActiveBatches[0].Failed[0].BuildPipelineRun).To(Equal(pushPLR.Name))
 		})
 	})
 

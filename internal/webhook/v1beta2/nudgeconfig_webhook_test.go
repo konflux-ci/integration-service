@@ -17,6 +17,8 @@ limitations under the License.
 package v1beta2
 
 import (
+	"time"
+
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
 	appstudiov1beta2 "github.com/konflux-ci/integration-service/api/v1beta2"
 	"github.com/konflux-ci/integration-service/helpers"
@@ -401,6 +403,58 @@ var _ = Describe("NudgeConfig webhook - component existence", func() {
 		})
 	})
 
+	Describe("targetConfig batch validation", func() {
+		It("rejects duplicate target names with the duplicate target in the error", func() {
+			nc := newNudgeConfig(ns.Name, nil)
+			nc.Spec.TargetConfig = []appstudiov1beta2.TargetConfig{
+				{Target: "bundle", BatchPolicy: &appstudiov1beta2.BatchPolicy{}},
+				{Target: "bundle", BatchPolicy: &appstudiov1beta2.BatchPolicy{}},
+			}
+
+			_, err := validator.ValidateCreate(ctx, nc)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring(`duplicate targetConfig target "bundle"`))
+		})
+
+		It("rejects resolved maxWaitTime not exceeding debounceTimeout after batchDefaults inheritance", func() {
+			nc := newNudgeConfig(ns.Name, nil)
+			nc.Spec.BatchDefaults = &appstudiov1beta2.BatchDefaults{
+				DebounceTimeout: &metav1.Duration{Duration: 2 * time.Hour},
+				MaxWaitTime:     &metav1.Duration{Duration: 4 * time.Hour},
+			}
+			nc.Spec.TargetConfig = []appstudiov1beta2.TargetConfig{
+				{
+					Target: "bundle",
+					BatchPolicy: &appstudiov1beta2.BatchPolicy{
+						MaxWaitTime: &metav1.Duration{Duration: time.Hour},
+					},
+				},
+			}
+
+			_, err := validator.ValidateCreate(ctx, nc)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring(`targetConfig target "bundle"`))
+			Expect(err.Error()).To(ContainSubstring("maxWaitTime must exceed debounceTimeout"))
+		})
+
+		It("accepts valid targetConfig batchPolicy overrides", func() {
+			nc := newNudgeConfig(ns.Name, nil)
+			nc.Spec.TargetConfig = []appstudiov1beta2.TargetConfig{
+				{
+					Target: "bundle",
+					BatchPolicy: &appstudiov1beta2.BatchPolicy{
+						DebounceTimeout: &metav1.Duration{Duration: 15 * time.Minute},
+						MaxWaitTime:     &metav1.Duration{Duration: 2 * time.Hour},
+					},
+				},
+			}
+
+			warnings, err := validator.ValidateCreate(ctx, nc)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(warnings).To(BeEmpty())
+		})
+	})
+
 	Describe("batchDefaults admission warnings", func() {
 		It("warns on create when spec.batchDefaults is set", func() {
 			nc := newNudgeConfig(ns.Name, nil)
@@ -427,6 +481,31 @@ var _ = Describe("NudgeConfig webhook - component existence", func() {
 			warnings, err := validator.ValidateUpdate(ctx, oldNC, newNC)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(warnings).To(ConsistOf(helpers.BatchDefaultsNotImplementedMessage))
+		})
+
+		It("warns when an update removes spec.targetConfig", func() {
+			oldNC := newNudgeConfig(ns.Name, nil)
+			oldNC.Spec.TargetConfig = []appstudiov1beta2.TargetConfig{
+				{Target: "bundle", BatchPolicy: &appstudiov1beta2.BatchPolicy{}},
+			}
+			newNC := newNudgeConfig(ns.Name, nil)
+
+			warnings, err := validator.ValidateUpdate(ctx, oldNC, newNC)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(warnings).To(ContainElement(ContainSubstring("removed spec.targetConfig")))
+		})
+
+		It("warns when an update removes spec.actions without other spec changes", func() {
+			oldNC := newNudgeConfig(ns.Name, nil)
+			oldNC.Spec.Actions = &appstudiov1beta2.Actions{
+				ForceFire: &appstudiov1beta2.ForceFireAction{Target: "bundle"},
+			}
+			newNC := oldNC.DeepCopy()
+			newNC.Spec.Actions = nil
+
+			warnings, err := validator.ValidateUpdate(ctx, oldNC, newNC)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(warnings).To(ContainElement(ContainSubstring("removed spec.actions")))
 		})
 	})
 
