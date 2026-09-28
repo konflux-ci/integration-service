@@ -338,6 +338,44 @@ var _ = Describe("Nudge Pipeline", func() {
 		})
 	})
 
+	Describe("GenerateRenovateConfigForBatchedSources", func() {
+		It("merges custom managers and enable rules for multiple source builds", func() {
+			batchTarget := nudging.NudgeTarget{
+				ComponentName: "target-comp",
+				GitProvider:   "github",
+				Username:      "user",
+				GitAuthor:     "Author <author@example.com>",
+				Token:         "token",
+				Endpoint:      "https://github.com",
+				Repositories:  []nudging.RenovateRepository{{Repository: "org/target-repo"}},
+			}
+			buildResultA := &nudging.NudgeBuildResult{
+				BuiltImageRepository: "quay.io/ns/image-a",
+				BuiltImageTag:        "latest",
+				Digest:               "sha256:aaa",
+				FileMatches:          "Dockerfile",
+				SourceComponentName:  "source-a",
+				GitRepoAtShaLink:     "https://example.com/a",
+			}
+			buildResultB := &nudging.NudgeBuildResult{
+				BuiltImageRepository: "quay.io/ns/image-b",
+				BuiltImageTag:        "latest",
+				Digest:               "sha256:bbb",
+				FileMatches:          "Dockerfile",
+				SourceComponentName:  "source-b",
+				GitRepoAtShaLink:     "https://example.com/b",
+			}
+
+			config := nudging.GenerateRenovateConfigForBatchedSources(batchTarget, []*nudging.NudgeBuildResult{buildResultA, buildResultB}, false)
+
+			Expect(config.CustomManagers).To(HaveLen(2))
+			Expect(config.PackageRules).To(HaveLen(3))
+			Expect(config.PackageRules[0].Enabled).To(BeFalse())
+			Expect(config.PackageRules[1].CommitMessageTopic).To(Equal("source-a"))
+			Expect(config.PackageRules[2].CommitMessageTopic).To(Equal("source-b"))
+		})
+	})
+
 	// ------------------------------------------------------------------
 	// CreateNudgePipelineRun
 	// ------------------------------------------------------------------

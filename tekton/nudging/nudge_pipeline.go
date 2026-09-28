@@ -300,19 +300,63 @@ func GenerateRenovateConfig(target NudgeTarget, buildResult *NudgeBuildResult, s
 	}
 }
 
+// GenerateRenovateConfigForBatchedSources merges Renovate configuration for every
+// source build in a fired batch so each accumulated source image is nudged into
+// the target repository in a single PipelineRun.
+func GenerateRenovateConfigForBatchedSources(target NudgeTarget, buildResults []*NudgeBuildResult, simpleBranchName bool) RenovateConfig {
+	if len(buildResults) == 0 {
+		return RenovateConfig{}
+	}
+	if len(buildResults) == 1 {
+		return GenerateRenovateConfig(target, buildResults[0], simpleBranchName)
+	}
+
+	merged := GenerateRenovateConfig(target, buildResults[0], simpleBranchName)
+	for i := 1; i < len(buildResults); i++ {
+		next := GenerateRenovateConfig(target, buildResults[i], simpleBranchName)
+		merged.CustomManagers = append(merged.CustomManagers, next.CustomManagers...)
+		if merged.RegistryAliases == nil {
+			merged.RegistryAliases = make(map[string]string)
+		}
+		for alias, canonical := range next.RegistryAliases {
+			merged.RegistryAliases[alias] = canonical
+		}
+		if len(next.PackageRules) > 1 {
+			merged.PackageRules = append(merged.PackageRules, next.PackageRules[1:]...)
+		}
+	}
+	return merged
+}
+
 // CreateNudgePipelineRun creates the Renovate PipelineRun plus its supporting
 // Secret and ConfigMap in the build PLR namespace.  The PipelineRun is created
 // first so owner references can point back to it; Secret and ConfigMap are
 // created afterward (Tekton will wait for them).
 func CreateNudgePipelineRun(ctx context.Context, c client.Client, nudgingPLR *tektonv1.PipelineRun, targets []NudgeTarget, buildResult *NudgeBuildResult, simpleBranchName bool) error {
+	if buildResult == nil {
+		return fmt.Errorf("build result is required to create a nudge PipelineRun")
+	}
+	return CreateNudgePipelineRunWithName(ctx, c, nudgingPLR, targets, []*NudgeBuildResult{buildResult}, simpleBranchName, "")
+}
+
+// CreateNudgePipelineRunWithName creates a nudge PipelineRun using pipelineRunName when non-empty;
+// otherwise the default per-build name is used (immediate nudges). buildResults may contain one
+// entry (immediate nudge) or several (batched nudge covering multiple source components).
+func CreateNudgePipelineRunWithName(ctx context.Context, c client.Client, nudgingPLR *tektonv1.PipelineRun, targets []NudgeTarget, buildResults []*NudgeBuildResult, simpleBranchName bool, pipelineRunName string) error {
 	log := logger.FromContext(ctx)
 
 	if len(targets) == 0 {
 		return nil
 	}
+	if len(buildResults) == 0 {
+		return fmt.Errorf("at least one build result is required to create a nudge PipelineRun")
+	}
 
+	name := pipelineRunName
+	if name == "" {
+		name = NudgePipelineRunNameForBuild(nudgingPLR)
+	}
 	nameSuffix := deterministicSuffix(string(nudgingPLR.UID))
-	name := fmt.Sprintf("renovate-pipeline-%s", nameSuffix)
 	namespace := nudgingPLR.Namespace
 	caConfigMapName := fmt.Sprintf("renovate-ca-%s", nameSuffix)
 
@@ -327,7 +371,7 @@ func CreateNudgePipelineRun(ctx context.Context, c client.Client, nudgingPLR *te
 		secretTokens[tokenKey] = target.Token
 		secretTokens[imageKey] = target.ImageRepositoryPassword
 
-		renovateConfig := GenerateRenovateConfig(target, buildResult, simpleBranchName)
+		renovateConfig := GenerateRenovateConfigForBatchedSources(target, buildResults, simpleBranchName)
 		config, err := json.Marshal(renovateConfig)
 		if err != nil {
 			return fmt.Errorf("marshalling renovate config for component %s: %w", target.ComponentName, err)
@@ -409,6 +453,7 @@ func CreateNudgePipelineRun(ctx context.Context, c client.Client, nudgingPLR *te
 		renovateImageUrl = tektonconsts.DefaultRenovateImageUrl
 	}
 
+	primaryBuildResult := buildResults[len(buildResults)-1]
 	pipelineRun := &tektonv1.PipelineRun{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
@@ -418,9 +463,9 @@ func CreateNudgePipelineRun(ctx context.Context, c client.Client, nudgingPLR *te
 			},
 			Annotations: map[string]string{
 				tektonconsts.NudgedComponentsAnnotation: joinNudgedComponentNames(targets),
-				tektonconsts.NudgingCommitAnnotation:    extractCommitHash(buildResult.GitRepoAtShaLink),
-				tektonconsts.NudgingComponentAnnotation: buildResult.SourceComponentName,
-				tektonconsts.NudgingImageAnnotation:     fmt.Sprintf("%s:%s", buildResult.BuiltImageRepository, buildResult.BuiltImageTag),
+				tektonconsts.NudgingCommitAnnotation:    extractCommitHash(primaryBuildResult.GitRepoAtShaLink),
+				tektonconsts.NudgingComponentAnnotation: primaryBuildResult.SourceComponentName,
+				tektonconsts.NudgingImageAnnotation:     fmt.Sprintf("%s:%s", primaryBuildResult.BuiltImageRepository, primaryBuildResult.BuiltImageTag),
 				tektonconsts.NudgingPipelineAnnotation:  nudgingPLR.Name,
 			},
 		},
@@ -533,6 +578,17 @@ func createIfNotExists(ctx context.Context, c client.Client, obj client.Object) 
 		return err
 	}
 	return nil
+}
+
+// NudgePipelineRunNameForBuild returns the deterministic Renovate PipelineRun name for a source build PLR.
+func NudgePipelineRunNameForBuild(buildPLR *tektonv1.PipelineRun) string {
+	return fmt.Sprintf("renovate-pipeline-%s", deterministicSuffix(string(buildPLR.UID)))
+}
+
+// NudgePipelineRunNameForBatchedTarget returns a deterministic Renovate PipelineRun name for a batched
+// nudge to a single target, distinct from the immediate per-build name and from other batched targets.
+func NudgePipelineRunNameForBatchedTarget(buildPLR *tektonv1.PipelineRun, targetComponent string) string {
+	return fmt.Sprintf("renovate-pipeline-%s", deterministicSuffix(string(buildPLR.UID)+":"+targetComponent))
 }
 
 // deterministicSuffix returns a short hex string derived from the input,

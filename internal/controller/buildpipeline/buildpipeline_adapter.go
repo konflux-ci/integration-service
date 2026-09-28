@@ -272,16 +272,32 @@ func (a *Adapter) EnsureNudgePipelineRunsExist() (controller.OperationResult, er
 	}
 
 	if len(immediateComponents) == 0 {
-		if err := h.AddFinalizerToPipelineRun(a.context, a.client, a.logger, a.pipelineRun, h.NudgePipelineRunFinalizer); err != nil {
-			return controller.RequeueWithError(err)
-		}
 		processedValue := strings.Join(processedNames, ",")
-		err = tekton.AnnotateBuildPipelineRun(a.context, a.pipelineRun, tektonconsts.NudgeProcessedAnnotation, processedValue, a.client)
+		err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+			var err error
+			a.pipelineRun, err = a.loader.GetPipelineRun(a.context, a.client, a.pipelineRun.Name, a.pipelineRun.Namespace)
+			if err != nil {
+				return err
+			}
+			if a.pipelineRun.GetDeletionTimestamp() != nil {
+				return nil
+			}
+			if err = h.AddFinalizerToPipelineRun(a.context, a.client, a.logger, a.pipelineRun, h.NudgePipelineRunFinalizer); err != nil {
+				return err
+			}
+			if err = tekton.AnnotateBuildPipelineRun(a.context, a.pipelineRun, tektonconsts.NudgeProcessedAnnotation, processedValue, a.client); err != nil {
+				return err
+			}
+			if err = h.RemoveFinalizerFromPipelineRun(a.context, a.client, a.logger, a.pipelineRun, h.NudgePipelineRunFinalizer); err != nil && !clienterrors.IsNotFound(err) {
+				return err
+			}
+			return nil
+		})
 		if err != nil {
-			a.logger.Error(err, "Failed to annotate build PLR as nudge-processed")
-			return controller.RequeueWithError(err)
-		}
-		if err = h.RemoveFinalizerFromPipelineRun(a.context, a.client, a.logger, a.pipelineRun, h.NudgePipelineRunFinalizer); err != nil && !clienterrors.IsNotFound(err) {
+			if clienterrors.IsNotFound(err) {
+				return controller.ContinueProcessing()
+			}
+			a.logger.Error(err, "Failed to update build PLR after batched nudge recording")
 			return controller.RequeueWithError(err)
 		}
 		a.logger.LogAuditEvent("Recorded builds for batched nudge targets", a.pipelineRun, h.LogActionAdd,
@@ -359,6 +375,51 @@ func (a *Adapter) EnsureNudgePipelineRunsExist() (controller.OperationResult, er
 
 	a.logger.LogAuditEvent("Created nudge PipelineRun for downstream components", a.pipelineRun, h.LogActionAdd,
 		"targets", processedValue)
+
+	return controller.ContinueProcessing()
+}
+
+// RecordFailedBatchedNudgeBuilds records failed source builds against batched nudge targets.
+func (a *Adapter) RecordFailedBatchedNudgeBuilds() (controller.OperationResult, error) {
+	if !tekton.IsPLRCreatedByPACPushEvent(a.pipelineRun) {
+		return controller.ContinueProcessing()
+	}
+	if h.HasPipelineRunSucceeded(a.pipelineRun) || !h.HasPipelineRunFinished(a.pipelineRun) {
+		return controller.ContinueProcessing()
+	}
+
+	nudgeConfig, err := a.loader.GetNudgeConfigForNamespace(a.context, a.client, a.pipelineRun.Namespace)
+	if err != nil {
+		if clienterrors.IsNotFound(err) {
+			return controller.ContinueProcessing()
+		}
+		a.logger.Error(err, "Failed to get NudgeConfig for failed batched nudge recording")
+		return controller.RequeueWithError(err)
+	}
+
+	componentName := a.componentName
+	var batchedTargetNames []string
+	for _, nudge := range nudgeConfig.Spec.Nudges {
+		if nudge.From != componentName || (nudge.Mode != "" && nudge.Mode != v1beta2.NudgeModeImmediate) {
+			continue
+		}
+		if nudgeConfig.Spec.IsTargetBatched(nudge.To) {
+			batchedTargetNames = append(batchedTargetNames, nudge.To)
+		}
+	}
+	if len(batchedTargetNames) == 0 {
+		return controller.ContinueProcessing()
+	}
+
+	reason := fmt.Sprintf("build PipelineRun %s failed", a.pipelineRun.Name)
+	for _, targetName := range batchedTargetNames {
+		if err := nudging.RecordFailedBuildForBatchedNudge(a.context, a.client, nudgeConfig, targetName, componentName, a.pipelineRun, reason); err != nil {
+			a.logger.Error(err, "Failed to record failed build for batched nudge target", "target", targetName)
+			return controller.RequeueWithError(err)
+		}
+	}
+	a.logger.LogAuditEvent("Recorded failed builds for batched nudge targets", a.pipelineRun, h.LogActionAdd,
+		"targets", strings.Join(batchedTargetNames, ","))
 
 	return controller.ContinueProcessing()
 }

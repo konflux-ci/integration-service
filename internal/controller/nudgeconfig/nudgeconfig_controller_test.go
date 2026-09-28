@@ -20,8 +20,10 @@ import (
 	"time"
 
 	"github.com/konflux-ci/integration-service/api/v1beta2"
+	nudging "github.com/konflux-ci/integration-service/tekton/nudging"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -41,6 +43,7 @@ var _ = Describe("NudgeConfig reconciler", func() {
 	BeforeEach(func() {
 		scheme = runtime.NewScheme()
 		Expect(v1beta2.AddToScheme(scheme)).To(Succeed())
+		Expect(tektonv1.AddToScheme(scheme)).To(Succeed())
 		reconciler = &Reconciler{
 			Log: logf.Log,
 		}
@@ -99,6 +102,70 @@ var _ = Describe("NudgeConfig reconciler", func() {
 		})
 	})
 
+	Context("When there are no pending batches or actions", func() {
+		It("should complete without requeue", func() {
+			nudgeConfig := &v1beta2.NudgeConfig{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      v1beta2.NudgeConfigSingletonName,
+					Namespace: "default",
+				},
+				Spec: v1beta2.NudgeConfigSpec{},
+			}
+			reconciler.Client = newClient(nudgeConfig)
+
+			result, err := reconciler.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKeyFromObject(nudgeConfig)})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.RequeueAfter).To(BeZero())
+		})
+	})
+
+	Context("When forceFire succeeds", func() {
+		It("should clear spec.actions after processing", func() {
+			now := metav1.Now()
+			buildPLR := &tektonv1.PipelineRun{
+				ObjectMeta: metav1.ObjectMeta{Name: "force-fire-build", Namespace: "default", UID: types.UID("force-fire-uid")},
+			}
+			target := "bundle"
+			plrName := nudging.NudgePipelineRunNameForBatchedTarget(buildPLR, target)
+			nudgeConfig := &v1beta2.NudgeConfig{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      v1beta2.NudgeConfigSingletonName,
+					Namespace: "default",
+				},
+				Spec: v1beta2.NudgeConfigSpec{
+					Actions: &v1beta2.Actions{
+						ForceFire: &v1beta2.ForceFireAction{Target: target},
+					},
+				},
+				Status: v1beta2.NudgeConfigStatus{
+					ActiveBatches: []v1beta2.ActiveBatch{
+						{
+							Target:       target,
+							BatchID:      "force-fire-batch",
+							Phase:        v1beta2.BatchPhaseAccumulating,
+							CreatedAt:    now,
+							HardDeadline: metav1.NewTime(now.Add(time.Hour)),
+							Accumulated: []v1beta2.AccumulatedEntry{
+								{From: "source", ImageDigest: "sha256:abc", BuildPipelineRun: buildPLR.Name, CapturedAt: now},
+							},
+						},
+					},
+				},
+			}
+			existingPLR := &tektonv1.PipelineRun{ObjectMeta: metav1.ObjectMeta{Name: plrName, Namespace: "default"}}
+			reconciler.Client = newClient(nudgeConfig, buildPLR, existingPLR)
+
+			result, err := reconciler.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKeyFromObject(nudgeConfig)})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.RequeueAfter).To(BeZero())
+
+			updated := &v1beta2.NudgeConfig{}
+			Expect(reconciler.Client.Get(ctx, client.ObjectKeyFromObject(nudgeConfig), updated)).To(Succeed())
+			Expect(updated.Spec.Actions).To(BeNil())
+			Expect(updated.Status.ActiveBatches[0].Phase).To(Equal(v1beta2.BatchPhaseCompleted))
+		})
+	})
+
 	Context("When a forceFire action cannot be satisfied", func() {
 		It("should return an error and leave the action in spec", func() {
 			nudgeConfig := &v1beta2.NudgeConfig{
@@ -149,6 +216,24 @@ var _ = Describe("nudgeBatchStatusChanged predicate", func() {
 			},
 		}
 		Expect(predicate.Update(event.UpdateEvent{ObjectOld: oldNC, ObjectNew: newNC})).To(BeTrue())
+	})
+
+	It("should allow create events", func() {
+		Expect(predicate.Create(event.CreateEvent{})).To(BeTrue())
+	})
+
+	It("should ignore delete events", func() {
+		Expect(predicate.Delete(event.DeleteEvent{})).To(BeFalse())
+	})
+
+	It("should allow generic events", func() {
+		Expect(predicate.Generic(event.GenericEvent{})).To(BeTrue())
+	})
+
+	It("should allow updates when either object is nil", func() {
+		nc := &v1beta2.NudgeConfig{}
+		Expect(predicate.Update(event.UpdateEvent{ObjectNew: nc})).To(BeTrue())
+		Expect(predicate.Update(event.UpdateEvent{ObjectOld: nc})).To(BeTrue())
 	})
 
 	It("should ignore unrelated spec updates", func() {
