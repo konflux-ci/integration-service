@@ -49,6 +49,12 @@ const (
 	// PipelinesAsCodePrefix contains the prefix applied to labels and annotations copied from Pipelines as Code resources.
 	PipelinesAsCodePrefix = "pac.test.appstudio.openshift.io"
 
+	// SnapshotProvenanceAnnotation identifies which service created a Snapshot.
+	SnapshotProvenanceAnnotation = "konflux-ci.dev/created-by"
+
+	// SnapshotProvenanceValue is the value used for Snapshots created by Integration Service.
+	SnapshotProvenanceValue = "integration-service"
+
 	// TestLabelPrefix contains the prefix applied to labels and annotations related to testing.
 	TestLabelPrefix = "test.appstudio.openshift.io"
 
@@ -838,6 +844,9 @@ func NewSnapshot(application *applicationapiv1alpha1.Application, snapshotCompon
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      GenerateSnapshotNameWithTimestamp(application.Name, fallbackTimestamp),
 			Namespace: application.Namespace,
+			Annotations: map[string]string{
+				SnapshotProvenanceAnnotation: SnapshotProvenanceValue,
+			},
 		},
 		Spec: applicationapiv1alpha1.SnapshotSpec{
 			Application: application.Name,

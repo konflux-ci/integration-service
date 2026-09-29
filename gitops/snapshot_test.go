@@ -596,6 +596,17 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 		Expect(createdSnapshot.Name).To(MatchRegexp(`^application-sample-\d{8}-\d{6}-\d{3}$`))
 	})
 
+	It("adds the integration service provenance marker to new Application Snapshots [APPLICATION]", func() {
+		snapshotComponents := []applicationapiv1alpha1.SnapshotComponent{}
+
+		createdSnapshot := gitops.NewSnapshot(hasApp, &snapshotComponents)
+
+		Expect(createdSnapshot.Annotations).To(HaveKeyWithValue(
+			"konflux-ci.dev/created-by",
+			"integration-service",
+		))
+	})
+
 	It("ensures NewApplicationSnapshot truncates application name if longer than 43 characters [APPLICATION]", func() {
 		longAppName := "this-is-a-very-long-application-name-that-exceeds-43-chars"
 		longApp := &applicationapiv1alpha1.Application{
