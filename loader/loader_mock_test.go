@@ -22,6 +22,7 @@ import (
 	toolkit "github.com/konflux-ci/operator-toolkit/loader"
 
 	oldapplicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
+	konfluxv1beta2 "github.com/konflux-ci/integration-service/api/konflux/v1beta2"
 	"github.com/konflux-ci/integration-service/api/v1beta2"
 	releasev1alpha1 "github.com/konflux-ci/release-service/api/v1alpha1"
 	. "github.com/onsi/ginkgo/v2"
@@ -103,7 +104,7 @@ var _ = Describe("Release Adapter", Ordered, func() {
 
 	Context("When calling GetComponentGroupFromSnapshot", func() {
 		It("returns resource and error from the context", func() {
-			componentGroup := &v1beta2.ComponentGroup{}
+			componentGroup := &konfluxv1beta2.ComponentGroup{}
 			mockContext := toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
 					ContextKey: ComponentGroupContextKey,
@@ -514,7 +515,7 @@ var _ = Describe("Release Adapter", Ordered, func() {
 
 	Context("When calling GetAllComponentGroupsInNamespace", func() {
 		It("returns resource and error from the context", func() {
-			componentGroups := []v1beta2.ComponentGroup{}
+			componentGroups := []konfluxv1beta2.ComponentGroup{}
 			mockContext := toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
 					ContextKey: ComponentGroupsContextKey,
@@ -529,7 +530,7 @@ var _ = Describe("Release Adapter", Ordered, func() {
 
 	Context("When calling GetComponentGroupsContainingComponentGroup", func() {
 		It("returns resource and error from the context", func() {
-			componentGroups := []v1beta2.ComponentGroup{}
+			componentGroups := []konfluxv1beta2.ComponentGroup{}
 			mockContext := toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
 					ContextKey: ComponentGroupsContextKey,
@@ -544,7 +545,7 @@ var _ = Describe("Release Adapter", Ordered, func() {
 
 	Context("When calling GetNestedComponentGroupsForComponentGroup", func() {
 		It("returns resource and error from the context", func() {
-			componentGroups := []v1beta2.ComponentGroup{}
+			componentGroups := []konfluxv1beta2.ComponentGroup{}
 			mockContext := toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
 					ContextKey: NestedComponentGroupsContextKey,

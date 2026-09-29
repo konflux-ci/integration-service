@@ -52,7 +52,7 @@ webhooks:
       service:
         name: integration-service-webhook-service
         namespace: {{ .Values.namespace | default .Release.Namespace }}
-        path: /validate-appstudio-redhat-com-v1beta2-nudgeconfig
+        path: /validate-konflux-ci-dev-v1beta2-nudgeconfig
     failurePolicy: Fail
     sideEffects: None
     admissionReviewVersions:
@@ -67,7 +67,7 @@ webhooks:
           - CREATE
           - UPDATE
         apiGroups:
-          - appstudio.redhat.com
+          - konflux-ci.dev
         apiVersions:
           - v1beta2
         resources:
@@ -77,7 +77,7 @@ webhooks:
       service:
         name: integration-service-webhook-service
         namespace: {{ .Values.namespace | default .Release.Namespace }}
-        path: /validate-appstudio-redhat-com-v1beta2-componentgroup
+        path: /validate-konflux-ci-dev-v1beta2-componentgroup
     failurePolicy: Fail
     sideEffects: None
     admissionReviewVersions:
@@ -88,7 +88,7 @@ webhooks:
           - UPDATE
           - DELETE
         apiGroups:
-          - appstudio.redhat.com
+          - konflux-ci.dev
         apiVersions:
           - v1beta2
         resources:

@@ -20,7 +20,7 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/konflux-ci/integration-service/api/v1beta2"
+	"github.com/konflux-ci/integration-service/api/konflux/v1beta2"
 	"github.com/konflux-ci/integration-service/pkg/dag"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -51,7 +51,7 @@ type ComponentGroupCustomValidator struct {
 	// TODO(user): Add more fields as needed for validation
 }
 
-// +kubebuilder:webhook:path=/validate-appstudio-redhat-com-v1beta2-componentgroup,mutating=false,failurePolicy=fail,sideEffects=None,groups=appstudio.redhat.com,resources=componentgroups,verbs=create;update;delete,versions=v1beta2,name=vcomponentgroup.kb.io,admissionReviewVersions=v1
+// +kubebuilder:webhook:path=/validate-konflux-ci-dev-v1beta2-componentgroup,mutating=false,failurePolicy=fail,sideEffects=None,groups=konflux-ci.dev,resources=componentgroups,verbs=create;update;delete,versions=v1beta2,name=vcomponentgroup.kb.io,admissionReviewVersions=v1
 
 var _ webhook.CustomValidator = &ComponentGroupCustomValidator{}
 

@@ -56,12 +56,12 @@ webhooks:
     service:
       name: webhook-service
       namespace: system
-      path: /validate-appstudio-redhat-com-v1beta2-componentgroup
+      path: /validate-konflux-ci-dev-v1beta2-componentgroup
   failurePolicy: Fail
   name: vcomponentgroup.kb.io
   rules:
   - apiGroups:
-    - appstudio.redhat.com
+    - konflux-ci.dev
     apiVersions:
     - v1beta2
     operations:
@@ -98,12 +98,12 @@ webhooks:
     service:
       name: webhook-service
       namespace: system
-      path: /validate-appstudio-redhat-com-v1beta2-nudgeconfig
+      path: /validate-konflux-ci-dev-v1beta2-nudgeconfig
   failurePolicy: Fail
   name: vnudgeconfig.kb.io
   rules:
   - apiGroups:
-    - appstudio.redhat.com
+    - konflux-ci.dev
     apiVersions:
     - v1beta2
     operations:

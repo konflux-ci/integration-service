@@ -35,6 +35,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
+	konfluxv1beta2 "github.com/konflux-ci/integration-service/api/konflux/v1beta2"
 	"github.com/konflux-ci/integration-service/api/v1beta2"
 	"github.com/konflux-ci/integration-service/gitops"
 	h "github.com/konflux-ci/integration-service/helpers"
@@ -67,7 +68,7 @@ type ScenarioOptions struct {
 type Adapter struct {
 	snapshot       *applicationapiv1alpha1.Snapshot
 	application    *applicationapiv1alpha1.Application
-	componentGroup *v1beta2.ComponentGroup
+	componentGroup *konfluxv1beta2.ComponentGroup
 	logger         h.IntegrationLogger
 	loader         loader.ObjectLoader
 	client         client.Client
@@ -90,7 +91,7 @@ func NewAdapterWithApplication(context context.Context, snapshot *applicationapi
 	}
 }
 
-func NewAdapter(context context.Context, snapshot *applicationapiv1alpha1.Snapshot, componentGroup *v1beta2.ComponentGroup, logger h.IntegrationLogger, loader loader.ObjectLoader, client client.Client,
+func NewAdapter(context context.Context, snapshot *applicationapiv1alpha1.Snapshot, componentGroup *konfluxv1beta2.ComponentGroup, logger h.IntegrationLogger, loader loader.ObjectLoader, client client.Client,
 ) *Adapter {
 	return &Adapter{
 		snapshot:       snapshot,
@@ -1600,7 +1601,7 @@ func (a *Adapter) haveAllPipelineRunProcessedForPrGroup(prGroup, prGroupHash str
 }
 
 // filterPipelineRunsForComponentGroup filters pipelineRuns to only ones that have components that belong to the componentGroup
-func (a *Adapter) filterPipelineRunsForComponentGroup(allPipelineRuns *[]tektonv1.PipelineRun, componentGroup *v1beta2.ComponentGroup) *[]tektonv1.PipelineRun {
+func (a *Adapter) filterPipelineRunsForComponentGroup(allPipelineRuns *[]tektonv1.PipelineRun, componentGroup *konfluxv1beta2.ComponentGroup) *[]tektonv1.PipelineRun {
 	var filteredPipelineRuns []tektonv1.PipelineRun
 	componentNames := h.GetComponentNamesFromComponentGroup(componentGroup)
 	for _, pipelineRun := range *allPipelineRuns {
