@@ -16,102 +16,18 @@ limitations under the License.
 
 package v1beta2
 
-import (
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-)
+import konfluxv1beta2 "github.com/konflux-ci/integration-service/api/konflux/v1beta2"
 
-// NudgeModeType defines when a nudge is triggered.
-// +kubebuilder:validation:Enum=immediate;validated
-type NudgeModeType string
+const NudgeConfigSingletonName = konfluxv1beta2.NudgeConfigSingletonName
+
+type NudgeModeType = konfluxv1beta2.NudgeModeType
+type NudgeRelationship = konfluxv1beta2.NudgeRelationship
+type NudgeConfigSpec = konfluxv1beta2.NudgeConfigSpec
+type NudgeConfigStatus = konfluxv1beta2.NudgeConfigStatus
+type NudgeConfig = konfluxv1beta2.NudgeConfig
+type NudgeConfigList = konfluxv1beta2.NudgeConfigList
 
 const (
-	// NudgeModeImmediate triggers the nudge as soon as the source component build succeeds.
-	NudgeModeImmediate NudgeModeType = "immediate"
-
-	// NudgeModeValidated triggers the nudge only after integration tests pass for the source component.
-	NudgeModeValidated NudgeModeType = "validated"
+	NudgeModeImmediate = konfluxv1beta2.NudgeModeImmediate
+	NudgeModeValidated = konfluxv1beta2.NudgeModeValidated
 )
-
-// NudgeConfigSingletonName is the required name for the singleton NudgeConfig per namespace.
-const NudgeConfigSingletonName = "nudge-config"
-
-// NudgeRelationship defines a single nudge from one component to another.
-type NudgeRelationship struct {
-	// From is the source component name that triggers the nudge when its build succeeds.
-	// +kubebuilder:validation:MinLength=1
-	// +kubebuilder:validation:MaxLength=63
-	// +kubebuilder:validation:Pattern=`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`
-	// +required
-	From string `json:"from"`
-
-	// To is the target component name that receives the nudge.
-	// +kubebuilder:validation:MinLength=1
-	// +kubebuilder:validation:MaxLength=63
-	// +kubebuilder:validation:Pattern=`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`
-	// +required
-	To string `json:"to"`
-
-	// Mode defines when the nudge is triggered.
-	// "immediate" triggers on build success; "validated" triggers after integration tests pass.
-	// +kubebuilder:default=immediate
-	// +optional
-	Mode NudgeModeType `json:"mode,omitempty"`
-
-	// GatingGroup is reserved for Phase 2 group-based gating and is not enforced in Phase 1.
-	// +kubebuilder:validation:MaxLength=63
-	// +optional
-	GatingGroup string `json:"gatingGroup,omitempty"`
-}
-
-// NudgeConfigSpec defines the desired nudging relationships between components.
-// +kubebuilder:validation:XValidation:rule="!has(self.nudges) || self.nudges.all(n, n.from != n.to)",message="self-nudge not allowed: from and to must be different"
-// +kubebuilder:validation:XValidation:rule="!has(self.nudges) || self.nudges.all(i, self.nudges.exists_one(j, i.from == j.from && i.to == j.to))",message="duplicate (from, to) pair not allowed"
-type NudgeConfigSpec struct {
-	// Nudges is the list of component nudge relationships.
-	// +kubebuilder:validation:MaxItems=360
-	// +optional
-	Nudges []NudgeRelationship `json:"nudges,omitempty"`
-}
-
-// NudgeConfigStatus defines the observed state of NudgeConfig.
-type NudgeConfigStatus struct {
-	// Conditions represent the latest available observations of the NudgeConfig's state.
-	// +optional
-	Conditions []metav1.Condition `json:"conditions,omitempty"`
-
-	// LastValidationTime is the timestamp of the last successful validation of the nudge graph.
-	// +optional
-	LastValidationTime *metav1.Time `json:"lastValidationTime,omitempty"`
-}
-
-// +kubebuilder:object:root=true
-// +kubebuilder:resource:shortName=nc
-// +kubebuilder:subresource:status
-// +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
-// +kubebuilder:storageversion
-// +kubebuilder:validation:XValidation:rule="self.metadata.name == 'nudge-config'",message="NudgeConfig must be named 'nudge-config' (singleton per namespace)"
-
-// NudgeConfig is a namespace-scoped singleton CRD that stores component nudging relationships.
-// Exactly one NudgeConfig named "nudge-config" may exist per namespace.
-// Structural and singleton rules are enforced by the API server via CEL expressions;
-// graph-cycle and cross-resource Component-existence checks are enforced by a validating webhook.
-type NudgeConfig struct {
-	metav1.TypeMeta   `json:",inline"`
-	metav1.ObjectMeta `json:"metadata,omitempty"`
-
-	Spec   NudgeConfigSpec   `json:"spec,omitempty"`
-	Status NudgeConfigStatus `json:"status,omitempty"`
-}
-
-// +kubebuilder:object:root=true
-
-// NudgeConfigList contains a list of NudgeConfigs.
-type NudgeConfigList struct {
-	metav1.TypeMeta `json:",inline"`
-	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []NudgeConfig `json:"items"`
-}
-
-func init() {
-	SchemeBuilder.Register(&NudgeConfig{}, &NudgeConfigList{})
-}

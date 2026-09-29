@@ -49,9 +49,9 @@ func NewComponentGroupReconciler(client client.Client, logger *logr.Logger, sche
 	}
 }
 
-//+kubebuilder:rbac:groups=appstudio.redhat.com,resources=componentgroups,verbs=get;list;watch;update;patch
-//+kubebuilder:rbac:groups=appstudio.redhat.com,resources=componentgroups/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=appstudio.redhat.com,resources=componentgroups/finalizers,verbs=update
+//+kubebuilder:rbac:groups=konflux-ci.dev,resources=componentgroups,verbs=get;list;watch;update;patch
+//+kubebuilder:rbac:groups=konflux-ci.dev,resources=componentgroups/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=konflux-ci.dev,resources=componentgroups/finalizers,verbs=update
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
