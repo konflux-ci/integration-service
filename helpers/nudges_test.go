@@ -17,7 +17,7 @@ package helpers_test
 
 import (
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
-	"github.com/konflux-ci/integration-service/api/v1beta2"
+	"github.com/konflux-ci/integration-service/api/konflux/v1beta2"
 	"github.com/konflux-ci/integration-service/helpers"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"

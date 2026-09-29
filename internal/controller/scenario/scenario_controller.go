@@ -53,8 +53,8 @@ func NewScenarioReconciler(client client.Client, logger *logr.Logger, scheme *ru
 //+kubebuilder:rbac:groups=appstudio.redhat.com,resources=environments/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=appstudio.redhat.com,resources=applications,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=appstudio.redhat.com,resources=applications/status,verbs=get
-//+kubebuilder:rbac:groups=appstudio.redhat.com,resources=componentgroups,verbs=get;list;watch
-//+kubebuilder:rbac:groups=appstudio.redhat.com,resources=componentgroups/status,verbs=get
+//+kubebuilder:rbac:groups=konflux-ci.dev,resources=componentgroups,verbs=get;list;watch
+//+kubebuilder:rbac:groups=konflux-ci.dev,resources=componentgroups/status,verbs=get
 //+kubebuilder:rbac:groups="",resources=serviceaccounts,verbs=get;list;watch;create;update
 //+kubebuilder:rbac:groups="",resources=secrets,verbs=get;create
 //+kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=rolebindings,verbs=get;list;watch;create

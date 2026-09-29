@@ -24,7 +24,7 @@ import (
 	. "github.com/onsi/gomega"
 
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
-	"github.com/konflux-ci/integration-service/api/v1beta2"
+	"github.com/konflux-ci/integration-service/api/konflux/v1beta2"
 	"github.com/konflux-ci/integration-service/gitops"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"

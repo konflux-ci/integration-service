@@ -45,6 +45,7 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
+	konfluxv1beta2 "github.com/konflux-ci/integration-service/api/konflux/v1beta2"
 	appstudiov1beta2 "github.com/konflux-ci/integration-service/api/v1beta2"
 	// +kubebuilder:scaffold:imports
 )
@@ -77,6 +78,9 @@ var _ = BeforeSuite(func() {
 	Expect(err).NotTo(HaveOccurred())
 
 	err = appstudiov1beta2.AddToScheme(scheme)
+	Expect(err).NotTo(HaveOccurred())
+
+	err = konfluxv1beta2.AddToScheme(scheme)
 	Expect(err).NotTo(HaveOccurred())
 
 	err = admissionv1.AddToScheme(scheme)

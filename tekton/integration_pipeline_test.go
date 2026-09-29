@@ -23,6 +23,7 @@ import (
 	"os"
 	"time"
 
+	konfluxv1beta2 "github.com/konflux-ci/integration-service/api/konflux/v1beta2"
 	"github.com/konflux-ci/integration-service/api/v1beta2"
 	"github.com/konflux-ci/integration-service/gitops"
 	"github.com/konflux-ci/integration-service/helpers"
@@ -608,6 +609,15 @@ var _ = Describe("Integration pipeline", Ordered, func() {
 			newIntegrationPipelineRun.WithApplication(hasApp)
 			Expect(newIntegrationPipelineRun.Labels["appstudio.openshift.io/application"]).
 				To(Equal(hasApp.Name))
+		})
+
+		It("can append labels coming from ComponentGroup to IntegrationPipelineRun", func() {
+			componentGroup := &konfluxv1beta2.ComponentGroup{
+				ObjectMeta: metav1.ObjectMeta{Name: "component-group-sample"},
+			}
+			newIntegrationPipelineRun.WithComponentGroup(componentGroup)
+			Expect(newIntegrationPipelineRun.Labels[tektonconsts.ComponentGroupNameLabel]).
+				To(Equal(componentGroup.Name))
 		})
 
 		It("provides parameters from IntegrationTestScenario to the PipelineRun", func() {
