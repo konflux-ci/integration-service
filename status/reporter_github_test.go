@@ -39,6 +39,7 @@ import (
 
 	"github.com/konflux-ci/integration-service/git/github"
 	"github.com/konflux-ci/integration-service/gitops"
+	"github.com/konflux-ci/integration-service/helpers"
 	"github.com/konflux-ci/integration-service/pkg/integrationteststatus"
 	"github.com/konflux-ci/integration-service/status"
 )
@@ -116,7 +117,7 @@ func (c *MockGitHubClient) FindInstallationForRepo(
 	owner string,
 	repo string,
 ) (int64, int, error) {
-	return c.FindInstallationForRepoResult.InstallationID, c.StatusCode, c.FindInstallationForRepoResult.Error
+	return c.FindInstallationForRepoResult.InstallationID, c.FindInstallationForRepoResult.StatusCode, c.FindInstallationForRepoResult.Error
 }
 
 func (c *MockGitHubClient) CreateAppInstallationToken(
@@ -339,13 +340,13 @@ var _ = Describe("GitHubReporter", func() {
 			Expect(statusCode).NotTo(BeNil())
 		})
 
-		It("uses the installation ID returned by Github instead of the Snapshot annotation", func() {
+		It("uses the installation ID returned by GitHub instead of the Snapshot annotation", func() {
 			hasSnapshot.Annotations[gitops.PipelineAsCodeInstallationIDAnnotation] = "999" // snapshot annotation
 
 			_, err := reporter.Initialize(context.TODO(), hasSnapshot)
 
 			Expect(err).NotTo(HaveOccurred())
-			Expect(mockGitHubClient.CreateAppInstallationTokenResult.InstallationID).To(Equal(int64(123))) // github response is 123
+			Expect(mockGitHubClient.CreateAppInstallationTokenResult.InstallationID).To(Equal(int64(123))) // GitHub response is 123
 		})
 
 		It("does not use the installation ID value from the Snapshot annotation", func() {
@@ -474,6 +475,60 @@ var _ = Describe("GitHubReporter", func() {
 			Expect(err).To(HaveOccurred())
 			Expect(statusCode).NotTo(BeNil())
 		})
+
+		DescribeTable("treats permanent installation lookup failures as unrecoverable",
+			func(statusCode int) {
+				installationError := fmt.Errorf("failed to find repository installation")
+				mockGitHubClient.FindInstallationForRepoResult.Error = installationError
+				mockGitHubClient.FindInstallationForRepoResult.StatusCode = statusCode
+
+				_, err := reporter.Initialize(context.TODO(), hasSnapshot)
+
+				Expect(err).To(HaveOccurred())
+				Expect(helpers.IsUnrecoverableMetadataError(err)).To(BeTrue())
+			},
+			Entry("installation not found", http.StatusNotFound),
+			Entry("installation access forbidden", http.StatusForbidden),
+		)
+
+		It("keeps installation lookup network failures recoverable", func() {
+			installationError := fmt.Errorf("connection failed")
+			mockGitHubClient.FindInstallationForRepoResult.Error = installationError
+			mockGitHubClient.FindInstallationForRepoResult.StatusCode = 0
+
+			_, err := reporter.Initialize(context.TODO(), hasSnapshot)
+
+			Expect(err).To(MatchError(installationError))
+			Expect(helpers.IsUnrecoverableMetadataError(err)).To(BeFalse())
+		})
+
+		DescribeTable("matches equivalent Repository URL formats",
+			func(snapshotURL, repositoryURL string) {
+				hasSnapshot.Annotations[gitops.PipelineAsCodeRepoURLAnnotation] = snapshotURL
+
+				mockK8sClient.listInterceptor = func(list client.ObjectList) {
+					list.(*pacv1alpha1.RepositoryList).Items = []pacv1alpha1.Repository{{
+						Spec: pacv1alpha1.RepositorySpec{
+							URL: repositoryURL,
+						},
+					}}
+				}
+
+				_, err := reporter.Initialize(context.TODO(), hasSnapshot)
+
+				Expect(err).NotTo(HaveOccurred())
+			},
+			Entry(
+				"Repository CR has a .git suffix",
+				"https://github.com/owner/repo",
+				"https://github.com/owner/repo.git",
+			),
+			Entry(
+				"Snapshot URL has a trailing slash",
+				"https://github.com/owner/repo/",
+				"https://github.com/owner/repo",
+			),
+		)
 
 		DescribeTable(
 			"reports correct github title and conclusion from test statuses",

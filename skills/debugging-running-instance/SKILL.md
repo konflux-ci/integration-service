@@ -63,7 +63,8 @@ Missing labels = silently blocked traffic. Check with: `kubectl get ns <name> --
 | IntegrationTestScenario | Mutating | **Ignore** | Defaults applied silently on failure |
 | IntegrationTestScenario | Validating | **Fail** | Rejects invalid ITS (bad names, conflicting resolver params) |
 | ComponentGroup | Validating | **Fail** | Blocks invalid ComponentGroups |
-| Snapshot | Mutating + Validating | **Ignore** | Failures silently pass through (by design) |
+| Snapshot | Mutating | **Ignore** | Defaults may be skipped if the webhook is unavailable |
+| Snapshot | Validating | **Fail** | Rejects invalid Snapshots and blocks Snapshot operations if the webhook is unavailable |
 
 ## Debugging Checklist
 
@@ -80,5 +81,5 @@ Missing labels = silently blocked traffic. Check with: `kubectl get ns <name> --
 |---------|-----|
 | `CONSOLE_URL_NOT_AVAILABLE` in PR comments | Set `CONSOLE_URL` env var with `{{NAMESPACE}}` and `{{PIPELINE_RUN_NAME}}` placeholders |
 | Controller crash loop | Check env var values — timeout vars must be valid Go durations (e.g., `2h`, `30m`) |
-| Webhook silently not validating Snapshots | By design — Snapshot webhook has `failurePolicy: Ignore` |
+| Snapshot operations fail while the webhook is unavailable | Snapshot validation uses `failurePolicy: Fail` — check the webhook pod, service, and certificate health |
 | Metrics endpoint unreachable | Verify namespace label `metrics: enabled` and that ServiceMonitor target matches |

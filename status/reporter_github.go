@@ -20,10 +20,8 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"net/url"
 	"os"
 	"strconv"
-	"strings"
 
 	"github.com/go-logr/logr"
 	ghapi "github.com/google/go-github/v45/github"
@@ -35,7 +33,6 @@ import (
 	intgteststat "github.com/konflux-ci/integration-service/pkg/integrationteststatus"
 
 	"github.com/konflux-ci/operator-toolkit/metadata"
-	pacv1alpha1 "github.com/openshift-pipelines/pipelines-as-code/pkg/apis/pipelinesascode/v1alpha1"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/util/retry"
@@ -141,7 +138,10 @@ func GetAppCredentials(ctx context.Context, k8sclient client.Client, ghClient gi
 
 	installationID, statusCode, err := ghClient.FindInstallationForRepo(ctx, appInfo.AppID, appInfo.PrivateKey, owner, repo)
 	if err != nil {
-		log.Error(err, "failed to find Github App installation for repository", "owner", owner, "repo", repo, "statusCode", statusCode)
+		log.Error(err, "failed to find GitHub App installation for repository", "owner", owner, "repo", repo, "statusCode", statusCode)
+		if statusCode == http.StatusNotFound || statusCode == http.StatusForbidden {
+			return nil, helpers.NewUnrecoverableMetadataError(fmt.Sprintf("failed to find GitHub App installation for repository %s/%s: %v", owner, repo, err))
+		}
 		return nil, err
 	}
 	appInfo.InstallationID = installationID
@@ -654,7 +654,7 @@ func (r *GitHubReporter) Initialize(ctx context.Context, snapshot *applicationap
 	owner, repo, err := resolveSnapshotRepository(ctx, r.k8sClient, snapshot)
 	if err != nil {
 		r.logger.Error(err, "failed to resolve Snapshot repository",
-			"namespace", snapshot.Namespace, "snapshot", snapshot.Name)
+			"snapshot.NameSpace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
 		return 0, err
 	}
 
@@ -685,57 +685,6 @@ func (r *GitHubReporter) Initialize(ctx context.Context, snapshot *applicationap
 // Return reporter name
 func (r *GitHubReporter) GetReporterName() string {
 	return "GithubReporter"
-}
-
-// parseOwnerRepoFromURL extracts the owner and repository name from an HTTPS
-// repository URL, removing the optional .git suffix.
-func parseOwnerRepoFromURL(rawURL string) (string, string, error) {
-	parsed, err := url.Parse(rawURL)
-	if err != nil {
-		return "", "", fmt.Errorf("failed to parse repository URL %q: %w", rawURL, err)
-	}
-	if parsed.Scheme != "https" || parsed.Host == "" {
-		return "", "", fmt.Errorf("expected an HTTPS repository URL, got %q", rawURL)
-	}
-
-	path := strings.Trim(parsed.Path, "/")
-	parts := strings.Split(path, "/")
-	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
-		return "", "", fmt.Errorf("expected owner/repo in URL %q", rawURL)
-	}
-
-	owner := parts[0]
-	repo := strings.TrimSuffix(parts[1], ".git")
-	if repo == "" {
-		return "", "", fmt.Errorf("repository name is empty in URL %q", rawURL)
-	}
-	return owner, repo, nil
-}
-
-// resolveSnapshotRepository finds a Repository CR matching the Snapshot's repo URL
-// in the same namespace and returns the owner and repository from its Spec.URL.
-func resolveSnapshotRepository(ctx context.Context, k8sClient client.Client, snapshot *applicationapiv1alpha1.Snapshot) (string, string, error) {
-	repoURL, found := snapshot.GetAnnotations()[gitops.PipelineAsCodeRepoURLAnnotation]
-	if !found || repoURL == "" {
-		return "", "", helpers.NewUnrecoverableMetadataError(fmt.Sprintf("missing or empty annotation %q", gitops.PipelineAsCodeRepoURLAnnotation))
-	}
-
-	repos := pacv1alpha1.RepositoryList{}
-	if err := k8sClient.List(ctx, &repos, &client.ListOptions{Namespace: snapshot.Namespace}); err != nil {
-		return "", "", fmt.Errorf("failed to list Repository CRs in namespace %q: %w", snapshot.Namespace, err)
-	}
-
-	for _, repo := range repos.Items {
-		if repo.Spec.URL == repoURL {
-			owner, repoName, err := parseOwnerRepoFromURL(repo.Spec.URL)
-			if err != nil {
-				return "", "", helpers.NewUnrecoverableMetadataError(fmt.Sprintf("invalid Repository CR URL %q: %v", repo.Spec.URL, err))
-			}
-			return owner, repoName, nil
-		}
-	}
-
-	return "", "", helpers.NewUnrecoverableMetadataError(fmt.Sprintf("no Repository CR in namespace %q matches URL %q", snapshot.Namespace, repoURL))
 }
 
 // Update status in Github

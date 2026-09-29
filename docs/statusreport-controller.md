@@ -38,7 +38,7 @@ flowchart TD
 
   detect_git_provider{Detect git provider}
 
-  collect_commit_info_gh(Collect commit owner, repo and SHA from Snapshot)
+  collect_commit_info_gh(Collect owner and repo from matching Repository CR <br>and SHA from Snapshot)
 
   is_installation_defined{Is annotation <br>pac.test.appstudio.openshift.io/installation-id <br>defined?}
 

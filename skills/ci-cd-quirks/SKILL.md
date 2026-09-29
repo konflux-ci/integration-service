@@ -67,7 +67,7 @@ CI runs `go mod tidy` and checks for changes. If your `go.mod`/`go.sum` differ a
 | ITS name must be DNS-1035 | Webhook rejects with validation error (lowercase alphanumeric + hyphen, <63 chars) |
 | `SNAPSHOT` param in ITS | Cannot be set manually — auto-injected by the service. Webhook rejects. |
 | Git resolver: `url` vs `repo+org` | Must use one or the other, not both. Webhook rejects conflicting params. |
-| Snapshot validator | Has `failurePolicy: Ignore` — validation failures pass through silently (by design) |
+| Snapshot validator | Has `failurePolicy: Fail` — invalid Snapshots are rejected, and Snapshot operations are blocked if the validating webhook is unavailable |
 
 ## Coverage
 
