@@ -53,6 +53,7 @@ Each controller delegates to an **adapter** (`<controller_name>_adapter.go`) tha
 - Follow [Kubernetes coding conventions](https://github.com/kubernetes/community/blob/master/contributors/guide/coding-conventions.md)
 - Log via `IntegrationLogger` from `helpers/logs` added as the adapter's `logger`, wrap errors with `fmt.Errorf("context: %w", err)`
 - **API changes**: edit types in `api/v1beta2/`, then `make generate manifests`
+- **CRD status bounds**: When adding or reviewing `MaxItems` or `MaxLength` constraints on CRD status fields, verify bounds are consistent with related spec field constraints. For example, if `spec.nudges` allows up to N entries, status fields that track per-nudge state (e.g., `activeBatches[].accumulated`, `activeBatches[].failed`) should accommodate the same maximum.
 - **Controller changes**: implement in `internal/controller/<resource>/<resource>_adapter.go`
 - **Webhooks**: add to `internal/webhooks/<resource>/`
 - **Tests**: unit tests alongside code using Ginkgo + envtest; E2E tests are located in `e2e-tests/tests`
