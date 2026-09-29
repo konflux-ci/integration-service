@@ -27,6 +27,7 @@ import (
 
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
+	konfluxv1beta2 "github.com/konflux-ci/integration-service/api/konflux/v1beta2"
 	"github.com/konflux-ci/integration-service/api/v1beta2"
 	"github.com/konflux-ci/integration-service/gitops"
 	"github.com/konflux-ci/integration-service/helpers"
@@ -79,7 +80,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		hasComp                      *applicationapiv1alpha1.Component
 		hasComp2                     *applicationapiv1alpha1.Component
 		hasApp                       *applicationapiv1alpha1.Application
-		hasCompGroup                 *v1beta2.ComponentGroup
+		hasCompGroup                 *konfluxv1beta2.ComponentGroup
 		hasSnapshot                  *applicationapiv1alpha1.Snapshot
 		hasComSnapshot2              *applicationapiv1alpha1.Snapshot
 		integrationTestScenario      *v1beta2.IntegrationTestScenario
@@ -155,23 +156,23 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		}
 		Expect(k8sClient.Create(ctx, hasComp2)).Should(Succeed())
 
-		hasCompGroup = &v1beta2.ComponentGroup{
+		hasCompGroup = &konfluxv1beta2.ComponentGroup{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "component-group-sample",
 				Namespace: "default",
 			},
-			Spec: v1beta2.ComponentGroupSpec{
-				Components: []v1beta2.ComponentReference{
-					v1beta2.ComponentReference{
+			Spec: konfluxv1beta2.ComponentGroupSpec{
+				Components: []konfluxv1beta2.ComponentReference{
+					konfluxv1beta2.ComponentReference{
 						Name: "component-sample",
-						ComponentVersion: v1beta2.ComponentVersionReference{
+						ComponentVersion: konfluxv1beta2.ComponentVersionReference{
 							Name:     "v1",
 							Revision: "main",
 						},
 					},
-					v1beta2.ComponentReference{
+					konfluxv1beta2.ComponentReference{
 						Name: "another-component-sample",
-						ComponentVersion: v1beta2.ComponentVersionReference{
+						ComponentVersion: konfluxv1beta2.ComponentVersionReference{
 							Name:     "v1",
 							Revision: "main",
 						},
@@ -181,7 +182,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		}
 		Expect(k8sClient.Create(ctx, hasCompGroup)).Should(Succeed())
 
-		hasCompGroup.Status = v1beta2.ComponentGroupStatus{
+		hasCompGroup.Status = konfluxv1beta2.ComponentGroupStatus{
 			Conditions: []metav1.Condition{
 				metav1.Condition{
 					Type:               "Succeeded",
@@ -191,8 +192,8 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 					LastTransitionTime: metav1.Time{Time: time.Now()},
 				},
 			},
-			GlobalCandidateList: []v1beta2.ComponentState{
-				v1beta2.ComponentState{
+			GlobalCandidateList: []konfluxv1beta2.ComponentState{
+				konfluxv1beta2.ComponentState{
 					Name:                  "component-sample",
 					Version:               "v1",
 					URL:                   SampleRepoLink,
@@ -533,7 +534,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 
 	When("NewAdapter is called", func() {
 		It("creates and return a new adapter", func() {
-			Expect(reflect.TypeOf(NewAdapter(ctx, buildPipelineRun, hasComp.Name, &[]v1beta2.ComponentGroup{*hasCompGroup}, logger, loader.NewMockLoader(), k8sClient))).To(Equal(reflect.TypeOf(&Adapter{})))
+			Expect(reflect.TypeOf(NewAdapter(ctx, buildPipelineRun, hasComp.Name, &[]konfluxv1beta2.ComponentGroup{*hasCompGroup}, logger, loader.NewMockLoader(), k8sClient))).To(Equal(reflect.TypeOf(&Adapter{})))
 		})
 	})
 
@@ -546,12 +547,12 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 	When("filterPipelineRunsForComponentGroups is called", func() {
 
 		BeforeEach(func() {
-			adapter = NewAdapter(ctx, buildPipelineRun, hasComp.Name, &[]v1beta2.ComponentGroup{*hasCompGroup}, logger, loader.NewMockLoader(), k8sClient)
+			adapter = NewAdapter(ctx, buildPipelineRun, hasComp.Name, &[]konfluxv1beta2.ComponentGroup{*hasCompGroup}, logger, loader.NewMockLoader(), k8sClient)
 		})
 
 		It("returns an empty filtered list when there are no build PipelineRuns", func() {
 			empty := []tektonv1.PipelineRun{}
-			groups := &[]v1beta2.ComponentGroup{*hasCompGroup}
+			groups := &[]konfluxv1beta2.ComponentGroup{*hasCompGroup}
 
 			result := adapter.filterPipelineRunsForComponentGroups(&empty, groups)
 			Expect(result).NotTo(BeNil())
@@ -580,7 +581,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			}
 
 			stack := []tektonv1.PipelineRun{plrMatching, plrUnknownComponent, plrNoComponentLabel}
-			groups := &[]v1beta2.ComponentGroup{*hasCompGroup}
+			groups := &[]konfluxv1beta2.ComponentGroup{*hasCompGroup}
 
 			result := adapter.filterPipelineRunsForComponentGroups(&stack, groups)
 			Expect(result).NotTo(BeNil())
@@ -614,7 +615,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			}
 
 			stack := []tektonv1.PipelineRun{plrMatching, plrUnknownComponent, plrNoComponentLabel}
-			groups := &[]v1beta2.ComponentGroup{*hasCompGroup}
+			groups := &[]konfluxv1beta2.ComponentGroup{*hasCompGroup}
 
 			result := adapter.filterPipelineRunsForComponentGroups(&stack, groups)
 			Expect(result).NotTo(BeNil())
@@ -624,19 +625,19 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		})
 
 		It("includes a PipelineRun when the component matches any ComponentGroup in order", func() {
-			groupAlpha := v1beta2.ComponentGroup{
+			groupAlpha := konfluxv1beta2.ComponentGroup{
 				ObjectMeta: metav1.ObjectMeta{Name: "group-alpha"},
-				Spec: v1beta2.ComponentGroupSpec{
-					Components: []v1beta2.ComponentReference{
-						{Name: "only-alpha", ComponentVersion: v1beta2.ComponentVersionReference{Name: "v1"}},
+				Spec: konfluxv1beta2.ComponentGroupSpec{
+					Components: []konfluxv1beta2.ComponentReference{
+						{Name: "only-alpha", ComponentVersion: konfluxv1beta2.ComponentVersionReference{Name: "v1"}},
 					},
 				},
 			}
-			groupBeta := v1beta2.ComponentGroup{
+			groupBeta := konfluxv1beta2.ComponentGroup{
 				ObjectMeta: metav1.ObjectMeta{Name: "group-beta"},
-				Spec: v1beta2.ComponentGroupSpec{
-					Components: []v1beta2.ComponentReference{
-						{Name: "only-beta", ComponentVersion: v1beta2.ComponentVersionReference{Name: "v1"}},
+				Spec: konfluxv1beta2.ComponentGroupSpec{
+					Components: []konfluxv1beta2.ComponentReference{
+						{Name: "only-beta", ComponentVersion: konfluxv1beta2.ComponentVersionReference{Name: "v1"}},
 					},
 				},
 			}
@@ -649,7 +650,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				},
 			}
 			stack := []tektonv1.PipelineRun{plr}
-			groups := &[]v1beta2.ComponentGroup{groupAlpha, groupBeta}
+			groups := &[]konfluxv1beta2.ComponentGroup{groupAlpha, groupBeta}
 
 			result := adapter.filterPipelineRunsForComponentGroups(&stack, groups)
 			Expect(result).NotTo(BeNil())
@@ -704,7 +705,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				},
 				{
 					ContextKey: loader.NestedComponentGroupsContextKey,
-					Resource:   []v1beta2.ComponentGroup{},
+					Resource:   []konfluxv1beta2.ComponentGroup{},
 				},
 				{
 					ContextKey: loader.ComponentContextKey,
@@ -771,7 +772,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				"build.appstudio.openshift.io/repo":             "https://github.com/devfile-samples/devfile-sample-go-basic?rev=c713067b0e65fb3de50d1f7c457eb51c2ab0dbb0",
 				"foo":                                           "bar",
 			}
-			adapter = NewAdapter(ctx, buildPipelineRun, hasComp.Name, &[]v1beta2.ComponentGroup{*hasCompGroup}, log, loader.NewMockLoader(), k8sClient)
+			adapter = NewAdapter(ctx, buildPipelineRun, hasComp.Name, &[]konfluxv1beta2.ComponentGroup{*hasCompGroup}, log, loader.NewMockLoader(), k8sClient)
 
 			Eventually(func() bool {
 				result, err := adapter.EnsureSnapshotExists()
@@ -796,7 +797,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				"build.appstudio.openshift.io/repo":             "https://github.com/devfile-samples/devfile-sample-go-basic?rev=c713067b0e65fb3de50d1f7c457eb51c2ab0dbb0",
 				"foo":                                           "bar",
 			}
-			adapter = NewAdapter(ctx, buildPipelineRun, hasComp.Name, &[]v1beta2.ComponentGroup{*hasCompGroup}, log, loader.NewMockLoader(), k8sClient)
+			adapter = NewAdapter(ctx, buildPipelineRun, hasComp.Name, &[]konfluxv1beta2.ComponentGroup{*hasCompGroup}, log, loader.NewMockLoader(), k8sClient)
 
 			Eventually(func() bool {
 				result, err := adapter.EnsureSnapshotExists()
@@ -848,7 +849,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				},
 				{
 					ContextKey: loader.NestedComponentGroupsContextKey,
-					Resource:   []v1beta2.ComponentGroup{},
+					Resource:   []konfluxv1beta2.ComponentGroup{},
 				},
 				{
 					ContextKey: loader.ComponentContextKey,
@@ -1426,7 +1427,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
 
 			// check the behavior when there are multiple Snapshots associated with the build pipelineRun
-			adapter = NewAdapter(ctx, buildPipelineRun, hasComp.Name, &[]v1beta2.ComponentGroup{*hasCompGroup}, log, loader.NewMockLoader(), k8sClient)
+			adapter = NewAdapter(ctx, buildPipelineRun, hasComp.Name, &[]konfluxv1beta2.ComponentGroup{*hasCompGroup}, log, loader.NewMockLoader(), k8sClient)
 			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
 					ContextKey: loader.ComponentGroupContextKey,
@@ -1434,7 +1435,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				},
 				{
 					ContextKey: loader.NestedComponentGroupsContextKey,
-					Resource:   []v1beta2.ComponentGroup{},
+					Resource:   []konfluxv1beta2.ComponentGroup{},
 				},
 				{
 					ContextKey: loader.ComponentContextKey,
@@ -1478,7 +1479,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				},
 				{
 					ContextKey: loader.NestedComponentGroupsContextKey,
-					Resource:   []v1beta2.ComponentGroup{},
+					Resource:   []konfluxv1beta2.ComponentGroup{},
 				},
 				{
 					ContextKey: loader.ComponentContextKey,
@@ -1733,7 +1734,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		})
 
 		It("can annotate the build pipelineRun with the Snapshot name", func() {
-			adapter = NewAdapter(ctx, buildPipelineRun, hasComp.Name, &[]v1beta2.ComponentGroup{*hasCompGroup}, logger, loader.NewMockLoader(), k8sClient)
+			adapter = NewAdapter(ctx, buildPipelineRun, hasComp.Name, &[]konfluxv1beta2.ComponentGroup{*hasCompGroup}, logger, loader.NewMockLoader(), k8sClient)
 			err := adapter.annotateBuildPipelineRunWithSnapshot(hasSnapshot)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(adapter.pipelineRun.Annotations[tektonconsts.SnapshotNamesLabel]).To(Equal(hasSnapshot.Name))
@@ -1741,7 +1742,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 
 		It("Can annotate the build pipelineRun with the CreateSnapshot annotate", func() {
 			sampleErr := errors.New("this is a sample error")
-			adapter = NewAdapter(ctx, buildPipelineRun, hasComp.Name, &[]v1beta2.ComponentGroup{*hasCompGroup}, logger, loader.NewMockLoader(), k8sClient)
+			adapter = NewAdapter(ctx, buildPipelineRun, hasComp.Name, &[]konfluxv1beta2.ComponentGroup{*hasCompGroup}, logger, loader.NewMockLoader(), k8sClient)
 			err := tekton.AnnotateBuildPipelineRunWithCreateSnapshotAnnotation(adapter.context, buildPipelineRun, adapter.client, sampleErr)
 			Expect(err).NotTo(HaveOccurred())
 
@@ -1776,7 +1777,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 
 		When("can add and remove finalizers from the pipelineRun", func() {
 			BeforeEach(func() {
-				adapter = NewAdapter(ctx, buildPipelineRun, hasComp.Name, &[]v1beta2.ComponentGroup{*hasCompGroup}, logger, loader.NewMockLoader(), k8sClient)
+				adapter = NewAdapter(ctx, buildPipelineRun, hasComp.Name, &[]konfluxv1beta2.ComponentGroup{*hasCompGroup}, logger, loader.NewMockLoader(), k8sClient)
 			})
 			It("can add and remove finalizers from build pipelineRun", func() {
 				// Mark build PLR as incomplete
@@ -1860,7 +1861,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 					},
 					{
 						ContextKey: loader.NestedComponentGroupsContextKey,
-						Resource:   []v1beta2.ComponentGroup{},
+						Resource:   []konfluxv1beta2.ComponentGroup{},
 					},
 				})
 
@@ -1992,7 +1993,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 
 		When("add pr group to the build pipelineRun annotations and labels", func() {
 			BeforeEach(func() {
-				componentGroups := []v1beta2.ComponentGroup{*hasCompGroup}
+				componentGroups := []konfluxv1beta2.ComponentGroup{*hasCompGroup}
 				adapter = NewAdapter(ctx, buildPipelineRun, hasComp.Name, &componentGroups, logger, loader.NewMockLoader(), k8sClient)
 			})
 			It("add pr group to the build pipelineRun annotations and labels", func() {
@@ -2096,7 +2097,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				}
 				Expect(k8sClient.Status().Update(ctx, runningDeletingBuildPipeline)).Should(Succeed())
 
-				adapter = NewAdapter(ctx, runningDeletingBuildPipeline, hasComp.Name, &[]v1beta2.ComponentGroup{*hasCompGroup}, logger, loader.NewMockLoader(), k8sClient)
+				adapter = NewAdapter(ctx, runningDeletingBuildPipeline, hasComp.Name, &[]konfluxv1beta2.ComponentGroup{*hasCompGroup}, logger, loader.NewMockLoader(), k8sClient)
 				adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 					{
 						ContextKey: loader.GetPipelineRunContextKey,
@@ -2142,7 +2143,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				var buf bytes.Buffer
 				log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
 				buildPipelineRun.Annotations[tektonconsts.SnapshotNamesLabel] = hasSnapshot.Name
-				adapter = NewAdapter(ctx, buildPipelineRun, hasComp.Name, &[]v1beta2.ComponentGroup{*hasCompGroup}, log, loader.NewMockLoader(), k8sClient)
+				adapter = NewAdapter(ctx, buildPipelineRun, hasComp.Name, &[]konfluxv1beta2.ComponentGroup{*hasCompGroup}, log, loader.NewMockLoader(), k8sClient)
 				adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 					{
 						ContextKey: loader.GetPipelineRunContextKey,
@@ -2151,7 +2152,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 					},
 					{
 						ContextKey: loader.NestedComponentGroupsContextKey,
-						Resource:   []v1beta2.ComponentGroup{},
+						Resource:   []konfluxv1beta2.ComponentGroup{},
 					},
 				})
 
@@ -2181,7 +2182,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				var buf bytes.Buffer
 				log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
 				buildPipelineRun.Annotations[tektonconsts.SnapshotNamesLabel] = hasSnapshot.Name
-				adapter = NewAdapter(ctx, buildPipelineRun, hasComp.Name, &[]v1beta2.ComponentGroup{*hasCompGroup}, log, loader.NewMockLoader(), k8sClient)
+				adapter = NewAdapter(ctx, buildPipelineRun, hasComp.Name, &[]konfluxv1beta2.ComponentGroup{*hasCompGroup}, log, loader.NewMockLoader(), k8sClient)
 				adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 					{
 						ContextKey: loader.GetPipelineRunContextKey,
@@ -2190,7 +2191,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 					},
 					{
 						ContextKey: loader.NestedComponentGroupsContextKey,
-						Resource:   []v1beta2.ComponentGroup{},
+						Resource:   []konfluxv1beta2.ComponentGroup{},
 					},
 				})
 
@@ -2222,7 +2223,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 
 				var buf bytes.Buffer
 				log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
-				adapter = NewAdapter(ctx, buildPipelineRun, hasComp.Name, &[]v1beta2.ComponentGroup{*hasCompGroup}, log, loader.NewMockLoader(), k8sClient)
+				adapter = NewAdapter(ctx, buildPipelineRun, hasComp.Name, &[]konfluxv1beta2.ComponentGroup{*hasCompGroup}, log, loader.NewMockLoader(), k8sClient)
 				adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 					{
 						ContextKey: loader.GetPipelineRunContextKey,
@@ -2235,7 +2236,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 					},
 					{
 						ContextKey: loader.NestedComponentGroupsContextKey,
-						Resource:   []v1beta2.ComponentGroup{},
+						Resource:   []konfluxv1beta2.ComponentGroup{},
 					},
 				})
 
@@ -2268,7 +2269,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				})
 				var buf bytes.Buffer
 				log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
-				adapter = NewAdapter(ctx, buildPipelineRun, hasComp.Name, &[]v1beta2.ComponentGroup{*hasCompGroup}, log, loader.NewMockLoader(), k8sClient)
+				adapter = NewAdapter(ctx, buildPipelineRun, hasComp.Name, &[]konfluxv1beta2.ComponentGroup{*hasCompGroup}, log, loader.NewMockLoader(), k8sClient)
 				adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 					{
 						ContextKey: loader.AllPullSnapshotsForGivenPRContextKey,
@@ -2314,7 +2315,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				})
 				var buf bytes.Buffer
 				log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
-				adapter = NewAdapter(ctx, buildPipelineRun, hasComp.Name, &[]v1beta2.ComponentGroup{*hasCompGroup}, log, loader.NewMockLoader(), k8sClient)
+				adapter = NewAdapter(ctx, buildPipelineRun, hasComp.Name, &[]konfluxv1beta2.ComponentGroup{*hasCompGroup}, log, loader.NewMockLoader(), k8sClient)
 				adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 					{
 						ContextKey: loader.AllPullSnapshotsForGivenPRContextKey,
@@ -2519,7 +2520,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 
 				buf = bytes.Buffer{}
 				log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
-				componentGroups := &[]v1beta2.ComponentGroup{*hasCompGroup}
+				componentGroups := &[]konfluxv1beta2.ComponentGroup{*hasCompGroup}
 				adapter = NewAdapter(ctx, buildPipelineRun2, otherComp.Name, componentGroups, log, loader.NewMockLoader(), k8sClient)
 				adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 					{
@@ -2742,7 +2743,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 
 				buf = bytes.Buffer{}
 				log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
-				componentGroups := &[]v1beta2.ComponentGroup{*hasCompGroup}
+				componentGroups := &[]konfluxv1beta2.ComponentGroup{*hasCompGroup}
 				adapter = NewAdapter(ctx, buildPipelineRun, hasComp.Name, componentGroups, log, loader.NewMockLoader(), k8sClient)
 				adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 					{
@@ -2911,7 +2912,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 					},
 				}
 
-				componentGroups := []v1beta2.ComponentGroup{*hasCompGroup}
+				componentGroups := []konfluxv1beta2.ComponentGroup{*hasCompGroup}
 				adapter = NewAdapter(ctx, buildPipelineRun, hasComp.Name, &componentGroups, logger, loader.NewMockLoader(), k8sClient)
 				adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 					{
@@ -2973,7 +2974,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			mockReporter.EXPECT().ReportStatus(gomock.Any(), gomock.Any()).AnyTimes()
 		})
 		It("does not retry status reporting when the component is not found", func() {
-			componentGroups := []v1beta2.ComponentGroup{*hasCompGroup}
+			componentGroups := []konfluxv1beta2.ComponentGroup{*hasCompGroup}
 			adapter = NewAdapter(ctx, buildPipelineRun, hasComp.Name, &componentGroups, logger, loader.NewMockLoader(), k8sClient)
 			adapter.status = mockStatus
 			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
@@ -3342,7 +3343,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 
 			buf = bytes.Buffer{}
 			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
-			componentGroups := []v1beta2.ComponentGroup{*hasCompGroup}
+			componentGroups := []konfluxv1beta2.ComponentGroup{*hasCompGroup}
 			adapter = NewAdapter(ctx, buildPipelineRun, hasComp.Name, &componentGroups, log, loader.NewMockLoader(), k8sClient)
 			adapter.status = mockStatus
 			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
@@ -3386,7 +3387,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 
 			buf = bytes.Buffer{}
 			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
-			componentGroups := []v1beta2.ComponentGroup{*hasCompGroup}
+			componentGroups := []konfluxv1beta2.ComponentGroup{*hasCompGroup}
 			adapter = NewAdapter(ctx, buildPipelineRun, hasComp.Name, &componentGroups, log, loader.NewMockLoader(), k8sClient)
 			adapter.status = mockStatus
 			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
@@ -3418,7 +3419,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			Expect(metadata.SetAnnotation(buildPipelineRun, helpers.CreateSnapshotAnnotationName, "failed to create snapshot due to error")).ShouldNot(HaveOccurred())
 			buf = bytes.Buffer{}
 			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
-			componentGroups := []v1beta2.ComponentGroup{*hasCompGroup}
+			componentGroups := []konfluxv1beta2.ComponentGroup{*hasCompGroup}
 			adapter = NewAdapter(ctx, buildPipelineRun, hasComp.Name, &componentGroups, log, loader.NewMockLoader(), k8sClient)
 			adapter.status = mockStatus
 			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
@@ -3476,7 +3477,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			mockStatus.EXPECT().GetReporter(gomock.Any()).Return(nil)
 
 			// Create adapter
-			componentGroups := []v1beta2.ComponentGroup{*hasCompGroup}
+			componentGroups := []konfluxv1beta2.ComponentGroup{*hasCompGroup}
 			adapter = NewAdapter(ctx, buildPipelineRun, hasComp.Name, &componentGroups, log, loader.NewMockLoader(), k8sClient)
 			adapter.status = mockStatus
 
@@ -3568,10 +3569,10 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			// Add another componentGroup with only one component
 			hasCompGroup2 := hasCompGroup.DeepCopy()
 			hasCompGroup2.Name = "component-group-sample2"
-			hasCompGroup2.Spec.Components = []v1beta2.ComponentReference{
+			hasCompGroup2.Spec.Components = []konfluxv1beta2.ComponentReference{
 				{
 					Name: "component-sample",
-					ComponentVersion: v1beta2.ComponentVersionReference{
+					ComponentVersion: konfluxv1beta2.ComponentVersionReference{
 						Name:     "v1",
 						Revision: "main",
 					},
@@ -3580,23 +3581,23 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			// Add another componentGroup with two components
 			hasCompGroup3 := hasCompGroup.DeepCopy()
 			hasCompGroup3.Name = "component-group-sample3"
-			hasCompGroup3.Spec.Components = []v1beta2.ComponentReference{
+			hasCompGroup3.Spec.Components = []konfluxv1beta2.ComponentReference{
 				{
 					Name: "component-sample",
-					ComponentVersion: v1beta2.ComponentVersionReference{
+					ComponentVersion: konfluxv1beta2.ComponentVersionReference{
 						Name:     "v1",
 						Revision: "main",
 					},
 				},
 				{
 					Name: "another-component-sample",
-					ComponentVersion: v1beta2.ComponentVersionReference{
+					ComponentVersion: konfluxv1beta2.ComponentVersionReference{
 						Name:     "v1",
 						Revision: "main",
 					},
 				},
 			}
-			componentGroups := []v1beta2.ComponentGroup{*hasCompGroup, *hasCompGroup2, *hasCompGroup3}
+			componentGroups := []konfluxv1beta2.ComponentGroup{*hasCompGroup, *hasCompGroup2, *hasCompGroup3}
 			adapter = NewAdapter(ctx, buildPipelineRun, hasComp.Name, &componentGroups, log, loader.NewMockLoader(), k8sClient)
 
 			sampleTuple1 := loader.Tuple{ComponentName: hasComp.Name, ComponentVersion: ""}
@@ -3673,16 +3674,16 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				compGroupWithAnnotation.Annotations = map[string]string{}
 			}
 			compGroupWithAnnotation.Annotations[helpers.AlwaysCreateGroupSnapshotAnnotationName] = "true"
-			compGroupWithAnnotation.Spec.Components = []v1beta2.ComponentReference{
+			compGroupWithAnnotation.Spec.Components = []konfluxv1beta2.ComponentReference{
 				{
 					Name: hasComp.Name,
-					ComponentVersion: v1beta2.ComponentVersionReference{
+					ComponentVersion: konfluxv1beta2.ComponentVersionReference{
 						Name:     "v1",
 						Revision: "main",
 					},
 				},
 			}
-			componentGroups := []v1beta2.ComponentGroup{*compGroupWithAnnotation}
+			componentGroups := []konfluxv1beta2.ComponentGroup{*compGroupWithAnnotation}
 
 			adapter = NewAdapter(ctx, buildPipelineRun, hasComp.Name, &componentGroups, log, loader.NewMockLoader(), k8sClient)
 			adapter.status = mockStatus
@@ -3784,7 +3785,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			Expect(metadata.SetAnnotation(buildPipelineRun, tektonconsts.SnapshotNamesLabel, "snashot-sample")).ShouldNot(HaveOccurred())
 			buf = bytes.Buffer{}
 			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
-			componentGroups := []v1beta2.ComponentGroup{*hasCompGroup}
+			componentGroups := []konfluxv1beta2.ComponentGroup{*hasCompGroup}
 			adapter = NewAdapter(ctx, buildPipelineRun, hasComp.Name, &componentGroups, log, loader.NewMockLoader(), k8sClient)
 			adapter.status = mockStatus
 			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
@@ -3805,7 +3806,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			Expect(metadata.DeleteLabel(buildPipelineRun, tektonconsts.PipelineAsCodePullRequestLabel)).ShouldNot(HaveOccurred())
 			buf = bytes.Buffer{}
 			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
-			componentGroups := []v1beta2.ComponentGroup{*hasCompGroup}
+			componentGroups := []konfluxv1beta2.ComponentGroup{*hasCompGroup}
 			adapter = NewAdapter(ctx, buildPipelineRun, hasComp.Name, &componentGroups, log, loader.NewMockLoader(), k8sClient)
 			adapter.status = mockStatus
 			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
@@ -3826,7 +3827,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			Expect(metadata.DeleteAnnotation(buildPipelineRun, gitops.PRGroupAnnotation)).ShouldNot(HaveOccurred())
 			buf = bytes.Buffer{}
 			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
-			componentGroups := []v1beta2.ComponentGroup{*hasCompGroup}
+			componentGroups := []konfluxv1beta2.ComponentGroup{*hasCompGroup}
 			adapter = NewAdapter(ctx, buildPipelineRun, hasComp.Name, &componentGroups, log, loader.NewMockLoader(), k8sClient)
 			adapter.status = mockStatus
 			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
@@ -4118,7 +4119,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		}
 
 		It("skips when PipelineRun is not a push event", func() {
-			adapter = NewAdapter(ctx, buildPipelineRun, hasComp.Name, &[]v1beta2.ComponentGroup{*hasCompGroup}, logger, loader.NewMockLoader(), k8sClient)
+			adapter = NewAdapter(ctx, buildPipelineRun, hasComp.Name, &[]konfluxv1beta2.ComponentGroup{*hasCompGroup}, logger, loader.NewMockLoader(), k8sClient)
 			result, err := adapter.EnsureNudgePipelineRunsExist()
 			Expect(err).NotTo(HaveOccurred())
 			Expect(result.CancelRequest).To(BeFalse())
@@ -4131,7 +4132,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				Type:   apis.ConditionSucceeded,
 				Status: "False",
 			})
-			adapter = NewAdapter(ctx, pushPLR, hasComp.Name, &[]v1beta2.ComponentGroup{*hasCompGroup}, logger, loader.NewMockLoader(), k8sClient)
+			adapter = NewAdapter(ctx, pushPLR, hasComp.Name, &[]konfluxv1beta2.ComponentGroup{*hasCompGroup}, logger, loader.NewMockLoader(), k8sClient)
 			result, err := adapter.EnsureNudgePipelineRunsExist()
 			Expect(err).NotTo(HaveOccurred())
 			Expect(result.CancelRequest).To(BeFalse())
@@ -4140,7 +4141,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		It("skips when build PipelineRun is already nudge-processed", func() {
 			pushPLR := makePushPLR()
 			pushPLR.Annotations[tektonconsts.NudgeProcessedAnnotation] = "component-b"
-			adapter = NewAdapter(ctx, pushPLR, hasComp.Name, &[]v1beta2.ComponentGroup{*hasCompGroup}, logger, loader.NewMockLoader(), k8sClient)
+			adapter = NewAdapter(ctx, pushPLR, hasComp.Name, &[]konfluxv1beta2.ComponentGroup{*hasCompGroup}, logger, loader.NewMockLoader(), k8sClient)
 			result, err := adapter.EnsureNudgePipelineRunsExist()
 			Expect(err).NotTo(HaveOccurred())
 			Expect(result.CancelRequest).To(BeFalse())
@@ -4159,7 +4160,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			controllerutil.AddFinalizer(crashPLR, helpers.NudgePipelineRunFinalizer)
 			crashPLR.Status = buildPipelineRun.Status
 
-			adapter = NewAdapter(ctx, crashPLR, hasComp.Name, &[]v1beta2.ComponentGroup{*hasCompGroup}, logger, loader.NewMockLoader(), k8sClient)
+			adapter = NewAdapter(ctx, crashPLR, hasComp.Name, &[]konfluxv1beta2.ComponentGroup{*hasCompGroup}, logger, loader.NewMockLoader(), k8sClient)
 			result, err := adapter.EnsureNudgePipelineRunsExist()
 			Expect(err).NotTo(HaveOccurred())
 			Expect(result.CancelRequest).To(BeFalse())
@@ -4178,7 +4179,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			controllerutil.AddFinalizer(deletingPLR, helpers.NudgePipelineRunFinalizer)
 			deletingPLR.Status = buildPipelineRun.Status
 
-			adapter = NewAdapter(ctx, deletingPLR, hasComp.Name, &[]v1beta2.ComponentGroup{*hasCompGroup}, logger, loader.NewMockLoader(), k8sClient)
+			adapter = NewAdapter(ctx, deletingPLR, hasComp.Name, &[]konfluxv1beta2.ComponentGroup{*hasCompGroup}, logger, loader.NewMockLoader(), k8sClient)
 			result, err := adapter.EnsureNudgePipelineRunsExist()
 			Expect(err).NotTo(HaveOccurred())
 			Expect(result.CancelRequest).To(BeFalse())
@@ -4187,11 +4188,11 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 
 		It("skips when NudgeConfig is not found", func() {
 			pushPLR := makePushPLR()
-			adapter = NewAdapter(ctx, pushPLR, hasComp.Name, &[]v1beta2.ComponentGroup{*hasCompGroup}, logger, loader.NewMockLoader(), k8sClient)
+			adapter = NewAdapter(ctx, pushPLR, hasComp.Name, &[]konfluxv1beta2.ComponentGroup{*hasCompGroup}, logger, loader.NewMockLoader(), k8sClient)
 			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
 					ContextKey: loader.NudgeConfigContextKey,
-					Err:        k8serrors.NewNotFound(v1beta2.GroupVersion.WithResource("nudgeconfigs").GroupResource(), "nudge-config"),
+					Err:        k8serrors.NewNotFound(konfluxv1beta2.GroupVersion.WithResource("nudgeconfigs").GroupResource(), "nudge-config"),
 				},
 			})
 			result, err := adapter.EnsureNudgePipelineRunsExist()
@@ -4201,7 +4202,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 
 		It("requeues when NudgeConfig load fails with transient error", func() {
 			pushPLR := makePushPLR()
-			adapter = NewAdapter(ctx, pushPLR, hasComp.Name, &[]v1beta2.ComponentGroup{*hasCompGroup}, logger, loader.NewMockLoader(), k8sClient)
+			adapter = NewAdapter(ctx, pushPLR, hasComp.Name, &[]konfluxv1beta2.ComponentGroup{*hasCompGroup}, logger, loader.NewMockLoader(), k8sClient)
 			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
 					ContextKey: loader.NudgeConfigContextKey,
@@ -4215,18 +4216,18 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 
 		It("annotates no-matching-edges when NudgeConfig has no edges for the built component", func() {
 			pushPLR := makePushPLR()
-			nudgeConfig := &v1beta2.NudgeConfig{
+			nudgeConfig := &konfluxv1beta2.NudgeConfig{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      v1beta2.NudgeConfigSingletonName,
+					Name:      konfluxv1beta2.NudgeConfigSingletonName,
 					Namespace: "default",
 				},
-				Spec: v1beta2.NudgeConfigSpec{
-					Nudges: []v1beta2.NudgeRelationship{
-						{From: "other-component", To: "another-component-sample", Mode: v1beta2.NudgeModeImmediate},
+				Spec: konfluxv1beta2.NudgeConfigSpec{
+					Nudges: []konfluxv1beta2.NudgeRelationship{
+						{From: "other-component", To: "another-component-sample", Mode: konfluxv1beta2.NudgeModeImmediate},
 					},
 				},
 			}
-			adapter = NewAdapter(ctx, pushPLR, hasComp.Name, &[]v1beta2.ComponentGroup{*hasCompGroup}, logger, loader.NewMockLoader(), k8sClient)
+			adapter = NewAdapter(ctx, pushPLR, hasComp.Name, &[]konfluxv1beta2.ComponentGroup{*hasCompGroup}, logger, loader.NewMockLoader(), k8sClient)
 			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
 					ContextKey: loader.NudgeConfigContextKey,
@@ -4250,18 +4251,18 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 
 		It("annotates no-valid-targets when all target components are not found", func() {
 			pushPLR := makePushPLR()
-			nudgeConfig := &v1beta2.NudgeConfig{
+			nudgeConfig := &konfluxv1beta2.NudgeConfig{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      v1beta2.NudgeConfigSingletonName,
+					Name:      konfluxv1beta2.NudgeConfigSingletonName,
 					Namespace: "default",
 				},
-				Spec: v1beta2.NudgeConfigSpec{
-					Nudges: []v1beta2.NudgeRelationship{
-						{From: hasComp.Name, To: "nonexistent-component", Mode: v1beta2.NudgeModeImmediate},
+				Spec: konfluxv1beta2.NudgeConfigSpec{
+					Nudges: []konfluxv1beta2.NudgeRelationship{
+						{From: hasComp.Name, To: "nonexistent-component", Mode: konfluxv1beta2.NudgeModeImmediate},
 					},
 				},
 			}
-			adapter = NewAdapter(ctx, pushPLR, hasComp.Name, &[]v1beta2.ComponentGroup{*hasCompGroup}, logger, loader.NewMockLoader(), k8sClient)
+			adapter = NewAdapter(ctx, pushPLR, hasComp.Name, &[]konfluxv1beta2.ComponentGroup{*hasCompGroup}, logger, loader.NewMockLoader(), k8sClient)
 			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
 					ContextKey: loader.NudgeConfigContextKey,
@@ -4281,18 +4282,18 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 
 		It("requeues when target component load returns transient error", func() {
 			pushPLR := makePushPLR()
-			nudgeConfig := &v1beta2.NudgeConfig{
+			nudgeConfig := &konfluxv1beta2.NudgeConfig{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      v1beta2.NudgeConfigSingletonName,
+					Name:      konfluxv1beta2.NudgeConfigSingletonName,
 					Namespace: "default",
 				},
-				Spec: v1beta2.NudgeConfigSpec{
-					Nudges: []v1beta2.NudgeRelationship{
-						{From: hasComp.Name, To: "another-component-sample", Mode: v1beta2.NudgeModeImmediate},
+				Spec: konfluxv1beta2.NudgeConfigSpec{
+					Nudges: []konfluxv1beta2.NudgeRelationship{
+						{From: hasComp.Name, To: "another-component-sample", Mode: konfluxv1beta2.NudgeModeImmediate},
 					},
 				},
 			}
-			adapter = NewAdapter(ctx, pushPLR, hasComp.Name, &[]v1beta2.ComponentGroup{*hasCompGroup}, logger, loader.NewMockLoader(), k8sClient)
+			adapter = NewAdapter(ctx, pushPLR, hasComp.Name, &[]konfluxv1beta2.ComponentGroup{*hasCompGroup}, logger, loader.NewMockLoader(), k8sClient)
 			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
 					ContextKey: loader.NudgeConfigContextKey,
@@ -4311,18 +4312,18 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		It("annotates build-result-error and stops when build result extraction fails", func() {
 			pushPLR := makePushPLR()
 			pushPLR.Status.Results = nil
-			nudgeConfig := &v1beta2.NudgeConfig{
+			nudgeConfig := &konfluxv1beta2.NudgeConfig{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      v1beta2.NudgeConfigSingletonName,
+					Name:      konfluxv1beta2.NudgeConfigSingletonName,
 					Namespace: "default",
 				},
-				Spec: v1beta2.NudgeConfigSpec{
-					Nudges: []v1beta2.NudgeRelationship{
-						{From: hasComp.Name, To: "another-component-sample", Mode: v1beta2.NudgeModeImmediate},
+				Spec: konfluxv1beta2.NudgeConfigSpec{
+					Nudges: []konfluxv1beta2.NudgeRelationship{
+						{From: hasComp.Name, To: "another-component-sample", Mode: konfluxv1beta2.NudgeModeImmediate},
 					},
 				},
 			}
-			adapter = NewAdapter(ctx, pushPLR, hasComp.Name, &[]v1beta2.ComponentGroup{*hasCompGroup}, logger, loader.NewMockLoader(), k8sClient)
+			adapter = NewAdapter(ctx, pushPLR, hasComp.Name, &[]konfluxv1beta2.ComponentGroup{*hasCompGroup}, logger, loader.NewMockLoader(), k8sClient)
 			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
 					ContextKey: loader.NudgeConfigContextKey,
@@ -4343,18 +4344,18 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 
 		It("annotates credentials-error and stops when image registry credentials cannot be resolved", func() {
 			pushPLR := makePushPLR()
-			nudgeConfig := &v1beta2.NudgeConfig{
+			nudgeConfig := &konfluxv1beta2.NudgeConfig{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      v1beta2.NudgeConfigSingletonName,
+					Name:      konfluxv1beta2.NudgeConfigSingletonName,
 					Namespace: "default",
 				},
-				Spec: v1beta2.NudgeConfigSpec{
-					Nudges: []v1beta2.NudgeRelationship{
-						{From: hasComp.Name, To: "another-component-sample", Mode: v1beta2.NudgeModeImmediate},
+				Spec: konfluxv1beta2.NudgeConfigSpec{
+					Nudges: []konfluxv1beta2.NudgeRelationship{
+						{From: hasComp.Name, To: "another-component-sample", Mode: konfluxv1beta2.NudgeModeImmediate},
 					},
 				},
 			}
-			adapter = NewAdapter(ctx, pushPLR, hasComp.Name, &[]v1beta2.ComponentGroup{*hasCompGroup}, logger, loader.NewMockLoader(), k8sClient)
+			adapter = NewAdapter(ctx, pushPLR, hasComp.Name, &[]konfluxv1beta2.ComponentGroup{*hasCompGroup}, logger, loader.NewMockLoader(), k8sClient)
 			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
 					ContextKey: loader.NudgeConfigContextKey,
@@ -4427,18 +4428,18 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 
 		It("skips validated-mode edges and only processes immediate-mode edges", func() {
 			pushPLR := makePushPLR()
-			nudgeConfig := &v1beta2.NudgeConfig{
+			nudgeConfig := &konfluxv1beta2.NudgeConfig{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      v1beta2.NudgeConfigSingletonName,
+					Name:      konfluxv1beta2.NudgeConfigSingletonName,
 					Namespace: "default",
 				},
-				Spec: v1beta2.NudgeConfigSpec{
-					Nudges: []v1beta2.NudgeRelationship{
-						{From: hasComp.Name, To: "another-component-sample", Mode: v1beta2.NudgeModeValidated},
+				Spec: konfluxv1beta2.NudgeConfigSpec{
+					Nudges: []konfluxv1beta2.NudgeRelationship{
+						{From: hasComp.Name, To: "another-component-sample", Mode: konfluxv1beta2.NudgeModeValidated},
 					},
 				},
 			}
-			adapter = NewAdapter(ctx, pushPLR, hasComp.Name, &[]v1beta2.ComponentGroup{*hasCompGroup}, logger, loader.NewMockLoader(), k8sClient)
+			adapter = NewAdapter(ctx, pushPLR, hasComp.Name, &[]konfluxv1beta2.ComponentGroup{*hasCompGroup}, logger, loader.NewMockLoader(), k8sClient)
 			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
 					ContextKey: loader.NudgeConfigContextKey,
@@ -4457,17 +4458,17 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		})
 
 		Context("when checking NudgeConfig for stale Component references", func() {
-			var nudgeConfig *v1beta2.NudgeConfig
+			var nudgeConfig *konfluxv1beta2.NudgeConfig
 
 			BeforeEach(func() {
-				nudgeConfig = &v1beta2.NudgeConfig{
+				nudgeConfig = &konfluxv1beta2.NudgeConfig{
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      v1beta2.NudgeConfigSingletonName,
+						Name:      konfluxv1beta2.NudgeConfigSingletonName,
 						Namespace: "default",
 					},
-					Spec: v1beta2.NudgeConfigSpec{
-						Nudges: []v1beta2.NudgeRelationship{
-							{From: "other-component", To: "ghost-component", Mode: v1beta2.NudgeModeImmediate},
+					Spec: konfluxv1beta2.NudgeConfigSpec{
+						Nudges: []konfluxv1beta2.NudgeRelationship{
+							{From: "other-component", To: "ghost-component", Mode: konfluxv1beta2.NudgeModeImmediate},
 						},
 					},
 				}
@@ -4484,7 +4485,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 
 			It("sets StaleReferences to True for orphaned references before continuing with no-matching-edges", func() {
 				pushPLR := makePushPLR()
-				adapter = NewAdapter(ctx, pushPLR, hasComp.Name, &[]v1beta2.ComponentGroup{*hasCompGroup}, logger, loader.NewMockLoader(), k8sClient)
+				adapter = NewAdapter(ctx, pushPLR, hasComp.Name, &[]konfluxv1beta2.ComponentGroup{*hasCompGroup}, logger, loader.NewMockLoader(), k8sClient)
 				adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 					{
 						ContextKey: loader.NudgeConfigContextKey,
@@ -4504,7 +4505,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				Expect(result.RequeueRequest).To(BeFalse())
 
 				Eventually(func(g Gomega) {
-					updated := &v1beta2.NudgeConfig{}
+					updated := &konfluxv1beta2.NudgeConfig{}
 					g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(nudgeConfig), updated)).To(Succeed())
 					cond := meta.FindStatusCondition(updated.Status.Conditions, helpers.StaleReferencesStatusCondition)
 					g.Expect(cond).NotTo(BeNil())
@@ -4525,11 +4526,11 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				pushPLR := makePushPLR()
 				Expect(k8sClient.Delete(ctx, nudgeConfig)).Should(Succeed())
 				Eventually(func() bool {
-					err := k8sClient.Get(ctx, client.ObjectKeyFromObject(nudgeConfig), &v1beta2.NudgeConfig{})
+					err := k8sClient.Get(ctx, client.ObjectKeyFromObject(nudgeConfig), &konfluxv1beta2.NudgeConfig{})
 					return k8serrors.IsNotFound(err)
 				}, time.Second*5).Should(BeTrue())
 
-				adapter = NewAdapter(ctx, pushPLR, hasComp.Name, &[]v1beta2.ComponentGroup{*hasCompGroup}, logger, loader.NewMockLoader(), k8sClient)
+				adapter = NewAdapter(ctx, pushPLR, hasComp.Name, &[]konfluxv1beta2.ComponentGroup{*hasCompGroup}, logger, loader.NewMockLoader(), k8sClient)
 				adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 					{
 						ContextKey: loader.NudgeConfigContextKey,
@@ -4558,17 +4559,17 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 	})
 
 	When("updateNudgeConfigStatus is called", func() {
-		var nudgeConfig *v1beta2.NudgeConfig
+		var nudgeConfig *konfluxv1beta2.NudgeConfig
 
 		BeforeEach(func() {
-			nudgeConfig = &v1beta2.NudgeConfig{
+			nudgeConfig = &konfluxv1beta2.NudgeConfig{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      v1beta2.NudgeConfigSingletonName,
+					Name:      konfluxv1beta2.NudgeConfigSingletonName,
 					Namespace: "default",
 				},
-				Spec: v1beta2.NudgeConfigSpec{
-					Nudges: []v1beta2.NudgeRelationship{
-						{From: hasComp.Name, To: hasComp2.Name, Mode: v1beta2.NudgeModeImmediate},
+				Spec: konfluxv1beta2.NudgeConfigSpec{
+					Nudges: []konfluxv1beta2.NudgeRelationship{
+						{From: hasComp.Name, To: hasComp2.Name, Mode: konfluxv1beta2.NudgeModeImmediate},
 					},
 				},
 			}
@@ -4577,7 +4578,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(nudgeConfig), nudgeConfig)).To(Succeed())
 			}, time.Second*5).Should(Succeed())
 
-			adapter = NewAdapter(ctx, buildPipelineRun, hasComp.Name, &[]v1beta2.ComponentGroup{*hasCompGroup}, logger, loader.NewMockLoader(), k8sClient)
+			adapter = NewAdapter(ctx, buildPipelineRun, hasComp.Name, &[]konfluxv1beta2.ComponentGroup{*hasCompGroup}, logger, loader.NewMockLoader(), k8sClient)
 		})
 
 		AfterEach(func() {
@@ -4590,7 +4591,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			Expect(adapter.updateNudgeConfigStatus(nudgeConfig, "default")).To(Succeed())
 
 			Eventually(func(g Gomega) {
-				updated := &v1beta2.NudgeConfig{}
+				updated := &konfluxv1beta2.NudgeConfig{}
 				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(nudgeConfig), updated)).To(Succeed())
 				cond := meta.FindStatusCondition(updated.Status.Conditions, helpers.StaleReferencesStatusCondition)
 				g.Expect(cond).NotTo(BeNil())
@@ -4619,8 +4620,8 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		})
 
 		It("sets the StaleReferences condition to ConditionTrue when orphaned references exist", func() {
-			nudgeConfig.Spec.Nudges = []v1beta2.NudgeRelationship{
-				{From: hasComp.Name, To: "missing-component", Mode: v1beta2.NudgeModeImmediate},
+			nudgeConfig.Spec.Nudges = []konfluxv1beta2.NudgeRelationship{
+				{From: hasComp.Name, To: "missing-component", Mode: konfluxv1beta2.NudgeModeImmediate},
 			}
 			Expect(k8sClient.Update(ctx, nudgeConfig)).Should(Succeed())
 			Eventually(func(g Gomega) {
@@ -4640,7 +4641,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			Expect(adapter.updateNudgeConfigStatus(nudgeConfig, "default")).To(Succeed())
 
 			Eventually(func(g Gomega) {
-				updated := &v1beta2.NudgeConfig{}
+				updated := &konfluxv1beta2.NudgeConfig{}
 				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(nudgeConfig), updated)).To(Succeed())
 				cond := meta.FindStatusCondition(updated.Status.Conditions, helpers.StaleReferencesStatusCondition)
 				g.Expect(cond).NotTo(BeNil())
@@ -4677,7 +4678,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			Expect(adapter.updateNudgeConfigStatus(nudgeConfig, "default")).To(Succeed())
 
 			Eventually(func(g Gomega) {
-				updated := &v1beta2.NudgeConfig{}
+				updated := &konfluxv1beta2.NudgeConfig{}
 				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(nudgeConfig), updated)).To(Succeed())
 				cond := meta.FindStatusCondition(updated.Status.Conditions, helpers.StaleReferencesStatusCondition)
 				g.Expect(cond).NotTo(BeNil())
@@ -4700,7 +4701,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		})
 
 		It("persists BatchDefaultsSupported when listing Components fails", func() {
-			nudgeConfig.Spec.BatchDefaults = &v1beta2.BatchDefaults{}
+			nudgeConfig.Spec.BatchDefaults = &konfluxv1beta2.BatchDefaults{}
 			Expect(k8sClient.Update(ctx, nudgeConfig)).Should(Succeed())
 
 			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
@@ -4714,7 +4715,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			Expect(err.Error()).To(ContainSubstring(`failed to list Components in namespace "default"`))
 
 			Eventually(func(g Gomega) {
-				updated := &v1beta2.NudgeConfig{}
+				updated := &konfluxv1beta2.NudgeConfig{}
 				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(nudgeConfig), updated)).To(Succeed())
 				cond := meta.FindStatusCondition(updated.Status.Conditions, helpers.BatchDefaultsSupportedStatusCondition)
 				g.Expect(cond).NotTo(BeNil())
@@ -4726,7 +4727,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		It("returns an error when the status patch fails", func() {
 			Expect(k8sClient.Delete(ctx, nudgeConfig)).Should(Succeed())
 			Eventually(func() bool {
-				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(nudgeConfig), &v1beta2.NudgeConfig{})
+				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(nudgeConfig), &konfluxv1beta2.NudgeConfig{})
 				return k8serrors.IsNotFound(err)
 			}, time.Second*5).Should(BeTrue())
 
@@ -4738,8 +4739,8 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 					},
 				},
 			})
-			nudgeConfig.Spec.Nudges = []v1beta2.NudgeRelationship{
-				{From: hasComp.Name, To: "missing-component", Mode: v1beta2.NudgeModeImmediate},
+			nudgeConfig.Spec.Nudges = []konfluxv1beta2.NudgeRelationship{
+				{From: hasComp.Name, To: "missing-component", Mode: konfluxv1beta2.NudgeModeImmediate},
 			}
 			err := adapter.updateNudgeConfigStatus(nudgeConfig, "default")
 			Expect(err).To(HaveOccurred())
@@ -4747,7 +4748,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		})
 
 		It("sets BatchDefaultsSupported to False when spec.batchDefaults is configured", func() {
-			nudgeConfig.Spec.BatchDefaults = &v1beta2.BatchDefaults{}
+			nudgeConfig.Spec.BatchDefaults = &konfluxv1beta2.BatchDefaults{}
 			Expect(k8sClient.Update(ctx, nudgeConfig)).Should(Succeed())
 
 			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
@@ -4762,7 +4763,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			Expect(adapter.updateNudgeConfigStatus(nudgeConfig, "default")).To(Succeed())
 
 			Eventually(func(g Gomega) {
-				updated := &v1beta2.NudgeConfig{}
+				updated := &konfluxv1beta2.NudgeConfig{}
 				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(nudgeConfig), updated)).To(Succeed())
 				cond := meta.FindStatusCondition(updated.Status.Conditions, helpers.BatchDefaultsSupportedStatusCondition)
 				g.Expect(cond).NotTo(BeNil())
@@ -4773,7 +4774,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 	})
 
 	createAdapter = func() *Adapter {
-		adapter = NewAdapter(ctx, buildPipelineRun, hasComp.Name, &[]v1beta2.ComponentGroup{*hasCompGroup}, logger, loader.NewMockLoader(), k8sClient)
+		adapter = NewAdapter(ctx, buildPipelineRun, hasComp.Name, &[]konfluxv1beta2.ComponentGroup{*hasCompGroup}, logger, loader.NewMockLoader(), k8sClient)
 		return adapter
 	}
 

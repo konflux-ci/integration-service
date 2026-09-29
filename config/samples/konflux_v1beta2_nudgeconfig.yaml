@@ -1,5 +1,5 @@
 ---
-apiVersion: appstudio.redhat.com/v1beta2
+apiVersion: konflux-ci.dev/v1beta2
 kind: NudgeConfig
 metadata:
   labels:

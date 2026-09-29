@@ -24,6 +24,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	oldapplicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
+	konfluxv1beta2 "github.com/konflux-ci/integration-service/api/konflux/v1beta2"
 	"github.com/konflux-ci/integration-service/api/v1beta2"
 	releasev1alpha1 "github.com/konflux-ci/release-service/api/v1alpha1"
 	. "github.com/onsi/ginkgo/v2"
@@ -106,7 +107,7 @@ var _ = Describe("Release Adapter", Ordered, func() {
 
 	Context("When calling GetComponentGroupFromSnapshot", func() {
 		It("returns resource and error from the context", func() {
-			componentGroup := &v1beta2.ComponentGroup{}
+			componentGroup := &konfluxv1beta2.ComponentGroup{}
 			mockContext := toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
 					ContextKey: ComponentGroupContextKey,
@@ -239,6 +240,40 @@ var _ = Describe("Release Adapter", Ordered, func() {
 		})
 	})
 
+	Context("When calling GetAllIntegrationTestScenariosForComponentGroup", func() {
+		It("returns all integrationTestScenario and error from the context", func() {
+			scenarios := []v1beta2.IntegrationTestScenario{}
+			mockContext := toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: AllIntegrationTestScenariosForComponentGroupContextKey,
+					Resource:   scenarios,
+				},
+			})
+			resource, err := loader.GetAllIntegrationTestScenariosForComponentGroup(mockContext, nil, nil)
+			Expect(resource).To(Equal(&scenarios))
+			Expect(err).ToNot(HaveOccurred())
+		})
+	})
+
+	Context("When calling GetAllIntegrationTestScenariosForComponentGroups", func() {
+		It("returns all integrationTestScenario and error from the context", func() {
+			scenarios := []v1beta2.IntegrationTestScenario{}
+			mockContext := toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: AllIntegrationTestScenariosForComponentGroupContextKey,
+					Resource:   scenarios,
+				},
+				{
+					ContextKey: AllIntegrationTestScenariosForComponentGroupsContextKey,
+					Resource:   scenarios,
+				},
+			})
+			resource, err := loader.GetAllIntegrationTestScenariosForComponentGroups(mockContext, nil, nil)
+			Expect(resource).To(Equal(&scenarios))
+			Expect(err).ToNot(HaveOccurred())
+		})
+	})
+
 	Context("When calling GetRequiredIntegrationTestScenariosForSnapshotApplication", func() {
 		It("returns required integrationTestScenario and error from the context", func() {
 			scenarios := []v1beta2.IntegrationTestScenario{}
@@ -254,6 +289,21 @@ var _ = Describe("Release Adapter", Ordered, func() {
 		})
 	})
 
+	Context("When calling GetAllIntegrationTestScenariosForSnapshotApplication", func() {
+		It("returns all integrationTestScenario and error from the context", func() {
+			scenarios := []v1beta2.IntegrationTestScenario{}
+			mockContext := toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: AllIntegrationTestScenariosForSnapshotContextKey,
+					Resource:   scenarios,
+				},
+			})
+			resource, err := loader.GetAllIntegrationTestScenariosForSnapshotApplication(mockContext, nil, nil, nil)
+			Expect(resource).To(Equal(&scenarios))
+			Expect(err).ToNot(HaveOccurred())
+		})
+	})
+
 	Context("When calling GetAllIntegrationTestScenariosForSnapshot", func() {
 		It("returns all integrationTestScenario and error from the context", func() {
 			scenarios := []v1beta2.IntegrationTestScenario{}
@@ -264,6 +314,21 @@ var _ = Describe("Release Adapter", Ordered, func() {
 				},
 			})
 			resource, err := loader.GetAllIntegrationTestScenariosForSnapshot(mockContext, nil, nil, nil)
+			Expect(resource).To(Equal(&scenarios))
+			Expect(err).ToNot(HaveOccurred())
+		})
+	})
+
+	Context("When calling GetRequiredIntegrationTestScenariosForSnapshot", func() {
+		It("returns required integrationTestScenario and error from the context", func() {
+			scenarios := []v1beta2.IntegrationTestScenario{}
+			mockContext := toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: RequiredIntegrationTestScenariosForSnapshotContextKey,
+					Resource:   scenarios,
+				},
+			})
+			resource, err := loader.GetRequiredIntegrationTestScenariosForSnapshot(mockContext, nil, nil, nil)
 			Expect(resource).To(Equal(&scenarios))
 			Expect(err).ToNot(HaveOccurred())
 		})
@@ -325,6 +390,21 @@ var _ = Describe("Release Adapter", Ordered, func() {
 			})
 			resource, err := loader.GetAutoReleasePlansForApplication(mockContext, nil, nil, nil, true)
 			Expect(resource).To(Equal(&releasePlans))
+			Expect(err).ToNot(HaveOccurred())
+		})
+	})
+
+	Context("When calling GetScenario", func() {
+		It("returns the integrationTestScenario and error from the context", func() {
+			scenario := &v1beta2.IntegrationTestScenario{}
+			mockContext := toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: GetScenarioContextKey,
+					Resource:   scenario,
+				},
+			})
+			resource, err := loader.GetScenario(mockContext, nil, "scenario", "namespace")
+			Expect(resource).To(Equal(scenario))
 			Expect(err).ToNot(HaveOccurred())
 		})
 	})
@@ -699,7 +779,7 @@ var _ = Describe("Release Adapter", Ordered, func() {
 
 	Context("When calling GetAllComponentGroupsInNamespace", func() {
 		It("returns resource and error from the context", func() {
-			componentGroups := []v1beta2.ComponentGroup{}
+			componentGroups := []konfluxv1beta2.ComponentGroup{}
 			mockContext := toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
 					ContextKey: ComponentGroupsContextKey,
@@ -714,7 +794,7 @@ var _ = Describe("Release Adapter", Ordered, func() {
 
 	Context("When calling GetComponentGroupsContainingComponentGroup", func() {
 		It("returns resource and error from the context", func() {
-			componentGroups := []v1beta2.ComponentGroup{}
+			componentGroups := []konfluxv1beta2.ComponentGroup{}
 			mockContext := toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
 					ContextKey: ComponentGroupsContextKey,
@@ -729,7 +809,7 @@ var _ = Describe("Release Adapter", Ordered, func() {
 
 	Context("When calling GetNestedComponentGroupsForComponentGroup", func() {
 		It("returns resource and error from the context", func() {
-			componentGroups := []v1beta2.ComponentGroup{}
+			componentGroups := []konfluxv1beta2.ComponentGroup{}
 			mockContext := toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
 					ContextKey: NestedComponentGroupsContextKey,

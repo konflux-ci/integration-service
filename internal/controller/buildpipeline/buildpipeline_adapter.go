@@ -32,7 +32,8 @@ import (
 	"k8s.io/utils/strings/slices"
 
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
-	"github.com/konflux-ci/integration-service/api/v1beta2"
+	"github.com/konflux-ci/integration-service/api/konflux/v1beta2"
+	integrationv1beta2 "github.com/konflux-ci/integration-service/api/v1beta2"
 	"github.com/konflux-ci/integration-service/gitops"
 	h "github.com/konflux-ci/integration-service/helpers"
 	"github.com/konflux-ci/integration-service/loader"
@@ -931,7 +932,7 @@ func (a *Adapter) EnsurePRSnapshotAnnotatedForMergedPR() (controller.OperationRe
 }
 
 // reportStatusForGroupSnapshot reports the initial integration test statuses for the expected Snapshot
-func (a *Adapter) reportStatusForExpectedSnapshot(pipelineRun *tektonv1.PipelineRun, snapshot *applicationapiv1alpha1.Snapshot, integrationTestScenarios *[]v1beta2.IntegrationTestScenario,
+func (a *Adapter) reportStatusForExpectedSnapshot(pipelineRun *tektonv1.PipelineRun, snapshot *applicationapiv1alpha1.Snapshot, integrationTestScenarios *[]integrationv1beta2.IntegrationTestScenario,
 	integrationTestStatus intgteststat.IntegrationTestStatus, componentNameOrPrGroup string) (int, error) {
 	integrationTestScenariosForSnapshot := gitops.FilterIntegrationTestScenariosWithContext(integrationTestScenarios, snapshot)
 	numIntegrationTestScenarios := len(*integrationTestScenariosForSnapshot)
@@ -1470,7 +1471,7 @@ func (a *Adapter) prepareTempGroupSnapshot(pipelineRun *tektonv1.PipelineRun, ob
 	return tempGroupSnapshot
 }
 
-func (a *Adapter) ReportIntegrationTestStatusAccordingToBuildPLR(pipelineRun *tektonv1.PipelineRun, snapshot *applicationapiv1alpha1.Snapshot, integrationTestScenarios *[]v1beta2.IntegrationTestScenario,
+func (a *Adapter) ReportIntegrationTestStatusAccordingToBuildPLR(pipelineRun *tektonv1.PipelineRun, snapshot *applicationapiv1alpha1.Snapshot, integrationTestScenarios *[]integrationv1beta2.IntegrationTestScenario,
 	integrationTestStatus intgteststat.IntegrationTestStatus, componentNameOrPrGroup string) (bool, error) {
 	var isErrorRecoverable = true
 	reporter := a.status.GetReporter(snapshot)

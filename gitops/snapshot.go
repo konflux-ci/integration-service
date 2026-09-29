@@ -29,6 +29,7 @@ import (
 
 	"github.com/google/go-containerregistry/pkg/name"
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
+	konfluxv1beta2 "github.com/konflux-ci/integration-service/api/konflux/v1beta2"
 	"github.com/konflux-ci/integration-service/api/v1beta2"
 	"github.com/konflux-ci/integration-service/helpers"
 	"github.com/konflux-ci/integration-service/pkg/keys"
@@ -1349,7 +1350,7 @@ func SetOwnerReferenceApplication(ctx context.Context, adapterClient client.Clie
 }
 
 // SetOwnerReference sets the ComponentGroup as an owner of the snapshot
-func SetOwnerReference(ctx context.Context, adapterClient client.Client, snapshot *applicationapiv1alpha1.Snapshot, owner *v1beta2.ComponentGroup) (*applicationapiv1alpha1.Snapshot, error) {
+func SetOwnerReference(ctx context.Context, adapterClient client.Client, snapshot *applicationapiv1alpha1.Snapshot, owner *konfluxv1beta2.ComponentGroup) (*applicationapiv1alpha1.Snapshot, error) {
 	patch := client.MergeFrom(snapshot.DeepCopy())
 	err := ctrl.SetControllerReference(owner, snapshot, adapterClient.Scheme())
 	if err != nil {

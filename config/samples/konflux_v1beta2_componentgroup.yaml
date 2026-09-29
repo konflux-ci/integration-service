@@ -4,7 +4,7 @@ kind: Namespace
 metadata:
   name: componentgroup-sample-v2
 ---
-apiVersion: appstudio.redhat.com/v1beta2
+apiVersion: konflux-ci.dev/v1beta2
 kind: ComponentGroup
 metadata:
   labels:

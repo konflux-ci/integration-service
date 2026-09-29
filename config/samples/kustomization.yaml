@@ -4,7 +4,7 @@ resources:
 - appstudio_v1beta1_integrationtestscenario.yaml
 - appstudio_v1beta2_integrationtestscenario.yaml
 - appstudio_v1beta2_integrationtestscenario_componentgroup.yaml
-- appstudio_v1beta2_componentgroup.yaml
-- appstudio_v1beta2_componentgroup_minimal.yaml
-- appstudio_v1beta2_nudgeconfig.yaml
+- konflux_v1beta2_componentgroup.yaml
+- konflux_v1beta2_componentgroup_minimal.yaml
+- konflux_v1beta2_nudgeconfig.yaml
 #+kubebuilder:scaffold:manifestskustomizesamples

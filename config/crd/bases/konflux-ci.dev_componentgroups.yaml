@@ -4,9 +4,9 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.17.2
-  name: componentgroups.appstudio.redhat.com
+  name: componentgroups.konflux-ci.dev
 spec:
-  group: appstudio.redhat.com
+  group: konflux-ci.dev
   names:
     kind: ComponentGroup
     listKind: ComponentGroupList
