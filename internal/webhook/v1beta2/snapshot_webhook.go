@@ -34,6 +34,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"strings"
 )
 
 // nolint:unused
@@ -93,6 +94,41 @@ func (d *SnapshotCustomDefaulter) Default(ctx context.Context, obj runtime.Objec
 	return nil
 }
 
+// validateSnapshotProvenance rejects PAC annotations when the Snapshot does not
+// contain the required Integration Service provenance marker.
+func validateSnapshotProvenance(snapshot *applicationapiv1alpha1.Snapshot) error {
+	for annotationKey := range snapshot.Annotations {
+		if !strings.HasPrefix(annotationKey, gitops.PipelinesAsCodePrefix+"/") {
+			continue
+		}
+
+		provenance := snapshot.Annotations[gitops.SnapshotProvenanceAnnotation]
+		if provenance == gitops.SnapshotProvenanceValue {
+			continue
+		}
+
+		snapshotlog.Info(
+			"Rejecting Snapshot with PAC annotations and invalid provenance",
+			"namespace", snapshot.Namespace,
+			"name", snapshot.Name,
+			"pacAnnotation", annotationKey,
+			"provenance", provenance,
+		)
+
+		return field.Invalid(
+			field.NewPath("metadata").Child("annotations"),
+			annotationKey,
+			fmt.Sprintf(
+				"PAC annotations require %s=%s",
+				gitops.SnapshotProvenanceAnnotation,
+				gitops.SnapshotProvenanceValue,
+			),
+		)
+	}
+
+	return nil
+}
+
 // ValidateCreate implements webhook.Validator so a webhook will be registered for the type
 func (v *SnapshotCustomValidator) ValidateCreate(ctx context.Context, obj runtime.Object) (warnings admission.Warnings, err error) {
 	snapshot, ok := obj.(*applicationapiv1alpha1.Snapshot)
@@ -111,6 +147,10 @@ func (v *SnapshotCustomValidator) ValidateCreate(ctx context.Context, obj runtim
 			fmt.Sprintf("name is too long (%d characters); must be at most %d characters",
 				len(snapshot.Name), maxK8sNameLength),
 		)
+	}
+
+	if err := validateSnapshotProvenance(snapshot); err != nil {
+		return nil, err
 	}
 
 	return nil, nil
@@ -138,6 +178,10 @@ func (v *SnapshotCustomValidator) ValidateUpdate(ctx context.Context, oldObj, ne
 			newSnapshot.Spec.Components,
 			"components field is immutable and cannot be modified after creation",
 		)
+	}
+
+	if err := validateSnapshotProvenance(newSnapshot); err != nil {
+		return nil, err
 	}
 
 	return nil, nil
