@@ -120,7 +120,7 @@ spec:
 
         set -euo pipefail
 
-        DEBIAN_FRONTEND=noninteractive apt-get update -qq && apt-get install -y -qq jq > /dev/null 2>&1
+        DEBIAN_FRONTEND=noninteractive apt-get update -qq && apt-get install -y -qq jq
 
         log() {
           echo -e "[$(date +'%Y-%m-%d %H:%M:%S')] [$1] $2"
@@ -184,7 +184,7 @@ spec:
           GH_RATE_REMAINING=$(curl -s \
             -H "Accept: application/vnd.github+json" \
             -H "Authorization: Bearer ${GITHUB_USERNAME_ARRAY[1]}" \
-            https://api.github.com/rate_limit | jq ".rate.remaining")
+            https://api.github.com/rate_limit | jq ".rate.remaining // 0")
 
           log "INFO" "user: ${GITHUB_USERNAME_ARRAY[0]} with rate limit remaining $GH_RATE_REMAINING"
           if [[ "$GH_RATE_REMAINING" -ge "$PREVIOUS_RATE_REMAINING" ]]; then
