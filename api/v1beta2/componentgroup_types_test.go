@@ -28,7 +28,7 @@ func TestComponentGroupSpec(t *testing.T) {
 	// Test creating a ComponentGroup with all fields
 	cg := &ComponentGroup{
 		TypeMeta: metav1.TypeMeta{
-			APIVersion: "appstudio.redhat.com/v1beta2",
+			APIVersion: "konflux-ci.dev/v1beta2",
 			Kind:       "ComponentGroup",
 		},
 		ObjectMeta: metav1.ObjectMeta{
@@ -332,17 +332,17 @@ func TestTestGraphNodeFailFastDefault(t *testing.T) {
 
 func TestComponentGroupConstants(t *testing.T) {
 	// Verify the constants are correctly defined
-	if ComponentGroupLabelPrefix != "appstudio.openshift.io/component-group" {
-		t.Errorf("Expected ComponentGroupLabelPrefix 'appstudio.openshift.io/component-group', got '%s'", ComponentGroupLabelPrefix)
+	if ComponentGroupLabelPrefix != "integration.konflux-ci.dev/component-group" {
+		t.Errorf("Expected ComponentGroupLabelPrefix 'integration.konflux-ci.dev/component-group', got '%s'", ComponentGroupLabelPrefix)
 	}
-	if ParentSnapshotAnnotation != "test.appstudio.openshift.io/parent-snapshot" {
-		t.Errorf("Expected ParentSnapshotAnnotation 'test.appstudio.openshift.io/parent-snapshot', got '%s'", ParentSnapshotAnnotation)
+	if ParentSnapshotAnnotation != "integration.konflux-ci.dev/parent-snapshot" {
+		t.Errorf("Expected ParentSnapshotAnnotation 'integration.konflux-ci.dev/parent-snapshot', got '%s'", ParentSnapshotAnnotation)
 	}
-	if OriginSnapshotAnnotation != "test.appstudio.openshift.io/origin-snapshot" {
-		t.Errorf("Expected OriginSnapshotAnnotation 'test.appstudio.openshift.io/origin-snapshot', got '%s'", OriginSnapshotAnnotation)
+	if OriginSnapshotAnnotation != "integration.konflux-ci.dev/origin-snapshot" {
+		t.Errorf("Expected OriginSnapshotAnnotation 'integration.konflux-ci.dev/origin-snapshot', got '%s'", OriginSnapshotAnnotation)
 	}
-	if MissingComponentVersionsAnnotation != "test.appstudio.openshift.io/missing-componentversions" {
-		t.Errorf("Expected MissingComponentVersionsAnnotation 'test.appstudio.openshift.io/missing-componentversions', got '%s'", MissingComponentVersionsAnnotation)
+	if MissingComponentVersionsAnnotation != "integration.konflux-ci.dev/missing-componentversions" {
+		t.Errorf("Expected MissingComponentVersionsAnnotation 'integration.konflux-ci.dev/missing-componentversions', got '%s'", MissingComponentVersionsAnnotation)
 	}
 }
 
