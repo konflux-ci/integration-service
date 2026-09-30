@@ -50,7 +50,7 @@ const (
 	PipelinesAsCodePrefix = "pac.test.appstudio.openshift.io"
 
 	// SnapshotProvenanceAnnotation identifies which service created a Snapshot.
-	SnapshotProvenanceAnnotation = "konflux-ci.dev/created-by"
+	SnapshotProvenanceAnnotation = "test.appstudio.openshift.io/created-by"
 
 	// SnapshotProvenanceValue is the value used for Snapshots created by Integration Service.
 	SnapshotProvenanceValue = "integration-service"

@@ -602,8 +602,8 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 		createdSnapshot := gitops.NewSnapshot(hasApp, &snapshotComponents)
 
 		Expect(createdSnapshot.Annotations).To(HaveKeyWithValue(
-			"konflux-ci.dev/created-by",
-			"integration-service",
+			gitops.SnapshotProvenanceAnnotation,
+			gitops.SnapshotProvenanceValue,
 		))
 	})
 

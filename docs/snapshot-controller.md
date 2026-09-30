@@ -154,3 +154,21 @@ flowchart TD
   class predicate Amber;
   class encountered_error1,encountered_error31,encountered_error32,encountered_error5 Red;
 ```
+
+## Snapshot provenance validation
+
+Snapshots that contain Pipeline-as-Code (`pac.test.appstudio.openshift.io/*`) annotations must also contain
+the following provenance annotation:
+
+```yaml
+test.appstudio.openshift.io/created-by: integration-service
+```
+
+Snapshots without Pipeline-as-Code annotations are allowed, which supports
+user-created Snapshots. The Snapshot validating webhook checks this rule when
+Snapshots are created and when PAC or provenance annotations are added, removed,
+or changed.
+
+The provenance annotation is an integrity marker and does not authenticate the
+requesting principal by itself. Its protection depends on Kubernetes RBAC
+restricting who can create or update Snapshots and their PAC metadata.

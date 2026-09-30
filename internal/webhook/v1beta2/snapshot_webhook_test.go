@@ -388,6 +388,55 @@ var _ = Describe("Snapshot webhook", Ordered, func() {
 		Expect(err.Error()).To(ContainSubstring("PAC annotations require"))
 	})
 
+	It("should allow updating an existing PAC Snapshot without changing PAC annotations", func() {
+		oldSnapshot := snapshot.DeepCopy()
+		oldSnapshot.Annotations = map[string]string{
+			gitops.PipelineAsCodeInstallationIDAnnotation: "123",
+		}
+		newSnapshot := oldSnapshot.DeepCopy()
+		newSnapshot.Annotations["example.com/updated"] = "true"
+
+		validator := &SnapshotCustomValidator{Client: k8sClient}
+
+		_, err := validator.ValidateUpdate(ctx, oldSnapshot, newSnapshot)
+
+		Expect(err).NotTo(HaveOccurred())
+	})
+
+	It("should reject removing provenance while PAC annotations remain", func() {
+		oldSnapshot := snapshot.DeepCopy()
+		oldSnapshot.Annotations = map[string]string{
+			gitops.PipelineAsCodeInstallationIDAnnotation: "123",
+			gitops.SnapshotProvenanceAnnotation:           gitops.SnapshotProvenanceValue,
+		}
+		newSnapshot := oldSnapshot.DeepCopy()
+		delete(newSnapshot.Annotations, gitops.SnapshotProvenanceAnnotation)
+
+		validator := &SnapshotCustomValidator{Client: k8sClient}
+
+		_, err := validator.ValidateUpdate(ctx, oldSnapshot, newSnapshot)
+
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("PAC annotations require"))
+	})
+
+	It("should reject changing provenance while PAC annotations remain", func() {
+		oldSnapshot := snapshot.DeepCopy()
+		oldSnapshot.Annotations = map[string]string{
+			gitops.PipelineAsCodeInstallationIDAnnotation: "123",
+			gitops.SnapshotProvenanceAnnotation:           gitops.SnapshotProvenanceValue,
+		}
+		newSnapshot := oldSnapshot.DeepCopy()
+		newSnapshot.Annotations[gitops.SnapshotProvenanceAnnotation] = "another-service"
+
+		validator := &SnapshotCustomValidator{Client: k8sClient}
+
+		_, err := validator.ValidateUpdate(ctx, oldSnapshot, newSnapshot)
+
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("PAC annotations require"))
+	})
+
 	It("should allow PAC annotations with a valid provenance marker", func() {
 		snapshot.Annotations = map[string]string{
 			gitops.PipelineAsCodeInstallationIDAnnotation: "123",

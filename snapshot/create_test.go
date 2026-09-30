@@ -813,8 +813,8 @@ var _ = Describe("Snapshot creation functions", Ordered, func() {
 		createdSnapshot := NewSnapshot(componentGroup, &snapshotComponents)
 
 		Expect(createdSnapshot.Annotations).To(HaveKeyWithValue(
-			"konflux-ci.dev/created-by",
-			"integration-service",
+			gitops.SnapshotProvenanceAnnotation,
+			gitops.SnapshotProvenanceValue,
 		))
 	})
 
