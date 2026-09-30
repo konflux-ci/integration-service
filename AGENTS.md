@@ -8,7 +8,7 @@ The [Konflux architecture documentation](https://github.com/konflux-ci/architect
 
 - **Language**: Go
 - **Framework:** controller-runtime
-- **CRDs**: IntegrationTestScenario, ComponentGroup
+- **CRDs**: IntegrationTestScenario, ComponentGroup, NudgeConfig
 - **Pipeline engine**: Tekton PipelineRuns
 - **Testing**: Ginkgo/Gomega + envtest (local K8s API server)
 - **Build**: `make test` (unit), `make manifests generate` (codegen)
@@ -56,3 +56,4 @@ Each controller delegates to an **adapter** (`<controller_name>_adapter.go`) tha
 - **Controller changes**: implement in `internal/controller/<resource>/<resource>_adapter.go`
 - **Webhooks**: add to `internal/webhooks/<resource>/`
 - **Tests**: unit tests alongside code using Ginkgo + envtest; E2E tests are located in `e2e-tests/tests`
+

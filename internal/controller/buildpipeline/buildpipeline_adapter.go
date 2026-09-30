@@ -20,6 +20,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math/big"
 	"strconv"
@@ -45,7 +46,7 @@ import (
 	"github.com/konflux-ci/operator-toolkit/controller"
 	"github.com/konflux-ci/operator-toolkit/metadata"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
+	clienterrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -54,7 +55,8 @@ import (
 // Adapter holds the objects needed to reconcile a build PipelineRun.
 type Adapter struct {
 	pipelineRun     *tektonv1.PipelineRun
-	component       *applicationapiv1alpha1.Component
+	component       *applicationapiv1alpha1.Component // TODO: remove when we deprecate old model
+	componentName   string
 	application     *applicationapiv1alpha1.Application
 	componentGroups *[]v1beta2.ComponentGroup
 	loader          loader.ObjectLoader
@@ -71,6 +73,7 @@ func NewAdapterWithApplication(context context.Context, pipelineRun *tektonv1.Pi
 	return &Adapter{
 		pipelineRun:     pipelineRun,
 		component:       component,
+		componentName:   component.Name,
 		application:     application,
 		componentGroups: nil,
 		logger:          logger,
@@ -82,12 +85,13 @@ func NewAdapterWithApplication(context context.Context, pipelineRun *tektonv1.Pi
 }
 
 // NewAdapter creates and returns an Adapter instance
-func NewAdapter(context context.Context, pipelineRun *tektonv1.PipelineRun, component *applicationapiv1alpha1.Component, componentGroups *[]v1beta2.ComponentGroup,
+func NewAdapter(context context.Context, pipelineRun *tektonv1.PipelineRun, componentName string, componentGroups *[]v1beta2.ComponentGroup,
 	logger h.IntegrationLogger, loader loader.ObjectLoader, client client.Client,
 ) *Adapter {
 	return &Adapter{
 		pipelineRun:     pipelineRun,
-		component:       component,
+		component:       nil,
+		componentName:   componentName,
 		application:     nil,
 		componentGroups: componentGroups,
 		logger:          logger,
@@ -112,7 +116,7 @@ func (a *Adapter) EnsureGlobalCandidateImageUpdated() (controller.OperationResul
 	if a.application != nil {
 		err = a.updateGCLForBuildPLR()
 	} else { // ComponentGroup behavior
-		err = snapshot.UpdateGCLForBuildPLR(a.context, a.client, a.loader, a.componentGroups, a.pipelineRun, a.component.Name)
+		err = snapshot.UpdateGCLForBuildPLR(a.context, a.client, a.loader, a.componentGroups, a.pipelineRun, a.componentName)
 	}
 	if err != nil {
 		// TODO: remove HandleLoaderError when we remove application-specific code
@@ -123,11 +127,11 @@ func (a *Adapter) EnsureGlobalCandidateImageUpdated() (controller.OperationResul
 		}
 		addedToGlobalCandidateListStatus = gitops.AddedToGlobalCandidateListStatus{
 			Result:          false,
-			Reason:          fmt.Sprintf("Failed to set Global Candidate List for component %s due to error %s", a.component.Name, err.Error()),
+			Reason:          fmt.Sprintf("Failed to set Global Candidate List for component %s due to error %s", a.componentName, err.Error()),
 			LastUpdatedTime: time.Now().Format(time.RFC3339),
 		}
 	} else {
-		a.logger.Info("Global Candidate List has been updated for component", "component.Namespace", a.component.Namespace, "component.Name", a.component.Name)
+		a.logger.Info("Global Candidate List has been updated for component", "component.Namespace", a.pipelineRun.Namespace, "component.Name", a.componentName)
 		addedToGlobalCandidateListStatus = gitops.AddedToGlobalCandidateListStatus{
 			Result:          true,
 			Reason:          gitops.Success,
@@ -164,7 +168,7 @@ func (a *Adapter) EnsureNudgePipelineRunsExist() (controller.OperationResult, er
 	// Idempotency guard: nudge already processed. Remove the nudge finalizer if it somehow
 	// survived (e.g. IS crashed between nudge PLR creation and annotation write).
 	if metadata.HasAnnotation(a.pipelineRun, tektonconsts.NudgeProcessedAnnotation) {
-		if err := h.RemoveFinalizerFromPipelineRun(a.context, a.client, a.logger, a.pipelineRun, h.NudgePipelineRunFinalizer); err != nil && !errors.IsNotFound(err) {
+		if err := h.RemoveFinalizerFromPipelineRun(a.context, a.client, a.logger, a.pipelineRun, h.NudgePipelineRunFinalizer); err != nil && !clienterrors.IsNotFound(err) {
 			return controller.RequeueWithError(err)
 		}
 		return controller.ContinueProcessing()
@@ -174,7 +178,7 @@ func (a *Adapter) EnsureNudgePipelineRunsExist() (controller.OperationResult, er
 	// finalizer (left by a crash between finalizer add and annotation write) so the PLR is
 	// not stuck in Terminating.
 	if a.pipelineRun.GetDeletionTimestamp() != nil {
-		if err := h.RemoveFinalizerFromPipelineRun(a.context, a.client, a.logger, a.pipelineRun, h.NudgePipelineRunFinalizer); err != nil && !errors.IsNotFound(err) {
+		if err := h.RemoveFinalizerFromPipelineRun(a.context, a.client, a.logger, a.pipelineRun, h.NudgePipelineRunFinalizer); err != nil && !clienterrors.IsNotFound(err) {
 			return controller.RequeueWithError(err)
 		}
 		return controller.ContinueProcessing()
@@ -182,7 +186,7 @@ func (a *Adapter) EnsureNudgePipelineRunsExist() (controller.OperationResult, er
 
 	nudgeConfig, err := a.loader.GetNudgeConfigForNamespace(a.context, a.client, a.pipelineRun.Namespace)
 	if err != nil {
-		if errors.IsNotFound(err) {
+		if clienterrors.IsNotFound(err) {
 			return controller.ContinueProcessing()
 		}
 		a.logger.Error(err, "Failed to get NudgeConfig")
@@ -191,11 +195,11 @@ func (a *Adapter) EnsureNudgePipelineRunsExist() (controller.OperationResult, er
 
 	// Check the NudgeConfig for stale references and update if possible - best effort.
 	// Done before nudge PipelineRun creation so early returns still refresh status.
-	if staleErr := a.checkNudgeConfigForStaleReferences(nudgeConfig, a.pipelineRun.Namespace); staleErr != nil {
-		a.logger.Error(staleErr, "Failed to check nudge config for stale references, skipping")
+	if staleErr := a.updateNudgeConfigStatus(nudgeConfig, a.pipelineRun.Namespace); staleErr != nil {
+		a.logger.Error(staleErr, "Failed to update nudge config status, skipping")
 	}
 
-	componentName := a.component.Name
+	componentName := a.componentName
 	var targetNames []string
 	for _, nudge := range nudgeConfig.Spec.Nudges {
 		if nudge.From == componentName && (nudge.Mode == "" || nudge.Mode == v1beta2.NudgeModeImmediate) {
@@ -208,11 +212,24 @@ func (a *Adapter) EnsureNudgePipelineRunsExist() (controller.OperationResult, er
 		return controller.ContinueProcessing()
 	}
 
+	component := a.component
+	if component == nil {
+		component, err = a.loader.GetComponent(a.context, a.client, a.componentName, a.pipelineRun.Namespace)
+		if err != nil {
+			if clienterrors.IsNotFound(err) {
+				a.logger.Info("Component not found, skipping nudge processing", "component.Name", a.componentName)
+				return controller.ContinueProcessing()
+			}
+			a.logger.Error(err, "Failed to load component for nudging")
+			return controller.RequeueWithError(err)
+		}
+	}
+
 	var targetComponents []applicationapiv1alpha1.Component
 	for _, name := range targetNames {
 		comp, err := a.loader.GetComponent(a.context, a.client, name, a.pipelineRun.Namespace)
 		if err != nil {
-			if errors.IsNotFound(err) {
+			if clienterrors.IsNotFound(err) {
 				a.logger.Info("Nudge target component not found, skipping", "component.Name", name)
 				continue
 			}
@@ -228,20 +245,20 @@ func (a *Adapter) EnsureNudgePipelineRunsExist() (controller.OperationResult, er
 		return controller.ContinueProcessing()
 	}
 
-	buildResult, err := nudging.ExtractBuildResultForNudging(a.pipelineRun, a.component)
+	buildResult, err := nudging.ExtractBuildResultForNudging(a.pipelineRun, component)
 	if err != nil {
 		a.logger.Error(err, "Failed to extract build result for nudging, skipping")
 		_ = tekton.AnnotateBuildPipelineRun(a.context, a.pipelineRun, tektonconsts.NudgeProcessedAnnotation, "build-result-error", a.client)
 		return controller.ContinueProcessing()
 	}
 
-	simpleBranchName := a.component.Annotations != nil && a.component.Annotations[tektonconsts.NudgeSimpleBranchAnnotation] == "true"
+	simpleBranchName := component.Annotations != nil && component.Annotations[tektonconsts.NudgeSimpleBranchAnnotation] == "true"
 
 	saName := a.pipelineRun.Spec.TaskRunTemplate.ServiceAccountName
 	if saName == "" {
 		saName = tektonconsts.DefaultPipelineServiceAccount
 	}
-	imageRepoHost, imageRepoUser, imageRepoPwd, err := nudging.GetImageRegistryCredentials(a.context, a.client, a.loader, a.component, saName)
+	imageRepoHost, imageRepoUser, imageRepoPwd, err := nudging.GetImageRegistryCredentials(a.context, a.client, a.loader, component, saName)
 	if err != nil {
 		a.logger.Error(err, "Failed to get image registry credentials for nudging, skipping")
 		_ = tekton.AnnotateBuildPipelineRun(a.context, a.pipelineRun, tektonconsts.NudgeProcessedAnnotation, "credentials-error", a.client)
@@ -300,7 +317,7 @@ func (a *Adapter) EnsureNudgePipelineRunsExist() (controller.OperationResult, er
 		return controller.RequeueWithError(err)
 	}
 
-	if err = h.RemoveFinalizerFromPipelineRun(a.context, a.client, a.logger, a.pipelineRun, h.NudgePipelineRunFinalizer); err != nil && !errors.IsNotFound(err) {
+	if err = h.RemoveFinalizerFromPipelineRun(a.context, a.client, a.logger, a.pipelineRun, h.NudgePipelineRunFinalizer); err != nil && !clienterrors.IsNotFound(err) {
 		return controller.RequeueWithError(err)
 	}
 
@@ -330,7 +347,7 @@ func (a *Adapter) EnsureSnapshotExists() (result controller.OperationResult, err
 		}
 		updateErr := a.updateBuildPipelineRunWithFinalInfo(canRemoveFinalizer, annotationErr)
 		if updateErr != nil {
-			if errors.IsNotFound(updateErr) {
+			if clienterrors.IsNotFound(updateErr) {
 				result, err = controller.ContinueProcessing()
 			} else {
 				a.logger.Error(updateErr, "Failed to update build pipelineRun")
@@ -384,7 +401,7 @@ func (a *Adapter) EnsureSnapshotExists() (result controller.OperationResult, err
 	}
 
 	for _, componentGroup := range *a.componentGroups {
-		expectedSnapshot, err := snapshot.PrepareSnapshotForPipelineRun(a.context, a.client, a.pipelineRun, a.component.Name, &componentGroup, a.loader)
+		expectedSnapshot, err := snapshot.PrepareSnapshotForPipelineRun(a.context, a.client, a.pipelineRun, a.componentName, &componentGroup, a.loader)
 		if err != nil {
 			return a.updatePipelineRunWithCustomizedError(&canRemoveFinalizer, err, a.context, a.pipelineRun, a.client, a.logger)
 		}
@@ -434,7 +451,7 @@ func (a *Adapter) EnsureSnapshotExistsApplication() (result controller.Operation
 		}
 		updateErr := a.updateBuildPipelineRunWithFinalInfo(canRemoveFinalizer, annotationErr)
 		if updateErr != nil {
-			if errors.IsNotFound(updateErr) {
+			if clienterrors.IsNotFound(updateErr) {
 				result, err = controller.ContinueProcessing()
 			} else {
 				a.logger.Error(updateErr, "Failed to update build pipelineRun")
@@ -545,7 +562,7 @@ func (a *Adapter) EnsurePipelineIsFinalized() (controller.OperationResult, error
 	})
 	if err != nil {
 		// if IsNotFound error, do not log error or requeue
-		if errors.IsNotFound(err) {
+		if clienterrors.IsNotFound(err) {
 			a.logger.Info(fmt.Sprintf("Could not add finalizer %s to build pipeline %s.  Build pipeline could not be found.", h.IntegrationPipelineRunFinalizer, a.pipelineRun.Name))
 			return controller.ContinueProcessing()
 		}
@@ -571,7 +588,7 @@ func (a *Adapter) EnsurePRGroupAnnotated() (controller.OperationResult, error) {
 
 		if !h.HasPipelineRunSucceeded(a.pipelineRun) && h.HasPipelineRunFinished(a.pipelineRun) {
 			prGroupName := a.pipelineRun.Annotations[gitops.PRGroupAnnotation]
-			buildPLRFailureMsg := fmt.Sprintf("build PLR %s failed for component %s so it can't be added to the group Snapshot for PR group %s", a.pipelineRun.Name, a.component.Name, prGroupName)
+			buildPLRFailureMsg := fmt.Sprintf("build PLR %s failed for component %s so it can't be added to the group Snapshot for PR group %s", a.pipelineRun.Name, a.componentName, prGroupName)
 			err := a.notifySnapshotsInGroupAboutBuild(a.pipelineRun, buildPLRFailureMsg)
 			if err != nil {
 				return controller.RequeueWithError(err)
@@ -586,7 +603,7 @@ func (a *Adapter) EnsurePRGroupAnnotated() (controller.OperationResult, error) {
 	// previous version of the pipelineRun so we don't get the updated pr group metadata
 	a.pipelineRun, err = a.addPRGroupToBuildPLRMetadata(a.pipelineRun)
 	if err != nil {
-		if errors.IsNotFound(err) {
+		if clienterrors.IsNotFound(err) {
 			a.logger.Error(err, "failed to add pr group info to build pipelineRun metadata due to notfound pipelineRun")
 			return controller.StopProcessing()
 		} else {
@@ -601,7 +618,7 @@ func (a *Adapter) EnsurePRGroupAnnotated() (controller.OperationResult, error) {
 	// Notify the group Snapshot and other build PLRs in the group about the incoming new build
 	if !h.HasPipelineRunFinished(a.pipelineRun) && metadata.HasAnnotation(a.pipelineRun, gitops.PRGroupAnnotation) {
 		prGroupName := a.pipelineRun.Annotations[gitops.PRGroupAnnotation]
-		buildPLRIncomingMsg := fmt.Sprintf("a new build PLR %s is running for component %s, waiting for it to create a new group Snapshot for PR group %s", a.pipelineRun.Name, a.component.Name, prGroupName)
+		buildPLRIncomingMsg := fmt.Sprintf("a new build PLR %s is running for component %s, waiting for it to create a new group Snapshot for PR group %s", a.pipelineRun.Name, a.componentName, prGroupName)
 		err := a.notifySnapshotsInGroupAboutBuild(a.pipelineRun, buildPLRIncomingMsg)
 		if err != nil {
 			return controller.RequeueWithError(err)
@@ -696,7 +713,7 @@ func (a *Adapter) reportIntegrationStatusAndHandleGroupsForApplication(integrati
 	}
 	a.logger.Info(fmt.Sprintf("try to set integration test status according to the build PLR status %s", integrationTestStatus.String()))
 	tempComponentSnapshot = a.prepareTempComponentSnapshot(a.pipelineRun, &a.application.ObjectMeta, true)
-	numComponentSnapshotScenarios, err = a.reportStatusForExpectedSnapshot(a.pipelineRun, tempComponentSnapshot, allIntegrationTestScenarios, *integrationTestStatus, a.component.Name)
+	numComponentSnapshotScenarios, err = a.reportStatusForExpectedSnapshot(a.pipelineRun, tempComponentSnapshot, allIntegrationTestScenarios, *integrationTestStatus, a.componentName)
 	if err != nil {
 		return 0, 0, fmt.Errorf("failed to report status for expected group Snapshot: %w", err)
 	}
@@ -739,7 +756,7 @@ func (a *Adapter) reportIntegrationStatusAndHandleGroups(integrationTestStatus *
 		}
 		a.logger.Info(fmt.Sprintf("try to set integration test status according to the build PLR status %s", integrationTestStatus.String()))
 		tempComponentSnapshot := a.prepareTempComponentSnapshot(a.pipelineRun, &componentGroup.ObjectMeta, false)
-		num, err := a.reportStatusForExpectedSnapshot(a.pipelineRun, tempComponentSnapshot, integrationTestScenariosForGroup, *integrationTestStatus, a.component.Name)
+		num, err := a.reportStatusForExpectedSnapshot(a.pipelineRun, tempComponentSnapshot, integrationTestScenariosForGroup, *integrationTestStatus, a.componentName)
 		if err != nil {
 			return 0, 0, fmt.Errorf("failed to report status for expected group Snapshot: %w", err)
 		}
@@ -792,10 +809,10 @@ func (a *Adapter) EnsurePRSnapshotAnnotatedForMergedPR() (controller.OperationRe
 	var err error
 	// TODO: remove application-specific code
 	if a.application != nil {
-		prComponentSnapshots, err = a.loader.GetPRComponentSnapshotsForComponentApplication(a.context, a.client, a.pipelineRun.Namespace, a.application.Name, a.component.Name, a.pipelineRun.Labels[tektonconsts.PipelineAsCodePullRequestLabel])
+		prComponentSnapshots, err = a.loader.GetPRComponentSnapshotsForComponentApplication(a.context, a.client, a.pipelineRun.Namespace, a.application.Name, a.componentName, a.pipelineRun.Labels[tektonconsts.PipelineAsCodePullRequestLabel])
 	} else {
 		componentGroupNames := h.GetComponentGroupNames(a.componentGroups)
-		prComponentSnapshots, err = a.loader.GetPRComponentSnapshotsForComponent(a.context, a.client, componentGroupNames, a.pipelineRun.Namespace, a.component.Name, a.pipelineRun.Labels[tektonconsts.PipelineAsCodePullRequestLabel])
+		prComponentSnapshots, err = a.loader.GetPRComponentSnapshotsForComponent(a.context, a.client, componentGroupNames, a.pipelineRun.Namespace, a.componentName, a.pipelineRun.Labels[tektonconsts.PipelineAsCodePullRequestLabel])
 	}
 	if err != nil {
 		a.logger.Error(err, "failed to get all pull request component snapshots for PR", "pr.Number", a.pipelineRun.Labels[tektonconsts.PipelineAsCodePullRequestLabel])
@@ -855,12 +872,12 @@ func (a *Adapter) EnsureSupercededSnapshotsCanceled() (result controller.Operati
 	// TODO: remove branch after migration to new model
 	var snapshots *[]applicationapiv1alpha1.Snapshot
 	if a.application != nil {
-		snapshots, err = a.loader.GetAllPullSnapshotsForPR(a.context, a.client, a.application.ObjectMeta, a.component.Name, pr)
+		snapshots, err = a.loader.GetAllPullSnapshotsForPR(a.context, a.client, a.application.ObjectMeta, a.componentName, pr)
 	} else {
 		// We only have to pass one ComponentGroup here.  The componentGroup is only used to get
 		// the namespace to search. Since all ComponentGroups have to belong to the same NS, we
 		// don't need to search with each ComponentGroup
-		snapshots, err = a.loader.GetAllPullSnapshotsForPR(a.context, a.client, (*a.componentGroups)[0].ObjectMeta, a.component.Name, pr)
+		snapshots, err = a.loader.GetAllPullSnapshotsForPR(a.context, a.client, (*a.componentGroups)[0].ObjectMeta, a.componentName, pr)
 	}
 	if err != nil {
 		return controller.RequeueWithError(fmt.Errorf("failed to get running snapshots for PR %s: %w", pr, err))
@@ -967,7 +984,7 @@ func (a *Adapter) notifySnapshotsInGroupAboutBuild(pipelineRun *tektonv1.Pipelin
 	for _, buildPipelineRun := range *buildPipelineRuns {
 		buildPipelineRun := buildPipelineRun
 		// check if build PLR finished
-		if !h.HasPipelineRunFinished(&buildPipelineRun) && buildPipelineRun.Labels[tektonconsts.ComponentNameLabel] != a.component.Name {
+		if !h.HasPipelineRunFinished(&buildPipelineRun) && buildPipelineRun.Labels[tektonconsts.ComponentNameLabel] != a.componentName {
 			err := tekton.AnnotateBuildPipelineRun(a.context, &buildPipelineRun, gitops.PRGroupCreationAnnotation, message, a.client)
 			if err != nil {
 				return fmt.Errorf("failed to annotate build pipelineRun %s with PR group creation annotation: %w", buildPipelineRun.Name, err)
@@ -1034,7 +1051,7 @@ func (a *Adapter) prepareSnapshotForPipelineRun(pipelineRun *tektonv1.PipelineRu
 	}
 
 	prefixes := []string{gitops.BuildPipelineRunPrefix, gitops.TestLabelPrefix, gitops.CustomLabelPrefix, gitops.ReleaseLabelPrefix}
-	gitops.CopySnapshotLabelsAndAnnotations(&application.ObjectMeta, snapshot, a.component.Name, &pipelineRun.ObjectMeta, prefixes, true)
+	gitops.CopySnapshotLabelsAndAnnotations(&application.ObjectMeta, snapshot, a.componentName, &pipelineRun.ObjectMeta, prefixes, true)
 
 	// Propagate span context from build PipelineRun to Snapshot for distributed tracing
 	if tp, found := pipelineRun.Annotations[tracing.SpanContextAnnotation]; found && tp != "" {
@@ -1232,7 +1249,7 @@ func (a *Adapter) createSnapshotWithCollisionHandling(snapshot *applicationapiv1
 		}
 
 		// Check if it's an "already exists" error
-		if !errors.IsAlreadyExists(err) {
+		if !clienterrors.IsAlreadyExists(err) {
 			// Not a collision error, return immediately
 			return err
 		}
@@ -1275,7 +1292,7 @@ func (a *Adapter) createSnapshotWithCollisionHandling(snapshot *applicationapiv1
 // failedToCreateSnapshot stops reconcilation immediately when snapshot cannot be created
 func (a *Adapter) handleSnapshotCreationFailure(canRemoveFinalizer *bool, cerr error) (result controller.OperationResult, err error) {
 	a.logger.Error(cerr, "Failed to create Snapshot")
-	if errors.IsForbidden(cerr) {
+	if clienterrors.IsForbidden(cerr) {
 		// we cannot create a snapshot (possibly because the snapshot quota is hit) and we don't want to block resources, user has to retry
 		// we still return the error to make build PLR annotated when meeting quota limitation issue
 		*canRemoveFinalizer = true
@@ -1338,7 +1355,7 @@ func (a *Adapter) prepareTempComponentSnapshot(pipelineRun *tektonv1.PipelineRun
 		},
 	}
 	prefixes := []string{gitops.BuildPipelineRunPrefix, gitops.TestLabelPrefix, gitops.CustomLabelPrefix, tektonconsts.ResourceLabelSuffix}
-	gitops.CopySnapshotLabelsAndAnnotations(object, tempComponentSnapshot, a.component.Name, &pipelineRun.ObjectMeta, prefixes, isApplication)
+	gitops.CopySnapshotLabelsAndAnnotations(object, tempComponentSnapshot, a.componentName, &pipelineRun.ObjectMeta, prefixes, isApplication)
 	return tempComponentSnapshot
 }
 
@@ -1352,7 +1369,7 @@ func (a *Adapter) prepareTempGroupSnapshot(pipelineRun *tektonv1.PipelineRun, ob
 		},
 	}
 	prefixes := []string{gitops.BuildPipelineRunPrefix}
-	gitops.CopyTempGroupSnapshotLabelsAndAnnotations(object, tempGroupSnapshot, a.component.Name, &pipelineRun.ObjectMeta, prefixes, isApplication)
+	gitops.CopyTempGroupSnapshotLabelsAndAnnotations(object, tempGroupSnapshot, a.componentName, &pipelineRun.ObjectMeta, prefixes, isApplication)
 
 	return tempGroupSnapshot
 }
@@ -1388,6 +1405,21 @@ func (a *Adapter) ReportIntegrationTestStatusAccordingToBuildPLR(pipelineRun *te
 
 		return isErrorRecoverable, fmt.Errorf("failed to initialize reporter: %w", err)
 	}
+
+	// if we're using the new model we need to load the Component
+	// TODO: remove if statement when we deprecated Application model
+	component := a.component
+	if component == nil {
+		var err error
+		component, err = a.loader.GetComponent(a.context, a.client, a.componentName, a.pipelineRun.Namespace)
+		if err != nil {
+			if clienterrors.IsNotFound(err) {
+				a.logger.Info("Component not found, skipping integration test status reporting", "component.Name", a.componentName)
+				return false, nil
+			}
+			return true, fmt.Errorf("failed to load component for status reporting: %w", err)
+		}
+	}
 	a.logger.Info("Reporter initialized", "reporter", reporter.GetReporterName())
 
 	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
@@ -1396,7 +1428,7 @@ func (a *Adapter) ReportIntegrationTestStatusAccordingToBuildPLR(pipelineRun *te
 		if err != nil {
 			return err
 		}
-		statusCode, err = status.IterateIntegrationTestScenarioWithSameStatus(a.context, a.client, reporter, snapshot, integrationTestScenarios, intgTestStatusDetails, a.component, componentNameOrPrGroup)
+		statusCode, err = status.IterateIntegrationTestScenarioWithSameStatus(a.context, a.client, reporter, snapshot, integrationTestScenarios, intgTestStatusDetails, component, componentNameOrPrGroup)
 		if err != nil {
 			a.logger.Error(err, fmt.Sprintf("failed to report integration test status according to build pipelinerun %s/%s",
 				pipelineRun.Namespace, pipelineRun.Name))
@@ -1674,21 +1706,17 @@ func (a *Adapter) emitBuildTimingSpans() {
 	}
 }
 
-// checkNudgeConfigForStaleReferences checks if the given NudgeConfig has stale references and updates its
-// stale references status condition to reflect that
-func (a *Adapter) checkNudgeConfigForStaleReferences(nudgeConfig *v1beta2.NudgeConfig, namespace string) error {
+// applyStaleReferencesStatusCondition updates StaleReferences on nudgeConfig in memory. Returns whether the condition changed.
+func (a *Adapter) applyStaleReferencesStatusCondition(nudgeConfig *v1beta2.NudgeConfig, namespace string) (bool, error) {
 	nudges := nudgeConfig.Spec.Nudges
 	existingStatusCondition := meta.FindStatusCondition(nudgeConfig.Status.Conditions, h.StaleReferencesStatusCondition)
-	// Short-circuit only when there is genuinely nothing to do: no nudges to check and no prior True condition to clean up.
-	// We intentionally fall through when existingStatusCondition is nil so that a fresh NudgeConfig gets an explicit
-	// StaleReferences=False condition rather than leaving the field absent. Absent is ambiguous (unknown vs healthy); False is an affirmative health signal.
 	if len(nudges) == 0 && existingStatusCondition != nil && existingStatusCondition.Status == metav1.ConditionFalse {
-		return nil
+		return false, nil
 	}
 
 	components, err := a.loader.GetAllComponentsInNamespace(a.context, a.client, namespace)
 	if err != nil {
-		return fmt.Errorf("failed to list Components in namespace %q: %w", namespace, err)
+		return false, fmt.Errorf("failed to list Components in namespace %q: %w", namespace, err)
 	}
 
 	foundMissing, msg := h.FindMissingNudgeConfigReferences(*components, nudges, namespace)
@@ -1703,19 +1731,35 @@ func (a *Adapter) checkNudgeConfigForStaleReferences(nudgeConfig *v1beta2.NudgeC
 		msg = "All Components referenced in the NudgeConfig are present, no stale references found."
 	}
 
-	if existingStatusCondition == nil || (existingStatusCondition.Status != newConditionStatus || existingStatusCondition.Message != msg) {
-		patch := client.MergeFrom(nudgeConfig.DeepCopy())
+	staleReferencesChanged := existingStatusCondition == nil || (existingStatusCondition.Status != newConditionStatus || existingStatusCondition.Message != msg)
+	if staleReferencesChanged {
 		meta.SetStatusCondition(&nudgeConfig.Status.Conditions, metav1.Condition{
 			Type:    h.StaleReferencesStatusCondition,
 			Status:  newConditionStatus,
 			Reason:  newConditionReason,
 			Message: msg,
 		})
+	}
+	return staleReferencesChanged, nil
+}
 
-		err = a.client.Status().Patch(a.context, nudgeConfig, patch)
-		if err != nil {
-			return fmt.Errorf("failed to patch nudge config status: %w", err)
+// updateNudgeConfigStatus refreshes NudgeConfig status conditions (stale references, batch defaults support).
+func (a *Adapter) updateNudgeConfigStatus(nudgeConfig *v1beta2.NudgeConfig, namespace string) error {
+	original := nudgeConfig.DeepCopy()
+
+	statusChanged := h.ApplyBatchDefaultsSupportedStatusCondition(&nudgeConfig.Status.Conditions, nudgeConfig.Spec.BatchDefaults)
+	staleReferencesChanged, staleErr := a.applyStaleReferencesStatusCondition(nudgeConfig, namespace)
+	statusChanged = statusChanged || staleReferencesChanged
+
+	if statusChanged {
+		patch := client.MergeFrom(original)
+		if err := a.client.Status().Patch(a.context, nudgeConfig, patch); err != nil {
+			patchErr := fmt.Errorf("failed to patch nudge config status: %w", err)
+			if staleErr != nil {
+				return errors.Join(staleErr, patchErr)
+			}
+			return patchErr
 		}
 	}
-	return nil
+	return staleErr
 }

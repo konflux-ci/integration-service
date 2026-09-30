@@ -56,7 +56,7 @@ type ObjectLoader interface {
 	GetComponentFromPipelineRun(ctx context.Context, c client.Client, pipelineRun *tektonv1.PipelineRun) (*oldapplicationapiv1alpha1.Component, error)
 	GetApplicationFromPipelineRun(ctx context.Context, c client.Client, pipelineRun *tektonv1.PipelineRun) (*oldapplicationapiv1alpha1.Application, error)
 	GetApplicationFromComponent(ctx context.Context, c client.Client, component *oldapplicationapiv1alpha1.Component) (*oldapplicationapiv1alpha1.Application, error)
-	GetComponentGroupsForComponentVersion(ctx context.Context, c client.Client, component *oldapplicationapiv1alpha1.Component, version string) (*[]v1beta2.ComponentGroup, error)
+	GetComponentGroupsForComponentVersion(ctx context.Context, c client.Client, componentName, namespace, version string) (*[]v1beta2.ComponentGroup, error)
 	GetSnapshotFromPipelineRun(ctx context.Context, c client.Client, pipelineRun *tektonv1.PipelineRun) (*oldapplicationapiv1alpha1.Snapshot, error)
 	GetAllIntegrationTestScenariosForApplication(ctx context.Context, c client.Client, application *oldapplicationapiv1alpha1.Application) (*[]v1beta2.IntegrationTestScenario, error)
 	GetAllIntegrationTestScenariosForComponentGroup(ctx context.Context, c client.Client, componentGroup *v1beta2.ComponentGroup) (*[]v1beta2.IntegrationTestScenario, error)
@@ -270,10 +270,10 @@ func (l *loader) GetApplicationFromComponent(ctx context.Context, c client.Clien
 
 // GetComponentGroupsForComponentVersion loads from the cluster a list of ComponentGroups that use the given ComponentVerison. If
 // the Component does not belong to any ComponentGroups then an empty list will be returned
-func (l *loader) GetComponentGroupsForComponentVersion(ctx context.Context, c client.Client, component *oldapplicationapiv1alpha1.Component, version string) (*[]v1beta2.ComponentGroup, error) {
+func (l *loader) GetComponentGroupsForComponentVersion(ctx context.Context, c client.Client, componentName, namespace, version string) (*[]v1beta2.ComponentGroup, error) {
 	// Kubernetes FieldSelector cannot filter by "spec.components contains item where name=X and componentBranch.name=Y"
 	// (only top-level or CRD selectableFields are supported, not array containment). List all in namespace and filter in Go.
-	componentGroups, err := l.GetAllComponentGroupsInNamespace(ctx, c, component.Namespace)
+	componentGroups, err := l.GetAllComponentGroupsInNamespace(ctx, c, namespace)
 	if err != nil {
 		return nil, err
 	}
@@ -290,7 +290,7 @@ func (l *loader) GetComponentGroupsForComponentVersion(ctx context.Context, c cl
 			if strings.EqualFold(ref.Kind, "componentgroup") {
 				continue
 			}
-			if ref.Name == component.Name && ref.ComponentVersion.Name == version {
+			if ref.Name == componentName && ref.ComponentVersion.Name == version {
 				result = append(result, cg)
 				break
 			}

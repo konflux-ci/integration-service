@@ -63,6 +63,7 @@ Missing labels = silently blocked traffic. Check with: `kubectl get ns <name> --
 | IntegrationTestScenario | Mutating | **Ignore** | Defaults applied silently on failure |
 | IntegrationTestScenario | Validating | **Fail** | Rejects invalid ITS (bad names, conflicting resolver params) |
 | ComponentGroup | Validating | **Fail** | Blocks invalid ComponentGroups |
+| NudgeConfig | Validating | **Fail** | Rejects invalid NudgeConfig (cycles, missing Components) |
 | Snapshot | Mutating | **Ignore** | Defaults may be skipped if the webhook is unavailable |
 | Snapshot | Validating | **Fail** | Rejects invalid Snapshots and blocks Snapshot operations if the webhook is unavailable |
 
