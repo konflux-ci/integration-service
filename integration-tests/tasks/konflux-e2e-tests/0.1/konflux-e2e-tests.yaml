@@ -178,6 +178,13 @@ spec:
         PREVIOUS_RATE_REMAINING=0
 
         IFS=',' read -r -a GITHUB_ACCOUNTS_ARRAY <<< "$(cat /usr/local/konflux-ci-secrets/github_accounts)"
+
+        # Default to the first account so GITHUB_USER/TOKEN are always set,
+        # even when all accounts return 0 (rate-limit exhausted or API unavailable).
+        IFS=':' read -r -a _FIRST_ACCOUNT <<< "${GITHUB_ACCOUNTS_ARRAY[0]}"
+        GITHUB_USER="${_FIRST_ACCOUNT[0]}"
+        GITHUB_TOKEN="${_FIRST_ACCOUNT[1]}"
+
         for account in "${GITHUB_ACCOUNTS_ARRAY[@]}"; do
           IFS=':' read -r -a GITHUB_USERNAME_ARRAY <<< "$account"
 
@@ -187,11 +194,13 @@ spec:
             https://api.github.com/rate_limit | jq ".rate.remaining // 0")
 
           log "INFO" "user: ${GITHUB_USERNAME_ARRAY[0]} with rate limit remaining $GH_RATE_REMAINING"
-          if [[ "$GH_RATE_REMAINING" -ge "$PREVIOUS_RATE_REMAINING" ]]; then
+          # Only consider accounts with remaining capacity; never let a 0-rate account
+          # overwrite a valid selection. Update PREVIOUS only when we actually select.
+          if [[ "$GH_RATE_REMAINING" -gt 0 ]] && [[ "$GH_RATE_REMAINING" -ge "$PREVIOUS_RATE_REMAINING" ]]; then
             GITHUB_USER="${GITHUB_USERNAME_ARRAY[0]}"
             GITHUB_TOKEN="${GITHUB_USERNAME_ARRAY[1]}"
+            PREVIOUS_RATE_REMAINING="$GH_RATE_REMAINING"
           fi
-          PREVIOUS_RATE_REMAINING="$GH_RATE_REMAINING"
         done
 
         log "INFO" "running tests with github user: ${GITHUB_USER}"
@@ -208,8 +217,20 @@ spec:
         echo "https://${GITHUB_USER}:${GITHUB_TOKEN}@github.com" > "$git_creds_path"
 
         log "INFO" "Cloning ${GIT_URL} at revision ${GIT_REVISION}"
-        git clone --depth=1 --branch "${GIT_REVISION}" "${GIT_URL}" repo || \
-          git clone "${GIT_URL}" repo && cd repo && git checkout "${GIT_REVISION}" && cd ..
+        for attempt in 1 2 3; do
+          rm -rf repo
+          if git clone --depth=1 --branch "${GIT_REVISION}" "${GIT_URL}" repo; then
+            break
+          elif git clone "${GIT_URL}" repo && git -C repo checkout "${GIT_REVISION}"; then
+            break
+          elif [[ "$attempt" -lt 3 ]]; then
+            log "WARN" "Clone attempt ${attempt}/3 failed, retrying in 5s..."
+            sleep 5
+          else
+            log "ERROR" "All 3 clone attempts failed for ${GIT_URL}"
+            exit 1
+          fi
+        done
         cd repo
 
         log "INFO" "Building e2e test binary..."
