@@ -12,6 +12,19 @@ metadata:
   name: nudge-config
   namespace: default
 spec:
+  # Namespace-wide fallbacks for batched targets. Omitted nested fields use
+  # runtime defaults (30m / 4h / Block).
+  # This field is reserved; no controller yet applies these defaults.
+  batchDefaults:
+    debounceTimeout: 30m
+    maxWaitTime: 4h
+    failurePolicy: Block
+  # Per-target batch policies. batchPolicy opts a target into batching; omit batchPolicy for immediate nudging.
+  # Per-target batching is reserved; no controller yet applies targetConfig.
+  targetConfig:
+    - target: component-b
+      batchPolicy:
+        debounceTimeout: 15m
   nudges:
     # When component-a builds successfully, nudge component-b after integration tests pass
     - from: component-a

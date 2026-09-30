@@ -158,9 +158,9 @@ func (l *mockLoader) GetApplicationFromComponent(ctx context.Context, c client.C
 }
 
 // GetComponentGroupsForComponentVersion returns the r esource and error passed as values of the context
-func (l *mockLoader) GetComponentGroupsForComponentVersion(ctx context.Context, c client.Client, component *oldapplicationapiv1alpha1.Component, version string) (*[]v1beta2.ComponentGroup, error) {
+func (l *mockLoader) GetComponentGroupsForComponentVersion(ctx context.Context, c client.Client, componentName, namespace, version string) (*[]v1beta2.ComponentGroup, error) {
 	if ctx.Value(ComponentGroupsContextKey) == nil {
-		return l.loader.GetComponentGroupsForComponentVersion(ctx, c, component, version)
+		return l.loader.GetComponentGroupsForComponentVersion(ctx, c, componentName, namespace, version)
 	}
 	//cg, err := toolkit.GetMockedResourceAndErrorFromContext(ctx, ComponentGroupsContextKey, &v1beta2.ComponentGroup{})
 	//return &[]v1beta2.ComponentGroup{*cg}, err

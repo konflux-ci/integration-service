@@ -174,9 +174,17 @@ spec:
               # registers with external git providers (GitLab, Forgejo, etc.).
               # Without this, it falls back to the internal service URL which is
               # unreachable from the internet, so no webhook events are ever delivered.
+              PRE_GEN=$(oc --request-timeout=30s -n build-service get deployment \
+                build-service-controller-manager \
+                -o jsonpath='{.metadata.generation}')
               oc --request-timeout=30s -n build-service set env \
                 deployment/build-service-controller-manager \
                 PAC_WEBHOOK_URL="${SMEE_CHANNEL}"
+              until [[ "$(oc --request-timeout=30s -n build-service get deployment \
+                build-service-controller-manager \
+                -o jsonpath='{.status.observedGeneration}' 2>/dev/null)" -gt "${PRE_GEN}" ]]; do
+                sleep 1
+              done
               oc --request-timeout=30s -n build-service rollout status \
                 deployment/build-service-controller-manager \
                 --timeout=300s
