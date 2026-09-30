@@ -188,6 +188,95 @@ var _ = Describe("ComponentGroup Adapter", Ordered, func() {
 		})
 	})
 
+	When("alignGCLWithSpecComponents is called with all ComponentState fields populated", func() {
+		var buildTime *metav1.Time
+
+		BeforeEach(func() {
+			buildTime = &metav1.Time{Time: time.Now()}
+			setGCL([]v1beta2.ComponentState{
+				{
+					Name:                  "comp-a",
+					Version:               "main",
+					URL:                   "https://github.com/example/comp-a.git",
+					LastPromotedImage:     SampleImage,
+					LastPromotedCommit:    "abc123def456",
+					LastPromotedBuildTime: buildTime,
+				},
+			})
+			adapter = NewAdapter(ctx, componentGroup, logger, loader.NewMockLoader(), k8sClient)
+		})
+
+		It("preserves all existing ComponentState fields", func() {
+			Expect(adapter.alignGCLWithSpecComponents(fetchFreshCG())).To(Succeed())
+
+			Eventually(func(g Gomega) {
+				updated := &v1beta2.ComponentGroup{}
+				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(componentGroup), updated)).To(Succeed())
+				g.Expect(updated.Status.GlobalCandidateList).To(HaveLen(2))
+
+				compA := updated.Status.GlobalCandidateList[0]
+				g.Expect(compA.Name).To(Equal("comp-a"))
+				g.Expect(compA.Version).To(Equal("main"))
+				g.Expect(compA.URL).To(Equal("https://github.com/example/comp-a.git"))
+				g.Expect(compA.LastPromotedImage).To(Equal(SampleImage))
+				g.Expect(compA.LastPromotedCommit).To(Equal("abc123def456"))
+				g.Expect(compA.LastPromotedBuildTime).NotTo(BeNil())
+				g.Expect(compA.LastPromotedBuildTime.Time.Unix()).To(Equal(buildTime.Time.Unix()))
+
+				compB := updated.Status.GlobalCandidateList[1]
+				g.Expect(compB.Name).To(Equal("comp-b"))
+				g.Expect(compB.Version).To(Equal("v1"))
+				g.Expect(compB.URL).To(BeEmpty())
+				g.Expect(compB.LastPromotedImage).To(BeEmpty())
+				g.Expect(compB.LastPromotedCommit).To(BeEmpty())
+				g.Expect(compB.LastPromotedBuildTime).To(BeNil())
+			}, time.Second*10).Should(Succeed())
+		})
+	})
+
+	When("alignGCLWithSpecComponents adds and removes components simultaneously", func() {
+		BeforeEach(func() {
+			setGCL([]v1beta2.ComponentState{
+				{
+					Name:               "comp-a",
+					Version:            "main",
+					LastPromotedImage:  SampleImage,
+					LastPromotedCommit: "abc123",
+				},
+				{
+					Name:    "comp-removed",
+					Version: "old",
+				},
+			})
+			adapter = NewAdapter(ctx, componentGroup, logger, loader.NewMockLoader(), k8sClient)
+		})
+
+		It("removes deleted components while preserving data for retained components", func() {
+			Expect(adapter.alignGCLWithSpecComponents(fetchFreshCG())).To(Succeed())
+
+			Eventually(func(g Gomega) {
+				updated := &v1beta2.ComponentGroup{}
+				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(componentGroup), updated)).To(Succeed())
+				g.Expect(updated.Status.GlobalCandidateList).To(HaveLen(2))
+
+				compA := updated.Status.GlobalCandidateList[0]
+				g.Expect(compA.Name).To(Equal("comp-a"))
+				g.Expect(compA.LastPromotedImage).To(Equal(SampleImage))
+				g.Expect(compA.LastPromotedCommit).To(Equal("abc123"))
+
+				compB := updated.Status.GlobalCandidateList[1]
+				g.Expect(compB.Name).To(Equal("comp-b"))
+				g.Expect(compB.LastPromotedImage).To(BeEmpty())
+
+				names := []string{
+					updated.Status.GlobalCandidateList[0].Name,
+					updated.Status.GlobalCandidateList[1].Name,
+				}
+				g.Expect(names).NotTo(ContainElement("comp-removed"))
+			}, time.Second*10).Should(Succeed())
+		})
+	})
+
 	When("EnsureGCLAlignedWithSpecComponents is called", func() {
 		BeforeEach(func() {
 			adapter = NewAdapter(ctx, componentGroup, logger, loader.NewLoader(), k8sClient)
