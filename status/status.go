@@ -620,7 +620,10 @@ func resolveSnapshotRepository(ctx context.Context, k8sClient client.Client, sna
 	}
 
 	for _, repo := range repos.Items {
-		if helpers.UrlToGitUrl(repo.Spec.URL) == helpers.UrlToGitUrl(repoURL) {
+		if strings.EqualFold(
+			helpers.UrlToGitUrl(repo.Spec.URL),
+			helpers.UrlToGitUrl(repoURL),
+		) {
 			owner, repoName, err := parseOwnerRepoFromURL(repo.Spec.URL)
 			if err != nil {
 				return "", "", helpers.NewUnrecoverableMetadataError(fmt.Sprintf("invalid Repository CR URL %q: %v", repo.Spec.URL, err))

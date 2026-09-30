@@ -139,7 +139,9 @@ func GetAppCredentials(ctx context.Context, k8sclient client.Client, ghClient gi
 	installationID, statusCode, err := ghClient.FindInstallationForRepo(ctx, appInfo.AppID, appInfo.PrivateKey, owner, repo)
 	if err != nil {
 		log.Error(err, "failed to find GitHub App installation for repository", "owner", owner, "repo", repo, "statusCode", statusCode)
-		if statusCode == http.StatusNotFound || statusCode == http.StatusForbidden {
+		if statusCode == http.StatusNotFound ||
+			statusCode == http.StatusForbidden ||
+			statusCode == http.StatusUnauthorized {
 			return nil, helpers.NewUnrecoverableMetadataError(fmt.Sprintf("failed to find GitHub App installation for repository %s/%s: %v", owner, repo, err))
 		}
 		return nil, err
@@ -647,7 +649,6 @@ func (r *GitHubReporter) ReportConsolidatedStatus(_ context.Context, _ []TestRep
 
 // Initialize github reporter. Must be called before updating status
 func (r *GitHubReporter) Initialize(ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot) (int, error) {
-
 	var statusCode int
 	var unRecoverableError error
 

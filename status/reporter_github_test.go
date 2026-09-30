@@ -117,7 +117,7 @@ func (c *MockGitHubClient) FindInstallationForRepo(
 	owner string,
 	repo string,
 ) (int64, int, error) {
-	return c.FindInstallationForRepoResult.InstallationID, c.FindInstallationForRepoResult.StatusCode, c.FindInstallationForRepoResult.Error
+	return c.FindInstallationForRepoResult.InstallationID, c.StatusCode, c.FindInstallationForRepoResult.Error
 }
 
 func (c *MockGitHubClient) CreateAppInstallationToken(
@@ -376,16 +376,18 @@ var _ = Describe("GitHubReporter", func() {
 			Expect(mockGitHubClient.CreateCheckRunResult.cra.Repository).To(Equal("devfile-sample-go-basic"))
 		})
 
-		DescribeTable("rejects invalid repository URLs", func(repoURL string) {
-			hasSnapshot.Annotations[gitops.PipelineAsCodeRepoURLAnnotation] = repoURL
-			mockK8sClient.listInterceptor = func(list client.ObjectList) {
-				list.(*pacv1alpha1.RepositoryList).Items = []pacv1alpha1.Repository{{
-					Spec: pacv1alpha1.RepositorySpec{URL: repoURL},
-				}}
-			}
-			_, err := reporter.Initialize(context.TODO(), hasSnapshot)
-			Expect(err).To(HaveOccurred())
-		},
+		DescribeTable(
+			"rejects invalid repository URLs",
+			func(repoURL string) {
+				hasSnapshot.Annotations[gitops.PipelineAsCodeRepoURLAnnotation] = repoURL
+				mockK8sClient.listInterceptor = func(list client.ObjectList) {
+					list.(*pacv1alpha1.RepositoryList).Items = []pacv1alpha1.Repository{{
+						Spec: pacv1alpha1.RepositorySpec{URL: repoURL},
+					}}
+				}
+				_, err := reporter.Initialize(context.TODO(), hasSnapshot)
+				Expect(err).To(HaveOccurred())
+			},
 			Entry("empty URL", ""),
 			Entry("invalid escape", "https://github.com/owner/%zz"),
 			Entry("missing host", "https:///owner/repo"),
@@ -476,11 +478,12 @@ var _ = Describe("GitHubReporter", func() {
 			Expect(statusCode).NotTo(BeNil())
 		})
 
-		DescribeTable("treats permanent installation lookup failures as unrecoverable",
+		DescribeTable(
+			"treats permanent installation lookup failures as unrecoverable",
 			func(statusCode int) {
 				installationError := fmt.Errorf("failed to find repository installation")
 				mockGitHubClient.FindInstallationForRepoResult.Error = installationError
-				mockGitHubClient.FindInstallationForRepoResult.StatusCode = statusCode
+				mockGitHubClient.StatusCode = statusCode
 
 				_, err := reporter.Initialize(context.TODO(), hasSnapshot)
 
@@ -489,12 +492,13 @@ var _ = Describe("GitHubReporter", func() {
 			},
 			Entry("installation not found", http.StatusNotFound),
 			Entry("installation access forbidden", http.StatusForbidden),
+			Entry("installation authentication unauthorized", http.StatusUnauthorized),
 		)
 
 		It("keeps installation lookup network failures recoverable", func() {
 			installationError := fmt.Errorf("connection failed")
 			mockGitHubClient.FindInstallationForRepoResult.Error = installationError
-			mockGitHubClient.FindInstallationForRepoResult.StatusCode = 0
+			mockGitHubClient.StatusCode = 0
 
 			_, err := reporter.Initialize(context.TODO(), hasSnapshot)
 
@@ -502,7 +506,8 @@ var _ = Describe("GitHubReporter", func() {
 			Expect(helpers.IsUnrecoverableMetadataError(err)).To(BeFalse())
 		})
 
-		DescribeTable("matches equivalent Repository URL formats",
+		DescribeTable(
+			"matches equivalent Repository URL formats",
 			func(snapshotURL, repositoryURL string) {
 				hasSnapshot.Annotations[gitops.PipelineAsCodeRepoURLAnnotation] = snapshotURL
 
@@ -526,6 +531,11 @@ var _ = Describe("GitHubReporter", func() {
 			Entry(
 				"Snapshot URL has a trailing slash",
 				"https://github.com/owner/repo/",
+				"https://github.com/owner/repo",
+			),
+			Entry(
+				"Repository URL uses different casing",
+				"https://github.com/Owner/Repo",
 				"https://github.com/owner/repo",
 			),
 		)
