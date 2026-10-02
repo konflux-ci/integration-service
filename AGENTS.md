@@ -46,6 +46,37 @@ Each controller delegates to an **adapter** (`<controller_name>_adapter.go`) tha
 - **PipelineRunBuilder** (`tekton/`): fluent API — `.WithExtraParams()`, `.WithSnapshot()`, `.WithIntegrationTimeouts()`, `.WithUpdatedPipelineGitResolver()`
 - **Metrics**: registered during reconciliation — `RegisterCompletedSnapshot()`, `RegisterInvalidSnapshot()`, `RegisterPipelineRunStarted()`, `RegisterIntegrationResponse()`, with start/completion times
 
+## Label & Annotation Prefix Contracts
+
+`pkg/keys/keys.go` is the source of truth for all label and annotation
+key prefixes. PRs that modify or introduce key definitions must trace
+all consumers of the affected prefixes and identify follow-up work for
+cross-service migration.
+
+### Migrated prefix pairs (old → new)
+
+| Old prefix | New prefix | Consumers |
+|---|---|---|
+| `pipelines.appstudio.openshift.io` | `pipelines.konflux-ci.dev` | integration-service PipelineRun type predicates |
+| `test.appstudio.openshift.io` | `integration.konflux-ci.dev` | integration-service test orchestration, finalizers |
+| `build.appstudio` | `build.konflux-ci.dev` | build-service, integration-service component lookup |
+
+### Legacy-only prefixes (no new-key counterpart)
+
+| Prefix | Contract | Notes |
+|---|---|---|
+| `custom.appstudio.openshift.io` | **User-facing** | User-supplied metadata on build PipelineRuns; [advertised feature](https://konflux-ci.dev/docs/testing/integration/creating/#data-injected-into-the-pipelinerun-of-the-integration-test) |
+| `release.appstudio.openshift.io` | **Cross-service** | `AutoReleaseLabel` in `gitops/snapshot.go`; consumed by release-service via ReleasePlans |
+| `pac.test.appstudio.openshift.io` | **Internal** | Pipelines-as-Code metadata copied onto Snapshots |
+| `appstudio.openshift.io` | **Internal** | Generic resource prefix (application, component, snapshot labels) |
+
+### Migration review guidance
+
+- A prefix with **user-facing** or **cross-service** consumers must not
+  be declared legacy-only without a migration plan and follow-up stories.
+- Trace downstream consumers before approving changes to any prefix
+  defined in `pkg/keys/`.
+
 ## Development Guidelines
 
 - See `CONTRIBUTING.md` for overall guidelines for making contributions to this repository.
