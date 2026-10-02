@@ -48,7 +48,7 @@ Each controller delegates to an **adapter** (`<controller_name>_adapter.go`) tha
 
 ## Label & Annotation Prefix Contracts
 
-`pkg/keys/keys.go` is the source of truth for all label and annotation
+`pkg/keys/keys.go` is the source of truth for migrated label and annotation
 key prefixes. PRs that modify or introduce key definitions must trace
 all consumers of the affected prefixes and identify follow-up work for
 cross-service migration.
