@@ -29,7 +29,7 @@ import (
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
-	semconv "go.opentelemetry.io/otel/semconv/v1.39.0"
+	semconv "go.opentelemetry.io/otel/semconv/v1.40.0"
 	corev1 "k8s.io/api/core/v1"
 	"knative.dev/pkg/apis"
 	ctrl "sigs.k8s.io/controller-runtime"
