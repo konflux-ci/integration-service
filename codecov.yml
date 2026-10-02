@@ -12,6 +12,12 @@ ignore:
   - "e2e-tests/**" # integration tests
   - "vendor/**" # vendor files
 
+flags:
+  unit-tests:
+    carryforward: true
+  e2e-tests:
+    carryforward: true
+
 coverage:
   status:
     # Allows coverage to drop by a 3% when compared against the base commit.
