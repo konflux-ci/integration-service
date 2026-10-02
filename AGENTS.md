@@ -53,24 +53,26 @@ key prefixes. PRs that modify or introduce key definitions must trace
 all consumers of the affected prefixes and identify follow-up work for
 cross-service migration.
 
-### Migrated prefix pairs (old → new)
+### Migrated Prefix Pairs (Old → New)
 
 | Old prefix | New prefix | Consumers |
 |---|---|---|
 | `pipelines.appstudio.openshift.io` | `pipelines.konflux-ci.dev` | integration-service PipelineRun type predicates |
 | `test.appstudio.openshift.io` | `integration.konflux-ci.dev` | integration-service test orchestration, finalizers |
-| `build.appstudio` | `build.konflux-ci.dev` | build-service, integration-service component lookup |
+| `build.appstudio`¹ | `build.konflux-ci.dev` | build-service, integration-service build metadata copying |
 
-### Legacy-only prefixes (no new-key counterpart)
+¹ `build.appstudio` is a substring prefix matching both `build.appstudio.openshift.io` and `build.appstudio.redhat.com`.
+
+### Legacy-Only Prefixes (No New-Key Counterpart)
 
 | Prefix | Contract | Notes |
 |---|---|---|
 | `custom.appstudio.openshift.io` | **User-facing** | User-supplied metadata on build PipelineRuns; [advertised feature](https://konflux-ci.dev/docs/testing/integration/creating/#data-injected-into-the-pipelinerun-of-the-integration-test) |
 | `release.appstudio.openshift.io` | **Cross-service** | `AutoReleaseLabel` in `gitops/snapshot.go`; consumed by release-service via ReleasePlans |
 | `pac.test.appstudio.openshift.io` | **Internal** | Pipelines-as-Code metadata copied onto Snapshots |
-| `appstudio.openshift.io` | **Internal** | Generic resource prefix (application, component, snapshot labels) |
+| `appstudio.openshift.io` | **Internal** | Generic resource prefix (application, component, snapshot labels). Partially migrated: `appstudio.openshift.io/component` → `build.konflux-ci.dev/component` via `BuildComponent()` pair. Application and snapshot labels remain legacy-only. |
 
-### Migration review guidance
+### Migration Review Guidance
 
 - A prefix with **user-facing** or **cross-service** consumers must not
   be declared legacy-only without a migration plan and follow-up stories.
