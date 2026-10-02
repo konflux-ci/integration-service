@@ -15,4 +15,4 @@ line-length=72
 [contrib-title-conventional-commits]
 
 [ignore-by-author-name]
-regex=.*(dependabot|red-hat-konflux|konflux).*
+regex=.*(dependabot|red-hat-konflux|konflux|fullsend).*
