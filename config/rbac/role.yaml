@@ -142,6 +142,8 @@ rules:
   - create
   - delete
   - get
+  - list
+  - watch
 - apiGroups:
   - tekton.dev
   resources:
