@@ -51,8 +51,9 @@ type ScenarioReportStatus struct {
 
 // SnapshotReportStatus keep report status of git provider for the snapshot
 type SnapshotReportStatus struct {
-	Scenarios map[string]*ScenarioReportStatus `json:"scenarios"`
-	dirty     bool
+	Scenarios              map[string]*ScenarioReportStatus `json:"scenarios"`
+	ConsolidatedModeActive bool                             `json:"consolidatedModeActive,omitempty"`
+	dirty                  bool
 }
 
 // SetLastUpdateTime updates the last udpate time of the given scenario and snapshot to the given time
@@ -98,6 +99,14 @@ func (srs *SnapshotReportStatus) IsDirty() bool {
 // ResetDirty marks changes as synced to snapshot
 func (srs *SnapshotReportStatus) ResetDirty() {
 	srs.dirty = false
+}
+
+// SetConsolidatedModeActive marks that consolidated reporting mode is active.
+// This is used to track whether per-scenario statuses have already been cleaned
+// up so that the cleanup is only performed once during the transition.
+func (srs *SnapshotReportStatus) SetConsolidatedModeActive() {
+	srs.dirty = true
+	srs.ConsolidatedModeActive = true
 }
 
 // NewSnapshotReportStatus creates new object

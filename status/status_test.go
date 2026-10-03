@@ -1017,6 +1017,30 @@ var _ = Describe("Status Adapter", func() {
 			Expect(newSRS.Scenarios).To(HaveLen(1))
 		})
 
+		It("SetConsolidatedModeActive marks SRS as dirty and sets flag", func() {
+			Expect(hasSRS.ConsolidatedModeActive).To(BeFalse())
+			Expect(hasSRS.IsDirty()).To(BeFalse())
+
+			hasSRS.SetConsolidatedModeActive()
+
+			Expect(hasSRS.ConsolidatedModeActive).To(BeTrue())
+			Expect(hasSRS.IsDirty()).To(BeTrue())
+		})
+
+		It("ConsolidatedModeActive flag survives serialization round-trip", func() {
+			hasSRS.SetLastUpdateTime(scenarioName, hasSnapshot.Name, now)
+			hasSRS.SetConsolidatedModeActive()
+
+			annotation, err := hasSRS.ToAnnotationString()
+			Expect(err).ToNot(HaveOccurred())
+			Expect(annotation).To(ContainSubstring("consolidatedModeActive"))
+
+			newSRS, err := status.NewSnapshotReportStatus(annotation)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(newSRS.ConsolidatedModeActive).To(BeTrue())
+			Expect(newSRS.Scenarios).To(HaveLen(1))
+		})
+
 		It("Can read annotation from snapshot", func() {
 			hasSnapshot.Annotations["test.appstudio.openshift.io/git-reporter-status"] = "{\"scenarios\":{\"test-scenario-snapshot-sample\":{\"lastUpdateTime\":\"2023-08-26T17:57:49+02:00\"}}}"
 			newSRS, err := status.NewSnapshotReportStatusFromSnapshot(hasSnapshot)
