@@ -321,8 +321,12 @@ func GenerateRenovateConfigForBatchedSources(target NudgeTarget, buildResults []
 		for alias, canonical := range next.RegistryAliases {
 			merged.RegistryAliases[alias] = canonical
 		}
-		if len(next.PackageRules) > 1 {
-			merged.PackageRules = append(merged.PackageRules, next.PackageRules[1:]...)
+		for _, rule := range next.PackageRules {
+			if len(rule.MatchPackagePatterns) == 1 &&
+				rule.MatchPackagePatterns[0] == "*" && !rule.Enabled {
+				continue
+			}
+			merged.PackageRules = append(merged.PackageRules, rule)
 		}
 	}
 	return merged

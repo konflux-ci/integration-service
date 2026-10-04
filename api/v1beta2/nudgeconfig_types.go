@@ -268,6 +268,9 @@ func (spec NudgeConfigSpec) ValidateBatchConfig() error {
 	return spec.ValidateEffectiveBatchPolicies()
 }
 
+// validateResolvedBatchTiming checks that debounce and maxWait for a batched target (after
+// batchDefaults and per-target overrides are applied) each lie in 1m–24h and that maxWait
+// is strictly greater than debounce, per ADR 0072. Used by ValidateEffectiveBatchPolicies.
 func validateResolvedBatchTiming(target string, debounce, maxWait time.Duration) error {
 	if debounce < minBatchTiming || debounce > maxBatchTiming {
 		return fmt.Errorf("targetConfig target %q: debounceTimeout must be between 1m and 24h (resolved %s)", target, debounce)
