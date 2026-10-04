@@ -46,7 +46,9 @@ func RecordBuildForBatchedNudge(
 		return fmt.Errorf("build result is required for batched nudge target %q", targetName)
 	}
 
-	return retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+	// Up to 5 attempts: re-read the NudgeConfig and re-apply the change on every
+	// resourceVersion conflict (e.g. another reconcile racing on the same singleton).
+	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		latest := &v1beta2.NudgeConfig{}
 		if err := c.Get(ctx, types.NamespacedName{Name: nudgeConfig.Name, Namespace: nudgeConfig.Namespace}, latest); err != nil {
 			return err
@@ -57,7 +59,7 @@ func RecordBuildForBatchedNudge(
 		debounce, maxWait, _ := latest.Spec.EffectiveBatchPolicy(targetName)
 		batchIdx, batch := findOpenBatch(latest.Status.ActiveBatches, targetName)
 		if batch == nil {
-			batchID := fmt.Sprintf("%s-%d", targetName, now.UnixNano())
+			batchID := newBatchID(targetName, now)
 			newBatch := v1beta2.ActiveBatch{
 				Target:       targetName,
 				BatchID:      batchID,
@@ -71,18 +73,24 @@ func RecordBuildForBatchedNudge(
 			batch = &latest.Status.ActiveBatches[batchIdx]
 		}
 
-		for _, entry := range batch.Accumulated {
-			if entry.BuildPipelineRun == buildPLR.Name {
-				return nil
+		replaced := false
+		for i, entry := range batch.Accumulated {
+			if entry.From == buildResult.SourceComponentName {
+				batch.Accumulated[i].ImageDigest = buildResult.Digest
+				batch.Accumulated[i].BuildPipelineRun = buildPLR.Name
+				batch.Accumulated[i].CapturedAt = now
+				replaced = true
+				break
 			}
 		}
-
-		batch.Accumulated = append(batch.Accumulated, v1beta2.AccumulatedEntry{
-			From:             buildResult.SourceComponentName,
-			ImageDigest:      buildResult.Digest,
-			BuildPipelineRun: buildPLR.Name,
-			CapturedAt:       now,
-		})
+		if !replaced {
+			batch.Accumulated = append(batch.Accumulated, v1beta2.AccumulatedEntry{
+				From:             buildResult.SourceComponentName,
+				ImageDigest:      buildResult.Digest,
+				BuildPipelineRun: buildPLR.Name,
+				CapturedAt:       now,
+			})
+		}
 		removeFailedEntriesForSource(batch, buildResult.SourceComponentName)
 		if len(batch.Failed) == 0 && batch.Phase == v1beta2.BatchPhaseBlocked {
 			batch.Phase = v1beta2.BatchPhaseAccumulating
@@ -91,7 +99,7 @@ func RecordBuildForBatchedNudge(
 		batch.FireAt = &fireAt
 		latest.Status.ActiveBatches[batchIdx] = *batch
 
-		return c.Status().Patch(ctx, latest, client.MergeFrom(original))
+		return c.Status().Patch(ctx, latest, client.MergeFromWithOptions(original, client.MergeFromWithOptimisticLock{}))
 	})
 }
 
@@ -109,7 +117,9 @@ func RecordFailedBuildForBatchedNudge(
 		reason = "build failed"
 	}
 
-	return retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+	// Up to 5 attempts: re-read the NudgeConfig and re-apply the change on every
+	// resourceVersion conflict (e.g. another reconcile racing on the same singleton).
+	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		latest := &v1beta2.NudgeConfig{}
 		if err := c.Get(ctx, types.NamespacedName{Name: nudgeConfig.Name, Namespace: nudgeConfig.Namespace}, latest); err != nil {
 			return err
@@ -120,7 +130,7 @@ func RecordFailedBuildForBatchedNudge(
 		_, maxWait, failurePolicy := latest.Spec.EffectiveBatchPolicy(targetName)
 		batchIdx, batch := findOpenBatch(latest.Status.ActiveBatches, targetName)
 		if batch == nil {
-			batchID := fmt.Sprintf("%s-%d", targetName, now.UnixNano())
+			batchID := newBatchID(targetName, now)
 			newBatch := v1beta2.ActiveBatch{
 				Target:       targetName,
 				BatchID:      batchID,
@@ -134,22 +144,28 @@ func RecordFailedBuildForBatchedNudge(
 			batch = &latest.Status.ActiveBatches[batchIdx]
 		}
 
-		for _, entry := range batch.Failed {
-			if entry.BuildPipelineRun == buildPLR.Name {
-				return nil
+		replaced := false
+		for i, entry := range batch.Failed {
+			if entry.From == sourceComponentName {
+				batch.Failed[i].BuildPipelineRun = buildPLR.Name
+				batch.Failed[i].Reason = reason
+				batch.Failed[i].CapturedAt = now
+				replaced = true
+				break
 			}
 		}
-
-		batch.Failed = append(batch.Failed, v1beta2.FailedEntry{
-			From:             sourceComponentName,
-			BuildPipelineRun: buildPLR.Name,
-			Reason:           reason,
-			CapturedAt:       now,
-		})
+		if !replaced {
+			batch.Failed = append(batch.Failed, v1beta2.FailedEntry{
+				From:             sourceComponentName,
+				BuildPipelineRun: buildPLR.Name,
+				Reason:           reason,
+				CapturedAt:       now,
+			})
+		}
 		applyFailurePolicyAfterFailedBuild(batch, failurePolicy)
 		latest.Status.ActiveBatches[batchIdx] = *batch
 
-		return c.Status().Patch(ctx, latest, client.MergeFrom(original))
+		return c.Status().Patch(ctx, latest, client.MergeFromWithOptions(original, client.MergeFromWithOptimisticLock{}))
 	})
 }
 
@@ -185,13 +201,13 @@ func ProcessForceFireAction(ctx context.Context, c client.Client, nudgeConfig *v
 			batch.Phase = v1beta2.BatchPhaseFailed
 			batch.Message = err.Error()
 			latest.Status.ActiveBatches[batchIdx] = *batch
-			if patchErr := c.Status().Patch(ctx, latest, client.MergeFrom(original)); patchErr != nil {
+			if patchErr := c.Status().Patch(ctx, latest, client.MergeFromWithOptions(original, client.MergeFromWithOptimisticLock{})); patchErr != nil {
 				return patchErr
 			}
 			return err
 		}
 		latest.Status.ActiveBatches[batchIdx] = *batch
-		return c.Status().Patch(ctx, latest, client.MergeFrom(original))
+		return c.Status().Patch(ctx, latest, client.MergeFromWithOptions(original, client.MergeFromWithOptimisticLock{}))
 	})
 }
 
@@ -207,7 +223,7 @@ func ClearNudgeConfigActions(ctx context.Context, c client.Client, nudgeConfig *
 		}
 		original := latest.DeepCopy()
 		latest.Spec.Actions = nil
-		return c.Patch(ctx, latest, client.MergeFrom(original))
+		return c.Patch(ctx, latest, client.MergeFromWithOptions(original, client.MergeFromWithOptimisticLock{}))
 	})
 }
 
@@ -273,7 +289,7 @@ func ProcessDueNudgeBatches(ctx context.Context, c client.Client, nudgeConfig *v
 		if !changed {
 			return nil
 		}
-		return c.Status().Patch(ctx, latest, client.MergeFrom(original))
+		return c.Status().Patch(ctx, latest, client.MergeFromWithOptions(original, client.MergeFromWithOptimisticLock{}))
 	})
 	return nextWake, err
 }
@@ -354,9 +370,6 @@ func findForceFireBatch(batches []v1beta2.ActiveBatch, target string, includePar
 	if batch != nil {
 		return idx, batch
 	}
-	if !includePartial {
-		return -1, nil
-	}
 	for i := range batches {
 		if batches[i].Target == target && batches[i].Phase == v1beta2.BatchPhaseBlocked {
 			return i, &batches[i]
@@ -398,18 +411,15 @@ func fireBatch(ctx context.Context, c client.Client, nudgeConfig *v1beta2.NudgeC
 		return err
 	}
 
-	batch.Phase = v1beta2.BatchPhaseFiring
-	if err := patchActiveBatch(ctx, c, nudgeConfig, batch.BatchID, func(b *v1beta2.ActiveBatch) {
-		*b = *batch
-	}); err != nil {
-		return fmt.Errorf("persisting firing batch %q: %w", batch.BatchID, err)
-	}
-
 	targetComponent := &applicationapiv1alpha1.Component{}
 	if err := c.Get(ctx, types.NamespacedName{Name: batch.Target, Namespace: nudgeConfig.Namespace}, targetComponent); err != nil {
 		return fmt.Errorf("loading target component %q: %w", batch.Target, err)
 	}
 
+	// Registry credentials are resolved from the last source in the batch (see
+	// resolveBuildResultsForBatchedFire). The nudge PipelineRun updates the target
+	// repository; using a source SA is a pragmatic default until target-scoped
+	// credentials are wired explicitly.
 	saName := anchorPLR.Spec.TaskRunTemplate.ServiceAccountName
 	if saName == "" {
 		saName = tektonconsts.DefaultPipelineServiceAccount
@@ -503,26 +513,9 @@ func resolveBuildResultsForBatchedFire(
 	return buildResults, anchorPLR, anchorSource, simpleBranchName, nil
 }
 
-func patchActiveBatch(ctx context.Context, c client.Client, nudgeConfig *v1beta2.NudgeConfig, batchID string, update func(*v1beta2.ActiveBatch)) error {
-	return retry.RetryOnConflict(retry.DefaultBackoff, func() error {
-		latest := &v1beta2.NudgeConfig{}
-		if err := c.Get(ctx, types.NamespacedName{Name: nudgeConfig.Name, Namespace: nudgeConfig.Namespace}, latest); err != nil {
-			return err
-		}
-		original := latest.DeepCopy()
-		idx := -1
-		for i := range latest.Status.ActiveBatches {
-			if latest.Status.ActiveBatches[i].BatchID == batchID {
-				idx = i
-				break
-			}
-		}
-		if idx < 0 {
-			return fmt.Errorf("batch %q not found on NudgeConfig", batchID)
-		}
-		update(&latest.Status.ActiveBatches[idx])
-		return c.Status().Patch(ctx, latest, client.MergeFrom(original))
-	})
+// newBatchID returns batchId as <target>_<createdAt-epoch> per ADR-0072.
+func newBatchID(targetName string, createdAt metav1.Time) string {
+	return fmt.Sprintf("%s_%d", targetName, createdAt.Unix())
 }
 
 // NextBatchWakeDuration returns the time until the next accumulating batch should be checked.
