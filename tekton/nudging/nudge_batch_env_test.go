@@ -17,17 +17,25 @@ limitations under the License.
 package nudging
 
 import (
+	"context"
+	"fmt"
 	"time"
 
+	"github.com/go-logr/logr"
 	"github.com/konflux-ci/integration-service/api/v1beta2"
+	"github.com/konflux-ci/integration-service/helpers"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
 var _ = Describe("Nudge batch client operations", func() {
@@ -94,10 +102,24 @@ var _ = Describe("Nudge batch client operations", func() {
 			updated := &v1beta2.NudgeConfig{}
 			Expect(c.Get(ctx, types.NamespacedName{Name: nudgeConfig.Name, Namespace: namespace}, updated)).To(Succeed())
 			Expect(updated.Status.ActiveBatches).To(HaveLen(1))
-			Expect(updated.Status.ActiveBatches[0].Target).To(Equal(target))
-			Expect(updated.Status.ActiveBatches[0].Phase).To(Equal(v1beta2.BatchPhaseAccumulating))
-			Expect(updated.Status.ActiveBatches[0].Accumulated).To(HaveLen(1))
-			Expect(updated.Status.ActiveBatches[0].Accumulated[0].BuildPipelineRun).To(Equal(buildPLR.Name))
+			batch := updated.Status.ActiveBatches[0]
+			Expect(batch.Target).To(Equal(target))
+			Expect(batch.Phase).To(Equal(v1beta2.BatchPhaseAccumulating))
+
+			// Correct batch identity and timing fields.
+			Expect(batch.BatchID).NotTo(BeEmpty())
+			Expect(batch.CreatedAt.IsZero()).To(BeFalse())
+			Expect(batch.FireAt).NotTo(BeNil())
+			Expect(batch.FireAt.Time).To(BeTemporally(">=", batch.CreatedAt.Time))
+			Expect(batch.HardDeadline.Time).To(BeTemporally(">", batch.FireAt.Time))
+
+			// First accumulated entry carries the source, digest, build PLR, and capture time.
+			Expect(batch.Accumulated).To(HaveLen(1))
+			entry := batch.Accumulated[0]
+			Expect(entry.From).To(Equal(source))
+			Expect(entry.ImageDigest).To(Equal(buildResult.Digest))
+			Expect(entry.BuildPipelineRun).To(Equal(buildPLR.Name))
+			Expect(entry.CapturedAt.IsZero()).To(BeFalse())
 		})
 
 		It("should be idempotent when the same build PipelineRun is recorded twice", func() {
@@ -162,6 +184,34 @@ var _ = Describe("Nudge batch client operations", func() {
 				ForceFire: &v1beta2.ForceFireAction{Target: target, IncludePartial: &includePartial},
 			}
 			Expect(ProcessForceFireAction(ctx, c, nudgeConfig)).To(MatchError(ContainSubstring("includePartial is false")))
+		})
+
+		It("should reject force-fire for a blocked batch when includePartial is false", func() {
+			now := metav1.Now()
+			includePartial := false
+			nudgeConfig.Status.ActiveBatches = []v1beta2.ActiveBatch{
+				{
+					Target:       target,
+					BatchID:      "blocked-phase",
+					Phase:        v1beta2.BatchPhaseBlocked,
+					CreatedAt:    now,
+					HardDeadline: metav1.NewTime(now.Add(time.Hour)),
+					Message:      "blocked by failed member build(s)",
+					Accumulated: []v1beta2.AccumulatedEntry{
+						{From: source, ImageDigest: "sha256:abc", BuildPipelineRun: buildPLR.Name, CapturedAt: now},
+					},
+					Failed: []v1beta2.FailedEntry{
+						{From: "other", BuildPipelineRun: "failed-plr", Reason: "fail", CapturedAt: now},
+					},
+				},
+			}
+			c := newClient(nudgeConfig, buildPLR)
+			nudgeConfig.Spec.Actions = &v1beta2.Actions{
+				ForceFire: &v1beta2.ForceFireAction{Target: target, IncludePartial: &includePartial},
+			}
+			err := ProcessForceFireAction(ctx, c, nudgeConfig)
+			Expect(err).To(MatchError(ContainSubstring("includePartial is false")))
+			Expect(err).NotTo(MatchError(ContainSubstring("no force-fireable batch")))
 		})
 
 		It("should reject force-fire when the batch has no accumulated builds", func() {
@@ -546,6 +596,119 @@ var _ = Describe("Nudge batch client operations", func() {
 			Expect(c.Get(ctx, types.NamespacedName{Name: nudgeConfig.Name, Namespace: namespace}, updated)).To(Succeed())
 			Expect(updated.Status.ActiveBatches[0].Phase).To(Equal(v1beta2.BatchPhaseCompleted))
 			Expect(updated.Status.ActiveBatches[0].NudgePipelineRun).To(Equal(plrName))
+		})
+	})
+
+	Context("When the NudgeConfig status patch hits a resourceVersion conflict", func() {
+		It("retries and persists both the racing write and the batch update", func() {
+			c := newClient(nudgeConfig, buildPLR)
+
+			attempts := 0
+			racingWriteDone := false
+			conflictingClient := interceptor.NewClient(c.(client.WithWatch), interceptor.Funcs{
+				SubResourcePatch: func(ctx context.Context, inner client.Client, subResourceName string, obj client.Object, patch client.Patch, opts ...client.SubResourcePatchOption) error {
+					attempts++
+					if attempts == 1 {
+						// Simulate another reconcile racing on the same singleton: write an
+						// unrelated status condition directly (bumping resourceVersion) so the
+						// first patch attempt below hits a genuine optimistic-lock conflict.
+						racing := &v1beta2.NudgeConfig{}
+						Expect(inner.Get(ctx, types.NamespacedName{Name: nudgeConfig.Name, Namespace: namespace}, racing)).To(Succeed())
+						apimeta.SetStatusCondition(&racing.Status.Conditions, metav1.Condition{
+							Type:    "RacingWrite",
+							Status:  metav1.ConditionTrue,
+							Reason:  "Racing",
+							Message: "racing write from another reconcile",
+						})
+						Expect(inner.Status().Update(ctx, racing)).To(Succeed())
+						racingWriteDone = true
+						return apierrors.NewConflict(v1beta2.GroupVersion.WithResource("nudgeconfigs").GroupResource(), obj.GetName(), fmt.Errorf("simulated conflict"))
+					}
+					return inner.SubResource(subResourceName).Patch(ctx, obj, patch, opts...)
+				},
+			})
+
+			Expect(RecordBuildForBatchedNudge(ctx, conflictingClient, nudgeConfig, target, buildPLR, buildResult)).To(Succeed())
+			Expect(racingWriteDone).To(BeTrue())
+			Expect(attempts).To(BeNumerically(">=", 2), "expected at least one retry after the simulated conflict")
+
+			updated := &v1beta2.NudgeConfig{}
+			Expect(c.Get(ctx, types.NamespacedName{Name: nudgeConfig.Name, Namespace: namespace}, updated)).To(Succeed())
+
+			// The racing write survived...
+			cond := apimeta.FindStatusCondition(updated.Status.Conditions, "RacingWrite")
+			Expect(cond).NotTo(BeNil())
+			Expect(cond.Status).To(Equal(metav1.ConditionTrue))
+
+			// ...and so did the retried batch write.
+			Expect(updated.Status.ActiveBatches).To(HaveLen(1))
+			Expect(updated.Status.ActiveBatches[0].Accumulated).To(HaveLen(1))
+			Expect(updated.Status.ActiveBatches[0].Accumulated[0].BuildPipelineRun).To(Equal(buildPLR.Name))
+		})
+	})
+
+	Context("When the nudge finalizer protects a build PLR through batch capture", func() {
+		It("remains present through RecordBuildForBatchedNudge and is only removed by the caller", func() {
+			logger := helpers.IntegrationLogger{Logger: logr.Discard()}
+			c := newClient(nudgeConfig, buildPLR)
+
+			// Finalizer present before capture.
+			Expect(helpers.AddFinalizerToPipelineRun(ctx, c, logger, buildPLR, helpers.NudgePipelineRunFinalizer)).To(Succeed())
+			Expect(controllerutil.ContainsFinalizer(buildPLR, helpers.NudgePipelineRunFinalizer)).To(BeTrue())
+
+			// The batch capture itself must not touch the build PLR's finalizers.
+			Expect(RecordBuildForBatchedNudge(ctx, c, nudgeConfig, target, buildPLR, buildResult)).To(Succeed())
+			Expect(controllerutil.ContainsFinalizer(buildPLR, helpers.NudgePipelineRunFinalizer)).To(BeTrue())
+
+			persisted := &tektonv1.PipelineRun{}
+			Expect(c.Get(ctx, types.NamespacedName{Name: buildPLR.Name, Namespace: namespace}, persisted)).To(Succeed())
+			Expect(controllerutil.ContainsFinalizer(persisted, helpers.NudgePipelineRunFinalizer)).To(BeTrue())
+
+			// Finalizer absent after the caller removes it (simulating the successful end
+			// of the finalizer -> status update -> processed annotation -> remove finalizer
+			// write ordering).
+			Expect(helpers.RemoveFinalizerFromPipelineRun(ctx, c, logger, buildPLR, helpers.NudgePipelineRunFinalizer)).To(Succeed())
+			Expect(controllerutil.ContainsFinalizer(buildPLR, helpers.NudgePipelineRunFinalizer)).To(BeFalse())
+		})
+	})
+
+	Context("When a crash happens after the finalizer is added but before the status write", func() {
+		It("retains the build PLR so the interrupted capture can be completed on retry", func() {
+			logger := helpers.IntegrationLogger{Logger: logr.Discard()}
+			c := newClient(nudgeConfig, buildPLR)
+
+			// Step 1 (finalizer added) completes, then a crash is simulated before step 2
+			// (the NudgeConfig status write) ever runs.
+			Expect(helpers.AddFinalizerToPipelineRun(ctx, c, logger, buildPLR, helpers.NudgePipelineRunFinalizer)).To(Succeed())
+
+			// The Tekton pruner (or any other deleter) attempts to delete the build PLR.
+			Expect(c.Delete(ctx, buildPLR)).To(Succeed())
+
+			// The PLR is NOT actually removed: it is retained (Terminating), still fully
+			// readable, because the finalizer blocks real garbage collection.
+			retained := &tektonv1.PipelineRun{}
+			Expect(c.Get(ctx, types.NamespacedName{Name: buildPLR.Name, Namespace: namespace}, retained)).To(Succeed())
+			Expect(retained.DeletionTimestamp).NotTo(BeNil())
+			Expect(controllerutil.ContainsFinalizer(retained, helpers.NudgePipelineRunFinalizer)).To(BeTrue())
+
+			// Nothing was lost: the status write never happened before the simulated crash.
+			nc := &v1beta2.NudgeConfig{}
+			Expect(c.Get(ctx, types.NamespacedName{Name: nudgeConfig.Name, Namespace: namespace}, nc)).To(Succeed())
+			Expect(nc.Status.ActiveBatches).To(BeEmpty())
+
+			// Recovery: the controller resumes and completes the originally-interrupted
+			// capture using the still-readable (Terminating) PLR.
+			Expect(RecordBuildForBatchedNudge(ctx, c, nc, target, retained, buildResult)).To(Succeed())
+			updated := &v1beta2.NudgeConfig{}
+			Expect(c.Get(ctx, types.NamespacedName{Name: nudgeConfig.Name, Namespace: namespace}, updated)).To(Succeed())
+			Expect(updated.Status.ActiveBatches).To(HaveLen(1))
+			Expect(updated.Status.ActiveBatches[0].Accumulated).To(HaveLen(1))
+			Expect(updated.Status.ActiveBatches[0].Accumulated[0].BuildPipelineRun).To(Equal(buildPLR.Name))
+
+			// Finishing the write ordering (processed annotation + finalizer removal, done
+			// by the caller) finally allows the already-deleting PLR to be GC'd for real.
+			Expect(helpers.RemoveFinalizerFromPipelineRun(ctx, c, logger, retained, helpers.NudgePipelineRunFinalizer)).To(Succeed())
+			Expect(c.Get(ctx, types.NamespacedName{Name: buildPLR.Name, Namespace: namespace}, &tektonv1.PipelineRun{})).To(HaveOccurred())
 		})
 	})
 })
