@@ -107,13 +107,13 @@ func ProcessForceFireAction(ctx context.Context, c client.Client, nudgeConfig *v
 			batch.Phase = v1beta2.BatchPhaseFailed
 			batch.Message = err.Error()
 			latest.Status.ActiveBatches[batchIdx] = *batch
-			if patchErr := c.Status().Patch(ctx, latest, client.MergeFrom(original)); patchErr != nil {
+			if patchErr := c.Status().Patch(ctx, latest, client.MergeFromWithOptions(original, client.MergeFromWithOptimisticLock{})); patchErr != nil {
 				return patchErr
 			}
 			return err
 		}
 		latest.Status.ActiveBatches[batchIdx] = *batch
-		return c.Status().Patch(ctx, latest, client.MergeFrom(original))
+		return c.Status().Patch(ctx, latest, client.MergeFromWithOptions(original, client.MergeFromWithOptimisticLock{}))
 	})
 }
 
@@ -127,7 +127,7 @@ func SetForceFireRejectedCondition(ctx context.Context, c client.Client, nudgeCo
 		original := latest.DeepCopy()
 		now := metav1.Now()
 		setNudgeConfigCondition(latest, v1beta2.NudgeConfigConditionForceFireRejected, metav1.ConditionTrue, "Rejected", message, now)
-		return c.Status().Patch(ctx, latest, client.MergeFrom(original))
+		return c.Status().Patch(ctx, latest, client.MergeFromWithOptions(original, client.MergeFromWithOptimisticLock{}))
 	})
 }
 
@@ -141,7 +141,7 @@ func SetForceFireIgnoredCondition(ctx context.Context, c client.Client, nudgeCon
 		original := latest.DeepCopy()
 		now := metav1.Now()
 		setNudgeConfigCondition(latest, v1beta2.NudgeConfigConditionForceFireIgnored, metav1.ConditionTrue, "Ignored", message, now)
-		return c.Status().Patch(ctx, latest, client.MergeFrom(original))
+		return c.Status().Patch(ctx, latest, client.MergeFromWithOptions(original, client.MergeFromWithOptimisticLock{}))
 	})
 }
 
@@ -156,7 +156,7 @@ func ClearForceFireIgnoredCondition(ctx context.Context, c client.Client, nudgeC
 			return nil
 		}
 		original := latest.DeepCopy()
-		return c.Status().Patch(ctx, latest, client.MergeFrom(original))
+		return c.Status().Patch(ctx, latest, client.MergeFromWithOptions(original, client.MergeFromWithOptimisticLock{}))
 	})
 }
 
@@ -171,7 +171,7 @@ func ClearForceFireRejectedCondition(ctx context.Context, c client.Client, nudge
 			return nil
 		}
 		original := latest.DeepCopy()
-		return c.Status().Patch(ctx, latest, client.MergeFrom(original))
+		return c.Status().Patch(ctx, latest, client.MergeFromWithOptions(original, client.MergeFromWithOptimisticLock{}))
 	})
 }
 
@@ -187,7 +187,7 @@ func ClearNudgeConfigActions(ctx context.Context, c client.Client, nudgeConfig *
 		}
 		original := latest.DeepCopy()
 		latest.Spec.Actions = nil
-		return c.Patch(ctx, latest, client.MergeFrom(original))
+		return c.Patch(ctx, latest, client.MergeFromWithOptions(original, client.MergeFromWithOptimisticLock{}))
 	})
 }
 
@@ -231,7 +231,7 @@ func ProcessDueNudgeBatches(ctx context.Context, c client.Client, nudgeConfig *v
 		if !changed {
 			return nil
 		}
-		return c.Status().Patch(ctx, latest, client.MergeFrom(original))
+		return c.Status().Patch(ctx, latest, client.MergeFromWithOptions(original, client.MergeFromWithOptimisticLock{}))
 	})
 }
 
@@ -280,7 +280,7 @@ func ProcessFiringNudgeBatches(ctx context.Context, c client.Client, nudgeConfig
 		if !changed {
 			return nil
 		}
-		return c.Status().Patch(ctx, latest, client.MergeFrom(original))
+		return c.Status().Patch(ctx, latest, client.MergeFromWithOptions(original, client.MergeFromWithOptimisticLock{}))
 	})
 }
 
@@ -513,7 +513,7 @@ func recordSuccessForBatchedNudge(
 		scheduleBatchFire(batch, now, debounce)
 
 		latest.Status.ActiveBatches[batchIdx] = *batch
-		return c.Status().Patch(ctx, latest, client.MergeFrom(original))
+		return c.Status().Patch(ctx, latest, client.MergeFromWithOptions(original, client.MergeFromWithOptimisticLock{}))
 	})
 }
 
@@ -550,7 +550,7 @@ func recordFailureForBatchedNudge(
 		}
 
 		latest.Status.ActiveBatches[batchIdx] = *batch
-		return c.Status().Patch(ctx, latest, client.MergeFrom(original))
+		return c.Status().Patch(ctx, latest, client.MergeFromWithOptions(original, client.MergeFromWithOptimisticLock{}))
 	})
 }
 
