@@ -98,6 +98,7 @@ var _ = Describe("Nudge batch client operations", func() {
 			Expect(updated.Status.ActiveBatches[0].Phase).To(Equal(v1beta2.BatchPhaseAccumulating))
 			Expect(updated.Status.ActiveBatches[0].Accumulated).To(HaveLen(1))
 			Expect(updated.Status.ActiveBatches[0].Accumulated[0].BuildPipelineRun).To(Equal(buildPLR.Name))
+			Expect(updated.Status.ActiveBatches[0].BatchID).To(MatchRegexp(`^` + target + `_\d+$`))
 		})
 
 		It("should be idempotent when the same build PipelineRun is recorded twice", func() {
@@ -163,6 +164,33 @@ var _ = Describe("Nudge batch client operations", func() {
 				ForceFire: &v1beta2.ForceFireAction{Target: target},
 			}
 			Expect(ProcessForceFireAction(ctx, c, nudgeConfig)).To(MatchError(ContainSubstring("no force-fireable batch")))
+		})
+
+		It("should reject forceFire on a blocked batch when includePartial is false", func() {
+			now := metav1.Now()
+			includePartial := false
+			nudgeConfig.Status.ActiveBatches = []v1beta2.ActiveBatch{
+				{
+					Target:       target,
+					BatchID:      "blocked-batch",
+					Phase:        v1beta2.BatchPhaseBlocked,
+					CreatedAt:    now,
+					HardDeadline: metav1.NewTime(now.Add(time.Hour)),
+					Accumulated: []v1beta2.AccumulatedEntry{
+						{From: source, ImageDigest: "sha256:abc", BuildPipelineRun: buildPLR.Name, CapturedAt: now},
+					},
+					Failed: []v1beta2.FailedEntry{
+						{From: "other-operand", BuildPipelineRun: "plr-fail", Reason: "failed", CapturedAt: now},
+					},
+				},
+			}
+			c := newClient(nudgeConfig, buildPLR)
+			nudgeConfig.Spec.Actions = &v1beta2.Actions{
+				ForceFire: &v1beta2.ForceFireAction{Target: target, IncludePartial: &includePartial},
+			}
+			err := ProcessForceFireAction(ctx, c, nudgeConfig)
+			Expect(err).To(MatchError(ContainSubstring("includePartial=false")))
+			Expect(err).NotTo(MatchError(ContainSubstring("no force-fireable batch")))
 		})
 
 		It("should reject forceFire when includePartial is false and failures remain", func() {
@@ -233,6 +261,21 @@ var _ = Describe("Nudge batch client operations", func() {
 			}
 			err := ProcessForceFireAction(ctx, c, nudgeConfig)
 			Expect(err).NotTo(MatchError(ContainSubstring("no force-fireable batch")))
+		})
+	})
+
+	Context("When resolving reference build PipelineRuns for firing", func() {
+		It("should use another accumulated entry when the first build PLR was pruned", func() {
+			livePLR := &tektonv1.PipelineRun{
+				ObjectMeta: metav1.ObjectMeta{Name: "live-build-plr", Namespace: namespace},
+			}
+			c := newClient(livePLR)
+			plr, err := resolveReferenceBuildPLR(ctx, c, namespace, []v1beta2.AccumulatedEntry{
+				{From: "gone", BuildPipelineRun: "pruned-build-plr"},
+				{From: source, BuildPipelineRun: livePLR.Name},
+			})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(plr.Name).To(Equal(livePLR.Name))
 		})
 	})
 

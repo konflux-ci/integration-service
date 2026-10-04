@@ -28,6 +28,7 @@ import (
 	"github.com/konflux-ci/integration-service/loader"
 	tektonconsts "github.com/konflux-ci/integration-service/tekton/consts"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/util/retry"
@@ -107,13 +108,13 @@ func ProcessForceFireAction(ctx context.Context, c client.Client, nudgeConfig *v
 			batch.Phase = v1beta2.BatchPhaseFailed
 			batch.Message = err.Error()
 			latest.Status.ActiveBatches[batchIdx] = *batch
-			if patchErr := c.Status().Patch(ctx, latest, client.MergeFrom(original)); patchErr != nil {
+			if patchErr := c.Status().Patch(ctx, latest, client.MergeFromWithOptions(original, client.MergeFromWithOptimisticLock{})); patchErr != nil {
 				return patchErr
 			}
 			return err
 		}
 		latest.Status.ActiveBatches[batchIdx] = *batch
-		return c.Status().Patch(ctx, latest, client.MergeFrom(original))
+		return c.Status().Patch(ctx, latest, client.MergeFromWithOptions(original, client.MergeFromWithOptimisticLock{}))
 	})
 }
 
@@ -127,7 +128,7 @@ func SetForceFireRejectedCondition(ctx context.Context, c client.Client, nudgeCo
 		original := latest.DeepCopy()
 		now := metav1.Now()
 		setNudgeConfigCondition(latest, v1beta2.NudgeConfigConditionForceFireRejected, metav1.ConditionTrue, "Rejected", message, now)
-		return c.Status().Patch(ctx, latest, client.MergeFrom(original))
+		return c.Status().Patch(ctx, latest, client.MergeFromWithOptions(original, client.MergeFromWithOptimisticLock{}))
 	})
 }
 
@@ -141,7 +142,7 @@ func SetForceFireIgnoredCondition(ctx context.Context, c client.Client, nudgeCon
 		original := latest.DeepCopy()
 		now := metav1.Now()
 		setNudgeConfigCondition(latest, v1beta2.NudgeConfigConditionForceFireIgnored, metav1.ConditionTrue, "Ignored", message, now)
-		return c.Status().Patch(ctx, latest, client.MergeFrom(original))
+		return c.Status().Patch(ctx, latest, client.MergeFromWithOptions(original, client.MergeFromWithOptimisticLock{}))
 	})
 }
 
@@ -156,7 +157,7 @@ func ClearForceFireIgnoredCondition(ctx context.Context, c client.Client, nudgeC
 			return nil
 		}
 		original := latest.DeepCopy()
-		return c.Status().Patch(ctx, latest, client.MergeFrom(original))
+		return c.Status().Patch(ctx, latest, client.MergeFromWithOptions(original, client.MergeFromWithOptimisticLock{}))
 	})
 }
 
@@ -171,7 +172,7 @@ func ClearForceFireRejectedCondition(ctx context.Context, c client.Client, nudge
 			return nil
 		}
 		original := latest.DeepCopy()
-		return c.Status().Patch(ctx, latest, client.MergeFrom(original))
+		return c.Status().Patch(ctx, latest, client.MergeFromWithOptions(original, client.MergeFromWithOptimisticLock{}))
 	})
 }
 
@@ -187,7 +188,7 @@ func ClearNudgeConfigActions(ctx context.Context, c client.Client, nudgeConfig *
 		}
 		original := latest.DeepCopy()
 		latest.Spec.Actions = nil
-		return c.Patch(ctx, latest, client.MergeFrom(original))
+		return c.Patch(ctx, latest, client.MergeFromWithOptions(original, client.MergeFromWithOptimisticLock{}))
 	})
 }
 
@@ -231,7 +232,7 @@ func ProcessDueNudgeBatches(ctx context.Context, c client.Client, nudgeConfig *v
 		if !changed {
 			return nil
 		}
-		return c.Status().Patch(ctx, latest, client.MergeFrom(original))
+		return c.Status().Patch(ctx, latest, client.MergeFromWithOptions(original, client.MergeFromWithOptimisticLock{}))
 	})
 }
 
@@ -280,7 +281,7 @@ func ProcessFiringNudgeBatches(ctx context.Context, c client.Client, nudgeConfig
 		if !changed {
 			return nil
 		}
-		return c.Status().Patch(ctx, latest, client.MergeFrom(original))
+		return c.Status().Patch(ctx, latest, client.MergeFromWithOptions(original, client.MergeFromWithOptimisticLock{}))
 	})
 }
 
@@ -358,7 +359,9 @@ func findAccumulatingBatch(batches []v1beta2.ActiveBatch, target string) (int, *
 }
 
 // findForceFireBatch locates the batch that should respond to spec.actions.forceFire for target.
+// Whether partial/failed batches may fire is decided by validateForceFireBatch, not here.
 func findForceFireBatch(batches []v1beta2.ActiveBatch, target string, includePartial bool) (int, *v1beta2.ActiveBatch) {
+	_ = includePartial
 	idx, batch := findAccumulatingBatch(batches, target)
 	if batch != nil {
 		return idx, batch
@@ -368,11 +371,7 @@ func findForceFireBatch(batches []v1beta2.ActiveBatch, target string, includePar
 			continue
 		}
 		switch batches[i].Phase {
-		case v1beta2.BatchPhaseBlocked:
-			if includePartial {
-				return i, &batches[i]
-			}
-		case v1beta2.BatchPhaseFailed:
+		case v1beta2.BatchPhaseBlocked, v1beta2.BatchPhaseFailed:
 			return i, &batches[i]
 		}
 	}
@@ -387,7 +386,7 @@ func findOrCreateAcceptingBatch(batches []v1beta2.ActiveBatch, target string, no
 		}
 	}
 
-	batchID := fmt.Sprintf("%s-%d", target, now.Unix())
+	batchID := newBatchID(target, now)
 	newBatch := v1beta2.ActiveBatch{
 		Target:       target,
 		BatchID:      batchID,
@@ -407,6 +406,10 @@ func isBatchFiringForTarget(batches []v1beta2.ActiveBatch, target string) bool {
 		}
 	}
 	return false
+}
+
+func newBatchID(target string, createdAt metav1.Time) string {
+	return fmt.Sprintf("%s_%d", target, createdAt.Unix())
 }
 
 func upsertAccumulatedEntry(batch *v1beta2.ActiveBatch, entry v1beta2.AccumulatedEntry) {
@@ -499,6 +502,14 @@ func recordSuccessForBatchedNudge(
 		latest.Status.ActiveBatches = batches
 		batch := &latest.Status.ActiveBatches[batchIdx]
 
+		for _, entry := range batch.Accumulated {
+			if entry.From == sourceComponent &&
+				entry.ImageDigest == digest &&
+				entry.BuildPipelineRun == sourceRef {
+				return nil
+			}
+		}
+
 		upsertAccumulatedEntry(batch, v1beta2.AccumulatedEntry{
 			From:             sourceComponent,
 			ImageDigest:      digest,
@@ -513,7 +524,7 @@ func recordSuccessForBatchedNudge(
 		scheduleBatchFire(batch, now, debounce)
 
 		latest.Status.ActiveBatches[batchIdx] = *batch
-		return c.Status().Patch(ctx, latest, client.MergeFrom(original))
+		return c.Status().Patch(ctx, latest, client.MergeFromWithOptions(original, client.MergeFromWithOptimisticLock{}))
 	})
 }
 
@@ -536,6 +547,14 @@ func recordFailureForBatchedNudge(
 		latest.Status.ActiveBatches = batches
 		batch := &latest.Status.ActiveBatches[batchIdx]
 
+		for _, entry := range batch.Failed {
+			if entry.From == sourceComponent &&
+				entry.BuildPipelineRun == sourceRef &&
+				entry.Reason == reason {
+				return nil
+			}
+		}
+
 		removeAccumulatedComponent(batch, sourceComponent)
 		upsertFailedEntry(batch, v1beta2.FailedEntry{
 			From:             sourceComponent,
@@ -550,7 +569,7 @@ func recordFailureForBatchedNudge(
 		}
 
 		latest.Status.ActiveBatches[batchIdx] = *batch
-		return c.Status().Patch(ctx, latest, client.MergeFrom(original))
+		return c.Status().Patch(ctx, latest, client.MergeFromWithOptions(original, client.MergeFromWithOptimisticLock{}))
 	})
 }
 
@@ -605,9 +624,11 @@ func buildBatchedRenovatePayload(
 	batch *v1beta2.ActiveBatch,
 ) (*tektonv1.PipelineRun, NudgeTarget, []BatchedRenovateEntry, error) {
 	firstEntry := batch.Accumulated[0]
-	referencePLR := &tektonv1.PipelineRun{}
-	if err := c.Get(ctx, types.NamespacedName{Name: firstEntry.BuildPipelineRun, Namespace: nudgeConfig.Namespace}, referencePLR); err != nil {
-		return nil, NudgeTarget{}, nil, fmt.Errorf("loading reference build PipelineRun %q: %w", firstEntry.BuildPipelineRun, err)
+	// Any surviving source build PLR supplies the TaskRun service account; when all were pruned,
+	// accumulated digests remain authoritative and the default pipeline SA is used.
+	referencePLR, err := resolveReferenceBuildPLR(ctx, c, nudgeConfig.Namespace, batch.Accumulated)
+	if err != nil {
+		return nil, NudgeTarget{}, nil, err
 	}
 
 	targetComponent := &applicationapiv1alpha1.Component{}
@@ -650,6 +671,28 @@ func buildBatchedRenovatePayload(
 		return nil, NudgeTarget{}, nil, fmt.Errorf("no credentials resolved for batched nudge target %q", batch.Target)
 	}
 	return referencePLR, targets[0], renovateEntries, nil
+}
+
+func resolveReferenceBuildPLR(
+	ctx context.Context,
+	c client.Client,
+	namespace string,
+	accumulated []v1beta2.AccumulatedEntry,
+) (*tektonv1.PipelineRun, error) {
+	for _, entry := range accumulated {
+		if entry.BuildPipelineRun == "" {
+			continue
+		}
+		plr := &tektonv1.PipelineRun{}
+		err := c.Get(ctx, types.NamespacedName{Name: entry.BuildPipelineRun, Namespace: namespace}, plr)
+		if err == nil {
+			return plr, nil
+		}
+		if !apierrors.IsNotFound(err) {
+			return nil, fmt.Errorf("loading reference build PipelineRun %q: %w", entry.BuildPipelineRun, err)
+		}
+	}
+	return &tektonv1.PipelineRun{ObjectMeta: metav1.ObjectMeta{Namespace: namespace}}, nil
 }
 
 func setNudgeConfigCondition(nc *v1beta2.NudgeConfig, conditionType string, status metav1.ConditionStatus, reason, message string, now metav1.Time) {
