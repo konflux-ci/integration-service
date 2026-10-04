@@ -333,11 +333,24 @@ func GenerateRenovateConfigForBatchedSources(target NudgeTarget, buildResults []
 		for alias, canonical := range next.RegistryAliases {
 			merged.RegistryAliases[alias] = canonical
 		}
-		if len(next.PackageRules) > 1 {
-			merged.PackageRules = append(merged.PackageRules, next.PackageRules[1:]...)
-		}
+		merged.PackageRules = append(merged.PackageRules, enablePackageRulesOnly(next.PackageRules)...)
 	}
 	return merged
+}
+
+func enablePackageRulesOnly(rules []PackageRule) []PackageRule {
+	enabled := make([]PackageRule, 0, len(rules))
+	for _, rule := range rules {
+		if isGlobalDisablePackageRule(rule) {
+			continue
+		}
+		enabled = append(enabled, rule)
+	}
+	return enabled
+}
+
+func isGlobalDisablePackageRule(rule PackageRule) bool {
+	return !rule.Enabled && len(rule.MatchPackagePatterns) == 1 && rule.MatchPackagePatterns[0] == "*"
 }
 
 // BatchedRenovateEntry pairs a source build result with the component that produced it.
