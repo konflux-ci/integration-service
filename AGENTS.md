@@ -57,9 +57,9 @@ Each controller delegates to an **adapter** (`<controller_name>_adapter.go`) tha
 - **Webhooks**: add to `internal/webhooks/<resource>/`
 - **Tests**: unit tests alongside code using Ginkgo + envtest; E2E tests are located in `e2e-tests/tests`
 - **Reconcile-loop blocking**: Never use `time.Sleep` or synchronous retry with multi-second delays in adapter methods. For transient errors, return `controller.RequeueAfter()` (from `github.com/konflux-ci/operator-toolkit/controller`) with appropriate backoff to let the controller-runtime manage retries.
-- **Only retry idempotent operations**: Operations using `GenerateName` produce a new server-assigned name on each call — retrying them risks creating duplicate resources. Only wrap operations in `retry.OnError` when they are idempotent: status/metadata updates, operations with deterministic `Name` fields, or operations with explicit collision handling (e.g., `CreateSnapshotWithCollisionHandling`).
+- **Only retry idempotent operations**: Operations using `GenerateName` produce a new server-assigned name on each call — retrying them risks creating duplicate resources. Only wrap operations in `retry.OnError` when they are idempotent: status/metadata updates, operations with deterministic `Name` fields, or operations with explicit collision handling (e.g., get-or-create semantics that return the existing resource on conflict rather than creating a new one).
 - **Use existing retry infrastructure**: This repo uses `k8s.io/client-go/util/retry` — `retry.RetryOnConflict` for update conflicts, `retry.OnError` for broader transient errors. Do not introduce alternative retry mechanisms.
 - **Classify errors before retrying**: New code should use a selective retry predicate or handle permanent errors (`IsInvalid`, `IsForbidden`, `IsNotFound`) before the retry loop rather than retrying them.
 
-> **Known issue:** `createAutomatedRelease` in `snapshot_adapter.go` wraps a `GenerateName` Create in `retry.OnError` — this is an existing anti-pattern pending remediation.
+> **Known issue:** `createAutomatedRelease` in `snapshot_adapter.go` wraps a `GenerateName` Create in `retry.OnError` — this is an existing anti-pattern pending remediation. A similar pattern exists at the `CreateSnapshotWithCollisionHandling` call site, where `retry.OnError` can trigger duplicate snapshot creation on retry.
 
