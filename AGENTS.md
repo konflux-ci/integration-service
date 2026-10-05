@@ -57,3 +57,10 @@ Each controller delegates to an **adapter** (`<controller_name>_adapter.go`) tha
 - **Webhooks**: add to `internal/webhooks/<resource>/`
 - **Tests**: unit tests alongside code using Ginkgo + envtest; E2E tests are located in `e2e-tests/tests`
 
+### Reconciliation Patterns
+
+- **Do not block reconcile loops.** Never use `time.Sleep` or synchronous retry with multi-second delays in adapter methods. For transient errors, return `controller.RequeueAfter()` with appropriate backoff to let the controller-runtime manage retries.
+- **Only retry idempotent operations.** Operations using `GenerateName` produce a new server-assigned name on each call — retrying them risks creating duplicate resources. Only wrap operations in `retry.OnError` when they are idempotent: status/metadata updates, operations with deterministic `Name` fields, or operations with explicit collision handling (e.g., `CreateSnapshotWithCollisionHandling`).
+- **Use existing retry infrastructure.** This repo uses `k8s.io/client-go/util/retry` — `retry.RetryOnConflict` for update conflicts, `retry.OnError` for broader transient errors. Do not introduce alternative retry mechanisms.
+- **Classify errors before retrying.** Permanent errors (`IsInvalid`, `IsForbidden`, `IsNotFound`) should not be retried. Use a selective retry predicate or handle permanent errors before the retry loop.
+
