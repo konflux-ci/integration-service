@@ -13,11 +13,11 @@ flowchart TD
 
   %% Node definitions
   check_sa{"ServiceAccount<br>konflux-integration-runner<br>exists?"}
-  create_sa(Create ServiceAccount<br>with ImagePullSecrets)
+  create_sa(Create ServiceAccount<br>with imagePullSecrets<br>and secrets)
   check_secret{"Secret<br>components-namespace-pull<br>exists?"}
   create_secret(Create empty<br>dockerconfigjson Secret)
-  check_linked{"Secret linked to<br>SA ImagePullSecrets?"}
-  link_secret(Update SA to link Secret)
+  check_linked{"Secret linked on<br>imagePullSecrets<br>and secrets?"}
+  link_secret(Update SA to link Secret<br>on any missing field)
   check_rb{"RoleBinding<br>konflux-integration-runner<br>exists?"}
   create_rb(Create RoleBinding to<br>ClusterRole konflux-integration-runner)
   complete(Complete reconciliation)

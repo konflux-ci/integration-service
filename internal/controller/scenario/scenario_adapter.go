@@ -76,6 +76,9 @@ func (a *Adapter) EnsureIntegrationPipelineServiceAccountCreated() (controller.O
 			ImagePullSecrets: []corev1.LocalObjectReference{
 				{Name: secretName},
 			},
+			Secrets: []corev1.ObjectReference{
+				{Name: secretName},
+			},
 		}
 		if err := a.client.Create(a.context, sa); err != nil {
 			if !errors.IsAlreadyExists(err) {
@@ -119,35 +122,53 @@ func (a *Adapter) EnsureIntegrationPipelineServiceAccountCreated() (controller.O
 		}
 	}
 
-	imagePullSecretLinked := false
-	for _, ref := range sa.ImagePullSecrets {
-		if ref.Name == secretName {
-			imagePullSecretLinked = true
-			break
+	serviceAccountUpdated := false
+	err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		if err := a.client.Get(a.context, types.NamespacedName{Name: saName, Namespace: namespace}, sa); err != nil {
+			return err
 		}
-	}
-	if !imagePullSecretLinked {
-		updated := false
-		err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
-			if err := a.client.Get(a.context, types.NamespacedName{Name: saName, Namespace: namespace}, sa); err != nil {
+		// check if secret is already linked and add it only if it isn't to avoid duplication
+		secretsLinked := false
+		shouldUpdateServiceAccount := false
+		for _, serviceAccountSecret := range sa.Secrets {
+			if serviceAccountSecret.Name == secretName {
+				secretsLinked = true
+				break
+			}
+		}
+		if !secretsLinked {
+			sa.Secrets = append(sa.Secrets, corev1.ObjectReference{Name: secretName})
+			shouldUpdateServiceAccount = true
+		}
+
+		imagePullSecretLinked := false
+		for _, serviceAccountSecret := range sa.ImagePullSecrets {
+			if serviceAccountSecret.Name == secretName {
+				imagePullSecretLinked = true
+				break
+			}
+		}
+
+		if !imagePullSecretLinked {
+			sa.ImagePullSecrets = append(sa.ImagePullSecrets, corev1.LocalObjectReference{Name: secretName})
+			shouldUpdateServiceAccount = true
+		}
+
+		if shouldUpdateServiceAccount {
+			err := a.client.Update(a.context, sa)
+			if err != nil {
 				return err
 			}
-			for _, ref := range sa.ImagePullSecrets {
-				if ref.Name == secretName {
-					return nil
-				}
-			}
-			sa.ImagePullSecrets = append(sa.ImagePullSecrets, corev1.LocalObjectReference{Name: secretName})
-			updated = true
-			return a.client.Update(a.context, sa)
-		})
-		if err != nil {
-			a.logger.Error(err, "Failed to update ServiceAccount with secret link", "serviceAccount", saName, "secret", secretName)
-			return controller.RequeueWithError(err)
+			serviceAccountUpdated = true
 		}
-		if updated {
-			a.logger.Info("Linked secret to ServiceAccount", "serviceAccount", saName, "secret", secretName)
-		}
+		return nil
+	})
+	if err != nil {
+		a.logger.Error(err, "Failed to update ServiceAccount with secret link", "serviceAccount", saName, "secret", secretName)
+		return controller.RequeueWithError(err)
+	}
+	if serviceAccountUpdated {
+		a.logger.Info("Linked secret to ServiceAccount", "serviceAccount", saName, "secret", secretName)
 	}
 
 	// The ClusterRole is provisioned by the Konflux operator (konflux-ci/konflux-ci)
