@@ -56,7 +56,7 @@ Ensures that the ComponentGroup/s Global Candidate List is aligned with its comp
 
 Monitors IntegrationTestScenario CRs and manages the following:
 - Ensures the `konflux-integration-runner` ServiceAccount exists in the namespace
-- Ensures the `components-namespace-pull` image pull secret exists and is linked to the ServiceAccount
+- Ensures the `components-namespace-pull` image pull secret exists and is linked on the ServiceAccount's `imagePullSecrets` and `secrets`
 - Ensures the RoleBinding for the ServiceAccount to the `konflux-integration-runner` ClusterRole exists
 
 ### Component Controller
