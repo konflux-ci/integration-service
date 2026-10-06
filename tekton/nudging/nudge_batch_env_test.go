@@ -306,6 +306,38 @@ var _ = Describe("Nudge batch client operations", func() {
 	})
 
 	Context("When processing due batches", func() {
+		It("should fire a batch when fireAt has elapsed with no failures (via idempotent PLR path)", func() {
+			const batchID = "due-success-idempotent"
+			plrName := BatchedNudgePipelineRunName(batchID, 0)
+			existingPLR := &tektonv1.PipelineRun{
+				ObjectMeta: metav1.ObjectMeta{Name: plrName, Namespace: namespace},
+			}
+			now := metav1.Now()
+			pastFire := metav1.NewTime(now.Add(-time.Minute))
+			nudgeConfig.Status.ActiveBatches = []v1beta2.ActiveBatch{
+				{
+					Target:       target,
+					BatchID:      batchID,
+					Phase:        v1beta2.BatchPhaseAccumulating,
+					CreatedAt:    now,
+					FireAt:       &pastFire,
+					HardDeadline: metav1.NewTime(now.Add(time.Hour)),
+					Accumulated: []v1beta2.AccumulatedEntry{
+						{From: source, ImageDigest: "sha256:abc", BuildPipelineRun: buildPLR.Name, CapturedAt: now},
+					},
+				},
+			}
+			c := newClient(nudgeConfig, buildPLR, existingPLR)
+
+			err := ProcessDueNudgeBatches(ctx, c, nudgeConfig)
+			Expect(err).NotTo(HaveOccurred())
+
+			updated := &v1beta2.NudgeConfig{}
+			Expect(c.Get(ctx, types.NamespacedName{Name: nudgeConfig.Name, Namespace: namespace}, updated)).To(Succeed())
+			Expect(updated.Status.ActiveBatches[0].Phase).To(Equal(v1beta2.BatchPhaseCompleted))
+			Expect(updated.Status.ActiveBatches[0].NudgePipelineRun).To(Equal(plrName))
+		})
+
 		It("should mark a due batch as failed when firing cannot complete", func() {
 			now := metav1.Now()
 			pastFire := metav1.NewTime(now.Add(-time.Minute))
