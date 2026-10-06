@@ -196,8 +196,10 @@ func ClearNudgeConfigActions(ctx context.Context, c client.Client, nudgeConfig *
 }
 
 // ProcessDueNudgeBatches fires batches whose debounce timer or hard deadline has elapsed.
-func ProcessDueNudgeBatches(ctx context.Context, c client.Client, nudgeConfig *v1beta2.NudgeConfig) error {
-	return retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+// It returns how long to wait before checking again for the earliest pending timer.
+func ProcessDueNudgeBatches(ctx context.Context, c client.Client, nudgeConfig *v1beta2.NudgeConfig) (time.Duration, error) {
+	var nextWake time.Duration
+	err := retry.RetryOnConflict(retry.DefaultBackoff, func() error {
 		latest := &v1beta2.NudgeConfig{}
 		if err := c.Get(ctx, types.NamespacedName{Name: nudgeConfig.Name, Namespace: nudgeConfig.Namespace}, latest); err != nil {
 			return err
@@ -205,19 +207,31 @@ func ProcessDueNudgeBatches(ctx context.Context, c client.Client, nudgeConfig *v
 		original := latest.DeepCopy()
 		now := time.Now()
 		changed := false
+		nextWake = 0
 
 		for i := range latest.Status.ActiveBatches {
 			batch := &latest.Status.ActiveBatches[i]
 			if batch.Phase != v1beta2.BatchPhaseAccumulating {
 				continue
 			}
-			if !batchTimerExpired(batch, now) {
+			if !BatchShouldFire(batch, now) {
+				if len(batch.Accumulated) > 0 {
+					if wait := nextWakeForBatch(batch, now); wait > 0 && (nextWake == 0 || wait < nextWake) {
+						nextWake = wait
+					}
+				}
 				continue
 			}
-			if len(batch.Accumulated) == 0 {
-				batch.Phase = v1beta2.BatchPhaseFailed
-				batch.Message = "timer expired with no successful builds to nudge"
-				changed = true
+			_, _, failurePolicy := latest.Spec.EffectiveBatchPolicy(batch.Target)
+			if !BatchAllowsScheduledFire(batch, failurePolicy) {
+				if len(batch.Failed) > 0 && failurePolicy == v1beta2.FailurePolicyBlock {
+					if batch.Phase != v1beta2.BatchPhaseBlocked {
+						batch.Phase = v1beta2.BatchPhaseBlocked
+						batch.FireAt = nil
+						batch.Message = "blocked by failed member build(s)"
+						changed = true
+					}
+				}
 				continue
 			}
 			if isBatchFiringForTarget(latest.Status.ActiveBatches, batch.Target) {
@@ -237,6 +251,7 @@ func ProcessDueNudgeBatches(ctx context.Context, c client.Client, nudgeConfig *v
 		}
 		return c.Status().Patch(ctx, latest, client.MergeFromWithOptions(original, client.MergeFromWithOptimisticLock{}))
 	})
+	return nextWake, err
 }
 
 // ProcessFiringNudgeBatches advances batches in Firing phase based on nudge PipelineRun completion.
@@ -327,6 +342,23 @@ func BatchAllowsScheduledFire(batch *v1beta2.ActiveBatch, failurePolicy v1beta2.
 	return false
 }
 
+// nextWakeForBatch returns the time until the earliest of fireAt and hardDeadline
+// for a single accumulating batch. The result is non-positive when a timer has
+// already elapsed, meaning the batch is due now.
+func nextWakeForBatch(batch *v1beta2.ActiveBatch, now time.Time) time.Duration {
+	var earliest time.Duration
+	var set bool
+	if batch.FireAt != nil {
+		earliest, set = batch.FireAt.Sub(now), true
+	}
+	if !batch.HardDeadline.IsZero() {
+		if d := batch.HardDeadline.Sub(now); !set || d < earliest {
+			earliest = d
+		}
+	}
+	return earliest
+}
+
 // NextBatchWakeDuration returns the time until the next accumulating batch should be checked.
 func NextBatchWakeDuration(batches []v1beta2.ActiveBatch) time.Duration {
 	now := time.Now()
@@ -338,10 +370,10 @@ func NextBatchWakeDuration(batches []v1beta2.ActiveBatch) time.Duration {
 	}
 	for i := range batches {
 		batch := &batches[i]
-		if batch.Phase != v1beta2.BatchPhaseAccumulating || batch.FireAt == nil {
+		if batch.Phase != v1beta2.BatchPhaseAccumulating || len(batch.Accumulated) == 0 {
 			continue
 		}
-		wait := batch.FireAt.Sub(now)
+		wait := nextWakeForBatch(batch, now)
 		if wait <= 0 {
 			return 0
 		}
