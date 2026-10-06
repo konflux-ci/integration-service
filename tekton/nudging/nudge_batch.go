@@ -33,7 +33,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-// RecordBuildForBatchedNudge appends a successful source build to the target's active batch window.
+// RecordBuildForBatchedNudge records a successful source build against the target's open batch
+// window (ADR-0072). When no batch exists yet, it creates one with fireAt=now+debounce and
+// hardDeadline=now+maxWait. When a batch is already Accumulating (or Blocked and this build clears
+// failures), it appends to accumulated or replaces the entry for the same source component,
+// resets fireAt to now+debounce without moving hardDeadline or createdAt, and leaves batchId unchanged.
 func RecordBuildForBatchedNudge(
 	ctx context.Context,
 	c client.Client,
@@ -73,24 +77,7 @@ func RecordBuildForBatchedNudge(
 			batch = &latest.Status.ActiveBatches[batchIdx]
 		}
 
-		replaced := false
-		for i, entry := range batch.Accumulated {
-			if entry.From == buildResult.SourceComponentName {
-				batch.Accumulated[i].ImageDigest = buildResult.Digest
-				batch.Accumulated[i].BuildPipelineRun = buildPLR.Name
-				batch.Accumulated[i].CapturedAt = now
-				replaced = true
-				break
-			}
-		}
-		if !replaced {
-			batch.Accumulated = append(batch.Accumulated, v1beta2.AccumulatedEntry{
-				From:             buildResult.SourceComponentName,
-				ImageDigest:      buildResult.Digest,
-				BuildPipelineRun: buildPLR.Name,
-				CapturedAt:       now,
-			})
-		}
+		recordAccumulatedBuild(batch, buildPLR, buildResult, now)
 		removeFailedEntriesForSource(batch, buildResult.SourceComponentName)
 		if len(batch.Failed) == 0 && batch.Phase == v1beta2.BatchPhaseBlocked {
 			batch.Phase = v1beta2.BatchPhaseAccumulating
@@ -378,19 +365,18 @@ func findForceFireBatch(batches []v1beta2.ActiveBatch, target string) (int, *v1b
 	return -1, nil
 }
 
+// fireBatch creates (or idempotently observes) the aggregated Renovate PipelineRun for an open batch.
+// It uses nudge data captured in status.accumulated at record time so firing still works after build
+// PipelineRuns are pruned. When batch.nudgePipelineRun is already set, or a PLR with the planned
+// name exists, the batch transitions to Completed without creating a duplicate.
 func fireBatch(ctx context.Context, c client.Client, nudgeConfig *v1beta2.NudgeConfig, batch *v1beta2.ActiveBatch) error {
 	if len(batch.Accumulated) == 0 {
 		return fmt.Errorf("cannot fire empty batch %q", batch.BatchID)
 	}
 
-	plannedName := batch.NudgePipelineRun
-	if plannedName == "" {
-		nameAnchorEntry := batch.Accumulated[len(batch.Accumulated)-1]
-		nameAnchorPLR := &tektonv1.PipelineRun{}
-		if err := c.Get(ctx, types.NamespacedName{Name: nameAnchorEntry.BuildPipelineRun, Namespace: nudgeConfig.Namespace}, nameAnchorPLR); err != nil {
-			return fmt.Errorf("loading build PipelineRun %q: %w", nameAnchorEntry.BuildPipelineRun, err)
-		}
-		plannedName = NudgePipelineRunNameForBatchedTarget(nameAnchorPLR, batch.Target)
+	plannedName, err := plannedBatchedNudgePipelineRunName(ctx, c, nudgeConfig.Namespace, batch)
+	if err != nil {
+		return err
 	}
 	existingNudgePLR := &tektonv1.PipelineRun{}
 	getErr := c.Get(ctx, types.NamespacedName{Name: plannedName, Namespace: nudgeConfig.Namespace}, existingNudgePLR)
@@ -469,6 +455,85 @@ func batchFireCompletionMessage(accumulated []v1beta2.AccumulatedEntry, sourceCo
 	return fmt.Sprintf("fired with %d accumulated build(s) covering %d source component(s)", len(accumulated), sourceCount)
 }
 
+func recordAccumulatedBuild(batch *v1beta2.ActiveBatch, buildPLR *tektonv1.PipelineRun, buildResult *NudgeBuildResult, capturedAt metav1.Time) {
+	entry := accumulatedEntryFromBuild(buildPLR, buildResult, capturedAt)
+	for i, existing := range batch.Accumulated {
+		if existing.From == buildResult.SourceComponentName {
+			batch.Accumulated[i] = entry
+			return
+		}
+	}
+	batch.Accumulated = append(batch.Accumulated, entry)
+}
+
+func accumulatedEntryFromBuild(buildPLR *tektonv1.PipelineRun, buildResult *NudgeBuildResult, capturedAt metav1.Time) v1beta2.AccumulatedEntry {
+	return v1beta2.AccumulatedEntry{
+		From:                    buildResult.SourceComponentName,
+		ImageDigest:             buildResult.Digest,
+		BuildPipelineRun:        buildPLR.Name,
+		BuiltImageRepository:    buildResult.BuiltImageRepository,
+		BuiltImageTag:           buildResult.BuiltImageTag,
+		NudgeFileMatches:        buildResult.FileMatches,
+		GitRepoAtShaLink:        buildResult.GitRepoAtShaLink,
+		BuildPipelineRunUID:     string(buildPLR.UID),
+		BuildServiceAccountName: buildPLR.Spec.TaskRunTemplate.ServiceAccountName,
+		CapturedAt:              capturedAt,
+	}
+}
+
+func accumulatedEntryHasCapturedNudgeData(entry v1beta2.AccumulatedEntry) bool {
+	return entry.BuiltImageRepository != ""
+}
+
+func nudgeBuildResultFromAccumulatedEntry(entry v1beta2.AccumulatedEntry) *NudgeBuildResult {
+	fileMatches := entry.NudgeFileMatches
+	if fileMatches == "" {
+		fileMatches = tektonconsts.DefaultNudgeFiles
+	}
+	return &NudgeBuildResult{
+		BuiltImageRepository: entry.BuiltImageRepository,
+		BuiltImageTag:        entry.BuiltImageTag,
+		Digest:               entry.ImageDigest,
+		FileMatches:          fileMatches,
+		SourceComponentName:  entry.From,
+		GitRepoAtShaLink:     entry.GitRepoAtShaLink,
+	}
+}
+
+func pipelineRunAnchorFromAccumulatedEntry(entry v1beta2.AccumulatedEntry, namespace string) *tektonv1.PipelineRun {
+	saName := entry.BuildServiceAccountName
+	if saName == "" {
+		saName = tektonconsts.DefaultPipelineServiceAccount
+	}
+	return &tektonv1.PipelineRun{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      entry.BuildPipelineRun,
+			Namespace: namespace,
+			UID:       types.UID(entry.BuildPipelineRunUID),
+		},
+		Spec: tektonv1.PipelineRunSpec{
+			TaskRunTemplate: tektonv1.PipelineTaskRunTemplate{
+				ServiceAccountName: saName,
+			},
+		},
+	}
+}
+
+func plannedBatchedNudgePipelineRunName(ctx context.Context, c client.Client, namespace string, batch *v1beta2.ActiveBatch) (string, error) {
+	if batch.NudgePipelineRun != "" {
+		return batch.NudgePipelineRun, nil
+	}
+	nameAnchorEntry := batch.Accumulated[len(batch.Accumulated)-1]
+	if nameAnchorEntry.BuildPipelineRunUID != "" {
+		return NudgePipelineRunNameForBatchedTargetUID(types.UID(nameAnchorEntry.BuildPipelineRunUID), batch.Target), nil
+	}
+	nameAnchorPLR := &tektonv1.PipelineRun{}
+	if err := c.Get(ctx, types.NamespacedName{Name: nameAnchorEntry.BuildPipelineRun, Namespace: namespace}, nameAnchorPLR); err != nil {
+		return "", fmt.Errorf("loading build PipelineRun %q: %w", nameAnchorEntry.BuildPipelineRun, err)
+	}
+	return NudgePipelineRunNameForBatchedTarget(nameAnchorPLR, batch.Target), nil
+}
+
 func resolveBuildResultsForBatchedFire(
 	ctx context.Context,
 	c client.Client,
@@ -482,22 +547,29 @@ func resolveBuildResultsForBatchedFire(
 	simpleBranchName := false
 
 	for _, entry := range entries {
-		buildPLR := &tektonv1.PipelineRun{}
-		if err := c.Get(ctx, types.NamespacedName{Name: entry.BuildPipelineRun, Namespace: namespace}, buildPLR); err != nil {
-			return nil, nil, nil, false, fmt.Errorf("loading build PipelineRun %q: %w", entry.BuildPipelineRun, err)
-		}
-
 		sourceComponent := &applicationapiv1alpha1.Component{}
 		if err := c.Get(ctx, types.NamespacedName{Name: entry.From, Namespace: namespace}, sourceComponent); err != nil {
 			return nil, nil, nil, false, fmt.Errorf("loading source component %q: %w", entry.From, err)
 		}
 
-		buildResult, err := ExtractBuildResultForNudging(buildPLR, sourceComponent)
-		if err != nil {
-			return nil, nil, nil, false, err
-		}
-		if entry.ImageDigest != "" {
-			buildResult.Digest = entry.ImageDigest
+		var buildResult *NudgeBuildResult
+		var buildPLR *tektonv1.PipelineRun
+		if accumulatedEntryHasCapturedNudgeData(entry) {
+			buildResult = nudgeBuildResultFromAccumulatedEntry(entry)
+			buildPLR = pipelineRunAnchorFromAccumulatedEntry(entry, namespace)
+		} else {
+			buildPLR = &tektonv1.PipelineRun{}
+			if err := c.Get(ctx, types.NamespacedName{Name: entry.BuildPipelineRun, Namespace: namespace}, buildPLR); err != nil {
+				return nil, nil, nil, false, fmt.Errorf("loading build PipelineRun %q: %w", entry.BuildPipelineRun, err)
+			}
+			extracted, err := ExtractBuildResultForNudging(buildPLR, sourceComponent)
+			if err != nil {
+				return nil, nil, nil, false, err
+			}
+			if entry.ImageDigest != "" {
+				extracted.Digest = entry.ImageDigest
+			}
+			buildResult = extracted
 		}
 		buildResults = append(buildResults, buildResult)
 		anchorPLR = buildPLR

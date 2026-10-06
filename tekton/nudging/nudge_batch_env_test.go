@@ -75,8 +75,10 @@ var _ = Describe("Nudge batch client operations", func() {
 			},
 		}
 		buildResult = &NudgeBuildResult{
-			SourceComponentName: source,
-			Digest:              "sha256:abc",
+			SourceComponentName:  source,
+			Digest:               "sha256:abc",
+			BuiltImageRepository: "registry.example/ns/source",
+			BuiltImageTag:        "latest",
 		}
 	})
 
@@ -119,6 +121,8 @@ var _ = Describe("Nudge batch client operations", func() {
 			Expect(entry.From).To(Equal(source))
 			Expect(entry.ImageDigest).To(Equal(buildResult.Digest))
 			Expect(entry.BuildPipelineRun).To(Equal(buildPLR.Name))
+			Expect(entry.BuiltImageRepository).To(Equal(buildResult.BuiltImageRepository))
+			Expect(entry.BuildPipelineRunUID).To(Equal(string(buildPLR.UID)))
 			Expect(entry.CapturedAt.IsZero()).To(BeFalse())
 		})
 
@@ -130,6 +134,74 @@ var _ = Describe("Nudge batch client operations", func() {
 			updated := &v1beta2.NudgeConfig{}
 			Expect(c.Get(ctx, types.NamespacedName{Name: nudgeConfig.Name, Namespace: namespace}, updated)).To(Succeed())
 			Expect(updated.Status.ActiveBatches[0].Accumulated).To(HaveLen(1))
+		})
+
+		It("should append a second source build to the same accumulating batch", func() {
+			otherSource := "other-nudge-source"
+			otherPLR := &tektonv1.PipelineRun{
+				ObjectMeta: metav1.ObjectMeta{Name: "other-batch-build-plr", Namespace: namespace},
+			}
+			otherResult := &NudgeBuildResult{
+				SourceComponentName: otherSource,
+				Digest:              "sha256:def",
+			}
+
+			c := newClient(nudgeConfig, buildPLR, otherPLR)
+			Expect(RecordBuildForBatchedNudge(ctx, c, nudgeConfig, target, buildPLR, buildResult)).To(Succeed())
+			Expect(RecordBuildForBatchedNudge(ctx, c, nudgeConfig, target, otherPLR, otherResult)).To(Succeed())
+
+			updated := &v1beta2.NudgeConfig{}
+			Expect(c.Get(ctx, types.NamespacedName{Name: nudgeConfig.Name, Namespace: namespace}, updated)).To(Succeed())
+			Expect(updated.Status.ActiveBatches).To(HaveLen(1))
+			batch := updated.Status.ActiveBatches[0]
+			Expect(batch.Accumulated).To(HaveLen(2))
+			Expect(batch.Accumulated[0].From).To(Equal(source))
+			Expect(batch.Accumulated[1].From).To(Equal(otherSource))
+		})
+
+		It("should reset fireAt on each new build without changing hardDeadline or batch identity", func() {
+			debounce := metav1.Duration{Duration: 10 * time.Minute}
+			maxWait := metav1.Duration{Duration: 2 * time.Hour}
+			nudgeConfig.Spec.BatchDefaults = &v1beta2.BatchDefaults{
+				DebounceTimeout: &debounce,
+				MaxWaitTime:     &maxWait,
+			}
+
+			secondPLR := &tektonv1.PipelineRun{
+				ObjectMeta: metav1.ObjectMeta{Name: "debounce-reset-build-plr", Namespace: namespace},
+			}
+			secondResult := &NudgeBuildResult{
+				SourceComponentName: "second-source",
+				Digest:              "sha256:second",
+			}
+
+			c := newClient(nudgeConfig, buildPLR, secondPLR)
+			Expect(RecordBuildForBatchedNudge(ctx, c, nudgeConfig, target, buildPLR, buildResult)).To(Succeed())
+
+			afterFirst := &v1beta2.NudgeConfig{}
+			Expect(c.Get(ctx, types.NamespacedName{Name: nudgeConfig.Name, Namespace: namespace}, afterFirst)).To(Succeed())
+			firstBatch := afterFirst.Status.ActiveBatches[0]
+			firstFireAt := firstBatch.FireAt.Time
+			firstHardDeadline := firstBatch.HardDeadline.Time
+			batchID := firstBatch.BatchID
+			createdAt := firstBatch.CreatedAt.Time
+
+			// metav1.Now() is second-granular; wait so the second fireAt can move.
+			time.Sleep(1100 * time.Millisecond)
+
+			Expect(RecordBuildForBatchedNudge(ctx, c, nudgeConfig, target, secondPLR, secondResult)).To(Succeed())
+
+			updated := &v1beta2.NudgeConfig{}
+			Expect(c.Get(ctx, types.NamespacedName{Name: nudgeConfig.Name, Namespace: namespace}, updated)).To(Succeed())
+			batch := updated.Status.ActiveBatches[0]
+			Expect(batch.BatchID).To(Equal(batchID))
+			Expect(batch.CreatedAt.Time).To(Equal(createdAt))
+			Expect(batch.HardDeadline.Time).To(Equal(firstHardDeadline))
+			Expect(batch.FireAt.Time).To(BeTemporally(">", firstFireAt))
+
+			wakeAfterSecond := NextBatchWakeDuration(updated.Status.ActiveBatches)
+			Expect(wakeAfterSecond).To(BeNumerically(">", 0))
+			Expect(wakeAfterSecond).To(BeNumerically("<=", debounce.Duration))
 		})
 
 		It("should replace the accumulated entry when the same source builds again on a different PipelineRun", func() {
@@ -626,6 +698,38 @@ var _ = Describe("Nudge batch client operations", func() {
 	})
 
 	Context("When firing a batch idempotently", func() {
+		It("should complete when build PipelineRuns were pruned after capture", func() {
+			buildUID := types.UID("pruned-after-capture-uid")
+			plrName := NudgePipelineRunNameForBatchedTargetUID(buildUID, target)
+			existingPLR := &tektonv1.PipelineRun{
+				ObjectMeta: metav1.ObjectMeta{Name: plrName, Namespace: namespace},
+			}
+			now := metav1.Now()
+			batch := &v1beta2.ActiveBatch{
+				Target:       target,
+				BatchID:      "pruned-build-plr-batch",
+				Phase:        v1beta2.BatchPhaseAccumulating,
+				CreatedAt:    now,
+				HardDeadline: metav1.NewTime(now.Add(time.Hour)),
+				Accumulated: []v1beta2.AccumulatedEntry{
+					{
+						From:                 source,
+						ImageDigest:          "sha256:abc",
+						BuildPipelineRun:     "pruned-build-plr",
+						BuiltImageRepository: buildResult.BuiltImageRepository,
+						BuiltImageTag:        buildResult.BuiltImageTag,
+						BuildPipelineRunUID:  string(buildUID),
+						CapturedAt:           now,
+					},
+				},
+			}
+			c := newClient(nudgeConfig, existingPLR)
+
+			Expect(fireBatch(ctx, c, nudgeConfig, batch)).To(Succeed())
+			Expect(batch.Phase).To(Equal(v1beta2.BatchPhaseCompleted))
+			Expect(batch.NudgePipelineRun).To(Equal(plrName))
+		})
+
 		It("should complete without creating a duplicate when the nudge PipelineRun already exists", func() {
 			buildPLR.UID = types.UID("batch-idempotency-uid")
 			plrName := NudgePipelineRunNameForBatchedTarget(buildPLR, target)
