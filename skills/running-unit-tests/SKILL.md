@@ -73,5 +73,6 @@ Each resource type has a corresponding `*ContextKey` constant (34 keys available
 ## Coverage
 
 - Tool: codecov with flag `unit-tests`
-- Threshold: 3% drop allowed from base commit
+- Patch target: 85% (see [estimating-codecov-patch-coverage](../estimating-codecov-patch-coverage/SKILL.md) for the local estimate)
+- Project coverage remains informational
 - Ignores: `**/zz_generated*`, `e2e-tests/**`, vendor
