@@ -36,13 +36,13 @@ CI greps `config/` for RBAC wildcards (`*`) and fails if found. Never use wildca
 ### Code Generation Drift
 CI runs `make generate manifests` and diffs the result. Any uncommitted generated files = failure. Always commit generated output.
 
-### Cached Client Requires `list` and `watch` RBAC Verbs
-controller-runtime's default client is **cached**: every `client.Get()` or `client.List()` call is served from a local informer cache, not a direct API call. Informers need `list` and `watch` permissions to populate and maintain the cache. If your `+kubebuilder:rbac` marker only grants `get`, `create`, or `update`, the informer's reflector will fail to start and enter a continuous retry loop. Symptoms include:
+### Cached Client `list`/`watch` RBAC Requirement
+The default client provided by controller-runtime is **cached**: most `client.Get()` or `client.List()` calls are served from a local informer cache, not a direct API call. Resources listed in `Client.Cache.DisableFor` (currently `Secret` and `Component` — see `cmd/main.go`) bypass the cache and hit the API server directly; those do **not** need `list`/`watch` verbs. For all other resource types, informers need `list` and `watch` permissions to populate and maintain the cache. If your `+kubebuilder:rbac` marker only grants `get`, `create`, or `update`, the informer's reflector will fail to start and enter a continuous retry loop. Symptoms include:
 - Reflector retry-storm log lines (`failed to list *v1.ServiceAccount: ... is forbidden`)
 - Elevated API server request rates from the retrying reflector
 - Controller leader election loss under sustained reflector load
 
-**Rule:** For every resource type accessed via `client.Get()` or `client.List()`, the RBAC marker **must** include `list` and `watch` in addition to any other verbs the code uses. For example:
+**Rule:** For every cached resource type accessed via `client.Get()` or `client.List()` (i.e., not in `DisableFor`), the RBAC marker **must** include `list` and `watch` in addition to any other verbs the code uses. For example:
 
 ```go
 // Wrong — informer cannot populate the cache:
@@ -105,4 +105,4 @@ CI runs `go mod tidy` and checks for changes. If your `go.mod`/`go.sum` differ a
 | RBAC check fails | Used wildcard `*` in kubebuilder RBAC marker |
 | Coverage dropped | New code paths not covered by tests (check `cover.out`) |
 | Webhook rejects valid-looking ITS | Name contains uppercase, underscore, or is >63 chars |
-| Reflector retry storms or leader election loss | Missing `list;watch` verbs on RBAC marker for resource accessed via cached client `Get()` |
+| Missing `list`/`watch` verbs on cached-client RBAC marker | Informer reflector cannot populate cache — add `list` and `watch` to the marker for cached resources |
