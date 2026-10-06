@@ -36,6 +36,9 @@ CI greps `config/` for RBAC wildcards (`*`) and fails if found. Never use wildca
 ### Code Generation Drift
 CI runs `make generate manifests` and diffs the result. Any uncommitted generated files = failure. Always commit generated output.
 
+### Cached Client `list`/`watch` RBAC Requirement
+The controller-runtime cached client requires `list` and `watch` verbs on every resource type served from the informer cache — omitting them causes a reflector retry storm. Resources in `Client.Cache.DisableFor` (currently `Secret` and `konfluxv1alpha1.Component` — see `cmd/main.go`) bypass the cache and do not need these verbs; the old `appstudio.redhat.com` Component type is **not** in `DisableFor` and still uses the cache. CI will not catch this: envtest runs as cluster-admin and the RBAC check only looks for wildcards, so the bug surfaces only under real RBAC in a production cluster.
+
 ### `go mod tidy` Drift
 CI runs `go mod tidy` and checks for changes. If your `go.mod`/`go.sum` differ after tidy, CI fails.
 
@@ -85,3 +88,4 @@ CI runs `go mod tidy` and checks for changes. If your `go.mod`/`go.sum` differ a
 | RBAC check fails | Used wildcard `*` in kubebuilder RBAC marker |
 | Coverage dropped | New code paths not covered by tests (check `cover.out`) |
 | Webhook rejects valid-looking ITS | Name contains uppercase, underscore, or is >63 chars |
+| Missing `list`/`watch` verbs on cached-client RBAC marker | Informer reflector cannot populate cache — add `list` and `watch` to the marker for cached resources |
