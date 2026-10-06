@@ -40,7 +40,7 @@ Every PR must pass CI checks, follow commit conventions, include tests, and keep
 - [ ] No secrets, keys, or credentials committed
 - [ ] No RBAC wildcards in `config/` (CI checks this)
 - [ ] New resource types: add `+kubebuilder:rbac` markers
-- [ ] All cached resources accessed via `client.Get()` have `list` and `watch` verbs in RBAC markers — excludes `DisableFor` resources (see [ci-cd-quirks](../ci-cd-quirks/SKILL.md))
+- [ ] All cached resources accessed via `client.Get()` or `client.List()` have `list` and `watch` verbs in RBAC markers — excludes `DisableFor` resources (see [ci-cd-quirks](../ci-cd-quirks/SKILL.md))
 
 ### Documentation
 - [ ] PR description explains the "why", not just the "what"

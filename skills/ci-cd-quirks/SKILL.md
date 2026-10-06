@@ -37,24 +37,7 @@ CI greps `config/` for RBAC wildcards (`*`) and fails if found. Never use wildca
 CI runs `make generate manifests` and diffs the result. Any uncommitted generated files = failure. Always commit generated output.
 
 ### Cached Client `list`/`watch` RBAC Requirement
-The default client provided by controller-runtime is **cached**: most `client.Get()` or `client.List()` calls are served from a local informer cache, not a direct API call. Resources listed in `Client.Cache.DisableFor` (currently `Secret` and `konfluxv1alpha1.Component` — see `cmd/main.go`) bypass the cache and hit the API server directly; those do **not** need `list`/`watch` verbs. Note that the old `appstudio.redhat.com` Component type is **not** in `DisableFor` and still uses the cache. For all other resource types, informers need `list` and `watch` permissions to populate and maintain the cache. If your `+kubebuilder:rbac` marker only grants `get`, `create`, or `update`, the informer's reflector will fail to start and enter a continuous retry loop. Symptoms include:
-- Reflector retry-storm log lines (`failed to list *v1.ServiceAccount: ... is forbidden`)
-- Elevated API server request rates from the retrying reflector
-- Controller leader election loss under sustained reflector load
-
-**Rule:** For every cached resource type accessed via `client.Get()` or `client.List()` (i.e., not in `DisableFor`), the RBAC marker **must** include `list` and `watch` in addition to any other verbs the code uses. For example:
-
-```go
-// Wrong — informer cannot populate the cache:
-//+kubebuilder:rbac:groups="",resources=serviceaccounts,verbs=get;create;update
-
-// Correct — informer can list+watch to fill the cache:
-//+kubebuilder:rbac:groups="",resources=serviceaccounts,verbs=get;list;watch;create;update
-```
-
-After changing markers, run `make manifests` to regenerate the ClusterRole and commit the result.
-
-**Why doesn't CI catch this?** Unit tests use envtest, which runs as cluster-admin and bypasses RBAC. The CI RBAC check only looks for wildcards. This class of bug is invisible until the controller runs with real RBAC in a production cluster.
+The controller-runtime cached client requires `list` and `watch` verbs on every resource type served from the informer cache — omitting them causes a reflector retry storm. Resources in `Client.Cache.DisableFor` (currently `Secret` and `konfluxv1alpha1.Component` — see `cmd/main.go`) bypass the cache and do not need these verbs; the old `appstudio.redhat.com` Component type is **not** in `DisableFor` and still uses the cache. CI will not catch this: envtest runs as cluster-admin and the RBAC check only looks for wildcards, so the bug surfaces only under real RBAC in a production cluster.
 
 ### `go mod tidy` Drift
 CI runs `go mod tidy` and checks for changes. If your `go.mod`/`go.sum` differ after tidy, CI fails.
