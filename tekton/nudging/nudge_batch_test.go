@@ -137,4 +137,20 @@ var _ = Describe("nextBatchWakeDuration", func() {
 		Expect(wake).To(BeNumerically(">", 0))
 		Expect(wake).To(BeNumerically("<", 3*time.Minute))
 	})
+
+	It("should wake at hardDeadline when it is earlier than fireAt", func() {
+		now := time.Now()
+		laterFire := metav1.NewTime(now.Add(2 * time.Hour))
+		soonDeadline := metav1.NewTime(now.Add(10 * time.Minute))
+		batches := []v1beta2.ActiveBatch{
+			{
+				Phase:        v1beta2.BatchPhaseAccumulating,
+				FireAt:       &laterFire,
+				HardDeadline: soonDeadline,
+			},
+		}
+		wake := nudging.NextBatchWakeDuration(batches)
+		Expect(wake).To(BeNumerically(">", 0))
+		Expect(wake).To(BeNumerically("<", 15*time.Minute))
+	})
 })

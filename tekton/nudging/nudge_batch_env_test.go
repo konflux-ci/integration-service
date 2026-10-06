@@ -583,6 +583,40 @@ var _ = Describe("Nudge batch client operations", func() {
 			Expect(updated.Status.ActiveBatches[0].Phase).To(Equal(v1beta2.BatchPhaseFailed))
 			Expect(updated.Status.ActiveBatches[0].Message).NotTo(BeEmpty())
 		})
+
+		It("should fire a batch when hardDeadline has elapsed even if fireAt is in the future", func() {
+			now := metav1.Now()
+			futureFire := metav1.NewTime(now.Add(time.Hour))
+			pastDeadline := metav1.NewTime(now.Add(-time.Minute))
+			buildPLR.UID = types.UID("hard-deadline-uid")
+			plrName := NudgePipelineRunNameForBatchedTarget(buildPLR, target)
+			existingPLR := &tektonv1.PipelineRun{
+				ObjectMeta: metav1.ObjectMeta{Name: plrName, Namespace: namespace},
+			}
+			nudgeConfig.Status.ActiveBatches = []v1beta2.ActiveBatch{
+				{
+					Target:       target,
+					BatchID:      "hard-deadline-due",
+					Phase:        v1beta2.BatchPhaseAccumulating,
+					CreatedAt:    now,
+					FireAt:       &futureFire,
+					HardDeadline: pastDeadline,
+					Accumulated: []v1beta2.AccumulatedEntry{
+						{From: source, ImageDigest: "sha256:abc", BuildPipelineRun: buildPLR.Name, CapturedAt: now},
+					},
+				},
+			}
+			c := newClient(nudgeConfig, buildPLR, existingPLR)
+
+			wake, err := ProcessDueNudgeBatches(ctx, c, nudgeConfig)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(wake).To(BeZero())
+
+			updated := &v1beta2.NudgeConfig{}
+			Expect(c.Get(ctx, types.NamespacedName{Name: nudgeConfig.Name, Namespace: namespace}, updated)).To(Succeed())
+			Expect(updated.Status.ActiveBatches[0].Phase).To(Equal(v1beta2.BatchPhaseCompleted))
+			Expect(updated.Status.ActiveBatches[0].NudgePipelineRun).To(Equal(plrName))
+		})
 	})
 
 	Context("When resolving accumulated entries for batch fire", func() {

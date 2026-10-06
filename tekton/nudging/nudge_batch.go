@@ -261,11 +261,8 @@ func ProcessDueNudgeBatches(ctx context.Context, c client.Client, nudgeConfig *v
 				continue
 			}
 			if !BatchShouldFire(batch, now) {
-				if batch.FireAt != nil {
-					wait := batch.FireAt.Sub(now)
-					if wait > 0 && (nextWake == 0 || wait < nextWake) {
-						nextWake = wait
-					}
+				if wait := nextWakeForBatch(batch, now); wait > 0 && (nextWake == 0 || wait < nextWake) {
+					nextWake = wait
 				}
 				continue
 			}
@@ -522,6 +519,22 @@ func newBatchID(targetName string, createdAt metav1.Time) string {
 	return fmt.Sprintf("%s_%d", targetName, createdAt.Unix())
 }
 
+// nextWakeForBatch returns the time until the earliest of fireAt and hardDeadline
+// for a single accumulating batch. Returns 0 if either timer has already elapsed
+// (meaning the batch is due now).
+func nextWakeForBatch(batch *v1beta2.ActiveBatch, now time.Time) time.Duration {
+	var min time.Duration
+	if batch.FireAt != nil {
+		min = batch.FireAt.Sub(now)
+	}
+	if !batch.HardDeadline.IsZero() {
+		if d := batch.HardDeadline.Sub(now); min == 0 || d < min {
+			min = d
+		}
+	}
+	return min
+}
+
 // NextBatchWakeDuration returns the time until the next accumulating batch should be checked.
 func NextBatchWakeDuration(batches []v1beta2.ActiveBatch) time.Duration {
 	now := time.Now()
@@ -533,10 +546,10 @@ func NextBatchWakeDuration(batches []v1beta2.ActiveBatch) time.Duration {
 	}
 	for i := range batches {
 		batch := &batches[i]
-		if batch.Phase != v1beta2.BatchPhaseAccumulating || batch.FireAt == nil {
+		if batch.Phase != v1beta2.BatchPhaseAccumulating {
 			continue
 		}
-		wait := batch.FireAt.Sub(now)
+		wait := nextWakeForBatch(batch, now)
 		if wait <= 0 {
 			return 0
 		}
