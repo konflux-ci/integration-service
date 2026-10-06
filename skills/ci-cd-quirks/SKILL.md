@@ -72,7 +72,7 @@ CI runs `go mod tidy` and checks for changes. If your `go.mod`/`go.sum` differ a
 ## Coverage
 
 - Tool: codecov, flag: `unit-tests`
-- Threshold: 3% drop from base commit allowed
+- Patch target: 85% for changed coverable lines
 - Ignores: `**/zz_generated*`, `e2e-tests/**`, vendor
 - Patch coverage: informational only (non-blocking)
 
