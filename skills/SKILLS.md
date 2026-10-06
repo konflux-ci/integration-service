@@ -7,6 +7,7 @@ Repository-specific AI skills for the integration-service Kubernetes operator. T
 | Skill | Description |
 |-------|-------------|
 | [running-unit-tests](running-unit-tests/SKILL.md) | How to run, write, and troubleshoot unit tests (envtest, Ginkgo, mock loader, coverage) |
+| [estimating-codecov-patch-coverage](estimating-codecov-patch-coverage/SKILL.md) | Estimate 85% Codecov patch coverage locally before opening or updating a pull request |
 | [running-e2e-tests](running-e2e-tests/SKILL.md) | How to build, configure, and run e2e tests against a real cluster (Kind or OpenShift) |
 | [pr-definition-of-done](pr-definition-of-done/SKILL.md) | Checklist for PR readiness: commits, code generation, tests, CI checks, documentation |
 | [debugging-running-instance](debugging-running-instance/SKILL.md) | How to debug the service on a cluster: logs, probes, metrics, webhooks, env vars |
