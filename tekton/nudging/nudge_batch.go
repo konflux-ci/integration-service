@@ -33,7 +33,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-// RecordBuildForBatchedNudge appends a successful source build to the target's active batch window.
+// RecordBuildForBatchedNudge records a successful source build against the target's open batch
+// window (ADR-0072). When no batch exists yet, it creates one with fireAt=now+debounce and
+// hardDeadline=now+maxWait. When a batch is already Accumulating (or Blocked and this build clears
+// failures), it appends to accumulated or replaces the entry for the same source component,
+// resets fireAt to now+debounce without moving hardDeadline or createdAt, and leaves batchId unchanged.
 func RecordBuildForBatchedNudge(
 	ctx context.Context,
 	c client.Client,
