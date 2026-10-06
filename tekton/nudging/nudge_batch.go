@@ -36,7 +36,11 @@ import (
 
 const maxBatchNudgePLRRetries = 3
 
-// RecordBuildForBatchedNudge records a successful source build into the active batch for targetName.
+// RecordBuildForBatchedNudge records a successful source build against the target's open batch
+// window (ADR-0072). When no batch exists yet, it creates one with fireAt=now+debounce and
+// hardDeadline=now+maxWait. When a batch is already Accumulating (or Blocked and this build clears
+// failures), it appends to accumulated or replaces the entry for the same source component,
+// resets fireAt to now+debounce without moving hardDeadline or createdAt, and leaves batchId unchanged.
 func RecordBuildForBatchedNudge(
 	ctx context.Context,
 	c client.Client,
@@ -48,7 +52,7 @@ func RecordBuildForBatchedNudge(
 	if buildResult == nil {
 		return fmt.Errorf("build result is required for batched nudge target %q", targetName)
 	}
-	return recordSuccessForBatchedNudge(ctx, c, nudgeConfig, targetName, buildResult.SourceComponentName, buildPLR.Name, buildResult.Digest)
+	return recordBuildPLRForBatchedNudge(ctx, c, nudgeConfig, targetName, buildPLR, buildResult)
 }
 
 // RecordFailedBuildForBatchedNudge records a failed source build for a batched nudge target.
@@ -387,7 +391,7 @@ func findOrCreateAcceptingBatch(batches []v1beta2.ActiveBatch, target string, no
 		}
 	}
 
-	batchID := fmt.Sprintf("%s-%d", target, now.Unix())
+	batchID := newBatchID(target, now)
 	newBatch := v1beta2.ActiveBatch{
 		Target:       target,
 		BatchID:      batchID,
@@ -478,6 +482,60 @@ func failedComponentNames(batch *v1beta2.ActiveBatch) []string {
 		names = append(names, entry.From)
 	}
 	return names
+}
+
+// newBatchID returns batchId as <target>_<createdAt-epoch> per ADR-0072.
+func newBatchID(targetName string, createdAt metav1.Time) string {
+	return fmt.Sprintf("%s_%d", targetName, createdAt.Unix())
+}
+
+func accumulatedEntryFromBuild(buildPLR *tektonv1.PipelineRun, buildResult *NudgeBuildResult, capturedAt metav1.Time) v1beta2.AccumulatedEntry {
+	return v1beta2.AccumulatedEntry{
+		From:                    buildResult.SourceComponentName,
+		ImageDigest:             buildResult.Digest,
+		BuildPipelineRun:        buildPLR.Name,
+		BuiltImageRepository:    buildResult.BuiltImageRepository,
+		BuiltImageTag:           buildResult.BuiltImageTag,
+		NudgeFileMatches:        buildResult.FileMatches,
+		GitRepoAtShaLink:        buildResult.GitRepoAtShaLink,
+		BuildPipelineRunUID:     string(buildPLR.UID),
+		BuildServiceAccountName: buildPLR.Spec.TaskRunTemplate.ServiceAccountName,
+		CapturedAt:              capturedAt,
+	}
+}
+
+func recordBuildPLRForBatchedNudge(
+	ctx context.Context,
+	c client.Client,
+	nudgeConfig *v1beta2.NudgeConfig,
+	targetName string,
+	buildPLR *tektonv1.PipelineRun,
+	buildResult *NudgeBuildResult,
+) error {
+	return retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+		latest := &v1beta2.NudgeConfig{}
+		if err := c.Get(ctx, types.NamespacedName{Name: nudgeConfig.Name, Namespace: nudgeConfig.Namespace}, latest); err != nil {
+			return err
+		}
+		original := latest.DeepCopy()
+
+		now := metav1.Now()
+		debounce, maxWait, _ := latest.Spec.EffectiveBatchPolicy(targetName)
+		batchIdx, _, batches := findOrCreateAcceptingBatch(latest.Status.ActiveBatches, targetName, now, maxWait)
+		latest.Status.ActiveBatches = batches
+		batch := &latest.Status.ActiveBatches[batchIdx]
+
+		upsertAccumulatedEntry(batch, accumulatedEntryFromBuild(buildPLR, buildResult, now))
+		removeFailedComponent(batch, buildResult.SourceComponentName)
+
+		if batch.Phase == v1beta2.BatchPhaseBlocked && len(batch.Failed) == 0 {
+			batch.Phase = v1beta2.BatchPhaseAccumulating
+		}
+		scheduleBatchFire(batch, now, debounce)
+
+		latest.Status.ActiveBatches[batchIdx] = *batch
+		return c.Status().Patch(ctx, latest, client.MergeFromWithOptions(original, client.MergeFromWithOptimisticLock{}))
+	})
 }
 
 func recordSuccessForBatchedNudge(
