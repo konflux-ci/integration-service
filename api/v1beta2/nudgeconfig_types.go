@@ -393,6 +393,32 @@ type AccumulatedEntry struct {
 	// +required
 	BuildPipelineRun string `json:"buildPipelineRun"`
 
+	// BuiltImageRepository is the OCI repository (without tag) from the build at capture time.
+	// Persisted so the batch can fire after the build PipelineRun is pruned.
+	// +optional
+	BuiltImageRepository string `json:"builtImageRepository,omitempty"`
+
+	// BuiltImageTag is the image tag from the build at capture time.
+	// +optional
+	BuiltImageTag string `json:"builtImageTag,omitempty"`
+
+	// NudgeFileMatches is the Renovate file-match pattern from the build at capture time.
+	// +optional
+	NudgeFileMatches string `json:"nudgeFileMatches,omitempty"`
+
+	// GitRepoAtShaLink is the source git commit link from the build at capture time.
+	// +optional
+	GitRepoAtShaLink string `json:"gitRepoAtShaLink,omitempty"`
+
+	// BuildPipelineRunUID is the Kubernetes UID of the build PipelineRun at capture time.
+	// Used for deterministic batched nudge PipelineRun naming when the build PLR is gone.
+	// +optional
+	BuildPipelineRunUID string `json:"buildPipelineRunUID,omitempty"`
+
+	// BuildServiceAccountName is the TaskRun service account from the build PipelineRun at capture time.
+	// +optional
+	BuildServiceAccountName string `json:"buildServiceAccountName,omitempty"`
+
 	// CapturedAt is the timestamp when this entry was added to the batch.
 	// +required
 	CapturedAt metav1.Time `json:"capturedAt"`
