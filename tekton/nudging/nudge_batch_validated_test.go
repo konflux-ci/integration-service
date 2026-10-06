@@ -17,6 +17,9 @@ limitations under the License.
 package nudging
 
 import (
+	"context"
+	"fmt"
+
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
 	"github.com/konflux-ci/integration-service/api/v1beta2"
 	tektonconsts "github.com/konflux-ci/integration-service/tekton/consts"
@@ -28,6 +31,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 )
 
 var _ = Describe("Validated batched nudge recording", func() {
@@ -73,6 +77,45 @@ var _ = Describe("Validated batched nudge recording", func() {
 		c := newClient(nudgeConfig)
 		err := RecordValidatedSnapshotForBatchedNudge(ctx, c, nudgeConfig, target, source, "snap-1", "")
 		Expect(err).To(MatchError(ContainSubstring("digest is required")))
+	})
+
+	It("builds a nudge result from persisted accumulation metadata", func() {
+		sourceComponent := &applicationapiv1alpha1.Component{
+			ObjectMeta: metav1.ObjectMeta{Name: source, Namespace: namespace},
+		}
+		entry := v1beta2.AccumulatedEntry{
+			From:                 source,
+			ImageDigest:          "sha256:persisted",
+			BuildPipelineRun:     "pruned-build-plr",
+			BuiltImageRepository: "quay.io/org/image",
+			BuiltImageTag:        "v3",
+			NudgeFileMatches:     "Containerfile",
+			GitRepoAtShaLink:     "https://github.com/org/repo/commit/abc",
+		}
+		c := newClient(nudgeConfig, sourceComponent)
+
+		result, err := buildResultForAccumulatedEntry(ctx, c, namespace, entry, sourceComponent, nil)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(result.BuiltImageRepository).To(Equal("quay.io/org/image"))
+		Expect(result.BuiltImageTag).To(Equal("v3"))
+		Expect(result.FileMatches).To(Equal("Containerfile"))
+		Expect(result.GitRepoAtShaLink).To(Equal("https://github.com/org/repo/commit/abc"))
+	})
+
+	It("defaults file matches when accumulation metadata omits them", func() {
+		sourceComponent := &applicationapiv1alpha1.Component{
+			ObjectMeta: metav1.ObjectMeta{Name: source, Namespace: namespace},
+		}
+		entry := v1beta2.AccumulatedEntry{
+			From:                 source,
+			ImageDigest:          "sha256:persisted",
+			BuiltImageRepository: "quay.io/org/image",
+		}
+		c := newClient(nudgeConfig, sourceComponent)
+
+		result, err := buildResultForAccumulatedEntry(ctx, c, namespace, entry, sourceComponent, nil)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(result.FileMatches).To(Equal(tektonconsts.DefaultNudgeFiles))
 	})
 
 	It("records a validated snapshot digest on the active batch", func() {
@@ -142,6 +185,32 @@ var _ = Describe("Validated batched nudge recording", func() {
 		Expect(result.GitRepoAtShaLink).To(Equal(referencePLR.Annotations[tektonconsts.GitRepoAtShaAnnotation]))
 	})
 
+	It("honours component nudge file annotations when synthesizing build results from digests", func() {
+		sourceComponent := &applicationapiv1alpha1.Component{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      source,
+				Namespace: namespace,
+				Annotations: map[string]string{
+					tektonconsts.NudgeFilesAnnotation: "Dockerfile.dev",
+				},
+			},
+			Spec: applicationapiv1alpha1.ComponentSpec{
+				ContainerImage: "quay.io/org/source:prod",
+			},
+		}
+		batchEntry := v1beta2.AccumulatedEntry{
+			From:             source,
+			ImageDigest:      "sha256:only-digest",
+			BuildPipelineRun: "missing-plr",
+		}
+		c := newClient(nudgeConfig, sourceComponent)
+
+		result, err := buildResultForAccumulatedEntry(ctx, c, namespace, batchEntry, sourceComponent, nil)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(result.FileMatches).To(Equal("Dockerfile.dev"))
+		Expect(result.BuiltImageTag).To(Equal("prod"))
+	})
+
 	It("loads build results from an existing build PipelineRun", func() {
 		sourceComponent := &applicationapiv1alpha1.Component{
 			ObjectMeta: metav1.ObjectMeta{Name: source, Namespace: namespace},
@@ -172,6 +241,28 @@ var _ = Describe("Validated batched nudge recording", func() {
 		Expect(result.Digest).To(Equal("sha256:status-override"))
 		Expect(result.BuiltImageRepository).To(Equal("quay.io/org/source"))
 		Expect(result.BuiltImageTag).To(Equal("v2"))
+	})
+
+	It("returns an error when the build PipelineRun cannot be loaded", func() {
+		sourceComponent := &applicationapiv1alpha1.Component{
+			ObjectMeta: metav1.ObjectMeta{Name: source, Namespace: namespace},
+		}
+		c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(nudgeConfig, sourceComponent).WithInterceptorFuncs(interceptor.Funcs{
+			Get: func(ctx context.Context, cl client.WithWatch, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+				if _, ok := obj.(*tektonv1.PipelineRun); ok && key.Name == "bad-build-plr" {
+					return fmt.Errorf("apiserver unavailable")
+				}
+				return cl.Get(ctx, key, obj, opts...)
+			},
+		}).Build()
+		batchEntry := v1beta2.AccumulatedEntry{
+			From:             source,
+			ImageDigest:      "sha256:status",
+			BuildPipelineRun: "bad-build-plr",
+		}
+
+		_, err := buildResultForAccumulatedEntry(ctx, c, namespace, batchEntry, sourceComponent, nil)
+		Expect(err).To(MatchError(ContainSubstring(`loading build PipelineRun "bad-build-plr"`)))
 	})
 
 	It("returns an error when a component has no container image for digest-only batching", func() {

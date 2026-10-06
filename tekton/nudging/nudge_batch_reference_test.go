@@ -57,8 +57,8 @@ var _ = Describe("referenceBuildPLRForBatch and buildBatchedRenovatePayload", fu
 		c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(buildPLR).Build()
 		batch := &v1beta2.ActiveBatch{
 			Accumulated: []v1beta2.AccumulatedEntry{
-				{BuildPipelineRun: "missing-plr", ServiceAccountName: "ignored-sa"},
-				{BuildPipelineRun: buildPLR.Name, ServiceAccountName: "ignored-sa"},
+				{BuildPipelineRun: "missing-plr", BuildServiceAccountName: "ignored-sa"},
+				{BuildPipelineRun: buildPLR.Name, BuildServiceAccountName: "ignored-sa"},
 			},
 		}
 
@@ -72,8 +72,8 @@ var _ = Describe("referenceBuildPLRForBatch and buildBatchedRenovatePayload", fu
 		c := fake.NewClientBuilder().WithScheme(scheme).Build()
 		batch := &v1beta2.ActiveBatch{
 			Accumulated: []v1beta2.AccumulatedEntry{
-				{BuildPipelineRun: "missing-a", ServiceAccountName: ""},
-				{BuildPipelineRun: "missing-b", ServiceAccountName: "custom-sa"},
+				{BuildPipelineRun: "missing-a", BuildServiceAccountName: ""},
+				{BuildPipelineRun: "missing-b", BuildServiceAccountName: "custom-sa"},
 			},
 		}
 

@@ -917,6 +917,23 @@ func createIfNotExists(ctx context.Context, c client.Client, obj client.Object) 
 	return nil
 }
 
+// NudgePipelineRunNameForBuild returns the default immediate-nudge Renovate PipelineRun name.
+func NudgePipelineRunNameForBuild(buildPLR *tektonv1.PipelineRun) string {
+	return fmt.Sprintf("renovate-pipeline-%s", deterministicSuffix(string(buildPLR.UID)))
+}
+
+// NudgePipelineRunNameForBatchedTarget returns a deterministic Renovate PipelineRun name for a batched
+// nudge to a single target, distinct from the immediate per-build name and from other batched targets.
+func NudgePipelineRunNameForBatchedTarget(buildPLR *tektonv1.PipelineRun, targetComponent string) string {
+	return NudgePipelineRunNameForBatchedTargetUID(buildPLR.UID, targetComponent)
+}
+
+// NudgePipelineRunNameForBatchedTargetUID is like NudgePipelineRunNameForBatchedTarget but uses a
+// captured build PipelineRun UID when the build object has already been pruned.
+func NudgePipelineRunNameForBatchedTargetUID(pipelineRunUID types.UID, targetComponent string) string {
+	return fmt.Sprintf("renovate-pipeline-%s", deterministicSuffix(string(pipelineRunUID)+":"+targetComponent))
+}
+
 // deterministicSuffix returns a short hex string derived from the input,
 // suitable for generating stable resource names from a build PLR UID.
 func deterministicSuffix(input string) string {

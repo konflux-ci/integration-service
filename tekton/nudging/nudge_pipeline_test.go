@@ -1280,4 +1280,20 @@ var _ = Describe("Nudge Pipeline", func() {
 			),
 		)
 	})
+
+	Describe("Nudge PipelineRun naming", func() {
+		It("derives stable names from build PipelineRun UIDs and batched targets", func() {
+			buildPLR := &tektonv1.PipelineRun{
+				ObjectMeta: metav1.ObjectMeta{UID: "build-uid-123"},
+			}
+			immediate := nudging.NudgePipelineRunNameForBuild(buildPLR)
+			batched := nudging.NudgePipelineRunNameForBatchedTarget(buildPLR, "downstream")
+			fromUID := nudging.NudgePipelineRunNameForBatchedTargetUID(buildPLR.UID, "downstream")
+
+			Expect(immediate).To(HavePrefix("renovate-pipeline-"))
+			Expect(batched).To(HavePrefix("renovate-pipeline-"))
+			Expect(fromUID).To(Equal(batched))
+			Expect(immediate).NotTo(Equal(batched))
+		})
+	})
 })
