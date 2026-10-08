@@ -61,3 +61,7 @@ The service supports two parallel resource flows: **ComponentGroup** (new model)
 - **Webhooks**: add to `internal/webhooks/<resource>/`
 - **Tests**: unit tests alongside code using Ginkgo + envtest; E2E tests are located in `e2e-tests/tests`
 
+### RBAC Markers
+
+Every `k8sClient.Get()`, `List()`, `Watch()`, `Create()`, `Update()`, `Patch()`, or `Delete()` call for a Kubernetes resource type requires a corresponding `+kubebuilder:rbac` marker on the controller that uses it. When adding code that accesses a new resource type (including CRDs like `repositories.pipelinesascode.tekton.dev`), add the marker to the controller's reconciler file and run `make manifests` to regenerate RBAC ClusterRole manifests. Missing markers cause runtime RBAC 403 errors that are not caught by unit tests (envtest grants full permissions).
+
