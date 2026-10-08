@@ -189,6 +189,10 @@ func MigrateSnapshotToReportStatus(s *applicationapiv1alpha1.Snapshot, testStatu
 	annotations[gitops.SnapshotStatusReportAnnotation], _ = srs.ToAnnotationString()
 }
 
+// StatusInterface is the internal contract for status reporting within
+// this module. It is not intended for external consumption; callers
+// outside the integration-service module should not implement or depend
+// on this interface.
 type StatusInterface interface {
 	GetReporter(*applicationapiv1alpha1.Snapshot) ReporterInterface
 	// Check if PR/MR is opened
