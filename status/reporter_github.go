@@ -690,20 +690,12 @@ func (r *GitHubReporter) Initialize(ctx context.Context, snapshot *applicationap
 	return statusCode, nil
 }
 
-// ResolvedOwner returns the repository owner resolved during Initialize.
-// Returns an empty string if Initialize has not been called yet or if
-// repository resolution failed inside Initialize. When Initialize
-// returns an error after successful resolution (e.g. authentication
-// failure), this method still returns the resolved owner.
+// ResolvedOwner returns the repository owner resolved during a successful Initialize call.
 func (r *GitHubReporter) ResolvedOwner() string {
 	return r.owner
 }
 
-// ResolvedRepo returns the repository name resolved during Initialize.
-// Returns an empty string if Initialize has not been called yet or if
-// repository resolution failed inside Initialize. When Initialize
-// returns an error after successful resolution (e.g. authentication
-// failure), this method still returns the resolved repo.
+// ResolvedRepo returns the repository name resolved during a successful Initialize call.
 func (r *GitHubReporter) ResolvedRepo() string {
 	return r.repo
 }
