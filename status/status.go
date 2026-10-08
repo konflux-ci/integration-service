@@ -194,7 +194,7 @@ type StatusInterface interface {
 	// Check if PR/MR is opened
 	IsPRMRInSnapshotOpened(context.Context, *applicationapiv1alpha1.Snapshot) (bool, int, error)
 	// Check if github PR is open
-	IsPRInSnapshotOpened(context.Context, ReporterInterface, *applicationapiv1alpha1.Snapshot) (bool, int, error)
+	IsPRInSnapshotOpened(context.Context, *applicationapiv1alpha1.Snapshot) (bool, int, error)
 	// Check if gitlab MR is open
 	IsMRInSnapshotOpened(context.Context, ReporterInterface, *applicationapiv1alpha1.Snapshot) (bool, int, error)
 	// find snapshot with opened PR or MR
@@ -476,13 +476,7 @@ func (s Status) IsPRMRInSnapshotOpened(ctx context.Context, snapshot *applicatio
 		if err != nil {
 			return false, statusCode, err
 		}
-		owner, repo, err := resolveSnapshotRepository(ctx, s.client, snapshot)
-		if err != nil {
-			log.FromContext(ctx).Error(err, "failed to resolve Snapshot repository",
-				"snapshot.NameSpace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
-			return false, 0, err
-		}
-		return s.isPRInSnapshotOpenedWithOwnerRepo(ctx, owner, repo, snapshot)
+		return s.isPRInSnapshotOpenedWithOwnerRepo(ctx, githubReporter.ResolvedOwner(), githubReporter.ResolvedRepo(), snapshot)
 	}
 
 	gitlabReporter := NewGitLabReporter(s.logger, s.client)
@@ -641,8 +635,8 @@ func resolveSnapshotRepository(ctx context.Context, k8sClient client.Client, sna
 	return "", "", helpers.NewUnrecoverableMetadataError(fmt.Sprintf("no Repository CR in namespace %q matches URL %q", snapshot.Namespace, repoURL))
 }
 
-// IsPRInSnapshotOpened check if the github pull request triggering snapshot is opened
-func (s Status) IsPRInSnapshotOpened(ctx context.Context, reporter ReporterInterface, snapshot *applicationapiv1alpha1.Snapshot) (bool, int, error) {
+// IsPRInSnapshotOpened checks if the github pull request triggering snapshot is opened
+func (s Status) IsPRInSnapshotOpened(ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot) (bool, int, error) {
 	log := log.FromContext(ctx)
 
 	owner, repo, err := resolveSnapshotRepository(ctx, s.client, snapshot)
@@ -655,9 +649,9 @@ func (s Status) IsPRInSnapshotOpened(ctx context.Context, reporter ReporterInter
 	return s.isPRInSnapshotOpenedWithOwnerRepo(ctx, owner, repo, snapshot)
 }
 
-// isPRInSnapshotOpenedWithOwnerRepo is the internal implementation that checks
-// whether the GitHub pull request for the given snapshot is open, using the
-// pre-resolved owner and repo to avoid redundant Repository CR lookups.
+// isPRInSnapshotOpenedWithOwnerRepo checks whether the GitHub pull request for
+// the given snapshot is open, using pre-resolved owner and repo strings to
+// avoid redundant Repository CR lookups.
 func (s Status) isPRInSnapshotOpenedWithOwnerRepo(ctx context.Context, owner, repo string, snapshot *applicationapiv1alpha1.Snapshot) (bool, int, error) {
 	var statusCode = 0
 	var unRecoverableError error

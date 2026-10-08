@@ -170,7 +170,7 @@ var _ = Describe("GitHub PR repository validation", func() {
 
 	It("rejects a Snapshot without a matching Repository despite its PAC labels", func() {
 		st := status.NewStatus(logr.Discard(), k8sClient)
-		opened, statusCode, err := st.IsPRInSnapshotOpened(context.Background(), nil, snapshot)
+		opened, statusCode, err := st.IsPRInSnapshotOpened(context.Background(), snapshot)
 
 		Expect(helpers.IsUnrecoverableMetadataError(err)).To(BeTrue())
 		Expect(opened).To(BeFalse())
@@ -182,7 +182,7 @@ var _ = Describe("GitHub PR repository validation", func() {
 		Expect(k8sClient.Create(context.Background(), repo)).To(Succeed())
 
 		st := status.NewStatus(logr.Discard(), k8sClient)
-		opened, statusCode, err := st.IsPRInSnapshotOpened(context.Background(), nil, snapshot)
+		opened, statusCode, err := st.IsPRInSnapshotOpened(context.Background(), snapshot)
 
 		Expect(helpers.IsUnrecoverableMetadataError(err)).To(BeTrue())
 		Expect(opened).To(BeFalse())
@@ -193,7 +193,7 @@ var _ = Describe("GitHub PR repository validation", func() {
 		Expect(k8sClient.Create(context.Background(), repo)).To(Succeed())
 
 		st := status.NewStatus(logr.Discard(), k8sClient)
-		opened, statusCode, err := st.IsPRInSnapshotOpened(context.Background(), nil, snapshot)
+		opened, statusCode, err := st.IsPRInSnapshotOpened(context.Background(), snapshot)
 
 		Expect(errors.IsNotFound(err)).To(BeTrue())
 		Expect(opened).To(BeFalse())
@@ -212,12 +212,42 @@ var _ = Describe("GitHub PR repository validation", func() {
 		Expect(k8sClient.Create(context.Background(), secret)).To(Succeed())
 
 		st := status.NewStatus(logr.Discard(), k8sClient)
-		opened, statusCode, err := st.IsPRInSnapshotOpened(context.Background(), nil, snapshot)
+		opened, statusCode, err := st.IsPRInSnapshotOpened(context.Background(), snapshot)
 
 		Expect(err).To(HaveOccurred())
 		Expect(errors.IsNotFound(err)).To(BeFalse())
 		Expect(opened).To(BeFalse())
 		Expect(statusCode).To(BeZero())
+	})
+
+	It("caches resolved owner and repo during Initialize for reuse", func() {
+		Expect(k8sClient.Create(context.Background(), repo)).To(Succeed())
+
+		snapshot.Labels[gitops.PipelineAsCodeSHALabel] = "abc123"
+		snapshot.Labels[gitops.PipelineAsCodeGitProviderLabel] = "github"
+
+		reporter := status.NewGitHubReporter(logr.Discard(), k8sClient)
+		Expect(reporter.Detect(snapshot)).To(BeTrue())
+
+		// Before Initialize, resolved values must be empty
+		Expect(reporter.ResolvedOwner()).To(BeEmpty())
+		Expect(reporter.ResolvedRepo()).To(BeEmpty())
+
+		// Initialize resolves the Repository CR and caches owner/repo.
+		// Auth will fail (no valid credentials), but the cache is populated
+		// before authentication is attempted.
+		_, _ = reporter.Initialize(context.Background(), snapshot)
+
+		Expect(reporter.ResolvedOwner()).To(Equal("example-owner"))
+		Expect(reporter.ResolvedRepo()).To(Equal("example-repo"))
+
+		// After deleting the Repository CR, the cached values remain available,
+		// proving that IsPRMRInSnapshotOpened can reuse them without a second
+		// resolveSnapshotRepository call.
+		Expect(k8sClient.Delete(context.Background(), repo)).To(Succeed())
+
+		Expect(reporter.ResolvedOwner()).To(Equal("example-owner"))
+		Expect(reporter.ResolvedRepo()).To(Equal("example-repo"))
 	})
 
 })
