@@ -34,7 +34,7 @@ Every PR must pass CI checks, follow commit conventions, include tests, and keep
 - [ ] Unit tests alongside code changes (Ginkgo + envtest)
 - [ ] Cover: happy path, error conditions, edge cases, idempotency
 - [ ] `make test` passes locally
-- [ ] Coverage does not decrease (codecov allows 3% drop threshold)
+- [ ] Changed coverable lines meet the 85% patch-coverage target (run [estimating-codecov-patch-coverage](../estimating-codecov-patch-coverage/SKILL.md))
 
 ### Security & RBAC
 - [ ] No secrets, keys, or credentials committed
@@ -59,7 +59,7 @@ Every PR must pass CI checks, follow commit conventions, include tests, and keep
 | Go linters | `pr.yaml` | gosec, golangci-lint, staticcheck failures |
 | CodeQL | `codeql.yml` | Security vulnerabilities |
 | PR size | `size.yaml` | Oversized PRs (informational) |
-| Coverage | `codecov.yml` | >3% coverage drop from base |
+| Coverage | `codecov.yml` | Patch coverage below 85% |
 | Tekton build | `.tekton/` | Image build failure, security scans |
 
 ## Common Mistakes

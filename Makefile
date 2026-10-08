@@ -54,6 +54,11 @@ IMG ?= $(IMAGE_TAG_BASE):$(TAG_NAME)
 # ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to be downloaded by envtest binary.
 ENVTEST_K8S_VERSION = 1.29
 
+# Defaults for the local Codecov patch-coverage estimate. Override these when a
+# pull request targets another branch or the policy target changes.
+CODECOV_BASE ?= origin/main
+CODECOV_TARGET ?= 85
+
 # container engine to use.  Defaults to docker
 CONT_ENGINE ?= docker
 
@@ -119,6 +124,14 @@ download-crds: ## Vendoring doesn't fetch CRDs yaml files due pruning of depende
 .PHONY: test
 test: manifests generate fmt vet envtest download-crds ## Run tests.
 	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) -p path)" go test ./... -coverprofile cover.out
+
+.PHONY: codecov-estimate
+codecov-estimate: ## Estimate Codecov patch coverage for changed Go code.
+	@echo "==> Running tests and creating cover.out"
+	@$(MAKE) test
+	@echo
+	@echo "==> Estimating Codecov patch coverage against $(CODECOV_TARGET)%"
+	@python3 hack/check_patch_coverage.py --base $(CODECOV_BASE) --threshold $(CODECOV_TARGET) --fail-under $(CODECOV_TARGET)
 
 ##@ E2E Tests
 
