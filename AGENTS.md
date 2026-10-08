@@ -60,4 +60,5 @@ The service supports two parallel resource flows: **ComponentGroup** (new model)
 - **Controller changes**: implement in `internal/controller/<resource>/<resource>_adapter.go`
 - **Webhooks**: add to `internal/webhooks/<resource>/`
 - **Tests**: unit tests alongside code using Ginkgo + envtest; E2E tests are located in `e2e-tests/tests`
+- **Go version**: when updating the `go` directive in `go.mod`, also update the `golang:` container image tag in `integration-tests/tasks/konflux-e2e-tests/0.1/konflux-e2e-tests.yaml` to match the new major.minor version. Mismatches cause `GOTOOLCHAIN=local` build failures in e2e tests.
 
