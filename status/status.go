@@ -200,7 +200,7 @@ type StatusInterface interface {
 	// Check if github PR is open
 	IsPRInSnapshotOpened(context.Context, *applicationapiv1alpha1.Snapshot) (bool, int, error)
 	// Check if gitlab MR is open
-	IsMRInSnapshotOpened(context.Context, ReporterInterface, *applicationapiv1alpha1.Snapshot) (bool, int, error)
+	IsMRInSnapshotOpened(context.Context, *applicationapiv1alpha1.Snapshot) (bool, int, error)
 	// find snapshot with opened PR or MR
 	FindSnapshotWithOpenedPR(context.Context, *[]applicationapiv1alpha1.Snapshot, *applicationapiv1alpha1.Snapshot) (*applicationapiv1alpha1.Snapshot, int, error)
 }
@@ -489,7 +489,7 @@ func (s Status) IsPRMRInSnapshotOpened(ctx context.Context, snapshot *applicatio
 		if err != nil {
 			return false, statusCode, err
 		}
-		return s.IsMRInSnapshotOpened(ctx, gitlabReporter, snapshot)
+		return s.IsMRInSnapshotOpened(ctx, snapshot)
 	}
 
 	forgejoReporter := NewForgejoReporter(s.logger, s.client)
@@ -504,8 +504,8 @@ func (s Status) IsPRMRInSnapshotOpened(ctx context.Context, snapshot *applicatio
 	return false, 0, fmt.Errorf("invalid git provider, valid git provider must be one of github, gitlab, forgejo and gitea")
 }
 
-// IsMRInSnapshotOpened check if the gitlab merge request triggering snapshot is opened
-func (s Status) IsMRInSnapshotOpened(ctx context.Context, reporter ReporterInterface, snapshot *applicationapiv1alpha1.Snapshot) (bool, int, error) {
+// IsMRInSnapshotOpened checks if the gitlab merge request triggering snapshot is opened
+func (s Status) IsMRInSnapshotOpened(ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot) (bool, int, error) {
 	var statusCode = 0
 	var unRecoverableError error
 	log := log.FromContext(ctx)
