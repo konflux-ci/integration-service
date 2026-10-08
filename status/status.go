@@ -485,6 +485,10 @@ func (s Status) IsPRMRInSnapshotOpened(ctx context.Context, snapshot *applicatio
 
 	gitlabReporter := NewGitLabReporter(s.logger, s.client)
 	if gitlabReporter.Detect(snapshot) {
+		// TODO: gitlabReporter is initialized for detection and side-effects,
+		// but IsMRInSnapshotOpened re-resolves credentials independently from
+		// snapshot annotations. Analogous deduplication to what was done for
+		// GitHub above could be applied here in a future change.
 		statusCode, err := gitlabReporter.Initialize(ctx, snapshot)
 		if err != nil {
 			return false, statusCode, err
