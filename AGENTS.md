@@ -60,4 +60,8 @@ The service supports two parallel resource flows: **ComponentGroup** (new model)
 - **Controller changes**: implement in `internal/controller/<resource>/<resource>_adapter.go`
 - **Webhooks**: add to `internal/webhooks/<resource>/`
 - **Tests**: unit tests alongside code using Ginkgo + envtest; E2E tests are located in `e2e-tests/tests`
+- **RBAC markers**: every `k8sClient.Get()`, `List()`, `Create()`, `Update()`, `Patch()`, or `Delete()` call — and any informer watch via `For()`, `Owns()`, or `Watches()` — requires a `+kubebuilder:rbac` marker on the controller's reconciler file; run `make manifests` to regenerate ClusterRole manifests
+  - Status subresource operations (`Status().Update()`, `Status().Patch()`) need a separate marker targeting `/status` (e.g., `resources=snapshots/status,verbs=get;update;patch`)
+  - Controllers that add or remove finalizers need a marker targeting `/finalizers` (e.g., `resources=snapshots/finalizers,verbs=update`)
+  - Missing markers cause runtime RBAC 403 errors not caught by unit tests (envtest grants full permissions)
 
