@@ -1120,7 +1120,7 @@ var _ = Describe("Status Adapter", func() {
 			Expect(newSRS.Scenarios).To(HaveLen(1))
 		})
 
-		It("returns unrecoverable error when Snapshot is missing repo URL annotation", func() {
+		It("Returns unrecoverable error when Snapshot is missing repo URL annotation", func() {
 			err := metadata.DeleteAnnotation(hasSnapshot, gitops.PipelineAsCodeRepoURLAnnotation)
 			Expect(err).ToNot(HaveOccurred())
 			githubReporter := status.NewGitHubReporter(logr.Discard(), mockK8sClient)
@@ -1130,7 +1130,7 @@ var _ = Describe("Status Adapter", func() {
 			Expect(statusCode).To(Equal(0))
 		})
 
-		It("returns unrecoverable error when no Repository CR matches Snapshot URL", func() {
+		It("Returns unrecoverable error when no Repository CR matches Snapshot URL", func() {
 			err := metadata.SetAnnotation(hasSnapshot, gitops.PipelineAsCodeRepoURLAnnotation, "https://github.com/no-match/no-match")
 			Expect(err).ToNot(HaveOccurred())
 			githubReporter := status.NewGitHubReporter(logr.Discard(), mockK8sClient)
@@ -1140,7 +1140,7 @@ var _ = Describe("Status Adapter", func() {
 			Expect(statusCode).To(Equal(0))
 		})
 
-		It("returns unrecoverable error when SHA label is missing", func() {
+		It("Returns unrecoverable error when SHA label is missing", func() {
 			// Set up a mock client with a Repository CR whose URL matches the Snapshot's annotation
 			snapshotRepoURL := hasSnapshot.GetAnnotations()[gitops.PipelineAsCodeRepoURLAnnotation]
 			matchingRepo := pacv1alpha1.Repository{
