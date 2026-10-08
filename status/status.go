@@ -476,7 +476,13 @@ func (s Status) IsPRMRInSnapshotOpened(ctx context.Context, snapshot *applicatio
 		if err != nil {
 			return false, statusCode, err
 		}
-		return s.IsPRInSnapshotOpened(ctx, githubReporter, snapshot)
+		owner, repo, err := resolveSnapshotRepository(ctx, s.client, snapshot)
+		if err != nil {
+			log.FromContext(ctx).Error(err, "failed to resolve Snapshot repository",
+				"snapshot.NameSpace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
+			return false, 0, err
+		}
+		return s.isPRInSnapshotOpenedWithOwnerRepo(ctx, owner, repo, snapshot)
 	}
 
 	gitlabReporter := NewGitLabReporter(s.logger, s.client)
@@ -637,26 +643,26 @@ func resolveSnapshotRepository(ctx context.Context, k8sClient client.Client, sna
 
 // IsPRInSnapshotOpened check if the github pull request triggering snapshot is opened
 func (s Status) IsPRInSnapshotOpened(ctx context.Context, reporter ReporterInterface, snapshot *applicationapiv1alpha1.Snapshot) (bool, int, error) {
+	log := log.FromContext(ctx)
+
+	owner, repo, err := resolveSnapshotRepository(ctx, s.client, snapshot)
+	if err != nil {
+		log.Error(err, "failed to resolve Snapshot repository",
+			"snapshot.NameSpace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
+		return false, 0, err
+	}
+
+	return s.isPRInSnapshotOpenedWithOwnerRepo(ctx, owner, repo, snapshot)
+}
+
+// isPRInSnapshotOpenedWithOwnerRepo is the internal implementation that checks
+// whether the GitHub pull request for the given snapshot is open, using the
+// pre-resolved owner and repo to avoid redundant Repository CR lookups.
+func (s Status) isPRInSnapshotOpenedWithOwnerRepo(ctx context.Context, owner, repo string, snapshot *applicationapiv1alpha1.Snapshot) (bool, int, error) {
 	var statusCode = 0
 	var unRecoverableError error
 	log := log.FromContext(ctx)
 	ghClient := github.NewClient(s.logger)
-
-	// Reuse pre-resolved owner/repo from the reporter when available,
-	// avoiding a redundant resolveSnapshotRepository call that lists
-	// all Repository CRs in the namespace.
-	var owner, repo string
-	var err error
-	if gh, ok := reporter.(*GitHubReporter); ok && gh.owner != "" && gh.repo != "" {
-		owner, repo = gh.owner, gh.repo
-	} else {
-		owner, repo, err = resolveSnapshotRepository(ctx, s.client, snapshot)
-		if err != nil {
-			log.Error(err, "failed to resolve Snapshot repository",
-				"snapshot.NameSpace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
-			return false, statusCode, err
-		}
-	}
 
 	githubAppCreds, err := GetAppCredentials(ctx, s.client, ghClient, owner, repo)
 

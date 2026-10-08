@@ -220,31 +220,6 @@ var _ = Describe("GitHub PR repository validation", func() {
 		Expect(statusCode).To(BeZero())
 	})
 
-	It("reuses pre-resolved owner/repo from an initialized reporter", func() {
-		// Add SHA label required by Initialize to proceed past repository resolution
-		snapshot.Labels[gitops.PipelineAsCodeSHALabel] = "abc123"
-		// Create the Repository CR so Initialize resolves owner/repo
-		Expect(k8sClient.Create(context.Background(), repo)).To(Succeed())
-
-		// Initialize the reporter — resolves and caches owner/repo,
-		// then fails at Authenticate (no PAC secret); that error is expected
-		reporter := status.NewGitHubReporter(logr.Discard(), k8sClient)
-		_, _ = reporter.Initialize(context.Background(), snapshot)
-
-		// Remove the Repository CR so resolveSnapshotRepository would fail
-		Expect(k8sClient.Delete(context.Background(), repo)).To(Succeed())
-
-		// Call IsPRInSnapshotOpened with the initialized reporter;
-		// it should skip resolution and reach the credential lookup
-		st := status.NewStatus(logr.Discard(), k8sClient)
-		opened, statusCode, err := st.IsPRInSnapshotOpened(context.Background(), reporter, snapshot)
-
-		// Reaches credential lookup (IsNotFound for PAC secret) instead
-		// of failing at repository resolution, proving cached values are used
-		Expect(errors.IsNotFound(err)).To(BeTrue())
-		Expect(opened).To(BeFalse())
-		Expect(statusCode).To(BeZero())
-	})
 })
 
 var _ = Describe("Status Adapter", func() {

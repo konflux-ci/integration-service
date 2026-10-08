@@ -506,8 +506,6 @@ type GitHubReporter struct {
 	k8sClient client.Client
 	client    github.ClientInterface
 	updater   StatusUpdater
-	owner     string
-	repo      string
 }
 
 // check if interface has been correctly implemented
@@ -660,9 +658,6 @@ func (r *GitHubReporter) Initialize(ctx context.Context, snapshot *applicationap
 			"snapshot.NameSpace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
 		return 0, err
 	}
-	r.owner = owner
-	r.repo = repo
-
 	labels := snapshot.GetLabels()
 
 	sha, found := labels[gitops.PipelineAsCodeSHALabel]
