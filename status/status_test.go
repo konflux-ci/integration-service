@@ -1120,30 +1120,49 @@ var _ = Describe("Status Adapter", func() {
 			Expect(newSRS.Scenarios).To(HaveLen(1))
 		})
 
-		It("can return unrecoverable error when label is not defined for githubReporter", func() {
-			metadataErr := metadata.DeleteLabel(hasSnapshot, gitops.PipelineAsCodeURLOrgLabel)
-			Expect(metadataErr).ToNot(HaveOccurred())
+		It("returns unrecoverable error when Snapshot is missing repo URL annotation", func() {
+			err := metadata.DeleteAnnotation(hasSnapshot, gitops.PipelineAsCodeRepoURLAnnotation)
+			Expect(err).ToNot(HaveOccurred())
 			githubReporter := status.NewGitHubReporter(logr.Discard(), mockK8sClient)
 			statusCode, err := githubReporter.Initialize(context.Background(), hasSnapshot)
 			Expect(helpers.IsUnrecoverableMetadataError(err)).To(BeTrue())
+			Expect(err.Error()).To(ContainSubstring("missing or empty annotation"))
 			Expect(statusCode).To(Equal(0))
+		})
 
-			err = metadata.SetLabel(hasSnapshot, gitops.PipelineAsCodeURLOrgLabel, "org")
+		It("returns unrecoverable error when no Repository CR matches Snapshot URL", func() {
+			err := metadata.SetAnnotation(hasSnapshot, gitops.PipelineAsCodeRepoURLAnnotation, "https://github.com/no-match/no-match")
 			Expect(err).ToNot(HaveOccurred())
-			err = metadata.DeleteLabel(hasSnapshot, gitops.PipelineAsCodeURLRepositoryLabel)
-			Expect(err).ToNot(HaveOccurred())
-			statusCode, err = githubReporter.Initialize(context.Background(), hasSnapshot)
+			githubReporter := status.NewGitHubReporter(logr.Discard(), mockK8sClient)
+			statusCode, err := githubReporter.Initialize(context.Background(), hasSnapshot)
 			Expect(helpers.IsUnrecoverableMetadataError(err)).To(BeTrue())
+			Expect(err.Error()).To(ContainSubstring("no Repository CR in namespace"))
 			Expect(statusCode).To(Equal(0))
+		})
 
-			err = metadata.SetLabel(hasSnapshot, gitops.PipelineAsCodeURLRepositoryLabel, "repo")
+		It("returns unrecoverable error when SHA label is missing", func() {
+			// Set up a mock client with a Repository CR whose URL matches the Snapshot's annotation
+			snapshotRepoURL := hasSnapshot.GetAnnotations()[gitops.PipelineAsCodeRepoURLAnnotation]
+			matchingRepo := pacv1alpha1.Repository{
+				Spec: pacv1alpha1.RepositorySpec{
+					URL: snapshotRepoURL,
+				},
+			}
+			matchingClient := &MockK8sClient{
+				listInterceptor: func(list client.ObjectList) {
+					if repoList, ok := list.(*pacv1alpha1.RepositoryList); ok {
+						repoList.Items = []pacv1alpha1.Repository{matchingRepo}
+					}
+				},
+			}
+
+			err := metadata.DeleteLabel(hasSnapshot, gitops.PipelineAsCodeSHALabel)
 			Expect(err).ToNot(HaveOccurred())
-			err = metadata.DeleteLabel(hasSnapshot, gitops.PipelineAsCodeSHALabel)
-			Expect(err).ToNot(HaveOccurred())
-			statusCode, err = githubReporter.Initialize(context.Background(), hasSnapshot)
+			githubReporter := status.NewGitHubReporter(logr.Discard(), matchingClient)
+			statusCode, err := githubReporter.Initialize(context.Background(), hasSnapshot)
 			Expect(helpers.IsUnrecoverableMetadataError(err)).To(BeTrue())
+			Expect(err.Error()).To(ContainSubstring("sha label not found"))
 			Expect(statusCode).To(Equal(0))
-
 		})
 
 		It("can return unrecoverable error when label/annotation is not defined for gitlabReporter", func() {
