@@ -17,12 +17,15 @@ limitations under the License.
 package scenario
 
 import (
+	"bytes"
 	"reflect"
 
 	"github.com/konflux-ci/integration-service/loader"
 	tektonconsts "github.com/konflux-ci/integration-service/tekton/consts"
+	toolkit "github.com/konflux-ci/operator-toolkit/loader"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/tonglil/buflogr"
 
 	ctrl "sigs.k8s.io/controller-runtime"
 
@@ -36,6 +39,23 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 )
+
+// wireClientMocks points the adapter at a mock client and context.
+func wireClientMocks(a *Adapter, clientMocks []toolkit.ClientCallMock) {
+	mockCtx, mockClient := toolkit.GetMockedContextWithClient(ctx, k8sClient, nil, clientMocks)
+	a.client = mockClient
+	a.context = mockCtx
+}
+
+func expectIntegrationPipelineSecretLinkedOnce(g Gomega, sa *corev1.ServiceAccount) {
+	secretName := tektonconsts.DefaultIntegrationPipelineImagePullSecretName
+	g.Expect(sa.Secrets).To(Equal([]corev1.ObjectReference{
+		{Name: secretName},
+	}))
+	g.Expect(sa.ImagePullSecrets).To(Equal([]corev1.LocalObjectReference{
+		{Name: secretName},
+	}))
+}
 
 var _ = Describe("Scenario Adapter", Ordered, func() {
 	var (
@@ -120,10 +140,18 @@ var _ = Describe("Scenario Adapter", Ordered, func() {
 					Name: tektonconsts.DefaultIntegrationPipelineServiceAccount, Namespace: "default",
 				}, sa)).To(Succeed())
 				g.Expect(sa.Name).To(Equal(tektonconsts.DefaultIntegrationPipelineServiceAccount))
-				g.Expect(sa.ImagePullSecrets).To(ContainElement(
-					corev1.LocalObjectReference{Name: tektonconsts.DefaultIntegrationPipelineImagePullSecretName},
-				))
+				expectIntegrationPipelineSecretLinkedOnce(g, sa)
 			}, "5s").Should(Succeed())
+
+			result, err = adapter.EnsureIntegrationPipelineServiceAccountCreated()
+			Expect(err).ToNot(HaveOccurred())
+			Expect(result.CancelRequest).To(BeFalse())
+
+			sa := &corev1.ServiceAccount{}
+			Expect(k8sClient.Get(ctx, types.NamespacedName{
+				Name: tektonconsts.DefaultIntegrationPipelineServiceAccount, Namespace: "default",
+			}, sa)).To(Succeed())
+			expectIntegrationPipelineSecretLinkedOnce(Default, sa)
 
 			Eventually(func(g Gomega) {
 				secret := &corev1.Secret{}
@@ -175,10 +203,18 @@ var _ = Describe("Scenario Adapter", Ordered, func() {
 				g.Expect(k8sClient.Get(ctx, types.NamespacedName{
 					Name: tektonconsts.DefaultIntegrationPipelineServiceAccount, Namespace: "default",
 				}, sa)).To(Succeed())
-				g.Expect(sa.ImagePullSecrets).To(ContainElement(
-					corev1.LocalObjectReference{Name: tektonconsts.DefaultIntegrationPipelineImagePullSecretName},
-				))
+				expectIntegrationPipelineSecretLinkedOnce(g, sa)
 			}, "5s").Should(Succeed())
+
+			result, err = adapter.EnsureIntegrationPipelineServiceAccountCreated()
+			Expect(err).ToNot(HaveOccurred())
+			Expect(result.CancelRequest).To(BeFalse())
+
+			sa := &corev1.ServiceAccount{}
+			Expect(k8sClient.Get(ctx, types.NamespacedName{
+				Name: tektonconsts.DefaultIntegrationPipelineServiceAccount, Namespace: "default",
+			}, sa)).To(Succeed())
+			expectIntegrationPipelineSecretLinkedOnce(Default, sa)
 
 			Eventually(func(g Gomega) {
 				secret := &corev1.Secret{}
@@ -230,10 +266,132 @@ var _ = Describe("Scenario Adapter", Ordered, func() {
 				g.Expect(k8sClient.Get(ctx, types.NamespacedName{
 					Name: tektonconsts.DefaultIntegrationPipelineServiceAccount, Namespace: "default",
 				}, sa)).To(Succeed())
-				g.Expect(sa.ImagePullSecrets).To(ContainElement(
-					corev1.LocalObjectReference{Name: tektonconsts.DefaultIntegrationPipelineImagePullSecretName},
-				))
+				expectIntegrationPipelineSecretLinkedOnce(g, sa)
 			}, "5s").Should(Succeed())
+
+			result, err = adapter.EnsureIntegrationPipelineServiceAccountCreated()
+			Expect(err).ToNot(HaveOccurred())
+			Expect(result.CancelRequest).To(BeFalse())
+
+			sa := &corev1.ServiceAccount{}
+			Expect(k8sClient.Get(ctx, types.NamespacedName{
+				Name: tektonconsts.DefaultIntegrationPipelineServiceAccount, Namespace: "default",
+			}, sa)).To(Succeed())
+			expectIntegrationPipelineSecretLinkedOnce(Default, sa)
+		})
+	})
+
+	When("ServiceAccount has the secret only on imagePullSecrets", func() {
+		BeforeAll(func() {
+			sa := &corev1.ServiceAccount{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: tektonconsts.DefaultIntegrationPipelineServiceAccount, Namespace: "default",
+				},
+				ImagePullSecrets: []corev1.LocalObjectReference{
+					{Name: tektonconsts.DefaultIntegrationPipelineImagePullSecretName},
+				},
+			}
+			Expect(k8sClient.Create(ctx, sa)).Should(Succeed())
+
+			secret := &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: tektonconsts.DefaultIntegrationPipelineImagePullSecretName, Namespace: "default",
+				},
+				Type: corev1.SecretTypeDockerConfigJson,
+				Data: map[string][]byte{
+					corev1.DockerConfigJsonKey: []byte(`{"auths":{}}`),
+				},
+			}
+			Expect(k8sClient.Create(ctx, secret)).Should(Succeed())
+		})
+
+		AfterAll(func() {
+			sa := &corev1.ServiceAccount{ObjectMeta: metav1.ObjectMeta{Name: tektonconsts.DefaultIntegrationPipelineServiceAccount, Namespace: "default"}}
+			_ = k8sClient.Delete(ctx, sa)
+			secret := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: tektonconsts.DefaultIntegrationPipelineImagePullSecretName, Namespace: "default"}}
+			_ = k8sClient.Delete(ctx, secret)
+			rb := &rbacv1.RoleBinding{ObjectMeta: metav1.ObjectMeta{Name: tektonconsts.DefaultIntegrationPipelineRoleBindingName, Namespace: "default"}}
+			_ = k8sClient.Delete(ctx, rb)
+		})
+
+		It("adds the secret to secrets without duplicating imagePullSecrets", func() {
+			result, err := adapter.EnsureIntegrationPipelineServiceAccountCreated()
+			Expect(err).ToNot(HaveOccurred())
+			Expect(result.CancelRequest).To(BeFalse())
+
+			sa := &corev1.ServiceAccount{}
+			Expect(k8sClient.Get(ctx, types.NamespacedName{
+				Name: tektonconsts.DefaultIntegrationPipelineServiceAccount, Namespace: "default",
+			}, sa)).To(Succeed())
+			expectIntegrationPipelineSecretLinkedOnce(Default, sa)
+			resourceVersion := sa.ResourceVersion
+
+			result, err = adapter.EnsureIntegrationPipelineServiceAccountCreated()
+			Expect(err).ToNot(HaveOccurred())
+			Expect(result.CancelRequest).To(BeFalse())
+
+			Expect(k8sClient.Get(ctx, types.NamespacedName{
+				Name: tektonconsts.DefaultIntegrationPipelineServiceAccount, Namespace: "default",
+			}, sa)).To(Succeed())
+			Expect(sa.ResourceVersion).To(Equal(resourceVersion))
+			expectIntegrationPipelineSecretLinkedOnce(Default, sa)
+		})
+	})
+
+	When("ServiceAccount has the secret only on secrets", func() {
+		BeforeAll(func() {
+			sa := &corev1.ServiceAccount{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: tektonconsts.DefaultIntegrationPipelineServiceAccount, Namespace: "default",
+				},
+				Secrets: []corev1.ObjectReference{
+					{Name: tektonconsts.DefaultIntegrationPipelineImagePullSecretName},
+				},
+			}
+			Expect(k8sClient.Create(ctx, sa)).Should(Succeed())
+
+			secret := &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: tektonconsts.DefaultIntegrationPipelineImagePullSecretName, Namespace: "default",
+				},
+				Type: corev1.SecretTypeDockerConfigJson,
+				Data: map[string][]byte{
+					corev1.DockerConfigJsonKey: []byte(`{"auths":{}}`),
+				},
+			}
+			Expect(k8sClient.Create(ctx, secret)).Should(Succeed())
+		})
+
+		AfterAll(func() {
+			sa := &corev1.ServiceAccount{ObjectMeta: metav1.ObjectMeta{Name: tektonconsts.DefaultIntegrationPipelineServiceAccount, Namespace: "default"}}
+			_ = k8sClient.Delete(ctx, sa)
+			secret := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: tektonconsts.DefaultIntegrationPipelineImagePullSecretName, Namespace: "default"}}
+			_ = k8sClient.Delete(ctx, secret)
+			rb := &rbacv1.RoleBinding{ObjectMeta: metav1.ObjectMeta{Name: tektonconsts.DefaultIntegrationPipelineRoleBindingName, Namespace: "default"}}
+			_ = k8sClient.Delete(ctx, rb)
+		})
+
+		It("adds the secret to imagePullSecrets without duplicating secrets", func() {
+			result, err := adapter.EnsureIntegrationPipelineServiceAccountCreated()
+			Expect(err).ToNot(HaveOccurred())
+			Expect(result.CancelRequest).To(BeFalse())
+
+			sa := &corev1.ServiceAccount{}
+			Expect(k8sClient.Get(ctx, types.NamespacedName{
+				Name: tektonconsts.DefaultIntegrationPipelineServiceAccount, Namespace: "default",
+			}, sa)).To(Succeed())
+			expectIntegrationPipelineSecretLinkedOnce(Default, sa)
+			resourceVersion := sa.ResourceVersion
+
+			result, err = adapter.EnsureIntegrationPipelineServiceAccountCreated()
+			Expect(err).ToNot(HaveOccurred())
+			Expect(result.CancelRequest).To(BeFalse())
+
+			Expect(k8sClient.Get(ctx, types.NamespacedName{
+				Name: tektonconsts.DefaultIntegrationPipelineServiceAccount, Namespace: "default",
+			}, sa)).To(Succeed())
+			Expect(sa.ResourceVersion).To(Equal(resourceVersion))
+			expectIntegrationPipelineSecretLinkedOnce(Default, sa)
 		})
 	})
 
@@ -244,6 +402,9 @@ var _ = Describe("Scenario Adapter", Ordered, func() {
 					Name: tektonconsts.DefaultIntegrationPipelineServiceAccount, Namespace: "default",
 				},
 				ImagePullSecrets: []corev1.LocalObjectReference{
+					{Name: tektonconsts.DefaultIntegrationPipelineImagePullSecretName},
+				},
+				Secrets: []corev1.ObjectReference{
 					{Name: tektonconsts.DefaultIntegrationPipelineImagePullSecretName},
 				},
 			}
@@ -290,13 +451,31 @@ var _ = Describe("Scenario Adapter", Ordered, func() {
 		})
 
 		It("is idempotent and does not error", func() {
+			sa := &corev1.ServiceAccount{}
+			Expect(k8sClient.Get(ctx, types.NamespacedName{
+				Name: tektonconsts.DefaultIntegrationPipelineServiceAccount, Namespace: "default",
+			}, sa)).To(Succeed())
+			resourceVersion := sa.ResourceVersion
+
 			result, err := adapter.EnsureIntegrationPipelineServiceAccountCreated()
 			Expect(err).ToNot(HaveOccurred())
 			Expect(result.CancelRequest).To(BeFalse())
 
+			Expect(k8sClient.Get(ctx, types.NamespacedName{
+				Name: tektonconsts.DefaultIntegrationPipelineServiceAccount, Namespace: "default",
+			}, sa)).To(Succeed())
+			Expect(sa.ResourceVersion).To(Equal(resourceVersion))
+			expectIntegrationPipelineSecretLinkedOnce(Default, sa)
+
 			result, err = adapter.EnsureIntegrationPipelineServiceAccountCreated()
 			Expect(err).ToNot(HaveOccurred())
 			Expect(result.CancelRequest).To(BeFalse())
+
+			Expect(k8sClient.Get(ctx, types.NamespacedName{
+				Name: tektonconsts.DefaultIntegrationPipelineServiceAccount, Namespace: "default",
+			}, sa)).To(Succeed())
+			Expect(sa.ResourceVersion).To(Equal(resourceVersion))
+			expectIntegrationPipelineSecretLinkedOnce(Default, sa)
 		})
 	})
 
@@ -307,6 +486,9 @@ var _ = Describe("Scenario Adapter", Ordered, func() {
 					Name: tektonconsts.DefaultIntegrationPipelineServiceAccount, Namespace: "default",
 				},
 				ImagePullSecrets: []corev1.LocalObjectReference{
+					{Name: tektonconsts.DefaultIntegrationPipelineImagePullSecretName},
+				},
+				Secrets: []corev1.ObjectReference{
 					{Name: tektonconsts.DefaultIntegrationPipelineImagePullSecretName},
 				},
 			}
@@ -346,6 +528,52 @@ var _ = Describe("Scenario Adapter", Ordered, func() {
 				g.Expect(rb.RoleRef.Name).To(Equal(tektonconsts.DefaultIntegrationPipelineClusterRoleName))
 				g.Expect(rb.RoleRef.Kind).To(Equal("ClusterRole"))
 			}, "5s").Should(Succeed())
+
+			sa := &corev1.ServiceAccount{}
+			Expect(k8sClient.Get(ctx, types.NamespacedName{
+				Name: tektonconsts.DefaultIntegrationPipelineServiceAccount, Namespace: "default",
+			}, sa)).To(Succeed())
+			expectIntegrationPipelineSecretLinkedOnce(Default, sa)
+		})
+	})
+
+	When("refreshing the ServiceAccount while linking the secret fails", func() {
+		var buf bytes.Buffer
+
+		BeforeEach(func() {
+			buf = bytes.Buffer{}
+			// The ServiceAccount must be absent so the first Get takes the create path.
+			// The mocked NotFound then fails the Get inside the conflict retry.
+			sa := &corev1.ServiceAccount{ObjectMeta: metav1.ObjectMeta{Name: tektonconsts.DefaultIntegrationPipelineServiceAccount, Namespace: "default"}}
+			err := k8sClient.Delete(ctx, sa)
+			Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
+		})
+
+		AfterEach(func() {
+			sa := &corev1.ServiceAccount{ObjectMeta: metav1.ObjectMeta{Name: tektonconsts.DefaultIntegrationPipelineServiceAccount, Namespace: "default"}}
+			_ = k8sClient.Delete(ctx, sa)
+			secret := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: tektonconsts.DefaultIntegrationPipelineImagePullSecretName, Namespace: "default"}}
+			_ = k8sClient.Delete(ctx, secret)
+			rb := &rbacv1.RoleBinding{ObjectMeta: metav1.ObjectMeta{Name: tektonconsts.DefaultIntegrationPipelineRoleBindingName, Namespace: "default"}}
+			_ = k8sClient.Delete(ctx, rb)
+		})
+
+		It("requeues when the ServiceAccount cannot be read back for linking", func() {
+			adapter.logger = helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+			wireClientMocks(adapter, []toolkit.ClientCallMock{
+				{
+					Operation:  toolkit.OperationGet,
+					ObjectType: &corev1.ServiceAccount{},
+					Err:        errors.NewNotFound(corev1.Resource("serviceaccounts"), tektonconsts.DefaultIntegrationPipelineServiceAccount),
+				},
+			})
+
+			result, err := adapter.EnsureIntegrationPipelineServiceAccountCreated()
+			Expect(result.RequeueRequest).To(BeTrue())
+			Expect(errors.IsNotFound(err)).To(BeTrue())
+			Expect(buf.String()).To(ContainSubstring("Created ServiceAccount"))
+			Expect(buf.String()).To(ContainSubstring("Failed to update ServiceAccount with secret link"))
+			Expect(buf.String()).ToNot(ContainSubstring("Failed to re-fetch ServiceAccount after conflict"))
 		})
 	})
 })
