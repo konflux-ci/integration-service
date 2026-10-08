@@ -34,3 +34,7 @@ cover.html
 # IDE directories
 .vscode/*
 .cursor/*
+
+# Python bytecode
+__pycache__/
+*.pyc
