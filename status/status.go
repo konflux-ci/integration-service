@@ -642,12 +642,20 @@ func (s Status) IsPRInSnapshotOpened(ctx context.Context, reporter ReporterInter
 	log := log.FromContext(ctx)
 	ghClient := github.NewClient(s.logger)
 
-	owner, repo, err := resolveSnapshotRepository(ctx, s.client, snapshot)
-
-	if err != nil {
-		log.Error(err, "failed to resolve Snapshot repository",
-			"snapshot.NameSpace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
-		return false, statusCode, err
+	// Reuse pre-resolved owner/repo from the reporter when available,
+	// avoiding a redundant resolveSnapshotRepository call that lists
+	// all Repository CRs in the namespace.
+	var owner, repo string
+	var err error
+	if gh, ok := reporter.(*GitHubReporter); ok && gh.owner != "" && gh.repo != "" {
+		owner, repo = gh.owner, gh.repo
+	} else {
+		owner, repo, err = resolveSnapshotRepository(ctx, s.client, snapshot)
+		if err != nil {
+			log.Error(err, "failed to resolve Snapshot repository",
+				"snapshot.NameSpace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
+			return false, statusCode, err
+		}
 	}
 
 	githubAppCreds, err := GetAppCredentials(ctx, s.client, ghClient, owner, repo)
