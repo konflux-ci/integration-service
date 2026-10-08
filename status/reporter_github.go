@@ -82,7 +82,7 @@ func NewCheckRunStatusUpdater(
 	}
 }
 
-func GetAppCredentials(ctx context.Context, k8sclient client.Client, object client.Object) (*appCredentials, error) {
+func GetAppCredentials(ctx context.Context, k8sclient client.Client, ghClient github.ClientInterface, owner string, repo string) (*appCredentials, error) {
 	log := log.FromContext(ctx)
 	var err, unRecoverableError error
 	var found bool
@@ -104,13 +104,6 @@ func GetAppCredentials(ctx context.Context, k8sclient client.Client, object clie
 	gitHubPrivateKey := os.Getenv("GITHUBPRIVATE_KEY")
 	if gitHubPrivateKey == "" {
 		gitHubPrivateKey = "github-private-key"
-	}
-
-	appInfo.InstallationID, err = strconv.ParseInt(object.GetAnnotations()[gitops.PipelineAsCodeInstallationIDAnnotation], 10, 64)
-	if err != nil {
-		unRecoverableError = helpers.NewUnrecoverableMetadataError(fmt.Sprintf("Error %s when parsing string annotation %s: %s", err.Error(), gitops.PipelineAsCodeInstallationIDAnnotation, object.GetAnnotations()[gitops.PipelineAsCodeInstallationIDAnnotation]))
-		log.Error(unRecoverableError, fmt.Sprintf("Error %s when parsing string annotation %s: %s", err.Error(), gitops.PipelineAsCodeInstallationIDAnnotation, object.GetAnnotations()[gitops.PipelineAsCodeInstallationIDAnnotation]))
-		return nil, unRecoverableError
 	}
 
 	// Get the global pipelines as code secret
@@ -143,21 +136,35 @@ func GetAppCredentials(ctx context.Context, k8sclient client.Client, object clie
 		return nil, unRecoverableError
 	}
 
+	installationID, statusCode, err := ghClient.FindInstallationForRepo(ctx, appInfo.AppID, appInfo.PrivateKey, owner, repo)
+	if err != nil {
+		log.Error(err, "failed to find GitHub App installation for repository", "owner", owner, "repo", repo, "statusCode", statusCode)
+		if statusCode == http.StatusNotFound ||
+			statusCode == http.StatusForbidden ||
+			statusCode == http.StatusUnauthorized {
+			return nil, helpers.NewUnrecoverableMetadataError(fmt.Sprintf("failed to find GitHub App installation for repository %s/%s: %v", owner, repo, err))
+		}
+		return nil, err
+	}
+	appInfo.InstallationID = installationID
+
 	return &appInfo, nil
 }
 
 // Authenticate Github Client with application credentials
 func (cru *CheckRunStatusUpdater) Authenticate(ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot) (int, error) {
-	creds, err := GetAppCredentials(ctx, cru.k8sClient, snapshot)
-	cru.creds = creds
+	creds, err := GetAppCredentials(ctx, cru.k8sClient, cru.ghClient, cru.owner, cru.repo)
 
 	if err != nil {
-		cru.logger.Error(err, "failed to get app credentials from Snapshot",
+		cru.logger.Error(err, "failed to get GitHub App credentials",
 			"snapshot.NameSpace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
 		return 0, err
 	}
 
+	cru.creds = creds
+
 	token, statusCode, err := cru.ghClient.CreateAppInstallationToken(ctx, creds.AppID, creds.InstallationID, creds.PrivateKey)
+
 	if err != nil {
 		cru.logger.Error(err, "failed to create app installation token",
 			"creds.AppID", creds.AppID, "creds.InstallationID", creds.InstallationID)
@@ -644,20 +651,15 @@ func (r *GitHubReporter) ReportConsolidatedStatus(_ context.Context, _ []TestRep
 func (r *GitHubReporter) Initialize(ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot) (int, error) {
 	var statusCode int
 	var unRecoverableError error
-	labels := snapshot.GetLabels()
-	owner, found := labels[gitops.PipelineAsCodeURLOrgLabel]
-	if !found {
-		unRecoverableError = helpers.NewUnrecoverableMetadataError(fmt.Sprintf("org label not found %q", gitops.PipelineAsCodeURLOrgLabel))
-		r.logger.Error(unRecoverableError, "snapshot.NameSpace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
-		return 0, unRecoverableError
+
+	owner, repo, err := resolveSnapshotRepository(ctx, r.k8sClient, snapshot)
+	if err != nil {
+		r.logger.Error(err, "failed to resolve Snapshot repository",
+			"snapshot.NameSpace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
+		return 0, err
 	}
 
-	repo, found := labels[gitops.PipelineAsCodeURLRepositoryLabel]
-	if !found {
-		unRecoverableError = helpers.NewUnrecoverableMetadataError(fmt.Sprintf("repository label not found %q", gitops.PipelineAsCodeURLRepositoryLabel))
-		r.logger.Error(unRecoverableError, "snapshot.NameSpace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
-		return 0, unRecoverableError
-	}
+	labels := snapshot.GetLabels()
 
 	sha, found := labels[gitops.PipelineAsCodeSHALabel]
 	if !found {
@@ -674,7 +676,6 @@ func (r *GitHubReporter) Initialize(ctx context.Context, snapshot *applicationap
 		r.updater = NewCommitStatusUpdater(r.client, r.k8sClient, r.logger, owner, repo, sha, snapshot)
 	}
 
-	var err error
 	if statusCode, err = r.updater.Authenticate(ctx, snapshot); err != nil {
 		r.logger.Error(err, fmt.Sprintf("failed to authenticate for snapshot %s/%s, got status code %d", snapshot.Namespace, snapshot.Name, statusCode))
 		return statusCode, err

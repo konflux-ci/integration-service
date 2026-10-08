@@ -36,6 +36,7 @@ import (
 	"github.com/konflux-ci/integration-service/helpers"
 	intgteststat "github.com/konflux-ci/integration-service/pkg/integrationteststatus"
 	"github.com/konflux-ci/operator-toolkit/metadata"
+	pacv1alpha1 "github.com/openshift-pipelines/pipelines-as-code/pkg/apis/pipelinesascode/v1alpha1"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	gitlab "gitlab.com/gitlab-org/api/client-go/v2"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -580,20 +581,82 @@ func (s Status) IsMRInSnapshotOpened(ctx context.Context, reporter ReporterInter
 	return false, statusCode, err
 }
 
+// parseOwnerRepoFromURL extracts the owner and repository name from an HTTPS
+// repository URL, removing the optional .git suffix.
+func parseOwnerRepoFromURL(rawURL string) (string, string, error) {
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to parse repository URL %q: %w", rawURL, err)
+	}
+	if parsed.Scheme != "https" || parsed.Host == "" {
+		return "", "", fmt.Errorf("expected an HTTPS repository URL, got %q", rawURL)
+	}
+
+	path := strings.Trim(parsed.Path, "/")
+	parts := strings.Split(path, "/")
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return "", "", fmt.Errorf("expected owner/repo in URL %q", rawURL)
+	}
+
+	owner := parts[0]
+	repo := strings.TrimSuffix(parts[1], ".git")
+	if repo == "" {
+		return "", "", fmt.Errorf("repository name is empty in URL %q", rawURL)
+	}
+	return owner, repo, nil
+}
+
+// resolveSnapshotRepository finds a Repository CR matching the Snapshot's repo URL
+// in the same namespace and returns the owner and repository from its Spec.URL.
+func resolveSnapshotRepository(ctx context.Context, k8sClient client.Client, snapshot *applicationapiv1alpha1.Snapshot) (string, string, error) {
+	repoURL, found := snapshot.GetAnnotations()[gitops.PipelineAsCodeRepoURLAnnotation]
+	if !found || repoURL == "" {
+		return "", "", helpers.NewUnrecoverableMetadataError(fmt.Sprintf("missing or empty annotation %q", gitops.PipelineAsCodeRepoURLAnnotation))
+	}
+
+	repos := pacv1alpha1.RepositoryList{}
+	if err := k8sClient.List(ctx, &repos, &client.ListOptions{Namespace: snapshot.Namespace}); err != nil {
+		return "", "", fmt.Errorf("failed to list Repository CRs in namespace %q: %w", snapshot.Namespace, err)
+	}
+
+	for _, repo := range repos.Items {
+		if strings.EqualFold(
+			helpers.UrlToGitUrl(repo.Spec.URL),
+			helpers.UrlToGitUrl(repoURL),
+		) {
+			owner, repoName, err := parseOwnerRepoFromURL(repo.Spec.URL)
+			if err != nil {
+				return "", "", helpers.NewUnrecoverableMetadataError(fmt.Sprintf("invalid Repository CR URL %q: %v", repo.Spec.URL, err))
+			}
+			return owner, repoName, nil
+		}
+	}
+
+	return "", "", helpers.NewUnrecoverableMetadataError(fmt.Sprintf("no Repository CR in namespace %q matches URL %q", snapshot.Namespace, repoURL))
+}
+
 // IsPRInSnapshotOpened check if the github pull request triggering snapshot is opened
 func (s Status) IsPRInSnapshotOpened(ctx context.Context, reporter ReporterInterface, snapshot *applicationapiv1alpha1.Snapshot) (bool, int, error) {
 	var statusCode = 0
 	var unRecoverableError error
 	log := log.FromContext(ctx)
 	ghClient := github.NewClient(s.logger)
-	githubAppCreds, err := GetAppCredentials(ctx, s.client, snapshot)
+
+	owner, repo, err := resolveSnapshotRepository(ctx, s.client, snapshot)
 
 	if err != nil {
-		log.Error(err, "failed to get app credentials from Snapshot",
+		log.Error(err, "failed to resolve Snapshot repository",
 			"snapshot.NameSpace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
 		return false, statusCode, err
 	}
 
+	githubAppCreds, err := GetAppCredentials(ctx, s.client, ghClient, owner, repo)
+
+	if err != nil {
+		log.Error(err, "failed to get GitHub App credentials",
+			"snapshot.NameSpace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
+		return false, statusCode, err
+	}
 	token, statusCode, err := ghClient.CreateAppInstallationToken(ctx, githubAppCreds.AppID, githubAppCreds.InstallationID, githubAppCreds.PrivateKey)
 	if err != nil {
 		log.Error(err, "failed to create app installation token",
@@ -605,20 +668,6 @@ func (s Status) IsPRInSnapshotOpened(ctx context.Context, reporter ReporterInter
 	ghClient.SetOAuthToken(ctx, token)
 
 	labels := snapshot.GetLabels()
-
-	owner, found := labels[gitops.PipelineAsCodeURLOrgLabel]
-	if !found {
-		unRecoverableError = helpers.NewUnrecoverableMetadataError(fmt.Sprintf("org label not found %q", gitops.PipelineAsCodeURLOrgLabel))
-		log.Error(unRecoverableError, fmt.Sprintf("org label not found %q", gitops.PipelineAsCodeURLOrgLabel))
-		return false, statusCode, unRecoverableError
-	}
-
-	repo, found := labels[gitops.PipelineAsCodeURLRepositoryLabel]
-	if !found {
-		unRecoverableError = helpers.NewUnrecoverableMetadataError(fmt.Sprintf("repository label not found %q", gitops.PipelineAsCodeURLRepositoryLabel))
-		log.Error(unRecoverableError, fmt.Sprintf("repository label not found %q", gitops.PipelineAsCodeURLRepositoryLabel))
-		return false, statusCode, unRecoverableError
-	}
 
 	pullRequestStr, found := labels[gitops.PipelineAsCodePullRequestAnnotation]
 	if !found {
