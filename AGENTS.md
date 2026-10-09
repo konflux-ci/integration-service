@@ -60,4 +60,5 @@ The service supports two parallel resource flows: **ComponentGroup** (new model)
 - **Controller changes**: implement in `internal/controller/<resource>/<resource>_adapter.go`
 - **Webhooks**: add to `internal/webhooks/<resource>/`
 - **Tests**: unit tests alongside code using Ginkgo + envtest; E2E tests are located in `e2e-tests/tests`
+- **Package and tooling changes**: When adding, removing or moving Go package directories, check for explicit package paths in Makefile targets, CI workflows, linting, code coverage and scripts. Use recursive patterns like  `./...` wherever possible.
 
