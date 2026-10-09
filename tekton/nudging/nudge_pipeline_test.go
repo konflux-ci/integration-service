@@ -325,6 +325,7 @@ var _ = Describe("Nudge Pipeline", func() {
 			Expect(config.EnabledManagers).To(Equal([]string{"custom.regex"}))
 			Expect(config.ForkProcessing).To(Equal("enabled"))
 			Expect(config.DependencyDashboard).To(BeFalse())
+			Expect(config.DependencyDashboardTitle).To(Equal("konflux-nudge-unused-dependency-dashboard"))
 			Expect(config.Extends).To(BeEmpty())
 		})
 
