@@ -54,6 +54,13 @@ const (
 	renovateConfigMapLabelsKey                = "labels"
 )
 
+// unusedDependencyDashboardTitle is the title Renovate uses when it closes
+// a disabled Dependency Dashboard. Renovate matches that title exactly and
+// defaults it to "Dependency Dashboard", the issue MintMaker opens. This
+// value matches no real issue, and dependencyDashboard stays false so
+// Renovate does not create one either.
+const unusedDependencyDashboardTitle = "konflux-nudge-unused-dependency-dashboard"
+
 // RenovateRepository represents a single git repository for Renovate to process.
 type RenovateRepository struct {
 	Repository   string   `json:"repository"`
@@ -136,27 +143,28 @@ type PackageRule struct {
 // RenovateConfig is the top-level Renovate JSON configuration written to the
 // ConfigMap that drives a nudge PipelineRun.
 type RenovateConfig struct {
-	GitProvider           string               `json:"platform"`
-	Username              string               `json:"username"`
-	GitAuthor             string               `json:"gitAuthor"`
-	Onboarding            bool                 `json:"onboarding"`
-	RequireConfig         string               `json:"requireConfig"`
-	Repositories          []RenovateRepository `json:"repositories"`
-	EnabledManagers       []string             `json:"enabledManagers"`
-	Endpoint              string               `json:"endpoint"`
-	CustomManagers        []CustomManager      `json:"customManagers,omitempty"`
-	RegistryAliases       map[string]string    `json:"registryAliases,omitempty"`
-	PackageRules          []PackageRule        `json:"packageRules,omitempty"`
-	ForkProcessing        string               `json:"forkProcessing"`
-	Extends               []string             `json:"extends"`
-	DependencyDashboard   bool                 `json:"dependencyDashboard"`
-	Labels                []string             `json:"labels"`
-	Automerge             bool                 `json:"automerge"`
-	AutomergeType         string               `json:"automergeType,omitempty"`
-	PlatformAutomerge     bool                 `json:"platformAutomerge"`
-	IgnoreTests           bool                 `json:"ignoreTests"`
-	GitLabIgnoreApprovals bool                 `json:"gitLabIgnoreApprovals"`
-	AutomergeSchedule     []string             `json:"automergeSchedule,omitempty"`
+	GitProvider              string               `json:"platform"`
+	Username                 string               `json:"username"`
+	GitAuthor                string               `json:"gitAuthor"`
+	Onboarding               bool                 `json:"onboarding"`
+	RequireConfig            string               `json:"requireConfig"`
+	Repositories             []RenovateRepository `json:"repositories"`
+	EnabledManagers          []string             `json:"enabledManagers"`
+	Endpoint                 string               `json:"endpoint"`
+	CustomManagers           []CustomManager      `json:"customManagers,omitempty"`
+	RegistryAliases          map[string]string    `json:"registryAliases,omitempty"`
+	PackageRules             []PackageRule        `json:"packageRules,omitempty"`
+	ForkProcessing           string               `json:"forkProcessing"`
+	Extends                  []string             `json:"extends"`
+	DependencyDashboard      bool                 `json:"dependencyDashboard"`
+	DependencyDashboardTitle string               `json:"dependencyDashboardTitle"`
+	Labels                   []string             `json:"labels"`
+	Automerge                bool                 `json:"automerge"`
+	AutomergeType            string               `json:"automergeType,omitempty"`
+	PlatformAutomerge        bool                 `json:"platformAutomerge"`
+	IgnoreTests              bool                 `json:"ignoreTests"`
+	GitLabIgnoreApprovals    bool                 `json:"gitLabIgnoreApprovals"`
+	AutomergeSchedule        []string             `json:"automergeSchedule,omitempty"`
 }
 
 // DisableAllPackageRules is the catch-all rule that disables all packages; the
@@ -276,27 +284,28 @@ func GenerateRenovateConfig(target NudgeTarget, buildResult *NudgeBuildResult, s
 	}
 
 	return RenovateConfig{
-		GitProvider:           target.GitProvider,
-		Username:              target.Username,
-		GitAuthor:             target.GitAuthor,
-		Onboarding:            false,
-		RequireConfig:         "ignored",
-		Repositories:          target.Repositories,
-		EnabledManagers:       []string{"custom.regex"},
-		Endpoint:              target.Endpoint,
-		CustomManagers:        customManagers,
-		RegistryAliases:       registryAliases,
-		PackageRules:          packageRules,
-		ForkProcessing:        "enabled",
-		Extends:               []string{},
-		DependencyDashboard:   false,
-		Labels:                labels,
-		Automerge:             customOpts.Automerge,
-		PlatformAutomerge:     customOpts.PlatformAutomerge,
-		IgnoreTests:           customOpts.IgnoreTests,
-		AutomergeType:         customOpts.AutomergeType,
-		GitLabIgnoreApprovals: customOpts.GitLabIgnoreApprovals,
-		AutomergeSchedule:     customOpts.AutomergeSchedule,
+		GitProvider:              target.GitProvider,
+		Username:                 target.Username,
+		GitAuthor:                target.GitAuthor,
+		Onboarding:               false,
+		RequireConfig:            "ignored",
+		Repositories:             target.Repositories,
+		EnabledManagers:          []string{"custom.regex"},
+		Endpoint:                 target.Endpoint,
+		CustomManagers:           customManagers,
+		RegistryAliases:          registryAliases,
+		PackageRules:             packageRules,
+		ForkProcessing:           "enabled",
+		Extends:                  []string{},
+		DependencyDashboard:      false,
+		DependencyDashboardTitle: unusedDependencyDashboardTitle,
+		Labels:                   labels,
+		Automerge:                customOpts.Automerge,
+		PlatformAutomerge:        customOpts.PlatformAutomerge,
+		IgnoreTests:              customOpts.IgnoreTests,
+		AutomergeType:            customOpts.AutomergeType,
+		GitLabIgnoreApprovals:    customOpts.GitLabIgnoreApprovals,
+		AutomergeSchedule:        customOpts.AutomergeSchedule,
 	}
 }
 
