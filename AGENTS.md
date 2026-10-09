@@ -39,7 +39,7 @@ Each controller delegates to an **adapter** (`<controller_name>_adapter.go`) tha
 
 ### Dual-Model Architecture
 
-The service supports two parallel resource flows: **ComponentGroup** (new model) and **Application** (legacy, planned for deprecation). Controllers and adapters implement both flows side-by-side (e.g., `EnsureSnapshotExists` vs `EnsureSnapshotExistsApplication` in `buildpipeline_adapter.go`, `NewAdapter` vs `NewAdapterWithApplication` in `snapshot_adapter.go`). Any cross-cutting feature — tracing, metrics, annotations, error handling — **must cover both flows** until the Application model is fully removed. Key dual-path controllers include `buildpipeline`, `snapshot`, and `statusreport`. Look for `TODO: remove when we deprecate old application model` comments to identify Application-model code paths.
+The service supports two parallel resource flows: **ComponentGroup** (new model) and **Application** (legacy, planned for deprecation). Controllers and adapters implement both flows side-by-side (e.g., `EnsureSnapshotExists` vs `EnsureSnapshotExistsApplication` in `buildpipeline_adapter.go`, `NewAdapter` vs `NewAdapterWithApplication` in `snapshot_adapter.go`). Any cross-cutting feature — tracing, metrics, annotations, error handling — **must cover both flows** until the Application model is fully removed. Key dual-path controllers include `buildpipeline`, `snapshot`, and `statusreport`. Look for `TODO` comments referencing the application model (search case-insensitively for `TODO.*application`) to identify Application-model code paths — the codebase uses varied phrasings across 15+ files.
 
 ### Resource Loading
 
