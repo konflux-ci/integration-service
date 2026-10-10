@@ -51,6 +51,31 @@ spec:
               NudgeConfigSpec defines the desired nudging relationships between components
               and optional namespace-wide batch defaults.
             properties:
+              actions:
+                description: Actions holds one-shot operations processed by the controller
+                  and then cleared from spec.
+                properties:
+                  forceFire:
+                    description: ForceFire immediately fires a batched nudge for the
+                      given target, bypassing debounce timing.
+                    properties:
+                      includePartial:
+                        default: true
+                        description: |-
+                          IncludePartial includes successful members when some batch sources failed and FailurePolicy is Block.
+                          Defaults to true when unset.
+                        type: boolean
+                      target:
+                        description: Target is the downstream component whose active
+                          batch should be force-fired.
+                        maxLength: 63
+                        minLength: 1
+                        pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                        type: string
+                    required:
+                    - target
+                    type: object
+                type: object
               batchDefaults:
                 description: |-
                   BatchDefaults sets default debounce, max wait, and failure policy for batched nudges
@@ -142,8 +167,10 @@ spec:
                 maxItems: 360
                 type: array
               targetConfig:
-                description: TargetConfig lists per-target batch policies. Targets
-                  without batchPolicy are not batched.
+                description: |-
+                  TargetConfig lists per-target batch policies. Targets without batchPolicy are not batched.
+                  Controllers and operators must patch NudgeConfig spec with merge semantics so targetConfig
+                  and actions are not dropped when updating other spec fields.
                 items:
                   description: TargetConfig declares per-target batch behavior. Presence
                     of batchPolicy opts the target into batching.
