@@ -640,8 +640,9 @@ var _ = Describe("ForgejoReporter", func() {
 
 			mux.HandleFunc("/version", func(rw http.ResponseWriter, r *http.Request) {
 				atomic.AddInt32(&versionCallCount, 1)
-				// Return plain text body so the SDK includes the status code
-				// in its error message ("unknown API Error: 401")
+				// Return only the status code with no body; the empty response
+				// fails JSON unmarshalling in the SDK, triggering its
+				// "unknown API Error: 401" error format.
 				rw.WriteHeader(http.StatusUnauthorized)
 			})
 			server := httptest.NewServer(apiHandler)
@@ -755,7 +756,7 @@ var _ = Describe("ForgejoReporter", func() {
 			Entry("plain message with no status code",
 				"connection refused",
 				0),
-			Entry("nil error returns 0", "", 0),
+			Entry("empty error string returns 0", "", 0),
 		)
 
 		It("returns 0 for nil error", func() {
