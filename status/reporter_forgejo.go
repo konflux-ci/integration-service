@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -47,6 +48,27 @@ type ForgejoReporter struct {
 	repo        string
 	pullRequest int
 	snapshot    *applicationapiv1alpha1.Snapshot
+}
+
+// httpStatusCodePattern matches HTTP status codes in forgejo SDK error messages.
+// The SDK formats errors as "unknown API Error: <code>\n..." or "<code> <reason>: ...".
+var httpStatusCodePattern = regexp.MustCompile(`(?:unknown API Error:|^|\s)(\d{3})(?:\s|\n|$)`)
+
+// extractHTTPStatusFromError attempts to extract an HTTP status code from a
+// forgejo SDK error string. Returns 0 if no status code can be found, which
+// callers should treat as a retryable condition (network/timeout error).
+func extractHTTPStatusFromError(err error) int {
+	if err == nil {
+		return 0
+	}
+	matches := httpStatusCodePattern.FindStringSubmatch(err.Error())
+	if len(matches) >= 2 {
+		code, parseErr := strconv.Atoi(matches[1])
+		if parseErr == nil {
+			return code
+		}
+	}
+	return 0
 }
 
 func NewForgejoReporter(logger logr.Logger, k8sClient client.Client) *ForgejoReporter {
@@ -113,9 +135,21 @@ func (r *ForgejoReporter) Initialize(ctx context.Context, snapshot *applicationa
 	// Construct API base URL (forgejo client automatically adds /api/v1 to all paths)
 	apiURL := fmt.Sprintf("%s://%s", burl.Scheme, burl.Host)
 
-	r.client, err = forgejo.NewClient(apiURL, forgejo.SetToken(token), forgejo.SetUserAgent(common.IntegrationServiceUserAgent))
+	err = retry.OnError(reporterRetryBackoff, func(err error) bool {
+		statusCode := extractHTTPStatusFromError(err)
+		// statusCode 0 means no HTTP status code could be extracted (network/timeout error), always retry
+		retryable := statusCode == 0 || !r.ReturnCodeIsUnrecoverable(statusCode)
+		if retryable {
+			r.logger.Info("retrying forgejo client initialization after transient error",
+				"apiURL", apiURL, "statusCode", statusCode, "error", err.Error())
+		}
+		return retryable
+	}, func() error {
+		r.client, err = forgejo.NewClient(apiURL, forgejo.SetToken(token), forgejo.SetUserAgent(common.IntegrationServiceUserAgent))
+		return err
+	})
 	if err != nil {
-		r.logger.Error(err, "failed to create forgejo client", "apiURL", apiURL, "snapshot.NameSpace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
+		r.logger.Error(err, "failed to create forgejo client after all retries", "apiURL", apiURL, "snapshot.NameSpace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
 		return 0, err
 	}
 
