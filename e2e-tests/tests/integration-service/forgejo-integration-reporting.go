@@ -57,6 +57,10 @@ var _ = framework.IntegrationServiceSuiteDescribe("Forgejo Status Reporting of I
 				ginkgo.Skip("Using private cluster (not reachable from Forgejo/Codeberg), skipping...")
 			}
 
+			if f.AsKubeAdmin.CommonController.Forgejo == nil {
+				ginkgo.Fail("Codeberg/Forgejo client unavailable; check Codeberg access from CI")
+			}
+
 			applicationName = createApp(*f, testNamespace)
 
 			gomega.Eventually(func() error {
@@ -74,8 +78,6 @@ var _ = framework.IntegrationServiceSuiteDescribe("Forgejo Status Reporting of I
 
 			forgejoToken = utils.GetEnv(constants.CODEBERG_BOT_TOKEN_ENV, "")
 			gomega.Expect(forgejoToken).ShouldNot(gomega.BeEmpty(), fmt.Sprintf("'%s' env var is not set", constants.CODEBERG_BOT_TOKEN_ENV))
-			gomega.Expect(f.AsKubeAdmin.CommonController.Forgejo).NotTo(gomega.BeNil())
-
 			forgejoGitClient = git.NewForgejoClient(f.AsKubeAdmin.CommonController.Forgejo)
 			gitClient = forgejoGitClient
 

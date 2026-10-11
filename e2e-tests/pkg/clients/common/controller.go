@@ -8,6 +8,7 @@ import (
 	"github.com/konflux-ci/integration-service/e2e-tests/pkg/clients/gitlab"
 	"github.com/konflux-ci/integration-service/e2e-tests/pkg/constants"
 	"github.com/konflux-ci/integration-service/e2e-tests/pkg/utils"
+	"k8s.io/klog/v2"
 )
 
 // Create the struct for kubernetes and github clients.
@@ -47,7 +48,8 @@ func NewSuiteController(kubeC *CustomClient) (*SuiteController, error) {
 			utils.GetEnv(constants.CODEBERG_QE_ORG_ENV, constants.DefaultCodebergQEOrg),
 		)
 		if err != nil {
-			return nil, fmt.Errorf("failed to authenticate with Forgejo/Codeberg: %w", err)
+			klog.Warningf("Forgejo/Codeberg unavailable, Forgejo client disabled: %v", err)
+			fj = nil
 		}
 	}
 
