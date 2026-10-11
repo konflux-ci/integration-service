@@ -51,7 +51,11 @@ type ForgejoReporter struct {
 }
 
 // httpStatusCodePattern matches HTTP status codes in forgejo SDK error messages.
-// The SDK formats errors as "unknown API Error: <code>\n..." or "<code> <reason>: ...".
+// The SDK formats errors as "unknown API Error: <code>\n..." (see client.go in
+// codeberg.org/mvdkleijn/forgejo-sdk/forgejo/v3 v3.0.0). When the SDK returns
+// an error without a numeric code (e.g., a JSON "message" field), the regex
+// finds no match and extractHTTPStatusFromError returns 0, which callers treat
+// as retryable. Re-validate this pattern on SDK upgrades.
 var httpStatusCodePattern = regexp.MustCompile(`(?:unknown API Error:\s+|^|\s)(\d{3})(?:\s|\n|$)`)
 
 // extractHTTPStatusFromError attempts to extract an HTTP status code from a

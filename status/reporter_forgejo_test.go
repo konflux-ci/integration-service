@@ -569,6 +569,9 @@ var _ = Describe("ForgejoReporter", func() {
 				Factor:   1.0,
 				Jitter:   0.0,
 			})
+			secretData = map[string][]byte{
+				"example-token": []byte("example-personal-access-token"),
+			}
 		})
 
 		AfterEach(func() {
@@ -607,9 +610,6 @@ var _ = Describe("ForgejoReporter", func() {
 						},
 					},
 				},
-			}
-			secretData = map[string][]byte{
-				"example-token": []byte("example-personal-access-token"),
 			}
 			mockK8sClient = &MockK8sClient{
 				getInterceptor: func(key client.ObjectKey, obj client.Object) {
@@ -663,9 +663,6 @@ var _ = Describe("ForgejoReporter", func() {
 					},
 				},
 			}
-			secretData = map[string][]byte{
-				"example-token": []byte("example-personal-access-token"),
-			}
 			mockK8sClient = &MockK8sClient{
 				getInterceptor: func(key client.ObjectKey, obj client.Object) {
 					if secret, ok := obj.(*v1.Secret); ok {
@@ -713,9 +710,6 @@ var _ = Describe("ForgejoReporter", func() {
 					},
 				},
 			}
-			secretData = map[string][]byte{
-				"example-token": []byte("example-personal-access-token"),
-			}
 			mockK8sClient = &MockK8sClient{
 				getInterceptor: func(key client.ObjectKey, obj client.Object) {
 					if secret, ok := obj.(*v1.Secret); ok {
@@ -755,6 +749,9 @@ var _ = Describe("ForgejoReporter", func() {
 				500),
 			Entry("plain message with no status code",
 				"connection refused",
+				0),
+			Entry("message-only error from JSON response",
+				"token is required",
 				0),
 			Entry("empty error string returns 0", "", 0),
 		)

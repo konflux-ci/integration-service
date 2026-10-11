@@ -24,8 +24,8 @@ func SetReporterRetryBackoff(b wait.Backoff) { reporterRetryBackoff = b }
 // GetReporterRetryBackoff returns the current retry backoff.
 func GetReporterRetryBackoff() wait.Backoff { return reporterRetryBackoff }
 
-// ExtractHTTPStatusFromError exports extractHTTPStatusFromError for testing.
-var ExtractHTTPStatusFromError = extractHTTPStatusFromError
+// ExtractHTTPStatusFromError extracts an HTTP status code from a forgejo SDK error string.
+func ExtractHTTPStatusFromError(err error) int { return extractHTTPStatusFromError(err) }
 
 // SetUpdater sets the StatusUpdater on a GitHubReporter for testing.
 func (r *GitHubReporter) SetUpdater(u StatusUpdater) { r.updater = u }
