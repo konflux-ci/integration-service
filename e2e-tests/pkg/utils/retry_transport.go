@@ -3,7 +3,6 @@ package utils
 import (
 	"fmt"
 	"io"
-	"math"
 	"net/http"
 	"strconv"
 	"time"
@@ -78,7 +77,7 @@ func (t *RetryTransport) retryDelay(resp *http.Response, attempt int) time.Durat
 			}
 		}
 	}
-	return t.BaseDelay * time.Duration(math.Pow(2, float64(attempt)))
+	return t.BaseDelay * (1 << attempt)
 }
 
 // NewRetryTransport creates a RetryTransport that wraps the given base transport
