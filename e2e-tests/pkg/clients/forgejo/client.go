@@ -19,14 +19,12 @@ type ForgejoClient struct {
 func NewForgejoClient(accessToken, baseURL, org string) (*ForgejoClient, error) {
 	_ = org // reserved for callers passing default org; API paths use full owner/repo IDs
 
-	httpClient := &http.Client{
-		Transport: utils.NewRetryTransport(http.DefaultTransport),
-	}
-
-	client, err := forgejo.NewClient(
-		baseURL,
+	client, err := forgejo.NewClient(baseURL,
 		forgejo.SetToken(accessToken),
-		forgejo.SetHTTPClient(httpClient),
+		// Codeberg may block the SDK's startup version probe with HTTP 429.
+		// The e2e suite does not need the probe to use the supported API calls.
+		forgejo.SetForgejoVersion(""),
+		forgejo.SetUserAgent("konflux-integration-e2e"),
 	)
 	if err != nil {
 		return nil, err

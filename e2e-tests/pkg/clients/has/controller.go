@@ -8,6 +8,7 @@ import (
 	"github.com/konflux-ci/integration-service/e2e-tests/pkg/clients/forgejo"
 	"github.com/konflux-ci/integration-service/e2e-tests/pkg/clients/github"
 	"github.com/konflux-ci/integration-service/e2e-tests/pkg/clients/gitlab"
+	"k8s.io/klog/v2"
 )
 
 // Factory to initialize the comunication against different API like github, gitlab or kubernetes.
@@ -50,7 +51,8 @@ func NewSuiteController(kube *common.CustomClient) (*HasController, error) {
 			utils.GetEnv(constants.CODEBERG_QE_ORG_ENV, constants.DefaultCodebergQEOrg),
 		)
 		if err != nil {
-			return nil, err
+			klog.Warningf("Forgejo/Codeberg unavailable, Forgejo client disabled: %v", err)
+			fj = nil
 		}
 	}
 
