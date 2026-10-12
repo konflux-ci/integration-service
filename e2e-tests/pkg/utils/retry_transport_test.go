@@ -195,17 +195,17 @@ func TestIsRetryable(t *testing.T) {
 		code int
 		want bool
 	}{
-		{200, false},
-		{301, false},
-		{400, false},
-		{401, false},
-		{403, false},
-		{404, false},
-		{429, true},
-		{500, true},
-		{502, true},
-		{503, true},
-		{504, true},
+		{http.StatusOK, false},
+		{http.StatusMovedPermanently, false},
+		{http.StatusBadRequest, false},
+		{http.StatusUnauthorized, false},
+		{http.StatusForbidden, false},
+		{http.StatusNotFound, false},
+		{http.StatusTooManyRequests, true},
+		{http.StatusInternalServerError, true},
+		{http.StatusBadGateway, true},
+		{http.StatusServiceUnavailable, true},
+		{http.StatusGatewayTimeout, true},
 	}
 	for _, tt := range tests {
 		if got := isRetryable(tt.code); got != tt.want {
