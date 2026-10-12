@@ -732,36 +732,36 @@ var _ = Describe("ForgejoReporter", func() {
 		})
 	})
 
-	Describe("extractHTTPStatusFromError", func() {
-		DescribeTable("extracts status codes from forgejo SDK error messages",
-			func(errMsg string, expectedCode int) {
-				err := fmt.Errorf("%s", errMsg)
-				Expect(status.ExtractHTTPStatusFromError(err)).To(Equal(expectedCode))
-			},
-			Entry("unknown API Error format",
-				"unknown API Error: 429\nRequest: '/version' with 'GET' method",
-				429),
-			Entry("unknown API Error 401",
-				"unknown API Error: 401\nRequest: '/version' with 'GET' method",
-				401),
-			Entry("unknown API Error 500",
-				"unknown API Error: 500\nRequest: '/version' with 'GET' method",
-				500),
-			Entry("plain message with no status code",
-				"connection refused",
-				0),
-			Entry("message-only error from JSON response",
-				"token is required",
-				0),
-			Entry("empty error string returns 0", "", 0),
-		)
-
-		It("returns 0 for nil error", func() {
-			Expect(status.ExtractHTTPStatusFromError(nil)).To(Equal(0))
-		})
-	})
-
 	Describe("Test helper functions", func() {
+		Describe("extractHTTPStatusFromError", func() {
+			DescribeTable("extracts status codes from forgejo SDK error messages",
+				func(errMsg string, expectedCode int) {
+					err := fmt.Errorf("%s", errMsg)
+					Expect(status.ExtractHTTPStatusFromError(err)).To(Equal(expectedCode))
+				},
+				Entry("unknown API Error format",
+					"unknown API Error: 429\nRequest: '/version' with 'GET' method",
+					429),
+				Entry("unknown API Error 401",
+					"unknown API Error: 401\nRequest: '/version' with 'GET' method",
+					401),
+				Entry("unknown API Error 500",
+					"unknown API Error: 500\nRequest: '/version' with 'GET' method",
+					500),
+				Entry("plain message with no status code",
+					"connection refused",
+					0),
+				Entry("message-only error from JSON response",
+					"token is required",
+					0),
+				Entry("empty error string returns 0", "", 0),
+			)
+
+			It("returns 0 for nil error", func() {
+				Expect(status.ExtractHTTPStatusFromError(nil)).To(Equal(0))
+			})
+		})
+
 		DescribeTable(
 			"reports correct forgejo statuses from test statuses",
 			func(teststatus integrationteststatus.IntegrationTestStatus, fjState string) {
