@@ -25,6 +25,9 @@ func NewForgejoClient(accessToken, baseURL, org string) (*ForgejoClient, error) 
 		// The e2e suite does not need the probe to use the supported API calls.
 		forgejo.SetForgejoVersion(""),
 		forgejo.SetUserAgent("konflux-integration-e2e"),
+		forgejo.SetHTTPClient(&http.Client{
+			Transport: utils.NewRetryTransport(http.DefaultTransport),
+		}),
 	)
 	if err != nil {
 		return nil, err
