@@ -20,6 +20,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -752,7 +753,7 @@ var _ = Describe("ForgejoReporter", func() {
 		Describe("extractHTTPStatusFromError", func() {
 			DescribeTable("extracts status codes from forgejo SDK error messages",
 				func(errMsg string, expectedCode int) {
-					err := fmt.Errorf("%s", errMsg)
+					err := errors.New(errMsg)
 					Expect(status.ExtractHTTPStatusFromError(err)).To(Equal(expectedCode))
 				},
 				Entry("unknown API Error format",
