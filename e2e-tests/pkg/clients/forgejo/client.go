@@ -4,7 +4,6 @@ import (
 	"net/http"
 
 	"codeberg.org/mvdkleijn/forgejo-sdk/forgejo/v3"
-
 	"github.com/konflux-ci/integration-service/e2e-tests/pkg/utils"
 )
 
