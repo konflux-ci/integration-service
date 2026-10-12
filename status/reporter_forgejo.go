@@ -50,12 +50,30 @@ type ForgejoReporter struct {
 	snapshot    *applicationapiv1alpha1.Snapshot
 }
 
+// statusCapturingTransport wraps an http.RoundTripper to capture the HTTP
+// status code from each response. This allows the retry predicate to
+// determine the actual HTTP status even when the forgejo SDK's error message
+// does not include it (e.g., JSON responses with only a "message" key).
+type statusCapturingTransport struct {
+	base       http.RoundTripper
+	lastStatus int
+}
+
+func (t *statusCapturingTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	resp, err := t.base.RoundTrip(req)
+	if err != nil {
+		t.lastStatus = 0
+		return nil, err
+	}
+	t.lastStatus = resp.StatusCode
+	return resp, nil
+}
+
 // httpStatusCodePattern matches HTTP status codes in forgejo SDK error messages.
+// Used as a fallback when the statusCapturingTransport is not available.
 // The SDK formats errors as "unknown API Error: <code>\n..." (see client.go in
-// codeberg.org/mvdkleijn/forgejo-sdk/forgejo/v3 v3.0.0). When the SDK returns
-// an error without a numeric code (e.g., a JSON "message" field), the regex
-// finds no match and extractHTTPStatusFromError returns 0, which callers treat
-// as retryable. Re-validate this pattern on SDK upgrades.
+// codeberg.org/mvdkleijn/forgejo-sdk/forgejo/v3 v3.0.0). Re-validate this
+// pattern on SDK upgrades.
 var httpStatusCodePattern = regexp.MustCompile(`(?:unknown API Error:\s+|^|\s)(\d{3})(?:\s|\n|$)`)
 
 // extractHTTPStatusFromError attempts to extract an HTTP status code from a
@@ -139,8 +157,14 @@ func (r *ForgejoReporter) Initialize(ctx context.Context, snapshot *applicationa
 	// Construct API base URL (forgejo client automatically adds /api/v1 to all paths)
 	apiURL := fmt.Sprintf("%s://%s", burl.Scheme, burl.Host)
 
+	transport := &statusCapturingTransport{base: http.DefaultTransport}
+	httpClient := &http.Client{Transport: transport}
+
 	err = retry.OnError(reporterRetryBackoff, func(err error) bool {
-		statusCode := extractHTTPStatusFromError(err)
+		statusCode := transport.lastStatus
+		if statusCode == 0 {
+			statusCode = extractHTTPStatusFromError(err)
+		}
 		// statusCode 0 means no HTTP status code could be extracted (network/timeout error), always retry
 		retryable := statusCode == 0 || !r.ReturnCodeIsUnrecoverable(statusCode)
 		if retryable {
@@ -149,7 +173,7 @@ func (r *ForgejoReporter) Initialize(ctx context.Context, snapshot *applicationa
 		}
 		return retryable
 	}, func() error {
-		r.client, err = forgejo.NewClient(apiURL, forgejo.SetToken(token), forgejo.SetUserAgent(common.IntegrationServiceUserAgent))
+		r.client, err = forgejo.NewClient(apiURL, forgejo.SetHTTPClient(httpClient), forgejo.SetToken(token), forgejo.SetUserAgent(common.IntegrationServiceUserAgent))
 		return err
 	})
 	if err != nil {

@@ -572,6 +572,18 @@ var _ = Describe("ForgejoReporter", func() {
 			secretData = map[string][]byte{
 				"example-token": []byte("example-personal-access-token"),
 			}
+			mockK8sClient = &MockK8sClient{
+				getInterceptor: func(key client.ObjectKey, obj client.Object) {
+					if secret, ok := obj.(*v1.Secret); ok {
+						secret.Data = secretData
+					}
+				},
+				listInterceptor: func(list client.ObjectList) {
+					if repoList, ok := list.(*pacv1alpha1.RepositoryList); ok {
+						repoList.Items = []pacv1alpha1.Repository{repoCR}
+					}
+				},
+			}
 		})
 
 		AfterEach(func() {
@@ -609,18 +621,6 @@ var _ = Describe("ForgejoReporter", func() {
 							Key:  "example-token",
 						},
 					},
-				},
-			}
-			mockK8sClient = &MockK8sClient{
-				getInterceptor: func(key client.ObjectKey, obj client.Object) {
-					if secret, ok := obj.(*v1.Secret); ok {
-						secret.Data = secretData
-					}
-				},
-				listInterceptor: func(list client.ObjectList) {
-					if repoList, ok := list.(*pacv1alpha1.RepositoryList); ok {
-						repoList.Items = []pacv1alpha1.Repository{repoCR}
-					}
 				},
 			}
 
@@ -663,18 +663,6 @@ var _ = Describe("ForgejoReporter", func() {
 					},
 				},
 			}
-			mockK8sClient = &MockK8sClient{
-				getInterceptor: func(key client.ObjectKey, obj client.Object) {
-					if secret, ok := obj.(*v1.Secret); ok {
-						secret.Data = secretData
-					}
-				},
-				listInterceptor: func(list client.ObjectList) {
-					if repoList, ok := list.(*pacv1alpha1.RepositoryList); ok {
-						repoList.Items = []pacv1alpha1.Repository{repoCR}
-					}
-				},
-			}
 
 			reporter := status.NewForgejoReporter(log, mockK8sClient)
 			_, err := reporter.Initialize(context.TODO(), testSnapshot)
@@ -710,18 +698,6 @@ var _ = Describe("ForgejoReporter", func() {
 					},
 				},
 			}
-			mockK8sClient = &MockK8sClient{
-				getInterceptor: func(key client.ObjectKey, obj client.Object) {
-					if secret, ok := obj.(*v1.Secret); ok {
-						secret.Data = secretData
-					}
-				},
-				listInterceptor: func(list client.ObjectList) {
-					if repoList, ok := list.(*pacv1alpha1.RepositoryList); ok {
-						repoList.Items = []pacv1alpha1.Repository{repoCR}
-					}
-				},
-			}
 
 			reporter := status.NewForgejoReporter(log, mockK8sClient)
 			_, err := reporter.Initialize(context.TODO(), testSnapshot)
@@ -729,6 +705,46 @@ var _ = Describe("ForgejoReporter", func() {
 			// 3 steps = 1 initial + 2 retries = 3 calls total
 			Expect(atomic.LoadInt32(&versionCallCount)).To(BeNumerically("==", 3))
 			Expect(buf.String()).To(ContainSubstring("failed to create forgejo client after all retries"))
+		})
+
+		It("does not retry Initialize on 403 with JSON message body", func() {
+			var versionCallCount int32
+			mux := http.NewServeMux()
+			apiHandler := http.NewServeMux()
+			apiHandler.Handle(defaultAPIURL+"/", http.StripPrefix(defaultAPIURL, mux))
+
+			mux.HandleFunc("/version", func(rw http.ResponseWriter, r *http.Request) {
+				atomic.AddInt32(&versionCallCount, 1)
+				// Return a JSON body with "message" key; the SDK formats
+				// this as a message-only error with no numeric status code,
+				// but the statusCapturingTransport captures the 403 directly.
+				rw.Header().Set("Content-Type", "application/json")
+				rw.WriteHeader(http.StatusForbidden)
+				fmt.Fprintf(rw, `{"message": "access denied"}`)
+			})
+			server := httptest.NewServer(apiHandler)
+			defer server.Close()
+
+			mockRepoURL := fmt.Sprintf("%s/%s/%s", server.URL, owner, repo)
+			testSnapshot := hasSnapshot.DeepCopy()
+			testSnapshot.Annotations[gitops.PipelineAsCodeRepoURLAnnotation] = mockRepoURL
+
+			repoCR = pacv1alpha1.Repository{
+				Spec: pacv1alpha1.RepositorySpec{
+					URL: mockRepoURL,
+					GitProvider: &pacv1alpha1.GitProvider{
+						Secret: &pacv1alpha1.Secret{
+							Name: "example-secret-name",
+							Key:  "example-token",
+						},
+					},
+				},
+			}
+
+			reporter := status.NewForgejoReporter(log, mockK8sClient)
+			_, err := reporter.Initialize(context.TODO(), testSnapshot)
+			Expect(err).To(HaveOccurred())
+			Expect(atomic.LoadInt32(&versionCallCount)).To(BeNumerically("==", 1))
 		})
 	})
 
