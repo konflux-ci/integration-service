@@ -36,7 +36,6 @@ import (
 	"errors"
 	"fmt"
 	neturl "net/url"
-	"regexp"
 	"strings"
 )
 
@@ -82,19 +81,54 @@ func (v *IntegrationTestScenarioCustomValidator) ValidateCreate(ctx context.Cont
 
 	integrationtestscenariolog.Info("Validating IntegrationTestScenario upon creation", "name", scenario.GetName())
 
-	// Validate that exactly one of application or componentGroup is specified
-	if err := validateOwnerField(scenario); err != nil {
-		return nil, err
+	// Ensure the ownerReference was set by the mutating webhook
+	if ref := scenario.GetOwnerReferences(); len(ref) == 0 {
+		integrationtestscenariolog.Info("Owner reference not set for scenario", "name", scenario.Name)
+		return nil, fmt.Errorf("owner reference not set for scenario '%s' in namespace '%s'", scenario.Name, scenario.Namespace)
 	}
 
+	return nil, validateIntegrationTestScenario(scenario)
+}
+
+// validateIntegrationTestScenario runs all validations shared by create and update operations.
+func validateIntegrationTestScenario(scenario *v1beta2.IntegrationTestScenario) error {
+	// Validate that exactly one of application or componentGroup is specified
+	if err := validateOwnerField(scenario); err != nil {
+		return err
+	}
+
+	if err := validateScenarioName(scenario); err != nil {
+		return err
+	}
+
+	if err := validateNoUserSuppliedSnapshotParam(scenario); err != nil {
+		return err
+	}
+
+	if err := validateGitResolverParams(scenario); err != nil {
+		return err
+	}
+
+	integrationtestscenariolog.Info("Validated name and params for scenario", "name", scenario.Name)
+
+	return nil
+}
+
+// validateScenarioName ensures the scenario name conforms to the DNS-1035 label format.
+func validateScenarioName(scenario *v1beta2.IntegrationTestScenario) error {
 	// We use the DNS-1035 format for application names, so ensure it conforms to that specification
 	if len(validation.IsDNS1035Label(scenario.Name)) != 0 {
-		return nil, field.Invalid(field.NewPath("metadata").Child("name"), scenario.Name,
+		return field.Invalid(field.NewPath("metadata").Child("name"), scenario.Name,
 			"an IntegrationTestScenario resource name must start with a lower case "+
 				"alphabetical character, be under 63 characters, and can only consist "+
 				"of lower case alphanumeric characters or '-'")
 	}
 
+	return nil
+}
+
+// validateNoUserSuppliedSnapshotParam ensures the SNAPSHOT param is not manually defined.
+func validateNoUserSuppliedSnapshotParam(scenario *v1beta2.IntegrationTestScenario) error {
 	// see stoneintg-896
 	for _, param := range scenario.Spec.Params {
 		if param.Name == "SNAPSHOT" {
@@ -102,66 +136,60 @@ func (v *IntegrationTestScenarioCustomValidator) ValidateCreate(ctx context.Cont
 				"param manually defined because it will be atomatically generated " +
 				"by the integration service"
 			integrationtestscenariolog.Info(errString)
-			return nil, field.Invalid(field.NewPath("Spec").Child("Params"), param.Name, errString)
+			return field.Invalid(field.NewPath("Spec").Child("Params"), param.Name, errString)
 		}
 	}
 
-	// we won't enable ITS if git resolver with url & repo+org
-	if scenario.Spec.ResolverRef.Resolver == "git" {
-		urlResolverExist := false
-		repoResolverExist := false
-		orgResolverExist := false
-		var paramErrors error
+	return nil
+}
 
-		for _, gitResolverParam := range scenario.Spec.ResolverRef.Params {
-			if gitResolverParam.Name == "url" && gitResolverParam.Value != "" {
-				urlResolverExist = true
-			}
-			if gitResolverParam.Name == "repo" && gitResolverParam.Value != "" {
-				repoResolverExist = true
-			}
-			if gitResolverParam.Name == "org" && gitResolverParam.Value != "" {
-				orgResolverExist = true
-			}
+// validateGitResolverParams validates git resolver param combinations and values.
+func validateGitResolverParams(scenario *v1beta2.IntegrationTestScenario) error {
+	if scenario.Spec.ResolverRef.Resolver != "git" {
+		return nil
+	}
 
-			switch key := gitResolverParam.Name; key {
-			case "url", "serverURL":
-				paramErrors = errors.Join(paramErrors, validateUrl(key, gitResolverParam.Value))
-			case "token":
-				paramErrors = errors.Join(paramErrors, validateToken(gitResolverParam.Value))
-			default:
-				paramErrors = errors.Join(paramErrors, validateNoWhitespace(key, gitResolverParam.Value))
-			}
+	urlResolverExist := false
+	repoResolverExist := false
+	orgResolverExist := false
+	var paramErrors error
+
+	for _, gitResolverParam := range scenario.Spec.ResolverRef.Params {
+		if gitResolverParam.Name == "url" && gitResolverParam.Value != "" {
+			urlResolverExist = true
+		}
+		if gitResolverParam.Name == "repo" && gitResolverParam.Value != "" {
+			repoResolverExist = true
+		}
+		if gitResolverParam.Name == "org" && gitResolverParam.Value != "" {
+			orgResolverExist = true
 		}
 
-		if urlResolverExist {
-			if repoResolverExist || orgResolverExist {
-				return nil, field.Invalid(field.NewPath("Spec").Child("ResolverRef").Child("Params"), scenario.Spec.ResolverRef.Params,
-					"an IntegrationTestScenario resource can only have one of the gitResolver parameters,"+
-						"either url or repo (with org), but not both.")
-			}
-		} else {
-			if !repoResolverExist || !orgResolverExist {
-				return nil, field.Invalid(field.NewPath("Spec").Child("ResolverRef").Child("Params"), scenario.Spec.ResolverRef.Params,
-					"IntegrationTestScenario is invalid: missing mandatory repo or org parameters."+
-						"If both are absent, a valid url is highly recommended.")
-			}
-		}
-
-		if paramErrors != nil {
-			return nil, paramErrors
+		switch key := gitResolverParam.Name; key {
+		case "url", "serverURL":
+			paramErrors = errors.Join(paramErrors, validateUrl(key, gitResolverParam.Value))
+		case "token":
+			paramErrors = errors.Join(paramErrors, validateToken(gitResolverParam.Value))
+		default:
+			paramErrors = errors.Join(paramErrors, validateNoWhitespace(key, gitResolverParam.Value))
 		}
 	}
 
-	integrationtestscenariolog.Info("Validated params")
-
-	// Ensure the ownerReference was set by the mutating webhook
-	if ref := scenario.GetOwnerReferences(); len(ref) == 0 {
-		integrationtestscenariolog.Info("Owner reference not set for scenario", scenario.Name)
-		return nil, fmt.Errorf("owner reference not set for scenario '%s' in namespace '%s'", scenario.Name, scenario.Namespace)
+	if urlResolverExist {
+		if repoResolverExist || orgResolverExist {
+			return field.Invalid(field.NewPath("Spec").Child("ResolverRef").Child("Params"), scenario.Spec.ResolverRef.Params,
+				"an IntegrationTestScenario resource can only have one of the gitResolver parameters,"+
+					"either url or repo (with org), but not both.")
+		}
+	} else {
+		if !repoResolverExist || !orgResolverExist {
+			return field.Invalid(field.NewPath("Spec").Child("ResolverRef").Child("Params"), scenario.Spec.ResolverRef.Params,
+				"IntegrationTestScenario is invalid: missing mandatory repo or org parameters."+
+					"If both are absent, a valid url is highly recommended.")
+		}
 	}
 
-	return nil, nil
+	return paramErrors
 }
 
 // validateOwnerField ensures exactly one of application or componentGroup is specified
@@ -185,8 +213,7 @@ func validateOwnerField(scenario *v1beta2.IntegrationTestScenario) error {
 
 // Returns an error if 'value' contains leading or trailing whitespace
 func validateNoWhitespace(key, value string) error {
-	r, _ := regexp.Compile(`(^\s+)|(\s+$)`)
-	if r.MatchString(value) {
+	if value != strings.TrimSpace(value) {
 		return fmt.Errorf("integration Test Scenario Git resolver param with name '%s', cannot have leading or trailing whitespace", key)
 	}
 	return nil
@@ -229,7 +256,14 @@ func validateToken(token string) error {
 
 // ValidateUpdate implements webhook.Validator so a webhook will be registered for the type
 func (v *IntegrationTestScenarioCustomValidator) ValidateUpdate(ctx context.Context, oldObj, newObj runtime.Object) (warnings admission.Warnings, err error) {
-	return nil, nil
+	scenario, ok := newObj.(*v1beta2.IntegrationTestScenario)
+	if !ok {
+		return nil, fmt.Errorf("expected a IntegrationTestScenario object but got %T", newObj)
+	}
+
+	integrationtestscenariolog.Info("Validating IntegrationTestScenario upon update", "name", scenario.GetName())
+
+	return nil, validateIntegrationTestScenario(scenario)
 }
 
 // ValidateDelete implements webhook.Validator so a webhook will be registered for the type

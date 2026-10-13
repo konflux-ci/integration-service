@@ -59,6 +59,6 @@ The service supports two parallel resource flows: **ComponentGroup** (new model)
 - **API changes**: edit types in `api/v1beta2/`, then `make generate manifests`
 - **Controller changes**: implement in `internal/controller/<resource>/<resource>_adapter.go`
 - **Webhooks**: add to `internal/webhooks/<resource>/`
-- **Tests**: unit tests alongside code using Ginkgo + envtest; E2E tests are located in `e2e-tests/tests`
+- **Tests**: unit tests alongside code using Ginkgo + envtest; E2E tests are located in `e2e-tests/tests`. When running unit tests, prefer `make test` so envtest assets are configured automatically. If running `go test` directly for packages that use envtest/webhooks, first export `KUBEBUILDER_ASSETS` with the setup-envtest path, for example: `export KUBEBUILDER_ASSETS="$(./bin/setup-envtest use 1.29 -p path)"`.
 - **Package and tooling changes**: When adding, removing or moving Go package directories, check for explicit package paths in Makefile targets, CI workflows, linting, code coverage and scripts. Use recursive patterns like  `./...` wherever possible.
 
