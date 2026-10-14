@@ -133,5 +133,27 @@ If you don't vendor dependencies, `go vet` will fail build.
 
 ### Running tests
 
-To test the code, simply run `make test`. This command will fetch all the required dependencies and test the code. The
-test coverage will be reported at the end, once all the tests have been executed.
+To test the code, simply run `make test`. This command will fetch
+all the required dependencies and test the code. The test coverage
+will be reported at the end, once all the tests have been executed.
+
+#### Unit tests
+
+Unit tests are located alongside the code they test.
+
+#### E2E tests
+
+E2E tests verify the full Integration Service flow against a real
+cluster. Run with `make e2e-run`.
+
+Test suites in `e2e-tests/tests/integration-service/`:
+- `integration.go` — basic integration flow
+- `group-snapshots-tests.go` — group snapshot and nudge tests
+- `status-reporting-*.go` — git provider status reporting
+- `forgejo-integration-reporting.go` — Forgejo integration
+
+The nudge e2e test verifies the immediate-mode nudge happy path:
+when a source component's push build succeeds, it triggers a
+nudge PipelineRun for the target component as defined in
+NudgeConfig. Run nudge tests only with:
+`make e2e-run GINKGO_LABEL_FILTER="nudge"`
