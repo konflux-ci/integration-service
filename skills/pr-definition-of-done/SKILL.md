@@ -59,7 +59,7 @@ Every PR must pass CI checks, follow commit conventions, include tests, and keep
 | Go linters | `pr.yaml` | gosec, golangci-lint, staticcheck failures |
 | CodeQL | `codeql.yml` | Security vulnerabilities |
 | PR size | `size.yaml` | Oversized PRs (informational) |
-| Coverage | `codecov.yml` | Patch coverage below 85% |
+| Coverage | `codecov.yml` | Patch coverage below 85% (informational) |
 | Tekton build | `.tekton/` | Image build failure, security scans |
 
 ## Common Mistakes

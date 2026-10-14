@@ -74,7 +74,9 @@ CI runs `go mod tidy` and checks for changes. If your `go.mod`/`go.sum` differ a
 - Tool: codecov, flag: `unit-tests`
 - Patch target: 85% for changed coverable lines
 - Ignores: `**/zz_generated*`, `e2e-tests/**`, vendor
-- Patch coverage: informational only (non-blocking)
+- CI check: informational only (non-blocking per `codecov.yml`)
+- Local estimator: `make codecov-estimate` enforces 85% as a quality
+  gate (see [estimating-codecov-patch-coverage](../estimating-codecov-patch-coverage/SKILL.md))
 
 ## Common Mistakes
 
