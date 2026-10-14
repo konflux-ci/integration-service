@@ -135,6 +135,8 @@ def changed_lines(base: str) -> dict[str, set[int]]:
             current_line += 1
         elif line.startswith("-"):
             continue
+        elif line.startswith("\\"):
+            continue
         else:
             current_line += 1
     for filename in run_git(["ls-files", "--others", "--exclude-standard", "--", "*.go"]).splitlines():
