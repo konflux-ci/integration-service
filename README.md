@@ -133,5 +133,51 @@ If you don't vendor dependencies, `go vet` will fail build.
 
 ### Running tests
 
-To test the code, simply run `make test`. This command will fetch all the required dependencies and test the code. The
-test coverage will be reported at the end, once all the tests have been executed.
+To test the code, simply run `make test`. This command will fetch
+all the required dependencies and test the code. The test coverage
+will be reported at the end, once all the tests have been executed.
+
+#### Unit tests
+
+Unit tests are located alongside the code they test.
+
+#### E2E tests
+
+E2E tests verify the full Integration Service flow against a real
+cluster. Run with `make e2e-run`.
+
+Test suites in `e2e-tests/tests/integration-service/`:
+
+- **`integration.go`** (`Label: integration-service`) — single-component happy path:
+  build PLR → Snapshot creation → integration test PLR → pass → Release CR.
+  Also covers integration test failure (no release), and snapshot re-run via label.
+
+- **`group-snapshots-tests.go`** (`Label: integration-service, group-snapshot-creation`) —
+  multi-component group snapshot creation across a monorepo and a separate repo.
+  Covers GitHub CheckRun status reporting, PaC init PR flow for 3 components,
+  snapshot cancellation when superseded by a newer build, ResolutionRequest GC
+  after pipeline completion, ITS referencing a Tekton Task (not a Pipeline) via
+  git resolver, and immediate-mode nudge happy path: component C's push build
+  triggers a nudge PipelineRun for component A (via NudgeConfig C→A immediate
+  edge); the suite verifies the nudge PLR is created and completes successfully,
+  the source PLR is annotated with `NudgeProcessedAnnotation`, the nudge finalizer
+  is removed from the source PLR, and the nudge PLR carries the correct
+  `NudgeTypeLabel`, `NudgedComponentsAnnotation` (target), and
+  `NudgingComponentAnnotation` (source). Nudge steps are tagged `Label: nudge`
+  within the suite but cannot run in isolation — they depend on the preceding
+  group-snapshot setup.
+
+- **`status-reporting-to-pullrequest.go`** (`Label: integration-service, github-status-reporting`) —
+  GitHub PR CheckRun reporting for integration test results.
+  Covers pass/fail status written back to GitHub PRs, missing `git-provider`
+  annotation handling (graceful skip, no crash), and build PLR failure reflected
+  in snapshot status.
+
+- **`gitlab-integration-reporting.go`** (`Label: integration-service, gitlab-status-reporting`) —
+  GitLab MR commit status reporting for integration test results.
+  Covers custom-branch component creation via PaC on GitLab, integration results
+  reported to the MR, and re-trigger after MR merge (push-event snapshot).
+
+- **`forgejo-integration-reporting.go`** (`Label: integration-service, forgejo-status-reporting`) —
+  Forgejo MR status reporting for integration test results.
+  Mirrors the GitLab suite for Forgejo-hosted repositories.
