@@ -16,12 +16,17 @@ import (
 
 	appstudioApi "github.com/konflux-ci/application-api/api/v1alpha1"
 	integrationv1beta2 "github.com/konflux-ci/integration-service/api/v1beta2"
+	"github.com/konflux-ci/integration-service/helpers"
+	tektonconsts "github.com/konflux-ci/integration-service/tekton/consts"
+	"github.com/konflux-ci/operator-toolkit/metadata"
 	ginkgo "github.com/onsi/ginkgo/v2"
 	"github.com/onsi/gomega"
 	pipeline "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	corev1 "k8s.io/api/core/v1"
 	k8sErrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"knative.dev/pkg/apis"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
 var _ = framework.IntegrationServiceSuiteDescribe("Creation of group snapshots for monorepo and multiple repos", ginkgo.Label("integration-service", "group-snapshot-creation"), func() {
@@ -46,6 +51,8 @@ var _ = framework.IntegrationServiceSuiteDescribe("Creation of group snapshots f
 	var pipelineRun, testPipelinerun *pipeline.PipelineRun
 	var integrationTestScenarioPass, invalidIntegrationTestScenario *integrationv1beta2.IntegrationTestScenario
 	var applicationName, testNamespace, multiComponentBaseBranchName, multiComponentPRBranchName string
+	var nudgeConfig *integrationv1beta2.NudgeConfig
+	var nudgePLR *pipeline.PipelineRun
 
 	ginkgo.AfterEach(framework.ReportFailure(&f))
 
@@ -149,6 +156,13 @@ var _ = framework.IntegrationServiceSuiteDescribe("Creation of group snapshots f
 		ginkgo.AfterAll(func() {
 			if !ginkgo.CurrentSpecReport().Failed() {
 				cleanup(*f, testNamespace, applicationName, componentA.Name, snapshot)
+			}
+
+			// Delete NudgeConfig
+			if nudgeConfig != nil {
+				if err := f.AsKubeAdmin.IntegrationController.DeleteNudgeConfig(nudgeConfig); err != nil {
+					ginkgo.GinkgoWriter.Printf("Failed to delete NudgeConfig: %v\n", err)
+				}
 			}
 
 			// Delete new branches created by PaC and a testing branch used as a component's base branch
@@ -392,6 +406,18 @@ var _ = framework.IntegrationServiceSuiteDescribe("Creation of group snapshots f
 				pacBranchNames = append(pacBranchNames, pacBranchName)
 			})
 
+			ginkgo.It("creates NudgeConfig with C→A relationship", func() {
+				nudgeConfig, err = f.AsKubeAdmin.IntegrationController.CreateNudgeConfig(
+					testNamespace,
+					[]integrationv1beta2.NudgeRelationship{{
+						From: componentC.Name,
+						To:   componentA.Name,
+						Mode: integrationv1beta2.NudgeModeImmediate,
+					}},
+				)
+				gomega.Expect(err).NotTo(gomega.HaveOccurred())
+			})
+
 			ginkgo.It(fmt.Sprintf("triggers a Build PipelineRun for componentC %s", componentRepoNameForGroupIntegration), func() {
 				gomega.Eventually(func() error {
 					pipelineRun, err = f.AsKubeAdmin.HasController.GetComponentPipelineRun(componentC.Name, applicationName, testNamespace, "")
@@ -466,6 +492,69 @@ var _ = framework.IntegrationServiceSuiteDescribe("Creation of group snapshots f
 				ginkgo.GinkgoWriter.Printf("merged result sha: %s for PR #%d\n", mergeMultiResultSha, prNumber)
 			})
 
+		})
+
+		// Nudge test depends on Component A, B, C creation and C's push build (from earlier When blocks).
+		// It cannot run in isolation — the preceding group-snapshot setup is required.
+		ginkgo.When("component C push build triggers an immediate nudge for component A", ginkgo.Ordered, func() {
+			ginkgo.It("should create a nudge PipelineRun for component A", func() {
+				nudgePLR, err = f.AsKubeDeveloper.IntegrationController.WaitForNudgePipelineRunToExist(
+					componentA.Name, testNamespace)
+				gomega.Expect(err).NotTo(gomega.HaveOccurred())
+			})
+
+			ginkgo.It("should complete the nudge PipelineRun successfully", func() {
+				gomega.Eventually(func() error {
+					plr, err := f.AsKubeDeveloper.IntegrationController.GetNudgePipelineRun(componentA.Name, testNamespace)
+					if err != nil {
+						return err
+					}
+					if !plr.IsDone() {
+						return fmt.Errorf("nudge PLR %s still running", plr.Name)
+					}
+					if !plr.GetStatusCondition().GetCondition(apis.ConditionSucceeded).IsTrue() {
+						return fmt.Errorf("nudge PLR %s failed", plr.Name)
+					}
+					nudgePLR = plr
+					return nil
+				}, superLongTimeout, constants.PipelineRunPollingInterval).Should(gomega.Succeed(),
+					"nudge PipelineRun for component A should complete successfully")
+			})
+
+			ginkgo.It("should annotate source build PLR (component C push) as nudge-processed", func() {
+				gomega.Eventually(func() bool {
+					sourcePLR, err := f.AsKubeAdmin.HasController.GetComponentPipelineRun(
+						componentC.Name, applicationName, testNamespace, mergeMultiResultSha)
+					if err != nil || sourcePLR == nil {
+						return false
+					}
+					return metadata.HasAnnotation(sourcePLR, tektonconsts.NudgeProcessedAnnotation)
+				}, shortTimeout, constants.PipelineRunPollingInterval).Should(gomega.BeTrue(),
+					"source build PLR should be annotated with nudge-processed")
+			})
+
+			ginkgo.It("should remove nudge finalizer from source build PLR", func() {
+				gomega.Eventually(func() bool {
+					sourcePLR, err := f.AsKubeAdmin.HasController.GetComponentPipelineRun(
+						componentC.Name, applicationName, testNamespace, mergeMultiResultSha)
+					if err != nil || sourcePLR == nil {
+						return false
+					}
+					return !controllerutil.ContainsFinalizer(sourcePLR, helpers.NudgePipelineRunFinalizer)
+				}, shortTimeout, constants.PipelineRunPollingInterval).Should(gomega.BeTrue(),
+					"nudge finalizer should be removed from source build PLR")
+			})
+
+			ginkgo.It("should set correct labels and annotations on nudge PLR", func() {
+				gomega.Expect(nudgePLR.Labels[tektonconsts.NudgeTypeLabel]).
+					To(gomega.Equal(tektonconsts.NudgePipelineRunTypeValue))
+				// NudgedComponentsAnnotation is space-separated target component names
+				gomega.Expect(nudgePLR.Annotations[tektonconsts.NudgedComponentsAnnotation]).
+					To(gomega.ContainSubstring(componentA.Name))
+				// NudgingComponentAnnotation identifies the source component that triggered nudging
+				gomega.Expect(nudgePLR.Annotations[tektonconsts.NudgingComponentAnnotation]).
+					To(gomega.Equal(componentC.Name))
+			})
 		})
 
 		//  ______ _____ _   _

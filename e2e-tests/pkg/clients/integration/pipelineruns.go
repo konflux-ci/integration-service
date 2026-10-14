@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	appstudioApi "github.com/konflux-ci/application-api/api/v1alpha1"
@@ -293,4 +294,74 @@ func (i *IntegrationController) AddIntegrationTestRerunLabel(snapshot *appstudio
 	}
 
 	return nil
+}
+
+// GetNudgePipelineRun retrieves a nudge PipelineRun for a target component.
+// Nudge PLRs only carry NudgeTypeLabel; PipelineRunComponentLabel is not set on them.
+// Target component membership is determined by the NudgedComponentsAnnotation (space-separated).
+func (i *IntegrationController) GetNudgePipelineRun(
+	targetComponentName string,
+	namespace string,
+) (*tektonv1.PipelineRun, error) {
+	opts := []client.ListOption{
+		client.InNamespace(namespace),
+		client.MatchingLabels{
+			tektonconsts.NudgeTypeLabel: tektonconsts.NudgePipelineRunTypeValue,
+		},
+	}
+
+	list := &tektonv1.PipelineRunList{}
+	err := i.KubeRest().List(context.Background(), list, opts...)
+
+	if err != nil && !k8sErrors.IsNotFound(err) {
+		return nil, fmt.Errorf("error listing nudge pipelineruns in %s namespace: %w", namespace, err)
+	}
+
+	var matched []tektonv1.PipelineRun
+	for _, plr := range list.Items {
+		nudged := plr.Annotations[tektonconsts.NudgedComponentsAnnotation]
+		for _, name := range strings.Fields(nudged) {
+			if name == targetComponentName {
+				matched = append(matched, plr)
+				break
+			}
+		}
+	}
+
+	if len(matched) == 0 {
+		return &tektonv1.PipelineRun{}, fmt.Errorf("no nudge pipelinerun found for component %s", targetComponentName)
+	}
+
+	// Sort by StartTime and return latest
+	sort.Slice(matched, func(i, j int) bool {
+		return matched[i].Status.StartTime.Before(matched[j].Status.StartTime)
+	})
+
+	return &matched[len(matched)-1], nil
+}
+
+// WaitForNudgePipelineRunToExist waits for nudge PLR to be created for target component
+func (i *IntegrationController) WaitForNudgePipelineRunToExist(
+	targetComponentName string,
+	namespace string,
+) (*tektonv1.PipelineRun, error) {
+	var nudgePLR *tektonv1.PipelineRun
+
+	err := wait.PollUntilContextTimeout(
+		context.Background(),
+		constants.PipelineRunPollingInterval,
+		shortTimeout,
+		true,
+		func(ctx context.Context) (done bool, err error) {
+			nudgePLR, err = i.GetNudgePipelineRun(targetComponentName, namespace)
+			if err != nil {
+				ginkgo.GinkgoWriter.Printf(
+					"waiting for nudge pipelinerun for component %s: %v\n",
+					targetComponentName, err)
+				return false, nil
+			}
+			return true, nil
+		})
+
+	return nudgePLR, err
 }
