@@ -243,7 +243,6 @@ class CoverageHelperTest(unittest.TestCase):
         self.assertIn("local Go 1.25.0 differs from CI Go 1.26.0", result.stderr)
 
     def test_no_newline_at_eof_marker_does_not_shift_line_numbers(self):
-        """Verify that '\\ No newline at end of file' markers don't cause off-by-one."""
         with tempfile.TemporaryDirectory() as directory:
             repository = Path(directory)
             init_repository(repository)
