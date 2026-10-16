@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"slices"
 	"strconv"
 	"strings"
@@ -29,6 +30,7 @@ import (
 	"github.com/konflux-ci/integration-service/pkg/dag"
 	"go.opentelemetry.io/otel/attribute"
 	clienterrors "k8s.io/apimachinery/pkg/api/errors"
+	utilnet "k8s.io/apimachinery/pkg/util/net"
 	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
 
@@ -275,9 +277,25 @@ func (a *Adapter) handleScenarioReruns(scenarios *[]v1beta2.IntegrationTestScena
 
 		isOptionalScenario := h.IsIntegrationTestScenarioOptional(&scenario)
 		testStatuses.ResetStatus(scenario.Name, isOptionalScenario)
-		if opResult, err := a.rerunIntegrationPipelinerunForScenario(&scenario, testStatuses); opResult.CancelRequest || err != nil {
+		opResult, err := a.rerunIntegrationPipelinerunForScenario(&scenario, testStatuses)
+		if err != nil {
+			// A retryable failure must keep the re-run label. Statuses for scenarios
+			// that already succeeded in this pass were persisted below.
 			a.logger.Error(err, "Failed to create rerun pipelinerun for IntegrationTestScenario", "Scenario", scenario.Name)
 			return -1, opResult, err
+		}
+		if opResult.CancelRequest {
+			// Permanent failures are already stored as TestInvalid. Continue so a
+			// later scenario in an "all" re-run is not skipped, then let the caller
+			// remove the re-run label.
+			continue
+		}
+		// Persist before the next scenario. A later retryable failure returns
+		// without writing, and the in-memory InProgress update would otherwise be lost.
+		if err := gitops.WriteIntegrationTestStatusesIntoSnapshot(a.context, a.snapshot, testStatuses, a.client); err != nil {
+			a.logger.Error(err, "Failed to write Test Status into Snapshot", "Scenario", scenario.Name)
+			opResult, requeueErr := controller.RequeueWithError(err)
+			return -1, opResult, requeueErr
 		}
 	}
 	return skipScenarioRerunCount, controller.OperationResult{}, nil
@@ -440,14 +458,12 @@ func (a *Adapter) processSingleScenario(
 		a.logger.Error(err, "Failed to create pipelineRun for snapshot and scenario",
 			"integrationScenario.Name", integrationTestScenario.Name)
 
+		if isRetryablePipelineRunCreationError(err) {
+			return err
+		}
 		testStatuses.UpdateTestStatusIfChanged(
 			integrationTestScenario.Name, intgteststat.IntegrationTestStatusTestInvalid,
 			fmt.Sprintf("Creation of pipelineRun failed during creation due to: %s.", err))
-
-		// Only return error if it's not a validation error
-		if !clienterrors.IsInvalid(err) {
-			return err
-		}
 		return nil
 	}
 
@@ -1242,28 +1258,45 @@ func (a *Adapter) RequeueIfYoungerThanThreshold(retErr error) (controller.Operat
 	return controller.ContinueProcessing()
 }
 
+// isRetryablePipelineRunCreationError reports whether a PipelineRun creation failure
+// is a known transient API or transport error. Every other failure is terminal,
+// including invalid resources, admission denials, and resolver errors.
+func isRetryablePipelineRunCreationError(err error) bool {
+	if err == nil {
+		return false
+	}
+	return clienterrors.IsTimeout(err) ||
+		clienterrors.IsServerTimeout(err) ||
+		clienterrors.IsConflict(err) ||
+		clienterrors.IsTooManyRequests(err) ||
+		clienterrors.IsServiceUnavailable(err) ||
+		errors.Is(err, context.DeadlineExceeded) ||
+		errors.Is(err, io.EOF) ||
+		errors.Is(err, io.ErrUnexpectedEOF) ||
+		utilnet.IsTimeout(err) ||
+		utilnet.IsProbableEOF(err) ||
+		utilnet.IsConnectionReset(err) ||
+		utilnet.IsConnectionRefused(err) ||
+		utilnet.IsHTTP2ConnectionLost(err)
+}
+
 func (a *Adapter) HandlePipelineCreationError(err error, integrationTestScenario *v1beta2.IntegrationTestScenario, testStatuses *intgteststat.SnapshotIntegrationTestStatuses) (controller.OperationResult, error) {
 	a.logger.Error(err, "Failed to create pipelineRun for snapshot and scenario",
 		"integrationScenario.Name", integrationTestScenario.Name)
+	if isRetryablePipelineRunCreationError(err) {
+		return controller.RequeueWithError(err)
+	}
 	testStatuses.UpdateTestStatusIfChanged(
 		integrationTestScenario.Name, intgteststat.IntegrationTestStatusTestInvalid,
 		fmt.Sprintf("Creation of pipelineRun failed during creation due to: %s.", err))
 	itsErr := gitops.WriteIntegrationTestStatusesIntoSnapshot(a.context, a.snapshot, testStatuses, a.client)
 	if itsErr != nil {
-		a.logger.Error(err, "Failed to write Test Status into Snapshot")
+		a.logger.Error(itsErr, "Failed to write Test Status into Snapshot")
 		return controller.RequeueWithError(itsErr)
 	}
-
-	if strings.Contains(err.Error(), "admission webhook") && strings.Contains(err.Error(), "denied the request") {
-		//Stop processing in case the error runs in admission webhook validation error:
-		//failed to call client.Create to create pipelineRun for snapshot
-		//<snapshot-name>: admission webhook \"validation.webhook.pipeline.tekton.dev\" denied the request: validation failed: <reason>
-		return controller.StopProcessing()
-	}
-	if clienterrors.IsInvalid(err) {
-		return controller.StopProcessing()
-	}
-	return controller.RequeueWithError(err)
+	// Cancel this scenario only. handleScenarioReruns continues with the rest,
+	// then the caller removes the re-run label so this failure is not retried.
+	return controller.StopProcessing()
 }
 
 // prepareGroupSnapshot prepares a Group Snapshot based on the existing component Snapshots which belong to the same PR group
