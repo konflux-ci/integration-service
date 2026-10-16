@@ -53,7 +53,7 @@ The service supports two parallel resource flows: **ComponentGroup** (new model)
 ## Development Guidelines
 
 - See `CONTRIBUTING.md` for overall guidelines for making contributions to this repository.
-- **Git**: conventional commits with Jira ticket as scope — `type(issue-id): description` (e.g. `feat(STONEINTG-1519): create PR group snapshots from ComponentGroups`)
+- **Git**: conventional commits with Jira ticket as scope — `type(issue-id): description` — use the Jira ticket as scope when one exists (e.g. `feat(STONEINTG-1519): create PR group snapshots`), or the GitHub issue number when no Jira ticket is associated (e.g. `fix(#1790): skip no-newline markers in diff parser`)
 - Follow [Kubernetes coding conventions](https://github.com/kubernetes/community/blob/master/contributors/guide/coding-conventions.md)
 - Log via `IntegrationLogger` from `helpers/logs` added as the adapter's `logger`, wrap errors with `fmt.Errorf("context: %w", err)`
 - **API changes**: edit types in `api/v1beta2/`, then `make generate manifests`
