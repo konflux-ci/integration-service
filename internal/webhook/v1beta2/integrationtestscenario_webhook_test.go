@@ -403,6 +403,124 @@ var _ = Describe("IntegrationTestScenario webhook", Ordered, func() {
 		Expect(err).NotTo(HaveOccurred())
 	})
 
+	Context("validation helpers", func() {
+		It("should validate IntegrationTestScenario names", func() {
+			scenario := validIntegrationTestScenarioForValidation()
+			Expect(validateScenarioName(scenario)).To(Succeed())
+
+			scenario.Name = "Invalid_Name"
+			Expect(validateScenarioName(scenario)).NotTo(Succeed())
+		})
+
+		It("should reject user supplied SNAPSHOT params", func() {
+			scenario := validIntegrationTestScenarioForValidation()
+			Expect(validateNoUserSuppliedSnapshotParam(scenario)).To(Succeed())
+
+			scenario.Spec.Params = append(scenario.Spec.Params, v1beta2.PipelineParameter{Name: "SNAPSHOT"})
+			Expect(validateNoUserSuppliedSnapshotParam(scenario)).NotTo(Succeed())
+		})
+
+		It("should validate git resolver url params", func() {
+			scenario := validIntegrationTestScenarioForValidation()
+			Expect(validateGitResolverParams(scenario)).To(Succeed())
+
+			scenario.Spec.ResolverRef.Params = []v1beta2.ResolverParameter{{Name: "url", Value: "http://github.com/konflux-ci/integration-service"}}
+			Expect(validateGitResolverParams(scenario)).NotTo(Succeed())
+		})
+
+		It("should validate git resolver repo/org params", func() {
+			scenario := validIntegrationTestScenarioForValidation()
+			scenario.Spec.ResolverRef.Params = []v1beta2.ResolverParameter{
+				{Name: "repo", Value: "integration-service"},
+				{Name: "org", Value: "konflux-ci"},
+				{Name: "serverURL", Value: "https://github.com"},
+				{Name: "token", Value: "github-token"},
+			}
+			Expect(validateGitResolverParams(scenario)).To(Succeed())
+
+			scenario.Spec.ResolverRef.Params = []v1beta2.ResolverParameter{{Name: "repo", Value: "integration-service"}}
+			Expect(validateGitResolverParams(scenario)).NotTo(Succeed())
+		})
+
+		It("should reject conflicting git resolver params", func() {
+			scenario := validIntegrationTestScenarioForValidation()
+			scenario.Spec.ResolverRef.Params = append(scenario.Spec.ResolverRef.Params,
+				v1beta2.ResolverParameter{Name: "repo", Value: "integration-service"},
+				v1beta2.ResolverParameter{Name: "org", Value: "konflux-ci"},
+			)
+
+			Expect(validateGitResolverParams(scenario)).NotTo(Succeed())
+		})
+
+		It("should reject invalid git resolver serverURL and token params", func() {
+			scenario := validIntegrationTestScenarioForValidation()
+			scenario.Spec.ResolverRef.Params = []v1beta2.ResolverParameter{
+				{Name: "repo", Value: "integration-service"},
+				{Name: "org", Value: "konflux-ci"},
+				{Name: "serverURL", Value: "http://github.com"},
+			}
+			Expect(validateGitResolverParams(scenario)).NotTo(Succeed())
+
+			scenario.Spec.ResolverRef.Params = append(scenario.Spec.ResolverRef.Params[:2], v1beta2.ResolverParameter{Name: "token", Value: "Invalid_Token"})
+			Expect(validateGitResolverParams(scenario)).NotTo(Succeed())
+		})
+
+		It("should reject leading or trailing whitespace in git resolver params", func() {
+			scenario := validIntegrationTestScenarioForValidation()
+			scenario.Spec.ResolverRef.Params = append(scenario.Spec.ResolverRef.Params,
+				v1beta2.ResolverParameter{Name: "revision", Value: " main"},
+			)
+
+			Expect(validateGitResolverParams(scenario)).NotTo(Succeed())
+			Expect(validateUrl("url", " https://github.com/konflux-ci/integration-service ")).NotTo(Succeed())
+		})
+
+		It("should skip git resolver validation for non-git resolvers", func() {
+			scenario := validIntegrationTestScenarioForValidation()
+			scenario.Spec.ResolverRef.Resolver = "bundles"
+			scenario.Spec.ResolverRef.Params = []v1beta2.ResolverParameter{{Name: "url", Value: "http://example.com"}}
+
+			Expect(validateGitResolverParams(scenario)).To(Succeed())
+		})
+
+		It("should call validation helpers from ValidateCreate", func() {
+			validator := &IntegrationTestScenarioCustomValidator{}
+			scenario := validIntegrationTestScenarioForValidation()
+
+			warnings, err := validator.ValidateCreate(ctx, scenario)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(warnings).To(BeEmpty())
+
+			scenario = validIntegrationTestScenarioForValidation()
+			scenario.Spec.Params = append(scenario.Spec.Params, v1beta2.PipelineParameter{Name: "SNAPSHOT"})
+			_, err = validator.ValidateCreate(ctx, scenario)
+			Expect(err).To(HaveOccurred())
+
+			scenario = validIntegrationTestScenarioForValidation()
+			scenario.OwnerReferences = nil
+			_, err = validator.ValidateCreate(ctx, scenario)
+			Expect(err).To(HaveOccurred())
+		})
+
+		It("should call validation helpers from ValidateUpdate", func() {
+			validator := &IntegrationTestScenarioCustomValidator{}
+			oldScenario := validIntegrationTestScenarioForValidation()
+			newScenario := validIntegrationTestScenarioForValidation()
+
+			warnings, err := validator.ValidateUpdate(ctx, oldScenario, newScenario)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(warnings).To(BeEmpty())
+
+			newScenario = validIntegrationTestScenarioForValidation()
+			newScenario.Spec.Params = append(newScenario.Spec.Params, v1beta2.PipelineParameter{Name: "SNAPSHOT"})
+			_, err = validator.ValidateUpdate(ctx, oldScenario, newScenario)
+			Expect(err).To(HaveOccurred())
+
+			_, err = validator.ValidateUpdate(ctx, oldScenario, &v1beta2.ComponentGroup{})
+			Expect(err).To(HaveOccurred())
+		})
+	})
+
 	It("should create scenario with componentGroup successfully", func() {
 		cgScenario := &v1beta2.IntegrationTestScenario{
 			TypeMeta: metav1.TypeMeta{
@@ -460,3 +578,34 @@ var _ = Describe("IntegrationTestScenario webhook", Ordered, func() {
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 	})
 })
+
+func validIntegrationTestScenarioForValidation() *v1beta2.IntegrationTestScenario {
+	return &v1beta2.IntegrationTestScenario{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "integrationtestscenario",
+			Namespace: "default",
+			OwnerReferences: []metav1.OwnerReference{
+				{
+					APIVersion: "appstudio.redhat.com/v1alpha1",
+					Kind:       "Application",
+					Name:       "application-sample",
+					UID:        types.UID("application-sample-uid"),
+				},
+			},
+		},
+		Spec: v1beta2.IntegrationTestScenarioSpec{
+			Application: "application-sample",
+			Params: []v1beta2.PipelineParameter{
+				{Name: "pipeline-param-name", Value: "pipeline-param-value"},
+			},
+			ResolverRef: v1beta2.ResolverRef{
+				Resolver: "git",
+				Params: []v1beta2.ResolverParameter{
+					{Name: "url", Value: "https://github.com/konflux-ci/integration-service"},
+					{Name: "revision", Value: "main"},
+					{Name: "pathInRepo", Value: "pipelines/integration.yaml"},
+				},
+			},
+		},
+	}
+}
