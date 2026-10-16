@@ -19,6 +19,9 @@ flowchart TD
   requeue_error0(Controller requeues with error)
   are_there_any_ITS{"Are there any <br>IntegrationTestScenarios <br>present for the given <br>Application/ComponentGroup <br> which do not depend on <br> other unfinished scenarios?"}
   create_new_test_PLR(<b>Create a new Test PipelineRun</b> for each <br>of the above ITS, if it doesn't exists already)
+  creation_result{PipelineRun creation result?}
+  requeue_transient_plr(Requeue without marking <br>the scenario TestInvalid)
+  mark_scenario_test_invalid(<b>Mark</b> the scenario TestInvalid <br>and continue)
   mark_snapshot_InProgress(<b>Mark</b> Snapshot's Integration-testing <br>status as 'InProgress')
   fetch_all_required_ITS("Fetch all the required <br>(non-optional) IntegrationTestScenario <br>for the given Application/ComponentGroup <br> filtered by ITS context(s)")
   encountered_error1{Encountered error?}
@@ -35,7 +38,11 @@ flowchart TD
   encountered_error0        --No-->  are_there_any_ITS
   are_there_any_ITS         --Yes--> create_new_test_PLR
   are_there_any_ITS         --No-->  fetch_all_required_ITS
-  create_new_test_PLR       -->      mark_snapshot_InProgress
+  create_new_test_PLR       -->      creation_result
+  creation_result           --Created--> mark_snapshot_InProgress
+  creation_result           --Transient API error--> requeue_transient_plr
+  creation_result           --Other error--> mark_scenario_test_invalid
+  mark_scenario_test_invalid -->     fetch_all_required_ITS
   mark_snapshot_InProgress  -->      fetch_all_required_ITS
   fetch_all_required_ITS    -->      encountered_error1
   encountered_error1        --No-->  is_atleast_1_required_ITS
@@ -93,6 +100,9 @@ flowchart TD
   if_scenario_exist{Does scenario requested by user exist?}
   remove_rerun_label(Remove rerun label)
   rerun_static_env(Rerun static env pipeline for scenario)
+  rerun_result{PipelineRun creation result?}
+  retry_rerun(Preserve re-run label and requeue)
+  mark_rerun_test_invalid(<b>Mark</b> scenario TestInvalid and continue)
   continue_processing6(Controller continues processing...)
 
   %% Node connections
@@ -101,7 +111,11 @@ flowchart TD
   if_scenario_exist               --Yes--> rerun_static_env
   if_scenario_exist               --No-->  remove_rerun_label
   remove_rerun_label              ---->    continue_processing6
-  rerun_static_env                ---->    remove_rerun_label
+  rerun_static_env                ---->    rerun_result
+  rerun_result                    --Created--> remove_rerun_label
+  rerun_result                    --Transient API error--> retry_rerun
+  rerun_result                    --Other error--> mark_rerun_test_invalid
+  mark_rerun_test_invalid         ---->    remove_rerun_label
 
 
   %%%%%%%%%%%%%%%%%%%%%%% Drawing EnsureOverrideSnapshotValid() function
