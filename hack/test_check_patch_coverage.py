@@ -242,6 +242,38 @@ class CoverageHelperTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0)
         self.assertIn("local Go 1.25.0 differs from CI Go 1.26.0", result.stderr)
 
+    def test_no_newline_at_eof_marker_does_not_shift_line_numbers(self):
+        with tempfile.TemporaryDirectory() as directory:
+            repository = Path(directory)
+            init_repository(repository)
+            with chdir(repository):
+                # Create a file WITHOUT trailing newline on the base branch
+                (repository / "main.go").write_text(
+                    "package main\n\nfunc main() {\n}", encoding="utf-8"
+                )
+                subprocess.run(["git", "add", "main.go"], cwd=repository, check=True)
+                subprocess.run(
+                    ["git", "commit", "--no-verify", "-qm", "add main.go"],
+                    cwd=repository,
+                    check=True,
+                )
+                subprocess.run(["git", "branch", "target"], cwd=repository, check=True)
+                subprocess.run(["git", "switch", "-qc", "feature"], cwd=repository, check=True)
+                # Add a line after the no-newline position
+                (repository / "main.go").write_text(
+                    "package main\n\nfunc main() {\n}\nfunc extra() {}\n",
+                    encoding="utf-8",
+                )
+                subprocess.run(
+                    ["git", "commit", "--no-verify", "-am", "add extra", "-q"],
+                    cwd=repository,
+                    check=True,
+                )
+                result = changed_lines("target")
+                # extra() should be at line 5, not line 6
+                self.assertIn(5, result["main.go"])
+                self.assertNotIn(6, result["main.go"])
+
     def test_profile_older_than_changed_source_is_rejected(self):
         with tempfile.TemporaryDirectory() as directory:
             repository = Path(directory)
