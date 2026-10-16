@@ -20,9 +20,12 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
+	"net"
 	"reflect"
 	"strconv"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/konflux-ci/integration-service/pkg/dag"
@@ -104,6 +107,80 @@ spec:
         value: main
       - name: pathInRepo
         value: pipelines/integration_test_app.yaml`
+
+type timeoutNetError struct{}
+
+func (timeoutNetError) Error() string   { return "i/o timeout" }
+func (timeoutNetError) Timeout() bool   { return true }
+func (timeoutNetError) Temporary() bool { return true }
+
+var _ net.Error = timeoutNetError{}
+
+// wrappedErrno hides the errno text so earlier string checks do not match it.
+type wrappedErrno struct {
+	errno syscall.Errno
+}
+
+func (e wrappedErrno) Error() string { return "transport error" }
+func (e wrappedErrno) Unwrap() error { return e.errno }
+
+type failPipelineRunCreateClient struct {
+	client.Client
+	err      error
+	failAt   int
+	attempts int
+}
+
+func (c *failPipelineRunCreateClient) Create(ctx context.Context, obj client.Object, opts ...client.CreateOption) error {
+	if _, ok := obj.(*tektonv1.PipelineRun); ok {
+		c.attempts++
+		if c.attempts == c.failAt {
+			return c.err
+		}
+	}
+	return c.Client.Create(ctx, obj, opts...)
+}
+
+func statusReasonError(reason metav1.StatusReason) error {
+	return &errors.StatusError{ErrStatus: metav1.Status{Reason: reason}}
+}
+
+var _ = Describe("PipelineRun creation error classification", func() {
+	DescribeTable("classifies PipelineRun creation errors",
+		func(err error, retryable bool) {
+			Expect(isRetryablePipelineRunCreationError(err)).To(Equal(retryable))
+		},
+		Entry("nil", nil, false),
+		Entry("timeout", statusReasonError(metav1.StatusReasonTimeout), true),
+		Entry("server timeout", statusReasonError(metav1.StatusReasonServerTimeout), true),
+		Entry("conflict", statusReasonError(metav1.StatusReasonConflict), false),
+		Entry("already exists", statusReasonError(metav1.StatusReasonAlreadyExists), true),
+		Entry("too many requests", statusReasonError(metav1.StatusReasonTooManyRequests), true),
+		Entry("service unavailable", statusReasonError(metav1.StatusReasonServiceUnavailable), true),
+		Entry("internal server error", statusReasonError(metav1.StatusReasonInternalError), true),
+		Entry("http 500 without a known reason", &errors.StatusError{ErrStatus: metav1.Status{Code: 500}}, true),
+		Entry("wrapped internal server error", fmt.Errorf("failed to call client.Create: %w", statusReasonError(metav1.StatusReasonInternalError)), true),
+		Entry("malformed server response", &errors.StatusError{ErrStatus: metav1.Status{
+			Code:   502,
+			Reason: metav1.StatusReasonBadRequest,
+			Details: &metav1.StatusDetails{Causes: []metav1.StatusCause{{
+				Type: metav1.CauseTypeUnexpectedServerResponse,
+			}}},
+		}}, true),
+		Entry("wrapped service unavailable", fmt.Errorf("failed to call client.Create: %w", statusReasonError(metav1.StatusReasonServiceUnavailable)), true),
+		Entry("deadline exceeded", context.DeadlineExceeded, true),
+		Entry("network timeout", timeoutNetError{}, true),
+		Entry("connection refused", syscall.ECONNREFUSED, true),
+		Entry("EOF", io.EOF, true),
+		Entry("unexpected EOF", io.ErrUnexpectedEOF, true),
+		Entry("probable EOF", fmt.Errorf("http: can't write HTTP request on broken connection"), true),
+		Entry("connection reset", wrappedErrno{errno: syscall.ECONNRESET}, true),
+		Entry("http2 connection lost", fmt.Errorf("http2: client connection lost"), true),
+		Entry("invalid resource", statusReasonError(metav1.StatusReasonInvalid), false),
+		Entry("admission webhook denial", fmt.Errorf("admission webhook \"validation.webhook.pipeline.tekton.dev\" denied the request: validation failed"), false),
+		Entry("resolver failure", fmt.Errorf("resolution for pipeline failed"), false),
+	)
+})
 
 var _ = Describe("Snapshot Adapter", Ordered, func() {
 	var (
@@ -1945,6 +2022,17 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 
 			expectedLogEntry := "Failed to create pipelineRun for snapshot and scenario"
 			Expect(buf.String()).Should(ContainSubstring(expectedLogEntry))
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, types.NamespacedName{
+					Name:      hasInvalidSnapshot.Name,
+					Namespace: hasInvalidSnapshot.Namespace,
+				}, hasInvalidSnapshot)).To(Succeed())
+				statuses, statusErr := gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(hasInvalidSnapshot)
+				g.Expect(statusErr).NotTo(HaveOccurred())
+				detail, ok := statuses.GetScenarioStatus(integrationTestScenarioForInvalidSnapshot.Name)
+				g.Expect(ok).To(BeTrue())
+				g.Expect(detail.Status).To(Equal(intgteststat.IntegrationTestStatusTestInvalid))
+			}, time.Second*10).Should(Succeed())
 		})
 	})
 
@@ -5564,6 +5652,26 @@ var _ = Describe("Dependent scenarios snapshot adapter scheduling", Ordered, fun
 		return len(pipelineRuns)
 	}
 
+	persistSampleRerunLabel := func(value string) {
+		refreshSampleSnapshot()
+		patch := client.MergeFrom(sampleSnapshot.DeepCopy())
+		if sampleSnapshot.Labels == nil {
+			sampleSnapshot.Labels = map[string]string{}
+		}
+		sampleSnapshot.Labels[gitops.SnapshotIntegrationTestRun] = value
+		Expect(k8sClient.Patch(ctx, sampleSnapshot, patch)).To(Succeed())
+	}
+
+	withSampleScenarios := func(adapter *Adapter, scenarios []v1beta2.IntegrationTestScenario) {
+		adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+			{ContextKey: loader.ComponentGroupContextKey, Resource: sampleComponentGroup},
+			{ContextKey: loader.ComponentContextKey, Resource: sampleComponent},
+			{ContextKey: loader.SnapshotContextKey, Resource: sampleSnapshot},
+			{ContextKey: loader.SnapshotComponentsContextKey, Resource: []applicationapiv1alpha1.Component{*sampleComponent}},
+			{ContextKey: loader.AllIntegrationTestScenariosForSnapshotContextKey, Resource: scenarios},
+		})
+	}
+
 	initTestStatuses := func(
 		scenarios []v1beta2.IntegrationTestScenario,
 		testGraph map[string][]v1beta2.TestGraphNode,
@@ -5667,6 +5775,11 @@ var _ = Describe("Dependent scenarios snapshot adapter scheduling", Ordered, fun
 
 	BeforeEach(func() {
 		refreshSampleSnapshot()
+		if _, ok := sampleSnapshot.Labels[gitops.SnapshotIntegrationTestRun]; ok {
+			patch := client.MergeFrom(sampleSnapshot.DeepCopy())
+			delete(sampleSnapshot.Labels, gitops.SnapshotIntegrationTestRun)
+			Expect(k8sClient.Patch(ctx, sampleSnapshot, patch)).To(Succeed())
+		}
 		plrLoader := loader.NewLoader()
 		pipelineRuns, err := plrLoader.GetAllIntegrationPipelineRunsForSnapshot(ctx, k8sClient, sampleSnapshot)
 		Expect(err).NotTo(HaveOccurred())
@@ -5946,6 +6059,222 @@ var _ = Describe("Dependent scenarios snapshot adapter scheduling", Ordered, fun
 					g.Expect(detail.Status).To(Equal(intgteststat.IntegrationTestStatusInProgress))
 					g.Expect(detail.TestPipelineRunName).NotTo(BeEmpty())
 				}).Should(Succeed())
+			})
+
+			It("retries PipelineRun creation after a transient API error", func() {
+				adapter := newSampleAdapter(sampleSnapshot, &bytes.Buffer{})
+				failingClient := &failPipelineRunCreateClient{
+					Client: k8sClient,
+					err:    statusReasonError(metav1.StatusReasonServiceUnavailable),
+					failAt: 1,
+				}
+				adapter.client = failingClient
+				scenarios := []v1beta2.IntegrationTestScenario{*scenarioRoot}
+
+				Expect(adapter.createEligibleIntegrationPipelineRuns(&scenarios)).To(HaveOccurred())
+				Expect(failingClient.attempts).To(Equal(1))
+				Eventually(func(g Gomega) {
+					refreshSampleSnapshot()
+					statuses, err := gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(sampleSnapshot)
+					g.Expect(err).NotTo(HaveOccurred())
+					detail, ok := statuses.GetScenarioStatus(scenarioRoot.Name)
+					g.Expect(ok).To(BeTrue())
+					g.Expect(detail.Status).To(Equal(intgteststat.IntegrationTestStatusPending))
+					g.Expect(countSampleIntegrationPLRs(sampleSnapshot)).To(Equal(0))
+				}, time.Second*10).Should(Succeed())
+
+				Expect(adapter.createEligibleIntegrationPipelineRuns(&scenarios)).NotTo(HaveOccurred())
+				Expect(failingClient.attempts).To(Equal(2))
+				Eventually(func(g Gomega) {
+					refreshSampleSnapshot()
+					statuses, err := gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(sampleSnapshot)
+					g.Expect(err).NotTo(HaveOccurred())
+					detail, ok := statuses.GetScenarioStatus(scenarioRoot.Name)
+					g.Expect(ok).To(BeTrue())
+					g.Expect(detail.Status).To(Equal(intgteststat.IntegrationTestStatusInProgress))
+					g.Expect(countSampleIntegrationPLRs(sampleSnapshot)).To(Equal(1))
+				}, time.Second*10).Should(Succeed())
+			})
+
+			It("marks a non-retryable PipelineRun creation error TestInvalid", func() {
+				adapter := newSampleAdapter(sampleSnapshot, &bytes.Buffer{})
+				failingClient := &failPipelineRunCreateClient{
+					Client: k8sClient,
+					err:    fmt.Errorf("resolution for pipeline failed"),
+					failAt: 1,
+				}
+				adapter.client = failingClient
+				scenarios := []v1beta2.IntegrationTestScenario{*scenarioRoot}
+
+				Expect(adapter.createEligibleIntegrationPipelineRuns(&scenarios)).NotTo(HaveOccurred())
+				Expect(failingClient.attempts).To(Equal(1))
+				Eventually(func(g Gomega) {
+					refreshSampleSnapshot()
+					statuses, err := gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(sampleSnapshot)
+					g.Expect(err).NotTo(HaveOccurred())
+					detail, ok := statuses.GetScenarioStatus(scenarioRoot.Name)
+					g.Expect(ok).To(BeTrue())
+					g.Expect(detail.Status).To(Equal(intgteststat.IntegrationTestStatusTestInvalid))
+					g.Expect(countSampleIntegrationPLRs(sampleSnapshot)).To(Equal(0))
+				}, time.Second*10).Should(Succeed())
+
+				Expect(adapter.createEligibleIntegrationPipelineRuns(&scenarios)).NotTo(HaveOccurred())
+				Expect(failingClient.attempts).To(Equal(1))
+			})
+
+			It("retries a rerun after a transient PipelineRun creation error", func() {
+				scenarios := []v1beta2.IntegrationTestScenario{*scenarioRoot}
+				statuses := initTestStatuses(scenarios, nil)
+				statuses.UpdateTestStatusIfChanged(scenarioRoot.Name, intgteststat.IntegrationTestStatusTestPassed, "passed")
+				Expect(gitops.WriteIntegrationTestStatusesIntoSnapshot(ctx, sampleSnapshot, statuses, k8sClient)).To(Succeed())
+				persistSampleRerunLabel(scenarioRoot.Name)
+
+				adapter := newSampleAdapter(sampleSnapshot, &bytes.Buffer{})
+				failingClient := &failPipelineRunCreateClient{
+					Client: k8sClient,
+					err:    statusReasonError(metav1.StatusReasonServerTimeout),
+					failAt: 1,
+				}
+				adapter.client = failingClient
+
+				result, err := adapter.EnsureRerunPipelineRunsExist()
+				Expect(result.RequeueRequest).To(BeTrue())
+				Expect(err).To(HaveOccurred())
+				Expect(failingClient.attempts).To(Equal(1))
+				Eventually(func(g Gomega) {
+					refreshSampleSnapshot()
+					_, hasRerunLabel := gitops.GetIntegrationTestRunLabelValue(sampleSnapshot)
+					g.Expect(hasRerunLabel).To(BeTrue())
+					statuses, err = gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(sampleSnapshot)
+					g.Expect(err).NotTo(HaveOccurred())
+					detail, ok := statuses.GetScenarioStatus(scenarioRoot.Name)
+					g.Expect(ok).To(BeTrue())
+					g.Expect(detail.Status).To(Equal(intgteststat.IntegrationTestStatusTestPassed))
+				}, time.Second*10).Should(Succeed())
+
+				result, err = adapter.EnsureRerunPipelineRunsExist()
+				Expect(result.RequeueRequest).To(BeFalse())
+				Expect(err).NotTo(HaveOccurred())
+				Expect(failingClient.attempts).To(Equal(2))
+				Eventually(func(g Gomega) {
+					refreshSampleSnapshot()
+					_, hasRerunLabel := gitops.GetIntegrationTestRunLabelValue(sampleSnapshot)
+					g.Expect(hasRerunLabel).To(BeFalse())
+					statuses, err = gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(sampleSnapshot)
+					g.Expect(err).NotTo(HaveOccurred())
+					detail, ok := statuses.GetScenarioStatus(scenarioRoot.Name)
+					g.Expect(ok).To(BeTrue())
+					g.Expect(detail.Status).To(Equal(intgteststat.IntegrationTestStatusInProgress))
+					g.Expect(detail.TestPipelineRunName).NotTo(BeEmpty())
+				}, time.Second*10).Should(Succeed())
+			})
+
+			It("does not duplicate earlier reruns after a later transient creation error", func() {
+				scenarios := []v1beta2.IntegrationTestScenario{*scenarioRoot, *scenarioDependent}
+				statuses := initTestStatuses(scenarios, nil)
+				for _, scenario := range scenarios {
+					statuses.UpdateTestStatusIfChanged(scenario.Name, intgteststat.IntegrationTestStatusTestPassed, "passed")
+				}
+				Expect(gitops.WriteIntegrationTestStatusesIntoSnapshot(ctx, sampleSnapshot, statuses, k8sClient)).To(Succeed())
+				persistSampleRerunLabel("all")
+
+				adapter := newSampleAdapter(sampleSnapshot, &bytes.Buffer{})
+				withSampleScenarios(adapter, scenarios)
+				failingClient := &failPipelineRunCreateClient{
+					Client: k8sClient,
+					err:    statusReasonError(metav1.StatusReasonTooManyRequests),
+					failAt: 2,
+				}
+				adapter.client = failingClient
+
+				result, err := adapter.EnsureRerunPipelineRunsExist()
+				Expect(result.RequeueRequest).To(BeTrue())
+				Expect(err).To(HaveOccurred())
+				Expect(failingClient.attempts).To(Equal(2))
+				Expect(countSampleIntegrationPLRs(sampleSnapshot)).To(Equal(1))
+
+				var rootPipelineRunName string
+				Eventually(func(g Gomega) {
+					refreshSampleSnapshot()
+					statuses, err = gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(sampleSnapshot)
+					g.Expect(err).NotTo(HaveOccurred())
+					rootStatus, ok := statuses.GetScenarioStatus(scenarioRoot.Name)
+					g.Expect(ok).To(BeTrue())
+					g.Expect(rootStatus.TestPipelineRunName).NotTo(BeEmpty())
+					g.Expect(rootStatus.Status).To(Equal(intgteststat.IntegrationTestStatusInProgress))
+					rootPipelineRunName = rootStatus.TestPipelineRunName
+					dependentStatus, ok := statuses.GetScenarioStatus(scenarioDependent.Name)
+					g.Expect(ok).To(BeTrue())
+					g.Expect(dependentStatus.Status).To(Equal(intgteststat.IntegrationTestStatusTestPassed))
+					_, hasRerunLabel := gitops.GetIntegrationTestRunLabelValue(sampleSnapshot)
+					g.Expect(hasRerunLabel).To(BeTrue())
+				}, time.Second*10).Should(Succeed())
+
+				result, err = adapter.EnsureRerunPipelineRunsExist()
+				Expect(result.RequeueRequest).To(BeFalse())
+				Expect(err).NotTo(HaveOccurred())
+				Expect(failingClient.attempts).To(Equal(3))
+				Expect(countSampleIntegrationPLRs(sampleSnapshot)).To(Equal(2))
+				Eventually(func(g Gomega) {
+					refreshSampleSnapshot()
+					_, hasRerunLabel := gitops.GetIntegrationTestRunLabelValue(sampleSnapshot)
+					g.Expect(hasRerunLabel).To(BeFalse())
+					statuses, err = gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(sampleSnapshot)
+					g.Expect(err).NotTo(HaveOccurred())
+					rootStatus, ok := statuses.GetScenarioStatus(scenarioRoot.Name)
+					g.Expect(ok).To(BeTrue())
+					g.Expect(rootStatus.TestPipelineRunName).To(Equal(rootPipelineRunName))
+					dependentStatus, ok := statuses.GetScenarioStatus(scenarioDependent.Name)
+					g.Expect(ok).To(BeTrue())
+					g.Expect(dependentStatus.Status).To(Equal(intgteststat.IntegrationTestStatusInProgress))
+					g.Expect(dependentStatus.TestPipelineRunName).NotTo(BeEmpty())
+				}, time.Second*10).Should(Succeed())
+			})
+
+			It("marks a non-retryable rerun failure terminal without retrying it", func() {
+				scenarios := []v1beta2.IntegrationTestScenario{*scenarioRoot, *scenarioDependent}
+				statuses := initTestStatuses(scenarios, nil)
+				for _, scenario := range scenarios {
+					statuses.UpdateTestStatusIfChanged(scenario.Name, intgteststat.IntegrationTestStatusTestPassed, "passed")
+				}
+				Expect(gitops.WriteIntegrationTestStatusesIntoSnapshot(ctx, sampleSnapshot, statuses, k8sClient)).To(Succeed())
+				persistSampleRerunLabel("all")
+
+				adapter := newSampleAdapter(sampleSnapshot, &bytes.Buffer{})
+				withSampleScenarios(adapter, scenarios)
+				failingClient := &failPipelineRunCreateClient{
+					Client: k8sClient,
+					err:    fmt.Errorf("admission webhook \"validation.webhook.pipeline.tekton.dev\" denied the request: validation failed"),
+					failAt: 2,
+				}
+				adapter.client = failingClient
+
+				result, err := adapter.EnsureRerunPipelineRunsExist()
+				Expect(result.RequeueRequest).To(BeFalse())
+				Expect(result.CancelRequest).To(BeFalse())
+				Expect(err).NotTo(HaveOccurred())
+				Expect(failingClient.attempts).To(Equal(2))
+				Expect(countSampleIntegrationPLRs(sampleSnapshot)).To(Equal(1))
+
+				Eventually(func(g Gomega) {
+					refreshSampleSnapshot()
+					statuses, err = gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(sampleSnapshot)
+					g.Expect(err).NotTo(HaveOccurred())
+					rootStatus, ok := statuses.GetScenarioStatus(scenarioRoot.Name)
+					g.Expect(ok).To(BeTrue())
+					g.Expect(rootStatus.Status).To(Equal(intgteststat.IntegrationTestStatusInProgress))
+					dependentStatus, ok := statuses.GetScenarioStatus(scenarioDependent.Name)
+					g.Expect(ok).To(BeTrue())
+					g.Expect(dependentStatus.Status).To(Equal(intgteststat.IntegrationTestStatusTestInvalid))
+					_, hasRerunLabel := gitops.GetIntegrationTestRunLabelValue(sampleSnapshot)
+					g.Expect(hasRerunLabel).To(BeFalse())
+				}, time.Second*10).Should(Succeed())
+
+				result, err = adapter.EnsureRerunPipelineRunsExist()
+				Expect(result.RequeueRequest).To(BeFalse())
+				Expect(err).NotTo(HaveOccurred())
+				Expect(failingClient.attempts).To(Equal(2))
+				Expect(countSampleIntegrationPLRs(sampleSnapshot)).To(Equal(1))
 			})
 
 			Context("When an orphaned PipelineRun exists without annotation", func() {
