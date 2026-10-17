@@ -418,6 +418,9 @@ func NewSnapshot(componentGroup *v1beta2.ComponentGroup, snapshotComponents *[]a
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      gitops.GenerateSnapshotNameWithTimestamp(componentGroup.Name, fallbackTimestamp),
 			Namespace: componentGroup.Namespace,
+			Annotations: map[string]string{
+				gitops.SnapshotProvenanceAnnotation: gitops.SnapshotProvenanceValue,
+			},
 		},
 		Spec: applicationapiv1alpha1.SnapshotSpec{
 			ComponentGroup: componentGroup.Name,

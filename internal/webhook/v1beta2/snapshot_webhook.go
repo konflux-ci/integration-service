@@ -34,6 +34,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"strings"
 )
 
 // nolint:unused
@@ -93,6 +94,79 @@ func (d *SnapshotCustomDefaulter) Default(ctx context.Context, obj runtime.Objec
 	return nil
 }
 
+// validateSnapshotProvenance rejects PAC annotations when the Snapshot does not
+// contain the required Integration Service provenance marker.
+func validateSnapshotProvenance(snapshot *applicationapiv1alpha1.Snapshot) error {
+	provenance := snapshot.Annotations[gitops.SnapshotProvenanceAnnotation]
+
+	for annotationKey := range snapshot.Annotations {
+		if !strings.HasPrefix(annotationKey, gitops.PipelinesAsCodePrefix+"/") {
+			continue
+		}
+
+		if provenance == gitops.SnapshotProvenanceValue {
+			continue
+		}
+
+		snapshotlog.Info(
+			"Rejecting Snapshot with PAC annotations and invalid provenance",
+			"namespace", snapshot.Namespace,
+			"name", snapshot.Name,
+			"pacAnnotation", annotationKey,
+			"provenance", provenance,
+		)
+
+		return field.Invalid(
+			field.NewPath("metadata").Child("annotations"),
+			provenance,
+			fmt.Sprintf(
+				"PAC annotations require %s=%s",
+				gitops.SnapshotProvenanceAnnotation,
+				gitops.SnapshotProvenanceValue,
+			),
+		)
+	}
+
+	return nil
+}
+
+// pacAnnotationsChanged reports whether the PAC annotations changed between
+// two Snapshot versions.
+func pacAnnotationsChanged(oldAnnotations, newAnnotations map[string]string) bool {
+	for annotationKey, oldValue := range oldAnnotations {
+		if !strings.HasPrefix(annotationKey, gitops.PipelinesAsCodePrefix+"/") {
+			continue
+		}
+
+		newValue, exists := newAnnotations[annotationKey]
+		if !exists || newValue != oldValue {
+			return true
+		}
+	}
+
+	for annotationKey, newValue := range newAnnotations {
+		if !strings.HasPrefix(annotationKey, gitops.PipelinesAsCodePrefix+"/") {
+			continue
+		}
+
+		oldValue, exists := oldAnnotations[annotationKey]
+		if !exists || oldValue != newValue {
+			return true
+		}
+	}
+
+	return false
+}
+
+// annotationChanged reports whether one annotation was added, removed, or
+// changed between two Snapshot versions.
+func annotationChanged(oldAnnotations, newAnnotations map[string]string, annotationKey string) bool {
+	oldValue, oldExists := oldAnnotations[annotationKey]
+	newValue, newExists := newAnnotations[annotationKey]
+
+	return oldExists != newExists || oldValue != newValue
+}
+
 // ValidateCreate implements webhook.Validator so a webhook will be registered for the type
 func (v *SnapshotCustomValidator) ValidateCreate(ctx context.Context, obj runtime.Object) (warnings admission.Warnings, err error) {
 	snapshot, ok := obj.(*applicationapiv1alpha1.Snapshot)
@@ -111,6 +185,10 @@ func (v *SnapshotCustomValidator) ValidateCreate(ctx context.Context, obj runtim
 			fmt.Sprintf("name is too long (%d characters); must be at most %d characters",
 				len(snapshot.Name), maxK8sNameLength),
 		)
+	}
+
+	if err := validateSnapshotProvenance(snapshot); err != nil {
+		return nil, err
 	}
 
 	return nil, nil
@@ -138,6 +216,13 @@ func (v *SnapshotCustomValidator) ValidateUpdate(ctx context.Context, oldObj, ne
 			newSnapshot.Spec.Components,
 			"components field is immutable and cannot be modified after creation",
 		)
+	}
+
+	if pacAnnotationsChanged(oldSnapshot.Annotations, newSnapshot.Annotations) ||
+		annotationChanged(oldSnapshot.Annotations, newSnapshot.Annotations, gitops.SnapshotProvenanceAnnotation) {
+		if err := validateSnapshotProvenance(newSnapshot); err != nil {
+			return nil, err
+		}
 	}
 
 	return nil, nil
