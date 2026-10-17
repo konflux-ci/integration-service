@@ -294,3 +294,62 @@ func (i *IntegrationController) AddIntegrationTestRerunLabel(snapshot *appstudio
 
 	return nil
 }
+
+// GetNudgePipelineRun retrieves a nudge PipelineRun for a target component
+func (i *IntegrationController) GetNudgePipelineRun(
+	targetComponentName string,
+	namespace string,
+) (*tektonv1.PipelineRun, error) {
+	opts := []client.ListOption{
+		client.InNamespace(namespace),
+		client.MatchingLabels{
+			tektonconsts.NudgeTypeLabel:            tektonconsts.NudgePipelineRunTypeValue,
+			tektonconsts.PipelineRunComponentLabel: targetComponentName,
+		},
+	}
+
+	list := &tektonv1.PipelineRunList{}
+	err := i.KubeRest().List(context.Background(), list, opts...)
+
+	if err != nil && !k8sErrors.IsNotFound(err) {
+		return nil, fmt.Errorf("error listing nudge pipelineruns: %w", err)
+	}
+
+	if len(list.Items) == 0 {
+		return nil, fmt.Errorf("no nudge pipelinerun found for component %s", targetComponentName)
+	}
+
+	// Sort by StartTime and return latest
+	sort.Slice(list.Items, func(i, j int) bool {
+		return list.Items[i].Status.StartTime.Before(list.Items[j].Status.StartTime)
+	})
+
+	return &list.Items[len(list.Items)-1], nil
+}
+
+// WaitForNudgePipelineRunToExist waits for nudge PLR to be created for target component
+func (i *IntegrationController) WaitForNudgePipelineRunToExist(
+	targetComponentName string,
+	namespace string,
+	timeout time.Duration,
+) (*tektonv1.PipelineRun, error) {
+	var nudgePLR *tektonv1.PipelineRun
+
+	err := wait.PollUntilContextTimeout(
+		context.Background(),
+		constants.PipelineRunPollingInterval,
+		timeout,
+		true,
+		func(ctx context.Context) (done bool, err error) {
+			nudgePLR, err = i.GetNudgePipelineRun(targetComponentName, namespace)
+			if err != nil {
+				ginkgo.GinkgoWriter.Printf(
+					"waiting for nudge pipelinerun for component %s: %v\n",
+					targetComponentName, err)
+				return false, nil
+			}
+			return true, nil
+		})
+
+	return nudgePLR, err
+}
