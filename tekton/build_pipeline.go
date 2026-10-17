@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/google/go-containerregistry/pkg/name"
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
 	"github.com/konflux-ci/integration-service/gitops"
 	h "github.com/konflux-ci/integration-service/helpers"
@@ -201,7 +202,11 @@ func GetImagePullSpecFromPipelineRun(pipelineRun *tektonv1.PipelineRun) (string,
 	if err != nil {
 		return "", err
 	}
-	return fmt.Sprintf("%s@%s", strings.Split(outputImage, ":")[0], imageDigest), nil
+	imageRef, err := name.ParseReference(outputImage)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse output image: %w", err)
+	}
+	return imageRef.Context().Digest(imageDigest).Name(), nil
 }
 
 // GetComponentSourceFromPipelineRun gets the component Git Source for the Component built in the given build PipelineRun,
