@@ -88,4 +88,4 @@ CI runs `go mod tidy` and checks for changes. If your `go.mod`/`go.sum` differ a
 | RBAC check fails | Used wildcard `*` in kubebuilder RBAC marker |
 | Coverage dropped | New code paths not covered by tests (check `cover.out`) |
 | Webhook rejects valid-looking ITS | Name contains uppercase, underscore, or is >63 chars |
-| Missing `list`/`watch` verbs on cached-client RBAC marker | Informer reflector cannot populate cache — add `list` and `watch` to the marker for cached resources |
+| Missing `list`/`watch` verbs on cached-client RBAC marker | Informer reflector cannot populate cache without `list` and `watch` verbs |
