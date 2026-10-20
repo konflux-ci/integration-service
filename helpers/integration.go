@@ -345,6 +345,48 @@ func GetIntegrationTestTaskResultsFromPipelineRunWithChildReferences(ctx context
 		return nil, err
 	}
 
+	return integrationTestTaskResults(taskRuns)
+}
+
+// GetIntegrationPipelineRunOutcomeFromTaskRuns evaluates a succeeded PipelineRun
+// using TaskRuns that have already been loaded. Child references that are not
+// TaskRuns are ignored. Every TaskRun child reference must be present in taskRunsByName.
+func GetIntegrationPipelineRunOutcomeFromTaskRuns(pipelineRun *tektonv1.PipelineRun, taskRunsByName map[string]*tektonv1.TaskRun) (*IntegrationPipelineRunOutcome, error) {
+	if !HasPipelineRunSucceeded(pipelineRun) {
+		return &IntegrationPipelineRunOutcome{
+			pipelineRunSucceeded: false,
+			pipelineRun:          pipelineRun,
+			results:              map[string]*IntegrationTestTaskResult{},
+		}, nil
+	}
+
+	taskRuns := make([]*TaskRun, 0, len(pipelineRun.Status.ChildReferences))
+	for _, childReference := range pipelineRun.Status.ChildReferences {
+		if !isTaskRunChildReference(childReference) {
+			continue
+		}
+		taskRun, ok := taskRunsByName[childReference.Name]
+		if !ok || taskRun == nil {
+			return nil, fmt.Errorf("taskrun %s referenced by pipelinerun %s was not provided", childReference.Name, pipelineRun.Name)
+		}
+		taskRuns = append(taskRuns, NewTaskRunFromTektonTaskRun(childReference.PipelineTaskName, &taskRun.Status))
+	}
+	sort.Sort(SortTaskRunsByStartTime(taskRuns))
+
+	results, err := integrationTestTaskResults(taskRuns)
+	if err != nil {
+		return nil, err
+	}
+	return &IntegrationPipelineRunOutcome{
+		pipelineRunSucceeded: true,
+		pipelineRun:          pipelineRun,
+		results:              results,
+	}, nil
+}
+
+// integrationTestTaskResults returns TEST_OUTPUT results keyed by pipeline task name.
+// TaskRuns that did not produce a test result are omitted.
+func integrationTestTaskResults(taskRuns []*TaskRun) (map[string]*IntegrationTestTaskResult, error) {
 	results := map[string]*IntegrationTestTaskResult{}
 	for _, tr := range taskRuns {
 		r, err := tr.GetTestResult()
@@ -367,6 +409,9 @@ func GetAllChildTaskRunsForPipelineRun(ctx context.Context, adapterClient client
 		return nil, nil
 	}
 	for _, childReference := range pipelineRun.Status.ChildReferences {
+		if !isTaskRunChildReference(childReference) {
+			continue
+		}
 		pipelineTaskRun := &tektonv1.TaskRun{}
 		err := adapterClient.Get(ctx, types.NamespacedName{
 			Namespace: pipelineRun.Namespace,
@@ -381,6 +426,51 @@ func GetAllChildTaskRunsForPipelineRun(ctx context.Context, adapterClient client
 	}
 	sort.Sort(SortTaskRunsByStartTime(taskRuns))
 	return taskRuns, nil
+}
+
+// isTaskRunChildReference reports whether a PipelineRun child reference points at a TaskRun.
+// Kind is optional; an empty Kind is treated as a TaskRun.
+func isTaskRunChildReference(childReference tektonv1.ChildStatusReference) bool {
+	return childReference.Name != "" && (childReference.Kind == "" || childReference.Kind == "TaskRun")
+}
+
+// TaskRunChildReferenceNames returns the names of TaskRun children referenced by the PipelineRun.
+// CustomRuns and empty names are omitted. Kind is optional; an empty Kind is treated as a TaskRun.
+func TaskRunChildReferenceNames(pipelineRun *tektonv1.PipelineRun) []string {
+	names := make([]string, 0, len(pipelineRun.Status.ChildReferences))
+	for _, child := range pipelineRun.Status.ChildReferences {
+		if !isTaskRunChildReference(child) {
+			continue
+		}
+		names = append(names, child.Name)
+	}
+	return names
+}
+
+// TaskRunsResolutionWithinGrace reports whether a finished PipelineRun is still
+// inside gracePeriod. The window is measured from status.completionTime, or from
+// the Succeeded condition's last transition time when completionTime is missing.
+// Without either timestamp the run is outside the grace period.
+func TaskRunsResolutionWithinGrace(pipelineRun *tektonv1.PipelineRun, gracePeriod time.Duration) bool {
+	completedAt, ok := PipelineRunCompletedAt(pipelineRun)
+	if !ok {
+		return false
+	}
+	return time.Since(completedAt) < gracePeriod
+}
+
+// PipelineRunCompletedAt returns when the PipelineRun finished. It uses
+// status.completionTime, then the Succeeded condition's last transition time.
+// The boolean is false when neither timestamp is set.
+func PipelineRunCompletedAt(pipelineRun *tektonv1.PipelineRun) (time.Time, bool) {
+	if pipelineRun.Status.CompletionTime != nil && !pipelineRun.Status.CompletionTime.IsZero() {
+		return pipelineRun.Status.CompletionTime.Time, true
+	}
+	succeeded := pipelineRun.Status.GetCondition(apis.ConditionSucceeded)
+	if succeeded == nil || succeeded.LastTransitionTime.Inner.IsZero() {
+		return time.Time{}, false
+	}
+	return succeeded.LastTransitionTime.Inner.Time, true
 }
 
 // HasPipelineRunSucceeded returns a boolean indicating whether the PipelineRun succeeded or not.

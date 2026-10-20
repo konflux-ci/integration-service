@@ -18,8 +18,10 @@ package integrationpipeline
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
 	"github.com/konflux-ci/integration-service/gitops"
@@ -36,6 +38,42 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
+
+// taskRunResolutionGracePeriod is how long a finished PipelineRun may be retried
+// while TaskRuns named by its childReferences are not all visible. The TaskRun
+// informer can lag the PipelineRun informer when the API server is under load.
+const taskRunResolutionGracePeriod = 5 * time.Minute
+
+// missingTaskRuns describes TaskRuns named by status.childReferences that could not be found.
+type missingTaskRuns struct {
+	pipelineRunName string
+	missing         []string
+}
+
+func (m missingTaskRuns) detail() string {
+	return fmt.Sprintf("failed to determine status of pipelinerun '%s', missing TaskRuns referenced by childReferences: %s",
+		m.pipelineRunName, strings.Join(m.missing, ", "))
+}
+
+// retryableTaskRunsError is returned when referenced TaskRuns are not yet visible
+// and the PipelineRun is still inside taskRunResolutionGracePeriod.
+type retryableTaskRunsError struct {
+	missingTaskRuns
+}
+
+func (e retryableTaskRunsError) Error() string {
+	return e.detail() + "; retrying within the resolution grace period"
+}
+
+// expiredTaskRunsError is returned when referenced TaskRuns are still missing
+// after taskRunResolutionGracePeriod.
+type expiredTaskRunsError struct {
+	missingTaskRuns
+}
+
+func (e expiredTaskRunsError) Error() string {
+	return e.detail() + "; resolution grace period has elapsed"
+}
 
 // Adapter holds the objects needed to reconcile an integration PipelineRun.
 type Adapter struct {
@@ -90,20 +128,65 @@ func (a *Adapter) EnsureStatusReportedInSnapshot() (controller.OperationResult, 
 			return err
 		}
 
+		keptExistingStatus := false
 		pipelinerunStatus, detail, err = a.GetIntegrationPipelineRunStatus(a.context, a.client, a.pipelineRun)
 		if err != nil {
-			return err
+			var retryable *retryableTaskRunsError
+			if errors.As(err, &retryable) {
+				return err
+			}
+			var expired *expiredTaskRunsError
+			if !errors.As(err, &expired) {
+				return err
+			}
+			scenarioName := a.pipelineRun.Labels[tektonconsts.ScenarioNameLabel]
+			if scenarioName == "" {
+				return fmt.Errorf("pipelinerun %q is missing the %q label", a.pipelineRun.Name, tektonconsts.ScenarioNameLabel)
+			}
+			existing, ok := statuses.GetScenarioStatus(scenarioName)
+			switch {
+			case ok && existing.Status.IsFinal() && existing.TestPipelineRunName == a.pipelineRun.Name:
+				pipelinerunStatus = existing.Status
+				detail = existing.Details
+				a.logger.Info("Referenced TaskRuns are still missing after the resolution grace period, keeping the existing final scenario status",
+					"pipelineRun.Name", a.pipelineRun.Name,
+					"scenario.Name", scenarioName,
+					"status", existing.Status)
+				keptExistingStatus = true
+			case ok && existing.Status.IsFinal():
+				// This run did not produce the recorded result. Writing TestInvalid
+				// would replace a final status from another PipelineRun.
+				a.logger.Info("Referenced TaskRuns are still missing after the resolution grace period, keeping the final scenario status from a different PipelineRun",
+					"pipelineRun.Name", a.pipelineRun.Name,
+					"scenario.Name", scenarioName,
+					"existingPipelineRun.Name", existing.TestPipelineRunName,
+					"status", existing.Status)
+				keptExistingStatus = true
+			default:
+				pipelinerunStatus = intgteststat.IntegrationTestStatusTestInvalid
+				detail = expired.Error()
+			}
 		}
-		statuses.UpdateTestStatusIfChanged(a.pipelineRun.Labels[tektonconsts.ScenarioNameLabel], pipelinerunStatus, detail)
-		if err = statuses.UpdateTestPipelineRunName(a.pipelineRun.Labels[tektonconsts.ScenarioNameLabel], a.pipelineRun.Name); err != nil {
-			return err
-		}
+		if !keptExistingStatus {
+			statuses.UpdateTestStatusIfChanged(a.pipelineRun.Labels[tektonconsts.ScenarioNameLabel], pipelinerunStatus, detail)
+			if err = statuses.UpdateTestPipelineRunName(a.pipelineRun.Labels[tektonconsts.ScenarioNameLabel], a.pipelineRun.Name); err != nil {
+				return err
+			}
 
-		// don't return wrapped err for retries
-		err = gitops.WriteIntegrationTestStatusesIntoSnapshot(a.context, a.snapshot, statuses, a.client)
-		return err
+			// don't return wrapped err for retries
+			err = gitops.WriteIntegrationTestStatusesIntoSnapshot(a.context, a.snapshot, statuses, a.client)
+			return err
+		}
+		return nil
 	})
 	if err != nil {
+		var retryable *retryableTaskRunsError
+		if errors.As(err, &retryable) {
+			a.logger.Info("Referenced TaskRuns are not all visible yet, requeueing status report",
+				"pipelineRun.Name", a.pipelineRun.Name,
+				"missingTaskRuns", retryable.missing)
+			return controller.RequeueWithError(err)
+		}
 		a.logger.Error(err, "Failed to update pipeline status in snapshot")
 		return controller.RequeueWithError(fmt.Errorf("failed to update test status in snapshot: %w", err))
 	}
@@ -166,25 +249,42 @@ func (a *Adapter) GetIntegrationPipelineRunStatus(ctx context.Context, adapterCl
 		}
 	}
 
-	taskRuns, err := a.loader.GetAllTaskRunsWithMatchingPipelineRunLabel(ctx, adapterClient, pipelineRun)
+	// A failed PipelineRun does not need its TaskRuns. TEST_OUTPUT is only read
+	// after the PipelineRun itself has succeeded.
+	if !h.HasPipelineRunSucceeded(pipelineRun) {
+		outcome, err := h.GetIntegrationPipelineRunOutcome(ctx, adapterClient, pipelineRun)
+		if err != nil {
+			return intgteststat.IntegrationTestStatusTestFail, "", fmt.Errorf("failed to evaluate integration test results: %w", err)
+		}
+		return integrationTestStatusFromOutcome(outcome)
+	}
+
+	resolved, missing, err := a.loader.GetTaskRunsReferencedByPipelineRun(ctx, adapterClient, pipelineRun)
 	if err != nil {
 		return intgteststat.IntegrationTestStatusTestInvalid, fmt.Sprintf("Unable to get all the TaskRun(s) related to the pipelineRun '%s'", pipelineRun.Name), err
 	}
-
-	taskRunsInClusterCount := len(*taskRuns)
-	taskRunsInChildRefCount := len(pipelineRun.Status.ChildReferences)
-
-	if taskRunsInClusterCount != taskRunsInChildRefCount {
-		return intgteststat.IntegrationTestStatusTestInvalid, fmt.Sprintf("Failed to determine status of pipelinerun '%s'"+
-			", due to mismatch in TaskRuns present in cluster (%v) and those referenced within childReferences (%v)",
-			pipelineRun.Name, taskRunsInClusterCount, taskRunsInChildRefCount), nil
+	if len(missing) > 0 {
+		unavailable := missingTaskRuns{
+			pipelineRunName: pipelineRun.Name,
+			missing:         missing,
+		}
+		if h.TaskRunsResolutionWithinGrace(pipelineRun, taskRunResolutionGracePeriod) {
+			return 0, "", &retryableTaskRunsError{missingTaskRuns: unavailable}
+		}
+		return 0, "", &expiredTaskRunsError{missingTaskRuns: unavailable}
 	}
 
-	outcome, err := h.GetIntegrationPipelineRunOutcome(ctx, adapterClient, pipelineRun)
+	outcome, err := h.GetIntegrationPipelineRunOutcomeFromTaskRuns(pipelineRun, resolved)
 	if err != nil {
 		return intgteststat.IntegrationTestStatusTestFail, "", fmt.Errorf("failed to evaluate integration test results: %w", err)
 	}
+	return integrationTestStatusFromOutcome(outcome)
+}
 
+// integrationTestStatusFromOutcome maps an integration PipelineRun outcome to a
+// snapshot test status and detail. Invalid TEST_OUTPUT and a failed run are
+// TestFail, a warning result is TestWarning, and any other passing run is TestPassed.
+func integrationTestStatusFromOutcome(outcome *h.IntegrationPipelineRunOutcome) (intgteststat.IntegrationTestStatus, string, error) {
 	if !outcome.HasPipelineRunPassedTesting() {
 		if !outcome.HasPipelineRunValidTestOutputs() {
 			return intgteststat.IntegrationTestStatusTestFail, strings.Join(outcome.GetValidationErrorsList(), "; "), nil

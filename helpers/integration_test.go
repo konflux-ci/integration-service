@@ -1165,3 +1165,303 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 	})
 
 })
+
+var _ = Describe("TaskRunChildReferenceNames", func() {
+	It("returns TaskRun names and skips other children", func() {
+		explicitTaskRun := tektonv1.ChildStatusReference{
+			Name:             "explicit-taskrun",
+			PipelineTaskName: "explicit-task",
+		}
+		explicitTaskRun.Kind = "TaskRun"
+
+		customRun := tektonv1.ChildStatusReference{
+			Name:             "custom-run",
+			PipelineTaskName: "custom-task",
+		}
+		customRun.Kind = "CustomRun"
+
+		unnamedTaskRun := tektonv1.ChildStatusReference{
+			PipelineTaskName: "unnamed-task",
+		}
+		unnamedTaskRun.Kind = "TaskRun"
+
+		pipelineRun := &tektonv1.PipelineRun{
+			Status: tektonv1.PipelineRunStatus{
+				PipelineRunStatusFields: tektonv1.PipelineRunStatusFields{
+					ChildReferences: []tektonv1.ChildStatusReference{
+						{
+							Name:             "implicit-taskrun",
+							PipelineTaskName: "implicit-task",
+						},
+						explicitTaskRun,
+						customRun,
+						unnamedTaskRun,
+						{
+							Name:             "later-taskrun",
+							PipelineTaskName: "later-task",
+						},
+					},
+				},
+			},
+		}
+
+		Expect(helpers.TaskRunChildReferenceNames(pipelineRun)).To(Equal([]string{
+			"implicit-taskrun",
+			"explicit-taskrun",
+			"later-taskrun",
+		}))
+	})
+
+	It("returns an empty list when the PipelineRun has no child references", func() {
+		Expect(helpers.TaskRunChildReferenceNames(&tektonv1.PipelineRun{})).To(Equal([]string{}))
+	})
+})
+
+var _ = Describe("TaskRunsResolutionWithinGrace", func() {
+	const gracePeriod = 5 * time.Minute
+
+	finishedPipelineRun := func(completion *metav1.Time, transition time.Time) *tektonv1.PipelineRun {
+		return &tektonv1.PipelineRun{
+			Status: tektonv1.PipelineRunStatus{
+				PipelineRunStatusFields: tektonv1.PipelineRunStatusFields{
+					CompletionTime: completion,
+				},
+				Status: v1.Status{
+					Conditions: v1.Conditions{
+						{
+							Type:               apis.ConditionSucceeded,
+							Status:             "True",
+							LastTransitionTime: apis.VolatileTime{Inner: metav1.NewTime(transition)},
+						},
+					},
+				},
+			},
+		}
+	}
+
+	It("returns true when CompletionTime is nil and the Succeeded transition is inside the grace period", func() {
+		transition := time.Now().Add(-gracePeriod + time.Second)
+		Expect(helpers.TaskRunsResolutionWithinGrace(finishedPipelineRun(nil, transition), gracePeriod)).To(BeTrue())
+	})
+
+	It("returns false when CompletionTime is nil and no finish timestamp is set", func() {
+		Expect(helpers.TaskRunsResolutionWithinGrace(&tektonv1.PipelineRun{}, gracePeriod)).To(BeFalse())
+	})
+
+	It("returns true when CompletionTime is zero and the Succeeded transition is inside the grace period", func() {
+		transition := time.Now().Add(-gracePeriod + time.Second)
+		Expect(helpers.TaskRunsResolutionWithinGrace(finishedPipelineRun(&metav1.Time{}, transition), gracePeriod)).To(BeTrue())
+	})
+
+	It("returns false when CompletionTime is zero and no finish timestamp is set", func() {
+		Expect(helpers.TaskRunsResolutionWithinGrace(finishedPipelineRun(&metav1.Time{}, time.Time{}), gracePeriod)).To(BeFalse())
+	})
+
+	It("returns true when CompletionTime is just inside the grace period", func() {
+		completedAt := time.Now().Add(-gracePeriod + time.Second)
+		transition := time.Now().Add(-gracePeriod - time.Minute)
+		Expect(helpers.TaskRunsResolutionWithinGrace(finishedPipelineRun(&metav1.Time{Time: completedAt}, transition), gracePeriod)).To(BeTrue())
+	})
+
+	It("returns false when CompletionTime is just outside the grace period", func() {
+		completedAt := time.Now().Add(-gracePeriod - time.Second)
+		Expect(helpers.TaskRunsResolutionWithinGrace(finishedPipelineRun(&metav1.Time{Time: completedAt}, time.Now()), gracePeriod)).To(BeFalse())
+	})
+})
+
+var _ = Describe("GetIntegrationPipelineRunOutcomeFromTaskRuns", func() {
+	outcomeTaskRun := func(name, testOutput string) *tektonv1.TaskRun {
+		return &tektonv1.TaskRun{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      name,
+				Namespace: "default",
+			},
+			Status: tektonv1.TaskRunStatus{
+				TaskRunStatusFields: tektonv1.TaskRunStatusFields{
+					StartTime: &metav1.Time{Time: time.Now()},
+					Results: []tektonv1.TaskRunResult{
+						{
+							Name:  "TEST_OUTPUT",
+							Value: *tektonv1.NewStructuredValues(testOutput),
+						},
+					},
+				},
+			},
+		}
+	}
+
+	pipelineRunWithTask := func(name string, succeeded v1.Conditions, taskRunName string) *tektonv1.PipelineRun {
+		return &tektonv1.PipelineRun{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      name,
+				Namespace: "default",
+			},
+			Status: tektonv1.PipelineRunStatus{
+				PipelineRunStatusFields: tektonv1.PipelineRunStatusFields{
+					ChildReferences: []tektonv1.ChildStatusReference{
+						{
+							Name:             taskRunName,
+							PipelineTaskName: "task1",
+						},
+					},
+				},
+				Status: v1.Status{
+					Conditions: succeeded,
+				},
+			},
+		}
+	}
+
+	succeededCondition := v1.Conditions{
+		{
+			Type:   apis.ConditionSucceeded,
+			Status: "True",
+		},
+	}
+	failedCondition := v1.Conditions{
+		{
+			Type:   apis.ConditionSucceeded,
+			Status: "False",
+		},
+	}
+	successfulOutput := `{
+		"result": "SUCCESS",
+		"timestamp": "2024-05-22T06:42:21+00:00",
+		"failures": 0,
+		"successes": 1,
+		"warnings": 0
+	}`
+	warningOutput := `{
+		"result": "WARNING",
+		"timestamp": "2024-05-22T06:42:21+00:00",
+		"failures": 0,
+		"successes": 0,
+		"warnings": 1
+	}`
+
+	It("returns a succeeded outcome when every referenced TaskRun is in the map", func() {
+		taskRun := outcomeTaskRun("present-taskrun", successfulOutput)
+		pipelineRun := pipelineRunWithTask("succeeded-plr", succeededCondition, taskRun.Name)
+
+		outcome, err := helpers.GetIntegrationPipelineRunOutcomeFromTaskRuns(pipelineRun, map[string]*tektonv1.TaskRun{
+			taskRun.Name: taskRun,
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(outcome.HasPipelineRunSucceeded()).To(BeTrue())
+		Expect(outcome.HasPipelineRunPassedTesting()).To(BeTrue())
+		Expect(outcome.HasPipelineRunValidTestOutputs()).To(BeTrue())
+	})
+
+	It("returns a warning outcome when TEST_OUTPUT result is WARNING", func() {
+		taskRun := outcomeTaskRun("warning-taskrun", warningOutput)
+		pipelineRun := pipelineRunWithTask("succeeded-plr", succeededCondition, taskRun.Name)
+
+		outcome, err := helpers.GetIntegrationPipelineRunOutcomeFromTaskRuns(pipelineRun, map[string]*tektonv1.TaskRun{
+			taskRun.Name: taskRun,
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(outcome.HasPipelineRunSucceeded()).To(BeTrue())
+		Expect(outcome.HasPipelineRunPassedTesting()).To(BeTrue())
+		Expect(outcome.HasPipelineRunWarningTesting()).To(BeTrue())
+		Expect(outcome.HasPipelineRunValidTestOutputs()).To(BeTrue())
+		Expect(outcome.GetValidationErrorsList()).To(BeEmpty())
+	})
+
+	It("returns a succeeded outcome with empty results when the PipelineRun has no child references", func() {
+		pipelineRun := &tektonv1.PipelineRun{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "succeeded-plr",
+				Namespace: "default",
+			},
+			Status: tektonv1.PipelineRunStatus{
+				PipelineRunStatusFields: tektonv1.PipelineRunStatusFields{
+					ChildReferences: []tektonv1.ChildStatusReference{},
+				},
+				Status: v1.Status{
+					Conditions: succeededCondition,
+				},
+			},
+		}
+		unused := outcomeTaskRun("unused-taskrun", "not-json")
+
+		outcome, err := helpers.GetIntegrationPipelineRunOutcomeFromTaskRuns(pipelineRun, map[string]*tektonv1.TaskRun{
+			unused.Name: unused,
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(outcome.HasPipelineRunSucceeded()).To(BeTrue())
+		Expect(outcome.HasPipelineRunPassedTesting()).To(BeTrue())
+		Expect(outcome.HasPipelineRunValidTestOutputs()).To(BeTrue())
+		Expect(outcome.GetValidationErrorsList()).To(BeEmpty())
+	})
+
+	It("returns an error when a referenced TaskRun is not in the map", func() {
+		pipelineRun := pipelineRunWithTask("succeeded-plr", succeededCondition, "missing-taskrun")
+
+		outcome, err := helpers.GetIntegrationPipelineRunOutcomeFromTaskRuns(pipelineRun, map[string]*tektonv1.TaskRun{})
+		Expect(outcome).To(BeNil())
+		Expect(err).To(MatchError(ContainSubstring("taskrun missing-taskrun referenced by pipelinerun succeeded-plr was not provided")))
+	})
+
+	It("returns an error when a referenced TaskRun is nil in the map", func() {
+		pipelineRun := pipelineRunWithTask("succeeded-plr", succeededCondition, "nil-taskrun")
+
+		outcome, err := helpers.GetIntegrationPipelineRunOutcomeFromTaskRuns(pipelineRun, map[string]*tektonv1.TaskRun{
+			"nil-taskrun": nil,
+		})
+		Expect(outcome).To(BeNil())
+		Expect(err).To(MatchError(ContainSubstring("taskrun nil-taskrun referenced by pipelinerun succeeded-plr was not provided")))
+	})
+
+	It("returns an error when a later child reference is missing after an earlier TaskRun was resolved", func() {
+		present := outcomeTaskRun("present-taskrun", successfulOutput)
+		customRun := tektonv1.ChildStatusReference{
+			Name:             "custom-run",
+			PipelineTaskName: "custom-task",
+		}
+		customRun.Kind = "CustomRun"
+		pipelineRun := &tektonv1.PipelineRun{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "succeeded-plr",
+				Namespace: "default",
+			},
+			Status: tektonv1.PipelineRunStatus{
+				PipelineRunStatusFields: tektonv1.PipelineRunStatusFields{
+					ChildReferences: []tektonv1.ChildStatusReference{
+						{
+							Name:             present.Name,
+							PipelineTaskName: "task1",
+						},
+						customRun,
+						{
+							Name:             "missing-taskrun",
+							PipelineTaskName: "task2",
+						},
+					},
+				},
+				Status: v1.Status{
+					Conditions: succeededCondition,
+				},
+			},
+		}
+
+		outcome, err := helpers.GetIntegrationPipelineRunOutcomeFromTaskRuns(pipelineRun, map[string]*tektonv1.TaskRun{
+			present.Name: present,
+		})
+		Expect(outcome).To(BeNil())
+		Expect(err).To(MatchError(ContainSubstring("taskrun missing-taskrun referenced by pipelinerun succeeded-plr was not provided")))
+	})
+
+	It("returns a failed outcome with empty results when the PipelineRun did not succeed", func() {
+		taskRun := outcomeTaskRun("broken-taskrun", "not-json")
+		pipelineRun := pipelineRunWithTask("failed-plr", failedCondition, taskRun.Name)
+
+		outcome, err := helpers.GetIntegrationPipelineRunOutcomeFromTaskRuns(pipelineRun, map[string]*tektonv1.TaskRun{
+			taskRun.Name: taskRun,
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(outcome.HasPipelineRunSucceeded()).To(BeFalse())
+		Expect(outcome.HasPipelineRunPassedTesting()).To(BeFalse())
+		Expect(outcome.HasPipelineRunValidTestOutputs()).To(BeTrue())
+		Expect(outcome.GetValidationErrorsList()).To(BeEmpty())
+	})
+})

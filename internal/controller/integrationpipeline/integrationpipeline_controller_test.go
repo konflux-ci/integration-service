@@ -306,9 +306,8 @@ var _ = Describe("Integration PipelineController", func() {
 		Expect(err).ToNot(HaveOccurred())
 	})
 
-	It("can setup a new controller manager with the given reconciler", func() {
-		err := setupControllerWithManager(manager, pipelineReconciler)
-		Expect(err).NotTo(HaveOccurred())
+	It("can setup a new controller manager via SetupController", func() {
+		Expect(SetupController(manager, &logf.Log)).To(Succeed())
 	})
 
 	It("Does not return an error if the snapshot cannot be found", func() {

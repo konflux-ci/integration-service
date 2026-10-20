@@ -17,9 +17,11 @@ limitations under the License.
 package loader
 
 import (
+	"errors"
 	"reflect"
 
 	toolkit "github.com/konflux-ci/operator-toolkit/loader"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	oldapplicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
 	"github.com/konflux-ci/integration-service/api/v1beta2"
@@ -30,6 +32,7 @@ import (
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	resolutionv1beta1 "github.com/tektoncd/pipeline/pkg/apis/resolution/v1beta1"
 	corev1 "k8s.io/api/core/v1"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 )
 
 var _ = Describe("Release Adapter", Ordered, func() {
@@ -338,6 +341,188 @@ var _ = Describe("Release Adapter", Ordered, func() {
 			resource, err := loader.GetAllTaskRunsWithMatchingPipelineRunLabel(mockContext, nil, nil)
 			Expect(resource).To(Equal(&taskRuns))
 			Expect(err).ToNot(HaveOccurred())
+		})
+	})
+
+	Context("When calling GetTaskRun", func() {
+		It("returns the TaskRun and error from the context", func() {
+			taskRun := &tektonv1.TaskRun{}
+			mockContext := toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: TaskRunContextKey,
+					Resource:   taskRun,
+				},
+			})
+			resource, err := loader.GetTaskRun(mockContext, nil, "", "")
+			Expect(resource).To(Equal(taskRun))
+			Expect(err).NotTo(HaveOccurred())
+		})
+
+		It("returns the TaskRun matching the requested name", func() {
+			first := &tektonv1.TaskRun{ObjectMeta: metav1.ObjectMeta{Name: "task-a", Namespace: "default"}}
+			second := &tektonv1.TaskRun{ObjectMeta: metav1.ObjectMeta{Name: "task-b", Namespace: "default"}}
+			mockContext := toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: TaskRunContextKey,
+					Resource:   []*tektonv1.TaskRun{first, second},
+				},
+			})
+
+			resource, err := loader.GetTaskRun(mockContext, nil, second.Name, second.Namespace)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(resource).To(BeIdenticalTo(second))
+
+			resource, err = loader.GetTaskRun(mockContext, nil, "absent-taskrun", "default")
+			Expect(k8serrors.IsNotFound(err)).To(BeTrue())
+			Expect(resource).To(BeNil())
+		})
+
+		It("returns an error when the context has neither a TaskRun nor an error", func() {
+			mockContext := toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: TaskRunContextKey,
+				},
+			})
+			resource, err := loader.GetTaskRun(mockContext, nil, "absent-taskrun", "default")
+			Expect(resource).To(BeNil())
+			Expect(err).To(MatchError(`TaskRun context for "absent-taskrun" has no resource or error`))
+		})
+
+		It("returns the error from the context when no TaskRun is set", func() {
+			readErr := errors.New("taskrun read failed")
+			mockContext := toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: TaskRunContextKey,
+					Err:        readErr,
+				},
+			})
+			resource, err := loader.GetTaskRun(mockContext, nil, "absent-taskrun", "default")
+			Expect(resource).To(BeNil())
+			Expect(err).To(MatchError(readErr))
+		})
+	})
+
+	Context("When calling GetTaskRunsReferencedByPipelineRun", func() {
+		pipelineRunWithChildren := func(children ...tektonv1.ChildStatusReference) *tektonv1.PipelineRun {
+			return &tektonv1.PipelineRun{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "referenced-plr",
+					Namespace: "default",
+				},
+				Status: tektonv1.PipelineRunStatus{
+					PipelineRunStatusFields: tektonv1.PipelineRunStatusFields{
+						ChildReferences: children,
+					},
+				},
+			}
+		}
+
+		It("uses the TaskRuns from the context and ignores CustomRuns and extra TaskRuns", func() {
+			cached := tektonv1.TaskRun{ObjectMeta: metav1.ObjectMeta{Name: "cached-taskrun"}}
+			extra := tektonv1.TaskRun{ObjectMeta: metav1.ObjectMeta{Name: "retry-taskrun"}}
+			customRun := tektonv1.ChildStatusReference{
+				Name:             "custom-run",
+				PipelineTaskName: "custom-task",
+			}
+			customRun.Kind = "CustomRun"
+			mockContext := toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: AllTaskRunsWithMatchingPipelineRunLabelContextKey,
+					Resource:   []tektonv1.TaskRun{cached, extra},
+				},
+			})
+
+			resolved, missing, err := loader.GetTaskRunsReferencedByPipelineRun(mockContext, nil, pipelineRunWithChildren(
+				tektonv1.ChildStatusReference{Name: cached.Name, PipelineTaskName: "task1"},
+				customRun,
+			))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(resolved).To(HaveKey(cached.Name))
+			Expect(resolved).NotTo(HaveKey(extra.Name))
+			Expect(resolved).NotTo(HaveKey(customRun.Name))
+			Expect(missing).To(BeEmpty())
+		})
+
+		It("uses the TaskRun from the context when the name is missing from the list", func() {
+			live := &tektonv1.TaskRun{ObjectMeta: metav1.ObjectMeta{Name: "live-taskrun"}}
+			mockContext := toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: AllTaskRunsWithMatchingPipelineRunLabelContextKey,
+					Resource:   []tektonv1.TaskRun{},
+				},
+				{
+					ContextKey: TaskRunContextKey,
+					Resource:   live,
+				},
+			})
+
+			resolved, missing, err := loader.GetTaskRunsReferencedByPipelineRun(mockContext, nil, pipelineRunWithChildren(
+				tektonv1.ChildStatusReference{Name: "live-taskrun", PipelineTaskName: "task1"},
+			))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(resolved).To(HaveKeyWithValue("live-taskrun", live))
+			Expect(missing).To(BeEmpty())
+		})
+
+		It("resolves each missing TaskRun by name", func() {
+			first := &tektonv1.TaskRun{ObjectMeta: metav1.ObjectMeta{Name: "task-a"}}
+			second := &tektonv1.TaskRun{ObjectMeta: metav1.ObjectMeta{Name: "task-b"}}
+			mockContext := toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: AllTaskRunsWithMatchingPipelineRunLabelContextKey,
+					Resource:   []tektonv1.TaskRun{},
+				},
+				{
+					ContextKey: TaskRunContextKey,
+					Resource:   []*tektonv1.TaskRun{first, second},
+				},
+			})
+
+			resolved, missing, err := loader.GetTaskRunsReferencedByPipelineRun(mockContext, nil, pipelineRunWithChildren(
+				tektonv1.ChildStatusReference{Name: first.Name, PipelineTaskName: "task1"},
+				tektonv1.ChildStatusReference{Name: second.Name, PipelineTaskName: "task2"},
+				tektonv1.ChildStatusReference{Name: "absent-taskrun", PipelineTaskName: "task3"},
+			))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(resolved).To(HaveKeyWithValue(first.Name, first))
+			Expect(resolved).To(HaveKeyWithValue(second.Name, second))
+			Expect(missing).To(Equal([]string{"absent-taskrun"}))
+		})
+
+		It("returns the list error from the context", func() {
+			listErr := errors.New("taskrun list failed")
+			mockContext := toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: AllTaskRunsWithMatchingPipelineRunLabelContextKey,
+					Err:        listErr,
+				},
+			})
+
+			resolved, missing, err := loader.GetTaskRunsReferencedByPipelineRun(mockContext, nil, &tektonv1.PipelineRun{})
+			Expect(err).To(MatchError(listErr))
+			Expect(resolved).To(BeNil())
+			Expect(missing).To(BeNil())
+		})
+
+		It("returns the GetTaskRun error from the context", func() {
+			readErr := errors.New("taskrun read failed")
+			mockContext := toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: AllTaskRunsWithMatchingPipelineRunLabelContextKey,
+					Resource:   []tektonv1.TaskRun{},
+				},
+				{
+					ContextKey: TaskRunContextKey,
+					Err:        readErr,
+				},
+			})
+
+			resolved, missing, err := loader.GetTaskRunsReferencedByPipelineRun(mockContext, nil, pipelineRunWithChildren(
+				tektonv1.ChildStatusReference{Name: "live-taskrun", PipelineTaskName: "task1"},
+			))
+			Expect(err).To(MatchError(readErr))
+			Expect(resolved).To(BeNil())
+			Expect(missing).To(BeNil())
 		})
 	})
 

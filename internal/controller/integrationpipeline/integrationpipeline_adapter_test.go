@@ -17,6 +17,7 @@ limitations under the License.
 package integrationpipeline
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -44,6 +45,7 @@ import (
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
@@ -1016,16 +1018,41 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 	})
 
 	When("GetIntegrationPipelineRunStatus is called with a PLR with TaskRun, mentioned in its ChildReferences field, missing from the cluster", func() {
+		var pipelineRun *tektonv1.PipelineRun
+
 		BeforeEach(func() {
-			adapter = NewAdapter(ctx, integrationPipelineRunComponent, hasSnapshot, logger, loader.NewMockLoader(), k8sClient)
+			pipelineRun = integrationPipelineRunComponent.DeepCopy()
+			pipelineRun.Status.CompletionTime = &metav1.Time{Time: time.Now()}
+			pipelineRun.Status.ChildReferences = []tektonv1.ChildStatusReference{
+				{
+					Name:             "absent-taskrun",
+					PipelineTaskName: "task1",
+				},
+			}
+			adapter = NewAdapter(ctx, pipelineRun, hasSnapshot, logger, loader.NewMockLoader(), k8sClient)
 		})
 
-		It("ensures test status in snapshot is updated to failed", func() {
-			status, detail, err := adapter.GetIntegrationPipelineRunStatus(adapter.context, adapter.client, integrationPipelineRunComponent)
-			Expect(err).ToNot(HaveOccurred())
-			Expect(status).To(Equal(intgteststat.IntegrationTestStatusTestInvalid))
-			Expect(detail).To(ContainSubstring(fmt.Sprintf("Failed to determine status of pipelinerun '%s', due to mismatch"+
-				" in TaskRuns present in cluster (0) and those referenced within childReferences (1)", integrationPipelineRunComponent.Name)))
+		It("requeues while the referenced TaskRun is not visible and the PipelineRun is inside the resolution grace period", func() {
+			status, detail, err := adapter.GetIntegrationPipelineRunStatus(adapter.context, adapter.client, pipelineRun)
+			var retryable *retryableTaskRunsError
+			Expect(errors.As(err, &retryable)).To(BeTrue())
+			Expect(retryable.missing).To(ContainElement("absent-taskrun"))
+			Expect(status).To(Equal(intgteststat.IntegrationTestStatus(0)))
+			Expect(detail).To(BeEmpty())
+		})
+
+		It("returns an expired error when the referenced TaskRun is still missing after the resolution grace period", func() {
+			pipelineRun.Status.CompletionTime = &metav1.Time{Time: time.Now().Add(-taskRunResolutionGracePeriod - time.Second)}
+
+			status, detail, err := adapter.GetIntegrationPipelineRunStatus(adapter.context, adapter.client, pipelineRun)
+			var expired *expiredTaskRunsError
+			Expect(errors.As(err, &expired)).To(BeTrue())
+			var retryable *retryableTaskRunsError
+			Expect(errors.As(err, &retryable)).To(BeFalse())
+			Expect(expired.missing).To(ContainElement("absent-taskrun"))
+			Expect(err.Error()).To(ContainSubstring("resolution grace period has elapsed"))
+			Expect(status).To(Equal(intgteststat.IntegrationTestStatus(0)))
+			Expect(detail).To(BeEmpty())
 		})
 	})
 
@@ -1183,7 +1210,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 					PipelineRunStatusFields: tektonv1.PipelineRunStatusFields{
 						ChildReferences: []tektonv1.ChildStatusReference{
 							{
-								Name:             "test-taskrun",
+								Name:             successfulTaskRun.Name,
 								PipelineTaskName: "test-task",
 							},
 						},
@@ -1252,6 +1279,274 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			detail, ok := statuses.GetScenarioStatus(integrationTestScenario.Name)
 			Expect(ok).To(BeTrue())
 			Expect(detail.TestPipelineRunName).To(Equal("test-pipeline-with-finalizer"))
+		})
+	})
+
+	When("referenced TaskRuns are resolved by name", func() {
+		It("ignores TaskRuns that are no longer referenced", func() {
+			adapter = NewAdapter(ctx, integrationPipelineRunComponent, hasSnapshot, logger, loader.NewMockLoader(), k8sClient)
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: loader.AllTaskRunsWithMatchingPipelineRunLabelContextKey,
+					Resource:   []tektonv1.TaskRun{*successfulTaskRun, *failedTaskRun},
+				},
+			})
+
+			status, detail, err := adapter.GetIntegrationPipelineRunStatus(adapter.context, adapter.client, integrationPipelineRunComponent)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(status).To(Equal(intgteststat.IntegrationTestStatusTestPassed))
+			Expect(detail).To(Equal("Integration test passed"))
+		})
+
+		It("ignores CustomRun child references", func() {
+			pipelineRun := integrationPipelineRunComponent.DeepCopy()
+			customRun := tektonv1.ChildStatusReference{
+				Name:             "custom-run",
+				PipelineTaskName: "custom-task",
+			}
+			customRun.Kind = "CustomRun"
+			pipelineRun.Status.ChildReferences = append(pipelineRun.Status.ChildReferences, customRun)
+			adapter = NewAdapter(ctx, pipelineRun, hasSnapshot, logger, loader.NewMockLoader(), k8sClient)
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: loader.AllTaskRunsWithMatchingPipelineRunLabelContextKey,
+					Resource:   []tektonv1.TaskRun{*successfulTaskRun},
+				},
+			})
+
+			status, _, err := adapter.GetIntegrationPipelineRunStatus(adapter.context, adapter.client, pipelineRun)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(status).To(Equal(intgteststat.IntegrationTestStatusTestPassed))
+		})
+
+		It("reads a referenced TaskRun from the API server when the cache list does not contain it", func() {
+			adapter = NewAdapter(ctx, integrationPipelineRunComponent, hasSnapshot, logger, loader.NewMockLoaderWithAPIReader(k8sClient), k8sClient)
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: loader.AllTaskRunsWithMatchingPipelineRunLabelContextKey,
+					Resource:   []tektonv1.TaskRun{},
+				},
+			})
+
+			status, detail, err := adapter.GetIntegrationPipelineRunStatus(adapter.context, adapter.client, integrationPipelineRunComponent)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(status).To(Equal(intgteststat.IntegrationTestStatusTestPassed))
+			Expect(detail).To(Equal("Integration test passed"))
+		})
+
+		It("records every TaskRun the API server reports as not found", func() {
+			pipelineRun := integrationPipelineRunComponent.DeepCopy()
+			pipelineRun.Status.ChildReferences = []tektonv1.ChildStatusReference{
+				{
+					Name:             "absent-taskrun",
+					PipelineTaskName: "task1",
+				},
+				{
+					Name:             "another-absent-taskrun",
+					PipelineTaskName: "task2",
+				},
+			}
+			adapter = NewAdapter(ctx, pipelineRun, hasSnapshot, logger, loader.NewMockLoaderWithAPIReader(k8sClient), k8sClient)
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: loader.AllTaskRunsWithMatchingPipelineRunLabelContextKey,
+					Resource:   []tektonv1.TaskRun{},
+				},
+			})
+
+			resolved, missing, err := adapter.loader.GetTaskRunsReferencedByPipelineRun(adapter.context, adapter.client, pipelineRun)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(resolved).To(BeEmpty())
+			Expect(missing).To(Equal([]string{"absent-taskrun", "another-absent-taskrun"}))
+		})
+
+		It("returns a non-NotFound error from the API server", func() {
+			pipelineRun := integrationPipelineRunComponent.DeepCopy()
+			pipelineRun.Status.ChildReferences = []tektonv1.ChildStatusReference{
+				{
+					Name:             "absent-taskrun",
+					PipelineTaskName: "task1",
+				},
+			}
+			readErr := k8serrors.NewServiceUnavailable("api server overloaded")
+			adapter = NewAdapter(ctx, pipelineRun, hasSnapshot, logger, loader.NewMockLoaderWithAPIReader(errReader{err: readErr}), k8sClient)
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: loader.AllTaskRunsWithMatchingPipelineRunLabelContextKey,
+					Resource:   []tektonv1.TaskRun{},
+				},
+			})
+
+			resolved, missing, err := adapter.loader.GetTaskRunsReferencedByPipelineRun(adapter.context, adapter.client, pipelineRun)
+			Expect(err).To(MatchError(readErr))
+			Expect(k8serrors.IsNotFound(err)).To(BeFalse())
+			Expect(resolved).To(BeNil())
+			Expect(missing).To(BeNil())
+		})
+	})
+
+	When("a finished PipelineRun is missing referenced TaskRuns", func() {
+		newPipelineRun := func(name, scenarioName string, completion time.Time) *tektonv1.PipelineRun {
+			return &tektonv1.PipelineRun{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      name,
+					Namespace: "default",
+					Labels: map[string]string{
+						"appstudio.openshift.io/snapshot":      hasSnapshot.Name,
+						"test.appstudio.openshift.io/scenario": scenarioName,
+					},
+					Finalizers: []string{helpers.IntegrationPipelineRunFinalizer},
+				},
+				Status: tektonv1.PipelineRunStatus{
+					PipelineRunStatusFields: tektonv1.PipelineRunStatusFields{
+						CompletionTime: &metav1.Time{Time: completion},
+						ChildReferences: []tektonv1.ChildStatusReference{
+							{
+								Name:             "absent-taskrun",
+								PipelineTaskName: "task1",
+							},
+						},
+					},
+					Status: v1.Status{
+						Conditions: []apis.Condition{
+							{
+								Type:   apis.ConditionSucceeded,
+								Status: "True",
+							},
+						},
+					},
+				},
+			}
+		}
+
+		// k8sClient reads from the controller cache. A write made in the same spec
+		// can be missing from that cache when the API server is slow, and
+		// EnsureStatusReportedInSnapshot would then overwrite a final status.
+		readSnapshotFromAPI := func() *applicationapiv1alpha1.Snapshot {
+			apiReader, err := client.New(cfg, client.Options{Scheme: k8sClient.Scheme()})
+			Expect(err).NotTo(HaveOccurred())
+			snapshot := &applicationapiv1alpha1.Snapshot{}
+			Expect(apiReader.Get(ctx, types.NamespacedName{Name: hasSnapshot.Name, Namespace: hasSnapshot.Namespace}, snapshot)).To(Succeed())
+			return snapshot
+		}
+
+		prepareAdapter := func(pipelineRun *tektonv1.PipelineRun, snapshot *applicationapiv1alpha1.Snapshot) {
+			mockData := []toolkit.MockData{
+				{
+					ContextKey: loader.AllTaskRunsWithMatchingPipelineRunLabelContextKey,
+					Resource:   []tektonv1.TaskRun{},
+				},
+			}
+			if snapshot != nil {
+				mockData = append(mockData, toolkit.MockData{
+					ContextKey: loader.SnapshotContextKey,
+					Resource:   snapshot,
+				})
+			}
+			adapter = NewAdapter(ctx, pipelineRun, hasSnapshot, logger, loader.NewMockLoader(), k8sClient)
+			adapter.context = toolkit.GetMockedContext(ctx, mockData)
+		}
+
+		It("requeues without writing status while the PipelineRun is inside the resolution grace period", func() {
+			scenarioName := "requeue-missing-taskrun"
+			pipelineRun := newPipelineRun("plr-requeue-missing-taskrun", scenarioName, time.Now())
+			prepareAdapter(pipelineRun, nil)
+
+			result, err := adapter.EnsureStatusReportedInSnapshot()
+			var retryable *retryableTaskRunsError
+			Expect(errors.As(err, &retryable)).To(BeTrue())
+			Expect(result.RequeueRequest).To(BeTrue())
+
+			statuses, err := gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(readSnapshotFromAPI())
+			Expect(err).NotTo(HaveOccurred())
+			_, ok := statuses.GetScenarioStatus(scenarioName)
+			Expect(ok).To(BeFalse())
+		})
+
+		It("does not record a status when the PipelineRun has no scenario label after the resolution grace period", func() {
+			pipelineRun := newPipelineRun("plr-missing-scenario-label", "unused-scenario", time.Now().Add(-taskRunResolutionGracePeriod-time.Second))
+			delete(pipelineRun.Labels, "test.appstudio.openshift.io/scenario")
+			prepareAdapter(pipelineRun, nil)
+
+			result, err := adapter.EnsureStatusReportedInSnapshot()
+			Expect(err).To(MatchError(ContainSubstring(`missing the "test.appstudio.openshift.io/scenario" label`)))
+			Expect(result.RequeueRequest).To(BeTrue())
+
+			statuses, err := gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(readSnapshotFromAPI())
+			Expect(err).NotTo(HaveOccurred())
+			_, ok := statuses.GetScenarioStatus("")
+			Expect(ok).To(BeFalse())
+		})
+
+		It("records TestInvalid after the resolution grace period when no final status exists", func() {
+			scenarioName := "invalid-missing-taskrun"
+			pipelineRun := newPipelineRun("plr-invalid-missing-taskrun", scenarioName, time.Now().Add(-taskRunResolutionGracePeriod-time.Second))
+			prepareAdapter(pipelineRun, nil)
+
+			result, err := adapter.EnsureStatusReportedInSnapshot()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.RequeueRequest).To(BeFalse())
+
+			statuses, err := gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(readSnapshotFromAPI())
+			Expect(err).NotTo(HaveOccurred())
+			detail, ok := statuses.GetScenarioStatus(scenarioName)
+			Expect(ok).To(BeTrue())
+			Expect(detail.Status).To(Equal(intgteststat.IntegrationTestStatusTestInvalid))
+			Expect(detail.Details).To(ContainSubstring("absent-taskrun"))
+			Expect(detail.TestPipelineRunName).To(Equal(pipelineRun.Name))
+		})
+
+		It("keeps an existing final status for the PipelineRun after the resolution grace period", func() {
+			scenarioName := "preserve-missing-taskrun"
+			pipelineRun := newPipelineRun("plr-preserve-missing-taskrun", scenarioName, time.Now().Add(-taskRunResolutionGracePeriod-time.Second))
+
+			fresh := readSnapshotFromAPI()
+			statuses, err := gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(fresh)
+			Expect(err).NotTo(HaveOccurred())
+			statuses.UpdateTestStatusIfChanged(scenarioName, intgteststat.IntegrationTestStatusTestPassed, "Integration test passed")
+			Expect(statuses.UpdateTestPipelineRunName(scenarioName, pipelineRun.Name)).To(Succeed())
+			Expect(gitops.WriteIntegrationTestStatusesIntoSnapshot(ctx, fresh, statuses, k8sClient)).To(Succeed())
+
+			// Give the adapter the snapshot that was just written. Reading it back
+			// through k8sClient can still return the previous object while the
+			// informer catches up, which makes this spec overwrite TestPassed.
+			prepareAdapter(pipelineRun, fresh)
+			result, err := adapter.EnsureStatusReportedInSnapshot()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.RequeueRequest).To(BeFalse())
+
+			updatedStatuses, err := gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(readSnapshotFromAPI())
+			Expect(err).NotTo(HaveOccurred())
+			detail, ok := updatedStatuses.GetScenarioStatus(scenarioName)
+			Expect(ok).To(BeTrue())
+			Expect(detail.Status).To(Equal(intgteststat.IntegrationTestStatusTestPassed))
+			Expect(detail.Details).To(Equal("Integration test passed"))
+			Expect(detail.TestPipelineRunName).To(Equal(pipelineRun.Name))
+		})
+
+		It("does not replace a final status recorded for a different PipelineRun", func() {
+			scenarioName := "preserve-other-pipelinerun"
+			pipelineRun := newPipelineRun("plr-expired-other-status", scenarioName, time.Now().Add(-taskRunResolutionGracePeriod-time.Second))
+
+			fresh := readSnapshotFromAPI()
+			statuses, err := gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(fresh)
+			Expect(err).NotTo(HaveOccurred())
+			statuses.UpdateTestStatusIfChanged(scenarioName, intgteststat.IntegrationTestStatusTestPassed, "Integration test passed")
+			Expect(statuses.UpdateTestPipelineRunName(scenarioName, "newer-pipelinerun")).To(Succeed())
+			Expect(gitops.WriteIntegrationTestStatusesIntoSnapshot(ctx, fresh, statuses, k8sClient)).To(Succeed())
+
+			prepareAdapter(pipelineRun, fresh)
+			result, err := adapter.EnsureStatusReportedInSnapshot()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.RequeueRequest).To(BeFalse())
+
+			updatedStatuses, err := gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(readSnapshotFromAPI())
+			Expect(err).NotTo(HaveOccurred())
+			detail, ok := updatedStatuses.GetScenarioStatus(scenarioName)
+			Expect(ok).To(BeTrue())
+			Expect(detail.Status).To(Equal(intgteststat.IntegrationTestStatusTestPassed))
+			Expect(detail.Details).To(Equal("Integration test passed"))
+			Expect(detail.TestPipelineRunName).To(Equal("newer-pipelinerun"))
 		})
 	})
 
@@ -1345,3 +1640,16 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 	})
 
 })
+
+// errReader is a client.Reader whose Get and List return a fixed error.
+type errReader struct {
+	err error
+}
+
+func (r errReader) Get(context.Context, types.NamespacedName, client.Object, ...client.GetOption) error {
+	return r.err
+}
+
+func (r errReader) List(context.Context, client.ObjectList, ...client.ListOption) error {
+	return r.err
+}
