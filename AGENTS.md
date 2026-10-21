@@ -22,7 +22,7 @@ internal/webhooks      # Webhooks
 loader/                # ObjectLoader interface — abstracts K8s resource fetching
 tekton/                # PipelineRun builders, status helpers, watch predicates
 gitops/                # Snapshot and Release CR generation and management functions
-pkg/                   # integrationteststatus/ and dag/ contain exported structs, metrics/ contains Prometheus gauges and histograms, conversion/ contains functions to convert between appstudio.redhat.com and konflux-ci.dev versions of the same resource
+pkg/                   # integrationteststatus/ and dag/ contain exported structs, metrics/ contains Prometheus gauges and histograms, conversion/ contains functions to convert between appstudio.redhat.com and konflux-ci.dev versions of the same resource, keys/ contains label/annotation key constants and prefix definitions
 helpers/               # Additional utility functions
 config/                # Kustomize manifests (CRDs, RBAC, webhooks, samples)
 e2e-tests/             # Ginkgo e2e test definitions for the integration service suite
@@ -49,6 +49,39 @@ The service supports two parallel resource flows: **ComponentGroup** (new model)
 
 - **PipelineRunBuilder** (`tekton/`): fluent API — `.WithExtraParams()`, `.WithSnapshot()`, `.WithIntegrationTimeouts()`, `.WithUpdatedPipelineGitResolver()`
 - **Metrics**: registered during reconciliation — `RegisterCompletedSnapshot()`, `RegisterInvalidSnapshot()`, `RegisterPipelineRunStarted()`, `RegisterIntegrationResponse()`, with start/completion times
+
+## Label & Annotation Prefix Contracts
+
+`pkg/keys/keys.go` is the source of truth for migrated label and annotation
+key prefixes. PRs that modify or introduce key definitions must trace
+all consumers of the affected prefixes and identify follow-up work for
+cross-service migration.
+
+### Migrated Prefix Pairs (Old → New)
+
+| Old prefix | New prefix | Consumers |
+|---|---|---|
+| `pipelines.appstudio.openshift.io` | `pipelines.konflux-ci.dev` | integration-service PipelineRun type predicates |
+| `test.appstudio.openshift.io` | `integration.konflux-ci.dev` | integration-service test orchestration, finalizers |
+| `build.appstudio`¹ | `build.konflux-ci.dev` | build-service, integration-service build metadata copying |
+
+¹ `build.appstudio` is a substring prefix matching both `build.appstudio.openshift.io` and `build.appstudio.redhat.com`.
+
+### Legacy-Only Prefixes (No New-Key Counterpart)
+
+| Prefix | Contract | Notes |
+|---|---|---|
+| `custom.appstudio.openshift.io` | **User-facing** | User-supplied metadata on build PipelineRuns; [advertised feature](https://konflux-ci.dev/docs/testing/integration/creating/#data-injected-into-the-pipelinerun-of-the-integration-test) |
+| `release.appstudio.openshift.io` | **Cross-service** | `AutoReleaseLabel` in `gitops/snapshot.go`; consumed by release-service via ReleasePlans |
+| `pac.test.appstudio.openshift.io` | **Internal** | Pipelines-as-Code metadata copied onto Snapshots |
+| `appstudio.openshift.io` | **Internal** | Generic resource prefix (application, component, snapshot labels). Partially migrated: `appstudio.openshift.io/component` → `build.konflux-ci.dev/component` via `BuildComponent()` pair. Application and snapshot labels remain legacy-only. |
+
+### Migration Review Guidance
+
+- A prefix with **user-facing** or **cross-service** consumers must not
+  be declared legacy-only without a migration plan and follow-up stories.
+- Trace downstream consumers before approving changes to any prefix
+  defined in `pkg/keys/`.
 
 ## Development Guidelines
 
