@@ -506,6 +506,11 @@ type GitHubReporter struct {
 	k8sClient client.Client
 	client    github.ClientInterface
 	updater   StatusUpdater
+	// owner and repo are populated by Initialize from the matching Repository CR;
+	// empty until then. Callers can retrieve them via ResolvedOwner/ResolvedRepo
+	// to avoid redundant Repository CR lookups.
+	owner string
+	repo  string
 }
 
 // check if interface has been correctly implemented
@@ -658,6 +663,8 @@ func (r *GitHubReporter) Initialize(ctx context.Context, snapshot *applicationap
 			"snapshot.NameSpace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
 		return 0, err
 	}
+	r.owner = owner
+	r.repo = repo
 
 	labels := snapshot.GetLabels()
 
@@ -681,6 +688,22 @@ func (r *GitHubReporter) Initialize(ctx context.Context, snapshot *applicationap
 		return statusCode, err
 	}
 	return statusCode, nil
+}
+
+// ResolvedOwner returns the repository owner resolved during Initialize.
+// The value is available once repository resolution succeeds inside Initialize,
+// even if Initialize returns an error from a later step (e.g. authentication).
+// Returns empty if Initialize has not been called or if repository resolution itself failed.
+func (r *GitHubReporter) ResolvedOwner() string {
+	return r.owner
+}
+
+// ResolvedRepo returns the repository name resolved during Initialize.
+// The value is available once repository resolution succeeds inside Initialize,
+// even if Initialize returns an error from a later step (e.g. authentication).
+// Returns empty if Initialize has not been called or if repository resolution itself failed.
+func (r *GitHubReporter) ResolvedRepo() string {
+	return r.repo
 }
 
 // Return reporter name
