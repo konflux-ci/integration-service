@@ -221,7 +221,7 @@ spec:
           rm -rf repo
           if git clone --depth=1 --branch "${GIT_REVISION}" "${GIT_URL}" repo; then
             break
-          elif git clone "${GIT_URL}" repo && git -C repo checkout "${GIT_REVISION}"; then
+          elif rm -rf repo && git clone "${GIT_URL}" repo && git -C repo checkout "${GIT_REVISION}"; then
             break
           elif [[ "$attempt" -lt 3 ]]; then
             log "WARN" "Clone attempt ${attempt}/3 failed, retrying in 5s..."
