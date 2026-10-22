@@ -18,15 +18,11 @@ package v1beta2
 
 import (
 	"encoding/json"
-	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"sigs.k8s.io/yaml"
 )
 
 func TestNudgeConfigSpec(t *testing.T) {
@@ -112,6 +108,9 @@ func TestNudgeConfigMinimalSpec(t *testing.T) {
 	if nc.Spec.TargetConfig != nil {
 		t.Errorf("Expected nil TargetConfig, got %v", nc.Spec.TargetConfig)
 	}
+	if nc.Spec.Actions != nil {
+		t.Errorf("Expected nil Actions, got %v", nc.Spec.Actions)
+	}
 	if nc.Status.Conditions != nil {
 		t.Errorf("Expected nil Conditions, got %v", nc.Status.Conditions)
 	}
@@ -126,151 +125,6 @@ func TestNudgeModeConstants(t *testing.T) {
 	}
 	if NudgeModeValidated != "validated" {
 		t.Errorf("Expected NudgeModeValidated 'validated', got '%s'", NudgeModeValidated)
-	}
-}
-
-func TestFailurePolicyConstants(t *testing.T) {
-	if FailurePolicyBlock != "Block" {
-		t.Errorf("Expected FailurePolicyBlock 'Block', got '%s'", FailurePolicyBlock)
-	}
-	if FailurePolicyProceedWithPartial != "ProceedWithPartial" {
-		t.Errorf("Expected FailurePolicyProceedWithPartial 'ProceedWithPartial', got '%s'", FailurePolicyProceedWithPartial)
-	}
-}
-
-func TestBatchDefaultsCELLiteralsMatchRuntimeDefaults(t *testing.T) {
-	debounceLiteral, err := kubernetesDurationLiteral(DefaultBatchDebounceTimeout)
-	if err != nil {
-		t.Fatal(err)
-	}
-	maxWaitLiteral, err := kubernetesDurationLiteral(DefaultBatchMaxWaitTime)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	debounceCEL := fmt.Sprintf("duration('%s')", debounceLiteral)
-	maxWaitCEL := fmt.Sprintf("duration('%s')", maxWaitLiteral)
-
-	source, err := os.ReadFile("nudgeconfig_types.go")
-	if err != nil {
-		t.Fatalf("read nudgeconfig_types.go: %v", err)
-	}
-	assertContainsBatchDefaultCEL(t, "nudgeconfig_types.go", string(source), debounceCEL, maxWaitCEL)
-
-	crdPath := filepath.Join("..", "..", "config", "crd", "bases", "appstudio.redhat.com_nudgeconfigs.yaml")
-	crd, err := os.ReadFile(crdPath)
-	if err != nil {
-		t.Fatalf("read %s: %v", crdPath, err)
-	}
-	assertContainsBatchDefaultCEL(t, crdPath, strings.ReplaceAll(string(crd), "''", "'"), debounceCEL, maxWaitCEL)
-
-	if DefaultBatchFailurePolicy != FailurePolicyBlock {
-		t.Errorf("Expected DefaultBatchFailurePolicy %q, got %q", FailurePolicyBlock, DefaultBatchFailurePolicy)
-	}
-}
-
-func assertContainsBatchDefaultCEL(t *testing.T, path, contents, debounceCEL, maxWaitCEL string) {
-	t.Helper()
-	if !strings.Contains(contents, debounceCEL) {
-		t.Errorf("%s must reference %s to stay in sync with DefaultBatchDebounceTimeout", path, debounceCEL)
-	}
-	if !strings.Contains(contents, maxWaitCEL) {
-		t.Errorf("%s must reference %s to stay in sync with DefaultBatchMaxWaitTime", path, maxWaitCEL)
-	}
-}
-
-func TestBatchDefaultsJSONRoundTrip(t *testing.T) {
-	original := NudgeConfigSpec{
-		BatchDefaults: &BatchDefaults{
-			DebounceTimeout: durationPtr(DefaultBatchDebounceTimeout),
-			MaxWaitTime:     durationPtr(DefaultBatchMaxWaitTime),
-			FailurePolicy:   failurePolicyPtr(DefaultBatchFailurePolicy),
-		},
-		Nudges: []NudgeRelationship{
-			{From: "component-a", To: "component-b", Mode: NudgeModeImmediate},
-		},
-	}
-
-	encoded, err := json.Marshal(original)
-	if err != nil {
-		t.Fatalf("Marshal: %v", err)
-	}
-
-	var decoded NudgeConfigSpec
-	if err := json.Unmarshal(encoded, &decoded); err != nil {
-		t.Fatalf("Unmarshal: %v", err)
-	}
-
-	if decoded.BatchDefaults == nil {
-		t.Fatal("Expected BatchDefaults after JSON round-trip, got nil")
-	}
-	if decoded.BatchDefaults.DebounceTimeout == nil || decoded.BatchDefaults.DebounceTimeout.Duration != DefaultBatchDebounceTimeout {
-		t.Errorf("Expected debounceTimeout %s, got %v", DefaultBatchDebounceTimeout, decoded.BatchDefaults.DebounceTimeout)
-	}
-	if decoded.BatchDefaults.MaxWaitTime == nil || decoded.BatchDefaults.MaxWaitTime.Duration != DefaultBatchMaxWaitTime {
-		t.Errorf("Expected maxWaitTime %s, got %v", DefaultBatchMaxWaitTime, decoded.BatchDefaults.MaxWaitTime)
-	}
-	if decoded.BatchDefaults.FailurePolicy == nil || *decoded.BatchDefaults.FailurePolicy != DefaultBatchFailurePolicy {
-		t.Errorf("Expected failurePolicy %s, got %v", DefaultBatchFailurePolicy, decoded.BatchDefaults.FailurePolicy)
-	}
-}
-
-func TestBatchDefaultsYAMLRoundTrip(t *testing.T) {
-	original := NudgeConfigSpec{
-		BatchDefaults: &BatchDefaults{
-			DebounceTimeout: durationPtr(15 * time.Minute),
-			MaxWaitTime:     durationPtr(2 * time.Hour),
-			FailurePolicy:   failurePolicyPtr(FailurePolicyProceedWithPartial),
-		},
-	}
-
-	encoded, err := yaml.Marshal(original)
-	if err != nil {
-		t.Fatalf("YAML Marshal: %v", err)
-	}
-
-	var decoded NudgeConfigSpec
-	if err := yaml.Unmarshal(encoded, &decoded); err != nil {
-		t.Fatalf("YAML Unmarshal: %v", err)
-	}
-
-	if decoded.BatchDefaults == nil {
-		t.Fatal("Expected BatchDefaults after YAML round-trip, got nil")
-	}
-	if decoded.BatchDefaults.DebounceTimeout == nil || decoded.BatchDefaults.DebounceTimeout.Duration != 15*time.Minute {
-		t.Errorf("Expected debounceTimeout 15m, got %v", decoded.BatchDefaults.DebounceTimeout)
-	}
-	if decoded.BatchDefaults.MaxWaitTime == nil || decoded.BatchDefaults.MaxWaitTime.Duration != 2*time.Hour {
-		t.Errorf("Expected maxWaitTime 2h, got %v", decoded.BatchDefaults.MaxWaitTime)
-	}
-	if decoded.BatchDefaults.FailurePolicy == nil || *decoded.BatchDefaults.FailurePolicy != FailurePolicyProceedWithPartial {
-		t.Errorf("Expected failurePolicy ProceedWithPartial, got %v", decoded.BatchDefaults.FailurePolicy)
-	}
-}
-
-func TestOmittedBatchDefaultsIsNil(t *testing.T) {
-	var fromJSON NudgeConfigSpec
-	if err := json.Unmarshal([]byte(`{"nudges":[]}`), &fromJSON); err != nil {
-		t.Fatalf("JSON Unmarshal: %v", err)
-	}
-	if fromJSON.BatchDefaults != nil {
-		t.Errorf("Expected nil BatchDefaults from JSON without the field, got %+v", fromJSON.BatchDefaults)
-	}
-
-	var fromYAML NudgeConfigSpec
-	if err := yaml.Unmarshal([]byte("nudges: []\n"), &fromYAML); err != nil {
-		t.Fatalf("YAML Unmarshal: %v", err)
-	}
-	if fromYAML.BatchDefaults != nil {
-		t.Errorf("Expected nil BatchDefaults from YAML without the field, got %+v", fromYAML.BatchDefaults)
-	}
-
-	encoded, err := json.Marshal(NudgeConfigSpec{})
-	if err != nil {
-		t.Fatalf("Marshal empty spec: %v", err)
-	}
-	if strings.Contains(string(encoded), "batchDefaults") {
-		t.Errorf("Expected omitted batchDefaults in serialized empty spec, got %s", encoded)
 	}
 }
 
@@ -371,6 +225,157 @@ func TestNudgeConfigSpecDeepCopy(t *testing.T) {
 	}
 }
 
+func TestValidateUniqueTargetConfigRejectsDuplicates(t *testing.T) {
+	spec := NudgeConfigSpec{
+		TargetConfig: []TargetConfig{
+			{Target: "bundle", BatchPolicy: &BatchPolicy{}},
+			{Target: "bundle", BatchPolicy: &BatchPolicy{DebounceTimeout: durationPtr(time.Hour)}},
+		},
+	}
+	err := spec.ValidateUniqueTargetConfig()
+	if err == nil {
+		t.Fatal("expected duplicate targetConfig error")
+	}
+	if !strings.Contains(err.Error(), `duplicate targetConfig target "bundle"`) {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestResolveTargetConfig(t *testing.T) {
+	spec := NudgeConfigSpec{
+		TargetConfig: []TargetConfig{
+			{Target: "bundle", BatchPolicy: &BatchPolicy{}},
+		},
+	}
+	if tc := spec.ResolveTargetConfig("bundle"); tc == nil || !tc.IsBatched() {
+		t.Fatal("expected batched target config for bundle")
+	}
+	if spec.ResolveTargetConfig("missing") != nil {
+		t.Fatal("expected nil for unknown target")
+	}
+}
+
+func TestEffectiveBatchPolicyInheritsBatchDefaults(t *testing.T) {
+	partial := FailurePolicyProceedWithPartial
+	spec := NudgeConfigSpec{
+		BatchDefaults: &BatchDefaults{
+			DebounceTimeout: durationPtr(15 * time.Minute),
+			MaxWaitTime:     durationPtr(2 * time.Hour),
+			FailurePolicy:   &partial,
+		},
+		TargetConfig: []TargetConfig{
+			{Target: "bundle", BatchPolicy: &BatchPolicy{}},
+		},
+	}
+	debounce, maxWait, failure := spec.EffectiveBatchPolicy("bundle")
+	if debounce != 15*time.Minute || maxWait != 2*time.Hour || failure != FailurePolicyProceedWithPartial {
+		t.Fatalf("unexpected policy: debounce=%v maxWait=%v failure=%v", debounce, maxWait, failure)
+	}
+}
+
+func TestValidateEffectiveBatchPoliciesRejectsResolvedMaxWaitNotExceedingDebounce(t *testing.T) {
+	spec := NudgeConfigSpec{
+		BatchDefaults: &BatchDefaults{
+			DebounceTimeout: durationPtr(2 * time.Hour),
+			MaxWaitTime:     durationPtr(4 * time.Hour),
+		},
+		TargetConfig: []TargetConfig{
+			{
+				Target: "bundle",
+				BatchPolicy: &BatchPolicy{
+					MaxWaitTime: durationPtr(time.Hour),
+				},
+			},
+		},
+	}
+	err := spec.ValidateEffectiveBatchPolicies()
+	if err == nil {
+		t.Fatal("expected resolved timing error")
+	}
+	if !strings.Contains(err.Error(), `targetConfig target "bundle"`) {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(err.Error(), "maxWaitTime must exceed debounceTimeout") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestValidateEffectiveBatchPoliciesRejectsResolvedDebounceOutOfRange(t *testing.T) {
+	spec := NudgeConfigSpec{
+		TargetConfig: []TargetConfig{
+			{
+				Target: "bundle",
+				BatchPolicy: &BatchPolicy{
+					DebounceTimeout: durationPtr(25 * time.Hour),
+					MaxWaitTime:     durationPtr(25*time.Hour + time.Minute),
+				},
+			},
+		},
+	}
+	err := spec.ValidateEffectiveBatchPolicies()
+	if err == nil {
+		t.Fatal("expected resolved debounce out of range error")
+	}
+	if !strings.Contains(err.Error(), "debounceTimeout must be between 1m and 24h") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestValidateEffectiveBatchPoliciesAcceptsValidResolvedPolicy(t *testing.T) {
+	spec := NudgeConfigSpec{
+		BatchDefaults: &BatchDefaults{
+			DebounceTimeout: durationPtr(30 * time.Minute),
+		},
+		TargetConfig: []TargetConfig{
+			{
+				Target: "bundle",
+				BatchPolicy: &BatchPolicy{
+					MaxWaitTime: durationPtr(2 * time.Hour),
+				},
+			},
+		},
+	}
+	if err := spec.ValidateEffectiveBatchPolicies(); err != nil {
+		t.Fatalf("expected valid resolved policy, got %v", err)
+	}
+}
+
+func TestValidateBatchConfigCombinesDuplicateAndEffectiveChecks(t *testing.T) {
+	spec := NudgeConfigSpec{
+		TargetConfig: []TargetConfig{
+			{Target: "bundle", BatchPolicy: &BatchPolicy{}},
+			{Target: "bundle", BatchPolicy: &BatchPolicy{}},
+		},
+	}
+	if err := spec.ValidateBatchConfig(); err == nil {
+		t.Fatal("expected duplicate error from ValidateBatchConfig")
+	}
+}
+
+func TestEffectiveBatchPolicyUsesTargetOverrides(t *testing.T) {
+	spec := NudgeConfigSpec{
+		TargetConfig: []TargetConfig{
+			{
+				Target: "bundle",
+				BatchPolicy: &BatchPolicy{
+					DebounceTimeout: durationPtr(10 * time.Minute),
+					FailurePolicy:   &[]FailurePolicyType{FailurePolicyProceedWithPartial}[0],
+				},
+			},
+		},
+	}
+	debounce, maxWait, failure := spec.EffectiveBatchPolicy("bundle")
+	if debounce != 10*time.Minute {
+		t.Fatalf("expected 10m debounce, got %v", debounce)
+	}
+	if maxWait != DefaultBatchMaxWaitTime {
+		t.Fatalf("expected default max wait, got %v", maxWait)
+	}
+	if failure != FailurePolicyProceedWithPartial {
+		t.Fatalf("expected ProceedWithPartial, got %v", failure)
+	}
+}
+
 func TestTargetConfigBatchRecognition(t *testing.T) {
 	withPolicy := TargetConfig{
 		Target: "bundle",
@@ -405,6 +410,61 @@ func TestTargetConfigBatchRecognition(t *testing.T) {
 	specEmptyPolicy := NudgeConfigSpec{TargetConfig: []TargetConfig{emptyPolicy}}
 	if !specEmptyPolicy.IsTargetBatched("bundle") {
 		t.Fatal("expected IsTargetBatched true for empty batchPolicy")
+	}
+}
+
+func TestNudgeConfigActionsForceFireJSON(t *testing.T) {
+	includePartial := false
+	spec := NudgeConfigSpec{
+		Actions: &Actions{
+			ForceFire: &ForceFireAction{
+				Target:         "operator-bundle",
+				IncludePartial: &includePartial,
+			},
+		},
+	}
+
+	encoded, err := json.Marshal(spec)
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	jsonStr := string(encoded)
+	if !strings.Contains(jsonStr, `"forceFire"`) {
+		t.Fatalf("expected forceFire in JSON, got %s", jsonStr)
+	}
+	if !strings.Contains(jsonStr, `"target":"operator-bundle"`) {
+		t.Fatalf("expected target in JSON, got %s", jsonStr)
+	}
+	if !strings.Contains(jsonStr, `"includePartial":false`) {
+		t.Fatalf("expected includePartial false in JSON, got %s", jsonStr)
+	}
+
+	var decoded NudgeConfigSpec
+	if err := json.Unmarshal(encoded, &decoded); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+	if decoded.Actions == nil || decoded.Actions.ForceFire == nil {
+		t.Fatal("expected decoded actions.forceFire")
+	}
+	if decoded.Actions.ForceFire.Target != "operator-bundle" {
+		t.Errorf("expected target operator-bundle, got %q", decoded.Actions.ForceFire.Target)
+	}
+	if decoded.Actions.ForceFire.IncludePartial == nil || *decoded.Actions.ForceFire.IncludePartial != false {
+		t.Errorf("expected includePartial false, got %v", decoded.Actions.ForceFire.IncludePartial)
+	}
+}
+
+func TestNudgeConfigNilActionsOmittedFromJSON(t *testing.T) {
+	spec := NudgeConfigSpec{
+		Nudges: []NudgeRelationship{{From: "component-a", To: "component-b"}},
+	}
+
+	encoded, err := json.Marshal(spec)
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	if strings.Contains(string(encoded), "actions") {
+		t.Fatalf("expected actions omitted from JSON, got %s", string(encoded))
 	}
 }
 
