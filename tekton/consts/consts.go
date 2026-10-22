@@ -212,6 +212,18 @@ const (
 	// NudgingPipelineAnnotation records the source build PLR name
 	NudgingPipelineAnnotation = "build.appstudio.redhat.com/nudging-pipeline"
 
+	// NudgingComponentsAnnotation lists source component names on batched nudge PipelineRuns (JSON array).
+	NudgingComponentsAnnotation = "build.konflux-ci.dev/nudging-components"
+
+	// NudgingDigestsAnnotation maps source component names to image digests on batched nudge PLRs (JSON object).
+	NudgingDigestsAnnotation = "build.konflux-ci.dev/nudging-digests"
+
+	// NudgeBatchIDAnnotation links a batched nudge PipelineRun to the NudgeConfig active batch entry.
+	NudgeBatchIDAnnotation = "build.konflux-ci.dev/batch-id"
+
+	// NudgeBatchBranchPrefix is the Renovate branch prefix for batched nudges (target name is appended).
+	NudgeBatchBranchPrefix = "konflux/nudge-batch/"
+
 	// GitRepoAtShaAnnotation on a build PLR links to the source repo at the built commit
 	GitRepoAtShaAnnotation = "build.appstudio.openshift.io/repo-url-at-sha"
 
