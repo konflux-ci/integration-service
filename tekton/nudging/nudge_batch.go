@@ -261,7 +261,24 @@ func ProcessFiringNudgeBatches(ctx context.Context, c client.Client, nudgeConfig
 			}
 			plr := &tektonv1.PipelineRun{}
 			if err := c.Get(ctx, types.NamespacedName{Name: batch.NudgePipelineRun, Namespace: nudgeConfig.Namespace}, plr); err != nil {
-				return fmt.Errorf("loading nudge PipelineRun %q for batch %q: %w", batch.NudgePipelineRun, batch.BatchID, err)
+				if !apierrors.IsNotFound(err) {
+					return fmt.Errorf("loading nudge PipelineRun %q for batch %q: %w", batch.NudgePipelineRun, batch.BatchID, err)
+				}
+				// PLR was deleted (e.g. after a controller restart or manual removal). Re-fire as a retry
+				// so the batch is not permanently stuck. CreateBatchedNudgePipelineRun is AlreadyExists-safe.
+				if batch.RetryCount >= maxBatchNudgePLRRetries {
+					batch.Phase = v1beta2.BatchPhaseFailed
+					batch.Message = fmt.Sprintf("nudge PipelineRun %s missing after %d retries", batch.NudgePipelineRun, maxBatchNudgePLRRetries)
+					changed = true
+					continue
+				}
+				batch.RetryCount++
+				if retryErr := retryFiringBatch(ctx, c, latest, batch); retryErr != nil {
+					batch.Phase = v1beta2.BatchPhaseFailed
+					batch.Message = fmt.Sprintf("PLR %s missing, re-fire failed: %s", batch.NudgePipelineRun, retryErr.Error())
+				}
+				changed = true
+				continue
 			}
 			if plr.Status.CompletionTime == nil {
 				continue

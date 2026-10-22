@@ -61,6 +61,24 @@ var _ = Describe("pruneCompletedBatches (slice helper)", func() {
 	})
 })
 
+var _ = Describe("HasFiringNudgeBatches", func() {
+	It("returns true when at least one batch is in the Firing phase", func() {
+		batches := []v1beta2.ActiveBatch{
+			{Target: "a", Phase: v1beta2.BatchPhaseAccumulating},
+			{Target: "b", Phase: v1beta2.BatchPhaseFiring},
+		}
+		Expect(nudging.HasFiringNudgeBatches(batches)).To(BeTrue())
+	})
+
+	It("returns false when no batch is in the Firing phase", func() {
+		batches := []v1beta2.ActiveBatch{
+			{Target: "a", Phase: v1beta2.BatchPhaseAccumulating},
+			{Target: "b", Phase: v1beta2.BatchPhaseCompleted},
+		}
+		Expect(nudging.HasFiringNudgeBatches(batches)).To(BeFalse())
+	})
+})
+
 var _ = Describe("batchShouldFire", func() {
 	It("fires when FireAt has elapsed", func() {
 		now := time.Now()
