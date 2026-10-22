@@ -120,6 +120,46 @@ var _ = Describe("NudgeConfig reconciler", func() {
 		})
 	})
 
+	Context("When a Firing batch is active", func() {
+		It("should requeue at the minimum batch interval", func() {
+			// A Firing batch with a still-running PLR keeps the controller in the
+			// minBatchRequeue loop via HasFiringNudgeBatches → NextBatchWakeDuration.
+			now := metav1.Now()
+			nudgePLRName := "nudge-batch-firing-active"
+			runningPLR := &tektonv1.PipelineRun{
+				// CompletionTime is nil — the PLR is still running.
+				ObjectMeta: metav1.ObjectMeta{Name: nudgePLRName, Namespace: "default"},
+			}
+			nudgeConfig := &v1beta2.NudgeConfig{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      v1beta2.NudgeConfigSingletonName,
+					Namespace: "default",
+				},
+				Spec: v1beta2.NudgeConfigSpec{},
+				Status: v1beta2.NudgeConfigStatus{
+					ActiveBatches: []v1beta2.ActiveBatch{
+						{
+							Target:           "bundle",
+							BatchID:          "batch-firing",
+							Phase:            v1beta2.BatchPhaseFiring,
+							CreatedAt:        now,
+							HardDeadline:     metav1.NewTime(now.Add(time.Hour)),
+							NudgePipelineRun: nudgePLRName,
+							Accumulated: []v1beta2.AccumulatedEntry{
+								{From: "src", ImageDigest: "sha256:1", BuildPipelineRun: "build-plr", CapturedAt: now},
+							},
+						},
+					},
+				},
+			}
+			reconciler.Client = newClient(nudgeConfig, runningPLR)
+
+			result, err := reconciler.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKeyFromObject(nudgeConfig)})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.RequeueAfter).To(Equal(minBatchRequeue))
+		})
+	})
+
 	Context("When forceFire succeeds", func() {
 		It("should clear spec.actions after processing", func() {
 			now := metav1.Now()

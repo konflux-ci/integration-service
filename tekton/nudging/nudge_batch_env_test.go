@@ -24,9 +24,12 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	knativeapis "knative.dev/pkg/apis"
+	knativev1 "knative.dev/pkg/apis/duck/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
@@ -430,6 +433,235 @@ var _ = Describe("Nudge batch client operations", func() {
 			updated := &v1beta2.NudgeConfig{}
 			Expect(c.Get(ctx, types.NamespacedName{Name: nudgeConfig.Name, Namespace: namespace}, updated)).To(Succeed())
 			Expect(updated.Status.ActiveBatches[0].Phase).To(Equal(v1beta2.BatchPhaseAccumulating))
+		})
+	})
+
+	Context("On controller restart", func() {
+		It("should fire an accumulating batch whose fireAt has already elapsed", func() {
+			// AC1: Accumulating + past fireAt → fires immediately.
+			const batchID = "restart-due"
+			plrName := BatchedNudgePipelineRunName(batchID, 0)
+			existingPLR := &tektonv1.PipelineRun{
+				ObjectMeta: metav1.ObjectMeta{Name: plrName, Namespace: namespace},
+			}
+			now := metav1.Now()
+			pastFire := metav1.NewTime(now.Add(-5 * time.Minute))
+			nudgeConfig.Status.ActiveBatches = []v1beta2.ActiveBatch{
+				{
+					Target:       target,
+					BatchID:      batchID,
+					Phase:        v1beta2.BatchPhaseAccumulating,
+					CreatedAt:    metav1.NewTime(now.Add(-30 * time.Minute)),
+					FireAt:       &pastFire,
+					HardDeadline: metav1.NewTime(now.Add(time.Hour)),
+					Accumulated: []v1beta2.AccumulatedEntry{
+						{From: source, ImageDigest: "sha256:abc", BuildPipelineRun: buildPLR.Name, CapturedAt: now},
+					},
+				},
+			}
+			c := newClient(nudgeConfig, buildPLR, existingPLR)
+
+			_, err := ProcessDueNudgeBatches(ctx, c, nudgeConfig)
+			Expect(err).NotTo(HaveOccurred())
+
+			updated := &v1beta2.NudgeConfig{}
+			Expect(c.Get(ctx, types.NamespacedName{Name: nudgeConfig.Name, Namespace: namespace}, updated)).To(Succeed())
+			Expect(updated.Status.ActiveBatches[0].Phase).To(Equal(v1beta2.BatchPhaseCompleted))
+		})
+
+		It("should requeue with remaining time for an accumulating batch with a future fireAt", func() {
+			// AC2: Accumulating + future fireAt → non-zero wake duration returned.
+			now := metav1.Now()
+			futureFire := metav1.NewTime(now.Add(20 * time.Minute))
+			nudgeConfig.Status.ActiveBatches = []v1beta2.ActiveBatch{
+				{
+					Target:       target,
+					BatchID:      "restart-future",
+					Phase:        v1beta2.BatchPhaseAccumulating,
+					CreatedAt:    metav1.NewTime(now.Add(-10 * time.Minute)),
+					FireAt:       &futureFire,
+					HardDeadline: metav1.NewTime(now.Add(time.Hour)),
+					Accumulated: []v1beta2.AccumulatedEntry{
+						{From: source, ImageDigest: "sha256:abc", BuildPipelineRun: buildPLR.Name, CapturedAt: now},
+					},
+				},
+			}
+			c := newClient(nudgeConfig, buildPLR)
+
+			wake, err := ProcessDueNudgeBatches(ctx, c, nudgeConfig)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(wake).To(BeNumerically(">", 0))
+			Expect(wake).To(BeNumerically("<", 25*time.Minute))
+
+			updated := &v1beta2.NudgeConfig{}
+			Expect(c.Get(ctx, types.NamespacedName{Name: nudgeConfig.Name, Namespace: namespace}, updated)).To(Succeed())
+			Expect(updated.Status.ActiveBatches[0].Phase).To(Equal(v1beta2.BatchPhaseAccumulating))
+		})
+
+		It("should advance a firing batch to Completed when its PLR has succeeded", func() {
+			// AC3: Firing + PLR exists and succeeded → transitions to Completed.
+			now := metav1.Now()
+			completionTime := metav1.NewTime(now.Add(-time.Minute))
+			nudgePLRName := "nudge-batch-restart-firing"
+			firingPLR := &tektonv1.PipelineRun{
+				ObjectMeta: metav1.ObjectMeta{Name: nudgePLRName, Namespace: namespace},
+				Status: tektonv1.PipelineRunStatus{
+					PipelineRunStatusFields: tektonv1.PipelineRunStatusFields{
+						CompletionTime: &completionTime,
+					},
+					Status: knativev1.Status{
+						Conditions: knativev1.Conditions{
+							{
+								Type:   knativeapis.ConditionSucceeded,
+								Status: corev1.ConditionTrue,
+							},
+						},
+					},
+				},
+			}
+			nudgeConfig.Status.ActiveBatches = []v1beta2.ActiveBatch{
+				{
+					Target:           target,
+					BatchID:          "restart-firing",
+					Phase:            v1beta2.BatchPhaseFiring,
+					CreatedAt:        metav1.NewTime(now.Add(-30 * time.Minute)),
+					HardDeadline:     metav1.NewTime(now.Add(time.Hour)),
+					NudgePipelineRun: nudgePLRName,
+					Accumulated: []v1beta2.AccumulatedEntry{
+						{From: source, ImageDigest: "sha256:abc", BuildPipelineRun: buildPLR.Name, CapturedAt: now},
+					},
+				},
+			}
+			c := newClient(nudgeConfig, buildPLR, firingPLR)
+
+			Expect(ProcessFiringNudgeBatches(ctx, c, nudgeConfig)).To(Succeed())
+
+			updated := &v1beta2.NudgeConfig{}
+			Expect(c.Get(ctx, types.NamespacedName{Name: nudgeConfig.Name, Namespace: namespace}, updated)).To(Succeed())
+			Expect(updated.Status.ActiveBatches[0].Phase).To(Equal(v1beta2.BatchPhaseCompleted))
+			Expect(updated.Status.ActiveBatches[0].NudgePipelineRun).To(Equal(nudgePLRName))
+		})
+
+		It("should handle a firing batch whose PLR is missing without returning an error", func() {
+			// AC4: Firing + PLR missing → re-fire attempted; if re-fire cannot complete, batch is Failed.
+			// The key invariant: ProcessFiringNudgeBatches never returns an error for a missing PLR.
+			now := metav1.Now()
+			nudgeConfig.Status.ActiveBatches = []v1beta2.ActiveBatch{
+				{
+					Target:           target,
+					BatchID:          "restart-lost-plr",
+					Phase:            v1beta2.BatchPhaseFiring,
+					CreatedAt:        metav1.NewTime(now.Add(-30 * time.Minute)),
+					HardDeadline:     metav1.NewTime(now.Add(time.Hour)),
+					NudgePipelineRun: "nudge-batch-restart-lost-plr", // not created in the fake client
+					Accumulated: []v1beta2.AccumulatedEntry{
+						{From: source, ImageDigest: "sha256:abc", BuildPipelineRun: buildPLR.Name, CapturedAt: now},
+					},
+				},
+			}
+			// Build PLR exists but target Component does not — re-fire will fail at payload build.
+			c := newClient(nudgeConfig, buildPLR)
+
+			Expect(ProcessFiringNudgeBatches(ctx, c, nudgeConfig)).To(Succeed())
+
+			updated := &v1beta2.NudgeConfig{}
+			Expect(c.Get(ctx, types.NamespacedName{Name: nudgeConfig.Name, Namespace: namespace}, updated)).To(Succeed())
+			// Re-fire attempted; since components aren't set up, it fails gracefully.
+			Expect(updated.Status.ActiveBatches[0].Phase).To(Equal(v1beta2.BatchPhaseFailed))
+			Expect(updated.Status.ActiveBatches[0].Message).To(ContainSubstring("nudge-batch-restart-lost-plr"))
+		})
+
+		It("should permanently fail a batch when the PLR has failed and retryCount reaches the cap", func() {
+			// PLR completed with failure and retryCount == maxBatchNudgePLRRetries (3).
+			// The max-retry path must mark the batch as Failed without attempting retryFiringBatch.
+			now := metav1.Now()
+			completionTime := metav1.NewTime(now.Add(-time.Minute))
+			nudgePLRName := "nudge-batch-capped"
+			failedPLR := &tektonv1.PipelineRun{
+				ObjectMeta: metav1.ObjectMeta{Name: nudgePLRName, Namespace: namespace},
+				Status: tektonv1.PipelineRunStatus{
+					PipelineRunStatusFields: tektonv1.PipelineRunStatusFields{
+						CompletionTime: &completionTime,
+					},
+					Status: knativev1.Status{
+						Conditions: knativev1.Conditions{
+							{
+								Type:   knativeapis.ConditionSucceeded,
+								Status: corev1.ConditionFalse,
+							},
+						},
+					},
+				},
+			}
+			nudgeConfig.Status.ActiveBatches = []v1beta2.ActiveBatch{
+				{
+					Target:           target,
+					BatchID:          "capped",
+					Phase:            v1beta2.BatchPhaseFiring,
+					RetryCount:       3, // == maxBatchNudgePLRRetries
+					CreatedAt:        metav1.NewTime(now.Add(-30 * time.Minute)),
+					HardDeadline:     metav1.NewTime(now.Add(time.Hour)),
+					NudgePipelineRun: nudgePLRName,
+					Accumulated: []v1beta2.AccumulatedEntry{
+						{From: source, ImageDigest: "sha256:abc", BuildPipelineRun: buildPLR.Name, CapturedAt: now},
+					},
+				},
+			}
+			c := newClient(nudgeConfig, buildPLR, failedPLR)
+
+			Expect(ProcessFiringNudgeBatches(ctx, c, nudgeConfig)).To(Succeed())
+
+			updated := &v1beta2.NudgeConfig{}
+			Expect(c.Get(ctx, types.NamespacedName{Name: nudgeConfig.Name, Namespace: namespace}, updated)).To(Succeed())
+			Expect(updated.Status.ActiveBatches[0].Phase).To(Equal(v1beta2.BatchPhaseFailed))
+			Expect(updated.Status.ActiveBatches[0].Message).To(ContainSubstring("failed after 3 retries"))
+		})
+
+		It("should retry then fail when the PLR has failed and retryCount is below the cap", func() {
+			// PLR completed with failure and retryCount=0 < maxBatchNudgePLRRetries.
+			// retryFiringBatch is called but fails (target Component missing) — batch is Failed.
+			now := metav1.Now()
+			completionTime := metav1.NewTime(now.Add(-time.Minute))
+			nudgePLRName := "nudge-batch-retry-fail"
+			failedPLR := &tektonv1.PipelineRun{
+				ObjectMeta: metav1.ObjectMeta{Name: nudgePLRName, Namespace: namespace},
+				Status: tektonv1.PipelineRunStatus{
+					PipelineRunStatusFields: tektonv1.PipelineRunStatusFields{
+						CompletionTime: &completionTime,
+					},
+					Status: knativev1.Status{
+						Conditions: knativev1.Conditions{
+							{
+								Type:   knativeapis.ConditionSucceeded,
+								Status: corev1.ConditionFalse,
+							},
+						},
+					},
+				},
+			}
+			nudgeConfig.Status.ActiveBatches = []v1beta2.ActiveBatch{
+				{
+					Target:           target,
+					BatchID:          "retry-fail",
+					Phase:            v1beta2.BatchPhaseFiring,
+					RetryCount:       0,
+					CreatedAt:        metav1.NewTime(now.Add(-30 * time.Minute)),
+					HardDeadline:     metav1.NewTime(now.Add(time.Hour)),
+					NudgePipelineRun: nudgePLRName,
+					Accumulated: []v1beta2.AccumulatedEntry{
+						{From: source, ImageDigest: "sha256:abc", BuildPipelineRun: buildPLR.Name, CapturedAt: now},
+					},
+				},
+			}
+			// Build PLR exists but target Component does not — retryFiringBatch will fail.
+			c := newClient(nudgeConfig, buildPLR, failedPLR)
+
+			Expect(ProcessFiringNudgeBatches(ctx, c, nudgeConfig)).To(Succeed())
+
+			updated := &v1beta2.NudgeConfig{}
+			Expect(c.Get(ctx, types.NamespacedName{Name: nudgeConfig.Name, Namespace: namespace}, updated)).To(Succeed())
+			Expect(updated.Status.ActiveBatches[0].Phase).To(Equal(v1beta2.BatchPhaseFailed))
+			Expect(updated.Status.ActiveBatches[0].RetryCount).To(Equal(int32(1)))
 		})
 	})
 
