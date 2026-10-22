@@ -107,6 +107,11 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return reconcile.Result{}, err
 	}
 
+	if err := nudging.PruneCompletedBatches(ctx, r.Client, nudgeConfig); err != nil {
+		logger.Error(err, "Failed to prune completed nudge batches")
+		return reconcile.Result{}, err
+	}
+
 	if err := r.Get(ctx, req.NamespacedName, nudgeConfig); err != nil {
 		return reconcile.Result{}, err
 	}
