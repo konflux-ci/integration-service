@@ -26,6 +26,41 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+var _ = Describe("pruneCompletedBatches (slice helper)", func() {
+	It("removes a completed batch whose CreatedAt exceeds the 24h TTL", func() {
+		now := time.Now()
+		old := metav1.NewTime(now.Add(-25 * time.Hour))
+		batches := []v1beta2.ActiveBatch{
+			{BatchID: "old-done", Phase: v1beta2.BatchPhaseCompleted, CreatedAt: old},
+			{BatchID: "active", Phase: v1beta2.BatchPhaseAccumulating, CreatedAt: metav1.NewTime(now)},
+		}
+		result := nudging.FilterExpiredCompletedBatches(batches, now)
+		Expect(result).To(HaveLen(1))
+		Expect(result[0].BatchID).To(Equal("active"))
+	})
+
+	It("keeps a completed batch that is still within the 24h TTL", func() {
+		now := time.Now()
+		recent := metav1.NewTime(now.Add(-23 * time.Hour))
+		batches := []v1beta2.ActiveBatch{
+			{BatchID: "recent-done", Phase: v1beta2.BatchPhaseCompleted, CreatedAt: recent},
+		}
+		result := nudging.FilterExpiredCompletedBatches(batches, now)
+		Expect(result).To(HaveLen(1))
+	})
+
+	It("keeps non-Completed batches regardless of age", func() {
+		now := time.Now()
+		old := metav1.NewTime(now.Add(-48 * time.Hour))
+		batches := []v1beta2.ActiveBatch{
+			{BatchID: "old-failed", Phase: v1beta2.BatchPhaseFailed, CreatedAt: old},
+			{BatchID: "old-blocked", Phase: v1beta2.BatchPhaseBlocked, CreatedAt: old},
+		}
+		result := nudging.FilterExpiredCompletedBatches(batches, now)
+		Expect(result).To(HaveLen(2))
+	})
+})
+
 var _ = Describe("batchShouldFire", func() {
 	It("fires when FireAt has elapsed", func() {
 		now := time.Now()
