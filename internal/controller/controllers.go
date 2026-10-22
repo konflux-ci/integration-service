@@ -22,6 +22,7 @@ import (
 	"github.com/konflux-ci/integration-service/internal/controller/component"
 	"github.com/konflux-ci/integration-service/internal/controller/componentgroup"
 	"github.com/konflux-ci/integration-service/internal/controller/integrationpipeline"
+	"github.com/konflux-ci/integration-service/internal/controller/nudgeconfig"
 	"github.com/konflux-ci/integration-service/internal/controller/scenario"
 	"github.com/konflux-ci/integration-service/internal/controller/snapshot"
 	"github.com/konflux-ci/integration-service/internal/controller/statusreport"
@@ -38,6 +39,7 @@ var setupFunctions = []func(manager.Manager, *logr.Logger) error{
 	statusreport.SetupController,
 	component.SetupController,
 	componentgroup.SetupController,
+	nudgeconfig.SetupController,
 }
 
 // SetupControllers invoke all SetupController functions defined in setupFunctions, setting all controllers up and
