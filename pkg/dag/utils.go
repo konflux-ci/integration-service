@@ -19,13 +19,14 @@ package dag
 import (
 	"fmt"
 
-	"github.com/konflux-ci/integration-service/api/v1beta2"
+	"github.com/konflux-ci/integration-service/api/konflux/v1beta2"
+	integrationv1beta2 "github.com/konflux-ci/integration-service/api/v1beta2"
 	intgteststat "github.com/konflux-ci/integration-service/pkg/integrationteststatus"
 )
 
 // GetRunAfterMapForTestGraphNodes generates a RunAfter map which contains the list of scenarios that a given scenario node
 // should run after. It checks if a child is in the list of provided scenarios before appending to the runAfter map
-func GetRunAfterMapForTestGraphNodes(testGraph map[string][]v1beta2.TestGraphNode, integrationTestScenarios *[]v1beta2.IntegrationTestScenario) map[string][]string {
+func GetRunAfterMapForTestGraphNodes(testGraph map[string][]v1beta2.TestGraphNode, integrationTestScenarios *[]integrationv1beta2.IntegrationTestScenario) map[string][]string {
 	runAfterMap := make(map[string][]string)
 	if integrationTestScenarios == nil {
 		return runAfterMap

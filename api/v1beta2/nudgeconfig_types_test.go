@@ -32,7 +32,7 @@ import (
 func TestNudgeConfigSpec(t *testing.T) {
 	nc := &NudgeConfig{
 		TypeMeta: metav1.TypeMeta{
-			APIVersion: "appstudio.redhat.com/v1beta2",
+			APIVersion: "konflux-ci.dev/v1beta2",
 			Kind:       "NudgeConfig",
 		},
 		ObjectMeta: metav1.ObjectMeta{
@@ -151,13 +151,14 @@ func TestBatchDefaultsCELLiteralsMatchRuntimeDefaults(t *testing.T) {
 	debounceCEL := fmt.Sprintf("duration('%s')", debounceLiteral)
 	maxWaitCEL := fmt.Sprintf("duration('%s')", maxWaitLiteral)
 
-	source, err := os.ReadFile("nudgeconfig_types.go")
+	sourcePath := filepath.Join("..", "konflux", "v1beta2", "nudgeconfig_types.go")
+	source, err := os.ReadFile(sourcePath)
 	if err != nil {
-		t.Fatalf("read nudgeconfig_types.go: %v", err)
+		t.Fatalf("read %s: %v", sourcePath, err)
 	}
-	assertContainsBatchDefaultCEL(t, "nudgeconfig_types.go", string(source), debounceCEL, maxWaitCEL)
+	assertContainsBatchDefaultCEL(t, sourcePath, string(source), debounceCEL, maxWaitCEL)
 
-	crdPath := filepath.Join("..", "..", "config", "crd", "bases", "appstudio.redhat.com_nudgeconfigs.yaml")
+	crdPath := filepath.Join("..", "..", "config", "crd", "bases", "konflux-ci.dev_nudgeconfigs.yaml")
 	crd, err := os.ReadFile(crdPath)
 	if err != nil {
 		t.Fatalf("read %s: %v", crdPath, err)

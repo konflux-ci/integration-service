@@ -23,7 +23,7 @@ import (
 	"reflect"
 
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
-	"github.com/konflux-ci/integration-service/api/v1beta2"
+	"github.com/konflux-ci/integration-service/api/konflux/v1beta2"
 	"github.com/konflux-ci/integration-service/helpers"
 	"github.com/konflux-ci/integration-service/pkg/dag"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -49,7 +49,7 @@ type NudgeConfigCustomValidator struct {
 	Client client.Client
 }
 
-// +kubebuilder:webhook:path=/validate-appstudio-redhat-com-v1beta2-nudgeconfig,mutating=false,failurePolicy=fail,sideEffects=None,groups=appstudio.redhat.com,resources=nudgeconfigs,verbs=create;update,versions=v1beta2,name=vnudgeconfig.kb.io,admissionReviewVersions=v1
+// +kubebuilder:webhook:path=/validate-konflux-ci-dev-v1beta2-nudgeconfig,mutating=false,failurePolicy=fail,sideEffects=None,groups=konflux-ci.dev,resources=nudgeconfigs,verbs=create;update,versions=v1beta2,name=vnudgeconfig.kb.io,admissionReviewVersions=v1
 
 var _ webhook.CustomValidator = &NudgeConfigCustomValidator{}
 

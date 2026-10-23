@@ -24,6 +24,7 @@ import (
 	"strconv"
 	"time"
 
+	konfluxv1beta2 "github.com/konflux-ci/integration-service/api/konflux/v1beta2"
 	"github.com/konflux-ci/integration-service/api/v1beta2"
 	"github.com/tonglil/buflogr"
 	"go.uber.org/mock/gomock"
@@ -676,13 +677,13 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 
 	When("a required IntegrationTestScenario is missing from Snapshot statuses [COMPONENTGROUP]", func() {
 		var cgSnapshot *applicationapiv1alpha1.Snapshot
-		var hasCompGroup *v1beta2.ComponentGroup
+		var hasCompGroup *konfluxv1beta2.ComponentGroup
 
 		BeforeEach(func() {
 			buf = bytes.Buffer{}
 			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
 
-			hasCompGroup = &v1beta2.ComponentGroup{
+			hasCompGroup = &konfluxv1beta2.ComponentGroup{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "test-component-group-missing-status",
 					Namespace: "default",
@@ -1245,13 +1246,13 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 
 	When("New Adapter is created for a push-type Snapshot that passed all tests (ComponentGroup)", func() {
 		var cgSnapshot *applicationapiv1alpha1.Snapshot
-		var hasCompGroup *v1beta2.ComponentGroup
+		var hasCompGroup *konfluxv1beta2.ComponentGroup
 
 		BeforeEach(func() {
 			buf = bytes.Buffer{}
 			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
 
-			hasCompGroup = &v1beta2.ComponentGroup{
+			hasCompGroup = &konfluxv1beta2.ComponentGroup{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "test-component-group",
 					Namespace: "default",
@@ -1314,13 +1315,13 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 
 	When("New Adapter is created for a push-type Snapshot that failed tests (ComponentGroup)", func() {
 		var cgSnapshot *applicationapiv1alpha1.Snapshot
-		var hasCompGroup *v1beta2.ComponentGroup
+		var hasCompGroup *konfluxv1beta2.ComponentGroup
 
 		BeforeEach(func() {
 			buf = bytes.Buffer{}
 			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
 
-			hasCompGroup = &v1beta2.ComponentGroup{
+			hasCompGroup = &konfluxv1beta2.ComponentGroup{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "test-component-group-fail",
 					Namespace: "default",
@@ -1382,7 +1383,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 	})
 
 	When("EnsureGroupSnapshotCreationStatusReportedToGitProvider is called with ComponentGroup adapter", func() {
-		var hasCompGroup *v1beta2.ComponentGroup
+		var hasCompGroup *konfluxv1beta2.ComponentGroup
 
 		BeforeEach(func() {
 			buf = bytes.Buffer{}
@@ -1398,7 +1399,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			mockReporter.EXPECT().Initialize(gomock.Any(), gomock.Any()).Times(1)
 			mockReporter.EXPECT().ReportStatus(gomock.Any(), gomock.Any()).Times(1)
 
-			hasCompGroup = &v1beta2.ComponentGroup{
+			hasCompGroup = &konfluxv1beta2.ComponentGroup{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "test-component-group-noop",
 					Namespace: "default",
@@ -1683,7 +1684,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		})
 
 		It("requeues when integration test scenarios cannot be loaded for the component group", func() {
-			adapter = NewAdapter(ctx, hasPRSnapshot, &v1beta2.ComponentGroup{ObjectMeta: metav1.ObjectMeta{Name: "cg-t4", Namespace: "default"}}, log, loader.NewMockLoader(), k8sClient)
+			adapter = NewAdapter(ctx, hasPRSnapshot, &konfluxv1beta2.ComponentGroup{ObjectMeta: metav1.ObjectMeta{Name: "cg-t4", Namespace: "default"}}, log, loader.NewMockLoader(), k8sClient)
 			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{ContextKey: loader.AllIntegrationTestScenariosForComponentGroupContextKey, Err: fmt.Errorf("boom")},
 			})

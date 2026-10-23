@@ -24,7 +24,8 @@ import (
 
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/konflux/v1alpha1"
 	oldapplicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
-	"github.com/konflux-ci/integration-service/api/v1beta2"
+	"github.com/konflux-ci/integration-service/api/konflux/v1beta2"
+	integrationv1beta2 "github.com/konflux-ci/integration-service/api/v1beta2"
 	"github.com/konflux-ci/integration-service/gitops"
 	"github.com/konflux-ci/integration-service/pkg/conversion"
 	tektonconsts "github.com/konflux-ci/integration-service/tekton/consts"
@@ -58,18 +59,18 @@ type ObjectLoader interface {
 	GetApplicationFromComponent(ctx context.Context, c client.Client, component *oldapplicationapiv1alpha1.Component) (*oldapplicationapiv1alpha1.Application, error)
 	GetComponentGroupsForComponentVersion(ctx context.Context, c client.Client, componentName, namespace, version string) (*[]v1beta2.ComponentGroup, error)
 	GetSnapshotFromPipelineRun(ctx context.Context, c client.Client, pipelineRun *tektonv1.PipelineRun) (*oldapplicationapiv1alpha1.Snapshot, error)
-	GetAllIntegrationTestScenariosForApplication(ctx context.Context, c client.Client, application *oldapplicationapiv1alpha1.Application) (*[]v1beta2.IntegrationTestScenario, error)
-	GetAllIntegrationTestScenariosForComponentGroup(ctx context.Context, c client.Client, componentGroup *v1beta2.ComponentGroup) (*[]v1beta2.IntegrationTestScenario, error)
-	GetAllIntegrationTestScenariosForComponentGroups(ctx context.Context, c client.Client, componentGroups *[]v1beta2.ComponentGroup) (*[]v1beta2.IntegrationTestScenario, error)
-	GetRequiredIntegrationTestScenariosForSnapshotApplication(ctx context.Context, c client.Client, application *oldapplicationapiv1alpha1.Application, snapshot *oldapplicationapiv1alpha1.Snapshot) (*[]v1beta2.IntegrationTestScenario, error)
-	GetRequiredIntegrationTestScenariosForSnapshot(ctx context.Context, c client.Client, componentGroup *v1beta2.ComponentGroup, snapshot *oldapplicationapiv1alpha1.Snapshot) (*[]v1beta2.IntegrationTestScenario, error)
-	GetAllIntegrationTestScenariosForSnapshotApplication(ctx context.Context, c client.Client, application *oldapplicationapiv1alpha1.Application, snapshot *oldapplicationapiv1alpha1.Snapshot) (*[]v1beta2.IntegrationTestScenario, error)
-	GetAllIntegrationTestScenariosForSnapshot(ctx context.Context, c client.Client, componentGroup *v1beta2.ComponentGroup, snapshot *oldapplicationapiv1alpha1.Snapshot) (*[]v1beta2.IntegrationTestScenario, error)
-	GetAllPipelineRunsForSnapshotAndScenario(ctx context.Context, c client.Client, snapshot *oldapplicationapiv1alpha1.Snapshot, integrationTestScenario *v1beta2.IntegrationTestScenario) (*[]tektonv1.PipelineRun, error)
+	GetAllIntegrationTestScenariosForApplication(ctx context.Context, c client.Client, application *oldapplicationapiv1alpha1.Application) (*[]integrationv1beta2.IntegrationTestScenario, error)
+	GetAllIntegrationTestScenariosForComponentGroup(ctx context.Context, c client.Client, componentGroup *v1beta2.ComponentGroup) (*[]integrationv1beta2.IntegrationTestScenario, error)
+	GetAllIntegrationTestScenariosForComponentGroups(ctx context.Context, c client.Client, componentGroups *[]v1beta2.ComponentGroup) (*[]integrationv1beta2.IntegrationTestScenario, error)
+	GetRequiredIntegrationTestScenariosForSnapshotApplication(ctx context.Context, c client.Client, application *oldapplicationapiv1alpha1.Application, snapshot *oldapplicationapiv1alpha1.Snapshot) (*[]integrationv1beta2.IntegrationTestScenario, error)
+	GetRequiredIntegrationTestScenariosForSnapshot(ctx context.Context, c client.Client, componentGroup *v1beta2.ComponentGroup, snapshot *oldapplicationapiv1alpha1.Snapshot) (*[]integrationv1beta2.IntegrationTestScenario, error)
+	GetAllIntegrationTestScenariosForSnapshotApplication(ctx context.Context, c client.Client, application *oldapplicationapiv1alpha1.Application, snapshot *oldapplicationapiv1alpha1.Snapshot) (*[]integrationv1beta2.IntegrationTestScenario, error)
+	GetAllIntegrationTestScenariosForSnapshot(ctx context.Context, c client.Client, componentGroup *v1beta2.ComponentGroup, snapshot *oldapplicationapiv1alpha1.Snapshot) (*[]integrationv1beta2.IntegrationTestScenario, error)
+	GetAllPipelineRunsForSnapshotAndScenario(ctx context.Context, c client.Client, snapshot *oldapplicationapiv1alpha1.Snapshot, integrationTestScenario *integrationv1beta2.IntegrationTestScenario) (*[]tektonv1.PipelineRun, error)
 	GetAllSnapshots(ctx context.Context, c client.Client, application *oldapplicationapiv1alpha1.Application) (*[]oldapplicationapiv1alpha1.Snapshot, error)
 	GetAutoReleasePlansForApplication(ctx context.Context, c client.Client, application *oldapplicationapiv1alpha1.Application, snapshot *oldapplicationapiv1alpha1.Snapshot, shouldRelease bool) (*[]releasev1alpha1.ReleasePlan, error)
 	GetAutoReleasePlansForComponentGroup(ctx context.Context, c client.Client, componentGroup *v1beta2.ComponentGroup, snapshot *oldapplicationapiv1alpha1.Snapshot, shouldRelease bool) (*[]releasev1alpha1.ReleasePlan, error)
-	GetScenario(ctx context.Context, c client.Client, name, namespace string) (*v1beta2.IntegrationTestScenario, error)
+	GetScenario(ctx context.Context, c client.Client, name, namespace string) (*integrationv1beta2.IntegrationTestScenario, error)
 	GetComponentGroup(ctx context.Context, c client.Client, name, namespace string) (*v1beta2.ComponentGroup, error)
 	GetAllSnapshotsForBuildPipelineRunApplication(ctx context.Context, c client.Client, pipelineRun *tektonv1.PipelineRun) (*[]oldapplicationapiv1alpha1.Snapshot, error)
 	GetAllSnapshotsForBuildPipelineRun(ctx context.Context, c client.Client, pipelineRun *tektonv1.PipelineRun, componentGroupNames []string) (*map[string][]oldapplicationapiv1alpha1.Snapshot, error)
@@ -320,8 +321,8 @@ func (l *loader) GetSnapshotFromPipelineRun(ctx context.Context, c client.Client
 }
 
 // GetAllIntegrationTestScenariosForApplication returns all IntegrationTestScenarios used by the application being processed.
-func (l *loader) GetAllIntegrationTestScenariosForApplication(ctx context.Context, c client.Client, application *oldapplicationapiv1alpha1.Application) (*[]v1beta2.IntegrationTestScenario, error) {
-	integrationList := &v1beta2.IntegrationTestScenarioList{}
+func (l *loader) GetAllIntegrationTestScenariosForApplication(ctx context.Context, c client.Client, application *oldapplicationapiv1alpha1.Application) (*[]integrationv1beta2.IntegrationTestScenario, error) {
+	integrationList := &integrationv1beta2.IntegrationTestScenarioList{}
 
 	opts := &client.ListOptions{
 		Namespace:     application.Namespace,
@@ -337,8 +338,8 @@ func (l *loader) GetAllIntegrationTestScenariosForApplication(ctx context.Contex
 }
 
 // GetAllIntegrationTestScenariosForComponentGroup returns all IntegrationTestScenarios used by a single ComponentGroup
-func (l *loader) GetAllIntegrationTestScenariosForComponentGroup(ctx context.Context, c client.Client, componentGroup *v1beta2.ComponentGroup) (*[]v1beta2.IntegrationTestScenario, error) {
-	integrationList := &v1beta2.IntegrationTestScenarioList{}
+func (l *loader) GetAllIntegrationTestScenariosForComponentGroup(ctx context.Context, c client.Client, componentGroup *v1beta2.ComponentGroup) (*[]integrationv1beta2.IntegrationTestScenario, error) {
+	integrationList := &integrationv1beta2.IntegrationTestScenarioList{}
 
 	opts := &client.ListOptions{
 		Namespace:     componentGroup.Namespace,
@@ -354,8 +355,8 @@ func (l *loader) GetAllIntegrationTestScenariosForComponentGroup(ctx context.Con
 }
 
 // GetAllIntegrationTestScenariosForComponentGroup returns all IntegrationTestScenarios used by all ComponentGroups in the list. No deduplication is required since an ITS can only belong to one ComponentGroup
-func (l *loader) GetAllIntegrationTestScenariosForComponentGroups(ctx context.Context, c client.Client, componentGroups *[]v1beta2.ComponentGroup) (*[]v1beta2.IntegrationTestScenario, error) {
-	scenarios := []v1beta2.IntegrationTestScenario{}
+func (l *loader) GetAllIntegrationTestScenariosForComponentGroups(ctx context.Context, c client.Client, componentGroups *[]v1beta2.ComponentGroup) (*[]integrationv1beta2.IntegrationTestScenario, error) {
+	scenarios := []integrationv1beta2.IntegrationTestScenario{}
 	for _, componentGroup := range *componentGroups {
 		items, err := l.GetAllIntegrationTestScenariosForComponentGroup(ctx, c, &componentGroup)
 		if err != nil {
@@ -372,8 +373,8 @@ func (l *loader) GetAllIntegrationTestScenariosForComponentGroups(ctx context.Co
 // An IntegrationTestScenario will only be returned if it has the test.appstudio.openshift.io/optional
 // label not set to true or if it is missing the label entirely, and have the correct context for the defined snapshot.
 // TODO: delete when we remove old application-specific code
-func (l *loader) GetRequiredIntegrationTestScenariosForSnapshotApplication(ctx context.Context, c client.Client, application *oldapplicationapiv1alpha1.Application, snapshot *oldapplicationapiv1alpha1.Snapshot) (*[]v1beta2.IntegrationTestScenario, error) {
-	integrationList := &v1beta2.IntegrationTestScenarioList{}
+func (l *loader) GetRequiredIntegrationTestScenariosForSnapshotApplication(ctx context.Context, c client.Client, application *oldapplicationapiv1alpha1.Application, snapshot *oldapplicationapiv1alpha1.Snapshot) (*[]integrationv1beta2.IntegrationTestScenario, error) {
+	integrationList := &integrationv1beta2.IntegrationTestScenarioList{}
 	labelRequirement, err := labels.NewRequirement("test.appstudio.openshift.io/optional", selection.NotIn, []string{"true"})
 	if err != nil {
 		return nil, err
@@ -405,8 +406,8 @@ func (l *loader) GetComponentGroupFromSnapshot(ctx context.Context, c client.Cli
 // GetRequiredIntegrationTestScenariosForSnapshot returns the IntegrationTestScenarios used by the ComponentGroup and snapshot being processed.
 // An IntegrationTestScenario will only be returned if it has the test.appstudio.openshift.io/optional
 // label not set to true or if it is missing the label entirely, and has the correct context for the defined snapshot.
-func (l *loader) GetRequiredIntegrationTestScenariosForSnapshot(ctx context.Context, c client.Client, componentGroup *v1beta2.ComponentGroup, snapshot *oldapplicationapiv1alpha1.Snapshot) (*[]v1beta2.IntegrationTestScenario, error) {
-	integrationList := &v1beta2.IntegrationTestScenarioList{}
+func (l *loader) GetRequiredIntegrationTestScenariosForSnapshot(ctx context.Context, c client.Client, componentGroup *v1beta2.ComponentGroup, snapshot *oldapplicationapiv1alpha1.Snapshot) (*[]integrationv1beta2.IntegrationTestScenario, error) {
+	integrationList := &integrationv1beta2.IntegrationTestScenarioList{}
 	labelRequirement, err := labels.NewRequirement("test.appstudio.openshift.io/optional", selection.NotIn, []string{"true"})
 	if err != nil {
 		return nil, err
@@ -432,7 +433,7 @@ func (l *loader) GetRequiredIntegrationTestScenariosForSnapshot(ctx context.Cont
 // All the IntegrationTestScenarios will be returned regardless of whether it has the test.appstudio.openshift.io/optional
 // label not set to true or if it is missing the label entirely, but they will have the correct context for the defined snapshot.
 // TODO: delete when we remove old application-specific code
-func (l *loader) GetAllIntegrationTestScenariosForSnapshotApplication(ctx context.Context, c client.Client, application *oldapplicationapiv1alpha1.Application, snapshot *oldapplicationapiv1alpha1.Snapshot) (*[]v1beta2.IntegrationTestScenario, error) {
+func (l *loader) GetAllIntegrationTestScenariosForSnapshotApplication(ctx context.Context, c client.Client, application *oldapplicationapiv1alpha1.Application, snapshot *oldapplicationapiv1alpha1.Snapshot) (*[]integrationv1beta2.IntegrationTestScenario, error) {
 	integrationList, err := l.GetAllIntegrationTestScenariosForApplication(ctx, c, application)
 	if err != nil {
 		return nil, err
@@ -445,7 +446,7 @@ func (l *loader) GetAllIntegrationTestScenariosForSnapshotApplication(ctx contex
 // GetAllIntegrationTestScenariosForSnapshot returns the IntegrationTestScenarios used by the application and snapshot being processed.
 // All the IntegrationTestScenarios will be returned regardless of whether it has the test.appstudio.openshift.io/optional
 // label not set to true or if it is missing the label entirely, but they will have the correct context for the defined snapshot.
-func (l *loader) GetAllIntegrationTestScenariosForSnapshot(ctx context.Context, c client.Client, componentGroup *v1beta2.ComponentGroup, snapshot *oldapplicationapiv1alpha1.Snapshot) (*[]v1beta2.IntegrationTestScenario, error) {
+func (l *loader) GetAllIntegrationTestScenariosForSnapshot(ctx context.Context, c client.Client, componentGroup *v1beta2.ComponentGroup, snapshot *oldapplicationapiv1alpha1.Snapshot) (*[]integrationv1beta2.IntegrationTestScenario, error) {
 	integrationList, err := l.GetAllIntegrationTestScenariosForComponentGroup(ctx, c, componentGroup)
 	if err != nil {
 		return nil, err
@@ -458,7 +459,7 @@ func (l *loader) GetAllIntegrationTestScenariosForSnapshot(ctx context.Context, 
 // GetAllPipelineRunsForSnapshotAndScenario returns all Integration PipelineRun for the
 // associated Snapshot and IntegrationTestScenario. In the case the List operation fails,
 // an error will be returned.
-func (l *loader) GetAllPipelineRunsForSnapshotAndScenario(ctx context.Context, adapterClient client.Client, snapshot *oldapplicationapiv1alpha1.Snapshot, integrationTestScenario *v1beta2.IntegrationTestScenario) (*[]tektonv1.PipelineRun, error) {
+func (l *loader) GetAllPipelineRunsForSnapshotAndScenario(ctx context.Context, adapterClient client.Client, snapshot *oldapplicationapiv1alpha1.Snapshot, integrationTestScenario *integrationv1beta2.IntegrationTestScenario) (*[]tektonv1.PipelineRun, error) {
 	integrationPipelineRuns := &tektonv1.PipelineRunList{}
 	opts := []client.ListOption{
 		client.InNamespace(snapshot.Namespace),
@@ -573,8 +574,8 @@ func (l *loader) GetAutoReleasePlansForComponentGroup(ctx context.Context, c cli
 }
 
 // GetScenario returns integration test scenario requested by name and namespace
-func (l *loader) GetScenario(ctx context.Context, c client.Client, name, namespace string) (*v1beta2.IntegrationTestScenario, error) {
-	scenario := &v1beta2.IntegrationTestScenario{}
+func (l *loader) GetScenario(ctx context.Context, c client.Client, name, namespace string) (*integrationv1beta2.IntegrationTestScenario, error) {
+	scenario := &integrationv1beta2.IntegrationTestScenario{}
 	return scenario, toolkit.GetObject(name, namespace, c, ctx, scenario)
 }
 
