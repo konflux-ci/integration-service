@@ -39,8 +39,13 @@ import (
 // Reconciler reconciles an integration PipelineRun object
 type Reconciler struct {
 	client.Client
-	Log    logr.Logger
-	Scheme *runtime.Scheme
+	// APIReader reads TaskRuns directly from the API server when the informer
+	// cache does not yet contain every TaskRun referenced by a finished PipelineRun.
+	// SetupController sets this from the manager and Reconcile passes it to the loader.
+	// A nil reader falls back to Client.
+	APIReader client.Reader
+	Log       logr.Logger
+	Scheme    *runtime.Scheme
 }
 
 // NewIntegrationReconciler creates and returns a Reconciler.
@@ -67,7 +72,7 @@ func NewIntegrationReconciler(client client.Client, logger *logr.Logger, scheme 
 // move the current state of the cluster closer to the desired state.
 func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := helpers.IntegrationLogger{Logger: r.Log.WithValues("pipelineRun", req.NamespacedName)}
-	loader := loader.NewLoader()
+	objectLoader := loader.NewLoaderWithAPIReader(r.APIReader)
 
 	pipelineRun := &tektonv1.PipelineRun{}
 	err := r.Get(ctx, req.NamespacedName, pipelineRun)
@@ -82,7 +87,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 
 	var snapshot *applicationapiv1alpha1.Snapshot
 	err = retry.OnError(retry.DefaultRetry, func(_ error) bool { return true }, func() error {
-		snapshot, err = loader.GetSnapshotFromPipelineRun(ctx, r.Client, pipelineRun)
+		snapshot, err = objectLoader.GetSnapshotFromPipelineRun(ctx, r.Client, pipelineRun)
 		return err
 	})
 	if err != nil {
@@ -94,7 +99,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return helpers.HandleLoaderError(logger, err, "Snapshot", "PipelineRun")
 	}
 
-	adapter := NewAdapter(ctx, pipelineRun, snapshot, logger, loader, r.Client)
+	adapter := NewAdapter(ctx, pipelineRun, snapshot, logger, objectLoader, r.Client)
 
 	return controller.ReconcileHandler([]controller.Operation{
 		adapter.EnsureStatusReportedInSnapshot,
@@ -110,7 +115,9 @@ type AdapterInterface interface {
 
 // SetupController creates a new Integration controller and adds it to the Manager.
 func SetupController(manager ctrl.Manager, log *logr.Logger) error {
-	return setupControllerWithManager(manager, NewIntegrationReconciler(manager.GetClient(), log, manager.GetScheme()))
+	reconciler := NewIntegrationReconciler(manager.GetClient(), log, manager.GetScheme())
+	reconciler.APIReader = manager.GetAPIReader()
+	return setupControllerWithManager(manager, reconciler)
 }
 
 // setupCache indexes fields for each of the resources used in the pipeline adapter in those cases where filtering by

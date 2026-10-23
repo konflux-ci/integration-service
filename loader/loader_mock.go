@@ -18,6 +18,7 @@ package loader
 
 import (
 	"context"
+	"fmt"
 
 	oldapplicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
 	"github.com/konflux-ci/integration-service/api/v1beta2"
@@ -27,12 +28,14 @@ import (
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	resolutionv1beta1 "github.com/tektoncd/pipeline/pkg/apis/resolution/v1beta1"
 	corev1 "k8s.io/api/core/v1"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 type mockLoader struct {
-	loader ObjectLoader
+	loader    ObjectLoader
+	apiReader client.Reader
 }
 
 const (
@@ -84,9 +87,19 @@ const (
 	RepositoriesContextKey
 )
 
+func (l *mockLoader) objectLoader() {}
+
 func NewMockLoader() ObjectLoader {
+	return NewMockLoaderWithAPIReader(nil)
+}
+
+// NewMockLoaderWithAPIReader returns a mock loader that reads TaskRuns missing
+// from the context list with apiReader. A nil apiReader uses the client passed
+// to GetTaskRunsReferencedByPipelineRun. Context overrides still take precedence.
+func NewMockLoaderWithAPIReader(apiReader client.Reader) ObjectLoader {
 	return &mockLoader{
-		loader: NewLoader(),
+		loader:    NewLoaderWithAPIReader(apiReader),
+		apiReader: apiReader,
 	}
 }
 
@@ -323,6 +336,92 @@ func (l *mockLoader) GetAllTaskRunsWithMatchingPipelineRunLabel(ctx context.Cont
 	}
 	taskRuns, err := toolkit.GetMockedResourceAndErrorFromContext(ctx, AllTaskRunsWithMatchingPipelineRunLabelContextKey, []tektonv1.TaskRun{})
 	return &taskRuns, err
+}
+
+// GetTaskRun returns the context TaskRun whose name matches the request.
+// The context resource may be one *tektonv1.TaskRun or a slice of TaskRuns.
+// A name that is not present is reported as NotFound. An error with no resource
+// is returned for every name. A context entry with neither a resource nor an
+// error is reported as an error. When the context has no TaskRun, the read is
+// delegated to the real loader, which uses the provided reader.
+func (l *mockLoader) GetTaskRun(ctx context.Context, c client.Reader, name, namespace string) (*tektonv1.TaskRun, error) {
+	if ctx.Value(TaskRunContextKey) == nil {
+		return l.loader.GetTaskRun(ctx, c, name, namespace)
+	}
+
+	data, ok := ctx.Value(TaskRunContextKey).(toolkit.MockData)
+	if !ok {
+		return nil, fmt.Errorf("TaskRun context value has type %T", ctx.Value(TaskRunContextKey))
+	}
+	if data.Resource == nil {
+		if data.Err == nil {
+			return nil, fmt.Errorf("TaskRun context for %q has no resource or error", name)
+		}
+		return nil, data.Err
+	}
+
+	taskRun, found, err := selectMockTaskRun(data.Resource, name, namespace)
+	if err != nil {
+		return nil, err
+	}
+	if !found {
+		return nil, k8serrors.NewNotFound(tektonv1.Resource("taskruns"), name)
+	}
+	return taskRun, data.Err
+}
+
+// selectMockTaskRun returns the TaskRun from resource that matches name.
+// resource may be *tektonv1.TaskRun, []*tektonv1.TaskRun, or []tektonv1.TaskRun.
+func selectMockTaskRun(resource any, name, namespace string) (*tektonv1.TaskRun, bool, error) {
+	switch taskRuns := resource.(type) {
+	case *tektonv1.TaskRun:
+		if taskRunMatches(taskRuns, name, namespace) {
+			return taskRuns, true, nil
+		}
+		return nil, false, nil
+	case []*tektonv1.TaskRun:
+		for _, taskRun := range taskRuns {
+			if taskRunMatches(taskRun, name, namespace) {
+				return taskRun, true, nil
+			}
+		}
+		return nil, false, nil
+	case []tektonv1.TaskRun:
+		for i := range taskRuns {
+			if taskRunMatches(&taskRuns[i], name, namespace) {
+				return &taskRuns[i], true, nil
+			}
+		}
+		return nil, false, nil
+	default:
+		return nil, false, fmt.Errorf("TaskRun context resource has type %T, want *tektonv1.TaskRun, []*tektonv1.TaskRun, or []tektonv1.TaskRun", resource)
+	}
+}
+
+// taskRunMatches reports whether taskRun is the object requested by name and namespace.
+// A TaskRun with an empty namespace matches any requested namespace.
+func taskRunMatches(taskRun *tektonv1.TaskRun, name, namespace string) bool {
+	if taskRun == nil || taskRun.Name != name {
+		return false
+	}
+	if namespace != "" && taskRun.Namespace != "" && taskRun.Namespace != namespace {
+		return false
+	}
+	return true
+}
+
+// GetTaskRunsReferencedByPipelineRun resolves referenced TaskRuns through the mock
+// list and Get methods, so context overrides still apply. Names missing from the
+// list are read with the API reader supplied to NewMockLoaderWithAPIReader.
+func (l *mockLoader) GetTaskRunsReferencedByPipelineRun(ctx context.Context, c client.Client, pipelineRun *tektonv1.PipelineRun) (map[string]*tektonv1.TaskRun, []string, error) {
+	listed, err := l.GetAllTaskRunsWithMatchingPipelineRunLabel(ctx, c, pipelineRun)
+	if err != nil {
+		return nil, nil, err
+	}
+	apiReader := readerOr(l.apiReader, c)
+	return taskRunsForChildReferences(ctx, pipelineRun, listed, func(name string) (*tektonv1.TaskRun, error) {
+		return l.GetTaskRun(ctx, apiReader, name, pipelineRun.Namespace)
+	})
 }
 
 // GetPipelineRun returns the resource and error passed as values of the context.
