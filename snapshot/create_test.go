@@ -801,6 +801,23 @@ var _ = Describe("Snapshot creation functions", Ordered, func() {
 		})
 	})
 
+	It("adds the integration service provenance marker to new Snapshots", func() {
+		componentGroup := &v1beta2.ComponentGroup{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "test-component-group",
+				Namespace: "test-namespace",
+			},
+		}
+		snapshotComponents := []applicationapiv1alpha1.SnapshotComponent{}
+
+		createdSnapshot := NewSnapshot(componentGroup, &snapshotComponents)
+
+		Expect(createdSnapshot.Annotations).To(HaveKeyWithValue(
+			gitops.SnapshotProvenanceAnnotation,
+			gitops.SnapshotProvenanceValue,
+		))
+	})
+
 	It("ensures NewSnapshot truncates application name if longer than 43 characters", func() {
 		longGroupName := "this-is-a-very-long-application-name-that-exceeds-43-chars"
 		longGroup := &v1beta2.ComponentGroup{
