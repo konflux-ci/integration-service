@@ -1,14 +1,5 @@
 <div align="center"><h1>NudgeConfig Controller</h1></div>
 
-The NudgeConfig controller reconciles the singleton `nudge-config` NudgeConfig CR in each namespace.
-It processes two concerns on every reconcile: one-shot `spec.actions` (currently `forceFire`) and
-scheduled batch lifecycle transitions. Batch state is persisted entirely in `status.activeBatches`
-so it survives controller restarts.
-
-**Governing ADRs:** ADR-0056 (one-shot actions pattern), ADR-0072 (batch aggregation semantics).
-
-## Reconciliation Flow
-
 ```mermaid
 %%{init: {'theme':'forest'}}%%
 flowchart TD
@@ -122,7 +113,7 @@ flowchart TD
   %% Node definitions
   calc_requeue(NextBatchWakeDuration: <br> find earliest FireAt among <br> Accumulating batches)
   has_firing_batches{Any batch in <br> Firing phase?}
-  requeue_fast(RequeueAfter = <br> min of 5s and next wake)
+  requeue_fast(RequeueAfter = 5s)
   has_wake{Next wake <br> duration > 0?}
   no_requeue(Return — no requeue)
   requeue_wake(RequeueAfter = <br> max of 5s and next wake)
@@ -142,31 +133,3 @@ flowchart TD
   class mark_failed_empty,mark_failed_fire,mark_failed_retries,mark_failed_retry_err Red;
   class mark_completed Green;
 ```
-
-## Batch Recording (External Callers)
-
-The batch entries are recorded outside the NudgeConfig controller, by the build pipeline controller and snapshot controller:
-
-- **`RecordBuildForBatchedNudge`** — called by the build pipeline controller when a source build succeeds and the target is configured for batching. Records the `(component, digest, buildPLR)` tuple into the active batch via `upsertAccumulatedEntry` (dedup by component identity). Resets the debounce timer via `scheduleBatchFire`.
-- **`RecordFailedBuildForBatchedNudge`** — called when a source build fails. Records the failure in `batch.Failed[]` via `upsertFailedEntry`. If `FailurePolicy` is `Block`, transitions the batch to `Blocked` phase.
-- **`RecordValidatedSnapshotForBatchedNudge`** — called by the snapshot controller for `validated`-mode nudges after integration tests pass. Same accumulation logic as build recording but uses Snapshot reference as `sourceRef`.
-- **`RecordFailedValidatedSnapshotForBatchedNudge`** — called when integration tests fail for a validated-mode nudge.
-
-## ForceFire Action Detail
-
-The `spec.actions.forceFire` one-shot action (ADR-0056 pattern) allows a user to bypass the batch debounce timer:
-
-1. `findForceFireBatch` locates the target batch — prefers `Accumulating`, falls back to `Blocked` (if `includePartial=true`) or `Failed`.
-2. `isBatchFiringForTarget` checks the concurrency guard — rejects if another batch for the same target is already firing.
-3. `validateForceFireBatch` enforces `includePartial` semantics — rejects if `includePartial=false` and failed components remain.
-4. `fireBatch` creates the aggregated Renovate PipelineRun.
-5. `ClearNudgeConfigActions` removes `spec.actions` unconditionally — even if step 4 failed — to prevent infinite reconciliation loops.
-
-## Event Predicates
-
-The controller watches NudgeConfig with a custom `nudgeBatchStatusChanged` predicate that triggers reconciliation when:
-- The resource is created (always)
-- `status.activeBatches` changes (batch state transitions)
-- `spec.actions` changes (one-shot action added or cleared)
-- Generation changes (spec edits)
-- Annotations change

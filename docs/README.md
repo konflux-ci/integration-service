@@ -4,6 +4,7 @@
 - [snapshot-controller](https://github.com/konflux-ci/integration-service/blob/main/docs/snapshot-controller.md)
 - [build-pipeline-controller](https://github.com/konflux-ci/integration-service/blob/main/docs/build_pipeline_controller.md)
 - [integration-pipeline-controller](https://github.com/konflux-ci/integration-service/blob/main/docs/integration_pipeline_controller.md)
+- [nudgeconfig-controller](https://github.com/konflux-ci/integration-service/blob/main/docs/nudgeconfig-controller.md)
 
 ## Operational docs
 - [Distributed tracing](https://github.com/konflux-ci/integration-service/blob/main/docs/tracing.md)

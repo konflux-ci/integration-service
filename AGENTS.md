@@ -45,9 +45,9 @@ The service supports two parallel resource flows: **ComponentGroup** (new model)
 
 `loader.ObjectLoader` centralizes all K8s Gets with error classification (retriable vs permanent) and KubeArchive fallback for deleted resources. A mock implementation exists for tests.
 
-### Nudging / Batching Subsystem
+### NudgeConfig Subsystem
 
-The nudging subsystem (`tekton/nudging/`, `internal/controller/nudgeconfig/`) automates downstream component updates via Renovate PipelineRuns when upstream source components are rebuilt. It is governed by ADR-0056 (one-shot actions) and ADR-0072 (batch aggregation semantics).
+The nudging subsystem (`tekton/nudging/`, `internal/controller/nudgeconfig/`) automates downstream component updates via Renovate PipelineRuns when upstream source components are rebuilt. It is governed by ADR-0056 (one-shot actions) and ADR-0072 (batch aggregation semantics), maintained in the [Konflux architecture repository](https://github.com/konflux-ci/architecture).
 
 **Singleton constraint:** Exactly one NudgeConfig per namespace, named `nudge-config`. Enforced by CEL validation on the CRD.
 
