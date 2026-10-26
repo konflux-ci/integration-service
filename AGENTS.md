@@ -17,7 +17,7 @@ The [Konflux architecture documentation](https://github.com/konflux-ci/architect
 
 ```
 api/v1beta2/           # CRD types
-internal/controller/   # Reconcilers: buildpipeline/, component/, componentgroup/, integrationpipeline/, scenario/, snapshot/, statusreport/
+internal/controller/   # Reconcilers: buildpipeline/, component/, componentgroup/, integrationpipeline/, nudgeconfig/, scenario/, snapshot/, statusreport/
 internal/webhooks      # Webhooks
 loader/                # ObjectLoader interface — abstracts K8s resource fetching
 tekton/                # PipelineRun builders, status helpers, watch predicates
@@ -44,6 +44,45 @@ The service supports two parallel resource flows: **ComponentGroup** (new model)
 ### Resource Loading
 
 `loader.ObjectLoader` centralizes all K8s Gets with error classification (retriable vs permanent) and KubeArchive fallback for deleted resources. A mock implementation exists for tests.
+
+### Nudging / Batching Subsystem
+
+The nudging subsystem (`tekton/nudging/`, `internal/controller/nudgeconfig/`) automates downstream component updates via Renovate PipelineRuns when upstream source components are rebuilt. It is governed by ADR-0056 (one-shot actions) and ADR-0072 (batch aggregation semantics).
+
+**Singleton constraint:** Exactly one NudgeConfig per namespace, named `nudge-config`. Enforced by CEL validation on the CRD.
+
+**Nudge modes:** Each `NudgeRelationship` in `spec.nudges` has a mode — `immediate` (fires on build success) or `validated` (fires after integration tests pass for the source component's Snapshot).
+
+**Batch lifecycle phases:** `Accumulating → Blocked → Firing → Failed/Completed`. All switch/if-chains on batch phase must handle every phase. An incomplete state machine is a correctness bug.
+
+- **Accumulating** — collecting build events within the batch window (debounce timer resets on each new event; hard deadline does not reset).
+- **Blocked** — a source build failed and `FailurePolicy` is `Block`. The batch cannot fire until the failed component rebuilds successfully or the user force-fires.
+- **Firing** — the aggregated Renovate PipelineRun has been created. The controller polls for PipelineRun completion.
+- **Failed** — the nudge PipelineRun failed after exhausting retries (`maxBatchNudgePLRRetries = 3`) or the batch had no accumulated builds when the timer expired.
+- **Completed** — the nudge PipelineRun succeeded.
+
+**Batch aggregation contract:** A single batched Renovate PipelineRun must contain ALL accumulated `(component, digest)` pairs. The `fireBatch` function iterates `batch.Accumulated` to build the payload — implementation must append entries, not overwrite. The `upsertAccumulatedEntry` function matches by `From` (source component name) so that rebuilds of the same component replace the previous entry.
+
+**Dedup rule:** When a component is rebuilt, the latest result replaces the previous entry by component identity (`From` field = source component name), not by PipelineRun name. This is enforced by `upsertAccumulatedEntry` and `upsertFailedEntry`.
+
+**Failure recording:** Failed builds must be recorded in `batch.Failed[]` via `RecordFailedBuildForBatchedNudge` / `recordFailureForBatchedNudge` for `FailurePolicyType` (`Block` / `ProceedWithPartial`) to function. Without failure recording, `FailurePolicyType` is dead code.
+
+**Concurrency guard:** Only one batch per target may be in `Firing` phase at a time. Enforced by `isBatchFiringForTarget` — checked before both timer-based and force-fire batch creation.
+
+**One-shot action pattern (ADR-0056):** `spec.actions.forceFire` must be cleared after processing regardless of outcome. The controller calls `ClearNudgeConfigActions` unconditionally after processing forceFire, even on error. Leaving it set causes infinite reconciliation.
+
+**BatchPolicy inheritance:** Resolution order: per-target `TargetConfig.BatchPolicy` → `spec.batchDefaults` → runtime defaults (debounce: 30m, maxWait: 4h, failurePolicy: Block). Implemented in `NudgeConfigSpec.EffectiveBatchPolicy`.
+
+**Hard deadline:** Once an accumulating batch's `HardDeadline` passes, it fires immediately when unblocked rather than waiting for the debounce timer. If past deadline while blocked, the batch fires as soon as the block is cleared (successful rebuild of the failed component).
+
+**Key source files:**
+- `api/v1beta2/nudgeconfig_types.go` — CRD types, batch phases, policy defaults, `EffectiveBatchPolicy`
+- `internal/controller/nudgeconfig/nudgeconfig_controller.go` — Reconciler, event predicates, requeue logic
+- `tekton/nudging/nudge_batch.go` — Batch lifecycle: record builds, process due/firing batches, forceFire
+- `tekton/nudging/nudge_batch_validated.go` — Validated-mode batch recording
+- `tekton/nudging/nudge_pipeline.go` — Renovate PipelineRun creation, config generation
+- `tekton/nudging/nudge_credentials.go` — Git provider credential resolution
+- `docs/nudgeconfig-controller.md` — Controller flow diagram
 
 ### Additional Key Patterns
 
