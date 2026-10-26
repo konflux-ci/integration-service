@@ -446,12 +446,12 @@ func GenerateBatchedRenovateConfig(target NudgeTarget, batchTargetName string, e
 		DependencyDashboard:      false,
 		DependencyDashboardTitle: unusedDependencyDashboardTitle,
 		Labels:                   labels,
-		Automerge:             customOpts.Automerge,
-		PlatformAutomerge:     customOpts.PlatformAutomerge,
-		IgnoreTests:           customOpts.IgnoreTests,
-		AutomergeType:         customOpts.AutomergeType,
-		GitLabIgnoreApprovals: customOpts.GitLabIgnoreApprovals,
-		AutomergeSchedule:     customOpts.AutomergeSchedule,
+		Automerge:                customOpts.Automerge,
+		PlatformAutomerge:        customOpts.PlatformAutomerge,
+		IgnoreTests:              customOpts.IgnoreTests,
+		AutomergeType:            customOpts.AutomergeType,
+		GitLabIgnoreApprovals:    customOpts.GitLabIgnoreApprovals,
+		AutomergeSchedule:        customOpts.AutomergeSchedule,
 	}
 }
 
