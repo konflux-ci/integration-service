@@ -35,7 +35,7 @@ main.go                # Entry point — registers controllers and webhooks
 
 ### Adapter Pattern
 
-Each controller delegates to an **adapter** (`<controller_name>_adapter.go`) that holds the K8s client, resource under reconciliation, an `ObjectLoader`, and a `IntegrationLogger`. All domain logic lives in adapter methods, not in the controller.
+Each controller delegates to an **adapter** (`<controller_name>_adapter.go`) that holds the K8s client, resource under reconciliation, an `ObjectLoader`, and a `IntegrationLogger`. All domain logic lives in adapter methods, not in the controller. **Exception:** The NudgeConfig controller delegates to package-level functions in `tekton/nudging/` instead of an adapter struct, because its domain logic is shared across reconciliation entry points rather than scoped to a single resource instance.
 
 ### Dual-Model Architecture
 
@@ -45,7 +45,7 @@ The service supports two parallel resource flows: **ComponentGroup** (new model)
 
 `loader.ObjectLoader` centralizes all K8s Gets with error classification (retriable vs permanent) and KubeArchive fallback for deleted resources. A mock implementation exists for tests.
 
-### NudgeConfig Subsystem
+### Nudging Subsystem
 
 The nudging subsystem (`tekton/nudging/`, `internal/controller/nudgeconfig/`) automates downstream component updates via Renovate PipelineRuns when upstream source components are rebuilt. It is governed by ADR-0056 (one-shot actions) and ADR-0072 (batch aggregation semantics), maintained in the [Konflux architecture repository](https://github.com/konflux-ci/architecture).
 
