@@ -263,6 +263,13 @@ func ProcessFiringNudgeBatches(ctx context.Context, c client.Client, nudgeConfig
 			if plr.Status.CompletionTime == nil {
 				continue
 			}
+			if plrBatchID := plr.Annotations[tektonconsts.NudgeBatchIDAnnotation]; plrBatchID != "" && plrBatchID != batch.BatchID {
+				batch.Phase = v1beta2.BatchPhaseFailed
+				batch.Message = fmt.Sprintf("nudge PipelineRun %q batch-id %q does not match batch %q",
+					batch.NudgePipelineRun, plrBatchID, batch.BatchID)
+				changed = true
+				continue
+			}
 			if h.HasPipelineRunSucceeded(plr) {
 				batch.Phase = v1beta2.BatchPhaseCompleted
 				batch.Message = fmt.Sprintf("nudge PipelineRun %s succeeded", batch.NudgePipelineRun)
