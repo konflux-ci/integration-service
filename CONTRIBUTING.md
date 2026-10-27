@@ -94,6 +94,7 @@ make test
 **Requirements for Approval:**
 
 - All CI checks pass
+- Codecov patch coverage for new and changed lines is at least 85%; pull requests below this threshold will be blocked
 - Code review approval from maintainers
 
 **Review Criteria:**
@@ -131,4 +132,3 @@ Unofficial (but useful) links:
 
 - [Ginkgo and Gomega gotchas](https://medium.com/@william.la.martin/ginkgotchas-yeh-also-gomega-13e39185ec96)
 - [Effective Ginkgo/Gomega](https://medium.com/swlh/effective-ginkgo-gomega-b6c28d476a09)
-
