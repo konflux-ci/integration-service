@@ -26,7 +26,7 @@ coverage:
     patch:
       default:
         target: 85%
-        informational: true
+        informational: false
 comment:
   layout: reach,diff,flags,files,footer
   require_changes: true
