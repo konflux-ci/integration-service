@@ -35,6 +35,16 @@ func (g *Github) ListPullRequests(repository string) ([]*github.PullRequest, err
 	return prs, nil
 }
 
+func (g *Github) ClosePullRequest(repository string, prNumber int) error {
+	state := "closed"
+	pr := &github.PullRequest{State: &state}
+	_, _, err := g.client.PullRequests.Edit(context.Background(), g.organization, repository, prNumber, pr)
+	if err != nil {
+		return fmt.Errorf("error when closing pull request number %d for the repo %s: %v", prNumber, repository, err)
+	}
+	return nil
+}
+
 func (g *Github) MergePullRequest(repository string, prNumber int) (*github.PullRequestMergeResult, error) {
 	mergeResult, _, err := g.client.PullRequests.Merge(context.Background(), g.organization, repository, prNumber, "", &github.PullRequestOptions{})
 	if err != nil {

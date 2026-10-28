@@ -29,9 +29,17 @@ const (
 	componentRepoNameForGroupIntegration   = "konflux-test-integration-clone"
 	componentRepoNameForStatusReporting    = "konflux-test-integration-status-report"
 
+	statusReportingDummyPRFilePath        = ".e2e/status-reporting/prebuilt-plr-pr.txt"
+	gitlabStatusReportingDummyMRFilePath  = ".e2e/status-reporting/prebuilt-plr-mr.txt"
+	forgejoStatusReportingDummyPRFilePath = ".e2e/status-reporting/prebuilt-plr-pr.txt"
+
 	// e2e image locations
-	prebuiltImageForGeneralIntegration = "quay.io/redhat-appstudio-qe/integ-svc-e2e"
-	e2eImageTag                        = "latest"
+	prebuiltImageForGeneralIntegration   = "quay.io/redhat-appstudio-qe/integ-svc-e2e"
+	prebuiltImageForStatusReporting      = "quay.io/redhat-appstudio-qe/integ-svc-status-report-e2e"
+	prebuiltImageForGroupIntegration     = "quay.io/redhat-appstudio-qe/integ-svc-clone-e2e"
+	prebuiltImageForMultiComponentGo     = "quay.io/redhat-appstudio-qe/integ-svc-multi-go-e2e"
+	prebuiltImageForMultiComponentPython = "quay.io/redhat-appstudio-qe/integ-svc-multi-python-e2e"
+	e2eImageTag                          = "latest"
 
 	multiComponentRepoNameForGroupSnapshot = "group-snapshot-multi-component"
 	multiComponentDefaultBranch            = "onboarding"
@@ -62,6 +70,7 @@ const (
 	pipelinerunFinalizerByIntegrationService = helpers.IntegrationPipelineRunFinalizer
 	snapshotRerunLabel                       = gitops.SnapshotIntegrationTestRun
 	snapshotCreationReport                   = helpers.SnapshotCreationReportAnnotation
+	createSnapshotStatusAnnotation           = helpers.CreateSnapshotAnnotationName
 	pipelinesAsCodeGitProviderAnnotation     = gitops.PipelineAsCodeGitProviderAnnotation
 	chainsSignedAnnotation                   = tektonconsts.PipelineRunChainsSignedAnnotation
 

@@ -368,18 +368,40 @@ var _ = framework.IntegrationServiceSuiteDescribe("Integration Service E2E tests
 })
 
 type prebuiltBuildPLRSpec struct {
-	EventType  string
-	TimeOffset time.Duration
+	EventType             string
+	TimeOffset            time.Duration
+	Image                 string
+	PullRequestNumber     int
+	SourceBranch          string
+	TargetBranch          string
+	SHA                   string
+	RepoName              string
+	RepoURL               string
+	SourceRepoOrg         string
+	GitProvider           string
+	SourceProjectID       string
+	TargetProjectID       string
+	BreakSnapshotCreation bool
 }
 
 func applyPrebuiltBuildPLR(f *framework.Framework, namespace, applicationName, componentName string, spec prebuiltBuildPLRSpec) (*pipeline.PipelineRun, error) {
-	preBuildPLR, err := oci.FetchPipelineRunFromOCIArtifact(prebuiltImageForGeneralIntegration, e2eImageTag)
+	image := spec.Image
+	if image == "" {
+		image = prebuiltImageForGeneralIntegration
+	}
+	preBuildPLR, err := oci.FetchPipelineRunFromOCIArtifact(image, e2eImageTag)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch PipelineRun from OCI artifact: %w", err)
 	}
 
 	if spec.EventType == "" {
 		spec.EventType = gitops.PipelineAsCodePullRequestType
+	}
+	if spec.TargetBranch == "" {
+		spec.TargetBranch = componentDefaultBranch
+	}
+	if spec.SourceRepoOrg == "" {
+		spec.SourceRepoOrg = utils.GetEnv(constants.GITHUB_E2E_ORGANIZATION_ENV, "redhat-appstudio-qe")
 	}
 
 	preBuildPLRStatus := oci.PreparePipelineRunForPrebuiltUsage(
@@ -403,20 +425,86 @@ func applyPrebuiltBuildPLR(f *framework.Framework, namespace, applicationName, c
 	preBuildPLR.Labels["app.kubernetes.io/managed-by"] = "pipelinesascode.tekton.dev"
 	preBuildPLR.Labels[tektonconsts.PipelineAsCodeEventTypeLabel] = spec.EventType
 	preBuildPLR.Annotations[tektonconsts.PipelineRunChainsSignedAnnotation] = "true"
-	preBuildPLR.Annotations[tektonconsts.PipelineAsCodeTargetBranchAnnotation] = componentDefaultBranch
-	preBuildPLR.Annotations[tektonconsts.PipelineAsCodeSourceRepoOrg] = utils.GetEnv(constants.GITHUB_E2E_ORGANIZATION_ENV, "redhat-appstudio-qe")
+	preBuildPLR.Annotations[tektonconsts.PipelineAsCodeTargetBranchAnnotation] = spec.TargetBranch
+	preBuildPLR.Annotations[tektonconsts.PipelineAsCodeSourceRepoOrg] = spec.SourceRepoOrg
 	controllerutil.AddFinalizer(preBuildPLR, pipelinerunFinalizerByIntegrationService)
 
-	if spec.EventType == tektonconsts.PipelineAsCodePushType {
+	if spec.SHA != "" {
+		preBuildPLR.Labels["pipelinesascode.tekton.dev/sha"] = spec.SHA
+		preBuildPLR.Annotations["pipelinesascode.tekton.dev/sha"] = spec.SHA
+		preBuildPLR.Labels[gitops.PipelineAsCodeSHALabel] = spec.SHA
+		preBuildPLR.Annotations[gitops.PipelineAsCodeSHAAnnotation] = spec.SHA
+	}
+	if spec.RepoName != "" {
+		preBuildPLR.Labels["pipelinesascode.tekton.dev/url-repository"] = spec.RepoName
+		preBuildPLR.Labels[gitops.PipelineAsCodeURLRepositoryLabel] = spec.RepoName
+	}
+	if spec.RepoURL != "" {
+		preBuildPLR.Annotations["pipelinesascode.tekton.dev/repo-url"] = spec.RepoURL
+		preBuildPLR.Annotations["pipelinesascode.tekton.dev/source-repo-url"] = spec.RepoURL
+		preBuildPLR.Annotations[gitops.PipelineAsCodeRepoURLAnnotation] = spec.RepoURL
+		preBuildPLR.Annotations[gitops.PipelineAsCodeGitSourceURLAnnotation] = spec.RepoURL
+	}
+	if spec.SourceRepoOrg != "" {
+		preBuildPLR.Labels["pipelinesascode.tekton.dev/url-org"] = spec.SourceRepoOrg
+		preBuildPLR.Labels[gitops.PipelineAsCodeURLOrgLabel] = spec.SourceRepoOrg
+	}
+	if spec.GitProvider != "" {
+		preBuildPLR.Labels["pipelinesascode.tekton.dev/git-provider"] = spec.GitProvider
+		preBuildPLR.Annotations["pipelinesascode.tekton.dev/git-provider"] = spec.GitProvider
+		preBuildPLR.Labels[gitops.PipelineAsCodeGitProviderLabel] = spec.GitProvider
+		preBuildPLR.Annotations[gitops.PipelineAsCodeGitProviderAnnotation] = spec.GitProvider
+	}
+	if spec.SourceProjectID != "" {
+		preBuildPLR.Annotations["pipelinesascode.tekton.dev/source-project-id"] = spec.SourceProjectID
+		preBuildPLR.Labels["pipelinesascode.tekton.dev/source-project-id"] = spec.SourceProjectID
+		preBuildPLR.Annotations[gitops.PipelineAsCodeSourceProjectIDAnnotation] = spec.SourceProjectID
+	}
+	if spec.TargetProjectID != "" {
+		preBuildPLR.Annotations["pipelinesascode.tekton.dev/target-project-id"] = spec.TargetProjectID
+		preBuildPLR.Labels["pipelinesascode.tekton.dev/target-project-id"] = spec.TargetProjectID
+		preBuildPLR.Annotations[gitops.PipelineAsCodeTargetProjectIDAnnotation] = spec.TargetProjectID
+	}
+	if spec.GitProvider == gitops.PipelineAsCodeGitHubProviderType && !metadata.HasAnnotation(preBuildPLR, "pipelinesascode.tekton.dev/installation-id") && !metadata.HasAnnotation(preBuildPLR, gitops.PipelineAsCodeInstallationIDAnnotation) {
+		return nil, fmt.Errorf("prebuilt status-reporting PipelineRun is missing required GitHub App installation annotation %q", gitops.PipelineAsCodeInstallationIDAnnotation)
+	}
+
+	if spec.EventType == tektonconsts.PipelineAsCodePushType || spec.EventType == gitops.PipelineAsCodeGLPushType {
 		delete(preBuildPLR.Labels, tektonconsts.PipelineAsCodePullRequestLabel)
-		preBuildPLR.Annotations[tektonconsts.PipelineAsCodeSourceBranchAnnotation] = componentDefaultBranch
+		delete(preBuildPLR.Annotations, tektonconsts.PipelineAsCodePullRequestLabel)
+		delete(preBuildPLR.Annotations, gitops.PipelineAsCodePullRequestAnnotation)
+		if spec.SourceBranch == "" {
+			spec.SourceBranch = spec.TargetBranch
+		}
+		preBuildPLR.Annotations[tektonconsts.PipelineAsCodeSourceBranchAnnotation] = spec.SourceBranch
 	} else {
-		preBuildPLR.Labels[tektonconsts.PipelineAsCodePullRequestLabel] = strconv.FormatInt(atomic.AddInt64(&prebuiltPullRequestNumber, 1), 10)
-		preBuildPLR.Annotations[tektonconsts.PipelineAsCodeSourceBranchAnnotation] = "konflux-" + componentName
+		pullRequestNumber := strconv.FormatInt(atomic.AddInt64(&prebuiltPullRequestNumber, 1), 10)
+		if spec.PullRequestNumber > 0 {
+			pullRequestNumber = strconv.Itoa(spec.PullRequestNumber)
+		}
+		if spec.SourceBranch == "" {
+			spec.SourceBranch = "konflux-" + componentName
+		}
+		preBuildPLR.Labels[tektonconsts.PipelineAsCodePullRequestLabel] = pullRequestNumber
+		preBuildPLR.Annotations[tektonconsts.PipelineAsCodePullRequestLabel] = pullRequestNumber
+		preBuildPLR.Annotations[gitops.PipelineAsCodePullRequestAnnotation] = pullRequestNumber
+		preBuildPLR.Annotations[tektonconsts.PipelineAsCodeSourceBranchAnnotation] = spec.SourceBranch
 		prGroup := tekton.GetPRGroupFromBuildPLR(preBuildPLR)
 		preBuildPLR.Annotations[gitops.PRGroupAnnotation] = prGroup
 		preBuildPLR.Labels[gitops.PRGroupHashLabel] = tekton.GenerateSHA(prGroup)
 		preBuildPLR.Annotations[snapshotCreationReport] = intgteststat.BuildPLRInProgress.String()
+	}
+
+	if spec.BreakSnapshotCreation {
+		preBuildPLR.Annotations[createSnapshotStatusAnnotation] = "Failed to create snapshot. Error: prebuilt status-reporting e2e intentionally prevents snapshot creation"
+		filteredResults := preBuildPLRStatus.Results[:0]
+		for _, result := range preBuildPLRStatus.Results {
+			if result.Name == tektonconsts.PipelineRunImageUrlParamName || result.Name == tektonconsts.PipelineRunImageDigestParamName {
+				continue
+			}
+			filteredResults = append(filteredResults, result)
+		}
+		preBuildPLRStatus.Results = filteredResults
 	}
 
 	startTime := time.Now().UTC().Add(spec.TimeOffset)
@@ -439,23 +527,28 @@ func createApp(f framework.Framework, testNamespace string) string {
 
 func createComponentWithoutPACMergeRequest(f framework.Framework, testNamespace, applicationName string) string {
 	componentName := fmt.Sprintf("%s-%s", "test-component-prebuilt", utils.GenerateRandomString(6))
+	createComponentWithoutPACMergeRequestForRepo(f, testNamespace, applicationName, componentName, componentGitSourceURLForGeneralIntegration, componentDefaultBranch)
+	return componentName
+}
+
+func createComponentWithoutPACMergeRequestForRepo(f framework.Framework, testNamespace, applicationName, componentName, componentRepoURL, revision string) *appstudioApi.Component {
 	componentObj := appstudioApi.ComponentSpec{
 		ComponentName: componentName,
 		Application:   applicationName,
 		Source: appstudioApi.ComponentSource{
 			ComponentSourceUnion: appstudioApi.ComponentSourceUnion{
 				GitSource: &appstudioApi.GitSource{
-					URL:      componentGitSourceURLForGeneralIntegration,
-					Revision: componentDefaultBranch,
+					URL:      componentRepoURL,
+					Revision: revision,
 				},
 			},
 		},
 	}
 	buildPipelineAnnotation := build.GetBuildPipelineBundleAnnotation(constants.DockerBuild)
-	_, err := f.AsKubeAdmin.HasController.CreateComponentWithoutPACMergeRequest(componentObj, testNamespace, applicationName, buildPipelineAnnotation)
+	component, err := f.AsKubeAdmin.HasController.CreateComponentWithoutPACMergeRequest(componentObj, testNamespace, applicationName, buildPipelineAnnotation)
 	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-	return componentName
+	return component
 }
 
 func createComponent(f framework.Framework, testNamespace, applicationName, componentRepoName, componentRepoURL string) (*appstudioApi.Component, string, string, string) {
