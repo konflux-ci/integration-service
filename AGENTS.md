@@ -45,7 +45,7 @@ The service supports two parallel resource flows: **ComponentGroup** (new model)
 
 `loader.ObjectLoader` centralizes all K8s Gets with error classification (retriable vs permanent) and KubeArchive fallback for deleted resources. A mock implementation exists for tests.
 
-**Interface extension:** `ObjectLoader` is exported but internal to this service — no downstream repositories implement it. The interface includes an unexported sealing method (`objectLoader()`) that prevents external implementation. Adding new methods to `ObjectLoader` when new resource types need loading is expected and is not a breaking change. The corresponding mock in `loader/loader_mock.go` must be updated in the same PR.
+The `ObjectLoader` interface is exported but internal to this service — no downstream repositories implement it. The interface includes an unexported sealing method (`objectLoader()`) that prevents external implementation. Adding new methods to `ObjectLoader` when new resource types need loading is expected and is not a breaking change. The corresponding mock in `loader/loader_mock.go` must be updated in the same PR.
 
 ### Additional Key Patterns
 
