@@ -26,7 +26,8 @@ coverage:
     patch:
       default:
         target: 85%
-        informational: true
+        # Patch coverage below 85% will block the PR.
+        informational: false
 comment:
   layout: reach,diff,flags,files,footer
   require_changes: true
