@@ -97,13 +97,18 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		}
 	}
 
-	if err := nudging.ProcessDueNudgeBatches(ctx, r.Client, nudgeConfig); err != nil {
+	if _, err := nudging.ProcessDueNudgeBatches(ctx, r.Client, nudgeConfig); err != nil {
 		logger.Error(err, "Failed to process due nudge batches")
 		return reconcile.Result{}, err
 	}
 
 	if err := nudging.ProcessFiringNudgeBatches(ctx, r.Client, nudgeConfig); err != nil {
 		logger.Error(err, "Failed to process firing nudge batches")
+		return reconcile.Result{}, err
+	}
+
+	if err := nudging.PruneCompletedBatches(ctx, r.Client, nudgeConfig); err != nil {
+		logger.Error(err, "Failed to prune completed nudge batches")
 		return reconcile.Result{}, err
 	}
 
