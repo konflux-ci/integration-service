@@ -17,6 +17,7 @@ limitations under the License.
 package loader
 
 import (
+	"context"
 	"sort"
 	"time"
 
@@ -38,6 +39,7 @@ import (
 	releasev1alpha1 "github.com/konflux-ci/release-service/api/v1alpha1"
 	pacv1alpha1 "github.com/openshift-pipelines/pipelines-as-code/pkg/apis/pipelinesascode/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 var _ = Describe("Loader", Ordered, func() {
@@ -1280,6 +1282,190 @@ var _ = Describe("Loader", Ordered, func() {
 			Expect(fetchedBuildPipelineRun.Spec).To(Equal(buildPipelineRun.Spec))
 		})
 
+		It("Can fetch a TaskRun by name", func() {
+			fetchedTaskRun, err := loader.GetTaskRun(ctx, k8sClient, successfulTaskRun.Name, successfulTaskRun.Namespace)
+			Expect(err).To(Succeed())
+			Expect(fetchedTaskRun.Name).To(Equal(successfulTaskRun.Name))
+			Expect(fetchedTaskRun.Namespace).To(Equal(successfulTaskRun.Namespace))
+			Expect(fetchedTaskRun.Spec).To(Equal(successfulTaskRun.Spec))
+		})
+
+		It("returns not found when the TaskRun does not exist", func() {
+			fetchedTaskRun, err := loader.GetTaskRun(ctx, k8sClient, "absent-taskrun", namespace)
+			Expect(k8serrors.IsNotFound(err)).To(BeTrue())
+			Expect(fetchedTaskRun).To(BeNil())
+		})
+
+		It("loads a TaskRun through the mock loader when the context has no TaskRun", func() {
+			mockLoader := NewMockLoader()
+			fetchedTaskRun, err := mockLoader.GetTaskRun(ctx, k8sClient, successfulTaskRun.Name, successfulTaskRun.Namespace)
+			Expect(err).To(Succeed())
+			Expect(fetchedTaskRun.Name).To(Equal(successfulTaskRun.Name))
+		})
+
+		It("returns referenced TaskRuns from the cache and ignores CustomRuns and extra labeled TaskRuns", func() {
+			referenced := &tektonv1.TaskRun{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "referenced-taskrun",
+					Namespace: namespace,
+					Labels: map[string]string{
+						"tekton.dev/pipelineRun": "referenced-plr",
+					},
+				},
+			}
+			extra := &tektonv1.TaskRun{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "retry-taskrun",
+					Namespace: namespace,
+					Labels: map[string]string{
+						"tekton.dev/pipelineRun": "referenced-plr",
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, referenced)).To(Succeed())
+			Expect(k8sClient.Create(ctx, extra)).To(Succeed())
+			DeferCleanup(func() {
+				Expect(k8sClient.Delete(ctx, referenced)).To(Succeed())
+				Expect(k8sClient.Delete(ctx, extra)).To(Succeed())
+			})
+
+			customRun := tektonv1.ChildStatusReference{
+				Name:             "custom-run",
+				PipelineTaskName: "custom-task",
+			}
+			customRun.Kind = "CustomRun"
+			pipelineRun := &tektonv1.PipelineRun{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "referenced-plr",
+					Namespace: namespace,
+				},
+				Status: tektonv1.PipelineRunStatus{
+					PipelineRunStatusFields: tektonv1.PipelineRunStatusFields{
+						ChildReferences: []tektonv1.ChildStatusReference{
+							{
+								Name:             referenced.Name,
+								PipelineTaskName: "task1",
+							},
+							customRun,
+						},
+					},
+				},
+			}
+
+			resolved, missing, err := loader.GetTaskRunsReferencedByPipelineRun(ctx, k8sClient, pipelineRun)
+			Expect(err).To(Succeed())
+			Expect(resolved).To(HaveKey(referenced.Name))
+			Expect(resolved).NotTo(HaveKey(extra.Name))
+			Expect(resolved).NotTo(HaveKey(customRun.Name))
+			Expect(missing).To(BeEmpty())
+		})
+
+		It("reads a referenced TaskRun from the API reader when the cache list does not contain it", func() {
+			pipelineRun := &tektonv1.PipelineRun{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "unlabeled-plr",
+					Namespace: namespace,
+				},
+				Status: tektonv1.PipelineRunStatus{
+					PipelineRunStatusFields: tektonv1.PipelineRunStatusFields{
+						ChildReferences: []tektonv1.ChildStatusReference{
+							{
+								Name:             successfulTaskRun.Name,
+								PipelineTaskName: "task1",
+							},
+						},
+					},
+				},
+			}
+
+			objectLoader := NewLoaderWithAPIReader(k8sClient)
+			resolved, missing, err := objectLoader.GetTaskRunsReferencedByPipelineRun(ctx, k8sClient, pipelineRun)
+			Expect(err).To(Succeed())
+			Expect(resolved).To(HaveKey(successfulTaskRun.Name))
+			Expect(resolved[successfulTaskRun.Name].Namespace).To(Equal(successfulTaskRun.Namespace))
+			Expect(missing).To(BeEmpty())
+		})
+
+		It("returns names the API reader reports as not found", func() {
+			pipelineRun := &tektonv1.PipelineRun{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "missing-taskrun-plr",
+					Namespace: namespace,
+				},
+				Status: tektonv1.PipelineRunStatus{
+					PipelineRunStatusFields: tektonv1.PipelineRunStatusFields{
+						ChildReferences: []tektonv1.ChildStatusReference{
+							{
+								Name:             "absent-taskrun",
+								PipelineTaskName: "task1",
+							},
+							{
+								Name:             "another-absent-taskrun",
+								PipelineTaskName: "task2",
+							},
+						},
+					},
+				},
+			}
+
+			resolved, missing, err := loader.GetTaskRunsReferencedByPipelineRun(ctx, k8sClient, pipelineRun)
+			Expect(err).To(Succeed())
+			Expect(resolved).To(BeEmpty())
+			Expect(missing).To(Equal([]string{"absent-taskrun", "another-absent-taskrun"}))
+		})
+
+		It("returns a non-NotFound error from the API reader", func() {
+			readErr := k8serrors.NewServiceUnavailable("api server overloaded")
+			pipelineRun := &tektonv1.PipelineRun{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "reader-error-plr",
+					Namespace: namespace,
+				},
+				Status: tektonv1.PipelineRunStatus{
+					PipelineRunStatusFields: tektonv1.PipelineRunStatusFields{
+						ChildReferences: []tektonv1.ChildStatusReference{
+							{
+								Name:             "absent-taskrun",
+								PipelineTaskName: "task1",
+							},
+						},
+					},
+				},
+			}
+
+			objectLoader := NewLoaderWithAPIReader(errReader{err: readErr})
+			resolved, missing, err := objectLoader.GetTaskRunsReferencedByPipelineRun(ctx, k8sClient, pipelineRun)
+			Expect(err).To(MatchError(readErr))
+			Expect(k8serrors.IsNotFound(err)).To(BeFalse())
+			Expect(resolved).To(BeNil())
+			Expect(missing).To(BeNil())
+		})
+
+		It("loads referenced TaskRuns through the mock loader when the context has no overrides", func() {
+			pipelineRun := &tektonv1.PipelineRun{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "mock-delegate-plr",
+					Namespace: namespace,
+				},
+				Status: tektonv1.PipelineRunStatus{
+					PipelineRunStatusFields: tektonv1.PipelineRunStatusFields{
+						ChildReferences: []tektonv1.ChildStatusReference{
+							{
+								Name:             successfulTaskRun.Name,
+								PipelineTaskName: "task1",
+							},
+						},
+					},
+				},
+			}
+
+			mockLoader := NewMockLoaderWithAPIReader(k8sClient)
+			resolved, missing, err := mockLoader.GetTaskRunsReferencedByPipelineRun(ctx, k8sClient, pipelineRun)
+			Expect(err).To(Succeed())
+			Expect(resolved).To(HaveKey(successfulTaskRun.Name))
+			Expect(missing).To(BeEmpty())
+		})
+
 		It("Can fetch component", func() {
 			fetchedBuildComponent, err := loader.GetComponent(ctx, k8sClient, hasComp.Spec.ComponentName, hasComp.Namespace)
 			Expect(err).To(Succeed())
@@ -1694,3 +1880,15 @@ var _ = Describe("Loader secret, service account, and repository fetches", func(
 		})
 	})
 })
+
+type errReader struct {
+	err error
+}
+
+func (r errReader) Get(context.Context, client.ObjectKey, client.Object, ...client.GetOption) error {
+	return r.err
+}
+
+func (r errReader) List(context.Context, client.ObjectList, ...client.ListOption) error {
+	return r.err
+}

@@ -26,6 +26,7 @@ import (
 	oldapplicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
 	"github.com/konflux-ci/integration-service/api/v1beta2"
 	"github.com/konflux-ci/integration-service/gitops"
+	"github.com/konflux-ci/integration-service/helpers"
 	"github.com/konflux-ci/integration-service/pkg/conversion"
 	tektonconsts "github.com/konflux-ci/integration-service/tekton/consts"
 	toolkit "github.com/konflux-ci/operator-toolkit/loader"
@@ -46,6 +47,10 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
+// ObjectLoader loads Kubernetes objects for the integration service.
+// It is not meant to be implemented outside this package. The unexported
+// objectLoader method keeps the interface sealed, so new methods can be
+// added here without breaking external code.
 type ObjectLoader interface {
 	GetReleasesWithSnapshot(ctx context.Context, c client.Client, snapshot *oldapplicationapiv1alpha1.Snapshot) (*[]releasev1alpha1.Release, error)
 	GetAllApplicationComponents(ctx context.Context, c client.Client, application *oldapplicationapiv1alpha1.Application) (*[]oldapplicationapiv1alpha1.Component, error)
@@ -76,6 +81,8 @@ type ObjectLoader interface {
 	GetAllSnapshotsForPR(ctx context.Context, c client.Client, object metav1.ObjectMeta, componentName, pullRequest string) (*[]oldapplicationapiv1alpha1.Snapshot, error)
 	GetAllPullSnapshotsForPR(ctx context.Context, c client.Client, object metav1.ObjectMeta, componentName, pullRequest string) (*[]oldapplicationapiv1alpha1.Snapshot, error)
 	GetAllTaskRunsWithMatchingPipelineRunLabel(ctx context.Context, c client.Client, pipelineRun *tektonv1.PipelineRun) (*[]tektonv1.TaskRun, error)
+	GetTaskRun(ctx context.Context, c client.Reader, name, namespace string) (*tektonv1.TaskRun, error)
+	GetTaskRunsReferencedByPipelineRun(ctx context.Context, c client.Client, pipelineRun *tektonv1.PipelineRun) (map[string]*tektonv1.TaskRun, []string, error)
 	GetPipelineRun(ctx context.Context, c client.Client, name, namespace string) (*tektonv1.PipelineRun, error)
 	GetComponent(ctx context.Context, c client.Client, name, namespace string) (*oldapplicationapiv1alpha1.Component, error)
 	GetAppstudioComponent(ctx context.Context, c client.Client, name, namespace string) (*oldapplicationapiv1alpha1.Component, error)
@@ -97,17 +104,33 @@ type ObjectLoader interface {
 	GetSecret(ctx context.Context, c client.Client, name, namespace string) (*corev1.Secret, error)
 	GetServiceAccount(ctx context.Context, c client.Client, name, namespace string) (*corev1.ServiceAccount, error)
 	GetAllRepositoriesInNamespace(ctx context.Context, c client.Client, namespace string) (*[]pacv1alpha1.Repository, error)
+
+	// objectLoader prevents implementations outside this package.
+	objectLoader()
 }
 
-type loader struct{}
+type loader struct {
+	// apiReader reads TaskRuns that are missing from the informer cache directly
+	// from the API server. A nil reader uses the client passed to the method.
+	apiReader client.Reader
+}
 
 type Tuple struct {
 	ComponentName    string `json:"componentName"`
 	ComponentVersion string `json:"componentVersion"`
 }
 
+func (l *loader) objectLoader() {}
+
 func NewLoader() ObjectLoader {
-	return &loader{}
+	return NewLoaderWithAPIReader(nil)
+}
+
+// NewLoaderWithAPIReader returns a loader that reads TaskRuns missing from the
+// informer cache directly from apiReader. A nil apiReader uses the client passed
+// to GetTaskRunsReferencedByPipelineRun.
+func NewLoaderWithAPIReader(apiReader client.Reader) ObjectLoader {
+	return &loader{apiReader: apiReader}
 }
 
 // GetReleasesWithSnapshot returns all Releases associated with the given snapshot.
@@ -706,6 +729,89 @@ func (l *loader) GetAllTaskRunsWithMatchingPipelineRunLabel(ctx context.Context,
 	}
 
 	return &taskRuns.Items, nil
+}
+
+// GetTaskRun returns the TaskRun requested by name and namespace.
+// c may be the cached client or a direct API reader. Pass the API reader when
+// the informer cache may not yet contain the TaskRun.
+func (l *loader) GetTaskRun(ctx context.Context, c client.Reader, name, namespace string) (*tektonv1.TaskRun, error) {
+	taskRun := &tektonv1.TaskRun{}
+	err := c.Get(ctx, types.NamespacedName{Name: name, Namespace: namespace}, taskRun)
+	if err != nil {
+		return nil, err
+	}
+	return taskRun, nil
+}
+
+// GetTaskRunsReferencedByPipelineRun returns the TaskRuns named by the PipelineRun's
+// TaskRun childReferences. Retried TaskRuns that share the PipelineRun label but are
+// no longer referenced, and CustomRun childReferences, are ignored.
+// c lists TaskRuns from the informer cache. Names missing from that list are read
+// with the API reader supplied to NewLoaderWithAPIReader, or with c when that reader
+// was not set.
+func (l *loader) GetTaskRunsReferencedByPipelineRun(ctx context.Context, c client.Client, pipelineRun *tektonv1.PipelineRun) (map[string]*tektonv1.TaskRun, []string, error) {
+	listed, err := l.GetAllTaskRunsWithMatchingPipelineRunLabel(ctx, c, pipelineRun)
+	if err != nil {
+		return nil, nil, err
+	}
+	apiReader := readerOr(l.apiReader, c)
+	return taskRunsForChildReferences(ctx, pipelineRun, listed, func(name string) (*tektonv1.TaskRun, error) {
+		return l.GetTaskRun(ctx, apiReader, name, pipelineRun.Namespace)
+	})
+}
+
+// readerOr returns preferred when it is set and fallback otherwise.
+func readerOr(preferred, fallback client.Reader) client.Reader {
+	if preferred != nil {
+		return preferred
+	}
+	return fallback
+}
+
+// taskRunsForChildReferences returns the TaskRuns named by pipelineRun's TaskRun
+// childReferences. Names found in listed are returned from that slice. getTaskRun
+// reads the rest. NotFound names are returned as missing. Any other error from
+// getTaskRun is returned immediately.
+func taskRunsForChildReferences(
+	ctx context.Context,
+	pipelineRun *tektonv1.PipelineRun,
+	listed *[]tektonv1.TaskRun,
+	getTaskRun func(name string) (*tektonv1.TaskRun, error),
+) (map[string]*tektonv1.TaskRun, []string, error) {
+	expected := helpers.TaskRunChildReferenceNames(pipelineRun)
+	byName := make(map[string]*tektonv1.TaskRun, len(*listed))
+	for i := range *listed {
+		byName[(*listed)[i].Name] = &(*listed)[i]
+	}
+
+	resolved := make(map[string]*tektonv1.TaskRun, len(expected))
+	missing := make([]string, 0)
+	for _, name := range expected {
+		if taskRun, ok := byName[name]; ok {
+			resolved[name] = taskRun
+			continue
+		}
+		missing = append(missing, name)
+	}
+	if len(missing) == 0 {
+		return resolved, missing, nil
+	}
+
+	logf.FromContext(ctx).Info("Some referenced TaskRuns were missing from the cache, reading them from the API server",
+		"pipelineRun.Name", pipelineRun.Name, "missingTaskRuns", missing)
+	stillMissing := make([]string, 0, len(missing))
+	for _, name := range missing {
+		taskRun, err := getTaskRun(name)
+		if err != nil {
+			if k8serrors.IsNotFound(err) {
+				stillMissing = append(stillMissing, name)
+				continue
+			}
+			return nil, nil, err
+		}
+		resolved[name] = taskRun
+	}
+	return resolved, stillMissing, nil
 }
 
 // GetPipelineRun returns Tekton pipelineRun requested by name and namespace

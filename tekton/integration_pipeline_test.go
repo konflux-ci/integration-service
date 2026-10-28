@@ -42,8 +42,26 @@ import (
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	resolutionv1beta1 "github.com/tektoncd/pipeline/pkg/apis/resolution/v1beta1"
 	corev1 "k8s.io/api/core/v1"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
+
+// expectCreatePipelineRun creates a PipelineRun that uses generateName.
+// Kubernetes 1.29 returns AlreadyExists when the generated suffix collides and
+// does not try another suffix. Clearing the name lets the next attempt get a new one.
+func expectCreatePipelineRun(plr *tekton.IntegrationPipelineRun) {
+	var err error
+	for attempt := 0; attempt < 8; attempt++ {
+		plr.Name = ""
+		plr.ResourceVersion = ""
+		plr.UID = ""
+		err = k8sClient.Create(ctx, plr.AsPipelineRun())
+		if !k8serrors.IsAlreadyExists(err) {
+			break
+		}
+	}
+	Expect(err).NotTo(HaveOccurred())
+}
 
 // the pipelinerun yaml gotten from git resolver is prepared for resolutionRequest unittest
 const expectedPipelineYAML = `---
@@ -264,7 +282,7 @@ var _ = Describe("Integration pipeline", Ordered, func() {
 		log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
 		newIntegrationPipelineRun, err = tekton.NewIntegrationPipelineRun(k8sClient, ctx, loader.NewMockLoader(), log, prefix, namespace, integrationTestScenarioGit, hasSnapshot)
 		Expect(err).NotTo(HaveOccurred())
-		Expect(k8sClient.Create(ctx, newIntegrationPipelineRun.AsPipelineRun())).Should(Succeed())
+		expectCreatePipelineRun(newIntegrationPipelineRun)
 
 		integrationTestScenarioBundle = &v1beta2.IntegrationTestScenario{
 			ObjectMeta: metav1.ObjectMeta{
@@ -305,7 +323,7 @@ var _ = Describe("Integration pipeline", Ordered, func() {
 			WithSnapshot(hasSnapshot, integrationTestScenarioBundle).
 			WithApplication(hasApp)
 		snapshotString, _ := json.Marshal(hasSnapshot.Spec)
-		Expect(k8sClient.Create(ctx, newIntegrationBundlePipelineRun.AsPipelineRun())).Should(Succeed())
+		expectCreatePipelineRun(newIntegrationBundlePipelineRun)
 		actualValue := getParamValue(newIntegrationBundlePipelineRun.Spec.Params, "SNAPSHOT")
 		Expect(actualValue).To(Equal(string(snapshotString)))
 
@@ -317,7 +335,7 @@ var _ = Describe("Integration pipeline", Ordered, func() {
 			WithSnapshot(hasSnapshot, enterpriseContractTestScenario).
 			WithExtraParams(enterpriseContractTestScenario.Spec.Params).
 			WithApplication(hasApp)
-		Expect(k8sClient.Create(ctx, enterpriseContractPipelineRun.AsPipelineRun())).Should(Succeed())
+		expectCreatePipelineRun(enterpriseContractPipelineRun)
 		actualValue = getParamValue(enterpriseContractPipelineRun.Spec.Params, "SNAPSHOT")
 		Expect(actualValue).To(Equal(string(hasSnapshot.Name)))
 
@@ -350,7 +368,7 @@ var _ = Describe("Integration pipeline", Ordered, func() {
 			plr, err := tekton.NewIntegrationPipelineRun(k8sClient, ctx, mockLoader, log, prefix, namespace, integrationTestScenarioGit, hasSnapshot)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(plr).NotTo(BeNil())
-			Expect(k8sClient.Create(ctx, plr.AsPipelineRun())).Should(Succeed())
+			expectCreatePipelineRun(plr)
 		})
 
 		It("can create an IntegrationPipelineRun with 'pipelinerun' ResourceKind", func() {
@@ -414,7 +432,7 @@ var _ = Describe("Integration pipeline", Ordered, func() {
 			plr, err := tekton.NewIntegrationPipelineRun(k8sClient, mockContext, loader.NewMockLoader(), logger, prefix, namespace, integrationTestScenarioGit, hasSnapshot)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(plr).NotTo(BeNil())
-			Expect(k8sClient.Create(ctx, plr.AsPipelineRun())).Should(Succeed())
+			expectCreatePipelineRun(plr)
 
 			foundUrl := false
 			foundRevision := false

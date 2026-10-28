@@ -13,6 +13,8 @@ flowchart TD
   predicate((PREDICATE: <br>Integration Pipeline just got<br> Started OR Finished<br> OR marked for Deletion))
   get_resources{Get pipeline, <br> component, <br> & application}
   report_status_snapshot(Report status of the test <br> into snapshot annotation <br> `test.appstudio.openshift.io/status`)
+  taskruns_missing_within_grace{Are referenced TaskRuns <br> missing but within the <br> 5-minute grace period?}
+  requeue(Controller requeues with error)
   is_snapshot_of_pr_event{Is <br> Snapshot created<br> for Pull requests?}
   is_plr_finished_or_getting_deleted{Is <br> Integration PLR <br> finished or marked for<br> deletion?}
   remove_finalizer(Remove <br> `test.appstudio.openshift.io/pipelinerun`<br> finalizer)
@@ -23,7 +25,9 @@ flowchart TD
   predicate                                   --> get_resources
   get_resources     --No                      --> error
   get_resources     --Yes                     --> report_status_snapshot
-  report_status_snapshot                      --> is_snapshot_of_pr_event
+  report_status_snapshot                      --> taskruns_missing_within_grace
+  taskruns_missing_within_grace     --Yes    --> requeue
+  taskruns_missing_within_grace     --No     --> is_snapshot_of_pr_event
   is_snapshot_of_pr_event            --Yes    --> continue1
   is_snapshot_of_pr_event            --No     --> is_plr_finished_or_getting_deleted
   is_plr_finished_or_getting_deleted --Yes    --> remove_finalizer
@@ -32,6 +36,6 @@ flowchart TD
 
   %% Assigning styles to nodes
   class predicate Amber;
-  class error,requeue Red;
+  class error,taskruns_missing_within_grace,requeue Red;
 
  ```
