@@ -89,6 +89,12 @@ const (
 	// DefaultIntegrationPipelineClusterRoleName is the ClusterRole referenced by the integration pipeline RoleBinding
 	DefaultIntegrationPipelineClusterRoleName = "konflux-integration-runner"
 
+	// ComponentIntegrationPipelineServiceAccountPrefix is the prefix of the per-component ServiceAccount
+	// that integration PipelineRuns on a component Snapshot run as; the full name is the prefix followed
+	// by the Component's metadata name (STONEINTG-1799). The RoleBinding for that account has the same name
+	// and binds DefaultIntegrationPipelineClusterRoleName, the role the shared runner account uses.
+	ComponentIntegrationPipelineServiceAccountPrefix = "its-pipeline-"
+
 	/*
 	 * Build PipelineConstants
 	 */
