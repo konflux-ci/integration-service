@@ -58,6 +58,7 @@ Happy path testing describes tests that focus on the most common scenarios while
 ### 1. Happy Path Tests within `integration.go`
 Checkpoints:
 - Testing for successful creation of applications and components.
+- Verifying that the per-component `its-pipeline-<component>` ServiceAccount and its RoleBinding are created and owned by the Component.
 - Checking if the BuildPipelineRun is successfully triggered, contains the finalizer, and was completed.
 - Asserting the signing of BuildPipelineRun.
 - Validating the successful creation of a Snapshot, and removal of finalizer from BuildPipelineRun.

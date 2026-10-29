@@ -1,12 +1,15 @@
 package integration
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"os"
 	"regexp"
 	"strings"
 	"time"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/konflux-ci/image-controller/pkg/quay"
 	"github.com/konflux-ci/operator-toolkit/metadata"
@@ -85,6 +88,19 @@ var _ = framework.IntegrationServiceSuiteDescribe("Integration Service E2E tests
 			ginkgo.It("triggers a build PipelineRun", ginkgo.Label("integration-service"), func() {
 				pipelineRun, err = f.AsKubeDeveloper.IntegrationController.GetBuildPipelineRun(componentName, applicationName, testNamespace, false, "")
 				gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
+			})
+
+			ginkgo.It("creates the its-pipeline ServiceAccount and RoleBinding owned by the Component", ginkgo.Label("integration-service"), func() {
+				accountName := "its-pipeline-" + componentName
+				gomega.Eventually(func(g gomega.Gomega) {
+					sa, err := f.AsKubeAdmin.CommonController.KubeInterface().CoreV1().ServiceAccounts(testNamespace).Get(context.Background(), accountName, metav1.GetOptions{})
+					g.Expect(err).ShouldNot(gomega.HaveOccurred())
+					g.Expect(sa.OwnerReferences).To(gomega.ContainElement(gomega.HaveField("UID", originalComponent.UID)))
+					rb, err := f.AsKubeAdmin.CommonController.KubeInterface().RbacV1().RoleBindings(testNamespace).Get(context.Background(), accountName, metav1.GetOptions{})
+					g.Expect(err).ShouldNot(gomega.HaveOccurred())
+					g.Expect(rb.RoleRef.Name).To(gomega.Equal("konflux-integration-runner"))
+					g.Expect(rb.OwnerReferences).To(gomega.ContainElement(gomega.HaveField("UID", originalComponent.UID)))
+				}, 1*time.Minute, 1*time.Second).Should(gomega.Succeed(), "timeout when waiting for the its-pipeline ServiceAccount and RoleBinding")
 			})
 
 			ginkgo.It("verifies if the build PipelineRun contains the finalizer", ginkgo.Label("integration-service"), func() {
