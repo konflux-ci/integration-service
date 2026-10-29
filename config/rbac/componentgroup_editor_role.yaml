@@ -3,7 +3,7 @@
 # for users.
 #
 # Grants permissions to create, update, and delete ComponentGroup
-# resources within the appstudio.redhat.com. This role is intended for
+# resources within the konflux-ci.dev. This role is intended for
 # users who need to manage these resources but should not control RBAC
 # or manage permissions for others.
 
@@ -16,7 +16,7 @@ metadata:
   name: componentgroup-editor-role
 rules:
 - apiGroups:
-  - appstudio.redhat.com
+  - konflux-ci.dev
   resources:
   - componentgroups
   verbs:
@@ -28,7 +28,7 @@ rules:
   - update
   - watch
 - apiGroups:
-  - appstudio.redhat.com
+  - konflux-ci.dev
   resources:
   - componentgroups/status
   verbs:

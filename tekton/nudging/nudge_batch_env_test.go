@@ -19,6 +19,7 @@ package nudging
 import (
 	"time"
 
+	konfluxv1beta2 "github.com/konflux-ci/integration-service/api/konflux/v1beta2"
 	"github.com/konflux-ci/integration-service/api/v1beta2"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -47,6 +48,7 @@ var _ = Describe("Nudge batch client operations", func() {
 	BeforeEach(func() {
 		scheme = runtime.NewScheme()
 		Expect(v1beta2.AddToScheme(scheme)).To(Succeed())
+		Expect(konfluxv1beta2.AddToScheme(scheme)).To(Succeed())
 		Expect(tektonv1.AddToScheme(scheme)).To(Succeed())
 
 		nudgeConfig = &v1beta2.NudgeConfig{

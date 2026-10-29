@@ -3,6 +3,7 @@ package common
 import (
 	appstudioApi "github.com/konflux-ci/application-api/api/v1alpha1"
 	imagecontroller "github.com/konflux-ci/image-controller/api/v1alpha1"
+	konfluxv1beta2 "github.com/konflux-ci/integration-service/api/konflux/v1beta2"
 	integrationservicev1beta2 "github.com/konflux-ci/integration-service/api/v1beta2"
 	pacv1alpha1 "github.com/openshift-pipelines/pipelines-as-code/pkg/apis/pipelinesascode/v1alpha1"
 
@@ -34,6 +35,7 @@ func init() {
 	utilruntime.Must(tekton.AddToScheme(scheme))
 	utilruntime.Must(release.AddToScheme(scheme))
 	utilruntime.Must(integrationservicev1beta2.AddToScheme(scheme))
+	utilruntime.Must(konfluxv1beta2.AddToScheme(scheme))
 	utilruntime.Must(imagecontroller.AddToScheme(scheme))
 	utilruntime.Must(pacv1alpha1.AddToScheme(scheme))
 }

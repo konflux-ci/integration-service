@@ -26,6 +26,7 @@ import (
 	. "github.com/onsi/gomega"
 	"github.com/onsi/gomega/gstruct"
 
+	konfluxv1beta2 "github.com/konflux-ci/integration-service/api/konflux/v1beta2"
 	"github.com/konflux-ci/integration-service/api/v1beta2"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	resolutionv1beta1 "github.com/tektoncd/pipeline/pkg/apis/resolution/v1beta1"
@@ -49,9 +50,9 @@ var _ = Describe("Loader", Ordered, func() {
 		hasCGSnapshot               *oldapplicationapiv1alpha1.Snapshot
 		hasGroupSnapshot            *oldapplicationapiv1alpha1.Snapshot
 		hasApp                      *oldapplicationapiv1alpha1.Application
-		hasComponentGroup1          *v1beta2.ComponentGroup
-		hasComponentGroup2          *v1beta2.ComponentGroup
-		hasContainerCompGroup       *v1beta2.ComponentGroup
+		hasComponentGroup1          *konfluxv1beta2.ComponentGroup
+		hasComponentGroup2          *konfluxv1beta2.ComponentGroup
+		hasContainerCompGroup       *konfluxv1beta2.ComponentGroup
 		hasComp                     *oldapplicationapiv1alpha1.Component
 		integrationTestScenario     *v1beta2.IntegrationTestScenario
 		integrationTestScenarioOpt  *v1beta2.IntegrationTestScenario
@@ -94,16 +95,16 @@ var _ = Describe("Loader", Ordered, func() {
 		}
 		Expect(k8sClient.Create(ctx, hasApp)).Should(Succeed())
 
-		hasComponentGroup1 = &v1beta2.ComponentGroup{
+		hasComponentGroup1 = &konfluxv1beta2.ComponentGroup{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "componentgroup-1",
 				Namespace: "default",
 			},
-			Spec: v1beta2.ComponentGroupSpec{
-				Components: []v1beta2.ComponentReference{
+			Spec: konfluxv1beta2.ComponentGroupSpec{
+				Components: []konfluxv1beta2.ComponentReference{
 					{
 						Name: "component-sample",
-						ComponentVersion: v1beta2.ComponentVersionReference{
+						ComponentVersion: konfluxv1beta2.ComponentVersionReference{
 							Name: "main",
 						},
 					},
@@ -112,16 +113,16 @@ var _ = Describe("Loader", Ordered, func() {
 		}
 		Expect(k8sClient.Create(ctx, hasComponentGroup1)).Should(Succeed())
 
-		hasComponentGroup2 = &v1beta2.ComponentGroup{
+		hasComponentGroup2 = &konfluxv1beta2.ComponentGroup{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "componentgroup-2",
 				Namespace: "default",
 			},
-			Spec: v1beta2.ComponentGroupSpec{
-				Components: []v1beta2.ComponentReference{
+			Spec: konfluxv1beta2.ComponentGroupSpec{
+				Components: []konfluxv1beta2.ComponentReference{
 					{
 						Name: "component-sample",
-						ComponentVersion: v1beta2.ComponentVersionReference{
+						ComponentVersion: konfluxv1beta2.ComponentVersionReference{
 							Name: "main",
 						},
 					},
@@ -130,13 +131,13 @@ var _ = Describe("Loader", Ordered, func() {
 		}
 		Expect(k8sClient.Create(ctx, hasComponentGroup2)).Should(Succeed())
 
-		hasContainerCompGroup = &v1beta2.ComponentGroup{
+		hasContainerCompGroup = &konfluxv1beta2.ComponentGroup{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "container-componentgroup",
 				Namespace: "default",
 			},
-			Spec: v1beta2.ComponentGroupSpec{
-				Components: []v1beta2.ComponentReference{
+			Spec: konfluxv1beta2.ComponentGroupSpec{
+				Components: []konfluxv1beta2.ComponentReference{
 					{
 						Name: "componentgroup-1",
 						Kind: "componentgroup",
@@ -573,13 +574,13 @@ var _ = Describe("Loader", Ordered, func() {
 		Expect(k8sClient.Create(ctx, taskRunSample)).Should(Succeed())
 	})
 
-	deleteComponentGroup := func(cg *v1beta2.ComponentGroup) {
+	deleteComponentGroup := func(cg *konfluxv1beta2.ComponentGroup) {
 		err := k8sClient.Delete(ctx, cg)
 		Expect(err == nil || k8serrors.IsNotFound(err)).To(BeTrue())
 
 		// Wait for the component group to be removed
 		Eventually(func() bool {
-			tmpCg := &v1beta2.ComponentGroup{}
+			tmpCg := &konfluxv1beta2.ComponentGroup{}
 			err := k8sClient.Get(ctx, types.NamespacedName{
 				Namespace: cg.Namespace,
 				Name:      cg.Name,
@@ -818,6 +819,15 @@ var _ = Describe("Loader", Ordered, func() {
 		Expect(err).ToNot(HaveOccurred())
 		Expect(integrationTestScenarios).NotTo(BeNil())
 		Expect(*integrationTestScenarios).To(HaveLen(2))
+	})
+
+	It("can fetch all integrationTestScenario for component groups", func() {
+		componentGroups := []konfluxv1beta2.ComponentGroup{*hasComponentGroup1, *hasComponentGroup2}
+		integrationTestScenarios, err := loader.GetAllIntegrationTestScenariosForComponentGroups(ctx, k8sClient, &componentGroups)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(integrationTestScenarios).NotTo(BeNil())
+		Expect(*integrationTestScenarios).To(HaveLen(1))
+		Expect((*integrationTestScenarios)[0].Name).To(Equal(integrationTestScenarioCG.Name))
 	})
 
 	It("can fetch required integrationTestScenario for application [APPLICATION]", func() {
@@ -1102,23 +1112,23 @@ var _ = Describe("Loader", Ordered, func() {
 
 	When("release plan with auto-release label is set to false", func() {
 		var (
-			hasCompGroup1  *v1beta2.ComponentGroup
-			hasCompGroup2  *v1beta2.ComponentGroup
+			hasCompGroup1  *konfluxv1beta2.ComponentGroup
+			hasCompGroup2  *konfluxv1beta2.ComponentGroup
 			hasCGSnapshot1 *oldapplicationapiv1alpha1.Snapshot
 			hasCGSnapshot2 *oldapplicationapiv1alpha1.Snapshot
 		)
 
 		BeforeAll(func() {
-			hasCompGroup1 = &v1beta2.ComponentGroup{
+			hasCompGroup1 = &konfluxv1beta2.ComponentGroup{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "component-group-sample",
 					Namespace: "default",
 				},
-				Spec: v1beta2.ComponentGroupSpec{
-					Components: []v1beta2.ComponentReference{
-						v1beta2.ComponentReference{
+				Spec: konfluxv1beta2.ComponentGroupSpec{
+					Components: []konfluxv1beta2.ComponentReference{
+						konfluxv1beta2.ComponentReference{
 							Name: "component-sample",
-							ComponentVersion: v1beta2.ComponentVersionReference{
+							ComponentVersion: konfluxv1beta2.ComponentVersionReference{
 								Name:     "v1",
 								Revision: "main",
 							},
@@ -1128,16 +1138,16 @@ var _ = Describe("Loader", Ordered, func() {
 			}
 			Expect(k8sClient.Create(ctx, hasCompGroup1)).Should(Succeed())
 
-			hasCompGroup2 = &v1beta2.ComponentGroup{
+			hasCompGroup2 = &konfluxv1beta2.ComponentGroup{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "another-component-group-sample",
 					Namespace: "default",
 				},
-				Spec: v1beta2.ComponentGroupSpec{
-					Components: []v1beta2.ComponentReference{
-						v1beta2.ComponentReference{
+				Spec: konfluxv1beta2.ComponentGroupSpec{
+					Components: []konfluxv1beta2.ComponentReference{
+						konfluxv1beta2.ComponentReference{
 							Name: "another-component-sample",
-							ComponentVersion: v1beta2.ComponentVersionReference{
+							ComponentVersion: konfluxv1beta2.ComponentVersionReference{
 								Name:     "v1",
 								Revision: "main",
 							},
@@ -1608,18 +1618,18 @@ var _ = Describe("Loader", Ordered, func() {
 			inputSnapCG      *oldapplicationapiv1alpha1.Snapshot
 			inputSnapNoComp  *oldapplicationapiv1alpha1.Snapshot
 			inputSnapNoScope *oldapplicationapiv1alpha1.Snapshot
-			pushCG           *v1beta2.ComponentGroup
+			pushCG           *konfluxv1beta2.ComponentGroup
 		)
 
 		BeforeAll(func() {
-			pushCG = &v1beta2.ComponentGroup{
+			pushCG = &konfluxv1beta2.ComponentGroup{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      pushCGName,
 					Namespace: namespace,
 				},
-				Spec: v1beta2.ComponentGroupSpec{
-					Components: []v1beta2.ComponentReference{
-						{Name: pushComp, ComponentVersion: v1beta2.ComponentVersionReference{Name: "main"}},
+				Spec: konfluxv1beta2.ComponentGroupSpec{
+					Components: []konfluxv1beta2.ComponentReference{
+						{Name: pushComp, ComponentVersion: konfluxv1beta2.ComponentVersionReference{Name: "main"}},
 					},
 				},
 			}
