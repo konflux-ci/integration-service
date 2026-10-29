@@ -1759,6 +1759,9 @@ func isBuildPLROlderThanLastBuild(pipelineRun *tektonv1.PipelineRun, component *
 	if componentlastBuiltTime == "" {
 		return false
 	}
+	if pipelineRun.Status.StartTime == nil {
+		return false
+	}
 	buildStartTimeStr := pipelineRun.Status.StartTime.Unix()
 	componentlastBuiltTimeInt, componentlastBuiltTimeIntErr := strconv.ParseInt(componentlastBuiltTime, 10, 64)
 	if componentlastBuiltTimeIntErr != nil {
