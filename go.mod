@@ -34,7 +34,7 @@ replace (
 )
 
 require (
-	github.com/agiledragon/gomonkey/v2 v2.14.3
+	github.com/agiledragon/gomonkey/v2 v2.14.4
 	github.com/bradleyfalzon/ghinstallation/v2 v2.17.0
 	github.com/ghodss/yaml v1.0.0
 	github.com/go-logr/logr v1.4.4
