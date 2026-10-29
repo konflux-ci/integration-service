@@ -17,6 +17,9 @@ limitations under the License.
 package nudging
 
 import (
+	"context"
+	"errors"
+	"fmt"
 	"time"
 
 	"github.com/konflux-ci/integration-service/api/v1beta2"
@@ -28,6 +31,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 )
 
 var _ = Describe("Nudge batch client operations", func() {
@@ -96,8 +100,11 @@ var _ = Describe("Nudge batch client operations", func() {
 			Expect(updated.Status.ActiveBatches).To(HaveLen(1))
 			Expect(updated.Status.ActiveBatches[0].Target).To(Equal(target))
 			Expect(updated.Status.ActiveBatches[0].Phase).To(Equal(v1beta2.BatchPhaseAccumulating))
+			Expect(updated.Status.ActiveBatches[0].NudgePipelineRun).To(Equal(BatchedNudgePipelineRunName(updated.Status.ActiveBatches[0].BatchID, 0)))
 			Expect(updated.Status.ActiveBatches[0].Accumulated).To(HaveLen(1))
 			Expect(updated.Status.ActiveBatches[0].Accumulated[0].BuildPipelineRun).To(Equal(buildPLR.Name))
+			Expect(updated.Status.ActiveBatches[0].Accumulated[0].ServiceAccountName).To(Equal(buildPLR.Spec.TaskRunTemplate.ServiceAccountName))
+			Expect(updated.Status.ActiveBatches[0].BatchID).To(MatchRegexp(`^` + target + `_\d+$`))
 		})
 
 		It("should be idempotent when the same build PipelineRun is recorded twice", func() {
@@ -140,6 +147,94 @@ var _ = Describe("Nudge batch client operations", func() {
 			Expect(updated.Status.ActiveBatches[0].Failed).To(HaveLen(1))
 			Expect(updated.Status.ActiveBatches[0].FireAt).To(BeNil())
 		})
+
+		It("should default the failure reason when none is provided", func() {
+			c := newClient(nudgeConfig, buildPLR)
+			Expect(RecordFailedBuildForBatchedNudge(ctx, c, nudgeConfig, target, source, buildPLR, "")).To(Succeed())
+
+			updated := &v1beta2.NudgeConfig{}
+			Expect(c.Get(ctx, types.NamespacedName{Name: nudgeConfig.Name, Namespace: namespace}, updated)).To(Succeed())
+			Expect(updated.Status.ActiveBatches[0].Failed[0].Reason).To(Equal("build pipeline failed"))
+		})
+
+		It("should no-op when the same failed build is recorded again", func() {
+			c := newClient(nudgeConfig, buildPLR)
+			reason := "task failed"
+			Expect(RecordFailedBuildForBatchedNudge(ctx, c, nudgeConfig, target, source, buildPLR, reason)).To(Succeed())
+			Expect(RecordFailedBuildForBatchedNudge(ctx, c, nudgeConfig, target, source, buildPLR, reason)).To(Succeed())
+
+			updated := &v1beta2.NudgeConfig{}
+			Expect(c.Get(ctx, types.NamespacedName{Name: nudgeConfig.Name, Namespace: namespace}, updated)).To(Succeed())
+			Expect(updated.Status.ActiveBatches[0].Failed).To(HaveLen(1))
+		})
+	})
+
+	Context("When handling force-fire conditions and no-op actions", func() {
+		It("should no-op ProcessForceFireAction when spec.actions is nil", func() {
+			c := newClient(nudgeConfig)
+			Expect(ProcessForceFireAction(ctx, c, nudgeConfig)).To(Succeed())
+		})
+
+		It("should return ErrForceFireIgnored when the target batch is already firing", func() {
+			now := metav1.Now()
+			nudgeConfig.Status.ActiveBatches = []v1beta2.ActiveBatch{{
+				Target:           target,
+				BatchID:          "firing",
+				Phase:            v1beta2.BatchPhaseFiring,
+				CreatedAt:        now,
+				NudgePipelineRun: "nudge-batch-firing",
+			}}
+			c := newClient(nudgeConfig)
+			nudgeConfig.Spec.Actions = &v1beta2.Actions{
+				ForceFire: &v1beta2.ForceFireAction{Target: target},
+			}
+			err := ProcessForceFireAction(ctx, c, nudgeConfig)
+			Expect(errors.Is(err, ErrForceFireIgnored)).To(BeTrue())
+		})
+
+		It("should record force-fire rejected conditions", func() {
+			c := newClient(nudgeConfig)
+			Expect(SetForceFireRejectedCondition(ctx, c, nudgeConfig, "rejected")).To(Succeed())
+
+			updated := &v1beta2.NudgeConfig{}
+			Expect(c.Get(ctx, types.NamespacedName{Name: nudgeConfig.Name, Namespace: namespace}, updated)).To(Succeed())
+			Expect(updated.Status.Conditions).To(ContainElement(And(
+				HaveField("Type", v1beta2.NudgeConfigConditionForceFireRejected),
+				HaveField("Status", metav1.ConditionTrue),
+				HaveField("Message", "rejected"),
+			)))
+		})
+
+		It("should no-op when clearing absent force-fire conditions", func() {
+			c := newClient(nudgeConfig)
+			Expect(ClearForceFireRejectedCondition(ctx, c, nudgeConfig)).To(Succeed())
+			Expect(ClearForceFireIgnoredCondition(ctx, c, nudgeConfig)).To(Succeed())
+		})
+
+		It("should record force-fire ignored conditions", func() {
+			c := newClient(nudgeConfig)
+			Expect(SetForceFireIgnoredCondition(ctx, c, nudgeConfig, "ignored")).To(Succeed())
+
+			updated := &v1beta2.NudgeConfig{}
+			Expect(c.Get(ctx, types.NamespacedName{Name: nudgeConfig.Name, Namespace: namespace}, updated)).To(Succeed())
+			Expect(updated.Status.Conditions).To(ContainElement(And(
+				HaveField("Type", v1beta2.NudgeConfigConditionForceFireIgnored),
+				HaveField("Status", metav1.ConditionTrue),
+				HaveField("Message", "ignored"),
+			)))
+		})
+
+		It("should clear force-fire ignored conditions after they were set", func() {
+			c := newClient(nudgeConfig)
+			Expect(SetForceFireIgnoredCondition(ctx, c, nudgeConfig, "ignored")).To(Succeed())
+			Expect(ClearForceFireIgnoredCondition(ctx, c, nudgeConfig)).To(Succeed())
+		})
+
+		It("should clear force-fire rejected conditions after they were set", func() {
+			c := newClient(nudgeConfig)
+			Expect(SetForceFireRejectedCondition(ctx, c, nudgeConfig, "rejected")).To(Succeed())
+			Expect(ClearForceFireRejectedCondition(ctx, c, nudgeConfig)).To(Succeed())
+		})
 	})
 
 	Context("When clearing one-shot actions", func() {
@@ -163,6 +258,33 @@ var _ = Describe("Nudge batch client operations", func() {
 				ForceFire: &v1beta2.ForceFireAction{Target: target},
 			}
 			Expect(ProcessForceFireAction(ctx, c, nudgeConfig)).To(MatchError(ContainSubstring("no force-fireable batch")))
+		})
+
+		It("should reject forceFire on a blocked batch when includePartial is false", func() {
+			now := metav1.Now()
+			includePartial := false
+			nudgeConfig.Status.ActiveBatches = []v1beta2.ActiveBatch{
+				{
+					Target:       target,
+					BatchID:      "blocked-batch",
+					Phase:        v1beta2.BatchPhaseBlocked,
+					CreatedAt:    now,
+					HardDeadline: metav1.NewTime(now.Add(time.Hour)),
+					Accumulated: []v1beta2.AccumulatedEntry{
+						{From: source, ImageDigest: "sha256:abc", BuildPipelineRun: buildPLR.Name, CapturedAt: now},
+					},
+					Failed: []v1beta2.FailedEntry{
+						{From: "other-operand", BuildPipelineRun: "plr-fail", Reason: "failed", CapturedAt: now},
+					},
+				},
+			}
+			c := newClient(nudgeConfig, buildPLR)
+			nudgeConfig.Spec.Actions = &v1beta2.Actions{
+				ForceFire: &v1beta2.ForceFireAction{Target: target, IncludePartial: &includePartial},
+			}
+			err := ProcessForceFireAction(ctx, c, nudgeConfig)
+			Expect(err).To(MatchError(ContainSubstring("includePartial=false")))
+			Expect(err).NotTo(MatchError(ContainSubstring("no force-fireable batch")))
 		})
 
 		It("should reject forceFire when includePartial is false and failures remain", func() {
@@ -233,6 +355,60 @@ var _ = Describe("Nudge batch client operations", func() {
 			}
 			err := ProcessForceFireAction(ctx, c, nudgeConfig)
 			Expect(err).NotTo(MatchError(ContainSubstring("no force-fireable batch")))
+		})
+	})
+
+	Context("When resolving reference build PipelineRuns for firing", func() {
+		It("should use another accumulated entry when the first build PLR was pruned", func() {
+			livePLR := &tektonv1.PipelineRun{
+				ObjectMeta: metav1.ObjectMeta{Name: "live-build-plr", Namespace: namespace},
+			}
+			c := newClient(livePLR)
+			plr, err := resolveReferenceBuildPLR(ctx, c, namespace, []v1beta2.AccumulatedEntry{
+				{From: "gone", BuildPipelineRun: "pruned-build-plr"},
+				{From: source, BuildPipelineRun: livePLR.Name},
+			})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(plr.Name).To(Equal(livePLR.Name))
+		})
+
+		It("should skip accumulated entries with no build PipelineRun name", func() {
+			livePLR := &tektonv1.PipelineRun{
+				ObjectMeta: metav1.ObjectMeta{Name: "live-build-plr", Namespace: namespace},
+			}
+			c := newClient(livePLR)
+			plr, err := resolveReferenceBuildPLR(ctx, c, namespace, []v1beta2.AccumulatedEntry{
+				{From: source, BuildPipelineRun: ""},
+				{From: source, BuildPipelineRun: livePLR.Name},
+			})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(plr.Name).To(Equal(livePLR.Name))
+		})
+
+		It("should return an empty reference when every build PLR is missing", func() {
+			c := newClient()
+			plr, err := resolveReferenceBuildPLR(ctx, c, namespace, []v1beta2.AccumulatedEntry{
+				{From: source, BuildPipelineRun: "pruned-build-plr"},
+			})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(plr.Name).To(BeEmpty())
+			Expect(plr.Namespace).To(Equal(namespace))
+		})
+
+		It("should surface unexpected errors while loading a reference build PLR", func() {
+			c := fake.NewClientBuilder().WithScheme(scheme).WithInterceptorFuncs(interceptor.Funcs{
+				Get: func(ctx context.Context, cl client.WithWatch, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+					if _, ok := obj.(*tektonv1.PipelineRun); ok && key.Name == "bad-build-plr" {
+						return fmt.Errorf("apiserver unavailable")
+					}
+					return cl.Get(ctx, key, obj, opts...)
+				},
+			}).Build()
+
+			_, err := resolveReferenceBuildPLR(ctx, c, namespace, []v1beta2.AccumulatedEntry{
+				{From: source, BuildPipelineRun: "bad-build-plr"},
+			})
+			Expect(err).To(MatchError(ContainSubstring(`loading reference build PipelineRun "bad-build-plr"`)))
 		})
 	})
 

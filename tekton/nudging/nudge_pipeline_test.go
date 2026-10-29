@@ -339,6 +339,106 @@ var _ = Describe("Nudge Pipeline", func() {
 		})
 	})
 
+	Describe("GenerateRenovateConfigForBatchedSources", func() {
+		It("returns an empty config when no build results are provided", func() {
+			target := nudging.NudgeTarget{ComponentName: "target-comp"}
+			config := nudging.GenerateRenovateConfigForBatchedSources(target, nil, false)
+			Expect(config).To(Equal(nudging.RenovateConfig{}))
+		})
+
+		It("delegates to GenerateRenovateConfig for a single build result", func() {
+			target := nudging.NudgeTarget{
+				ComponentName: "target-comp",
+				GitProvider:   "github",
+				Username:      "user",
+				Token:         "token",
+				Endpoint:      "https://github.com",
+				Repositories:  []nudging.RenovateRepository{{Repository: "org/target-repo"}},
+			}
+			buildResult := &nudging.NudgeBuildResult{
+				BuiltImageRepository: "quay.io/ns/image-a",
+				BuiltImageTag:        "latest",
+				Digest:               "sha256:aaa",
+				FileMatches:          "Dockerfile",
+				SourceComponentName:  "source-a",
+			}
+			single := nudging.GenerateRenovateConfigForBatchedSources(target, []*nudging.NudgeBuildResult{buildResult}, false)
+			direct := nudging.GenerateRenovateConfig(target, buildResult, false)
+			Expect(single).To(Equal(direct))
+		})
+
+		It("merges custom managers and enable rules for multiple source builds", func() {
+			batchTarget := nudging.NudgeTarget{
+				ComponentName: "target-comp",
+				GitProvider:   "github",
+				Username:      "user",
+				GitAuthor:     "Author <author@example.com>",
+				Token:         "token",
+				Endpoint:      "https://github.com",
+				Repositories:  []nudging.RenovateRepository{{Repository: "org/target-repo"}},
+			}
+			buildResultA := &nudging.NudgeBuildResult{
+				BuiltImageRepository: "quay.io/ns/image-a",
+				BuiltImageTag:        "latest",
+				Digest:               "sha256:aaa",
+				FileMatches:          "Dockerfile",
+				SourceComponentName:  "source-a",
+				GitRepoAtShaLink:     "https://example.com/a",
+			}
+			buildResultB := &nudging.NudgeBuildResult{
+				BuiltImageRepository: "quay.io/ns/image-b",
+				BuiltImageTag:        "latest",
+				Digest:               "sha256:bbb",
+				FileMatches:          "Dockerfile",
+				SourceComponentName:  "source-b",
+				DistributionRepositories: []string{
+					"quay.io/ns/mirror-b",
+				},
+			}
+
+			config := nudging.GenerateRenovateConfigForBatchedSources(batchTarget, []*nudging.NudgeBuildResult{buildResultA, buildResultB}, false)
+
+			Expect(config.CustomManagers).To(HaveLen(2))
+			Expect(config.RegistryAliases).To(HaveKeyWithValue("quay.io/ns/mirror-b", "quay.io/ns/image-b"))
+			Expect(config.PackageRules).To(HaveLen(3))
+			Expect(config.PackageRules[0].Enabled).To(BeFalse())
+			Expect(config.PackageRules[1].CommitMessageTopic).To(Equal("source-a"))
+			Expect(config.PackageRules[2].CommitMessageTopic).To(Equal("source-b"))
+		})
+
+		It("initializes registry aliases when merging a source that defines distribution mirrors", func() {
+			batchTarget := nudging.NudgeTarget{
+				ComponentName: "target-comp",
+				GitProvider:   "github",
+				Username:      "user",
+				GitAuthor:     "Author <author@example.com>",
+				Token:         "token",
+				Endpoint:      "https://github.com",
+				Repositories:  []nudging.RenovateRepository{{Repository: "org/target-repo"}},
+			}
+			buildResultA := &nudging.NudgeBuildResult{
+				BuiltImageRepository: "quay.io/ns/image-a",
+				BuiltImageTag:        "latest",
+				Digest:               "sha256:aaa",
+				FileMatches:          "Dockerfile",
+				SourceComponentName:  "source-a",
+			}
+			buildResultB := &nudging.NudgeBuildResult{
+				BuiltImageRepository: "quay.io/ns/image-b",
+				BuiltImageTag:        "latest",
+				Digest:               "sha256:bbb",
+				FileMatches:          "Dockerfile",
+				SourceComponentName:  "source-b",
+				DistributionRepositories: []string{
+					"quay.io/ns/mirror-b",
+				},
+			}
+
+			config := nudging.GenerateRenovateConfigForBatchedSources(batchTarget, []*nudging.NudgeBuildResult{buildResultA, buildResultB}, false)
+			Expect(config.RegistryAliases).To(HaveKeyWithValue("quay.io/ns/mirror-b", "quay.io/ns/image-b"))
+		})
+	})
+
 	// ------------------------------------------------------------------
 	// CreateNudgePipelineRun
 	// ------------------------------------------------------------------
@@ -722,6 +822,151 @@ var _ = Describe("Nudge Pipeline", func() {
 				}
 				Expect(foundCACM).To(BeTrue(), "expected CA ConfigMap to be created in test-ns")
 			})
+		})
+	})
+
+	// ------------------------------------------------------------------
+	// CreateBatchedNudgePipelineRun
+	// ------------------------------------------------------------------
+	Describe("CreateBatchedNudgePipelineRun", func() {
+		var (
+			fakeClient   client.Client
+			referencePLR *tektonv1.PipelineRun
+			target       nudging.NudgeTarget
+			entries      []nudging.BatchedRenovateEntry
+			testCtx      context.Context
+		)
+
+		BeforeEach(func() {
+			testCtx = context.Background()
+			scheme := nudgeTestScheme()
+			sa := &corev1.ServiceAccount{
+				ObjectMeta: metav1.ObjectMeta{Name: "appstudio-pipeline", Namespace: "test-ns"},
+			}
+			fakeClient = fake.NewClientBuilder().WithScheme(scheme).WithObjects(sa).Build()
+
+			referencePLR = &tektonv1.PipelineRun{
+				ObjectMeta: metav1.ObjectMeta{Name: "build-plr-source", Namespace: "test-ns"},
+				Spec:       tektonv1.PipelineRunSpec{},
+			}
+			target = nudging.NudgeTarget{
+				ComponentName:           "downstream-comp",
+				GitProvider:             "github",
+				Username:                "test-user",
+				GitAuthor:               "Test <test@example.com>",
+				Token:                   "ghp_token",
+				Endpoint:                "https://api.github.com",
+				Repositories:            []nudging.RenovateRepository{{Repository: "org/downstream"}},
+				ImageRepositoryHost:     "quay.io",
+				ImageRepositoryUsername: "robot",
+				ImageRepositoryPassword: "secret",
+			}
+			entries = []nudging.BatchedRenovateEntry{{
+				BuildResult: &nudging.NudgeBuildResult{
+					BuiltImageRepository: "quay.io/org/image-a",
+					BuiltImageTag:        "v1",
+					Digest:               "sha256:aaa",
+					FileMatches:          ".*.yaml",
+					SourceComponentName:  "source-a",
+					GitRepoAtShaLink:     "https://github.com/org/repo/commit/aabbccddaabbccddaabbccddaabbccddaabbccdd",
+				},
+			}}
+		})
+
+		It("rejects an empty entry list", func() {
+			_, err := nudging.CreateBatchedNudgePipelineRun(testCtx, fakeClient, referencePLR, target, nil, "batch-1", 0)
+			Expect(err).To(MatchError(ContainSubstring("at least one build entry")))
+		})
+
+		It("creates a batched PipelineRun, Secret, and ConfigMap", func() {
+			name, err := nudging.CreateBatchedNudgePipelineRun(testCtx, fakeClient, referencePLR, target, entries, "my-target-1", 0)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(name).To(Equal("nudge-batch-my-target-1"))
+
+			plr := &tektonv1.PipelineRun{}
+			Expect(fakeClient.Get(testCtx, types.NamespacedName{Name: name, Namespace: "test-ns"}, plr)).To(Succeed())
+			Expect(plr.Labels[tektonconsts.NudgeTypeLabel]).To(Equal(tektonconsts.NudgePipelineRunTypeValue))
+			Expect(plr.Annotations[tektonconsts.NudgedComponentsAnnotation]).To(Equal("downstream-comp"))
+			Expect(plr.Annotations[tektonconsts.NudgeBatchIDAnnotation]).To(Equal("my-target-1"))
+			Expect(plr.Annotations[tektonconsts.NudgingComponentsAnnotation]).To(ContainSubstring("source-a"))
+			Expect(plr.Annotations[tektonconsts.NudgingDigestsAnnotation]).To(ContainSubstring("sha256:aaa"))
+
+			secretList := &corev1.SecretList{}
+			Expect(fakeClient.List(testCtx, secretList, client.InNamespace("test-ns"))).To(Succeed())
+			Expect(secretList.Items).To(HaveLen(1))
+
+			cmList := &corev1.ConfigMapList{}
+			Expect(fakeClient.List(testCtx, cmList, client.InNamespace("test-ns"))).To(Succeed())
+			Expect(cmList.Items).To(HaveLen(1))
+		})
+
+		It("uses a retry suffix in the PipelineRun name", func() {
+			name, err := nudging.CreateBatchedNudgePipelineRun(testCtx, fakeClient, referencePLR, target, entries, "my-target-1", 2)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(name).To(Equal("nudge-batch-my-target-1-retry2"))
+		})
+
+		It("returns an error when the service account is missing", func() {
+			referencePLR.Spec.TaskRunTemplate.ServiceAccountName = "missing-sa"
+			_, err := nudging.CreateBatchedNudgePipelineRun(testCtx, fakeClient, referencePLR, target, entries, "batch-1", 0)
+			Expect(err).To(MatchError(ContainSubstring("service account missing-sa not found")))
+		})
+
+		It("mounts operator CA bundles when present", func() {
+			caCM := &corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "trusted-ca-bundle",
+					Namespace: "integration-service",
+					Labels:    map[string]string{tektonconsts.CaConfigMapLabel: "true"},
+				},
+				Data: map[string]string{
+					tektonconsts.CaConfigMapKey: "-----BEGIN CERTIFICATE-----\nfake\n-----END CERTIFICATE-----",
+				},
+			}
+			caClient := fake.NewClientBuilder().
+				WithScheme(nudgeTestScheme()).
+				WithObjects(
+					&corev1.ServiceAccount{ObjectMeta: metav1.ObjectMeta{Name: "appstudio-pipeline", Namespace: "test-ns"}},
+					caCM,
+				).
+				Build()
+
+			name, err := nudging.CreateBatchedNudgePipelineRun(testCtx, caClient, referencePLR, target, entries, "ca-batch", 0)
+			Expect(err).NotTo(HaveOccurred())
+
+			plr := &tektonv1.PipelineRun{}
+			Expect(caClient.Get(testCtx, types.NamespacedName{Name: name, Namespace: "test-ns"}, plr)).To(Succeed())
+			volumes := plr.Spec.PipelineSpec.Tasks[0].TaskSpec.Volumes
+			var foundCA bool
+			for _, v := range volumes {
+				if v.Name == tektonconsts.CaVolumeMountName {
+					foundCA = true
+				}
+			}
+			Expect(foundCA).To(BeTrue())
+
+			cmList := &corev1.ConfigMapList{}
+			Expect(caClient.List(testCtx, cmList, client.InNamespace("test-ns"))).To(Succeed())
+			Expect(cmList.Items).To(HaveLen(2))
+		})
+
+		It("is idempotent when called twice with the same batch ID", func() {
+			name, err := nudging.CreateBatchedNudgePipelineRun(testCtx, fakeClient, referencePLR, target, entries, "idempotent-batch", 0)
+			Expect(err).NotTo(HaveOccurred())
+			name2, err := nudging.CreateBatchedNudgePipelineRun(testCtx, fakeClient, referencePLR, target, entries, "idempotent-batch", 0)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(name2).To(Equal(name))
+
+			plrList := &tektonv1.PipelineRunList{}
+			Expect(fakeClient.List(testCtx, plrList, client.InNamespace("test-ns"))).To(Succeed())
+			Expect(plrList.Items).To(HaveLen(1))
+		})
+	})
+
+	Describe("BatchedNudgePipelineRunName", func() {
+		It("returns the deterministic batch PipelineRun name", func() {
+			Expect(nudging.BatchedNudgePipelineRunName("target-1", 0)).To(Equal("nudge-batch-target-1"))
+			Expect(nudging.BatchedNudgePipelineRunName("target_1", 1)).To(Equal("nudge-batch-target-1-retry1"))
 		})
 	})
 

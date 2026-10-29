@@ -223,13 +223,16 @@ func GenerateRenovateConfig(target NudgeTarget, buildResult *NudgeBuildResult, s
 	}
 
 	var matchStrings []string
-	registryAliases := make(map[string]string)
+	var registryAliases map[string]string
 	var matchPackageNames []string
 
 	matchStrings = append(matchStrings, regexp.QuoteMeta(buildResult.BuiltImageRepository)+"(:.*)?@(?<currentDigest>sha256:[a-f0-9]+)")
 	matchPackageNames = append(matchPackageNames, buildResult.BuiltImageRepository)
 
 	for _, drepo := range buildResult.DistributionRepositories {
+		if registryAliases == nil {
+			registryAliases = make(map[string]string)
+		}
 		matchStrings = append(matchStrings, regexp.QuoteMeta(drepo)+"(:.*)?@(?<currentDigest>sha256:[a-f0-9]+)")
 		matchPackageNames = append(matchPackageNames, drepo)
 		registryAliases[drepo] = buildResult.BuiltImageRepository
@@ -307,6 +310,47 @@ func GenerateRenovateConfig(target NudgeTarget, buildResult *NudgeBuildResult, s
 		GitLabIgnoreApprovals:    customOpts.GitLabIgnoreApprovals,
 		AutomergeSchedule:        customOpts.AutomergeSchedule,
 	}
+}
+
+// GenerateRenovateConfigForBatchedSources merges Renovate configuration for every
+// source build in a fired batch so each accumulated source image is nudged into
+// the target repository in a single PipelineRun.
+func GenerateRenovateConfigForBatchedSources(target NudgeTarget, buildResults []*NudgeBuildResult, simpleBranchName bool) RenovateConfig {
+	if len(buildResults) == 0 {
+		return RenovateConfig{}
+	}
+	if len(buildResults) == 1 {
+		return GenerateRenovateConfig(target, buildResults[0], simpleBranchName)
+	}
+
+	merged := GenerateRenovateConfig(target, buildResults[0], simpleBranchName)
+	for i := 1; i < len(buildResults); i++ {
+		next := GenerateRenovateConfig(target, buildResults[i], simpleBranchName)
+		merged.CustomManagers = append(merged.CustomManagers, next.CustomManagers...)
+		if merged.RegistryAliases == nil {
+			merged.RegistryAliases = make(map[string]string)
+		}
+		for alias, canonical := range next.RegistryAliases {
+			merged.RegistryAliases[alias] = canonical
+		}
+		merged.PackageRules = append(merged.PackageRules, enablePackageRulesOnly(next.PackageRules)...)
+	}
+	return merged
+}
+
+func enablePackageRulesOnly(rules []PackageRule) []PackageRule {
+	enabled := make([]PackageRule, 0, len(rules))
+	for _, rule := range rules {
+		if isGlobalDisablePackageRule(rule) {
+			continue
+		}
+		enabled = append(enabled, rule)
+	}
+	return enabled
+}
+
+func isGlobalDisablePackageRule(rule PackageRule) bool {
+	return !rule.Enabled && len(rule.MatchPackagePatterns) == 1 && rule.MatchPackagePatterns[0] == "*"
 }
 
 // BatchedRenovateEntry pairs a source build result with the component that produced it.
