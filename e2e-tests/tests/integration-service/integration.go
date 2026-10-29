@@ -5,19 +5,24 @@ import (
 	"net/http"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/konflux-ci/image-controller/pkg/quay"
 	"github.com/konflux-ci/operator-toolkit/metadata"
 
-	"github.com/konflux-ci/integration-service/e2e-tests/pkg/clients/has"
 	"github.com/konflux-ci/integration-service/e2e-tests/pkg/constants"
 	"github.com/konflux-ci/integration-service/e2e-tests/pkg/framework"
 	"github.com/konflux-ci/integration-service/e2e-tests/pkg/utils"
 	"github.com/konflux-ci/integration-service/e2e-tests/pkg/utils/build"
+	"github.com/konflux-ci/integration-service/e2e-tests/pkg/utils/oci"
 	"github.com/konflux-ci/integration-service/gitops"
+	"github.com/konflux-ci/integration-service/tekton"
+	tektonconsts "github.com/konflux-ci/integration-service/tekton/consts"
 	pipeline "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	integrationv1beta2 "github.com/konflux-ci/integration-service/api/v1beta2"
@@ -29,22 +34,23 @@ import (
 	gomega "github.com/onsi/gomega"
 )
 
-var _ = framework.IntegrationServiceSuiteDescribe("Integration Service E2E tests", ginkgo.Label("integration-service"), func() {
+var prebuiltPullRequestNumber int64 = 13650
+
+var _ = framework.IntegrationServiceSuiteDescribe("Integration Service E2E tests", ginkgo.Label("integration-service", "happy-path"), func() {
 	defer ginkgo.GinkgoRecover()
 
 	var f *framework.Framework
 	var err error
 
-	var prHeadSha string
 	var integrationTestScenario *integrationv1beta2.IntegrationTestScenario
 	var newIntegrationTestScenario *integrationv1beta2.IntegrationTestScenario
 	var skippedIntegrationTestScenario *integrationv1beta2.IntegrationTestScenario
 	var timeout, interval time.Duration
-	var originalComponent *appstudioApi.Component
 	var pipelineRun *pipeline.PipelineRun
+	var pipelineRunPush *pipeline.PipelineRun
 	var snapshot *appstudioApi.Snapshot
 	var snapshotPush *appstudioApi.Snapshot
-	var applicationName, componentName, componentBaseBranchName, pacBranchName, testNamespace string
+	var applicationName, componentName, testNamespace string
 
 	ginkgo.AfterEach(framework.ReportFailure(&f))
 
@@ -56,75 +62,28 @@ var _ = framework.IntegrationServiceSuiteDescribe("Integration Service E2E tests
 			testNamespace = f.UserNamespace
 
 			applicationName = createApp(*f, testNamespace)
-			originalComponent, componentName, pacBranchName, componentBaseBranchName = createComponent(*f, testNamespace, applicationName, componentRepoNameForGeneralIntegration, componentGitSourceURLForGeneralIntegration)
+			componentName = createComponentWithoutPACMergeRequest(*f, testNamespace, applicationName)
 
 			integrationTestScenario, err = f.AsKubeAdmin.IntegrationController.CreateIntegrationTestScenario("", applicationName, testNamespace, gitURL, revision, pathInRepoPass, "", []string{"application"})
 			gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
 
 			skippedIntegrationTestScenario, err = f.AsKubeAdmin.IntegrationController.CreateIntegrationTestScenario("skipped-its", applicationName, testNamespace, gitURL, revision, pathInRepoPass, "", []string{"push"})
 			gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
+
+			pipelineRun, err = applyPrebuiltBuildPLR(f, testNamespace, applicationName, componentName, prebuiltBuildPLRSpec{})
+			gomega.Expect(err).NotTo(gomega.HaveOccurred(), "Failed to create PipelineRun from pre-built artifact")
+
+			ginkgo.GinkgoWriter.Printf("Created pre-built PipelineRun %s in namespace %s\n", pipelineRun.Name, testNamespace)
 		})
 
 		ginkgo.AfterAll(func() {
 			if !ginkgo.CurrentSpecReport().Failed() {
 				cleanup(*f, testNamespace, applicationName, componentName, snapshotPush)
 			}
-
-			// Delete new branches created by PaC and a testing branch used as a component's base branch
-			err = f.AsKubeAdmin.CommonController.Github.DeleteRef(componentRepoNameForGeneralIntegration, pacBranchName)
-			if err != nil {
-				gomega.Expect(err.Error()).To(gomega.ContainSubstring(referenceDoesntExist))
-			}
-			err = f.AsKubeAdmin.CommonController.Github.DeleteRef(componentRepoNameForGeneralIntegration, componentBaseBranchName)
-			if err != nil {
-				gomega.Expect(err.Error()).To(gomega.ContainSubstring(referenceDoesntExist))
-			}
+			// Note: No PaC branch cleanup needed - configure-pac-no-mr doesn't create branches
 		})
 
-		ginkgo.When("a new Component is created", func() {
-			ginkgo.It("triggers a build PipelineRun", ginkgo.Label("integration-service"), func() {
-				pipelineRun, err = f.AsKubeDeveloper.IntegrationController.GetBuildPipelineRun(componentName, applicationName, testNamespace, false, "")
-				gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
-			})
-
-			ginkgo.It("verifies if the build PipelineRun contains the finalizer", ginkgo.Label("integration-service"), func() {
-				gomega.Eventually(func() error {
-					pipelineRun, err = f.AsKubeDeveloper.IntegrationController.GetBuildPipelineRun(componentName, applicationName, testNamespace, false, "")
-					gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
-					if !controllerutil.ContainsFinalizer(pipelineRun, pipelinerunFinalizerByIntegrationService) {
-						return fmt.Errorf("build pipelineRun %s/%s doesn't contain the finalizer: %s yet", pipelineRun.GetNamespace(), pipelineRun.GetName(), pipelinerunFinalizerByIntegrationService)
-					}
-					return nil
-				}, 1*time.Minute, 1*time.Second).Should(gomega.Succeed(), "timeout when waiting for finalizer to be added")
-			})
-
-			ginkgo.It("waits for build PipelineRun to succeed", ginkgo.Label("integration-service"), func() {
-				gomega.Expect(pipelineRun.Annotations[snapshotAnnotation]).To(gomega.Equal(""))
-				gomega.Expect(f.AsKubeDeveloper.HasController.WaitForComponentPipelineToBeFinished(originalComponent, "", "", "",
-					f.AsKubeAdmin.TektonController, &has.RetryOptions{Retries: 2, Always: true}, pipelineRun)).To(gomega.Succeed())
-			})
-
-			ginkgo.It("should have a related PaC init PR created", func() {
-				gomega.Eventually(func() bool {
-					prs, err := f.AsKubeAdmin.CommonController.Github.ListPullRequests(componentRepoNameForGeneralIntegration)
-					gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
-
-					for _, pr := range prs {
-						if pr.Head.GetRef() == pacBranchName {
-							prHeadSha = pr.Head.GetSHA()
-							return true
-						}
-					}
-					return false
-				}, shortTimeout, constants.PipelineRunPollingInterval).Should(gomega.BeTrue(), fmt.Sprintf("timed out when waiting for init PaC PR (branch name '%s') to be created in %s repository", pacBranchName, componentRepoNameForStatusReporting))
-
-				// in case the first pipelineRun attempt has failed and was retried, we need to update the value of pipelineRun variable
-				pipelineRun, err = f.AsKubeAdmin.HasController.GetComponentPipelineRun(componentName, applicationName, testNamespace, prHeadSha)
-				gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
-			})
-		})
-
-		ginkgo.When("the build pipelineRun run succeeded", func() {
+		ginkgo.When("the pre-built PipelineRun is applied", func() {
 			ginkgo.It("checks if the BuildPipelineRun have the annotation of chains signed", func() {
 				gomega.Expect(f.AsKubeDeveloper.IntegrationController.WaitForBuildPipelineRunToGetAnnotated(testNamespace, applicationName, componentName, chainsSignedAnnotation)).To(gomega.Succeed())
 			})
@@ -195,21 +154,35 @@ var _ = framework.IntegrationServiceSuiteDescribe("Integration Service E2E tests
 			}
 		})
 
-		ginkgo.It("creates an snapshot of push event", func() {
-			sampleImage := "quay.io/redhat-appstudio/sample-image@sha256:841328df1b9f8c4087adbdcfec6cc99ac8308805dea83f6d415d6fb8d40227c1"
-			snapshotPush, err = f.AsKubeAdmin.IntegrationController.CreateSnapshotWithImage(componentName, applicationName, testNamespace, sampleImage)
+		ginkgo.It("applies a pre-built PipelineRun for a push event", func() {
+			pipelineRunPush, err = applyPrebuiltBuildPLR(f, testNamespace, applicationName, componentName, prebuiltBuildPLRSpec{
+				EventType:  tektonconsts.PipelineAsCodePushType,
+				TimeOffset: 2 * time.Minute,
+			})
+			gomega.Expect(err).NotTo(gomega.HaveOccurred(), "Failed to create push PipelineRun from pre-built artifact")
+
+			snapshotPush, err = f.AsKubeDeveloper.IntegrationController.WaitForSnapshotToGetCreated("", pipelineRunPush.Name, componentName, testNamespace)
 			gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
 		})
 
-		ginkgo.When("An snapshot of push event is created", func() {
+		ginkgo.When("A push event pre-built PipelineRun is applied", func() {
 			ginkgo.It("checks if the global candidate is updated after push event", func() {
+				expectedLastPromotedImage, err := tekton.GetImagePullSpecFromPipelineRun(pipelineRunPush)
+				gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
+
 				gomega.Eventually(func() error {
 					snapshotPush, err = f.AsKubeAdmin.IntegrationController.GetSnapshot(snapshotPush.Name, "", "", testNamespace)
-					gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
+					if err != nil {
+						return fmt.Errorf("failed to get push Snapshot %s/%s: %w", testNamespace, snapshotPush.Name, err)
+					}
 
 					component, err := f.AsKubeAdmin.HasController.GetComponentByApplicationName(applicationName, testNamespace)
-					gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
-					gomega.Expect(component.Spec.ContainerImage).ToNot(gomega.Equal(originalComponent.Spec.ContainerImage))
+					if err != nil {
+						return fmt.Errorf("failed to get Component for application %s/%s: %w", testNamespace, applicationName, err)
+					}
+					if component.Status.LastPromotedImage != expectedLastPromotedImage {
+						return fmt.Errorf("component %s/%s global candidate lastPromotedImage = %q, want %q", component.Namespace, component.Name, component.Status.LastPromotedImage, expectedLastPromotedImage)
+					}
 					return nil
 
 				}, shortTimeout, constants.PipelineRunPollingInterval).Should(gomega.Succeed(), fmt.Sprintf("time out when waiting for updating the global candidate in %s namespace", testNamespace))
@@ -238,55 +211,25 @@ var _ = framework.IntegrationServiceSuiteDescribe("Integration Service E2E tests
 			testNamespace = f.UserNamespace
 
 			applicationName = createApp(*f, testNamespace)
-			originalComponent, componentName, pacBranchName, componentBaseBranchName = createComponent(*f, testNamespace, applicationName, componentRepoNameForGeneralIntegration, componentGitSourceURLForGeneralIntegration)
+			componentName = createComponentWithoutPACMergeRequest(*f, testNamespace, applicationName)
 
 			integrationTestScenario, err = f.AsKubeAdmin.IntegrationController.CreateIntegrationTestScenario("", applicationName, testNamespace, gitURL, revision, pathInRepoFail, "", []string{"pull_request"})
 			gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
 
 			skippedIntegrationTestScenario, err = f.AsKubeAdmin.IntegrationController.CreateIntegrationTestScenario("skipped-its-fail", applicationName, testNamespace, gitURL, revision, pathInRepoFail, "", []string{"group"})
 			gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
+
+			pipelineRun, err = applyPrebuiltBuildPLR(f, testNamespace, applicationName, componentName, prebuiltBuildPLRSpec{
+				TimeOffset: time.Minute,
+			})
+			gomega.Expect(err).NotTo(gomega.HaveOccurred(), "Failed to create PipelineRun from pre-built artifact")
 		})
 
 		ginkgo.AfterAll(func() {
 			if !ginkgo.CurrentSpecReport().Failed() {
 				cleanup(*f, testNamespace, applicationName, componentName, snapshotPush)
 			}
-
-			// Delete new branches created by PaC and a testing branch used as a component's base branch
-			err = f.AsKubeAdmin.CommonController.Github.DeleteRef(componentRepoNameForGeneralIntegration, pacBranchName)
-			if err != nil {
-				gomega.Expect(err.Error()).To(gomega.ContainSubstring(referenceDoesntExist))
-			}
-			err = f.AsKubeAdmin.CommonController.Github.DeleteRef(componentRepoNameForGeneralIntegration, componentBaseBranchName)
-			if err != nil {
-				gomega.Expect(err.Error()).To(gomega.ContainSubstring(referenceDoesntExist))
-			}
-		})
-
-		ginkgo.It("triggers a build PipelineRun", ginkgo.Label("integration-service"), func() {
-			pipelineRun, err = f.AsKubeDeveloper.IntegrationController.GetBuildPipelineRun(componentName, applicationName, testNamespace, false, "")
-			gomega.Expect(pipelineRun.Annotations[snapshotAnnotation]).To(gomega.Equal(""))
-			gomega.Expect(f.AsKubeDeveloper.HasController.WaitForComponentPipelineToBeFinished(originalComponent, "", "", "", f.AsKubeAdmin.TektonController,
-				&has.RetryOptions{Retries: 2, Always: true}, pipelineRun)).To(gomega.Succeed())
-		})
-
-		ginkgo.It("should have a related PaC init PR created", func() {
-			gomega.Eventually(func() bool {
-				prs, err := f.AsKubeAdmin.CommonController.Github.ListPullRequests(componentRepoNameForGeneralIntegration)
-				gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
-
-				for _, pr := range prs {
-					if pr.Head.GetRef() == pacBranchName {
-						prHeadSha = pr.Head.GetSHA()
-						return true
-					}
-				}
-				return false
-			}, shortTimeout, constants.PipelineRunPollingInterval).Should(gomega.BeTrue(), fmt.Sprintf("timed out when waiting for init PaC PR (branch name '%s') to be created in %s repository", pacBranchName, componentRepoNameForStatusReporting))
-
-			// in case the first pipelineRun attempt has failed and was retried, we need to update the value of pipelineRun variable
-			pipelineRun, err = f.AsKubeAdmin.HasController.GetComponentPipelineRun(componentName, applicationName, testNamespace, prHeadSha)
-			gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
+			// Note: No PaC branch cleanup needed - configure-pac-no-mr doesn't create branches
 		})
 
 		ginkgo.It("checks if the BuildPipelineRun have the annotation of chains signed", func() {
@@ -403,13 +346,18 @@ var _ = framework.IntegrationServiceSuiteDescribe("Integration Service E2E tests
 			})
 		})
 
-		ginkgo.It("creates an snapshot of push event", func() {
-			sampleImage := "quay.io/redhat-appstudio/sample-image@sha256:841328df1b9f8c4087adbdcfec6cc99ac8308805dea83f6d415d6fb8d40227c1"
-			snapshotPush, err = f.AsKubeAdmin.IntegrationController.CreateSnapshotWithImage(componentName, applicationName, testNamespace, sampleImage)
+		ginkgo.It("applies a pre-built PipelineRun for a push event", func() {
+			pipelineRunPush, err = applyPrebuiltBuildPLR(f, testNamespace, applicationName, componentName, prebuiltBuildPLRSpec{
+				EventType:  tektonconsts.PipelineAsCodePushType,
+				TimeOffset: 3 * time.Minute,
+			})
+			gomega.Expect(err).NotTo(gomega.HaveOccurred(), "Failed to create push PipelineRun from pre-built artifact")
+
+			snapshotPush, err = f.AsKubeDeveloper.IntegrationController.WaitForSnapshotToGetCreated("", pipelineRunPush.Name, componentName, testNamespace)
 			gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
 		})
 
-		ginkgo.When("An snapshot of push event is created", func() {
+		ginkgo.When("A push event pre-built PipelineRun is applied", func() {
 			ginkgo.It("checks no Release CRs are created", func() {
 				releases, err := f.AsKubeAdmin.ReleaseController.GetReleases(testNamespace)
 				gomega.Expect(err).NotTo(gomega.HaveOccurred(), "Error when fetching the Releases")
@@ -419,6 +367,155 @@ var _ = framework.IntegrationServiceSuiteDescribe("Integration Service E2E tests
 	})
 })
 
+type prebuiltBuildPLRSpec struct {
+	EventType             string
+	TimeOffset            time.Duration
+	Image                 string
+	PullRequestNumber     int
+	SourceBranch          string
+	TargetBranch          string
+	SHA                   string
+	RepoName              string
+	RepoURL               string
+	SourceRepoOrg         string
+	GitProvider           string
+	SourceProjectID       string
+	TargetProjectID       string
+	BreakSnapshotCreation bool
+}
+
+func applyPrebuiltBuildPLR(f *framework.Framework, namespace, applicationName, componentName string, spec prebuiltBuildPLRSpec) (*pipeline.PipelineRun, error) {
+	image := spec.Image
+	if image == "" {
+		image = prebuiltImageForGeneralIntegration
+	}
+	preBuildPLR, err := oci.FetchPipelineRunFromOCIArtifact(image, e2eImageTag)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch PipelineRun from OCI artifact: %w", err)
+	}
+
+	if spec.EventType == "" {
+		spec.EventType = gitops.PipelineAsCodePullRequestType
+	}
+	if spec.TargetBranch == "" {
+		spec.TargetBranch = componentDefaultBranch
+	}
+	if spec.SourceRepoOrg == "" {
+		spec.SourceRepoOrg = utils.GetEnv(constants.GITHUB_E2E_ORGANIZATION_ENV, "redhat-appstudio-qe")
+	}
+
+	preBuildPLRStatus := oci.PreparePipelineRunForPrebuiltUsage(
+		preBuildPLR,
+		namespace,
+		utils.GeneratePipelineRunName("prebuilt-plr"),
+		applicationName,
+		componentName,
+	)
+
+	if preBuildPLR.Labels == nil {
+		preBuildPLR.Labels = map[string]string{}
+	}
+	if preBuildPLR.Annotations == nil {
+		preBuildPLR.Annotations = map[string]string{}
+	}
+
+	preBuildPLR.Labels[tektonconsts.PipelineRunTypeLabel] = tektonconsts.PipelineRunBuildType
+	preBuildPLR.Labels[tektonconsts.PipelineRunApplicationLabel] = applicationName
+	preBuildPLR.Labels[tektonconsts.PipelineRunComponentLabel] = componentName
+	preBuildPLR.Labels["app.kubernetes.io/managed-by"] = "pipelinesascode.tekton.dev"
+	preBuildPLR.Labels[tektonconsts.PipelineAsCodeEventTypeLabel] = spec.EventType
+	preBuildPLR.Annotations[tektonconsts.PipelineRunChainsSignedAnnotation] = "true"
+	preBuildPLR.Annotations[tektonconsts.PipelineAsCodeTargetBranchAnnotation] = spec.TargetBranch
+	preBuildPLR.Annotations[tektonconsts.PipelineAsCodeSourceRepoOrg] = spec.SourceRepoOrg
+	controllerutil.AddFinalizer(preBuildPLR, pipelinerunFinalizerByIntegrationService)
+
+	if spec.SHA != "" {
+		preBuildPLR.Labels["pipelinesascode.tekton.dev/sha"] = spec.SHA
+		preBuildPLR.Annotations["pipelinesascode.tekton.dev/sha"] = spec.SHA
+		preBuildPLR.Labels[gitops.PipelineAsCodeSHALabel] = spec.SHA
+		preBuildPLR.Annotations[gitops.PipelineAsCodeSHAAnnotation] = spec.SHA
+	}
+	if spec.RepoName != "" {
+		preBuildPLR.Labels["pipelinesascode.tekton.dev/url-repository"] = spec.RepoName
+		preBuildPLR.Labels[gitops.PipelineAsCodeURLRepositoryLabel] = spec.RepoName
+	}
+	if spec.RepoURL != "" {
+		preBuildPLR.Annotations["pipelinesascode.tekton.dev/repo-url"] = spec.RepoURL
+		preBuildPLR.Annotations["pipelinesascode.tekton.dev/source-repo-url"] = spec.RepoURL
+		preBuildPLR.Annotations[gitops.PipelineAsCodeRepoURLAnnotation] = spec.RepoURL
+		preBuildPLR.Annotations[gitops.PipelineAsCodeGitSourceURLAnnotation] = spec.RepoURL
+	}
+	if spec.SourceRepoOrg != "" {
+		preBuildPLR.Labels["pipelinesascode.tekton.dev/url-org"] = spec.SourceRepoOrg
+		preBuildPLR.Labels[gitops.PipelineAsCodeURLOrgLabel] = spec.SourceRepoOrg
+	}
+	if spec.GitProvider != "" {
+		preBuildPLR.Labels["pipelinesascode.tekton.dev/git-provider"] = spec.GitProvider
+		preBuildPLR.Annotations["pipelinesascode.tekton.dev/git-provider"] = spec.GitProvider
+		preBuildPLR.Labels[gitops.PipelineAsCodeGitProviderLabel] = spec.GitProvider
+		preBuildPLR.Annotations[gitops.PipelineAsCodeGitProviderAnnotation] = spec.GitProvider
+	}
+	if spec.SourceProjectID != "" {
+		preBuildPLR.Annotations["pipelinesascode.tekton.dev/source-project-id"] = spec.SourceProjectID
+		preBuildPLR.Labels["pipelinesascode.tekton.dev/source-project-id"] = spec.SourceProjectID
+		preBuildPLR.Annotations[gitops.PipelineAsCodeSourceProjectIDAnnotation] = spec.SourceProjectID
+	}
+	if spec.TargetProjectID != "" {
+		preBuildPLR.Annotations["pipelinesascode.tekton.dev/target-project-id"] = spec.TargetProjectID
+		preBuildPLR.Labels["pipelinesascode.tekton.dev/target-project-id"] = spec.TargetProjectID
+		preBuildPLR.Annotations[gitops.PipelineAsCodeTargetProjectIDAnnotation] = spec.TargetProjectID
+	}
+	if spec.GitProvider == gitops.PipelineAsCodeGitHubProviderType && !metadata.HasAnnotation(preBuildPLR, "pipelinesascode.tekton.dev/installation-id") && !metadata.HasAnnotation(preBuildPLR, gitops.PipelineAsCodeInstallationIDAnnotation) {
+		return nil, fmt.Errorf("prebuilt status-reporting PipelineRun is missing required GitHub App installation annotation %q", gitops.PipelineAsCodeInstallationIDAnnotation)
+	}
+
+	if spec.EventType == tektonconsts.PipelineAsCodePushType || spec.EventType == gitops.PipelineAsCodeGLPushType {
+		delete(preBuildPLR.Labels, tektonconsts.PipelineAsCodePullRequestLabel)
+		delete(preBuildPLR.Annotations, tektonconsts.PipelineAsCodePullRequestLabel)
+		delete(preBuildPLR.Annotations, gitops.PipelineAsCodePullRequestAnnotation)
+		if spec.SourceBranch == "" {
+			spec.SourceBranch = spec.TargetBranch
+		}
+		preBuildPLR.Annotations[tektonconsts.PipelineAsCodeSourceBranchAnnotation] = spec.SourceBranch
+	} else {
+		pullRequestNumber := strconv.FormatInt(atomic.AddInt64(&prebuiltPullRequestNumber, 1), 10)
+		if spec.PullRequestNumber > 0 {
+			pullRequestNumber = strconv.Itoa(spec.PullRequestNumber)
+		}
+		if spec.SourceBranch == "" {
+			spec.SourceBranch = "konflux-" + componentName
+		}
+		preBuildPLR.Labels[tektonconsts.PipelineAsCodePullRequestLabel] = pullRequestNumber
+		preBuildPLR.Annotations[tektonconsts.PipelineAsCodePullRequestLabel] = pullRequestNumber
+		preBuildPLR.Annotations[gitops.PipelineAsCodePullRequestAnnotation] = pullRequestNumber
+		preBuildPLR.Annotations[tektonconsts.PipelineAsCodeSourceBranchAnnotation] = spec.SourceBranch
+		prGroup := tekton.GetPRGroupFromBuildPLR(preBuildPLR)
+		preBuildPLR.Annotations[gitops.PRGroupAnnotation] = prGroup
+		preBuildPLR.Labels[gitops.PRGroupHashLabel] = tekton.GenerateSHA(prGroup)
+		preBuildPLR.Annotations[snapshotCreationReport] = intgteststat.BuildPLRInProgress.String()
+	}
+
+	if spec.BreakSnapshotCreation {
+		preBuildPLR.Annotations[createSnapshotStatusAnnotation] = "Failed to create snapshot. Error: prebuilt status-reporting e2e intentionally prevents snapshot creation"
+		filteredResults := preBuildPLRStatus.Results[:0]
+		for _, result := range preBuildPLRStatus.Results {
+			if result.Name == tektonconsts.PipelineRunImageUrlParamName || result.Name == tektonconsts.PipelineRunImageDigestParamName {
+				continue
+			}
+			filteredResults = append(filteredResults, result)
+		}
+		preBuildPLRStatus.Results = filteredResults
+	}
+
+	startTime := time.Now().UTC().Add(spec.TimeOffset)
+	completionTime := startTime.Add(time.Minute)
+	preBuildPLRStatus.StartTime = &metav1.Time{Time: startTime}
+	preBuildPLRStatus.CompletionTime = &metav1.Time{Time: completionTime}
+	// Apply the PipelineRun to the cluster, then restore the completed status from the artifact.
+	// PipelineRun status uses a status subresource, so status from the create payload is not persisted.
+	return f.AsKubeAdmin.TektonController.CreatePipelineRunAndRestoreStatus(preBuildPLR, preBuildPLRStatus, namespace)
+}
+
 func createApp(f framework.Framework, testNamespace string) string {
 	applicationName := fmt.Sprintf("integ-app-%s", utils.GenerateRandomString(4))
 
@@ -426,6 +523,32 @@ func createApp(f framework.Framework, testNamespace string) string {
 	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 	return applicationName
+}
+
+func createComponentWithoutPACMergeRequest(f framework.Framework, testNamespace, applicationName string) string {
+	componentName := fmt.Sprintf("%s-%s", "test-component-prebuilt", utils.GenerateRandomString(6))
+	createComponentWithoutPACMergeRequestForRepo(f, testNamespace, applicationName, componentName, componentGitSourceURLForGeneralIntegration, componentDefaultBranch)
+	return componentName
+}
+
+func createComponentWithoutPACMergeRequestForRepo(f framework.Framework, testNamespace, applicationName, componentName, componentRepoURL, revision string) *appstudioApi.Component {
+	componentObj := appstudioApi.ComponentSpec{
+		ComponentName: componentName,
+		Application:   applicationName,
+		Source: appstudioApi.ComponentSource{
+			ComponentSourceUnion: appstudioApi.ComponentSourceUnion{
+				GitSource: &appstudioApi.GitSource{
+					URL:      componentRepoURL,
+					Revision: revision,
+				},
+			},
+		},
+	}
+	buildPipelineAnnotation := build.GetBuildPipelineBundleAnnotation(constants.DockerBuild)
+	component, err := f.AsKubeAdmin.HasController.CreateComponentWithoutPACMergeRequest(componentObj, testNamespace, applicationName, buildPipelineAnnotation)
+	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+
+	return component
 }
 
 func createComponent(f framework.Framework, testNamespace, applicationName, componentRepoName, componentRepoURL string) (*appstudioApi.Component, string, string, string) {
