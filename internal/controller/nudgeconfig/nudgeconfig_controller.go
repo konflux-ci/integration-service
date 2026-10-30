@@ -97,7 +97,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		}
 	}
 
-	if err := nudging.ProcessDueNudgeBatches(ctx, r.Client, nudgeConfig); err != nil {
+	if _, err := nudging.ProcessDueNudgeBatches(ctx, r.Client, nudgeConfig); err != nil {
 		logger.Error(err, "Failed to process due nudge batches")
 		return reconcile.Result{}, err
 	}

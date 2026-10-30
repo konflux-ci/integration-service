@@ -44,7 +44,7 @@ func RecordValidatedSnapshotForBatchedNudge(
 	if digest == "" {
 		return fmt.Errorf("digest is required for validated batched nudge target %q", targetName)
 	}
-	return recordSuccessForBatchedNudge(ctx, c, nudgeConfig, targetName, sourceComponent, sourceRef, digest)
+	return recordSuccessForBatchedNudge(ctx, c, nudgeConfig, targetName, sourceComponent, sourceRef, digest, "")
 }
 
 // RecordFailedValidatedSnapshotForBatchedNudge records a failing Snapshot for validated-mode batching.
@@ -71,6 +71,9 @@ func buildResultForAccumulatedEntry(
 	sourceComponent *applicationapiv1alpha1.Component,
 	fallbackPLR *tektonv1.PipelineRun,
 ) (*NudgeBuildResult, error) {
+	if accumulated.BuiltImageRepository != "" {
+		return nudgeBuildResultFromAccumulatedEntry(accumulated), nil
+	}
 	buildPLR := &tektonv1.PipelineRun{}
 	err := c.Get(ctx, types.NamespacedName{Name: accumulated.BuildPipelineRun, Namespace: namespace}, buildPLR)
 	if err == nil {
@@ -87,6 +90,21 @@ func buildResultForAccumulatedEntry(
 		return nil, fmt.Errorf("loading build PipelineRun %q: %w", accumulated.BuildPipelineRun, err)
 	}
 	return buildResultFromComponentDigest(sourceComponent, accumulated.ImageDigest, fallbackPLR)
+}
+
+func nudgeBuildResultFromAccumulatedEntry(entry v1beta2.AccumulatedEntry) *NudgeBuildResult {
+	fileMatches := entry.NudgeFileMatches
+	if fileMatches == "" {
+		fileMatches = tektonconsts.DefaultNudgeFiles
+	}
+	return &NudgeBuildResult{
+		BuiltImageRepository: entry.BuiltImageRepository,
+		BuiltImageTag:        entry.BuiltImageTag,
+		Digest:               entry.ImageDigest,
+		FileMatches:          fileMatches,
+		SourceComponentName:  entry.From,
+		GitRepoAtShaLink:     entry.GitRepoAtShaLink,
+	}
 }
 
 func buildResultFromComponentDigest(
