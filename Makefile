@@ -102,9 +102,9 @@ manifests: controller-gen ## Generate WebhookConfiguration, ClusterRole and Cust
 	$(CONTROLLER_GEN) rbac:roleName=manager-role crd webhook paths="./..." output:crd:artifacts:config=config/crd/bases
 
 .PHONY: generate
-generate: controller-gen enumer ## Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject method implementations.
+generate: controller-gen enumer ## Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject method implementations. Handle Enumer regeneration for integrationTestStatus.
 	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate.go.txt" paths="./..."
-	$(ENUMER) -type=IntegrationTestStatus -linecomment -json ./pkg/integrationteststatus
+	PATH="$(LOCALBIN):$$PATH" go generate ./pkg/integrationteststatus/...
 
 .PHONY: fmt
 fmt: ## Run go fmt against code.
@@ -224,7 +224,7 @@ $(ENVTEST): $(LOCALBIN)
 	GOBIN=$(LOCALBIN) go install sigs.k8s.io/controller-runtime/tools/setup-envtest@f52bbb8b
 
 .PHONY: enumer
-enumer: $(ENUMER)
+enumer: $(ENUMER) ## Download enumer locally if necessary.
 $(ENUMER): $(LOCALBIN)
 	GOBIN=$(LOCALBIN) go install github.com/dmarkham/enumer@$(ENUMER_VERSION)
 

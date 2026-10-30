@@ -385,7 +385,14 @@ func (sits *SnapshotIntegrationTestStatuses) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-// NewSnapshotIntegrationTestStatuses creates empty SnapshotTestStatus struct
+// NewSnapshotIntegrationTestStatuses parses status JSON that already uses
+// canonical IntegrationTestStatus names.
+//
+// Callers reading a live Snapshot's test.appstudio.openshift.io/status
+// annotation must use gitops.NewSnapshotIntegrationTestStatusesFromSnapshot.
+// That helper translates spellings stored by the stale enum. This function
+// does not, so a stale "BuildPLRInProgress" is parsed as BuildPLRInProgress
+// rather than the TestWarning value that name used to decode to.
 func NewSnapshotIntegrationTestStatuses(jsondata string) (*SnapshotIntegrationTestStatuses, error) {
 	sits := SnapshotIntegrationTestStatuses{
 		statuses: make(map[string]*IntegrationTestStatusDetail, 1),

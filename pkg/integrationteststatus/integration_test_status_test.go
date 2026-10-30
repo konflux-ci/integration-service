@@ -132,6 +132,11 @@ var _ = Describe("integrationteststatus library unittests", func() {
 			Entry("When status is Invalid", intgteststat.IntegrationTestStatusTestInvalid, true),
 			Entry("When status is Warning", intgteststat.IntegrationTestStatusTestWarning, true),
 			Entry("When status is Other", intgteststat.IntegrationTestStatusPending, false),
+			Entry("When status is InProgress", intgteststat.IntegrationTestStatusInProgress, false),
+			Entry("When status is BuildPLRInProgress", intgteststat.BuildPLRInProgress, false),
+			Entry("When status is SnapshotCreationFailed", intgteststat.SnapshotCreationFailed, false),
+			Entry("When status is BuildPLRFailed", intgteststat.BuildPLRFailed, false),
+			Entry("When status is GroupSnapshotCreationFailed", intgteststat.GroupSnapshotCreationFailed, false),
 		)
 
 		It("Invalid status to type fails with error", func() {
@@ -248,6 +253,10 @@ var _ = Describe("integrationteststatus library unittests", func() {
 			Entry("When status is Deleted", intgteststat.IntegrationTestStatusDeleted, false),
 			Entry("When status is Invalid", intgteststat.IntegrationTestStatusTestInvalid, false),
 			Entry("When status is Warning", intgteststat.IntegrationTestStatusTestWarning, false),
+			Entry("When status is BuildPLRInProgress", intgteststat.BuildPLRInProgress, false),
+			Entry("When status is SnapshotCreationFailed", intgteststat.SnapshotCreationFailed, false),
+			Entry("When status is BuildPLRFailed", intgteststat.BuildPLRFailed, false),
+			Entry("When status is GroupSnapshotCreationFailed", intgteststat.GroupSnapshotCreationFailed, false),
 		)
 
 		DescribeTable("Test expected additions of completionTime",
@@ -270,6 +279,10 @@ var _ = Describe("integrationteststatus library unittests", func() {
 			Entry("When status is Deleted", intgteststat.IntegrationTestStatusDeleted, true),
 			Entry("When status is Invalid", intgteststat.IntegrationTestStatusTestInvalid, true),
 			Entry("When status is Warning", intgteststat.IntegrationTestStatusTestWarning, true),
+			Entry("When status is BuildPLRInProgress", intgteststat.BuildPLRInProgress, false),
+			Entry("When status is SnapshotCreationFailed", intgteststat.SnapshotCreationFailed, true),
+			Entry("When status is BuildPLRFailed", intgteststat.BuildPLRFailed, true),
+			Entry("When status is GroupSnapshotCreationFailed", intgteststat.GroupSnapshotCreationFailed, true),
 		)
 
 		It("Change back to InProgress updates timestamps accordingly", func() {
