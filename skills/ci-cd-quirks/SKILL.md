@@ -22,6 +22,8 @@ Integration-service CI runs on Konflux (Tekton-based) for builds and GitHub Acti
 |---------------------|----------|-----|
 | Any `go.mod` / `go.sum` | `go mod tidy && go mod vendor` | Vendor dir is committed; CI fails on drift |
 | Types in `api/v1beta2/` | `make generate manifests` | DeepCopy and CRD/RBAC manifests must be in sync |
+| Enum constants in `pkg/integrationteststatus/` | `make generate` | `enumer` regenerates `integrationteststatus_enumer.go`; CI fails if it is stale |
+| Enum constants in `pkg/integrationteststatus/` | `make generate` | `enumer` regenerates `integrationteststatus_enumer.go`; CI fails if it is stale |
 | Any `.go` file | `make fmt` | CI fails on uncommitted gofmt changes |
 | `+kubebuilder:rbac` markers | `make manifests` | RBAC ClusterRole must reflect markers |
 

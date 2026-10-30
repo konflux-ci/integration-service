@@ -224,7 +224,7 @@ $(ENVTEST): $(LOCALBIN)
 	GOBIN=$(LOCALBIN) go install sigs.k8s.io/controller-runtime/tools/setup-envtest@f52bbb8b
 
 .PHONY: enumer
-enumer: $(ENUMER)
+enumer: $(ENUMER) ## Download enumer locally if necessary.
 $(ENUMER): $(LOCALBIN)
 	GOBIN=$(LOCALBIN) go install github.com/dmarkham/enumer@$(ENUMER_VERSION)
 

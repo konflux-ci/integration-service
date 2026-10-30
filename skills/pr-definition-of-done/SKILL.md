@@ -26,6 +26,8 @@ Every PR must pass CI checks, follow commit conventions, include tests, and keep
 
 ### Code Generation (CI will fail if stale — see [ci-cd-quirks](../ci-cd-quirks/SKILL.md) for details)
 - [ ] After API type changes in `api/v1beta2/`: `make generate manifests`
+- [ ] After enum constant changes in `pkg/integrationteststatus/`: `make generate`
+- [ ] After enum constant changes in `pkg/integrationteststatus/`: `make generate`
 - [ ] After dependency changes: `go mod tidy && go mod vendor`
 - [ ] Run `make fmt` — CI fails on uncommitted formatting changes
 - [ ] Run `make vet` — catches common Go mistakes

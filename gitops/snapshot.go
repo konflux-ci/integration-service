@@ -85,6 +85,32 @@ const (
 	// SnapshotTestsStatusAnnotation contains json data with test results of the particular snapshot
 	SnapshotTestsStatusAnnotation = "test.appstudio.openshift.io/status"
 
+	// SnapshotTestsStatusEnumVersionAnnotation records which status-string
+	// contract is stored in SnapshotTestsStatusAnnotation. It is set on every
+	// status write. Readers cannot use timestamps alone after this release:
+	// a canonical name such as BuildPLRInProgress is also the stale spelling
+	// of TestWarning.
+	//
+	// Contract:
+	//   - "2" (SnapshotTestsStatusEnumVersion): every status string is the
+	//     canonical IntegrationTestStatus name from the regenerated enum.
+	//   - absent, the implicit v1: "1" is never written. Strings last updated
+	//     before TestWarning landed (STONEINTG-1489) are already canonical.
+	//     Later strings use the stale enumer spelling, where TestWarning and
+	//     every later value were stored under the next name and
+	//     GroupSnapshotCreationFailed was stored as IntegrationTestStatus(13).
+	//     Those strings are translated on read.
+	//
+	// Keep writing this annotation until every Snapshot written by the stale
+	// enum has aged out of snapshot garbage collection and the read-side
+	// translator is removed (KONFLUX-16551). Dropping the annotation before
+	// that translator is gone would make new status JSON look like v1.
+	SnapshotTestsStatusEnumVersionAnnotation = "test.appstudio.openshift.io/status-enum-version"
+
+	// SnapshotTestsStatusEnumVersion is the contract value for canonical
+	// IntegrationTestStatus names. See SnapshotTestsStatusEnumVersionAnnotation.
+	SnapshotTestsStatusEnumVersion = "2"
+
 	// (Deprecated) SnapshotPRLastUpdate contains timestamp of last time PR was updated
 	SnapshotPRLastUpdate = "test.appstudio.openshift.io/pr-last-update"
 
