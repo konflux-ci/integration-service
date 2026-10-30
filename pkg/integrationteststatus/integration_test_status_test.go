@@ -19,6 +19,7 @@ package integrationteststatus_test
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -32,6 +33,36 @@ import (
 var _ = Describe("integrationteststatus library unittests", func() {
 
 	Describe("IntegrationTestStatus type tests", func() {
+		// Declaration order. String() and JSON must use these literals; comparing
+		// the generated helpers to each other would still pass if the whole tail
+		// were shifted the way the stale enumer file was.
+		canonicalStatuses := []struct {
+			status   intgteststat.IntegrationTestStatus
+			expected string
+		}{
+			{intgteststat.IntegrationTestStatusPending, "Pending"},
+			{intgteststat.IntegrationTestStatusInProgress, "InProgress"},
+			{intgteststat.IntegrationTestStatusDeleted, "Deleted"},
+			{intgteststat.IntegrationTestStatusEnvironmentProvisionError_Deprecated, "EnvironmentProvisionError"},
+			{intgteststat.IntegrationTestStatusDeploymentError_Deprecated, "DeploymentError"},
+			{intgteststat.IntegrationTestStatusTestFail, "TestFail"},
+			{intgteststat.IntegrationTestStatusTestPassed, "TestPassed"},
+			{intgteststat.IntegrationTestStatusTestInvalid, "TestInvalid"},
+			{intgteststat.IntegrationTestStatusTestWarning, "TestWarning"},
+			{intgteststat.BuildPLRInProgress, "BuildPLRInProgress"},
+			{intgteststat.SnapshotCreationFailed, "SnapshotCreationFailed"},
+			{intgteststat.BuildPLRFailed, "BuildPLRFailed"},
+			{intgteststat.GroupSnapshotCreationFailed, "GroupSnapshotCreationFailed"},
+		}
+		statusEntries := make([]TableEntry, 0, len(canonicalStatuses))
+		for _, canonicalStatus := range canonicalStatuses {
+			statusEntries = append(statusEntries, Entry(
+				"When status is "+canonicalStatus.expected,
+				canonicalStatus.status,
+				canonicalStatus.expected,
+			))
+		}
+
 		DescribeTable("Status to string and vice versa",
 			func(st intgteststat.IntegrationTestStatus, expectedStr string) {
 				strRepr := st.String()
@@ -40,14 +71,7 @@ var _ = Describe("integrationteststatus library unittests", func() {
 				Expect(err).ToNot(HaveOccurred())
 				Expect(controlStatus).To(Equal(st))
 			},
-			Entry("When status is Pending", intgteststat.IntegrationTestStatusPending, "Pending"),
-			Entry("When status is InProgress", intgteststat.IntegrationTestStatusInProgress, "InProgress"),
-			Entry("When status is EnvironmentProvisionError", intgteststat.IntegrationTestStatusEnvironmentProvisionError_Deprecated, "EnvironmentProvisionError"),
-			Entry("When status is DeploymentError", intgteststat.IntegrationTestStatusDeploymentError_Deprecated, "DeploymentError"),
-			Entry("When status is TestFail", intgteststat.IntegrationTestStatusTestFail, "TestFail"),
-			Entry("When status is TestPass", intgteststat.IntegrationTestStatusTestPassed, "TestPassed"),
-			Entry("When status is Deleted", intgteststat.IntegrationTestStatusDeleted, "Deleted"),
-			Entry("When status is Invalid", intgteststat.IntegrationTestStatusTestInvalid, "TestInvalid"),
+			statusEntries,
 		)
 
 		DescribeTable("Status to JSON and vice versa",
@@ -61,15 +85,39 @@ var _ = Describe("integrationteststatus library unittests", func() {
 				Expect(err).ToNot(HaveOccurred())
 				Expect(controlStatus).To(Equal(st))
 			},
-			Entry("When status is Pending", intgteststat.IntegrationTestStatusPending, "Pending"),
-			Entry("When status is InProgress", intgteststat.IntegrationTestStatusInProgress, "InProgress"),
-			Entry("When status is EnvironmentProvisionError", intgteststat.IntegrationTestStatusEnvironmentProvisionError_Deprecated, "EnvironmentProvisionError"),
-			Entry("When status is DeploymentError", intgteststat.IntegrationTestStatusDeploymentError_Deprecated, "DeploymentError"),
-			Entry("When status is TestFail", intgteststat.IntegrationTestStatusTestFail, "TestFail"),
-			Entry("When status is TestPass", intgteststat.IntegrationTestStatusTestPassed, "TestPassed"),
-			Entry("When status is Deleted", intgteststat.IntegrationTestStatusDeleted, "Deleted"),
-			Entry("When status is Invalid", intgteststat.IntegrationTestStatusTestInvalid, "TestInvalid"),
+			statusEntries,
 		)
+
+		It("covers every generated enum constant, including case-insensitive parsing", func() {
+			values := intgteststat.IntegrationTestStatusValues()
+			names := intgteststat.IntegrationTestStatusStrings()
+			Expect(values).To(HaveLen(len(canonicalStatuses)))
+			Expect(names).To(HaveLen(len(canonicalStatuses)))
+
+			for i, canonicalStatus := range canonicalStatuses {
+				Expect(values[i]).To(Equal(canonicalStatus.status))
+				Expect(names[i]).To(Equal(canonicalStatus.expected))
+				Expect(canonicalStatus.status.String()).To(Equal(canonicalStatus.expected))
+
+				for _, spelling := range []string{
+					strings.ToLower(canonicalStatus.expected),
+					strings.ToUpper(canonicalStatus.expected),
+				} {
+					parsed, err := intgteststat.IntegrationTestStatusString(spelling)
+					Expect(err).ToNot(HaveOccurred())
+					Expect(parsed).To(Equal(canonicalStatus.status))
+
+					var decoded intgteststat.IntegrationTestStatus
+					err = json.Unmarshal([]byte(`"`+spelling+`"`), &decoded)
+					Expect(err).ToNot(HaveOccurred())
+					Expect(decoded).To(Equal(canonicalStatus.status))
+				}
+
+				encoded, err := json.Marshal(canonicalStatus.status)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(encoded).To(Equal([]byte(`"` + canonicalStatus.expected + `"`)))
+			}
+		})
 
 		DescribeTable("Check IsFinal logic",
 			func(st intgteststat.IntegrationTestStatus, isFinal bool) {
@@ -199,6 +247,7 @@ var _ = Describe("integrationteststatus library unittests", func() {
 			Entry("When status is TestPass", intgteststat.IntegrationTestStatusTestPassed, false),
 			Entry("When status is Deleted", intgteststat.IntegrationTestStatusDeleted, false),
 			Entry("When status is Invalid", intgteststat.IntegrationTestStatusTestInvalid, false),
+			Entry("When status is Warning", intgteststat.IntegrationTestStatusTestWarning, false),
 		)
 
 		DescribeTable("Test expected additions of completionTime",
@@ -220,6 +269,7 @@ var _ = Describe("integrationteststatus library unittests", func() {
 			Entry("When status is TestPass", intgteststat.IntegrationTestStatusTestPassed, true),
 			Entry("When status is Deleted", intgteststat.IntegrationTestStatusDeleted, true),
 			Entry("When status is Invalid", intgteststat.IntegrationTestStatusTestInvalid, true),
+			Entry("When status is Warning", intgteststat.IntegrationTestStatusTestWarning, true),
 		)
 
 		It("Change back to InProgress updates timestamps accordingly", func() {
