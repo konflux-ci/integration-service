@@ -117,12 +117,9 @@ func (i *IntegrationController) WaitForSnapshotToGetCreated(snapshotName, pipeli
 
 // GetIntegrationTestStatusDetailFromSnapshot parses snapshot annotation and returns integration test status detail
 func (i *IntegrationController) GetIntegrationTestStatusDetailFromSnapshot(snapshot *appstudioApi.Snapshot, scenarioName string) (*intgteststat.IntegrationTestStatusDetail, error) {
-	var resultsJson string
-	annotations := snapshot.GetAnnotations()
-	resultsJson = annotations[gitops.SnapshotTestsStatusAnnotation]
-	statuses, err := intgteststat.NewSnapshotIntegrationTestStatuses(resultsJson)
+	statuses, err := gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(snapshot)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create new SnapshotIntegrationTestStatuses object: %w", err)
+		return nil, fmt.Errorf("failed to get integration test statuses from snapshot: %w", err)
 	}
 	statusDetail, ok := statuses.GetScenarioStatus(scenarioName)
 	if !ok {

@@ -20,11 +20,42 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
 	intgteststat "github.com/konflux-ci/integration-service/pkg/integrationteststatus"
 	"github.com/konflux-ci/operator-toolkit/metadata"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+)
+
+// TODO(KONFLUX-16551): remove statusEnumShiftIntroducedAt and
+// legacyShiftedStatusNames once Snapshots written by the stale enum have
+// aged out of snapshot garbage collection.
+
+// statusEnumShiftIntroducedAt is when IntegrationTestStatusTestWarning landed
+// (STONEINTG-1489, 4bcafa4f) without regenerating enumer. Status JSON last
+// updated before this instant already uses the current spelling. Later JSON
+// that has no SnapshotTestsStatusEnumVersionAnnotation uses the shifted names.
+var statusEnumShiftIntroducedAt = time.Date(2026, 3, 16, 16, 23, 23, 0, time.UTC)
+
+// legacyShiftedStatusNames maps a status string written by the stale enum to
+// the canonical name of the value that produced it.
+var legacyShiftedStatusNames = map[string]string{
+	"BuildPLRInProgress":          "TestWarning",
+	"SnapshotCreationFailed":      "BuildPLRInProgress",
+	"BuildPLRFailed":              "SnapshotCreationFailed",
+	"GroupSnapshotCreationFailed": "BuildPLRFailed",
+	// Value 13 fell off the end of the stale name table.
+	"IntegrationTestStatus(13)": "GroupSnapshotCreationFailed",
+}
+
+// encodeTranslatedStatusJSON and setSnapshotAnnotation are the production
+// implementations. Tests replace them to exercise error returns that these
+// inputs do not produce: JSON from a decoded status document remarshals, and
+// SetAnnotation only fails when its object is nil.
+var (
+	encodeTranslatedStatusJSON = json.Marshal
+	setSnapshotAnnotation      = metadata.SetAnnotation
 )
 
 // NewSnapshotIntegrationTestStatusesFromSnapshot creates new SnapshotTestStatus struct from snapshot annotation
@@ -36,6 +67,13 @@ func NewSnapshotIntegrationTestStatusesFromSnapshot(s *applicationapiv1alpha1.Sn
 	statusAnnotation, ok := annotations[SnapshotTestsStatusAnnotation]
 	if !ok {
 		statusAnnotation = ""
+	}
+	if statusAnnotation != "" && annotations[SnapshotTestsStatusEnumVersionAnnotation] != SnapshotTestsStatusEnumVersion {
+		translated, err := translateLegacySnapshotTestsStatus(statusAnnotation)
+		if err != nil {
+			return nil, fmt.Errorf("failed to translate legacy integration test statuses: %w", err)
+		}
+		statusAnnotation = translated
 	}
 	sits, err := intgteststat.NewSnapshotIntegrationTestStatuses(statusAnnotation)
 	if err != nil {
@@ -59,8 +97,11 @@ func WriteIntegrationTestStatusesIntoSnapshot(ctx context.Context, s *applicatio
 		return fmt.Errorf("failed to marshal test results into JSON: %w", err)
 	}
 
-	if err := metadata.SetAnnotation(&s.ObjectMeta, SnapshotTestsStatusAnnotation, string(value)); err != nil {
+	if err := setSnapshotAnnotation(&s.ObjectMeta, SnapshotTestsStatusAnnotation, string(value)); err != nil {
 		return fmt.Errorf("failed to add annotations: %w", err)
+	}
+	if err := setSnapshotAnnotation(&s.ObjectMeta, SnapshotTestsStatusEnumVersionAnnotation, SnapshotTestsStatusEnumVersion); err != nil {
+		return fmt.Errorf("failed to add status enum version annotation: %w", err)
 	}
 
 	err = c.Patch(ctx, s, patch)
@@ -70,4 +111,56 @@ func WriteIntegrationTestStatusesIntoSnapshot(ctx context.Context, s *applicatio
 	}
 	sts.ResetDirty()
 	return nil
+}
+
+// translateLegacySnapshotTestsStatus rewrites status strings stored by the stale enum.
+// IntegrationTestStatus(13) had no other meaning. The other shifted names are rewritten
+// only when lastUpdateTime is at or after statusEnumShiftIntroducedAt, because those
+// same strings were canonical before TestWarning existed.
+func translateLegacySnapshotTestsStatus(raw string) (string, error) {
+	var entries []map[string]any
+	if err := json.Unmarshal([]byte(raw), &entries); err != nil {
+		return raw, nil
+	}
+
+	changed := false
+	for _, entry := range entries {
+		status, ok := entry["status"].(string)
+		if !ok {
+			continue
+		}
+		canonical, shifted := legacyShiftedStatusNames[status]
+		if !shifted {
+			continue
+		}
+		if status != "IntegrationTestStatus(13)" && !legacyStatusWrittenAfterShift(entry) {
+			continue
+		}
+		entry["status"] = canonical
+		changed = true
+	}
+	if !changed {
+		return raw, nil
+	}
+
+	rewritten, err := encodeTranslatedStatusJSON(entries)
+	if err != nil {
+		return "", fmt.Errorf("failed to encode translated integration test statuses: %w", err)
+	}
+	return string(rewritten), nil
+}
+
+// legacyStatusWrittenAfterShift reports whether the scenario status was last
+// updated at or after statusEnumShiftIntroducedAt. A missing or unparseable
+// lastUpdateTime is treated as written before the shift.
+func legacyStatusWrittenAfterShift(entry map[string]any) bool {
+	raw, ok := entry["lastUpdateTime"].(string)
+	if !ok || raw == "" {
+		return false
+	}
+	updated, err := time.Parse(time.RFC3339, raw)
+	if err != nil {
+		return false
+	}
+	return !updated.Before(statusEnumShiftIntroducedAt)
 }
