@@ -79,17 +79,50 @@ var _ = Describe("batchShouldFire", func() {
 	})
 })
 
+var _ = Describe("batchAllowsScheduledFire", func() {
+	It("allows fire when there are no failed members", func() {
+		batch := &v1beta2.ActiveBatch{
+			Accumulated: []v1beta2.AccumulatedEntry{{From: "a"}},
+		}
+		Expect(nudging.BatchAllowsScheduledFire(batch, v1beta2.FailurePolicyBlock)).To(BeTrue())
+	})
+
+	It("blocks scheduled fire when failure policy is Block and failures exist", func() {
+		batch := &v1beta2.ActiveBatch{
+			Accumulated: []v1beta2.AccumulatedEntry{{From: "a"}},
+			Failed:      []v1beta2.FailedEntry{{From: "b", BuildPipelineRun: "plr", Reason: "fail", CapturedAt: metav1.Now()}},
+		}
+		Expect(nudging.BatchAllowsScheduledFire(batch, v1beta2.FailurePolicyBlock)).To(BeFalse())
+	})
+
+	It("allows partial scheduled fire when failure policy is ProceedWithPartial", func() {
+		batch := &v1beta2.ActiveBatch{
+			Accumulated: []v1beta2.AccumulatedEntry{{From: "a"}},
+			Failed:      []v1beta2.FailedEntry{{From: "b", BuildPipelineRun: "plr", Reason: "fail", CapturedAt: metav1.Now()}},
+		}
+		Expect(nudging.BatchAllowsScheduledFire(batch, v1beta2.FailurePolicyProceedWithPartial)).To(BeTrue())
+	})
+})
+
 var _ = Describe("nextBatchWakeDuration", func() {
 	It("should return zero when a batch is already due", func() {
 		now := time.Now()
 		past := metav1.NewTime(now.Add(-time.Minute))
 		batches := []v1beta2.ActiveBatch{
 			{
-				Phase:  v1beta2.BatchPhaseAccumulating,
-				FireAt: &past,
+				Phase:       v1beta2.BatchPhaseAccumulating,
+				FireAt:      &past,
+				Accumulated: []v1beta2.AccumulatedEntry{{From: "a"}},
 			},
 		}
 		Expect(nudging.NextBatchWakeDuration(batches)).To(Equal(time.Duration(0)))
+	})
+
+	It("should return immediately when a batch is in Firing phase", func() {
+		batches := []v1beta2.ActiveBatch{
+			{Phase: v1beta2.BatchPhaseFiring},
+		}
+		Expect(nudging.NextBatchWakeDuration(batches)).To(Equal(time.Nanosecond))
 	})
 
 	It("should return the shortest positive wait among accumulating batches", func() {
@@ -97,12 +130,29 @@ var _ = Describe("nextBatchWakeDuration", func() {
 		soon := metav1.NewTime(now.Add(2 * time.Minute))
 		later := metav1.NewTime(now.Add(10 * time.Minute))
 		batches := []v1beta2.ActiveBatch{
-			{Phase: v1beta2.BatchPhaseAccumulating, FireAt: &later},
-			{Phase: v1beta2.BatchPhaseAccumulating, FireAt: &soon},
+			{Phase: v1beta2.BatchPhaseAccumulating, FireAt: &later, Accumulated: []v1beta2.AccumulatedEntry{{From: "a"}}},
+			{Phase: v1beta2.BatchPhaseAccumulating, FireAt: &soon, Accumulated: []v1beta2.AccumulatedEntry{{From: "b"}}},
 			{Phase: v1beta2.BatchPhaseCompleted, FireAt: &soon},
 		}
 		wake := nudging.NextBatchWakeDuration(batches)
 		Expect(wake).To(BeNumerically(">", 0))
 		Expect(wake).To(BeNumerically("<", 3*time.Minute))
+	})
+
+	It("should wake at hardDeadline when it is earlier than fireAt", func() {
+		now := time.Now()
+		laterFire := metav1.NewTime(now.Add(2 * time.Hour))
+		soonDeadline := metav1.NewTime(now.Add(10 * time.Minute))
+		batches := []v1beta2.ActiveBatch{
+			{
+				Phase:        v1beta2.BatchPhaseAccumulating,
+				FireAt:       &laterFire,
+				HardDeadline: soonDeadline,
+				Accumulated:  []v1beta2.AccumulatedEntry{{From: "a"}},
+			},
+		}
+		wake := nudging.NextBatchWakeDuration(batches)
+		Expect(wake).To(BeNumerically(">", 0))
+		Expect(wake).To(BeNumerically("<", 15*time.Minute))
 	})
 })
