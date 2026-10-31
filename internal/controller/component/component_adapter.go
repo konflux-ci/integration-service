@@ -18,8 +18,8 @@ package component
 
 import (
 	"context"
-
 	"fmt"
+	"time"
 
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
 	"github.com/konflux-ci/integration-service/gitops"
@@ -66,6 +66,27 @@ func (a *Adapter) EnsureComponentHasFinalizer() (controller.OperationResult, err
 				return controller.RequeueWithError(fmt.Errorf("failed to add the finalizer: %w", err))
 			}
 		}
+	}
+
+	return controller.ContinueProcessing()
+}
+
+// EnsureComponentServiceAccountCreated is an operation that makes sure the per-component integration
+// pipeline ServiceAccount its-pipeline-<component> and its RoleBinding exist and are owned by the
+// Component (STONEINTG-1799). A Component marked for deletion gets nothing. An existing object left by
+// a previous Component of the same name is waited out: requeue, and the garbage collector removes it.
+func (a *Adapter) EnsureComponentServiceAccountCreated() (controller.OperationResult, error) {
+	if isComponentMarkedForDeletion(a.component) {
+		return controller.ContinueProcessing()
+	}
+
+	if err := ensureIntegrationPipelineServiceAccount(a.context, a.client, a.logger, a.component); err != nil {
+		if isStaleOwnerError(err) {
+			a.logger.Info("The integration pipeline ServiceAccount or RoleBinding still belongs to a previous Component of the same name, requeueing until garbage collection removes it", "component.Name", a.component.Name)
+			return controller.RequeueAfter(time.Second*10, nil)
+		}
+		a.logger.Error(err, "Failed to ensure the integration pipeline ServiceAccount for the component", "component.Name", a.component.Name)
+		return controller.RequeueWithError(err)
 	}
 
 	return controller.ContinueProcessing()
