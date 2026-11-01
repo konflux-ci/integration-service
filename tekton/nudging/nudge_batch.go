@@ -676,7 +676,7 @@ func fireBatch(ctx context.Context, c client.Client, nudgeConfig *v1beta2.NudgeC
 	if err := c.Get(ctx, types.NamespacedName{Name: plannedName, Namespace: nudgeConfig.Namespace}, existingPLR); err == nil {
 		batch.NudgePipelineRun = plannedName
 		batch.Phase = v1beta2.BatchPhaseFiring
-		batch.Message = fmt.Sprintf("fired with %d accumulated build(s)", len(batch.Accumulated))
+		batch.Message = fmt.Sprintf("reconciled existing nudge PipelineRun with %d accumulated build(s)", len(batch.Accumulated))
 		return nil
 	}
 

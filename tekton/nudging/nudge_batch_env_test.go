@@ -18,6 +18,7 @@ package nudging
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -25,17 +26,18 @@ import (
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
 	konfluxv1beta2 "github.com/konflux-ci/integration-service/api/konflux/v1beta2"
 	"github.com/konflux-ci/integration-service/api/v1beta2"
+	tektonconsts "github.com/konflux-ci/integration-service/tekton/consts"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	pacv1alpha1 "github.com/openshift-pipelines/pipelines-as-code/pkg/apis/pipelinesascode/v1alpha1"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
-
-	tektonconsts "github.com/konflux-ci/integration-service/tekton/consts"
 )
 
 var _ = Describe("Nudge batch client operations", func() {
@@ -342,6 +344,23 @@ var _ = Describe("Nudge batch client operations", func() {
 	})
 
 	Context("When force-firing a batch", func() {
+		It("should reject forceFire when the batch has no accumulated builds", func() {
+			now := metav1.Now()
+			nudgeConfig.Status.ActiveBatches = []v1beta2.ActiveBatch{{
+				Target:       target,
+				BatchID:      "empty-force",
+				Phase:        v1beta2.BatchPhaseAccumulating,
+				CreatedAt:    now,
+				HardDeadline: metav1.NewTime(now.Add(time.Hour)),
+			}}
+			c := newClient(nudgeConfig)
+			nudgeConfig.Spec.Actions = &v1beta2.Actions{
+				ForceFire: &v1beta2.ForceFireAction{Target: target},
+			}
+			err := ProcessForceFireAction(ctx, c, nudgeConfig)
+			Expect(err).To(MatchError(ContainSubstring("no accumulated builds")))
+		})
+
 		It("should return an error when no batch exists for the target", func() {
 			c := newClient(nudgeConfig)
 			nudgeConfig.Spec.Actions = &v1beta2.Actions{
@@ -503,7 +522,7 @@ var _ = Describe("Nudge batch client operations", func() {
 	})
 
 	Context("When processing due batches", func() {
-		It("should fire a batch when fireAt has elapsed with no failures (via idempotent PLR path)", func() {
+		It("should reconcile an existing nudge PLR into Firing and record its name on status", func() {
 			const batchID = "due-success-idempotent"
 			plrName := BatchedNudgePipelineRunName(batchID, 0)
 			existingPLR := &tektonv1.PipelineRun{
@@ -593,8 +612,43 @@ var _ = Describe("Nudge batch client operations", func() {
 
 			updated := &v1beta2.NudgeConfig{}
 			Expect(c.Get(ctx, types.NamespacedName{Name: nudgeConfig.Name, Namespace: namespace}, updated)).To(Succeed())
-			Expect(updated.Status.ActiveBatches[0].Phase).To(Equal(v1beta2.BatchPhaseCompleted))
+			Expect(updated.Status.ActiveBatches[0].Phase).To(Equal(v1beta2.BatchPhaseFiring))
 			Expect(updated.Status.ActiveBatches[0].NudgePipelineRun).To(Equal(plrName))
+		})
+
+		It("should mark a due batch as blocked when failures exist under Block policy", func() {
+			now := metav1.Now()
+			pastFire := metav1.NewTime(now.Add(-time.Minute))
+			blockPolicy := v1beta2.FailurePolicyBlock
+			nudgeConfig.Spec.TargetConfig[0].BatchPolicy = &v1beta2.BatchPolicy{
+				FailurePolicy: &blockPolicy,
+			}
+			nudgeConfig.Status.ActiveBatches = []v1beta2.ActiveBatch{
+				{
+					Target:       target,
+					BatchID:      "blocked-due",
+					Phase:        v1beta2.BatchPhaseAccumulating,
+					CreatedAt:    now,
+					FireAt:       &pastFire,
+					HardDeadline: metav1.NewTime(now.Add(time.Hour)),
+					Accumulated: []v1beta2.AccumulatedEntry{
+						{From: source, ImageDigest: "sha256:abc", BuildPipelineRun: buildPLR.Name, CapturedAt: now},
+					},
+					Failed: []v1beta2.FailedEntry{
+						{From: "failed-operand", BuildPipelineRun: "plr-fail", Reason: "failed", CapturedAt: now},
+					},
+				},
+			}
+			c := newClient(nudgeConfig, buildPLR)
+
+			_, err := ProcessDueNudgeBatches(ctx, c, nudgeConfig)
+			Expect(err).NotTo(HaveOccurred())
+
+			updated := &v1beta2.NudgeConfig{}
+			Expect(c.Get(ctx, types.NamespacedName{Name: nudgeConfig.Name, Namespace: namespace}, updated)).To(Succeed())
+			Expect(updated.Status.ActiveBatches[0].Phase).To(Equal(v1beta2.BatchPhaseBlocked))
+			Expect(updated.Status.ActiveBatches[0].Message).To(ContainSubstring("blocked by failed member build(s)"))
+			Expect(updated.Status.ActiveBatches[0].FireAt).To(BeNil())
 		})
 
 		It("should return a wake duration bounded by hardDeadline when it precedes fireAt", func() {
@@ -625,6 +679,166 @@ var _ = Describe("Nudge batch client operations", func() {
 			updated := &v1beta2.NudgeConfig{}
 			Expect(c.Get(ctx, types.NamespacedName{Name: nudgeConfig.Name, Namespace: namespace}, updated)).To(Succeed())
 			Expect(updated.Status.ActiveBatches[0].Phase).To(Equal(v1beta2.BatchPhaseAccumulating))
+		})
+	})
+
+	Context("When firing batches end-to-end", func() {
+		const batchID = "nudge-target_1700000000"
+
+		batchedFireScheme := func() *runtime.Scheme {
+			s := runtime.NewScheme()
+			Expect(v1beta2.AddToScheme(s)).To(Succeed())
+			Expect(konfluxv1beta2.AddToScheme(s)).To(Succeed())
+			Expect(tektonv1.AddToScheme(s)).To(Succeed())
+			Expect(corev1.AddToScheme(s)).To(Succeed())
+			Expect(applicationapiv1alpha1.AddToScheme(s)).To(Succeed())
+			Expect(pacv1alpha1.AddToScheme(s)).To(Succeed())
+			return s
+		}
+
+		batchedFireClient := func(nc *v1beta2.NudgeConfig, build *tektonv1.PipelineRun) client.Client {
+			dockerConfigBytes, err := json.Marshal(dockerConfigJSON{
+				Auths: map[string]repositoryConfigAuth{
+					"quay.io/org/source": {Username: "quay-user", Password: "quay-pass"},
+				},
+			})
+			Expect(err).NotTo(HaveOccurred())
+			dockerSecret := &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "docker-secret", Namespace: namespace},
+				Type:       corev1.SecretTypeDockerConfigJson,
+				Data:       map[string][]byte{corev1.DockerConfigJsonKey: dockerConfigBytes},
+			}
+			sa := &corev1.ServiceAccount{
+				ObjectMeta: metav1.ObjectMeta{Name: tektonconsts.DefaultPipelineServiceAccount, Namespace: namespace},
+				Secrets:    []corev1.ObjectReference{{Name: "docker-secret"}},
+			}
+			scmSecret := &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "scm-github-secret", Namespace: namespace},
+				Type:       corev1.SecretTypeBasicAuth,
+				Data: map[string][]byte{
+					corev1.BasicAuthUsernameKey: []byte("bot-user"),
+					corev1.BasicAuthPasswordKey: []byte("ghp_secret-token"),
+				},
+			}
+			repo := &pacv1alpha1.Repository{
+				ObjectMeta: metav1.ObjectMeta{Name: "downstream-repo", Namespace: namespace},
+				Spec: pacv1alpha1.RepositorySpec{
+					URL: "https://github.com/org/downstream",
+					GitProvider: &pacv1alpha1.GitProvider{
+						Secret: &pacv1alpha1.Secret{Name: "scm-github-secret"},
+					},
+				},
+			}
+			targetComp := &applicationapiv1alpha1.Component{
+				ObjectMeta: metav1.ObjectMeta{Name: target, Namespace: namespace},
+				Spec: applicationapiv1alpha1.ComponentSpec{
+					Application:   "test-app",
+					ComponentName: target,
+					Source: applicationapiv1alpha1.ComponentSource{
+						ComponentSourceUnion: applicationapiv1alpha1.ComponentSourceUnion{
+							GitSource: &applicationapiv1alpha1.GitSource{
+								URL:      "https://github.com/org/downstream",
+								Revision: "main",
+							},
+						},
+					},
+				},
+			}
+			sourceComp := &applicationapiv1alpha1.Component{
+				ObjectMeta: metav1.ObjectMeta{Name: source, Namespace: namespace},
+				Spec: applicationapiv1alpha1.ComponentSpec{
+					Application:    "test-app",
+					ComponentName:  source,
+					ContainerImage: "quay.io/org/source:latest",
+				},
+			}
+			return fake.NewClientBuilder().
+				WithScheme(batchedFireScheme()).
+				WithStatusSubresource(&v1beta2.NudgeConfig{}).
+				WithObjects(nc, build, sa, dockerSecret, scmSecret, repo, targetComp, sourceComp).
+				Build()
+		}
+
+		accumulatedEntry := func(now metav1.Time) v1beta2.AccumulatedEntry {
+			return v1beta2.AccumulatedEntry{
+				From:                 source,
+				ImageDigest:          buildResult.Digest,
+				BuildPipelineRun:     buildPLR.Name,
+				BuiltImageRepository: buildResult.BuiltImageRepository,
+				BuiltImageTag:        buildResult.BuiltImageTag,
+				NudgeFileMatches:     ".*.yaml",
+				GitRepoAtShaLink:     "https://github.com/org/source/commit/abc",
+				CapturedAt:           now,
+			}
+		}
+
+		It("should create the aggregated nudge PipelineRun when a due batch fires", func() {
+			now := metav1.Now()
+			pastFire := metav1.NewTime(now.Add(-time.Minute))
+			nc := nudgeConfig.DeepCopy()
+			nc.Status.ActiveBatches = []v1beta2.ActiveBatch{
+				{
+					Target:       target,
+					BatchID:      batchID,
+					Phase:        v1beta2.BatchPhaseAccumulating,
+					CreatedAt:    now,
+					FireAt:       &pastFire,
+					HardDeadline: metav1.NewTime(now.Add(time.Hour)),
+					Accumulated:  []v1beta2.AccumulatedEntry{accumulatedEntry(now)},
+				},
+			}
+			plr := buildPLR.DeepCopy()
+			plr.Spec.TaskRunTemplate.ServiceAccountName = tektonconsts.DefaultPipelineServiceAccount
+			c := batchedFireClient(nc, plr)
+
+			_, err := ProcessDueNudgeBatches(ctx, c, nc)
+			Expect(err).NotTo(HaveOccurred())
+
+			updated := &v1beta2.NudgeConfig{}
+			Expect(c.Get(ctx, types.NamespacedName{Name: nc.Name, Namespace: namespace}, updated)).To(Succeed())
+			Expect(updated.Status.ActiveBatches[0].Phase).To(Equal(v1beta2.BatchPhaseFiring))
+			plrName := BatchedNudgePipelineRunName(batchID, 0)
+			Expect(updated.Status.ActiveBatches[0].NudgePipelineRun).To(Equal(plrName))
+
+			created := &tektonv1.PipelineRun{}
+			Expect(c.Get(ctx, types.NamespacedName{Name: plrName, Namespace: namespace}, created)).To(Succeed())
+			Expect(created.Annotations[tektonconsts.NudgeBatchIDAnnotation]).To(Equal(batchID))
+			Expect(created.Annotations).NotTo(HaveKey(tektonconsts.NudgingComponentAnnotation))
+		})
+
+		It("should move a Firing batch to Completed after the nudge PipelineRun succeeds", func() {
+			now := metav1.Now()
+			pastFire := metav1.NewTime(now.Add(-time.Minute))
+			plrName := BatchedNudgePipelineRunName(batchID, 0)
+			existingPLR := &tektonv1.PipelineRun{
+				ObjectMeta: metav1.ObjectMeta{Name: plrName, Namespace: namespace},
+			}
+			existingPLR.Status.MarkSucceeded(tektonv1.PipelineRunReasonCompleted.String(), "done")
+			nc := nudgeConfig.DeepCopy()
+			nc.Status.ActiveBatches = []v1beta2.ActiveBatch{
+				{
+					Target:           target,
+					BatchID:          batchID,
+					Phase:            v1beta2.BatchPhaseAccumulating,
+					CreatedAt:        now,
+					FireAt:           &pastFire,
+					HardDeadline:     metav1.NewTime(now.Add(time.Hour)),
+					Accumulated:      []v1beta2.AccumulatedEntry{accumulatedEntry(now)},
+					NudgePipelineRun: "",
+				},
+			}
+			c := batchedFireClient(nc, buildPLR)
+			Expect(c.Create(ctx, existingPLR)).To(Succeed())
+
+			_, err := ProcessDueNudgeBatches(ctx, c, nc)
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(ProcessFiringNudgeBatches(ctx, c, nc)).To(Succeed())
+
+			updated := &v1beta2.NudgeConfig{}
+			Expect(c.Get(ctx, types.NamespacedName{Name: nc.Name, Namespace: namespace}, updated)).To(Succeed())
+			Expect(updated.Status.ActiveBatches[0].Phase).To(Equal(v1beta2.BatchPhaseCompleted))
+			Expect(updated.Status.ActiveBatches[0].NudgePipelineRun).To(Equal(plrName))
 		})
 	})
 })
