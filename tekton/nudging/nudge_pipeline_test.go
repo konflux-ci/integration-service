@@ -339,6 +339,229 @@ var _ = Describe("Nudge Pipeline", func() {
 		})
 	})
 
+	Describe("GenerateBatchedRenovateConfig", func() {
+		It("builds renovate config for three accumulated sources with batch branch prefix", func() {
+			target := nudging.NudgeTarget{
+				ComponentName: "downstream-comp",
+				GitProvider:   "github",
+				Username:      "user",
+				GitAuthor:     "Author <author@example.com>",
+				Token:         "token",
+				Endpoint:      "https://github.com",
+				Repositories:  []nudging.RenovateRepository{{Repository: "org/downstream"}},
+			}
+			entries := []nudging.BatchedRenovateEntry{
+				{BuildResult: &nudging.NudgeBuildResult{
+					BuiltImageRepository: "quay.io/ns/image-a", BuiltImageTag: "v1", Digest: "sha256:aaa",
+					FileMatches: "Dockerfile", SourceComponentName: "source-a", GitRepoAtShaLink: "https://example.com/a",
+				}},
+				{BuildResult: &nudging.NudgeBuildResult{
+					BuiltImageRepository: "quay.io/ns/image-b", BuiltImageTag: "v2", Digest: "sha256:bbb",
+					FileMatches: "Dockerfile", SourceComponentName: "source-b", GitRepoAtShaLink: "https://example.com/b",
+				}},
+				{BuildResult: &nudging.NudgeBuildResult{
+					BuiltImageRepository: "quay.io/ns/image-c", BuiltImageTag: "v3", Digest: "sha256:ccc",
+					FileMatches: "Dockerfile", SourceComponentName: "source-c", GitRepoAtShaLink: "https://example.com/c",
+				}},
+			}
+
+			config := nudging.GenerateBatchedRenovateConfig(target, target.ComponentName, entries)
+
+			Expect(config.CustomManagers).To(HaveLen(3))
+			Expect(config.PackageRules).To(HaveLen(4))
+			Expect(config.PackageRules[0].Enabled).To(BeFalse())
+			expectedBranchPrefix := tektonconsts.NudgeBatchBranchPrefix + target.ComponentName + "/"
+			for i := 1; i <= 3; i++ {
+				Expect(config.PackageRules[i].BranchPrefix).To(Equal(expectedBranchPrefix))
+				Expect(config.PackageRules[i].CommitMessageTopic).To(Equal(entries[i-1].BuildResult.SourceComponentName))
+			}
+			Expect(config.DependencyDashboardTitle).To(Equal("konflux-nudge-unused-dependency-dashboard"))
+		})
+
+		It("uses batch branch prefix instead of per-source simple-branch preferences", func() {
+			target := nudging.NudgeTarget{
+				ComponentName: "downstream-comp",
+				GitProvider:   "github",
+				Username:      "user",
+				GitAuthor:     "Author <author@example.com>",
+				Token:         "token",
+				Endpoint:      "https://github.com",
+				Repositories:  []nudging.RenovateRepository{{Repository: "org/downstream"}},
+			}
+			buildResult := &nudging.NudgeBuildResult{
+				BuiltImageRepository: "quay.io/ns/image-a",
+				BuiltImageTag:        "v1",
+				Digest:               "sha256:aaa",
+				FileMatches:          "Dockerfile",
+				SourceComponentName:  "source-a",
+				GitRepoAtShaLink:     "https://example.com/a",
+			}
+			immediate := nudging.GenerateRenovateConfig(target, buildResult, true)
+			Expect(immediate.PackageRules[1].AdditionalBranchPrefix).To(BeEmpty())
+
+			batched := nudging.GenerateBatchedRenovateConfig(target, target.ComponentName, []nudging.BatchedRenovateEntry{
+				{BuildResult: buildResult},
+			})
+			expectedPrefix := tektonconsts.NudgeBatchBranchPrefix + target.ComponentName + "/"
+			Expect(batched.PackageRules[1].BranchPrefix).To(Equal(expectedPrefix))
+			Expect(batched.PackageRules[1].AdditionalBranchPrefix).To(BeEmpty())
+		})
+
+		It("applies target custom renovate options from the two-tier ConfigMap lookup", func() {
+			testCtx := context.Background()
+			cm := &corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{Name: tektonconsts.NamespaceWideRenovateConfigMapName, Namespace: "test-ns"},
+				Data: map[string]string{
+					"automerge": "true",
+				},
+			}
+			fakeClient := fake.NewClientBuilder().WithScheme(nudgeTestScheme()).WithObjects(cm).Build()
+			targetComp := nudgeSampleComponent("downstream-comp", "test-ns", nil)
+
+			opts, err := nudging.ReadCustomRenovateConfigMap(testCtx, fakeClient, targetComp)
+			Expect(err).NotTo(HaveOccurred())
+
+			target := nudging.NudgeTarget{
+				ComponentName:                  "downstream-comp",
+				ComponentCustomRenovateOptions: opts,
+				GitProvider:                    "github",
+				Username:                       "user",
+				GitAuthor:                      "Author <author@example.com>",
+				Token:                          "token",
+				Endpoint:                       "https://github.com",
+				Repositories:                   []nudging.RenovateRepository{{Repository: "org/downstream"}},
+			}
+			config := nudging.GenerateBatchedRenovateConfig(target, target.ComponentName, []nudging.BatchedRenovateEntry{
+				{BuildResult: &nudging.NudgeBuildResult{
+					BuiltImageRepository: "quay.io/ns/a", BuiltImageTag: "v1", Digest: "sha256:aaa",
+					FileMatches: "Dockerfile", SourceComponentName: "source-a",
+				}},
+			})
+			Expect(config.Automerge).To(BeTrue())
+		})
+	})
+
+	Describe("BatchedNudgePipelineRunName", func() {
+		It("derives a deterministic Tekton-safe name from batchId", func() {
+			batchID := "my-target_1700000000"
+			Expect(nudging.BatchedNudgePipelineRunName(batchID, 0)).To(Equal("nudge-batch-my-target-1700000000"))
+			Expect(nudging.BatchedNudgePipelineRunName(batchID, 0)).To(Equal(nudging.BatchedNudgePipelineRunName(batchID, 0)))
+		})
+
+		It("appends retry suffix when retryAttempt is positive", func() {
+			Expect(nudging.BatchedNudgePipelineRunName("target_1", 2)).To(Equal("nudge-batch-target-1-retry2"))
+		})
+
+		It("normalizes hyphenated target names in batchId for Tekton object names", func() {
+			Expect(nudging.BatchedNudgePipelineRunName("fbc-catalog_1721126400", 0)).To(Equal("nudge-batch-fbc-catalog-1721126400"))
+		})
+	})
+
+	Describe("CreateBatchedNudgePipelineRun", func() {
+		var (
+			testCtx      context.Context
+			fakeClient   client.Client
+			referencePLR *tektonv1.PipelineRun
+			target       nudging.NudgeTarget
+			entries      []nudging.BatchedRenovateEntry
+			batchID      string
+		)
+
+		BeforeEach(func() {
+			testCtx = context.Background()
+			scheme := nudgeTestScheme()
+			sa := &corev1.ServiceAccount{
+				ObjectMeta: metav1.ObjectMeta{Name: "appstudio-pipeline", Namespace: "test-ns"},
+			}
+			fakeClient = fake.NewClientBuilder().WithScheme(scheme).WithObjects(sa).Build()
+
+			referencePLR = &tektonv1.PipelineRun{
+				ObjectMeta: metav1.ObjectMeta{Name: "build-plr-0", Namespace: "test-ns"},
+				Spec:       tektonv1.PipelineRunSpec{TaskRunTemplate: tektonv1.PipelineTaskRunTemplate{}},
+			}
+			target = nudging.NudgeTarget{
+				ComponentName:           "downstream-comp",
+				GitProvider:             "github",
+				Username:                "test-user",
+				GitAuthor:               "Test <test@example.com>",
+				Token:                   "ghp_token",
+				Endpoint:                "https://api.github.com",
+				Repositories:            []nudging.RenovateRepository{{Repository: "org/downstream"}},
+				ImageRepositoryHost:     "quay.io",
+				ImageRepositoryUsername: "robot",
+				ImageRepositoryPassword: "secret",
+			}
+			batchID = "downstream-comp_1700000000"
+			entries = []nudging.BatchedRenovateEntry{
+				{BuildResult: &nudging.NudgeBuildResult{
+					BuiltImageRepository: "quay.io/ns/a", BuiltImageTag: "v1", Digest: "sha256:111",
+					FileMatches: ".*.yaml", SourceComponentName: "source-a", GitRepoAtShaLink: "https://example.com/a",
+				}},
+				{BuildResult: &nudging.NudgeBuildResult{
+					BuiltImageRepository: "quay.io/ns/b", BuiltImageTag: "v2", Digest: "sha256:222",
+					FileMatches: ".*.yaml", SourceComponentName: "source-b", GitRepoAtShaLink: "https://example.com/b",
+				}},
+				{BuildResult: &nudging.NudgeBuildResult{
+					BuiltImageRepository: "quay.io/ns/c", BuiltImageTag: "v3", Digest: "sha256:333",
+					FileMatches: ".*.yaml", SourceComponentName: "source-c", GitRepoAtShaLink: "https://example.com/c",
+				}},
+			}
+		})
+
+		It("creates a batched PipelineRun with plural annotations and aggregated renovate config", func() {
+			expectedName := nudging.BatchedNudgePipelineRunName(batchID, 0)
+			name, err := nudging.CreateBatchedNudgePipelineRun(testCtx, fakeClient, referencePLR, target, entries, batchID, 0)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(name).To(Equal(expectedName))
+
+			created := &tektonv1.PipelineRun{}
+			Expect(fakeClient.Get(testCtx, types.NamespacedName{Name: expectedName, Namespace: "test-ns"}, created)).To(Succeed())
+			Expect(created.Annotations[tektonconsts.NudgedComponentsAnnotation]).To(Equal("downstream-comp"))
+			Expect(created.Annotations).NotTo(HaveKey(tektonconsts.NudgingComponentAnnotation))
+			Expect(created.Annotations).NotTo(HaveKey(tektonconsts.NudgingImageAnnotation))
+			Expect(created.Annotations).NotTo(HaveKey(tektonconsts.NudgingPipelineAnnotation))
+			Expect(created.Annotations[tektonconsts.NudgeBatchIDAnnotation]).To(Equal(batchID))
+
+			var components []string
+			Expect(json.Unmarshal([]byte(created.Annotations[tektonconsts.NudgingComponentsAnnotation]), &components)).To(Succeed())
+			Expect(components).To(Equal([]string{"source-a", "source-b", "source-c"}))
+
+			var digests map[string]string
+			Expect(json.Unmarshal([]byte(created.Annotations[tektonconsts.NudgingDigestsAnnotation]), &digests)).To(Succeed())
+			Expect(digests).To(Equal(map[string]string{
+				"source-a": "sha256:111",
+				"source-b": "sha256:222",
+				"source-c": "sha256:333",
+			}))
+
+			cm := &corev1.ConfigMap{}
+			Expect(fakeClient.Get(testCtx, types.NamespacedName{Name: expectedName, Namespace: "test-ns"}, cm)).To(Succeed())
+			configKey := "downstream-comp-batch.json"
+			Expect(cm.Data).To(HaveKey(configKey))
+
+			var renovateConfig nudging.RenovateConfig
+			Expect(json.Unmarshal([]byte(cm.Data[configKey]), &renovateConfig)).To(Succeed())
+			Expect(renovateConfig.CustomManagers).To(HaveLen(3))
+			Expect(renovateConfig.PackageRules).To(HaveLen(4))
+		})
+
+		It("treats an already-existing PipelineRun as success (idempotent create)", func() {
+			expectedName := nudging.BatchedNudgePipelineRunName(batchID, 0)
+			existing := &tektonv1.PipelineRun{
+				ObjectMeta: metav1.ObjectMeta{Name: expectedName, Namespace: "test-ns"},
+			}
+			Expect(fakeClient.Create(testCtx, existing)).To(Succeed())
+
+			name, err := nudging.CreateBatchedNudgePipelineRun(testCtx, fakeClient, referencePLR, target, entries, batchID, 0)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(name).To(Equal(expectedName))
+
+			plrList := &tektonv1.PipelineRunList{}
+			Expect(fakeClient.List(testCtx, plrList, client.InNamespace("test-ns"))).To(Succeed())
+			Expect(plrList.Items).To(HaveLen(1))
+		})
+	})
+
 	Describe("GenerateRenovateConfigForBatchedSources", func() {
 		It("returns an empty config when no build results are provided", func() {
 			target := nudging.NudgeTarget{ComponentName: "target-comp"}
