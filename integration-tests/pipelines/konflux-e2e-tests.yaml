@@ -32,6 +32,18 @@ spec:
     - name: konflux-test-infra-secret
       description: The name of secret where testing infrastructures credentials are stored.
       type: string
+    - name: catalog-revision
+      description: >-
+        tekton-integration-catalog commit that owns the cluster provisioning contract.
+        Used for both the provision task and the StepActions it resolves, so they cannot drift apart.
+      type: string
+      default: '0264e3b883a10032ee345899729f94bbe33a6c5f'
+    - name: konflux-ci-revision
+      description: >-
+        konflux-ci revision used for BOTH the deploy-konflux task and the content it deploys.
+        Keep them on the same revision: the task's toolchain image and the cloned go.mod must match.
+      type: string
+      default: main
     - name: oci-container-repo
       default: 'quay.io/konflux-test-storage/konflux-team/integration-service'
       description: The OCI container used to store all test artifacts.
@@ -64,12 +76,14 @@ spec:
           - name: url
             value: https://github.com/konflux-ci/tekton-integration-catalog.git
           - name: revision
-            value: main
+            value: $(params.catalog-revision)
           - name: pathInRepo
             value: tasks/mapt-oci/kind-aws-spot/provision/0.4/kind-aws-provision.yaml
       params:
         - name: secret-aws-credentials
           value: mapt-kind-secret
+        - name: catalog-revision
+          value: $(params.catalog-revision)
         - name: cluster-access-secret-name
           value: kfg-$(context.pipelineRun.name)
         - name: id
@@ -88,10 +102,6 @@ spec:
           value: $(params.oci-container-repo):$(context.pipelineRun.name)
         - name: oci-credentials
           value: $(params.konflux-test-infra-secret)
-        - name: catalog-url
-          value: https://github.com/kasemAlem/tekton-integration-catalog.git
-        - name: catalog-revision
-          value: test-mapt-pr-948
         - name: extra-port-mappings
           value: '[{"containerPort":30012,"hostPort":8180,"protocol":"TCP"}]'
         - name: cpus
@@ -111,7 +121,7 @@ spec:
           - name: url
             value: https://github.com/konflux-ci/konflux-ci
           - name: revision
-            value: 8a3219a261dca651737a0890c3868c7363af2877
+            value: $(params.konflux-ci-revision)
           - name: pathInRepo
             value: .tekton/tasks/deploy-konflux/task.yaml
       params:
@@ -139,7 +149,7 @@ spec:
         - name: git-url
           value: https://github.com/konflux-ci/konflux-ci
         - name: revision
-          value: main
+          value: $(params.konflux-ci-revision)
     - name: configure-pac-webhook-url
       runAfter:
         - deploy-konflux
