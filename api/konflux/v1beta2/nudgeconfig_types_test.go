@@ -157,4 +157,26 @@ func TestNudgeConfigTypeHelpers(t *testing.T) {
 			t.Fatalf("expected maxWait/debounce ordering error, got %v", err)
 		}
 	})
+
+	t.Run("duplicate nudge validation", func(t *testing.T) {
+		valid := NudgeConfigSpec{Nudges: []NudgeRelationship{
+			{From: "component-a", To: "component-b"},
+			{From: "component-a", To: "component-c"},
+		}}
+		if err := valid.ValidateUniqueNudges(); err != nil {
+			t.Fatalf("unexpected validation error: %v", err)
+		}
+
+		duplicate := NudgeConfigSpec{Nudges: []NudgeRelationship{
+			{From: "component-a", To: "component-b"},
+			{From: "component-a", To: "component-b", Mode: NudgeModeValidated},
+		}}
+		err := duplicate.ValidateUniqueNudges()
+		if err == nil {
+			t.Fatal("expected duplicate nudge validation error")
+		}
+		if !strings.Contains(err.Error(), "duplicate (from, to) pair not allowed") {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
 }

@@ -168,7 +168,7 @@ spec:
                   - from
                   - to
                   type: object
-                maxItems: 360
+                maxItems: 4096
                 type: array
               targetConfig:
                 description: |-
@@ -241,9 +241,6 @@ spec:
             x-kubernetes-validations:
             - message: 'self-nudge not allowed: from and to must be different'
               rule: '!has(self.nudges) || self.nudges.all(n, n.from != n.to)'
-            - message: duplicate (from, to) pair not allowed
-              rule: '!has(self.nudges) || self.nudges.all(i, self.nudges.exists_one(j,
-                i.from == j.from && i.to == j.to))'
             - message: duplicate target not allowed in targetConfig
               rule: '!has(self.targetConfig) || self.targetConfig.all(i, self.targetConfig.exists_one(j,
                 i.target == j.target))'

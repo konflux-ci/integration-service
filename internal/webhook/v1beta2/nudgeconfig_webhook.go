@@ -70,6 +70,9 @@ func (v *NudgeConfigCustomValidator) ValidateCreate(ctx context.Context, obj run
 	if err := v.validateComponentsExist(ctx, nudgeConfig.Namespace, nudgeConfig.Spec.Nudges); err != nil {
 		return nil, err
 	}
+	if err := nudgeConfig.Spec.ValidateUniqueNudges(); err != nil {
+		return nil, err
+	}
 	if err := nudgeConfig.Spec.ValidateBatchConfig(); err != nil {
 		return nil, err
 	}
@@ -112,6 +115,9 @@ func (v *NudgeConfigCustomValidator) ValidateUpdate(ctx context.Context, oldObj,
 		}
 	}
 	if err := v.validateComponentsExist(ctx, newNudgeConfig.Namespace, added); err != nil {
+		return nil, err
+	}
+	if err := newNudgeConfig.Spec.ValidateUniqueNudges(); err != nil {
 		return nil, err
 	}
 	if err := newNudgeConfig.Spec.ValidateBatchConfig(); err != nil {

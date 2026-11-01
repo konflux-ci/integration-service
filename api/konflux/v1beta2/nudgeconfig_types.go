@@ -290,6 +290,21 @@ func validateResolvedBatchTiming(target string, debounce, maxWait time.Duration)
 	return nil
 }
 
+// ValidateUniqueNudges returns an error when spec.nudges contains duplicate (from, to) pairs.
+// Duplicate detection is done in O(n) here rather than with a CEL exists_one rule, because the
+// O(n^2) CEL expression exceeds the API server cost budget at the supported 4096-item limit.
+func (spec NudgeConfigSpec) ValidateUniqueNudges() error {
+	seen := make(map[string]struct{}, len(spec.Nudges))
+	for _, n := range spec.Nudges {
+		key := n.From + "\x00" + n.To
+		if _, dup := seen[key]; dup {
+			return fmt.Errorf("duplicate (from, to) pair not allowed: %q -> %q", n.From, n.To)
+		}
+		seen[key] = struct{}{}
+	}
+	return nil
+}
+
 // ResolveTargetConfig returns the TargetConfig entry for target, or nil when not configured.
 // Duplicate target names are rejected by the validating webhook; at most one entry exists per target.
 func (spec NudgeConfigSpec) ResolveTargetConfig(target string) *TargetConfig {
@@ -328,7 +343,6 @@ type ForceFireAction struct {
 // NudgeConfigSpec defines the desired nudging relationships between components
 // and optional namespace-wide batch defaults.
 // +kubebuilder:validation:XValidation:rule="!has(self.nudges) || self.nudges.all(n, n.from != n.to)",message="self-nudge not allowed: from and to must be different"
-// +kubebuilder:validation:XValidation:rule="!has(self.nudges) || self.nudges.all(i, self.nudges.exists_one(j, i.from == j.from && i.to == j.to))",message="duplicate (from, to) pair not allowed"
 // +kubebuilder:validation:XValidation:rule="!has(self.targetConfig) || self.targetConfig.all(i, self.targetConfig.exists_one(j, i.target == j.target))",message="duplicate target not allowed in targetConfig"
 type NudgeConfigSpec struct {
 	// BatchDefaults sets default debounce, max wait, and failure policy for batched nudges
@@ -348,7 +362,7 @@ type NudgeConfigSpec struct {
 	TargetConfig []TargetConfig `json:"targetConfig,omitempty"`
 
 	// Nudges is the list of component nudge relationships.
-	// +kubebuilder:validation:MaxItems=360
+	// +kubebuilder:validation:MaxItems=4096
 	// +optional
 	Nudges []NudgeRelationship `json:"nudges,omitempty"`
 }
