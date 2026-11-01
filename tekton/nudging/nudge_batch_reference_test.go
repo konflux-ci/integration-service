@@ -18,6 +18,7 @@ package nudging
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -27,7 +28,9 @@ import (
 	tektonconsts "github.com/konflux-ci/integration-service/tekton/consts"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	pacv1alpha1 "github.com/openshift-pipelines/pipelines-as-code/pkg/apis/pipelinesascode/v1alpha1"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -47,6 +50,8 @@ var _ = Describe("referenceBuildPLRForBatch and buildBatchedRenovatePayload", fu
 		Expect(konfluxv1beta2.AddToScheme(scheme)).To(Succeed())
 		Expect(tektonv1.AddToScheme(scheme)).To(Succeed())
 		Expect(applicationapiv1alpha1.AddToScheme(scheme)).To(Succeed())
+		Expect(corev1.AddToScheme(scheme)).To(Succeed())
+		Expect(pacv1alpha1.AddToScheme(scheme)).To(Succeed())
 	})
 
 	It("returns the first existing build PipelineRun from accumulated entries", func() {
@@ -82,6 +87,7 @@ var _ = Describe("referenceBuildPLRForBatch and buildBatchedRenovatePayload", fu
 		reference, err := referenceBuildPLRForBatch(ctx, c, namespace, batch)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(reference.Name).To(BeEmpty())
+		Expect(reference.Namespace).To(Equal(namespace))
 		Expect(reference.Spec.TaskRunTemplate.ServiceAccountName).To(Equal("custom-sa"))
 	})
 
@@ -113,6 +119,44 @@ var _ = Describe("referenceBuildPLRForBatch and buildBatchedRenovatePayload", fu
 
 		_, _, _, err := buildBatchedRenovatePayload(ctx, c, nudgeConfig, batch)
 		Expect(err).To(MatchError(ContainSubstring(`loading target component "missing-target"`)))
+	})
+
+	It("loads credentials and file matches from every accumulated source", func() {
+		nudgeConfig := &v1beta2.NudgeConfig{ObjectMeta: metav1.ObjectMeta{Name: v1beta2.NudgeConfigSingletonName, Namespace: namespace}}
+		targetComponent := &applicationapiv1alpha1.Component{
+			ObjectMeta: metav1.ObjectMeta{Name: "target", Namespace: namespace},
+			Spec: applicationapiv1alpha1.ComponentSpec{Source: applicationapiv1alpha1.ComponentSource{ComponentSourceUnion: applicationapiv1alpha1.ComponentSourceUnion{
+				GitSource: &applicationapiv1alpha1.GitSource{URL: "https://github.com/org/target"},
+			}}},
+		}
+		sourceA := &applicationapiv1alpha1.Component{ObjectMeta: metav1.ObjectMeta{Name: "source-a", Namespace: namespace}, Spec: applicationapiv1alpha1.ComponentSpec{ContainerImage: "quay.io/org/image-a:latest"}}
+		sourceB := &applicationapiv1alpha1.Component{ObjectMeta: metav1.ObjectMeta{Name: "source-b", Namespace: namespace}, Spec: applicationapiv1alpha1.ComponentSpec{ContainerImage: "registry.example.com/org/image-b:latest"}}
+		dockerConfig, err := json.Marshal(map[string]any{"auths": map[string]map[string]string{
+			"quay.io":              {"username": "quay-user", "password": "quay-password"},
+			"registry.example.com": {"username": "example-user", "password": "example-password"},
+		}})
+		Expect(err).NotTo(HaveOccurred())
+		registrySecret := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "registry-credentials", Namespace: namespace}, Type: corev1.SecretTypeDockerConfigJson, Data: map[string][]byte{corev1.DockerConfigJsonKey: dockerConfig}}
+		serviceAccount := &corev1.ServiceAccount{ObjectMeta: metav1.ObjectMeta{Name: "build-sa", Namespace: namespace}, Secrets: []corev1.ObjectReference{{Name: registrySecret.Name}}}
+		scmSecret := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "scm-credentials", Namespace: namespace}, Type: corev1.SecretTypeBasicAuth, Data: map[string][]byte{corev1.BasicAuthUsernameKey: []byte("bot"), corev1.BasicAuthPasswordKey: []byte("token")}}
+		repository := &pacv1alpha1.Repository{ObjectMeta: metav1.ObjectMeta{Name: "target-repository", Namespace: namespace}, Spec: pacv1alpha1.RepositorySpec{URL: "https://github.com/org/target", GitProvider: &pacv1alpha1.GitProvider{Secret: &pacv1alpha1.Secret{Name: scmSecret.Name}}}}
+		now := metav1.Now()
+		batch := &v1beta2.ActiveBatch{Target: targetComponent.Name, Accumulated: []v1beta2.AccumulatedEntry{
+			{From: sourceA.Name, ImageDigest: "sha256:aaa", BuildPipelineRun: "pruned-a", BuildServiceAccountName: serviceAccount.Name, BuiltImageRepository: "quay.io/org/image-a", BuiltImageTag: "latest", NudgeFileMatches: "Dockerfile", CapturedAt: now},
+			{From: sourceB.Name, ImageDigest: "sha256:bbb", BuildPipelineRun: "pruned-b", BuildServiceAccountName: serviceAccount.Name, BuiltImageRepository: "registry.example.com/org/image-b", BuiltImageTag: "latest", NudgeFileMatches: "Containerfile", CapturedAt: now},
+		}}
+		c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(nudgeConfig, targetComponent, sourceA, sourceB, registrySecret, serviceAccount, scmSecret, repository).Build()
+
+		_, target, entries, err := buildBatchedRenovatePayload(ctx, c, nudgeConfig, batch)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(target.RegistryCredentials).To(ConsistOf(
+			RegistryCredential{Host: "quay.io", Username: "quay-user", Password: "quay-password"},
+			RegistryCredential{Host: "registry.example.com", Username: "example-user", Password: "example-password"},
+		))
+		config := GenerateBatchedRenovateConfig(target, target.ComponentName, entries)
+		for _, manager := range config.CustomManagers {
+			Expect(manager.FileMatch).To(ConsistOf("Dockerfile", "Containerfile"))
+		}
 	})
 
 	It("marks a batch failed when force-fire cannot resolve the target component", func() {

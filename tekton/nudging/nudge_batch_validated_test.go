@@ -245,6 +245,31 @@ var _ = Describe("Validated batched nudge recording", func() {
 		Expect(result.BuiltImageTag).To(Equal("v2"))
 	})
 
+	It("returns an error when the build PipelineRun is missing required results", func() {
+		sourceComponent := &applicationapiv1alpha1.Component{
+			ObjectMeta: metav1.ObjectMeta{Name: source, Namespace: namespace},
+		}
+		buildPLR := &tektonv1.PipelineRun{
+			ObjectMeta: metav1.ObjectMeta{Name: "broken-build-plr", Namespace: namespace},
+			Status: tektonv1.PipelineRunStatus{
+				PipelineRunStatusFields: tektonv1.PipelineRunStatusFields{
+					Results: []tektonv1.PipelineRunResult{
+						{Name: "IMAGE_DIGEST", Value: *tektonv1.NewStructuredValues("sha256:from-plr")},
+					},
+				},
+			},
+		}
+		batchEntry := v1beta2.AccumulatedEntry{
+			From:             source,
+			BuildPipelineRun: buildPLR.Name,
+		}
+		c := newClient(nudgeConfig, sourceComponent, buildPLR)
+
+		_, err := buildResultForAccumulatedEntry(ctx, c, namespace, batchEntry, sourceComponent, buildPLR)
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("IMAGE_URL"))
+	})
+
 	It("returns an error when the build PipelineRun cannot be loaded", func() {
 		sourceComponent := &applicationapiv1alpha1.Component{
 			ObjectMeta: metav1.ObjectMeta{Name: source, Namespace: namespace},

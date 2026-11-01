@@ -105,6 +105,14 @@ type NudgeTarget struct {
 	ImageRepositoryHost            string
 	ImageRepositoryUsername        string
 	ImageRepositoryPassword        string
+	RegistryCredentials            []RegistryCredential
+}
+
+// RegistryCredential authenticates Renovate to pull images from a registry host.
+type RegistryCredential struct {
+	Host     string
+	Username string
+	Password string
 }
 
 // NudgeBuildResult holds the data extracted from a build PipelineRun that is
@@ -359,6 +367,9 @@ func enablePackageRulesOnly(rules []PackageRule) []PackageRule {
 	return enabled
 }
 
+// isGlobalDisablePackageRule reports Renovate's global disable-all sentinel
+// (enabled: false with matchPackagePatterns ["*"]). enablePackageRulesOnly skips
+// it when merging per-source package rules into a batched config.
 func isGlobalDisablePackageRule(rule PackageRule) bool {
 	return !rule.Enabled && len(rule.MatchPackagePatterns) == 1 && rule.MatchPackagePatterns[0] == "*"
 }
@@ -380,9 +391,19 @@ func GenerateBatchedRenovateConfig(target NudgeTarget, batchTargetName string, e
 		customOpts = &CustomRenovateOptions{}
 	}
 
-	fileMatchParts := strings.Split(entries[0].BuildResult.FileMatches, ",")
-	for i := range fileMatchParts {
-		fileMatchParts[i] = strings.TrimSpace(fileMatchParts[i])
+	fileMatchParts := make([]string, 0)
+	seenFileMatches := make(map[string]struct{})
+	for _, entry := range entries {
+		for _, fileMatch := range strings.Split(entry.BuildResult.FileMatches, ",") {
+			fileMatch = strings.TrimSpace(fileMatch)
+			if fileMatch == "" {
+				continue
+			}
+			if _, seen := seenFileMatches[fileMatch]; !seen {
+				fileMatchParts = append(fileMatchParts, fileMatch)
+				seenFileMatches[fileMatch] = struct{}{}
+			}
+		}
 	}
 	if customOpts.FileMatch != nil {
 		fileMatchParts = customOpts.FileMatch
@@ -417,9 +438,9 @@ func GenerateBatchedRenovateConfig(target NudgeTarget, batchTargetName string, e
 
 		packageRules = append(packageRules, PackageRule{
 			MatchPackageNames:   matchPackageNames,
-			GroupName:           fmt.Sprintf("Component Update %s", buildResult.SourceComponentName),
+			GroupName:           fmt.Sprintf("Component Update %s", batchTargetName),
 			BranchPrefix:        fmt.Sprintf("%s%s/", tektonconsts.NudgeBatchBranchPrefix, batchTargetName),
-			BranchTopic:         buildResult.SourceComponentName,
+			BranchTopic:         batchTargetName,
 			CommitMessageTopic:  buildResult.SourceComponentName,
 			PRFooter:            "To execute skipped test pipelines write comment `/ok-to-test`",
 			PRHeader:            fmt.Sprintf("Image created from '%s'", buildResult.GitRepoAtShaLink),
@@ -440,27 +461,28 @@ func GenerateBatchedRenovateConfig(target NudgeTarget, batchTargetName string, e
 	packageRules = append([]PackageRule{DisableAllPackageRules}, packageRules...)
 
 	return RenovateConfig{
-		GitProvider:           target.GitProvider,
-		Username:              target.Username,
-		GitAuthor:             target.GitAuthor,
-		Onboarding:            false,
-		RequireConfig:         "ignored",
-		Repositories:          target.Repositories,
-		EnabledManagers:       []string{"custom.regex"},
-		Endpoint:              target.Endpoint,
-		CustomManagers:        customManagers,
-		RegistryAliases:       registryAliases,
-		PackageRules:          packageRules,
-		ForkProcessing:        "enabled",
-		Extends:               []string{},
-		DependencyDashboard:   false,
-		Labels:                labels,
-		Automerge:             customOpts.Automerge,
-		PlatformAutomerge:     customOpts.PlatformAutomerge,
-		IgnoreTests:           customOpts.IgnoreTests,
-		AutomergeType:         customOpts.AutomergeType,
-		GitLabIgnoreApprovals: customOpts.GitLabIgnoreApprovals,
-		AutomergeSchedule:     customOpts.AutomergeSchedule,
+		GitProvider:              target.GitProvider,
+		Username:                 target.Username,
+		GitAuthor:                target.GitAuthor,
+		Onboarding:               false,
+		RequireConfig:            "ignored",
+		Repositories:             target.Repositories,
+		EnabledManagers:          []string{"custom.regex"},
+		Endpoint:                 target.Endpoint,
+		CustomManagers:           customManagers,
+		RegistryAliases:          registryAliases,
+		PackageRules:             packageRules,
+		ForkProcessing:           "enabled",
+		Extends:                  []string{},
+		DependencyDashboard:      false,
+		DependencyDashboardTitle: unusedDependencyDashboardTitle,
+		Labels:                   labels,
+		Automerge:                customOpts.Automerge,
+		PlatformAutomerge:        customOpts.PlatformAutomerge,
+		IgnoreTests:              customOpts.IgnoreTests,
+		AutomergeType:            customOpts.AutomergeType,
+		GitLabIgnoreApprovals:    customOpts.GitLabIgnoreApprovals,
+		AutomergeSchedule:        customOpts.AutomergeSchedule,
 	}
 }
 
@@ -496,18 +518,38 @@ func CreateBatchedNudgePipelineRun(
 
 	configKey := fmt.Sprintf("%s-batch.json", target.ComponentName)
 	tokenKey := "token_0"
-	imageKey := "image_0"
-	secretTokens := map[string]string{
-		tokenKey: target.Token,
-		imageKey: target.ImageRepositoryPassword,
-	}
+	secretTokens := map[string]string{tokenKey: target.Token}
 	configmaps := map[string]string{configKey: string(config)}
 
-	hostRules := fmt.Sprintf("\"[{'matchHost':'%s','username':'%s','password':'${TOKEN_%s}'}]\"",
-		target.ImageRepositoryHost, target.ImageRepositoryUsername, imageKey)
+	credentials := target.RegistryCredentials
+	if len(credentials) == 0 {
+		credentials = []RegistryCredential{{
+			Host: target.ImageRepositoryHost, Username: target.ImageRepositoryUsername, Password: target.ImageRepositoryPassword,
+		}}
+	}
+	hostRules := make([]map[string]string, 0, len(credentials))
+	seenHosts := make(map[string]struct{})
+	for i, credential := range credentials {
+		if credential.Host == "" {
+			continue
+		}
+		if _, seen := seenHosts[credential.Host]; seen {
+			continue
+		}
+		seenHosts[credential.Host] = struct{}{}
+		credentialKey := fmt.Sprintf("image_%d", i)
+		secretTokens[credentialKey] = credential.Password
+		hostRules = append(hostRules, map[string]string{
+			"matchHost": credential.Host, "username": credential.Username, "password": "${TOKEN_" + credentialKey + "}",
+		})
+	}
+	hostRulesJSON, err := json.Marshal(hostRules)
+	if err != nil {
+		return "", fmt.Errorf("marshalling registry host rules: %w", err)
+	}
 	renovateCmd := fmt.Sprintf(
 		"RENOVATE_X_GITLAB_MERGE_REQUEST_DELAY=5000 RENOVATE_X_GITLAB_AUTO_MERGEABLE_CHECK_ATTEMPS=11 RENOVATE_PR_HOURLY_LIMIT=0 RENOVATE_PR_CONCURRENT_LIMIT=0 RENOVATE_TOKEN=$TOKEN_%s RENOVATE_CONFIG_FILE=/configs/%s RENOVATE_HOST_RULES=%s renovate",
-		tokenKey, configKey, hostRules,
+		tokenKey, configKey, strconv.Quote(string(hostRulesJSON)),
 	)
 
 	operatorNamespace := os.Getenv("INTEGRATION_NS")
@@ -693,10 +735,16 @@ func batchPipelineRunName(batchID string, retryAttempt int32) string {
 	safe := strings.ToLower(batchID)
 	safe = strings.ReplaceAll(safe, "_", "-")
 	base := fmt.Sprintf("nudge-batch-%s", safe)
+	retrySuffix := ""
 	if retryAttempt > 0 {
-		return fmt.Sprintf("%s-retry%d", base, retryAttempt)
+		retrySuffix = fmt.Sprintf("-retry%d", retryAttempt)
 	}
-	return base
+	const maxNameLength = 63
+	if len(base)+len(retrySuffix) > maxNameLength {
+		const hashSuffixLength = 13 // '-' plus deterministicSuffix's 12 characters
+		base = base[:maxNameLength-len(retrySuffix)-hashSuffixLength] + "-" + deterministicSuffix(base)
+	}
+	return base + retrySuffix
 }
 
 // CreateNudgePipelineRun creates the Renovate PipelineRun plus its supporting Secret and
