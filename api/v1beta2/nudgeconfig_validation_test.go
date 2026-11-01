@@ -103,41 +103,29 @@ var _ = Describe("NudgeConfig CEL validation", Ordered, func() {
 	})
 
 	It("should reject a NudgeConfig with duplicate (from, to) pairs with different modes", func() {
-		nc := &NudgeConfig{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      NudgeConfigSingletonName,
-				Namespace: "default",
-			},
-			Spec: NudgeConfigSpec{
-				Nudges: []NudgeRelationship{
-					{From: "component-a", To: "component-b"},
-					{From: "component-a", To: "component-b", Mode: NudgeModeValidated},
-				},
+		spec := NudgeConfigSpec{
+			Nudges: []NudgeRelationship{
+				{From: "component-a", To: "component-b"},
+				{From: "component-a", To: "component-b", Mode: NudgeModeValidated},
 			},
 		}
-		err := k8sClient.Create(ctx, nc)
+		// Duplicate detection moved from a CEL exists_one rule to the validating webhook
+		// (O(n^2) CEL exceeds the API server cost budget at the 4096-item limit).
+		err := spec.ValidateUniqueNudges()
 		Expect(err).To(HaveOccurred())
-		Expect(err.Error()).To(ContainSubstring("duplicate"))
-		Expect(errors.IsInvalid(err)).To(BeTrue())
+		Expect(err.Error()).To(ContainSubstring("duplicate (from, to) pair not allowed"))
 	})
 
 	It("should reject a NudgeConfig with exact duplicate entries", func() {
-		nc := &NudgeConfig{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      NudgeConfigSingletonName,
-				Namespace: "default",
-			},
-			Spec: NudgeConfigSpec{
-				Nudges: []NudgeRelationship{
-					{From: "component-a", To: "component-b"},
-					{From: "component-a", To: "component-b"},
-				},
+		spec := NudgeConfigSpec{
+			Nudges: []NudgeRelationship{
+				{From: "component-a", To: "component-b"},
+				{From: "component-a", To: "component-b"},
 			},
 		}
-		err := k8sClient.Create(ctx, nc)
+		err := spec.ValidateUniqueNudges()
 		Expect(err).To(HaveOccurred())
-		Expect(err.Error()).To(ContainSubstring("duplicate"))
-		Expect(errors.IsInvalid(err)).To(BeTrue())
+		Expect(err.Error()).To(ContainSubstring("duplicate (from, to) pair not allowed"))
 	})
 
 	It("should default mode to 'immediate' when not specified", func() {
@@ -591,8 +579,26 @@ var _ = Describe("NudgeConfig CEL validation", Ordered, func() {
 		})
 	})
 
-	It("should reject spec.nudges exceeding 360 items", func() {
-		nudges := make([]NudgeRelationship, 361)
+	It("should accept spec.nudges with exactly 4096 items", func() {
+		nudges := make([]NudgeRelationship, 4096)
+		for i := range nudges {
+			nudges[i] = NudgeRelationship{
+				From: fmt.Sprintf("src-%d", i),
+				To:   fmt.Sprintf("tgt-%d", i),
+			}
+		}
+		nc := &NudgeConfig{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      NudgeConfigSingletonName,
+				Namespace: "default",
+			},
+			Spec: NudgeConfigSpec{Nudges: nudges},
+		}
+		Expect(k8sClient.Create(ctx, nc)).To(Succeed())
+	})
+
+	It("should reject spec.nudges exceeding 4096 items", func() {
+		nudges := make([]NudgeRelationship, 4097)
 		for i := range nudges {
 			nudges[i] = NudgeRelationship{
 				From: fmt.Sprintf("src-%d", i),
