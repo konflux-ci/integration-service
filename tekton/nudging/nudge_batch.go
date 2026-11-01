@@ -679,7 +679,7 @@ func fireBatch(ctx context.Context, c client.Client, nudgeConfig *v1beta2.NudgeC
 	if getErr == nil && !existingPLR.IsPending() {
 		batch.NudgePipelineRun = plannedName
 		batch.Phase = v1beta2.BatchPhaseFiring
-		batch.Message = fmt.Sprintf("fired with %d accumulated build(s)", len(batch.Accumulated))
+		batch.Message = fmt.Sprintf("reconciled existing nudge PipelineRun with %d accumulated build(s)", len(batch.Accumulated))
 		return nil
 	}
 	if getErr != nil && !apierrors.IsNotFound(getErr) {
