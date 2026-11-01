@@ -219,7 +219,8 @@ var _ = Describe("Nudge batch firing integration", func() {
 		nudgeConfig := dueBatchNudgeConfig(buildPLR.Name)
 		c := batchFireClient(nudgeConfig, buildPLR)
 
-		Expect(ProcessDueNudgeBatches(ctx, c, nudgeConfig)).To(Succeed())
+		err := ProcessDueNudgeBatches(ctx, c, nudgeConfig)
+		Expect(err).NotTo(HaveOccurred())
 
 		updated := &v1beta2.NudgeConfig{}
 		Expect(c.Get(ctx, types.NamespacedName{Name: nudgeConfig.Name, Namespace: namespace}, updated)).To(Succeed())
@@ -240,19 +241,21 @@ var _ = Describe("Nudge batch firing integration", func() {
 		}
 		c := batchFireClient(nudgeConfig, buildPLR, existing)
 
-		Expect(ProcessDueNudgeBatches(ctx, c, nudgeConfig)).To(Succeed())
+		err := ProcessDueNudgeBatches(ctx, c, nudgeConfig)
+		Expect(err).NotTo(HaveOccurred())
 
 		updated := &v1beta2.NudgeConfig{}
 		Expect(c.Get(ctx, types.NamespacedName{Name: nudgeConfig.Name, Namespace: namespace}, updated)).To(Succeed())
 		Expect(updated.Status.ActiveBatches[0].Phase).To(Equal(v1beta2.BatchPhaseFiring))
-		Expect(updated.Status.ActiveBatches[0].Message).To(ContainSubstring("fired with 1 accumulated build"))
+		Expect(updated.Status.ActiveBatches[0].Message).To(ContainSubstring("reconciled existing nudge PipelineRun"))
 	})
 
 	It("marks a batch completed when the nudge PipelineRun succeeds", func() {
 		buildPLR := buildPLRWithResults("batch-build-plr-complete")
 		nudgeConfig := dueBatchNudgeConfig(buildPLR.Name)
 		c := batchFireClient(nudgeConfig, buildPLR)
-		Expect(ProcessDueNudgeBatches(ctx, c, nudgeConfig)).To(Succeed())
+		err := ProcessDueNudgeBatches(ctx, c, nudgeConfig)
+		Expect(err).NotTo(HaveOccurred())
 
 		updated := &v1beta2.NudgeConfig{}
 		Expect(c.Get(ctx, types.NamespacedName{Name: nudgeConfig.Name, Namespace: namespace}, updated)).To(Succeed())
@@ -270,7 +273,7 @@ var _ = Describe("Nudge batch firing integration", func() {
 		Expect(updated.Status.ActiveBatches[0].Phase).To(Equal(v1beta2.BatchPhaseCompleted))
 	})
 
-	It("marks a due batch failed when the timer expires with no accumulated builds", func() {
+	It("does not fire a batch that has no accumulated builds when the debounce timer is due", func() {
 		now := metav1.Now()
 		pastFire := metav1.NewTime(now.Add(-time.Minute))
 		nudgeConfig := &v1beta2.NudgeConfig{
@@ -287,7 +290,8 @@ var _ = Describe("Nudge batch firing integration", func() {
 		}
 		c := batchFireClient(nudgeConfig)
 
-		Expect(ProcessDueNudgeBatches(ctx, c, nudgeConfig)).To(Succeed())
+		err := ProcessDueNudgeBatches(ctx, c, nudgeConfig)
+		Expect(err).NotTo(HaveOccurred())
 
 		updated := &v1beta2.NudgeConfig{}
 		Expect(c.Get(ctx, types.NamespacedName{Name: nudgeConfig.Name, Namespace: namespace}, updated)).To(Succeed())
