@@ -56,8 +56,8 @@ func SetupController(mgr ctrl.Manager, logger *logr.Logger) error {
 		})
 }
 
-//+kubebuilder:rbac:groups=appstudio.redhat.com,resources=nudgeconfigs,verbs=get;list;watch;patch;update
-//+kubebuilder:rbac:groups=appstudio.redhat.com,resources=nudgeconfigs/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=konflux-ci.dev,resources=nudgeconfigs,verbs=get;list;watch;patch;update
+//+kubebuilder:rbac:groups=konflux-ci.dev,resources=nudgeconfigs/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=tekton.dev,resources=pipelineruns,verbs=get;list;watch
 //+kubebuilder:rbac:groups=appstudio.redhat.com,resources=components,verbs=get;list
 
