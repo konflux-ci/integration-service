@@ -14,6 +14,28 @@ roles:
 allowed_remote_resources:
   - https://raw.githubusercontent.com/fullsend-ai/fullsend/
   - https://raw.githubusercontent.com/fullsend-ai/agents/
+#
+# Fullsend reviews are limited to integration-service team members.
+# Update this list when team membership changes.
+agents:
+  - name: review
+    trigger: >-
+      event.entity.kind == "work_item"
+      && event.transition.kind == "comment_added"
+      && has(event.transition.comment.command)
+      && event.transition.comment.command == "/fs-review"
+      && event.state.change_proposal != null
+      && event.actor.kind == "human"
+      && event.actor.id in [
+        "14rcole",
+        "kasemAlem",
+        "dirgim",
+        "Josh-Everett",
+        "sonam1412",
+        "NigelByrne1",
+        "ainephelan365",
+        "jsztuka"
+      ]
 create_issues:
   allow_targets:
     repos:
