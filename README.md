@@ -181,3 +181,5 @@ Test suites in `e2e-tests/tests/integration-service/`:
 - **`forgejo-integration-reporting.go`** (`Label: integration-service, forgejo-status-reporting`) —
   Forgejo MR status reporting for integration test results.
   Mirrors the GitLab suite for Forgejo-hosted repositories.
+
+  Temporary pull request to check /fs-review. Do not merge.
