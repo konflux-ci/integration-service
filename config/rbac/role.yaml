@@ -63,7 +63,6 @@ rules:
   - appstudio.redhat.com
   resources:
   - components
-  - nudgeconfigs
   verbs:
   - get
   - list
@@ -76,7 +75,6 @@ rules:
   - components/status
   - environments/status
   - integrationtestscenarios/status
-  - nudgeconfigs/status
   - releaseplans/status
   - releases/status
   - snapshots/status
@@ -97,6 +95,7 @@ rules:
   - konflux-ci.dev
   resources:
   - componentgroups
+  - nudgeconfigs
   verbs:
   - get
   - list
@@ -113,6 +112,7 @@ rules:
   - konflux-ci.dev
   resources:
   - componentgroups/status
+  - nudgeconfigs/status
   verbs:
   - get
   - patch
@@ -124,21 +124,6 @@ rules:
   verbs:
   - get
   - list
-- apiGroups:
-  - konflux-ci.dev
-  resources:
-  - nudgeconfigs
-  verbs:
-  - get
-  - list
-  - watch
-- apiGroups:
-  - konflux-ci.dev
-  resources:
-  - nudgeconfigs/status
-  verbs:
-  - get
-  - patch
 - apiGroups:
   - pipelinesascode.tekton.dev
   resources:
