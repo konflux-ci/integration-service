@@ -186,7 +186,7 @@ func (a *Adapter) EnsureNudgePipelineRunsExist() (controller.OperationResult, er
 		return controller.ContinueProcessing()
 	}
 	if !succeeded {
-		return a.recordBatchedNudgeBuildFailure()
+		return a.RecordFailedBatchedNudgeBuilds()
 	}
 
 	nudgeConfig, err := a.loader.GetNudgeConfigForNamespace(a.context, a.client, a.pipelineRun.Namespace)
@@ -267,31 +267,58 @@ func (a *Adapter) EnsureNudgePipelineRunsExist() (controller.OperationResult, er
 		return controller.ContinueProcessing()
 	}
 
+	// Add the nudge finalizer BEFORE any batched status capture or immediate nudge PLR
+	// creation so the Tekton pruner cannot delete the build PLR while nudging is in
+	// progress. It is removed only once the nudge-processed annotation has been durably
+	// written below (covering batched capture, immediate PLR creation, or both), so a
+	// crash between any two steps leaves the PLR protected for the next reconcile attempt.
+	if err := h.AddFinalizerToPipelineRun(a.context, a.client, a.logger, a.pipelineRun, h.NudgePipelineRunFinalizer); err != nil {
+		return controller.RequeueWithError(err)
+	}
+
 	var processedNames []string
 	for _, comp := range batchedComponents {
 		if err := nudging.RecordBuildForBatchedNudge(a.context, a.client, nudgeConfig, comp.Name, a.pipelineRun, buildResult); err != nil {
 			a.logger.Error(err, "Failed to record build for batched nudge target", "component.Name", comp.Name)
+			// Keep the nudge finalizer so the build PLR stays alive for the retry.
 			return controller.RequeueWithError(err)
 		}
 		processedNames = append(processedNames, comp.Name)
 	}
 
 	if len(immediateComponents) == 0 {
-		if err := h.AddFinalizerToPipelineRun(a.context, a.client, a.logger, a.pipelineRun, h.NudgePipelineRunFinalizer); err != nil {
-			return controller.RequeueWithError(err)
-		}
 		processedValue := strings.Join(processedNames, ",")
-		err = tekton.AnnotateBuildPipelineRun(a.context, a.pipelineRun, tektonconsts.NudgeProcessedAnnotation, processedValue, a.client)
+		err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+			var err error
+			a.pipelineRun, err = a.loader.GetPipelineRun(a.context, a.client, a.pipelineRun.Name, a.pipelineRun.Namespace)
+			if err != nil {
+				return err
+			}
+			if a.pipelineRun.GetDeletionTimestamp() != nil {
+				return nil
+			}
+			if err = h.AddFinalizerToPipelineRun(a.context, a.client, a.logger, a.pipelineRun, h.NudgePipelineRunFinalizer); err != nil {
+				return err
+			}
+			if err = tekton.AnnotateBuildPipelineRun(a.context, a.pipelineRun, tektonconsts.NudgeProcessedAnnotation, processedValue, a.client); err != nil {
+				return err
+			}
+			if err = h.RemoveFinalizerFromPipelineRun(a.context, a.client, a.logger, a.pipelineRun, h.NudgePipelineRunFinalizer); err != nil && !clienterrors.IsNotFound(err) {
+				return err
+			}
+			return nil
+		})
 		if err != nil {
-			a.logger.Error(err, "Failed to annotate build PLR as nudge-processed")
-			return controller.RequeueWithError(err)
-		}
-		if err = h.RemoveFinalizerFromPipelineRun(a.context, a.client, a.logger, a.pipelineRun, h.NudgePipelineRunFinalizer); err != nil && !clienterrors.IsNotFound(err) {
+			if clienterrors.IsNotFound(err) {
+				return controller.ContinueProcessing()
+			}
+			a.logger.Error(err, "Failed to update build PLR after batched nudge recording")
+			// Keep the nudge finalizer — the PLR must not be GC'd before the annotation lands.
 			return controller.RequeueWithError(err)
 		}
 		a.logger.LogAuditEvent("Recorded builds for batched nudge targets", a.pipelineRun, h.LogActionAdd,
 			"targets", processedValue)
-		return controller.ContinueProcessing()
+		return a.requeueForActiveNudgeBatches(nudgeConfig)
 	}
 
 	simpleBranchName := component.Annotations != nil && component.Annotations[tektonconsts.NudgeSimpleBranchAnnotation] == "true"
@@ -304,6 +331,10 @@ func (a *Adapter) EnsureNudgePipelineRunsExist() (controller.OperationResult, er
 	if err != nil {
 		a.logger.Error(err, "Failed to get image registry credentials for nudging, skipping")
 		_ = tekton.AnnotateBuildPipelineRun(a.context, a.pipelineRun, tektonconsts.NudgeProcessedAnnotation, "credentials-error", a.client)
+		// No further work will happen for this build PLR; release the finalizer added above.
+		if err := h.RemoveFinalizerFromPipelineRun(a.context, a.client, a.logger, a.pipelineRun, h.NudgePipelineRunFinalizer); err != nil && !clienterrors.IsNotFound(err) {
+			return controller.RequeueWithError(err)
+		}
 		return controller.ContinueProcessing()
 	}
 
@@ -331,15 +362,15 @@ func (a *Adapter) EnsureNudgePipelineRunsExist() (controller.OperationResult, er
 	if len(targets) == 0 {
 		a.logger.Info("No nudge targets with resolved credentials found")
 		_ = tekton.AnnotateBuildPipelineRun(a.context, a.pipelineRun, tektonconsts.NudgeProcessedAnnotation, "no-credentials", a.client)
+		// No further work will happen for this build PLR; release the finalizer added above.
+		if err := h.RemoveFinalizerFromPipelineRun(a.context, a.client, a.logger, a.pipelineRun, h.NudgePipelineRunFinalizer); err != nil && !clienterrors.IsNotFound(err) {
+			return controller.RequeueWithError(err)
+		}
 		return controller.ContinueProcessing()
 	}
 
-	// Add the nudge finalizer just before creating the nudge PLR so the build PLR cannot be
-	// GC'd between PLR creation and the annotation write that marks nudging as complete.
-	if err := h.AddFinalizerToPipelineRun(a.context, a.client, a.logger, a.pipelineRun, h.NudgePipelineRunFinalizer); err != nil {
-		return controller.RequeueWithError(err)
-	}
-
+	// The nudge finalizer was already added above (before the batched-capture loop), and
+	// stays in place through immediate nudge PLR creation below.
 	err = nudging.CreateNudgePipelineRun(a.context, a.client, a.pipelineRun, targets, buildResult, simpleBranchName)
 	if err != nil {
 		a.logger.Error(err, "Failed to create nudge PipelineRun")
@@ -365,14 +396,44 @@ func (a *Adapter) EnsureNudgePipelineRunsExist() (controller.OperationResult, er
 	a.logger.LogAuditEvent("Created nudge PipelineRun for downstream components", a.pipelineRun, h.LogActionAdd,
 		"targets", processedValue)
 
-	return controller.ContinueProcessing()
+	return a.requeueForActiveNudgeBatches(nudgeConfig)
 }
 
-func (a *Adapter) recordBatchedNudgeBuildFailure() (controller.OperationResult, error) {
-	if metadata.HasAnnotation(a.pipelineRun, tektonconsts.NudgeProcessedAnnotation) {
+// requeueForActiveNudgeBatches re-reads the NudgeConfig and requeues after the shortest
+// pending debounce/fire wait among its active batches (time until the earliest fireAt),
+// so the controller wakes up to fire a batch even if no further build arrives for that
+// target. Falls back to continuing without an explicit requeue when there is nothing
+// pending or the refresh fails (a future build or periodic resync will still catch it up).
+func (a *Adapter) requeueForActiveNudgeBatches(nudgeConfig *v1beta2.NudgeConfig) (controller.OperationResult, error) {
+	latest := &v1beta2.NudgeConfig{}
+	if err := a.client.Get(a.context, client.ObjectKeyFromObject(nudgeConfig), latest); err != nil {
+		a.logger.Error(err, "Failed to refresh NudgeConfig for batch requeue, continuing without explicit requeue")
 		return controller.ContinueProcessing()
 	}
+	wake := nudging.NextBatchWakeDuration(latest.Status.ActiveBatches)
+	if wake <= 0 {
+		return controller.ContinueProcessing()
+	}
+	return controller.RequeueAfter(wake, nil)
+}
+
+func (a *Adapter) RecordFailedBatchedNudgeBuilds() (controller.OperationResult, error) {
+	// Idempotency guard: failure already recorded. Remove the nudge finalizer if it somehow
+	// survived (e.g. IS crashed between the NudgeConfig status write and the annotation write).
+	if metadata.HasAnnotation(a.pipelineRun, tektonconsts.NudgeProcessedAnnotation) {
+		if err := h.RemoveFinalizerFromPipelineRun(a.context, a.client, a.logger, a.pipelineRun, h.NudgePipelineRunFinalizer); err != nil && !clienterrors.IsNotFound(err) {
+			return controller.RequeueWithError(err)
+		}
+		return controller.ContinueProcessing()
+	}
+
+	// If the PLR is being deleted, nudging can no longer be completed. Remove any stale nudge
+	// finalizer (left by a crash between finalizer add and annotation write) so the PLR is
+	// not stuck in Terminating.
 	if a.pipelineRun.GetDeletionTimestamp() != nil {
+		if err := h.RemoveFinalizerFromPipelineRun(a.context, a.client, a.logger, a.pipelineRun, h.NudgePipelineRunFinalizer); err != nil && !clienterrors.IsNotFound(err) {
+			return controller.RequeueWithError(err)
+		}
 		return controller.ContinueProcessing()
 	}
 
@@ -402,16 +463,36 @@ func (a *Adapter) recordBatchedNudgeBuildFailure() (controller.OperationResult, 
 		return controller.ContinueProcessing()
 	}
 
+	// Add the nudge finalizer BEFORE capturing the failure so the Tekton pruner cannot
+	// delete the build PLR before the NudgeConfig status write (and the processed
+	// annotation that marks the failure as recorded) complete.
+	if err := h.AddFinalizerToPipelineRun(a.context, a.client, a.logger, a.pipelineRun, h.NudgePipelineRunFinalizer); err != nil {
+		return controller.RequeueWithError(err)
+	}
+
 	reason := pipelineRunFailureReason(a.pipelineRun)
 	for _, targetName := range batchedTargets {
 		if err := nudging.RecordFailedBuildForBatchedNudge(a.context, a.client, nudgeConfig, targetName, componentName, a.pipelineRun, reason); err != nil {
 			a.logger.Error(err, "Failed to record batched nudge build failure", "target", targetName)
+			// Keep the nudge finalizer so the build PLR stays alive for the retry.
 			return controller.RequeueWithError(err)
 		}
 	}
 
-	_ = tekton.AnnotateBuildPipelineRun(a.context, a.pipelineRun, tektonconsts.NudgeProcessedAnnotation, "batched-failure-recorded", a.client)
-	return controller.ContinueProcessing()
+	processedValue := strings.Join(batchedTargets, ",")
+	if err := tekton.AnnotateBuildPipelineRun(a.context, a.pipelineRun, tektonconsts.NudgeProcessedAnnotation, processedValue, a.client); err != nil {
+		a.logger.Error(err, "Failed to annotate build PLR as nudge-processed")
+		// Keep the nudge finalizer — the PLR must not be GC'd before the annotation lands.
+		return controller.RequeueWithError(err)
+	}
+	if err := h.RemoveFinalizerFromPipelineRun(a.context, a.client, a.logger, a.pipelineRun, h.NudgePipelineRunFinalizer); err != nil && !clienterrors.IsNotFound(err) {
+		return controller.RequeueWithError(err)
+	}
+
+	a.logger.LogAuditEvent("Recorded failed builds for batched nudge targets", a.pipelineRun, h.LogActionAdd,
+		"targets", processedValue)
+
+	return a.requeueForActiveNudgeBatches(nudgeConfig)
 }
 
 func pipelineRunFailureReason(plr *tektonv1.PipelineRun) string {
