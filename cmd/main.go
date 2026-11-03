@@ -49,6 +49,7 @@ import (
 
 	konfluxv1alpha1 "github.com/konflux-ci/application-api/api/konflux/v1alpha1"
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
+	konfluxv1beta2 "github.com/konflux-ci/integration-service/api/konflux/v1beta2"
 	integrationv1alpha1 "github.com/konflux-ci/integration-service/api/v1alpha1"
 	integrationv1beta1 "github.com/konflux-ci/integration-service/api/v1beta1"
 	integrationv1beta2 "github.com/konflux-ci/integration-service/api/v1beta2"
@@ -71,6 +72,7 @@ func init() {
 	utilruntime.Must(integrationv1alpha1.AddToScheme(scheme))
 	utilruntime.Must(integrationv1beta1.AddToScheme(scheme))
 	utilruntime.Must(integrationv1beta2.AddToScheme(scheme))
+	utilruntime.Must(konfluxv1beta2.AddToScheme(scheme))
 	utilruntime.Must(tektonv1.AddToScheme(scheme))
 	utilruntime.Must(resolutionv1beta1.AddToScheme(scheme))
 	utilruntime.Must(releasev1alpha1.AddToScheme(scheme))

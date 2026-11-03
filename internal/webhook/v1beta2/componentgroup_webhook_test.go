@@ -17,7 +17,7 @@ limitations under the License.
 package v1beta2
 
 import (
-	appstudiov1beta2 "github.com/konflux-ci/integration-service/api/v1beta2"
+	konfluxv1beta2 "github.com/konflux-ci/integration-service/api/konflux/v1beta2"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -26,9 +26,9 @@ import (
 var _ = Describe("ComponentGroup webhook", Ordered, func() {
 	var (
 		validator        *ComponentGroupCustomValidator
-		componentGroup   *appstudiov1beta2.ComponentGroup
-		validTestGraph   map[string][]appstudiov1beta2.TestGraphNode
-		invalidTestGraph map[string][]appstudiov1beta2.TestGraphNode
+		componentGroup   *konfluxv1beta2.ComponentGroup
+		validTestGraph   map[string][]konfluxv1beta2.TestGraphNode
+		invalidTestGraph map[string][]konfluxv1beta2.TestGraphNode
 	)
 
 	BeforeAll(func() {
@@ -37,7 +37,7 @@ var _ = Describe("ComponentGroup webhook", Ordered, func() {
 		//   C   B
 		//       |
 		//       D
-		validTestGraph = map[string][]appstudiov1beta2.TestGraphNode{
+		validTestGraph = map[string][]konfluxv1beta2.TestGraphNode{
 			"scenarioA": {},
 			"scenarioE": {},
 			"scenarioB": {{Name: "scenarioE"}},
@@ -46,7 +46,7 @@ var _ = Describe("ComponentGroup webhook", Ordered, func() {
 		}
 
 		// Cycle: scenarioC -> scenarioE -> scenarioC
-		invalidTestGraph = map[string][]appstudiov1beta2.TestGraphNode{
+		invalidTestGraph = map[string][]konfluxv1beta2.TestGraphNode{
 			"scenarioA": {},
 			"scenarioB": {{Name: "scenarioA"}},
 			"scenarioC": {{Name: "scenarioA"}, {Name: "scenarioE"}},
@@ -57,23 +57,23 @@ var _ = Describe("ComponentGroup webhook", Ordered, func() {
 
 	BeforeEach(func() {
 		validator = &ComponentGroupCustomValidator{Client: k8sClient}
-		componentGroup = &appstudiov1beta2.ComponentGroup{
+		componentGroup = &konfluxv1beta2.ComponentGroup{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "test-component-group",
 				Namespace: "default",
 			},
-			Spec: appstudiov1beta2.ComponentGroupSpec{
-				Components: []appstudiov1beta2.ComponentReference{
+			Spec: konfluxv1beta2.ComponentGroupSpec{
+				Components: []konfluxv1beta2.ComponentReference{
 					{
 						Name: "component-a",
-						ComponentVersion: appstudiov1beta2.ComponentVersionReference{
+						ComponentVersion: konfluxv1beta2.ComponentVersionReference{
 							Name:     "main",
 							Revision: "abc123",
 						},
 					},
 					{
 						Name: "component-b",
-						ComponentVersion: appstudiov1beta2.ComponentVersionReference{
+						ComponentVersion: konfluxv1beta2.ComponentVersionReference{
 							Name:     "v1",
 							Revision: "def456",
 						},
@@ -109,7 +109,7 @@ var _ = Describe("ComponentGroup webhook", Ordered, func() {
 
 			// make valid testGraph update
 			newComponentGroup := componentGroup.DeepCopy()
-			newComponentGroup.Spec.TestGraph["scenarioD"] = []appstudiov1beta2.TestGraphNode{{Name: "scenarioC"}}
+			newComponentGroup.Spec.TestGraph["scenarioD"] = []konfluxv1beta2.TestGraphNode{{Name: "scenarioC"}}
 			warnings, err = validator.ValidateUpdate(ctx, componentGroup, newComponentGroup)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(warnings).To(BeEmpty())

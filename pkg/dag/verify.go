@@ -23,7 +23,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/konflux-ci/integration-service/api/v1beta2"
+	"github.com/konflux-ci/integration-service/api/konflux/v1beta2"
+	integrationv1beta2 "github.com/konflux-ci/integration-service/api/v1beta2"
 )
 
 // Node represents a Task in a pipeline.
@@ -60,7 +61,7 @@ func (g *Graph) addScenarioToGraph(scenarioName string) {
 // TODO: when we validate test graph during testing time, we'll wan to expand the
 // for loop in this function to also remove nodes from graphCopy that are not going
 // to be run based on the contexts
-func ValidateTestGraph(testGraph map[string][]v1beta2.TestGraphNode, scenarios ...v1beta2.IntegrationTestScenario) error {
+func ValidateTestGraph(testGraph map[string][]v1beta2.TestGraphNode, scenarios ...integrationv1beta2.IntegrationTestScenario) error {
 	dag := newGraph()
 	graphCopy := maps.Clone(testGraph)
 

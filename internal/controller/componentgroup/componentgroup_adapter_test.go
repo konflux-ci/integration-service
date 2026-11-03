@@ -25,7 +25,7 @@ import (
 	. "github.com/onsi/gomega"
 	"github.com/tonglil/buflogr"
 
-	"github.com/konflux-ci/integration-service/api/v1beta2"
+	"github.com/konflux-ci/integration-service/api/konflux/v1beta2"
 	"github.com/konflux-ci/integration-service/helpers"
 	"github.com/konflux-ci/integration-service/loader"
 

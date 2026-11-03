@@ -49,7 +49,6 @@ rules:
   - appstudio.redhat.com
   resources:
   - applications/finalizers
-  - componentgroups/finalizers
   - components/finalizers
   - snapshots/finalizers
   verbs:
@@ -63,7 +62,6 @@ rules:
 - apiGroups:
   - appstudio.redhat.com
   resources:
-  - componentgroups
   - components
   - nudgeconfigs
   verbs:
@@ -75,7 +73,6 @@ rules:
 - apiGroups:
   - appstudio.redhat.com
   resources:
-  - componentgroups/status
   - components/status
   - environments/status
   - integrationtestscenarios/status
@@ -99,10 +96,49 @@ rules:
 - apiGroups:
   - konflux-ci.dev
   resources:
+  - componentgroups
+  verbs:
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - konflux-ci.dev
+  resources:
+  - componentgroups/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - konflux-ci.dev
+  resources:
+  - componentgroups/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - konflux-ci.dev
+  resources:
   - components
   verbs:
   - get
   - list
+- apiGroups:
+  - konflux-ci.dev
+  resources:
+  - nudgeconfigs
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - konflux-ci.dev
+  resources:
+  - nudgeconfigs/status
+  verbs:
+  - get
+  - patch
 - apiGroups:
   - pipelinesascode.tekton.dev
   resources:

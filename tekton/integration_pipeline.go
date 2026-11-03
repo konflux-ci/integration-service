@@ -30,6 +30,7 @@ import (
 	"github.com/ghodss/yaml" // used instead of gopkg.in/yaml.v3 because it treats json tags as yaml tags
 	"github.com/go-logr/logr"
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
+	konfluxv1beta2 "github.com/konflux-ci/integration-service/api/konflux/v1beta2"
 	"github.com/konflux-ci/integration-service/api/v1beta2"
 	"github.com/konflux-ci/integration-service/gitops"
 	h "github.com/konflux-ci/integration-service/helpers"
@@ -570,7 +571,7 @@ func (r *IntegrationPipelineRun) WithApplication(application *applicationapiv1al
 }
 
 // WithComponentGroup adds the name of component group as a label to the Integration PipelineRun.
-func (r *IntegrationPipelineRun) WithComponentGroup(componentGroup *v1beta2.ComponentGroup) *IntegrationPipelineRun {
+func (r *IntegrationPipelineRun) WithComponentGroup(componentGroup *konfluxv1beta2.ComponentGroup) *IntegrationPipelineRun {
 	// TODO: remove if block once application-specific code is deprecated
 	if componentGroup == nil {
 		return r

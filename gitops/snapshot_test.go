@@ -17,6 +17,7 @@ limitations under the License.
 package gitops_test
 
 import (
+	konfluxv1beta2 "github.com/konflux-ci/integration-service/api/konflux/v1beta2"
 	"github.com/konflux-ci/integration-service/api/v1beta2"
 	"github.com/konflux-ci/integration-service/helpers"
 	. "github.com/onsi/ginkgo/v2"
@@ -1111,8 +1112,20 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 			})
 
 			It("Can set owner reference for override snapshot [APPLICATION]", func() {
-				// TODO: create duplication test for ComponentGorup
 				overrideSnapshot, err := gitops.SetOwnerReferenceApplication(ctx, k8sClient, overrideSnapshot, hasApp)
+				Expect(controllerutil.HasControllerReference(overrideSnapshot)).To(BeTrue())
+				Expect(err).ToNot(HaveOccurred())
+			})
+
+			It("Can set owner reference for override snapshot [COMPONENT GROUP]", func() {
+				componentGroup := &konfluxv1beta2.ComponentGroup{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "component-group-sample",
+						Namespace: namespace,
+						UID:       types.UID("component-group-uid"),
+					},
+				}
+				overrideSnapshot, err := gitops.SetOwnerReference(ctx, k8sClient, overrideSnapshot, componentGroup)
 				Expect(controllerutil.HasControllerReference(overrideSnapshot)).To(BeTrue())
 				Expect(err).ToNot(HaveOccurred())
 			})

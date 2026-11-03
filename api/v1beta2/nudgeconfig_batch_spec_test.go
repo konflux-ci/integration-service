@@ -47,11 +47,11 @@ var _ = Describe("NudgeConfig batch spec helpers", func() {
 			debounceCEL := fmt.Sprintf("duration('%s')", debounceLiteral)
 			maxWaitCEL := fmt.Sprintf("duration('%s')", maxWaitLiteral)
 
-			source, err := os.ReadFile("nudgeconfig_types.go")
+			source, err := os.ReadFile(filepath.Join("..", "konflux", "v1beta2", "nudgeconfig_types.go"))
 			Expect(err).NotTo(HaveOccurred())
 			assertContainsBatchDefaultCEL(string(source), debounceCEL, maxWaitCEL)
 
-			crdPath := filepath.Join("..", "..", "config", "crd", "bases", "appstudio.redhat.com_nudgeconfigs.yaml")
+			crdPath := filepath.Join("..", "..", "config", "crd", "bases", "konflux-ci.dev_nudgeconfigs.yaml")
 			crd, err := os.ReadFile(crdPath)
 			Expect(err).NotTo(HaveOccurred())
 			assertContainsBatchDefaultCEL(strings.ReplaceAll(string(crd), "''", "'"), debounceCEL, maxWaitCEL)
