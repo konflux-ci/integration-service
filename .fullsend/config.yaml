@@ -36,8 +36,12 @@ agents:
         "ainephelan365",
         "jsztuka"
       ]
-create_issues:
-  allow_targets:
-    repos:
-      - konflux-ci/integration-service
-      - fullsend-ai/fullsend
+# Where fullsend may open tracking issues. The legacy top-level
+# create_issues.allow_targets key was removed upstream (fullsend #9074);
+# the harness now fails config load when it is present.
+tracker:
+  github:
+    allowed_targets:
+      repos:
+        - konflux-ci/integration-service
+        - fullsend-ai/fullsend
