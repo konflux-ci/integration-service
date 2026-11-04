@@ -19,7 +19,7 @@ package componentgroup
 import (
 	"context"
 
-	"github.com/konflux-ci/integration-service/api/konflux/v1beta2"
+	"github.com/konflux-ci/integration-service/api/konflux/v1beta3"
 	h "github.com/konflux-ci/integration-service/helpers"
 	"github.com/konflux-ci/integration-service/loader"
 	"github.com/konflux-ci/operator-toolkit/controller"
@@ -29,7 +29,7 @@ import (
 
 // Adapter holds the objects needed to reconcile a ComponentGroup.
 type Adapter struct {
-	componentGroup *v1beta2.ComponentGroup
+	componentGroup *v1beta3.ComponentGroup
 	logger         h.IntegrationLogger
 	loader         loader.ObjectLoader
 	client         client.Client
@@ -39,7 +39,7 @@ type Adapter struct {
 // NewAdapter creates and returns an Adapter instance.
 func NewAdapter(
 	ctx context.Context,
-	componentGroup *v1beta2.ComponentGroup,
+	componentGroup *v1beta3.ComponentGroup,
 	logger h.IntegrationLogger,
 	loader loader.ObjectLoader,
 	client client.Client,
@@ -75,11 +75,11 @@ func (a *Adapter) EnsureGCLAlignedWithSpecComponents() (controller.OperationResu
 // If items are added to spec.Components their ComponentVersion will be added to the GCL. Image, commit, and build time will be
 // gathered from the build pipeline the next time an on-push pipeline for this componentversion completes. If items are removed from
 // spec.Components their ComponentVersion will be removed from the GCL.
-func (a *Adapter) alignGCLWithSpecComponents(mostRecentComponentGroup *v1beta2.ComponentGroup) error {
+func (a *Adapter) alignGCLWithSpecComponents(mostRecentComponentGroup *v1beta3.ComponentGroup) error {
 	a.logger.Info("Aligning GCL with spec.components")
 
 	patch := client.MergeFromWithOptions(mostRecentComponentGroup.DeepCopy(), client.MergeFromWithOptimisticLock{})
-	gclComponents := make(map[string]v1beta2.ComponentState)
+	gclComponents := make(map[string]v1beta3.ComponentState)
 
 	// Add existing components to GCL
 	for _, component := range mostRecentComponentGroup.Status.GlobalCandidateList {
@@ -87,7 +87,7 @@ func (a *Adapter) alignGCLWithSpecComponents(mostRecentComponentGroup *v1beta2.C
 		gclComponents[componentVersion] = component
 	}
 
-	var newGCL []v1beta2.ComponentState
+	var newGCL []v1beta3.ComponentState
 
 	for _, component := range mostRecentComponentGroup.Spec.Components {
 		componentVersion := h.GetComponentVersionString(component.Name, component.ComponentVersion.Name)
@@ -97,7 +97,7 @@ func (a *Adapter) alignGCLWithSpecComponents(mostRecentComponentGroup *v1beta2.C
 			// Create a new ComponentState for the componentVersion
 			// All other fields are gathered from build pipeline the next time
 			// an on-push pipeline for this componentversion completes
-			newComponentState := v1beta2.ComponentState{
+			newComponentState := v1beta3.ComponentState{
 				Name:    component.Name,
 				Version: component.ComponentVersion.Name,
 			}

@@ -513,7 +513,6 @@ type NudgeConfigStatus struct {
 // +kubebuilder:resource:shortName=nc
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
-// +kubebuilder:storageversion
 // +kubebuilder:validation:XValidation:rule="self.metadata.name == 'nudge-config'",message="NudgeConfig must be named 'nudge-config' (singleton per namespace)"
 
 // NudgeConfig is a namespace-scoped singleton CRD that stores component nudging relationships.

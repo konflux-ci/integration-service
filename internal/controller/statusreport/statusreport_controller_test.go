@@ -20,7 +20,7 @@ import (
 	"reflect"
 	"time"
 
-	konfluxv1beta2 "github.com/konflux-ci/integration-service/api/konflux/v1beta2"
+	konfluxv1beta3 "github.com/konflux-ci/integration-service/api/konflux/v1beta3"
 	"github.com/konflux-ci/integration-service/api/v1beta2"
 	"github.com/konflux-ci/integration-service/gitops"
 	toolkit "github.com/konflux-ci/operator-toolkit/loader"
@@ -230,17 +230,17 @@ var _ = Describe("StatusReportController", func() {
 
 	When("the snapshot references a ComponentGroup", func() {
 		var (
-			cg         *konfluxv1beta2.ComponentGroup
+			cg         *konfluxv1beta3.ComponentGroup
 			cgSnapshot *applicationapiv1alpha1.Snapshot
 			cgReq      ctrl.Request
 		)
 
 		BeforeEach(func() {
-			cg = &konfluxv1beta2.ComponentGroup{
+			cg = &konfluxv1beta3.ComponentGroup{
 				ObjectMeta: metav1.ObjectMeta{Name: "cg-sample", Namespace: "default"},
-				Spec: konfluxv1beta2.ComponentGroupSpec{
-					Components: []konfluxv1beta2.ComponentReference{
-						{Name: "component-sample", ComponentVersion: konfluxv1beta2.ComponentVersionReference{Name: "v1", Revision: "main"}},
+				Spec: konfluxv1beta3.ComponentGroupSpec{
+					Components: []konfluxv1beta3.ComponentReference{
+						{Name: "component-sample", ComponentVersion: konfluxv1beta3.ComponentVersionReference{Name: "v1", Revision: "main"}},
 					},
 				},
 			}
@@ -296,7 +296,7 @@ var _ = Describe("StatusReportController", func() {
 		})
 
 		It("returns an error when the ComponentGroup cannot be fetched from the snapshot", func() {
-			r := newReconciler(toolkit.ClientCallMock{Operation: toolkit.OperationGet, ObjectType: &konfluxv1beta2.ComponentGroup{}, Err: errBoom})
+			r := newReconciler(toolkit.ClientCallMock{Operation: toolkit.OperationGet, ObjectType: &konfluxv1beta3.ComponentGroup{}, Err: errBoom})
 			_, err := r.Reconcile(ctx, cgReq)
 			Expect(err).To(HaveOccurred())
 		})

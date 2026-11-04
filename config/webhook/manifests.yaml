@@ -56,14 +56,14 @@ webhooks:
     service:
       name: webhook-service
       namespace: system
-      path: /validate-konflux-ci-dev-v1beta2-componentgroup
+      path: /validate-konflux-ci-dev-v1beta3-componentgroup
   failurePolicy: Fail
   name: vcomponentgroup.kb.io
   rules:
   - apiGroups:
     - konflux-ci.dev
     apiVersions:
-    - v1beta2
+    - v1beta3
     operations:
     - CREATE
     - UPDATE

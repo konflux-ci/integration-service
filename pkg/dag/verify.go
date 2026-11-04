@@ -23,7 +23,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/konflux-ci/integration-service/api/konflux/v1beta2"
+	v1beta2 "github.com/konflux-ci/integration-service/api/konflux/v1beta3"
 	integrationv1beta2 "github.com/konflux-ci/integration-service/api/v1beta2"
 )
 
@@ -101,9 +101,11 @@ func ValidateNudgeGraph(nudges []v1beta2.NudgeRelationship) error {
 
 	adj := make(map[string][]string)
 	for _, n := range nudges {
-		adj[n.From] = append(adj[n.From], n.To)
-		if _, ok := adj[n.To]; !ok {
-			adj[n.To] = nil
+		from := n.From.String()
+		to := n.To.String()
+		adj[from] = append(adj[from], to)
+		if _, ok := adj[to]; !ok {
+			adj[to] = nil
 		}
 	}
 

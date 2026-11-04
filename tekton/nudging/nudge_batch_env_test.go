@@ -22,8 +22,8 @@ import (
 	"fmt"
 	"time"
 
-	konfluxv1beta2 "github.com/konflux-ci/integration-service/api/konflux/v1beta2"
-	"github.com/konflux-ci/integration-service/api/v1beta2"
+	konfluxv1beta3 "github.com/konflux-ci/integration-service/api/konflux/v1beta3"
+	v1beta2 "github.com/konflux-ci/integration-service/api/konflux/v1beta3"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
@@ -52,7 +52,7 @@ var _ = Describe("Nudge batch client operations", func() {
 	BeforeEach(func() {
 		scheme = runtime.NewScheme()
 		Expect(v1beta2.AddToScheme(scheme)).To(Succeed())
-		Expect(konfluxv1beta2.AddToScheme(scheme)).To(Succeed())
+		Expect(konfluxv1beta3.AddToScheme(scheme)).To(Succeed())
 		Expect(tektonv1.AddToScheme(scheme)).To(Succeed())
 
 		nudgeConfig = &v1beta2.NudgeConfig{

@@ -19,8 +19,8 @@ package nudgeconfig
 import (
 	"time"
 
-	konfluxv1beta2 "github.com/konflux-ci/integration-service/api/konflux/v1beta2"
-	"github.com/konflux-ci/integration-service/api/v1beta2"
+	"github.com/konflux-ci/integration-service/api/konflux/v1beta3"
+	konfluxv1beta3 "github.com/konflux-ci/integration-service/api/konflux/v1beta3"
 	nudging "github.com/konflux-ci/integration-service/tekton/nudging"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -44,8 +44,8 @@ var _ = Describe("NudgeConfig reconciler", func() {
 
 	BeforeEach(func() {
 		scheme = runtime.NewScheme()
-		Expect(v1beta2.AddToScheme(scheme)).To(Succeed())
-		Expect(konfluxv1beta2.AddToScheme(scheme)).To(Succeed())
+		Expect(v1beta3.AddToScheme(scheme)).To(Succeed())
+		Expect(konfluxv1beta3.AddToScheme(scheme)).To(Succeed())
 		Expect(tektonv1.AddToScheme(scheme)).To(Succeed())
 		reconciler = &Reconciler{
 			Log: logf.Log,
@@ -53,7 +53,7 @@ var _ = Describe("NudgeConfig reconciler", func() {
 	})
 
 	newClient := func(objects ...client.Object) client.Client {
-		builder := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(&v1beta2.NudgeConfig{})
+		builder := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(&v1beta3.NudgeConfig{})
 		if len(objects) > 0 {
 			builder = builder.WithObjects(objects...)
 		}
@@ -64,7 +64,7 @@ var _ = Describe("NudgeConfig reconciler", func() {
 		It("should complete without error", func() {
 			reconciler.Client = newClient()
 			result, err := reconciler.Reconcile(ctx, ctrl.Request{
-				NamespacedName: types.NamespacedName{Name: v1beta2.NudgeConfigSingletonName, Namespace: "missing-ns"},
+				NamespacedName: types.NamespacedName{Name: v1beta3.NudgeConfigSingletonName, Namespace: "missing-ns"},
 			})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(result.RequeueAfter).To(BeZero())
@@ -75,22 +75,22 @@ var _ = Describe("NudgeConfig reconciler", func() {
 		It("should requeue after the minimum batch interval", func() {
 			now := metav1.Now()
 			futureFire := metav1.NewTime(now.Add(30 * time.Minute))
-			nudgeConfig := &v1beta2.NudgeConfig{
+			nudgeConfig := &v1beta3.NudgeConfig{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      v1beta2.NudgeConfigSingletonName,
+					Name:      v1beta3.NudgeConfigSingletonName,
 					Namespace: "default",
 				},
-				Spec: v1beta2.NudgeConfigSpec{},
-				Status: v1beta2.NudgeConfigStatus{
-					ActiveBatches: []v1beta2.ActiveBatch{
+				Spec: v1beta3.NudgeConfigSpec{},
+				Status: v1beta3.NudgeConfigStatus{
+					ActiveBatches: []v1beta3.ActiveBatch{
 						{
 							Target:       "bundle",
 							BatchID:      "batch-1",
-							Phase:        v1beta2.BatchPhaseAccumulating,
+							Phase:        v1beta3.BatchPhaseAccumulating,
 							CreatedAt:    now,
 							FireAt:       &futureFire,
 							HardDeadline: metav1.NewTime(now.Add(time.Hour)),
-							Accumulated: []v1beta2.AccumulatedEntry{
+							Accumulated: []v1beta3.AccumulatedEntry{
 								{From: "a", ImageDigest: "sha256:1", BuildPipelineRun: "plr-1", CapturedAt: now},
 							},
 						},
@@ -107,12 +107,12 @@ var _ = Describe("NudgeConfig reconciler", func() {
 
 	Context("When there are no pending batches or actions", func() {
 		It("should complete without requeue", func() {
-			nudgeConfig := &v1beta2.NudgeConfig{
+			nudgeConfig := &v1beta3.NudgeConfig{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      v1beta2.NudgeConfigSingletonName,
+					Name:      v1beta3.NudgeConfigSingletonName,
 					Namespace: "default",
 				},
-				Spec: v1beta2.NudgeConfigSpec{},
+				Spec: v1beta3.NudgeConfigSpec{},
 			}
 			reconciler.Client = newClient(nudgeConfig)
 
@@ -130,25 +130,25 @@ var _ = Describe("NudgeConfig reconciler", func() {
 			}
 			target := "bundle"
 			plrName := nudging.BatchedNudgePipelineRunName("force-fire-batch", 0)
-			nudgeConfig := &v1beta2.NudgeConfig{
+			nudgeConfig := &v1beta3.NudgeConfig{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      v1beta2.NudgeConfigSingletonName,
+					Name:      v1beta3.NudgeConfigSingletonName,
 					Namespace: "default",
 				},
-				Spec: v1beta2.NudgeConfigSpec{
-					Actions: &v1beta2.Actions{
-						ForceFire: &v1beta2.ForceFireAction{Target: target},
+				Spec: v1beta3.NudgeConfigSpec{
+					Actions: &v1beta3.Actions{
+						ForceFire: &v1beta3.ForceFireAction{Target: target},
 					},
 				},
-				Status: v1beta2.NudgeConfigStatus{
-					ActiveBatches: []v1beta2.ActiveBatch{
+				Status: v1beta3.NudgeConfigStatus{
+					ActiveBatches: []v1beta3.ActiveBatch{
 						{
 							Target:       target,
 							BatchID:      "force-fire-batch",
-							Phase:        v1beta2.BatchPhaseAccumulating,
+							Phase:        v1beta3.BatchPhaseAccumulating,
 							CreatedAt:    now,
 							HardDeadline: metav1.NewTime(now.Add(time.Hour)),
-							Accumulated: []v1beta2.AccumulatedEntry{
+							Accumulated: []v1beta3.AccumulatedEntry{
 								{From: "source", ImageDigest: "sha256:abc", BuildPipelineRun: buildPLR.Name, CapturedAt: now},
 							},
 						},
@@ -162,23 +162,23 @@ var _ = Describe("NudgeConfig reconciler", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(result.RequeueAfter).To(BeNumerically(">=", minBatchRequeue))
 
-			updated := &v1beta2.NudgeConfig{}
+			updated := &v1beta3.NudgeConfig{}
 			Expect(reconciler.Client.Get(ctx, client.ObjectKeyFromObject(nudgeConfig), updated)).To(Succeed())
 			Expect(updated.Spec.Actions).To(BeNil())
-			Expect(updated.Status.ActiveBatches[0].Phase).To(Equal(v1beta2.BatchPhaseFiring))
+			Expect(updated.Status.ActiveBatches[0].Phase).To(Equal(v1beta3.BatchPhaseFiring))
 		})
 	})
 
 	Context("When a forceFire action cannot be satisfied", func() {
 		It("should clear the action and record ForceFireRejected", func() {
-			nudgeConfig := &v1beta2.NudgeConfig{
+			nudgeConfig := &v1beta3.NudgeConfig{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      v1beta2.NudgeConfigSingletonName,
+					Name:      v1beta3.NudgeConfigSingletonName,
 					Namespace: "default",
 				},
-				Spec: v1beta2.NudgeConfigSpec{
-					Actions: &v1beta2.Actions{
-						ForceFire: &v1beta2.ForceFireAction{Target: "missing-target"},
+				Spec: v1beta3.NudgeConfigSpec{
+					Actions: &v1beta3.Actions{
+						ForceFire: &v1beta3.ForceFireAction{Target: "missing-target"},
 					},
 				},
 			}
@@ -188,10 +188,10 @@ var _ = Describe("NudgeConfig reconciler", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(result.RequeueAfter).To(BeZero())
 
-			updated := &v1beta2.NudgeConfig{}
+			updated := &v1beta3.NudgeConfig{}
 			Expect(reconciler.Client.Get(ctx, client.ObjectKeyFromObject(nudgeConfig), updated)).To(Succeed())
 			Expect(updated.Spec.Actions).To(BeNil())
-			cond := meta.FindStatusCondition(updated.Status.Conditions, v1beta2.NudgeConfigConditionForceFireRejected)
+			cond := meta.FindStatusCondition(updated.Status.Conditions, v1beta3.NudgeConfigConditionForceFireRejected)
 			Expect(cond).NotTo(BeNil())
 			Expect(cond.Status).To(Equal(metav1.ConditionTrue))
 		})
@@ -199,21 +199,21 @@ var _ = Describe("NudgeConfig reconciler", func() {
 		It("should clear the action and record ForceFireIgnored when the target batch is already firing", func() {
 			now := metav1.Now()
 			target := "bundle"
-			nudgeConfig := &v1beta2.NudgeConfig{
+			nudgeConfig := &v1beta3.NudgeConfig{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      v1beta2.NudgeConfigSingletonName,
+					Name:      v1beta3.NudgeConfigSingletonName,
 					Namespace: "default",
 				},
-				Spec: v1beta2.NudgeConfigSpec{
-					Actions: &v1beta2.Actions{
-						ForceFire: &v1beta2.ForceFireAction{Target: target},
+				Spec: v1beta3.NudgeConfigSpec{
+					Actions: &v1beta3.Actions{
+						ForceFire: &v1beta3.ForceFireAction{Target: target},
 					},
 				},
-				Status: v1beta2.NudgeConfigStatus{
-					ActiveBatches: []v1beta2.ActiveBatch{{
+				Status: v1beta3.NudgeConfigStatus{
+					ActiveBatches: []v1beta3.ActiveBatch{{
 						Target:           target,
 						BatchID:          "already-firing",
-						Phase:            v1beta2.BatchPhaseFiring,
+						Phase:            v1beta3.BatchPhaseFiring,
 						CreatedAt:        now,
 						NudgePipelineRun: "nudge-batch-already-firing",
 					}},
@@ -227,10 +227,10 @@ var _ = Describe("NudgeConfig reconciler", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(result.RequeueAfter).To(BeNumerically(">=", minBatchRequeue))
 
-			updated := &v1beta2.NudgeConfig{}
+			updated := &v1beta3.NudgeConfig{}
 			Expect(reconciler.Client.Get(ctx, client.ObjectKeyFromObject(nudgeConfig), updated)).To(Succeed())
 			Expect(updated.Spec.Actions).To(BeNil())
-			cond := meta.FindStatusCondition(updated.Status.Conditions, v1beta2.NudgeConfigConditionForceFireIgnored)
+			cond := meta.FindStatusCondition(updated.Status.Conditions, v1beta3.NudgeConfigConditionForceFireIgnored)
 			Expect(cond).NotTo(BeNil())
 			Expect(cond.Status).To(Equal(metav1.ConditionTrue))
 			Expect(cond.Message).To(ContainSubstring("already firing"))
@@ -245,29 +245,29 @@ var _ = Describe("NudgeConfig reconciler", func() {
 				ObjectMeta: metav1.ObjectMeta{Name: "force-fire-retry-build", Namespace: "default"},
 			}
 			plrName := nudging.BatchedNudgePipelineRunName("force-fire-retry-batch", 0)
-			nudgeConfig := &v1beta2.NudgeConfig{
+			nudgeConfig := &v1beta3.NudgeConfig{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      v1beta2.NudgeConfigSingletonName,
+					Name:      v1beta3.NudgeConfigSingletonName,
 					Namespace: "default",
 				},
-				Spec: v1beta2.NudgeConfigSpec{
-					Actions: &v1beta2.Actions{
-						ForceFire: &v1beta2.ForceFireAction{Target: target},
+				Spec: v1beta3.NudgeConfigSpec{
+					Actions: &v1beta3.Actions{
+						ForceFire: &v1beta3.ForceFireAction{Target: target},
 					},
 				},
-				Status: v1beta2.NudgeConfigStatus{
+				Status: v1beta3.NudgeConfigStatus{
 					Conditions: []metav1.Condition{{
-						Type:   v1beta2.NudgeConfigConditionForceFireRejected,
+						Type:   v1beta3.NudgeConfigConditionForceFireRejected,
 						Status: metav1.ConditionTrue,
 						Reason: "Rejected",
 					}},
-					ActiveBatches: []v1beta2.ActiveBatch{{
+					ActiveBatches: []v1beta3.ActiveBatch{{
 						Target:       target,
 						BatchID:      "force-fire-retry-batch",
-						Phase:        v1beta2.BatchPhaseAccumulating,
+						Phase:        v1beta3.BatchPhaseAccumulating,
 						CreatedAt:    now,
 						HardDeadline: metav1.NewTime(now.Add(time.Hour)),
-						Accumulated: []v1beta2.AccumulatedEntry{
+						Accumulated: []v1beta3.AccumulatedEntry{
 							{From: "source", ImageDigest: "sha256:abc", BuildPipelineRun: buildPLR.Name, CapturedAt: now},
 						},
 					}},
@@ -279,27 +279,27 @@ var _ = Describe("NudgeConfig reconciler", func() {
 			_, err := reconciler.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKeyFromObject(nudgeConfig)})
 			Expect(err).NotTo(HaveOccurred())
 
-			updated := &v1beta2.NudgeConfig{}
+			updated := &v1beta3.NudgeConfig{}
 			Expect(reconciler.Client.Get(ctx, client.ObjectKeyFromObject(nudgeConfig), updated)).To(Succeed())
 			Expect(updated.Spec.Actions).To(BeNil())
-			Expect(updated.Status.ActiveBatches[0].Phase).To(Equal(v1beta2.BatchPhaseFiring))
+			Expect(updated.Status.ActiveBatches[0].Phase).To(Equal(v1beta3.BatchPhaseFiring))
 		})
 	})
 
 	Context("When a batch is waiting on a nudge PipelineRun", func() {
 		It("should requeue on the minimum batch interval", func() {
 			now := metav1.Now()
-			nudgeConfig := &v1beta2.NudgeConfig{
+			nudgeConfig := &v1beta3.NudgeConfig{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      v1beta2.NudgeConfigSingletonName,
+					Name:      v1beta3.NudgeConfigSingletonName,
 					Namespace: "default",
 				},
-				Spec: v1beta2.NudgeConfigSpec{},
-				Status: v1beta2.NudgeConfigStatus{
-					ActiveBatches: []v1beta2.ActiveBatch{{
+				Spec: v1beta3.NudgeConfigSpec{},
+				Status: v1beta3.NudgeConfigStatus{
+					ActiveBatches: []v1beta3.ActiveBatch{{
 						Target:           "bundle",
 						BatchID:          "firing-batch",
-						Phase:            v1beta2.BatchPhaseFiring,
+						Phase:            v1beta3.BatchPhaseFiring,
 						CreatedAt:        now,
 						NudgePipelineRun: "nudge-batch-firing-batch",
 					}},
@@ -324,29 +324,29 @@ var _ = Describe("nudgeBatchStatusChanged predicate", func() {
 	})
 
 	It("should react to active batch status changes", func() {
-		oldNC := &v1beta2.NudgeConfig{Status: v1beta2.NudgeConfigStatus{}}
-		newNC := &v1beta2.NudgeConfig{
-			Status: v1beta2.NudgeConfigStatus{
-				ActiveBatches: []v1beta2.ActiveBatch{{BatchID: "b1", Target: "t", Phase: v1beta2.BatchPhaseAccumulating}},
+		oldNC := &v1beta3.NudgeConfig{Status: v1beta3.NudgeConfigStatus{}}
+		newNC := &v1beta3.NudgeConfig{
+			Status: v1beta3.NudgeConfigStatus{
+				ActiveBatches: []v1beta3.ActiveBatch{{BatchID: "b1", Target: "t", Phase: v1beta3.BatchPhaseAccumulating}},
 			},
 		}
 		Expect(predicate.Update(event.UpdateEvent{ObjectOld: oldNC, ObjectNew: newNC})).To(BeTrue())
 	})
 
 	It("should react when spec.actions is added", func() {
-		oldNC := &v1beta2.NudgeConfig{Spec: v1beta2.NudgeConfigSpec{}}
-		newNC := &v1beta2.NudgeConfig{
-			Spec: v1beta2.NudgeConfigSpec{
-				Actions: &v1beta2.Actions{ForceFire: &v1beta2.ForceFireAction{Target: "t"}},
+		oldNC := &v1beta3.NudgeConfig{Spec: v1beta3.NudgeConfigSpec{}}
+		newNC := &v1beta3.NudgeConfig{
+			Spec: v1beta3.NudgeConfigSpec{
+				Actions: &v1beta3.Actions{ForceFire: &v1beta3.ForceFireAction{Target: "t"}},
 			},
 		}
 		Expect(predicate.Update(event.UpdateEvent{ObjectOld: oldNC, ObjectNew: newNC})).To(BeTrue())
 	})
 
 	It("should react when spec.actions.forceFire target changes", func() {
-		oldNC := &v1beta2.NudgeConfig{
-			Spec: v1beta2.NudgeConfigSpec{
-				Actions: &v1beta2.Actions{ForceFire: &v1beta2.ForceFireAction{Target: "a"}},
+		oldNC := &v1beta3.NudgeConfig{
+			Spec: v1beta3.NudgeConfigSpec{
+				Actions: &v1beta3.Actions{ForceFire: &v1beta3.ForceFireAction{Target: "a"}},
 			},
 		}
 		newNC := oldNC.DeepCopy()
@@ -355,9 +355,9 @@ var _ = Describe("nudgeBatchStatusChanged predicate", func() {
 	})
 
 	It("should react when spec.actions is removed", func() {
-		oldNC := &v1beta2.NudgeConfig{
-			Spec: v1beta2.NudgeConfigSpec{
-				Actions: &v1beta2.Actions{ForceFire: &v1beta2.ForceFireAction{Target: "t"}},
+		oldNC := &v1beta3.NudgeConfig{
+			Spec: v1beta3.NudgeConfigSpec{
+				Actions: &v1beta3.Actions{ForceFire: &v1beta3.ForceFireAction{Target: "t"}},
 			},
 		}
 		newNC := oldNC.DeepCopy()
@@ -378,19 +378,22 @@ var _ = Describe("nudgeBatchStatusChanged predicate", func() {
 	})
 
 	It("should allow updates when either object is nil", func() {
-		nc := &v1beta2.NudgeConfig{}
+		nc := &v1beta3.NudgeConfig{}
 		Expect(predicate.Update(event.UpdateEvent{ObjectNew: nc})).To(BeTrue())
 		Expect(predicate.Update(event.UpdateEvent{ObjectOld: nc})).To(BeTrue())
 	})
 
 	It("should ignore unrelated spec updates", func() {
-		oldNC := &v1beta2.NudgeConfig{
-			Spec: v1beta2.NudgeConfigSpec{
-				Nudges: []v1beta2.NudgeRelationship{{From: "a", To: "b"}},
+		oldNC := &v1beta3.NudgeConfig{
+			Spec: v1beta3.NudgeConfigSpec{
+				Nudges: []v1beta3.NudgeRelationship{{
+					From: v1beta3.ComponentVersion{Component: "a"},
+					To:   v1beta3.ComponentVersion{Component: "b"},
+				}},
 			},
 		}
 		newNC := oldNC.DeepCopy()
-		newNC.Spec.Nudges[0].To = "c"
+		newNC.Spec.Nudges[0].To = v1beta3.ComponentVersion{Component: "c"}
 		Expect(predicate.Update(event.UpdateEvent{ObjectOld: oldNC, ObjectNew: newNC})).To(BeFalse())
 	})
 })

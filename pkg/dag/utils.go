@@ -19,7 +19,7 @@ package dag
 import (
 	"fmt"
 
-	"github.com/konflux-ci/integration-service/api/konflux/v1beta2"
+	v1beta2 "github.com/konflux-ci/integration-service/api/konflux/v1beta3"
 	integrationv1beta2 "github.com/konflux-ci/integration-service/api/v1beta2"
 	intgteststat "github.com/konflux-ci/integration-service/pkg/integrationteststatus"
 )

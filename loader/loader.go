@@ -24,7 +24,7 @@ import (
 
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/konflux/v1alpha1"
 	oldapplicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
-	"github.com/konflux-ci/integration-service/api/konflux/v1beta2"
+	v1beta2 "github.com/konflux-ci/integration-service/api/konflux/v1beta3"
 	integrationv1beta2 "github.com/konflux-ci/integration-service/api/v1beta2"
 	"github.com/konflux-ci/integration-service/gitops"
 	"github.com/konflux-ci/integration-service/helpers"

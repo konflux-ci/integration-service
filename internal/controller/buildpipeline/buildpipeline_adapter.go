@@ -32,7 +32,7 @@ import (
 	"k8s.io/utils/strings/slices"
 
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
-	"github.com/konflux-ci/integration-service/api/konflux/v1beta2"
+	konfluxv1beta3 "github.com/konflux-ci/integration-service/api/konflux/v1beta3"
 	integrationv1beta2 "github.com/konflux-ci/integration-service/api/v1beta2"
 	"github.com/konflux-ci/integration-service/gitops"
 	h "github.com/konflux-ci/integration-service/helpers"
@@ -60,7 +60,7 @@ type Adapter struct {
 	component       *applicationapiv1alpha1.Component // TODO: remove when we deprecate old model
 	componentName   string
 	application     *applicationapiv1alpha1.Application
-	componentGroups *[]v1beta2.ComponentGroup
+	componentGroups *[]konfluxv1beta3.ComponentGroup
 	loader          loader.ObjectLoader
 	logger          h.IntegrationLogger
 	client          client.Client
@@ -87,7 +87,7 @@ func NewAdapterWithApplication(context context.Context, pipelineRun *tektonv1.Pi
 }
 
 // NewAdapter creates and returns an Adapter instance
-func NewAdapter(context context.Context, pipelineRun *tektonv1.PipelineRun, componentName string, componentGroups *[]v1beta2.ComponentGroup,
+func NewAdapter(context context.Context, pipelineRun *tektonv1.PipelineRun, componentName string, componentGroups *[]konfluxv1beta3.ComponentGroup,
 	logger h.IntegrationLogger, loader loader.ObjectLoader, client client.Client,
 ) *Adapter {
 	return &Adapter{
@@ -208,13 +208,15 @@ func (a *Adapter) EnsureNudgePipelineRunsExist() (controller.OperationResult, er
 	componentName := a.componentName
 	var immediateTargetNames, batchedTargetNames []string
 	for _, nudge := range nudgeConfig.Spec.Nudges {
-		if nudge.From != componentName || (nudge.Mode != "" && nudge.Mode != v1beta2.NudgeModeImmediate) {
+		from := nudge.From.String()
+		to := nudge.To.String()
+		if from != componentName || (nudge.Mode != "" && nudge.Mode != konfluxv1beta3.NudgeModeImmediate) {
 			continue
 		}
-		if nudgeConfig.Spec.IsTargetBatched(nudge.To) {
-			batchedTargetNames = append(batchedTargetNames, nudge.To)
+		if nudgeConfig.Spec.IsTargetBatched(to) {
+			batchedTargetNames = append(batchedTargetNames, to)
 		} else {
-			immediateTargetNames = append(immediateTargetNames, nudge.To)
+			immediateTargetNames = append(immediateTargetNames, to)
 		}
 	}
 
@@ -419,8 +421,8 @@ func (a *Adapter) finalizeNudgeProcessedBuildPipelineRun(processedValue string) 
 // so the controller wakes up to fire a batch even if no further build arrives for that
 // target. Falls back to continuing without an explicit requeue when there is nothing
 // pending or the refresh fails (a future build or periodic resync will still catch it up).
-func (a *Adapter) requeueForActiveNudgeBatches(nudgeConfig *v1beta2.NudgeConfig) (controller.OperationResult, error) {
-	latest := &v1beta2.NudgeConfig{}
+func (a *Adapter) requeueForActiveNudgeBatches(nudgeConfig *konfluxv1beta3.NudgeConfig) (controller.OperationResult, error) {
+	latest := &konfluxv1beta3.NudgeConfig{}
 	if err := a.client.Get(a.context, client.ObjectKeyFromObject(nudgeConfig), latest); err != nil {
 		a.logger.Error(err, "Failed to refresh NudgeConfig for batch requeue, continuing without explicit requeue")
 		return controller.ContinueProcessing()
@@ -464,14 +466,16 @@ func (a *Adapter) RecordFailedBatchedNudgeBuilds() (controller.OperationResult, 
 	componentName := a.componentName
 	var batchedTargets []string
 	for _, nudge := range nudgeConfig.Spec.Nudges {
-		if nudge.From != componentName || (nudge.Mode != "" && nudge.Mode != v1beta2.NudgeModeImmediate) {
+		from := nudge.From.String()
+		to := nudge.To.String()
+		if from != componentName || (nudge.Mode != "" && nudge.Mode != konfluxv1beta3.NudgeModeImmediate) {
 			continue
 		}
-		if !nudgeConfig.Spec.IsTargetBatched(nudge.To) {
+		if !nudgeConfig.Spec.IsTargetBatched(to) {
 			continue
 		}
-		if !slices.Contains(batchedTargets, nudge.To) {
-			batchedTargets = append(batchedTargets, nudge.To)
+		if !slices.Contains(batchedTargets, to) {
+			batchedTargets = append(batchedTargets, to)
 		}
 	}
 	if len(batchedTargets) == 0 {
@@ -1189,7 +1193,7 @@ func (a *Adapter) notifySnapshotsInGroupAboutBuild(pipelineRun *tektonv1.Pipelin
 	return nil
 }
 
-func (a *Adapter) filterPipelineRunsForComponentGroups(allBuildPipelineRuns *[]tektonv1.PipelineRun, componentGroups *[]v1beta2.ComponentGroup) *[]tektonv1.PipelineRun {
+func (a *Adapter) filterPipelineRunsForComponentGroups(allBuildPipelineRuns *[]tektonv1.PipelineRun, componentGroups *[]konfluxv1beta3.ComponentGroup) *[]tektonv1.PipelineRun {
 	var filteredBuildPipelineRuns []tektonv1.PipelineRun
 	for _, buildPipelineRun := range *allBuildPipelineRuns {
 		if builtComponentName, found := buildPipelineRun.Labels[tektonconsts.PipelineRunComponentLabel]; found {
@@ -1899,7 +1903,7 @@ func (a *Adapter) emitBuildTimingSpans() {
 }
 
 // applyStaleReferencesStatusCondition updates StaleReferences on nudgeConfig in memory. Returns whether the condition changed.
-func (a *Adapter) applyStaleReferencesStatusCondition(nudgeConfig *v1beta2.NudgeConfig, namespace string) (bool, error) {
+func (a *Adapter) applyStaleReferencesStatusCondition(nudgeConfig *konfluxv1beta3.NudgeConfig, namespace string) (bool, error) {
 	nudges := nudgeConfig.Spec.Nudges
 	existingStatusCondition := meta.FindStatusCondition(nudgeConfig.Status.Conditions, h.StaleReferencesStatusCondition)
 	if len(nudges) == 0 && existingStatusCondition != nil && existingStatusCondition.Status == metav1.ConditionFalse {
@@ -1936,7 +1940,7 @@ func (a *Adapter) applyStaleReferencesStatusCondition(nudgeConfig *v1beta2.Nudge
 }
 
 // updateNudgeConfigStatus refreshes NudgeConfig status conditions (stale references, batch defaults support).
-func (a *Adapter) updateNudgeConfigStatus(nudgeConfig *v1beta2.NudgeConfig, namespace string) error {
+func (a *Adapter) updateNudgeConfigStatus(nudgeConfig *konfluxv1beta3.NudgeConfig, namespace string) error {
 	original := nudgeConfig.DeepCopy()
 
 	statusChanged := h.ApplyBatchDefaultsSupportedStatusCondition(&nudgeConfig.Status.Conditions, nudgeConfig.Spec.BatchDefaults)

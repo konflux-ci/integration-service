@@ -24,8 +24,8 @@ import (
 
 	"sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
-	konfluxv1beta2 "github.com/konflux-ci/integration-service/api/konflux/v1beta2"
-	"github.com/konflux-ci/integration-service/api/v1beta2"
+	"github.com/konflux-ci/integration-service/api/konflux/v1beta3"
+	konfluxv1beta3 "github.com/konflux-ci/integration-service/api/konflux/v1beta3"
 	toolkit "github.com/konflux-ci/operator-toolkit/test"
 
 	"k8s.io/client-go/rest"
@@ -95,8 +95,8 @@ var _ = BeforeSuite(func() {
 	Expect(applicationapiv1alpha1.AddToScheme(clientsetscheme.Scheme)).To(Succeed())
 	Expect(tektonv1.AddToScheme(clientsetscheme.Scheme)).To(Succeed())
 	Expect(releasev1alpha1.AddToScheme(clientsetscheme.Scheme)).To(Succeed())
-	Expect(v1beta2.AddToScheme(clientsetscheme.Scheme)).To(Succeed())
-	Expect(konfluxv1beta2.AddToScheme(clientsetscheme.Scheme)).To(Succeed())
+	Expect(v1beta3.AddToScheme(clientsetscheme.Scheme)).To(Succeed())
+	Expect(konfluxv1beta3.AddToScheme(clientsetscheme.Scheme)).To(Succeed())
 
 	k8sManager, _ := ctrl.NewManager(cfg, ctrl.Options{
 		Scheme: clientsetscheme.Scheme,

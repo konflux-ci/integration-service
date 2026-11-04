@@ -21,7 +21,7 @@ import (
 	"time"
 
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
-	konfluxv1beta2 "github.com/konflux-ci/integration-service/api/konflux/v1beta2"
+	konfluxv1beta3 "github.com/konflux-ci/integration-service/api/konflux/v1beta3"
 	"github.com/konflux-ci/integration-service/api/v1beta2"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -37,7 +37,7 @@ var _ = Describe("IntegrationTestScenario webhook", Ordered, func() {
 		integrationTestScenario                   *v1beta2.IntegrationTestScenario
 		integrationTestScenarioInvalidGitResolver *v1beta2.IntegrationTestScenario
 		hasApp                                    *applicationapiv1alpha1.Application
-		hasComponentGroup                         *konfluxv1beta2.ComponentGroup
+		hasComponentGroup                         *konfluxv1beta3.ComponentGroup
 	)
 
 	BeforeAll(func() {
@@ -53,16 +53,16 @@ var _ = Describe("IntegrationTestScenario webhook", Ordered, func() {
 		}
 		Expect(k8sClient.Create(ctx, hasApp)).Should(Succeed())
 
-		hasComponentGroup = &konfluxv1beta2.ComponentGroup{
+		hasComponentGroup = &konfluxv1beta3.ComponentGroup{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "componentgroup-sample",
 				Namespace: "default",
 			},
-			Spec: konfluxv1beta2.ComponentGroupSpec{
-				Components: []konfluxv1beta2.ComponentReference{
+			Spec: konfluxv1beta3.ComponentGroupSpec{
+				Components: []konfluxv1beta3.ComponentReference{
 					{
 						Name: "component-a",
-						ComponentVersion: konfluxv1beta2.ComponentVersionReference{
+						ComponentVersion: konfluxv1beta3.ComponentVersionReference{
 							Name: "main",
 						},
 					},
@@ -517,7 +517,7 @@ var _ = Describe("IntegrationTestScenario webhook", Ordered, func() {
 			_, err = validator.ValidateUpdate(ctx, oldScenario, newScenario)
 			Expect(err).To(HaveOccurred())
 
-			_, err = validator.ValidateUpdate(ctx, oldScenario, &konfluxv1beta2.ComponentGroup{})
+			_, err = validator.ValidateUpdate(ctx, oldScenario, &konfluxv1beta3.ComponentGroup{})
 			Expect(err).To(HaveOccurred())
 		})
 	})

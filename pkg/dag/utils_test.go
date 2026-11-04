@@ -21,7 +21,7 @@ import (
 	. "github.com/onsi/gomega"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	konfluxv1beta2 "github.com/konflux-ci/integration-service/api/konflux/v1beta2"
+	konfluxv1beta3 "github.com/konflux-ci/integration-service/api/konflux/v1beta3"
 	"github.com/konflux-ci/integration-service/api/v1beta2"
 	intgteststat "github.com/konflux-ci/integration-service/pkg/integrationteststatus"
 )
@@ -29,13 +29,13 @@ import (
 var _ = Describe("DAG utils unittests", Ordered, func() {
 	Context("GetRunAfterMapForTestGraphNodes", func() {
 		var (
-			testGraph   map[string][]konfluxv1beta2.TestGraphNode
+			testGraph   map[string][]konfluxv1beta3.TestGraphNode
 			scenarios   *[]v1beta2.IntegrationTestScenario
 			runAfterMap map[string][]string
 		)
 
 		BeforeAll(func() {
-			testGraph = map[string][]konfluxv1beta2.TestGraphNode{
+			testGraph = map[string][]konfluxv1beta3.TestGraphNode{
 				"scenarioB": createTestGraphNodesForScenarios([]string{"scenarioA"}),
 				"scenarioC": createTestGraphNodesForScenarios([]string{"scenarioA", "scenarioB"}),
 				"scenarioD": createTestGraphNodesForScenarios([]string{"missing-parent"}),
@@ -71,10 +71,10 @@ var _ = Describe("DAG utils unittests", Ordered, func() {
 	})
 
 	Context("hasParent", func() {
-		var parents []konfluxv1beta2.TestGraphNode
+		var parents []konfluxv1beta3.TestGraphNode
 
 		BeforeAll(func() {
-			parents = []konfluxv1beta2.TestGraphNode{
+			parents = []konfluxv1beta3.TestGraphNode{
 				{Name: "scenarioA", FailFast: true},
 				{Name: "scenarioB", FailFast: false},
 			}
@@ -91,15 +91,15 @@ var _ = Describe("DAG utils unittests", Ordered, func() {
 
 		It("returns false for an empty parent list", func() {
 			Expect(hasParent(nil, "scenarioA")).To(BeFalse())
-			Expect(hasParent([]konfluxv1beta2.TestGraphNode{}, "scenarioA")).To(BeFalse())
+			Expect(hasParent([]konfluxv1beta3.TestGraphNode{}, "scenarioA")).To(BeFalse())
 		})
 	})
 
 	Context("ShouldFailFastForScenariosParent", func() {
-		var testGraph map[string][]konfluxv1beta2.TestGraphNode
+		var testGraph map[string][]konfluxv1beta3.TestGraphNode
 
 		BeforeAll(func() {
-			testGraph = map[string][]konfluxv1beta2.TestGraphNode{
+			testGraph = map[string][]konfluxv1beta3.TestGraphNode{
 				"scenarioB": {
 					{Name: "scenarioA", FailFast: true},
 				},
@@ -122,7 +122,7 @@ var _ = Describe("DAG utils unittests", Ordered, func() {
 
 	Context("CascadeFailFastDependents", func() {
 		var (
-			testGraph map[string][]konfluxv1beta2.TestGraphNode
+			testGraph map[string][]konfluxv1beta3.TestGraphNode
 			statuses  *intgteststat.SnapshotIntegrationTestStatuses
 		)
 
@@ -142,7 +142,7 @@ var _ = Describe("DAG utils unittests", Ordered, func() {
 		}
 
 		BeforeAll(func() {
-			testGraph = map[string][]konfluxv1beta2.TestGraphNode{
+			testGraph = map[string][]konfluxv1beta3.TestGraphNode{
 				"scenarioB": {{Name: "scenarioA", FailFast: true}},
 				"scenarioC": {{Name: "scenarioB", FailFast: true}},
 				"scenarioD": {{Name: "scenarioB", FailFast: false}},
