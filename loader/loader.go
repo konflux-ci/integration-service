@@ -29,6 +29,7 @@ import (
 	"github.com/konflux-ci/integration-service/gitops"
 	"github.com/konflux-ci/integration-service/helpers"
 	"github.com/konflux-ci/integration-service/pkg/conversion"
+	"github.com/konflux-ci/integration-service/pkg/keys"
 	tektonconsts "github.com/konflux-ci/integration-service/tekton/consts"
 	toolkit "github.com/konflux-ci/operator-toolkit/loader"
 	"github.com/konflux-ci/operator-toolkit/metadata"
@@ -40,7 +41,6 @@ import (
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
-	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/selection"
 	"k8s.io/apimachinery/pkg/types"
@@ -224,7 +224,7 @@ func (l *loader) GetApplicationFromSnapshot(ctx context.Context, c client.Client
 // GetComponentFromSnapshot loads from the cluster the Component referenced in the given Snapshot.
 // If the Snapshot doesn't specify an Application or this is not found in the cluster, an error will be returned.
 func (l *loader) GetComponentFromSnapshot(ctx context.Context, c client.Client, snapshot *oldapplicationapiv1alpha1.Snapshot) (*oldapplicationapiv1alpha1.Component, error) {
-	if componentLabel, ok := snapshot.Labels[gitops.SnapshotComponentLabel]; ok {
+	if componentLabel, ok := gitops.LabelValue(snapshot, gitops.SnapshotComponentLabel); ok {
 		return l.getComponentWithFallback(ctx, c, componentLabel, snapshot.Namespace)
 	} else {
 		groupResource := schema.GroupResource{Group: "", Resource: ""}
@@ -238,11 +238,15 @@ func (l *loader) GetComponentFromPipelineRun(ctx context.Context, c client.Clien
 	// Check for annotation
 	// If it has appstudio.openshift.io/component -> get old style Component (we're dealing with Application model)
 	// If it has build.konflux-ci.dev/component -> get new style Component (we're dealing with ComponentGroup model)
-	if componentName, found := pipelineRun.Labels[tektonconsts.PipelineRunComponentLabel]; found {
+	componentName, found := keys.GetLabel(pipelineRun, keys.BuildComponent())
+	if !found {
+		return nil, nil
+	}
+	if !keys.HasNewLabel(pipelineRun, keys.BuildComponent()) {
 		appstudioComponent := &oldapplicationapiv1alpha1.Component{}
 		appstudioErr := toolkit.GetObject(componentName, pipelineRun.Namespace, c, ctx, appstudioComponent)
 		return appstudioComponent, appstudioErr
-	} else if componentName, found := pipelineRun.Labels["build.konflux-ci.dev/component"]; found {
+	} else {
 		konfluxComponent := &applicationapiv1alpha1.Component{}
 		konfluxErr := toolkit.GetObject(componentName, pipelineRun.Namespace, c, ctx, konfluxComponent)
 		if konfluxErr != nil {
@@ -252,8 +256,6 @@ func (l *loader) GetComponentFromPipelineRun(ctx context.Context, c client.Clien
 		return &converted, nil
 
 	}
-
-	return nil, nil
 }
 
 // GetApplicationFromPipelineRun loads from the cluster the Application referenced in the given PipelineRun. If the PipelineRun doesn't
@@ -326,7 +328,7 @@ func (l *loader) GetComponentGroupsForComponentVersion(ctx context.Context, c cl
 // GetSnapshotFromPipelineRun loads from the cluster the Snapshot referenced in the given PipelineRun.
 // If the PipelineRun doesn't specify an Snapshot or this is not found in the cluster, an error will be returned.
 func (l *loader) GetSnapshotFromPipelineRun(ctx context.Context, c client.Client, pipelineRun *tektonv1.PipelineRun) (*oldapplicationapiv1alpha1.Snapshot, error) {
-	if snapshotName, found := pipelineRun.Labels[tektonconsts.SnapshotNameLabel]; found {
+	if snapshotName, found := gitops.LabelValue(pipelineRun, tektonconsts.SnapshotNameLabel); found {
 		snapshot := &oldapplicationapiv1alpha1.Snapshot{}
 		err := c.Get(ctx, types.NamespacedName{
 			Namespace: pipelineRun.Namespace,
@@ -398,24 +400,19 @@ func (l *loader) GetAllIntegrationTestScenariosForComponentGroups(ctx context.Co
 // TODO: delete when we remove old application-specific code
 func (l *loader) GetRequiredIntegrationTestScenariosForSnapshotApplication(ctx context.Context, c client.Client, application *oldapplicationapiv1alpha1.Application, snapshot *oldapplicationapiv1alpha1.Snapshot) (*[]integrationv1beta2.IntegrationTestScenario, error) {
 	integrationList := &integrationv1beta2.IntegrationTestScenarioList{}
-	labelRequirement, err := labels.NewRequirement("test.appstudio.openshift.io/optional", selection.NotIn, []string{"true"})
-	if err != nil {
-		return nil, err
-	}
-	labelSelector := labels.NewSelector().Add(*labelRequirement)
 
 	opts := &client.ListOptions{
 		Namespace:     application.Namespace,
 		FieldSelector: fields.OneTermEqualSelector("spec.application", application.Name),
-		LabelSelector: labelSelector,
 	}
 
-	err = c.List(ctx, integrationList, opts)
+	err := c.List(ctx, integrationList, opts)
 	if err != nil {
 		return nil, err
 	}
 
-	integrationTestScenarios := gitops.FilterIntegrationTestScenariosWithContext(&integrationList.Items, snapshot)
+	requiredScenarios := filterRequiredIntegrationTestScenarios(integrationList.Items)
+	integrationTestScenarios := gitops.FilterIntegrationTestScenariosWithContext(&requiredScenarios, snapshot)
 	return integrationTestScenarios, nil
 }
 
@@ -431,24 +428,19 @@ func (l *loader) GetComponentGroupFromSnapshot(ctx context.Context, c client.Cli
 // label not set to true or if it is missing the label entirely, and has the correct context for the defined snapshot.
 func (l *loader) GetRequiredIntegrationTestScenariosForSnapshot(ctx context.Context, c client.Client, componentGroup *v1beta2.ComponentGroup, snapshot *oldapplicationapiv1alpha1.Snapshot) (*[]integrationv1beta2.IntegrationTestScenario, error) {
 	integrationList := &integrationv1beta2.IntegrationTestScenarioList{}
-	labelRequirement, err := labels.NewRequirement("test.appstudio.openshift.io/optional", selection.NotIn, []string{"true"})
-	if err != nil {
-		return nil, err
-	}
-	labelSelector := labels.NewSelector().Add(*labelRequirement)
 
 	opts := &client.ListOptions{
 		Namespace:     componentGroup.Namespace,
 		FieldSelector: fields.OneTermEqualSelector("spec.componentGroup", componentGroup.Name),
-		LabelSelector: labelSelector,
 	}
 
-	err = c.List(ctx, integrationList, opts)
+	err := c.List(ctx, integrationList, opts)
 	if err != nil {
 		return nil, err
 	}
 
-	integrationTestScenarios := gitops.FilterIntegrationTestScenariosWithContext(&integrationList.Items, snapshot)
+	requiredScenarios := filterRequiredIntegrationTestScenarios(integrationList.Items)
+	integrationTestScenarios := gitops.FilterIntegrationTestScenariosWithContext(&requiredScenarios, snapshot)
 	return integrationTestScenarios, nil
 }
 
@@ -484,16 +476,11 @@ func (l *loader) GetAllIntegrationTestScenariosForSnapshot(ctx context.Context, 
 // an error will be returned.
 func (l *loader) GetAllPipelineRunsForSnapshotAndScenario(ctx context.Context, adapterClient client.Client, snapshot *oldapplicationapiv1alpha1.Snapshot, integrationTestScenario *integrationv1beta2.IntegrationTestScenario) (*[]tektonv1.PipelineRun, error) {
 	integrationPipelineRuns := &tektonv1.PipelineRunList{}
-	opts := []client.ListOption{
-		client.InNamespace(snapshot.Namespace),
-		client.MatchingLabels{
-			"pipelines.appstudio.openshift.io/type": "test",
-			"appstudio.openshift.io/snapshot":       snapshot.Name,
-			"test.appstudio.openshift.io/scenario":  integrationTestScenario.Name,
-		},
-	}
-
-	err := adapterClient.List(ctx, integrationPipelineRuns, opts...)
+	err := keys.ListEither(ctx, adapterClient, integrationPipelineRuns, snapshot.Namespace, []keys.Requirement{
+		{Pair: keys.PipelineType(), Operator: selection.In, Values: []string{"test"}},
+		{Pair: keys.SnapshotName(), Operator: selection.In, Values: []string{snapshot.Name}},
+		{Pair: keys.Test("scenario"), Operator: selection.In, Values: []string{integrationTestScenario.Name}},
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -536,7 +523,7 @@ func (l *loader) GetAutoReleasePlansForApplication(ctx context.Context, c client
 	}
 
 	for _, rp := range allReleasePlans.Items {
-		annotationValue := rp.GetAnnotations()[gitops.AutoReleaseLabel] // label and annotation have same value
+		annotationValue, _ := keys.GetAnnotation(&rp, keys.AutoRelease()) // label and annotation have same value
 		if annotationValue != "" {
 			// If the annotation exists we evaluate the CEL expression and include the plan when it allows release
 			canRelease, err := gitops.EvaluateSnapshotAutoReleaseAnnotation(annotationValue, snapshot, shouldRelease)
@@ -546,7 +533,7 @@ func (l *loader) GetAutoReleasePlansForApplication(ctx context.Context, c client
 			if canRelease {
 				filteredReleasePlans.Items = append(filteredReleasePlans.Items, rp)
 			}
-		} else if !metadata.HasLabelWithValue(&rp, gitops.AutoReleaseLabel, "false") {
+		} else if labelValue, found := keys.GetLabel(&rp, keys.AutoRelease()); !found || labelValue != "false" {
 			// Label-based plan: apply default SHOULD_RELEASE gating
 			if shouldRelease {
 				filteredReleasePlans.Items = append(filteredReleasePlans.Items, rp)
@@ -575,7 +562,7 @@ func (l *loader) GetAutoReleasePlansForComponentGroup(ctx context.Context, c cli
 	}
 
 	for _, rp := range allReleasePlans.Items {
-		annotationValue := rp.GetAnnotations()[gitops.AutoReleaseLabel] // label and annotation have same value
+		annotationValue, _ := keys.GetAnnotation(&rp, keys.AutoRelease()) // label and annotation have same value
 		if annotationValue != "" {
 			// If the annotation exists we evaluate the CEL expression and include the plan when it allows release
 			canRelease, err := gitops.EvaluateSnapshotAutoReleaseAnnotation(annotationValue, snapshot, shouldRelease)
@@ -585,7 +572,7 @@ func (l *loader) GetAutoReleasePlansForComponentGroup(ctx context.Context, c cli
 			if canRelease {
 				filteredReleasePlans.Items = append(filteredReleasePlans.Items, rp)
 			}
-		} else if !metadata.HasLabelWithValue(&rp, gitops.AutoReleaseLabel, "false") {
+		} else if labelValue, found := keys.GetLabel(&rp, keys.AutoRelease()); !found || labelValue != "false" {
 			// Label-based plan: apply default SHOULD_RELEASE gating
 			if shouldRelease {
 				filteredReleasePlans.Items = append(filteredReleasePlans.Items, rp)
@@ -613,14 +600,9 @@ func (l *loader) GetComponentGroup(ctx context.Context, c client.Client, name, n
 // TODO: remove when we deprecate the old Application model
 func (l *loader) GetAllSnapshotsForBuildPipelineRunApplication(ctx context.Context, c client.Client, pipelineRun *tektonv1.PipelineRun) (*[]oldapplicationapiv1alpha1.Snapshot, error) {
 	snapshots := &oldapplicationapiv1alpha1.SnapshotList{}
-	opts := []client.ListOption{
-		client.InNamespace(pipelineRun.Namespace),
-		client.MatchingLabels{
-			gitops.BuildPipelineRunNameLabel: pipelineRun.Name,
-		},
-	}
-
-	err := c.List(ctx, snapshots, opts...)
+	err := keys.ListEither(ctx, c, snapshots, pipelineRun.Namespace, []keys.Requirement{
+		{Pair: keys.BuildPipelineRunName(), Operator: selection.In, Values: []string{pipelineRun.Name}},
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -630,14 +612,9 @@ func (l *loader) GetAllSnapshotsForBuildPipelineRunApplication(ctx context.Conte
 func (l *loader) GetAllSnapshotsForBuildPipelineRun(ctx context.Context, c client.Client, pipelineRun *tektonv1.PipelineRun, componentGroupNames []string) (*map[string][]oldapplicationapiv1alpha1.Snapshot, error) {
 	mappedSnapshots := make(map[string][]oldapplicationapiv1alpha1.Snapshot)
 	snapshots := &oldapplicationapiv1alpha1.SnapshotList{}
-	opts := []client.ListOption{
-		client.InNamespace(pipelineRun.Namespace),
-		client.MatchingLabels{
-			gitops.BuildPipelineRunNameLabel: pipelineRun.Name,
-		},
-	}
-
-	err := c.List(ctx, snapshots, opts...)
+	err := keys.ListEither(ctx, c, snapshots, pipelineRun.Namespace, []keys.Requirement{
+		{Pair: keys.BuildPipelineRunName(), Operator: selection.In, Values: []string{pipelineRun.Name}},
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -649,7 +626,7 @@ func (l *loader) GetAllSnapshotsForBuildPipelineRun(ctx context.Context, c clien
 	}
 
 	for _, snapshot := range snapshots.Items {
-		componentGroup, ok := snapshot.Labels[gitops.ComponentGroupNameLabel]
+		componentGroup, ok := keys.GetLabel(&snapshot, keys.ComponentGroupName())
 		if !ok {
 			// TODO: remove after deprecated application model
 			// We need this so that the existence of application-based snapshots on the cluster
@@ -669,15 +646,10 @@ func (l *loader) GetAllSnapshotsForBuildPipelineRun(ctx context.Context, c clien
 // PipelineAsCodePullRequestAnnotation is also a label
 func (l *loader) GetAllSnapshotsForPR(ctx context.Context, c client.Client, object metav1.ObjectMeta, componentName, pullRequest string) (*[]oldapplicationapiv1alpha1.Snapshot, error) {
 	snapshots := &oldapplicationapiv1alpha1.SnapshotList{}
-	opts := []client.ListOption{
-		client.InNamespace(object.Namespace),
-		client.MatchingLabels{
-			gitops.PipelineAsCodePullRequestAnnotation: pullRequest,
-			gitops.SnapshotComponentLabel:              componentName,
-		},
-	}
-
-	err := c.List(ctx, snapshots, opts...)
+	err := keys.ListEither(ctx, c, snapshots, object.Namespace, []keys.Requirement{
+		{Pair: keys.PAC("pull-request"), Operator: selection.In, Values: []string{pullRequest}},
+		{Pair: keys.BuildComponent(), Operator: selection.In, Values: []string{componentName}},
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -691,22 +663,17 @@ func (l *loader) GetAllSnapshotsForPR(ctx context.Context, c client.Client, obje
 // so on-push snapshots that carry the same PR label are excluded.
 func (l *loader) GetAllPullSnapshotsForPR(ctx context.Context, c client.Client, object metav1.ObjectMeta, componentName, pullRequest string) (*[]oldapplicationapiv1alpha1.Snapshot, error) {
 	snapshots := &oldapplicationapiv1alpha1.SnapshotList{}
-	opts := []client.ListOption{
-		client.InNamespace(object.Namespace),
-		client.MatchingLabels{
-			gitops.PipelineAsCodePullRequestAnnotation: pullRequest,
-			gitops.SnapshotComponentLabel:              componentName,
-		},
-	}
-
-	err := c.List(ctx, snapshots, opts...)
+	err := keys.ListEither(ctx, c, snapshots, object.Namespace, []keys.Requirement{
+		{Pair: keys.PAC("pull-request"), Operator: selection.In, Values: []string{pullRequest}},
+		{Pair: keys.BuildComponent(), Operator: selection.In, Values: []string{componentName}},
+	})
 	if err != nil {
 		return nil, err
 	}
 
 	pullSnapshots := make([]oldapplicationapiv1alpha1.Snapshot, 0, len(snapshots.Items))
 	for _, s := range snapshots.Items {
-		if s.Annotations != nil && s.Annotations[gitops.IntegrationWorkflowAnnotation] == gitops.IntegrationWorkflowPullRequestValue {
+		if workflow, _ := keys.ReadAnnotation(&s, gitops.IntegrationWorkflowAnnotation); workflow == gitops.IntegrationWorkflowPullRequestValue {
 			pullSnapshots = append(pullSnapshots, s)
 		}
 	}
@@ -879,26 +846,10 @@ func (l *loader) getComponentWithFallback(ctx context.Context, c client.Client, 
 // GetPipelineRunsWithPRGroupHash gets the build pipelineRun with the given pr group hash string and the same namespace with the given snapshot
 func (l *loader) GetPipelineRunsWithPRGroupHash(ctx context.Context, adapterClient client.Client, namespace, prGroupHash string) (*[]tektonv1.PipelineRun, error) {
 	buildPipelineRuns := &tektonv1.PipelineRunList{}
-
-	prGroupLabelRequirement, err := labels.NewRequirement("test.appstudio.openshift.io/pr-group-sha", selection.In, []string{prGroupHash})
-	if err != nil {
-		return nil, err
-	}
-	plrTypeLabelRequirement, err := labels.NewRequirement("pipelines.appstudio.openshift.io/type", selection.In, []string{"build"})
-	if err != nil {
-		return nil, err
-	}
-
-	labelSelector := labels.NewSelector().
-		Add(*prGroupLabelRequirement).
-		Add(*plrTypeLabelRequirement)
-
-	opts := &client.ListOptions{
-		Namespace:     namespace,
-		LabelSelector: labelSelector,
-	}
-
-	err = adapterClient.List(ctx, buildPipelineRuns, opts)
+	err := keys.ListEither(ctx, adapterClient, buildPipelineRuns, namespace, []keys.Requirement{
+		{Pair: keys.Test("pr-group-sha"), Operator: selection.In, Values: []string{prGroupHash}},
+		{Pair: keys.PipelineType(), Operator: selection.In, Values: []string{"build"}},
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -908,31 +859,11 @@ func (l *loader) GetPipelineRunsWithPRGroupHash(ctx context.Context, adapterClie
 // GetPipelineRunsWithPRGroupHashForApplication gets the build pipelineRun with the given pr group hash string, application name and the same namespace with the given snapshot
 func (l *loader) GetPipelineRunsWithPRGroupHashForApplication(ctx context.Context, adapterClient client.Client, namespace, prGroupHash, applicationName string) (*[]tektonv1.PipelineRun, error) {
 	buildPipelineRuns := &tektonv1.PipelineRunList{}
-
-	applicationLabelRequirement, err := labels.NewRequirement("appstudio.openshift.io/application", selection.In, []string{applicationName})
-	if err != nil {
-		return nil, err
-	}
-	prGroupLabelRequirement, err := labels.NewRequirement("test.appstudio.openshift.io/pr-group-sha", selection.In, []string{prGroupHash})
-	if err != nil {
-		return nil, err
-	}
-	plrTypeLabelRequirement, err := labels.NewRequirement("pipelines.appstudio.openshift.io/type", selection.In, []string{"build"})
-	if err != nil {
-		return nil, err
-	}
-
-	labelSelector := labels.NewSelector().
-		Add(*applicationLabelRequirement).
-		Add(*prGroupLabelRequirement).
-		Add(*plrTypeLabelRequirement)
-
-	opts := &client.ListOptions{
-		Namespace:     namespace,
-		LabelSelector: labelSelector,
-	}
-
-	err = adapterClient.List(ctx, buildPipelineRuns, opts)
+	err := keys.ListEither(ctx, adapterClient, buildPipelineRuns, namespace, []keys.Requirement{
+		labelRequirement("appstudio.openshift.io/application", selection.In, []string{applicationName}),
+		{Pair: keys.Test("pr-group-sha"), Operator: selection.In, Values: []string{prGroupHash}},
+		{Pair: keys.PipelineType(), Operator: selection.In, Values: []string{"build"}},
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -942,44 +873,16 @@ func (l *loader) GetPipelineRunsWithPRGroupHashForApplication(ctx context.Contex
 // GetMatchingComponentSnapshotsForComponentAndPRGroupHash gets the component snapshot with the given pr group hash string and the the same namespace with the given snapshot
 func (l *loader) GetMatchingComponentSnapshotsForComponentAndPRGroupHash(ctx context.Context, c client.Client, namespace, componentName, componentVersion, prGroupHash, ownerName, ownerLabel string) (*[]oldapplicationapiv1alpha1.Snapshot, error) {
 	snapshots := &oldapplicationapiv1alpha1.SnapshotList{}
-
-	ownerLabelRequirement, err := labels.NewRequirement(ownerLabel, selection.In, []string{ownerName})
-	if err != nil {
-		return nil, err
+	reqs := []keys.Requirement{
+		labelRequirement(ownerLabel, selection.In, []string{ownerName}),
+		{Pair: keys.BuildComponent(), Operator: selection.In, Values: []string{componentName}},
+		{Pair: keys.Test("pr-group-sha"), Operator: selection.In, Values: []string{prGroupHash}},
+		{Pair: keys.Test("type"), Operator: selection.In, Values: []string{"component"}},
 	}
-	componentLabelRequirement, err := labels.NewRequirement("appstudio.openshift.io/component", selection.In, []string{componentName})
-	if err != nil {
-		return nil, err
-	}
-	prGroupLabelRequirement, err := labels.NewRequirement("test.appstudio.openshift.io/pr-group-sha", selection.In, []string{prGroupHash})
-	if err != nil {
-		return nil, err
-	}
-	snapshotTypeLabelRequirement, err := labels.NewRequirement("test.appstudio.openshift.io/type", selection.In, []string{"component"})
-	if err != nil {
-		return nil, err
-	}
-	labelSelector := labels.NewSelector().
-		Add(*ownerLabelRequirement).
-		Add(*componentLabelRequirement).
-		Add(*prGroupLabelRequirement).
-		Add(*snapshotTypeLabelRequirement)
-
 	if componentVersion != "" {
-		componentVersionRequirement, err := labels.NewRequirement(gitops.SnapshotComponentVersionLabel, selection.In, []string{componentVersion})
-		if err != nil {
-			return nil, err
-		}
-
-		labelSelector = labelSelector.Add(*componentVersionRequirement)
+		reqs = append(reqs, labelRequirement(gitops.SnapshotComponentVersionLabel, selection.In, []string{componentVersion}))
 	}
-
-	opts := &client.ListOptions{
-		Namespace:     namespace,
-		LabelSelector: labelSelector,
-	}
-
-	err = c.List(ctx, snapshots, opts)
+	err := keys.ListEither(ctx, c, snapshots, namespace, reqs)
 	if err != nil {
 		return nil, err
 	}
@@ -989,32 +892,11 @@ func (l *loader) GetMatchingComponentSnapshotsForComponentAndPRGroupHash(ctx con
 // GetMatchingGroupSnapshotsForPRGroupHash gets the group snapshots with the given pr group hash string and the same namespace
 func (l *loader) GetMatchingGroupSnapshotsForPRGroupHash(ctx context.Context, c client.Client, namespace, prGroupHash, ownerName string, ownerLabel string) (*[]oldapplicationapiv1alpha1.Snapshot, error) {
 	snapshots := &oldapplicationapiv1alpha1.SnapshotList{}
-
-	ownerLabelRequirement, err := labels.NewRequirement(ownerLabel, selection.In, []string{ownerName})
-	if err != nil {
-		return nil, err
-	}
-
-	prGroupLabelRequirement, err := labels.NewRequirement("test.appstudio.openshift.io/pr-group-sha", selection.In, []string{prGroupHash})
-	if err != nil {
-		return nil, err
-	}
-	snapshotTypeLabelRequirement, err := labels.NewRequirement("test.appstudio.openshift.io/type", selection.In, []string{"group"})
-	if err != nil {
-		return nil, err
-	}
-
-	labelSelector := labels.NewSelector().
-		Add(*ownerLabelRequirement).
-		Add(*prGroupLabelRequirement).
-		Add(*snapshotTypeLabelRequirement)
-
-	opts := &client.ListOptions{
-		Namespace:     namespace,
-		LabelSelector: labelSelector,
-	}
-
-	err = c.List(ctx, snapshots, opts)
+	err := keys.ListEither(ctx, c, snapshots, namespace, []keys.Requirement{
+		labelRequirement(ownerLabel, selection.In, []string{ownerName}),
+		{Pair: keys.Test("pr-group-sha"), Operator: selection.In, Values: []string{prGroupHash}},
+		{Pair: keys.Test("type"), Operator: selection.In, Values: []string{"group"}},
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -1024,31 +906,11 @@ func (l *loader) GetMatchingGroupSnapshotsForPRGroupHash(ctx context.Context, c 
 // GetMatchingComponentSnapshotsForPRGroupHash gets the component snapshot with the given pr group hash string and the same namespace with the given snapshot
 func (l *loader) GetMatchingComponentSnapshotsForPRGroupHash(ctx context.Context, c client.Client, namespace, prGroupHash, ownerName string, ownerLabel string) (*[]oldapplicationapiv1alpha1.Snapshot, error) {
 	snapshots := &oldapplicationapiv1alpha1.SnapshotList{}
-
-	ownerLabelRequirement, err := labels.NewRequirement(ownerLabel, selection.In, []string{ownerName})
-	if err != nil {
-		return nil, err
-	}
-	prGroupLabelRequirement, err := labels.NewRequirement("test.appstudio.openshift.io/pr-group-sha", selection.In, []string{prGroupHash})
-	if err != nil {
-		return nil, err
-	}
-	snapshotTypeLabelRequirement, err := labels.NewRequirement("test.appstudio.openshift.io/type", selection.In, []string{"component"})
-	if err != nil {
-		return nil, err
-	}
-
-	labelSelector := labels.NewSelector().
-		Add(*ownerLabelRequirement).
-		Add(*prGroupLabelRequirement).
-		Add(*snapshotTypeLabelRequirement)
-
-	opts := &client.ListOptions{
-		Namespace:     namespace,
-		LabelSelector: labelSelector,
-	}
-
-	err = c.List(ctx, snapshots, opts)
+	err := keys.ListEither(ctx, c, snapshots, namespace, []keys.Requirement{
+		labelRequirement(ownerLabel, selection.In, []string{ownerName}),
+		{Pair: keys.Test("pr-group-sha"), Operator: selection.In, Values: []string{prGroupHash}},
+		{Pair: keys.Test("type"), Operator: selection.In, Values: []string{"component"}},
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -1058,14 +920,10 @@ func (l *loader) GetMatchingComponentSnapshotsForPRGroupHash(ctx context.Context
 // function GetAllIntegrationPipelineRunsForSnapshot returns list of integration pipelineruns that matches the required labels specified in the function
 func (l *loader) GetAllIntegrationPipelineRunsForSnapshot(ctx context.Context, adapterClient client.Client, snapshot *oldapplicationapiv1alpha1.Snapshot) ([]tektonv1.PipelineRun, error) {
 	integrationPipelineRuns := &tektonv1.PipelineRunList{}
-	opts := []client.ListOption{
-		client.InNamespace(snapshot.Namespace),
-		client.MatchingLabels{
-			"pipelines.appstudio.openshift.io/type": "test",
-			"appstudio.openshift.io/snapshot":       snapshot.Name,
-		},
-	}
-	err := adapterClient.List(ctx, integrationPipelineRuns, opts...)
+	err := keys.ListEither(ctx, adapterClient, integrationPipelineRuns, snapshot.Namespace, []keys.Requirement{
+		{Pair: keys.PipelineType(), Operator: selection.In, Values: []string{"test"}},
+		{Pair: keys.SnapshotName(), Operator: selection.In, Values: []string{snapshot.Name}},
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -1083,11 +941,11 @@ func (l *loader) GetComponentsFromSnapshotForPRGroup(ctx context.Context, client
 	componentTuples := []Tuple{}
 	for _, snapshot := range *snapshots {
 		// We skip a push-type workflow Snapshot just in case
-		if snapshot.Annotations[gitops.IntegrationWorkflowAnnotation] == gitops.IntegrationWorkflowPushValue {
+		if workflow, _ := keys.ReadAnnotation(&snapshot, gitops.IntegrationWorkflowAnnotation); workflow == gitops.IntegrationWorkflowPushValue {
 			continue
 		}
 		componentVersion := ""
-		componentName := snapshot.Labels[gitops.SnapshotComponentLabel]
+		componentName, _ := keys.GetLabel(&snapshot, keys.BuildComponent())
 		if metadata.HasLabel(&snapshot, gitops.SnapshotComponentVersionLabel) {
 			componentVersion = snapshot.Labels[gitops.SnapshotComponentVersionLabel]
 		}
@@ -1125,42 +983,13 @@ func (l *loader) GetResolutionRequest(ctx context.Context, c client.Client, name
 // GetPRComponentSnapshotsForComponent gets the pull request component snapshots for a specific component and PR number
 func (l *loader) GetPRComponentSnapshotsForComponent(ctx context.Context, c client.Client, componentGroupNames []string, namespace, componentName, prNumber string) (*[]oldapplicationapiv1alpha1.Snapshot, error) {
 	snapshots := &oldapplicationapiv1alpha1.SnapshotList{}
-
-	componentGroupLabelRequirement, err := labels.NewRequirement("appstudio.openshift.io/component-group", selection.In, componentGroupNames)
-	if err != nil {
-		return nil, err
-	}
-	componentLabelRequirement, err := labels.NewRequirement("appstudio.openshift.io/component", selection.In, []string{componentName})
-	if err != nil {
-		return nil, err
-	}
-	prNumberLabelRequirement, err := labels.NewRequirement(gitops.PipelineAsCodePullRequestAnnotation, selection.In, []string{prNumber})
-	if err != nil {
-		return nil, err
-	}
-	snapshotTypeLabelRequirement, err := labels.NewRequirement("test.appstudio.openshift.io/type", selection.In, []string{"component"})
-	if err != nil {
-		return nil, err
-	}
-
-	snapshotEventTypeLabelRequirement, err := labels.NewRequirement(gitops.PipelineAsCodeEventTypeLabel, selection.In, []string{gitops.PipelineAsCodePullRequestType, gitops.PipelineAsCodeRetestType, gitops.PipelineAsCodeMergeUnderscoreRequestType})
-	if err != nil {
-		return nil, err
-	}
-
-	labelSelector := labels.NewSelector().
-		Add(*componentGroupLabelRequirement).
-		Add(*componentLabelRequirement).
-		Add(*prNumberLabelRequirement).
-		Add(*snapshotTypeLabelRequirement).
-		Add(*snapshotEventTypeLabelRequirement)
-
-	opts := &client.ListOptions{
-		Namespace:     namespace,
-		LabelSelector: labelSelector,
-	}
-
-	err = c.List(ctx, snapshots, opts)
+	err := keys.ListEither(ctx, c, snapshots, namespace, []keys.Requirement{
+		{Pair: keys.ComponentGroupName(), Operator: selection.In, Values: componentGroupNames},
+		{Pair: keys.BuildComponent(), Operator: selection.In, Values: []string{componentName}},
+		{Pair: keys.PAC("pull-request"), Operator: selection.In, Values: []string{prNumber}},
+		{Pair: keys.Test("type"), Operator: selection.In, Values: []string{"component"}},
+		{Pair: keys.PAC("event-type"), Operator: selection.In, Values: []string{gitops.PipelineAsCodePullRequestType, gitops.PipelineAsCodeRetestType, gitops.PipelineAsCodeMergeUnderscoreRequestType}},
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -1170,57 +999,32 @@ func (l *loader) GetPRComponentSnapshotsForComponent(ctx context.Context, c clie
 // GetPushComponentSnapshotsForComponent returns all push component snapshots for the same component
 // as the given snapshot, scoped to the same application or component group.
 func (l *loader) GetPushComponentSnapshotsForComponent(ctx context.Context, c client.Client, snapshot *oldapplicationapiv1alpha1.Snapshot) (*[]oldapplicationapiv1alpha1.Snapshot, error) {
-	componentName := snapshot.Labels[gitops.SnapshotComponentLabel]
+	componentName, _ := keys.GetLabel(snapshot, keys.BuildComponent())
 	if componentName == "" {
 		empty := []oldapplicationapiv1alpha1.Snapshot{}
 		return &empty, nil
 	}
 
-	componentLabelRequirement, err := labels.NewRequirement(
-		gitops.SnapshotComponentLabel, selection.In, []string{componentName})
-	if err != nil {
-		return nil, err
+	reqs := []keys.Requirement{
+		{Pair: keys.BuildComponent(), Operator: selection.In, Values: []string{componentName}},
+		{Pair: keys.Test("type"), Operator: selection.In, Values: []string{gitops.SnapshotComponentType}},
 	}
-	snapshotTypeLabelRequirement, err := labels.NewRequirement(
-		gitops.SnapshotTypeLabel, selection.In, []string{gitops.SnapshotComponentType})
-	if err != nil {
-		return nil, err
-	}
-
-	labelSelector := labels.NewSelector().
-		Add(*componentLabelRequirement).
-		Add(*snapshotTypeLabelRequirement)
 
 	appName := snapshot.Labels[gitops.ApplicationNameLabel]
-	cgName := snapshot.Labels[gitops.ComponentGroupNameLabel]
+	cgName, _ := keys.GetLabel(snapshot, keys.ComponentGroupName())
 
 	// TODO: remove application scoping when we remove old application-specific code
 	if appName != "" {
-		applicationLabelRequirement, err := labels.NewRequirement(
-			gitops.ApplicationNameLabel, selection.In, []string{appName})
-		if err != nil {
-			return nil, err
-		}
-		labelSelector = labelSelector.Add(*applicationLabelRequirement)
+		reqs = append(reqs, labelRequirement(gitops.ApplicationNameLabel, selection.In, []string{appName}))
 	} else if cgName != "" {
-		componentGroupLabelRequirement, err := labels.NewRequirement(
-			gitops.ComponentGroupNameLabel, selection.In, []string{cgName})
-		if err != nil {
-			return nil, err
-		}
-		labelSelector = labelSelector.Add(*componentGroupLabelRequirement)
+		reqs = append(reqs, keys.Requirement{Pair: keys.ComponentGroupName(), Operator: selection.In, Values: []string{cgName}})
 	} else {
 		empty := []oldapplicationapiv1alpha1.Snapshot{}
 		return &empty, nil
 	}
 
 	snapshotList := &oldapplicationapiv1alpha1.SnapshotList{}
-	listOpts := &client.ListOptions{
-		Namespace:     snapshot.Namespace,
-		LabelSelector: labelSelector,
-	}
-
-	err = c.List(ctx, snapshotList, listOpts)
+	err := keys.ListEither(ctx, c, snapshotList, snapshot.Namespace, reqs)
 	if err != nil {
 		return nil, err
 	}
@@ -1238,42 +1042,13 @@ func (l *loader) GetPushComponentSnapshotsForComponent(ctx context.Context, c cl
 // TODO: delete this function when we remove old application-specific code
 func (l *loader) GetPRComponentSnapshotsForComponentApplication(ctx context.Context, c client.Client, namespace, applicationName, componentName, prNumber string) (*[]oldapplicationapiv1alpha1.Snapshot, error) {
 	snapshots := &oldapplicationapiv1alpha1.SnapshotList{}
-
-	applicationLabelRequirement, err := labels.NewRequirement("appstudio.openshift.io/application", selection.In, []string{applicationName})
-	if err != nil {
-		return nil, err
-	}
-	componentLabelRequirement, err := labels.NewRequirement("appstudio.openshift.io/component", selection.In, []string{componentName})
-	if err != nil {
-		return nil, err
-	}
-	prNumberLabelRequirement, err := labels.NewRequirement(gitops.PipelineAsCodePullRequestAnnotation, selection.In, []string{prNumber})
-	if err != nil {
-		return nil, err
-	}
-	snapshotTypeLabelRequirement, err := labels.NewRequirement("test.appstudio.openshift.io/type", selection.In, []string{"component"})
-	if err != nil {
-		return nil, err
-	}
-
-	snapshotEventTypeLabelRequirement, err := labels.NewRequirement(gitops.PipelineAsCodeEventTypeLabel, selection.In, []string{gitops.PipelineAsCodePullRequestType, gitops.PipelineAsCodeRetestType, gitops.PipelineAsCodeMergeUnderscoreRequestType})
-	if err != nil {
-		return nil, err
-	}
-
-	labelSelector := labels.NewSelector().
-		Add(*applicationLabelRequirement).
-		Add(*componentLabelRequirement).
-		Add(*prNumberLabelRequirement).
-		Add(*snapshotTypeLabelRequirement).
-		Add(*snapshotEventTypeLabelRequirement)
-
-	opts := &client.ListOptions{
-		Namespace:     namespace,
-		LabelSelector: labelSelector,
-	}
-
-	err = c.List(ctx, snapshots, opts)
+	err := keys.ListEither(ctx, c, snapshots, namespace, []keys.Requirement{
+		labelRequirement("appstudio.openshift.io/application", selection.In, []string{applicationName}),
+		{Pair: keys.BuildComponent(), Operator: selection.In, Values: []string{componentName}},
+		{Pair: keys.PAC("pull-request"), Operator: selection.In, Values: []string{prNumber}},
+		{Pair: keys.Test("type"), Operator: selection.In, Values: []string{"component"}},
+		{Pair: keys.PAC("event-type"), Operator: selection.In, Values: []string{gitops.PipelineAsCodePullRequestType, gitops.PipelineAsCodeRetestType, gitops.PipelineAsCodeMergeUnderscoreRequestType}},
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -1369,4 +1144,32 @@ func (l *loader) GetAllRepositoriesInNamespace(ctx context.Context, c client.Cli
 	}
 
 	return &repositories.Items, nil
+}
+
+// labelRequirement builds a ListEither clause. Owned keys are queried in both
+// styles. The component name is read either way and is not rewritten.
+// Unmigrated keys, including the application label, are required in both queries.
+func labelRequirement(key string, op selection.Operator, values []string) keys.Requirement {
+	if key == gitops.SnapshotComponentLabel || key == "appstudio.openshift.io/component" {
+		return keys.Requirement{Pair: keys.BuildComponent(), Operator: op, Values: values}
+	}
+	if pair, ok := keys.PairForKey(key); ok {
+		return keys.Requirement{Pair: pair, Operator: op, Values: values}
+	}
+	return keys.Requirement{Pair: keys.Same(key), Operator: op, Values: values}
+}
+
+// filterRequiredIntegrationTestScenarios excludes optional scenarios using the
+// effective optional label: new style wins when both styles are present, and
+// old style is used only when the new label is absent.
+func filterRequiredIntegrationTestScenarios(scenarios []integrationv1beta2.IntegrationTestScenario) []integrationv1beta2.IntegrationTestScenario {
+	required := make([]integrationv1beta2.IntegrationTestScenario, 0, len(scenarios))
+	for i := range scenarios {
+		optional, found := keys.GetLabel(&scenarios[i], keys.Test("optional"))
+		if found && optional == "true" {
+			continue
+		}
+		required = append(required, scenarios[i])
+	}
+	return required
 }

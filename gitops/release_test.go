@@ -21,6 +21,7 @@ import (
 
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
 	"github.com/konflux-ci/integration-service/gitops"
+	"github.com/konflux-ci/integration-service/pkg/keys"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -111,6 +112,15 @@ var _ = Describe("Auto-release annotation evaluation", Ordered, func() {
 		snapshotCopy.Labels["appstudio.openshift.io/component"] = "component-sample" //updating label to trigger the CEL expression
 		autoReleaseAnnotation := "updatedComponentIs('component-sample')"
 		allowed, err := gitops.EvaluateSnapshotAutoReleaseAnnotation(autoReleaseAnnotation, snapshotCopy, true)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(allowed).To(BeTrue())
+	})
+
+	It("reads the new component label style", func() {
+		snapshotCopy := hasSnapshot.DeepCopy()
+		snapshotCopy.Labels = map[string]string{keys.BuildComponent().New: "component-sample"}
+
+		allowed, err := gitops.EvaluateSnapshotAutoReleaseAnnotation("updatedComponentIs('component-sample')", snapshotCopy, true)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(allowed).To(BeTrue())
 	})

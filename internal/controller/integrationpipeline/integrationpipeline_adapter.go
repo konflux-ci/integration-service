@@ -36,7 +36,6 @@ import (
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
 // taskRunResolutionGracePeriod is how long a finished PipelineRun may be retried
@@ -99,12 +98,19 @@ func NewAdapter(context context.Context, pipelineRun *tektonv1.PipelineRun,
 	}
 }
 
+// integrationScenarioName returns the IntegrationTestScenario name stamped on an integration PipelineRun.
+// It accepts either the old or the new scenario label.
+func integrationScenarioName(pipelineRun *tektonv1.PipelineRun) string {
+	name, _ := gitops.LabelValue(pipelineRun, tektonconsts.ScenarioNameLabel)
+	return name
+}
+
 // EnsureStatusReportedInSnapshot will ensure that status of the integration test pipelines is reported to snapshot
 // to be consumed by user
 func (a *Adapter) EnsureStatusReportedInSnapshot() (controller.OperationResult, error) {
 	// Check if the finalizer has been removed - if so, the status has already been reported
 	// and we should skip processing to avoid the TaskRun mismatch error
-	if !controllerutil.ContainsFinalizer(a.pipelineRun, h.IntegrationPipelineRunFinalizer) {
+	if !h.HasFinalizer(a.pipelineRun, h.IntegrationPipelineRunFinalizer) {
 		a.logger.Info("Integration PipelineRun finalizer has been removed, status already reported, skipping processing",
 			"pipelineRun.Name", a.pipelineRun.Name)
 		return controller.ContinueProcessing()
@@ -139,7 +145,7 @@ func (a *Adapter) EnsureStatusReportedInSnapshot() (controller.OperationResult, 
 			if !errors.As(err, &expired) {
 				return err
 			}
-			scenarioName := a.pipelineRun.Labels[tektonconsts.ScenarioNameLabel]
+			scenarioName := integrationScenarioName(a.pipelineRun)
 			if scenarioName == "" {
 				return fmt.Errorf("pipelinerun %q is missing the %q label", a.pipelineRun.Name, tektonconsts.ScenarioNameLabel)
 			}
@@ -168,8 +174,9 @@ func (a *Adapter) EnsureStatusReportedInSnapshot() (controller.OperationResult, 
 			}
 		}
 		if !keptExistingStatus {
-			statuses.UpdateTestStatusIfChanged(a.pipelineRun.Labels[tektonconsts.ScenarioNameLabel], pipelinerunStatus, detail)
-			if err = statuses.UpdateTestPipelineRunName(a.pipelineRun.Labels[tektonconsts.ScenarioNameLabel], a.pipelineRun.Name); err != nil {
+			scenarioName := integrationScenarioName(a.pipelineRun)
+			statuses.UpdateTestStatusIfChanged(scenarioName, pipelinerunStatus, detail)
+			if err = statuses.UpdateTestPipelineRunName(scenarioName, a.pipelineRun.Name); err != nil {
 				return err
 			}
 

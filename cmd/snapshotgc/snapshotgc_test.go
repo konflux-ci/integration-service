@@ -11,6 +11,7 @@ import (
 	"github.com/go-logr/logr"
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
 	"github.com/konflux-ci/integration-service/gitops"
+	"github.com/konflux-ci/integration-service/pkg/keys"
 	releasev1alpha1 "github.com/konflux-ci/release-service/api/v1alpha1"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -367,7 +368,7 @@ var _ = Describe("Test garbage collection for snapshots", func() {
 						"pac.test.appstudio.openshift.io/event-type": "pull_request",
 					},
 					Annotations: map[string]string{
-						PRStatusAnnotation: PRStatusMerged,
+						keys.Test("pr-status").Old: gitops.PRStatusMerged,
 					},
 					CreationTimestamp: metav1.NewTime(currentTime.Add(time.Hour * 1)),
 				},
@@ -380,7 +381,7 @@ var _ = Describe("Test garbage collection for snapshots", func() {
 						"pac.test.appstudio.openshift.io/event-type": "pull_request",
 					},
 					Annotations: map[string]string{
-						PRGroupCreationAnnotation: "test build pipelinerun is still running, won't create group snapshot",
+						keys.Test("create-groupsnapshot-status").Old: "test build pipelinerun is still running, won't create group snapshot",
 					},
 					CreationTimestamp: metav1.NewTime(currentTime.Add(-time.Hour * 12)),
 				},
@@ -1271,6 +1272,26 @@ var _ = Describe("Test garbage collection for snapshots", func() {
 			Expect(keptNonPr).To(Equal(1))
 			Expect(filteredSnapshotList).To(HaveLen(2))
 
+		})
+
+		It("keeps a snapshot that only has the new keep-snapshot annotation", func() {
+			snap := applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "new-keep",
+					Namespace: "ns1",
+					Labels: map[string]string{
+						keys.PAC("event-type").New: "pull_request",
+					},
+					Annotations: map[string]string{
+						keys.Test("keep-snapshot").New: "true",
+					},
+					CreationTimestamp: metav1.NewTime(time.Now()),
+				},
+			}
+			filtered, keptPr, keptNonPr := filterSnapshotsWithKeepSnapshotAnnotation([]applicationapiv1alpha1.Snapshot{snap}, logger)
+			Expect(filtered).To(BeEmpty())
+			Expect(keptPr).To(Equal(1))
+			Expect(keptNonPr).To(Equal(0))
 		})
 	})
 

@@ -20,9 +20,11 @@ import (
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
 	"github.com/konflux-ci/integration-service/gitops"
 	"github.com/konflux-ci/integration-service/helpers"
+	"github.com/konflux-ci/integration-service/pkg/keys"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/selection"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -154,14 +156,10 @@ func (v *SnapshotCustomValidator) ValidateDelete(ctx context.Context, obj runtim
 
 	snapshotlog.Info("Validating Snapshot upon deletion", "name", snapshot.GetName())
 	integrationPipelineList := &tektonv1.PipelineRunList{}
-	opts := []client.ListOption{
-		client.InNamespace(snapshot.Namespace),
-		client.MatchingLabels{
-			"pipelines.appstudio.openshift.io/type": "test",
-			"appstudio.openshift.io/snapshot":       snapshot.Name,
-		},
-	}
-	err := v.Client.List(ctx, integrationPipelineList, opts...)
+	err := keys.ListEither(ctx, v.Client, integrationPipelineList, snapshot.Namespace, []keys.Requirement{
+		{Pair: keys.PipelineType(), Operator: selection.In, Values: []string{"test"}},
+		{Pair: keys.SnapshotName(), Operator: selection.In, Values: []string{snapshot.Name}},
+	})
 	if err != nil {
 		return nil, err
 	}

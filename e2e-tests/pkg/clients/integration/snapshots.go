@@ -77,11 +77,13 @@ func (i *IntegrationController) GetSnapshot(snapshotName, pipelineRunName, compo
 			return &snapshot, nil
 		}
 		// find snapshot by pipelinerun name
-		if len(pipelineRunName) > 0 && snapshot.Labels[gitops.BuildPipelineRunNameLabel] == pipelineRunName {
+		buildPipelineRunName, _ := gitops.LabelValue(&snapshot, gitops.BuildPipelineRunNameLabel)
+		if len(pipelineRunName) > 0 && buildPipelineRunName == pipelineRunName {
 			return &snapshot, nil
 		}
 		// find snapshot by component name
-		if len(componentName) > 0 && snapshot.Labels[tektonconsts.PipelineRunComponentLabel] == componentName {
+		snapshotComponentName, _ := gitops.LabelValue(&snapshot, tektonconsts.PipelineRunComponentLabel)
+		if len(componentName) > 0 && snapshotComponentName == componentName {
 			return &snapshot, nil
 		}
 	}
@@ -117,9 +119,7 @@ func (i *IntegrationController) WaitForSnapshotToGetCreated(snapshotName, pipeli
 
 // GetIntegrationTestStatusDetailFromSnapshot parses snapshot annotation and returns integration test status detail
 func (i *IntegrationController) GetIntegrationTestStatusDetailFromSnapshot(snapshot *appstudioApi.Snapshot, scenarioName string) (*intgteststat.IntegrationTestStatusDetail, error) {
-	var resultsJson string
-	annotations := snapshot.GetAnnotations()
-	resultsJson = annotations[gitops.SnapshotTestsStatusAnnotation]
+	resultsJson, _ := gitops.AnnotationValue(snapshot, gitops.SnapshotTestsStatusAnnotation)
 	statuses, err := intgteststat.NewSnapshotIntegrationTestStatuses(resultsJson)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create new SnapshotIntegrationTestStatuses object: %w", err)

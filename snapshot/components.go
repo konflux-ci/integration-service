@@ -31,7 +31,7 @@ import (
 func GetAllNewComponentsInSnapshot(snapshot *applicationapiv1alpha1.Snapshot) ([]applicationapiv1alpha1.SnapshotComponent, error) {
 	snapshotComponents := []applicationapiv1alpha1.SnapshotComponent{}
 	if gitops.IsComponentSnapshot(snapshot) {
-		component := snapshot.Labels[gitops.SnapshotComponentLabel]
+		component, _ := gitops.LabelValue(snapshot, gitops.SnapshotComponentLabel)
 		version := snapshot.Annotations[tektonconsts.PipelineRunComponentVersionAnnotation]
 		updatedComponent, err := getComponentFromSnapshotComponents(snapshot, component, version)
 		if err != nil {
@@ -41,7 +41,7 @@ func GetAllNewComponentsInSnapshot(snapshot *applicationapiv1alpha1.Snapshot) ([
 	} else if gitops.IsGroupSnapshot(snapshot) {
 		var componentSnapshotInfos []*gitops.ComponentSnapshotInfo
 		var err error
-		if componentSnapshotInfoString, ok := snapshot.Annotations[gitops.GroupSnapshotInfoAnnotation]; ok {
+		if componentSnapshotInfoString, ok := gitops.AnnotationValue(snapshot, gitops.GroupSnapshotInfoAnnotation); ok {
 			componentSnapshotInfos, err = gitops.UnmarshalJSON([]byte(componentSnapshotInfoString))
 			if err != nil {
 				return snapshotComponents, fmt.Errorf("failed to unmarshal JSON string: %+v", err)

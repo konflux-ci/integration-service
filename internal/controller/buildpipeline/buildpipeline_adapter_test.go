@@ -34,6 +34,7 @@ import (
 	"github.com/konflux-ci/integration-service/helpers"
 	"github.com/konflux-ci/integration-service/loader"
 	intgteststat "github.com/konflux-ci/integration-service/pkg/integrationteststatus"
+	"github.com/konflux-ci/integration-service/pkg/keys"
 	"github.com/konflux-ci/integration-service/pkg/tracing"
 	"github.com/konflux-ci/integration-service/snapshot"
 	"github.com/konflux-ci/integration-service/status"
@@ -593,6 +594,22 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			Expect(*result).To(HaveLen(1))
 			Expect((*result)[0].Name).To(Equal("build-plr-matching"))
 			Expect((*result)[0].Labels[tektonconsts.PipelineRunComponentLabel]).To(Equal("component-sample"))
+		})
+
+		It("keeps PipelineRuns whose new-style component label matches a component listed in some ComponentGroup", func() {
+			plrMatching := tektonv1.PipelineRun{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:   "build-plr-new-style",
+					Labels: map[string]string{keys.BuildComponent().New: "component-sample"},
+				},
+			}
+			stack := []tektonv1.PipelineRun{plrMatching}
+			groups := &[]konfluxv1beta2.ComponentGroup{*hasCompGroup}
+
+			result := adapter.filterPipelineRunsForComponentGroups(&stack, groups)
+			Expect(result).NotTo(BeNil())
+			Expect(*result).To(HaveLen(1))
+			Expect((*result)[0].Name).To(Equal("build-plr-new-style"))
 		})
 
 		It("keeps PipelineRuns whose component label matches a component listed in some ComponentGroup and version, and skips others", func() {
@@ -4021,6 +4038,20 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				}, buildPipelineRun)
 				return err == nil && metadata.HasAnnotationWithValue(buildPipelineRun, gitops.PRStatusAnnotation, gitops.PRStatusMerged)
 			}, time.Second*10).Should(BeTrue())
+		})
+
+		It("requeues when application PR component snapshots cannot be loaded", func() {
+			adapter = createAdapterApplication()
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: loader.GetPRComponentSnapshotsForComponentContextKey,
+					Err:        fmt.Errorf("boom"),
+				},
+			})
+
+			result, err := adapter.EnsurePRSnapshotAnnotatedForMergedPR()
+			Expect(result.RequeueRequest).To(BeTrue())
+			Expect(err).To(MatchError("boom"))
 		})
 
 	})

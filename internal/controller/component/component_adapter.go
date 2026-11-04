@@ -29,7 +29,6 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
 // Adapter holds the objects needed to reconcile a integration PipelineRun.
@@ -60,7 +59,7 @@ func NewAdapter(context context.Context, component *applicationapiv1alpha1.Compo
 // that have been created are assigned a finalizer
 func (a *Adapter) EnsureComponentHasFinalizer() (controller.OperationResult, error) {
 	if !isComponentMarkedForDeletion(a.component) {
-		if !controllerutil.ContainsFinalizer(a.component, h.ComponentFinalizer) {
+		if !h.HasFinalizer(a.component, h.ComponentFinalizer) {
 			err := h.AddFinalizerToComponent(a.context, a.client, a.logger, a.component, h.ComponentFinalizer)
 			if err != nil {
 				return controller.RequeueWithError(fmt.Errorf("failed to add the finalizer: %w", err))
@@ -139,7 +138,9 @@ func (a *Adapter) createUpdatedSnapshot(snapshotComponents *[]applicationapiv1al
 		snapshot.Labels = map[string]string{}
 	}
 
-	snapshot.Labels[gitops.AutoReleaseLabel] = "false"
+	if err := gitops.SetOwnedLabel(snapshot, gitops.AutoReleaseLabel, "false"); err != nil {
+		return nil, fmt.Errorf("failed to set auto-release label %s on Snapshot %s: %w", gitops.AutoReleaseLabel, snapshot.Name, err)
+	}
 
 	err := ctrl.SetControllerReference(a.application, snapshot, a.client.Scheme())
 	if err != nil {

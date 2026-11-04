@@ -35,7 +35,6 @@ import (
 	"github.com/konflux-ci/integration-service/gitops"
 	"github.com/konflux-ci/integration-service/helpers"
 	intgteststat "github.com/konflux-ci/integration-service/pkg/integrationteststatus"
-	"github.com/konflux-ci/operator-toolkit/metadata"
 	pacv1alpha1 "github.com/openshift-pipelines/pipelines-as-code/pkg/apis/pipelinesascode/v1alpha1"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	gitlab "gitlab.com/gitlab-org/api/client-go/v2"
@@ -122,7 +121,7 @@ func NewSnapshotReportStatusFromSnapshot(s *applicationapiv1alpha1.Snapshot) (*S
 		ok               bool
 	)
 
-	if statusAnnotation, ok = s.GetAnnotations()[gitops.SnapshotStatusReportAnnotation]; !ok {
+	if statusAnnotation, ok = gitops.AnnotationValue(s, gitops.SnapshotStatusReportAnnotation); !ok {
 		statusAnnotation = ""
 	}
 
@@ -146,7 +145,7 @@ func WriteSnapshotReportStatus(ctx context.Context, c client.Client, s *applicat
 		return fmt.Errorf("failed to marshal test results into JSON: %w", err)
 	}
 
-	if err := metadata.SetAnnotation(&s.ObjectMeta, gitops.SnapshotStatusReportAnnotation, value); err != nil {
+	if err := gitops.SetOwnedAnnotation(s, gitops.SnapshotStatusReportAnnotation, value); err != nil {
 		return fmt.Errorf("failed to add annotations: %w", err)
 	}
 
@@ -165,14 +164,14 @@ func MigrateSnapshotToReportStatus(s *applicationapiv1alpha1.Snapshot, testStatu
 	if s.GetAnnotations() == nil {
 		return // nothing to migrate
 	}
-	annotations := s.GetAnnotations()
-	_, ok := annotations[gitops.SnapshotPRLastUpdate]
-	if !ok {
+	if !gitops.HasOwnedAnnotation(s, gitops.SnapshotPRLastUpdate) {
 		return // nothing to migrate
 	}
 
 	oldLastUpdateTime, err := gitops.GetLatestUpdateTime(s)
-	delete(annotations, gitops.SnapshotPRLastUpdate) // we don't care at this point
+	if deleteErr := gitops.DeleteOwnedAnnotation(s, gitops.SnapshotPRLastUpdate); deleteErr != nil {
+		return
+	}
 	if err != nil {
 		return // something happen, cancel migration and start with fresh data
 	}
@@ -186,7 +185,8 @@ func MigrateSnapshotToReportStatus(s *applicationapiv1alpha1.Snapshot, testStatu
 		srs.SetLastUpdateTime(testStatDetail.ScenarioName, s.Name, oldLastUpdateTime)
 	}
 
-	annotations[gitops.SnapshotStatusReportAnnotation], _ = srs.ToAnnotationString()
+	value, _ := srs.ToAnnotationString()
+	_ = gitops.SetOwnedAnnotation(s, gitops.SnapshotStatusReportAnnotation, value)
 }
 
 type StatusInterface interface {
@@ -284,14 +284,14 @@ func generateText(ctx context.Context, client client.Client, integrationTestStat
 
 	var componentSnapshotInfos []*gitops.ComponentSnapshotInfo
 	var err error
-	if componentSnapshotInfoString, ok := snapshot.Annotations[gitops.GroupSnapshotInfoAnnotation]; ok {
+	if componentSnapshotInfoString, ok := gitops.AnnotationValue(snapshot, gitops.GroupSnapshotInfoAnnotation); ok {
 		componentSnapshotInfos, err = gitops.UnmarshalJSON([]byte(componentSnapshotInfoString))
 		if err != nil {
 			return "", fmt.Errorf("failed to unmarshal JSON string: %w", err)
 		}
 	}
 
-	pr_group := snapshot.GetAnnotations()[gitops.PRGroupAnnotation]
+	pr_group, _ := gitops.AnnotationValue(snapshot, gitops.PRGroupAnnotation)
 
 	if integrationTestStatusDetail.Status == intgteststat.IntegrationTestStatusTestPassed || integrationTestStatusDetail.Status == intgteststat.IntegrationTestStatusTestFail || integrationTestStatusDetail.Status == intgteststat.IntegrationTestStatusTestWarning {
 		pipelineRunName := integrationTestStatusDetail.TestPipelineRunName
@@ -333,13 +333,13 @@ func generateShortText(integrationTestStatusDetail intgteststat.IntegrationTestS
 	var err error
 	var shortText string
 	if integrationTestStatusDetail.Status == intgteststat.IntegrationTestStatusTestPassed || integrationTestStatusDetail.Status == intgteststat.IntegrationTestStatusTestFail || integrationTestStatusDetail.Status == intgteststat.IntegrationTestStatusTestWarning {
-		if componentSnapshotInfoString, ok := snapshot.Annotations[gitops.GroupSnapshotInfoAnnotation]; ok {
+		if componentSnapshotInfoString, ok := gitops.AnnotationValue(snapshot, gitops.GroupSnapshotInfoAnnotation); ok {
 			componentSnapshotInfos, err = gitops.UnmarshalJSON([]byte(componentSnapshotInfoString))
 			if err != nil {
 				return "", fmt.Errorf("failed to unmarshal JSON string: %w", err)
 			}
 		}
-		pr_group := snapshot.GetAnnotations()[gitops.PRGroupAnnotation]
+		pr_group, _ := gitops.AnnotationValue(snapshot, gitops.PRGroupAnnotation)
 		shortText, err = FormatShortTestsSummary(integrationTestStatusDetail.TestPipelineRunName, snapshot.Namespace, componentSnapshotInfos, pr_group)
 		if err != nil {
 			return "", err
@@ -512,8 +512,7 @@ func (s Status) IsMRInSnapshotOpened(ctx context.Context, reporter ReporterInter
 		return false, statusCode, err
 	}
 
-	annotations := snapshot.GetAnnotations()
-	repoUrl, ok := annotations[gitops.PipelineAsCodeRepoURLAnnotation]
+	repoUrl, ok := gitops.AnnotationValue(snapshot, gitops.PipelineAsCodeRepoURLAnnotation)
 	if !ok {
 		unRecoverableError = helpers.NewUnrecoverableMetadataError(fmt.Sprintf("failed to get value of %s annotation from the snapshot %s", gitops.PipelineAsCodeRepoURLAnnotation, snapshot.Name))
 		log.Error(unRecoverableError, fmt.Sprintf("failed to get value of %s annotation from the snapshot %s", gitops.PipelineAsCodeRepoURLAnnotation, snapshot.Name))
@@ -534,7 +533,7 @@ func (s Status) IsMRInSnapshotOpened(ctx context.Context, reporter ReporterInter
 		return false, statusCode, fmt.Errorf("failed to create gitlab client: %w", err)
 	}
 
-	targetProjectIDstr, found := annotations[gitops.PipelineAsCodeTargetProjectIDAnnotation]
+	targetProjectIDstr, found := gitops.AnnotationValue(snapshot, gitops.PipelineAsCodeTargetProjectIDAnnotation)
 	if !found {
 		unRecoverableError = helpers.NewUnrecoverableMetadataError(fmt.Sprintf("target project ID annotation not found %q", gitops.PipelineAsCodeTargetProjectIDAnnotation))
 		log.Error(unRecoverableError, fmt.Sprintf("target project ID annotation not found %q", gitops.PipelineAsCodeTargetProjectIDAnnotation))
@@ -547,7 +546,7 @@ func (s Status) IsMRInSnapshotOpened(ctx context.Context, reporter ReporterInter
 		return false, statusCode, unRecoverableError
 	}
 
-	mergeRequestStr, found := annotations[gitops.PipelineAsCodePullRequestAnnotation]
+	mergeRequestStr, found := gitops.AnnotationValue(snapshot, gitops.PipelineAsCodePullRequestAnnotation)
 	if !found {
 		unRecoverableError = helpers.NewUnrecoverableMetadataError(fmt.Sprintf("pull-request annotation not found %q", gitops.PipelineAsCodePullRequestAnnotation))
 		log.Error(unRecoverableError, fmt.Sprintf("pull-request annotation not found %q", gitops.PipelineAsCodePullRequestAnnotation))
@@ -609,7 +608,7 @@ func parseOwnerRepoFromURL(rawURL string) (string, string, error) {
 // resolveSnapshotRepository finds a Repository CR matching the Snapshot's repo URL
 // in the same namespace and returns the owner and repository from its Spec.URL.
 func resolveSnapshotRepository(ctx context.Context, k8sClient client.Client, snapshot *applicationapiv1alpha1.Snapshot) (string, string, error) {
-	repoURL, found := snapshot.GetAnnotations()[gitops.PipelineAsCodeRepoURLAnnotation]
+	repoURL, found := gitops.AnnotationValue(snapshot, gitops.PipelineAsCodeRepoURLAnnotation)
 	if !found || repoURL == "" {
 		return "", "", helpers.NewUnrecoverableMetadataError(fmt.Sprintf("missing or empty annotation %q", gitops.PipelineAsCodeRepoURLAnnotation))
 	}
@@ -667,9 +666,7 @@ func (s Status) IsPRInSnapshotOpened(ctx context.Context, reporter ReporterInter
 
 	ghClient.SetOAuthToken(ctx, token)
 
-	labels := snapshot.GetLabels()
-
-	pullRequestStr, found := labels[gitops.PipelineAsCodePullRequestAnnotation]
+	pullRequestStr, found := gitops.LabelValue(snapshot, gitops.PipelineAsCodePullRequestAnnotation)
 	if !found {
 		unRecoverableError = helpers.NewUnrecoverableMetadataError(fmt.Sprintf("pull request label not found %q", gitops.PipelineAsCodePullRequestAnnotation))
 		log.Error(unRecoverableError, fmt.Sprintf("pull request label not found %q", gitops.PipelineAsCodePullRequestAnnotation))
@@ -705,7 +702,7 @@ func GetComponentSnapshotsFromGroupSnapshot(ctx context.Context, c client.Client
 	var componentSnapshotInfos []*gitops.ComponentSnapshotInfo
 	var componentSnapshots []*applicationapiv1alpha1.Snapshot
 	var err error
-	if componentSnapshotInfoString, ok := groupSnapshot.Annotations[gitops.GroupSnapshotInfoAnnotation]; ok {
+	if componentSnapshotInfoString, ok := gitops.AnnotationValue(groupSnapshot, gitops.GroupSnapshotInfoAnnotation); ok {
 		componentSnapshotInfos, err = gitops.UnmarshalJSON([]byte(componentSnapshotInfoString))
 		if err != nil {
 			return nil, fmt.Errorf("failed to unmarshal JSON string: %w", err)
@@ -788,7 +785,7 @@ func IterateIntegrationTestScenarioWithSameStatus(ctx context.Context, client cl
 	// delete existing comment and post one new comment with the latest test report summary of all ITS to the merge/pull request for each component
 	if reporter.GetReporterName() == GitLabProvider ||
 		reporter.GetReporterName() == ForgejoProvider {
-		_, isMergeRequest := snapshot.GetAnnotations()[gitops.PipelineAsCodePullRequestAnnotation]
+		_, isMergeRequest := gitops.AnnotationValue(snapshot, gitops.PipelineAsCodePullRequestAnnotation)
 		if isMergeRequest {
 			// get the destination snapshot's component to check if comment is disabled for all comments for pac repository or integration test
 			isCommentDisabled, err := gitops.IsCommentDisabled(ctx, client, component)

@@ -32,6 +32,7 @@ import (
 
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
 	"github.com/konflux-ci/integration-service/gitops"
+	"github.com/konflux-ci/integration-service/pkg/keys"
 	"github.com/konflux-ci/operator-toolkit/metadata"
 	pacv1alpha1 "github.com/openshift-pipelines/pipelines-as-code/pkg/apis/pipelinesascode/v1alpha1"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
@@ -467,6 +468,41 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 		err := gitops.CancelPipelineRuns(k8sClient, ctx, logger, []tektonv1.PipelineRun{*integrationPipelinerun})
 		Expect(err).ToNot(HaveOccurred())
 		Expect(integrationPipelinerun.Finalizers).To(BeEmpty())
+	})
+
+	It("cancels an unfinished new-style PipelineRun and removes its new-style finalizer", func() {
+		pipelineRun := &tektonv1.PipelineRun{ObjectMeta: metav1.ObjectMeta{
+			Name:      "unfinished-new-style-cancel",
+			Namespace: namespace,
+			Annotations: map[string]string{
+				keys.Test("style-marker").New: "true",
+			},
+			Finalizers: []string{keys.Test("pipelinerun").New},
+		}}
+		Expect(k8sClient.Create(ctx, pipelineRun)).To(Succeed())
+
+		Expect(gitops.CancelPipelineRuns(k8sClient, ctx, logger, []tektonv1.PipelineRun{*pipelineRun})).To(Succeed())
+		stored := &tektonv1.PipelineRun{}
+		Eventually(func() error {
+			return k8sClient.Get(ctx, types.NamespacedName{Name: pipelineRun.Name, Namespace: pipelineRun.Namespace}, stored)
+		}).Should(Succeed())
+		Expect(string(stored.Spec.Status)).To(Equal(string(tektonv1.PipelineRunSpecStatusCancelledRunFinally)))
+		Expect(stored.Annotations).To(HaveKeyWithValue(keys.PAC("cancelled").New, "true"))
+		Expect(stored.Annotations).NotTo(HaveKey(gitops.PRGroupCancelledAnnotation))
+		Expect(stored.Finalizers).To(BeEmpty())
+		Expect(k8sClient.Delete(ctx, stored)).To(Succeed())
+	})
+
+	It("reads new-style snapshot update time and PAC SHA metadata", func() {
+		snapshot := hasSnapshot.DeepCopy()
+		snapshot.Annotations = map[string]string{
+			keys.Test("pr-last-update").New: "2026-01-02T03:04:05Z",
+			keys.PAC("sha").New:             "123456789abcdef",
+		}
+		updated, err := gitops.GetLatestUpdateTime(snapshot)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(updated).To(Equal(time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)))
+		Expect(gitops.GetShaFromSnapshot(ctx, snapshot)).To(Equal("1234567"))
 	})
 
 	It("ensures the Snapshots status can be marked as in progress", func() {
@@ -1062,6 +1098,15 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 			Expect(val).To(Equal(testScenario))
 		})
 
+		It("writes only the new run label on a konflux snapshot", func() {
+			testScenario := "test-scenario"
+			hasSnapshot.APIVersion = "konflux-ci.dev/v1alpha1"
+			err := gitops.AddIntegrationTestRerunLabel(ctx, k8sClient, hasSnapshot, testScenario)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(hasSnapshot.Labels).To(HaveKeyWithValue(keys.Test("run").New, testScenario))
+			Expect(hasSnapshot.Labels).NotTo(HaveKey(gitops.SnapshotIntegrationTestRun))
+		})
+
 	})
 
 	Context("RemoveIntegrationTestRerunLabel tests", func() {
@@ -1092,6 +1137,14 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 				err := gitops.RemoveIntegrationTestRerunLabel(ctx, k8sClient, snapshotRerun)
 				Expect(err).To(Succeed())
 				Expect(snapshotRerun.GetLabels()).ShouldNot(m, "shouldn't have re-run label")
+			})
+
+			It("removes a new-style re-run label", func() {
+				snapshotRerun.Labels[keys.Test("run").New] = testScenario
+				err := gitops.RemoveIntegrationTestRerunLabel(ctx, k8sClient, snapshotRerun)
+				Expect(err).To(Succeed())
+				Expect(snapshotRerun.Labels).NotTo(HaveKey(keys.Test("run").New))
+				Expect(snapshotRerun.Labels).NotTo(HaveKey(gitops.SnapshotIntegrationTestRun))
 			})
 		})
 
@@ -1239,6 +1292,38 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 				Expect(snapshot.Labels[gitops.SnapshotTypeLabel]).To(Equal("group"))
 				Expect(gitops.IsSnapshotCreatedByPACPushEvent(snapshot)).To(BeFalse())
 
+			})
+
+			It("writes new-style metadata for a group Snapshot from a new-style component Snapshot", func() {
+				componentSnapshot := &applicationapiv1alpha1.Snapshot{
+					TypeMeta: metav1.TypeMeta{APIVersion: "konflux-ci.dev/v1alpha1", Kind: "Snapshot"},
+					ObjectMeta: metav1.ObjectMeta{
+						Labels: map[string]string{
+							keys.PAC("event-type").New:    gitops.PipelineAsCodePullRequestType,
+							keys.Test("pr-group-sha").New: "group-hash",
+						},
+						Annotations: map[string]string{
+							keys.Test("pr-group").New: "group-name",
+						},
+					},
+					Spec: applicationapiv1alpha1.SnapshotSpec{ComponentGroup: "component-group"},
+				}
+				groupSnapshot := &applicationapiv1alpha1.Snapshot{}
+
+				result, err := gitops.SetAnnotationAndLabelForGroupSnapshot(groupSnapshot, componentSnapshot, nil)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(result.Labels).To(HaveKeyWithValue(keys.Test("type").New, gitops.SnapshotGroupType))
+				Expect(result.Labels).To(HaveKeyWithValue(keys.PAC("event-type").New, gitops.PipelineAsCodePullRequestType))
+				Expect(result.Labels).To(HaveKeyWithValue(keys.Test("pr-group-sha").New, "group-hash"))
+				Expect(result.Labels).To(HaveKeyWithValue(keys.ComponentGroupName().New, "component-group"))
+				Expect(result.Labels).NotTo(HaveKey(keys.Test("type").Old))
+				Expect(result.Labels).NotTo(HaveKey(keys.PAC("event-type").Old))
+				Expect(result.Labels).NotTo(HaveKey(keys.Test("pr-group-sha").Old))
+				Expect(result.Labels).NotTo(HaveKey(keys.ComponentGroupName().Old))
+				Expect(result.Annotations).To(HaveKeyWithValue(keys.Test("pr-group").New, "group-name"))
+				Expect(result.Annotations).NotTo(HaveKey(keys.Test("pr-group").Old))
+				Expect(result.Annotations).To(HaveKey(keys.Test("group-test-info").New))
+				Expect(result.Annotations).NotTo(HaveKey(keys.Test("group-test-info").Old))
 			})
 
 			It("Testing detecting if the snapshot is created by a PaC push event", func() {
@@ -1569,6 +1654,11 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 
 		It("when the snapshot have different pull request number", func() {
 			hasComSnapshot1.Labels[gitops.PipelineAsCodePullRequestAnnotation] = "3"
+			Expect(gitops.HasSameGitSourceAndPRWithProcessedSnapshot(hasSnapshot, hasComSnapshot1)).To(BeFalse())
+		})
+
+		It("returns false when either snapshot is missing compatible metadata", func() {
+			delete(hasComSnapshot1.Annotations, gitops.PipelineAsCodeRepoUrlAnnotation)
 			Expect(gitops.HasSameGitSourceAndPRWithProcessedSnapshot(hasSnapshot, hasComSnapshot1)).To(BeFalse())
 		})
 

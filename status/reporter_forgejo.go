@@ -27,7 +27,6 @@ import (
 	forgejo "codeberg.org/mvdkleijn/forgejo-sdk/forgejo/v4"
 	"github.com/go-logr/logr"
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
-	"github.com/konflux-ci/operator-toolkit/metadata"
 	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -63,10 +62,10 @@ var _ ReporterInterface = (*ForgejoReporter)(nil)
 
 // Detect if snapshot has been created from forgejo or gitea provider (PaC uses gitea for Forgejo until PaC adds full Forgejo support).
 func (r *ForgejoReporter) Detect(snapshot *applicationapiv1alpha1.Snapshot) bool {
-	return metadata.HasAnnotationWithValue(snapshot, gitops.PipelineAsCodeGitProviderLabel, gitops.PipelineAsCodeForgejoProviderType) ||
-		metadata.HasLabelWithValue(snapshot, gitops.PipelineAsCodeGitProviderAnnotation, gitops.PipelineAsCodeForgejoProviderType) ||
-		metadata.HasAnnotationWithValue(snapshot, gitops.PipelineAsCodeGitProviderLabel, gitops.PipelineAsCodeGiteaProviderType) ||
-		metadata.HasLabelWithValue(snapshot, gitops.PipelineAsCodeGitProviderAnnotation, gitops.PipelineAsCodeGiteaProviderType)
+	return gitops.HasOwnedAnnotationValue(snapshot, gitops.PipelineAsCodeGitProviderLabel, gitops.PipelineAsCodeForgejoProviderType) ||
+		gitops.HasOwnedLabelValue(snapshot, gitops.PipelineAsCodeGitProviderAnnotation, gitops.PipelineAsCodeForgejoProviderType) ||
+		gitops.HasOwnedAnnotationValue(snapshot, gitops.PipelineAsCodeGitProviderLabel, gitops.PipelineAsCodeGiteaProviderType) ||
+		gitops.HasOwnedLabelValue(snapshot, gitops.PipelineAsCodeGitProviderAnnotation, gitops.PipelineAsCodeGiteaProviderType)
 }
 
 // GetReporterName returns the reporter name
@@ -84,8 +83,7 @@ func (r *ForgejoReporter) Initialize(ctx context.Context, snapshot *applicationa
 		return 0, err
 	}
 
-	annotations := snapshot.GetAnnotations()
-	repoUrl, ok := annotations[gitops.PipelineAsCodeRepoURLAnnotation]
+	repoUrl, ok := gitops.AnnotationValue(snapshot, gitops.PipelineAsCodeRepoURLAnnotation)
 	if !ok {
 		unRecoverableError = helpers.NewUnrecoverableMetadataError(fmt.Sprintf("failed to get value of %s annotation from the snapshot %s", gitops.PipelineAsCodeRepoURLAnnotation, snapshot.Name))
 		r.logger.Error(unRecoverableError, "snapshot.NameSpace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
@@ -119,8 +117,7 @@ func (r *ForgejoReporter) Initialize(ctx context.Context, snapshot *applicationa
 		return 0, err
 	}
 
-	labels := snapshot.GetLabels()
-	sha, found := labels[gitops.PipelineAsCodeSHALabel]
+	sha, found := gitops.LabelValue(snapshot, gitops.PipelineAsCodeSHALabel)
 	if !found {
 		unRecoverableError = helpers.NewUnrecoverableMetadataError(fmt.Sprintf("sha label not found %q", gitops.PipelineAsCodeSHALabel))
 		r.logger.Error(unRecoverableError, "snapshot.NameSpace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
@@ -128,7 +125,7 @@ func (r *ForgejoReporter) Initialize(ctx context.Context, snapshot *applicationa
 	}
 	r.sha = sha
 
-	pullRequestStr, found := annotations[gitops.PipelineAsCodePullRequestAnnotation]
+	pullRequestStr, found := gitops.AnnotationValue(snapshot, gitops.PipelineAsCodePullRequestAnnotation)
 	if !found && !gitops.IsSnapshotCreatedByPACPushEvent(snapshot) {
 		unRecoverableError = helpers.NewUnrecoverableMetadataError(fmt.Sprintf("pull-request annotation not found %q", gitops.PipelineAsCodePullRequestAnnotation))
 		r.logger.Error(unRecoverableError, "snapshot.NameSpace", snapshot.Namespace, "snapshot.Name", snapshot.Name)

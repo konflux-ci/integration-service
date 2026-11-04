@@ -41,6 +41,7 @@ import (
 
 	"github.com/konflux-ci/integration-service/gitops"
 	"github.com/konflux-ci/integration-service/pkg/integrationteststatus"
+	"github.com/konflux-ci/integration-service/pkg/keys"
 	"github.com/konflux-ci/integration-service/status"
 )
 
@@ -123,6 +124,11 @@ var _ = Describe("ForgejoReporter", func() {
 
 		hasSnapshot.Labels["pac.test.appstudio.openshift.io/git-provider"] = "not-forgejo"
 		Expect(reporter.Detect(hasSnapshot)).To(BeFalse())
+
+		delete(hasSnapshot.Annotations, "pac.test.appstudio.openshift.io/git-provider")
+		delete(hasSnapshot.Labels, "pac.test.appstudio.openshift.io/git-provider")
+		hasSnapshot.Annotations[keys.PAC("git-provider").New] = "forgejo"
+		Expect(reporter.Detect(hasSnapshot)).To(BeTrue())
 	})
 
 	It("can detect when PaC is configured as gitea (workaround for Forgejo)", func() {

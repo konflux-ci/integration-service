@@ -14,7 +14,6 @@ import (
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
 	"github.com/konflux-ci/integration-service/gitops"
 	"github.com/konflux-ci/integration-service/pkg/keys"
-	"github.com/konflux-ci/operator-toolkit/metadata"
 	releasev1alpha1 "github.com/konflux-ci/release-service/api/v1alpha1"
 	zap2 "go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -34,21 +33,9 @@ var (
 	scheme = runtime.NewScheme()
 )
 
-const (
-	// Annotation that can be manually added by users to preven the deletion of a snapshot, they can also
-	// define the TTL of snapshot by providing time in following format: 10h28m9s
-	// in case the format is not correct the snapshot is considered to deletion
-	// Migration note: retained during ComponentGroup migration; remove after migration is complete.
-	KeepSnapshotAnnotation = keys.PrefixTestOld + "/keep-snapshot"
-	// PRStatusAnnotation contains the status of the PR, it is marked as "merged" when the push build pipelinerun is triggered
-	// Migration note: retained during ComponentGroup migration; remove after migration is complete.
-	PRStatusAnnotation = keys.PrefixTestOld + "/pr-status"
-	// PRStatusMerged indicates that the PR has been merged
-	PRStatusMerged = "merged"
-	// PRGroupCreationAnnotation is the annotation used to indicate whether the group snapshot has been created for the PR snapshot or not, or will be created
-	// Migration note: retained during ComponentGroup migration; remove after migration is complete.
-	PRGroupCreationAnnotation = keys.PrefixTestOld + "/create-groupsnapshot-status"
-)
+func keepSnapshotAnnotation(snapshot *applicationapiv1alpha1.Snapshot) (string, bool) {
+	return keys.GetAnnotation(snapshot, keys.Test("keep-snapshot"))
+}
 
 func init() {
 	utilruntime.Must(applicationapiv1alpha1.AddToScheme(scheme))
@@ -259,9 +246,11 @@ func extractCancelledOrMergedPRSnapshots(snapshots []applicationapiv1alpha1.Snap
 	var cancelledOrMergedPRSnapshots []string
 
 	for _, snap := range snapshots {
+		prStatus, _ := keys.GetAnnotation(&snap, keys.Test("pr-status"))
+		keep, _ := keepSnapshotAnnotation(&snap)
 		if !isNonPrSnapshot(snap) &&
-			(gitops.IsSnapshotMarkedAsCanceled(&snap) || metadata.HasAnnotationWithValue(&snap, PRStatusAnnotation, PRStatusMerged)) &&
-			!metadata.HasAnnotationWithValue(&snap, "test.appstudio.openshift.io/keep-snapshot", "true") {
+			(gitops.IsSnapshotMarkedAsCanceled(&snap) || prStatus == gitops.PRStatusMerged) &&
+			keep != "true" {
 			cancelledOrMergedPRSnapshots = append(cancelledOrMergedPRSnapshots, snap.Name)
 		}
 	}
@@ -287,8 +276,9 @@ func isLongerThanSpecificTime(snap applicationapiv1alpha1.Snapshot, specificTime
 func isNonPrSnapshot(
 	snapshot applicationapiv1alpha1.Snapshot,
 ) bool {
-	label, found := snapshot.GetLabels()["pac.test.appstudio.openshift.io/event-type"]
-	isOverrideSnapshot := metadata.HasLabelWithValue(&snapshot, "test.appstudio.openshift.io/type", "override")
+	label, found := keys.GetLabel(&snapshot, keys.PAC("event-type"))
+	snapshotType, _ := keys.GetLabel(&snapshot, keys.Test("type"))
+	isOverrideSnapshot := snapshotType == "override"
 	if !found || label == "push" || label == "Push" || isOverrideSnapshot {
 		return true
 	}
@@ -306,7 +296,7 @@ func isPastTTL(
 	if creationTime.IsZero() {
 		return false
 	}
-	label, found := snapshot.GetAnnotations()["test.appstudio.openshift.io/keep-snapshot"]
+	label, found := keepSnapshotAnnotation(&snapshot)
 	ttl, _ := time.ParseDuration(label)
 	if ttl.String() == "0s" {
 		logger.V(1).Info(
@@ -338,7 +328,8 @@ func filterSnapshotsWithKeepSnapshotAnnotation(
 	keptNonPrSnapshots := 0
 	keptPrSnapshots := 0
 	for _, snap := range snapshots {
-		if metadata.HasAnnotationWithValue(&snap, "test.appstudio.openshift.io/keep-snapshot", "true") || (metadata.HasAnnotation(&snap, "test.appstudio.openshift.io/keep-snapshot") && !isPastTTL(snap, logger)) {
+		keep, found := keepSnapshotAnnotation(&snap)
+		if (found && keep == "true") || (found && !isPastTTL(snap, logger)) {
 			if isNonPrSnapshot(snap) {
 				keptNonPrSnapshots++
 			} else {
@@ -379,11 +370,12 @@ func getSnapshotsForRemoval(
 			continue
 		}
 
-		if !metadata.HasLabelWithValue(&snap, "test.appstudio.openshift.io/type", "component") {
+		snapshotType, _ := keys.GetLabel(&snap, keys.Test("type"))
+		if snapshotType != "component" {
 			continue
 		}
 
-		componentName := snap.GetLabels()["appstudio.openshift.io/component"]
+		componentName, _ := keys.GetLabel(&snap, keys.BuildComponent())
 
 		if componentName == "" {
 			logger.V(1).Info(
@@ -474,9 +466,9 @@ func getSnapshotsForRemoval(
 					"pr-snapshots-to-keep", prSnapshotsToKeep,
 				)
 				keptPrSnaps++
-			} else if !slices.Contains(cancelledOrMergedPRSnapshots, snap.Name) &&
-				metadata.HasAnnotation(&snap, PRGroupCreationAnnotation) &&
-				strings.Contains(snap.GetAnnotations()[PRGroupCreationAnnotation], "is still running, won't create group snapshot") &&
+			} else if groupMessage, groupFound := keys.GetAnnotation(&snap, keys.Test("create-groupsnapshot-status")); !slices.Contains(cancelledOrMergedPRSnapshots, snap.Name) &&
+				groupFound &&
+				strings.Contains(groupMessage, "is still running, won't create group snapshot") &&
 				!isLongerThanSpecificTime(snap, 1*24*60*60) {
 				// when we have reached the number of nonPrSnapshotToKeep
 				// we still try to keep the component snapshot if it is created in one day, unmerged and expecting group snapshot creation but waiting for some other inprogress pipelineruns to finish

@@ -116,6 +116,16 @@ var _ = BeforeSuite(func() {
 			BindAddress: "0", // disables metrics
 		},
 		LeaderElection: false,
+		// New-style Components are excluded from the production cache. Keep the
+		// test manager consistent so a newly-created Component is read directly
+		// from the API server instead of racing cache observation.
+		Client: client.Options{
+			Cache: &client.CacheOptions{
+				DisableFor: []client.Object{
+					&applicationapiv1alpha1.Component{},
+				},
+			},
+		},
 	})
 
 	k8sClient = k8sManager.GetClient()

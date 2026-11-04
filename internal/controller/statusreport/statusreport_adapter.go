@@ -36,7 +36,6 @@ import (
 	"github.com/konflux-ci/integration-service/loader"
 	intgteststat "github.com/konflux-ci/integration-service/pkg/integrationteststatus"
 	"github.com/konflux-ci/integration-service/status"
-	"github.com/konflux-ci/operator-toolkit/metadata"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
@@ -222,7 +221,8 @@ func (a *Adapter) EnsureGroupSnapshotCreationStatusReportedToGitProvider() (cont
 		return controller.ContinueProcessing()
 	}
 
-	if !metadata.HasAnnotation(a.snapshot, gitops.PRGroupCreationAnnotation) || !strings.Contains(a.snapshot.Annotations[gitops.PRGroupCreationAnnotation], gitops.FailedToCreateGroupSnapshotMsg) {
+	creationStatus, found := gitops.AnnotationValue(a.snapshot, gitops.PRGroupCreationAnnotation)
+	if !found || !strings.Contains(creationStatus, gitops.FailedToCreateGroupSnapshotMsg) {
 		return controller.ContinueProcessing()
 	}
 
@@ -480,9 +480,10 @@ func (a *Adapter) iterateIntegrationTestStatusDetailsInStatusReport(reporter sta
 			componentNameOrPrGroup = fmt.Sprintf("%s %s", gitops.ComponentNameForGroupSnapshot, a.componentGroup.Name)
 		}
 	} else if gitops.IsComponentSnapshot(testedSnapshot) {
-		componentNameOrPrGroup = testedSnapshot.Labels[gitops.SnapshotComponentLabel]
+		componentNameOrPrGroup, _ = gitops.LabelValue(testedSnapshot, gitops.SnapshotComponentLabel)
 	} else {
-		return fmt.Errorf("unsupported snapshot type: %s", testedSnapshot.Annotations[gitops.SnapshotTypeLabel])
+		snapshotType, _ := gitops.LabelValue(testedSnapshot, gitops.SnapshotTypeLabel)
+		return fmt.Errorf("unsupported snapshot type: %s", snapshotType)
 	}
 
 	var commentForFailingIntegrationTests []string
@@ -582,7 +583,7 @@ func (a *Adapter) iterateIntegrationTestStatusDetailsInStatusReport(reporter sta
 			return nil
 		}
 
-		_, isMergeRequest := destinationSnapshot.GetAnnotations()[gitops.PipelineAsCodePullRequestAnnotation]
+		_, isMergeRequest := gitops.AnnotationValue(destinationSnapshot, gitops.PipelineAsCodePullRequestAnnotation)
 
 		if isMergeRequest {
 			commentPrefix := status.GenerateTestSummaryPrefixForComponent(componentNameOrPrGroup)
@@ -701,7 +702,7 @@ func generateIntgTestStatusDetails(snapshot *applicationapiv1alpha1.Snapshot, in
 	details := ""
 	integrationTestStatusDetail := intgteststat.IntegrationTestStatusDetail{}
 	if integrationTestStatus == intgteststat.GroupSnapshotCreationFailed {
-		if failureReason, ok := snapshot.Annotations[gitops.PRGroupCreationAnnotation]; ok {
+		if failureReason, ok := gitops.AnnotationValue(snapshot, gitops.PRGroupCreationAnnotation); ok {
 			details = fmt.Sprintf("group snapshot is not created due to error: %s", failureReason)
 		}
 	} else {

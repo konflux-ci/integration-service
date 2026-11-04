@@ -32,7 +32,6 @@ import (
 	"github.com/konflux-ci/integration-service/loader"
 	intgteststat "github.com/konflux-ci/integration-service/pkg/integrationteststatus"
 
-	"github.com/konflux-ci/operator-toolkit/metadata"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/util/retry"
@@ -399,7 +398,7 @@ func (csu *CommitStatusUpdater) createCommitStatusAdapterForSnapshot(report Test
 // updateStatusInComment will create/update a comment in PR which creates snapshot
 func (csu *CommitStatusUpdater) updateStatusInComment(ctx context.Context, report TestReport) (int, error) {
 	var unRecoverableError error
-	issueNumberStr, found := csu.snapshot.GetAnnotations()[gitops.PipelineAsCodePullRequestAnnotation]
+	issueNumberStr, found := gitops.AnnotationValue(csu.snapshot, gitops.PipelineAsCodePullRequestAnnotation)
 	if !found {
 		unRecoverableError = helpers.NewUnrecoverableMetadataError(fmt.Sprintf("pull-request annotation not found %q", gitops.PipelineAsCodePullRequestAnnotation))
 		csu.logger.Error(unRecoverableError, "snapshot.Name", report.SnapshotName)
@@ -488,7 +487,7 @@ func (csu *CommitStatusUpdater) UpdateStatus(ctx context.Context, report TestRep
 			"snapshot.NameSpace", csu.snapshot.Namespace, "snapshot.Name", csu.snapshot.Name, "sourceRepoOwner", sourceRepoOwner, "targetRepoOwner", csu.owner)
 	}
 	// Create a comment when integration test is neither pending nor inprogress since comment for pending/inprogress is less meaningful and there is commitStatus for all statuses
-	_, isPullRequest := csu.snapshot.GetAnnotations()[gitops.PipelineAsCodePullRequestAnnotation]
+	_, isPullRequest := gitops.AnnotationValue(csu.snapshot, gitops.PipelineAsCodePullRequestAnnotation)
 	if isPullRequest {
 		statusCode, err := csu.updateStatusInComment(ctx, report)
 		if err != nil {
@@ -632,8 +631,8 @@ func generateGithubCommitState(state intgteststat.IntegrationTestStatus) (string
 
 // Detect if GitHubReporter can be used
 func (r *GitHubReporter) Detect(snapshot *applicationapiv1alpha1.Snapshot) bool {
-	return metadata.HasAnnotationWithValue(snapshot, gitops.PipelineAsCodeGitProviderAnnotation, gitops.PipelineAsCodeGitHubProviderType) ||
-		metadata.HasLabelWithValue(snapshot, gitops.PipelineAsCodeGitProviderLabel, gitops.PipelineAsCodeGitHubProviderType)
+	return gitops.HasOwnedAnnotationValue(snapshot, gitops.PipelineAsCodeGitProviderAnnotation, gitops.PipelineAsCodeGitHubProviderType) ||
+		gitops.HasOwnedLabelValue(snapshot, gitops.PipelineAsCodeGitProviderLabel, gitops.PipelineAsCodeGitHubProviderType)
 }
 
 // blank implementation to satisfy ReporterInterface
@@ -659,9 +658,7 @@ func (r *GitHubReporter) Initialize(ctx context.Context, snapshot *applicationap
 		return 0, err
 	}
 
-	labels := snapshot.GetLabels()
-
-	sha, found := labels[gitops.PipelineAsCodeSHALabel]
+	sha, found := gitops.LabelValue(snapshot, gitops.PipelineAsCodeSHALabel)
 	if !found {
 		unRecoverableError = helpers.NewUnrecoverableMetadataError(fmt.Sprintf("sha label not found %q", gitops.PipelineAsCodeSHALabel))
 		r.logger.Error(unRecoverableError, "snapshot.NameSpace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
@@ -670,7 +667,7 @@ func (r *GitHubReporter) Initialize(ctx context.Context, snapshot *applicationap
 
 	// Existence of the Pipelines as Code installation ID annotation signals configuration using GitHub App integration.
 	// If it doesn't exist, GitHub webhook integration is configured.
-	if metadata.HasAnnotation(snapshot, gitops.PipelineAsCodeInstallationIDAnnotation) {
+	if gitops.HasOwnedAnnotation(snapshot, gitops.PipelineAsCodeInstallationIDAnnotation) {
 		r.updater = NewCheckRunStatusUpdater(r.client, r.k8sClient, r.logger, owner, repo, sha, snapshot)
 	} else {
 		r.updater = NewCommitStatusUpdater(r.client, r.k8sClient, r.logger, owner, repo, sha, snapshot)

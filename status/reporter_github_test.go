@@ -41,6 +41,7 @@ import (
 	"github.com/konflux-ci/integration-service/gitops"
 	"github.com/konflux-ci/integration-service/helpers"
 	"github.com/konflux-ci/integration-service/pkg/integrationteststatus"
+	"github.com/konflux-ci/integration-service/pkg/keys"
 	"github.com/konflux-ci/integration-service/status"
 )
 
@@ -443,6 +444,11 @@ var _ = Describe("GitHubReporter", func() {
 
 			hasSnapshot.Labels["pac.test.appstudio.openshift.io/git-provider"] = "not-github"
 			Expect(reporter.Detect(hasSnapshot)).To(BeFalse())
+
+			delete(hasSnapshot.Annotations, "pac.test.appstudio.openshift.io/git-provider")
+			delete(hasSnapshot.Labels, "pac.test.appstudio.openshift.io/git-provider")
+			hasSnapshot.Annotations[keys.PAC("git-provider").New] = "github"
+			Expect(reporter.Detect(hasSnapshot)).To(BeTrue())
 		})
 
 		It("doesn't report status when the credentials are invalid/missing", func() {

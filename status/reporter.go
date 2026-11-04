@@ -105,7 +105,7 @@ func GetPACGitProviderToken(ctx context.Context, k8sClient client.Client, snapsh
 	}
 
 	// Get the full repo URL
-	url, found := snapshot.GetAnnotations()[gitops.PipelineAsCodeRepoURLAnnotation]
+	url, found := gitops.AnnotationValue(snapshot, gitops.PipelineAsCodeRepoURLAnnotation)
 	if !found {
 		unRecoverableError = helpers.NewUnrecoverableMetadataError(fmt.Sprintf("object annotation not found %q", gitops.PipelineAsCodeRepoURLAnnotation))
 		log.Error(unRecoverableError, fmt.Sprintf("object annotation not found %q", gitops.PipelineAsCodeRepoURLAnnotation))
