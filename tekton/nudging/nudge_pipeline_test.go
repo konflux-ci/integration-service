@@ -553,6 +553,23 @@ var _ = Describe("Nudge Pipeline", func() {
 			})
 		})
 
+		Context("renovate debug logging", func() {
+			// STONEINTG-1905: without LOG_LEVEL=debug the GraphQL error that names
+			// the missing GitHub permission is logged at debug level and never
+			// printed, leaving only the opaque platform-unknown-error.
+			It("sets LOG_LEVEL=debug on the renovate step", func() {
+				err := nudging.CreateNudgePipelineRun(testCtx, fakeClient, nudgingPLR, targets, buildResult, false)
+				Expect(err).NotTo(HaveOccurred())
+
+				plrList := &tektonv1.PipelineRunList{}
+				Expect(fakeClient.List(testCtx, plrList, client.InNamespace("test-ns"))).To(Succeed())
+				Expect(plrList.Items).To(HaveLen(1))
+
+				step := plrList.Items[0].Spec.PipelineSpec.Tasks[0].TaskSpec.Steps[0]
+				Expect(step.Env).To(ContainElement(corev1.EnvVar{Name: "LOG_LEVEL", Value: "debug"}))
+			})
+		})
+
 		Context("naming consistency", func() {
 			It("creates Secret and ConfigMap with the same name as the PipelineRun", func() {
 				err := nudging.CreateNudgePipelineRun(testCtx, fakeClient, nudgingPLR, targets, buildResult, false)
@@ -728,6 +745,57 @@ var _ = Describe("Nudge Pipeline", func() {
 	// ------------------------------------------------------------------
 	// ReadCustomRenovateConfigMap
 	// ------------------------------------------------------------------
+	Describe("CreateBatchedNudgePipelineRun", func() {
+		// STONEINTG-1905: the batched builder is a second code path that builds the
+		// renovate step; debug logging must be set there too, or batched nudges keep
+		// failing with an opaque platform-unknown-error.
+		It("sets LOG_LEVEL=debug on the renovate step", func() {
+			testCtx := context.Background()
+
+			scheme := nudgeTestScheme()
+			sa := &corev1.ServiceAccount{
+				ObjectMeta: metav1.ObjectMeta{Name: "appstudio-pipeline", Namespace: "test-ns"},
+			}
+			fakeClient := fake.NewClientBuilder().
+				WithScheme(scheme).
+				WithObjects(sa).
+				Build()
+
+			referencePLR := &tektonv1.PipelineRun{
+				ObjectMeta: metav1.ObjectMeta{Name: "build-plr-source", Namespace: "test-ns"},
+			}
+
+			target := nudging.NudgeTarget{
+				ComponentName:           "downstream-comp",
+				GitProvider:             "github",
+				Username:                "test-user",
+				Token:                   "ghp_token",
+				Endpoint:                "https://api.github.com",
+				Repositories:            []nudging.RenovateRepository{{Repository: "org/downstream"}},
+				ImageRepositoryHost:     "quay.io",
+				ImageRepositoryUsername: "robot",
+				ImageRepositoryPassword: "secret",
+			}
+			entries := []nudging.BatchedRenovateEntry{{
+				BuildResult: &nudging.NudgeBuildResult{
+					BuiltImageRepository: "quay.io/org/image",
+					BuiltImageTag:        "v1",
+					Digest:               "sha256:aaa",
+					SourceComponentName:  "source-comp",
+				},
+			}}
+
+			name, err := nudging.CreateBatchedNudgePipelineRun(testCtx, fakeClient, referencePLR, target, entries, "batch-1", 0)
+			Expect(err).NotTo(HaveOccurred())
+
+			createdPLR := &tektonv1.PipelineRun{}
+			Expect(fakeClient.Get(testCtx, types.NamespacedName{Name: name, Namespace: "test-ns"}, createdPLR)).To(Succeed())
+
+			step := createdPLR.Spec.PipelineSpec.Tasks[0].TaskSpec.Steps[0]
+			Expect(step.Env).To(ContainElement(corev1.EnvVar{Name: "LOG_LEVEL", Value: "debug"}))
+		})
+	})
+
 	Describe("ReadCustomRenovateConfigMap", func() {
 		var (
 			fakeClient client.Client
