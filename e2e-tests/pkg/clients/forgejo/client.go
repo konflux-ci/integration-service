@@ -1,7 +1,10 @@
 package forgejo
 
 import (
+	"net/http"
+
 	"codeberg.org/mvdkleijn/forgejo-sdk/forgejo/v3"
+	"github.com/konflux-ci/integration-service/e2e-tests/pkg/utils"
 )
 
 // ForgejoClient wraps the Forgejo SDK client.
@@ -21,6 +24,9 @@ func NewForgejoClient(accessToken, baseURL, org string) (*ForgejoClient, error) 
 		// The e2e suite does not need the probe to use the supported API calls.
 		forgejo.SetForgejoVersion(""),
 		forgejo.SetUserAgent("konflux-integration-e2e"),
+		forgejo.SetHTTPClient(&http.Client{
+			Transport: utils.NewRetryTransport(http.DefaultTransport),
+		}),
 	)
 	if err != nil {
 		return nil, err
