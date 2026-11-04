@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"reflect"
 	"sort"
 	"strconv"
@@ -1244,6 +1245,7 @@ func CopySnapshotLabelsAndAnnotations(object *metav1.ObjectMeta, snapshot *appli
 		snapshot.Annotations = map[string]string{}
 	}
 	snapshot.Labels[SnapshotTypeLabel] = SnapshotComponentType
+	maps.Copy(snapshot.Labels, keys.PropagatedAppStudioLabels(source))
 
 	snapshot.Labels[SnapshotComponentLabel] = componentName
 	if objectIsApplication {
@@ -1259,7 +1261,9 @@ func CopySnapshotLabelsAndAnnotations(object *metav1.ObjectMeta, snapshot *appli
 
 	for _, prefix := range prefixes {
 		// Copy labels and annotations prefixed with defined prefix
-		_ = metadata.CopyLabelsByPrefix(source, &snapshot.ObjectMeta, prefix)
+		if prefix != AppstudioLabelPrefix {
+			_ = metadata.CopyLabelsByPrefix(source, &snapshot.ObjectMeta, prefix)
+		}
 		_ = metadata.CopyAnnotationsByPrefix(source, &snapshot.ObjectMeta, prefix)
 	}
 }
@@ -1295,6 +1299,8 @@ func CopyTempGroupSnapshotLabelsAndAnnotations(object *metav1.ObjectMeta, snapsh
 		snapshot.Annotations = map[string]string{}
 	}
 	snapshot.Labels[SnapshotTypeLabel] = SnapshotGroupType
+	maps.Copy(snapshot.Labels, keys.PropagatedAppStudioLabels(source))
+
 	if objectIsApplication {
 		snapshot.Labels[ApplicationNameLabel] = object.Name
 	} else {
@@ -1308,7 +1314,9 @@ func CopyTempGroupSnapshotLabelsAndAnnotations(object *metav1.ObjectMeta, snapsh
 
 	for _, prefix := range prefixes {
 		// Copy labels and annotations prefixed with defined prefix
-		_ = metadata.CopyLabelsByPrefix(source, &snapshot.ObjectMeta, prefix)
+		if prefix != AppstudioLabelPrefix {
+			_ = metadata.CopyLabelsByPrefix(source, &snapshot.ObjectMeta, prefix)
+		}
 		_ = metadata.CopyAnnotationsByPrefix(source, &snapshot.ObjectMeta, prefix)
 	}
 }
@@ -1542,6 +1550,7 @@ func SetAnnotationAndLabelForGroupSnapshot(groupSnapshot *applicationapiv1alpha1
 	if err := SetOwnedLabelWithStyle(groupSnapshot, PRGroupHashLabel, prGroupHash, style); err != nil {
 		return nil, fmt.Errorf("setting label %s on group Snapshot %s: %w", PRGroupHashLabel, groupSnapshot.Name, err)
 	}
+	maps.Copy(groupSnapshot.Labels, keys.PropagatedAppStudioLabels(componentSnapshot))
 	if componentSnapshot.Spec.Application != "" {
 		groupSnapshot.Labels[ApplicationNameLabel] = componentSnapshot.Spec.Application
 	} else {

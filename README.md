@@ -183,3 +183,14 @@ Test suites in `e2e-tests/tests/integration-service/`:
 - **`forgejo-integration-reporting.go`** (`Label: integration-service, forgejo-status-reporting`) —
   Forgejo MR status reporting for integration test results.
   Mirrors the GitLab suite for Forgejo-hosted repositories.
+
+## Workload label propagation
+
+Integration-service forwards labels under `appstudio.openshift.io/` from build
+PipelineRuns to component and group Snapshots, and from Snapshots to integration-test
+PipelineRuns. Both Application and ComponentGroup flows are supported. Controller-owned
+identity labels (`application`, `component`, `component-group`, `snapshot`,
+`service`, and `build-pipelinerun`) are excluded from generic propagation and
+continue to be assigned explicitly. This mechanism does not propagate annotations.
+Labels are supplied by tenants; consumers must independently enforce authorization
+and namespace boundaries when using them for scheduling or other decisions.

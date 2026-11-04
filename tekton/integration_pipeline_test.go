@@ -1494,3 +1494,32 @@ var _ = Describe("Integration pipeline", Ordered, func() {
 		})
 	})
 })
+
+var _ = Describe("AppStudio workload labels on integration PipelineRuns", func() {
+	It("propagates workload labels before creation without overriding identity or copying annotations", func() {
+		snapshot := &applicationapiv1alpha1.Snapshot{ObjectMeta: metav1.ObjectMeta{
+			Name: "actual-snapshot",
+			Labels: map[string]string{
+				"appstudio.openshift.io/example":             "value",
+				"appstudio.openshift.io/application":         "untrusted",
+				"appstudio.openshift.io/component-group":     "untrusted",
+				"appstudio.openshift.io/component":           "component",
+				"appstudio.openshift.io/snapshot":            "untrusted",
+				"appstudio.openshift.io/service":             "untrusted",
+				"appstudio.openshift.io.example.com/example": "unrelated",
+			},
+			Annotations: map[string]string{"appstudio.openshift.io/example": "annotation"},
+		}}
+		run := &tekton.IntegrationPipelineRun{}
+		run.WithApplication(&applicationapiv1alpha1.Application{ObjectMeta: metav1.ObjectMeta{Name: "owner"}})
+		run.WithSnapshot(snapshot, &v1beta2.IntegrationTestScenario{})
+		Expect(run.Labels).To(HaveKeyWithValue("appstudio.openshift.io/example", "value"))
+		Expect(run.Labels).To(HaveKeyWithValue("appstudio.openshift.io/application", "owner"))
+		Expect(run.Labels).To(HaveKeyWithValue("appstudio.openshift.io/snapshot", "actual-snapshot"))
+		Expect(run.Labels).To(HaveKeyWithValue("appstudio.openshift.io/component", "component"))
+		Expect(run.Labels).NotTo(HaveKey("appstudio.openshift.io/component-group"))
+		Expect(run.Labels).NotTo(HaveKey("appstudio.openshift.io/service"))
+		Expect(run.Labels).NotTo(HaveKey("appstudio.openshift.io.example.com/example"))
+		Expect(run.Annotations).NotTo(HaveKey("appstudio.openshift.io/example"))
+	})
+})
