@@ -21,6 +21,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"regexp"
 	"strings"
 
@@ -35,6 +36,7 @@ import (
 	"github.com/konflux-ci/integration-service/gitops"
 	h "github.com/konflux-ci/integration-service/helpers"
 	"github.com/konflux-ci/integration-service/loader"
+	"github.com/konflux-ci/integration-service/pkg/keys"
 	"github.com/konflux-ci/integration-service/pkg/tracing"
 	"github.com/konflux-ci/integration-service/tekton/consts"
 	"github.com/konflux-ci/operator-toolkit/metadata"
@@ -504,6 +506,7 @@ func (r *IntegrationPipelineRun) WithSnapshot(snapshot *applicationapiv1alpha1.S
 		r.Labels = map[string]string{}
 	}
 	r.Labels[consts.SnapshotNameLabel] = snapshot.Name
+	maps.Copy(r.Labels, keys.PropagatedAppStudioLabels(snapshot))
 
 	componentLabel, found := snapshot.GetLabels()[consts.ComponentNameLabel]
 	if found {
