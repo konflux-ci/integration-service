@@ -455,6 +455,14 @@ func newGitHubAppClient(ctx context.Context, appIDStr string, privateKeyPEM []by
 // It uses Repositories (name-based) in InstallationTokenOptions rather than RepositoryIDs to avoid
 // implicitly minting a broad installation token via NewFromAppsTransport. The token response
 // includes repository metadata (DefaultBranch) that callers use for branch resolution.
+//
+// Permissions are deliberately left unset. Supplying InstallationPermissions replaces the App's
+// configured permission set instead of adding to it, and Renovate needs more than Contents and
+// PullRequests: its repoInfoQuery reads repository.issues, and its automerge path reads commit
+// statuses and check runs. Narrowing to Contents+PullRequests makes GitHub answer the GraphQL
+// query with HTTP 200 plus an errors array, which Renovate turns into platform-unknown-error.
+// Leaving Permissions unset keeps the token scoped to the single repository while granting
+// exactly what the App was configured with, matching the build-service token shape.
 func getGitHubAppInstallation(ctx context.Context, appClient *ghapi.Client, repoURL string) (*applicationInstallation, error) {
 	repoPath := parseGitRepoPath(repoURL)
 	parts := strings.SplitN(repoPath, "/", 2)
@@ -471,10 +479,6 @@ func getGitHubAppInstallation(ctx context.Context, appClient *ghapi.Client, repo
 	scopedToken, _, err := appClient.Apps.CreateInstallationToken(ctx, installation.GetID(),
 		&ghapi.InstallationTokenOptions{
 			Repositories: []string{repo},
-			Permissions: &ghapi.InstallationPermissions{
-				Contents:     ghapi.String("write"),
-				PullRequests: ghapi.String("write"),
-			},
 		})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create scoped installation token for %s/%s: %w", owner, repo, err)
