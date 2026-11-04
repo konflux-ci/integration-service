@@ -186,7 +186,7 @@ func FormatStatus(taskRun *helpers.TaskRun) (string, error) {
 	case helpers.AppStudioTestOutputSkipped:
 		emoji = ":white_check_mark:"
 	case helpers.AppStudioTestOutputError:
-		emoji = ":heavy_exclamation_mark:"
+		emoji = ":exclamation:"
 	default:
 		emoji = ":question:"
 	}
