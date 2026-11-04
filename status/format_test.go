@@ -44,7 +44,7 @@ const expectedSummary = `<ul>
 | <a href="https://definetly.not.prod/preview/application-pipeline/ns/default/pipelinerun/pipelinerun-component-sample/logs/example-task-3">example-task-3</a> | 1s | example-namespace-3 | :x: FAILURE | :x: 1 failure(s) | example note 3 |
 | <a href="https://definetly.not.prod/preview/application-pipeline/ns/default/pipelinerun/pipelinerun-component-sample/logs/example-task-4">example-task-4</a> | 1s | example-namespace-4 | :warning: WARNING | :warning: 1 warning(s) | example note 4 |
 | <a href="https://definetly.not.prod/preview/application-pipeline/ns/default/pipelinerun/pipelinerun-component-sample/logs/example-task-5">example-task-5</a> | 5m0s | example-namespace-5 | :white_check_mark: SKIPPED |  |  |
-| <a href="https://definetly.not.prod/preview/application-pipeline/ns/default/pipelinerun/pipelinerun-component-sample/logs/example-task-6">example-task-6</a> | 1s | example-namespace-6 | :heavy_exclamation_mark: ERROR |  |  |
+| <a href="https://definetly.not.prod/preview/application-pipeline/ns/default/pipelinerun/pipelinerun-component-sample/logs/example-task-6">example-task-6</a> | 1s | example-namespace-6 | :exclamation: ERROR |  |  |
 
 `
 
