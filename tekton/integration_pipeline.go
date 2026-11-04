@@ -21,6 +21,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"regexp"
 	"strings"
 
@@ -506,6 +507,7 @@ func (r *IntegrationPipelineRun) WithSnapshot(snapshot *applicationapiv1alpha1.S
 	if err := gitops.SetOwnedLabelWithStyle(r, consts.SnapshotNameLabel, snapshot.Name, style); err != nil {
 		panic(err)
 	}
+	maps.Copy(r.Labels, keys.PropagatedAppStudioLabels(snapshot))
 
 	componentLabel, found := keys.GetLabel(snapshot, keys.BuildComponent())
 	if found {

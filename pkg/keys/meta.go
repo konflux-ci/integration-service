@@ -18,9 +18,30 @@ package keys
 
 import (
 	"fmt"
+	"strings"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
+
+// PropagatedAppStudioLabels returns workload labels in the appstudio.openshift.io
+// domain, excluding identity labels that must be assigned by each controller.
+// Annotations are deliberately not propagated by this mechanism.
+func PropagatedAppStudioLabels(obj metav1.Object) map[string]string {
+	labels := map[string]string{}
+	for key, value := range obj.GetLabels() {
+		if !strings.HasPrefix(key, PrefixAppstudio+"/") {
+			continue
+		}
+		switch key {
+		case PrefixAppstudio + "/application", PrefixAppstudio + "/component",
+			PrefixAppstudio + "/component-group", PrefixAppstudio + "/snapshot",
+			PrefixAppstudio + "/service", PrefixAppstudio + "/build-pipelinerun":
+			continue
+		}
+		labels[key] = value
+	}
+	return labels
+}
 
 // GetLabel returns the value for pair, preferring the new key and falling back to the old key.
 func GetLabel(obj metav1.Object, pair Pair) (string, bool) {
