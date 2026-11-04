@@ -61,6 +61,16 @@ const (
 // Renovate does not create one either.
 const unusedDependencyDashboardTitle = "konflux-nudge-unused-dependency-dashboard"
 
+// renovateDebugEnv enables Renovate debug logging on the nudge step, matching
+// build-service, which sets the same env var unconditionally on its nudge
+// PipelineRun (CreateRenovaterPipeline in internal/controller/renovate_util.go).
+// Without it, GitHub permission errors reach the pod log only as the opaque
+// platform-unknown-error: the line naming the real GraphQL error is logged at
+// debug level and never printed (STONEINTG-1905).
+func renovateDebugEnv() []corev1.EnvVar {
+	return []corev1.EnvVar{{Name: "LOG_LEVEL", Value: "debug"}}
+}
+
 // RenovateRepository represents a single git repository for Renovate to process.
 type RenovateRepository struct {
 	Repository   string   `json:"repository"`
@@ -574,6 +584,7 @@ func CreateBatchedNudgePipelineRun(
 								Name:    "renovate",
 								Image:   renovateImageUrl,
 								Command: []string{"bash", "-c", renovateCmd},
+								Env:     renovateDebugEnv(),
 								EnvFrom: []corev1.EnvFromSource{{
 									Prefix: "TOKEN_",
 									SecretRef: &corev1.SecretEnvSource{
@@ -802,6 +813,7 @@ func CreateNudgePipelineRun(ctx context.Context, c client.Client, nudgingPLR *te
 							Steps: []tektonv1.Step{{
 								Name:  "renovate",
 								Image: renovateImageUrl,
+								Env:   renovateDebugEnv(),
 								EnvFrom: []corev1.EnvFromSource{
 									{
 										Prefix: "TOKEN_",

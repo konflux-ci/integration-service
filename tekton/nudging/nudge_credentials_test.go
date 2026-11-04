@@ -21,6 +21,11 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"sync"
 
 	ghapi "github.com/google/go-github/v45/github"
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
@@ -1446,5 +1451,142 @@ var _ = Describe("Nudge credentials", func() {
 			}
 			Expect(getGitRepoURL(comp)).To(Equal(""))
 		})
+	})
+})
+
+// ---------- getGitHubAppInstallation ----------
+
+// STONEINTG-1905: getGitHubAppInstallation used to request the installation
+// token with an explicit InstallationPermissions block (Contents + PullRequests).
+// Supplying Permissions REPLACES the App's configured permission set rather than
+// adding to it, so the token lost Issues, Checks and Commit statuses. Renovate's
+// repoInfoQuery then failed and every nudge died with platform-unknown-error.
+//
+// These tests pin the wire format of the token request: repository scoping - the
+// real security control - must survive, and the permissions block must not come back.
+var _ = Describe("getGitHubAppInstallation", func() {
+	const (
+		testOwner = "test-org"
+		testRepo  = "test-repo"
+	)
+
+	var (
+		mu          sync.Mutex
+		tokenMethod string
+		tokenPath   string
+		tokenBody   []byte
+	)
+
+	BeforeEach(func() {
+		mu.Lock()
+		defer mu.Unlock()
+		tokenMethod = ""
+		tokenPath = ""
+		tokenBody = nil
+	})
+
+	// capturedTokenRequest returns what the client actually sent to the
+	// access_tokens endpoint, so the assertions are on the wire format rather
+	// than on the Go options struct passed to CreateInstallationToken.
+	capturedTokenRequest := func() (string, string, []byte) {
+		mu.Lock()
+		defer mu.Unlock()
+		return tokenMethod, tokenPath, tokenBody
+	}
+
+	// newTestGitHubClient wires a go-github client to a test server answering
+	// the two endpoints getGitHubAppInstallation calls. The function accepts an
+	// already-built client, so no signed App key or ghinstallation transport is
+	// needed to observe the exact request that mints Renovate's token.
+	newTestGitHubClient := func(installationStatus, tokenStatus int, tokenResponse string) *ghapi.Client {
+		mux := http.NewServeMux()
+		mux.HandleFunc("/repos/"+testOwner+"/"+testRepo+"/installation", func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			if installationStatus != http.StatusOK {
+				w.WriteHeader(installationStatus)
+				_, _ = w.Write([]byte(`{"message":"Not Found"}`))
+				return
+			}
+			_, _ = w.Write([]byte(`{"id":424242,"app_id":1}`))
+		})
+		mux.HandleFunc("/app/installations/424242/access_tokens", func(w http.ResponseWriter, r *http.Request) {
+			body, _ := io.ReadAll(r.Body)
+			mu.Lock()
+			tokenMethod = r.Method
+			tokenPath = r.URL.Path
+			tokenBody = body
+			mu.Unlock()
+
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(tokenStatus)
+			_, _ = w.Write([]byte(tokenResponse))
+		})
+		server := httptest.NewServer(mux)
+		DeferCleanup(server.Close)
+
+		client := ghapi.NewClient(server.Client())
+		baseURL, err := url.Parse(server.URL + "/")
+		Expect(err).NotTo(HaveOccurred())
+		client.BaseURL = baseURL
+		return client
+	}
+
+	It("requests a repo-scoped token and never sends a permissions block", func() {
+		tokenResponse := `{"token":"ghs_test_token","expires_at":"2026-11-05T00:00:00Z",` +
+			`"repositories":[{"name":"test-repo","default_branch":"main"}]}`
+		client := newTestGitHubClient(http.StatusOK, http.StatusCreated, tokenResponse)
+
+		installation, err := getGitHubAppInstallation(context.Background(), client,
+			"https://github.com/"+testOwner+"/"+testRepo+".git")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(installation.Token).To(Equal("ghs_test_token"))
+		Expect(installation.ID).To(Equal(int64(424242)))
+		Expect(installation.Repositories).To(HaveLen(1))
+		Expect(installation.Repositories[0].GetDefaultBranch()).To(Equal("main"))
+
+		method, path, body := capturedTokenRequest()
+		Expect(method).To(Equal(http.MethodPost))
+		Expect(path).To(Equal("/app/installations/424242/access_tokens"))
+
+		var requestBody map[string]json.RawMessage
+		Expect(json.Unmarshal(body, &requestBody)).To(Succeed())
+
+		// The regression this test exists for: setting Permissions replaces the
+		// App's permission set and silently drops Issues/Checks/Commit statuses.
+		Expect(requestBody).NotTo(HaveKey("permissions"))
+
+		// The security control that must stay: the token is scoped to one repo.
+		Expect(requestBody).To(HaveKey("repositories"))
+		var repositories []string
+		Expect(json.Unmarshal(requestBody["repositories"], &repositories)).To(Succeed())
+		Expect(repositories).To(ConsistOf(testRepo))
+	})
+
+	It("wraps an error when the App is not installed for the repository", func() {
+		client := newTestGitHubClient(http.StatusNotFound, http.StatusCreated, "")
+
+		_, err := getGitHubAppInstallation(context.Background(), client,
+			"https://github.com/"+testOwner+"/"+testRepo)
+
+		Expect(err).To(MatchError(ContainSubstring("GitHub App not installed for " + testOwner + "/" + testRepo)))
+		method, _, _ := capturedTokenRequest()
+		Expect(method).To(BeEmpty())
+	})
+
+	It("wraps an error when the installation token request is rejected", func() {
+		client := newTestGitHubClient(http.StatusOK, http.StatusForbidden,
+			`{"message":"Resource not accessible by integration"}`)
+
+		_, err := getGitHubAppInstallation(context.Background(), client,
+			"https://github.com/"+testOwner+"/"+testRepo)
+
+		Expect(err).To(MatchError(ContainSubstring(
+			"failed to create scoped installation token for " + testOwner + "/" + testRepo)))
+	})
+
+	It("rejects a URL without an owner/repo path before calling GitHub", func() {
+		_, err := getGitHubAppInstallation(context.Background(), nil, "https://github.com/"+testOwner)
+
+		Expect(err).To(MatchError(ContainSubstring("cannot parse owner/repo")))
 	})
 })
