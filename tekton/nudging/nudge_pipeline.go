@@ -359,6 +359,9 @@ func enablePackageRulesOnly(rules []PackageRule) []PackageRule {
 	return enabled
 }
 
+// isGlobalDisablePackageRule reports Renovate's global disable-all sentinel
+// (enabled: false with matchPackagePatterns ["*"]). enablePackageRulesOnly skips
+// it when merging per-source package rules into a batched config.
 func isGlobalDisablePackageRule(rule PackageRule) bool {
 	return !rule.Enabled && len(rule.MatchPackagePatterns) == 1 && rule.MatchPackagePatterns[0] == "*"
 }
@@ -440,27 +443,28 @@ func GenerateBatchedRenovateConfig(target NudgeTarget, batchTargetName string, e
 	packageRules = append([]PackageRule{DisableAllPackageRules}, packageRules...)
 
 	return RenovateConfig{
-		GitProvider:           target.GitProvider,
-		Username:              target.Username,
-		GitAuthor:             target.GitAuthor,
-		Onboarding:            false,
-		RequireConfig:         "ignored",
-		Repositories:          target.Repositories,
-		EnabledManagers:       []string{"custom.regex"},
-		Endpoint:              target.Endpoint,
-		CustomManagers:        customManagers,
-		RegistryAliases:       registryAliases,
-		PackageRules:          packageRules,
-		ForkProcessing:        "enabled",
-		Extends:               []string{},
-		DependencyDashboard:   false,
-		Labels:                labels,
-		Automerge:             customOpts.Automerge,
-		PlatformAutomerge:     customOpts.PlatformAutomerge,
-		IgnoreTests:           customOpts.IgnoreTests,
-		AutomergeType:         customOpts.AutomergeType,
-		GitLabIgnoreApprovals: customOpts.GitLabIgnoreApprovals,
-		AutomergeSchedule:     customOpts.AutomergeSchedule,
+		GitProvider:              target.GitProvider,
+		Username:                 target.Username,
+		GitAuthor:                target.GitAuthor,
+		Onboarding:               false,
+		RequireConfig:            "ignored",
+		Repositories:             target.Repositories,
+		EnabledManagers:          []string{"custom.regex"},
+		Endpoint:                 target.Endpoint,
+		CustomManagers:           customManagers,
+		RegistryAliases:          registryAliases,
+		PackageRules:             packageRules,
+		ForkProcessing:           "enabled",
+		Extends:                  []string{},
+		DependencyDashboard:      false,
+		DependencyDashboardTitle: unusedDependencyDashboardTitle,
+		Labels:                   labels,
+		Automerge:                customOpts.Automerge,
+		PlatformAutomerge:        customOpts.PlatformAutomerge,
+		IgnoreTests:              customOpts.IgnoreTests,
+		AutomergeType:            customOpts.AutomergeType,
+		GitLabIgnoreApprovals:    customOpts.GitLabIgnoreApprovals,
+		AutomergeSchedule:        customOpts.AutomergeSchedule,
 	}
 }
 
@@ -927,6 +931,23 @@ func createIfNotExists(ctx context.Context, c client.Client, obj client.Object) 
 		return err
 	}
 	return nil
+}
+
+// NudgePipelineRunNameForBuild returns the default immediate-nudge Renovate PipelineRun name.
+func NudgePipelineRunNameForBuild(buildPLR *tektonv1.PipelineRun) string {
+	return fmt.Sprintf("renovate-pipeline-%s", deterministicSuffix(string(buildPLR.UID)))
+}
+
+// NudgePipelineRunNameForBatchedTarget returns a deterministic Renovate PipelineRun name for a batched
+// nudge to a single target, distinct from the immediate per-build name and from other batched targets.
+func NudgePipelineRunNameForBatchedTarget(buildPLR *tektonv1.PipelineRun, targetComponent string) string {
+	return NudgePipelineRunNameForBatchedTargetUID(buildPLR.UID, targetComponent)
+}
+
+// NudgePipelineRunNameForBatchedTargetUID is like NudgePipelineRunNameForBatchedTarget but uses a
+// captured build PipelineRun UID when the build object has already been pruned.
+func NudgePipelineRunNameForBatchedTargetUID(pipelineRunUID types.UID, targetComponent string) string {
+	return fmt.Sprintf("renovate-pipeline-%s", deterministicSuffix(string(pipelineRunUID)+":"+targetComponent))
 }
 
 // deterministicSuffix returns a short hex string derived from the input,
