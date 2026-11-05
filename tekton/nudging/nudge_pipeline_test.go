@@ -228,6 +228,7 @@ var _ = Describe("Nudge Pipeline", func() {
 			Expect(config.PackageRules[0]).To(Equal(nudging.DisableAllPackageRules))
 			Expect(config.PackageRules[1].Enabled).To(BeTrue())
 			Expect(config.PackageRules[1].MatchPackageNames).To(ContainElement("quay.io/org/image"))
+			Expect(config.PackageRules[1].RecreateWhen).To(Equal("always"))
 		})
 
 		It("sets branch naming with component prefix when simpleBranchName is false", func() {
