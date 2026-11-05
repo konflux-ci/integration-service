@@ -3,7 +3,7 @@ module github.com/konflux-ci/integration-service
 go 1.26.0
 
 require (
-	codeberg.org/mvdkleijn/forgejo-sdk/forgejo/v3 v3.0.0
+	codeberg.org/mvdkleijn/forgejo-sdk/forgejo/v4 v4.0.0
 	github.com/konflux-ci/application-api v0.0.0-20260727123715-2999a91451c6
 	github.com/konflux-ci/coverport/instrumentation/go v0.0.0-20251127115143-b5207b335f8b
 	github.com/konflux-ci/image-controller v0.0.0-20241128141349-9986c9955e05
