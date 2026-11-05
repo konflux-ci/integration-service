@@ -7,8 +7,9 @@ metadata:
   annotations:
     {{- if .Values.certmanager.enable }}
     cert-manager.io/inject-ca-from: {{ $.Values.namespace | default $.Release.Namespace }}/serving-cert
-    {{- end }}
+    {{- else }}
     service.beta.openshift.io/inject-cabundle: "true"
+    {{- end }}
   labels:
     {{- include "chart.labels" . | nindent 4 }}
 webhooks:
@@ -42,8 +43,9 @@ metadata:
   annotations:
     {{- if .Values.certmanager.enable }}
     cert-manager.io/inject-ca-from: {{ $.Values.namespace | default $.Release.Namespace }}/serving-cert
-    {{- end }}
+    {{- else }}
     service.beta.openshift.io/inject-cabundle: "true"
+    {{- end }}
   labels:
     {{- include "chart.labels" . | nindent 4 }}
 webhooks:

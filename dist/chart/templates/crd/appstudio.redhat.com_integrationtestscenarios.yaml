@@ -5,11 +5,17 @@ kind: CustomResourceDefinition
 metadata:
   labels:
     {{- include "chart.labels" . | nindent 4 }}
+  # CA injection must have exactly one owner. With cert-manager enabled the CA
+  # comes from cert-manager's cainjector; otherwise fall back to the OpenShift
+  # service-ca controller. Setting both makes the two controllers fight over the
+  # conversion webhook caBundle, which flaps the value and breaks the conversion
+  # webhook ("certificate signed by unknown authority").
   annotations:
     {{- if .Values.certmanager.enable }}
     cert-manager.io/inject-ca-from: {{ .Values.namespace | default .Release.Namespace }}/serving-cert
-    {{- end }}
+    {{- else }}
     service.beta.openshift.io/inject-cabundle: "true"
+    {{- end }}
     {{- if .Values.crd.keep }}
     "helm.sh/resource-policy": keep
     {{- end }}
