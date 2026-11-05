@@ -45,6 +45,8 @@ The service supports two parallel resource flows: **ComponentGroup** (new model)
 
 `loader.ObjectLoader` centralizes all K8s Gets with error classification (retriable vs permanent) and KubeArchive fallback for deleted resources. A mock implementation exists for tests.
 
+**Return convention:** Most `ObjectLoader` list methods return `(*[]Type, error)` — a pointer to a slice. On success, the pointer is always non-nil (it points to the list's `.Items` field), even when the list is empty. Code that checks only `result != nil` has a semantic bug — use `result == nil || len(*result) == 0` to test for emptiness. On error, the pointer is nil and the error is non-nil.
+
 ### Additional Key Patterns
 
 - **PipelineRunBuilder** (`tekton/`): fluent API — `.WithExtraParams()`, `.WithSnapshot()`, `.WithIntegrationTimeouts()`, `.WithUpdatedPipelineGitResolver()`
