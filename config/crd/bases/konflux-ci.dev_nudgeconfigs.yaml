@@ -135,10 +135,21 @@ spec:
                     from:
                       description: From is the source component name that triggers
                         the nudge when its build succeeds.
-                      maxLength: 63
-                      minLength: 1
-                      pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
-                      type: string
+                      properties:
+                        component:
+                          description: Component is the name of the Component
+                          maxLength: 63
+                          minLength: 1
+                          pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                          type: string
+                        version:
+                          description: Version is the version of the Component
+                          maxLength: 253
+                          type: string
+                      required:
+                      - component
+                      - version
+                      type: object
                     gatingGroup:
                       description: GatingGroup is reserved for Phase 2 group-based
                         gating and is not enforced in Phase 1.
@@ -156,15 +167,26 @@ spec:
                     to:
                       description: To is the target component name that receives the
                         nudge.
-                      maxLength: 63
-                      minLength: 1
-                      pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
-                      type: string
+                      properties:
+                        component:
+                          description: Component is the name of the Component
+                          maxLength: 63
+                          minLength: 1
+                          pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                          type: string
+                        version:
+                          description: Version is the version of the Component
+                          maxLength: 253
+                          type: string
+                      required:
+                      - component
+                      - version
+                      type: object
                   required:
                   - from
                   - to
                   type: object
-                maxItems: 360
+                maxItems: 180
                 type: array
               targetConfig:
                 description: |-
@@ -236,10 +258,12 @@ spec:
             type: object
             x-kubernetes-validations:
             - message: 'self-nudge not allowed: from and to must be different'
-              rule: '!has(self.nudges) || self.nudges.all(n, n.from != n.to)'
+              rule: '!has(self.nudges) || self.nudges.all(n, !(n.from.component ==
+                n.to.component && n.from.version == n.to.version))'
             - message: duplicate (from, to) pair not allowed
               rule: '!has(self.nudges) || self.nudges.all(i, self.nudges.exists_one(j,
-                i.from == j.from && i.to == j.to))'
+                i.from.component == j.from.component && i.from.version == j.from.version
+                && i.to.component == j.to.component && i.to.version == j.to.version))'
             - message: duplicate target not allowed in targetConfig
               rule: '!has(self.targetConfig) || self.targetConfig.all(i, self.targetConfig.exists_one(j,
                 i.target == j.target))'

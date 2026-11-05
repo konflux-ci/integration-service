@@ -208,13 +208,14 @@ func (a *Adapter) EnsureNudgePipelineRunsExist() (controller.OperationResult, er
 	componentName := a.componentName
 	var immediateTargetNames, batchedTargetNames []string
 	for _, nudge := range nudgeConfig.Spec.Nudges {
-		if nudge.From != componentName || (nudge.Mode != "" && nudge.Mode != v1beta2.NudgeModeImmediate) {
+		targetName := nudge.To.Component
+		if !componentVersionMatchesPipelineRun(nudge.From, componentName, a.pipelineRun) || (nudge.Mode != "" && nudge.Mode != v1beta2.NudgeModeImmediate) {
 			continue
 		}
-		if nudgeConfig.Spec.IsTargetBatched(nudge.To) {
-			batchedTargetNames = append(batchedTargetNames, nudge.To)
+		if nudgeConfig.Spec.IsTargetBatched(targetName) {
+			batchedTargetNames = append(batchedTargetNames, targetName)
 		} else {
-			immediateTargetNames = append(immediateTargetNames, nudge.To)
+			immediateTargetNames = append(immediateTargetNames, targetName)
 		}
 	}
 
@@ -464,14 +465,15 @@ func (a *Adapter) RecordFailedBatchedNudgeBuilds() (controller.OperationResult, 
 	componentName := a.componentName
 	var batchedTargets []string
 	for _, nudge := range nudgeConfig.Spec.Nudges {
-		if nudge.From != componentName || (nudge.Mode != "" && nudge.Mode != v1beta2.NudgeModeImmediate) {
+		targetName := nudge.To.Component
+		if !componentVersionMatchesPipelineRun(nudge.From, componentName, a.pipelineRun) || (nudge.Mode != "" && nudge.Mode != v1beta2.NudgeModeImmediate) {
 			continue
 		}
-		if !nudgeConfig.Spec.IsTargetBatched(nudge.To) {
+		if !nudgeConfig.Spec.IsTargetBatched(targetName) {
 			continue
 		}
-		if !slices.Contains(batchedTargets, nudge.To) {
-			batchedTargets = append(batchedTargets, nudge.To)
+		if !slices.Contains(batchedTargets, targetName) {
+			batchedTargets = append(batchedTargets, targetName)
 		}
 	}
 	if len(batchedTargets) == 0 {
@@ -508,6 +510,17 @@ func (a *Adapter) RecordFailedBatchedNudgeBuilds() (controller.OperationResult, 
 		"targets", processedValue)
 
 	return a.requeueForActiveNudgeBatches(nudgeConfig)
+}
+
+func componentVersionMatchesPipelineRun(componentVersion v1beta2.ComponentVersion, componentName string, plr *tektonv1.PipelineRun) bool {
+	if componentVersion.Component != componentName {
+		return false
+	}
+	if componentVersion.Version == "" {
+		return true
+	}
+	pipelineRunVersion, err := tekton.GetComponentVersionFromPipelineRun(plr)
+	return err == nil && pipelineRunVersion == componentVersion.Version
 }
 
 func pipelineRunFailureReason(plr *tektonv1.PipelineRun) string {

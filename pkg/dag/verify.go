@@ -101,9 +101,10 @@ func ValidateNudgeGraph(nudges []v1beta2.NudgeRelationship) error {
 
 	adj := make(map[string][]string)
 	for _, n := range nudges {
-		adj[n.From] = append(adj[n.From], n.To)
-		if _, ok := adj[n.To]; !ok {
-			adj[n.To] = nil
+		from, to := n.From.String(), n.To.String()
+		adj[from] = append(adj[from], to)
+		if _, ok := adj[to]; !ok {
+			adj[to] = nil
 		}
 	}
 

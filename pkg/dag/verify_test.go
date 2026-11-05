@@ -176,8 +176,8 @@ var _ = Describe("Nudge graph cycle detection", func() {
 		When("nudges form a valid chain", func() {
 			It("returns no error", func() {
 				nudges := []v1beta2.NudgeRelationship{
-					{From: "a", To: "b"},
-					{From: "b", To: "c"},
+					{From: v1beta2.ComponentVersion{Component: "a"}, To: v1beta2.ComponentVersion{Component: "b"}},
+					{From: v1beta2.ComponentVersion{Component: "b"}, To: v1beta2.ComponentVersion{Component: "c"}},
 				}
 				Expect(ValidateNudgeGraph(nudges)).NotTo(HaveOccurred())
 			})
@@ -186,9 +186,9 @@ var _ = Describe("Nudge graph cycle detection", func() {
 		When("nudges form a cycle", func() {
 			It("returns an error with the cycle path", func() {
 				nudges := []v1beta2.NudgeRelationship{
-					{From: "a", To: "b"},
-					{From: "b", To: "c"},
-					{From: "c", To: "a"},
+					{From: v1beta2.ComponentVersion{Component: "a"}, To: v1beta2.ComponentVersion{Component: "b"}},
+					{From: v1beta2.ComponentVersion{Component: "b"}, To: v1beta2.ComponentVersion{Component: "c"}},
+					{From: v1beta2.ComponentVersion{Component: "c"}, To: v1beta2.ComponentVersion{Component: "a"}},
 				}
 				err := ValidateNudgeGraph(nudges)
 				Expect(err).To(HaveOccurred())
@@ -209,7 +209,7 @@ var _ = Describe("Nudge graph cycle detection", func() {
 		When("a self-nudge is present", func() {
 			It("detects it as a cycle without panicking", func() {
 				nudges := []v1beta2.NudgeRelationship{
-					{From: "a", To: "a"},
+					{From: v1beta2.ComponentVersion{Component: "a"}, To: v1beta2.ComponentVersion{Component: "a"}},
 				}
 				err := ValidateNudgeGraph(nudges)
 				Expect(err).To(HaveOccurred())
@@ -220,10 +220,10 @@ var _ = Describe("Nudge graph cycle detection", func() {
 		When("nudges form a valid DAG with multiple paths", func() {
 			It("returns no error", func() {
 				nudges := []v1beta2.NudgeRelationship{
-					{From: "a", To: "b"},
-					{From: "a", To: "c"},
-					{From: "b", To: "d"},
-					{From: "c", To: "d"},
+					{From: v1beta2.ComponentVersion{Component: "a"}, To: v1beta2.ComponentVersion{Component: "b"}},
+					{From: v1beta2.ComponentVersion{Component: "a"}, To: v1beta2.ComponentVersion{Component: "c"}},
+					{From: v1beta2.ComponentVersion{Component: "b"}, To: v1beta2.ComponentVersion{Component: "d"}},
+					{From: v1beta2.ComponentVersion{Component: "c"}, To: v1beta2.ComponentVersion{Component: "d"}},
 				}
 				Expect(ValidateNudgeGraph(nudges)).NotTo(HaveOccurred())
 			})

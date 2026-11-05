@@ -27,15 +27,27 @@ spec:
         debounceTimeout: 15m
   nudges:
     # When component-a builds successfully, nudge component-b after integration tests pass
-    - from: component-a
-      to: component-b
+    - from:
+        component: component-a
+        version: main
+      to:
+        component: component-b
+        version: main
       mode: validated
       gatingGroup: frontend-group
     # When component-a builds, immediately nudge component-c (default mode)
-    - from: component-a
-      to: component-c
+    - from:
+        component: component-a
+        version: main
+      to:
+        component: component-c
+        version: main
     # Backend nudge relationship with gating group
-    - from: component-d
-      to: component-e
+    - from:
+        component: component-d
+        version: main
+      to:
+        component: component-e
+        version: main
       mode: validated
       gatingGroup: backend-group

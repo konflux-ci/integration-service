@@ -45,8 +45,8 @@ var _ = Describe("NudgeConfig CEL validation", Ordered, func() {
 			},
 			Spec: NudgeConfigSpec{
 				Nudges: []NudgeRelationship{
-					{From: "component-a", To: "component-b", Mode: NudgeModeValidated},
-					{From: "component-a", To: "component-c"},
+					{From: ComponentVersion{Component: "component-a", Version: "main"}, To: ComponentVersion{Component: "component-b", Version: "main"}, Mode: NudgeModeValidated},
+					{From: ComponentVersion{Component: "component-a", Version: "main"}, To: ComponentVersion{Component: "component-c", Version: "main"}},
 				},
 			},
 		}
@@ -71,7 +71,7 @@ var _ = Describe("NudgeConfig CEL validation", Ordered, func() {
 			},
 			Spec: NudgeConfigSpec{
 				Nudges: []NudgeRelationship{
-					{From: "component-a", To: "component-b"},
+					{From: ComponentVersion{Component: "component-a", Version: "main"}, To: ComponentVersion{Component: "component-b", Version: "main"}},
 				},
 			},
 		}
@@ -91,8 +91,8 @@ var _ = Describe("NudgeConfig CEL validation", Ordered, func() {
 			},
 			Spec: NudgeConfigSpec{
 				Nudges: []NudgeRelationship{
-					{From: "component-a", To: "component-b"},
-					{From: "component-x", To: "component-x"},
+					{From: ComponentVersion{Component: "component-a", Version: "main"}, To: ComponentVersion{Component: "component-b", Version: "main"}},
+					{From: ComponentVersion{Component: "component-x", Version: "main"}, To: ComponentVersion{Component: "component-x", Version: "main"}},
 				},
 			},
 		}
@@ -110,8 +110,8 @@ var _ = Describe("NudgeConfig CEL validation", Ordered, func() {
 			},
 			Spec: NudgeConfigSpec{
 				Nudges: []NudgeRelationship{
-					{From: "component-a", To: "component-b"},
-					{From: "component-a", To: "component-b", Mode: NudgeModeValidated},
+					{From: ComponentVersion{Component: "component-a", Version: "main"}, To: ComponentVersion{Component: "component-b", Version: "main"}},
+					{From: ComponentVersion{Component: "component-a", Version: "main"}, To: ComponentVersion{Component: "component-b", Version: "main"}, Mode: NudgeModeValidated},
 				},
 			},
 		}
@@ -129,8 +129,8 @@ var _ = Describe("NudgeConfig CEL validation", Ordered, func() {
 			},
 			Spec: NudgeConfigSpec{
 				Nudges: []NudgeRelationship{
-					{From: "component-a", To: "component-b"},
-					{From: "component-a", To: "component-b"},
+					{From: ComponentVersion{Component: "component-a", Version: "main"}, To: ComponentVersion{Component: "component-b", Version: "main"}},
+					{From: ComponentVersion{Component: "component-a", Version: "main"}, To: ComponentVersion{Component: "component-b", Version: "main"}},
 				},
 			},
 		}
@@ -148,7 +148,7 @@ var _ = Describe("NudgeConfig CEL validation", Ordered, func() {
 			},
 			Spec: NudgeConfigSpec{
 				Nudges: []NudgeRelationship{
-					{From: "component-a", To: "component-b"},
+					{From: ComponentVersion{Component: "component-a", Version: "main"}, To: ComponentVersion{Component: "component-b", Version: "main"}},
 				},
 			},
 		}
@@ -167,7 +167,7 @@ var _ = Describe("NudgeConfig CEL validation", Ordered, func() {
 			},
 			Spec: NudgeConfigSpec{
 				Nudges: []NudgeRelationship{
-					{From: "component-a", To: "component-b", Mode: NudgeModeValidated},
+					{From: ComponentVersion{Component: "component-a", Version: "main"}, To: ComponentVersion{Component: "component-b", Version: "main"}, Mode: NudgeModeValidated},
 				},
 			},
 		}
@@ -186,7 +186,7 @@ var _ = Describe("NudgeConfig CEL validation", Ordered, func() {
 			},
 			Spec: NudgeConfigSpec{
 				Nudges: []NudgeRelationship{
-					{From: "Component_A", To: "component-b"},
+					{From: ComponentVersion{Component: "Component_A", Version: "main"}, To: ComponentVersion{Component: "component-b", Version: "main"}},
 				},
 			},
 		}
@@ -203,7 +203,7 @@ var _ = Describe("NudgeConfig CEL validation", Ordered, func() {
 			},
 			Spec: NudgeConfigSpec{
 				Nudges: []NudgeRelationship{
-					{From: "component-a", To: "component-b", Mode: NudgeModeType("bogus")},
+					{From: ComponentVersion{Component: "component-a", Version: "main"}, To: ComponentVersion{Component: "component-b", Version: "main"}, Mode: NudgeModeType("bogus")},
 				},
 			},
 		}
@@ -226,7 +226,7 @@ var _ = Describe("NudgeConfig CEL validation", Ordered, func() {
 						FailurePolicy:   failurePolicyPtr(FailurePolicyProceedWithPartial),
 					},
 					Nudges: []NudgeRelationship{
-						{From: "component-a", To: "component-b"},
+						{From: ComponentVersion{Component: "component-a", Version: "main"}, To: ComponentVersion{Component: "component-b", Version: "main"}},
 					},
 				},
 			}
@@ -251,7 +251,7 @@ var _ = Describe("NudgeConfig CEL validation", Ordered, func() {
 				},
 				Spec: NudgeConfigSpec{
 					Nudges: []NudgeRelationship{
-						{From: "component-a", To: "component-b"},
+						{From: ComponentVersion{Component: "component-a", Version: "main"}, To: ComponentVersion{Component: "component-b", Version: "main"}},
 					},
 				},
 			}
@@ -595,8 +595,8 @@ var _ = Describe("NudgeConfig CEL validation", Ordered, func() {
 		nudges := make([]NudgeRelationship, 361)
 		for i := range nudges {
 			nudges[i] = NudgeRelationship{
-				From: fmt.Sprintf("src-%d", i),
-				To:   fmt.Sprintf("tgt-%d", i),
+				From: ComponentVersion{Component: fmt.Sprintf("src-%d", i), Version: "main"},
+				To:   ComponentVersion{Component: fmt.Sprintf("tgt-%d", i), Version: "main"},
 			}
 		}
 		nc := &NudgeConfig{
