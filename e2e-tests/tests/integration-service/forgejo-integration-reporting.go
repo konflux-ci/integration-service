@@ -11,11 +11,11 @@ import (
 	appstudioApi "github.com/konflux-ci/application-api/api/v1alpha1"
 	integrationv1beta2 "github.com/konflux-ci/integration-service/api/v1beta2"
 	"github.com/konflux-ci/integration-service/e2e-tests/pkg/clients/git"
-	"github.com/konflux-ci/integration-service/e2e-tests/pkg/clients/has"
 	"github.com/konflux-ci/integration-service/e2e-tests/pkg/constants"
 	"github.com/konflux-ci/integration-service/e2e-tests/pkg/framework"
 	"github.com/konflux-ci/integration-service/e2e-tests/pkg/utils"
 	"github.com/konflux-ci/integration-service/e2e-tests/pkg/utils/build"
+	"github.com/konflux-ci/integration-service/gitops"
 
 	ginkgo "github.com/onsi/ginkgo/v2"
 	gomega "github.com/onsi/gomega"
@@ -29,13 +29,12 @@ var _ = framework.IntegrationServiceSuiteDescribe("Forgejo Status Reporting of I
 	var err error
 
 	var mrID int
-	var mrSha, forgejoToken string
-	var snapshot *appstudioApi.Snapshot
+	var mrSha, forgejoToken, prBranchName string
+	var snapshot, snapshotPush *appstudioApi.Snapshot
 	var component *appstudioApi.Component
-	var buildPipelineRun, testPipelinerun *pipeline.PipelineRun
+	var buildPipelineRun, buildPipelineRunPush, testPipelinerun *pipeline.PipelineRun
 	var integrationTestScenarioPass *integrationv1beta2.IntegrationTestScenario
-	var applicationName, componentName, componentBaseBranchName, pacBranchName, testNamespace string
-	var mergeResultSha string
+	var applicationName, componentName, testNamespace string
 
 	var gitClient git.Client
 	var forgejoGitClient *git.ForgejoClient
@@ -61,21 +60,6 @@ var _ = framework.IntegrationServiceSuiteDescribe("Forgejo Status Reporting of I
 				ginkgo.Fail("Codeberg/Forgejo client unavailable; check Codeberg access from CI")
 			}
 
-			applicationName = createApp(*f, testNamespace)
-
-			gomega.Eventually(func() error {
-				_, err := f.AsKubeAdmin.HasController.GetApplication(applicationName, testNamespace)
-				return err
-			}, time.Minute*2, time.Second*5).Should(gomega.Succeed(),
-				fmt.Sprintf("Application %s should be available in namespace %s", applicationName, testNamespace))
-
-			integrationTestScenarioPass, err = f.AsKubeAdmin.IntegrationController.CreateIntegrationTestScenario("", applicationName, testNamespace, gitURL, revision, pathInRepoPass, "", []string{})
-			gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
-
-			componentName = fmt.Sprintf("%s-%s", "test-comp-pac-forgejo", utils.GenerateRandomString(6))
-			pacBranchName = constants.PaCPullRequestBranchPrefix + componentName
-			componentBaseBranchName = fmt.Sprintf("base-forgejo-%s", utils.GenerateRandomString(6))
-
 			forgejoToken = utils.GetEnv(constants.CODEBERG_BOT_TOKEN_ENV, "")
 			gomega.Expect(forgejoToken).ShouldNot(gomega.BeEmpty(), fmt.Sprintf("'%s' env var is not set", constants.CODEBERG_BOT_TOKEN_ENV))
 			forgejoGitClient = git.NewForgejoClient(f.AsKubeAdmin.CommonController.Forgejo)
@@ -87,20 +71,47 @@ var _ = framework.IntegrationServiceSuiteDescribe("Forgejo Status Reporting of I
 
 			reportingRepoURL = fmt.Sprintf("https://codeberg.org/%s", reportingRepository)
 
+			componentName = fmt.Sprintf("%s-%s", "test-comp-prebuilt-forgejo", utils.GenerateRandomString(6))
+			mrID, mrSha, prBranchName, err = createEphemeralForgejoStatusReportingPullRequest(gitClient, reportingRepository, testNamespace, componentName)
+			gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
+
+			applicationName = createApp(*f, testNamespace)
+
+			gomega.Eventually(func() error {
+				_, err := f.AsKubeAdmin.HasController.GetApplication(applicationName, testNamespace)
+				return err
+			}, time.Minute*2, time.Second*5).Should(gomega.Succeed(),
+				fmt.Sprintf("Application %s should be available in namespace %s", applicationName, testNamespace))
+
+			integrationTestScenarioPass, err = f.AsKubeAdmin.IntegrationController.CreateIntegrationTestScenario("", applicationName, testNamespace, gitURL, revision, pathInRepoPass, "", []string{})
+			gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
+
 			err = build.CreateCodebergBuildSecret(f, "forgejo-build-secret", map[string]string{}, forgejoToken)
 			gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
 
-			err = gitClient.CreateBranch(reportingRepository, componentDefaultBranch, "", componentBaseBranchName)
-			gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
+			component = createForgejoComponentWithoutPACMergeRequest(*f, testNamespace, applicationName, componentName, reportingRepoURL)
+			gomega.Eventually(func() error {
+				_, getErr := f.AsKubeAdmin.TektonController.GetRepositoryParams(componentName, testNamespace)
+				return getErr
+			}, time.Minute*5, time.Second*5).Should(gomega.Succeed(),
+				fmt.Sprintf("timed out waiting for PaC Repository CR for component %s in namespace %s", componentName, testNamespace))
 		})
 
 		ginkgo.AfterAll(func() {
-			if !ginkgo.CurrentSpecReport().Failed() {
-				if mrID != 0 {
-					_ = gitClient.DeleteBranchAndClosePullRequest(reportingRepository, mrID)
+			if mrID != 0 {
+				if err := gitClient.DeleteBranchAndClosePullRequest(reportingRepository, mrID); err != nil {
+					ginkgo.GinkgoWriter.Printf("failed to close pull request #%d and delete branch in repository %s: %v\n", mrID, reportingRepository, err)
 				}
+			} else if prBranchName != "" {
+				if err := gitClient.DeleteBranch(reportingRepository, prBranchName); err != nil {
+					ginkgo.GinkgoWriter.Printf("failed to delete branch %s in repository %s: %v\n", prBranchName, reportingRepository, err)
+				}
+			}
 
-				gomega.Expect(gitClient.DeleteRepositoryIfExists(reportingRepository)).To(gomega.Succeed())
+			if reportingRepository != "" {
+				if err := gitClient.DeleteRepositoryIfExists(reportingRepository); err != nil {
+					ginkgo.GinkgoWriter.Printf("failed to delete repository %s: %v\n", reportingRepository, err)
+				}
 			}
 
 			if !ginkgo.CurrentSpecReport().Failed() {
@@ -110,89 +121,23 @@ var _ = framework.IntegrationServiceSuiteDescribe("Forgejo Status Reporting of I
 		})
 
 		ginkgo.When("a new Component with specified custom branch is created", ginkgo.Label("custom-branch"), func() {
-			ginkgo.BeforeAll(func() {
-				componentObj := appstudioApi.ComponentSpec{
-					ComponentName: componentName,
-					Application:   applicationName,
-					Source: appstudioApi.ComponentSource{
-						ComponentSourceUnion: appstudioApi.ComponentSourceUnion{
-							GitSource: &appstudioApi.GitSource{
-								URL:           reportingRepoURL,
-								Revision:      componentBaseBranchName,
-								DockerfileURL: "Dockerfile",
-							},
-						},
-					},
-				}
-				buildPipelineAnnotation := build.GetBuildPipelineBundleAnnotation(constants.DockerBuildOciTAMin)
-				gitProviderAnnotation := map[string]string{"git-provider": "forgejo"}
-
-				component, err = f.AsKubeAdmin.HasController.CreateComponentCheckImageRepository(componentObj, testNamespace, "", "", applicationName, false,
-					utils.MergeMaps(
-						utils.MergeMaps(utils.MergeMaps(constants.ComponentPaCRequestAnnotation, constants.ImageControllerAnnotationRequestPublicRepo), buildPipelineAnnotation),
-						gitProviderAnnotation,
-					))
-				gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
-
-				gomega.Eventually(func() error {
-					_, getErr := f.AsKubeAdmin.TektonController.GetRepositoryParams(componentName, testNamespace)
-					return getErr
-				}, time.Minute*5, time.Second*5).Should(gomega.Succeed(),
-					fmt.Sprintf("timed out waiting for PaC Repository CR for component %s in namespace %s", componentName, testNamespace))
-
-				gomega.Eventually(func() bool {
-					prs, listErr := git.ListPullRequestsWithRetry(gitClient, reportingRepository)
-					if listErr != nil {
-						ginkgo.GinkgoWriter.Printf("error listing pull requests while waiting for PaC init PR: %v\n", listErr)
-						return false
-					}
-					for _, pr := range prs {
-						if pr.SourceBranch == pacBranchName {
-							mrID = pr.Number
-							mrSha = pr.HeadSHA
-							return true
-						}
-					}
-					return false
-				}, shortTimeout, constants.PipelineRunPollingInterval).Should(gomega.BeTrue(),
-					fmt.Sprintf("timed out waiting for PaC init PR (branch %s) to be created in %s", pacBranchName, reportingRepository))
+			ginkgo.It("should have a related ephemeral PR created", func() {
+				gomega.Expect(mrID).NotTo(gomega.BeZero())
+				gomega.Expect(mrSha).ToNot(gomega.BeEmpty())
+				gomega.Expect(prBranchName).ToNot(gomega.BeEmpty())
 			})
 
-			ginkgo.It("triggers a Build PipelineRun", func() {
-				gomega.Eventually(func() error {
-					buildPipelineRun, err = f.AsKubeAdmin.HasController.GetComponentPipelineRun(componentName, applicationName, testNamespace, "")
-					if err != nil {
-						ginkgo.GinkgoWriter.Printf("Build PipelineRun has not been created yet for the component %s/%s\n", testNamespace, componentName)
-						return err
-					}
-					if !buildPipelineRun.HasStarted() {
-						return fmt.Errorf("build pipelinerun %s/%s hasn't started yet", buildPipelineRun.GetNamespace(), buildPipelineRun.GetName())
-					}
-					return nil
-				}, shortTimeout, constants.PipelineRunPollingInterval).Should(gomega.Succeed(), fmt.Sprintf("timed out when waiting for the build PipelineRun to start for the component %s/%s", testNamespace, componentName))
+			ginkgo.It("applies a pre-built pull request PipelineRun", func() {
+				buildPipelineRun, err = applyPrebuiltForgejoStatusReportingBuildPLR(f, testNamespace, applicationName, componentName, mrID, mrSha, prBranchName, reportingRepoURL, reportingRepository, prebuiltBuildPLRSpec{})
+				gomega.Expect(err).NotTo(gomega.HaveOccurred(), "Failed to create Forgejo status-reporting pre-built PipelineRun")
 			})
 
 			ginkgo.It("does not contain an annotation with a Snapshot Name", func() {
 				gomega.Expect(buildPipelineRun.Annotations[snapshotAnnotation]).To(gomega.Equal(""))
 			})
 
-			ginkgo.It("should lead to build PipelineRun finishing successfully", func() {
-				gomega.Expect(f.AsKubeAdmin.HasController.WaitForComponentPipelineToBeFinished(component, "", "",
-					"", f.AsKubeAdmin.TektonController, &has.RetryOptions{Retries: 2, Always: true}, buildPipelineRun)).To(gomega.Succeed())
-			})
-
-			ginkgo.It("should have a related PaC init MR created", func() {
-				// mrID and mrSha are already set by BeforeAll; assert they were found.
-				gomega.Expect(mrID).NotTo(gomega.BeZero(),
-					fmt.Sprintf("PaC init MR (branch '%s') was not found in %s", pacBranchName, reportingRepository))
-
-				buildPipelineRun, err = f.AsKubeAdmin.HasController.GetComponentPipelineRun(componentName, applicationName, testNamespace, mrSha)
-				gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
-			})
-
 			ginkgo.It(fmt.Sprintf("the PipelineRun should eventually finish successfully for component %s", componentName), func() {
-				gomega.Expect(f.AsKubeAdmin.HasController.WaitForComponentPipelineToBeFinished(component, "", "", "",
-					f.AsKubeAdmin.TektonController, &has.RetryOptions{Retries: 2, Always: true}, nil)).To(gomega.Succeed())
+				gomega.Expect(f.AsKubeAdmin.IntegrationController.WaitForBuildPipelineToBeFinished(testNamespace, applicationName, component.Name, mrSha)).To(gomega.Succeed())
 			})
 		})
 
@@ -202,7 +147,7 @@ var _ = framework.IntegrationServiceSuiteDescribe("Forgejo Status Reporting of I
 			})
 
 			ginkgo.It("checks if the Snapshot is created", func() {
-				snapshot, err = f.AsKubeDeveloper.IntegrationController.WaitForSnapshotToGetCreated("", "", componentName, testNamespace)
+				snapshot, err = f.AsKubeDeveloper.IntegrationController.WaitForSnapshotToGetCreated("", buildPipelineRun.Name, componentName, testNamespace)
 				gomega.Expect(err).ToNot(gomega.HaveOccurred())
 			})
 
@@ -261,41 +206,24 @@ var _ = framework.IntegrationServiceSuiteDescribe("Forgejo Status Reporting of I
 					fmt.Sprintf("no MR comment found containing integration test result for PR #%d in project %s", mrID, reportingRepository))
 			})
 
-			ginkgo.It("merging the PR should be successful", func() {
-				var mergeResult *git.PullRequest
-				gomega.Eventually(func() error {
-					mergeResult, err = gitClient.MergePullRequest(reportingRepository, mrID)
-					return err
-				}, shortTimeout, constants.PipelineRunPollingInterval).ShouldNot(gomega.HaveOccurred(),
-					fmt.Sprintf("error when merging PaC merge request ID #%d in repo %s", mrID, reportingRepository))
-
-				mergeResultSha = mergeResult.MergeCommitSHA
-				if mergeResultSha == "" {
-					mergeResultSha = mergeResult.HeadSHA
-				}
-				ginkgo.GinkgoWriter.Printf("merged result sha: %s for MR #%d\n", mergeResultSha, mrID)
+			ginkgo.It("applies a pre-built push PipelineRun", func() {
+				buildPipelineRunPush, err = applyPrebuiltForgejoStatusReportingBuildPLR(f, testNamespace, applicationName, componentName, mrID, mrSha, componentDefaultBranch, reportingRepoURL, reportingRepository, prebuiltBuildPLRSpec{
+					EventType:  gitops.PipelineAsCodePushType,
+					TimeOffset: 2 * time.Minute,
+				})
+				gomega.Expect(err).NotTo(gomega.HaveOccurred(), "Failed to create Forgejo status-reporting pre-built push PipelineRun")
 			})
 
-			ginkgo.It("leads to triggering a push PipelineRun", func() {
-				gomega.Eventually(func() error {
-					pipelineRun, err := f.AsKubeAdmin.HasController.GetComponentPipelineRun(componentName, applicationName, testNamespace, mergeResultSha)
-					if err != nil {
-						ginkgo.GinkgoWriter.Printf("Push PipelineRun has not been created yet for the component %s/%s\n", testNamespace, componentName)
-						return err
-					}
-					if !pipelineRun.HasStarted() {
-						return fmt.Errorf("push pipelinerun %s/%s hasn't started yet", pipelineRun.GetNamespace(), pipelineRun.GetName())
-					}
-					return nil
-				}, shortTimeout, constants.PipelineRunPollingInterval).Should(gomega.Succeed(),
-					fmt.Sprintf("timed out when waiting for the push PipelineRun to start for the component %s/%s", testNamespace, componentName))
+			ginkgo.It("checks if the push Snapshot is created", func() {
+				snapshotPush, err = f.AsKubeDeveloper.IntegrationController.WaitForSnapshotToGetCreated("", buildPipelineRunPush.Name, componentName, testNamespace)
+				gomega.Expect(err).ToNot(gomega.HaveOccurred())
 			})
 		})
 
 		ginkgo.When("Run integration tests after Merged MR", func() {
 			ginkgo.It("should eventually complete successfully", func() {
-				gomega.Expect(f.AsKubeAdmin.IntegrationController.WaitForIntegrationPipelineToBeFinished(integrationTestScenarioPass, snapshot, testNamespace)).To(gomega.Succeed(),
-					fmt.Sprintf("Error when waiting for an integration pipelinerun for snapshot %s/%s to finish", testNamespace, snapshot.GetName()))
+				gomega.Expect(f.AsKubeAdmin.IntegrationController.WaitForIntegrationPipelineToBeFinished(integrationTestScenarioPass, snapshotPush, testNamespace)).To(gomega.Succeed(),
+					fmt.Sprintf("Error when waiting for an integration pipelinerun for snapshot %s/%s to finish", testNamespace, snapshotPush.GetName()))
 			})
 
 			ginkgo.It("eventually leads to the integration test PipelineRun's Pass status reported at MR commit status", func() {
@@ -306,3 +234,94 @@ var _ = framework.IntegrationServiceSuiteDescribe("Forgejo Status Reporting of I
 		})
 	})
 })
+
+func createEphemeralForgejoStatusReportingPullRequest(gitClient git.Client, reportingRepository, testNamespace, componentName string) (int, string, string, error) {
+	branchName := fmt.Sprintf("mock-plr-pr-%s-%s", testNamespace, utils.GenerateRandomString(6))
+	if err := gitClient.CreateBranch(reportingRepository, componentDefaultBranch, "", branchName); err != nil {
+		return 0, "", branchName, fmt.Errorf("failed to create Forgejo status-reporting PR branch %q: %w", branchName, err)
+	}
+
+	content := fmt.Sprintf("Temporary file for integration-service Forgejo status-reporting e2e tests.\n\nNamespace: %s\nComponent: %s\nBranch: %s\nCreatedAt: %s\nPurpose: provide a harmless diff for the prebuilt PipelineRun PR reporting test.\n",
+		testNamespace, componentName, branchName, time.Now().UTC().Format(time.RFC3339))
+	file, err := gitClient.CreateFile(reportingRepository, forgejoStatusReportingDummyPRFilePath, content, branchName)
+	if err != nil {
+		return 0, "", branchName, fmt.Errorf("failed to create Forgejo status-reporting PR dummy file %q on branch %q: %w", forgejoStatusReportingDummyPRFilePath, branchName, err)
+	}
+
+	pr, err := gitClient.CreatePullRequest(
+		reportingRepository,
+		fmt.Sprintf("E2E prebuilt PLR status reporting %s", testNamespace),
+		"Temporary PR for integration-service Forgejo status-reporting e2e tests. This PR is closed automatically.",
+		branchName,
+		componentDefaultBranch,
+	)
+	if err != nil {
+		return 0, "", branchName, fmt.Errorf("failed to create Forgejo status-reporting pull request from branch %q: %w", branchName, err)
+	}
+
+	sha := pr.HeadSHA
+	if sha == "" && file != nil {
+		sha = file.CommitSHA
+	}
+	if pr.Number == 0 || sha == "" {
+		return pr.Number, sha, branchName, fmt.Errorf("created Forgejo status-reporting pull request from branch %q but PR number or head SHA was empty", branchName)
+	}
+	return pr.Number, sha, branchName, nil
+}
+
+func createForgejoComponentWithoutPACMergeRequest(f framework.Framework, testNamespace, applicationName, componentName, reportingRepoURL string) *appstudioApi.Component {
+	componentObj := appstudioApi.ComponentSpec{
+		ComponentName: componentName,
+		Application:   applicationName,
+		Source: appstudioApi.ComponentSource{
+			ComponentSourceUnion: appstudioApi.ComponentSourceUnion{
+				GitSource: &appstudioApi.GitSource{
+					URL:           reportingRepoURL,
+					Revision:      componentDefaultBranch,
+					DockerfileURL: "Dockerfile",
+				},
+			},
+		},
+	}
+	buildPipelineAnnotation := build.GetBuildPipelineBundleAnnotation(constants.DockerBuildOciTAMin)
+	gitProviderAnnotation := map[string]string{"git-provider": "forgejo"}
+
+	component, err := f.AsKubeAdmin.HasController.CreateComponentWithoutPACMergeRequest(componentObj, testNamespace, applicationName,
+		utils.MergeMaps(buildPipelineAnnotation, gitProviderAnnotation))
+	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	return component
+}
+
+func applyPrebuiltForgejoStatusReportingBuildPLR(f *framework.Framework, namespace, applicationName, componentName string, prNumber int, prHeadSha, sourceBranch, reportingRepoURL, reportingRepository string, spec prebuiltBuildPLRSpec) (*pipeline.PipelineRun, error) {
+	if spec.Image == "" {
+		spec.Image = prebuiltImageForStatusReporting
+	}
+	if spec.PullRequestNumber == 0 {
+		spec.PullRequestNumber = prNumber
+	}
+	if spec.SHA == "" {
+		spec.SHA = prHeadSha
+	}
+	if spec.SourceBranch == "" {
+		spec.SourceBranch = sourceBranch
+	}
+	if spec.TargetBranch == "" {
+		spec.TargetBranch = componentDefaultBranch
+	}
+	if spec.RepoName == "" {
+		_, repo, ok := strings.Cut(reportingRepository, "/")
+		if ok {
+			spec.RepoName = repo
+		}
+	}
+	if spec.RepoURL == "" {
+		spec.RepoURL = reportingRepoURL
+	}
+	if spec.SourceRepoOrg == "" {
+		spec.SourceRepoOrg = forgejoOrg
+	}
+	if spec.GitProvider == "" {
+		spec.GitProvider = gitops.PipelineAsCodeForgejoProviderType
+	}
+	return applyPrebuiltBuildPLR(f, namespace, applicationName, componentName, spec)
+}

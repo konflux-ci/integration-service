@@ -16,6 +16,7 @@ linters:
       - third_party$
       - builtin$
       - examples$
+      - vendor$
 formatters:
   exclusions:
     generated: lax
@@ -23,3 +24,4 @@ formatters:
       - third_party$
       - builtin$
       - examples$
+      - vendor$
