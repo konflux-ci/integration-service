@@ -34,7 +34,8 @@ agents:
         "sonam1412",
         "NigelByrne1",
         "ainephelan365",
-        "jsztuka"
+        "jsztuka",
+        "jencull"
       ]
 # Where fullsend may open tracking issues. The legacy top-level
 # create_issues.allow_targets key was removed upstream (fullsend #9074);
