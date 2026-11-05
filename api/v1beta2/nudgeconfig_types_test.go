@@ -38,19 +38,19 @@ func TestNudgeConfigSpec(t *testing.T) {
 		Spec: NudgeConfigSpec{
 			Nudges: []NudgeRelationship{
 				{
-					From:        "component-a",
-					To:          "component-b",
+					From:        ComponentVersion{Component: "component-a"},
+					To:          ComponentVersion{Component: "component-b"},
 					Mode:        NudgeModeValidated,
 					GatingGroup: "frontend-group",
 				},
 				{
-					From: "component-a",
-					To:   "component-c",
+					From: ComponentVersion{Component: "component-a"},
+					To:   ComponentVersion{Component: "component-c"},
 					Mode: NudgeModeImmediate,
 				},
 				{
-					From:        "component-d",
-					To:          "component-e",
+					From:        ComponentVersion{Component: "component-d"},
+					To:          ComponentVersion{Component: "component-e"},
 					Mode:        NudgeModeValidated,
 					GatingGroup: "backend-group",
 				},
@@ -69,10 +69,10 @@ func TestNudgeConfigSpec(t *testing.T) {
 	}
 
 	first := nc.Spec.Nudges[0]
-	if first.From != "component-a" {
+	if first.From.String() != "component-a" {
 		t.Errorf("Expected From 'component-a', got '%s'", first.From)
 	}
-	if first.To != "component-b" {
+	if first.To.String() != "component-b" {
 		t.Errorf("Expected To 'component-b', got '%s'", first.To)
 	}
 	if first.Mode != NudgeModeValidated {
@@ -136,7 +136,7 @@ func TestNudgeConfigDeepCopy(t *testing.T) {
 		},
 		Spec: NudgeConfigSpec{
 			Nudges: []NudgeRelationship{
-				{From: "component-a", To: "component-b", Mode: NudgeModeImmediate},
+				{From: ComponentVersion{Component: "component-a"}, To: ComponentVersion{Component: "component-b"}, Mode: NudgeModeImmediate},
 			},
 		},
 	}
@@ -151,11 +151,11 @@ func TestNudgeConfigDeepCopy(t *testing.T) {
 	}
 
 	copied.Name = "modified"
-	copied.Spec.Nudges[0].From = "modified-component"
+	copied.Spec.Nudges[0].From = ComponentVersion{Component: "modified-component"}
 	if original.Name != NudgeConfigSingletonName {
 		t.Errorf("Original name was modified: got '%s'", original.Name)
 	}
-	if original.Spec.Nudges[0].From != "component-a" {
+	if original.Spec.Nudges[0].From.String() != "component-a" {
 		t.Errorf("Original nudge From was modified: got '%s'", original.Spec.Nudges[0].From)
 	}
 }
@@ -167,7 +167,7 @@ func TestNudgeConfigListDeepCopy(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{Name: NudgeConfigSingletonName, Namespace: "ns-1"},
 				Spec: NudgeConfigSpec{
 					Nudges: []NudgeRelationship{
-						{From: "comp-a", To: "comp-b"},
+						{From: ComponentVersion{Component: "comp-a"}, To: ComponentVersion{Component: "comp-b"}},
 					},
 				},
 			},
@@ -200,12 +200,12 @@ func TestNudgeConfigSpecDeepCopy(t *testing.T) {
 			},
 		},
 		Nudges: []NudgeRelationship{
-			{From: "comp-a", To: "comp-b", Mode: NudgeModeValidated, GatingGroup: "grp-1"},
+			{From: ComponentVersion{Component: "comp-a"}, To: ComponentVersion{Component: "comp-b"}, Mode: NudgeModeValidated, GatingGroup: "grp-1"},
 		},
 	}
 
 	copied := original.DeepCopy()
-	if copied.Nudges[0].From != "comp-a" {
+	if copied.Nudges[0].From.String() != "comp-a" {
 		t.Errorf("Expected From 'comp-a', got '%s'", copied.Nudges[0].From)
 	}
 	if len(copied.TargetConfig) != 1 || copied.TargetConfig[0].Target != "bundle" {
@@ -215,9 +215,9 @@ func TestNudgeConfigSpecDeepCopy(t *testing.T) {
 		t.Fatal("Expected copied TargetConfig.BatchPolicy.DebounceTimeout")
 	}
 
-	copied.Nudges[0].From = "modified"
+	copied.Nudges[0].From = ComponentVersion{Component: "modified"}
 	copied.TargetConfig[0].BatchPolicy.DebounceTimeout.Duration = time.Hour
-	if original.Nudges[0].From != "comp-a" {
+	if original.Nudges[0].From.String() != "comp-a" {
 		t.Errorf("Original Spec was modified: got '%s'", original.Nudges[0].From)
 	}
 	if original.TargetConfig[0].BatchPolicy.DebounceTimeout.Duration != 45*time.Minute {
@@ -456,7 +456,7 @@ func TestNudgeConfigActionsForceFireJSON(t *testing.T) {
 
 func TestNudgeConfigNilActionsOmittedFromJSON(t *testing.T) {
 	spec := NudgeConfigSpec{
-		Nudges: []NudgeRelationship{{From: "component-a", To: "component-b"}},
+		Nudges: []NudgeRelationship{{From: ComponentVersion{Component: "component-a"}, To: ComponentVersion{Component: "component-b"}}},
 	}
 
 	encoded, err := json.Marshal(spec)

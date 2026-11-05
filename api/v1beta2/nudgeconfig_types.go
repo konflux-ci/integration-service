@@ -38,6 +38,7 @@ const (
 
 type NudgeModeType = konfluxv1beta2.NudgeModeType
 type NudgeRelationship = konfluxv1beta2.NudgeRelationship
+type ComponentVersion = konfluxv1beta2.ComponentVersion
 type FailurePolicyType = konfluxv1beta2.FailurePolicyType
 type BatchDefaults = konfluxv1beta2.BatchDefaults
 type BatchPolicy = konfluxv1beta2.BatchPolicy

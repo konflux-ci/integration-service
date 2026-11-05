@@ -45,8 +45,8 @@ var _ = Describe("NudgeConfig CEL validation", Ordered, func() {
 			},
 			Spec: NudgeConfigSpec{
 				Nudges: []NudgeRelationship{
-					{From: "component-a", To: "component-b", Mode: NudgeModeValidated},
-					{From: "component-a", To: "component-c"},
+					{From: ComponentVersion{Component: "component-a", Version: "main"}, To: ComponentVersion{Component: "component-b", Version: "main"}, Mode: NudgeModeValidated},
+					{From: ComponentVersion{Component: "component-a", Version: "main"}, To: ComponentVersion{Component: "component-c", Version: "main"}},
 				},
 			},
 		}
@@ -71,7 +71,7 @@ var _ = Describe("NudgeConfig CEL validation", Ordered, func() {
 			},
 			Spec: NudgeConfigSpec{
 				Nudges: []NudgeRelationship{
-					{From: "component-a", To: "component-b"},
+					{From: ComponentVersion{Component: "component-a", Version: "main"}, To: ComponentVersion{Component: "component-b", Version: "main"}},
 				},
 			},
 		}
@@ -91,8 +91,26 @@ var _ = Describe("NudgeConfig CEL validation", Ordered, func() {
 			},
 			Spec: NudgeConfigSpec{
 				Nudges: []NudgeRelationship{
-					{From: "component-a", To: "component-b"},
-					{From: "component-x", To: "component-x"},
+					{From: ComponentVersion{Component: "component-a", Version: "main"}, To: ComponentVersion{Component: "component-b", Version: "main"}},
+					{From: ComponentVersion{Component: "component-x", Version: "main"}, To: ComponentVersion{Component: "component-x", Version: "main"}},
+				},
+			},
+		}
+		err := k8sClient.Create(ctx, nc)
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("self-nudge"))
+		Expect(errors.IsInvalid(err)).To(BeTrue())
+	})
+
+	It("should reject a NudgeConfig containing a wildcard-version self-nudge", func() {
+		nc := &NudgeConfig{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      NudgeConfigSingletonName,
+				Namespace: "default",
+			},
+			Spec: NudgeConfigSpec{
+				Nudges: []NudgeRelationship{
+					{From: ComponentVersion{Component: "backend"}, To: ComponentVersion{Component: "backend", Version: "main"}},
 				},
 			},
 		}
@@ -103,27 +121,39 @@ var _ = Describe("NudgeConfig CEL validation", Ordered, func() {
 	})
 
 	It("should reject a NudgeConfig with duplicate (from, to) pairs with different modes", func() {
-		spec := NudgeConfigSpec{
-			Nudges: []NudgeRelationship{
-				{From: "component-a", To: "component-b"},
-				{From: "component-a", To: "component-b", Mode: NudgeModeValidated},
+		nc := &NudgeConfig{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      NudgeConfigSingletonName,
+				Namespace: "default",
+			},
+			Spec: NudgeConfigSpec{
+				Nudges: []NudgeRelationship{
+					{From: ComponentVersion{Component: "component-a", Version: "main"}, To: ComponentVersion{Component: "component-b", Version: "main"}},
+					{From: ComponentVersion{Component: "component-a", Version: "main"}, To: ComponentVersion{Component: "component-b", Version: "main"}, Mode: NudgeModeValidated},
+				},
 			},
 		}
 		// Duplicate detection moved from a CEL exists_one rule to the validating webhook
 		// (O(n^2) CEL exceeds the API server cost budget at the 4096-item limit).
-		err := spec.ValidateUniqueNudges()
+		err := nc.Spec.ValidateUniqueNudges()
 		Expect(err).To(HaveOccurred())
 		Expect(err.Error()).To(ContainSubstring("duplicate (from, to) pair not allowed"))
 	})
 
 	It("should reject a NudgeConfig with exact duplicate entries", func() {
-		spec := NudgeConfigSpec{
-			Nudges: []NudgeRelationship{
-				{From: "component-a", To: "component-b"},
-				{From: "component-a", To: "component-b"},
+		nc := &NudgeConfig{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      NudgeConfigSingletonName,
+				Namespace: "default",
+			},
+			Spec: NudgeConfigSpec{
+				Nudges: []NudgeRelationship{
+					{From: ComponentVersion{Component: "component-a", Version: "main"}, To: ComponentVersion{Component: "component-b", Version: "main"}},
+					{From: ComponentVersion{Component: "component-a", Version: "main"}, To: ComponentVersion{Component: "component-b", Version: "main"}},
+				},
 			},
 		}
-		err := spec.ValidateUniqueNudges()
+		err := nc.Spec.ValidateUniqueNudges()
 		Expect(err).To(HaveOccurred())
 		Expect(err.Error()).To(ContainSubstring("duplicate (from, to) pair not allowed"))
 	})
@@ -136,7 +166,7 @@ var _ = Describe("NudgeConfig CEL validation", Ordered, func() {
 			},
 			Spec: NudgeConfigSpec{
 				Nudges: []NudgeRelationship{
-					{From: "component-a", To: "component-b"},
+					{From: ComponentVersion{Component: "component-a", Version: "main"}, To: ComponentVersion{Component: "component-b", Version: "main"}},
 				},
 			},
 		}
@@ -155,7 +185,7 @@ var _ = Describe("NudgeConfig CEL validation", Ordered, func() {
 			},
 			Spec: NudgeConfigSpec{
 				Nudges: []NudgeRelationship{
-					{From: "component-a", To: "component-b", Mode: NudgeModeValidated},
+					{From: ComponentVersion{Component: "component-a", Version: "main"}, To: ComponentVersion{Component: "component-b", Version: "main"}, Mode: NudgeModeValidated},
 				},
 			},
 		}
@@ -174,7 +204,7 @@ var _ = Describe("NudgeConfig CEL validation", Ordered, func() {
 			},
 			Spec: NudgeConfigSpec{
 				Nudges: []NudgeRelationship{
-					{From: "Component_A", To: "component-b"},
+					{From: ComponentVersion{Component: "Component_A", Version: "main"}, To: ComponentVersion{Component: "component-b", Version: "main"}},
 				},
 			},
 		}
@@ -191,7 +221,7 @@ var _ = Describe("NudgeConfig CEL validation", Ordered, func() {
 			},
 			Spec: NudgeConfigSpec{
 				Nudges: []NudgeRelationship{
-					{From: "component-a", To: "component-b", Mode: NudgeModeType("bogus")},
+					{From: ComponentVersion{Component: "component-a", Version: "main"}, To: ComponentVersion{Component: "component-b", Version: "main"}, Mode: NudgeModeType("bogus")},
 				},
 			},
 		}
@@ -214,7 +244,7 @@ var _ = Describe("NudgeConfig CEL validation", Ordered, func() {
 						FailurePolicy:   failurePolicyPtr(FailurePolicyProceedWithPartial),
 					},
 					Nudges: []NudgeRelationship{
-						{From: "component-a", To: "component-b"},
+						{From: ComponentVersion{Component: "component-a", Version: "main"}, To: ComponentVersion{Component: "component-b", Version: "main"}},
 					},
 				},
 			}
@@ -239,7 +269,7 @@ var _ = Describe("NudgeConfig CEL validation", Ordered, func() {
 				},
 				Spec: NudgeConfigSpec{
 					Nudges: []NudgeRelationship{
-						{From: "component-a", To: "component-b"},
+						{From: ComponentVersion{Component: "component-a", Version: "main"}, To: ComponentVersion{Component: "component-b", Version: "main"}},
 					},
 				},
 			}
@@ -510,10 +540,11 @@ var _ = Describe("NudgeConfig CEL validation", Ordered, func() {
 					},
 				},
 			}
-			err := k8sClient.Create(ctx, nc)
+			// Duplicate targetConfig validation is enforced by the validating webhook/helper
+			// instead of CEL to keep the CRD within the API server cost budget.
+			err := nc.Spec.ValidateBatchConfig()
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("duplicate target"))
-			Expect(errors.IsInvalid(err)).To(BeTrue())
 		})
 
 		It("should reject targetConfig batchPolicy debounceTimeout below 1m", func() {
@@ -583,8 +614,8 @@ var _ = Describe("NudgeConfig CEL validation", Ordered, func() {
 		nudges := make([]NudgeRelationship, 4096)
 		for i := range nudges {
 			nudges[i] = NudgeRelationship{
-				From: fmt.Sprintf("src-%d", i),
-				To:   fmt.Sprintf("tgt-%d", i),
+				From: ComponentVersion{Component: fmt.Sprintf("src-%d", i)},
+				To:   ComponentVersion{Component: fmt.Sprintf("tgt-%d", i)},
 			}
 		}
 		nc := &NudgeConfig{
@@ -601,8 +632,8 @@ var _ = Describe("NudgeConfig CEL validation", Ordered, func() {
 		nudges := make([]NudgeRelationship, 4097)
 		for i := range nudges {
 			nudges[i] = NudgeRelationship{
-				From: fmt.Sprintf("src-%d", i),
-				To:   fmt.Sprintf("tgt-%d", i),
+				From: ComponentVersion{Component: fmt.Sprintf("src-%d", i), Version: "main"},
+				To:   ComponentVersion{Component: fmt.Sprintf("tgt-%d", i), Version: "main"},
 			}
 		}
 		nc := &NudgeConfig{
