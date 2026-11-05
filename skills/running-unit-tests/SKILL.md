@@ -74,5 +74,6 @@ Each resource type has a corresponding `*ContextKey` constant (34 keys available
 
 - Tool: codecov with flag `unit-tests`
 - Patch target: 85% (see [estimating-codecov-patch-coverage](../estimating-codecov-patch-coverage/SKILL.md) for the local estimate)
-- Project coverage remains informational
+- CI check: informational (non-blocking per `codecov.yml`); local
+  estimator enforces 85% as a quality gate
 - Ignores: `**/zz_generated*`, `e2e-tests/**`, vendor

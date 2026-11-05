@@ -23,9 +23,11 @@ coverage of the added lines in the patch, not coverage of the whole repository.
 3. Re-run `make codecov-estimate` after making changes.
 
 Do not proceed with PR preparation when `make test` fails, the checker cannot run,
-the checker warns that the local Go version differs from CI, or the estimate is
-below 85%. The checker exits 1 below 85% and exits 2 when it cannot produce a
-reliable estimate.
+or the checker warns that the local Go version differs from CI. The Codecov CI
+check is currently informational (non-blocking per `codecov.yml`), but the local
+estimator enforces the 85% target as a quality gate. Aim to resolve coverage gaps
+before opening the PR. The checker exits 1 below 85% and exits 2 when it cannot
+produce a reliable estimate.
 
 If the checker warns about the Go version, install the version specified in
 `.github/workflows/pr.yaml` and re-run with it, for example:
