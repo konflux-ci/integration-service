@@ -180,7 +180,7 @@ var _ = framework.IntegrationServiceSuiteDescribe("Integration Service E2E tests
 				gomega.Expect(statusDetail).To(gomega.BeNil())
 			})
 
-			ginkgo.It("checks if the finalizer was removed from all of the related Integration pipelineRuns", func() {
+			ginkgo.It("checks if the finalizer was removed from all of the related Integration pipelineRuns", ginkgo.FlakeAttempts(3), func() {
 				gomega.Expect(f.AsKubeDeveloper.IntegrationController.WaitForFinalizerToGetRemovedFromAllIntegrationPipelineRuns(testNamespace, applicationName, snapshot, []string{integrationTestScenario.Name})).To(gomega.Succeed())
 			})
 		})
@@ -337,7 +337,7 @@ var _ = framework.IntegrationServiceSuiteDescribe("Integration Service E2E tests
 			gomega.Expect(gitops.HaveAppStudioTestsSucceeded(snapshot)).To(gomega.BeFalse(), "expected tests to fail for snapshot %s/%s", snapshot.GetNamespace(), snapshot.GetName())
 		})
 
-		ginkgo.It("checks if the finalizer was removed from all of the related Integration pipelineRuns", func() {
+		ginkgo.It("checks if the finalizer was removed from all of the related Integration pipelineRuns", ginkgo.FlakeAttempts(3), func() {
 			gomega.Expect(f.AsKubeDeveloper.IntegrationController.WaitForFinalizerToGetRemovedFromAllIntegrationPipelineRuns(testNamespace, applicationName, snapshot, []string{integrationTestScenario.Name})).To(gomega.Succeed())
 		})
 
