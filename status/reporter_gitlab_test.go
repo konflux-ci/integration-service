@@ -707,10 +707,35 @@ var _ = Describe("GitLabReporter", func() {
 			statusCode, err := reporter.Initialize(context.TODO(), hasSnapshot)
 			Expect(err).To(Succeed())
 			Expect(statusCode).To(Equal(http.StatusOK))
+
+			// Register pipeline mock so getMergeRequestPipelineID succeeds
+			// on the first project (target) without retries.
+			pipelines := []*gitlab.Pipeline{{ID: 101, SHA: digest, Status: "success"}}
+			muxMergeRequestPipelineGet(mux, targetProjectID, pipelines)
 		})
 
 		AfterEach(func() {
 			server.Close()
+		})
+
+		It("includes MR pipeline ID in consolidated status request", func() {
+			var body string
+			targetPath := fmt.Sprintf("/projects/%s/statuses/%s", targetProjectID, digest)
+			mux.HandleFunc(targetPath, func(rw http.ResponseWriter, r *http.Request) {
+				b, _ := io.ReadAll(r.Body)
+				body = string(b)
+				rw.WriteHeader(http.StatusCreated)
+				fmt.Fprintf(rw, `{"id": 1}`)
+			})
+
+			reports := []status.TestReport{
+				{ScenarioName: "s1", Status: integrationteststatus.IntegrationTestStatusTestPassed},
+			}
+
+			statusCode, err := reporter.ReportConsolidatedStatus(context.TODO(), reports)
+			Expect(err).To(Succeed())
+			Expect(statusCode).To(Equal(http.StatusCreated))
+			Expect(body).To(ContainSubstring("pipeline_id"))
 		})
 
 		It("posts a single consolidated status with correct passed/total description", func() {
