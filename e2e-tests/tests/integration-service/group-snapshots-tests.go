@@ -410,8 +410,8 @@ var _ = framework.IntegrationServiceSuiteDescribe("Creation of group snapshots f
 				nudgeConfig, err = f.AsKubeAdmin.IntegrationController.CreateNudgeConfig(
 					testNamespace,
 					[]integrationv1beta2.NudgeRelationship{{
-						From: componentC.Name,
-						To:   componentA.Name,
+						From: integrationv1beta2.ComponentVersion{Component: componentC.Name},
+						To:   integrationv1beta2.ComponentVersion{Component: componentA.Name},
 						Mode: integrationv1beta2.NudgeModeImmediate,
 					}},
 				)
