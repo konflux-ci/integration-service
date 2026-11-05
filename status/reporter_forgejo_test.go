@@ -20,6 +20,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -552,7 +553,232 @@ var _ = Describe("ForgejoReporter", func() {
 		})
 	})
 
+	Context("when testing Initialize retry behavior", func() {
+		var (
+			secretData    map[string][]byte
+			repoCR        pacv1alpha1.Repository
+			defaultAPIURL = "/api/v1"
+			savedBackoff  wait.Backoff
+		)
+
+		BeforeEach(func() {
+			buf.Reset()
+			savedBackoff = status.GetReporterRetryBackoff()
+			status.SetReporterRetryBackoff(wait.Backoff{
+				Steps:    3,
+				Duration: 1 * time.Millisecond,
+				Factor:   1.0,
+				Jitter:   0.0,
+			})
+			secretData = map[string][]byte{
+				"example-token": []byte("example-personal-access-token"),
+			}
+			mockK8sClient = &MockK8sClient{
+				getInterceptor: func(key client.ObjectKey, obj client.Object) {
+					if secret, ok := obj.(*v1.Secret); ok {
+						secret.Data = secretData
+					}
+				},
+				listInterceptor: func(list client.ObjectList) {
+					if repoList, ok := list.(*pacv1alpha1.RepositoryList); ok {
+						repoList.Items = []pacv1alpha1.Repository{repoCR}
+					}
+				},
+			}
+		})
+
+		AfterEach(func() {
+			status.SetReporterRetryBackoff(savedBackoff)
+		})
+
+		It("retries Initialize on transient 429 and succeeds on subsequent attempt", func() {
+			var versionCallCount int32
+			mux := http.NewServeMux()
+			apiHandler := http.NewServeMux()
+			apiHandler.Handle(defaultAPIURL+"/", http.StripPrefix(defaultAPIURL, mux))
+
+			mux.HandleFunc("/version", func(rw http.ResponseWriter, r *http.Request) {
+				call := atomic.AddInt32(&versionCallCount, 1)
+				if call == 1 {
+					rw.WriteHeader(http.StatusTooManyRequests)
+					return
+				}
+				rw.Header().Set("Content-Type", "application/json")
+				fmt.Fprintf(rw, `{"version": "1.20.0"}`)
+			})
+			server := httptest.NewServer(apiHandler)
+			defer server.Close()
+
+			mockRepoURL := fmt.Sprintf("%s/%s/%s", server.URL, owner, repo)
+			testSnapshot := hasSnapshot.DeepCopy()
+			testSnapshot.Annotations[gitops.PipelineAsCodeRepoURLAnnotation] = mockRepoURL
+
+			repoCR = pacv1alpha1.Repository{
+				Spec: pacv1alpha1.RepositorySpec{
+					URL: mockRepoURL,
+					GitProvider: &pacv1alpha1.GitProvider{
+						Secret: &pacv1alpha1.Secret{
+							Name: "example-secret-name",
+							Key:  "example-token",
+						},
+					},
+				},
+			}
+
+			reporter := status.NewForgejoReporter(log, mockK8sClient)
+			statusCode, err := reporter.Initialize(context.TODO(), testSnapshot)
+			Expect(err).To(Succeed())
+			Expect(statusCode).To(Equal(http.StatusOK))
+			Expect(atomic.LoadInt32(&versionCallCount)).To(BeNumerically(">", 1))
+			Expect(buf.String()).To(ContainSubstring("retrying forgejo client initialization after transient error"))
+		})
+
+		It("does not retry Initialize on 401 Unauthorized", func() {
+			var versionCallCount int32
+			mux := http.NewServeMux()
+			apiHandler := http.NewServeMux()
+			apiHandler.Handle(defaultAPIURL+"/", http.StripPrefix(defaultAPIURL, mux))
+
+			mux.HandleFunc("/version", func(rw http.ResponseWriter, r *http.Request) {
+				atomic.AddInt32(&versionCallCount, 1)
+				// Return only the status code with no body; the empty response
+				// fails JSON unmarshalling in the SDK, triggering its
+				// "unknown API Error: 401" error format.
+				rw.WriteHeader(http.StatusUnauthorized)
+			})
+			server := httptest.NewServer(apiHandler)
+			defer server.Close()
+
+			mockRepoURL := fmt.Sprintf("%s/%s/%s", server.URL, owner, repo)
+			testSnapshot := hasSnapshot.DeepCopy()
+			testSnapshot.Annotations[gitops.PipelineAsCodeRepoURLAnnotation] = mockRepoURL
+
+			repoCR = pacv1alpha1.Repository{
+				Spec: pacv1alpha1.RepositorySpec{
+					URL: mockRepoURL,
+					GitProvider: &pacv1alpha1.GitProvider{
+						Secret: &pacv1alpha1.Secret{
+							Name: "example-secret-name",
+							Key:  "example-token",
+						},
+					},
+				},
+			}
+
+			reporter := status.NewForgejoReporter(log, mockK8sClient)
+			_, err := reporter.Initialize(context.TODO(), testSnapshot)
+			Expect(err).To(HaveOccurred())
+			Expect(atomic.LoadInt32(&versionCallCount)).To(BeNumerically("==", 1))
+		})
+
+		It("exhausts retries on persistent 429 errors", func() {
+			var versionCallCount int32
+			mux := http.NewServeMux()
+			apiHandler := http.NewServeMux()
+			apiHandler.Handle(defaultAPIURL+"/", http.StripPrefix(defaultAPIURL, mux))
+
+			mux.HandleFunc("/version", func(rw http.ResponseWriter, r *http.Request) {
+				atomic.AddInt32(&versionCallCount, 1)
+				rw.WriteHeader(http.StatusTooManyRequests)
+			})
+			server := httptest.NewServer(apiHandler)
+			defer server.Close()
+
+			mockRepoURL := fmt.Sprintf("%s/%s/%s", server.URL, owner, repo)
+			testSnapshot := hasSnapshot.DeepCopy()
+			testSnapshot.Annotations[gitops.PipelineAsCodeRepoURLAnnotation] = mockRepoURL
+
+			repoCR = pacv1alpha1.Repository{
+				Spec: pacv1alpha1.RepositorySpec{
+					URL: mockRepoURL,
+					GitProvider: &pacv1alpha1.GitProvider{
+						Secret: &pacv1alpha1.Secret{
+							Name: "example-secret-name",
+							Key:  "example-token",
+						},
+					},
+				},
+			}
+
+			reporter := status.NewForgejoReporter(log, mockK8sClient)
+			_, err := reporter.Initialize(context.TODO(), testSnapshot)
+			Expect(err).To(HaveOccurred())
+			// 3 steps = 1 initial + 2 retries = 3 calls total
+			Expect(atomic.LoadInt32(&versionCallCount)).To(BeNumerically("==", 3))
+			Expect(buf.String()).To(ContainSubstring("failed to create forgejo client after all retries"))
+		})
+
+		It("does not retry Initialize on 403 with JSON message body", func() {
+			var versionCallCount int32
+			mux := http.NewServeMux()
+			apiHandler := http.NewServeMux()
+			apiHandler.Handle(defaultAPIURL+"/", http.StripPrefix(defaultAPIURL, mux))
+
+			mux.HandleFunc("/version", func(rw http.ResponseWriter, r *http.Request) {
+				atomic.AddInt32(&versionCallCount, 1)
+				// Return a JSON body with "message" key; the SDK formats
+				// this as a message-only error with no numeric status code,
+				// but the statusCapturingTransport captures the 403 directly.
+				rw.Header().Set("Content-Type", "application/json")
+				rw.WriteHeader(http.StatusForbidden)
+				fmt.Fprintf(rw, `{"message": "access denied"}`)
+			})
+			server := httptest.NewServer(apiHandler)
+			defer server.Close()
+
+			mockRepoURL := fmt.Sprintf("%s/%s/%s", server.URL, owner, repo)
+			testSnapshot := hasSnapshot.DeepCopy()
+			testSnapshot.Annotations[gitops.PipelineAsCodeRepoURLAnnotation] = mockRepoURL
+
+			repoCR = pacv1alpha1.Repository{
+				Spec: pacv1alpha1.RepositorySpec{
+					URL: mockRepoURL,
+					GitProvider: &pacv1alpha1.GitProvider{
+						Secret: &pacv1alpha1.Secret{
+							Name: "example-secret-name",
+							Key:  "example-token",
+						},
+					},
+				},
+			}
+
+			reporter := status.NewForgejoReporter(log, mockK8sClient)
+			_, err := reporter.Initialize(context.TODO(), testSnapshot)
+			Expect(err).To(HaveOccurred())
+			Expect(atomic.LoadInt32(&versionCallCount)).To(BeNumerically("==", 1))
+		})
+	})
+
 	Describe("Test helper functions", func() {
+		Describe("extractHTTPStatusFromError", func() {
+			DescribeTable("extracts status codes from forgejo SDK error messages",
+				func(errMsg string, expectedCode int) {
+					err := errors.New(errMsg)
+					Expect(status.ExtractHTTPStatusFromError(err)).To(Equal(expectedCode))
+				},
+				Entry("unknown API Error format",
+					"unknown API Error: 429\nRequest: '/version' with 'GET' method",
+					429),
+				Entry("unknown API Error 401",
+					"unknown API Error: 401\nRequest: '/version' with 'GET' method",
+					401),
+				Entry("unknown API Error 500",
+					"unknown API Error: 500\nRequest: '/version' with 'GET' method",
+					500),
+				Entry("plain message with no status code",
+					"connection refused",
+					0),
+				Entry("message-only error from JSON response",
+					"token is required",
+					0),
+				Entry("empty error string returns 0", "", 0),
+			)
+
+			It("returns 0 for nil error", func() {
+				Expect(status.ExtractHTTPStatusFromError(nil)).To(Equal(0))
+			})
+		})
+
 		DescribeTable(
 			"reports correct forgejo statuses from test statuses",
 			func(teststatus integrationteststatus.IntegrationTestStatus, fjState string) {
