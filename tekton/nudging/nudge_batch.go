@@ -364,7 +364,9 @@ func findAccumulatingBatch(batches []v1beta2.ActiveBatch, target string) (int, *
 }
 
 // findForceFireBatch locates the batch that should respond to spec.actions.forceFire for target.
+// Whether partial/failed batches may fire is decided by validateForceFireBatch, not here.
 func findForceFireBatch(batches []v1beta2.ActiveBatch, target string, includePartial bool) (int, *v1beta2.ActiveBatch) {
+	_ = includePartial
 	idx, batch := findAccumulatingBatch(batches, target)
 	if batch != nil {
 		return idx, batch
@@ -374,11 +376,7 @@ func findForceFireBatch(batches []v1beta2.ActiveBatch, target string, includePar
 			continue
 		}
 		switch batches[i].Phase {
-		case v1beta2.BatchPhaseBlocked:
-			if includePartial {
-				return i, &batches[i]
-			}
-		case v1beta2.BatchPhaseFailed:
+		case v1beta2.BatchPhaseBlocked, v1beta2.BatchPhaseFailed:
 			return i, &batches[i]
 		}
 	}
@@ -393,7 +391,7 @@ func findOrCreateAcceptingBatch(batches []v1beta2.ActiveBatch, target string, no
 		}
 	}
 
-	batchID := fmt.Sprintf("%s-%d", target, now.Unix())
+	batchID := newBatchID(target, now)
 	newBatch := v1beta2.ActiveBatch{
 		Target:           target,
 		BatchID:          batchID,
@@ -414,6 +412,10 @@ func isBatchFiringForTarget(batches []v1beta2.ActiveBatch, target string) bool {
 		}
 	}
 	return false
+}
+
+func newBatchID(target string, createdAt metav1.Time) string {
+	return fmt.Sprintf("%s_%d", target, createdAt.Unix())
 }
 
 func upsertAccumulatedEntry(batch *v1beta2.ActiveBatch, entry v1beta2.AccumulatedEntry) {
@@ -506,6 +508,14 @@ func recordSuccessForBatchedNudge(
 		latest.Status.ActiveBatches = batches
 		batch := &latest.Status.ActiveBatches[batchIdx]
 
+		for _, entry := range batch.Accumulated {
+			if entry.From == sourceComponent &&
+				entry.ImageDigest == digest &&
+				entry.BuildPipelineRun == sourceRef {
+				return nil
+			}
+		}
+
 		upsertAccumulatedEntry(batch, v1beta2.AccumulatedEntry{
 			From:               sourceComponent,
 			ImageDigest:        digest,
@@ -543,6 +553,14 @@ func recordFailureForBatchedNudge(
 		batchIdx, _, batches := findOrCreateAcceptingBatch(latest.Status.ActiveBatches, targetName, now, maxWait)
 		latest.Status.ActiveBatches = batches
 		batch := &latest.Status.ActiveBatches[batchIdx]
+
+		for _, entry := range batch.Failed {
+			if entry.From == sourceComponent &&
+				entry.BuildPipelineRun == sourceRef &&
+				entry.Reason == reason {
+				return nil
+			}
+		}
 
 		removeAccumulatedComponent(batch, sourceComponent)
 		upsertFailedEntry(batch, v1beta2.FailedEntry{
@@ -695,6 +713,28 @@ func buildBatchedRenovatePayload(
 		return nil, NudgeTarget{}, nil, fmt.Errorf("no credentials resolved for batched nudge target %q", batch.Target)
 	}
 	return referencePLR, targets[0], renovateEntries, nil
+}
+
+func resolveReferenceBuildPLR(
+	ctx context.Context,
+	c client.Client,
+	namespace string,
+	accumulated []v1beta2.AccumulatedEntry,
+) (*tektonv1.PipelineRun, error) {
+	for _, entry := range accumulated {
+		if entry.BuildPipelineRun == "" {
+			continue
+		}
+		plr := &tektonv1.PipelineRun{}
+		err := c.Get(ctx, types.NamespacedName{Name: entry.BuildPipelineRun, Namespace: namespace}, plr)
+		if err == nil {
+			return plr, nil
+		}
+		if !apierrors.IsNotFound(err) {
+			return nil, fmt.Errorf("loading reference build PipelineRun %q: %w", entry.BuildPipelineRun, err)
+		}
+	}
+	return &tektonv1.PipelineRun{ObjectMeta: metav1.ObjectMeta{Namespace: namespace}}, nil
 }
 
 func setNudgeConfigCondition(nc *v1beta2.NudgeConfig, conditionType string, status metav1.ConditionStatus, reason, message string, now metav1.Time) {
