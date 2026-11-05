@@ -160,16 +160,16 @@ func TestNudgeConfigTypeHelpers(t *testing.T) {
 
 	t.Run("duplicate nudge validation", func(t *testing.T) {
 		valid := NudgeConfigSpec{Nudges: []NudgeRelationship{
-			{From: "component-a", To: "component-b"},
-			{From: "component-a", To: "component-c"},
+			{From: ComponentVersion{Component: "component-a"}, To: ComponentVersion{Component: "component-b"}},
+			{From: ComponentVersion{Component: "component-a"}, To: ComponentVersion{Component: "component-c"}},
 		}}
 		if err := valid.ValidateUniqueNudges(); err != nil {
 			t.Fatalf("unexpected validation error: %v", err)
 		}
 
 		duplicate := NudgeConfigSpec{Nudges: []NudgeRelationship{
-			{From: "component-a", To: "component-b"},
-			{From: "component-a", To: "component-b", Mode: NudgeModeValidated},
+			{From: ComponentVersion{Component: "component-a"}, To: ComponentVersion{Component: "component-b"}},
+			{From: ComponentVersion{Component: "component-a"}, To: ComponentVersion{Component: "component-b"}, Mode: NudgeModeValidated},
 		}}
 		err := duplicate.ValidateUniqueNudges()
 		if err == nil {

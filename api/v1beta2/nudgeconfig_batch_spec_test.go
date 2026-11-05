@@ -68,7 +68,7 @@ var _ = Describe("NudgeConfig batch spec helpers", func() {
 					MaxWaitTime:     durationPtr(DefaultBatchMaxWaitTime),
 					FailurePolicy:   failurePolicyPtr(DefaultBatchFailurePolicy),
 				},
-				Nudges: []NudgeRelationship{{From: "component-a", To: "component-b", Mode: NudgeModeImmediate}},
+				Nudges: []NudgeRelationship{{From: ComponentVersion{Component: "component-a", Version: "main"}, To: ComponentVersion{Component: "component-b", Version: "main"}, Mode: NudgeModeImmediate}},
 			}
 
 			encoded, err := json.Marshal(original)
@@ -211,7 +211,7 @@ var _ = Describe("NudgeConfig batch spec helpers", func() {
 
 		It("should omit nil actions from JSON", func() {
 			spec := NudgeConfigSpec{
-				Nudges: []NudgeRelationship{{From: "component-a", To: "component-b"}},
+				Nudges: []NudgeRelationship{{From: ComponentVersion{Component: "component-a", Version: "main"}, To: ComponentVersion{Component: "component-b", Version: "main"}}},
 			}
 			encoded, err := json.Marshal(spec)
 			Expect(err).NotTo(HaveOccurred())
