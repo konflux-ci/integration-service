@@ -206,17 +206,7 @@ func (a *Adapter) EnsureNudgePipelineRunsExist() (controller.OperationResult, er
 	}
 
 	componentName := a.componentName
-	var immediateTargetNames, batchedTargetNames []string
-	for _, nudge := range nudgeConfig.Spec.Nudges {
-		if nudge.From != componentName || (nudge.Mode != "" && nudge.Mode != v1beta2.NudgeModeImmediate) {
-			continue
-		}
-		if nudgeConfig.Spec.IsTargetBatched(nudge.To) {
-			batchedTargetNames = append(batchedTargetNames, nudge.To)
-		} else {
-			immediateTargetNames = append(immediateTargetNames, nudge.To)
-		}
-	}
+	immediateTargetNames, batchedTargetNames := nudgeTargetNamesForPipelineRun(nudgeConfig, componentName, a.pipelineRun)
 
 	if len(immediateTargetNames) == 0 && len(batchedTargetNames) == 0 {
 		_ = tekton.AnnotateBuildPipelineRun(a.context, a.pipelineRun, tektonconsts.NudgeProcessedAnnotation, "no-matching-edges", a.client)
@@ -462,18 +452,7 @@ func (a *Adapter) RecordFailedBatchedNudgeBuilds() (controller.OperationResult, 
 	}
 
 	componentName := a.componentName
-	var batchedTargets []string
-	for _, nudge := range nudgeConfig.Spec.Nudges {
-		if nudge.From != componentName || (nudge.Mode != "" && nudge.Mode != v1beta2.NudgeModeImmediate) {
-			continue
-		}
-		if !nudgeConfig.Spec.IsTargetBatched(nudge.To) {
-			continue
-		}
-		if !slices.Contains(batchedTargets, nudge.To) {
-			batchedTargets = append(batchedTargets, nudge.To)
-		}
-	}
+	_, batchedTargets := nudgeTargetNamesForPipelineRun(nudgeConfig, componentName, a.pipelineRun)
 	if len(batchedTargets) == 0 {
 		return controller.ContinueProcessing()
 	}
@@ -508,6 +487,39 @@ func (a *Adapter) RecordFailedBatchedNudgeBuilds() (controller.OperationResult, 
 		"targets", processedValue)
 
 	return a.requeueForActiveNudgeBatches(nudgeConfig)
+}
+
+func nudgeTargetNamesForPipelineRun(nudgeConfig *v1beta2.NudgeConfig, componentName string, plr *tektonv1.PipelineRun) (immediateTargetNames, batchedTargetNames []string) {
+	for _, nudge := range nudgeConfig.Spec.Nudges {
+		targetName := nudge.To.Component
+		if !componentVersionMatchesPipelineRun(nudge.From, componentName, plr) || (nudge.Mode != "" && nudge.Mode != v1beta2.NudgeModeImmediate) {
+			continue
+		}
+		if nudgeConfig.Spec.IsTargetBatched(targetName) {
+			if !slices.Contains(batchedTargetNames, targetName) {
+				batchedTargetNames = append(batchedTargetNames, targetName)
+			}
+		} else if !slices.Contains(immediateTargetNames, targetName) {
+			immediateTargetNames = append(immediateTargetNames, targetName)
+		}
+	}
+	return immediateTargetNames, batchedTargetNames
+}
+
+func componentVersionMatchesPipelineRun(componentVersion v1beta2.ComponentVersion, componentName string, plr *tektonv1.PipelineRun) bool {
+	if componentVersion.Component != componentName {
+		return false
+	}
+	if componentVersion.Version == "" {
+		return true
+	}
+	pipelineRunVersion, err := tekton.GetComponentVersionFromPipelineRun(plr)
+	// TODO: delete when we  get rid of old application model
+	// if the build belongs to the application model we shouldl ignore the version matching and only match on component name
+	if err == nil && pipelineRunVersion == "" {
+		return true
+	}
+	return err == nil && pipelineRunVersion == componentVersion.Version
 }
 
 func pipelineRunFailureReason(plr *tektonv1.PipelineRun) string {

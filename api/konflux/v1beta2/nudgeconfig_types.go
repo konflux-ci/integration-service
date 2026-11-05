@@ -47,18 +47,12 @@ const NudgeConfigConditionForceFireIgnored = "ForceFireIgnored"
 // NudgeRelationship defines a single nudge from one component to another.
 type NudgeRelationship struct {
 	// From is the source component name that triggers the nudge when its build succeeds.
-	// +kubebuilder:validation:MinLength=1
-	// +kubebuilder:validation:MaxLength=63
-	// +kubebuilder:validation:Pattern=`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`
 	// +required
-	From string `json:"from"`
+	From ComponentVersion `json:"from"`
 
 	// To is the target component name that receives the nudge.
-	// +kubebuilder:validation:MinLength=1
-	// +kubebuilder:validation:MaxLength=63
-	// +kubebuilder:validation:Pattern=`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`
 	// +required
-	To string `json:"to"`
+	To ComponentVersion `json:"to"`
 
 	// Mode defines when the nudge is triggered.
 	// "immediate" triggers on build success; "validated" triggers after integration tests pass.
@@ -70,6 +64,30 @@ type NudgeRelationship struct {
 	// +kubebuilder:validation:MaxLength=63
 	// +optional
 	GatingGroup string `json:"gatingGroup,omitempty"`
+}
+
+// ComponentVersion combines the component name and version strings
+type ComponentVersion struct {
+	// Component is the name of the Component
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=63
+	// +kubebuilder:validation:Pattern=`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`
+	// +required
+	Component string `json:"component"`
+
+	// TODO: make version required when we get rid of old application model
+	// Version is the version of the Component
+	// +kubebuilder:validation:MaxLength=253
+	// +optional
+	Version string `json:"version"`
+}
+
+// String returns the canonical string representation of the component version.
+func (cv ComponentVersion) String() string {
+	if cv.Version == "" {
+		return cv.Component
+	}
+	return fmt.Sprintf("%s/%s", cv.Component, cv.Version)
 }
 
 // FailurePolicyType defines how a batch behaves when a member source build fails.
@@ -296,7 +314,7 @@ func validateResolvedBatchTiming(target string, debounce, maxWait time.Duration)
 func (spec NudgeConfigSpec) ValidateUniqueNudges() error {
 	seen := make(map[string]struct{}, len(spec.Nudges))
 	for _, n := range spec.Nudges {
-		key := n.From + "\x00" + n.To
+		key := n.From.String() + "\x00" + n.To.String()
 		if _, dup := seen[key]; dup {
 			return fmt.Errorf("duplicate (from, to) pair not allowed: %q -> %q", n.From, n.To)
 		}
@@ -342,8 +360,7 @@ type ForceFireAction struct {
 
 // NudgeConfigSpec defines the desired nudging relationships between components
 // and optional namespace-wide batch defaults.
-// +kubebuilder:validation:XValidation:rule="!has(self.nudges) || self.nudges.all(n, n.from != n.to)",message="self-nudge not allowed: from and to must be different"
-// +kubebuilder:validation:XValidation:rule="!has(self.targetConfig) || self.targetConfig.all(i, self.targetConfig.exists_one(j, i.target == j.target))",message="duplicate target not allowed in targetConfig"
+// +kubebuilder:validation:XValidation:rule="!has(self.nudges) || self.nudges.all(n, !(n.from.component == n.to.component && (!has(n.from.version) || !has(n.to.version) || n.from.version.size() == 0 || n.to.version.size() == 0 || n.from.version == n.to.version)))",message="self-nudge not allowed: from and to must be different"
 type NudgeConfigSpec struct {
 	// BatchDefaults sets default debounce, max wait, and failure policy for batched nudges
 	// to shared targets in this namespace (see BatchDefaults). Reserved until batching is implemented.

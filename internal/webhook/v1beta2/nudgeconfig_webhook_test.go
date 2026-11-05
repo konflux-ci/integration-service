@@ -84,9 +84,9 @@ var _ = Describe("NudgeConfig webhook - cycle detection", Ordered, func() {
 	When("a NudgeConfig is created", func() {
 		It("accepts a valid linear chain", func() {
 			nudgeConfig.Spec.Nudges = []konfluxv1beta2.NudgeRelationship{
-				{From: "component-a", To: "component-b"},
-				{From: "component-b", To: "component-c"},
-				{From: "component-c", To: "component-d"},
+				{From: konfluxv1beta2.ComponentVersion{Component: "component-a"}, To: konfluxv1beta2.ComponentVersion{Component: "component-b"}},
+				{From: konfluxv1beta2.ComponentVersion{Component: "component-b"}, To: konfluxv1beta2.ComponentVersion{Component: "component-c"}},
+				{From: konfluxv1beta2.ComponentVersion{Component: "component-c"}, To: konfluxv1beta2.ComponentVersion{Component: "component-d"}},
 			}
 			warnings, err := validator.ValidateCreate(ctx, nudgeConfig)
 			Expect(err).NotTo(HaveOccurred())
@@ -95,10 +95,10 @@ var _ = Describe("NudgeConfig webhook - cycle detection", Ordered, func() {
 
 		It("accepts a valid DAG with multiple paths", func() {
 			nudgeConfig.Spec.Nudges = []konfluxv1beta2.NudgeRelationship{
-				{From: "a", To: "b"},
-				{From: "a", To: "c"},
-				{From: "b", To: "d"},
-				{From: "c", To: "d"},
+				{From: konfluxv1beta2.ComponentVersion{Component: "a"}, To: konfluxv1beta2.ComponentVersion{Component: "b"}},
+				{From: konfluxv1beta2.ComponentVersion{Component: "a"}, To: konfluxv1beta2.ComponentVersion{Component: "c"}},
+				{From: konfluxv1beta2.ComponentVersion{Component: "b"}, To: konfluxv1beta2.ComponentVersion{Component: "d"}},
+				{From: konfluxv1beta2.ComponentVersion{Component: "c"}, To: konfluxv1beta2.ComponentVersion{Component: "d"}},
 			}
 			warnings, err := validator.ValidateCreate(ctx, nudgeConfig)
 			Expect(err).NotTo(HaveOccurred())
@@ -114,8 +114,8 @@ var _ = Describe("NudgeConfig webhook - cycle detection", Ordered, func() {
 
 		It("rejects duplicate (from, to) pairs", func() {
 			nudgeConfig.Spec.Nudges = []konfluxv1beta2.NudgeRelationship{
-				{From: "component-a", To: "component-b"},
-				{From: "component-a", To: "component-b", Mode: konfluxv1beta2.NudgeModeValidated},
+				{From: konfluxv1beta2.ComponentVersion{Component: "component-a"}, To: konfluxv1beta2.ComponentVersion{Component: "component-b"}},
+				{From: konfluxv1beta2.ComponentVersion{Component: "component-a"}, To: konfluxv1beta2.ComponentVersion{Component: "component-b"}, Mode: konfluxv1beta2.NudgeModeValidated},
 			}
 			_, err := validator.ValidateCreate(ctx, nudgeConfig)
 			Expect(err).To(HaveOccurred())
@@ -124,8 +124,8 @@ var _ = Describe("NudgeConfig webhook - cycle detection", Ordered, func() {
 
 		It("rejects a direct cycle", func() {
 			nudgeConfig.Spec.Nudges = []konfluxv1beta2.NudgeRelationship{
-				{From: "component-a", To: "component-b"},
-				{From: "component-b", To: "component-a"},
+				{From: konfluxv1beta2.ComponentVersion{Component: "component-a"}, To: konfluxv1beta2.ComponentVersion{Component: "component-b"}},
+				{From: konfluxv1beta2.ComponentVersion{Component: "component-b"}, To: konfluxv1beta2.ComponentVersion{Component: "component-a"}},
 			}
 			_, err := validator.ValidateCreate(ctx, nudgeConfig)
 			Expect(err).To(HaveOccurred())
@@ -136,9 +136,9 @@ var _ = Describe("NudgeConfig webhook - cycle detection", Ordered, func() {
 
 		It("rejects a transitive 3-node cycle", func() {
 			nudgeConfig.Spec.Nudges = []konfluxv1beta2.NudgeRelationship{
-				{From: "component-a", To: "component-b"},
-				{From: "component-b", To: "component-c"},
-				{From: "component-c", To: "component-a"},
+				{From: konfluxv1beta2.ComponentVersion{Component: "component-a"}, To: konfluxv1beta2.ComponentVersion{Component: "component-b"}},
+				{From: konfluxv1beta2.ComponentVersion{Component: "component-b"}, To: konfluxv1beta2.ComponentVersion{Component: "component-c"}},
+				{From: konfluxv1beta2.ComponentVersion{Component: "component-c"}, To: konfluxv1beta2.ComponentVersion{Component: "component-a"}},
 			}
 			_, err := validator.ValidateCreate(ctx, nudgeConfig)
 			Expect(err).To(HaveOccurred())
@@ -150,7 +150,7 @@ var _ = Describe("NudgeConfig webhook - cycle detection", Ordered, func() {
 
 		It("handles self-nudge gracefully", func() {
 			nudgeConfig.Spec.Nudges = []konfluxv1beta2.NudgeRelationship{
-				{From: "component-a", To: "component-a"},
+				{From: konfluxv1beta2.ComponentVersion{Component: "component-a"}, To: konfluxv1beta2.ComponentVersion{Component: "component-a"}},
 			}
 			_, err := validator.ValidateCreate(ctx, nudgeConfig)
 			Expect(err).To(HaveOccurred())
@@ -168,13 +168,13 @@ var _ = Describe("NudgeConfig webhook - cycle detection", Ordered, func() {
 	When("a NudgeConfig is updated", func() {
 		It("rejects an update that introduces a cycle", func() {
 			nudgeConfig.Spec.Nudges = []konfluxv1beta2.NudgeRelationship{
-				{From: "a", To: "b"},
+				{From: konfluxv1beta2.ComponentVersion{Component: "a"}, To: konfluxv1beta2.ComponentVersion{Component: "b"}},
 			}
 
 			newNudgeConfig := nudgeConfig.DeepCopy()
 			newNudgeConfig.Spec.Nudges = []konfluxv1beta2.NudgeRelationship{
-				{From: "a", To: "b"},
-				{From: "b", To: "a"},
+				{From: konfluxv1beta2.ComponentVersion{Component: "a"}, To: konfluxv1beta2.ComponentVersion{Component: "b"}},
+				{From: konfluxv1beta2.ComponentVersion{Component: "b"}, To: konfluxv1beta2.ComponentVersion{Component: "a"}},
 			}
 			_, err := validator.ValidateUpdate(ctx, nudgeConfig, newNudgeConfig)
 			Expect(err).To(HaveOccurred())
@@ -183,7 +183,7 @@ var _ = Describe("NudgeConfig webhook - cycle detection", Ordered, func() {
 
 		It("skips validation when nudges are unchanged", func() {
 			nudgeConfig.Spec.Nudges = []konfluxv1beta2.NudgeRelationship{
-				{From: "a", To: "b"},
+				{From: konfluxv1beta2.ComponentVersion{Component: "a"}, To: konfluxv1beta2.ComponentVersion{Component: "b"}},
 			}
 			sameCopy := nudgeConfig.DeepCopy()
 			warnings, err := validator.ValidateUpdate(ctx, nudgeConfig, sameCopy)
@@ -193,11 +193,11 @@ var _ = Describe("NudgeConfig webhook - cycle detection", Ordered, func() {
 
 		It("accepts valid nudge changes", func() {
 			nudgeConfig.Spec.Nudges = []konfluxv1beta2.NudgeRelationship{
-				{From: "a", To: "b"},
+				{From: konfluxv1beta2.ComponentVersion{Component: "a"}, To: konfluxv1beta2.ComponentVersion{Component: "b"}},
 			}
 			newNudgeConfig := nudgeConfig.DeepCopy()
 			newNudgeConfig.Spec.Nudges = append(newNudgeConfig.Spec.Nudges,
-				konfluxv1beta2.NudgeRelationship{From: "b", To: "c"},
+				konfluxv1beta2.NudgeRelationship{From: konfluxv1beta2.ComponentVersion{Component: "b"}, To: konfluxv1beta2.ComponentVersion{Component: "c"}},
 			)
 			warnings, err := validator.ValidateUpdate(ctx, nudgeConfig, newNudgeConfig)
 			Expect(err).NotTo(HaveOccurred())
@@ -206,12 +206,12 @@ var _ = Describe("NudgeConfig webhook - cycle detection", Ordered, func() {
 
 		It("rejects an update that introduces duplicate (from, to) pairs", func() {
 			nudgeConfig.Spec.Nudges = []konfluxv1beta2.NudgeRelationship{
-				{From: "a", To: "b"},
+				{From: konfluxv1beta2.ComponentVersion{Component: "a"}, To: konfluxv1beta2.ComponentVersion{Component: "b"}},
 			}
 			newNudgeConfig := nudgeConfig.DeepCopy()
 			newNudgeConfig.Spec.Nudges = []konfluxv1beta2.NudgeRelationship{
-				{From: "a", To: "b"},
-				{From: "a", To: "b"},
+				{From: konfluxv1beta2.ComponentVersion{Component: "a"}, To: konfluxv1beta2.ComponentVersion{Component: "b"}},
+				{From: konfluxv1beta2.ComponentVersion{Component: "a"}, To: konfluxv1beta2.ComponentVersion{Component: "b"}},
 			}
 			_, err := validator.ValidateUpdate(ctx, nudgeConfig, newNudgeConfig)
 			Expect(err).To(HaveOccurred())
@@ -258,7 +258,7 @@ var _ = Describe("NudgeConfig webhook - component existence", func() {
 		It("rejects when 'from' references a non-existent Component [AC1]", func() {
 			Expect(k8sClient.Create(ctx, newComponent("comp-b", ns.Name))).To(Succeed())
 			nc := newNudgeConfig(ns.Name, []konfluxv1beta2.NudgeRelationship{
-				{From: "missing-comp", To: "comp-b"},
+				{From: konfluxv1beta2.ComponentVersion{Component: "missing-comp"}, To: konfluxv1beta2.ComponentVersion{Component: "comp-b"}},
 			})
 
 			_, err := validator.ValidateCreate(ctx, nc)
@@ -270,7 +270,7 @@ var _ = Describe("NudgeConfig webhook - component existence", func() {
 		It("rejects when 'to' references a non-existent Component [AC2]", func() {
 			Expect(k8sClient.Create(ctx, newComponent("comp-a", ns.Name))).To(Succeed())
 			nc := newNudgeConfig(ns.Name, []konfluxv1beta2.NudgeRelationship{
-				{From: "comp-a", To: "missing-comp"},
+				{From: konfluxv1beta2.ComponentVersion{Component: "comp-a"}, To: konfluxv1beta2.ComponentVersion{Component: "missing-comp"}},
 			})
 
 			_, err := validator.ValidateCreate(ctx, nc)
@@ -283,7 +283,7 @@ var _ = Describe("NudgeConfig webhook - component existence", func() {
 			Expect(k8sClient.Create(ctx, newComponent("comp-a", ns.Name))).To(Succeed())
 			Expect(k8sClient.Create(ctx, newComponent("comp-b", ns.Name))).To(Succeed())
 			nc := newNudgeConfig(ns.Name, []konfluxv1beta2.NudgeRelationship{
-				{From: "comp-a", To: "comp-b"},
+				{From: konfluxv1beta2.ComponentVersion{Component: "comp-a"}, To: konfluxv1beta2.ComponentVersion{Component: "comp-b"}},
 			})
 
 			_, err := validator.ValidateCreate(ctx, nc)
@@ -292,7 +292,7 @@ var _ = Describe("NudgeConfig webhook - component existence", func() {
 
 		It("rejects when both 'from' and 'to' are absent [E1]", func() {
 			nc := newNudgeConfig(ns.Name, []konfluxv1beta2.NudgeRelationship{
-				{From: "no-from", To: "no-to"},
+				{From: konfluxv1beta2.ComponentVersion{Component: "no-from"}, To: konfluxv1beta2.ComponentVersion{Component: "no-to"}},
 			})
 
 			_, err := validator.ValidateCreate(ctx, nc)
@@ -306,9 +306,9 @@ var _ = Describe("NudgeConfig webhook - component existence", func() {
 		It("aggregates all missing components across multiple entries [E2]", func() {
 			Expect(k8sClient.Create(ctx, newComponent("real-comp", ns.Name))).To(Succeed())
 			nc := newNudgeConfig(ns.Name, []konfluxv1beta2.NudgeRelationship{
-				{From: "ghost-a", To: "real-comp"},
-				{From: "real-comp", To: "ghost-b"},
-				{From: "ghost-c", To: "ghost-d"},
+				{From: konfluxv1beta2.ComponentVersion{Component: "ghost-a"}, To: konfluxv1beta2.ComponentVersion{Component: "real-comp"}},
+				{From: konfluxv1beta2.ComponentVersion{Component: "real-comp"}, To: konfluxv1beta2.ComponentVersion{Component: "ghost-b"}},
+				{From: konfluxv1beta2.ComponentVersion{Component: "ghost-c"}, To: konfluxv1beta2.ComponentVersion{Component: "ghost-d"}},
 			})
 
 			_, err := validator.ValidateCreate(ctx, nc)
@@ -343,11 +343,11 @@ var _ = Describe("NudgeConfig webhook - component existence", func() {
 			Expect(k8sClient.Create(ctx, newComponent("comp-b", ns.Name))).To(Succeed())
 
 			oldNC := newNudgeConfig(ns.Name, []konfluxv1beta2.NudgeRelationship{
-				{From: "comp-a", To: "comp-b"},
+				{From: konfluxv1beta2.ComponentVersion{Component: "comp-a"}, To: konfluxv1beta2.ComponentVersion{Component: "comp-b"}},
 			})
 			newNC := newNudgeConfig(ns.Name, []konfluxv1beta2.NudgeRelationship{
-				{From: "comp-a", To: "comp-b"},
-				{From: "ghost-x", To: "comp-b"},
+				{From: konfluxv1beta2.ComponentVersion{Component: "comp-a"}, To: konfluxv1beta2.ComponentVersion{Component: "comp-b"}},
+				{From: konfluxv1beta2.ComponentVersion{Component: "ghost-x"}, To: konfluxv1beta2.ComponentVersion{Component: "comp-b"}},
 			})
 
 			_, err := validator.ValidateUpdate(ctx, oldNC, newNC)
@@ -363,14 +363,14 @@ var _ = Describe("NudgeConfig webhook - component existence", func() {
 			Expect(k8sClient.Create(ctx, newComponent("comp-d", ns.Name))).To(Succeed())
 
 			oldNC := newNudgeConfig(ns.Name, []konfluxv1beta2.NudgeRelationship{
-				{From: "comp-a", To: "comp-b"},
+				{From: konfluxv1beta2.ComponentVersion{Component: "comp-a"}, To: konfluxv1beta2.ComponentVersion{Component: "comp-b"}},
 			})
 
 			Expect(k8sClient.Delete(ctx, compA)).To(Succeed())
 
 			newNC := newNudgeConfig(ns.Name, []konfluxv1beta2.NudgeRelationship{
-				{From: "comp-a", To: "comp-b"},
-				{From: "comp-c", To: "comp-d"},
+				{From: konfluxv1beta2.ComponentVersion{Component: "comp-a"}, To: konfluxv1beta2.ComponentVersion{Component: "comp-b"}},
+				{From: konfluxv1beta2.ComponentVersion{Component: "comp-c"}, To: konfluxv1beta2.ComponentVersion{Component: "comp-d"}},
 			})
 
 			_, err := validator.ValidateUpdate(ctx, oldNC, newNC)
@@ -383,13 +383,13 @@ var _ = Describe("NudgeConfig webhook - component existence", func() {
 			Expect(k8sClient.Create(ctx, compB)).To(Succeed())
 
 			oldNC := newNudgeConfig(ns.Name, []konfluxv1beta2.NudgeRelationship{
-				{From: "comp-a", To: "comp-b", Mode: konfluxv1beta2.NudgeModeImmediate},
+				{From: konfluxv1beta2.ComponentVersion{Component: "comp-a"}, To: konfluxv1beta2.ComponentVersion{Component: "comp-b"}, Mode: konfluxv1beta2.NudgeModeImmediate},
 			})
 
 			Expect(k8sClient.Delete(ctx, compB)).To(Succeed())
 
 			newNC := newNudgeConfig(ns.Name, []konfluxv1beta2.NudgeRelationship{
-				{From: "comp-a", To: "comp-b", Mode: konfluxv1beta2.NudgeModeValidated},
+				{From: konfluxv1beta2.ComponentVersion{Component: "comp-a"}, To: konfluxv1beta2.ComponentVersion{Component: "comp-b"}, Mode: konfluxv1beta2.NudgeModeValidated},
 			})
 
 			_, err := validator.ValidateUpdate(ctx, oldNC, newNC)
@@ -402,11 +402,11 @@ var _ = Describe("NudgeConfig webhook - component existence", func() {
 			Expect(k8sClient.Create(ctx, newComponent("comp-c", ns.Name))).To(Succeed())
 
 			oldNC := newNudgeConfig(ns.Name, []konfluxv1beta2.NudgeRelationship{
-				{From: "comp-a", To: "comp-b"},
+				{From: konfluxv1beta2.ComponentVersion{Component: "comp-a"}, To: konfluxv1beta2.ComponentVersion{Component: "comp-b"}},
 			})
 			newNC := newNudgeConfig(ns.Name, []konfluxv1beta2.NudgeRelationship{
-				{From: "comp-a", To: "comp-b"},
-				{From: "comp-b", To: "comp-c"},
+				{From: konfluxv1beta2.ComponentVersion{Component: "comp-a"}, To: konfluxv1beta2.ComponentVersion{Component: "comp-b"}},
+				{From: konfluxv1beta2.ComponentVersion{Component: "comp-b"}, To: konfluxv1beta2.ComponentVersion{Component: "comp-c"}},
 			})
 
 			_, err := validator.ValidateUpdate(ctx, oldNC, newNC)
@@ -419,7 +419,7 @@ var _ = Describe("NudgeConfig webhook - component existence", func() {
 
 			oldNC := newNudgeConfig(ns.Name, nil)
 			newNC := newNudgeConfig(ns.Name, []konfluxv1beta2.NudgeRelationship{
-				{From: "comp-a", To: "comp-b"},
+				{From: konfluxv1beta2.ComponentVersion{Component: "comp-a"}, To: konfluxv1beta2.ComponentVersion{Component: "comp-b"}},
 			})
 
 			_, err := validator.ValidateUpdate(ctx, oldNC, newNC)
@@ -558,7 +558,7 @@ var _ = Describe("NudgeConfig webhook - component existence", func() {
 				ForceFire: &konfluxv1beta2.ForceFireAction{Target: "bundle"},
 			}
 			newNC := newNudgeConfig(ns.Name, []konfluxv1beta2.NudgeRelationship{
-				{From: "comp-a", To: "comp-b"},
+				{From: konfluxv1beta2.ComponentVersion{Component: "comp-a"}, To: konfluxv1beta2.ComponentVersion{Component: "comp-b"}},
 			})
 
 			warnings, err := validator.ValidateUpdate(ctx, oldNC, newNC)
@@ -590,7 +590,7 @@ var _ = Describe("NudgeConfig webhook - component existence", func() {
 	When("deleting a NudgeConfig", func() {
 		It("always succeeds [E4]", func() {
 			nc := newNudgeConfig(ns.Name, []konfluxv1beta2.NudgeRelationship{
-				{From: "anything", To: "whatever"},
+				{From: konfluxv1beta2.ComponentVersion{Component: "anything"}, To: konfluxv1beta2.ComponentVersion{Component: "whatever"}},
 			})
 			_, err := validator.ValidateDelete(ctx, nc)
 			Expect(err).NotTo(HaveOccurred())

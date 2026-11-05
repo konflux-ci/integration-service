@@ -99,11 +99,23 @@ func ValidateNudgeGraph(nudges []v1beta2.NudgeRelationship) error {
 		return nil
 	}
 
-	adj := make(map[string][]string)
+	nodes := make(map[string]v1beta2.ComponentVersion)
 	for _, n := range nudges {
-		adj[n.From] = append(adj[n.From], n.To)
-		if _, ok := adj[n.To]; !ok {
-			adj[n.To] = nil
+		nodes[n.From.String()] = n.From
+		nodes[n.To.String()] = n.To
+	}
+
+	adj := make(map[string][]string, len(nodes))
+	for key := range nodes {
+		adj[key] = nil
+	}
+
+	for _, n := range nudges {
+		to := n.To.String()
+		for nodeKey, node := range nodes {
+			if componentVersionsMatch(node, n.From) {
+				adj[nodeKey] = append(adj[nodeKey], to)
+			}
 		}
 	}
 
@@ -111,6 +123,10 @@ func ValidateNudgeGraph(nudges []v1beta2.NudgeRelationship) error {
 		return fmt.Errorf("invalid NudgeGraph - cycle detected: %w", err)
 	}
 	return nil
+}
+
+func componentVersionsMatch(a, b v1beta2.ComponentVersion) bool {
+	return a.Component == b.Component && (a.Version == b.Version || a.Version == "" || b.Version == "")
 }
 
 // checkGraphForCycles uses depth-first search (DFS) to detect cycles in a directed graph represented

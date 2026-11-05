@@ -420,11 +420,11 @@ var _ = Describe("nudgeBatchStatusChanged predicate", func() {
 	It("should ignore unrelated spec updates", func() {
 		oldNC := &v1beta2.NudgeConfig{
 			Spec: v1beta2.NudgeConfigSpec{
-				Nudges: []v1beta2.NudgeRelationship{{From: "a", To: "b"}},
+				Nudges: []v1beta2.NudgeRelationship{{From: konfluxv1beta2.ComponentVersion{Component: "a"}, To: konfluxv1beta2.ComponentVersion{Component: "b"}}},
 			},
 		}
 		newNC := oldNC.DeepCopy()
-		newNC.Spec.Nudges[0].To = "c"
+		newNC.Spec.Nudges[0].To = konfluxv1beta2.ComponentVersion{Component: "c"}
 		Expect(predicate.Update(event.UpdateEvent{ObjectOld: oldNC, ObjectNew: newNC})).To(BeFalse())
 	})
 })
