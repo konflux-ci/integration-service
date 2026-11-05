@@ -189,14 +189,18 @@ func MigrateSnapshotToReportStatus(s *applicationapiv1alpha1.Snapshot, testStatu
 	annotations[gitops.SnapshotStatusReportAnnotation], _ = srs.ToAnnotationString()
 }
 
+// StatusInterface is the internal contract for status reporting within
+// this module. It is not intended for external consumption; callers
+// outside the integration-service module should not implement or depend
+// on this interface.
 type StatusInterface interface {
 	GetReporter(*applicationapiv1alpha1.Snapshot) ReporterInterface
 	// Check if PR/MR is opened
 	IsPRMRInSnapshotOpened(context.Context, *applicationapiv1alpha1.Snapshot) (bool, int, error)
 	// Check if github PR is open
-	IsPRInSnapshotOpened(context.Context, ReporterInterface, *applicationapiv1alpha1.Snapshot) (bool, int, error)
+	IsPRInSnapshotOpened(context.Context, *applicationapiv1alpha1.Snapshot) (bool, int, error)
 	// Check if gitlab MR is open
-	IsMRInSnapshotOpened(context.Context, ReporterInterface, *applicationapiv1alpha1.Snapshot) (bool, int, error)
+	IsMRInSnapshotOpened(context.Context, *applicationapiv1alpha1.Snapshot) (bool, int, error)
 	// find snapshot with opened PR or MR
 	FindSnapshotWithOpenedPR(context.Context, *[]applicationapiv1alpha1.Snapshot, *applicationapiv1alpha1.Snapshot) (*applicationapiv1alpha1.Snapshot, int, error)
 }
@@ -476,16 +480,20 @@ func (s Status) IsPRMRInSnapshotOpened(ctx context.Context, snapshot *applicatio
 		if err != nil {
 			return false, statusCode, err
 		}
-		return s.IsPRInSnapshotOpened(ctx, githubReporter, snapshot)
+		return s.isPRInSnapshotOpenedWithOwnerRepo(ctx, githubReporter.ResolvedOwner(), githubReporter.ResolvedRepo(), snapshot)
 	}
 
 	gitlabReporter := NewGitLabReporter(s.logger, s.client)
 	if gitlabReporter.Detect(snapshot) {
+		// TODO: gitlabReporter is initialized for detection and side-effects,
+		// but IsMRInSnapshotOpened re-resolves credentials independently from
+		// snapshot annotations. Analogous deduplication to what was done for
+		// GitHub above could be applied here in a future change.
 		statusCode, err := gitlabReporter.Initialize(ctx, snapshot)
 		if err != nil {
 			return false, statusCode, err
 		}
-		return s.IsMRInSnapshotOpened(ctx, gitlabReporter, snapshot)
+		return s.IsMRInSnapshotOpened(ctx, snapshot)
 	}
 
 	forgejoReporter := NewForgejoReporter(s.logger, s.client)
@@ -500,8 +508,8 @@ func (s Status) IsPRMRInSnapshotOpened(ctx context.Context, snapshot *applicatio
 	return false, 0, fmt.Errorf("invalid git provider, valid git provider must be one of github, gitlab, forgejo and gitea")
 }
 
-// IsMRInSnapshotOpened check if the gitlab merge request triggering snapshot is opened
-func (s Status) IsMRInSnapshotOpened(ctx context.Context, reporter ReporterInterface, snapshot *applicationapiv1alpha1.Snapshot) (bool, int, error) {
+// IsMRInSnapshotOpened checks if the gitlab merge request triggering snapshot is opened
+func (s Status) IsMRInSnapshotOpened(ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot) (bool, int, error) {
 	var statusCode = 0
 	var unRecoverableError error
 	log := log.FromContext(ctx)
@@ -635,20 +643,28 @@ func resolveSnapshotRepository(ctx context.Context, k8sClient client.Client, sna
 	return "", "", helpers.NewUnrecoverableMetadataError(fmt.Sprintf("no Repository CR in namespace %q matches URL %q", snapshot.Namespace, repoURL))
 }
 
-// IsPRInSnapshotOpened check if the github pull request triggering snapshot is opened
-func (s Status) IsPRInSnapshotOpened(ctx context.Context, reporter ReporterInterface, snapshot *applicationapiv1alpha1.Snapshot) (bool, int, error) {
+// IsPRInSnapshotOpened checks if the github pull request triggering snapshot is opened
+func (s Status) IsPRInSnapshotOpened(ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot) (bool, int, error) {
+	log := log.FromContext(ctx)
+
+	owner, repo, err := resolveSnapshotRepository(ctx, s.client, snapshot)
+	if err != nil {
+		log.Error(err, "failed to resolve Snapshot repository",
+			"snapshot.NameSpace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
+		return false, 0, err
+	}
+
+	return s.isPRInSnapshotOpenedWithOwnerRepo(ctx, owner, repo, snapshot)
+}
+
+// isPRInSnapshotOpenedWithOwnerRepo checks whether the GitHub pull request for
+// the given snapshot is open, using pre-resolved owner and repo strings to
+// avoid redundant Repository CR lookups.
+func (s Status) isPRInSnapshotOpenedWithOwnerRepo(ctx context.Context, owner, repo string, snapshot *applicationapiv1alpha1.Snapshot) (bool, int, error) {
 	var statusCode = 0
 	var unRecoverableError error
 	log := log.FromContext(ctx)
 	ghClient := github.NewClient(s.logger)
-
-	owner, repo, err := resolveSnapshotRepository(ctx, s.client, snapshot)
-
-	if err != nil {
-		log.Error(err, "failed to resolve Snapshot repository",
-			"snapshot.NameSpace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
-		return false, statusCode, err
-	}
 
 	githubAppCreds, err := GetAppCredentials(ctx, s.client, ghClient, owner, repo)
 
