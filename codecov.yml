@@ -15,6 +15,7 @@ ignore:
 - docs/**
 - '*.md'
 - '*.toml'
+- '*.yaml'
 coverage:
   status:
     project:
