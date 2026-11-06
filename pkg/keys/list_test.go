@@ -18,6 +18,7 @@ package keys_test
 
 import (
 	"context"
+	"errors"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -48,6 +49,70 @@ func names(list *corev1.ConfigMapList) []string {
 		out = append(out, list.Items[i].Name)
 	}
 	return out
+}
+
+type listErrorClient struct {
+	client.Client
+	err error
+}
+
+func (c listErrorClient) List(context.Context, client.ObjectList, ...client.ListOption) error {
+	return c.err
+}
+
+type listMutatingClient struct {
+	client.Client
+	mutate func(client.ObjectList)
+}
+
+func (c listMutatingClient) List(_ context.Context, list client.ObjectList, _ ...client.ListOption) error {
+	c.mutate(list)
+	return nil
+}
+
+type badCopyList struct {
+	metav1.TypeMeta
+	metav1.ListMeta
+}
+
+func (l *badCopyList) DeepCopyObject() runtime.Object {
+	return &runtime.Unknown{}
+}
+
+type badItem struct{}
+
+type badItemList struct {
+	metav1.TypeMeta
+	metav1.ListMeta
+	Items []badItem
+}
+
+func (l *badItemList) DeepCopyObject() runtime.Object {
+	copy := *l
+	copy.Items = append([]badItem(nil), l.Items...)
+	return &copy
+}
+
+type runtimeObjectList struct {
+	metav1.TypeMeta
+	metav1.ListMeta
+	Items []runtime.Object
+}
+
+func (l *runtimeObjectList) DeepCopyObject() runtime.Object {
+	copy := *l
+	copy.Items = append([]runtime.Object(nil), l.Items...)
+	return &copy
+}
+
+type mismatchedList struct {
+	metav1.TypeMeta
+	metav1.ListMeta
+	Items []corev1.ConfigMap
+}
+
+func (l *mismatchedList) DeepCopyObject() runtime.Object {
+	return &runtimeObjectList{}
 }
 
 var _ = Describe("DualList", func() {
@@ -146,5 +211,140 @@ var _ = Describe("DualList", func() {
 			Expect(list.GetRemainingItemCount()).To(BeNil())
 			Expect(names(list)).To(ConsistOf("old-build", "new-build", "both-build", "conflict-old-test-new-build"))
 		})
+	})
+})
+
+var _ = Describe("ListEither", func() {
+	It("reads old-only and new-only objects, prefers new, and ANDs requirements", func() {
+		ctx := context.Background()
+		scheme := runtime.NewScheme()
+		Expect(corev1.AddToScheme(scheme)).To(Succeed())
+		c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(
+			namedConfigMap("old", map[string]string{
+				keys.Test("scenario").Old: "its",
+				keys.PipelineType().Old:   "integration",
+			}),
+			namedConfigMap("new", map[string]string{
+				keys.Test("scenario").New: "its",
+				keys.PipelineType().New:   "integration",
+			}),
+			namedConfigMap("both-new-wins", map[string]string{
+				keys.Test("scenario").Old: "its",
+				keys.Test("scenario").New: "other",
+				keys.PipelineType().Old:   "integration",
+				keys.PipelineType().New:   "integration",
+			}),
+			namedConfigMap("new-mismatch", map[string]string{
+				keys.Test("scenario").New: "its",
+				keys.PipelineType().New:   "other",
+			}),
+			namedConfigMap("unrelated", map[string]string{"other": "value"}),
+		).Build()
+
+		list := &corev1.ConfigMapList{}
+		Expect(keys.ListEither(ctx, c, list, "default", []keys.Requirement{
+			{Pair: keys.Test("scenario"), Operator: selection.In, Values: []string{"its"}},
+			{Pair: keys.PipelineType(), Operator: selection.Equals, Values: []string{"integration"}},
+		}, client.MatchingLabels{"extra": "missing"})).To(Succeed())
+		Expect(names(list)).To(BeEmpty())
+
+		list = &corev1.ConfigMapList{}
+		Expect(keys.ListEither(ctx, c, list, "default", []keys.Requirement{
+			{Pair: keys.Test("scenario"), Operator: selection.In, Values: []string{"its"}},
+			{Pair: keys.PipelineType(), Operator: selection.Equals, Values: []string{"integration"}},
+		})).To(Succeed())
+		Expect(names(list)).To(ConsistOf("old", "new"))
+	})
+
+	It("validates its inputs", func() {
+		ctx := context.Background()
+		scheme := runtime.NewScheme()
+		Expect(corev1.AddToScheme(scheme)).To(Succeed())
+		c := fake.NewClientBuilder().WithScheme(scheme).Build()
+		reqs := []keys.Requirement{{Pair: keys.Test("scenario"), Operator: selection.Exists}}
+
+		Expect(keys.ListEither(ctx, c, nil, "default", reqs)).To(MatchError("list cannot be nil"))
+		Expect(keys.ListEither(ctx, nil, &corev1.ConfigMapList{}, "default", reqs)).To(MatchError("client cannot be nil"))
+		Expect(keys.ListEither(ctx, c, &corev1.ConfigMapList{}, "default", nil)).To(MatchError("at least one requirement is required"))
+
+		failedClient := listErrorClient{Client: c, err: errors.New("list failed")}
+		Expect(keys.ListEither(ctx, failedClient, &corev1.ConfigMapList{}, "default", reqs)).To(MatchError(ContainSubstring("list style")))
+	})
+
+	It("validates pair keys and selector requirements", func() {
+		ctx := context.Background()
+		scheme := runtime.NewScheme()
+		Expect(corev1.AddToScheme(scheme)).To(Succeed())
+		c := fake.NewClientBuilder().WithScheme(scheme).Build()
+
+		missingNew := []keys.Requirement{{Pair: keys.Pair{Old: "valid.example/key"}, Operator: selection.Exists}}
+		Expect(keys.ListEither(ctx, c, &corev1.ConfigMapList{}, "default", missingNew)).To(MatchError(ContainSubstring("selector key")))
+
+		invalidNew := []keys.Requirement{{Pair: keys.Pair{Old: "valid.example/key", New: "bad key"}, Operator: selection.Exists}}
+		Expect(keys.ListEither(ctx, c, &corev1.ConfigMapList{}, "default", invalidNew)).To(MatchError(ContainSubstring("selector for absent")))
+
+		invalidOperator := []keys.Requirement{{Pair: keys.Same("valid.example/key"), Operator: selection.Operator("invalid")}}
+		Expect(keys.ListEither(ctx, c, &corev1.ConfigMapList{}, "default", invalidOperator)).To(MatchError(ContainSubstring("selector for valid.example/key")))
+	})
+
+	It("reports malformed scratch, extracted, and merged lists", func() {
+		ctx := context.Background()
+		scheme := runtime.NewScheme()
+		Expect(corev1.AddToScheme(scheme)).To(Succeed())
+		baseClient := fake.NewClientBuilder().WithScheme(scheme).Build()
+		reqs := []keys.Requirement{{Pair: keys.Test("scenario"), Operator: selection.Exists}}
+
+		Expect(keys.ListEither(ctx, baseClient, &badCopyList{}, "default", reqs)).To(MatchError(ContainSubstring("copying list")))
+
+		badItemsClient := listMutatingClient{
+			Client: baseClient,
+			mutate: func(list client.ObjectList) {
+				list.(*badItemList).Items = []badItem{{}}
+			},
+		}
+		Expect(keys.ListEither(ctx, badItemsClient, &badItemList{}, "default", reqs)).To(MatchError(ContainSubstring("extracting list")))
+
+		nonClientObjectClient := listMutatingClient{
+			Client: baseClient,
+			mutate: func(list client.ObjectList) {
+				list.(*runtimeObjectList).Items = []runtime.Object{&runtime.Unknown{}}
+			},
+		}
+		result := &runtimeObjectList{}
+		Expect(keys.ListEither(ctx, nonClientObjectClient, result, "default", reqs)).To(Succeed())
+		Expect(result.Items).To(BeEmpty())
+
+		mismatchedClient := listMutatingClient{
+			Client: baseClient,
+			mutate: func(list client.ObjectList) {
+				list.(*runtimeObjectList).Items = []runtime.Object{&corev1.Secret{}}
+			},
+		}
+		Expect(keys.ListEither(ctx, mismatchedClient, &mismatchedList{}, "default", reqs)).To(MatchError(ContainSubstring("setting list")))
+	})
+
+	It("skips duplicate style requirements and deduplicates objects returned by both styles", func() {
+		ctx := context.Background()
+		scheme := runtime.NewScheme()
+		Expect(corev1.AddToScheme(scheme)).To(Succeed())
+		c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(
+			namedConfigMap("both", map[string]string{
+				"valid.example/old": "value",
+				"valid.example/new": "value",
+			}),
+		).Build()
+		list := &corev1.ConfigMapList{}
+		Expect(keys.ListEither(ctx, c, list, "default", []keys.Requirement{
+			{Pair: keys.Pair{Old: "valid.example/old", New: "valid.example/new"}, Operator: selection.Equals, Values: []string{"value"}},
+			{Pair: keys.Pair{Old: "valid.example/old", New: "valid.example/new"}, Operator: selection.Equals, Values: []string{"value"}},
+			{Pair: keys.Same("valid.example/old"), Operator: selection.Exists},
+		})).To(Succeed())
+		Expect(names(list)).To(ConsistOf("both"))
+
+		list = &corev1.ConfigMapList{}
+		Expect(keys.ListEither(ctx, c, list, "default", []keys.Requirement{
+			{Pair: keys.Same("valid.example/old"), Operator: selection.Exists},
+		})).To(Succeed())
+		Expect(names(list)).To(ConsistOf("both"))
 	})
 })

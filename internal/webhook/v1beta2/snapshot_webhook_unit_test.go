@@ -21,6 +21,7 @@ import (
 	"testing"
 
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
+	"github.com/konflux-ci/integration-service/pkg/keys"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -318,6 +319,43 @@ func TestSnapshotCustomValidator_ValidateDelete(t *testing.T) {
 			t.Errorf("Unexpected error message: %v", err)
 		}
 	})
+}
+
+func TestSnapshotCustomValidator_ValidateDeleteNewStylePipelineRun(t *testing.T) {
+	ctx := context.Background()
+	scheme := runtime.NewScheme()
+	if err := applicationapiv1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+	if err := tektonv1.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+	pipelineRun := &tektonv1.PipelineRun{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "new-style-plr",
+			Namespace: "default",
+			Labels: map[string]string{
+				keys.PipelineType().New: "test",
+				keys.SnapshotName().New: "new-snapshot",
+			},
+			Finalizers: []string{keys.Test("pipelinerun").New},
+		},
+	}
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(pipelineRun).Build()
+	validator := &SnapshotCustomValidator{Client: cl}
+	snapshot := &applicationapiv1alpha1.Snapshot{
+		ObjectMeta: metav1.ObjectMeta{Name: "new-snapshot", Namespace: "default"},
+	}
+	if _, err := validator.ValidateDelete(ctx, snapshot); err != nil {
+		t.Fatalf("ValidateDelete: %v", err)
+	}
+	updated := &tektonv1.PipelineRun{}
+	if err := cl.Get(ctx, types.NamespacedName{Namespace: "default", Name: "new-style-plr"}, updated); err != nil {
+		t.Fatal(err)
+	}
+	if len(updated.Finalizers) != 0 {
+		t.Fatalf("new-style finalizer was not removed: %v", updated.Finalizers)
+	}
 }
 
 func TestSnapshotCustomDefaulter_Default(t *testing.T) {

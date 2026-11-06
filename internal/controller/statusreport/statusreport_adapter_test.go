@@ -1870,6 +1870,20 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			hasPRSnapshot.Annotations[gitops.SnapshotTestsStatusAnnotation] = inProgressStatus
 		})
 
+		It("rejects a snapshot without a supported snapshot type", func() {
+			unsupported := hasPRSnapshot.DeepCopy()
+			unsupported.Labels = map[string]string{}
+
+			err := adapter.iterateIntegrationTestStatusDetailsInStatusReport(
+				mockReporter,
+				nil,
+				unsupported,
+				hasPRSnapshot,
+				&status.SnapshotReportStatus{},
+			)
+			Expect(err).To(MatchError("unsupported snapshot type: "))
+		})
+
 		It("returns an error when the component cannot be fetched for the comment update", func() {
 			mockReporter.EXPECT().Initialize(gomock.Any(), gomock.Any()).Times(1)
 			mockReporter.EXPECT().ReportStatus(gomock.Any(), gomock.Any()).Return(0, nil).Times(1)

@@ -31,6 +31,7 @@ import (
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
 	"github.com/konflux-ci/integration-service/gitops"
 	"github.com/konflux-ci/integration-service/helpers"
+	"github.com/konflux-ci/integration-service/pkg/keys"
 	"github.com/tonglil/buflogr"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -1069,6 +1070,78 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		Expect(hasComp.Finalizers).NotTo(ContainElement(ContainSubstring(helpers.ComponentFinalizer)))
 		logEntry = "Removed Finalizer from the Component"
 		Expect(buf.String()).Should(ContainSubstring(logEntry))
+	})
+
+	It("uses the new style for component and scenario finalizers", func() {
+		var buf bytes.Buffer
+		log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+
+		newStyleComponent := hasComp.DeepCopy()
+		newStyleComponent.Name = "component-new-style-finalizer"
+		newStyleComponent.ResourceVersion = ""
+		newStyleComponent.UID = ""
+		newStyleComponent.CreationTimestamp = metav1.Time{}
+		newStyleComponent.ManagedFields = nil
+		newStyleComponent.Finalizers = nil
+		newStyleComponent.Annotations = map[string]string{keys.Test("style-marker").New: "true"}
+		Expect(k8sClient.Create(ctx, newStyleComponent)).To(Succeed())
+		Expect(helpers.HasFinalizer(newStyleComponent, helpers.ComponentFinalizer)).To(BeFalse())
+
+		Expect(helpers.AddFinalizerToComponent(ctx, k8sClient, log, newStyleComponent, helpers.ComponentFinalizer)).To(Succeed())
+		Expect(newStyleComponent.Finalizers).To(ConsistOf(keys.Test("component").New))
+		Expect(helpers.AddFinalizerToComponent(ctx, k8sClient, log, newStyleComponent, helpers.ComponentFinalizer)).To(Succeed())
+		Expect(helpers.RemoveFinalizerFromComponent(ctx, k8sClient, log, newStyleComponent, helpers.ComponentFinalizer)).To(Succeed())
+		Expect(newStyleComponent.Finalizers).To(BeEmpty())
+		Expect(helpers.RemoveFinalizerFromComponent(ctx, k8sClient, log, newStyleComponent, helpers.ComponentFinalizer)).To(Succeed())
+
+		newStyleScenario := integrationTestScenario.DeepCopy()
+		newStyleScenario.Name = "scenario-new-style-finalizer"
+		newStyleScenario.ResourceVersion = ""
+		newStyleScenario.UID = ""
+		newStyleScenario.CreationTimestamp = metav1.Time{}
+		newStyleScenario.ManagedFields = nil
+		newStyleScenario.Finalizers = []string{keys.Test("scenario").New}
+		newStyleScenario.Annotations = map[string]string{keys.Test("style-marker").New: "true"}
+		Expect(k8sClient.Create(ctx, newStyleScenario)).To(Succeed())
+
+		Expect(helpers.RemoveFinalizerFromScenario(ctx, k8sClient, log, newStyleScenario, helpers.IntegrationTestScenarioFinalizer)).To(Succeed())
+		Expect(newStyleScenario.Finalizers).To(BeEmpty())
+		Expect(helpers.RemoveFinalizerFromScenario(ctx, k8sClient, log, newStyleScenario, helpers.IntegrationTestScenarioFinalizer)).To(Succeed())
+	})
+
+	It("lists new-style integration PipelineRuns and removes either finalizer style", func() {
+		var buf bytes.Buffer
+		log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+		pipelineRun := &tektonv1.PipelineRun{ObjectMeta: metav1.ObjectMeta{
+			Name:      "pipelinerun-new-style-finalizer",
+			Namespace: hasSnapshot.Namespace,
+			Labels: map[string]string{
+				keys.SnapshotName().New: hasSnapshot.Name,
+			},
+		}}
+		Expect(k8sClient.Create(ctx, pipelineRun)).To(Succeed())
+
+		Expect(helpers.AddFinalizerToPipelineRun(ctx, k8sClient, log, pipelineRun, helpers.IntegrationPipelineRunFinalizer)).To(Succeed())
+		Expect(pipelineRun.Finalizers).To(ConsistOf(keys.Test("pipelinerun").New))
+		Expect(helpers.HasFinalizer(pipelineRun, helpers.IntegrationPipelineRunFinalizer)).To(BeTrue())
+		Expect(helpers.AddFinalizerToPipelineRun(ctx, k8sClient, log, pipelineRun, helpers.IntegrationPipelineRunFinalizer)).To(Succeed())
+		Eventually(func(g Gomega) {
+			matching := &tektonv1.PipelineRunList{}
+			g.Expect(k8sClient.List(ctx, matching, client.MatchingLabels{keys.SnapshotName().New: hasSnapshot.Name})).To(Succeed())
+			g.Expect(matching.Items).To(HaveLen(1))
+			g.Expect(matching.Items[0].Finalizers).To(ConsistOf(keys.Test("pipelinerun").New))
+		}).Should(Succeed())
+
+		Expect(helpers.RemoveFinalizerFromAllIntegrationPipelineRunsOfSnapshot(ctx, k8sClient, log, *hasSnapshot, helpers.IntegrationPipelineRunFinalizer)).To(Succeed())
+		Expect(buf.String()).To(ContainSubstring("Removed Finalizer from the PipelineRun"))
+
+		Eventually(func() []string {
+			stored := &tektonv1.PipelineRun{}
+			if err := k8sClient.Get(ctx, types.NamespacedName{Name: pipelineRun.Name, Namespace: pipelineRun.Namespace}, stored); err != nil {
+				return []string{"not-found"}
+			}
+			return stored.Finalizers
+		}).Should(BeEmpty())
 	})
 
 	It("Returns RequeueWithError if the object is less than timeout threshold", func() {

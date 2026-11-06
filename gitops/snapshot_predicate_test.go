@@ -23,6 +23,7 @@ import (
 	. "github.com/onsi/gomega"
 
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
+	"github.com/konflux-ci/integration-service/pkg/keys"
 	"github.com/konflux-ci/operator-toolkit/metadata"
 
 	"sigs.k8s.io/controller-runtime/pkg/event"
@@ -197,6 +198,23 @@ var _ = Describe("Predicates", Ordered, func() {
 				Object: hasSnapshotAnnotationNew,
 			}
 			Expect(instance.Create(contextEvent)).To(BeTrue())
+		})
+
+		It("returns true when an unfinished Snapshot has a new-style status annotation", func() {
+			snapshot := &applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Annotations: map[string]string{
+						keys.Test("status").New: "{}",
+					},
+				},
+				Status: applicationapiv1alpha1.SnapshotStatus{
+					Conditions: []metav1.Condition{{
+						Type:   gitops.AppStudioTestSucceededCondition,
+						Status: metav1.ConditionUnknown,
+					}},
+				},
+			}
+			Expect(instance.Create(event.CreateEvent{Object: snapshot})).To(BeTrue())
 		})
 
 		It("returns false when a finished Snapshot has a create event and has a valid status annotation", func() {

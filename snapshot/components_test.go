@@ -21,6 +21,7 @@ import (
 
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
 	"github.com/konflux-ci/integration-service/gitops"
+	"github.com/konflux-ci/integration-service/pkg/keys"
 	tektonconsts "github.com/konflux-ci/integration-service/tekton/consts"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -170,6 +171,17 @@ var _ = Describe("Snapshot component functions", Ordered, func() {
 		Expect(newComponents[0].Name).To(Equal(componentName))
 	})
 
+	It("Can get the new component from a new-style component label", func() {
+		newStyleSnapshot := componentSnapshot.DeepCopy()
+		delete(newStyleSnapshot.Labels, gitops.SnapshotComponentLabel)
+		newStyleSnapshot.Labels[keys.BuildComponent().New] = componentName
+
+		newComponents, err := GetAllNewComponentsInSnapshot(newStyleSnapshot)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(newComponents).To(HaveLen(1))
+		Expect(newComponents[0].Name).To(Equal(componentName))
+	})
+
 	It("Returns all components when getting the new components in an override snapshot", func() {
 		newComponents, err := GetAllNewComponentsInSnapshot(overrideSnapshot)
 		Expect(err).NotTo(HaveOccurred())
@@ -184,5 +196,16 @@ var _ = Describe("Snapshot component functions", Ordered, func() {
 		Expect(newComponents).To(HaveLen(2))
 		componentNames := []string{newComponents[0].Name, newComponents[1].Name}
 		Expect(componentNames).To(ConsistOf(componentName, component2Name))
+	})
+
+	It("Can get the new components from a new-style group snapshot annotation", func() {
+		newStyleGroupSnapshot := groupSnapshot.DeepCopy()
+		newStyleGroupSnapshot.Annotations = map[string]string{
+			keys.Test("group-test-info").New: groupSnapshot.Annotations[gitops.GroupSnapshotInfoAnnotation],
+		}
+
+		newComponents, err := GetAllNewComponentsInSnapshot(newStyleGroupSnapshot)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(newComponents).To(HaveLen(2))
 	})
 })

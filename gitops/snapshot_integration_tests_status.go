@@ -10,7 +10,7 @@ You may obtain a copy of the License at
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions andF
+See the License for the specific language governing permissions and
 limitations under the License.
 */
 
@@ -23,17 +23,12 @@ import (
 
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
 	intgteststat "github.com/konflux-ci/integration-service/pkg/integrationteststatus"
-	"github.com/konflux-ci/operator-toolkit/metadata"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 // NewSnapshotIntegrationTestStatusesFromSnapshot creates new SnapshotTestStatus struct from snapshot annotation
 func NewSnapshotIntegrationTestStatusesFromSnapshot(s *applicationapiv1alpha1.Snapshot) (*intgteststat.SnapshotIntegrationTestStatuses, error) {
-	annotations := map[string]string{}
-	if s.GetAnnotations() != nil {
-		annotations = s.GetAnnotations()
-	}
-	statusAnnotation, ok := annotations[SnapshotTestsStatusAnnotation]
+	statusAnnotation, ok := AnnotationValue(s, SnapshotTestsStatusAnnotation)
 	if !ok {
 		statusAnnotation = ""
 	}
@@ -59,7 +54,7 @@ func WriteIntegrationTestStatusesIntoSnapshot(ctx context.Context, s *applicatio
 		return fmt.Errorf("failed to marshal test results into JSON: %w", err)
 	}
 
-	if err := metadata.SetAnnotation(&s.ObjectMeta, SnapshotTestsStatusAnnotation, string(value)); err != nil {
+	if err := SetOwnedAnnotation(s, SnapshotTestsStatusAnnotation, string(value)); err != nil {
 		return fmt.Errorf("failed to add annotations: %w", err)
 	}
 

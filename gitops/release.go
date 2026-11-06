@@ -26,6 +26,7 @@ import (
 	"github.com/google/cel-go/common/types"
 	"github.com/google/cel-go/common/types/ref"
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
+	"github.com/konflux-ci/integration-service/pkg/keys"
 )
 
 // EvaluateSnapshotAutoReleaseAnnotation evaluates the provided auto-release annotation CEL-like expression
@@ -135,7 +136,10 @@ func (sf snapshotCELFunctions) updatedComponentIs(arg ref.Val) ref.Val {
 	if !ok {
 		return types.Bool(false)
 	}
-	compName, ok := labels[SnapshotComponentLabel].(string)
+	compName, ok := labels[keys.BuildComponent().New].(string)
+	if !ok {
+		compName, ok = labels[keys.BuildComponent().Old].(string)
+	}
 	if !ok {
 		return types.Bool(false)
 	}

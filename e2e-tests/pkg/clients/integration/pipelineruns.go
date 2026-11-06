@@ -15,7 +15,6 @@ import (
 	"github.com/konflux-ci/integration-service/gitops"
 	"github.com/konflux-ci/integration-service/helpers"
 	tektonconsts "github.com/konflux-ci/integration-service/tekton/consts"
-	"github.com/konflux-ci/operator-toolkit/metadata"
 	ginkgo "github.com/onsi/ginkgo/v2"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	k8sErrors "k8s.io/apimachinery/pkg/api/errors"
@@ -218,7 +217,8 @@ func (i *IntegrationController) GetAnnotationIfExists(testNamespace, application
 	if err != nil {
 		return "", fmt.Errorf("pipelinerun for Component %s/%s can't be gotten successfully. Error: %v", testNamespace, componentName, err)
 	}
-	return pipelineRun.Annotations[annotationKey], nil
+	annotationValue, _ := gitops.AnnotationValue(pipelineRun, annotationKey)
+	return annotationValue, nil
 }
 
 // WaitForBuildPipelineRunToGetAnnotated waits for given build pipeline to get annotated with a specific annotation.
@@ -282,9 +282,7 @@ func (i *IntegrationController) IsIntegrationPipelinerunCancelled(integrationTes
 // AddIntegrationTestRerunLabel adding re-run label to snapshot
 func (i *IntegrationController) AddIntegrationTestRerunLabel(snapshot *appstudioApi.Snapshot, integrationTestScenarioName string) error {
 	patch := client.MergeFrom(snapshot.DeepCopy())
-	newLabel := map[string]string{}
-	newLabel[gitops.SnapshotIntegrationTestRun] = integrationTestScenarioName
-	err := metadata.AddLabels(snapshot, newLabel)
+	err := gitops.SetOwnedLabel(snapshot, gitops.SnapshotIntegrationTestRun, integrationTestScenarioName)
 	if err != nil {
 		return fmt.Errorf("failed to add label %s: %w", gitops.SnapshotIntegrationTestRun, err)
 	}

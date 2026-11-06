@@ -23,6 +23,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/konflux-ci/integration-service/api/v1beta2"
+	"github.com/konflux-ci/integration-service/helpers"
+	"github.com/konflux-ci/integration-service/pkg/keys"
 )
 
 var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
@@ -63,6 +65,17 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 			},
 		}
 		Expect(k8sClient.Create(ctx, integrationTestScenario)).Should(Succeed())
+	})
+
+	It("recognizes the new-style optional label", func() {
+		scenario := &v1beta2.IntegrationTestScenario{
+			ObjectMeta: metav1.ObjectMeta{
+				Labels: map[string]string{
+					keys.Test("optional").New: "true",
+				},
+			},
+		}
+		Expect(helpers.IsIntegrationTestScenarioOptional(scenario)).To(BeTrue())
 	})
 
 	AfterAll(func() {

@@ -16,7 +16,16 @@ limitations under the License.
 
 package helpers
 
-import "github.com/konflux-ci/integration-service/pkg/keys"
+import (
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	"github.com/konflux-ci/integration-service/pkg/keys"
+)
+
+// HasFinalizer reports whether obj has either name of an integration-service finalizer.
+func HasFinalizer(obj metav1.Object, name string) bool {
+	return keys.HasFinalizer(obj, name)
+}
 
 // IntegrationPipelineRunFinalizer is the finalizer name to be added to the Integration PipelineRuns
 // Migration note: retained during ComponentGroup migration; remove after migration is complete.

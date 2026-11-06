@@ -35,7 +35,6 @@ import (
 	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 )
 
@@ -95,8 +94,8 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		// Gated PLRs must not retain either build-pipeline finalizer. Clear them whenever
 		// present so a PLR that gained new-model keys after an earlier reconcile cannot
 		// get stuck terminating behind this gate (cache may also lag DeletionTimestamp).
-		if controllerutil.ContainsFinalizer(pipelineRun, helpers.IntegrationPipelineRunFinalizer) ||
-			controllerutil.ContainsFinalizer(pipelineRun, helpers.NudgePipelineRunFinalizer) {
+		if helpers.HasFinalizer(pipelineRun, helpers.IntegrationPipelineRunFinalizer) ||
+			helpers.HasFinalizer(pipelineRun, helpers.NudgePipelineRunFinalizer) {
 			err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
 				err := r.Get(ctx, req.NamespacedName, pipelineRun)
 				if err != nil {

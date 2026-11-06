@@ -20,7 +20,6 @@ import (
 	"github.com/konflux-ci/integration-service/gitops"
 	"github.com/konflux-ci/integration-service/helpers"
 	"github.com/konflux-ci/integration-service/tekton/consts"
-	"github.com/konflux-ci/operator-toolkit/metadata"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 )
@@ -66,7 +65,7 @@ func BuildPipelineRunSignedAndSucceededPredicate() predicate.Predicate {
 		UpdateFunc: func(e event.UpdateEvent) bool {
 			return IsBuildPipelineRun(e.ObjectNew) && isChainsDoneWithPipelineRun(e.ObjectNew) &&
 				helpers.HasPipelineRunSucceeded(e.ObjectNew) &&
-				!metadata.HasAnnotation(e.ObjectNew, consts.SnapshotNameLabel)
+				!gitops.HasOwnedAnnotation(e.ObjectNew, consts.SnapshotNameLabel)
 		},
 	}
 }
@@ -86,9 +85,9 @@ func BuildPipelineRunGroupInfoAddedPredicate() predicate.Predicate {
 		},
 		UpdateFunc: func(e event.UpdateEvent) bool {
 			return IsBuildPipelineRun(e.ObjectNew) &&
-				metadata.HasLabel(e.ObjectNew, gitops.PRGroupHashLabel) &&
-				metadata.HasAnnotation(e.ObjectNew, gitops.PRGroupAnnotation) &&
-				!metadata.HasAnnotation(e.ObjectNew, consts.SnapshotNameLabel)
+				gitops.HasOwnedLabel(e.ObjectNew, gitops.PRGroupHashLabel) &&
+				gitops.HasOwnedAnnotation(e.ObjectNew, gitops.PRGroupAnnotation) &&
+				!gitops.HasOwnedAnnotation(e.ObjectNew, consts.SnapshotNameLabel)
 		},
 	}
 }

@@ -567,16 +567,17 @@ func MarkSnapshotIntegrationStatusAsInProgress(ctx context.Context, adapterClien
 	}
 
 	snapshotInProgressTime := &metav1.Time{Time: time.Now()}
-	if metadata.HasLabel(snapshot, BuildPipelineRunFinishTimeLabel) {
-		buildPipelineRunFinishTimeStr := snapshot.Labels[BuildPipelineRunFinishTimeLabel]
+	if finishTime, found := LabelValue(snapshot, BuildPipelineRunFinishTimeLabel); found {
+		buildPipelineRunFinishTimeStr := finishTime
 		buildPipelineRunFinishTimeInt, _ := strconv.ParseInt(buildPipelineRunFinishTimeStr, 10, 64)
 		buildPipelineRunFinishTime := time.Unix(buildPipelineRunFinishTimeInt, 0)
 		buildPipelineRunFinishTimeMeta := &metav1.Time{Time: buildPipelineRunFinishTime}
 
 		duration := snapshotInProgressTime.Sub(buildPipelineRunFinishTimeMeta.Time)
+		pipelineRunName, _ := LabelValue(snapshot, BuildPipelineRunNameLabel)
 		log.Info("Integration Service Response time (integration_svc_response_seconds)",
 			"snapshot.name", snapshot.Name,
-			"pipelinerun.name", snapshot.Labels[BuildPipelineRunNameLabel],
+			"pipelinerun.name", pipelineRunName,
 			"duration", duration,
 		)
 		go metrics.RegisterIntegrationResponse(duration)
@@ -721,7 +722,7 @@ func AddParentSnapshotDataToSnapshotStatus(snapshot *applicationapiv1alpha1.Snap
 
 // IsSnapshotMarkedAsAddedToGlobalCandidateList returns true if snapshot's AddedToGlobalCandidateListAnnotation result is marked as true to global candidate list
 func IsSnapshotMarkedAsAddedToGlobalCandidateList(snapshot *applicationapiv1alpha1.Snapshot) bool {
-	annotationValue, ok := snapshot.GetAnnotations()[AddedToGlobalCandidateListAnnotation]
+	annotationValue, ok := AnnotationValue(snapshot, AddedToGlobalCandidateListAnnotation)
 	if !ok || annotationValue == "" {
 		return false
 	}
@@ -884,7 +885,7 @@ func CompareSnapshots(expectedSnapshot *applicationapiv1alpha1.Snapshot, foundSn
 }
 
 func IsSnapshotCreatedByPACMergeQueueEvent(snapshot *applicationapiv1alpha1.Snapshot) bool {
-	if branch, found := snapshot.Annotations[PipelineAsCodeSourceBranchAnnotation]; found {
+	if branch, found := AnnotationValue(snapshot, PipelineAsCodeSourceBranchAnnotation); found {
 		if strings.HasPrefix(strings.TrimPrefix(branch, GitRefBranchPrefix), PipelineAsCodeGitHubMergeQueueBranchPrefix) {
 			return true
 		}
@@ -898,26 +899,26 @@ func IsSnapshotCreatedByPACPushEvent(snapshot *applicationapiv1alpha1.Snapshot) 
 	if IsSnapshotCreatedByPACMergeQueueEvent(snapshot) || IsGroupSnapshot(snapshot) {
 		return false
 	}
-	eventType := snapshot.Labels[PipelineAsCodeEventTypeLabel]
-	targetBranch := snapshot.Annotations[PipelineAsCodeTargetBranchAnnotation]
-	sourceBranch := snapshot.Annotations[PipelineAsCodeSourceBranchAnnotation]
-	return metadata.HasLabelWithValue(snapshot, PipelineAsCodeEventTypeLabel, PipelineAsCodePushType) ||
-		metadata.HasLabelWithValue(snapshot, PipelineAsCodeEventTypeLabel, PipelineAsCodeGLPushType) ||
-		!metadata.HasLabel(snapshot, PipelineAsCodeEventTypeLabel) ||
-		!metadata.HasLabel(snapshot, PipelineAsCodePullRequestAnnotation) ||
+	eventType, _ := LabelValue(snapshot, PipelineAsCodeEventTypeLabel)
+	targetBranch, _ := AnnotationValue(snapshot, PipelineAsCodeTargetBranchAnnotation)
+	sourceBranch, _ := AnnotationValue(snapshot, PipelineAsCodeSourceBranchAnnotation)
+	return HasOwnedLabelValue(snapshot, PipelineAsCodeEventTypeLabel, PipelineAsCodePushType) ||
+		HasOwnedLabelValue(snapshot, PipelineAsCodeEventTypeLabel, PipelineAsCodeGLPushType) ||
+		!HasOwnedLabel(snapshot, PipelineAsCodeEventTypeLabel) ||
+		!HasOwnedLabel(snapshot, PipelineAsCodePullRequestAnnotation) ||
 		helpers.IsPACPushStyleGitOpsComment(eventType, targetBranch, sourceBranch)
 }
 
 // IsSnapshotAutoReleaseDisabled checks if a snapshot has a AutoReleaseLabel label and if its value is "false"
 func IsSnapshotAutoReleaseDisabled(snapshot *applicationapiv1alpha1.Snapshot) bool {
-	return metadata.HasLabelWithValue(snapshot, AutoReleaseLabel, "false")
+	return HasOwnedLabelValue(snapshot, AutoReleaseLabel, "false")
 }
 
 // IsSnapshotCreatedBySamePACEvent checks if the two snapshot are created by the same PAC event
 // or they don't have event type
 func IsSnapshotCreatedBySamePACEvent(snapshot1, snapshot2 *applicationapiv1alpha1.Snapshot) bool {
-	value1, ok1 := snapshot1.GetLabels()[PipelineAsCodeEventTypeLabel]
-	value2, ok2 := snapshot2.GetLabels()[PipelineAsCodeEventTypeLabel]
+	value1, ok1 := LabelValue(snapshot1, PipelineAsCodeEventTypeLabel)
+	value2, ok2 := LabelValue(snapshot2, PipelineAsCodeEventTypeLabel)
 	// if label exists and two snapshots have the same value
 	if ok1 && ok2 && value1 == value2 {
 		return true
@@ -946,22 +947,22 @@ func HasSnapshotTestAnnotationChanged(objectOld, objectNew client.Object) bool {
 	if oldSnapshot, ok := objectOld.(*applicationapiv1alpha1.Snapshot); ok {
 		if newSnapshot, ok := objectNew.(*applicationapiv1alpha1.Snapshot); ok {
 			// update for integration test status change
-			if !metadata.HasAnnotation(oldSnapshot, SnapshotTestsStatusAnnotation) && metadata.HasAnnotation(newSnapshot, SnapshotTestsStatusAnnotation) {
+			if !HasOwnedAnnotation(oldSnapshot, SnapshotTestsStatusAnnotation) && HasOwnedAnnotation(newSnapshot, SnapshotTestsStatusAnnotation) {
 				return true
 			}
-			if old_value, ok := oldSnapshot.GetAnnotations()[SnapshotTestsStatusAnnotation]; ok {
-				if new_value, ok := newSnapshot.GetAnnotations()[SnapshotTestsStatusAnnotation]; ok {
+			if old_value, ok := AnnotationValue(oldSnapshot, SnapshotTestsStatusAnnotation); ok {
+				if new_value, ok := AnnotationValue(newSnapshot, SnapshotTestsStatusAnnotation); ok {
 					if old_value != new_value {
 						return true
 					}
 				}
 			}
 			// update for component snapshot's group snapshot creation status
-			if !metadata.HasAnnotation(oldSnapshot, PRGroupCreationAnnotation) && metadata.HasAnnotation(newSnapshot, PRGroupCreationAnnotation) {
+			if !HasOwnedAnnotation(oldSnapshot, PRGroupCreationAnnotation) && HasOwnedAnnotation(newSnapshot, PRGroupCreationAnnotation) {
 				return true
 			}
-			if old_value, ok := oldSnapshot.GetAnnotations()[PRGroupCreationAnnotation]; ok {
-				if new_value, ok := newSnapshot.GetAnnotations()[PRGroupCreationAnnotation]; ok {
+			if old_value, ok := AnnotationValue(oldSnapshot, PRGroupCreationAnnotation); ok {
+				if new_value, ok := AnnotationValue(newSnapshot, PRGroupCreationAnnotation); ok {
 					if old_value != new_value {
 						return true
 					}
@@ -978,11 +979,11 @@ func HasSnapshotTestAnnotationChanged(objectOld, objectNew client.Object) bool {
 func HasSnapshotRerunLabelChanged(objectOld, objectNew client.Object) bool {
 	if oldSnapshot, ok := objectOld.(*applicationapiv1alpha1.Snapshot); ok {
 		if newSnapshot, ok := objectNew.(*applicationapiv1alpha1.Snapshot); ok {
-			if !metadata.HasLabel(oldSnapshot, SnapshotIntegrationTestRun) && metadata.HasLabel(newSnapshot, SnapshotIntegrationTestRun) {
+			if !HasOwnedLabel(oldSnapshot, SnapshotIntegrationTestRun) && HasOwnedLabel(newSnapshot, SnapshotIntegrationTestRun) {
 				return true
 			}
-			if old_value, ok := oldSnapshot.GetLabels()[SnapshotIntegrationTestRun]; ok {
-				if new_value, ok := newSnapshot.GetLabels()[SnapshotIntegrationTestRun]; ok {
+			if old_value, ok := LabelValue(oldSnapshot, SnapshotIntegrationTestRun); ok {
+				if new_value, ok := LabelValue(newSnapshot, SnapshotIntegrationTestRun); ok {
 					if old_value != new_value {
 						return true
 					}
@@ -997,16 +998,16 @@ func HasSnapshotRerunLabelChanged(objectOld, objectNew client.Object) bool {
 // If the pull request annotation is present, it returns it, otherwise it extracts it from the source branch name
 func ExtractPullRequestNumberFromMergeQueueSnapshot(snapshot *applicationapiv1alpha1.Snapshot) string {
 	// Attempt to find the PaC pull request label or annotation first
-	if snapshot.Labels != nil && snapshot.Labels[PipelineAsCodePullRequestAnnotation] != "" {
-		return snapshot.Labels[PipelineAsCodePullRequestAnnotation]
+	if pullRequest, found := LabelValue(snapshot, PipelineAsCodePullRequestAnnotation); found && pullRequest != "" {
+		return pullRequest
 	}
-	if snapshot.Annotations != nil && snapshot.Annotations[PipelineAsCodePullRequestAnnotation] != "" {
-		return snapshot.Annotations[PipelineAsCodePullRequestAnnotation]
+	if pullRequest, found := AnnotationValue(snapshot, PipelineAsCodePullRequestAnnotation); found && pullRequest != "" {
+		return pullRequest
 	}
 
 	// If the PR number is not found above, attempt to extract it from the source branch name of the merge queue
 	// The branch should be in the format of 'gh-readonly-queue/{original_branch_name}/pr-{pull_request_number}-{sha}'
-	if branch, found := snapshot.Annotations[PipelineAsCodeSourceBranchAnnotation]; found {
+	if branch, found := AnnotationValue(snapshot, PipelineAsCodeSourceBranchAnnotation); found {
 		// remove the refs/heads prefix to get the actual branch name
 		branchWithoutPrefix := strings.Split(strings.TrimPrefix(branch, GitRefBranchPrefix), "/")
 		if len(branchWithoutPrefix) > 1 {
@@ -1160,15 +1161,13 @@ func EnrichBuiltComponentSourceGitContext(componentSource *applicationapiv1alpha
 
 // GetIntegrationTestRunLabelValue returns value of the label responsible for re-running tests
 func GetIntegrationTestRunLabelValue(obj metav1.Object) (string, bool) {
-	labels := obj.GetLabels()
-	labelVal, ok := labels[SnapshotIntegrationTestRun]
-	return labelVal, ok
+	return LabelValue(obj, SnapshotIntegrationTestRun)
 }
 
 // RemoveIntegrationTestRerunLabel removes re-run label from snapshot
 func RemoveIntegrationTestRerunLabel(ctx context.Context, adapterClient client.Client, snapshot *applicationapiv1alpha1.Snapshot) error {
 	patch := client.MergeFrom(snapshot.DeepCopy())
-	err := metadata.DeleteLabel(snapshot, SnapshotIntegrationTestRun)
+	err := DeleteOwnedLabel(snapshot, SnapshotIntegrationTestRun)
 	if err != nil {
 		return fmt.Errorf("failed to delete label %s: %w", SnapshotIntegrationTestRun, err)
 	}
@@ -1183,9 +1182,7 @@ func RemoveIntegrationTestRerunLabel(ctx context.Context, adapterClient client.C
 // AddIntegrationTestRerunLabel adding re-run label to snapshot
 func AddIntegrationTestRerunLabel(ctx context.Context, adapterClient client.Client, snapshot *applicationapiv1alpha1.Snapshot, integrationTestScenarioName string) error {
 	patch := client.MergeFrom(snapshot.DeepCopy())
-	newLabel := map[string]string{}
-	newLabel[SnapshotIntegrationTestRun] = integrationTestScenarioName
-	err := metadata.AddLabels(snapshot, newLabel)
+	err := SetOwnedLabel(snapshot, SnapshotIntegrationTestRun, integrationTestScenarioName)
 	if err != nil {
 		return fmt.Errorf("failed to add label %s: %w", SnapshotIntegrationTestRun, err)
 	}
@@ -1199,7 +1196,7 @@ func AddIntegrationTestRerunLabel(ctx context.Context, adapterClient client.Clie
 
 // Deprecated
 func GetLatestUpdateTime(snapshot *applicationapiv1alpha1.Snapshot) (time.Time, error) {
-	latestUpdateTime := snapshot.GetAnnotations()[SnapshotPRLastUpdate]
+	latestUpdateTime, _ := AnnotationValue(snapshot, SnapshotPRLastUpdate)
 	if latestUpdateTime == "" {
 		return time.Time{}, nil
 	}
@@ -1298,7 +1295,6 @@ func CopyTempGroupSnapshotLabelsAndAnnotations(object *metav1.ObjectMeta, snapsh
 		snapshot.Annotations = map[string]string{}
 	}
 	snapshot.Labels[SnapshotTypeLabel] = SnapshotGroupType
-
 	if objectIsApplication {
 		snapshot.Labels[ApplicationNameLabel] = object.Name
 	} else {
@@ -1319,16 +1315,16 @@ func CopyTempGroupSnapshotLabelsAndAnnotations(object *metav1.ObjectMeta, snapsh
 
 // IsOverrideSnapshot returns true if snapshot label 'test.appstudio.openshift.io/type' is 'override'
 func IsOverrideSnapshot(snapshot *applicationapiv1alpha1.Snapshot) bool {
-	return metadata.HasLabelWithValue(snapshot, SnapshotTypeLabel, SnapshotOverrideType)
+	return HasOwnedLabelValue(snapshot, SnapshotTypeLabel, SnapshotOverrideType)
 }
 
 func IsComponentSnapshot(snapshot *applicationapiv1alpha1.Snapshot) bool {
-	return metadata.HasLabelWithValue(snapshot, SnapshotTypeLabel, SnapshotComponentType)
+	return HasOwnedLabelValue(snapshot, SnapshotTypeLabel, SnapshotComponentType)
 }
 
 // IsGroupSnapshot returns true if snapshot label 'test.appstudio.openshift.io/type' is 'group'
 func IsGroupSnapshot(snapshot *applicationapiv1alpha1.Snapshot) bool {
-	return metadata.HasLabelWithValue(snapshot, SnapshotTypeLabel, SnapshotGroupType)
+	return HasOwnedLabelValue(snapshot, SnapshotTypeLabel, SnapshotGroupType)
 }
 
 func IsComponentSnapshotCreatedByPACPushEvent(snapshot *applicationapiv1alpha1.Snapshot) bool {
@@ -1372,7 +1368,7 @@ func IsContextValidForSnapshot(scenarioContextName string, snapshot *application
 		return true
 	} else if strings.HasPrefix(scenarioContextName, "component_") {
 		componentName := strings.TrimPrefix(scenarioContextName, "component_")
-		if metadata.HasLabelWithValue(snapshot, SnapshotComponentLabel, componentName) {
+		if HasOwnedLabelValue(snapshot, SnapshotComponentLabel, componentName) {
 			return true
 		}
 	} else if scenarioContextName == "group" && IsGroupSnapshot(snapshot) {
@@ -1420,13 +1416,16 @@ func FilterIntegrationTestScenariosWithContext(scenarios *[]v1beta2.IntegrationT
 // to avoid duplicate check when reconciling this snapshot, if yes, won't handle the snapshot again
 // the annotation updated from other component pipelinerun should not be counted in
 func HasPRGroupProcessed(snapshot *applicationapiv1alpha1.Snapshot) bool {
-	return metadata.HasAnnotation(snapshot, PRGroupCreationAnnotation) && !strings.Contains(snapshot.GetAnnotations()[PRGroupCreationAnnotation], "waiting for it to create a new group Snapshot for PR group")
+	value, found := AnnotationValue(snapshot, PRGroupCreationAnnotation)
+	return found && !strings.Contains(value, "waiting for it to create a new group Snapshot for PR group")
 }
 
 // GetPRGroup gets the value of label test.appstudio.openshift.io/pr-group-sha and annotation from component snapshot or pipelinerun
 func GetPRGroup(object client.Object) (string, string) {
-	if metadata.HasLabel(object, PRGroupHashLabel) && metadata.HasAnnotation(object, PRGroupAnnotation) {
-		return object.GetLabels()[PRGroupHashLabel], object.GetAnnotations()[PRGroupAnnotation]
+	hash, hasHash := LabelValue(object, PRGroupHashLabel)
+	group, hasGroup := AnnotationValue(object, PRGroupAnnotation)
+	if hasHash && hasGroup {
+		return hash, group
 	}
 	return "", ""
 }
@@ -1449,10 +1448,12 @@ func FindMatchingSnapshotComponent(snapshot *applicationapiv1alpha1.Snapshot, co
 func SortSnapshots(snapshots []applicationapiv1alpha1.Snapshot) []applicationapiv1alpha1.Snapshot {
 	sort.Slice(snapshots, func(i, j int) bool {
 		var time_i, time_j int64
-		if metadata.HasAnnotation(&snapshots[i], BuildPipelineRunStartTime) && metadata.HasAnnotation(&snapshots[j], BuildPipelineRunStartTime) {
+		startI, foundI := AnnotationValue(&snapshots[i], BuildPipelineRunStartTime)
+		startJ, foundJ := AnnotationValue(&snapshots[j], BuildPipelineRunStartTime)
+		if foundI && foundJ {
 			// Use ParseInt to handle millisecond timestamps (larger values)
-			time_i, _ = strconv.ParseInt(snapshots[i].Annotations[BuildPipelineRunStartTime], 10, 64)
-			time_j, _ = strconv.ParseInt(snapshots[j].Annotations[BuildPipelineRunStartTime], 10, 64)
+			time_i, _ = strconv.ParseInt(startI, 10, 64)
+			time_j, _ = strconv.ParseInt(startJ, 10, 64)
 		} else {
 			time_i = snapshots[i].CreationTimestamp.Unix()
 			time_j = snapshots[j].CreationTimestamp.Unix()
@@ -1466,7 +1467,9 @@ func SortSnapshots(snapshots []applicationapiv1alpha1.Snapshot) []applicationapi
 func AnnotateSnapshot(ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot, key, value string, cl client.Client) error {
 	patch := client.MergeFrom(snapshot.DeepCopy())
 
-	_ = metadata.SetAnnotation(&snapshot.ObjectMeta, key, value)
+	if err := SetOwnedAnnotation(snapshot, key, value); err != nil {
+		return fmt.Errorf("failed to set annotation %s on Snapshot %s: %w", key, snapshot.Name, err)
+	}
 
 	err := cl.Patch(ctx, snapshot, patch)
 	if err != nil {
@@ -1479,7 +1482,9 @@ func AnnotateSnapshot(ctx context.Context, snapshot *applicationapiv1alpha1.Snap
 func AnnotateComponent(ctx context.Context, component *applicationapiv1alpha1.Component, key, value string, cl client.Client) error {
 	patch := client.MergeFrom(component.DeepCopy())
 
-	_ = metadata.SetAnnotation(&component.ObjectMeta, key, value)
+	if err := SetOwnedAnnotation(component, key, value); err != nil {
+		return fmt.Errorf("failed to set annotation %s on Component %s: %w", key, component.Name, err)
+	}
 
 	err := cl.Patch(ctx, component, patch)
 	if err != nil {
@@ -1512,27 +1517,37 @@ func NotifyComponentSnapshotsInGroupSnapshot(ctx context.Context, cl client.Clie
 }
 
 func SetAnnotationAndLabelForGroupSnapshot(groupSnapshot *applicationapiv1alpha1.Snapshot, componentSnapshot *applicationapiv1alpha1.Snapshot, componentSnapshotInfos []ComponentSnapshotInfo) (*applicationapiv1alpha1.Snapshot, error) {
-	err := metadata.SetAnnotation(groupSnapshot, PRGroupAnnotation, componentSnapshot.Annotations[PRGroupAnnotation])
+	style := keys.StyleOf(componentSnapshot)
+	prGroup, _ := AnnotationValue(componentSnapshot, PRGroupAnnotation)
+	err := SetOwnedAnnotationWithStyle(groupSnapshot, PRGroupAnnotation, prGroup, style)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("setting annotation %s on group Snapshot %s: %w", PRGroupAnnotation, groupSnapshot.Name, err)
 	}
 	annotationJson, err := json.Marshal(componentSnapshotInfos)
 	if err != nil {
 		return nil, err
 	}
-	groupSnapshot.Annotations[GroupSnapshotInfoAnnotation] = string(annotationJson)
-	groupSnapshot.Annotations[PRGroupAnnotation] = componentSnapshot.Annotations[PRGroupAnnotation]
-
-	err = metadata.SetLabel(groupSnapshot, PipelineAsCodeEventTypeLabel, componentSnapshot.Labels[PipelineAsCodeEventTypeLabel])
-	if err != nil {
-		return nil, err
+	if err := SetOwnedAnnotationWithStyle(groupSnapshot, GroupSnapshotInfoAnnotation, string(annotationJson), style); err != nil {
+		return nil, fmt.Errorf("setting annotation %s on group Snapshot %s: %w", GroupSnapshotInfoAnnotation, groupSnapshot.Name, err)
 	}
-	groupSnapshot.Labels[SnapshotTypeLabel] = SnapshotGroupType
-	groupSnapshot.Labels[PRGroupHashLabel] = componentSnapshot.Labels[PRGroupHashLabel]
+
+	eventType, _ := LabelValue(componentSnapshot, PipelineAsCodeEventTypeLabel)
+	if err := SetOwnedLabelWithStyle(groupSnapshot, PipelineAsCodeEventTypeLabel, eventType, style); err != nil {
+		return nil, fmt.Errorf("setting label %s on group Snapshot %s: %w", PipelineAsCodeEventTypeLabel, groupSnapshot.Name, err)
+	}
+	if err := SetOwnedLabelWithStyle(groupSnapshot, SnapshotTypeLabel, SnapshotGroupType, style); err != nil {
+		return nil, fmt.Errorf("setting label %s on group Snapshot %s: %w", SnapshotTypeLabel, groupSnapshot.Name, err)
+	}
+	prGroupHash, _ := LabelValue(componentSnapshot, PRGroupHashLabel)
+	if err := SetOwnedLabelWithStyle(groupSnapshot, PRGroupHashLabel, prGroupHash, style); err != nil {
+		return nil, fmt.Errorf("setting label %s on group Snapshot %s: %w", PRGroupHashLabel, groupSnapshot.Name, err)
+	}
 	if componentSnapshot.Spec.Application != "" {
 		groupSnapshot.Labels[ApplicationNameLabel] = componentSnapshot.Spec.Application
 	} else {
-		groupSnapshot.Labels[ComponentGroupNameLabel] = componentSnapshot.Spec.ComponentGroup
+		if err := SetOwnedLabelWithStyle(groupSnapshot, ComponentGroupNameLabel, componentSnapshot.Spec.ComponentGroup, style); err != nil {
+			return nil, fmt.Errorf("setting label %s on group Snapshot %s: %w", ComponentGroupNameLabel, groupSnapshot.Name, err)
+		}
 	}
 
 	return groupSnapshot, nil
@@ -1562,7 +1577,7 @@ func UnmarshalJSON(b []byte) ([]*ComponentSnapshotInfo, error) {
 }
 
 func GetSourceRepoOwnerFromSnapshot(snapshot *applicationapiv1alpha1.Snapshot) string {
-	sourceRepoUrlAnnotation, found := snapshot.GetAnnotations()[PipelineAsCodeGitSourceURLAnnotation]
+	sourceRepoUrlAnnotation, found := AnnotationValue(snapshot, PipelineAsCodeGitSourceURLAnnotation)
 	if found {
 		arr := strings.Split(sourceRepoUrlAnnotation, "/")
 		return arr[len(arr)-2]
@@ -1577,7 +1592,7 @@ func GetSourceRepoOwnerFromSnapshot(snapshot *applicationapiv1alpha1.Snapshot) s
 func GetShaFromSnapshot(ctx context.Context, snapshot *applicationapiv1alpha1.Snapshot) string {
 	log := log.FromContext(ctx)
 
-	sha, found := snapshot.GetAnnotations()[PipelineAsCodeSHAAnnotation]
+	sha, found := AnnotationValue(snapshot, PipelineAsCodeSHAAnnotation)
 	if found {
 		if len(sha) == 0 {
 			log.Info(fmt.Sprintf("annotation '%s' in Snapshot '%s' is present but empty", PipelineAsCodeSHAAnnotation, snapshot.Name))
@@ -1611,7 +1626,9 @@ func CancelPipelineRuns(c client.Client, ctx context.Context, logger helpers.Int
 			// set "CancelledRunFinally" to PLR status, should gracefully cancel pipelinerun, this is so raw I hate this
 			patch := client.MergeFrom(plr.DeepCopy())
 			plr.Spec.Status = tektonv1.PipelineRunSpecStatusCancelledRunFinally
-			plr.Annotations[PRGroupCancelledAnnotation] = "true"
+			if err := SetOwnedAnnotation(&plr, PRGroupCancelledAnnotation, "true"); err != nil {
+				return fmt.Errorf("failed to mark PipelineRun %s/%s as cancelled with annotation %s: %w", plr.Namespace, plr.Name, PRGroupCancelledAnnotation, err)
+			}
 
 			err = c.Patch(ctx, &plr, patch)
 			if err != nil {
@@ -1734,7 +1751,7 @@ func IsAllCommentDisabledForPacRepositoryInComponent(ctx context.Context, adapte
 
 // IsIntegrationTestCommentDisabledForComponent checks if all git comments are disabled for the integration test status of given component
 func IsIntegrationTestCommentDisabledForComponent(component *applicationapiv1alpha1.Component) bool {
-	return metadata.HasAnnotationWithValue(component, GitCommentPolicyAnnotation, GitCommentPolicyAllDisabled)
+	return HasOwnedAnnotationValue(component, GitCommentPolicyAnnotation, GitCommentPolicyAllDisabled)
 }
 
 // isComponentRepositorySettingsCommentDisabled reports true when spec.repository-settings.comment-strategy
@@ -1776,14 +1793,14 @@ func HasSameGitSourceAndPRWithProcessedSnapshot(latestSnapshot, snapshot *applic
 		return true
 	}
 
-	if !metadata.HasAnnotation(latestSnapshot, PipelineAsCodeRepoURLAnnotation) ||
-		!metadata.HasAnnotation(snapshot, PipelineAsCodeRepoURLAnnotation) ||
-		!metadata.HasLabel(latestSnapshot, PipelineAsCodePullRequestAnnotation) ||
-		!metadata.HasLabel(snapshot, PipelineAsCodePullRequestAnnotation) {
+	latestRepo, latestRepoFound := AnnotationValue(latestSnapshot, PipelineAsCodeRepoURLAnnotation)
+	repo, repoFound := AnnotationValue(snapshot, PipelineAsCodeRepoURLAnnotation)
+	latestPR, latestPRFound := LabelValue(latestSnapshot, PipelineAsCodePullRequestAnnotation)
+	pr, prFound := LabelValue(snapshot, PipelineAsCodePullRequestAnnotation)
+	if !latestRepoFound || !repoFound || !latestPRFound || !prFound {
 		return false
 	}
-	if helpers.UrlToGitUrl(latestSnapshot.GetAnnotations()[PipelineAsCodeRepoURLAnnotation]) == helpers.UrlToGitUrl(snapshot.GetAnnotations()[PipelineAsCodeRepoURLAnnotation]) &&
-		latestSnapshot.GetLabels()[PipelineAsCodePullRequestAnnotation] == snapshot.GetLabels()[PipelineAsCodePullRequestAnnotation] {
+	if helpers.UrlToGitUrl(latestRepo) == helpers.UrlToGitUrl(repo) && latestPR == pr {
 		return true
 	}
 
@@ -1791,7 +1808,7 @@ func HasSameGitSourceAndPRWithProcessedSnapshot(latestSnapshot, snapshot *applic
 }
 
 func IgnoreSupersession(object metav1.ObjectMeta) bool {
-	if val, ok := object.GetAnnotations()[IgnoreSupersessionAnnotation]; ok {
+	if val, ok := AnnotationValue(&object, IgnoreSupersessionAnnotation); ok {
 		annotation, err := strconv.ParseBool(val)
 		if err != nil {
 			return false

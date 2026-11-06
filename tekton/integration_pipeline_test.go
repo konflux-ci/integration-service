@@ -28,6 +28,7 @@ import (
 	"github.com/konflux-ci/integration-service/gitops"
 	"github.com/konflux-ci/integration-service/helpers"
 	"github.com/konflux-ci/integration-service/loader"
+	"github.com/konflux-ci/integration-service/pkg/keys"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/tonglil/buflogr"
@@ -328,7 +329,7 @@ var _ = Describe("Integration pipeline", Ordered, func() {
 		actualValue := getParamValue(newIntegrationBundlePipelineRun.Spec.Params, "SNAPSHOT")
 		Expect(actualValue).To(Equal(string(snapshotString)))
 
-		Expect(metadata.SetAnnotation(enterpriseContractTestScenario, tekton.SnapshotParamAsNameAnnotation, "true")).Should(Succeed())
+		Expect(metadata.SetAnnotation(enterpriseContractTestScenario, keys.Test("snapshot-param-as-name").New, "true")).Should(Succeed())
 		enterpriseContractPipelineRun, err = tekton.NewIntegrationPipelineRun(k8sClient, ctx, mockLoader, log, prefix, namespace, enterpriseContractTestScenario, hasSnapshot)
 		Expect(err).NotTo(HaveOccurred())
 		enterpriseContractPipelineRun = enterpriseContractPipelineRun.WithIntegrationLabels(enterpriseContractTestScenario).
@@ -363,6 +364,13 @@ var _ = Describe("Integration pipeline", Ordered, func() {
 	})
 
 	Context("When creating a new IntegrationPipelineRun", func() {
+		It("copies the optional flag from a new-style scenario", func() {
+			scenario := integrationTestScenarioGit.DeepCopy()
+			scenario.Labels = map[string]string{keys.Test("optional").New: "true"}
+			run := (&tekton.IntegrationPipelineRun{}).WithIntegrationLabels(scenario)
+			Expect(run.Labels).To(HaveKeyWithValue(tektonconsts.OptionalLabel, "true"))
+		})
+
 		It("can create an IntegrationPipelineRun", func() {
 			buf := bytes.Buffer{}
 			log := helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
@@ -574,6 +582,19 @@ var _ = Describe("Integration pipeline", Ordered, func() {
 			Expect(buf.String()).ShouldNot(ContainSubstring(logEntry))
 		})
 
+		It("adds a new-style finalizer to a new-style IntegrationPipelineRun", func() {
+			pipelineRun := &tekton.IntegrationPipelineRun{
+				PipelineRun: tektonv1.PipelineRun{
+					ObjectMeta: metav1.ObjectMeta{
+						Annotations: map[string]string{keys.Test("style-marker").New: "true"},
+					},
+				},
+			}
+
+			pipelineRun.WithFinalizer(helpers.IntegrationPipelineRunFinalizer)
+			Expect(pipelineRun.Finalizers).To(ConsistOf(keys.Test("pipelinerun").New))
+		})
+
 		It("can append extra params to IntegrationPipelineRun and these parameters are present in the object Specs", func() {
 			newIntegrationPipelineRun.WithExtraParam(extraParams.Name, extraParams.Value)
 			Expect(newIntegrationPipelineRun.Spec.Params[0].Name).To(Equal(extraParams.Name))
@@ -603,6 +624,43 @@ var _ = Describe("Integration pipeline", Ordered, func() {
 				To(Equal(hasSnapshot.Labels[gitops.CustomLabelPrefix+"/custom_label"]))
 			Expect(newIntegrationPipelineRun.Labels[gitops.SnapshotTypeLabel]).
 				To(Equal(hasSnapshot.Labels[gitops.SnapshotTypeLabel]))
+		})
+
+		It("reads the component label from a new-style Snapshot", func() {
+			newStyleSnapshot := hasSnapshot.DeepCopy()
+			delete(newStyleSnapshot.Labels, gitops.SnapshotComponentLabel)
+			newStyleSnapshot.Labels[keys.BuildComponent().New] = hasComp.Name
+
+			newIntegrationPipelineRun.WithSnapshot(newStyleSnapshot, integrationTestScenarioGit)
+			Expect(newIntegrationPipelineRun.Labels[gitops.SnapshotComponentLabel]).To(Equal(hasComp.Name))
+		})
+
+		It("writes new-style Integration PipelineRun metadata for a new-style Snapshot", func() {
+			newStyleSnapshot := hasSnapshot.DeepCopy()
+			newStyleSnapshot.TypeMeta = metav1.TypeMeta{APIVersion: "konflux-ci.dev/v1alpha1", Kind: "Snapshot"}
+			newStyleSnapshot.Labels = map[string]string{
+				keys.Test("type").New:      gitops.SnapshotComponentType,
+				keys.PAC("event-type").New: gitops.PipelineAsCodePullRequestType,
+				keys.BuildComponent().New:  hasComp.Name,
+			}
+			newStyleSnapshot.Annotations = map[string]string{
+				keys.Test("status").New: "ready",
+			}
+
+			pipelineRun := (&tekton.IntegrationPipelineRun{}).
+				WithSnapshot(newStyleSnapshot, integrationTestScenarioGit).
+				WithIntegrationLabels(integrationTestScenarioGit)
+
+			Expect(pipelineRun.Labels).To(HaveKeyWithValue(keys.SnapshotName().New, newStyleSnapshot.Name))
+			Expect(pipelineRun.Labels).NotTo(HaveKey(keys.SnapshotName().Old))
+			Expect(pipelineRun.Labels).To(HaveKeyWithValue(keys.PipelineType().New, tektonconsts.PipelineTypeTest))
+			Expect(pipelineRun.Labels).NotTo(HaveKey(keys.PipelineType().Old))
+			Expect(pipelineRun.Labels).To(HaveKeyWithValue(keys.Test("scenario").New, integrationTestScenarioGit.Name))
+			Expect(pipelineRun.Labels).NotTo(HaveKey(keys.Test("scenario").Old))
+			Expect(pipelineRun.Labels).To(HaveKeyWithValue(keys.Test("type").New, gitops.SnapshotComponentType))
+			Expect(pipelineRun.Labels).NotTo(HaveKey(keys.Test("type").Old))
+			Expect(pipelineRun.Labels).To(HaveKeyWithValue(keys.PAC("event-type").New, gitops.PipelineAsCodePullRequestType))
+			Expect(pipelineRun.Labels).NotTo(HaveKey(keys.PAC("event-type").Old))
 		})
 
 		It("can append labels coming from Application to IntegrationPipelineRun and making sure that label values matches application", func() {
@@ -1158,6 +1216,26 @@ var _ = Describe("Integration pipeline", Ordered, func() {
 			Expect(getResolverParamValue(resultAgain, tektonconsts.TektonResolverGitParamRevision)).To(Equal(forkSourceRevision))
 		})
 
+		It("reads new-style PAC annotations in ReplaceGitResolverUpdateMap", func() {
+			snapshot := &applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Annotations: map[string]string{
+						keys.PAC("source-repo-url").New: forkSourceRepoUrl,
+						keys.PAC("repo-url").New:        forkTargetRepoUrl,
+						keys.PAC("sha").New:             forkSourceRevision,
+					},
+				},
+			}
+			resolverParams := []v1beta2.ResolverParameter{
+				{Name: tektonconsts.TektonResolverGitParamURL, Value: forkTargetRepoUrl},
+				{Name: tektonconsts.TektonResolverGitParamRevision, Value: "main"},
+			}
+
+			result := tekton.ReplaceGitResolverUpdateMap(snapshot, resolverParams)
+			Expect(getResolverParamValue(result, tektonconsts.TektonResolverGitParamURL)).To(Equal(forkSourceRepoUrl + ".git"))
+			Expect(getResolverParamValue(result, tektonconsts.TektonResolverGitParamRevision)).To(Equal(forkSourceRevision))
+		})
+
 		It("does not update org and repo in ReplaceGitResolverUpdateMap for same-repo PR snapshots", func() {
 			snapshot := &applicationapiv1alpha1.Snapshot{
 				ObjectMeta: metav1.ObjectMeta{
@@ -1210,6 +1288,35 @@ var _ = Describe("Integration pipeline", Ordered, func() {
 				},
 			}
 
+			Expect(tekton.ShouldUpdateIntegrationPipelineGitResolver(scenario, snapshot)).To(BeTrue())
+		})
+
+		It("uses new-style PAC annotations when deciding whether to update the resolver", func() {
+			scenario := &v1beta2.IntegrationTestScenario{
+				Spec: v1beta2.IntegrationTestScenarioSpec{
+					ResolverRef: v1beta2.ResolverRef{
+						Resolver: tektonconsts.TektonResolverGit,
+						Params: []v1beta2.ResolverParameter{
+							{Name: tektonconsts.TektonResolverGitParamURL, Value: forkTargetRepoUrl},
+							{Name: tektonconsts.TektonResolverGitParamRevision, Value: "main"},
+						},
+					},
+				},
+			}
+			snapshot := &applicationapiv1alpha1.Snapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: map[string]string{
+						keys.PAC("pull-request").New: "1",
+						keys.PAC("event-type").New:   gitops.PipelineAsCodePullRequestType,
+					},
+					Annotations: map[string]string{
+						keys.PAC("repo-url").New:        forkTargetRepoUrl,
+						keys.PAC("source-repo-url").New: forkSourceRepoUrl,
+						keys.PAC("branch").New:          "main",
+						keys.PAC("sha").New:             forkSourceRevision,
+					},
+				},
+			}
 			Expect(tekton.ShouldUpdateIntegrationPipelineGitResolver(scenario, snapshot)).To(BeTrue())
 		})
 

@@ -29,6 +29,7 @@ import (
 
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
 	intgteststat "github.com/konflux-ci/integration-service/pkg/integrationteststatus"
+	"github.com/konflux-ci/integration-service/pkg/keys"
 
 	"github.com/konflux-ci/integration-service/gitops"
 	"github.com/konflux-ci/operator-toolkit/metadata"
@@ -106,6 +107,18 @@ var _ = Describe("Snapshot integration test statuses", func() {
 				err = metadata.SetAnnotation(snapshot, gitops.SnapshotTestsStatusAnnotation, string(testAnnotation))
 				Expect(err).ToNot(HaveOccurred())
 
+			})
+
+			It("Returns expected test statuses from the new annotation", func() {
+				raw := snapshot.Annotations[gitops.SnapshotTestsStatusAnnotation]
+				delete(snapshot.Annotations, gitops.SnapshotTestsStatusAnnotation)
+				err := metadata.SetAnnotation(snapshot, keys.Test("status").New, raw)
+				Expect(err).ToNot(HaveOccurred())
+
+				statuses, err := gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(snapshot)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(statuses.GetStatuses()).To(HaveLen(1))
+				Expect(statuses.GetStatuses()[0].ScenarioName).To(Equal(testScenarioName))
 			})
 
 			It("Returns expected test statuses", func() {
@@ -192,6 +205,31 @@ var _ = Describe("Snapshot integration test statuses", func() {
 				statuses, err := gitops.NewSnapshotIntegrationTestStatusesFromSnapshot(snapshot)
 				Expect(err).ToNot(HaveOccurred())
 				Expect(statuses.GetStatuses()).To(HaveLen(1))
+			})
+
+			It("writes only the new status annotation on a konflux snapshot", func() {
+				snapshot.APIVersion = "konflux-ci.dev/v1alpha1"
+				sits.UpdateTestStatusIfChanged(testScenarioName, intgteststat.IntegrationTestStatusInProgress, testDetails)
+
+				err := gitops.WriteIntegrationTestStatusesIntoSnapshot(ctx, snapshot, sits, k8sClient)
+				Expect(err).ToNot(HaveOccurred())
+
+				Eventually(func() error {
+					if err := k8sClient.Get(ctx, types.NamespacedName{
+						Name:      snapshot.Name,
+						Namespace: namespace,
+					}, snapshot); err != nil {
+						return err
+					}
+					annotations := snapshot.GetAnnotations()
+					if _, ok := annotations[keys.Test("status").New]; !ok {
+						return fmt.Errorf("snapshot doesn't contain the new status annotation")
+					}
+					if _, ok := annotations[gitops.SnapshotTestsStatusAnnotation]; ok {
+						return fmt.Errorf("snapshot still contains the old status annotation")
+					}
+					return nil
+				}, time.Second*10).ShouldNot(HaveOccurred())
 			})
 		})
 

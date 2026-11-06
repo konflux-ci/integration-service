@@ -18,7 +18,6 @@ package gitops
 
 import (
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
-	"github.com/konflux-ci/operator-toolkit/metadata"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 )
@@ -69,7 +68,7 @@ func SnapshotTestAnnotationChangePredicate() predicate.Predicate {
 		// This allows for recovery if an event is missed during those times
 		CreateFunc: func(createEvent event.CreateEvent) bool {
 			if snapshot, ok := createEvent.Object.(*applicationapiv1alpha1.Snapshot); ok {
-				return !HaveAppStudioTestsFinished(snapshot) && metadata.HasAnnotation(snapshot, SnapshotTestsStatusAnnotation)
+				return !HaveAppStudioTestsFinished(snapshot) && HasOwnedAnnotation(snapshot, SnapshotTestsStatusAnnotation)
 			}
 			return false
 		},

@@ -19,6 +19,7 @@ package tekton_test
 import (
 	"time"
 
+	"github.com/konflux-ci/integration-service/pkg/keys"
 	"github.com/konflux-ci/integration-service/tekton"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -201,6 +202,16 @@ var _ = Describe("Predicates", func() {
 			newPipelineRun.Annotations["test.appstudio.openshift.io/pr-group"] = "someGroup"
 			Expect(instance.Update(contextEvent)).To(BeFalse())
 			newPipelineRun.Labels["test.appstudio.openshift.io/pr-group-sha"] = "someSha"
+			Expect(instance.Update(contextEvent)).To(BeTrue())
+		})
+
+		It("should return true when an update event has new-style group metadata", func() {
+			contextEvent := event.UpdateEvent{
+				ObjectOld: pipelineRun,
+				ObjectNew: newPipelineRun,
+			}
+			newPipelineRun.Labels[keys.Test("pr-group-sha").New] = "someSha"
+			newPipelineRun.Annotations[keys.Test("pr-group").New] = "someGroup"
 			Expect(instance.Update(contextEvent)).To(BeTrue())
 		})
 

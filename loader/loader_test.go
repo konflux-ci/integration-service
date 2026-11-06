@@ -26,6 +26,7 @@ import (
 	. "github.com/onsi/gomega"
 	"github.com/onsi/gomega/gstruct"
 
+	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/konflux/v1alpha1"
 	konfluxv1beta2 "github.com/konflux-ci/integration-service/api/konflux/v1beta2"
 	"github.com/konflux-ci/integration-service/api/v1beta2"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
@@ -33,10 +34,12 @@ import (
 
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/selection"
 	types "k8s.io/apimachinery/pkg/types"
 
 	oldapplicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
 	"github.com/konflux-ci/integration-service/gitops"
+	"github.com/konflux-ci/integration-service/pkg/keys"
 	releasev1alpha1 "github.com/konflux-ci/release-service/api/v1alpha1"
 	pacv1alpha1 "github.com/openshift-pipelines/pipelines-as-code/pkg/apis/pipelinesascode/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
@@ -743,6 +746,17 @@ var _ = Describe("Loader", Ordered, func() {
 		Expect(comp.ObjectMeta).To(Equal(hasComp.ObjectMeta))
 	})
 
+	It("ensures we can get a Component from a new-style Snapshot label", func() {
+		newStyleSnapshot := hasSnapshot.DeepCopy()
+		delete(newStyleSnapshot.Labels, gitops.SnapshotComponentLabel)
+		newStyleSnapshot.Labels[keys.BuildComponent().New] = hasComp.Name
+
+		comp, err := loader.GetComponentFromSnapshot(ctx, k8sClient, newStyleSnapshot)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(comp).NotTo(BeNil())
+		Expect(comp.ObjectMeta).To(Equal(hasComp.ObjectMeta))
+	})
+
 	It("ensures a non-nil error is returned when we cannot get a Component from a Snapshot if the label is missing", func() {
 		// Temporarily remove the component label from Snapshot
 		delete(hasSnapshot.Labels, gitops.SnapshotComponentLabel)
@@ -762,6 +776,39 @@ var _ = Describe("Loader", Ordered, func() {
 		Expect(comp.ObjectMeta).To(Equal(hasComp.ObjectMeta))
 	})
 
+	It("returns no Component when a PipelineRun has no component label", func() {
+		pipelineRun := buildPipelineRun.DeepCopy()
+		delete(pipelineRun.Labels, keys.BuildComponent().Old)
+		delete(pipelineRun.Labels, keys.BuildComponent().New)
+
+		comp, err := loader.GetComponentFromPipelineRun(ctx, k8sClient, pipelineRun)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(comp).To(BeNil())
+	})
+
+	It("ensures a new-style component label is preferred on a Pipeline Run", func() {
+		newComponent := &applicationapiv1alpha1.Component{
+			ObjectMeta: metav1.ObjectMeta{Name: hasComp.Name, Namespace: hasComp.Namespace},
+			Spec: applicationapiv1alpha1.ComponentSpec{
+				Source: applicationapiv1alpha1.ComponentSource{GitURL: SampleRepoLink},
+			},
+		}
+		Expect(k8sClient.Create(ctx, newComponent)).To(Succeed())
+		DeferCleanup(func() {
+			_ = k8sClient.Delete(ctx, newComponent)
+		})
+
+		newStylePipelineRun := buildPipelineRun.DeepCopy()
+		delete(newStylePipelineRun.Labels, tektonconsts.PipelineRunComponentLabel)
+		newStylePipelineRun.Labels[keys.BuildComponent().New] = hasComp.Name
+
+		comp, err := loader.GetComponentFromPipelineRun(ctx, k8sClient, newStylePipelineRun)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(comp).NotTo(BeNil())
+		Expect(comp.Name).To(Equal(hasComp.Name))
+		Expect(comp.Namespace).To(Equal(hasComp.Namespace))
+	})
+
 	It("ensures we can get the application from the Pipeline Run", func() {
 		app, err := loader.GetApplicationFromPipelineRun(ctx, k8sClient, buildPipelineRun)
 		Expect(err).ToNot(HaveOccurred())
@@ -778,6 +825,18 @@ var _ = Describe("Loader", Ordered, func() {
 
 	It("ensures we can get the Snapshot from a Pipeline Run", func() {
 		snapshot, err := loader.GetSnapshotFromPipelineRun(ctx, k8sClient, buildPipelineRun)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(snapshot).NotTo(BeNil())
+		Expect(snapshot.ObjectMeta).To(Equal(hasSnapshot.ObjectMeta))
+	})
+
+	It("ensures we can get the Snapshot from a Pipeline Run with a new-style snapshot annotation", func() {
+		pipelineRun := buildPipelineRun.DeepCopy()
+		pipelineRun.Labels = map[string]string{
+			keys.SnapshotName().New: hasSnapshot.Name,
+		}
+
+		snapshot, err := loader.GetSnapshotFromPipelineRun(ctx, k8sClient, pipelineRun)
 		Expect(err).ToNot(HaveOccurred())
 		Expect(snapshot).NotTo(BeNil())
 		Expect(snapshot.ObjectMeta).To(Equal(hasSnapshot.ObjectMeta))
@@ -888,6 +947,53 @@ var _ = Describe("Loader", Ordered, func() {
 		Expect(err).ToNot(HaveOccurred())
 		Expect(gottenReleasePlanItems).NotTo(BeNil())
 
+	})
+
+	It("reads new auto-release annotations and default label behavior for ComponentGroup plans", func() {
+		annotatedPlan := &releasev1alpha1.ReleasePlan{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:        "component-group-annotated-release-plan",
+				Namespace:   hasComponentGroup1.Namespace,
+				Annotations: map[string]string{keys.AutoRelease().New: "true"},
+			},
+			Spec: releasev1alpha1.ReleasePlanSpec{
+				ComponentGroup: hasComponentGroup1.Name,
+				Target:         "default",
+			},
+		}
+		defaultPlan := &releasev1alpha1.ReleasePlan{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "component-group-default-release-plan",
+				Namespace: hasComponentGroup1.Namespace,
+			},
+			Spec: releasev1alpha1.ReleasePlanSpec{
+				ComponentGroup: hasComponentGroup1.Name,
+				Target:         "default",
+			},
+		}
+		createReleasePlan(annotatedPlan)
+		createReleasePlan(defaultPlan)
+		DeferCleanup(func() {
+			deleteReleasePlan(annotatedPlan)
+			deleteReleasePlan(defaultPlan)
+		})
+
+		plans, err := loader.GetAutoReleasePlansForComponentGroup(ctx, k8sClient, hasComponentGroup1, hasSnapshot, true)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(*plans).To(HaveLen(2))
+	})
+
+	It("lists snapshots for a pull request using either metadata style", func() {
+		object := metav1.ObjectMeta{Namespace: hasSnapshot.Namespace}
+		all, err := loader.GetAllSnapshotsForPR(ctx, k8sClient, object, hasComp.Name, "1")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(all).NotTo(BeNil())
+		Expect(*all).NotTo(BeEmpty())
+
+		pull, err := loader.GetAllPullSnapshotsForPR(ctx, k8sClient, object, hasComp.Name, "1")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(pull).NotTo(BeNil())
+		Expect(*pull).To(BeEmpty())
 	})
 
 	It("can get all TaskRuns present in the cluster that are associated with the given pipelineRun", func() {
@@ -1508,6 +1614,12 @@ var _ = Describe("Loader", Ordered, func() {
 			Expect((*fetchedSnapshots)[0].Spec).To(Equal(hasSnapshot.Spec))
 		})
 
+		It("accepts a component version requirement when selecting snapshots", func() {
+			fetchedSnapshots, err := loader.GetMatchingComponentSnapshotsForComponentAndPRGroupHash(ctx, k8sClient, hasSnapshot.Namespace, hasComp.Name, "version-that-is-not-present", prGroupSha, hasApp.Name, gitops.ApplicationNameLabel)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(*fetchedSnapshots).To(BeEmpty())
+		})
+
 		It("Can get matching snapshot for pr group hash", func() {
 			fetchedSnapshots, err := loader.GetMatchingComponentSnapshotsForPRGroupHash(ctx, k8sClient, "", prGroupSha, hasApp.Name, gitops.ApplicationNameLabel)
 			Expect(err).To(Succeed())
@@ -1602,6 +1714,13 @@ var _ = Describe("Loader", Ordered, func() {
 			Expect((*snapshots)[0].Namespace).To(Equal(hasSnapshot.Namespace))
 			Expect((*snapshots)[0].Spec).To(Equal(hasSnapshot.Spec))
 		})
+	})
+
+	It("builds compatibility requirements for owned and unmigrated labels", func() {
+		owned := labelRequirement(gitops.SnapshotComponentLabel, selection.In, []string{"component"})
+		Expect(owned.Pair).To(Equal(keys.BuildComponent()))
+		migrated := labelRequirement(keys.Test("scenario").Old, selection.In, []string{"scenario"})
+		Expect(migrated.Pair).To(Equal(keys.Test("scenario")))
 	})
 
 	When("GetPushComponentSnapshotsForComponent is called", func() {
