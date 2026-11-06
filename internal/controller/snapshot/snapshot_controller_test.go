@@ -160,6 +160,13 @@ var _ = Describe("SnapshotController", func() {
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 		err = k8sClient.Delete(ctx, hasSnapshot)
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
+		Eventually(func() bool {
+			err := k8sClient.Get(ctx, types.NamespacedName{
+				Namespace: hasSnapshot.Namespace,
+				Name:      hasSnapshot.Name,
+			}, &applicationapiv1alpha1.Snapshot{})
+			return errors.IsNotFound(err)
+		}, time.Second*20).Should(BeTrue())
 	})
 
 	It("can create and return a new Reconciler object", func() {
@@ -248,8 +255,16 @@ var _ = Describe("SnapshotController", func() {
 	})
 
 	It("Does not return an error if the application cannot be found", func() {
-		hasSnapshot.Spec.Application = string("im-a-ghost")
-		Expect(k8sClient.Update(ctx, hasSnapshot)).Should(Succeed())
+		Eventually(func() error {
+			if err := k8sClient.Get(ctx, types.NamespacedName{
+				Namespace: hasSnapshot.Namespace,
+				Name:      hasSnapshot.Name,
+			}, hasSnapshot); err != nil {
+				return err
+			}
+			hasSnapshot.Spec.Application = "im-a-ghost"
+			return k8sClient.Update(ctx, hasSnapshot)
+		}, time.Second*20).Should(Succeed())
 
 		// Use Eventually to ensure the update has been applied
 		Eventually(func() bool {
@@ -275,8 +290,16 @@ var _ = Describe("SnapshotController", func() {
 	When("snapshot is restored from backup", func() {
 
 		BeforeEach(func() {
-			hasSnapshot.Labels["velero.io/restore-name"] = "something"
-			Expect(k8sClient.Update(ctx, hasSnapshot)).To(Succeed())
+			Eventually(func() error {
+				if err := k8sClient.Get(ctx, types.NamespacedName{
+					Namespace: hasSnapshot.Namespace,
+					Name:      hasSnapshot.Name,
+				}, hasSnapshot); err != nil {
+					return err
+				}
+				hasSnapshot.Labels["velero.io/restore-name"] = "something"
+				return k8sClient.Update(ctx, hasSnapshot)
+			}, time.Second*20).Should(Succeed())
 
 			Eventually(func() bool {
 				err := k8sClient.Get(ctx, types.NamespacedName{
