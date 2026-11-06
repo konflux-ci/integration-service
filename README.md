@@ -61,7 +61,9 @@ Monitors IntegrationTestScenario CRs and manages the following:
 
 ### Component Controller
 
-Regenerates the latest Snapshot in case of component deletion based on the Application contents. Planned to be deprecated in favor of the ComponentGroup model.
+Monitors `appstudio.redhat.com` Component CRs and manages the following:
+- Ensures the per-component `its-pipeline-<component>` ServiceAccount and a RoleBinding of the same name to the `konflux-integration-runner` ClusterRole (the role the shared runner account uses) exist when a Component is created, with or without an Application. Both are owned by the Component and removed with it. The account carries no image pull secrets; image-controller links the component repository's push secret into it, and integration PipelineRuns for component Snapshots run as it.
+- Regenerates the latest Snapshot in case of component deletion based on the Application contents. This part is planned to be deprecated in favor of the ComponentGroup model.
 
 ## Dependencies
 

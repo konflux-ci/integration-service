@@ -111,6 +111,9 @@ var _ = BeforeSuite(func() {
 		defer GinkgoRecover()
 		Expect(k8sManager.Start(ctx)).To(Succeed())
 	}()
+	// k8sClient reads from the manager cache. Wait for the cache to start before any spec runs, or a
+	// spec that reads it straight away gets ErrCacheNotStarted instead of NotFound.
+	Expect(k8sManager.GetCache().WaitForCacheSync(ctx)).To(BeTrue())
 })
 
 var _ = AfterSuite(func() {
