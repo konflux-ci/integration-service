@@ -103,6 +103,40 @@ var _ = Describe("NudgeConfig reconciler", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(result.RequeueAfter).To(BeNumerically(">=", minBatchRequeue))
 		})
+
+		It("should requeue near hardDeadline when it precedes fireAt", func() {
+			now := metav1.Now()
+			laterFire := metav1.NewTime(now.Add(2 * time.Hour))
+			soonerDeadline := metav1.NewTime(now.Add(10 * time.Minute))
+			nudgeConfig := &v1beta2.NudgeConfig{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      v1beta2.NudgeConfigSingletonName,
+					Namespace: "default",
+				},
+				Spec: v1beta2.NudgeConfigSpec{},
+				Status: v1beta2.NudgeConfigStatus{
+					ActiveBatches: []v1beta2.ActiveBatch{
+						{
+							Target:       "bundle",
+							BatchID:      "deadline-first",
+							Phase:        v1beta2.BatchPhaseAccumulating,
+							CreatedAt:    now,
+							FireAt:       &laterFire,
+							HardDeadline: soonerDeadline,
+							Accumulated: []v1beta2.AccumulatedEntry{
+								{From: "a", ImageDigest: "sha256:1", BuildPipelineRun: "plr-1", CapturedAt: now},
+							},
+						},
+					},
+				},
+			}
+			reconciler.Client = newClient(nudgeConfig)
+
+			result, err := reconciler.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKeyFromObject(nudgeConfig)})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.RequeueAfter).To(BeNumerically(">=", minBatchRequeue))
+			Expect(result.RequeueAfter).To(BeNumerically("<", 15*time.Minute))
+		})
 	})
 
 	Context("When there are no pending batches or actions", func() {
