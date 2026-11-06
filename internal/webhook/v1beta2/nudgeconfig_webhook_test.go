@@ -112,6 +112,16 @@ var _ = Describe("NudgeConfig webhook - cycle detection", Ordered, func() {
 			Expect(warnings).To(BeEmpty())
 		})
 
+		It("rejects duplicate (from, to) pairs", func() {
+			nudgeConfig.Spec.Nudges = []konfluxv1beta2.NudgeRelationship{
+				{From: "component-a", To: "component-b"},
+				{From: "component-a", To: "component-b", Mode: konfluxv1beta2.NudgeModeValidated},
+			}
+			_, err := validator.ValidateCreate(ctx, nudgeConfig)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("duplicate (from, to) pair not allowed"))
+		})
+
 		It("rejects a direct cycle", func() {
 			nudgeConfig.Spec.Nudges = []konfluxv1beta2.NudgeRelationship{
 				{From: "component-a", To: "component-b"},
@@ -192,6 +202,20 @@ var _ = Describe("NudgeConfig webhook - cycle detection", Ordered, func() {
 			warnings, err := validator.ValidateUpdate(ctx, nudgeConfig, newNudgeConfig)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(warnings).To(BeEmpty())
+		})
+
+		It("rejects an update that introduces duplicate (from, to) pairs", func() {
+			nudgeConfig.Spec.Nudges = []konfluxv1beta2.NudgeRelationship{
+				{From: "a", To: "b"},
+			}
+			newNudgeConfig := nudgeConfig.DeepCopy()
+			newNudgeConfig.Spec.Nudges = []konfluxv1beta2.NudgeRelationship{
+				{From: "a", To: "b"},
+				{From: "a", To: "b"},
+			}
+			_, err := validator.ValidateUpdate(ctx, nudgeConfig, newNudgeConfig)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("duplicate (from, to) pair not allowed"))
 		})
 
 		It("returns an error for wrong oldObj type", func() {
