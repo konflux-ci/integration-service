@@ -1785,3 +1785,67 @@ var _ = Describe("CopyBuildPipelineRunResultsToSnapshot", func() {
 		Expect(snapshot.Annotations).To(HaveKey("test.appstudio.openshift.io/result-image-url"))
 	})
 })
+
+var _ = Describe("AppStudio workload labels on Snapshots", func() {
+	DescribeTable("propagates labels while retaining the owning resource identity",
+		func(application, group bool) {
+			source := &metav1.ObjectMeta{
+				Labels: map[string]string{
+					"appstudio.openshift.io/example":             "value",
+					"appstudio.openshift.io/application":         "untrusted",
+					"appstudio.openshift.io/component-group":     "untrusted",
+					"appstudio.openshift.io/component":           "untrusted",
+					"appstudio.openshift.io/snapshot":            "untrusted",
+					"appstudio.openshift.io/service":             "untrusted",
+					"appstudio.openshift.io/build-pipelinerun":   "untrusted",
+					"appstudio.openshift.io.example.com/example": "unrelated",
+				},
+				Annotations: map[string]string{"appstudio.openshift.io/example": "annotation"},
+			}
+			owner := &metav1.ObjectMeta{Name: "owner"}
+			snapshot := &applicationapiv1alpha1.Snapshot{}
+			prefixes := []string{gitops.BuildPipelineRunPrefix}
+			if group {
+				gitops.CopyTempGroupSnapshotLabelsAndAnnotations(owner, snapshot, "component", source, prefixes, application)
+				Expect(snapshot.Labels).NotTo(HaveKey(gitops.SnapshotComponentLabel))
+			} else {
+				// The temporary component path already requests this prefix for annotations.
+				prefixes = append(prefixes, gitops.AppstudioLabelPrefix)
+				gitops.CopySnapshotLabelsAndAnnotations(owner, snapshot, "component", source, prefixes, application)
+				Expect(snapshot.Labels).To(HaveKeyWithValue(gitops.SnapshotComponentLabel, "component"))
+			}
+			Expect(snapshot.Labels).To(HaveKeyWithValue("appstudio.openshift.io/example", "value"))
+			Expect(snapshot.Labels).NotTo(HaveKey("appstudio.openshift.io.example.com/example"))
+			for _, name := range []string{"snapshot", "service", "build-pipelinerun"} {
+				Expect(snapshot.Labels).NotTo(HaveKey("appstudio.openshift.io/" + name))
+			}
+			if application {
+				Expect(snapshot.Labels).To(HaveKeyWithValue(gitops.ApplicationNameLabel, "owner"))
+				Expect(snapshot.Labels).NotTo(HaveKey(gitops.ComponentGroupNameLabel))
+			} else {
+				Expect(snapshot.Labels).To(HaveKeyWithValue(gitops.ComponentGroupNameLabel, "owner"))
+				Expect(snapshot.Labels).NotTo(HaveKey(gitops.ApplicationNameLabel))
+			}
+			if group {
+				Expect(snapshot.Annotations).NotTo(HaveKey("appstudio.openshift.io/example"))
+			}
+		},
+		Entry("Application component Snapshot", true, false),
+		Entry("ComponentGroup component Snapshot", false, false),
+		Entry("Application group Snapshot", true, true),
+		Entry("ComponentGroup group Snapshot", false, true),
+	)
+	It("carries workload labels from the triggering component Snapshot to a group Snapshot", func() {
+		component := &applicationapiv1alpha1.Snapshot{
+			ObjectMeta: metav1.ObjectMeta{
+				Labels: map[string]string{"appstudio.openshift.io/example": "value", gitops.SnapshotComponentLabel: "component"},
+			},
+			Spec: applicationapiv1alpha1.SnapshotSpec{Application: "owner"},
+		}
+		group, err := gitops.SetAnnotationAndLabelForGroupSnapshot(&applicationapiv1alpha1.Snapshot{}, component, nil)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(group.Labels).To(HaveKeyWithValue("appstudio.openshift.io/example", "value"))
+		Expect(group.Labels).To(HaveKeyWithValue(gitops.ApplicationNameLabel, "owner"))
+		Expect(group.Labels).NotTo(HaveKey(gitops.SnapshotComponentLabel))
+	})
+})

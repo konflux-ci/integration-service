@@ -184,3 +184,29 @@ var _ = Describe("write either", func() {
 		})
 	})
 })
+
+var _ = Describe("AppStudio label propagation", func() {
+	It("copies arbitrary labels with their exact values without sharing the source map", func() {
+		source := configMap(map[string]string{
+			"appstudio.openshift.io/example":  "value",
+			"appstudio.openshift.io/disabled": "false",
+			"appstudio.openshift.io/empty":    "",
+		}, map[string]string{"appstudio.openshift.io/example": "annotation"})
+		result := keys.PropagatedAppStudioLabels(source)
+		Expect(result).To(Equal(source.Labels))
+		result["appstudio.openshift.io/example"] = "changed"
+		Expect(source.Labels["appstudio.openshift.io/example"]).To(Equal("value"))
+	})
+	It("excludes controller-owned identities and other label domains", func() {
+		labels := map[string]string{
+			"example.com/workload":                        "other",
+			"appstudio.openshift.io.example.com/workload": "similar-domain",
+			"custom.appstudio.openshift.io/workload":      "custom",
+		}
+		for _, name := range []string{"application", "component", "component-group", "snapshot", "service", "build-pipelinerun"} {
+			labels[keys.PrefixAppstudio+"/"+name] = "untrusted"
+		}
+		Expect(keys.PropagatedAppStudioLabels(configMap(labels, nil))).To(BeEmpty())
+		Expect(keys.PropagatedAppStudioLabels(configMap(nil, nil))).To(BeEmpty())
+	})
+})
