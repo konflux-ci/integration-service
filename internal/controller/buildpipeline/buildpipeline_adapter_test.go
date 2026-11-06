@@ -4239,7 +4239,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				},
 				Spec: konfluxv1beta2.NudgeConfigSpec{
 					Nudges: []konfluxv1beta2.NudgeRelationship{
-						{From: "other-component", To: "another-component-sample", Mode: konfluxv1beta2.NudgeModeImmediate},
+						{From: konfluxv1beta2.ComponentVersion{Component: "other-component"}, To: konfluxv1beta2.ComponentVersion{Component: "another-component-sample"}, Mode: konfluxv1beta2.NudgeModeImmediate},
 					},
 				},
 			}
@@ -4274,7 +4274,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				},
 				Spec: konfluxv1beta2.NudgeConfigSpec{
 					Nudges: []konfluxv1beta2.NudgeRelationship{
-						{From: hasComp.Name, To: "nonexistent-component", Mode: konfluxv1beta2.NudgeModeImmediate},
+						{From: konfluxv1beta2.ComponentVersion{Component: hasComp.Name}, To: konfluxv1beta2.ComponentVersion{Component: "nonexistent-component"}, Mode: konfluxv1beta2.NudgeModeImmediate},
 					},
 				},
 			}
@@ -4305,7 +4305,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				},
 				Spec: konfluxv1beta2.NudgeConfigSpec{
 					Nudges: []konfluxv1beta2.NudgeRelationship{
-						{From: hasComp.Name, To: "another-component-sample", Mode: konfluxv1beta2.NudgeModeImmediate},
+						{From: konfluxv1beta2.ComponentVersion{Component: hasComp.Name}, To: konfluxv1beta2.ComponentVersion{Component: "another-component-sample"}, Mode: konfluxv1beta2.NudgeModeImmediate},
 					},
 				},
 			}
@@ -4335,7 +4335,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				},
 				Spec: konfluxv1beta2.NudgeConfigSpec{
 					Nudges: []konfluxv1beta2.NudgeRelationship{
-						{From: hasComp.Name, To: "another-component-sample", Mode: konfluxv1beta2.NudgeModeImmediate},
+						{From: konfluxv1beta2.ComponentVersion{Component: hasComp.Name}, To: konfluxv1beta2.ComponentVersion{Component: "another-component-sample"}, Mode: konfluxv1beta2.NudgeModeImmediate},
 					},
 				},
 			}
@@ -4367,7 +4367,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				},
 				Spec: konfluxv1beta2.NudgeConfigSpec{
 					Nudges: []konfluxv1beta2.NudgeRelationship{
-						{From: hasComp.Name, To: "another-component-sample", Mode: konfluxv1beta2.NudgeModeImmediate},
+						{From: konfluxv1beta2.ComponentVersion{Component: hasComp.Name}, To: konfluxv1beta2.ComponentVersion{Component: "another-component-sample"}, Mode: konfluxv1beta2.NudgeModeImmediate},
 					},
 				},
 			}
@@ -4400,7 +4400,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				},
 				Spec: v1beta2.NudgeConfigSpec{
 					Nudges: []v1beta2.NudgeRelationship{
-						{From: hasComp.Name, To: hasComp2.Name, Mode: v1beta2.NudgeModeImmediate},
+						{From: konfluxv1beta2.ComponentVersion{Component: hasComp.Name}, To: konfluxv1beta2.ComponentVersion{Component: hasComp2.Name}, Mode: v1beta2.NudgeModeImmediate},
 					},
 					TargetConfig: []v1beta2.TargetConfig{
 						{Target: hasComp2.Name, BatchPolicy: &v1beta2.BatchPolicy{}},
@@ -4470,7 +4470,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				},
 				Spec: konfluxv1beta2.NudgeConfigSpec{
 					Nudges: []konfluxv1beta2.NudgeRelationship{
-						{From: hasComp.Name, To: "another-component-sample", Mode: konfluxv1beta2.NudgeModeValidated},
+						{From: konfluxv1beta2.ComponentVersion{Component: hasComp.Name}, To: konfluxv1beta2.ComponentVersion{Component: "another-component-sample"}, Mode: konfluxv1beta2.NudgeModeValidated},
 					},
 				},
 			}
@@ -4501,7 +4501,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				},
 				Spec: v1beta2.NudgeConfigSpec{
 					Nudges: []v1beta2.NudgeRelationship{
-						{From: hasComp.Name, To: hasComp2.Name, Mode: v1beta2.NudgeModeImmediate},
+						{From: konfluxv1beta2.ComponentVersion{Component: hasComp.Name}, To: konfluxv1beta2.ComponentVersion{Component: hasComp2.Name}, Mode: v1beta2.NudgeModeImmediate},
 					},
 					TargetConfig: []v1beta2.TargetConfig{
 						{Target: hasComp2.Name, BatchPolicy: &v1beta2.BatchPolicy{}},
@@ -4528,7 +4528,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				},
 				Spec: v1beta2.NudgeConfigSpec{
 					Nudges: []v1beta2.NudgeRelationship{
-						{From: hasComp.Name, To: hasComp2.Name, Mode: v1beta2.NudgeModeImmediate},
+						{From: konfluxv1beta2.ComponentVersion{Component: hasComp.Name}, To: konfluxv1beta2.ComponentVersion{Component: hasComp2.Name}, Mode: v1beta2.NudgeModeImmediate},
 					},
 					TargetConfig: []v1beta2.TargetConfig{
 						{Target: hasComp2.Name, BatchPolicy: &v1beta2.BatchPolicy{}},
@@ -4561,7 +4561,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				},
 				Spec: v1beta2.NudgeConfigSpec{
 					Nudges: []v1beta2.NudgeRelationship{
-						{From: hasComp.Name, To: hasComp2.Name, Mode: v1beta2.NudgeModeImmediate},
+						{From: konfluxv1beta2.ComponentVersion{Component: hasComp.Name}, To: konfluxv1beta2.ComponentVersion{Component: hasComp2.Name}, Mode: v1beta2.NudgeModeImmediate},
 					},
 					TargetConfig: []v1beta2.TargetConfig{
 						{Target: hasComp2.Name, BatchPolicy: &v1beta2.BatchPolicy{}},
@@ -4590,7 +4590,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 					},
 					Spec: konfluxv1beta2.NudgeConfigSpec{
 						Nudges: []konfluxv1beta2.NudgeRelationship{
-							{From: "other-component", To: "ghost-component", Mode: konfluxv1beta2.NudgeModeImmediate},
+							{From: konfluxv1beta2.ComponentVersion{Component: "other-component"}, To: konfluxv1beta2.ComponentVersion{Component: "ghost-component"}, Mode: konfluxv1beta2.NudgeModeImmediate},
 						},
 					},
 				}
@@ -4691,7 +4691,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				},
 				Spec: konfluxv1beta2.NudgeConfigSpec{
 					Nudges: []konfluxv1beta2.NudgeRelationship{
-						{From: hasComp.Name, To: hasComp2.Name, Mode: konfluxv1beta2.NudgeModeImmediate},
+						{From: konfluxv1beta2.ComponentVersion{Component: hasComp.Name}, To: konfluxv1beta2.ComponentVersion{Component: hasComp2.Name}, Mode: konfluxv1beta2.NudgeModeImmediate},
 					},
 				},
 			}
@@ -4743,13 +4743,13 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 
 		It("sets the StaleReferences condition to ConditionTrue when orphaned references exist", func() {
 			nudgeConfig.Spec.Nudges = []konfluxv1beta2.NudgeRelationship{
-				{From: hasComp.Name, To: "missing-component", Mode: konfluxv1beta2.NudgeModeImmediate},
+				{From: konfluxv1beta2.ComponentVersion{Component: hasComp.Name}, To: konfluxv1beta2.ComponentVersion{Component: "missing-component"}, Mode: konfluxv1beta2.NudgeModeImmediate},
 			}
 			Expect(k8sClient.Update(ctx, nudgeConfig)).Should(Succeed())
 			Eventually(func(g Gomega) {
 				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(nudgeConfig), nudgeConfig)).To(Succeed())
 				nudge := nudgeConfig.Spec.Nudges[0]
-				g.Expect(nudge.To).To(Equal("missing-component"))
+				g.Expect(nudge.To.String()).To(Equal("missing-component"))
 			}, time.Second*5).Should(Succeed())
 
 			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
@@ -4862,7 +4862,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				},
 			})
 			nudgeConfig.Spec.Nudges = []konfluxv1beta2.NudgeRelationship{
-				{From: hasComp.Name, To: "missing-component", Mode: konfluxv1beta2.NudgeModeImmediate},
+				{From: konfluxv1beta2.ComponentVersion{Component: hasComp.Name}, To: konfluxv1beta2.ComponentVersion{Component: "missing-component"}, Mode: konfluxv1beta2.NudgeModeImmediate},
 			}
 			err := adapter.updateNudgeConfigStatus(nudgeConfig, "default")
 			Expect(err).To(HaveOccurred())
@@ -4974,7 +4974,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				},
 				Spec: v1beta2.NudgeConfigSpec{
 					Nudges: []v1beta2.NudgeRelationship{
-						{From: hasComp.Name, To: hasComp2.Name, Mode: v1beta2.NudgeModeImmediate},
+						{From: konfluxv1beta2.ComponentVersion{Component: hasComp.Name}, To: konfluxv1beta2.ComponentVersion{Component: hasComp2.Name}, Mode: v1beta2.NudgeModeImmediate},
 					},
 					TargetConfig: []v1beta2.TargetConfig{
 						{Target: hasComp2.Name, BatchPolicy: &v1beta2.BatchPolicy{}},
@@ -5089,7 +5089,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				},
 				Spec: v1beta2.NudgeConfigSpec{
 					Nudges: []v1beta2.NudgeRelationship{
-						{From: hasComp.Name, To: hasComp2.Name, Mode: v1beta2.NudgeModeImmediate},
+						{From: konfluxv1beta2.ComponentVersion{Component: hasComp.Name}, To: konfluxv1beta2.ComponentVersion{Component: hasComp2.Name}, Mode: v1beta2.NudgeModeImmediate},
 					},
 					TargetConfig: []v1beta2.TargetConfig{
 						{Target: hasComp2.Name, BatchPolicy: &v1beta2.BatchPolicy{}},
@@ -5206,7 +5206,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				},
 				Spec: v1beta2.NudgeConfigSpec{
 					Nudges: []v1beta2.NudgeRelationship{
-						{From: hasComp.Name, To: hasComp2.Name, Mode: v1beta2.NudgeModeImmediate},
+						{From: konfluxv1beta2.ComponentVersion{Component: hasComp.Name}, To: konfluxv1beta2.ComponentVersion{Component: hasComp2.Name}, Mode: v1beta2.NudgeModeImmediate},
 					},
 				},
 			}
@@ -5265,7 +5265,7 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				},
 				Spec: v1beta2.NudgeConfigSpec{
 					Nudges: []v1beta2.NudgeRelationship{
-						{From: hasComp.Name, To: hasComp2.Name, Mode: v1beta2.NudgeModeImmediate},
+						{From: konfluxv1beta2.ComponentVersion{Component: hasComp.Name}, To: konfluxv1beta2.ComponentVersion{Component: hasComp2.Name}, Mode: v1beta2.NudgeModeImmediate},
 					},
 					TargetConfig: []v1beta2.TargetConfig{
 						{Target: hasComp2.Name, BatchPolicy: &v1beta2.BatchPolicy{}},

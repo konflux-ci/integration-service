@@ -156,7 +156,7 @@ func (v *NudgeConfigCustomValidator) validateComponentsExist(ctx context.Context
 	return nil
 }
 
-func nudgeKey(n v1beta2.NudgeRelationship) string { return n.From + "\x00" + n.To }
+func nudgeKey(n v1beta2.NudgeRelationship) string { return n.From.String() + "\x00" + n.To.String() }
 
 func nudgeKeySet(nudges []v1beta2.NudgeRelationship) map[string]struct{} {
 	keys := make(map[string]struct{}, len(nudges))
