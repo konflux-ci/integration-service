@@ -31,6 +31,12 @@ docs/                  # Controller documentation and mermaid flow diagrams
 main.go                # Entry point — registers controllers and webhooks
 ```
 
+### File placement rules
+
+- **`internal/controller/<resource>/`** contains only reconciler and adapter files (`<resource>_controller.go`, `<resource>_adapter.go`), controller-specific predicates, and their tests. Do not place standalone utility functions here.
+- **`helpers/`** is the home for cross-cutting utility functions that are not tied to a specific controller's reconciliation logic.
+- **`tekton/`**, **`gitops/`**, **`pkg/`** contain domain-specific utilities scoped to their respective subsystems.
+
 ## Architecture
 
 ### Adapter Pattern
