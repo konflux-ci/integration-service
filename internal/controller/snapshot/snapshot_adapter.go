@@ -30,6 +30,7 @@ import (
 	"github.com/konflux-ci/integration-service/pkg/dag"
 	"go.opentelemetry.io/otel/attribute"
 	clienterrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	utilnet "k8s.io/apimachinery/pkg/util/net"
 	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -75,6 +76,9 @@ type Adapter struct {
 	client         client.Client
 	context        context.Context
 	status         status.StatusInterface
+	// pushSecretLinkChecked is set once linkComponentPushSecret has linked the push secret, found
+	// nothing to link, or failed for good in this reconcile pass. A retryable failure leaves it unset.
+	pushSecretLinkChecked bool
 }
 
 // NewAdapter creates and returns an Adapter instance.
@@ -1229,6 +1233,10 @@ func (a *Adapter) createIntegrationPipelineRun(integrationTestScenario *v1beta2.
 
 	pipelineRun := pipelineRunBuilder.AsPipelineRun()
 
+	if err = a.linkComponentPushSecret(pipelineRun); err != nil {
+		return nil, err
+	}
+
 	err = ctrl.SetControllerReference(a.snapshot, pipelineRun, a.client.Scheme())
 	if err != nil {
 		return nil, fmt.Errorf("failed to set snapshot %s as ControllerReference of pipelineRun: %w", a.snapshot.Name, err)
@@ -1252,6 +1260,46 @@ func (a *Adapter) createIntegrationPipelineRun(integrationTestScenario *v1beta2.
 		}
 	}
 	return pipelineRun, nil
+}
+
+// linkComponentPushSecret links the push secret of the Snapshot's component to
+// its-pipeline-<component> when pipelineRun is about to run as that account (STONEINTG-1804). Once it
+// has linked the secret, found nothing to link, or failed for good, it does nothing more in this
+// reconcile pass, so a Snapshot with several scenarios lists the ImageRepositories once. It returns an
+// error only for a failure that isRetryablePipelineRunCreationError recognizes, so that both callers
+// requeue; that failure is tried again with the next PipelineRun of the pass. Any other outcome is
+// logged and the PipelineRun is created.
+func (a *Adapter) linkComponentPushSecret(pipelineRun *tektonv1.PipelineRun) error {
+	componentName := a.snapshot.Labels[gitops.SnapshotComponentLabel]
+	if a.pushSecretLinkChecked || !gitops.IsComponentSnapshot(a.snapshot) || componentName == "" ||
+		pipelineRun.Spec.TaskRunTemplate.ServiceAccountName != h.ComponentIntegrationPipelineServiceAccountName(componentName) {
+		return nil
+	}
+
+	linked := false
+	imageRepositories, err := a.loader.GetImageRepositoriesForComponent(a.context, a.client, componentName, a.snapshot.Namespace)
+	switch {
+	case meta.IsNoMatchError(err):
+		// The cluster does not serve the ImageRepository kind, so there is nothing to link.
+		err = nil
+	case err != nil:
+		err = fmt.Errorf("failed to list the ImageRepositories of component %s/%s: %w", a.snapshot.Namespace, componentName, err)
+	default:
+		linked, err = h.LinkComponentPushSecrets(a.context, a.client, a.logger, a.snapshot.Namespace, componentName, *imageRepositories)
+	}
+	if isRetryablePipelineRunCreationError(err) {
+		return fmt.Errorf("failed to link the push secret of component %s: %w", componentName, err)
+	}
+	if err != nil {
+		a.logger.Error(err, "Failed to link the component's push secret to the integration pipeline ServiceAccount",
+			"component.Name", componentName)
+	} else if !linked {
+		a.logger.Info("Found no push secret to link to the integration pipeline ServiceAccount",
+			"component.Name", componentName)
+	}
+	a.pushSecretLinkChecked = true
+
+	return nil
 }
 
 // RequeueIfYoungerThanThreshold checks if the adapter's snapshot is younger than the threshold defined
