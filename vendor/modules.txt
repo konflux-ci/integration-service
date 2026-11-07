@@ -382,18 +382,18 @@ github.com/kevinburke/ssh_config
 # github.com/klauspost/cpuid/v2 v2.3.0
 ## explicit; go 1.22
 github.com/klauspost/cpuid/v2
-# github.com/konflux-ci/application-api v0.0.0-20260727123715-2999a91451c6
+# github.com/konflux-ci/application-api v0.0.0-20261101085949-41d2a0ab82ca
 ## explicit; go 1.19
 github.com/konflux-ci/application-api/api/konflux/v1alpha1
 github.com/konflux-ci/application-api/api/v1alpha1
-# github.com/konflux-ci/coverport/instrumentation/go v0.0.0-20251127115143-b5207b335f8b
+# github.com/konflux-ci/coverport/instrumentation/go v0.0.0-20261009063148-e4b4dacb404f
 ## explicit; go 1.21
 github.com/konflux-ci/coverport/instrumentation/go
 # github.com/konflux-ci/image-controller v0.0.0-20241128141349-9986c9955e05
 ## explicit; go 1.21
 github.com/konflux-ci/image-controller/api/v1alpha1
 github.com/konflux-ci/image-controller/pkg/quay
-# github.com/konflux-ci/operator-toolkit v0.0.0-20251118152634-b4f41f073069
+# github.com/konflux-ci/operator-toolkit v0.0.0-20260921214948-0f252ff98994
 ## explicit; go 1.24.0
 github.com/konflux-ci/operator-toolkit/conditions
 github.com/konflux-ci/operator-toolkit/controller
@@ -1453,8 +1453,8 @@ k8s.io/kube-openapi/pkg/validation/errors
 k8s.io/kube-openapi/pkg/validation/spec
 k8s.io/kube-openapi/pkg/validation/strfmt
 k8s.io/kube-openapi/pkg/validation/strfmt/bson
-# k8s.io/utils v0.0.0-20251002143259-bc988d571ff4
-## explicit; go 1.18
+# k8s.io/utils v0.0.0-20261023123148-ca04ba58ecab
+## explicit; go 1.26
 k8s.io/utils/buffer
 k8s.io/utils/clock
 k8s.io/utils/internal/third_party/forked/golang/golang-lru
@@ -1545,7 +1545,7 @@ sigs.k8s.io/controller-runtime/pkg/webhook/admission/metrics
 sigs.k8s.io/controller-runtime/pkg/webhook/conversion
 sigs.k8s.io/controller-runtime/pkg/webhook/conversion/metrics
 sigs.k8s.io/controller-runtime/pkg/webhook/internal/metrics
-# sigs.k8s.io/json v0.0.0-20250730193827-2d320260d730
+# sigs.k8s.io/json v0.0.0-20260909141634-11ed52e25bc5
 ## explicit; go 1.23
 sigs.k8s.io/json
 sigs.k8s.io/json/internal/golang/encoding/json
