@@ -42,6 +42,7 @@ import (
 	. "github.com/onsi/gomega/gstruct"
 
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
+	imagerepositoryv1alpha1 "github.com/konflux-ci/image-controller/api/v1alpha1"
 	konfluxv1beta2 "github.com/konflux-ci/integration-service/api/konflux/v1beta2"
 	"github.com/konflux-ci/integration-service/api/v1beta2"
 	"github.com/konflux-ci/integration-service/loader"
@@ -57,9 +58,11 @@ import (
 	resolutionv1beta1 "github.com/tektoncd/pipeline/pkg/apis/resolution/v1beta1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"knative.dev/pkg/apis"
 	v1 "knative.dev/pkg/apis/duck/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	"github.com/konflux-ci/integration-service/gitops"
 	"github.com/konflux-ci/integration-service/helpers"
@@ -1479,6 +1482,119 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			Expect(pipelineRun).ToNot(BeNil())
 
 			Expect(pipelineRun.Spec.TaskRunTemplate.ServiceAccountName).To(Equal(serviceAccountName))
+		})
+
+		Context("When the component's push secret is linked before the PipelineRun is created", func() {
+			const (
+				componentName  = "component-sample"
+				accountName    = "its-pipeline-component-sample"
+				pushSecretName = "imagerepository-for-app-component-sample-image-push"
+			)
+
+			var (
+				buf bytes.Buffer
+				log helpers.IntegrationLogger
+			)
+
+			// listContext returns a context in which the loader answers the list of the component's
+			// ImageRepositories with imageRepositories or, when it is set, with listErr.
+			listContext := func(imageRepositories []imagerepositoryv1alpha1.ImageRepository, listErr error) context.Context {
+				return toolkit.GetMockedContext(ctx, []toolkit.MockData{
+					{ContextKey: loader.ImageRepositoriesContextKey, Resource: imageRepositories, Err: listErr},
+				})
+			}
+
+			// newLinkAdapter returns an adapter on a fake client that holds objs. Its loader answers the list
+			// of the component's ImageRepositories as listContext says.
+			newLinkAdapter := func(snapshot *applicationapiv1alpha1.Snapshot, imageRepositories []imagerepositoryv1alpha1.ImageRepository, listErr error, objs ...client.Object) *Adapter {
+				scheme := runtime.NewScheme()
+				Expect(corev1.AddToScheme(scheme)).To(Succeed())
+				Expect(applicationapiv1alpha1.AddToScheme(scheme)).To(Succeed())
+				Expect(tektonv1.AddToScheme(scheme)).To(Succeed())
+				Expect(resolutionv1beta1.AddToScheme(scheme)).To(Succeed())
+				fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithObjects(objs...).Build()
+				return NewAdapter(listContext(imageRepositories, listErr), snapshot.DeepCopy(), hasCompGroup, log, loader.NewMockLoader(), fakeClient)
+			}
+
+			account := func() *corev1.ServiceAccount {
+				return &corev1.ServiceAccount{ObjectMeta: metav1.ObjectMeta{Name: accountName, Namespace: "default"}}
+			}
+
+			// imageRepositories is what the loader finds for a provisioned component: one ImageRepository
+			// whose status names the push secret.
+			imageRepositories := func() []imagerepositoryv1alpha1.ImageRepository {
+				ir := imagerepositoryv1alpha1.ImageRepository{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "imagerepository-for-app-component-sample",
+						Namespace: "default",
+						Labels:    map[string]string{tektonconsts.ImageRepositoryComponentLabel: componentName},
+					},
+				}
+				ir.Status.Credentials.PushSecretName = pushSecretName
+				return []imagerepositoryv1alpha1.ImageRepository{ir}
+			}
+
+			// pipelineRunAs is an integration PipelineRun that is about to be created with the given account.
+			pipelineRunAs := func(serviceAccountName string) *tektonv1.PipelineRun {
+				pipelineRun := &tektonv1.PipelineRun{}
+				pipelineRun.Spec.TaskRunTemplate.ServiceAccountName = serviceAccountName
+				return pipelineRun
+			}
+
+			linkedSecrets := func(linkAdapter *Adapter) []corev1.ObjectReference {
+				sa := &corev1.ServiceAccount{}
+				Expect(linkAdapter.client.Get(ctx, types.NamespacedName{Name: accountName, Namespace: "default"}, sa)).To(Succeed())
+				return sa.Secrets
+			}
+
+			BeforeEach(func() {
+				buf.Reset()
+				log = helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
+			})
+
+			It("links the push secret when the PipelineRun runs as the component's account, once per pass", func() {
+				linkAdapter := newLinkAdapter(hasCGSnapshot, imageRepositories(), nil, account())
+
+				Expect(linkAdapter.linkComponentPushSecret(pipelineRunAs(accountName))).To(Succeed())
+				Expect(linkedSecrets(linkAdapter)).To(Equal([]corev1.ObjectReference{{Name: pushSecretName}}))
+
+				// A second list in the same pass would fail this call.
+				linkAdapter.context = listContext(nil, errors.NewServiceUnavailable("the API server is busy"))
+				Expect(linkAdapter.linkComponentPushSecret(pipelineRunAs(accountName))).To(Succeed())
+			})
+
+			It("logs that there is nothing to link when the Component has no push secret", func() {
+				linkAdapter := newLinkAdapter(hasCGSnapshot, nil, nil, account())
+
+				Expect(linkAdapter.linkComponentPushSecret(pipelineRunAs(accountName))).To(Succeed())
+				Expect(linkedSecrets(linkAdapter)).To(BeEmpty())
+				Expect(buf.String()).To(ContainSubstring("Found no push secret to link"))
+			})
+
+			It("logs that there is nothing to link when the cluster does not serve the ImageRepository kind", func() {
+				noKind := &meta.NoKindMatchError{GroupKind: imagerepositoryv1alpha1.GroupVersion.WithKind("ImageRepository").GroupKind()}
+				linkAdapter := newLinkAdapter(hasCGSnapshot, nil, noKind, account())
+
+				Expect(linkAdapter.linkComponentPushSecret(pipelineRunAs(accountName))).To(Succeed())
+				Expect(buf.String()).To(ContainSubstring("Found no push secret to link"))
+			})
+
+			It("logs a failure that is not retryable and returns no error", func() {
+				linkAdapter := newLinkAdapter(hasCGSnapshot, imageRepositories(), nil)
+
+				Expect(linkAdapter.linkComponentPushSecret(pipelineRunAs(accountName))).To(Succeed())
+				Expect(buf.String()).To(ContainSubstring("Failed to link the component's push secret"))
+				Expect(linkAdapter.pushSecretLinkChecked).To(BeTrue())
+			})
+
+			It("returns a retryable failure and tries again on the next call", func() {
+				linkAdapter := newLinkAdapter(hasCGSnapshot, nil, errors.NewServiceUnavailable("the API server is busy"), account())
+
+				err := linkAdapter.linkComponentPushSecret(pipelineRunAs(accountName))
+				Expect(isRetryablePipelineRunCreationError(err)).To(BeTrue())
+				Expect(linkAdapter.pushSecretLinkChecked).To(BeFalse())
+				Expect(linkAdapter.linkComponentPushSecret(pipelineRunAs(accountName))).NotTo(Succeed())
+			})
 		})
 
 		When("snapshot is created", func() {
