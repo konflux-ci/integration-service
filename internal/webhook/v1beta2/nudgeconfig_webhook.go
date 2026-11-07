@@ -23,7 +23,7 @@ import (
 	"reflect"
 
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
-	"github.com/konflux-ci/integration-service/api/konflux/v1beta2"
+	v1beta2 "github.com/konflux-ci/integration-service/api/konflux/v1beta3"
 	"github.com/konflux-ci/integration-service/helpers"
 	"github.com/konflux-ci/integration-service/pkg/dag"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -156,7 +156,7 @@ func (v *NudgeConfigCustomValidator) validateComponentsExist(ctx context.Context
 	return nil
 }
 
-func nudgeKey(n v1beta2.NudgeRelationship) string { return n.From + "\x00" + n.To }
+func nudgeKey(n v1beta2.NudgeRelationship) string { return n.From.String() + "\x00" + n.To.String() }
 
 func nudgeKeySet(nudges []v1beta2.NudgeRelationship) map[string]struct{} {
 	keys := make(map[string]struct{}, len(nudges))

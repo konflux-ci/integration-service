@@ -21,7 +21,7 @@ import (
 	"strings"
 
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
-	v1beta2 "github.com/konflux-ci/integration-service/api/konflux/v1beta2"
+	v1beta2 "github.com/konflux-ci/integration-service/api/konflux/v1beta3"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -53,16 +53,18 @@ func FindMissingNudgeConfigReferences(components []applicationapiv1alpha1.Compon
 	var missingFrom, missingTo []string
 	seenFrom, seenTo := map[string]struct{}{}, map[string]struct{}{}
 	for _, n := range nudges {
-		if _, ok := existing[n.From]; !ok {
-			if _, dup := seenFrom[n.From]; !dup {
-				seenFrom[n.From] = struct{}{}
-				missingFrom = append(missingFrom, n.From)
+		from := n.From.String()
+		to := n.To.String()
+		if _, ok := existing[from]; !ok {
+			if _, dup := seenFrom[from]; !dup {
+				seenFrom[from] = struct{}{}
+				missingFrom = append(missingFrom, from)
 			}
 		}
-		if _, ok := existing[n.To]; !ok {
-			if _, dup := seenTo[n.To]; !dup {
-				seenTo[n.To] = struct{}{}
-				missingTo = append(missingTo, n.To)
+		if _, ok := existing[to]; !ok {
+			if _, dup := seenTo[to]; !dup {
+				seenTo[to] = struct{}{}
+				missingTo = append(missingTo, to)
 			}
 		}
 	}

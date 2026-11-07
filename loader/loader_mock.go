@@ -21,7 +21,7 @@ import (
 	"fmt"
 
 	oldapplicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
-	"github.com/konflux-ci/integration-service/api/konflux/v1beta2"
+	v1beta2 "github.com/konflux-ci/integration-service/api/konflux/v1beta3"
 	integrationv1beta2 "github.com/konflux-ci/integration-service/api/v1beta2"
 	toolkit "github.com/konflux-ci/operator-toolkit/loader"
 	releasev1alpha1 "github.com/konflux-ci/release-service/api/v1alpha1"

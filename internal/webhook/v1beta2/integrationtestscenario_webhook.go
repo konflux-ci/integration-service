@@ -18,7 +18,7 @@ package v1beta2
 
 import (
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
-	konfluxv1beta2 "github.com/konflux-ci/integration-service/api/konflux/v1beta2"
+	konfluxv1beta3 "github.com/konflux-ci/integration-service/api/konflux/v1beta3"
 	"github.com/konflux-ci/integration-service/api/v1beta2"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -316,7 +316,7 @@ func addOwnerReference(scenario *v1beta2.IntegrationTestScenario, c client.Clien
 			}
 		} else if scenario.HasComponentGroup() {
 			// Set owner reference to ComponentGroup
-			componentGroup := konfluxv1beta2.ComponentGroup{}
+			componentGroup := konfluxv1beta3.ComponentGroup{}
 			err := c.Get(context.Background(), types.NamespacedName{Name: scenario.Spec.ComponentGroup, Namespace: scenario.Namespace}, &componentGroup)
 			if err != nil {
 				if k8serrors.IsNotFound(err) {

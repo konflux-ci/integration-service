@@ -21,7 +21,7 @@ import (
 	"reflect"
 
 	"github.com/go-logr/logr"
-	"github.com/konflux-ci/integration-service/api/konflux/v1beta2"
+	"github.com/konflux-ci/integration-service/api/konflux/v1beta3"
 	"github.com/konflux-ci/integration-service/helpers"
 	"github.com/konflux-ci/integration-service/loader"
 	"github.com/konflux-ci/operator-toolkit/controller"
@@ -59,7 +59,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	logger := helpers.IntegrationLogger{Logger: r.Log.WithValues("componentgroup", req.NamespacedName)}
 	loader := loader.NewLoader()
 
-	componentGroup := &v1beta2.ComponentGroup{}
+	componentGroup := &v1beta3.ComponentGroup{}
 	err := r.Get(ctx, req.NamespacedName, componentGroup)
 	if err != nil {
 		logger.Error(err, "Failed to get ComponentGroup for", "req", req.NamespacedName)
@@ -90,7 +90,7 @@ func SetupController(manager ctrl.Manager, log *logr.Logger) error {
 // and filters events to only create events and spec.components updates.
 func setupControllerWithManager(manager ctrl.Manager, controller *Reconciler) error {
 	return ctrl.NewControllerManagedBy(manager).
-		For(&v1beta2.ComponentGroup{}).
+		For(&v1beta3.ComponentGroup{}).
 		Named("componentgroup").
 		WithEventFilter(predicate.Or(
 			componentGroupCreatedPredicate(),
@@ -125,8 +125,8 @@ func componentGroupSpecComponentsChangedPredicate() predicate.Predicate {
 			return false
 		},
 		UpdateFunc: func(e event.UpdateEvent) bool {
-			oldCG, ok1 := e.ObjectOld.(*v1beta2.ComponentGroup)
-			newCG, ok2 := e.ObjectNew.(*v1beta2.ComponentGroup)
+			oldCG, ok1 := e.ObjectOld.(*v1beta3.ComponentGroup)
+			newCG, ok2 := e.ObjectNew.(*v1beta3.ComponentGroup)
 			if !ok1 || !ok2 {
 				return false
 			}

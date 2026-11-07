@@ -23,7 +23,7 @@ import (
 	"os"
 	"time"
 
-	konfluxv1beta2 "github.com/konflux-ci/integration-service/api/konflux/v1beta2"
+	konfluxv1beta3 "github.com/konflux-ci/integration-service/api/konflux/v1beta3"
 	"github.com/konflux-ci/integration-service/api/v1beta2"
 	"github.com/konflux-ci/integration-service/gitops"
 	"github.com/konflux-ci/integration-service/helpers"
@@ -612,7 +612,7 @@ var _ = Describe("Integration pipeline", Ordered, func() {
 		})
 
 		It("can append labels coming from ComponentGroup to IntegrationPipelineRun", func() {
-			componentGroup := &konfluxv1beta2.ComponentGroup{
+			componentGroup := &konfluxv1beta3.ComponentGroup{
 				ObjectMeta: metav1.ObjectMeta{Name: "component-group-sample"},
 			}
 			newIntegrationPipelineRun.WithComponentGroup(componentGroup)

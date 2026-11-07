@@ -25,7 +25,7 @@ import (
 	. "github.com/onsi/gomega"
 	"github.com/tonglil/buflogr"
 
-	"github.com/konflux-ci/integration-service/api/konflux/v1beta2"
+	"github.com/konflux-ci/integration-service/api/konflux/v1beta3"
 	"github.com/konflux-ci/integration-service/helpers"
 	"github.com/konflux-ci/integration-service/loader"
 
@@ -38,7 +38,7 @@ var _ = Describe("ComponentGroup Adapter", Ordered, func() {
 	var (
 		adapter        *Adapter
 		logger         helpers.IntegrationLogger
-		componentGroup *v1beta2.ComponentGroup
+		componentGroup *v1beta3.ComponentGroup
 	)
 
 	const (
@@ -47,8 +47,8 @@ var _ = Describe("ComponentGroup Adapter", Ordered, func() {
 
 	// fetchFreshCG retrieves the latest version of componentGroup from the cluster,
 	// which is required to have a correct ResourceVersion for optimistic-lock patches.
-	fetchFreshCG := func() *v1beta2.ComponentGroup {
-		fresh := &v1beta2.ComponentGroup{}
+	fetchFreshCG := func() *v1beta3.ComponentGroup {
+		fresh := &v1beta3.ComponentGroup{}
 		Eventually(func() error {
 			return k8sClient.Get(ctx, client.ObjectKeyFromObject(componentGroup), fresh)
 		}, time.Second*10).Should(Succeed())
@@ -56,7 +56,7 @@ var _ = Describe("ComponentGroup Adapter", Ordered, func() {
 	}
 
 	// setGCL overwrites the GCL status on the cluster and waits for it to be visible.
-	setGCL := func(entries []v1beta2.ComponentState) {
+	setGCL := func(entries []v1beta3.ComponentState) {
 		cg := fetchFreshCG()
 		cg.Status.GlobalCandidateList = entries
 		Expect(k8sClient.Status().Update(ctx, cg)).To(Succeed())
@@ -67,7 +67,7 @@ var _ = Describe("ComponentGroup Adapter", Ordered, func() {
 		// may satisfy HaveLen(0) with a stale pre-update entry, causing fetchFreshCG() to
 		// return a stale ResourceVersion and triggering a 409 conflict on the subsequent patch.
 		Eventually(func(g Gomega) {
-			updated := &v1beta2.ComponentGroup{}
+			updated := &v1beta3.ComponentGroup{}
 			g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(componentGroup), updated)).To(Succeed())
 			g.Expect(updated.ResourceVersion).To(Equal(newRV))
 			g.Expect(updated.Status.GlobalCandidateList).To(HaveLen(len(entries)))
@@ -77,22 +77,22 @@ var _ = Describe("ComponentGroup Adapter", Ordered, func() {
 	BeforeAll(func() {
 		logger = helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&bytes.Buffer{})}
 
-		componentGroup = &v1beta2.ComponentGroup{
+		componentGroup = &v1beta3.ComponentGroup{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "test-component-group",
 				Namespace: "default",
 			},
-			Spec: v1beta2.ComponentGroupSpec{
-				Components: []v1beta2.ComponentReference{
+			Spec: v1beta3.ComponentGroupSpec{
+				Components: []v1beta3.ComponentReference{
 					{
 						Name: "comp-a",
-						ComponentVersion: v1beta2.ComponentVersionReference{
+						ComponentVersion: v1beta3.ComponentVersionReference{
 							Name: "main",
 						},
 					},
 					{
 						Name: "comp-b",
-						ComponentVersion: v1beta2.ComponentVersionReference{
+						ComponentVersion: v1beta3.ComponentVersionReference{
 							Name: "v1",
 						},
 					},
@@ -114,7 +114,7 @@ var _ = Describe("ComponentGroup Adapter", Ordered, func() {
 
 	When("alignGCLWithSpecComponents is called with an empty GCL", func() {
 		BeforeEach(func() {
-			setGCL([]v1beta2.ComponentState{})
+			setGCL([]v1beta3.ComponentState{})
 			adapter = NewAdapter(ctx, componentGroup, logger, loader.NewMockLoader(), k8sClient)
 		})
 
@@ -122,7 +122,7 @@ var _ = Describe("ComponentGroup Adapter", Ordered, func() {
 			Expect(adapter.alignGCLWithSpecComponents(fetchFreshCG())).To(Succeed())
 
 			Eventually(func(g Gomega) {
-				updated := &v1beta2.ComponentGroup{}
+				updated := &v1beta3.ComponentGroup{}
 				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(componentGroup), updated)).To(Succeed())
 				g.Expect(updated.Status.GlobalCandidateList).To(HaveLen(2))
 				g.Expect(updated.Status.GlobalCandidateList[0].Name).To(Equal("comp-a"))
@@ -137,7 +137,7 @@ var _ = Describe("ComponentGroup Adapter", Ordered, func() {
 
 	When("alignGCLWithSpecComponents is called with a GCL entry that matches a spec component", func() {
 		BeforeEach(func() {
-			setGCL([]v1beta2.ComponentState{
+			setGCL([]v1beta3.ComponentState{
 				{Name: "comp-a", Version: "main", LastPromotedImage: SampleImage},
 			})
 			adapter = NewAdapter(ctx, componentGroup, logger, loader.NewMockLoader(), k8sClient)
@@ -147,7 +147,7 @@ var _ = Describe("ComponentGroup Adapter", Ordered, func() {
 			Expect(adapter.alignGCLWithSpecComponents(fetchFreshCG())).To(Succeed())
 
 			Eventually(func(g Gomega) {
-				updated := &v1beta2.ComponentGroup{}
+				updated := &v1beta3.ComponentGroup{}
 				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(componentGroup), updated)).To(Succeed())
 				g.Expect(updated.Status.GlobalCandidateList).To(HaveLen(2))
 
@@ -164,7 +164,7 @@ var _ = Describe("ComponentGroup Adapter", Ordered, func() {
 
 	When("alignGCLWithSpecComponents is called with a GCL entry for a component no longer in spec", func() {
 		BeforeEach(func() {
-			setGCL([]v1beta2.ComponentState{
+			setGCL([]v1beta3.ComponentState{
 				{Name: "comp-a", Version: "main", LastPromotedImage: SampleImage},
 				{Name: "comp-b", Version: "v1"},
 				{Name: "comp-c", Version: "main"}, // not in spec.components
@@ -176,7 +176,7 @@ var _ = Describe("ComponentGroup Adapter", Ordered, func() {
 			Expect(adapter.alignGCLWithSpecComponents(fetchFreshCG())).To(Succeed())
 
 			Eventually(func(g Gomega) {
-				updated := &v1beta2.ComponentGroup{}
+				updated := &v1beta3.ComponentGroup{}
 				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(componentGroup), updated)).To(Succeed())
 				g.Expect(updated.Status.GlobalCandidateList).To(HaveLen(2))
 				names := []string{
@@ -193,7 +193,7 @@ var _ = Describe("ComponentGroup Adapter", Ordered, func() {
 
 		BeforeEach(func() {
 			buildTime = &metav1.Time{Time: time.Now()}
-			setGCL([]v1beta2.ComponentState{
+			setGCL([]v1beta3.ComponentState{
 				{
 					Name:                  "comp-a",
 					Version:               "main",
@@ -210,7 +210,7 @@ var _ = Describe("ComponentGroup Adapter", Ordered, func() {
 			Expect(adapter.alignGCLWithSpecComponents(fetchFreshCG())).To(Succeed())
 
 			Eventually(func(g Gomega) {
-				updated := &v1beta2.ComponentGroup{}
+				updated := &v1beta3.ComponentGroup{}
 				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(componentGroup), updated)).To(Succeed())
 				g.Expect(updated.Status.GlobalCandidateList).To(HaveLen(2))
 
@@ -236,7 +236,7 @@ var _ = Describe("ComponentGroup Adapter", Ordered, func() {
 
 	When("alignGCLWithSpecComponents adds and removes components simultaneously", func() {
 		BeforeEach(func() {
-			setGCL([]v1beta2.ComponentState{
+			setGCL([]v1beta3.ComponentState{
 				{
 					Name:               "comp-a",
 					Version:            "main",
@@ -255,7 +255,7 @@ var _ = Describe("ComponentGroup Adapter", Ordered, func() {
 			Expect(adapter.alignGCLWithSpecComponents(fetchFreshCG())).To(Succeed())
 
 			Eventually(func(g Gomega) {
-				updated := &v1beta2.ComponentGroup{}
+				updated := &v1beta3.ComponentGroup{}
 				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(componentGroup), updated)).To(Succeed())
 				g.Expect(updated.Status.GlobalCandidateList).To(HaveLen(2))
 

@@ -20,6 +20,7 @@ import (
 	"testing"
 
 	konfluxv1beta2 "github.com/konflux-ci/integration-service/api/konflux/v1beta2"
+	konfluxv1beta3 "github.com/konflux-ci/integration-service/api/konflux/v1beta3"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
@@ -30,7 +31,10 @@ func TestGroupVersions(t *testing.T) {
 		t.Fatalf("adding API types to scheme: %v", err)
 	}
 	if err := konfluxv1beta2.AddToScheme(scheme); err != nil {
-		t.Fatalf("adding Konflux API types to scheme: %v", err)
+		t.Fatalf("adding Konflux v1beta2 API types to scheme: %v", err)
+	}
+	if err := konfluxv1beta3.AddToScheme(scheme); err != nil {
+		t.Fatalf("adding Konflux v1beta3 API types to scheme: %v", err)
 	}
 
 	tests := []struct {

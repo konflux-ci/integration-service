@@ -22,7 +22,7 @@ import (
 
 	"github.com/go-logr/logr"
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
-	"github.com/konflux-ci/integration-service/api/konflux/v1beta2"
+	"github.com/konflux-ci/integration-service/api/konflux/v1beta3"
 	"github.com/konflux-ci/integration-service/cache"
 	"github.com/konflux-ci/integration-service/gitops"
 	"github.com/konflux-ci/integration-service/helpers"
@@ -103,7 +103,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	}
 
 	var application *applicationapiv1alpha1.Application
-	var componentGroup *v1beta2.ComponentGroup
+	var componentGroup *v1beta3.ComponentGroup
 	if !usingComponentGroups {
 		err = retry.OnError(retry.DefaultRetry, func(_ error) bool { return true }, func() error {
 			application, err = loader.GetApplicationFromSnapshot(ctx, r.Client, snapshot)
