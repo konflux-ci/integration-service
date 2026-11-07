@@ -40,6 +40,7 @@ import (
 
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/konflux/v1alpha1"
 	oldapplicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
+	imagerepositoryv1alpha1 "github.com/konflux-ci/image-controller/api/v1alpha1"
 	konfluxv1beta2 "github.com/konflux-ci/integration-service/api/konflux/v1beta2"
 	integrationbeta2 "github.com/konflux-ci/integration-service/api/v1beta2"
 	releasev1alpha1 "github.com/konflux-ci/release-service/api/v1alpha1"
@@ -86,6 +87,10 @@ var _ = BeforeSuite(func() {
 			),
 			filepath.Join(
 				build.Default.GOPATH,
+				"pkg", "mod", toolkit.GetRelativeDependencyPath("image-controller"), "config", "crd", "bases",
+			),
+			filepath.Join(
+				build.Default.GOPATH,
 				"pkg", "mod", toolkit.GetRelativeDependencyPath("release-service"), "config", "crd", "bases",
 			),
 			filepath.Join(
@@ -109,6 +114,7 @@ var _ = BeforeSuite(func() {
 	Expect(integrationbeta2.AddToScheme(clientsetscheme.Scheme)).To(Succeed())
 	Expect(konfluxv1beta2.AddToScheme(clientsetscheme.Scheme)).To(Succeed())
 	Expect(pacv1alpha1.AddToScheme(clientsetscheme.Scheme)).To(Succeed())
+	Expect(imagerepositoryv1alpha1.AddToScheme(clientsetscheme.Scheme)).To(Succeed())
 
 	k8sManager, _ := ctrl.NewManager(cfg, ctrl.Options{
 		Scheme: clientsetscheme.Scheme,

@@ -49,6 +49,7 @@ import (
 
 	konfluxv1alpha1 "github.com/konflux-ci/application-api/api/konflux/v1alpha1"
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
+	imagerepositoryv1alpha1 "github.com/konflux-ci/image-controller/api/v1alpha1"
 	konfluxv1beta2 "github.com/konflux-ci/integration-service/api/konflux/v1beta2"
 	integrationv1alpha1 "github.com/konflux-ci/integration-service/api/v1alpha1"
 	integrationv1beta1 "github.com/konflux-ci/integration-service/api/v1beta1"
@@ -77,6 +78,7 @@ func init() {
 	utilruntime.Must(resolutionv1beta1.AddToScheme(scheme))
 	utilruntime.Must(releasev1alpha1.AddToScheme(scheme))
 	utilruntime.Must(pacv1alpha1.AddToScheme(scheme))
+	utilruntime.Must(imagerepositoryv1alpha1.AddToScheme(scheme))
 	//+kubebuilder:scaffold:scheme
 }
 
@@ -183,12 +185,16 @@ func main() {
 		LeaseDuration:          &leaseDuration,
 		RetryPeriod:            &leaderElectorRetryPeriod,
 		LeaderElectionID:       "03c7e15b.redhat.com",
-		// Secret and konflux-ci.dev Component Gets must not start cluster-wide informers.
+		// Secret and konflux-ci.dev Component Gets must not start cluster-wide informers. The
+		// appstudio.redhat.com ImageRepository is read live as well: it is only listed when an
+		// integration PipelineRun is about to run as its-pipeline-<component>, and image-controller is
+		// optional, so the cluster may not serve the kind.
 		Client: client.Options{
 			Cache: &client.CacheOptions{
 				DisableFor: []client.Object{
 					&corev1.Secret{},
 					&konfluxv1alpha1.Component{},
+					&imagerepositoryv1alpha1.ImageRepository{},
 				},
 			},
 		},
