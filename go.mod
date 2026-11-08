@@ -4,11 +4,11 @@ go 1.26.0
 
 require (
 	codeberg.org/mvdkleijn/forgejo-sdk/forgejo/v4 v4.0.0
-	github.com/konflux-ci/application-api v0.0.0-20260727123715-2999a91451c6
-	github.com/konflux-ci/coverport/instrumentation/go v0.0.0-20251127115143-b5207b335f8b
+	github.com/konflux-ci/application-api v0.0.0-20261101085949-41d2a0ab82ca
+	github.com/konflux-ci/coverport/instrumentation/go v0.0.0-20261009063148-e4b4dacb404f
 	github.com/konflux-ci/image-controller v0.0.0-20241128141349-9986c9955e05
-	github.com/konflux-ci/operator-toolkit v0.0.0-20251118152634-b4f41f073069
-	github.com/konflux-ci/release-service v0.0.0-20260130155849-48535a3e5ace
+	github.com/konflux-ci/operator-toolkit v0.0.0-20260921214948-0f252ff98994
+	github.com/konflux-ci/release-service v0.0.0-20261104100309-18523d720b13
 	github.com/onsi/ginkgo/v2 v2.28.3
 	github.com/onsi/gomega v1.40.0
 	github.com/openshift-pipelines/pipelines-as-code v0.34.0
@@ -55,7 +55,7 @@ require (
 	go.uber.org/zap v1.27.1
 	golang.org/x/oauth2 v0.36.0
 	k8s.io/klog/v2 v2.130.1
-	k8s.io/utils v0.0.0-20251002143259-bc988d571ff4
+	k8s.io/utils v0.0.0-20261023123148-ca04ba58ecab
 	sigs.k8s.io/yaml v1.6.0
 )
 
@@ -117,7 +117,7 @@ require (
 	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/google/go-github/v75 v75.0.0 // indirect
 	github.com/google/go-querystring v1.2.0 // indirect
-	github.com/google/pprof v0.0.0-20260402051712-545e8a4df936 // indirect
+	github.com/google/pprof v0.0.0-20261105003125-4bf881d7fb0b // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.27.7 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
@@ -171,8 +171,8 @@ require (
 	golang.org/x/tools v0.51.0 // indirect
 	gomodules.xyz/jsonpatch/v2 v2.5.0 // indirect
 	google.golang.org/api v0.264.0 // indirect
-	google.golang.org/genproto/googleapis/api v0.0.0-20260414002931-afd174a4e478 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20260414002931-afd174a4e478 // indirect
+	google.golang.org/genproto/googleapis/api v0.0.0-20261104224025-d1e00e9f33ab // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20261104224025-d1e00e9f33ab // indirect
 	google.golang.org/grpc v1.82.1 // indirect
 	google.golang.org/protobuf v1.36.12 // indirect
 	gopkg.in/evanphx/json-patch.v4 v4.13.0 // indirect
@@ -182,9 +182,9 @@ require (
 	k8s.io/apiextensions-apiserver v0.35.3 // indirect
 	k8s.io/apiserver v0.35.3 // indirect
 	k8s.io/component-base v0.35.3 // indirect
-	k8s.io/kube-openapi v0.0.0-20260127142750-a19766b6e2d4 // indirect
+	k8s.io/kube-openapi v0.0.0-20261104182252-5bee61fc5225 // indirect
 	sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.34.0 // indirect
-	sigs.k8s.io/json v0.0.0-20250730193827-2d320260d730 // indirect
+	sigs.k8s.io/json v0.0.0-20260909141634-11ed52e25bc5 // indirect
 	sigs.k8s.io/randfill v1.0.0 // indirect
 	sigs.k8s.io/structured-merge-diff/v6 v6.3.2 // indirect
 )
