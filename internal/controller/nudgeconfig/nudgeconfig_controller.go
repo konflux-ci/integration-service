@@ -23,7 +23,7 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
-	"github.com/konflux-ci/integration-service/api/v1beta2"
+	"github.com/konflux-ci/integration-service/api/konflux/v1beta3"
 	"github.com/konflux-ci/integration-service/tekton/nudging"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -45,7 +45,7 @@ type Reconciler struct {
 // SetupController registers the NudgeConfig reconciler with the manager.
 func SetupController(mgr ctrl.Manager, logger *logr.Logger) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&v1beta2.NudgeConfig{}, builder.WithPredicates(predicate.Or(
+		For(&v1beta3.NudgeConfig{}, builder.WithPredicates(predicate.Or(
 			predicate.GenerationChangedPredicate{},
 			predicate.AnnotationChangedPredicate{},
 			nudgeBatchStatusChanged{},
@@ -65,7 +65,7 @@ func SetupController(mgr ctrl.Manager, logger *logr.Logger) error {
 func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := r.Log.WithValues("nudgeConfig", req.NamespacedName)
 
-	nudgeConfig := &v1beta2.NudgeConfig{}
+	nudgeConfig := &v1beta3.NudgeConfig{}
 	if err := r.Get(ctx, req.NamespacedName, nudgeConfig); err != nil {
 		if apierrors.IsNotFound(err) {
 			return reconcile.Result{}, nil
@@ -143,8 +143,8 @@ func (nudgeBatchStatusChanged) Update(e event.UpdateEvent) bool {
 	if e.ObjectOld == nil || e.ObjectNew == nil {
 		return true
 	}
-	oldNC, okOld := e.ObjectOld.(*v1beta2.NudgeConfig)
-	newNC, okNew := e.ObjectNew.(*v1beta2.NudgeConfig)
+	oldNC, okOld := e.ObjectOld.(*v1beta3.NudgeConfig)
+	newNC, okNew := e.ObjectNew.(*v1beta3.NudgeConfig)
 	if !okOld || !okNew {
 		return true
 	}

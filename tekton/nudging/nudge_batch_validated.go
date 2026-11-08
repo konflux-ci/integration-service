@@ -22,7 +22,7 @@ import (
 	"strings"
 
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
-	"github.com/konflux-ci/integration-service/api/v1beta2"
+	v1beta2 "github.com/konflux-ci/integration-service/api/konflux/v1beta3"
 	tektonconsts "github.com/konflux-ci/integration-service/tekton/consts"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"

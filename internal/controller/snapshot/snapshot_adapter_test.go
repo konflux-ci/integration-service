@@ -42,7 +42,7 @@ import (
 	. "github.com/onsi/gomega/gstruct"
 
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
-	konfluxv1beta2 "github.com/konflux-ci/integration-service/api/konflux/v1beta2"
+	konfluxv1beta3 "github.com/konflux-ci/integration-service/api/konflux/v1beta3"
 	"github.com/konflux-ci/integration-service/api/v1beta2"
 	"github.com/konflux-ci/integration-service/loader"
 	"github.com/konflux-ci/integration-service/pkg/tracing"
@@ -190,8 +190,8 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 
 		testReleasePlan                           *releasev1alpha1.ReleasePlan
 		hasApp                                    *applicationapiv1alpha1.Application
-		hasCompGroup                              *konfluxv1beta2.ComponentGroup
-		hasCompGroup2                             *konfluxv1beta2.ComponentGroup
+		hasCompGroup                              *konfluxv1beta3.ComponentGroup
+		hasCompGroup2                             *konfluxv1beta3.ComponentGroup
 		hasComp                                   *applicationapiv1alpha1.Component
 		hasCompMissingImageDigest                 *applicationapiv1alpha1.Component
 		hasCompWithValidImage                     *applicationapiv1alpha1.Component
@@ -256,16 +256,16 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		}
 		Expect(k8sClient.Create(ctx, hasApp)).Should(Succeed())
 
-		hasCompGroup = &konfluxv1beta2.ComponentGroup{
+		hasCompGroup = &konfluxv1beta3.ComponentGroup{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "component-group-sample",
 				Namespace: "default",
 			},
-			Spec: konfluxv1beta2.ComponentGroupSpec{
-				Components: []konfluxv1beta2.ComponentReference{
-					konfluxv1beta2.ComponentReference{
+			Spec: konfluxv1beta3.ComponentGroupSpec{
+				Components: []konfluxv1beta3.ComponentReference{
+					konfluxv1beta3.ComponentReference{
 						Name: "component-sample",
-						ComponentVersion: konfluxv1beta2.ComponentVersionReference{
+						ComponentVersion: konfluxv1beta3.ComponentVersionReference{
 							Name:     "v1",
 							Revision: "main",
 						},
@@ -275,7 +275,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		}
 		Expect(k8sClient.Create(ctx, hasCompGroup)).Should(Succeed())
 
-		hasCompGroup.Status = konfluxv1beta2.ComponentGroupStatus{
+		hasCompGroup.Status = konfluxv1beta3.ComponentGroupStatus{
 			Conditions: []metav1.Condition{
 				metav1.Condition{
 					Type:               "Succeeded",
@@ -285,8 +285,8 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 					LastTransitionTime: metav1.Time{Time: time.Now()},
 				},
 			},
-			GlobalCandidateList: []konfluxv1beta2.ComponentState{
-				konfluxv1beta2.ComponentState{
+			GlobalCandidateList: []konfluxv1beta3.ComponentState{
+				konfluxv1beta3.ComponentState{
 					Name:                  "component-sample",
 					Version:               "v1",
 					URL:                   SampleRepoLink,
@@ -298,23 +298,23 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		}
 		Expect(k8sClient.Status().Update(ctx, hasCompGroup)).Should(Succeed())
 
-		hasCompGroup2 = &konfluxv1beta2.ComponentGroup{
+		hasCompGroup2 = &konfluxv1beta3.ComponentGroup{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "component-group-sample-version",
 				Namespace: "default",
 			},
-			Spec: konfluxv1beta2.ComponentGroupSpec{
-				Components: []konfluxv1beta2.ComponentReference{
-					konfluxv1beta2.ComponentReference{
+			Spec: konfluxv1beta3.ComponentGroupSpec{
+				Components: []konfluxv1beta3.ComponentReference{
+					konfluxv1beta3.ComponentReference{
 						Name: "component-sample",
-						ComponentVersion: konfluxv1beta2.ComponentVersionReference{
+						ComponentVersion: konfluxv1beta3.ComponentVersionReference{
 							Name:     "v1",
 							Revision: "main",
 						},
 					},
-					konfluxv1beta2.ComponentReference{
+					konfluxv1beta3.ComponentReference{
 						Name: "component-sample",
-						ComponentVersion: konfluxv1beta2.ComponentVersionReference{
+						ComponentVersion: konfluxv1beta3.ComponentVersionReference{
 							Name:     "v2",
 							Revision: "main",
 						},
@@ -324,7 +324,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		}
 		Expect(k8sClient.Create(ctx, hasCompGroup2)).Should(Succeed())
 
-		hasCompGroup2.Status = konfluxv1beta2.ComponentGroupStatus{
+		hasCompGroup2.Status = konfluxv1beta3.ComponentGroupStatus{
 			Conditions: []metav1.Condition{
 				metav1.Condition{
 					Type:               "Succeeded",
@@ -334,8 +334,8 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 					LastTransitionTime: metav1.Time{Time: time.Now()},
 				},
 			},
-			GlobalCandidateList: []konfluxv1beta2.ComponentState{
-				konfluxv1beta2.ComponentState{
+			GlobalCandidateList: []konfluxv1beta3.ComponentState{
+				konfluxv1beta3.ComponentState{
 					Name:                  "component-sample",
 					Version:               "v1",
 					URL:                   SampleRepoLink,
@@ -343,7 +343,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 					LastPromotedCommit:    sample_commit,
 					LastPromotedBuildTime: &metav1.Time{Time: time.Now()},
 				},
-				konfluxv1beta2.ComponentState{
+				konfluxv1beta3.ComponentState{
 					Name:                  "component-sample",
 					Version:               "v2",
 					URL:                   SampleRepoLink,
@@ -4218,24 +4218,24 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 
 	When("Adapter is created for component snapshot with pr group", func() {
 		BeforeAll(func() {
-			hasCompGroup.Spec.Components = []konfluxv1beta2.ComponentReference{
-				konfluxv1beta2.ComponentReference{
+			hasCompGroup.Spec.Components = []konfluxv1beta3.ComponentReference{
+				konfluxv1beta3.ComponentReference{
 					Name: hasComp.Name,
-					ComponentVersion: konfluxv1beta2.ComponentVersionReference{
+					ComponentVersion: konfluxv1beta3.ComponentVersionReference{
 						Name:     "v1",
 						Revision: "main",
 					},
 				},
-				konfluxv1beta2.ComponentReference{
+				konfluxv1beta3.ComponentReference{
 					Name: hasCom1.Name,
-					ComponentVersion: konfluxv1beta2.ComponentVersionReference{
+					ComponentVersion: konfluxv1beta3.ComponentVersionReference{
 						Name:     "v1",
 						Revision: "main",
 					},
 				},
-				konfluxv1beta2.ComponentReference{
+				konfluxv1beta3.ComponentReference{
 					Name: hasCom3.Name,
-					ComponentVersion: konfluxv1beta2.ComponentVersionReference{
+					ComponentVersion: konfluxv1beta3.ComponentVersionReference{
 						Name:     "v1",
 						Revision: "main",
 					},
@@ -4243,7 +4243,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			}
 			Expect(k8sClient.Update(ctx, hasCompGroup)).Should(Succeed())
 
-			hasCompGroup.Status = konfluxv1beta2.ComponentGroupStatus{
+			hasCompGroup.Status = konfluxv1beta3.ComponentGroupStatus{
 				Conditions: []metav1.Condition{
 					metav1.Condition{
 						Type:               "Succeeded",
@@ -4253,8 +4253,8 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 						LastTransitionTime: metav1.Time{Time: time.Now()},
 					},
 				},
-				GlobalCandidateList: []konfluxv1beta2.ComponentState{
-					konfluxv1beta2.ComponentState{
+				GlobalCandidateList: []konfluxv1beta3.ComponentState{
+					konfluxv1beta3.ComponentState{
 						Name:                  hasComp.Name,
 						Version:               "v1",
 						URL:                   SampleRepoLink,
@@ -4262,7 +4262,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 						LastPromotedCommit:    "",
 						LastPromotedBuildTime: &metav1.Time{Time: time.Now()},
 					},
-					konfluxv1beta2.ComponentState{
+					konfluxv1beta3.ComponentState{
 						Name:                  hasCom1.Name,
 						Version:               "v1",
 						URL:                   SampleRepoLink,
@@ -4270,7 +4270,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 						LastPromotedCommit:    sample_commit,
 						LastPromotedBuildTime: &metav1.Time{Time: time.Now()},
 					},
-					konfluxv1beta2.ComponentState{
+					konfluxv1beta3.ComponentState{
 						Name:                  hasCom3.Name,
 						Version:               "v1",
 						URL:                   SampleRepoLink,
@@ -4570,10 +4570,10 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 				compGroupWithAnnotation.Annotations = map[string]string{}
 			}
 			compGroupWithAnnotation.Annotations[helpers.AlwaysCreateGroupSnapshotAnnotationName] = "true"
-			compGroupWithAnnotation.Spec.Components = []konfluxv1beta2.ComponentReference{
+			compGroupWithAnnotation.Spec.Components = []konfluxv1beta3.ComponentReference{
 				{
 					Name: hasCom1.Name,
-					ComponentVersion: konfluxv1beta2.ComponentVersionReference{
+					ComponentVersion: konfluxv1beta3.ComponentVersionReference{
 						Name:     "v1",
 						Revision: "main",
 					},
@@ -4663,10 +4663,10 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 				compGroupWithAnnotation.Annotations = map[string]string{}
 			}
 			compGroupWithAnnotation.Annotations[helpers.AlwaysCreateGroupSnapshotAnnotationName] = "true"
-			compGroupWithAnnotation.Spec.Components = []konfluxv1beta2.ComponentReference{
+			compGroupWithAnnotation.Spec.Components = []konfluxv1beta3.ComponentReference{
 				{
 					Name: hasCom1.Name,
-					ComponentVersion: konfluxv1beta2.ComponentVersionReference{
+					ComponentVersion: konfluxv1beta3.ComponentVersionReference{
 						Name:     "v1",
 						Revision: "main",
 					},
@@ -4726,46 +4726,46 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			mockStatus.EXPECT().IsPRMRInSnapshotOpened(gomock.Any(), gomock.Any()).AnyTimes()
 
 			tmpHasCompGroup := hasCompGroup.DeepCopy()
-			tmpHasCompGroup.Spec = konfluxv1beta2.ComponentGroupSpec{
-				Components: []konfluxv1beta2.ComponentReference{
+			tmpHasCompGroup.Spec = konfluxv1beta3.ComponentGroupSpec{
+				Components: []konfluxv1beta3.ComponentReference{
 					{
 						Name: hasComp.Name,
-						ComponentVersion: konfluxv1beta2.ComponentVersionReference{
+						ComponentVersion: konfluxv1beta3.ComponentVersionReference{
 							Name:     "v1",
 							Revision: "main",
 						},
 					},
 					{
 						Name: hasCom1.Name,
-						ComponentVersion: konfluxv1beta2.ComponentVersionReference{
+						ComponentVersion: konfluxv1beta3.ComponentVersionReference{
 							Name:     "v1",
 							Revision: "main",
 						},
 					},
 					{
 						Name: hasCom3.Name,
-						ComponentVersion: konfluxv1beta2.ComponentVersionReference{
+						ComponentVersion: konfluxv1beta3.ComponentVersionReference{
 							Name:     "v1",
 							Revision: "main",
 						},
 					},
 					{
 						Name: hasCompMissingImageDigest.Name,
-						ComponentVersion: konfluxv1beta2.ComponentVersionReference{
+						ComponentVersion: konfluxv1beta3.ComponentVersionReference{
 							Name:     "v1",
 							Revision: "main",
 						},
 					},
 					{
 						Name: hasCompWithValidImage.Name,
-						ComponentVersion: konfluxv1beta2.ComponentVersionReference{
+						ComponentVersion: konfluxv1beta3.ComponentVersionReference{
 							Name:     "v1",
 							Revision: "main",
 						},
 					},
 				},
 			}
-			tmpHasCompGroup.Status = konfluxv1beta2.ComponentGroupStatus{
+			tmpHasCompGroup.Status = konfluxv1beta3.ComponentGroupStatus{
 				Conditions: []metav1.Condition{
 					metav1.Condition{
 						Type:               "Succeeded",
@@ -4775,7 +4775,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 						LastTransitionTime: metav1.Time{Time: time.Now()},
 					},
 				},
-				GlobalCandidateList: []konfluxv1beta2.ComponentState{
+				GlobalCandidateList: []konfluxv1beta3.ComponentState{
 					{
 						Name:                  hasComp.Name,
 						Version:               "v1",
@@ -5387,19 +5387,19 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 	})
 
 	When("Adapter is created for EnsureParentSnapshotsExist", func() {
-		var parentCompGroup *konfluxv1beta2.ComponentGroup
+		var parentCompGroup *konfluxv1beta3.ComponentGroup
 
 		BeforeEach(func() {
-			parentCompGroup = &konfluxv1beta2.ComponentGroup{
+			parentCompGroup = &konfluxv1beta3.ComponentGroup{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "parent-component-group-sample",
 					Namespace: "default",
 				},
-				Spec: konfluxv1beta2.ComponentGroupSpec{
-					Components: []konfluxv1beta2.ComponentReference{
+				Spec: konfluxv1beta3.ComponentGroupSpec{
+					Components: []konfluxv1beta3.ComponentReference{
 						{
 							Name: "component-sample",
-							ComponentVersion: konfluxv1beta2.ComponentVersionReference{
+							ComponentVersion: konfluxv1beta3.ComponentVersionReference{
 								Name: "v1",
 							},
 						},
@@ -5407,8 +5407,8 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 				},
 			}
 			Expect(k8sClient.Create(ctx, parentCompGroup)).Should(Succeed())
-			parentCompGroup.Status = konfluxv1beta2.ComponentGroupStatus{
-				GlobalCandidateList: []konfluxv1beta2.ComponentState{
+			parentCompGroup.Status = konfluxv1beta3.ComponentGroupStatus{
+				GlobalCandidateList: []konfluxv1beta3.ComponentState{
 					{
 						Name:              "component-sample",
 						Version:           "v1",
@@ -5452,7 +5452,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
 					ContextKey: loader.ComponentGroupsContextKey,
-					Resource:   []konfluxv1beta2.ComponentGroup{},
+					Resource:   []konfluxv1beta3.ComponentGroup{},
 				},
 			})
 
@@ -5475,11 +5475,11 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
 					ContextKey: loader.ComponentGroupsContextKey,
-					Resource:   []konfluxv1beta2.ComponentGroup{*parentCompGroup},
+					Resource:   []konfluxv1beta3.ComponentGroup{*parentCompGroup},
 				},
 				{
 					ContextKey: loader.NestedComponentGroupsContextKey,
-					Resource:   []konfluxv1beta2.ComponentGroup{},
+					Resource:   []konfluxv1beta3.ComponentGroup{},
 				},
 			})
 
@@ -5520,16 +5520,16 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 		})
 
 		It("requeuees with error when PrepareParentSnapshot fails due to all-invalid GCL components", func() {
-			allInvalidParentCG := &konfluxv1beta2.ComponentGroup{
+			allInvalidParentCG := &konfluxv1beta3.ComponentGroup{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "all-invalid-parent-cg-sample",
 					Namespace: "default",
 				},
-				Spec: konfluxv1beta2.ComponentGroupSpec{
-					Components: []konfluxv1beta2.ComponentReference{
+				Spec: konfluxv1beta3.ComponentGroupSpec{
+					Components: []konfluxv1beta3.ComponentReference{
 						{
 							Name:             "component-sample",
-							ComponentVersion: konfluxv1beta2.ComponentVersionReference{Name: "v1"},
+							ComponentVersion: konfluxv1beta3.ComponentVersionReference{Name: "v1"},
 						},
 					},
 				},
@@ -5539,8 +5539,8 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 				err := k8sClient.Delete(ctx, allInvalidParentCG)
 				Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 			})
-			allInvalidParentCG.Status = konfluxv1beta2.ComponentGroupStatus{
-				GlobalCandidateList: []konfluxv1beta2.ComponentState{
+			allInvalidParentCG.Status = konfluxv1beta3.ComponentGroupStatus{
+				GlobalCandidateList: []konfluxv1beta3.ComponentState{
 					// empty LastPromotedImage → fails ValidateImageDigest → all invalid → MissingValidComponentError
 					{Name: "component-sample", Version: "v1"},
 				},
@@ -5551,11 +5551,11 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
 					ContextKey: loader.ComponentGroupsContextKey,
-					Resource:   []konfluxv1beta2.ComponentGroup{*allInvalidParentCG},
+					Resource:   []konfluxv1beta3.ComponentGroup{*allInvalidParentCG},
 				},
 				{
 					ContextKey: loader.NestedComponentGroupsContextKey,
-					Resource:   []konfluxv1beta2.ComponentGroup{},
+					Resource:   []konfluxv1beta3.ComponentGroup{},
 				},
 			})
 
@@ -5579,7 +5579,7 @@ var _ = Describe("Dependent scenarios snapshot adapter scheduling", Ordered, fun
 		sampleLogger         helpers.IntegrationLogger
 		sampleAdapter        *Adapter
 		sampleComponent      *applicationapiv1alpha1.Component
-		sampleComponentGroup *konfluxv1beta2.ComponentGroup
+		sampleComponentGroup *konfluxv1beta3.ComponentGroup
 		sampleSnapshot       *applicationapiv1alpha1.Snapshot
 		scenarioRoot         *v1beta2.IntegrationTestScenario
 		scenarioDependent    *v1beta2.IntegrationTestScenario
@@ -5675,7 +5675,7 @@ var _ = Describe("Dependent scenarios snapshot adapter scheduling", Ordered, fun
 
 	initTestStatuses := func(
 		scenarios []v1beta2.IntegrationTestScenario,
-		testGraph map[string][]konfluxv1beta2.TestGraphNode,
+		testGraph map[string][]konfluxv1beta3.TestGraphNode,
 	) *intgteststat.SnapshotIntegrationTestStatuses {
 		statuses, err := intgteststat.NewSnapshotIntegrationTestStatuses("")
 		Expect(err).NotTo(HaveOccurred())
@@ -5714,16 +5714,16 @@ var _ = Describe("Dependent scenarios snapshot adapter scheduling", Ordered, fun
 		}
 		Expect(k8sClient.Create(ctx, sampleComponent)).To(Succeed())
 
-		sampleComponentGroup = &konfluxv1beta2.ComponentGroup{
+		sampleComponentGroup = &konfluxv1beta3.ComponentGroup{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "sample-component-group",
 				Namespace: "default",
 			},
-			Spec: konfluxv1beta2.ComponentGroupSpec{
-				Components: []konfluxv1beta2.ComponentReference{
+			Spec: konfluxv1beta3.ComponentGroupSpec{
+				Components: []konfluxv1beta3.ComponentReference{
 					{
 						Name: "sample-component",
-						ComponentVersion: konfluxv1beta2.ComponentVersionReference{
+						ComponentVersion: konfluxv1beta3.ComponentVersionReference{
 							Name:     "v1",
 							Revision: "main",
 						},
@@ -5812,11 +5812,11 @@ var _ = Describe("Dependent scenarios snapshot adapter scheduling", Ordered, fun
 	Describe("scheduling helper methods", func() {
 		var (
 			helperAdapter *Adapter
-			testGraph     map[string][]konfluxv1beta2.TestGraphNode
+			testGraph     map[string][]konfluxv1beta3.TestGraphNode
 		)
 
 		BeforeEach(func() {
-			testGraph = map[string][]konfluxv1beta2.TestGraphNode{
+			testGraph = map[string][]konfluxv1beta3.TestGraphNode{
 				"scenario-b": {
 					{Name: "scenario-a", FailFast: false},
 				},
@@ -5824,9 +5824,9 @@ var _ = Describe("Dependent scenarios snapshot adapter scheduling", Ordered, fun
 					{Name: "scenario-a", FailFast: true},
 				},
 			}
-			helperAdapter = NewAdapter(ctx, sampleSnapshot, &konfluxv1beta2.ComponentGroup{
+			helperAdapter = NewAdapter(ctx, sampleSnapshot, &konfluxv1beta3.ComponentGroup{
 				ObjectMeta: metav1.ObjectMeta{Name: "helpers-cg", Namespace: "default"},
-				Spec: konfluxv1beta2.ComponentGroupSpec{
+				Spec: konfluxv1beta3.ComponentGroupSpec{
 					TestGraph: testGraph,
 				},
 			}, sampleLogger, loader.NewMockLoader(), k8sClient)
@@ -5907,11 +5907,11 @@ var _ = Describe("Dependent scenarios snapshot adapter scheduling", Ordered, fun
 					{ObjectMeta: metav1.ObjectMeta{Name: scenarioRoot.Name}},
 					{ObjectMeta: metav1.ObjectMeta{Name: scenarioDependent.Name}},
 				}
-				statuses := initTestStatuses(scenarios, map[string][]konfluxv1beta2.TestGraphNode{
+				statuses := initTestStatuses(scenarios, map[string][]konfluxv1beta3.TestGraphNode{
 					scenarioDependent.Name: {{Name: scenarioRoot.Name, FailFast: false}},
 				})
-				adapterWithGraph := NewAdapter(ctx, sampleSnapshot, &konfluxv1beta2.ComponentGroup{
-					Spec: konfluxv1beta2.ComponentGroupSpec{TestGraph: map[string][]konfluxv1beta2.TestGraphNode{
+				adapterWithGraph := NewAdapter(ctx, sampleSnapshot, &konfluxv1beta3.ComponentGroup{
+					Spec: konfluxv1beta3.ComponentGroupSpec{TestGraph: map[string][]konfluxv1beta3.TestGraphNode{
 						scenarioDependent.Name: {{Name: scenarioRoot.Name, FailFast: false}},
 					}},
 				}, sampleLogger, loader.NewMockLoader(), k8sClient)
@@ -5926,7 +5926,7 @@ var _ = Describe("Dependent scenarios snapshot adapter scheduling", Ordered, fun
 					{ObjectMeta: metav1.ObjectMeta{Name: scenarioRoot.Name}},
 					{ObjectMeta: metav1.ObjectMeta{Name: scenarioDependent.Name}},
 				}
-				statuses := initTestStatuses(scenarios, map[string][]konfluxv1beta2.TestGraphNode{
+				statuses := initTestStatuses(scenarios, map[string][]konfluxv1beta3.TestGraphNode{
 					scenarioDependent.Name: {{Name: scenarioRoot.Name, FailFast: false}},
 				})
 				statuses.UpdateTestStatusIfChanged(
@@ -5934,8 +5934,8 @@ var _ = Describe("Dependent scenarios snapshot adapter scheduling", Ordered, fun
 				)
 				Expect(statuses.UpdateTestPipelineRunName(scenarioRoot.Name, "sample-root-plr")).To(Succeed())
 
-				adapterWithGraph := NewAdapter(ctx, sampleSnapshot, &konfluxv1beta2.ComponentGroup{
-					Spec: konfluxv1beta2.ComponentGroupSpec{TestGraph: map[string][]konfluxv1beta2.TestGraphNode{
+				adapterWithGraph := NewAdapter(ctx, sampleSnapshot, &konfluxv1beta3.ComponentGroup{
+					Spec: konfluxv1beta3.ComponentGroupSpec{TestGraph: map[string][]konfluxv1beta3.TestGraphNode{
 						scenarioDependent.Name: {{Name: scenarioRoot.Name, FailFast: false}},
 					}},
 				}, sampleLogger, loader.NewMockLoader(), k8sClient)
@@ -5953,15 +5953,15 @@ var _ = Describe("Dependent scenarios snapshot adapter scheduling", Ordered, fun
 						{ObjectMeta: metav1.ObjectMeta{Name: scenarioRoot.Name}},
 						{ObjectMeta: metav1.ObjectMeta{Name: scenarioDependent.Name}},
 					},
-					map[string][]konfluxv1beta2.TestGraphNode{
+					map[string][]konfluxv1beta3.TestGraphNode{
 						scenarioDependent.Name: {{Name: scenarioRoot.Name, FailFast: true}},
 					},
 				)
 				statuses.UpdateTestStatusIfChanged(
 					scenarioRoot.Name, intgteststat.IntegrationTestStatusTestFail, "failed",
 				)
-				adapterWithGraph := NewAdapter(ctx, sampleSnapshot, &konfluxv1beta2.ComponentGroup{
-					Spec: konfluxv1beta2.ComponentGroupSpec{TestGraph: map[string][]konfluxv1beta2.TestGraphNode{
+				adapterWithGraph := NewAdapter(ctx, sampleSnapshot, &konfluxv1beta3.ComponentGroup{
+					Spec: konfluxv1beta3.ComponentGroupSpec{TestGraph: map[string][]konfluxv1beta3.TestGraphNode{
 						scenarioDependent.Name: {{Name: scenarioRoot.Name, FailFast: true}},
 					}},
 				}, sampleLogger, loader.NewMockLoader(), k8sClient)

@@ -17,7 +17,7 @@ package helpers
 import (
 	"fmt"
 
-	v1beta2 "github.com/konflux-ci/integration-service/api/konflux/v1beta2"
+	"github.com/konflux-ci/integration-service/api/konflux/v1beta3"
 )
 
 const (
@@ -25,7 +25,7 @@ const (
 	AlwaysCreateGroupSnapshotAnnotationName = "integration.konflux-ci.dev/always-create-group-snapshots"
 )
 
-func GetComponentGroupNames(componentGroups *[]v1beta2.ComponentGroup) []string {
+func GetComponentGroupNames(componentGroups *[]v1beta3.ComponentGroup) []string {
 	names := []string{}
 	if componentGroups != nil {
 		for _, componentGroup := range *componentGroups {
@@ -35,7 +35,7 @@ func GetComponentGroupNames(componentGroups *[]v1beta2.ComponentGroup) []string 
 	return names
 }
 
-func GetComponentNamesFromComponentGroup(componentGroup *v1beta2.ComponentGroup) []string {
+func GetComponentNamesFromComponentGroup(componentGroup *v1beta3.ComponentGroup) []string {
 	names := []string{}
 	if componentGroup != nil && componentGroup.Spec.Components != nil {
 		for _, component := range componentGroup.Spec.Components {
@@ -54,7 +54,7 @@ func GetComponentVersionString(name, version string) string {
 }
 
 // GetComponentVersionFromComponentGroup returns the component version from the ComponentGroup for the given component name.
-func GetComponentVersionFromComponentGroup(componentGroup *v1beta2.ComponentGroup, componentName string) (bool, string) {
+func GetComponentVersionFromComponentGroup(componentGroup *v1beta3.ComponentGroup, componentName string) (bool, string) {
 	if componentGroup != nil && componentGroup.Spec.Components != nil {
 		for _, component := range componentGroup.Spec.Components {
 			if component.Name == componentName && component.ComponentVersion.Name != "" {

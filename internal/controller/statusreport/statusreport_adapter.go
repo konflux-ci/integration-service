@@ -29,7 +29,7 @@ import (
 	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	konfluxv1beta2 "github.com/konflux-ci/integration-service/api/konflux/v1beta2"
+	konfluxv1beta3 "github.com/konflux-ci/integration-service/api/konflux/v1beta3"
 	"github.com/konflux-ci/integration-service/api/v1beta2"
 	"github.com/konflux-ci/integration-service/gitops"
 	"github.com/konflux-ci/integration-service/helpers"
@@ -48,7 +48,7 @@ const SnapshotRetryTimeout = time.Duration(3 * time.Hour)
 type Adapter struct {
 	snapshot       *applicationapiv1alpha1.Snapshot
 	application    *applicationapiv1alpha1.Application // TODO: remove when old application-specific code is removed
-	componentGroup *konfluxv1beta2.ComponentGroup
+	componentGroup *konfluxv1beta3.ComponentGroup
 	logger         helpers.IntegrationLogger
 	loader         loader.ObjectLoader
 	client         client.Client
@@ -57,7 +57,7 @@ type Adapter struct {
 }
 
 // NewAdapter creates and returns an Adapter instance for the ComponentGroup model.
-func NewAdapter(context context.Context, snapshot *applicationapiv1alpha1.Snapshot, componentGroup *konfluxv1beta2.ComponentGroup,
+func NewAdapter(context context.Context, snapshot *applicationapiv1alpha1.Snapshot, componentGroup *konfluxv1beta3.ComponentGroup,
 	logger helpers.IntegrationLogger, loader loader.ObjectLoader, client client.Client,
 ) *Adapter {
 	return &Adapter{

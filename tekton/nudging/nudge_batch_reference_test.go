@@ -22,8 +22,8 @@ import (
 	"time"
 
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
-	konfluxv1beta2 "github.com/konflux-ci/integration-service/api/konflux/v1beta2"
-	"github.com/konflux-ci/integration-service/api/v1beta2"
+	konfluxv1beta3 "github.com/konflux-ci/integration-service/api/konflux/v1beta3"
+	v1beta2 "github.com/konflux-ci/integration-service/api/konflux/v1beta3"
 	tektonconsts "github.com/konflux-ci/integration-service/tekton/consts"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -44,7 +44,7 @@ var _ = Describe("referenceBuildPLRForBatch and buildBatchedRenovatePayload", fu
 	BeforeEach(func() {
 		scheme = runtime.NewScheme()
 		Expect(v1beta2.AddToScheme(scheme)).To(Succeed())
-		Expect(konfluxv1beta2.AddToScheme(scheme)).To(Succeed())
+		Expect(konfluxv1beta3.AddToScheme(scheme)).To(Succeed())
 		Expect(tektonv1.AddToScheme(scheme)).To(Succeed())
 		Expect(applicationapiv1alpha1.AddToScheme(scheme)).To(Succeed())
 	})

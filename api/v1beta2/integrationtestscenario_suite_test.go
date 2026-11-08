@@ -27,6 +27,7 @@ import (
 
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
 	konfluxv1beta2 "github.com/konflux-ci/integration-service/api/konflux/v1beta2"
+	konfluxv1beta3 "github.com/konflux-ci/integration-service/api/konflux/v1beta3"
 	toolkit "github.com/konflux-ci/operator-toolkit/test"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -72,6 +73,7 @@ var _ = BeforeSuite(func() {
 	scheme := runtime.NewScheme()
 	Expect(AddToScheme(scheme)).To(Succeed())
 	Expect(konfluxv1beta2.AddToScheme(scheme)).To(Succeed())
+	Expect(konfluxv1beta3.AddToScheme(scheme)).To(Succeed())
 
 	err = applicationapiv1alpha1.AddToScheme(scheme)
 	Expect(err).NotTo(HaveOccurred())

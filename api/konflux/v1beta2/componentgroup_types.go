@@ -178,7 +178,6 @@ type ComponentGroupStatus struct {
 // +kubebuilder:resource:shortName=cg
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
-// +kubebuilder:storageversion
 
 // ComponentGroup is the Schema for the componentgroups API.
 // ComponentGroup serves as the replacement for the Application CR in the new application/component model.

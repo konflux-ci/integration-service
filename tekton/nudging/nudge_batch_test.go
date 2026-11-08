@@ -19,7 +19,7 @@ package nudging_test
 import (
 	"time"
 
-	"github.com/konflux-ci/integration-service/api/v1beta2"
+	v1beta2 "github.com/konflux-ci/integration-service/api/konflux/v1beta3"
 	nudging "github.com/konflux-ci/integration-service/tekton/nudging"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
