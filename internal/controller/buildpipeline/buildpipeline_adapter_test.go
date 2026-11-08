@@ -38,6 +38,7 @@ import (
 	"github.com/konflux-ci/integration-service/snapshot"
 	"github.com/konflux-ci/integration-service/status"
 	"github.com/konflux-ci/integration-service/tekton"
+	"github.com/konflux-ci/integration-service/tekton/nudging"
 	"github.com/konflux-ci/operator-toolkit/metadata"
 	"knative.dev/pkg/apis"
 	v1 "knative.dev/pkg/apis/duck/v1"
@@ -4124,6 +4125,19 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			return plr
 		}
 
+		// expectNudgeOwnerRef asserts the plain owner reference that makes the Kubernetes garbage
+		// collector remove the nudge support objects together with their PipelineRun.
+		expectNudgeOwnerRef := func(obj client.Object, owner *tektonv1.PipelineRun) {
+			Expect(obj.GetOwnerReferences()).To(HaveLen(1))
+			ref := obj.GetOwnerReferences()[0]
+			Expect(ref.APIVersion).To(Equal("tekton.dev/v1"))
+			Expect(ref.Kind).To(Equal("PipelineRun"))
+			Expect(ref.Name).To(Equal(owner.Name))
+			Expect(ref.UID).To(Equal(owner.UID))
+			Expect(ref.Controller).To(BeNil())
+			Expect(ref.BlockOwnerDeletion).To(BeNil())
+		}
+
 		It("skips when PipelineRun is not a push event", func() {
 			adapter = NewAdapter(ctx, buildPipelineRun, hasComp.Name, &[]konfluxv1beta2.ComponentGroup{*hasCompGroup}, logger, loader.NewMockLoader(), k8sClient)
 			result, err := adapter.EnsureNudgePipelineRunsExist()
@@ -4646,6 +4660,41 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				nudgePLRList := &tektonv1.PipelineRunList{}
 				Expect(k8sClient.List(ctx, nudgePLRList, client.InNamespace("default"),
 					client.MatchingLabels{tektonconsts.NudgeTypeLabel: tektonconsts.NudgePipelineRunTypeValue})).To(Succeed())
+
+				// envtest runs no garbage collector, so delete by hand what the collector would
+				// remove together with the nudge PipelineRun (STONEINTG-1907).
+				ownedByNudgePLR := func(obj client.Object) bool {
+					for _, ref := range obj.GetOwnerReferences() {
+						if ref.Kind != "PipelineRun" {
+							continue
+						}
+						for i := range nudgePLRList.Items {
+							if ref.Name == nudgePLRList.Items[i].Name {
+								return true
+							}
+						}
+					}
+					return false
+				}
+				secretList := &corev1.SecretList{}
+				Expect(k8sClient.List(ctx, secretList, client.InNamespace("default"))).To(Succeed())
+				for i := range secretList.Items {
+					if !ownedByNudgePLR(&secretList.Items[i]) {
+						continue
+					}
+					err := k8sClient.Delete(ctx, &secretList.Items[i])
+					Expect(err == nil || k8serrors.IsNotFound(err)).To(BeTrue())
+				}
+				configMapList := &corev1.ConfigMapList{}
+				Expect(k8sClient.List(ctx, configMapList, client.InNamespace("default"))).To(Succeed())
+				for i := range configMapList.Items {
+					if !ownedByNudgePLR(&configMapList.Items[i]) {
+						continue
+					}
+					err := k8sClient.Delete(ctx, &configMapList.Items[i])
+					Expect(err == nil || k8serrors.IsNotFound(err)).To(BeTrue())
+				}
+
 				for i := range nudgePLRList.Items {
 					err := k8sClient.Delete(ctx, &nudgePLRList.Items[i])
 					Expect(err == nil || k8serrors.IsNotFound(err)).To(BeTrue())
@@ -4684,6 +4733,21 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				}
 			}
 
+			// The suite's client reads through the informer cache, which lags writes made through
+			// it. EnsureNudgePipelineRunsExist reads each input once, so a stale read would pick
+			// the wrong credentials or miss a git target; wait until the cache serves them.
+			waitForCachedNudgeInputs := func() {
+				Eventually(func(g Gomega) {
+					cachedComponent := &applicationapiv1alpha1.Component{}
+					g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(hasComp), cachedComponent)).To(Succeed())
+					g.Expect(cachedComponent.Spec.ContainerImage).To(Equal(SampleImageWithoutDigest + ":latest"))
+					g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(dockerSecret), &corev1.Secret{})).To(Succeed())
+					g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(pipelineSA), &corev1.ServiceAccount{})).To(Succeed())
+					g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(scmSecret), &corev1.Secret{})).To(Succeed())
+					g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(pacRepo), &pacv1alpha1.Repository{})).To(Succeed())
+				}, time.Second*10).Should(Succeed())
+			}
+
 			BeforeEach(func() {
 				setupNudgeCredentials()
 			})
@@ -4717,6 +4781,8 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 				DeferCleanup(func() {
 					_ = k8sClient.Delete(ctx, nudgeConfig)
 				})
+
+				waitForCachedNudgeInputs()
 
 				adapter = NewAdapter(ctx, pushPLR, hasComp.Name, &[]v1beta2.ComponentGroup{*hasCompGroup}, logger, loader.NewMockLoader(), k8sClient)
 				adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
@@ -4757,6 +4823,8 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 
 				nudgeConfig := nudgeConfigForTarget(nil)
 
+				waitForCachedNudgeInputs()
+
 				adapter = NewAdapter(ctx, pushPLR, hasComp.Name, &[]v1beta2.ComponentGroup{*hasCompGroup}, logger, loader.NewMockLoader(), k8sClient)
 				adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 					{
@@ -4775,9 +4843,83 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 						client.MatchingLabels{tektonconsts.NudgeTypeLabel: tektonconsts.NudgePipelineRunTypeValue})).To(Succeed())
 					g.Expect(nudgePLRList.Items).To(HaveLen(1))
 
+					nudgePLR := &nudgePLRList.Items[0]
+					g.Expect(nudgePLR.Spec.Status).To(BeEmpty(), "the pending PipelineRun must be started")
+					nudgeSecret := &corev1.Secret{}
+					g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(nudgePLR), nudgeSecret)).To(Succeed())
+					expectNudgeOwnerRef(nudgeSecret, nudgePLR)
+					nudgeConfigMap := &corev1.ConfigMap{}
+					g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(nudgePLR), nudgeConfigMap)).To(Succeed())
+					expectNudgeOwnerRef(nudgeConfigMap, nudgePLR)
+
 					updatedPLR := &tektonv1.PipelineRun{}
 					g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(buildPipelineRun), updatedPLR)).To(Succeed())
 					g.Expect(updatedPLR.Annotations[tektonconsts.NudgeProcessedAnnotation]).To(Equal(hasComp2.Name))
+				}, time.Second*5).Should(Succeed())
+			})
+
+			It("adopts and starts a pending Renovate PLR left by an earlier attempt", func() {
+				pushPLR := makePushPLR()
+
+				originalImage := hasComp.Spec.ContainerImage
+				hasComp.Spec.ContainerImage = SampleImageWithoutDigest + ":latest"
+				Expect(k8sClient.Update(ctx, hasComp)).To(Succeed())
+				DeferCleanup(func() {
+					hasComp.Spec.ContainerImage = originalImage
+					_ = k8sClient.Update(ctx, hasComp)
+				})
+
+				// An earlier attempt created the PipelineRun and stopped before starting it. The
+				// retry must adopt that object, give the support objects an owner reference to it
+				// and clear spec.status, rather than creating a second PipelineRun.
+				pendingName := nudging.NudgePipelineRunNameForBuild(pushPLR)
+				pending := &tektonv1.PipelineRun{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      pendingName,
+						Namespace: "default",
+						Labels:    map[string]string{tektonconsts.NudgeTypeLabel: tektonconsts.NudgePipelineRunTypeValue},
+					},
+					Spec: tektonv1.PipelineRunSpec{Status: tektonv1.PipelineRunSpecStatusPending},
+				}
+				Expect(k8sClient.Create(ctx, pending)).To(Succeed())
+				// The suite's client reads through the informer cache, which lags the create.
+				var pendingUID types.UID
+				Eventually(func(g Gomega) {
+					stored := &tektonv1.PipelineRun{}
+					g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: pendingName, Namespace: "default"}, stored)).To(Succeed())
+					pendingUID = stored.UID
+				}, time.Second*5).Should(Succeed())
+
+				nudgeConfig := nudgeConfigForTarget(nil)
+
+				waitForCachedNudgeInputs()
+
+				adapter = NewAdapter(ctx, pushPLR, hasComp.Name, &[]v1beta2.ComponentGroup{*hasCompGroup}, logger, loader.NewMockLoader(), k8sClient)
+				adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+					{
+						ContextKey: loader.NudgeConfigContextKey,
+						Resource:   nudgeConfig,
+					},
+				})
+
+				result, err := adapter.EnsureNudgePipelineRunsExist()
+				Expect(err).NotTo(HaveOccurred())
+				Expect(result.CancelRequest).To(BeFalse())
+
+				Eventually(func(g Gomega) {
+					nudgePLRList := &tektonv1.PipelineRunList{}
+					g.Expect(k8sClient.List(ctx, nudgePLRList, client.InNamespace("default"),
+						client.MatchingLabels{tektonconsts.NudgeTypeLabel: tektonconsts.NudgePipelineRunTypeValue})).To(Succeed())
+					g.Expect(nudgePLRList.Items).To(HaveLen(1))
+
+					nudgePLR := &nudgePLRList.Items[0]
+					g.Expect(nudgePLR.Name).To(Equal(pendingName))
+					g.Expect(nudgePLR.UID).To(Equal(pendingUID))
+					g.Expect(nudgePLR.Spec.Status).To(BeEmpty(), "the adopted PipelineRun must be started")
+
+					nudgeSecret := &corev1.Secret{}
+					g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(nudgePLR), nudgeSecret)).To(Succeed())
+					expectNudgeOwnerRef(nudgeSecret, nudgePLR)
 				}, time.Second*5).Should(Succeed())
 			})
 		})
@@ -5437,6 +5579,18 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			sourceComp := hasComp.DeepCopy()
 			sourceComp.Spec.ContainerImage = SampleImageWithoutDigest
 			Expect(k8sClient.Update(ctx, sourceComp)).To(Succeed())
+
+			// The suite's client reads through the informer cache, which lags writes made through
+			// it. EnsureNudgePipelineRunsExist reads the component, the service account and the
+			// secret once, so a stale read would annotate credentials-error and stop for good;
+			// wait until the cache serves the writes before reconciling.
+			Eventually(func(g Gomega) {
+				cachedComponent := &applicationapiv1alpha1.Component{}
+				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(sourceComp), cachedComponent)).To(Succeed())
+				g.Expect(cachedComponent.Spec.ContainerImage).To(Equal(SampleImageWithoutDigest))
+				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(sa), &corev1.ServiceAccount{})).To(Succeed())
+				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(dockerSecret), &corev1.Secret{})).To(Succeed())
+			}, time.Second*10).Should(Succeed())
 
 			adapter = NewAdapter(ctx, pushPLR, hasComp.Name, &[]v1beta2.ComponentGroup{*hasCompGroup}, logger, loader.NewMockLoader(), k8sClient)
 			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{

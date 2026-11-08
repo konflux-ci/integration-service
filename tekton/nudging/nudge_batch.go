@@ -33,6 +33,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	logger "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 const maxBatchNudgePLRRetries = 3
@@ -641,11 +642,27 @@ func fireBatch(ctx context.Context, c client.Client, nudgeConfig *v1beta2.NudgeC
 		plannedName = batchPipelineRunName(batch.BatchID, batch.RetryCount)
 	}
 	existingPLR := &tektonv1.PipelineRun{}
-	if err := c.Get(ctx, types.NamespacedName{Name: plannedName, Namespace: nudgeConfig.Namespace}, existingPLR); err == nil {
+	// Retry everything but NotFound: the PipelineRun is read through the informer cache, and
+	// treating a transient lookup failure as "not fired yet" would rebuild the Renovate payload
+	// from a reference build PipelineRun that may already be pruned.
+	getErr := retry.OnError(retry.DefaultBackoff, func(err error) bool { return !apierrors.IsNotFound(err) }, func() error {
+		return c.Get(ctx, types.NamespacedName{Name: plannedName, Namespace: nudgeConfig.Namespace}, existingPLR)
+	})
+	if getErr == nil && !existingPLR.IsPending() {
 		batch.NudgePipelineRun = plannedName
 		batch.Phase = v1beta2.BatchPhaseFiring
 		batch.Message = fmt.Sprintf("fired with %d accumulated build(s)", len(batch.Accumulated))
 		return nil
+	}
+	if getErr != nil && !apierrors.IsNotFound(getErr) {
+		return fmt.Errorf("looking up batched nudge PipelineRun %q: %w", plannedName, getErr)
+	}
+	if getErr == nil {
+		// A pending PipelineRun means an earlier fire created it but did not finish creating its
+		// support objects and starting it (STONEINTG-1907). Fall through to
+		// CreateBatchedNudgePipelineRun, which adopts it, repairs what is missing and starts it
+		// under the same deterministic name.
+		logger.FromContext(ctx).Info("repairing pending batched nudge PipelineRun", "name", plannedName, "batchId", batch.BatchID)
 	}
 
 	referencePLR, target, renovateEntries, err := buildBatchedRenovatePayload(ctx, c, nudgeConfig, batch)
