@@ -483,8 +483,10 @@ func CreateBatchedNudgePipelineRun(
 
 	name := batchPipelineRunName(batchID, retryAttempt)
 	namespace := referencePLR.Namespace
-	nameSuffix := deterministicSuffix(batchID)
-	caConfigMapName := fmt.Sprintf("renovate-ca-%s", nameSuffix)
+	// One CA ConfigMap per attempt: the CA ConfigMap carries an owner reference to this
+	// PipelineRun, so a name shared with the retry attempts would let the pruning of one
+	// attempt delete the bundle another attempt is still mounting (STONEINTG-1907).
+	caConfigMapName := fmt.Sprintf("renovate-ca-%s", deterministicSuffix(name))
 
 	renovateConfig := GenerateBatchedRenovateConfig(target, target.ComponentName, entries)
 	config, err := json.Marshal(renovateConfig)
@@ -659,22 +661,26 @@ func CreateBatchedNudgePipelineRun(
 			pipelineRun.Spec.PipelineSpec.Tasks[0].TaskSpec.Steps[0].VolumeMounts, caVolumeMount)
 	}
 
-	if err := createIfNotExists(ctx, c, secret); err != nil {
+	persisted, created, err := ensurePendingPipelineRun(ctx, c, pipelineRun)
+	if err != nil {
+		return "", fmt.Errorf("creating or loading batched nudge PipelineRun %s: %w", name, err)
+	}
+	if err := createOwnedObjectIfMissing(ctx, c, persisted, secret); err != nil {
 		return "", fmt.Errorf("creating Secret %s: %w", name, err)
 	}
-	if err := createIfNotExists(ctx, c, configMap); err != nil {
+	if err := createOwnedObjectIfMissing(ctx, c, persisted, configMap); err != nil {
 		return "", fmt.Errorf("creating ConfigMap %s: %w", name, err)
 	}
-	if caConfigData != "" {
-		if err := createIfNotExists(ctx, c, caConfigMap); err != nil {
+	if caConfigMap != nil {
+		if err := createOwnedObjectIfMissing(ctx, c, persisted, caConfigMap); err != nil {
 			return "", fmt.Errorf("creating CA ConfigMap %s: %w", caConfigMapName, err)
 		}
 	}
-	if err := createIfNotExists(ctx, c, pipelineRun); err != nil {
-		return "", fmt.Errorf("creating batched nudge PipelineRun %s: %w", name, err)
+	if err := startPendingPipelineRun(ctx, c, persisted); err != nil {
+		return "", fmt.Errorf("starting batched nudge PipelineRun %s: %w", name, err)
 	}
 
-	log.Info("batched nudge PipelineRun created", "name", pipelineRun.Name, "sources", len(entries), "batchId", batchID)
+	log.Info("batched nudge PipelineRun created", "name", persisted.Name, "sources", len(entries), "batchId", batchID, "adopted", !created)
 	return name, nil
 }
 
@@ -693,10 +699,10 @@ func batchPipelineRunName(batchID string, retryAttempt int32) string {
 	return base
 }
 
-// CreateNudgePipelineRun creates the Renovate PipelineRun plus its supporting
-// Secret and ConfigMap in the build PLR namespace.  The PipelineRun is created
-// first so owner references can point back to it; Secret and ConfigMap are
-// created afterward (Tekton will wait for them).
+// CreateNudgePipelineRun creates the Renovate PipelineRun plus its supporting Secret and
+// ConfigMap in the build PLR namespace. The PipelineRun is created first, pending, so the support
+// objects can carry an owner reference to it and are garbage-collected with it; once they exist
+// the PipelineRun is started (STONEINTG-1907).
 func CreateNudgePipelineRun(ctx context.Context, c client.Client, nudgingPLR *tektonv1.PipelineRun, targets []NudgeTarget, buildResult *NudgeBuildResult, simpleBranchName bool) error {
 	log := logger.FromContext(ctx)
 
@@ -899,33 +905,26 @@ func CreateNudgePipelineRun(ctx context.Context, c client.Client, nudgingPLR *te
 			pipelineRun.Spec.PipelineSpec.Tasks[0].TaskSpec.Steps[0].VolumeMounts, caVolumeMount)
 	}
 
-	// Create supporting resources before the PipelineRun so a partial failure
-	// on retry won't leave a running PLR without its Secret/ConfigMap.
-	if err := createIfNotExists(ctx, c, secret); err != nil {
+	persisted, created, err := ensurePendingPipelineRun(ctx, c, pipelineRun)
+	if err != nil {
+		return fmt.Errorf("creating or loading nudge PipelineRun %s: %w", name, err)
+	}
+	if err := createOwnedObjectIfMissing(ctx, c, persisted, secret); err != nil {
 		return fmt.Errorf("creating Secret %s: %w", name, err)
 	}
-	if err := createIfNotExists(ctx, c, configMap); err != nil {
+	if err := createOwnedObjectIfMissing(ctx, c, persisted, configMap); err != nil {
 		return fmt.Errorf("creating ConfigMap %s: %w", name, err)
 	}
-	if caConfigData != "" {
-		if err := createIfNotExists(ctx, c, caConfigMap); err != nil {
+	if caConfigMap != nil {
+		if err := createOwnedObjectIfMissing(ctx, c, persisted, caConfigMap); err != nil {
 			return fmt.Errorf("creating CA ConfigMap %s: %w", caConfigMapName, err)
 		}
 	}
-
-	if err := createIfNotExists(ctx, c, pipelineRun); err != nil {
-		return fmt.Errorf("creating nudge PipelineRun %s: %w", name, err)
+	if err := startPendingPipelineRun(ctx, c, persisted); err != nil {
+		return fmt.Errorf("starting nudge PipelineRun %s: %w", name, err)
 	}
 
-	log.Info("nudge PipelineRun created", "name", pipelineRun.Name, "targets", len(targets))
-	return nil
-}
-
-// createIfNotExists creates the object, silently succeeding if it already exists.
-func createIfNotExists(ctx context.Context, c client.Client, obj client.Object) error {
-	if err := c.Create(ctx, obj); err != nil && !errors.IsAlreadyExists(err) {
-		return err
-	}
+	log.Info("nudge PipelineRun created", "name", persisted.Name, "targets", len(targets), "adopted", !created)
 	return nil
 }
 

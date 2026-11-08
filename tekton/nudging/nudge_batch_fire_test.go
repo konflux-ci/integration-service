@@ -19,6 +19,7 @@ package nudging
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"time"
 
 	ghapi "github.com/google/go-github/v45/github"
@@ -30,6 +31,7 @@ import (
 	. "github.com/onsi/gomega"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -37,6 +39,7 @@ import (
 	v1 "knative.dev/pkg/apis/duck/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 )
 
 var _ = Describe("Nudge batch firing integration", func() {
@@ -246,6 +249,92 @@ var _ = Describe("Nudge batch firing integration", func() {
 		Expect(c.Get(ctx, types.NamespacedName{Name: nudgeConfig.Name, Namespace: namespace}, updated)).To(Succeed())
 		Expect(updated.Status.ActiveBatches[0].Phase).To(Equal(v1beta2.BatchPhaseFiring))
 		Expect(updated.Status.ActiveBatches[0].Message).To(ContainSubstring("fired with 1 accumulated build"))
+	})
+
+	It("repairs a pending planned nudge PipelineRun instead of treating the batch as fired", func() {
+		buildPLR := buildPLRWithResults("batch-build-plr-pending")
+		nudgeConfig := dueBatchNudgeConfig(buildPLR.Name)
+		plannedName := BatchedNudgePipelineRunName(batchID, 0)
+		// The fake client assigns no UID, so give the pending PipelineRun one: the adopted
+		// PipelineRun's UID is what the repair must put in the support objects' owner references.
+		pending := &tektonv1.PipelineRun{
+			ObjectMeta: metav1.ObjectMeta{Name: plannedName, Namespace: namespace, UID: "uid-batch-planned"},
+			Spec:       tektonv1.PipelineRunSpec{Status: tektonv1.PipelineRunSpecStatusPending},
+		}
+		c := batchFireClient(nudgeConfig, buildPLR, pending)
+
+		Expect(ProcessDueNudgeBatches(ctx, c, nudgeConfig)).To(Succeed())
+
+		repaired := &tektonv1.PipelineRun{}
+		Expect(c.Get(ctx, types.NamespacedName{Name: plannedName, Namespace: namespace}, repaired)).To(Succeed())
+		Expect(repaired.Spec.Status).To(BeEmpty(), "the adopted PipelineRun must be started")
+
+		secret := &corev1.Secret{}
+		Expect(c.Get(ctx, types.NamespacedName{Name: plannedName, Namespace: namespace}, secret)).To(Succeed())
+		Expect(secret.OwnerReferences).To(HaveLen(1))
+		Expect(secret.OwnerReferences[0].Kind).To(Equal("PipelineRun"))
+		Expect(secret.OwnerReferences[0].Name).To(Equal(plannedName))
+		Expect(secret.OwnerReferences[0].UID).To(Equal(types.UID("uid-batch-planned")))
+
+		configMap := &corev1.ConfigMap{}
+		Expect(c.Get(ctx, types.NamespacedName{Name: plannedName, Namespace: namespace}, configMap)).To(Succeed())
+		Expect(configMap.OwnerReferences).To(HaveLen(1))
+		Expect(configMap.OwnerReferences[0].UID).To(Equal(types.UID("uid-batch-planned")))
+
+		updated := &v1beta2.NudgeConfig{}
+		Expect(c.Get(ctx, types.NamespacedName{Name: nudgeConfig.Name, Namespace: namespace}, updated)).To(Succeed())
+		Expect(updated.Status.ActiveBatches[0].Phase).To(Equal(v1beta2.BatchPhaseFiring))
+		Expect(updated.Status.ActiveBatches[0].NudgePipelineRun).To(Equal(plannedName))
+	})
+
+	It("does not create support objects when the planned nudge PipelineRun is already running", func() {
+		buildPLR := buildPLRWithResults("batch-build-plr-running")
+		nudgeConfig := dueBatchNudgeConfig(buildPLR.Name)
+		plannedName := BatchedNudgePipelineRunName(batchID, 0)
+		running := &tektonv1.PipelineRun{
+			ObjectMeta: metav1.ObjectMeta{Name: plannedName, Namespace: namespace, UID: "uid-batch-running"},
+		}
+		c := batchFireClient(nudgeConfig, buildPLR, running)
+
+		Expect(ProcessDueNudgeBatches(ctx, c, nudgeConfig)).To(Succeed())
+
+		Expect(c.Get(ctx, types.NamespacedName{Name: plannedName, Namespace: namespace}, &tektonv1.PipelineRun{})).To(Succeed())
+		Expect(apierrors.IsNotFound(c.Get(ctx, types.NamespacedName{Name: plannedName, Namespace: namespace}, &corev1.Secret{}))).To(BeTrue(),
+			"a running PipelineRun must not be rebuilt, so no Secret is created")
+		Expect(apierrors.IsNotFound(c.Get(ctx, types.NamespacedName{Name: plannedName, Namespace: namespace}, &corev1.ConfigMap{}))).To(BeTrue(),
+			"a running PipelineRun must not be rebuilt, so no ConfigMap is created")
+
+		updated := &v1beta2.NudgeConfig{}
+		Expect(c.Get(ctx, types.NamespacedName{Name: nudgeConfig.Name, Namespace: namespace}, updated)).To(Succeed())
+		Expect(updated.Status.ActiveBatches[0].Phase).To(Equal(v1beta2.BatchPhaseFiring))
+	})
+
+	It("marks the batch failed when the planned nudge PipelineRun cannot be looked up", func() {
+		buildPLR := buildPLRWithResults("batch-build-plr-lookup-error")
+		nudgeConfig := dueBatchNudgeConfig(buildPLR.Name)
+		plannedName := BatchedNudgePipelineRunName(batchID, 0)
+		base := batchFireClient(nudgeConfig, buildPLR)
+
+		withWatch, ok := base.(client.WithWatch)
+		Expect(ok).To(BeTrue(), "the fake client must support watches for the interceptor wrapper")
+		lookupErr := errors.New("etcd unavailable")
+		c := interceptor.NewClient(withWatch, interceptor.Funcs{
+			Get: func(ctx context.Context, cl client.WithWatch, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+				if _, isPipelineRun := obj.(*tektonv1.PipelineRun); isPipelineRun && key.Name == plannedName {
+					return lookupErr
+				}
+				return cl.Get(ctx, key, obj, opts...)
+			},
+		})
+
+		Expect(ProcessDueNudgeBatches(ctx, c, nudgeConfig)).To(Succeed())
+
+		// A transient lookup failure must not be read as "not fired yet": the batch is failed with
+		// the lookup error rather than rebuilt from a reference build that may already be pruned.
+		updated := &v1beta2.NudgeConfig{}
+		Expect(c.Get(ctx, types.NamespacedName{Name: nudgeConfig.Name, Namespace: namespace}, updated)).To(Succeed())
+		Expect(updated.Status.ActiveBatches[0].Phase).To(Equal(v1beta2.BatchPhaseFailed))
+		Expect(updated.Status.ActiveBatches[0].Message).To(ContainSubstring(lookupErr.Error()))
 	})
 
 	It("marks a batch completed when the nudge PipelineRun succeeds", func() {
