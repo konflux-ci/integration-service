@@ -240,6 +240,45 @@ var _ = Describe("Nudge batch client operations", func() {
 			Expect(updated.Status.ActiveBatches[0].FireAt).To(BeNil())
 		})
 
+		It("should schedule a partial batch when the first source build fails", func() {
+			defaultPolicy := v1beta2.FailurePolicyBlock
+			targetPolicy := v1beta2.FailurePolicyProceedWithPartial
+			nudgeConfig.Spec.BatchDefaults = &v1beta2.BatchDefaults{FailurePolicy: &defaultPolicy}
+			nudgeConfig.Spec.TargetConfig[0].BatchPolicy.FailurePolicy = &targetPolicy
+			c := newClient(nudgeConfig, buildPLR)
+
+			Expect(RecordFailedBuildForBatchedNudge(ctx, c, nudgeConfig, target, source, buildPLR, "task failed")).To(Succeed())
+
+			updated := &v1beta2.NudgeConfig{}
+			Expect(c.Get(ctx, types.NamespacedName{Name: nudgeConfig.Name, Namespace: namespace}, updated)).To(Succeed())
+			batch := updated.Status.ActiveBatches[0]
+			Expect(batch.Phase).To(Equal(v1beta2.BatchPhaseAccumulating))
+			Expect(batch.Accumulated).To(BeEmpty())
+			Expect(batch.Failed).To(HaveLen(1))
+			Expect(batch.FireAt).NotTo(BeNil())
+			Expect(batch.HardDeadline.Time).To(BeTemporally(">", batch.CreatedAt.Time))
+		})
+
+		It("should exclude a failed source and restore it after a successful repair", func() {
+			partialPolicy := v1beta2.FailurePolicyProceedWithPartial
+			nudgeConfig.Spec.TargetConfig[0].BatchPolicy.FailurePolicy = &partialPolicy
+			c := newClient(nudgeConfig, buildPLR)
+
+			Expect(RecordBuildForBatchedNudge(ctx, c, nudgeConfig, target, buildPLR, buildResult)).To(Succeed())
+			Expect(RecordFailedBuildForBatchedNudge(ctx, c, nudgeConfig, target, source, buildPLR, "task failed")).To(Succeed())
+
+			updated := &v1beta2.NudgeConfig{}
+			Expect(c.Get(ctx, types.NamespacedName{Name: nudgeConfig.Name, Namespace: namespace}, updated)).To(Succeed())
+			Expect(updated.Status.ActiveBatches[0].Phase).To(Equal(v1beta2.BatchPhaseAccumulating))
+			Expect(updated.Status.ActiveBatches[0].Accumulated).To(BeEmpty())
+			Expect(updated.Status.ActiveBatches[0].Failed).To(HaveLen(1))
+
+			Expect(RecordBuildForBatchedNudge(ctx, c, nudgeConfig, target, buildPLR, buildResult)).To(Succeed())
+			Expect(c.Get(ctx, types.NamespacedName{Name: nudgeConfig.Name, Namespace: namespace}, updated)).To(Succeed())
+			Expect(updated.Status.ActiveBatches[0].Accumulated).To(HaveLen(1))
+			Expect(updated.Status.ActiveBatches[0].Failed).To(BeEmpty())
+		})
+
 		It("should default the failure reason when none is provided", func() {
 			c := newClient(nudgeConfig, buildPLR)
 			Expect(RecordFailedBuildForBatchedNudge(ctx, c, nudgeConfig, target, source, buildPLR, "")).To(Succeed())

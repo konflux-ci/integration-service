@@ -52,6 +52,22 @@ var _ = Describe("batchShouldFire", func() {
 		Expect(nudging.BatchShouldFire(batch, now)).To(BeFalse())
 	})
 
+	It("fires a failed-only batch when its timer has elapsed", func() {
+		now := time.Now()
+		fireAt := metav1.NewTime(now.Add(-time.Minute))
+		batch := &v1beta2.ActiveBatch{
+			FireAt:       &fireAt,
+			HardDeadline: metav1.NewTime(now.Add(time.Hour)),
+			Failed: []v1beta2.FailedEntry{{
+				From:             "a",
+				BuildPipelineRun: "plr-1",
+				Reason:           "failed",
+				CapturedAt:       metav1.Now(),
+			}},
+		}
+		Expect(nudging.BatchShouldFire(batch, now)).To(BeTrue())
+	})
+
 	It("does not fire when debounce and deadline are still in the future", func() {
 		now := time.Now()
 		future := metav1.NewTime(now.Add(time.Hour))
@@ -145,6 +161,24 @@ var _ = Describe("nextBatchWakeDuration", func() {
 			{Phase: v1beta2.BatchPhaseAccumulating, FireAt: &soon, Accumulated: []v1beta2.AccumulatedEntry{{From: "b"}}},
 			{Phase: v1beta2.BatchPhaseCompleted, FireAt: &soon},
 		}
+		wake := nudging.NextBatchWakeDuration(batches)
+		Expect(wake).To(BeNumerically(">", 0))
+		Expect(wake).To(BeNumerically("<", 3*time.Minute))
+	})
+
+	It("should schedule a wake for a failed-only accumulating batch", func() {
+		now := time.Now()
+		soon := metav1.NewTime(now.Add(2 * time.Minute))
+		batches := []v1beta2.ActiveBatch{{
+			Phase:  v1beta2.BatchPhaseAccumulating,
+			FireAt: &soon,
+			Failed: []v1beta2.FailedEntry{{
+				From:             "a",
+				BuildPipelineRun: "plr-1",
+				Reason:           "failed",
+				CapturedAt:       metav1.Now(),
+			}},
+		}}
 		wake := nudging.NextBatchWakeDuration(batches)
 		Expect(wake).To(BeNumerically(">", 0))
 		Expect(wake).To(BeNumerically("<", 3*time.Minute))

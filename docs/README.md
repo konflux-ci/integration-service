@@ -8,6 +8,7 @@
 
 ## Operational docs
 - [Distributed tracing](https://github.com/konflux-ci/integration-service/blob/main/docs/tracing.md)
+- [NudgeConfig batch failure handling](nudgeconfig-batch-failure-handling.md)
 
 ## Creating or editing Mermaid diagrams
 
