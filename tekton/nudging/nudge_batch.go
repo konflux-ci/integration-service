@@ -328,7 +328,32 @@ func BatchAllowsScheduledFire(batch *v1beta2.ActiveBatch, failurePolicy v1beta2.
 	return false
 }
 
+// nextWakeForBatch returns the time until the earliest of fireAt and hardDeadline
+// for a single accumulating batch. The result is non-positive when a timer has
+// already elapsed, meaning the batch is due now.
+//
+// Callers must only invoke this when at least one timer is set (FireAt non-nil
+// or HardDeadline non-zero). With neither timer set, the zero return is
+// indistinguishable from "due now" and must not be treated as a wake signal.
+func nextWakeForBatch(batch *v1beta2.ActiveBatch, now time.Time) time.Duration {
+	var earliest time.Duration
+	var set bool
+	if batch.FireAt != nil {
+		earliest, set = batch.FireAt.Sub(now), true
+	}
+	if !batch.HardDeadline.IsZero() {
+		if d := batch.HardDeadline.Sub(now); !set || d < earliest {
+			earliest = d
+		}
+	}
+	return earliest
+}
+
 // NextBatchWakeDuration returns the time until the next accumulating batch should be checked.
+// It uses the earlier of fireAt and hardDeadline so a batch whose debounce keeps
+// sliding forward still wakes when the hard deadline is reached.
+// Empty Accumulating batches with a timer set are still scheduled so
+// ProcessDueNudgeBatches can mark them Failed when the timer expires.
 func NextBatchWakeDuration(batches []v1beta2.ActiveBatch) time.Duration {
 	now := time.Now()
 	var next time.Duration
@@ -339,10 +364,13 @@ func NextBatchWakeDuration(batches []v1beta2.ActiveBatch) time.Duration {
 	}
 	for i := range batches {
 		batch := &batches[i]
-		if batch.Phase != v1beta2.BatchPhaseAccumulating || batch.FireAt == nil {
+		if batch.Phase != v1beta2.BatchPhaseAccumulating {
 			continue
 		}
-		wait := batch.FireAt.Sub(now)
+		if batch.FireAt == nil && batch.HardDeadline.IsZero() {
+			continue
+		}
+		wait := nextWakeForBatch(batch, now)
 		if wait <= 0 {
 			return 0
 		}
