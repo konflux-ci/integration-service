@@ -32,6 +32,7 @@ import (
 	"github.com/konflux-ci/integration-service/api/v1beta2"
 	"github.com/konflux-ci/integration-service/gitops"
 	"github.com/konflux-ci/integration-service/helpers"
+	"github.com/konflux-ci/integration-service/internal/controller/testutil"
 	"github.com/konflux-ci/integration-service/loader"
 	intgteststat "github.com/konflux-ci/integration-service/pkg/integrationteststatus"
 	"github.com/konflux-ci/integration-service/pkg/tracing"
@@ -2352,8 +2353,9 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 	When("A new Build pipelineRun has started running", func() {
 		BeforeEach(func() {
 			// Remove the PR group creation Annotation from the group Snapshot
-			delete(hasSnapshot.Annotations, gitops.PRGroupCreationAnnotation)
-			Expect(k8sClient.Update(ctx, hasSnapshot)).Should(Succeed())
+			testutil.UpdateWithRetry(ctx, k8sClient, hasSnapshot, func() {
+				delete(hasSnapshot.Annotations, gitops.PRGroupCreationAnnotation)
+			})
 			// Update build PLR as running
 			buildPipelineRun.Status = tektonv1.PipelineRunStatus{
 				PipelineRunStatusFields: tektonv1.PipelineRunStatusFields{
@@ -2387,11 +2389,12 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			Expect(k8sClient.Status().Update(ctx, buildPipelineRun)).Should(Succeed())
 
 			// Add label and annotation to PLR
-			err := metadata.AddLabels(buildPipelineRun, map[string]string{gitops.PRGroupHashLabel: "b4e3bd082b29abdca3442e1e04ddf88ce82fc01ae6f577dd879de813ff5aa4"})
-			Expect(err).NotTo(HaveOccurred())
-			err = metadata.AddAnnotations(buildPipelineRun, map[string]string{gitops.PRGroupAnnotation: "sourceBranch"})
-			Expect(err).NotTo(HaveOccurred())
-			Expect(k8sClient.Update(ctx, buildPipelineRun)).Should(Succeed())
+			testutil.UpdateWithRetry(ctx, k8sClient, buildPipelineRun, func() {
+				err := metadata.AddLabels(buildPipelineRun, map[string]string{gitops.PRGroupHashLabel: "b4e3bd082b29abdca3442e1e04ddf88ce82fc01ae6f577dd879de813ff5aa4"})
+				Expect(err).NotTo(HaveOccurred())
+				err = metadata.AddAnnotations(buildPipelineRun, map[string]string{gitops.PRGroupAnnotation: "sourceBranch"})
+				Expect(err).NotTo(HaveOccurred())
+			})
 
 			Eventually(func() bool {
 				updatedBuildPLR := new(tektonv1.PipelineRun)
@@ -2577,8 +2580,9 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 	When("A Build pipelineRun has failed", func() {
 		BeforeEach(func() {
 			// Remove the PR group creation Annotation from the group Snapshot
-			delete(hasSnapshot.Annotations, gitops.PRGroupCreationAnnotation)
-			Expect(k8sClient.Update(ctx, hasSnapshot)).Should(Succeed())
+			testutil.UpdateWithRetry(ctx, k8sClient, hasSnapshot, func() {
+				delete(hasSnapshot.Annotations, gitops.PRGroupCreationAnnotation)
+			})
 
 			// Update build PLR as failed
 			buildPipelineRun.Status = tektonv1.PipelineRunStatus{
@@ -2626,11 +2630,12 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		When("add pr group to the build pipelineRun annotations and labels [APPLICATION]", func() {
 			BeforeEach(func() {
 				// Add label and annotation to PLR
-				err := metadata.AddLabels(buildPipelineRun, map[string]string{gitops.PRGroupHashLabel: prGroupSha})
-				Expect(err).NotTo(HaveOccurred())
-				err = metadata.AddAnnotations(buildPipelineRun, map[string]string{gitops.PRGroupAnnotation: prGroup})
-				Expect(err).NotTo(HaveOccurred())
-				Expect(k8sClient.Update(ctx, buildPipelineRun)).Should(Succeed())
+				testutil.UpdateWithRetry(ctx, k8sClient, buildPipelineRun, func() {
+					err := metadata.AddLabels(buildPipelineRun, map[string]string{gitops.PRGroupHashLabel: prGroupSha})
+					Expect(err).NotTo(HaveOccurred())
+					err = metadata.AddAnnotations(buildPipelineRun, map[string]string{gitops.PRGroupAnnotation: prGroup})
+					Expect(err).NotTo(HaveOccurred())
+				})
 
 				Eventually(func() bool {
 					_ = k8sClient.Get(ctx, types.NamespacedName{
@@ -2711,11 +2716,12 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		When("add pr group to the build pipelineRun annotations and labels", func() {
 			BeforeEach(func() {
 				// Add label and annotation to PLR
-				err := metadata.AddLabels(buildPipelineRun, map[string]string{gitops.PRGroupHashLabel: prGroupSha})
-				Expect(err).NotTo(HaveOccurred())
-				err = metadata.AddAnnotations(buildPipelineRun, map[string]string{gitops.PRGroupAnnotation: prGroup})
-				Expect(err).NotTo(HaveOccurred())
-				Expect(k8sClient.Update(ctx, buildPipelineRun)).Should(Succeed())
+				testutil.UpdateWithRetry(ctx, k8sClient, buildPipelineRun, func() {
+					err := metadata.AddLabels(buildPipelineRun, map[string]string{gitops.PRGroupHashLabel: prGroupSha})
+					Expect(err).NotTo(HaveOccurred())
+					err = metadata.AddAnnotations(buildPipelineRun, map[string]string{gitops.PRGroupAnnotation: prGroup})
+					Expect(err).NotTo(HaveOccurred())
+				})
 
 				Eventually(func() bool {
 					_ = k8sClient.Get(ctx, types.NamespacedName{
@@ -2795,14 +2801,16 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		When("add pr group to the build pipelineRun annotations and labels [APPLICATION]", func() {
 			BeforeEach(func() {
 				// Remove the PR group creation Annotation from the group Snapshot
-				delete(hasSnapshot.Annotations, gitops.PRGroupCreationAnnotation)
-				Expect(k8sClient.Update(ctx, hasSnapshot)).Should(Succeed())
+				testutil.UpdateWithRetry(ctx, k8sClient, hasSnapshot, func() {
+					delete(hasSnapshot.Annotations, gitops.PRGroupCreationAnnotation)
+				})
 				// Add label and annotation to PLR
-				err := metadata.AddLabels(buildPipelineRun, map[string]string{gitops.PRGroupHashLabel: prGroupSha})
-				Expect(err).NotTo(HaveOccurred())
-				err = metadata.AddAnnotations(buildPipelineRun, map[string]string{gitops.PRGroupAnnotation: prGroup})
-				Expect(err).NotTo(HaveOccurred())
-				Expect(k8sClient.Update(ctx, buildPipelineRun)).Should(Succeed())
+				testutil.UpdateWithRetry(ctx, k8sClient, buildPipelineRun, func() {
+					err := metadata.AddLabels(buildPipelineRun, map[string]string{gitops.PRGroupHashLabel: prGroupSha})
+					Expect(err).NotTo(HaveOccurred())
+					err = metadata.AddAnnotations(buildPipelineRun, map[string]string{gitops.PRGroupAnnotation: prGroup})
+					Expect(err).NotTo(HaveOccurred())
+				})
 
 				Eventually(func() bool {
 					_ = k8sClient.Get(ctx, types.NamespacedName{
@@ -2880,14 +2888,16 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		When("add pr group to the build pipelineRun annotations and labels", func() {
 			BeforeEach(func() {
 				// Remove the PR group creation Annotation from the group Snapshot
-				delete(hasSnapshot.Annotations, gitops.PRGroupCreationAnnotation)
-				Expect(k8sClient.Update(ctx, hasSnapshot)).Should(Succeed())
+				testutil.UpdateWithRetry(ctx, k8sClient, hasSnapshot, func() {
+					delete(hasSnapshot.Annotations, gitops.PRGroupCreationAnnotation)
+				})
 				// Add label and annotation to PLR
-				err := metadata.AddLabels(buildPipelineRun, map[string]string{gitops.PRGroupHashLabel: prGroupSha})
-				Expect(err).NotTo(HaveOccurred())
-				err = metadata.AddAnnotations(buildPipelineRun, map[string]string{gitops.PRGroupAnnotation: prGroup})
-				Expect(err).NotTo(HaveOccurred())
-				Expect(k8sClient.Update(ctx, buildPipelineRun)).Should(Succeed())
+				testutil.UpdateWithRetry(ctx, k8sClient, buildPipelineRun, func() {
+					err := metadata.AddLabels(buildPipelineRun, map[string]string{gitops.PRGroupHashLabel: prGroupSha})
+					Expect(err).NotTo(HaveOccurred())
+					err = metadata.AddAnnotations(buildPipelineRun, map[string]string{gitops.PRGroupAnnotation: prGroup})
+					Expect(err).NotTo(HaveOccurred())
+				})
 
 				Eventually(func() bool {
 					_ = k8sClient.Get(ctx, types.NamespacedName{
@@ -4697,11 +4707,13 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 
 				// Set ContainerImage on hasComp so GetImageRegistryCredentials can parse the registry host.
 				originalImage := hasComp.Spec.ContainerImage
-				hasComp.Spec.ContainerImage = SampleImageWithoutDigest + ":latest"
-				Expect(k8sClient.Update(ctx, hasComp)).To(Succeed())
+				testutil.UpdateWithRetry(ctx, k8sClient, hasComp, func() {
+					hasComp.Spec.ContainerImage = SampleImageWithoutDigest + ":latest"
+				})
 				DeferCleanup(func() {
-					hasComp.Spec.ContainerImage = originalImage
-					_ = k8sClient.Update(ctx, hasComp)
+					testutil.UpdateWithRetry(ctx, k8sClient, hasComp, func() {
+						hasComp.Spec.ContainerImage = originalImage
+					})
 				})
 
 				nudgeConfig := nudgeConfigForTarget([]v1beta2.TargetConfig{
@@ -4748,11 +4760,13 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 
 				// Set ContainerImage on hasComp so GetImageRegistryCredentials can parse the registry host.
 				originalImage := hasComp.Spec.ContainerImage
-				hasComp.Spec.ContainerImage = SampleImageWithoutDigest + ":latest"
-				Expect(k8sClient.Update(ctx, hasComp)).To(Succeed())
+				testutil.UpdateWithRetry(ctx, k8sClient, hasComp, func() {
+					hasComp.Spec.ContainerImage = SampleImageWithoutDigest + ":latest"
+				})
 				DeferCleanup(func() {
-					hasComp.Spec.ContainerImage = originalImage
-					_ = k8sClient.Update(ctx, hasComp)
+					testutil.UpdateWithRetry(ctx, k8sClient, hasComp, func() {
+						hasComp.Spec.ContainerImage = originalImage
+					})
 				})
 
 				nudgeConfig := nudgeConfigForTarget(nil)
@@ -4945,15 +4959,11 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		})
 
 		It("sets the StaleReferences condition to ConditionTrue when orphaned references exist", func() {
-			nudgeConfig.Spec.Nudges = []konfluxv1beta2.NudgeRelationship{
-				{From: hasComp.Name, To: "missing-component", Mode: konfluxv1beta2.NudgeModeImmediate},
-			}
-			Expect(k8sClient.Update(ctx, nudgeConfig)).Should(Succeed())
-			Eventually(func(g Gomega) {
-				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(nudgeConfig), nudgeConfig)).To(Succeed())
-				nudge := nudgeConfig.Spec.Nudges[0]
-				g.Expect(nudge.To).To(Equal("missing-component"))
-			}, time.Second*5).Should(Succeed())
+			testutil.UpdateWithRetry(ctx, k8sClient, nudgeConfig, func() {
+				nudgeConfig.Spec.Nudges = []konfluxv1beta2.NudgeRelationship{
+					{From: hasComp.Name, To: "missing-component", Mode: konfluxv1beta2.NudgeModeImmediate},
+				}
+			})
 
 			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
@@ -5026,8 +5036,9 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		})
 
 		It("persists BatchDefaultsSupported when listing Components fails", func() {
-			nudgeConfig.Spec.BatchDefaults = &konfluxv1beta2.BatchDefaults{}
-			Expect(k8sClient.Update(ctx, nudgeConfig)).Should(Succeed())
+			testutil.UpdateWithRetry(ctx, k8sClient, nudgeConfig, func() {
+				nudgeConfig.Spec.BatchDefaults = &konfluxv1beta2.BatchDefaults{}
+			})
 
 			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
@@ -5073,8 +5084,9 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 		})
 
 		It("sets BatchDefaultsSupported to False when spec.batchDefaults is configured", func() {
-			nudgeConfig.Spec.BatchDefaults = &konfluxv1beta2.BatchDefaults{}
-			Expect(k8sClient.Update(ctx, nudgeConfig)).Should(Succeed())
+			testutil.UpdateWithRetry(ctx, k8sClient, nudgeConfig, func() {
+				nudgeConfig.Spec.BatchDefaults = &konfluxv1beta2.BatchDefaults{}
+			})
 
 			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{
@@ -5227,9 +5239,10 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 
 		It("removes the stale nudge finalizer when a failed PLR is already annotated as nudge-processed", func() {
 			pushPLR := makeFailedPushPLR()
-			pushPLR.Annotations[tektonconsts.NudgeProcessedAnnotation] = hasComp2.Name
-			controllerutil.AddFinalizer(pushPLR, helpers.NudgePipelineRunFinalizer)
-			Expect(k8sClient.Update(ctx, pushPLR)).To(Succeed())
+			testutil.UpdateWithRetry(ctx, k8sClient, pushPLR, func() {
+				pushPLR.Annotations[tektonconsts.NudgeProcessedAnnotation] = hasComp2.Name
+				controllerutil.AddFinalizer(pushPLR, helpers.NudgePipelineRunFinalizer)
+			})
 
 			adapter = NewAdapter(ctx, pushPLR, hasComp.Name, &[]v1beta2.ComponentGroup{*hasCompGroup}, logger, loader.NewMockLoader(), k8sClient)
 			result, err := adapter.RecordFailedBatchedNudgeBuilds()
@@ -5269,11 +5282,17 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 
 	When("additional nudge adapter coverage", func() {
 		AfterEach(func() {
-			stored := &tektonv1.PipelineRun{}
-			if err := k8sClient.Get(ctx, client.ObjectKeyFromObject(buildPipelineRun), stored); err == nil {
+			Eventually(func() error {
+				stored := &tektonv1.PipelineRun{}
+				if err := k8sClient.Get(ctx, client.ObjectKeyFromObject(buildPipelineRun), stored); err != nil {
+					if k8serrors.IsNotFound(err) {
+						return nil
+					}
+					return err
+				}
 				stored.Finalizers = nil
-				_ = k8sClient.Update(ctx, stored)
-			}
+				return k8sClient.Update(ctx, stored)
+			}, time.Second*20).Should(Succeed())
 		})
 
 		makePushPLR := func() *tektonv1.PipelineRun {
@@ -5303,8 +5322,9 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 
 		It("finalizeNudgeProcessedBuildPipelineRun annotates and removes the nudge finalizer", func() {
 			pushPLR := makePushPLR()
-			controllerutil.AddFinalizer(pushPLR, helpers.NudgePipelineRunFinalizer)
-			Expect(k8sClient.Update(ctx, pushPLR)).To(Succeed())
+			testutil.UpdateWithRetry(ctx, k8sClient, pushPLR, func() {
+				controllerutil.AddFinalizer(pushPLR, helpers.NudgePipelineRunFinalizer)
+			})
 
 			adapter = NewAdapter(ctx, pushPLR, hasComp.Name, &[]v1beta2.ComponentGroup{*hasCompGroup}, logger, loader.NewMockLoader(), k8sClient)
 			Expect(adapter.finalizeNudgeProcessedBuildPipelineRun(hasComp2.Name)).To(Succeed())
@@ -5425,8 +5445,9 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			defer func() { _ = k8sClient.Delete(ctx, dockerSecret) }()
 
 			saName := "nudge-no-credentials-sa"
-			pushPLR.Spec.TaskRunTemplate.ServiceAccountName = saName
-			Expect(k8sClient.Update(ctx, pushPLR)).To(Succeed())
+			testutil.UpdateWithRetry(ctx, k8sClient, pushPLR, func() {
+				pushPLR.Spec.TaskRunTemplate.ServiceAccountName = saName
+			})
 			sa := &corev1.ServiceAccount{
 				ObjectMeta: metav1.ObjectMeta{Name: saName, Namespace: "default"},
 				Secrets:    []corev1.ObjectReference{{Name: dockerSecret.Name}},
@@ -5435,8 +5456,9 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			defer func() { _ = k8sClient.Delete(ctx, sa) }()
 
 			sourceComp := hasComp.DeepCopy()
-			sourceComp.Spec.ContainerImage = SampleImageWithoutDigest
-			Expect(k8sClient.Update(ctx, sourceComp)).To(Succeed())
+			testutil.UpdateWithRetry(ctx, k8sClient, sourceComp, func() {
+				sourceComp.Spec.ContainerImage = SampleImageWithoutDigest
+			})
 
 			adapter = NewAdapter(ctx, pushPLR, hasComp.Name, &[]v1beta2.ComponentGroup{*hasCompGroup}, logger, loader.NewMockLoader(), k8sClient)
 			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{

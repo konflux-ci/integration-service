@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/konflux-ci/integration-service/helpers"
+	"github.com/konflux-ci/integration-service/internal/controller/testutil"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	crwebhook "sigs.k8s.io/controller-runtime/pkg/webhook"
@@ -311,11 +312,11 @@ var _ = Describe("Integration PipelineController", func() {
 	})
 
 	It("Does not return an error if the snapshot cannot be found", func() {
-		controllerutil.AddFinalizer(integrationPipelineRun, helpers.IntegrationPipelineRunFinalizer)
-		err := k8sClient.Update(ctx, integrationPipelineRun)
-		Expect(err).ToNot(HaveOccurred())
+		testutil.UpdateWithRetry(ctx, k8sClient, integrationPipelineRun, func() {
+			controllerutil.AddFinalizer(integrationPipelineRun, helpers.IntegrationPipelineRunFinalizer)
+		})
 
-		err = k8sClient.Delete(ctx, hasSnapshot)
+		err := k8sClient.Delete(ctx, hasSnapshot)
 		Eventually(func() bool {
 			err := k8sClient.Get(ctx, types.NamespacedName{
 				Namespace: hasSnapshot.Namespace,

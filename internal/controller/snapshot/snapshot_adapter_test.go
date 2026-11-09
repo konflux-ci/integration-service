@@ -63,6 +63,7 @@ import (
 
 	"github.com/konflux-ci/integration-service/gitops"
 	"github.com/konflux-ci/integration-service/helpers"
+	"github.com/konflux-ci/integration-service/internal/controller/testutil"
 	intgteststat "github.com/konflux-ci/integration-service/pkg/integrationteststatus"
 
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -2987,8 +2988,9 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 				Expect(gitops.HaveAppStudioTestsSucceeded(hasSnapshot)).To(BeTrue())
 
 				// Setting the context of 'integrationTestScenario1' to NOT match the current Component
-				integrationTestScenario1.Spec.Contexts = append(integrationTestScenario1.Spec.Contexts, v1beta2.TestContext{Name: "component_my-comp", Description: "Single component testing for 'my-comp' specifically"})
-				Expect(k8sClient.Update(ctx, integrationTestScenario1)).Should(Succeed())
+				testutil.UpdateWithRetry(ctx, k8sClient, integrationTestScenario1, func() {
+					integrationTestScenario1.Spec.Contexts = append(integrationTestScenario1.Spec.Contexts, v1beta2.TestContext{Name: "component_my-comp", Description: "Single component testing for 'my-comp' specifically"})
+				})
 
 				// mock that test for scenario is already in progress by setting it in annotation
 				statuses, err := intgteststat.NewSnapshotIntegrationTestStatuses("")
@@ -3069,8 +3071,9 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 				Expect(gitops.HaveAppStudioTestsSucceeded(hasSnapshot)).To(BeTrue())
 
 				// Setting the context of 'integrationTestScenario1' to NOT match the current Component
-				integrationTestScenario1.Spec.Contexts = append(integrationTestScenario1.Spec.Contexts, v1beta2.TestContext{Name: "component_my-comp", Description: "Single component testing for 'my-comp' specifically"})
-				Expect(k8sClient.Update(ctx, integrationTestScenario1)).Should(Succeed())
+				testutil.UpdateWithRetry(ctx, k8sClient, integrationTestScenario1, func() {
+					integrationTestScenario1.Spec.Contexts = append(integrationTestScenario1.Spec.Contexts, v1beta2.TestContext{Name: "component_my-comp", Description: "Single component testing for 'my-comp' specifically"})
+				})
 
 				// add rerun label
 				// we cannot update it into k8s DB via patch, it would trigger reconciliation in background
@@ -3457,8 +3460,9 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 				Expect(gitops.HaveAppStudioTestsSucceeded(hasCGSnapshot)).To(BeTrue())
 
 				// Setting the context of 'integrationTestScenario1' to NOT match the current Component
-				integrationTestScenario1.Spec.Contexts = append(integrationTestScenario1.Spec.Contexts, v1beta2.TestContext{Name: "component_my-comp", Description: "Single component testing for 'my-comp' specifically"})
-				Expect(k8sClient.Update(ctx, integrationTestScenario1)).Should(Succeed())
+				testutil.UpdateWithRetry(ctx, k8sClient, integrationTestScenario1, func() {
+					integrationTestScenario1.Spec.Contexts = append(integrationTestScenario1.Spec.Contexts, v1beta2.TestContext{Name: "component_my-comp", Description: "Single component testing for 'my-comp' specifically"})
+				})
 
 				// mock that test for scenario is already in progress by setting it in annotation
 				statuses, err := intgteststat.NewSnapshotIntegrationTestStatuses("")
@@ -3539,8 +3543,9 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 				Expect(gitops.HaveAppStudioTestsSucceeded(hasCGSnapshot)).To(BeTrue())
 
 				// Setting the context of 'integrationTestScenario1' to NOT match the current Component
-				integrationTestScenario1.Spec.Contexts = append(integrationTestScenario1.Spec.Contexts, v1beta2.TestContext{Name: "component_my-comp", Description: "Single component testing for 'my-comp' specifically"})
-				Expect(k8sClient.Update(ctx, integrationTestScenario1)).Should(Succeed())
+				testutil.UpdateWithRetry(ctx, k8sClient, integrationTestScenario1, func() {
+					integrationTestScenario1.Spec.Contexts = append(integrationTestScenario1.Spec.Contexts, v1beta2.TestContext{Name: "component_my-comp", Description: "Single component testing for 'my-comp' specifically"})
+				})
 
 				// add rerun label
 				// we cannot update it into k8s DB via patch, it would trigger reconciliation in background
@@ -4218,30 +4223,31 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 
 	When("Adapter is created for component snapshot with pr group", func() {
 		BeforeAll(func() {
-			hasCompGroup.Spec.Components = []konfluxv1beta2.ComponentReference{
-				konfluxv1beta2.ComponentReference{
-					Name: hasComp.Name,
-					ComponentVersion: konfluxv1beta2.ComponentVersionReference{
-						Name:     "v1",
-						Revision: "main",
+			testutil.UpdateWithRetry(ctx, k8sClient, hasCompGroup, func() {
+				hasCompGroup.Spec.Components = []konfluxv1beta2.ComponentReference{
+					konfluxv1beta2.ComponentReference{
+						Name: hasComp.Name,
+						ComponentVersion: konfluxv1beta2.ComponentVersionReference{
+							Name:     "v1",
+							Revision: "main",
+						},
 					},
-				},
-				konfluxv1beta2.ComponentReference{
-					Name: hasCom1.Name,
-					ComponentVersion: konfluxv1beta2.ComponentVersionReference{
-						Name:     "v1",
-						Revision: "main",
+					konfluxv1beta2.ComponentReference{
+						Name: hasCom1.Name,
+						ComponentVersion: konfluxv1beta2.ComponentVersionReference{
+							Name:     "v1",
+							Revision: "main",
+						},
 					},
-				},
-				konfluxv1beta2.ComponentReference{
-					Name: hasCom3.Name,
-					ComponentVersion: konfluxv1beta2.ComponentVersionReference{
-						Name:     "v1",
-						Revision: "main",
+					konfluxv1beta2.ComponentReference{
+						Name: hasCom3.Name,
+						ComponentVersion: konfluxv1beta2.ComponentVersionReference{
+							Name:     "v1",
+							Revision: "main",
+						},
 					},
-				},
-			}
-			Expect(k8sClient.Update(ctx, hasCompGroup)).Should(Succeed())
+				}
+			})
 
 			hasCompGroup.Status = konfluxv1beta2.ComponentGroupStatus{
 				Conditions: []metav1.Condition{
@@ -5038,10 +5044,11 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 	// NOTE: Do this in group snapshot ticket
 	When("old integration pipelinerun gets cancelled because newer pipelinerun gets triggered for group snapshot", func() {
 		It("ensures that old group snapshot together with integration pipelinerun can be canceled", func() {
-			integrationPipelineRunOld.Labels["appstudio.openshift.io/snapshot"] = integrationPipelineRunOld.Name
 			hasOldGroupSnapshot.CreationTimestamp = metav1.NewTime(time.Now())
 			hasNewGroupSnapshot.CreationTimestamp = metav1.NewTime(time.Now().Add(time.Hour * 1))
-			Expect(k8sClient.Update(ctx, integrationPipelineRunOld)).Should(Succeed())
+			testutil.UpdateWithRetry(ctx, k8sClient, integrationPipelineRunOld, func() {
+				integrationPipelineRunOld.Labels["appstudio.openshift.io/snapshot"] = integrationPipelineRunOld.Name
+			})
 			integrationPipelineRunOld.Status = tektonv1.PipelineRunStatus{
 				PipelineRunStatusFields: tektonv1.PipelineRunStatusFields{
 					Results: []tektonv1.PipelineRunResult{},
@@ -5787,8 +5794,9 @@ var _ = Describe("Dependent scenarios snapshot adapter scheduling", Ordered, fun
 		for i := range pipelineRuns {
 			plr := &pipelineRuns[i]
 			if len(plr.Finalizers) > 0 {
-				plr.Finalizers = nil
-				Expect(k8sClient.Update(ctx, plr)).To(Succeed())
+				testutil.UpdateWithRetry(ctx, k8sClient, plr, func() {
+					plr.Finalizers = nil
+				})
 			}
 			Expect(k8sClient.Delete(ctx, plr)).To(Succeed())
 		}

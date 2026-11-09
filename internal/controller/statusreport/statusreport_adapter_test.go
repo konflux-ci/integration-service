@@ -43,6 +43,7 @@ import (
 
 	"github.com/konflux-ci/integration-service/gitops"
 	"github.com/konflux-ci/integration-service/helpers"
+	"github.com/konflux-ci/integration-service/internal/controller/testutil"
 	pacv1alpha1 "github.com/openshift-pipelines/pipelines-as-code/pkg/apis/pipelinesascode/v1alpha1"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -1406,10 +1407,11 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 				},
 			}
 
-			hasPRSnapshot.Spec.Application = ""
-			hasPRSnapshot.Spec.ComponentGroup = hasCompGroup.Name
-			hasPRSnapshot.Labels[gitops.ComponentGroupNameLabel] = hasCompGroup.Name
-			Expect(k8sClient.Update(ctx, hasPRSnapshot)).Should(Succeed())
+			testutil.UpdateWithRetry(ctx, k8sClient, hasPRSnapshot, func() {
+				hasPRSnapshot.Spec.Application = ""
+				hasPRSnapshot.Spec.ComponentGroup = hasCompGroup.Name
+				hasPRSnapshot.Labels[gitops.ComponentGroupNameLabel] = hasCompGroup.Name
+			})
 
 			adapter = NewAdapter(ctx, hasPRSnapshot, hasCompGroup, log, loader.NewMockLoader(), k8sClient)
 			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
@@ -1606,12 +1608,20 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			}
 			Expect(k8sClient.Create(ctx, plr)).Should(Succeed())
 			DeferCleanup(func() {
-				fetched := &tektonv1.PipelineRun{}
-				if err := k8sClient.Get(ctx, types.NamespacedName{Namespace: "default", Name: "plr-with-finalizer"}, fetched); err == nil {
+				Eventually(func() error {
+					fetched := &tektonv1.PipelineRun{}
+					if err := k8sClient.Get(ctx, types.NamespacedName{Namespace: "default", Name: "plr-with-finalizer"}, fetched); err != nil {
+						if errors.IsNotFound(err) {
+							return nil
+						}
+						return err
+					}
 					controllerutil.RemoveFinalizer(fetched, helpers.IntegrationPipelineRunFinalizer)
-					_ = k8sClient.Update(ctx, fetched)
-					_ = k8sClient.Delete(ctx, fetched)
-				}
+					if err := k8sClient.Update(ctx, fetched); err != nil {
+						return err
+					}
+					return k8sClient.Delete(ctx, fetched)
+				}, time.Second*20).Should(Succeed())
 			})
 			waitForCached(plr)
 
