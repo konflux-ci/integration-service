@@ -368,7 +368,7 @@ func HasFiringNudgeBatches(batches []v1beta2.ActiveBatch) bool {
 
 // BatchShouldFire reports whether an accumulating batch is due to fire at now.
 func BatchShouldFire(batch *v1beta2.ActiveBatch, now time.Time) bool {
-	if len(batch.Accumulated) == 0 {
+	if len(batch.Accumulated) == 0 && len(batch.Failed) == 0 {
 		return false
 	}
 	return batchTimerExpired(batch, now)
@@ -568,10 +568,6 @@ func scheduleBatchFire(batch *v1beta2.ActiveBatch, now metav1.Time, debounce tim
 	if batch.Phase == v1beta2.BatchPhaseBlocked {
 		return
 	}
-	if len(batch.Accumulated) == 0 {
-		batch.FireAt = nil
-		return
-	}
 	if !now.Time.Before(batch.HardDeadline.Time) {
 		batch.FireAt = &metav1.Time{Time: now.Time}
 		return
@@ -748,7 +744,7 @@ func recordFailureForBatchedNudge(
 		original := latest.DeepCopy()
 
 		now := metav1.Now()
-		_, maxWait, failurePolicy := latest.Spec.EffectiveBatchPolicy(targetName)
+		debounce, maxWait, failurePolicy := latest.Spec.EffectiveBatchPolicy(targetName)
 		batchIdx, _, batches := findOrCreateAcceptingBatch(latest.Status.ActiveBatches, targetName, now, maxWait)
 		latest.Status.ActiveBatches = batches
 		batch := &latest.Status.ActiveBatches[batchIdx]
@@ -772,6 +768,8 @@ func recordFailureForBatchedNudge(
 		if failurePolicy == v1beta2.FailurePolicyBlock {
 			batch.Phase = v1beta2.BatchPhaseBlocked
 			batch.FireAt = nil
+		} else {
+			scheduleBatchFire(batch, now, debounce)
 		}
 
 		latest.Status.ActiveBatches[batchIdx] = *batch
@@ -782,9 +780,12 @@ func recordFailureForBatchedNudge(
 
 // fireBatch creates or reconciles the batched Renovate PipelineRun for batch and sets batch to Firing (or Completed if the PLR already exists).
 func fireBatch(ctx context.Context, c client.Client, nudgeConfig *v1beta2.NudgeConfig, batch *v1beta2.ActiveBatch) error {
-	if len(batch.Accumulated) == 0 {
+	eligible := eligibleAccumulatedEntries(batch)
+	if len(eligible) == 0 {
 		return fmt.Errorf("cannot fire empty batch %q", batch.BatchID)
 	}
+	payloadBatch := *batch
+	payloadBatch.Accumulated = eligible
 
 	plannedName := batch.NudgePipelineRun
 	if plannedName == "" {
@@ -800,7 +801,7 @@ func fireBatch(ctx context.Context, c client.Client, nudgeConfig *v1beta2.NudgeC
 	if getErr == nil && !existingPLR.IsPending() {
 		batch.NudgePipelineRun = plannedName
 		batch.Phase = v1beta2.BatchPhaseFiring
-		batch.Message = fmt.Sprintf("reconciled existing nudge PipelineRun with %d accumulated build(s)", len(batch.Accumulated))
+		batch.Message = fmt.Sprintf("reconciled existing nudge PipelineRun with %d eligible build(s)", len(eligible))
 		return nil
 	}
 	if getErr != nil && !apierrors.IsNotFound(getErr) {
@@ -814,7 +815,7 @@ func fireBatch(ctx context.Context, c client.Client, nudgeConfig *v1beta2.NudgeC
 		logger.FromContext(ctx).Info("repairing pending batched nudge PipelineRun", "name", plannedName, "batchId", batch.BatchID)
 	}
 
-	referencePLR, target, renovateEntries, err := buildBatchedRenovatePayload(ctx, c, nudgeConfig, batch)
+	referencePLR, target, renovateEntries, err := buildBatchedRenovatePayload(ctx, c, nudgeConfig, &payloadBatch)
 	if err != nil {
 		return err
 	}
@@ -827,12 +828,18 @@ func fireBatch(ctx context.Context, c client.Client, nudgeConfig *v1beta2.NudgeC
 
 	batch.NudgePipelineRun = plrName
 	batch.Phase = v1beta2.BatchPhaseFiring
-	batch.Message = fmt.Sprintf("fired with %d accumulated build(s)", len(batch.Accumulated))
+	batch.Message = fmt.Sprintf("fired with %d eligible build(s)", len(eligible))
 	return nil
 }
 
 func retryFiringBatch(ctx context.Context, c client.Client, nudgeConfig *v1beta2.NudgeConfig, batch *v1beta2.ActiveBatch) error {
-	referencePLR, target, renovateEntries, err := buildBatchedRenovatePayload(ctx, c, nudgeConfig, batch)
+	eligible := eligibleAccumulatedEntries(batch)
+	if len(eligible) == 0 {
+		return fmt.Errorf("cannot retry empty batch %q", batch.BatchID)
+	}
+	payloadBatch := *batch
+	payloadBatch.Accumulated = eligible
+	referencePLR, target, renovateEntries, err := buildBatchedRenovatePayload(ctx, c, nudgeConfig, &payloadBatch)
 	if err != nil {
 		return err
 	}
@@ -841,8 +848,24 @@ func retryFiringBatch(ctx context.Context, c client.Client, nudgeConfig *v1beta2
 		return err
 	}
 	batch.NudgePipelineRun = plrName
-	batch.Message = fmt.Sprintf("retry %d for batch with %d accumulated build(s)", batch.RetryCount, len(batch.Accumulated))
+	batch.Message = fmt.Sprintf("retry %d for batch with %d eligible build(s)", batch.RetryCount, len(eligible))
 	return nil
+}
+
+// eligibleAccumulatedEntries returns successful observations whose source does not have a current failure.
+// A newer failure supersedes a previously recorded success for the same source until that source repairs.
+func eligibleAccumulatedEntries(batch *v1beta2.ActiveBatch) []v1beta2.AccumulatedEntry {
+	failedSources := make(map[string]struct{}, len(batch.Failed))
+	for _, failed := range batch.Failed {
+		failedSources[failed.From] = struct{}{}
+	}
+	eligible := make([]v1beta2.AccumulatedEntry, 0, len(batch.Accumulated))
+	for _, accumulated := range batch.Accumulated {
+		if _, failed := failedSources[accumulated.From]; !failed {
+			eligible = append(eligible, accumulated)
+		}
+	}
+	return eligible
 }
 
 func referenceBuildPLRForBatch(
