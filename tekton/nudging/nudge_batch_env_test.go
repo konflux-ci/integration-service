@@ -560,5 +560,132 @@ var _ = Describe("Nudge batch client operations", func() {
 			Expect(updated.Status.ActiveBatches[0].Phase).To(Equal(v1beta2.BatchPhaseFailed))
 			Expect(updated.Status.ActiveBatches[0].Message).NotTo(BeEmpty())
 		})
+
+		It("should fire a batch when hardDeadline has elapsed even if fireAt is in the future", func() {
+			now := metav1.Now()
+			futureFire := metav1.NewTime(now.Add(time.Hour))
+			pastDeadline := metav1.NewTime(now.Add(-time.Minute))
+			plrName := BatchedNudgePipelineRunName("hard-deadline-due", 0)
+			existingPLR := &tektonv1.PipelineRun{
+				ObjectMeta: metav1.ObjectMeta{Name: plrName, Namespace: namespace},
+			}
+			nudgeConfig.Status.ActiveBatches = []v1beta2.ActiveBatch{
+				{
+					Target:       target,
+					BatchID:      "hard-deadline-due",
+					Phase:        v1beta2.BatchPhaseAccumulating,
+					CreatedAt:    now,
+					FireAt:       &futureFire,
+					HardDeadline: pastDeadline,
+					Accumulated: []v1beta2.AccumulatedEntry{
+						{From: source, ImageDigest: "sha256:abc", BuildPipelineRun: buildPLR.Name, CapturedAt: now},
+					},
+				},
+			}
+			c := newClient(nudgeConfig, buildPLR, existingPLR)
+
+			err := ProcessDueNudgeBatches(ctx, c, nudgeConfig)
+			Expect(err).NotTo(HaveOccurred())
+
+			updated := &v1beta2.NudgeConfig{}
+			Expect(c.Get(ctx, types.NamespacedName{Name: nudgeConfig.Name, Namespace: namespace}, updated)).To(Succeed())
+			Expect(updated.Status.ActiveBatches[0].Phase).To(Equal(v1beta2.BatchPhaseFiring))
+			Expect(updated.Status.ActiveBatches[0].NudgePipelineRun).To(Equal(plrName))
+		})
+	})
+
+	Context("When pruning completed batches", func() {
+		It("should remove a completed batch older than 24h", func() {
+			old := metav1.NewTime(time.Now().Add(-25 * time.Hour))
+			nudgeConfig.Status.ActiveBatches = []v1beta2.ActiveBatch{
+				{
+					Target:       target,
+					BatchID:      "old-done",
+					Phase:        v1beta2.BatchPhaseCompleted,
+					CreatedAt:    old,
+					HardDeadline: metav1.NewTime(old.Add(4 * time.Hour)),
+				},
+			}
+			c := newClient(nudgeConfig)
+
+			Expect(PruneCompletedBatches(ctx, c, nudgeConfig)).To(Succeed())
+
+			updated := &v1beta2.NudgeConfig{}
+			Expect(c.Get(ctx, types.NamespacedName{Name: nudgeConfig.Name, Namespace: namespace}, updated)).To(Succeed())
+			Expect(updated.Status.ActiveBatches).To(BeEmpty())
+		})
+
+		It("should keep a completed batch still within the 24h TTL", func() {
+			recent := metav1.NewTime(time.Now().Add(-1 * time.Hour))
+			nudgeConfig.Status.ActiveBatches = []v1beta2.ActiveBatch{
+				{
+					Target:       target,
+					BatchID:      "recent-done",
+					Phase:        v1beta2.BatchPhaseCompleted,
+					CreatedAt:    recent,
+					HardDeadline: metav1.NewTime(recent.Add(4 * time.Hour)),
+				},
+			}
+			c := newClient(nudgeConfig)
+
+			Expect(PruneCompletedBatches(ctx, c, nudgeConfig)).To(Succeed())
+
+			updated := &v1beta2.NudgeConfig{}
+			Expect(c.Get(ctx, types.NamespacedName{Name: nudgeConfig.Name, Namespace: namespace}, updated)).To(Succeed())
+			Expect(updated.Status.ActiveBatches).To(HaveLen(1))
+		})
+
+		It("should surface Get errors while pruning completed batches", func() {
+			c := fake.NewClientBuilder().WithScheme(scheme).WithInterceptorFuncs(interceptor.Funcs{
+				Get: func(ctx context.Context, cl client.WithWatch, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+					return fmt.Errorf("apiserver unavailable")
+				},
+			}).Build()
+
+			err := PruneCompletedBatches(ctx, c, nudgeConfig)
+			Expect(err).To(MatchError(ContainSubstring("apiserver unavailable")))
+		})
+
+		It("should remove the completed batch for a target when a new build is recorded", func() {
+			old := metav1.NewTime(time.Now().Add(-2 * time.Hour))
+			otherTarget := "other-nudge-target"
+			nudgeConfig.Status.ActiveBatches = []v1beta2.ActiveBatch{
+				{
+					Target:       target,
+					BatchID:      "prev-done",
+					Phase:        v1beta2.BatchPhaseCompleted,
+					CreatedAt:    old,
+					HardDeadline: metav1.NewTime(old.Add(4 * time.Hour)),
+				},
+				// Unrelated batch must be retained while the Completed entry for `target` is dropped.
+				{
+					Target:       otherTarget,
+					BatchID:      "other-firing",
+					Phase:        v1beta2.BatchPhaseFiring,
+					CreatedAt:    old,
+					HardDeadline: metav1.NewTime(old.Add(4 * time.Hour)),
+				},
+			}
+			c := newClient(nudgeConfig, buildPLR)
+
+			Expect(RecordBuildForBatchedNudge(ctx, c, nudgeConfig, target, buildPLR, buildResult)).To(Succeed())
+
+			updated := &v1beta2.NudgeConfig{}
+			Expect(c.Get(ctx, types.NamespacedName{Name: nudgeConfig.Name, Namespace: namespace}, updated)).To(Succeed())
+			// Old Completed batch replaced by new Accumulating batch; other target kept.
+			Expect(updated.Status.ActiveBatches).To(HaveLen(2))
+			var sawAccumulating, sawOther bool
+			for _, b := range updated.Status.ActiveBatches {
+				switch {
+				case b.Target == target && b.Phase == v1beta2.BatchPhaseAccumulating:
+					Expect(b.BatchID).NotTo(Equal("prev-done"))
+					sawAccumulating = true
+				case b.Target == otherTarget && b.BatchID == "other-firing":
+					sawOther = true
+				}
+			}
+			Expect(sawAccumulating).To(BeTrue())
+			Expect(sawOther).To(BeTrue())
+		})
 	})
 })

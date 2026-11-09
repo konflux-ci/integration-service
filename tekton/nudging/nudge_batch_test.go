@@ -26,6 +26,41 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+var _ = Describe("pruneCompletedBatches (slice helper)", func() {
+	It("removes a completed batch whose CreatedAt exceeds the 24h TTL", func() {
+		now := time.Now()
+		old := metav1.NewTime(now.Add(-25 * time.Hour))
+		batches := []v1beta2.ActiveBatch{
+			{BatchID: "old-done", Phase: v1beta2.BatchPhaseCompleted, CreatedAt: old},
+			{BatchID: "active", Phase: v1beta2.BatchPhaseAccumulating, CreatedAt: metav1.NewTime(now)},
+		}
+		result := nudging.FilterExpiredCompletedBatches(batches, now)
+		Expect(result).To(HaveLen(1))
+		Expect(result[0].BatchID).To(Equal("active"))
+	})
+
+	It("keeps a completed batch that is still within the 24h TTL", func() {
+		now := time.Now()
+		recent := metav1.NewTime(now.Add(-23 * time.Hour))
+		batches := []v1beta2.ActiveBatch{
+			{BatchID: "recent-done", Phase: v1beta2.BatchPhaseCompleted, CreatedAt: recent},
+		}
+		result := nudging.FilterExpiredCompletedBatches(batches, now)
+		Expect(result).To(HaveLen(1))
+	})
+
+	It("keeps non-Completed batches regardless of age", func() {
+		now := time.Now()
+		old := metav1.NewTime(now.Add(-48 * time.Hour))
+		batches := []v1beta2.ActiveBatch{
+			{BatchID: "old-failed", Phase: v1beta2.BatchPhaseFailed, CreatedAt: old},
+			{BatchID: "old-blocked", Phase: v1beta2.BatchPhaseBlocked, CreatedAt: old},
+		}
+		result := nudging.FilterExpiredCompletedBatches(batches, now)
+		Expect(result).To(HaveLen(2))
+	})
+})
+
 var _ = Describe("batchShouldFire", func() {
 	It("fires when FireAt has elapsed", func() {
 		now := time.Now()
@@ -121,8 +156,9 @@ var _ = Describe("nextBatchWakeDuration", func() {
 		past := metav1.NewTime(now.Add(-time.Minute))
 		batches := []v1beta2.ActiveBatch{
 			{
-				Phase:  v1beta2.BatchPhaseAccumulating,
-				FireAt: &past,
+				Phase:       v1beta2.BatchPhaseAccumulating,
+				FireAt:      &past,
+				Accumulated: []v1beta2.AccumulatedEntry{{From: "a"}},
 			},
 		}
 		Expect(nudging.NextBatchWakeDuration(batches)).To(Equal(time.Duration(0)))
@@ -140,12 +176,74 @@ var _ = Describe("nextBatchWakeDuration", func() {
 		soon := metav1.NewTime(now.Add(2 * time.Minute))
 		later := metav1.NewTime(now.Add(10 * time.Minute))
 		batches := []v1beta2.ActiveBatch{
-			{Phase: v1beta2.BatchPhaseAccumulating, FireAt: &later},
-			{Phase: v1beta2.BatchPhaseAccumulating, FireAt: &soon},
+			{Phase: v1beta2.BatchPhaseAccumulating, FireAt: &later, Accumulated: []v1beta2.AccumulatedEntry{{From: "a"}}},
+			{Phase: v1beta2.BatchPhaseAccumulating, FireAt: &soon, Accumulated: []v1beta2.AccumulatedEntry{{From: "b"}}},
 			{Phase: v1beta2.BatchPhaseCompleted, FireAt: &soon},
 		}
 		wake := nudging.NextBatchWakeDuration(batches)
 		Expect(wake).To(BeNumerically(">", 0))
 		Expect(wake).To(BeNumerically("<", 3*time.Minute))
+	})
+
+	It("should wake at hardDeadline when it is earlier than fireAt", func() {
+		now := time.Now()
+		laterFire := metav1.NewTime(now.Add(2 * time.Hour))
+		soonDeadline := metav1.NewTime(now.Add(10 * time.Minute))
+		batches := []v1beta2.ActiveBatch{
+			{
+				Phase:        v1beta2.BatchPhaseAccumulating,
+				FireAt:       &laterFire,
+				HardDeadline: soonDeadline,
+				Accumulated:  []v1beta2.AccumulatedEntry{{From: "a"}},
+			},
+		}
+		wake := nudging.NextBatchWakeDuration(batches)
+		Expect(wake).To(BeNumerically(">", 0))
+		Expect(wake).To(BeNumerically("<", 15*time.Minute))
+	})
+
+	It("should wake at fireAt when it is earlier than hardDeadline", func() {
+		now := time.Now()
+		soonFire := metav1.NewTime(now.Add(10 * time.Minute))
+		laterDeadline := metav1.NewTime(now.Add(2 * time.Hour))
+		batches := []v1beta2.ActiveBatch{
+			{
+				Phase:        v1beta2.BatchPhaseAccumulating,
+				FireAt:       &soonFire,
+				HardDeadline: laterDeadline,
+				Accumulated:  []v1beta2.AccumulatedEntry{{From: "a"}},
+			},
+		}
+		wake := nudging.NextBatchWakeDuration(batches)
+		Expect(wake).To(BeNumerically(">", 0))
+		Expect(wake).To(BeNumerically("<", 15*time.Minute))
+	})
+
+	It("should wake at hardDeadline when FireAt is unset", func() {
+		now := time.Now()
+		deadline := metav1.NewTime(now.Add(10 * time.Minute))
+		batches := []v1beta2.ActiveBatch{
+			{
+				Phase:        v1beta2.BatchPhaseAccumulating,
+				HardDeadline: deadline,
+				Accumulated:  []v1beta2.AccumulatedEntry{{From: "a"}},
+			},
+		}
+		wake := nudging.NextBatchWakeDuration(batches)
+		Expect(wake).To(BeNumerically(">", 0))
+		Expect(wake).To(BeNumerically("<", 15*time.Minute))
+	})
+
+	It("should wake for an empty accumulating batch when FireAt has elapsed", func() {
+		now := time.Now()
+		past := metav1.NewTime(now.Add(-time.Minute))
+		batches := []v1beta2.ActiveBatch{
+			{
+				Phase:        v1beta2.BatchPhaseAccumulating,
+				FireAt:       &past,
+				HardDeadline: metav1.NewTime(now.Add(time.Hour)),
+			},
+		}
+		Expect(nudging.NextBatchWakeDuration(batches)).To(Equal(time.Duration(0)))
 	})
 })
