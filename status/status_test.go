@@ -44,6 +44,7 @@ import (
 	"github.com/konflux-ci/integration-service/gitops"
 	"github.com/konflux-ci/integration-service/helpers"
 	"github.com/konflux-ci/integration-service/pkg/integrationteststatus"
+	"github.com/konflux-ci/integration-service/pkg/keys"
 	"github.com/konflux-ci/integration-service/status"
 	"k8s.io/apimachinery/pkg/api/errors"
 )
@@ -1056,6 +1057,19 @@ var _ = Describe("Status Adapter", func() {
 			err := status.WriteSnapshotReportStatus(context.Background(), mockK8sClient, hasSnapshot, hasSRS)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(hasSnapshot.Annotations[gitops.SnapshotStatusReportAnnotation]).NotTo(BeNil())
+			err = mockK8sClient.Delete(context.Background(), hasSnapshot)
+			Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
+		})
+
+		It("writes only the new report annotation on a konflux snapshot", func() {
+			hasSnapshot.APIVersion = "konflux-ci.dev/v1alpha1"
+			Expect(mockK8sClient.Create(context.Background(), hasSnapshot)).Should(Succeed())
+			hasSRS.SetLastUpdateTime(scenarioName, hasSnapshot.Name, now)
+
+			err := status.WriteSnapshotReportStatus(context.Background(), mockK8sClient, hasSnapshot, hasSRS)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(hasSnapshot.Annotations).To(HaveKey(keys.Test("git-reporter-status").New))
+			Expect(hasSnapshot.Annotations).NotTo(HaveKey(gitops.SnapshotStatusReportAnnotation))
 			err = mockK8sClient.Delete(context.Background(), hasSnapshot)
 			Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 		})

@@ -17,6 +17,7 @@ limitations under the License.
 package tekton_test
 
 import (
+	"context"
 	"encoding/json"
 	"time"
 
@@ -209,6 +210,17 @@ var _ = Describe("build pipeline", Ordered, func() {
 				CreationTimestamp: metav1.NewTime(time.Now().Add(-time.Hour * 1)),
 			},
 		}
+	})
+
+	It("does not annotate a successful build before a Snapshot name exists", func() {
+		pipelineRun := &tektonv1.PipelineRun{}
+		Expect(tekton.AnnotateBuildPipelineRunWithCreateSnapshotAnnotation(context.Background(), pipelineRun, nil, nil)).To(Succeed())
+	})
+
+	It("appends to an existing owned annotation", func() {
+		buildPipelineRun.Annotations[gitops.PRStatusAnnotation] = "started"
+		Expect(tekton.AppendBuildPipelineRunAnnotation(ctx, buildPipelineRun, gitops.PRStatusAnnotation, "finished", k8sClient)).To(Succeed())
+		Expect(buildPipelineRun.Annotations[gitops.PRStatusAnnotation]).To(Equal("started,finished"))
 	})
 
 	AfterEach(func() {

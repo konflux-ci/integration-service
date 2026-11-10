@@ -31,7 +31,9 @@ import (
 	"github.com/konflux-ci/integration-service/helpers"
 	"github.com/konflux-ci/integration-service/loader"
 	intgteststat "github.com/konflux-ci/integration-service/pkg/integrationteststatus"
+	"github.com/konflux-ci/integration-service/pkg/keys"
 	"github.com/konflux-ci/integration-service/pkg/tracing"
+	tektonconsts "github.com/konflux-ci/integration-service/tekton/consts"
 	toolkit "github.com/konflux-ci/operator-toolkit/loader"
 
 	"go.opentelemetry.io/otel"
@@ -52,6 +54,20 @@ import (
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
+
+var _ = Describe("integration scenario name", func() {
+	It("reads the new scenario label when the old one is absent", func() {
+		pipelineRun := &tektonv1.PipelineRun{}
+		pipelineRun.Labels = map[string]string{keys.Test("scenario").New: "its-new"}
+		Expect(integrationScenarioName(pipelineRun)).To(Equal("its-new"))
+	})
+
+	It("falls back to the old scenario label", func() {
+		pipelineRun := &tektonv1.PipelineRun{}
+		pipelineRun.Labels = map[string]string{tektonconsts.ScenarioNameLabel: "its-old"}
+		Expect(integrationScenarioName(pipelineRun)).To(Equal("its-old"))
+	})
+})
 
 var _ = Describe("Pipeline Adapter", Ordered, func() {
 	var (

@@ -40,6 +40,7 @@ import (
 	"github.com/konflux-ci/integration-service/gitops"
 	h "github.com/konflux-ci/integration-service/helpers"
 	intgteststat "github.com/konflux-ci/integration-service/pkg/integrationteststatus"
+	"github.com/konflux-ci/integration-service/pkg/keys"
 	"github.com/konflux-ci/integration-service/pkg/metrics"
 	"github.com/konflux-ci/integration-service/pkg/tracing"
 	"github.com/konflux-ci/integration-service/release"
@@ -914,7 +915,7 @@ func (a *Adapter) shouldProcessReleases() bool {
 // value that was persisted by the build pipeline adapter at Snapshot creation time.
 // Returns false only when the annotation is explicitly "false"; absence means release normally.
 func (a *Adapter) getShouldRelease() bool {
-	val, ok := a.snapshot.Annotations[gitops.BuildPipelineRunShouldReleaseAnnotation]
+	val, ok := gitops.AnnotationValue(a.snapshot, gitops.BuildPipelineRunShouldReleaseAnnotation)
 	if ok && val == "false" {
 		a.logger.Info("Snapshot SHOULD_RELEASE annotation is false, releases will be gated")
 		return false
@@ -1029,7 +1030,7 @@ func (a *Adapter) EnsureGroupSnapshotExist() (controller.OperationResult, error)
 		return controller.ContinueProcessing()
 	}
 
-	if !metadata.HasLabelWithValue(a.snapshot, gitops.SnapshotTypeLabel, gitops.SnapshotComponentType) {
+	if !gitops.HasOwnedLabelValue(a.snapshot, gitops.SnapshotTypeLabel, gitops.SnapshotComponentType) {
 		a.logger.Info("The snapshot is not a component snapshot, no need to create group snapshot for it")
 		return controller.ContinueProcessing()
 	}
@@ -1357,13 +1358,16 @@ func (a *Adapter) prepareGroupSnapshot(prGroup, prGroupHash string) (*applicatio
 			if foundSnapshotWithOpenedPR != nil {
 				a.logger.Info("PR/MR in snapshot is opened, will find snapshotComponent and add to groupSnapshot")
 				snapshotComponent := gitops.FindMatchingSnapshotComponent(foundSnapshotWithOpenedPR, groupComponent.Name, groupComponent.ComponentVersion.Name)
+				buildPipelineRun, _ := gitops.LabelValue(foundSnapshotWithOpenedPR, gitops.BuildPipelineRunNameLabel)
+				repoURL, _ := gitops.AnnotationValue(foundSnapshotWithOpenedPR, gitops.PipelineAsCodeRepoUrlAnnotation)
+				pullRequest, _ := gitops.AnnotationValue(foundSnapshotWithOpenedPR, gitops.PipelineAsCodePullRequestAnnotation)
 				componentSnapshotInfos = append(componentSnapshotInfos, gitops.ComponentSnapshotInfo{
 					Component:         groupComponent.Name,
-					BuildPipelineRun:  foundSnapshotWithOpenedPR.Labels[gitops.BuildPipelineRunNameLabel],
+					BuildPipelineRun:  buildPipelineRun,
 					Snapshot:          foundSnapshotWithOpenedPR.Name,
 					Namespace:         a.snapshot.Namespace,
-					RepoUrl:           foundSnapshotWithOpenedPR.Annotations[gitops.PipelineAsCodeRepoUrlAnnotation],
-					PullRequestNumber: foundSnapshotWithOpenedPR.Annotations[gitops.PipelineAsCodePullRequestAnnotation],
+					RepoUrl:           repoURL,
+					PullRequestNumber: pullRequest,
 					Version:           groupComponent.ComponentVersion.Name,
 				})
 				snapshotComponents = append(snapshotComponents, snapshotComponent)
@@ -1458,13 +1462,16 @@ func (a *Adapter) prepareGroupSnapshotApplication(prGroup, prGroupHash string) (
 			if foundSnapshotWithOpenedPR != nil {
 				a.logger.Info("PR/MR in snapshot is opened, will find snapshotComponent and add to groupSnapshot")
 				snapshotComponent := gitops.FindMatchingSnapshotComponent(foundSnapshotWithOpenedPR, applicationComponent.Name, "")
+				buildPipelineRun, _ := gitops.LabelValue(foundSnapshotWithOpenedPR, gitops.BuildPipelineRunNameLabel)
+				repoURL, _ := gitops.AnnotationValue(foundSnapshotWithOpenedPR, gitops.PipelineAsCodeRepoUrlAnnotation)
+				pullRequest, _ := gitops.AnnotationValue(foundSnapshotWithOpenedPR, gitops.PipelineAsCodePullRequestAnnotation)
 				componentSnapshotInfos = append(componentSnapshotInfos, gitops.ComponentSnapshotInfo{
 					Component:         applicationComponent.Name,
-					BuildPipelineRun:  foundSnapshotWithOpenedPR.Labels[gitops.BuildPipelineRunNameLabel],
+					BuildPipelineRun:  buildPipelineRun,
 					Snapshot:          foundSnapshotWithOpenedPR.Name,
 					Namespace:         a.snapshot.Namespace,
-					RepoUrl:           foundSnapshotWithOpenedPR.Annotations[gitops.PipelineAsCodeRepoUrlAnnotation],
-					PullRequestNumber: foundSnapshotWithOpenedPR.Annotations[gitops.PipelineAsCodePullRequestAnnotation],
+					RepoUrl:           repoURL,
+					PullRequestNumber: pullRequest,
 				})
 				snapshotComponents = append(snapshotComponents, snapshotComponent)
 				continue
@@ -1592,7 +1599,7 @@ func (a *Adapter) haveAllPipelineRunProcessedForPrGroup(prGroup, prGroupHash str
 		}
 
 		// check if build PLR has component snapshot created except the build that snapshot is created from because the build plr has not been labeled with snapshot name
-		if !metadata.HasAnnotation(&pipelineRun, tektonconsts.SnapshotNameLabel) && !metadata.HasLabelWithValue(a.snapshot, gitops.BuildPipelineRunNameLabel, pipelineRun.Name) {
+		if !gitops.HasOwnedAnnotation(&pipelineRun, tektonconsts.SnapshotNameLabel) && !gitops.HasOwnedLabelValue(a.snapshot, gitops.BuildPipelineRunNameLabel, pipelineRun.Name) {
 			a.logger.Info(fmt.Sprintf("The build pipelineRun %s/%s with pr group %s has succeeded but component snapshot has not been created now", pipelineRun.Namespace, pipelineRun.Name, prGroup))
 			return false, nil
 		}
@@ -1605,7 +1612,7 @@ func (a *Adapter) filterPipelineRunsForComponentGroup(allPipelineRuns *[]tektonv
 	var filteredPipelineRuns []tektonv1.PipelineRun
 	componentNames := h.GetComponentNamesFromComponentGroup(componentGroup)
 	for _, pipelineRun := range *allPipelineRuns {
-		if builtComponentName, found := pipelineRun.Labels[tektonconsts.PipelineRunComponentLabel]; found {
+		if builtComponentName, found := keys.GetLabel(&pipelineRun, keys.BuildComponent()); found {
 			ok, version := h.GetComponentVersionFromComponentGroup(componentGroup, builtComponentName)
 			if ok {
 				if pipelineRun.Annotations[tektonconsts.PipelineRunComponentVersionAnnotation] == version {
@@ -1634,15 +1641,17 @@ func (a *Adapter) getSortedPRSnapshotsForSupersession() ([]applicationapiv1alpha
 	var err error
 	snapshots := &[]applicationapiv1alpha1.Snapshot{}
 	if gitops.IsComponentSnapshot(a.snapshot) {
+		pullRequestNumber, _ := gitops.LabelValue(a.snapshot, gitops.PipelineAsCodePullRequestAnnotation)
+		componentName, _ := gitops.LabelValue(a.snapshot, gitops.SnapshotComponentLabel)
 		if a.application != nil {
-			snapshots, err = a.loader.GetAllSnapshotsForPR(a.context, a.client, a.application.ObjectMeta, a.snapshot.GetLabels()[gitops.SnapshotComponentLabel], a.snapshot.GetLabels()[gitops.PipelineAsCodePullRequestAnnotation])
+			snapshots, err = a.loader.GetAllSnapshotsForPR(a.context, a.client, a.application.ObjectMeta, componentName, pullRequestNumber)
 			if err != nil {
 				a.logger.Error(err, "Failed to fetch Snapshots for the application",
 					"application.Name:", a.application.Name)
 				return nil, err
 			}
 		} else {
-			snapshots, err = a.loader.GetAllSnapshotsForPR(a.context, a.client, a.componentGroup.ObjectMeta, a.snapshot.GetLabels()[gitops.SnapshotComponentLabel], a.snapshot.GetLabels()[gitops.PipelineAsCodePullRequestAnnotation])
+			snapshots, err = a.loader.GetAllSnapshotsForPR(a.context, a.client, a.componentGroup.ObjectMeta, componentName, pullRequestNumber)
 			if err != nil {
 				a.logger.Error(err, "Failed to fetch Snapshots for the componentGroup",
 					"componentGroup.Name:", a.componentGroup.Name)
@@ -1734,11 +1743,11 @@ func (a *Adapter) isSnapshotSupersededInPRGroup() (bool, error) {
 // the component's BuildPipelineLastBuiltTime annotation because that annotation stores seconds
 // while BuildPipelineRunStartTime stores milliseconds, causing false supersession for single-component releases.
 func (a *Adapter) isSnapshotOlderThanLastBuild(snapshot *applicationapiv1alpha1.Snapshot) bool {
-	componentName := snapshot.Labels[gitops.SnapshotComponentLabel]
+	componentName, _ := gitops.LabelValue(snapshot, gitops.SnapshotComponentLabel)
 	if componentName == "" {
 		return false
 	}
-	snapshotBuildStartTime := snapshot.Annotations[gitops.BuildPipelineRunStartTime]
+	snapshotBuildStartTime, _ := gitops.AnnotationValue(snapshot, gitops.BuildPipelineRunStartTime)
 	if snapshotBuildStartTime == "" {
 		return false
 	}
@@ -1766,7 +1775,7 @@ func (a *Adapter) isSnapshotOlderThanLastBuild(snapshot *applicationapiv1alpha1.
 		if ps.Name == snapshot.Name && ps.Namespace == snapshot.Namespace {
 			continue
 		}
-		otherBuildStartTime := ps.Annotations[gitops.BuildPipelineRunStartTime]
+		otherBuildStartTime, _ := gitops.AnnotationValue(&ps, gitops.BuildPipelineRunStartTime)
 		if otherBuildStartTime == "" {
 			continue
 		}

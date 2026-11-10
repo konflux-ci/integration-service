@@ -38,6 +38,7 @@ import (
 	h "github.com/konflux-ci/integration-service/helpers"
 	"github.com/konflux-ci/integration-service/loader"
 	intgteststat "github.com/konflux-ci/integration-service/pkg/integrationteststatus"
+	"github.com/konflux-ci/integration-service/pkg/keys"
 	"github.com/konflux-ci/integration-service/pkg/tracing"
 	"github.com/konflux-ci/integration-service/snapshot"
 	"github.com/konflux-ci/integration-service/status"
@@ -51,7 +52,6 @@ import (
 	clienterrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
 // Adapter holds the objects needed to reconcile a build PipelineRun.
@@ -165,7 +165,7 @@ func (a *Adapter) EnsureNudgePipelineRunsExist() (controller.OperationResult, er
 
 	// Idempotency guard: nudge already processed. Remove the nudge finalizer if it somehow
 	// survived (e.g. IS crashed between nudge PLR creation and annotation write).
-	if metadata.HasAnnotation(a.pipelineRun, tektonconsts.NudgeProcessedAnnotation) {
+	if gitops.HasOwnedAnnotation(a.pipelineRun, tektonconsts.NudgeProcessedAnnotation) {
 		if err := h.RemoveFinalizerFromPipelineRun(a.context, a.client, a.logger, a.pipelineRun, h.NudgePipelineRunFinalizer); err != nil && !clienterrors.IsNotFound(err) {
 			return controller.RequeueWithError(err)
 		}
@@ -435,7 +435,7 @@ func (a *Adapter) requeueForActiveNudgeBatches(nudgeConfig *v1beta2.NudgeConfig)
 func (a *Adapter) RecordFailedBatchedNudgeBuilds() (controller.OperationResult, error) {
 	// Idempotency guard: failure already recorded. Remove the nudge finalizer if it somehow
 	// survived (e.g. IS crashed between the NudgeConfig status write and the annotation write).
-	if metadata.HasAnnotation(a.pipelineRun, tektonconsts.NudgeProcessedAnnotation) {
+	if gitops.HasOwnedAnnotation(a.pipelineRun, tektonconsts.NudgeProcessedAnnotation) {
 		if err := h.RemoveFinalizerFromPipelineRun(a.context, a.client, a.logger, a.pipelineRun, h.NudgePipelineRunFinalizer); err != nil && !clienterrors.IsNotFound(err) {
 			return controller.RequeueWithError(err)
 		}
@@ -678,9 +678,9 @@ func (a *Adapter) EnsureSnapshotExistsApplication() (result controller.Operation
 		})
 	}
 
-	if _, found := a.pipelineRun.Annotations[tektonconsts.SnapshotNameLabel]; found {
+	if snapshotName, found := gitops.AnnotationValue(a.pipelineRun, tektonconsts.SnapshotNameLabel); found {
 		a.logger.Info("The build pipelineRun is already associated with existing Snapshot via annotation",
-			"snapshot.Name", a.pipelineRun.Annotations[tektonconsts.SnapshotNameLabel])
+			"snapshot.Name", snapshotName)
 		canRemoveFinalizer = true
 		return controller.ContinueProcessing()
 	}
@@ -723,7 +723,7 @@ func (a *Adapter) EnsureSnapshotExistsApplication() (result controller.Operation
 }
 
 func (a *Adapter) EnsurePipelineIsFinalized() (controller.OperationResult, error) {
-	if h.HasPipelineRunFinished(a.pipelineRun) || controllerutil.ContainsFinalizer(a.pipelineRun, h.IntegrationPipelineRunFinalizer) {
+	if h.HasPipelineRunFinished(a.pipelineRun) || h.HasFinalizer(a.pipelineRun, h.IntegrationPipelineRunFinalizer) {
 		return controller.ContinueProcessing()
 	}
 	// if pipelinerun has been deleted, do not add finalizer
@@ -745,7 +745,7 @@ func (a *Adapter) EnsurePipelineIsFinalized() (controller.OperationResult, error
 		}
 
 		// Check again if finalizer was already added (might have been added by another reconcile)
-		if controllerutil.ContainsFinalizer(a.pipelineRun, h.IntegrationPipelineRunFinalizer) {
+		if h.HasFinalizer(a.pipelineRun, h.IntegrationPipelineRunFinalizer) {
 			return nil
 		}
 
@@ -775,11 +775,11 @@ func (a *Adapter) EnsurePRGroupAnnotated() (controller.OperationResult, error) {
 		return controller.ContinueProcessing()
 	}
 
-	if metadata.HasLabel(a.pipelineRun, gitops.PRGroupHashLabel) && metadata.HasAnnotation(a.pipelineRun, gitops.PRGroupAnnotation) {
+	if gitops.HasOwnedLabel(a.pipelineRun, gitops.PRGroupHashLabel) && gitops.HasOwnedAnnotation(a.pipelineRun, gitops.PRGroupAnnotation) {
 		// If the pipeline failed, attempt to notify all component Snapshots in the group about the failure
 
 		if !h.HasPipelineRunSucceeded(a.pipelineRun) && h.HasPipelineRunFinished(a.pipelineRun) {
-			prGroupName := a.pipelineRun.Annotations[gitops.PRGroupAnnotation]
+			prGroupName, _ := gitops.AnnotationValue(a.pipelineRun, gitops.PRGroupAnnotation)
 			buildPLRFailureMsg := fmt.Sprintf("build PLR %s failed for component %s so it can't be added to the group Snapshot for PR group %s", a.pipelineRun.Name, a.componentName, prGroupName)
 			err := a.notifySnapshotsInGroupAboutBuild(a.pipelineRun, buildPLRFailureMsg)
 			if err != nil {
@@ -804,12 +804,13 @@ func (a *Adapter) EnsurePRGroupAnnotated() (controller.OperationResult, error) {
 		}
 	}
 
+	prGroupLogged, _ := gitops.AnnotationValue(a.pipelineRun, gitops.PRGroupAnnotation)
 	a.logger.LogAuditEvent("pr group info is updated to build pipelineRun metadata", a.pipelineRun, h.LogActionUpdate,
-		"pipelineRun.Name", a.pipelineRun.Name, "PR group", a.pipelineRun.Annotations[gitops.PRGroupAnnotation])
+		"pipelineRun.Name", a.pipelineRun.Name, "PR group", prGroupLogged)
 
 	// Notify the group Snapshot and other build PLRs in the group about the incoming new build
-	if !h.HasPipelineRunFinished(a.pipelineRun) && metadata.HasAnnotation(a.pipelineRun, gitops.PRGroupAnnotation) {
-		prGroupName := a.pipelineRun.Annotations[gitops.PRGroupAnnotation]
+	if !h.HasPipelineRunFinished(a.pipelineRun) && gitops.HasOwnedAnnotation(a.pipelineRun, gitops.PRGroupAnnotation) {
+		prGroupName, _ := gitops.AnnotationValue(a.pipelineRun, gitops.PRGroupAnnotation)
 		buildPLRIncomingMsg := fmt.Sprintf("a new build PLR %s is running for component %s, waiting for it to create a new group Snapshot for PR group %s", a.pipelineRun.Name, a.componentName, prGroupName)
 		err := a.notifySnapshotsInGroupAboutBuild(a.pipelineRun, buildPLRIncomingMsg)
 		if err != nil {
@@ -829,7 +830,7 @@ func (a *Adapter) EnsureIntegrationTestReportedToGitProvider() (controller.Opera
 		return controller.ContinueProcessing()
 	}
 
-	if !metadata.HasLabel(a.pipelineRun, gitops.PRGroupHashLabel) || !metadata.HasAnnotation(a.pipelineRun, gitops.PRGroupAnnotation) {
+	if !gitops.HasOwnedLabel(a.pipelineRun, gitops.PRGroupHashLabel) || !gitops.HasOwnedAnnotation(a.pipelineRun, gitops.PRGroupAnnotation) {
 		a.logger.Info("pr group info has not been added to build pipelineRun metadata, skipping reporting tests for the build pipelineRun")
 		return controller.ContinueProcessing()
 	}
@@ -846,7 +847,7 @@ func (a *Adapter) EnsureIntegrationTestReportedToGitProvider() (controller.Opera
 	if metadata.HasAnnotation(a.pipelineRun, tektonconsts.SnapshotNamesLabel) {
 		SnapshotCreated := "SnapshotCreated"
 		a.logger.Info("snapshot has been created for build pipelineRun, no need to report integration status from build pipelinerun status")
-		if !metadata.HasAnnotationWithValue(a.pipelineRun, h.SnapshotCreationReportAnnotation, SnapshotCreated) {
+		if !gitops.HasOwnedAnnotationValue(a.pipelineRun, h.SnapshotCreationReportAnnotation, SnapshotCreated) {
 			if err := tekton.AnnotateBuildPipelineRun(a.context, a.pipelineRun, h.SnapshotCreationReportAnnotation, SnapshotCreated, a.client); err != nil {
 				a.logger.Error(err, "failed to annotate build pipelineRun")
 				return controller.RequeueWithError(err)
@@ -987,12 +988,13 @@ func (a *Adapter) EnsurePRSnapshotAnnotatedForMergedPR() (controller.OperationRe
 		a.logger.Info("build pipelineRun is not created by pull/merge request, no need to annotate PR component snapshot")
 		return controller.ContinueProcessing()
 	}
-	if !metadata.HasLabel(a.pipelineRun, tektonconsts.PipelineAsCodePullRequestLabel) {
+	pullRequest, hasPullRequest := gitops.LabelValue(a.pipelineRun, tektonconsts.PipelineAsCodePullRequestLabel)
+	if !hasPullRequest {
 		a.logger.Info("build pipelineRun has no pull request label, no need to annotate PR component snapshots")
 		return controller.ContinueProcessing()
 	}
 
-	if metadata.HasAnnotationWithValue(a.pipelineRun, gitops.PRStatusAnnotation, gitops.PRStatusMerged) {
+	if gitops.HasOwnedAnnotationValue(a.pipelineRun, gitops.PRStatusAnnotation, gitops.PRStatusMerged) {
 		a.logger.Info("build pipelineRun PR status is annotated as merged, we consider component snapshots have been annotated as well")
 		return controller.ContinueProcessing()
 	}
@@ -1001,13 +1003,13 @@ func (a *Adapter) EnsurePRSnapshotAnnotatedForMergedPR() (controller.OperationRe
 	var err error
 	// TODO: remove application-specific code
 	if a.application != nil {
-		prComponentSnapshots, err = a.loader.GetPRComponentSnapshotsForComponentApplication(a.context, a.client, a.pipelineRun.Namespace, a.application.Name, a.componentName, a.pipelineRun.Labels[tektonconsts.PipelineAsCodePullRequestLabel])
+		prComponentSnapshots, err = a.loader.GetPRComponentSnapshotsForComponentApplication(a.context, a.client, a.pipelineRun.Namespace, a.application.Name, a.componentName, pullRequest)
 	} else {
 		componentGroupNames := h.GetComponentGroupNames(a.componentGroups)
-		prComponentSnapshots, err = a.loader.GetPRComponentSnapshotsForComponent(a.context, a.client, componentGroupNames, a.pipelineRun.Namespace, a.componentName, a.pipelineRun.Labels[tektonconsts.PipelineAsCodePullRequestLabel])
+		prComponentSnapshots, err = a.loader.GetPRComponentSnapshotsForComponent(a.context, a.client, componentGroupNames, a.pipelineRun.Namespace, a.componentName, pullRequest)
 	}
 	if err != nil {
-		a.logger.Error(err, "failed to get all pull request component snapshots for PR", "pr.Number", a.pipelineRun.Labels[tektonconsts.PipelineAsCodePullRequestLabel])
+		a.logger.Error(err, "failed to get all pull request component snapshots for PR", "pr.Number", pullRequest)
 		return controller.RequeueWithError(err)
 	}
 	for _, snapshot := range *prComponentSnapshots {
@@ -1099,7 +1101,7 @@ func (a *Adapter) EnsureSupercededSnapshotsCanceled() (result controller.Operati
 // notifySnapshotsInGroupAboutBuild tries to find the latest group Snapshot and notify it about the failed build.
 // If the group Snapshot can't be found, find the component Snapshots that would belong to the same group and notify them instead.
 func (a *Adapter) notifySnapshotsInGroupAboutBuild(pipelineRun *tektonv1.PipelineRun, message string) error {
-	prGroupHash := pipelineRun.Labels[gitops.PRGroupHashLabel]
+	prGroupHash, _ := gitops.LabelValue(pipelineRun, gitops.PRGroupHashLabel)
 
 	var allComponentSnapshotsInGroup *[]applicationapiv1alpha1.Snapshot
 	var buildPipelineRuns *[]tektonv1.PipelineRun
@@ -1176,15 +1178,17 @@ func (a *Adapter) notifySnapshotsInGroupAboutBuild(pipelineRun *tektonv1.Pipelin
 	for _, buildPipelineRun := range *buildPipelineRuns {
 		buildPipelineRun := buildPipelineRun
 		// check if build PLR finished
-		if !h.HasPipelineRunFinished(&buildPipelineRun) && buildPipelineRun.Labels[tektonconsts.ComponentNameLabel] != a.componentName {
+		runComponent, _ := keys.GetLabel(&buildPipelineRun, keys.BuildComponent())
+		if !h.HasPipelineRunFinished(&buildPipelineRun) && runComponent != a.componentName {
 			err := tekton.AnnotateBuildPipelineRun(a.context, &buildPipelineRun, gitops.PRGroupCreationAnnotation, message, a.client)
 			if err != nil {
 				return fmt.Errorf("failed to annotate build pipelineRun %s with PR group creation annotation: %w", buildPipelineRun.Name, err)
 			}
 		}
 	}
+	prGroupLogged, _ := gitops.AnnotationValue(pipelineRun, gitops.PRGroupAnnotation)
 	a.logger.Info("notified all component snapshots and build pipelines in the pr group about the build pipeline status",
-		"prGroup", pipelineRun.Annotations[gitops.PRGroupAnnotation], "prGroupHash", prGroupHash)
+		"prGroup", prGroupLogged, "prGroupHash", prGroupHash)
 
 	return nil
 }
@@ -1192,7 +1196,7 @@ func (a *Adapter) notifySnapshotsInGroupAboutBuild(pipelineRun *tektonv1.Pipelin
 func (a *Adapter) filterPipelineRunsForComponentGroups(allBuildPipelineRuns *[]tektonv1.PipelineRun, componentGroups *[]v1beta2.ComponentGroup) *[]tektonv1.PipelineRun {
 	var filteredBuildPipelineRuns []tektonv1.PipelineRun
 	for _, buildPipelineRun := range *allBuildPipelineRuns {
-		if builtComponentName, found := buildPipelineRun.Labels[tektonconsts.PipelineRunComponentLabel]; found {
+		if builtComponentName, found := keys.GetLabel(&buildPipelineRun, keys.BuildComponent()); found {
 			for _, componentGroup := range *componentGroups {
 				ok, version := h.GetComponentVersionFromComponentGroup(&componentGroup, builtComponentName)
 				if ok {
@@ -1335,8 +1339,9 @@ func (a *Adapter) updateBuildPipelineRunWithFinalInfo(canRemoveFinalizer bool, c
 				a.logger.Error(err, "Failed to annotate build pipelinerun with the snapshot creation status")
 				return err
 			}
+			snapshotCreationStatus, _ := gitops.AnnotationValue(a.pipelineRun, h.CreateSnapshotAnnotationName)
 			a.logger.LogAuditEvent("Updated build pipelineRun", a.pipelineRun, h.LogActionUpdate,
-				h.CreateSnapshotAnnotationName, a.pipelineRun.Annotations[h.CreateSnapshotAnnotationName])
+				h.CreateSnapshotAnnotationName, snapshotCreationStatus)
 		} else {
 			a.logger.Info("Cannot annotate build pipelinerun annotation with the snapshot creation status since it has been marked as deleted")
 		}
@@ -1525,8 +1530,12 @@ func (a *Adapter) addPRGroupToBuildPLRMetadata(pipelineRun *tektonv1.PipelineRun
 
 			patch := client.MergeFrom(pipelineRun.DeepCopy())
 
-			_ = metadata.SetAnnotation(&pipelineRun.ObjectMeta, gitops.PRGroupAnnotation, prGroup)
-			_ = metadata.SetLabel(&pipelineRun.ObjectMeta, gitops.PRGroupHashLabel, prGroupHash)
+			if err = gitops.SetOwnedAnnotation(pipelineRun, gitops.PRGroupAnnotation, prGroup); err != nil {
+				return fmt.Errorf("failed to set PR group annotation %s on PipelineRun %s/%s: %w", gitops.PRGroupAnnotation, pipelineRun.Namespace, pipelineRun.Name, err)
+			}
+			if err = gitops.SetOwnedLabel(pipelineRun, gitops.PRGroupHashLabel, prGroupHash); err != nil {
+				return fmt.Errorf("failed to set PR group hash label %s on PipelineRun %s/%s: %w", gitops.PRGroupHashLabel, pipelineRun.Namespace, pipelineRun.Name, err)
+			}
 
 			err = a.client.Patch(a.context, pipelineRun, patch)
 			return err
@@ -1656,17 +1665,17 @@ func (a *Adapter) ReportIntegrationTestStatusAccordingToBuildPLR(pipelineRun *te
 func getIntegrationTestStatusFromBuildPLR(plr *tektonv1.PipelineRun) intgteststat.IntegrationTestStatus {
 	var integrationTestStatus intgteststat.IntegrationTestStatus
 	// when build pipeline is triggered/retriggered, we need to set integration test status to pending
-	if !h.HasPipelineRunFinished(plr) && !metadata.HasAnnotationWithValue(plr, h.SnapshotCreationReportAnnotation, intgteststat.BuildPLRInProgress.String()) {
+	if !h.HasPipelineRunFinished(plr) && !gitops.HasOwnedAnnotationValue(plr, h.SnapshotCreationReportAnnotation, intgteststat.BuildPLRInProgress.String()) {
 		integrationTestStatus = intgteststat.BuildPLRInProgress
 		return integrationTestStatus
 	}
 	// when build pipeline fails, we need to set integreation test to canceled or failed
-	if h.HasPipelineRunFinished(plr) && !h.HasPipelineRunSucceeded(plr) && !metadata.HasAnnotationWithValue(plr, h.SnapshotCreationReportAnnotation, intgteststat.BuildPLRFailed.String()) {
+	if h.HasPipelineRunFinished(plr) && !h.HasPipelineRunSucceeded(plr) && !gitops.HasOwnedAnnotationValue(plr, h.SnapshotCreationReportAnnotation, intgteststat.BuildPLRFailed.String()) {
 		integrationTestStatus = intgteststat.BuildPLRFailed
 		return integrationTestStatus
 	}
 	// when build pipeline succeeds but snapshot is not created, we need to set integration test to canceled or failed
-	if h.HasPipelineRunSucceeded(plr) && metadata.HasAnnotation(plr, h.CreateSnapshotAnnotationName) && !metadata.HasAnnotation(plr, tektonconsts.SnapshotNameLabel) && !metadata.HasAnnotationWithValue(plr, h.SnapshotCreationReportAnnotation, intgteststat.SnapshotCreationFailed.String()) {
+	if h.HasPipelineRunSucceeded(plr) && gitops.HasOwnedAnnotation(plr, h.CreateSnapshotAnnotationName) && !gitops.HasOwnedAnnotation(plr, tektonconsts.SnapshotNameLabel) && !gitops.HasOwnedAnnotationValue(plr, h.SnapshotCreationReportAnnotation, intgteststat.SnapshotCreationFailed.String()) {
 		integrationTestStatus = intgteststat.SnapshotCreationFailed
 		return integrationTestStatus
 	}
@@ -1681,7 +1690,7 @@ func generateIntgTestStatusDetails(buildPLR *tektonv1.PipelineRun, integrationTe
 	case intgteststat.BuildPLRInProgress:
 		details = fmt.Sprintf("build pipelinerun %s/%s is still in progress", buildPLR.Namespace, buildPLR.Name)
 	case intgteststat.SnapshotCreationFailed:
-		if failureReason, ok := buildPLR.Annotations[h.CreateSnapshotAnnotationName]; ok {
+		if failureReason, ok := gitops.AnnotationValue(buildPLR, h.CreateSnapshotAnnotationName); ok {
 			details = fmt.Sprintf("build pipelinerun %s/%s succeeds but snapshot is not created due to error: %s", buildPLR.Namespace, buildPLR.Name, failureReason)
 		} else {
 			details = fmt.Sprintf("failed to create snapshot but can't find reason from build plr annotation %s", h.CreateSnapshotAnnotationName)
@@ -1726,12 +1735,12 @@ func (a *Adapter) getComponentsFromLatestFlightBuildPLR(prGroup, prGroupHash str
 			a.logger.Info(fmt.Sprintf("The build pipelineRun %s/%s with pr group %s is not the latest for its component, skipped", pipelineRun.Namespace, pipelineRun.Name, prGroup))
 			continue
 		}
-		if metadata.HasAnnotation(&pipelineRun, tektonconsts.SnapshotNameLabel) {
+		if gitops.HasOwnedAnnotation(&pipelineRun, tektonconsts.SnapshotNameLabel) {
 			a.logger.Info(fmt.Sprintf("The build pipelineRun %s/%s with pr group %s has snapshot created, skipped", pipelineRun.Namespace, pipelineRun.Name, prGroup))
 			continue
 		}
-		if !slices.Contains(componentsFromPipelineRun, pipelineRun.Labels[tektonconsts.PipelineRunComponentLabel]) {
-			componentsFromPipelineRun = append(componentsFromPipelineRun, pipelineRun.Labels[tektonconsts.PipelineRunComponentLabel])
+		if componentName, found := keys.GetLabel(&pipelineRun, keys.BuildComponent()); found && !slices.Contains(componentsFromPipelineRun, componentName) {
+			componentsFromPipelineRun = append(componentsFromPipelineRun, componentName)
 		}
 	}
 	return componentsFromPipelineRun, nil
@@ -1851,7 +1860,7 @@ func (a *Adapter) updateGCLForBuildPLR() error {
 
 // isBuildPLROlderThanLastBuild will compare the build plr start time and lastBuiltTime in component annotation
 func isBuildPLROlderThanLastBuild(pipelineRun *tektonv1.PipelineRun, component *applicationapiv1alpha1.Component) bool {
-	componentlastBuiltTime := component.Annotations[gitops.BuildPipelineLastBuiltTime]
+	componentlastBuiltTime, _ := gitops.AnnotationValue(component, gitops.BuildPipelineLastBuiltTime)
 	if componentlastBuiltTime == "" {
 		return false
 	}
@@ -1867,8 +1876,8 @@ func isBuildPLROlderThanLastBuild(pipelineRun *tektonv1.PipelineRun, component *
 }
 
 func (a *Adapter) IsLatestBuildPipelineRunInComponentWithPRGroupHash(buildPlr *tektonv1.PipelineRun) (bool, error) {
-	prGroupHash := buildPlr.Labels[gitops.PRGroupHashLabel]
-	prGroupName := buildPlr.Annotations[gitops.PRGroupAnnotation]
+	prGroupHash, _ := gitops.LabelValue(buildPlr, gitops.PRGroupHashLabel)
+	prGroupName, _ := gitops.AnnotationValue(buildPlr, gitops.PRGroupAnnotation)
 	pipelineRuns, err := a.loader.GetPipelineRunsWithPRGroupHash(a.context, a.client, buildPlr.Namespace, prGroupHash)
 	if err != nil {
 		a.logger.Error(err, fmt.Sprintf("Failed to get build pipelineRuns for given pr group hash %s", prGroupHash))

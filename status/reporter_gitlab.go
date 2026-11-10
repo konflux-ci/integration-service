@@ -27,7 +27,6 @@ import (
 
 	"github.com/go-logr/logr"
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
-	"github.com/konflux-ci/operator-toolkit/metadata"
 	gitlab "gitlab.com/gitlab-org/api/client-go/v2"
 	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -65,8 +64,8 @@ var existingCommitStatus *gitlab.CommitStatus
 
 // Detect if snapshot has been created from gitlab provider
 func (r *GitLabReporter) Detect(snapshot *applicationapiv1alpha1.Snapshot) bool {
-	return metadata.HasAnnotationWithValue(snapshot, gitops.PipelineAsCodeGitProviderLabel, gitops.PipelineAsCodeGitLabProviderType) ||
-		metadata.HasLabelWithValue(snapshot, gitops.PipelineAsCodeGitProviderAnnotation, gitops.PipelineAsCodeGitLabProviderType)
+	return gitops.HasOwnedAnnotationValue(snapshot, gitops.PipelineAsCodeGitProviderLabel, gitops.PipelineAsCodeGitLabProviderType) ||
+		gitops.HasOwnedLabelValue(snapshot, gitops.PipelineAsCodeGitProviderAnnotation, gitops.PipelineAsCodeGitLabProviderType)
 }
 
 // GetReporterName returns the reporter name
@@ -84,8 +83,7 @@ func (r *GitLabReporter) Initialize(ctx context.Context, snapshot *applicationap
 		return 0, err
 	}
 
-	annotations := snapshot.GetAnnotations()
-	repoUrl, ok := annotations[gitops.PipelineAsCodeRepoURLAnnotation]
+	repoUrl, ok := gitops.AnnotationValue(snapshot, gitops.PipelineAsCodeRepoURLAnnotation)
 	if !ok {
 		unRecoverableError = helpers.NewUnrecoverableMetadataError(fmt.Sprintf("failed to get value of %s annotation from the snapshot %s", gitops.PipelineAsCodeRepoURLAnnotation, snapshot.Name))
 		r.logger.Error(unRecoverableError, "snapshot.NameSpace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
@@ -106,8 +104,7 @@ func (r *GitLabReporter) Initialize(ctx context.Context, snapshot *applicationap
 		return 0, err
 	}
 
-	labels := snapshot.GetLabels()
-	sha, found := labels[gitops.PipelineAsCodeSHALabel]
+	sha, found := gitops.LabelValue(snapshot, gitops.PipelineAsCodeSHALabel)
 	if !found {
 		unRecoverableError = helpers.NewUnrecoverableMetadataError(fmt.Sprintf("sha label not found %q", gitops.PipelineAsCodeSHALabel))
 		r.logger.Error(unRecoverableError, "snapshot.NameSpace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
@@ -115,7 +112,7 @@ func (r *GitLabReporter) Initialize(ctx context.Context, snapshot *applicationap
 	}
 	r.sha = sha
 
-	targetProjectIDstr, found := annotations[gitops.PipelineAsCodeTargetProjectIDAnnotation]
+	targetProjectIDstr, found := gitops.AnnotationValue(snapshot, gitops.PipelineAsCodeTargetProjectIDAnnotation)
 	if !found {
 		unRecoverableError = helpers.NewUnrecoverableMetadataError(fmt.Sprintf("target project ID annotation not found %q", gitops.PipelineAsCodeTargetProjectIDAnnotation))
 		r.logger.Error(unRecoverableError, "snapshot.NameSpace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
@@ -129,7 +126,7 @@ func (r *GitLabReporter) Initialize(ctx context.Context, snapshot *applicationap
 		return 0, unRecoverableError
 	}
 
-	sourceProjectIDstr, found := annotations[gitops.PipelineAsCodeSourceProjectIDAnnotation]
+	sourceProjectIDstr, found := gitops.AnnotationValue(snapshot, gitops.PipelineAsCodeSourceProjectIDAnnotation)
 	if !found {
 		unRecoverableError = helpers.NewUnrecoverableMetadataError(fmt.Sprintf("source project ID annotation not found %q", gitops.PipelineAsCodeSourceProjectIDAnnotation))
 		r.logger.Error(unRecoverableError, "snapshot.NameSpace", snapshot.Namespace, "snapshot.Name", snapshot.Name)
@@ -143,7 +140,7 @@ func (r *GitLabReporter) Initialize(ctx context.Context, snapshot *applicationap
 		return 0, unRecoverableError
 	}
 
-	mergeRequestStr, found := annotations[gitops.PipelineAsCodePullRequestAnnotation]
+	mergeRequestStr, found := gitops.AnnotationValue(snapshot, gitops.PipelineAsCodePullRequestAnnotation)
 	if !found && !gitops.IsSnapshotCreatedByPACPushEvent(snapshot) {
 		unRecoverableError = helpers.NewUnrecoverableMetadataError(fmt.Sprintf("pull-request annotation not found %q", gitops.PipelineAsCodePullRequestAnnotation))
 		r.logger.Error(unRecoverableError, "snapshot.NameSpace", snapshot.Namespace, "snapshot.Name", snapshot.Name)

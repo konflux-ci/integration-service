@@ -27,8 +27,10 @@ import (
 	"time"
 
 	"github.com/konflux-ci/integration-service/api/v1beta2"
+	"github.com/konflux-ci/integration-service/pkg/keys"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/selection"
 
 	"k8s.io/apimachinery/pkg/types"
 
@@ -498,14 +500,9 @@ func HasPipelineRunFinished(object client.Object) bool {
 // finalizer from the PipelineRun, and returns error if any.
 func RemoveFinalizerFromAllIntegrationPipelineRunsOfSnapshot(ctx context.Context, adapterClient client.Client, logger IntegrationLogger, snapshot applicationapiv1alpha1.Snapshot, finalizer string) error {
 	integrationPipelineRuns := &tektonv1.PipelineRunList{}
-	opts := []client.ListOption{
-		client.InNamespace(snapshot.Namespace),
-		client.MatchingLabels{
-			"appstudio.openshift.io/snapshot": snapshot.Name,
-		},
-	}
-
-	err := adapterClient.List(ctx, integrationPipelineRuns, opts...)
+	err := keys.ListEither(ctx, adapterClient, integrationPipelineRuns, snapshot.Namespace, []keys.Requirement{
+		{Pair: keys.SnapshotName(), Operator: selection.In, Values: []string{snapshot.Name}},
+	})
 	if err != nil {
 		return err
 	}
@@ -525,12 +522,18 @@ func RemoveFinalizerFromAllIntegrationPipelineRunsOfSnapshot(ctx context.Context
 // RemoveFinalizerFromPipelineRun removes the finalizer from the PipelineRun.
 // If finalizer was not removed successfully, a non-nil error is returned.
 func RemoveFinalizerFromPipelineRun(ctx context.Context, adapterClient client.Client, logger IntegrationLogger, pipelineRun *tektonv1.PipelineRun, finalizer string) error {
-	if !controllerutil.ContainsFinalizer(pipelineRun, finalizer) {
+	if !keys.HasFinalizer(pipelineRun, finalizer) {
 		return nil
 	}
 
 	patch := client.MergeFromWithOptions(pipelineRun.DeepCopy(), client.MergeFromWithOptimisticLock{})
-	if ok := controllerutil.RemoveFinalizer(pipelineRun, finalizer); ok {
+	removed := false
+	for _, name := range keys.FinalizerNames(finalizer) {
+		if controllerutil.RemoveFinalizer(pipelineRun, name) {
+			removed = true
+		}
+	}
+	if removed {
 		err := adapterClient.Patch(ctx, pipelineRun, patch)
 		if err != nil {
 			logger.Error(err, "error occurred while patching the updated PipelineRun after finalizer removal",
@@ -547,11 +550,15 @@ func RemoveFinalizerFromPipelineRun(ctx context.Context, adapterClient client.Cl
 // AddFinalizerToPipelineRun adds the finalizer to the PipelineRun.
 // If finalizer was not added successfully, a non-nil error is returned.
 func AddFinalizerToPipelineRun(ctx context.Context, adapterClient client.Client, logger IntegrationLogger, pipelineRun *tektonv1.PipelineRun, finalizer string) error {
-	if controllerutil.ContainsFinalizer(pipelineRun, finalizer) {
+	if keys.HasFinalizer(pipelineRun, finalizer) {
 		return nil
 	}
+	name, err := keys.FinalizerToAdd(pipelineRun, finalizer)
+	if err != nil {
+		return fmt.Errorf("resolving finalizer %s for PipelineRun %s: %w", finalizer, pipelineRun.Name, err)
+	}
 	patch := client.MergeFromWithOptions(pipelineRun.DeepCopy(), client.MergeFromWithOptimisticLock{})
-	if ok := controllerutil.AddFinalizer(pipelineRun, finalizer); ok {
+	if ok := controllerutil.AddFinalizer(pipelineRun, name); ok {
 		err := adapterClient.Patch(ctx, pipelineRun, patch)
 		if err != nil {
 			logger.Error(err, "error occurred while patching the updated PipelineRun after finalizer addition",
@@ -568,8 +575,15 @@ func AddFinalizerToPipelineRun(ctx context.Context, adapterClient client.Client,
 // AddFinalizerToComponent adds the finalizer to the component.
 // If finalizer was not added successfully, a non-nil error is returned.
 func AddFinalizerToComponent(ctx context.Context, adapterClient client.Client, logger IntegrationLogger, component *applicationapiv1alpha1.Component, finalizer string) error {
+	if keys.HasFinalizer(component, finalizer) {
+		return nil
+	}
+	name, err := keys.FinalizerToAdd(component, finalizer)
+	if err != nil {
+		return fmt.Errorf("resolving finalizer %s for component %s: %w", finalizer, component.Name, err)
+	}
 	patch := client.MergeFrom(component.DeepCopy())
-	if ok := controllerutil.AddFinalizer(component, finalizer); ok {
+	if ok := controllerutil.AddFinalizer(component, name); ok {
 		err := adapterClient.Patch(ctx, component, patch)
 		if err != nil {
 			return fmt.Errorf("error occurred while patching the updated component after finalizer addition: %w", err)
@@ -584,8 +598,17 @@ func AddFinalizerToComponent(ctx context.Context, adapterClient client.Client, l
 // RemoveFinalizerFromComponent removes the finalizer from the Component.
 // If finalizer was not removed successfully, a non-nil error is returned.
 func RemoveFinalizerFromComponent(ctx context.Context, adapterClient client.Client, logger IntegrationLogger, component *applicationapiv1alpha1.Component, finalizer string) error {
+	if !keys.HasFinalizer(component, finalizer) {
+		return nil
+	}
 	patch := client.MergeFrom(component.DeepCopy())
-	if ok := controllerutil.RemoveFinalizer(component, finalizer); ok {
+	removed := false
+	for _, name := range keys.FinalizerNames(finalizer) {
+		if controllerutil.RemoveFinalizer(component, name) {
+			removed = true
+		}
+	}
+	if removed {
 		err := adapterClient.Patch(ctx, component, patch)
 		if err != nil {
 			return fmt.Errorf("error occurred while patching the updated Component after finalizer removal: %w", err)
@@ -600,8 +623,17 @@ func RemoveFinalizerFromComponent(ctx context.Context, adapterClient client.Clie
 // RemoveFinalizerFromScenario removes the finalizer from the IntegrationTestScenario.
 // If finalizer was not removed successfully, a non-nil error is returned.
 func RemoveFinalizerFromScenario(ctx context.Context, adapterClient client.Client, logger IntegrationLogger, scenario *v1beta2.IntegrationTestScenario, finalizer string) error {
+	if !keys.HasFinalizer(scenario, finalizer) {
+		return nil
+	}
 	patch := client.MergeFrom(scenario.DeepCopy())
-	if ok := controllerutil.RemoveFinalizer(scenario, finalizer); ok {
+	removed := false
+	for _, name := range keys.FinalizerNames(finalizer) {
+		if controllerutil.RemoveFinalizer(scenario, name) {
+			removed = true
+		}
+	}
+	if removed {
 		err := adapterClient.Patch(ctx, scenario, patch)
 		if err != nil {
 			return fmt.Errorf("error occurred while patching the updated IntegrationTestScenario after finalizer removal: %w", err)

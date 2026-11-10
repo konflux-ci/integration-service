@@ -41,6 +41,7 @@ import (
 
 	"github.com/konflux-ci/integration-service/gitops"
 	"github.com/konflux-ci/integration-service/pkg/integrationteststatus"
+	"github.com/konflux-ci/integration-service/pkg/keys"
 	"github.com/konflux-ci/integration-service/status"
 )
 
@@ -127,6 +128,11 @@ var _ = Describe("GitLabReporter", func() {
 
 		hasSnapshot.Labels["pac.test.appstudio.openshift.io/git-provider"] = "not-gitlab"
 		Expect(reporter.Detect(hasSnapshot)).To(BeFalse())
+
+		delete(hasSnapshot.Annotations, "pac.test.appstudio.openshift.io/git-provider")
+		delete(hasSnapshot.Labels, "pac.test.appstudio.openshift.io/git-provider")
+		hasSnapshot.Annotations[keys.PAC("git-provider").New] = "gitlab"
+		Expect(reporter.Detect(hasSnapshot)).To(BeTrue())
 	})
 
 	Context("when provided Gitlab webhook integration credentials", func() {

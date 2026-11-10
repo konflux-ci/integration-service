@@ -41,6 +41,12 @@ const (
 	PrefixBuildOld = "build.appstudio"
 	// PrefixBuildNew is the new build-owned metadata prefix.
 	PrefixBuildNew = "build.konflux-ci.dev"
+
+	// PrefixReleaseNew is the new prefix for the auto-release label integration-service stamps.
+	PrefixReleaseNew = "release.konflux-ci.dev"
+
+	// PrefixPACNew is the destination prefix for Pipelines-as-Code metadata on new-style objects.
+	PrefixPACNew = "pac.integration.konflux-ci.dev"
 )
 
 const (

@@ -26,8 +26,8 @@ import (
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
 	"github.com/konflux-ci/integration-service/gitops"
 	h "github.com/konflux-ci/integration-service/helpers"
+	"github.com/konflux-ci/integration-service/pkg/keys"
 	"github.com/konflux-ci/integration-service/tekton/consts"
-	"github.com/konflux-ci/operator-toolkit/metadata"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -36,11 +36,13 @@ import (
 func AnnotateBuildPipelineRun(ctx context.Context, pipelineRun *tektonv1.PipelineRun, key, value string, cl client.Client) error {
 	patch := client.MergeFrom(pipelineRun.DeepCopy())
 
-	_ = metadata.SetAnnotation(&pipelineRun.ObjectMeta, key, value)
+	if err := gitops.SetOwnedAnnotation(pipelineRun, key, value); err != nil {
+		return fmt.Errorf("failed to set annotation %s on PipelineRun %s: %w", key, pipelineRun.Name, err)
+	}
 
 	err := cl.Patch(ctx, pipelineRun, patch)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to patch PipelineRun %s after setting annotation %s: %w", pipelineRun.Name, key, err)
 	}
 	return nil
 }
@@ -51,7 +53,7 @@ func AnnotateBuildPipelineRun(ctx context.Context, pipelineRun *tektonv1.Pipelin
 // preceding comma
 func AppendBuildPipelineRunAnnotation(ctx context.Context, pipelineRun *tektonv1.PipelineRun, key, value string, cl client.Client) error {
 	newValue := value
-	if existingValue, ok := pipelineRun.Annotations[key]; ok && existingValue != "" {
+	if existingValue, ok := gitops.AnnotationValue(pipelineRun, key); ok && existingValue != "" {
 		newValue = fmt.Sprintf("%s,%s", existingValue, value)
 	}
 	return AnnotateBuildPipelineRun(ctx, pipelineRun, key, newValue, cl)
@@ -61,11 +63,13 @@ func AppendBuildPipelineRunAnnotation(ctx context.Context, pipelineRun *tektonv1
 func LabelBuildPipelineRun(ctx context.Context, pipelineRun *tektonv1.PipelineRun, key, value string, cl client.Client) error {
 	patch := client.MergeFrom(pipelineRun.DeepCopy())
 
-	_ = metadata.SetLabel(&pipelineRun.ObjectMeta, key, value)
+	if err := gitops.SetOwnedLabel(pipelineRun, key, value); err != nil {
+		return fmt.Errorf("failed to set label %s on PipelineRun %s: %w", key, pipelineRun.Name, err)
+	}
 
 	err := cl.Patch(ctx, pipelineRun, patch)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to patch PipelineRun %s after setting label %s: %w", pipelineRun.Name, key, err)
 	}
 	return nil
 }
@@ -77,7 +81,7 @@ func AnnotateBuildPipelineRunWithCreateSnapshotAnnotation(ctx context.Context, p
 	status := ""
 
 	if ensureSnapshotExistsErr == nil {
-		if !metadata.HasAnnotation(pipelineRun, consts.SnapshotNameLabel) {
+		if !gitops.HasOwnedAnnotation(pipelineRun, consts.SnapshotNameLabel) {
 			// do nothing for in progress build PLR
 			return nil
 		}
@@ -101,9 +105,10 @@ func AnnotateBuildPipelineRunWithCreateSnapshotAnnotation(ctx context.Context, p
 // GetPRGroupFromBuildPLR gets the PR group from the substring before @ from
 // the source-branch pac annotation, for main, it generate PR group with {source-branch}-{url-org}
 func GetPRGroupFromBuildPLR(pipelineRun *tektonv1.PipelineRun) string {
-	if prGroup, found := pipelineRun.Annotations[consts.PipelineAsCodeSourceBranchAnnotation]; found {
-		if prGroup == consts.MainBranch || prGroup == consts.MasterBranch && metadata.HasAnnotation(pipelineRun, consts.PipelineAsCodeSourceRepoOrg) {
-			prGroup = prGroup + "-" + pipelineRun.Annotations[consts.PipelineAsCodeSourceRepoOrg]
+	if prGroup, found := gitops.AnnotationValue(pipelineRun, consts.PipelineAsCodeSourceBranchAnnotation); found {
+		org, orgFound := gitops.AnnotationValue(pipelineRun, consts.PipelineAsCodeSourceRepoOrg)
+		if prGroup == consts.MainBranch || prGroup == consts.MasterBranch && orgFound {
+			prGroup = prGroup + "-" + org
 		}
 		return strings.Split(prGroup, "@")[0]
 	}
@@ -119,17 +124,17 @@ func GenerateSHA(str string) string {
 // IsPLRCreatedByPACPushEvent checks whether a build PipelineRun should follow
 // the push integration workflow (vs pull_request).
 func IsPLRCreatedByPACPushEvent(plr *tektonv1.PipelineRun) bool {
-	if branch, found := plr.Annotations[consts.PipelineAsCodeSourceBranchAnnotation]; found {
+	if branch, found := gitops.AnnotationValue(plr, consts.PipelineAsCodeSourceBranchAnnotation); found {
 		if strings.HasPrefix(strings.TrimPrefix(branch, consts.GitRefBranchPrefix), consts.PipelineAsCodeGitHubMergeQueueBranchPrefix) {
 			return false
 		}
 	}
-	eventType := plr.Labels[consts.PipelineAsCodeEventTypeLabel]
-	targetBranch := plr.Annotations[consts.PipelineAsCodeTargetBranchAnnotation]
-	sourceBranch := plr.Annotations[consts.PipelineAsCodeSourceBranchAnnotation]
-	return !metadata.HasLabel(plr, consts.PipelineAsCodePullRequestLabel) ||
-		metadata.HasLabelWithValue(plr, consts.PipelineAsCodeEventTypeLabel, consts.PipelineAsCodePushType) ||
-		metadata.HasLabelWithValue(plr, consts.PipelineAsCodeEventTypeLabel, consts.PipelineAsCodeGLPushType) ||
+	eventType, _ := gitops.LabelValue(plr, consts.PipelineAsCodeEventTypeLabel)
+	targetBranch, _ := gitops.AnnotationValue(plr, consts.PipelineAsCodeTargetBranchAnnotation)
+	sourceBranch, _ := gitops.AnnotationValue(plr, consts.PipelineAsCodeSourceBranchAnnotation)
+	return !gitops.HasOwnedLabel(plr, consts.PipelineAsCodePullRequestLabel) ||
+		gitops.HasOwnedLabelValue(plr, consts.PipelineAsCodeEventTypeLabel, consts.PipelineAsCodePushType) ||
+		gitops.HasOwnedLabelValue(plr, consts.PipelineAsCodeEventTypeLabel, consts.PipelineAsCodeGLPushType) ||
 		h.IsPACPushStyleGitOpsComment(eventType, targetBranch, sourceBranch)
 }
 
@@ -138,7 +143,7 @@ func IsPLRCreatedByPACPushEvent(plr *tektonv1.PipelineRun) bool {
 // time when pipeline was created.
 func IsLatestBuildPipelineRunInComponent(pipelineRun *tektonv1.PipelineRun, pipelineRuns *[]tektonv1.PipelineRun) bool {
 	pipelineStartTime := pipelineRun.CreationTimestamp.Time
-	componentName := pipelineRun.Labels[consts.PipelineRunComponentLabel]
+	componentName, _ := keys.GetLabel(pipelineRun, keys.BuildComponent())
 	componentVersion, _ := GetComponentVersionFromPipelineRun(pipelineRun)
 
 	for _, run := range *pipelineRuns {
@@ -146,7 +151,8 @@ func IsLatestBuildPipelineRunInComponent(pipelineRun *tektonv1.PipelineRun, pipe
 			// it's the same pipeline
 			continue
 		}
-		if componentName != run.Labels[consts.PipelineRunComponentLabel] {
+		runComponent, _ := keys.GetLabel(&run, keys.BuildComponent())
+		if componentName != runComponent {
 			continue
 		}
 		timestamp := run.CreationTimestamp.Time
@@ -178,7 +184,7 @@ func MarkBuildPLRAsAddedToGlobalCandidateList(ctx context.Context, adapterClient
 
 // IsBuildPLRMarkedAsAddedToGlobalCandidateList returns true if pipelineRun's component is marked as added to global candidate list
 func IsBuildPLRMarkedAsAddedToGlobalCandidateList(pipelineRun *tektonv1.PipelineRun) bool {
-	annotationValue, ok := pipelineRun.GetAnnotations()[gitops.AddedToGlobalCandidateListAnnotation]
+	annotationValue, ok := gitops.AnnotationValue(pipelineRun, gitops.AddedToGlobalCandidateListAnnotation)
 	if !ok || annotationValue == "" {
 		return false
 	}
