@@ -578,6 +578,125 @@ var _ = Describe("IntegrationTestScenario webhook", Ordered, func() {
 		err := k8sClient.Delete(ctx, cgScenario)
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 	})
+
+	// Regression test for STONEINTG-1912: the webhook must resolve the owner
+	// through the APIReader, not the manager's informer-backed cache, so a
+	// scenario created immediately after its Application is not denied with
+	// "could not find application ...". k8sClient is a direct (uncached)
+	// client, so the Application is committed to the API server while the
+	// manager's informer cache has not necessarily observed it yet.
+	It("should allow creating a scenario immediately after its application is created", func() {
+		newApp := &applicationapiv1alpha1.Application{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "application-immediate",
+				Namespace: "default",
+			},
+			Spec: applicationapiv1alpha1.ApplicationSpec{
+				DisplayName: "application-immediate",
+			},
+		}
+		Expect(k8sClient.Create(ctx, newApp)).Should(Succeed())
+		defer func() {
+			err := k8sClient.Delete(ctx, newApp)
+			Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
+		}()
+
+		immediateScenario := &v1beta2.IntegrationTestScenario{
+			TypeMeta: metav1.TypeMeta{
+				APIVersion: "appstudio.redhat.com/v1beta2",
+				Kind:       "IntegrationTestScenario",
+			},
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "integrationtestscenario-immediate-app",
+				Namespace: "default",
+			},
+			Spec: v1beta2.IntegrationTestScenarioSpec{
+				Application: "application-immediate",
+				ResolverRef: v1beta2.ResolverRef{
+					Resolver: "git",
+					Params: []v1beta2.ResolverParameter{
+						{Name: "url", Value: "https://url"},
+						{Name: "revision", Value: "main"},
+						{Name: "pathInRepo", Value: "pipeline/helloworld.yaml"},
+					},
+				},
+			},
+		}
+		// No Eventually: the create must be admitted on the first attempt,
+		// without giving the informer cache time to catch up.
+		Expect(k8sClient.Create(ctx, immediateScenario)).Should(Succeed())
+
+		appliedScenario := &v1beta2.IntegrationTestScenario{}
+		err := k8sClient.Get(ctx, types.NamespacedName{
+			Name:      "integrationtestscenario-immediate-app",
+			Namespace: "default",
+		}, appliedScenario)
+		Expect(err).ShouldNot(HaveOccurred())
+		Expect(appliedScenario.OwnerReferences).To(HaveLen(1))
+		Expect(appliedScenario.OwnerReferences[0].Kind).To(Equal("Application"))
+		Expect(appliedScenario.OwnerReferences[0].Name).To(Equal("application-immediate"))
+
+		Expect(k8sClient.Delete(ctx, immediateScenario)).Should(Succeed())
+	})
+
+	It("should allow creating a scenario immediately after its componentGroup is created", func() {
+		newComponentGroup := &konfluxv1beta2.ComponentGroup{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "componentgroup-immediate",
+				Namespace: "default",
+			},
+			Spec: konfluxv1beta2.ComponentGroupSpec{
+				Components: []konfluxv1beta2.ComponentReference{
+					{
+						Name: "component-immediate-a",
+						ComponentVersion: konfluxv1beta2.ComponentVersionReference{
+							Name: "main",
+						},
+					},
+				},
+			},
+		}
+		Expect(k8sClient.Create(ctx, newComponentGroup)).Should(Succeed())
+		defer func() {
+			err := k8sClient.Delete(ctx, newComponentGroup)
+			Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
+		}()
+
+		immediateScenario := &v1beta2.IntegrationTestScenario{
+			TypeMeta: metav1.TypeMeta{
+				APIVersion: "appstudio.redhat.com/v1beta2",
+				Kind:       "IntegrationTestScenario",
+			},
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "integrationtestscenario-immediate-cg",
+				Namespace: "default",
+			},
+			Spec: v1beta2.IntegrationTestScenarioSpec{
+				ComponentGroup: "componentgroup-immediate",
+				ResolverRef: v1beta2.ResolverRef{
+					Resolver: "git",
+					Params: []v1beta2.ResolverParameter{
+						{Name: "url", Value: "https://url"},
+						{Name: "revision", Value: "main"},
+						{Name: "pathInRepo", Value: "pipeline/helloworld.yaml"},
+					},
+				},
+			},
+		}
+		Expect(k8sClient.Create(ctx, immediateScenario)).Should(Succeed())
+
+		appliedScenario := &v1beta2.IntegrationTestScenario{}
+		err := k8sClient.Get(ctx, types.NamespacedName{
+			Name:      "integrationtestscenario-immediate-cg",
+			Namespace: "default",
+		}, appliedScenario)
+		Expect(err).ShouldNot(HaveOccurred())
+		Expect(appliedScenario.OwnerReferences).To(HaveLen(1))
+		Expect(appliedScenario.OwnerReferences[0].Kind).To(Equal("ComponentGroup"))
+		Expect(appliedScenario.OwnerReferences[0].Name).To(Equal("componentgroup-immediate"))
+
+		Expect(k8sClient.Delete(ctx, immediateScenario)).Should(Succeed())
+	})
 })
 
 func validIntegrationTestScenarioForValidation() *v1beta2.IntegrationTestScenario {

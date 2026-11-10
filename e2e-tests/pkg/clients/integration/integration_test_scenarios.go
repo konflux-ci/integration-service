@@ -2,7 +2,9 @@ package integration
 
 import (
 	"context"
+	"fmt"
 	"strings"
+	"time"
 
 	integrationv1beta2 "github.com/konflux-ci/integration-service/api/v1beta2"
 	"github.com/konflux-ci/integration-service/e2e-tests/pkg/constants"
@@ -10,7 +12,25 @@ import (
 	tektonconsts "github.com/konflux-ci/integration-service/tekton/consts"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	gomega "github.com/onsi/gomega"
 )
+
+// createScenarioWithRetry creates the given IntegrationTestScenario, retrying on
+// API errors. A scenario is typically created right after its Application, so a
+// stale informer cache in the admission webhook (or a webhook call skipped
+// during an API server hiccup) can make the first Create fail with an admission
+// denial such as "could not find application ..." or "owner reference not set"
+// (STONEINTG-1912). Retrying converges once the webhook can see the Application.
+func (i *IntegrationController) createScenarioWithRetry(integrationTestScenario *integrationv1beta2.IntegrationTestScenario) (*integrationv1beta2.IntegrationTestScenario, error) {
+	var lastErr error
+	gomega.Eventually(func() bool {
+		lastErr = i.KubeRest().Create(context.Background(), integrationTestScenario)
+		return lastErr == nil
+	}, time.Minute, 5*time.Second).Should(gomega.BeTrue(),
+		fmt.Sprintf("failed to create integration test scenario '%s' in namespace '%s'", integrationTestScenario.Name, integrationTestScenario.Namespace))
+	return integrationTestScenario, lastErr
+}
 
 // CreateIntegrationTestScenario creates beta1 version integrationTestScenario.
 func (i *IntegrationController) CreateIntegrationTestScenario(itsName, applicationName, namespace, gitURL, revision, pathInRepo, kind string, contexts []string) (*integrationv1beta2.IntegrationTestScenario, error) {
@@ -62,11 +82,7 @@ func (i *IntegrationController) CreateIntegrationTestScenario(itsName, applicati
 		}
 	}
 
-	err := i.KubeRest().Create(context.Background(), integrationTestScenario)
-	if err != nil {
-		return nil, err
-	}
-	return integrationTestScenario, nil
+	return i.createScenarioWithRetry(integrationTestScenario)
 }
 
 // CreateOptionalIntegrationTestScenario creates a beta1 version integrationTestScenario with optional: true label.
@@ -120,11 +136,7 @@ func (i *IntegrationController) CreateOptionalIntegrationTestScenario(itsName, a
 		}
 	}
 
-	err := i.KubeRest().Create(context.Background(), integrationTestScenario)
-	if err != nil {
-		return nil, err
-	}
-	return integrationTestScenario, nil
+	return i.createScenarioWithRetry(integrationTestScenario)
 }
 
 // Get return the status from the Application Custom Resource object.

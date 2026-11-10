@@ -45,9 +45,14 @@ import (
 var integrationtestscenariolog = logf.Log.WithName("integrationtestscenario-webhook")
 
 func SetupIntegrationTestScenarioWebhookWithManager(mgr ctrl.Manager) error {
+	// Use the APIReader (direct, uncached reads) instead of the manager's cached
+	// client: admission must not depend on informer cache freshness. A scenario is
+	// typically created right after its Application, and the informer-backed cache
+	// may not have observed the Application yet, turning a valid create into a
+	// hard denial ("could not find application ...").
 	defaulter := &IntegrationTestScenarioCustomDefaulter{
 		DefaultResolverRefResourceKind: "pipeline",
-		client:                         mgr.GetClient(),
+		apiReader:                      mgr.GetAPIReader(),
 	}
 	return ctrl.NewWebhookManagedBy(mgr).
 		For(&v1beta2.IntegrationTestScenario{}).
@@ -66,7 +71,7 @@ type IntegrationTestScenarioCustomValidator struct {
 // +k8s:deepcopy-gen=false
 type IntegrationTestScenarioCustomDefaulter struct {
 	DefaultResolverRefResourceKind string
-	client                         client.Client
+	apiReader                      client.Reader
 }
 
 // +kubebuilder:webhook:path=/validate-appstudio-redhat-com-v1beta2-integrationtestscenario,mutating=false,failurePolicy=fail,sideEffects=None,groups=appstudio.redhat.com,resources=integrationtestscenarios,verbs=create;update;delete,versions=v1beta2,name=vintegrationtestscenario.kb.io,admissionReviewVersions=v1
@@ -283,7 +288,7 @@ func (d *IntegrationTestScenarioCustomDefaulter) Default(ctx context.Context, ob
 		return fmt.Errorf("expected an IntegrationTestScenario but got %T", obj)
 	}
 
-	err := addOwnerReference(scenario, d.client)
+	err := addOwnerReference(scenario, d.apiReader)
 	if err != nil {
 		return err
 	}
@@ -292,7 +297,7 @@ func (d *IntegrationTestScenarioCustomDefaulter) Default(ctx context.Context, ob
 	return nil
 }
 
-func addOwnerReference(scenario *v1beta2.IntegrationTestScenario, c client.Client) error {
+func addOwnerReference(scenario *v1beta2.IntegrationTestScenario, c client.Reader) error {
 	if len(scenario.OwnerReferences) == 0 && scenario.DeletionTimestamp.IsZero() {
 		var ownerReference metav1.OwnerReference
 
@@ -306,9 +311,13 @@ func addOwnerReference(scenario *v1beta2.IntegrationTestScenario, c client.Clien
 				}
 				return err
 			}
+			// APIVersion/Kind must be set explicitly: objects returned by the
+			// APIReader do not carry TypeMeta (the API server strips it on
+			// typed reads), and an ownerReference with an empty GVK is
+			// rejected by the API server.
 			ownerReference = metav1.OwnerReference{
-				APIVersion:         application.APIVersion,
-				Kind:               application.Kind,
+				APIVersion:         applicationapiv1alpha1.GroupVersion.String(),
+				Kind:               "Application",
 				Name:               application.Name,
 				UID:                application.UID,
 				BlockOwnerDeletion: ptr.To(false),
@@ -325,8 +334,8 @@ func addOwnerReference(scenario *v1beta2.IntegrationTestScenario, c client.Clien
 				return err
 			}
 			ownerReference = metav1.OwnerReference{
-				APIVersion:         componentGroup.APIVersion,
-				Kind:               componentGroup.Kind,
+				APIVersion:         konfluxv1beta2.GroupVersion.String(),
+				Kind:               "ComponentGroup",
 				Name:               componentGroup.Name,
 				UID:                componentGroup.UID,
 				BlockOwnerDeletion: ptr.To(false),
