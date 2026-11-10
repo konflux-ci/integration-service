@@ -186,6 +186,9 @@ var _ = Describe("write either", func() {
 })
 
 var _ = Describe("AppStudio label propagation", func() {
+	It("returns an empty map for a nil object", func() {
+		Expect(keys.PropagatedAppStudioLabels(nil)).To(Equal(map[string]string{}))
+	})
 	It("copies arbitrary labels with their exact values without sharing the source map", func() {
 		source := configMap(map[string]string{
 			"appstudio.openshift.io/example":  "value",
