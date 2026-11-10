@@ -28,6 +28,9 @@ import (
 // Annotations are deliberately not propagated by this mechanism.
 func PropagatedAppStudioLabels(obj metav1.Object) map[string]string {
 	labels := map[string]string{}
+	if obj == nil {
+		return labels
+	}
 	for key, value := range obj.GetLabels() {
 		if !strings.HasPrefix(key, PrefixAppstudio+"/") {
 			continue
