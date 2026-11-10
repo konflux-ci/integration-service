@@ -2,7 +2,7 @@ codecov:
   require_ci_to_pass: false
 ignore:
 - api/**/zz_generated.deepcopy.go
-- gitops/integrationteststatus_enumer.go
+- pkg/integrationteststatus/integrationteststatus_enumer.go
 - status/mock_reporter.go
 - status/mock_status.go
 - cmd/main.go
