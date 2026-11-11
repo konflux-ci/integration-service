@@ -531,7 +531,6 @@ func (a *Adapter) EnsureSnapshotExists() (result controller.OperationResult, err
 	var canRemoveFinalizer bool
 
 	defer func() {
-		a.emitBuildTimingSpans()
 		// Don't write a failure annotation for transient Chains-not-signed errors
 		annotationErr := err
 		if h.IsChainsNotSignedError(err) {
@@ -635,7 +634,6 @@ func (a *Adapter) EnsureSnapshotExistsApplication() (result controller.Operation
 	var canRemoveFinalizer bool
 
 	defer func() {
-		a.emitBuildTimingSpans()
 		// Don't write a failure annotation for transient Chains-not-signed errors
 		annotationErr := err
 		if h.IsChainsNotSignedError(err) {
@@ -1890,21 +1888,6 @@ func (a *Adapter) IsLatestBuildPipelineRunInComponentWithPRGroupHash(buildPlr *t
 
 	a.logger.Info(fmt.Sprintf("The build pipelineRun %s/%s with pr group %s is not the latest for its component, skipped", buildPlr.Namespace, buildPlr.Name, prGroupName))
 	return false, nil
-}
-
-// emitBuildTimingSpans emits timing spans for the build PipelineRun if not already emitted
-func (a *Adapter) emitBuildTimingSpans() {
-	spanContext := a.pipelineRun.Annotations[tracing.SpanContextAnnotation]
-	patched, err := tracing.EmitAndMarkTimingSpans(a.context, a.pipelineRun, spanContext, "", a.client, func() (*tektonv1.PipelineRun, error) {
-		return a.loader.GetPipelineRun(a.context, a.client, a.pipelineRun.Name, a.pipelineRun.Namespace)
-	})
-	if err != nil {
-		a.logger.Error(err, "Failed to emit and mark build timing spans")
-		return
-	}
-	if patched != nil {
-		a.pipelineRun = patched
-	}
 }
 
 // applyStaleReferencesStatusCondition updates StaleReferences on nudgeConfig in memory. Returns whether the condition changed.
