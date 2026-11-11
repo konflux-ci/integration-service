@@ -36,6 +36,7 @@ import (
 
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
 	"github.com/konflux-ci/integration-service/gitops"
+	"github.com/konflux-ci/integration-service/internal/controller/testutil"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -255,16 +256,9 @@ var _ = Describe("SnapshotController", func() {
 	})
 
 	It("Does not return an error if the application cannot be found", func() {
-		Eventually(func() error {
-			if err := k8sClient.Get(ctx, types.NamespacedName{
-				Namespace: hasSnapshot.Namespace,
-				Name:      hasSnapshot.Name,
-			}, hasSnapshot); err != nil {
-				return err
-			}
+		testutil.UpdateWithRetry(ctx, k8sClient, hasSnapshot, func() {
 			hasSnapshot.Spec.Application = "im-a-ghost"
-			return k8sClient.Update(ctx, hasSnapshot)
-		}, time.Second*20).Should(Succeed())
+		})
 
 		// Use Eventually to ensure the update has been applied
 		Eventually(func() bool {
@@ -290,16 +284,9 @@ var _ = Describe("SnapshotController", func() {
 	When("snapshot is restored from backup", func() {
 
 		BeforeEach(func() {
-			Eventually(func() error {
-				if err := k8sClient.Get(ctx, types.NamespacedName{
-					Namespace: hasSnapshot.Namespace,
-					Name:      hasSnapshot.Name,
-				}, hasSnapshot); err != nil {
-					return err
-				}
+			testutil.UpdateWithRetry(ctx, k8sClient, hasSnapshot, func() {
 				hasSnapshot.Labels["velero.io/restore-name"] = "something"
-				return k8sClient.Update(ctx, hasSnapshot)
-			}, time.Second*20).Should(Succeed())
+			})
 
 			Eventually(func() bool {
 				err := k8sClient.Get(ctx, types.NamespacedName{
