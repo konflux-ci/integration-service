@@ -20,6 +20,7 @@ import (
 	"time"
 
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
+	"github.com/konflux-ci/integration-service/gitops"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
@@ -346,5 +347,106 @@ var _ = Describe("Snapshot webhook", Ordered, func() {
 			}, snapshot)
 			return errors.IsNotFound(err)
 		}, time.Second*20).Should(BeTrue())
+	})
+
+	It("should reject Snapshots with PAC annotations and no provenance marker", func() {
+		snapshot.Annotations = map[string]string{
+			gitops.PipelineAsCodeInstallationIDAnnotation: "123",
+		}
+
+		validator := &SnapshotCustomValidator{Client: k8sClient}
+
+		_, err := validator.ValidateCreate(ctx, snapshot)
+
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("PAC annotations require"))
+	})
+
+	It("should allow user-created Snapshots without PAC annotations", func() {
+		snapshot.Annotations = nil
+
+		validator := &SnapshotCustomValidator{Client: k8sClient}
+
+		_, err := validator.ValidateCreate(ctx, snapshot)
+
+		Expect(err).NotTo(HaveOccurred())
+	})
+
+	It("should reject adding PAC annotations to an existing Snapshot without a provenance marker", func() {
+		oldSnapshot := snapshot.DeepCopy()
+		newSnapshot := snapshot.DeepCopy()
+
+		newSnapshot.Annotations = map[string]string{
+			gitops.PipelineAsCodeInstallationIDAnnotation: "123",
+		}
+
+		validator := &SnapshotCustomValidator{Client: k8sClient}
+
+		_, err := validator.ValidateUpdate(ctx, oldSnapshot, newSnapshot)
+
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("PAC annotations require"))
+	})
+
+	It("should allow updating an existing PAC Snapshot without changing PAC annotations", func() {
+		oldSnapshot := snapshot.DeepCopy()
+		oldSnapshot.Annotations = map[string]string{
+			gitops.PipelineAsCodeInstallationIDAnnotation: "123",
+		}
+		newSnapshot := oldSnapshot.DeepCopy()
+		newSnapshot.Annotations["example.com/updated"] = "true"
+
+		validator := &SnapshotCustomValidator{Client: k8sClient}
+
+		_, err := validator.ValidateUpdate(ctx, oldSnapshot, newSnapshot)
+
+		Expect(err).NotTo(HaveOccurred())
+	})
+
+	It("should reject removing provenance while PAC annotations remain", func() {
+		oldSnapshot := snapshot.DeepCopy()
+		oldSnapshot.Annotations = map[string]string{
+			gitops.PipelineAsCodeInstallationIDAnnotation: "123",
+			gitops.SnapshotProvenanceAnnotation:           gitops.SnapshotProvenanceValue,
+		}
+		newSnapshot := oldSnapshot.DeepCopy()
+		delete(newSnapshot.Annotations, gitops.SnapshotProvenanceAnnotation)
+
+		validator := &SnapshotCustomValidator{Client: k8sClient}
+
+		_, err := validator.ValidateUpdate(ctx, oldSnapshot, newSnapshot)
+
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("PAC annotations require"))
+	})
+
+	It("should reject changing provenance while PAC annotations remain", func() {
+		oldSnapshot := snapshot.DeepCopy()
+		oldSnapshot.Annotations = map[string]string{
+			gitops.PipelineAsCodeInstallationIDAnnotation: "123",
+			gitops.SnapshotProvenanceAnnotation:           gitops.SnapshotProvenanceValue,
+		}
+		newSnapshot := oldSnapshot.DeepCopy()
+		newSnapshot.Annotations[gitops.SnapshotProvenanceAnnotation] = "another-service"
+
+		validator := &SnapshotCustomValidator{Client: k8sClient}
+
+		_, err := validator.ValidateUpdate(ctx, oldSnapshot, newSnapshot)
+
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("PAC annotations require"))
+	})
+
+	It("should allow PAC annotations with a valid provenance marker", func() {
+		snapshot.Annotations = map[string]string{
+			gitops.PipelineAsCodeInstallationIDAnnotation: "123",
+			gitops.SnapshotProvenanceAnnotation:           gitops.SnapshotProvenanceValue,
+		}
+
+		validator := &SnapshotCustomValidator{Client: k8sClient}
+
+		_, err := validator.ValidateCreate(ctx, snapshot)
+
+		Expect(err).NotTo(HaveOccurred())
 	})
 })

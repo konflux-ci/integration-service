@@ -52,6 +52,12 @@ const (
 	// Migration note: retained during ComponentGroup migration; remove after migration is complete.
 	PipelinesAsCodePrefix = keys.PrefixPAC
 
+	// SnapshotProvenanceAnnotation identifies which service created a Snapshot.
+	SnapshotProvenanceAnnotation = "test.appstudio.openshift.io/created-by"
+
+	// SnapshotProvenanceValue is the value used for Snapshots created by Integration Service.
+	SnapshotProvenanceValue = "integration-service"
+
 	// TestLabelPrefix contains the prefix applied to labels and annotations related to testing.
 	// Migration note: retained during ComponentGroup migration; remove after migration is complete.
 	TestLabelPrefix = keys.PrefixTestOld
@@ -847,6 +853,9 @@ func NewSnapshot(application *applicationapiv1alpha1.Application, snapshotCompon
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      GenerateSnapshotNameWithTimestamp(application.Name, fallbackTimestamp),
 			Namespace: application.Namespace,
+			Annotations: map[string]string{
+				SnapshotProvenanceAnnotation: SnapshotProvenanceValue,
+			},
 		},
 		Spec: applicationapiv1alpha1.SnapshotSpec{
 			Application: application.Name,
