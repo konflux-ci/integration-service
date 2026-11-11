@@ -35,7 +35,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-const maxBatchNudgePLRRetries = 3
+const (
+	maxBatchNudgePLRRetries = 3
+	// completedBatchTTL is how long a Completed batch is retained in activeBatches for observability.
+	completedBatchTTL = 24 * time.Hour
+)
 
 // RecordBuildForBatchedNudge records a successful source build against the target's open batch
 // window (ADR-0072). When no batch exists yet, it creates one with fireAt=now+debounce and
@@ -262,6 +266,13 @@ func ProcessFiringNudgeBatches(ctx context.Context, c client.Client, nudgeConfig
 			if plr.Status.CompletionTime == nil {
 				continue
 			}
+			if plrBatchID := plr.Annotations[tektonconsts.NudgeBatchIDAnnotation]; plrBatchID != "" && plrBatchID != batch.BatchID {
+				batch.Phase = v1beta2.BatchPhaseFailed
+				batch.Message = fmt.Sprintf("nudge PipelineRun %q batch-id %q does not match batch %q",
+					batch.NudgePipelineRun, plrBatchID, batch.BatchID)
+				changed = true
+				continue
+			}
 			if h.HasPipelineRunSucceeded(plr) {
 				batch.Phase = v1beta2.BatchPhaseCompleted
 				batch.Message = fmt.Sprintf("nudge PipelineRun %s succeeded", batch.NudgePipelineRun)
@@ -285,6 +296,39 @@ func ProcessFiringNudgeBatches(ctx context.Context, c client.Client, nudgeConfig
 		if !changed {
 			return nil
 		}
+		return c.Status().Patch(ctx, latest, client.MergeFromWithOptions(original, client.MergeFromWithOptimisticLock{}))
+	})
+}
+
+// FilterExpiredCompletedBatches returns the subset of batches that should be retained —
+// dropping Completed entries whose CreatedAt has exceeded the 24 h TTL.
+// Exported for unit testing; production callers use PruneCompletedBatches.
+func FilterExpiredCompletedBatches(batches []v1beta2.ActiveBatch, now time.Time) []v1beta2.ActiveBatch {
+	result := make([]v1beta2.ActiveBatch, 0, len(batches))
+	for _, b := range batches {
+		if b.Phase == v1beta2.BatchPhaseCompleted && now.Sub(b.CreatedAt.Time) > completedBatchTTL {
+			continue
+		}
+		result = append(result, b)
+	}
+	return result
+}
+
+// PruneCompletedBatches removes Completed batches that have exceeded the retention TTL (24 h).
+// It is called on every reconcile to prevent NudgeConfig status from growing indefinitely.
+func PruneCompletedBatches(ctx context.Context, c client.Client, nudgeConfig *v1beta2.NudgeConfig) error {
+	return retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+		latest := &v1beta2.NudgeConfig{}
+		if err := c.Get(ctx, types.NamespacedName{Name: nudgeConfig.Name, Namespace: nudgeConfig.Namespace}, latest); err != nil {
+			return err
+		}
+		original := latest.DeepCopy()
+		now := time.Now()
+		filtered := FilterExpiredCompletedBatches(latest.Status.ActiveBatches, now)
+		if len(filtered) == len(latest.Status.ActiveBatches) {
+			return nil
+		}
+		latest.Status.ActiveBatches = filtered
 		return c.Status().Patch(ctx, latest, client.MergeFromWithOptions(original, client.MergeFromWithOptimisticLock{}))
 	})
 }
@@ -418,6 +462,16 @@ func findOrCreateAcceptingBatch(batches []v1beta2.ActiveBatch, target string, no
 			return i, &batches[i], batches
 		}
 	}
+
+	// No open batch found — remove any stale Completed batch for this target before creating a new one.
+	filtered := batches[:0:len(batches)]
+	for _, b := range batches {
+		if b.Target == target && b.Phase == v1beta2.BatchPhaseCompleted {
+			continue
+		}
+		filtered = append(filtered, b)
+	}
+	batches = filtered
 
 	batchID := newBatchID(target, now)
 	newBatch := v1beta2.ActiveBatch{
@@ -672,7 +726,7 @@ func fireBatch(ctx context.Context, c client.Client, nudgeConfig *v1beta2.NudgeC
 	if err := c.Get(ctx, types.NamespacedName{Name: plannedName, Namespace: nudgeConfig.Namespace}, existingPLR); err == nil {
 		batch.NudgePipelineRun = plannedName
 		batch.Phase = v1beta2.BatchPhaseFiring
-		batch.Message = fmt.Sprintf("fired with %d accumulated build(s)", len(batch.Accumulated))
+		batch.Message = fmt.Sprintf("reconciled existing nudge PipelineRun with %d accumulated build(s)", len(batch.Accumulated))
 		return nil
 	}
 
