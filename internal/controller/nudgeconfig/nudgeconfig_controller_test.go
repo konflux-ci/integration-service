@@ -140,6 +140,45 @@ var _ = Describe("NudgeConfig reconciler", func() {
 		})
 	})
 
+	Context("When active batches are blocked", func() {
+		It("should backfill the BatchBlocked condition during reconcile", func() {
+			now := metav1.Now()
+			nudgeConfig := &v1beta2.NudgeConfig{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      v1beta2.NudgeConfigSingletonName,
+					Namespace: "default",
+				},
+				Spec: v1beta2.NudgeConfigSpec{},
+				Status: v1beta2.NudgeConfigStatus{
+					ActiveBatches: []v1beta2.ActiveBatch{{
+						Target:    "bundle",
+						BatchID:   "blocked-batch",
+						Phase:     v1beta2.BatchPhaseBlocked,
+						CreatedAt: now,
+						Failed: []v1beta2.FailedEntry{{
+							From:             "operand",
+							BuildPipelineRun: "plr-fail",
+							Reason:           "failed",
+							CapturedAt:       now,
+						}},
+					}},
+				},
+			}
+			reconciler.Client = newClient(nudgeConfig)
+
+			_, err := reconciler.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKeyFromObject(nudgeConfig)})
+			Expect(err).NotTo(HaveOccurred())
+
+			updated := &v1beta2.NudgeConfig{}
+			Expect(reconciler.Client.Get(ctx, client.ObjectKeyFromObject(nudgeConfig), updated)).To(Succeed())
+			cond := meta.FindStatusCondition(updated.Status.Conditions, v1beta2.NudgeConfigConditionBatchBlocked)
+			Expect(cond).NotTo(BeNil())
+			Expect(cond.Status).To(Equal(metav1.ConditionTrue))
+			Expect(cond.Message).To(ContainSubstring("bundle"))
+			Expect(cond.Message).To(ContainSubstring("operand"))
+		})
+	})
+
 	Context("When there are no pending batches or actions", func() {
 		It("should complete without requeue", func() {
 			nudgeConfig := &v1beta2.NudgeConfig{
