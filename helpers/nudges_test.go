@@ -42,7 +42,7 @@ var _ = Describe("Helpers for nudges", func() {
 				newComponent("comp-b"),
 			}
 			nudges := []v1beta2.NudgeRelationship{
-				{From: "comp-a", To: "comp-b"},
+				{From: v1beta2.ComponentVersion{Component: "comp-a"}, To: v1beta2.ComponentVersion{Component: "comp-b"}},
 			}
 
 			missing, msg := helpers.FindMissingNudgeConfigReferences(components, nudges, namespace)
@@ -71,7 +71,7 @@ var _ = Describe("Helpers for nudges", func() {
 				newComponent("comp-b"),
 			}
 			nudges := []v1beta2.NudgeRelationship{
-				{From: "comp-a", To: "comp-b"},
+				{From: v1beta2.ComponentVersion{Component: "comp-a"}, To: v1beta2.ComponentVersion{Component: "comp-b"}},
 			}
 
 			missing, msg := helpers.FindMissingNudgeConfigReferences(components, nudges, namespace)
@@ -86,7 +86,7 @@ var _ = Describe("Helpers for nudges", func() {
 				newComponent("comp-a"),
 			}
 			nudges := []v1beta2.NudgeRelationship{
-				{From: "comp-a", To: "comp-b"},
+				{From: v1beta2.ComponentVersion{Component: "comp-a"}, To: v1beta2.ComponentVersion{Component: "comp-b"}},
 			}
 
 			missing, msg := helpers.FindMissingNudgeConfigReferences(components, nudges, namespace)
@@ -101,7 +101,7 @@ var _ = Describe("Helpers for nudges", func() {
 				newComponent("comp-existing"),
 			}
 			nudges := []v1beta2.NudgeRelationship{
-				{From: "missing-from", To: "missing-to"},
+				{From: v1beta2.ComponentVersion{Component: "missing-from"}, To: v1beta2.ComponentVersion{Component: "missing-to"}},
 			}
 
 			missing, msg := helpers.FindMissingNudgeConfigReferences(components, nudges, namespace)
@@ -113,9 +113,9 @@ var _ = Describe("Helpers for nudges", func() {
 		It("deduplicates repeated missing 'from' and 'to' references", func() {
 			components := []applicationapiv1alpha1.Component{}
 			nudges := []v1beta2.NudgeRelationship{
-				{From: "ghost-a", To: "ghost-b"},
-				{From: "ghost-a", To: "ghost-c"},
-				{From: "ghost-d", To: "ghost-b"},
+				{From: v1beta2.ComponentVersion{Component: "ghost-a"}, To: v1beta2.ComponentVersion{Component: "ghost-b"}},
+				{From: v1beta2.ComponentVersion{Component: "ghost-a"}, To: v1beta2.ComponentVersion{Component: "ghost-c"}},
+				{From: v1beta2.ComponentVersion{Component: "ghost-d"}, To: v1beta2.ComponentVersion{Component: "ghost-b"}},
 			}
 
 			missing, msg := helpers.FindMissingNudgeConfigReferences(components, nudges, namespace)
@@ -126,7 +126,7 @@ var _ = Describe("Helpers for nudges", func() {
 
 		It("reports all missing references when components list is empty", func() {
 			nudges := []v1beta2.NudgeRelationship{
-				{From: "comp-a", To: "comp-b"},
+				{From: v1beta2.ComponentVersion{Component: "comp-a"}, To: v1beta2.ComponentVersion{Component: "comp-b"}},
 			}
 
 			missing, msg := helpers.FindMissingNudgeConfigReferences(nil, nudges, namespace)
