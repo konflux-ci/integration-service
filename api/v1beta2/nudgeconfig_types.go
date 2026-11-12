@@ -29,6 +29,7 @@ const (
 	DefaultBatchFailurePolicy             = konfluxv1beta2.DefaultBatchFailurePolicy
 	NudgeConfigConditionForceFireRejected = konfluxv1beta2.NudgeConfigConditionForceFireRejected
 	NudgeConfigConditionForceFireIgnored  = konfluxv1beta2.NudgeConfigConditionForceFireIgnored
+	NudgeConfigConditionBatchBlocked      = konfluxv1beta2.NudgeConfigConditionBatchBlocked
 	BatchPhaseAccumulating                = konfluxv1beta2.BatchPhaseAccumulating
 	BatchPhaseBlocked                     = konfluxv1beta2.BatchPhaseBlocked
 	BatchPhaseFiring                      = konfluxv1beta2.BatchPhaseFiring

@@ -29,6 +29,7 @@ import (
 	tektonconsts "github.com/konflux-ci/integration-service/tekton/consts"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/util/retry"
@@ -117,12 +118,14 @@ func ProcessForceFireAction(ctx context.Context, c client.Client, nudgeConfig *v
 			batch.Phase = v1beta2.BatchPhaseFailed
 			batch.Message = err.Error()
 			latest.Status.ActiveBatches[batchIdx] = *batch
+			ReconcileBatchBlockedCondition(latest, metav1.Now())
 			if patchErr := c.Status().Patch(ctx, latest, client.MergeFromWithOptions(original, client.MergeFromWithOptimisticLock{})); patchErr != nil {
 				return patchErr
 			}
 			return err
 		}
 		latest.Status.ActiveBatches[batchIdx] = *batch
+		ReconcileBatchBlockedCondition(latest, metav1.Now())
 		return c.Status().Patch(ctx, latest, client.MergeFromWithOptions(original, client.MergeFromWithOptimisticLock{}))
 	})
 }
@@ -618,6 +621,7 @@ func recordBuildPLRForBatchedNudge(
 		scheduleBatchFire(batch, now, debounce)
 
 		latest.Status.ActiveBatches[batchIdx] = *batch
+		ReconcileBatchBlockedCondition(latest, now)
 		return c.Status().Patch(ctx, latest, client.MergeFromWithOptions(original, client.MergeFromWithOptimisticLock{}))
 	})
 }
@@ -664,6 +668,7 @@ func recordSuccessForBatchedNudge(
 		scheduleBatchFire(batch, now, debounce)
 
 		latest.Status.ActiveBatches[batchIdx] = *batch
+		ReconcileBatchBlockedCondition(latest, now)
 		return c.Status().Patch(ctx, latest, client.MergeFromWithOptions(original, client.MergeFromWithOptimisticLock{}))
 	})
 }
@@ -709,6 +714,7 @@ func recordFailureForBatchedNudge(
 		}
 
 		latest.Status.ActiveBatches[batchIdx] = *batch
+		ReconcileBatchBlockedCondition(latest, now)
 		return c.Status().Patch(ctx, latest, client.MergeFromWithOptions(original, client.MergeFromWithOptimisticLock{}))
 	})
 }
@@ -887,16 +893,7 @@ func resolveReferenceBuildPLR(
 }
 
 func setNudgeConfigCondition(nc *v1beta2.NudgeConfig, conditionType string, status metav1.ConditionStatus, reason, message string, now metav1.Time) {
-	for i := range nc.Status.Conditions {
-		if nc.Status.Conditions[i].Type == conditionType {
-			nc.Status.Conditions[i].Status = status
-			nc.Status.Conditions[i].Reason = reason
-			nc.Status.Conditions[i].Message = message
-			nc.Status.Conditions[i].LastTransitionTime = now
-			return
-		}
-	}
-	nc.Status.Conditions = append(nc.Status.Conditions, metav1.Condition{
+	meta.SetStatusCondition(&nc.Status.Conditions, metav1.Condition{
 		Type:               conditionType,
 		Status:             status,
 		Reason:             reason,

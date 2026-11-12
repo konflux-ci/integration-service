@@ -112,6 +112,11 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return reconcile.Result{}, err
 	}
 
+	if err := nudging.SyncBatchBlockedCondition(ctx, r.Client, nudgeConfig); err != nil {
+		logger.Error(err, "Failed to sync BatchBlocked condition")
+		return reconcile.Result{}, err
+	}
+
 	if err := r.Get(ctx, req.NamespacedName, nudgeConfig); err != nil {
 		return reconcile.Result{}, err
 	}
