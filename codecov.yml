@@ -16,6 +16,13 @@ ignore:
 - '*.md'
 - '*.toml'
 - '*.yaml'
+
+flags:
+  unit-tests:
+    carryforward: true
+  e2e-tests:
+    carryforward: true
+
 coverage:
   status:
     project:
