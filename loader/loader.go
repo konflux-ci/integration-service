@@ -24,6 +24,7 @@ import (
 
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/konflux/v1alpha1"
 	oldapplicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
+	imagerepositoryv1alpha1 "github.com/konflux-ci/image-controller/api/v1alpha1"
 	"github.com/konflux-ci/integration-service/api/konflux/v1beta2"
 	integrationv1beta2 "github.com/konflux-ci/integration-service/api/v1beta2"
 	"github.com/konflux-ci/integration-service/gitops"
@@ -105,6 +106,7 @@ type ObjectLoader interface {
 	GetSecret(ctx context.Context, c client.Client, name, namespace string) (*corev1.Secret, error)
 	GetServiceAccount(ctx context.Context, c client.Client, name, namespace string) (*corev1.ServiceAccount, error)
 	GetAllRepositoriesInNamespace(ctx context.Context, c client.Client, namespace string) (*[]pacv1alpha1.Repository, error)
+	GetImageRepositoriesForComponent(ctx context.Context, c client.Client, componentName, namespace string) (*[]imagerepositoryv1alpha1.ImageRepository, error)
 
 	// objectLoader prevents implementations outside this package.
 	objectLoader()
@@ -1144,6 +1146,22 @@ func (l *loader) GetAllRepositoriesInNamespace(ctx context.Context, c client.Cli
 	}
 
 	return &repositories.Items, nil
+}
+
+// GetImageRepositoriesForComponent returns the ImageRepositories in the given namespace that carry the given Component's label.
+func (l *loader) GetImageRepositoriesForComponent(ctx context.Context, c client.Client, componentName, namespace string) (*[]imagerepositoryv1alpha1.ImageRepository, error) {
+	imageRepositories := &imagerepositoryv1alpha1.ImageRepositoryList{}
+	opts := []client.ListOption{
+		client.InNamespace(namespace),
+		client.MatchingLabels{tektonconsts.ImageRepositoryComponentLabel: componentName},
+	}
+
+	err := c.List(ctx, imageRepositories, opts...)
+	if err != nil {
+		return nil, err
+	}
+
+	return &imageRepositories.Items, nil
 }
 
 // labelRequirement builds a ListEither clause. Owned keys are queried in both

@@ -21,6 +21,7 @@ import (
 	"fmt"
 
 	oldapplicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
+	imagerepositoryv1alpha1 "github.com/konflux-ci/image-controller/api/v1alpha1"
 	"github.com/konflux-ci/integration-service/api/konflux/v1beta2"
 	integrationv1beta2 "github.com/konflux-ci/integration-service/api/v1beta2"
 	toolkit "github.com/konflux-ci/operator-toolkit/loader"
@@ -86,6 +87,7 @@ const (
 	SecretContextKey
 	ServiceAccountContextKey
 	RepositoriesContextKey
+	ImageRepositoriesContextKey
 )
 
 func (l *mockLoader) objectLoader() {}
@@ -611,4 +613,13 @@ func (l *mockLoader) GetAllRepositoriesInNamespace(ctx context.Context, c client
 	}
 	repositories, err := toolkit.GetMockedResourceAndErrorFromContext(ctx, RepositoriesContextKey, []pacv1alpha1.Repository{})
 	return &repositories, err
+}
+
+// GetImageRepositoriesForComponent returns the resource and error passed as values of the context.
+func (l *mockLoader) GetImageRepositoriesForComponent(ctx context.Context, c client.Client, componentName, namespace string) (*[]imagerepositoryv1alpha1.ImageRepository, error) {
+	if ctx.Value(ImageRepositoriesContextKey) == nil {
+		return l.loader.GetImageRepositoriesForComponent(ctx, c, componentName, namespace)
+	}
+	imageRepositories, err := toolkit.GetMockedResourceAndErrorFromContext(ctx, ImageRepositoriesContextKey, []imagerepositoryv1alpha1.ImageRepository{})
+	return &imageRepositories, err
 }

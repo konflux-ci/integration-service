@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
@@ -27,10 +28,12 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/apiutil"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
+	imagerepositoryv1alpha1 "github.com/konflux-ci/image-controller/api/v1alpha1"
 	tektonconsts "github.com/konflux-ci/integration-service/tekton/consts"
 )
 
@@ -61,7 +64,8 @@ func IsStaleOwnerError(err error) bool {
 // garbage collection removes the object when the last owner goes. An object that already exists is
 // never updated here: OpenShift's OwnerReferencesPermissionEnforcement admission plugin refuses a
 // change to ownerReferences by a requester that may not delete the object, and integration-service is
-// not granted delete. The push credential is linked to the account by image-controller (STONEINTG-1804).
+// not granted delete. The push credential is linked to the account by LinkComponentPushSecrets, just
+// before an integration PipelineRun that runs as the account is created (STONEINTG-1804).
 // Returns an error that IsStaleOwnerError recognizes when the caller should requeue.
 func EnsureIntegrationPipelineServiceAccountExists(ctx context.Context, adapterClient client.Client, logger IntegrationLogger, owner client.Object) error {
 	name := ComponentIntegrationPipelineServiceAccountName(owner.GetName())
@@ -94,6 +98,61 @@ func EnsureIntegrationPipelineServiceAccountExists(ctx context.Context, adapterC
 	}
 
 	return nil
+}
+
+// LinkComponentPushSecrets adds the push secret of every ImageRepository in imageRepositories to the
+// secrets list of its-pipeline-<component> (STONEINTG-1804), so that an integration PipelineRun
+// running as that account can push to the component's image repository. The caller loads the
+// appstudio.redhat.com ImageRepositories that carry the Component's label; every one it passes is
+// linked. The secret's name is read from status.credentials.push-secret, which image-controller
+// writes when it provisions the ImageRepository. No Secret is read and imagePullSecrets is left as it
+// is. Nothing is unlinked: Tekton skips a listed Secret that no longer exists.
+// It returns true when the account lists at least one such push secret after the call. It returns
+// false and no error when there is nothing to link: no ImageRepository in imageRepositories has a
+// push secret name. An account that does not exist is returned as the NotFound error of the read.
+func LinkComponentPushSecrets(ctx context.Context, adapterClient client.Client, logger IntegrationLogger, namespace, componentName string, imageRepositories []imagerepositoryv1alpha1.ImageRepository) (bool, error) {
+	var pushSecretNames []string
+	for _, imageRepository := range imageRepositories {
+		name := imageRepository.Status.Credentials.PushSecretName
+		if name != "" && imageRepository.DeletionTimestamp.IsZero() {
+			pushSecretNames = append(pushSecretNames, name)
+		}
+	}
+	if len(pushSecretNames) == 0 {
+		return false, nil
+	}
+
+	key := types.NamespacedName{Namespace: namespace, Name: ComponentIntegrationPipelineServiceAccountName(componentName)}
+	updated := false
+	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		account := &corev1.ServiceAccount{}
+		if err := adapterClient.Get(ctx, key, account); err != nil {
+			return err
+		}
+		listed := len(account.Secrets)
+		for _, name := range pushSecretNames {
+			if !slices.ContainsFunc(account.Secrets, func(ref corev1.ObjectReference) bool { return ref.Name == name }) {
+				account.Secrets = append(account.Secrets, corev1.ObjectReference{Name: name})
+			}
+		}
+		if len(account.Secrets) == listed {
+			return nil
+		}
+		if err := adapterClient.Update(ctx, account); err != nil {
+			return err
+		}
+		updated = true
+		return nil
+	})
+	if err != nil {
+		return false, fmt.Errorf("failed to link the push secret to ServiceAccount %s/%s: %w", key.Namespace, key.Name, err)
+	}
+	if updated {
+		logger.Info("Linked the component's push secret to the integration pipeline ServiceAccount",
+			"serviceAccount", key.Name, "namespace", key.Namespace, "secrets", pushSecretNames)
+	}
+
+	return true, nil
 }
 
 // createObjectWithOwnerReferenceIfMissing creates obj with an owner reference to owner or, when an

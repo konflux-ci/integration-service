@@ -24,6 +24,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	oldapplicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
+	imagerepositoryv1alpha1 "github.com/konflux-ci/image-controller/api/v1alpha1"
 	konfluxv1beta2 "github.com/konflux-ci/integration-service/api/konflux/v1beta2"
 	"github.com/konflux-ci/integration-service/api/v1beta2"
 	releasev1alpha1 "github.com/konflux-ci/release-service/api/v1alpha1"
@@ -863,6 +864,21 @@ var _ = Describe("Release Adapter", Ordered, func() {
 			})
 			resource, err := loader.GetAllRepositoriesInNamespace(mockContext, nil, "")
 			Expect(resource).To(Equal(&repositories))
+			Expect(err).ToNot(HaveOccurred())
+		})
+	})
+
+	Context("When calling GetImageRepositoriesForComponent", func() {
+		It("returns resource and error from the context", func() {
+			imageRepositories := []imagerepositoryv1alpha1.ImageRepository{}
+			mockContext := toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{
+					ContextKey: ImageRepositoriesContextKey,
+					Resource:   imageRepositories,
+				},
+			})
+			resource, err := loader.GetImageRepositoriesForComponent(mockContext, nil, "", "")
+			Expect(resource).To(Equal(&imageRepositories))
 			Expect(err).ToNot(HaveOccurred())
 		})
 	})

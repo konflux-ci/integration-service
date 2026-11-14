@@ -38,6 +38,7 @@ import (
 	types "k8s.io/apimachinery/pkg/types"
 
 	oldapplicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
+	imagerepositoryv1alpha1 "github.com/konflux-ci/image-controller/api/v1alpha1"
 	"github.com/konflux-ci/integration-service/gitops"
 	"github.com/konflux-ci/integration-service/pkg/keys"
 	releasev1alpha1 "github.com/konflux-ci/release-service/api/v1alpha1"
@@ -2006,6 +2007,35 @@ var _ = Describe("Loader secret, service account, and repository fetches", func(
 			repos, err := objectLoader.GetAllRepositoriesInNamespace(ctx, k8sClient, "default")
 			Expect(err).NotTo(HaveOccurred())
 			Expect(*repos).To(ContainElement(HaveField("Name", repo.Name)))
+		})
+	})
+
+	Context("When listing the ImageRepositories of a Component", func() {
+		It("should return only the ImageRepositories that carry the Component's label", func() {
+			imageRepository := &imagerepositoryv1alpha1.ImageRepository{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "loader-test-image-repository",
+					Namespace: "default",
+					Labels:    map[string]string{tektonconsts.ImageRepositoryComponentLabel: "loader-test-component"},
+				},
+			}
+			otherImageRepository := imageRepository.DeepCopy()
+			otherImageRepository.Name = "loader-test-other-image-repository"
+			otherImageRepository.Labels[tektonconsts.ImageRepositoryComponentLabel] = "loader-test-other-component"
+			Expect(k8sClient.Create(ctx, imageRepository)).To(Succeed())
+			Expect(k8sClient.Create(ctx, otherImageRepository)).To(Succeed())
+			defer func() {
+				Expect(k8sClient.Delete(ctx, imageRepository)).To(Succeed())
+				Expect(k8sClient.Delete(ctx, otherImageRepository)).To(Succeed())
+			}()
+
+			Eventually(func() error {
+				return k8sClient.Get(ctx, client.ObjectKeyFromObject(otherImageRepository), &imagerepositoryv1alpha1.ImageRepository{})
+			}).Should(Succeed())
+
+			imageRepositories, err := objectLoader.GetImageRepositoriesForComponent(ctx, k8sClient, "loader-test-component", "default")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(*imageRepositories).To(ConsistOf(HaveField("Name", imageRepository.Name)))
 		})
 	})
 })

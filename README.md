@@ -30,6 +30,7 @@ Monitors build Tekton PipelineRun CRs and manages the following:
 Monitors Snapshot CRs and manages the following:
 - Ensures that all Integration pipeline runs associated with the Snapshot and IntegrationTestScenarios are started
 - Ensures that any requested re-runs of integration testing pipelines are triggered
+- Links the component repository's push secret into the `its-pipeline-<component>` ServiceAccount before it creates an integration pipeline run that runs as that account
 - Creates automated Releases for Snapshots that pass all required integration tests if so configured
 - Creates PR Group Snapshots if necessary
 - Manages override Snapshots and uses them to reset the Global Candidate List(s) for Components
@@ -62,7 +63,7 @@ Monitors IntegrationTestScenario CRs and manages the following:
 ### Component Controller
 
 Monitors `appstudio.redhat.com` Component CRs and manages the following:
-- Ensures the per-component `its-pipeline-<component>` ServiceAccount and a RoleBinding of the same name to the `konflux-integration-runner` ClusterRole (the role the shared runner account uses) exist when a Component is created, with or without an Application. Both are owned by the Component and removed with it. The account carries no image pull secrets; image-controller links the component repository's push secret into it, and integration PipelineRuns for component Snapshots run as it.
+- Ensures the per-component `its-pipeline-<component>` ServiceAccount and a RoleBinding of the same name to the `konflux-integration-runner` ClusterRole (the role the shared runner account uses) exist when a Component is created, with or without an Application. Both are owned by the Component and removed with it. The account carries no image pull secrets. The snapshot controller links the component repository's push secret into the account just before it creates an integration PipelineRun that runs as that account.
 - Regenerates the latest Snapshot in case of component deletion based on the Application contents. This part is planned to be deprecated in favor of the ComponentGroup model.
 
 ## Dependencies
