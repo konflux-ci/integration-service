@@ -347,8 +347,21 @@ var _ = Describe("Helpers for the per-component integration pipeline ServiceAcco
 			Expect(linked).To(BeTrue())
 			second := &corev1.ServiceAccount{}
 			Expect(c.Get(ctx, key, second)).To(Succeed())
-			Expect(second.Secrets).To(HaveLen(1))
+			Expect(second.Secrets).To(HaveLen(2))
 			Expect(second.ResourceVersion).To(Equal(first.ResourceVersion))
+		})
+
+		It("links components-namespace-pull next to the push secret and leaves imagePullSecrets alone", func() {
+			c := newClient(interceptor.Funcs{}, account("user-linked-secret"))
+
+			linked, err := helpers.LinkComponentPushSecrets(ctx, c, log, namespace, componentName, imageRepositories(pushSecretName))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(linked).To(BeTrue())
+			Expect(secretNames(c)).To(Equal([]string{pushSecretName, "user-linked-secret", tektonconsts.DefaultIntegrationPipelineImagePullSecretName}))
+
+			sa := &corev1.ServiceAccount{}
+			Expect(c.Get(ctx, key, sa)).To(Succeed())
+			Expect(sa.ImagePullSecrets).To(BeEmpty())
 		})
 
 		It("reports nothing to link and does not read the account when no ImageRepository has a push secret name", func() {
@@ -383,6 +396,87 @@ var _ = Describe("Helpers for the per-component integration pipeline ServiceAcco
 			Expect(err).To(MatchError(errAPI))
 			Expect(linked).To(BeFalse())
 			Expect(secretNames(c)).To(BeEmpty())
+		})
+
+		Context("When the secret names of the shared runner account are passed as well", func() {
+			It("should add components-namespace-pull and the shared names behind the push secret in one update and write nothing on a second call", func() {
+				updates := 0
+				funcs := interceptor.Funcs{
+					Update: func(ctx context.Context, c client.WithWatch, obj client.Object, opts ...client.UpdateOption) error {
+						updates++
+						return c.Update(ctx, obj, opts...)
+					},
+				}
+				c := newClient(funcs, account(accountName+"-dockercfg-x7k2p"))
+
+				// The caller hands over what the shared runner lists. A name that is passed twice, an
+				// empty name, the name the helper adds itself and the push secret's own name are each
+				// listed at most once.
+				for range 2 {
+					linked, err := helpers.LinkComponentPushSecrets(ctx, c, log, namespace, componentName, imageRepositories(pushSecretName),
+						"user-login", "", "user-login", tektonconsts.DefaultIntegrationPipelineImagePullSecretName, pushSecretName)
+					Expect(err).NotTo(HaveOccurred())
+					Expect(linked).To(BeTrue())
+					Expect(updates).To(Equal(1))
+					Expect(secretNames(c)).To(Equal([]string{
+						pushSecretName,
+						accountName + "-dockercfg-x7k2p",
+						tektonconsts.DefaultIntegrationPipelineImagePullSecretName,
+						"user-login",
+					}))
+				}
+			})
+
+			It("should put a missing push secret name at the front and not move one that is already listed", func() {
+				c := newClient(interceptor.Funcs{}, account("hand", pushSecretName))
+
+				linked, err := helpers.LinkComponentPushSecrets(ctx, c, log, namespace, componentName,
+					append(imageRepositories(pushSecretName), imageRepositories("second-push-secret")...), "user-login")
+				Expect(err).NotTo(HaveOccurred())
+				Expect(linked).To(BeTrue())
+				Expect(secretNames(c)).To(Equal([]string{
+					"second-push-secret",
+					"hand",
+					pushSecretName,
+					tektonconsts.DefaultIntegrationPipelineImagePullSecretName,
+					"user-login",
+				}))
+			})
+
+			It("should add none of them when no ImageRepository has a push secret name", func() {
+				c := newClient(interceptor.Funcs{}, account())
+
+				linked, err := helpers.LinkComponentPushSecrets(ctx, c, log, namespace, componentName, imageRepositories(""), "user-login")
+				Expect(err).NotTo(HaveOccurred())
+				Expect(linked).To(BeFalse())
+				Expect(secretNames(c)).To(BeEmpty())
+			})
+		})
+
+		Context("When SharedRunnerSecretNames reads the shared runner account", func() {
+			It("should return the names in its secrets list without the account's own token and dockercfg secrets", func() {
+				runnerName := tektonconsts.DefaultIntegrationPipelineServiceAccount
+				runner := &corev1.ServiceAccount{
+					ObjectMeta: metav1.ObjectMeta{Name: runnerName},
+					Secrets: []corev1.ObjectReference{
+						{Name: runnerName + "-dockercfg-x7k2p"},
+						{Name: tektonconsts.DefaultIntegrationPipelineImagePullSecretName},
+						{Name: runnerName + "-token-9gq4d"},
+						{Name: ""},
+						{Name: runnerName + "-extra"},
+						{Name: "other-account-token-9gq4d"},
+						{Name: runnerName + "-dockercfg"},
+					},
+					ImagePullSecrets: []corev1.LocalObjectReference{{Name: "pull-only-login"}},
+				}
+
+				Expect(helpers.SharedRunnerSecretNames(runner)).To(Equal([]string{
+					tektonconsts.DefaultIntegrationPipelineImagePullSecretName,
+					runnerName + "-extra",
+					"other-account-token-9gq4d",
+					runnerName + "-dockercfg",
+				}))
+			})
 		})
 	})
 })

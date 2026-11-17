@@ -30,7 +30,8 @@ Monitors build Tekton PipelineRun CRs and manages the following:
 Monitors Snapshot CRs and manages the following:
 - Ensures that all Integration pipeline runs associated with the Snapshot and IntegrationTestScenarios are started
 - Ensures that any requested re-runs of integration testing pipelines are triggered
-- Links the component repository's push secret into the `its-pipeline-<component>` ServiceAccount before it creates an integration pipeline run that runs as that account
+- Runs the integration pipeline runs of a component Snapshot as the component's `its-pipeline-<component>` ServiceAccount, unless the scenario's own PipelineRun definition names a ServiceAccount. Before it creates such a run it links the component repository's push secret, `components-namespace-pull` and the names on the `secrets` list of `konflux-integration-runner` into the account's `secrets` list. When the account does not exist or no push secret could be linked, the run uses `konflux-integration-runner` and carries the annotation `test.appstudio.openshift.io/service-account-fallback` with the reason, `account-missing` or `no-push-secret`
+- Adds the params `image-url` (the repository, without tag or digest) and `image-digest` of the Snapshot's component to the integration pipeline runs of a component Snapshot. A param of the same name that the scenario sets is kept
 - Creates automated Releases for Snapshots that pass all required integration tests if so configured
 - Creates PR Group Snapshots if necessary
 - Manages override Snapshots and uses them to reset the Global Candidate List(s) for Components
@@ -63,7 +64,7 @@ Monitors IntegrationTestScenario CRs and manages the following:
 ### Component Controller
 
 Monitors `appstudio.redhat.com` Component CRs and manages the following:
-- Ensures the per-component `its-pipeline-<component>` ServiceAccount and a RoleBinding of the same name to the `konflux-integration-runner` ClusterRole (the role the shared runner account uses) exist when a Component is created, with or without an Application. Both are owned by the Component and removed with it. The account carries no image pull secrets. The snapshot controller links the component repository's push secret into the account just before it creates an integration PipelineRun that runs as that account.
+- Ensures the per-component `its-pipeline-<component>` ServiceAccount and a RoleBinding of the same name to the `konflux-integration-runner` ClusterRole (the role the shared runner account uses) exist when a Component is created, with or without an Application. Both are owned by the Component and removed with it. The account's `imagePullSecrets` list is left empty. The snapshot controller links the component repository's push secret, `components-namespace-pull` and the names on the `secrets` list of `konflux-integration-runner` into the account's `secrets` list just before it creates an integration PipelineRun that runs as that account.
 - Regenerates the latest Snapshot in case of component deletion based on the Application contents. This part is planned to be deprecated in favor of the ComponentGroup model.
 
 ## Dependencies

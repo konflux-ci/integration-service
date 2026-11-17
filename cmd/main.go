@@ -186,8 +186,8 @@ func main() {
 		RetryPeriod:            &leaderElectorRetryPeriod,
 		LeaderElectionID:       "03c7e15b.redhat.com",
 		// Secret and konflux-ci.dev Component Gets must not start cluster-wide informers. The
-		// appstudio.redhat.com ImageRepository is read live as well: it is only listed when an
-		// integration PipelineRun is about to run as its-pipeline-<component>, and image-controller is
+		// appstudio.redhat.com ImageRepository is read live as well: it is only listed before an
+		// integration PipelineRun of a component Snapshot is created, and image-controller is
 		// optional, so the cluster may not serve the kind.
 		Client: client.Options{
 			Cache: &client.CacheOptions{

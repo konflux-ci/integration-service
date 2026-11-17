@@ -40,6 +40,7 @@ import (
 
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/konflux/v1alpha1"
 	oldapplicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
+	imagerepositoryv1alpha1 "github.com/konflux-ci/image-controller/api/v1alpha1"
 	releasev1alpha1 "github.com/konflux-ci/release-service/api/v1alpha1"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	resolutionv1beta1 "github.com/tektoncd/pipeline/pkg/apis/resolution/v1beta1"
@@ -102,6 +103,7 @@ var _ = BeforeSuite(func() {
 	Expect(v1beta2.AddToScheme(clientsetscheme.Scheme)).To(Succeed())
 	Expect(konfluxv1beta2.AddToScheme(clientsetscheme.Scheme)).To(Succeed())
 	Expect(resolutionv1beta1.AddToScheme(clientsetscheme.Scheme)).To(Succeed())
+	Expect(imagerepositoryv1alpha1.AddToScheme(clientsetscheme.Scheme)).To(Succeed())
 
 	k8sManager, _ := ctrl.NewManager(cfg, ctrl.Options{
 		Scheme: clientsetscheme.Scheme,
