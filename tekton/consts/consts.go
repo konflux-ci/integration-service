@@ -100,6 +100,28 @@ const (
 	// to stay equal to it.
 	ImageRepositoryComponentLabel = "appstudio.redhat.com/component"
 
+	// ServiceAccountFallbackAnnotation is set on an integration PipelineRun for a component Snapshot that
+	// runs as DefaultIntegrationPipelineServiceAccount because its-pipeline-<component> could not be used
+	// (STONEINTG-1800). Its value is the reason. Such a run can test but cannot attest its result. It is
+	// written in the key style of the PipelineRun, like every test annotation.
+	ServiceAccountFallbackAnnotation = "test.appstudio.openshift.io/service-account-fallback"
+
+	// ServiceAccountFallbackAccountMissing is the ServiceAccountFallbackAnnotation value for a component
+	// whose its-pipeline-<component> ServiceAccount does not exist.
+	ServiceAccountFallbackAccountMissing = "account-missing"
+
+	// ServiceAccountFallbackNoPushSecret is the ServiceAccountFallbackAnnotation value for a component
+	// whose push secret could not be linked to its-pipeline-<component>.
+	ServiceAccountFallbackNoPushSecret = "no-push-secret"
+
+	// ComponentImageUrlParamName is the param that carries the image repository of the component a
+	// component Snapshot was created for. A param of this name that the PipelineRun already has is kept.
+	ComponentImageUrlParamName = "image-url"
+
+	// ComponentImageDigestParamName is the param that carries the image digest of the component a
+	// component Snapshot was created for. A param of this name that the PipelineRun already has is kept.
+	ComponentImageDigestParamName = "image-digest"
+
 	/*
 	 * Build PipelineConstants
 	 */

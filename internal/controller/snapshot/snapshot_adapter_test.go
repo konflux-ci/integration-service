@@ -46,6 +46,7 @@ import (
 	konfluxv1beta2 "github.com/konflux-ci/integration-service/api/konflux/v1beta2"
 	"github.com/konflux-ci/integration-service/api/v1beta2"
 	"github.com/konflux-ci/integration-service/loader"
+	"github.com/konflux-ci/integration-service/pkg/keys"
 	"github.com/konflux-ci/integration-service/pkg/tracing"
 	"github.com/konflux-ci/integration-service/status"
 	tekton "github.com/konflux-ci/integration-service/tekton"
@@ -63,6 +64,7 @@ import (
 	v1 "knative.dev/pkg/apis/duck/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 
 	"github.com/konflux-ci/integration-service/gitops"
 	"github.com/konflux-ci/integration-service/helpers"
@@ -1474,7 +1476,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			Expect(found).To(BeFalse())
 		})
 
-		It("ensures serviceAccount is generated correctly for the Integration test PLR", func() {
+		It("ensures the Integration test PLR falls back to the shared runner when no push secret can be linked", func() {
 			serviceAccountName := tektonconsts.DefaultIntegrationPipelineServiceAccount
 
 			pipelineRun, err := adapter.createIntegrationPipelineRun(integrationTestScenario)
@@ -1482,6 +1484,7 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 			Expect(pipelineRun).ToNot(BeNil())
 
 			Expect(pipelineRun.Spec.TaskRunTemplate.ServiceAccountName).To(Equal(serviceAccountName))
+			Expect(pipelineRun.Annotations).To(HaveKeyWithValue(tektonconsts.ServiceAccountFallbackAnnotation, tektonconsts.ServiceAccountFallbackNoPushSecret))
 		})
 
 		Context("When the component's push secret is linked before the PipelineRun is created", func() {
@@ -1534,13 +1537,6 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 				return []imagerepositoryv1alpha1.ImageRepository{ir}
 			}
 
-			// pipelineRunAs is an integration PipelineRun that is about to be created with the given account.
-			pipelineRunAs := func(serviceAccountName string) *tektonv1.PipelineRun {
-				pipelineRun := &tektonv1.PipelineRun{}
-				pipelineRun.Spec.TaskRunTemplate.ServiceAccountName = serviceAccountName
-				return pipelineRun
-			}
-
 			linkedSecrets := func(linkAdapter *Adapter) []corev1.ObjectReference {
 				sa := &corev1.ServiceAccount{}
 				Expect(linkAdapter.client.Get(ctx, types.NamespacedName{Name: accountName, Namespace: "default"}, sa)).To(Succeed())
@@ -1552,48 +1548,321 @@ var _ = Describe("Snapshot Adapter", Ordered, func() {
 				log = helpers.IntegrationLogger{Logger: buflogr.NewWithBuffer(&buf)}
 			})
 
-			It("links the push secret when the PipelineRun runs as the component's account, once per pass", func() {
+			Context("When the imagePullSecrets of the PipelineRun are set", func() {
+				const runnerName = tektonconsts.DefaultIntegrationPipelineServiceAccount
+
+				// pulling is a ServiceAccount whose imagePullSecrets list has pullSecretNames.
+				pulling := func(name string, pullSecretNames ...string) *corev1.ServiceAccount {
+					sa := &corev1.ServiceAccount{ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "default"}}
+					for _, pullSecretName := range pullSecretNames {
+						sa.ImagePullSecrets = append(sa.ImagePullSecrets, corev1.LocalObjectReference{Name: pullSecretName})
+					}
+					return sa
+				}
+				// runAs is a PipelineRun that runs as name, with one task for each of taskAccountNames.
+				runAs := func(name string, taskAccountNames ...string) *tekton.IntegrationPipelineRun {
+					pipelineRun := &tekton.IntegrationPipelineRun{}
+					pipelineRun.Spec.TaskRunTemplate.ServiceAccountName = name
+					for _, taskAccountName := range taskAccountNames {
+						pipelineRun.Spec.TaskRunSpecs = append(pipelineRun.Spec.TaskRunSpecs, tektonv1.PipelineTaskRunSpec{ServiceAccountName: taskAccountName})
+					}
+					return pipelineRun
+				}
+				refs := func(names ...string) []corev1.LocalObjectReference {
+					return pulling("", names...).ImagePullSecrets
+				}
+
+				It("should name the pull secrets of the shared runner and the account, and those of another account for its task", func() {
+					linkAdapter := newLinkAdapter(hasCGSnapshot, imageRepositories(), nil, pulling(runnerName, "runner-pull", "", "shared", "runner-pull"),
+						pulling(accountName, "shared", "account-pull"), pulling("other-account", "other-pull"))
+
+					pipelineRun := runAs(accountName, "other-account", "missing-account", runnerName)
+					Expect(linkAdapter.addImagePullSecrets(pipelineRun, accountName)).To(Succeed())
+					Expect(pipelineRun.Spec.TaskRunTemplate.PodTemplate.ImagePullSecrets).To(Equal(refs("runner-pull", "shared", "account-pull")))
+					Expect(pipelineRun.Spec.TaskRunSpecs[0].PodTemplate.ImagePullSecrets).To(Equal(refs("other-pull")))
+					Expect(pipelineRun.Spec.TaskRunSpecs[1].PodTemplate).To(BeNil())
+					Expect(pipelineRun.Spec.TaskRunSpecs[2].PodTemplate.ImagePullSecrets).To(Equal(refs("runner-pull", "shared")))
+
+					// Through the creation of a PipelineRun, and nothing is written to the account's imagePullSecrets.
+					created, err := linkAdapter.createIntegrationPipelineRun(integrationTestScenario)
+					Expect(err).NotTo(HaveOccurred())
+					Expect(created.Spec.TaskRunTemplate.PodTemplate.ImagePullSecrets).To(Equal(refs("runner-pull", "shared", "account-pull")))
+					sa := &corev1.ServiceAccount{}
+					Expect(linkAdapter.client.Get(ctx, types.NamespacedName{Name: accountName, Namespace: "default"}, sa)).To(Succeed())
+					Expect(sa.ImagePullSecrets).To(Equal(refs("shared", "account-pull")))
+
+					// The link step is done for this pass, so a failing read is the one for the imagePullSecrets.
+					linkAdapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+						{ContextKey: loader.ServiceAccountContextKey, Err: errors.NewServiceUnavailable("the API server is busy")},
+					})
+					_, err = linkAdapter.createIntegrationPipelineRun(integrationTestScenario)
+					Expect(isRetryablePipelineRunCreationError(err)).To(BeTrue())
+				})
+
+				It("should set nothing when the PipelineRun does not run as the account, has its own list, or the shared runner lists none", func() {
+					linkAdapter := newLinkAdapter(hasCGSnapshot, nil, nil, pulling(runnerName, "runner-pull"), pulling(accountName), pulling("other-account", "other-pull"))
+
+					onRunner := runAs(runnerName)
+					Expect(linkAdapter.addImagePullSecrets(onRunner, runnerName)).To(Succeed())
+					Expect(onRunner.Spec.TaskRunTemplate.PodTemplate).To(BeNil())
+
+					onThirdAccount := runAs("my-own-account")
+					Expect(linkAdapter.addImagePullSecrets(onThirdAccount, accountName)).To(Succeed())
+					Expect(onThirdAccount.Spec.TaskRunTemplate.PodTemplate).To(BeNil())
+
+					withOwnList := runAs(accountName, "other-account").WithImagePullSecrets(accountName, []string{"own"})
+					Expect(linkAdapter.addImagePullSecrets(withOwnList, accountName)).To(Succeed())
+					Expect(withOwnList.Spec.TaskRunTemplate.PodTemplate.ImagePullSecrets).To(Equal(refs("own")))
+					Expect(withOwnList.Spec.TaskRunSpecs[0].PodTemplate).To(BeNil())
+
+					linkAdapter = newLinkAdapter(hasCGSnapshot, nil, nil, pulling(runnerName), pulling(accountName, "account-pull"))
+					runnerListsNone := runAs(accountName)
+					Expect(linkAdapter.addImagePullSecrets(runnerListsNone, accountName)).To(Succeed())
+					Expect(runnerListsNone.Spec.TaskRunTemplate.PodTemplate).To(BeNil())
+				})
+
+				It("should set nothing and log a failure to read an account that is not retryable", func() {
+					linkAdapter := newLinkAdapter(hasCGSnapshot, nil, nil, pulling(runnerName, "runner-pull"))
+					linkAdapter.client = interceptor.NewClient(linkAdapter.client.(client.WithWatch), interceptor.Funcs{
+						Get: func(ctx context.Context, c client.WithWatch, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+							if key.Name == accountName {
+								return fmt.Errorf("the account cannot be decoded")
+							}
+							return c.Get(ctx, key, obj, opts...)
+						},
+					})
+
+					pipelineRun := runAs(accountName)
+					Expect(linkAdapter.addImagePullSecrets(pipelineRun, accountName)).To(Succeed())
+					Expect(pipelineRun.Spec.TaskRunTemplate.PodTemplate).To(BeNil())
+					Expect(buf.String()).To(ContainSubstring("Failed to read a ServiceAccount, the PipelineRun gets no imagePullSecrets"))
+				})
+			})
+
+			It("links the push secret once per pass and reports no fallback", func() {
 				linkAdapter := newLinkAdapter(hasCGSnapshot, imageRepositories(), nil, account())
 
-				Expect(linkAdapter.linkComponentPushSecret(pipelineRunAs(accountName))).To(Succeed())
-				Expect(linkedSecrets(linkAdapter)).To(Equal([]corev1.ObjectReference{{Name: pushSecretName}}))
+				reason, err := linkAdapter.linkComponentPushSecret(componentName)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(reason).To(BeEmpty())
 
 				// A second list in the same pass would fail this call.
 				linkAdapter.context = listContext(nil, errors.NewServiceUnavailable("the API server is busy"))
-				Expect(linkAdapter.linkComponentPushSecret(pipelineRunAs(accountName))).To(Succeed())
+				reason, err = linkAdapter.linkComponentPushSecret(componentName)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(reason).To(BeEmpty())
+
+				Expect(linkedSecrets(linkAdapter)).To(Equal([]corev1.ObjectReference{
+					{Name: pushSecretName}, {Name: tektonconsts.DefaultIntegrationPipelineImagePullSecretName},
+				}))
 			})
 
-			It("logs that there is nothing to link when the Component has no push secret", func() {
+			It("reports no-push-secret when the Component has no push secret", func() {
 				linkAdapter := newLinkAdapter(hasCGSnapshot, nil, nil, account())
 
-				Expect(linkAdapter.linkComponentPushSecret(pipelineRunAs(accountName))).To(Succeed())
+				reason, err := linkAdapter.linkComponentPushSecret(componentName)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(reason).To(Equal(tektonconsts.ServiceAccountFallbackNoPushSecret))
 				Expect(linkedSecrets(linkAdapter)).To(BeEmpty())
 				Expect(buf.String()).To(ContainSubstring("Found no push secret to link"))
 			})
 
-			It("logs that there is nothing to link when the cluster does not serve the ImageRepository kind", func() {
+			It("reports no-push-secret when the cluster does not serve the ImageRepository kind", func() {
 				noKind := &meta.NoKindMatchError{GroupKind: imagerepositoryv1alpha1.GroupVersion.WithKind("ImageRepository").GroupKind()}
 				linkAdapter := newLinkAdapter(hasCGSnapshot, nil, noKind, account())
 
-				Expect(linkAdapter.linkComponentPushSecret(pipelineRunAs(accountName))).To(Succeed())
+				reason, err := linkAdapter.linkComponentPushSecret(componentName)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(reason).To(Equal(tektonconsts.ServiceAccountFallbackNoPushSecret))
 				Expect(buf.String()).To(ContainSubstring("Found no push secret to link"))
 			})
 
-			It("logs a failure that is not retryable and returns no error", func() {
-				linkAdapter := newLinkAdapter(hasCGSnapshot, imageRepositories(), nil)
+			It("reports no-push-secret and logs the error when the link fails for good", func() {
+				forbidden := errors.NewForbidden(corev1.Resource("imagerepositories"), "", nil)
+				linkAdapter := newLinkAdapter(hasCGSnapshot, nil, forbidden, account())
 
-				Expect(linkAdapter.linkComponentPushSecret(pipelineRunAs(accountName))).To(Succeed())
+				reason, err := linkAdapter.linkComponentPushSecret(componentName)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(reason).To(Equal(tektonconsts.ServiceAccountFallbackNoPushSecret))
 				Expect(buf.String()).To(ContainSubstring("Failed to link the component's push secret"))
-				Expect(linkAdapter.pushSecretLinkChecked).To(BeTrue())
 			})
 
 			It("returns a retryable failure and tries again on the next call", func() {
 				linkAdapter := newLinkAdapter(hasCGSnapshot, nil, errors.NewServiceUnavailable("the API server is busy"), account())
 
-				err := linkAdapter.linkComponentPushSecret(pipelineRunAs(accountName))
+				_, err := linkAdapter.linkComponentPushSecret(componentName)
 				Expect(isRetryablePipelineRunCreationError(err)).To(BeTrue())
 				Expect(linkAdapter.pushSecretLinkChecked).To(BeFalse())
-				Expect(linkAdapter.linkComponentPushSecret(pipelineRunAs(accountName))).NotTo(Succeed())
+
+				// The pass did not record an outcome, so this call lists again and fails again.
+				_, err = linkAdapter.linkComponentPushSecret(componentName)
+				Expect(isRetryablePipelineRunCreationError(err)).To(BeTrue())
+			})
+
+			It("lists nothing when the PipelineRun definition names another account", func() {
+				// A list in this pass would fail the call.
+				linkAdapter := newLinkAdapter(hasCGSnapshot, nil, errors.NewServiceUnavailable("the API server is busy"), account())
+
+				_, reason, err := linkAdapter.selectPipelineServiceAccount("my-own-account")
+				Expect(err).NotTo(HaveOccurred())
+				Expect(reason).To(BeEmpty())
+			})
+
+			It("keeps its-pipeline-<component> named in the PipelineRun definition when nothing is linked or the account is missing", func() {
+				for found, linkAdapter := range map[string]*Adapter{
+					tektonconsts.ServiceAccountFallbackNoPushSecret:   newLinkAdapter(hasCGSnapshot, nil, nil, account()),
+					tektonconsts.ServiceAccountFallbackAccountMissing: newLinkAdapter(hasCGSnapshot, imageRepositories(), nil),
+				} {
+					serviceAccountName, reason, err := linkAdapter.selectPipelineServiceAccount(accountName)
+					Expect(err).NotTo(HaveOccurred())
+					Expect(serviceAccountName).To(Equal(accountName), found)
+					Expect(reason).To(BeEmpty(), found)
+					Expect(linkAdapter.serviceAccountFallbackReason).To(Equal(found))
+				}
+			})
+
+			It("uses the runner for a Snapshot that is not a component Snapshot or has no component label", func() {
+				groupSnapshot := hasCGSnapshot.DeepCopy()
+				groupSnapshot.Labels[gitops.SnapshotTypeLabel] = gitops.SnapshotGroupType
+				unlabelledSnapshot := hasCGSnapshot.DeepCopy()
+				delete(unlabelledSnapshot.Labels, gitops.SnapshotComponentLabel)
+
+				for _, snapshot := range []*applicationapiv1alpha1.Snapshot{groupSnapshot, unlabelledSnapshot} {
+					// A list for either Snapshot would fail the call.
+					linkAdapter := newLinkAdapter(snapshot, nil, errors.NewServiceUnavailable("the API server is busy"), account())
+
+					serviceAccountName, reason, err := linkAdapter.selectPipelineServiceAccount("")
+					Expect(err).NotTo(HaveOccurred())
+					Expect(serviceAccountName).To(Equal(tektonconsts.DefaultIntegrationPipelineServiceAccount))
+					Expect(reason).To(BeEmpty())
+				}
+			})
+
+			It("selects its-pipeline-<component> for a new-style component Snapshot", func() {
+				newStyleSnapshot := hasCGSnapshot.DeepCopy()
+				newStyleSnapshot.Labels = map[string]string{
+					keys.Test("type").New:     gitops.SnapshotComponentType,
+					keys.BuildComponent().New: componentName,
+				}
+				linkAdapter := newLinkAdapter(newStyleSnapshot, imageRepositories(), nil, account())
+
+				serviceAccountName, reason, err := linkAdapter.selectPipelineServiceAccount("")
+				Expect(err).NotTo(HaveOccurred())
+				Expect(serviceAccountName).To(Equal(accountName))
+				Expect(reason).To(BeEmpty())
+			})
+
+			It("runs a component Snapshot's PipelineRun as its-pipeline-<component> with the component image params", func() {
+				snapshot := hasCGSnapshot.DeepCopy()
+				snapshot.Spec.Components[0].ContainerImage = sample_image + "@" + sampleDigest
+				linkAdapter := newLinkAdapter(snapshot, imageRepositories(), nil, account())
+
+				pipelineRun, err := linkAdapter.createIntegrationPipelineRun(integrationTestScenario)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(pipelineRun.Spec.TaskRunTemplate.ServiceAccountName).To(Equal(accountName))
+				Expect(pipelineRun.Annotations).NotTo(HaveKey(tektonconsts.ServiceAccountFallbackAnnotation))
+				Expect(linkedSecrets(linkAdapter)).To(ContainElement(corev1.ObjectReference{Name: pushSecretName}))
+				Expect(pipelineRun.Spec.Params).To(ContainElements(
+					tektonv1.Param{Name: tektonconsts.ComponentImageUrlParamName, Value: tektonv1.ParamValue{Type: tektonv1.ParamTypeString, StringVal: sample_image}},
+					tektonv1.Param{Name: tektonconsts.ComponentImageDigestParamName, Value: tektonv1.ParamValue{Type: tektonv1.ParamTypeString, StringVal: sampleDigest}},
+				))
+			})
+
+			It("falls back to the runner with the reason in an annotation when the account cannot be used", func() {
+				linkAdapter := newLinkAdapter(hasCGSnapshot, imageRepositories(), nil)
+
+				pipelineRun, err := linkAdapter.createIntegrationPipelineRun(integrationTestScenario)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(pipelineRun.Spec.TaskRunTemplate.ServiceAccountName).To(Equal(tektonconsts.DefaultIntegrationPipelineServiceAccount))
+				Expect(pipelineRun.Annotations).To(HaveKeyWithValue(tektonconsts.ServiceAccountFallbackAnnotation, tektonconsts.ServiceAccountFallbackAccountMissing))
+			})
+
+			It("creates no PipelineRun on a retryable failure", func() {
+				linkAdapter := newLinkAdapter(hasCGSnapshot, nil, errors.NewServiceUnavailable("the API server is busy"), account())
+
+				pipelineRun, err := linkAdapter.createIntegrationPipelineRun(integrationTestScenario)
+				Expect(isRetryablePipelineRunCreationError(err)).To(BeTrue())
+				Expect(pipelineRun).To(BeNil())
+
+				pipelineRuns := &tektonv1.PipelineRunList{}
+				Expect(linkAdapter.client.List(ctx, pipelineRuns)).To(Succeed())
+				Expect(pipelineRuns.Items).To(BeEmpty())
+			})
+
+			It("lists the ImageRepositories once for two scenarios and gives both runs the same account", func() {
+				linkAdapter := newLinkAdapter(hasCGSnapshot, nil, nil, account())
+				secondScenario := integrationTestScenario.DeepCopy()
+				secondScenario.Name = "example-pass-2"
+
+				firstRun, err := linkAdapter.createIntegrationPipelineRun(integrationTestScenario)
+				Expect(err).NotTo(HaveOccurred())
+
+				// A second list in the same pass would fail this create.
+				linkAdapter.context = listContext(nil, errors.NewServiceUnavailable("the API server is busy"))
+				secondRun, err := linkAdapter.createIntegrationPipelineRun(secondScenario)
+				Expect(err).NotTo(HaveOccurred())
+
+				for _, pipelineRun := range []*tektonv1.PipelineRun{firstRun, secondRun} {
+					Expect(pipelineRun.Spec.TaskRunTemplate.ServiceAccountName).To(Equal(tektonconsts.DefaultIntegrationPipelineServiceAccount))
+					Expect(pipelineRun.Annotations).To(HaveKeyWithValue(tektonconsts.ServiceAccountFallbackAnnotation, tektonconsts.ServiceAccountFallbackNoPushSecret))
+				}
+			})
+
+			Context("When the secrets of the shared runner account are copied", func() {
+				It("should link the push secret and log no failure when the namespace has no shared runner account", func() {
+					linkAdapter := newLinkAdapter(hasCGSnapshot, imageRepositories(), nil, account())
+
+					reason, err := linkAdapter.linkComponentPushSecret(componentName)
+					Expect(err).NotTo(HaveOccurred())
+					Expect(reason).To(BeEmpty())
+					Expect(linkedSecrets(linkAdapter)).To(Equal([]corev1.ObjectReference{
+						{Name: pushSecretName}, {Name: tektonconsts.DefaultIntegrationPipelineImagePullSecretName},
+					}))
+					Expect(buf.String()).NotTo(ContainSubstring("Failed to read the shared integration pipeline ServiceAccount"))
+				})
+
+				It("should return a retryable failure to read the shared runner, link nothing and copy its secrets on the next call", func() {
+					runnerName := tektonconsts.DefaultIntegrationPipelineServiceAccount
+					runner := &corev1.ServiceAccount{
+						ObjectMeta: metav1.ObjectMeta{Name: runnerName, Namespace: "default"},
+						Secrets:    []corev1.ObjectReference{{Name: runnerName + "-dockercfg-x7k2p"}, {Name: "user-login"}},
+					}
+					linkAdapter := newLinkAdapter(hasCGSnapshot, imageRepositories(), nil, account(), runner)
+
+					// The list stays mocked next to the failing read: the fake client does not know the
+					// ImageRepository kind.
+					linkAdapter.context = toolkit.GetMockedContext(listContext(imageRepositories(), nil), []toolkit.MockData{
+						{ContextKey: loader.ServiceAccountContextKey, Err: errors.NewServiceUnavailable("the API server is busy")},
+					})
+					_, err := linkAdapter.linkComponentPushSecret(componentName)
+					Expect(isRetryablePipelineRunCreationError(err)).To(BeTrue())
+					Expect(linkedSecrets(linkAdapter)).To(BeEmpty())
+					Expect(linkAdapter.pushSecretLinkChecked).To(BeFalse())
+
+					// A context without the ServiceAccount entry reads the runner from the fake client.
+					linkAdapter.context = listContext(imageRepositories(), nil)
+					reason, err := linkAdapter.linkComponentPushSecret(componentName)
+					Expect(err).NotTo(HaveOccurred())
+					Expect(reason).To(BeEmpty())
+					Expect(linkedSecrets(linkAdapter)).To(Equal([]corev1.ObjectReference{
+						{Name: pushSecretName}, {Name: tektonconsts.DefaultIntegrationPipelineImagePullSecretName}, {Name: "user-login"},
+					}))
+				})
+
+				It("should log a failure to read the shared runner that is not retryable and still link the push secret", func() {
+					linkAdapter := newLinkAdapter(hasCGSnapshot, imageRepositories(), nil, account())
+					linkAdapter.context = toolkit.GetMockedContext(listContext(imageRepositories(), nil), []toolkit.MockData{
+						{ContextKey: loader.ServiceAccountContextKey, Err: fmt.Errorf("the runner cannot be decoded")},
+					})
+
+					reason, err := linkAdapter.linkComponentPushSecret(componentName)
+					Expect(err).NotTo(HaveOccurred())
+					Expect(reason).To(BeEmpty())
+					Expect(linkedSecrets(linkAdapter)).To(Equal([]corev1.ObjectReference{
+						{Name: pushSecretName}, {Name: tektonconsts.DefaultIntegrationPipelineImagePullSecretName},
+					}))
+					Expect(buf.String()).To(ContainSubstring("Failed to read the shared integration pipeline ServiceAccount"))
+				})
 			})
 		})
 
