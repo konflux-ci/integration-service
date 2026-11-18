@@ -103,11 +103,13 @@ func ProcessForceFireAction(ctx context.Context, c client.Client, nudgeConfig *v
 		if batch == nil {
 			return fmt.Errorf("no force-fireable batch for target %q", action.Target)
 		}
-		if len(batch.Accumulated) == 0 {
-			return fmt.Errorf("active batch for target %q has no accumulated builds", action.Target)
-		}
 		if err := validateForceFireBatch(batch, includePartial); err != nil {
 			return err
+		}
+		if len(eligibleAccumulatedEntries(batch)) == 0 {
+			failEmptyEligibleBatch(batch)
+			latest.Status.ActiveBatches[batchIdx] = *batch
+			return c.Status().Patch(ctx, latest, client.MergeFromWithOptions(original, client.MergeFromWithOptimisticLock{}))
 		}
 		if err := fireBatch(ctx, c, latest, batch); err != nil {
 			batch.Phase = v1beta2.BatchPhaseFailed
@@ -216,9 +218,8 @@ func ProcessDueNudgeBatches(ctx context.Context, c client.Client, nudgeConfig *v
 			if !batchTimerExpired(batch, now) {
 				continue
 			}
-			if len(batch.Accumulated) == 0 {
-				batch.Phase = v1beta2.BatchPhaseFailed
-				batch.Message = "timer expired with no successful builds to nudge"
+			if len(eligibleAccumulatedEntries(batch)) == 0 {
+				failEmptyEligibleBatch(batch)
 				changed = true
 				continue
 			}
@@ -745,6 +746,11 @@ func eligibleAccumulatedEntries(batch *v1beta2.ActiveBatch) []v1beta2.Accumulate
 		}
 	}
 	return eligible
+}
+
+func failEmptyEligibleBatch(batch *v1beta2.ActiveBatch) {
+	batch.Phase = v1beta2.BatchPhaseFailed
+	batch.Message = "no eligible successful builds to nudge"
 }
 
 func referenceBuildPLRForBatch(
