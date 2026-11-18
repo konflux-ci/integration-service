@@ -47,7 +47,9 @@ const (
 // window (ADR-0072). When no batch exists yet, it creates one with fireAt=now+debounce and
 // hardDeadline=now+maxWait. When a batch is already Accumulating (or Blocked and this build clears
 // failures), it appends to accumulated or replaces the entry for the same source component,
-// resets fireAt to now+debounce without moving hardDeadline or createdAt, and leaves batchId unchanged.
+// removes the source from failed, keeps Blocked while other failures remain, returns to
+// Accumulating when the last failure is cleared, resets fireAt to now+debounce without moving
+// hardDeadline or createdAt, and fires immediately when hardDeadline has already elapsed.
 func RecordBuildForBatchedNudge(
 	ctx context.Context,
 	c client.Client,
@@ -608,6 +610,55 @@ func accumulatedEntryFromBuild(buildPLR *tektonv1.PipelineRun, buildResult *Nudg
 	}
 }
 
+// finishSuccessfulSourceCapture clears the source from failed, returns the batch to Accumulating
+// when unblocked, resets debounce, and fires immediately when the batch is already due (ADR-0072).
+func finishSuccessfulSourceCapture(
+	ctx context.Context,
+	c client.Client,
+	nc *v1beta2.NudgeConfig,
+	batch *v1beta2.ActiveBatch,
+	sourceComponent, targetName string,
+	now metav1.Time,
+) {
+	debounce, _, failurePolicy := nc.Spec.EffectiveBatchPolicy(targetName)
+	removeFailedComponent(batch, sourceComponent)
+	if batch.Phase == v1beta2.BatchPhaseBlocked && len(batch.Failed) == 0 {
+		batch.Phase = v1beta2.BatchPhaseAccumulating
+	}
+	scheduleBatchFire(batch, now, debounce)
+	maybeFireDueBatchAfterCapture(ctx, c, nc, batch, failurePolicy, now.Time)
+}
+
+// maybeFireDueBatchAfterCapture fires a due batch during capture so repairs after hardDeadline
+// do not wait for the next reconcile wake (ADR-0072). Mirrors the guards in ProcessDueNudgeBatches.
+func maybeFireDueBatchAfterCapture(
+	ctx context.Context,
+	c client.Client,
+	nc *v1beta2.NudgeConfig,
+	batch *v1beta2.ActiveBatch,
+	failurePolicy v1beta2.FailurePolicyType,
+	now time.Time,
+) {
+	if batch.Phase != v1beta2.BatchPhaseAccumulating || len(batch.Accumulated) == 0 {
+		return
+	}
+	if !BatchAllowsScheduledFire(batch, failurePolicy) {
+		return
+	}
+	if !batchTimerExpired(batch, now) {
+		return
+	}
+	if isBatchFiringForTarget(nc.Status.ActiveBatches, batch.Target) {
+		return
+	}
+	if err := fireBatch(ctx, c, nc, batch); err != nil {
+		// Repair already unblocked the batch and scheduled fireAt; leave it due so
+		// ProcessDueNudgeBatches can retry rather than marking the batch failed.
+		logger.FromContext(ctx).Error(err, "failed to fire batch after successful repair",
+			"batchId", batch.BatchID, "target", batch.Target)
+	}
+}
+
 func recordBuildPLRForBatchedNudge(
 	ctx context.Context,
 	c client.Client,
@@ -624,18 +675,13 @@ func recordBuildPLRForBatchedNudge(
 		original := latest.DeepCopy()
 
 		now := metav1.Now()
-		debounce, maxWait, _ := latest.Spec.EffectiveBatchPolicy(targetName)
+		_, maxWait, _ := latest.Spec.EffectiveBatchPolicy(targetName)
 		batchIdx, _, batches := findOrCreateAcceptingBatch(latest.Status.ActiveBatches, targetName, now, maxWait)
 		latest.Status.ActiveBatches = batches
 		batch := &latest.Status.ActiveBatches[batchIdx]
 
 		upsertAccumulatedEntry(batch, accumulatedEntryFromBuild(buildPLR, buildResult, now))
-		removeFailedComponent(batch, buildResult.SourceComponentName)
-
-		if batch.Phase == v1beta2.BatchPhaseBlocked && len(batch.Failed) == 0 {
-			batch.Phase = v1beta2.BatchPhaseAccumulating
-		}
-		scheduleBatchFire(batch, now, debounce)
+		finishSuccessfulSourceCapture(ctx, c, latest, batch, buildResult.SourceComponentName, targetName, now)
 
 		latest.Status.ActiveBatches[batchIdx] = *batch
 		ReconcileBatchBlockedCondition(latest, now)
@@ -657,7 +703,7 @@ func recordSuccessForBatchedNudge(
 		original := latest.DeepCopy()
 
 		now := metav1.Now()
-		debounce, maxWait, _ := latest.Spec.EffectiveBatchPolicy(targetName)
+		_, maxWait, _ := latest.Spec.EffectiveBatchPolicy(targetName)
 		batchIdx, _, batches := findOrCreateAcceptingBatch(latest.Status.ActiveBatches, targetName, now, maxWait)
 		latest.Status.ActiveBatches = batches
 		batch := &latest.Status.ActiveBatches[batchIdx]
@@ -666,7 +712,10 @@ func recordSuccessForBatchedNudge(
 			if entry.From == sourceComponent &&
 				entry.ImageDigest == digest &&
 				entry.BuildPipelineRun == sourceRef {
-				return nil
+				finishSuccessfulSourceCapture(ctx, c, latest, batch, sourceComponent, targetName, now)
+				latest.Status.ActiveBatches[batchIdx] = *batch
+				ReconcileBatchBlockedCondition(latest, now)
+				return c.Status().Patch(ctx, latest, client.MergeFromWithOptions(original, client.MergeFromWithOptimisticLock{}))
 			}
 		}
 
@@ -677,12 +726,7 @@ func recordSuccessForBatchedNudge(
 			CapturedAt:              now,
 			BuildServiceAccountName: serviceAccountName,
 		})
-		removeFailedComponent(batch, sourceComponent)
-
-		if batch.Phase == v1beta2.BatchPhaseBlocked && len(batch.Failed) == 0 {
-			batch.Phase = v1beta2.BatchPhaseAccumulating
-		}
-		scheduleBatchFire(batch, now, debounce)
+		finishSuccessfulSourceCapture(ctx, c, latest, batch, sourceComponent, targetName, now)
 
 		latest.Status.ActiveBatches[batchIdx] = *batch
 		ReconcileBatchBlockedCondition(latest, now)

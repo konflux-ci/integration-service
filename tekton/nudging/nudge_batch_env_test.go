@@ -328,6 +328,123 @@ var _ = Describe("Nudge batch client operations", func() {
 			Expect(batch.Accumulated[0].From).To(Equal(otherSource))
 		})
 
+		It("should stay blocked when only one of two failed sources is repaired", func() {
+			sourceB := "operand-b"
+			plrB := &tektonv1.PipelineRun{
+				ObjectMeta: metav1.ObjectMeta{Name: "operand-b-build-plr", Namespace: namespace},
+			}
+			c := newClient(nudgeConfig, buildPLR, plrB)
+			Expect(RecordFailedBuildForBatchedNudge(ctx, c, nudgeConfig, target, source, buildPLR, "fail a")).To(Succeed())
+			Expect(RecordFailedBuildForBatchedNudge(ctx, c, nudgeConfig, target, sourceB, plrB, "fail b")).To(Succeed())
+			Expect(RecordBuildForBatchedNudge(ctx, c, nudgeConfig, target, buildPLR, buildResult)).To(Succeed())
+
+			updated := &v1beta2.NudgeConfig{}
+			Expect(c.Get(ctx, types.NamespacedName{Name: nudgeConfig.Name, Namespace: namespace}, updated)).To(Succeed())
+			batch := updated.Status.ActiveBatches[0]
+			Expect(batch.Phase).To(Equal(v1beta2.BatchPhaseBlocked))
+			Expect(batch.Failed).To(HaveLen(1))
+			Expect(batch.Failed[0].From).To(Equal(sourceB))
+			Expect(batch.FireAt).To(BeNil())
+			cond := meta.FindStatusCondition(updated.Status.Conditions, v1beta2.NudgeConfigConditionBatchBlocked)
+			Expect(cond).NotTo(BeNil())
+			Expect(cond.Message).To(ContainSubstring(sourceB))
+		})
+
+		It("should restart debounce and preserve batch identity when the final failure is repaired before hardDeadline", func() {
+			debounce := metav1.Duration{Duration: 10 * time.Minute}
+			maxWait := metav1.Duration{Duration: 2 * time.Hour}
+			nudgeConfig.Spec.BatchDefaults = &v1beta2.BatchDefaults{
+				DebounceTimeout: &debounce,
+				MaxWaitTime:     &maxWait,
+			}
+			c := newClient(nudgeConfig, buildPLR)
+			Expect(RecordBuildForBatchedNudge(ctx, c, nudgeConfig, target, buildPLR, buildResult)).To(Succeed())
+			Expect(RecordFailedBuildForBatchedNudge(ctx, c, nudgeConfig, target, source, buildPLR, "regressed")).To(Succeed())
+
+			blocked := &v1beta2.NudgeConfig{}
+			Expect(c.Get(ctx, types.NamespacedName{Name: nudgeConfig.Name, Namespace: namespace}, blocked)).To(Succeed())
+			batchID := blocked.Status.ActiveBatches[0].BatchID
+			createdAt := blocked.Status.ActiveBatches[0].CreatedAt.Time
+			hardDeadline := blocked.Status.ActiveBatches[0].HardDeadline.Time
+
+			beforeRepair := time.Now()
+			Expect(RecordBuildForBatchedNudge(ctx, c, nudgeConfig, target, buildPLR, buildResult)).To(Succeed())
+
+			updated := &v1beta2.NudgeConfig{}
+			Expect(c.Get(ctx, types.NamespacedName{Name: nudgeConfig.Name, Namespace: namespace}, updated)).To(Succeed())
+			batch := updated.Status.ActiveBatches[0]
+			Expect(batch.Phase).To(Equal(v1beta2.BatchPhaseAccumulating))
+			Expect(batch.BatchID).To(Equal(batchID))
+			Expect(batch.CreatedAt.Time).To(Equal(createdAt))
+			Expect(batch.HardDeadline.Time).To(Equal(hardDeadline))
+			Expect(batch.FireAt).NotTo(BeNil())
+			Expect(batch.FireAt.Time).To(BeTemporally("~", beforeRepair.Add(debounce.Duration), 2*time.Second))
+			Expect(meta.FindStatusCondition(updated.Status.Conditions, v1beta2.NudgeConfigConditionBatchBlocked)).To(BeNil())
+		})
+
+		It("should schedule immediate firing when the final failure is repaired after hardDeadline", func() {
+			c := newClient(nudgeConfig, buildPLR)
+			Expect(RecordBuildForBatchedNudge(ctx, c, nudgeConfig, target, buildPLR, buildResult)).To(Succeed())
+			Expect(RecordFailedBuildForBatchedNudge(ctx, c, nudgeConfig, target, source, buildPLR, "regressed")).To(Succeed())
+
+			now := metav1.Now()
+			pastDeadline := metav1.NewTime(now.Add(-time.Minute))
+			nc := &v1beta2.NudgeConfig{}
+			Expect(c.Get(ctx, types.NamespacedName{Name: nudgeConfig.Name, Namespace: namespace}, nc)).To(Succeed())
+			nc.Status.ActiveBatches[0].HardDeadline = pastDeadline
+			Expect(c.Status().Update(ctx, nc)).To(Succeed())
+
+			beforeRepair := time.Now()
+			Expect(RecordBuildForBatchedNudge(ctx, c, nudgeConfig, target, buildPLR, buildResult)).To(Succeed())
+
+			updated := &v1beta2.NudgeConfig{}
+			Expect(c.Get(ctx, types.NamespacedName{Name: nudgeConfig.Name, Namespace: namespace}, updated)).To(Succeed())
+			batch := updated.Status.ActiveBatches[0]
+			Expect(batch.Phase).To(Or(Equal(v1beta2.BatchPhaseAccumulating), Equal(v1beta2.BatchPhaseFiring)))
+			Expect(batch.FireAt).NotTo(BeNil())
+			Expect(batch.FireAt.Time).To(BeTemporally("<=", beforeRepair.Add(time.Second)))
+			Expect(BatchShouldFire(&batch, time.Now())).To(BeTrue())
+			Expect(NextBatchWakeDuration(updated.Status.ActiveBatches)).To(Equal(time.Duration(0)))
+		})
+
+		It("should keep BatchBlocked for another target when one target is fully repaired", func() {
+			const (
+				otherTarget = "nudge-target-b"
+				otherSource = "nudge-source-b"
+			)
+			otherPLR := &tektonv1.PipelineRun{
+				ObjectMeta: metav1.ObjectMeta{Name: "operand-b-build-plr", Namespace: namespace},
+			}
+			nudgeConfig.Spec.TargetConfig = append(nudgeConfig.Spec.TargetConfig, v1beta2.TargetConfig{
+				Target:      otherTarget,
+				BatchPolicy: &v1beta2.BatchPolicy{},
+			})
+			c := newClient(nudgeConfig, buildPLR, otherPLR)
+			Expect(RecordFailedBuildForBatchedNudge(ctx, c, nudgeConfig, otherTarget, otherSource, otherPLR, "fail b")).To(Succeed())
+			Expect(RecordFailedBuildForBatchedNudge(ctx, c, nudgeConfig, target, source, buildPLR, "fail a")).To(Succeed())
+			Expect(RecordBuildForBatchedNudge(ctx, c, nudgeConfig, target, buildPLR, buildResult)).To(Succeed())
+
+			updated := &v1beta2.NudgeConfig{}
+			Expect(c.Get(ctx, types.NamespacedName{Name: nudgeConfig.Name, Namespace: namespace}, updated)).To(Succeed())
+			Expect(updated.Status.ActiveBatches).To(HaveLen(2))
+			for _, batch := range updated.Status.ActiveBatches {
+				switch batch.Target {
+				case target:
+					Expect(batch.Phase).To(Equal(v1beta2.BatchPhaseAccumulating))
+					Expect(batch.Failed).To(BeEmpty())
+				case otherTarget:
+					Expect(batch.Phase).To(Equal(v1beta2.BatchPhaseBlocked))
+					Expect(batch.Failed).To(HaveLen(1))
+				default:
+					Fail(fmt.Sprintf("unexpected batch target %q", batch.Target))
+				}
+			}
+			cond := meta.FindStatusCondition(updated.Status.Conditions, v1beta2.NudgeConfigConditionBatchBlocked)
+			Expect(cond).NotTo(BeNil())
+			Expect(cond.Message).To(ContainSubstring(otherTarget))
+			Expect(cond.Message).NotTo(ContainSubstring(fmt.Sprintf(`target %q blocked`, target)))
+		})
+
 		It("should not fire when hardDeadline elapses while the batch is blocked", func() {
 			now := metav1.Now()
 			pastDeadline := metav1.NewTime(now.Add(-time.Minute))
@@ -867,6 +984,36 @@ var _ = Describe("Nudge batch client operations", func() {
 				CapturedAt:           now,
 			}
 		}
+
+		It("should fire immediately when the last blocked failure is repaired after hardDeadline", func() {
+			now := metav1.Now()
+			pastDeadline := metav1.NewTime(now.Add(-time.Minute))
+			nc := nudgeConfig.DeepCopy()
+			nc.Status.ActiveBatches = []v1beta2.ActiveBatch{
+				{
+					Target:       target,
+					BatchID:      batchID,
+					Phase:        v1beta2.BatchPhaseBlocked,
+					CreatedAt:    now,
+					HardDeadline: pastDeadline,
+					Failed: []v1beta2.FailedEntry{
+						{From: source, BuildPipelineRun: buildPLR.Name, Reason: "regressed", CapturedAt: now},
+					},
+				},
+			}
+			plr := buildPLR.DeepCopy()
+			plr.Spec.TaskRunTemplate.ServiceAccountName = tektonconsts.DefaultPipelineServiceAccount
+			c := batchedFireClient(nc, plr)
+
+			Expect(RecordBuildForBatchedNudge(ctx, c, nc, target, plr, buildResult)).To(Succeed())
+
+			updated := &v1beta2.NudgeConfig{}
+			Expect(c.Get(ctx, types.NamespacedName{Name: nc.Name, Namespace: namespace}, updated)).To(Succeed())
+			Expect(updated.Status.ActiveBatches[0].Phase).To(Equal(v1beta2.BatchPhaseFiring))
+			Expect(updated.Status.ActiveBatches[0].Failed).To(BeEmpty())
+			plrName := BatchedNudgePipelineRunName(batchID, 0)
+			Expect(updated.Status.ActiveBatches[0].NudgePipelineRun).To(Equal(plrName))
+		})
 
 		It("should create the aggregated nudge PipelineRun when a due batch fires", func() {
 			now := metav1.Now()
