@@ -44,6 +44,9 @@ const NudgeConfigConditionForceFireRejected = "ForceFireRejected"
 // NudgeConfigConditionForceFireIgnored is set when spec.actions.forceFire is ignored (e.g. batch already firing).
 const NudgeConfigConditionForceFireIgnored = "ForceFireIgnored"
 
+// NudgeConfigConditionBatchBlocked is set while any active batch is in Blocked phase (ADR 0072).
+const NudgeConfigConditionBatchBlocked = "BatchBlocked"
+
 // NudgeRelationship defines a single nudge from one component to another.
 type NudgeRelationship struct {
 	// From is the source component name that triggers the nudge when its build succeeds.
@@ -528,6 +531,7 @@ type NudgeConfigStatus struct {
 	// - StaleReferences: True when spec.nudges reference missing Components (set by the build pipeline controller).
 	// - BatchDefaultsSupported: False with reason NotImplemented when spec.batchDefaults is set but not yet applied.
 	//   The validating webhook also warns on create/update when batchDefaults is present.
+	// - BatchBlocked: True while any active batch is in Blocked phase under failurePolicy Block (ADR 0072).
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 
