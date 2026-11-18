@@ -92,6 +92,12 @@ rules:
   - list
   - watch
 - apiGroups:
+  - appstudio.redhat.com
+  resources:
+  - imagerepositories
+  verbs:
+  - list
+- apiGroups:
   - konflux-ci.dev
   resources:
   - componentgroups
