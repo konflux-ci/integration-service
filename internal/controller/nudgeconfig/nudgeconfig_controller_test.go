@@ -284,6 +284,36 @@ var _ = Describe("NudgeConfig reconciler", func() {
 	})
 
 	Context("When a forceFire action cannot be satisfied", func() {
+		It("should consume an empty eligible forceFire action without rejecting it", func() {
+			now := metav1.Now()
+			target := "bundle"
+			nudgeConfig := &v1beta2.NudgeConfig{
+				ObjectMeta: metav1.ObjectMeta{Name: v1beta2.NudgeConfigSingletonName, Namespace: "default"},
+				Spec: v1beta2.NudgeConfigSpec{Actions: &v1beta2.Actions{
+					ForceFire: &v1beta2.ForceFireAction{Target: target},
+				}},
+				Status: v1beta2.NudgeConfigStatus{ActiveBatches: []v1beta2.ActiveBatch{{
+					Target: target, BatchID: "empty-eligible", Phase: v1beta2.BatchPhaseAccumulating,
+					Accumulated: []v1beta2.AccumulatedEntry{{
+						From: "source", ImageDigest: "sha256:old", BuildPipelineRun: "previous-success", CapturedAt: now,
+					}},
+					Failed: []v1beta2.FailedEntry{{
+						From: "source", BuildPipelineRun: "current-failure", Reason: "build failed", CapturedAt: now,
+					}},
+				}}},
+			}
+			reconciler.Client = newClient(nudgeConfig)
+
+			_, err := reconciler.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKeyFromObject(nudgeConfig)})
+			Expect(err).NotTo(HaveOccurred())
+
+			updated := &v1beta2.NudgeConfig{}
+			Expect(reconciler.Client.Get(ctx, client.ObjectKeyFromObject(nudgeConfig), updated)).To(Succeed())
+			Expect(updated.Spec.Actions).To(BeNil())
+			Expect(updated.Status.ActiveBatches[0].Phase).To(Equal(v1beta2.BatchPhaseFailed))
+			Expect(meta.FindStatusCondition(updated.Status.Conditions, v1beta2.NudgeConfigConditionForceFireRejected)).To(BeNil())
+		})
+
 		It("should clear the action and record ForceFireRejected", func() {
 			nudgeConfig := &v1beta2.NudgeConfig{
 				ObjectMeta: metav1.ObjectMeta{

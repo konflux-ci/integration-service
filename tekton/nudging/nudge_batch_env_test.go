@@ -661,7 +661,7 @@ var _ = Describe("Nudge batch client operations", func() {
 	})
 
 	Context("When force-firing a batch", func() {
-		It("should reject forceFire when the batch has no accumulated builds", func() {
+		It("should fail forceFire when the batch has no eligible successful builds", func() {
 			now := metav1.Now()
 			nudgeConfig.Status.ActiveBatches = []v1beta2.ActiveBatch{{
 				Target:       target,
@@ -674,8 +674,12 @@ var _ = Describe("Nudge batch client operations", func() {
 			nudgeConfig.Spec.Actions = &v1beta2.Actions{
 				ForceFire: &v1beta2.ForceFireAction{Target: target},
 			}
-			err := ProcessForceFireAction(ctx, c, nudgeConfig)
-			Expect(err).To(MatchError(ContainSubstring("no accumulated builds")))
+			Expect(ProcessForceFireAction(ctx, c, nudgeConfig)).To(Succeed())
+
+			updated := &v1beta2.NudgeConfig{}
+			Expect(c.Get(ctx, types.NamespacedName{Name: nudgeConfig.Name, Namespace: namespace}, updated)).To(Succeed())
+			Expect(updated.Status.ActiveBatches[0].Phase).To(Equal(v1beta2.BatchPhaseFailed))
+			Expect(updated.Status.ActiveBatches[0].Message).To(ContainSubstring("no eligible successful builds"))
 		})
 
 		It("should return an error when no batch exists for the target", func() {
