@@ -27,6 +27,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -140,6 +141,60 @@ var _ = Describe("Validated batched nudge recording", func() {
 		Expect(c.Get(ctx, types.NamespacedName{Name: nudgeConfig.Name, Namespace: namespace}, updated)).To(Succeed())
 		Expect(updated.Status.ActiveBatches[0].Failed).To(HaveLen(1))
 		Expect(updated.Status.ActiveBatches[0].Failed[0].Reason).To(Equal("integration tests failed"))
+	})
+
+	It("removes a snapshot-based failure when a validated snapshot succeeds", func() {
+		c := newClient(nudgeConfig)
+		Expect(RecordFailedValidatedSnapshotForBatchedNudge(ctx, c, nudgeConfig, target, source, "snap-fail", "tests failed")).To(Succeed())
+		Expect(RecordValidatedSnapshotForBatchedNudge(ctx, c, nudgeConfig, target, source, "snap-pass", "sha256:validated")).To(Succeed())
+
+		updated := &v1beta2.NudgeConfig{}
+		Expect(c.Get(ctx, types.NamespacedName{Name: nudgeConfig.Name, Namespace: namespace}, updated)).To(Succeed())
+		batch := updated.Status.ActiveBatches[0]
+		Expect(batch.Phase).To(Equal(v1beta2.BatchPhaseAccumulating))
+		Expect(batch.Failed).To(BeEmpty())
+		Expect(batch.Accumulated).To(HaveLen(1))
+		Expect(batch.Accumulated[0].BuildPipelineRun).To(Equal("snap-pass"))
+	})
+
+	It("does not create a second batch when replaying validated capture on a Firing batch", func() {
+		const batchID = "nudge-target-firing"
+		c := newClient(nudgeConfig)
+		nc := &v1beta2.NudgeConfig{}
+		Expect(c.Get(ctx, types.NamespacedName{Name: nudgeConfig.Name, Namespace: namespace}, nc)).To(Succeed())
+		nc.Status.ActiveBatches = []v1beta2.ActiveBatch{{
+			Target:  target,
+			BatchID: batchID,
+			Phase:   v1beta2.BatchPhaseFiring,
+			Accumulated: []v1beta2.AccumulatedEntry{{
+				From:             source,
+				ImageDigest:      "sha256:validated",
+				BuildPipelineRun: "snap-pass",
+			}},
+			NudgePipelineRun: "nudge-plr-existing",
+		}}
+		Expect(c.Status().Update(ctx, nc)).To(Succeed())
+
+		Expect(RecordValidatedSnapshotForBatchedNudge(ctx, c, nc, target, source, "snap-pass", "sha256:validated")).To(Succeed())
+
+		updated := &v1beta2.NudgeConfig{}
+		Expect(c.Get(ctx, types.NamespacedName{Name: nudgeConfig.Name, Namespace: namespace}, updated)).To(Succeed())
+		Expect(updated.Status.ActiveBatches).To(HaveLen(1))
+		Expect(updated.Status.ActiveBatches[0].BatchID).To(Equal(batchID))
+		Expect(updated.Status.ActiveBatches[0].Phase).To(Equal(v1beta2.BatchPhaseFiring))
+	})
+
+	It("self-heals blocked batch status on idempotent validated snapshot replay", func() {
+		c := newClient(nudgeConfig)
+		Expect(RecordFailedValidatedSnapshotForBatchedNudge(ctx, c, nudgeConfig, target, source, "snap-fail", "tests failed")).To(Succeed())
+		Expect(RecordValidatedSnapshotForBatchedNudge(ctx, c, nudgeConfig, target, source, "snap-pass", "sha256:validated")).To(Succeed())
+		Expect(RecordValidatedSnapshotForBatchedNudge(ctx, c, nudgeConfig, target, source, "snap-pass", "sha256:validated")).To(Succeed())
+
+		updated := &v1beta2.NudgeConfig{}
+		Expect(c.Get(ctx, types.NamespacedName{Name: nudgeConfig.Name, Namespace: namespace}, updated)).To(Succeed())
+		Expect(updated.Status.ActiveBatches[0].Accumulated).To(HaveLen(1))
+		Expect(updated.Status.ActiveBatches[0].Failed).To(BeEmpty())
+		Expect(meta.FindStatusCondition(updated.Status.Conditions, v1beta2.NudgeConfigConditionBatchBlocked)).To(BeNil())
 	})
 
 	It("builds renovate payload from accumulated digests when build PLRs are gone", func() {
