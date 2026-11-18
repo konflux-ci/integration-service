@@ -319,17 +319,21 @@ var _ = Describe("Scenario Adapter", Ordered, func() {
 			Expect(err).ToNot(HaveOccurred())
 			Expect(result.CancelRequest).To(BeFalse())
 
-			sa := &corev1.ServiceAccount{}
-			Expect(k8sClient.Get(ctx, types.NamespacedName{
-				Name: tektonconsts.DefaultIntegrationPipelineServiceAccount, Namespace: "default",
-			}, sa)).To(Succeed())
-			expectIntegrationPipelineSecretLinkedOnce(Default, sa)
-			resourceVersion := sa.ResourceVersion
+			var resourceVersion string
+			Eventually(func(g Gomega) {
+				sa := &corev1.ServiceAccount{}
+				g.Expect(k8sClient.Get(ctx, types.NamespacedName{
+					Name: tektonconsts.DefaultIntegrationPipelineServiceAccount, Namespace: "default",
+				}, sa)).To(Succeed())
+				expectIntegrationPipelineSecretLinkedOnce(g, sa)
+				resourceVersion = sa.ResourceVersion
+			}, "5s").Should(Succeed())
 
 			result, err = adapter.EnsureIntegrationPipelineServiceAccountCreated()
 			Expect(err).ToNot(HaveOccurred())
 			Expect(result.CancelRequest).To(BeFalse())
 
+			sa := &corev1.ServiceAccount{}
 			Expect(k8sClient.Get(ctx, types.NamespacedName{
 				Name: tektonconsts.DefaultIntegrationPipelineServiceAccount, Namespace: "default",
 			}, sa)).To(Succeed())
@@ -376,17 +380,21 @@ var _ = Describe("Scenario Adapter", Ordered, func() {
 			Expect(err).ToNot(HaveOccurred())
 			Expect(result.CancelRequest).To(BeFalse())
 
-			sa := &corev1.ServiceAccount{}
-			Expect(k8sClient.Get(ctx, types.NamespacedName{
-				Name: tektonconsts.DefaultIntegrationPipelineServiceAccount, Namespace: "default",
-			}, sa)).To(Succeed())
-			expectIntegrationPipelineSecretLinkedOnce(Default, sa)
-			resourceVersion := sa.ResourceVersion
+			var resourceVersion string
+			Eventually(func(g Gomega) {
+				sa := &corev1.ServiceAccount{}
+				g.Expect(k8sClient.Get(ctx, types.NamespacedName{
+					Name: tektonconsts.DefaultIntegrationPipelineServiceAccount, Namespace: "default",
+				}, sa)).To(Succeed())
+				expectIntegrationPipelineSecretLinkedOnce(g, sa)
+				resourceVersion = sa.ResourceVersion
+			}, "5s").Should(Succeed())
 
 			result, err = adapter.EnsureIntegrationPipelineServiceAccountCreated()
 			Expect(err).ToNot(HaveOccurred())
 			Expect(result.CancelRequest).To(BeFalse())
 
+			sa := &corev1.ServiceAccount{}
 			Expect(k8sClient.Get(ctx, types.NamespacedName{
 				Name: tektonconsts.DefaultIntegrationPipelineServiceAccount, Namespace: "default",
 			}, sa)).To(Succeed())
