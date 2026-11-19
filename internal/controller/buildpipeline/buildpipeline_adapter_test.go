@@ -5323,6 +5323,51 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			Expect(result.RequeueRequest).To(BeTrue())
 		})
 
+		It("skips non-batched nudge targets without updating NudgeConfig status", func() {
+			pushPLR := makeFailedPushPLR()
+			pushPLR.Status = tektonv1.PipelineRunStatus{
+				Status: v1.Status{
+					Conditions: v1.Conditions{{Type: apis.ConditionSucceeded, Status: "False", Reason: "Failed"}},
+				},
+				PipelineRunStatusFields: tektonv1.PipelineRunStatusFields{
+					CompletionTime: &metav1.Time{Time: time.Now()},
+				},
+			}
+
+			nudgeConfig := &v1beta2.NudgeConfig{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      v1beta2.NudgeConfigSingletonName,
+					Namespace: "default",
+				},
+				Spec: v1beta2.NudgeConfigSpec{
+					Nudges: []v1beta2.NudgeRelationship{
+						{From: hasComp.Name, To: hasComp2.Name, Mode: v1beta2.NudgeModeImmediate},
+					},
+					TargetConfig: []v1beta2.TargetConfig{
+						{Target: hasComp2.Name},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, nudgeConfig)).To(Succeed())
+			defer func() {
+				_ = k8sClient.Delete(ctx, nudgeConfig)
+			}()
+
+			adapter = NewAdapter(ctx, pushPLR, hasComp.Name, &[]v1beta2.ComponentGroup{*hasCompGroup}, logger, loader.NewMockLoader(), k8sClient)
+			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
+				{ContextKey: loader.NudgeConfigContextKey, Resource: nudgeConfig},
+			})
+
+			result, err := adapter.RecordFailedBatchedNudgeBuilds()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.RequeueRequest).To(BeFalse())
+
+			updatedNC := &v1beta2.NudgeConfig{}
+			Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(nudgeConfig), updatedNC)).To(Succeed())
+			Expect(updatedNC.Status.ActiveBatches).To(BeEmpty())
+			Expect(meta.FindStatusCondition(updatedNC.Status.Conditions, v1beta2.NudgeConfigConditionBatchBlocked)).To(BeNil())
+		})
+
 		It("records failed builds against batched nudge targets", func() {
 			pushPLR := makeFailedPushPLR()
 			// Keep pushPLR's real server-backed name/resourceVersion (inherited from the
@@ -5387,6 +5432,10 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			Expect(updatedNC.Status.ActiveBatches[0].Target).To(Equal(hasComp2.Name))
 			Expect(updatedNC.Status.ActiveBatches[0].Failed).To(HaveLen(1))
 			Expect(updatedNC.Status.ActiveBatches[0].Failed[0].BuildPipelineRun).To(Equal(pushPLR.Name))
+			Expect(updatedNC.Status.ActiveBatches[0].Phase).To(Equal(v1beta2.BatchPhaseBlocked))
+			blockedCond := meta.FindStatusCondition(updatedNC.Status.Conditions, v1beta2.NudgeConfigConditionBatchBlocked)
+			Expect(blockedCond).NotTo(BeNil())
+			Expect(blockedCond.Status).To(Equal(metav1.ConditionTrue))
 
 			// Write ordering: the nudge finalizer must be removed only once the
 			// NudgeConfig status write and the processed annotation write both succeeded.
