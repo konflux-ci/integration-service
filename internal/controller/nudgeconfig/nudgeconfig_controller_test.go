@@ -17,6 +17,8 @@ limitations under the License.
 package nudgeconfig
 
 import (
+	"context"
+	"fmt"
 	"time"
 
 	konfluxv1beta2 "github.com/konflux-ci/integration-service/api/konflux/v1beta2"
@@ -32,6 +34,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 )
@@ -153,6 +156,46 @@ var _ = Describe("NudgeConfig reconciler", func() {
 			result, err := reconciler.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKeyFromObject(nudgeConfig)})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(result.RequeueAfter).To(BeZero())
+		})
+	})
+
+	Context("When a Firing batch is active", func() {
+		It("should requeue at the minimum batch interval", func() {
+			// A Firing batch with a still-running PLR keeps the controller in the
+			// minBatchRequeue loop via HasFiringNudgeBatches → NextBatchWakeDuration.
+			now := metav1.Now()
+			nudgePLRName := "nudge-batch-firing-active"
+			runningPLR := &tektonv1.PipelineRun{
+				// CompletionTime is nil — the PLR is still running.
+				ObjectMeta: metav1.ObjectMeta{Name: nudgePLRName, Namespace: "default"},
+			}
+			nudgeConfig := &v1beta2.NudgeConfig{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      v1beta2.NudgeConfigSingletonName,
+					Namespace: "default",
+				},
+				Spec: v1beta2.NudgeConfigSpec{},
+				Status: v1beta2.NudgeConfigStatus{
+					ActiveBatches: []v1beta2.ActiveBatch{
+						{
+							Target:           "bundle",
+							BatchID:          "batch-firing",
+							Phase:            v1beta2.BatchPhaseFiring,
+							CreatedAt:        now,
+							HardDeadline:     metav1.NewTime(now.Add(time.Hour)),
+							NudgePipelineRun: nudgePLRName,
+							Accumulated: []v1beta2.AccumulatedEntry{
+								{From: "src", ImageDigest: "sha256:1", BuildPipelineRun: "build-plr", CapturedAt: now},
+							},
+						},
+					},
+				},
+			}
+			reconciler.Client = newClient(nudgeConfig, runningPLR)
+
+			result, err := reconciler.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKeyFromObject(nudgeConfig)})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.RequeueAfter).To(Equal(minBatchRequeue))
 		})
 	})
 
@@ -317,6 +360,91 @@ var _ = Describe("NudgeConfig reconciler", func() {
 			Expect(reconciler.Client.Get(ctx, client.ObjectKeyFromObject(nudgeConfig), updated)).To(Succeed())
 			Expect(updated.Spec.Actions).To(BeNil())
 			Expect(updated.Status.ActiveBatches[0].Phase).To(Equal(v1beta2.BatchPhaseFiring))
+		})
+	})
+
+	Context("When pruning completed batches during reconcile", func() {
+		It("should drop Completed batches older than the retention TTL", func() {
+			old := metav1.NewTime(time.Now().Add(-25 * time.Hour))
+			nudgeConfig := &v1beta2.NudgeConfig{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      v1beta2.NudgeConfigSingletonName,
+					Namespace: "default",
+				},
+				Status: v1beta2.NudgeConfigStatus{
+					ActiveBatches: []v1beta2.ActiveBatch{{
+						Target:       "bundle",
+						BatchID:      "old-done",
+						Phase:        v1beta2.BatchPhaseCompleted,
+						CreatedAt:    old,
+						HardDeadline: metav1.NewTime(old.Add(4 * time.Hour)),
+					}},
+				},
+			}
+			reconciler.Client = newClient(nudgeConfig)
+
+			result, err := reconciler.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKeyFromObject(nudgeConfig)})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.RequeueAfter).To(BeZero())
+
+			updated := &v1beta2.NudgeConfig{}
+			Expect(reconciler.Client.Get(ctx, client.ObjectKeyFromObject(nudgeConfig), updated)).To(Succeed())
+			Expect(updated.Status.ActiveBatches).To(BeEmpty())
+		})
+
+		It("should requeue for cleanup when a completed batch is retained", func() {
+			completedAt := metav1.NewTime(time.Now().Add(-23 * time.Hour))
+			nudgeConfig := &v1beta2.NudgeConfig{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      v1beta2.NudgeConfigSingletonName,
+					Namespace: "default",
+				},
+				Status: v1beta2.NudgeConfigStatus{
+					ActiveBatches: []v1beta2.ActiveBatch{{
+						Target:       "bundle",
+						BatchID:      "recent-done",
+						Phase:        v1beta2.BatchPhaseCompleted,
+						CreatedAt:    metav1.NewTime(time.Now().Add(-48 * time.Hour)),
+						CompletedAt:  &completedAt,
+						HardDeadline: metav1.NewTime(time.Now().Add(-44 * time.Hour)),
+					}},
+				},
+			}
+			reconciler.Client = newClient(nudgeConfig)
+
+			result, err := reconciler.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKeyFromObject(nudgeConfig)})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.RequeueAfter).To(BeNumerically(">", 0))
+			Expect(result.RequeueAfter).To(BeNumerically("<", 2*time.Hour))
+		})
+
+		It("should return an error when pruning cannot patch status", func() {
+			old := metav1.NewTime(time.Now().Add(-25 * time.Hour))
+			nudgeConfig := &v1beta2.NudgeConfig{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      v1beta2.NudgeConfigSingletonName,
+					Namespace: "default",
+				},
+				Status: v1beta2.NudgeConfigStatus{
+					ActiveBatches: []v1beta2.ActiveBatch{{
+						Target:       "bundle",
+						BatchID:      "old-done",
+						Phase:        v1beta2.BatchPhaseCompleted,
+						CreatedAt:    old,
+						HardDeadline: metav1.NewTime(old.Add(4 * time.Hour)),
+					}},
+				},
+			}
+			reconciler.Client = fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(&v1beta2.NudgeConfig{}).
+				WithObjects(nudgeConfig).
+				WithInterceptorFuncs(interceptor.Funcs{
+					SubResourcePatch: func(ctx context.Context, cl client.Client, subResourceName string, obj client.Object, patch client.Patch, opts ...client.SubResourcePatchOption) error {
+						return fmt.Errorf("status patch unavailable")
+					},
+				}).Build()
+
+			_, err := reconciler.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKeyFromObject(nudgeConfig)})
+			Expect(err).To(MatchError(ContainSubstring("status patch unavailable")))
 		})
 	})
 
