@@ -800,7 +800,13 @@ func buildBatchedRenovatePayload(
 		return nil, NudgeTarget{}, nil, err
 	}
 
-	targets := GetNudgeTargetsGithubApp(ctx, c, objectLoader, []applicationapiv1alpha1.Component{*targetComponent}, imageRepoHost, imageRepoUser, imageRepoPwd)
+	targets, err := GetNudgeTargetsGithubApp(ctx, c, objectLoader, []applicationapiv1alpha1.Component{*targetComponent}, imageRepoHost, imageRepoUser, imageRepoPwd)
+	if err != nil {
+		// Temporary GitHub App failure: fail the batch with the error instead of nudging the
+		// target with a different author. Unlike the immediate flow, the batched flow has no
+		// credential retry window yet, so the batch ends up Failed and visible in its status.
+		return nil, NudgeTarget{}, nil, fmt.Errorf("resolving GitHub App credentials for batched nudge target %q: %w", batch.Target, err)
+	}
 	if len(targets) == 0 {
 		targets = GetNudgeTargetsBasicAuth(ctx, c, objectLoader, []applicationapiv1alpha1.Component{*targetComponent}, imageRepoHost, imageRepoUser, imageRepoPwd)
 	}
