@@ -142,8 +142,44 @@ func (gc *GitlabClient) GetMergeRequests(projectId string) ([]*gitlab.BasicMerge
 	return mergeRequests, nil
 }
 
+func (gc *GitlabClient) CreateMergeRequest(projectID, title, description, sourceBranch, targetBranch string) (*gitlab.MergeRequest, error) {
+	mr, _, err := gc.client.MergeRequests.CreateMergeRequest(projectID, &gitlab.CreateMergeRequestOptions{
+		Title:              gitlab.Ptr(title),
+		Description:        gitlab.Ptr(description),
+		SourceBranch:       gitlab.Ptr(sourceBranch),
+		TargetBranch:       gitlab.Ptr(targetBranch),
+		RemoveSourceBranch: gitlab.Ptr(false),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create MR in projectID %s from branch %s to %s: %v", projectID, sourceBranch, targetBranch, err)
+	}
+	return mr, nil
+}
+
+func (gc *GitlabClient) GetProjectNumericID(projectID string) (int64, error) {
+	project, _, err := gc.client.Projects.GetProject(projectID, nil)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get GitLab project %s: %v", projectID, err)
+	}
+	return project.ID, nil
+}
+
+func (gc *GitlabClient) GetBranchCommitSHA(projectID, branchName string) (string, error) {
+	branch, _, err := gc.client.Branches.GetBranch(projectID, branchName)
+	if err != nil {
+		return "", fmt.Errorf("failed to get GitLab branch %s in projectID %s: %v", branchName, projectID, err)
+	}
+	if branch.Commit == nil || branch.Commit.ID == "" {
+		return "", fmt.Errorf("GitLab branch %s in projectID %s has no commit SHA", branchName, projectID)
+	}
+	return branch.Commit.ID, nil
+}
+
 // CloseMergeRequest closes merge request in Gitlab repo by given MR IID
 func (gc *GitlabClient) CloseMergeRequest(projectID string, mergeRequestIID int64) error {
+	if mergeRequestIID == 0 {
+		return nil
+	}
 
 	// Get merge requests using Gitlab client
 	_, _, err := gc.client.MergeRequests.GetMergeRequest(projectID, mergeRequestIID, nil)
