@@ -30,6 +30,8 @@ replace (
 	k8s.io/client-go => k8s.io/client-go v0.35.3
 	k8s.io/component-base => k8s.io/component-base v0.35.3
 
+	// knative.dev/pkg: pinned because newer versions removed the metrics
+	// sub-package, which is required transitively by the Tekton dependency.
 	knative.dev/pkg => knative.dev/pkg v0.0.0-20240416145024-0f34a8815650
 )
 
