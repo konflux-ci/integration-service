@@ -639,9 +639,10 @@ var _ = Describe("Integration pipeline", Ordered, func() {
 			newStyleSnapshot := hasSnapshot.DeepCopy()
 			newStyleSnapshot.TypeMeta = metav1.TypeMeta{APIVersion: "konflux-ci.dev/v1alpha1", Kind: "Snapshot"}
 			newStyleSnapshot.Labels = map[string]string{
-				keys.Test("type").New:      gitops.SnapshotComponentType,
-				keys.PAC("event-type").New: gitops.PipelineAsCodePullRequestType,
-				keys.BuildComponent().New:  hasComp.Name,
+				keys.Test("type").New:                  gitops.SnapshotComponentType,
+				keys.PAC("event-type").New:             gitops.PipelineAsCodePullRequestType,
+				keys.BuildComponent().New:              hasComp.Name,
+				keys.PrefixCustomNew + "/custom_label": "custom-label",
 			}
 			newStyleSnapshot.Annotations = map[string]string{
 				keys.Test("status").New: "ready",
@@ -661,6 +662,8 @@ var _ = Describe("Integration pipeline", Ordered, func() {
 			Expect(pipelineRun.Labels).NotTo(HaveKey(keys.Test("type").Old))
 			Expect(pipelineRun.Labels).To(HaveKeyWithValue(keys.PAC("event-type").New, gitops.PipelineAsCodePullRequestType))
 			Expect(pipelineRun.Labels).NotTo(HaveKey(keys.PAC("event-type").Old))
+			Expect(pipelineRun.Labels).To(HaveKeyWithValue(keys.PrefixCustomNew+"/custom_label", "custom-label"))
+			Expect(pipelineRun.Labels).NotTo(HaveKey(gitops.CustomLabelPrefix + "/custom_label"))
 		})
 
 		It("can append labels coming from Application to IntegrationPipelineRun and making sure that label values matches application", func() {

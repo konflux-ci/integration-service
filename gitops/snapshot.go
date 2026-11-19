@@ -1237,6 +1237,8 @@ func ResetSnapshotStatusConditions(ctx context.Context, adapterClient client.Cli
 // ObjectMeta: metav1.ObjectMeta{
 // TODO: replace 'object' with 'componentGroup' after application is deprecated. Also delete Application bool
 func CopySnapshotLabelsAndAnnotations(object *metav1.ObjectMeta, snapshot *applicationapiv1alpha1.Snapshot, componentName string, source *metav1.ObjectMeta, prefixes []string, objectIsApplication bool) {
+	style := keys.StyleOf(source)
+
 	if snapshot.Labels == nil {
 		snapshot.Labels = map[string]string{}
 	}
@@ -1244,27 +1246,28 @@ func CopySnapshotLabelsAndAnnotations(object *metav1.ObjectMeta, snapshot *appli
 	if snapshot.Annotations == nil {
 		snapshot.Annotations = map[string]string{}
 	}
-	snapshot.Labels[SnapshotTypeLabel] = SnapshotComponentType
 	maps.Copy(snapshot.Labels, keys.PropagatedAppStudioLabels(source))
 
-	snapshot.Labels[SnapshotComponentLabel] = componentName
+	_ = SetOwnedLabelWithStyle(snapshot, SnapshotComponentLabel, componentName, style)
 	if objectIsApplication {
 		snapshot.Labels[ApplicationNameLabel] = object.Name
 	} else {
 		// the object is a ComponentGroup
-		snapshot.Labels[ComponentGroupNameLabel] = object.Name
+		_ = SetOwnedLabelWithStyle(snapshot, ComponentGroupNameLabel, object.Name, style)
 	}
+	_ = SetOwnedLabelWithStyle(snapshot, SnapshotTypeLabel, SnapshotComponentType, style)
 
 	// Copy PAC annotations/labels from source(tested snapshot or pipelinerun) to snapshot.
-	_ = metadata.CopyLabelsWithPrefixReplacement(source, &snapshot.ObjectMeta, "pipelinesascode.tekton.dev", PipelinesAsCodePrefix)
-	_ = metadata.CopyAnnotationsWithPrefixReplacement(source, &snapshot.ObjectMeta, "pipelinesascode.tekton.dev", PipelinesAsCodePrefix)
+	pacPrefix := keys.PrefixForStyle(keys.PrefixPAC, style)
+	_ = metadata.CopyLabelsWithPrefixReplacement(source, &snapshot.ObjectMeta, "pipelinesascode.tekton.dev", pacPrefix)
+	_ = metadata.CopyAnnotationsWithPrefixReplacement(source, &snapshot.ObjectMeta, "pipelinesascode.tekton.dev", pacPrefix)
 
 	for _, prefix := range prefixes {
 		// Copy labels and annotations prefixed with defined prefix
 		if prefix != AppstudioLabelPrefix {
-			_ = metadata.CopyLabelsByPrefix(source, &snapshot.ObjectMeta, prefix)
+			_ = metadata.CopyLabelsByPrefix(source, &snapshot.ObjectMeta, keys.PrefixForStyle(prefix, style))
 		}
-		_ = metadata.CopyAnnotationsByPrefix(source, &snapshot.ObjectMeta, prefix)
+		_ = metadata.CopyAnnotationsByPrefix(source, &snapshot.ObjectMeta, keys.PrefixForStyle(prefix, style))
 	}
 }
 
@@ -1283,7 +1286,7 @@ func CopyBuildPipelineRunResultsToSnapshot(pipelineRun *tektonv1.PipelineRun, sn
 	}
 	for _, result := range pipelineRun.Status.Results {
 		if result.Value.StringVal != "" {
-			snapshot.Annotations[BuildResultAnnotationKey(result.Name)] = result.Value.StringVal
+			_ = SetOwnedAnnotation(snapshot, BuildResultAnnotationKey(result.Name), result.Value.StringVal)
 		}
 	}
 }
@@ -1291,6 +1294,8 @@ func CopyBuildPipelineRunResultsToSnapshot(pipelineRun *tektonv1.PipelineRun, sn
 // CopyTempGroupSnapshotLabelsAndAnnotations coppies labels and annotations from build pipelineRun or tested snapshot
 // into regular snapshot
 func CopyTempGroupSnapshotLabelsAndAnnotations(object *metav1.ObjectMeta, snapshot *applicationapiv1alpha1.Snapshot, componentName string, source *metav1.ObjectMeta, prefixes []string, objectIsApplication bool) {
+	style := keys.StyleOf(source)
+
 	if snapshot.Labels == nil {
 		snapshot.Labels = map[string]string{}
 	}
@@ -1298,26 +1303,27 @@ func CopyTempGroupSnapshotLabelsAndAnnotations(object *metav1.ObjectMeta, snapsh
 	if snapshot.Annotations == nil {
 		snapshot.Annotations = map[string]string{}
 	}
-	snapshot.Labels[SnapshotTypeLabel] = SnapshotGroupType
+	_ = SetOwnedLabelWithStyle(snapshot, SnapshotTypeLabel, SnapshotGroupType, style)
 	maps.Copy(snapshot.Labels, keys.PropagatedAppStudioLabels(source))
 
 	if objectIsApplication {
 		snapshot.Labels[ApplicationNameLabel] = object.Name
 	} else {
 		// the object is a ComponentGroup
-		snapshot.Labels[ComponentGroupNameLabel] = object.Name
+		_ = SetOwnedLabelWithStyle(snapshot, ComponentGroupNameLabel, object.Name, style)
 	}
 
 	// Copy PAC annotations/labels from source(tested snapshot or pipelinerun) to snapshot.
-	_ = metadata.CopyLabelsWithPrefixReplacement(source, &snapshot.ObjectMeta, "pipelinesascode.tekton.dev", PipelinesAsCodePrefix)
-	_ = metadata.CopyAnnotationsWithPrefixReplacement(source, &snapshot.ObjectMeta, "pipelinesascode.tekton.dev", PipelinesAsCodePrefix)
+	pacPrefix := keys.PrefixForStyle(keys.PrefixPAC, style)
+	_ = metadata.CopyLabelsWithPrefixReplacement(source, &snapshot.ObjectMeta, "pipelinesascode.tekton.dev", pacPrefix)
+	_ = metadata.CopyAnnotationsWithPrefixReplacement(source, &snapshot.ObjectMeta, "pipelinesascode.tekton.dev", pacPrefix)
 
 	for _, prefix := range prefixes {
 		// Copy labels and annotations prefixed with defined prefix
 		if prefix != AppstudioLabelPrefix {
-			_ = metadata.CopyLabelsByPrefix(source, &snapshot.ObjectMeta, prefix)
+			_ = metadata.CopyLabelsByPrefix(source, &snapshot.ObjectMeta, keys.PrefixForStyle(prefix, style))
 		}
-		_ = metadata.CopyAnnotationsByPrefix(source, &snapshot.ObjectMeta, prefix)
+		_ = metadata.CopyAnnotationsByPrefix(source, &snapshot.ObjectMeta, keys.PrefixForStyle(prefix, style))
 	}
 }
 

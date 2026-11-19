@@ -46,6 +46,8 @@ var _ = Describe("style dispatch and compatibility helpers", func() {
 			keys.PipelineType().Old,
 			keys.PAC("sha").Old,
 			keys.PAC("sha").New,
+			keys.PrefixCustom + "/workload",
+			keys.PrefixCustomNew + "/workload",
 			keys.Test("scenario").Old,
 			keys.Test("scenario").New,
 		}

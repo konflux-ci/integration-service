@@ -64,30 +64,36 @@ func PrepareSnapshotForPipelineRun(ctx context.Context, adapterClient client.Cli
 
 	prefixes := []string{gitops.BuildPipelineRunPrefix, gitops.TestLabelPrefix, gitops.CustomLabelPrefix, gitops.ReleaseLabelPrefix}
 	gitops.CopySnapshotLabelsAndAnnotations(&componentGroup.ObjectMeta, snapshot, componentName, &pipelineRun.ObjectMeta, prefixes, false)
+	if sourceRepoURL, found := gitops.AnnotationValue(snapshot, gitops.SnapshotGitSourceRepoURLAnnotation); found {
+		_ = gitops.SetOwnedAnnotation(snapshot, gitops.SnapshotGitSourceRepoURLAnnotation, sourceRepoURL)
+	}
+	if creationStatus, found := gitops.AnnotationValue(snapshot, helpers.CreateSnapshotAnnotationName); found {
+		_ = gitops.SetOwnedAnnotation(snapshot, helpers.CreateSnapshotAnnotationName, creationStatus)
+	}
 
 	if tp, found := pipelineRun.Annotations[tracing.SpanContextAnnotation]; found && tp != "" {
 		snapshot.Annotations[tracing.SpanContextAnnotation] = tp
 	}
 
-	snapshot.Labels[gitops.BuildPipelineRunNameLabel] = pipelineRun.Name
+	_ = gitops.SetOwnedLabel(snapshot, gitops.BuildPipelineRunNameLabel, pipelineRun.Name)
 	if pipelineRun.Status.CompletionTime != nil {
-		snapshot.Labels[gitops.BuildPipelineRunFinishTimeLabel] = strconv.FormatInt(pipelineRun.Status.CompletionTime.Unix(), 10)
+		_ = gitops.SetOwnedLabel(snapshot, gitops.BuildPipelineRunFinishTimeLabel, strconv.FormatInt(pipelineRun.Status.CompletionTime.Unix(), 10))
 	} else {
-		snapshot.Labels[gitops.BuildPipelineRunFinishTimeLabel] = strconv.FormatInt(time.Now().Unix(), 10)
+		_ = gitops.SetOwnedLabel(snapshot, gitops.BuildPipelineRunFinishTimeLabel, strconv.FormatInt(time.Now().Unix(), 10))
 	}
 
 	if gitops.IsSnapshotCreatedByPACMergeQueueEvent(snapshot) {
 		pullRequestNumber := gitops.ExtractPullRequestNumberFromMergeQueueSnapshot(snapshot)
 		if pullRequestNumber != "" {
-			snapshot.Labels[gitops.PipelineAsCodePullRequestAnnotation] = pullRequestNumber
-			snapshot.Annotations[gitops.PipelineAsCodePullRequestAnnotation] = pullRequestNumber
+			_ = gitops.SetOwnedLabel(snapshot, gitops.PipelineAsCodePullRequestAnnotation, pullRequestNumber)
+			_ = gitops.SetOwnedAnnotation(snapshot, gitops.PipelineAsCodePullRequestAnnotation, pullRequestNumber)
 		}
 	}
 
 	// Set BuildPipelineRunStartTime annotation with millisecond precision and override snapshot name
 	timestampMillis := getPipelineRunStartTimeMillis(pipelineRun)
 	// Naming once, at the end
-	snapshot.Annotations[gitops.BuildPipelineRunStartTime] = strconv.FormatInt(timestampMillis, 10)
+	_ = gitops.SetOwnedAnnotation(snapshot, gitops.BuildPipelineRunStartTime, strconv.FormatInt(timestampMillis, 10))
 	snapshot.Name = gitops.GenerateSnapshotNameWithTimestamp(componentGroup.Name, timestampMillis)
 
 	// Copy all build PipelineRun results as Snapshot annotations so downstream
@@ -96,9 +102,9 @@ func PrepareSnapshotForPipelineRun(ctx context.Context, adapterClient client.Cli
 
 	// Set the integration workflow annotation based on the PipelineRun type
 	if tekton.IsPLRCreatedByPACPushEvent(pipelineRun) {
-		snapshot.Annotations[gitops.IntegrationWorkflowAnnotation] = gitops.IntegrationWorkflowPushValue
+		_ = gitops.SetOwnedAnnotation(snapshot, gitops.IntegrationWorkflowAnnotation, gitops.IntegrationWorkflowPushValue)
 	} else {
-		snapshot.Annotations[gitops.IntegrationWorkflowAnnotation] = gitops.IntegrationWorkflowPullRequestValue
+		_ = gitops.SetOwnedAnnotation(snapshot, gitops.IntegrationWorkflowAnnotation, gitops.IntegrationWorkflowPullRequestValue)
 	}
 
 	return snapshot, nil
