@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/konflux-ci/integration-service/helpers"
+	"github.com/konflux-ci/integration-service/internal/controller/testutil"
 	"github.com/konflux-ci/integration-service/pkg/keys"
 	"sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	crwebhook "sigs.k8s.io/controller-runtime/pkg/webhook"
@@ -281,11 +282,11 @@ var _ = Describe("PipelineController", func() {
 	})
 
 	It("Does not return an error if the component cannot be found", func() {
-		controllerutil.AddFinalizer(buildPipelineRun, helpers.IntegrationPipelineRunFinalizer)
-		err := k8sClient.Update(ctx, buildPipelineRun)
-		Expect(err).ToNot(HaveOccurred())
+		testutil.UpdateWithRetry(ctx, k8sClient, buildPipelineRun, func() {
+			controllerutil.AddFinalizer(buildPipelineRun, helpers.IntegrationPipelineRunFinalizer)
+		})
 
-		err = k8sClient.Delete(ctx, hasComp)
+		err := k8sClient.Delete(ctx, hasComp)
 		Eventually(func() bool {
 			err := k8sClient.Get(ctx, types.NamespacedName{
 				Namespace: hasComp.Namespace,
@@ -493,9 +494,10 @@ var _ = Describe("PipelineController", func() {
 				g.Expect(k8sClient.Get(ctx, reqNewModel.NamespacedName, newModelPipelineRun)).To(Succeed())
 			}, time.Second*10).Should(Succeed())
 
-			controllerutil.AddFinalizer(newModelPipelineRun, helpers.IntegrationPipelineRunFinalizer)
-			controllerutil.AddFinalizer(newModelPipelineRun, helpers.NudgePipelineRunFinalizer)
-			Expect(k8sClient.Update(ctx, newModelPipelineRun)).To(Succeed())
+			testutil.UpdateWithRetry(ctx, k8sClient, newModelPipelineRun, func() {
+				controllerutil.AddFinalizer(newModelPipelineRun, helpers.IntegrationPipelineRunFinalizer)
+				controllerutil.AddFinalizer(newModelPipelineRun, helpers.NudgePipelineRunFinalizer)
+			})
 
 			Expect(k8sClient.Delete(ctx, newModelPipelineRun)).To(Succeed())
 			// Manager client is cached; wait until the delete is visible before reconciling.
@@ -516,8 +518,9 @@ var _ = Describe("PipelineController", func() {
 		})
 
 		It("should remove NudgePipelineRunFinalizer when the PipelineRun is deleting", func() {
-			controllerutil.AddFinalizer(newModelPipelineRun, helpers.NudgePipelineRunFinalizer)
-			Expect(k8sClient.Update(ctx, newModelPipelineRun)).To(Succeed())
+			testutil.UpdateWithRetry(ctx, k8sClient, newModelPipelineRun, func() {
+				controllerutil.AddFinalizer(newModelPipelineRun, helpers.NudgePipelineRunFinalizer)
+			})
 
 			Expect(k8sClient.Delete(ctx, newModelPipelineRun)).To(Succeed())
 			// The new-model label keys gate this PipelineRun from the normal build

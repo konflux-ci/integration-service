@@ -23,6 +23,7 @@ import (
 	konfluxv1beta2 "github.com/konflux-ci/integration-service/api/konflux/v1beta2"
 	"github.com/konflux-ci/integration-service/api/v1beta2"
 	"github.com/konflux-ci/integration-service/gitops"
+	"github.com/konflux-ci/integration-service/internal/controller/testutil"
 	toolkit "github.com/konflux-ci/operator-toolkit/loader"
 	"github.com/konflux-ci/operator-toolkit/metadata"
 	. "github.com/onsi/ginkgo/v2"
@@ -169,8 +170,9 @@ var _ = Describe("StatusReportController", func() {
 	When("snapshot is restored from backup", func() {
 
 		BeforeEach(func() {
-			hasSnapshot.Labels["velero.io/restore-name"] = "something"
-			Expect(k8sClient.Update(ctx, hasSnapshot)).To(Succeed())
+			testutil.UpdateWithRetry(ctx, k8sClient, hasSnapshot, func() {
+				hasSnapshot.Labels["velero.io/restore-name"] = "something"
+			})
 
 			Eventually(func() bool {
 				err := k8sClient.Get(ctx, types.NamespacedName{
