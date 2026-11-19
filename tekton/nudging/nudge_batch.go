@@ -36,7 +36,11 @@ import (
 	logger "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
-const maxBatchNudgePLRRetries = 3
+const (
+	maxBatchNudgePLRRetries = 3
+	// completedBatchTTL is how long a Completed batch is retained after completion for observability.
+	completedBatchTTL = 24 * time.Hour
+)
 
 // RecordBuildForBatchedNudge records a successful source build against the target's open batch
 // window (ADR-0072). When no batch exists yet, it creates one with fireAt=now+debounce and
@@ -265,6 +269,8 @@ func ProcessFiringNudgeBatches(ctx context.Context, c client.Client, nudgeConfig
 			}
 			if h.HasPipelineRunSucceeded(plr) {
 				batch.Phase = v1beta2.BatchPhaseCompleted
+				completionTime := *plr.Status.CompletionTime
+				batch.CompletedAt = &completionTime
 				batch.Message = fmt.Sprintf("nudge PipelineRun %s succeeded", batch.NudgePipelineRun)
 				changed = true
 				continue
@@ -286,6 +292,47 @@ func ProcessFiringNudgeBatches(ctx context.Context, c client.Client, nudgeConfig
 		if !changed {
 			return nil
 		}
+		return c.Status().Patch(ctx, latest, client.MergeFromWithOptions(original, client.MergeFromWithOptimisticLock{}))
+	})
+}
+
+// FilterExpiredCompletedBatches returns the subset of batches that should be retained —
+// dropping Completed entries whose CompletedAt has exceeded the 24 h TTL.
+// Legacy entries without CompletedAt use CreatedAt as their retention start.
+// Exported for unit testing; production callers use PruneCompletedBatches.
+func FilterExpiredCompletedBatches(batches []v1beta2.ActiveBatch, now time.Time) []v1beta2.ActiveBatch {
+	result := make([]v1beta2.ActiveBatch, 0, len(batches))
+	for _, b := range batches {
+		if b.Phase == v1beta2.BatchPhaseCompleted && now.Sub(completedBatchRetentionStart(b).Time) > completedBatchTTL {
+			continue
+		}
+		result = append(result, b)
+	}
+	return result
+}
+
+func completedBatchRetentionStart(batch v1beta2.ActiveBatch) metav1.Time {
+	if batch.CompletedAt != nil {
+		return *batch.CompletedAt
+	}
+	return batch.CreatedAt
+}
+
+// PruneCompletedBatches removes Completed batches that have exceeded the retention TTL (24 h).
+// It is called on every reconcile to prevent NudgeConfig status from growing indefinitely.
+func PruneCompletedBatches(ctx context.Context, c client.Client, nudgeConfig *v1beta2.NudgeConfig) error {
+	return retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+		latest := &v1beta2.NudgeConfig{}
+		if err := c.Get(ctx, types.NamespacedName{Name: nudgeConfig.Name, Namespace: nudgeConfig.Namespace}, latest); err != nil {
+			return err
+		}
+		original := latest.DeepCopy()
+		now := time.Now()
+		filtered := FilterExpiredCompletedBatches(latest.Status.ActiveBatches, now)
+		if len(filtered) == len(latest.Status.ActiveBatches) {
+			return nil
+		}
+		latest.Status.ActiveBatches = filtered
 		return c.Status().Patch(ctx, latest, client.MergeFromWithOptions(original, client.MergeFromWithOptimisticLock{}))
 	})
 }
@@ -350,11 +397,12 @@ func nextWakeForBatch(batch *v1beta2.ActiveBatch, now time.Time) time.Duration {
 	return earliest
 }
 
-// NextBatchWakeDuration returns the time until the next accumulating batch should be checked.
+// NextBatchWakeDuration returns the time until the next batch should be checked.
 // It uses the earlier of fireAt and hardDeadline so a batch whose debounce keeps
 // sliding forward still wakes when the hard deadline is reached.
 // Empty Accumulating batches with a timer set are still scheduled so
 // ProcessDueNudgeBatches can mark them Failed when the timer expires.
+// Completed batches are scheduled at their retention expiry for status cleanup.
 func NextBatchWakeDuration(batches []v1beta2.ActiveBatch) time.Duration {
 	now := time.Now()
 	var next time.Duration
@@ -365,6 +413,20 @@ func NextBatchWakeDuration(batches []v1beta2.ActiveBatch) time.Duration {
 	}
 	for i := range batches {
 		batch := &batches[i]
+		if batch.Phase == v1beta2.BatchPhaseCompleted {
+			retentionStart := completedBatchRetentionStart(*batch)
+			if retentionStart.IsZero() {
+				continue
+			}
+			wait := retentionStart.Add(completedBatchTTL).Sub(now)
+			if wait <= 0 {
+				return 0
+			}
+			if next == 0 || wait < next {
+				next = wait
+			}
+			continue
+		}
 		if batch.Phase != v1beta2.BatchPhaseAccumulating {
 			continue
 		}
@@ -419,6 +481,16 @@ func findOrCreateAcceptingBatch(batches []v1beta2.ActiveBatch, target string, no
 			return i, &batches[i], batches
 		}
 	}
+
+	// No open batch found — remove any stale Completed batch for this target before creating a new one.
+	filtered := batches[:0:len(batches)]
+	for _, b := range batches {
+		if b.Target == target && b.Phase == v1beta2.BatchPhaseCompleted {
+			continue
+		}
+		filtered = append(filtered, b)
+	}
+	batches = filtered
 
 	batchID := newBatchID(target, now)
 	newBatch := v1beta2.ActiveBatch{
