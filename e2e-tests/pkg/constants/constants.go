@@ -113,6 +113,7 @@ const (
 
 var (
 	ComponentPaCRequestAnnotation              = map[string]string{"build.appstudio.openshift.io/request": "configure-pac"}
+	ComponentPaCNoMRRequestAnnotation          = map[string]string{"build.appstudio.openshift.io/request": "configure-pac-no-mr"}
 	ComponentTriggerSimpleBuildAnnotation      = map[string]string{"build.appstudio.openshift.io/request": "trigger-simple-build"}
 	ImageControllerAnnotationRequestPublicRepo = map[string]string{"image.redhat.com/generate": `{"visibility": "public"}`}
 	IntegrationTestScenarioDefaultLabels       = map[string]string{"test.appstudio.openshift.io/optional": "false"}
