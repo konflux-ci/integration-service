@@ -320,6 +320,12 @@ spec:
                       maxLength: 253
                       minLength: 1
                       type: string
+                    completedAt:
+                      description: |-
+                        CompletedAt is the timestamp when the nudge PipelineRun for this batch succeeded.
+                        Completed batches are retained for 24 hours from this time for observability.
+                      format: date-time
+                      type: string
                     createdAt:
                       description: CreatedAt is the timestamp when this batch was
                         first created.

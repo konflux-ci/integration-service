@@ -352,6 +352,32 @@ var _ = Describe("NudgeConfig reconciler", func() {
 			Expect(updated.Status.ActiveBatches).To(BeEmpty())
 		})
 
+		It("should requeue for cleanup when a completed batch is retained", func() {
+			completedAt := metav1.NewTime(time.Now().Add(-23 * time.Hour))
+			nudgeConfig := &v1beta2.NudgeConfig{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      v1beta2.NudgeConfigSingletonName,
+					Namespace: "default",
+				},
+				Status: v1beta2.NudgeConfigStatus{
+					ActiveBatches: []v1beta2.ActiveBatch{{
+						Target:       "bundle",
+						BatchID:      "recent-done",
+						Phase:        v1beta2.BatchPhaseCompleted,
+						CreatedAt:    metav1.NewTime(time.Now().Add(-48 * time.Hour)),
+						CompletedAt:  &completedAt,
+						HardDeadline: metav1.NewTime(time.Now().Add(-44 * time.Hour)),
+					}},
+				},
+			}
+			reconciler.Client = newClient(nudgeConfig)
+
+			result, err := reconciler.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKeyFromObject(nudgeConfig)})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.RequeueAfter).To(BeNumerically(">", 0))
+			Expect(result.RequeueAfter).To(BeNumerically("<", 2*time.Hour))
+		})
+
 		It("should return an error when pruning cannot patch status", func() {
 			old := metav1.NewTime(time.Now().Add(-25 * time.Hour))
 			nudgeConfig := &v1beta2.NudgeConfig{

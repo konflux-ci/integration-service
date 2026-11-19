@@ -38,7 +38,7 @@ import (
 
 const (
 	maxBatchNudgePLRRetries = 3
-	// completedBatchTTL is how long a Completed batch is retained in activeBatches for observability.
+	// completedBatchTTL is how long a Completed batch is retained after completion for observability.
 	completedBatchTTL = 24 * time.Hour
 )
 
@@ -269,6 +269,8 @@ func ProcessFiringNudgeBatches(ctx context.Context, c client.Client, nudgeConfig
 			}
 			if h.HasPipelineRunSucceeded(plr) {
 				batch.Phase = v1beta2.BatchPhaseCompleted
+				completionTime := *plr.Status.CompletionTime
+				batch.CompletedAt = &completionTime
 				batch.Message = fmt.Sprintf("nudge PipelineRun %s succeeded", batch.NudgePipelineRun)
 				changed = true
 				continue
@@ -295,17 +297,25 @@ func ProcessFiringNudgeBatches(ctx context.Context, c client.Client, nudgeConfig
 }
 
 // FilterExpiredCompletedBatches returns the subset of batches that should be retained —
-// dropping Completed entries whose CreatedAt has exceeded the 24 h TTL.
+// dropping Completed entries whose CompletedAt has exceeded the 24 h TTL.
+// Legacy entries without CompletedAt use CreatedAt as their retention start.
 // Exported for unit testing; production callers use PruneCompletedBatches.
 func FilterExpiredCompletedBatches(batches []v1beta2.ActiveBatch, now time.Time) []v1beta2.ActiveBatch {
 	result := make([]v1beta2.ActiveBatch, 0, len(batches))
 	for _, b := range batches {
-		if b.Phase == v1beta2.BatchPhaseCompleted && now.Sub(b.CreatedAt.Time) > completedBatchTTL {
+		if b.Phase == v1beta2.BatchPhaseCompleted && now.Sub(completedBatchRetentionStart(b).Time) > completedBatchTTL {
 			continue
 		}
 		result = append(result, b)
 	}
 	return result
+}
+
+func completedBatchRetentionStart(batch v1beta2.ActiveBatch) metav1.Time {
+	if batch.CompletedAt != nil {
+		return *batch.CompletedAt
+	}
+	return batch.CreatedAt
 }
 
 // PruneCompletedBatches removes Completed batches that have exceeded the retention TTL (24 h).
@@ -387,11 +397,12 @@ func nextWakeForBatch(batch *v1beta2.ActiveBatch, now time.Time) time.Duration {
 	return earliest
 }
 
-// NextBatchWakeDuration returns the time until the next accumulating batch should be checked.
+// NextBatchWakeDuration returns the time until the next batch should be checked.
 // It uses the earlier of fireAt and hardDeadline so a batch whose debounce keeps
 // sliding forward still wakes when the hard deadline is reached.
 // Empty Accumulating batches with a timer set are still scheduled so
 // ProcessDueNudgeBatches can mark them Failed when the timer expires.
+// Completed batches are scheduled at their retention expiry for status cleanup.
 func NextBatchWakeDuration(batches []v1beta2.ActiveBatch) time.Duration {
 	now := time.Now()
 	var next time.Duration
@@ -402,6 +413,20 @@ func NextBatchWakeDuration(batches []v1beta2.ActiveBatch) time.Duration {
 	}
 	for i := range batches {
 		batch := &batches[i]
+		if batch.Phase == v1beta2.BatchPhaseCompleted {
+			retentionStart := completedBatchRetentionStart(*batch)
+			if retentionStart.IsZero() {
+				continue
+			}
+			wait := retentionStart.Add(completedBatchTTL).Sub(now)
+			if wait <= 0 {
+				return 0
+			}
+			if next == 0 || wait < next {
+				next = wait
+			}
+			continue
+		}
 		if batch.Phase != v1beta2.BatchPhaseAccumulating {
 			continue
 		}
