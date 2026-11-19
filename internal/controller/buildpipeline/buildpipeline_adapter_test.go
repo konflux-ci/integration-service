@@ -5611,21 +5611,23 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			sourceComp.Spec.ContainerImage = SampleImageWithoutDigest
 			Expect(k8sClient.Update(ctx, sourceComp)).To(Succeed())
 
-			// The suite's client reads through the informer cache, which lags writes made through
-			// it. EnsureNudgePipelineRunsExist reads the component, the service account and the
-			// secret once, so a stale read would annotate credentials-error and stop for good;
-			// wait until the cache serves the writes before reconciling.
-			Eventually(func(g Gomega) {
-				cachedComponent := &applicationapiv1alpha1.Component{}
-				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(sourceComp), cachedComponent)).To(Succeed())
-				g.Expect(cachedComponent.Spec.ContainerImage).To(Equal(SampleImageWithoutDigest))
-				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(sa), &corev1.ServiceAccount{})).To(Succeed())
-				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(dockerSecret), &corev1.Secret{})).To(Succeed())
-			}, time.Second*10).Should(Succeed())
-
+			// Mock the source component, service account and secret in the
+			// adapter context so the loader returns them directly instead of
+			// reading through the informer cache.  The suite registers both
+			// the old (api/v1alpha1) and new (api/konflux/v1alpha1) API groups;
+			// the cached client keeps separate informer caches per GVK, and
+			// the loader's fallback reads the new group first.  A cache-wait
+			// that only verifies the old group informer leaves a timing window
+			// where the new group informer still serves a stale ContainerImage,
+			// causing GetImageRegistryCredentials to fail with
+			// "credentials-error" instead of the expected "no-credentials".
+			// Mocking all three inputs makes the test deterministic.
 			adapter = NewAdapter(ctx, pushPLR, hasComp.Name, &[]v1beta2.ComponentGroup{*hasCompGroup}, logger, loader.NewMockLoader(), k8sClient)
 			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{ContextKey: loader.NudgeConfigContextKey, Resource: nudgeConfig},
+				{ContextKey: loader.GetComponentContextKey, Resource: sourceComp},
+				{ContextKey: loader.ServiceAccountContextKey, Resource: sa},
+				{ContextKey: loader.SecretContextKey, Resource: dockerSecret},
 			})
 
 			result, err := adapter.EnsureNudgePipelineRunsExist()
