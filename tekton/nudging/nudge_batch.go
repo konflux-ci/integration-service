@@ -36,7 +36,12 @@ import (
 	logger "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
-const maxBatchNudgePLRRetries = 3
+const (
+	maxBatchNudgePLRRetries      = 3
+	maxBatchNudgeCreationRetries = 3
+	// completedBatchTTL is how long a Completed batch is retained in activeBatches for observability.
+	completedBatchTTL = 24 * time.Hour
+)
 
 // RecordBuildForBatchedNudge records a successful source build against the target's open batch
 // window (ADR-0072). When no batch exists yet, it creates one with fireAt=now+debounce and
@@ -227,11 +232,22 @@ func ProcessDueNudgeBatches(ctx context.Context, c client.Client, nudgeConfig *v
 				continue
 			}
 			if err := fireBatch(ctx, c, latest, batch); err != nil {
+				if isRetryableBatchDeliveryError(err) && batch.CreationRetryCount < maxBatchNudgeCreationRetries {
+					// fireBatch transitions the batch to Firing before it creates the
+					// PipelineRun. No PipelineRun was recorded on a create error, so keep
+					// this batch due for a later creation attempt.
+					batch.Phase = v1beta2.BatchPhaseAccumulating
+					batch.CreationRetryCount++
+					batch.Message = fmt.Sprintf("retryable nudge PipelineRun creation failure (%d/%d): %s", batch.CreationRetryCount, maxBatchNudgeCreationRetries, err)
+					changed = true
+					continue
+				}
 				batch.Phase = v1beta2.BatchPhaseFailed
 				batch.Message = err.Error()
 				changed = true
 				continue
 			}
+			batch.CreationRetryCount = 0
 			changed = true
 		}
 
@@ -244,6 +260,13 @@ func ProcessDueNudgeBatches(ctx context.Context, c client.Client, nudgeConfig *v
 
 // ProcessFiringNudgeBatches advances batches in Firing phase based on nudge PipelineRun completion.
 func ProcessFiringNudgeBatches(ctx context.Context, c client.Client, nudgeConfig *v1beta2.NudgeConfig) error {
+	return ProcessFiringNudgeBatchesWithReader(ctx, c, c, nudgeConfig)
+}
+
+// ProcessFiringNudgeBatchesWithReader confirms a cache miss through reader before
+// treating a tracked PipelineRun outcome as unknown. A true absence is deliberately
+// not retried: KFLUXSE-597 requires unknown outcomes not to consume a retry.
+func ProcessFiringNudgeBatchesWithReader(ctx context.Context, c client.Client, reader client.Reader, nudgeConfig *v1beta2.NudgeConfig) error {
 	return retry.RetryOnConflict(retry.DefaultBackoff, func() error {
 		latest := &v1beta2.NudgeConfig{}
 		if err := c.Get(ctx, types.NamespacedName{Name: nudgeConfig.Name, Namespace: nudgeConfig.Namespace}, latest); err != nil {
@@ -259,7 +282,32 @@ func ProcessFiringNudgeBatches(ctx context.Context, c client.Client, nudgeConfig
 			}
 			plr := &tektonv1.PipelineRun{}
 			if err := c.Get(ctx, types.NamespacedName{Name: batch.NudgePipelineRun, Namespace: nudgeConfig.Namespace}, plr); err != nil {
-				return fmt.Errorf("loading nudge PipelineRun %q for batch %q: %w", batch.NudgePipelineRun, batch.BatchID, err)
+				if !apierrors.IsNotFound(err) {
+					return fmt.Errorf("loading nudge PipelineRun %q for batch %q: %w", batch.NudgePipelineRun, batch.BatchID, err)
+				}
+				if reader != nil {
+					plr = &tektonv1.PipelineRun{}
+					if err := reader.Get(ctx, types.NamespacedName{Name: batch.NudgePipelineRun, Namespace: nudgeConfig.Namespace}, plr); err == nil {
+						// Continue below with the authoritative object.
+					} else if !apierrors.IsNotFound(err) {
+						return fmt.Errorf("confirming nudge PipelineRun %q for batch %q: %w", batch.NudgePipelineRun, batch.BatchID, err)
+					} else {
+						batch.Message = fmt.Sprintf("nudge PipelineRun %s outcome is unknown after authoritative lookup", batch.NudgePipelineRun)
+						changed = true
+						continue
+					}
+				} else {
+					batch.Message = fmt.Sprintf("nudge PipelineRun %s outcome is unknown", batch.NudgePipelineRun)
+					changed = true
+					continue
+				}
+			}
+			if err := validateBatchedNudgePipelineRun(plr, batch.BatchID); err != nil {
+				batch.Phase = v1beta2.BatchPhaseFailed
+				batch.Message = fmt.Sprintf("nudge PipelineRun %q does not match batch %q: %s",
+					batch.NudgePipelineRun, batch.BatchID, err)
+				changed = true
+				continue
 			}
 			if plr.Status.CompletionTime == nil {
 				continue
@@ -276,8 +324,13 @@ func ProcessFiringNudgeBatches(ctx context.Context, c client.Client, nudgeConfig
 				changed = true
 				continue
 			}
+			previousRetryCount := batch.RetryCount
 			batch.RetryCount++
 			if err := retryFiringBatch(ctx, c, latest, batch); err != nil {
+				if isRetryableBatchDeliveryError(err) {
+					batch.RetryCount = previousRetryCount
+					return err
+				}
 				batch.Phase = v1beta2.BatchPhaseFailed
 				batch.Message = err.Error()
 			}
@@ -287,6 +340,45 @@ func ProcessFiringNudgeBatches(ctx context.Context, c client.Client, nudgeConfig
 		if !changed {
 			return nil
 		}
+		return c.Status().Patch(ctx, latest, client.MergeFromWithOptions(original, client.MergeFromWithOptimisticLock{}))
+	})
+}
+
+func isRetryableBatchDeliveryError(err error) bool {
+	return apierrors.IsConflict(err) || apierrors.IsTooManyRequests(err) ||
+		apierrors.IsServerTimeout(err) || apierrors.IsTimeout(err) ||
+		apierrors.IsServiceUnavailable(err) || apierrors.IsInternalError(err)
+}
+
+// FilterExpiredCompletedBatches returns the subset of batches that should be retained —
+// dropping Completed entries whose CreatedAt has exceeded the 24 h TTL.
+// Exported for unit testing; production callers use PruneCompletedBatches.
+func FilterExpiredCompletedBatches(batches []v1beta2.ActiveBatch, now time.Time) []v1beta2.ActiveBatch {
+	result := make([]v1beta2.ActiveBatch, 0, len(batches))
+	for _, b := range batches {
+		if b.Phase == v1beta2.BatchPhaseCompleted && now.Sub(b.CreatedAt.Time) > completedBatchTTL {
+			continue
+		}
+		result = append(result, b)
+	}
+	return result
+}
+
+// PruneCompletedBatches removes Completed batches that have exceeded the retention TTL (24 h).
+// It is called on every reconcile to prevent NudgeConfig status from growing indefinitely.
+func PruneCompletedBatches(ctx context.Context, c client.Client, nudgeConfig *v1beta2.NudgeConfig) error {
+	return retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+		latest := &v1beta2.NudgeConfig{}
+		if err := c.Get(ctx, types.NamespacedName{Name: nudgeConfig.Name, Namespace: nudgeConfig.Namespace}, latest); err != nil {
+			return err
+		}
+		original := latest.DeepCopy()
+		now := time.Now()
+		filtered := FilterExpiredCompletedBatches(latest.Status.ActiveBatches, now)
+		if len(filtered) == len(latest.Status.ActiveBatches) {
+			return nil
+		}
+		latest.Status.ActiveBatches = filtered
 		return c.Status().Patch(ctx, latest, client.MergeFromWithOptions(original, client.MergeFromWithOptimisticLock{}))
 	})
 }
@@ -679,6 +771,9 @@ func fireBatch(ctx context.Context, c client.Client, nudgeConfig *v1beta2.NudgeC
 		return c.Get(ctx, types.NamespacedName{Name: plannedName, Namespace: nudgeConfig.Namespace}, existingPLR)
 	})
 	if getErr == nil && !existingPLR.IsPending() {
+		if err := validateBatchedNudgePipelineRun(existingPLR, batch.BatchID); err != nil {
+			return fmt.Errorf("refusing to adopt batched nudge PipelineRun %q: %w", plannedName, err)
+		}
 		batch.NudgePipelineRun = plannedName
 		batch.Phase = v1beta2.BatchPhaseFiring
 		batch.Message = fmt.Sprintf("reconciled existing nudge PipelineRun with %d eligible build(s)", len(eligible))

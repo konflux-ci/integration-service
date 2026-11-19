@@ -677,8 +677,18 @@ var _ = Describe("Nudge support object ownership (STONEINTG-1907)", func() {
 		It("adopts and starts a pending retry PipelineRun left by an earlier attempt", func() {
 			name := nudging.BatchedNudgePipelineRunName("adopt-batch", 1)
 			pending := &tektonv1.PipelineRun{
-				ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: ownershipNamespace, UID: "uid-existing"},
-				Spec:       tektonv1.PipelineRunSpec{Status: tektonv1.PipelineRunSpecStatusPending},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      name,
+					Namespace: ownershipNamespace,
+					UID:       "uid-existing",
+					Labels: map[string]string{
+						tektonconsts.NudgeTypeLabel: tektonconsts.NudgePipelineRunTypeValue,
+					},
+					Annotations: map[string]string{
+						tektonconsts.NudgeBatchIDAnnotation: "adopt-batch",
+					},
+				},
+				Spec: tektonv1.PipelineRunSpec{Status: tektonv1.PipelineRunSpecStatusPending},
 			}
 			base := ownershipFakeClient(ownershipPipelineServiceAccount(), pending)
 			rec := newNudgeCreateRecorder()
@@ -696,11 +706,41 @@ var _ = Describe("Nudge support object ownership (STONEINTG-1907)", func() {
 			expectPlainOwnerRef(ownershipGetSecret(base, name).OwnerReferences, plr)
 		})
 
+		It("rejects a pending PipelineRun whose deterministic name belongs to another batch", func() {
+			name := nudging.BatchedNudgePipelineRunName("collision-batch", 1)
+			collision := &tektonv1.PipelineRun{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      name,
+					Namespace: ownershipNamespace,
+					Labels: map[string]string{
+						tektonconsts.NudgeTypeLabel: tektonconsts.NudgePipelineRunTypeValue,
+					},
+					Annotations: map[string]string{
+						tektonconsts.NudgeBatchIDAnnotation: "other-batch",
+					},
+				},
+				Spec: tektonv1.PipelineRunSpec{Status: tektonv1.PipelineRunSpecStatusPending},
+			}
+			base := ownershipFakeClient(ownershipPipelineServiceAccount(), collision)
+
+			_, err := create(base, "collision-batch", 1)
+			Expect(err).To(MatchError(ContainSubstring("refusing to adopt")))
+
+			persisted := ownershipGetPLR(base, name)
+			Expect(string(persisted.Spec.Status)).To(Equal(string(tektonv1.PipelineRunSpecStatusPending)))
+		})
+
 		It("does not patch a PipelineRun that is already running", func() {
 			name := nudging.BatchedNudgePipelineRunName("running-batch", 0)
-			running := &tektonv1.PipelineRun{
-				ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: ownershipNamespace, UID: "uid-existing"},
-			}
+			running := &tektonv1.PipelineRun{ObjectMeta: metav1.ObjectMeta{
+				Name:      name,
+				Namespace: ownershipNamespace,
+				UID:       "uid-existing",
+				Labels: map[string]string{
+					tektonconsts.NudgeTypeLabel: tektonconsts.NudgePipelineRunTypeValue,
+				},
+				Annotations: map[string]string{tektonconsts.NudgeBatchIDAnnotation: "running-batch"},
+			}}
 			base := ownershipFakeClient(ownershipPipelineServiceAccount(), running)
 			rec := newNudgeCreateRecorder()
 
