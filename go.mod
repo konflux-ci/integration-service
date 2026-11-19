@@ -20,7 +20,7 @@ require (
 )
 
 replace (
-	github.com/google/cel-go => github.com/google/cel-go v0.26.1
+	github.com/google/cel-go => github.com/google/cel-go v0.30.0
 	k8s.io/api => k8s.io/api v0.35.3
 	k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.35.3
 	k8s.io/apimachinery => k8s.io/apimachinery v0.35.3
@@ -39,7 +39,7 @@ require (
 	github.com/ghodss/yaml v1.0.0
 	github.com/go-logr/logr v1.4.4
 	github.com/gofri/go-github-ratelimit v1.1.1
-	github.com/google/cel-go v0.28.1
+	github.com/google/cel-go v0.30.0
 	github.com/google/go-containerregistry v0.20.7
 	github.com/google/go-github/v45 v45.2.0
 	github.com/prometheus/client_golang v1.23.2
@@ -147,7 +147,6 @@ require (
 	github.com/skeema/knownhosts v1.3.3 // indirect
 	github.com/spf13/cobra v1.10.2 // indirect
 	github.com/spf13/pflag v1.0.10 // indirect
-	github.com/stoewer/go-strcase v1.3.1 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
 	github.com/xanzy/ssh-agent v0.3.3 // indirect
 	go.opencensus.io v0.24.0 // indirect
