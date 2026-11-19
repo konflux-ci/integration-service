@@ -36,7 +36,7 @@ const (
 	PrefixTestNew = "integration.konflux-ci.dev"
 
 	// PrefixBuildOld is the build-owned metadata copy prefix (build.appstudio*).
-	// New build.konflux-ci.dev keys are not copied onto Snapshots yet.
+	// New build.konflux-ci.dev keys are copied when the source uses the new style.
 	// Migration note: retained during ComponentGroup migration; remove after migration is complete.
 	PrefixBuildOld = "build.appstudio"
 	// PrefixBuildNew is the new build-owned metadata prefix.
@@ -46,12 +46,12 @@ const (
 	PrefixReleaseNew = "release.konflux-ci.dev"
 
 	// PrefixPACNew is the destination prefix for Pipelines-as-Code metadata on new-style objects.
-	PrefixPACNew = "pac.integration.konflux-ci.dev"
+	PrefixPACNew = "pac.test.konflux-ci.dev"
+	// PrefixCustomNew is the destination prefix for custom user-defined metadata on new-style objects.
+	PrefixCustomNew = "custom.konflux-ci.dev"
 )
 
 const (
-	// Legacy-only prefixes have no new-key counterpart in this migration.
-
 	// PrefixPAC is the Pipelines-as-Code metadata prefix copied onto Snapshots.
 	// Migration note: retained during ComponentGroup migration; remove after migration is complete.
 	PrefixPAC = "pac.test.appstudio.openshift.io"
@@ -61,6 +61,11 @@ const (
 	// PrefixRelease is the release metadata prefix.
 	// Migration note: retained during ComponentGroup migration; remove after migration is complete.
 	PrefixRelease = "release.appstudio.openshift.io"
+)
+
+const (
+	// Legacy-only prefixes have no new-key counterpart in this migration.
+
 	// PrefixAppstudio is the old generic resource prefix (application, component, snapshot).
 	// There is no konflux-ci.dev/application key; a missing application label is the ComponentGroup path.
 	// Migration note: retained during ComponentGroup migration; remove after migration is complete.
