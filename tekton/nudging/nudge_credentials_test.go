@@ -18,14 +18,21 @@ package nudging
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
+	"encoding/pem"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
 	"sync"
+	"time"
 
 	ghapi "github.com/google/go-github/v45/github"
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
@@ -363,9 +370,11 @@ var _ = Describe("Nudge credentials", func() {
 		var (
 			ctx                 context.Context
 			scheme              *runtime.Scheme
-			savedNewClientFn    func(context.Context, string, []byte) (*ghapi.Client, string, error)
+			savedNewClientFn    func(int64, []byte) (*ghapi.Client, error)
+			savedSlugFn         func(context.Context, *ghapi.Client) (string, error)
 			savedInstallationFn func(context.Context, *ghapi.Client, string) (*applicationInstallation, error)
-			savedBotIDFn        func(context.Context, string) (int64, error)
+			savedBotIDFn        func(context.Context, string, string) (int64, error)
+			savedCacheNow       func() time.Time
 		)
 
 		defaultBranch := "main"
@@ -381,41 +390,74 @@ var _ = Describe("Nudge credentials", func() {
 				Repositories: []*ghapi.Repository{fakeRepo},
 			}, nil
 		}
-		fakeBotID := func(_ context.Context, _ string) (int64, error) {
+		fakeSlug := func(_ context.Context, _ *ghapi.Client) (string, error) {
+			return "my-app", nil
+		}
+		fakeBotID := func(_ context.Context, _, _ string) (int64, error) {
 			return int64(67890), nil
+		}
+
+		// gitHubHTTPError builds the error go-github returns for an HTTP error response.
+		gitHubHTTPError := func(statusCode int) error {
+			return &ghapi.ErrorResponse{
+				Response: &http.Response{
+					StatusCode: statusCode,
+					Request:    &http.Request{Method: http.MethodGet, URL: &url.URL{Scheme: "https", Host: "api.github.com", Path: "/test"}},
+				},
+				Message: http.StatusText(statusCode),
+			}
+		}
+		gitHubRateLimitError := func() error {
+			return &ghapi.RateLimitError{
+				Response: &http.Response{
+					StatusCode: http.StatusForbidden,
+					Request:    &http.Request{Method: http.MethodGet, URL: &url.URL{Scheme: "https", Host: "api.github.com", Path: "/test"}},
+				},
+				Message: "API rate limit exceeded",
+			}
 		}
 
 		BeforeEach(func() {
 			ctx = context.Background()
 			scheme = newCredentialScheme()
+			appIdentityCache.reset()
+			savedCacheNow = appIdentityCache.now
 			savedNewClientFn = newGitHubAppClientFn
+			savedSlugFn = getGitHubAppSlugFn
 			savedInstallationFn = gitHubAppInstallationForRepo
 			savedBotIDFn = getGitHubBotUserIDFn
-			newGitHubAppClientFn = func(_ context.Context, _ string, _ []byte) (*ghapi.Client, string, error) {
-				return nil, "my-app", nil
+			newGitHubAppClientFn = func(_ int64, _ []byte) (*ghapi.Client, error) {
+				return nil, nil
 			}
+			getGitHubAppSlugFn = fakeSlug
 			gitHubAppInstallationForRepo = fakeInstallation
 			getGitHubBotUserIDFn = fakeBotID
 		})
 
 		AfterEach(func() {
 			newGitHubAppClientFn = savedNewClientFn
+			getGitHubAppSlugFn = savedSlugFn
 			gitHubAppInstallationForRepo = savedInstallationFn
 			getGitHubBotUserIDFn = savedBotIDFn
+			appIdentityCache.now = savedCacheNow
+			appIdentityCache.reset()
 		})
 
-		pacSecretWithApp := func(scheme *runtime.Scheme) (*corev1.Secret, *fake.ClientBuilder) {
+		pacSecretForApp := func(scheme *runtime.Scheme, appID string) (*corev1.Secret, *fake.ClientBuilder) {
 			secret := &corev1.Secret{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      tektonconsts.PipelinesAsCodeGitHubAppSecretName,
 					Namespace: "integration-service",
 				},
 				Data: map[string][]byte{
-					tektonconsts.PipelinesAsCodeGithubAppIdKey:   []byte("12345"),
+					tektonconsts.PipelinesAsCodeGithubAppIdKey:   []byte(appID),
 					tektonconsts.PipelinesAsCodeGithubPrivateKey: []byte("fake-key"),
 				},
 			}
 			return secret, fake.NewClientBuilder().WithScheme(scheme).WithObjects(secret)
+		}
+		pacSecretWithApp := func(scheme *runtime.Scheme) (*corev1.Secret, *fake.ClientBuilder) {
+			return pacSecretForApp(scheme, "12345")
 		}
 
 		githubComponent := func(name, repoURL, revision string) applicationapiv1alpha1.Component {
@@ -436,17 +478,20 @@ var _ = Describe("Nudge credentials", func() {
 
 		It("returns nil when PaC secret does not exist", func() {
 			newGitHubAppClientFn = savedNewClientFn // don't mock — should never reach
+			getGitHubAppSlugFn = savedSlugFn
 			gitHubAppInstallationForRepo = savedInstallationFn
 			getGitHubBotUserIDFn = savedBotIDFn
 			c := fake.NewClientBuilder().WithScheme(scheme).Build()
-			targets := GetNudgeTargetsGithubApp(ctx, c, objectLoader, []applicationapiv1alpha1.Component{
+			targets, err := GetNudgeTargetsGithubApp(ctx, c, objectLoader, []applicationapiv1alpha1.Component{
 				githubComponent("comp", "https://github.com/org/repo", ""),
 			}, "quay.io", "user", "pass")
+			Expect(err).NotTo(HaveOccurred())
 			Expect(targets).To(BeNil())
 		})
 
 		It("returns nil when PaC secret exists but GitHub App is not configured", func() {
 			newGitHubAppClientFn = savedNewClientFn
+			getGitHubAppSlugFn = savedSlugFn
 			gitHubAppInstallationForRepo = savedInstallationFn
 			getGitHubBotUserIDFn = savedBotIDFn
 			unconfiguredSecret := &corev1.Secret{
@@ -457,18 +502,46 @@ var _ = Describe("Nudge credentials", func() {
 				Data: map[string][]byte{"some-other-key": []byte("value")},
 			}
 			c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(unconfiguredSecret).Build()
-			targets := GetNudgeTargetsGithubApp(ctx, c, objectLoader, []applicationapiv1alpha1.Component{
+			targets, err := GetNudgeTargetsGithubApp(ctx, c, objectLoader, []applicationapiv1alpha1.Component{
 				githubComponent("comp", "https://github.com/org/repo", ""),
 			}, "quay.io", "user", "pass")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(targets).To(BeNil())
+		})
+
+		It("returns nil without calling GitHub when the App ID is invalid", func() {
+			getGitHubAppSlugFn = func(_ context.Context, _ *ghapi.Client) (string, error) {
+				Fail("GitHub must not be called with an invalid App ID")
+				return "", nil
+			}
+			_, builder := pacSecretForApp(scheme, "not-a-number")
+			targets, err := GetNudgeTargetsGithubApp(ctx, builder.Build(), objectLoader, []applicationapiv1alpha1.Component{
+				githubComponent("comp", "https://github.com/org/repo", ""),
+			}, "quay.io", "u", "p")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(targets).To(BeNil())
+		})
+
+		It("does not call GitHub when no component is eligible for GitHub App auth", func() {
+			getGitHubAppSlugFn = func(_ context.Context, _ *ghapi.Client) (string, error) {
+				Fail("GitHub must not be called without eligible components")
+				return "", nil
+			}
+			_, builder := pacSecretWithApp(scheme)
+			targets, err := GetNudgeTargetsGithubApp(ctx, builder.Build(), objectLoader, []applicationapiv1alpha1.Component{
+				githubComponent("gl-comp", "https://gitlab.com/org/repo", ""),
+			}, "quay.io", "u", "p")
+			Expect(err).NotTo(HaveOccurred())
 			Expect(targets).To(BeNil())
 		})
 
 		It("returns targets for github component with valid installation", func() {
 			_, builder := pacSecretWithApp(scheme)
 			c := builder.Build()
-			targets := GetNudgeTargetsGithubApp(ctx, c, objectLoader, []applicationapiv1alpha1.Component{
+			targets, err := GetNudgeTargetsGithubApp(ctx, c, objectLoader, []applicationapiv1alpha1.Component{
 				githubComponent("comp", "https://github.com/org/repo", "main"),
 			}, "quay.io", "img-user", "img-pass")
+			Expect(err).NotTo(HaveOccurred())
 			Expect(targets).To(HaveLen(1))
 			Expect(targets[0].ComponentName).To(Equal("comp"))
 			Expect(targets[0].GitProvider).To(Equal("github"))
@@ -485,20 +558,37 @@ var _ = Describe("Nudge credentials", func() {
 		It("builds correct GitAuthor format", func() {
 			_, builder := pacSecretWithApp(scheme)
 			c := builder.Build()
-			targets := GetNudgeTargetsGithubApp(ctx, c, objectLoader, []applicationapiv1alpha1.Component{
+			targets, err := GetNudgeTargetsGithubApp(ctx, c, objectLoader, []applicationapiv1alpha1.Component{
 				githubComponent("comp", "https://github.com/org/repo", ""),
 			}, "quay.io", "u", "p")
+			Expect(err).NotTo(HaveOccurred())
 			Expect(targets).To(HaveLen(1))
 			Expect(targets[0].GitAuthor).To(Equal("my-app <67890+my-app[bot]@users.noreply.github.com>"))
+		})
+
+		It("authenticates the bot user ID lookup with the repo-scoped installation token", func() {
+			var gotToken, gotSlug string
+			getGitHubBotUserIDFn = func(_ context.Context, token, slug string) (int64, error) {
+				gotToken, gotSlug = token, slug
+				return int64(67890), nil
+			}
+			_, builder := pacSecretWithApp(scheme)
+			_, err := GetNudgeTargetsGithubApp(ctx, builder.Build(), objectLoader, []applicationapiv1alpha1.Component{
+				githubComponent("comp", "https://github.com/org/repo", ""),
+			}, "quay.io", "u", "p")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(gotToken).To(Equal("ghs_test-token"))
+			Expect(gotSlug).To(Equal("my-app"))
 		})
 
 		It("skips non-github components", func() {
 			_, builder := pacSecretWithApp(scheme)
 			c := builder.Build()
-			targets := GetNudgeTargetsGithubApp(ctx, c, objectLoader, []applicationapiv1alpha1.Component{
+			targets, err := GetNudgeTargetsGithubApp(ctx, c, objectLoader, []applicationapiv1alpha1.Component{
 				githubComponent("gh-comp", "https://github.com/org/repo", ""),
 				githubComponent("gl-comp", "https://gitlab.com/org/repo", ""),
 			}, "quay.io", "u", "p")
+			Expect(err).NotTo(HaveOccurred())
 			Expect(targets).To(HaveLen(1))
 			Expect(targets[0].ComponentName).To(Equal("gh-comp"))
 		})
@@ -506,20 +596,21 @@ var _ = Describe("Nudge credentials", func() {
 		It("skips github.com Enterprise Server (non-github.com) components", func() {
 			_, builder := pacSecretWithApp(scheme)
 			c := builder.Build()
-			targets := GetNudgeTargetsGithubApp(ctx, c, objectLoader, []applicationapiv1alpha1.Component{
+			targets, err := GetNudgeTargetsGithubApp(ctx, c, objectLoader, []applicationapiv1alpha1.Component{
 				githubComponent("ghe-comp", "https://github.example.com/org/repo", ""),
 				githubComponent("gh-comp", "https://github.com/org/repo", ""),
 			}, "quay.io", "u", "p")
+			Expect(err).NotTo(HaveOccurred())
 			Expect(targets).To(HaveLen(1))
 			Expect(targets[0].ComponentName).To(Equal("gh-comp"))
 		})
 
-		It("continues when installation lookup fails for one component", func() {
+		It("continues when installation lookup fails permanently for one component", func() {
 			callCount := 0
 			gitHubAppInstallationForRepo = func(_ context.Context, _ *ghapi.Client, _ string) (*applicationInstallation, error) {
 				callCount++
 				if callCount == 1 {
-					return nil, errors.New("installation not found")
+					return nil, gitHubHTTPError(http.StatusNotFound)
 				}
 				return &applicationInstallation{
 					Token:        "ghs_test-token",
@@ -529,32 +620,54 @@ var _ = Describe("Nudge credentials", func() {
 			}
 			_, builder := pacSecretWithApp(scheme)
 			c := builder.Build()
-			targets := GetNudgeTargetsGithubApp(ctx, c, objectLoader, []applicationapiv1alpha1.Component{
+			targets, err := GetNudgeTargetsGithubApp(ctx, c, objectLoader, []applicationapiv1alpha1.Component{
 				githubComponent("comp-a", "https://github.com/org/repo-a", ""),
 				githubComponent("comp-b", "https://github.com/org/repo-b", ""),
 			}, "quay.io", "u", "p")
+			Expect(err).NotTo(HaveOccurred())
 			Expect(targets).To(HaveLen(1))
 			Expect(targets[0].ComponentName).To(Equal("comp-b"))
 		})
 
-		It("returns empty slice when installation fails for all components", func() {
+		It("returns empty slice when installation fails permanently for all components", func() {
 			gitHubAppInstallationForRepo = func(_ context.Context, _ *ghapi.Client, _ string) (*applicationInstallation, error) {
 				return nil, errors.New("no installation")
 			}
 			_, builder := pacSecretWithApp(scheme)
 			c := builder.Build()
-			targets := GetNudgeTargetsGithubApp(ctx, c, objectLoader, []applicationapiv1alpha1.Component{
+			targets, err := GetNudgeTargetsGithubApp(ctx, c, objectLoader, []applicationapiv1alpha1.Component{
 				githubComponent("comp", "https://github.com/org/repo", ""),
 			}, "quay.io", "u", "p")
+			Expect(err).NotTo(HaveOccurred())
 			Expect(targets).To(BeEmpty())
+		})
+
+		It("reports a temporary installation failure for that component and still resolves the others", func() {
+			gitHubAppInstallationForRepo = func(_ context.Context, _ *ghapi.Client, repoURL string) (*applicationInstallation, error) {
+				if repoURL == "https://github.com/org/repo-a" {
+					return nil, gitHubHTTPError(http.StatusServiceUnavailable)
+				}
+				return fakeInstallation(ctx, nil, repoURL)
+			}
+			_, builder := pacSecretWithApp(scheme)
+			targets, err := GetNudgeTargetsGithubApp(ctx, builder.Build(), objectLoader, []applicationapiv1alpha1.Component{
+				githubComponent("comp-a", "https://github.com/org/repo-a", ""),
+				githubComponent("comp-b", "https://github.com/org/repo-b", ""),
+			}, "quay.io", "u", "p")
+			var credsErr *GitHubAppCredentialsError
+			Expect(errors.As(err, &credsErr)).To(BeTrue())
+			Expect(credsErr.ComponentNames).To(Equal([]string{"comp-a"}))
+			Expect(targets).To(HaveLen(1))
+			Expect(targets[0].ComponentName).To(Equal("comp-b"))
 		})
 
 		It("uses component revision as branch when set", func() {
 			_, builder := pacSecretWithApp(scheme)
 			c := builder.Build()
-			targets := GetNudgeTargetsGithubApp(ctx, c, objectLoader, []applicationapiv1alpha1.Component{
+			targets, err := GetNudgeTargetsGithubApp(ctx, c, objectLoader, []applicationapiv1alpha1.Component{
 				githubComponent("comp", "https://github.com/org/repo", "release-1.0"),
 			}, "quay.io", "u", "p")
+			Expect(err).NotTo(HaveOccurred())
 			Expect(targets).To(HaveLen(1))
 			Expect(targets[0].Repositories[0].BaseBranches).To(Equal([]string{"release-1.0"}))
 		})
@@ -562,9 +675,10 @@ var _ = Describe("Nudge credentials", func() {
 		It("falls back to installation DefaultBranch when revision is empty", func() {
 			_, builder := pacSecretWithApp(scheme)
 			c := builder.Build()
-			targets := GetNudgeTargetsGithubApp(ctx, c, objectLoader, []applicationapiv1alpha1.Component{
+			targets, err := GetNudgeTargetsGithubApp(ctx, c, objectLoader, []applicationapiv1alpha1.Component{
 				githubComponent("comp", "https://github.com/org/repo", ""),
 			}, "quay.io", "u", "p")
+			Expect(err).NotTo(HaveOccurred())
 			Expect(targets).To(HaveLen(1))
 			Expect(targets[0].Repositories[0].BaseBranches).To(Equal([]string{"main"}))
 		})
@@ -580,32 +694,383 @@ var _ = Describe("Nudge credentials", func() {
 					Repositories: []*ghapi.Repository{fakeRepo},
 				}, nil
 			}
-			getGitHubBotUserIDFn = func(_ context.Context, _ string) (int64, error) {
+			getGitHubBotUserIDFn = func(_ context.Context, _, _ string) (int64, error) {
 				botIDCalls++
 				return int64(67890), nil
 			}
 			_, builder := pacSecretWithApp(scheme)
 			c := builder.Build()
-			targets := GetNudgeTargetsGithubApp(ctx, c, objectLoader, []applicationapiv1alpha1.Component{
+			targets, err := GetNudgeTargetsGithubApp(ctx, c, objectLoader, []applicationapiv1alpha1.Component{
 				githubComponent("comp-a", "https://github.com/org/repo-a", ""),
 				githubComponent("comp-b", "https://github.com/org/repo-b", ""),
 			}, "quay.io", "u", "p")
+			Expect(err).NotTo(HaveOccurred())
 			Expect(targets).To(HaveLen(2))
 			Expect(installationCalls).To(Equal(2))
 			Expect(botIDCalls).To(Equal(1), "bot user ID should be looked up only once")
 		})
 
-		It("continues after bot user ID lookup failure, using ID 0 in GitAuthor", func() {
-			getGitHubBotUserIDFn = func(_ context.Context, _ string) (int64, error) {
-				return 0, errors.New("rate limited")
+		It("caches slug and bot ID across nudges for the same App", func() {
+			slugCalls, botIDCalls := 0, 0
+			getGitHubAppSlugFn = func(_ context.Context, _ *ghapi.Client) (string, error) {
+				slugCalls++
+				return "my-app", nil
+			}
+			getGitHubBotUserIDFn = func(_ context.Context, _, _ string) (int64, error) {
+				botIDCalls++
+				return int64(67890), nil
 			}
 			_, builder := pacSecretWithApp(scheme)
 			c := builder.Build()
-			targets := GetNudgeTargetsGithubApp(ctx, c, objectLoader, []applicationapiv1alpha1.Component{
+			for i := 0; i < 2; i++ {
+				targets, err := GetNudgeTargetsGithubApp(ctx, c, objectLoader, []applicationapiv1alpha1.Component{
+					githubComponent("comp", "https://github.com/org/repo", ""),
+				}, "quay.io", "u", "p")
+				Expect(err).NotTo(HaveOccurred())
+				Expect(targets).To(HaveLen(1))
+				Expect(targets[0].GitAuthor).To(Equal("my-app <67890+my-app[bot]@users.noreply.github.com>"))
+			}
+			Expect(slugCalls).To(Equal(1), "App metadata should be fetched once")
+			Expect(botIDCalls).To(Equal(1), "bot user ID should be fetched once")
+		})
+
+		It("looks up the identity again when the GitHub App ID changes", func() {
+			botIDCalls := 0
+			getGitHubBotUserIDFn = func(_ context.Context, _, _ string) (int64, error) {
+				botIDCalls++
+				return int64(67890 + botIDCalls), nil
+			}
+			comps := []applicationapiv1alpha1.Component{githubComponent("comp", "https://github.com/org/repo", "")}
+
+			_, builder := pacSecretForApp(scheme, "12345")
+			_, err := GetNudgeTargetsGithubApp(ctx, builder.Build(), objectLoader, comps, "quay.io", "u", "p")
+			Expect(err).NotTo(HaveOccurred())
+
+			_, builder = pacSecretForApp(scheme, "54321")
+			targets, err := GetNudgeTargetsGithubApp(ctx, builder.Build(), objectLoader, comps, "quay.io", "u", "p")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(botIDCalls).To(Equal(2))
+			Expect(targets[0].GitAuthor).To(Equal("my-app <67892+my-app[bot]@users.noreply.github.com>"))
+		})
+
+		It("refreshes the identity once the cache entry expires", func() {
+			slugCalls, botIDCalls := 0, 0
+			getGitHubAppSlugFn = func(_ context.Context, _ *ghapi.Client) (string, error) {
+				slugCalls++
+				return "my-app", nil
+			}
+			getGitHubBotUserIDFn = func(_ context.Context, _, _ string) (int64, error) {
+				botIDCalls++
+				return int64(67890), nil
+			}
+			now := time.Now()
+			appIdentityCache.now = func() time.Time { return now }
+			_, builder := pacSecretWithApp(scheme)
+			c := builder.Build()
+			comps := []applicationapiv1alpha1.Component{githubComponent("comp", "https://github.com/org/repo", "")}
+
+			_, err := GetNudgeTargetsGithubApp(ctx, c, objectLoader, comps, "quay.io", "u", "p")
+			Expect(err).NotTo(HaveOccurred())
+
+			now = now.Add(gitHubAppIdentityTTL + time.Minute)
+			_, err = GetNudgeTargetsGithubApp(ctx, c, objectLoader, comps, "quay.io", "u", "p")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(slugCalls).To(Equal(2))
+			Expect(botIDCalls).To(Equal(2))
+		})
+
+		It("never builds a GitAuthor with ID 0 when the bot user ID lookup fails and nothing is cached", func() {
+			getGitHubBotUserIDFn = func(_ context.Context, _, _ string) (int64, error) {
+				return 0, gitHubRateLimitError()
+			}
+			_, builder := pacSecretWithApp(scheme)
+			c := builder.Build()
+			targets, err := GetNudgeTargetsGithubApp(ctx, c, objectLoader, []applicationapiv1alpha1.Component{
+				githubComponent("comp-a", "https://github.com/org/repo-a", ""),
+				githubComponent("comp-b", "https://github.com/org/repo-b", ""),
+			}, "quay.io", "u", "p")
+			var credsErr *GitHubAppCredentialsError
+			Expect(errors.As(err, &credsErr)).To(BeTrue())
+			Expect(credsErr.ComponentNames).To(Equal([]string{"comp-a", "comp-b"}))
+			Expect(targets).To(BeEmpty())
+			for _, t := range targets {
+				Expect(t.GitAuthor).NotTo(ContainSubstring("<0+"))
+			}
+		})
+
+		It("treats a zero bot user ID returned by GitHub as unresolved", func() {
+			getGitHubBotUserIDFn = func(_ context.Context, _, _ string) (int64, error) {
+				return 0, nil
+			}
+			_, builder := pacSecretWithApp(scheme)
+			targets, err := GetNudgeTargetsGithubApp(ctx, builder.Build(), objectLoader, []applicationapiv1alpha1.Component{
 				githubComponent("comp", "https://github.com/org/repo", ""),
 			}, "quay.io", "u", "p")
+			var credsErr *GitHubAppCredentialsError
+			Expect(errors.As(err, &credsErr)).To(BeTrue())
+			Expect(targets).To(BeEmpty())
+		})
+
+		It("uses the cached bot user ID when a refresh fails", func() {
+			now := time.Now()
+			appIdentityCache.now = func() time.Time { return now }
+			_, builder := pacSecretWithApp(scheme)
+			c := builder.Build()
+			comps := []applicationapiv1alpha1.Component{githubComponent("comp", "https://github.com/org/repo", "")}
+			_, err := GetNudgeTargetsGithubApp(ctx, c, objectLoader, comps, "quay.io", "u", "p")
+			Expect(err).NotTo(HaveOccurred())
+
+			// Expire the entry and make both refresh calls fail.
+			now = now.Add(gitHubAppIdentityTTL + time.Minute)
+			getGitHubBotUserIDFn = func(_ context.Context, _, _ string) (int64, error) {
+				return 0, gitHubHTTPError(http.StatusBadGateway)
+			}
+			targets, err := GetNudgeTargetsGithubApp(ctx, c, objectLoader, comps, "quay.io", "u", "p")
+			Expect(err).NotTo(HaveOccurred())
 			Expect(targets).To(HaveLen(1))
-			Expect(targets[0].GitAuthor).To(Equal("my-app <0+my-app[bot]@users.noreply.github.com>"))
+			Expect(targets[0].GitAuthor).To(Equal("my-app <67890+my-app[bot]@users.noreply.github.com>"))
+
+			getGitHubAppSlugFn = func(_ context.Context, _ *ghapi.Client) (string, error) {
+				return "", gitHubHTTPError(http.StatusBadGateway)
+			}
+			targets, err = GetNudgeTargetsGithubApp(ctx, c, objectLoader, comps, "quay.io", "u", "p")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(targets).To(HaveLen(1))
+			Expect(targets[0].GitAuthor).To(Equal("my-app <67890+my-app[bot]@users.noreply.github.com>"))
+		})
+
+		It("does not reuse the cached bot user ID after the App is renamed", func() {
+			now := time.Now()
+			appIdentityCache.now = func() time.Time { return now }
+			_, builder := pacSecretWithApp(scheme)
+			c := builder.Build()
+			comps := []applicationapiv1alpha1.Component{githubComponent("comp", "https://github.com/org/repo", "")}
+			_, err := GetNudgeTargetsGithubApp(ctx, c, objectLoader, comps, "quay.io", "u", "p")
+			Expect(err).NotTo(HaveOccurred())
+
+			now = now.Add(gitHubAppIdentityTTL + time.Minute)
+			getGitHubAppSlugFn = func(_ context.Context, _ *ghapi.Client) (string, error) {
+				return "renamed-app", nil
+			}
+			getGitHubBotUserIDFn = func(_ context.Context, _, _ string) (int64, error) {
+				return 0, gitHubHTTPError(http.StatusBadGateway)
+			}
+			targets, err := GetNudgeTargetsGithubApp(ctx, c, objectLoader, comps, "quay.io", "u", "p")
+			var credsErr *GitHubAppCredentialsError
+			Expect(errors.As(err, &credsErr)).To(BeTrue())
+			Expect(targets).To(BeEmpty())
+		})
+
+		It("reports all eligible components when App metadata hits the rate limit and nothing is cached", func() {
+			getGitHubAppSlugFn = func(_ context.Context, _ *ghapi.Client) (string, error) {
+				return "", gitHubRateLimitError()
+			}
+			gitHubAppInstallationForRepo = func(_ context.Context, _ *ghapi.Client, _ string) (*applicationInstallation, error) {
+				Fail("installations must not be requested without App metadata")
+				return nil, nil
+			}
+			_, builder := pacSecretWithApp(scheme)
+			targets, err := GetNudgeTargetsGithubApp(ctx, builder.Build(), objectLoader, []applicationapiv1alpha1.Component{
+				githubComponent("comp-a", "https://github.com/org/repo-a", ""),
+				githubComponent("gl-comp", "https://gitlab.com/org/repo", ""),
+			}, "quay.io", "u", "p")
+			var credsErr *GitHubAppCredentialsError
+			Expect(errors.As(err, &credsErr)).To(BeTrue())
+			Expect(credsErr.ComponentNames).To(Equal([]string{"comp-a"}))
+			Expect(targets).To(BeNil())
+		})
+
+		It("falls back (no error) when App metadata fails permanently, as before", func() {
+			getGitHubAppSlugFn = func(_ context.Context, _ *ghapi.Client) (string, error) {
+				return "", gitHubHTTPError(http.StatusUnauthorized)
+			}
+			_, builder := pacSecretWithApp(scheme)
+			targets, err := GetNudgeTargetsGithubApp(ctx, builder.Build(), objectLoader, []applicationapiv1alpha1.Component{
+				githubComponent("comp", "https://github.com/org/repo", ""),
+			}, "quay.io", "u", "p")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(targets).To(BeNil())
+		})
+
+		DescribeTable("isTransientGitHubError",
+			func(err error, expected bool) {
+				Expect(isTransientGitHubError(err)).To(Equal(expected))
+			},
+			Entry("nil", nil, false),
+			Entry("primary rate limit", gitHubRateLimitError(), true),
+			Entry("secondary rate limit", &ghapi.AbuseRateLimitError{
+				Response: &http.Response{StatusCode: http.StatusForbidden, Request: &http.Request{Method: http.MethodGet, URL: &url.URL{}}},
+			}, true),
+			Entry("HTTP 429", gitHubHTTPError(http.StatusTooManyRequests), true),
+			Entry("HTTP 500", gitHubHTTPError(http.StatusInternalServerError), true),
+			Entry("HTTP 503 wrapped", fmt.Errorf("wrapped: %w", gitHubHTTPError(http.StatusServiceUnavailable)), true),
+			Entry("network error", &url.Error{Op: "Get", URL: "https://api.github.com", Err: errors.New("connection reset")}, true),
+			Entry("deadline exceeded", fmt.Errorf("wrapped: %w", context.DeadlineExceeded), true),
+			Entry("HTTP 401", gitHubHTTPError(http.StatusUnauthorized), false),
+			Entry("HTTP 403 without rate limit", gitHubHTTPError(http.StatusForbidden), false),
+			Entry("HTTP 404", gitHubHTTPError(http.StatusNotFound), false),
+			Entry("local error", errors.New("cannot parse owner/repo"), false),
+		)
+
+		It("gitHubAppGitAuthor rejects an unknown bot ID or slug", func() {
+			_, err := gitHubAppGitAuthor("my-app", 0)
+			Expect(err).To(HaveOccurred())
+			_, err = gitHubAppGitAuthor("", 67890)
+			Expect(err).To(HaveOccurred())
+			author, err := gitHubAppGitAuthor("my-app", 67890)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(author).To(Equal("my-app <67890+my-app[bot]@users.noreply.github.com>"))
+		})
+
+		It("the identity cache never stores incomplete identities", func() {
+			cache := newGitHubAppIdentityCache(time.Hour)
+			cache.put(1, "my-app", 0)
+			cache.put(2, "", 67890)
+			_, found, _ := cache.get(1)
+			Expect(found).To(BeFalse())
+			_, found, _ = cache.get(2)
+			Expect(found).To(BeFalse())
+			cache.put(3, "my-app", 67890)
+			identity, found, fresh := cache.get(3)
+			Expect(found).To(BeTrue())
+			Expect(fresh).To(BeTrue())
+			Expect(identity.botID).To(Equal(int64(67890)))
+		})
+
+		It("falls back (no error) when the GitHub App client cannot be created", func() {
+			newGitHubAppClientFn = func(_ int64, _ []byte) (*ghapi.Client, error) {
+				return nil, errors.New("bad private key")
+			}
+			_, builder := pacSecretWithApp(scheme)
+			targets, err := GetNudgeTargetsGithubApp(ctx, builder.Build(), objectLoader, []applicationapiv1alpha1.Component{
+				githubComponent("comp", "https://github.com/org/repo", ""),
+			}, "quay.io", "u", "p")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(targets).To(BeNil())
+		})
+
+		It("GitHubAppCredentialsError names the components and unwraps the cause", func() {
+			cause := gitHubRateLimitError()
+			err := error(&GitHubAppCredentialsError{ComponentNames: []string{"comp-a", "comp-b"}, Err: cause})
+			Expect(err.Error()).To(ContainSubstring("comp-a, comp-b"))
+			Expect(err.Error()).To(ContainSubstring("API rate limit exceeded"))
+			Expect(errors.Is(err, cause)).To(BeTrue())
+			Expect(isTransientGitHubError(err)).To(BeTrue())
+		})
+
+		It("isTransientGitHubError treats an error response without HTTP response as temporary", func() {
+			Expect(isTransientGitHubError(&ghapi.ErrorResponse{})).To(BeTrue())
+		})
+	})
+
+	// ---------- GitHub API calls (against a local test server) ----------
+
+	Describe("GitHub API calls", func() {
+		var (
+			ctx           context.Context
+			savedBaseURL  string
+			server        *httptest.Server
+			serverHandler http.HandlerFunc
+		)
+
+		BeforeEach(func() {
+			ctx = context.Background()
+			serverHandler = nil
+			server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				serverHandler(w, r)
+			}))
+			savedBaseURL = gitHubAPIBaseURL
+			gitHubAPIBaseURL = server.URL + "/"
+		})
+
+		AfterEach(func() {
+			gitHubAPIBaseURL = savedBaseURL
+			server.Close()
+		})
+
+		appClientForServer := func() *ghapi.Client {
+			c := ghapi.NewClient(nil)
+			baseURL, err := url.Parse(server.URL + "/")
+			Expect(err).NotTo(HaveOccurred())
+			c.BaseURL = baseURL
+			return c
+		}
+
+		It("getGitHubBotUserID authenticates with the installation token", func() {
+			var gotAuth, gotPath string
+			serverHandler = func(w http.ResponseWriter, r *http.Request) {
+				gotAuth = r.Header.Get("Authorization")
+				gotPath = r.URL.Path
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = io.WriteString(w, `{"id": 67890, "login": "my-app[bot]"}`)
+			}
+			id, err := getGitHubBotUserID(ctx, "ghs_installation-token", "my-app")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(id).To(Equal(int64(67890)))
+			Expect(gotAuth).To(Equal("Bearer ghs_installation-token"), "the lookup must not be anonymous")
+			Expect(gotPath).To(Equal("/users/my-app[bot]"))
+		})
+
+		It("getGitHubBotUserID returns a temporary error when GitHub rate-limits the lookup", func() {
+			serverHandler = func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("X-RateLimit-Limit", "5000")
+				w.Header().Set("X-RateLimit-Remaining", "0")
+				w.Header().Set("X-RateLimit-Reset", strconv.FormatInt(time.Now().Add(time.Hour).Unix(), 10))
+				w.WriteHeader(http.StatusForbidden)
+				_, _ = io.WriteString(w, `{"message": "API rate limit exceeded"}`)
+			}
+			_, err := getGitHubBotUserID(ctx, "ghs_installation-token", "my-app")
+			Expect(err).To(HaveOccurred())
+			Expect(isTransientGitHubError(err)).To(BeTrue())
+		})
+
+		It("getGitHubBotUserID rejects an invalid API base URL", func() {
+			gitHubAPIBaseURL = "://invalid"
+			_, err := getGitHubBotUserID(ctx, "ghs_installation-token", "my-app")
+			Expect(err).To(HaveOccurred())
+		})
+
+		It("getGitHubAppSlug returns the App slug", func() {
+			serverHandler = func(w http.ResponseWriter, r *http.Request) {
+				Expect(r.URL.Path).To(Equal("/app"))
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = io.WriteString(w, `{"id": 12345, "slug": "my-app"}`)
+			}
+			slug, err := getGitHubAppSlug(ctx, appClientForServer())
+			Expect(err).NotTo(HaveOccurred())
+			Expect(slug).To(Equal("my-app"))
+		})
+
+		It("getGitHubAppSlug fails when GitHub returns no slug", func() {
+			serverHandler = func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = io.WriteString(w, `{"id": 12345}`)
+			}
+			_, err := getGitHubAppSlug(ctx, appClientForServer())
+			Expect(err).To(HaveOccurred())
+			Expect(isTransientGitHubError(err)).To(BeFalse())
+		})
+
+		It("getGitHubAppSlug returns a temporary error on a GitHub 5xx", func() {
+			serverHandler = func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusBadGateway)
+			}
+			_, err := getGitHubAppSlug(ctx, appClientForServer())
+			Expect(err).To(HaveOccurred())
+			Expect(isTransientGitHubError(err)).To(BeTrue())
+		})
+
+		It("newGitHubAppClient builds a client with a request timeout without calling GitHub", func() {
+			key, err := rsa.GenerateKey(rand.Reader, 2048)
+			Expect(err).NotTo(HaveOccurred())
+			keyPEM := pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(key)})
+
+			c, err := newGitHubAppClient(12345, keyPEM)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(c.Client().Timeout).To(Equal(gitHubAPITimeout))
+
+			_, err = newGitHubAppClient(12345, []byte("not a key"))
+			Expect(err).To(HaveOccurred())
 		})
 	})
 

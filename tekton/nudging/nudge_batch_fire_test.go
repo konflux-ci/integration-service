@@ -20,6 +20,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/url"
 	"time"
 
 	ghapi "github.com/google/go-github/v45/github"
@@ -54,18 +55,24 @@ var _ = Describe("Nudge batch firing integration", func() {
 	)
 
 	var (
-		savedNewClientFn    func(context.Context, string, []byte) (*ghapi.Client, string, error)
+		savedNewClientFn    func(int64, []byte) (*ghapi.Client, error)
+		savedSlugFn         func(context.Context, *ghapi.Client) (string, error)
 		savedInstallationFn func(context.Context, *ghapi.Client, string) (*applicationInstallation, error)
-		savedBotIDFn        func(context.Context, string) (int64, error)
+		savedBotIDFn        func(context.Context, string, string) (int64, error)
 		scheme              *runtime.Scheme
 	)
 
 	BeforeEach(func() {
+		appIdentityCache.reset()
 		savedNewClientFn = newGitHubAppClientFn
+		savedSlugFn = getGitHubAppSlugFn
 		savedInstallationFn = gitHubAppInstallationForRepo
 		savedBotIDFn = getGitHubBotUserIDFn
-		newGitHubAppClientFn = func(_ context.Context, _ string, _ []byte) (*ghapi.Client, string, error) {
-			return nil, "my-app", nil
+		newGitHubAppClientFn = func(_ int64, _ []byte) (*ghapi.Client, error) {
+			return nil, nil
+		}
+		getGitHubAppSlugFn = func(_ context.Context, _ *ghapi.Client) (string, error) {
+			return "my-app", nil
 		}
 		defaultBranch := "main"
 		repoID := int64(99999)
@@ -77,7 +84,7 @@ var _ = Describe("Nudge batch firing integration", func() {
 				Repositories: []*ghapi.Repository{fakeRepo},
 			}, nil
 		}
-		getGitHubBotUserIDFn = func(_ context.Context, _ string) (int64, error) {
+		getGitHubBotUserIDFn = func(_ context.Context, _, _ string) (int64, error) {
 			return int64(67890), nil
 		}
 
@@ -91,8 +98,10 @@ var _ = Describe("Nudge batch firing integration", func() {
 
 	AfterEach(func() {
 		newGitHubAppClientFn = savedNewClientFn
+		getGitHubAppSlugFn = savedSlugFn
 		gitHubAppInstallationForRepo = savedInstallationFn
 		getGitHubBotUserIDFn = savedBotIDFn
+		appIdentityCache.reset()
 	})
 
 	batchFireClient := func(nudgeConfig *v1beta2.NudgeConfig, extra ...client.Object) client.Client {
@@ -335,6 +344,22 @@ var _ = Describe("Nudge batch firing integration", func() {
 		Expect(c.Get(ctx, types.NamespacedName{Name: nudgeConfig.Name, Namespace: namespace}, updated)).To(Succeed())
 		Expect(updated.Status.ActiveBatches[0].Phase).To(Equal(v1beta2.BatchPhaseFailed))
 		Expect(updated.Status.ActiveBatches[0].Message).To(ContainSubstring(lookupErr.Error()))
+	})
+
+	It("does not fall back to basic auth when GitHub App credentials fail temporarily", func() {
+		getGitHubAppSlugFn = func(_ context.Context, _ *ghapi.Client) (string, error) {
+			return "", &url.Error{Op: "Get", URL: "https://api.github.com/app", Err: errors.New("connection reset")}
+		}
+		buildPLR := buildPLRWithResults("batch-build-plr-github-transient")
+		nudgeConfig := dueBatchNudgeConfig(buildPLR.Name)
+		c := batchFireClient(nudgeConfig, buildPLR)
+
+		Expect(ProcessDueNudgeBatches(ctx, c, nudgeConfig)).To(Succeed())
+
+		updated := &v1beta2.NudgeConfig{}
+		Expect(c.Get(ctx, types.NamespacedName{Name: nudgeConfig.Name, Namespace: namespace}, updated)).To(Succeed())
+		Expect(updated.Status.ActiveBatches[0].Message).To(ContainSubstring("resolving GitHub App credentials"))
+		Expect(updated.Status.ActiveBatches[0].Message).NotTo(ContainSubstring("no credentials resolved"))
 	})
 
 	It("marks a batch completed when the nudge PipelineRun succeeds", func() {
