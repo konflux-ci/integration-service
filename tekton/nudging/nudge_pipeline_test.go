@@ -588,9 +588,12 @@ var _ = Describe("Nudge Pipeline", func() {
 
 		It("treats an already-existing PipelineRun as success (idempotent create)", func() {
 			expectedName := nudging.BatchedNudgePipelineRunName(batchID, 0)
-			existing := &tektonv1.PipelineRun{
-				ObjectMeta: metav1.ObjectMeta{Name: expectedName, Namespace: "test-ns"},
-			}
+			existing := &tektonv1.PipelineRun{ObjectMeta: metav1.ObjectMeta{
+				Name:        expectedName,
+				Namespace:   "test-ns",
+				Labels:      map[string]string{tektonconsts.NudgeTypeLabel: tektonconsts.NudgePipelineRunTypeValue},
+				Annotations: map[string]string{tektonconsts.NudgeBatchIDAnnotation: batchID},
+			}}
 			Expect(fakeClient.Create(testCtx, existing)).To(Succeed())
 
 			name, err := nudging.CreateBatchedNudgePipelineRun(testCtx, fakeClient, referencePLR, target, entries, batchID, 0)

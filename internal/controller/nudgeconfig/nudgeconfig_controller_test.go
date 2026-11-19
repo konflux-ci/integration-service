@@ -204,7 +204,9 @@ var _ = Describe("NudgeConfig reconciler", func() {
 			nudgePLRName := "nudge-batch-firing-active"
 			runningPLR := &tektonv1.PipelineRun{
 				// CompletionTime is nil — the PLR is still running.
-				ObjectMeta: metav1.ObjectMeta{Name: nudgePLRName, Namespace: "default"},
+				ObjectMeta: metav1.ObjectMeta{Name: nudgePLRName, Namespace: "default",
+					Labels:      map[string]string{tektonconsts.NudgeTypeLabel: tektonconsts.NudgePipelineRunTypeValue},
+					Annotations: map[string]string{tektonconsts.NudgeBatchIDAnnotation: "batch-firing"}},
 			}
 			nudgeConfig := &v1beta2.NudgeConfig{
 				ObjectMeta: metav1.ObjectMeta{
@@ -269,7 +271,12 @@ var _ = Describe("NudgeConfig reconciler", func() {
 					},
 				},
 			}
-			existingPLR := &tektonv1.PipelineRun{ObjectMeta: metav1.ObjectMeta{Name: plrName, Namespace: "default"}}
+			existingPLR := &tektonv1.PipelineRun{ObjectMeta: metav1.ObjectMeta{
+				Name:        plrName,
+				Namespace:   "default",
+				Labels:      map[string]string{tektonconsts.NudgeTypeLabel: tektonconsts.NudgePipelineRunTypeValue},
+				Annotations: map[string]string{tektonconsts.NudgeBatchIDAnnotation: "force-fire-batch"},
+			}}
 			reconciler.Client = newClient(nudgeConfig, buildPLR, existingPLR)
 
 			result, err := reconciler.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKeyFromObject(nudgeConfig)})
@@ -364,7 +371,9 @@ var _ = Describe("NudgeConfig reconciler", func() {
 				},
 			}
 			reconciler.Client = newClient(nudgeConfig, &tektonv1.PipelineRun{
-				ObjectMeta: metav1.ObjectMeta{Name: "nudge-batch-already-firing", Namespace: "default"},
+				ObjectMeta: metav1.ObjectMeta{Name: "nudge-batch-already-firing", Namespace: "default",
+					Labels:      map[string]string{tektonconsts.NudgeTypeLabel: tektonconsts.NudgePipelineRunTypeValue},
+					Annotations: map[string]string{tektonconsts.NudgeBatchIDAnnotation: "already-firing"}},
 			})
 
 			result, err := reconciler.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKeyFromObject(nudgeConfig)})
@@ -417,7 +426,12 @@ var _ = Describe("NudgeConfig reconciler", func() {
 					}},
 				},
 			}
-			existingPLR := &tektonv1.PipelineRun{ObjectMeta: metav1.ObjectMeta{Name: plrName, Namespace: "default"}}
+			existingPLR := &tektonv1.PipelineRun{ObjectMeta: metav1.ObjectMeta{
+				Name:        plrName,
+				Namespace:   "default",
+				Labels:      map[string]string{tektonconsts.NudgeTypeLabel: tektonconsts.NudgePipelineRunTypeValue},
+				Annotations: map[string]string{tektonconsts.NudgeBatchIDAnnotation: "force-fire-retry-batch"},
+			}}
 			reconciler.Client = newClient(nudgeConfig, buildPLR, existingPLR)
 
 			_, err := reconciler.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKeyFromObject(nudgeConfig)})
@@ -473,6 +487,7 @@ var _ = Describe("NudgeConfig reconciler", func() {
 					Annotations: map[string]string{
 						tektonconsts.NudgeBatchIDAnnotation: batchID,
 					},
+					Labels: map[string]string{tektonconsts.NudgeTypeLabel: tektonconsts.NudgePipelineRunTypeValue},
 				},
 			}
 			nudgePLR.Status.MarkSucceeded(tektonv1.PipelineRunReasonCompleted.String(), "done")
@@ -524,7 +539,9 @@ var _ = Describe("NudgeConfig reconciler", func() {
 				},
 			}
 			reconciler.Client = newClient(nudgeConfig, &tektonv1.PipelineRun{
-				ObjectMeta: metav1.ObjectMeta{Name: "nudge-batch-firing-batch", Namespace: "default"},
+				ObjectMeta: metav1.ObjectMeta{Name: "nudge-batch-firing-batch", Namespace: "default",
+					Labels:      map[string]string{tektonconsts.NudgeTypeLabel: tektonconsts.NudgePipelineRunTypeValue},
+					Annotations: map[string]string{tektonconsts.NudgeBatchIDAnnotation: "firing-batch"}},
 			})
 
 			result, err := reconciler.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKeyFromObject(nudgeConfig)})

@@ -5348,11 +5348,6 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 					},
 				},
 			}
-			Expect(k8sClient.Create(ctx, nudgeConfig)).To(Succeed())
-			defer func() {
-				_ = k8sClient.Delete(ctx, nudgeConfig)
-			}()
-
 			adapter = NewAdapter(ctx, pushPLR, hasComp.Name, &[]v1beta2.ComponentGroup{*hasCompGroup}, logger, loader.NewMockLoader(), k8sClient)
 			adapter.context = toolkit.GetMockedContext(ctx, []toolkit.MockData{
 				{ContextKey: loader.NudgeConfigContextKey, Resource: nudgeConfig},
@@ -5362,10 +5357,8 @@ var _ = Describe("Pipeline Adapter", Ordered, func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(result.RequeueRequest).To(BeFalse())
 
-			updatedNC := &v1beta2.NudgeConfig{}
-			Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(nudgeConfig), updatedNC)).To(Succeed())
-			Expect(updatedNC.Status.ActiveBatches).To(BeEmpty())
-			Expect(meta.FindStatusCondition(updatedNC.Status.Conditions, v1beta2.NudgeConfigConditionBatchBlocked)).To(BeNil())
+			Expect(nudgeConfig.Status.ActiveBatches).To(BeEmpty())
+			Expect(meta.FindStatusCondition(nudgeConfig.Status.Conditions, v1beta2.NudgeConfigConditionBatchBlocked)).To(BeNil())
 		})
 
 		It("records failed builds against batched nudge targets", func() {

@@ -287,14 +287,14 @@ func ProcessFiringNudgeBatches(ctx context.Context, c client.Client, nudgeConfig
 				changed = true
 				continue
 			}
-			if plr.Status.CompletionTime == nil {
+			if err := validateBatchedNudgePipelineRun(plr, batch.BatchID); err != nil {
+				batch.Phase = v1beta2.BatchPhaseFailed
+				batch.Message = fmt.Sprintf("nudge PipelineRun %q does not match batch %q: %s",
+					batch.NudgePipelineRun, batch.BatchID, err)
+				changed = true
 				continue
 			}
-			if plrBatchID := plr.Annotations[tektonconsts.NudgeBatchIDAnnotation]; plrBatchID != "" && plrBatchID != batch.BatchID {
-				batch.Phase = v1beta2.BatchPhaseFailed
-				batch.Message = fmt.Sprintf("nudge PipelineRun %q batch-id %q does not match batch %q",
-					batch.NudgePipelineRun, plrBatchID, batch.BatchID)
-				changed = true
+			if plr.Status.CompletionTime == nil {
 				continue
 			}
 			if h.HasPipelineRunSucceeded(plr) {
@@ -800,6 +800,9 @@ func fireBatch(ctx context.Context, c client.Client, nudgeConfig *v1beta2.NudgeC
 		return c.Get(ctx, types.NamespacedName{Name: plannedName, Namespace: nudgeConfig.Namespace}, existingPLR)
 	})
 	if getErr == nil && !existingPLR.IsPending() {
+		if err := validateBatchedNudgePipelineRun(existingPLR, batch.BatchID); err != nil {
+			return fmt.Errorf("refusing to adopt batched nudge PipelineRun %q: %w", plannedName, err)
+		}
 		batch.NudgePipelineRun = plannedName
 		batch.Phase = v1beta2.BatchPhaseFiring
 		batch.Message = fmt.Sprintf("reconciled existing nudge PipelineRun with %d eligible build(s)", len(eligible))
