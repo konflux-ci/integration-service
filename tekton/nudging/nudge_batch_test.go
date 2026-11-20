@@ -23,8 +23,62 @@ import (
 	nudging "github.com/konflux-ci/integration-service/tekton/nudging"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
+
+var _ = Describe("pruneCompletedBatches (slice helper)", func() {
+	It("removes a completed batch whose CreatedAt exceeds the 24h TTL", func() {
+		now := time.Now()
+		old := metav1.NewTime(now.Add(-25 * time.Hour))
+		batches := []v1beta2.ActiveBatch{
+			{BatchID: "old-done", Phase: v1beta2.BatchPhaseCompleted, CreatedAt: old},
+			{BatchID: "active", Phase: v1beta2.BatchPhaseAccumulating, CreatedAt: metav1.NewTime(now)},
+		}
+		result := nudging.FilterExpiredCompletedBatches(batches, now)
+		Expect(result).To(HaveLen(1))
+		Expect(result[0].BatchID).To(Equal("active"))
+	})
+
+	It("keeps a completed batch that is still within the 24h TTL", func() {
+		now := time.Now()
+		recent := metav1.NewTime(now.Add(-23 * time.Hour))
+		batches := []v1beta2.ActiveBatch{
+			{BatchID: "recent-done", Phase: v1beta2.BatchPhaseCompleted, CreatedAt: recent},
+		}
+		result := nudging.FilterExpiredCompletedBatches(batches, now)
+		Expect(result).To(HaveLen(1))
+	})
+
+	It("keeps non-Completed batches regardless of age", func() {
+		now := time.Now()
+		old := metav1.NewTime(now.Add(-48 * time.Hour))
+		batches := []v1beta2.ActiveBatch{
+			{BatchID: "old-failed", Phase: v1beta2.BatchPhaseFailed, CreatedAt: old},
+			{BatchID: "old-blocked", Phase: v1beta2.BatchPhaseBlocked, CreatedAt: old},
+		}
+		result := nudging.FilterExpiredCompletedBatches(batches, now)
+		Expect(result).To(HaveLen(2))
+	})
+})
+
+var _ = Describe("HasFiringNudgeBatches", func() {
+	It("returns true when at least one batch is in the Firing phase", func() {
+		batches := []v1beta2.ActiveBatch{
+			{Target: "a", Phase: v1beta2.BatchPhaseAccumulating},
+			{Target: "b", Phase: v1beta2.BatchPhaseFiring},
+		}
+		Expect(nudging.HasFiringNudgeBatches(batches)).To(BeTrue())
+	})
+
+	It("returns false when no batch is in the Firing phase", func() {
+		batches := []v1beta2.ActiveBatch{
+			{Target: "a", Phase: v1beta2.BatchPhaseAccumulating},
+			{Target: "b", Phase: v1beta2.BatchPhaseCompleted},
+		}
+		Expect(nudging.HasFiringNudgeBatches(batches)).To(BeFalse())
+	})
+})
 
 var _ = Describe("batchShouldFire", func() {
 	It("fires when FireAt has elapsed", func() {
@@ -50,6 +104,22 @@ var _ = Describe("batchShouldFire", func() {
 			HardDeadline: metav1.NewTime(now.Add(time.Hour)),
 		}
 		Expect(nudging.BatchShouldFire(batch, now)).To(BeFalse())
+	})
+
+	It("fires a failed-only batch when its timer has elapsed", func() {
+		now := time.Now()
+		fireAt := metav1.NewTime(now.Add(-time.Minute))
+		batch := &v1beta2.ActiveBatch{
+			FireAt:       &fireAt,
+			HardDeadline: metav1.NewTime(now.Add(time.Hour)),
+			Failed: []v1beta2.FailedEntry{{
+				From:             "a",
+				BuildPipelineRun: "plr-1",
+				Reason:           "failed",
+				CapturedAt:       metav1.Now(),
+			}},
+		}
+		Expect(nudging.BatchShouldFire(batch, now)).To(BeTrue())
 	})
 
 	It("does not fire when debounce and deadline are still in the future", func() {
@@ -150,6 +220,24 @@ var _ = Describe("nextBatchWakeDuration", func() {
 		Expect(wake).To(BeNumerically("<", 3*time.Minute))
 	})
 
+	It("should schedule a wake for a failed-only accumulating batch", func() {
+		now := time.Now()
+		soon := metav1.NewTime(now.Add(2 * time.Minute))
+		batches := []v1beta2.ActiveBatch{{
+			Phase:  v1beta2.BatchPhaseAccumulating,
+			FireAt: &soon,
+			Failed: []v1beta2.FailedEntry{{
+				From:             "a",
+				BuildPipelineRun: "plr-1",
+				Reason:           "failed",
+				CapturedAt:       metav1.Now(),
+			}},
+		}}
+		wake := nudging.NextBatchWakeDuration(batches)
+		Expect(wake).To(BeNumerically(">", 0))
+		Expect(wake).To(BeNumerically("<", 3*time.Minute))
+	})
+
 	It("should wake at hardDeadline when it is earlier than fireAt", func() {
 		now := time.Now()
 		laterFire := metav1.NewTime(now.Add(2 * time.Hour))
@@ -209,6 +297,93 @@ var _ = Describe("nextBatchWakeDuration", func() {
 				HardDeadline: metav1.NewTime(now.Add(time.Hour)),
 			},
 		}
+		Expect(nudging.NextBatchWakeDuration(batches)).To(Equal(time.Duration(0)))
+	})
+})
+
+var _ = Describe("reconcileBatchBlockedCondition", func() {
+	now := metav1.Now()
+
+	It("clears the condition when no batches are blocked", func() {
+		nc := &v1beta2.NudgeConfig{
+			Status: v1beta2.NudgeConfigStatus{
+				Conditions: []metav1.Condition{{
+					Type:   v1beta2.NudgeConfigConditionBatchBlocked,
+					Status: metav1.ConditionTrue,
+				}},
+				ActiveBatches: []v1beta2.ActiveBatch{
+					{Phase: v1beta2.BatchPhaseAccumulating, Target: "t"},
+				},
+			},
+		}
+		nudging.ReconcileBatchBlockedCondition(nc, now)
+		Expect(meta.FindStatusCondition(nc.Status.Conditions, v1beta2.NudgeConfigConditionBatchBlocked)).To(BeNil())
+	})
+
+	It("sets the condition with failed contributors for one blocked target", func() {
+		nc := &v1beta2.NudgeConfig{
+			Status: v1beta2.NudgeConfigStatus{
+				ActiveBatches: []v1beta2.ActiveBatch{{
+					Target: "target-a",
+					Phase:  v1beta2.BatchPhaseBlocked,
+					Failed: []v1beta2.FailedEntry{{From: "source-b"}, {From: "source-a"}},
+				}},
+			},
+		}
+		nudging.ReconcileBatchBlockedCondition(nc, now)
+		cond := meta.FindStatusCondition(nc.Status.Conditions, v1beta2.NudgeConfigConditionBatchBlocked)
+		Expect(cond).NotTo(BeNil())
+		Expect(cond.Status).To(Equal(metav1.ConditionTrue))
+		Expect(cond.Message).To(Equal(`target "target-a" blocked: failed source(s) source-a, source-b`))
+	})
+
+	It("ignores blocked batches that have no failed sources", func() {
+		nc := &v1beta2.NudgeConfig{
+			Status: v1beta2.NudgeConfigStatus{
+				ActiveBatches: []v1beta2.ActiveBatch{{
+					Target: "target-a",
+					Phase:  v1beta2.BatchPhaseBlocked,
+				}},
+			},
+		}
+		nudging.ReconcileBatchBlockedCondition(nc, now)
+		Expect(meta.FindStatusCondition(nc.Status.Conditions, v1beta2.NudgeConfigConditionBatchBlocked)).To(BeNil())
+	})
+
+	It("aggregates blocked targets without overwriting each other", func() {
+		nc := &v1beta2.NudgeConfig{
+			Status: v1beta2.NudgeConfigStatus{
+				ActiveBatches: []v1beta2.ActiveBatch{
+					{
+						Target: "target-z",
+						Phase:  v1beta2.BatchPhaseBlocked,
+						Failed: []v1beta2.FailedEntry{{From: "z-fail"}},
+					},
+					{
+						Target: "target-a",
+						Phase:  v1beta2.BatchPhaseBlocked,
+						Failed: []v1beta2.FailedEntry{{From: "a-fail"}},
+					},
+				},
+			},
+		}
+		nudging.ReconcileBatchBlockedCondition(nc, now)
+		cond := meta.FindStatusCondition(nc.Status.Conditions, v1beta2.NudgeConfigConditionBatchBlocked)
+		Expect(cond).NotTo(BeNil())
+		Expect(cond.Message).To(ContainSubstring(`target "target-a" blocked: failed source(s) a-fail`))
+		Expect(cond.Message).To(ContainSubstring(`target "target-z" blocked: failed source(s) z-fail`))
+	})
+})
+
+var _ = Describe("nextBatchWakeDuration blocked batches", func() {
+	It("ignores blocked batches when computing the next wake", func() {
+		now := time.Now()
+		pastDeadline := metav1.NewTime(now.Add(-time.Minute))
+		batches := []v1beta2.ActiveBatch{{
+			Phase:        v1beta2.BatchPhaseBlocked,
+			HardDeadline: pastDeadline,
+			Failed:       []v1beta2.FailedEntry{{From: "broken"}},
+		}}
 		Expect(nudging.NextBatchWakeDuration(batches)).To(Equal(time.Duration(0)))
 	})
 })
