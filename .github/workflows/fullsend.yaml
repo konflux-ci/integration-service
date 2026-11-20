@@ -6,11 +6,6 @@
 # All agent execution happens in this repo's context — no external
 # config repo is needed.
 #
-# Security: pull_request_target runs the BASE branch version of this workflow,
-# preventing PRs from modifying it to exfiltrate credentials.
-# This shim never checks out PR code, so it is not vulnerable to "pwn request"
-# attacks.
-#
 # Routing: this shim forwards the raw event context to reusable-dispatch.yml,
 # which determines the stage and runs the agent inline (ADR 62).
 # Adding a new stage requires only a job in reusable-dispatch.yml — zero changes to this repo.
@@ -24,8 +19,6 @@ on:
     types: [opened, edited, labeled]
   issue_comment:
     types: [created]
-  pull_request_target:
-    types: [opened, synchronize, ready_for_review, closed, labeled, unlabeled]
   pull_request_review:
     types: [submitted]
 
@@ -34,7 +27,7 @@ permissions: {}
 jobs:
   dispatch:
     if: >-
-      (github.event_name != 'pull_request_target' && github.event_name != 'pull_request_review'
+      (github.event_name != 'pull_request_review'
        || github.event.pull_request.head.ref != 'fullsend/scaffold-install')
       && (github.event_name != 'issue_comment'
        || (startsWith(github.event.comment.body, '/fs-')
