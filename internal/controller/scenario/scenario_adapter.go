@@ -210,3 +210,51 @@ func (a *Adapter) EnsureIntegrationPipelineServiceAccountCreated() (controller.O
 
 	return controller.ContinueProcessing()
 }
+
+func (a *Adapter) EnsureConformaPolicyMigratedToNewRepository() (controller.OperationResult, error) {
+	// This function only needs to run for conforma ITSs that are using the old
+	// konflux-ci/build-definitions pipeline definition
+	if !doesScenarioUseOldConformaPipeline(a.scenario) {
+		return controller.ContinueProcessing()
+	}
+
+	patch := client.MergeFromWithOptions(a.scenario.DeepCopy(), client.MergeFromWithOptimisticLock{})
+
+	// update fields
+	for i := range a.scenario.Spec.ResolverRef.Params {
+		param := &a.scenario.Spec.ResolverRef.Params[i]
+		if param.Name == "url" {
+			param.Value = "https://github.com/conforma/tekton-catalog"
+		} else if param.Name == "revision" {
+			param.Value = "main"
+		} else if param.Name == "pathInRepo" {
+			param.Value = "pipelines/enterprise-contract/0.1/enterprise-contract.yaml"
+		}
+	}
+
+	err := a.client.Patch(a.context, a.scenario, patch)
+	if err != nil {
+		return controller.RequeueWithError(err)
+	}
+	return controller.ContinueProcessing()
+}
+
+// NOTE: leaving this in this file (anti-pattern) because it is a temporary function and cleanup will be easier
+func doesScenarioUseOldConformaPipeline(scenario *v1beta2.IntegrationTestScenario) bool {
+	pathInRepoMatches := false
+	urlMatches := false
+
+	for _, param := range scenario.Spec.ResolverRef.Params {
+		if param.Name == "url" {
+			if param.Value == "https://github.com/konflux-ci/build-definitions" {
+				urlMatches = true
+			}
+		} else if param.Name == "pathInRepo" {
+			if param.Value == "pipelines/enterprise-contract.yaml" {
+				pathInRepoMatches = true
+			}
+		}
+	}
+
+	return urlMatches && pathInRepoMatches
+}

@@ -119,6 +119,93 @@ var _ = Describe("Scenario Adapter", Ordered, func() {
 		Expect(reflect.TypeOf(NewAdapter(ctx, integrationTestScenario, logger, loader.NewMockLoader(), k8sClient))).To(Equal(reflect.TypeOf(&Adapter{})))
 	})
 
+	It("checks whether a scenario uses the old Conforma pipeline", func() {
+		for _, tt := range []struct {
+			name              string
+			pathInRepoMatches bool
+			urlMatches        bool
+			expected          bool
+		}{
+			{
+				name:              "path and url match",
+				pathInRepoMatches: true,
+				urlMatches:        true,
+				expected:          true,
+			},
+			{
+				name:              "path matches and url does not match",
+				pathInRepoMatches: true,
+				urlMatches:        false,
+				expected:          false,
+			},
+			{
+				name:              "path does not match and url matches",
+				pathInRepoMatches: false,
+				urlMatches:        true,
+				expected:          false,
+			},
+			{
+				name:              "path and url do not match",
+				pathInRepoMatches: false,
+				urlMatches:        false,
+				expected:          false,
+			},
+		} {
+			By(tt.name)
+			pathInRepo := "pipelines/not-enterprise-contract.yaml"
+			if tt.pathInRepoMatches {
+				pathInRepo = "pipelines/enterprise-contract.yaml"
+			}
+
+			url := "https://github.com/conforma/tekton-catalog"
+			if tt.urlMatches {
+				url = "https://github.com/konflux-ci/build-definitions"
+			}
+
+			scenario := &v1beta2.IntegrationTestScenario{
+				Spec: v1beta2.IntegrationTestScenarioSpec{
+					ResolverRef: v1beta2.ResolverRef{
+						Params: []v1beta2.ResolverParameter{
+							{Name: "url", Value: url},
+							{Name: "pathInRepo", Value: pathInRepo},
+						},
+					},
+				},
+			}
+
+			Expect(doesScenarioUseOldConformaPipeline(scenario)).To(Equal(tt.expected))
+		}
+	})
+
+	It("can patch a scenario when migrating Conforma policy to the new repository", func() {
+		scenario := &v1beta2.IntegrationTestScenario{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "conforma-migration-patch",
+				Namespace: "default",
+			},
+			Spec: v1beta2.IntegrationTestScenarioSpec{
+				Application: "application-sample",
+				ResolverRef: v1beta2.ResolverRef{
+					Resolver: "git",
+					Params: []v1beta2.ResolverParameter{
+						{Name: "url", Value: "https://github.com/konflux-ci/build-definitions"},
+						{Name: "revision", Value: "main"},
+						{Name: "pathInRepo", Value: "pipelines/enterprise-contract.yaml"},
+					},
+				},
+			},
+		}
+		Expect(k8sClient.Create(ctx, scenario)).To(Succeed())
+		defer func() {
+			_ = k8sClient.Delete(ctx, scenario)
+		}()
+
+		adapter := NewAdapter(ctx, scenario, logger, loader.NewMockLoader(), k8sClient)
+		result, err := adapter.EnsureConformaPolicyMigratedToNewRepository()
+		Expect(err).ToNot(HaveOccurred())
+		Expect(result.CancelRequest).To(BeFalse())
+	})
+
 	When("ServiceAccount, Secret, and RoleBinding do not exist", func() {
 		AfterAll(func() {
 			sa := &corev1.ServiceAccount{ObjectMeta: metav1.ObjectMeta{Name: tektonconsts.DefaultIntegrationPipelineServiceAccount, Namespace: "default"}}
