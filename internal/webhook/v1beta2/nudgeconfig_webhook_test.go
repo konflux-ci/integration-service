@@ -26,6 +26,7 @@ import (
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 func newComponent(name, namespace string) *applicationapiv1alpha1.Component {
@@ -584,6 +585,24 @@ var _ = Describe("NudgeConfig webhook - component existence", func() {
 			warnings, err := validator.ValidateCreate(ctx, nc)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(warnings).To(BeEmpty())
+		})
+
+		It("admits forceFire and defaults includePartial to true", func() {
+			nc := newNudgeConfig(ns.Name, nil)
+			nc.Spec.TargetConfig = []konfluxv1beta2.TargetConfig{
+				{Target: "bundle", BatchPolicy: &konfluxv1beta2.BatchPolicy{}},
+			}
+			nc.Spec.Actions = &konfluxv1beta2.Actions{
+				ForceFire: &konfluxv1beta2.ForceFireAction{Target: "bundle"},
+			}
+
+			Expect(k8sClient.Create(ctx, nc)).To(Succeed())
+			admitted := &konfluxv1beta2.NudgeConfig{}
+			Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(nc), admitted)).To(Succeed())
+			Expect(admitted.Spec.Actions).NotTo(BeNil())
+			Expect(admitted.Spec.Actions.ForceFire).NotTo(BeNil())
+			Expect(admitted.Spec.Actions.ForceFire.IncludePartial).NotTo(BeNil())
+			Expect(*admitted.Spec.Actions.ForceFire.IncludePartial).To(BeTrue())
 		})
 	})
 

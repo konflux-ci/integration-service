@@ -18,7 +18,6 @@ package nudgeconfig
 
 import (
 	"context"
-	"errors"
 	"reflect"
 	"time"
 
@@ -75,25 +74,31 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 
 	hadForceFire := nudgeConfig.Spec.Actions != nil && nudgeConfig.Spec.Actions.ForceFire != nil
 	if hadForceFire {
-		if err := nudging.ClearForceFireRejectedCondition(ctx, r.Client, nudgeConfig); err != nil {
-			logger.Error(err, "Failed to clear prior forceFire rejected condition")
+		forceFireResult, err := nudging.ProcessForceFireActionResult(ctx, r.Client, nudgeConfig)
+		if err != nil {
+			logger.Error(err, "forceFire action processing failed")
 			return reconcile.Result{}, err
 		}
-		if err := nudging.ClearForceFireIgnoredCondition(ctx, r.Client, nudgeConfig); err != nil {
-			logger.Error(err, "Failed to clear prior forceFire ignored condition")
-			return reconcile.Result{}, err
+		if forceFireResult.Disposition == nudging.ForceFireSuperseded {
+			return reconcile.Result{Requeue: true}, nil
 		}
-		if err := nudging.ProcessForceFireAction(ctx, r.Client, nudgeConfig); err != nil {
-			logger.Error(err, "forceFire action could not be applied")
-			if errors.Is(err, nudging.ErrForceFireIgnored) {
-				_ = nudging.SetForceFireIgnoredCondition(ctx, r.Client, nudgeConfig, err.Error())
-			} else {
-				_ = nudging.SetForceFireRejectedCondition(ctx, r.Client, nudgeConfig, err.Error())
+		switch forceFireResult.Disposition {
+		case nudging.ForceFireRejected:
+			if err := nudging.SetForceFireRejectedCondition(ctx, r.Client, nudgeConfig, forceFireResult.Message); err != nil {
+				logger.Error(err, "Failed to record forceFire rejection")
+				return reconcile.Result{}, err
+			}
+		case nudging.ForceFireIgnored:
+			if err := nudging.SetForceFireIgnoredCondition(ctx, r.Client, nudgeConfig, forceFireResult.Message); err != nil {
+				logger.Error(err, "Failed to record ignored forceFire action")
+				return reconcile.Result{}, err
 			}
 		}
-		if err := nudging.ClearNudgeConfigActions(ctx, r.Client, nudgeConfig); err != nil {
-			logger.Error(err, "Failed to clear processed nudge config actions")
-			return reconcile.Result{}, err
+		if forceFireResult.Disposition != nudging.ForceFireNone {
+			if err := nudging.ClearNudgeConfigActions(ctx, r.Client, nudgeConfig); err != nil {
+				logger.Error(err, "Failed to clear processed nudge config actions")
+				return reconcile.Result{}, err
+			}
 		}
 	}
 
@@ -115,6 +120,16 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	if err := nudging.SyncBatchBlockedCondition(ctx, r.Client, nudgeConfig); err != nil {
 		logger.Error(err, "Failed to sync BatchBlocked condition")
 		return reconcile.Result{}, err
+	}
+	if !hadForceFire {
+		if err := nudging.ClearForceFireRejectedCondition(ctx, r.Client, nudgeConfig); err != nil {
+			logger.Error(err, "Failed to clear prior forceFire rejected condition")
+			return reconcile.Result{}, err
+		}
+		if err := nudging.ClearForceFireIgnoredCondition(ctx, r.Client, nudgeConfig); err != nil {
+			logger.Error(err, "Failed to clear prior forceFire ignored condition")
+			return reconcile.Result{}, err
+		}
 	}
 
 	if err := r.Get(ctx, req.NamespacedName, nudgeConfig); err != nil {

@@ -332,6 +332,10 @@ var _ = Describe("NudgeConfig reconciler", func() {
 						ForceFire: &v1beta2.ForceFireAction{Target: "missing-target"},
 					},
 				},
+				Status: v1beta2.NudgeConfigStatus{Conditions: []metav1.Condition{{
+					Type: v1beta2.NudgeConfigConditionForceFireIgnored, Status: metav1.ConditionTrue,
+					Reason: "Ignored", Message: "feedback from the previous request",
+				}}},
 			}
 			reconciler.Client = newClient(nudgeConfig)
 
@@ -345,6 +349,9 @@ var _ = Describe("NudgeConfig reconciler", func() {
 			cond := meta.FindStatusCondition(updated.Status.Conditions, v1beta2.NudgeConfigConditionForceFireRejected)
 			Expect(cond).NotTo(BeNil())
 			Expect(cond.Status).To(Equal(metav1.ConditionTrue))
+			priorFeedback := meta.FindStatusCondition(updated.Status.Conditions, v1beta2.NudgeConfigConditionForceFireIgnored)
+			Expect(priorFeedback).NotTo(BeNil())
+			Expect(priorFeedback.Message).To(Equal("feedback from the previous request"))
 		})
 
 		It("should clear the action and record ForceFireIgnored when the target batch is already firing", func() {
