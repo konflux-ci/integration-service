@@ -18,7 +18,10 @@ package nudging
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/json"
 	"fmt"
+	"reflect"
 	"strings"
 	"time"
 
@@ -82,52 +85,160 @@ func RecordFailedBuildForBatchedNudge(
 	return recordFailureForBatchedNudge(ctx, c, nudgeConfig, targetName, sourceComponentName, sourceRef, reason)
 }
 
-// ProcessForceFireAction immediately fires the batch selected by spec.actions.forceFire.
+// ForceFireDisposition describes the durable outcome of a one-shot request.
+type ForceFireDisposition string
+
+const (
+	ForceFireNone       ForceFireDisposition = "None"
+	ForceFireApplied    ForceFireDisposition = "Applied"
+	ForceFireRejected   ForceFireDisposition = "Rejected"
+	ForceFireIgnored    ForceFireDisposition = "Ignored"
+	ForceFireSuperseded ForceFireDisposition = "Superseded"
+)
+
+// ForceFireResult separates terminal action outcomes from operational errors. The caller
+// may consume Applied, Rejected and Ignored requests after persisting their conditions.
+// A non-nil error means retain the request and retry; it must never become a rejection.
+type ForceFireResult struct {
+	Disposition ForceFireDisposition `json:"disposition,omitempty"`
+	Message     string               `json:"message,omitempty"`
+}
+
+// forceFireReceipt binds an observed request to one batch before creating any objects.
+// It survives uncertain API responses and a failed action clear, even if the batch
+// completes and a subsequent batch starts accepting builds before the retry.
+func receiptResult(receipt *v1beta2.ForceFireReceipt) ForceFireResult {
+	return ForceFireResult{Disposition: ForceFireDisposition(receipt.Disposition), Message: receipt.Message}
+}
+
+func setReceiptResult(receipt *v1beta2.ForceFireReceipt, result ForceFireResult) {
+	receipt.Disposition = string(result.Disposition)
+	receipt.Message = result.Message
+}
+
+func sameForceFireRequest(observed, latest *v1beta2.NudgeConfig) bool {
+	return observed.UID == latest.UID &&
+		reflect.DeepEqual(observed.Spec.Actions, latest.Spec.Actions)
+}
+
+// ProcessForceFireAction retains the original error-based API for existing callers.
+// Controllers should use ProcessForceFireActionResult to distinguish rejected requests
+// from API failures and must only consume terminal outcomes.
 func ProcessForceFireAction(ctx context.Context, c client.Client, nudgeConfig *v1beta2.NudgeConfig) error {
-	if nudgeConfig.Spec.Actions == nil || nudgeConfig.Spec.Actions.ForceFire == nil {
+	result, err := ProcessForceFireActionResult(ctx, c, nudgeConfig)
+	if err != nil {
+		return err
+	}
+	switch result.Disposition {
+	case ForceFireRejected:
+		return fmt.Errorf("%s", result.Message)
+	case ForceFireIgnored:
+		return fmt.Errorf("%w: %s", ErrForceFireIgnored, result.Message)
+	default:
 		return nil
 	}
-	action := nudgeConfig.Spec.Actions.ForceFire
-	includePartial := true
-	if action.IncludePartial != nil {
-		includePartial = *action.IncludePartial
+}
+
+// ProcessForceFireActionResult processes the captured request only while its generation
+// and action still match. A durable receipt keeps retries on the originally selected
+// batch. includePartial defaults to true, using the same batch and PLR machinery as
+// scheduled firing. API failures leave the action and batch available for recovery.
+func ProcessForceFireActionResult(ctx context.Context, c client.Client, nudgeConfig *v1beta2.NudgeConfig) (ForceFireResult, error) {
+	result := ForceFireResult{Disposition: ForceFireNone}
+	if nudgeConfig.Spec.Actions == nil || nudgeConfig.Spec.Actions.ForceFire == nil {
+		return result, nil
 	}
-
-	return retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+	action := nudgeConfig.Spec.Actions.ForceFire
+	includePartial := action.IncludePartial == nil || *action.IncludePartial
+	actionJSON, err := json.Marshal(action)
+	if err != nil {
+		return result, fmt.Errorf("encoding forceFire action: %w", err)
+	}
+	request := fmt.Sprintf("%x", sha256.Sum256(actionJSON))
+	err = retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+		// A conflict may follow a successful PLR create. Reset the result and refetch
+		// the receipt instead of selecting a different batch or losing the request.
+		result = ForceFireResult{Disposition: ForceFireNone}
 		latest := &v1beta2.NudgeConfig{}
-		if err := c.Get(ctx, types.NamespacedName{Name: nudgeConfig.Name, Namespace: nudgeConfig.Namespace}, latest); err != nil {
+		if err := c.Get(ctx, client.ObjectKeyFromObject(nudgeConfig), latest); err != nil {
 			return err
 		}
-		original := latest.DeepCopy()
-
-		if isBatchFiringForTarget(latest.Status.ActiveBatches, action.Target) {
-			return fmt.Errorf("%w: batch for target %q is already firing", ErrForceFireIgnored, action.Target)
+		if !sameForceFireRequest(nudgeConfig, latest) {
+			result.Disposition = ForceFireSuperseded
+			return nil
 		}
-
-		batchIdx, batch := findForceFireBatch(latest.Status.ActiveBatches, action.Target, includePartial)
-		if batch == nil {
-			return fmt.Errorf("no force-fireable batch for target %q", action.Target)
+		receipt := latest.Status.ForceFireReceipt
+		if receipt == nil || receipt.Request != request {
+			receipt = &v1beta2.ForceFireReceipt{Request: request}
+			switch {
+			case isBatchFiringForTarget(latest.Status.ActiveBatches, action.Target):
+				setReceiptResult(receipt, ForceFireResult{Disposition: ForceFireIgnored, Message: fmt.Sprintf("batch for target %q is already firing", action.Target)})
+			default:
+				_, batch := findForceFireBatch(latest.Status.ActiveBatches, action.Target, includePartial)
+				if batch == nil {
+					setReceiptResult(receipt, ForceFireResult{Disposition: ForceFireRejected, Message: fmt.Sprintf("no force-fireable batch for target %q", action.Target)})
+				} else if err := validateForceFireBatch(batch, includePartial); err != nil {
+					setReceiptResult(receipt, ForceFireResult{Disposition: ForceFireRejected, Message: err.Error()})
+				} else {
+					receipt.BatchID = batch.BatchID
+				}
+			}
+			original := latest.DeepCopy()
+			latest.Status.ForceFireReceipt = receipt
+			if err := c.Status().Patch(ctx, latest, client.MergeFromWithOptions(original, client.MergeFromWithOptimisticLock{})); err != nil {
+				return err
+			}
 		}
-		if err := validateForceFireBatch(batch, includePartial); err != nil {
-			return err
+		if receipt.Disposition != "" {
+			result = receiptResult(receipt)
+			return nil
 		}
-		if len(eligibleAccumulatedEntries(batch)) == 0 {
-			failEmptyEligibleBatch(batch)
-			latest.Status.ActiveBatches[batchIdx] = *batch
+		result.Disposition = ForceFireApplied
+		for i := range latest.Status.ActiveBatches {
+			batch := &latest.Status.ActiveBatches[i]
+			if batch.BatchID != receipt.BatchID || batch.Target != action.Target {
+				continue
+			}
+			if batch.Phase == v1beta2.BatchPhaseFiring || batch.Phase == v1beta2.BatchPhaseCompleted {
+				return nil
+			}
+			if batch.Phase == v1beta2.BatchPhaseFailed {
+				// A force-fire is an explicit new delivery attempt. Do not adopt the
+				// terminal PipelineRun recorded by the failed attempt.
+				batch.RetryCount++
+				batch.NudgePipelineRun = ""
+			}
+			// Revalidate failures added since the claim rather than overriding the
+			// explicit includePartial=false choice during recovery.
+			if err := validateForceFireBatch(batch, includePartial); err != nil {
+				original := latest.DeepCopy()
+				setReceiptResult(receipt, ForceFireResult{Disposition: ForceFireRejected, Message: err.Error()})
+				latest.Status.ForceFireReceipt = receipt
+				if err := c.Status().Patch(ctx, latest, client.MergeFromWithOptions(original, client.MergeFromWithOptimisticLock{})); err != nil {
+					return err
+				}
+				result = receiptResult(receipt)
+				return nil
+			}
+			original := latest.DeepCopy()
+			if len(eligibleAccumulatedEntries(batch)) == 0 {
+				failEmptyEligibleBatch(batch)
+			} else if err := fireBatch(ctx, c, latest, batch); err != nil {
+				// Creation may have succeeded despite an error response. Keep the
+				// persisted batch intact; fireBatch adopts its deterministic PLR on retry.
+				return err
+			}
+			ReconcileBatchBlockedCondition(latest, metav1.Now())
 			return c.Status().Patch(ctx, latest, client.MergeFromWithOptions(original, client.MergeFromWithOptimisticLock{}))
 		}
-		if err := fireBatch(ctx, c, latest, batch); err != nil {
-			batch.Phase = v1beta2.BatchPhaseFailed
-			batch.Message = err.Error()
-			latest.Status.ActiveBatches[batchIdx] = *batch
-			if patchErr := c.Status().Patch(ctx, latest, client.MergeFromWithOptions(original, client.MergeFromWithOptimisticLock{})); patchErr != nil {
-				return patchErr
-			}
-			return err
-		}
-		latest.Status.ActiveBatches[batchIdx] = *batch
-		return c.Status().Patch(ctx, latest, client.MergeFromWithOptions(original, client.MergeFromWithOptimisticLock{}))
+		// A removed batch has already completed/expired. Never redirect its old
+		// request to the next batch for the same target.
+		return nil
 	})
+	if err != nil {
+		return ForceFireResult{}, err
+	}
+	return result, nil
 }
 
 // SetForceFireRejectedCondition records why a forceFire action could not be applied.
@@ -165,10 +276,10 @@ func ClearForceFireIgnoredCondition(ctx context.Context, c client.Client, nudgeC
 		if err := c.Get(ctx, types.NamespacedName{Name: nudgeConfig.Name, Namespace: nudgeConfig.Namespace}, latest); err != nil {
 			return err
 		}
+		original := latest.DeepCopy()
 		if !clearNudgeConfigCondition(latest, v1beta2.NudgeConfigConditionForceFireIgnored) {
 			return nil
 		}
-		original := latest.DeepCopy()
 		return c.Status().Patch(ctx, latest, client.MergeFromWithOptions(original, client.MergeFromWithOptimisticLock{}))
 	})
 }
@@ -180,27 +291,45 @@ func ClearForceFireRejectedCondition(ctx context.Context, c client.Client, nudge
 		if err := c.Get(ctx, types.NamespacedName{Name: nudgeConfig.Name, Namespace: nudgeConfig.Namespace}, latest); err != nil {
 			return err
 		}
+		original := latest.DeepCopy()
 		if !clearNudgeConfigCondition(latest, v1beta2.NudgeConfigConditionForceFireRejected) {
 			return nil
 		}
-		original := latest.DeepCopy()
 		return c.Status().Patch(ctx, latest, client.MergeFromWithOptions(original, client.MergeFromWithOptimisticLock{}))
 	})
 }
 
-// ClearNudgeConfigActions removes processed one-shot actions from spec using a merge patch.
+// ClearNudgeConfigActions consumes only the captured request. A newer generation or
+// replacement action is retained, including across optimistic-lock retries.
 func ClearNudgeConfigActions(ctx context.Context, c client.Client, nudgeConfig *v1beta2.NudgeConfig) error {
 	return retry.RetryOnConflict(retry.DefaultBackoff, func() error {
 		latest := &v1beta2.NudgeConfig{}
 		if err := c.Get(ctx, types.NamespacedName{Name: nudgeConfig.Name, Namespace: nudgeConfig.Namespace}, latest); err != nil {
 			return err
 		}
-		if latest.Spec.Actions == nil {
+		if latest.Spec.Actions == nil || !sameForceFireRequest(nudgeConfig, latest) {
 			return nil
 		}
 		original := latest.DeepCopy()
 		latest.Spec.Actions = nil
 		return c.Patch(ctx, latest, client.MergeFromWithOptions(original, client.MergeFromWithOptimisticLock{}))
+	})
+}
+
+// ClearForceFireReceipt removes a consumed action's controller-owned receipt. It only
+// clears after spec.actions is absent, so an operational failure cannot lose recovery state.
+func ClearForceFireReceipt(ctx context.Context, c client.Client, nudgeConfig *v1beta2.NudgeConfig) error {
+	return retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+		latest := &v1beta2.NudgeConfig{}
+		if err := c.Get(ctx, types.NamespacedName{Name: nudgeConfig.Name, Namespace: nudgeConfig.Namespace}, latest); err != nil {
+			return err
+		}
+		if latest.Spec.Actions != nil || latest.Status.ForceFireReceipt == nil {
+			return nil
+		}
+		original := latest.DeepCopy()
+		latest.Status.ForceFireReceipt = nil
+		return c.Status().Patch(ctx, latest, client.MergeFromWithOptions(original, client.MergeFromWithOptimisticLock{}))
 	})
 }
 

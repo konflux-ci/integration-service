@@ -17,6 +17,8 @@ limitations under the License.
 package nudgeconfig
 
 import (
+	"context"
+	"errors"
 	"time"
 
 	konfluxv1beta2 "github.com/konflux-ci/integration-service/api/konflux/v1beta2"
@@ -32,6 +34,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 )
@@ -198,6 +201,54 @@ var _ = Describe("NudgeConfig reconciler", func() {
 		})
 	})
 	Context("When forceFire succeeds", func() {
+		It("should retain a rejected action when recording feedback fails", func() {
+			nudgeConfig := &v1beta2.NudgeConfig{
+				ObjectMeta: metav1.ObjectMeta{Name: v1beta2.NudgeConfigSingletonName, Namespace: "default"},
+				Spec: v1beta2.NudgeConfigSpec{Actions: &v1beta2.Actions{
+					ForceFire: &v1beta2.ForceFireAction{Target: "missing-target"},
+				}},
+			}
+			base := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(&v1beta2.NudgeConfig{}).WithObjects(nudgeConfig)
+			reconciler.Client = base.WithInterceptorFuncs(interceptor.Funcs{
+				SubResourcePatch: func(context.Context, client.Client, string, client.Object, client.Patch, ...client.SubResourcePatchOption) error {
+					return errors.New("status unavailable")
+				},
+			}).Build()
+
+			_, err := reconciler.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKeyFromObject(nudgeConfig)})
+			Expect(err).To(MatchError(ContainSubstring("status unavailable")))
+			updated := &v1beta2.NudgeConfig{}
+			Expect(reconciler.Client.Get(ctx, client.ObjectKeyFromObject(nudgeConfig), updated)).To(Succeed())
+			Expect(updated.Spec.Actions.ForceFire).NotTo(BeNil())
+		})
+
+		It("should not supersede an action after an unrelated generation change", func() {
+			nudgeConfig := &v1beta2.NudgeConfig{
+				ObjectMeta: metav1.ObjectMeta{Name: v1beta2.NudgeConfigSingletonName, Namespace: "default"},
+				Spec: v1beta2.NudgeConfigSpec{Actions: &v1beta2.Actions{
+					ForceFire: &v1beta2.ForceFireAction{Target: "bundle"},
+				}},
+			}
+			getCount := 0
+			base := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(&v1beta2.NudgeConfig{}).WithObjects(nudgeConfig)
+			reconciler.Client = base.WithInterceptorFuncs(interceptor.Funcs{
+				Get: func(ctx context.Context, c client.WithWatch, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+					getCount++
+					if err := c.Get(ctx, key, obj, opts...); err != nil {
+						return err
+					}
+					if getCount == 2 {
+						obj.(*v1beta2.NudgeConfig).Generation++
+					}
+					return nil
+				},
+			}).Build()
+
+			result, err := reconciler.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKeyFromObject(nudgeConfig)})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.RequeueAfter).To(BeZero())
+		})
+
 		It("should clear spec.actions after processing", func() {
 			now := metav1.Now()
 			buildPLR := &tektonv1.PipelineRun{
@@ -291,6 +342,10 @@ var _ = Describe("NudgeConfig reconciler", func() {
 						ForceFire: &v1beta2.ForceFireAction{Target: "missing-target"},
 					},
 				},
+				Status: v1beta2.NudgeConfigStatus{Conditions: []metav1.Condition{{
+					Type: v1beta2.NudgeConfigConditionForceFireIgnored, Status: metav1.ConditionTrue,
+					Reason: "Ignored", Message: "feedback from the previous request",
+				}}},
 			}
 			reconciler.Client = newClient(nudgeConfig)
 
@@ -304,6 +359,9 @@ var _ = Describe("NudgeConfig reconciler", func() {
 			cond := meta.FindStatusCondition(updated.Status.Conditions, v1beta2.NudgeConfigConditionForceFireRejected)
 			Expect(cond).NotTo(BeNil())
 			Expect(cond.Status).To(Equal(metav1.ConditionTrue))
+			priorFeedback := meta.FindStatusCondition(updated.Status.Conditions, v1beta2.NudgeConfigConditionForceFireIgnored)
+			Expect(priorFeedback).NotTo(BeNil())
+			Expect(priorFeedback.Message).To(Equal("feedback from the previous request"))
 		})
 
 		It("should clear the action and record ForceFireIgnored when the target batch is already firing", func() {

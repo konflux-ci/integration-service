@@ -352,10 +352,10 @@ var _ = Describe("Nudge batch client operations", func() {
 				CreatedAt:        now,
 				NudgePipelineRun: "nudge-batch-firing",
 			}}
-			c := newClient(nudgeConfig)
 			nudgeConfig.Spec.Actions = &v1beta2.Actions{
 				ForceFire: &v1beta2.ForceFireAction{Target: target},
 			}
+			c := newClient(nudgeConfig)
 			err := ProcessForceFireAction(ctx, c, nudgeConfig)
 			Expect(errors.Is(err, ErrForceFireIgnored)).To(BeTrue())
 		})
@@ -429,10 +429,10 @@ var _ = Describe("Nudge batch client operations", func() {
 				CreatedAt:    now,
 				HardDeadline: metav1.NewTime(now.Add(time.Hour)),
 			}}
-			c := newClient(nudgeConfig)
 			nudgeConfig.Spec.Actions = &v1beta2.Actions{
 				ForceFire: &v1beta2.ForceFireAction{Target: target},
 			}
+			c := newClient(nudgeConfig)
 			Expect(ProcessForceFireAction(ctx, c, nudgeConfig)).To(Succeed())
 
 			updated := &v1beta2.NudgeConfig{}
@@ -442,10 +442,10 @@ var _ = Describe("Nudge batch client operations", func() {
 		})
 
 		It("should return an error when no batch exists for the target", func() {
-			c := newClient(nudgeConfig)
 			nudgeConfig.Spec.Actions = &v1beta2.Actions{
 				ForceFire: &v1beta2.ForceFireAction{Target: target},
 			}
+			c := newClient(nudgeConfig)
 			Expect(ProcessForceFireAction(ctx, c, nudgeConfig)).To(MatchError(ContainSubstring("no force-fireable batch")))
 		})
 
@@ -467,10 +467,10 @@ var _ = Describe("Nudge batch client operations", func() {
 					},
 				},
 			}
-			c := newClient(nudgeConfig, buildPLR)
 			nudgeConfig.Spec.Actions = &v1beta2.Actions{
 				ForceFire: &v1beta2.ForceFireAction{Target: target, IncludePartial: &includePartial},
 			}
+			c := newClient(nudgeConfig, buildPLR)
 			err := ProcessForceFireAction(ctx, c, nudgeConfig)
 			Expect(err).To(MatchError(ContainSubstring("includePartial=false")))
 			Expect(err).NotTo(MatchError(ContainSubstring("no force-fireable batch")))
@@ -494,10 +494,10 @@ var _ = Describe("Nudge batch client operations", func() {
 					},
 				},
 			}
-			c := newClient(nudgeConfig, buildPLR)
 			nudgeConfig.Spec.Actions = &v1beta2.Actions{
 				ForceFire: &v1beta2.ForceFireAction{Target: target, IncludePartial: &includePartial},
 			}
+			c := newClient(nudgeConfig, buildPLR)
 			err := ProcessForceFireAction(ctx, c, nudgeConfig)
 			Expect(err).To(MatchError(ContainSubstring("includePartial=false")))
 		})
@@ -516,10 +516,10 @@ var _ = Describe("Nudge batch client operations", func() {
 					},
 				},
 			}
-			c := newClient(nudgeConfig, buildPLR)
 			nudgeConfig.Spec.Actions = &v1beta2.Actions{
 				ForceFire: &v1beta2.ForceFireAction{Target: target},
 			}
+			c := newClient(nudgeConfig, buildPLR)
 			err := ProcessForceFireAction(ctx, c, nudgeConfig)
 			Expect(err).NotTo(MatchError(ContainSubstring("no force-fireable batch")))
 		})
@@ -538,10 +538,10 @@ var _ = Describe("Nudge batch client operations", func() {
 					},
 				},
 			}
-			c := newClient(nudgeConfig, buildPLR)
 			nudgeConfig.Spec.Actions = &v1beta2.Actions{
 				ForceFire: &v1beta2.ForceFireAction{Target: target},
 			}
+			c := newClient(nudgeConfig, buildPLR)
 			err := ProcessForceFireAction(ctx, c, nudgeConfig)
 			Expect(err).NotTo(MatchError(ContainSubstring("no force-fireable batch")))
 		})

@@ -505,6 +505,22 @@ spec:
                   - type
                   type: object
                 type: array
+              forceFireReceipt:
+                description: |-
+                  ForceFireReceipt binds an in-flight forceFire action to its selected batch.
+                  It is controller-owned status rather than a GitOps-owned annotation.
+                properties:
+                  batchID:
+                    type: string
+                  disposition:
+                    type: string
+                  message:
+                    type: string
+                  request:
+                    type: string
+                required:
+                - request
+                type: object
               lastValidationTime:
                 description: LastValidationTime is the timestamp of the last successful
                   validation of the nudge graph.

@@ -45,6 +45,7 @@ type BatchPolicy = konfluxv1beta2.BatchPolicy
 type TargetConfig = konfluxv1beta2.TargetConfig
 type Actions = konfluxv1beta2.Actions
 type ForceFireAction = konfluxv1beta2.ForceFireAction
+type ForceFireReceipt = konfluxv1beta2.ForceFireReceipt
 type NudgeConfigSpec = konfluxv1beta2.NudgeConfigSpec
 type BatchPhase = konfluxv1beta2.BatchPhase
 type AccumulatedEntry = konfluxv1beta2.AccumulatedEntry

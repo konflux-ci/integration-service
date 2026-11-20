@@ -535,6 +535,37 @@ var _ = Describe("Nudge batch firing integration", func() {
 		Expect(updated.Status.ActiveBatches[0].Phase).To(Equal(v1beta2.BatchPhaseFiring))
 	})
 
+	It("force-fires a failed batch as a fresh PipelineRun attempt", func() {
+		buildPLR := buildPLRWithResults("force-failed-build-plr")
+		now := metav1.Now()
+		batchID := "force-failed-batch"
+		terminalName := BatchedNudgePipelineRunName(batchID, 3)
+		terminal := &tektonv1.PipelineRun{ObjectMeta: metav1.ObjectMeta{
+			Name: terminalName, Namespace: namespace,
+			Labels:      map[string]string{tektonconsts.NudgeTypeLabel: tektonconsts.NudgePipelineRunTypeValue},
+			Annotations: map[string]string{tektonconsts.NudgeBatchIDAnnotation: batchID},
+		}}
+		terminal.Status.MarkFailed(tektonv1.PipelineRunReasonFailed.String(), "failed")
+		nudgeConfig := &v1beta2.NudgeConfig{
+			ObjectMeta: metav1.ObjectMeta{Name: v1beta2.NudgeConfigSingletonName, Namespace: namespace},
+			Spec:       v1beta2.NudgeConfigSpec{TargetConfig: []v1beta2.TargetConfig{{Target: targetName, BatchPolicy: &v1beta2.BatchPolicy{}}}, Actions: &v1beta2.Actions{ForceFire: &v1beta2.ForceFireAction{Target: targetName}}},
+			Status: v1beta2.NudgeConfigStatus{ActiveBatches: []v1beta2.ActiveBatch{{
+				Target: targetName, BatchID: batchID, Phase: v1beta2.BatchPhaseFailed, RetryCount: 3,
+				CreatedAt: now, HardDeadline: metav1.NewTime(now.Add(time.Hour)), NudgePipelineRun: terminalName,
+				Accumulated: []v1beta2.AccumulatedEntry{{From: sourceName, ImageDigest: sampleDigest, BuildPipelineRun: buildPLR.Name, CapturedAt: now, BuildServiceAccountName: defaultSAName}},
+			}}},
+		}
+		c := batchFireClient(nudgeConfig, buildPLR, terminal)
+
+		Expect(ProcessForceFireAction(ctx, c, nudgeConfig)).To(Succeed())
+		updated := &v1beta2.NudgeConfig{}
+		Expect(c.Get(ctx, client.ObjectKeyFromObject(nudgeConfig), updated)).To(Succeed())
+		Expect(updated.Status.ActiveBatches[0].RetryCount).To(Equal(int32(4)))
+		Expect(updated.Status.ActiveBatches[0].NudgePipelineRun).To(Equal(BatchedNudgePipelineRunName(batchID, 4)))
+		fresh := &tektonv1.PipelineRun{}
+		Expect(c.Get(ctx, types.NamespacedName{Name: BatchedNudgePipelineRunName(batchID, 4), Namespace: namespace}, fresh)).To(Succeed())
+	})
+
 	It("fails an accepted force-fire action with no eligible successful sources", func() {
 		now := metav1.Now()
 		nudgeConfig := &v1beta2.NudgeConfig{
