@@ -1,6 +1,6 @@
 <div align="center"><h1>Distributed tracing</h1></div>
 
-The operator emits OpenTelemetry spans for build and integration-test PipelineRuns it reconciles, and propagates the trace context forward onto Snapshots and downstream Release CRs so a single trace can span the build, test, and release lifecycle.
+The operator emits OpenTelemetry spans for the integration-test PipelineRuns it creates, and propagates the trace context forward onto Snapshots and downstream Release CRs so a single trace can span the build, test, and release lifecycle. Timing spans for the build PipelineRun are emitted by Pipelines as Code, which creates it.
 
 ## Configuration
 
@@ -20,7 +20,7 @@ Two spans are emitted per PipelineRun when it completes:
 - `waitDuration`: `pr.CreationTimestamp` to `pr.Status.StartTime`
 - `executeDuration`: `pr.Status.StartTime` to `pr.Status.CompletionTime`
 
-The build-pipeline and integration-pipeline controllers each emit for their respective PipelineRun types. The `delivery.tekton.dev/timingEmitted` annotation guards against re-emission on subsequent reconciles.
+The integration-pipeline controller emits these for integration-test PipelineRuns. The `delivery.tekton.dev/timingEmitted` annotation guards against re-emission on subsequent reconciles.
 
 ## Trace-context propagation
 
