@@ -349,7 +349,7 @@ func TestActiveBatchYAMLShape(t *testing.T) {
 		Accumulated: []AccumulatedEntry{
 			{From: "component-a", ImageDigest: "sha256:abc", BuildPipelineRun: "plr-1", CapturedAt: now},
 		},
-		RetryCount: 0,
+		RetryCount: 2,
 	}
 
 	yamlBytes, err := yaml.Marshal(batch)
@@ -370,6 +370,9 @@ func TestActiveBatchYAMLShape(t *testing.T) {
 	}
 	if !strings.Contains(yamlStr, "fireAt:") {
 		t.Errorf("YAML missing fireAt field when set")
+	}
+	if !strings.Contains(yamlStr, "retryCount: 2") {
+		t.Errorf("YAML missing non-zero retryCount")
 	}
 
 	// Test blocked batch with FireAt nil

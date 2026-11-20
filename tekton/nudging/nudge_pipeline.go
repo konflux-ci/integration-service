@@ -359,6 +359,9 @@ func enablePackageRulesOnly(rules []PackageRule) []PackageRule {
 	return enabled
 }
 
+// isGlobalDisablePackageRule reports Renovate's global disable-all sentinel
+// (enabled: false with matchPackagePatterns ["*"]). enablePackageRulesOnly skips
+// it when merging per-source package rules into a batched config.
 func isGlobalDisablePackageRule(rule PackageRule) bool {
 	return !rule.Enabled && len(rule.MatchPackagePatterns) == 1 && rule.MatchPackagePatterns[0] == "*"
 }
@@ -440,27 +443,28 @@ func GenerateBatchedRenovateConfig(target NudgeTarget, batchTargetName string, e
 	packageRules = append([]PackageRule{DisableAllPackageRules}, packageRules...)
 
 	return RenovateConfig{
-		GitProvider:           target.GitProvider,
-		Username:              target.Username,
-		GitAuthor:             target.GitAuthor,
-		Onboarding:            false,
-		RequireConfig:         "ignored",
-		Repositories:          target.Repositories,
-		EnabledManagers:       []string{"custom.regex"},
-		Endpoint:              target.Endpoint,
-		CustomManagers:        customManagers,
-		RegistryAliases:       registryAliases,
-		PackageRules:          packageRules,
-		ForkProcessing:        "enabled",
-		Extends:               []string{},
-		DependencyDashboard:   false,
-		Labels:                labels,
-		Automerge:             customOpts.Automerge,
-		PlatformAutomerge:     customOpts.PlatformAutomerge,
-		IgnoreTests:           customOpts.IgnoreTests,
-		AutomergeType:         customOpts.AutomergeType,
-		GitLabIgnoreApprovals: customOpts.GitLabIgnoreApprovals,
-		AutomergeSchedule:     customOpts.AutomergeSchedule,
+		GitProvider:              target.GitProvider,
+		Username:                 target.Username,
+		GitAuthor:                target.GitAuthor,
+		Onboarding:               false,
+		RequireConfig:            "ignored",
+		Repositories:             target.Repositories,
+		EnabledManagers:          []string{"custom.regex"},
+		Endpoint:                 target.Endpoint,
+		CustomManagers:           customManagers,
+		RegistryAliases:          registryAliases,
+		PackageRules:             packageRules,
+		ForkProcessing:           "enabled",
+		Extends:                  []string{},
+		DependencyDashboard:      false,
+		DependencyDashboardTitle: unusedDependencyDashboardTitle,
+		Labels:                   labels,
+		Automerge:                customOpts.Automerge,
+		PlatformAutomerge:        customOpts.PlatformAutomerge,
+		IgnoreTests:              customOpts.IgnoreTests,
+		AutomergeType:            customOpts.AutomergeType,
+		GitLabIgnoreApprovals:    customOpts.GitLabIgnoreApprovals,
+		AutomergeSchedule:        customOpts.AutomergeSchedule,
 	}
 }
 
@@ -665,6 +669,11 @@ func CreateBatchedNudgePipelineRun(
 	if err != nil {
 		return "", fmt.Errorf("creating or loading batched nudge PipelineRun %s: %w", name, err)
 	}
+	if !created {
+		if err := validateBatchedNudgePipelineRun(persisted, batchID); err != nil {
+			return "", fmt.Errorf("refusing to adopt batched nudge PipelineRun %s: %w", name, err)
+		}
+	}
 	if err := createOwnedObjectIfMissing(ctx, c, persisted, secret); err != nil {
 		return "", fmt.Errorf("creating Secret %s: %w", name, err)
 	}
@@ -682,6 +691,20 @@ func CreateBatchedNudgePipelineRun(
 
 	log.Info("batched nudge PipelineRun created", "name", persisted.Name, "sources", len(entries), "batchId", batchID, "adopted", !created)
 	return name, nil
+}
+
+// validateBatchedNudgePipelineRun confirms that a deterministically named
+// PipelineRun belongs to the batch that is trying to adopt it. A name collision
+// must never cause an unrelated PipelineRun to be started or observed as a
+// nudge delivery attempt.
+func validateBatchedNudgePipelineRun(pipelineRun *tektonv1.PipelineRun, batchID string) error {
+	if pipelineRun.Labels[tektonconsts.NudgeTypeLabel] != tektonconsts.NudgePipelineRunTypeValue {
+		return fmt.Errorf("expected label %q=%q", tektonconsts.NudgeTypeLabel, tektonconsts.NudgePipelineRunTypeValue)
+	}
+	if pipelineRun.Annotations[tektonconsts.NudgeBatchIDAnnotation] != batchID {
+		return fmt.Errorf("expected annotation %q=%q", tektonconsts.NudgeBatchIDAnnotation, batchID)
+	}
+	return nil
 }
 
 // BatchedNudgePipelineRunName returns the Tekton PipelineRun name for a fired nudge batch.

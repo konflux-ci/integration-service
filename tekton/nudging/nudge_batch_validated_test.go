@@ -27,6 +27,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -142,6 +143,33 @@ var _ = Describe("Validated batched nudge recording", func() {
 		Expect(updated.Status.ActiveBatches[0].Failed[0].Reason).To(Equal("integration tests failed"))
 	})
 
+	It("removes a snapshot-based failure when a validated snapshot succeeds", func() {
+		c := newClient(nudgeConfig)
+		Expect(RecordFailedValidatedSnapshotForBatchedNudge(ctx, c, nudgeConfig, target, source, "snap-fail", "tests failed")).To(Succeed())
+		Expect(RecordValidatedSnapshotForBatchedNudge(ctx, c, nudgeConfig, target, source, "snap-pass", "sha256:validated")).To(Succeed())
+
+		updated := &v1beta2.NudgeConfig{}
+		Expect(c.Get(ctx, types.NamespacedName{Name: nudgeConfig.Name, Namespace: namespace}, updated)).To(Succeed())
+		batch := updated.Status.ActiveBatches[0]
+		Expect(batch.Phase).To(Equal(v1beta2.BatchPhaseAccumulating))
+		Expect(batch.Failed).To(BeEmpty())
+		Expect(batch.Accumulated).To(HaveLen(1))
+		Expect(batch.Accumulated[0].BuildPipelineRun).To(Equal("snap-pass"))
+	})
+
+	It("self-heals blocked batch status on idempotent validated snapshot replay", func() {
+		c := newClient(nudgeConfig)
+		Expect(RecordFailedValidatedSnapshotForBatchedNudge(ctx, c, nudgeConfig, target, source, "snap-fail", "tests failed")).To(Succeed())
+		Expect(RecordValidatedSnapshotForBatchedNudge(ctx, c, nudgeConfig, target, source, "snap-pass", "sha256:validated")).To(Succeed())
+		Expect(RecordValidatedSnapshotForBatchedNudge(ctx, c, nudgeConfig, target, source, "snap-pass", "sha256:validated")).To(Succeed())
+
+		updated := &v1beta2.NudgeConfig{}
+		Expect(c.Get(ctx, types.NamespacedName{Name: nudgeConfig.Name, Namespace: namespace}, updated)).To(Succeed())
+		Expect(updated.Status.ActiveBatches[0].Accumulated).To(HaveLen(1))
+		Expect(updated.Status.ActiveBatches[0].Failed).To(BeEmpty())
+		Expect(meta.FindStatusCondition(updated.Status.Conditions, v1beta2.NudgeConfigConditionBatchBlocked)).To(BeNil())
+	})
+
 	It("builds renovate payload from accumulated digests when build PLRs are gone", func() {
 		sourceComponent := &applicationapiv1alpha1.Component{
 			ObjectMeta: metav1.ObjectMeta{Name: source, Namespace: namespace},
@@ -243,6 +271,31 @@ var _ = Describe("Validated batched nudge recording", func() {
 		Expect(result.Digest).To(Equal("sha256:status-override"))
 		Expect(result.BuiltImageRepository).To(Equal("quay.io/org/source"))
 		Expect(result.BuiltImageTag).To(Equal("v2"))
+	})
+
+	It("returns an error when the build PipelineRun is missing required results", func() {
+		sourceComponent := &applicationapiv1alpha1.Component{
+			ObjectMeta: metav1.ObjectMeta{Name: source, Namespace: namespace},
+		}
+		buildPLR := &tektonv1.PipelineRun{
+			ObjectMeta: metav1.ObjectMeta{Name: "broken-build-plr", Namespace: namespace},
+			Status: tektonv1.PipelineRunStatus{
+				PipelineRunStatusFields: tektonv1.PipelineRunStatusFields{
+					Results: []tektonv1.PipelineRunResult{
+						{Name: "IMAGE_DIGEST", Value: *tektonv1.NewStructuredValues("sha256:from-plr")},
+					},
+				},
+			},
+		}
+		batchEntry := v1beta2.AccumulatedEntry{
+			From:             source,
+			BuildPipelineRun: buildPLR.Name,
+		}
+		c := newClient(nudgeConfig, sourceComponent, buildPLR)
+
+		_, err := buildResultForAccumulatedEntry(ctx, c, namespace, batchEntry, sourceComponent, buildPLR)
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("IMAGE_URL"))
 	})
 
 	It("returns an error when the build PipelineRun cannot be loaded", func() {
