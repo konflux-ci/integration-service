@@ -29,6 +29,7 @@ import (
 	"github.com/konflux-ci/integration-service/gitops"
 	"github.com/konflux-ci/integration-service/helpers"
 	"github.com/konflux-ci/integration-service/loader"
+	"github.com/konflux-ci/integration-service/pkg/keys"
 	"github.com/konflux-ci/integration-service/pkg/tracing"
 	"github.com/konflux-ci/integration-service/tekton"
 	tektonconsts "github.com/konflux-ci/integration-service/tekton/consts"
@@ -375,6 +376,19 @@ var _ = Describe("Snapshot creation functions", Ordered, func() {
 			Expect(expectedSnapshot.Name).To(Equal(expectedName))
 		})
 
+		It("uses the PipelineRun completion time for the finish label", func() {
+			completedPipelineRun := buildPipelineRun.DeepCopy()
+			completionTime := metav1.Time{Time: time.Unix(1700000000, 0)}
+			completedPipelineRun.Status.CompletionTime = &completionTime
+
+			expectedSnapshot, err := PrepareSnapshotForPipelineRun(mockCtx, k8sClient, completedPipelineRun, componentName, hasCompGroup, loader.NewMockLoader())
+			Expect(err).NotTo(HaveOccurred())
+			Expect(expectedSnapshot.Labels).To(HaveKeyWithValue(
+				gitops.BuildPipelineRunFinishTimeLabel,
+				strconv.FormatInt(completionTime.Unix(), 10),
+			))
+		})
+
 		It("ensures that Labels and Annotations were copied to snapshot from pipelinerun", func() {
 			copyToSnapshot, err := PrepareSnapshotForPipelineRun(mockCtx, k8sClient, buildPipelineRun, componentName, hasCompGroup, loader.NewMockLoader())
 			Expect(err).ToNot(HaveOccurred())
@@ -510,6 +524,73 @@ var _ = Describe("Snapshot creation functions", Ordered, func() {
 			label, found := snapshot.GetLabels()["build.appstudio.redhat.com/target_branch"]
 			Expect(found).To(BeTrue())
 			Expect(label).To(Equal("main"))
+			Expect(snapshot.GetAnnotations()).NotTo(HaveKey("build.konflux-ci.dev/repo"))
+			Expect(snapshot.GetLabels()).NotTo(HaveKey("build.konflux-ci.dev/target_branch"))
+		})
+
+		It("propagates new-model build and PAC metadata without legacy keys", func() {
+			newStylePipelineRun := buildPipelineRun.DeepCopy()
+			delete(newStylePipelineRun.Labels, keys.PipelineType().Old)
+			delete(newStylePipelineRun.Labels, keys.BuildComponent().Old)
+			newStylePipelineRun.Labels[keys.PipelineType().New] = "build"
+			newStylePipelineRun.Labels[keys.BuildComponent().New] = componentName
+			newStylePipelineRun.Labels[keys.Test("scenario").New] = "new-scenario"
+			newStylePipelineRun.Labels[keys.AutoRelease().New] = "true"
+			delete(newStylePipelineRun.Labels, "build.appstudio.redhat.com/target_branch")
+			newStylePipelineRun.Labels["build.konflux-ci.dev/target_branch"] = "main"
+			delete(newStylePipelineRun.Annotations, "build.appstudio.openshift.io/repo")
+			newStylePipelineRun.Annotations["build.konflux-ci.dev/repo"] = SampleRepoLink
+			newStylePipelineRun.Annotations[keys.Test("metadata").New] = "new-metadata"
+
+			expectedSnapshot, err := PrepareSnapshotForPipelineRun(mockCtx, k8sClient, newStylePipelineRun, componentName, hasCompGroup, loader.NewMockLoader())
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(expectedSnapshot.Labels).To(HaveKeyWithValue(keys.BuildComponent().New, componentName))
+			Expect(expectedSnapshot.Labels).NotTo(HaveKey(keys.BuildComponent().Old))
+			Expect(expectedSnapshot.Labels).To(HaveKeyWithValue("build.konflux-ci.dev/target_branch", "main"))
+			Expect(expectedSnapshot.Labels).NotTo(HaveKey("build.appstudio.redhat.com/target_branch"))
+			Expect(expectedSnapshot.Labels).To(HaveKeyWithValue(keys.Test("type").New, gitops.SnapshotComponentType))
+			Expect(expectedSnapshot.Labels).NotTo(HaveKey(keys.Test("type").Old))
+			Expect(expectedSnapshot.Labels).To(HaveKeyWithValue(keys.ComponentGroupName().New, hasCompGroup.Name))
+			Expect(expectedSnapshot.Labels).NotTo(HaveKey(keys.ComponentGroupName().Old))
+			Expect(expectedSnapshot.Labels).To(HaveKeyWithValue(keys.Test("scenario").New, "new-scenario"))
+			Expect(expectedSnapshot.Labels).NotTo(HaveKey(keys.Test("scenario").Old))
+			Expect(expectedSnapshot.Labels).To(HaveKeyWithValue(keys.AutoRelease().New, "true"))
+			Expect(expectedSnapshot.Labels).NotTo(HaveKey(keys.AutoRelease().Old))
+			Expect(expectedSnapshot.Annotations).To(HaveKeyWithValue("build.konflux-ci.dev/repo", SampleRepoLink))
+			Expect(expectedSnapshot.Annotations).NotTo(HaveKey("build.appstudio.openshift.io/repo"))
+			Expect(expectedSnapshot.Annotations).To(HaveKeyWithValue(keys.Test("metadata").New, "new-metadata"))
+			Expect(expectedSnapshot.Annotations).NotTo(HaveKey(keys.Test("metadata").Old))
+			Expect(expectedSnapshot.Annotations).To(HaveKeyWithValue(keys.PAC("on-target-branch").New, "[main,master]"))
+			Expect(expectedSnapshot.Annotations).NotTo(HaveKey(keys.PAC("on-target-branch").Old))
+			Expect(expectedSnapshot.Labels).To(HaveKeyWithValue(keys.PAC("event-type").New, "pull_request"))
+			Expect(expectedSnapshot.Labels).NotTo(HaveKey(keys.PAC("event-type").Old))
+			Expect(expectedSnapshot.Labels).To(HaveKeyWithValue(keys.BuildPipelineRunName().New, newStylePipelineRun.Name))
+			Expect(expectedSnapshot.Labels).NotTo(HaveKey(keys.BuildPipelineRunName().Old))
+			Expect(expectedSnapshot.Annotations).To(HaveKey(keys.Test("pipelinerunstarttime").New))
+			Expect(expectedSnapshot.Annotations).NotTo(HaveKey(keys.Test("pipelinerunstarttime").Old))
+			Expect(expectedSnapshot.Annotations).To(HaveKey(keys.Test("result-image-digest").New))
+			Expect(expectedSnapshot.Annotations).NotTo(HaveKey(keys.Test("result-image-digest").Old))
+		})
+
+		It("prefers new metadata when a build PipelineRun carries both key styles", func() {
+			mixedStylePipelineRun := buildPipelineRun.DeepCopy()
+			mixedStylePipelineRun.Labels[keys.PipelineType().New] = "build"
+			mixedStylePipelineRun.Labels[keys.BuildComponent().New] = componentName
+			mixedStylePipelineRun.Labels["build.konflux-ci.dev/target_branch"] = "new-main"
+			mixedStylePipelineRun.Annotations["build.konflux-ci.dev/repo"] = "https://example.com/new-repo"
+
+			expectedSnapshot, err := PrepareSnapshotForPipelineRun(mockCtx, k8sClient, mixedStylePipelineRun, componentName, hasCompGroup, loader.NewMockLoader())
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(expectedSnapshot.Labels).To(HaveKeyWithValue(keys.BuildComponent().New, componentName))
+			Expect(expectedSnapshot.Labels).NotTo(HaveKey(keys.BuildComponent().Old))
+			Expect(expectedSnapshot.Labels).To(HaveKeyWithValue("build.konflux-ci.dev/target_branch", "new-main"))
+			Expect(expectedSnapshot.Labels).NotTo(HaveKey("build.appstudio.redhat.com/target_branch"))
+			Expect(expectedSnapshot.Annotations).To(HaveKeyWithValue("build.konflux-ci.dev/repo", "https://example.com/new-repo"))
+			Expect(expectedSnapshot.Annotations).NotTo(HaveKey("build.appstudio.openshift.io/repo"))
+			Expect(expectedSnapshot.Annotations).To(HaveKeyWithValue(keys.PAC("on-target-branch").New, "[main,master]"))
+			Expect(expectedSnapshot.Annotations).NotTo(HaveKey(keys.PAC("on-target-branch").Old))
 		})
 
 		It("ensures build labels and annotations non-prefixed with 'build.appstudio' are NOT propagated to the snapshot", func() {

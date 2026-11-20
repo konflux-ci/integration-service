@@ -517,11 +517,13 @@ func (r *IntegrationPipelineRun) WithSnapshot(snapshot *applicationapiv1alpha1.S
 	// Copy one style of PipelineRun PAC, build, test, and custom metadata from the Snapshot.
 	pacPrefix := consts.PipelinesAsCodePrefix
 	testPrefix := consts.TestLabelPrefix
+	customPrefix := consts.CustomLabelPrefix
 	if style == keys.StyleNew {
 		pacPrefix = keys.PrefixPACNew
 		testPrefix = keys.PrefixTestNew
+		customPrefix = keys.PrefixCustomNew
 	}
-	prefixes := []string{pacPrefix, consts.BuildPipelineRunPrefix, testPrefix, consts.CustomLabelPrefix}
+	prefixes := []string{pacPrefix, consts.BuildPipelineRunPrefix, testPrefix, customPrefix}
 	for _, prefix := range prefixes {
 		// Copy labels and annotations prefixed with defined prefix
 		_ = metadata.CopyAnnotationsByPrefix(&snapshot.ObjectMeta, &r.ObjectMeta, prefix)
@@ -563,7 +565,7 @@ func (r *IntegrationPipelineRun) WithIntegrationLabels(integrationTestScenario *
 func (r *IntegrationPipelineRun) WithIntegrationAnnotations(its *v1beta2.IntegrationTestScenario) *IntegrationPipelineRun {
 	style := keys.StyleOf(r)
 	for k, v := range its.GetAnnotations() {
-		if strings.Contains(k, "appstudio.openshift.io/") || strings.HasPrefix(k, keys.PrefixTestNew+"/") || strings.HasPrefix(k, keys.PrefixPACNew+"/") {
+		if strings.Contains(k, "appstudio.openshift.io/") || strings.HasPrefix(k, keys.PrefixTestNew+"/") || strings.HasPrefix(k, keys.PrefixPACNew+"/") || strings.HasPrefix(k, keys.PrefixCustomNew+"/") {
 			if err := gitops.SetOwnedAnnotationWithStyle(r, k, v, style); err != nil {
 				// this will only happen if we pass IntegrationPipelineRun as nil
 				panic(err)
