@@ -53,16 +53,18 @@ func FindMissingNudgeConfigReferences(components []applicationapiv1alpha1.Compon
 	var missingFrom, missingTo []string
 	seenFrom, seenTo := map[string]struct{}{}, map[string]struct{}{}
 	for _, n := range nudges {
-		if _, ok := existing[n.From]; !ok {
-			if _, dup := seenFrom[n.From]; !dup {
-				seenFrom[n.From] = struct{}{}
-				missingFrom = append(missingFrom, n.From)
+		fromComponent, toComponent := n.From.Component, n.To.Component
+		fromRef, toRef := n.From.String(), n.To.String()
+		if _, ok := existing[fromComponent]; !ok {
+			if _, dup := seenFrom[fromRef]; !dup {
+				seenFrom[fromRef] = struct{}{}
+				missingFrom = append(missingFrom, fromRef)
 			}
 		}
-		if _, ok := existing[n.To]; !ok {
-			if _, dup := seenTo[n.To]; !dup {
-				seenTo[n.To] = struct{}{}
-				missingTo = append(missingTo, n.To)
+		if _, ok := existing[toComponent]; !ok {
+			if _, dup := seenTo[toRef]; !dup {
+				seenTo[toRef] = struct{}{}
+				missingTo = append(missingTo, toRef)
 			}
 		}
 	}
