@@ -27,6 +27,7 @@ import (
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.39.0"
 	"go.opentelemetry.io/otel/trace/noop"
@@ -221,6 +222,20 @@ var _ = Describe("New (TracerProvider lifecycle)", func() {
 		Expect(isW3C).To(BeTrue())
 
 		Expect(tp.Shutdown(context.Background())).To(Succeed())
+	})
+})
+
+var _ = Describe("semconv schema URL", func() {
+	It("is compatible with resource.Default for resource.Merge", func() {
+		merged, err := resource.Merge(
+			resource.Default(),
+			resource.NewWithAttributes(
+				semconv.SchemaURL,
+				semconv.ServiceName("test"),
+			),
+		)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(merged).NotTo(BeNil())
 	})
 })
 
