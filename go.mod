@@ -4,11 +4,11 @@ go 1.26.0
 
 require (
 	codeberg.org/mvdkleijn/forgejo-sdk/forgejo/v4 v4.0.0
-	github.com/konflux-ci/application-api v0.0.0-20260727123715-2999a91451c6
+	github.com/konflux-ci/application-api v0.0.0-20261101085949-41d2a0ab82ca
 	github.com/konflux-ci/coverport/instrumentation/go v0.0.0-20251127115143-b5207b335f8b
-	github.com/konflux-ci/image-controller v0.0.0-20241128141349-9986c9955e05
-	github.com/konflux-ci/operator-toolkit v0.0.0-20251118152634-b4f41f073069
-	github.com/konflux-ci/release-service v0.0.0-20260130155849-48535a3e5ace
+	github.com/konflux-ci/image-controller v0.0.0-20261109132953-2fb397e3564b
+	github.com/konflux-ci/operator-toolkit v0.0.0-20260921214948-0f252ff98994
+	github.com/konflux-ci/release-service v0.0.0-20261113085544-46488d998d96
 	github.com/onsi/ginkgo/v2 v2.28.3
 	github.com/onsi/gomega v1.40.0
 	github.com/openshift-pipelines/pipelines-as-code v0.34.0
@@ -55,7 +55,7 @@ require (
 	go.uber.org/zap v1.27.1
 	golang.org/x/oauth2 v0.36.0
 	k8s.io/klog/v2 v2.130.1
-	k8s.io/utils v0.0.0-20251002143259-bc988d571ff4
+	k8s.io/utils v0.0.0-20261023123148-ca04ba58ecab
 	sigs.k8s.io/yaml v1.6.0
 )
 
