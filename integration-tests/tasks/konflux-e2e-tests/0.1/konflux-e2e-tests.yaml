@@ -32,6 +32,10 @@ spec:
       type: string
       description: "The URI of the OCI container registry to store test artifacts."
       default: "quay.io/org/rhtap-e2e-artifacts"
+    - name: oci-credentials-secret
+      type: string
+      description: "Name of the secret holding OCI registry credentials (keys: oci-storage-dockerconfigjson, oci-storage)."
+      default: "konflux-test-infra"
     - name: job-spec
       type: string
       description: "The job specification containing details of the test execution."
@@ -62,7 +66,7 @@ spec:
         secretName: konflux-e2e-secrets
     - name: konflux-infra-secrets-volume
       secret:
-        secretName: konflux-test-infra
+        secretName: $(params.oci-credentials-secret)
     - name: cluster-secret-volume
       secret:
         optional: true

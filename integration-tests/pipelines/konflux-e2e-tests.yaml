@@ -238,6 +238,8 @@ spec:
           value: $(tasks.test-metadata.results.git-revision)
         - name: oras-container
           value: $(params.oci-container-repo):$(context.pipelineRun.name)
+        - name: oci-credentials-secret
+          value: $(params.konflux-test-infra-secret)
         - name: job-spec
           value: $(tasks.test-metadata.results.job-spec)
         - name: component-image
@@ -315,7 +317,7 @@ spec:
         - name: oci-container
           value: $(params.oci-container-repo):$(context.pipelineRun.name)
         - name: oci-credentials
-          value: konflux-test-infra
+          value: $(params.konflux-test-infra-secret)
     - name: pull-request-status-message
       taskRef:
         resolver: git
