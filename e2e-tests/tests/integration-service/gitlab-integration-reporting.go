@@ -133,6 +133,7 @@ var _ = framework.IntegrationServiceSuiteDescribe("Gitlab Status Reporting of In
 				}
 				// get the build pipeline bundle annotation
 				buildPipelineAnnotation := build.GetBuildPipelineBundleAnnotation(constants.DockerBuild)
+				ensureBuildPipelineServiceAccount(*f, testNamespace, componentName)
 				// Create a component with Git Source URL, a specified git branch
 				component, err = f.AsKubeAdmin.HasController.CreateComponentCheckImageRepository(componentObj, testNamespace, "", "", applicationName, false, utils.MergeMaps(utils.MergeMaps(constants.ComponentPaCRequestAnnotation, constants.ImageControllerAnnotationRequestPublicRepo), buildPipelineAnnotation))
 				gomega.Expect(err).ShouldNot(gomega.HaveOccurred())

@@ -445,6 +445,18 @@ func createApp(f framework.Framework, testNamespace string) string {
 	return applicationName
 }
 
+// ensureBuildPipelineServiceAccount pre-creates the per-component build ServiceAccount with the
+// registry pull secret attached, so the build pipelines can pull entitlement-gated images such as
+// registry.redhat.io inside the Kind cluster. It is a no-op unless REDHAT_REGISTRY_DOCKERCONFIGJSON
+// is configured; build-service keeps existing imagePullSecrets when it reconciles the Component.
+func ensureBuildPipelineServiceAccount(f framework.Framework, testNamespace, componentName string) {
+	if os.Getenv(constants.RedHatRegistryDockerConfigJSONEnv) == "" {
+		return
+	}
+	err := f.AsKubeAdmin.CommonController.EnsureBuildPipelineServiceAccount(testNamespace, componentName)
+	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+}
+
 func createComponent(f framework.Framework, testNamespace, applicationName, componentRepoName, componentRepoURL, revision string) (*appstudioApi.Component, string, string, string) {
 	componentName := fmt.Sprintf("%s-%s", "test-component-pac", utils.GenerateRandomString(6))
 	pacBranchName := constants.PaCPullRequestBranchPrefix + componentName
@@ -472,6 +484,8 @@ func createComponent(f framework.Framework, testNamespace, applicationName, comp
 		},
 	}
 
+	ensureBuildPipelineServiceAccount(f, testNamespace, componentName)
+
 	originalComponent, err := f.AsKubeAdmin.HasController.CreateComponentCheckImageRepository(componentObj, testNamespace, "", "", applicationName, false, utils.MergeMaps(utils.MergeMaps(constants.ComponentPaCRequestAnnotation, constants.ImageControllerAnnotationRequestPublicRepo), buildPipelineAnnotation))
 	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
@@ -479,6 +493,8 @@ func createComponent(f framework.Framework, testNamespace, applicationName, comp
 }
 
 func createComponentWithCustomBranch(f framework.Framework, testNamespace, applicationName, componentName, componentRepoURL string, toBranchName string, contextDir string) *appstudioApi.Component {
+	ensureBuildPipelineServiceAccount(f, testNamespace, componentName)
+
 	// get the build pipeline bundle annotation
 	buildPipelineAnnotation := build.GetBuildPipelineBundleAnnotation(constants.DockerBuild)
 	dockerFileURL := constants.DockerFilePath
