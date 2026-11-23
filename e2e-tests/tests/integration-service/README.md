@@ -63,6 +63,8 @@ Checkpoints:
 - Asserting the signing of BuildPipelineRun.
 - Validating the successful creation of a Snapshot, and removal of finalizer from BuildPipelineRun.
 - Verifying that all Integration PipelineRuns finished successfully.
+- Verifying that the Integration PipelineRun of a component Snapshot has no `service-account-fallback` annotation.
+- Verifying that the Integration PipelineRun of a component Snapshot whose component has no ImageRepository runs as `konflux-integration-runner` with the `service-account-fallback` annotation set to `no-push-secret`.
 - Checking that the status of integration tests was reported to the Snapshot.
 - Checking that a snapshot gets successfully marked as 'passed' or 'failed' after all Integration PipelineRuns finished.
 - Handling of Skipped Integration Tests.
@@ -128,6 +130,7 @@ Checkpoints:
 - Testing group snapshot creation when changes are made to multiple components.
 - Verifying that group snapshots contain proper annotations with component information.
 - Ensuring that group snapshots reference the correct build PipelineRuns for each component.
+- Verifying that the Integration PipelineRun of a group snapshot runs as `konflux-integration-runner` without the `image-url` and `image-digest` params.
 - **Verifying that older snapshots and their associated integration PipelineRuns are cancelled when new group snapshots are created.**
 
 ### 6. Happy Path Tests within `pipelinerun-resolution.go`

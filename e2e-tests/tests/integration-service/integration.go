@@ -179,6 +179,7 @@ var _ = framework.IntegrationServiceSuiteDescribe("Integration Service E2E tests
 				testPipelineRun, err := f.AsKubeDeveloper.IntegrationController.GetIntegrationPipelineRun(integrationTestScenario.Name, snapshot.Name, testNamespace)
 				gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
 				gomega.Expect(testPipelineRun.Spec.TaskRunTemplate.ServiceAccountName).To(gomega.Equal(accountName))
+				gomega.Expect(testPipelineRun.Annotations).NotTo(gomega.HaveKey(tektonconsts.ServiceAccountFallbackAnnotation))
 
 				image := gitops.FindMatchingSnapshotComponent(snapshot, componentName, "").ContainerImage
 				repository, digest, found := strings.Cut(image, "@")
@@ -224,6 +225,21 @@ var _ = framework.IntegrationServiceSuiteDescribe("Integration Service E2E tests
 
 			ginkgo.It("checks if the finalizer was removed from all of the related Integration pipelineRuns", func() {
 				gomega.Expect(f.AsKubeDeveloper.IntegrationController.WaitForFinalizerToGetRemovedFromAllIntegrationPipelineRuns(testNamespace, applicationName, snapshot, []string{integrationTestScenario.Name})).To(gomega.Succeed())
+			})
+		})
+
+		ginkgo.When("a component Snapshot names a component that has no ImageRepository", func() {
+			ginkgo.It("should run the integration PipelineRun as the shared runner ServiceAccount with the no-push-secret reason", func() {
+				sampleImage := "quay.io/redhat-appstudio/sample-image@sha256:841328df1b9f8c4087adbdcfec6cc99ac8308805dea83f6d415d6fb8d40227c1"
+				fallbackSnapshot, err := f.AsKubeAdmin.IntegrationController.CreateSnapshotWithImage(componentName+"-no-repository", applicationName, testNamespace, sampleImage)
+				gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
+
+				testPipelineRun, err := f.AsKubeDeveloper.IntegrationController.WaitForIntegrationPipelineToGetStarted(integrationTestScenario.Name, fallbackSnapshot.Name, testNamespace)
+				gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
+				gomega.Expect(testPipelineRun.Spec.TaskRunTemplate.ServiceAccountName).To(gomega.Equal(tektonconsts.DefaultIntegrationPipelineServiceAccount))
+				gomega.Expect(testPipelineRun.Annotations).To(gomega.HaveKeyWithValue(tektonconsts.ServiceAccountFallbackAnnotation, tektonconsts.ServiceAccountFallbackNoPushSecret))
+
+				gomega.Expect(f.AsKubeDeveloper.IntegrationController.WaitForIntegrationPipelineToBeFinished(integrationTestScenario, fallbackSnapshot, testNamespace)).To(gomega.Succeed())
 			})
 		})
 
