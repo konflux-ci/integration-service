@@ -133,9 +133,16 @@ var _ = framework.IntegrationServiceSuiteDescribe("Gitlab Status Reporting of In
 				}
 				// get the build pipeline bundle annotation
 				buildPipelineAnnotation := build.GetBuildPipelineBundleAnnotation(constants.DockerBuild)
-				// Create a component with Git Source URL, a specified git branch
-				component, err = f.AsKubeAdmin.HasController.CreateComponentCheckImageRepository(componentObj, testNamespace, "", "", applicationName, false, utils.MergeMaps(utils.MergeMaps(constants.ComponentPaCRequestAnnotation, constants.ImageControllerAnnotationRequestPublicRepo), buildPipelineAnnotation))
-				gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
+				// Create a component with Git Source URL, a specified git branch.
+				// Retry on transient admission webhook errors: the Application
+				// admission webhook uses an informer cache that may lag behind the
+				// API server, causing "Application was not found" denials shortly
+				// after the Application is created.
+				gomega.Eventually(func() error {
+					component, err = f.AsKubeAdmin.HasController.CreateComponentCheckImageRepository(componentObj, testNamespace, "", "", applicationName, false, utils.MergeMaps(utils.MergeMaps(constants.ComponentPaCRequestAnnotation, constants.ImageControllerAnnotationRequestPublicRepo), buildPipelineAnnotation))
+					return err
+				}, time.Minute*2, time.Second*10).Should(gomega.Succeed(),
+					fmt.Sprintf("timed out waiting for Component %s to be created in namespace %s (webhook may not have synced Application yet)", componentName, testNamespace))
 			})
 
 			ginkgo.It("triggers a Build PipelineRun", func() {
