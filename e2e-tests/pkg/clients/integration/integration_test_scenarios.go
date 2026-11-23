@@ -10,6 +10,7 @@ import (
 	"github.com/konflux-ci/integration-service/e2e-tests/pkg/constants"
 	"github.com/konflux-ci/integration-service/e2e-tests/pkg/utils"
 	tektonconsts "github.com/konflux-ci/integration-service/tekton/consts"
+	k8sErrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -26,7 +27,15 @@ func (i *IntegrationController) createScenarioWithRetry(integrationTestScenario 
 	var lastErr error
 	gomega.Eventually(func() bool {
 		lastErr = i.KubeRest().Create(context.Background(), integrationTestScenario)
-		return lastErr == nil
+		if lastErr == nil {
+			return true
+		}
+		if k8sErrors.IsAlreadyExists(lastErr) {
+			lastErr = i.KubeRest().Get(context.Background(),
+				client.ObjectKeyFromObject(integrationTestScenario), integrationTestScenario)
+			return lastErr == nil
+		}
+		return false
 	}, time.Minute, 5*time.Second).Should(gomega.BeTrue(),
 		fmt.Sprintf("failed to create integration test scenario '%s' in namespace '%s'", integrationTestScenario.Name, integrationTestScenario.Namespace))
 	return integrationTestScenario, lastErr
