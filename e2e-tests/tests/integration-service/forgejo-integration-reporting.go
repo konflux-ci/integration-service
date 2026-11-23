@@ -127,6 +127,7 @@ var _ = framework.IntegrationServiceSuiteDescribe("Forgejo Status Reporting of I
 				buildPipelineAnnotation := build.GetBuildPipelineBundleAnnotation(constants.DockerBuildOciTAMin)
 				gitProviderAnnotation := map[string]string{"git-provider": "forgejo"}
 
+				ensureBuildPipelineServiceAccount(*f, testNamespace, componentName)
 				component, err = f.AsKubeAdmin.HasController.CreateComponentCheckImageRepository(componentObj, testNamespace, "", "", applicationName, false,
 					utils.MergeMaps(
 						utils.MergeMaps(utils.MergeMaps(constants.ComponentPaCRequestAnnotation, constants.ImageControllerAnnotationRequestPublicRepo), buildPipelineAnnotation),

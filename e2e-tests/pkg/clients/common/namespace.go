@@ -52,14 +52,17 @@ func (s *SuiteController) CreateTestNamespace(name string) (*corev1.Namespace, e
 			return nil, fmt.Errorf("error when getting the '%s' namespace: %v", name, err)
 		}
 	} else {
-		updated, err := s.ensureLabelsExist(ns, requiredLabels)
-		if err != nil {
+		if _, err := s.ensureLabelsExist(ns, requiredLabels); err != nil {
 			return nil, err
 		}
-		if !updated {
-			return ns, nil
-		}
 	}
+
+	// Create the registry pull secret (when configured) so the build pipelines can pull
+	// entitlement-gated images such as registry.redhat.io inside the Kind cluster.
+	if err := s.EnsureRedHatRegistryPullSecret(name); err != nil {
+		return nil, err
+	}
+
 	// Ensure konflux-integration-runner SA exists. In production clusters this is
 	// created by a Kyverno generate rule; in e2e clusters we own the namespace so
 	// we create it directly to avoid a heavy Kyverno dependency.

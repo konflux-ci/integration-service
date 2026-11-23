@@ -82,6 +82,18 @@ const (
 
 	DefaultPipelineServiceAccount = "konflux-integration-runner"
 
+	// Prefix used by build-service for the per-component build PipelineRun ServiceAccount.
+	BuildPipelineServiceAccountPrefix = "build-pipeline-"
+
+	// Env var holding a dockerconfigjson used to pull entitlement-gated images (for example
+	// registry.redhat.io) inside the Kind cluster. It is set by the konflux-e2e-tests task from
+	// the konflux-test-infra secret; when empty the registry pull secret handling is skipped.
+	RedHatRegistryDockerConfigJSONEnv = "REDHAT_REGISTRY_DOCKERCONFIGJSON"
+
+	// Name of the dockerconfigjson secret created in every test namespace and linked to the
+	// build PipelineRun ServiceAccounts as an imagePullSecret.
+	RedHatRegistryPullSecretName = "redhat-registry-pull"
+
 	PaCPullRequestBranchPrefix = "konflux-"
 
 	DockerFilePath = "docker/Dockerfile"

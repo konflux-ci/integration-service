@@ -146,6 +146,7 @@ spec:
           )
 
           declare -A load_envs_from_file=(
+            [REDHAT_REGISTRY_DOCKERCONFIGJSON]="${konflux_infra_secrets_file}/redhat-registry-dockerconfigjson"
             [DEFAULT_QUAY_ORG_TOKEN]="${konflux_ci_secrets_file}/default-quay-org-token"
             [QUAY_TOKEN]="${konflux_ci_secrets_file}/quay-token"
             [QUAY_OAUTH_USER]="${konflux_ci_secrets_file}/quay-oauth-user"
