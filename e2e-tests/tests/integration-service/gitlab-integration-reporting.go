@@ -93,7 +93,7 @@ var _ = framework.IntegrationServiceSuiteDescribe("Gitlab Status Reporting of In
 			err = f.AsKubeAdmin.CommonController.Gitlab.EnsureBranchExists(projectID, componentDefaultBranch, fallbackBranchName)
 			gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
 
-			err = f.AsKubeAdmin.CommonController.Gitlab.CreateGitlabNewBranch(projectID, componentBaseBranchName, componentRevision, componentDefaultBranch)
+			err = f.AsKubeAdmin.CommonController.Gitlab.CreateGitlabNewBranch(projectID, componentBaseBranchName, gitlabComponentRevision, componentDefaultBranch)
 			gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
 
 			secretAnnotations := map[string]string{}
