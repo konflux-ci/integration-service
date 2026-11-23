@@ -64,7 +64,7 @@ var _ = framework.IntegrationServiceSuiteDescribe("Status Reporting of Integrati
 			}, time.Minute*2, time.Second*5).Should(gomega.Succeed(),
 				fmt.Sprintf("Application %s should be available in namespace %s", applicationName, testNamespace))
 
-			component, componentName, pacBranchName, componentBaseBranchName = createComponent(*f, testNamespace, applicationName, componentRepoNameForStatusReporting, componentGitSourceURLForStatusReporting)
+			component, componentName, pacBranchName, componentBaseBranchName = createComponent(*f, testNamespace, applicationName, componentRepoNameForStatusReporting, componentGitSourceURLForStatusReporting, statusReportComponentRevision)
 
 			integrationTestScenarioPass, err = f.AsKubeAdmin.IntegrationController.CreateIntegrationTestScenario("", applicationName, testNamespace, gitURL, revision, pathInRepoPass, "", []string{})
 			gomega.Expect(err).ShouldNot(gomega.HaveOccurred())

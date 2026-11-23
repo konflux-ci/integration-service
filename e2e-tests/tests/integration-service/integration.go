@@ -60,7 +60,7 @@ var _ = framework.IntegrationServiceSuiteDescribe("Integration Service E2E tests
 			testNamespace = f.UserNamespace
 
 			applicationName = createApp(*f, testNamespace)
-			originalComponent, componentName, pacBranchName, componentBaseBranchName = createComponent(*f, testNamespace, applicationName, componentRepoNameForGeneralIntegration, componentGitSourceURLForGeneralIntegration)
+			originalComponent, componentName, pacBranchName, componentBaseBranchName = createComponent(*f, testNamespace, applicationName, componentRepoNameForGeneralIntegration, componentGitSourceURLForGeneralIntegration, componentRevision)
 
 			integrationTestScenario, err = f.AsKubeAdmin.IntegrationController.CreateIntegrationTestScenario("", applicationName, testNamespace, gitURL, revision, pathInRepoPass, "", []string{"application"})
 			gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
@@ -255,7 +255,7 @@ var _ = framework.IntegrationServiceSuiteDescribe("Integration Service E2E tests
 			testNamespace = f.UserNamespace
 
 			applicationName = createApp(*f, testNamespace)
-			originalComponent, componentName, pacBranchName, componentBaseBranchName = createComponent(*f, testNamespace, applicationName, componentRepoNameForGeneralIntegration, componentGitSourceURLForGeneralIntegration)
+			originalComponent, componentName, pacBranchName, componentBaseBranchName = createComponent(*f, testNamespace, applicationName, componentRepoNameForGeneralIntegration, componentGitSourceURLForGeneralIntegration, componentRevision)
 
 			integrationTestScenario, err = f.AsKubeAdmin.IntegrationController.CreateIntegrationTestScenario("", applicationName, testNamespace, gitURL, revision, pathInRepoFail, "", []string{"pull_request"})
 			gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
@@ -445,7 +445,7 @@ func createApp(f framework.Framework, testNamespace string) string {
 	return applicationName
 }
 
-func createComponent(f framework.Framework, testNamespace, applicationName, componentRepoName, componentRepoURL string) (*appstudioApi.Component, string, string, string) {
+func createComponent(f framework.Framework, testNamespace, applicationName, componentRepoName, componentRepoURL, revision string) (*appstudioApi.Component, string, string, string) {
 	componentName := fmt.Sprintf("%s-%s", "test-component-pac", utils.GenerateRandomString(6))
 	pacBranchName := constants.PaCPullRequestBranchPrefix + componentName
 	componentBaseBranchName := fmt.Sprintf("base-%s", utils.GenerateRandomString(6))
@@ -453,7 +453,7 @@ func createComponent(f framework.Framework, testNamespace, applicationName, comp
 	err := f.AsKubeAdmin.CommonController.Github.EnsureBranchExists(componentRepoName, componentDefaultBranch, fallbackBranchName)
 	gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
 
-	err = f.AsKubeAdmin.CommonController.Github.CreateRef(componentRepoName, componentDefaultBranch, componentRevision, componentBaseBranchName)
+	err = f.AsKubeAdmin.CommonController.Github.CreateRef(componentRepoName, componentDefaultBranch, revision, componentBaseBranchName)
 	gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
 
 	// get the build pipeline bundle annotation
