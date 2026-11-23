@@ -189,6 +189,6 @@ require (
 	sigs.k8s.io/structured-merge-diff/v6 v6.3.2 // indirect
 )
 
-replace code.gitea.io/gitea => code.gitea.io/gitea v1.25.5
+replace code.gitea.io/gitea => code.gitea.io/gitea v1.27.0
 
 replace github.com/nektos/act => gitea.com/gitea/act v0.2.66-0.20240924153421-39656e186641
