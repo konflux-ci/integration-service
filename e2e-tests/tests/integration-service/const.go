@@ -23,10 +23,16 @@ const (
 	autoReleasePlan                = "auto-releaseplan"
 	targetReleaseNamespace         = "default"
 
+	// component Repo Names
 	componentRepoNameForResolution         = "konflux-test-integration-resolution"
 	componentRepoNameForGeneralIntegration = "konflux-test-integration"
 	componentRepoNameForGroupIntegration   = "konflux-test-integration-clone"
 	componentRepoNameForStatusReporting    = "konflux-test-integration-status-report"
+
+	// e2e image locations
+	prebuiltImageForGeneralIntegration = "quay.io/redhat-appstudio-qe/integ-svc-e2e"
+	e2eImageTag                        = "latest"
+
 	multiComponentRepoNameForGroupSnapshot = "group-snapshot-multi-component"
 	multiComponentDefaultBranch            = "onboarding"
 	multiComponentGitRevision              = "3e28382b033d5bb9b8653fd976e95d4170576ecb"
