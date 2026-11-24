@@ -445,14 +445,14 @@ func createApp(f framework.Framework, testNamespace string) string {
 	return applicationName
 }
 
-// ensureBuildPipelineServiceAccount pre-creates the per-component build ServiceAccount with the
-// registry pull secret attached, so the build pipelines can pull entitlement-gated images such as
-// registry.redhat.io inside the Kind cluster. It is a no-op unless REDHAT_REGISTRY_DOCKERCONFIGJSON
-// is configured; build-service keeps existing imagePullSecrets when it reconciles the Component.
+// ensureBuildPipelineServiceAccount pre-creates the per-component build ServiceAccount before the
+// Component exists. build-service creates the same ServiceAccount asynchronously while reconciling
+// the Component, so without this the first build PipelineRun can fail with
+// `serviceaccounts "build-pipeline-<component>" not found`. When REDHAT_REGISTRY_DOCKERCONFIGJSON is
+// configured, the registry pull secret is attached as well so the build pipelines can pull
+// entitlement-gated images such as registry.redhat.io inside the Kind cluster; build-service keeps
+// existing imagePullSecrets when it reconciles the Component.
 func ensureBuildPipelineServiceAccount(f framework.Framework, testNamespace, componentName string) {
-	if os.Getenv(constants.RedHatRegistryDockerConfigJSONEnv) == "" {
-		return
-	}
 	err := f.AsKubeAdmin.CommonController.EnsureBuildPipelineServiceAccount(testNamespace, componentName)
 	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 }

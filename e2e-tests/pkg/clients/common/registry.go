@@ -62,18 +62,21 @@ func (s *SuiteController) EnsureRedHatRegistryPullSecret(namespace string) error
 }
 
 // EnsureBuildPipelineServiceAccount makes sure the per-component build ServiceAccount
-// (build-pipeline-<component>) exists and carries the registry pull secret as an imagePullSecret.
+// (build-pipeline-<component>) exists before the Component is created, so a build PipelineRun
+// cannot be rejected with `serviceaccounts "build-pipeline-<component>" not found` while
+// build-service is still reconciling the Component and creating that ServiceAccount.
 // build-service creates the same ServiceAccount while reconciling the Component and keeps existing
-// imagePullSecrets, so pre-creating it before the Component is safe and avoids a race with the
-// build PipelineRun. When REDHAT_REGISTRY_DOCKERCONFIGJSON is not set, it does nothing.
+// imagePullSecrets, so pre-creating it before the Component is safe. The registry pull secret is
+// attached as an imagePullSecret only when REDHAT_REGISTRY_DOCKERCONFIGJSON is configured, because
+// the secret itself is created only in that case.
 func (s *SuiteController) EnsureBuildPipelineServiceAccount(namespace, componentName string) error {
-	if strings.TrimSpace(os.Getenv(constants.RedHatRegistryDockerConfigJSONEnv)) == "" {
-		return nil
-	}
-
 	saName := constants.BuildPipelineServiceAccountPrefix + componentName
-	pullSecretRefs := []corev1.LocalObjectReference{{Name: constants.RedHatRegistryPullSecretName}}
 	serviceAccounts := s.KubeInterface().CoreV1().ServiceAccounts(namespace)
+
+	var pullSecretRefs []corev1.LocalObjectReference
+	if strings.TrimSpace(os.Getenv(constants.RedHatRegistryDockerConfigJSONEnv)) != "" {
+		pullSecretRefs = []corev1.LocalObjectReference{{Name: constants.RedHatRegistryPullSecretName}}
+	}
 
 	serviceAccount, err := serviceAccounts.Get(context.Background(), saName, metav1.GetOptions{})
 	if err != nil {
@@ -84,12 +87,11 @@ func (s *SuiteController) EnsureBuildPipelineServiceAccount(namespace, component
 			ObjectMeta:       metav1.ObjectMeta{Name: saName, Namespace: namespace},
 			ImagePullSecrets: pullSecretRefs,
 		}
-		if _, err := serviceAccounts.Create(context.Background(), serviceAccount, metav1.CreateOptions{}); err == nil {
-			return nil
-		} else if !k8sErrors.IsAlreadyExists(err) {
+		if _, err := serviceAccounts.Create(context.Background(), serviceAccount, metav1.CreateOptions{}); err != nil && !k8sErrors.IsAlreadyExists(err) {
 			return fmt.Errorf("error creating service account %s in namespace %s: %w", saName, namespace, err)
 		}
-		// Another creator won the race; fall through and make sure the pull secret is linked.
+		// Re-read the object so the pull-secret reconciliation below runs against the persisted
+		// version, no matter whether this call or build-service created the ServiceAccount.
 		serviceAccount, err = serviceAccounts.Get(context.Background(), saName, metav1.GetOptions{})
 		if err != nil {
 			return fmt.Errorf("error getting service account %s in namespace %s: %w", saName, namespace, err)
@@ -110,11 +112,16 @@ func (s *SuiteController) EnsureBuildPipelineServiceAccount(namespace, component
 			changed = true
 		}
 	}
-	if !changed {
-		return nil
+	if changed {
+		if _, err := serviceAccounts.Update(context.Background(), serviceAccount, metav1.UpdateOptions{}); err != nil {
+			return fmt.Errorf("error updating service account %s in namespace %s: %w", saName, namespace, err)
+		}
 	}
-	if _, err := serviceAccounts.Update(context.Background(), serviceAccount, metav1.UpdateOptions{}); err != nil {
-		return fmt.Errorf("error updating service account %s in namespace %s: %w", saName, namespace, err)
+
+	// Verify the ServiceAccount is readable before the Component - and with it the first build
+	// PipelineRun - is created; a missing ServiceAccount fails the build's TaskRun pod creation.
+	if _, err := serviceAccounts.Get(context.Background(), saName, metav1.GetOptions{}); err != nil {
+		return fmt.Errorf("service account %s in namespace %s is not available after creation: %w", saName, namespace, err)
 	}
 	return nil
 }

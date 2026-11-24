@@ -48,7 +48,7 @@ spec:
       default: "10"
     - name: e2e-timeout
       description: "Timeout value for running E2E tests"
-      default: "150m"
+      default: "165m"
     - name: test-environment
       type: string
       description: "Name of the environment: 'upstream' for Kind cluster, 'downstream' for OpenShift CI."

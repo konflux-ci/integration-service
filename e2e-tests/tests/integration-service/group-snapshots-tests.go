@@ -498,6 +498,45 @@ var _ = framework.IntegrationServiceSuiteDescribe("Creation of group snapshots f
 		// It cannot run in isolation — the preceding group-snapshot setup is required.
 		ginkgo.When("component C push build triggers an immediate nudge for component A", ginkgo.Ordered, func() {
 			ginkgo.It("should create a nudge PipelineRun for component A", func() {
+				// The immediate-mode nudge is evaluated only once component C's push build - the one
+				// created by merging the init PaC PR above - has finished successfully. That build
+				// takes several minutes, so wait for it explicitly before looking for the nudge
+				// PipelineRun; otherwise the nudge lookup times out while the build is still running.
+				gomega.Eventually(func() error {
+					buildPipelineRuns, err := f.AsKubeDeveloper.HasController.GetComponentPipelineRunsWithType(
+						componentC.Name, applicationName, testNamespace, "build", "", "")
+					if err != nil {
+						ginkgo.GinkgoWriter.Printf("push PipelineRun has not been created yet for component %s/%s\n", testNamespace, componentC.Name)
+						return err
+					}
+					// The push build is the newest build of component C other than the pull request
+					// build recorded above; its event-type label ("push" vs "incoming") varies, so
+					// select it by time instead of by label.
+					var pushPipelineRun *pipeline.PipelineRun
+					for i := range *buildPipelineRuns {
+						buildPipelineRun := &(*buildPipelineRuns)[i]
+						if pipelineRun != nil && buildPipelineRun.Name == pipelineRun.Name {
+							continue
+						}
+						if pushPipelineRun == nil ||
+							(buildPipelineRun.Status.StartTime != nil && pushPipelineRun.Status.StartTime != nil &&
+								buildPipelineRun.Status.StartTime.After(pushPipelineRun.Status.StartTime.Time)) {
+							pushPipelineRun = buildPipelineRun
+						}
+					}
+					if pushPipelineRun == nil {
+						return fmt.Errorf("push pipelinerun for component %s/%s has not been created yet", testNamespace, componentC.Name)
+					}
+					if !pushPipelineRun.IsDone() {
+						return fmt.Errorf("push pipelinerun %s/%s is not done yet", pushPipelineRun.GetNamespace(), pushPipelineRun.GetName())
+					}
+					if succeeded := pushPipelineRun.GetStatusCondition().GetCondition(apis.ConditionSucceeded); !succeeded.IsTrue() {
+						return fmt.Errorf("push pipelinerun %s/%s did not succeed: %s", pushPipelineRun.GetNamespace(), pushPipelineRun.GetName(), succeeded.Message)
+					}
+					return nil
+				}, superLongTimeout, constants.PipelineRunPollingInterval).Should(gomega.Succeed(),
+					fmt.Sprintf("component C push build for component %s/%s should finish successfully to trigger the nudge", testNamespace, componentC.Name))
+
 				nudgePLR, err = f.AsKubeDeveloper.IntegrationController.WaitForNudgePipelineRunToExist(
 					componentA.Name, testNamespace)
 				gomega.Expect(err).NotTo(gomega.HaveOccurred())
