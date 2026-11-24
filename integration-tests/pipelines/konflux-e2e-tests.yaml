@@ -215,7 +215,9 @@ spec:
                 --timeout=120s
               echo "integration-service ready"
     - name: konflux-e2e-tests
-      timeout: 2h30m
+      # Must stay above the task's e2e-timeout so the test binary times out first
+      # and still writes its JUnit report / uploads artifacts.
+      timeout: 3h
       runAfter:
         - configure-pac-webhook-url
       taskRef:

@@ -124,7 +124,7 @@ var _ = framework.IntegrationServiceSuiteDescribe("Forgejo Status Reporting of I
 						},
 					},
 				}
-				buildPipelineAnnotation := build.GetBuildPipelineBundleAnnotation(constants.DockerBuildOciTAMin)
+				buildPipelineAnnotation := build.GetBuildPipelineBundleAnnotation(constants.DockerBuild)
 				gitProviderAnnotation := map[string]string{"git-provider": "forgejo"}
 
 				ensureBuildPipelineServiceAccount(*f, testNamespace, componentName)
