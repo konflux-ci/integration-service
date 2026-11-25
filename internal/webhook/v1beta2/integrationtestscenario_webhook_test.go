@@ -634,6 +634,7 @@ var _ = Describe("IntegrationTestScenario webhook", Ordered, func() {
 		Expect(err).ShouldNot(HaveOccurred())
 		Expect(appliedScenario.OwnerReferences).To(HaveLen(1))
 		Expect(appliedScenario.OwnerReferences[0].Kind).To(Equal("Application"))
+		Expect(appliedScenario.OwnerReferences[0].APIVersion).To(Equal("appstudio.redhat.com/v1alpha1"))
 		Expect(appliedScenario.OwnerReferences[0].Name).To(Equal("application-immediate"))
 
 		Expect(k8sClient.Delete(ctx, immediateScenario)).Should(Succeed())
@@ -693,6 +694,7 @@ var _ = Describe("IntegrationTestScenario webhook", Ordered, func() {
 		Expect(err).ShouldNot(HaveOccurred())
 		Expect(appliedScenario.OwnerReferences).To(HaveLen(1))
 		Expect(appliedScenario.OwnerReferences[0].Kind).To(Equal("ComponentGroup"))
+		Expect(appliedScenario.OwnerReferences[0].APIVersion).To(Equal("konflux-ci.dev/v1beta2"))
 		Expect(appliedScenario.OwnerReferences[0].Name).To(Equal("componentgroup-immediate"))
 
 		Expect(k8sClient.Delete(ctx, immediateScenario)).Should(Succeed())
