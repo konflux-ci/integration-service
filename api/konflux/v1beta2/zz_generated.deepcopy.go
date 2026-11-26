@@ -65,6 +65,10 @@ func (in *Actions) DeepCopy() *Actions {
 func (in *ActiveBatch) DeepCopyInto(out *ActiveBatch) {
 	*out = *in
 	in.CreatedAt.DeepCopyInto(&out.CreatedAt)
+	if in.CompletedAt != nil {
+		in, out := &in.CompletedAt, &out.CompletedAt
+		*out = (*in).DeepCopy()
+	}
 	if in.FireAt != nil {
 		in, out := &in.FireAt, &out.FireAt
 		*out = (*in).DeepCopy()

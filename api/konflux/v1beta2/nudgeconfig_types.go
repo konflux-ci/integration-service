@@ -503,6 +503,11 @@ type ActiveBatch struct {
 	// +required
 	CreatedAt metav1.Time `json:"createdAt"`
 
+	// CompletedAt is the timestamp when the nudge PipelineRun for this batch succeeded.
+	// Completed batches are retained for 24 hours from this time for observability.
+	// +optional
+	CompletedAt *metav1.Time `json:"completedAt,omitempty"`
+
 	// FireAt is the scheduled time when this batch will fire and create the nudge pipeline run.
 	// Nil when the batch is in Blocked phase. Semantics aligned with ADR 72 (landing in parallel).
 	// +optional

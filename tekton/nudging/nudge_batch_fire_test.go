@@ -357,6 +357,8 @@ var _ = Describe("Nudge batch firing integration", func() {
 		Expect(ProcessFiringNudgeBatches(ctx, c, nudgeConfig)).To(Succeed())
 		Expect(c.Get(ctx, types.NamespacedName{Name: nudgeConfig.Name, Namespace: namespace}, updated)).To(Succeed())
 		Expect(updated.Status.ActiveBatches[0].Phase).To(Equal(v1beta2.BatchPhaseCompleted))
+		Expect(updated.Status.ActiveBatches[0].CompletedAt).NotTo(BeNil())
+		Expect(updated.Status.ActiveBatches[0].CompletedAt.Time).To(Equal(nudgePLR.Status.CompletionTime.Time))
 	})
 
 	It("marks a due batch failed when the timer expires with no accumulated builds", func() {
