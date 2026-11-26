@@ -18,7 +18,7 @@ flowchart TD
   encountered_error0{Encountered error?}
   requeue_error0(Controller requeues with error)
   are_there_any_ITS{"Are there any <br>IntegrationTestScenarios <br>present for the given <br>Application/ComponentGroup <br> which do not depend on <br> other unfinished scenarios?"}
-  create_new_test_PLR(<b>Create a new Test PipelineRun</b> for each <br>of the above ITS, if it doesn't exists already)
+  create_new_test_PLR(<b>Create a new Test PipelineRun</b> for each <br>of the above ITS, if it doesn't exists already. <br>A run that uses its-pipeline-&lt;component&gt; gets <br>the component's push secret linked first)
   creation_result{PipelineRun creation result?}
   requeue_transient_plr(Requeue without marking <br>the scenario TestInvalid)
   mark_scenario_test_invalid(<b>Mark</b> the scenario TestInvalid <br>and continue)
@@ -99,7 +99,7 @@ flowchart TD
   ensure6(Process further if: Snapshot has re-run label added by a user)
   if_scenario_exist{Does scenario requested by user exist?}
   remove_rerun_label(Remove rerun label)
-  rerun_static_env(Rerun static env pipeline for scenario)
+  rerun_static_env(Rerun static env pipeline for scenario. <br>A run that uses its-pipeline-&lt;component&gt; gets <br>the component's push secret linked first)
   rerun_result{PipelineRun creation result?}
   retry_rerun(Preserve re-run label and requeue)
   mark_rerun_test_invalid(<b>Mark</b> scenario TestInvalid and continue)

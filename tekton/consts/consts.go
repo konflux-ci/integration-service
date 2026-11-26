@@ -95,6 +95,11 @@ const (
 	// and binds DefaultIntegrationPipelineClusterRoleName, the role the shared runner account uses.
 	ComponentIntegrationPipelineServiceAccountPrefix = "its-pipeline-"
 
+	// ImageRepositoryComponentLabel is the label on an appstudio.redhat.com ImageRepository that names
+	// the Component it belongs to. It mirrors ComponentNameLabelNameOldModel in image-controller and has
+	// to stay equal to it.
+	ImageRepositoryComponentLabel = "appstudio.redhat.com/component"
+
 	/*
 	 * Build PipelineConstants
 	 */
