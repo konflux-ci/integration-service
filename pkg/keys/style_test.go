@@ -43,6 +43,29 @@ func styledMap(apiVersion string, labels, annotations map[string]string) *corev1
 }
 
 var _ = Describe("owned metadata style", func() {
+	When("selecting a metadata prefix", func() {
+		It("uses the requested style for migrated prefixes and preserves unknown prefixes", func() {
+			Expect(keys.PrefixPACNew).To(Equal("pac.test.konflux-ci.dev"))
+			Expect(keys.PrefixCustomNew).To(Equal("custom.konflux-ci.dev"))
+			Expect(keys.PrefixForStyle(keys.PrefixBuildOld, keys.StyleOld)).To(Equal(keys.PrefixBuildOld))
+			Expect(keys.PrefixForStyle(keys.PrefixBuildNew, keys.StyleOld)).To(Equal(keys.PrefixBuildOld))
+			Expect(keys.PrefixForStyle(keys.PrefixBuildOld, keys.StyleNew)).To(Equal(keys.PrefixBuildNew))
+			Expect(keys.PrefixForStyle(keys.PrefixBuildNew, keys.StyleNew)).To(Equal(keys.PrefixBuildNew))
+			Expect(keys.PrefixForStyle(keys.PrefixPipelinesOld, keys.StyleNew)).To(Equal(keys.PrefixPipelinesNew))
+			Expect(keys.PrefixForStyle(keys.PrefixPipelinesOld, keys.StyleOld)).To(Equal(keys.PrefixPipelinesOld))
+			Expect(keys.PrefixForStyle(keys.PrefixTestOld, keys.StyleNew)).To(Equal(keys.PrefixTestNew))
+			Expect(keys.PrefixForStyle(keys.PrefixTestOld, keys.StyleOld)).To(Equal(keys.PrefixTestOld))
+			Expect(keys.PrefixForStyle(keys.PrefixRelease, keys.StyleNew)).To(Equal(keys.PrefixReleaseNew))
+			Expect(keys.PrefixForStyle(keys.PrefixRelease, keys.StyleOld)).To(Equal(keys.PrefixRelease))
+			Expect(keys.PrefixForStyle(keys.PrefixPAC, keys.StyleNew)).To(Equal(keys.PrefixPACNew))
+			Expect(keys.PrefixForStyle(keys.PrefixPAC, keys.StyleOld)).To(Equal(keys.PrefixPAC))
+			Expect(keys.PrefixForStyle(keys.PrefixCustom, keys.StyleNew)).To(Equal(keys.PrefixCustomNew))
+			Expect(keys.PrefixForStyle(keys.PrefixCustomNew, keys.StyleOld)).To(Equal(keys.PrefixCustom))
+			unknown := "example.konflux-ci.dev"
+			Expect(keys.PrefixForStyle(unknown, keys.StyleNew)).To(Equal(unknown))
+		})
+	})
+
 	When("reading a key", func() {
 		It("should prefer the new key and fall back to the old key", func() {
 			both := styledMap("", map[string]string{
@@ -159,5 +182,8 @@ var _ = Describe("owned writers", func() {
 		Expect(obj.Labels).NotTo(HaveKey(keys.Test("scenario").Old))
 		Expect(obj.Annotations).To(HaveKeyWithValue(keys.Test("pr-status").New, "merged"))
 		Expect(obj.Annotations).NotTo(HaveKey(keys.Test("pr-status").Old))
+		Expect(keys.ApplyAnnotationWith(obj, keys.PrefixCustom+"/status", "custom", keys.StyleNew)).To(Succeed())
+		Expect(obj.Annotations).To(HaveKeyWithValue(keys.PrefixCustomNew+"/status", "custom"))
+		Expect(obj.Annotations).NotTo(HaveKey(keys.PrefixCustom + "/status"))
 	})
 })

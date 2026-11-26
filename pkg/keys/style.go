@@ -58,10 +58,55 @@ func PAC(name string) Pair {
 	return Pair{Old: PrefixPAC + "/" + name, New: PrefixPACNew + "/" + name}
 }
 
+// Custom returns the custom user-defined metadata pair copied onto Snapshots
+// and integration PipelineRuns.
+func Custom(name string) Pair {
+	return Pair{Old: PrefixCustom + "/" + name, New: PrefixCustomNew + "/" + name}
+}
+
 // Same returns a pair whose old and new keys are identical. ListEither then
 // requires that key in both style queries.
 func Same(key string) Pair {
 	return Pair{Old: key, New: key}
+}
+
+// PrefixForStyle returns the migrated metadata prefix that matches style.
+// Prefixes without a migrated counterpart are returned unchanged.
+func PrefixForStyle(prefix string, style Style) string {
+	switch prefix {
+	case PrefixPipelinesOld, PrefixPipelinesNew:
+		if style == StyleNew {
+			return PrefixPipelinesNew
+		}
+		return PrefixPipelinesOld
+	case PrefixBuildOld, PrefixBuildNew:
+		if style == StyleNew {
+			return PrefixBuildNew
+		}
+		return PrefixBuildOld
+	case PrefixTestOld, PrefixTestNew:
+		if style == StyleNew {
+			return PrefixTestNew
+		}
+		return PrefixTestOld
+	case PrefixRelease, PrefixReleaseNew:
+		if style == StyleNew {
+			return PrefixReleaseNew
+		}
+		return PrefixRelease
+	case PrefixPAC, PrefixPACNew:
+		if style == StyleNew {
+			return PrefixPACNew
+		}
+		return PrefixPAC
+	case PrefixCustom, PrefixCustomNew:
+		if style == StyleNew {
+			return PrefixCustomNew
+		}
+		return PrefixCustom
+	default:
+		return prefix
+	}
 }
 
 // StyleOf reports which key family obj should be written with.
@@ -103,6 +148,12 @@ func PairForKey(key string) (Pair, bool) {
 	}
 	if suffix, ok := cutOwnedPrefix(key, PrefixPACNew+"/"); ok {
 		return PAC(suffix), true
+	}
+	if suffix, ok := cutOwnedPrefix(key, PrefixCustom+"/"); ok {
+		return Custom(suffix), true
+	}
+	if suffix, ok := cutOwnedPrefix(key, PrefixCustomNew+"/"); ok {
+		return Custom(suffix), true
 	}
 	if suffix, ok := cutOwnedPrefix(key, PrefixTestOld+"/"); ok {
 		return Test(suffix), true

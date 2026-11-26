@@ -1876,6 +1876,137 @@ var _ = Describe("CopyBuildPipelineRunResultsToSnapshot", func() {
 	})
 })
 
+var _ = Describe("CopySnapshotLabelsAndAnnotations", func() {
+	DescribeTable("copies metadata using the source style",
+		func(style keys.Style, styleName string) {
+			keyForStyle := func(pair keys.Pair) string {
+				key, err := pair.Key(style)
+				Expect(err).NotTo(HaveOccurred())
+				return key
+			}
+
+			buildPrefix := keys.PrefixForStyle(keys.PrefixBuildOld, style)
+			testPrefix := keys.PrefixForStyle(keys.PrefixTestOld, style)
+			releasePrefix := keys.PrefixForStyle(keys.PrefixRelease, style)
+			pacPrefix := keys.PrefixForStyle(keys.PrefixPAC, style)
+			customPrefix := keys.PrefixCustom
+			if style == keys.StyleNew {
+				customPrefix = keys.PrefixCustomNew
+			}
+
+			source := &metav1.ObjectMeta{
+				Labels: map[string]string{
+					keyForStyle(keys.PipelineType()):        "build",
+					keyForStyle(keys.BuildComponent()):      "component",
+					buildPrefix + "/target_branch":          styleName + "-branch",
+					testPrefix + "/scenario":                styleName + "-scenario",
+					releasePrefix + "/auto-release":         "true",
+					"pipelinesascode.tekton.dev/event-type": "pull_request",
+					customPrefix + "/example":               "custom",
+				},
+				Annotations: map[string]string{
+					buildPrefix + "/repo":                         styleName + "-repo",
+					testPrefix + "/metadata":                      styleName + "-metadata",
+					releasePrefix + "/reason":                     styleName + "-release",
+					"pipelinesascode.tekton.dev/on-target-branch": "[main]",
+					customPrefix + "/annotation":                  "custom-annotation",
+				},
+			}
+			snapshot := &applicationapiv1alpha1.Snapshot{}
+			prefixes := []string{keys.PrefixBuildOld, keys.PrefixTestOld, keys.PrefixCustom, keys.PrefixRelease}
+
+			gitops.CopySnapshotLabelsAndAnnotations(&metav1.ObjectMeta{Name: "owner"}, snapshot, "component", source, prefixes, false)
+
+			Expect(snapshot.Labels).To(HaveKeyWithValue(buildPrefix+"/target_branch", styleName+"-branch"))
+			Expect(snapshot.Labels).To(HaveKeyWithValue(testPrefix+"/scenario", styleName+"-scenario"))
+			Expect(snapshot.Labels).To(HaveKeyWithValue(releasePrefix+"/auto-release", "true"))
+			Expect(snapshot.Labels).To(HaveKeyWithValue(pacPrefix+"/event-type", "pull_request"))
+			Expect(snapshot.Labels).To(HaveKeyWithValue(customPrefix+"/example", "custom"))
+			Expect(snapshot.Annotations).To(HaveKeyWithValue(buildPrefix+"/repo", styleName+"-repo"))
+			Expect(snapshot.Annotations).To(HaveKeyWithValue(testPrefix+"/metadata", styleName+"-metadata"))
+			Expect(snapshot.Annotations).To(HaveKeyWithValue(releasePrefix+"/reason", styleName+"-release"))
+			Expect(snapshot.Annotations).To(HaveKeyWithValue(pacPrefix+"/on-target-branch", "[main]"))
+			Expect(snapshot.Annotations).To(HaveKeyWithValue(customPrefix+"/annotation", "custom-annotation"))
+			Expect(snapshot.Labels).To(HaveKeyWithValue(keyForStyle(keys.BuildComponent()), "component"))
+			Expect(snapshot.Labels).To(HaveKeyWithValue(keyForStyle(keys.Test("type")), gitops.SnapshotComponentType))
+			Expect(snapshot.Labels).To(HaveKeyWithValue(keyForStyle(keys.ComponentGroupName()), "owner"))
+		},
+		Entry("old-style source", keys.StyleOld, "old"),
+		Entry("new-style source", keys.StyleNew, "new"),
+	)
+})
+
+var _ = Describe("CopyTempGroupSnapshotLabelsAndAnnotations", func() {
+	DescribeTable("copies metadata using the source style",
+		func(style keys.Style, styleName string, objectIsApplication bool) {
+			keyForStyle := func(pair keys.Pair, requestedStyle keys.Style) string {
+				key, err := pair.Key(requestedStyle)
+				Expect(err).NotTo(HaveOccurred())
+				return key
+			}
+			buildPrefix := keys.PrefixForStyle(keys.PrefixBuildOld, style)
+			pacPrefix := keys.PrefixForStyle(keys.PrefixPAC, style)
+			customPrefix := keys.PrefixCustom
+			if style == keys.StyleNew {
+				customPrefix = keys.PrefixCustomNew
+			}
+			oppositeStyle := keys.StyleOld
+			if style == keys.StyleOld {
+				oppositeStyle = keys.StyleNew
+			}
+
+			source := &metav1.ObjectMeta{
+				Labels: map[string]string{
+					keyForStyle(keys.PipelineType(), style):   "build",
+					keyForStyle(keys.BuildComponent(), style): "component",
+					buildPrefix + "/target_branch":            styleName + "-branch",
+					customPrefix + "/workload":                styleName + "-workload",
+					"pipelinesascode.tekton.dev/event-type":   "pull_request",
+					"pipelinesascode.tekton.dev/pull-request": "1",
+				},
+				Annotations: map[string]string{
+					buildPrefix + "/repo":                         styleName + "-repo",
+					customPrefix + "/metadata":                    styleName + "-metadata",
+					"pipelinesascode.tekton.dev/on-target-branch": "[main]",
+				},
+			}
+			snapshot := &applicationapiv1alpha1.Snapshot{}
+			gitops.CopyTempGroupSnapshotLabelsAndAnnotations(
+				&metav1.ObjectMeta{Name: "owner"},
+				snapshot,
+				"component",
+				source,
+				[]string{keys.PrefixBuildOld, keys.PrefixCustom},
+				objectIsApplication,
+			)
+
+			Expect(snapshot.Labels).To(HaveKeyWithValue(keyForStyle(keys.Test("type"), style), gitops.SnapshotGroupType))
+			Expect(snapshot.Labels).NotTo(HaveKey(keyForStyle(keys.Test("type"), oppositeStyle)))
+			Expect(snapshot.Labels).To(HaveKeyWithValue(buildPrefix+"/target_branch", styleName+"-branch"))
+			Expect(snapshot.Annotations).To(HaveKeyWithValue(buildPrefix+"/repo", styleName+"-repo"))
+			Expect(snapshot.Labels).To(HaveKeyWithValue(customPrefix+"/workload", styleName+"-workload"))
+			Expect(snapshot.Annotations).To(HaveKeyWithValue(customPrefix+"/metadata", styleName+"-metadata"))
+			Expect(snapshot.Labels).To(HaveKeyWithValue(pacPrefix+"/event-type", "pull_request"))
+			Expect(snapshot.Annotations).To(HaveKeyWithValue(pacPrefix+"/on-target-branch", "[main]"))
+			Expect(snapshot.Labels).NotTo(HaveKey(keys.PrefixForStyle(keys.PrefixBuildOld, oppositeStyle) + "/target_branch"))
+			Expect(snapshot.Labels).NotTo(HaveKey(keys.PrefixForStyle(keys.PrefixPAC, oppositeStyle) + "/event-type"))
+
+			if objectIsApplication {
+				Expect(snapshot.Labels).To(HaveKeyWithValue(gitops.ApplicationNameLabel, "owner"))
+				Expect(snapshot.Labels).NotTo(HaveKey(gitops.ComponentGroupNameLabel))
+			} else {
+				Expect(snapshot.Labels).To(HaveKeyWithValue(keyForStyle(keys.ComponentGroupName(), style), "owner"))
+				Expect(snapshot.Labels).NotTo(HaveKey(keyForStyle(keys.ComponentGroupName(), oppositeStyle)))
+				Expect(snapshot.Labels).NotTo(HaveKey(gitops.ApplicationNameLabel))
+			}
+		},
+		Entry("old-style Application", keys.StyleOld, "old", true),
+		Entry("new-style Application", keys.StyleNew, "new", true),
+		Entry("old-style ComponentGroup", keys.StyleOld, "old", false),
+		Entry("new-style ComponentGroup", keys.StyleNew, "new", false),
+	)
+})
+
 var _ = Describe("AppStudio workload labels on Snapshots", func() {
 	DescribeTable("propagates labels while retaining the owning resource identity",
 		func(application, group bool) {
