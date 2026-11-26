@@ -30,6 +30,7 @@ import (
 	"github.com/konflux-ci/integration-service/pkg/dag"
 	"go.opentelemetry.io/otel/attribute"
 	clienterrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	utilnet "k8s.io/apimachinery/pkg/util/net"
 	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -75,6 +76,12 @@ type Adapter struct {
 	client         client.Client
 	context        context.Context
 	status         status.StatusInterface
+	// pushSecretLinkChecked is set once linkComponentPushSecret has linked the push secret, found
+	// nothing to link, or failed for good in this reconcile pass. A retryable failure leaves it unset.
+	pushSecretLinkChecked bool
+	// serviceAccountFallbackReason is what linkComponentPushSecret found in this reconcile pass:
+	// empty when its-pipeline-<component> lists the component's push secret.
+	serviceAccountFallbackReason string
 }
 
 // NewAdapter creates and returns an Adapter instance.
@@ -1211,13 +1218,20 @@ func (a *Adapter) createIntegrationPipelineRun(integrationTestScenario *v1beta2.
 		return nil, err
 	}
 
+	serviceAccountName, fallbackReason, err := a.selectPipelineServiceAccount(pipelineRunBuilder.Spec.TaskRunTemplate.ServiceAccountName)
+	if err != nil {
+		return nil, err
+	}
+
 	pipelineRunBuilder = pipelineRunBuilder.WithSnapshot(a.snapshot, integrationTestScenario).
 		WithIntegrationLabels(integrationTestScenario).
 		WithIntegrationAnnotations(integrationTestScenario).
 		WithApplication(a.application). // TODO: remove once application-specific code is deprecated
 		WithComponentGroup(a.componentGroup).
-		WithDefaultServiceAccount(tektonconsts.DefaultIntegrationPipelineServiceAccount).
+		WithDefaultServiceAccount(serviceAccountName).
+		WithServiceAccountFallback(fallbackReason).
 		WithExtraParams(integrationTestScenario.Spec.Params).
+		WithComponentImage(a.snapshot, a.logger.Logger).
 		WithFinalizer(h.IntegrationPipelineRunFinalizer).
 		WithIntegrationTimeouts(integrationTestScenario, a.logger.Logger)
 
@@ -1225,6 +1239,10 @@ func (a *Adapter) createIntegrationPipelineRun(integrationTestScenario *v1beta2.
 		a.logger.Info("use the integration test task/taskrun from the code in the pr of snapshot", "integrationTestScneario.Name", integrationTestScenario.Name)
 		pipelineRunBuilder.WithUpdatedTasksGitResolver(a.snapshot)
 		pipelineRunBuilder.WithUpdatedPipelineGitResolver(a.snapshot)
+	}
+
+	if err = a.addImagePullSecrets(pipelineRunBuilder, serviceAccountName); err != nil {
+		return nil, err
 	}
 
 	pipelineRun := pipelineRunBuilder.AsPipelineRun()
@@ -1252,6 +1270,163 @@ func (a *Adapter) createIntegrationPipelineRun(integrationTestScenario *v1beta2.
 		}
 	}
 	return pipelineRun, nil
+}
+
+// selectPipelineServiceAccount returns the ServiceAccount that an integration PipelineRun for the
+// adapter's Snapshot runs as when its definition names none (STONEINTG-1800), and the reason when that
+// is a fallback. On a component Snapshot it is its-pipeline-<component>, with the component taken from
+// the Snapshot's component label. It falls back to the shared runner when that account does not exist
+// or lists no push secret of the component: a run on the account could then pull no private image and
+// could not attest. Every other Snapshot keeps the shared runner. definedServiceAccountName is the
+// ServiceAccount the PipelineRun definition of the scenario names; it always wins, and the push secret
+// is linked for it only when it is its-pipeline-<component>.
+func (a *Adapter) selectPipelineServiceAccount(definedServiceAccountName string) (string, string, error) {
+	componentName, _ := keys.GetLabel(a.snapshot, keys.BuildComponent())
+	if !gitops.IsComponentSnapshot(a.snapshot) || componentName == "" {
+		return tektonconsts.DefaultIntegrationPipelineServiceAccount, "", nil
+	}
+	componentAccountName := h.ComponentIntegrationPipelineServiceAccountName(componentName)
+	if definedServiceAccountName != "" && definedServiceAccountName != componentAccountName {
+		return tektonconsts.DefaultIntegrationPipelineServiceAccount, "", nil
+	}
+
+	fallbackReason, err := a.linkComponentPushSecret(componentName)
+	if err != nil {
+		return "", "", err
+	}
+	if fallbackReason != "" && definedServiceAccountName == "" {
+		return tektonconsts.DefaultIntegrationPipelineServiceAccount, fallbackReason, nil
+	}
+
+	return componentAccountName, "", nil
+}
+
+// linkComponentPushSecret links the push secret of the component to its-pipeline-<component>
+// (STONEINTG-1804) and returns the reason why a PipelineRun cannot use that account, empty when it can.
+// The outcome is kept for the reconcile pass, so a Snapshot with several scenarios lists the
+// ImageRepositories once and every PipelineRun gets the same answer. It returns an error only for a
+// failure that isRetryablePipelineRunCreationError recognizes, so that both callers requeue; that
+// failure is tried again with the next PipelineRun of the pass. Together with a push secret it links
+// the secrets of the shared runner account (see sharedRunnerSecretNames).
+func (a *Adapter) linkComponentPushSecret(componentName string) (string, error) {
+	if a.pushSecretLinkChecked {
+		return a.serviceAccountFallbackReason, nil
+	}
+
+	linked := false
+	imageRepositories, err := a.loader.GetImageRepositoriesForComponent(a.context, a.client, componentName, a.snapshot.Namespace)
+	switch {
+	case meta.IsNoMatchError(err):
+		// The cluster does not serve the ImageRepository kind, so there is nothing to link.
+		err = nil
+	case err != nil:
+		err = fmt.Errorf("failed to list the ImageRepositories of component %s/%s: %w", a.snapshot.Namespace, componentName, err)
+	default:
+		var sharedSecretNames []string
+		if sharedSecretNames, err = a.sharedRunnerSecretNames(); err == nil {
+			linked, err = h.LinkComponentPushSecrets(a.context, a.client, a.logger, a.snapshot.Namespace, componentName, *imageRepositories, sharedSecretNames...)
+		}
+	}
+	if isRetryablePipelineRunCreationError(err) {
+		return "", fmt.Errorf("failed to link the push secret of component %s: %w", componentName, err)
+	}
+	switch {
+	case clienterrors.IsNotFound(err):
+		a.logger.Info("The integration pipeline ServiceAccount of the component does not exist",
+			"component.Name", componentName)
+		a.serviceAccountFallbackReason = tektonconsts.ServiceAccountFallbackAccountMissing
+	case err != nil:
+		a.logger.Error(err, "Failed to link the component's push secret to the integration pipeline ServiceAccount",
+			"component.Name", componentName)
+		a.serviceAccountFallbackReason = tektonconsts.ServiceAccountFallbackNoPushSecret
+	case !linked:
+		a.logger.Info("Found no push secret to link to the integration pipeline ServiceAccount",
+			"component.Name", componentName)
+		a.serviceAccountFallbackReason = tektonconsts.ServiceAccountFallbackNoPushSecret
+	}
+	a.pushSecretLinkChecked = true
+
+	return a.serviceAccountFallbackReason, nil
+}
+
+// sharedRunnerSecretNames returns the names in the secrets list of konflux-integration-runner in the
+// Snapshot's namespace that its-pipeline-<component> lists too (see h.SharedRunnerSecretNames), so
+// that a test running as the component's account has the registry logins users linked to the shared
+// account. A namespace without the shared account has nothing to copy. It returns an error only for a
+// failure that isRetryablePipelineRunCreationError recognizes; any other failure is logged and nothing
+// is copied, so that it is not taken for a reason to fall back to the shared account.
+func (a *Adapter) sharedRunnerSecretNames() ([]string, error) {
+	runner, err := a.loader.GetServiceAccount(a.context, a.client, tektonconsts.DefaultIntegrationPipelineServiceAccount, a.snapshot.Namespace)
+	switch {
+	case clienterrors.IsNotFound(err):
+		return nil, nil
+	case isRetryablePipelineRunCreationError(err):
+		return nil, fmt.Errorf("failed to read ServiceAccount %s/%s: %w", a.snapshot.Namespace, tektonconsts.DefaultIntegrationPipelineServiceAccount, err)
+	case err != nil:
+		a.logger.Error(err, "Failed to read the shared integration pipeline ServiceAccount, none of its secrets are copied",
+			"serviceAccount", tektonconsts.DefaultIntegrationPipelineServiceAccount)
+		return nil, nil
+	}
+
+	return h.SharedRunnerSecretNames(runner), nil
+}
+
+// addImagePullSecrets names, in the pod template of a PipelineRun that runs as its-pipeline-<component>,
+// the imagePullSecrets of the shared runner account and then those of its-pipeline-<component>, so
+// that the node pulls step images with the logins it has today (STONEINTG-1800). A taskRunSpecs entry
+// that names another account gets the imagePullSecrets of that account. Nothing is written to an
+// account. It does nothing when componentAccountName is the shared runner, when the PipelineRun does
+// not run as componentAccountName, when its definition has its own list, or when the shared runner
+// lists none. It returns an error only for a failure that isRetryablePipelineRunCreationError
+// recognizes; after any other failure to read an account it logs and sets nothing.
+func (a *Adapter) addImagePullSecrets(pipelineRun *tekton.IntegrationPipelineRun, componentAccountName string) error {
+	template := pipelineRun.Spec.TaskRunTemplate
+	if componentAccountName == tektonconsts.DefaultIntegrationPipelineServiceAccount || template.ServiceAccountName != componentAccountName ||
+		(template.PodTemplate != nil && len(template.PodTemplate.ImagePullSecrets) > 0) {
+		return nil
+	}
+
+	accountNames := []string{componentAccountName, tektonconsts.DefaultIntegrationPipelineServiceAccount}
+	for _, taskRunSpec := range pipelineRun.Spec.TaskRunSpecs {
+		if name := taskRunSpec.ServiceAccountName; name != "" && !slices.Contains(accountNames, name) {
+			accountNames = append(accountNames, name)
+		}
+	}
+	secretNames := map[string][]string{}
+	for _, accountName := range accountNames {
+		account, err := a.loader.GetServiceAccount(a.context, a.client, accountName, a.snapshot.Namespace)
+		switch {
+		case clienterrors.IsNotFound(err):
+			continue
+		case isRetryablePipelineRunCreationError(err):
+			return fmt.Errorf("failed to read ServiceAccount %s/%s: %w", a.snapshot.Namespace, accountName, err)
+		case err != nil:
+			a.logger.Error(err, "Failed to read a ServiceAccount, the PipelineRun gets no imagePullSecrets",
+				"serviceAccount", accountName)
+			return nil
+		}
+		for _, ref := range account.ImagePullSecrets {
+			if ref.Name != "" && !slices.Contains(secretNames[accountName], ref.Name) {
+				secretNames[accountName] = append(secretNames[accountName], ref.Name)
+			}
+		}
+	}
+
+	runnerSecretNames := secretNames[tektonconsts.DefaultIntegrationPipelineServiceAccount]
+	if len(runnerSecretNames) == 0 {
+		return nil
+	}
+	for _, name := range secretNames[componentAccountName] {
+		if !slices.Contains(runnerSecretNames, name) {
+			runnerSecretNames = append(runnerSecretNames, name)
+		}
+	}
+	pipelineRun.WithImagePullSecrets(componentAccountName, runnerSecretNames)
+	for _, accountName := range accountNames[1:] {
+		pipelineRun.WithImagePullSecrets(accountName, secretNames[accountName])
+	}
+
+	return nil
 }
 
 // RequeueIfYoungerThanThreshold checks if the adapter's snapshot is younger than the threshold defined

@@ -774,6 +774,14 @@ var _ = framework.IntegrationServiceSuiteDescribe("Creation of group snapshots f
 					}
 				}
 			})
+			ginkgo.It("should run the integration PipelineRun of the group snapshot as the shared runner ServiceAccount", func() {
+				groupPipelineRun, err := f.AsKubeDeveloper.IntegrationController.WaitForIntegrationPipelineToGetStarted(integrationTestScenarioPass.Name, groupSnapshots.Items[0].Name, testNamespace)
+				gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
+				gomega.Expect(groupPipelineRun.Spec.TaskRunTemplate.ServiceAccountName).To(gomega.Equal(tektonconsts.DefaultIntegrationPipelineServiceAccount))
+				gomega.Expect(groupPipelineRun.Annotations).NotTo(gomega.HaveKey(tektonconsts.ServiceAccountFallbackAnnotation))
+				gomega.Expect(groupPipelineRun.Spec.Params).NotTo(gomega.ContainElement(gomega.HaveField("Name", tektonconsts.ComponentImageUrlParamName)))
+				gomega.Expect(groupPipelineRun.Spec.Params).NotTo(gomega.ContainElement(gomega.HaveField("Name", tektonconsts.ComponentImageDigestParamName)))
+			})
 		})
 
 		ginkgo.When("Older snapshot and integration pipelinerun should be cancelled once new snapshot is created", func() {

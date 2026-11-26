@@ -20,6 +20,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
+	"strings"
 
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
@@ -27,10 +29,12 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/apiutil"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
+	imagerepositoryv1alpha1 "github.com/konflux-ci/image-controller/api/v1alpha1"
 	tektonconsts "github.com/konflux-ci/integration-service/tekton/consts"
 )
 
@@ -61,7 +65,8 @@ func IsStaleOwnerError(err error) bool {
 // garbage collection removes the object when the last owner goes. An object that already exists is
 // never updated here: OpenShift's OwnerReferencesPermissionEnforcement admission plugin refuses a
 // change to ownerReferences by a requester that may not delete the object, and integration-service is
-// not granted delete. The push credential is linked to the account by image-controller (STONEINTG-1804).
+// not granted delete. The push credential is linked to the account by LinkComponentPushSecrets, just
+// before an integration PipelineRun that runs as the account is created (STONEINTG-1804).
 // Returns an error that IsStaleOwnerError recognizes when the caller should requeue.
 func EnsureIntegrationPipelineServiceAccountExists(ctx context.Context, adapterClient client.Client, logger IntegrationLogger, owner client.Object) error {
 	name := ComponentIntegrationPipelineServiceAccountName(owner.GetName())
@@ -94,6 +99,106 @@ func EnsureIntegrationPipelineServiceAccountExists(ctx context.Context, adapterC
 	}
 
 	return nil
+}
+
+// LinkComponentPushSecrets adds the push secret of every ImageRepository in imageRepositories to the
+// secrets list of its-pipeline-<component> (STONEINTG-1804), so that an integration PipelineRun
+// running as that account can push to the component's image repository. The secret's name is read
+// from status.credentials.push-secret. Together with a push secret, and in the same update, it adds
+// components-namespace-pull and sharedSecretNames, the names the caller takes from the shared runner
+// account (see SharedRunnerSecretNames); mergeSecretNames gives the order (STONEINTG-1800). No Secret
+// is read and imagePullSecrets is left as it is. Nothing is unlinked: Tekton skips a listed Secret
+// that no longer exists.
+// It returns true when the account lists at least one such push secret after the call, and false
+// with no error when no ImageRepository has a push secret name; nothing is added and the account is
+// not read then. An account that does not exist is returned as the NotFound error of the read.
+func LinkComponentPushSecrets(ctx context.Context, adapterClient client.Client, logger IntegrationLogger, namespace, componentName string, imageRepositories []imagerepositoryv1alpha1.ImageRepository, sharedSecretNames ...string) (bool, error) {
+	var pushSecretNames []string
+	for _, imageRepository := range imageRepositories {
+		name := imageRepository.Status.Credentials.PushSecretName
+		if name != "" && imageRepository.DeletionTimestamp.IsZero() {
+			pushSecretNames = append(pushSecretNames, name)
+		}
+	}
+	if len(pushSecretNames) == 0 {
+		return false, nil
+	}
+
+	key := types.NamespacedName{Namespace: namespace, Name: ComponentIntegrationPipelineServiceAccountName(componentName)}
+	sharedSecretNames = slices.Concat([]string{tektonconsts.DefaultIntegrationPipelineImagePullSecretName}, sharedSecretNames)
+	var added []string
+	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		account := &corev1.ServiceAccount{}
+		if err := adapterClient.Get(ctx, key, account); err != nil {
+			return err
+		}
+		account.Secrets, added = mergeSecretNames(account.Secrets, pushSecretNames, sharedSecretNames)
+		if len(added) == 0 {
+			return nil
+		}
+		return adapterClient.Update(ctx, account)
+	})
+	if err != nil {
+		return false, fmt.Errorf("failed to link secrets to ServiceAccount %s/%s: %w", key.Namespace, key.Name, err)
+	}
+	if len(added) > 0 {
+		logger.Info("Linked secrets to the integration pipeline ServiceAccount",
+			"serviceAccount", key.Name, "namespace", key.Namespace, "secrets", added)
+	}
+
+	return true, nil
+}
+
+// mergeSecretNames returns the secrets list of its-pipeline-<component> with the names that are
+// missing from listed, and those names. A missing push secret name goes to the front and a missing
+// shared name to the end, so one call never puts a shared name ahead of a push secret: when two
+// listed logins match the image repository equally well, Tekton Chains signs with the one listed
+// first, and that should be the push secret. An entry that is already listed keeps its place, also a
+// push secret that is listed behind another name, and no name is listed twice.
+func mergeSecretNames(listed []corev1.ObjectReference, pushSecretNames, sharedSecretNames []string) ([]corev1.ObjectReference, []string) {
+	isListed := func(refs []corev1.ObjectReference, name string) bool {
+		return slices.ContainsFunc(refs, func(ref corev1.ObjectReference) bool { return ref.Name == name })
+	}
+
+	var added []string
+	var front []corev1.ObjectReference
+	for _, name := range pushSecretNames {
+		if !isListed(listed, name) && !isListed(front, name) {
+			front = append(front, corev1.ObjectReference{Name: name})
+			added = append(added, name)
+		}
+	}
+	merged := slices.Concat(front, listed)
+	for _, name := range sharedSecretNames {
+		if name != "" && !isListed(merged, name) {
+			merged = append(merged, corev1.ObjectReference{Name: name})
+			added = append(added, name)
+		}
+	}
+
+	return merged, added
+}
+
+// SharedRunnerSecretNames returns the names in the secrets list of runner, the shared account
+// konflux-integration-runner, that its-pipeline-<component> lists too, so that a test running as the
+// component's account has the registry logins users linked to the shared account. The runner's own
+// Secrets are left out (see isAccountOwnSecret). imagePullSecrets is not read.
+func SharedRunnerSecretNames(runner *corev1.ServiceAccount) []string {
+	var names []string
+	for _, ref := range runner.Secrets {
+		if ref.Name != "" && !isAccountOwnSecret(runner.Name, ref.Name) {
+			names = append(names, ref.Name)
+		}
+	}
+	return names
+}
+
+// isAccountOwnSecret reports whether secretName is a Secret the platform made for the ServiceAccount
+// accountName itself: its token (<account>-token-<suffix>) or, on OpenShift, its login to the internal
+// registry (<account>-dockercfg-<suffix>). Such a Secret is the identity of that one account, so it
+// is never listed on another account.
+func isAccountOwnSecret(accountName, secretName string) bool {
+	return strings.HasPrefix(secretName, accountName+"-token-") || strings.HasPrefix(secretName, accountName+"-dockercfg-")
 }
 
 // createObjectWithOwnerReferenceIfMissing creates obj with an owner reference to owner or, when an
