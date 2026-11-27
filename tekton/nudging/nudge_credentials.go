@@ -20,13 +20,19 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	stderrors "errors"
 	"fmt"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
+	"time"
+
+	"golang.org/x/oauth2"
 
 	ghinstallation "github.com/bradleyfalzon/ghinstallation/v2"
 	ghapi "github.com/google/go-github/v45/github"
@@ -43,7 +49,93 @@ import (
 const (
 	// gitProviderAnnotationName is the annotation on a Component that overrides git provider detection.
 	gitProviderAnnotationName = "git-provider"
+
+	// gitHubAPITimeout bounds every GitHub API request made while resolving GitHub App credentials,
+	// so a hanging GitHub endpoint cannot block a reconcile indefinitely.
+	gitHubAPITimeout = 30 * time.Second
+
+	// gitHubAppIdentityTTL is how long a cached GitHub App slug and bot user ID are trusted before
+	// they are refreshed. The bot user ID never changes for an App, but the slug can change if the
+	// App is renamed, so the cache is refreshed periodically.
+	gitHubAppIdentityTTL = 24 * time.Hour
 )
+
+// GitHubAppCredentialsError reports components whose GitHub App credentials could not be resolved
+// because of a temporary failure: a GitHub rate limit, a GitHub 5xx response, a network error, or
+// an unresolved App bot user ID. Callers should retry later instead of falling back to another
+// authentication method, otherwise the nudge would be dropped or created with a wrong author.
+type GitHubAppCredentialsError struct {
+	// ComponentNames lists the components that could not be resolved.
+	ComponentNames []string
+	// Err holds the underlying error(s).
+	Err error
+}
+
+func (e *GitHubAppCredentialsError) Error() string {
+	return fmt.Sprintf("temporary failure resolving GitHub App credentials for components [%s]: %v",
+		strings.Join(e.ComponentNames, ", "), e.Err)
+}
+
+func (e *GitHubAppCredentialsError) Unwrap() error {
+	return e.Err
+}
+
+// gitHubAppIdentity is the cached identity of a GitHub App: its slug and the numeric user ID of
+// its "<slug>[bot]" account, used to build the commit author for App commits.
+type gitHubAppIdentity struct {
+	slug    string
+	botID   int64
+	fetched time.Time
+}
+
+// gitHubAppIdentityCache caches GitHub App identities in memory, keyed by GitHub App ID.
+// Only complete identities (non-empty slug and positive bot ID) are stored; failures are never cached.
+type gitHubAppIdentityCache struct {
+	mu      sync.Mutex
+	ttl     time.Duration
+	now     func() time.Time
+	entries map[int64]gitHubAppIdentity
+}
+
+func newGitHubAppIdentityCache(ttl time.Duration) *gitHubAppIdentityCache {
+	return &gitHubAppIdentityCache{
+		ttl:     ttl,
+		now:     time.Now,
+		entries: map[int64]gitHubAppIdentity{},
+	}
+}
+
+// get returns the cached identity for appID, whether one was found, and whether it is still fresh.
+func (c *gitHubAppIdentityCache) get(appID int64) (identity gitHubAppIdentity, found, fresh bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	identity, found = c.entries[appID]
+	if !found {
+		return gitHubAppIdentity{}, false, false
+	}
+	return identity, true, c.now().Sub(identity.fetched) < c.ttl
+}
+
+// put stores a complete identity for appID. Incomplete identities are ignored.
+func (c *gitHubAppIdentityCache) put(appID int64, slug string, botID int64) {
+	if slug == "" || botID <= 0 {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.entries[appID] = gitHubAppIdentity{slug: slug, botID: botID, fetched: c.now()}
+}
+
+// reset drops all cached identities.
+func (c *gitHubAppIdentityCache) reset() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.entries = map[int64]gitHubAppIdentity{}
+}
+
+// appIdentityCache is the process-wide GitHub App identity cache. Only the leader reconciles,
+// so a new leader pays one authenticated lookup per App.
+var appIdentityCache = newGitHubAppIdentityCache(gitHubAppIdentityTTL)
 
 // repositoryCredentials holds parsed docker config auth data for a single registry entry.
 type repositoryCredentials struct {
@@ -72,9 +164,17 @@ type applicationInstallation struct {
 	Repositories []*ghapi.Repository
 }
 
-// newGitHubAppClientFn creates an authenticated GitHub App client and fetches the App slug.
+// newGitHubAppClientFn creates a GitHub App (JWT-authenticated) client. It makes no network call.
 // Replaced in tests to avoid real GitHub API calls.
 var newGitHubAppClientFn = newGitHubAppClient
+
+// gitHubAPIBaseURL is the GitHub REST API base URL used for the bot user ID lookup.
+// Replaced in tests to point at a local test server.
+var gitHubAPIBaseURL = "https://api.github.com/"
+
+// getGitHubAppSlugFn fetches the App slug using the App client.
+// Replaced in tests to avoid real GitHub API calls.
+var getGitHubAppSlugFn = getGitHubAppSlug
 
 // gitHubAppInstallationForRepo resolves a GitHub App installation token for a given repository URL.
 // Replaced in tests to avoid real GitHub API calls.
@@ -89,7 +189,21 @@ var getGitHubBotUserIDFn = getGitHubBotUserID
 // It reads the global PaC secret from the integration-service namespace (INTEGRATION_NS env var),
 // verifies that GitHub App credentials are configured, and for each GitHub-hosted component it
 // obtains a repo-scoped installation token via the GitHub App JWT + installation token flow.
-func GetNudgeTargetsGithubApp(ctx context.Context, c client.Client, objectLoader loader.ObjectLoader, targetComponents []applicationapiv1alpha1.Component, imageRepoHost, imageRepoUser, imageRepoPwd string) []NudgeTarget {
+//
+// The App slug and bot user ID are cached in memory per GitHub App ID. The bot user ID is looked
+// up with a repo-scoped installation token, never anonymously, and a target is never built with
+// bot user ID 0.
+//
+// Error handling:
+//   - No PaC secret, GitHub App not configured, invalid App ID or private key, or a permanent
+//     GitHub error (for example 401) while reading App metadata: returns (nil, nil) so callers fall
+//     back to basic auth, as before.
+//   - App not installed on a repository (or another permanent GitHub error for that repository):
+//     that component is skipped, as before.
+//   - Temporary failures (rate limit, GitHub 5xx, network error) or an unresolved bot user ID:
+//     the affected components are reported in a *GitHubAppCredentialsError. The returned targets
+//     still contain every component that was resolved successfully.
+func GetNudgeTargetsGithubApp(ctx context.Context, c client.Client, objectLoader loader.ObjectLoader, targetComponents []applicationapiv1alpha1.Component, imageRepoHost, imageRepoUser, imageRepoPwd string) ([]NudgeTarget, error) {
 	log := ctrllog.FromContext(ctx)
 
 	integrationNS := os.Getenv("INTEGRATION_NS")
@@ -103,66 +217,125 @@ func GetNudgeTargetsGithubApp(ctx context.Context, c client.Client, objectLoader
 			"namespace", integrationNS,
 			"secret", tektonconsts.PipelinesAsCodeGitHubAppSecretName,
 			"error", err.Error())
-		return nil
+		return nil, nil
 	}
 
 	// Check if GitHub App is actually configured
 	if !isPaCGitHubAppConfigured(pacSecret.Data) {
 		log.Info("GitHub App is not configured in PaC secret, skipping GitHub App auth path")
-		return nil
+		return nil, nil
+	}
+
+	eligible := gitHubAppEligibleComponents(ctx, targetComponents)
+	if len(eligible) == 0 {
+		return nil, nil
 	}
 
 	appIDStr := string(pacSecret.Data[tektonconsts.PipelinesAsCodeGithubAppIdKey])
 	privateKeyPEM := pacSecret.Data[tektonconsts.PipelinesAsCodeGithubPrivateKey]
 
-	appClient, appSlug, err := newGitHubAppClientFn(ctx, appIDStr, privateKeyPEM)
+	appID, err := parseGitHubAppID(appIDStr)
+	if err != nil {
+		log.Error(err, "invalid GitHub App ID in PaC secret, skipping GitHub App auth path")
+		return nil, nil
+	}
+
+	appClient, err := newGitHubAppClientFn(appID, privateKeyPEM)
 	if err != nil {
 		log.Error(err, "failed to initialize GitHub App client, skipping GitHub App auth path")
-		return nil
+		return nil, nil
 	}
 
-	var appBotID int64
-	if botID, botErr := getGitHubBotUserIDFn(ctx, appSlug); botErr != nil {
-		log.Error(botErr, "failed to get GitHub App bot user ID, commits will use ID 0 in GitAuthor",
-			"slug", appSlug)
-	} else {
-		appBotID = botID
-	}
-
-	var targets []NudgeTarget
-
-	for i := range targetComponents {
-		component := &targetComponents[i]
-
-		gitProvider, err := getGitProvider(*component)
-		if err != nil || gitProvider != "github" {
-			continue
+	cached, found, fresh := appIdentityCache.get(appID)
+	appSlug, appBotID := cached.slug, cached.botID
+	refreshBotID := !fresh
+	if !fresh {
+		slug, slugErr := getGitHubAppSlugFn(ctx, appClient)
+		switch {
+		case slugErr == nil:
+			if slug != appSlug {
+				// First lookup, or the App was renamed: the cached bot ID can't be trusted.
+				appBotID = 0
+			}
+			appSlug = slug
+		case found:
+			log.Info("failed to refresh GitHub App metadata, using cached identity",
+				"appID", appID, "slug", appSlug, "error", slugErr.Error())
+			refreshBotID = false
+		case isTransientGitHubError(slugErr):
+			return nil, &GitHubAppCredentialsError{
+				ComponentNames: componentNames(eligible),
+				Err:            slugErr,
+			}
+		default:
+			log.Error(slugErr, "failed to get GitHub App metadata, skipping GitHub App auth path")
+			return nil, nil
 		}
+	}
 
+	var (
+		targets        []NudgeTarget
+		failedNames    []string
+		failedErrs     []error
+		botLookupErr   error
+		botLookupTried bool
+	)
+
+	for i := range eligible {
+		component := &eligible[i]
 		repoURL := getGitRepoURL(component)
-		if repoURL == "" {
-			log.Info("component has no git source URL, skipping", "ComponentName", component.Name)
-			continue
-		}
-
-		// Only github.com is supported for GitHub App auth; ghinstallation connects to api.github.com.
 		repoHost := getGitRepoHost(repoURL)
-		if repoHost != "github.com" {
-			log.Info("skipping GitHub App auth for non-github.com host",
-				"ComponentName", component.Name, "host", repoHost)
-			continue
-		}
 
 		log.Info("getting GitHub App installation token for component",
 			"ComponentName", component.Name,
 			"RepositoryUrl", repoURL)
 		installation, err := gitHubAppInstallationForRepo(ctx, appClient, repoURL)
 		if err != nil {
+			if isTransientGitHubError(err) {
+				log.Error(err, "temporary failure getting GitHub App installation for component, nudge will be retried",
+					"ComponentName", component.Name)
+				failedNames = append(failedNames, component.Name)
+				failedErrs = append(failedErrs, err)
+				continue
+			}
 			log.Error(err, "failed to get GitHub App installation for component",
 				"ComponentName", component.Name)
 			continue
 		}
 
+		// Resolve (or refresh) the bot user ID once per call, with the first repo-scoped
+		// installation token we obtain, so no extra token is minted for the lookup.
+		if refreshBotID && !botLookupTried {
+			botLookupTried = true
+			botID, lookupErr := getGitHubBotUserIDFn(ctx, installation.Token, appSlug)
+			if lookupErr == nil && botID <= 0 {
+				lookupErr = fmt.Errorf("GitHub returned invalid user ID %d for %s[bot]", botID, appSlug)
+			}
+			switch {
+			case lookupErr == nil:
+				appBotID = botID
+				appIdentityCache.put(appID, appSlug, botID)
+			case appBotID > 0:
+				log.Info("failed to refresh GitHub App bot user ID, using cached value",
+					"slug", appSlug, "botID", appBotID, "error", lookupErr.Error())
+			default:
+				botLookupErr = lookupErr
+				log.Error(lookupErr, "failed to get GitHub App bot user ID, nudge will be retried", "slug", appSlug)
+			}
+		}
+
+		gitAuthor, err := gitHubAppGitAuthor(appSlug, appBotID)
+		if err != nil {
+			if botLookupErr != nil {
+				err = fmt.Errorf("%w: %w", err, botLookupErr)
+			}
+			failedNames = append(failedNames, component.Name)
+			failedErrs = append(failedErrs, err)
+			continue
+		}
+
+		// gitHubAppEligibleComponents only keeps GitHub components.
+		const gitProvider = "github"
 		appBotName := fmt.Sprintf("%s[bot]", appSlug)
 		repoPath := parseGitRepoPath(repoURL)
 
@@ -185,7 +358,7 @@ func GetNudgeTargetsGithubApp(ctx context.Context, c client.Client, objectLoader
 			ComponentCustomRenovateOptions: customOpts,
 			GitProvider:                    gitProvider,
 			Username:                       appBotName,
-			GitAuthor:                      fmt.Sprintf("%s <%d+%s@users.noreply.github.com>", appSlug, appBotID, appBotName),
+			GitAuthor:                      gitAuthor,
 			Token:                          installation.Token,
 			Endpoint:                       buildAPIEndpoint(gitProvider, repoHost),
 			Repositories: []RenovateRepository{{
@@ -201,7 +374,106 @@ func GetNudgeTargetsGithubApp(ctx context.Context, c client.Client, objectLoader
 			"repositories", repoPath)
 	}
 
-	return targets
+	if len(failedNames) > 0 {
+		return targets, &GitHubAppCredentialsError{
+			ComponentNames: failedNames,
+			Err:            stderrors.Join(failedErrs...),
+		}
+	}
+	return targets, nil
+}
+
+// gitHubAppEligibleComponents returns the components that can use GitHub App authentication:
+// components whose git provider is GitHub and whose repository is hosted on github.com.
+func gitHubAppEligibleComponents(ctx context.Context, components []applicationapiv1alpha1.Component) []applicationapiv1alpha1.Component {
+	log := ctrllog.FromContext(ctx)
+	var eligible []applicationapiv1alpha1.Component
+	for i := range components {
+		component := &components[i]
+
+		gitProvider, err := getGitProvider(*component)
+		if err != nil || gitProvider != "github" {
+			continue
+		}
+
+		repoURL := getGitRepoURL(component)
+		if repoURL == "" {
+			log.Info("component has no git source URL, skipping", "ComponentName", component.Name)
+			continue
+		}
+
+		// Only github.com is supported for GitHub App auth; ghinstallation connects to api.github.com.
+		repoHost := getGitRepoHost(repoURL)
+		if repoHost != "github.com" {
+			log.Info("skipping GitHub App auth for non-github.com host",
+				"ComponentName", component.Name, "host", repoHost)
+			continue
+		}
+		eligible = append(eligible, *component)
+	}
+	return eligible
+}
+
+// gitHubAppGitAuthor builds the commit author GitHub uses for App commits:
+// "{slug} <{id}+{slug}[bot]@users.noreply.github.com>". It refuses an empty slug or a
+// non-positive bot ID, so an author with ID 0 can never be produced.
+func gitHubAppGitAuthor(slug string, botID int64) (string, error) {
+	if slug == "" {
+		return "", fmt.Errorf("GitHub App slug is unknown")
+	}
+	if botID <= 0 {
+		return "", fmt.Errorf("GitHub App bot user ID for %s[bot] is unknown", slug)
+	}
+	return fmt.Sprintf("%s <%d+%s[bot]@users.noreply.github.com>", slug, botID, slug), nil
+}
+
+// isTransientGitHubError reports whether err is a temporary GitHub failure worth retrying:
+// a primary or secondary rate limit, HTTP 429, a 5xx response, a network error or a timeout.
+// Other GitHub responses (401, 403 without rate limiting, 404, 422) and local errors are permanent.
+func isTransientGitHubError(err error) bool {
+	if err == nil {
+		return false
+	}
+	var rateLimitErr *ghapi.RateLimitError
+	var abuseRateLimitErr *ghapi.AbuseRateLimitError
+	if stderrors.As(err, &rateLimitErr) || stderrors.As(err, &abuseRateLimitErr) {
+		return true
+	}
+	var respErr *ghapi.ErrorResponse
+	if stderrors.As(err, &respErr) {
+		if respErr.Response == nil {
+			return true
+		}
+		code := respErr.Response.StatusCode
+		return code == http.StatusTooManyRequests || code >= http.StatusInternalServerError
+	}
+	var urlErr *url.Error
+	if stderrors.As(err, &urlErr) {
+		return true
+	}
+	var netErr net.Error
+	if stderrors.As(err, &netErr) {
+		return true
+	}
+	return stderrors.Is(err, context.DeadlineExceeded)
+}
+
+// componentNames returns the names of the given components.
+func componentNames(components []applicationapiv1alpha1.Component) []string {
+	names := make([]string, 0, len(components))
+	for i := range components {
+		names = append(names, components[i].Name)
+	}
+	return names
+}
+
+// parseGitHubAppID parses the GitHub App ID stored in the PaC secret.
+func parseGitHubAppID(appIDStr string) (int64, error) {
+	appID, err := strconv.ParseInt(strings.TrimSpace(appIDStr), 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("invalid GitHub App ID %q: %w", appIDStr, err)
+	}
+	return appID, nil
 }
 
 // GetNudgeTargetsBasicAuth returns NudgeTargets for components using basic auth (token-based) credentials.
@@ -431,23 +703,26 @@ func linkedSecretNamesFromServiceAccount(sa *corev1.ServiceAccount) []string {
 
 // ---------- Helper functions ----------
 
-// newGitHubAppClient creates an authenticated GitHub App transport and returns a client and the App slug.
-// The transport handles RS256 JWT signing automatically (iss=appID, 10-min expiry).
-func newGitHubAppClient(ctx context.Context, appIDStr string, privateKeyPEM []byte) (*ghapi.Client, string, error) {
-	appID, err := strconv.ParseInt(strings.TrimSpace(appIDStr), 10, 64)
-	if err != nil {
-		return nil, "", fmt.Errorf("invalid GitHub App ID %q: %w", appIDStr, err)
-	}
+// newGitHubAppClient creates a GitHub App client authenticated with the App JWT. It makes no
+// network call. The transport handles RS256 JWT signing automatically (iss=appID, 10-min expiry).
+func newGitHubAppClient(appID int64, privateKeyPEM []byte) (*ghapi.Client, error) {
 	itr, err := ghinstallation.NewAppsTransport(http.DefaultTransport, appID, privateKeyPEM)
 	if err != nil {
-		return nil, "", fmt.Errorf("failed to create GitHub App transport: %w", err)
+		return nil, fmt.Errorf("failed to create GitHub App transport: %w", err)
 	}
-	appClient := ghapi.NewClient(&http.Client{Transport: itr})
+	return ghapi.NewClient(&http.Client{Transport: itr, Timeout: gitHubAPITimeout}), nil
+}
+
+// getGitHubAppSlug fetches the App's slug from GitHub using the App (JWT) client.
+func getGitHubAppSlug(ctx context.Context, appClient *ghapi.Client) (string, error) {
 	githubApp, _, err := appClient.Apps.Get(ctx, "")
 	if err != nil {
-		return nil, "", fmt.Errorf("failed to get GitHub App metadata: %w", err)
+		return "", fmt.Errorf("failed to get GitHub App metadata: %w", err)
 	}
-	return appClient, githubApp.GetSlug(), nil
+	if githubApp.GetSlug() == "" {
+		return "", fmt.Errorf("GitHub App metadata has no slug")
+	}
+	return githubApp.GetSlug(), nil
 }
 
 // getGitHubAppInstallation finds the installation for repoURL and returns a repo-scoped token.
@@ -494,8 +769,24 @@ func getGitHubAppInstallation(ctx context.Context, appClient *ghapi.Client, repo
 // getGitHubBotUserID returns the numeric GitHub user ID of the App's bot account.
 // The ID is needed for the GitAuthor field format GitHub uses for App commits:
 // "{slug} <{id}+{slug}[bot]@users.noreply.github.com>"
-func getGitHubBotUserID(ctx context.Context, slug string) (int64, error) {
-	c := ghapi.NewClient(nil) // public endpoint, no auth needed
+//
+// The lookup is authenticated with a repo-scoped installation token. An anonymous lookup would
+// count against GitHub's unauthenticated limit (60 requests/hour per source IP, shared by the
+// whole cluster); the installation limit is at least 5,000 requests/hour.
+func getGitHubBotUserID(ctx context.Context, installationToken, slug string) (int64, error) {
+	httpClient := &http.Client{
+		Timeout: gitHubAPITimeout,
+		Transport: &oauth2.Transport{
+			Source: oauth2.StaticTokenSource(&oauth2.Token{AccessToken: installationToken}),
+			Base:   http.DefaultTransport,
+		},
+	}
+	c := ghapi.NewClient(httpClient)
+	baseURL, err := url.Parse(gitHubAPIBaseURL)
+	if err != nil {
+		return 0, fmt.Errorf("invalid GitHub API base URL %q: %w", gitHubAPIBaseURL, err)
+	}
+	c.BaseURL = baseURL
 	botName := fmt.Sprintf("%s[bot]", slug)
 	user, _, err := c.Users.Get(ctx, botName)
 	if err != nil {

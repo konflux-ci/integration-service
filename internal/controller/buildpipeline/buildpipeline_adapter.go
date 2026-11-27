@@ -54,6 +54,19 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
+const (
+	// nudgeCredentialsRetryWindow is how long after a build PipelineRun finishes the adapter keeps
+	// retrying temporary GitHub App credential failures before giving up on the nudge.
+	nudgeCredentialsRetryWindow = time.Hour
+
+	// nudgeCredentialsUnavailableEventReason is the reason of the Warning event recorded on a
+	// target component whose nudge was not delivered because GitHub App credentials were unavailable.
+	nudgeCredentialsUnavailableEventReason = "NudgeCredentialsUnavailable"
+)
+
+// getNudgeTargetsGithubAppFn resolves GitHub App nudge targets. Replaced in tests.
+var getNudgeTargetsGithubAppFn = nudging.GetNudgeTargetsGithubApp
+
 // Adapter holds the objects needed to reconcile a build PipelineRun.
 type Adapter struct {
 	pipelineRun     *tektonv1.PipelineRun
@@ -328,7 +341,25 @@ func (a *Adapter) EnsureNudgePipelineRunsExist() (controller.OperationResult, er
 
 	var targets []nudging.NudgeTarget
 
-	githubTargets := nudging.GetNudgeTargetsGithubApp(a.context, a.client, a.loader, immediateComponents, imageRepoHost, imageRepoUser, imageRepoPwd)
+	githubTargets, githubErr := getNudgeTargetsGithubAppFn(a.context, a.client, a.loader, immediateComponents, imageRepoHost, imageRepoUser, imageRepoPwd)
+	var githubCredsErr *nudging.GitHubAppCredentialsError
+	if githubErr != nil {
+		if !errors.As(githubErr, &githubCredsErr) {
+			githubCredsErr = &nudging.GitHubAppCredentialsError{Err: githubErr}
+		}
+		if !a.nudgeCredentialsRetryWindowExpired(time.Now()) {
+			a.logger.Error(githubErr, "Temporary failure resolving GitHub App credentials for nudging, will retry",
+				"components", githubCredsErr.ComponentNames)
+			// Keep the nudge finalizer so the build PLR stays alive for the retry, and create no
+			// nudge PipelineRun yet so the retry does not nudge any component twice.
+			return controller.RequeueWithError(githubErr)
+		}
+		// Past the retry window: continue like before this failure handling existed (the affected
+		// components fall through to basic auth), and tell users about undelivered nudges below.
+		a.logger.Error(githubErr, "Giving up on GitHub App credentials for nudging after the retry window",
+			"retryWindow", nudgeCredentialsRetryWindow.String(),
+			"components", githubCredsErr.ComponentNames)
+	}
 	targets = append(targets, githubTargets...)
 
 	// Exclude components already resolved via GitHub App from the basic-auth path to avoid
@@ -347,9 +378,16 @@ func (a *Adapter) EnsureNudgePipelineRunsExist() (controller.OperationResult, er
 	basicAuthTargets := nudging.GetNudgeTargetsBasicAuth(a.context, a.client, a.loader, remainingComponents, imageRepoHost, imageRepoUser, imageRepoPwd)
 	targets = append(targets, basicAuthTargets...)
 
+	undeliveredComponents := undeliveredNudgeComponents(immediateComponents, githubCredsErr, targets)
+
 	if len(targets) == 0 {
-		a.logger.Info("No nudge targets with resolved credentials found")
-		_ = tekton.AnnotateBuildPipelineRun(a.context, a.pipelineRun, tektonconsts.NudgeProcessedAnnotation, "no-credentials", a.client)
+		processedValue := "no-credentials"
+		if githubCredsErr != nil {
+			processedValue = "credentials-unavailable"
+		}
+		a.logger.Info("No nudge targets with resolved credentials found", "reason", processedValue)
+		_ = tekton.AnnotateBuildPipelineRun(a.context, a.pipelineRun, tektonconsts.NudgeProcessedAnnotation, processedValue, a.client)
+		a.emitNudgeCredentialsUnavailableEvents(undeliveredComponents)
 		// No further work will happen for this build PLR; release the finalizer added above.
 		if err := h.RemoveFinalizerFromPipelineRun(a.context, a.client, a.logger, a.pipelineRun, h.NudgePipelineRunFinalizer); err != nil && !clienterrors.IsNotFound(err) {
 			return controller.RequeueWithError(err)
@@ -380,8 +418,61 @@ func (a *Adapter) EnsureNudgePipelineRunsExist() (controller.OperationResult, er
 
 	a.logger.LogAuditEvent("Created nudge PipelineRun for downstream components", a.pipelineRun, h.LogActionAdd,
 		"targets", processedValue)
+	a.emitNudgeCredentialsUnavailableEvents(undeliveredComponents)
 
 	return a.requeueForActiveNudgeBatches(nudgeConfig)
+}
+
+// nudgeCredentialsRetryWindowExpired reports whether the build PipelineRun finished more than
+// nudgeCredentialsRetryWindow ago. Measuring from the completion time means no retry counter has
+// to be stored on the PipelineRun. When no completion time is known, the creation time is used.
+func (a *Adapter) nudgeCredentialsRetryWindowExpired(now time.Time) bool {
+	finishedAt, ok := h.PipelineRunCompletedAt(a.pipelineRun)
+	if !ok {
+		finishedAt = a.pipelineRun.CreationTimestamp.Time
+	}
+	return now.Sub(finishedAt) > nudgeCredentialsRetryWindow
+}
+
+// undeliveredNudgeComponents returns the components reported in credsErr that did not get a
+// nudge target from any authentication method.
+func undeliveredNudgeComponents(components []applicationapiv1alpha1.Component, credsErr *nudging.GitHubAppCredentialsError, targets []nudging.NudgeTarget) []applicationapiv1alpha1.Component {
+	if credsErr == nil || len(credsErr.ComponentNames) == 0 {
+		return nil
+	}
+	failed := make(map[string]bool, len(credsErr.ComponentNames))
+	for _, name := range credsErr.ComponentNames {
+		failed[name] = true
+	}
+	for _, t := range targets {
+		delete(failed, t.ComponentName)
+	}
+	var undelivered []applicationapiv1alpha1.Component
+	for _, comp := range components {
+		if failed[comp.Name] {
+			undelivered = append(undelivered, comp)
+		}
+	}
+	return undelivered
+}
+
+// emitNudgeCredentialsUnavailableEvents records a Warning event on every component whose nudge
+// could not be delivered because GitHub App credentials stayed unavailable for the whole retry
+// window. Event creation is best effort and never blocks nudge processing.
+//
+// The event message deliberately carries no error detail: the underlying GitHub error chain can
+// expose operational information (rate-limit state, API messages) to namespace users, and is
+// already recorded in the controller logs.
+func (a *Adapter) emitNudgeCredentialsUnavailableEvents(components []applicationapiv1alpha1.Component) {
+	for i := range components {
+		comp := &components[i]
+		message := fmt.Sprintf("Nudge from build PipelineRun %s (component %s) was not delivered: "+
+			"GitHub App credentials could not be resolved within %s after the build finished",
+			a.pipelineRun.Name, a.componentName, nudgeCredentialsRetryWindow)
+		if err := h.CreateWarningEvent(a.context, a.client, comp, nudgeCredentialsUnavailableEventReason, message); err != nil {
+			a.logger.Error(err, "Failed to create nudge credentials Warning event", "component.Name", comp.Name)
+		}
+	}
 }
 
 func (a *Adapter) finalizeNudgeProcessedBuildPipelineRun(processedValue string) error {
