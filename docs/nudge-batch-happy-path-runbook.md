@@ -1,6 +1,6 @@
 # Nudge batch Phase 2 happy path (ADR 0072)
 
-Manual verification on a Konflux dev cluster (L5 tenant). Complements the automated happy-path test in `tekton/nudging/nudge_batch_happy_path_test.go`, which runs in CI on every PR.
+Manual verification on a Konflux dev cluster (L5 tenant). Complements the automated happy-path test in `tekton/nudging/nudge_batch_fire_test.go`, which runs in CI on every PR.
 
 ## Prerequisites
 
