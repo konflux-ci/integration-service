@@ -632,7 +632,8 @@ var _ = Describe("Integration pipeline", Ordered, func() {
 			newStyleSnapshot.Labels[keys.BuildComponent().New] = hasComp.Name
 
 			newIntegrationPipelineRun.WithSnapshot(newStyleSnapshot, integrationTestScenarioGit)
-			Expect(newIntegrationPipelineRun.Labels[gitops.SnapshotComponentLabel]).To(Equal(hasComp.Name))
+			Expect(newIntegrationPipelineRun.Labels).To(HaveKeyWithValue(keys.BuildComponent().New, hasComp.Name))
+			Expect(newIntegrationPipelineRun.Labels).NotTo(HaveKey(keys.BuildComponent().Old))
 		})
 
 		It("writes new-style Integration PipelineRun metadata for a new-style Snapshot", func() {
@@ -642,10 +643,12 @@ var _ = Describe("Integration pipeline", Ordered, func() {
 				keys.Test("type").New:                  gitops.SnapshotComponentType,
 				keys.PAC("event-type").New:             gitops.PipelineAsCodePullRequestType,
 				keys.BuildComponent().New:              hasComp.Name,
+				keys.PrefixBuildNew + "/target-branch": "main",
 				keys.PrefixCustomNew + "/custom_label": "custom-label",
 			}
 			newStyleSnapshot.Annotations = map[string]string{
-				keys.Test("status").New: "ready",
+				keys.Test("status").New:       "ready",
+				keys.PrefixBuildNew + "/repo": "https://github.com/example/repo",
 			}
 
 			pipelineRun := (&tekton.IntegrationPipelineRun{}).
@@ -664,6 +667,27 @@ var _ = Describe("Integration pipeline", Ordered, func() {
 			Expect(pipelineRun.Labels).NotTo(HaveKey(keys.PAC("event-type").Old))
 			Expect(pipelineRun.Labels).To(HaveKeyWithValue(keys.PrefixCustomNew+"/custom_label", "custom-label"))
 			Expect(pipelineRun.Labels).NotTo(HaveKey(gitops.CustomLabelPrefix + "/custom_label"))
+			Expect(pipelineRun.Labels).To(HaveKeyWithValue(keys.BuildComponent().New, hasComp.Name))
+			Expect(pipelineRun.Labels).NotTo(HaveKey(keys.BuildComponent().Old))
+			Expect(pipelineRun.Labels).To(HaveKeyWithValue(keys.PrefixBuildNew+"/target-branch", "main"))
+			Expect(pipelineRun.Labels).NotTo(HaveKey(keys.PrefixBuildOld + "/target-branch"))
+			Expect(pipelineRun.Annotations).To(HaveKeyWithValue(keys.PrefixBuildNew+"/repo", "https://github.com/example/repo"))
+			Expect(pipelineRun.Annotations).NotTo(HaveKey(keys.PrefixBuildOld + "/repo"))
+		})
+
+		It("copies old-style build metadata onto the integration PipelineRun", func() {
+			oldSnapshot := hasSnapshot.DeepCopy()
+			oldSnapshot.Labels[keys.PrefixBuildOld+"/target-branch"] = "old-branch"
+			oldSnapshot.Annotations[keys.PrefixBuildOld+"/repo"] = "old-repo"
+
+			pipelineRun := (&tekton.IntegrationPipelineRun{}).WithSnapshot(oldSnapshot, integrationTestScenarioGit)
+
+			Expect(pipelineRun.Labels).To(HaveKeyWithValue(keys.BuildComponent().Old, hasComp.Name))
+			Expect(pipelineRun.Labels).NotTo(HaveKey(keys.BuildComponent().New))
+			Expect(pipelineRun.Labels).To(HaveKeyWithValue(keys.PrefixBuildOld+"/target-branch", "old-branch"))
+			Expect(pipelineRun.Labels).NotTo(HaveKey(keys.PrefixBuildNew + "/target-branch"))
+			Expect(pipelineRun.Annotations).To(HaveKeyWithValue(keys.PrefixBuildOld+"/repo", "old-repo"))
+			Expect(pipelineRun.Annotations).NotTo(HaveKey(keys.PrefixBuildNew + "/repo"))
 		})
 
 		It("can append labels coming from Application to IntegrationPipelineRun and making sure that label values matches application", func() {
