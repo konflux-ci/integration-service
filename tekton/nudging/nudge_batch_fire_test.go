@@ -234,13 +234,46 @@ var _ = Describe("Nudge batch firing integration", func() {
 		Expect(nudgePLR.Annotations[tektonconsts.NudgeBatchIDAnnotation]).To(Equal(batchID))
 	})
 
+	It("fires a partial batch with only sources that have no current failure", func() {
+		buildPLR := buildPLRWithResults("partial-batch-build-plr")
+		nudgeConfig := dueBatchNudgeConfig(buildPLR.Name)
+		batch := &nudgeConfig.Status.ActiveBatches[0]
+		batch.Accumulated = append(batch.Accumulated, v1beta2.AccumulatedEntry{
+			From:                    "failed-source",
+			ImageDigest:             "sha256:failed",
+			BuildPipelineRun:        "failed-build-plr",
+			CapturedAt:              metav1.Now(),
+			BuildServiceAccountName: defaultSAName,
+		})
+		batch.Failed = []v1beta2.FailedEntry{{
+			From:             "failed-source",
+			BuildPipelineRun: "failed-build-plr",
+			Reason:           "build failed",
+			CapturedAt:       metav1.Now(),
+		}}
+		partialPolicy := v1beta2.FailurePolicyProceedWithPartial
+		nudgeConfig.Spec.TargetConfig[0].BatchPolicy.FailurePolicy = &partialPolicy
+		c := batchFireClient(nudgeConfig, buildPLR)
+
+		err := ProcessDueNudgeBatches(ctx, c, nudgeConfig)
+		Expect(err).NotTo(HaveOccurred())
+
+		nudgePLR := &tektonv1.PipelineRun{}
+		Expect(c.Get(ctx, types.NamespacedName{Name: BatchedNudgePipelineRunName(batchID, 0), Namespace: namespace}, nudgePLR)).To(Succeed())
+		Expect(nudgePLR.Annotations[tektonconsts.NudgingComponentsAnnotation]).To(Equal(`["nudge-source"]`))
+		Expect(nudgePLR.Annotations[tektonconsts.NudgingDigestsAnnotation]).To(Equal(`{"nudge-source":"sha256:abc123"}`))
+	})
+
 	It("reconciles when the planned nudge PipelineRun already exists", func() {
 		buildPLR := buildPLRWithResults("batch-build-plr-existing")
 		nudgeConfig := dueBatchNudgeConfig(buildPLR.Name)
 		plannedName := BatchedNudgePipelineRunName(batchID, 0)
-		existing := &tektonv1.PipelineRun{
-			ObjectMeta: metav1.ObjectMeta{Name: plannedName, Namespace: namespace},
-		}
+		existing := &tektonv1.PipelineRun{ObjectMeta: metav1.ObjectMeta{
+			Name:        plannedName,
+			Namespace:   namespace,
+			Labels:      map[string]string{tektonconsts.NudgeTypeLabel: tektonconsts.NudgePipelineRunTypeValue},
+			Annotations: map[string]string{tektonconsts.NudgeBatchIDAnnotation: batchID},
+		}}
 		c := batchFireClient(nudgeConfig, buildPLR, existing)
 
 		Expect(ProcessDueNudgeBatches(ctx, c, nudgeConfig)).To(Succeed())
@@ -248,7 +281,7 @@ var _ = Describe("Nudge batch firing integration", func() {
 		updated := &v1beta2.NudgeConfig{}
 		Expect(c.Get(ctx, types.NamespacedName{Name: nudgeConfig.Name, Namespace: namespace}, updated)).To(Succeed())
 		Expect(updated.Status.ActiveBatches[0].Phase).To(Equal(v1beta2.BatchPhaseFiring))
-		Expect(updated.Status.ActiveBatches[0].Message).To(ContainSubstring("fired with 1 accumulated build"))
+		Expect(updated.Status.ActiveBatches[0].Message).To(ContainSubstring("reconciled existing nudge PipelineRun with 1 eligible build"))
 	})
 
 	It("repairs a pending planned nudge PipelineRun instead of treating the batch as fired", func() {
@@ -258,8 +291,10 @@ var _ = Describe("Nudge batch firing integration", func() {
 		// The fake client assigns no UID, so give the pending PipelineRun one: the adopted
 		// PipelineRun's UID is what the repair must put in the support objects' owner references.
 		pending := &tektonv1.PipelineRun{
-			ObjectMeta: metav1.ObjectMeta{Name: plannedName, Namespace: namespace, UID: "uid-batch-planned"},
-			Spec:       tektonv1.PipelineRunSpec{Status: tektonv1.PipelineRunSpecStatusPending},
+			ObjectMeta: metav1.ObjectMeta{Name: plannedName, Namespace: namespace, UID: "uid-batch-planned",
+				Labels:      map[string]string{tektonconsts.NudgeTypeLabel: tektonconsts.NudgePipelineRunTypeValue},
+				Annotations: map[string]string{tektonconsts.NudgeBatchIDAnnotation: batchID}},
+			Spec: tektonv1.PipelineRunSpec{Status: tektonv1.PipelineRunSpecStatusPending},
 		}
 		c := batchFireClient(nudgeConfig, buildPLR, pending)
 
@@ -291,9 +326,9 @@ var _ = Describe("Nudge batch firing integration", func() {
 		buildPLR := buildPLRWithResults("batch-build-plr-running")
 		nudgeConfig := dueBatchNudgeConfig(buildPLR.Name)
 		plannedName := BatchedNudgePipelineRunName(batchID, 0)
-		running := &tektonv1.PipelineRun{
-			ObjectMeta: metav1.ObjectMeta{Name: plannedName, Namespace: namespace, UID: "uid-batch-running"},
-		}
+		running := &tektonv1.PipelineRun{ObjectMeta: metav1.ObjectMeta{Name: plannedName, Namespace: namespace, UID: "uid-batch-running",
+			Labels:      map[string]string{tektonconsts.NudgeTypeLabel: tektonconsts.NudgePipelineRunTypeValue},
+			Annotations: map[string]string{tektonconsts.NudgeBatchIDAnnotation: batchID}}}
 		c := batchFireClient(nudgeConfig, buildPLR, running)
 
 		Expect(ProcessDueNudgeBatches(ctx, c, nudgeConfig)).To(Succeed())
@@ -381,7 +416,80 @@ var _ = Describe("Nudge batch firing integration", func() {
 		updated := &v1beta2.NudgeConfig{}
 		Expect(c.Get(ctx, types.NamespacedName{Name: nudgeConfig.Name, Namespace: namespace}, updated)).To(Succeed())
 		Expect(updated.Status.ActiveBatches[0].Phase).To(Equal(v1beta2.BatchPhaseFailed))
-		Expect(updated.Status.ActiveBatches[0].Message).To(ContainSubstring("no successful builds"))
+		Expect(updated.Status.ActiveBatches[0].Message).To(ContainSubstring("no eligible successful builds"))
+	})
+
+	It("marks an all-failed partial batch as failed without creating a PipelineRun", func() {
+		now := metav1.Now()
+		pastFire := metav1.NewTime(now.Add(-time.Minute))
+		partialPolicy := v1beta2.FailurePolicyProceedWithPartial
+		nudgeConfig := &v1beta2.NudgeConfig{
+			ObjectMeta: metav1.ObjectMeta{Name: v1beta2.NudgeConfigSingletonName, Namespace: namespace},
+			Spec: v1beta2.NudgeConfigSpec{
+				TargetConfig: []v1beta2.TargetConfig{{
+					Target:      targetName,
+					BatchPolicy: &v1beta2.BatchPolicy{FailurePolicy: &partialPolicy},
+				}},
+			},
+			Status: v1beta2.NudgeConfigStatus{ActiveBatches: []v1beta2.ActiveBatch{{
+				Target:       targetName,
+				BatchID:      "all-failed-batch",
+				Phase:        v1beta2.BatchPhaseAccumulating,
+				FireAt:       &pastFire,
+				HardDeadline: metav1.NewTime(now.Add(time.Hour)),
+				Failed: []v1beta2.FailedEntry{{
+					From:             sourceName,
+					BuildPipelineRun: "failed-build-plr",
+					Reason:           "build failed",
+					CapturedAt:       now,
+				}},
+			}}},
+		}
+		c := batchFireClient(nudgeConfig)
+
+		err := ProcessDueNudgeBatches(ctx, c, nudgeConfig)
+		Expect(err).NotTo(HaveOccurred())
+
+		updated := &v1beta2.NudgeConfig{}
+		Expect(c.Get(ctx, types.NamespacedName{Name: nudgeConfig.Name, Namespace: namespace}, updated)).To(Succeed())
+		Expect(updated.Status.ActiveBatches[0].Phase).To(Equal(v1beta2.BatchPhaseFailed))
+		Expect(updated.Status.ActiveBatches[0].Message).To(ContainSubstring("no eligible successful builds"))
+		nudgePLR := &tektonv1.PipelineRun{}
+		Expect(c.Get(ctx, types.NamespacedName{Name: BatchedNudgePipelineRunName("all-failed-batch", 0), Namespace: namespace}, nudgePLR)).NotTo(Succeed())
+	})
+
+	It("marks a due batch as failed when every accumulated source has a current failure", func() {
+		now := metav1.Now()
+		pastDeadline := metav1.NewTime(now.Add(-time.Minute))
+		nudgeConfig := &v1beta2.NudgeConfig{
+			ObjectMeta: metav1.ObjectMeta{Name: v1beta2.NudgeConfigSingletonName, Namespace: namespace},
+			Status: v1beta2.NudgeConfigStatus{ActiveBatches: []v1beta2.ActiveBatch{{
+				Target:       targetName,
+				BatchID:      "superseded-success-batch",
+				Phase:        v1beta2.BatchPhaseAccumulating,
+				HardDeadline: pastDeadline,
+				Accumulated: []v1beta2.AccumulatedEntry{{
+					From: sourceName, ImageDigest: sampleDigest, BuildPipelineRun: "previous-success", CapturedAt: now,
+				}},
+				Failed: []v1beta2.FailedEntry{{
+					From: sourceName, BuildPipelineRun: "current-failure", Reason: "build failed", CapturedAt: now,
+				}},
+			}}},
+		}
+		c := batchFireClient(nudgeConfig)
+
+		Expect(ProcessDueNudgeBatches(ctx, c, nudgeConfig)).To(Succeed())
+
+		updated := &v1beta2.NudgeConfig{}
+		Expect(c.Get(ctx, types.NamespacedName{Name: nudgeConfig.Name, Namespace: namespace}, updated)).To(Succeed())
+		Expect(updated.Status.ActiveBatches[0].Phase).To(Equal(v1beta2.BatchPhaseFailed))
+		Expect(updated.Status.ActiveBatches[0].Message).To(ContainSubstring("no eligible successful builds"))
+		nudgePLR := &tektonv1.PipelineRun{}
+		Expect(c.Get(ctx, types.NamespacedName{Name: BatchedNudgePipelineRunName("superseded-success-batch", 0), Namespace: namespace}, nudgePLR)).NotTo(Succeed())
+
+		Expect(ProcessDueNudgeBatches(ctx, c, updated)).To(Succeed())
+		Expect(c.Get(ctx, types.NamespacedName{Name: nudgeConfig.Name, Namespace: namespace}, updated)).To(Succeed())
+		Expect(updated.Status.ActiveBatches[0].Phase).To(Equal(v1beta2.BatchPhaseFailed))
 	})
 
 	It("force-fires an accumulating batch through spec.actions.forceFire", func() {
@@ -427,12 +535,74 @@ var _ = Describe("Nudge batch firing integration", func() {
 		Expect(updated.Status.ActiveBatches[0].Phase).To(Equal(v1beta2.BatchPhaseFiring))
 	})
 
-	It("retries a failed nudge PipelineRun while the batch is still firing", func() {
+	It("force-fires a failed batch as a fresh PipelineRun attempt", func() {
+		buildPLR := buildPLRWithResults("force-failed-build-plr")
+		now := metav1.Now()
+		batchID := "force-failed-batch"
+		terminalName := BatchedNudgePipelineRunName(batchID, 3)
+		terminal := &tektonv1.PipelineRun{ObjectMeta: metav1.ObjectMeta{
+			Name: terminalName, Namespace: namespace,
+			Labels:      map[string]string{tektonconsts.NudgeTypeLabel: tektonconsts.NudgePipelineRunTypeValue},
+			Annotations: map[string]string{tektonconsts.NudgeBatchIDAnnotation: batchID},
+		}}
+		terminal.Status.MarkFailed(tektonv1.PipelineRunReasonFailed.String(), "failed")
+		nudgeConfig := &v1beta2.NudgeConfig{
+			ObjectMeta: metav1.ObjectMeta{Name: v1beta2.NudgeConfigSingletonName, Namespace: namespace},
+			Spec:       v1beta2.NudgeConfigSpec{TargetConfig: []v1beta2.TargetConfig{{Target: targetName, BatchPolicy: &v1beta2.BatchPolicy{}}}, Actions: &v1beta2.Actions{ForceFire: &v1beta2.ForceFireAction{Target: targetName}}},
+			Status: v1beta2.NudgeConfigStatus{ActiveBatches: []v1beta2.ActiveBatch{{
+				Target: targetName, BatchID: batchID, Phase: v1beta2.BatchPhaseFailed, RetryCount: 3,
+				CreatedAt: now, HardDeadline: metav1.NewTime(now.Add(time.Hour)), NudgePipelineRun: terminalName,
+				Accumulated: []v1beta2.AccumulatedEntry{{From: sourceName, ImageDigest: sampleDigest, BuildPipelineRun: buildPLR.Name, CapturedAt: now, BuildServiceAccountName: defaultSAName}},
+			}}},
+		}
+		c := batchFireClient(nudgeConfig, buildPLR, terminal)
+
+		Expect(ProcessForceFireAction(ctx, c, nudgeConfig)).To(Succeed())
+		updated := &v1beta2.NudgeConfig{}
+		Expect(c.Get(ctx, client.ObjectKeyFromObject(nudgeConfig), updated)).To(Succeed())
+		Expect(updated.Status.ActiveBatches[0].RetryCount).To(Equal(int32(4)))
+		Expect(updated.Status.ActiveBatches[0].NudgePipelineRun).To(Equal(BatchedNudgePipelineRunName(batchID, 4)))
+		fresh := &tektonv1.PipelineRun{}
+		Expect(c.Get(ctx, types.NamespacedName{Name: BatchedNudgePipelineRunName(batchID, 4), Namespace: namespace}, fresh)).To(Succeed())
+	})
+
+	It("fails an accepted force-fire action with no eligible successful sources", func() {
+		now := metav1.Now()
+		nudgeConfig := &v1beta2.NudgeConfig{
+			ObjectMeta: metav1.ObjectMeta{Name: v1beta2.NudgeConfigSingletonName, Namespace: namespace},
+			Spec: v1beta2.NudgeConfigSpec{Actions: &v1beta2.Actions{
+				ForceFire: &v1beta2.ForceFireAction{Target: targetName},
+			}},
+			Status: v1beta2.NudgeConfigStatus{ActiveBatches: []v1beta2.ActiveBatch{{
+				Target: targetName, BatchID: "force-empty-batch", Phase: v1beta2.BatchPhaseAccumulating,
+				Accumulated: []v1beta2.AccumulatedEntry{{
+					From: sourceName, ImageDigest: sampleDigest, BuildPipelineRun: "previous-success", CapturedAt: now,
+				}},
+				Failed: []v1beta2.FailedEntry{{
+					From: sourceName, BuildPipelineRun: "current-failure", Reason: "build failed", CapturedAt: now,
+				}},
+			}}},
+		}
+		c := batchFireClient(nudgeConfig)
+
+		Expect(ProcessForceFireAction(ctx, c, nudgeConfig)).To(Succeed())
+
+		updated := &v1beta2.NudgeConfig{}
+		Expect(c.Get(ctx, types.NamespacedName{Name: nudgeConfig.Name, Namespace: namespace}, updated)).To(Succeed())
+		Expect(updated.Status.ActiveBatches[0].Phase).To(Equal(v1beta2.BatchPhaseFailed))
+		Expect(updated.Status.ActiveBatches[0].Message).To(ContainSubstring("no eligible successful builds"))
+		nudgePLR := &tektonv1.PipelineRun{}
+		Expect(c.Get(ctx, types.NamespacedName{Name: BatchedNudgePipelineRunName("force-empty-batch", 0), Namespace: namespace}, nudgePLR)).NotTo(Succeed())
+	})
+
+	It("retries failed nudge PipelineRuns three times before failing the batch", func() {
 		buildPLR := buildPLRWithResults("retry-build-plr")
 		now := metav1.Now()
 		plrName := BatchedNudgePipelineRunName("retry-batch", 0)
 		failedPLR := &tektonv1.PipelineRun{
-			ObjectMeta: metav1.ObjectMeta{Name: plrName, Namespace: namespace},
+			ObjectMeta: metav1.ObjectMeta{Name: plrName, Namespace: namespace,
+				Labels:      map[string]string{tektonconsts.NudgeTypeLabel: tektonconsts.NudgePipelineRunTypeValue},
+				Annotations: map[string]string{tektonconsts.NudgeBatchIDAnnotation: "retry-batch"}},
 			Status: tektonv1.PipelineRunStatus{
 				PipelineRunStatusFields: tektonv1.PipelineRunStatusFields{CompletionTime: &now},
 				Status: v1.Status{Conditions: v1.Conditions{{
@@ -470,5 +640,74 @@ var _ = Describe("Nudge batch firing integration", func() {
 		Expect(c.Get(ctx, types.NamespacedName{Name: nudgeConfig.Name, Namespace: namespace}, updated)).To(Succeed())
 		Expect(updated.Status.ActiveBatches[0].RetryCount).To(Equal(int32(1)))
 		Expect(updated.Status.ActiveBatches[0].NudgePipelineRun).To(Equal(BatchedNudgePipelineRunName("retry-batch", 1)))
+
+		for retryAttempt := int32(1); retryAttempt <= 3; retryAttempt++ {
+			retryPLR := &tektonv1.PipelineRun{}
+			Expect(c.Get(ctx, types.NamespacedName{
+				Name:      BatchedNudgePipelineRunName("retry-batch", retryAttempt),
+				Namespace: namespace,
+			}, retryPLR)).To(Succeed())
+			retryPLR.Status = tektonv1.PipelineRunStatus{
+				PipelineRunStatusFields: tektonv1.PipelineRunStatusFields{CompletionTime: &now},
+				Status: v1.Status{Conditions: v1.Conditions{{
+					Type:   apis.ConditionSucceeded,
+					Status: "False",
+				}}},
+			}
+			Expect(c.Status().Update(ctx, retryPLR)).To(Succeed())
+
+			Expect(ProcessFiringNudgeBatches(ctx, c, nudgeConfig)).To(Succeed())
+			Expect(c.Get(ctx, types.NamespacedName{Name: nudgeConfig.Name, Namespace: namespace}, updated)).To(Succeed())
+
+			if retryAttempt < 3 {
+				Expect(updated.Status.ActiveBatches[0].Phase).To(Equal(v1beta2.BatchPhaseFiring))
+				Expect(updated.Status.ActiveBatches[0].RetryCount).To(Equal(retryAttempt + 1))
+				Expect(updated.Status.ActiveBatches[0].NudgePipelineRun).To(Equal(BatchedNudgePipelineRunName("retry-batch", retryAttempt+1)))
+			} else {
+				Expect(updated.Status.ActiveBatches[0].Phase).To(Equal(v1beta2.BatchPhaseFailed))
+				Expect(updated.Status.ActiveBatches[0].RetryCount).To(Equal(int32(3)))
+				Expect(updated.Status.ActiveBatches[0].Message).To(ContainSubstring("failed after 3 retries"))
+			}
+		}
+	})
+
+	It("completes a batch when its second retry succeeds", func() {
+		now := metav1.Now()
+		plrName := BatchedNudgePipelineRunName("retry-success", 2)
+		succeededPLR := &tektonv1.PipelineRun{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      plrName,
+				Namespace: namespace,
+				Annotations: map[string]string{
+					tektonconsts.NudgeBatchIDAnnotation: "retry-success",
+				},
+				Labels: map[string]string{tektonconsts.NudgeTypeLabel: tektonconsts.NudgePipelineRunTypeValue},
+			},
+			Status: tektonv1.PipelineRunStatus{
+				PipelineRunStatusFields: tektonv1.PipelineRunStatusFields{CompletionTime: &now},
+				Status: v1.Status{Conditions: v1.Conditions{{
+					Type:   apis.ConditionSucceeded,
+					Status: "True",
+				}}},
+			},
+		}
+		nudgeConfig := &v1beta2.NudgeConfig{
+			ObjectMeta: metav1.ObjectMeta{Name: v1beta2.NudgeConfigSingletonName, Namespace: namespace},
+			Status: v1beta2.NudgeConfigStatus{ActiveBatches: []v1beta2.ActiveBatch{{
+				Target:           targetName,
+				BatchID:          "retry-success",
+				Phase:            v1beta2.BatchPhaseFiring,
+				RetryCount:       2,
+				NudgePipelineRun: plrName,
+			}}},
+		}
+		c := batchFireClient(nudgeConfig, succeededPLR)
+
+		Expect(ProcessFiringNudgeBatches(ctx, c, nudgeConfig)).To(Succeed())
+
+		updated := &v1beta2.NudgeConfig{}
+		Expect(c.Get(ctx, types.NamespacedName{Name: nudgeConfig.Name, Namespace: namespace}, updated)).To(Succeed())
+		Expect(updated.Status.ActiveBatches[0].Phase).To(Equal(v1beta2.BatchPhaseCompleted))
+		Expect(updated.Status.ActiveBatches[0].RetryCount).To(Equal(int32(2)))
 	})
 })

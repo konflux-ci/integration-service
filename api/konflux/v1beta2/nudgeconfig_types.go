@@ -536,6 +536,12 @@ type ActiveBatch struct {
 	// Persisted to survive controller restarts.
 	// +optional
 	RetryCount int32 `json:"retryCount,omitempty"`
+
+	// CreationRetryCount is the number of retryable failures before the batch nudge
+	// PipelineRun was created. It is separate from RetryCount, which tracks completed
+	// delivery attempts.
+	// +optional
+	CreationRetryCount int32 `json:"creationRetryCount,omitempty"`
 }
 
 // NudgeConfigStatus defines the observed state of NudgeConfig.
@@ -559,6 +565,19 @@ type NudgeConfigStatus struct {
 	// +kubebuilder:validation:MaxItems=360
 	// +optional
 	ActiveBatches []ActiveBatch `json:"activeBatches,omitempty"`
+
+	// ForceFireReceipt binds an in-flight forceFire action to its selected batch.
+	// It is controller-owned status rather than a GitOps-owned annotation.
+	// +optional
+	ForceFireReceipt *ForceFireReceipt `json:"forceFireReceipt,omitempty"`
+}
+
+// ForceFireReceipt records the durable selection and terminal outcome of a forceFire action.
+type ForceFireReceipt struct {
+	Request     string `json:"request"`
+	BatchID     string `json:"batchID,omitempty"`
+	Disposition string `json:"disposition,omitempty"`
+	Message     string `json:"message,omitempty"`
 }
 
 // +kubebuilder:object:root=true

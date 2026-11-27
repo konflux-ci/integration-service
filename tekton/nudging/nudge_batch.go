@@ -18,7 +18,10 @@ package nudging
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/json"
 	"fmt"
+	"reflect"
 	"strings"
 	"time"
 
@@ -36,7 +39,12 @@ import (
 	logger "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
-const maxBatchNudgePLRRetries = 3
+const (
+	maxBatchNudgePLRRetries      = 3
+	maxBatchNudgeCreationRetries = 3
+	// completedBatchTTL is how long a Completed batch is retained in activeBatches for observability.
+	completedBatchTTL = 24 * time.Hour
+)
 
 // RecordBuildForBatchedNudge records a successful source build against the target's open batch
 // window (ADR-0072). When no batch exists yet, it creates one with fireAt=now+debounce and
@@ -77,50 +85,160 @@ func RecordFailedBuildForBatchedNudge(
 	return recordFailureForBatchedNudge(ctx, c, nudgeConfig, targetName, sourceComponentName, sourceRef, reason)
 }
 
-// ProcessForceFireAction immediately fires the batch selected by spec.actions.forceFire.
+// ForceFireDisposition describes the durable outcome of a one-shot request.
+type ForceFireDisposition string
+
+const (
+	ForceFireNone       ForceFireDisposition = "None"
+	ForceFireApplied    ForceFireDisposition = "Applied"
+	ForceFireRejected   ForceFireDisposition = "Rejected"
+	ForceFireIgnored    ForceFireDisposition = "Ignored"
+	ForceFireSuperseded ForceFireDisposition = "Superseded"
+)
+
+// ForceFireResult separates terminal action outcomes from operational errors. The caller
+// may consume Applied, Rejected and Ignored requests after persisting their conditions.
+// A non-nil error means retain the request and retry; it must never become a rejection.
+type ForceFireResult struct {
+	Disposition ForceFireDisposition `json:"disposition,omitempty"`
+	Message     string               `json:"message,omitempty"`
+}
+
+// forceFireReceipt binds an observed request to one batch before creating any objects.
+// It survives uncertain API responses and a failed action clear, even if the batch
+// completes and a subsequent batch starts accepting builds before the retry.
+func receiptResult(receipt *v1beta2.ForceFireReceipt) ForceFireResult {
+	return ForceFireResult{Disposition: ForceFireDisposition(receipt.Disposition), Message: receipt.Message}
+}
+
+func setReceiptResult(receipt *v1beta2.ForceFireReceipt, result ForceFireResult) {
+	receipt.Disposition = string(result.Disposition)
+	receipt.Message = result.Message
+}
+
+func sameForceFireRequest(observed, latest *v1beta2.NudgeConfig) bool {
+	return observed.UID == latest.UID &&
+		reflect.DeepEqual(observed.Spec.Actions, latest.Spec.Actions)
+}
+
+// ProcessForceFireAction retains the original error-based API for existing callers.
+// Controllers should use ProcessForceFireActionResult to distinguish rejected requests
+// from API failures and must only consume terminal outcomes.
 func ProcessForceFireAction(ctx context.Context, c client.Client, nudgeConfig *v1beta2.NudgeConfig) error {
-	if nudgeConfig.Spec.Actions == nil || nudgeConfig.Spec.Actions.ForceFire == nil {
+	result, err := ProcessForceFireActionResult(ctx, c, nudgeConfig)
+	if err != nil {
+		return err
+	}
+	switch result.Disposition {
+	case ForceFireRejected:
+		return fmt.Errorf("%s", result.Message)
+	case ForceFireIgnored:
+		return fmt.Errorf("%w: %s", ErrForceFireIgnored, result.Message)
+	default:
 		return nil
 	}
-	action := nudgeConfig.Spec.Actions.ForceFire
-	includePartial := true
-	if action.IncludePartial != nil {
-		includePartial = *action.IncludePartial
+}
+
+// ProcessForceFireActionResult processes the captured request only while its generation
+// and action still match. A durable receipt keeps retries on the originally selected
+// batch. includePartial defaults to true, using the same batch and PLR machinery as
+// scheduled firing. API failures leave the action and batch available for recovery.
+func ProcessForceFireActionResult(ctx context.Context, c client.Client, nudgeConfig *v1beta2.NudgeConfig) (ForceFireResult, error) {
+	result := ForceFireResult{Disposition: ForceFireNone}
+	if nudgeConfig.Spec.Actions == nil || nudgeConfig.Spec.Actions.ForceFire == nil {
+		return result, nil
 	}
-
-	return retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+	action := nudgeConfig.Spec.Actions.ForceFire
+	includePartial := action.IncludePartial == nil || *action.IncludePartial
+	actionJSON, err := json.Marshal(action)
+	if err != nil {
+		return result, fmt.Errorf("encoding forceFire action: %w", err)
+	}
+	request := fmt.Sprintf("%x", sha256.Sum256(actionJSON))
+	err = retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+		// A conflict may follow a successful PLR create. Reset the result and refetch
+		// the receipt instead of selecting a different batch or losing the request.
+		result = ForceFireResult{Disposition: ForceFireNone}
 		latest := &v1beta2.NudgeConfig{}
-		if err := c.Get(ctx, types.NamespacedName{Name: nudgeConfig.Name, Namespace: nudgeConfig.Namespace}, latest); err != nil {
+		if err := c.Get(ctx, client.ObjectKeyFromObject(nudgeConfig), latest); err != nil {
 			return err
 		}
-		original := latest.DeepCopy()
-
-		if isBatchFiringForTarget(latest.Status.ActiveBatches, action.Target) {
-			return fmt.Errorf("%w: batch for target %q is already firing", ErrForceFireIgnored, action.Target)
+		if !sameForceFireRequest(nudgeConfig, latest) {
+			result.Disposition = ForceFireSuperseded
+			return nil
 		}
-
-		batchIdx, batch := findForceFireBatch(latest.Status.ActiveBatches, action.Target, includePartial)
-		if batch == nil {
-			return fmt.Errorf("no force-fireable batch for target %q", action.Target)
-		}
-		if len(batch.Accumulated) == 0 {
-			return fmt.Errorf("active batch for target %q has no accumulated builds", action.Target)
-		}
-		if err := validateForceFireBatch(batch, includePartial); err != nil {
-			return err
-		}
-		if err := fireBatch(ctx, c, latest, batch); err != nil {
-			batch.Phase = v1beta2.BatchPhaseFailed
-			batch.Message = err.Error()
-			latest.Status.ActiveBatches[batchIdx] = *batch
-			if patchErr := c.Status().Patch(ctx, latest, client.MergeFromWithOptions(original, client.MergeFromWithOptimisticLock{})); patchErr != nil {
-				return patchErr
+		receipt := latest.Status.ForceFireReceipt
+		if receipt == nil || receipt.Request != request {
+			receipt = &v1beta2.ForceFireReceipt{Request: request}
+			switch {
+			case isBatchFiringForTarget(latest.Status.ActiveBatches, action.Target):
+				setReceiptResult(receipt, ForceFireResult{Disposition: ForceFireIgnored, Message: fmt.Sprintf("batch for target %q is already firing", action.Target)})
+			default:
+				_, batch := findForceFireBatch(latest.Status.ActiveBatches, action.Target, includePartial)
+				if batch == nil {
+					setReceiptResult(receipt, ForceFireResult{Disposition: ForceFireRejected, Message: fmt.Sprintf("no force-fireable batch for target %q", action.Target)})
+				} else if err := validateForceFireBatch(batch, includePartial); err != nil {
+					setReceiptResult(receipt, ForceFireResult{Disposition: ForceFireRejected, Message: err.Error()})
+				} else {
+					receipt.BatchID = batch.BatchID
+				}
 			}
-			return err
+			original := latest.DeepCopy()
+			latest.Status.ForceFireReceipt = receipt
+			if err := c.Status().Patch(ctx, latest, client.MergeFromWithOptions(original, client.MergeFromWithOptimisticLock{})); err != nil {
+				return err
+			}
 		}
-		latest.Status.ActiveBatches[batchIdx] = *batch
-		return c.Status().Patch(ctx, latest, client.MergeFromWithOptions(original, client.MergeFromWithOptimisticLock{}))
+		if receipt.Disposition != "" {
+			result = receiptResult(receipt)
+			return nil
+		}
+		result.Disposition = ForceFireApplied
+		for i := range latest.Status.ActiveBatches {
+			batch := &latest.Status.ActiveBatches[i]
+			if batch.BatchID != receipt.BatchID || batch.Target != action.Target {
+				continue
+			}
+			if batch.Phase == v1beta2.BatchPhaseFiring || batch.Phase == v1beta2.BatchPhaseCompleted {
+				return nil
+			}
+			if batch.Phase == v1beta2.BatchPhaseFailed {
+				// A force-fire is an explicit new delivery attempt. Do not adopt the
+				// terminal PipelineRun recorded by the failed attempt.
+				batch.RetryCount++
+				batch.NudgePipelineRun = ""
+			}
+			// Revalidate failures added since the claim rather than overriding the
+			// explicit includePartial=false choice during recovery.
+			if err := validateForceFireBatch(batch, includePartial); err != nil {
+				original := latest.DeepCopy()
+				setReceiptResult(receipt, ForceFireResult{Disposition: ForceFireRejected, Message: err.Error()})
+				latest.Status.ForceFireReceipt = receipt
+				if err := c.Status().Patch(ctx, latest, client.MergeFromWithOptions(original, client.MergeFromWithOptimisticLock{})); err != nil {
+					return err
+				}
+				result = receiptResult(receipt)
+				return nil
+			}
+			original := latest.DeepCopy()
+			if len(eligibleAccumulatedEntries(batch)) == 0 {
+				failEmptyEligibleBatch(batch)
+			} else if err := fireBatch(ctx, c, latest, batch); err != nil {
+				// Creation may have succeeded despite an error response. Keep the
+				// persisted batch intact; fireBatch adopts its deterministic PLR on retry.
+				return err
+			}
+			ReconcileBatchBlockedCondition(latest, metav1.Now())
+			return c.Status().Patch(ctx, latest, client.MergeFromWithOptions(original, client.MergeFromWithOptimisticLock{}))
+		}
+		// A removed batch has already completed/expired. Never redirect its old
+		// request to the next batch for the same target.
+		return nil
 	})
+	if err != nil {
+		return ForceFireResult{}, err
+	}
+	return result, nil
 }
 
 // SetForceFireRejectedCondition records why a forceFire action could not be applied.
@@ -158,10 +276,10 @@ func ClearForceFireIgnoredCondition(ctx context.Context, c client.Client, nudgeC
 		if err := c.Get(ctx, types.NamespacedName{Name: nudgeConfig.Name, Namespace: nudgeConfig.Namespace}, latest); err != nil {
 			return err
 		}
+		original := latest.DeepCopy()
 		if !clearNudgeConfigCondition(latest, v1beta2.NudgeConfigConditionForceFireIgnored) {
 			return nil
 		}
-		original := latest.DeepCopy()
 		return c.Status().Patch(ctx, latest, client.MergeFromWithOptions(original, client.MergeFromWithOptimisticLock{}))
 	})
 }
@@ -173,27 +291,45 @@ func ClearForceFireRejectedCondition(ctx context.Context, c client.Client, nudge
 		if err := c.Get(ctx, types.NamespacedName{Name: nudgeConfig.Name, Namespace: nudgeConfig.Namespace}, latest); err != nil {
 			return err
 		}
+		original := latest.DeepCopy()
 		if !clearNudgeConfigCondition(latest, v1beta2.NudgeConfigConditionForceFireRejected) {
 			return nil
 		}
-		original := latest.DeepCopy()
 		return c.Status().Patch(ctx, latest, client.MergeFromWithOptions(original, client.MergeFromWithOptimisticLock{}))
 	})
 }
 
-// ClearNudgeConfigActions removes processed one-shot actions from spec using a merge patch.
+// ClearNudgeConfigActions consumes only the captured request. A newer generation or
+// replacement action is retained, including across optimistic-lock retries.
 func ClearNudgeConfigActions(ctx context.Context, c client.Client, nudgeConfig *v1beta2.NudgeConfig) error {
 	return retry.RetryOnConflict(retry.DefaultBackoff, func() error {
 		latest := &v1beta2.NudgeConfig{}
 		if err := c.Get(ctx, types.NamespacedName{Name: nudgeConfig.Name, Namespace: nudgeConfig.Namespace}, latest); err != nil {
 			return err
 		}
-		if latest.Spec.Actions == nil {
+		if latest.Spec.Actions == nil || !sameForceFireRequest(nudgeConfig, latest) {
 			return nil
 		}
 		original := latest.DeepCopy()
 		latest.Spec.Actions = nil
 		return c.Patch(ctx, latest, client.MergeFromWithOptions(original, client.MergeFromWithOptimisticLock{}))
+	})
+}
+
+// ClearForceFireReceipt removes a consumed action's controller-owned receipt. It only
+// clears after spec.actions is absent, so an operational failure cannot lose recovery state.
+func ClearForceFireReceipt(ctx context.Context, c client.Client, nudgeConfig *v1beta2.NudgeConfig) error {
+	return retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+		latest := &v1beta2.NudgeConfig{}
+		if err := c.Get(ctx, types.NamespacedName{Name: nudgeConfig.Name, Namespace: nudgeConfig.Namespace}, latest); err != nil {
+			return err
+		}
+		if latest.Spec.Actions != nil || latest.Status.ForceFireReceipt == nil {
+			return nil
+		}
+		original := latest.DeepCopy()
+		latest.Status.ForceFireReceipt = nil
+		return c.Status().Patch(ctx, latest, client.MergeFromWithOptions(original, client.MergeFromWithOptimisticLock{}))
 	})
 }
 
@@ -216,9 +352,8 @@ func ProcessDueNudgeBatches(ctx context.Context, c client.Client, nudgeConfig *v
 			if !batchTimerExpired(batch, now) {
 				continue
 			}
-			if len(batch.Accumulated) == 0 {
-				batch.Phase = v1beta2.BatchPhaseFailed
-				batch.Message = "timer expired with no successful builds to nudge"
+			if len(eligibleAccumulatedEntries(batch)) == 0 {
+				failEmptyEligibleBatch(batch)
 				changed = true
 				continue
 			}
@@ -226,11 +361,22 @@ func ProcessDueNudgeBatches(ctx context.Context, c client.Client, nudgeConfig *v
 				continue
 			}
 			if err := fireBatch(ctx, c, latest, batch); err != nil {
+				if isRetryableBatchDeliveryError(err) && batch.CreationRetryCount < maxBatchNudgeCreationRetries {
+					// fireBatch transitions the batch to Firing before it creates the
+					// PipelineRun. No PipelineRun was recorded on a create error, so keep
+					// this batch due for a later creation attempt.
+					batch.Phase = v1beta2.BatchPhaseAccumulating
+					batch.CreationRetryCount++
+					batch.Message = fmt.Sprintf("retryable nudge PipelineRun creation failure (%d/%d): %s", batch.CreationRetryCount, maxBatchNudgeCreationRetries, err)
+					changed = true
+					continue
+				}
 				batch.Phase = v1beta2.BatchPhaseFailed
 				batch.Message = err.Error()
 				changed = true
 				continue
 			}
+			batch.CreationRetryCount = 0
 			changed = true
 		}
 
@@ -243,6 +389,13 @@ func ProcessDueNudgeBatches(ctx context.Context, c client.Client, nudgeConfig *v
 
 // ProcessFiringNudgeBatches advances batches in Firing phase based on nudge PipelineRun completion.
 func ProcessFiringNudgeBatches(ctx context.Context, c client.Client, nudgeConfig *v1beta2.NudgeConfig) error {
+	return ProcessFiringNudgeBatchesWithReader(ctx, c, c, nudgeConfig)
+}
+
+// ProcessFiringNudgeBatchesWithReader confirms a cache miss through reader before
+// treating a tracked PipelineRun outcome as unknown. A true absence is deliberately
+// not retried: KFLUXSE-597 requires unknown outcomes not to consume a retry.
+func ProcessFiringNudgeBatchesWithReader(ctx context.Context, c client.Client, reader client.Reader, nudgeConfig *v1beta2.NudgeConfig) error {
 	return retry.RetryOnConflict(retry.DefaultBackoff, func() error {
 		latest := &v1beta2.NudgeConfig{}
 		if err := c.Get(ctx, types.NamespacedName{Name: nudgeConfig.Name, Namespace: nudgeConfig.Namespace}, latest); err != nil {
@@ -258,7 +411,32 @@ func ProcessFiringNudgeBatches(ctx context.Context, c client.Client, nudgeConfig
 			}
 			plr := &tektonv1.PipelineRun{}
 			if err := c.Get(ctx, types.NamespacedName{Name: batch.NudgePipelineRun, Namespace: nudgeConfig.Namespace}, plr); err != nil {
-				return fmt.Errorf("loading nudge PipelineRun %q for batch %q: %w", batch.NudgePipelineRun, batch.BatchID, err)
+				if !apierrors.IsNotFound(err) {
+					return fmt.Errorf("loading nudge PipelineRun %q for batch %q: %w", batch.NudgePipelineRun, batch.BatchID, err)
+				}
+				if reader != nil {
+					plr = &tektonv1.PipelineRun{}
+					if err := reader.Get(ctx, types.NamespacedName{Name: batch.NudgePipelineRun, Namespace: nudgeConfig.Namespace}, plr); err == nil {
+						// Continue below with the authoritative object.
+					} else if !apierrors.IsNotFound(err) {
+						return fmt.Errorf("confirming nudge PipelineRun %q for batch %q: %w", batch.NudgePipelineRun, batch.BatchID, err)
+					} else {
+						batch.Message = fmt.Sprintf("nudge PipelineRun %s outcome is unknown after authoritative lookup", batch.NudgePipelineRun)
+						changed = true
+						continue
+					}
+				} else {
+					batch.Message = fmt.Sprintf("nudge PipelineRun %s outcome is unknown", batch.NudgePipelineRun)
+					changed = true
+					continue
+				}
+			}
+			if err := validateBatchedNudgePipelineRun(plr, batch.BatchID); err != nil {
+				batch.Phase = v1beta2.BatchPhaseFailed
+				batch.Message = fmt.Sprintf("nudge PipelineRun %q does not match batch %q: %s",
+					batch.NudgePipelineRun, batch.BatchID, err)
+				changed = true
+				continue
 			}
 			if plr.Status.CompletionTime == nil {
 				continue
@@ -275,8 +453,13 @@ func ProcessFiringNudgeBatches(ctx context.Context, c client.Client, nudgeConfig
 				changed = true
 				continue
 			}
+			previousRetryCount := batch.RetryCount
 			batch.RetryCount++
 			if err := retryFiringBatch(ctx, c, latest, batch); err != nil {
+				if isRetryableBatchDeliveryError(err) {
+					batch.RetryCount = previousRetryCount
+					return err
+				}
 				batch.Phase = v1beta2.BatchPhaseFailed
 				batch.Message = err.Error()
 			}
@@ -286,6 +469,45 @@ func ProcessFiringNudgeBatches(ctx context.Context, c client.Client, nudgeConfig
 		if !changed {
 			return nil
 		}
+		return c.Status().Patch(ctx, latest, client.MergeFromWithOptions(original, client.MergeFromWithOptimisticLock{}))
+	})
+}
+
+func isRetryableBatchDeliveryError(err error) bool {
+	return apierrors.IsConflict(err) || apierrors.IsTooManyRequests(err) ||
+		apierrors.IsServerTimeout(err) || apierrors.IsTimeout(err) ||
+		apierrors.IsServiceUnavailable(err) || apierrors.IsInternalError(err)
+}
+
+// FilterExpiredCompletedBatches returns the subset of batches that should be retained —
+// dropping Completed entries whose CreatedAt has exceeded the 24 h TTL.
+// Exported for unit testing; production callers use PruneCompletedBatches.
+func FilterExpiredCompletedBatches(batches []v1beta2.ActiveBatch, now time.Time) []v1beta2.ActiveBatch {
+	result := make([]v1beta2.ActiveBatch, 0, len(batches))
+	for _, b := range batches {
+		if b.Phase == v1beta2.BatchPhaseCompleted && now.Sub(b.CreatedAt.Time) > completedBatchTTL {
+			continue
+		}
+		result = append(result, b)
+	}
+	return result
+}
+
+// PruneCompletedBatches removes Completed batches that have exceeded the retention TTL (24 h).
+// It is called on every reconcile to prevent NudgeConfig status from growing indefinitely.
+func PruneCompletedBatches(ctx context.Context, c client.Client, nudgeConfig *v1beta2.NudgeConfig) error {
+	return retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+		latest := &v1beta2.NudgeConfig{}
+		if err := c.Get(ctx, types.NamespacedName{Name: nudgeConfig.Name, Namespace: nudgeConfig.Namespace}, latest); err != nil {
+			return err
+		}
+		original := latest.DeepCopy()
+		now := time.Now()
+		filtered := FilterExpiredCompletedBatches(latest.Status.ActiveBatches, now)
+		if len(filtered) == len(latest.Status.ActiveBatches) {
+			return nil
+		}
+		latest.Status.ActiveBatches = filtered
 		return c.Status().Patch(ctx, latest, client.MergeFromWithOptions(original, client.MergeFromWithOptimisticLock{}))
 	})
 }
@@ -302,7 +524,7 @@ func HasFiringNudgeBatches(batches []v1beta2.ActiveBatch) bool {
 
 // BatchShouldFire reports whether an accumulating batch is due to fire at now.
 func BatchShouldFire(batch *v1beta2.ActiveBatch, now time.Time) bool {
-	if len(batch.Accumulated) == 0 {
+	if len(batch.Accumulated) == 0 && len(batch.Failed) == 0 {
 		return false
 	}
 	return batchTimerExpired(batch, now)
@@ -492,10 +714,6 @@ func scheduleBatchFire(batch *v1beta2.ActiveBatch, now metav1.Time, debounce tim
 	if batch.Phase == v1beta2.BatchPhaseBlocked {
 		return
 	}
-	if len(batch.Accumulated) == 0 {
-		batch.FireAt = nil
-		return
-	}
 	if !now.Time.Before(batch.HardDeadline.Time) {
 		batch.FireAt = &metav1.Time{Time: now.Time}
 		return
@@ -628,7 +846,7 @@ func recordFailureForBatchedNudge(
 		original := latest.DeepCopy()
 
 		now := metav1.Now()
-		_, maxWait, failurePolicy := latest.Spec.EffectiveBatchPolicy(targetName)
+		debounce, maxWait, failurePolicy := latest.Spec.EffectiveBatchPolicy(targetName)
 		batchIdx, _, batches := findOrCreateAcceptingBatch(latest.Status.ActiveBatches, targetName, now, maxWait)
 		latest.Status.ActiveBatches = batches
 		batch := &latest.Status.ActiveBatches[batchIdx]
@@ -652,6 +870,8 @@ func recordFailureForBatchedNudge(
 		if failurePolicy == v1beta2.FailurePolicyBlock {
 			batch.Phase = v1beta2.BatchPhaseBlocked
 			batch.FireAt = nil
+		} else {
+			scheduleBatchFire(batch, now, debounce)
 		}
 
 		latest.Status.ActiveBatches[batchIdx] = *batch
@@ -661,9 +881,12 @@ func recordFailureForBatchedNudge(
 
 // fireBatch creates or reconciles the batched Renovate PipelineRun for batch and sets batch to Firing (or Completed if the PLR already exists).
 func fireBatch(ctx context.Context, c client.Client, nudgeConfig *v1beta2.NudgeConfig, batch *v1beta2.ActiveBatch) error {
-	if len(batch.Accumulated) == 0 {
+	eligible := eligibleAccumulatedEntries(batch)
+	if len(eligible) == 0 {
 		return fmt.Errorf("cannot fire empty batch %q", batch.BatchID)
 	}
+	payloadBatch := *batch
+	payloadBatch.Accumulated = eligible
 
 	plannedName := batch.NudgePipelineRun
 	if plannedName == "" {
@@ -677,9 +900,12 @@ func fireBatch(ctx context.Context, c client.Client, nudgeConfig *v1beta2.NudgeC
 		return c.Get(ctx, types.NamespacedName{Name: plannedName, Namespace: nudgeConfig.Namespace}, existingPLR)
 	})
 	if getErr == nil && !existingPLR.IsPending() {
+		if err := validateBatchedNudgePipelineRun(existingPLR, batch.BatchID); err != nil {
+			return fmt.Errorf("refusing to adopt batched nudge PipelineRun %q: %w", plannedName, err)
+		}
 		batch.NudgePipelineRun = plannedName
 		batch.Phase = v1beta2.BatchPhaseFiring
-		batch.Message = fmt.Sprintf("fired with %d accumulated build(s)", len(batch.Accumulated))
+		batch.Message = fmt.Sprintf("reconciled existing nudge PipelineRun with %d eligible build(s)", len(eligible))
 		return nil
 	}
 	if getErr != nil && !apierrors.IsNotFound(getErr) {
@@ -693,7 +919,7 @@ func fireBatch(ctx context.Context, c client.Client, nudgeConfig *v1beta2.NudgeC
 		logger.FromContext(ctx).Info("repairing pending batched nudge PipelineRun", "name", plannedName, "batchId", batch.BatchID)
 	}
 
-	referencePLR, target, renovateEntries, err := buildBatchedRenovatePayload(ctx, c, nudgeConfig, batch)
+	referencePLR, target, renovateEntries, err := buildBatchedRenovatePayload(ctx, c, nudgeConfig, &payloadBatch)
 	if err != nil {
 		return err
 	}
@@ -706,12 +932,18 @@ func fireBatch(ctx context.Context, c client.Client, nudgeConfig *v1beta2.NudgeC
 
 	batch.NudgePipelineRun = plrName
 	batch.Phase = v1beta2.BatchPhaseFiring
-	batch.Message = fmt.Sprintf("fired with %d accumulated build(s)", len(batch.Accumulated))
+	batch.Message = fmt.Sprintf("fired with %d eligible build(s)", len(eligible))
 	return nil
 }
 
 func retryFiringBatch(ctx context.Context, c client.Client, nudgeConfig *v1beta2.NudgeConfig, batch *v1beta2.ActiveBatch) error {
-	referencePLR, target, renovateEntries, err := buildBatchedRenovatePayload(ctx, c, nudgeConfig, batch)
+	eligible := eligibleAccumulatedEntries(batch)
+	if len(eligible) == 0 {
+		return fmt.Errorf("cannot retry empty batch %q", batch.BatchID)
+	}
+	payloadBatch := *batch
+	payloadBatch.Accumulated = eligible
+	referencePLR, target, renovateEntries, err := buildBatchedRenovatePayload(ctx, c, nudgeConfig, &payloadBatch)
 	if err != nil {
 		return err
 	}
@@ -720,8 +952,29 @@ func retryFiringBatch(ctx context.Context, c client.Client, nudgeConfig *v1beta2
 		return err
 	}
 	batch.NudgePipelineRun = plrName
-	batch.Message = fmt.Sprintf("retry %d for batch with %d accumulated build(s)", batch.RetryCount, len(batch.Accumulated))
+	batch.Message = fmt.Sprintf("retry %d for batch with %d eligible build(s)", batch.RetryCount, len(eligible))
 	return nil
+}
+
+// eligibleAccumulatedEntries returns successful observations whose source does not have a current failure.
+// A newer failure supersedes a previously recorded success for the same source until that source repairs.
+func eligibleAccumulatedEntries(batch *v1beta2.ActiveBatch) []v1beta2.AccumulatedEntry {
+	failedSources := make(map[string]struct{}, len(batch.Failed))
+	for _, failed := range batch.Failed {
+		failedSources[failed.From] = struct{}{}
+	}
+	eligible := make([]v1beta2.AccumulatedEntry, 0, len(batch.Accumulated))
+	for _, accumulated := range batch.Accumulated {
+		if _, failed := failedSources[accumulated.From]; !failed {
+			eligible = append(eligible, accumulated)
+		}
+	}
+	return eligible
+}
+
+func failEmptyEligibleBatch(batch *v1beta2.ActiveBatch) {
+	batch.Phase = v1beta2.BatchPhaseFailed
+	batch.Message = "no eligible successful builds to nudge"
 }
 
 func referenceBuildPLRForBatch(

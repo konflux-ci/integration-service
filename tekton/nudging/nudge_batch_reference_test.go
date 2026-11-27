@@ -115,7 +115,7 @@ var _ = Describe("referenceBuildPLRForBatch and buildBatchedRenovatePayload", fu
 		Expect(err).To(MatchError(ContainSubstring(`loading target component "missing-target"`)))
 	})
 
-	It("marks a batch failed when force-fire cannot resolve the target component", func() {
+	It("retains the batch for retry when force-fire cannot resolve the target component", func() {
 		now := metav1.Now()
 		nudgeConfig := &v1beta2.NudgeConfig{
 			ObjectMeta: metav1.ObjectMeta{Name: v1beta2.NudgeConfigSingletonName, Namespace: namespace},
@@ -148,11 +148,11 @@ var _ = Describe("referenceBuildPLRForBatch and buildBatchedRenovatePayload", fu
 
 		updated := &v1beta2.NudgeConfig{}
 		Expect(c.Get(ctx, types.NamespacedName{Name: nudgeConfig.Name, Namespace: namespace}, updated)).To(Succeed())
-		Expect(updated.Status.ActiveBatches[0].Phase).To(Equal(v1beta2.BatchPhaseFailed))
-		Expect(updated.Status.ActiveBatches[0].Message).NotTo(BeEmpty())
+		Expect(updated.Status.ActiveBatches[0].Phase).To(Equal(v1beta2.BatchPhaseAccumulating))
+		Expect(updated.Spec.Actions).NotTo(BeNil())
 	})
 
-	It("returns status patch errors when marking a force-fired batch as failed", func() {
+	It("returns payload errors without attempting to mark a force-fired batch as failed", func() {
 		now := metav1.Now()
 		nudgeConfig := &v1beta2.NudgeConfig{
 			ObjectMeta: metav1.ObjectMeta{Name: v1beta2.NudgeConfigSingletonName, Namespace: namespace},
@@ -191,7 +191,7 @@ var _ = Describe("referenceBuildPLRForBatch and buildBatchedRenovatePayload", fu
 			}).Build()
 
 		err := ProcessForceFireAction(ctx, c, nudgeConfig)
-		Expect(err).To(MatchError(ContainSubstring("status patch blocked")))
+		Expect(err).To(MatchError(ContainSubstring(`loading target component "missing-target"`)))
 	})
 
 	It("returns a wrapped error when loading a reference build PLR fails unexpectedly", func() {
