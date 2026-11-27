@@ -39,6 +39,7 @@ const minBatchRequeue = 5 * time.Second
 // Reconciler processes scheduled nudge batch windows and one-shot spec.actions for NudgeConfig resources.
 type Reconciler struct {
 	client.Client
+	APIReader client.Reader
 	Log logr.Logger
 }
 
@@ -51,8 +52,9 @@ func SetupController(mgr ctrl.Manager, logger *logr.Logger) error {
 			nudgeBatchStatusChanged{},
 		))).
 		Complete(&Reconciler{
-			Client: mgr.GetClient(),
-			Log:    logger.WithName("nudgeconfig"),
+			Client:    mgr.GetClient(),
+			APIReader: mgr.GetAPIReader(),
+			Log:       logger.WithName("nudgeconfig"),
 		})
 }
 
@@ -102,7 +104,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return reconcile.Result{}, err
 	}
 
-	if err := nudging.ProcessFiringNudgeBatches(ctx, r.Client, nudgeConfig); err != nil {
+	if err := nudging.ProcessFiringNudgeBatchesWithReader(ctx, r.Client, r.APIReader, nudgeConfig); err != nil {
 		logger.Error(err, "Failed to process firing nudge batches")
 		return reconcile.Result{}, err
 	}

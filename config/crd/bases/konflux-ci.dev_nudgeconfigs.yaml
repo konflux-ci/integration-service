@@ -344,6 +344,13 @@ spec:
                         first created.
                       format: date-time
                       type: string
+                    creationRetryCount:
+                      description: |-
+                        CreationRetryCount is the number of retryable failures before the batch nudge
+                        PipelineRun was created. It is separate from RetryCount, which tracks completed
+                        delivery attempts.
+                      format: int32
+                      type: integer
                     failed:
                       description: Failed is the list of build events that could not
                         be accumulated into this batch.

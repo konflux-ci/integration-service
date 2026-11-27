@@ -536,6 +536,12 @@ type ActiveBatch struct {
 	// Persisted to survive controller restarts.
 	// +optional
 	RetryCount int32 `json:"retryCount,omitempty"`
+
+	// CreationRetryCount is the number of retryable failures before the batch nudge
+	// PipelineRun was created. It is separate from RetryCount, which tracks completed
+	// delivery attempts.
+	// +optional
+	CreationRetryCount int32 `json:"creationRetryCount,omitempty"`
 }
 
 // NudgeConfigStatus defines the observed state of NudgeConfig.
