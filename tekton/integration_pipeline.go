@@ -511,7 +511,7 @@ func (r *IntegrationPipelineRun) WithSnapshot(snapshot *applicationapiv1alpha1.S
 
 	componentLabel, found := keys.GetLabel(snapshot, keys.BuildComponent())
 	if found {
-		r.Labels[consts.ComponentNameLabel] = componentLabel
+		_ = gitops.SetOwnedLabelWithStyle(r, consts.ComponentNameLabel, componentLabel, style)
 	}
 
 	// Copy one style of PipelineRun PAC, build, test, and custom metadata from the Snapshot.
@@ -523,7 +523,7 @@ func (r *IntegrationPipelineRun) WithSnapshot(snapshot *applicationapiv1alpha1.S
 		testPrefix = keys.PrefixTestNew
 		customPrefix = keys.PrefixCustomNew
 	}
-	prefixes := []string{pacPrefix, consts.BuildPipelineRunPrefix, testPrefix, customPrefix}
+	prefixes := []string{pacPrefix, keys.PrefixForStyle(consts.BuildPipelineRunPrefix, style), testPrefix, customPrefix}
 	for _, prefix := range prefixes {
 		// Copy labels and annotations prefixed with defined prefix
 		_ = metadata.CopyAnnotationsByPrefix(&snapshot.ObjectMeta, &r.ObjectMeta, prefix)
