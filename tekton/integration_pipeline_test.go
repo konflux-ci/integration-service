@@ -41,6 +41,7 @@ import (
 
 	toolkit "github.com/konflux-ci/operator-toolkit/loader"
 	"github.com/konflux-ci/operator-toolkit/metadata"
+	"github.com/tektoncd/pipeline/pkg/apis/pipeline/pod"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	resolutionv1beta1 "github.com/tektoncd/pipeline/pkg/apis/resolution/v1beta1"
 	corev1 "k8s.io/api/core/v1"
@@ -722,6 +723,135 @@ var _ = Describe("Integration pipeline", Ordered, func() {
 			Expect(newIntegrationPipelineRun.Spec.Params[0].Value.StringVal).To(Equal(scenarioParams[0].Value))
 			Expect(newIntegrationPipelineRun.Spec.Params[1].Name).To(Equal(scenarioParams[1].Name))
 			Expect(newIntegrationPipelineRun.Spec.Params[1].Value.ArrayVal).To(Equal(scenarioParams[1].Values))
+		})
+
+		It("sets the fallback annotation with the reason and removes one that was copied in", func() {
+			pipelineRun := (&tekton.IntegrationPipelineRun{}).WithServiceAccountFallback(tektonconsts.ServiceAccountFallbackAccountMissing)
+			Expect(pipelineRun.Annotations).To(HaveKeyWithValue(tektonconsts.ServiceAccountFallbackAnnotation, tektonconsts.ServiceAccountFallbackAccountMissing))
+
+			copiedIn := hasSnapshot.DeepCopy()
+			copiedIn.Annotations[tektonconsts.ServiceAccountFallbackAnnotation] = tektonconsts.ServiceAccountFallbackNoPushSecret
+			pipelineRun = (&tekton.IntegrationPipelineRun{}).WithSnapshot(copiedIn, integrationTestScenarioGit)
+			Expect(pipelineRun.Annotations).To(HaveKey(tektonconsts.ServiceAccountFallbackAnnotation))
+			Expect(pipelineRun.WithServiceAccountFallback("").Annotations).NotTo(HaveKey(tektonconsts.ServiceAccountFallbackAnnotation))
+		})
+
+		It("should name imagePullSecrets for the pods of an account wherever none is set", func() {
+			own := []corev1.LocalObjectReference{{Name: "own"}}
+			pipelineRun := &tekton.IntegrationPipelineRun{}
+			pipelineRun.Spec.TaskRunTemplate = tektonv1.PipelineTaskRunTemplate{ServiceAccountName: "account", PodTemplate: &pod.PodTemplate{NodeSelector: map[string]string{"disk": "ssd"}}}
+			pipelineRun.Spec.TaskRunSpecs = []tektonv1.PipelineTaskRunSpec{
+				{PipelineTaskName: "same", ServiceAccountName: "account"},
+				{PipelineTaskName: "own-list", ServiceAccountName: "account", PodTemplate: &pod.PodTemplate{ImagePullSecrets: own}},
+				{PipelineTaskName: "other", ServiceAccountName: "other-account"},
+			}
+
+			Expect(pipelineRun.WithImagePullSecrets("account", nil).Spec.TaskRunTemplate.PodTemplate.ImagePullSecrets).To(BeEmpty())
+
+			// The second call finds the list set and leaves it.
+			pipelineRun.WithImagePullSecrets("account", []string{"first", "second"}).WithImagePullSecrets("account", []string{"third"})
+			names := []corev1.LocalObjectReference{{Name: "first"}, {Name: "second"}}
+			Expect(pipelineRun.Spec.TaskRunTemplate.PodTemplate.ImagePullSecrets).To(Equal(names))
+			Expect(pipelineRun.Spec.TaskRunTemplate.PodTemplate.NodeSelector).To(HaveKeyWithValue("disk", "ssd"))
+			Expect(pipelineRun.Spec.TaskRunSpecs[0].PodTemplate.ImagePullSecrets).To(Equal(names))
+			Expect(pipelineRun.Spec.TaskRunSpecs[1].PodTemplate.ImagePullSecrets).To(Equal(own))
+			Expect(pipelineRun.Spec.TaskRunSpecs[2].PodTemplate).To(BeNil())
+		})
+
+		It("writes the fallback annotation in the new style on a new-style Integration PipelineRun", func() {
+			fallbackAnnotation := keys.Test("service-account-fallback")
+			Expect(fallbackAnnotation.Old).To(Equal(tektonconsts.ServiceAccountFallbackAnnotation))
+			pipelineRun := &tekton.IntegrationPipelineRun{}
+			pipelineRun.Labels = map[string]string{keys.SnapshotName().New: hasSnapshot.Name}
+
+			pipelineRun.WithServiceAccountFallback(tektonconsts.ServiceAccountFallbackNoPushSecret)
+			Expect(pipelineRun.Annotations).To(HaveKeyWithValue(fallbackAnnotation.New, tektonconsts.ServiceAccountFallbackNoPushSecret))
+			Expect(pipelineRun.Annotations).NotTo(HaveKey(fallbackAnnotation.Old))
+
+			pipelineRun.WithServiceAccountFallback("")
+			Expect(pipelineRun.Annotations).NotTo(HaveKey(fallbackAnnotation.New))
+		})
+
+		Context("When adding the component image params", func() {
+			const digest = "sha256:841328df1b9f8c4087adbdcfec6cc99ac8308805dea83f6d415d6fb8d40227c1"
+
+			var (
+				buf bytes.Buffer
+				log = buflogr.NewWithBuffer(&buf)
+			)
+
+			// withImage is hasSnapshot with the given containerImage for its component.
+			withImage := func(image string) *applicationapiv1alpha1.Snapshot {
+				snapshot := hasSnapshot.DeepCopy()
+				snapshot.Spec.Components[0].ContainerImage = image
+				return snapshot
+			}
+
+			stringParam := func(value string) tektonv1.ParamValue {
+				return tektonv1.ParamValue{Type: tektonv1.ParamTypeString, StringVal: value}
+			}
+
+			It("adds image-url and image-digest for a component Snapshot, without the tag", func() {
+				pipelineRun := (&tekton.IntegrationPipelineRun{}).WithComponentImage(withImage("quay.io/org/ns/comp:tag@"+digest), log)
+				Expect(pipelineRun.Spec.Params).To(Equal(tektonv1.Params{
+					{Name: tektonconsts.ComponentImageUrlParamName, Value: stringParam("quay.io/org/ns/comp")},
+					{Name: tektonconsts.ComponentImageDigestParamName, Value: stringParam(digest)},
+				}))
+			})
+
+			It("matches the component by name and version", func() {
+				snapshot := withImage("quay.io/org/ns/comp@" + digest)
+				snapshot.Spec.Components[0].Version = "v1"
+				snapshot.Spec.Components = append(snapshot.Spec.Components, applicationapiv1alpha1.SnapshotComponent{
+					Name: "component-sample", Version: "v2", ContainerImage: "quay.io/org/ns/comp-v2@" + digest,
+				})
+				snapshot.Labels[gitops.SnapshotComponentVersionLabel] = "v2"
+
+				pipelineRun := (&tekton.IntegrationPipelineRun{}).WithComponentImage(snapshot, log)
+				Expect(pipelineRun.Spec.Params[0].Value.StringVal).To(Equal("quay.io/org/ns/comp-v2"))
+			})
+
+			It("reads the component from a new-style Snapshot", func() {
+				snapshot := withImage("quay.io/org/ns/comp@" + digest)
+				snapshot.Labels = map[string]string{
+					keys.Test("type").New:     gitops.SnapshotComponentType,
+					keys.BuildComponent().New: "component-sample",
+				}
+
+				pipelineRun := (&tekton.IntegrationPipelineRun{}).WithComponentImage(snapshot, log)
+				Expect(pipelineRun.Spec.Params).To(HaveLen(2))
+			})
+
+			It("keeps a param the scenario already set, whatever its case", func() {
+				pipelineRun := (&tekton.IntegrationPipelineRun{}).
+					WithExtraParam("IMAGE-URL", stringParam("the scenario's own")).
+					WithComponentImage(withImage("quay.io/org/ns/comp@"+digest), log)
+				Expect(pipelineRun.Spec.Params).To(Equal(tektonv1.Params{
+					{Name: "IMAGE-URL", Value: stringParam("the scenario's own")},
+					{Name: tektonconsts.ComponentImageDigestParamName, Value: stringParam(digest)},
+				}))
+			})
+
+			It("adds nothing for a Snapshot that is not a component Snapshot or has no component label", func() {
+				groupSnapshot := withImage("quay.io/org/ns/comp@" + digest)
+				groupSnapshot.Labels[gitops.SnapshotTypeLabel] = gitops.SnapshotGroupType
+				unlabelledSnapshot := withImage("quay.io/org/ns/comp@" + digest)
+				delete(unlabelledSnapshot.Labels, gitops.SnapshotComponentLabel)
+
+				for _, snapshot := range []*applicationapiv1alpha1.Snapshot{groupSnapshot, unlabelledSnapshot} {
+					Expect((&tekton.IntegrationPipelineRun{}).WithComponentImage(snapshot, log).Spec.Params).To(BeEmpty())
+				}
+			})
+
+			It("adds nothing when the component is not in the Snapshot or its image has no digest", func() {
+				notInSnapshot := withImage("quay.io/org/ns/comp@" + digest)
+				notInSnapshot.Spec.Components[0].Name = "another-component"
+
+				for _, snapshot := range []*applicationapiv1alpha1.Snapshot{notInSnapshot, withImage("quay.io/org/ns/comp:tag")} {
+					Expect((&tekton.IntegrationPipelineRun{}).WithComponentImage(snapshot, log).Spec.Params).To(BeEmpty())
+				}
+				Expect(buf.String()).To(ContainSubstring("Not adding the component image params"))
+			})
 		})
 
 	})

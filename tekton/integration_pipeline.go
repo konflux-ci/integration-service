@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"maps"
 	"regexp"
+	"slices"
 	"strings"
 
 	"os"
@@ -30,6 +31,7 @@ import (
 
 	"github.com/ghodss/yaml" // used instead of gopkg.in/yaml.v3 because it treats json tags as yaml tags
 	"github.com/go-logr/logr"
+	"github.com/google/go-containerregistry/pkg/name"
 	applicationapiv1alpha1 "github.com/konflux-ci/application-api/api/v1alpha1"
 	konfluxv1beta2 "github.com/konflux-ci/integration-service/api/konflux/v1beta2"
 	"github.com/konflux-ci/integration-service/api/v1beta2"
@@ -40,6 +42,7 @@ import (
 	"github.com/konflux-ci/integration-service/pkg/tracing"
 	"github.com/konflux-ci/integration-service/tekton/consts"
 	"github.com/konflux-ci/operator-toolkit/metadata"
+	"github.com/tektoncd/pipeline/pkg/apis/pipeline/pod"
 	tektonv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	resolutionv1beta1 "github.com/tektoncd/pipeline/pkg/apis/resolution/v1beta1"
 	corev1 "k8s.io/api/core/v1"
@@ -613,6 +616,81 @@ func (r *IntegrationPipelineRun) WithDefaultServiceAccount(serviceAccountName st
 		r.Spec.TaskRunTemplate.ServiceAccountName = serviceAccountName
 	}
 	return r
+}
+
+// WithImagePullSecrets names secretNames as the imagePullSecrets of the pods that run as
+// serviceAccountName: in the pod template of the Integration PipelineRun when it runs as that account,
+// and in the pod template of every taskRunSpecs entry that names it. A list that is already set is left
+// as it is, and so are the other fields of a pod template.
+func (r *IntegrationPipelineRun) WithImagePullSecrets(serviceAccountName string, secretNames []string) *IntegrationPipelineRun {
+	fill := func(template *pod.PodTemplate) *pod.PodTemplate {
+		if len(secretNames) == 0 || (template != nil && len(template.ImagePullSecrets) > 0) {
+			return template
+		}
+		if template == nil {
+			template = &pod.PodTemplate{}
+		}
+		for _, name := range secretNames {
+			template.ImagePullSecrets = append(template.ImagePullSecrets, corev1.LocalObjectReference{Name: name})
+		}
+		return template
+	}
+
+	if r.Spec.TaskRunTemplate.ServiceAccountName == serviceAccountName {
+		r.Spec.TaskRunTemplate.PodTemplate = fill(r.Spec.TaskRunTemplate.PodTemplate)
+	}
+	for i := range r.Spec.TaskRunSpecs {
+		if r.Spec.TaskRunSpecs[i].ServiceAccountName == serviceAccountName {
+			r.Spec.TaskRunSpecs[i].PodTemplate = fill(r.Spec.TaskRunSpecs[i].PodTemplate)
+		}
+	}
+	return r
+}
+
+// WithServiceAccountFallback records on the Integration PipelineRun why it does not run as the
+// per-component ServiceAccount (STONEINTG-1800). With an empty reason it removes the annotation, which
+// may have been copied from the Snapshot or the IntegrationTestScenario.
+func (r *IntegrationPipelineRun) WithServiceAccountFallback(reason string) *IntegrationPipelineRun {
+	if reason == "" {
+		_ = gitops.DeleteOwnedAnnotation(r, consts.ServiceAccountFallbackAnnotation)
+		return r
+	}
+	_ = gitops.SetOwnedAnnotation(r, consts.ServiceAccountFallbackAnnotation, reason)
+
+	return r
+}
+
+// WithComponentImage adds the image-url and image-digest params to the Integration PipelineRun of a
+// component Snapshot (STONEINTG-1800): the repository and the digest of the containerImage that the
+// Snapshot holds for the component it was created for. A param that the PipelineRun already has, from
+// the IntegrationTestScenario or from its own definition, is kept. Nothing is added for another type
+// of Snapshot or when the Snapshot holds no image with a digest for the component.
+func (r *IntegrationPipelineRun) WithComponentImage(snapshot *applicationapiv1alpha1.Snapshot, logger logr.Logger) *IntegrationPipelineRun {
+	componentName, _ := keys.GetLabel(snapshot, keys.BuildComponent())
+	if !gitops.IsComponentSnapshot(snapshot) || componentName == "" {
+		return r
+	}
+
+	component := gitops.FindMatchingSnapshotComponent(snapshot, componentName, snapshot.Labels[gitops.SnapshotComponentVersionLabel])
+	digest, err := name.NewDigest(component.ContainerImage)
+	if err != nil {
+		logger.Info("Not adding the component image params: the Snapshot holds no image with a digest for the component",
+			"snapshot.Name", snapshot.Name, "component.Name", componentName, "reason", err.Error())
+		return r
+	}
+
+	return r.withParamIfAbsent(consts.ComponentImageUrlParamName, digest.Context().Name()).
+		withParamIfAbsent(consts.ComponentImageDigestParamName, digest.DigestStr())
+}
+
+// withParamIfAbsent adds a string param unless the Integration PipelineRun already has a param of that
+// name. Tekton rejects a PipelineRun with two params of the same name, compared without case.
+func (r *IntegrationPipelineRun) withParamIfAbsent(paramName, value string) *IntegrationPipelineRun {
+	if slices.ContainsFunc(r.Spec.Params, func(param tektonv1.Param) bool { return strings.EqualFold(param.Name, paramName) }) {
+		return r
+	}
+
+	return r.WithExtraParam(paramName, tektonv1.ParamValue{Type: tektonv1.ParamTypeString, StringVal: value})
 }
 
 // WithIntegrationTimeouts fetches the Integration timeouts from either the integrationTestScenario annotations or

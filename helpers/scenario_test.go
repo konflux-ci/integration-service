@@ -25,6 +25,7 @@ import (
 	"github.com/konflux-ci/integration-service/api/v1beta2"
 	"github.com/konflux-ci/integration-service/helpers"
 	"github.com/konflux-ci/integration-service/pkg/keys"
+	tektonconsts "github.com/konflux-ci/integration-service/tekton/consts"
 )
 
 var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
@@ -76,6 +77,33 @@ var _ = Describe("Gitops functions for managing Snapshots", Ordered, func() {
 			},
 		}
 		Expect(helpers.IsIntegrationTestScenarioOptional(scenario)).To(BeTrue())
+	})
+
+	It("recognizes the component service account annotation in either key style", func() {
+		Expect(keys.Test("component-service-account").Old).To(Equal(tektonconsts.ComponentServiceAccountAnnotation))
+		Expect(helpers.ScenarioUsesComponentServiceAccount(nil)).To(BeFalse())
+		Expect(helpers.ScenarioUsesComponentServiceAccount(integrationTestScenario)).To(BeFalse())
+
+		for _, key := range []string{keys.Test("component-service-account").Old, keys.Test("component-service-account").New} {
+			enabled := &v1beta2.IntegrationTestScenario{
+				ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{key: "true"}},
+			}
+			Expect(helpers.ScenarioUsesComponentServiceAccount(enabled)).To(BeTrue(), key)
+
+			disabled := &v1beta2.IntegrationTestScenario{
+				ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{key: "false"}},
+			}
+			Expect(helpers.ScenarioUsesComponentServiceAccount(disabled)).To(BeFalse(), key)
+		}
+
+		// The new key wins when both are set.
+		both := &v1beta2.IntegrationTestScenario{
+			ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{
+				keys.Test("component-service-account").Old: "true",
+				keys.Test("component-service-account").New: "false",
+			}},
+		}
+		Expect(helpers.ScenarioUsesComponentServiceAccount(both)).To(BeFalse())
 	})
 
 	AfterAll(func() {
