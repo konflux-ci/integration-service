@@ -679,7 +679,7 @@ func fireBatch(ctx context.Context, c client.Client, nudgeConfig *v1beta2.NudgeC
 	if getErr == nil && !existingPLR.IsPending() {
 		batch.NudgePipelineRun = plannedName
 		batch.Phase = v1beta2.BatchPhaseFiring
-		batch.Message = fmt.Sprintf("fired with %d accumulated build(s)", len(batch.Accumulated))
+		batch.Message = fmt.Sprintf("reconciled existing nudge PipelineRun with %d accumulated build(s)", len(batch.Accumulated))
 		return nil
 	}
 	if getErr != nil && !apierrors.IsNotFound(getErr) {
@@ -748,6 +748,7 @@ func referenceBuildPLRForBatch(
 		}
 	}
 	return &tektonv1.PipelineRun{
+		ObjectMeta: metav1.ObjectMeta{Namespace: namespace},
 		Spec: tektonv1.PipelineRunSpec{
 			TaskRunTemplate: tektonv1.PipelineTaskRunTemplate{
 				ServiceAccountName: saName,
@@ -766,8 +767,6 @@ func buildBatchedRenovatePayload(
 	if err != nil {
 		return nil, NudgeTarget{}, nil, err
 	}
-	firstEntry := batch.Accumulated[0]
-
 	targetComponent := &applicationapiv1alpha1.Component{}
 	if err := c.Get(ctx, types.NamespacedName{Name: batch.Target, Namespace: nudgeConfig.Namespace}, targetComponent); err != nil {
 		return nil, NudgeTarget{}, nil, fmt.Errorf("loading target component %q: %w", batch.Target, err)
@@ -792,8 +791,8 @@ func buildBatchedRenovatePayload(
 		saName = tektonconsts.DefaultPipelineServiceAccount
 	}
 	firstSource := &applicationapiv1alpha1.Component{}
-	if err := c.Get(ctx, types.NamespacedName{Name: firstEntry.From, Namespace: nudgeConfig.Namespace}, firstSource); err != nil {
-		return nil, NudgeTarget{}, nil, fmt.Errorf("loading source component %q: %w", firstEntry.From, err)
+	if err := c.Get(ctx, types.NamespacedName{Name: batch.Accumulated[0].From, Namespace: nudgeConfig.Namespace}, firstSource); err != nil {
+		return nil, NudgeTarget{}, nil, fmt.Errorf("loading source component %q: %w", batch.Accumulated[0].From, err)
 	}
 	imageRepoHost, imageRepoUser, imageRepoPwd, err := GetImageRegistryCredentials(ctx, c, objectLoader, firstSource, saName)
 	if err != nil {
@@ -807,6 +806,23 @@ func buildBatchedRenovatePayload(
 	if len(targets) == 0 {
 		return nil, NudgeTarget{}, nil, fmt.Errorf("no credentials resolved for batched nudge target %q", batch.Target)
 	}
+	registryCredentials := make([]RegistryCredential, 0, len(batch.Accumulated))
+	seenHosts := make(map[string]struct{})
+	for _, accumulated := range batch.Accumulated {
+		sourceComponent := &applicationapiv1alpha1.Component{}
+		if err := c.Get(ctx, types.NamespacedName{Name: accumulated.From, Namespace: nudgeConfig.Namespace}, sourceComponent); err != nil {
+			return nil, NudgeTarget{}, nil, fmt.Errorf("loading source component %q: %w", accumulated.From, err)
+		}
+		host, username, password, err := GetImageRegistryCredentials(ctx, c, objectLoader, sourceComponent, saName)
+		if err != nil {
+			return nil, NudgeTarget{}, nil, err
+		}
+		if _, seen := seenHosts[host]; !seen {
+			registryCredentials = append(registryCredentials, RegistryCredential{Host: host, Username: username, Password: password})
+			seenHosts[host] = struct{}{}
+		}
+	}
+	targets[0].RegistryCredentials = registryCredentials
 	return referencePLR, targets[0], renovateEntries, nil
 }
 
