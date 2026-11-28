@@ -59,3 +59,15 @@ func SetScenarioIntegrationStatusAsValid(scenario *v1beta2.IntegrationTestScenar
 func IsIntegrationTestScenarioOptional(scenario *v1beta2.IntegrationTestScenario) bool {
 	return keys.HasLabelValue(scenario, keys.Test("optional"), "true")
 }
+
+// ScenarioUsesComponentServiceAccount reports whether scenario opts in to running a component
+// Snapshot's integration PipelineRun as its-pipeline-<component>. The annotation is
+// test.appstudio.openshift.io/component-service-account, or
+// integration.konflux-ci.dev/component-service-account, and only the value "true" enables it.
+func ScenarioUsesComponentServiceAccount(scenario *v1beta2.IntegrationTestScenario) bool {
+	if scenario == nil {
+		return false
+	}
+	value, found := keys.GetAnnotation(scenario, keys.Test("component-service-account"))
+	return found && value == "true"
+}
