@@ -21,6 +21,7 @@ import (
 
 	konfluxv1beta2 "github.com/konflux-ci/integration-service/api/konflux/v1beta2"
 	"github.com/konflux-ci/integration-service/api/v1beta2"
+	tektonconsts "github.com/konflux-ci/integration-service/tekton/consts"
 	nudging "github.com/konflux-ci/integration-service/tekton/nudging"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -317,6 +318,80 @@ var _ = Describe("NudgeConfig reconciler", func() {
 			Expect(reconciler.Client.Get(ctx, client.ObjectKeyFromObject(nudgeConfig), updated)).To(Succeed())
 			Expect(updated.Spec.Actions).To(BeNil())
 			Expect(updated.Status.ActiveBatches[0].Phase).To(Equal(v1beta2.BatchPhaseFiring))
+		})
+	})
+
+	Context("When a completed batch exceeds the retention TTL", func() {
+		It("should prune the batch during reconcile", func() {
+			now := time.Now()
+			old := metav1.NewTime(now.Add(-25 * time.Hour))
+			nudgeConfig := &v1beta2.NudgeConfig{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      v1beta2.NudgeConfigSingletonName,
+					Namespace: "default",
+				},
+				Spec: v1beta2.NudgeConfigSpec{},
+				Status: v1beta2.NudgeConfigStatus{
+					ActiveBatches: []v1beta2.ActiveBatch{{
+						Target:    "bundle",
+						BatchID:   "expired-completed",
+						Phase:     v1beta2.BatchPhaseCompleted,
+						CreatedAt: old,
+					}},
+				},
+			}
+			reconciler.Client = newClient(nudgeConfig)
+
+			result, err := reconciler.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKeyFromObject(nudgeConfig)})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.RequeueAfter).To(BeZero())
+
+			updated := &v1beta2.NudgeConfig{}
+			Expect(reconciler.Client.Get(ctx, client.ObjectKeyFromObject(nudgeConfig), updated)).To(Succeed())
+			Expect(updated.Status.ActiveBatches).To(BeEmpty())
+		})
+	})
+
+	Context("When a Firing batch's nudge PipelineRun has completed successfully", func() {
+		It("should mark the batch Completed and stop requeueing", func() {
+			now := metav1.Now()
+			batchID := "firing-complete-batch"
+			plrName := nudging.BatchedNudgePipelineRunName(batchID, 0)
+			nudgePLR := &tektonv1.PipelineRun{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      plrName,
+					Namespace: "default",
+					Annotations: map[string]string{
+						tektonconsts.NudgeBatchIDAnnotation: batchID,
+					},
+				},
+			}
+			nudgePLR.Status.MarkSucceeded(tektonv1.PipelineRunReasonCompleted.String(), "done")
+			nudgeConfig := &v1beta2.NudgeConfig{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      v1beta2.NudgeConfigSingletonName,
+					Namespace: "default",
+				},
+				Spec: v1beta2.NudgeConfigSpec{},
+				Status: v1beta2.NudgeConfigStatus{
+					ActiveBatches: []v1beta2.ActiveBatch{{
+						Target:           "bundle",
+						BatchID:          batchID,
+						Phase:            v1beta2.BatchPhaseFiring,
+						CreatedAt:        now,
+						NudgePipelineRun: plrName,
+					}},
+				},
+			}
+			reconciler.Client = newClient(nudgeConfig, nudgePLR)
+
+			result, err := reconciler.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKeyFromObject(nudgeConfig)})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.RequeueAfter).To(BeZero())
+
+			updated := &v1beta2.NudgeConfig{}
+			Expect(reconciler.Client.Get(ctx, client.ObjectKeyFromObject(nudgeConfig), updated)).To(Succeed())
+			Expect(updated.Status.ActiveBatches[0].Phase).To(Equal(v1beta2.BatchPhaseCompleted))
 		})
 	})
 
